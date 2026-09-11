@@ -24,3 +24,4 @@ La instrucción inicial pidió `docs/planning/Backlog.md` y `docs/planning/Roadm
 - "¿Qué falta hacer?" se responde en Notion. "¿Por qué quedó así y qué se certificó?" se responde en el repositorio.
 - El cierre de cualquier fase o subfase no está completo sin su entrada en `CHANGELOG.md`.
 - Hasta cargar Notion, la semilla solo se edita para corregirla. Después de la carga, no se edita más.
+- Ejecutado el 2026-09-11: el proyecto se creó en Notion con las 11 fases y sus 60 tareas, y `docs/planning/Backlog.md` se retiró del repositorio.

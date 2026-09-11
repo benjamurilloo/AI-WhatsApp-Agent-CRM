@@ -4,7 +4,7 @@
 
 ## Qué es este documento
 
-Es el diseño de fases: objetivo, alcance, dependencias, riesgos, entregables, criterios de aceptación, gates y nivel de validación de cada fase, además del camino crítico y la Definición de Terminado. Las subfases, las tareas y su estado viven en Notion ([ADR 0006](../decisions/0006-repositorio-registra-decisiones-no-tareas.md)). Hasta cargar Notion, la semilla está en [Backlog.md](Backlog.md). Cada subfase se ejecuta con un brief `docs/decisions/brief-X.Y-*.md` ([ExecutionProtocol.md](../development/ExecutionProtocol.md)).
+Es el diseño de fases: objetivo, alcance, dependencias, riesgos, entregables, criterios de aceptación, gates y nivel de validación de cada fase, además del camino crítico y la Definición de Terminado. Las subfases, las tareas y su estado viven en el [proyecto de Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c) ([ADR 0006](../decisions/0006-repositorio-registra-decisiones-no-tareas.md)). Cada subfase se ejecuta con un brief `docs/decisions/brief-X.Y-*.md` ([ExecutionProtocol.md](../development/ExecutionProtocol.md)).
 
 ---
 

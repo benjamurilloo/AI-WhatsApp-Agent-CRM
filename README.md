@@ -26,7 +26,7 @@ Detalle en [docs/product/Scope.md](docs/product/Scope.md) y en [docs/decisions/]
 
 ## Metodología
 
-- **Tareas y estado**: proyecto "AI WhatsApp Agent CRM" en Notion (pendiente de creación).
+- **Tareas y estado**: proyecto [AI WhatsApp Agent CRM](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c) en Notion.
 - **Decisiones y cierres**: [docs/decisions/](docs/decisions/README.md) y `CHANGELOG.md` (se crea al cerrar la Fase 0).
 - **Conocimiento transversal**: hub `80 Projects/AI WhatsApp Agent CRM` en el vault de Obsidian.
 

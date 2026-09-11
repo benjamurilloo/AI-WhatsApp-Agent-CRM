@@ -34,7 +34,6 @@ Este repositorio es la fuente técnica de verdad del proyecto: diseño, contrato
 ### Planificación
 - [Roadmap.md](planning/Roadmap.md): diseño de fases, gates, camino crítico y Definición de Terminado.
 - [Risks.md](planning/Risks.md): riesgos y preguntas abiertas.
-- [Backlog.md](planning/Backlog.md): **semilla temporal** para cargar Notion. Se retira al verificar la carga.
 
 ### Decisiones
 - [decisions/README.md](decisions/README.md): ADRs, briefs y cierres.
@@ -43,7 +42,7 @@ Este repositorio es la fuente técnica de verdad del proyecto: diseño, contrato
 
 | Sistema | Responde | Contiene |
 |---|---|---|
-| Notion | ¿Qué falta hacer? | Fases y subfases `X.Y` como proyectos, tareas y estado |
+| [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c) | ¿Qué falta hacer? | Fases como subproyectos, subfases `X.Y` como tareas, y su estado |
 | Este repositorio | ¿Por qué quedó así y qué se certificó? | Diseño, contratos, ADRs, briefs, cierres y `CHANGELOG.md` |
 | Obsidian (vault "Segundo Cerebro") | ¿Qué sabemos y cómo trabajamos? | Metodología, patrones y el hub `80 Projects/AI WhatsApp Agent CRM` |
 

@@ -26,4 +26,4 @@
 
 ## Criterio de exclusión
 
-Si una funcionalidad no es necesaria para que un administrador humano pueda operar productos, clientes, conversaciones de solo lectura y ver métricas de WhatsApp con datos sintéticos, no entra al MVP. Ante la duda, se documenta como pregunta abierta en [planning/Backlog.md](../planning/Backlog.md) en lugar de implementarse por anticipado.
+Si una funcionalidad no es necesaria para que un administrador humano pueda operar productos, clientes, conversaciones de solo lectura y ver métricas de WhatsApp con datos sintéticos, no entra al MVP. Ante la duda, se documenta como pregunta abierta en [planning/Risks.md](../planning/Risks.md) en lugar de implementarse por anticipado.
