@@ -1,6 +1,6 @@
 # 0005 — Métricas calculadas desde datos transaccionales, sin tabla de agregados
 
-- Estado: propuesta (pendiente de aprobación del usuario al cerrar la Fase 0)
+- Estado: aceptada (aprobada por el usuario al cerrar la Fase 0, 2026-09-11)
 - Fecha: 2026-09-11
 
 ## Contexto

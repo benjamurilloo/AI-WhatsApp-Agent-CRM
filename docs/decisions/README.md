@@ -17,7 +17,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [0002](0002-monolito-modular.md) | Monolito modular, no microservicios | aceptada |
 | [0003](0003-migracion-legado-proyecto-separado.md) | Migración del legado como proyecto futuro separado | aceptada |
 | [0004](0004-stack-tecnologico-propuesto.md) | Stack tecnológico | propuesta |
-| [0005](0005-metricas-desde-datos-transaccionales.md) | Métricas desde datos transaccionales | propuesta |
+| [0005](0005-metricas-desde-datos-transaccionales.md) | Métricas desde datos transaccionales | aceptada |
 | [0006](0006-repositorio-registra-decisiones-no-tareas.md) | El repositorio registra decisiones, no tareas | aceptada |
 
 ## Plantilla
