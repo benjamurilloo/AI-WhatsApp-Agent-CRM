@@ -1,0 +1,167 @@
+# Pantallas del MVP
+
+**Estado: diseñado.** Especificación funcional de pantalla, no wireframes visuales. Los wireframes y su validación contra el modelo de datos corresponden a la Fase 1.
+
+## Reglas comunes a todas las pantallas
+
+- **Autorización**: se verifica en el servidor en cada carga y en cada acción. Ocultar un botón en la UI es solo cosmético. Un recurso de otra organización responde `NOT_FOUND`.
+- **Carga**: skeletons con la forma del contenido final. Los botones de acción se deshabilitan mientras la operación está en curso, para evitar envíos dobles.
+- **Vacío vs. sin resultados**: "todavía no hay registros" (con la acción de crear, si el rol puede) es distinto de "ningún resultado para estos filtros" (con la acción de limpiar filtros).
+- **Errores**: mensajes derivados de la taxonomía de [architecture/Overview.md](../architecture/Overview.md#estrategia-de-errores-diseño), sin detalles internos y con `request_id` visible en errores inesperados.
+- **Paginación**: en el servidor, 25 filas por defecto. Filtros, orden y página se reflejan en la URL, así el botón "atrás" y los enlaces compartidos conservan la vista.
+- **Fechas**: se muestran en la zona horaria de la organización, indicada en pantalla.
+- **Responsive**: escritorio desde 1024 px, tablet de 640 a 1023 px y móvil por debajo de 640 px. Las tablas pasan a tarjetas en móvil.
+- **Accesibilidad (WCAG 2.2 AA)**: labels asociados a cada campo, foco visible, navegación completa por teclado, foco al primer error de un formulario, resultados asíncronos anunciados con `aria-live` y estados que nunca dependen solo del color.
+- **Información sensible**: nunca se muestran hashes, tokens, IDs internos de sesión ni detalles de errores de servidor.
+
+---
+
+## 1. Inicio de sesión
+
+- **Objetivo**: autenticar a un usuario existente.
+- **Usuario autorizado**: no autenticado. Un usuario ya autenticado se redirige al dashboard.
+- **Información mostrada**: email y contraseña.
+- **Acciones**: ingresar.
+- **Filtros y paginación**: no aplican.
+- **Carga**: botón deshabilitado con indicador.
+- **Vacío**: no aplica.
+- **Errores**: un mensaje genérico ("email o contraseña incorrectos") que no revela si la cuenta existe. Si hay límite de intentos (`RATE_LIMITED`), avisa cuándo reintentar.
+- **Responsive**: una columna centrada.
+- **Accesibilidad**: `autocomplete="email"` y `"current-password"`, y la opción de mostrar la contraseña es un botón accesible.
+- **No mostrar**: si el email existe ni la contraseña en claro por defecto.
+
+## 2. Dashboard
+
+- **Objetivo**: ver las métricas de WhatsApp de [analytics/MetricsCatalog.md](../analytics/MetricsCatalog.md).
+- **Usuario autorizado**: `admin` y `viewer`.
+- **Información mostrada**: tarjetas de las métricas 1 a 9, 11 y 12, gráfico diario (métrica 10), zona horaria y período activo. Cada tarjeta incluye un enlace a la definición de la métrica.
+- **Acciones**: cambiar el período.
+- **Filtros**: período, por defecto los últimos 30 días completos.
+- **Paginación**: no aplica.
+- **Carga**: cada tarjeta carga por separado, así una métrica lenta no bloquea a las demás.
+- **Vacío**: "sin datos" cuando el denominador es 0. La métrica 12 muestra "no disponible" mientras no exista la ingestión.
+- **Errores**: el fallo de una métrica se muestra en su tarjeta y no rompe el resto.
+- **Responsive**: tarjetas en una columna en móvil y gráfico con desplazamiento horizontal.
+- **Accesibilidad**: el gráfico tiene una tabla de datos alternativa.
+- **No mostrar**: contenido de mensajes ni teléfonos.
+
+## 3. Lista de productos
+
+- **Objetivo**: encontrar productos y ver su situación de stock.
+- **Usuario autorizado**: `admin` y `viewer`.
+- **Información mostrada**: SKU, nombre, stock disponible, unidad, estado de stock (disponible, bajo stock, sin stock) y si está activo.
+- **Acciones**: buscar y abrir el detalle. Solo `admin` puede crear producto.
+- **Filtros**: texto (nombre o SKU), estado de stock y activos/inactivos (por defecto, solo activos).
+- **Paginación**: 25 por página, ordenado por nombre.
+- **Carga**: skeleton de la tabla.
+- **Vacío**: distingue "no hay productos" de "sin resultados".
+- **Errores**: generales.
+- **Responsive**: tarjetas en móvil con nombre, stock y estado.
+- **Accesibilidad**: el estado se muestra con texto e ícono además del color.
+- **No mostrar**: nada sensible específico.
+
+## 4. Detalle y edición de producto
+
+- **Objetivo**: consultar y mantener los datos de un producto.
+- **Usuario autorizado**: lectura para `admin` y `viewer`; edición y desactivación solo para `admin`.
+- **Información mostrada**: datos del producto, stock actual, estado, mínimo, punto de reposición y los últimos movimientos (enlace a la pantalla 5). El historial de auditoría solo lo ve `admin`.
+- **Acciones**: editar, y desactivar o reactivar con confirmación explícita.
+- **Filtros**: no aplican.
+- **Paginación**: el historial de auditoría pagina de a 25.
+- **Carga**: skeleton del formulario.
+- **Vacío**: no aplica.
+- **Errores**: validación en línea, `CONFLICT` si el SKU está duplicado y `NOT_FOUND` si el producto no existe.
+- **Responsive**: el formulario pasa a una columna.
+- **Accesibilidad**: los errores se asocian a cada campo con `aria-describedby`.
+- **No mostrar**: la auditoría a `viewer`.
+
+## 5. Ajuste de inventario e historial de movimientos
+
+- **Objetivo**: corregir stock con trazabilidad y consultar el historial.
+- **Usuario autorizado**: el historial lo ven `admin` y `viewer`; el ajuste solo `admin`.
+- **Información mostrada**: stock actual y movimientos (fecha, tipo, cantidad, saldo resultante, motivo y autor).
+- **Acciones**: registrar un ajuste positivo o negativo con cantidad mayor a 0 y motivo obligatorio. Antes de confirmar se ve el saldo resultante.
+- **Filtros**: tipo de movimiento y período.
+- **Paginación**: 25 por página, del más reciente al más antiguo.
+- **Carga**: el botón queda deshabilitado hasta que responde el servidor.
+- **Vacío**: "este producto no tiene movimientos".
+- **Errores**: `BUSINESS_RULE_VIOLATION` si el saldo quedaría negativo o si el producto está desactivado. Ante un `CONFLICT` por un cambio concurrente, se recarga el saldo y se pide confirmar de nuevo.
+- **Responsive**: el formulario se muestra arriba y el historial en tarjetas.
+- **Accesibilidad**: el saldo resultante se anuncia con `aria-live`.
+- **No mostrar**: nada sensible específico. No existe ninguna acción para editar ni borrar un movimiento.
+
+## 6. Lista de clientes
+
+- **Objetivo**: encontrar clientes.
+- **Usuario autorizado**: `admin` y `viewer`.
+- **Información mostrada**: nombre, teléfono enmascarado (solo los últimos 4 dígitos), fecha de última interacción y si está activo.
+- **Acciones**: buscar y abrir el detalle. Solo `admin` puede crear cliente.
+- **Filtros**: texto (nombre o teléfono completo) y activos/inactivos.
+- **Paginación**: 25 por página, ordenado por última interacción de más reciente a más antigua.
+- **Carga**: skeleton.
+- **Vacío**: distingue "no hay clientes" de "sin resultados".
+- **Errores**: generales.
+- **Responsive**: tarjetas en móvil.
+- **Accesibilidad**: el teléfono enmascarado tiene un texto accesible que lo indica.
+- **No mostrar**: el teléfono completo en la lista. *Decisión propuesta, pendiente de confirmación.*
+
+## 7. Detalle y edición de cliente
+
+- **Objetivo**: consultar y mantener un cliente y ver su actividad.
+- **Usuario autorizado**: lectura para `admin` y `viewer`; edición y desactivación solo para `admin`.
+- **Información mostrada**: nombre, teléfono completo, notas, última interacción (fecha y canal, sin contenido) y conversaciones del cliente.
+- **Acciones**: editar, y desactivar o reactivar con confirmación. Abrir una conversación.
+- **Filtros**: estado de las conversaciones del cliente.
+- **Paginación**: las conversaciones paginan de a 25.
+- **Carga**: los datos del cliente y sus conversaciones cargan por separado.
+- **Vacío**: "sin conversaciones registradas".
+- **Errores**: `CONFLICT` si el teléfono está duplicado en la organización y validación de formato E.164.
+- **Responsive**: los datos van arriba y las conversaciones abajo.
+- **Accesibilidad**: estándar.
+- **No mostrar**: el campo de notas incluye un aviso para no registrar datos sensibles innecesarios.
+
+## 8. Lista de conversaciones
+
+- **Objetivo**: explorar conversaciones.
+- **Usuario autorizado**: `admin` y `viewer`.
+- **Información mostrada**: cliente (o "sin cliente"), canal, estado, inicio, último mensaje y cantidad de mensajes.
+- **Acciones**: abrir el detalle.
+- **Filtros**: período (por `last_message_at`), estado, canal y cliente.
+- **Paginación**: 25 por página, del último mensaje más reciente al más antiguo.
+- **Carga**: skeleton.
+- **Vacío**: "no hay conversaciones". En el MVP solo existen las que cargan los seeds o los tests de ingestión.
+- **Errores**: generales.
+- **Responsive**: tarjetas en móvil.
+- **Accesibilidad**: el estado se muestra con texto.
+- **No mostrar**: vista previa del contenido de los mensajes. *Decisión propuesta, pendiente de confirmación.*
+
+## 9. Detalle de conversación y timeline
+
+- **Objetivo**: leer una conversación en orden cronológico.
+- **Usuario autorizado**: lectura para `admin` y `viewer`; cambio de estado solo para `admin`.
+- **Información mostrada**: cliente, canal, estado actual y mensajes del más antiguo al más reciente, con dirección y hora.
+- **Acciones**: cargar mensajes anteriores y cambiar el estado (`open`, `pending`, `closed`). El cambio queda auditado.
+- **Filtros**: no aplican.
+- **Paginación**: incremental, de a 50 mensajes, empezando por los más recientes.
+- **Carga**: indicador al cargar mensajes anteriores sin perder la posición de lectura.
+- **Vacío**: "esta conversación no tiene mensajes".
+- **Errores**: `NOT_FOUND`.
+- **Responsive**: burbujas a ancho completo en móvil.
+- **Accesibilidad**: la dirección se indica con texto ("Cliente" o "Negocio") y no solo con la alineación o el color. El timeline es una lista semántica.
+- **No mostrar**: el cuerpo del mensaje se renderiza siempre como texto plano escapado, sin HTML ni enlaces automáticos.
+
+## 10. Usuarios y roles
+
+- **Objetivo**: gestionar quién accede a la organización (FR-ORG-02).
+- **Usuario autorizado**: solo `admin`.
+- **Información mostrada**: nombre, email, rol y si está activo.
+- **Acciones**: crear un usuario con contraseña inicial de un solo uso, cambiar el rol y desactivar. Todo queda auditado.
+- **Filtros**: rol y activos/inactivos.
+- **Paginación**: 25 por página.
+- **Carga**: estándar.
+- **Vacío**: no aplica, porque siempre existe al menos el `admin` actual.
+- **Errores**: `CONFLICT` si el email ya existe y `BUSINESS_RULE_VIOLATION` al intentar quitar o desactivar el último `admin` de la organización.
+- **Responsive**: tarjetas en móvil.
+- **Accesibilidad**: estándar.
+- **No mostrar**: hashes ni la contraseña inicial después de crearla.
+- **Pendiente**: decidir si esta pantalla entra al MVP o si el alta de usuarios se hace con un script de administración en la Fase 3.

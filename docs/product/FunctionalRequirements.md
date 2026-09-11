@@ -1,0 +1,52 @@
+# Requisitos Funcionales
+
+**Estado: diseñado.** Cada requisito debe ser verificable mediante una prueba automatizada o manual concreta. IDs estables para trazabilidad con el backlog.
+
+## Organizaciones, usuarios y roles
+
+- **FR-ORG-01**: Un usuario autenticado solo puede ver y operar datos de las organizaciones a las que pertenece.
+- **FR-ORG-02**: Un admin puede invitar/crear usuarios dentro de su organización y asignarles rol `admin` o `viewer`.
+- **FR-ORG-03**: Un usuario sin sesión válida es redirigido a login en cualquier ruta protegida.
+
+## Productos e inventario
+
+- **FR-PROD-01**: Un admin puede crear un producto con SKU único por organización, nombre, unidad, stock mínimo y punto de reposición.
+- **FR-PROD-02**: Un admin puede editar los datos de un producto existente, con el cambio auditado.
+- **FR-PROD-03**: Un admin puede desactivar (borrado lógico) un producto; un producto desactivado no aparece en búsquedas por defecto ni puede recibir ajustes de stock nuevos.
+- **FR-PROD-04**: Cualquier usuario puede buscar productos por nombre o SKU y filtrar por estado de stock (disponible, bajo stock, sin stock).
+- **FR-PROD-05**: El estado de stock de un producto se deriva de `quantity_on_hand` vs. `min_stock`/`reorder_point`: `sin_stock` si `quantity_on_hand = 0`; `bajo_stock` si `0 < quantity_on_hand <= reorder_point`; `disponible` en otro caso.
+- **FR-PROD-06**: Un admin puede realizar un ajuste manual de stock (positivo o negativo) indicando motivo; el ajuste se registra como un movimiento de inventario inmutable y actualiza el saldo en la misma transacción.
+- **FR-PROD-07**: No existe ninguna vía en la aplicación para modificar `quantity_on_hand` sin crear el movimiento de inventario correspondiente.
+- **FR-PROD-08**: Un ajuste que dejaría el stock en un valor negativo es rechazado, salvo que una decisión de negocio explícita lo habilite (ver [decisions/README.md](../decisions/README.md)).
+- **FR-PROD-09**: Cualquier usuario puede consultar el historial completo de movimientos de un producto, ordenado cronológicamente.
+
+## Clientes
+
+- **FR-CLI-01**: Un admin puede crear un cliente con nombre y teléfono; el teléfono es único por organización cuando está presente.
+- **FR-CLI-02**: Un admin puede editar y desactivar (borrado lógico) un cliente.
+- **FR-CLI-03**: Cualquier usuario puede buscar clientes por nombre o teléfono.
+- **FR-CLI-04**: La ficha de un cliente muestra su última interacción (mensaje más reciente en cualquier conversación asociada) y la lista de sus conversaciones.
+- **FR-CLI-05**: Los datos personales del cliente mostrados se limitan a los necesarios para operar (minimización): nombre, teléfono, notas operativas; no se exponen campos sensibles no declarados explícitamente como necesarios.
+
+## Conversaciones y mensajes
+
+- **FR-CONV-01**: Cualquier usuario puede listar conversaciones filtrando por período, estado, canal y cliente.
+- **FR-CONV-02**: El detalle de una conversación muestra el timeline cronológico de mensajes, diferenciando visualmente entrantes y salientes.
+- **FR-CONV-03**: Una conversación tiene un estado (`open`, `pending`, `closed`) consultable y filtrable. Un admin puede cambiarlo manualmente y el cambio queda auditado.
+- **FR-CONV-04**: Existe un contrato de ingestión (endpoint y esquema de payload versionados), documentado y probado con datos sintéticos, que crea conversaciones y mensajes de forma idempotente por `(organization_id, source, external_ref)` del evento. Reenviar el mismo evento no duplica datos. Reenviarlo con otro contenido se rechaza con `CONFLICT` sin modificar nada.
+- **FR-CONV-05**: El contrato de ingestión no está conectado a ningún origen de tráfico real en el MVP; solo se ejercita con fixtures y tests.
+
+## Métricas
+
+- **FR-MET-01**: El dashboard muestra, como mínimo, las métricas definidas en [analytics/MetricsCatalog.md](../analytics/MetricsCatalog.md), cada una calculada según su fórmula documentada.
+- **FR-MET-02**: Cada métrica es filtrable por rango de fechas; el rango por defecto y la zona horaria de visualización están definidos en el catálogo de métricas.
+- **FR-MET-03**: Las métricas se recalculan sobre datos transaccionales vigentes; no existe un valor de métrica editable manualmente.
+
+## Auditoría
+
+- **FR-AUD-01**: Generan un registro de auditoría con actor, acción, entidad y diferencia de datos:
+  - toda creación, edición, desactivación o reactivación de un producto o un cliente;
+  - todo ajuste de stock;
+  - todo cambio de estado de una conversación;
+  - todo cambio de rol o de estado de un miembro de la organización.
+- **FR-AUD-02**: Un admin puede consultar el historial de auditoría de una entidad específica (producto, cliente).
