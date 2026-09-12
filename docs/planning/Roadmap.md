@@ -39,7 +39,8 @@ Es el diseño de fases: objetivo, alcance, dependencias, riesgos, entregables, c
 
 - **Objetivo**: repositorio con stack verificado, entorno local reproducible y CI en verde, sin lógica de negocio.
 - **Alcance**: estructura de módulos, re-verificación de versiones, app mínima con TypeScript estricto, lint y formateo, PostgreSQL local con health check, y CI con guarda contra referencias prohibidas.
-- **Subfases**: 2.1 a 2.5.
+- **Subfases**: 2.1 estructura del repositorio · 2.2 re-verificación del stack · 2.3 bootstrap de la aplicación · 2.4 entorno local de base de datos · 2.5 pipeline de CI.
+- **Orden de ejecución**: 2.2 → 2.1 → 2.3 → 2.4 → 2.5. La 2.2 va primero porque la estructura del repositorio depende del framework y del ORM aceptados ([brief-2.2](../decisions/brief-2.2-re-verificacion-del-stack.md)). La numeración se conserva para no romper las referencias ya escritas.
 - **Dependencias**: Fase 1 cerrada.
 - **Riesgos**: versiones desactualizadas entre la planificación y el inicio (lo mitiga la 2.2); repositorio remoto y proveedor de CI, decididos en la 1.3 ([ADR 0009](../decisions/0009-repositorio-remoto-github-y-ci.md)); el remoto tiene que existir antes de abrir la fase.
 - **Entregables**: app que compila, Postgres local, CI en verde y ADR 0004 aceptado.

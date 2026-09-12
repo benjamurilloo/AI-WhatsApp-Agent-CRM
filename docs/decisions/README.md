@@ -16,7 +16,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [0001](0001-base-de-datos-propia-sin-airtable.md) | Base de datos propia, sin dependencia de Airtable | aceptada |
 | [0002](0002-monolito-modular.md) | Monolito modular, no microservicios | aceptada |
 | [0003](0003-migracion-legado-proyecto-separado.md) | Migración del legado como proyecto futuro separado | aceptada |
-| [0004](0004-stack-tecnologico-propuesto.md) | Stack tecnológico | propuesta |
+| [0004](0004-stack-tecnologico-propuesto.md) | Stack tecnológico | aceptada |
 | [0005](0005-metricas-desde-datos-transaccionales.md) | Métricas desde datos transaccionales | aceptada |
 | [0006](0006-repositorio-registra-decisiones-no-tareas.md) | El repositorio registra decisiones, no tareas | aceptada |
 | [0007](0007-identificador-de-cliente-solo-telefono.md) | El teléfono E.164 es el único identificador de negocio del cliente | aceptada |
@@ -31,6 +31,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-1.3](brief-1.3-decisiones-de-producto-abiertas.md) | 1.3 — Decisiones de producto pendientes | resuelto el 2026-09-11, cerrado el 2026-09-12 |
 | [brief-1.1](brief-1.1-wireframes-baja-fidelidad.md) | 1.1 — Wireframes de baja fidelidad | aprobado y cerrado el 2026-09-12 |
 | [brief-1.2](brief-1.2-validacion-cruzada-del-modelo.md) | 1.2 — Validación cruzada del modelo | aprobado y cerrado el 2026-09-12 |
+| [brief-2.2](brief-2.2-re-verificacion-del-stack.md) | 2.2 — Re-verificación del stack | aprobado el 2026-09-12 |
 
 ## Plantilla
 
