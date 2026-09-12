@@ -4,18 +4,18 @@
 
 ## Organizaciones, usuarios y roles
 
-- **FR-ORG-01**: Un usuario autenticado solo puede ver y operar datos de las organizaciones a las que pertenece.
-- **FR-ORG-02**: Un admin puede invitar/crear usuarios dentro de su organización y asignarles rol `admin` o `viewer`. Se satisface con la pantalla de usuarios y roles, que entra al MVP y queda auditada (subfase 1.3, D-3). Un script de administración no cumple este requisito, porque no registra quién ejecutó el cambio.
+- **FR-ORG-01**: En el MVP un usuario pertenece a una sola organización y solo puede ver y operar datos de ella ([ADR 0010](../decisions/0010-un-usuario-una-organizacion-en-el-mvp.md)).
+- **FR-ORG-02**: Un admin puede invitar/crear usuarios dentro de su organización y asignarles rol `admin` o `viewer`. Se satisface con la pantalla de usuarios y roles, que entra al MVP y queda auditada (subfase 1.3, D-3). Un script de administración no cumple este requisito, porque no registra quién ejecutó el cambio. El usuario creado recibe una contraseña inicial de un solo uso y debe definir una nueva en su primer ingreso, antes de acceder a cualquier ruta protegida (subfase 1.2, D-6). No se puede quitar el rol ni desactivar al último `admin` de la organización (`BUSINESS_RULE_VIOLATION`).
 - **FR-ORG-03**: Un usuario sin sesión válida es redirigido a login en cualquier ruta protegida.
 
 ## Productos e inventario
 
-- **FR-PROD-01**: Un admin puede crear un producto con SKU único por organización, nombre, unidad, stock mínimo y punto de reposición.
+- **FR-PROD-01**: Un admin puede crear un producto con SKU único por organización, nombre, unidad y punto de reposición.
 - **FR-PROD-02**: Un admin puede editar los datos de un producto existente, con el cambio auditado.
 - **FR-PROD-03**: Un admin puede desactivar (borrado lógico) un producto; un producto desactivado no aparece en búsquedas por defecto ni puede recibir ajustes de stock nuevos.
 - **FR-PROD-04**: Cualquier usuario puede buscar productos por nombre o SKU y filtrar por estado de stock (disponible, bajo stock, sin stock).
-- **FR-PROD-05**: El estado de stock de un producto se deriva de `quantity_on_hand` vs. `min_stock`/`reorder_point`: `sin_stock` si `quantity_on_hand = 0`; `bajo_stock` si `0 < quantity_on_hand <= reorder_point`; `disponible` en otro caso.
-- **FR-PROD-06**: Un admin puede realizar un ajuste manual de stock (positivo o negativo) indicando motivo; el ajuste se registra como un movimiento de inventario inmutable y actualiza el saldo en la misma transacción.
+- **FR-PROD-05**: El estado de stock de un producto se deriva de `quantity_on_hand` vs. `reorder_point`, único umbral (subfase 1.2, D-10): `sin_stock` si `quantity_on_hand = 0`; `bajo_stock` si `0 < quantity_on_hand <= reorder_point`; `disponible` en otro caso.
+- **FR-PROD-06**: Un admin puede realizar un ajuste manual de stock (positivo o negativo) indicando motivo; el ajuste se registra como un movimiento de inventario inmutable, que guarda el saldo resultante (`balance_after`), y actualiza el saldo en la misma transacción (subfase 1.2, D-1).
 - **FR-PROD-07**: No existe ninguna vía en la aplicación para modificar `quantity_on_hand` sin crear el movimiento de inventario correspondiente.
 - **FR-PROD-08**: Un ajuste que dejaría el stock en un valor negativo es rechazado con `BUSINESS_RULE_VIOLATION`, informando el saldo actual y la cantidad solicitada. No hay excepciones: ni por rol, ni por producto, ni por organización ([ADR 0008](../decisions/0008-stock-nunca-negativo.md)).
 - **FR-PROD-09**: Cualquier usuario puede consultar el historial completo de movimientos de un producto, ordenado cronológicamente.
@@ -51,4 +51,4 @@
   - todo ajuste de stock;
   - todo cambio de estado de una conversación;
   - todo cambio de rol o de estado de un miembro de la organización.
-- **FR-AUD-02**: Un admin puede consultar el historial de auditoría de una entidad específica (producto, cliente).
+- **FR-AUD-02**: Un admin puede consultar el historial de auditoría de una entidad específica (producto, cliente), en las pantallas 4 y 7 (subfase 1.2, D-8).

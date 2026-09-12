@@ -7,7 +7,7 @@
 | Módulo | Incluye |
 |---|---|
 | Organizaciones y usuarios | Alta de organización, usuarios, roles `admin`/`viewer`, sesión segura |
-| Productos e inventario | CRUD (sin borrado físico) de productos, stock por producto, mínimos y punto de reposición, estados derivados, ajustes manuales con movimiento inmutable |
+| Productos e inventario | CRUD (sin borrado físico) de productos, stock por producto, punto de reposición, estados derivados, ajustes manuales con movimiento inmutable |
 | Clientes | CRUD (sin borrado físico), búsqueda, última interacción, conversaciones relacionadas |
 | Conversaciones y mensajes | Consulta, filtros, timeline; contrato de ingestión idempotente diseñado y probado con datos sintéticos, **no conectado a tráfico real** |
 | Métricas de WhatsApp | Dashboard con fórmulas auditables calculadas desde datos transaccionales |

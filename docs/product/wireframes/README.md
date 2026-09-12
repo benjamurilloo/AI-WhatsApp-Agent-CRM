@@ -40,7 +40,7 @@
 
 ## Brechas y discrepancias
 
-Entrada de la subfase 1.2. Acá se registran, no se corrigen. Las cinco del brief (B-1 a B-5) están confirmadas.
+Registradas en la subfase 1.1 y **resueltas todas en la subfase 1.2** (ver la tabla de resolución al final). Las tablas siguientes conservan la descripción original de cada brecha.
 
 ### Datos que faltan en el modelo
 
@@ -66,3 +66,21 @@ Entrada de la subfase 1.2. Acá se registran, no se corrigen. Las cinco del brie
 ### Descartadas
 
 Ninguna. Las cinco brechas del brief se confirmaron al dibujar.
+
+### Resolución (subfase 1.2, 2026-09-12)
+
+Decisiones del [brief-1.2](../../decisions/brief-1.2-validacion-cruzada-del-modelo.md#resolución), propagadas a los wireframes afectados.
+
+| Id | Estado | Resolución |
+|---|---|---|
+| B-1 | resuelta | D-1: `inventory_movements.balance_after` |
+| B-2 | resuelta | D-2: derivada, con índice `conversations (organization_id, client_id, last_message_at desc)` |
+| B-3 | resuelta | D-3: `COUNT(messages)` sobre las filas de la página |
+| B-4 | resuelta | D-4: índice `conversations (organization_id, last_message_at desc)` |
+| B-5 | resuelta | D-5: `users.is_active` global, válido por D-9 |
+| B-6 | resuelta | D-6: `users.must_change_password` y paso de cambio en la pantalla 1 |
+| B-7 | resuelta | D-7: la disponibilidad sale de la configuración del entorno |
+| B-8 | resuelta | D-8: auditoría del cliente en la pantalla 7, solo `admin` |
+| B-9 | resuelta | D-9: una organización por usuario, sin selector ([ADR 0010](../../decisions/0010-un-usuario-una-organizacion-en-el-mvp.md)) |
+| B-10 | resuelta | D-10: `min_stock` quitado |
+| B-11 | resuelta | D-11: el enum de tipos queda con los dos ajustes |

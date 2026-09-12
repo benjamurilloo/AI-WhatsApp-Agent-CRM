@@ -2,6 +2,38 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-12 — Subfase 1.2 cerrada (Validación cruzada del modelo)
+
+**Certifica:**
+
+- **Once decisiones del [brief-1.2](docs/decisions/brief-1.2-validacion-cruzada-del-modelo.md)**, resueltas por el usuario el 2026-09-12 según la recomendación, que cierran las brechas B-1 a B-11 de los wireframes:
+  - `inventory_movements.balance_after`, con los tipos de movimiento reducidos a los dos ajustes;
+  - `users.must_change_password`, con el cambio obligatorio de contraseña en la pantalla 1;
+  - `products.min_stock` quitado;
+  - auditoría del cliente en la pantalla 7;
+  - disponibilidad de la métrica 12 tomada de la configuración;
+  - última interacción y cantidad de mensajes derivadas, con índices propios.
+- **[ADR 0010](docs/decisions/0010-un-usuario-una-organizacion-en-el-mvp.md)** aceptado: en el MVP un usuario pertenece a una sola organización.
+- **Cinco hallazgos surgidos al armar la matriz**, resueltos por el usuario:
+  - se quitaron `deleted_at` de `users`, `clients` y `products`, y `organizations.slug` (H-1, H-2);
+  - se corrigieron `SecurityModel.md`, `Scope.md` y `Risks.md` con autorización ampliada (H-4);
+  - quedan diferidos con fase límite el tipo de búsqueda (H-3, Fases 4 y 5) y el test de enmascarado para `viewer` (H-5, Fase 5).
+- **[TraceabilityMatrix.md](docs/architecture/TraceabilityMatrix.md)** con cuatro vistas:
+  - cada FR tiene pantalla, endpoint o invariante con test;
+  - cada índice de [DataModel.md](docs/architecture/DataModel.md) tiene una consulta que lo usa;
+  - cada filtro sin índice propio está justificado.
+
+  En la revisión se agregaron 5 índices y se quitaron 2.
+- **Verificaciones documentales**: los enlaces internos resuelven; no queda ningún `BRECHA` en los wireframes; no quedan menciones vigentes a lo quitado; los archivos tocados están dentro de lo autorizado.
+
+**No certifica:**
+
+- **Que los índices sirvan en la práctica.** Se asignaron por la forma de cada consulta, sin ejecutar ninguna. Se confirman con `EXPLAIN` sobre datos de volumen a partir de la Fase 4.
+- **Que las derivaciones (última interacción, cantidad de mensajes) rindan bien.** Se revisan con medición en staging.
+- **Nada de implementación.** Todo sigue en nivel *diseñado*: sin migraciones, código ni pruebas.
+- **El cierre de la Fase 1**, que es un paso aparte con su propia aprobación.
+- **Revisión independiente.** Todo el contraste es autoevaluación.
+
 ## 2026-09-12 — Subfase 1.1 cerrada (Wireframes de baja fidelidad)
 
 **Certifica:**

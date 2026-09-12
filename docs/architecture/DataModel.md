@@ -11,7 +11,7 @@
 5. Toda relación referencial usa `FOREIGN KEY` real con política `ON DELETE` explícita (`RESTRICT` por defecto; `CASCADE` solo donde el borrado lógico no aplica, ej. tablas puramente dependientes como `organization_members`).
 6. Los índices se crean solo para consultas concretas del MVP (ver sección de índices), no especulativamente.
 7. Unicidad e idempotencia se expresan como constraints `UNIQUE` de base de datos, no solo como validación de aplicación.
-8. Borrado lógico (`deleted_at timestamptz null` o `is_active boolean`) en entidades editables por el usuario (`products`, `clients`, `users`). Las tablas de eventos (`inventory_movements`, `audit_logs`, `ingestion_events`, `messages`) no se borran nunca, ni física ni lógicamente.
+8. Borrado lógico con `is_active boolean` en entidades editables por el usuario (`products`, `clients`, `users`). Ninguna pantalla borra, solo desactiva, así que no existe `deleted_at` (subfase 1.2, H-1). Las tablas de eventos (`inventory_movements`, `audit_logs`, `ingestion_events`, `messages`) no se borran nunca, ni física ni lógicamente.
 9. Auditoría de cambios sensibles vía `audit_logs`, poblada por la capa de aplicación dentro de la misma transacción que el cambio.
 10. `inventory_movements` es estrictamente insert-only: la aplicación no otorga a ningún rol de base de datos permisos de `UPDATE`/`DELETE` sobre esta tabla.
 11. Todo ajuste de stock ocurre dentro de una transacción de base de datos que actualiza `inventories` e inserta en `inventory_movements` atómicamente.
@@ -48,7 +48,6 @@ erDiagram
 |---|---|---|
 | `id` | uuid PK | |
 | `name` | text not null | |
-| `slug` | text not null unique | usado en URLs |
 | `timezone` | text not null default `'America/Argentina/Buenos_Aires'` | IANA tz, usada para presentar métricas. Valor por defecto fijado en la subfase 1.3 (D-5); en el MVP no hay pantalla para editarlo, pero la columna es real y el cálculo de métricas la respeta |
 | `created_at`, `updated_at` | timestamptz not null | |
 
@@ -59,10 +58,10 @@ erDiagram
 | `id` | uuid PK | |
 | `email` | text not null unique | |
 | `password_hash` | text not null | argon2id/bcrypt |
+| `must_change_password` | boolean not null default false | `true` al crear un usuario con contraseña inicial; mientras esté en `true` ninguna ruta protegida responde hasta que el usuario define una nueva (subfase 1.2, D-6) |
 | `name` | text not null | |
-| `is_active` | boolean not null default true | |
+| `is_active` | boolean not null default true | global; con una sola organización por usuario equivale a su estado en ella (subfase 1.2, D-5) |
 | `created_at`, `updated_at` | timestamptz not null | |
-| `deleted_at` | timestamptz null | borrado lógico |
 
 ### `organization_members`
 
@@ -73,9 +72,9 @@ erDiagram
 | `user_id` | uuid FK → users, not null | |
 | `role` | enum(`admin`,`viewer`) not null | |
 | `created_at`, `updated_at` | timestamptz not null | |
-| — | `UNIQUE(organization_id, user_id)` | un usuario tiene un único rol por organización |
+| — | `UNIQUE(user_id)` | en el MVP un usuario pertenece a una sola organización, con un único rol ([ADR 0010](../decisions/0010-un-usuario-una-organizacion-en-el-mvp.md)) |
 
-Índice: `(organization_id, user_id)` (cubre la unicidad y el lookup de membresía en cada request).
+Índices: el `UNIQUE(user_id)` cubre el lookup de membresía en cada request; `(organization_id)` sirve la lista de usuarios de la pantalla 10.
 
 ### `clients`
 
@@ -88,7 +87,6 @@ erDiagram
 | `notes` | text null | |
 | `is_active` | boolean not null default true | |
 | `created_at`, `updated_at` | timestamptz not null | |
-| `deleted_at` | timestamptz null | |
 | — | `UNIQUE(organization_id, phone_e164) WHERE phone_e164 IS NOT NULL` | evita duplicados de teléfono por organización sin bloquear clientes sin teléfono |
 
 Índices: `(organization_id, display_name text_pattern_ops)` para búsqueda por nombre; el `UNIQUE` parcial ya cubre búsqueda por teléfono.
@@ -103,14 +101,12 @@ erDiagram
 | `name` | text not null | |
 | `description` | text null | |
 | `unit` | text not null default `'unidad'` | |
-| `min_stock` | numeric not null default 0 | |
-| `reorder_point` | numeric not null default 0 | |
+| `reorder_point` | numeric not null default 0 | único umbral del estado de stock (FR-PROD-05). `min_stock` se quitó en la subfase 1.2 (D-10) por no tener regla que lo usara |
 | `is_active` | boolean not null default true | |
 | `created_at`, `updated_at` | timestamptz not null | |
-| `deleted_at` | timestamptz null | |
 | — | `UNIQUE(organization_id, sku)` | |
 
-Índices: `(organization_id, sku)` (unicidad + lookup), `(organization_id, name text_pattern_ops)` para búsqueda.
+Índices: el `UNIQUE(organization_id, sku)` cubre la unicidad y la búsqueda exacta por SKU; `(organization_id, name text_pattern_ops)` sirve la búsqueda por prefijo de nombre.
 
 ### `inventories`
 
@@ -135,8 +131,9 @@ Insert-only. Nunca se actualiza ni se borra.
 | `id` | uuid PK | |
 | `organization_id` | uuid FK → organizations, not null | |
 | `product_id` | uuid FK → products, not null | |
-| `type` | enum(`inbound`,`outbound`,`adjustment_positive`,`adjustment_negative`) not null | |
+| `type` | enum(`adjustment_positive`,`adjustment_negative`) not null | solo los tipos con productor en el MVP; entradas y salidas llegarían con compras y ventas, fuera de alcance, como valores nuevos del enum (subfase 1.2, D-11) |
 | `quantity` | numeric not null | `CHECK (quantity > 0)`; el signo del efecto lo da `type`, no la cantidad |
+| `balance_after` | numeric not null | `CHECK (balance_after >= 0)`; saldo de `inventories.quantity_on_hand` después del movimiento, escrito en la misma transacción (subfase 1.2, D-1) |
 | `reason` | text not null | motivo obligatorio, incluso para ajustes |
 | `created_by` | uuid FK → users, not null | |
 | `created_at` | timestamptz not null | |
@@ -158,7 +155,13 @@ Insert-only. Nunca se actualiza ni se borra.
 | `created_at`, `updated_at` | timestamptz not null | |
 | — | `UNIQUE(organization_id, channel, external_ref) WHERE external_ref IS NOT NULL` | idempotencia de ingestión |
 
-Índices: `(organization_id, status, started_at desc)` para listado filtrado; `(client_id, started_at desc)` para "conversaciones del cliente".
+Índices (revisados en la subfase 1.2):
+
+- `(organization_id, last_message_at desc)`: lista de conversaciones de la pantalla 8, filtrada por período y ordenada por último mensaje (D-4).
+- `(organization_id, client_id, last_message_at desc)`: última interacción y orden de la lista de clientes (pantalla 6), y conversaciones del cliente en la pantalla 7 (D-2).
+- `(organization_id, started_at)`: métricas 1 y 10, que cuentan conversaciones por fecha de inicio.
+
+Se quitaron `(organization_id, status, started_at desc)` y `(client_id, started_at desc)`: ninguna consulta ordena por inicio dentro de un estado, y las conversaciones del cliente se ordenan por último mensaje.
 
 ### `messages`
 
@@ -174,7 +177,7 @@ Insert-only. Nunca se actualiza ni se borra.
 | `created_at` | timestamptz not null | |
 | — | `UNIQUE(organization_id, conversation_id, external_ref) WHERE external_ref IS NOT NULL` | idempotencia |
 
-Índice: `(conversation_id, sent_at)` para el timeline.
+Índices: `(conversation_id, sent_at)` para el timeline (pantalla 9), el conteo por conversación (pantallas 7 y 8) y el primer mensaje de cada conversación (métrica 9); `(organization_id, sent_at)` para las métricas 2 a 10, que filtran mensajes de toda la organización por intervalo.
 
 ### `ingestion_events`
 
@@ -193,6 +196,8 @@ Ledger de idempotencia para el contrato de ingestión (diseñado, no conectado a
 | `received_at` | timestamptz not null | |
 | `processed_at` | timestamptz null | |
 | — | `UNIQUE(organization_id, source, external_ref)` | idempotencia dura |
+
+Índice: `(organization_id, received_at)` para la métrica 12, que filtra eventos por intervalo de recepción.
 
 Reglas del ledger, derivadas del patrón *Reliable External Effects* del vault:
 
@@ -231,3 +236,11 @@ Cerradas en la subfase 1.3 (2026-09-11):
 
 - Identificador único de cliente: `(organization_id, phone_e164)` y nada más — [ADR 0007](../decisions/0007-identificador-de-cliente-solo-telefono.md).
 - Excepciones al stock no negativo: no hay — [ADR 0008](../decisions/0008-stock-nunca-negativo.md).
+
+Cerradas en la subfase 1.2 (2026-09-12), a partir de las brechas de los [wireframes](../product/wireframes/README.md#brechas-y-discrepancias):
+
+- Organizaciones por usuario: una sola en el MVP — [ADR 0010](../decisions/0010-un-usuario-una-organizacion-en-el-mvp.md).
+- Saldo por movimiento: `inventory_movements.balance_after`. Contraseña inicial: `users.must_change_password`. Se quitaron `products.min_stock` y los tipos de movimiento `inbound`/`outbound`.
+- Última interacción del cliente y cantidad de mensajes: derivadas, con los índices de `conversations` y `messages`. Si en staging resultan lentas, se revisan con medición.
+- Trazabilidad completa de pantallas, requisitos, índices y métricas: [TraceabilityMatrix.md](TraceabilityMatrix.md).
+- Columnas sin consumidor detectadas al armar la matriz: se quitaron `deleted_at` de `users`, `clients` y `products` (H-1) y `organizations.slug` con su índice único (H-2).

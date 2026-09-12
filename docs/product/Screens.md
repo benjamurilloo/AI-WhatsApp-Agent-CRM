@@ -5,6 +5,7 @@
 ## Reglas comunes a todas las pantallas
 
 - **Autorización**: se verifica en el servidor en cada carga y en cada acción. Ocultar un botón en la UI es solo cosmético. Un recurso de otra organización responde `NOT_FOUND`.
+- **Organización**: en el MVP cada usuario pertenece a una sola organización, cuyo nombre se muestra en el marco común, sin selector ([ADR 0010](../decisions/0010-un-usuario-una-organizacion-en-el-mvp.md)).
 - **Carga**: skeletons con la forma del contenido final. Los botones de acción se deshabilitan mientras la operación está en curso, para evitar envíos dobles.
 - **Vacío vs. sin resultados**: "todavía no hay registros" (con la acción de crear, si el rol puede) es distinto de "ningún resultado para estos filtros" (con la acción de limpiar filtros).
 - **Errores**: mensajes derivados de la taxonomía de [architecture/Overview.md](../architecture/Overview.md#estrategia-de-errores-diseño), sin detalles internos y con `request_id` visible en errores inesperados.
@@ -21,7 +22,7 @@
 - **Objetivo**: autenticar a un usuario existente.
 - **Usuario autorizado**: no autenticado. Un usuario ya autenticado se redirige al dashboard.
 - **Información mostrada**: email y contraseña.
-- **Acciones**: ingresar.
+- **Acciones**: ingresar. Si el usuario tiene la contraseña inicial pendiente de cambio (`users.must_change_password`), antes de entrar debe definir una nueva, con campos de nueva contraseña y confirmación; ninguna ruta protegida responde hasta completarlo (subfase 1.2, D-6).
 - **Filtros y paginación**: no aplican.
 - **Carga**: botón deshabilitado con indicador.
 - **Vacío**: no aplica.
@@ -39,7 +40,7 @@
 - **Filtros**: período, por defecto los últimos 30 días completos.
 - **Paginación**: no aplica.
 - **Carga**: cada tarjeta carga por separado, así una métrica lenta no bloquea a las demás.
-- **Vacío**: "sin datos" cuando el denominador es 0. La métrica 12 muestra "no disponible" mientras no exista la ingestión.
+- **Vacío**: "sin datos" cuando el denominador es 0. La métrica 12 muestra "no disponible" mientras la ingestión no esté habilitada en el entorno; la condición sale de la configuración, no de los datos (subfase 1.2, D-7).
 - **Errores**: el fallo de una métrica se muestra en su tarjeta y no rompe el resto.
 - **Responsive**: tarjetas en una columna en móvil y gráfico con desplazamiento horizontal.
 - **Accesibilidad**: el gráfico tiene una tabla de datos alternativa.
@@ -64,7 +65,7 @@
 
 - **Objetivo**: consultar y mantener los datos de un producto.
 - **Usuario autorizado**: lectura para `admin` y `viewer`; edición y desactivación solo para `admin`.
-- **Información mostrada**: datos del producto, stock actual, estado, mínimo, punto de reposición y los últimos movimientos (enlace a la pantalla 5). El historial de auditoría solo lo ve `admin`.
+- **Información mostrada**: datos del producto, stock actual, estado, punto de reposición y los últimos movimientos (enlace a la pantalla 5). El historial de auditoría solo lo ve `admin`.
 - **Acciones**: editar, y desactivar o reactivar con confirmación explícita.
 - **Filtros**: no aplican.
 - **Paginación**: el historial de auditoría pagina de a 25.
@@ -81,7 +82,7 @@
 - **Usuario autorizado**: el historial lo ven `admin` y `viewer`; el ajuste solo `admin`.
 - **Información mostrada**: stock actual y movimientos (fecha, tipo, cantidad, saldo resultante, motivo y autor).
 - **Acciones**: registrar un ajuste positivo o negativo con cantidad mayor a 0 y motivo obligatorio. Antes de confirmar se ve el saldo resultante.
-- **Filtros**: tipo de movimiento y período.
+- **Filtros**: tipo de movimiento (ajuste positivo o negativo, los únicos del MVP) y período.
 - **Paginación**: 25 por página, del más reciente al más antiguo.
 - **Carga**: el botón queda deshabilitado hasta que responde el servidor.
 - **Vacío**: "este producto no tiene movimientos".
@@ -109,16 +110,16 @@
 
 - **Objetivo**: consultar y mantener un cliente y ver su actividad.
 - **Usuario autorizado**: lectura para `admin` y `viewer`; edición y desactivación solo para `admin`.
-- **Información mostrada**: nombre, teléfono, notas, última interacción (fecha y canal, sin contenido) y conversaciones del cliente. El teléfono sigue la misma regla que en la lista: completo para `admin`, enmascarado para `viewer` (subfase 1.3, D-1). Enmascararlo en la lista y mostrarlo entero acá no protegería nada.
+- **Información mostrada**: nombre, teléfono, notas, última interacción (fecha y canal, sin contenido) y conversaciones del cliente. El teléfono sigue la misma regla que en la lista: completo para `admin`, enmascarado para `viewer` (subfase 1.3, D-1). Enmascararlo en la lista y mostrarlo entero acá no protegería nada. Solo `admin` ve además el historial de auditoría del cliente (subfase 1.2, D-8).
 - **Acciones**: editar, y desactivar o reactivar con confirmación. Abrir una conversación.
 - **Filtros**: estado de las conversaciones del cliente.
-- **Paginación**: las conversaciones paginan de a 25.
+- **Paginación**: las conversaciones paginan de a 25, del último mensaje más reciente al más antiguo; el historial de auditoría también pagina de a 25.
 - **Carga**: los datos del cliente y sus conversaciones cargan por separado.
 - **Vacío**: "sin conversaciones registradas".
 - **Errores**: `CONFLICT` si el teléfono está duplicado en la organización y validación de formato E.164.
 - **Responsive**: los datos van arriba y las conversaciones abajo.
 - **Accesibilidad**: estándar.
-- **No mostrar**: el campo de notas incluye un aviso para no registrar datos sensibles innecesarios.
+- **No mostrar**: la auditoría a `viewer`. El campo de notas incluye un aviso para no registrar datos sensibles innecesarios.
 
 ## 8. Lista de conversaciones
 
@@ -154,7 +155,7 @@
 
 - **Objetivo**: gestionar quién accede a la organización (FR-ORG-02).
 - **Usuario autorizado**: solo `admin`.
-- **Información mostrada**: nombre, email, rol y si está activo.
+- **Información mostrada**: nombre, email, rol y si está activo. Como cada usuario pertenece a una sola organización, "activo" es el estado de la cuenta (`users.is_active`) y equivale a su estado en la organización (subfase 1.2, D-5 y D-9).
 - **Acciones**: crear un usuario con contraseña inicial de un solo uso, cambiar el rol y desactivar. Todo queda auditado.
 - **Filtros**: rol y activos/inactivos.
 - **Paginación**: 25 por página.

@@ -96,10 +96,10 @@ Los diálogos de alta, contraseña inicial y edición ocupan la pantalla complet
 |---|---|---|
 | Nombre | `users.name` | |
 | Email | `users.email` | |
-| Rol | `organization_members.role` | de la organización activa |
-| Activo | `users.is_active` | global, no por organización: **BRECHA B-5** |
+| Rol | `organization_members.role` | de su única organización ([ADR 0010](../../decisions/0010-un-usuario-una-organizacion-en-el-mvp.md)) |
+| Activo | `users.is_active` | global; con una organización por usuario equivale al estado del miembro (D-5 de la 1.2) |
 | "(vos)" | derivado: el miembro coincide con el usuario de la sesión | |
-| Contraseña inicial | generada por el servidor; se guarda solo como `users.password_hash` | se muestra una vez. Forzar el cambio al ingresar no tiene columna: **BRECHA B-6** |
+| Contraseña inicial | generada por el servidor; se guarda solo como `users.password_hash` | se muestra una vez. El cambio obligatorio al ingresar se marca con `users.must_change_password` (D-6 de la 1.2) |
 
 ## Acciones por rol
 

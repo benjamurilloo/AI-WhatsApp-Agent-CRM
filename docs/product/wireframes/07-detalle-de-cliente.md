@@ -24,6 +24,13 @@
 │ 10/09 09:12   │ WhatsApp │ Abierta    │ 11/09 18:40    │    14    │ [Abrir]  │
 │ 21/08 16:30   │ WhatsApp │ Cerrada    │ 22/08 10:02    │     6    │ [Abrir]  │
 │ …                                                        ‹ 1 2 ›             │
+│                                                                              │
+│ {admin} ┌─ Historial de auditoría ─────────────────────────────────────────┐ │
+│         │ Fecha        │ Autor      │ Acción      │ Cambio                 │ │
+│         │ 10/09 11:02  │ Ana Pérez  │ Edición     │ Notas actualizadas     │ │
+│         │ 01/09 16:30  │ Ana Pérez  │ Alta        │ —                      │ │
+│         │                                            ‹ 1 ›                 │ │
+│         └──────────────────────────────────────────────────────────────────┘ │
 │ Fechas en America/Argentina/Buenos_Aires                                     │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -68,6 +75,13 @@ La desactivación usa la misma confirmación que la pantalla 4.
 │ │ Último 11/09 18:40       │ │
 │ └──────────────────────────┘ │
 │          ‹ 1 2 ›             │
+│                              │
+│ {admin} Auditoría            │
+│ ┌──────────────────────────┐ │
+│ │ 10/09 11:02 · Ana Pérez  │ │
+│ │ Edición: notas           │ │
+│ └──────────────────────────┘ │
+│            ‹ 1 ›             │
 └──────────────────────────────┘
 ```
 
@@ -82,9 +96,10 @@ Datos arriba, conversaciones abajo. Cada tarjeta abre la conversación (pantalla
 | Teléfono (`admin`) | `clients.phone_e164` | |
 | Teléfono (`viewer`) | derivado en el servidor: últimos 4 dígitos | extensión de D-1 al detalle, confirmada por el usuario el 2026-09-12 |
 | Notas | `clients.notes` | con aviso de minimización |
-| Última interacción: fecha y canal | derivado: la conversación del cliente con mayor `last_message_at`, su `last_message_at` y su `channel` | sin contenido; ver **BRECHA B-2** |
-| Conversaciones: inicio, canal, estado, último mensaje | `conversations.started_at`, `.channel`, `.status`, `.last_message_at` | índice `(client_id, started_at desc)` |
-| Conversaciones: cantidad de mensajes | derivado: `COUNT(messages)` | **BRECHA B-3** |
+| Última interacción: fecha y canal | derivado: la conversación del cliente con mayor `last_message_at`, su `last_message_at` y su `channel` | sin contenido; índice `(organization_id, client_id, last_message_at desc)` (D-2 de la 1.2) |
+| Conversaciones: inicio, canal, estado, último mensaje | `conversations.started_at`, `.channel`, `.status`, `.last_message_at` | ordenadas por último mensaje, mismo índice |
+| Conversaciones: cantidad de mensajes | derivado: `COUNT(messages)` sobre las filas de la página | D-3 de la 1.2 |
+| Auditoría: fecha, autor, acción, cambio | `audit_logs.created_at`, `.actor_user_id` → `users.name`, `.action`, `.diff` con `entity_type = 'client'` | solo `admin` (D-8 de la 1.2) |
 
 ## Acciones por rol
 
@@ -94,7 +109,7 @@ Datos arriba, conversaciones abajo. Cada tarjeta abre la conversación (pantalla
 | Abrir una conversación | sí | sí |
 | Editar | sí | no se entrega |
 | Desactivar o reactivar, con confirmación | sí | no se entrega |
-| Ver auditoría del cliente | no dibujada, ver **B-8** | no |
+| Ver auditoría del cliente | sí | el servidor no la entrega |
 
 ## Estados
 
@@ -111,3 +126,4 @@ Datos arriba, conversaciones abajo. Cada tarjeta abre la conversación (pantalla
 - El teléfono completo nunca llega a un `viewer`, tampoco en el formulario de edición (que el `viewer` no recibe).
 - La última interacción no muestra contenido de mensajes.
 - Las notas llevan el aviso para no registrar datos sensibles.
+- La auditoría nunca llega a un `viewer`.

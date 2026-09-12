@@ -62,7 +62,7 @@ La tarjeta muestra nombre, stock con unidad y estado. SKU y "Activo" pasan al de
 | Nombre | `products.name` | |
 | Stock disponible | `inventories.quantity_on_hand` | unión 1:1 por `product_id` |
 | Unidad | `products.unit` | |
-| Estado de stock | derivado: FR-PROD-05 (`sin_stock` si 0; `bajo_stock` si `0 < stock <= reorder_point`; `disponible` en otro caso) | texto e ícono además del color. Ver B-10 sobre `min_stock`. |
+| Estado de stock | derivado: FR-PROD-05 (`sin_stock` si 0; `bajo_stock` si `0 < stock <= reorder_point`; `disponible` en otro caso) | texto e ícono además del color. Un solo umbral, `reorder_point` (D-10 de la 1.2). |
 | Activo | `products.is_active` | |
 | Total de resultados | derivado: `COUNT` con los filtros aplicados | |
 

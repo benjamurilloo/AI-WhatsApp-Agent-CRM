@@ -70,7 +70,7 @@ El `viewer` no recibe el botón "Nuevo" ni el número completo. `•••• 12
 | Nombre | `clients.display_name` | |
 | Teléfono (`admin`) | `clients.phone_e164` | formateado para lectura; `—` si es nulo |
 | Teléfono (`viewer`) | derivado en el servidor: últimos 4 dígitos de `clients.phone_e164` | la respuesta no contiene el número completo |
-| Última interacción | derivado: `MAX(conversations.last_message_at)` del cliente | orden de la lista; sin índice que lo sirva, **BRECHA B-2** |
+| Última interacción | derivado: `MAX(conversations.last_message_at)` del cliente | orden de la lista, con índice `conversations (organization_id, client_id, last_message_at desc)` (D-2 de la 1.2) |
 | Activo | `clients.is_active` | |
 | Total de resultados | derivado: `COUNT` con filtros | |
 

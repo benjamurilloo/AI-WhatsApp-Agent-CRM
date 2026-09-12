@@ -99,9 +99,9 @@ Formulario arriba, historial en tarjetas debajo.
 | Stock actual | `inventories.quantity_on_hand` | |
 | Saldo resultante del formulario | derivado: stock actual ± cantidad según el tipo | vista previa en el cliente; el servidor vuelve a validar |
 | Fecha | `inventory_movements.created_at` | |
-| Tipo | `inventory_movements.type` | ver B-11 sobre los tipos sin productor |
+| Tipo | `inventory_movements.type` | solo `adjustment_positive` y `adjustment_negative`; el filtro ofrece esos dos (D-11 de la 1.2) |
 | Cantidad con signo | derivado: `inventory_movements.quantity` con el signo que da `type` | `quantity` siempre es > 0 |
-| Saldo resultante por movimiento | **BRECHA B-1** | no hay columna; recalcularlo exige una suma acumulada |
+| Saldo resultante por movimiento | `inventory_movements.balance_after` | escrito en la misma transacción que el ajuste (D-1 de la 1.2) |
 | Motivo | `inventory_movements.reason` | |
 | Autor | derivado: `inventory_movements.created_by` → `users.name` | |
 

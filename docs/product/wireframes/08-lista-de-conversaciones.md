@@ -60,8 +60,8 @@ La tarjeta muestra cliente, estado, canal, último mensaje y cantidad. El inicio
 | Canal | `conversations.channel` | |
 | Estado | `conversations.status` | con texto |
 | Inicio | `conversations.started_at` | |
-| Último mensaje (fecha) | `conversations.last_message_at` | filtro de período y orden sin índice, **BRECHA B-4** |
-| Cantidad de mensajes | derivado: `COUNT(messages)` por conversación | **BRECHA B-3** |
+| Último mensaje (fecha) | `conversations.last_message_at` | filtro de período y orden con índice `(organization_id, last_message_at desc)` (D-4 de la 1.2) |
+| Cantidad de mensajes | derivado: `COUNT(messages)` sobre las 25 filas de la página | D-3 de la 1.2 |
 | Opciones del filtro de cliente | `clients.display_name` | búsqueda por nombre |
 
 ## Acciones por rol

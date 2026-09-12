@@ -22,6 +22,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [0007](0007-identificador-de-cliente-solo-telefono.md) | El teléfono E.164 es el único identificador de negocio del cliente | aceptada |
 | [0008](0008-stock-nunca-negativo.md) | El stock nunca puede quedar negativo, sin excepciones | aceptada |
 | [0009](0009-repositorio-remoto-github-y-ci.md) | Repositorio remoto en GitHub privado y CI con GitHub Actions | aceptada |
+| [0010](0010-un-usuario-una-organizacion-en-el-mvp.md) | En el MVP un usuario pertenece a una sola organización | aceptada |
 
 ## Briefs
 
@@ -29,6 +30,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 |---|---|---|
 | [brief-1.3](brief-1.3-decisiones-de-producto-abiertas.md) | 1.3 — Decisiones de producto pendientes | resuelto el 2026-09-11, cerrado el 2026-09-12 |
 | [brief-1.1](brief-1.1-wireframes-baja-fidelidad.md) | 1.1 — Wireframes de baja fidelidad | aprobado y cerrado el 2026-09-12 |
+| [brief-1.2](brief-1.2-validacion-cruzada-del-modelo.md) | 1.2 — Validación cruzada del modelo | aprobado y cerrado el 2026-09-12 |
 
 ## Plantilla
 

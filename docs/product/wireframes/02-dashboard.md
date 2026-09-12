@@ -86,7 +86,7 @@ Este es el único wireframe que dibuja el marco común; las demás pantallas lo 
 | Métricas 1 a 9 y 11 | derivado: fórmula de cada métrica en `MetricsCatalog.md` sobre `conversations` y `messages` | |
 | "N sin cliente" (métrica 3) | derivado: conversaciones de A con `client_id IS NULL` | |
 | "N sin primera respuesta" (métrica 9) | derivado: población de la métrica 9 sin `outbound` posterior | |
-| Métrica 12 | derivado: `ingestion_events` con `status = 'failed'` | "No disponible" depende de **BRECHA B-7** |
+| Métrica 12 | derivado: `ingestion_events` con `status = 'failed'` | "No disponible" sale de la configuración del entorno, no de los datos (D-7 de la 1.2) |
 | Gráfico diario (métrica 10) | derivado: métricas 1, 2, 4 y 5 por día | con tabla alternativa |
 | Enlace "Definición" | enlace a la sección de la métrica en `MetricsCatalog.md` | |
 

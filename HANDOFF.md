@@ -2,9 +2,9 @@
 schema: project-state.v1
 project: ai-whatsapp-agent-crm
 generated_at: 2026-09-12
-git_ref: main — 626acaf en origin/main, más el cierre de la 1.1 sin commitear al escribir este archivo
+git_ref: main — commit "Validación cruzada del modelo y cierre de la 1.2", sucesor de 58eb682, en origin/main
 active_phase: Fase 1 — Diseño UX y validación del modelo
-active_task: 1.2 — Validación cruzada del modelo (sin brief todavía)
+active_task: cierre de la Fase 1 (sin aprobar)
 confidence: confirmado
 ---
 
@@ -22,18 +22,23 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 
 - **Proyecto**: AI WhatsApp Agent CRM. Independiente del agente de WhatsApp: no comparte código, infraestructura ni base de datos, y no depende de Airtable. `confirmado`
 - **Fase activa**: Fase 1 — Diseño UX y validación del modelo. En Notion, "En progreso". `confirmado`
-- **Subfase activa**: 1.2 — Validación cruzada del modelo. Sin brief todavía. `confirmado`
-- **Orden de ejecución de la Fase 1**: 1.3 → 1.1 → 1.2, registrado en [Roadmap.md](docs/planning/Roadmap.md). `confirmado`
+- **Subfases**: 1.3, 1.1 y 1.2 cerradas el 2026-09-12, las tres en "Completado" en Notion. `confirmado`
+- **Tarea activa**: cierre de la Fase 1. No está aprobado. `confirmado`
 
 ## 2. Último punto aprobado
 
-- **Subfase 1.3 cerrada el 2026-09-12**, commit `626acaf`. `confirmado`
-- **Subfase 1.1 cerrada el 2026-09-12** con aprobación del usuario: wireframes de las 10 pantallas en [docs/product/wireframes/](docs/product/wireframes/README.md), entrada en [CHANGELOG.md](CHANGELOG.md) y tarea "Completado" en Notion. Los nombres de archivo abreviados fueron aceptados. `confirmado`
+- **Subfase 1.2 cerrada el 2026-09-12** con aprobación del usuario: 11 decisiones, ADR 0010, hallazgos H-1 a H-5 y [TraceabilityMatrix.md](docs/architecture/TraceabilityMatrix.md). Entrada en [CHANGELOG.md](CHANGELOG.md). `confirmado`
+- Commit y push del cierre de la 1.2 autorizados el 2026-09-12. `confirmado`
 
 ## 3. Próximo paso
 
-1. Commit del cierre de la 1.1, si el usuario lo autoriza. Incluye la corrección de este handoff sobre el remoto, que el usuario pidió sumar al commit siguiente.
-2. Preparar `docs/decisions/brief-1.2-*.md` y pedir su aprobación. Su entrada principal son las brechas B-1 a B-11 del [índice de wireframes](docs/product/wireframes/README.md#brechas-y-discrepancias).
+1. Que el usuario apruebe (o no) el **cierre de la Fase 1**. Sus criterios de salida del [Roadmap](docs/planning/Roadmap.md) están cubiertos por las tres subfases:
+   - cada dato mostrado existe en el modelo;
+   - cada FR tiene pantalla o endpoint;
+   - cada índice responde a una consulta real;
+   - wireframes y decisiones aprobados.
+2. Cerrarla: entrada de fase en `CHANGELOG.md`, Fase 1 "Completado" en Notion, hub de Obsidian y Knowledge Capture.
+3. La **Fase 2 — Fundación técnica** empieza en una sesión nueva. Su gate de entrada exige autorización para instalar dependencias. La 2.2 re-verifica el stack y resuelve el [ADR 0004](docs/decisions/0004-stack-tecnologico-propuesto.md).
 
 ## 4. Contratos vigentes
 
@@ -41,7 +46,8 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 |---|---|---|
 | Brief de tarea | `task-brief.v1` | [development/ExecutionProtocol.md](docs/development/ExecutionProtocol.md) |
 | Cápsula de estado | `project-state.v1` | este archivo |
-| Modelo de datos | sin versionar, nivel diseñado | [architecture/DataModel.md](docs/architecture/DataModel.md) |
+| Modelo de datos | sin versionar, nivel diseñado, validado contra pantallas en la 1.2 | [architecture/DataModel.md](docs/architecture/DataModel.md) |
+| Matriz de trazabilidad | nivel diseñado | [architecture/TraceabilityMatrix.md](docs/architecture/TraceabilityMatrix.md) |
 | Catálogo de métricas | 12 métricas, nivel diseñado | [analytics/MetricsCatalog.md](docs/analytics/MetricsCatalog.md) |
 | Wireframes | 10 pantallas, nivel diseñado | [product/wireframes/](docs/product/wireframes/README.md) |
 | Contrato de ingestión | diseñado, no implementado | [architecture/IntegrationBoundaries.md](docs/architecture/IntegrationBoundaries.md) |
@@ -53,36 +59,35 @@ Todo es **documental**, nivel del proyecto **diseñado**. No hay código, prueba
 
 | Afirmación | Nivel | Evidencia del 2026-09-12 |
 |---|---|---|
-| Los 10 wireframes existen con variantes de escritorio y móvil | documental | 11 archivos en `docs/product/wireframes/` (10 más el índice) `confirmado` |
+| No queda ninguna `BRECHA` en los wireframes | documental | `grep` en `docs/product/wireframes/`: solo la definición de la convención `confirmado` |
+| No quedan menciones vigentes a `min_stock`, `deleted_at`, `slug` ni multi-organización | documental | `grep` sobre `docs/`: solo notas de lo que se quitó y briefs históricos `confirmado` |
 | Los enlaces internos resuelven | documental | Verificador sobre todos los `.md`: 0 rotos `confirmado` |
-| Solo se tocaron archivos autorizados por el brief | documental | `git status` contra la lista cerrada del [brief-1.1](docs/decisions/brief-1.1-wireframes-baja-fidelidad.md) `confirmado` |
-| Los wireframes no muestran datos prohibidos | documental | Recorrido de invariantes por pantalla y `grep` de términos prohibidos, autoevaluación `confirmado` |
+| Los índices sirven a sus consultas | **no verificado** | Asignados por la forma de la consulta; se confirman con `EXPLAIN` desde la Fase 4 `pendiente` |
 
 ## 6. Decisiones
 
 ### Vigentes
 
-- ADRs 0001, 0002, 0003, 0005, 0006, 0007, 0008 y 0009 aceptados. `confirmado`
-- Resoluciones de la 1.3 en [brief-1.3](docs/decisions/brief-1.3-decisiones-de-producto-abiertas.md); W-1 y W-2 en [brief-1.1](docs/decisions/brief-1.1-wireframes-baja-fidelidad.md). `confirmado`
+- ADRs 0001, 0002, 0003 y 0005 a 0010 aceptados. `confirmado`
+- Resoluciones de los briefs [1.3](docs/decisions/brief-1.3-decisiones-de-producto-abiertas.md), [1.1](docs/decisions/brief-1.1-wireframes-baja-fidelidad.md) y [1.2](docs/decisions/brief-1.2-validacion-cruzada-del-modelo.md). `confirmado`
 
 ### Pendientes
 
-- **Brechas B-1 a B-11**, a resolver en la 1.2. Las de más impacto: B-9 (cómo se elige la organización activa, sin pantalla definida), B-5 (estado activo global en vez de por organización) y B-6 (contraseña inicial de un solo uso sin soporte en el modelo). `confirmado`
 - [ADR 0004](docs/decisions/0004-stack-tecnologico-propuesto.md) en **propuesta** hasta la 2.2. `confirmado`
+- H-3 búsqueda por prefijo o contenido → Fases 4 y 5. H-5 test de enmascarado para `viewer` → Fase 5. `confirmado`
 - Retención de mensajes → Fase 9. Sesión → 3.2. Secretos → 9.1. Backups → 9.2. Personas → Fase 9. Índice en [Risks.md](docs/planning/Risks.md). `confirmado`
 
 ## 7. Limitaciones y bloqueos
 
-- **Repositorio remoto**: [benjamurilloo/AI-WhatsApp-Agent-CRM](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM), privado, creado el 2026-09-12. Sin CI: GitHub Actions se configura en la Fase 2 ([ADR 0009](docs/decisions/0009-repositorio-remoto-github-y-ci.md)). `confirmado`
+- **Repositorio remoto**: [benjamurilloo/AI-WhatsApp-Agent-CRM](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM), privado. Sin CI hasta la Fase 2. `confirmado`
 - **Un solo agente planifica, implementa y revisa.** Toda revisión es autoevaluación. `confirmado`
 
 ## 8. Rutas necesarias para continuar
 
-- [CLAUDE.md](CLAUDE.md), este archivo.
-- [product/wireframes/README.md](docs/product/wireframes/README.md), brechas B-1 a B-11.
-- [architecture/DataModel.md](docs/architecture/DataModel.md) y [product/FunctionalRequirements.md](docs/product/FunctionalRequirements.md).
-- [planning/Roadmap.md](docs/planning/Roadmap.md), criterios de salida de la Fase 1.
-- [development/ExecutionProtocol.md](docs/development/ExecutionProtocol.md), plantilla de brief.
+- [CLAUDE.md](CLAUDE.md), este archivo, [CHANGELOG.md](CHANGELOG.md).
+- [planning/Roadmap.md](docs/planning/Roadmap.md): criterios de salida de la Fase 1 y alcance de la Fase 2.
+- [architecture/TraceabilityMatrix.md](docs/architecture/TraceabilityMatrix.md) y [architecture/DataModel.md](docs/architecture/DataModel.md).
+- [decisions/0004-stack-tecnologico-propuesto.md](docs/decisions/0004-stack-tecnologico-propuesto.md), para la Fase 2.
 
 ## 9. Cambios ajenos del usuario detectados
 
@@ -90,7 +95,7 @@ Ninguno. `confirmado`
 
 ## 10. Autorizaciones vigentes
 
-**Ninguna.** La aprobación del cierre de la 1.1 quedó consumida en el changelog, Notion y el hub. Commit y push necesitan autorización explícita.
+**Ninguna.** Las del cierre de la 1.2 (changelog, handoff, Notion, hub, fila del remoto en `Risks.md`, commit y push) quedan consumidas con el push de ese cierre. El cierre de la Fase 1 y la instalación de dependencias necesitan autorización explícita.
 
 ## 11. Aspectos pendientes de confirmar
 

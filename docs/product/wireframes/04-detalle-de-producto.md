@@ -14,8 +14,8 @@
 │                                                                              │
 │ ┌─ Datos ─────────────────────────────┐  ┌─ Stock ────────────────────────┐  │
 │ │ SKU               CAF-250           │  │ Disponible        6 unidad     │  │
-│ │ Nombre            Café molido 250 g │  │ Mínimo            2            │  │
-│ │ Descripción       Tostado medio     │  │ Punto de reposic. 10           │  │
+│ │ Nombre            Café molido 250 g │  │ Punto de reposic. 10           │  │
+│ │ Descripción       Tostado medio     │  │                                │  │
 │ │ Unidad            unidad            │  │                                │  │
 │ └─────────────────────────────────────┘  │ Últimos movimientos            │  │
 │                                          │ 10/09 14:02 Ajuste − 4  Rotura │  │
@@ -42,7 +42,7 @@
 │ │ Nombre *          [Café molido 250 g___]                │                  │
 │ │ Descripción       [Tostado medio_______]                │                  │
 │ │ Unidad *          [unidad______________]                │                  │
-│ │ Mínimo *          [2___]   Punto de reposición * [10__] │                  │
+│ │ Punto de reposición * [10__]                            │                  │
 │ │                                                         │                  │
 │ │ El stock no se edita acá: se ajusta en el historial.    │                  │
 │ │                          [ Cancelar ]  [ Guardar ]      │                  │
@@ -72,7 +72,7 @@
 │                              │
 │ Stock                        │
 │ Disponible   6 unidad        │
-│ Mínimo 2 · Reposición 10     │
+│ Punto de reposición 10       │
 │ [ Ver historial y ajustar › ]│
 │                              │
 │ Datos                        │
@@ -99,8 +99,7 @@ En móvil el formulario de edición pasa a una columna, con los mismos campos.
 | Estado de stock | derivado: FR-PROD-05 | |
 | Activo | `products.is_active` | |
 | Stock disponible | `inventories.quantity_on_hand` | solo lectura en esta pantalla |
-| Mínimo | `products.min_stock` | se muestra pero ninguna regla lo usa (B-10) |
-| Punto de reposición | `products.reorder_point` | |
+| Punto de reposición | `products.reorder_point` | único umbral del estado de stock; `min_stock` se quitó (D-10 de la 1.2) |
 | Últimos movimientos (fecha, tipo, cantidad, motivo) | `inventory_movements.created_at`, `.type`, `.quantity`, `.reason` | los 2 o 3 más recientes; el signo sale de `type` |
 | Auditoría: fecha | `audit_logs.created_at` | |
 | Auditoría: autor | derivado: `audit_logs.actor_user_id` → `users.name` | |
