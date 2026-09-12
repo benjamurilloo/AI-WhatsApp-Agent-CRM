@@ -27,7 +27,8 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 
 | Brief | Subfase | Estado |
 |---|---|---|
-| [brief-1.3](brief-1.3-decisiones-de-producto-abiertas.md) | 1.3 — Decisiones de producto pendientes | resuelto el 2026-09-11 |
+| [brief-1.3](brief-1.3-decisiones-de-producto-abiertas.md) | 1.3 — Decisiones de producto pendientes | resuelto el 2026-09-11, cerrado el 2026-09-12 |
+| [brief-1.1](brief-1.1-wireframes-baja-fidelidad.md) | 1.1 — Wireframes de baja fidelidad | aprobado y cerrado el 2026-09-12 |
 
 ## Plantilla
 

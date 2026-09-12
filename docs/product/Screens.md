@@ -1,6 +1,6 @@
 # Pantallas del MVP
 
-**Estado: diseñado.** Especificación funcional de pantalla, no wireframes visuales. Los wireframes y su validación contra el modelo de datos corresponden a la Fase 1.
+**Estado: diseñado.** Especificación funcional de pantalla, no wireframes visuales. Los wireframes de baja fidelidad están en [wireframes/](wireframes/README.md) (subfase 1.1); su validación cruzada contra el modelo de datos corresponde a la subfase 1.2.
 
 ## Reglas comunes a todas las pantallas
 
