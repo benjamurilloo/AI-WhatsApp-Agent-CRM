@@ -34,9 +34,11 @@ Monolito modular en TypeScript. Una sola aplicación desplegable, organizada int
 ## Reglas de dependencia
 
 - La UI llama a servicios de aplicación de un módulo; nunca hace queries SQL directas.
-- Un módulo no importa código interno de otro módulo salvo a través de su interfaz de servicio pública (carpeta `service` o equivalente). Se permite leer tablas de otro módulo desde `analytics` porque su función es agregación de solo lectura entre dominios — es la única excepción documentada.
+- Un módulo no importa código interno de otro módulo salvo a través de su interfaz pública (`index.ts` del módulo, que expone sus servicios y tipos). Se permite leer tablas de otro módulo desde `analytics` porque su función es agregación de solo lectura entre dominios — es la única excepción documentada.
 - Ningún módulo de dominio (`catalog`, `crm`, `conversations`, `inventory`) conoce detalles de HTTP, sesiones o presentación.
 - La base de datos es compartida (un único schema), pero el acceso está encapsulado por módulo: cada módulo posee sus tablas y expone su propio repositorio; otro módulo no hace `JOIN` directo contra tablas ajenas fuera de `analytics`.
+
+Dónde vive cada módulo en el repositorio y cómo se hacen cumplir estas reglas: [RepositoryStructure.md](RepositoryStructure.md).
 
 ## Flujo de datos — ejemplo: ajuste de stock
 

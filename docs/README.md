@@ -22,6 +22,7 @@ Este repositorio es la fuente técnica de verdad del proyecto: diseño, contrato
 - [SecurityModel.md](architecture/SecurityModel.md): autenticación, autorización y amenazas.
 - [IntegrationBoundaries.md](architecture/IntegrationBoundaries.md): qué no se integra hoy y cómo se integraría mañana.
 - [TraceabilityMatrix.md](architecture/TraceabilityMatrix.md): pantalla ↔ requisito ↔ tabla ↔ índice ↔ métrica.
+- [RepositoryStructure.md](architecture/RepositoryStructure.md): carpetas, módulos, frontera entre módulos y qué subfase crea cada parte.
 
 ### Analítica
 - [MetricsCatalog.md](analytics/MetricsCatalog.md): definición exacta y auditable de cada métrica de WhatsApp.

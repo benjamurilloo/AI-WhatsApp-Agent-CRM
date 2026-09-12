@@ -33,7 +33,7 @@ La versión exacta de cada paquete queda fijada en el lockfile al instalar (2.3)
 
 ## Convenciones de código
 
-- Un módulo de dominio (`catalog`, `crm`, `conversations`, `inventory`, `analytics`, `auth`, `organizations`, `ingestion`, `audit`) = una carpeta con su propio `service`, `repository` y tipos; sin acceso cruzado salvo lo documentado en [architecture/Overview.md](../architecture/Overview.md).
+- Un módulo de dominio (`catalog`, `crm`, `conversations`, `inventory`, `analytics`, `auth`, `organizations`, `ingestion`, `audit`) = una carpeta `src/modules/<modulo>/` con `index.ts` (interfaz pública), `service.ts`, `repository.ts`, `schema.ts` (sus tablas) y `types.ts`; sin acceso cruzado salvo lo documentado en [architecture/Overview.md](../architecture/Overview.md). La estructura completa y la regla de lint que la hace cumplir están en [architecture/RepositoryStructure.md](../architecture/RepositoryStructure.md).
 - Lint con ESLint y formateo con Prettier, obligatorios en CI, sin excepciones por archivo salvo justificación explícita. Next.js 16 ya no corre el lint en `next build`: se ejecuta como script propio.
 - Typecheck estricto (`strict: true` en `tsconfig.json`) desde el primer commit.
 - Sin `any` implícito ni explícito salvo en límites de librería externa sin tipos, documentado con comentario.

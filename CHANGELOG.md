@@ -2,6 +2,29 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-12 — Subfase 2.1 cerrada (Estructura del repositorio)
+
+**Certifica:**
+
+- **2.1 como subfase de diseño**, sin fusionar con la 2.3, aprobada por el usuario.
+- **Seis decisiones resueltas por el usuario** según la recomendación del [brief-2.1](docs/decisions/brief-2.1-estructura-del-repositorio.md):
+  - código en `src/`;
+  - módulos en `src/modules/<modulo>/` con `index.ts`, `service.ts`, `repository.ts`, `schema.ts` y `types.ts`;
+  - cliente de base en `src/shared/db/`;
+  - migraciones en `drizzle/` y seeds en `seeds/`;
+  - tests unitarios junto al código, integración en `tests/integration/` y end-to-end en `tests/e2e/`;
+  - frontera entre módulos con `no-restricted-imports` de ESLint.
+- **[RepositoryStructure.md](docs/architecture/RepositoryStructure.md)**: árbol, ubicación de los nueve módulos, reglas de importación y una tabla que asigna cada carpeta a la subfase que le pone su primer archivo real.
+- **Consecuencia documentada**: un `schema.ts` puede importar el `schema.ts` de otro módulo para declarar claves foráneas; sin esa excepción, D-3 y D-6 se contradicen.
+- Documentos alineados: `Overview.md` (interfaz pública = `index.ts`), `TestingStrategy.md` (`seeds/`) y `EngineeringStandards.md` (forma del módulo). Enlaces internos verificados: 0 rotos.
+
+**No certifica:**
+
+- **Nada creado ni ejecutado.** Ninguna carpeta ni archivo de código existe todavía; todo sigue en nivel *diseñado*.
+- **Que la regla de ESLint funcione** como se describe, incluida la excepción de `schema.ts`: se configura en la 2.3 y se prueba en la 2.5.
+- **Que Drizzle Kit lea el esquema repartido por módulos** sin problemas: se valida en la 2.4 y con la primera migración de la Fase 3.
+- **Revisión independiente.** Es autoevaluación del mismo agente.
+
 ## 2026-09-12 — Subfase 2.2 cerrada (Re-verificación del stack)
 
 **Certifica:**
