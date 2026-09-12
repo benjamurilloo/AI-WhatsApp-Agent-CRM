@@ -2,6 +2,32 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-12 — Fase 1 cerrada (Diseño UX y validación del modelo)
+
+**Certifica:**
+
+- **Las tres subfases cerradas con aprobación del usuario**, ejecutadas en el orden 1.3 → 1.1 → 1.2:
+  - 1.3: nueve decisiones de producto y ADRs 0007 a 0009;
+  - 1.1: wireframes de las 10 pantallas;
+  - 1.2: once decisiones de modelo, ADR 0010 y [matriz de trazabilidad](docs/architecture/TraceabilityMatrix.md).
+
+  El detalle de cada una está en sus entradas, debajo.
+- **Criterios de salida del [Roadmap](docs/planning/Roadmap.md), a nivel documental**:
+  - cada dato mostrado en los wireframes tiene origen en `DataModel.md`;
+  - cada FR tiene pantalla, endpoint o invariante con test;
+  - cada índice tiene una consulta que lo usa;
+  - toda decisión pendiente está resuelta o diferida con fase límite;
+  - el usuario aprobó wireframes y decisiones.
+- **Repositorio remoto** en GitHub privado desde el 2026-09-12, con todo el historial subido.
+
+**No certifica:**
+
+- **Nada de implementación.** Todo sigue en nivel *diseñado*: sin código, migraciones, dependencias, base de datos ni CI.
+- **Que el modelo funcione sobre PostgreSQL.** Constraints, índices y consultas no se ejecutaron; se validan desde la Fase 2 (entorno) y la Fase 4 (`EXPLAIN` con volumen).
+- **Usabilidad ni accesibilidad probadas** con usuarios o lectores de pantalla.
+- **Que las personas y las reglas reflejen la operación real** más allá de lo que confirmó el usuario: se contrastan en el piloto de la Fase 9.
+- **Revisión independiente.** Todas las revisiones de la fase son autoevaluación del mismo agente.
+
 ## 2026-09-12 — Subfase 1.2 cerrada (Validación cruzada del modelo)
 
 **Certifica:**
