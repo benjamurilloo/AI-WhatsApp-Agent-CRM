@@ -94,7 +94,7 @@
 
 - **Objetivo**: encontrar clientes.
 - **Usuario autorizado**: `admin` y `viewer`.
-- **Información mostrada**: nombre, teléfono enmascarado (solo los últimos 4 dígitos), fecha de última interacción y si está activo.
+- **Información mostrada**: nombre, teléfono, fecha de última interacción y si está activo. El teléfono se muestra completo a `admin` y enmascarado (solo los últimos 4 dígitos) a `viewer` (subfase 1.3, D-1).
 - **Acciones**: buscar y abrir el detalle. Solo `admin` puede crear cliente.
 - **Filtros**: texto (nombre o teléfono completo) y activos/inactivos.
 - **Paginación**: 25 por página, ordenado por última interacción de más reciente a más antigua.
@@ -103,13 +103,13 @@
 - **Errores**: generales.
 - **Responsive**: tarjetas en móvil.
 - **Accesibilidad**: el teléfono enmascarado tiene un texto accesible que lo indica.
-- **No mostrar**: el teléfono completo en la lista. *Decisión propuesta, pendiente de confirmación.*
+- **No mostrar**: el teléfono completo a un `viewer`, en la lista ni en ninguna otra vista. El enmascarado se aplica en el servidor: la respuesta que recibe un `viewer` no contiene el número completo. La búsqueda por teléfono completo funciona igual para ambos roles, porque el filtro se resuelve en la consulta y no depende de lo que se renderice.
 
 ## 7. Detalle y edición de cliente
 
 - **Objetivo**: consultar y mantener un cliente y ver su actividad.
 - **Usuario autorizado**: lectura para `admin` y `viewer`; edición y desactivación solo para `admin`.
-- **Información mostrada**: nombre, teléfono completo, notas, última interacción (fecha y canal, sin contenido) y conversaciones del cliente.
+- **Información mostrada**: nombre, teléfono, notas, última interacción (fecha y canal, sin contenido) y conversaciones del cliente. El teléfono sigue la misma regla que en la lista: completo para `admin`, enmascarado para `viewer` (subfase 1.3, D-1). Enmascararlo en la lista y mostrarlo entero acá no protegería nada.
 - **Acciones**: editar, y desactivar o reactivar con confirmación. Abrir una conversación.
 - **Filtros**: estado de las conversaciones del cliente.
 - **Paginación**: las conversaciones paginan de a 25.
@@ -133,7 +133,7 @@
 - **Errores**: generales.
 - **Responsive**: tarjetas en móvil.
 - **Accesibilidad**: el estado se muestra con texto.
-- **No mostrar**: vista previa del contenido de los mensajes. *Decisión propuesta, pendiente de confirmación.*
+- **No mostrar**: vista previa del contenido de los mensajes (subfase 1.3, D-2). La consulta de la lista no trae el cuerpo del último mensaje, así que la restricción es del modelo de consulta y no solo de la vista.
 
 ## 9. Detalle de conversación y timeline
 
@@ -164,4 +164,4 @@
 - **Responsive**: tarjetas en móvil.
 - **Accesibilidad**: estándar.
 - **No mostrar**: hashes ni la contraseña inicial después de crearla.
-- **Pendiente**: decidir si esta pantalla entra al MVP o si el alta de usuarios se hace con un script de administración en la Fase 3.
+- **Alcance**: esta pantalla entra al MVP y la implementa la Fase 3 (subfase 1.3, D-3). Se descartó resolver el alta con un script de administración, porque un script no deja registro auditado de quién hizo el cambio y FR-ORG-02 lo exige.

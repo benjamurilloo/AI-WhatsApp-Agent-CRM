@@ -49,7 +49,7 @@ erDiagram
 | `id` | uuid PK | |
 | `name` | text not null | |
 | `slug` | text not null unique | usado en URLs |
-| `timezone` | text not null default `'UTC'` | IANA tz, usada para presentar métricas |
+| `timezone` | text not null default `'America/Argentina/Buenos_Aires'` | IANA tz, usada para presentar métricas. Valor por defecto fijado en la subfase 1.3 (D-5); en el MVP no hay pantalla para editarlo, pero la columna es real y el cálculo de métricas la respeta |
 | `created_at`, `updated_at` | timestamptz not null | |
 
 ### `users`
@@ -225,5 +225,9 @@ Justificación de necesidad real: requisitos FR-AUD-01 y FR-AUD-02 sobre product
 
 ## Preguntas abiertas sobre el modelo
 
-- ¿`clients.phone_e164` es suficiente identificador único de negocio, o el negocio necesita un identificador adicional (documento, código interno)? — pendiente de confirmación (ver [planning/Risks.md](../planning/Risks.md)).
-- Política de retención de `messages` cuando exista tráfico real: ¿se conservan indefinidamente o hay un horizonte de borrado? Definir antes de conectar tráfico real, no antes del MVP.
+- Política de retención de `messages` cuando exista tráfico real: ¿se conservan indefinidamente o hay un horizonte de borrado? **Diferida a la Fase 9** (subfase 1.3, D-7): en el MVP no hay tráfico ni volumen, así que decidirlo ahora sería decidirlo sin datos. En el MVP se conservan indefinidamente y `messages` no lleva columna de expiración; agregarla después es una migración aditiva, sin backfill.
+
+Cerradas en la subfase 1.3 (2026-09-11):
+
+- Identificador único de cliente: `(organization_id, phone_e164)` y nada más — [ADR 0007](../decisions/0007-identificador-de-cliente-solo-telefono.md).
+- Excepciones al stock no negativo: no hay — [ADR 0008](../decisions/0008-stock-nunca-negativo.md).

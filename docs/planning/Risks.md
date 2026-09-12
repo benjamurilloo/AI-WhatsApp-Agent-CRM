@@ -4,10 +4,11 @@
 
 | Riesgo | Impacto | Probabilidad | Mitigación | Requiere decisión humana |
 |---|---|---|---|---|
-| Las personas y reglas de negocio (unicidad de cliente, quién puede ajustar stock) son supuestos, no confirmados por el dueño del negocio | Rediseño de FR/modelo tras Fase 1 | Media | Validar `Personas.md` y FR con el usuario antes de Fase 2 | Sí |
-| No existe política de retención de mensajes definida | Bloquea decisión de diseño de `messages` a largo plazo, aunque no bloquea el MVP | Media | Definir antes de Fase 9 (conexión a staging con volumen), no antes del MVP | Sí |
+| Las **personas** de `Personas.md` siguen siendo supuestos declarados, no confirmados contra el uso real | Los flujos priorizados pueden no coincidir con cómo se opera de verdad | Media | Aceptadas como supuesto explícito en la subfase 1.3 (D-9 bis) y contrastadas contra el uso real en el piloto de la Fase 9. Las dos reglas de negocio que tocaban el modelo (unicidad de cliente y quién ajusta stock) sí quedaron confirmadas el 2026-09-11 | Ya decidido; se revisa en Fase 9 |
+| No existe política de retención de mensajes definida | Bloquea decisión de diseño de `messages` a largo plazo, aunque no bloquea el MVP | Media | Diferida a la Fase 9 en la subfase 1.3 (D-7). En el MVP se conservan indefinidamente y no hay columna de expiración; agregarla es una migración aditiva | Sí, en Fase 9 |
+| El repositorio no tiene remoto: los commits existen solo en el disco del usuario | Pérdida total del historial ante una falla de disco, y la Fase 2 no puede cumplir su criterio de "CI en verde" | Baja por evento, alta por impacto | [ADR 0009](../decisions/0009-repositorio-remoto-github-y-ci.md) fija GitHub privado con GitHub Actions. Riesgo **abierto** hasta que el usuario autorice crear el remoto y hacer el primer push, antes de abrir la Fase 2 | Sí, la autorización para crearlo |
 | Las versiones del stack pueden quedar desactualizadas entre esta planificación y el inicio real de la Fase 2 | Retrabajo menor de configuración | Media | La subfase 2.2 re-verifica las versiones oficiales antes de instalar nada | No (proceso ya definido) |
-| Ambigüedad sobre si "no cantidades negativas de stock" tiene excepciones de negocio reales (p. ej. ventas a crédito con stock pendiente) | Cambiaría un `CHECK constraint` central del modelo | Baja-Media | Confirmar explícitamente en la subfase 1.3 | Sí |
+| ~~Ambigüedad sobre si "no cantidades negativas de stock" tiene excepciones de negocio reales~~ | — | — | **Cerrado el 2026-09-11** en la subfase 1.3: no hay excepciones ([ADR 0008](../decisions/0008-stock-nunca-negativo.md)) | No |
 | Tentación de conectar el contrato de ingestión a tráfico real "para probarlo de verdad" durante la Fase 6 | Rompería el principio de independencia y el criterio de aceptación del MVP | Baja (mitigado por reglas explícitas en `CLAUDE.md` e `IntegrationBoundaries.md`) | Guarda automatizada en CI (subfase 2.5) que falla si aparecen referencias a Airtable o al agente de WhatsApp | No |
 | El mecanismo de sesión elegido en la Fase 3 resulta insuficiente para multi-organización (p. ej. no permite cambiar de organización activa sin recargar) | Retrabajo de autenticación en fase tardía | Baja | ADR de sesión en la subfase 3.2 y test de integración de sesión entre requests en la 3.3 | No |
 | El negocio necesita un segundo canal (no solo WhatsApp) antes de lo previsto | Presión para adelantar trabajo de "multi-canal" no planificado | Baja | El modelo ya es extensible (`channel` como enum); no requiere rediseño, solo agregar valor de enum y UI cuando se decida | Sí, cuándo priorizarlo |
@@ -17,6 +18,26 @@
 
 ## Preguntas abiertas registradas en otros documentos (índice)
 
-- Identificador único adicional de cliente — [architecture/DataModel.md](../architecture/DataModel.md).
-- Teléfono enmascarado en la lista de clientes y ausencia de vista previa de mensajes en la lista de conversaciones — [product/Screens.md](../product/Screens.md).
-- Alta de usuarios por pantalla o por script de administración — [product/Screens.md](../product/Screens.md).
+Toda entrada de este índice lleva fase límite. "Se ve más adelante" no es una entrada válida.
+
+| Pregunta abierta | Documento | Fase límite |
+|---|---|---|
+| Política de retención de `messages` | [architecture/DataModel.md](../architecture/DataModel.md) | Fase 9 |
+| Pantalla para editar la zona horaria de la organización | [product/Screens.md](../product/Screens.md) | Diferida sin fecha; no bloquea el MVP porque el valor por defecto ya está fijado |
+| Versiones exactas del stack y aceptación del [ADR 0004](../decisions/0004-stack-tecnologico-propuesto.md) | [development/EngineeringStandards.md](../development/EngineeringStandards.md) | Subfase 2.2 |
+| Mecanismo de sesión (ADR pendiente) | [planning/Roadmap.md](Roadmap.md), Fase 3 | Subfase 3.2 |
+| Gestión de secretos | [architecture/SecurityModel.md](../architecture/SecurityModel.md) | Subfase 9.1 |
+| Frecuencia y prueba de restauración de backups | [architecture/Overview.md](../architecture/Overview.md) | Subfase 9.2 |
+| Validación de las personas contra el uso real | [product/Personas.md](../product/Personas.md) | Fase 9 |
+| Cuándo priorizar un segundo canal además de WhatsApp | esta tabla de riesgos | Después del MVP (Fase 10) |
+
+### Cerradas en la subfase 1.3 (2026-09-11)
+
+- Identificador único adicional de cliente → no hay: solo `(organization_id, phone_e164)` ([ADR 0007](../decisions/0007-identificador-de-cliente-solo-telefono.md)).
+- Teléfono en la lista de clientes → completo para `admin`, enmascarado en el servidor para `viewer` (FR-CLI-06).
+- Vista previa de mensajes en la lista de conversaciones → no se muestra (FR-CONV-01).
+- Alta de usuarios por pantalla o por script → pantalla de usuarios y roles en el MVP (FR-ORG-02).
+- Zona horaria por defecto → `America/Argentina/Buenos_Aires`.
+- Excepciones al stock negativo → no hay ([ADR 0008](../decisions/0008-stock-nunca-negativo.md)).
+- Repositorio remoto y proveedor de CI → GitHub privado con GitHub Actions ([ADR 0009](../decisions/0009-repositorio-remoto-github-y-ci.md)).
+- Quién puede ajustar stock → solo `admin`, como ya asumía FR-PROD-06.

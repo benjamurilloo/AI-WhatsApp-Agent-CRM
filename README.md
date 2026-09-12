@@ -4,7 +4,7 @@ Backoffice propio de productos e inventario, clientes, conversaciones y métrica
 
 ## Estado
 
-**Fase 0 (Descubrimiento, alcance y decisiones) en curso.** Todo está en nivel *diseñado*: nada está implementado, desplegado ni conectado a tráfico real. El índice de documentación está en [docs/README.md](docs/README.md).
+**El estado vigente y verificado está en [HANDOFF.md](HANDOFF.md)**, que se sobrescribe al cerrar cada fase. Todo el proyecto sigue en nivel *diseñado*: nada está implementado, desplegado ni conectado a tráfico real. El índice de documentación está en [docs/README.md](docs/README.md).
 
 ## Qué es
 
@@ -27,7 +27,8 @@ Detalle en [docs/product/Scope.md](docs/product/Scope.md) y en [docs/decisions/]
 ## Metodología
 
 - **Tareas y estado**: proyecto [AI WhatsApp Agent CRM](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c) en Notion.
-- **Decisiones y cierres**: [docs/decisions/](docs/decisions/README.md) y `CHANGELOG.md` (se crea al cerrar la Fase 0).
+- **Decisiones y cierres**: [docs/decisions/](docs/decisions/README.md) y [CHANGELOG.md](CHANGELOG.md), que registra cada cierre de fase o subfase.
+- **Traspaso entre sesiones**: [HANDOFF.md](HANDOFF.md). Cada fase se trabaja en una sesión propia y termina escribiendo ahí su estado verificado.
 - **Conocimiento transversal**: hub `80 Projects/AI WhatsApp Agent CRM` en el vault de Obsidian.
 
 Para trabajar con Claude Code, leer primero [CLAUDE.md](CLAUDE.md).

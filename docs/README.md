@@ -4,7 +4,7 @@ Este repositorio es la fuente técnica de verdad del proyecto: diseño, contrato
 
 ## Estado actual
 
-**Fase 0 (Descubrimiento, alcance y decisiones) en curso.** Todo lo que describe `docs/` está en nivel **diseñado**. Nada está implementado, desplegado ni conectado a datos reales. El estado de fases y tareas vive en Notion, cuyo proyecto está pendiente de creación.
+**La fase y la subfase vigentes, con su estado verificado, están en [HANDOFF.md](../HANDOFF.md).** Todo lo que describe `docs/` está en nivel **diseñado**. Nada está implementado, desplegado ni conectado a datos reales. El seguimiento de fases y tareas vive en el [proyecto de Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c).
 
 ## Índice
 
@@ -47,5 +47,6 @@ Este repositorio es la fuente técnica de verdad del proyecto: diseño, contrato
 | Obsidian (vault "Segundo Cerebro") | ¿Qué sabemos y cómo trabajamos? | Metodología, patrones y el hub `80 Projects/AI WhatsApp Agent CRM` |
 
 - Claude Code ejecuta el ciclo completo, del contexto al cierre, según [ExecutionProtocol.md](development/ExecutionProtocol.md).
-- Cada cierre de fase o subfase agrega una entrada a `CHANGELOG.md` con lo que certifica y lo que no. El archivo se crea al cerrar la Fase 0.
+- Cada cierre de fase o subfase agrega una entrada a [CHANGELOG.md](../CHANGELOG.md) con lo que certifica y lo que no.
+- Cada fase termina sobrescribiendo [HANDOFF.md](../HANDOFF.md) con su estado verificado, y la siguiente empieza en una sesión nueva leyéndolo.
 - No se avanza de fase sin cumplir el gate de salida de la anterior.

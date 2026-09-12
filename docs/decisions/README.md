@@ -19,6 +19,15 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [0004](0004-stack-tecnologico-propuesto.md) | Stack tecnológico | propuesta |
 | [0005](0005-metricas-desde-datos-transaccionales.md) | Métricas desde datos transaccionales | aceptada |
 | [0006](0006-repositorio-registra-decisiones-no-tareas.md) | El repositorio registra decisiones, no tareas | aceptada |
+| [0007](0007-identificador-de-cliente-solo-telefono.md) | El teléfono E.164 es el único identificador de negocio del cliente | aceptada |
+| [0008](0008-stock-nunca-negativo.md) | El stock nunca puede quedar negativo, sin excepciones | aceptada |
+| [0009](0009-repositorio-remoto-github-y-ci.md) | Repositorio remoto en GitHub privado y CI con GitHub Actions | aceptada |
+
+## Briefs
+
+| Brief | Subfase | Estado |
+|---|---|---|
+| [brief-1.3](brief-1.3-decisiones-de-producto-abiertas.md) | 1.3 — Decisiones de producto pendientes | resuelto el 2026-09-11 |
 
 ## Plantilla
 
