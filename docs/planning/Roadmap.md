@@ -1,6 +1,6 @@
 # Roadmap — AI WhatsApp Agent CRM
 
-**Estado: diseñado.** La Fase 0 está en curso y ninguna otra fase empezó. El plan usa tamaños relativos y dependencias, sin fechas calendario, porque todavía no se conocen la capacidad ni la disponibilidad.
+**Estado: diseñado.** Este documento no registra qué fase está en curso: eso está en [HANDOFF.md](../../HANDOFF.md), y los cierres, en [CHANGELOG.md](../../CHANGELOG.md). El plan usa tamaños relativos y dependencias, sin fechas calendario, porque todavía no se conocen la capacidad ni la disponibilidad.
 
 ## Qué es este documento
 
@@ -26,6 +26,7 @@ Es el diseño de fases: objetivo, alcance, dependencias, riesgos, entregables, c
 - **Objetivo**: convertir la especificación de pantallas en wireframes y confirmar que modelo, requisitos y pantallas son consistentes antes de escribir código.
 - **Alcance**: wireframes de baja fidelidad de las 10 pantallas de [Screens.md](../product/Screens.md), matriz de trazabilidad pantalla ↔ FR ↔ tabla ↔ índice y resolución de decisiones de producto pendientes.
 - **Subfases**: 1.1 wireframes · 1.2 validación cruzada · 1.3 decisiones pendientes.
+- **Orden de ejecución**: 1.3 → 1.1 → 1.2. La 1.3 va primero porque seis de sus nueve decisiones cambian qué hay que dibujar en los wireframes ([brief-1.3](../decisions/brief-1.3-decisiones-de-producto-abiertas.md)). La numeración se conserva para no romper las referencias ya escritas.
 - **Dependencias**: Fase 0 cerrada.
 - **Riesgos**: si falta un campo o una entidad, hay que corregir `DataModel.md` antes de la Fase 3. Es barato aquí y caro después.
 - **Entregables**: wireframes, matriz de trazabilidad y decisiones registradas.
@@ -40,7 +41,7 @@ Es el diseño de fases: objetivo, alcance, dependencias, riesgos, entregables, c
 - **Alcance**: estructura de módulos, re-verificación de versiones, app mínima con TypeScript estricto, lint y formateo, PostgreSQL local con health check, y CI con guarda contra referencias prohibidas.
 - **Subfases**: 2.1 a 2.5.
 - **Dependencias**: Fase 1 cerrada.
-- **Riesgos**: versiones desactualizadas entre la planificación y el inicio (lo mitiga la 2.2); decisión de repositorio remoto y proveedor de CI (la resuelve la 1.3).
+- **Riesgos**: versiones desactualizadas entre la planificación y el inicio (lo mitiga la 2.2); repositorio remoto y proveedor de CI, decididos en la 1.3 ([ADR 0009](../decisions/0009-repositorio-remoto-github-y-ci.md)); el remoto tiene que existir antes de abrir la fase.
 - **Entregables**: app que compila, Postgres local, CI en verde y ADR 0004 aceptado.
 - **Criterios de aceptación**: lint, typecheck, test y build pasan en local y en CI; la guarda falla ante una referencia prohibida.
 - **Gate de entrada**: Fase 1 cerrada y autorización para instalar dependencias.

@@ -17,7 +17,7 @@ Todas las métricas se calculan por consulta (vistas SQL o queries del módulo `
 
 ## Convenciones comunes
 
-- **Zona horaria**: `organizations.timezone` (IANA). Todo timestamp se guarda en UTC.
+- **Zona horaria**: `organizations.timezone` (IANA). Todo timestamp se guarda en UTC. El valor por defecto es `America/Argentina/Buenos_Aires` y en el MVP no se edita por pantalla (decisión D-5 del [brief-1.3](../decisions/brief-1.3-decisiones-de-producto-abiertas.md)). Esa zona hoy no tiene horario de verano, pero lo tuvo hasta 2009: los fixtures de cambio de horario usan una fecha histórica de esa misma zona, no UTC ni otra zona.
 - **Intervalo `I`**: semiabierto `[inicio, fin)`, en días calendario de la zona horaria de la organización, convertido a UTC para consultar. Por defecto son los últimos 30 días completos, sin incluir hoy. En un cambio de horario un día puede durar 23 o 25 horas; la conversión con zona IANA lo resuelve y no se corrige a mano.
 - **Agrupación diaria**: `date_trunc('day', ts AT TIME ZONE organizations.timezone)`.
 - **Aislamiento**: toda métrica filtra por `organization_id`. No hay métricas entre organizaciones.
