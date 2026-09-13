@@ -49,12 +49,30 @@ La versión exacta de cada paquete queda fijada en el lockfile al instalar (2.3)
 
 - Un commit representa un cambio coherente y completo, no un checkpoint intermedio.
 - Mensajes de commit en modo imperativo, explicando el porqué cuando no sea obvio del diff.
-- Ninguna rama se mergea sin pasar lint, typecheck, tests y build en CI.
+- Ninguna rama se mergea sin pasar lint, typecheck, tests y build en CI. Hoy es una regla de procedimiento, sin protección de rama (ver CI).
 - No se hace commit, push ni merge sin autorización explícita del usuario en el turno actual (ver [CLAUDE.md](../../CLAUDE.md)).
 
 ## CI
 
-Pipeline mínimo por PR, con Node 24: `npm ci` → lint → typecheck → tests unitarios e integración → build. Los tests end-to-end corren contra un entorno efímero con base de datos de test y seeds sintéticos, no contra staging compartido.
+`.github/workflows/ci.yml` corre en cada push a `main` y en cada pull request, con Node 24 en `ubuntu-latest` ([brief-2.5](../decisions/brief-2.5-pipeline-de-ci.md)). Los pasos son, en orden:
+
+1. `npm ci`
+2. lint
+3. typecheck
+4. `format:check`
+5. `test:guards`
+6. `test:integration`, contra un service container `postgres:18.6-trixie` efímero
+7. build
+
+- **Guardas** (`tests/guards/`, sin base de datos):
+  - **referencias prohibidas**: Airtable o el repositorio del agente de WhatsApp en archivos versionados que no son `.md`;
+  - **frontera entre módulos**: aplica `eslint.config.mjs` a 9 archivos virtuales con `ESLint#lintText`.
+
+  Cada guarda incluye casos que demuestran que detecta lo que prohíbe.
+- **Acciones fijadas por SHA de commit**, con la versión en un comentario. Actualizarlas es un cambio explícito.
+- **Permisos**: `contents: read`. Sin secrets: la base de CI es efímera y sus valores no son secretos.
+- **Sin protección de rama**: el plan gratuito de GitHub no la ofrece para repositorios privados. La CI informa pero no bloquea un push ni un merge. Por procedimiento, ninguna subfase se cierra sin verificar con `gh run view` que la ejecución de su commit está en verde. Se revisa si se suma otra persona al proyecto o antes de producción (Fase 9).
+- Los tests end-to-end, cuando existan, corren contra un entorno efímero con base de datos de test y seeds sintéticos, no contra staging compartido.
 
 ## Fuentes consultadas (2026-09-12)
 

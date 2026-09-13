@@ -1,6 +1,6 @@
 # Estructura del repositorio
 
-**Estado: diseñado, con lo de la 2.3 y la 2.4 implementado.** Existen `docs/`, la configuración de la 2.3 y `src/app/` con layout y página. La 2.4 agregó Docker Compose, `drizzle.config.ts`, `src/shared/db/`, `/api/health` y `tests/integration/`. El resto se crea en las subfases que indica la tabla final. Resuelta en la subfase 2.1 ([brief-2.1](../decisions/brief-2.1-estructura-del-repositorio.md)) sobre el stack del [ADR 0004](../decisions/0004-stack-tecnologico-propuesto.md).
+**Estado: diseñado, con lo de la 2.3 y la 2.4 implementado.** Existen `docs/`, la configuración de la 2.3 y `src/app/` con layout y página. La 2.4 agregó Docker Compose, `drizzle.config.ts`, `src/shared/db/`, `/api/health` y `tests/integration/`; la 2.5, `.github/workflows/ci.yml` y `tests/guards/`. El resto se crea en las subfases que indica la tabla final. Resuelta en la subfase 2.1 ([brief-2.1](../decisions/brief-2.1-estructura-del-repositorio.md)) sobre el stack del [ADR 0004](../decisions/0004-stack-tecnologico-propuesto.md).
 
 Ubica en carpetas los módulos y las reglas de dependencia de [Overview.md](Overview.md). No los cambia: si este documento y Overview se contradicen, manda Overview y la discrepancia se corrige aquí.
 
@@ -31,10 +31,12 @@ Ubica en carpetas los módulos y las reglas de dependencia de [Overview.md](Over
 ├── drizzle/                         Migraciones SQL generadas por Drizzle Kit (versionadas)
 ├── seeds/                           Seeds sintéticos: básico y volumen
 ├── tests/
+│   ├── guards/                      Guardas sin base: referencias prohibidas y frontera entre módulos
 │   ├── integration/                 Contra PostgreSQL real (db-connectivity.test.ts desde la 2.4)
 │   └── e2e/                         Playwright sobre las pantallas
 ├── .github/
-│   └── workflows/                   CI de GitHub Actions
+│   └── workflows/
+│       └── ci.yml                   CI de GitHub Actions
 ├── docs/
 ├── package.json · package-lock.json
 ├── tsconfig.json                    strict: true; alias @/* → src/*
@@ -42,7 +44,7 @@ Ubica en carpetas los módulos y las reglas de dependencia de [Overview.md](Over
 ├── eslint.config.mjs                Incluye la regla de frontera entre módulos
 ├── prettier.config.mjs
 ├── .prettierignore                  Excluye Markdown y generados
-├── vitest.config.mts                Proyectos: unitario e integración
+├── vitest.config.mts                Proyectos: unitario, guardas e integración
 ├── playwright.config.ts
 ├── drizzle.config.ts                schema: src/modules/*/schema.ts · out: drizzle
 ├── docker-compose.yml               Solo PostgreSQL local
@@ -100,7 +102,7 @@ Se hace cumplir con la regla `no-restricted-imports` de ESLint, incluida en ESLi
 | `src/shared/**` | — | `@/modules/*` |
 
 - La 2.3 escribe la regla en `eslint.config.mjs`.
-- La 2.5 agrega en CI un caso que demuestra que el lint falla ante una importación prohibida.
+- `tests/guards/module-boundary.test.ts` (2.5) aplica la configuración real a los 9 casos de esta tabla como archivos virtuales, y corre en local y en CI.
 - La excepción de `schema.ts` sale de combinar D-3 (el esquema vive en el módulo dueño) con D-6 (solo se importa la interfaz pública): sin ella, una clave foránea entre módulos violaría la regla.
 - ESLint reemplaza la configuración de una regla cuando otro bloque aplica a los mismos archivos. Los bloques de excepción repiten las prohibiciones generales en vez de heredarlas.
 
@@ -109,6 +111,7 @@ Se hace cumplir con la regla `no-restricted-imports` de ESLint, incluida en ESLi
 | Qué | Dónde | Cómo corre |
 |---|---|---|
 | Tests unitarios | `src/**/*.test.ts`, junto al código | Proyecto unitario de Vitest, sin base de datos |
+| Guardas | `tests/guards/` | Proyecto `guards` de Vitest, sin base de datos: referencias prohibidas y frontera entre módulos |
 | Tests de integración | `tests/integration/` | Proyecto de integración de Vitest, contra PostgreSQL real de test |
 | Tests end-to-end | `tests/e2e/` | Playwright, contra un entorno efímero con seeds sintéticos |
 | Fixtures | Junto al test que los usa | Sintéticos; los de ingestión se marcan como forma asumida |
@@ -123,7 +126,7 @@ Ninguna carpeta se crea vacía: nace con el primer archivo real de la subfase qu
 |---|---|
 | 2.3 — Bootstrap | `package.json`, `package-lock.json`, `tsconfig.json`, `next.config.ts`, `eslint.config.mjs` (con la regla de frontera), `prettier.config.mjs`, `.prettierignore`, `vitest.config.mts` (proyectos unitario e integración), `src/app/layout.tsx`, `src/app/page.tsx` y las entradas de `.gitignore` del stack |
 | 2.4 — Base de datos local | `docker-compose.yml`, `.env.example`, `drizzle.config.ts`, `src/shared/db/`, `src/app/api/health/route.ts` y `tests/integration/` con el test de conectividad real |
-| 2.5 — CI | `.github/workflows/` y el caso que demuestra que la regla de frontera falla |
+| 2.5 — CI | `.github/workflows/ci.yml` y `tests/guards/`, con la guarda de referencias prohibidas y el caso que demuestra que la regla de frontera falla |
 | Fase 3 | `src/modules/auth/`, `organizations/` y `audit/`; `drizzle/` con la primera migración; `seeds/` con el seed básico; `playwright.config.ts` y `tests/e2e/` con el login |
 | Fase 4 | `src/modules/catalog/` e `inventory/` |
 | Fase 5 | `src/modules/crm/` |

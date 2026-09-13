@@ -13,7 +13,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:guards": "vitest run --project guards",
+    "test:integration": "vitest run --project integration"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",
