@@ -1,6 +1,6 @@
 # Estructura del repositorio
 
-**Estado: diseñado.** Nada de esta estructura existe todavía salvo `docs/`. Resuelta en la subfase 2.1 ([brief-2.1](../decisions/brief-2.1-estructura-del-repositorio.md)) sobre el stack del [ADR 0004](../decisions/0004-stack-tecnologico-propuesto.md).
+**Estado: diseñado, con lo de la 2.3 implementado.** Existen `docs/`, los archivos de configuración de la 2.3 y `src/app/` con layout y página; el resto se crea en las subfases que indica la tabla final. Resuelta en la subfase 2.1 ([brief-2.1](../decisions/brief-2.1-estructura-del-repositorio.md)) sobre el stack del [ADR 0004](../decisions/0004-stack-tecnologico-propuesto.md).
 
 Ubica en carpetas los módulos y las reglas de dependencia de [Overview.md](Overview.md). No los cambia: si este documento y Overview se contradicen, manda Overview y la discrepancia se corrige aquí.
 
@@ -38,7 +38,8 @@ Ubica en carpetas los módulos y las reglas de dependencia de [Overview.md](Over
 ├── next.config.ts
 ├── eslint.config.mjs                Incluye la regla de frontera entre módulos
 ├── prettier.config.mjs
-├── vitest.config.ts                 Proyectos: unitario e integración
+├── .prettierignore                  Excluye Markdown y generados
+├── vitest.config.mts                Proyectos: unitario e integración
 ├── playwright.config.ts
 ├── drizzle.config.ts                schema: src/modules/*/schema.ts · out: drizzle
 ├── docker-compose.yml               Solo PostgreSQL local
@@ -117,7 +118,7 @@ Ninguna carpeta se crea vacía: nace con el primer archivo real de la subfase qu
 
 | Subfase | Crea |
 |---|---|
-| 2.3 — Bootstrap | `package.json`, `package-lock.json`, `tsconfig.json`, `next.config.ts`, `eslint.config.mjs` (con la regla de frontera), `prettier.config.mjs`, `vitest.config.ts` (proyectos unitario e integración), `src/app/layout.tsx`, `src/app/page.tsx` y las entradas de `.gitignore` del stack |
+| 2.3 — Bootstrap | `package.json`, `package-lock.json`, `tsconfig.json`, `next.config.ts`, `eslint.config.mjs` (con la regla de frontera), `prettier.config.mjs`, `.prettierignore`, `vitest.config.mts` (proyectos unitario e integración), `src/app/layout.tsx`, `src/app/page.tsx` y las entradas de `.gitignore` del stack |
 | 2.4 — Base de datos local | `docker-compose.yml`, `.env.example`, `drizzle.config.ts`, `src/shared/db/`, `src/app/api/health/route.ts` y `tests/integration/` con el test de conectividad real |
 | 2.5 — CI | `.github/workflows/` y el caso que demuestra que la regla de frontera falla |
 | Fase 3 | `src/modules/auth/`, `organizations/` y `audit/`; `drizzle/` con la primera migración; `seeds/` con el seed básico; `playwright.config.ts` y `tests/e2e/` con el login |

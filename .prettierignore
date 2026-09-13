@@ -1,0 +1,8 @@
+# La documentación tiene su propio estilo (brief-2.3, D-4)
+*.md
+docs/
+
+# Generados
+package-lock.json
+.next/
+next-env.d.ts

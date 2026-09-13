@@ -2,6 +2,29 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-12 — Subfase 2.3 cerrada (Bootstrap de la aplicación)
+
+**Certifica:**
+
+- **Instalación manual autorizada por el usuario**, sin `create-next-app`, con las dependencias de primer nivel que lista el [brief-2.3](docs/decisions/brief-2.3-bootstrap-de-la-aplicacion.md). `npm install` y `npm ci` corrieron sin avisos de dependencias pares, sin forzar nada y con 0 vulnerabilidades en `npm audit`.
+- **[ADR 0011](docs/decisions/0011-lint-con-eslint-10-sin-eslint-config-next.md) aceptado**: lint con ESLint 10 y plugins sueltos, porque `eslint-config-next` arrastra plugins que solo aceptan ESLint 9.
+- **Scripts que salen con 0**: `typecheck`, `lint`, `format:check`, `build` y `test`. `test` pasa con `--passWithNoTests`, porque todavía no hay tests.
+- **Regla de frontera entre módulos**: se probó con 9 archivos temporales, 6 importaciones prohibidas y 3 permitidas, entre ellas las excepciones de `schema.ts` y `analytics`. Las 6 prohibidas fallaron y las 3 permitidas pasaron; los archivos se borraron.
+- **`next dev`**: sirve `/` con 200, `lang="es"` y el título.
+- **Ajustes durante la ejecución**, registrados en el brief:
+  - TypeScript con rango `~6.0.3`;
+  - `vitest.config.mts`;
+  - `agentRules: false`, porque `next dev` escribía un bloque propio en `CLAUDE.md`. El bloque se descartó y se verificó que no vuelve a aparecer.
+- Enlaces internos verificados: 0 rotos.
+
+**No certifica:**
+
+- **Validación local.** No hay tests: el nivel es *implementado*.
+- **Regla de frontera en CI**: la prueba fue local y temporal. El caso versionado llega en la 2.5.
+- **Accesibilidad**: no hay lint mientras `eslint-plugin-jsx-a11y` no soporte ESLint 10.
+- **Base de datos, Drizzle, Playwright y estilos**: fuera del alcance.
+- **Revisión independiente.** Es autoevaluación del mismo agente.
+
 ## 2026-09-12 — Subfase 2.1 cerrada (Estructura del repositorio)
 
 **Certifica:**

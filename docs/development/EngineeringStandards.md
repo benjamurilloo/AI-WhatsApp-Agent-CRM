@@ -1,6 +1,6 @@
 # Estándares de Ingeniería
 
-**Estado: diseñado.** Stack re-verificado contra fuentes oficiales y el registro npm el 2026-09-12, en la subfase 2.2 ([brief-2.2](../decisions/brief-2.2-re-verificacion-del-stack.md), [ADR 0004](../decisions/0004-stack-tecnologico-propuesto.md)). Elegir una versión no la valida: nada está instalado todavía.
+**Estado: diseñado.** Stack re-verificado contra fuentes oficiales y el registro npm el 2026-09-12, en la subfase 2.2 ([brief-2.2](../decisions/brief-2.2-re-verificacion-del-stack.md), [ADR 0004](../decisions/0004-stack-tecnologico-propuesto.md)). Instalado en la 2.3 ([brief-2.3](../decisions/brief-2.3-bootstrap-de-la-aplicacion.md)), salvo PostgreSQL, Drizzle y Playwright. Instalar no valida: sin tests todavía, el nivel es *implementado*.
 
 ## Stack
 
@@ -15,9 +15,10 @@
 | ORM / query builder | Drizzle ORM y Drizzle Kit | 0.45.x (0.45.2) y 0.31.x (0.31.10) | Drizzle 1.0: en rc.4. Prisma 7.10: paso de generación de cliente y mayor footprint |
 | Migraciones | SQL versionado, generado con Drizzle Kit | — | — |
 | Autenticación | Sesiones server-side propias o librería de sesiones madura | se decide en la 3.2 | Auth como servicio de terceros: descartado salvo ADR nuevo |
-| Tests unitarios e integración | Vitest | 5.0.x (Node `^22.12 \|\| ^24 \|\| >=26`) | Jest |
+| Tests unitarios e integración | Vitest, con Vite como dependencia par | Vitest 5.0.x (Node `^22.12 \|\| ^24 \|\| >=26`); Vite 8.3.x | Jest |
+| Tipos | `@types/node`, `@types/react`, `@types/react-dom` | 24.x (la línea de Node 24, no el `latest` 22.x); 19.3.x | — |
 | Tests end-to-end | Playwright | 1.63.x | Cypress |
-| Lint | ESLint con `eslint-config-next` | ESLint 10.x; `eslint-config-next` 16.3.x (`core-web-vitals` y `typescript`) | Biome 2.5: una sola herramienta, pero sin la configuración que mantiene Next.js |
+| Lint | ESLint 10 con `@eslint/js`, `typescript-eslint`, `@next/eslint-plugin-next` (`recommended` y `core-web-vitals`), `eslint-plugin-react-hooks` y `eslint-config-prettier` ([ADR 0011](../decisions/0011-lint-con-eslint-10-sin-eslint-config-next.md)) | ESLint 10.10; `@eslint/js` 10.0; `typescript-eslint` 8.70; `@next/eslint-plugin-next` 16.3; `eslint-plugin-react-hooks` 7.1 | `eslint-config-next`: sus plugins no soportan ESLint 10. Biome 2.5 |
 | Formateo | Prettier con `eslint-config-prettier` | 3.9.x | Biome |
 | Contenedores | Docker y Docker Compose, solo para PostgreSQL local | se fija en la 2.4 | — |
 
@@ -26,7 +27,9 @@ La versión exacta de cada paquete queda fijada en el lockfile al instalar (2.3)
 ### Compatibilidades verificadas
 
 - Todo el stack acepta Node 24 y Node 26. El más restrictivo es Vitest.
-- `eslint-config-next` 16.3.5 depende de `typescript-eslint ^8.46`, que exige `typescript >=4.8.4 <6.1.0`: por eso TypeScript queda en 6.0.x.
+- `typescript-eslint` 8.70 exige `typescript >=4.8.4 <6.1.0`: por eso TypeScript queda en 6.0.x, con rango `~6.0.3` en `package.json` para que npm no suba a 6.1.
+- `eslint-config-next` 16.3.5 trae `eslint-plugin-react`, `eslint-plugin-import` y `eslint-plugin-jsx-a11y`, que solo aceptan ESLint 9: por eso el lint se arma con plugins sueltos ([ADR 0011](../decisions/0011-lint-con-eslint-10-sin-eslint-config-next.md)). Verificado instalando en la 2.3: `npm install` sin avisos de dependencias pares.
+- Next.js 16.3.5 escribe reglas para agentes de IA en `CLAUDE.md` o `AGENTS.md` al correr `next dev`. `next.config.ts` lo desactiva con `agentRules: false`: las reglas del proyecto viven solo en `CLAUDE.md`.
 - Next.js 16.3.5 acepta React `^18.2.0 || ^19.0.0` y `@playwright/test ^1.51.1`.
 - Drizzle 1.0 cambia el formato de migraciones y trae `drizzle-kit up` para convertirlas. Si sale estable antes de la subfase 3.1, se adopta ahí.
 - **No verificado**: soporte declarado de PostgreSQL 18 en Drizzle y sus drivers (`pg` 8.23, `postgres` 3.4). Se valida con conectividad real en la 2.4.
@@ -34,8 +37,9 @@ La versión exacta de cada paquete queda fijada en el lockfile al instalar (2.3)
 ## Convenciones de código
 
 - Un módulo de dominio (`catalog`, `crm`, `conversations`, `inventory`, `analytics`, `auth`, `organizations`, `ingestion`, `audit`) = una carpeta `src/modules/<modulo>/` con `index.ts` (interfaz pública), `service.ts`, `repository.ts`, `schema.ts` (sus tablas) y `types.ts`; sin acceso cruzado salvo lo documentado en [architecture/Overview.md](../architecture/Overview.md). La estructura completa y la regla de lint que la hace cumplir están en [architecture/RepositoryStructure.md](../architecture/RepositoryStructure.md).
-- Lint con ESLint y formateo con Prettier, obligatorios en CI, sin excepciones por archivo salvo justificación explícita. Next.js 16 ya no corre el lint en `next build`: se ejecuta como script propio.
-- Typecheck estricto (`strict: true` en `tsconfig.json`) desde el primer commit.
+- Lint con ESLint y formateo con Prettier, obligatorios en CI, sin excepciones por archivo salvo justificación explícita. Next.js 16 ya no corre el lint en `next build`: se ejecuta como script propio. Prettier no formatea Markdown (`.prettierignore`).
+- Typecheck estricto desde el primer commit: `strict`, `noUncheckedIndexedAccess` y `noImplicitOverride` en `tsconfig.json`.
+- Accesibilidad sin lint mientras `eslint-plugin-jsx-a11y` no soporte ESLint 10: se revisa antes de la primera pantalla (Fase 3).
 - Sin `any` implícito ni explícito salvo en límites de librería externa sin tipos, documentado con comentario.
 
 ## Control de versiones

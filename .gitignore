@@ -8,6 +8,8 @@ node_modules/
 out/
 dist/
 build/
+next-env.d.ts
+*.tsbuildinfo
 
 # Entorno y secretos (nunca versionar valores reales; .env.example sí se versiona)
 .env

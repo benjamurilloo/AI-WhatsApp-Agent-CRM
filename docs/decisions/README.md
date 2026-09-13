@@ -23,6 +23,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [0008](0008-stock-nunca-negativo.md) | El stock nunca puede quedar negativo, sin excepciones | aceptada |
 | [0009](0009-repositorio-remoto-github-y-ci.md) | Repositorio remoto en GitHub privado y CI con GitHub Actions | aceptada |
 | [0010](0010-un-usuario-una-organizacion-en-el-mvp.md) | En el MVP un usuario pertenece a una sola organización | aceptada |
+| [0011](0011-lint-con-eslint-10-sin-eslint-config-next.md) | Lint con ESLint 10, sin `eslint-config-next` (supera al 0004 en el lint) | aceptada |
 
 ## Briefs
 
@@ -32,7 +33,8 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-1.1](brief-1.1-wireframes-baja-fidelidad.md) | 1.1 — Wireframes de baja fidelidad | aprobado y cerrado el 2026-09-12 |
 | [brief-1.2](brief-1.2-validacion-cruzada-del-modelo.md) | 1.2 — Validación cruzada del modelo | aprobado y cerrado el 2026-09-12 |
 | [brief-2.2](brief-2.2-re-verificacion-del-stack.md) | 2.2 — Re-verificación del stack | aprobado y cerrado el 2026-09-12 |
-| [brief-2.1](brief-2.1-estructura-del-repositorio.md) | 2.1 — Estructura del repositorio | aprobado el 2026-09-12 |
+| [brief-2.1](brief-2.1-estructura-del-repositorio.md) | 2.1 — Estructura del repositorio | aprobado y cerrado el 2026-09-12 |
+| [brief-2.3](brief-2.3-bootstrap-de-la-aplicacion.md) | 2.3 — Bootstrap de la aplicación | aprobado y cerrado el 2026-09-12 |
 
 ## Plantilla
 
