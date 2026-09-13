@@ -173,6 +173,8 @@ Cada decisión trae una recomendación, no una resolución: la resuelve el usuar
 
 Brief aprobado por el usuario el **2026-09-13**. D-1 a D-6 se resolvieron el mismo día, todas según la recomendación. El usuario autorizó explícitamente aplicar migraciones contra la base local de Docker (desarrollo y test), con Docker Desktop en marcha.
 
+Subfase **cerrada el 2026-09-13** con confirmación del usuario. Nivel alcanzado: *validado localmente y en CI*, solo para el esquema de identidad y el aislamiento de los tests. AC-1 a AC-11 están cumplidos; la CI del commit `bef80d6` quedó en verde en la ejecución 34786605412. La evidencia está en [CHANGELOG.md](../../CHANGELOG.md).
+
 | Decisión | Resolución |
 |---|---|
 | D-1 Base de test | `<POSTGRES_DB>_test` en el mismo contenedor, recreada y migrada con el migrador programático en cada ejecución, `TRUNCATE` antes de cada test y archivos de integración en serie |
