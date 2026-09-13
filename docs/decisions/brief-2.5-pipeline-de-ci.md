@@ -141,6 +141,8 @@ Cada decisión trae una recomendación, no una resolución: la resuelve el usuar
 
 Brief aprobado por el usuario el **2026-09-13**. D-1 a D-4 se resolvieron el mismo día, todas según la recomendación. No se agregan dependencias. El push que publica el workflow requiere una autorización propia en el turno en que se ejecute.
 
+Subfase **cerrada el 2026-09-13** con confirmación del usuario. AC-1 a AC-10 están cumplidos, con la evidencia en [CHANGELOG.md](../../CHANGELOG.md). La CI del commit `e820ca4` terminó en verde: [ejecución 34783979325](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/34783979325), en 62 s.
+
 | Decisión | Resolución |
 |---|---|
 | D-1 Guarda | Tests de Vitest en `tests/guards/`, con casos versionados que demuestran la detección |

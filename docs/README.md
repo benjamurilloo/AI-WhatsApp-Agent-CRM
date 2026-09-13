@@ -4,7 +4,7 @@ Este repositorio es la fuente técnica de verdad del proyecto: diseño, contrato
 
 ## Estado actual
 
-**La fase y la subfase vigentes, con su estado verificado, están en [HANDOFF.md](../HANDOFF.md).** Todo lo que describe `docs/` está en nivel **diseñado**. Nada está implementado, desplegado ni conectado a datos reales. El seguimiento de fases y tareas vive en el [proyecto de Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c).
+**La fase y la subfase vigentes, con su estado verificado, están en [HANDOFF.md](../HANDOFF.md).** La fundación técnica, cerrada con la Fase 2, está **validada localmente y en CI**: aplicación mínima, PostgreSQL local con health check, guardas y pipeline. El dominio que describe `docs/` sigue en nivel **diseñado**: no hay tablas, módulos, autenticación ni pantallas. Nada está desplegado ni conectado a datos reales. El seguimiento de fases y tareas vive en el [proyecto de Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c).
 
 ## Índice
 

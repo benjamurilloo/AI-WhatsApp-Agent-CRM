@@ -2,6 +2,55 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-13 — Fase 2 cerrada (Fundación técnica)
+
+**Certifica:**
+
+- **Las cinco subfases cerradas con confirmación del usuario**, en el orden 2.2 → 2.1 → 2.3 → 2.4 → 2.5.
+- **Criterios de aceptación del [Roadmap](docs/planning/Roadmap.md)**:
+  - lint, typecheck, test y build pasan en local y en CI;
+  - la guarda falla ante una referencia prohibida (AC-3 de la 2.5 y casos versionados).
+- **Gate de salida**:
+  - CI en verde en el commit `e820ca4`;
+  - estructura ([RepositoryStructure.md](docs/architecture/RepositoryStructure.md)) aprobada por el usuario el 2026-09-13.
+- **Entregables**:
+  - app Next.js que compila;
+  - PostgreSQL 18 local con health check;
+  - CI en verde;
+  - ADR 0004 aceptado y ADR 0011 para el lint.
+- **Nivel alcanzado: validado localmente y en CI** para la fundación técnica, que incluye la conexión a la base, el health check y las guardas.
+
+**No certifica:**
+
+- **Lógica de negocio, tablas, migraciones, autenticación ni pantallas**: empiezan en la Fase 3.
+- **Aislamiento de la base de test**: se decide en la 3.1.
+- **Bloqueo de merges en rojo**: no hay protección de rama en el plan gratuito de GitHub; el control es por procedimiento (brief-2.5, D-3).
+- **Seguridad de dependencias**: 4 avisos moderados de `npm audit` a través de `drizzle-kit`, que quedan para la Fase 8.
+- **Revisión independiente**: es autoevaluación del mismo agente. El usuario aprobó los briefs, los cierres y la estructura.
+
+## 2026-09-13 — Subfase 2.5 cerrada (Pipeline de CI)
+
+**Certifica:**
+
+- **`.github/workflows/ci.yml`** corre en cada push a `main` y en cada pull request:
+  - pasos: `npm ci`, lint, typecheck, formato, guardas, tests de integración contra PostgreSQL 18.6 efímero y build;
+  - permisos solo de lectura, acciones fijadas por SHA y sin secrets.
+- **Primera ejecución en verde**: [34783979325](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/34783979325), del commit `e820ca4`. Terminó en 62 s con los 11 pasos en verde.
+- **Guardas versionadas en `tests/guards/`**, que corren en local y en CI sin base de datos:
+  - **referencias prohibidas**: detecta Airtable, `AIRTABLE_*` y el repositorio del agente de WhatsApp fuera de `.md`, y permite `ai-whatsapp-agent-crm`;
+  - **frontera entre módulos**: los 9 casos de la 2.3, ahora como archivos virtuales con `ESLint#lintText`.
+- **Caso forzado (AC-3)**: con una referencia a Airtable agregada temporalmente en `src/app/page.tsx`, la guarda falló e indicó `src/app/page.tsx:8 (Airtable)`. El archivo se restauró.
+- **Suite local**: `npm run test` pasa 24 de 24 (19 de guardas y 5 de integración), con typecheck, lint y format en verde.
+- **Decisiones D-1 a D-4 del [brief-2.5](docs/decisions/brief-2.5-pipeline-de-ci.md)** resueltas según la recomendación: guardas como tests, alcance sin `.md`, CI sin protección de rama aceptada y acciones por SHA.
+- Enlaces internos verificados: 0 rotos.
+
+**No certifica:**
+
+- **Que la CI bloquee un push o un merge en rojo**: GitHub no ofrece protección de rama en repositorios privados del plan gratuito.
+- **Scripts de instalación de npm en CI**: el runner avisa que los `postinstall` de tres versiones de `esbuild` no están cubiertos por `allowScripts`. No afecta al pipeline actual, pero puede afectar a `drizzle-kit` en la Fase 3.
+- **Tests end-to-end**: llegan con Playwright en la Fase 3.
+- **Revisión independiente**: es autoevaluación del mismo agente.
+
 ## 2026-09-13 — Subfase 2.4 cerrada (Base de datos local)
 
 **Certifica:**

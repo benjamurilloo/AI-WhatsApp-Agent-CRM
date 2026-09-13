@@ -36,7 +36,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-2.1](brief-2.1-estructura-del-repositorio.md) | 2.1 — Estructura del repositorio | aprobado y cerrado el 2026-09-12 |
 | [brief-2.3](brief-2.3-bootstrap-de-la-aplicacion.md) | 2.3 — Bootstrap de la aplicación | aprobado y cerrado el 2026-09-12 |
 | [brief-2.4](brief-2.4-base-de-datos-local.md) | 2.4 — Base de datos local | aprobado y cerrado el 2026-09-13 |
-| [brief-2.5](brief-2.5-pipeline-de-ci.md) | 2.5 — Pipeline de CI | aprobado el 2026-09-13 |
+| [brief-2.5](brief-2.5-pipeline-de-ci.md) | 2.5 — Pipeline de CI | aprobado y cerrado el 2026-09-13 |
 
 ## Plantilla
 
