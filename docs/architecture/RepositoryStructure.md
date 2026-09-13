@@ -1,6 +1,6 @@
 # Estructura del repositorio
 
-**Estado: diseñado, con lo de la 2.3 implementado.** Existen `docs/`, los archivos de configuración de la 2.3 y `src/app/` con layout y página; el resto se crea en las subfases que indica la tabla final. Resuelta en la subfase 2.1 ([brief-2.1](../decisions/brief-2.1-estructura-del-repositorio.md)) sobre el stack del [ADR 0004](../decisions/0004-stack-tecnologico-propuesto.md).
+**Estado: diseñado, con lo de la 2.3 y la 2.4 implementado.** Existen `docs/`, la configuración de la 2.3 y `src/app/` con layout y página. La 2.4 agregó Docker Compose, `drizzle.config.ts`, `src/shared/db/`, `/api/health` y `tests/integration/`. El resto se crea en las subfases que indica la tabla final. Resuelta en la subfase 2.1 ([brief-2.1](../decisions/brief-2.1-estructura-del-repositorio.md)) sobre el stack del [ADR 0004](../decisions/0004-stack-tecnologico-propuesto.md).
 
 Ubica en carpetas los módulos y las reglas de dependencia de [Overview.md](Overview.md). No los cambia: si este documento y Overview se contradicen, manda Overview y la discrepancia se corrige aquí.
 
@@ -25,10 +25,13 @@ Ubica en carpetas los módulos y las reglas de dependencia de [Overview.md](Over
 │   │       └── *.test.ts            Tests unitarios, junto al código
 │   └── shared/
 │       └── db/                      Cliente de Drizzle, conexión y health check de la base
+│           ├── index.ts             Interfaz pública: createDb, getDb, checkDatabase
+│           ├── client.ts
+│           └── health.ts
 ├── drizzle/                         Migraciones SQL generadas por Drizzle Kit (versionadas)
 ├── seeds/                           Seeds sintéticos: básico y volumen
 ├── tests/
-│   ├── integration/                 Contra PostgreSQL real de test
+│   ├── integration/                 Contra PostgreSQL real (db-connectivity.test.ts desde la 2.4)
 │   └── e2e/                         Playwright sobre las pantallas
 ├── .github/
 │   └── workflows/                   CI de GitHub Actions

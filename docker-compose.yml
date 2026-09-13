@@ -1,0 +1,23 @@
+# Solo PostgreSQL para desarrollo local (docs/development/Environments.md).
+name: ai-whatsapp-agent-crm
+
+services:
+  postgres:
+    image: postgres:18.6-trixie
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Falta POSTGRES_USER en .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD en .env}
+      POSTGRES_DB: ${POSTGRES_DB:?Falta POSTGRES_DB en .env}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      # Desde PostgreSQL 18 la imagen declara el volumen en /var/lib/postgresql.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

@@ -2,6 +2,44 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-13 — Subfase 2.4 cerrada (Base de datos local)
+
+**Certifica:**
+
+- **PostgreSQL 18 local** con Docker Compose:
+  - imagen `postgres:18.6-trixie`;
+  - puerto publicado solo en `127.0.0.1:5432`;
+  - volumen en `/var/lib/postgresql`, la ruta que exige la imagen 18. Se verificó que los datos persisten tras `down` y `up`: el `system_identifier` no cambió.
+- **Conexión con Drizzle 0.45 y `pg` 8.23**, en `src/shared/db/`. La conexión se abre en el primer uso, con una sola instancia por proceso y timeout de 2 s.
+- **`/api/health`** responde 200 `{"status":"ok"}` o 503 `{"status":"unavailable"}`, con `Cache-Control: no-store` y sin detalles. En runtime local respondió 200, luego 503 en 69 ms con la base detenida y otra vez 200 al levantarla, sin reiniciar `next dev`.
+- **Cinco tests de integración contra PostgreSQL real** pasan:
+  - consulta con Drizzle;
+  - versión 18.x del servidor;
+  - health check disponible;
+  - conexión cortada por el servidor;
+  - health check sin servidor, que no expone credenciales.
+  - `--passWithNoTests` se retiró.
+- **Defecto encontrado y corregido**: sin un manejador de `error`, el pool de `pg` lanzaba un `uncaughtException` cuando la base cortaba una conexión inactiva. Eso podía tirar el proceso, y el volcado incluía la contraseña. Primero se reprodujo con un test que falló; después se corrigió con `pool.on("error")`.
+- **Instalación y chequeos**:
+  - `npm ci` desde cero sin conflictos de dependencias pares;
+  - typecheck, lint, format y build pasan con la base detenida.
+- **Decisiones D-1 a D-5 del [brief-2.4](docs/decisions/brief-2.4-base-de-datos-local.md)** resueltas según la recomendación:
+  - driver `pg`;
+  - una sola base local;
+  - health check sin detalles;
+  - `process.loadEnvFile()` nativo;
+  - imagen `18.6-trixie`.
+- Enlaces internos verificados: 0 rotos.
+
+**No certifica:**
+
+- **Tablas, migraciones, tipos de datos ni reglas de negocio**: no existen. `drizzle-kit` está instalado, pero nunca se ejecutó.
+- **Aislamiento entre la base de desarrollo y la de tests**: los tests usan la misma base porque solo leen. La separación se decide en la 3.1.
+- **Ejecución en CI**: corresponde a la 2.5.
+- **`postgres` 3.4 (postgres.js)**: no se probó.
+- **Seguridad de dependencias**: `npm audit` informa 4 avisos moderados de `esbuild` a través de `drizzle-kit`, y 0 altos o críticos. Se tratan en la Fase 8.
+- **Revisión independiente**: es autoevaluación del mismo agente.
+
 ## 2026-09-12 — Subfase 2.3 cerrada (Bootstrap de la aplicación)
 
 **Certifica:**

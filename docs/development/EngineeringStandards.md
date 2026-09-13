@@ -1,6 +1,6 @@
 # Estándares de Ingeniería
 
-**Estado: diseñado.** Stack re-verificado contra fuentes oficiales y el registro npm el 2026-09-12, en la subfase 2.2 ([brief-2.2](../decisions/brief-2.2-re-verificacion-del-stack.md), [ADR 0004](../decisions/0004-stack-tecnologico-propuesto.md)). Instalado en la 2.3 ([brief-2.3](../decisions/brief-2.3-bootstrap-de-la-aplicacion.md)), salvo PostgreSQL, Drizzle y Playwright. Instalar no valida: sin tests todavía, el nivel es *implementado*.
+**Estado: diseñado.** Stack re-verificado contra fuentes oficiales y el registro npm el 2026-09-12, en la subfase 2.2 ([brief-2.2](../decisions/brief-2.2-re-verificacion-del-stack.md), [ADR 0004](../decisions/0004-stack-tecnologico-propuesto.md)). Instalado en la 2.3 ([brief-2.3](../decisions/brief-2.3-bootstrap-de-la-aplicacion.md)); PostgreSQL, Drizzle y `pg`, en la 2.4 ([brief-2.4](../decisions/brief-2.4-base-de-datos-local.md)). Falta Playwright. Instalar no valida: sin tests todavía, el nivel es *implementado*.
 
 ## Stack
 
@@ -13,6 +13,7 @@
 | UI | React | 19.3.x | — |
 | Base de datos | PostgreSQL | 18 (18.6; soportada hasta 2030-11-14) | PostgreSQL 19: en beta |
 | ORM / query builder | Drizzle ORM y Drizzle Kit | 0.45.x (0.45.2) y 0.31.x (0.31.10) | Drizzle 1.0: en rc.4. Prisma 7.10: paso de generación de cliente y mayor footprint |
+| Driver de PostgreSQL | `pg` (node-postgres) con `@types/pg` | 8.23.x ([brief-2.4](../decisions/brief-2.4-base-de-datos-local.md), D-1) | `postgres` 3.4 (postgres.js) |
 | Migraciones | SQL versionado, generado con Drizzle Kit | — | — |
 | Autenticación | Sesiones server-side propias o librería de sesiones madura | se decide en la 3.2 | Auth como servicio de terceros: descartado salvo ADR nuevo |
 | Tests unitarios e integración | Vitest, con Vite como dependencia par | Vitest 5.0.x (Node `^22.12 \|\| ^24 \|\| >=26`); Vite 8.3.x | Jest |
@@ -20,7 +21,7 @@
 | Tests end-to-end | Playwright | 1.63.x | Cypress |
 | Lint | ESLint 10 con `@eslint/js`, `typescript-eslint`, `@next/eslint-plugin-next` (`recommended` y `core-web-vitals`), `eslint-plugin-react-hooks` y `eslint-config-prettier` ([ADR 0011](../decisions/0011-lint-con-eslint-10-sin-eslint-config-next.md)) | ESLint 10.10; `@eslint/js` 10.0; `typescript-eslint` 8.70; `@next/eslint-plugin-next` 16.3; `eslint-plugin-react-hooks` 7.1 | `eslint-config-next`: sus plugins no soportan ESLint 10. Biome 2.5 |
 | Formateo | Prettier con `eslint-config-prettier` | 3.9.x | Biome |
-| Contenedores | Docker y Docker Compose, solo para PostgreSQL local | se fija en la 2.4 | — |
+| Contenedores | Docker y Docker Compose, solo para PostgreSQL local | Imagen `postgres:18.6-trixie`, con versión menor y distribución fijadas ([brief-2.4](../decisions/brief-2.4-base-de-datos-local.md), D-5) | `postgres:18.6-alpine`: musl ordena distinto que glibc |
 
 La versión exacta de cada paquete queda fijada en el lockfile al instalar (2.3). Un cambio de versión mayor posterior se registra en este documento, no se hace en silencio.
 
@@ -32,7 +33,9 @@ La versión exacta de cada paquete queda fijada en el lockfile al instalar (2.3)
 - Next.js 16.3.5 escribe reglas para agentes de IA en `CLAUDE.md` o `AGENTS.md` al correr `next dev`. `next.config.ts` lo desactiva con `agentRules: false`: las reglas del proyecto viven solo en `CLAUDE.md`.
 - Next.js 16.3.5 acepta React `^18.2.0 || ^19.0.0` y `@playwright/test ^1.51.1`.
 - Drizzle 1.0 cambia el formato de migraciones y trae `drizzle-kit up` para convertirlas. Si sale estable antes de la subfase 3.1, se adopta ahí.
-- **No verificado**: soporte declarado de PostgreSQL 18 en Drizzle y sus drivers (`pg` 8.23, `postgres` 3.4). Se valida con conectividad real en la 2.4.
+- **PostgreSQL 18 con Drizzle 0.45 y `pg` 8.23**: conectividad validada localmente en la 2.4. Los tests de integración ejecutan consultas con Drizzle contra `postgres:18.6-trixie` y comprueban `server_version_num` 18.x. No valida tablas, migraciones ni tipos de datos, que llegan en la Fase 3. `postgres` 3.4 no se probó.
+- La imagen de PostgreSQL 18 guarda los datos en `/var/lib/postgresql/18/docker` y declara el volumen en `/var/lib/postgresql`. Un volumen montado en `/var/lib/postgresql/data`, como hasta la 17, no conserva los datos.
+- `drizzle-kit` 0.31.10 depende de `@esbuild-kit/esm-loader` (deprecado) y de un `esbuild` antiguo. Por eso `npm audit` informa 4 avisos moderados, que afectan solo al servidor de desarrollo de esbuild. Se registran para la Fase 8 sin `npm audit fix`, que bajaría `drizzle-kit` a 0.18.
 
 ## Convenciones de código
 
