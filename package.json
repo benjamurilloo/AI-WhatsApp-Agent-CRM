@@ -15,7 +15,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:guards": "vitest run --project guards",
-    "test:integration": "vitest run --project integration"
+    "test:integration": "vitest run --project integration",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",

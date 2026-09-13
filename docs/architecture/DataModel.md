@@ -1,6 +1,13 @@
 # Modelo de Datos
 
-**Estado: diseñado. Ninguna migración ha sido ejecutada todavía.**
+**Estado: diseñado; `organizations`, `users` y `organization_members` implementadas y validadas localmente desde la 3.1** ([brief-3.1](../decisions/brief-3.1-migraciones-de-identidad.md)). La migración inicial está en `drizzle/`; el resto de las tablas sigue sin migración.
+
+Convenciones fijadas en la 3.1, que siguen las tablas futuras salvo justificación:
+
+- Los enums son tipos `ENUM` de PostgreSQL (`pgEnum`), p. ej. `member_role`. Agregar un valor es un `ALTER TYPE ... ADD VALUE` aditivo (D-2).
+- `id` usa `gen_random_uuid()` como default de base (D-6).
+- `updated_at` lo mantiene la aplicación con `$onUpdate` de Drizzle. **Limitación**: un `UPDATE` escrito en SQL crudo no lo actualiza (D-3).
+- Los esquemas viven en el módulo dueño: `users` en `src/modules/auth/schema.ts`; `organizations` y `organization_members` en `src/modules/organizations/schema.ts`.
 
 ## Reglas de diseño aplicadas a todas las tablas
 
@@ -56,7 +63,7 @@ erDiagram
 | Columna | Tipo | Notas |
 |---|---|---|
 | `id` | uuid PK | |
-| `email` | text not null unique | |
+| `email` | text not null | único sin distinguir mayúsculas: índice único `users_email_lower_unique` sobre `lower(email)` (brief-3.1, D-5). Las búsquedas por email usan `lower(email)` |
 | `password_hash` | text not null | argon2id/bcrypt |
 | `must_change_password` | boolean not null default false | `true` al crear un usuario con contraseña inicial; mientras esté en `true` ninguna ruta protegida responde hasta que el usuario define una nueva (subfase 1.2, D-6) |
 | `name` | text not null | |
@@ -68,9 +75,9 @@ erDiagram
 | Columna | Tipo | Notas |
 |---|---|---|
 | `id` | uuid PK | |
-| `organization_id` | uuid FK → organizations, not null | |
-| `user_id` | uuid FK → users, not null | |
-| `role` | enum(`admin`,`viewer`) not null | |
+| `organization_id` | uuid FK → organizations, not null | `ON DELETE CASCADE` |
+| `user_id` | uuid FK → users, not null | `ON DELETE CASCADE` |
+| `role` | `member_role` enum(`admin`,`viewer`) not null | |
 | `created_at`, `updated_at` | timestamptz not null | |
 | — | `UNIQUE(user_id)` | en el MVP un usuario pertenece a una sola organización, con un único rol ([ADR 0010](../decisions/0010-un-usuario-una-organizacion-en-el-mvp.md)) |
 

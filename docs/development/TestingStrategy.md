@@ -10,6 +10,8 @@
 
 ### Integración
 - Contra una base de datos PostgreSQL real de test (Docker), no mockeada — decisión explícita: la lógica de transacciones de inventario y las constraints (unicidad, `CHECK`, FKs) solo se validan con el motor real.
+- Aislamiento ([brief-3.1](../decisions/brief-3.1-migraciones-de-identidad.md), D-1): base `_test` separada, recreada y migrada desde cero en cada ejecución, tablas vaciadas con `TRUNCATE` antes de cada test y archivos en serie. No se usan transacciones revertidas por test, porque la auditoría atómica y los ajustes concurrentes necesitan transacciones reales y varias conexiones. Detalle operativo en [Environments.md](Environments.md).
+- Un rechazo de la base se comprueba por su código de error de PostgreSQL (`23505`, `23503`, `23502`, `22P02`...), no solo porque la consulta falle.
 - Casos obligatorios:
   - Un ajuste de stock concurrente no deja saldo negativo.
   - SKU y teléfono son únicos por organización.

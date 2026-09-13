@@ -52,6 +52,13 @@ jobs:
       - name: Instalar dependencias
         run: npm ci
 
+      # Falla si un schema.ts cambió sin generar su migración (brief-3.1, D-4).
+      - name: Migraciones al día con los esquemas
+        run: |
+          npm run db:generate
+          git status --porcelain drizzle/
+          test -z "$(git status --porcelain drizzle/)"
+
       - name: Lint
         run: npm run lint
 

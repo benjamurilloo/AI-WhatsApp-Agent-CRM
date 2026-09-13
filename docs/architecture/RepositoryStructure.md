@@ -1,6 +1,6 @@
 # Estructura del repositorio
 
-**Estado: diseñado, con lo de la 2.3 y la 2.4 implementado.** Existen `docs/`, la configuración de la 2.3 y `src/app/` con layout y página. La 2.4 agregó Docker Compose, `drizzle.config.ts`, `src/shared/db/`, `/api/health` y `tests/integration/`; la 2.5, `.github/workflows/ci.yml` y `tests/guards/`. El resto se crea en las subfases que indica la tabla final. Resuelta en la subfase 2.1 ([brief-2.1](../decisions/brief-2.1-estructura-del-repositorio.md)) sobre el stack del [ADR 0004](../decisions/0004-stack-tecnologico-propuesto.md).
+**Estado: diseñado, con lo de la 2.3 y la 2.4 implementado.** Existen `docs/`, la configuración de la 2.3 y `src/app/` con layout y página. La 2.4 agregó Docker Compose, `drizzle.config.ts`, `src/shared/db/`, `/api/health` y `tests/integration/`; la 2.5, `.github/workflows/ci.yml` y `tests/guards/`; la 3.1, los `schema.ts` de `auth` y `organizations`, `drizzle/` con la migración inicial y la base de test de `tests/integration/`. El resto se crea en las subfases que indica la tabla final. Resuelta en la subfase 2.1 ([brief-2.1](../decisions/brief-2.1-estructura-del-repositorio.md)) sobre el stack del [ADR 0004](../decisions/0004-stack-tecnologico-propuesto.md).
 
 Ubica en carpetas los módulos y las reglas de dependencia de [Overview.md](Overview.md). No los cambia: si este documento y Overview se contradicen, manda Overview y la discrepancia se corrige aquí.
 
@@ -32,7 +32,11 @@ Ubica en carpetas los módulos y las reglas de dependencia de [Overview.md](Over
 ├── seeds/                           Seeds sintéticos: básico y volumen
 ├── tests/
 │   ├── guards/                      Guardas sin base: referencias prohibidas y frontera entre módulos
-│   ├── integration/                 Contra PostgreSQL real (db-connectivity.test.ts desde la 2.4)
+│   ├── integration/                 Contra PostgreSQL real, en la base <nombre>_test
+│   │   ├── global-setup.ts          Recrea y migra la base de test en cada ejecución (3.1)
+│   │   ├── test-database.ts         Deriva la URL de la base de test desde DATABASE_URL
+│   │   ├── reset-database.ts        Vacía las tablas antes de cada test
+│   │   └── *.test.ts                db-connectivity (2.4), identity-schema (3.1)
 │   └── e2e/                         Playwright sobre las pantallas
 ├── .github/
 │   └── workflows/
@@ -127,7 +131,8 @@ Ninguna carpeta se crea vacía: nace con el primer archivo real de la subfase qu
 | 2.3 — Bootstrap | `package.json`, `package-lock.json`, `tsconfig.json`, `next.config.ts`, `eslint.config.mjs` (con la regla de frontera), `prettier.config.mjs`, `.prettierignore`, `vitest.config.mts` (proyectos unitario e integración), `src/app/layout.tsx`, `src/app/page.tsx` y las entradas de `.gitignore` del stack |
 | 2.4 — Base de datos local | `docker-compose.yml`, `.env.example`, `drizzle.config.ts`, `src/shared/db/`, `src/app/api/health/route.ts` y `tests/integration/` con el test de conectividad real |
 | 2.5 — CI | `.github/workflows/ci.yml` y `tests/guards/`, con la guarda de referencias prohibidas y el caso que demuestra que la regla de frontera falla |
-| Fase 3 | `src/modules/auth/`, `organizations/` y `audit/`; `drizzle/` con la primera migración; `seeds/` con el seed básico; `playwright.config.ts` y `tests/e2e/` con el login |
+| 3.1 — Migraciones de identidad | `src/modules/auth/schema.ts` (`users`), `src/modules/organizations/schema.ts` (`organizations`, `organization_members`), `drizzle/` con la migración inicial, y `global-setup.ts`, `test-database.ts`, `reset-database.ts` e `identity-schema.test.ts` en `tests/integration/` |
+| Resto de la Fase 3 | Los demás archivos de `auth/` y `organizations/`; `src/modules/audit/`; `seeds/` con el seed básico; `playwright.config.ts` y `tests/e2e/` con el login |
 | Fase 4 | `src/modules/catalog/` e `inventory/` |
 | Fase 5 | `src/modules/crm/` |
 | Fase 6 | `src/modules/conversations/` e `ingestion/` |

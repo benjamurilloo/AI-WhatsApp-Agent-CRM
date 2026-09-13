@@ -47,4 +47,22 @@ Next.js, Vitest y Drizzle Kit leen `DATABASE_URL` de `.env`. En CI las variables
 - `/api/health` responde 200 `{"status":"ok"}` o 503 `{"status":"unavailable"}`, sin detalles.
 - `npm run test` corre los tests de integración y **requiere la base levantada**.
 
-**Base de test**: en la 2.4 los tests usan la misma base local, porque solo hacen lecturas. La base de test separada, con aislamiento entre tests, se decide en la 3.1, junto con el primer test que escribe datos.
+## Migraciones
+
+Se generan y se aplican siempre de forma explícita, nunca al arrancar la aplicación ([brief-3.1](../decisions/brief-3.1-migraciones-de-identidad.md)):
+
+| Acción | Comando |
+|---|---|
+| Generar una migración después de cambiar un `schema.ts` | `npm run db:generate` |
+| Aplicar las migraciones pendientes a la base de desarrollo | `npm run db:migrate` |
+
+`db:migrate` actúa solo sobre la base de `DATABASE_URL`. Una migración generada se revisa como SQL antes de aplicarla y se versiona en `drizzle/`.
+
+## Base de test
+
+Desde la 3.1 los tests de integración usan una base separada, `<nombre de DATABASE_URL>_test`, en el mismo servidor (`crm_dev_test` en local, `crm_ci_test` en CI):
+
+- `tests/integration/global-setup.ts` la borra, la recrea y le aplica las migraciones con el migrador de `drizzle-orm` en cada ejecución. Necesita un usuario con permiso para crear bases, como el del contenedor.
+- El proyecto de integración de Vitest recibe esa URL como `DATABASE_URL`, así que la suite no escribe en la base de desarrollo.
+- Antes de cada test que escribe datos, `resetDatabase` vacía las tablas de `public`, y se niega a correr contra una base sin sufijo `_test`.
+- Los archivos de integración corren en serie.
