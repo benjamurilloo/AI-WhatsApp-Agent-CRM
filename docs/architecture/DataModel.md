@@ -32,6 +32,7 @@ Convenciones fijadas en la 3.1, que siguen las tablas futuras salvo justificaci�
 erDiagram
     ORGANIZATIONS ||--o{ ORGANIZATION_MEMBERS : has
     USERS ||--o{ ORGANIZATION_MEMBERS : has
+    USERS ||--o{ SESSIONS : has
     ORGANIZATIONS ||--o{ CLIENTS : owns
     ORGANIZATIONS ||--o{ PRODUCTS : owns
     PRODUCTS ||--|| INVENTORIES : has
@@ -82,6 +83,23 @@ erDiagram
 | — | `UNIQUE(user_id)` | en el MVP un usuario pertenece a una sola organización, con un único rol ([ADR 0010](../decisions/0010-un-usuario-una-organizacion-en-el-mvp.md)) |
 
 Índices: el `UNIQUE(user_id)` cubre el lookup de membresía en cada request; `(organization_id)` sirve la lista de usuarios de la pantalla 10.
+
+### `sessions`
+
+**Diseñada en la 3.2** ([ADR 0012](../decisions/0012-mecanismo-de-sesion.md)); se crea con su migración en la 3.3. Módulo dueño: `auth`.
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | text PK | SHA-256 en hexadecimal del token de la cookie. El token nunca se guarda |
+| `user_id` | uuid FK → users, not null | `ON DELETE CASCADE`: la sesión depende del usuario y no tiene borrado lógico |
+| `created_at` | timestamptz not null default `now()` | base del tope absoluto de 30 días |
+| `expires_at` | timestamptz not null | deslizante de 7 días; se reescribe solo cuando queda menos de la mitad de la ventana |
+
+Sin `updated_at`: la única columna que cambia es `expires_at`, que ya registra la última renovación.
+
+Índices: la PK cubre la validación de cada request; `(user_id)` sirve para revocar todas las sesiones de un usuario (cambio de contraseña, desactivación) y para borrar sus sesiones expiradas al ingresar.
+
+Limpieza: una sesión expirada se borra al detectarla en la validación, y las expiradas del usuario se borran en su login. En el MVP no hay tarea programada.
 
 ### `clients`
 

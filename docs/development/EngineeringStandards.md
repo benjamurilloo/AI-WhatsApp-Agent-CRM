@@ -15,7 +15,7 @@
 | ORM / query builder | Drizzle ORM y Drizzle Kit | 0.45.x (0.45.2) y 0.31.x (0.31.10) | Drizzle 1.0: en rc.4. Prisma 7.10: paso de generación de cliente y mayor footprint |
 | Driver de PostgreSQL | `pg` (node-postgres) con `@types/pg` | 8.23.x ([brief-2.4](../decisions/brief-2.4-base-de-datos-local.md), D-1) | `postgres` 3.4 (postgres.js) |
 | Migraciones | SQL versionado, generado con Drizzle Kit | — | — |
-| Autenticación | Sesiones server-side propias o librería de sesiones madura | se decide en la 3.2 | Auth como servicio de terceros: descartado salvo ADR nuevo |
+| Autenticación | Sesiones server-side propias sobre `node:crypto` y `cookies` de Next.js, en tabla `sessions` de PostgreSQL ([ADR 0012](../decisions/0012-mecanismo-de-sesion.md)) | sin dependencia; hash de contraseñas se decide en la 3.3 | Better Auth, Auth.js, `iron-session` y Lucia (deprecada): descartadas en el ADR 0012. Auth como servicio de terceros: descartado salvo ADR nuevo |
 | Tests unitarios e integración | Vitest, con Vite como dependencia par | Vitest 5.0.x (Node `^22.12 \|\| ^24 \|\| >=26`); Vite 8.3.x | Jest |
 | Tipos | `@types/node`, `@types/react`, `@types/react-dom` | 24.x (la línea de Node 24, no el `latest` 22.x); 19.3.x | — |
 | Tests end-to-end | Playwright | 1.63.x | Cypress |

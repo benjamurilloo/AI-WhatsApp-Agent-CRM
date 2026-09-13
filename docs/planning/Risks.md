@@ -26,7 +26,6 @@ Toda entrada de este índice lleva fase límite. "Se ve más adelante" no es una
 | Política de retención de `messages` | [architecture/DataModel.md](../architecture/DataModel.md) | Fase 9 |
 | Pantalla para editar la zona horaria de la organización | [product/Screens.md](../product/Screens.md) | Diferida sin fecha; no bloquea el MVP porque el valor por defecto ya está fijado |
 | Versiones exactas del stack y aceptación del [ADR 0004](../decisions/0004-stack-tecnologico-propuesto.md) | [development/EngineeringStandards.md](../development/EngineeringStandards.md) | Subfase 2.2 |
-| Mecanismo de sesión (ADR pendiente) | [planning/Roadmap.md](Roadmap.md), Fase 3 | Subfase 3.2 |
 | Gestión de secretos | [architecture/SecurityModel.md](../architecture/SecurityModel.md) | Subfase 9.1 |
 | Frecuencia y prueba de restauración de backups | [architecture/Overview.md](../architecture/Overview.md) | Subfase 9.2 |
 | Validación de las personas contra el uso real | [product/Personas.md](../product/Personas.md) | Fase 9 |
@@ -44,6 +43,10 @@ Toda entrada de este índice lleva fase límite. "Se ve más adelante" no es una
 - Excepciones al stock negativo → no hay ([ADR 0008](../decisions/0008-stock-nunca-negativo.md)).
 - Repositorio remoto y proveedor de CI → GitHub privado con GitHub Actions ([ADR 0009](../decisions/0009-repositorio-remoto-github-y-ci.md)).
 - Quién puede ajustar stock → solo `admin`, como ya asumía FR-PROD-06.
+
+### Cerradas en la subfase 3.2 (2026-09-13)
+
+- Mecanismo de sesión → sesiones server-side propias en una tabla `sessions` de PostgreSQL, sin librería, con expiración deslizante de 7 días y tope de 30 ([ADR 0012](../decisions/0012-mecanismo-de-sesion.md)).
 
 ### Cerradas en la subfase 1.2 (2026-09-12)
 

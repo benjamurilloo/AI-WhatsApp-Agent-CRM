@@ -24,6 +24,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [0009](0009-repositorio-remoto-github-y-ci.md) | Repositorio remoto en GitHub privado y CI con GitHub Actions | aceptada |
 | [0010](0010-un-usuario-una-organizacion-en-el-mvp.md) | En el MVP un usuario pertenece a una sola organización | aceptada |
 | [0011](0011-lint-con-eslint-10-sin-eslint-config-next.md) | Lint con ESLint 10, sin `eslint-config-next` (supera al 0004 en el lint) | aceptada |
+| [0012](0012-mecanismo-de-sesion.md) | Sesiones server-side propias en PostgreSQL | aceptada |
 
 ## Briefs
 
@@ -38,6 +39,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-2.4](brief-2.4-base-de-datos-local.md) | 2.4 — Base de datos local | aprobado y cerrado el 2026-09-13 |
 | [brief-2.5](brief-2.5-pipeline-de-ci.md) | 2.5 — Pipeline de CI | aprobado y cerrado el 2026-09-13 |
 | [brief-3.1](brief-3.1-migraciones-de-identidad.md) | 3.1 — Migraciones de identidad | aprobado y cerrado el 2026-09-13 |
+| [brief-3.2](brief-3.2-adr-mecanismo-de-sesion.md) | 3.2 — ADR del mecanismo de sesión | aprobado y cerrado el 2026-09-13 |
 
 ## Plantilla
 

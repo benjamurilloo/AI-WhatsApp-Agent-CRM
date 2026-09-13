@@ -4,7 +4,13 @@
 
 ## Autenticación
 
-- Sesiones server-side (no JWT en localStorage): cookie de sesión `HttpOnly`, `Secure`, `SameSite=Lax`, con identificador de sesión opaco resuelto contra almacenamiento server-side (tabla `sessions` o store dedicado — a definir en Fase 3).
+- Sesiones server-side (no JWT en localStorage), propias y sin librería ([ADR 0012](../decisions/0012-mecanismo-de-sesion.md)):
+  - cookie `HttpOnly`, `SameSite=Lax`, `Path=/`, sin `Domain` y `Secure` con TLS (`__Host-crm_session`; `crm_session` en desarrollo sin TLS), con un token aleatorio de 32 bytes;
+  - tabla `sessions` en PostgreSQL que guarda el SHA-256 del token, nunca el token ([DataModel.md](DataModel.md));
+  - expiración deslizante de 7 días con tope absoluto de 30;
+  - en cada request se leen de la base el usuario, su organización, su rol, `is_active` y `must_change_password`; un usuario inactivo o sin membresía no tiene sesión válida;
+  - cambiar la contraseña o desactivar al usuario revoca todas sus sesiones, y cada ingreso crea una sesión nueva;
+  - con `must_change_password` en `true` solo se permite cambiar la contraseña y cerrar sesión.
 - Contraseñas con hashing lento y sal (argon2id preferido; bcrypt como alternativa aceptable).
 - Cierre de sesión invalida la sesión server-side, no solo borra la cookie del cliente.
 - Rate limiting en el endpoint de login (por IP y por cuenta) para mitigar fuerza bruta.
@@ -17,7 +23,7 @@
 
 ## Protección de la aplicación web
 
-- **CSRF**: tokens de doble envío o dependencia de `SameSite` cookies + verificación de origen (`Origin`/`Referer`) en mutaciones, según lo que el framework elegido soporte nativamente (a confirmar en Fase 2/3 con el stack final).
+- **CSRF** ([ADR 0012](../decisions/0012-mecanismo-de-sesion.md)): cookie `SameSite=Lax` más verificación de origen, sin tokens de doble envío. Las mutaciones de la UI usan Server Actions, que en Next.js 16.3 solo aceptan `POST` y rechazan un `Origin` distinto del `Host`. Todo Route Handler que modifique datos verifica `Origin` explícitamente. `proxy` solo hace redirecciones optimistas; la verificación real de sesión ocurre en cada página, acción y handler protegido.
 - **XSS**: escape automático de la capa de renderizado (evitar `dangerouslySetInnerHTML` o equivalentes sin sanitización), Content-Security-Policy restrictiva.
 - **Validación de entradas**: todo input de usuario se valida con un esquema explícito (tipo, longitud, formato) antes de tocar la capa de dominio; rechazo explícito, no coerción silenciosa.
 - **Rate limiting en ingestión**: el futuro endpoint de ingestión (no conectado a tráfico real en el MVP) debe diseñarse con límite de tasa por credencial de servicio desde el inicio, para no ser una tarea añadida tarde.

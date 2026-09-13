@@ -2,6 +2,40 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-13 — Subfase 3.2 cerrada (ADR del mecanismo de sesión)
+
+**Certifica:**
+
+- **[ADR 0012](docs/decisions/0012-mecanismo-de-sesion.md) aceptado**: sesiones server-side propias sobre `node:crypto` y `cookies` de Next.js, sin dependencias.
+  - **Almacenamiento**: tabla `sessions` en PostgreSQL con el SHA-256 de un token de 32 bytes; el token nunca se guarda.
+  - **Expiración**: deslizante de 7 días, renovada a mitad de ventana, con tope absoluto de 30.
+  - **Validación**: en cada request se leen de la base rol, organización, `is_active` y `must_change_password`.
+  - **Revocación**: todas las sesiones al cambiar la contraseña o desactivar al usuario; sesión nueva en cada ingreso.
+  - **`must_change_password`**: restringido en la validación.
+  - **Cookie y CSRF**: `HttpOnly`, `SameSite=Lax` y `Secure` con TLS; Server Actions más verificación de `Origin` en Route Handlers mutantes; `proxy` solo optimista.
+- **Decisiones D-1 a D-6 del [brief-3.2](docs/decisions/brief-3.2-adr-mecanismo-de-sesion.md)** resueltas según la recomendación.
+- **Verificación de fuentes (2026-09-13)**:
+  - guía de autenticación, `proxy` y seguridad de datos de Next.js 16.3;
+  - registro npm: `lucia` y `@oslojs/crypto` deprecados, Auth.js v5 en beta, Better Auth 1.7.4 con esquema propio;
+  - `crypto.argon2` nativo en Node 24.15, sin avisos.
+- **Documentación**:
+  - `sessions` diseñada en DataModel;
+  - SecurityModel sin "a definir" y con la política CSRF;
+  - fila Autenticación de EngineeringStandards;
+  - pregunta abierta cerrada en Risks;
+  - 9 casos obligatorios de sesión en TestingStrategy.
+- **Contraste sin contradicciones** con SecurityModel, NonFunctionalRequirements, DataModel, Overview, ADR 0010 y el wireframe 01.
+- **Notion**: tarea 3.2 con descripción corregida (sin organización activa).
+- Enlaces internos verificados: 0 rotos.
+- **Nivel alcanzado: diseñado.**
+
+**No certifica:**
+
+- **Implementación y validación de la sesión**: 3.3 (crear, validar, renovar, revocar y migración de `sessions`) y 3.4 (contexto autenticado, `must_change_password`, `Origin`).
+- **Hash de contraseñas y rate limit**: se deciden en la 3.3. La estabilidad declarada de `crypto.argon2` sigue sin verificar.
+- **Que Route Handlers no verifiquen `Origin` por su cuenta**: es una inferencia de la documentación, no una prueba.
+- **Revisión independiente**: es autoevaluación del mismo agente. El usuario aprobó el brief y el cierre.
+
 ## 2026-09-13 — Subfase 3.1 cerrada (Migraciones de identidad)
 
 **Certifica:**

@@ -21,6 +21,16 @@
   - `conversations.started_at` coincide con el `sent_at` del primer mensaje.
   - Después de cada ajuste, `balance_after` del movimiento es igual a `inventories.quantity_on_hand` del producto.
   - Un usuario con `must_change_password = true` no accede a ninguna ruta protegida hasta definir una nueva contraseña.
+  - Sesiones ([ADR 0012](../decisions/0012-mecanismo-de-sesion.md)), en la 3.3 y la 3.4:
+    - el cierre de sesión borra la fila en `sessions`, y reenviar la cookie anterior da `UNAUTHENTICATED`;
+    - una sesión con `expires_at` vencido, o con más de 30 días desde `created_at`, se rechaza aunque la cookie siga presente;
+    - un token manipulado, inexistente o con otro formato se rechaza sin distinguir la causa;
+    - la base guarda solo el hash: ninguna fila de `sessions` contiene el token de la cookie;
+    - cambiar la contraseña invalida todas las demás sesiones del usuario;
+    - un usuario desactivado o sin membresía recibe `UNAUTHENTICATED` en el request siguiente, sin revocación previa;
+    - un cambio de rol rige en el request siguiente;
+    - cada ingreso crea una sesión nueva, distinta de cualquier cookie previa;
+    - un Route Handler mutante rechaza un `Origin` ajeno.
   - `organization_members` rechaza una segunda membresía del mismo usuario, y quitar el rol o desactivar al último `admin` de la organización se rechaza con `BUSINESS_RULE_VIOLATION` ([ADR 0010](../decisions/0010-un-usuario-una-organizacion-en-el-mvp.md)).
   - Un ajuste que dejaría el stock negativo se rechaza con `BUSINESS_RULE_VIOLATION`, sin modificar `quantity_on_hand` y sin registrar ningún movimiento en `inventory_movements` ([ADR 0008](../decisions/0008-stock-nunca-negativo.md)).
   - Una métrica calculada sobre un intervalo que cruza un cambio de horario de verano en `America/Argentina/Buenos_Aires` (con una fecha histórica, porque la zona lo tuvo hasta 2009) da el valor calculado a mano, con días de 23 o 25 horas ([MetricsCatalog.md](../analytics/MetricsCatalog.md)).
