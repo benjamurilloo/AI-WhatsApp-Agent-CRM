@@ -29,7 +29,14 @@ export type AuthFailure =
   | Failure<"VALIDATION_ERROR">
   | Failure<"RATE_LIMITED", { retryAfterSeconds: number }>;
 
-export type SessionIssued = { ok: true; token: string; expiresAt: Date };
+// expiresAt es el de la base (ventana deslizante); la cookie vence en el tope absoluto
+// de la sesión y no se reescribe al renovar (brief-3.5, D-5).
+export type SessionIssued = {
+  ok: true;
+  token: string;
+  expiresAt: Date;
+  cookieExpiresAt: Date;
+};
 
 export type AuthenticatedUser = {
   userId: string;
@@ -39,6 +46,7 @@ export type AuthenticatedUser = {
 
 const unauthenticated = { ok: false, code: "UNAUTHENTICATED" } as const;
 const validationError = { ok: false, code: "VALIDATION_ERROR" } as const;
+const forbidden = { ok: false, code: "FORBIDDEN" } as const;
 
 const loginInput = z.object({
   email: z.email().max(254),
@@ -49,11 +57,27 @@ function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-async function issueSession(userId: string, now: Date): Promise<SessionIssued> {
+// created_at se fija acá para que el vencimiento de la cookie coincida con el tope absoluto.
+function newSession(now: Date) {
   const token = randomBytes(32).toString("base64url");
-  const expiresAt = new Date(now.getTime() + SESSION_TTL_MS);
-  await repository.insertSession({ id: sha256(token), userId, expiresAt });
-  return { ok: true, token, expiresAt };
+  const row = {
+    id: sha256(token),
+    createdAt: now,
+    expiresAt: new Date(now.getTime() + SESSION_TTL_MS),
+  };
+  const issued: SessionIssued = {
+    ok: true,
+    token,
+    expiresAt: row.expiresAt,
+    cookieExpiresAt: new Date(now.getTime() + SESSION_MAX_AGE_MS),
+  };
+  return { row, issued };
+}
+
+async function issueSession(userId: string, now: Date): Promise<SessionIssued> {
+  const { row, issued } = newSession(now);
+  await repository.insertSession({ ...row, userId });
+  return issued;
 }
 
 async function rateLimited(
@@ -186,15 +210,37 @@ export async function changePassword(input: {
     return unauthenticated;
   }
 
-  const now = new Date();
-  const token = randomBytes(32).toString("base64url");
-  const expiresAt = new Date(now.getTime() + SESSION_TTL_MS);
+  const { row, issued } = newSession(new Date());
   await repository.replacePasswordAndSessions(
     user.id,
     await hashPassword(parsedNew.data),
-    { id: sha256(token), expiresAt },
+    row,
   );
-  return { ok: true, token, expiresAt };
+  return issued;
+}
+
+// Cambio obligatorio del primer ingreso (brief-3.5, D-4). La sesión recién emitida prueba la
+// identidad, así que no se pide la contraseña inicial. Solo actúa mientras must_change_password
+// siga en true en la base; la condición se repite dentro de la transacción.
+export async function completeRequiredPasswordChange(input: {
+  token: string | null | undefined;
+  newPassword: string;
+}): Promise<SessionIssued | AuthFailure | Failure<"FORBIDDEN">> {
+  const user = await validateSession(input.token);
+  if (!user) return unauthenticated;
+  if (!user.mustChangePassword) return forbidden;
+
+  const parsedNew = passwordSchema.safeParse(input.newPassword);
+  if (!parsedNew.success) return validationError;
+
+  const { row, issued } = newSession(new Date());
+  const changed = await repository.replacePasswordAndSessions(
+    user.userId,
+    await hashPassword(parsedNew.data),
+    row,
+    { onlyIfMustChangePassword: true },
+  );
+  return changed ? issued : forbidden;
 }
 
 export async function revokeUserSessions(userId: string): Promise<void> {

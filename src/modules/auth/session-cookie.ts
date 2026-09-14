@@ -56,9 +56,19 @@ export async function writeSessionCookie(
   );
 }
 
+// El borrado repite Secure y Path=/: sin ellos el navegador rechaza el Set-Cookie de una cookie
+// __Host- y la conserva (detectado en el end-to-end de la 3.5).
 export async function deleteSessionCookie(): Promise<void> {
+  const secure = isSecureEnvironment();
+  const { httpOnly, sameSite, path } = sessionCookieOptions(new Date(), secure);
   const store = await cookies();
-  store.delete(sessionCookieName(isSecureEnvironment()));
+  store.delete({
+    name: sessionCookieName(secure),
+    httpOnly,
+    sameSite,
+    path,
+    secure,
+  });
 }
 
 export async function requestClientIp(): Promise<string | null> {

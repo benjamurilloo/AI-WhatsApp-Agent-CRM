@@ -79,3 +79,10 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      # End-to-end sobre next start y una base <nombre>_e2e (brief-3.5, D-8).
+      - name: Instalar Chromium de Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Tests end-to-end (Chromium)
+        run: npm run test:e2e

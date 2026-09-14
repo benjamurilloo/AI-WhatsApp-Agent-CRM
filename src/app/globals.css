@@ -1,0 +1,6 @@
+/* Tailwind CSS 4 (brief-3.5, D-2). Sus breakpoints sm (640 px) y lg (1024 px) son los de Screens.md. */
+@import "tailwindcss";
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+}

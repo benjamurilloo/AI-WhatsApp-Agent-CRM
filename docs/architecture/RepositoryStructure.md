@@ -1,6 +1,6 @@
 # Estructura del repositorio
 
-**Estado: diseñado, con lo de la 2.3 y la 2.4 implementado.** Existen `docs/`, la configuración de la 2.3 y `src/app/` con layout y página. La 2.4 agregó Docker Compose, `drizzle.config.ts`, `src/shared/db/`, `/api/health` y `tests/integration/`; la 2.5, `.github/workflows/ci.yml` y `tests/guards/`; la 3.1, los `schema.ts` de `auth` y `organizations`, `drizzle/` con la migración inicial y la base de test de `tests/integration/`. El resto se crea en las subfases que indica la tabla final. Resuelta en la subfase 2.1 ([brief-2.1](../decisions/brief-2.1-estructura-del-repositorio.md)) sobre el stack del [ADR 0004](../decisions/0004-stack-tecnologico-propuesto.md).
+**Estado: diseñado, con lo de la 2.3 y la 2.4 implementado.** Existen `docs/`, la configuración de la 2.3 y `src/app/` con layout y página. La 2.4 agregó Docker Compose, `drizzle.config.ts`, `src/shared/db/`, `/api/health` y `tests/integration/`; la 2.5, `.github/workflows/ci.yml` y `tests/guards/`; la 3.1, los `schema.ts` de `auth` y `organizations`, `drizzle/` con la migración inicial y la base de test de `tests/integration/`; la 3.3 a la 3.6, los módulos `auth`, `organizations` y `audit` y `src/shared/errors/`; la 3.5, las rutas de ingreso, `src/shared/log/`, `seeds/`, `tests/e2e/`, `playwright.config.ts` y `postcss.config.mjs`. El resto se crea en las subfases que indica la tabla final. Resuelta en la subfase 2.1 ([brief-2.1](../decisions/brief-2.1-estructura-del-repositorio.md)) sobre el stack del [ADR 0004](../decisions/0004-stack-tecnologico-propuesto.md).
 
 Ubica en carpetas los módulos y las reglas de dependencia de [Overview.md](Overview.md). No los cambia: si este documento y Overview se contradicen, manda Overview y la discrepancia se corrige aquí.
 
@@ -11,7 +11,12 @@ Ubica en carpetas los módulos y las reglas de dependencia de [Overview.md](Over
 ├── src/
 │   ├── app/                         Rutas de Next.js: páginas, layouts y route handlers delgados
 │   │   ├── layout.tsx
-│   │   ├── page.tsx
+│   │   ├── globals.css              Tailwind CSS (3.5)
+│   │   ├── page.tsx                 / protegida provisional con cierre de sesión (3.5)
+│   │   ├── login/                   Pantalla 1: página, formulario y Server Action (3.5)
+│   │   ├── cambiar-contrasena/      Cambio obligatorio de contraseña (3.5)
+│   │   ├── _auth/                   Helper de sesión y redirecciones, mensajes, cierre de sesión (3.5)
+│   │   ├── _components/             Componentes compartidos de pantalla (3.5)
 │   │   └── api/
 │   │       └── health/
 │   │           └── route.ts         GET /api/health
@@ -24,20 +29,24 @@ Ubica en carpetas los módulos y las reglas de dependencia de [Overview.md](Over
 │   │       ├── types.ts
 │   │       └── *.test.ts            Tests unitarios, junto al código
 │   └── shared/
-│       └── db/                      Cliente de Drizzle, conexión y health check de la base
-│           ├── index.ts             Interfaz pública: createDb, getDb, checkDatabase
-│           ├── client.ts
-│           └── health.ts
+│       ├── db/                      Cliente de Drizzle, conexión y health check de la base
+│       │   ├── index.ts             Interfaz pública: createDb, getDb, checkDatabase
+│       │   ├── client.ts
+│       │   └── health.ts
+│       ├── errors/                  Taxonomía de errores (3.4)
+│       └── log/                     Log estructurado JSON con request_id (3.5)
 ├── drizzle/                         Migraciones SQL generadas por Drizzle Kit (versionadas)
-├── seeds/                           Seeds sintéticos: básico y volumen
+├── seeds/                           Seeds sintéticos: basic.ts (3.5); volumen, más adelante
 ├── tests/
 │   ├── guards/                      Guardas sin base: referencias prohibidas y frontera entre módulos
 │   ├── integration/                 Contra PostgreSQL real, en la base <nombre>_test
 │   │   ├── global-setup.ts          Recrea y migra la base de test en cada ejecución (3.1)
-│   │   ├── test-database.ts         Deriva la URL de la base de test desde DATABASE_URL
+│   │   ├── test-database.ts         Deriva las URL de las bases _test y _e2e desde DATABASE_URL
 │   │   ├── reset-database.ts        Vacía las tablas antes de cada test
-│   │   └── *.test.ts                db-connectivity (2.4), identity-schema (3.1)
-│   └── e2e/                         Playwright sobre las pantallas
+│   │   └── *.test.ts                db-connectivity (2.4), identity-schema (3.1) y siguientes
+│   └── e2e/                         Playwright sobre las pantallas, en la base <nombre>_e2e (3.5)
+│       ├── global-setup.ts          Recrea, migra y siembra la base de e2e
+│       └── *.spec.ts                login (3.5)
 ├── .github/
 │   └── workflows/
 │       └── ci.yml                   CI de GitHub Actions
@@ -49,7 +58,8 @@ Ubica en carpetas los módulos y las reglas de dependencia de [Overview.md](Over
 ├── prettier.config.mjs
 ├── .prettierignore                  Excluye Markdown y generados
 ├── vitest.config.mts                Proyectos: unitario, guardas e integración
-├── playwright.config.ts
+├── playwright.config.ts             Chromium sobre next start (3.5)
+├── postcss.config.mjs               Plugin de Tailwind CSS (3.5)
 ├── drizzle.config.ts                schema: src/modules/*/schema.ts · out: drizzle
 ├── docker-compose.yml               Solo PostgreSQL local
 └── .env.example                     Sin valores reales
@@ -86,12 +96,15 @@ No hay otros módulos. Uno nuevo requiere primero cambiar la tabla de [Overview.
 - `src/app/` contiene páginas, layouts y `route.ts`. Una página o un handler obtiene la sesión, llama a la interfaz pública de uno o más módulos y traduce los errores tipados a código HTTP o a mensaje visible.
 - Ningún archivo de `src/app/` ejecuta SQL ni importa `repository.ts` o `schema.ts`.
 - `/api/health` es infraestructura, no dominio: su handler llama al health check de `src/shared/db/`.
+- Las carpetas con guion bajo (`_auth/`, `_components/`) son privadas de Next.js: no crean rutas. Guardan lo que comparten varias pantallas (3.5).
+- Un componente de cliente no importa `@/modules/*`: recibe datos y estado ya resueltos por la página o la Server Action.
 
 ### Código compartido
 
 - `src/shared/db/` es la única carpeta compartida fijada en esta estructura: cliente de Drizzle, conexión y health check.
 - `src/shared/errors/` (3.4) contiene la taxonomía de errores de Overview: códigos, HTTP por código y tipo `Failure`.
-- Ubicaciones fijadas en la 3.4 (D-5), que nacen con su primer consumidor: `src/shared/log/` para el log estructurado con `request_id` (3.5) y `src/shared/http/` para la verificación de `Origin` del primer Route Handler mutante.
+- `src/shared/log/` (3.5) contiene el log estructurado con `request_id`.
+- Ubicación fijada en la 3.4 (D-5), que nace con su primer consumidor: `src/shared/http/` para la verificación de `Origin` del primer Route Handler mutante.
 - `src/shared/` no importa nada de `src/modules/`, para no crear ciclos.
 
 ## Frontera entre módulos
@@ -136,7 +149,8 @@ Ninguna carpeta se crea vacía: nace con el primer archivo real de la subfase qu
 | 3.3 — Autenticación | En `src/modules/auth/`: `index.ts`, `service.ts`, `repository.ts`, `password.ts` (argon2id y política), `session-cookie.ts` (cookie e IP) y sus tests unitarios; `sessions` y `login_attempts` en `schema.ts`; `drizzle/0001_*`; `tests/integration/auth-service.test.ts` |
 | 3.4 — Autorización y taxonomía de errores | `src/shared/errors/`; en `src/modules/organizations/`: `index.ts`, `service.ts` (`getAuthContext`, `authorize`, `getMember`), `repository.ts` y su test unitario; `tests/integration/authorization.test.ts` |
 | 3.6 — Módulo de auditoría | En `src/modules/audit/`: `schema.ts` (`audit_logs`), `repository.ts`, `service.ts` (`recordAudit`), `index.ts` y su test unitario; el tipo `DbTransaction` en `src/shared/db/`; `drizzle/0002_*` y `drizzle/0003_*` (rol `crm_app`, privilegios y trigger); `tests/integration/audit.test.ts` |
-| Resto de la Fase 3 | `seeds/` con el seed básico; `src/shared/log/`; `playwright.config.ts` y `tests/e2e/` con el login |
+| 3.5 — Pantalla de inicio de sesión | `postcss.config.mjs` y `src/app/globals.css`; `src/app/login/`, `src/app/cambiar-contrasena/`, `src/app/_auth/` y `src/app/_components/`; `/` protegida provisional; `src/shared/log/`; `seeds/basic.ts`; `playwright.config.ts` y `tests/e2e/`; `tests/integration/seed.test.ts` |
+| Resto de la Fase 3 | 3.7, según su brief |
 | Fase 4 | `src/modules/catalog/` e `inventory/` |
 | Fase 5 | `src/modules/crm/` |
 | Fase 6 | `src/modules/conversations/` e `ingestion/` |

@@ -1,6 +1,7 @@
-// Interfaz pública del módulo auth (brief-3.3).
+// Interfaz pública del módulo auth (brief-3.3; completeRequiredPasswordChange, brief-3.5).
 export {
   changePassword,
+  completeRequiredPasswordChange,
   login,
   logout,
   revokeUserSessions,

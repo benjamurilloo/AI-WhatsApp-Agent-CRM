@@ -11,6 +11,7 @@ import {
 } from "vitest";
 import {
   changePassword,
+  completeRequiredPasswordChange,
   hashPassword,
   login,
   logout,
@@ -365,6 +366,148 @@ describe("cambio de contraseña", () => {
         newPassword: "corta",
       }),
     ).resolves.toEqual({ ok: false, code: "VALIDATION_ERROR" });
+  });
+});
+
+describe("cambio obligatorio de contraseña (brief-3.5, D-4)", () => {
+  it("cambia la contraseña, apaga el flag, revoca las demás sesiones y emite una nueva", async () => {
+    const userId = await createUser("ana@example.com", {
+      mustChangePassword: true,
+    });
+    const first = await loginOk();
+    const second = await loginOk();
+
+    const result = await completeRequiredPasswordChange({
+      token: first.token,
+      newPassword: OTHER_PASSWORD,
+    });
+    if (!result.ok) throw new Error(`cambio rechazado: ${result.code}`);
+
+    await expect(validateSession(first.token)).resolves.toBeNull();
+    await expect(validateSession(second.token)).resolves.toBeNull();
+    await expect(validateSession(result.token)).resolves.toMatchObject({
+      userId,
+      mustChangePassword: false,
+    });
+    expect(await count(sql`select count(*)::int as count from sessions`)).toBe(
+      1,
+    );
+  });
+
+  it("la contraseña inicial deja de funcionar y la nueva sí", async () => {
+    await createUser("ana@example.com", { mustChangePassword: true });
+    const { token } = await loginOk();
+    await completeRequiredPasswordChange({
+      token,
+      newPassword: OTHER_PASSWORD,
+    });
+    await expect(
+      login({ email: "ana@example.com", password: PASSWORD, ip: IP }),
+    ).resolves.toEqual({ ok: false, code: "UNAUTHENTICATED" });
+    await expect(
+      loginOk("ana@example.com", OTHER_PASSWORD),
+    ).resolves.toMatchObject({ ok: true });
+  });
+
+  it("con el flag en false devuelve FORBIDDEN sin tocar nada", async () => {
+    await createUser();
+    const { token } = await loginOk();
+    await expect(
+      completeRequiredPasswordChange({ token, newPassword: OTHER_PASSWORD }),
+    ).resolves.toEqual({ ok: false, code: "FORBIDDEN" });
+    await expect(validateSession(token)).resolves.not.toBeNull();
+    await expect(loginOk()).resolves.toMatchObject({ ok: true });
+  });
+
+  it("no se puede usar dos veces: la sesión nueva ya no tiene el cambio pendiente", async () => {
+    await createUser("ana@example.com", { mustChangePassword: true });
+    const { token } = await loginOk();
+    const result = await completeRequiredPasswordChange({
+      token,
+      newPassword: OTHER_PASSWORD,
+    });
+    if (!result.ok) throw new Error(`cambio rechazado: ${result.code}`);
+    await expect(
+      completeRequiredPasswordChange({
+        token: result.token,
+        newPassword: "tercera-contraseña-larga",
+      }),
+    ).resolves.toEqual({ ok: false, code: "FORBIDDEN" });
+    await expect(
+      loginOk("ana@example.com", OTHER_PASSWORD),
+    ).resolves.toMatchObject({ ok: true });
+  });
+
+  it("con una sesión inválida devuelve UNAUTHENTICATED", async () => {
+    await createUser("ana@example.com", { mustChangePassword: true });
+    const { token } = await loginOk();
+    await logout(token);
+    for (const candidate of [undefined, null, "abc", token]) {
+      await expect(
+        completeRequiredPasswordChange({
+          token: candidate,
+          newPassword: OTHER_PASSWORD,
+        }),
+      ).resolves.toEqual({ ok: false, code: "UNAUTHENTICATED" });
+    }
+    await expect(loginOk()).resolves.toMatchObject({ ok: true });
+  });
+
+  it("una contraseña fuera de política devuelve VALIDATION_ERROR y el flag sigue en true", async () => {
+    await createUser("ana@example.com", { mustChangePassword: true });
+    const { token } = await loginOk();
+    await expect(
+      completeRequiredPasswordChange({ token, newPassword: "corta" }),
+    ).resolves.toEqual({ ok: false, code: "VALIDATION_ERROR" });
+    await expect(validateSession(token)).resolves.toMatchObject({
+      mustChangePassword: true,
+    });
+  });
+});
+
+describe("vencimiento de la cookie (brief-3.5, D-5)", () => {
+  async function absoluteCapMs(token: string) {
+    const result = await getDb().execute<{ cap: number }>(
+      sql`select (extract(epoch from created_at + interval '30 days') * 1000)::float8 as cap
+          from sessions where id = ${sha256(token)}`,
+    );
+    return result.rows[0]!.cap;
+  }
+
+  it("la cookie del ingreso vence en created_at + 30 días, después que la sesión", async () => {
+    await createUser();
+    const result = await loginOk();
+    expect(result.cookieExpiresAt.getTime()).toBe(
+      await absoluteCapMs(result.token),
+    );
+    expect(result.cookieExpiresAt.getTime()).toBeGreaterThan(
+      result.expiresAt.getTime(),
+    );
+  });
+
+  it("los cambios de contraseña emiten la cookie con el mismo tope", async () => {
+    const userId = await createUser("ana@example.com", {
+      mustChangePassword: true,
+    });
+    const { token } = await loginOk();
+    const required = await completeRequiredPasswordChange({
+      token,
+      newPassword: OTHER_PASSWORD,
+    });
+    if (!required.ok) throw new Error(`cambio rechazado: ${required.code}`);
+    expect(required.cookieExpiresAt.getTime()).toBe(
+      await absoluteCapMs(required.token),
+    );
+
+    const voluntary = await changePassword({
+      userId,
+      currentPassword: OTHER_PASSWORD,
+      newPassword: "tercera-contraseña-larga",
+    });
+    if (!voluntary.ok) throw new Error(`cambio rechazado: ${voluntary.code}`);
+    expect(voluntary.cookieExpiresAt.getTime()).toBe(
+      await absoluteCapMs(voluntary.token),
+    );
   });
 });
 

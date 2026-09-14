@@ -1,6 +1,6 @@
 # Estándares de Ingeniería
 
-**Estado: diseñado.** Stack re-verificado contra fuentes oficiales y el registro npm el 2026-09-12, en la subfase 2.2 ([brief-2.2](../decisions/brief-2.2-re-verificacion-del-stack.md), [ADR 0004](../decisions/0004-stack-tecnologico-propuesto.md)). Instalado en la 2.3 ([brief-2.3](../decisions/brief-2.3-bootstrap-de-la-aplicacion.md)); PostgreSQL, Drizzle y `pg`, en la 2.4 ([brief-2.4](../decisions/brief-2.4-base-de-datos-local.md)). Falta Playwright. Instalar no valida: sin tests todavía, el nivel es *implementado*.
+**Estado: diseñado.** Stack re-verificado contra fuentes oficiales y el registro npm el 2026-09-12, en la subfase 2.2 ([brief-2.2](../decisions/brief-2.2-re-verificacion-del-stack.md), [ADR 0004](../decisions/0004-stack-tecnologico-propuesto.md)). Instalado en la 2.3 ([brief-2.3](../decisions/brief-2.3-bootstrap-de-la-aplicacion.md)); PostgreSQL, Drizzle y `pg`, en la 2.4 ([brief-2.4](../decisions/brief-2.4-base-de-datos-local.md)); Tailwind CSS, Playwright, `@axe-core/playwright` y `tsx`, en la 3.5 ([brief-3.5](../decisions/brief-3.5-pantalla-de-inicio-de-sesion.md)). Instalar no valida: sin tests todavía, el nivel es *implementado*.
 
 ## Stack
 
@@ -20,7 +20,10 @@
 | Validación de entradas | `zod`, convención para todos los módulos ([brief-3.3](../decisions/brief-3.3-autenticacion.md), D-6) | 4.6.x (4.6.4) | `valibot` 1.5; validadores a mano |
 | Tests unitarios e integración | Vitest, con Vite como dependencia par | Vitest 5.0.x (Node `^22.12 \|\| ^24 \|\| >=26`); Vite 8.3.x | Jest |
 | Tipos | `@types/node`, `@types/react`, `@types/react-dom` | 24.x (la línea de Node 24, no el `latest` 22.x); 19.3.x | — |
-| Tests end-to-end | Playwright | 1.63.x | Cypress |
+| Tests end-to-end | Playwright (`@playwright/test`), solo Chromium, sobre `next start` ([brief-3.5](../decisions/brief-3.5-pantalla-de-inicio-de-sesion.md), D-8) | 1.63.x (1.63.0) | Cypress |
+| Estilos | Tailwind CSS con `@tailwindcss/postcss`; CSS Modules para lo que no cubra ([brief-3.5](../decisions/brief-3.5-pantalla-de-inicio-de-sesion.md), D-2) | 4.3.x (4.3.3); sin `prettier-plugin-tailwindcss` | CSS Modules solos; librería de componentes |
+| Accesibilidad | `@axe-core/playwright` en los tests end-to-end, WCAG 2.x A y AA ([brief-3.5](../decisions/brief-3.5-pantalla-de-inicio-de-sesion.md), D-3) | 4.13.x (4.13.0) | `eslint-plugin-jsx-a11y` 6.10: solo ESLint 9. `eslint-plugin-jsx-a11y-x` 0.2: un mantenedor, en 0.x |
+| Scripts TypeScript | `tsx`, para `npm run db:seed` con el alias `@/` ([brief-3.5](../decisions/brief-3.5-pantalla-de-inicio-de-sesion.md), D-7) | 4.23.x (4.23.13; ya estaba en el lockfile por `drizzle-kit` y `vite`) | Node con type stripping: no resuelve `@/` |
 | Lint | ESLint 10 con `@eslint/js`, `typescript-eslint`, `@next/eslint-plugin-next` (`recommended` y `core-web-vitals`), `eslint-plugin-react-hooks` y `eslint-config-prettier` ([ADR 0011](../decisions/0011-lint-con-eslint-10-sin-eslint-config-next.md)) | ESLint 10.10; `@eslint/js` 10.0; `typescript-eslint` 8.70; `@next/eslint-plugin-next` 16.3; `eslint-plugin-react-hooks` 7.1 | `eslint-config-next`: sus plugins no soportan ESLint 10. Biome 2.5 |
 | Formateo | Prettier con `eslint-config-prettier` | 3.9.x | Biome |
 | Contenedores | Docker y Docker Compose, solo para PostgreSQL local | Imagen `postgres:18.6-trixie`, con versión menor y distribución fijadas ([brief-2.4](../decisions/brief-2.4-base-de-datos-local.md), D-5) | `postgres:18.6-alpine`: musl ordena distinto que glibc |
@@ -45,7 +48,8 @@ La versión exacta de cada paquete queda fijada en el lockfile al instalar (2.3)
 - Un módulo de dominio (`catalog`, `crm`, `conversations`, `inventory`, `analytics`, `auth`, `organizations`, `ingestion`, `audit`) = una carpeta `src/modules/<modulo>/` con `index.ts` (interfaz pública), `service.ts`, `repository.ts`, `schema.ts` (sus tablas) y `types.ts`; sin acceso cruzado salvo lo documentado en [architecture/Overview.md](../architecture/Overview.md). La estructura completa y la regla de lint que la hace cumplir están en [architecture/RepositoryStructure.md](../architecture/RepositoryStructure.md).
 - Lint con ESLint y formateo con Prettier, obligatorios en CI, sin excepciones por archivo salvo justificación explícita. Next.js 16 ya no corre el lint en `next build`: se ejecuta como script propio. Prettier no formatea Markdown (`.prettierignore`).
 - Typecheck estricto desde el primer commit: `strict`, `noUncheckedIndexedAccess` y `noImplicitOverride` en `tsconfig.json`.
-- Accesibilidad sin lint mientras `eslint-plugin-jsx-a11y` no soporte ESLint 10: se revisa antes de la primera pantalla (Fase 3).
+- Accesibilidad sin lint mientras `eslint-plugin-jsx-a11y` no soporte ESLint 10. La verifica axe sobre el DOM renderizado de cada estado de cada pantalla, más casos de teclado y foco en end-to-end ([brief-3.5](../decisions/brief-3.5-pantalla-de-inicio-de-sesion.md), D-3). El lint se revisa al abrir cada fase con pantallas y cuando el plugin soporte ESLint 10.
+- Un componente de cliente no importa módulos de `src/modules/`: arrastraría `pg` y `next/headers` al bundle del navegador.
 - Sin `any` implícito ni explícito salvo en límites de librería externa sin tipos, documentado con comentario.
 
 ## Control de versiones
@@ -68,6 +72,8 @@ La versión exacta de cada paquete queda fijada en el lockfile al instalar (2.3)
 7. `test:unit`: proyecto `unit` de Vitest, `src/**/*.test.ts` ([brief-3.4](../decisions/brief-3.4-autorizacion-y-errores.md); hasta la 3.3 no corría en CI)
 8. `test:integration`, contra un service container `postgres:18.6-trixie` efímero
 9. build
+10. instalar Chromium de Playwright con sus dependencias del sistema
+11. `test:e2e`: Playwright sobre `next start` del build anterior, en la base `crm_ci_e2e` ([brief-3.5](../decisions/brief-3.5-pantalla-de-inicio-de-sesion.md), D-8)
 
 - **Guardas** (`tests/guards/`, sin base de datos):
   - **referencias prohibidas**: Airtable o el repositorio del agente de WhatsApp en archivos versionados que no son `.md`;
@@ -77,7 +83,7 @@ La versión exacta de cada paquete queda fijada en el lockfile al instalar (2.3)
 - **Acciones fijadas por SHA de commit**, con la versión en un comentario. Actualizarlas es un cambio explícito.
 - **Permisos**: `contents: read`. Sin secrets: la base de CI es efímera y sus valores no son secretos.
 - **Sin protección de rama**: el plan gratuito de GitHub no la ofrece para repositorios privados. La CI informa pero no bloquea un push ni un merge. Por procedimiento, ninguna subfase se cierra sin verificar con `gh run view` que la ejecución de su commit está en verde. Se revisa si se suma otra persona al proyecto o antes de producción (Fase 9).
-- Los tests end-to-end, cuando existan, corren contra un entorno efímero con base de datos de test y seeds sintéticos, no contra staging compartido.
+- Los tests end-to-end corren contra un entorno efímero (el build de producción del runner, con la base `_e2e` recreada y sembrada con datos sintéticos), no contra staging compartido. Desde la 3.5.
 
 ## Fuentes consultadas (2026-09-12)
 

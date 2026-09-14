@@ -73,7 +73,7 @@ Reglas:
 Implementación ([brief-3.4](../decisions/brief-3.4-autorizacion-y-errores.md)):
 
 - **Taxonomía** en `src/shared/errors/`: `ErrorCode`, `HTTP_STATUS` y `Failure`. Los servicios devuelven resultados tipados (`{ ok: true, ... } | Failure`) y solo lanzan ante lo inesperado, que la capa HTTP o la UI traduce a `INTERNAL` (D-1).
-- **Log estructurado con `request_id`**: se ubica en `src/shared/log/` y se implementa en la 3.5, con la primera página y Server Action que registran errores (D-5).
+- **Log estructurado con `request_id`**: implementado en la 3.5 en `src/shared/log/` ([brief-3.5](../decisions/brief-3.5-pantalla-de-inicio-de-sesion.md), D-9). JSON a la salida estándar con nivel, `request_id`, ruta, código de resultado y `user_id`; de un error, solo tipo y código. Lo usan las Server Actions de ingreso, cambio de contraseña y cierre de sesión, y el `request_id` se muestra al usuario solo en errores inesperados. `organization_id` y duración todavía no se registran.
 - **Verificación de `Origin`** para Route Handlers mutantes: se ubica en `src/shared/http/` y se implementa con el primero que exista (D-5).
 
 ## Observabilidad (diseño)

@@ -10,7 +10,12 @@
   - expiración deslizante de 7 días con tope absoluto de 30;
   - en cada request se leen de la base el usuario, su organización, su rol, `is_active` y `must_change_password`; un usuario inactivo o sin membresía no tiene sesión válida;
   - cambiar la contraseña o desactivar al usuario revoca todas sus sesiones, y cada ingreso crea una sesión nueva;
-  - con `must_change_password` en `true` solo se permite cambiar la contraseña y cerrar sesión.
+  - con `must_change_password` en `true` solo se permite cambiar la contraseña y cerrar sesión;
+  - la cookie vence en el tope absoluto de la sesión (`created_at` + 30 días) y no se reescribe al renovar; la base decide la validez ([brief-3.5](../decisions/brief-3.5-pantalla-de-inicio-de-sesion.md), D-5, y nota del ADR 0012). Su borrado repite `Secure` y `Path=/`, que el prefijo `__Host-` exige.
+- Pantalla de ingreso ([brief-3.5](../decisions/brief-3.5-pantalla-de-inicio-de-sesion.md)), validada en integración con Playwright sobre `next start` y PostgreSQL real:
+  - credenciales incorrectas, email inexistente, usuario sin membresía y contraseña fuera de política en el ingreso muestran el mismo mensaje;
+  - el cambio obligatorio del primer ingreso usa `auth.completeRequiredPasswordChange`, que no pide la contraseña inicial y solo actúa mientras `must_change_password` siga en `true`, condición que repite dentro de la transacción (D-4);
+  - **limitación aceptada** (D-4): quien robe la sesión mientras el flag está en `true` puede definir la contraseña sin conocer la inicial. Esa sesión dura lo que tarda el primer ingreso, y la contraseña inicial es de un solo uso.
 - Contraseñas con argon2id (`m=19456`, `t=2`, `p=1`, mínimo de OWASP) en formato PHC, con `@node-rs/argon2` ([brief-3.3](../decisions/brief-3.3-autenticacion.md), D-1). Para un email inexistente se verifica igual contra un hash ficticio, para no revelar su existencia por tiempo de respuesta.
 - Política de contraseña: entre 12 y 128 caracteres, sin reglas de composición (D-5).
 - Cierre de sesión invalida la sesión server-side, no solo borra la cookie del cliente.
@@ -38,7 +43,7 @@
 
 ## Protección de la aplicación web
 
-- **CSRF** ([ADR 0012](../decisions/0012-mecanismo-de-sesion.md)): cookie `SameSite=Lax` más verificación de origen, sin tokens de doble envío. Las mutaciones de la UI usan Server Actions, que en Next.js 16.3 solo aceptan `POST` y rechazan un `Origin` distinto del `Host`. Todo Route Handler que modifique datos verifica `Origin` explícitamente. `proxy` solo hace redirecciones optimistas; la verificación real de sesión ocurre en cada página, acción y handler protegido.
+- **CSRF** ([ADR 0012](../decisions/0012-mecanismo-de-sesion.md)): cookie `SameSite=Lax` más verificación de origen, sin tokens de doble envío. Las mutaciones de la UI usan Server Actions, que en Next.js 16.3 solo aceptan `POST` y rechazan un `Origin` distinto del `Host`. Todo Route Handler que modifique datos verifica `Origin` explícitamente; hasta la 3.5 no existe ninguno. No hay `proxy` ([brief-3.5](../decisions/brief-3.5-pantalla-de-inicio-de-sesion.md), D-6): cada página y cada acción protegida validan la sesión contra la base. Se reevalúa cuando haya varias rutas protegidas (Fase 4), y aun entonces solo para redirecciones optimistas.
 - **XSS**: escape automático de la capa de renderizado (evitar `dangerouslySetInnerHTML` o equivalentes sin sanitización), Content-Security-Policy restrictiva.
 - **Validación de entradas**: todo input de usuario se valida con un esquema explícito (tipo, longitud, formato) antes de tocar la capa de dominio; rechazo explícito, no coerción silenciosa.
 - **Rate limiting en ingestión**: el futuro endpoint de ingestión (no conectado a tráfico real en el MVP) debe diseñarse con límite de tasa por credencial de servicio desde el inicio, para no ser una tarea añadida tarde.
@@ -53,6 +58,7 @@
 
 - Los logs de aplicación registran identificadores (`organization_id`, `user_id`, `request_id`, `entity_id`) y resultados de operación, nunca el cuerpo de mensajes de conversación ni datos personales innecesarios del cliente.
 - Los errores no exponen detalles internos (stack traces, queries SQL) al cliente; se registran en el log del servidor con un `request_id` correlacionable.
+- Implementación ([brief-3.5](../decisions/brief-3.5-pantalla-de-inicio-de-sesion.md), D-9): `src/shared/log/` escribe solo los campos de su evento (nivel, `request_id`, ruta, código de resultado y `user_id`). De un error registra el tipo y el código, nunca el mensaje, que puede traer datos del usuario. Un test unitario verifica que no aparecen la contraseña, el token ni el email usados.
 
 ## Auditoría
 

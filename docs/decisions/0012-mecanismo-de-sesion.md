@@ -73,6 +73,14 @@ Verificación del 2026-09-13 ([brief-3.2](brief-3.2-adr-mecanismo-de-sesion.md))
 >
 > La decisión de leer rol, organización y estado de la base en cada request no cambia.
 
+> **Nota del 2026-09-14 (subfase 3.5, [brief-3.5](brief-3.5-pantalla-de-inicio-de-sesion.md), D-5).** "Su vencimiento coincide con `expires_at`" no se puede sostener: Next.js 16.3 solo escribe cookies en Server Functions y Route Handlers, así que la renovación que ocurre al renderizar una página nunca llega a la cookie, y un usuario que solo navega la perdería a los 7 días del ingreso. Se corrige así:
+>
+> - la cookie vence en el tope absoluto de la sesión, `created_at` + 30 días, y no se reescribe al renovar;
+> - la validez real sigue en la base: ventana deslizante de 7 días, tope de 30 y revocación server-side. Una cookie que sobrevive a su sesión solo lleva un token que la base rechaza;
+> - borrar la cookie repite `Secure` y `Path=/`: sin ellos el navegador rechaza el borrado de una cookie `__Host-` y la conserva (hallazgo del end-to-end de la 3.5).
+>
+> `proxy` no se usa en la 3.5 (D-6): cada página y cada acción validan la sesión contra la base.
+
 ## Alternativas descartadas
 
 - **Cookie cifrada sin estado** (`iron-session`, `jose`): no permite invalidar una sesión en el servidor, y SecurityModel lo exige. Una cookie robada valdría hasta su expiración.

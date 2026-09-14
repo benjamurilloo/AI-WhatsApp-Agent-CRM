@@ -79,3 +79,29 @@ Desde la 3.1 los tests de integración usan una base separada, `<nombre de DATAB
 - El proyecto de integración de Vitest recibe esa URL como `DATABASE_URL`, así que la suite no escribe en la base de desarrollo.
 - Antes de cada test que escribe datos, `resetDatabase` vacía las tablas de `public`, y se niega a correr contra una base sin sufijo `_test`.
 - Los archivos de integración corren en serie.
+
+## Seed básico
+
+Desde la 3.5 ([brief-3.5](../decisions/brief-3.5-pantalla-de-inicio-de-sesion.md), D-7):
+
+| Acción | Comando |
+|---|---|
+| Sembrar la base de `DATABASE_URL` con datos sintéticos | `npm run db:seed` |
+
+- Crea una organización, `admin@example.com` (`admin`), `lectura@example.com` (`viewer`) y `nuevo@example.com` (`viewer`, con la contraseña pendiente de cambio). Todos usan la contraseña de `SEED_USER_PASSWORD` en `.env`.
+- Es idempotente: cada ejecución vuelve a dejar los mismos datos, incluidas las contraseñas y el cambio pendiente.
+- Se niega a correr si el nombre de la base no termina en `_dev`, `_test` o `_e2e`.
+- Requiere las migraciones aplicadas (`npm run db:migrate`).
+
+## Base de end-to-end
+
+Desde la 3.5 ([brief-3.5](../decisions/brief-3.5-pantalla-de-inicio-de-sesion.md), D-8) los tests de Playwright usan `<nombre de DATABASE_URL>_e2e` (`crm_dev_e2e` en local, `crm_ci_e2e` en CI), separada de la de integración para que `npm run test` y `npm run test:e2e` no se vacíen los datos entre sí:
+
+| Acción | Comando |
+|---|---|
+| Descargar Chromium de Playwright, una vez por máquina | `npx playwright install chromium` |
+| Correr los tests end-to-end | `npm run build` y después `npm run test:e2e` |
+
+- `tests/e2e/global-setup.ts` borra la base, la recrea, la migra y la siembra en cada ejecución. Cada test repone el seed y borra sesiones e intentos de ingreso.
+- Playwright levanta `next start` en el puerto 3100 con `DATABASE_URL` apuntando a esa base. Necesita un build previo.
+- `next start` corre en modo producción: la cookie es `__Host-crm_session` con `Secure`, que Chromium acepta sobre `http://localhost`.

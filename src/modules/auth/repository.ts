@@ -35,6 +35,7 @@ export async function findUserById(userId: string) {
 export async function insertSession(session: {
   id: string;
   userId: string;
+  createdAt: Date;
   expiresAt: Date;
 }): Promise<void> {
   await getDb().insert(sessions).values(session);
@@ -94,18 +95,27 @@ export async function deleteExpiredUserSessions(
 }
 
 // Cambia la contraseña y reemplaza todas las sesiones del usuario en una sola transacción.
+// Con onlyIfMustChangePassword no toca nada si el flag ya está en false (brief-3.5, D-4).
 export async function replacePasswordAndSessions(
   userId: string,
   passwordHash: string,
-  session: { id: string; expiresAt: Date },
-): Promise<void> {
-  await getDb().transaction(async (tx) => {
-    await tx
+  session: { id: string; createdAt: Date; expiresAt: Date },
+  options: { onlyIfMustChangePassword?: boolean } = {},
+): Promise<boolean> {
+  return getDb().transaction(async (tx) => {
+    const updated = await tx
       .update(users)
       .set({ passwordHash, mustChangePassword: false })
-      .where(eq(users.id, userId));
+      .where(
+        options.onlyIfMustChangePassword
+          ? and(eq(users.id, userId), eq(users.mustChangePassword, true))
+          : eq(users.id, userId),
+      )
+      .returning({ id: users.id });
+    if (updated.length === 0) return false;
     await tx.delete(sessions).where(eq(sessions.userId, userId));
     await tx.insert(sessions).values({ ...session, userId });
+    return true;
   });
 }
 

@@ -24,7 +24,7 @@
     - toda tabla de `public` tiene los privilegios esperados para `crm_app`, y el test demuestra que falla ante una tabla sin ellos.
   - `conversations.started_at` coincide con el `sent_at` del primer mensaje.
   - Después de cada ajuste, `balance_after` del movimiento es igual a `inventories.quantity_on_hand` del producto.
-  - Un usuario con `must_change_password = true` no accede a ninguna ruta protegida hasta definir una nueva contraseña.
+  - Un usuario con `must_change_password = true` no accede a ninguna ruta protegida hasta definir una nueva contraseña. Cubierto desde la 3.4 en el servicio (`authorize`) y desde la 3.5 de punta a punta (`tests/e2e/login.spec.ts`, caso 7); `completeRequiredPasswordChange` rechaza con `FORBIDDEN` cuando el flag ya está en `false` (`auth-service.test.ts`).
   - Sesiones ([ADR 0012](../decisions/0012-mecanismo-de-sesion.md)), en la 3.3 y la 3.4:
     - el cierre de sesión borra la fila en `sessions`, y reenviar la cookie anterior da `UNAUTHENTICATED`;
     - una sesión con `expires_at` vencido, o con más de 30 días desde `created_at`, se rechaza aunque la cookie siga presente;
@@ -48,18 +48,22 @@
 
 ### End-to-end
 - Playwright sobre las pantallas de [product/Screens.md](../product/Screens.md): como mínimo el camino feliz de cada pantalla y un caso de error o de estado vacío por pantalla.
+- Implementado desde la 3.5 ([brief-3.5](../decisions/brief-3.5-pantalla-de-inicio-de-sesion.md), D-8): Chromium sobre `next start`, contra la base `_e2e` sembrada, en local y en CI. Sin mocks: es la evidencia `producer-consumer` de UI ↔ Server Action ↔ servicio ↔ base.
+- Obligatorio en cada test de pantalla (D-3): `@axe-core/playwright` sin violaciones WCAG 2.x A ni AA en cada estado (vacío, error, carga bloqueada, éxito), foco al primer error y un recorrido completo solo con teclado.
+- Pantalla 1 cubierta en `tests/e2e/login.spec.ts`: ingreso y cookie, mismo mensaje para cuenta inexistente y contraseña incorrecta, email inválido, límite de intentos, redirecciones de FR-ORG-03, cambio obligatorio, cierre de sesión con reenvío de la cookie anterior, botón de mostrar contraseña, teclado, axe y móvil a 375 px.
+- Un `INTERNAL` real no se fuerza de punta a punta: el mensaje y el log se prueban con tests unitarios.
 
 ## Datos de prueba
 
 - Fixtures y seeds propios, sintéticos y versionados en el repo: seeds en `seeds/`, fixtures junto al test que los usa ([RepositoryStructure.md](../architecture/RepositoryStructure.md)). Ningún fixture usa datos reales ni provenientes de Airtable.
-- Un seed "básico" para desarrollo local (pocas filas, legible) y un seed "volumen" para probar paginación y rendimiento con más datos, ambos sintéticos.
+- Un seed "básico" para desarrollo local (pocas filas, legible) y un seed "volumen" para probar paginación y rendimiento con más datos, ambos sintéticos. El básico existe desde la 3.5 (`seeds/basic.ts`), con test de idempotencia y de rechazo de una base no permitida (`tests/integration/seed.test.ts`); el de volumen, todavía no.
 - Los fixtures de métricas incluyen bordes temporales: un mensaje cerca de la medianoche local que en UTC cae en otro día, y un día con cambio de horario.
 - Los payloads de ingestión del MVP se marcan en el propio fixture como **forma asumida, no verificada**, porque todavía no existe un emisor real. En el proyecto de integración se derivan de capturas reales del emisor, y recién ahí cuentan como evidencia de compatibilidad.
 - En staging, los datos de prueba se limpian por identidad exacta (IDs creados o diff contra un baseline), nunca por rango de fechas, y en orden hijo → padre.
 
 ## Qué bloquea un merge
 
-- Cualquier test unitario/integración roto.
+- Cualquier test unitario, de integración o end-to-end roto.
 - Cobertura de los invariantes críticos listados arriba (no se exige un % de cobertura arbitrario; se exige que estos invariantes específicos tengan test).
 - Lint y typecheck limpios.
 
