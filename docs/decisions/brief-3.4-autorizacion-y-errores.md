@@ -215,6 +215,8 @@ Brief aprobado por el usuario el **2026-09-14**. D-1 a D-5 se resolvieron el mis
 - **`auth` sin cambios de comportamiento**: solo cambió la declaración de `AuthFailure`. Sus 30 tests de integración y 14 unitarios pasan sin modificaciones.
 - **`sessionExpiresAt` en el contexto**: `getAuthContext` lo expone para que la 3.5 reescriba la cookie tras la renovación. Esta subfase no lo usa.
 
+Subfase **cerrada el 2026-09-14** con confirmación del usuario. Nivel alcanzado: *validado localmente y en CI* para el contexto autenticado, las guardas, el aislamiento en `organization_members` y la taxonomía, a nivel de servicio. AC-1 a AC-12 están cumplidos; la CI del commit `800115c` quedó en verde en la ejecución 34852017994, con el paso de tests unitarios corriendo por primera vez. La evidencia está en [CHANGELOG.md](../../CHANGELOG.md).
+
 ## Invariantes
 
 - No hay referencias a Airtable ni al repositorio del agente de WhatsApp.

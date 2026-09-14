@@ -41,7 +41,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-3.1](brief-3.1-migraciones-de-identidad.md) | 3.1 — Migraciones de identidad | aprobado y cerrado el 2026-09-13 |
 | [brief-3.2](brief-3.2-adr-mecanismo-de-sesion.md) | 3.2 — ADR del mecanismo de sesión | aprobado y cerrado el 2026-09-13 |
 | [brief-3.3](brief-3.3-autenticacion.md) | 3.3 — Autenticación | aprobado y cerrado el 2026-09-13 |
-| [brief-3.4](brief-3.4-autorizacion-y-errores.md) | 3.4 — Autorización y taxonomía de errores | propuesto el 2026-09-14, pendiente de aprobación |
+| [brief-3.4](brief-3.4-autorizacion-y-errores.md) | 3.4 — Autorización y taxonomía de errores | aprobado y cerrado |
 
 ## Plantilla
 
