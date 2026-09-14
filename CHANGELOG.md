@@ -2,6 +2,44 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-14 — Subfase 3.6 cerrada (Módulo de auditoría)
+
+**Certifica:**
+
+- **`audit_logs`**, según DataModel y el [brief-3.6](docs/decisions/brief-3.6-modulo-de-auditoria.md):
+  - enums completos de tipo de entidad y acción (D-1);
+  - claves foráneas `ON DELETE RESTRICT` hacia `organizations` y `users` (D-5);
+  - índice de historial por entidad;
+  - migración `drizzle/0002_audit_logs.sql`, generada y revisada como SQL.
+- **Solo inserción** según el [ADR 0013](docs/decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md), en `drizzle/0003_crm_app_role_and_audit_insert_only.sql`, la primera migración a medida:
+  - rol `crm_app` `NOLOGIN`, creado solo si no existe, con privilegios explícitos sobre las seis tablas;
+  - solo `SELECT` e `INSERT` sobre `audit_logs`;
+  - trigger que rechaza `UPDATE` y `DELETE` para cualquier rol, con `P0001`.
+- **Módulo `audit`** (`src/modules/audit/`), según D-3 y D-4:
+  - `recordAudit(tx, entry)` exige por tipo una transacción (`DbTransaction` en `src/shared/db/`);
+  - valida la entrada con `zod`: forma `{ before, after }`, claves prohibidas y un error que nombra campos sin valores.
+- **Tests contra PostgreSQL real**, cada invariante intentando violarlo:
+  - 18 de integración: esquema, `42501` para `crm_app`, trigger para el dueño, cobertura de privilegios con sus dos casos de fallo, tres casos de atomicidad, entrada inválida que revierte el cambio y prueba de tipo;
+  - 8 unitarios de validación de la entrada.
+- **Migraciones**: aplicadas dos veces a desarrollo sin cambios. El paso de desfase quedó limpio después de la migración a medida.
+- **Suite local**: `npm run test` pasa 123 de 123. Con la base detenida pasan typecheck, lint, 19 guardas, 27 unitarios y build.
+- **CI**: [34874433744](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/34874433744), commit `e240bea`, en verde con todos los pasos. Los tests de permisos pasaron en Linux, así que la migración creó el rol y `SET LOCAL ROLE` funcionó.
+- **Decisiones D-1 a D-5** resueltas según la recomendación; ADR 0013 aceptado.
+- **Documentación**:
+  - DataModel, SecurityModel (alineado con FR-AUD-01), TestingStrategy, Environments y RepositoryStructure;
+  - Overview, con la dependencia de esquema de `audit`;
+  - `ExecutionProtocol.md`, con la lista de cierre corregida en el Knowledge Capture del 2026-09-14.
+- **Nivel alcanzado: validado localmente y en CI** para el esquema de `audit_logs`, el rechazo de `UPDATE` y `DELETE` por permisos y por trigger, y la atomicidad de `recordAudit`.
+
+**No certifica:**
+
+- **Restricción en ejecución**: la aplicación sigue conectándose con el rol dueño, y `crm_app` solo se probó con `SET LOCAL ROLE`. La conexión con un rol con login llega en las Fases 8 y 9.
+- **`TRUNCATE` del dueño y trigger desactivado por un superusuario**: limitaciones aceptadas. Un test demuestra la primera.
+- **`CREATEROLE` en un servicio gestionado**: Fases 8 y 9.
+- **Productores reales**: el primero es la 3.7. Productos y stock llegan en la Fase 4, clientes en la 5 y conversaciones en la 6.
+- **Consulta del historial** (FR-AUD-02): pantallas 4 y 7.
+- **Revisión independiente**: es autoevaluación del mismo agente. El usuario aprobó el brief y el cierre.
+
 ## 2026-09-14 — Subfase 3.4 cerrada (Autorización y taxonomía de errores)
 
 **Certifica:**

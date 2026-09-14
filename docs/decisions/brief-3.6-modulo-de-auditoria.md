@@ -228,6 +228,8 @@ Brief aprobado por el usuario el **2026-09-14**. D-1 a D-5 se resolvieron el mis
 - **Formato antes de verificar**: por el aprendizaje de la 3.4, los archivos nuevos se formatearon con Prettier antes de correr typecheck y lint. La directiva `@ts-expect-error` del test de tipo quedó en su línea, y typecheck confirma que se usa.
 - **Aplicación en desarrollo**: las dos migraciones se aplicaron a `crm_dev` y una segunda aplicación no cambió nada (4 migraciones registradas). `information_schema.role_table_grants` muestra `INSERT` y `SELECT` sobre `audit_logs` y los cuatro privilegios sobre las otras cinco tablas. El trigger `audit_logs_insert_only` existe.
 
+Subfase **cerrada el 2026-09-14** con confirmación del usuario. Nivel alcanzado: *validado localmente y en CI* para el esquema de `audit_logs`, el rechazo de `UPDATE` y `DELETE` por permisos y por trigger, y la atomicidad de `recordAudit`. AC-1 a AC-13 están cumplidos. La CI del commit `e240bea` quedó en verde en la ejecución 34874433744, con el paso de desfase limpio. La evidencia está en [CHANGELOG.md](../../CHANGELOG.md).
+
 ## Invariantes
 
 - No hay referencias a Airtable ni al repositorio del agente de WhatsApp.

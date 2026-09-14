@@ -43,7 +43,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-3.2](brief-3.2-adr-mecanismo-de-sesion.md) | 3.2 — ADR del mecanismo de sesión | aprobado y cerrado el 2026-09-13 |
 | [brief-3.3](brief-3.3-autenticacion.md) | 3.3 — Autenticación | aprobado y cerrado el 2026-09-13 |
 | [brief-3.4](brief-3.4-autorizacion-y-errores.md) | 3.4 — Autorización y taxonomía de errores | aprobado y cerrado el 2026-09-14 |
-| [brief-3.6](brief-3.6-modulo-de-auditoria.md) | 3.6 — Módulo de auditoría | aprobado el 2026-09-14, en ejecución |
+| [brief-3.6](brief-3.6-modulo-de-auditoria.md) | 3.6 — Módulo de auditoría | aprobado y cerrado el 2026-09-14 |
 
 ## Plantilla
 
