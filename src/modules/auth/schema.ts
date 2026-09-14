@@ -1,6 +1,8 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  index,
+  pgEnum,
   pgTable,
   text,
   timestamp,
@@ -32,5 +34,46 @@ export const users = pgTable(
   // Email único sin distinguir mayúsculas, garantizado por la base (brief-3.1, D-5).
   (table) => [
     uniqueIndex("users_email_lower_unique").on(sql`lower(${table.email})`),
+  ],
+);
+
+// ADR 0012: el id es el SHA-256 del token de la cookie; el token nunca se guarda.
+export const sessions = pgTable(
+  "sessions",
+  {
+    id: text("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [index("sessions_user_id_idx").on(table.userId)],
+);
+
+// Límite de intentos de login: solo fallos, con la clave hasheada (brief-3.3, D-3).
+export const loginAttemptScope = pgEnum("login_attempt_scope", [
+  "account",
+  "ip",
+]);
+
+export const loginAttempts = pgTable(
+  "login_attempts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    scope: loginAttemptScope("scope").notNull(),
+    keyHash: text("key_hash").notNull(),
+    attemptedAt: timestamp("attempted_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("login_attempts_scope_key_attempted_idx").on(
+      table.scope,
+      table.keyHash,
+      table.attemptedAt,
+    ),
   ],
 );

@@ -1,6 +1,6 @@
 # Modelo de Datos
 
-**Estado: diseñado; `organizations`, `users` y `organization_members` implementadas y validadas localmente desde la 3.1** ([brief-3.1](../decisions/brief-3.1-migraciones-de-identidad.md)). La migración inicial está en `drizzle/`; el resto de las tablas sigue sin migración.
+**Estado: diseñado; `organizations`, `users` y `organization_members` implementadas y validadas localmente desde la 3.1** ([brief-3.1](../decisions/brief-3.1-migraciones-de-identidad.md)), **y `sessions` y `login_attempts` desde la 3.3** ([brief-3.3](../decisions/brief-3.3-autenticacion.md)). Las migraciones están en `drizzle/`; el resto de las tablas sigue sin migración.
 
 Convenciones fijadas en la 3.1, que siguen las tablas futuras salvo justificación:
 
@@ -86,7 +86,7 @@ erDiagram
 
 ### `sessions`
 
-**Diseñada en la 3.2** ([ADR 0012](../decisions/0012-mecanismo-de-sesion.md)); se crea con su migración en la 3.3. Módulo dueño: `auth`.
+**Diseñada en la 3.2** ([ADR 0012](../decisions/0012-mecanismo-de-sesion.md)) **e implementada en la 3.3** ([brief-3.3](../decisions/brief-3.3-autenticacion.md)), migración `drizzle/0001_*`. Módulo dueño: `auth`.
 
 | Columna | Tipo | Notas |
 |---|---|---|
@@ -100,6 +100,23 @@ Sin `updated_at`: la única columna que cambia es `expires_at`, que ya registra 
 Índices: la PK cubre la validación de cada request; `(user_id)` sirve para revocar todas las sesiones de un usuario (cambio de contraseña, desactivación) y para borrar sus sesiones expiradas al ingresar.
 
 Limpieza: una sesión expirada se borra al detectarla en la validación, y las expiradas del usuario se borran en su login. En el MVP no hay tarea programada.
+
+### `login_attempts`
+
+**Implementada en la 3.3** ([brief-3.3](../decisions/brief-3.3-autenticacion.md), D-3). Módulo dueño: `auth`. Registra solo intentos de login fallidos para el límite por cuenta y por IP de [SecurityModel.md](SecurityModel.md).
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | uuid PK | |
+| `scope` | `login_attempt_scope` enum(`account`,`ip`) not null | |
+| `key_hash` | text not null | SHA-256 del email en minúsculas o de la IP. Ni el email ni la IP se guardan en claro |
+| `attempted_at` | timestamptz not null default `now()` | |
+
+Sin `organization_id` ni FK a `users`: el intento es anterior a la autenticación, y un email inexistente se registra igual que uno existente para no revelar qué cuentas existen. No es una tabla de datos de negocio.
+
+Índice: `(scope, key_hash, attempted_at)` para contar los fallos de una clave dentro de la ventana de 15 minutos.
+
+Limpieza: en cada intento se borran los registros vencidos de esa clave; un login correcto borra los fallos de la cuenta.
 
 ### `clients`
 

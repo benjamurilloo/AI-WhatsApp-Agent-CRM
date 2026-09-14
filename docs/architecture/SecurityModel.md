@@ -11,9 +11,15 @@
   - en cada request se leen de la base el usuario, su organización, su rol, `is_active` y `must_change_password`; un usuario inactivo o sin membresía no tiene sesión válida;
   - cambiar la contraseña o desactivar al usuario revoca todas sus sesiones, y cada ingreso crea una sesión nueva;
   - con `must_change_password` en `true` solo se permite cambiar la contraseña y cerrar sesión.
-- Contraseñas con hashing lento y sal (argon2id preferido; bcrypt como alternativa aceptable).
+- Contraseñas con argon2id (`m=19456`, `t=2`, `p=1`, mínimo de OWASP) en formato PHC, con `@node-rs/argon2` ([brief-3.3](../decisions/brief-3.3-autenticacion.md), D-1). Para un email inexistente se verifica igual contra un hash ficticio, para no revelar su existencia por tiempo de respuesta.
+- Política de contraseña: entre 12 y 128 caracteres, sin reglas de composición (D-5).
 - Cierre de sesión invalida la sesión server-side, no solo borra la cookie del cliente.
-- Rate limiting en el endpoint de login (por IP y por cuenta) para mitigar fuerza bruta.
+- Límite de intentos de login por cuenta y por IP (D-3, tabla `login_attempts`):
+  - ventana deslizante de 15 minutos: 5 fallos por cuenta o 20 por IP devuelven `RATE_LIMITED` con el tiempo de espera;
+  - se evalúa antes de verificar la contraseña, y un email inexistente acumula igual que uno existente;
+  - un login correcto borra los fallos de la cuenta;
+  - la IP sale de la última entrada de `x-forwarded-for` solo con `TRUSTED_PROXY=true`; sin proxy de confianza todas las requests comparten una clave de IP (D-4). Que la IP sea la correcta depende del proxy del despliegue y se verifica en la Fase 8 o 9.
+  - **Limitación aceptada del MVP**: un atacante puede bloquear temporalmente la cuenta de otro usuario con 5 intentos cada 15 minutos.
 
 ## Autorización
 

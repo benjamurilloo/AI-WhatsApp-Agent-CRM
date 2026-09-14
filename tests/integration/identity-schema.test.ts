@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
@@ -52,23 +53,29 @@ describe("base de test", () => {
     expect(result.rows[0]?.name).toMatch(/_test$/);
   });
 
-  it("existen exactamente las tablas de identidad", async () => {
+  it("existen exactamente las tablas de identidad y de sesión", async () => {
     const result = await getDb().execute<{ tablename: string }>(
       sql`select tablename from pg_tables where schemaname = 'public' order by tablename`,
     );
     expect(result.rows.map((row) => row.tablename)).toEqual([
+      "login_attempts",
       "organization_members",
       "organizations",
+      "sessions",
       "users",
     ]);
   });
 
   it("aplicar las migraciones otra vez no hace nada", async () => {
+    const journal = JSON.parse(
+      readFileSync("drizzle/meta/_journal.json", "utf8"),
+    ) as { entries: unknown[] };
     await migrate(getDb(), { migrationsFolder: "drizzle" });
     const result = await getDb().execute<{ count: number }>(
       sql`select count(*)::int as count from drizzle.__drizzle_migrations`,
     );
-    expect(result.rows[0]?.count).toBe(1);
+    // Una fila por migración versionada, ni una más.
+    expect(result.rows[0]?.count).toBe(journal.entries.length);
   });
 
   it("un test escribe datos", async () => {

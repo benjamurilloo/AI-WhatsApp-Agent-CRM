@@ -44,6 +44,8 @@ Uso diario:
 
 Next.js, Vitest y Drizzle Kit leen `DATABASE_URL` de `.env`. En CI las variables llegan del entorno.
 
+`TRUSTED_PROXY` ([brief-3.3](../decisions/brief-3.3-autenticacion.md), D-4) indica si la aplicación corre detrás de un proxy propio que agrega la IP del cliente al final de `x-forwarded-for`. En desarrollo local va en `false` (o ausente): sin proxy, el límite de intentos por IP usa una única clave para todas las requests. Solo se pone en `true` en un entorno donde ese proxy exista.
+
 - `/api/health` responde 200 `{"status":"ok"}` o 503 `{"status":"unavailable"}`, sin detalles.
 - `npm run test` corre los tests de integración y **requiere la base levantada**.
 

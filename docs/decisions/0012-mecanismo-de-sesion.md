@@ -66,6 +66,13 @@ Verificación del 2026-09-13 ([brief-3.2](brief-3.2-adr-mecanismo-de-sesion.md))
 
 **`proxy`.** Opcional y solo optimista: redirigir a login si falta la cookie. Nunca es la única verificación: toda página, Server Action y Route Handler protegido valida la sesión contra la base.
 
+> **Nota del 2026-09-13 (subfase 3.3, [brief-3.3](brief-3.3-autenticacion.md), D-2).** "Una única consulta" contradecía a [Overview.md](../architecture/Overview.md): `organization_members` pertenece a `organizations`, y ningún módulo hace `JOIN` contra tablas ajenas fuera de `analytics`. La validación se hace con una consulta por módulo:
+>
+> - `auth` une `sessions` y `users`, y rechaza sesiones inválidas y usuarios inactivos;
+> - `organizations`, que depende de `auth`, resuelve la membresía y el rol (3.4).
+>
+> La decisión de leer rol, organización y estado de la base en cada request no cambia.
+
 ## Alternativas descartadas
 
 - **Cookie cifrada sin estado** (`iron-session`, `jose`): no permite invalidar una sesión en el servidor, y SecurityModel lo exige. Una cookie robada valdría hasta su expiración.
