@@ -198,7 +198,7 @@ test("caso 7: con must_change_password el ingreso exige definir la contraseña",
   await expect(page).toHaveURL("/");
 
   // La contraseña inicial ya no sirve; la nueva sí.
-  await page.getByRole("button", { name: "Cerrar sesión" }).click();
+  await page.getByRole("button", { name: "Salir" }).click();
   await expect(page).toHaveURL("/login");
   await submitLogin(page, NEW_USER, E2E_PASSWORD);
   await expect(page.getByText(CREDENTIALS)).toBeVisible();
@@ -215,7 +215,7 @@ test("caso 8: el cierre de sesión borra la cookie y la cookie anterior no recup
   const previous = await sessionCookie(page);
   expect(previous).toBeDefined();
 
-  await page.getByRole("button", { name: "Cerrar sesión" }).click();
+  await page.getByRole("button", { name: "Salir" }).click();
   await expect(page).toHaveURL("/login");
   expect(await sessionCookie(page)).toBeUndefined();
 

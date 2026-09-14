@@ -1,6 +1,6 @@
 # Estructura del repositorio
 
-**Estado: diseñado, con lo de la 2.3 y la 2.4 implementado.** Existen `docs/`, la configuración de la 2.3 y `src/app/` con layout y página. La 2.4 agregó Docker Compose, `drizzle.config.ts`, `src/shared/db/`, `/api/health` y `tests/integration/`; la 2.5, `.github/workflows/ci.yml` y `tests/guards/`; la 3.1, los `schema.ts` de `auth` y `organizations`, `drizzle/` con la migración inicial y la base de test de `tests/integration/`; la 3.3 a la 3.6, los módulos `auth`, `organizations` y `audit` y `src/shared/errors/`; la 3.5, las rutas de ingreso, `src/shared/log/`, `seeds/`, `tests/e2e/`, `playwright.config.ts` y `postcss.config.mjs`. El resto se crea en las subfases que indica la tabla final. Resuelta en la subfase 2.1 ([brief-2.1](../decisions/brief-2.1-estructura-del-repositorio.md)) sobre el stack del [ADR 0004](../decisions/0004-stack-tecnologico-propuesto.md).
+**Estado: diseñado, con lo de la 2.3 y la 2.4 implementado.** Existen `docs/`, la configuración de la 2.3 y `src/app/` con layout y página. La 2.4 agregó Docker Compose, `drizzle.config.ts`, `src/shared/db/`, `/api/health` y `tests/integration/`; la 2.5, `.github/workflows/ci.yml` y `tests/guards/`; la 3.1, los `schema.ts` de `auth` y `organizations`, `drizzle/` con la migración inicial y la base de test de `tests/integration/`; la 3.3 a la 3.6, los módulos `auth`, `organizations` y `audit` y `src/shared/errors/`; la 3.5, las rutas de ingreso, `src/shared/log/`, `seeds/`, `tests/e2e/`, `playwright.config.ts` y `postcss.config.mjs`; la 3.7, el grupo de rutas `(autenticado)/` con el marco común y la pantalla de usuarios. El resto se crea en las subfases que indica la tabla final. Resuelta en la subfase 2.1 ([brief-2.1](../decisions/brief-2.1-estructura-del-repositorio.md)) sobre el stack del [ADR 0004](../decisions/0004-stack-tecnologico-propuesto.md).
 
 Ubica en carpetas los módulos y las reglas de dependencia de [Overview.md](Overview.md). No los cambia: si este documento y Overview se contradicen, manda Overview y la discrepancia se corrige aquí.
 
@@ -12,11 +12,14 @@ Ubica en carpetas los módulos y las reglas de dependencia de [Overview.md](Over
 │   ├── app/                         Rutas de Next.js: páginas, layouts y route handlers delgados
 │   │   ├── layout.tsx
 │   │   ├── globals.css              Tailwind CSS (3.5)
-│   │   ├── page.tsx                 / protegida provisional con cierre de sesión (3.5)
+│   │   ├── (autenticado)/           Grupo de rutas con el marco común; no agrega segmento a la URL (3.7)
+│   │   │   ├── layout.tsx           Marco común: organización, usuario, navegación y salida
+│   │   │   ├── page.tsx             / protegida provisional (3.5)
+│   │   │   └── usuarios/            Pantalla 10: lista, nuevo/ y [memberId]/, acciones y mensajes (3.7)
 │   │   ├── login/                   Pantalla 1: página, formulario y Server Action (3.5)
 │   │   ├── cambiar-contrasena/      Cambio obligatorio de contraseña (3.5)
 │   │   ├── _auth/                   Helper de sesión y redirecciones, mensajes, cierre de sesión (3.5)
-│   │   ├── _components/             Componentes compartidos de pantalla (3.5)
+│   │   ├── _components/             Componentes compartidos de pantalla (3.5 y 3.7)
 │   │   └── api/
 │   │       └── health/
 │   │           └── route.ts         GET /api/health
@@ -46,7 +49,7 @@ Ubica en carpetas los módulos y las reglas de dependencia de [Overview.md](Over
 │   │   └── *.test.ts                db-connectivity (2.4), identity-schema (3.1) y siguientes
 │   └── e2e/                         Playwright sobre las pantallas, en la base <nombre>_e2e (3.5)
 │       ├── global-setup.ts          Recrea, migra y siembra la base de e2e
-│       └── *.spec.ts                login (3.5)
+│       └── *.spec.ts                login (3.5) y users (3.7)
 ├── .github/
 │   └── workflows/
 │       └── ci.yml                   CI de GitHub Actions
@@ -97,6 +100,7 @@ No hay otros módulos. Uno nuevo requiere primero cambiar la tabla de [Overview.
 - Ningún archivo de `src/app/` ejecuta SQL ni importa `repository.ts` o `schema.ts`.
 - `/api/health` es infraestructura, no dominio: su handler llama al health check de `src/shared/db/`.
 - Las carpetas con guion bajo (`_auth/`, `_components/`) son privadas de Next.js: no crean rutas. Guardan lo que comparten varias pantallas (3.5).
+- Las carpetas entre paréntesis, como `(autenticado)/`, son grupos de rutas: comparten un layout sin agregar un segmento a la URL. El layout del grupo muestra el marco común, pero no reemplaza la verificación de sesión de cada página y cada acción (3.7).
 - Un componente de cliente no importa `@/modules/*`: recibe datos y estado ya resueltos por la página o la Server Action.
 
 ### Código compartido
@@ -150,7 +154,7 @@ Ninguna carpeta se crea vacía: nace con el primer archivo real de la subfase qu
 | 3.4 — Autorización y taxonomía de errores | `src/shared/errors/`; en `src/modules/organizations/`: `index.ts`, `service.ts` (`getAuthContext`, `authorize`, `getMember`), `repository.ts` y su test unitario; `tests/integration/authorization.test.ts` |
 | 3.6 — Módulo de auditoría | En `src/modules/audit/`: `schema.ts` (`audit_logs`), `repository.ts`, `service.ts` (`recordAudit`), `index.ts` y su test unitario; el tipo `DbTransaction` en `src/shared/db/`; `drizzle/0002_*` y `drizzle/0003_*` (rol `crm_app`, privilegios y trigger); `tests/integration/audit.test.ts` |
 | 3.5 — Pantalla de inicio de sesión | `postcss.config.mjs` y `src/app/globals.css`; `src/app/login/`, `src/app/cambiar-contrasena/`, `src/app/_auth/` y `src/app/_components/`; `/` protegida provisional; `src/shared/log/`; `seeds/basic.ts`; `playwright.config.ts` y `tests/e2e/`; `tests/integration/seed.test.ts` |
-| Resto de la Fase 3 | 3.7, según su brief |
+| 3.7 — Gestión de usuarios y roles | `src/app/(autenticado)/` con el marco común (`layout.tsx`), `/` movida desde `src/app/page.tsx` y `usuarios/`; `app-nav.tsx`, `copy-button.tsx` y `page-notice.tsx` en `src/app/_components/`; casos de uso de miembros en `organizations` y funciones con transacción en `auth`; `src/modules/auth/initial-password.test.ts`; `tests/integration/members.test.ts` y `tests/e2e/users.spec.ts` |
 | Fase 4 | `src/modules/catalog/` e `inventory/` |
 | Fase 5 | `src/modules/crm/` |
 | Fase 6 | `src/modules/conversations/` e `ingestion/` |

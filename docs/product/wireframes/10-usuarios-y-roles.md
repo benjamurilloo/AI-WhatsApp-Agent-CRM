@@ -42,7 +42,7 @@ Solo `admin`. Un `viewer` no ve la entrada en la navegación y, si entra por URL
 ```text
 ┌─ Usuario creado ───────────────────────────────────────────┐
 │ Contraseña inicial de Pablo Díaz:                          │
-│   [ k7Q-2mX-9vR ]  [ Copiar ]                              │
+│   [ K7QM-2XJV-9RTP-4HWN ]  [ Copiar ]                      │
 │ No se volverá a mostrar. Deberá cambiarla al ingresar.     │
 │                                          [ Entendido ]     │
 └────────────────────────────────────────────────────────────┘
@@ -89,6 +89,8 @@ Desactivar pide confirmación explícita, igual que en las pantallas 4 y 7.
 ```
 
 Los diálogos de alta, contraseña inicial y edición ocupan la pantalla completa en móvil.
+
+**Implementación (3.7)**: los diálogos son páginas, `/usuarios/nuevo` y `/usuarios/[memberId]`, y la confirmación de desactivar es un segundo paso de la misma página ([brief-3.7](../../decisions/brief-3.7-gestion-de-usuarios-y-roles.md), D-6). La contraseña inicial tiene 16 caracteres en 4 grupos; el ejemplo original, de 11, no cumplía la política (D-5). Un `viewer` ve "No tenés permiso para ver esta página." sin datos (D-10).
 
 ## Datos
 

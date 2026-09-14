@@ -1,7 +1,9 @@
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
+import type { DbTransaction } from "@/shared/db";
 import type { Failure } from "@/shared/errors";
 import {
+  generateInitialPassword,
   hashPassword,
   passwordSchema,
   verifyAgainstDummy,
@@ -245,4 +247,83 @@ export async function completeRequiredPasswordChange(input: {
 
 export async function revokeUserSessions(userId: string): Promise<void> {
   await repository.deleteUserSessions(userId);
+}
+
+// Gestión de usuarios desde organizations (brief-3.7). Las escrituras exigen la transacción
+// del caso de uso que las llama (D-2); las lecturas la aceptan para ver sus propios cambios.
+
+export type UserSummary = {
+  id: string;
+  name: string;
+  email: string;
+  isActive: boolean;
+};
+
+export type NewUserField = "name" | "email";
+
+export type NewUser = { name: string; email: string };
+
+export const USER_NAME_MAX_LENGTH = 200;
+
+const newUserSchema = z.object({
+  name: z.string().trim().min(1).max(USER_NAME_MAX_LENGTH),
+  email: z.string().trim().toLowerCase().pipe(z.email().max(254)),
+});
+
+// Normaliza y valida antes de generar la contraseña: una entrada inválida no calcula un hash.
+export function validateNewUser(input: {
+  name: string;
+  email: string;
+}):
+  | { ok: true; user: NewUser }
+  | Failure<"VALIDATION_ERROR", { fields: NewUserField[] }> {
+  const parsed = newUserSchema.safeParse(input);
+  if (parsed.success) return { ok: true, user: parsed.data };
+  const fields = new Set<NewUserField>();
+  for (const issue of parsed.error.issues) {
+    if (issue.path[0] === "name" || issue.path[0] === "email") {
+      fields.add(issue.path[0]);
+    }
+  }
+  return {
+    ok: false,
+    code: "VALIDATION_ERROR",
+    fields: [...fields],
+  };
+}
+
+// La contraseña en claro se genera y se hashea fuera de la transacción, para no retener
+// el bloqueo de la organización durante argon2 (D-4 y D-5).
+export async function prepareInitialPassword(): Promise<{
+  initialPassword: string;
+  passwordHash: string;
+}> {
+  const initialPassword = generateInitialPassword();
+  return { initialPassword, passwordHash: await hashPassword(initialPassword) };
+}
+
+export async function createUserWithInitialPassword(
+  tx: DbTransaction,
+  user: NewUser & { passwordHash: string },
+): Promise<{ ok: true; userId: string } | Failure<"CONFLICT">> {
+  const created = await repository.insertUserWithInitialPassword(tx, user);
+  if (created === "email_taken") return { ok: false, code: "CONFLICT" };
+  return { ok: true, userId: created.id };
+}
+
+// Desactivar borra además todas las sesiones del usuario (ADR 0012).
+export async function setUserActive(
+  tx: DbTransaction,
+  userId: string,
+  isActive: boolean,
+): Promise<void> {
+  await repository.updateUserActive(tx, userId, isActive);
+  if (!isActive) await repository.deleteUserSessionsInTransaction(tx, userId);
+}
+
+export function getUserSummaries(
+  userIds: string[],
+  tx?: DbTransaction,
+): Promise<UserSummary[]> {
+  return repository.findUserSummaries(userIds, tx);
 }

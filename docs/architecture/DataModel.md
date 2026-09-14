@@ -85,6 +85,8 @@ erDiagram
 
 Índices: el `UNIQUE(user_id)` cubre el lookup de membresía en cada request; `(organization_id)` sirve la lista de usuarios de la pantalla 10.
 
+Regla del último `admin` (FR-ORG-02): una organización nunca queda sin un miembro `admin` con `users.is_active = true`. No es una constraint, porque depende de dos tablas de dos módulos. La aplica `organizations` en cada cambio de rol o de estado de un miembro, dentro de una transacción que bloquea la fila de `organizations` ([brief-3.7](../decisions/brief-3.7-gestion-de-usuarios-y-roles.md), D-4).
+
 ### `sessions`
 
 **Diseñada en la 3.2** ([ADR 0012](../decisions/0012-mecanismo-de-sesion.md)) **e implementada en la 3.3** ([brief-3.3](../decisions/brief-3.3-autenticacion.md)), migración `drizzle/0001_*`. Módulo dueño: `auth`.
@@ -276,6 +278,13 @@ Forma de `diff` (brief-3.6, D-4), validada por `recordAudit` antes de insertar:
 - `{ before, after }`, con solo los campos que cambiaron y valores JSON primitivos;
 - `before` es `null` en `create`; en el resto de las acciones, `before` y `after` llevan los mismos campos y al menos uno cambia;
 - se rechazan las claves que contengan `password`, `hash`, `token` o `secret`.
+
+Productor `organization_member`, desde la 3.7 ([brief-3.7](../decisions/brief-3.7-gestion-de-usuarios-y-roles.md), D-8). `entity_id` es el id de la membresía, y el `diff` no lleva datos personales:
+
+- `create`: `before` en `null` y `after = { userId, role, isActive: true }`;
+- `role_change`: `{ role }`;
+- `deactivate` y `reactivate`: `{ isActive }`;
+- una operación que no cambia nada no escribe auditoría.
 
 ## Explícitamente fuera de este modelo
 

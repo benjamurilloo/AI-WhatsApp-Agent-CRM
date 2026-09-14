@@ -1,10 +1,76 @@
-import { and, eq, gt, lte, or, sql } from "drizzle-orm";
-import { getDb } from "@/shared/db";
+import { and, eq, gt, inArray, lte, or, sql } from "drizzle-orm";
+import { getDb, type Db, type DbTransaction } from "@/shared/db";
 import { loginAttempts, sessions, users } from "./schema";
 
 // Acceso a las tablas propias de auth. Ninguna consulta toca tablas de otro módulo (brief-3.3, D-2).
 
 export type LoginAttemptScope = "account" | "ip";
+
+// Nombre, email y estado de varios usuarios en una consulta, para componer la lista de
+// miembros sin JOIN (brief-3.7, D-3). Dentro de una transacción ve lo que esa transacción escribió.
+export async function findUserSummaries(
+  userIds: string[],
+  executor: Db | DbTransaction = getDb(),
+) {
+  if (userIds.length === 0) return [];
+  return executor
+    .select({
+      id: users.id,
+      name: users.name,
+      email: users.email,
+      isActive: users.isActive,
+    })
+    .from(users)
+    .where(inArray(users.id, userIds));
+}
+
+// Alta con contraseña inicial pendiente de cambio (brief-3.7). Corre en un savepoint: un email
+// repetido (23505) deshace solo este insert y la transacción del llamador sigue usable.
+export async function insertUserWithInitialPassword(
+  tx: DbTransaction,
+  user: { name: string; email: string; passwordHash: string },
+): Promise<{ id: string } | "email_taken"> {
+  try {
+    return await tx.transaction(async (savepoint) => {
+      const rows = await savepoint
+        .insert(users)
+        .values({ ...user, mustChangePassword: true, isActive: true })
+        .returning({ id: users.id });
+      return rows[0]!;
+    });
+  } catch (error) {
+    if (isEmailUniqueViolation(error)) return "email_taken";
+    throw error;
+  }
+}
+
+// drizzle-orm envuelve el error de pg; el código y la constraint quedan en la causa.
+function isEmailUniqueViolation(error: unknown): boolean {
+  const e = error as {
+    code?: string;
+    constraint?: string;
+    cause?: { code?: string; constraint?: string };
+  } | null;
+  const source = e?.cause ?? e;
+  return (
+    source?.code === "23505" && source.constraint === "users_email_lower_unique"
+  );
+}
+
+export async function updateUserActive(
+  tx: DbTransaction,
+  userId: string,
+  isActive: boolean,
+): Promise<void> {
+  await tx.update(users).set({ isActive }).where(eq(users.id, userId));
+}
+
+export async function deleteUserSessionsInTransaction(
+  tx: DbTransaction,
+  userId: string,
+): Promise<void> {
+  await tx.delete(sessions).where(eq(sessions.userId, userId));
+}
 
 export async function findUserByEmail(normalizedEmail: string) {
   const rows = await getDb()

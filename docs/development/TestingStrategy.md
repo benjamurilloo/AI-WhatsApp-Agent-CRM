@@ -35,7 +35,12 @@
     - un cambio de rol rige en el request siguiente;
     - cada ingreso crea una sesión nueva, distinta de cualquier cookie previa;
     - un Route Handler mutante rechaza un `Origin` ajeno.
-  - `organization_members` rechaza una segunda membresía del mismo usuario, y quitar el rol o desactivar al último `admin` de la organización se rechaza con `BUSINESS_RULE_VIOLATION` ([ADR 0010](../decisions/0010-un-usuario-una-organizacion-en-el-mvp.md)).
+  - `organization_members` rechaza una segunda membresía del mismo usuario, y quitar el rol o desactivar al último `admin` de la organización se rechaza con `BUSINESS_RULE_VIOLATION` ([ADR 0010](../decisions/0010-un-usuario-una-organizacion-en-el-mvp.md)). Gestión de miembros cubierta desde la 3.7 en `tests/integration/members.test.ts`:
+    - regla del último `admin`, incluido un `admin` inactivo que no cuenta;
+    - test de concurrencia: dos `admin` se quitan el rol en dos conexiones mientras una tercera retiene el bloqueo de la organización; ninguno termina antes de liberarlo, y exactamente uno lo logra;
+    - alta atómica de usuario, membresía y auditoría; `CONFLICT` por email, también con dos altas concurrentes, sin filas huérfanas;
+    - `diff` exacto de cada cambio y ninguna auditoría sin cambio real;
+    - la contraseña inicial no aparece en ninguna tabla ni en la consola.
   - Un ajuste que dejaría el stock negativo se rechaza con `BUSINESS_RULE_VIOLATION`, sin modificar `quantity_on_hand` y sin registrar ningún movimiento en `inventory_movements` ([ADR 0008](../decisions/0008-stock-nunca-negativo.md)).
   - Una métrica calculada sobre un intervalo que cruza un cambio de horario de verano en `America/Argentina/Buenos_Aires` (con una fecha histórica, porque la zona lo tuvo hasta 2009) da el valor calculado a mano, con días de 23 o 25 horas ([MetricsCatalog.md](../analytics/MetricsCatalog.md)).
 - Cada invariante crítico se prueba intentando violarlo, no solo por el camino feliz: una suite que nunca fuerza el fallo no detecta una salvaguarda desactivada.
@@ -51,6 +56,7 @@
 - Implementado desde la 3.5 ([brief-3.5](../decisions/brief-3.5-pantalla-de-inicio-de-sesion.md), D-8): Chromium sobre `next start`, contra la base `_e2e` sembrada, en local y en CI. Sin mocks: es la evidencia `producer-consumer` de UI ↔ Server Action ↔ servicio ↔ base.
 - Obligatorio en cada test de pantalla (D-3): `@axe-core/playwright` sin violaciones WCAG 2.x A ni AA en cada estado (vacío, error, carga bloqueada, éxito), foco al primer error y un recorrido completo solo con teclado.
 - Pantalla 1 cubierta en `tests/e2e/login.spec.ts`: ingreso y cookie, mismo mensaje para cuenta inexistente y contraseña incorrecta, email inválido, límite de intentos, redirecciones de FR-ORG-03, cambio obligatorio, cierre de sesión con reenvío de la cookie anterior, botón de mostrar contraseña, teclado, axe y móvil a 375 px.
+- Pantalla 10 y marco común cubiertos en `tests/e2e/users.spec.ts` (3.7): lista con "(vos)" y navegación, alta con contraseña inicial de un solo uso, email repetido, cambio de rol auditado, desactivación con confirmación que cierra la sesión abierta del usuario, reactivación, último `admin`, `viewer` sin datos, miembro de otra organización, filtros y página en la URL, móvil a 375 px, teclado y axe.
 - Un `INTERNAL` real no se fuerza de punta a punta: el mensaje y el log se prueban con tests unitarios.
 
 ## Datos de prueba

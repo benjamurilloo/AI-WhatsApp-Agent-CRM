@@ -38,6 +38,8 @@ Monolito modular en TypeScript. Una sola aplicación desplegable, organizada int
 - Ningún módulo de dominio (`catalog`, `crm`, `conversations`, `inventory`) conoce detalles de HTTP, sesiones o presentación.
 - La base de datos es compartida (un único schema), pero el acceso está encapsulado por módulo: cada módulo posee sus tablas y expone su propio repositorio; otro módulo no hace `JOIN` directo contra tablas ajenas fuera de `analytics`.
 - Un cambio auditado le pasa su transacción a `audit`: `recordAudit(tx, entry)` solo acepta una transacción, así que el registro persiste o se revierte junto con el cambio ([brief-3.6](../decisions/brief-3.6-modulo-de-auditoria.md), D-3).
+- Un caso de uso que escribe tablas de varios módulos abre la transacción en el módulo dueño de la regla de negocio y la pasa a las funciones de los otros módulos, que la exigen por tipo. El alta de un miembro la abre `organizations`, que escribe `users` a través de `auth` y `audit_logs` a través de `audit` ([brief-3.7](../decisions/brief-3.7-gestion-de-usuarios-y-roles.md), D-2).
+- Una lista con datos de dos módulos se compone en memoria, sin `JOIN`. La lista de miembros lee las membresías en `organizations` (filtradas por organización en SQL), pide a `auth` nombre, email y estado por ids, y filtra, ordena y pagina en memoria (brief-3.7, D-3). **Límite aceptado**: el costo crece con la cantidad de miembros; se revisa en la Fase 8 o si una organización supera los 500.
 
 Dónde vive cada módulo en el repositorio y cómo se hacen cumplir estas reglas: [RepositoryStructure.md](RepositoryStructure.md).
 

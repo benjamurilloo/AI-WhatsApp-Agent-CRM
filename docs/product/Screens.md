@@ -156,7 +156,7 @@
 - **Objetivo**: gestionar quién accede a la organización (FR-ORG-02).
 - **Usuario autorizado**: solo `admin`.
 - **Información mostrada**: nombre, email, rol y si está activo. Como cada usuario pertenece a una sola organización, "activo" es el estado de la cuenta (`users.is_active`) y equivale a su estado en la organización (subfase 1.2, D-5 y D-9).
-- **Acciones**: crear un usuario con contraseña inicial de un solo uso, cambiar el rol y desactivar. Todo queda auditado.
+- **Acciones**: crear un usuario con contraseña inicial de un solo uso, cambiar el rol, desactivar y reactivar (la reactivación se agregó en la subfase 3.7, D-9). Todo queda auditado.
 - **Filtros**: rol y activos/inactivos.
 - **Paginación**: 25 por página.
 - **Carga**: estándar.

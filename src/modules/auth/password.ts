@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import { hash, verify } from "@node-rs/argon2";
 import { z } from "zod";
 
@@ -13,6 +14,23 @@ export const passwordSchema = z
   .string()
   .min(PASSWORD_MIN_LENGTH)
   .max(PASSWORD_MAX_LENGTH);
+
+// Contraseña inicial de un alta (brief-3.7, D-5): 16 caracteres de un alfabeto de 32 sin
+// símbolos ambiguos (sin 0, O, 1, I ni minúsculas), 80 bits, en 4 grupos separados por guion.
+// El guion es parte de la contraseña: se guarda el hash de lo que se muestra.
+export const INITIAL_PASSWORD_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+const INITIAL_PASSWORD_GROUPS = 4;
+const INITIAL_PASSWORD_GROUP_LENGTH = 4;
+
+export function generateInitialPassword(): string {
+  return Array.from({ length: INITIAL_PASSWORD_GROUPS }, () =>
+    Array.from(
+      { length: INITIAL_PASSWORD_GROUP_LENGTH },
+      () =>
+        INITIAL_PASSWORD_ALPHABET[randomInt(INITIAL_PASSWORD_ALPHABET.length)],
+    ).join(""),
+  ).join("-");
+}
 
 export function hashPassword(password: string): Promise<string> {
   return hash(password, hashOptions);

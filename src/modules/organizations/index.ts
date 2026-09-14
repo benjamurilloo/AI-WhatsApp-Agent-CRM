@@ -1,9 +1,25 @@
-// Interfaz pública del módulo organizations (brief-3.4).
+// Interfaz pública del módulo organizations (brief-3.4; gestión de miembros, brief-3.7).
 export {
   authorize,
+  changeMemberRole,
+  createMember,
+  deactivateMember,
+  getAppFrame,
   getAuthContext,
   getMember,
+  listMembers,
+  reactivateMember,
+  MEMBERS_PAGE_SIZE,
+  type AppFrame,
   type AuthContext,
+  type CreateMemberField,
+  type CreateMemberResult,
   type Member,
+  type MemberChangeResult,
+  type MemberListFilters,
+  type MemberPage,
   type MemberRole,
+  type MemberRoleFilter,
+  type MemberStatusFilter,
+  type MemberSummary,
 } from "./service";

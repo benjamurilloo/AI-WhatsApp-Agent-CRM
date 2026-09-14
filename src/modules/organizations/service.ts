@@ -1,5 +1,16 @@
 import { z } from "zod";
-import { validateSession } from "@/modules/auth";
+import { recordAudit } from "@/modules/audit";
+import {
+  createUserWithInitialPassword,
+  getUserSummaries,
+  prepareInitialPassword,
+  setUserActive,
+  validateNewUser,
+  validateSession,
+  type NewUserField,
+  type UserSummary,
+} from "@/modules/auth";
+import type { DbTransaction } from "@/shared/db";
 import { failure, type Failure } from "@/shared/errors";
 import * as repository from "./repository";
 
@@ -20,6 +31,17 @@ export type Member = {
   userId: string;
   role: MemberRole;
   createdAt: Date;
+};
+
+// Miembro con los datos de su usuario, compuestos sin JOIN (brief-3.7, D-3).
+export type MemberSummary = {
+  id: string;
+  userId: string;
+  name: string;
+  email: string;
+  role: MemberRole;
+  isActive: boolean;
+  isSelf: boolean;
 };
 
 // Una consulta por módulo: auth valida sesión y usuario, organizations resuelve la membresía (ADR 0012, nota de la 3.3).
@@ -58,14 +80,32 @@ export function authorize(
 }
 
 const memberIdSchema = z.uuid();
+const roleSchema = z.enum(["admin", "viewer"]);
+
+function summarize(
+  member: repository.MemberRow,
+  user: UserSummary,
+  selfUserId: string,
+): MemberSummary {
+  return {
+    id: member.id,
+    userId: member.userId,
+    name: user.name,
+    email: user.email,
+    role: member.role,
+    isActive: user.isActive,
+    isSelf: member.userId === selfUserId,
+  };
+}
 
 // Un miembro de la propia organización, solo para admin. Uno de otra organización
-// da NOT_FOUND, indistinguible de uno inexistente (brief-3.4, D-3).
+// da NOT_FOUND, indistinguible de uno inexistente (brief-3.4, D-3). Nombre, email y
+// estado vienen de auth (brief-3.7).
 export async function getMember(
   context: AuthContext,
   memberId: string,
 ): Promise<
-  | { ok: true; member: Member }
+  | { ok: true; member: Member & MemberSummary }
   | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
 > {
   const authorized = authorize(context, { role: "admin" });
@@ -77,5 +117,323 @@ export async function getMember(
 
   const member = await repository.findMember(context.organizationId, memberId);
   if (!member) return failure("NOT_FOUND");
-  return { ok: true, member };
+  const [user] = await getUserSummaries([member.userId]);
+  if (!user) return failure("NOT_FOUND");
+  return {
+    ok: true,
+    member: {
+      ...summarize(member, user, context.userId),
+      createdAt: member.createdAt,
+    },
+  };
+}
+
+// Lista de la pantalla 10 (brief-3.7, D-3).
+
+export const MEMBERS_PAGE_SIZE = 25;
+
+export type MemberRoleFilter = "all" | MemberRole;
+export type MemberStatusFilter = "active" | "inactive" | "all";
+
+export type MemberListFilters = {
+  role: MemberRoleFilter;
+  status: MemberStatusFilter;
+  page: number;
+};
+
+export type MemberPage = {
+  members: MemberSummary[];
+  total: number;
+  page: number;
+  pageCount: number;
+};
+
+const collator = new Intl.Collator("es", { sensitivity: "base" });
+
+// Compone, filtra, ordena por nombre y pagina. Una página fuera de rango se lleva a la última.
+export function composeMemberPage(
+  members: repository.MemberRow[],
+  users: UserSummary[],
+  filters: MemberListFilters,
+  selfUserId: string,
+): MemberPage {
+  const usersById = new Map(users.map((user) => [user.id, user]));
+  const matching = members
+    .flatMap((member) => {
+      const user = usersById.get(member.userId);
+      return user ? [summarize(member, user, selfUserId)] : [];
+    })
+    .filter(
+      (member) =>
+        (filters.role === "all" || member.role === filters.role) &&
+        (filters.status === "all" ||
+          member.isActive === (filters.status === "active")),
+    )
+    .sort(
+      (a, b) =>
+        collator.compare(a.name, b.name) ||
+        collator.compare(a.email, b.email) ||
+        a.id.localeCompare(b.id),
+    );
+
+  const pageCount = Math.max(1, Math.ceil(matching.length / MEMBERS_PAGE_SIZE));
+  const page = Math.min(Math.max(1, Math.trunc(filters.page) || 1), pageCount);
+  const start = (page - 1) * MEMBERS_PAGE_SIZE;
+  return {
+    members: matching.slice(start, start + MEMBERS_PAGE_SIZE),
+    total: matching.length,
+    page,
+    pageCount,
+  };
+}
+
+export async function listMembers(
+  context: AuthContext,
+  filters: MemberListFilters,
+): Promise<({ ok: true } & MemberPage) | Failure<"FORBIDDEN">> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+
+  // El filtro por organización queda en SQL; el resto, en memoria.
+  const members = await repository.findMembers(context.organizationId);
+  const users = await getUserSummaries(members.map((member) => member.userId));
+  return {
+    ok: true,
+    ...composeMemberPage(members, users, filters, context.userId),
+  };
+}
+
+// Marco común de las páginas autenticadas (brief-3.7, D-7). Solo muestra datos.
+export type AppFrame = {
+  organizationName: string;
+  userName: string;
+  role: MemberRole;
+};
+
+export async function getAppFrame(context: AuthContext): Promise<AppFrame> {
+  const [organizationName, users] = await Promise.all([
+    repository.findOrganizationName(context.organizationId),
+    getUserSummaries([context.userId]),
+  ]);
+  return {
+    organizationName: organizationName ?? "",
+    userName: users[0]?.name ?? "",
+    role: context.role,
+  };
+}
+
+// Escrituras sobre miembros (brief-3.7). Cada una abre la transacción con la organización
+// bloqueada (D-2 y D-4), escribe y audita dentro de ella (D-8).
+
+type MemberState = { role: MemberRole; isActive: boolean };
+
+// "admin activo" es rol admin con users.is_active en true. Solo quitarle el rol o desactivarlo
+// puede violar la regla; reactivar o ascender, nunca.
+export function removesLastActiveAdmin(
+  activeAdminCount: number,
+  before: MemberState,
+  after: MemberState,
+): boolean {
+  const wasActiveAdmin = before.role === "admin" && before.isActive;
+  const staysActiveAdmin = after.role === "admin" && after.isActive;
+  return wasActiveAdmin && !staysActiveAdmin && activeAdminCount <= 1;
+}
+
+// Estado leído después de tomar el bloqueo: miembros, estado de los admins y del objetivo.
+// El actor se vuelve a verificar, porque su rol pudo cambiar desde que se resolvió la sesión.
+async function lockedState(
+  tx: DbTransaction,
+  context: AuthContext,
+  extraUserIds: string[] = [],
+) {
+  const members = await repository.findMembers(context.organizationId, tx);
+  const adminUserIds = members
+    .filter((member) => member.role === "admin")
+    .map((member) => member.userId);
+  const users = await getUserSummaries(
+    [...new Set([...adminUserIds, ...extraUserIds])],
+    tx,
+  );
+  const activeByUserId = new Map(users.map((user) => [user.id, user.isActive]));
+  const actor = members.find((member) => member.userId === context.userId);
+  return {
+    members,
+    activeByUserId,
+    actorIsActiveAdmin:
+      actor?.role === "admin" && activeByUserId.get(actor.userId) === true,
+    activeAdminCount: adminUserIds.filter(
+      (userId) => activeByUserId.get(userId) === true,
+    ).length,
+  };
+}
+
+export type CreateMemberField = NewUserField | "role";
+
+export type CreateMemberResult =
+  | {
+      ok: true;
+      memberId: string;
+      userId: string;
+      name: string;
+      // Única vez que existe en claro fuera de auth (D-5): no se loguea ni se audita.
+      initialPassword: string;
+    }
+  | Failure<"FORBIDDEN" | "CONFLICT">
+  | Failure<"VALIDATION_ERROR", { fields: CreateMemberField[] }>;
+
+export async function createMember(
+  context: AuthContext,
+  input: { name: string; email: string; role: string },
+): Promise<CreateMemberResult> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+
+  const user = validateNewUser(input);
+  const role = roleSchema.safeParse(input.role);
+  if (!user.ok || !role.success) {
+    const fields: CreateMemberField[] = user.ok ? [] : [...user.fields];
+    if (!role.success) fields.push("role");
+    return { ok: false, code: "VALIDATION_ERROR", fields };
+  }
+
+  const { initialPassword, passwordHash } = await prepareInitialPassword();
+
+  return repository.withOrganizationLock(
+    context.organizationId,
+    async (tx): Promise<CreateMemberResult> => {
+      const state = await lockedState(tx, context);
+      if (!state.actorIsActiveAdmin) return failure("FORBIDDEN");
+
+      const created = await createUserWithInitialPassword(tx, {
+        ...user.user,
+        passwordHash,
+      });
+      if (!created.ok) return created;
+
+      const memberId = await repository.insertMember(tx, {
+        organizationId: context.organizationId,
+        userId: created.userId,
+        role: role.data,
+      });
+      await recordAudit(tx, {
+        organizationId: context.organizationId,
+        actorUserId: context.userId,
+        entityType: "organization_member",
+        entityId: memberId,
+        action: "create",
+        diff: {
+          before: null,
+          after: { userId: created.userId, role: role.data, isActive: true },
+        },
+      });
+      return {
+        ok: true,
+        memberId,
+        userId: created.userId,
+        name: user.user.name,
+        initialPassword,
+      };
+    },
+  );
+}
+
+// changed en false: el miembro ya estaba así; no se escribe ni se audita.
+export type MemberChangeResult =
+  | { ok: true; changed: boolean }
+  | Failure<
+      "FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR" | "BUSINESS_RULE_VIOLATION"
+    >;
+
+async function changeMember(
+  context: AuthContext,
+  memberId: string,
+  change: Partial<MemberState>,
+): Promise<MemberChangeResult> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  if (!memberIdSchema.safeParse(memberId).success) {
+    return failure("VALIDATION_ERROR");
+  }
+
+  return repository.withOrganizationLock(
+    context.organizationId,
+    async (tx): Promise<MemberChangeResult> => {
+      const target = await repository.findMember(
+        context.organizationId,
+        memberId,
+        tx,
+      );
+      if (!target) return failure("NOT_FOUND");
+
+      const state = await lockedState(tx, context, [target.userId]);
+      if (!state.actorIsActiveAdmin) return failure("FORBIDDEN");
+      const targetActive = state.activeByUserId.get(target.userId);
+      if (targetActive === undefined) return failure("NOT_FOUND");
+
+      const before: MemberState = { role: target.role, isActive: targetActive };
+      const after: MemberState = {
+        role: change.role ?? before.role,
+        isActive: change.isActive ?? before.isActive,
+      };
+      if (before.role === after.role && before.isActive === after.isActive) {
+        return { ok: true, changed: false };
+      }
+      if (removesLastActiveAdmin(state.activeAdminCount, before, after)) {
+        return failure("BUSINESS_RULE_VIOLATION");
+      }
+
+      const audit = {
+        organizationId: context.organizationId,
+        actorUserId: context.userId,
+        entityType: "organization_member" as const,
+        entityId: target.id,
+      };
+      if (after.role !== before.role) {
+        await repository.updateMemberRole(tx, target.id, after.role);
+        await recordAudit(tx, {
+          ...audit,
+          action: "role_change",
+          diff: { before: { role: before.role }, after: { role: after.role } },
+        });
+      }
+      if (after.isActive !== before.isActive) {
+        await setUserActive(tx, target.userId, after.isActive);
+        await recordAudit(tx, {
+          ...audit,
+          action: after.isActive ? "reactivate" : "deactivate",
+          diff: {
+            before: { isActive: before.isActive },
+            after: { isActive: after.isActive },
+          },
+        });
+      }
+      return { ok: true, changed: true };
+    },
+  );
+}
+
+export async function changeMemberRole(
+  context: AuthContext,
+  memberId: string,
+  role: string,
+): Promise<MemberChangeResult> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  const parsed = roleSchema.safeParse(role);
+  if (!parsed.success) return failure("VALIDATION_ERROR");
+  return changeMember(context, memberId, { role: parsed.data });
+}
+
+export function deactivateMember(
+  context: AuthContext,
+  memberId: string,
+): Promise<MemberChangeResult> {
+  return changeMember(context, memberId, { isActive: false });
+}
+
+export function reactivateMember(
+  context: AuthContext,
+  memberId: string,
+): Promise<MemberChangeResult> {
+  return changeMember(context, memberId, { isActive: true });
 }
