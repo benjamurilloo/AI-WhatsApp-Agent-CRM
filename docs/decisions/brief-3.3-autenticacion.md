@@ -254,6 +254,8 @@ Brief aprobado por el usuario el **2026-09-13**. D-1 a D-7 se resolvieron el mis
 
 Docker Desktop, en marcha.
 
+Subfase **cerrada el 2026-09-13** con confirmación del usuario. Nivel alcanzado: *validado localmente y en CI* para contraseñas, sesiones y límite de intentos, a nivel de servicio. El manejo de la cookie queda *implementado*. AC-1 a AC-10 están cumplidos; la CI del commit `b779592` quedó en verde en la ejecución 34792128446. Los 14 tests unitarios pasaron solo en local, porque `ci.yml` no corre el proyecto `unit`. La evidencia está en [CHANGELOG.md](../../CHANGELOG.md).
+
 | Decisión | Resolución |
 |---|---|
 | D-1 argon2id | `@node-rs/argon2` 2.2.x con `m=19456`, `t=2`, `p=1` en formato PHC |

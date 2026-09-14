@@ -2,6 +2,44 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-13 — Subfase 3.3 cerrada (Autenticación)
+
+**Certifica:**
+
+- **Módulo `auth`** (`src/modules/auth/`), según el [ADR 0012](docs/decisions/0012-mecanismo-de-sesion.md) y el [brief-3.3](docs/decisions/brief-3.3-autenticacion.md):
+  - `login`, `validateSession`, `logout`, `changePassword` y `revokeUserSessions`;
+  - resultados tipados con `UNAUTHENTICATED`, `VALIDATION_ERROR` y `RATE_LIMITED`;
+  - consulta solo sus propias tablas (D-2, nota fechada en el ADR 0012).
+- **Contraseñas**:
+  - argon2id con `@node-rs/argon2` 2.2.1 (`m=19456`, `t=2`, `p=1`, formato PHC);
+  - verificación contra un hash ficticio para emails inexistentes;
+  - política de 12 a 128 caracteres; entradas validadas con `zod` 4.6.4.
+- **Sesiones**:
+  - token de 32 bytes, con solo su SHA-256 en `sessions`;
+  - deslizante de 7 días, renovada a mitad de ventana, con tope de 30;
+  - revocación total al cambiar la contraseña; sesión nueva en cada ingreso.
+- **Límite de intentos** en `login_attempts`, con claves hasheadas: 5 fallos por cuenta o 20 por IP en 15 minutos, evaluado antes de verificar la contraseña. La IP solo sale de `x-forwarded-for` con `TRUSTED_PROXY=true`.
+- **Migración `drizzle/0001_*`** con `sessions` y `login_attempts`, revisada como SQL y aplicada dos veces en desarrollo.
+- **Tests contra PostgreSQL real**:
+  - 30 de integración del servicio, cada invariante intentando violarlo (token no guardado, rechazos indistinguibles, expiración, tope, manipulación, usuario desactivado, renovación, logout, revocación, cambio de contraseña, límites por cuenta e IP, entradas inválidas, sin secretos en consola);
+  - 14 unitarios de hash, política, cookie e IP.
+- **`updated_at` con `$onUpdate`** ahora probado por el cambio de contraseña (pendiente de la 3.1).
+- **Suite local**: `npm run test` pasa 80 de 80; `npm ci` reproduce la instalación. Con la base detenida pasan typecheck, lint, guardas y build.
+- **CI**: [34792128446](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/34792128446), commit `b779592`, en verde. 47 tests de integración y 19 guardas; paso de desfase sin cambios; sin avisos de `allowScripts` nuevos, y el binario de argon2 funcionó en Linux.
+- **Decisiones D-1 a D-7** resueltas según la recomendación.
+- **Nivel alcanzado: validado localmente y en CI** para contraseñas, sesiones y límite de intentos, a nivel de servicio.
+
+**No certifica:**
+
+- **Tests unitarios en CI**: `ci.yml` no corre el proyecto `unit`, porque no existía cuando se escribió en la 2.5. Los 14 unitarios solo pasaron en local. Pendiente para la 3.4.
+- **Manejo de la cookie de punta a punta**: queda implementado (D-7); se valida en integración con la pantalla, en la 3.5.
+- **La IP detrás de un proxy real** (D-4): Fase 8 o 9.
+- **Cookie tras la renovación**: se reescribe en Server Actions o Route Handlers (3.4 y 3.5).
+- **`@node-rs/argon2` dentro del build de Next.js**: ninguna ruta usa `auth` todavía (3.5).
+- **Límite de intentos en el cambio de contraseña**: fuera de alcance.
+- **Resistencia real a medición de tiempos**: la verificación ficticia está implementada, pero no se mide.
+- **Revisión independiente**: es autoevaluación del mismo agente. El usuario aprobó el brief y el cierre.
+
 ## 2026-09-13 — Subfase 3.2 cerrada (ADR del mecanismo de sesión)
 
 **Certifica:**
