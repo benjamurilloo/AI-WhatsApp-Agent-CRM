@@ -60,6 +60,17 @@ Se generan y se aplican siempre de forma explícita, nunca al arrancar la aplica
 
 `db:migrate` actúa solo sobre la base de `DATABASE_URL`. Una migración generada se revisa como SQL antes de aplicarla y se versiona en `drizzle/`.
 
+Los roles, privilegios y triggers, que Drizzle no expresa en `schema.ts`, van en migraciones a medida: `npx drizzle-kit generate --custom --name <nombre>` crea el archivo vacío y su entrada en el journal.
+
+## Rol de aplicación `crm_app`
+
+Desde la 3.6 ([ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md)):
+
+- La migración `0003` lo crea solo si no existe. Los roles son del servidor, así que `crm_dev` y `crm_dev_test` lo comparten.
+- Es `NOLOGIN`. La aplicación, las migraciones y los tests se siguen conectando con el usuario de `DATABASE_URL`, que en el contenedor y en CI es superusuario.
+- Los tests prueban sus permisos con `SET LOCAL ROLE crm_app` dentro de una transacción.
+- Crear el rol exige `CREATEROLE` al usuario de migraciones. En un servicio gestionado se verifica en las Fases 8 y 9, junto con el rol con login con el que se conectará la aplicación.
+
 ## Base de test
 
 Desde la 3.1 los tests de integración usan una base separada, `<nombre de DATABASE_URL>_test`, en el mismo servidor (`crm_dev_test` en local, `crm_ci_test` en CI):

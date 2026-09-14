@@ -135,7 +135,8 @@ Ninguna carpeta se crea vacía: nace con el primer archivo real de la subfase qu
 | 3.1 — Migraciones de identidad | `src/modules/auth/schema.ts` (`users`), `src/modules/organizations/schema.ts` (`organizations`, `organization_members`), `drizzle/` con la migración inicial, y `global-setup.ts`, `test-database.ts`, `reset-database.ts` e `identity-schema.test.ts` en `tests/integration/` |
 | 3.3 — Autenticación | En `src/modules/auth/`: `index.ts`, `service.ts`, `repository.ts`, `password.ts` (argon2id y política), `session-cookie.ts` (cookie e IP) y sus tests unitarios; `sessions` y `login_attempts` en `schema.ts`; `drizzle/0001_*`; `tests/integration/auth-service.test.ts` |
 | 3.4 — Autorización y taxonomía de errores | `src/shared/errors/`; en `src/modules/organizations/`: `index.ts`, `service.ts` (`getAuthContext`, `authorize`, `getMember`), `repository.ts` y su test unitario; `tests/integration/authorization.test.ts` |
-| Resto de la Fase 3 | `src/modules/audit/`; `seeds/` con el seed básico; `src/shared/log/`; `playwright.config.ts` y `tests/e2e/` con el login |
+| 3.6 — Módulo de auditoría | En `src/modules/audit/`: `schema.ts` (`audit_logs`), `repository.ts`, `service.ts` (`recordAudit`), `index.ts` y su test unitario; el tipo `DbTransaction` en `src/shared/db/`; `drizzle/0002_*` y `drizzle/0003_*` (rol `crm_app`, privilegios y trigger); `tests/integration/audit.test.ts` |
+| Resto de la Fase 3 | `seeds/` con el seed básico; `src/shared/log/`; `playwright.config.ts` y `tests/e2e/` con el login |
 | Fase 4 | `src/modules/catalog/` e `inventory/` |
 | Fase 5 | `src/modules/crm/` |
 | Fase 6 | `src/modules/conversations/` e `ingestion/` |

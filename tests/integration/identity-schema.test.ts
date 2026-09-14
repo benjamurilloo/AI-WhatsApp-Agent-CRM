@@ -53,11 +53,12 @@ describe("base de test", () => {
     expect(result.rows[0]?.name).toMatch(/_test$/);
   });
 
-  it("existen exactamente las tablas de identidad y de sesión", async () => {
+  it("existen exactamente las tablas de identidad, sesión y auditoría", async () => {
     const result = await getDb().execute<{ tablename: string }>(
       sql`select tablename from pg_tables where schemaname = 'public' order by tablename`,
     );
     expect(result.rows.map((row) => row.tablename)).toEqual([
+      "audit_logs",
       "login_attempts",
       "organization_members",
       "organizations",

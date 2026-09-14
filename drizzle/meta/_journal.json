@@ -15,6 +15,20 @@
       "when": 1789341950469,
       "tag": "0001_tearful_spencer_smythe",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789397978353,
+      "tag": "0002_audit_logs",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789397980998,
+      "tag": "0003_crm_app_role_and_audit_insert_only",
+      "breakpoints": true
     }
   ]
 }

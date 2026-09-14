@@ -1,6 +1,6 @@
 # Protocolo de Ejecución con Claude Code
 
-**Estado: diseñado.** Todavía no se ejecutó ninguna subfase con este protocolo.
+**Estado: en uso.** Rige cada subfase; cada aplicación queda registrada en su brief y en `CHANGELOG.md`.
 
 Aplica al proyecto la metodología Vixora del vault de Obsidian. Claude Code es el único agente de IA: recupera contexto, planifica, implementa, verifica, revisa y cierra. El usuario aprueba el alcance y los cierres, y autoriza Git, despliegues y efectos externos.
 
@@ -92,7 +92,13 @@ No hagas commit, push, deploy ni cambios en Notion sin mi autorización en este 
 
 ## Cierre de fase o subfase
 
-1. Agregar una entrada en `CHANGELOG.md` con **Certifica** y **No certifica**. Nunca se infiere un nivel de validación superior al alcanzado.
-2. Actualizar Notion con el estado real.
-3. Aplicar el *Knowledge Capture Protocol*: crear o actualizar una nota solo si hay conocimiento reutilizable, e informar qué notas cambiaron (o "sin conocimiento reutilizable nuevo").
-4. Actualizar `knowledge_snapshot` y el estado en el hub `80 Projects/AI WhatsApp Agent CRM`.
+1. Verificar con `gh run view` que la CI del commit de la subfase está en verde. El repositorio no tiene protección de rama, así que nada más lo garantiza.
+2. Agregar una entrada en `CHANGELOG.md` con **Certifica** y **No certifica**. Nunca se infiere un nivel de validación superior al alcanzado.
+3. Agregar la línea de cierre en el brief y marcarlo "aprobado y cerrado" en [decisions/README.md](../decisions/README.md).
+4. Reescribir `HANDOFF.md` con el estado verificado y el próximo paso.
+5. Actualizar Notion con el estado real.
+6. Aplicar el *Knowledge Capture Protocol* en cada cierre de subfase, no solo al cerrar la fase: crear o actualizar una nota solo si hay conocimiento reutilizable, e informar qué notas cambiaron (o "sin conocimiento reutilizable nuevo").
+7. Actualizar `knowledge_snapshot` y el estado en el hub `80 Projects/AI WhatsApp Agent CRM`.
+8. Hacer el commit del cierre, con autorización, y verificar su CI.
+
+La versión genérica de este ciclo, para otros proyectos, está en el playbook del vault `40 Playbooks/Adopting the Vixora Method in a New Project.md`.

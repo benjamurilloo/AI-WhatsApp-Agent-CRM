@@ -18,6 +18,10 @@
   - Idempotencia de ingestión: reenviar el mismo evento no duplica conversaciones ni mensajes, y reenviarlo con otro `payload_hash` devuelve `CONFLICT` sin modificar datos.
   - Aislamiento por organización: un usuario de la organización A recibe `NOT_FOUND` al leer o escribir datos de la organización B, incluso manipulando IDs directamente. Cubierto desde la 3.4 para `organization_members` (`tests/integration/authorization.test.ts`); cada módulo de las Fases 4 a 7 agrega el suyo para sus recursos.
   - `inventory_movements` rechaza `UPDATE` y `DELETE` por permisos de base de datos.
+  - `audit_logs` ([ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md)), cubierto desde la 3.6 en `tests/integration/audit.test.ts`:
+    - rechaza `UPDATE` y `DELETE` para `crm_app` con `42501`, y para el rol dueño por trigger;
+    - un registro escrito con `recordAudit` persiste o se revierte junto con el cambio que audita, incluso cuando falla la inserción de auditoría;
+    - toda tabla de `public` tiene los privilegios esperados para `crm_app`, y el test demuestra que falla ante una tabla sin ellos.
   - `conversations.started_at` coincide con el `sent_at` del primer mensaje.
   - Después de cada ajuste, `balance_after` del movimiento es igual a `inventories.quantity_on_hand` del producto.
   - Un usuario con `must_change_password = true` no accede a ninguna ruta protegida hasta definir una nueva contraseña.

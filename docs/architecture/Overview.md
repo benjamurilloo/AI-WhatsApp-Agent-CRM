@@ -29,7 +29,7 @@ Monolito modular en TypeScript. Una sola aplicación desplegable, organizada int
 | `conversations` | Conversaciones, mensajes, timeline | `organizations`, `crm` |
 | `ingestion` | Contrato de idempotencia, registro de eventos | `conversations`, `organizations` |
 | `analytics` | Cálculo de métricas desde datos transaccionales | `conversations`, `organizations` |
-| `audit` | Registro inmutable de cambios sensibles | usado por `catalog`, `inventory`, `crm`, `conversations`, `organizations` |
+| `audit` | Registro inmutable de cambios sensibles | `auth` y `organizations`, solo en `schema.ts` para sus claves foráneas ([brief-3.6](../decisions/brief-3.6-modulo-de-auditoria.md), D-5). Lo usan `catalog`, `inventory`, `crm`, `conversations` y `organizations` |
 
 ## Reglas de dependencia
 
@@ -37,6 +37,7 @@ Monolito modular en TypeScript. Una sola aplicación desplegable, organizada int
 - Un módulo no importa código interno de otro módulo salvo a través de su interfaz pública (`index.ts` del módulo, que expone sus servicios y tipos). Se permite leer tablas de otro módulo desde `analytics` porque su función es agregación de solo lectura entre dominios — es la única excepción documentada.
 - Ningún módulo de dominio (`catalog`, `crm`, `conversations`, `inventory`) conoce detalles de HTTP, sesiones o presentación.
 - La base de datos es compartida (un único schema), pero el acceso está encapsulado por módulo: cada módulo posee sus tablas y expone su propio repositorio; otro módulo no hace `JOIN` directo contra tablas ajenas fuera de `analytics`.
+- Un cambio auditado le pasa su transacción a `audit`: `recordAudit(tx, entry)` solo acepta una transacción, así que el registro persiste o se revierte junto con el cambio ([brief-3.6](../decisions/brief-3.6-modulo-de-auditoria.md), D-3).
 
 Dónde vive cada módulo en el repositorio y cómo se hacen cumplir estas reglas: [RepositoryStructure.md](RepositoryStructure.md).
 

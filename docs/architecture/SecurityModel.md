@@ -56,8 +56,16 @@
 
 ## Auditoría
 
-- `audit_logs` cubre creación/edición/desactivación de productos y clientes, y todo ajuste de stock (ver [DataModel.md](DataModel.md)).
-- La auditoría es de solo inserción; no se edita ni se borra un registro de auditoría.
+- `audit_logs` cubre lo que exige FR-AUD-01 (ver [DataModel.md](DataModel.md)):
+  - creación, edición, desactivación y reactivación de productos y clientes;
+  - todo ajuste de stock;
+  - todo cambio de estado de una conversación;
+  - todo cambio de rol o de estado de un miembro.
+- Se escribe con `recordAudit(tx, entry)` dentro de la transacción del cambio, y nunca guarda contraseñas, hashes, tokens ni secretos ([brief-3.6](../decisions/brief-3.6-modulo-de-auditoria.md), D-3 y D-4).
+- Es de solo inserción, con dos defensas ([ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md)):
+  - el rol de aplicación `crm_app` tiene solo `SELECT` e `INSERT` sobre la tabla;
+  - un trigger rechaza `UPDATE` y `DELETE` para cualquier rol.
+- **Limitación aceptada**: la aplicación todavía se conecta con el rol dueño, así que hoy la defensa efectiva es el trigger. El dueño puede vaciar la tabla con `TRUNCATE`, y un superusuario puede desactivar el trigger. La conexión con `crm_app` llega con el aprovisionamiento de entornos y secretos (Fases 8 y 9).
 
 ## Backups y restauración
 

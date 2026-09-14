@@ -3,6 +3,10 @@ import { Pool } from "pg";
 
 export type Db = NodePgDatabase & { $client: Pool };
 
+// Transacción abierta con db.transaction. La conexión general no es asignable a este tipo,
+// así que una función que lo exige no puede llamarse fuera de una transacción (brief-3.6, D-3).
+export type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
 // Una sola instancia por proceso: next dev recarga módulos y abriría un pool por recarga.
 const globalForDb = globalThis as typeof globalThis & { crmDb?: Db };
 
