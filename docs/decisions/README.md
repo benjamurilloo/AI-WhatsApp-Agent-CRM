@@ -44,7 +44,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-3.3](brief-3.3-autenticacion.md) | 3.3 — Autenticación | aprobado y cerrado el 2026-09-13 |
 | [brief-3.4](brief-3.4-autorizacion-y-errores.md) | 3.4 — Autorización y taxonomía de errores | aprobado y cerrado el 2026-09-14 |
 | [brief-3.6](brief-3.6-modulo-de-auditoria.md) | 3.6 — Módulo de auditoría | aprobado y cerrado el 2026-09-14 |
-| [brief-3.5](brief-3.5-pantalla-de-inicio-de-sesion.md) | 3.5 — Pantalla de inicio de sesión | aprobado el 2026-09-14, en curso |
+| [brief-3.5](brief-3.5-pantalla-de-inicio-de-sesion.md) | 3.5 — Pantalla de inicio de sesión | aprobado y cerrado el 2026-09-14 |
 
 ## Plantilla
 

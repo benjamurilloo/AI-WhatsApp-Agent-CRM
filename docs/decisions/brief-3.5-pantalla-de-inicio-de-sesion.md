@@ -392,3 +392,5 @@ Brief aprobado por el usuario el **2026-09-14**. D-1 a D-9 se resolvieron el mis
 - **Espera del servidor en Playwright**: `webServer` espera `/login`, que sin cookie no consulta la base, porque el servidor puede arrancar antes de que el setup recree la base `_e2e`.
 - **Detección de ejecución directa del seed**: `seeds/basic.ts` comprueba `process.argv[1]` en lugar de `import.meta`, para que Vitest y Playwright puedan importarlo sin ejecutarlo.
 - **Primera corrida del end-to-end**: 5 casos fallaron por el helper del test, que esperaba el botón después de una redirección. Se corrigió el test, no la pantalla.
+
+**Cerrada el 2026-09-14** con confirmación del usuario. CI en verde en el commit `49bfe74` ([ejecución 34881542804](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/34881542804)); entrada en [CHANGELOG.md](../../CHANGELOG.md).
