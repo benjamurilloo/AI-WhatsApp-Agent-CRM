@@ -404,3 +404,5 @@ Brief aprobado por el usuario el **2026-09-14**. D-1 a D-11 se resolvieron el mi
 - **`src/app/page.tsx` pasó a `src/app/(autenticado)/page.tsx`**. La guarda de referencias prohibidas lee los archivos del índice de Git, así que el borrado se registró en el índice con `git rm --cached`, sin commit. También hubo que borrar `.next/dev/`, que conservaba tipos generados de la ruta anterior y hacía fallar el build.
 - **Tests unitarios**: `initial-password.test.ts` es un archivo nuevo en `auth`, y `organizations/service.test.ts` suma bloques nuevos sin tocar los casos existentes.
 - **Botón "Copiar"**: el caso 2 del end-to-end verifica el contenido del portapapeles con los permisos de Chromium que concede Playwright.
+
+**Cerrada el 2026-09-14** con confirmación del usuario. CI en verde en el commit `ff15318` ([ejecución 34894885454](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/34894885454)); entrada en [CHANGELOG.md](../../CHANGELOG.md).
