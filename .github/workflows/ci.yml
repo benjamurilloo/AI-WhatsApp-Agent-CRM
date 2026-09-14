@@ -71,6 +71,9 @@ jobs:
       - name: Guardas (referencias prohibidas y frontera entre módulos)
         run: npm run test:guards
 
+      - name: Tests unitarios
+        run: npm run test:unit
+
       - name: Tests de integración (PostgreSQL 18)
         run: npm run test:integration
 

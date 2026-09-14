@@ -69,6 +69,12 @@ Reglas:
 - Todo caso de uso que escribe en más de una tabla es atómico. No existen estados parciales que reconciliar en el MVP.
 - Al usuario nunca se le muestran stack traces ni SQL. Los errores inesperados se registran completos en el servidor con un `request_id` que también ve el usuario.
 
+Implementación ([brief-3.4](../decisions/brief-3.4-autorizacion-y-errores.md)):
+
+- **Taxonomía** en `src/shared/errors/`: `ErrorCode`, `HTTP_STATUS` y `Failure`. Los servicios devuelven resultados tipados (`{ ok: true, ... } | Failure`) y solo lanzan ante lo inesperado, que la capa HTTP o la UI traduce a `INTERNAL` (D-1).
+- **Log estructurado con `request_id`**: se ubica en `src/shared/log/` y se implementa en la 3.5, con la primera página y Server Action que registran errores (D-5).
+- **Verificación de `Origin`** para Route Handlers mutantes: se ubica en `src/shared/http/` y se implementa con el primero que exista (D-5).
+
 ## Observabilidad (diseño)
 
 - Un log estructurado (JSON) por request, con `request_id`, `organization_id`, `user_id`, ruta, código de resultado y duración. No incluye contenido de mensajes ni PII ([SecurityModel.md](SecurityModel.md)).

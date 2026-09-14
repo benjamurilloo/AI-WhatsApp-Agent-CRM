@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
+import type { Failure } from "@/shared/errors";
 import {
   hashPassword,
   passwordSchema,
@@ -22,10 +23,11 @@ export const IP_FAILURE_LIMIT = 20;
 // 32 bytes en base64url, sin relleno.
 const tokenPattern = /^[A-Za-z0-9_-]{43}$/;
 
+// Códigos de la taxonomía compartida (brief-3.4, D-1).
 export type AuthFailure =
-  | { ok: false; code: "UNAUTHENTICATED" }
-  | { ok: false; code: "VALIDATION_ERROR" }
-  | { ok: false; code: "RATE_LIMITED"; retryAfterSeconds: number };
+  | Failure<"UNAUTHENTICATED">
+  | Failure<"VALIDATION_ERROR">
+  | Failure<"RATE_LIMITED", { retryAfterSeconds: number }>;
 
 export type SessionIssued = { ok: true; token: string; expiresAt: Date };
 

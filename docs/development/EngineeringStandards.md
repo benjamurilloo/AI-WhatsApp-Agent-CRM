@@ -63,9 +63,11 @@ La versión exacta de cada paquete queda fijada en el lockfile al instalar (2.3)
 2. lint
 3. typecheck
 4. `format:check`
-5. `test:guards`
-6. `test:integration`, contra un service container `postgres:18.6-trixie` efímero
-7. build
+5. desfase de migraciones: `db:generate` no debe cambiar `drizzle/` ([brief-3.1](../decisions/brief-3.1-migraciones-de-identidad.md))
+6. `test:guards`
+7. `test:unit`: proyecto `unit` de Vitest, `src/**/*.test.ts` ([brief-3.4](../decisions/brief-3.4-autorizacion-y-errores.md); hasta la 3.3 no corría en CI)
+8. `test:integration`, contra un service container `postgres:18.6-trixie` efímero
+9. build
 
 - **Guardas** (`tests/guards/`, sin base de datos):
   - **referencias prohibidas**: Airtable o el repositorio del agente de WhatsApp en archivos versionados que no son `.md`;

@@ -26,6 +26,15 @@
 - Server-side, en cada caso de uso de aplicación, nunca delegada solo a la UI.
 - Modelo: en el MVP un usuario pertenece a una sola organización ([ADR 0010](../decisions/0010-un-usuario-una-organizacion-en-el-mvp.md)) vía `organization_members` con rol `admin` o `viewer`. Toda operación de escritura sensible (productos, clientes, ajustes de stock, gestión de usuarios) requiere `admin`. Lectura permitida a ambos roles dentro de su organización.
 - Aislamiento por organización: todo repositorio de datos recibe `organization_id` de la sesión autenticada, nunca de un parámetro de request sin verificar contra la membresía del usuario.
+- Implementación ([brief-3.4](../decisions/brief-3.4-autorizacion-y-errores.md)):
+  - `organizations.getAuthContext(token)` resuelve usuario, organización, rol y `must_change_password` en cada request. Sin sesión válida, usuario inactivo o sin membresía → `UNAUTHENTICATED`.
+  - Todo caso de uso protegido llama primero a `authorize(context, { role })`, que verifica en este orden:
+    1. `must_change_password` → `FORBIDDEN`;
+    2. rol insuficiente → `FORBIDDEN`;
+    3. el recurso se busca filtrado por `organization_id` en SQL; si no aparece → `NOT_FOUND`.
+
+    Así un `viewer` no puede averiguar si existe un recurso de otra organización.
+  - Next.js 16.3 ofrece `forbidden()` y `unauthorized()`, pero son experimentales (`experimental.authInterrupts`) y no se usan.
 
 ## Protección de la aplicación web
 

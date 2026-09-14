@@ -90,7 +90,8 @@ No hay otros módulos. Uno nuevo requiere primero cambiar la tabla de [Overview.
 ### Código compartido
 
 - `src/shared/db/` es la única carpeta compartida fijada en esta estructura: cliente de Drizzle, conexión y health check.
-- Las otras piezas transversales que describe Overview (taxonomía de errores, log estructurado con `request_id`) se ubican cuando se implementen, con la decisión registrada en el brief de esa subfase.
+- `src/shared/errors/` (3.4) contiene la taxonomía de errores de Overview: códigos, HTTP por código y tipo `Failure`.
+- Ubicaciones fijadas en la 3.4 (D-5), que nacen con su primer consumidor: `src/shared/log/` para el log estructurado con `request_id` (3.5) y `src/shared/http/` para la verificación de `Origin` del primer Route Handler mutante.
 - `src/shared/` no importa nada de `src/modules/`, para no crear ciclos.
 
 ## Frontera entre módulos
@@ -133,7 +134,8 @@ Ninguna carpeta se crea vacía: nace con el primer archivo real de la subfase qu
 | 2.5 — CI | `.github/workflows/ci.yml` y `tests/guards/`, con la guarda de referencias prohibidas y el caso que demuestra que la regla de frontera falla |
 | 3.1 — Migraciones de identidad | `src/modules/auth/schema.ts` (`users`), `src/modules/organizations/schema.ts` (`organizations`, `organization_members`), `drizzle/` con la migración inicial, y `global-setup.ts`, `test-database.ts`, `reset-database.ts` e `identity-schema.test.ts` en `tests/integration/` |
 | 3.3 — Autenticación | En `src/modules/auth/`: `index.ts`, `service.ts`, `repository.ts`, `password.ts` (argon2id y política), `session-cookie.ts` (cookie e IP) y sus tests unitarios; `sessions` y `login_attempts` en `schema.ts`; `drizzle/0001_*`; `tests/integration/auth-service.test.ts` |
-| Resto de la Fase 3 | Los archivos de `organizations/` fuera de `schema.ts`; `src/modules/audit/`; `seeds/` con el seed básico; `playwright.config.ts` y `tests/e2e/` con el login |
+| 3.4 — Autorización y taxonomía de errores | `src/shared/errors/`; en `src/modules/organizations/`: `index.ts`, `service.ts` (`getAuthContext`, `authorize`, `getMember`), `repository.ts` y su test unitario; `tests/integration/authorization.test.ts` |
+| Resto de la Fase 3 | `src/modules/audit/`; `seeds/` con el seed básico; `src/shared/log/`; `playwright.config.ts` y `tests/e2e/` con el login |
 | Fase 4 | `src/modules/catalog/` e `inventory/` |
 | Fase 5 | `src/modules/crm/` |
 | Fase 6 | `src/modules/conversations/` e `ingestion/` |

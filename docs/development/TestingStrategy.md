@@ -16,7 +16,7 @@
   - Un ajuste de stock concurrente no deja saldo negativo.
   - SKU y teléfono son únicos por organización.
   - Idempotencia de ingestión: reenviar el mismo evento no duplica conversaciones ni mensajes, y reenviarlo con otro `payload_hash` devuelve `CONFLICT` sin modificar datos.
-  - Aislamiento por organización: un usuario de la organización A recibe `NOT_FOUND` al leer o escribir datos de la organización B, incluso manipulando IDs directamente.
+  - Aislamiento por organización: un usuario de la organización A recibe `NOT_FOUND` al leer o escribir datos de la organización B, incluso manipulando IDs directamente. Cubierto desde la 3.4 para `organization_members` (`tests/integration/authorization.test.ts`); cada módulo de las Fases 4 a 7 agrega el suyo para sus recursos.
   - `inventory_movements` rechaza `UPDATE` y `DELETE` por permisos de base de datos.
   - `conversations.started_at` coincide con el `sent_at` del primer mensaje.
   - Después de cada ajuste, `balance_after` del movimiento es igual a `inventories.quantity_on_hand` del producto.
