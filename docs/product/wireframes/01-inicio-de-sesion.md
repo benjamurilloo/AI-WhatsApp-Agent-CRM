@@ -1,6 +1,6 @@
 # 01 — Inicio de sesión
 
-**Estado: diseñado.** Especificación: [Screens.md §1](../Screens.md#1-inicio-de-sesión). Convenciones en el [índice](README.md).
+**Estado: implementado en la 3.5 y validado en integración** ([brief-3.5](../../decisions/brief-3.5-pantalla-de-inicio-de-sesion.md)). Especificación: [Screens.md §1](../Screens.md#1-inicio-de-sesión). Convenciones en el [índice](README.md).
 
 Esta pantalla no lleva el marco común: el usuario todavía no tiene sesión.
 

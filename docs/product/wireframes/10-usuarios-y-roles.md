@@ -1,6 +1,6 @@
 # 10 — Usuarios y roles
 
-**Estado: diseñado.** Especificación: [Screens.md §10](../Screens.md#10-usuarios-y-roles). Reglas: FR-ORG-02 y FR-AUD-01. Convenciones en el [índice](README.md).
+**Estado: implementado en la 3.7 y validado en integración** ([brief-3.7](../../decisions/brief-3.7-gestion-de-usuarios-y-roles.md)). Especificación: [Screens.md §10](../Screens.md#10-usuarios-y-roles). Reglas: FR-ORG-02 y FR-AUD-01. Convenciones en el [índice](README.md).
 
 Solo `admin`. Un `viewer` no ve la entrada en la navegación y, si entra por URL, recibe `FORBIDDEN`.
 

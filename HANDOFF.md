@@ -2,9 +2,9 @@
 schema: project-state.v1
 project: ai-whatsapp-agent-crm
 generated_at: 2026-09-14
-git_ref: main — ff15318 en origin/main (CI en verde), más el cierre de la 3.7 (commit y push autorizados por el usuario al escribir este archivo)
-active_phase: Fase 3 — Identidad, autorización y auditoría (en progreso; todas sus subfases cerradas)
-active_task: ninguna; sigue el cierre de la Fase 3
+git_ref: main — 49a6209 en origin/main (CI en verde), más el cierre de la Fase 3 (commit y push sujetos a la autorización del usuario)
+active_phase: ninguna; Fase 3 cerrada el 2026-09-14, sigue la Fase 4 — Productos e inventario
+active_task: ninguna; la siguiente es la 4.0 (diseño visual base), sin brief
 confidence: confirmado
 ---
 
@@ -21,19 +21,28 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 ## 1. Identificación
 
 - **Proyecto**: AI WhatsApp Agent CRM. Independiente del agente de WhatsApp: no comparte código, infraestructura ni base de datos, y no depende de Airtable. `confirmado`
-- **Fase 3 en progreso desde el 2026-09-13.** En Notion: proyecto Fase 3 "En progreso". `confirmado`
-- **Subfases cerradas**: 3.1 a 3.3 el 2026-09-13; 3.4, 3.6, 3.5 y 3.7 el 2026-09-14. Tareas en Notion: "Completado". `confirmado`
+- **Fase 3 cerrada el 2026-09-14** con confirmación del usuario; subfases 3.1 a 3.3 cerradas el 2026-09-13 y 3.4 a 3.7 el 2026-09-14. En Notion: proyecto y tarea espejo de la Fase 3 en "Completado". `confirmado`
+- **Fase 4 sin abrir.** `confirmado`
 
 ## 2. Último punto aprobado
 
-- **3.7 — Gestión de usuarios y roles**, cerrada con confirmación del usuario. Entrada en [CHANGELOG.md](CHANGELOG.md) y resolución en [brief-3.7](docs/decisions/brief-3.7-gestion-de-usuarios-y-roles.md). `confirmado`
-- **CI en verde** en el commit `ff15318`, con los pasos de end-to-end: [ejecución 34894885454](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/34894885454). `confirmado`
+- **Fase 3 — Identidad, autorización y auditoría**, cerrada con confirmación del usuario. Entrada de cierre en [CHANGELOG.md](CHANGELOG.md), contra los criterios del [Roadmap](docs/planning/Roadmap.md). `confirmado`
+- **CI en verde** en el commit `49a6209`: [ejecución 34895273473](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/34895273473). `confirmado`
 
 ## 3. Próximo paso
 
-1. **Al retomar**: leer este archivo, verificar Git y que la CI del commit de cierre de la 3.7 esté en verde (`gh run list -L 1`). `confirmado`
-2. **Cerrar la Fase 3**, con aprobación del usuario: verificar los criterios de salida de la fase en el [Roadmap](docs/planning/Roadmap.md), buscar líneas de estado desactualizadas con `grep` (README, índices, hub del vault) y pasar el proyecto de la fase a "Completado" en Notion. `inferido`
-3. **Después**: Fase 4, en una sesión nueva. `inferido`
+1. **Al retomar, en una sesión nueva**: leer este archivo, verificar Git y que la CI del commit de cierre de la Fase 3 esté en verde (`gh run list -L 1`). `confirmado`
+2. **Abrir la Fase 4 — Productos e inventario**: pasar el proyecto a "En progreso" en Notion, con autorización. `confirmado`
+3. **Preparar el brief de la 4.0 — Diseño visual base**, sumada el 2026-09-14 a pedido del usuario (Roadmap, Fase 4). Debe resolver:
+   - paleta, tipografía (con fuentes locales o del sistema, sin dependencia de red), espaciado, radios y modo oscuro sí o no;
+   - componentes base sobre `src/app/_components/form-styles.ts`: botones, campos, tablas, tarjetas, avisos, marco y navegación;
+   - aplicación a las pantallas 1 y 10 y al marco común, sin cambiar comportamiento;
+   - contraste WCAG AA verificado con axe en los end-to-end existentes, que deben seguir en verde;
+   - si hace falta alguna dependencia nueva, pedir autorización;
+   - no es la identidad visual definitiva.
+
+   `confirmado`
+4. **Después**: brief de la 4.1 (migraciones de catálogo e inventario). Leer DataModel, el ADR 0008 (stock nunca negativo) y el ADR 0013, porque `inventory_movements` es de solo inserción. `inferido` del Roadmap
 
 ## 4. Contratos vigentes
 
@@ -99,6 +108,7 @@ Nivel del proyecto: **validado en integración** para el ingreso, el cambio obli
 
 ### Pendientes
 
+- **Diseño visual base**: subfase 4.0, decidida por el usuario el 2026-09-14; la identidad visual definitiva sigue fuera del MVP. `confirmado`
 - **`proxy`**: se reevalúa con más rutas protegidas (Fase 4). `confirmado`
 - **Verificación de `Origin`** (`src/shared/http/`): con el primer Route Handler mutante. `confirmado`
 - **`organization_id` y duración en el log**: con los casos de uso de la Fase 4. `inferido`
@@ -114,7 +124,7 @@ Nivel del proyecto: **validado en integración** para el ingreso, el cambio obli
 ## 7. Limitaciones y bloqueos
 
 - **CI sin protección de rama**: ninguna subfase se cierra sin verificar la CI de su commit con `gh run view`. `confirmado`
-- **Ver el CRM en local**: `docker compose up -d --wait`, `npm run db:migrate`, `npm run db:seed` y `npm run dev`, en `http://localhost:3000`. El `.env` local no tiene `SEED_USER_PASSWORD` al escribir este archivo: hay que agregarlo antes del seed. `confirmado`
+- **Ver el CRM en local**: `docker compose up -d --wait`, `npm run db:migrate`, `npm run db:seed` y `npm run dev`, en `http://localhost:3000`. Desde el 2026-09-14 el `.env` local tiene `SEED_USER_PASSWORD` con el valor de `.env.example`, la base de desarrollo está migrada y sembrada. `confirmado`
 - **End-to-end local**: requiere `npm run build` antes de `npm run test:e2e`, y `npx playwright install chromium` una vez por máquina. La base `<nombre>_e2e` se recrea en cada ejecución. `confirmado`
 - **Tipos viejos en `.next/dev/`**: al mover o borrar una ruta, borrar `.next/dev/` si el typecheck o el build la siguen referenciando. `confirmado`
 - **La guarda de referencias prohibidas lee el índice de Git**: un archivo borrado del disco pero no del índice la hace fallar con `ENOENT`. `confirmado`
@@ -135,7 +145,8 @@ Nivel del proyecto: **validado en integración** para el ingreso, el cambio obli
 ## 8. Rutas necesarias para continuar
 
 - [CLAUDE.md](CLAUDE.md), este archivo, [CHANGELOG.md](CHANGELOG.md).
-- [planning/Roadmap.md](docs/planning/Roadmap.md): criterios de salida de la Fase 3 y alcance de la Fase 4.
+- [planning/Roadmap.md](docs/planning/Roadmap.md): alcance y criterios de la Fase 4.
+- [decisions/0008-stock-nunca-negativo.md](docs/decisions/0008-stock-nunca-negativo.md) y [product/Screens.md](docs/product/Screens.md) §3 a §5 con sus wireframes.
 - [decisions/README.md](docs/decisions/README.md): briefs 3.1 a 3.7 y ADRs 0010 a 0013.
 - [architecture/DataModel.md](docs/architecture/DataModel.md), [architecture/SecurityModel.md](docs/architecture/SecurityModel.md) y [architecture/Overview.md](docs/architecture/Overview.md).
 - [src/modules/auth/index.ts](src/modules/auth/index.ts), [src/modules/organizations/index.ts](src/modules/organizations/index.ts), [src/modules/audit/index.ts](src/modules/audit/index.ts) y [src/app/(autenticado)/](<src/app/(autenticado)/layout.tsx>).
@@ -146,9 +157,9 @@ Ninguno en el repositorio. `confirmado`
 
 ## 10. Autorizaciones vigentes
 
-**Ninguna.** El commit y el push de la 3.7, el cierre y el cambio de estado en Notion quedan consumidos. Instalar dependencias, ejecutar migraciones, cambios en Notion y cualquier operación Git futura necesitan autorización explícita.
+**Ninguna.** El commit y el push del cierre de la Fase 3 y el cambio de estado en Notion quedan consumidos al ejecutarse. Instalar dependencias, ejecutar migraciones, cambios en Notion y cualquier operación Git futura necesitan autorización explícita.
 
 ## 11. Aspectos pendientes de confirmar
 
-- Que la CI del commit de cierre de la 3.7 quede en verde. Se verifica al hacer el push y se vuelve a comprobar al retomar.
-- Criterios de salida de la Fase 3 en el Roadmap, contra lo implementado.
+- Que la CI del commit de cierre de la Fase 3 quede en verde. Se verifica al hacer el push y se vuelve a comprobar al retomar.
+- Alcance exacto de la 4.1 en Notion.

@@ -65,8 +65,9 @@ Es el diseño de fases: objetivo, alcance, dependencias, riesgos, entregables, c
 ## Fase 4 — Productos e inventario
 
 - **Objetivo**: catálogo y ajustes de stock con trazabilidad completa.
-- **Alcance**: migraciones, servicio de catálogo, transacción de ajuste, concurrencia, historial y pantallas 3 a 5.
-- **Subfases**: 4.1 a 4.4 (la 4.3 se divide en 4.3.1 a 4.3.3).
+- **Alcance**: diseño visual base, migraciones, servicio de catálogo, transacción de ajuste, concurrencia, historial y pantallas 3 a 5.
+- **Subfases**: 4.0 diseño visual base · 4.1 a 4.4 (la 4.3 se divide en 4.3.1 a 4.3.3).
+- **Orden de ejecución**: 4.0 → 4.1 → 4.2 → 4.3 → 4.4. La 4.0 se sumó el 2026-09-14 a pedido del usuario, que quiere ver el CRM con un diseño atractivo: paleta, tipografía, espaciado y componentes base aplicados a las pantallas 1 y 10 y al marco común. No es la identidad visual definitiva. Va primero para que las pantallas 3 a 10 nazcan con esos estilos en vez de rehacerse, y la accesibilidad verificada con axe no puede retroceder.
 - **Dependencias**: Fase 3.
 - **Riesgos**: la transacción de ajuste es el punto más delicado del MVP y necesita un test de concurrencia específico.
 - **Entregables**: FR-PROD-01 a 09.
