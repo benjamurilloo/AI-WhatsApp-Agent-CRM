@@ -14,10 +14,16 @@
 - Un rechazo de la base se comprueba por su código de error de PostgreSQL (`23505`, `23503`, `23502`, `22P02`...), no solo porque la consulta falle.
 - Casos obligatorios:
   - Un ajuste de stock concurrente no deja saldo negativo.
-  - SKU y teléfono son únicos por organización.
+  - SKU y teléfono son únicos por organización. El SKU, desde la 4.1.
   - Idempotencia de ingestión: reenviar el mismo evento no duplica conversaciones ni mensajes, y reenviarlo con otro `payload_hash` devuelve `CONFLICT` sin modificar datos.
   - Aislamiento por organización: un usuario de la organización A recibe `NOT_FOUND` al leer o escribir datos de la organización B, incluso manipulando IDs directamente. Cubierto desde la 3.4 para `organization_members` (`tests/integration/authorization.test.ts`); cada módulo de las Fases 4 a 7 agrega el suyo para sus recursos.
-  - `inventory_movements` rechaza `UPDATE` y `DELETE` por permisos de base de datos.
+  - `inventory_movements` rechaza `UPDATE` y `DELETE`: con `42501` para `crm_app` y con `P0001` por trigger para el rol dueño. Cubierto desde la 4.1 en `tests/integration/catalog-inventory-schema.test.ts`, con `inventory_movements` en la lista de solo inserción de `audit.test.ts`.
+  - Esquema de catálogo e inventario, cubierto desde la 4.1 en ese mismo archivo con SQL directo:
+    - SKU único por organización sin distinguir mayúsculas (`23505`), y aceptado en otra organización;
+    - `quantity_on_hand`, `balance_after` y `reorder_point` negativos, `quantity` cero o negativa y `reason` vacío o solo con espacios se rechazan con `23514`;
+    - las cantidades se redondean a tres decimales y fuera de `numeric(14, 3)` se rechazan con `22003`;
+    - un saldo o un movimiento con el producto de otra organización se rechaza con `23503`, y borrar una organización, un producto o un usuario referenciados, con `23001`.
+  - Queda para la 4.3: que el servicio de ajuste no pueda saltearse el movimiento, el primer ajuste de un producto sin fila de `inventories` y los ajustes concurrentes.
   - `audit_logs` ([ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md)), cubierto desde la 3.6 en `tests/integration/audit.test.ts`:
     - rechaza `UPDATE` y `DELETE` para `crm_app` con `42501`, y para el rol dueño por trigger;
     - un registro escrito con `recordAudit` persiste o se revierte junto con el cambio que audita, incluso cuando falla la inserción de auditoría;

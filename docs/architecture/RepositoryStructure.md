@@ -158,6 +158,7 @@ Ninguna carpeta se crea vacía: nace con el primer archivo real de la subfase qu
 | 3.5 — Pantalla de inicio de sesión | `postcss.config.mjs` y `src/app/globals.css`; `src/app/login/`, `src/app/cambiar-contrasena/`, `src/app/_auth/` y `src/app/_components/`; `/` protegida provisional; `src/shared/log/`; `seeds/basic.ts`; `playwright.config.ts` y `tests/e2e/`; `tests/integration/seed.test.ts` |
 | 3.7 — Gestión de usuarios y roles | `src/app/(autenticado)/` con el marco común (`layout.tsx`), `/` movida desde `src/app/page.tsx` y `usuarios/`; `app-nav.tsx`, `copy-button.tsx` y `page-notice.tsx` en `src/app/_components/`; casos de uso de miembros en `organizations` y funciones con transacción en `auth`; `src/modules/auth/initial-password.test.ts`; `tests/integration/members.test.ts` y `tests/e2e/users.spec.ts` |
 | 4.0 — Diseño visual base | Tokens en `src/app/globals.css`; `src/app/_fonts/` (Manrope y OFL); `src/app/_theme/` (`theme.ts` y su test, `read-theme.ts`, `actions.ts`); `theme-selector.tsx` en `src/app/_components/`; caso 13 de `tests/e2e/users.spec.ts` y axe en claro y oscuro |
+| 4.1 — Migraciones de catálogo e inventario | `src/modules/catalog/schema.ts` (`products`) y `src/modules/inventory/schema.ts` (`inventories`, `inventory_movements`), solo con su esquema; `drizzle/0004_*` y `drizzle/0005_*` (privilegios y trigger de solo inserción); `tests/integration/catalog-inventory-schema.test.ts` |
 | Fase 4 | `src/modules/catalog/` e `inventory/` |
 | Fase 5 | `src/modules/crm/` |
 | Fase 6 | `src/modules/conversations/` e `ingestion/` |

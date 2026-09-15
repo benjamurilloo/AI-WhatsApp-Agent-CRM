@@ -118,7 +118,7 @@ function asAppRole<T>(fn: (tx: DbTransaction) => Promise<T>): Promise<T> {
 }
 
 // Tablas de public cuyos privilegios para crm_app no son los esperados (ADR 0013).
-const INSERT_ONLY_TABLES = ["audit_logs"];
+const INSERT_ONLY_TABLES = ["audit_logs", "inventory_movements"];
 
 async function tablesWithWrongPrivileges(executor: Db | DbTransaction) {
   const result = await executor.execute<{

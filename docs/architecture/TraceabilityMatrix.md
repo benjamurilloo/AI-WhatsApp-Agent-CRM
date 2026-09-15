@@ -10,7 +10,7 @@ Ninguna consulta se ejecutó: los índices se asignan por la forma de la consult
 |---|---|---|---|
 | 1 Inicio de sesión | FR-ORG-02 (cambio de contraseña), FR-ORG-03 | `users`, `organization_members` | `users UNIQUE(email)`; `organization_members UNIQUE(user_id)` |
 | 2 Dashboard | FR-MET-01, 02, 03 | `organizations`, `conversations`, `messages`, `clients`, `ingestion_events` | ver vista 4 |
-| 3 Lista de productos | FR-PROD-01, 03, 04, 05 | `products`, `inventories` | `products UNIQUE(organization_id, sku)`; `products (organization_id, name text_pattern_ops)`; `inventories UNIQUE(product_id)` |
+| 3 Lista de productos | FR-PROD-01, 03, 04, 05 | `products`, `inventories` | `products UNIQUE(organization_id, lower(sku))`; `products (organization_id, name text_pattern_ops)`; `inventories UNIQUE(product_id)` |
 | 4 Detalle de producto | FR-PROD-01, 02, 03, 05, 09; FR-AUD-02 | `products`, `inventories`, `inventory_movements`, `audit_logs`, `users` | PK de `products`; `inventories UNIQUE(product_id)`; `inventory_movements (organization_id, product_id, created_at desc)`; `audit_logs (organization_id, entity_type, entity_id, created_at desc)` |
 | 5 Ajuste e historial | FR-PROD-06, 07, 08, 09 | `inventories`, `inventory_movements`, `products`, `users` | `inventories UNIQUE(product_id)` (bloqueo de fila del ajuste); `inventory_movements (organization_id, product_id, created_at desc)` |
 | 6 Lista de clientes | FR-CLI-01, 03, 05, 06 | `clients`, `conversations` | `clients UNIQUE(organization_id, phone_e164) WHERE phone_e164 IS NOT NULL`; `clients (organization_id, display_name text_pattern_ops)`; `conversations (organization_id, client_id, last_message_at desc)` |
@@ -68,7 +68,8 @@ Cada índice tiene al menos una consulta real que lo usa.
 | `organization_members` | `(organization_id)` | lista de usuarios de la organización; conteo de `admin` activos para la regla del último `admin` | pantalla 10 |
 | `clients` | `UNIQUE(organization_id, phone_e164) WHERE phone_e164 IS NOT NULL` | búsqueda por teléfono completo; `CONFLICT` por duplicado | pantallas 6 y 7 |
 | `clients` | `(organization_id, display_name text_pattern_ops)` | búsqueda por prefijo de nombre | pantalla 6 |
-| `products` | `UNIQUE(organization_id, sku)` | búsqueda exacta por SKU; `CONFLICT` por duplicado | pantallas 3 y 4 |
+| `products` | `UNIQUE(organization_id, lower(sku))` | búsqueda exacta por SKU sin distinguir mayúsculas; `CONFLICT` por duplicado (brief-4.1, D-6) | pantallas 3 y 4 |
+| `products` | `UNIQUE(organization_id, id)` | destino de las claves foráneas compuestas de `inventories` e `inventory_movements`; ninguna consulta lo usa (brief-4.1, D-3) | — |
 | `products` | `(organization_id, name text_pattern_ops)` | búsqueda por prefijo de nombre | pantalla 3 |
 | `inventories` | `UNIQUE(product_id)` | saldo del producto y bloqueo de fila del ajuste | pantallas 3, 4 y 5 |
 | `inventory_movements` | `(organization_id, product_id, created_at desc)` | historial del producto, del más reciente al más antiguo | pantallas 4 y 5 |

@@ -1,13 +1,14 @@
 # Modelo de Datos
 
-**Estado: diseñado; `organizations`, `users` y `organization_members` implementadas y validadas localmente desde la 3.1** ([brief-3.1](../decisions/brief-3.1-migraciones-de-identidad.md)), **`sessions` y `login_attempts` desde la 3.3** ([brief-3.3](../decisions/brief-3.3-autenticacion.md)), **y `audit_logs` desde la 3.6** ([brief-3.6](../decisions/brief-3.6-modulo-de-auditoria.md)). Las migraciones están en `drizzle/`; el resto de las tablas sigue sin migración.
+**Estado: diseñado; `organizations`, `users` y `organization_members` implementadas y validadas localmente desde la 3.1** ([brief-3.1](../decisions/brief-3.1-migraciones-de-identidad.md)), **`sessions` y `login_attempts` desde la 3.3** ([brief-3.3](../decisions/brief-3.3-autenticacion.md)), **`audit_logs` desde la 3.6** ([brief-3.6](../decisions/brief-3.6-modulo-de-auditoria.md)), **y `products`, `inventories` e `inventory_movements` desde la 4.1** ([brief-4.1](../decisions/brief-4.1-migraciones-de-catalogo-e-inventario.md)), solo como esquema: sus servicios llegan en la 4.2 y la 4.3. Las migraciones están en `drizzle/`; el resto de las tablas sigue sin migración.
 
 Convenciones fijadas en la 3.1, que siguen las tablas futuras salvo justificación:
 
 - Los enums son tipos `ENUM` de PostgreSQL (`pgEnum`), p. ej. `member_role`. Agregar un valor es un `ALTER TYPE ... ADD VALUE` aditivo (D-2).
 - `id` usa `gen_random_uuid()` como default de base (D-6).
 - `updated_at` lo mantiene la aplicación con `$onUpdate` de Drizzle. **Limitación**: un `UPDATE` escrito en SQL crudo no lo actualiza (D-3).
-- Los esquemas viven en el módulo dueño: `users` en `src/modules/auth/schema.ts`; `organizations` y `organization_members` en `src/modules/organizations/schema.ts`; `audit_logs` en `src/modules/audit/schema.ts`.
+- Los esquemas viven en el módulo dueño: `users` en `src/modules/auth/schema.ts`; `organizations` y `organization_members` en `src/modules/organizations/schema.ts`; `audit_logs` en `src/modules/audit/schema.ts`; `products` en `src/modules/catalog/schema.ts`; `inventories` e `inventory_movements` en `src/modules/inventory/schema.ts`.
+- Las cantidades son `numeric(14, 3)`: hasta 99 999 999 999,999 con tres decimales, y comparaciones exactas (brief-4.1, D-4). Drizzle devuelve `numeric` como `string`: los servicios comparan y suman en SQL o con una representación decimal exacta, nunca con `number` de JavaScript.
 - Privilegios ([ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md), 3.6): cada migración que crea una tabla otorga sus privilegios al rol de aplicación `crm_app`. Una tabla de solo inserción recibe solo `SELECT` e `INSERT`, más un trigger que rechaza `UPDATE` y `DELETE`. Los roles, privilegios y triggers van en migraciones a medida, porque Drizzle no los expresa en `schema.ts`.
 
 ## Reglas de diseño aplicadas a todas las tablas
@@ -36,7 +37,7 @@ erDiagram
     USERS ||--o{ SESSIONS : has
     ORGANIZATIONS ||--o{ CLIENTS : owns
     ORGANIZATIONS ||--o{ PRODUCTS : owns
-    PRODUCTS ||--|| INVENTORIES : has
+    PRODUCTS ||--o| INVENTORIES : has
     PRODUCTS ||--o{ INVENTORY_MOVEMENTS : tracks
     ORGANIZATIONS ||--o{ INVENTORY_MOVEMENTS : scopes
     ORGANIZATIONS ||--o{ CONVERSATIONS : owns
@@ -138,50 +139,58 @@ Limpieza: en cada intento se borran los registros vencidos de esa clave; un logi
 
 ### `products`
 
+**Implementada en la 4.1** ([brief-4.1](../decisions/brief-4.1-migraciones-de-catalogo-e-inventario.md)), migraciones `drizzle/0004_*` y `drizzle/0005_*`. Módulo dueño: `catalog`.
+
 | Columna | Tipo | Notas |
 |---|---|---|
 | `id` | uuid PK | |
-| `organization_id` | uuid FK → organizations, not null | |
-| `sku` | text not null | |
+| `organization_id` | uuid FK → organizations, not null | `ON DELETE RESTRICT` |
+| `sku` | text not null | único por organización sin distinguir mayúsculas: índice único `products_organization_sku_lower_unique` sobre `(organization_id, lower(sku))` (brief-4.1, D-6). Se guarda como lo escribió el usuario; la búsqueda exacta usa `lower(sku) = lower($1)` |
 | `name` | text not null | |
 | `description` | text null | |
 | `unit` | text not null default `'unidad'` | |
-| `reorder_point` | numeric not null default 0 | único umbral del estado de stock (FR-PROD-05). `min_stock` se quitó en la subfase 1.2 (D-10) por no tener regla que lo usara |
+| `reorder_point` | numeric(14, 3) not null default 0 | `CHECK (reorder_point >= 0)` (brief-4.1, D-5). Único umbral del estado de stock (FR-PROD-05). `min_stock` se quitó en la subfase 1.2 (D-10) por no tener regla que lo usara |
 | `is_active` | boolean not null default true | |
 | `created_at`, `updated_at` | timestamptz not null | |
-| — | `UNIQUE(organization_id, sku)` | |
+| — | `UNIQUE(organization_id, id)` | destino de las claves foráneas compuestas de `inventories` e `inventory_movements` (brief-4.1, D-3) |
 
-Índices: el `UNIQUE(organization_id, sku)` cubre la unicidad y la búsqueda exacta por SKU; `(organization_id, name text_pattern_ops)` sirve la búsqueda por prefijo de nombre.
+Índices: el único sobre `(organization_id, lower(sku))` cubre la unicidad y la búsqueda exacta por SKU; `(organization_id, name text_pattern_ops)` sirve la búsqueda por prefijo de nombre; `UNIQUE(organization_id, id)` existe solo porque PostgreSQL lo exige para la referencia compuesta.
+
+`sku`, `name` y `unit` vacíos los rechaza el servicio de la 4.2, que también recorta espacios: son editables y se corrigen.
 
 ### `inventories`
 
-Saldo actual, un registro por producto. Se mantiene siempre junto con `inventory_movements` en la misma transacción — nunca se escribe de forma aislada.
+**Implementada en la 4.1.** Módulo dueño: `inventory`.
+
+Saldo actual: **a lo sumo un registro por producto; sin registro, el saldo es 0** (brief-4.1, D-7). La fila la crea `inventory` en el primer ajuste, dentro de la misma transacción (`INSERT … ON CONFLICT (product_id) DO NOTHING` y después el bloqueo de la fila). Ni `catalog` ni un trigger la crean al dar de alta el producto. Se mantiene siempre junto con `inventory_movements` en la misma transacción — nunca se escribe de forma aislada.
 
 | Columna | Tipo | Notas |
 |---|---|---|
 | `id` | uuid PK | |
-| `organization_id` | uuid FK → organizations, not null | |
-| `product_id` | uuid FK → products, not null unique | 1:1 con producto |
-| `quantity_on_hand` | numeric not null default 0 | `CHECK (quantity_on_hand >= 0)` |
+| `organization_id` | uuid FK → organizations, not null | `ON DELETE RESTRICT` |
+| `product_id` | uuid not null unique | a lo sumo 1 por producto. FK compuesta `(organization_id, product_id)` → `products(organization_id, id)`, `ON DELETE RESTRICT`: el saldo no puede apuntar al producto de otra organización (brief-4.1, D-3) |
+| `quantity_on_hand` | numeric(14, 3) not null default 0 | `CHECK (quantity_on_hand >= 0)` |
 | `updated_at` | timestamptz not null | |
 
 Índice: `UNIQUE(product_id)` ya cubre el lookup principal.
 
 ### `inventory_movements`
 
-Insert-only. Nunca se actualiza ni se borra.
+**Implementada en la 4.1.** Módulo dueño: `inventory`.
+
+Insert-only. Nunca se actualiza ni se borra: `crm_app` solo tiene `SELECT` e `INSERT`, y el trigger `inventory_movements_insert_only` rechaza `UPDATE` y `DELETE` para cualquier rol con SQLSTATE `P0001` ([ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md)).
 
 | Columna | Tipo | Notas |
 |---|---|---|
 | `id` | uuid PK | |
-| `organization_id` | uuid FK → organizations, not null | |
-| `product_id` | uuid FK → products, not null | |
-| `type` | enum(`adjustment_positive`,`adjustment_negative`) not null | solo los tipos con productor en el MVP; entradas y salidas llegarían con compras y ventas, fuera de alcance, como valores nuevos del enum (subfase 1.2, D-11) |
-| `quantity` | numeric not null | `CHECK (quantity > 0)`; el signo del efecto lo da `type`, no la cantidad |
-| `balance_after` | numeric not null | `CHECK (balance_after >= 0)`; saldo de `inventories.quantity_on_hand` después del movimiento, escrito en la misma transacción (subfase 1.2, D-1) |
-| `reason` | text not null | motivo obligatorio, incluso para ajustes |
-| `created_by` | uuid FK → users, not null | |
-| `created_at` | timestamptz not null | |
+| `organization_id` | uuid FK → organizations, not null | `ON DELETE RESTRICT` |
+| `product_id` | uuid not null | FK compuesta `(organization_id, product_id)` → `products(organization_id, id)`, `ON DELETE RESTRICT` (brief-4.1, D-3) |
+| `type` | `inventory_movement_type` enum(`adjustment_positive`,`adjustment_negative`) not null | solo los tipos con productor en el MVP; entradas y salidas llegarían con compras y ventas, fuera de alcance, como valores nuevos del enum (subfase 1.2, D-11) |
+| `quantity` | numeric(14, 3) not null | `CHECK (quantity > 0)`; el signo del efecto lo da `type`, no la cantidad |
+| `balance_after` | numeric(14, 3) not null | `CHECK (balance_after >= 0)`; saldo de `inventories.quantity_on_hand` después del movimiento, escrito en la misma transacción (subfase 1.2, D-1) |
+| `reason` | text not null | motivo obligatorio, incluso para ajustes: `CHECK (btrim(reason) <> '')` (brief-4.1, D-5) |
+| `created_by` | uuid FK → users, not null | `ON DELETE RESTRICT`. Clave simple: un usuario pertenece a una sola organización (ADR 0010) y eso lo verifica la autorización |
+| `created_at` | timestamptz not null default `now()` | |
 
 Índices: `(organization_id, product_id, created_at desc)` para el historial por producto ordenado.
 
