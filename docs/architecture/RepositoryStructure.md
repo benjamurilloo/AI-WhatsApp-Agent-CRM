@@ -43,7 +43,7 @@ Ubica en carpetas los módulos y las reglas de dependencia de [Overview.md](Over
 ├── drizzle/                         Migraciones SQL generadas por Drizzle Kit (versionadas)
 ├── seeds/                           Seeds sintéticos: basic.ts (3.5); volumen, más adelante
 ├── tests/
-│   ├── guards/                      Guardas sin base: referencias prohibidas y frontera entre módulos
+│   ├── guards/                      Guardas sin base: referencias prohibidas, frontera entre módulos y escrituras del saldo
 │   ├── integration/                 Contra PostgreSQL real, en la base <nombre>_test
 │   │   ├── global-setup.ts          Recrea y migra la base de test en cada ejecución (3.1)
 │   │   ├── test-database.ts         Deriva las URL de las bases _test y _e2e desde DATABASE_URL
@@ -136,7 +136,7 @@ Se hace cumplir con la regla `no-restricted-imports` de ESLint, incluida en ESLi
 | Qué | Dónde | Cómo corre |
 |---|---|---|
 | Tests unitarios | `src/**/*.test.ts`, junto al código | Proyecto unitario de Vitest, sin base de datos |
-| Guardas | `tests/guards/` | Proyecto `guards` de Vitest, sin base de datos: referencias prohibidas y frontera entre módulos |
+| Guardas | `tests/guards/` | Proyecto `guards` de Vitest, sin base de datos: referencias prohibidas, frontera entre módulos y escrituras del saldo (4.3.1) |
 | Tests de integración | `tests/integration/` | Proyecto de integración de Vitest, contra PostgreSQL real de test |
 | Tests end-to-end | `tests/e2e/` | Playwright, contra un entorno efímero con seeds sintéticos |
 | Fixtures | Junto al test que los usa | Sintéticos; los de ingestión se marcan como forma asumida |
@@ -161,6 +161,7 @@ Ninguna carpeta se crea vacía: nace con el primer archivo real de la subfase qu
 | 4.0 — Diseño visual base | Tokens en `src/app/globals.css`; `src/app/_fonts/` (Manrope y OFL); `src/app/_theme/` (`theme.ts` y su test, `read-theme.ts`, `actions.ts`); `theme-selector.tsx` en `src/app/_components/`; caso 13 de `tests/e2e/users.spec.ts` y axe en claro y oscuro |
 | 4.1 — Migraciones de catálogo e inventario | `src/modules/catalog/schema.ts` (`products`) y `src/modules/inventory/schema.ts` (`inventories`, `inventory_movements`), solo con su esquema; `drizzle/0004_*` y `drizzle/0005_*` (privilegios y trigger de solo inserción); `tests/integration/catalog-inventory-schema.test.ts` |
 | 4.2 — Servicio de catálogo | En `src/modules/catalog/`: `index.ts`, `service.ts` (casos de uso, validación y `deriveStockStatus`), `repository.ts` y su test unitario; en `src/modules/inventory/`: `index.ts`, `service.ts` (lista y detalle con saldo y estado), `repository.ts` (solo lectura) y su test unitario; `src/shared/quantity/` con su test; `drizzle/0006_*` (índice de nombre sin distinguir mayúsculas); `tests/integration/catalog.test.ts` |
+| 4.3.1 — Transacción de ajuste de stock | En `src/modules/inventory/`: `adjustStock`, su validación y el cálculo del saldo en `service.ts`, `lockBalance` y `applyStockChange` (única escritura del saldo) en `repository.ts`, con sus tests unitarios; `lockProductForStockChange` en `catalog`; `tests/guards/stock-writes.test.ts`; `tests/integration/inventory-adjustment.test.ts` |
 | Fase 4 | `src/modules/catalog/` e `inventory/` |
 | Fase 5 | `src/modules/crm/` |
 | Fase 6 | `src/modules/conversations/` e `ingestion/` |

@@ -49,6 +49,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-4.0](brief-4.0-diseno-visual-base.md) | 4.0 — Diseño visual base | aprobado y cerrado el 2026-09-14 |
 | [brief-4.1](brief-4.1-migraciones-de-catalogo-e-inventario.md) | 4.1 — Migraciones de catálogo e inventario | aprobado y cerrado el 2026-09-15 |
 | [brief-4.2](brief-4.2-servicio-de-catalogo.md) | 4.2 — Servicio de catálogo | aprobado y cerrado el 2026-09-15 |
+| [brief-4.3.1](brief-4.3.1-transaccion-de-ajuste-de-stock.md) | 4.3.1 — Transacción de ajuste de stock | aprobado el 2026-09-15 |
 
 ## Plantilla
 

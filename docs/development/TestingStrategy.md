@@ -29,7 +29,13 @@
     - `viewer` y contraseña pendiente → `FORBIDDEN` en escrituras; producto de otra organización → `NOT_FOUND`; id inválido → `VALIDATION_ERROR`;
     - lista con saldo y estado contra la base: prefijo de nombre y SKU exacto sin distinguir mayúsculas, `%` y `_` literales, filtros de estado y actividad, un producto sin fila de `inventories` como `sin_stock`, orden y paginación.
   - Bordes del estado de stock (FR-PROD-05) y cantidades exactas, en tests unitarios de `catalog` y `src/shared/quantity/`.
-  - Queda para la 4.3: que el servicio de ajuste no pueda saltearse el movimiento, el primer ajuste de un producto sin fila de `inventories` y los ajustes concurrentes.
+  - Ajuste de stock ([brief-4.3.1](../decisions/brief-4.3.1-transaccion-de-ajuste-de-stock.md)), cubierto desde la 4.3.1 en `tests/integration/inventory-adjustment.test.ts`, sin conexiones simultáneas:
+    - el primer ajuste crea la fila de `inventories`, el movimiento con `balance_after` y la auditoría `inventory` / `stock_adjustment`; en una serie, después de cada ajuste, `balance_after` del último movimiento es igual a `quantity_on_hand`;
+    - un saldo que queda exacto en 0 o exacto en el máximo se acepta;
+    - −0,001 → `negative_stock`, producto desactivado → `inactive_product`, máximo superado → `stock_limit`, saldo esperado distinto → `CONFLICT`; cada rechazo se compara contra una foto de saldos, movimientos y auditoría, y no deja la fila de `inventories` si no existía;
+    - `viewer` y contraseña pendiente → `FORBIDDEN`; producto de otra organización o inexistente → `NOT_FOUND`; id o entrada inválidos → `VALIDATION_ERROR`, sin crear la fila;
+    - si falla el movimiento, no persiste ni la fila nueva ni el cambio de saldo. **Límite**: el fallo se provoca con un actor inexistente, que rompe primero la clave foránea del movimiento; no hay un caso que haga fallar solo la auditoría después de actualizar el saldo.
+  - Queda para la 4.3.2: ajustes concurrentes, incluidos dos primeros ajustes sobre un producto sin fila y un ajuste contra una desactivación.
   - `audit_logs` ([ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md)), cubierto desde la 3.6 en `tests/integration/audit.test.ts`:
     - rechaza `UPDATE` y `DELETE` para `crm_app` con `42501`, y para el rol dueño por trigger;
     - un registro escrito con `recordAudit` persiste o se revierte junto con el cambio que audita, incluso cuando falla la inserción de auditoría;
@@ -59,7 +65,7 @@
 
 ### Guardas
 
-- Tests en `tests/guards/` que vigilan reglas del proyecto, no comportamiento: referencias prohibidas por `CLAUDE.md` y frontera entre módulos.
+- Tests en `tests/guards/` que vigilan reglas del proyecto, no comportamiento: referencias prohibidas por `CLAUDE.md`, frontera entre módulos y, desde la 4.3.1, que `inventories` e `inventory_movements` solo se escriban desde `lockBalance` y `applyStockChange` (`stock-writes.test.ts`, FR-PROD-07). Esta última lee `src/` como texto: no detecta una tabla que llega por un alias ni SQL escrito fuera del repositorio.
 - Sin base de datos ni red. Corren en local con `npm run test:guards` y en cada ejecución de CI.
 - Cada guarda incluye casos que demuestran que falla ante lo que prohíbe. Una guarda que nunca se vio fallar no protege nada.
 

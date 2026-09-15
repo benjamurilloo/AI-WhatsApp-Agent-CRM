@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { recordAudit } from "@/modules/audit";
 import { authorize, type AuthContext } from "@/modules/organizations";
+import type { DbTransaction } from "@/shared/db";
 import { failure, type Failure } from "@/shared/errors";
 import {
   parseQuantityInput,
@@ -123,6 +124,22 @@ export async function searchProducts(
     activity: filters.activity,
   });
   return { ok: true, products };
+}
+
+// Para el ajuste de stock de inventory (brief-4.3.1, D-1): verifica y bloquea el producto dentro
+// de la transacción de quien ajusta, que ya autorizó. Exige la transacción, como recordAudit.
+export async function lockProductForStockChange(
+  tx: DbTransaction,
+  organizationId: string,
+  productId: string,
+): Promise<"active" | "inactive" | "not_found"> {
+  const product = await repository.lockProductShared(
+    tx,
+    organizationId,
+    productId,
+  );
+  if (!product) return "not_found";
+  return product.isActive ? "active" : "inactive";
 }
 
 // Escrituras: solo admin.

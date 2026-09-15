@@ -46,10 +46,17 @@ Dónde vive cada módulo en el repositorio y cómo se hacen cumplir estas reglas
 
 ## Flujo de datos — ejemplo: ajuste de stock
 
-1. UI envía `POST /products/:id/stock-adjustments` con cantidad y motivo.
-2. Servicio de aplicación de `inventory` valida el producto, autorización y organización.
-3. En una única transacción de base de datos: inserta `inventory_movements`, actualiza `inventories.quantity_on_hand`, inserta `audit_logs`.
-4. Si el saldo resultante sería negativo sin una decisión de negocio que lo permita, la transacción se aborta completa (todo o nada).
+Implementado a nivel de servicio desde la 4.3.1 ([brief-4.3.1](../decisions/brief-4.3.1-transaccion-de-ajuste-de-stock.md)); la pantalla 5 y su Server Action llegan en la 4.4.
+
+1. `adjustStock` de `inventory`, solo `admin`, valida antes de abrir la transacción el id, el tipo, la cantidad mayor a 0, el saldo que vio el usuario y el motivo, de 1 a 500 caracteres (D-2 y D-5).
+2. Dentro de la transacción, `lockProductForStockChange` de `catalog` bloquea el producto con `FOR SHARE` (D-1). Inexistente o de otra organización → `NOT_FOUND`; desactivado → `BUSINESS_RULE_VIOLATION` con `rule: inactive_product`. Varios ajustes del mismo producto conviven en ese bloqueo; una edición o una desactivación, que toman `FOR UPDATE`, esperan a que el ajuste termine, y viceversa.
+3. `inventory` crea la fila de `inventories` en 0 si falta (`INSERT … ON CONFLICT DO NOTHING`) y la bloquea con `FOR UPDATE`. El orden de bloqueos es siempre producto y después saldo.
+4. Si el saldo difiere del esperado → `CONFLICT` con `currentQuantityOnHand` (D-2).
+5. El saldo resultante se calcula en milésimas: negativo → `rule: negative_stock`; mayor que el máximo de `numeric(14, 3)` → `rule: stock_limit`. Ambos llevan `currentQuantityOnHand` y `requestedQuantity` como texto en la escala de la base (D-3, [ADR 0008](../decisions/0008-stock-nunca-negativo.md)).
+6. `applyStockChange` inserta el movimiento con `balance_after` y actualiza `quantity_on_hand`; después `recordAudit` registra el ajuste (D-4). Es la única escritura del saldo en la aplicación, y `tests/guards/stock-writes.test.ts` lo hace cumplir (D-6).
+7. Todo rechazo dentro de la transacción la revierte entera, incluida la fila de `inventories` que acababa de crear el primer ajuste. Nada queda a medias.
+
+**Límite aceptado** (D-6): SQL escrito a mano contra la base puede cambiar el saldo sin movimiento; el `CHECK` sigue impidiendo el negativo.
 
 ## Estrategia de errores (diseño)
 

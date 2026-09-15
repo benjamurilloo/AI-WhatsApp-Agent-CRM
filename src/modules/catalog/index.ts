@@ -4,6 +4,7 @@ export {
   deactivateProduct,
   deriveStockStatus,
   getProduct,
+  lockProductForStockChange,
   reactivateProduct,
   searchProducts,
   updateProduct,

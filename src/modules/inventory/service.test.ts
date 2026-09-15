@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { Product } from "@/modules/catalog";
-import { composeProductStockPage, PRODUCTS_PAGE_SIZE } from "./service";
+import { MAX_QUANTITY } from "@/shared/quantity";
+import {
+  composeProductStockPage,
+  computeBalanceAfter,
+  PRODUCTS_PAGE_SIZE,
+  validateStockAdjustmentInput,
+  type StockAdjustmentInput,
+} from "./service";
 
 let nextId = 0;
 
@@ -88,5 +95,97 @@ describe("composeProductStockPage", () => {
     expect(
       composeProductStockPage([], new Map(), { stockStatus: "all", page: 1 }),
     ).toEqual({ products: [], total: 0, page: 1, pageCount: 1 });
+  });
+});
+
+describe("computeBalanceAfter", () => {
+  it("un ajuste negativo que deja el saldo exacto en 0 se acepta", () => {
+    expect(computeBalanceAfter(6000n, "adjustment_negative", 6000n)).toEqual({
+      ok: true,
+      balanceAfter: 0n,
+    });
+  });
+
+  it("uno que lo dejaría en −0,001 viola negative_stock", () => {
+    expect(computeBalanceAfter(6000n, "adjustment_negative", 6001n)).toEqual({
+      ok: false,
+      rule: "negative_stock",
+    });
+  });
+
+  it("un ajuste positivo llega al máximo, pero no lo supera por una milésima", () => {
+    expect(
+      computeBalanceAfter(MAX_QUANTITY - 1n, "adjustment_positive", 1n),
+    ).toEqual({ ok: true, balanceAfter: MAX_QUANTITY });
+    expect(
+      computeBalanceAfter(MAX_QUANTITY, "adjustment_positive", 1n),
+    ).toEqual({ ok: false, rule: "stock_limit" });
+  });
+
+  it("suma y resta exactas en milésimas", () => {
+    expect(computeBalanceAfter(100n, "adjustment_positive", 200n)).toEqual({
+      ok: true,
+      balanceAfter: 300n,
+    });
+  });
+});
+
+describe("validateStockAdjustmentInput", () => {
+  const valid: StockAdjustmentInput = {
+    type: "adjustment_positive",
+    quantity: "2,5",
+    expectedQuantityOnHand: "6.000",
+    reason: "  Conteo físico  ",
+  };
+
+  it("normaliza cantidades a milésimas y recorta el motivo", () => {
+    expect(validateStockAdjustmentInput(valid)).toEqual({
+      ok: true,
+      values: {
+        type: "adjustment_positive",
+        quantity: 2500n,
+        expectedQuantityOnHand: 6000n,
+        reason: "Conteo físico",
+      },
+    });
+  });
+
+  it("acepta la menor cantidad, un saldo esperado de 0 y un motivo de 500 caracteres", () => {
+    expect(
+      validateStockAdjustmentInput({
+        ...valid,
+        quantity: "0,001",
+        expectedQuantityOnHand: "0",
+        reason: "a".repeat(500),
+      }).ok,
+    ).toBe(true);
+  });
+
+  it("devuelve cada campo inválido en orden", () => {
+    expect(
+      validateStockAdjustmentInput({
+        type: "sale",
+        quantity: "0",
+        expectedQuantityOnHand: "-1",
+        reason: "   ",
+      }),
+    ).toEqual({
+      ok: false,
+      code: "VALIDATION_ERROR",
+      fields: ["type", "quantity", "expectedQuantityOnHand", "reason"],
+    });
+  });
+
+  it.each([
+    ["quantity", { quantity: "1e3" }],
+    ["quantity", { quantity: "1,0001" }],
+    ["expectedQuantityOnHand", { expectedQuantityOnHand: "" }],
+    ["reason", { reason: "a".repeat(501) }],
+  ])("rechaza %s: %j", (field, override) => {
+    expect(validateStockAdjustmentInput({ ...valid, ...override })).toEqual({
+      ok: false,
+      code: "VALIDATION_ERROR",
+      fields: [field],
+    });
   });
 });

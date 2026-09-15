@@ -66,6 +66,27 @@ export async function findProduct(
   return rows[0];
 }
 
+// FOR SHARE: convive con otros ajustes de stock del mismo producto, y la edición y la
+// desactivación, que toman FOR UPDATE, esperan a que el ajuste termine (brief-4.3.1, D-1).
+export async function lockProductShared(
+  tx: DbTransaction,
+  organizationId: string,
+  productId: string,
+): Promise<{ isActive: boolean } | undefined> {
+  const rows = await tx
+    .select({ isActive: products.isActive })
+    .from(products)
+    .where(
+      and(
+        eq(products.organizationId, organizationId),
+        eq(products.id, productId),
+      ),
+    )
+    .limit(1)
+    .for("share");
+  return rows[0];
+}
+
 export type ActivityFilter = "active" | "inactive" | "all";
 
 // % y _ del texto buscado se escapan: LIKE los trata como literales.

@@ -164,6 +164,8 @@ Limpieza: en cada intento se borran los registros vencidos de esa clave; un logi
 
 Saldo actual: **a lo sumo un registro por producto; sin registro, el saldo es 0** (brief-4.1, D-7). La fila la crea `inventory` en el primer ajuste, dentro de la misma transacción (`INSERT … ON CONFLICT (product_id) DO NOTHING` y después el bloqueo de la fila). Ni `catalog` ni un trigger la crean al dar de alta el producto. Se mantiene siempre junto con `inventory_movements` en la misma transacción — nunca se escribe de forma aislada.
 
+Desde la 4.3.1 ([brief-4.3.1](../decisions/brief-4.3.1-transaccion-de-ajuste-de-stock.md)), en la aplicación solo dos funciones de `src/modules/inventory/repository.ts` escriben estas tablas: `lockBalance` crea la fila en 0 sin tocar un saldo existente, y `applyStockChange` es la única que cambia `quantity_on_hand`, siempre insertando antes el movimiento cuyo `balance_after` es el saldo nuevo. `tests/guards/stock-writes.test.ts` falla ante cualquier otra escritura en `src/` (D-6). SQL escrito a mano contra la base queda fuera de esa guarda.
+
 | Columna | Tipo | Notas |
 |---|---|---|
 | `id` | uuid PK | |
@@ -294,6 +296,12 @@ Productor `organization_member`, desde la 3.7 ([brief-3.7](../decisions/brief-3.
 - `role_change`: `{ role }`;
 - `deactivate` y `reactivate`: `{ isActive }`;
 - una operación que no cambia nada no escribe auditoría.
+
+Productor `inventory`, desde la 4.3.1 ([brief-4.3.1](../decisions/brief-4.3.1-transaccion-de-ajuste-de-stock.md), D-4). `entity_id` es el id del **producto**, no el de la fila de `inventories`: el historial del producto reúne sus ediciones (`product`) y sus ajustes (`inventory`) con una sola condición sobre `entity_id`, aunque la fila de saldo todavía no exista:
+
+- `stock_adjustment`: `{ quantityOnHand }`, con el saldo antes y después en la escala de la base (`"6.000"`);
+- el id del movimiento no entra al `diff`; el movimiento se ubica por producto y fecha;
+- un ajuste rechazado no escribe auditoría.
 
 ## Explícitamente fuera de este modelo
 

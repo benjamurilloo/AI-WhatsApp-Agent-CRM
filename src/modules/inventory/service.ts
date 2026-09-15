@@ -1,15 +1,25 @@
+import { z } from "zod";
+import { recordAudit } from "@/modules/audit";
 import {
   deriveStockStatus,
   getProduct,
+  lockProductForStockChange,
   searchProducts,
   type Product,
   type ProductActivityFilter,
   type StockStatus,
 } from "@/modules/catalog";
-import type { AuthContext } from "@/modules/organizations";
-import type { Failure } from "@/shared/errors";
-import { quantityFromDatabase } from "@/shared/quantity";
+import { authorize, type AuthContext } from "@/modules/organizations";
+import { failure, type Failure } from "@/shared/errors";
+import {
+  MAX_QUANTITY,
+  parseQuantityInput,
+  quantityFromDatabase,
+  quantityToDatabase,
+  type Quantity,
+} from "@/shared/quantity";
 import * as repository from "./repository";
+import { inventoryMovementType } from "./schema";
 
 // Productos con saldo y estado de stock (brief-4.2, D-1): catalog aporta los productos y deriva
 // el estado; inventory aporta el saldo y compone en memoria, sin JOIN entre módulos.
@@ -122,4 +132,202 @@ export async function getProductStock(
     found.product.id,
   ]);
   return { ok: true, product: withStock(found.product, balances) };
+}
+
+// Ajuste manual de stock (brief-4.3.1): movimiento, saldo y auditoría en una sola transacción
+// (FR-PROD-06 a 08). Las cantidades se calculan en milésimas, nunca con number.
+
+export type StockMovementType = repository.StockMovementType;
+
+// Datos de un formulario: todo llega como texto y se valida aquí (D-5).
+export type StockAdjustmentInput = {
+  type: string;
+  quantity: string;
+  // Saldo que vio quien ajusta; si cambió, el ajuste da CONFLICT (D-2).
+  expectedQuantityOnHand: string;
+  reason: string;
+};
+
+export type StockAdjustmentField = keyof StockAdjustmentInput;
+
+const STOCK_ADJUSTMENT_FIELDS: StockAdjustmentField[] = [
+  "type",
+  "quantity",
+  "expectedQuantityOnHand",
+  "reason",
+];
+
+export type StockAdjustmentValues = {
+  type: StockMovementType;
+  quantity: Quantity;
+  expectedQuantityOnHand: Quantity;
+  reason: string;
+};
+
+function quantityAtLeast(min: Quantity) {
+  return z.string().transform((value, ctx) => {
+    const quantity = parseQuantityInput(value);
+    if (quantity === null || quantity < min) {
+      ctx.addIssue({ code: "custom", message: "cantidad inválida" });
+      return z.NEVER;
+    }
+    return quantity;
+  });
+}
+
+const stockAdjustmentSchema = z.object({
+  type: z.enum(inventoryMovementType.enumValues),
+  quantity: quantityAtLeast(1n),
+  expectedQuantityOnHand: quantityAtLeast(0n),
+  reason: z.string().trim().min(1).max(500),
+});
+
+export function validateStockAdjustmentInput(
+  input: StockAdjustmentInput,
+):
+  | { ok: true; values: StockAdjustmentValues }
+  | Failure<"VALIDATION_ERROR", { fields: StockAdjustmentField[] }> {
+  const parsed = stockAdjustmentSchema.safeParse(input);
+  if (parsed.success) return { ok: true, values: parsed.data };
+  const fields = new Set(parsed.error.issues.map((issue) => issue.path[0]));
+  return {
+    ok: false,
+    code: "VALIDATION_ERROR",
+    fields: STOCK_ADJUSTMENT_FIELDS.filter((field) => fields.has(field)),
+  };
+}
+
+export type BalanceRule = "negative_stock" | "stock_limit";
+
+// Saldo resultante: nunca negativo (ADR 0008) ni mayor que el máximo de numeric(14, 3).
+export function computeBalanceAfter(
+  current: Quantity,
+  type: StockMovementType,
+  quantity: Quantity,
+): { ok: true; balanceAfter: Quantity } | { ok: false; rule: BalanceRule } {
+  const balanceAfter =
+    type === "adjustment_positive" ? current + quantity : current - quantity;
+  if (balanceAfter < 0n) return { ok: false, rule: "negative_stock" };
+  if (balanceAfter > MAX_QUANTITY) return { ok: false, rule: "stock_limit" };
+  return { ok: true, balanceAfter };
+}
+
+// Cantidades en la escala de la base ("6.000"), como texto (D-3).
+export type StockAdjustmentResult =
+  | { ok: true; quantityOnHand: string }
+  | Failure<"FORBIDDEN" | "NOT_FOUND">
+  | Failure<"VALIDATION_ERROR", { fields: StockAdjustmentField[] }>
+  | Failure<"CONFLICT", { currentQuantityOnHand: string }>
+  | Failure<"BUSINESS_RULE_VIOLATION", { rule: "inactive_product" }>
+  | Failure<
+      "BUSINESS_RULE_VIOLATION",
+      {
+        rule: BalanceRule;
+        currentQuantityOnHand: string;
+        requestedQuantity: string;
+      }
+    >;
+
+type StockAdjustmentRejection = Exclude<StockAdjustmentResult, { ok: true }>;
+
+// Un rechazo se lanza para revertir la transacción entera: también la fila de inventories
+// que acaba de crear el primer ajuste de un producto (hallazgo 4).
+class AdjustmentRejected extends Error {
+  constructor(readonly result: StockAdjustmentRejection) {
+    super(result.code);
+    this.name = "AdjustmentRejected";
+  }
+}
+
+const productIdSchema = z.uuid();
+
+// Solo admin. Orden de bloqueos fijo: el producto en modo compartido y después su saldo (D-1).
+export async function adjustStock(
+  context: AuthContext,
+  productId: string,
+  input: StockAdjustmentInput,
+): Promise<StockAdjustmentResult> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  if (!productIdSchema.safeParse(productId).success) {
+    return { ok: false, code: "VALIDATION_ERROR", fields: [] };
+  }
+  const validated = validateStockAdjustmentInput(input);
+  if (!validated.ok) return validated;
+  const { values } = validated;
+  const { organizationId, userId } = context;
+
+  try {
+    return await repository.withTransaction(async (tx) => {
+      const product = await lockProductForStockChange(
+        tx,
+        organizationId,
+        productId,
+      );
+      if (product === "not_found") {
+        throw new AdjustmentRejected(failure("NOT_FOUND"));
+      }
+      if (product === "inactive") {
+        throw new AdjustmentRejected({
+          ok: false,
+          code: "BUSINESS_RULE_VIOLATION",
+          rule: "inactive_product",
+        });
+      }
+
+      const current = quantityFromDatabase(
+        await repository.lockBalance(tx, organizationId, productId),
+      );
+      if (current !== values.expectedQuantityOnHand) {
+        throw new AdjustmentRejected({
+          ok: false,
+          code: "CONFLICT",
+          currentQuantityOnHand: quantityToDatabase(current),
+        });
+      }
+
+      const computed = computeBalanceAfter(
+        current,
+        values.type,
+        values.quantity,
+      );
+      if (!computed.ok) {
+        throw new AdjustmentRejected({
+          ok: false,
+          code: "BUSINESS_RULE_VIOLATION",
+          rule: computed.rule,
+          currentQuantityOnHand: quantityToDatabase(current),
+          requestedQuantity: quantityToDatabase(values.quantity),
+        });
+      }
+
+      const before = quantityToDatabase(current);
+      const balanceAfter = quantityToDatabase(computed.balanceAfter);
+      await repository.applyStockChange(tx, {
+        organizationId,
+        productId,
+        type: values.type,
+        quantity: quantityToDatabase(values.quantity),
+        balanceAfter,
+        reason: values.reason,
+        createdBy: userId,
+      });
+      // entity_id es el producto: su historial reúne ediciones y ajustes (D-4).
+      await recordAudit(tx, {
+        organizationId,
+        actorUserId: userId,
+        entityType: "inventory",
+        entityId: productId,
+        action: "stock_adjustment",
+        diff: {
+          before: { quantityOnHand: before },
+          after: { quantityOnHand: balanceAfter },
+        },
+      });
+      return { ok: true as const, quantityOnHand: balanceAfter };
+    });
+  } catch (error) {
+    if (error instanceof AdjustmentRejected) return error.result;
+    throw error;
+  }
 }
