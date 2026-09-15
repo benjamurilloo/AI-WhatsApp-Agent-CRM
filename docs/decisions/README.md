@@ -46,7 +46,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-3.6](brief-3.6-modulo-de-auditoria.md) | 3.6 — Módulo de auditoría | aprobado y cerrado el 2026-09-14 |
 | [brief-3.5](brief-3.5-pantalla-de-inicio-de-sesion.md) | 3.5 — Pantalla de inicio de sesión | aprobado y cerrado el 2026-09-14 |
 | [brief-3.7](brief-3.7-gestion-de-usuarios-y-roles.md) | 3.7 — Gestión de usuarios y roles | aprobado y cerrado el 2026-09-14 |
-| [brief-4.0](brief-4.0-diseno-visual-base.md) | 4.0 — Diseño visual base | aprobado el 2026-09-14 |
+| [brief-4.0](brief-4.0-diseno-visual-base.md) | 4.0 — Diseño visual base | aprobado y cerrado el 2026-09-14 |
 
 ## Plantilla
 
