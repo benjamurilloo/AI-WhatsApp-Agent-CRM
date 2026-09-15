@@ -4,7 +4,7 @@ Backoffice propio de productos e inventario, clientes, conversaciones y métrica
 
 ## Estado
 
-**El estado vigente y verificado está en [HANDOFF.md](HANDOFF.md)**, que se sobrescribe al cerrar cada fase. Con la Fase 3 cerrada, la identidad, la autorización, la auditoría y las pantallas de ingreso y de usuarios están **validadas en integración** o **validadas localmente y en CI**, según el componente. La Fase 4 está en curso: la 4.0 dejó un diseño visual base con modo claro y oscuro, la 4.1, el esquema de productos e inventario, y la 4.2, el servicio de catálogo, ambos validados localmente y en CI. El resto del dominio sigue en nivel *diseñado*, y nada está desplegado ni conectado a tráfico real. El índice de documentación está en [docs/README.md](docs/README.md).
+**El estado vigente y verificado está en [HANDOFF.md](HANDOFF.md)**, que se sobrescribe al cerrar cada fase. Con la Fase 3 cerrada, la identidad, la autorización, la auditoría y las pantallas de ingreso y de usuarios están **validadas en integración** o **validadas localmente y en CI**, según el componente. La Fase 4 está en curso: la 4.0 dejó un diseño visual base con modo claro y oscuro, la 4.1, el esquema de productos e inventario, la 4.2, el servicio de catálogo, y la 4.3.1, el ajuste de stock a nivel de servicio, los tres validados localmente y en CI. El resto del dominio sigue en nivel *diseñado*, y nada está desplegado ni conectado a tráfico real. El índice de documentación está en [docs/README.md](docs/README.md).
 
 ## Qué es
 

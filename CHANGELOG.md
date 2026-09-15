@@ -2,6 +2,33 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-15 — Subfase 4.3.1 cerrada (Transacción de ajuste de stock)
+
+**Certifica:**
+
+- **Ajuste de stock a nivel de servicio** según el [brief-4.3.1](docs/decisions/brief-4.3.1-transaccion-de-ajuste-de-stock.md), con D-1 a D-6 resueltas según la recomendación:
+  - `adjustStock` de `inventory`, solo `admin`: movimiento con `balance_after`, saldo y auditoría en una sola transacción (FR-PROD-06);
+  - el producto se bloquea con `FOR SHARE` a través de `lockProductForStockChange` de `catalog`, y después la fila de saldo con `FOR UPDATE`, creada en 0 si faltaba (D-1);
+  - saldo esperado obligatorio: si cambió, `CONFLICT` con el saldo actual (D-2);
+  - `BUSINESS_RULE_VIOLATION` con `rule`: `negative_stock` y `stock_limit` con saldo actual y cantidad solicitada, e `inactive_product` (D-3, FR-PROD-08, ADR 0008);
+  - auditoría `inventory` / `stock_adjustment` con el id del producto y `{ quantityOnHand }` antes y después (D-4);
+  - motivo recortado de 1 a 500 caracteres y cantidad mayor a 0 (D-5);
+  - todo rechazo revierte la transacción entera, incluida la fila de `inventories` recién creada.
+- **Una sola vía para cambiar el saldo** (FR-PROD-07, D-6): `applyStockChange` es la única función que actualiza `quantity_on_hand`, siempre junto con su movimiento; `lockBalance` solo crea la fila en 0. `tests/guards/stock-writes.test.ts` falla ante cualquier otra escritura en `src/`, con seis casos que demuestran que detecta y un control de que el repositorio tiene exactamente esas escrituras.
+- **Tests**: 13 de integración en `tests/integration/inventory-adjustment.test.ts` contra PostgreSQL real (primer ajuste, serie con `balance_after` igual al saldo, saldo exacto en 0 y en el máximo, cada rechazo comparado contra una foto de la base, `FORBIDDEN`, `NOT_FOUND`, `VALIDATION_ERROR` y fallo del movimiento sin efectos), y unitarios del cálculo del saldo y de la validación. Ningún test existente cambió y el `CHECK` de la base no se disparó desde el servicio.
+- **Suite local**: `npm run test` pasa 297 de 297 (97 unitarios, 30 guardas y 170 de integración); `npm run test:e2e` pasa 25 de 25. Con la base detenida pasan typecheck, lint, formato, guardas, unitarios y build, y `db:generate` informa "No schema changes". Sin migraciones ni dependencias nuevas.
+- **CI**: [35012071693](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35012071693), commit `a820df1`, en verde con todos los pasos.
+- **Documentación**: DataModel (productor `inventory` y escrituras del saldo), Overview (flujo del ajuste), TestingStrategy y RepositoryStructure.
+- **Nivel alcanzado**: **validado localmente y en CI** para el ajuste de stock secuencial: atomicidad, rechazos sin efectos y auditoría.
+
+**No certifica:**
+
+- **Ajustes simultáneos**, dos primeros ajustes sobre un producto sin fila y un ajuste contra una desactivación: 4.3.2.
+- **Un fallo aislado de la auditoría después de actualizar el saldo**: el test provoca el fallo en el movimiento; no hay caso que haga fallar solo la auditoría.
+- **SQL escrito a mano contra la base** que cambie el saldo sin movimiento, ni una tabla que llegue por un alias: fuera del alcance de la guarda (límite de D-6).
+- **Pantalla 5** y su Server Action: 4.4.
+- **Revisión independiente**: es autoevaluación del mismo agente.
+
 ## 2026-09-15 — Subfase 4.2 cerrada (Servicio de catálogo)
 
 **Certifica:**

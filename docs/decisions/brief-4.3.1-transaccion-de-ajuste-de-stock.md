@@ -237,6 +237,10 @@ La revisión es una autoevaluación (`self_assessment: true`).
 - Si aparece la necesidad de pantallas, Server Actions o tests de carrera.
 - Antes de commit, push o cambios en Notion.
 
+## Cierre
+
+Cerrada con confirmación del usuario el 2026-09-15. AC-1 a AC-10 cumplidos: `npm run test` 297 de 297, `npm run test:e2e` 25 de 25, chequeos con la base detenida en verde, sin migraciones, y CI en verde en el commit `a820df1` ([ejecución 35012071693](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35012071693)). Nivel: **validado localmente y en CI** para el ajuste de stock secuencial. Detalle en `CHANGELOG.md`. Revisión: autoevaluación (`self_assessment: true`).
+
 ## Ajustes durante la implementación
 
 1. **D-6, dos funciones autorizadas en lugar de una.** La fila de `inventories` se crea y se bloquea antes de conocer el saldo (paso 3), así que esa inserción no puede vivir en la misma función que escribe el saldo (paso 6). La guarda autoriza `lockBalance`, que solo inserta la fila en 0 con `ON CONFLICT DO NOTHING`, y `applyStockChange`, la única que cambia `quantity_on_hand` y siempre junto con su movimiento. El objetivo de D-6 se mantiene: ninguna otra vía cambia el saldo. La guarda además exige que el repositorio tenga exactamente esas tres escrituras, para que un cambio en los patrones no la deje vacía.
