@@ -43,6 +43,13 @@
       "when": 1789480916110,
       "tag": "0005_inventory_privileges_and_movements_insert_only",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789484966308,
+      "tag": "0006_products_name_lower_index",
+      "breakpoints": true
     }
   ]
 }

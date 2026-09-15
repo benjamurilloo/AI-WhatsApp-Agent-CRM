@@ -48,6 +48,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-3.7](brief-3.7-gestion-de-usuarios-y-roles.md) | 3.7 — Gestión de usuarios y roles | aprobado y cerrado el 2026-09-14 |
 | [brief-4.0](brief-4.0-diseno-visual-base.md) | 4.0 — Diseño visual base | aprobado y cerrado el 2026-09-14 |
 | [brief-4.1](brief-4.1-migraciones-de-catalogo-e-inventario.md) | 4.1 — Migraciones de catálogo e inventario | aprobado y cerrado el 2026-09-15 |
+| [brief-4.2](brief-4.2-servicio-de-catalogo.md) | 4.2 — Servicio de catálogo | aprobado el 2026-09-15 |
 
 ## Plantilla
 

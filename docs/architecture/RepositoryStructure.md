@@ -110,6 +110,7 @@ No hay otros módulos. Uno nuevo requiere primero cambiar la tabla de [Overview.
 - `src/shared/db/` es la única carpeta compartida fijada en esta estructura: cliente de Drizzle, conexión y health check.
 - `src/shared/errors/` (3.4) contiene la taxonomía de errores de Overview: códigos, HTTP por código y tipo `Failure`.
 - `src/shared/log/` (3.5) contiene el log estructurado con `request_id`.
+- `src/shared/quantity/` (4.2) contiene las cantidades `numeric(14, 3)` como `bigint` en milésimas: parseo de entrada, conversión desde y hacia la base, sin `number` ([brief-4.2](../decisions/brief-4.2-servicio-de-catalogo.md), D-2).
 - Ubicación fijada en la 3.4 (D-5), que nace con su primer consumidor: `src/shared/http/` para la verificación de `Origin` del primer Route Handler mutante.
 - `src/shared/` no importa nada de `src/modules/`, para no crear ciclos.
 
@@ -159,6 +160,7 @@ Ninguna carpeta se crea vacía: nace con el primer archivo real de la subfase qu
 | 3.7 — Gestión de usuarios y roles | `src/app/(autenticado)/` con el marco común (`layout.tsx`), `/` movida desde `src/app/page.tsx` y `usuarios/`; `app-nav.tsx`, `copy-button.tsx` y `page-notice.tsx` en `src/app/_components/`; casos de uso de miembros en `organizations` y funciones con transacción en `auth`; `src/modules/auth/initial-password.test.ts`; `tests/integration/members.test.ts` y `tests/e2e/users.spec.ts` |
 | 4.0 — Diseño visual base | Tokens en `src/app/globals.css`; `src/app/_fonts/` (Manrope y OFL); `src/app/_theme/` (`theme.ts` y su test, `read-theme.ts`, `actions.ts`); `theme-selector.tsx` en `src/app/_components/`; caso 13 de `tests/e2e/users.spec.ts` y axe en claro y oscuro |
 | 4.1 — Migraciones de catálogo e inventario | `src/modules/catalog/schema.ts` (`products`) y `src/modules/inventory/schema.ts` (`inventories`, `inventory_movements`), solo con su esquema; `drizzle/0004_*` y `drizzle/0005_*` (privilegios y trigger de solo inserción); `tests/integration/catalog-inventory-schema.test.ts` |
+| 4.2 — Servicio de catálogo | En `src/modules/catalog/`: `index.ts`, `service.ts` (casos de uso, validación y `deriveStockStatus`), `repository.ts` y su test unitario; en `src/modules/inventory/`: `index.ts`, `service.ts` (lista y detalle con saldo y estado), `repository.ts` (solo lectura) y su test unitario; `src/shared/quantity/` con su test; `drizzle/0006_*` (índice de nombre sin distinguir mayúsculas); `tests/integration/catalog.test.ts` |
 | Fase 4 | `src/modules/catalog/` e `inventory/` |
 | Fase 5 | `src/modules/crm/` |
 | Fase 6 | `src/modules/conversations/` e `ingestion/` |

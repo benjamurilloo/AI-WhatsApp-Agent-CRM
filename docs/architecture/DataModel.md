@@ -8,7 +8,7 @@ Convenciones fijadas en la 3.1, que siguen las tablas futuras salvo justificaci�
 - `id` usa `gen_random_uuid()` como default de base (D-6).
 - `updated_at` lo mantiene la aplicación con `$onUpdate` de Drizzle. **Limitación**: un `UPDATE` escrito en SQL crudo no lo actualiza (D-3).
 - Los esquemas viven en el módulo dueño: `users` en `src/modules/auth/schema.ts`; `organizations` y `organization_members` en `src/modules/organizations/schema.ts`; `audit_logs` en `src/modules/audit/schema.ts`; `products` en `src/modules/catalog/schema.ts`; `inventories` e `inventory_movements` en `src/modules/inventory/schema.ts`.
-- Las cantidades son `numeric(14, 3)`: hasta 99 999 999 999,999 con tres decimales, y comparaciones exactas (brief-4.1, D-4). Drizzle devuelve `numeric` como `string`: los servicios comparan y suman en SQL o con una representación decimal exacta, nunca con `number` de JavaScript.
+- Las cantidades son `numeric(14, 3)`: hasta 99 999 999 999,999 con tres decimales, y comparaciones exactas (brief-4.1, D-4). Drizzle devuelve `numeric` como `string`: los servicios comparan y suman en SQL o con una representación decimal exacta, nunca con `number` de JavaScript. La representación exacta es `src/shared/quantity/`: `bigint` en milésimas, con parseo de entrada con coma o punto (brief-4.2, D-2).
 - Privilegios ([ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md), 3.6): cada migración que crea una tabla otorga sus privilegios al rol de aplicación `crm_app`. Una tabla de solo inserción recibe solo `SELECT` e `INSERT`, más un trigger que rechaza `UPDATE` y `DELETE`. Los roles, privilegios y triggers van en migraciones a medida, porque Drizzle no los expresa en `schema.ts`.
 
 ## Reglas de diseño aplicadas a todas las tablas
@@ -154,7 +154,7 @@ Limpieza: en cada intento se borran los registros vencidos de esa clave; un logi
 | `created_at`, `updated_at` | timestamptz not null | |
 | — | `UNIQUE(organization_id, id)` | destino de las claves foráneas compuestas de `inventories` e `inventory_movements` (brief-4.1, D-3) |
 
-Índices: el único sobre `(organization_id, lower(sku))` cubre la unicidad y la búsqueda exacta por SKU; `(organization_id, name text_pattern_ops)` sirve la búsqueda por prefijo de nombre; `UNIQUE(organization_id, id)` existe solo porque PostgreSQL lo exige para la referencia compuesta.
+Índices: el único sobre `(organization_id, lower(sku))` cubre la unicidad y la búsqueda exacta por SKU; `products_organization_name_lower_idx` sobre `(organization_id, lower(name) text_pattern_ops)` sirve la búsqueda por prefijo de nombre sin distinguir mayúsculas, `lower(name) LIKE 'caf%'` (migración `drizzle/0006_*`, brief-4.2, D-3; reemplaza al índice sobre `name` de la 4.1, que distinguía mayúsculas). La búsqueda no ignora acentos; `UNIQUE(organization_id, id)` existe solo porque PostgreSQL lo exige para la referencia compuesta.
 
 `sku`, `name` y `unit` vacíos los rechaza el servicio de la 4.2, que también recorta espacios: son editables y se corrigen.
 

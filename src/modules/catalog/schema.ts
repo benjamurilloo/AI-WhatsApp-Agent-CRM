@@ -50,9 +50,10 @@ export const products = pgTable(
       table.organizationId,
       table.id,
     ),
-    index("products_organization_name_idx").on(
+    // Prefijo de nombre sin distinguir mayúsculas: lower(name) LIKE 'caf%' (brief-4.2, D-3).
+    index("products_organization_name_lower_idx").on(
       table.organizationId,
-      table.name.op("text_pattern_ops"),
+      sql`lower(${table.name}) text_pattern_ops`,
     ),
     check(
       "products_reorder_point_non_negative",

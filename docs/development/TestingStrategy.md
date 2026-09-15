@@ -23,6 +23,12 @@
     - `quantity_on_hand`, `balance_after` y `reorder_point` negativos, `quantity` cero o negativa y `reason` vacío o solo con espacios se rechazan con `23514`;
     - las cantidades se redondean a tres decimales y fuera de `numeric(14, 3)` se rechazan con `22003`;
     - un saldo o un movimiento con el producto de otra organización se rechaza con `23503`, y borrar una organización, un producto o un usuario referenciados, con `23001`.
+  - Servicio de catálogo ([brief-4.2](../decisions/brief-4.2-servicio-de-catalogo.md)), cubierto desde la 4.2 en `tests/integration/catalog.test.ts`:
+    - alta, edición, desactivación y reactivación auditadas en la misma transacción con `diff` exacto; un cambio sin diferencias no escribe ni audita; si la auditoría falla, el producto no persiste;
+    - SKU duplicado, también con otras mayúsculas, en alta y en edición → `CONFLICT` sin auditoría; dos altas simultáneas con el mismo SKU → una sola se crea;
+    - `viewer` y contraseña pendiente → `FORBIDDEN` en escrituras; producto de otra organización → `NOT_FOUND`; id inválido → `VALIDATION_ERROR`;
+    - lista con saldo y estado contra la base: prefijo de nombre y SKU exacto sin distinguir mayúsculas, `%` y `_` literales, filtros de estado y actividad, un producto sin fila de `inventories` como `sin_stock`, orden y paginación.
+  - Bordes del estado de stock (FR-PROD-05) y cantidades exactas, en tests unitarios de `catalog` y `src/shared/quantity/`.
   - Queda para la 4.3: que el servicio de ajuste no pueda saltearse el movimiento, el primer ajuste de un producto sin fila de `inventories` y los ajustes concurrentes.
   - `audit_logs` ([ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md)), cubierto desde la 3.6 en `tests/integration/audit.test.ts`:
     - rechaza `UPDATE` y `DELETE` para `crm_app` con `42501`, y para el rol dueño por trigger;
