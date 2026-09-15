@@ -4,8 +4,12 @@ import { MAX_QUANTITY } from "@/shared/quantity";
 import {
   composeProductStockPage,
   computeBalanceAfter,
+  movementPageBounds,
+  MOVEMENTS_PAGE_SIZE,
   PRODUCTS_PAGE_SIZE,
+  validateMovementHistoryFilters,
   validateStockAdjustmentInput,
+  type MovementHistoryFilters,
   type StockAdjustmentInput,
 } from "./service";
 
@@ -187,5 +191,76 @@ describe("validateStockAdjustmentInput", () => {
       code: "VALIDATION_ERROR",
       fields: [field],
     });
+  });
+});
+
+describe("validateMovementHistoryFilters", () => {
+  const all: MovementHistoryFilters = {
+    type: "all",
+    from: "",
+    to: "",
+    page: 1,
+  };
+
+  it("sin filtros no limita tipo ni período", () => {
+    expect(validateMovementHistoryFilters(all)).toEqual({
+      ok: true,
+      values: { type: null, from: null, to: null },
+    });
+  });
+
+  it("acepta un tipo, fechas iguales y recorta espacios", () => {
+    expect(
+      validateMovementHistoryFilters({
+        ...all,
+        type: "adjustment_negative",
+        from: " 2024-02-29 ",
+        to: "2024-02-29",
+      }),
+    ).toEqual({
+      ok: true,
+      values: {
+        type: "adjustment_negative",
+        from: "2024-02-29",
+        to: "2024-02-29",
+      },
+    });
+  });
+
+  it.each([
+    [["type"], { type: "sale" }],
+    [["type"], { type: "" }],
+    [["from"], { from: "2025-02-29" }],
+    [["from"], { from: "2026-9-1" }],
+    [["to"], { to: "0999-12-31" }],
+    [["from", "to"], { from: "2026-09-02", to: "2026-09-01" }],
+  ])("rechaza %j: %j", (fields, override) => {
+    expect(validateMovementHistoryFilters({ ...all, ...override })).toEqual({
+      ok: false,
+      code: "VALIDATION_ERROR",
+      fields,
+    });
+  });
+});
+
+describe("movementPageBounds", () => {
+  it("sin movimientos hay una página", () => {
+    expect(movementPageBounds(0, 5)).toEqual({
+      page: 1,
+      pageCount: 1,
+      offset: 0,
+    });
+  });
+
+  it("calcula el desplazamiento y lleva las páginas fuera de rango a un extremo", () => {
+    expect(movementPageBounds(MOVEMENTS_PAGE_SIZE + 1, 2)).toEqual({
+      page: 2,
+      pageCount: 2,
+      offset: MOVEMENTS_PAGE_SIZE,
+    });
+    expect(movementPageBounds(MOVEMENTS_PAGE_SIZE, 2).page).toBe(1);
+    expect(movementPageBounds(60, Number.POSITIVE_INFINITY).page).toBe(3);
+    expect(movementPageBounds(60, 2.9).page).toBe(2);
+    expect(movementPageBounds(60, Number.NaN).page).toBe(1);
   });
 });

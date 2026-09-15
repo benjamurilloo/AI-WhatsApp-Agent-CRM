@@ -316,19 +316,34 @@ describe("inventory_movements: esquema", () => {
     const result = await getDb().execute<{
       id: string;
       quantity: string;
-      created_now: boolean;
+      created_on_insert: boolean;
     }>(
       sql`insert into inventory_movements
             (organization_id, product_id, type, quantity, balance_after, reason, created_by)
           values (${movement.organizationId}, ${movement.productId}, 'adjustment_negative', 1.5, 3.5,
             'Rotura', ${movement.createdBy})
-          returning id, quantity, created_at = now() as created_now`,
+          returning id, quantity,
+            created_at between now() and clock_timestamp() as created_on_insert`,
     );
     expect(result.rows[0]).toEqual({
       id: expect.stringMatching(uuidPattern),
       quantity: "1.500",
-      created_now: true,
+      created_on_insert: true,
     });
+  });
+
+  it("created_at es la hora del INSERT, no la del inicio de la transacción (brief-4.3.3, D-1)", async () => {
+    const { movement } = await seedProduct();
+    const after = await getDb().transaction(async (tx) => {
+      await tx.execute(sql`select pg_sleep(0.05)`);
+      await insertMovement(tx, movement);
+      const result = await tx.execute<{ after_start: boolean }>(
+        sql`select created_at > transaction_timestamp() + interval '40 milliseconds' as after_start
+            from inventory_movements`,
+      );
+      return result.rows[0]!.after_start;
+    });
+    expect(after).toBe(true);
   });
 
   it("rechaza columnas obligatorias en NULL", async () => {

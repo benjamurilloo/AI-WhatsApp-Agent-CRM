@@ -4,6 +4,7 @@ import { hashPassword, login } from "@/modules/auth";
 import { deactivateProduct } from "@/modules/catalog";
 import {
   adjustStock,
+  listStockMovements,
   type StockAdjustmentInput,
   type StockAdjustmentResult,
 } from "@/modules/inventory";
@@ -14,7 +15,8 @@ import { resetDatabase } from "./reset-database";
 
 // Ajustes de stock con conexiones simultáneas (brief-4.3.2). Otra conexión retiene un bloqueo,
 // se comprueba en pg_stat_activity que todos esperan en él (D-2) y recién entonces se suelta (D-1).
-// Ninguna aserción ordena movimientos por created_at: es la hora de inicio de la transacción (hallazgo 4).
+// Los casos 1 a 5 no ordenan movimientos por created_at (brief-4.3.2, hallazgo 4); el caso 6
+// comprueba ese orden con created_at como hora del INSERT (brief-4.3.3, D-1).
 
 const PASSWORD = "contraseña-correcta-larga";
 const TEST_TIMEOUT = 20000;
@@ -355,6 +357,68 @@ describe("ajuste y desactivación simultáneos", () => {
       expect(await count("inventories")).toBe(0);
       expect(await count("inventory_movements")).toBe(0);
       expect(await count("audit_logs")).toBe(0);
+    },
+    TEST_TIMEOUT,
+  );
+});
+
+describe("historial después de ajustes simultáneos (brief-4.3.3)", () => {
+  it(
+    "caso 6: el historial en orden encadena los saldos tras una carrera con reintento",
+    async () => {
+      const s = await seed();
+      const productId = await insertProduct(s.orgId, "100");
+      const inputs: [typeof add, string][] = [
+        [add, "10"],
+        [remove, "7"],
+        [add, "3"],
+        [remove, "4"],
+        [add, "20"],
+        [remove, "11"],
+      ];
+
+      async function adjustWithRetry(build: typeof add, quantity: string) {
+        let expected = "100";
+        for (let attempt = 0; attempt < 10; attempt++) {
+          const result = await adjustStock(
+            s.admin,
+            productId,
+            build(quantity, expected),
+          );
+          if (result.ok || result.code !== "CONFLICT") return result;
+          expected = result.currentQuantityOnHand;
+        }
+        throw new Error("demasiados reintentos");
+      }
+
+      const release = await hold(
+        sql`select id from products where id = ${productId} for update`,
+      );
+      const adjustments = inputs.map(([build, quantity]) =>
+        adjustWithRetry(build, quantity),
+      );
+      await waitForLockWaiters(inputs.length);
+      await release();
+      expect((await Promise.all(adjustments)).every((r) => r.ok)).toBe(true);
+
+      const history = await listStockMovements(s.admin, productId, {
+        type: "all",
+        from: "",
+        to: "",
+        page: 1,
+      });
+      if (!history.ok) throw new Error(`historial rechazado: ${history.code}`);
+      expect(history.movements).toHaveLength(inputs.length);
+      expect(history.movements[0]!.balanceAfter).toBe("111.000");
+
+      // Del más antiguo al más reciente, cada saldo es el anterior más o menos su cantidad.
+      let previous = quantityFromDatabase("100.000");
+      for (const movement of [...history.movements].reverse()) {
+        const quantity = quantityFromDatabase(movement.quantity);
+        previous +=
+          movement.type === "adjustment_positive" ? quantity : -quantity;
+        expect(movement.balanceAfter).toBe(quantityToDatabase(previous));
+      }
     },
     TEST_TIMEOUT,
   );

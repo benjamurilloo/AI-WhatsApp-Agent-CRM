@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { recordAudit } from "@/modules/audit";
+import { getUserSummaries } from "@/modules/auth";
 import {
   deriveStockStatus,
   getProduct,
@@ -9,7 +10,11 @@ import {
   type ProductActivityFilter,
   type StockStatus,
 } from "@/modules/catalog";
-import { authorize, type AuthContext } from "@/modules/organizations";
+import {
+  authorize,
+  getOrganizationTimezone,
+  type AuthContext,
+} from "@/modules/organizations";
 import { failure, type Failure } from "@/shared/errors";
 import {
   MAX_QUANTITY,
@@ -330,4 +335,166 @@ export async function adjustStock(
     if (error instanceof AdjustmentRejected) return error.result;
     throw error;
   }
+}
+
+// Historial de movimientos de un producto (brief-4.3.3, FR-PROD-09): paginado en SQL (D-2),
+// con período en días de la zona de la organización (D-3 y D-4) y autor compuesto desde auth.
+
+export const MOVEMENTS_PAGE_SIZE = 25;
+
+// Filtros de la URL, como texto. type es "all" o un tipo; from y to vacíos no limitan.
+export type MovementHistoryFilters = {
+  type: string;
+  from: string;
+  to: string;
+  page: number;
+};
+
+export type MovementHistoryField = "type" | "from" | "to";
+
+const MOVEMENT_HISTORY_FIELDS: MovementHistoryField[] = ["type", "from", "to"];
+
+export type MovementHistoryValues = {
+  type: StockMovementType | null;
+  from: string | null;
+  to: string | null;
+};
+
+// Fecha de calendario real con año de cuatro cifras: descarta "2026-02-30" y el año 0.
+function isCalendarDate(value: string): boolean {
+  const match = /^([1-9]\d{3})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const [year, month, day] = match.slice(1).map(Number) as [
+    number,
+    number,
+    number,
+  ];
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+}
+
+const optionalDate = z
+  .string()
+  .trim()
+  .refine((value) => value === "" || isCalendarDate(value))
+  .transform((value) => (value === "" ? null : value));
+
+const movementHistorySchema = z
+  .object({
+    type: z
+      .union([z.literal("all"), z.enum(inventoryMovementType.enumValues)])
+      .transform((type) => (type === "all" ? null : type)),
+    from: optionalDate,
+    to: optionalDate,
+  })
+  .superRefine((values, ctx) => {
+    // Las fechas YYYY-MM-DD se comparan como texto.
+    if (values.from && values.to && values.from > values.to) {
+      ctx.addIssue({ code: "custom", path: ["from"], message: "invertido" });
+      ctx.addIssue({ code: "custom", path: ["to"], message: "invertido" });
+    }
+  });
+
+export function validateMovementHistoryFilters(
+  filters: MovementHistoryFilters,
+):
+  | { ok: true; values: MovementHistoryValues }
+  | Failure<"VALIDATION_ERROR", { fields: MovementHistoryField[] }> {
+  const parsed = movementHistorySchema.safeParse(filters);
+  if (parsed.success) return { ok: true, values: parsed.data };
+  const fields = new Set(parsed.error.issues.map((issue) => issue.path[0]));
+  return {
+    ok: false,
+    code: "VALIDATION_ERROR",
+    fields: MOVEMENT_HISTORY_FIELDS.filter((field) => fields.has(field)),
+  };
+}
+
+// Una página fuera de rango se lleva a la última; una no numérica o menor que 1, a la primera.
+export function movementPageBounds(total: number, requestedPage: number) {
+  const pageCount = Math.max(1, Math.ceil(total / MOVEMENTS_PAGE_SIZE));
+  const page = Math.min(Math.max(1, Math.trunc(requestedPage) || 1), pageCount);
+  return { page, pageCount, offset: (page - 1) * MOVEMENTS_PAGE_SIZE };
+}
+
+export type StockMovement = {
+  id: string;
+  type: StockMovementType;
+  quantity: string;
+  balanceAfter: string;
+  reason: string;
+  createdAt: Date;
+  author: { id: string; name: string };
+};
+
+export type StockMovementPage = {
+  movements: StockMovement[];
+  total: number;
+  page: number;
+  pageCount: number;
+  // Zona IANA en la que se interpretó el período y en la que se muestran las fechas.
+  timezone: string;
+  // Con filtros y sin filas: distingue "sin resultados" de "sin movimientos" (hallazgo 9).
+  productHasMovements: boolean;
+};
+
+export type StockMovementHistoryResult =
+  | ({ ok: true } & StockMovementPage)
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+  | Failure<"VALIDATION_ERROR", { fields: MovementHistoryField[] }>;
+
+// Lectura para admin y viewer. getProduct resuelve autorización, id y organización (hallazgo 7).
+export async function listStockMovements(
+  context: AuthContext,
+  productId: string,
+  filters: MovementHistoryFilters,
+): Promise<StockMovementHistoryResult> {
+  const found = await getProduct(context, productId);
+  if (!found.ok) return found;
+  const validated = validateMovementHistoryFilters(filters);
+  if (!validated.ok) return validated;
+  const { values } = validated;
+
+  const query: repository.MovementQuery = {
+    organizationId: context.organizationId,
+    productId: found.product.id,
+    ...values,
+    timezone: await getOrganizationTimezone(context),
+  };
+  const total = await repository.countMovements(query);
+  const { page, pageCount, offset } = movementPageBounds(total, filters.page);
+  const rows =
+    total === 0
+      ? []
+      : await repository.findMovements(query, MOVEMENTS_PAGE_SIZE, offset);
+
+  const filtered =
+    values.type !== null || values.from !== null || values.to !== null;
+  const productHasMovements =
+    total > 0 ||
+    (filtered &&
+      (await repository.hasMovements(query.organizationId, query.productId)));
+
+  // Autores sin JOIN con users: auth devuelve también a los desactivados.
+  const authors = new Map(
+    (
+      await getUserSummaries([...new Set(rows.map((row) => row.createdBy))])
+    ).map((user) => [user.id, user.name]),
+  );
+  return {
+    ok: true,
+    movements: rows.map(({ createdBy, ...row }) => ({
+      ...row,
+      author: { id: createdBy, name: authors.get(createdBy) ?? "" },
+    })),
+    total,
+    page,
+    pageCount,
+    timezone: query.timezone,
+    productHasMovements,
+  };
 }

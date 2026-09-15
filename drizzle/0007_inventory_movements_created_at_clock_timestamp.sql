@@ -1,0 +1,1 @@
+ALTER TABLE "inventory_movements" ALTER COLUMN "created_at" SET DEFAULT clock_timestamp();

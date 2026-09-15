@@ -222,6 +222,18 @@ export async function getAppFrame(context: AuthContext): Promise<AppFrame> {
   };
 }
 
+// Zona IANA de la organización, para períodos y fechas (brief-4.3.3, D-4). La columna es
+// not null con default, así que una organización existente siempre la tiene.
+export async function getOrganizationTimezone(
+  context: AuthContext,
+): Promise<string> {
+  const timezone = await repository.findOrganizationTimezone(
+    context.organizationId,
+  );
+  if (!timezone) throw new Error("organización sin zona horaria");
+  return timezone;
+}
+
 // Escrituras sobre miembros (brief-3.7). Cada una abre la transacción con la organización
 // bloqueada (D-2 y D-4), escribe y audita dentro de ella (D-8).
 

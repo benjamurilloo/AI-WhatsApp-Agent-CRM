@@ -73,9 +73,11 @@ export const inventoryMovements = pgTable(
     createdBy: uuid("created_by")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
+    // Hora del INSERT, no del inicio de la transacción: el movimiento se inserta con el saldo
+    // bloqueado, así que el orden por created_at sigue la cadena de saldos (brief-4.3.3, D-1).
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
-      .defaultNow(),
+      .default(sql`clock_timestamp()`),
   },
   (table) => [
     foreignKey({

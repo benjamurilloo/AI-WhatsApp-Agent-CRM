@@ -50,6 +50,13 @@
       "when": 1789484966308,
       "tag": "0006_products_name_lower_index",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789506294531,
+      "tag": "0007_inventory_movements_created_at_clock_timestamp",
+      "breakpoints": true
     }
   ]
 }

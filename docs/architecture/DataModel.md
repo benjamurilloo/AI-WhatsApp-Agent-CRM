@@ -192,9 +192,9 @@ Insert-only. Nunca se actualiza ni se borra: `crm_app` solo tiene `SELECT` e `IN
 | `balance_after` | numeric(14, 3) not null | `CHECK (balance_after >= 0)`; saldo de `inventories.quantity_on_hand` después del movimiento, escrito en la misma transacción (subfase 1.2, D-1) |
 | `reason` | text not null | motivo obligatorio, incluso para ajustes: `CHECK (btrim(reason) <> '')` (brief-4.1, D-5) |
 | `created_by` | uuid FK → users, not null | `ON DELETE RESTRICT`. Clave simple: un usuario pertenece a una sola organización (ADR 0010) y eso lo verifica la autorización |
-| `created_at` | timestamptz not null default `now()` | `now()` es la hora de **inicio** de la transacción: bajo concurrencia, un movimiento puede tener `created_at` anterior y `balance_after` posterior a otro (brief-4.3.2, hallazgo 4). El orden del historial se decide en la 4.3.3 |
+| `created_at` | timestamptz not null default `clock_timestamp()` | Hora del `INSERT`, no del inicio de la transacción (migración `0007`, brief-4.3.3, D-1). El movimiento se inserta con el saldo bloqueado hasta confirmar, así que, para un producto, el orden por `created_at` sigue la cadena de `balance_after` también bajo concurrencia. Con `now()` no ocurría: una transacción que empezaba antes pero obtenía el bloqueo después quedaba fuera de secuencia (brief-4.3.2, hallazgo 4). **Límite aceptado**: un reloj del servidor que retrocede, o dos inserciones en el mismo microsegundo, pueden desordenar el historial |
 
-Índices: `(organization_id, product_id, created_at desc)` para el historial por producto ordenado.
+Índices: `(organization_id, product_id, created_at desc)` para el historial por producto ordenado. El historial desempata por `id` y pagina en SQL (brief-4.3.3, D-2).
 
 ### `conversations`
 

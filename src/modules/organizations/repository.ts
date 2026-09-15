@@ -73,6 +73,17 @@ export async function findOrganizationName(
   return rows[0]?.name;
 }
 
+export async function findOrganizationTimezone(
+  organizationId: string,
+): Promise<string | undefined> {
+  const rows = await getDb()
+    .select({ timezone: organizations.timezone })
+    .from(organizations)
+    .where(eq(organizations.id, organizationId))
+    .limit(1);
+  return rows[0]?.timezone;
+}
+
 // Toda escritura sobre miembros corre con la fila de la organización bloqueada: los cambios de
 // una misma organización se serializan y la regla del último admin se evalúa sin carreras
 // (brief-3.7, D-4). Bajo READ COMMITTED, cada consulta posterior al bloqueo ve lo confirmado.

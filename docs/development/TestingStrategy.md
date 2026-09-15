@@ -41,7 +41,14 @@
     - dos primeros ajustes sobre un producto sin fila: una sola fila, sin `23505` ni `40P01`. Lo serializa también la espera del `ON CONFLICT` sobre el índice único, así que este caso no prueba el `FOR UPDATE`;
     - seis ajustes que reintentan ante `CONFLICT`: todos aplicados, libro cuadrado, cada `balance_after` igual al resultado de su ajuste;
     - un ajuste en curso frena la desactivación, y una desactivación sin confirmar frena el ajuste, que termina en `inactive_product` sin efectos;
-    - evidencia de que fallan sin sus bloqueos, registrada en el brief: sin el `FOR UPDATE` del saldo fallan los dos casos de saldo compartido, y sin el `FOR SHARE` del producto, los dos de desactivación.
+    - evidencia de que fallan sin sus bloqueos, registrada en el brief: sin el `FOR UPDATE` del saldo fallan los dos casos de saldo compartido, y sin el `FOR SHARE` del producto, los dos de desactivación;
+    - desde la 4.3.3, el historial devuelto después de seis ajustes que reintentan encadena los saldos: del más antiguo al más reciente, cada `balance_after` es el anterior más o menos su cantidad.
+  - Historial de movimientos ([brief-4.3.3](../decisions/brief-4.3.3-historial-de-movimientos.md)), cubierto desde la 4.3.3 en `tests/integration/inventory-history.test.ts`, con validación de filtros y páginas en tests unitarios de `inventory`:
+    - `created_at` es la hora del `INSERT`: dentro de una transacción que espera antes de insertar, queda posterior a `transaction_timestamp()` (`catalog-inventory-schema.test.ts`);
+    - orden del más reciente al más antiguo con desempate por `id`; 25 por página en SQL, y una página fuera de rango se lleva a la última o a la primera;
+    - filtro por tipo; período en días de la zona de la organización con fin semiabierto: el borde de medianoche local, la misma consulta con otra zona y el 19/10/2008 de Buenos Aires, un día de 23 horas;
+    - fechas inválidas, período invertido y tipo desconocido → `VALIDATION_ERROR` con sus campos; `productHasMovements` distingue "sin resultados" de "sin movimientos";
+    - autor con nombre también si está desactivado; contraseña pendiente → `FORBIDDEN`; otra organización o inexistente → `NOT_FOUND`; id inválido → `VALIDATION_ERROR`; un producto desactivado conserva su historial.
   - `audit_logs` ([ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md)), cubierto desde la 3.6 en `tests/integration/audit.test.ts`:
     - rechaza `UPDATE` y `DELETE` para `crm_app` con `42501`, y para el rol dueño por trigger;
     - un registro escrito con `recordAudit` persiste o se revierte junto con el cambio que audita, incluso cuando falla la inserción de auditoría;

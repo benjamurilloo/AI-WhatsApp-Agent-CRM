@@ -58,6 +58,16 @@ Implementado a nivel de servicio desde la 4.3.1 ([brief-4.3.1](../decisions/brie
 
 **Límite aceptado** (D-6): SQL escrito a mano contra la base puede cambiar el saldo sin movimiento; el `CHECK` sigue impidiendo el negativo.
 
+### Lectura del historial
+
+Implementada a nivel de servicio desde la 4.3.3 ([brief-4.3.3](../decisions/brief-4.3.3-historial-de-movimientos.md)); las pantallas 4 y 5 la usan desde la 4.4.
+
+1. `listStockMovements` de `inventory`, para `admin` y `viewer`, resuelve autorización, id y organización con `getProduct` de `catalog`: un producto desactivado conserva su historial.
+2. Valida los filtros de la URL: tipo, fechas `YYYY-MM-DD` inclusivas y período no invertido.
+3. `getOrganizationTimezone` de `organizations` aporta la zona IANA (D-4). PostgreSQL convierte el período a `[desde 00:00, hasta + 1 día 00:00)` en esa zona (D-3).
+4. Cuenta y pagina de a 25 en SQL, del más reciente al más antiguo (D-2). `created_at` es la hora del `INSERT`, que ocurre con el saldo bloqueado, así que ese orden sigue la cadena de saldos también bajo concurrencia (D-1).
+5. Compone el nombre del autor con `getUserSummaries` de `auth`, sin `JOIN`, y devuelve la zona usada.
+
 ## Estrategia de errores (diseño)
 
 Todos los módulos comparten una taxonomía de errores con código estable:

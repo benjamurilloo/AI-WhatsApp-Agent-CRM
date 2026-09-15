@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, count, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { getDb, type DbTransaction } from "@/shared/db";
 import {
   inventories,
@@ -37,6 +37,95 @@ export async function findBalances(
       ),
     );
   return new Map(rows.map((row) => [row.productId, row.quantityOnHand]));
+}
+
+// Historial de movimientos (brief-4.3.3). Filtros ya validados; fechas YYYY-MM-DD.
+export type MovementQuery = {
+  organizationId: string;
+  productId: string;
+  type: StockMovementType | null;
+  from: string | null;
+  to: string | null;
+  timezone: string;
+};
+
+export type MovementRow = {
+  id: string;
+  type: StockMovementType;
+  quantity: string;
+  balanceAfter: string;
+  reason: string;
+  createdBy: string;
+  createdAt: Date;
+};
+
+// Período [from 00:00, to + 1 día 00:00) en la zona de la organización, convertido por
+// PostgreSQL con la zona IANA, incluidos los días de 23 o 25 horas (D-3).
+function movementConditions(query: MovementQuery): SQL | undefined {
+  const conditions: (SQL | undefined)[] = [
+    eq(inventoryMovements.organizationId, query.organizationId),
+    eq(inventoryMovements.productId, query.productId),
+  ];
+  if (query.type) conditions.push(eq(inventoryMovements.type, query.type));
+  if (query.from) {
+    conditions.push(
+      sql`${inventoryMovements.createdAt} >= (${query.from}::date::timestamp at time zone ${query.timezone})`,
+    );
+  }
+  if (query.to) {
+    conditions.push(
+      sql`${inventoryMovements.createdAt} < ((${query.to}::date + 1)::timestamp at time zone ${query.timezone})`,
+    );
+  }
+  return and(...conditions);
+}
+
+export async function countMovements(query: MovementQuery): Promise<number> {
+  const rows = await getDb()
+    .select({ total: count() })
+    .from(inventoryMovements)
+    .where(movementConditions(query));
+  return rows[0]!.total;
+}
+
+// Orden de la cadena de saldos: created_at es la hora del INSERT con el saldo bloqueado (D-1).
+export function findMovements(
+  query: MovementQuery,
+  limit: number,
+  offset: number,
+): Promise<MovementRow[]> {
+  return getDb()
+    .select({
+      id: inventoryMovements.id,
+      type: inventoryMovements.type,
+      quantity: inventoryMovements.quantity,
+      balanceAfter: inventoryMovements.balanceAfter,
+      reason: inventoryMovements.reason,
+      createdBy: inventoryMovements.createdBy,
+      createdAt: inventoryMovements.createdAt,
+    })
+    .from(inventoryMovements)
+    .where(movementConditions(query))
+    .orderBy(desc(inventoryMovements.createdAt), desc(inventoryMovements.id))
+    .limit(limit)
+    .offset(offset);
+}
+
+export async function hasMovements(
+  organizationId: string,
+  productId: string,
+): Promise<boolean> {
+  const rows = await getDb()
+    .select({ id: inventoryMovements.id })
+    .from(inventoryMovements)
+    .where(
+      and(
+        eq(inventoryMovements.organizationId, organizationId),
+        eq(inventoryMovements.productId, productId),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
 }
 
 // Crea la fila en 0 si falta, sin tocar un saldo existente, y la bloquea con FOR UPDATE
