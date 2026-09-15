@@ -8,7 +8,7 @@ const focusRing =
 const control =
   "rounded-md border border-border-strong bg-surface px-3 py-2 text-base text-foreground";
 
-const buttonBase = `inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${focusRing}`;
+const buttonBase = `inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${focusRing}`;
 
 const primary = "bg-primary text-on-primary hover:bg-primary-hover";
 
@@ -18,7 +18,7 @@ export const inputClass = `w-full min-w-0 ${control} aria-invalid:border-danger 
 
 export const buttonClass = `w-full ${buttonBase} ${primary}`;
 
-export const secondaryButtonClass = `inline-flex shrink-0 items-center justify-center rounded-md border border-border-strong bg-surface px-3 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-surface-muted ${focusRing}`;
+export const secondaryButtonClass = `inline-flex shrink-0 items-center justify-center rounded-md border border-border-strong bg-surface px-3 py-2 text-sm font-semibold text-foreground hover:bg-surface-muted ${focusRing}`;
 
 export const fieldErrorClass = "text-sm font-medium text-danger";
 
@@ -42,7 +42,7 @@ export const radioClass = `h-4 w-4 accent-primary ${focusRing}`;
 
 export const noticeClass = `rounded-md border border-success bg-success-soft px-3 py-2 text-sm text-on-success-soft ${focusRing}`;
 
-export const navLinkClass = `block rounded-md px-3 py-1.5 text-sm font-semibold transition-colors ${focusRing}`;
+export const navLinkClass = `block rounded-md px-3 py-1.5 text-sm font-semibold ${focusRing}`;
 
 // Estructura de página (brief-4.0, D-5).
 
