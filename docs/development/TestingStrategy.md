@@ -13,7 +13,7 @@
 - Aislamiento ([brief-3.1](../decisions/brief-3.1-migraciones-de-identidad.md), D-1): base `_test` separada, recreada y migrada desde cero en cada ejecución, tablas vaciadas con `TRUNCATE` antes de cada test y archivos en serie. No se usan transacciones revertidas por test, porque la auditoría atómica y los ajustes concurrentes necesitan transacciones reales y varias conexiones. Detalle operativo en [Environments.md](Environments.md).
 - Un rechazo de la base se comprueba por su código de error de PostgreSQL (`23505`, `23503`, `23502`, `22P02`...), no solo porque la consulta falle.
 - Casos obligatorios:
-  - Un ajuste de stock concurrente no deja saldo negativo.
+  - Un ajuste de stock concurrente no deja saldo negativo ni pierde actualizaciones. Cubierto desde la 4.3.2 en `tests/integration/inventory-concurrency.test.ts` (detalle más abajo).
   - SKU y teléfono son únicos por organización. El SKU, desde la 4.1.
   - Idempotencia de ingestión: reenviar el mismo evento no duplica conversaciones ni mensajes, y reenviarlo con otro `payload_hash` devuelve `CONFLICT` sin modificar datos.
   - Aislamiento por organización: un usuario de la organización A recibe `NOT_FOUND` al leer o escribir datos de la organización B, incluso manipulando IDs directamente. Cubierto desde la 3.4 para `organization_members` (`tests/integration/authorization.test.ts`); cada módulo de las Fases 4 a 7 agrega el suyo para sus recursos.
@@ -35,7 +35,13 @@
     - −0,001 → `negative_stock`, producto desactivado → `inactive_product`, máximo superado → `stock_limit`, saldo esperado distinto → `CONFLICT`; cada rechazo se compara contra una foto de saldos, movimientos y auditoría, y no deja la fila de `inventories` si no existía;
     - `viewer` y contraseña pendiente → `FORBIDDEN`; producto de otra organización o inexistente → `NOT_FOUND`; id o entrada inválidos → `VALIDATION_ERROR`, sin crear la fila;
     - si falla el movimiento, no persiste ni la fila nueva ni el cambio de saldo. **Límite**: el fallo se provoca con un actor inexistente, que rompe primero la clave foránea del movimiento; no hay un caso que haga fallar solo la auditoría después de actualizar el saldo.
-  - Queda para la 4.3.2: ajustes concurrentes, incluidos dos primeros ajustes sobre un producto sin fila y un ajuste contra una desactivación.
+  - Concurrencia del ajuste ([brief-4.3.2](../decisions/brief-4.3.2-concurrencia-de-ajustes.md)), cubierta desde la 4.3.2 en `tests/integration/inventory-concurrency.test.ts`:
+    - método: otra conexión retiene un bloqueo, el test espera en `pg_stat_activity` a que las conexiones queden detenidas con `wait_event_type = 'Lock'` y recién entonces lo suelta; no se usa `setTimeout` para suponer que hay carrera, y un `afterEach` suelta los bloqueos aunque el test falle;
+    - dos ajustes con el mismo saldo esperado: uno aceptado, el otro `CONFLICT`, y el libro cuadra (saldo final igual al inicial más la suma de los movimientos);
+    - dos primeros ajustes sobre un producto sin fila: una sola fila, sin `23505` ni `40P01`. Lo serializa también la espera del `ON CONFLICT` sobre el índice único, así que este caso no prueba el `FOR UPDATE`;
+    - seis ajustes que reintentan ante `CONFLICT`: todos aplicados, libro cuadrado, cada `balance_after` igual al resultado de su ajuste;
+    - un ajuste en curso frena la desactivación, y una desactivación sin confirmar frena el ajuste, que termina en `inactive_product` sin efectos;
+    - evidencia de que fallan sin sus bloqueos, registrada en el brief: sin el `FOR UPDATE` del saldo fallan los dos casos de saldo compartido, y sin el `FOR SHARE` del producto, los dos de desactivación.
   - `audit_logs` ([ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md)), cubierto desde la 3.6 en `tests/integration/audit.test.ts`:
     - rechaza `UPDATE` y `DELETE` para `crm_app` con `42501`, y para el rol dueño por trigger;
     - un registro escrito con `recordAudit` persiste o se revierte junto con el cambio que audita, incluso cuando falla la inserción de auditoría;
