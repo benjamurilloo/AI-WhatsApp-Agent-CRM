@@ -2,6 +2,34 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-15 — Subfase 4.1 cerrada (Migraciones de catálogo e inventario)
+
+**Certifica:**
+
+- **Esquema de catálogo e inventario** según el [brief-4.1](docs/decisions/brief-4.1-migraciones-de-catalogo-e-inventario.md), con D-1 a D-7 resueltas según la recomendación:
+  - `products` en `src/modules/catalog/schema.ts`; `inventories` e `inventory_movements` en `src/modules/inventory/schema.ts`, solo con su esquema (D-1, D-2);
+  - claves foráneas compuestas `(organization_id, product_id)` → `products(organization_id, id)`: un saldo o un movimiento no puede apuntar al producto de otra organización (D-3);
+  - cantidades `numeric(14, 3)` (D-4);
+  - `CHECK (reorder_point >= 0)` y `CHECK (btrim(reason) <> '')` (D-5);
+  - SKU único por organización sin distinguir mayúsculas, con un índice sobre `lower(sku)` (D-6);
+  - a lo sumo una fila de `inventories` por producto; sin fila, el saldo es 0 (D-7).
+- **Migraciones**: `drizzle/0004_*`, generada por Drizzle Kit sin SQL a mano, y `drizzle/0005_*`, a medida, con los privilegios de `crm_app` y el trigger `inventory_movements_insert_only`. Aplicadas en la base de desarrollo y sobre bases vacías; aplicarlas otra vez no hace nada.
+- **Solo inserción de `inventory_movements`** ([ADR 0013](docs/decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md)): `UPDATE` y `DELETE` rechazados con `42501` para `crm_app` y con `P0001` para el rol dueño; la tabla entró en la lista del test de cobertura de privilegios.
+- **Tests**: 25 casos nuevos en `tests/integration/catalog-inventory-schema.test.ts`, cada uno con su SQLSTATE. Los tests existentes solo sumaron las tablas nuevas: la lista de `audit.test.ts` y la lista de tablas y el título de un caso en `identity-schema.test.ts`.
+- **Suite local**: `npm run test` pasa 218 de 218 (65 unitarios, 19 guardas y 134 de integración); `npm run test:e2e` pasa 25 de 25. Con la base detenida pasan typecheck, lint, formato, guardas, unitarios y build, y `db:generate` informa "No schema changes". `package.json` sin cambios.
+- **CI**: [34981182897](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/34981182897), commit `1824ae1`, en verde con todos los pasos, incluido el de desfase de migraciones.
+- **Documentación**: DataModel (tablas, convención de cantidades y diagrama), TraceabilityMatrix, TestingStrategy y RepositoryStructure.
+- **Nivel alcanzado**: **validado localmente y en CI** para el esquema de catálogo e inventario y la solo inserción de `inventory_movements`.
+
+**No certifica:**
+
+- **Que la aplicación no pueda saltearse el movimiento**: no hay servicio de ajuste todavía (4.3.1).
+- **Ajustes concurrentes**, incluido el primer ajuste simultáneo de un producto sin fila de `inventories` (4.3.2).
+- **La aplicación restringida por `crm_app`**: sigue conectándose con el rol dueño (Fases 8 y 9).
+- **`TRUNCATE`**: el dueño todavía puede vaciar `inventory_movements`, como `audit_logs`; no tiene test propio en esta tabla.
+- **`updated_at` en SQL crudo**: lo mantiene la aplicación, como en las tablas anteriores.
+- **Revisión independiente**: es autoevaluación del mismo agente.
+
 ## 2026-09-14 — Subfase 4.0 cerrada (Diseño visual base)
 
 **Certifica:**

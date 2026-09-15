@@ -255,3 +255,17 @@ La revisión es una autoevaluación (`self_assessment: true`).
 - Si el paso de desfase de la CI detecta diferencias después de la 0005.
 - Si aparece la necesidad de código de servicio, seeds o una dependencia nueva.
 - Antes de ejecutar migraciones contra la base de desarrollo, de commit, de push o de cambios en Notion.
+
+## Cierre (2026-09-15)
+
+Cerrado con confirmación del usuario. Los nueve criterios se cumplen; la evidencia está en [CHANGELOG.md](../../CHANGELOG.md). CI en verde en el commit `1824ae1` ([ejecución 34981182897](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/34981182897)). Nivel alcanzado: **validado localmente y en CI**.
+
+### Ajustes durante la ejecución
+
+- **Ninguna condición de detención se activó**: Drizzle Kit generó en la 0004 todas las constraints e índices de D-3 a D-6, incluidas las claves foráneas compuestas, el índice sobre `lower(sku)` y `text_pattern_ops`. La 0005 solo tiene privilegios y trigger.
+- **Nombres explícitos** para las claves foráneas compuestas (`inventories_product_fk`, `inventory_movements_product_fk`) y los `CHECK`, para que los mensajes de error y los tests no dependan de nombres generados.
+- **`identity-schema.test.ts`**: además de sumar las tres tablas a la lista, se ajustó el título del caso, que nombraba solo identidad, sesión y auditoría.
+- **Un fallo del test nuevo, no del esquema**: la primera ejecución comparaba SKUs con `order by sku`, cuyo orden depende del collation de la base. Se ordena en JavaScript.
+- **Casos agregados al punto 5**: redondeo a tres decimales y rechazo por desbordamiento (`22003`) de `numeric(14, 3)`, para demostrar D-4.
+- **Docker Desktop estaba detenido** al empezar; se abrió y se levantó el contenedor sin cambios de configuración.
+- **Documentos de estado**: además de los del punto 7, se actualizaron las líneas de estado de `README.md` y `docs/README.md`, que seguían diciendo que el inventario estaba solo diseñado.
