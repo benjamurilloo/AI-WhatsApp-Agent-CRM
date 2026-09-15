@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { authorize } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
+import { cardClass } from "@/app/_components/form-styles";
 import { PageNotice } from "@/app/_components/page-notice";
 import { FORBIDDEN_PAGE_MESSAGE } from "../messages";
 import { NewMemberForm } from "./new-member-form";
@@ -20,7 +21,9 @@ export default async function NewMemberPage() {
   }
   return (
     <main className="mx-auto max-w-xl px-4 py-8">
-      <NewMemberForm />
+      <div className={`${cardClass} p-6 sm:p-8`}>
+        <NewMemberForm />
+      </div>
     </main>
   );
 }

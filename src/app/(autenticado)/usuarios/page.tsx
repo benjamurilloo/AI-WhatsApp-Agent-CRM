@@ -3,11 +3,18 @@ import Link from "next/link";
 import { listMembers } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
 import {
+  activeBadgeClass,
+  cardClass,
+  inactiveBadgeClass,
   labelClass,
   linkClass,
+  pageTitleClass,
   primaryLinkClass,
+  roleBadgeClass,
   secondaryButtonClass,
   selectClass,
+  tableCellClass,
+  tableHeadCellClass,
 } from "@/app/_components/form-styles";
 import { PageNotice } from "@/app/_components/page-notice";
 import {
@@ -45,7 +52,7 @@ export default async function UsersPage({
   return (
     <main className="mx-auto max-w-6xl px-4 py-8">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold">{TITLE}</h1>
+        <h1 className={pageTitleClass}>{TITLE}</h1>
         <Link href="/usuarios/nuevo" className={primaryLinkClass}>
           + Nuevo usuario
         </Link>
@@ -102,7 +109,7 @@ export default async function UsersPage({
       </form>
 
       {result.total === 0 ? (
-        <div className="mt-8 rounded-md border border-slate-200 bg-white p-6">
+        <div className={`mt-8 ${cardClass} p-6`}>
           <p>{NO_RESULTS_MESSAGE}</p>
           <p className="mt-3">
             <Link href="/usuarios" className={linkClass}>
@@ -112,63 +119,77 @@ export default async function UsersPage({
         </div>
       ) : (
         <>
-          <table className="mt-8 hidden w-full border-collapse bg-white text-left md:table">
-            <caption className="sr-only">Usuarios de la organización</caption>
-            <thead>
-              <tr className="border-b border-slate-300 text-sm text-slate-700">
-                <th scope="col" className="px-3 py-2 font-medium">
-                  Nombre
-                </th>
-                <th scope="col" className="px-3 py-2 font-medium">
-                  Email
-                </th>
-                <th scope="col" className="px-3 py-2 font-medium">
-                  Rol
-                </th>
-                <th scope="col" className="px-3 py-2 font-medium">
-                  Activo
-                </th>
-                <th scope="col" className="px-3 py-2 font-medium">
-                  <span className="sr-only">Acciones</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {result.members.map((member) => (
-                <tr key={member.id} className="border-b border-slate-200">
-                  <td className="px-3 py-2">
-                    {member.name}
-                    {self(member.isSelf)}
-                  </td>
-                  <td className="px-3 py-2 break-all">{member.email}</td>
-                  <td className="px-3 py-2">{member.role}</td>
-                  <td className="px-3 py-2">{member.isActive ? "Sí" : "No"}</td>
-                  <td className="px-3 py-2 text-right">
-                    <Link href={`/usuarios/${member.id}`} className={linkClass}>
-                      Editar<span className="sr-only"> a {member.name}</span>
-                    </Link>
-                  </td>
+          <div className={`mt-8 hidden overflow-hidden md:block ${cardClass}`}>
+            <table className="w-full border-collapse text-left text-[0.9375rem]">
+              <caption className="sr-only">Usuarios de la organización</caption>
+              <thead>
+                <tr>
+                  <th scope="col" className={tableHeadCellClass}>
+                    Nombre
+                  </th>
+                  <th scope="col" className={tableHeadCellClass}>
+                    Email
+                  </th>
+                  <th scope="col" className={tableHeadCellClass}>
+                    Rol
+                  </th>
+                  <th scope="col" className={tableHeadCellClass}>
+                    Activo
+                  </th>
+                  <th scope="col" className={tableHeadCellClass}>
+                    <span className="sr-only">Acciones</span>
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {result.members.map((member) => (
+                  <tr key={member.id}>
+                    <td className={`${tableCellClass} font-semibold`}>
+                      {member.name}
+                      {self(member.isSelf)}
+                    </td>
+                    <td className={`${tableCellClass} break-all text-muted`}>
+                      {member.email}
+                    </td>
+                    <td className={tableCellClass}>
+                      <span className={roleBadgeClass}>{member.role}</span>
+                    </td>
+                    <td className={tableCellClass}>
+                      <span
+                        className={
+                          member.isActive
+                            ? activeBadgeClass
+                            : inactiveBadgeClass
+                        }
+                      >
+                        {member.isActive ? "Sí" : "No"}
+                      </span>
+                    </td>
+                    <td className={`${tableCellClass} text-right`}>
+                      <Link
+                        href={`/usuarios/${member.id}`}
+                        className={linkClass}
+                      >
+                        Editar<span className="sr-only"> a {member.name}</span>
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           <ul
             aria-label="Usuarios de la organización"
             className="mt-6 flex flex-col gap-3 md:hidden"
           >
             {result.members.map((member) => (
-              <li
-                key={member.id}
-                className="rounded-md border border-slate-200 bg-white p-4"
-              >
-                <p className="font-medium">
+              <li key={member.id} className={`${cardClass} p-4`}>
+                <p className="font-semibold">
                   {member.name}
                   {self(member.isSelf)}
                 </p>
-                <p className="text-sm break-all text-slate-700">
-                  {member.email}
-                </p>
+                <p className="text-sm break-all text-muted">{member.email}</p>
                 <div className="mt-2 flex items-center justify-between gap-3">
                   <p className="text-sm">
                     {member.role} · {status(member.isActive)}
@@ -196,7 +217,7 @@ export default async function UsersPage({
               Página anterior
             </Link>
           ) : null}
-          <p className="text-sm text-slate-700">
+          <p className="text-sm text-muted tabular-nums">
             Página {result.page} de {result.pageCount}
           </p>
           {result.page < result.pageCount ? (

@@ -48,15 +48,23 @@ async function submitLogin(page: Page, email: string, password: string) {
   );
 }
 
+// Cada estado se analiza en claro y en oscuro (brief-4.0, D-6).
 async function expectAccessible(page: Page, state: string) {
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-  const violations = results.violations.map(
-    (violation) =>
-      `${violation.id}: ${violation.nodes.map((node) => node.target.join(" ")).join(", ")}`,
-  );
-  expect(violations, `violaciones de axe en "${state}"`).toEqual([]);
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    const results = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+      .analyze();
+    const violations = results.violations.map(
+      (violation) =>
+        `${violation.id}: ${violation.nodes.map((node) => node.target.join(" ")).join(", ")}`,
+    );
+    expect(
+      violations,
+      `violaciones de axe en "${state}" (${colorScheme})`,
+    ).toEqual([]);
+  }
+  await page.emulateMedia({ colorScheme: null });
 }
 
 async function sessionCookie(page: Page) {

@@ -22,7 +22,7 @@ export function CopyButton({ value }: { value: string }) {
       <button type="button" onClick={copy} className={secondaryButtonClass}>
         Copiar
       </button>
-      <span role="status" className="text-sm text-slate-700">
+      <span role="status" className="text-sm text-muted">
         {status === "copied"
           ? "Copiada."
           : status === "failed"

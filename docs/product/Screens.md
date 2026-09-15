@@ -13,6 +13,7 @@
 - **Fechas**: se muestran en la zona horaria de la organización, indicada en pantalla.
 - **Responsive**: escritorio desde 1024 px, tablet de 640 a 1023 px y móvil por debajo de 640 px. Las tablas pasan a tarjetas en móvil.
 - **Accesibilidad (WCAG 2.2 AA)**: labels asociados a cada campo, foco visible, navegación completa por teclado, foco al primer error de un formulario, resultados asíncronos anunciados con `aria-live` y estados que nunca dependen solo del color.
+- **Diseño visual base** ([brief-4.0](../decisions/brief-4.0-diseno-visual-base.md)): paleta Laguna y tipografía Manrope, con modo claro y oscuro. Sin preferencia se sigue el tema del sistema operativo; el marco común ofrece "Sistema", "Claro" y "Oscuro". Las pantallas usan solo los tokens de color, y el contraste AA se verifica en los dos modos. No es la identidad visual definitiva.
 - **Información sensible**: nunca se muestran hashes, tokens, IDs internos de sesión ni detalles de errores de servidor.
 
 ---

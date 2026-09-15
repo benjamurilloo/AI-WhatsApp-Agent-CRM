@@ -7,7 +7,8 @@ import { e2eDatabaseUrl } from "../integration/test-database";
 import { E2E_PASSWORD } from "./global-setup";
 
 // Pantalla 10 y marco común de punta a punta: Chromium, next start, Server Actions, organizations,
-// auth, audit y PostgreSQL real, sin mocks (brief-3.7, casos 1 a 12 del alcance).
+// auth, audit y PostgreSQL real, sin mocks (brief-3.7, casos 1 a 12 del alcance). El caso 13 es
+// el selector de tema del diseño visual base (brief-4.0).
 
 const [ADMIN_SEED, VIEWER_SEED] = SEED_USERS;
 const ADMIN = ADMIN_SEED.email;
@@ -55,15 +56,23 @@ async function login(page: Page, email: string, password = E2E_PASSWORD) {
   await expect(page).not.toHaveURL(/\/login$/);
 }
 
+// Cada estado se analiza en claro y en oscuro (brief-4.0, D-6).
 async function expectAccessible(page: Page, state: string) {
-  const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
-    .analyze();
-  const violations = results.violations.map(
-    (violation) =>
-      `${violation.id}: ${violation.nodes.map((node) => node.target.join(" ")).join(", ")}`,
-  );
-  expect(violations, `violaciones de axe en "${state}"`).toEqual([]);
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    const results = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+      .analyze();
+    const violations = results.violations.map(
+      (violation) =>
+        `${violation.id}: ${violation.nodes.map((node) => node.target.join(" ")).join(", ")}`,
+    );
+    expect(
+      violations,
+      `violaciones de axe en "${state}" (${colorScheme})`,
+    ).toEqual([]);
+  }
+  await page.emulateMedia({ colorScheme: null });
 }
 
 async function memberIdOf(userId: string) {
@@ -558,4 +567,73 @@ test.describe("móvil", () => {
     );
     expect(overflow).toBeLessThanOrEqual(0);
   });
+});
+
+test("caso 13: el selector de tema cambia el modo, sobrevive a recargar y vuelve al sistema", async ({
+  page,
+}) => {
+  // brief-4.0, D-3 y D-4: tema leído en el servidor y fuente servida sin red.
+  const external: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).hostname !== "localhost") {
+      external.push(request.url());
+    }
+  });
+  const LIGHT_BACKGROUND = "rgb(243, 247, 246)";
+  const DARK_BACKGROUND = "rgb(11, 21, 20)";
+  const html = page.locator("html");
+  const selector = page.getByRole("group", { name: "Tema" });
+  const background = () =>
+    page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+
+  await page.emulateMedia({ colorScheme: "dark" });
+  await login(page, ADMIN);
+
+  // Sin preferencia guardada sigue al sistema.
+  await expect(html).not.toHaveAttribute("data-theme");
+  await expect(
+    selector.getByRole("button", { name: "Sistema" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  expect(await background()).toBe(DARK_BACKGROUND);
+
+  // Claro gana sobre un sistema oscuro y sobrevive a recargar.
+  await selector.getByRole("button", { name: "Claro" }).click();
+  await expect(html).toHaveAttribute("data-theme", "light");
+  await expect(selector.getByRole("button", { name: "Claro" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  expect(await background()).toBe(LIGHT_BACKGROUND);
+  await page.reload();
+  await expect(html).toHaveAttribute("data-theme", "light");
+  expect(await background()).toBe(LIGHT_BACKGROUND);
+
+  // Oscuro gana sobre un sistema claro.
+  await selector.getByRole("button", { name: "Oscuro" }).click();
+  await expect(html).toHaveAttribute("data-theme", "dark");
+  await page.emulateMedia({ colorScheme: "light" });
+  expect(await background()).toBe(DARK_BACKGROUND);
+  await expectAccessible(page, "tema oscuro elegido");
+
+  // Sistema borra la preferencia.
+  await selector.getByRole("button", { name: "Sistema" }).click();
+  await expect(html).not.toHaveAttribute("data-theme");
+  await page.emulateMedia({ colorScheme: "light" });
+  expect(await background()).toBe(LIGHT_BACKGROUND);
+
+  // Manrope cargada desde el propio servidor.
+  expect(
+    await page.evaluate(() => getComputedStyle(document.body).fontFamily),
+  ).toMatch(/manrope/i);
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        await document.fonts.ready;
+        return [...document.fonts].some(
+          (font) => /manrope/i.test(font.family) && font.status === "loaded",
+        );
+      }),
+    )
+    .toBe(true);
+  expect(external).toEqual([]);
 });

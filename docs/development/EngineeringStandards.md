@@ -21,7 +21,8 @@
 | Tests unitarios e integración | Vitest, con Vite como dependencia par | Vitest 5.0.x (Node `^22.12 \|\| ^24 \|\| >=26`); Vite 8.3.x | Jest |
 | Tipos | `@types/node`, `@types/react`, `@types/react-dom` | 24.x (la línea de Node 24, no el `latest` 22.x); 19.3.x | — |
 | Tests end-to-end | Playwright (`@playwright/test`), solo Chromium, sobre `next start` ([brief-3.5](../decisions/brief-3.5-pantalla-de-inicio-de-sesion.md), D-8) | 1.63.x (1.63.0) | Cypress |
-| Estilos | Tailwind CSS con `@tailwindcss/postcss`; CSS Modules para lo que no cubra ([brief-3.5](../decisions/brief-3.5-pantalla-de-inicio-de-sesion.md), D-2) | 4.3.x (4.3.3); sin `prettier-plugin-tailwindcss` | CSS Modules solos; librería de componentes |
+| Estilos | Tailwind CSS con `@tailwindcss/postcss`; CSS Modules para lo que no cubra ([brief-3.5](../decisions/brief-3.5-pantalla-de-inicio-de-sesion.md), D-2). Tokens de color semánticos en `src/app/globals.css`, con la paleta por defecto anulada ([brief-4.0](../decisions/brief-4.0-diseno-visual-base.md), D-1) | 4.3.x (4.3.3); sin `prettier-plugin-tailwindcss` | CSS Modules solos; librería de componentes; variantes `dark:` por clase |
+| Tipografía | Manrope variable (SIL OFL), subconjunto latino en `src/app/_fonts/`, cargada con `next/font/local` ([brief-4.0](../decisions/brief-4.0-diseno-visual-base.md), D-3) | archivo de Google Fonts v20; sin dependencia de npm | Figtree; fuentes del sistema |
 | Accesibilidad | `@axe-core/playwright` en los tests end-to-end, WCAG 2.x A y AA ([brief-3.5](../decisions/brief-3.5-pantalla-de-inicio-de-sesion.md), D-3) | 4.13.x (4.13.0) | `eslint-plugin-jsx-a11y` 6.10: solo ESLint 9. `eslint-plugin-jsx-a11y-x` 0.2: un mantenedor, en 0.x |
 | Scripts TypeScript | `tsx`, para `npm run db:seed` con el alias `@/` ([brief-3.5](../decisions/brief-3.5-pantalla-de-inicio-de-sesion.md), D-7) | 4.23.x (4.23.13; ya estaba en el lockfile por `drizzle-kit` y `vite`) | Node con type stripping: no resuelve `@/` |
 | Lint | ESLint 10 con `@eslint/js`, `typescript-eslint`, `@next/eslint-plugin-next` (`recommended` y `core-web-vitals`), `eslint-plugin-react-hooks` y `eslint-config-prettier` ([ADR 0011](../decisions/0011-lint-con-eslint-10-sin-eslint-config-next.md)) | ESLint 10.10; `@eslint/js` 10.0; `typescript-eslint` 8.70; `@next/eslint-plugin-next` 16.3; `eslint-plugin-react-hooks` 7.1 | `eslint-config-next`: sus plugins no soportan ESLint 10. Biome 2.5 |
@@ -29,6 +30,13 @@
 | Contenedores | Docker y Docker Compose, solo para PostgreSQL local | Imagen `postgres:18.6-trixie`, con versión menor y distribución fijadas ([brief-2.4](../decisions/brief-2.4-base-de-datos-local.md), D-5) | `postgres:18.6-alpine`: musl ordena distinto que glibc |
 
 La versión exacta de cada paquete queda fijada en el lockfile al instalar (2.3). Un cambio de versión mayor posterior se registra en este documento, no se hace en silencio.
+
+### Convención de estilos (4.0)
+
+- Las pantallas usan solo los tokens de `globals.css` (`bg-surface`, `text-muted`, `bg-primary`…), nunca colores de la paleta de Tailwind ni valores hexadecimales sueltos. La paleta por defecto está anulada con `--color-*: initial`, así que una clase como `bg-slate-50` no genera CSS.
+- Un token nuevo se agrega con su valor en claro y en oscuro, y con el contraste AA de su uso verificado.
+- Las clases que se repiten viven en `src/app/_components/form-styles.ts`. Un patrón que aparece en tres pantallas se extrae como componente en esa subfase.
+- El tema lo decide la cookie `crm_theme`, leída en el layout raíz; sin cookie manda `prefers-color-scheme`. No hay scripts en línea.
 
 ### Compatibilidades verificadas
 

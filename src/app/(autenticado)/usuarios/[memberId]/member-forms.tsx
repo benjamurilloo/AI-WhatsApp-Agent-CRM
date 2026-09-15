@@ -107,17 +107,17 @@ export function DeactivateConfirm({
     <div
       role="group"
       aria-labelledby="confirmar-desactivar"
-      className="flex flex-col gap-3 rounded-md border border-slate-400 bg-white p-4"
+      className="flex flex-col gap-3 rounded-lg border border-danger bg-danger-soft p-4"
     >
       <p
         id="confirmar-desactivar"
         ref={titleRef}
         tabIndex={-1}
-        className="font-medium text-slate-900"
+        className="font-semibold text-on-danger-soft"
       >
         ¿Desactivar a {name}?
       </p>
-      <p className="text-sm text-slate-800">
+      <p className="text-sm text-on-danger-soft">
         {isSelf
           ? "Es tu propia cuenta: se cierra tu sesión y no vas a poder ingresar hasta que otro admin te reactive."
           : "No va a poder ingresar hasta que lo reactives, y se cierran sus sesiones abiertas."}

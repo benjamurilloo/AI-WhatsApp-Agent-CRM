@@ -9,6 +9,8 @@ import {
   inlineButtonClass,
   inputClass,
   labelClass,
+  mutedTextClass,
+  pageTitleClass,
   primaryLinkClass,
   radioClass,
   secondaryLinkClass,
@@ -52,7 +54,7 @@ export function NewMemberForm() {
           id="usuario-creado"
           ref={createdRef}
           tabIndex={-1}
-          className="text-2xl font-semibold"
+          className={pageTitleClass}
         >
           Usuario creado
         </h1>
@@ -60,13 +62,13 @@ export function NewMemberForm() {
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <code
             id="contrasena-inicial"
-            className="rounded-md border border-slate-400 bg-white px-3 py-2 font-mono text-lg tracking-wider text-slate-900"
+            className="rounded-md border border-dashed border-border-strong bg-surface-muted px-3 py-2 font-mono text-lg tracking-wider text-foreground"
           >
             {state.initialPassword}
           </code>
           <CopyButton value={state.initialPassword} />
         </div>
-        <p className="mt-4 text-sm text-slate-700">
+        <p className={`mt-4 ${mutedTextClass}`}>
           No se volverá a mostrar. Deberá cambiarla al ingresar.
         </p>
         <div className="mt-6 flex justify-end">
@@ -88,7 +90,7 @@ export function NewMemberForm() {
 
   return (
     <>
-      <h1 className="text-2xl font-semibold">Nuevo usuario</h1>
+      <h1 className={pageTitleClass}>Nuevo usuario</h1>
       <form action={formAction} noValidate className="mt-6 flex flex-col gap-5">
         <div className="flex flex-col gap-1">
           <label htmlFor="name" className={labelClass}>
@@ -166,7 +168,7 @@ export function NewMemberForm() {
           ) : null}
         </fieldset>
 
-        <p className="text-sm text-slate-700">
+        <p className={mutedTextClass}>
           Se generará una contraseña inicial de un solo uso.
         </p>
 

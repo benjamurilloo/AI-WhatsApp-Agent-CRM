@@ -13,7 +13,7 @@ export function AppNav({
   const pathname = usePathname();
   return (
     <nav aria-label="Principal">
-      <ul className="flex flex-wrap gap-x-4 gap-y-1">
+      <ul className="flex flex-wrap gap-1">
         {links.map((link) => {
           const current =
             link.href === "/"
@@ -24,7 +24,7 @@ export function AppNav({
               <Link
                 href={link.href}
                 aria-current={current ? "page" : undefined}
-                className={`${navLinkClass} ${current ? "text-blue-800 underline" : "text-slate-800"}`}
+                className={`${navLinkClass} ${current ? "bg-primary-soft text-on-primary-soft" : "text-muted hover:bg-surface-muted hover:text-foreground"}`}
               >
                 {link.label}
               </Link>

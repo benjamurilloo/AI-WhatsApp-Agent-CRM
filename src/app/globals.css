@@ -1,6 +1,119 @@
 /* Tailwind CSS 4 (brief-3.5, D-2). Sus breakpoints sm (640 px) y lg (1024 px) son los de Screens.md. */
 @import "tailwindcss";
 
+/*
+ * Diseño visual base "Laguna" (brief-4.0, D-1 y D-2). Las pantallas usan solo estos tokens:
+ * la paleta por defecto de Tailwind queda anulada. Cada valor cumple WCAG AA en su uso.
+ * Sin cookie de tema sigue prefers-color-scheme; con cookie, el layout raíz marca data-theme (D-4).
+ */
+:root {
+  color-scheme: light;
+  --background: #f3f7f6;
+  --surface: #ffffff;
+  --surface-muted: #e6efee;
+  --foreground: #10211f;
+  --muted: #4b5e5c;
+  --border: #d2dfdd;
+  --border-strong: #6f8785;
+  --primary: #0b6e69;
+  --primary-hover: #08524f;
+  --on-primary: #ffffff;
+  --primary-soft: #ddf1ee;
+  --on-primary-soft: #07423f;
+  --focus: #1c5d8c;
+  --danger: #b42318;
+  --danger-hover: #8a1b12;
+  --on-danger: #ffffff;
+  --danger-soft: #fdecea;
+  --on-danger-soft: #8a1b12;
+  --success: #17704a;
+  --success-soft: #e3f4ea;
+  --on-success-soft: #0f4f34;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --background: #0b1514;
+    --surface: #11201f;
+    --surface-muted: #172a29;
+    --foreground: #e3eeec;
+    --muted: #9bb1ae;
+    --border: #24393a;
+    --border-strong: #6c8785;
+    --primary: #3dbfb2;
+    --primary-hover: #62d2c6;
+    --on-primary: #04201d;
+    --primary-soft: #123634;
+    --on-primary-soft: #a6e6de;
+    --focus: #6bb6e8;
+    --danger: #f47a6e;
+    --danger-hover: #f79a90;
+    --on-danger: #04201d;
+    --danger-soft: #3a1714;
+    --on-danger-soft: #fbc4bd;
+    --success: #56c98f;
+    --success-soft: #10301f;
+    --on-success-soft: #aee8c8;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #0b1514;
+  --surface: #11201f;
+  --surface-muted: #172a29;
+  --foreground: #e3eeec;
+  --muted: #9bb1ae;
+  --border: #24393a;
+  --border-strong: #6c8785;
+  --primary: #3dbfb2;
+  --primary-hover: #62d2c6;
+  --on-primary: #04201d;
+  --primary-soft: #123634;
+  --on-primary-soft: #a6e6de;
+  --focus: #6bb6e8;
+  --danger: #f47a6e;
+  --danger-hover: #f79a90;
+  --on-danger: #04201d;
+  --danger-soft: #3a1714;
+  --on-danger-soft: #fbc4bd;
+  --success: #56c98f;
+  --success-soft: #10301f;
+  --on-success-soft: #aee8c8;
+}
+
+@theme {
+  --color-*: initial;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-on-primary: var(--on-primary);
+  --color-primary-soft: var(--primary-soft);
+  --color-on-primary-soft: var(--on-primary-soft);
+  --color-focus: var(--focus);
+  --color-danger: var(--danger);
+  --color-danger-hover: var(--danger-hover);
+  --color-on-danger: var(--on-danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-on-danger-soft: var(--on-danger-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-on-success-soft: var(--on-success-soft);
+
+  /* Manrope local (D-3), con respaldo del sistema. */
+  --font-sans: var(--font-manrope), system-ui, sans-serif;
+}
+
 body {
-  @apply bg-slate-50 text-slate-900 antialiased;
+  @apply bg-background font-sans text-foreground antialiased;
 }
