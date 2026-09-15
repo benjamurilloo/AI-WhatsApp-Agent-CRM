@@ -249,3 +249,16 @@ La revisión es una autoevaluación (`self_assessment: true`).
 - Si aparece la necesidad de pantallas, Server Actions o escrituras de inventario.
 - Si una comparación de cantidades no se puede resolver sin `number`.
 - Antes de ejecutar migraciones contra la base de desarrollo, de commit, de push o de cambios en Notion.
+
+## Cierre (2026-09-15)
+
+Cerrado con confirmación del usuario. Los diez criterios se cumplen; la evidencia está en [CHANGELOG.md](../../CHANGELOG.md). CI en verde en el commit `b4e903a` ([ejecución 35002153534](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35002153534)). Nivel alcanzado: **validado localmente y en CI**. Según D-6, la descripción de la 4.4 en Notion suma FR-AUD-02.
+
+### Ajustes durante la ejecución
+
+- **Ninguna condición de detención se activó**: la composición no necesitó `JOIN` ni que `catalog` importe `inventory`, la `0006` la generó Drizzle Kit sin SQL a mano y ningún test existente cambió.
+- **Entrada de cantidades**: exige al menos un dígito entero (",5" se rechaza) y no admite separador de miles. Queda cubierto por los tests unitarios de `src/shared/quantity/`.
+- **Búsqueda**: el texto se recorta; el SKU se compara exacto con `lower()` y el nombre por prefijo con `lower(name) LIKE`, escapando `\`, `%` y `_`.
+- **Fallo de auditoría en los tests**: se provoca con un contexto cuyo `userId` no existe, sin mocks: la clave foránea de `audit_logs` falla después del insert y la transacción entera se revierte.
+- **Un test unitario mal escrito**: afirmaba que `number` no redondeaba una suma cerca del máximo; se reemplazó por una comparación que muestra la diferencia real.
+- **Detalle pendiente para la 4.4**: `updateProduct` con un id inválido devuelve `VALIDATION_ERROR` con `fields: []`, mientras las demás funciones devuelven el código solo. Se unifica cuando la pantalla consuma el resultado.

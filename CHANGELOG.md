@@ -2,6 +2,31 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-15 — Subfase 4.2 cerrada (Servicio de catálogo)
+
+**Certifica:**
+
+- **Servicio de catálogo** según el [brief-4.2](docs/decisions/brief-4.2-servicio-de-catalogo.md), con D-1 a D-6 resueltas según la recomendación:
+  - `catalog`: `createProduct`, `updateProduct`, `deactivateProduct` y `reactivateProduct`, solo `admin`, auditados en la misma transacción; `getProduct` y `searchProducts` para ambos roles; `deriveStockStatus` según FR-PROD-05;
+  - `inventory`, solo lectura: `listProductStock` y `getProductStock` componen productos, saldos (0 sin fila) y estado en memoria, sin `JOIN` y sin que `catalog` importe `inventory` (D-1);
+  - cantidades exactas en `src/shared/quantity/`, como `bigint` en milésimas, con entrada con coma o punto (D-2);
+  - búsqueda por prefijo de nombre y SKU exacto sin distinguir mayúsculas, con `%` y `_` literales; `drizzle/0006_*` reemplaza el índice de nombre por uno sobre `lower(name)` (D-3);
+  - validación con recorte de espacios y límites por campo (D-4); escrituras con la fila bloqueada y última escritura gana (D-5).
+- **Tests**: 23 de integración en `tests/integration/catalog.test.ts` contra PostgreSQL real (auditoría con `diff` exacto y reversión si falla, `CONFLICT` por SKU también con dos altas simultáneas, `FORBIDDEN`, `NOT_FOUND` entre organizaciones, `VALIDATION_ERROR`, filtros, orden y paginación de la lista), y unitarios de los bordes del estado de stock, de cantidades, de validación y de la composición de la lista. Ningún test existente cambió.
+- **Suite local**: `npm run test` pasa 262 de 262; `npm run test:e2e` pasa 25 de 25. Con la base detenida pasan typecheck, lint, formato, guardas, unitarios y build, y `db:generate` informa "No schema changes". `package.json` sin cambios. La `0006` está aplicada en la base de desarrollo.
+- **CI**: [35002153534](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35002153534), commit `b4e903a`, en verde con todos los pasos.
+- **Documentación**: DataModel, TraceabilityMatrix, Overview (composición del estado de stock), RepositoryStructure (`src/shared/quantity/`) y TestingStrategy. En Notion, la 4.4 suma FR-AUD-02 (D-6).
+- **Nivel alcanzado**: **validado localmente y en CI** para el servicio de catálogo, la lectura de saldos y el estado de stock.
+
+**No certifica:**
+
+- **Pantallas 3 y 4** ni su accesibilidad: 4.4.
+- **Que un producto desactivado no reciba ajustes** (FR-PROD-03): lo verifica la 4.3.1 dentro de su transacción.
+- **Rendimiento de la lista con volumen real**: lee todos los productos que cumplen texto y actividad; se revisa en la Fase 8 o con más de 2 000 productos por organización.
+- **Búsqueda sin distinguir acentos**: "cafe" no encuentra "Café".
+- **Lectura del historial de auditoría** (FR-AUD-02): 4.4.
+- **Revisión independiente**: es autoevaluación del mismo agente.
+
 ## 2026-09-15 — Subfase 4.1 cerrada (Migraciones de catálogo e inventario)
 
 **Certifica:**
