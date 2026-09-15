@@ -192,6 +192,10 @@ La revisión es una autoevaluación (`self_assessment: true`).
 - Si hace falta una dependencia nueva para la zona horaria.
 - Antes de commit, push o cambios en Notion.
 
+## Cierre
+
+Cerrada con confirmación del usuario el 2026-09-15. AC-1 a AC-11 cumplidos, con el ajuste 1 sobre la invariante de los tests existentes: `npm run test` 327 de 327, `npm run test:e2e` 25 de 25, y CI en verde en el commit `cb81303` ([ejecución 35030637332](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35030637332)), incluido el control de migraciones al día. Nivel: **validado localmente y en CI** para el historial de movimientos a nivel de servicio. Detalle en `CHANGELOG.md`. Revisión: autoevaluación (`self_assessment: true`).
+
 ## Ajustes durante la implementación
 
 1. **Un test existente comprobaba el default anterior (se activó la condición de detención).** El caso "aplica los defaults" de `catalog-inventory-schema.test.ts` verificaba `created_at = now()`, que deja de cumplirse con `clock_timestamp()`. El usuario eligió el 2026-09-15 la opción (a): cambiar esa única aserción a `created_at between now() and clock_timestamp()`, que sigue verificando el default real. El caso nuevo del hallazgo 3 prueba la diferencia con el inicio de la transacción. Con este ajuste, la invariante "los tests existentes no cambian" admite esa única modificación.

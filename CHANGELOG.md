@@ -2,6 +2,27 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-15 — Subfase 4.3.3 cerrada (Historial de movimientos)
+
+**Certifica:**
+
+- **Historial de movimientos a nivel de servicio** según el [brief-4.3.3](docs/decisions/brief-4.3.3-historial-de-movimientos.md), con D-1 a D-4 resueltas según la recomendación: `listStockMovements` de `inventory`, para `admin` y `viewer` (FR-PROD-09), con `getProduct` de `catalog` resolviendo autorización, id y organización.
+- **Orden que sigue la cadena de saldos** (D-1): la migración `0007` cambia el valor por defecto de `inventory_movements.created_at` a `clock_timestamp()`, la hora del `INSERT`. Como el movimiento se inserta con el saldo bloqueado hasta confirmar, el orden por `created_at` (desempatado por `id`) coincide con el orden de los `balance_after`, también con ajustes simultáneos. Es el único cambio de la migración, y no toca filas existentes.
+- **Paginación en SQL** (D-2): 25 por página con el total, del más reciente al más antiguo; una página fuera de rango se lleva a la última o a la primera.
+- **Período en días de la zona de la organización** (D-3 y D-4): fechas `YYYY-MM-DD` inclusivas, convertidas por PostgreSQL a `[desde 00:00, hasta + 1 día 00:00)` con la zona IANA que aporta `getOrganizationTimezone` de `organizations`, sin dependencias nuevas ni `JOIN` entre módulos. El resultado devuelve esa zona, el autor de cada movimiento (por `getUserSummaries` de `auth`, también si está desactivado) y `productHasMovements`, que distingue "sin resultados" de "sin movimientos".
+- **Tests**: 13 de integración en `tests/integration/inventory-history.test.ts` (orden y desempate, paginación, filtro por tipo, bordes del período con medianoche local, otra zona horaria y el 19/10/2008 de Buenos Aires con su día de 23 horas, filtros inválidos, autor, autorización, aislamiento e historial de un producto desactivado); unitarios de la validación de filtros y del cálculo de páginas; un caso de esquema que comprueba que `created_at` queda posterior a `transaction_timestamp()`; y el caso 6 de `inventory-concurrency.test.ts`, que verifica que el historial encadena los saldos después de seis ajustes con reintento.
+- **Suite local**: `npm run test` pasa 327 de 327; `npm run test:e2e` pasa 25 de 25; typecheck, lint y formato en verde. Sin dependencias nuevas.
+- **CI**: [35030637332](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35030637332), commit `cb81303`, en verde con todos los pasos, incluido el control de migraciones al día con los esquemas.
+- **Documentación**: DataModel (`created_at`, límite aceptado e índice), Overview (lectura del historial), TestingStrategy y RepositoryStructure.
+- **Nivel alcanzado**: **validado localmente y en CI** para el historial de movimientos a nivel de servicio, con su orden bajo concurrencia.
+
+**No certifica:**
+
+- **Las pantallas 4 y 5**, su formato de fechas y cantidades ni los períodos predefinidos del selector: 4.4.
+- **El orden con un reloj del servidor que retrocede** (ajuste de NTP) o dos inserciones en el mismo microsegundo: límite aceptado de D-1, registrado en DataModel.
+- **El costo de paginar muy lejos** con volumen real: Fase 8.
+- **Revisión independiente**: es autoevaluación del mismo agente.
+
 ## 2026-09-15 — Subfase 4.3.2 cerrada (Concurrencia de ajustes)
 
 **Certifica:**
