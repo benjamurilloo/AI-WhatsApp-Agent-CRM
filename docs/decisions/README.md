@@ -50,7 +50,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-4.1](brief-4.1-migraciones-de-catalogo-e-inventario.md) | 4.1 — Migraciones de catálogo e inventario | aprobado y cerrado el 2026-09-15 |
 | [brief-4.2](brief-4.2-servicio-de-catalogo.md) | 4.2 — Servicio de catálogo | aprobado y cerrado el 2026-09-15 |
 | [brief-4.3.1](brief-4.3.1-transaccion-de-ajuste-de-stock.md) | 4.3.1 — Transacción de ajuste de stock | aprobado y cerrado el 2026-09-15 |
-| [brief-4.3.2](brief-4.3.2-concurrencia-de-ajustes.md) | 4.3.2 — Concurrencia de ajustes | aprobado el 2026-09-15 |
+| [brief-4.3.2](brief-4.3.2-concurrencia-de-ajustes.md) | 4.3.2 — Concurrencia de ajustes | aprobado y cerrado el 2026-09-15 |
 
 ## Plantilla
 

@@ -2,6 +2,29 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-15 — Subfase 4.3.2 cerrada (Concurrencia de ajustes)
+
+**Certifica:**
+
+- **Ajustes de stock bajo concurrencia** según el [brief-4.3.2](docs/decisions/brief-4.3.2-concurrencia-de-ajustes.md), con D-1 a D-4 resueltas según la recomendación, en `tests/integration/inventory-concurrency.test.ts` contra PostgreSQL real y sin cambios en `src/`:
+  - dos ajustes con el mismo saldo esperado: uno aceptado y el otro `CONFLICT`, con un solo movimiento y el libro cuadrado (saldo final igual al inicial más la suma de los movimientos);
+  - dos primeros ajustes sobre un producto sin fila: una sola fila de `inventories`, sin `23505` ni `40P01`;
+  - seis ajustes simultáneos que reintentan ante `CONFLICT`: todos aplicados, libro cuadrado y cada `balance_after` igual al resultado de su ajuste;
+  - un ajuste en curso frena la desactivación del producto, y una desactivación sin confirmar frena el ajuste, que termina en `inactive_product` sin efectos.
+- **Carrera garantizada** (D-1 y D-2): otra conexión retiene el bloqueo y el test espera en `pg_stat_activity` a que las conexiones queden detenidas en él antes de soltarlo, sin `setTimeout`.
+- **Evidencia de que los tests fallan sin sus bloqueos** (D-4), registrada en el brief: sin el `FOR UPDATE` del saldo fallan los casos 1 y 3; sin el `FOR SHARE` del producto, los casos 4 y 5. Ambos bloqueos restaurados y `git diff -- src` vacío.
+- **Suite local**: `npm run test` pasa 302 de 302; `npm run test:e2e` pasa 25 de 25; el archivo nuevo pasó 5 corridas seguidas; lint, typecheck y formato en verde.
+- **CI**: [35019378208](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35019378208), commit `d255bfd`, en verde con todos los pasos.
+- **Documentación**: TestingStrategy (caso obligatorio de concurrencia cubierto y método de espera) y DataModel (nota sobre `inventory_movements.created_at`).
+- **Nivel alcanzado**: **validado localmente y en CI** para el ajuste de stock bajo concurrencia. Con la 4.3.1 y la 4.1 se cumplen los tres criterios de aceptación de la Fase 4 a nivel de servicio y base: ningún camino cambia el saldo sin movimiento, los ajustes concurrentes no dejan saldo negativo y los movimientos son inmutables.
+
+**No certifica:**
+
+- **Que el caso 2 pruebe el `FOR UPDATE`**: la espera del `ON CONFLICT` sobre el índice único serializa por sí sola a dos primeros ajustes; el `FOR UPDATE` lo prueban los casos 1 y 3 (ajuste 1 del brief).
+- **El orden del historial bajo concurrencia**: `created_at` es la hora de inicio de la transacción y puede quedar fuera de secuencia con `balance_after` (hallazgo 4); se decide en la 4.3.3.
+- **Concurrencia bajo carga real** ni con la aplicación conectada con `crm_app`: Fases 8 y 9.
+- **Revisión independiente**: es autoevaluación del mismo agente.
+
 ## 2026-09-15 — Subfase 4.3.1 cerrada (Transacción de ajuste de stock)
 
 **Certifica:**

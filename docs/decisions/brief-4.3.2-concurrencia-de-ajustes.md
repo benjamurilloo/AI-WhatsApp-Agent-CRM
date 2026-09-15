@@ -172,6 +172,10 @@ La revisión es una autoevaluación (`self_assessment: true`).
 - Si algún test existente necesita cambios.
 - Antes de commit, push o cambios en Notion.
 
+## Cierre
+
+Cerrada con confirmación del usuario el 2026-09-15. AC-1 a AC-10 cumplidos, con AC-7 corregido según el ajuste 1: `npm run test` 302 de 302, `npm run test:e2e` 25 de 25, 5 corridas seguidas del archivo nuevo sin fallos, y CI en verde en el commit `d255bfd` ([ejecución 35019378208](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35019378208)). Nivel: **validado localmente y en CI** para el ajuste de stock bajo concurrencia. Detalle en `CHANGELOG.md`. Revisión: autoevaluación (`self_assessment: true`).
+
 ## Ajustes durante la implementación
 
 1. **El caso 2 no pone a prueba el `FOR UPDATE` (se activó la condición de detención de AC-7).** Con el `FOR UPDATE` de `lockBalance` quitado, los casos 1 y 3 fallaron, pero el caso 2 siguió pasando. Motivo: cuando dos primeros ajustes insertan la fila de `inventories` a la vez, el segundo `INSERT … ON CONFLICT DO NOTHING` espera a que el primero confirme por el índice único de `product_id`, y la lectura siguiente ya ve el saldo confirmado. Esa espera serializa la carrera por sí sola. El usuario eligió el 2026-09-15 la opción (a): mantener el caso 2 con su propósito real, **una sola fila, sin `23505` ni `40P01` y con el libro cuadrado**, y dejar la evidencia del `FOR UPDATE` en los casos 1 y 3. AC-7 queda corregido así: sin el `FOR UPDATE` fallan los casos 1 y 3; sin el `FOR SHARE`, los casos 4 y 5.
