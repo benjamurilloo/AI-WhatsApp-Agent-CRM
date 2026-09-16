@@ -57,6 +57,20 @@
       "when": 1789506294531,
       "tag": "0007_inventory_movements_created_at_clock_timestamp",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789567739494,
+      "tag": "0008_clients",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789567747891,
+      "tag": "0009_clients_privileges",
+      "breakpoints": true
     }
   ]
 }

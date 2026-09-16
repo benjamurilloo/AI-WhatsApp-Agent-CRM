@@ -1,13 +1,13 @@
 # Modelo de Datos
 
-**Estado: diseñado; `organizations`, `users` y `organization_members` implementadas y validadas localmente desde la 3.1** ([brief-3.1](../decisions/brief-3.1-migraciones-de-identidad.md)), **`sessions` y `login_attempts` desde la 3.3** ([brief-3.3](../decisions/brief-3.3-autenticacion.md)), **`audit_logs` desde la 3.6** ([brief-3.6](../decisions/brief-3.6-modulo-de-auditoria.md)), **y `products`, `inventories` e `inventory_movements` desde la 4.1** ([brief-4.1](../decisions/brief-4.1-migraciones-de-catalogo-e-inventario.md)), solo como esquema: sus servicios llegan en la 4.2 y la 4.3. Las migraciones están en `drizzle/`; el resto de las tablas sigue sin migración.
+**Estado: diseñado; `organizations`, `users` y `organization_members` implementadas y validadas localmente desde la 3.1** ([brief-3.1](../decisions/brief-3.1-migraciones-de-identidad.md)), **`sessions` y `login_attempts` desde la 3.3** ([brief-3.3](../decisions/brief-3.3-autenticacion.md)), **`audit_logs` desde la 3.6** ([brief-3.6](../decisions/brief-3.6-modulo-de-auditoria.md)), **`products`, `inventories` e `inventory_movements` desde la 4.1** ([brief-4.1](../decisions/brief-4.1-migraciones-de-catalogo-e-inventario.md)), con sus servicios desde la 4.2 y la 4.3, **y `clients` desde la 5.1** ([brief-5.1](../decisions/brief-5.1-migracion-de-clientes.md)), solo como esquema: su servicio llega en la 5.2. Las migraciones están en `drizzle/`; el resto de las tablas sigue sin migración.
 
 Convenciones fijadas en la 3.1, que siguen las tablas futuras salvo justificación:
 
 - Los enums son tipos `ENUM` de PostgreSQL (`pgEnum`), p. ej. `member_role`. Agregar un valor es un `ALTER TYPE ... ADD VALUE` aditivo (D-2).
 - `id` usa `gen_random_uuid()` como default de base (D-6).
 - `updated_at` lo mantiene la aplicación con `$onUpdate` de Drizzle. **Limitación**: un `UPDATE` escrito en SQL crudo no lo actualiza (D-3).
-- Los esquemas viven en el módulo dueño: `users` en `src/modules/auth/schema.ts`; `organizations` y `organization_members` en `src/modules/organizations/schema.ts`; `audit_logs` en `src/modules/audit/schema.ts`; `products` en `src/modules/catalog/schema.ts`; `inventories` e `inventory_movements` en `src/modules/inventory/schema.ts`.
+- Los esquemas viven en el módulo dueño: `users` en `src/modules/auth/schema.ts`; `organizations` y `organization_members` en `src/modules/organizations/schema.ts`; `audit_logs` en `src/modules/audit/schema.ts`; `products` en `src/modules/catalog/schema.ts`; `inventories` e `inventory_movements` en `src/modules/inventory/schema.ts`; `clients` en `src/modules/crm/schema.ts`.
 - Las cantidades son `numeric(14, 3)`: hasta 99 999 999 999,999 con tres decimales, y comparaciones exactas (brief-4.1, D-4). Drizzle devuelve `numeric` como `string`: los servicios comparan y suman en SQL o con una representación decimal exacta, nunca con `number` de JavaScript. La representación exacta es `src/shared/quantity/`: `bigint` en milésimas, con parseo de entrada con coma o punto (brief-4.2, D-2).
 - Privilegios ([ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md), 3.6): cada migración que crea una tabla otorga sus privilegios al rol de aplicación `crm_app`. Una tabla de solo inserción recibe solo `SELECT` e `INSERT`, más un trigger que rechaza `UPDATE` y `DELETE`. Los roles, privilegios y triggers van en migraciones a medida, porque Drizzle no los expresa en `schema.ts`.
 
@@ -124,18 +124,24 @@ Limpieza: en cada intento se borran los registros vencidos de esa clave; un logi
 
 ### `clients`
 
+**Implementada en la 5.1** ([brief-5.1](../decisions/brief-5.1-migracion-de-clientes.md)), migraciones `drizzle/0008_*` y `drizzle/0009_*`. Módulo dueño: `crm`.
+
 | Columna | Tipo | Notas |
 |---|---|---|
 | `id` | uuid PK | |
-| `organization_id` | uuid FK → organizations, not null | |
+| `organization_id` | uuid FK → organizations, not null | `ON DELETE RESTRICT` |
 | `display_name` | text not null | |
-| `phone_e164` | text null | formato E.164 |
+| `phone_e164` | text null | E.164 canónico: `CHECK (phone_e164 ~ '^\+[1-9][0-9]{1,14}$')`, constraint `clients_phone_e164_format` (brief-5.1, D-1). Valida la forma, no que el número exista. El servicio normaliza la entrada antes de guardar |
 | `notes` | text null | |
 | `is_active` | boolean not null default true | |
 | `created_at`, `updated_at` | timestamptz not null | |
-| — | `UNIQUE(organization_id, phone_e164) WHERE phone_e164 IS NOT NULL` | evita duplicados de teléfono por organización sin bloquear clientes sin teléfono |
+| — | `UNIQUE(organization_id, phone_e164) WHERE phone_e164 IS NOT NULL` | índice `clients_organization_phone_unique`. Evita duplicados de teléfono por organización sin bloquear clientes sin teléfono. **Alcanza también a los inactivos**: un número pertenece a un solo cliente de la organización, y un alta con el número de un cliente inactivo devuelve `CONFLICT` para que se reactive el existente (brief-5.1, D-3) |
 
-Índices: `(organization_id, display_name text_pattern_ops)` para búsqueda por nombre; el `UNIQUE` parcial ya cubre búsqueda por teléfono.
+Índices: `clients_organization_display_name_lower_idx` sobre `(organization_id, lower(display_name) text_pattern_ops)` para la búsqueda por prefijo de nombre sin distinguir mayúsculas, `lower(display_name) LIKE 'ana%'` (brief-5.1, D-2, igual que productos); el `UNIQUE` parcial cubre la búsqueda exacta por teléfono completo. La búsqueda no ignora acentos ni encuentra palabras en medio del nombre.
+
+`display_name` vacío lo rechaza el servicio de la 5.2, que también recorta espacios: es editable y se corrige (mismo criterio que la 4.1, D-5).
+
+Sin `UNIQUE(organization_id, id)` todavía: lo suma la Fase 6 junto con su consumidor, la clave foránea compuesta de `conversations` (brief-5.1, D-4).
 
 ### `products`
 
@@ -202,7 +208,7 @@ Insert-only. Nunca se actualiza ni se borra: `crm_app` solo tiene `SELECT` e `IN
 |---|---|---|
 | `id` | uuid PK | |
 | `organization_id` | uuid FK → organizations, not null | |
-| `client_id` | uuid FK → clients, null | puede no resolverse a un cliente conocido |
+| `client_id` | uuid FK → clients, null | puede no resolverse a un cliente conocido. La Fase 6 la declara compuesta, `(organization_id, client_id)` → `clients(organization_id, id)`, y suma ese `UNIQUE` a `clients` en la misma migración; con `client_id` nulo no se verifica (brief-5.1, D-4) |
 | `channel` | enum(`whatsapp`) not null | extensible a futuro |
 | `external_ref` | text null | referencia del sistema origen, para idempotencia |
 | `status` | enum(`open`,`pending`,`closed`) not null default `'open'` | |

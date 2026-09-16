@@ -30,8 +30,11 @@ Toda entrada de este índice lleva fase límite. "Se ve más adelante" no es una
 | Frecuencia y prueba de restauración de backups | [architecture/Overview.md](../architecture/Overview.md) | Subfase 9.2 |
 | Validación de las personas contra el uso real | [product/Personas.md](../product/Personas.md) | Fase 9 |
 | Cuándo priorizar un segundo canal además de WhatsApp | esta tabla de riesgos | Después del MVP (Fase 10) |
-| Búsqueda por prefijo o por contenido en productos y clientes, y el índice que requiere (H-3) | [architecture/TraceabilityMatrix.md](../architecture/TraceabilityMatrix.md) | Fase 4 (productos) y Fase 5 (clientes) |
 | Test de que la respuesta a un `viewer` no contiene el teléfono completo (H-5, FR-CLI-06) | [architecture/TraceabilityMatrix.md](../architecture/TraceabilityMatrix.md) | Fase 5 |
+
+### Cerradas en las subfases 4.2 y 5.1 (2026-09-15 y 2026-09-16)
+
+- Búsqueda por prefijo o por contenido en productos y clientes (H-3) → por prefijo sin distinguir mayúsculas, con índice sobre `lower(...) text_pattern_ops` ([brief-4.2](../decisions/brief-4.2-servicio-de-catalogo.md), D-3; [brief-5.1](../decisions/brief-5.1-migracion-de-clientes.md), D-2).
 
 ### Cerradas en la subfase 1.3 (2026-09-11)
 

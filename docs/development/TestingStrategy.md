@@ -14,7 +14,7 @@
 - Un rechazo de la base se comprueba por su código de error de PostgreSQL (`23505`, `23503`, `23502`, `22P02`...), no solo porque la consulta falle.
 - Casos obligatorios:
   - Un ajuste de stock concurrente no deja saldo negativo ni pierde actualizaciones. Cubierto desde la 4.3.2 en `tests/integration/inventory-concurrency.test.ts` (detalle más abajo).
-  - SKU y teléfono son únicos por organización. El SKU, desde la 4.1.
+  - SKU y teléfono son únicos por organización. El SKU, desde la 4.1; el teléfono, desde la 5.1.
   - Idempotencia de ingestión: reenviar el mismo evento no duplica conversaciones ni mensajes, y reenviarlo con otro `payload_hash` devuelve `CONFLICT` sin modificar datos.
   - Aislamiento por organización: un usuario de la organización A recibe `NOT_FOUND` al leer o escribir datos de la organización B, incluso manipulando IDs directamente. Cubierto desde la 3.4 para `organization_members` (`tests/integration/authorization.test.ts`); cada módulo de las Fases 4 a 7 agrega el suyo para sus recursos.
   - `inventory_movements` rechaza `UPDATE` y `DELETE`: con `42501` para `crm_app` y con `P0001` por trigger para el rol dueño. Cubierto desde la 4.1 en `tests/integration/catalog-inventory-schema.test.ts`, con `inventory_movements` en la lista de solo inserción de `audit.test.ts`.
@@ -23,6 +23,11 @@
     - `quantity_on_hand`, `balance_after` y `reorder_point` negativos, `quantity` cero o negativa y `reason` vacío o solo con espacios se rechazan con `23514`;
     - las cantidades se redondean a tres decimales y fuera de `numeric(14, 3)` se rechazan con `22003`;
     - un saldo o un movimiento con el producto de otra organización se rechaza con `23503`, y borrar una organización, un producto o un usuario referenciados, con `23001`.
+  - Esquema de clientes ([brief-5.1](../decisions/brief-5.1-migracion-de-clientes.md)), cubierto desde la 5.1 en `tests/integration/clients-schema.test.ts` con SQL directo:
+    - teléfono repetido en la organización, también contra un cliente inactivo, se rechaza con `23505` y el nombre del índice; se acepta en otra organización, y varios clientes sin teléfono conviven;
+    - un teléfono fuera de E.164 canónico (espacios, guiones, paréntesis, sin `+`, con `+0`, más de 15 dígitos, dígitos no ASCII, salto de línea final o vacío) se rechaza con `23514`, al insertar y al actualizar;
+    - una organización inexistente se rechaza con `23503`, y borrar una con clientes, con `23001`;
+    - `crm_app` lee, inserta, actualiza y borra clientes.
   - Servicio de catálogo ([brief-4.2](../decisions/brief-4.2-servicio-de-catalogo.md)), cubierto desde la 4.2 en `tests/integration/catalog.test.ts`:
     - alta, edición, desactivación y reactivación auditadas en la misma transacción con `diff` exacto; un cambio sin diferencias no escribe ni audita; si la auditoría falla, el producto no persiste;
     - SKU duplicado, también con otras mayúsculas, en alta y en edición → `CONFLICT` sin auditoría; dos altas simultáneas con el mismo SKU → una sola se crea;
