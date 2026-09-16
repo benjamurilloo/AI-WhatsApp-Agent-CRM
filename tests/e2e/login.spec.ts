@@ -52,6 +52,8 @@ async function submitLogin(page: Page, email: string, password: string) {
 async function expectAccessible(page: Page, state: string) {
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
+    // Una navegación en el cliente puede dejar el <title> vacío un instante (brief-6.4, D-6).
+    await expect(page).toHaveTitle(/.+/);
     const results = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
       .analyze();

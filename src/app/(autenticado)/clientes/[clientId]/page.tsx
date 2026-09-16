@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
+import { getClientActivity } from "@/modules/conversations";
 import { getClient, listClientAudit } from "@/modules/crm";
 import { getOrganizationTimezone } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
@@ -17,6 +19,11 @@ import {
 } from "@/app/_components/form-styles";
 import { PageNotice } from "@/app/_components/page-notice";
 import { formatShortDateTime } from "@/app/_format/date-time";
+import {
+  clientSectionsHref,
+  parseClientSectionsView,
+  STATUS_PARAM,
+} from "@/app/(autenticado)/conversaciones/filters";
 import { ClientForm } from "../client-form";
 import type { SearchParams } from "../filters";
 import {
@@ -27,6 +34,11 @@ import {
 import { PhoneText } from "../phone-text";
 import { auditActionLabel, describeAuditDiff } from "./audit-summary";
 import { DeactivateConfirm, ReactivateForm } from "./client-actions";
+import {
+  ClientConversations,
+  ClientConversationsSkeleton,
+  LastInteraction,
+} from "./client-conversations";
 
 export const metadata: Metadata = {
   title: "Cliente — AI WhatsApp Agent CRM",
@@ -34,14 +46,9 @@ export const metadata: Metadata = {
 
 const TITLE = "Clientes";
 
-function page(value: string | string[] | undefined): number {
-  const raw = Array.isArray(value) ? value[0] : value;
-  return raw && /^[1-9][0-9]{0,5}$/.test(raw) ? Number(raw) : 1;
-}
-
 // Pantalla 7 (wireframe 07): datos y, solo para admin, edición, desactivación con confirmación e
-// historial de auditoría paginado (FR-AUD-02). Sin última interacción ni conversaciones hasta la
-// Fase 6 (brief-5.3, D-3).
+// historial de auditoría paginado (FR-AUD-02). La última interacción y las conversaciones cargan
+// por separado, con sus propios parámetros de URL (brief-6.4, D-4).
 export default async function ClientPage({
   params,
   searchParams,
@@ -73,10 +80,16 @@ export default async function ClientPage({
   const confirming =
     isAdmin && query.confirmar === "desactivar" && client.isActive;
   const notice = noticeMessage(query.aviso);
+  const sections = parseClientSectionsView(query);
+  // Sin await: la esperan las partes que la muestran, cada una en su Suspense.
+  const activity = getClientActivity(context, client.id, {
+    status: STATUS_PARAM[sections.conversationStatus],
+    page: sections.conversationPage,
+  });
 
   // La auditoría solo se pide para un admin: el servidor no la entrega a un viewer.
   const audit = isAdmin
-    ? await listClientAudit(context, client.id, page(query.auditoria))
+    ? await listClientAudit(context, client.id, sections.auditPage)
     : null;
   const timeZone = audit?.ok ? await getOrganizationTimezone(context) : null;
 
@@ -166,12 +179,35 @@ export default async function ClientPage({
             <dd>
               <PhoneText phone={client.phone} emptyText="Sin teléfono" />
             </dd>
+            <dt className="font-semibold">Última interacción</dt>
+            <dd>
+              <Suspense fallback="Cargando…">
+                <LastInteraction activity={activity} />
+              </Suspense>
+            </dd>
             <dt className="font-semibold">Notas</dt>
             <dd className="whitespace-pre-line text-muted">
               {client.notes ?? "Sin notas"}
             </dd>
           </dl>
         )}
+      </section>
+
+      <section
+        aria-labelledby="conversaciones-titulo"
+        className={`mt-6 ${cardClass} p-6`}
+      >
+        <h2 id="conversaciones-titulo" className={sectionTitleClass}>
+          Conversaciones
+        </h2>
+        <Suspense fallback={<ClientConversationsSkeleton />}>
+          <ClientConversations
+            clientId={client.id}
+            clientName={client.displayName}
+            activity={activity}
+            view={sections}
+          />
+        </Suspense>
       </section>
 
       {audit?.ok && timeZone ? (
@@ -228,7 +264,10 @@ export default async function ClientPage({
             >
               {audit.page > 1 ? (
                 <Link
-                  href={`/clientes/${client.id}?auditoria=${audit.page - 1}`}
+                  href={clientSectionsHref(client.id, {
+                    ...sections,
+                    auditPage: audit.page - 1,
+                  })}
                   className={linkClass}
                 >
                   Página anterior
@@ -239,7 +278,10 @@ export default async function ClientPage({
               </p>
               {audit.page < audit.pageCount ? (
                 <Link
-                  href={`/clientes/${client.id}?auditoria=${audit.page + 1}`}
+                  href={clientSectionsHref(client.id, {
+                    ...sections,
+                    auditPage: audit.page + 1,
+                  })}
                   className={linkClass}
                 >
                   Página siguiente

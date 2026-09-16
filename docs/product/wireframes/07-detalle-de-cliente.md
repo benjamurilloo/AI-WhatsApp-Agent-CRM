@@ -1,14 +1,14 @@
 # 07 — Detalle y edición de cliente
 
-**Estado: implementado en la 5.3** ([brief-5.3](../../decisions/brief-5.3-ui-de-clientes.md)), sin última interacción ni conversaciones. Especificación: [Screens.md §7](../Screens.md#7-detalle-y-edición-de-cliente). Reglas: FR-CLI-01 a 07. Convenciones en el [índice](README.md).
+**Estado: implementado en la 5.3** ([brief-5.3](../../decisions/brief-5.3-ui-de-clientes.md)), con la última interacción y las conversaciones desde la 6.4 ([brief-6.4](../../decisions/brief-6.4-ui-de-conversaciones.md)). Especificación: [Screens.md §7](../Screens.md#7-detalle-y-edición-de-cliente). Reglas: FR-CLI-01 a 07. Convenciones en el [índice](README.md).
 
 **Desvíos respecto de este wireframe**:
 
 - El teléfono se muestra en E.164 sin agrupar, como en la lista (brief-5.3, D-1).
-- "Última interacción", la sección "Conversaciones" y su filtro llegan en la Fase 6 (brief-5.3, D-3).
+- La última interacción va en la sección "Datos". La sección "Conversaciones" carga por separado, con su skeleton, y pagina y filtra con `?estado_conv=` y `?pagina_conv=`; cada enlace conserva `?auditoria=` (brief-6.4, D-4). Suma el enlace "Ver en Conversaciones" a la pantalla 8 filtrada por el cliente (D-1). La tabla no repite el cliente ni tiene columna de inicio: cada conversación se nombra por su inicio.
 - El resumen de auditoría muestra valores para nombre, teléfono y estado, y de las notas solo "Notas cargadas", "Notas actualizadas" o "Notas borradas", porque no entran en una celda (brief-5.3, D-4).
 - El teléfono duplicado dice además que el cliente puede estar desactivado y cómo encontrarlo (brief-5.3, D-2).
-- Alta en `/clientes/nuevo`, edición con `?editar=1` y confirmación con `?confirmar=desactivar`, como productos. La leyenda de zona horaria va dentro de la sección de auditoría, la única con fechas.
+- Alta en `/clientes/nuevo`, edición con `?editar=1` y confirmación con `?confirmar=desactivar`, como productos. Cada sección con fechas lleva su propia leyenda de zona horaria.
 
 ## Escritorio
 

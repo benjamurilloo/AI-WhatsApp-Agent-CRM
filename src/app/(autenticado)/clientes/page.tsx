@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { searchClients } from "@/modules/crm";
+import { searchClientsByLastInteraction } from "@/modules/conversations";
 import { requireSession } from "@/app/_auth/session";
 import {
   activeBadgeClass,
@@ -17,6 +17,8 @@ import {
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
 import { PageNotice } from "@/app/_components/page-notice";
+import { formatShortDateTime } from "@/app/_format/date-time";
+import { NO_INTERACTIONS_TEXT } from "@/app/(autenticado)/conversaciones/messages";
 import {
   activityParam,
   clientFiltersHref,
@@ -38,8 +40,9 @@ export const metadata: Metadata = {
 const TITLE = "Clientes";
 
 // Pantalla 6 (wireframe 06): búsqueda, actividad y página en la URL. Tabla en escritorio y
-// tarjetas en móvil; la versión oculta no entra al árbol de accesibilidad. Sin última interacción
-// hasta la Fase 6 (brief-5.3, D-3). El teléfono llega de crm ya enmascarado para viewer.
+// tarjetas en móvil; la versión oculta no entra al árbol de accesibilidad. Orden por última
+// interacción, compuesto por conversations (brief-6.4). El teléfono llega de crm ya enmascarado
+// para viewer.
 export default async function ClientsPage({
   searchParams,
 }: {
@@ -47,7 +50,7 @@ export default async function ClientsPage({
 }) {
   const context = await requireSession();
   const filters = parseClientFilters(await searchParams);
-  const result = await searchClients(context, filters);
+  const result = await searchClientsByLastInteraction(context, filters);
   if (!result.ok) {
     return <PageNotice title={TITLE} message={FORBIDDEN_PAGE_MESSAGE} />;
   }
@@ -141,6 +144,9 @@ export default async function ClientsPage({
                     Teléfono
                   </th>
                   <th scope="col" className={tableHeadCellClass}>
+                    Última interacción
+                  </th>
+                  <th scope="col" className={tableHeadCellClass}>
                     Activo
                   </th>
                 </tr>
@@ -158,6 +164,14 @@ export default async function ClientsPage({
                     </td>
                     <td className={tableCellClass}>
                       <PhoneText phone={client.phone} emptyText="—" />
+                    </td>
+                    <td className={`${tableCellClass} whitespace-nowrap`}>
+                      {client.lastInteractionAt
+                        ? formatShortDateTime(
+                            client.lastInteractionAt,
+                            result.timezone,
+                          )
+                        : NO_INTERACTIONS_TEXT}
                     </td>
                     <td className={tableCellClass}>
                       <span
@@ -195,6 +209,15 @@ export default async function ClientsPage({
                 <p className="mt-2 text-sm">
                   <PhoneText phone={client.phone} emptyText="Sin teléfono" />
                 </p>
+                <p className="mt-1 text-sm text-muted">
+                  Última interacción:{" "}
+                  {client.lastInteractionAt
+                    ? formatShortDateTime(
+                        client.lastInteractionAt,
+                        result.timezone,
+                      )
+                    : NO_INTERACTIONS_TEXT}
+                </p>
               </li>
             ))}
           </ul>
@@ -227,6 +250,12 @@ export default async function ClientsPage({
             </Link>
           ) : null}
         </nav>
+      ) : null}
+
+      {result.total > 0 ? (
+        <p className="mt-6 text-sm text-muted">
+          Ordenados por última interacción · Fechas en {result.timezone}.
+        </p>
       ) : null}
     </main>
   );

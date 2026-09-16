@@ -1,6 +1,15 @@
 # 08 — Lista de conversaciones
 
-**Estado: diseñado.** Especificación: [Screens.md §8](../Screens.md#8-lista-de-conversaciones). Reglas: FR-CONV-01 y FR-CONV-03. Convenciones en el [índice](README.md).
+**Estado: implementado en la 6.4** ([brief-6.4](../../decisions/brief-6.4-ui-de-conversaciones.md)). Especificación: [Screens.md §8](../Screens.md#8-lista-de-conversaciones). Reglas: FR-CONV-01 y FR-CONV-03. Convenciones en el [índice](README.md).
+
+**Desvíos respecto de este wireframe**:
+
+- El período usa los atajos de la pantalla 5 ("Todas las fechas", 7, 30 y 90 días, y "Personalizado", que muestra "Desde" y "Hasta"), con "Todas las fechas" por defecto. Así, "Limpiar filtros" muestra todo, y los datos de desarrollo no desaparecen de la vista inicial (brief-6.4, D-2). Un período inválido se señala en los dos campos.
+- El filtro de cliente es una caja de búsqueda que usa la búsqueda de `crm`, en dos pasos y sin JavaScript (D-1):
+  - con un solo resultado, se aplica;
+  - con varios, se ofrecen hasta 25 para elegir, y la lista no se muestra hasta elegir uno;
+  - el cliente elegido aparece como "Cliente: … · Quitar cliente".
+- La columna "N" se llama "Mensajes", y el botón del formulario, "Aplicar filtros".
 
 ## Escritorio
 

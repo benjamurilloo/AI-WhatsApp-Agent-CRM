@@ -1,6 +1,6 @@
 # Wireframes de baja fidelidad
 
-**Estado: diseñado; las pantallas 1 y 10 están implementadas desde la Fase 3, la 3, la 4 y la 5, desde la Fase 4, y la 6 y la 7, sin conversaciones, desde la 5.3.** Entregable de la subfase 1.1 ([brief-1.1](../../decisions/brief-1.1-wireframes-baja-fidelidad.md)). Son bocetos de distribución y datos, no diseño visual: no fijan colores, tipografía ni tamaños.
+**Estado: diseñado; las pantallas 1 y 10 están implementadas desde la Fase 3, la 3, la 4 y la 5, desde la Fase 4, la 6 y la 7 desde la 5.3 (con conversaciones desde la 6.4), y la 8 y la 9 desde la 6.4.** Entregable de la subfase 1.1 ([brief-1.1](../../decisions/brief-1.1-wireframes-baja-fidelidad.md)). Son bocetos de distribución y datos, no diseño visual: no fijan colores, tipografía ni tamaños.
 
 ## Índice
 

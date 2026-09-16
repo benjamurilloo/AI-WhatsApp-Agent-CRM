@@ -1,0 +1,604 @@
+import AxeBuilder from "@axe-core/playwright";
+import { expect, test, type Page, type Response } from "@playwright/test";
+import { sql } from "drizzle-orm";
+import { createDb, type Db } from "@/shared/db";
+import { SEED_ORGANIZATION_ID, SEED_USERS, seedBasic } from "../../seeds/basic";
+import { e2eDatabaseUrl } from "../integration/test-database";
+import { E2E_PASSWORD } from "./global-setup";
+
+// Pantallas 8 y 9 de punta a punta: Chromium, next start, Server Actions, conversations, crm,
+// audit y PostgreSQL real, sin mocks (brief-6.4). No hay ingestión todavía: cada caso inserta sus
+// conversaciones y mensajes con SQL, como fixtures sintéticos (D-5).
+
+const [ADMIN_SEED, VIEWER_SEED] = SEED_USERS;
+const ADMIN = ADMIN_SEED.email;
+const VIEWER = VIEWER_SEED.email;
+const TIMEZONE = "America/Argentina/Buenos_Aires";
+const OTHER_ORGANIZATION_ID = "5eed0000-0000-4000-8000-0000000000f1";
+// Cuerpo que no debe viajar a la pantalla 8: no coincide con ningún texto de la interfaz.
+const SECRET_BODY = "Kumquat-7Q3 confidencial";
+const MARKUP_BODY = "<b>Paso mañana</b> <a href='https://example.com'>ver</a>";
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+let db: Db;
+
+test.beforeAll(() => {
+  db = createDb(e2eDatabaseUrl(process.env.DATABASE_URL ?? ""));
+});
+
+// Los demás specs borran organizaciones: no pueden quedar filas que lo impidan (brief-6.1).
+test.afterAll(async () => {
+  await db.execute(sql`truncate table messages, conversations, clients`);
+  await db.$client.end();
+});
+
+// audit_logs y messages son de solo inserción: TRUNCATE es la vía documentada para vaciarlas (ADR 0013).
+test.beforeEach(async () => {
+  await db.execute(
+    sql`truncate table audit_logs, messages, conversations, clients`,
+  );
+  await db.execute(sql`delete from login_attempts`);
+  await db.execute(sql`delete from sessions`);
+  const seedIds = sql.join(
+    SEED_USERS.map((user) => sql`${user.id}`),
+    sql`, `,
+  );
+  await db.execute(sql`delete from users where id not in (${seedIds})`);
+  await db.execute(
+    sql`delete from organizations where id <> ${SEED_ORGANIZATION_ID}`,
+  );
+  await seedBasic(db, E2E_PASSWORD);
+});
+
+async function login(page: Page, email: string) {
+  await page.goto("/login");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Contraseña", { exact: true }).fill(E2E_PASSWORD);
+  await page.getByRole("button", { name: "Ingresar" }).click();
+  await expect(page).not.toHaveURL(/\/login$/);
+}
+
+// Cada estado se analiza en claro y en oscuro (brief-4.0, D-6).
+async function expectAccessible(page: Page, state: string) {
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    // Una navegación en el cliente puede dejar el <title> vacío un instante (brief-6.4, D-6).
+    await expect(page).toHaveTitle(/.+/);
+    const results = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+      .analyze();
+    const violations = results.violations.map(
+      (violation) =>
+        `${violation.id}: ${violation.nodes.map((node) => node.target.join(" ")).join(", ")}`,
+    );
+    expect(
+      violations,
+      `violaciones de axe en "${state}" (${colorScheme})`,
+    ).toEqual([]);
+  }
+  await page.emulateMedia({ colorScheme: null });
+}
+
+async function insertClient(
+  displayName: string,
+  {
+    phone = null,
+    organizationId = SEED_ORGANIZATION_ID,
+  }: { phone?: string | null; organizationId?: string } = {},
+) {
+  const result = await db.execute<{ id: string }>(
+    sql`insert into clients (organization_id, display_name, phone_e164)
+        values (${organizationId}, ${displayName}, ${phone})
+        returning id`,
+  );
+  return result.rows[0]!.id;
+}
+
+type MessageInput = {
+  direction: "inbound" | "outbound";
+  sentAt: Date;
+  body: string | null;
+};
+
+// Conversación con sus mensajes; inicio y último mensaje salen de ellos, como en la ingestión.
+async function insertConversation({
+  clientId = null,
+  status = "open",
+  messages,
+  organizationId = SEED_ORGANIZATION_ID,
+}: {
+  clientId?: string | null;
+  status?: "open" | "pending" | "closed";
+  messages: MessageInput[];
+  organizationId?: string;
+}) {
+  const times = messages.map((message) => message.sentAt.getTime());
+  const startedAt = new Date(Math.min(...times));
+  const lastMessageAt = new Date(Math.max(...times));
+  const result = await db.execute<{ id: string }>(
+    sql`insert into conversations
+          (organization_id, client_id, channel, status, started_at, last_message_at)
+        values (${organizationId}, ${clientId}, 'whatsapp', ${status},
+          ${startedAt.toISOString()}, ${lastMessageAt.toISOString()})
+        returning id`,
+  );
+  const conversationId = result.rows[0]!.id;
+  for (const message of messages) {
+    await db.execute(
+      sql`insert into messages (organization_id, conversation_id, direction, sent_at, body_text)
+          values (${organizationId}, ${conversationId}, ${message.direction},
+            ${message.sentAt.toISOString()}, ${message.body})`,
+    );
+  }
+  return conversationId;
+}
+
+async function insertOtherOrganization() {
+  await db.execute(
+    sql`insert into organizations (id, name) values (${OTHER_ORGANIZATION_ID}, 'Otra organización')`,
+  );
+}
+
+const ago = (days: number, hours = 0) =>
+  new Date(Date.now() - days * DAY_MS - hours * 60 * 60 * 1000);
+
+const conversationsTable = (page: Page) =>
+  page.getByRole("table", { name: "Conversaciones de la organización" });
+const timeline = (page: Page) => page.getByRole("list", { name: "Mensajes" });
+
+test("caso 1: un admin llega desde la navegación y ve el vacío", async ({
+  page,
+}) => {
+  await login(page, ADMIN);
+  const nav = page.getByRole("navigation", { name: "Principal" });
+  await nav.getByRole("link", { name: "Conversaciones" }).click();
+  await expect(page).toHaveURL("/conversaciones");
+  await expect(
+    nav.getByRole("link", { name: "Conversaciones" }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(page.getByText("No hay conversaciones.")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Limpiar filtros" }),
+  ).toBeHidden();
+  await expect(page.getByText(`Fechas en ${TIMEZONE}.`)).toBeVisible();
+  await expectAccessible(page, "lista vacía");
+});
+
+test("caso 2: la lista muestra cliente, estado, fechas y cantidad, sin contenido", async ({
+  page,
+}) => {
+  const clientId = await insertClient("María Gómez", {
+    phone: "+5491166667788",
+  });
+  await insertConversation({
+    clientId,
+    messages: [
+      {
+        direction: "inbound",
+        sentAt: new Date("2026-09-10T12:12:00Z"),
+        body: "Hola",
+      },
+      {
+        direction: "outbound",
+        sentAt: new Date("2026-09-11T21:40:00Z"),
+        body: SECRET_BODY,
+      },
+    ],
+  });
+  await insertConversation({
+    status: "pending",
+    messages: [
+      {
+        direction: "inbound",
+        sentAt: new Date("2026-09-11T11:03:00Z"),
+        body: SECRET_BODY,
+      },
+    ],
+  });
+
+  await login(page, VIEWER);
+  await page.goto("/conversaciones");
+  const rows = conversationsTable(page).getByRole("row");
+  await expect(rows).toHaveCount(3);
+  // Del último mensaje más reciente al más antiguo; fechas en la zona de la organización.
+  await expect(rows.nth(1)).toContainText("María Gómez");
+  await expect(rows.nth(1)).toContainText("WhatsApp");
+  await expect(rows.nth(1)).toContainText("Abierta");
+  await expect(rows.nth(1)).toContainText("10/09 09:12");
+  await expect(rows.nth(1)).toContainText("11/09 18:40");
+  await expect(rows.nth(1).getByRole("cell").last()).toHaveText("2");
+  await expect(rows.nth(2)).toContainText("Sin cliente");
+  await expect(rows.nth(2)).toContainText("Pendiente");
+  await expect(conversationsTable(page)).not.toContainText("6666");
+  await expectAccessible(page, "lista con conversaciones");
+
+  // Nada de lo que recibe el navegador en la pantalla 8 trae un cuerpo (FR-CONV-01): ni el
+  // documento ni los datos de RSC de una navegación en el cliente.
+  const bodies: string[] = [];
+  const pending: Promise<void>[] = [];
+  const listener = (response: Response) => {
+    if (!response.url().startsWith("http://localhost")) return;
+    pending.push(
+      response
+        .text()
+        .then((text) => void bodies.push(text))
+        .catch(() => undefined),
+    );
+  };
+  page.on("response", listener);
+  for (const route of ["/conversaciones", "/conversaciones?estado=pendiente"]) {
+    await page.goto(route);
+    bodies.push(await page.content());
+    bodies.push(await (await page.request.get(route)).text());
+  }
+  await page.goto("/");
+  await page
+    .getByRole("navigation", { name: "Principal" })
+    .getByRole("link", { name: "Conversaciones" })
+    .click();
+  await expect(conversationsTable(page)).toBeVisible();
+  page.off("response", listener);
+  await Promise.all(pending);
+  expect(bodies.length).toBeGreaterThan(4);
+  for (const body of bodies) expect(body).not.toContain(SECRET_BODY);
+
+  // Control: el detalle sí lo muestra; el test no pasa por vacío.
+  await rows.nth(2).getByRole("link", { name: "Sin cliente" }).click();
+  await expect(timeline(page)).toContainText(SECRET_BODY);
+});
+
+test("caso 3: filtra por estado y período, distingue sin resultados y pagina", async ({
+  page,
+}) => {
+  await insertConversation({
+    status: "closed",
+    messages: [{ direction: "inbound", sentAt: ago(60), body: "vieja" }],
+  });
+  for (let index = 0; index < 25; index += 1) {
+    await insertConversation({
+      messages: [
+        { direction: "inbound", sentAt: ago(1, index), body: `m${index}` },
+      ],
+    });
+  }
+
+  await login(page, ADMIN);
+  await page.goto("/conversaciones");
+  await expect(conversationsTable(page).getByRole("row")).toHaveCount(1 + 25);
+  await expect(
+    page.getByText("Página 1 de 2 · 26 conversaciones"),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Página siguiente" }).click();
+  await expect(page).toHaveURL("/conversaciones?pagina=2");
+  await expect(conversationsTable(page).getByRole("row")).toHaveCount(1 + 1);
+  await expect(conversationsTable(page)).toContainText("Cerrada");
+
+  await page.getByLabel("Período (último mensaje)").selectOption("30d");
+  await page.getByRole("button", { name: "Aplicar filtros" }).click();
+  // Un formulario GET envía todos sus campos; los enlaces usan la URL canónica.
+  await expect(page).toHaveURL(/[?&]periodo=30d(&|$)/);
+  await expect(conversationsTable(page).getByRole("row")).toHaveCount(1 + 25);
+  await expect(conversationsTable(page)).not.toContainText("Cerrada");
+
+  await page.getByLabel("Estado").selectOption("cerrada");
+  await page.getByRole("button", { name: "Aplicar filtros" }).click();
+  await expect(page).toHaveURL(/periodo=30d&estado=cerrada(&|$)/);
+  await expect(
+    page.getByText("Ninguna conversación coincide con estos filtros."),
+  ).toBeVisible();
+  await expectAccessible(page, "sin resultados");
+  await page.getByRole("link", { name: "Limpiar filtros" }).first().click();
+  await expect(page).toHaveURL("/conversaciones");
+  await expect(conversationsTable(page).getByRole("row")).toHaveCount(1 + 25);
+
+  // Período personalizado: las fechas aparecen al elegirlo y uno invertido se señala.
+  await page
+    .getByLabel("Período (último mensaje)")
+    .selectOption("personalizado");
+  await page.getByRole("button", { name: "Aplicar filtros" }).click();
+  await page.getByLabel("Desde").fill("2026-09-16");
+  await page.getByLabel("Hasta").fill("2026-09-01");
+  await page.getByRole("button", { name: "Aplicar filtros" }).click();
+  await expect(page.getByLabel("Desde")).toHaveAttribute(
+    "aria-invalid",
+    "true",
+  );
+  await expect(page.getByLabel("Hasta")).toHaveAccessibleDescription(
+    /«Desde» no puede ser posterior a «Hasta»/,
+  );
+  await expect(conversationsTable(page)).toBeHidden();
+  await expectAccessible(page, "período inválido");
+});
+
+test("caso 4: el filtro de cliente busca con crm, aplica uno y ofrece elegir entre varios", async ({
+  page,
+}) => {
+  const ana = await insertClient("Ana Pérez");
+  const anabel = await insertClient("Anabel Ruiz");
+  const bruno = await insertClient("Bruno Díaz");
+  for (const clientId of [ana, anabel, bruno]) {
+    await insertConversation({
+      clientId,
+      messages: [{ direction: "inbound", sentAt: ago(1), body: "hola" }],
+    });
+  }
+
+  await login(page, VIEWER);
+  await page.goto("/conversaciones");
+  await page.getByLabel("Cliente").fill("bru");
+  await page.getByRole("button", { name: "Aplicar filtros" }).click();
+  await expect(page).toHaveURL(`/conversaciones?cliente=${bruno}`);
+  await expect(page.getByText("Cliente: Bruno Díaz")).toBeVisible();
+  await expect(conversationsTable(page).getByRole("row")).toHaveCount(2);
+  await expectAccessible(page, "filtrado por cliente");
+
+  await page.getByRole("link", { name: "Quitar cliente" }).click();
+  await expect(page).toHaveURL("/conversaciones");
+  await page.getByLabel("Cliente").fill("Ana");
+  await page.getByRole("button", { name: "Aplicar filtros" }).click();
+  await expect(page).toHaveURL(/[?&]buscar_cliente=Ana$/);
+  const choices = page.getByRole("list", {
+    name: "Varios clientes coinciden. Elegí uno para filtrar:",
+  });
+  await expect(choices.getByRole("listitem")).toHaveCount(2);
+  await expect(conversationsTable(page)).toBeHidden();
+  await expectAccessible(page, "elegir cliente");
+  await choices.getByRole("link", { name: "Anabel Ruiz" }).click();
+  await expect(page).toHaveURL(`/conversaciones?cliente=${anabel}`);
+  await expect(conversationsTable(page)).toContainText("Anabel Ruiz");
+  await expect(conversationsTable(page)).not.toContainText("Ana Pérez");
+
+  await page.goto("/conversaciones?buscar_cliente=Zoe");
+  await expect(
+    page.getByText("Ningún cliente coincide con esa búsqueda."),
+  ).toBeVisible();
+  await page.goto("/conversaciones?cliente=no-es-un-id");
+  await expect(
+    page.getByText("El cliente del filtro no existe."),
+  ).toBeVisible();
+});
+
+test("caso 5: el detalle muestra el timeline en orden, con la dirección en texto y el cuerpo escapado", async ({
+  page,
+}) => {
+  const clientId = await insertClient("María Gómez", {
+    phone: "+5491166667788",
+  });
+  const conversationId = await insertConversation({
+    clientId,
+    messages: [
+      {
+        direction: "outbound",
+        sentAt: new Date("2026-09-10T12:20:00Z"),
+        body: "Sí, nos quedan 6 unidades.",
+      },
+      {
+        direction: "inbound",
+        sentAt: new Date("2026-09-10T12:12:00Z"),
+        body: "Hola, ¿tienen café molido?",
+      },
+      {
+        direction: "inbound",
+        sentAt: new Date("2026-09-11T21:40:00Z"),
+        body: MARKUP_BODY,
+      },
+      {
+        direction: "inbound",
+        sentAt: new Date("2026-09-11T21:41:00Z"),
+        body: null,
+      },
+    ],
+  });
+
+  await login(page, VIEWER);
+  await page.goto("/conversaciones");
+  await conversationsTable(page)
+    .getByRole("link", { name: "María Gómez" })
+    .click();
+  await expect(page).toHaveURL(`/conversaciones/${conversationId}`);
+  await expect(
+    page.getByRole("heading", { name: "María Gómez" }),
+  ).toBeVisible();
+  await expect(page.getByText("WhatsApp · Estado: Abierta")).toBeVisible();
+  await expect(page.getByText(`Horas en ${TIMEZONE}.`)).toBeVisible();
+
+  const items = timeline(page).getByRole("listitem");
+  await expect(items).toHaveCount(4);
+  await expect(items.nth(0)).toContainText("10/09/2026");
+  await expect(items.nth(0)).toContainText("Cliente · 09:12");
+  await expect(items.nth(0)).toContainText("Hola, ¿tienen café molido?");
+  await expect(items.nth(1)).toContainText("Negocio · 09:20");
+  await expect(items.nth(1)).not.toContainText("10/09/2026");
+  await expect(items.nth(2)).toContainText("11/09/2026");
+  // El marcado se muestra literal: ni negrita ni enlace (Screens §9).
+  await expect(items.nth(2)).toContainText(MARKUP_BODY);
+  await expect(items.nth(2).locator("b")).toHaveCount(0);
+  await expect(items.nth(2).getByRole("link")).toHaveCount(0);
+  await expect(items.nth(3)).toContainText("(mensaje sin texto)");
+  await expect(page.locator("main")).not.toContainText("6666");
+  await expect(
+    page.getByRole("button", { name: "Cambiar estado" }),
+  ).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: "Cargar mensajes anteriores" }),
+  ).toBeHidden();
+  await expectAccessible(page, "detalle como viewer");
+
+  await page.getByRole("link", { name: "Ver cliente" }).click();
+  await expect(page).toHaveURL(`/clientes/${clientId}`);
+});
+
+test("caso 6: cargar mensajes anteriores agrega 50 arriba sin mover la lectura", async ({
+  page,
+}) => {
+  const base = new Date("2026-09-01T12:00:00Z").getTime();
+  const conversationId = await insertConversation({
+    messages: Array.from({ length: 60 }, (_, index) => ({
+      direction: index % 2 === 0 ? ("inbound" as const) : ("outbound" as const),
+      sentAt: new Date(base + index * 60_000),
+      body: `Mensaje ${String(index + 1).padStart(2, "0")}`,
+    })),
+  });
+
+  await login(page, ADMIN);
+  await page.goto(`/conversaciones/${conversationId}`);
+  const items = timeline(page).getByRole("listitem");
+  await expect(items).toHaveCount(50);
+  await expect(items.first()).toContainText("Mensaje 11");
+  await expect(items.last()).toContainText("Mensaje 60");
+  await expectAccessible(page, "timeline con más mensajes");
+
+  const reading = items.filter({ hasText: "Mensaje 11" });
+  await reading.scrollIntoViewIfNeeded();
+  const before = (await reading.boundingBox())!.y;
+  const button = page.getByRole("button", {
+    name: "Cargar mensajes anteriores",
+  });
+  await button.focus();
+  await page.keyboard.press("Enter");
+  await expect(items).toHaveCount(60);
+  await expect(
+    page.getByText("Se cargaron 10 mensajes anteriores."),
+  ).toBeAttached();
+  await expect(items.first()).toContainText("Mensaje 01");
+  const after = (await reading.boundingBox())!.y;
+  expect(Math.abs(after - before)).toBeLessThan(2);
+  // Sin más mensajes el botón desaparece y el foco queda en la lista.
+  await expect(button).toBeHidden();
+  await expect(timeline(page)).toBeFocused();
+  await expectAccessible(page, "timeline completo");
+});
+
+test("caso 7: un admin cambia el estado y queda auditado", async ({ page }) => {
+  const conversationId = await insertConversation({
+    messages: [{ direction: "inbound", sentAt: ago(1), body: "hola" }],
+  });
+
+  await login(page, ADMIN);
+  await page.goto(`/conversaciones/${conversationId}`);
+  const status = page.getByRole("combobox", { name: "Estado" });
+  await expect(status).toHaveValue("open");
+  await expectAccessible(page, "detalle como admin");
+
+  await status.selectOption("closed");
+  await page.getByRole("button", { name: "Cambiar estado" }).click();
+  await expect(page.getByText("Estado cambiado a Cerrada.")).toBeVisible();
+  await expect(page.getByText("WhatsApp · Estado: Cerrada")).toBeVisible();
+  await expect(status).toHaveValue("closed");
+  await expectAccessible(page, "estado cambiado");
+
+  // Elegir el mismo estado no escribe nada.
+  await page.getByRole("button", { name: "Cambiar estado" }).click();
+  await expect(
+    page.getByText("La conversación ya estaba Cerrada."),
+  ).toBeVisible();
+
+  const audit = await db.execute<{
+    action: string;
+    diff: { before: { status: string }; after: { status: string } };
+  }>(
+    sql`select action, diff from audit_logs
+        where entity_type = 'conversation' and entity_id = ${conversationId}`,
+  );
+  expect(audit.rows).toEqual([
+    {
+      action: "status_change",
+      diff: { before: { status: "open" }, after: { status: "closed" } },
+    },
+  ]);
+
+  await page.goto("/conversaciones?estado=cerrada");
+  await expect(conversationsTable(page).getByRole("row")).toHaveCount(2);
+});
+
+test("caso 8: el servidor rechaza el cambio de estado de quien dejó de ser admin", async ({
+  page,
+}) => {
+  const conversationId = await insertConversation({
+    messages: [{ direction: "inbound", sentAt: ago(1), body: "hola" }],
+  });
+
+  await login(page, VIEWER);
+  await page.goto(`/conversaciones/${conversationId}`);
+  await expect(
+    page.getByRole("region", { name: "Cambiar estado" }),
+  ).toBeHidden();
+  expect(await page.content()).not.toContain("Cambiar estado");
+  await page.context().clearCookies();
+
+  // Un admin abre el formulario y pierde el rol antes de enviarlo: el control ya está en su
+  // navegador, y solo el servidor puede rechazarlo.
+  await login(page, ADMIN);
+  await page.goto(`/conversaciones/${conversationId}`);
+  await db.execute(
+    sql`update organization_members set role = 'viewer' where user_id = ${ADMIN_SEED.id}`,
+  );
+  await page.getByRole("combobox", { name: "Estado" }).selectOption("closed");
+  await page.getByRole("button", { name: "Cambiar estado" }).click();
+  const message = page.getByText("No tenés permiso para esta acción.");
+  await expect(message).toBeVisible();
+  await expect(message).toBeFocused();
+  const row = await db.execute<{ status: string }>(
+    sql`select status from conversations where id = ${conversationId}`,
+  );
+  expect(row.rows[0]!.status).toBe("open");
+});
+
+test("caso 9: una conversación de otra organización o un id inválido no existen", async ({
+  page,
+}) => {
+  await insertOtherOrganization();
+  const foreign = await insertConversation({
+    organizationId: OTHER_ORGANIZATION_ID,
+    messages: [{ direction: "inbound", sentAt: ago(1), body: SECRET_BODY }],
+  });
+
+  await login(page, ADMIN);
+  for (const id of [foreign, "no-es-un-id"]) {
+    await page.goto(`/conversaciones/${id}`);
+    await expect(page.getByText("Esta conversación no existe.")).toBeVisible();
+    expect(await page.content()).not.toContain(SECRET_BODY);
+  }
+  await expectAccessible(page, "conversación inexistente");
+  await page.goto("/conversaciones");
+  await expect(page.getByText("No hay conversaciones.")).toBeVisible();
+});
+
+test("caso 10: en móvil la lista son tarjetas y las burbujas ocupan el ancho", async ({
+  page,
+}) => {
+  const conversationId = await insertConversation({
+    status: "pending",
+    messages: [
+      { direction: "inbound", sentAt: ago(2), body: "hola" },
+      { direction: "outbound", sentAt: ago(1), body: "buen día" },
+    ],
+  });
+
+  await page.setViewportSize({ width: 375, height: 800 });
+  await login(page, VIEWER);
+  await page.goto("/conversaciones");
+  await expect(page.getByRole("table")).toBeHidden();
+  const cards = page.getByRole("list", {
+    name: "Conversaciones de la organización",
+  });
+  await expect(cards.getByRole("listitem")).toHaveCount(1);
+  await expect(cards).toContainText("Sin cliente");
+  await expect(cards).toContainText("Pendiente");
+  await expect(cards).toContainText("2 mensajes");
+  await expectAccessible(page, "lista en móvil");
+
+  await page.goto(`/conversaciones/${conversationId}`);
+  const items = timeline(page).getByRole("listitem");
+  const listBox = (await timeline(page).boundingBox())!;
+  for (const index of [0, 1]) {
+    const bubble = items.nth(index).locator("p").last();
+    const box = (await bubble.boundingBox())!;
+    expect(Math.abs(box.width - listBox.width)).toBeLessThan(2);
+  }
+  const scrollWidth = await page.evaluate(
+    () => document.documentElement.scrollWidth,
+  );
+  expect(scrollWidth).toBeLessThanOrEqual(375);
+  await expectAccessible(page, "detalle en móvil");
+});

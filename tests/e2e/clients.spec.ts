@@ -65,6 +65,8 @@ async function login(page: Page, email: string) {
 async function expectAccessible(page: Page, state: string) {
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
+    // Una navegación en el cliente puede dejar el <title> vacío un instante (brief-6.4, D-6).
+    await expect(page).toHaveTitle(/.+/);
     const results = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
       .analyze();
@@ -155,14 +157,15 @@ test("caso 1: un admin llega desde la navegación, ve el vacío y crea el primer
   await expect(audit).not.toContainText("Prefiere retirar");
   await expect(audit).toContainText(ADMIN_NAME);
   await expect(page.getByText(`Fechas en ${TIMEZONE}.`)).toBeVisible();
-  // Sin conversaciones hasta la Fase 6 (brief-5.3, D-3).
-  await expect(page.getByText("Última interacción")).toBeHidden();
+  await expect(data).toContainText("Última interacción");
+  await expect(data).toContainText("Sin interacciones");
   await expectAccessible(page, "detalle recién creado");
 
   await page.getByRole("link", { name: "Volver a clientes" }).click();
   await expect(clientsTable(page)).toContainText("Ana Pérez");
   await expect(clientsTable(page)).toContainText(PHONE);
-  await expect(clientsTable(page)).not.toContainText("Última interacción");
+  await expect(clientsTable(page)).toContainText("Última interacción");
+  await expect(clientsTable(page)).toContainText("Sin interacciones");
   await expectAccessible(page, "lista con un cliente");
 });
 
@@ -535,4 +538,127 @@ test("caso 12: en móvil la lista se ve como tarjetas", async ({ page }) => {
   const width = await page.evaluate(() => document.documentElement.scrollWidth);
   expect(width).toBeLessThanOrEqual(375);
   await expectAccessible(page, "lista en móvil");
+});
+
+// Conversación mínima para la última interacción (brief-6.4, D-5): fixture sintético por SQL.
+async function insertConversation(
+  clientId: string,
+  status: "open" | "pending" | "closed",
+  sentAt: Date,
+) {
+  const result = await db.execute<{ id: string }>(
+    sql`insert into conversations
+          (organization_id, client_id, channel, status, started_at, last_message_at)
+        values (${SEED_ORGANIZATION_ID}, ${clientId}, 'whatsapp', ${status},
+          ${sentAt.toISOString()}, ${sentAt.toISOString()})
+        returning id`,
+  );
+  const conversationId = result.rows[0]!.id;
+  await db.execute(
+    sql`insert into messages (organization_id, conversation_id, direction, sent_at, body_text)
+        values (${SEED_ORGANIZATION_ID}, ${conversationId}, 'inbound', ${sentAt.toISOString()}, 'hola')`,
+  );
+  return conversationId;
+}
+
+test("caso 13: la lista se ordena por última interacción y la muestra en la zona de la organización", async ({
+  page,
+}) => {
+  const ana = await insertClient("Ana Pérez");
+  await insertClient("Bruno Díaz");
+  const zoe = await insertClient("Zoe Luna");
+  await insertConversation(ana, "closed", new Date("2026-09-01T12:00:00Z"));
+  // 02:30 UTC del 11 es todavía el 10 en Buenos Aires.
+  await insertConversation(zoe, "open", new Date("2026-09-11T02:30:00Z"));
+
+  await login(page, VIEWER);
+  await page.goto("/clientes");
+  const rows = clientsTable(page).getByRole("row");
+  await expect(rows).toHaveCount(4);
+  await expect(rows.nth(1)).toContainText("Zoe Luna");
+  await expect(rows.nth(1)).toContainText("10/09 23:30");
+  await expect(rows.nth(2)).toContainText("Ana Pérez");
+  await expect(rows.nth(2)).toContainText("01/09 09:00");
+  await expect(rows.nth(3)).toContainText("Bruno Díaz");
+  await expect(rows.nth(3)).toContainText("Sin interacciones");
+  await expect(
+    page.getByText(`Ordenados por última interacción · Fechas en ${TIMEZONE}.`),
+  ).toBeVisible();
+  await expectAccessible(page, "lista con última interacción");
+});
+
+test("caso 14: el detalle muestra la última interacción y las conversaciones del cliente", async ({
+  page,
+}) => {
+  const clientId = await insertClient("Ana Pérez", { phone: PHONE });
+  const base = new Date("2026-09-01T12:00:00Z").getTime();
+  for (let index = 0; index < 26; index += 1) {
+    await insertConversation(
+      clientId,
+      index === 25 ? "closed" : "open",
+      new Date(base + index * 60 * 60 * 1000),
+    );
+  }
+
+  await login(page, VIEWER);
+  await page.goto(`/clientes/${clientId}`);
+  const data = page.getByRole("region", { name: "Datos" });
+  await expect(data).toContainText("Última interacción");
+  await expect(data).toContainText("02/09 10:00 · WhatsApp");
+  const section = page.getByRole("region", { name: "Conversaciones" });
+  const table = section.getByRole("table", {
+    name: "Conversaciones de Ana Pérez",
+  });
+  await expect(table.getByRole("row")).toHaveCount(1 + 25);
+  await expect(table.getByRole("row").nth(1)).toContainText("Cerrada");
+  await expect(
+    section.getByText("Página 1 de 2 · 26 conversaciones"),
+  ).toBeVisible();
+  await expectAccessible(page, "detalle con conversaciones");
+
+  await section.getByRole("link", { name: "Página siguiente" }).click();
+  await expect(page).toHaveURL(`/clientes/${clientId}?pagina_conv=2`);
+  await expect(table.getByRole("row")).toHaveCount(1 + 1);
+
+  await section.getByLabel("Estado").selectOption("cerrada");
+  await section.getByRole("button", { name: "Filtrar" }).click();
+  await expect(page).toHaveURL(`/clientes/${clientId}?estado_conv=cerrada`);
+  await expect(table.getByRole("row")).toHaveCount(1 + 1);
+  await section.getByLabel("Estado").selectOption("pendiente");
+  await section.getByRole("button", { name: "Filtrar" }).click();
+  await expect(
+    section.getByText("Ninguna conversación con este estado."),
+  ).toBeVisible();
+  await expectAccessible(page, "conversaciones sin resultados");
+  // La sección nueva no filtra el teléfono completo a un viewer (H-5).
+  for (const fragment of HIDDEN_FRAGMENTS) {
+    expect(await page.content()).not.toContain(fragment);
+  }
+
+  await section.getByRole("link", { name: "Limpiar filtro" }).first().click();
+  await expect(page).toHaveURL(`/clientes/${clientId}`);
+  await section.getByRole("link", { name: "Ver en Conversaciones" }).click();
+  await expect(page).toHaveURL(`/conversaciones?cliente=${clientId}`);
+  await expect(page.getByText("Cliente: Ana Pérez")).toBeVisible();
+
+  await page.goto(`/clientes/${clientId}`);
+  await table.getByRole("link").first().click();
+  await expect(page).toHaveURL(/\/conversaciones\/[0-9a-f-]{36}$/);
+  await expect(page.getByRole("heading", { name: "Ana Pérez" })).toBeVisible();
+});
+
+test("caso 15: un cliente sin conversaciones muestra el vacío", async ({
+  page,
+}) => {
+  const clientId = await insertClient("Lucía Fernández");
+  await login(page, ADMIN);
+  await page.goto(`/clientes/${clientId}`);
+  const section = page.getByRole("region", { name: "Conversaciones" });
+  await expect(
+    section.getByText("Sin conversaciones registradas."),
+  ).toBeVisible();
+  await expect(
+    section.getByRole("link", { name: "Ver en Conversaciones" }),
+  ).toBeHidden();
+  await expectAccessible(page, "cliente sin conversaciones");
 });

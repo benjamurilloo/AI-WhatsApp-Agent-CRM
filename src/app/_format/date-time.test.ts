@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   calendarDayIn,
+  formatDate,
   formatFullDateTime,
   formatShortDateTime,
+  formatTime,
   shiftDays,
 } from "./date-time";
 
@@ -31,6 +33,13 @@ describe("formato de fechas en la zona de la organización", () => {
     expect(
       formatShortDateTime(new Date("2008-10-20T01:30:00Z"), BUENOS_AIRES),
     ).toBe("19/10 23:30");
+  });
+
+  it("separa el día y la hora del timeline en la misma zona", () => {
+    const value = new Date("2026-09-10T02:59:59Z");
+    expect(formatDate(value, BUENOS_AIRES)).toBe("09/09/2026");
+    expect(formatTime(value, BUENOS_AIRES)).toBe("23:59");
+    expect(formatTime(new Date("2026-01-05T00:05:00Z"), "UTC")).toBe("00:05");
   });
 });
 

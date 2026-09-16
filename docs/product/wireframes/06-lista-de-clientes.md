@@ -1,11 +1,11 @@
 # 06 — Lista de clientes
 
-**Estado: implementado en la 5.3** ([brief-5.3](../../decisions/brief-5.3-ui-de-clientes.md)), sin la última interacción. Especificación: [Screens.md §6](../Screens.md#6-lista-de-clientes). Reglas: FR-CLI-03 y FR-CLI-06. Convenciones en el [índice](README.md).
+**Estado: implementado en la 5.3** ([brief-5.3](../../decisions/brief-5.3-ui-de-clientes.md)), con la última interacción desde la 6.4 ([brief-6.4](../../decisions/brief-6.4-ui-de-conversaciones.md)). Especificación: [Screens.md §6](../Screens.md#6-lista-de-clientes). Reglas: FR-CLI-03 y FR-CLI-06. Convenciones en el [índice](README.md).
 
 **Desvíos respecto de este wireframe**:
 
 - El teléfono del `admin` se muestra en E.164 tal como está guardado (`+5491155551234`), sin agrupar dígitos: agrupar depende del país y el proyecto no tiene reglas de numeración (brief-5.3, D-1). Un número de 4 dígitos o menos se muestra al `viewer` como `••••`, con el texto accesible "Teléfono enmascarado".
-- La columna "Última interacción" y el orden por ella llegan en la Fase 6, con las conversaciones. Mientras tanto la lista se ordena por nombre y no muestra fechas, así que no lleva la leyenda de zona horaria (brief-5.3, D-3; brief-5.2, D-4).
+- La última interacción muestra fecha y hora. Los clientes sin interacciones van al final, en orden de nombre (brief-6.3, D-1). Debajo de la lista, una leyenda dice que están ordenados por última interacción y en qué zona están las fechas (6.4). En móvil, la tarjeta suma la fecha.
 - El botón del formulario se llama "Buscar". Con un solo cliente inactivo y el filtro por defecto, la lista dice "Todavía no hay clientes.", como productos.
 
 ## Escritorio, vista `admin`

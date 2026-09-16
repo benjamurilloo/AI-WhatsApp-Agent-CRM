@@ -1,6 +1,15 @@
 # 09 — Detalle de conversación y timeline
 
-**Estado: diseñado.** Especificación: [Screens.md §9](../Screens.md#9-detalle-de-conversación-y-timeline). Reglas: FR-CONV-02 y FR-CONV-03. Convenciones en el [índice](README.md).
+**Estado: implementado en la 6.4** ([brief-6.4](../../decisions/brief-6.4-ui-de-conversaciones.md)). Especificación: [Screens.md §9](../Screens.md#9-detalle-de-conversación-y-timeline). Reglas: FR-CONV-02 y FR-CONV-03. Convenciones en el [índice](README.md).
+
+**Desvíos respecto de este wireframe**:
+
+- El título no es un enlace: la cabecera suma "Ver cliente". Una conversación sin cliente se titula "Sin cliente".
+- El cambio de estado es una sección "Cambiar estado" para `admin`, con el resultado anunciado debajo. Si el servidor lo rechaza por permiso, la página no se regenera, para no perder el mensaje.
+- "Cargar mensajes anteriores" es un componente de cliente con una Server Action de lectura (brief-6.4, D-3):
+  - mientras carga, el botón dice "Cargando mensajes anteriores…";
+  - al terminar, se anuncia cuántos mensajes llegaron;
+  - sin más mensajes, el botón desaparece y el foco pasa a la lista.
 
 ## Escritorio
 

@@ -42,13 +42,13 @@ Cada FR tiene al menos una pantalla, endpoint o invariante con test que lo satis
 | FR-CLI-01 | Pantalla 6 (acción crear) y formulario de la pantalla 7 en modo alta | pantalla |
 | FR-CLI-02 | Pantalla 7 | pantalla |
 | FR-CLI-03 | Pantalla 6 | pantalla |
-| FR-CLI-04 | Pantalla 7 | pantalla |
+| FR-CLI-04 | Pantallas 6 y 7, implementadas en la 6.4 sobre `conversations` (brief-6.3, D-1) | pantalla |
 | FR-CLI-05 | Pantallas 6 y 7; revisión de minimización en la Fase 8 | pantalla y revisión |
 | FR-CLI-06 | Pantallas 6 y 7, enmascarado en el servidor | pantalla |
 | FR-CLI-07 | `UNIQUE(organization_id, phone_e164)`; test de unicidad | invariante con test |
-| FR-CONV-01 | Pantalla 8 | pantalla |
-| FR-CONV-02 | Pantalla 9 | pantalla |
-| FR-CONV-03 | Pantalla 8 (filtro) y pantalla 9 (cambio) | pantalla |
+| FR-CONV-01 | Pantalla 8, implementada en la 6.4; `conversations.spec.ts` verifica que ni el HTML ni las respuestas de RSC traen cuerpos | pantalla e invariante con test |
+| FR-CONV-02 | Pantalla 9, implementada en la 6.4; el cuerpo escapado se verifica en `conversations.spec.ts` | pantalla e invariante con test |
+| FR-CONV-03 | Pantalla 8 (filtro) y pantalla 9 (cambio, auditado), implementadas en la 6.4 | pantalla |
 | FR-CONV-04 | Endpoint de ingestión (subfase 6.5); test de idempotencia | endpoint |
 | FR-CONV-05 | Configuración sin orígenes reales; verificación en el gate de la Fase 6 | invariante |
 | FR-MET-01 | Pantalla 2 | pantalla |

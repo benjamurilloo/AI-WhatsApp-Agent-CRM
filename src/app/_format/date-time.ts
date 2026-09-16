@@ -46,6 +46,30 @@ export function formatFullDateTime(value: Date, timeZone: string): string {
   return `${of("day")}/${of("month")}/${of("year")} ${of("hour")}:${of("minute")}`;
 }
 
+// "10/09/2026": separador de día del timeline (wireframe 09).
+export function formatDate(value: Date, timeZone: string): string {
+  const parts = formatter(timeZone, {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).formatToParts(value);
+  const of = (type: Intl.DateTimeFormatPartTypes) =>
+    pad(parts.find((part) => part.type === type)?.value ?? "");
+  return `${of("day")}/${of("month")}/${of("year")}`;
+}
+
+// "09:12": hora de un mensaje del timeline.
+export function formatTime(value: Date, timeZone: string): string {
+  const parts = formatter(timeZone, {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(value);
+  const of = (type: Intl.DateTimeFormatPartTypes) =>
+    pad(parts.find((part) => part.type === type)?.value ?? "");
+  return `${of("hour")}:${of("minute")}`;
+}
+
 // Día de calendario en la zona de la organización, como lo espera el filtro: YYYY-MM-DD.
 export function calendarDayIn(timeZone: string, value = new Date()): string {
   const parts = formatter(timeZone, {
