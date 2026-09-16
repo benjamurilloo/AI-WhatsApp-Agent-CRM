@@ -217,3 +217,29 @@ La revisión es una autoevaluación (`self_assessment: true`).
 - Si un spec o un test existente necesita cambios, o si extraer un componente compartido cambia el comportamiento de productos.
 - Si el end-to-end resulta intermitente en alguna corrida.
 - Antes de commit, push o cambios en Notion.
+
+## Cierre (2026-09-16)
+
+Cerrado con confirmación del usuario. Los once criterios se cumplen; la evidencia está en [CHANGELOG.md](../../CHANGELOG.md). CI en verde en el commit `c2fa98b` ([ejecución 35132808628](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35132808628)). Nivel alcanzado: **validado en integración** para las pantallas 6 y 7.
+
+### Evidencia de mutación (AC-5)
+
+Con `phoneForRole` de `crm` devolviendo el número completo para cualquier rol, y la aplicación reconstruida, el caso H-5 de `tests/e2e/clients.spec.ts` falló ("Expected substring: not 5491166667788", 1 fallido). Con el código restaurado, pasó, y `git diff` sobre `src/modules/crm/` quedó vacío.
+
+### Revisión de minimización (punto 7, FR-CLI-05 y NonFunctionalRequirements)
+
+- **Pantallas**: la lista muestra nombre, teléfono y estado; el detalle, nombre, teléfono, notas y estado. No hay otros campos del cliente, y `clients` no tiene otros.
+- **Teléfono**: un `viewer` recibe solo los últimos 4 dígitos, desde `crm`; el end-to-end revisa el HTML y las respuestas RSC.
+- **Notas**: el formulario muestra el aviso "No registres datos sensibles innecesarios.", y el resumen de auditoría no repite su contenido (D-4).
+- **Logs**: cada Server Action registra solo `userId`, `organizationId`, código y duración; ningún log lleva nombre, teléfono ni notas.
+- **Límite conocido**: `audit_logs` guarda el teléfono y las notas en el `diff` (5.2, D-6); su eliminación a pedido sigue registrada en Risks para la Fase 8.
+
+Resultado: **cumple** para lo que muestra y registra la aplicación.
+
+### Ajustes durante la ejecución
+
+- **Ninguna condición de detención se activó**: sin migraciones ni dependencias, `src/modules/crm/` sin cambios y ningún test existente modificado.
+- **Orden del resumen de auditoría**: `jsonb` reordena las claves del `diff` al guardarlo, y el resumen salía en otro orden. Se recorre un orden fijo de campos (el del formulario), con su test unitario. Defecto encontrado por el end-to-end.
+- **Teléfono de prueba de H-5**: el número de ejemplo de la ayuda de formato viaja en el JavaScript del cliente, así que el spec usa otro (`+5491166667788`). Los fragmentos prohibidos son las formas compactas del número, porque la página devuelve al `viewer` el texto que él mismo escribió en la búsqueda.
+- **Lista con solo clientes inactivos**: con el filtro por defecto muestra "Todavía no hay clientes.", igual que productos. Se quitó una aserción que esperaba otro mensaje y el comportamiento quedó anotado en el wireframe 06.
+- **Índice de wireframes**: se actualizó su línea de estado, que no figuraba en los archivos autorizados.

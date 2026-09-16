@@ -4,7 +4,7 @@ Backoffice propio de productos e inventario, clientes, conversaciones y métrica
 
 ## Estado
 
-**El estado vigente y verificado está en [HANDOFF.md](HANDOFF.md)**, que se sobrescribe al cerrar cada fase. Con las Fases 3 y 4 cerradas, la identidad, la autorización, la auditoría, el catálogo y el inventario están **validados localmente y en CI**. Las pantallas de ingreso, usuarios, productos, detalle de producto y ajuste de inventario con su historial están **validadas en integración**, en modo claro y oscuro. La Fase 5 (clientes) está en curso: el esquema y el servicio de clientes, con el teléfono enmascarado para `viewer`, están **validados localmente y en CI** desde la 5.1 y la 5.2; faltan sus pantallas (5.3). El resto del dominio sigue en nivel *diseñado*, y nada está desplegado ni conectado a tráfico real. El índice de documentación está en [docs/README.md](docs/README.md).
+**El estado vigente y verificado está en [HANDOFF.md](HANDOFF.md)**, que se sobrescribe al cerrar cada fase. Con las Fases 3 y 4 cerradas, la identidad, la autorización, la auditoría, el catálogo y el inventario están **validados localmente y en CI**. Las pantallas de ingreso, usuarios, productos, detalle de producto y ajuste de inventario con su historial, lista y detalle de clientes están **validadas en integración**, en modo claro y oscuro. Con la Fase 5 cerrada, el esquema y el servicio de clientes, con el teléfono enmascarado para `viewer`, están **validados localmente y en CI**. La siguiente es la Fase 6 (conversaciones e ingestión). El resto del dominio sigue en nivel *diseñado*, y nada está desplegado ni conectado a tráfico real. El índice de documentación está en [docs/README.md](docs/README.md).
 
 ## Qué es
 

@@ -2,9 +2,9 @@
 schema: project-state.v1
 project: ai-whatsapp-agent-crm
 generated_at: 2026-09-16
-git_ref: main — 62e6b3c en origin/main (CI en verde, 5.2), más el cierre de la 5.2 (commit y push autorizados por el usuario el 2026-09-16)
-active_phase: Fase 5 — Clientes, en progreso
-active_task: ninguna; la 5.2 está cerrada y la siguiente es la 5.3 (UI de clientes), sin brief
+git_ref: main — c2fa98b en origin/main (CI en verde, 5.3), más el cierre de la 5.3 y de la Fase 5 (commit y push autorizados por el usuario el 2026-09-16)
+active_phase: ninguna; la Fase 5 está cerrada y la siguiente es la Fase 6 — Conversaciones, mensajes e ingestión
+active_task: ninguna; la siguiente es la 6.1 (Migraciones de conversaciones), sin brief
 confidence: confirmado
 ---
 
@@ -21,33 +21,35 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 ## 1. Identificación
 
 - **Proyecto**: AI WhatsApp Agent CRM. Independiente del agente de WhatsApp: no comparte código, infraestructura ni base de datos, y no depende de Airtable. `confirmado`
-- **Fase 4 — Productos e inventario, cerrada** el 2026-09-16. En Notion, el proyecto de la Fase 4, su tarea espejo y las tareas 4.0, 4.1, 4.2, 4.3 (tarea madre de 4.3.1 a 4.3.3), 4.3.1, 4.3.2, 4.3.3 y 4.4 quedan en "Completado". `confirmado`
-- **Fase 5 — Clientes, en progreso** desde el 2026-09-16. En Notion: proyecto "En progreso", tarea espejo "En proceso", 5.1 y 5.2 "Completado", y 5.3 (UI) en "Bandeja de Entrada". `confirmado`
-- **Sesión**: la Fase 5 empezó en una sesión nueva el 2026-09-16. `confirmado`
-- **Fases 0 a 3 cerradas** (2026-09-11 a 2026-09-14). `confirmado`
+- **Fase 5 — Clientes, cerrada** el 2026-09-16. En Notion, el proyecto de la Fase 5, su tarea espejo y las tareas 5.1, 5.2 y 5.3 quedan en "Completado". `confirmado`
+- **Fase 6 — Conversaciones, mensajes e ingestión**: siguiente. En Notion existen el proyecto (`3d8702be6f4e81bb95d0e3a6e38bcb2d`), su tarea espejo (`3d8702be6f4e8199b641e48deb47febb`) y las tareas 6.1 (`3d8702be6f4e815e99e8cabf2eb35636`) y 6.2 (`3d8702be6f4e811591dfcd0b3ca9ea2a`), entre otras. Su estado no se revisó en esta pasada. `pendiente`
+- **Sesión**: la Fase 6 debe empezar en una sesión nueva. `confirmado`
+- **Fases 0 a 4 cerradas** (2026-09-11 a 2026-09-16). `confirmado`
 
 ## 2. Último punto aprobado
 
-- **Subfase 5.2 — Servicio de clientes**, cerrada con confirmación del usuario el 2026-09-16. Entrada en [CHANGELOG.md](CHANGELOG.md); resolución (D-1 a D-7 según la recomendación), evidencia de mutación de H-5, cierre y ajustes en el [brief-5.2](docs/decisions/brief-5.2-servicio-de-clientes.md). `confirmado`
-- **CI en verde** en el commit `62e6b3c`: [ejecución 35113732213](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35113732213), con todos los pasos, end-to-end incluido. `confirmado`
-- **Subfase 5.1 — Migración de clientes**, cerrada el 2026-09-16 (CI en verde en `d369767`). `confirmado`
-- **Fase 4** cerrada el 2026-09-16, con CI en verde en `d05756e`. `confirmado`
+- **Fase 5 — Clientes**, cerrada con confirmación del usuario el 2026-09-16, junto con la **subfase 5.3 — UI de clientes**. Entradas en [CHANGELOG.md](CHANGELOG.md); resolución (D-1 a D-5 según la recomendación), evidencia de mutación de H-5, revisión de minimización y ajustes en el [brief-5.3](docs/decisions/brief-5.3-ui-de-clientes.md). `confirmado`
+- **CI en verde** en el commit `c2fa98b`: [ejecución 35132808628](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35132808628), con todos los pasos, end-to-end incluido. `confirmado`
+- **Subfases 5.1 y 5.2**, cerradas el 2026-09-16 (CI en verde en `d369767` y `62e6b3c`). `confirmado`
 
 ## 3. Próximo paso
 
-1. **Al retomar**: verificar que el commit de cierre de la 5.2 esté en `origin/main` con la CI en verde (`gh run list -L 1`). `pendiente`
-2. **Preparar el brief de la 5.3 — UI de clientes** (pantallas 6 y 7 sin conversaciones) y pasar la 5.3 a "En proceso" en Notion, con autorización. El brief tiene que resolver o tener en cuenta:
-   - `crm` ya expone todo el servicio: `searchClients`, `getClient`, las escrituras y `listClientAudit`; la 5.3 no debería tocar `src/modules/crm/`;
-   - el teléfono llega como `ClientPhone` (`full`, `masked` con `lastDigits` o `null`): mostrar `•••• 1234` con el texto accesible "Teléfono enmascarado, termina en 1234", y qué mostrar si `lastDigits` está vacío;
-   - un end-to-end que verifique que el HTML que recibe un `viewer` no contiene el número (la otra mitad de H-5);
-   - el mensaje de `VALIDATION_ERROR` del teléfono pide `+` y código de país (5.2, D-1), y el de `CONFLICT` sugiere reactivar si el número es de un cliente inactivo (5.1, D-3). El servicio no dice si el duplicado está inactivo: decidir si hace falta;
-   - la pantalla 6 sin la columna "Última interacción" (o vacía) y ordenada por nombre hasta la Fase 6 (5.2, D-4);
-   - la pantalla 7 sin la sección de conversaciones hasta la Fase 6; aviso de minimización en las notas;
-   - "Clientes" en la navegación del marco común;
-   - `organizationId` y duración en `logEvent` de cada Server Action, sin datos del cliente en el log.
+1. **Al retomar**: seguir el arranque de `CLAUDE.md` y verificar que el commit de cierre de la Fase 5 esté en `origin/main` con la CI en verde (`gh run list -L 1`). `pendiente`
+2. **Pasar la Fase 6 a "En progreso"** en Notion (proyecto y tarea espejo), con autorización. `pendiente`
+3. **Preparar el brief de la 6.1 — Migraciones de conversaciones.** Tiene que tener en cuenta:
+   - `conversations` y `messages` en DataModel, con los índices de las resoluciones D-2 a D-4 del brief-1.2: `conversations (organization_id, client_id, last_message_at desc)` y `conversations (organization_id, last_message_at desc)`;
+   - `UNIQUE(organization_id, id)` en `clients`, que la Fase 6 suma para la clave foránea compuesta de `conversations` (5.1, D-4; 4.1, D-3);
+   - la idempotencia de la ingestión (Roadmap) y el contrato de [IntegrationBoundaries.md](docs/architecture/IntegrationBoundaries.md), sin ningún origen real configurado;
+   - privilegios de `crm_app` en una migración `--custom` aparte;
+   - la retención de mensajes queda para la Fase 9.
 
-   Precedente: [brief-4.4](docs/decisions/brief-4.4-ui-de-productos-e-inventario.md) y `src/app/(autenticado)/productos/`. `confirmado`
-3. **Después**: cierre de la Fase 5 contra su gate de salida (Roadmap). `confirmado`
+   Precedentes: [brief-4.1](docs/decisions/brief-4.1-migraciones-de-catalogo-e-inventario.md) y [brief-5.1](docs/decisions/brief-5.1-migracion-de-clientes.md). `confirmado`
+4. **Más adelante en la Fase 6**:
+   - completar la pantalla 7 con la sección de conversaciones, y la 6 con la última interacción y su orden (FR-CLI-04); esa composición no la hace `crm`, porque `conversations` depende de `crm` (5.2, D-4);
+   - verificación de `Origin` con el primer Route Handler mutante;
+   - cuerpo de los mensajes escapado en la UI.
+
+   `confirmado`
 
 ## 4. Contratos vigentes
 
@@ -73,39 +75,39 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 | Taxonomía de errores | `ErrorCode`, `HTTP_STATUS`, `Failure`, `failure()`; id inválido → `VALIDATION_ERROR` sin `fields` | [src/shared/errors/index.ts](src/shared/errors/index.ts) |
 | Log estructurado | `logEvent` con `organizationId` y `durationMs`, `newRequestId`, `formatLogEvent`; solo campos del evento | [src/shared/log/index.ts](src/shared/log/index.ts) |
 | Sesión en páginas | `requireSession`, `requirePendingPasswordChange`, `redirectIfAuthenticated`, `currentContext` con `cache`; `logoutAction` | [src/app/_auth/](src/app/_auth/session.ts) |
-| Marco común | route group `(autenticado)`: organización, navegación (Productos y Usuarios), usuario, tema y salida | [src/app/(autenticado)/layout.tsx](<src/app/(autenticado)/layout.tsx>) |
-| Pantallas implementadas | 1, 3, 4, 5 y 10, con filtros en `filters.ts` y mensajes en `messages.ts` por ruta | [src/app/(autenticado)/productos/](<src/app/(autenticado)/productos/page.tsx>), [usuarios/](<src/app/(autenticado)/usuarios/page.tsx>) |
-| Estructura del repositorio | aprobada; lo de la 2.x, la Fase 3 y la Fase 4, implementado | [architecture/RepositoryStructure.md](docs/architecture/RepositoryStructure.md) |
+| Marco común | route group `(autenticado)`: organización, navegación (Productos, Clientes y Usuarios), usuario, tema y salida | [src/app/(autenticado)/layout.tsx](<src/app/(autenticado)/layout.tsx>) |
+| Pantallas implementadas | 1, 3, 4, 5, 6, 7 (sin conversaciones) y 10, con filtros en `filters.ts` y mensajes en `messages.ts` por ruta; teléfono con `phoneDisplay` y `PhoneText` | [productos/](<src/app/(autenticado)/productos/page.tsx>), [clientes/](<src/app/(autenticado)/clientes/page.tsx>), [usuarios/](<src/app/(autenticado)/usuarios/page.tsx>) |
+| Estructura del repositorio | aprobada; lo de la 2.x y las Fases 3 a 5, implementado | [architecture/RepositoryStructure.md](docs/architecture/RepositoryStructure.md) |
 | CI | dependencias, desfase, lint, typecheck, formato, guardas, unitarios, integración, build, Chromium y end-to-end | [.github/workflows/ci.yml](.github/workflows/ci.yml) |
 | Entornos | Docker Compose; migraciones; base `_test`; rol `crm_app`; seed básico; base `_e2e` | [development/Environments.md](docs/development/Environments.md) |
 | Modelo de datos | identidad, sesiones, auditoría, catálogo, inventario y clientes implementados; conversaciones e ingestión diseñados | [architecture/DataModel.md](docs/architecture/DataModel.md) |
-| Modelo de seguridad | autenticación, autorización, auditoría, ingreso y gestión de miembros implementados; `Origin` diseñado | [architecture/SecurityModel.md](docs/architecture/SecurityModel.md) |
-| Wireframes | 10 pantallas; la 1, la 3, la 4, la 5 y la 10 implementadas, más el marco común | [product/wireframes/](docs/product/wireframes/README.md) |
+| Modelo de seguridad | autenticación, autorización, auditoría, ingreso, gestión de miembros y enmascarado del teléfono implementados; `Origin` diseñado | [architecture/SecurityModel.md](docs/architecture/SecurityModel.md) |
+| Wireframes | 10 pantallas; la 1, la 3 a la 7 (la 7 sin conversaciones) y la 10 implementadas, más el marco común | [product/wireframes/](docs/product/wireframes/README.md) |
 | Contrato de ingestión | diseñado, no implementado | [architecture/IntegrationBoundaries.md](docs/architecture/IntegrationBoundaries.md) |
 | Vocabulario de validación | obligatorio | [CLAUDE.md](CLAUDE.md) |
 
 ## 5. Evidencia
 
-Nivel del proyecto: **validado en integración** para las pantallas 1, 3, 4, 5 y 10 y el marco común, en claro y en oscuro. **Validado localmente y en CI** para la fundación técnica, la identidad, la autorización, la auditoría (escritura y lectura), la gestión de miembros, el catálogo, el ajuste de stock secuencial y bajo concurrencia, el historial de movimientos y el esquema y el servicio de clientes, con el teléfono enmascarado para `viewer`. **Diseñado** para las pantallas de clientes, conversaciones, ingestión y métricas. Nada está desplegado. `confirmado`
+Nivel del proyecto: **validado en integración** para las pantallas 1, 3, 4, 5, 6, 7 (sin conversaciones) y 10 y el marco común, en claro y en oscuro. **Validado localmente y en CI** para la fundación técnica, la identidad, la autorización, la auditoría (escritura y lectura), la gestión de miembros, el catálogo, el ajuste de stock secuencial y bajo concurrencia, el historial de movimientos y el esquema y el servicio de clientes. **Diseñado** para conversaciones, ingestión y métricas. Nada está desplegado. `confirmado`
 
 | Afirmación | Nivel | Evidencia |
 |---|---|---|
-| Todos los pasos de CI, incluido el desfase de migraciones y el end-to-end | validado en CI | Ejecución 35113732213 `success`, commit `62e6b3c` `confirmado` |
+| Todos los pasos de CI, incluido el desfase de migraciones y el end-to-end | validado en CI | Ejecución 35132808628 `success`, commit `c2fa98b` `confirmado` |
+| Pantallas 6 y 7: búsqueda por nombre y teléfono, filtro, alta, edición, `CONFLICT` por teléfono, desactivación, reactivación y auditoría solo para `admin` | validado en integración (`producer-consumer`) | `tests/e2e/clients.spec.ts` (12), con axe en claro y oscuro, teclado y móvil `confirmado` |
+| H-5: ni el servicio ni el HTML ni las respuestas RSC entregan a un `viewer` el teléfono completo | validado localmente, en integración y en CI | `crm.test.ts` y `clients.spec.ts`, con evidencia de mutación en los briefs 5.2 y 5.3 `confirmado` |
+| Minimización (FR-CLI-05) | revisión escrita | cierre del brief-5.3 `confirmado` |
 | Servicio de clientes: escrituras auditadas, `CONFLICT` por teléfono, autorización, aislamiento, lista y auditoría del cliente | validado localmente y en CI | `tests/integration/crm.test.ts` (25) y unitarios de `crm` (17) `confirmado` |
-| H-5: la respuesta de `crm` a un `viewer` no contiene el teléfono completo | validado localmente y en CI | `crm.test.ts`, con evidencia de mutación en el brief-5.2 `confirmado` |
 | Esquema de clientes: E.164 canónico, teléfono único por organización también frente a inactivos, `RESTRICT` y privilegios de `crm_app` | validado localmente y en CI | `tests/integration/clients-schema.test.ts` (10) `confirmado` |
-| Pantallas 3, 4 y 5: búsqueda, filtros, alta, edición, desactivación, ajuste con sus rechazos, historial y auditoría solo para `admin` | validado en integración (`producer-consumer`) | `tests/e2e/products.spec.ts` (13), con axe en claro y oscuro, teclado y móvil `confirmado` |
-| Lectura de auditoría de un producto: ediciones y ajustes en una lista paginada, autor, `admin` únicamente y aislamiento | validado localmente y en CI | `tests/integration/product-audit.test.ts` (6) `confirmado` |
+| Pantallas 3, 4 y 5 | validado en integración (`producer-consumer`) | `tests/e2e/products.spec.ts` (13) `confirmado` |
+| Lectura de auditoría de un producto | validado localmente y en CI | `tests/integration/product-audit.test.ts` (6) `confirmado` |
 | Formato de cantidades y fechas; `organizationId` y duración en el log | validado localmente y en CI | unitarios de `quantity`, `date-time` y `log` `confirmado` |
-| Historial de movimientos: orden, paginación, filtros y zona de la organización | validado localmente y en CI | `tests/integration/inventory-history.test.ts` (13) `confirmado` |
+| Historial de movimientos | validado localmente y en CI | `tests/integration/inventory-history.test.ts` (13) `confirmado` |
 | Ajustes concurrentes sin actualizaciones perdidas ni saldo negativo | validado localmente y en CI | `tests/integration/inventory-concurrency.test.ts`, con evidencia de mutación en el brief-4.3.2 `confirmado` |
-| Ajuste secuencial atómico; rechazos sin efectos | validado localmente y en CI | `tests/integration/inventory-adjustment.test.ts` `confirmado` |
-| Movimientos inmutables y saldo solo escrito por `lockBalance` y `applyStockChange` | validado localmente y en CI | `catalog-inventory-schema.test.ts` y `tests/guards/stock-writes.test.ts` `confirmado` |
-| Servicio de catálogo | validado localmente y en CI | `tests/integration/catalog.test.ts` `confirmado` |
+| Ajuste secuencial atómico; movimientos inmutables; servicio de catálogo | validado localmente y en CI | `inventory-adjustment.test.ts`, `catalog-inventory-schema.test.ts`, `stock-writes.test.ts`, `catalog.test.ts` `confirmado` |
 | Pantallas 1 y 10 y marco común | validado en integración (`producer-consumer`) | `login.spec.ts` (12) y `users.spec.ts` (13) `confirmado` |
 | Regla del último `admin`, auditoría de miembros y `audit_logs` de solo inserción | validado localmente y en CI | `members.test.ts` y `audit.test.ts` `confirmado` |
-| Suite completa local | validado localmente | `npm run test`: 426 de 426; `npm run test:e2e`: 38 de 38 `confirmado` |
-| Pantallas de clientes, conversaciones, ingestión y métricas | diseñado | 5.3 y Fases 6 y 7 `confirmado` |
+| Suite completa local | validado localmente | `npm run test`: 449 de 449; `npm run test:e2e`: 50 de 50 `confirmado` |
+| Conversaciones, ingestión y métricas | diseñado | Fases 6 y 7 `confirmado` |
 | La cookie detrás de TLS y de un proxy real; la aplicación restringida por `crm_app` | diseñado | Fases 8 y 9 `confirmado` |
 
 ## 6. Decisiones
@@ -113,7 +115,7 @@ Nivel del proyecto: **validado en integración** para las pantallas 1, 3, 4, 5 y
 ### Vigentes
 
 - ADRs 0001 a 0013 aceptados. `confirmado`
-- Resoluciones de los briefs 1.1 a 1.3, 2.1 a 2.5, 3.1 a 3.7, 4.0 a 4.2, 4.3.1 a 4.3.3, 4.4, 5.1 y 5.2 en [docs/decisions/](docs/decisions/README.md). `confirmado`
+- Resoluciones de los briefs 1.1 a 1.3, 2.1 a 2.5, 3.1 a 3.7, 4.0 a 4.2, 4.3.1 a 4.3.3, 4.4 y 5.1 a 5.3 en [docs/decisions/](docs/decisions/README.md). `confirmado`
 - Convenciones:
   - enums `pgEnum`, `gen_random_uuid()`, `updated_at` en la aplicación y validación con `zod`;
   - resultados tipados con `Failure`, y orden de autorización `must_change_password` → rol → recurso filtrado por organización; un id que no es UUID devuelve `VALIDATION_ERROR` sin `fields` (4.4, D-6);
@@ -132,30 +134,31 @@ Nivel del proyecto: **validado en integración** para las pantallas 1, 3, 4, 5 y
   - fecha de una fila de evento ordenada por un bloqueo: `clock_timestamp()` (4.3.3, D-1);
   - listas largas paginadas en SQL con conteo y desempate estable (4.3.3, D-2);
   - períodos por día de calendario semiabiertos, convertidos por PostgreSQL con la zona IANA de la organización (4.3.3, D-3 y D-4); fechas en pantalla formateadas en el servidor con esa zona y la leyenda "Fechas en …" (4.4, D-3);
-  - toda mutación de UI es una Server Action que registra `logEvent` con organización y duración; botón deshabilitado mientras responde; ante un rechazo, la acción revalida la ruta para mostrar datos reales;
+  - toda mutación de UI es una Server Action que registra `logEvent` con organización y duración, sin datos personales; botón deshabilitado mientras responde; ante un rechazo, la acción revalida la ruta para mostrar datos reales;
   - campos de formulario que deben sobrevivir a un rechazo son controlados: React reinicia los no controlados al terminar la acción (4.4, ajuste 2);
   - filtros y página en la URL; un formulario GET envía todos sus campos, y los enlaces de paginación y "Limpiar filtros" usan la URL canónica;
   - diálogos de los wireframes como páginas, y confirmaciones como segundo paso en la URL;
   - los componentes de cliente no importan `@/modules/*`;
   - cada pantalla tiene su end-to-end con axe en cada estado, en claro y en oscuro, teclado, foco y móvil a 375 px; los datos de cada caso los crea el propio spec (4.4, D-5);
   - estilos solo con tokens de `globals.css`, nunca colores de Tailwind; sin `transition-colors` en elementos que axe analiza tras emular el esquema;
-  - un dato que un rol no puede ver se quita en el módulo de dominio, con un tipo distinto por rol, no en la presentación; su test serializa la respuesta y se corre una vez sin la protección (5.2, D-2);
-  - teléfono de cliente: se acepta solo con `+`, se normaliza a E.164 antes de guardar y de buscar, y la búsqueda de la caja única es teléfono exacto si normaliza o prefijo de nombre si no (5.2, D-1 y D-3).
+  - un dato que un rol no puede ver se quita en el módulo de dominio, con un tipo distinto por rol, no en la presentación; su test serializa la respuesta y se corre una vez sin la protección (5.2, D-2); en pantalla, el end-to-end revisa el HTML y las respuestas RSC, con un control como `admin` (5.3, D-5);
+  - los datos de prueba que no deben aparecer en una respuesta no coinciden con textos que viajan en el JavaScript del cliente, como los ejemplos de ayuda (5.3, ajustes);
+  - teléfono de cliente: se acepta solo con `+`, se normaliza a E.164 antes de guardar y de buscar, y la búsqueda de la caja única es teléfono exacto si normaliza o prefijo de nombre si no (5.2, D-1 y D-3); se muestra en E.164, y enmascarado con un texto aparte para lectores de pantalla (5.3, D-1);
+  - `jsonb` no conserva el orden de las claves: lo que se muestra de un `diff` recorre un orden fijo de campos (5.3, ajustes).
 
   `confirmado`
 - `forbidden()` y `unauthorized()` de Next.js 16.3 no se usan: son experimentales. `historico`
 
 ### Pendientes
 
-- **H-5, mitad de pantalla**: el servicio ya no entrega el número a un `viewer` (5.2); falta el end-to-end sobre el HTML en la 5.3. `confirmado`
 - **Eliminar los datos de un cliente** frente a `audit_logs` de solo inserción, que guarda su teléfono y notas (5.2, D-6): Fase 8, registrado en Risks. `confirmado`
-- **Orden de la lista de clientes por última interacción**: Fase 6; `conversations` depende de `crm`, así que esa composición no la hace `crm` (5.2, D-4). `confirmado`
+- **Orden de la lista de clientes por última interacción y sección de conversaciones de la pantalla 7**: Fase 6 (5.2, D-4; 5.3, D-3). `confirmado`
 - **`UNIQUE(organization_id, id)` en `clients`**: lo suma la Fase 6 con la clave compuesta de `conversations` (5.1, D-4). `confirmado`
+- **Verificación de `Origin`** (`src/shared/http/`): con el primer Route Handler mutante (Fase 6). `confirmado`
 - **Token de advertencia** para "bajo stock": se suma si una subfase autoriza `globals.css`. `confirmado`
 - **`audit_logs.created_at` con `now()`**: el orden de registros simultáneos desempata por `id`; se revisa si una pantalla lo necesita. `confirmado`
 - **Nombre del paso de guardas en `ci.yml`**: no menciona `stock-writes.test.ts`. Se renombra en una subfase que autorice `ci.yml`. `confirmado`
 - **`proxy`**: se reevalúa con más rutas protegidas. `confirmado`
-- **Verificación de `Origin`** (`src/shared/http/`): con el primer Route Handler mutante (Fase 6). `confirmado`
 - **Búsqueda sin distinguir acentos**, costo de listas en memoria y de `offset` con volumen real: Fase 8. `confirmado`
 - **Lint de accesibilidad**: cuando `eslint-plugin-jsx-a11y` soporte ESLint 10. `confirmado`
 - **Timeouts bajo carga**: la guarda de frontera (4.0) y un caso de `product-audit.test.ts` (4.4) los superaron una vez en local; si se repiten en CI, subir el `testTimeout` del proyecto con su brief. `confirmado`
@@ -171,12 +174,13 @@ Nivel del proyecto: **validado en integración** para las pantallas 1, 3, 4, 5 y
 - **CI sin protección de rama**: ninguna subfase se cierra sin verificar la CI de su commit con `gh run view`, incluidos sus pasos. `confirmado`
 - **Docker Desktop no arranca solo**: `docker compose up -d --wait` falla hasta abrirlo. `confirmado`
 - **Memoria de la máquina local**: 7,7 GB con muy poca libre; `npm run build` puede fallar con muchas aplicaciones abiertas. `confirmado`
-- **Ver el CRM en local**: `docker compose up -d --wait`, `npm run db:migrate`, `npm run db:seed` y `npm run dev`, en `http://localhost:3000`. El `.env` local tiene `SEED_USER_PASSWORD`; la base de desarrollo está migrada hasta la 0007 y sembrada, sin productos. El usuario ya sabe levantarlo. `confirmado`
+- **Ver el CRM en local**: `docker compose up -d --wait`, `npm run db:migrate`, `npm run db:seed` y `npm run dev`, en `http://localhost:3000`. El `.env` local tiene `SEED_USER_PASSWORD`; la base de desarrollo está migrada hasta la 0009 y sembrada, sin productos ni clientes. El usuario ya sabe levantarlo. `confirmado`
 - **No hay Python en la máquina**: los scripts van en Node o PowerShell. `confirmado`
-- **End-to-end local**: requiere `npm run build` antes de `npm run test:e2e`, y `npx playwright install chromium` una vez por máquina. La base `<nombre>_e2e` se recrea en cada ejecución. `confirmado`
+- **End-to-end local**: requiere `npm run build` antes de `npm run test:e2e` (también después de cambiar un módulo, para una corrida de mutación), y `npx playwright install chromium` una vez por máquina. La base `<nombre>_e2e` se recrea en cada ejecución. `confirmado`
 - **Orden del historial**: depende del reloj del servidor (4.3.3, D-1). `confirmado`
 - **Límites del ajuste de stock**: SQL escrito a mano puede cambiar el saldo sin movimiento, y la guarda lee `src/` como texto. `confirmado`
 - **Tests de concurrencia**: el pool de `getDb()` tiene 10 conexiones, y `pg_stat_activity` cuenta las esperas de toda la base de test, así que los archivos de integración corren en serie. `confirmado`
+- **Collation de la base**: ignora los espacios al ordenar texto; los tests comparan conjuntos salvo en el caso que prueba el orden (5.2). `confirmado`
 - **Tipos viejos en `.next/dev/`**: al mover o borrar una ruta, borrar `.next/dev/` si el typecheck o el build la siguen referenciando. `historico`
 - **La guarda de referencias prohibidas lee el índice de Git**: un archivo borrado del disco pero no del índice la hace fallar con `ENOENT`. `confirmado`
 - **Cookie en tests**: `next start` la emite `Secure` con `__Host-` sobre `http://localhost`, que Chromium acepta. `confirmado`
@@ -189,16 +193,16 @@ Nivel del proyecto: **validado en integración** para las pantallas 1, 3, 4, 5 y
 - **Formatear antes de verificar**: Prettier puede partir líneas y dejar sin efecto directivas. `confirmado`
 - **Avisos inocuos**: Vite por el import sin extensión en `vitest.config.mts`; Next.js por un `package-lock.json` en `C:\Users\benja`; Git por la conversión LF a CRLF. `confirmado`
 - **PowerShell 5.1**: here-string `@'…'@` para el mensaje de commit. `gh run list --commit` necesita el SHA completo. `confirmado`
-- **Un hook de seguridad bloquea `Remove-Item` y `taskkill /T /F`**. `historico`
+- **Un hook de seguridad bloquea `Remove-Item` y `taskkill /T /F`**, y a veces comandos de PowerShell que editan texto: usar la herramienta de edición. `confirmado`
 - **`agentRules: false` en `next.config.ts`**: no quitarlo. `historico`
 
 ## 8. Rutas necesarias para continuar
 
 - [CLAUDE.md](CLAUDE.md), este archivo, [CHANGELOG.md](CHANGELOG.md).
-- [planning/Roadmap.md](docs/planning/Roadmap.md): alcance, criterios y gate de salida de la Fase 5.
-- [architecture/DataModel.md](docs/architecture/DataModel.md) §`clients`; [ADR 0007](docs/decisions/0007-identificador-de-cliente-solo-telefono.md); [brief-1.3](docs/decisions/brief-1.3-decisiones-de-producto-abiertas.md).
-- FR-CLI-01 a 06 en [product/FunctionalRequirements.md](docs/product/FunctionalRequirements.md); [product/Screens.md](docs/product/Screens.md) §6 y §7 y los wireframes 06 y 07.
-- [brief-4.1](docs/decisions/brief-4.1-migraciones-de-catalogo-e-inventario.md) (precedente de migración) y [brief-4.2](docs/decisions/brief-4.2-servicio-de-catalogo.md) (precedente de servicio).
+- [planning/Roadmap.md](docs/planning/Roadmap.md): alcance, subfases, criterios y gates de la Fase 6.
+- [architecture/DataModel.md](docs/architecture/DataModel.md) §`conversations` y §`messages`; [architecture/IntegrationBoundaries.md](docs/architecture/IntegrationBoundaries.md); [brief-1.2](docs/decisions/brief-1.2-validacion-cruzada-del-modelo.md) (D-2 a D-4).
+- FR-CONV-01 a 05 y FR-CLI-04 en [product/FunctionalRequirements.md](docs/product/FunctionalRequirements.md); [product/Screens.md](docs/product/Screens.md) §7 a §9 y los wireframes 07 a 09.
+- [brief-5.1](docs/decisions/brief-5.1-migracion-de-clientes.md) (precedente de migración más reciente) y [brief-5.3](docs/decisions/brief-5.3-ui-de-clientes.md) (precedente de UI).
 
 ## 9. Cambios ajenos del usuario detectados
 
@@ -206,9 +210,10 @@ Ninguno en el repositorio. `confirmado`
 
 ## 10. Autorizaciones vigentes
 
-**Ninguna.** El commit y push de la 5.2 y de su cierre, y los cambios en Notion, quedan consumidos al ejecutarse. Instalar dependencias, ejecutar migraciones, cambios en Notion y cualquier operación Git futura necesitan autorización explícita.
+**Ninguna.** El commit y push de la 5.3 y del cierre de la fase, y los cambios en Notion, quedan consumidos al ejecutarse. Instalar dependencias, ejecutar migraciones, cambios en Notion y cualquier operación Git futura necesitan autorización explícita.
 
 ## 11. Aspectos pendientes de confirmar
 
-- Que el commit de cierre de la 5.2 esté en `origin/main` con la CI en verde.
-- Alcance exacto de la 5.3, al preparar su brief.
+- Que el commit de cierre de la Fase 5 esté en `origin/main` con la CI en verde.
+- Estado en Notion del proyecto de la Fase 6, su tarea espejo y sus subfases.
+- Alcance exacto de la 6.1, al preparar su brief.

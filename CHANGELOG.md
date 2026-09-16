@@ -2,6 +2,58 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-16 — Fase 5 cerrada (Clientes)
+
+**Certifica:**
+
+- **Las tres subfases cerradas con confirmación del usuario**, en el orden 5.1 → 5.2 → 5.3. El detalle de cada una está en sus entradas, debajo.
+- **Criterios de aceptación del [Roadmap](docs/planning/Roadmap.md)**:
+  - búsqueda por nombre y teléfono: `crm.test.ts` en el servicio y `clients.spec.ts` en pantalla, con el teléfono escrito en otro formato;
+  - `CONFLICT` por teléfono duplicado, también de un cliente inactivo: `clients-schema.test.ts`, `crm.test.ts` y el mensaje en el campo de `clients.spec.ts`;
+  - minimización verificada contra `NonFunctionalRequirements.md`: revisión escrita en el cierre del [brief-5.3](docs/decisions/brief-5.3-ui-de-clientes.md).
+- **Gate de salida**: FR del alcance probados, con CI en verde en el commit `c2fa98b` ([ejecución 35132808628](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35132808628)), end-to-end incluido.
+- **Entregables**: FR-CLI-01, 02, 03, 05, 06 y 07, y FR-AUD-02 para clientes.
+- **H-5 cerrado en sus dos mitades**: el servicio (5.2) y la pantalla (5.3), cada una con evidencia de mutación.
+- **Nivel alcanzado**:
+  - **validado en integración** para las pantallas 6 y 7, que supera el "validado localmente" que pedía el Roadmap;
+  - **validado localmente y en CI** para el esquema y el servicio de clientes.
+
+**No certifica:**
+
+- **Última interacción y conversaciones del cliente** (FR-CLI-04), y el orden de la lista por última interacción: Fase 6.
+- **Eliminación de los datos de un cliente** frente a `audit_logs` de solo inserción: Fase 8.
+- **Búsqueda sin distinguir acentos y rendimiento con volumen real**: Fase 8.
+- **La aplicación restringida por `crm_app`**: Fases 8 y 9.
+- **Firefox y WebKit**.
+- **Revisión independiente**: es autoevaluación del mismo agente. El usuario aprobó los briefs y los cierres.
+
+## 2026-09-16 — Subfase 5.3 cerrada (UI de clientes)
+
+**Certifica:**
+
+- **Pantallas 6 y 7** según Screens.md, los wireframes 06 y 07 y el [brief-5.3](docs/decisions/brief-5.3-ui-de-clientes.md), con D-1 a D-5 resueltas según la recomendación:
+  - `/clientes`: búsqueda por nombre o teléfono en una sola caja, filtro de actividad y página en la URL; tabla en escritorio y tarjetas en móvil; "no hay clientes" distinto de "sin resultados"; alta solo para `admin`;
+  - `/clientes/nuevo` y la edición en `/clientes/[clientId]`: validación en línea, aviso de minimización en las notas y `CONFLICT` en el campo teléfono con un mensaje que sugiere buscar entre los inactivos (D-2); desactivar y reactivar con confirmación como segundo paso;
+  - `/clientes/[clientId]`: datos del cliente y, solo para `admin`, su auditoría paginada con autor y fechas en la zona de la organización; el resumen muestra valores de nombre, teléfono y estado, y de las notas solo que cambiaron (D-4);
+  - sin última interacción ni conversaciones hasta la Fase 6 (D-3);
+  - "Clientes" en la navegación del marco común.
+- **Teléfono en pantalla** (D-1): E.164 completo para `admin`; `•••• 1234` para `viewer`, con un texto propio para lectores de pantalla y otro para un enmascarado sin dígitos.
+- **H-5 cerrado en pantalla** (D-5): el HTML y las respuestas RSC que recibe un `viewer` no contienen el número; con `crm` devolviendo el número completo, el test falla (evidencia en el brief), y el mismo recorrido como `admin` sí lo encuentra.
+- **Minimización** (FR-CLI-05): revisión escrita en el cierre del brief; cada Server Action registra solo ids, código y duración.
+- **Defecto corregido**: el resumen de auditoría dependía del orden de las claves de `jsonb`; ahora sigue el orden del formulario.
+- **Tests**: 23 unitarios en `src/app/(autenticado)/clientes/` y 12 casos en `tests/e2e/clients.spec.ts`, con axe en cada estado en claro y oscuro, teclado, foco y móvil a 375 px. `src/modules/crm/` y los tests existentes sin cambios.
+- **Suite local**: `npm run test` pasa 449 de 449 (188 unitarios, 30 guardas y 231 de integración); `npm run test:e2e` pasa 50 de 50. Con la base detenida pasan typecheck, lint, formato, guardas, unitarios y build, y `db:generate` informa "No schema changes". `package.json` sin cambios.
+- **CI**: [35132808628](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35132808628), commit `c2fa98b`, en verde con todos los pasos.
+- **Documentación**: Screens, wireframes 06 y 07 y su índice, TraceabilityMatrix, TestingStrategy, RepositoryStructure y las líneas de estado de `README.md` y `docs/README.md`.
+- **Nivel alcanzado**: **validado en integración** (`producer-consumer`) para las pantallas 6 y 7.
+
+**No certifica:**
+
+- **Última interacción y conversaciones del cliente**: Fase 6.
+- **Formato de lectura del teléfono por país**: se muestra en E.164 (D-1).
+- **Firefox y WebKit**.
+- **Revisión independiente**: es autoevaluación del mismo agente.
+
 ## 2026-09-16 — Subfase 5.2 cerrada (Servicio de clientes)
 
 **Certifica:**
