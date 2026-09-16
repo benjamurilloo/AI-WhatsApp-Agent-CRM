@@ -59,7 +59,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-6.1](brief-6.1-migraciones-de-conversaciones.md) | 6.1 — Migraciones de conversaciones | aprobado y cerrado el 2026-09-16 |
 | [brief-6.2](brief-6.2-seeds-sinteticos-de-conversaciones.md) | 6.2 — Seeds sintéticos de conversaciones | aprobado y cerrado el 2026-09-16 |
 | [brief-6.3](brief-6.3-servicio-de-consulta-y-estado.md) | 6.3 — Servicio de consulta y estado | aprobado y cerrado el 2026-09-16 |
-| [brief-6.4](brief-6.4-ui-de-conversaciones.md) | 6.4 — UI de conversaciones | aprobado el 2026-09-16 |
+| [brief-6.4](brief-6.4-ui-de-conversaciones.md) | 6.4 — UI de conversaciones | aprobado y cerrado el 2026-09-16 |
 
 ## Plantilla
 

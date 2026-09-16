@@ -2,6 +2,28 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-16 — Subfase 6.4 cerrada (UI de conversaciones)
+
+**Certifica:**
+
+- **Pantallas de conversaciones** según el [brief-6.4](docs/decisions/brief-6.4-ui-de-conversaciones.md), con D-1 a D-6 resueltas según la recomendación:
+  - **pantalla 8** (lista): filtros de período (atajos, con "Todas las fechas" por defecto), estado, canal y cliente, este último con búsqueda en dos pasos sobre `crm` (D-1, D-2); paginada de a 25 y sin el cuerpo de ningún mensaje (FR-CONV-01);
+  - **pantalla 9** (detalle): timeline con la dirección en texto, separadores de día y el cuerpo escapado (FR-CONV-02); "Cargar mensajes anteriores" con una Server Action de lectura que conserva la posición de lectura (D-3); cambio de estado solo para `admin`, auditado, con el resultado anunciado (FR-CONV-03);
+  - **pantallas 6 y 7**: la lista de clientes ordenada por última interacción, con su columna (FR-CLI-04), y el detalle con la última interacción y una sección "Conversaciones" que carga por separado, pagina y filtra sin perder la auditoría (D-4);
+  - enlace "Conversaciones" en el marco común.
+- **Tests**: `tests/e2e/conversations.spec.ts` (10 casos, con fixtures sintéticos insertados por SQL, D-5) y los casos 13 a 15 de `clients.spec.ts`, con axe en cada estado, en claro y oscuro, teclado y móvil; 13 unitarios nuevos. Todos los specs esperan el título antes de axe (D-6), lo que cierra la carrera de `document-title`. Mutaciones: el cuerpo interpretado como HTML hace fallar el caso 5, y un cuerpo en la pantalla 8 hace fallar el caso 2 (evidencia en el brief).
+- **Desvío autorizado**: el caso 1 de `clients.spec.ts` invirtió sus dos aserciones sobre "Última interacción".
+- **Suite local**: `npm run test` pasa 546 de 546 y `npm run test:e2e` pasa 63 de 63. Con la base detenida pasan typecheck, lint, formato, guardas, unitarios y build, y `db:generate` no produce migraciones. `src/modules/` sin cambios.
+- **CI**: [35153243944](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35153243944), commit `3904548`, en verde con todos los pasos.
+- **Nivel alcanzado**: **validado en integración** para las pantallas 6 a 9.
+
+**No certifica:**
+
+- **Rendimiento con volumen en pantalla**: Fase 9.
+- **Lectores de pantalla reales**: solo axe y teclado.
+- **Ingestión**: 6.5.
+- **Revisión independiente**: es autoevaluación del mismo agente.
+
 ## 2026-09-16 — Subfase 6.3 cerrada (Servicio de consulta y estado)
 
 **Certifica:**

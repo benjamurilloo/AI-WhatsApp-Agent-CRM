@@ -252,6 +252,10 @@ La revisión es una autoevaluación (`self_assessment: true`).
 - Si un test muestra un cuerpo de mensaje o un teléfono completo donde no corresponde, y la causa no está en la presentación.
 - Antes de cualquier commit, push o cambio en Notion.
 
+## Cierre (2026-09-16)
+
+Cerrado con autorización del usuario. Se cumplen los siete criterios; la condición de detención del caso 1 de `clients.spec.ts` quedó resuelta por el usuario, como detalla la ejecución. La CI quedó en verde en el commit `3904548` ([ejecución 35153243944](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35153243944), todos los pasos). Nivel alcanzado: **validado en integración** para las pantallas 6 a 9. La evidencia está en [CHANGELOG.md](../../CHANGELOG.md).
+
 ## Ejecución (2026-09-16)
 
 La implementación está terminada y el cierre está pendiente. Se activó una condición de detención, que el usuario resolvió.
@@ -283,4 +287,4 @@ La implementación está terminada y el cierre está pendiente. Se activó una c
 - **Con el contenedor detenido**: pasan `typecheck`, `lint`, `format:check`, `test:guards` (30), `test:unit` (211) y `build`, y `db:generate` no produce migraciones.
 - **`src/modules/`**: sin cambios.
 
-Pendiente: commit, push, CI (AC-6) y cierre.
+Pendiente al terminar la ejecución (resuelto en el cierre): commit, push, CI (AC-6) y cierre.
