@@ -418,7 +418,7 @@ test("caso 9 (H-5): nada de lo que recibe el navegador de un viewer contiene el 
   // Todo lo que el servidor manda durante la navegación: documentos y datos de RSC.
   async function collectBodies(email: string) {
     const bodies: string[] = [];
-    const pending: Promise<void>[] = [];
+    let pending: Promise<void>[] = [];
     const listener = (response: import("@playwright/test").Response) => {
       if (!response.url().startsWith("http://localhost")) return;
       pending.push(
@@ -428,16 +428,25 @@ test("caso 9 (H-5): nada de lo que recibe el navegador de un viewer contiene el 
           .catch(() => undefined),
       );
     };
+    // Cada cuerpo se lee antes de la navegación siguiente: una respuesta que la navegación corta
+    // (un prefetch o una sección en streaming) deja su lectura sin resolver.
+    const drain = async () => {
+      await page.waitForLoadState("networkidle");
+      await Promise.all(pending);
+      pending = [];
+    };
     await login(page, email);
     page.on("response", listener);
     for (const route of routes) {
       await page.goto(route);
+      await drain();
       bodies.push(await page.content());
       const raw = await page.request.get(route);
       bodies.push(await raw.text());
     }
     // Navegación del lado del cliente: la lista pide el detalle como datos de RSC.
     await page.goto("/clientes");
+    await drain();
     await page
       .getByRole("table", { name: "Clientes de la organización" })
       .getByRole("link", { name: "Ana Pérez" })
@@ -446,8 +455,8 @@ test("caso 9 (H-5): nada de lo que recibe el navegador de un viewer contiene el 
     await expect(
       page.getByRole("heading", { name: "Ana Pérez" }),
     ).toBeVisible();
+    await drain();
     page.off("response", listener);
-    await Promise.all(pending);
     await page.context().clearCookies();
     return bodies;
   }

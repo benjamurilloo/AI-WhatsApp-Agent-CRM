@@ -166,6 +166,7 @@ Nivel del proyecto: **validado en integración** para las pantallas de conversac
   - una sección de otra fuente carga con `Suspense` y su skeleton, y sus parámetros de URL conviven con los de las demás secciones (6.4, D-4);
   - los end-to-end de datos que la aplicación no crea (conversaciones hasta la 6.5) los insertan por SQL, declarados como fixtures sintéticos (6.4, D-5);
   - todo spec espera que la página tenga título antes de analizar con axe (6.4, D-6);
+  - un spec que lee los cuerpos de las respuestas los lee con la red en reposo antes de cada navegación: una respuesta cortada por la navegación deja `response.text()` sin resolver (el caso 9 de `clients.spec.ts` se colgó una vez en la CI del cierre de la 6.4 y se corrigió después, autorizado por el usuario);
   - un componente de cliente no importa módulos que formatean fechas en el servidor: lo compartido va en `messages.ts` (6.4).
 
   `confirmado`
