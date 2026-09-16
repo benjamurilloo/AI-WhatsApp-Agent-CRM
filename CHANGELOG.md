@@ -2,6 +2,33 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-16 — Subfase 6.1 cerrada (Migraciones de conversaciones)
+
+**Certifica:**
+
+- **Esquema de `conversations`, `messages` e `ingestion_events`** según DataModel y el [brief-6.1](docs/decisions/brief-6.1-migraciones-de-conversaciones.md), con D-1 a D-4 resueltas según la recomendación:
+  - las tres tablas en esta subfase; la lógica del registro de ingestión queda para la 6.5.2 (D-1);
+  - claves foráneas compuestas: una conversación no puede apuntar al cliente de otra organización, ni un mensaje a la conversación de otra organización. `clients` suma `UNIQUE(organization_id, id)`;
+  - unicidades parciales de `external_ref` y `UNIQUE(organization_id, source, external_ref)` en el registro, con nombre para `ON CONFLICT`;
+  - `CHECK` de coherencia (D-2): referencias e identidad no vacías, último mensaje no anterior al inicio, y fecha de proceso y código de error acordes al estado;
+  - protección (D-3): `messages` es de solo inserción, como el ADR 0013. `ingestion_events` admite `UPDATE` de su estado para `crm_app`, sin `DELETE`, y un trigger rechaza el borrado y todo cambio de identidad;
+  - las columnas de resultado del evento quedan para la 6.5.2 (D-4).
+- **Migraciones**: `0010` (el `UNIQUE` de `clients`) y `0011` (tablas), generadas por Drizzle Kit, y `0012` (privilegios y triggers), escrita a mano. Se generaron en dos pasos porque Drizzle Kit emitía el `UNIQUE` después de la clave que lo usa (ajuste autorizado). Aplicadas en la base de desarrollo; una segunda corrida no hace nada.
+- **Tests**: 31 casos en `tests/integration/conversations-schema.test.ts`, con SQLSTATE y constraint. Los triggers se prueban también quitándolos en una transacción revertida. `audit.test.ts` pasa a tres categorías de privilegios y suma un caso de detección. `identity-schema.test.ts` suma las tablas. `clients.spec.ts` vacía `messages` y `conversations` junto con `clients` (ajuste autorizado).
+- **Suite local**: `npm run test` pasa 481 de 481 y `npm run test:e2e` pasa 50 de 50. Con la base detenida pasan typecheck, lint, formato, guardas, unitarios y build, y `db:generate` no produce migraciones.
+- **Sin orígenes reales** (FR-CONV-05): ninguna URL, variable de entorno ni credencial nueva.
+- **CI**: [35137789102](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35137789102), commit `5a60334`, en verde con todos los pasos en el segundo intento. El primero falló en un caso end-to-end ajeno al cambio: axe encontró el `<title>` vacío tras una navegación en el cliente (`clients.spec.ts`, caso 1). Queda registrado como pendiente.
+- **Documentación**: DataModel, TestingStrategy, RepositoryStructure, nota en el ADR 0013 y el índice de decisiones, donde también se corrigió la fila del brief-5.3.
+- **Nivel alcanzado**: **validado localmente y en CI** para el esquema.
+
+**No certifica:**
+
+- **Idempotencia del contrato de ingestión**: solo se probó el mecanismo de base. La lógica es de la 6.5.2.
+- **`started_at` igual al primer mensaje**: 6.2 y 6.5.2.
+- **Consultas e índices con volumen**: 6.2, 6.3 y Fase 8.
+- **La aplicación restringida por `crm_app`**: Fases 8 y 9.
+- **Revisión independiente**: es autoevaluación del mismo agente.
+
 ## 2026-09-16 — Fase 5 cerrada (Clientes)
 
 **Certifica:**

@@ -263,9 +263,13 @@ La revisión es una autoevaluación (`self_assessment: true`).
 - Si aparece la necesidad de código de servicio, seeds, una dependencia, una extensión de PostgreSQL o una columna fuera de DataModel no resuelta en D-4.
 - Antes de ejecutar migraciones contra la base de desarrollo, y antes de cualquier commit, push o cambio en Notion.
 
+## Cierre (2026-09-16)
+
+Cerrado con autorización del usuario. Se cumplen los diez criterios, con las dos desviaciones autorizadas que se describen abajo. Las migraciones se aplicaron en la base de desarrollo y una segunda corrida no hizo nada. La CI quedó en verde en el commit `5a60334` ([ejecución 35137789102](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35137789102), segundo intento, todos los pasos). El primer intento falló en el caso 1 de `clients.spec.ts`: axe encontró el `<title>` vacío justo después de una navegación en el cliente. Es una carrera ajena a esta subfase; el caso no espera el título antes de analizar. Queda como pendiente en el HANDOFF. Nivel alcanzado: **validado localmente y en CI**. La evidencia está en [CHANGELOG.md](../../CHANGELOG.md).
+
 ## Ejecución (2026-09-16)
 
-Implementación terminada y pendiente de cierre. Se activaron dos condiciones de detención, y el usuario autorizó cómo seguir en cada una:
+Se activaron dos condiciones de detención, y el usuario autorizó cómo seguir en cada una:
 
 1. **Orden de la migración generada.** Drizzle Kit emitió el `UNIQUE(organization_id, id)` de `clients` al final de la migración, después de la clave foránea de `conversations` que lo usa, y PostgreSQL la rechazó (`42830`). Sin editar SQL a mano, se generó en dos pasos:
    - `drizzle/0010_*`, solo con ese `UNIQUE`;
@@ -290,7 +294,7 @@ Evidencia local:
 - `npm run test:e2e`: 50 de 50.
 - AC-10: los archivos nuevos y modificados no agregan URLs, variables de entorno ni credenciales. `.env.example` no cambió.
 
-Pendiente:
+Pendiente al terminar la ejecución (resuelto en el cierre):
 
 - ejecutar las migraciones contra la base de desarrollo (sin autorizar);
 - la CI del commit (AC-8);
