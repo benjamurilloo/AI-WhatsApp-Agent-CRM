@@ -1,11 +1,13 @@
-// Interfaz pública del módulo crm (brief-5.2).
+// Interfaz pública del módulo crm (brief-5.2; lecturas para conversations, brief-6.3).
 export { type ClientPhone } from "./phone";
 export {
   CLIENTS_PAGE_SIZE,
   createClient,
   deactivateClient,
   getClient,
+  getClientsByIds,
   listClientAudit,
+  listClientOrderKeys,
   reactivateClient,
   searchClients,
   updateClient,

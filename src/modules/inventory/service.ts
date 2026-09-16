@@ -15,6 +15,7 @@ import {
   getOrganizationTimezone,
   type AuthContext,
 } from "@/modules/organizations";
+import { optionalCalendarDate } from "@/shared/calendar";
 import { failure, type Failure } from "@/shared/errors";
 import {
   MAX_QUANTITY,
@@ -362,36 +363,13 @@ export type MovementHistoryValues = {
   to: string | null;
 };
 
-// Fecha de calendario real con año de cuatro cifras: descarta "2026-02-30" y el año 0.
-function isCalendarDate(value: string): boolean {
-  const match = /^([1-9]\d{3})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) return false;
-  const [year, month, day] = match.slice(1).map(Number) as [
-    number,
-    number,
-    number,
-  ];
-  const date = new Date(Date.UTC(year, month - 1, day));
-  return (
-    date.getUTCFullYear() === year &&
-    date.getUTCMonth() === month - 1 &&
-    date.getUTCDate() === day
-  );
-}
-
-const optionalDate = z
-  .string()
-  .trim()
-  .refine((value) => value === "" || isCalendarDate(value))
-  .transform((value) => (value === "" ? null : value));
-
 const movementHistorySchema = z
   .object({
     type: z
       .union([z.literal("all"), z.enum(inventoryMovementType.enumValues)])
       .transform((type) => (type === "all" ? null : type)),
-    from: optionalDate,
-    to: optionalDate,
+    from: optionalCalendarDate,
+    to: optionalCalendarDate,
   })
   .superRefine((values, ctx) => {
     // Las fechas YYYY-MM-DD se comparan como texto.

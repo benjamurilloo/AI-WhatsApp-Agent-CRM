@@ -37,6 +37,14 @@
     - `messages` rechaza `UPDATE` y `DELETE` con `42501` para `crm_app` y con `P0001` por trigger para el rol dueño;
     - `ingestion_events` rechaza `DELETE` (`42501` para `crm_app`) y todo cambio de identidad o borrado por trigger (`P0001`), y admite cambiar el estado;
     - cada trigger se quita dentro de una transacción revertida para demostrar que, sin él, el cambio pasaría.
+  - Servicio de conversaciones ([brief-6.3](../decisions/brief-6.3-servicio-de-consulta-y-estado.md)), cubierto desde la 6.3 en `tests/integration/conversations.test.ts`, con validación de filtros, páginas y cursores en tests unitarios de `conversations`:
+    - lista ordenada por último mensaje con desempate, filtros de estado, canal y cliente, período en días de la organización (medianoche local y el 19/10/2008), páginas, cantidad de mensajes y "sin resultados" frente a "no hay conversaciones";
+    - **sin contenido** (FR-CONV-01): la lista serializada no contiene el texto de ningún mensaje ni el teléfono; con la consulta trayendo el último cuerpo, el test falla (evidencia en el brief);
+    - timeline de a 50 por cursor sin duplicados ni huecos, estable ante un mensaje nuevo, con desempate por `id` y microsegundos, cuerpos tal cual y cursores inválidos o de otra conversación;
+    - cambio de estado solo para `admin`, auditado con el `diff` exacto, sin auditoría si no cambia, revertido si falla la auditoría, y con la segunda escritura viendo el estado de una primera que retiene el bloqueo;
+    - actividad del cliente: última interacción independiente del filtro de estado, conversaciones filtradas, cliente sin conversaciones e inactivo;
+    - clientes por última interacción: orden con los clientes sin interacciones al final por nombre, búsqueda, actividad, páginas y H-5 (el `viewer` no recibe el número; con `getClientsByIds` sin enmascarar, el test falla);
+    - aislamiento: conversación, cliente o filtro de otra organización → `NOT_FOUND` o sin filas; contraseña pendiente → `FORBIDDEN`.
   - Servicio de catálogo ([brief-4.2](../decisions/brief-4.2-servicio-de-catalogo.md)), cubierto desde la 4.2 en `tests/integration/catalog.test.ts`:
     - alta, edición, desactivación y reactivación auditadas en la misma transacción con `diff` exacto; un cambio sin diferencias no escribe ni audita; si la auditoría falla, el producto no persiste;
     - SKU duplicado, también con otras mayúsculas, en alta y en edición → `CONFLICT` sin auditoría; dos altas simultáneas con el mismo SKU → una sola se crea;

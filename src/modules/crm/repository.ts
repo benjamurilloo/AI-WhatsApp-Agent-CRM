@@ -1,4 +1,4 @@
-import { and, asc, count, eq, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { getDb, type Db, type DbTransaction } from "@/shared/db";
 import { clients } from "./schema";
 
@@ -116,6 +116,37 @@ export function findClients(
     .orderBy(sql`lower(${clients.displayName})`, asc(clients.id))
     .limit(limit)
     .offset(offset);
+}
+
+// Todos los ids que cumplen los filtros, en el orden de nombre de findClients. Para que otro
+// módulo componga el orden por última interacción sin JOIN (brief-6.3, D-1).
+export async function findClientIdsByName(
+  organizationId: string,
+  search: ClientSearch,
+  activity: ActivityFilter,
+): Promise<string[]> {
+  const rows = await getDb()
+    .select({ id: clients.id })
+    .from(clients)
+    .where(searchConditions(organizationId, search, activity))
+    .orderBy(sql`lower(${clients.displayName})`, asc(clients.id));
+  return rows.map((row) => row.id);
+}
+
+export function findClientsByIds(
+  organizationId: string,
+  clientIds: string[],
+): Promise<ClientRow[]> {
+  if (clientIds.length === 0) return Promise.resolve([]);
+  return getDb()
+    .select(clientColumns)
+    .from(clients)
+    .where(
+      and(
+        eq(clients.organizationId, organizationId),
+        inArray(clients.id, clientIds),
+      ),
+    );
 }
 
 // drizzle-orm envuelve el error de pg; el código y la constraint quedan en la causa.

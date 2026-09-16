@@ -180,6 +180,50 @@ export async function searchClients(
   };
 }
 
+// Para la lista por última interacción, que compone conversations (brief-6.3, D-1): todos los
+// ids que cumplen los filtros, en orden de nombre, sin ningún dato del cliente.
+export async function listClientOrderKeys(
+  context: AuthContext,
+  filters: Omit<ClientListFilters, "page">,
+): Promise<{ ok: true; clientIds: string[] } | Failure<"FORBIDDEN">> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  const clientIds = await repository.findClientIdsByName(
+    context.organizationId,
+    interpretSearch(filters.text),
+    filters.activity,
+  );
+  return { ok: true, clientIds };
+}
+
+// Clientes de la organización con esos ids, en el orden pedido y con el teléfono según el rol.
+// Un id ajeno o inexistente no aparece.
+export async function getClientsByIds(
+  context: AuthContext,
+  clientIds: string[],
+): Promise<
+  { ok: true; clients: Client[] } | Failure<"FORBIDDEN" | "VALIDATION_ERROR">
+> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  const unique = [...new Set(clientIds)];
+  if (!unique.every((id) => clientIdSchema.safeParse(id).success)) {
+    return failure("VALIDATION_ERROR");
+  }
+  const rows = new Map(
+    (await repository.findClientsByIds(context.organizationId, unique)).map(
+      (row) => [row.id, row],
+    ),
+  );
+  return {
+    ok: true,
+    clients: unique.flatMap((id) => {
+      const row = rows.get(id);
+      return row ? [toClient(row, context)] : [];
+    }),
+  };
+}
+
 // Historial de auditoría del cliente (FR-AUD-02, brief-5.2, D-7), como listProductAudit: audit no
 // autoriza ni conoce a auth; crm verifica el rol y la organización y compone el autor.
 

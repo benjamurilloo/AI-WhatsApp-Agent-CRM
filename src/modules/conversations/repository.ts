@@ -1,0 +1,275 @@
+import {
+  and,
+  count,
+  eq,
+  inArray,
+  isNotNull,
+  max,
+  sql,
+  type SQL,
+} from "drizzle-orm";
+import { getDb, type Db, type DbTransaction } from "@/shared/db";
+import {
+  conversationChannel,
+  conversationStatus,
+  conversations,
+  messageDirection,
+  messages,
+} from "./schema";
+
+// Acceso a conversations y messages (brief-6.3). Toda consulta filtra por organization_id en SQL.
+// Solo lectura, salvo el estado de la conversación: messages es de solo inserción (brief-6.1, D-3).
+
+type Executor = Db | DbTransaction;
+
+export type ConversationStatus = (typeof conversationStatus.enumValues)[number];
+export type ConversationChannel =
+  (typeof conversationChannel.enumValues)[number];
+export type MessageDirection = (typeof messageDirection.enumValues)[number];
+
+export function withTransaction<T>(
+  work: (tx: DbTransaction) => Promise<T>,
+): Promise<T> {
+  return getDb().transaction(work);
+}
+
+export type ConversationRow = {
+  id: string;
+  clientId: string | null;
+  channel: ConversationChannel;
+  status: ConversationStatus;
+  startedAt: Date;
+  lastMessageAt: Date | null;
+};
+
+const conversationColumns = {
+  id: conversations.id,
+  clientId: conversations.clientId,
+  channel: conversations.channel,
+  status: conversations.status,
+  startedAt: conversations.startedAt,
+  lastMessageAt: conversations.lastMessageAt,
+};
+
+// Filtros ya validados; fechas YYYY-MM-DD sobre last_message_at.
+export type ConversationQuery = {
+  organizationId: string;
+  status: ConversationStatus | null;
+  channel: ConversationChannel | null;
+  clientId: string | null;
+  from: string | null;
+  to: string | null;
+  timezone: string;
+};
+
+// Período [from 00:00, to + 1 día 00:00) en la zona de la organización, como el historial de
+// movimientos (brief-4.3.3, D-3). Una conversación sin mensajes no entra en un período.
+function conversationConditions(query: ConversationQuery): SQL | undefined {
+  const conditions: (SQL | undefined)[] = [
+    eq(conversations.organizationId, query.organizationId),
+  ];
+  if (query.status) conditions.push(eq(conversations.status, query.status));
+  if (query.channel) conditions.push(eq(conversations.channel, query.channel));
+  if (query.clientId) {
+    conditions.push(eq(conversations.clientId, query.clientId));
+  }
+  if (query.from) {
+    conditions.push(
+      sql`${conversations.lastMessageAt} >= (${query.from}::date::timestamp at time zone ${query.timezone})`,
+    );
+  }
+  if (query.to) {
+    conditions.push(
+      sql`${conversations.lastMessageAt} < ((${query.to}::date + 1)::timestamp at time zone ${query.timezone})`,
+    );
+  }
+  return and(...conditions);
+}
+
+export async function countConversations(
+  query: ConversationQuery,
+): Promise<number> {
+  const rows = await getDb()
+    .select({ total: count() })
+    .from(conversations)
+    .where(conversationConditions(query));
+  return rows[0]!.total;
+}
+
+// Último mensaje más reciente primero, con el mismo NULLS LAST que los índices (brief-6.1), y
+// desempate estable por id. Nunca trae el cuerpo de un mensaje (FR-CONV-01).
+export function findConversations(
+  query: ConversationQuery,
+  limit: number,
+  offset: number,
+): Promise<ConversationRow[]> {
+  return getDb()
+    .select(conversationColumns)
+    .from(conversations)
+    .where(conversationConditions(query))
+    .orderBy(
+      sql`${conversations.lastMessageAt} desc nulls last`,
+      sql`${conversations.id} desc`,
+    )
+    .limit(limit)
+    .offset(offset);
+}
+
+export async function hasConversations(
+  organizationId: string,
+  clientId: string | null = null,
+): Promise<boolean> {
+  const rows = await getDb()
+    .select({ id: conversations.id })
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.organizationId, organizationId),
+        clientId === null ? undefined : eq(conversations.clientId, clientId),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
+// Cantidad de mensajes solo de las conversaciones de una página (brief-1.2, D-3).
+export async function countMessagesByConversation(
+  organizationId: string,
+  conversationIds: string[],
+): Promise<Map<string, number>> {
+  if (conversationIds.length === 0) return new Map();
+  const rows = await getDb()
+    .select({ conversationId: messages.conversationId, total: count() })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.organizationId, organizationId),
+        inArray(messages.conversationId, conversationIds),
+      ),
+    )
+    .groupBy(messages.conversationId);
+  return new Map(rows.map((row) => [row.conversationId, row.total]));
+}
+
+// forUpdate: el cambio de estado bloquea la fila y calcula el diff sobre lo leído (D-3).
+export async function findConversation(
+  organizationId: string,
+  conversationId: string,
+  executor: Executor = getDb(),
+  { forUpdate = false } = {},
+): Promise<ConversationRow | undefined> {
+  const query = executor
+    .select(conversationColumns)
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.organizationId, organizationId),
+        eq(conversations.id, conversationId),
+      ),
+    )
+    .limit(1);
+  const rows = forUpdate ? await query.for("update") : await query;
+  return rows[0];
+}
+
+export async function updateConversationStatus(
+  tx: DbTransaction,
+  conversationId: string,
+  status: ConversationStatus,
+): Promise<void> {
+  await tx
+    .update(conversations)
+    .set({ status })
+    .where(eq(conversations.id, conversationId));
+}
+
+export type MessageRow = {
+  id: string;
+  direction: MessageDirection;
+  sentAt: Date;
+  // sent_at con microsegundos, en UTC: Date solo tiene milisegundos y el cursor no puede perderlos.
+  sentAtExact: string;
+  body: string | null;
+};
+
+export type MessageCursor = { sentAt: string; id: string };
+
+// Mensajes anteriores al cursor (sent_at, id), del más reciente al más antiguo (D-2).
+export function findMessagesBefore(
+  organizationId: string,
+  conversationId: string,
+  before: MessageCursor | null,
+  limit: number,
+): Promise<MessageRow[]> {
+  return getDb()
+    .select({
+      id: messages.id,
+      direction: messages.direction,
+      sentAt: messages.sentAt,
+      sentAtExact: sql<string>`to_char(${messages.sentAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
+      body: messages.bodyText,
+    })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.organizationId, organizationId),
+        eq(messages.conversationId, conversationId),
+        before === null
+          ? undefined
+          : sql`(${messages.sentAt}, ${messages.id}) < (${before.sentAt}::timestamptz, ${before.id}::uuid)`,
+      ),
+    )
+    .orderBy(sql`${messages.sentAt} desc`, sql`${messages.id} desc`)
+    .limit(limit);
+}
+
+// Última interacción de cada cliente con conversaciones (brief-1.2, D-2), para componer el orden
+// de la lista de clientes (brief-6.3, D-1).
+export async function findLastInteractionByClient(
+  organizationId: string,
+): Promise<Map<string, Date>> {
+  const rows = await getDb()
+    .select({
+      clientId: conversations.clientId,
+      lastMessageAt: max(conversations.lastMessageAt),
+    })
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.organizationId, organizationId),
+        isNotNull(conversations.clientId),
+        isNotNull(conversations.lastMessageAt),
+      ),
+    )
+    .groupBy(conversations.clientId);
+  return new Map(
+    rows.flatMap((row) =>
+      row.clientId && row.lastMessageAt
+        ? [[row.clientId, row.lastMessageAt] as const]
+        : [],
+    ),
+  );
+}
+
+export async function findClientLastInteraction(
+  organizationId: string,
+  clientId: string,
+): Promise<{ at: Date; channel: ConversationChannel } | undefined> {
+  const rows = await getDb()
+    .select({
+      at: conversations.lastMessageAt,
+      channel: conversations.channel,
+    })
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.organizationId, organizationId),
+        eq(conversations.clientId, clientId),
+        isNotNull(conversations.lastMessageAt),
+      ),
+    )
+    .orderBy(sql`${conversations.lastMessageAt} desc nulls last`)
+    .limit(1);
+  const row = rows[0];
+  return row?.at ? { at: row.at, channel: row.channel } : undefined;
+}

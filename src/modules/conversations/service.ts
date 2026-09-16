@@ -1,0 +1,514 @@
+import { z } from "zod";
+import { recordAudit } from "@/modules/audit";
+import {
+  CLIENTS_PAGE_SIZE,
+  getClient,
+  getClientsByIds,
+  listClientOrderKeys,
+  type Client,
+  type ClientListFilters,
+} from "@/modules/crm";
+import {
+  authorize,
+  getOrganizationTimezone,
+  type AuthContext,
+} from "@/modules/organizations";
+import { optionalCalendarDate } from "@/shared/calendar";
+import { failure, type Failure } from "@/shared/errors";
+import * as repository from "./repository";
+import { conversationChannel, conversationStatus } from "./schema";
+
+// Consulta y estado de conversaciones (brief-6.3): FR-CONV-01 a 03 y FR-CLI-04. Los datos de los
+// clientes llegan por la interfaz de crm y se componen en memoria, sin JOIN entre módulos.
+
+export type ConversationStatus = repository.ConversationStatus;
+export type ConversationChannel = repository.ConversationChannel;
+export type MessageDirection = repository.MessageDirection;
+
+export const CONVERSATION_STATUSES = conversationStatus.enumValues;
+export const CONVERSATION_CHANNELS = conversationChannel.enumValues;
+export const CONVERSATIONS_PAGE_SIZE = 25;
+export const MESSAGES_PAGE_SIZE = 50;
+
+const idSchema = z.uuid();
+
+// Solo lo necesario para nombrar al cliente: nunca el teléfono (wireframes 08 y 09).
+export type ConversationClient = {
+  id: string;
+  name: string;
+  isActive: boolean;
+};
+
+export type ConversationSummary = {
+  id: string;
+  client: ConversationClient | null;
+  channel: ConversationChannel;
+  status: ConversationStatus;
+  startedAt: Date;
+  lastMessageAt: Date | null;
+  messageCount: number;
+};
+
+async function clientsById(
+  context: AuthContext,
+  clientIds: (string | null)[],
+): Promise<Map<string, ConversationClient>> {
+  const ids = [...new Set(clientIds.filter((id): id is string => id !== null))];
+  if (ids.length === 0) return new Map();
+  const found = await getClientsByIds(context, ids);
+  // Los ids salen de claves foráneas de la misma organización y ya se autorizó.
+  if (!found.ok) throw new Error(`crm rechazó los clientes: ${found.code}`);
+  return new Map(
+    found.clients.map((client) => [
+      client.id,
+      { id: client.id, name: client.displayName, isActive: client.isActive },
+    ]),
+  );
+}
+
+async function summarize(
+  context: AuthContext,
+  rows: repository.ConversationRow[],
+): Promise<ConversationSummary[]> {
+  const [clients, counts] = await Promise.all([
+    clientsById(
+      context,
+      rows.map((row) => row.clientId),
+    ),
+    repository.countMessagesByConversation(
+      context.organizationId,
+      rows.map((row) => row.id),
+    ),
+  ]);
+  return rows.map(({ clientId, ...row }) => ({
+    ...row,
+    client: clientId === null ? null : (clients.get(clientId) ?? null),
+    messageCount: counts.get(row.id) ?? 0,
+  }));
+}
+
+// Una página fuera de rango se lleva a la última; una no numérica o menor que 1, a la primera.
+export function conversationPageBounds(total: number, requestedPage: number) {
+  const pageCount = Math.max(1, Math.ceil(total / CONVERSATIONS_PAGE_SIZE));
+  const page = Math.min(Math.max(1, Math.trunc(requestedPage) || 1), pageCount);
+  return { page, pageCount, offset: (page - 1) * CONVERSATIONS_PAGE_SIZE };
+}
+
+// Filtros de la URL, como texto. status y channel son "all" o un valor; vacíos no limitan.
+export type ConversationListFilters = {
+  from: string;
+  to: string;
+  status: string;
+  channel: string;
+  clientId: string;
+  page: number;
+};
+
+export type ConversationListField =
+  "from" | "to" | "status" | "channel" | "clientId";
+
+const CONVERSATION_LIST_FIELDS: ConversationListField[] = [
+  "from",
+  "to",
+  "status",
+  "channel",
+  "clientId",
+];
+
+export type ConversationListValues = {
+  from: string | null;
+  to: string | null;
+  status: ConversationStatus | null;
+  channel: ConversationChannel | null;
+  clientId: string | null;
+};
+
+const allOr = <T extends readonly [string, ...string[]]>(values: T) =>
+  z
+    .union([z.literal("all"), z.enum(values)])
+    .transform((value) => (value === "all" ? null : (value as T[number])));
+
+const conversationListSchema = z
+  .object({
+    from: optionalCalendarDate,
+    to: optionalCalendarDate,
+    status: allOr(CONVERSATION_STATUSES),
+    channel: allOr(CONVERSATION_CHANNELS),
+    clientId: z
+      .string()
+      .trim()
+      .refine((value) => value === "" || idSchema.safeParse(value).success)
+      .transform((value) => (value === "" ? null : value)),
+  })
+  .superRefine((values, ctx) => {
+    // Las fechas YYYY-MM-DD se comparan como texto.
+    if (values.from && values.to && values.from > values.to) {
+      ctx.addIssue({ code: "custom", path: ["from"], message: "invertido" });
+      ctx.addIssue({ code: "custom", path: ["to"], message: "invertido" });
+    }
+  });
+
+export function validateConversationListFilters(
+  filters: Omit<ConversationListFilters, "page">,
+):
+  | { ok: true; values: ConversationListValues }
+  | Failure<"VALIDATION_ERROR", { fields: ConversationListField[] }> {
+  const parsed = conversationListSchema.safeParse(filters);
+  if (parsed.success) return { ok: true, values: parsed.data };
+  const fields = new Set(parsed.error.issues.map((issue) => issue.path[0]));
+  return {
+    ok: false,
+    code: "VALIDATION_ERROR",
+    fields: CONVERSATION_LIST_FIELDS.filter((field) => fields.has(field)),
+  };
+}
+
+export type ConversationPage = {
+  conversations: ConversationSummary[];
+  total: number;
+  page: number;
+  pageCount: number;
+  // Zona IANA en la que se interpretó el período y en la que se muestran las fechas.
+  timezone: string;
+};
+
+export type ConversationListResult =
+  | ({ ok: true; organizationHasConversations: boolean } & ConversationPage)
+  | Failure<"FORBIDDEN">
+  | Failure<"VALIDATION_ERROR", { fields: ConversationListField[] }>;
+
+async function conversationPage(
+  context: AuthContext,
+  query: repository.ConversationQuery,
+  requestedPage: number,
+): Promise<ConversationPage> {
+  const total = await repository.countConversations(query);
+  const { page, pageCount, offset } = conversationPageBounds(
+    total,
+    requestedPage,
+  );
+  const rows =
+    total === 0
+      ? []
+      : await repository.findConversations(
+          query,
+          CONVERSATIONS_PAGE_SIZE,
+          offset,
+        );
+  return {
+    conversations: await summarize(context, rows),
+    total,
+    page,
+    pageCount,
+    timezone: query.timezone,
+  };
+}
+
+// Lista para admin y viewer (FR-CONV-01). No trae el contenido de ningún mensaje.
+export async function listConversations(
+  context: AuthContext,
+  filters: ConversationListFilters,
+): Promise<ConversationListResult> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  const validated = validateConversationListFilters(filters);
+  if (!validated.ok) return validated;
+  const query: repository.ConversationQuery = {
+    organizationId: context.organizationId,
+    ...validated.values,
+    timezone: await getOrganizationTimezone(context),
+  };
+  const found = await conversationPage(context, query, filters.page);
+  // Con filtros y sin filas: distingue "sin resultados" de "no hay conversaciones".
+  const organizationHasConversations =
+    found.total > 0 ||
+    (await repository.hasConversations(context.organizationId));
+  return { ok: true, ...found, organizationHasConversations };
+}
+
+export type ConversationDetail = Omit<ConversationSummary, "messageCount">;
+
+export type ConversationDetailResult =
+  | { ok: true; conversation: ConversationDetail; timezone: string }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">;
+
+async function findReadable(
+  context: AuthContext,
+  conversationId: string,
+): Promise<
+  | { ok: true; row: repository.ConversationRow }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  if (!idSchema.safeParse(conversationId).success) {
+    return failure("VALIDATION_ERROR");
+  }
+  const row = await repository.findConversation(
+    context.organizationId,
+    conversationId,
+  );
+  if (!row) return failure("NOT_FOUND");
+  return { ok: true, row };
+}
+
+// Cabecera de la pantalla 9, para admin y viewer.
+export async function getConversation(
+  context: AuthContext,
+  conversationId: string,
+): Promise<ConversationDetailResult> {
+  const found = await findReadable(context, conversationId);
+  if (!found.ok) return found;
+  const { clientId, ...row } = found.row;
+  const clients = await clientsById(context, [clientId]);
+  return {
+    ok: true,
+    conversation: {
+      ...row,
+      client: clientId === null ? null : (clients.get(clientId) ?? null),
+    },
+    timezone: await getOrganizationTimezone(context),
+  };
+}
+
+// Cursor opaco del timeline (D-2): sent_at exacto e id, en base64url.
+export function encodeMessageCursor(cursor: repository.MessageCursor): string {
+  return Buffer.from(JSON.stringify([cursor.sentAt, cursor.id])).toString(
+    "base64url",
+  );
+}
+
+const cursorSchema = z.tuple([
+  z
+    .string()
+    .regex(/^[1-9]\d{3}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/)
+    .refine((value) => !Number.isNaN(Date.parse(value))),
+  idSchema,
+]);
+
+export function decodeMessageCursor(
+  text: string,
+): repository.MessageCursor | null {
+  if (!/^[A-Za-z0-9_-]{1,200}$/.test(text)) return null;
+  try {
+    const parsed = cursorSchema.safeParse(
+      JSON.parse(Buffer.from(text, "base64url").toString("utf8")),
+    );
+    return parsed.success
+      ? { sentAt: parsed.data[0], id: parsed.data[1] }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export type ConversationMessage = {
+  id: string;
+  direction: MessageDirection;
+  sentAt: Date;
+  // Tal cual se guardó: el escape es de la presentación (6.4).
+  body: string | null;
+};
+
+export type ConversationMessagesResult =
+  | {
+      ok: true;
+      // Del más antiguo al más reciente.
+      messages: ConversationMessage[];
+      // Cursor para cargar los anteriores, o null si no hay más.
+      before: string | null;
+      timezone: string;
+    }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">;
+
+// Timeline de a 50, empezando por los más recientes (pantalla 9), para admin y viewer.
+export async function listConversationMessages(
+  context: AuthContext,
+  conversationId: string,
+  options: { before: string },
+): Promise<ConversationMessagesResult> {
+  const found = await findReadable(context, conversationId);
+  if (!found.ok) return found;
+  const text = options.before.trim();
+  const before = text === "" ? null : decodeMessageCursor(text);
+  if (text !== "" && before === null) return failure("VALIDATION_ERROR");
+  const rows = await repository.findMessagesBefore(
+    context.organizationId,
+    found.row.id,
+    before,
+    MESSAGES_PAGE_SIZE + 1,
+  );
+  const page = rows.slice(0, MESSAGES_PAGE_SIZE);
+  const oldest = page.at(-1);
+  return {
+    ok: true,
+    messages: page.reverse().map(({ id, direction, sentAt, body }) => ({
+      id,
+      direction,
+      sentAt,
+      body,
+    })),
+    before:
+      rows.length > MESSAGES_PAGE_SIZE && oldest
+        ? encodeMessageCursor({ sentAt: oldest.sentAtExact, id: oldest.id })
+        : null,
+    timezone: await getOrganizationTimezone(context),
+  };
+}
+
+export type ChangeStatusResult =
+  | { ok: true; changed: boolean }
+  // VALIDATION_ERROR sin fields: id inválido (brief-4.4, D-6). Con fields: el estado.
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+  | Failure<"VALIDATION_ERROR", { fields: ["status"] }>;
+
+const statusSchema = z.enum(CONVERSATION_STATUSES);
+
+// Solo admin (FR-CONV-03), auditado en la misma transacción (FR-AUD-01). Última escritura gana:
+// el diff sale del estado leído bajo el bloqueo (D-3).
+export async function changeConversationStatus(
+  context: AuthContext,
+  input: { conversationId: string; status: string },
+): Promise<ChangeStatusResult> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  if (!idSchema.safeParse(input.conversationId).success) {
+    return failure("VALIDATION_ERROR");
+  }
+  const status = statusSchema.safeParse(input.status);
+  if (!status.success) {
+    return { ok: false, code: "VALIDATION_ERROR", fields: ["status"] };
+  }
+
+  return repository.withTransaction(async (tx): Promise<ChangeStatusResult> => {
+    const current = await repository.findConversation(
+      context.organizationId,
+      input.conversationId,
+      tx,
+      { forUpdate: true },
+    );
+    if (!current) return failure("NOT_FOUND");
+    if (current.status === status.data) return { ok: true, changed: false };
+
+    await repository.updateConversationStatus(tx, current.id, status.data);
+    await recordAudit(tx, {
+      organizationId: context.organizationId,
+      actorUserId: context.userId,
+      entityType: "conversation",
+      entityId: current.id,
+      action: "status_change",
+      diff: {
+        before: { status: current.status },
+        after: { status: status.data },
+      },
+    });
+    return { ok: true, changed: true };
+  });
+}
+
+export type ClientActivityResult =
+  | ({
+      ok: true;
+      // Mensaje más reciente en cualquier conversación del cliente, sin contenido (FR-CLI-04).
+      lastInteraction: { at: Date; channel: ConversationChannel } | null;
+      clientHasConversations: boolean;
+    } & ConversationPage)
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+  | Failure<"VALIDATION_ERROR", { fields: ["status"] }>;
+
+const statusFilterSchema = allOr(CONVERSATION_STATUSES);
+
+// Actividad del cliente para la pantalla 7, para admin y viewer. crm resuelve el cliente, su
+// organización y el id; la última interacción no depende del filtro de estado.
+export async function getClientActivity(
+  context: AuthContext,
+  clientId: string,
+  filters: { status: string; page: number },
+): Promise<ClientActivityResult> {
+  const client = await getClient(context, clientId);
+  if (!client.ok) return client;
+  const status = statusFilterSchema.safeParse(filters.status);
+  if (!status.success) {
+    return { ok: false, code: "VALIDATION_ERROR", fields: ["status"] };
+  }
+  const query: repository.ConversationQuery = {
+    organizationId: context.organizationId,
+    status: status.data,
+    channel: null,
+    clientId: client.client.id,
+    from: null,
+    to: null,
+    timezone: await getOrganizationTimezone(context),
+  };
+  const [found, lastInteraction] = await Promise.all([
+    conversationPage(context, query, filters.page),
+    repository.findClientLastInteraction(
+      context.organizationId,
+      client.client.id,
+    ),
+  ]);
+  return {
+    ok: true,
+    ...found,
+    lastInteraction: lastInteraction ?? null,
+    clientHasConversations:
+      found.total > 0 ||
+      (await repository.hasConversations(
+        context.organizationId,
+        client.client.id,
+      )),
+  };
+}
+
+export type ClientWithInteraction = Client & { lastInteractionAt: Date | null };
+
+export type ClientInteractionPage =
+  | {
+      ok: true;
+      clients: ClientWithInteraction[];
+      total: number;
+      page: number;
+      pageCount: number;
+      timezone: string;
+    }
+  | Failure<"FORBIDDEN">;
+
+// Orden por última interacción, compuesto en memoria (brief-6.3, D-1): crm da los ids en orden de
+// nombre y el teléfono según el rol; los clientes sin interacciones quedan al final en ese orden.
+export async function searchClientsByLastInteraction(
+  context: AuthContext,
+  filters: ClientListFilters,
+): Promise<ClientInteractionPage> {
+  const keys = await listClientOrderKeys(context, filters);
+  if (!keys.ok) return keys;
+  const lastInteraction = await repository.findLastInteractionByClient(
+    context.organizationId,
+  );
+  // sort es estable: a igual fecha, o sin fecha, se conserva el orden de nombre de crm.
+  const ordered = [...keys.clientIds].sort((a, b) => {
+    const left = lastInteraction.get(a)?.getTime() ?? -Infinity;
+    const right = lastInteraction.get(b)?.getTime() ?? -Infinity;
+    return left === right ? 0 : right > left ? 1 : -1;
+  });
+
+  const total = ordered.length;
+  const pageCount = Math.max(1, Math.ceil(total / CLIENTS_PAGE_SIZE));
+  const page = Math.min(Math.max(1, Math.trunc(filters.page) || 1), pageCount);
+  const pageIds = ordered.slice(
+    (page - 1) * CLIENTS_PAGE_SIZE,
+    page * CLIENTS_PAGE_SIZE,
+  );
+  const found = await getClientsByIds(context, pageIds);
+  if (!found.ok) throw new Error(`crm rechazó los clientes: ${found.code}`);
+  return {
+    ok: true,
+    clients: found.clients.map((client) => ({
+      ...client,
+      lastInteractionAt: lastInteraction.get(client.id) ?? null,
+    })),
+    total,
+    page,
+    pageCount,
+    timezone: await getOrganizationTimezone(context),
+  };
+}
