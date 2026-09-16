@@ -2,6 +2,33 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-16 — Subfase 6.2 cerrada (Seeds sintéticos de conversaciones)
+
+**Certifica:**
+
+- **Seeds sintéticos** según el [brief-6.2](docs/decisions/brief-6.2-seeds-sinteticos-de-conversaciones.md), con D-1 a D-4 resueltas según la recomendación:
+  - **conversaciones de ejemplo** (`seeds/conversations.ts`), cargadas por `npm run db:seed` después del seed básico, que no cambia; los end-to-end no las usan (D-1). Son 6 clientes, 10 conversaciones y 26 mensajes, con:
+    - los tres estados, conversaciones sin cliente, un cliente inactivo, una proactiva y una sin respuesta;
+    - un mensaje que en UTC cae en otro día, una conversación que cruza la medianoche y el 19/10/2008 de Buenos Aires;
+    - cuerpos con marcado, nulos, largos y con emojis;
+  - **fechas relativas a la primera corrida** (D-2): las corridas siguientes no mueven mensajes ni fechas, y solo reponen el estado y los clientes;
+  - **volumen** (`seeds/volume.ts`, `npm run db:seed:volume`) en una organización propia con `volumen@example.com` (D-3). Es determinista por fila y no se ejecuta en CI. No incluye productos (D-4): TraceabilityMatrix corrige su afirmación sobre `EXPLAIN`, y Risks lo registra para la Fase 8.
+- **Invariante entre filas**: toda conversación sembrada tiene al menos un mensaje, `started_at` igual a su primer `sent_at` y `last_message_at` igual al último. Con el seed alterado, 3 casos fallan (evidencia en el brief).
+- **Tests**: 13 casos en `tests/integration/conversations-seed.test.ts`; los tests existentes y los end-to-end sin cambios.
+- **Suite local**: `npm run test` pasa 494 de 494 y `npm run test:e2e` pasa 50 de 50. Con la base detenida pasan typecheck, lint, formato, guardas, unitarios y build, y `db:generate` no produce migraciones.
+- **Base de desarrollo**: los dos seeds, dos veces cada uno, sin cambios en la segunda corrida. El volumen cargó 10.000 clientes, 10.000 conversaciones y 65.260 mensajes en 4,9 s.
+- **`package.json`**: solo el script `db:seed:volume`.
+- **CI**: [35142422082](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35142422082), commit `fc580ad`, en verde con todos los pasos.
+- **Nivel alcanzado**: **validado localmente y en CI** para los seeds.
+
+**No certifica:**
+
+- **Que las pantallas muestren estos datos**: 6.4.
+- **Rendimiento de las consultas sobre el volumen**: 6.3.
+- **Valores de las métricas**: Fase 7.
+- **Volumen de productos e inventario**: Fase 8.
+- **Revisión independiente**: es autoevaluación del mismo agente.
+
 ## 2026-09-16 — Subfase 6.1 cerrada (Migraciones de conversaciones)
 
 **Certifica:**

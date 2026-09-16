@@ -245,6 +245,10 @@ La revisión es una autoevaluación (`self_assessment: true`).
 - Si aparece la necesidad de una dependencia, una migración o código en `src/`.
 - Antes de ejecutar los seeds contra la base de desarrollo, y antes de cualquier commit, push o cambio en Notion.
 
+## Cierre (2026-09-16)
+
+Cerrado con autorización del usuario. Se cumplen los nueve criterios. La CI quedó en verde en el commit `fc580ad` ([ejecución 35142422082](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35142422082), todos los pasos, primer intento). Nivel alcanzado: **validado localmente y en CI**. La evidencia está en [CHANGELOG.md](../../CHANGELOG.md).
+
 ## Ejecución (2026-09-16)
 
 La implementación está terminada y el cierre está pendiente. No se activó ninguna condición de detención.
@@ -270,4 +274,4 @@ Evidencia:
 - **Dato ajeno al seed**: la organización de ejemplo tiene 7 clientes. El séptimo, "Matias Garavano", lo creó el usuario desde la pantalla el 2026-09-16 a las 18:12 UTC, y el seed no lo toca.
 - **AC-9**: los seeds nuevos solo leen `DATABASE_URL` y `SEED_USER_PASSWORD`, como el básico, y no tienen URLs ni credenciales.
 
-Pendiente: commit, push, CI (AC-7) y cierre.
+Pendiente al terminar la ejecución (resuelto en el cierre): commit, push, CI (AC-7) y cierre.

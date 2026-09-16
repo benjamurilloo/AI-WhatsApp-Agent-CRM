@@ -2,9 +2,9 @@
 schema: project-state.v1
 project: ai-whatsapp-agent-crm
 generated_at: 2026-09-16
-git_ref: main — 5a60334 en origin/main (CI en verde, 6.1), más el cierre de la 6.1 (commit y push autorizados por el usuario el 2026-09-16)
+git_ref: main — fc580ad en origin/main (CI en verde, 6.2), más el cierre de la 6.2 (commit y push autorizados por el usuario el 2026-09-16)
 active_phase: Fase 6 — Conversaciones, mensajes e ingestión (en curso)
-active_task: ninguna; la 6.1 está cerrada y la siguiente es la 6.2 (Seeds sintéticos de conversaciones), sin brief
+active_task: ninguna; la 6.2 está cerrada y la siguiente es la 6.3 (Servicio de consulta y estado) o la 6.5.1 (Contrato de ingestión), sin brief
 confidence: confirmado
 ---
 
@@ -21,8 +21,7 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 ## 1. Identificación
 
 - **Proyecto**: AI WhatsApp Agent CRM. Independiente del agente de WhatsApp: no comparte código, infraestructura ni base de datos, y no depende de Airtable. `confirmado`
-- **Fase 6 — Conversaciones, mensajes e ingestión, en curso** desde el 2026-09-16. En Notion: el proyecto (`3d8702be6f4e81bb95d0e3a6e38bcb2d`) está "En progreso" y su tarea espejo (`3d8702be6f4e8199b641e48deb47febb`) "En proceso"; la 6.1 (`3d8702be6f4e815e99e8cabf2eb35636`) está "Completado". Siguen en "Bandeja de Entrada":
-  - 6.2 (`3d8702be6f4e811591dfcd0b3ca9ea2a`);
+- **Fase 6 — Conversaciones, mensajes e ingestión, en curso** desde el 2026-09-16. En Notion: el proyecto (`3d8702be6f4e81bb95d0e3a6e38bcb2d`) está "En progreso" y su tarea espejo (`3d8702be6f4e8199b641e48deb47febb`) "En proceso"; la 6.1 (`3d8702be6f4e815e99e8cabf2eb35636`) y la 6.2 (`3d8702be6f4e811591dfcd0b3ca9ea2a`) están "Completado". Siguen en "Bandeja de Entrada":
   - 6.3 (`3d8702be6f4e817fa354cec04a08d54d`);
   - 6.4 (`3d8702be6f4e81bea9abed75e0f16691`);
   - la tarea madre 6.5 (`3d8702be6f4e814b95a9d5d2c1351198`), con sus subtareas 6.5.1 (`3d8702be6f4e81c983d6da84d890052e`), 6.5.2 (`3d8702be6f4e818fbd61e5dc99b683a3`) y 6.5.3 (`3d8702be6f4e817eb92fe723d3c430c7`).
@@ -32,16 +31,21 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 
 ## 2. Último punto aprobado
 
+- **Subfase 6.2 — Seeds sintéticos de conversaciones**, cerrada con autorización del usuario el 2026-09-16, con D-1 a D-4 según la recomendación. La base de desarrollo tiene las conversaciones de ejemplo y el volumen. Detalle en [CHANGELOG.md](CHANGELOG.md) y en el [brief-6.2](docs/decisions/brief-6.2-seeds-sinteticos-de-conversaciones.md). CI en verde en `fc580ad` ([ejecución 35142422082](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35142422082)), primer intento. `confirmado`
 - **Subfase 6.1 — Migraciones de conversaciones**, cerrada con autorización del usuario el 2026-09-16. D-1 a D-4 se resolvieron según la recomendación, con dos desviaciones autorizadas: migraciones en tres pasos y el `TRUNCATE` de `clients.spec.ts`. Detalle en [CHANGELOG.md](CHANGELOG.md) y en el [brief-6.1](docs/decisions/brief-6.1-migraciones-de-conversaciones.md). Migraciones aplicadas en la base de desarrollo, hasta la 0012. `confirmado`
 - **CI en verde** en el commit `5a60334`: [ejecución 35137789102](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35137789102), segundo intento, con todos los pasos. El primero falló por una carrera en un caso end-to-end (§6, Pendientes). `confirmado`
 - **Fase 5 — Clientes**, cerrada el 2026-09-16 (CI en verde en `c2fa98b` y `a3fe750`). `confirmado`
 
 ## 3. Próximo paso
 
-1. **Al retomar**: seguir el arranque de `CLAUDE.md` y verificar que el commit de cierre de la 6.1 esté en `origin/main` con la CI en verde (`gh run list -L 1`). Si la CI falla solo en el `document-title` de axe, ver §6, Pendientes. `pendiente`
-2. **Elegir la subfase siguiente y preparar su brief.** Roadmap permite dos caminos en paralelo: 6.2 → 6.3 → 6.4, y 6.5.1 → 6.5.2 → 6.5.3. Notion ordena primero la 6.2.
-   - **6.2 — Seeds sintéticos**: seed básico y de volumen, con bordes de zona horaria y conversaciones sin cliente. Tiene que respetar `started_at` igual al `sent_at` del primer mensaje (TestingStrategy), los `CHECK` de la 6.1 y la solo inserción de `messages`.
-   - **6.5.1 — Contrato**: `docs/contracts/ingestion-v1.md`, con fixtures marcados como forma asumida. Fija el algoritmo de `payload_hash` y qué devuelve un reenvío, de lo que depende sumar o no columnas de resultado a `ingestion_events` en la 6.5.2 (6.1, D-4).
+1. **Al retomar**: seguir el arranque de `CLAUDE.md` y verificar que el commit de cierre de la 6.2 esté en `origin/main` con la CI en verde (`gh run list -L 1`). Si la CI falla solo en el `document-title` de axe, ver §6, Pendientes. `pendiente`
+2. **Elegir la subfase siguiente y preparar su brief.** Roadmap permite dos caminos en paralelo: 6.3 → 6.4, y 6.5.1 → 6.5.2 → 6.5.3. Notion ordena primero la 6.3.
+   - **6.3 — Servicio de consulta y estado**: FR-CONV-01 a 03 y FR-CLI-04, con el cambio de estado auditado. Tiene que tener en cuenta:
+     - las consultas se confirman con `EXPLAIN` sobre la organización de volumen (`volumen@example.com`), como anota TraceabilityMatrix;
+     - la lista no trae el cuerpo de ningún mensaje (FR-CONV-01);
+     - `conversations` depende de `crm`, así que compone la última interacción del cliente (5.2, D-4);
+     - `messages` es de solo inserción.
+   - **6.5.1 — Contrato**: `docs/contracts/ingestion-v1.md`, con fixtures marcados como forma asumida. Fija el algoritmo de `payload_hash` y qué devuelve un reenvío (6.1, D-4).
    `confirmado`
 3. **Más adelante en la Fase 6**:
    - completar la pantalla 7 con la sección de conversaciones, y la 6 con la última interacción y su orden (FR-CLI-04); esa composición no la hace `crm`, porque `conversations` depende de `crm` (5.2, D-4);
@@ -62,6 +66,7 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 | Rol de aplicación y solo inserción | ADR 0013 con nota de la 6.1; `audit_logs`, `inventory_movements` y `messages`; `ingestion_events` sin borrado | [decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md](docs/decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md) |
 | Esquema de catálogo e inventario | `products`, `inventories`, `inventory_movements`; migraciones 0004 a 0007 | [src/modules/catalog/schema.ts](src/modules/catalog/schema.ts), [src/modules/inventory/schema.ts](src/modules/inventory/schema.ts) |
 | Esquema de clientes | `clients`; migraciones 0008, 0009 y 0010 (`UNIQUE(organization_id, id)`) | [src/modules/crm/schema.ts](src/modules/crm/schema.ts) |
+| Seeds | `seedBasic` (sin cambios; lo usan los end-to-end); `seedConversations` (ejemplo, en `npm run db:seed`, fechas fijadas en la primera corrida); `seedVolume` (`npm run db:seed:volume`, organización y usuario propios, determinista por fila) | [seeds/](seeds/basic.ts), [Environments.md](docs/development/Environments.md) |
 | Esquema de conversaciones e ingestión | `conversations` y `messages` (solo inserción) en `conversations`; `ingestion_events` (identidad inmutable, sin borrado) en `ingestion`; migraciones 0011 y 0012; sin servicio ni `index.ts` | [src/modules/conversations/schema.ts](src/modules/conversations/schema.ts), [src/modules/ingestion/schema.ts](src/modules/ingestion/schema.ts) |
 | Interfaz pública de `crm` | `createClient`, `updateClient`, `deactivateClient`, `reactivateClient`, `getClient`, `searchClients`, `CLIENTS_PAGE_SIZE`, `listClientAudit`, `ClientPhone` y sus tipos; el teléfono sale enmascarado para `viewer` | [src/modules/crm/index.ts](src/modules/crm/index.ts) |
 | Interfaz pública de `auth` | `login`, `validateSession`, `logout`, `changePassword`, `completeRequiredPasswordChange`, `revokeUserSessions`, `hashPassword`, adaptador de cookie, `validateNewUser`, `prepareInitialPassword`, `createUserWithInitialPassword`, `setUserActive`, `getUserSummaries` | [src/modules/auth/index.ts](src/modules/auth/index.ts) |
@@ -88,11 +93,12 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 
 ## 5. Evidencia
 
-Nivel del proyecto: **validado localmente y en CI** para el esquema de conversaciones, mensajes e ingestión (6.1). **Validado en integración** para las pantallas 1, 3, 4, 5, 6, 7 (sin conversaciones) y 10 y el marco común, en claro y en oscuro. **Validado localmente y en CI** para la fundación técnica, la identidad, la autorización, la auditoría (escritura y lectura), la gestión de miembros, el catálogo, el ajuste de stock secuencial y bajo concurrencia, el historial de movimientos y el esquema y el servicio de clientes. **Diseñado** para los servicios y pantallas de conversaciones, la lógica de ingestión y las métricas. Nada está desplegado. `confirmado`
+Nivel del proyecto: **validado localmente y en CI** para el esquema de conversaciones, mensajes e ingestión (6.1) y sus seeds sintéticos (6.2). **Validado en integración** para las pantallas 1, 3, 4, 5, 6, 7 (sin conversaciones) y 10 y el marco común, en claro y en oscuro. **Validado localmente y en CI** para la fundación técnica, la identidad, la autorización, la auditoría (escritura y lectura), la gestión de miembros, el catálogo, el ajuste de stock secuencial y bajo concurrencia, el historial de movimientos y el esquema y el servicio de clientes. **Diseñado** para los servicios y pantallas de conversaciones, la lógica de ingestión y las métricas. Nada está desplegado. `confirmado`
 
 | Afirmación | Nivel | Evidencia |
 |---|---|---|
-| Todos los pasos de CI, incluido el desfase de migraciones y el end-to-end | validado en CI | Ejecución 35137789102 `success` (segundo intento), commit `5a60334` `confirmado` |
+| Todos los pasos de CI, incluido el desfase de migraciones y el end-to-end | validado en CI | Ejecución 35142422082 `success`, commit `fc580ad` `confirmado` |
+| Seeds de conversaciones y de volumen: invariantes de `started_at` y `last_message_at`, bordes de zona horaria, cuerpos guardados tal cual, idempotencia y determinismo | validado localmente y en CI | `tests/integration/conversations-seed.test.ts` (13), con corrida de mutación en el brief-6.2; corrida manual en desarrollo `confirmado` |
 | Esquema de conversaciones, mensajes e ingestión: aislamiento por claves compuestas, unicidades, `CHECK` de coherencia, solo inserción de `messages`, identidad inmutable de `ingestion_events` y privilegios de `crm_app` | validado localmente y en CI | `tests/integration/conversations-schema.test.ts` (31), con cada trigger quitado en una transacción revertida `confirmado` |
 | Pantallas 6 y 7: búsqueda por nombre y teléfono, filtro, alta, edición, `CONFLICT` por teléfono, desactivación, reactivación y auditoría solo para `admin` | validado en integración (`producer-consumer`) | `tests/e2e/clients.spec.ts` (12), con axe en claro y oscuro, teclado y móvil `confirmado` |
 | H-5: ni el servicio ni el HTML ni las respuestas RSC entregan a un `viewer` el teléfono completo | validado localmente, en integración y en CI | `crm.test.ts` y `clients.spec.ts`, con evidencia de mutación en los briefs 5.2 y 5.3 `confirmado` |
@@ -107,7 +113,7 @@ Nivel del proyecto: **validado localmente y en CI** para el esquema de conversac
 | Ajuste secuencial atómico; movimientos inmutables; servicio de catálogo | validado localmente y en CI | `inventory-adjustment.test.ts`, `catalog-inventory-schema.test.ts`, `stock-writes.test.ts`, `catalog.test.ts` `confirmado` |
 | Pantallas 1 y 10 y marco común | validado en integración (`producer-consumer`) | `login.spec.ts` (12) y `users.spec.ts` (13) `confirmado` |
 | Regla del último `admin`, auditoría de miembros y `audit_logs` de solo inserción | validado localmente y en CI | `members.test.ts` y `audit.test.ts` `confirmado` |
-| Suite completa local | validado localmente | `npm run test`: 481 de 481; `npm run test:e2e`: 50 de 50 `confirmado` |
+| Suite completa local | validado localmente | `npm run test`: 494 de 494; `npm run test:e2e`: 50 de 50 `confirmado` |
 | Servicios y pantallas de conversaciones, lógica de ingestión y métricas | diseñado | 6.2 a 6.5.3 y Fase 7 `confirmado` |
 | La cookie detrás de TLS y de un proxy real; la aplicación restringida por `crm_app` | diseñado | Fases 8 y 9 `confirmado` |
 
@@ -116,7 +122,7 @@ Nivel del proyecto: **validado localmente y en CI** para el esquema de conversac
 ### Vigentes
 
 - ADRs 0001 a 0013 aceptados. `confirmado`
-- Resoluciones de los briefs 1.1 a 1.3, 2.1 a 2.5, 3.1 a 3.7, 4.0 a 4.2, 4.3.1 a 4.3.3, 4.4, 5.1 a 5.3 y 6.1 en [docs/decisions/](docs/decisions/README.md). `confirmado`
+- Resoluciones de los briefs 1.1 a 1.3, 2.1 a 2.5, 3.1 a 3.7, 4.0 a 4.2, 4.3.1 a 4.3.3, 4.4, 5.1 a 5.3, 6.1 y 6.2 en [docs/decisions/](docs/decisions/README.md). `confirmado`
 - Convenciones:
   - enums `pgEnum`, `gen_random_uuid()`, `updated_at` en la aplicación y validación con `zod`;
   - resultados tipados con `Failure`, y orden de autorización `must_change_password` → rol → recurso filtrado por organización; un id que no es UUID devuelve `VALIDATION_ERROR` sin `fields` (4.4, D-6);
@@ -150,7 +156,11 @@ Nivel del proyecto: **validado localmente y en CI** para el esquema de conversac
   - un spec que vacía una tabla con `TRUNCATE` vacía en la misma sentencia las tablas que la referencian, sin `CASCADE` (6.1);
   - las tablas que no se borran tienen un trigger, porque la aplicación todavía se conecta con el rol dueño; su test lo quita en una transacción revertida para demostrar que el cambio pasaría (6.1, D-3);
   - la coherencia interna de una fila de eventos va en `CHECK`; las reglas que cruzan filas (`started_at` igual al primer mensaje) las garantizan los productores (6.1, D-2);
-  - para comparar un default `now()`, se usa el `RETURNING` de la misma sentencia (6.1).
+  - para comparar un default `now()`, se usa el `RETURNING` de la misma sentencia (6.1);
+  - un seed que escribe una tabla de solo inserción usa ids fijos y `ON CONFLICT DO NOTHING`, y fija sus fechas en la primera corrida; un seed nunca usa `TRUNCATE` (6.2, D-2);
+  - los datos compartidos de un seed no entran en `seedBasic`, que reponen los end-to-end antes de cada caso (6.2, D-1);
+  - un generador pseudoaleatorio por fila, derivado de su índice, hace que la fila *i* sea la misma con cualquier tamaño (6.2);
+  - `drizzle-orm` expande un arreglo de JavaScript en una lista de parámetros: para pasar un arreglo a SQL se usa `jsonb` (6.2).
 
   `confirmado`
 - `forbidden()` y `unauthorized()` de Next.js 16.3 no se usan: son experimentales. `historico`
@@ -160,6 +170,8 @@ Nivel del proyecto: **validado localmente y en CI** para el esquema de conversac
 - **Eliminar los datos de un cliente** frente a `audit_logs` de solo inserción, que guarda su teléfono y notas (5.2, D-6): Fase 8, registrado en Risks. `confirmado`
 - **Orden de la lista de clientes por última interacción y sección de conversaciones de la pantalla 7**: 6.3 y 6.4 (5.2, D-4; 5.3, D-3). `confirmado`
 - **Carrera de `document-title` en `clients.spec.ts`, caso 1**: axe encontró el `<title>` vacío justo después de navegar desde el menú, y la CI de `5a60334` falló una vez. El caso no espera el título antes de analizar. Se endurece (`await expect(page).toHaveTitle(...)` antes de axe, en todos los specs que navegan en el cliente) en una subfase que autorice los specs, probablemente la 6.4. `confirmado`
+- **Volumen de productos e inventario, y `EXPLAIN` de las consultas de las Fases 4 y 5**: Fase 8 (6.2, D-4; Risks). `confirmado`
+- **Cliente creado por el usuario en desarrollo**: "Matias Garavano", en la organización de ejemplo (2026-09-16 18:12 UTC). Los seeds no lo tocan. `confirmado`
 - **Columnas de resultado de `ingestion_events`** (conversación y mensaje creados): las decide el contrato de la 6.5.1 y las suma la 6.5.2 si hacen falta (6.1, D-4). `confirmado`
 - **Retención de `messages`**: la Fase 9 revisa también su trigger de solo inserción. `confirmado`
 - **Verificación de `Origin`** (`src/shared/http/`): con el primer Route Handler mutante (Fase 6). `confirmado`
@@ -182,7 +194,7 @@ Nivel del proyecto: **validado localmente y en CI** para el esquema de conversac
 - **CI sin protección de rama**: ninguna subfase se cierra sin verificar la CI de su commit con `gh run view`, incluidos sus pasos. `confirmado`
 - **Docker Desktop no arranca solo**: `docker compose up -d --wait` falla hasta abrirlo. `confirmado`
 - **Memoria de la máquina local**: 7,7 GB con muy poca libre; `npm run build` puede fallar con muchas aplicaciones abiertas. `confirmado`
-- **Ver el CRM en local**: `docker compose up -d --wait`, `npm run db:migrate`, `npm run db:seed` y `npm run dev`, en `http://localhost:3000`. El `.env` local tiene `SEED_USER_PASSWORD`; la base de desarrollo está migrada hasta la 0012 y sembrada, sin productos ni clientes. El usuario ya sabe levantarlo. `confirmado`
+- **Ver el CRM en local**: `docker compose up -d --wait`, `npm run db:migrate`, `npm run db:seed` y `npm run dev`, en `http://localhost:3000`. El `.env` local tiene `SEED_USER_PASSWORD`; la base de desarrollo está migrada hasta la 0012, con el seed básico, las conversaciones de ejemplo y el volumen (`volumen@example.com`), y sin productos. El usuario ya sabe levantarlo. `confirmado`
 - **No hay Python en la máquina**: los scripts van en Node o PowerShell. `confirmado`
 - **End-to-end local**: requiere `npm run build` antes de `npm run test:e2e` (también después de cambiar un módulo, para una corrida de mutación), y `npx playwright install chromium` una vez por máquina. La base `<nombre>_e2e` se recrea en cada ejecución. `confirmado`
 - **Orden del historial**: depende del reloj del servidor (4.3.3, D-1). `confirmado`
@@ -218,10 +230,10 @@ Ninguno en el repositorio. `confirmado`
 
 ## 10. Autorizaciones vigentes
 
-**Ninguna.** La ejecución de las migraciones en desarrollo, el commit y push de la 6.1 y de su cierre, y los cambios en Notion quedan consumidos al ejecutarse. Instalar dependencias, ejecutar migraciones, cambios en Notion y cualquier operación Git futura necesitan autorización explícita.
+**Ninguna.** La ejecución de los seeds en desarrollo, el commit y push de la 6.2 y de su cierre, y los cambios en Notion quedan consumidos al ejecutarse. Instalar dependencias, ejecutar migraciones, cambios en Notion y cualquier operación Git futura necesitan autorización explícita.
 
 ## 11. Aspectos pendientes de confirmar
 
-- Que el commit de cierre de la 6.1 esté en `origin/main` con la CI en verde.
-- Qué subfase sigue: la 6.2 (orden de Notion) o la 6.5.1 (camino paralelo).
+- Que el commit de cierre de la 6.2 esté en `origin/main` con la CI en verde.
+- Qué subfase sigue: la 6.3 (orden de Notion) o la 6.5.1 (camino paralelo).
 - Alcance exacto de la subfase elegida, al preparar su brief.
