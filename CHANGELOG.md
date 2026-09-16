@@ -2,6 +2,32 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-16 — Subfase 6.5.1 cerrada (Contrato de ingestión y validación)
+
+**Certifica:**
+
+- **Contrato de ingestión v1** en [docs/contracts/ingestion-v1.md](docs/contracts/ingestion-v1.md), según el [brief-6.5.1](docs/decisions/brief-6.5.1-contrato-de-ingestion.md), con D-1 a D-7 resueltas según la recomendación:
+  - un solo tipo de evento, `message.recorded`: un mensaje que crea su conversación con el primero (D-2);
+  - organización y `source` tomados de la credencial de servicio, nunca del payload (D-3);
+  - `payload_hash`: SHA-256 del evento validado y normalizado, con claves ordenadas, y un vector de prueba (D-4);
+  - reenvíos que devuelven solo referencias del emisor: `ingestion_events` no suma columnas, y queda cerrado el pendiente del brief-6.1, D-4 (D-5);
+  - solo los rechazos de negocio quedan como `failed`; MetricsCatalog lo aclara para la métrica 12 (D-6);
+  - la ingestión nunca crea clientes (D-7);
+  - las reglas de la proyección que implementa la 6.5.2.
+- **Validación ejecutable** en `src/modules/ingestion/` (`contract.ts` e `index.ts`), pura y sin otros módulos: esquema `zod` estricto, fechas normalizadas a UTC, rechazo de lo que PostgreSQL no acepta (NUL y UTF-16 inválido) y errores que nombran el campo sin repetir el payload.
+- **Desvío confirmado por el usuario**: el límite del request es de 64 KiB en lugar de 16 KB, porque 16 KB no alcanzaba para un cuerpo de 4096 caracteres con emojis o escapes.
+- **Tests**: 28 casos en `contract.test.ts`, incluidos el vector y 11 fixtures de `tests/fixtures/ingestion/v1/` marcados como forma asumida. Mutación: con la serialización sin ordenar, fallan 8.
+- **Suite local**: `npm run test` pasa 574 de 574. Con la base detenida pasan typecheck, lint, formato, guardas, unitarios y build, y `db:generate` no produce migraciones.
+- **CI**: [35158967940](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35158967940), commit `6f026a9`, en verde con todos los pasos.
+- **Nivel alcanzado**: **validado localmente y en CI** para la validación del payload y el hash; **diseñado** para el resto del contrato.
+
+**No certifica:**
+
+- **Endpoint, registro, reenvíos y proyección**: 6.5.2.
+- **Credencial de servicio y límite de tasa**: 6.5.3.
+- **Compatibilidad con un emisor real**: los fixtures tienen forma asumida; queda para el proyecto de integración.
+- **Revisión independiente**: es autoevaluación del mismo agente.
+
 ## 2026-09-16 — Subfase 6.4 cerrada (UI de conversaciones)
 
 **Certifica:**

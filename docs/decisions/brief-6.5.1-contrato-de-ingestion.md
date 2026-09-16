@@ -264,6 +264,10 @@ La revisión es una autoevaluación (`self_assessment: true`).
 - Si cualquier paso requiere configurar o consultar un emisor real.
 - Antes de cualquier commit, push o cambio en Notion.
 
+## Cierre (2026-09-16)
+
+Cerrado con autorización del usuario, que confirmó el límite de 64 KiB. Se cumplen los ocho criterios. La CI quedó en verde en el commit `6f026a9` ([ejecución 35158967940](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35158967940), todos los pasos). Nivel alcanzado: **validado localmente y en CI** para la validación del payload y el hash, y **diseñado** para el resto del contrato. La evidencia está en [CHANGELOG.md](../../CHANGELOG.md).
+
 ## Ejecución (2026-09-16)
 
 La implementación está terminada y el cierre está pendiente. No se activó ninguna condición de detención.
@@ -294,4 +298,4 @@ La implementación está terminada y el cierre está pendiente. No se activó ni
 - **Sin cambios**: `src/modules/` fuera de `ingestion`, los tests existentes, las dependencias y la configuración.
 - **Guarda de referencias prohibidas**: en verde.
 
-Pendiente: commit, push, CI (AC-7) y cierre.
+Pendiente al terminar la ejecución (resuelto en el cierre): commit, push, CI (AC-7) y cierre.
