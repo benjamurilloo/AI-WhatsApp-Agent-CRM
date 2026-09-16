@@ -2,6 +2,58 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-16 — Fase 4 cerrada (Productos e inventario)
+
+**Certifica:**
+
+- **Las siete subfases cerradas con confirmación del usuario**, en el orden 4.0 → 4.1 → 4.2 → 4.3.1 → 4.3.2 → 4.3.3 → 4.4. La 4.3 no tuvo implementación propia: agrupa a la 4.3.1, la 4.3.2 y la 4.3.3. El detalle de cada una está en sus entradas, debajo.
+- **Criterios de aceptación del [Roadmap](docs/planning/Roadmap.md)**:
+  - ningún camino modifica `quantity_on_hand` sin su movimiento: `lockBalance` y `applyStockChange` son las únicas escrituras, vigiladas por `tests/guards/stock-writes.test.ts`, y `inventory-adjustment.test.ts` prueba que movimiento, saldo y auditoría son atómicos;
+  - los ajustes concurrentes no dejan saldo negativo: `inventory-concurrency.test.ts`, con la evidencia del brief-4.3.2 de que falla sin sus bloqueos;
+  - los movimientos son inmutables en la base: `catalog-inventory-schema.test.ts` verifica que `UPDATE` y `DELETE` sobre `inventory_movements` se rechazan.
+- **Gate de salida**: suite de inventario en verde, con los invariantes de no negatividad e inmutabilidad, y CI en verde en el commit `dbdf5fa` ([ejecución 35099148671](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35099148671)), end-to-end incluido.
+- **Entregables**: FR-PROD-01 a 09 y FR-AUD-02 para productos (la lectura de auditoría quedó pendiente desde la 4.2 y se entregó en la 4.4); diseño visual base con modo claro y oscuro (4.0, sumada a pedido del usuario).
+- **Hito demostrable 2**: ajuste de stock con historial visible, de punta a punta en `tests/e2e/products.spec.ts`.
+- **Nivel alcanzado**:
+  - **validado en integración** para las pantallas 3, 4 y 5, que supera el nivel "validado localmente" que pedía el Roadmap para el dominio;
+  - **validado localmente y en CI** para el esquema, el servicio de catálogo, el ajuste de stock secuencial y bajo concurrencia, el historial de movimientos y la lectura de auditoría.
+
+**No certifica:**
+
+- **La aplicación restringida por `crm_app`**: sigue conectándose con el rol dueño; la defensa efectiva de `inventory_movements` y `audit_logs` es el trigger. Fases 8 y 9.
+- **Rendimiento con catálogos o historiales grandes**, incluido el costo de `offset` en páginas lejanas: Fase 8.
+- **Búsqueda sin distinguir acentos**: Fase 8.
+- **El orden del historial con un reloj del servidor que retrocede**: límite aceptado en la 4.3.3.
+- **Firefox y WebKit**.
+- **Revisión independiente**: es autoevaluación del mismo agente. El usuario aprobó los briefs y los cierres.
+
+## 2026-09-16 — Subfase 4.4 cerrada (UI de productos e inventario)
+
+**Certifica:**
+
+- **Pantallas 3, 4 y 5** según Screens.md, los wireframes 03 a 05 y el [brief-4.4](docs/decisions/brief-4.4-ui-de-productos-e-inventario.md), con D-1 a D-6 resueltas según la recomendación:
+  - `/productos`: búsqueda por nombre o SKU, filtros de estado de stock y actividad y página en la URL; tabla en escritorio y tarjetas en móvil; estado de stock con texto e ícono; "no hay productos" distinto de "sin resultados"; alta solo para `admin`;
+  - `/productos/nuevo` y la edición en `/productos/[productId]`: validación en línea y `CONFLICT` por SKU en el campo; desactivar y reactivar con confirmación como segundo paso;
+  - `/productos/[productId]`: datos, stock, estado, últimos movimientos y, solo para `admin`, el historial de auditoría paginado con ediciones y ajustes en la misma lista;
+  - `/productos/[productId]/movimientos`: ajuste para `admin` con saldo resultante anunciado; mensajes propios de `negative_stock`, `stock_limit`, `inactive_product` y `CONFLICT` con el saldo nuevo; historial para `admin` y `viewer` con filtros de tipo y período ("Todo" por defecto, D-4) y fechas en la zona de la organización.
+- **Lectura de auditoría (FR-AUD-02)**: `listEntityAuditLogs` en `audit`, una sola consulta paginada con varios tipos de entidad, sin contexto ni rol; `listProductAudit` en `catalog` autoriza `admin`, verifica la organización y compone el autor con `auth` (ajuste 1 del brief, elegido por el usuario para evitar el ciclo `audit` ↔ `organizations`).
+- **Presentación compartida**: `formatQuantity` ("2.500" → "2,5"), formato de fechas en la zona de la organización y `organizationId` y duración en `logEvent`, registrados por cada Server Action de las tres pantallas.
+- **`VALIDATION_ERROR` por id inválido unificado sin `fields`** (D-6).
+- **Defecto encontrado por el end-to-end y corregido**: un ajuste rechazado perdía el motivo escrito y dejaba el saldo y el historial viejos en pantalla (ajuste 2 del brief).
+- **Tests**: 13 end-to-end en `products.spec.ts`, con axe sin violaciones WCAG 2.x A ni AA en cada estado, en claro y oscuro, teclado y móvil a 375 px; 6 de integración en `product-audit.test.ts`; unitarios de filtros, mensajes, resumen de auditoría, fechas, cantidades y log.
+- **Suite local**: `npm run test` pasa 374 de 374 y `npm run test:e2e` 38 de 38; typecheck, lint y formato en verde; `db:generate` sin cambios de esquema. Sin dependencias nuevas ni migraciones.
+- **CI**: [35099148671](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35099148671), commit `dbdf5fa`, en verde con todos los pasos.
+- **Documentación**: Overview (lectura de auditoría), RepositoryStructure, TraceabilityMatrix, TestingStrategy, Screens y wireframes 03 a 05 con sus desvíos.
+- **Nivel alcanzado**: **validado en integración** para las pantallas 3, 4 y 5; **validado localmente y en CI** para la lectura de auditoría y los formateadores.
+
+**No certifica:**
+
+- **"Bajo stock" con color propio**: usa el token de énfasis existente, porque la 4.0 no define uno de advertencia (ajuste 3 del brief).
+- **El orden de `audit_logs` con registros simultáneos**: su `created_at` sigue con `now()` y desempata por `id` (hallazgo 3).
+- **La estabilidad de `product-audit.test.ts` bajo carga**: superó su tiempo de espera una vez en local y no se repitió (ajuste 5 del brief).
+- **Rendimiento con catálogos grandes**, **Firefox y WebKit**, y la aplicación en staging o con `crm_app`: Fases 8 y 9.
+- **Revisión independiente**: es autoevaluación del mismo agente.
+
 ## 2026-09-15 — Subfase 4.3.3 cerrada (Historial de movimientos)
 
 **Certifica:**

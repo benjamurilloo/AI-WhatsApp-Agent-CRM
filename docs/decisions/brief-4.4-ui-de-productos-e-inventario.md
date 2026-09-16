@@ -205,6 +205,10 @@ Cada decisión conserva las opciones evaluadas y la recomendación.
 
 La revisión es una autoevaluación (`self_assessment: true`).
 
+## Cierre
+
+Cerrada con confirmación del usuario el 2026-09-16. AC-1 a AC-12 cumplidos, con el ajuste 1 sobre la forma de D-1: `npm run test` 374 de 374, `npm run test:e2e` 38 de 38, `db:generate` sin cambios de esquema, y CI en verde en el commit `dbdf5fa` ([ejecución 35099148671](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35099148671)). Nivel: **validado en integración** para las pantallas 3, 4 y 5; **validado localmente y en CI** para la lectura de auditoría y los formateadores. Detalle en `CHANGELOG.md`. Revisión: autoevaluación (`self_assessment: true`).
+
 ## Ajustes durante la implementación
 
 1. **D-1 se aplica sin que `audit` autorice ni componga el autor.** Autorizar dentro de `audit` obligaba a importar `organizations`, que ya importa `audit` para registrar sus cambios: sería un ciclo, y Overview declara que `audit` depende de `auth` y `organizations` solo en `schema.ts` para sus claves foráneas. El nombre del autor tiene el mismo problema con `auth`. El usuario eligió el 2026-09-15 la opción (a): `audit` expone `listEntityAuditLogs(query)`, una consulta sin contexto ni rol, y `catalog` agrega `listProductAudit(context, productId, page)`, que autoriza `admin`, verifica que el producto sea de la organización y compone el autor con `auth`, igual que `inventory` en el historial de movimientos. La consulta sigue siendo una sola, con los dos tipos de entidad y paginada en la base, como aprobaste. En la Fase 5, clientes tendrá su equivalente en `crm`.
