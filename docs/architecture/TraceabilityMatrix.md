@@ -132,7 +132,7 @@ Aparecieron al armar la matriz, fuera de las once decisiones del brief. Resuelto
 | H-2 | `organizations.slug` ("usado en URLs") no tenía consumidor con una organización por usuario. | Resuelto: se quitó la columna con su índice único. |
 | H-3 | La búsqueda de las pantallas 3 y 6 no define si es por prefijo o por contenido. | Resuelto: búsqueda por prefijo sin distinguir mayúsculas, con índice sobre `lower(...) text_pattern_ops`, en productos ([brief-4.2](../decisions/brief-4.2-servicio-de-catalogo.md), D-3) y en clientes ([brief-5.1](../decisions/brief-5.1-migracion-de-clientes.md), D-2). |
 | H-4 | [SecurityModel.md](SecurityModel.md) decía "organización(es)", contra el ADR 0010. | Resuelto: corregido, junto con `Scope.md` (mínimos) y el riesgo de sesión multi-organización de `Risks.md`. |
-| H-5 | Falta un test de que la respuesta a un `viewer` no contiene el teléfono completo (FR-CLI-06). | Resuelto: el enmascarado vive en `crm` y `tests/integration/crm.test.ts` verifica que la respuesta a un `viewer` no contiene el número ([brief-5.2](../decisions/brief-5.2-servicio-de-clientes.md), D-2). El HTML de las pantallas 6 y 7 lo verifica la 5.3. |
+| H-5 | Falta un test de que la respuesta a un `viewer` no contiene el teléfono completo (FR-CLI-06). | Resuelto: el enmascarado vive en `crm` y `tests/integration/crm.test.ts` verifica que la respuesta a un `viewer` no contiene el número ([brief-5.2](../decisions/brief-5.2-servicio-de-clientes.md), D-2). En pantalla, `tests/e2e/clients.spec.ts` (caso 9) verifica que ningún documento ni respuesta de RSC que recibe el navegador de un `viewer` contiene el número ([brief-5.3](../decisions/brief-5.3-ui-de-clientes.md), D-5). |
 
 ## Observaciones
 

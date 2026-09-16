@@ -55,6 +55,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-4.4](brief-4.4-ui-de-productos-e-inventario.md) | 4.4 — UI de productos e inventario | aprobado el 2026-09-15 y cerrado el 2026-09-16 |
 | [brief-5.1](brief-5.1-migracion-de-clientes.md) | 5.1 — Migración de clientes | aprobado y cerrado el 2026-09-16 |
 | [brief-5.2](brief-5.2-servicio-de-clientes.md) | 5.2 — Servicio de clientes | aprobado y cerrado el 2026-09-16 |
+| [brief-5.3](brief-5.3-ui-de-clientes.md) | 5.3 — UI de clientes | aprobado el 2026-09-16 |
 
 ## Plantilla
 

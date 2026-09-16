@@ -166,6 +166,7 @@ Ninguna carpeta se crea vacía: nace con el primer archivo real de la subfase qu
 | 4.3.3 — Historial de movimientos | En `src/modules/inventory/`: `listStockMovements`, la validación de filtros y la página en `service.ts`, y las consultas del historial en `repository.ts`, con sus tests unitarios; `getOrganizationTimezone` en `organizations`; `drizzle/0007_*` (`created_at` con `clock_timestamp()`); `tests/integration/inventory-history.test.ts` |
 | 5.1 — Migración de clientes | `src/modules/crm/schema.ts` (`clients`), solo con su esquema; `drizzle/0008_*` y `drizzle/0009_*` (privilegios); `tests/integration/clients-schema.test.ts` |
 | 5.2 — Servicio de clientes | En `src/modules/crm/`: `index.ts`, `service.ts` (casos de uso, validación, búsqueda, lista y auditoría del cliente), `repository.ts` y `phone.ts` (normalización y enmascarado), con sus tests unitarios; `tests/integration/crm.test.ts` |
+| 5.3 — UI de clientes | `src/app/(autenticado)/clientes/` completo (lista, alta y detalle con edición, desactivación y auditoría), con sus `filters.ts`, `messages.ts`, `actions.ts`, `phone-display.ts` y `phone-text.tsx`, el resumen de auditoría, los componentes de cliente y sus tests unitarios; enlace "Clientes" en el marco común; `tests/e2e/clients.spec.ts` |
 | Fase 4 | `src/modules/catalog/` e `inventory/` |
 | Fase 5 | `src/modules/crm/` |
 | Fase 6 | `src/modules/conversations/` e `ingestion/` |
