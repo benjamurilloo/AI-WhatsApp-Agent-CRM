@@ -96,6 +96,7 @@ Cada índice tiene al menos una consulta real que lo usa.
 | Filtro por estado de stock | pantalla 3 | Es derivado (FR-PROD-05) y no se puede indexar sin desnormalizar. Se evalúa sobre los productos de una organización, un volumen del orden de cientos en el MVP. |
 | Orden por nombre de productos | pantalla 3 | Un índice `text_pattern_ops` sirve prefijos pero no el orden con la collation de la base. Se ordena después de filtrar por organización; se confirma con `EXPLAIN` en la Fase 4. |
 | Búsqueda por contenido (no prefijo) de nombre o SKU | pantallas 3 y 6 | No se ofrece: la búsqueda es por prefijo (hallazgo H-3, resuelto en la 4.2 y la 5.1). Buscar por contenido necesitaría otro tipo de índice. |
+| Orden por nombre de clientes | pantalla 6 | Mientras no haya conversaciones, la lista se ordena por `lower(display_name)` con desempate por `id` ([brief-5.2](../decisions/brief-5.2-servicio-de-clientes.md), D-4), sobre los clientes de una organización. En la Fase 6 pasa a última interacción con `conversations (organization_id, client_id, last_message_at desc)`; como `conversations` depende de `crm`, esa composición no la hace `crm`. |
 | Filtro activos o inactivos | pantallas 3, 6 y 10 | Columna booleana de baja selectividad; se aplica sobre el índice de la organización. |
 | Filtro por estado y canal de conversación | pantallas 7 y 8 | Se aplica sobre el índice por último mensaje. `channel` solo tiene un valor en el MVP. |
 | Filtro por tipo y período de movimientos | pantalla 5 | Se aplica sobre el historial de un solo producto, ya acotado por su índice. |
@@ -131,7 +132,7 @@ Aparecieron al armar la matriz, fuera de las once decisiones del brief. Resuelto
 | H-2 | `organizations.slug` ("usado en URLs") no tenía consumidor con una organización por usuario. | Resuelto: se quitó la columna con su índice único. |
 | H-3 | La búsqueda de las pantallas 3 y 6 no define si es por prefijo o por contenido. | Resuelto: búsqueda por prefijo sin distinguir mayúsculas, con índice sobre `lower(...) text_pattern_ops`, en productos ([brief-4.2](../decisions/brief-4.2-servicio-de-catalogo.md), D-3) y en clientes ([brief-5.1](../decisions/brief-5.1-migracion-de-clientes.md), D-2). |
 | H-4 | [SecurityModel.md](SecurityModel.md) decía "organización(es)", contra el ADR 0010. | Resuelto: corregido, junto con `Scope.md` (mínimos) y el riesgo de sesión multi-organización de `Risks.md`. |
-| H-5 | Falta un test de que la respuesta a un `viewer` no contiene el teléfono completo (FR-CLI-06). | Diferido a la Fase 5, registrado en [Risks.md](../planning/Risks.md). |
+| H-5 | Falta un test de que la respuesta a un `viewer` no contiene el teléfono completo (FR-CLI-06). | Resuelto: el enmascarado vive en `crm` y `tests/integration/crm.test.ts` verifica que la respuesta a un `viewer` no contiene el número ([brief-5.2](../decisions/brief-5.2-servicio-de-clientes.md), D-2). El HTML de las pantallas 6 y 7 lo verifica la 5.3. |
 
 ## Observaciones
 

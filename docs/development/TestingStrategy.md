@@ -33,6 +33,14 @@
     - SKU duplicado, también con otras mayúsculas, en alta y en edición → `CONFLICT` sin auditoría; dos altas simultáneas con el mismo SKU → una sola se crea;
     - `viewer` y contraseña pendiente → `FORBIDDEN` en escrituras; producto de otra organización → `NOT_FOUND`; id inválido → `VALIDATION_ERROR`;
     - lista con saldo y estado contra la base: prefijo de nombre y SKU exacto sin distinguir mayúsculas, `%` y `_` literales, filtros de estado y actividad, un producto sin fila de `inventories` como `sin_stock`, orden y paginación.
+  - Servicio de clientes ([brief-5.2](../decisions/brief-5.2-servicio-de-clientes.md)), cubierto desde la 5.2 en `tests/integration/crm.test.ts`:
+    - alta, edición, desactivación y reactivación auditadas en la misma transacción con `diff` exacto; un cambio sin diferencias no escribe ni audita; si la auditoría falla, el cliente no persiste;
+    - teléfono duplicado, escrito con otro formato o de un cliente inactivo, en alta y en edición → `CONFLICT` sin auditoría; dos altas simultáneas con el mismo teléfono → una sola se crea;
+    - `viewer` y contraseña pendiente → `FORBIDDEN` en escrituras; cliente de otra organización → `NOT_FOUND`; id inválido → `VALIDATION_ERROR`;
+    - lista: prefijo de nombre sin distinguir mayúsculas con `%` y `_` literales, teléfono completo en cualquier formato y no por fragmentos, actividad, orden por nombre con desempate, paginación y totales;
+    - **H-5 (FR-CLI-06)**: la respuesta a un `viewer` de `getClient` y de `searchClients`, también buscando por el teléfono completo, serializada a JSON, no contiene el número ni sus dígitos anteriores a los últimos 4; con el enmascarado quitado, el test falla (evidencia en el brief-5.2);
+    - auditoría del cliente solo para `admin` de la propia organización, con autor.
+  - Normalización del teléfono a E.164, enmascarado por rol (incluidos los números de 4 dígitos o menos) y validación de clientes, en tests unitarios de `crm`.
   - Bordes del estado de stock (FR-PROD-05) y cantidades exactas, en tests unitarios de `catalog` y `src/shared/quantity/`.
   - Ajuste de stock ([brief-4.3.1](../decisions/brief-4.3.1-transaccion-de-ajuste-de-stock.md)), cubierto desde la 4.3.1 en `tests/integration/inventory-adjustment.test.ts`, sin conexiones simultáneas:
     - el primer ajuste crea la fila de `inventories`, el movimiento con `balance_after` y la auditoría `inventory` / `stock_adjustment`; en una serie, después de cada ajuste, `balance_after` del último movimiento es igual a `quantity_on_hand`;

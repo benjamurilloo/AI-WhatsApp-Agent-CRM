@@ -25,7 +25,7 @@ Monolito modular en TypeScript. Una sola aplicación desplegable, organizada int
 | `organizations` | Organización, membresías, roles | `auth` |
 | `catalog` | Productos, estados de stock derivados, historial de auditoría del producto | `organizations`, `audit`, `auth` (nombre del autor, brief-4.4) |
 | `inventory` | Movimientos de inventario, ajustes transaccionales, saldo, historial de movimientos | `catalog`, `organizations`, `audit`, `auth` (nombre del autor, brief-4.3.3) |
-| `crm` | Clientes | `organizations` |
+| `crm` | Clientes, teléfono enmascarado por rol, historial de auditoría del cliente | `organizations`, `audit`, `auth` (nombre del autor, brief-5.2) |
 | `conversations` | Conversaciones, mensajes, timeline | `organizations`, `crm` |
 | `ingestion` | Contrato de idempotencia, registro de eventos | `conversations`, `organizations` |
 | `analytics` | Cálculo de métricas desde datos transaccionales | `conversations`, `organizations` |

@@ -30,7 +30,11 @@ Toda entrada de este índice lleva fase límite. "Se ve más adelante" no es una
 | Frecuencia y prueba de restauración de backups | [architecture/Overview.md](../architecture/Overview.md) | Subfase 9.2 |
 | Validación de las personas contra el uso real | [product/Personas.md](../product/Personas.md) | Fase 9 |
 | Cuándo priorizar un segundo canal además de WhatsApp | esta tabla de riesgos | Después del MVP (Fase 10) |
-| Test de que la respuesta a un `viewer` no contiene el teléfono completo (H-5, FR-CLI-06) | [architecture/TraceabilityMatrix.md](../architecture/TraceabilityMatrix.md) | Fase 5 |
+| Eliminar los datos de un cliente a pedido cuando `audit_logs`, de solo inserción, guarda su teléfono y sus notas ([brief-5.2](../decisions/brief-5.2-servicio-de-clientes.md), D-6) | [product/NonFunctionalRequirements.md](../product/NonFunctionalRequirements.md) y [ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md) | Fase 8, con el procedimiento de exportación y eliminación |
+
+### Cerradas en la subfase 5.2 (2026-09-16)
+
+- Test de que la respuesta a un `viewer` no contiene el teléfono completo (H-5, FR-CLI-06) → `tests/integration/crm.test.ts`, con el enmascarado en `crm` ([brief-5.2](../decisions/brief-5.2-servicio-de-clientes.md), D-2).
 
 ### Cerradas en las subfases 4.2 y 5.1 (2026-09-15 y 2026-09-16)
 

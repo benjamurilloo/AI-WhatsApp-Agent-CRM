@@ -30,6 +30,7 @@
 
 - Server-side, en cada caso de uso de aplicación, nunca delegada solo a la UI.
 - Modelo: en el MVP un usuario pertenece a una sola organización ([ADR 0010](../decisions/0010-un-usuario-una-organizacion-en-el-mvp.md)) vía `organization_members` con rol `admin` o `viewer`. Toda operación de escritura sensible (productos, clientes, ajustes de stock, gestión de usuarios) requiere `admin`. Lectura permitida a ambos roles dentro de su organización.
+- Teléfono del cliente (FR-CLI-06, [brief-5.2](../decisions/brief-5.2-servicio-de-clientes.md), D-2): el enmascarado vive en el módulo `crm`, no en la presentación. Sus lecturas devuelven a un `viewer` solo los últimos 4 dígitos (ninguno si el número tiene 4 o menos), así que el número completo nunca sale de `crm` hacia una página de `viewer`. La búsqueda por teléfono completo funciona para ambos roles: **riesgo aceptado** en la 1.3 (D-1), un `viewer` puede confirmar si un número es cliente.
 - Aislamiento por organización: todo repositorio de datos recibe `organization_id` de la sesión autenticada, nunca de un parámetro de request sin verificar contra la membresía del usuario.
 - Implementación ([brief-3.4](../decisions/brief-3.4-autorizacion-y-errores.md)):
   - `organizations.getAuthContext(token)` resuelve usuario, organización, rol y `must_change_password` en cada request. Sin sesión válida, usuario inactivo o sin membresía → `UNAUTHENTICATED`.
