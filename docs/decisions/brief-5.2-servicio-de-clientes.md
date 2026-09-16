@@ -249,3 +249,19 @@ La revisión es una autoevaluación (`self_assessment: true`).
 - Si aparece la necesidad de pantallas, Server Actions o datos de conversaciones.
 - Si un caso de uso no puede evitar que un `viewer` reciba el número completo.
 - Antes de commit, de push o de cambios en Notion.
+
+## Cierre (2026-09-16)
+
+Cerrado con confirmación del usuario. Los once criterios se cumplen; la evidencia está en [CHANGELOG.md](../../CHANGELOG.md). CI en verde en el commit `62e6b3c` ([ejecución 35113732213](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35113732213)). Nivel alcanzado: **validado localmente y en CI**.
+
+### Evidencia de mutación (AC-7)
+
+Con `phoneForRole` devolviendo `{ kind: "full", e164 }` para cualquier rol, el caso "la respuesta a viewer no contiene el número en la lectura ni en la lista" de `crm.test.ts` falló (1 fallido, 1 pasado de los 2 casos de H-5). Con el código restaurado, los dos pasaron.
+
+### Ajustes durante la ejecución
+
+- **Ninguna condición de detención se activó**: sin migraciones ni dependencias, `crm` solo importa `organizations`, `audit` y `auth`, y ningún test existente cambió.
+- **`AuditLogEntry` no incluye `entityId`**: el test de la auditoría del cliente prueba el aislamiento con el total de registros, no comparando ids.
+- **Orden y collation**: el collation de la base ignora los espacios al ordenar ("anabel Ruiz" antes que "Ana Pérez"). El test de búsqueda por prefijo compara sin orden; el orden se prueba en su propio caso. Es el límite aceptado en D-4.
+- **Un texto que mezcla `+` y letras** ("+54 Ana") no normaliza como teléfono y se busca como prefijo de nombre, cubierto en los tests unitarios de `interpretSearch`.
+- **Normalización**: los espacios no separables también se quitan, porque la expresión `\s` los incluye; los dígitos no ASCII se rechazan.

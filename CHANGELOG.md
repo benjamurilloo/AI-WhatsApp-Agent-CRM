@@ -2,6 +2,36 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-16 — Subfase 5.2 cerrada (Servicio de clientes)
+
+**Certifica:**
+
+- **Servicio de clientes** (FR-CLI-01, 02, 03 y 05) según el [brief-5.2](docs/decisions/brief-5.2-servicio-de-clientes.md), con D-1 a D-7 resueltas según la recomendación:
+  - teléfono aceptado solo en formato internacional, con separadores quitados y sin adivinar el país (D-1);
+  - el enmascarado vive en `crm`: un `viewer` recibe solo los últimos 4 dígitos, y ninguno si el número tiene 4 o menos (D-2, FR-CLI-06);
+  - búsqueda por teléfono completo en cualquier formato o por prefijo de nombre sin distinguir mayúsculas, con `%` y `_` literales (D-3);
+  - lista ordenada por nombre con desempate por `id`, filtrada y paginada de a 25 en SQL (D-4);
+  - nombre de 1 a 200 caracteres y notas de hasta 1 000, recortados (D-5);
+  - `diff` de auditoría completo, con teléfono y notas (D-6);
+  - `listClientAudit` para `admin`, con autor compuesto por `auth` (D-7, FR-AUD-02).
+- **Escrituras**: alta, edición, desactivación y reactivación auditadas en la misma transacción; un cambio sin diferencias no escribe ni audita; `CONFLICT` por teléfono, también escrito con otro formato o de un cliente inactivo; dos altas simultáneas con el mismo teléfono crean una sola.
+- **Autorización y aislamiento**: `viewer` y contraseña pendiente → `FORBIDDEN` en escrituras y auditoría; cliente de otra organización → `NOT_FOUND`; id inválido → `VALIDATION_ERROR` sin `fields`.
+- **H-5 cerrado**: la respuesta a un `viewer` de `getClient` y `searchClients`, incluida una búsqueda por el número completo, no contiene el número; con el enmascarado quitado, el test falla (evidencia en el brief).
+- **Tests**: 17 unitarios en `crm` y 25 de integración en `tests/integration/crm.test.ts`. Ningún test existente cambió.
+- **Suite local**: `npm run test` pasa 426 de 426 (165 unitarios, 30 guardas y 231 de integración); `npm run test:e2e` pasa 38 de 38. Con la base detenida pasan typecheck, lint, formato, guardas, unitarios y build, y `db:generate` informa "No schema changes". `package.json` sin cambios.
+- **CI**: [35113732213](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35113732213), commit `62e6b3c`, en verde con todos los pasos.
+- **Documentación**: Overview (dependencias de `crm`), DataModel, SecurityModel, TraceabilityMatrix, Risks, TestingStrategy, RepositoryStructure y las líneas de estado de `README.md` y `docs/README.md`.
+- **Nivel alcanzado**: **validado localmente y en CI** para el servicio de clientes, el enmascarado del teléfono y la lectura de su auditoría.
+
+**No certifica:**
+
+- **Pantallas 6 y 7**, su accesibilidad y que el HTML del `viewer` no contenga el número: 5.3.
+- **Última interacción y conversaciones del cliente** (FR-CLI-04), y el orden de la lista por última interacción: Fase 6.
+- **Eliminación de los datos de un cliente** frente a `audit_logs` de solo inserción: registrado en Risks para la Fase 8.
+- **Que el número exista o sea de un país**: solo se valida la forma.
+- **Rendimiento de la lista con volumen real**: Fase 8.
+- **Revisión independiente**: es autoevaluación del mismo agente.
+
 ## 2026-09-16 — Subfase 5.1 cerrada (Migración de clientes)
 
 **Certifica:**
