@@ -24,6 +24,9 @@ Este repositorio es la fuente técnica de verdad del proyecto: diseño, contrato
 - [TraceabilityMatrix.md](architecture/TraceabilityMatrix.md): pantalla ↔ requisito ↔ tabla ↔ índice ↔ métrica.
 - [RepositoryStructure.md](architecture/RepositoryStructure.md): carpetas, módulos, frontera entre módulos y qué subfase crea cada parte.
 
+### Contratos
+- [ingestion-v1.md](contracts/ingestion-v1.md): contrato de ingestión v1, con la forma del evento, la idempotencia, `payload_hash` y los errores.
+
 ### Analítica
 - [MetricsCatalog.md](analytics/MetricsCatalog.md): definición exacta y auditable de cada métrica de WhatsApp.
 

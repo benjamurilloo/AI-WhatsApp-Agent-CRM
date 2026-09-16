@@ -1,0 +1,27 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: no proviene de ningún emisor real (brief-6.5.1).",
+  "description": "Mensaje sin texto (por ejemplo, un adjunto que v1 no transporta).",
+  "received_at": "2026-09-16T15:00:00.000Z",
+  "payload": {
+    "contract_version": "1",
+    "event_type": "message.recorded",
+    "event_id": "evt-0004",
+    "occurred_at": "2026-09-16T11:59:58-03:00",
+    "conversation": {
+      "external_ref": "conv-0001",
+      "channel": "whatsapp",
+      "client_phone": "+5491155550001"
+    },
+    "message": {
+      "external_ref": "msg-0004",
+      "direction": "inbound",
+      "sent_at": "2026-09-16T11:59:57.250-03:00",
+      "body_text": null
+    }
+  },
+  "expected": {
+    "ok": true,
+    "payload_hash": "907d03bd871d2fd91e92219430ce84e29a39f0cf2d84d3c0049e4a3eec526feb"
+  }
+}

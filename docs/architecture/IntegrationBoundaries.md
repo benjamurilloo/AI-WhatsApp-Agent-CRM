@@ -1,6 +1,6 @@
 # Límites de Integración
 
-**Estado: diseñado. Nada de lo descrito aquí está conectado a tráfico real.**
+**Estado: diseñado. Nada de lo descrito aquí está conectado a tráfico real.** El contrato de ingestión v1 está en [contracts/ingestion-v1.md](../contracts/ingestion-v1.md) desde la 6.5.1.
 
 ## Regla general
 
@@ -16,10 +16,10 @@ Este sistema no tiene, en el MVP, ninguna integración saliente ni entrante con 
 
 Diseño conceptual (no implementado en el MVP más allá de lo necesario para probarlo con fixtures):
 
-- **Endpoint**: `POST /api/ingestion/events` (nombre indicativo, sujeto a definición en Fase 6).
+- **Endpoint**: `POST /api/ingestion/v1/events`, fijado por el [contrato v1](../contracts/ingestion-v1.md) (brief-6.5.1).
 - **Propósito**: permitir que, en una fase futura, un sistema externo (potencialmente el agente de WhatsApp u otro) cree conversaciones y mensajes en este CRM sin acoplarse a su modelo interno.
 - **Idempotencia**: cada evento se identifica por `(organization_id, source, external_ref)`. Reenviar el mismo evento no debe crear duplicados ni efectos adicionales. Se persiste en `ingestion_events` antes de proyectar el efecto sobre `conversations`/`messages`.
-- **Autenticación**: mecanismo de servicio a servicio (API key por organización o similar) — a definir en Fase 6, explícitamente distinto de la sesión de usuario humano.
+- **Autenticación**: mecanismo de servicio a servicio (API key por organización o similar) — a definir en la 6.5.3, explícitamente distinto de la sesión de usuario humano. De la credencial salen la organización y el `source`; el payload no los trae (brief-6.5.1, D-3).
 - **Versionado**: el contrato se versiona explícitamente (ej. `v1`) desde el primer diseño, para poder evolucionarlo sin rupturas silenciosas.
 - **Estado del MVP**: el endpoint, si se implementa, solo se ejercita mediante tests automatizados y fixtures. No se habilita ningún origen de tráfico real, no se configura ningún webhook saliente desde el agente de WhatsApp hacia este sistema.
 

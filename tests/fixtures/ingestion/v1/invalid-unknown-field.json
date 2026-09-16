@@ -1,0 +1,28 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: no proviene de ningún emisor real (brief-6.5.1).",
+  "description": "Un campo desconocido se rechaza y se informa por su objeto, sin su nombre.",
+  "received_at": "2026-09-16T15:00:00.000Z",
+  "payload": {
+    "contract_version": "1",
+    "event_type": "message.recorded",
+    "event_id": "evt-0001",
+    "occurred_at": "2026-09-16T11:59:58-03:00",
+    "conversation": {
+      "external_ref": "conv-0001",
+      "channel": "whatsapp",
+      "client_phone": "+5491155550001"
+    },
+    "message": {
+      "external_ref": "msg-0001",
+      "direction": "inbound",
+      "sent_at": "2026-09-16T11:59:57.250-03:00",
+      "body_text": "Hola, ¿tienen stock?",
+      "attachment_url": "https://example.com/a.jpg"
+    }
+  },
+  "expected": {
+    "ok": false,
+    "fields": ["message"]
+  }
+}

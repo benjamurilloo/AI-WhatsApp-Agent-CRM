@@ -1,0 +1,27 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: no proviene de ningún emisor real (brief-6.5.1).",
+  "description": "Mensaje saliente de una conversación sin teléfono.",
+  "received_at": "2026-09-16T15:00:00.000Z",
+  "payload": {
+    "contract_version": "1",
+    "event_type": "message.recorded",
+    "event_id": "evt-0002",
+    "occurred_at": "2026-09-16T11:59:58-03:00",
+    "conversation": {
+      "external_ref": "conv-0001",
+      "channel": "whatsapp",
+      "client_phone": null
+    },
+    "message": {
+      "external_ref": "msg-0002",
+      "direction": "outbound",
+      "sent_at": "2026-09-16T11:59:57.250-03:00",
+      "body_text": "Sí, hay 3 unidades."
+    }
+  },
+  "expected": {
+    "ok": true,
+    "payload_hash": "16e35fb47ef9a08730c47848eab7eb1c43e2e25cb46e33736e13ac30a62c747b"
+  }
+}

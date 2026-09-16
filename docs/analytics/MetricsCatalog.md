@@ -103,6 +103,7 @@ Todas las métricas se calculan por consulta (vistas SQL o queries del módulo `
 
 - **Fórmula**: `COUNT(ingestion_events.id)` con `status = 'failed'` y `received_at ∈ I`, agrupado por `source` y `error_code`. También se muestra la tasa: fallidos / total de eventos con `received_at ∈ I`.
 - **Fuente**: `ingestion_events`.
+- **Alcance**: solo los eventos que el CRM aceptó procesar. Los payloads inválidos, las credenciales inválidas y los excesos de tasa se rechazan sin fila, así que no cuentan (brief-6.5.1, D-6).
 - **Denominador de la tasa**: total de eventos recibidos en `I`. Si es 0, "sin datos".
 - **Disponibilidad**: mientras el módulo de ingestión no exista en el entorno, la métrica se muestra como "no disponible" y no como `0`, para no sugerir que no hubo errores.
 

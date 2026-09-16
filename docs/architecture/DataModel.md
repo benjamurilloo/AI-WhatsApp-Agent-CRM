@@ -263,7 +263,7 @@ Protección (brief-6.1, D-3): `crm_app` tiene `SELECT`, `INSERT` y `UPDATE`, sin
 | `source` | text not null | identifica el sistema emisor |
 | `external_ref` | text not null | id del evento en el sistema origen |
 | `event_type` | text not null | |
-| `payload_hash` | text not null | hash del payload canónico; detecta reenvíos con contenido distinto bajo la misma ref. El algoritmo y su formato los fija el contrato (6.5.1); la base solo exige que no esté vacío |
+| `payload_hash` | text not null | hash del payload canónico; detecta reenvíos con contenido distinto bajo la misma ref. SHA-256 en hexadecimal del evento normalizado con las claves ordenadas ([contrato v1](../contracts/ingestion-v1.md#payload_hash), brief-6.5.1, D-4); la base solo exige que no esté vacío |
 | `status` | `ingestion_event_status` enum(`received`,`processed`,`failed`) not null default `'received'` | |
 | `error_code` | text null | código normalizado de la taxonomía de [Overview.md](Overview.md#estrategia-de-errores-diseño); nunca payload crudo, headers ni credenciales. Presente si y solo si `status = 'failed'`: `ingestion_events_error_code_matches_status` |
 | `received_at` | timestamptz not null default `now()` | |
@@ -273,7 +273,9 @@ Protección (brief-6.1, D-3): `crm_app` tiene `SELECT`, `INSERT` y `UPDATE`, sin
 
 Índice: `ingestion_events_organization_received_idx` sobre `(organization_id, received_at)` para la métrica 12, que filtra eventos por intervalo de recepción.
 
-**Pendiente de la 6.5.1 y la 6.5.2 (brief-6.1, D-4)**: la tabla no guarda qué conversación o mensaje creó cada evento. Si el contrato necesita devolverlo en un reenvío, la 6.5.2 suma esas columnas con una migración aditiva.
+**Sin columnas de resultado (brief-6.5.1, D-5)**: la tabla no guarda qué conversación o mensaje creó cada evento, porque un reenvío solo devuelve referencias del emisor, que ya están en el evento. El hueco del brief-6.1 (D-4) queda cerrado sin migración.
+
+**Qué rechazos se registran (brief-6.5.1, D-6)**: solo los de negocio, posteriores a la validación, como `failed`. Un payload inválido, una credencial inválida o un exceso de tasa se responden sin fila.
 
 Reglas del ledger, derivadas del patrón *Reliable External Effects* del vault:
 

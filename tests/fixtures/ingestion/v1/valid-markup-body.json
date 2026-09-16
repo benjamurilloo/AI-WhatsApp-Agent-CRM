@@ -1,0 +1,27 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: no proviene de ningún emisor real (brief-6.5.1).",
+  "description": "Cuerpo con HTML y Markdown: se acepta y se guarda tal cual; la UI lo escapa.",
+  "received_at": "2026-09-16T15:00:00.000Z",
+  "payload": {
+    "contract_version": "1",
+    "event_type": "message.recorded",
+    "event_id": "evt-0003",
+    "occurred_at": "2026-09-16T11:59:58-03:00",
+    "conversation": {
+      "external_ref": "conv-0001",
+      "channel": "whatsapp",
+      "client_phone": "+5491155550001"
+    },
+    "message": {
+      "external_ref": "msg-0003",
+      "direction": "inbound",
+      "sent_at": "2026-09-16T11:59:57.250-03:00",
+      "body_text": "<script>alert(\"x\")</script> **negrita** 👋"
+    }
+  },
+  "expected": {
+    "ok": true,
+    "payload_hash": "2a7d76d32e32495c8214361efd4ead4fd1f80a1a4d619e68dfc4bd8553ca4d04"
+  }
+}

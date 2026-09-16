@@ -1,0 +1,175 @@
+# Contrato de ingestión v1
+
+**Estado**:
+- **Diseñado** en la 6.5.1 ([brief-6.5.1](../decisions/brief-6.5.1-contrato-de-ingestion.md)).
+- **Implementado y validado localmente** en la 6.5.1, solo en su validación del payload y su `payload_hash`: [src/modules/ingestion/contract.ts](../../src/modules/ingestion/contract.ts).
+- **Pendientes**: el endpoint, el registro y la proyección llegan en la 6.5.2; la credencial de servicio y el límite de tasa, en la 6.5.3.
+
+**Ningún emisor real está conectado ni configurado** (FR-CONV-05, [IntegrationBoundaries](../architecture/IntegrationBoundaries.md)). Este contrato no deriva de la forma de eventos de ningún sistema existente. Sus fixtures tienen **forma asumida, no verificada**, y no prueban compatibilidad con ningún emisor.
+
+## Propósito
+
+Permitir que un sistema externo registre en el CRM los mensajes de sus conversaciones, sin conocer el modelo interno y sin crear duplicados cuando reintenta.
+
+## Transporte
+
+- **Endpoint**: `POST /api/ingestion/v1/events`. La versión va en la ruta; una versión nueva es otra ruta.
+- **Cuerpo**: un solo evento en JSON UTF-8, con `Content-Type: application/json`. No hay lotes.
+- **Tamaño máximo**: 64 KiB (`MAX_INGESTION_BODY_BYTES`). Alcanza para un cuerpo de mensaje de 4096 caracteres aunque el emisor los escriba como escapes `\uXXXX`. Si el cuerpo lo supera, la respuesta es `VALIDATION_ERROR` con el campo `body`.
+- **Autenticación**: una credencial de servicio por organización y emisor, distinta de la sesión humana (6.5.3). De ella salen la organización y el `source` del evento (D-3). El payload no los trae y no puede cambiarlos.
+- **Límite de tasa**: por credencial (SecurityModel, 6.5.3).
+
+## Evento `message.recorded`
+
+Cada evento registra un mensaje de una conversación. La conversación no se crea con un evento aparte: nace con su primer mensaje (D-2). El objeto es estricto: un campo desconocido, en cualquier nivel, rechaza el evento.
+
+| Campo | Tipo | Nulable | Reglas | Ejemplo |
+|---|---|---|---|---|
+| `contract_version` | string | no | exactamente `"1"` | `"1"` |
+| `event_type` | string | no | `"message.recorded"`; cualquier otro tipo se rechaza | `"message.recorded"` |
+| `event_id` | string | no | referencia opaca (ver abajo); identidad del evento | `"evt-0001"` |
+| `occurred_at` | string | no | fecha (ver abajo); cuándo el emisor produjo el evento | `"2026-09-16T11:59:58-03:00"` |
+| `conversation` | objeto | no | | |
+| `conversation.external_ref` | string | no | referencia opaca; identifica la conversación en el emisor | `"conv-0001"` |
+| `conversation.channel` | string | no | `"whatsapp"` | `"whatsapp"` |
+| `conversation.client_phone` | string | sí | E.164 canónico (`^\+[1-9][0-9]{1,14}$`), sin separadores; el CRM no lo normaliza | `"+5491155550001"` |
+| `message` | objeto | no | | |
+| `message.external_ref` | string | no | referencia opaca; identifica el mensaje en su conversación | `"msg-0001"` |
+| `message.direction` | string | no | `"inbound"` (del cliente) o `"outbound"` (del negocio) | `"inbound"` |
+| `message.sent_at` | string | no | fecha (ver abajo) | `"2026-09-16T11:59:57.250-03:00"` |
+| `message.body_text` | string | sí | de 1 a 4096 puntos de código, sin el carácter NUL; `null` si el mensaje no tiene texto | `"Hola, ¿tienen stock?"` |
+
+- **Referencias opacas**: `event_id` y los `external_ref`:
+  - tienen de 1 a 200 caracteres;
+  - no tienen espacios al principio ni al final;
+  - no tienen caracteres de control;
+  - son UTF-16 válido.
+
+  El CRM no las interpreta. Nunca se arman con un teléfono ni con el contenido del mensaje, y no cambian entre reintentos.
+- **Fechas**: ISO 8601 con zona obligatoria (`Z` o `±HH:MM`), segundos obligatorios y, como máximo, milisegundos. La fecha tiene que existir (no se acepta el 30 de febrero). Ni `occurred_at` ni `sent_at` pueden superar en más de 5 minutos la hora de recepción. El CRM las guarda en UTC.
+- **Texto**: el cuerpo se guarda tal cual, con marcado, saltos de línea y emojis. La UI siempre lo muestra escapado (6.4).
+- **Fuera de v1**: adjuntos, mensajes sin texto que necesiten otro tratamiento, estados de entrega, lecturas, otros canales, lotes y cambios de estado de la conversación.
+
+Ejemplo, el vector de prueba:
+
+```json
+{
+  "contract_version": "1",
+  "event_type": "message.recorded",
+  "event_id": "evt-0001",
+  "occurred_at": "2026-09-16T11:59:58-03:00",
+  "conversation": {
+    "external_ref": "conv-0001",
+    "channel": "whatsapp",
+    "client_phone": "+5491155550001"
+  },
+  "message": {
+    "external_ref": "msg-0001",
+    "direction": "inbound",
+    "sent_at": "2026-09-16T11:59:57.250-03:00",
+    "body_text": "Hola, ¿tienen stock?"
+  }
+}
+```
+
+## Identidad e idempotencia
+
+- **Identidad del evento**: `(organization_id, source, event_id)`, que se guarda en `ingestion_events` como `(organization_id, source, external_ref)`. La organización y el `source` salen de la credencial (D-3). Dos emisores pueden usar el mismo `event_id` sin chocar.
+- **Registro antes de proyectar**: el evento se reserva en `ingestion_events` con `INSERT … ON CONFLICT ON CONSTRAINT ingestion_events_organization_source_external_ref_unique`. La reserva y la proyección sobre `conversations` y `messages` van en la misma transacción (6.5.2).
+- **Segunda defensa**: las unicidades parciales de `conversations (organization_id, channel, external_ref)` y `messages (organization_id, conversation_id, external_ref)`.
+- **No se depende de que el emisor deduplique**: el CRM se sostiene solo.
+
+## `payload_hash`
+
+Lo calcula el CRM; el emisor no lo envía (D-4).
+
+1. Validar el cuerpo y normalizar el evento: las fechas pasan a UTC con milisegundos (`toISOString()`); el resto queda igual.
+2. Serializar el evento normalizado en forma canónica: las claves de cada objeto se ordenan por código de carácter, sin espacios, y los valores se escriben con `JSON.stringify`.
+3. Calcular SHA-256 de esos bytes en UTF-8 y escribirlo en hexadecimal en minúsculas (64 caracteres).
+
+Consecuencias:
+- el orden de las claves, los espacios y la zona en que se escribió una fecha no cambian el hash;
+- cualquier cambio de valor sí lo cambia, incluido un espacio dentro de `body_text`;
+- el hash incluye `event_id`, así que dos eventos distintos nunca comparten el hash.
+
+**Vector de prueba**: el ejemplo de arriba se normaliza y serializa como
+
+```text
+{"contract_version":"1","conversation":{"channel":"whatsapp","client_phone":"+5491155550001","external_ref":"conv-0001"},"event_id":"evt-0001","event_type":"message.recorded","message":{"body_text":"Hola, ¿tienen stock?","direction":"inbound","external_ref":"msg-0001","sent_at":"2026-09-16T14:59:57.250Z"},"occurred_at":"2026-09-16T14:59:58.000Z"}
+```
+
+y su `payload_hash` es `529004aa199e81238af332e09262a30ec458f581188b6da0cdfa1ab53746ee2a`.
+
+## Respuestas
+
+### Éxito y reenvío (D-5)
+
+| Situación | HTTP | Cuerpo |
+|---|---|---|
+| Evento nuevo, procesado | `201` | `result: "accepted"` |
+| Mismo `event_id` y mismo `payload_hash`, ya procesado | `200` | `result: "duplicate"`; no escribe nada |
+
+El cuerpo solo trae referencias del emisor, nunca ids internos del CRM:
+
+```json
+{
+  "contract_version": "1",
+  "event_id": "evt-0001",
+  "result": "accepted",
+  "conversation_external_ref": "conv-0001",
+  "message_external_ref": "msg-0001"
+}
+```
+
+### Errores
+
+El cuerpo de error tiene `code`, `request_id` y, en `VALIDATION_ERROR`, `fields`: la lista de campos de la tabla de arriba con notación de puntos, más `body` (cuerpo ilegible o demasiado grande) y `event` (campo desconocido en la raíz). Un campo desconocido se informa por su objeto, nunca por su nombre. Ningún error repite el payload, el teléfono ni el cuerpo.
+
+| Situación | Código | HTTP | ¿Queda en `ingestion_events`? (D-6) | ¿Reintentar? |
+|---|---|---|---|---|
+| Cuerpo ilegible, demasiado grande o evento inválido | `VALIDATION_ERROR` | 400 | no | no: corregir el evento antes de reenviarlo |
+| Credencial ausente o inválida | `UNAUTHENTICATED` | 401 | no | no, hasta corregir la credencial |
+| Credencial revocada o sin permiso para ingestión | `FORBIDDEN` | 403 | no | no |
+| Mismo `event_id` con otro `payload_hash` | `CONFLICT` | 409 | no se modifica el registro existente | no: el emisor usa un `event_id` nuevo |
+| El mensaje ya existe en la conversación con el mismo `external_ref`, llegado con otro `event_id` | `CONFLICT` | 409 | sí, `failed` con `error_code = 'CONFLICT'` | no |
+| Límite de tasa superado | `RATE_LIMITED` | 429 | no | sí, después de `Retry-After` |
+| Error inesperado | `INTERNAL` | 500 | no: la transacción se revierte, reserva incluida | sí, con el mismo `event_id` y el mismo contenido |
+
+- **Un evento `failed` es terminal.** Reenviarlo con el mismo hash devuelve el mismo error, y con otro hash, `CONFLICT`.
+- **Los rechazos que no quedan en el registro** van al log estructurado, con código, `source` y organización cuando se conocen, sin payload.
+- **Métrica 12**: cuenta solo los eventos que el CRM aceptó procesar y fallaron ([MetricsCatalog](../analytics/MetricsCatalog.md)).
+
+## Proyección (6.5.2)
+
+- **Conversación**:
+  - se busca por `(organization_id, channel, conversation.external_ref)`;
+  - si no existe, se crea con el primer mensaje, `status = 'open'` y `started_at = last_message_at = message.sent_at`.
+- **Cliente** (D-7):
+  - al crear la conversación, si `client_phone` coincide con un cliente de la organización, activo o no, la conversación lo referencia; si no, queda sin cliente;
+  - la ingestión nunca crea clientes;
+  - los mensajes siguientes no cambian el cliente de la conversación.
+- **Mensaje**: se inserta con `direction`, `sent_at`, `body_text` y `external_ref`. `messages` es de solo inserción.
+- **Fechas de la conversación**:
+  - `started_at` es siempre el menor `sent_at` de sus mensajes, y `last_message_at` el mayor, aunque los mensajes lleguen desordenados;
+  - un mensaje anterior a `started_at` lo adelanta.
+- **Estado**: la ingestión no cambia el `status` de una conversación existente. Un mensaje nuevo en una conversación `closed` no la reabre.
+- **Registro**: el evento termina `processed` con `processed_at`, o `failed` con su `error_code`, en la misma transacción.
+
+## Versionado
+
+- **Cambios compatibles dentro de v1**: agregar un `event_type` nuevo, o un valor nuevo de `channel` que el modelo de datos ya admita. Un emisor v1 que no los usa no nota el cambio.
+- **Cambios que requieren v2**, en otra ruta y con otro `contract_version`: agregar, quitar o renombrar campos (el esquema es estricto), o cambiar reglas, respuestas o el algoritmo del hash.
+- **Convivencia**: v1 y v2 conviven hasta que ningún emisor use v1.
+
+## Evidencia
+
+- **Validado localmente** (`deterministic`), en `src/modules/ingestion/contract.test.ts`:
+  - cada regla del esquema, la normalización y el vector del hash;
+  - la sensibilidad del hash a cada campo y su indiferencia al orden y al formato;
+  - los fixtures de `tests/fixtures/ingestion/v1/`, todos con `"shape": "assumed"`.
+- **Diseñado**:
+  - endpoint, registro, reenvíos y proyección (6.5.2);
+  - credencial y límite de tasa (6.5.3).
+- **Sin validar hasta el proyecto de integración**:
+  - la compatibilidad con un emisor real;
+  - la autenticación con su tráfico ([Risks](../planning/Risks.md)).

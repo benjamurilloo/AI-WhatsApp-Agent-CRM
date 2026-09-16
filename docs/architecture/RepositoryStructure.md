@@ -49,13 +49,14 @@ Ubica en carpetas los módulos y las reglas de dependencia de [Overview.md](Over
 │   │   ├── test-database.ts         Deriva las URL de las bases _test y _e2e desde DATABASE_URL
 │   │   ├── reset-database.ts        Vacía las tablas antes de cada test
 │   │   └── *.test.ts                db-connectivity (2.4), identity-schema (3.1) y siguientes
+│   ├── fixtures/                    Fixtures compartidos: ingestion/v1/, con forma asumida (6.5.1)
 │   └── e2e/                         Playwright sobre las pantallas, en la base <nombre>_e2e (3.5)
 │       ├── global-setup.ts          Recrea, migra y siembra la base de e2e
 │       └── *.spec.ts                login (3.5) y users (3.7)
 ├── .github/
 │   └── workflows/
 │       └── ci.yml                   CI de GitHub Actions
-├── docs/
+├── docs/                            Incluye contracts/ con los contratos versionados (6.5.1)
 ├── package.json · package-lock.json
 ├── tsconfig.json                    strict: true; alias @/* → src/*
 ├── next.config.ts
@@ -171,6 +172,7 @@ Ninguna carpeta se crea vacía: nace con el primer archivo real de la subfase qu
 | 6.2 — Seeds sintéticos de conversaciones | `seeds/conversations.ts` (conversaciones de ejemplo, llamado desde `npm run db:seed`) y `seeds/volume.ts` (`npm run db:seed:volume`); `tests/integration/conversations-seed.test.ts` |
 | 6.3 — Servicio de consulta y estado | En `src/modules/conversations/`: `index.ts`, `service.ts` (lista, detalle, timeline por cursor, cambio de estado auditado, actividad del cliente y clientes por última interacción) y `repository.ts`, con su test unitario; `listClientOrderKeys` y `getClientsByIds` en `crm`; `src/shared/calendar/` (fechas de calendario, también para `inventory`); `tests/integration/conversations.test.ts` |
 | 6.4 — UI de conversaciones | `src/app/(autenticado)/conversaciones/` (lista y detalle con timeline y cambio de estado, con `filters.ts`, `messages.ts`, `actions.ts`, la tabla y la etiqueta de estado compartidas y sus tests unitarios); última interacción y sección de conversaciones en `clientes/`; enlace "Conversaciones" en el marco común; `formatDate` y `formatTime` en `_format`; `tests/e2e/conversations.spec.ts` |
+| 6.5.1 — Contrato de ingestión y validación | `docs/contracts/ingestion-v1.md`; en `src/modules/ingestion/`: `contract.ts` (esquema del evento v1 y `payload_hash`), `index.ts` y `contract.test.ts`; `tests/fixtures/ingestion/v1/` |
 | Fase 4 | `src/modules/catalog/` e `inventory/` |
 | Fase 5 | `src/modules/crm/` |
 | Fase 6 | `src/modules/conversations/` e `ingestion/` |
