@@ -2,6 +2,32 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-16 — Subfase 5.1 cerrada (Migración de clientes)
+
+**Certifica:**
+
+- **Esquema de clientes** según el [brief-5.1](docs/decisions/brief-5.1-migracion-de-clientes.md), con D-1 a D-4 resueltas según la recomendación:
+  - `clients` en `src/modules/crm/schema.ts`, solo con su esquema, con `organization_id` y `ON DELETE RESTRICT`;
+  - teléfono en E.164 canónico por `CHECK` (`clients_phone_e164_format`) (D-1);
+  - búsqueda por prefijo de nombre sin distinguir mayúsculas, con un índice sobre `lower(display_name) text_pattern_ops`, que cierra H-3 también para clientes (D-2);
+  - teléfono único por organización cuando está presente, también frente a clientes inactivos (`clients_organization_phone_unique`) (D-3, ADR 0007, FR-CLI-07);
+  - sin `UNIQUE(organization_id, id)` hasta que la Fase 6 lo necesite (D-4).
+- **Migraciones**: `drizzle/0008_*`, generada por Drizzle Kit sin SQL a mano, y `drizzle/0009_*`, a medida, con los privilegios de `crm_app`. Aplicadas en la base de desarrollo y sobre bases vacías; aplicarlas otra vez no hace nada.
+- **Tests**: 10 casos nuevos en `tests/integration/clients-schema.test.ts`, cada uno con su SQLSTATE y, en unicidad y formato, con el nombre de la constraint. El test de cobertura de privilegios detectó la tabla sin cambios. `identity-schema.test.ts` solo sumó `clients` a la lista y al título.
+- **Suite local**: `npm run test` pasa 384 de 384 (148 unitarios, 30 guardas y 206 de integración); `npm run test:e2e` pasa 38 de 38. Con la base detenida pasan typecheck, lint, formato, guardas, unitarios y build, y `db:generate` informa "No schema changes". `package.json` sin cambios.
+- **CI**: [35109441440](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35109441440), commit `d369767`, en verde con todos los pasos, incluido el de desfase de migraciones.
+- **Documentación**: DataModel, TraceabilityMatrix, Risks, TestingStrategy, RepositoryStructure y las líneas de estado de `README.md` y `docs/README.md`.
+- **Nivel alcanzado**: **validado localmente y en CI** para el esquema de clientes.
+
+**No certifica:**
+
+- **Normalización de la entrada, `CONFLICT` por teléfono y búsqueda**: servicio de la 5.2.
+- **Enmascarado del teléfono para `viewer` (H-5, FR-CLI-06)**: 5.2 y 5.3.
+- **Que el número exista**: el `CHECK` valida la forma, no el país ni la numeración.
+- **La aplicación restringida por `crm_app`**: sigue conectándose con el rol dueño (Fases 8 y 9).
+- **`updated_at` en SQL crudo**: lo mantiene la aplicación, como en las tablas anteriores.
+- **Revisión independiente**: es autoevaluación del mismo agente.
+
 ## 2026-09-16 — Fase 4 cerrada (Productos e inventario)
 
 **Certifica:**

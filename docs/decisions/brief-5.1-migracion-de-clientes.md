@@ -212,3 +212,15 @@ La revisión es una autoevaluación (`self_assessment: true`).
 - Si el paso de desfase de la CI detecta diferencias después de la 0009.
 - Si aparece la necesidad de código de servicio, seeds, una dependencia o una extensión de PostgreSQL.
 - Antes de ejecutar migraciones contra la base de desarrollo, de commit, de push o de cambios en Notion.
+
+## Cierre (2026-09-16)
+
+Cerrado con confirmación del usuario. Los nueve criterios se cumplen; la evidencia está en [CHANGELOG.md](../../CHANGELOG.md). CI en verde en el commit `d369767` ([ejecución 35109441440](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35109441440)). Nivel alcanzado: **validado localmente y en CI**.
+
+### Ajustes durante la ejecución
+
+- **Ninguna condición de detención se activó**: Drizzle Kit generó en la 0008 el índice parcial, el índice por expresión con `text_pattern_ops` y el `CHECK`. La 0009 solo tiene el `GRANT`.
+- **`identity-schema.test.ts`**: además de sumar `clients` a la lista, se ajustó el título del caso, como en la 4.1.
+- **Casos de formato agregados al punto 4**: dígitos no ASCII y un salto de línea final, para demostrar que la expresión regular no los acepta; y el nombre de la constraint en cada rechazo, no solo el SQLSTATE.
+- **H-3 en TraceabilityMatrix**: seguía como diferido aunque la 4.2 ya lo había resuelto para productos. Se cerró para productos y clientes, también en Risks.
+- **Líneas de estado de `README.md` y `docs/README.md`**: fuera de la lista autorizada; se actualizaron al cerrar, con la confirmación del usuario, como en la 4.1.

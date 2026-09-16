@@ -2,9 +2,9 @@
 schema: project-state.v1
 project: ai-whatsapp-agent-crm
 generated_at: 2026-09-16
-git_ref: main — dbdf5fa en origin/main (CI en verde), más el cierre de la 4.4 y de la Fase 4 (commit y push pendientes de autorización al escribir este archivo)
-active_phase: Fase 5 — Clientes, no comenzada
-active_task: ninguna; la siguiente es la 5.1 (migración de clientes), sin brief
+git_ref: main — d369767 en origin/main (CI en verde, 5.1), más el cierre de la 5.1 (commit y push autorizados por el usuario el 2026-09-16)
+active_phase: Fase 5 — Clientes, en progreso
+active_task: ninguna; la 5.1 está cerrada y la siguiente es la 5.2 (servicio de clientes), sin brief
 confidence: confirmado
 ---
 
@@ -22,27 +22,29 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 
 - **Proyecto**: AI WhatsApp Agent CRM. Independiente del agente de WhatsApp: no comparte código, infraestructura ni base de datos, y no depende de Airtable. `confirmado`
 - **Fase 4 — Productos e inventario, cerrada** el 2026-09-16. En Notion, el proyecto de la Fase 4, su tarea espejo y las tareas 4.0, 4.1, 4.2, 4.3 (tarea madre de 4.3.1 a 4.3.3), 4.3.1, 4.3.2, 4.3.3 y 4.4 quedan en "Completado". `confirmado`
-- **Fase 5 — Clientes, no comenzada.** En Notion: proyecto "No comenzado" y tareas 5.1 (migración), 5.2 (servicio) y 5.3 (UI) en "Bandeja de Entrada". `confirmado`
-- **Sesión**: el usuario decidió el 2026-09-16 continuar con la Fase 5 en una sesión nueva. `confirmado`
+- **Fase 5 — Clientes, en progreso** desde el 2026-09-16. En Notion: proyecto "En progreso", tarea espejo "En proceso", 5.1 "Completado", y 5.2 (servicio) y 5.3 (UI) en "Bandeja de Entrada". `confirmado`
+- **Sesión**: la Fase 5 empezó en una sesión nueva el 2026-09-16. `confirmado`
 - **Fases 0 a 3 cerradas** (2026-09-11 a 2026-09-14). `confirmado`
 
 ## 2. Último punto aprobado
 
-- **Fase 4 y subfase 4.4 — UI de productos e inventario**, cerradas por pedido del usuario el 2026-09-16. Entradas en [CHANGELOG.md](CHANGELOG.md); resolución, cierre y ajustes en el [brief-4.4](docs/decisions/brief-4.4-ui-de-productos-e-inventario.md). `confirmado`
-- **CI en verde** en el commit `dbdf5fa`: [ejecución 35099148671](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35099148671), con todos los pasos, end-to-end incluido. `confirmado`
+- **Subfase 5.1 — Migración de clientes**, cerrada con confirmación del usuario el 2026-09-16. Entrada en [CHANGELOG.md](CHANGELOG.md); resolución (D-1 a D-4 según la recomendación), cierre y ajustes en el [brief-5.1](docs/decisions/brief-5.1-migracion-de-clientes.md). `confirmado`
+- **CI en verde** en el commit `d369767`: [ejecución 35109441440](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35109441440), con todos los pasos, end-to-end incluido. `confirmado`
+- **Fase 4** cerrada el 2026-09-16, con CI en verde en `d05756e`. `confirmado`
 
 ## 3. Próximo paso
 
-1. **Al retomar**: leer este archivo, verificar Git (el commit de cierre de la Fase 4 tiene que estar en `origin/main`) y que su CI esté en verde (`gh run list -L 1`). Si el cierre no se subió, pedir autorización antes de hacerlo. `pendiente`
-2. **Pasar la Fase 5 a "En progreso" en Notion** (con autorización) y **preparar el brief de la 5.1 — Migración de clientes** ("Tabla `clients` con unicidad parcial de teléfono por organización"). Leer:
-   - [DataModel.md](docs/architecture/DataModel.md) §`clients` y sus reglas (borrado lógico con `is_active`, clave foránea compuesta);
-   - [ADR 0007](docs/decisions/0007-identificador-de-cliente-solo-telefono.md) (identificador solo por teléfono) y las decisiones de enmascarado de la [brief-1.3](docs/decisions/brief-1.3-decisiones-de-producto-abiertas.md);
-   - FR-CLI-01 a 06 en [FunctionalRequirements.md](docs/product/FunctionalRequirements.md) y la minimización en `NonFunctionalRequirements.md`;
-   - el precedente de la 4.1 (migraciones generada y `--custom`, privilegios a `crm_app`, test de esquema).
+1. **Al retomar**: verificar que el commit de cierre de la 5.1 esté en `origin/main` con la CI en verde (`gh run list -L 1`). `pendiente`
+2. **Preparar el brief de la 5.2 — Servicio de clientes** (FR-CLI-01, 02, 03 y 05, con auditoría) y pasar la 5.2 a "En proceso" en Notion, con autorización. El brief tiene que resolver:
+   - normalizar el teléfono ingresado a E.164 canónico antes de guardar y de buscar, con su `VALIDATION_ERROR` (5.1, D-1);
+   - `CONFLICT` por `clients_organization_phone_unique`, incluido el número de un cliente inactivo (5.1, D-3);
+   - búsqueda por prefijo con `lower(display_name) LIKE`, escapando `%` y `_`, y por teléfono completo exacto (5.1, D-2);
+   - enmascarado del teléfono para `viewer` en el servidor, con su test (**H-5**, FR-CLI-06);
+   - `display_name` vacío y recorte de espacios en el servicio;
+   - si la lectura de auditoría del cliente (`crm` con `listEntityAuditLogs` y `["client"]`, como `listProductAudit`) va en la 5.2 o en la 5.3.
 
-   `confirmado`
-3. **Pendientes de la Fase 5 ya asignados**: H-3 (búsqueda por prefijo o por contenido en la pantalla 6; en productos se resolvió por prefijo, 4.2 D-3) y H-5 (test de que un `viewer` no recibe el teléfono completo, FR-CLI-06). `confirmado`
-4. **Después**: 5.2 (servicio, FR-CLI-01, 02, 03 y 05 con auditoría) y 5.3 (pantallas 6 y 7 sin conversaciones). La pantalla 7 reutiliza `listEntityAuditLogs` con `["client"]` desde el módulo `crm`, como `catalog` con `listProductAudit`. `confirmado`
+   Precedente: [brief-4.2](docs/decisions/brief-4.2-servicio-de-catalogo.md). `confirmado`
+3. **Después**: 5.3 (pantallas 6 y 7 sin conversaciones). Hasta la Fase 6 no hay última interacción para ordenar la lista. `confirmado`
 
 ## 4. Contratos vigentes
 
@@ -55,6 +57,7 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 | Mecanismo de sesión | ADR 0012 con notas de la 3.3 y la 3.5 | [decisions/0012-mecanismo-de-sesion.md](docs/decisions/0012-mecanismo-de-sesion.md) |
 | Rol de aplicación y solo inserción | ADR 0013; `audit_logs` e `inventory_movements` | [decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md](docs/decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md) |
 | Esquema de catálogo e inventario | `products`, `inventories`, `inventory_movements`; migraciones 0004 a 0007 | [src/modules/catalog/schema.ts](src/modules/catalog/schema.ts), [src/modules/inventory/schema.ts](src/modules/inventory/schema.ts) |
+| Esquema de clientes | `clients`, sin `index.ts` todavía; migraciones 0008 y 0009 | [src/modules/crm/schema.ts](src/modules/crm/schema.ts) |
 | Interfaz pública de `auth` | `login`, `validateSession`, `logout`, `changePassword`, `completeRequiredPasswordChange`, `revokeUserSessions`, `hashPassword`, adaptador de cookie, `validateNewUser`, `prepareInitialPassword`, `createUserWithInitialPassword`, `setUserActive`, `getUserSummaries` | [src/modules/auth/index.ts](src/modules/auth/index.ts) |
 | Interfaz pública de `organizations` | `getAuthContext`, `authorize`, `getMember`, `getOrganizationTimezone`, `listMembers`, `createMember`, `changeMemberRole`, `deactivateMember`, `reactivateMember`, `getAppFrame` | [src/modules/organizations/index.ts](src/modules/organizations/index.ts) |
 | Interfaz pública de `audit` | `recordAudit(tx, entry)`, `InvalidAuditEntryError`, `listEntityAuditLogs(query)` (sin contexto ni rol: autoriza y compone el autor quien llama), `AUDIT_PAGE_SIZE` y sus tipos | [src/modules/audit/index.ts](src/modules/audit/index.ts) |
@@ -71,7 +74,7 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 | Estructura del repositorio | aprobada; lo de la 2.x, la Fase 3 y la Fase 4, implementado | [architecture/RepositoryStructure.md](docs/architecture/RepositoryStructure.md) |
 | CI | dependencias, desfase, lint, typecheck, formato, guardas, unitarios, integración, build, Chromium y end-to-end | [.github/workflows/ci.yml](.github/workflows/ci.yml) |
 | Entornos | Docker Compose; migraciones; base `_test`; rol `crm_app`; seed básico; base `_e2e` | [development/Environments.md](docs/development/Environments.md) |
-| Modelo de datos | identidad, sesiones, auditoría, catálogo e inventario implementados; clientes, conversaciones e ingestión diseñados | [architecture/DataModel.md](docs/architecture/DataModel.md) |
+| Modelo de datos | identidad, sesiones, auditoría, catálogo, inventario y clientes implementados; conversaciones e ingestión diseñados | [architecture/DataModel.md](docs/architecture/DataModel.md) |
 | Modelo de seguridad | autenticación, autorización, auditoría, ingreso y gestión de miembros implementados; `Origin` diseñado | [architecture/SecurityModel.md](docs/architecture/SecurityModel.md) |
 | Wireframes | 10 pantallas; la 1, la 3, la 4, la 5 y la 10 implementadas, más el marco común | [product/wireframes/](docs/product/wireframes/README.md) |
 | Contrato de ingestión | diseñado, no implementado | [architecture/IntegrationBoundaries.md](docs/architecture/IntegrationBoundaries.md) |
@@ -79,11 +82,12 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 
 ## 5. Evidencia
 
-Nivel del proyecto: **validado en integración** para las pantallas 1, 3, 4, 5 y 10 y el marco común, en claro y en oscuro. **Validado localmente y en CI** para la fundación técnica, la identidad, la autorización, la auditoría (escritura y lectura), la gestión de miembros, el catálogo, el ajuste de stock secuencial y bajo concurrencia y el historial de movimientos. **Diseñado** para clientes, conversaciones, ingestión y métricas. Nada está desplegado. `confirmado`
+Nivel del proyecto: **validado en integración** para las pantallas 1, 3, 4, 5 y 10 y el marco común, en claro y en oscuro. **Validado localmente y en CI** para la fundación técnica, la identidad, la autorización, la auditoría (escritura y lectura), la gestión de miembros, el catálogo, el ajuste de stock secuencial y bajo concurrencia, el historial de movimientos y el esquema de clientes. **Diseñado** para el servicio y las pantallas de clientes, conversaciones, ingestión y métricas. Nada está desplegado. `confirmado`
 
 | Afirmación | Nivel | Evidencia |
 |---|---|---|
-| Todos los pasos de CI, incluido el desfase de migraciones y el end-to-end | validado en CI | Ejecución 35099148671 `success`, commit `dbdf5fa` `confirmado` |
+| Todos los pasos de CI, incluido el desfase de migraciones y el end-to-end | validado en CI | Ejecución 35109441440 `success`, commit `d369767` `confirmado` |
+| Esquema de clientes: E.164 canónico, teléfono único por organización también frente a inactivos, `RESTRICT` y privilegios de `crm_app` | validado localmente y en CI | `tests/integration/clients-schema.test.ts` (10) `confirmado` |
 | Pantallas 3, 4 y 5: búsqueda, filtros, alta, edición, desactivación, ajuste con sus rechazos, historial y auditoría solo para `admin` | validado en integración (`producer-consumer`) | `tests/e2e/products.spec.ts` (13), con axe en claro y oscuro, teclado y móvil `confirmado` |
 | Lectura de auditoría de un producto: ediciones y ajustes en una lista paginada, autor, `admin` únicamente y aislamiento | validado localmente y en CI | `tests/integration/product-audit.test.ts` (6) `confirmado` |
 | Formato de cantidades y fechas; `organizationId` y duración en el log | validado localmente y en CI | unitarios de `quantity`, `date-time` y `log` `confirmado` |
@@ -94,8 +98,8 @@ Nivel del proyecto: **validado en integración** para las pantallas 1, 3, 4, 5 y
 | Servicio de catálogo | validado localmente y en CI | `tests/integration/catalog.test.ts` `confirmado` |
 | Pantallas 1 y 10 y marco común | validado en integración (`producer-consumer`) | `login.spec.ts` (12) y `users.spec.ts` (13) `confirmado` |
 | Regla del último `admin`, auditoría de miembros y `audit_logs` de solo inserción | validado localmente y en CI | `members.test.ts` y `audit.test.ts` `confirmado` |
-| Suite completa local | validado localmente | `npm run test`: 374 de 374; `npm run test:e2e`: 38 de 38 `confirmado` |
-| Clientes, conversaciones, ingestión y métricas | diseñado | Fases 5 a 7 `confirmado` |
+| Suite completa local | validado localmente | `npm run test`: 384 de 384; `npm run test:e2e`: 38 de 38 `confirmado` |
+| Servicio y pantallas de clientes, conversaciones, ingestión y métricas | diseñado | 5.2, 5.3 y Fases 6 y 7 `confirmado` |
 | La cookie detrás de TLS y de un proxy real; la aplicación restringida por `crm_app` | diseñado | Fases 8 y 9 `confirmado` |
 
 ## 6. Decisiones
@@ -103,7 +107,7 @@ Nivel del proyecto: **validado en integración** para las pantallas 1, 3, 4, 5 y
 ### Vigentes
 
 - ADRs 0001 a 0013 aceptados. `confirmado`
-- Resoluciones de los briefs 1.1 a 1.3, 2.1 a 2.5, 3.1 a 3.7, 4.0 a 4.2, 4.3.1 a 4.3.3 y 4.4 en [docs/decisions/](docs/decisions/README.md). `confirmado`
+- Resoluciones de los briefs 1.1 a 1.3, 2.1 a 2.5, 3.1 a 3.7, 4.0 a 4.2, 4.3.1 a 4.3.3, 4.4 y 5.1 en [docs/decisions/](docs/decisions/README.md). `confirmado`
 - Convenciones:
   - enums `pgEnum`, `gen_random_uuid()`, `updated_at` en la aplicación y validación con `zod`;
   - resultados tipados con `Failure`, y orden de autorización `must_change_password` → rol → recurso filtrado por organización; un id que no es UUID devuelve `VALIDATION_ERROR` sin `fields` (4.4, D-6);
@@ -135,7 +139,8 @@ Nivel del proyecto: **validado en integración** para las pantallas 1, 3, 4, 5 y
 
 ### Pendientes
 
-- **H-3 y H-5 en la Fase 5**: búsqueda de clientes por prefijo o contenido, y test de enmascarado del teléfono para `viewer`. `confirmado`
+- **H-5 en la Fase 5**: test de enmascarado del teléfono para `viewer`. H-3 quedó resuelto por prefijo en la 5.1 (D-2). `confirmado`
+- **`UNIQUE(organization_id, id)` en `clients`**: lo suma la Fase 6 con la clave compuesta de `conversations` (5.1, D-4). `confirmado`
 - **Token de advertencia** para "bajo stock": se suma si una subfase autoriza `globals.css`. `confirmado`
 - **`audit_logs.created_at` con `now()`**: el orden de registros simultáneos desempata por `id`; se revisa si una pantalla lo necesita. `confirmado`
 - **Nombre del paso de guardas en `ci.yml`**: no menciona `stock-writes.test.ts`. Se renombra en una subfase que autorice `ci.yml`. `confirmado`
@@ -191,9 +196,9 @@ Ninguno en el repositorio. `confirmado`
 
 ## 10. Autorizaciones vigentes
 
-**Ninguna.** Los cambios en Notion del cierre de la Fase 4 quedan consumidos al ejecutarse. Instalar dependencias, ejecutar migraciones, cambios en Notion y cualquier operación Git futura necesitan autorización explícita.
+**Ninguna.** Las migraciones, el commit y push de la 5.1 y de su cierre, y los cambios en Notion quedan consumidos al ejecutarse. Instalar dependencias, ejecutar migraciones, cambios en Notion y cualquier operación Git futura necesitan autorización explícita.
 
 ## 11. Aspectos pendientes de confirmar
 
-- Que el commit de cierre de la Fase 4 esté en `origin/main` con la CI en verde.
-- Alcance exacto de la 5.1 contra DataModel, ADR 0007 y la brief-1.3, al preparar su brief.
+- Que el commit de cierre de la 5.1 esté en `origin/main` con la CI en verde.
+- Alcance exacto de la 5.2, al preparar su brief.

@@ -53,7 +53,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-4.3.2](brief-4.3.2-concurrencia-de-ajustes.md) | 4.3.2 — Concurrencia de ajustes | aprobado y cerrado el 2026-09-15 |
 | [brief-4.3.3](brief-4.3.3-historial-de-movimientos.md) | 4.3.3 — Historial de movimientos | aprobado y cerrado el 2026-09-15 |
 | [brief-4.4](brief-4.4-ui-de-productos-e-inventario.md) | 4.4 — UI de productos e inventario | aprobado el 2026-09-15 y cerrado el 2026-09-16 |
-| [brief-5.1](brief-5.1-migracion-de-clientes.md) | 5.1 — Migración de clientes | aprobado el 2026-09-16 |
+| [brief-5.1](brief-5.1-migracion-de-clientes.md) | 5.1 — Migración de clientes | aprobado y cerrado el 2026-09-16 |
 
 ## Plantilla
 
