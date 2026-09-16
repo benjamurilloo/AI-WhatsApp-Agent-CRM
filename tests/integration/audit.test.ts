@@ -118,7 +118,10 @@ function asAppRole<T>(fn: (tx: DbTransaction) => Promise<T>): Promise<T> {
 }
 
 // Tablas de public cuyos privilegios para crm_app no son los esperados (ADR 0013).
-const INSERT_ONLY_TABLES = ["audit_logs", "inventory_movements"];
+// El resto de las tablas es escribible: SELECT, INSERT, UPDATE y DELETE.
+const INSERT_ONLY_TABLES = ["audit_logs", "inventory_movements", "messages"];
+// Se actualizan pero no se borran (brief-6.1, D-3).
+const NO_DELETE_TABLES = ["ingestion_events"];
 
 async function tablesWithWrongPrivileges(executor: Db | DbTransaction) {
   const result = await executor.execute<{
@@ -137,12 +140,13 @@ async function tablesWithWrongPrivileges(executor: Db | DbTransaction) {
   );
   return result.rows
     .filter((row) => {
-      const writable = !INSERT_ONLY_TABLES.includes(row.tablename);
+      const insertOnly = INSERT_ONLY_TABLES.includes(row.tablename);
+      const noDelete = NO_DELETE_TABLES.includes(row.tablename);
       return !(
         row.can_select &&
         row.can_insert &&
-        row.can_update === writable &&
-        row.can_delete === writable
+        row.can_update === !insertOnly &&
+        row.can_delete === !(insertOnly || noDelete)
       );
     })
     .map((row) => row.tablename);
@@ -354,6 +358,19 @@ describe("privilegios de crm_app en todas las tablas", () => {
       getDb().transaction(async (tx) => {
         await tx.execute(sql`grant update on audit_logs to crm_app`);
         expect(await tablesWithWrongPrivileges(tx)).toEqual(["audit_logs"]);
+        throw new IntentionalRollback();
+      }),
+    ).rejects.toBeInstanceOf(IntentionalRollback);
+    expect(await tablesWithWrongPrivileges(getDb())).toEqual([]);
+  });
+
+  it("la verificación detecta DELETE otorgado sobre una tabla sin borrado", async () => {
+    await expect(
+      getDb().transaction(async (tx) => {
+        await tx.execute(sql`grant delete on ingestion_events to crm_app`);
+        expect(await tablesWithWrongPrivileges(tx)).toEqual([
+          "ingestion_events",
+        ]);
         throw new IntentionalRollback();
       }),
     ).rejects.toBeInstanceOf(IntentionalRollback);

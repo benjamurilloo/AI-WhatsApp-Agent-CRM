@@ -28,6 +28,15 @@
     - un teléfono fuera de E.164 canónico (espacios, guiones, paréntesis, sin `+`, con `+0`, más de 15 dígitos, dígitos no ASCII, salto de línea final o vacío) se rechaza con `23514`, al insertar y al actualizar;
     - una organización inexistente se rechaza con `23503`, y borrar una con clientes, con `23001`;
     - `crm_app` lee, inserta, actualiza y borra clientes.
+  - Esquema de conversaciones, mensajes e ingestión ([brief-6.1](../decisions/brief-6.1-migraciones-de-conversaciones.md)), cubierto desde la 6.1 en `tests/integration/conversations-schema.test.ts` con SQL directo, verificando el SQLSTATE y la constraint:
+    - aislamiento: una conversación con el cliente de otra organización y un mensaje con la conversación de otra organización se rechazan con `23503` (claves compuestas); una conversación sin cliente se acepta;
+    - `external_ref` repetido se rechaza con `23505` en su organización y canal (conversaciones) o en su conversación (mensajes), y se acepta fuera de ese alcance; vacío o solo con espacios, con `23514`;
+    - `ingestion_events`: evento repetido por `(organization_id, source, external_ref)` → `23505`, y `ON CONFLICT ON CONSTRAINT … DO NOTHING` no inserta el reenvío; identidad vacía, fecha de proceso o código de error que no corresponden al estado → `23514`;
+    - un último mensaje anterior al inicio de la conversación → `23514`;
+    - borrar un cliente, una conversación o una organización con filas dependientes → `23001`;
+    - `messages` rechaza `UPDATE` y `DELETE` con `42501` para `crm_app` y con `P0001` por trigger para el rol dueño;
+    - `ingestion_events` rechaza `DELETE` (`42501` para `crm_app`) y todo cambio de identidad o borrado por trigger (`P0001`), y admite cambiar el estado;
+    - cada trigger se quita dentro de una transacción revertida para demostrar que, sin él, el cambio pasaría.
   - Servicio de catálogo ([brief-4.2](../decisions/brief-4.2-servicio-de-catalogo.md)), cubierto desde la 4.2 en `tests/integration/catalog.test.ts`:
     - alta, edición, desactivación y reactivación auditadas en la misma transacción con `diff` exacto; un cambio sin diferencias no escribe ni audita; si la auditoría falla, el producto no persiste;
     - SKU duplicado, también con otras mayúsculas, en alta y en edición → `CONFLICT` sin auditoría; dos altas simultáneas con el mismo SKU → una sola se crea;

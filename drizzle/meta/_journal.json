@@ -71,6 +71,27 @@
       "when": 1789567747891,
       "tag": "0009_clients_privileges",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789584054394,
+      "tag": "0010_clients_organization_id_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789584056984,
+      "tag": "0011_conversations_and_ingestion",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789584059715,
+      "tag": "0012_conversations_privileges_and_insert_only",
+      "breakpoints": true
     }
   ]
 }

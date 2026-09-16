@@ -1,0 +1,1 @@
+ALTER TABLE "clients" ADD CONSTRAINT "clients_organization_id_id_unique" UNIQUE("organization_id","id");

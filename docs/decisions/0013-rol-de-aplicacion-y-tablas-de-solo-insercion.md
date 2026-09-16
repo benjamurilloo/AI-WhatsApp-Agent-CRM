@@ -39,3 +39,12 @@ Los roles son objetos del servidor, no de cada base: la base de desarrollo y la 
   - el dueño todavía puede vaciar una tabla de solo inserción con `TRUNCATE`, que usa `resetDatabase` en los tests;
   - un superusuario puede desactivar el trigger;
   - crear el rol exige `CREATEROLE` al usuario de migraciones, algo a verificar en un servicio gestionado.
+
+## Nota de la 6.1 (2026-09-16)
+
+[brief-6.1](brief-6.1-migraciones-de-conversaciones.md), D-3, aplica esta decisión a dos tablas más, en `drizzle/0012_*`:
+
+- **`messages`** es de solo inserción, igual que las dos tablas originales: `crm_app` con `SELECT` e `INSERT`, y el trigger `messages_insert_only`.
+- **`ingestion_events`** es una tercera categoría: `crm_app` con `SELECT`, `INSERT` y `UPDATE`, sin `DELETE`, porque el estado del evento cambia. El trigger `ingestion_events_identity_immutable` rechaza con `P0001` el borrado y todo cambio de `id`, `organization_id`, `source`, `external_ref`, `event_type`, `payload_hash` o `received_at`.
+- El test de cobertura de `audit.test.ts` lleva las dos listas: solo inserción y sin borrado.
+- La retención de mensajes (Fase 9) revisará el trigger de `messages` con su propia decisión.

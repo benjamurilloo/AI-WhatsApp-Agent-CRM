@@ -6,6 +6,7 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -37,6 +38,12 @@ export const clients = pgTable(
     uniqueIndex("clients_organization_phone_unique")
       .on(table.organizationId, table.phoneE164)
       .where(sql`${table.phoneE164} IS NOT NULL`),
+    // Destino de la clave foránea compuesta de conversations: una conversación no puede
+    // apuntar al cliente de otra organización (brief-5.1, D-4; brief-6.1).
+    unique("clients_organization_id_id_unique").on(
+      table.organizationId,
+      table.id,
+    ),
     // Prefijo de nombre sin distinguir mayúsculas, como productos (D-2).
     index("clients_organization_display_name_lower_idx").on(
       table.organizationId,
