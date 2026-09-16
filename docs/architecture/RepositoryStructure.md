@@ -41,7 +41,7 @@ Ubica en carpetas los módulos y las reglas de dependencia de [Overview.md](Over
 │       ├── errors/                  Taxonomía de errores (3.4)
 │       └── log/                     Log estructurado JSON con request_id (3.5)
 ├── drizzle/                         Migraciones SQL generadas por Drizzle Kit (versionadas)
-├── seeds/                           Seeds sintéticos: basic.ts (3.5); volumen, más adelante
+├── seeds/                           Seeds sintéticos: basic.ts (3.5), conversations.ts y volume.ts (6.2)
 ├── tests/
 │   ├── guards/                      Guardas sin base: referencias prohibidas, frontera entre módulos y escrituras del saldo
 │   ├── integration/                 Contra PostgreSQL real, en la base <nombre>_test
@@ -168,6 +168,7 @@ Ninguna carpeta se crea vacía: nace con el primer archivo real de la subfase qu
 | 5.2 — Servicio de clientes | En `src/modules/crm/`: `index.ts`, `service.ts` (casos de uso, validación, búsqueda, lista y auditoría del cliente), `repository.ts` y `phone.ts` (normalización y enmascarado), con sus tests unitarios; `tests/integration/crm.test.ts` |
 | 5.3 — UI de clientes | `src/app/(autenticado)/clientes/` completo (lista, alta y detalle con edición, desactivación y auditoría), con sus `filters.ts`, `messages.ts`, `actions.ts`, `phone-display.ts` y `phone-text.tsx`, el resumen de auditoría, los componentes de cliente y sus tests unitarios; enlace "Clientes" en el marco común; `tests/e2e/clients.spec.ts` |
 | 6.1 — Migraciones de conversaciones | `src/modules/conversations/schema.ts` (`conversations`, `messages`) y `src/modules/ingestion/schema.ts` (`ingestion_events`), solo con su esquema; `UNIQUE(organization_id, id)` en `clients`; `drizzle/0010_*` (ese `UNIQUE`), `drizzle/0011_*` (tablas) y `drizzle/0012_*` (privilegios y triggers); `tests/integration/conversations-schema.test.ts` |
+| 6.2 — Seeds sintéticos de conversaciones | `seeds/conversations.ts` (conversaciones de ejemplo, llamado desde `npm run db:seed`) y `seeds/volume.ts` (`npm run db:seed:volume`); `tests/integration/conversations-seed.test.ts` |
 | Fase 4 | `src/modules/catalog/` e `inventory/` |
 | Fase 5 | `src/modules/crm/` |
 | Fase 6 | `src/modules/conversations/` e `ingestion/` |

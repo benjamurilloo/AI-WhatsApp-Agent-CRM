@@ -113,6 +113,10 @@ async function main(): Promise<void> {
     console.log(
       `Seed básico aplicado: ${SEED_USERS.map((user) => user.email).join(", ")}.`,
     );
+    // Conversaciones de ejemplo, fuera de seedBasic: los end-to-end no las usan (brief-6.2, D-1).
+    const { seedConversations } = await import("./conversations");
+    await seedConversations(db);
+    console.log("Conversaciones de ejemplo aplicadas.");
   } finally {
     await db.$client.end();
   }

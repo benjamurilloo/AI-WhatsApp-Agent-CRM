@@ -2,7 +2,7 @@
 
 **Estado: diseñado.** Construida en la subfase 1.2 ([brief-1.2](../decisions/brief-1.2-validacion-cruzada-del-modelo.md)) sobre el modelo ya corregido. Relaciona pantallas ([Screens.md](../product/Screens.md), [wireframes](../product/wireframes/README.md)), requisitos ([FunctionalRequirements.md](../product/FunctionalRequirements.md)), tablas e índices ([DataModel.md](DataModel.md)) y métricas ([MetricsCatalog.md](../analytics/MetricsCatalog.md)).
 
-Ninguna consulta se ejecutó: los índices se asignan por la forma de la consulta descrita, no por un plan real. En la Fase 4 en adelante, cada consulta se confirma con `EXPLAIN` sobre el seed de volumen.
+Ninguna consulta se ejecutó: los índices se asignan por la forma de la consulta descrita, no por un plan real. Se preveía confirmar cada consulta con `EXPLAIN` sobre el seed de volumen desde la Fase 4, pero ese seed no existió hasta la 6.2 ([brief-6.2](../decisions/brief-6.2-seeds-sinteticos-de-conversaciones.md)), y solo cubre clientes, conversaciones y mensajes. Las consultas de conversaciones se confirman con `EXPLAIN` en la 6.3. Las de las Fases 4 y 5 (productos, inventario y clientes) siguen sin confirmar: quedan para la Fase 8, junto con el volumen de productos (brief-6.2, D-4).
 
 ## 1. Por pantalla
 

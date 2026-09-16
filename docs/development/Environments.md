@@ -93,6 +93,29 @@ Desde la 3.5 ([brief-3.5](../decisions/brief-3.5-pantalla-de-inicio-de-sesion.md
 - Se niega a correr si el nombre de la base no termina en `_dev`, `_test` o `_e2e`.
 - Requiere las migraciones aplicadas (`npm run db:migrate`).
 
+## Seeds de conversaciones y de volumen
+
+Desde la 6.2 ([brief-6.2](../decisions/brief-6.2-seeds-sinteticos-de-conversaciones.md)):
+
+| Acción | Comando |
+|---|---|
+| Sembrar conversaciones de ejemplo | `npm run db:seed` (después del seed básico, en el mismo comando) |
+| Sembrar el volumen | `npm run db:seed:volume`, o `npm run db:seed:volume -- 2000` para otro tamaño |
+
+- **Conversaciones de ejemplo**, en la organización del seed básico:
+  - 6 clientes (uno sin teléfono, uno inactivo), 10 conversaciones y 26 mensajes;
+  - incluyen conversaciones sin cliente, los tres estados, bordes de zona horaria y cuerpos con marcado para probar el escape;
+  - los end-to-end no las usan (D-1).
+- **Fechas fijadas en la primera corrida** (D-2): las fechas se calculan relativas al día de esa corrida, salvo una conversación del 19/10/2008. `messages` es de solo inserción, así que las corridas siguientes no mueven mensajes ni fechas: solo reponen el estado de las conversaciones y los datos de los clientes. Para tener fechas recientes otra vez hay que recrear la base de desarrollo.
+- **Volumen** (D-3):
+  - "Organización de volumen", con `volumen@example.com` (`admin`, contraseña de `SEED_USER_PASSWORD`);
+  - 10.000 clientes y 10.000 conversaciones con entre 1 y 12 mensajes (65.260 en total), repartidas en los 180 días anteriores;
+  - es determinista: la fila *i* es la misma con cualquier tamaño, y una corrida posterior no toca las filas existentes;
+  - en la máquina local tarda unos 5 s;
+  - no corre en CI;
+  - no incluye productos ni inventario (D-4).
+- Los dos seeds se niegan a correr si el nombre de la base no termina en `_dev`, `_test` o `_e2e`.
+
 ## Base de end-to-end
 
 Desde la 3.5 ([brief-3.5](../decisions/brief-3.5-pantalla-de-inicio-de-sesion.md), D-8) los tests de Playwright usan `<nombre de DATABASE_URL>_e2e` (`crm_dev_e2e` en local, `crm_ci_e2e` en CI), separada de la de integración para que `npm run test` y `npm run test:e2e` no se vacíen los datos entre sí:

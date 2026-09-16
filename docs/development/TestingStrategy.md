@@ -118,7 +118,12 @@
 ## Datos de prueba
 
 - Fixtures y seeds propios, sintéticos y versionados en el repo: seeds en `seeds/`, fixtures junto al test que los usa ([RepositoryStructure.md](../architecture/RepositoryStructure.md)). Ningún fixture usa datos reales ni provenientes de Airtable.
-- Un seed "básico" para desarrollo local (pocas filas, legible) y un seed "volumen" para probar paginación y rendimiento con más datos, ambos sintéticos. El básico existe desde la 3.5 (`seeds/basic.ts`), con test de idempotencia y de rechazo de una base no permitida (`tests/integration/seed.test.ts`); el de volumen, todavía no.
+- Un seed "básico" para desarrollo local (pocas filas, legible) y un seed "volumen" para probar paginación y rendimiento con más datos, ambos sintéticos. El básico existe desde la 3.5 (`seeds/basic.ts`), con test de idempotencia y de rechazo de una base no permitida (`tests/integration/seed.test.ts`). Desde la 6.2 ([brief-6.2](../decisions/brief-6.2-seeds-sinteticos-de-conversaciones.md)) existen el seed de conversaciones de ejemplo (`seeds/conversations.ts`) y el de volumen (`seeds/volume.ts`), cubiertos en `tests/integration/conversations-seed.test.ts` con una fecha de referencia fija y un volumen chico:
+  - toda conversación sembrada tiene al menos un mensaje, `started_at` igual a su primer `sent_at` y `last_message_at` igual al último; el test se corrió una vez con el seed alterado para confirmar que lo detecta;
+  - el seed de conversaciones incluye los tres estados, conversaciones sin cliente, un cliente inactivo, un mensaje que en UTC cae en otro día, una conversación que cruza la medianoche local, el 19/10/2008 de Buenos Aires (23 horas) y cuerpos con marcado, nulos, largos y con emojis, guardados tal cual;
+  - los dos son idempotentes: una segunda corrida, aun con otra fecha, no agrega ni mueve filas; el de conversaciones repone el estado y los clientes;
+  - el volumen es determinista (misma huella con el mismo tamaño), queda en su propia organización y un tamaño mayor conserva las filas existentes;
+  - ninguno corre fuera de una base `_dev`, `_test` o `_e2e`.
 - Los fixtures de métricas incluyen bordes temporales: un mensaje cerca de la medianoche local que en UTC cae en otro día, y un día con cambio de horario.
 - Los payloads de ingestión del MVP se marcan en el propio fixture como **forma asumida, no verificada**, porque todavía no existe un emisor real. En el proyecto de integración se derivan de capturas reales del emisor, y recién ahí cuentan como evidencia de compatibilidad.
 - En staging, los datos de prueba se limpian por identidad exacta (IDs creados o diff contra un baseline), nunca por rango de fechas, y en orden hijo → padre.

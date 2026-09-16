@@ -30,6 +30,7 @@ Toda entrada de este índice lleva fase límite. "Se ve más adelante" no es una
 | Frecuencia y prueba de restauración de backups | [architecture/Overview.md](../architecture/Overview.md) | Subfase 9.2 |
 | Validación de las personas contra el uso real | [product/Personas.md](../product/Personas.md) | Fase 9 |
 | Cuándo priorizar un segundo canal además de WhatsApp | esta tabla de riesgos | Después del MVP (Fase 10) |
+| Consultas de productos, inventario y clientes sin `EXPLAIN` sobre volumen: el seed de volumen de la 6.2 no incluye productos ni inventario ([brief-6.2](../decisions/brief-6.2-seeds-sinteticos-de-conversaciones.md), D-4) | [architecture/TraceabilityMatrix.md](../architecture/TraceabilityMatrix.md) y [product/NonFunctionalRequirements.md](../product/NonFunctionalRequirements.md) | Fase 8, con el costo de `offset` y de las listas en memoria |
 | Eliminar los datos de un cliente a pedido cuando `audit_logs`, de solo inserción, guarda su teléfono y sus notas ([brief-5.2](../decisions/brief-5.2-servicio-de-clientes.md), D-6) | [product/NonFunctionalRequirements.md](../product/NonFunctionalRequirements.md) y [ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md) | Fase 8, con el procedimiento de exportación y eliminación |
 
 ### Cerradas en la subfase 5.2 (2026-09-16)
