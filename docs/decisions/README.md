@@ -58,7 +58,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-5.3](brief-5.3-ui-de-clientes.md) | 5.3 — UI de clientes | aprobado y cerrado el 2026-09-16 |
 | [brief-6.1](brief-6.1-migraciones-de-conversaciones.md) | 6.1 — Migraciones de conversaciones | aprobado y cerrado el 2026-09-16 |
 | [brief-6.2](brief-6.2-seeds-sinteticos-de-conversaciones.md) | 6.2 — Seeds sintéticos de conversaciones | aprobado y cerrado el 2026-09-16 |
-| [brief-6.3](brief-6.3-servicio-de-consulta-y-estado.md) | 6.3 — Servicio de consulta y estado | aprobado el 2026-09-16 |
+| [brief-6.3](brief-6.3-servicio-de-consulta-y-estado.md) | 6.3 — Servicio de consulta y estado | aprobado y cerrado el 2026-09-16 |
 
 ## Plantilla
 

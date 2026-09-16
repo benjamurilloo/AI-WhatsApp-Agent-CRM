@@ -266,6 +266,10 @@ La revisión es una autoevaluación (`self_assessment: true`).
 - Si aparece la necesidad de tocar `src/app/`, los seeds o una dependencia.
 - Antes de medir contra la base de desarrollo, y antes de cualquier commit, push o cambio en Notion.
 
+## Cierre (2026-09-16)
+
+Cerrado con autorización del usuario. Se cumplen los ocho criterios; la condición de detención de D-4 quedó aceptada y registrada, como detalla la ejecución. La CI quedó en verde en el commit `887081d` ([ejecución 35147351833](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35147351833), todos los pasos). Nivel alcanzado: **validado localmente y en CI**. La evidencia está en [CHANGELOG.md](../../CHANGELOG.md).
+
 ## Ejecución (2026-09-16)
 
 La implementación está terminada y el cierre está pendiente. Se activó una condición de detención (D-4), y el usuario autorizó cómo seguir.
@@ -335,4 +339,4 @@ Se tomaron en la base de desarrollo, en local y en solo lectura: la conexión fi
 
 Todas quedan por debajo de los 200 ms de D-4.
 
-Pendiente: commit, push, CI (AC-7) y cierre.
+Pendiente al terminar la ejecución (resuelto en el cierre): commit, push, CI (AC-7) y cierre.

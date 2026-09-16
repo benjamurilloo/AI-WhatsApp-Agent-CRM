@@ -2,6 +2,29 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-16 — Subfase 6.3 cerrada (Servicio de consulta y estado)
+
+**Certifica:**
+
+- **Servicio de `conversations`** según el [brief-6.3](docs/decisions/brief-6.3-servicio-de-consulta-y-estado.md), con D-1 a D-5 resueltas según la recomendación:
+  - `listConversations`, con filtros de período (días de calendario en la zona de la organización), estado, canal y cliente, paginada de a 25; no entrega el cuerpo de ningún mensaje (FR-CONV-01);
+  - `getConversation` y `listConversationMessages`, un timeline de a 50 con cursor `(sent_at, id)` en base64url que conserva los microsegundos (D-2);
+  - `changeConversationStatus`, solo para `admin`, con `FOR UPDATE`, última escritura gana (D-3) y auditoría en la misma transacción; sin diferencias devuelve `changed: false`;
+  - `getClientActivity` (pantalla 7) y `searchClientsByLastInteraction` (pantalla 6, FR-CLI-04), que compone en memoria el orden con `crm.listClientOrderKeys` y `crm.getClientsByIds` (D-1); el teléfono sigue enmascarado para `viewer`.
+- **`src/shared/calendar/`**: la validación de fechas de calendario, que `inventory` usa sin cambios de comportamiento (D-5).
+- **Tests**: 29 casos en `tests/integration/conversations.test.ts`, incluida la concurrencia del cambio de estado y el rechazo de la auditoría, más 7 unitarios de `conversations` y 3 de `shared/calendar`. Mutaciones: una lista que trae el último cuerpo y `getClientsByIds` sin enmascarar hacen fallar sus casos (evidencia en el brief).
+- **Mediciones locales** sobre la organización de volumen, en solo lectura: todas las funciones con mediana por debajo de 200 ms (la mayor, 93 ms). Tres consultas recorren `conversations` completa porque esa organización tiene el 99,9 % de las filas; el usuario aceptó registrarlo (D-4), y Risks lo deja para staging con varias organizaciones (Fase 9).
+- **Suite local**: `npm run test` pasa 533 de 533 y `npm run test:e2e` pasa 50 de 50. Con la base detenida pasan typecheck, lint, formato, guardas, unitarios y build, y `db:generate` no produce migraciones.
+- **CI**: [35147351833](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35147351833), commit `887081d`, en verde con todos los pasos.
+- **Nivel alcanzado**: **validado localmente y en CI** para el servicio de conversaciones.
+
+**No certifica:**
+
+- **Pantallas y escape del cuerpo de los mensajes**: 6.4.
+- **Rendimiento con varias organizaciones y en staging**: Fase 9.
+- **Ingestión**: 6.5.
+- **Revisión independiente**: es autoevaluación del mismo agente.
+
 ## 2026-09-16 — Subfase 6.2 cerrada (Seeds sintéticos de conversaciones)
 
 **Certifica:**
