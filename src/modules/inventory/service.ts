@@ -220,7 +220,8 @@ export function computeBalanceAfter(
 // Cantidades en la escala de la base ("6.000"), como texto (D-3).
 export type StockAdjustmentResult =
   | { ok: true; quantityOnHand: string }
-  | Failure<"FORBIDDEN" | "NOT_FOUND">
+  // VALIDATION_ERROR sin fields: id inválido (brief-4.4, D-6). Con fields: el formulario.
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
   | Failure<"VALIDATION_ERROR", { fields: StockAdjustmentField[] }>
   | Failure<"CONFLICT", { currentQuantityOnHand: string }>
   | Failure<"BUSINESS_RULE_VIOLATION", { rule: "inactive_product" }>
@@ -254,8 +255,9 @@ export async function adjustStock(
 ): Promise<StockAdjustmentResult> {
   const authorized = authorize(context, { role: "admin" });
   if (!authorized.ok) return authorized;
+  // Un id de la URL no es un campo del formulario: va sin fields (brief-4.4, D-6).
   if (!productIdSchema.safeParse(productId).success) {
-    return { ok: false, code: "VALIDATION_ERROR", fields: [] };
+    return failure("VALIDATION_ERROR");
   }
   const validated = validateStockAdjustmentInput(input);
   if (!validated.ok) return validated;

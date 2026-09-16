@@ -32,6 +32,34 @@ describe("log estructurado", () => {
     });
   });
 
+  it("registra organización y duración redondeada cuando llegan (brief-4.4)", () => {
+    const line = formatLogEvent({
+      level: "info",
+      requestId: newRequestId(),
+      route: "productos.ajustar",
+      code: "OK",
+      userId: "b3c5b1f4-0000-4000-8000-000000000001",
+      organizationId: "b3c5b1f4-0000-4000-8000-000000000002",
+      durationMs: 12.6,
+    });
+    expect(JSON.parse(line)).toMatchObject({
+      organization_id: "b3c5b1f4-0000-4000-8000-000000000002",
+      duration_ms: 13,
+    });
+  });
+
+  it("omite organización y duración cuando no llegan", () => {
+    const line = formatLogEvent({
+      level: "info",
+      requestId: newRequestId(),
+      route: "login",
+      code: "OK",
+    });
+    const event = JSON.parse(line) as Record<string, unknown>;
+    expect(Object.hasOwn(event, "organization_id")).toBe(false);
+    expect(Object.hasOwn(event, "duration_ms")).toBe(false);
+  });
+
   it("genera request_id únicos con formato UUID", () => {
     const first = newRequestId();
     expect(first).toMatch(

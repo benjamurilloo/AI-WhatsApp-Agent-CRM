@@ -1,6 +1,8 @@
 # 05 — Ajuste de inventario e historial de movimientos
 
-**Estado: diseñado.** Especificación: [Screens.md §5](../Screens.md#5-ajuste-de-inventario-e-historial-de-movimientos). Reglas: FR-PROD-06 a 09 y [ADR 0008](../../decisions/0008-stock-nunca-negativo.md). Convenciones en el [índice](README.md).
+**Estado: implementado en la 4.4** ([brief-4.4](../../decisions/brief-4.4-ui-de-productos-e-inventario.md)). Especificación: [Screens.md §5](../Screens.md#5-ajuste-de-inventario-e-historial-de-movimientos). Reglas: FR-PROD-06 a 09 y [ADR 0008](../../decisions/0008-stock-nunca-negativo.md). Convenciones en el [índice](README.md).
+
+**Desvío respecto de este wireframe**: el período viene por defecto en "Todo el historial", no en "Últimos 30 días" (brief-4.4, D-4). FR-PROD-09 pide el historial completo, y así el estado vacío significa de verdad que el producto no tiene movimientos.
 
 ## Escritorio
 

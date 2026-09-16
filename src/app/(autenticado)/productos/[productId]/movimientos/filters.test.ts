@@ -1,0 +1,133 @@
+import { describe, expect, it } from "vitest";
+import {
+  DEFAULT_VIEW,
+  hasActiveMovementFilters,
+  movementFiltersHref,
+  parseMovementView,
+  toHistoryFilters,
+} from "./filters";
+
+const BUENOS_AIRES = "America/Argentina/Buenos_Aires";
+const PRODUCT = "b3c5b1f4-0000-4000-8000-000000000001";
+
+describe("parseMovementView", () => {
+  it("sin parámetros muestra todo el historial", () => {
+    expect(parseMovementView({})).toEqual(DEFAULT_VIEW);
+  });
+
+  it("lee tipo, período y página, y descarta valores desconocidos", () => {
+    expect(parseMovementView({ tipo: "negativo", periodo: "30d" })).toEqual({
+      ...DEFAULT_VIEW,
+      type: "negativo",
+      period: "30d",
+    });
+    expect(parseMovementView({ tipo: "venta", periodo: "siempre" })).toEqual(
+      DEFAULT_VIEW,
+    );
+    expect(parseMovementView({ pagina: "0" }).page).toBe(1);
+    expect(parseMovementView({ pagina: "4" }).page).toBe(4);
+  });
+
+  it("solo conserva las fechas escritas cuando el período es personalizado", () => {
+    expect(
+      parseMovementView({
+        periodo: "personalizado",
+        desde: " 2026-09-01 ",
+        hasta: "2026-09-15",
+      }),
+    ).toMatchObject({
+      period: "personalizado",
+      from: "2026-09-01",
+      to: "2026-09-15",
+    });
+    expect(
+      parseMovementView({ periodo: "30d", desde: "2026-09-01" }),
+    ).toMatchObject({ period: "30d", from: "", to: "" });
+  });
+});
+
+describe("toHistoryFilters", () => {
+  const now = new Date("2026-09-10T02:59:59Z"); // 9 de septiembre, 23:59 en Buenos Aires.
+
+  it("todo el historial no limita el período", () => {
+    expect(toHistoryFilters(DEFAULT_VIEW, BUENOS_AIRES, now)).toEqual({
+      type: "all",
+      from: "",
+      to: "",
+      page: 1,
+    });
+  });
+
+  it("los atajos se resuelven en días de la zona de la organización, incluido hoy", () => {
+    expect(
+      toHistoryFilters({ ...DEFAULT_VIEW, period: "7d" }, BUENOS_AIRES, now),
+    ).toMatchObject({ from: "2026-09-03", to: "2026-09-09" });
+    expect(
+      toHistoryFilters({ ...DEFAULT_VIEW, period: "30d" }, BUENOS_AIRES, now),
+    ).toMatchObject({ from: "2026-08-11", to: "2026-09-09" });
+    // En UTC el mismo instante ya es el día 10.
+    expect(
+      toHistoryFilters({ ...DEFAULT_VIEW, period: "7d" }, "UTC", now),
+    ).toMatchObject({ from: "2026-09-04", to: "2026-09-10" });
+  });
+
+  it("el período personalizado pasa las fechas tal como se escribieron", () => {
+    expect(
+      toHistoryFilters(
+        {
+          ...DEFAULT_VIEW,
+          period: "personalizado",
+          from: "2026-02-30",
+          to: "2026-09-15",
+        },
+        BUENOS_AIRES,
+        now,
+      ),
+    ).toMatchObject({ from: "2026-02-30", to: "2026-09-15" });
+  });
+
+  it("traduce el tipo al valor del servicio", () => {
+    expect(
+      toHistoryFilters({ ...DEFAULT_VIEW, type: "positivo" }, "UTC", now).type,
+    ).toBe("adjustment_positive");
+    expect(
+      toHistoryFilters({ ...DEFAULT_VIEW, type: "negativo" }, "UTC", now).type,
+    ).toBe("adjustment_negative");
+  });
+});
+
+describe("movementFiltersHref", () => {
+  it("omite los valores por defecto y vuelve a leerse igual", () => {
+    expect(movementFiltersHref(PRODUCT, DEFAULT_VIEW)).toBe(
+      `/productos/${PRODUCT}/movimientos`,
+    );
+    const view = {
+      type: "negativo" as const,
+      period: "personalizado" as const,
+      from: "2026-09-01",
+      to: "2026-09-15",
+      page: 2,
+    };
+    const href = movementFiltersHref(PRODUCT, view);
+    expect(href).toBe(
+      `/productos/${PRODUCT}/movimientos?tipo=negativo&periodo=personalizado&desde=2026-09-01&hasta=2026-09-15&pagina=2`,
+    );
+    const query = Object.fromEntries(
+      new URL(href, "http://localhost").searchParams,
+    );
+    expect(parseMovementView(query)).toEqual(view);
+  });
+});
+
+describe("hasActiveMovementFilters", () => {
+  it("la página no cuenta como filtro", () => {
+    expect(hasActiveMovementFilters(DEFAULT_VIEW)).toBe(false);
+    expect(hasActiveMovementFilters({ ...DEFAULT_VIEW, page: 3 })).toBe(false);
+    expect(hasActiveMovementFilters({ ...DEFAULT_VIEW, period: "7d" })).toBe(
+      true,
+    );
+    expect(
+      hasActiveMovementFilters({ ...DEFAULT_VIEW, type: "positivo" }),
+    ).toBe(true);
+  });
+});

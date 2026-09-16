@@ -1,0 +1,290 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { listProductStock } from "@/modules/inventory";
+import { requireSession } from "@/app/_auth/session";
+import {
+  activeBadgeClass,
+  cardClass,
+  inactiveBadgeClass,
+  inputClass,
+  labelClass,
+  linkClass,
+  pageTitleClass,
+  primaryLinkClass,
+  secondaryButtonClass,
+  selectClass,
+  tableCellClass,
+  tableHeadCellClass,
+} from "@/app/_components/form-styles";
+import { PageNotice } from "@/app/_components/page-notice";
+import { formatQuantity } from "@/shared/quantity";
+import {
+  hasActiveFilters,
+  parseProductFilters,
+  productFiltersHref,
+  STOCK_STATUS_LABEL,
+  type SearchParams,
+} from "./filters";
+import {
+  FORBIDDEN_PAGE_MESSAGE,
+  NO_PRODUCT_RESULTS_MESSAGE,
+  NO_PRODUCTS_MESSAGE,
+} from "./messages";
+import { StockStatusBadge } from "./stock-status";
+
+export const metadata: Metadata = {
+  title: "Productos — AI WhatsApp Agent CRM",
+};
+
+const TITLE = "Productos";
+
+// Pantalla 3 (wireframe 03): búsqueda, filtros y página en la URL. Tabla en escritorio y
+// tarjetas en móvil; la versión oculta no entra al árbol de accesibilidad.
+export default async function ProductsPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
+  const context = await requireSession();
+  const filters = parseProductFilters(await searchParams);
+  const result = await listProductStock(context, filters);
+  if (!result.ok) {
+    return <PageNotice title={TITLE} message={FORBIDDEN_PAGE_MESSAGE} />;
+  }
+
+  const filtered = hasActiveFilters(filters);
+  const isAdmin = context.role === "admin";
+
+  return (
+    <main className="mx-auto max-w-6xl px-4 py-8">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h1 className={pageTitleClass}>{TITLE}</h1>
+        {isAdmin ? (
+          <Link href="/productos/nuevo" className={primaryLinkClass}>
+            + Nuevo producto
+          </Link>
+        ) : null}
+      </div>
+
+      <form
+        key={productFiltersHref(filters)}
+        method="get"
+        action="/productos"
+        className="mt-6 flex flex-wrap items-end gap-3"
+      >
+        <div className="flex flex-col gap-1">
+          <label htmlFor="q" className={labelClass}>
+            Buscar
+          </label>
+          <input
+            id="q"
+            name="q"
+            type="search"
+            defaultValue={filters.text}
+            placeholder="Nombre o SKU"
+            className={`${inputClass} w-56`}
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label htmlFor="estado" className={labelClass}>
+            Estado de stock
+          </label>
+          <select
+            id="estado"
+            name="estado"
+            defaultValue={
+              {
+                all: "todos",
+                disponible: "disponible",
+                bajo_stock: "bajo",
+                sin_stock: "sin",
+              }[filters.stockStatus]
+            }
+            className={selectClass}
+          >
+            <option value="todos">Todos</option>
+            <option value="disponible">Disponible</option>
+            <option value="bajo">Bajo stock</option>
+            <option value="sin">Sin stock</option>
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label htmlFor="actividad" className={labelClass}>
+            Actividad
+          </label>
+          <select
+            id="actividad"
+            name="actividad"
+            defaultValue={
+              { active: "activos", inactive: "inactivos", all: "todos" }[
+                filters.activity
+              ]
+            }
+            className={selectClass}
+          >
+            <option value="activos">Solo activos</option>
+            <option value="inactivos">Solo inactivos</option>
+            <option value="todos">Todos</option>
+          </select>
+        </div>
+        <button type="submit" className={secondaryButtonClass}>
+          Aplicar filtros
+        </button>
+        {filtered ? (
+          <Link href="/productos" className={`${linkClass} py-2`}>
+            Limpiar filtros
+          </Link>
+        ) : null}
+      </form>
+
+      {result.total === 0 ? (
+        <div className={`mt-8 ${cardClass} p-6`}>
+          <p>{filtered ? NO_PRODUCT_RESULTS_MESSAGE : NO_PRODUCTS_MESSAGE}</p>
+          {filtered ? (
+            <p className="mt-3">
+              <Link href="/productos" className={linkClass}>
+                Limpiar filtros
+              </Link>
+            </p>
+          ) : isAdmin ? (
+            <p className="mt-3">
+              <Link href="/productos/nuevo" className={linkClass}>
+                Crear el primero
+              </Link>
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        <>
+          <div className={`mt-8 hidden overflow-hidden md:block ${cardClass}`}>
+            <table className="w-full border-collapse text-left text-[0.9375rem]">
+              <caption className="sr-only">
+                Productos de la organización
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col" className={tableHeadCellClass}>
+                    SKU
+                  </th>
+                  <th scope="col" className={tableHeadCellClass}>
+                    Nombre
+                  </th>
+                  <th
+                    scope="col"
+                    className={`${tableHeadCellClass} text-right`}
+                  >
+                    Stock
+                  </th>
+                  <th scope="col" className={tableHeadCellClass}>
+                    Unidad
+                  </th>
+                  <th scope="col" className={tableHeadCellClass}>
+                    Estado
+                  </th>
+                  <th scope="col" className={tableHeadCellClass}>
+                    Activo
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {result.products.map((product) => (
+                  <tr key={product.id}>
+                    <td className={`${tableCellClass} font-mono text-sm`}>
+                      {product.sku}
+                    </td>
+                    <td className={`${tableCellClass} font-semibold`}>
+                      <Link
+                        href={`/productos/${product.id}`}
+                        className={linkClass}
+                      >
+                        {product.name}
+                      </Link>
+                    </td>
+                    <td className={`${tableCellClass} text-right tabular-nums`}>
+                      {formatQuantity(product.quantityOnHand)}
+                    </td>
+                    <td className={`${tableCellClass} text-muted`}>
+                      {product.unit}
+                    </td>
+                    <td className={tableCellClass}>
+                      <StockStatusBadge status={product.stockStatus} />
+                    </td>
+                    <td className={tableCellClass}>
+                      <span
+                        className={
+                          product.isActive
+                            ? activeBadgeClass
+                            : inactiveBadgeClass
+                        }
+                      >
+                        {product.isActive ? "Sí" : "No"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <ul
+            aria-label="Productos de la organización"
+            className="mt-6 flex flex-col gap-3 md:hidden"
+          >
+            {result.products.map((product) => (
+              <li key={product.id} className={`${cardClass} p-4`}>
+                <p className="font-semibold">
+                  <Link href={`/productos/${product.id}`} className={linkClass}>
+                    {product.name}
+                  </Link>
+                  {product.isActive ? null : (
+                    <span className="ml-2 text-sm font-normal text-muted">
+                      · Inactivo
+                    </span>
+                  )}
+                </p>
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <p className="text-sm tabular-nums">
+                    {formatQuantity(product.quantityOnHand)} {product.unit}
+                  </p>
+                  <StockStatusBadge status={product.stockStatus} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {result.pageCount > 1 ? (
+        <nav
+          aria-label="Paginación"
+          className="mt-6 flex flex-wrap items-center justify-center gap-4"
+        >
+          {result.page > 1 ? (
+            <Link
+              href={productFiltersHref({ ...filters, page: result.page - 1 })}
+              className={linkClass}
+            >
+              Página anterior
+            </Link>
+          ) : null}
+          <p className="text-sm text-muted tabular-nums">
+            Página {result.page} de {result.pageCount} · {result.total}{" "}
+            {result.total === 1 ? "producto" : "productos"}
+          </p>
+          {result.page < result.pageCount ? (
+            <Link
+              href={productFiltersHref({ ...filters, page: result.page + 1 })}
+              className={linkClass}
+            >
+              Página siguiente
+            </Link>
+          ) : null}
+        </nav>
+      ) : null}
+      <p className="sr-only">
+        {STOCK_STATUS_LABEL.disponible}, {STOCK_STATUS_LABEL.bajo_stock} y{" "}
+        {STOCK_STATUS_LABEL.sin_stock} se indican con texto e ícono.
+      </p>
+    </main>
+  );
+}

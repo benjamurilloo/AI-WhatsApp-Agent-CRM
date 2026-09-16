@@ -1,6 +1,8 @@
 # 04 — Detalle y edición de producto
 
-**Estado: diseñado.** Especificación: [Screens.md §4](../Screens.md#4-detalle-y-edición-de-producto). Convenciones en el [índice](README.md).
+**Estado: implementado en la 4.4** ([brief-4.4](../../decisions/brief-4.4-ui-de-productos-e-inventario.md)). Especificación: [Screens.md §4](../Screens.md#4-detalle-y-edición-de-producto). Convenciones en el [índice](README.md).
+
+**Notas de implementación**: la edición y la confirmación de desactivar son segundos pasos en la URL (`?editar=1`, `?confirmar=desactivar`), como en la pantalla 10. La auditoría reúne las ediciones del producto y sus ajustes de stock en una sola lista paginada, que arma `catalog` (brief-4.4, D-1).
 
 ## Escritorio
 

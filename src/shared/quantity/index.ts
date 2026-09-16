@@ -32,6 +32,20 @@ export function quantityFromDatabase(value: string): Quantity {
   return sign ? -magnitude : magnitude;
 }
 
+// Para mostrar: "2.500" se lee "2,5" (brief-4.4, D-2). Sin ceros finales y con coma decimal,
+// como se escribe en español; la entrada sigue aceptando coma o punto.
+export function formatQuantity(value: string): string {
+  const quantity = quantityFromDatabase(value);
+  const sign = quantity < 0n ? "-" : "";
+  const magnitude = quantity < 0n ? -quantity : quantity;
+  const fraction = (magnitude % FACTOR)
+    .toString()
+    .padStart(3, "0")
+    .replace(/0+$/, "");
+  const integer = (magnitude / FACTOR).toString();
+  return fraction ? `${sign}${integer},${fraction}` : `${sign}${integer}`;
+}
+
 export function quantityToDatabase(value: Quantity): string {
   const sign = value < 0n ? "-" : "";
   const magnitude = value < 0n ? -value : value;

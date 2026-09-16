@@ -23,13 +23,13 @@ Monolito modular en TypeScript. Una sola aplicación desplegable, organizada int
 |---|---|---|
 | `auth` | Login, sesión, hash de contraseña, cierre de sesión | — |
 | `organizations` | Organización, membresías, roles | `auth` |
-| `catalog` | Productos, estados de stock derivados | `organizations` |
-| `inventory` | Movimientos de inventario, ajustes transaccionales, saldo | `catalog`, `organizations` |
+| `catalog` | Productos, estados de stock derivados, historial de auditoría del producto | `organizations`, `audit`, `auth` (nombre del autor, brief-4.4) |
+| `inventory` | Movimientos de inventario, ajustes transaccionales, saldo, historial de movimientos | `catalog`, `organizations`, `audit`, `auth` (nombre del autor, brief-4.3.3) |
 | `crm` | Clientes | `organizations` |
 | `conversations` | Conversaciones, mensajes, timeline | `organizations`, `crm` |
 | `ingestion` | Contrato de idempotencia, registro de eventos | `conversations`, `organizations` |
 | `analytics` | Cálculo de métricas desde datos transaccionales | `conversations`, `organizations` |
-| `audit` | Registro inmutable de cambios sensibles | `auth` y `organizations`, solo en `schema.ts` para sus claves foráneas ([brief-3.6](../decisions/brief-3.6-modulo-de-auditoria.md), D-5). Lo usan `catalog`, `inventory`, `crm`, `conversations` y `organizations` |
+| `audit` | Registro inmutable de cambios sensibles y su lectura por entidad | `auth` y `organizations`, solo en `schema.ts` para sus claves foráneas ([brief-3.6](../decisions/brief-3.6-modulo-de-auditoria.md), D-5). Lo usan `catalog`, `inventory`, `crm`, `conversations` y `organizations`. Su lectura no autoriza ni compone nombres: eso lo hace el módulo dueño de la entidad, para no invertir esta dependencia ([brief-4.4](../decisions/brief-4.4-ui-de-productos-e-inventario.md), D-1) |
 
 ## Reglas de dependencia
 

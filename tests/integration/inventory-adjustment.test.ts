@@ -356,10 +356,10 @@ describe("adjustStock: autorización, aislamiento y validación", () => {
   it("id inválido y entrada inválida dan VALIDATION_ERROR sin escribir", async () => {
     const s = await seed();
     const productId = await insertProduct(s.orgA);
+    // Un id inválido no lleva fields (brief-4.4, D-6).
     expect(await adjustStock(s.adminA, "no-es-un-id", add("1", "0"))).toEqual({
       ok: false,
       code: "VALIDATION_ERROR",
-      fields: [],
     });
     expect(
       await adjustStock(s.adminA, productId, {

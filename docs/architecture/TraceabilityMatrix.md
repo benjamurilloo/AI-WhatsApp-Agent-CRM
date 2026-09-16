@@ -38,7 +38,7 @@ Cada FR tiene al menos una pantalla, endpoint o invariante con test que lo satis
 | FR-PROD-06 | Pantalla 5 | pantalla |
 | FR-PROD-07 | Sin vía de escritura directa; test de que `balance_after` coincide con el saldo | invariante con test |
 | FR-PROD-08 | Pantalla 5; test de rechazo sin movimiento ([ADR 0008](../decisions/0008-stock-nunca-negativo.md)) | pantalla e invariante |
-| FR-PROD-09 | Pantallas 4 y 5 | pantalla |
+| FR-PROD-09 | Pantallas 4 y 5, implementadas en la 4.4; historial paginado con filtros de tipo y período, ordenado por la hora del `INSERT` (brief-4.3.3, D-1) | pantalla e invariante con test |
 | FR-CLI-01 | Pantalla 6 (acción crear) y formulario de la pantalla 7 en modo alta | pantalla |
 | FR-CLI-02 | Pantalla 7 | pantalla |
 | FR-CLI-03 | Pantalla 6 | pantalla |
@@ -55,7 +55,7 @@ Cada FR tiene al menos una pantalla, endpoint o invariante con test que lo satis
 | FR-MET-02 | Pantalla 2 (período y zona horaria) | pantalla |
 | FR-MET-03 | Pantalla 2 sin valores editables; cálculo por consulta ([ADR 0005](../decisions/0005-metricas-desde-datos-transaccionales.md)) | pantalla e invariante |
 | FR-AUD-01 | Escritura de `audit_logs` en la misma transacción que cada cambio (pantallas 4, 5, 7, 9 y 10) | invariante |
-| FR-AUD-02 | Pantallas 4 y 7 | pantalla |
+| FR-AUD-02 | Pantalla 4, implementada en la 4.4: `catalog` autoriza y compone, `audit` consulta ediciones y ajustes en una sola lista paginada (brief-4.4, D-1). Pantalla 7: Fase 5 | pantalla e invariante con test |
 
 ## 3. Por índice
 

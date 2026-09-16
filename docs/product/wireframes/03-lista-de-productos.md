@@ -1,6 +1,8 @@
 # 03 — Lista de productos
 
-**Estado: diseñado.** Especificación: [Screens.md §3](../Screens.md#3-lista-de-productos). Convenciones en el [índice](README.md).
+**Estado: implementado en la 4.4** ([brief-4.4](../../decisions/brief-4.4-ui-de-productos-e-inventario.md)). Especificación: [Screens.md §3](../Screens.md#3-lista-de-productos). Convenciones en el [índice](README.md).
+
+**Desvío respecto de este wireframe**: "bajo stock" no usa un color de advertencia propio, porque el diseño visual base (4.0) no define ese token y `globals.css` quedó fuera del alcance de la 4.4. Los tres estados se distinguen por texto e ícono, como exige la especificación.
 
 ## Escritorio
 

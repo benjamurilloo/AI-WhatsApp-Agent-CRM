@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { recordAudit } from "@/modules/audit";
+import {
+  listEntityAuditLogs,
+  recordAudit,
+  type AuditLogEntry,
+} from "@/modules/audit";
+import { getUserSummaries } from "@/modules/auth";
 import { authorize, type AuthContext } from "@/modules/organizations";
 import type { DbTransaction } from "@/shared/db";
 import { failure, type Failure } from "@/shared/errors";
@@ -142,6 +147,66 @@ export async function lockProductForStockChange(
   return product.isActive ? "active" : "inactive";
 }
 
+// Historial de auditoría del producto (FR-AUD-02, brief-4.4, D-1 y su ajuste 1). audit no
+// autoriza ni conoce a auth: catalog, dueño del producto, verifica el rol y la organización y
+// compone el nombre del autor. El producto reúne sus ediciones (product) y sus ajustes de
+// stock (inventory, con el id del producto, brief-4.3.1, D-4).
+
+export type ProductAuditEntry = Omit<AuditLogEntry, "actorUserId"> & {
+  actor: { id: string; name: string };
+};
+
+export type ProductAuditResult =
+  | {
+      ok: true;
+      entries: ProductAuditEntry[];
+      total: number;
+      page: number;
+      pageCount: number;
+    }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">;
+
+export async function listProductAudit(
+  context: AuthContext,
+  productId: string,
+  page: number,
+): Promise<ProductAuditResult> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  if (!productIdSchema.safeParse(productId).success) {
+    return failure("VALIDATION_ERROR");
+  }
+  const product = await repository.findProduct(
+    context.organizationId,
+    productId,
+  );
+  if (!product) return failure("NOT_FOUND");
+
+  const found = await listEntityAuditLogs({
+    organizationId: context.organizationId,
+    entityTypes: ["product", "inventory"],
+    entityId: product.id,
+    page,
+  });
+  const actors = new Map(
+    (
+      await getUserSummaries([
+        ...new Set(found.entries.map((entry) => entry.actorUserId)),
+      ])
+    ).map((user) => [user.id, user.name]),
+  );
+  return {
+    ok: true,
+    entries: found.entries.map(({ actorUserId, ...entry }) => ({
+      ...entry,
+      actor: { id: actorUserId, name: actors.get(actorUserId) ?? "" },
+    })),
+    total: found.total,
+    page: found.page,
+    pageCount: found.pageCount,
+  };
+}
+
 // Escrituras: solo admin.
 
 export type CreateProductResult =
@@ -183,7 +248,8 @@ export async function createProduct(
 // changed en false: el producto ya estaba así; no se escribe ni se audita.
 export type UpdateProductResult =
   | { ok: true; changed: boolean }
-  | Failure<"FORBIDDEN" | "NOT_FOUND" | "CONFLICT">
+  // VALIDATION_ERROR sin fields: id inválido (brief-4.4, D-6). Con fields: el formulario.
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "CONFLICT" | "VALIDATION_ERROR">
   | Failure<"VALIDATION_ERROR", { fields: ProductField[] }>;
 
 export async function updateProduct(
@@ -194,7 +260,8 @@ export async function updateProduct(
   const authorized = authorize(context, { role: "admin" });
   if (!authorized.ok) return authorized;
   if (!productIdSchema.safeParse(productId).success) {
-    return { ok: false, code: "VALIDATION_ERROR", fields: [] };
+    // Un id de la URL no es un campo del formulario: va sin fields (brief-4.4, D-6).
+    return failure("VALIDATION_ERROR");
   }
   const validated = validateProductInput(input);
   if (!validated.ok) return validated;

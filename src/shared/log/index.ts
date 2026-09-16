@@ -12,6 +12,9 @@ export type LogEvent = {
   route: string;
   code: "OK" | ErrorCode;
   userId?: string;
+  // Organización del actor y duración de la acción, en milisegundos (brief-4.4).
+  organizationId?: string;
+  durationMs?: number;
   error?: unknown;
 };
 
@@ -47,6 +50,9 @@ export function formatLogEvent(event: LogEvent, now = new Date()): string {
     route: event.route,
     code: event.code,
     user_id: event.userId,
+    organization_id: event.organizationId,
+    duration_ms:
+      event.durationMs === undefined ? undefined : Math.round(event.durationMs),
     error: event.error === undefined ? undefined : describeError(event.error),
   });
 }
