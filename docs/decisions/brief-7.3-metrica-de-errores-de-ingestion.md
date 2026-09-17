@@ -274,7 +274,15 @@ Las dos mediciones son **locales y sintéticas**: la de la tabla vacía no dice 
 
 ### Nivel de validación alcanzado
 
-**Validado localmente** para la métrica 12, con fixtures sintéticos declarados como tales. Falta la verificación de la CI, que necesita autorización para commit y push.
+**Validado localmente y en CI** (`deterministic`) para la métrica 12, con fixtures sintéticos declarados como tales.
+
+## Cierre (2026-09-17)
+
+- Commit de la subfase: `a66d655`, con la CI en verde ([ejecución 35272618405](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35272618405)) y todos sus pasos verificados con `gh run view`.
+- Los nueve criterios de aceptación se cumplen: AC-1 con la resolución fechada, AC-2 a AC-4 con los tests y las mutaciones de la sección anterior, AC-5 con 680 de 680 y los valores de la 7.1 y la 7.2 intactos, AC-6 con el contenedor detenido y sin migraciones nuevas, AC-7 con 65 de 65, AC-8 con la CI verificada y AC-9 con el estado del repositorio y la entrada de Risks.
+- Ninguna condición de detención se activó: no hubo migraciones, índices nuevos ni cambios en `ingestion`, `src/app` u otros módulos, y la disponibilidad se decide sin leer variables de entorno globales.
+- Notion: la tarea 7.3 queda en "Completado".
+- Siguiente subfase: **7.4 — pantalla 2 del dashboard**, la primera de la Fase 7 que toca `src/app/`.
 
 ### Pendientes registrados
 

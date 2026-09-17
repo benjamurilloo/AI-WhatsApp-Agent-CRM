@@ -2,9 +2,9 @@
 schema: project-state.v1
 project: ai-whatsapp-agent-crm
 generated_at: 2026-09-17
-git_ref: main — afb99d9 en origin/main (CI en verde, 7.2), más el cierre de la 7.2
+git_ref: main — a66d655 en origin/main (CI en verde, 7.3), más el cierre de la 7.3
 active_phase: Fase 7 — Métricas y dashboard (en progreso)
-active_task: ninguna; la 7.2 está cerrada y lo siguiente es el brief de la 7.3
+active_task: ninguna; la 7.3 está cerrada y lo siguiente es el brief de la 7.4
 confidence: confirmado
 ---
 
@@ -35,6 +35,7 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 
 ## 2. Último punto aprobado
 
+- **Subfase 7.3 — Métrica de errores de ingestión**, cerrada con autorización del usuario el 2026-09-17, con D-1 a D-4 según la recomendación y una ampliación autorizada: la medición de D-4 se hizo con las dos opciones, `EXPLAIN` sobre la tabla vacía y volumen sintético en la base de test. Ninguna condición de detención quedó activa. Con ella **el catálogo de métricas queda completo**: las doce implementadas. Detalle en [CHANGELOG.md](CHANGELOG.md) y en el [brief-7.3](docs/decisions/brief-7.3-metrica-de-errores-de-ingestion.md). CI en verde en `a66d655` ([ejecución 35272618405](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35272618405)). `confirmado`
 - **Subfase 7.2 — Métricas de respuesta y estado**, cerrada con autorización del usuario el 2026-09-17, con D-1 a D-6 según la recomendación y un ajuste dentro del alcance: el CTE del primer entrante de la métrica 9 se materializa, porque inlineado dejaba esa métrica en 199,5 ms con 180 días, contra el umbral. Ninguna condición de detención quedó activa. Detalle en [CHANGELOG.md](CHANGELOG.md) y en el [brief-7.2](docs/decisions/brief-7.2-metricas-de-respuesta-y-estado.md). CI en verde en `afb99d9` ([ejecución 35266463066](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35266463066)). `confirmado`
 - **Subfase 7.1 — Métricas de volumen**, cerrada con autorización del usuario el 2026-09-17, con D-1 a D-5 según la recomendación. La condición de detención de D-5 (recorridos completos con 180 días, y en la métrica 3 con 30) quedó aceptada y registrada en Risks. Detalle en [CHANGELOG.md](CHANGELOG.md) y en el [brief-7.1](docs/decisions/brief-7.1-metricas-de-volumen.md). CI en verde en `0e87329` ([ejecución 35251536171](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35251536171)). `confirmado`
 - **Fase 6 — Conversaciones, mensajes e ingestión**, cerrada a pedido del usuario el 2026-09-17. Gate de salida cumplido: FR-CONV-01 a 05 y FR-CLI-04 probados según TraceabilityMatrix, y una búsqueda sin orígenes reales configurados en el repositorio, la CI, `.env` ni la base de desarrollo. Detalle en [CHANGELOG.md](CHANGELOG.md). `confirmado`
@@ -51,24 +52,25 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 
 ## 3. Próximo paso
 
-1. **Al retomar**: verificar que el commit de cierre de la 7.2 esté en `origin/main` con la CI en verde (`gh run list -L 1`). `pendiente`
-2. **Preparar el brief de la 7.3 — Métrica de errores de ingestión** (métrica 12), reutilizando lo que fijaron la 7.1 y la 7.2:
-   - `resolveMetricsPeriod` y el período (7.1, D-2);
-   - una función por tarjeta (7.1, D-1);
-   - `RatioMetric`, al que la 7.3 le suma el estado `unavailable` para la disponibilidad del módulo de ingestión, distinto de `no_data`;
-   - el conteo agrupado por `source` y `error_code`, y la tasa sobre el total de eventos del período;
-   - el umbral de medición (7.1, D-5, ratificado en la 7.2 como D-6);
-   - un archivo de tests propio con su fixture y su cálculo a mano (7.2, D-5).
+1. **Al retomar**: verificar que el commit de cierre de la 7.3 esté en `origin/main` con la CI en verde (`gh run list -L 1`). `pendiente`
+2. **Preparar el brief de la 7.4 — Pantalla 2 (dashboard)**, la primera subfase de la Fase 7 que toca `src/app/`, sobre un catálogo de métricas ya completo:
+   - una tarjeta por función de `analytics`, cada una con su carga y su error propios (7.1, D-1);
+   - los tres estados de `RatioMetric` tienen que tratarse los tres: valor, "sin datos" y "no disponible", y ninguno se muestra como `0` (7.3, D-1 y D-2);
+   - el redondeo es de la pantalla: el servicio devuelve los valores sin redondear y la presentación muestra un decimal (7.1, D-3);
+   - el período llega como dos fechas `YYYY-MM-DD` en la URL, con el fin incluido, y sus rechazos ya están tipados por campo (7.1, D-2);
+   - la métrica 9 muestra la mediana y, al lado, cuántas conversaciones quedaron sin primera respuesta, también cuando la mediana es "sin datos" (7.2, D-3);
+   - la tarjeta de la métrica 12 tiene que aclarar su alcance: solo cuenta los eventos que el CRM aceptó procesar, así que los rechazos de validación, credencial y límite de tasa no aparecen (brief-6.5.1, D-6);
+   - la lista de grupos de la métrica 12 no está acotada por el dominio: si hace falta recortarla, el recorte es de la pantalla (7.3, D-3);
+   - el enlace "Dashboard" del marco común y el wireframe 02.
 
-   Después viene la 7.4 (pantalla 2), que es la primera de la Fase 7 que toca `src/app/`. `confirmado`
-3. **A tener en cuenta en la Fase 7**:
-   - la métrica 12 cuenta solo los eventos `failed` de `ingestion_events` (brief-6.5.1, D-6), con el índice `(organization_id, received_at)`;
-   - la 7.3 depende de la 6.5.2 (Roadmap), ya cerrada;
-   - cada métrica lleva un test de fixture con el valor calculado a mano (Roadmap, riesgos de la Fase 7);
-   - `analytics` solo lee esquemas de otros módulos, sin importar sus repositorios (guarda de frontera);
-   - la métrica 9 permite que la respuesta caiga después del fin de `I`, y la 7 no (implementado en la 7.2);
+   `confirmado`
+3. **A tener en cuenta en lo que queda de la Fase 7**:
+   - `analytics` ya depende de tres módulos: `conversations` y `ingestion` por sus `schema.ts`, y `organizations` e `ingestion` por sus interfaces públicas (guarda de frontera);
+   - el bloque de ESLint de `analytics` no le prohíbe importar `next` ni `@/app/*`: corregirlo necesita una subfase que autorice tocar `eslint.config.mjs`;
+   - ninguna métrica está validada con datos reales, y la 12 tampoco con volumen real: su medición fue sintética (Risks, Fase 9);
+   - con 180 días, las consultas de las métricas 1 a 11 recorren tablas completas en la organización de volumen, aceptado en la 7.1 (Risks);
    - los fixtures de horario de verano de Buenos Aires usan el 19/10/2008 (23 horas) y el 14/03/2009 (25 horas), confirmados en PostgreSQL;
-   - con 180 días, las consultas recorren tablas completas en la organización de volumen, aceptado en la 7.1 (Risks).
+   - cada tanda de métricas tiene su archivo de tests y su fixture, y solo comparten los ayudantes de inserción (7.2, D-5).
 
    `confirmado`
 
@@ -114,11 +116,13 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 
 ## 5. Evidencia
 
-Nivel del proyecto: **validado en integración** para las pantallas de conversaciones (8 y 9) y las conversaciones en las pantallas 6 y 7 (6.4). **Validado localmente y en CI** (`deterministic`, con requests sintéticos) para el endpoint de ingestión, su credencial, su límite de tasa y su modo de prueba (6.5.3), el registro idempotente de ingestión y su proyección (6.5.2), la validación del contrato de ingestión y su `payload_hash` (6.5.1), el esquema de conversaciones, mensajes e ingestión (6.1), sus seeds sintéticos (6.2) y el servicio de conversaciones (6.3). **Validado en integración** para las pantallas 1, 3 a 10 y el marco común, en claro y en oscuro. **Validado localmente y en CI** para la fundación técnica, la identidad, la autorización, la auditoría (escritura y lectura), la gestión de miembros, el catálogo, el ajuste de stock secuencial y bajo concurrencia, el historial de movimientos y el esquema y el servicio de clientes. **Validado localmente y en CI** (`deterministic`, con fixtures sintéticos) para las métricas 1 a 6 y 10 (7.1) y para las métricas 7, 8, 9 y 11 (7.2). **Diseñado** para la métrica 12 y para la pantalla 2. Nada está desplegado. `confirmado`
+Nivel del proyecto: **validado en integración** para las pantallas de conversaciones (8 y 9) y las conversaciones en las pantallas 6 y 7 (6.4). **Validado localmente y en CI** (`deterministic`, con requests sintéticos) para el endpoint de ingestión, su credencial, su límite de tasa y su modo de prueba (6.5.3), el registro idempotente de ingestión y su proyección (6.5.2), la validación del contrato de ingestión y su `payload_hash` (6.5.1), el esquema de conversaciones, mensajes e ingestión (6.1), sus seeds sintéticos (6.2) y el servicio de conversaciones (6.3). **Validado en integración** para las pantallas 1, 3 a 10 y el marco común, en claro y en oscuro. **Validado localmente y en CI** para la fundación técnica, la identidad, la autorización, la auditoría (escritura y lectura), la gestión de miembros, el catálogo, el ajuste de stock secuencial y bajo concurrencia, el historial de movimientos y el esquema y el servicio de clientes. **Validado localmente y en CI** (`deterministic`, con fixtures sintéticos) para las doce métricas: 1 a 6 y 10 (7.1), 7, 8, 9 y 11 (7.2) y 12 (7.3). **Diseñado** para la pantalla 2. Nada está desplegado. `confirmado`
 
 | Afirmación | Nivel | Evidencia |
 |---|---|---|
-| Todos los pasos de CI, incluido el desfase de migraciones y el end-to-end | validado en CI | Ejecución 35266463066 `success`, commit `afb99d9` `confirmado` |
+| Todos los pasos de CI, incluido el desfase de migraciones y el end-to-end | validado en CI | Ejecución 35272618405 `success`, commit `a66d655` `confirmado` |
+| Métrica 12: conteo, tasa y grupos calculados a mano, invariantes del catálogo, bordes del período, día local frente a UTC, los tres estados distinguidos entre sí, aislamiento, autorización y respuestas sin referencias externas ni hashes | validado localmente y en CI (`deterministic`) | `tests/integration/analytics-ingestion.test.ts` (11) y `analytics/service.test.ts` (4 de disponibilidad), con cinco corridas de mutación en el brief-7.3, todas con efecto `confirmado` |
+| Tiempo de la métrica 12 con volumen sintético: mediana de 26,2 ms sobre 34.895 eventos del período, de 200.011 | medición local y sintética | tablas del brief-7.3; `ingestion_events` está vacía en desarrollo y no hay emisor, así que falta medirla con datos reales (Risks, Fase 9) `confirmado` |
 | Métricas 7, 8, 9 y 11: valor calculado a mano, invariantes del catálogo, empate de timestamps, respuesta posterior al fin del período, primer entrante anterior al período, días de 23 y 25 horas, otra zona, sin datos, aislamiento, autorización y respuestas sin datos personales | validado localmente y en CI (`deterministic`) | `tests/integration/analytics-response.test.ts` (17), con seis corridas de mutación en el brief-7.2 (una sin efecto, por defensa doble) `confirmado` |
 | Tiempos de las métricas de respuesta con volumen: entre 4,3 y 75,6 ms, con 30 y 180 días | medición local | tablas del brief-7.2; con varias organizaciones, Fase 9 (Risks) `confirmado` |
 | Métricas 1 a 6 y 10: valor calculado a mano, invariantes del catálogo, medianoche local, días de 23 y 25 horas, otra zona, período por defecto y rechazos, sin datos, aislamiento, autorización y respuestas sin datos personales | validado localmente y en CI (`deterministic`) | `tests/integration/analytics.test.ts` (18) y `analytics/service.test.ts` (7), con cuatro corridas de mutación en el brief-7.1 `confirmado` |
@@ -144,8 +148,8 @@ Nivel del proyecto: **validado en integración** para las pantallas de conversac
 | Ajuste secuencial atómico; movimientos inmutables; servicio de catálogo | validado localmente y en CI | `inventory-adjustment.test.ts`, `catalog-inventory-schema.test.ts`, `stock-writes.test.ts`, `catalog.test.ts` `confirmado` |
 | Pantallas 1 y 10 y marco común | validado en integración (`producer-consumer`) | `login.spec.ts` (12) y `users.spec.ts` (13) `confirmado` |
 | Regla del último `admin`, auditoría de miembros y `audit_logs` de solo inserción | validado localmente y en CI | `members.test.ts` y `audit.test.ts` `confirmado` |
-| Suite completa local | validado localmente | `npm run test`: 665 de 665 y `npm run test:e2e`: 65 de 65 (7.2) `confirmado` |
-| Métrica 12 y pantalla 2 | diseñado | 7.3 y 7.4 `confirmado` |
+| Suite completa local | validado localmente | `npm run test`: 680 de 680 y `npm run test:e2e`: 65 de 65 (7.3) `confirmado` |
+| Pantalla 2 del dashboard | diseñado | 7.4 `confirmado` |
 | Compatibilidad del contrato y de la autenticación con un emisor real | sin validar | proyecto de integración (Risks) `confirmado` |
 | La cookie detrás de TLS y de un proxy real; la aplicación restringida por `crm_app` | diseñado | Fases 8 y 9 `confirmado` |
 
@@ -301,7 +305,7 @@ Nivel del proyecto: **validado en integración** para las pantallas de conversac
 - FR-MET-01 a 03 en [product/FunctionalRequirements.md](docs/product/FunctionalRequirements.md); [product/Screens.md](docs/product/Screens.md) §2 y el [wireframe 02](docs/product/wireframes/02-dashboard.md).
 - [architecture/TraceabilityMatrix.md](docs/architecture/TraceabilityMatrix.md) (pantalla 2 y vista por métrica) y [architecture/DataModel.md](docs/architecture/DataModel.md) (`conversations`, `messages`, `clients` e `ingestion_events`).
 - [architecture/RepositoryStructure.md](docs/architecture/RepositoryStructure.md): módulo `analytics` y su frontera, que le permite leer los `schema.ts` de otros módulos pero no sus repositorios ni servicios.
-- Precedentes: [brief-6.3](docs/decisions/brief-6.3-servicio-de-consulta-y-estado.md) (consultas y períodos en la zona de la organización), [brief-6.2](docs/decisions/brief-6.2-seeds-sinteticos-de-conversaciones.md) (seeds y volumen) y [brief-6.5.1](docs/decisions/brief-6.5.1-contrato-de-ingestion.md) (D-6, métrica 12) y [brief-7.1](docs/decisions/brief-7.1-metricas-de-volumen.md) (período, forma de las métricas y medición) y [brief-7.2](docs/decisions/brief-7.2-metricas-de-respuesta-y-estado.md) (métricas de respuesta, población fuera del período y fixture propio).
+- Precedentes: [brief-6.3](docs/decisions/brief-6.3-servicio-de-consulta-y-estado.md) (consultas y períodos en la zona de la organización), [brief-6.2](docs/decisions/brief-6.2-seeds-sinteticos-de-conversaciones.md) (seeds y volumen) y [brief-6.5.1](docs/decisions/brief-6.5.1-contrato-de-ingestion.md) (D-6, métrica 12) y [brief-7.1](docs/decisions/brief-7.1-metricas-de-volumen.md) (período, forma de las métricas y medición) y [brief-7.2](docs/decisions/brief-7.2-metricas-de-respuesta-y-estado.md) (métricas de respuesta, población fuera del período y fixture propio) y [brief-7.3](docs/decisions/brief-7.3-metrica-de-errores-de-ingestion.md) (métrica 12, el estado "no disponible" y la medición sin datos reales).
 
 ## 9. Cambios ajenos del usuario detectados
 
@@ -309,9 +313,9 @@ Ninguno en el repositorio. `confirmado`
 
 ## 10. Autorizaciones vigentes
 
-**Ninguna.** Las autorizaciones de la 7.2 (Notion, medición, commit, push y cierre) quedaron consumidas al ejecutarse. Instalar dependencias, ejecutar migraciones, cambios en Notion y cualquier operación Git futura necesitan autorización explícita.
+**Ninguna.** Las autorizaciones de la 7.3 (Notion, índice de decisiones, volumen sintético en la base de test, commit, push y cierre) quedaron consumidas al ejecutarse. Instalar dependencias, ejecutar migraciones, cambios en Notion y cualquier operación Git futura necesitan autorización explícita.
 
 ## 11. Aspectos pendientes de confirmar
 
-- Que el commit de cierre de la 7.2 esté en `origin/main` con la CI en verde.
-- La aprobación del brief de la 7.3, cuando se prepare.
+- Que el commit de cierre de la 7.3 esté en `origin/main` con la CI en verde.
+- La aprobación del brief de la 7.4, cuando se prepare.

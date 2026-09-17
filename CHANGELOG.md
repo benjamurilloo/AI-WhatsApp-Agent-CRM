@@ -2,6 +2,35 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-17 — Subfase 7.3 cerrada (Métrica de errores de ingestión)
+
+**Certifica:**
+
+- **Métrica 12** en `analytics`, según el [brief-7.3](docs/decisions/brief-7.3-metrica-de-errores-de-ingestion.md), con D-1 a D-4 resueltas según la recomendación y sin reabrir ninguna decisión de la 7.1 ni de la 7.2:
+  - **conteo y tasa**: eventos fallidos sobre el total de eventos con `received_at` en el período; los `received` y los `processed` cuentan en el denominador y no en el numerador; con el total en 0, "sin datos";
+  - **grupos**: lista plana de `{ source, errorCode, count }` por conteo descendente, con desempate alfabético, y solo las combinaciones presentes: el origen y el código son taxonomías abiertas, así que no hay conjunto completo para rellenar con `0` (D-3);
+  - **"no disponible"** (D-1): el estado aparece cuando la ingestión no está configurada en el entorno —apagada o con configuración inválida— **y** el período no tiene ningún evento. Con eventos registrados la métrica muestra su valor aunque el endpoint esté apagado. La configuración se lee en cada llamada y el entorno viaja por parámetro, así que la decisión es una función pura;
+  - **`RatioMetric` con sus tres estados** (D-2), distintos entre sí y ninguno presentado como `0`. Las métricas 6, 8 y 9 no cambiaron.
+- **Con esto el catálogo queda completo**: las doce métricas están implementadas.
+- **Tests de fixture con el valor calculado a mano**, en archivo y fixture propios: los de la 7.1 y la 7.2 quedaron intactos y las tres suites comparten solo sus ayudantes de inserción. Cubren el conteo, la tasa, los grupos y su orden, los invariantes del catálogo, los bordes del período, la zona horaria, los tres estados distinguidos entre sí, el aislamiento, la autorización y que la respuesta no contenga referencias externas ni hashes de payload.
+  - Evidencia: `tests/integration/analytics-ingestion.test.ts` (11 casos) y 4 unitarios de la disponibilidad en `src/modules/analytics/service.test.ts`.
+- **Error del cálculo a mano registrado**: el caso de la medianoche local esperaba 5 eventos y el correcto era 6, porque el día local 02/09 abarca dos eventos del 03/09 en UTC. Se corrigió el valor esperado, no el código.
+- **Cinco corridas de mutación**: las cinco hacen fallar los casos previstos. Ninguna resultó defensa redundante.
+- **Medición local y sintética**, con las dos opciones de D-4 autorizadas: con la tabla vacía, `EXPLAIN` muestra el índice `(organization_id, received_at)` con las tres condiciones, y el CTE se materializa solo porque tres agregaciones lo leen; con 200.011 eventos sintéticos en la base de test y 34.895 en un período de 30 días, la mediana de cinco corridas fue de 26,2 ms, contra el umbral de 200 ms de la 7.1. Los datos sintéticos se borraron al terminar y la base de desarrollo solo se leyó, en solo lectura.
+- **Suites**:
+  - `npm run test`: 680 de 680;
+  - `npm run test:e2e`: 65 de 65;
+  - CI en verde en `a66d655` ([ejecución 35272618405](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35272618405)), con todos los pasos.
+- **Nivel alcanzado**: **validado localmente y en CI** (`deterministic`) para la métrica 12.
+
+**No certifica:**
+
+- **La pantalla 2**, el formato de los valores y los textos de los tres estados: 7.4, la primera subfase de la fase que toca `src/app/`.
+- **El rendimiento con datos de ingestión reales**: el volumen medido es sintético y de distribución uniforme, y queda registrado en [Risks.md](docs/planning/Risks.md) para la Fase 9.
+- **Valores con datos reales**: no hay emisor conectado, así que los eventos fallidos son sintéticos.
+- **Que la taxonomía de códigos de error sea completa**: hoy el contrato solo registra rechazos de negocio, y el único código que deja fila es `CONFLICT`.
+- **Revisión independiente**: es autoevaluación del mismo agente. El usuario aprobó el brief y el cierre.
+
 ## 2026-09-17 — Subfase 7.2 cerrada (Métricas de respuesta y estado)
 
 **Certifica:**
