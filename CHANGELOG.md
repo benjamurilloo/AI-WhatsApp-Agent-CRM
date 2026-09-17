@@ -2,6 +2,28 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-17 — Subfase 6.5.2 cerrada (Registro idempotente y proyección)
+
+**Certifica:**
+
+- **Caso de uso de ingestión sin HTTP**, según el [brief-6.5.2](docs/decisions/brief-6.5.2-registro-idempotente-y-proyeccion.md), con D-1 a D-3 resueltas según la recomendación:
+  - `recordIngestionEvent` en `ingestion`, con organización y `source` como contexto explícito hasta la 6.5.3; el endpoint llega con la credencial (D-1);
+  - reserva del evento y proyección en la misma transacción; `accepted` para un evento nuevo, `duplicate` para un reenvío idéntico, `CONFLICT` para otro `payload_hash` o un mensaje ya existente, y `failed` terminal;
+  - `recordIngestedMessage(tx, …)` en `conversations`, que crea la conversación con su primer mensaje o la bloquea, amplía sus fechas y nunca cambia su estado ni su cliente (D-2);
+  - `findClientIdByPhone(tx, …)` en `crm`, que solo devuelve el id del cliente activo o inactivo de la organización; la ingestión nunca crea clientes;
+  - `READ COMMITTED` con `INSERT … ON CONFLICT DO NOTHING` y `FOR UPDATE` sobre la conversación (D-3).
+- **Desvío confirmado por el usuario**: `isOpaqueReference` exportado desde `contract.ts` para validar el `source` con la regla del contrato, sin cambios de comportamiento.
+- **Tests**: 13 casos en `tests/integration/ingestion.test.ts` contra PostgreSQL real, incluidos dos de entregas simultáneas con la espera observada en `pg_stat_activity` y una reversión ante un error forzado; 7 unitarios en `service.test.ts`. Mutaciones: sin el `ON CONFLICT` de la reserva fallan 4 casos, sin el de la conversación fallan 5 y sin el `LEAST` de `started_at` fallan 2.
+- **Suite local**: `npm run test` pasa 594 de 594. Con la base detenida pasan typecheck, lint, formato, guardas, unitarios y build, y `db:generate` no produce migraciones.
+- **CI**: [35227372751](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35227372751), commit `6d7626a`, en verde con todos los pasos.
+- **Nivel alcanzado**: **validado localmente y en CI** para el registro idempotente, los reenvíos y la proyección.
+
+**No certifica:**
+
+- **Endpoint, credencial de servicio, límite de tasa y allowlist**: 6.5.3.
+- **Compatibilidad con un emisor real**: los fixtures siguen con forma asumida.
+- **Revisión independiente**: es autoevaluación del mismo agente.
+
 ## 2026-09-16 — Subfase 6.5.1 cerrada (Contrato de ingestión y validación)
 
 **Certifica:**

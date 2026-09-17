@@ -61,7 +61,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-6.3](brief-6.3-servicio-de-consulta-y-estado.md) | 6.3 — Servicio de consulta y estado | aprobado y cerrado el 2026-09-16 |
 | [brief-6.4](brief-6.4-ui-de-conversaciones.md) | 6.4 — UI de conversaciones | aprobado y cerrado el 2026-09-16 |
 | [brief-6.5.1](brief-6.5.1-contrato-de-ingestion.md) | 6.5.1 — Contrato de ingestión y validación | aprobado y cerrado el 2026-09-16 |
-| [brief-6.5.2](brief-6.5.2-registro-idempotente-y-proyeccion.md) | 6.5.2 — Registro idempotente y proyección | aprobado el 2026-09-17 |
+| [brief-6.5.2](brief-6.5.2-registro-idempotente-y-proyeccion.md) | 6.5.2 — Registro idempotente y proyección | aprobado y cerrado el 2026-09-17 |
 
 ## Plantilla
 

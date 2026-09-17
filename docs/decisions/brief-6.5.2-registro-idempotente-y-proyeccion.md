@@ -250,4 +250,10 @@ La implementación está terminada y el cierre está pendiente. No se activó ni
 - **Sin cambios**: los tests existentes, las guardas, las dependencias, las migraciones y el contrato fuera de su estado y su evidencia.
 - **CRM local**: `npm run dev` sigue respondiendo en `http://localhost:3000` después de detener y volver a levantar la base.
 
-Pendiente: commit, push, CI (AC-6) y cierre.
+## Cierre (2026-09-17)
+
+- **Commit y push** `6d7626a`, autorizados por el usuario el 2026-09-17.
+- **AC-6**: CI en verde en la [ejecución 35227372751](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35227372751), con todos los pasos.
+- **Nivel alcanzado**: **validado localmente y en CI** para el registro idempotente, los reenvíos y la proyección. El endpoint, la credencial y el límite de tasa siguen en nivel **diseñado** (6.5.3).
+- **Revisión**: autoevaluación del mismo agente, sin revisión independiente.
+- **Queda para la 6.5.3**: el Route Handler `POST /api/ingestion/v1/events`, la credencial que fija organización y `source`, el límite de tasa, la allowlist del modo de prueba y la decisión sobre `Origin` en un endpoint de servicio.

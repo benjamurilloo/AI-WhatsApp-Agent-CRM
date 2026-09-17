@@ -1,10 +1,10 @@
 ---
 schema: project-state.v1
 project: ai-whatsapp-agent-crm
-generated_at: 2026-09-16
-git_ref: main — 6f026a9 en origin/main (CI en verde, 6.5.1), más el cierre de la 6.5.1 (commit y push autorizados por el usuario el 2026-09-16)
+generated_at: 2026-09-17
+git_ref: main — 6d7626a en origin/main (CI en verde, 6.5.2), más el cierre de la 6.5.2 (commit y push autorizados por el usuario el 2026-09-17)
 active_phase: Fase 6 — Conversaciones, mensajes e ingestión (en curso)
-active_task: ninguna; la 6.5.1 está cerrada y la siguiente es la 6.5.2 (Registro idempotente y proyección), sin brief
+active_task: ninguna; la 6.5.2 está cerrada y la siguiente es la 6.5.3 (Credencial, límite de tasa y endpoint), sin brief
 confidence: confirmado
 ---
 
@@ -21,14 +21,15 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 ## 1. Identificación
 
 - **Proyecto**: AI WhatsApp Agent CRM. Independiente del agente de WhatsApp: no comparte código, infraestructura ni base de datos, y no depende de Airtable. `confirmado`
-- **Fase 6 — Conversaciones, mensajes e ingestión, en curso** desde el 2026-09-16. En Notion: el proyecto (`3d8702be6f4e81bb95d0e3a6e38bcb2d`) está "En progreso" y su tarea espejo (`3d8702be6f4e8199b641e48deb47febb`) "En proceso"; la 6.1 (`3d8702be6f4e815e99e8cabf2eb35636`), la 6.2 (`3d8702be6f4e811591dfcd0b3ca9ea2a`), la 6.3 (`3d8702be6f4e817fa354cec04a08d54d`), la 6.4 (`3d8702be6f4e81bea9abed75e0f16691`) y la 6.5.1 (`3d8702be6f4e81c983d6da84d890052e`) están "Completado". Siguen en "Bandeja de Entrada":
-  - la tarea madre 6.5 (`3d8702be6f4e814b95a9d5d2c1351198`), con sus subtareas 6.5.2 (`3d8702be6f4e818fbd61e5dc99b683a3`) y 6.5.3 (`3d8702be6f4e817eb92fe723d3c430c7`).
+- **Fase 6 — Conversaciones, mensajes e ingestión, en curso** desde el 2026-09-16. En Notion: el proyecto (`3d8702be6f4e81bb95d0e3a6e38bcb2d`) está "En progreso" y su tarea espejo (`3d8702be6f4e8199b641e48deb47febb`) "En proceso"; la 6.1 (`3d8702be6f4e815e99e8cabf2eb35636`), la 6.2 (`3d8702be6f4e811591dfcd0b3ca9ea2a`), la 6.3 (`3d8702be6f4e817fa354cec04a08d54d`), la 6.4 (`3d8702be6f4e81bea9abed75e0f16691`), la 6.5.1 (`3d8702be6f4e81c983d6da84d890052e`) y la 6.5.2 (`3d8702be6f4e818fbd61e5dc99b683a3`) están "Completado". Siguen en "Bandeja de Entrada":
+  - la tarea madre 6.5 (`3d8702be6f4e814b95a9d5d2c1351198`) y su subtarea 6.5.3 (`3d8702be6f4e817eb92fe723d3c430c7`).
   `confirmado`
 - **Valores de estado en Notion**: los proyectos usan "En progreso"; las tareas, "En proceso", "Bandeja de Entrada", "Esperando", "Sin fecha" y "Completado". `confirmado`
 - **Fases 0 a 5 cerradas** (2026-09-11 a 2026-09-16). `confirmado`
 
 ## 2. Último punto aprobado
 
+- **Subfase 6.5.2 — Registro idempotente y proyección**, cerrada con autorización del usuario el 2026-09-17, con D-1 a D-3 según la recomendación y un desvío confirmado: `isOpaqueReference` exportado desde `contract.ts`. Detalle en [CHANGELOG.md](CHANGELOG.md) y en el [brief-6.5.2](docs/decisions/brief-6.5.2-registro-idempotente-y-proyeccion.md). CI en verde en `6d7626a` ([ejecución 35227372751](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35227372751)). `confirmado`
 - **Subfase 6.5.1 — Contrato de ingestión y validación**, cerrada con autorización del usuario el 2026-09-16, con D-1 a D-7 según la recomendación y un desvío confirmado: límite del request de 64 KiB en lugar de 16 KB. Detalle en [CHANGELOG.md](CHANGELOG.md), en el [brief-6.5.1](docs/decisions/brief-6.5.1-contrato-de-ingestion.md) y en el [contrato](docs/contracts/ingestion-v1.md). CI en verde en `6f026a9` ([ejecución 35158967940](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35158967940)). `confirmado`
 - **Arreglo del caso 9 de `clients.spec.ts`** (`8d8c34f`, autorizado por el usuario): lee los cuerpos con la red en reposo antes de navegar. CI en verde. `confirmado`
 - **Subfase 6.4 — UI de conversaciones**, cerrada con autorización del usuario el 2026-09-16, con D-1 a D-6 según la recomendación y un desvío autorizado: el caso 1 de `clients.spec.ts` invirtió sus dos aserciones sobre "Última interacción". Detalle en [CHANGELOG.md](CHANGELOG.md) y en el [brief-6.4](docs/decisions/brief-6.4-ui-de-conversaciones.md). CI en verde en `3904548`; el cierre `c43450f` pasó en su segundo intento. `confirmado`
@@ -40,18 +41,16 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 
 ## 3. Próximo paso
 
-1. **Al retomar**: seguir el arranque de `CLAUDE.md` y verificar que el commit de cierre de la 6.5.1 esté en `origin/main` con la CI en verde (`gh run list -L 1`). `pendiente`
-2. **Preparar el brief de la 6.5.2 — Registro idempotente y proyección**, sobre el [contrato v1](docs/contracts/ingestion-v1.md). Tiene que resolver:
-   - el Route Handler `POST /api/ingestion/v1/events`, con organización y `source` como contexto explícito hasta la 6.5.3;
-   - la reserva con `ON CONFLICT ON CONSTRAINT` y la proyección en la misma transacción, con las reglas de fechas, estado y cliente del contrato;
-   - una función de `crm` que busque un cliente por teléfono para un contexto de servicio (D-7);
-   - los reenvíos: `duplicate`, `CONFLICT` y `failed` terminal;
-   - la concurrencia de dos entregas del mismo evento;
-   - si la verificación de `Origin` aplica a un endpoint de servicio sin cookies.
+1. **Al retomar**: seguir el arranque de `CLAUDE.md` y verificar que el commit de cierre de la 6.5.2 esté en `origin/main` con la CI en verde (`gh run list -L 1`). `pendiente`
+2. **Preparar el brief de la 6.5.3 — Credencial, límite de tasa y endpoint**, sobre el [contrato v1](docs/contracts/ingestion-v1.md) y `recordIngestionEvent` (6.5.2). Tiene que resolver:
+   - la credencial de servicio: formato, almacenamiento con hash, cómo fija organización y `source`, rotación y revocación, y si necesita tabla y migración;
+   - el Route Handler `POST /api/ingestion/v1/events`: lectura del cuerpo con el límite de 64 KiB, códigos HTTP del contrato (201, 200, 409) y log sin payload;
+   - el límite de tasa por credencial y la allowlist del modo de prueba;
+   - si la verificación de `Origin` aplica a un endpoint de servicio sin cookies;
+   - su test de extremo a extremo contra el servidor, con fixtures de forma asumida.
 
    `confirmado`
-3. **Después**: 6.5.3 (credencial de servicio, límite de tasa y allowlist del modo de prueba). `confirmado`
-4. **Cierre de la Fase 6**: al terminar la 6.5.3, pasar a "Completado" todas las tareas, incluidas la madre 6.5 y la tarea espejo, y el proyecto según corresponda. `confirmado`
+3. **Cierre de la Fase 6**: al terminar la 6.5.3, pasar a "Completado" todas las tareas, incluidas la madre 6.5 y la tarea espejo, y el proyecto según corresponda. `confirmado`
 
 ## 4. Contratos vigentes
 
@@ -67,8 +66,8 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 | Esquema de clientes | `clients`; migraciones 0008, 0009 y 0010 (`UNIQUE(organization_id, id)`) | [src/modules/crm/schema.ts](src/modules/crm/schema.ts) |
 | Seeds | `seedBasic` (sin cambios; lo usan los end-to-end); `seedConversations` (ejemplo, en `npm run db:seed`, fechas fijadas en la primera corrida); `seedVolume` (`npm run db:seed:volume`, organización y usuario propios, determinista por fila) | [seeds/](seeds/basic.ts), [Environments.md](docs/development/Environments.md) |
 | Esquema de conversaciones e ingestión | `conversations` y `messages` (solo inserción) en `conversations`; `ingestion_events` (identidad inmutable, sin borrado) en `ingestion`; migraciones 0011 y 0012 | [src/modules/conversations/schema.ts](src/modules/conversations/schema.ts), [src/modules/ingestion/schema.ts](src/modules/ingestion/schema.ts) |
-| Interfaz pública de `crm` | `createClient`, `updateClient`, `deactivateClient`, `reactivateClient`, `getClient`, `searchClients`, `CLIENTS_PAGE_SIZE`, `listClientAudit`, `listClientOrderKeys`, `getClientsByIds`, `ClientPhone` y sus tipos; el teléfono sale enmascarado para `viewer` | [src/modules/crm/index.ts](src/modules/crm/index.ts) |
-| Interfaz pública de `conversations` | `listConversations`, `getConversation`, `listConversationMessages` (cursor `before`), `changeConversationStatus` (solo `admin`, auditado), `getClientActivity`, `searchClientsByLastInteraction`, `CONVERSATION_STATUSES`, `CONVERSATION_CHANNELS`, `CONVERSATIONS_PAGE_SIZE` (25), `MESSAGES_PAGE_SIZE` (50) y sus tipos; la lista no entrega cuerpos | [src/modules/conversations/index.ts](src/modules/conversations/index.ts) |
+| Interfaz pública de `crm` | `createClient`, `updateClient`, `deactivateClient`, `reactivateClient`, `getClient`, `searchClients`, `CLIENTS_PAGE_SIZE`, `listClientAudit`, `listClientOrderKeys`, `getClientsByIds`, `findClientIdByPhone(tx, …)` (solo el id, para la ingestión), `ClientPhone` y sus tipos; el teléfono sale enmascarado para `viewer` | [src/modules/crm/index.ts](src/modules/crm/index.ts) |
+| Interfaz pública de `conversations` | `listConversations`, `getConversation`, `listConversationMessages` (cursor `before`), `changeConversationStatus` (solo `admin`, auditado), `getClientActivity`, `searchClientsByLastInteraction`, `recordIngestedMessage(tx, …)` (proyección de la ingestión), `CONVERSATION_STATUSES`, `CONVERSATION_CHANNELS`, `CONVERSATIONS_PAGE_SIZE` (25), `MESSAGES_PAGE_SIZE` (50) y sus tipos; la lista no entrega cuerpos | [src/modules/conversations/index.ts](src/modules/conversations/index.ts) |
 | Interfaz pública de `auth` | `login`, `validateSession`, `logout`, `changePassword`, `completeRequiredPasswordChange`, `revokeUserSessions`, `hashPassword`, adaptador de cookie, `validateNewUser`, `prepareInitialPassword`, `createUserWithInitialPassword`, `setUserActive`, `getUserSummaries` | [src/modules/auth/index.ts](src/modules/auth/index.ts) |
 | Interfaz pública de `organizations` | `getAuthContext`, `authorize`, `getMember`, `getOrganizationTimezone`, `listMembers`, `createMember`, `changeMemberRole`, `deactivateMember`, `reactivateMember`, `getAppFrame` | [src/modules/organizations/index.ts](src/modules/organizations/index.ts) |
 | Interfaz pública de `audit` | `recordAudit(tx, entry)`, `InvalidAuditEntryError`, `listEntityAuditLogs(query)` (sin contexto ni rol: autoriza y compone el autor quien llama), `AUDIT_PAGE_SIZE` y sus tipos | [src/modules/audit/index.ts](src/modules/audit/index.ts) |
@@ -83,22 +82,23 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 | Sesión en páginas | `requireSession`, `requirePendingPasswordChange`, `redirectIfAuthenticated`, `currentContext` con `cache`; `logoutAction` | [src/app/_auth/](src/app/_auth/session.ts) |
 | Marco común | route group `(autenticado)`: organización, navegación (Productos, Clientes, Conversaciones y Usuarios), usuario, tema y salida | [src/app/(autenticado)/layout.tsx](<src/app/(autenticado)/layout.tsx>) |
 | Pantallas implementadas | 1, 3 a 9 y 10, con filtros en `filters.ts` y mensajes en `messages.ts` por ruta; teléfono con `phoneDisplay` y `PhoneText`; tabla y etiqueta de estado de conversaciones compartidas por la 7 y la 8 | [productos/](<src/app/(autenticado)/productos/page.tsx>), [clientes/](<src/app/(autenticado)/clientes/page.tsx>), [conversaciones/](<src/app/(autenticado)/conversaciones/page.tsx>), [usuarios/](<src/app/(autenticado)/usuarios/page.tsx>) |
-| Estructura del repositorio | aprobada; lo de la 2.x, las Fases 3 a 5 y la 6.1 a la 6.5.1, implementado | [architecture/RepositoryStructure.md](docs/architecture/RepositoryStructure.md) |
+| Estructura del repositorio | aprobada; lo de la 2.x, las Fases 3 a 5 y la 6.1 a la 6.5.2, implementado | [architecture/RepositoryStructure.md](docs/architecture/RepositoryStructure.md) |
 | CI | dependencias, desfase, lint, typecheck, formato, guardas, unitarios, integración, build, Chromium y end-to-end | [.github/workflows/ci.yml](.github/workflows/ci.yml) |
 | Entornos | Docker Compose; migraciones; base `_test`; rol `crm_app`; seed básico; base `_e2e` | [development/Environments.md](docs/development/Environments.md) |
-| Modelo de datos | todas las tablas implementadas; conversaciones con su servicio y sus pantallas; ingestión con su esquema y la validación del contrato; `ingestion_events` sin columnas de resultado (6.5.1, D-5) | [architecture/DataModel.md](docs/architecture/DataModel.md) |
+| Modelo de datos | todas las tablas implementadas; conversaciones con su servicio y sus pantallas; ingestión con su esquema, la validación del contrato y el registro con proyección; `ingestion_events` sin columnas de resultado (6.5.1, D-5) | [architecture/DataModel.md](docs/architecture/DataModel.md) |
 | Modelo de seguridad | autenticación, autorización, auditoría, ingreso, gestión de miembros y enmascarado del teléfono implementados; `Origin` diseñado | [architecture/SecurityModel.md](docs/architecture/SecurityModel.md) |
 | Wireframes | 10 pantallas; la 1 y la 3 a la 10 implementadas, más el marco común; la 2 (panel) llega en la Fase 7 | [product/wireframes/](docs/product/wireframes/README.md) |
-| Contrato de ingestión | v1: evento `message.recorded`, `payload_hash` SHA-256 canónico, reenvíos solo con referencias del emisor, rechazos de negocio registrados; validación `parseIngestionEventV1` e `ingestionPayloadHash` en `ingestion`; fixtures con forma asumida en `tests/fixtures/ingestion/v1/`; endpoint y credencial diseñados | [contracts/ingestion-v1.md](docs/contracts/ingestion-v1.md), [src/modules/ingestion/index.ts](src/modules/ingestion/index.ts) |
+| Contrato de ingestión | v1: evento `message.recorded`, `payload_hash` SHA-256 canónico, reenvíos solo con referencias del emisor, rechazos de negocio registrados; validación `parseIngestionEventV1`, `ingestionPayloadHash` e `isOpaqueReference`, y caso de uso `recordIngestionEvent(context, body)` sin HTTP en `ingestion`; fixtures con forma asumida en `tests/fixtures/ingestion/v1/`; endpoint y credencial diseñados | [contracts/ingestion-v1.md](docs/contracts/ingestion-v1.md), [src/modules/ingestion/index.ts](src/modules/ingestion/index.ts) |
 | Vocabulario de validación | obligatorio | [CLAUDE.md](CLAUDE.md) |
 
 ## 5. Evidencia
 
-Nivel del proyecto: **validado en integración** para las pantallas de conversaciones (8 y 9) y las conversaciones en las pantallas 6 y 7 (6.4). **Validado localmente y en CI** para la validación del contrato de ingestión y su `payload_hash` (6.5.1), el esquema de conversaciones, mensajes e ingestión (6.1), sus seeds sintéticos (6.2) y el servicio de conversaciones (6.3). **Validado en integración** para las pantallas 1, 3 a 10 y el marco común, en claro y en oscuro. **Validado localmente y en CI** para la fundación técnica, la identidad, la autorización, la auditoría (escritura y lectura), la gestión de miembros, el catálogo, el ajuste de stock secuencial y bajo concurrencia, el historial de movimientos y el esquema y el servicio de clientes. **Diseñado** para el endpoint, el registro y la credencial de ingestión, y para las métricas. Nada está desplegado. `confirmado`
+Nivel del proyecto: **validado en integración** para las pantallas de conversaciones (8 y 9) y las conversaciones en las pantallas 6 y 7 (6.4). **Validado localmente y en CI** para el registro idempotente de ingestión y su proyección (6.5.2), la validación del contrato de ingestión y su `payload_hash` (6.5.1), el esquema de conversaciones, mensajes e ingestión (6.1), sus seeds sintéticos (6.2) y el servicio de conversaciones (6.3). **Validado en integración** para las pantallas 1, 3 a 10 y el marco común, en claro y en oscuro. **Validado localmente y en CI** para la fundación técnica, la identidad, la autorización, la auditoría (escritura y lectura), la gestión de miembros, el catálogo, el ajuste de stock secuencial y bajo concurrencia, el historial de movimientos y el esquema y el servicio de clientes. **Diseñado** para el endpoint y la credencial de ingestión, y para las métricas. Nada está desplegado. `confirmado`
 
 | Afirmación | Nivel | Evidencia |
 |---|---|---|
-| Todos los pasos de CI, incluido el desfase de migraciones y el end-to-end | validado en CI | Ejecución 35158967940 `success`, commit `6f026a9` `confirmado` |
+| Todos los pasos de CI, incluido el desfase de migraciones y el end-to-end | validado en CI | Ejecución 35227372751 `success`, commit `6d7626a` `confirmado` |
+| Registro idempotente de ingestión: proyección, cliente por teléfono, fechas con mensajes desordenados, estado sin cambios, `duplicate`, `CONFLICT`, `failed` terminal, rechazos sin escritura, reversión ante un error y entregas simultáneas | validado localmente y en CI | `tests/integration/ingestion.test.ts` (13) y `service.test.ts` (7), con corridas de mutación en el brief-6.5.2 `confirmado` |
 | Contrato de ingestión v1: esquema estricto, normalización, rechazo de NUL y UTF-16 inválido, errores sin payload, vector de `payload_hash` e indiferencia al formato | validado localmente y en CI | `src/modules/ingestion/contract.test.ts` (28), con 11 fixtures de forma asumida y corrida de mutación en el brief-6.5.1 `confirmado` |
 | Pantallas 8 y 9: lista sin cuerpos (HTML y RSC), filtros y búsqueda de cliente, timeline escapado con carga de anteriores, cambio de estado solo `admin` auditado, otra organización e id inválido | validado en integración (`producer-consumer`) | `tests/e2e/conversations.spec.ts` (10), con axe en claro y oscuro, teclado y móvil, fixtures sintéticos por SQL y corridas de mutación en el brief-6.4 `confirmado` |
 | Servicio de conversaciones: lista sin cuerpos, filtros y períodos en la zona de la organización, timeline por cursor, cambio de estado solo `admin` auditado y bajo concurrencia, actividad del cliente y clientes por última interacción con H-5 | validado localmente y en CI | `tests/integration/conversations.test.ts` (29) y unitarios de `conversations` (7) y `shared/calendar` (3), con corridas de mutación en el brief-6.3 `confirmado` |
@@ -118,8 +118,8 @@ Nivel del proyecto: **validado en integración** para las pantallas de conversac
 | Ajuste secuencial atómico; movimientos inmutables; servicio de catálogo | validado localmente y en CI | `inventory-adjustment.test.ts`, `catalog-inventory-schema.test.ts`, `stock-writes.test.ts`, `catalog.test.ts` `confirmado` |
 | Pantallas 1 y 10 y marco común | validado en integración (`producer-consumer`) | `login.spec.ts` (12) y `users.spec.ts` (13) `confirmado` |
 | Regla del último `admin`, auditoría de miembros y `audit_logs` de solo inserción | validado localmente y en CI | `members.test.ts` y `audit.test.ts` `confirmado` |
-| Suite completa local | validado localmente | `npm run test`: 574 de 574 (6.5.1); `npm run test:e2e`: 63 de 63 (6.4) `confirmado` |
-| Endpoint, registro, proyección y credencial de ingestión; métricas | diseñado | 6.5.2, 6.5.3 y Fase 7 `confirmado` |
+| Suite completa local | validado localmente | `npm run test`: 594 de 594 (6.5.2); `npm run test:e2e`: 63 de 63 (6.4) `confirmado` |
+| Endpoint, credencial y límite de tasa de ingestión; métricas | diseñado | 6.5.3 y Fase 7 `confirmado` |
 | Compatibilidad del contrato con un emisor real | sin validar | proyecto de integración (Risks) `confirmado` |
 | La cookie detrás de TLS y de un proxy real; la aplicación restringida por `crm_app` | diseñado | Fases 8 y 9 `confirmado` |
 
@@ -128,7 +128,7 @@ Nivel del proyecto: **validado en integración** para las pantallas de conversac
 ### Vigentes
 
 - ADRs 0001 a 0013 aceptados. `confirmado`
-- Resoluciones de los briefs 1.1 a 1.3, 2.1 a 2.5, 3.1 a 3.7, 4.0 a 4.2, 4.3.1 a 4.3.3, 4.4, 5.1 a 5.3, 6.1 a 6.4 y 6.5.1 en [docs/decisions/](docs/decisions/README.md). `confirmado`
+- Resoluciones de los briefs 1.1 a 1.3, 2.1 a 2.5, 3.1 a 3.7, 4.0 a 4.2, 4.3.1 a 4.3.3, 4.4, 5.1 a 5.3, 6.1 a 6.4, 6.5.1 y 6.5.2 en [docs/decisions/](docs/decisions/README.md). `confirmado`
 - Convenciones:
   - enums `pgEnum`, `gen_random_uuid()`, `updated_at` en la aplicación y validación con `zod`;
   - resultados tipados con `Failure`, y orden de autorización `must_change_password` → rol → recurso filtrado por organización; un id que no es UUID devuelve `VALIDATION_ERROR` sin `fields` (4.4, D-6);
@@ -185,7 +185,13 @@ Nivel del proyecto: **validado en integración** para las pantallas de conversac
   - un validador de datos que van a PostgreSQL rechaza el carácter NUL y el UTF-16 inválido, que la base no acepta (6.5.1);
   - un error de validación de un payload externo nombra el campo o su objeto, nunca repite valores ni nombres de campos desconocidos (6.5.1);
   - al calcular los límites de un contrato, se verifica el peor caso de cada uno contra los demás (6.5.1, desvío del límite del request);
-  - la herramienta de escritura de archivos puede convertir un escape `\u0000` en un carácter NUL real: después de escribir código con ese escape, se verifica que el archivo no quedó binario (6.5.1).
+  - la herramienta de escritura de archivos puede convertir un escape `\u0000` en un carácter NUL real: después de escribir código con ese escape, se verifica que el archivo no quedó binario (6.5.1);
+  - un caso de uso idempotente reserva su clave con `INSERT … ON CONFLICT DO NOTHING RETURNING` en `READ COMMITTED`: una entrega simultánea espera en el índice único y lee lo que la primera confirmó; la reserva y su cierre van en la misma transacción, así que un estado intermedio nunca se confirma (6.5.2, D-3);
+  - un `ON CONFLICT` sobre un índice único parcial repite su predicado (`where … is not null`) (6.5.2);
+  - una fila que varias transacciones amplían se actualiza con `LEAST`/`GREATEST` en el `UPDATE`, que relee la fila después de esperar; la mutación que lo prueba quita la reserva, no el `FOR UPDATE` (6.5.2);
+  - un módulo que proyecta datos para otro recibe su transacción y no autoriza ni audita: lo hace el caso de uso que abre la transacción (6.5.2, D-2);
+  - un error inesperado dentro de una transacción se fuerza en el test con un trigger temporal que se quita al terminar (6.5.2);
+  - un caso de uso se implementa y valida sin HTTP antes de exponerlo, y el endpoint llega con su credencial (6.5.2, D-1).
 
   `confirmado`
 - `forbidden()` y `unauthorized()` de Next.js 16.3 no se usan: son experimentales. `historico`
@@ -197,7 +203,7 @@ Nivel del proyecto: **validado en integración** para las pantallas de conversac
 - **Volumen de productos e inventario, y `EXPLAIN` de las consultas de las Fases 4 y 5**: Fase 8 (6.2, D-4; Risks). `confirmado`
 - **Cliente creado por el usuario en desarrollo**: "Matias Garavano", en la organización de ejemplo (2026-09-16 18:12 UTC). Los seeds no lo tocan. `confirmado`
 - **Retención de `messages`**: la Fase 9 revisa también su trigger de solo inserción. `confirmado`
-- **Verificación de `Origin`** (`src/shared/http/`): con el primer Route Handler mutante (Fase 6). `confirmado`
+- **Verificación de `Origin`** (`src/shared/http/`): se decide en la 6.5.3, con el primer Route Handler mutante. `confirmado`
 - **Token de advertencia** para "bajo stock": se suma si una subfase autoriza `globals.css`. `confirmado`
 - **`audit_logs.created_at` con `now()`**: el orden de registros simultáneos desempata por `id`; se revisa si una pantalla lo necesita. `confirmado`
 - **Nombre del paso de guardas en `ci.yml`**: no menciona `stock-writes.test.ts`. Se renombra en una subfase que autorice `ci.yml`. `confirmado`
@@ -245,7 +251,7 @@ Nivel del proyecto: **validado en integración** para las pantallas de conversac
 - [planning/Roadmap.md](docs/planning/Roadmap.md): alcance, subfases, criterios y gates de la Fase 6.
 - [architecture/DataModel.md](docs/architecture/DataModel.md) §`conversations` y §`messages`; [architecture/IntegrationBoundaries.md](docs/architecture/IntegrationBoundaries.md); [brief-1.2](docs/decisions/brief-1.2-validacion-cruzada-del-modelo.md) (D-2 a D-4).
 - FR-CONV-01 a 05 y FR-CLI-04 en [product/FunctionalRequirements.md](docs/product/FunctionalRequirements.md); [product/Screens.md](docs/product/Screens.md) §7 a §9 y los wireframes 07 a 09.
-- [brief-6.1](docs/decisions/brief-6.1-migraciones-de-conversaciones.md) (D-3 y D-4: protección y resultado de `ingestion_events`), [brief-6.5.1](docs/decisions/brief-6.5.1-contrato-de-ingestion.md) y [contracts/ingestion-v1.md](docs/contracts/ingestion-v1.md) (la fuente de la 6.5.2), y [brief-6.3](docs/decisions/brief-6.3-servicio-de-consulta-y-estado.md) (precedente de servicio con transacción auditada).
+- [brief-6.1](docs/decisions/brief-6.1-migraciones-de-conversaciones.md) (D-3 y D-4: protección y resultado de `ingestion_events`), [brief-6.5.1](docs/decisions/brief-6.5.1-contrato-de-ingestion.md), [brief-6.5.2](docs/decisions/brief-6.5.2-registro-idempotente-y-proyeccion.md) y [contracts/ingestion-v1.md](docs/contracts/ingestion-v1.md) (las fuentes de la 6.5.3); [SecurityModel.md](docs/architecture/SecurityModel.md) (credencial y `Origin`), y [brief-6.3](docs/decisions/brief-6.3-servicio-de-consulta-y-estado.md) (precedente de servicio con transacción auditada).
 
 ## 9. Cambios ajenos del usuario detectados
 
@@ -253,9 +259,9 @@ Ninguno en el repositorio. `confirmado`
 
 ## 10. Autorizaciones vigentes
 
-**Ninguna.** El arreglo del caso 9 y su commit, el commit y push de la 6.5.1 y de su cierre, el límite de 64 KiB y los cambios en Notion quedan consumidos al ejecutarse. Instalar dependencias, ejecutar migraciones, cambios en Notion y cualquier operación Git futura necesitan autorización explícita.
+**Ninguna.** El commit y push de la 6.5.2 y de su cierre, el desvío de `isOpaqueReference` y los cambios en Notion quedan consumidos al ejecutarse. Instalar dependencias, ejecutar migraciones, cambios en Notion y cualquier operación Git futura necesitan autorización explícita.
 
 ## 11. Aspectos pendientes de confirmar
 
-- Que el commit de cierre de la 6.5.1 esté en `origin/main` con la CI en verde.
-- Alcance exacto de la 6.5.2, al preparar su brief, en particular la función de `crm` para el contexto de servicio.
+- Que el commit de cierre de la 6.5.2 esté en `origin/main` con la CI en verde.
+- Alcance exacto de la 6.5.3, al preparar su brief, en particular si la credencial necesita una tabla nueva.
