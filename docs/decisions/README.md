@@ -63,7 +63,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-6.5.1](brief-6.5.1-contrato-de-ingestion.md) | 6.5.1 — Contrato de ingestión y validación | aprobado y cerrado el 2026-09-16 |
 | [brief-6.5.2](brief-6.5.2-registro-idempotente-y-proyeccion.md) | 6.5.2 — Registro idempotente y proyección | aprobado y cerrado el 2026-09-17 |
 | [brief-6.5.3](brief-6.5.3-autenticacion-de-servicio-y-rate-limit.md) | 6.5.3 — Autenticación de servicio y rate limit | aprobado y cerrado el 2026-09-17 |
-| [brief-7.1](brief-7.1-metricas-de-volumen.md) | 7.1 — Métricas de volumen | aprobado el 2026-09-17 |
+| [brief-7.1](brief-7.1-metricas-de-volumen.md) | 7.1 — Métricas de volumen | aprobado y cerrado el 2026-09-17 |
 
 ## Plantilla
 

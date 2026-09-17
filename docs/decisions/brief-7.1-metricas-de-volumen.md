@@ -275,9 +275,13 @@ La revisión es una autoevaluación (`self_assessment: true`).
 - Si un test existente necesita cambios, o si aparece la necesidad de tocar `src/app/`, los seeds, otro módulo o una dependencia.
 - Antes de medir contra la base de desarrollo, y antes de cualquier commit, push o cambio en Notion.
 
+## Cierre (2026-09-17)
+
+Cerrado con autorización del usuario. Se cumplen los nueve criterios. La condición de detención de D-5 quedó aceptada y registrada, como detalla la ejecución. La CI quedó en verde en el commit `0e87329` ([ejecución 35251536171](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35251536171), con todos los pasos). Nivel alcanzado: **validado localmente y en CI**. La evidencia está en [CHANGELOG.md](../../CHANGELOG.md).
+
 ## Ejecución (2026-09-17)
 
-La implementación está terminada y el cierre está pendiente. Se activó la condición de detención de D-5, y el usuario autorizó cómo seguir.
+La implementación está terminada. Se activó la condición de detención de D-5, y el usuario autorizó cómo seguir.
 
 ### D-5: recorridos completos
 
@@ -353,7 +357,9 @@ La organización de volumen tiene 10.000 conversaciones y 65.260 mensajes. Los p
 
 Todas quedan por debajo de los 200 ms de D-5.
 
-### Pendiente
+### Pendiente al terminar la ejecución
 
-- Commit, push, CI (AC-8) y cierre.
-- **Al cerrar, registrar en HANDOFF**: el bloque de ESLint de `analytics` no prohíbe `next` ni `@/app/*` (hallazgo 9).
+Resuelto en el cierre:
+
+- commit, push, CI (AC-8) y cierre;
+- registrado en HANDOFF: el bloque de ESLint de `analytics` no prohíbe `next` ni `@/app/*` (hallazgo 9).

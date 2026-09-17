@@ -2,6 +2,46 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-17 — Subfase 7.1 cerrada (Métricas de volumen)
+
+**Certifica:**
+
+- **Módulo `analytics`**, según el [brief-7.1](docs/decisions/brief-7.1-metricas-de-volumen.md), con D-1 a D-5 resueltas según la recomendación:
+  - una función por tarjeta del dashboard: métricas 1, 2, 3, 4 y 5 juntas, 6 y 10 (D-1);
+  - el período lo resuelve el servicio (D-2):
+    - sin fechas, los últimos 30 días completos sin hoy, con el reloj de la base;
+    - se rechazan un período con una sola fecha, invertido, de más de 366 días o con un fin futuro;
+  - mediana con `percentile_cont` y valores sin redondear (D-3);
+  - "sin datos" como estado propio, `no_data` (D-4).
+
+  Solo lee `conversations` y `messages`, desde `conversations/schema`.
+- **Métricas 1 a 6 y 10**, cada una con su valor calculado a mano, sus invariantes de MetricsCatalog y los bordes de zona horaria:
+  - la medianoche local;
+  - el 19/10/2008 (23 horas) y el 14/03/2009 (25 horas) de Buenos Aires;
+  - una organización en `UTC`.
+
+  Evidencia: `tests/integration/analytics.test.ts` (18 casos) y `analytics/service.test.ts` (7). Cuatro corridas de mutación hacen fallar los casos previstos.
+- **Aislamiento y autorización**:
+  - cada organización ve solo sus datos;
+  - `viewer` lee lo mismo que `admin`, y con la contraseña pendiente recibe `FORBIDDEN`;
+  - ninguna respuesta contiene cuerpos, teléfonos ni nombres.
+- **Medición local** en solo lectura, sobre la organización de volumen:
+  - todas las funciones quedan por debajo de 200 ms: 57 ms como máximo, con 180 días;
+  - los recorridos completos con 180 días, y el de la métrica 3 con 30 días, quedaron aceptados por el usuario y registrados en Risks.
+- **Suites**:
+  - `npm run test`: 648 de 648;
+  - `npm run test:e2e`: 65 de 65;
+  - CI en verde en `0e87329` ([ejecución 35251536171](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35251536171)), con todos los pasos.
+- **Nivel alcanzado**: **validado localmente y en CI** (`deterministic`) para las métricas 1 a 6 y 10.
+
+**No certifica:**
+
+- **La pantalla 2** y el formato de los valores: 7.4.
+- **Las métricas 7 a 9 y 11** (7.2) y la **12** (7.3).
+- **Rendimiento con varias organizaciones o en staging**: Fase 9.
+- **Valores con datos reales**: no hay emisor conectado.
+- **Revisión independiente**: es autoevaluación del mismo agente. El usuario aprobó el brief y el cierre.
+
 ## 2026-09-17 — Fase 6 cerrada (Conversaciones, mensajes e ingestión)
 
 **Certifica:**
