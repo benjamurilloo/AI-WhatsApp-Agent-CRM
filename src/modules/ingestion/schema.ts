@@ -2,8 +2,10 @@ import { sql } from "drizzle-orm";
 import {
   check,
   index,
+  integer,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -68,4 +70,43 @@ export const ingestionEvents = pgTable(
       sql`(${table.status} = 'failed') = (${table.errorCode} IS NOT NULL)`,
     ),
   ],
+);
+
+// Credenciales de servicio (brief-6.5.3, D-1 y D-2). Solo se guarda el SHA-256 del token: el token
+// se muestra una vez al crearlo. De la credencial salen la organización y el source del evento.
+export const ingestionCredentials = pgTable(
+  "ingestion_credentials",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    source: text("source").notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    // Una credencial revocada no se reactiva: se crea otra.
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("ingestion_credentials_organization_id_idx").on(table.organizationId),
+    check(
+      "ingestion_credentials_not_blank",
+      sql`btrim(${table.source}) <> '' AND btrim(${table.tokenHash}) <> ''`,
+    ),
+  ],
+);
+
+// Límite de tasa por credencial en ventanas fijas de un minuto (brief-6.5.3, D-3).
+export const ingestionRateWindows = pgTable(
+  "ingestion_rate_windows",
+  {
+    credentialId: uuid("credential_id")
+      .notNull()
+      .references(() => ingestionCredentials.id, { onDelete: "cascade" }),
+    windowStart: timestamp("window_start", { withTimezone: true }).notNull(),
+    requestCount: integer("request_count").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.credentialId, table.windowStart] })],
 );

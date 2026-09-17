@@ -48,12 +48,23 @@
   - contraseña inicial (D-5): 16 caracteres de un alfabeto de 32 sin símbolos ambiguos, elegidos con `crypto.randomInt` (80 bits) y mostrados en 4 grupos. Solo persiste su hash argon2id. El texto en claro viaja una única vez, en la respuesta de la Server Action del alta, y nunca en la URL, los logs, la auditoría ni el almacenamiento del cliente. Es la excepción declarada a que ninguna contraseña salga del formulario en curso;
   - un `viewer` que abre una página de usuarios recibe "No tenés permiso para ver esta página." sin datos, y sus Server Actions devuelven `FORBIDDEN` (D-10). **Limitación aceptada**: la respuesta es HTTP 200, no 403, mientras `forbidden()` siga siendo experimental.
 
+## Autenticación de servicio (ingestión)
+
+Implementada en la 6.5.3 ([brief-6.5.3](../decisions/brief-6.5.3-autenticacion-de-servicio-y-rate-limit.md)), **validada localmente** con requests sintéticos. No se valida con un emisor real hasta el proyecto de integración ([IntegrationBoundaries](IntegrationBoundaries.md)).
+
+- **Credencial** (D-1 y D-2): una fila de `ingestion_credentials` por organización y emisor, con el SHA-256 de un token `crm_ing_` de 32 bytes aleatorios. El token se muestra una sola vez, al crearlo con `npm run ingestion:credential`, y nunca se guarda ni se registra. Una credencial se revoca con fecha y no se reactiva; para rotarla se crea otra y se revoca la vieja.
+- **Transporte**: `Authorization: Bearer <token>`. Sin credencial reconocible, `401`; revocada, `403`.
+- **Modo de prueba** (D-4): `INGESTION_ENABLED` apagado por defecto (`404`), y `INGESTION_ALLOWED_CREDENTIALS` con los ids aceptados. Una configuración inválida apaga el endpoint y queda en el log.
+- **Límite de tasa** (D-3): 120 requests por minuto por credencial, en `ingestion_rate_windows`, con un `INSERT … ON CONFLICT DO UPDATE` atómico. Se cuenta después de autenticar y antes de leer el cuerpo.
+- **Sin auditoría en `audit_logs`**: la creación y la revocación no tienen usuario; la tabla guarda `created_at` y `revoked_at`.
+- **Log**: código, organización, `source` y duración; nunca el token, el payload, el teléfono ni el cuerpo.
+
 ## Protección de la aplicación web
 
-- **CSRF** ([ADR 0012](../decisions/0012-mecanismo-de-sesion.md)): cookie `SameSite=Lax` más verificación de origen, sin tokens de doble envío. Las mutaciones de la UI usan Server Actions, que en Next.js 16.3 solo aceptan `POST` y rechazan un `Origin` distinto del `Host`. Todo Route Handler que modifique datos verifica `Origin` explícitamente; hasta la 3.7 no existe ninguno. No hay `proxy` ([brief-3.5](../decisions/brief-3.5-pantalla-de-inicio-de-sesion.md), D-6): cada página y cada acción protegida validan la sesión contra la base. Se reevalúa cuando haya varias rutas protegidas (Fase 4), y aun entonces solo para redirecciones optimistas.
+- **CSRF** ([ADR 0012](../decisions/0012-mecanismo-de-sesion.md)): cookie `SameSite=Lax` más verificación de origen, sin tokens de doble envío. Las mutaciones de la UI usan Server Actions, que en Next.js 16.3 solo aceptan `POST` y rechazan un `Origin` distinto del `Host`. Todo Route Handler que modifique datos **con la sesión** verifica `Origin` explícitamente; hasta la 6.5.3 no existe ninguno. El endpoint de ingestión no la verifica (brief-6.5.3, D-5): no lee cookies, la credencial viaja en un encabezado que el navegador no agrega solo y no envía encabezados CORS, así que un sitio ajeno no puede usarlo con la sesión de un usuario. Un test confirma que una sesión válida no lo autentica. No hay `proxy` ([brief-3.5](../decisions/brief-3.5-pantalla-de-inicio-de-sesion.md), D-6): cada página y cada acción protegida validan la sesión contra la base. Se reevalúa cuando haya varias rutas protegidas (Fase 4), y aun entonces solo para redirecciones optimistas.
 - **XSS**: escape automático de la capa de renderizado (evitar `dangerouslySetInnerHTML` o equivalentes sin sanitización), Content-Security-Policy restrictiva.
 - **Validación de entradas**: todo input de usuario se valida con un esquema explícito (tipo, longitud, formato) antes de tocar la capa de dominio; rechazo explícito, no coerción silenciosa.
-- **Rate limiting en ingestión**: el futuro endpoint de ingestión (no conectado a tráfico real en el MVP) debe diseñarse con límite de tasa por credencial de servicio desde el inicio, para no ser una tarea añadida tarde.
+- **Rate limiting en ingestión**: implementado en la 6.5.3 por credencial de servicio (ver "Autenticación de servicio"). La Fase 8 lo verifica.
 
 ## Gestión de secretos
 

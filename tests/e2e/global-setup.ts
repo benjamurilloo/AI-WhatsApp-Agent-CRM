@@ -11,6 +11,11 @@ import {
 // Contraseña sintética de los usuarios del seed en end-to-end.
 export const E2E_PASSWORD = "contraseña-sintética-e2e";
 
+// Credencial sintética de ingestión que el servidor de end-to-end acepta (brief-6.5.3, D-6).
+// ingestion.spec.ts la inserta; ningún emisor real la conoce.
+export const E2E_INGESTION_CREDENTIAL_ID =
+  "5eed0000-0000-4000-8000-0000000000e1";
+
 // Recrea la base _e2e, le aplica las migraciones y la siembra (brief-3.5, D-8).
 export default async function globalSetup() {
   const base = process.env.DATABASE_URL;

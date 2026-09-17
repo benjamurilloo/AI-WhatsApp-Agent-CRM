@@ -15,6 +15,8 @@ export type LogEvent = {
   // Organización del actor y duración de la acción, en milisegundos (brief-4.4).
   organizationId?: string;
   durationMs?: number;
+  // Emisor de un evento de ingestión, tomado de su credencial (brief-6.5.3).
+  source?: string;
   error?: unknown;
 };
 
@@ -51,6 +53,7 @@ export function formatLogEvent(event: LogEvent, now = new Date()): string {
     code: event.code,
     user_id: event.userId,
     organization_id: event.organizationId,
+    source: event.source,
     duration_ms:
       event.durationMs === undefined ? undefined : Math.round(event.durationMs),
     error: event.error === undefined ? undefined : describeError(event.error),

@@ -46,6 +46,14 @@ Next.js, Vitest y Drizzle Kit leen `DATABASE_URL` de `.env`. En CI las variables
 
 `TRUSTED_PROXY` ([brief-3.3](../decisions/brief-3.3-autenticacion.md), D-4) indica si la aplicación corre detrás de un proxy propio que agrega la IP del cliente al final de `x-forwarded-for`. En desarrollo local va en `false` (o ausente): sin proxy, el límite de intentos por IP usa una única clave para todas las requests. Solo se pone en `true` en un entorno donde ese proxy exista.
 
+`INGESTION_ENABLED` e `INGESTION_ALLOWED_CREDENTIALS` ([brief-6.5.3](../decisions/brief-6.5.3-autenticacion-de-servicio-y-rate-limit.md), D-4) controlan el endpoint de ingestión. Por defecto está apagado y responde `404`. Para probarlo en local:
+
+1. crear una credencial sintética con `npm run ingestion:credential -- create --org <organization_id> --source <source>`, que imprime su id y el token una sola vez;
+2. poner `INGESTION_ENABLED=true` y el id en `INGESTION_ALLOWED_CREDENTIALS`, y reiniciar `npm run dev`;
+3. revocarla al terminar con `npm run ingestion:credential -- revoke --id <credential_id>`.
+
+Nunca se configura una credencial de un emisor real. Los end-to-end encienden el modo de prueba en `playwright.config.ts`, con una credencial sintética que inserta `ingestion.spec.ts`.
+
 - `/api/health` responde 200 `{"status":"ok"}` o 503 `{"status":"unavailable"}`, sin detalles.
 - `npm run test` corre los tests de integración y **requiere la base levantada**.
 

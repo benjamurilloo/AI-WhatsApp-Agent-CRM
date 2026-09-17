@@ -112,7 +112,8 @@ No hay otros módulos. Uno nuevo requiere primero cambiar la tabla de [Overview.
 - `src/shared/errors/` (3.4) contiene la taxonomía de errores de Overview: códigos, HTTP por código y tipo `Failure`.
 - `src/shared/log/` (3.5) contiene el log estructurado con `request_id`.
 - `src/shared/quantity/` (4.2) contiene las cantidades `numeric(14, 3)` como `bigint` en milésimas: parseo de entrada, conversión desde y hacia la base, sin `number` ([brief-4.2](../decisions/brief-4.2-servicio-de-catalogo.md), D-2).
-- Ubicación fijada en la 3.4 (D-5), que nace con su primer consumidor: `src/shared/http/` para la verificación de `Origin` del primer Route Handler mutante.
+- `src/shared/http/` (6.5.3) contiene la lectura del cuerpo con límite de bytes y la comprobación de `Content-Type`. Estaba prevista en la 3.4 (D-5) para la verificación de `Origin`, que el endpoint de ingestión no necesita (brief-6.5.3, D-5).
+- `scripts/` (6.5.3) contiene tareas locales que se corren con `tsx`, como `ingestion-credential.ts`. No se importa desde `src/`.
 - `src/shared/` no importa nada de `src/modules/`, para no crear ciclos.
 
 ## Frontera entre módulos
@@ -174,6 +175,7 @@ Ninguna carpeta se crea vacía: nace con el primer archivo real de la subfase qu
 | 6.4 — UI de conversaciones | `src/app/(autenticado)/conversaciones/` (lista y detalle con timeline y cambio de estado, con `filters.ts`, `messages.ts`, `actions.ts`, la tabla y la etiqueta de estado compartidas y sus tests unitarios); última interacción y sección de conversaciones en `clientes/`; enlace "Conversaciones" en el marco común; `formatDate` y `formatTime` en `_format`; `tests/e2e/conversations.spec.ts` |
 | 6.5.1 — Contrato de ingestión y validación | `docs/contracts/ingestion-v1.md`; en `src/modules/ingestion/`: `contract.ts` (esquema del evento v1 y `payload_hash`), `index.ts` y `contract.test.ts`; `tests/fixtures/ingestion/v1/` |
 | 6.5.2 — Registro idempotente y proyección | En `src/modules/ingestion/`: `service.ts` (`recordIngestionEvent`), `repository.ts` y `service.test.ts`; `recordIngestedMessage` en `conversations`; `findClientIdByPhone` en `crm`; `tests/integration/ingestion.test.ts` |
+| 6.5.3 — Autenticación de servicio y rate limit | En `src/modules/ingestion/`: `credentials.ts`, `rate-limit.ts`, `config.ts` y `credentials.test.ts`, y las tablas nuevas en `schema.ts`; `drizzle/0013` y `0014`; `src/shared/http/`; `src/app/api/ingestion/v1/events/` (`route.ts` y `handler.ts`); `scripts/ingestion-credential.ts`; `tests/integration/ingestion-http.test.ts` y `tests/e2e/ingestion.spec.ts` |
 | Fase 4 | `src/modules/catalog/` e `inventory/` |
 | Fase 5 | `src/modules/crm/` |
 | Fase 6 | `src/modules/conversations/` e `ingestion/` |

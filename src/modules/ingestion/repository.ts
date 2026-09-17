@@ -1,9 +1,10 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb, type DbTransaction } from "@/shared/db";
-import { ingestionEvents } from "./schema";
+import { ingestionCredentials, ingestionEvents } from "./schema";
 
-// Acceso a ingestion_events (brief-6.5.2). Solo cambian status, error_code y processed_at; el
-// trigger de la 6.1 rechaza el resto.
+// Acceso a ingestion_events (brief-6.5.2) y a las credenciales y el límite de tasa (brief-6.5.3).
+// De ingestion_events solo cambian status, error_code y processed_at; el trigger de la 6.1
+// rechaza el resto.
 
 export type EventIdentity = {
   organizationId: string;
@@ -77,4 +78,79 @@ export async function finishEvent(
       processedAt: sql`clock_timestamp()`,
     })
     .where(eq(ingestionEvents.id, eventId));
+}
+
+// Credenciales de servicio (brief-6.5.3, D-1).
+
+export type StoredCredential = {
+  id: string;
+  organizationId: string;
+  source: string;
+  revokedAt: Date | null;
+};
+
+export async function insertCredential(input: {
+  organizationId: string;
+  source: string;
+  tokenHash: string;
+}): Promise<string> {
+  const rows = await getDb()
+    .insert(ingestionCredentials)
+    .values(input)
+    .returning({ id: ingestionCredentials.id });
+  const id = rows[0]?.id;
+  if (!id) throw new Error("la credencial no se creó");
+  return id;
+}
+
+export async function findCredentialByTokenHash(
+  tokenHash: string,
+): Promise<StoredCredential | undefined> {
+  const rows = await getDb()
+    .select({
+      id: ingestionCredentials.id,
+      organizationId: ingestionCredentials.organizationId,
+      source: ingestionCredentials.source,
+      revokedAt: ingestionCredentials.revokedAt,
+    })
+    .from(ingestionCredentials)
+    .where(eq(ingestionCredentials.tokenHash, tokenHash))
+    .limit(1);
+  return rows[0];
+}
+
+// Devuelve false si la credencial no existe o ya estaba revocada.
+export async function revokeCredential(credentialId: string): Promise<boolean> {
+  const rows = await getDb()
+    .update(ingestionCredentials)
+    .set({ revokedAt: sql`now()` })
+    .where(
+      and(
+        eq(ingestionCredentials.id, credentialId),
+        isNull(ingestionCredentials.revokedAt),
+      ),
+    )
+    .returning({ id: ingestionCredentials.id });
+  return rows.length > 0;
+}
+
+// Cuenta un request en la ventana y borra las ventanas anteriores de la credencial, en una sola
+// sentencia atómica: dos requests simultáneos nunca leen el mismo contador (D-3).
+export async function incrementRateWindow(
+  credentialId: string,
+  windowStart: Date,
+): Promise<number> {
+  const result = await getDb().execute<{ request_count: number }>(sql`
+    with expired as (
+      delete from ingestion_rate_windows
+      where credential_id = ${credentialId} and window_start < ${windowStart}
+    )
+    insert into ingestion_rate_windows (credential_id, window_start, request_count)
+    values (${credentialId}, ${windowStart}, 1)
+    on conflict (credential_id, window_start)
+    do update set request_count = ingestion_rate_windows.request_count + 1
+    returning request_count`);
+  const count = result.rows[0]?.request_count;
+  if (count === undefined) throw new Error("el contador de tasa no respondió");
+  return Number(count);
 }

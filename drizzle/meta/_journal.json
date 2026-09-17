@@ -92,6 +92,20 @@
       "when": 1789584059715,
       "tag": "0012_conversations_privileges_and_insert_only",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1789653550293,
+      "tag": "0013_ingestion_credentials",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1789653559998,
+      "tag": "0014_ingestion_credentials_privileges",
+      "breakpoints": true
     }
   ]
 }

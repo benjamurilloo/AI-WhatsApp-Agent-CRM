@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { defineConfig, devices } from "@playwright/test";
+import { E2E_INGESTION_CREDENTIAL_ID } from "./tests/e2e/global-setup";
 import { e2eDatabaseUrl } from "./tests/integration/test-database";
 
 // End-to-end con Chromium sobre el build de producción (brief-3.5, D-8).
@@ -36,6 +37,9 @@ export default defineConfig({
       ...(process.env as Record<string, string>),
       ...(databaseUrl ? { DATABASE_URL: e2eDatabaseUrl(databaseUrl) } : {}),
       NEXT_TELEMETRY_DISABLED: "1",
+      // Modo de prueba de la ingestión, solo con la credencial sintética (brief-6.5.3, D-4).
+      INGESTION_ENABLED: "true",
+      INGESTION_ALLOWED_CREDENTIALS: E2E_INGESTION_CREDENTIAL_ID,
     },
   },
 });

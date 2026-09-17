@@ -1,4 +1,4 @@
-// Interfaz pública del módulo ingestion (brief-6.5.1 y 6.5.2).
+// Interfaz pública del módulo ingestion (brief-6.5.1, 6.5.2 y 6.5.3).
 export {
   canonicalJson,
   INGESTION_CONTRACT_VERSION,
@@ -21,3 +21,23 @@ export {
   type IngestionContext,
   type RecordIngestionEventResult,
 } from "./service";
+export {
+  isCredentialAllowed,
+  readIngestionConfig,
+  type IngestionConfig,
+} from "./config";
+export {
+  authenticateIngestionRequest,
+  createIngestionCredential,
+  INGESTION_TOKEN_PREFIX,
+  revokeIngestionCredential,
+  type AuthenticateIngestionResult,
+  type CreateIngestionCredentialResult,
+  type IngestionCredential,
+} from "./credentials";
+export {
+  consumeIngestionRate,
+  INGESTION_RATE_LIMIT,
+  INGESTION_RATE_WINDOW_MS,
+  type ConsumeIngestionRateResult,
+} from "./rate-limit";

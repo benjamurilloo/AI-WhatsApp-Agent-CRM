@@ -22,6 +22,11 @@
     - dos entregas simultáneas del mismo evento y dos eventos simultáneos de una conversación nueva, con la espera observada en `pg_stat_activity`, como en la 4.3.2.
 
     Sin el `ON CONFLICT` de la reserva o de la conversación, o sin el `LEAST` de las fechas, fallan casos (evidencia en el brief).
+  - Endpoint de ingestión, cubierto desde la 6.5.3 ([brief-6.5.3](../decisions/brief-6.5.3-autenticacion-de-servicio-y-rate-limit.md)):
+    - `tests/integration/ingestion-http.test.ts` (13 casos) llama al handler con objetos `Request` contra PostgreSQL real, con la hora inyectada: respuestas, credencial, modo de prueba, cuerpo, límite de tasa (también con requests simultáneos), token solo como hash, log sin secretos y error inesperado;
+    - `tests/e2e/ingestion.spec.ts` (2 casos) lo prueba contra `next start`, con el evento visible en la pantalla 8;
+    - sin la revocación, sin la allowlist, sin el contador atómico o sin el límite de bytes, fallan casos (evidencia en el brief);
+    - el nivel es `deterministic`: los requests son sintéticos.
   - Aislamiento por organización: un usuario de la organización A recibe `NOT_FOUND` al leer o escribir datos de la organización B, incluso manipulando IDs directamente. Cubierto desde la 3.4 para `organization_members` (`tests/integration/authorization.test.ts`); cada módulo de las Fases 4 a 7 agrega el suyo para sus recursos.
   - `inventory_movements` rechaza `UPDATE` y `DELETE`: con `42501` para `crm_app` y con `P0001` por trigger para el rol dueño. Cubierto desde la 4.1 en `tests/integration/catalog-inventory-schema.test.ts`, con `inventory_movements` en la lista de solo inserción de `audit.test.ts`.
   - Esquema de catálogo e inventario, cubierto desde la 4.1 en ese mismo archivo con SQL directo:

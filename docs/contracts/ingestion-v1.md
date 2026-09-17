@@ -4,7 +4,7 @@
 - **Diseñado** en la 6.5.1 ([brief-6.5.1](../decisions/brief-6.5.1-contrato-de-ingestion.md)).
 - **Implementado y validado localmente** en la 6.5.1, solo en su validación del payload y su `payload_hash`: [src/modules/ingestion/contract.ts](../../src/modules/ingestion/contract.ts).
 - **Implementado y validado localmente** en la 6.5.2 ([brief-6.5.2](../decisions/brief-6.5.2-registro-idempotente-y-proyeccion.md)): el registro, los reenvíos y la proyección, como caso de uso sin HTTP (`recordIngestionEvent`).
-- **Pendientes**: el endpoint, la credencial de servicio y el límite de tasa llegan en la 6.5.3 (brief-6.5.2, D-1).
+- **Implementado y validado localmente** en la 6.5.3 ([brief-6.5.3](../decisions/brief-6.5.3-autenticacion-de-servicio-y-rate-limit.md)): el endpoint, la credencial de servicio, el límite de tasa y el modo de prueba, con requests sintéticos.
 
 **Ningún emisor real está conectado ni configurado** (FR-CONV-05, [IntegrationBoundaries](../architecture/IntegrationBoundaries.md)). Este contrato no deriva de la forma de eventos de ningún sistema existente. Sus fixtures tienen **forma asumida, no verificada**, y no prueban compatibilidad con ningún emisor.
 
@@ -17,8 +17,11 @@ Permitir que un sistema externo registre en el CRM los mensajes de sus conversac
 - **Endpoint**: `POST /api/ingestion/v1/events`. La versión va en la ruta; una versión nueva es otra ruta.
 - **Cuerpo**: un solo evento en JSON UTF-8, con `Content-Type: application/json`. No hay lotes.
 - **Tamaño máximo**: 64 KiB (`MAX_INGESTION_BODY_BYTES`). Alcanza para un cuerpo de mensaje de 4096 caracteres aunque el emisor los escriba como escapes `\uXXXX`. Si el cuerpo lo supera, la respuesta es `VALIDATION_ERROR` con el campo `body`.
-- **Autenticación**: una credencial de servicio por organización y emisor, distinta de la sesión humana (6.5.3). De ella salen la organización y el `source` del evento (D-3). El payload no los trae y no puede cambiarlos.
-- **Límite de tasa**: por credencial (SecurityModel, 6.5.3).
+- **Autenticación**: `Authorization: Bearer <token>`, con una credencial de servicio por organización y emisor, distinta de la sesión humana. El token es `crm_ing_` seguido de 32 bytes aleatorios en base64url; el CRM guarda solo su SHA-256 (brief-6.5.3, D-1 y D-2). De la credencial salen la organización y el `source` del evento (D-3). El payload no los trae y no puede cambiarlos. El endpoint no lee cookies: una sesión del CRM no lo autentica (brief-6.5.3, D-5).
+- **`Content-Type`**: `application/json`, con `charset=utf-8` o sin `charset`. Otro tipo, o bytes que no son UTF-8, responden `VALIDATION_ERROR` con el campo `body`.
+- **Límite de tasa**: 120 requests por minuto por credencial, en ventanas fijas de un minuto; en el borde entre dos ventanas pueden pasar hasta el doble (brief-6.5.3, D-3).
+- **Modo de prueba**: el endpoint responde `404` sin cuerpo salvo que la configuración lo encienda, y encendido solo acepta las credenciales de una allowlist (brief-6.5.3, D-4).
+- **Orden de las comprobaciones**: modo de prueba, credencial, allowlist, límite de tasa, cuerpo y evento. Un rechazo anterior al límite no lo consume.
 
 ## Evento `message.recorded`
 
@@ -130,12 +133,14 @@ El cuerpo de error tiene `code`, `request_id` y, en `VALIDATION_ERROR`, `fields`
 |---|---|---|---|---|
 | Cuerpo ilegible, demasiado grande o evento inválido | `VALIDATION_ERROR` | 400 | no | no: corregir el evento antes de reenviarlo |
 | Credencial ausente o inválida | `UNAUTHENTICATED` | 401 | no | no, hasta corregir la credencial |
-| Credencial revocada o sin permiso para ingestión | `FORBIDDEN` | 403 | no | no |
+| Credencial revocada o fuera de la allowlist del modo de prueba | `FORBIDDEN` | 403 | no | no |
 | Mismo `event_id` con otro `payload_hash` | `CONFLICT` | 409 | no se modifica el registro existente | no: el emisor usa un `event_id` nuevo |
 | El mensaje ya existe en la conversación con el mismo `external_ref`, llegado con otro `event_id` | `CONFLICT` | 409 | sí, `failed` con `error_code = 'CONFLICT'` | no |
 | Límite de tasa superado | `RATE_LIMITED` | 429 | no | sí, después de `Retry-After` |
+| Endpoint apagado (modo de prueba) | — | 404, sin cuerpo | no | no |
 | Error inesperado | `INTERNAL` | 500 | no: la transacción se revierte, reserva incluida | sí, con el mismo `event_id` y el mismo contenido |
 
+- **Encabezados**: toda respuesta lleva `Cache-Control: no-store`; la de éxito, `X-Request-Id`; la de `401`, `WWW-Authenticate: Bearer`; la de `429`, `Retry-After` con los segundos hasta la ventana siguiente.
 - **Un evento `failed` es terminal.** Reenviarlo con el mismo hash devuelve el mismo error, y con otro hash, `CONFLICT`.
 - **Los rechazos que no quedan en el registro** van al log estructurado, con código, `source` y organización cuando se conocen, sin payload.
 - **Métrica 12**: cuenta solo los eventos que el CRM aceptó procesar y fallaron ([MetricsCatalog](../analytics/MetricsCatalog.md)).
@@ -169,7 +174,8 @@ La hace `conversations` con la transacción de `ingestion` (brief-6.5.2, D-2).
 - **Validado localmente** (`deterministic`):
   - en `src/modules/ingestion/contract.test.ts` (6.5.1): cada regla del esquema, la normalización, el vector del hash, su sensibilidad a cada campo y su indiferencia al orden y al formato, y los fixtures de `tests/fixtures/ingestion/v1/`, todos con `"shape": "assumed"`;
   - en `tests/integration/ingestion.test.ts` (6.5.2), contra PostgreSQL real: la proyección, el cliente, las fechas y el estado, los tres tipos de reenvío, los rechazos sin registro, la reversión ante un error inesperado y dos casos de entregas simultáneas.
-- **Diseñado**: endpoint, credencial y límite de tasa (6.5.3).
+  - en `tests/integration/ingestion-http.test.ts` (6.5.3), contra PostgreSQL real: las respuestas y sus encabezados, la credencial (ausente, desconocida, mal formada, revocada, fuera de la allowlist, o reemplazada por una sesión del CRM), el modo de prueba, el cuerpo (tipo, tamaño y UTF-8), el límite de tasa también bajo concurrencia, el token guardado solo como hash y el log sin secretos;
+  - en `tests/e2e/ingestion.spec.ts` (6.5.3), contra `next start`: un evento aceptado que aparece en la pantalla 8, y los `401`. Los requests son sintéticos, así que no es evidencia de integración con un emisor.
 - **Sin validar hasta el proyecto de integración**:
   - la compatibilidad con un emisor real;
   - la autenticación con su tráfico ([Risks](../planning/Risks.md)).

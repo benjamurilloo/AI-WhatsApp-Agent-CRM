@@ -58,6 +58,18 @@ describe("log estructurado", () => {
     const event = JSON.parse(line) as Record<string, unknown>;
     expect(Object.hasOwn(event, "organization_id")).toBe(false);
     expect(Object.hasOwn(event, "duration_ms")).toBe(false);
+    expect(Object.hasOwn(event, "source")).toBe(false);
+  });
+
+  it("registra el source de un evento de ingestión cuando llega (brief-6.5.3)", () => {
+    const line = formatLogEvent({
+      level: "warn",
+      requestId: newRequestId(),
+      route: "/api/ingestion/v1/events",
+      code: "RATE_LIMITED",
+      source: "emisor-de-prueba",
+    });
+    expect(JSON.parse(line)).toMatchObject({ source: "emisor-de-prueba" });
   });
 
   it("genera request_id únicos con formato UUID", () => {
