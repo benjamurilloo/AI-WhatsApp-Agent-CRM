@@ -4,6 +4,7 @@ export {
   CLIENTS_PAGE_SIZE,
   createClient,
   deactivateClient,
+  findClientIdByPhone,
   getClient,
   getClientsByIds,
   listClientAudit,

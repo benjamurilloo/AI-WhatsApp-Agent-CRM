@@ -173,6 +173,7 @@ Ninguna carpeta se crea vacía: nace con el primer archivo real de la subfase qu
 | 6.3 — Servicio de consulta y estado | En `src/modules/conversations/`: `index.ts`, `service.ts` (lista, detalle, timeline por cursor, cambio de estado auditado, actividad del cliente y clientes por última interacción) y `repository.ts`, con su test unitario; `listClientOrderKeys` y `getClientsByIds` en `crm`; `src/shared/calendar/` (fechas de calendario, también para `inventory`); `tests/integration/conversations.test.ts` |
 | 6.4 — UI de conversaciones | `src/app/(autenticado)/conversaciones/` (lista y detalle con timeline y cambio de estado, con `filters.ts`, `messages.ts`, `actions.ts`, la tabla y la etiqueta de estado compartidas y sus tests unitarios); última interacción y sección de conversaciones en `clientes/`; enlace "Conversaciones" en el marco común; `formatDate` y `formatTime` en `_format`; `tests/e2e/conversations.spec.ts` |
 | 6.5.1 — Contrato de ingestión y validación | `docs/contracts/ingestion-v1.md`; en `src/modules/ingestion/`: `contract.ts` (esquema del evento v1 y `payload_hash`), `index.ts` y `contract.test.ts`; `tests/fixtures/ingestion/v1/` |
+| 6.5.2 — Registro idempotente y proyección | En `src/modules/ingestion/`: `service.ts` (`recordIngestionEvent`), `repository.ts` y `service.test.ts`; `recordIngestedMessage` en `conversations`; `findClientIdByPhone` en `crm`; `tests/integration/ingestion.test.ts` |
 | Fase 4 | `src/modules/catalog/` e `inventory/` |
 | Fase 5 | `src/modules/crm/` |
 | Fase 6 | `src/modules/conversations/` e `ingestion/` |

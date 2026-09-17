@@ -6,6 +6,7 @@ import {
 } from "@/modules/audit";
 import { getUserSummaries } from "@/modules/auth";
 import { authorize, type AuthContext } from "@/modules/organizations";
+import type { DbTransaction } from "@/shared/db";
 import { failure, type Failure } from "@/shared/errors";
 import {
   normalizePhone,
@@ -425,4 +426,15 @@ export function reactivateClient(
   clientId: string,
 ): Promise<ClientActiveResult> {
   return setClientActive(context, clientId, true);
+}
+
+// Para la ingestión, que no tiene usuario (brief-6.5.2): exige una transacción, así que una
+// pantalla no puede usarla, y devuelve solo el id, sin datos personales. El teléfono ya viene en
+// E.164 canónico (contrato v1); cualquier otra forma no coincide con ningún cliente.
+export function findClientIdByPhone(
+  tx: DbTransaction,
+  organizationId: string,
+  phoneE164: string,
+): Promise<string | null> {
+  return repository.findClientIdByPhoneE164(tx, organizationId, phoneE164);
 }

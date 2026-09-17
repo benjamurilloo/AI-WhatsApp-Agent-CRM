@@ -2,6 +2,7 @@ import { z } from "zod";
 import { recordAudit } from "@/modules/audit";
 import {
   CLIENTS_PAGE_SIZE,
+  findClientIdByPhone,
   getClient,
   getClientsByIds,
   listClientOrderKeys,
@@ -14,6 +15,7 @@ import {
   type AuthContext,
 } from "@/modules/organizations";
 import { optionalCalendarDate } from "@/shared/calendar";
+import type { DbTransaction } from "@/shared/db";
 import { failure, type Failure } from "@/shared/errors";
 import * as repository from "./repository";
 import { conversationChannel, conversationStatus } from "./schema";
@@ -511,4 +513,72 @@ export async function searchClientsByLastInteraction(
     pageCount,
     timezone: await getOrganizationTimezone(context),
   };
+}
+
+export type IngestedMessage = {
+  organizationId: string;
+  conversation: {
+    externalRef: string;
+    channel: ConversationChannel;
+    clientPhone: string | null;
+  };
+  message: {
+    externalRef: string;
+    direction: MessageDirection;
+    sentAt: Date;
+    bodyText: string | null;
+  };
+};
+
+export type RecordIngestedMessageResult =
+  { ok: true; conversationCreated: boolean } | Failure<"CONFLICT">;
+
+// Proyección de un evento de ingestión (brief-6.5.2, D-2). La transacción la abre ingestion, que
+// ya validó el evento. El cliente se resuelve solo al crear la conversación y nunca se crea; el
+// estado no cambia. Si el mensaje ya existe en la conversación, no se toca nada: CONFLICT.
+export async function recordIngestedMessage(
+  tx: DbTransaction,
+  input: IngestedMessage,
+): Promise<RecordIngestedMessageResult> {
+  const { organizationId, conversation, message } = input;
+  const clientId =
+    conversation.clientPhone === null
+      ? null
+      : await findClientIdByPhone(tx, organizationId, conversation.clientPhone);
+  const createdId = await repository.insertConversationIfAbsent(tx, {
+    organizationId,
+    channel: conversation.channel,
+    externalRef: conversation.externalRef,
+    clientId,
+    sentAt: message.sentAt,
+  });
+  const conversationId =
+    createdId ??
+    (await repository.lockConversationByExternalRef(
+      tx,
+      organizationId,
+      conversation.channel,
+      conversation.externalRef,
+    ));
+  if (!conversationId) {
+    throw new Error("la conversación no existe después de reservarla");
+  }
+
+  const inserted = await repository.insertMessageIfAbsent(tx, {
+    organizationId,
+    conversationId,
+    direction: message.direction,
+    externalRef: message.externalRef,
+    sentAt: message.sentAt,
+    bodyText: message.bodyText,
+  });
+  if (!inserted) {
+    if (createdId)
+      throw new Error("mensaje existente en una conversación nueva");
+    return failure("CONFLICT");
+  }
+  if (!createdId) {
+    await repository.widenConversationDates(tx, conversationId, message.sentAt);
+  }
+  return { ok: true, conversationCreated: createdId !== undefined };
 }

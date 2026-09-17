@@ -15,7 +15,13 @@
 - Casos obligatorios:
   - Un ajuste de stock concurrente no deja saldo negativo ni pierde actualizaciones. Cubierto desde la 4.3.2 en `tests/integration/inventory-concurrency.test.ts` (detalle más abajo).
   - SKU y teléfono son únicos por organización. El SKU, desde la 4.1; el teléfono, desde la 5.1.
-  - Idempotencia de ingestión: reenviar el mismo evento no duplica conversaciones ni mensajes, y reenviarlo con otro `payload_hash` devuelve `CONFLICT` sin modificar datos.
+  - Idempotencia de ingestión: reenviar el mismo evento no duplica conversaciones ni mensajes, y reenviarlo con otro `payload_hash` devuelve `CONFLICT` sin modificar datos. Cubierta desde la 6.5.2 en `tests/integration/ingestion.test.ts` (13 casos, [brief-6.5.2](../decisions/brief-6.5.2-registro-idempotente-y-proyeccion.md)):
+    - la proyección con el cliente por teléfono, las fechas con mensajes desordenados y el estado que no cambia;
+    - los reenvíos `duplicate`, `CONFLICT` y `failed` terminal, y los rechazos que no escriben;
+    - la reversión de la reserva ante un error inesperado, forzado con un trigger temporal;
+    - dos entregas simultáneas del mismo evento y dos eventos simultáneos de una conversación nueva, con la espera observada en `pg_stat_activity`, como en la 4.3.2.
+
+    Sin el `ON CONFLICT` de la reserva o de la conversación, o sin el `LEAST` de las fechas, fallan casos (evidencia en el brief).
   - Aislamiento por organización: un usuario de la organización A recibe `NOT_FOUND` al leer o escribir datos de la organización B, incluso manipulando IDs directamente. Cubierto desde la 3.4 para `organization_members` (`tests/integration/authorization.test.ts`); cada módulo de las Fases 4 a 7 agrega el suyo para sus recursos.
   - `inventory_movements` rechaza `UPDATE` y `DELETE`: con `42501` para `crm_app` y con `P0001` por trigger para el rol dueño. Cubierto desde la 4.1 en `tests/integration/catalog-inventory-schema.test.ts`, con `inventory_movements` en la lista de solo inserción de `audit.test.ts`.
   - Esquema de catálogo e inventario, cubierto desde la 4.1 en ese mismo archivo con SQL directo:

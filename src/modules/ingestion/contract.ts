@@ -52,6 +52,11 @@ const externalRef = z
   .refine((value) => !CONTROL.test(value), "caracteres de control")
   .refine((value) => !LONE_SURROGATE.test(value), "UTF-16 inválido");
 
+// La misma regla para el source de la credencial (brief-6.5.2).
+export function isOpaqueReference(value: unknown): boolean {
+  return externalRef.safeParse(value).success;
+}
+
 // Fecha ISO 8601 con zona y hasta milisegundos, que el hash guarda en UTC.
 const timestamp = z.iso
   .datetime({ offset: true })

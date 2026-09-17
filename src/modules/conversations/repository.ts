@@ -18,7 +18,8 @@ import {
 } from "./schema";
 
 // Acceso a conversations y messages (brief-6.3). Toda consulta filtra por organization_id en SQL.
-// Solo lectura, salvo el estado de la conversación: messages es de solo inserción (brief-6.1, D-3).
+// Solo lectura, salvo el estado de la conversación y las inserciones de la ingestión (brief-6.5.2):
+// messages es de solo inserción (brief-6.1, D-3).
 
 type Executor = Db | DbTransaction;
 
@@ -272,4 +273,87 @@ export async function findClientLastInteraction(
     .limit(1);
   const row = rows[0];
   return row?.at ? { at: row.at, channel: row.channel } : undefined;
+}
+
+// Escrituras de la ingestión (brief-6.5.2). Las unicidades parciales se usan con su predicado.
+
+// Crea la conversación si no existe. Devuelve su id solo si la creó.
+export async function insertConversationIfAbsent(
+  tx: DbTransaction,
+  values: {
+    organizationId: string;
+    channel: ConversationChannel;
+    externalRef: string;
+    clientId: string | null;
+    sentAt: Date;
+  },
+): Promise<string | undefined> {
+  const result = await tx.execute<{ id: string }>(sql`
+    insert into conversations
+      (organization_id, client_id, channel, external_ref, status, started_at, last_message_at)
+    values (${values.organizationId}, ${values.clientId}, ${values.channel},
+      ${values.externalRef}, 'open', ${values.sentAt}, ${values.sentAt})
+    on conflict (organization_id, channel, external_ref) where external_ref is not null
+    do nothing
+    returning id`);
+  return result.rows[0]?.id;
+}
+
+// Bloquea la conversación hasta el final de la transacción (D-3).
+export async function lockConversationByExternalRef(
+  tx: DbTransaction,
+  organizationId: string,
+  channel: ConversationChannel,
+  externalRef: string,
+): Promise<string | undefined> {
+  const rows = await tx
+    .select({ id: conversations.id })
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.organizationId, organizationId),
+        eq(conversations.channel, channel),
+        eq(conversations.externalRef, externalRef),
+      ),
+    )
+    .for("update");
+  return rows[0]?.id;
+}
+
+// Inserta el mensaje si su external_ref no existe en la conversación. Devuelve si lo insertó.
+export async function insertMessageIfAbsent(
+  tx: DbTransaction,
+  values: {
+    organizationId: string;
+    conversationId: string;
+    direction: MessageDirection;
+    externalRef: string;
+    sentAt: Date;
+    bodyText: string | null;
+  },
+): Promise<boolean> {
+  const result = await tx.execute<{ id: string }>(sql`
+    insert into messages
+      (organization_id, conversation_id, direction, external_ref, sent_at, body_text)
+    values (${values.organizationId}, ${values.conversationId}, ${values.direction},
+      ${values.externalRef}, ${values.sentAt}, ${values.bodyText})
+    on conflict (organization_id, conversation_id, external_ref) where external_ref is not null
+    do nothing
+    returning id`);
+  return result.rows.length > 0;
+}
+
+// started_at y last_message_at siguen al menor y al mayor sent_at (contrato v1).
+export async function widenConversationDates(
+  tx: DbTransaction,
+  conversationId: string,
+  sentAt: Date,
+): Promise<void> {
+  await tx
+    .update(conversations)
+    .set({
+      startedAt: sql`least(${conversations.startedAt}, ${sentAt})`,
+      lastMessageAt: sql`greatest(${conversations.lastMessageAt}, ${sentAt})`,
+    })
+    .where(eq(conversations.id, conversationId));
 }

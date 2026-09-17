@@ -49,7 +49,7 @@ Cada FR tiene al menos una pantalla, endpoint o invariante con test que lo satis
 | FR-CONV-01 | Pantalla 8, implementada en la 6.4; `conversations.spec.ts` verifica que ni el HTML ni las respuestas de RSC traen cuerpos | pantalla e invariante con test |
 | FR-CONV-02 | Pantalla 9, implementada en la 6.4; el cuerpo escapado se verifica en `conversations.spec.ts` | pantalla e invariante con test |
 | FR-CONV-03 | Pantalla 8 (filtro) y pantalla 9 (cambio, auditado), implementadas en la 6.4 | pantalla |
-| FR-CONV-04 | [Contrato v1](../contracts/ingestion-v1.md) y su validación con `payload_hash` (6.5.1, `contract.test.ts`); endpoint y test de idempotencia (6.5.2) | contrato y endpoint |
+| FR-CONV-04 | [Contrato v1](../contracts/ingestion-v1.md) y su validación con `payload_hash` (6.5.1, `contract.test.ts`); registro idempotente y proyección con `ingestion.test.ts` (6.5.2); endpoint (6.5.3) | contrato, caso de uso y endpoint |
 | FR-CONV-05 | Configuración sin orígenes reales; fixtures con forma asumida marcada y verificada por test (6.5.1); verificación en el gate de la Fase 6 | invariante |
 | FR-MET-01 | Pantalla 2 | pantalla |
 | FR-MET-02 | Pantalla 2 (período y zona horaria) | pantalla |

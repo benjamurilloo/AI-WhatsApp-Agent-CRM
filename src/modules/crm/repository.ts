@@ -207,3 +207,22 @@ export async function updateClientActive(
 ): Promise<void> {
   await tx.update(clients).set({ isActive }).where(eq(clients.id, clientId));
 }
+
+// Cliente de la organización con ese teléfono, activo o no (brief-6.5.2).
+export async function findClientIdByPhoneE164(
+  tx: DbTransaction,
+  organizationId: string,
+  phoneE164: string,
+): Promise<string | null> {
+  const rows = await tx
+    .select({ id: clients.id })
+    .from(clients)
+    .where(
+      and(
+        eq(clients.organizationId, organizationId),
+        eq(clients.phoneE164, phoneE164),
+      ),
+    )
+    .limit(1);
+  return rows[0]?.id ?? null;
+}

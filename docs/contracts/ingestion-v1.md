@@ -3,7 +3,8 @@
 **Estado**:
 - **Diseñado** en la 6.5.1 ([brief-6.5.1](../decisions/brief-6.5.1-contrato-de-ingestion.md)).
 - **Implementado y validado localmente** en la 6.5.1, solo en su validación del payload y su `payload_hash`: [src/modules/ingestion/contract.ts](../../src/modules/ingestion/contract.ts).
-- **Pendientes**: el endpoint, el registro y la proyección llegan en la 6.5.2; la credencial de servicio y el límite de tasa, en la 6.5.3.
+- **Implementado y validado localmente** en la 6.5.2 ([brief-6.5.2](../decisions/brief-6.5.2-registro-idempotente-y-proyeccion.md)): el registro, los reenvíos y la proyección, como caso de uso sin HTTP (`recordIngestionEvent`).
+- **Pendientes**: el endpoint, la credencial de servicio y el límite de tasa llegan en la 6.5.3 (brief-6.5.2, D-1).
 
 **Ningún emisor real está conectado ni configurado** (FR-CONV-05, [IntegrationBoundaries](../architecture/IntegrationBoundaries.md)). Este contrato no deriva de la forma de eventos de ningún sistema existente. Sus fixtures tienen **forma asumida, no verificada**, y no prueban compatibilidad con ningún emisor.
 
@@ -75,7 +76,7 @@ Ejemplo, el vector de prueba:
 ## Identidad e idempotencia
 
 - **Identidad del evento**: `(organization_id, source, event_id)`, que se guarda en `ingestion_events` como `(organization_id, source, external_ref)`. La organización y el `source` salen de la credencial (D-3). Dos emisores pueden usar el mismo `event_id` sin chocar.
-- **Registro antes de proyectar**: el evento se reserva en `ingestion_events` con `INSERT … ON CONFLICT ON CONSTRAINT ingestion_events_organization_source_external_ref_unique`. La reserva y la proyección sobre `conversations` y `messages` van en la misma transacción (6.5.2).
+- **Registro antes de proyectar**: el evento se reserva en `ingestion_events` con `INSERT … ON CONFLICT ON CONSTRAINT ingestion_events_organization_source_external_ref_unique`. La reserva y la proyección sobre `conversations` y `messages` van en la misma transacción. Con otra entrega del mismo evento en curso, la reserva espera a que termine y responde según lo que esa entrega confirmó (brief-6.5.2, D-3).
 - **Segunda defensa**: las unicidades parciales de `conversations (organization_id, channel, external_ref)` y `messages (organization_id, conversation_id, external_ref)`.
 - **No se depende de que el emisor deduplique**: el CRM se sostiene solo.
 
@@ -139,10 +140,12 @@ El cuerpo de error tiene `code`, `request_id` y, en `VALIDATION_ERROR`, `fields`
 - **Los rechazos que no quedan en el registro** van al log estructurado, con código, `source` y organización cuando se conocen, sin payload.
 - **Métrica 12**: cuenta solo los eventos que el CRM aceptó procesar y fallaron ([MetricsCatalog](../analytics/MetricsCatalog.md)).
 
-## Proyección (6.5.2)
+## Proyección
+
+La hace `conversations` con la transacción de `ingestion` (brief-6.5.2, D-2).
 
 - **Conversación**:
-  - se busca por `(organization_id, channel, conversation.external_ref)`;
+  - se busca por `(organization_id, channel, conversation.external_ref)` y se bloquea hasta el final de la transacción;
   - si no existe, se crea con el primer mensaje, `status = 'open'` y `started_at = last_message_at = message.sent_at`.
 - **Cliente** (D-7):
   - al crear la conversación, si `client_phone` coincide con un cliente de la organización, activo o no, la conversación lo referencia; si no, queda sin cliente;
@@ -163,13 +166,10 @@ El cuerpo de error tiene `code`, `request_id` y, en `VALIDATION_ERROR`, `fields`
 
 ## Evidencia
 
-- **Validado localmente** (`deterministic`), en `src/modules/ingestion/contract.test.ts`:
-  - cada regla del esquema, la normalización y el vector del hash;
-  - la sensibilidad del hash a cada campo y su indiferencia al orden y al formato;
-  - los fixtures de `tests/fixtures/ingestion/v1/`, todos con `"shape": "assumed"`.
-- **Diseñado**:
-  - endpoint, registro, reenvíos y proyección (6.5.2);
-  - credencial y límite de tasa (6.5.3).
+- **Validado localmente** (`deterministic`):
+  - en `src/modules/ingestion/contract.test.ts` (6.5.1): cada regla del esquema, la normalización, el vector del hash, su sensibilidad a cada campo y su indiferencia al orden y al formato, y los fixtures de `tests/fixtures/ingestion/v1/`, todos con `"shape": "assumed"`;
+  - en `tests/integration/ingestion.test.ts` (6.5.2), contra PostgreSQL real: la proyección, el cliente, las fechas y el estado, los tres tipos de reenvío, los rechazos sin registro, la reversión ante un error inesperado y dos casos de entregas simultáneas.
+- **Diseñado**: endpoint, credencial y límite de tasa (6.5.3).
 - **Sin validar hasta el proyecto de integración**:
   - la compatibilidad con un emisor real;
   - la autenticación con su tráfico ([Risks](../planning/Risks.md)).

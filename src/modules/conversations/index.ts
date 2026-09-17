@@ -8,6 +8,7 @@ export {
   getConversation,
   listConversationMessages,
   listConversations,
+  recordIngestedMessage,
   MESSAGES_PAGE_SIZE,
   searchClientsByLastInteraction,
   type ChangeStatusResult,
@@ -26,5 +27,7 @@ export {
   type ConversationPage,
   type ConversationStatus,
   type ConversationSummary,
+  type IngestedMessage,
+  type RecordIngestedMessageResult,
   type MessageDirection,
 } from "./service";

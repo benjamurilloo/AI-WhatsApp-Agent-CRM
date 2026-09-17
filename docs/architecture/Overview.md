@@ -27,7 +27,7 @@ Monolito modular en TypeScript. Una sola aplicación desplegable, organizada int
 | `inventory` | Movimientos de inventario, ajustes transaccionales, saldo, historial de movimientos | `catalog`, `organizations`, `audit`, `auth` (nombre del autor, brief-4.3.3) |
 | `crm` | Clientes, teléfono enmascarado por rol, historial de auditoría del cliente | `organizations`, `audit`, `auth` (nombre del autor, brief-5.2) |
 | `conversations` | Conversaciones, mensajes, timeline, cambio de estado auditado, actividad del cliente y lista de clientes por última interacción | `organizations`, `crm`, `audit` (brief-6.3) |
-| `ingestion` | Contrato de idempotencia, registro de eventos | `conversations`, `organizations` |
+| `ingestion` | Contrato de idempotencia, registro de eventos; abre la transacción y le pide la proyección a `conversations`, que resuelve el cliente con `crm` (brief-6.5.2) | `conversations`, `organizations` |
 | `analytics` | Cálculo de métricas desde datos transaccionales | `conversations`, `organizations` |
 | `audit` | Registro inmutable de cambios sensibles y su lectura por entidad | `auth` y `organizations`, solo en `schema.ts` para sus claves foráneas ([brief-3.6](../decisions/brief-3.6-modulo-de-auditoria.md), D-5). Lo usan `catalog`, `inventory`, `crm`, `conversations` y `organizations`. Su lectura no autoriza ni compone nombres: eso lo hace el módulo dueño de la entidad, para no invertir esta dependencia ([brief-4.4](../decisions/brief-4.4-ui-de-productos-e-inventario.md), D-1) |
 
