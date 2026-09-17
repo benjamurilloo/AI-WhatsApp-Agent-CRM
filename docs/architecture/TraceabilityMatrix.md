@@ -124,6 +124,14 @@ Cada índice tiene al menos una consulta real que lo usa.
 
 La zona horaria de todas las métricas sale de `organizations.timezone`.
 
+Las métricas 1 a 6 y 10 se confirmaron con `EXPLAIN (ANALYZE, BUFFERS)` en la 7.1, sobre la organización de volumen ([brief-7.1](../decisions/brief-7.1-metricas-de-volumen.md), mediciones):
+
+- **Con 30 días**, usan los índices previstos. La excepción es la métrica 3, que recorre `conversations` completa para el `IN`, porque A tiene el 17 % de las conversaciones; con la clave primaria forzada tarda lo mismo.
+- **Con 180 días**, el período contiene casi todos los mensajes de esa organización, que tiene casi toda la tabla, así que PostgreSQL recorre `conversations` y `messages` completas. Forzado, usa índices y no es más rápido.
+- **Con los índices forzados**, las lecturas de `messages` sobre 180 días eligen `(conversation_id, sent_at)` en lugar de `(organization_id, sent_at)`.
+
+Todo esto se vuelve a medir con varias organizaciones en staging (Fase 9).
+
 ## Hallazgos
 
 Aparecieron al armar la matriz, fuera de las once decisiones del brief. Resueltos o diferidos por el usuario el 2026-09-12.

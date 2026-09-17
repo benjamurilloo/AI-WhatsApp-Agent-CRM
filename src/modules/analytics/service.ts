@@ -1,0 +1,171 @@
+import {
+  authorize,
+  getOrganizationTimezone,
+  type AuthContext,
+} from "@/modules/organizations";
+import { isCalendarDate } from "@/shared/calendar";
+import type { Failure } from "@/shared/errors";
+import * as repository from "./repository";
+
+// Métricas de volumen (brief-7.1): 1 a 6 y 10 de MetricsCatalog, para admin y viewer. Una función
+// por tarjeta del dashboard (D-1), calculada desde los datos transaccionales en cada llamada.
+
+export const DEFAULT_PERIOD_DAYS = 30;
+export const MAX_PERIOD_DAYS = 366;
+
+// Período de la URL, como texto: fechas YYYY-MM-DD con el fin incluido, o las dos vacías.
+export type MetricsPeriodInput = { from: string; to: string };
+export type MetricsPeriodField = "from" | "to";
+
+export type MetricsPeriod = {
+  from: string;
+  to: string;
+  days: number;
+  // Zona IANA en la que se interpretan los días.
+  timezone: string;
+};
+
+// Valor de una métrica con denominador (D-4). La 7.3 suma el estado "unavailable".
+export type RatioMetric<T> = ({ status: "value" } & T) | { status: "no_data" };
+
+export type MetricResult<T> =
+  | { ok: true; period: MetricsPeriod; value: T }
+  | Failure<"FORBIDDEN">
+  | Failure<"VALIDATION_ERROR", { fields: MetricsPeriodField[] }>;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const toDayNumber = (date: string) => Date.parse(`${date}T00:00:00Z`) / DAY_MS;
+const fromDayNumber = (day: number) =>
+  new Date(day * DAY_MS).toISOString().slice(0, 10);
+
+// Resuelve y valida el período contra la fecha de hoy de la organización (D-2). Sin fechas, los
+// últimos 30 días completos sin hoy. Hoy se admite como día parcial; el futuro, no.
+export function resolveMetricsPeriod(
+  input: MetricsPeriodInput,
+  today: string,
+):
+  | { ok: true; from: string; to: string; days: number }
+  | Failure<"VALIDATION_ERROR", { fields: MetricsPeriodField[] }> {
+  const from = input.from.trim();
+  const to = input.to.trim();
+  const todayNumber = toDayNumber(today);
+  if (from === "" && to === "") {
+    return {
+      ok: true,
+      from: fromDayNumber(todayNumber - DEFAULT_PERIOD_DAYS),
+      to: fromDayNumber(todayNumber - 1),
+      days: DEFAULT_PERIOD_DAYS,
+    };
+  }
+  const invalid = new Set<MetricsPeriodField>();
+  if (!isCalendarDate(from)) invalid.add("from");
+  if (!isCalendarDate(to)) invalid.add("to");
+  if (invalid.size === 0) {
+    const days = toDayNumber(to) - toDayNumber(from) + 1;
+    if (days < 1 || days > MAX_PERIOD_DAYS) {
+      invalid.add("from");
+      invalid.add("to");
+    }
+    if (toDayNumber(to) > todayNumber) invalid.add("to");
+    if (invalid.size === 0) return { ok: true, from, to, days };
+  }
+  return {
+    ok: false,
+    code: "VALIDATION_ERROR",
+    fields: (["from", "to"] as const).filter((field) => invalid.has(field)),
+  };
+}
+
+async function withPeriod<T>(
+  context: AuthContext,
+  input: MetricsPeriodInput,
+  compute: (query: repository.MetricsQuery) => Promise<T>,
+): Promise<MetricResult<T>> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  const timezone = await getOrganizationTimezone(context);
+  const resolved = resolveMetricsPeriod(
+    input,
+    await repository.currentDate(timezone),
+  );
+  if (!resolved.ok) return resolved;
+  const { from, to, days } = resolved;
+  const value = await compute({
+    organizationId: context.organizationId,
+    from,
+    to,
+    timezone,
+  });
+  return { ok: true, period: { from, to, days, timezone }, value };
+}
+
+// Métrica 1: conversaciones con started_at en el período.
+export function getConversationsStarted(
+  context: AuthContext,
+  input: MetricsPeriodInput,
+): Promise<MetricResult<number>> {
+  return withPeriod(context, input, repository.countConversationsStarted);
+}
+
+// Métrica 2: conversaciones con al menos un mensaje en el período (|A|).
+export function getActiveConversations(
+  context: AuthContext,
+  input: MetricsPeriodInput,
+): Promise<MetricResult<number>> {
+  return withPeriod(context, input, repository.countActiveConversations);
+}
+
+// Métrica 3: clientes distintos de A; las conversaciones sin cliente se cuentan aparte.
+export function getUniqueClients(
+  context: AuthContext,
+  input: MetricsPeriodInput,
+): Promise<MetricResult<{ clients: number; withoutClient: number }>> {
+  return withPeriod(context, input, repository.countUniqueClients);
+}
+
+// Métricas 4 y 5: salen de la misma consulta (D-1).
+export function getMessageCounts(
+  context: AuthContext,
+  input: MetricsPeriodInput,
+): Promise<MetricResult<{ inbound: number; outbound: number }>> {
+  return withPeriod(context, input, repository.countMessagesByDirection);
+}
+
+export type MessagesPerConversation = RatioMetric<{
+  conversations: number;
+  messages: number;
+  // Sin redondear: la presentación muestra un decimal (D-3).
+  average: number;
+  median: number;
+}>;
+
+// Métrica 6: con |A| = 0, "sin datos" (MetricsCatalog, denominador cero).
+export function getMessagesPerConversation(
+  context: AuthContext,
+  input: MetricsPeriodInput,
+): Promise<MetricResult<MessagesPerConversation>> {
+  return withPeriod(context, input, async (query) => {
+    const found = await repository.messagesPerConversation(query);
+    if (found.conversations === 0 || found.median === null) {
+      return { status: "no_data" };
+    }
+    return {
+      status: "value",
+      conversations: found.conversations,
+      messages: found.messages,
+      average: found.messages / found.conversations,
+      median: found.median,
+    };
+  });
+}
+
+export type DailyActivity = repository.DailyRow;
+
+// Métrica 10: métricas 1, 2, 4 y 5 por día, con 0 explícito. La 2 diaria no se suma.
+export function getDailyActivity(
+  context: AuthContext,
+  input: MetricsPeriodInput,
+): Promise<MetricResult<DailyActivity[]>> {
+  return withPeriod(context, input, repository.dailyActivity);
+}

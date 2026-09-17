@@ -1,6 +1,11 @@
 # Catálogo de Métricas — WhatsApp
 
-**Estado: diseñado.** Sin implementar y sin validar con datos. Cuando se implementen, se validan con fixtures sintéticos.
+**Estado**:
+
+- **Métricas 1 a 6 y 10**: implementadas y validadas localmente y en CI con fixtures sintéticos ([brief-7.1](../decisions/brief-7.1-metricas-de-volumen.md)).
+- **Métricas 7 a 9, 11 y 12**: diseñadas.
+
+Ninguna está validada con datos reales.
 
 ## Fuente: datos transaccionales, no tabla de agregados
 
@@ -18,13 +23,21 @@ Todas las métricas se calculan por consulta (vistas SQL o queries del módulo `
 ## Convenciones comunes
 
 - **Zona horaria**: `organizations.timezone` (IANA). Todo timestamp se guarda en UTC. El valor por defecto es `America/Argentina/Buenos_Aires` y en el MVP no se edita por pantalla (decisión D-5 del [brief-1.3](../decisions/brief-1.3-decisiones-de-producto-abiertas.md)). Esa zona hoy no tiene horario de verano, pero lo tuvo hasta 2009: los fixtures de cambio de horario usan una fecha histórica de esa misma zona, no UTC ni otra zona.
-- **Intervalo `I`**: semiabierto `[inicio, fin)`, en días calendario de la zona horaria de la organización, convertido a UTC para consultar. Por defecto son los últimos 30 días completos, sin incluir hoy. En un cambio de horario un día puede durar 23 o 25 horas; la conversión con zona IANA lo resuelve y no se corrige a mano.
+- **Intervalo `I`**: semiabierto `[inicio, fin)`, en días calendario de la zona horaria de la organización, convertido a UTC para consultar. En un cambio de horario un día puede durar 23 o 25 horas; la conversión con zona IANA lo resuelve y no se corrige a mano. El período lo resuelve el servicio (brief-7.1, D-2):
+  - llega como dos fechas `YYYY-MM-DD` con el fin incluido;
+  - sin fechas, se usan los últimos 30 días completos, sin incluir hoy. "Hoy" sale del reloj de la base, en la zona de la organización;
+  - se rechaza con `VALIDATION_ERROR` un período con una sola fecha, invertido, de más de 366 días o con un fin posterior a hoy. Hoy se admite como día parcial.
+
+  A diferencia de los filtros de las listas, un campo vacío no significa "sin límite".
 - **Agrupación diaria**: `date_trunc('day', ts AT TIME ZONE organizations.timezone)`.
 - **Aislamiento**: toda métrica filtra por `organization_id`. No hay métricas entre organizaciones.
 - **Nulos**: `messages.sent_at`, `messages.direction` y `conversations.started_at` son `NOT NULL` por constraint, así que no admiten nulos. `conversations.client_id` sí puede ser nulo (ver métrica 3).
 - **`started_at`**: la carga (seeds o ingestión) lo fija con el `sent_at` del primer mensaje de la conversación. Un test de integración verifica este invariante.
 - **Estado de una conversación**: es el estado actual al momento de la consulta. No existe historial de transiciones en el MVP.
-- **Denominador cero**: la métrica muestra "sin datos", nunca `0` ni un error.
+- **Denominador cero**: la métrica muestra "sin datos", nunca `0` ni un error. El servicio lo devuelve como un estado propio (`no_data`), distinto del "no disponible" de la métrica 12 (brief-7.1, D-4).
+- **Mediana**: `percentile_cont(0.5)`. Con una cantidad par, es el promedio de los dos valores centrales (brief-7.1, D-3).
+- **Redondeo**: el servicio devuelve los valores sin redondear, y la presentación los muestra con un decimal (brief-7.1, D-3).
+- **Lecturas independientes**: cada tarjeta se calcula con su propia consulta (brief-7.1, D-1). Si llega un mensaje entre dos lecturas, dos tarjetas pueden diferir en ese mensaje.
 - **Población A (conversaciones con actividad)**: conversaciones con al menos un mensaje con `sent_at ∈ I`.
 - **Población A_in**: conversaciones de A con al menos un mensaje `inbound` con `sent_at ∈ I`.
 

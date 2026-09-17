@@ -56,6 +56,27 @@
     - actividad del cliente: última interacción independiente del filtro de estado, conversaciones filtradas, cliente sin conversaciones e inactivo;
     - clientes por última interacción: orden con los clientes sin interacciones al final por nombre, búsqueda, actividad, páginas y H-5 (el `viewer` no recibe el número; con `getClientsByIds` sin enmascarar, el test falla);
     - aislamiento: conversación, cliente o filtro de otra organización → `NOT_FOUND` o sin filas; contraseña pendiente → `FORBIDDEN`.
+  - Métricas de volumen ([brief-7.1](../decisions/brief-7.1-metricas-de-volumen.md)), cubiertas desde la 7.1 en `tests/integration/analytics.test.ts`. La resolución del período se prueba en tests unitarios de `analytics`:
+    - **valor calculado a mano** para las métricas 1 a 6 y 10, sobre un fixture sintético con la tabla de cálculo en un comentario:
+      - bordes del intervalo: inicio exacto incluido y fin exacto excluido;
+      - un mensaje a las 23:30 locales que en UTC cae otro día;
+      - una conversación iniciada antes de I;
+      - una sin cliente;
+      - mediana con cantidad par (`percentile_cont`) e impar;
+      - ceros explícitos en la serie;
+    - **invariantes de MetricsCatalog** sobre el mismo período:
+      - suma diaria de la 1;
+      - suma diaria de la 2 mayor que el total;
+      - la 3 no supera `|A|`;
+      - la 4 más la 5 suman el total, también por día;
+      - el promedio por `|A|` da la suma de la 4 y la 5;
+      - un punto por día;
+    - **sin datos**: en la métrica 6 con `|A| = 0`, y ceros en los conteos;
+    - **conversación cerrada que vuelve a tener mensajes**: se cuenta una sola vez;
+    - **zona horaria**: el 19/10/2008 (23 horas) y el 14/03/2009 (25 horas) de Buenos Aires, fechas confirmadas en la base de zonas de PostgreSQL; también una organización en `UTC`;
+    - **período**: valor por defecto con el reloj de la base, período invertido, de más de 366 días, futuro o con una fecha inválida;
+    - **autorización y aislamiento**: `viewer` lee lo mismo que `admin`; con la contraseña pendiente, `FORBIDDEN`; cada organización ve solo sus datos; ninguna respuesta contiene cuerpos, teléfonos ni nombres;
+    - **mutaciones** (evidencia en el brief): días en UTC, sin filtro de organización en `messages`, métrica 2 sin `DISTINCT` y serie sin días vacíos. Con cada una, fallan los casos previstos.
   - Servicio de catálogo ([brief-4.2](../decisions/brief-4.2-servicio-de-catalogo.md)), cubierto desde la 4.2 en `tests/integration/catalog.test.ts`:
     - alta, edición, desactivación y reactivación auditadas en la misma transacción con `diff` exacto; un cambio sin diferencias no escribe ni audita; si la auditoría falla, el producto no persiste;
     - SKU duplicado, también con otras mayúsculas, en alta y en edición → `CONFLICT` sin auditoría; dos altas simultáneas con el mismo SKU → una sola se crea;
