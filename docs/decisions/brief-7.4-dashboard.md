@@ -313,3 +313,12 @@ Las cinco hicieron fallar los casos previstos; ninguna resultó una defensa redu
 - Los textos de las definiciones están duplicados respecto del catálogo, que sigue siendo la fuente de verdad (D-3).
 - El bloque de ESLint de `analytics` no le prohíbe importar `next` ni `@/app/*` (hallazgo 12, fuera de alcance).
 - `.claude/skills/` y el cambio de `.gitignore` que los acompaña son cambios del usuario anteriores a esta subfase: quedan sin commitear.
+
+## Cierre (2026-09-17)
+
+- Commit de la subfase: `d1f5c96`, con la CI en verde ([ejecución 35283074243](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35283074243)) y todos sus pasos verificados con `gh run view`, end-to-end incluido.
+- Los nueve criterios de aceptación se cumplen. AC-3 quedó completo en pantalla, incluido "No disponible", gracias al segundo servidor de end-to-end que el usuario autorizó durante la ejecución.
+- Dos desvíos, los dos autorizados en el turno: las tres aserciones del hallazgo 3 y el par `playwright.config.ts` + `tests/e2e/dashboard-sin-ingestion.spec.ts`.
+- Ninguna condición de detención se activó: ninguna tarjeta necesitó un dato que las métricas no devuelvan, no se tocó ninguna consulta de `analytics`, no hubo dependencias nuevas, migraciones ni cambios en otros módulos, y axe no encontró violaciones.
+- Notion: la tarea 7.4 queda en "Completado", y con ella **la Fase 7 cerrada**.
+- Siguiente fase: **Fase 8 — Calidad, seguridad y observabilidad**, que verifica CSP, CSRF y XSS, los logs sin datos personales, la auditoría de dependencias y el modelo de seguridad contra el código real.

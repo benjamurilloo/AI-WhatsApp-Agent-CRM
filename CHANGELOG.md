@@ -2,6 +2,62 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-17 — Fase 7 cerrada (Métricas y dashboard)
+
+**Certifica:**
+
+- **Las cuatro subfases cerradas con autorización del usuario**: 7.1 → 7.2 → 7.3 → 7.4. El detalle de cada una está en sus entradas, debajo.
+- **Criterio de aceptación del [Roadmap](docs/planning/Roadmap.md)**: las doce métricas tienen test de fixture con el valor calculado a mano y sus invariantes probados, incluidos los bordes de zona horaria. Los fixtures están en `tests/integration/analytics.test.ts` (1 a 6 y 10), `analytics-response.test.ts` (7, 8, 9 y 11) y `analytics-ingestion.test.ts` (12), cada tanda con su archivo y su fixture propios.
+- **Gate de salida**: las doce métricas probadas individualmente, con CI en verde en el commit `d1f5c96` ([ejecución 35283074243](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35283074243)), end-to-end incluido.
+- **Entregables**: FR-MET-01 a 03, con la pantalla 2 y el módulo `analytics`.
+- **Bordes de calendario probados con fechas confirmadas en la base de zonas**: el día de 23 horas (19/10/2008) y el de 25 horas (14/03/2009) de Buenos Aires, más una organización en `UTC` que clasifica el mismo instante en otro día.
+- **Los tres estados de una métrica son distintos entre sí** en el servicio y en la pantalla: valor, "sin datos" (denominador cero) y "no disponible" (nadie estaba registrando el dato). Ninguno se muestra como `0`.
+- **Nivel alcanzado**:
+  - **validado en integración** para la pantalla 2;
+  - **validado localmente y en CI** (`deterministic`) para las doce métricas, como pedía el Roadmap.
+
+**No certifica:**
+
+- **Valores con datos reales**: no hay emisor conectado. Todos los fixtures son sintéticos y la métrica 12 muestra "No disponible" en cualquier entorno sin ingestión configurada.
+- **Rendimiento con varias organizaciones o en staging**: las mediciones de la 7.1 a la 7.3 son locales y sobre una sola organización grande, y la de la métrica 12 usó volumen sintético. Se vuelven a medir en la Fase 9 ([Risks](docs/planning/Risks.md)).
+- **Los recorridos completos de tablas con 180 días**, aceptados desde la 7.1.
+- **CSP, cabeceras y revisión de seguridad de la pantalla**: Fase 8.
+- **Firefox y WebKit**.
+- **Revisión independiente**: es autoevaluación del mismo agente. El usuario aprobó los briefs y los cierres.
+
+## 2026-09-17 — Subfase 7.4 cerrada (Dashboard)
+
+**Certifica:**
+
+- **Pantalla 2** según el [brief-7.4](docs/decisions/brief-7.4-dashboard.md), con D-1 a D-6 resueltas según la recomendación:
+  - **el dashboard reemplaza la página provisional en `/`** y el marco común lo enlaza como "Dashboard" (D-1);
+  - **una tarjeta, un componente servidor** (D-2): cada métrica tiene su consulta, su estado de carga y su estado de error, así que una lenta no bloquea a las demás y una fallada muestra su código sin tumbar la pantalla;
+  - **la definición de cada métrica en un desplegable** (D-3), con el texto en la pantalla porque el catálogo no se sirve desde la aplicación; el catálogo sigue siendo la fuente de verdad;
+  - **gráfico diario en SVG generado en el servidor** (D-4), con su tabla de datos, sin dependencias nuevas y con la serie en la URL;
+  - **atajos de 7, 30 y 90 días más rango personalizado** (D-5), sin "todas las fechas": en métricas un período vacío es el de defecto;
+  - **`getMetricsPeriod`** resuelve el período compartido una sola vez (D-6); un período inválido muestra un aviso y no calcula ninguna métrica.
+- **Los tres estados en pantalla**: `0`, "Sin datos" y "No disponible" son distintos entre sí, y el error de una tarjeta es un cuarto caso con su propio texto. Cubrirlos fue obligatorio: `RatioMetric` tiene tres casos desde la 7.3, así que el compilador pidió tratar "no disponible" también en las métricas 6, 8 y 9, que nunca lo devuelven.
+- **Tests**:
+  - 9 casos end-to-end de la pantalla con el cálculo a mano del fixture, axe en claro y oscuro, teclado y móvil a 375 px: `tests/e2e/dashboard.spec.ts`;
+  - 2 casos en un **segundo servidor de end-to-end con la ingestión apagada**, autorizado por el usuario durante la ejecución, que es la única forma de ver "No disponible" en el navegador: `tests/e2e/dashboard-sin-ingestion.spec.ts`;
+  - 27 unitarios de las partes puras: período de la URL, formato de los valores, textos de los estados y geometría del gráfico.
+- **El fallo de una métrica está probado con una falla real**: el caso renombra la tabla que lee la métrica 12, su consulta falla, la tarjeta muestra "No se pudo calcular" con el identificador con el que quedó en el log y las once restantes siguen mostrando sus valores.
+- **Cinco corridas de mutación**: las cinco hacen fallar los casos previstos, incluida la que deja escapar el error de una tarjeta. Ninguna resultó defensa redundante.
+- **Ninguna respuesta entrega datos personales**: ni el HTML ni las respuestas RSC de `admin` o `viewer` contienen cuerpos de mensajes, nombres de clientes, teléfonos ni referencias externas de ingestión.
+- **Suites**:
+  - `npm run test`: 707 de 707;
+  - `npm run test:e2e`: 76 de 76;
+  - CI en verde en `d1f5c96` ([ejecución 35283074243](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35283074243)), con todos los pasos.
+- **Nivel alcanzado**: **validado en integración** (`producer-consumer`) para la pantalla 2, con datos sintéticos.
+
+**No certifica:**
+
+- **El rendimiento del dashboard**: doce consultas por carga, medidas solo en local y sobre una organización (Fase 9).
+- **Valores con datos reales**: el fixture es sintético y no hay emisor conectado.
+- **Que los textos de las definiciones no se desincronicen del catálogo**: quedan duplicados a propósito, con el catálogo como fuente de verdad (D-3).
+- **CSP, cabeceras y el resto de la revisión de seguridad**: Fase 8.
+- **Revisión independiente**: es autoevaluación del mismo agente. El usuario aprobó el brief y el cierre.
+
 ## 2026-09-17 — Subfase 7.3 cerrada (Métrica de errores de ingestión)
 
 **Certifica:**

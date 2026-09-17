@@ -1,6 +1,6 @@
 # Pantallas del MVP
 
-**Estado: diseñado**, salvo las pantallas 1 y 10 (implementadas en la 3.5 y la 3.7) las pantallas 3, 4 y 5 (implementadas en la 4.4), las pantallas 6 y 7 (implementadas en la 5.3 y completadas con las conversaciones en la 6.4) y las pantallas 8 y 9 (implementadas en la 6.4), con los desvíos anotados en sus wireframes. Especificación funcional de pantalla, no wireframes visuales. Los wireframes de baja fidelidad están en [wireframes/](wireframes/README.md) (subfase 1.1); su validación cruzada contra el modelo de datos corresponde a la subfase 1.2.
+**Estado: implementado.** Las diez pantallas del MVP existen: 1 y 10 (subfases 3.5 y 3.7), 3, 4 y 5 (4.4), 6 y 7 (5.3, completadas con las conversaciones en la 6.4), 8 y 9 (6.4) y 2, el dashboard (7.4), con los desvíos anotados en sus wireframes. Especificación funcional de pantalla, no wireframes visuales. Los wireframes de baja fidelidad están en [wireframes/](wireframes/README.md) (subfase 1.1); su validación cruzada contra el modelo de datos corresponde a la subfase 1.2.
 
 ## Reglas comunes a todas las pantallas
 
