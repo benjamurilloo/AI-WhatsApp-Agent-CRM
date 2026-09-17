@@ -2,6 +2,34 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-17 — Subfase 7.2 cerrada (Métricas de respuesta y estado)
+
+**Certifica:**
+
+- **Métricas 7, 8, 9 y 11** en `analytics`, según el [brief-7.2](docs/decisions/brief-7.2-metricas-de-respuesta-y-estado.md), con D-1 a D-6 resueltas según la recomendación y sin reabrir ninguna decisión de la 7.1:
+  - **7 Conversaciones respondidas**: exige el entrante y el saliente estrictamente posterior dentro del período; un empate de timestamps no es una respuesta;
+  - **8 Cobertura de respuesta**: divide por `|A_in|`, así que las conversaciones con solo salientes quedan fuera del denominador; con `|A_in| = 0`, "sin datos";
+  - **9 Mediana de primera respuesta**: población acotada primero a las conversaciones con actividad en el período y resuelta después por conversación con el índice `(conversation_id, sent_at)` (D-2); usa el primer entrante de toda la conversación y admite la respuesta posterior al fin del período; el conteo de las que no tienen primera respuesta acompaña siempre al valor, también cuando la mediana es "sin datos" (D-3);
+  - **11 Distribución por estado**: los tres estados, en el orden del dominio, con `0` explícito (D-4).
+- **Tests de fixture con el valor calculado a mano**, en un archivo y un fixture propios: el de la 7.1 quedó intacto y las dos suites comparten solo sus ayudantes de inserción (D-5). Cubren los casos que discriminan entre las tres métricas de respuesta, la mediana con cantidad par e impar, los invariantes del catálogo, "sin datos", el aislamiento, la autorización y las respuestas sin datos personales.
+  - Evidencia: `tests/integration/analytics-response.test.ts` (17 casos).
+- **Bordes de zona horaria**: el día de 23 horas (19/10/2008), con una respuesta en el fin exacto del período, y el de 25 horas (14/03/2009), donde un entrante y su respuesta caen en el mismo horario local y el tiempo transcurrido es de 60 minutos reales. Los instantes se confirmaron en la base de zonas antes de fijarlos.
+- **Seis corridas de mutación**: cinco hacen fallar los casos previstos. Quitarle el filtro de organización a la métrica 11 no hace fallar nada, porque su subconjunto de conversaciones ya está acotado por organización; queda registrado como defensa doble en el brief, con la mutación equivalente sobre la métrica 8, que sí falla.
+- **Medición local** en solo lectura, sobre la organización de volumen: las cuatro funciones entre 4,3 y 75,6 ms, por debajo de los 200 ms de D-6. El CTE del primer entrante se materializa; sin eso la métrica 9 quedaba en 199,5 ms con 180 días. Los recorridos completos con 180 días son los ya aceptados en la 7.1 y siguen registrados en Risks.
+- **Suites**:
+  - `npm run test`: 665 de 665;
+  - `npm run test:e2e`: 65 de 65;
+  - CI en verde en `afb99d9` ([ejecución 35266463066](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35266463066)), con todos los pasos.
+- **Nivel alcanzado**: **validado localmente y en CI** (`deterministic`) para las métricas 7, 8, 9 y 11.
+
+**No certifica:**
+
+- **La pantalla 2**, el formato de los valores y los textos de los estados: 7.4.
+- **La métrica 12** y el estado "no disponible": 7.3.
+- **Rendimiento con varias organizaciones o en staging**: Fase 9.
+- **Valores con datos reales**: no hay emisor conectado.
+- **Revisión independiente**: es autoevaluación del mismo agente. El usuario aprobó el brief y el cierre.
+
 ## 2026-09-17 — Subfase 7.1 cerrada (Métricas de volumen)
 
 **Certifica:**
