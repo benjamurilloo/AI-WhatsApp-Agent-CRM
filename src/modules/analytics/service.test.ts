@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { resolveMetricsPeriod } from "./service";
+import { readIngestionConfig } from "@/modules/ingestion";
+import { isIngestionUnavailable, resolveMetricsPeriod } from "./service";
 
 const TODAY = "2026-09-17";
 
@@ -61,5 +62,33 @@ describe("resolveMetricsPeriod (brief-7.1, D-2)", () => {
     expect(
       resolveMetricsPeriod({ from: "2026-09-10", to: "2026-09-18" }, TODAY),
     ).toEqual({ ok: false, code: "VALIDATION_ERROR", fields: ["to"] });
+  });
+});
+
+describe("isIngestionUnavailable (brief-7.3, D-1)", () => {
+  const config = (env: Record<string, string | undefined>) =>
+    readIngestionConfig(env);
+
+  it("es no disponible sin ingestión configurada y sin eventos", () => {
+    expect(isIngestionUnavailable(config({}), 0)).toBe(true);
+    expect(
+      isIngestionUnavailable(config({ INGESTION_ENABLED: "false" }), 0),
+    ).toBe(true);
+  });
+
+  it("una configuración inválida también apaga la ingestión", () => {
+    const invalid = config({ INGESTION_ENABLED: "sí" });
+    expect(invalid).toEqual({ enabled: false, invalid: true });
+    expect(isIngestionUnavailable(invalid, 0)).toBe(true);
+  });
+
+  it("con eventos registrados no esconde nada, ni con la ingestión apagada", () => {
+    expect(isIngestionUnavailable(config({}), 1)).toBe(false);
+  });
+
+  it("con la ingestión encendida nunca es no disponible", () => {
+    const on = config({ INGESTION_ENABLED: "true" });
+    expect(isIngestionUnavailable(on, 0)).toBe(false);
+    expect(isIngestionUnavailable(on, 5)).toBe(false);
   });
 });

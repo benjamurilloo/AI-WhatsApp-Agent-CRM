@@ -1,5 +1,6 @@
 import { and, count, countDistinct, eq, sql, type SQL } from "drizzle-orm";
 import { conversations, messages } from "@/modules/conversations/schema";
+import { ingestionEvents } from "@/modules/ingestion/schema";
 import { getDb } from "@/shared/db";
 
 // Lecturas de las métricas (brief-7.1). analytics lee los esquemas de conversations sin pasar por su
@@ -350,4 +351,62 @@ export async function dailyActivity(query: MetricsQuery): Promise<DailyRow[]> {
     inbound: Number(row.inbound),
     outbound: Number(row.outbound),
   }));
+}
+
+// Métrica 12 (brief-7.3): eventos de ingestión del período, sus fallidos y los grupos por origen y
+// código de error. Una sola consulta, para que la tasa y los grupos salgan de la misma lectura.
+// Solo se leen columnas normalizadas: nunca el payload, el hash ni la referencia externa.
+export type IngestionErrorGroup = {
+  source: string;
+  errorCode: string;
+  count: number;
+};
+
+export async function ingestionErrors(query: MetricsQuery): Promise<{
+  total: number;
+  failed: number;
+  // Orden fijado por el brief-7.3, D-3: conteo descendente y, a igual conteo, alfabético.
+  groups: IngestionErrorGroup[];
+}> {
+  const inPeriod = and(
+    eq(ingestionEvents.organizationId, query.organizationId),
+    sql`${ingestionEvents.receivedAt} >= ${periodStart(query)}`,
+    sql`${ingestionEvents.receivedAt} < ${periodEnd(query)}`,
+  );
+  // El CHECK de la tabla garantiza error_code no nulo si y solo si el estado es failed, así que
+  // agrupar por el código no necesita tratar nulos dentro de los fallidos (brief-6.1, D-2).
+  const result = await getDb().execute<{
+    total: number;
+    failed: number;
+    groups: IngestionErrorGroup[];
+  }>(sql`
+    with events as (
+      select ${ingestionEvents.status} as status,
+             ${ingestionEvents.source} as source,
+             ${ingestionEvents.errorCode} as error_code
+      from ${ingestionEvents}
+      where ${inPeriod}
+    ),
+    groups as (
+      select source, error_code, count(*)::int as failures
+      from events
+      where status = 'failed'
+      group by source, error_code
+    )
+    select (select count(*)::int from events) as total,
+           (select count(*)::int from events where status = 'failed') as failed,
+           coalesce(
+             (select json_agg(
+                json_build_object('source', source, 'errorCode', error_code, 'count', failures)
+                order by failures desc, source, error_code)
+              from groups),
+             '[]'::json
+           ) as groups
+  `);
+  const row = result.rows[0]!;
+  return {
+    total: Number(row.total),
+    failed: Number(row.failed),
+    groups: row.groups,
+  };
 }

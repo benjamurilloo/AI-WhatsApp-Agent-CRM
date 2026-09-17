@@ -120,7 +120,7 @@ Cada índice tiene al menos una consulta real que lo usa.
 | 9 Mediana del tiempo a primera respuesta | `messages` | `(organization_id, sent_at)` para acotar candidatos; `(conversation_id, sent_at)` para confirmar el primer `inbound` y el primer `outbound` posterior |
 | 10 Evolución diaria | `conversations`, `messages` | `conversations (organization_id, started_at)`; `messages (organization_id, sent_at)` |
 | 11 Distribución por estado | `messages`, `conversations` | `messages (organization_id, sent_at)`; PK de `conversations` |
-| 12 Errores de ingestión | `ingestion_events` | `(organization_id, received_at)`. La disponibilidad sale de la configuración del entorno (D-7) |
+| 12 Errores de ingestión | `ingestion_events` | `(organization_id, received_at)`. La disponibilidad sale de la configuración del entorno (D-7) y de la ausencia de eventos en el período (brief-7.3, D-1) |
 
 La zona horaria de todas las métricas sale de `organizations.timezone`.
 
@@ -135,6 +135,11 @@ Las métricas 7, 8, 9 y 11 se confirmaron igual en la 7.2 ([brief-7.2](../decisi
 - **Con 180 días**, repiten el recorrido completo de `messages` y `conversations` por la misma razón, ya aceptada. Con 30 días usan los índices previstos.
 - **Las búsquedas por conversación de la métrica 9** usan `(conversation_id, sent_at)`, como preveía esta matriz: una búsqueda por conversación candidata, no un recorrido.
 - **El CTE del primer entrante de la métrica 9 se materializa**: sin eso, PostgreSQL lo inlinea y repite esa subconsulta una vez por cada condición que la filtra, lo que duplicaba las búsquedas por índice y el tiempo de la métrica.
+
+La métrica 12 se midió en la 7.3 ([brief-7.3](../decisions/brief-7.3-metrica-de-errores-de-ingestion.md), medición), con dos límites declarados: `ingestion_events` está vacía en desarrollo, así que el volumen fue sintético y se creó en la base de test con autorización del usuario.
+
+- **Con la tabla vacía**, `EXPLAIN` confirma el índice previsto: un solo `Index Scan` sobre `ingestion_events_organization_received_idx` con las tres condiciones —organización y los dos extremos del período— en el `Index Cond`.
+- **Con 200.011 eventos** y 34.895 en un período de 30 días, la mediana de cinco corridas fue de 26,2 ms. El CTE de los eventos se materializa solo, porque las tres agregaciones lo leen: es el caso opuesto al de la métrica 9, donde el CTE de un solo uso había que materializarlo a mano.
 
 Todo esto se vuelve a medir con varias organizaciones en staging (Fase 9).
 

@@ -4,7 +4,7 @@
 
 - **Métricas 1 a 6 y 10**: implementadas y validadas localmente y en CI con fixtures sintéticos ([brief-7.1](../decisions/brief-7.1-metricas-de-volumen.md)).
 - **Métricas 7, 8, 9 y 11**: implementadas y validadas localmente y en CI con fixtures sintéticos ([brief-7.2](../decisions/brief-7.2-metricas-de-respuesta-y-estado.md)).
-- **Métrica 12**: diseñada.
+- **Métrica 12**: implementada y validada localmente y en CI con fixtures sintéticos ([brief-7.3](../decisions/brief-7.3-metrica-de-errores-de-ingestion.md)). Con ella el catálogo queda completo.
 
 Ninguna está validada con datos reales.
 
@@ -119,8 +119,11 @@ Todas las métricas se calculan por consulta (vistas SQL o queries del módulo `
 - **Fórmula**: `COUNT(ingestion_events.id)` con `status = 'failed'` y `received_at ∈ I`, agrupado por `source` y `error_code`. También se muestra la tasa: fallidos / total de eventos con `received_at ∈ I`.
 - **Fuente**: `ingestion_events`.
 - **Alcance**: solo los eventos que el CRM aceptó procesar. Los payloads inválidos, las credenciales inválidas y los excesos de tasa se rechazan sin fila, así que no cuentan (brief-6.5.1, D-6).
-- **Denominador de la tasa**: total de eventos recibidos en `I`. Si es 0, "sin datos".
-- **Disponibilidad**: mientras el módulo de ingestión no exista en el entorno, la métrica se muestra como "no disponible" y no como `0`, para no sugerir que no hubo errores.
+- **Denominador de la tasa**: total de eventos con `received_at ∈ I`, en cualquier estado: los `received` y los `processed` cuentan en el denominador y no en el numerador. Si es 0, "sin datos".
+- **Grupos**: una lista plana de `{ source, error_code, count }`, ordenada por conteo descendente y, a igual conteo, por `source` y `error_code` alfabéticos (brief-7.3, D-3). Solo aparecen las combinaciones con al menos un evento: el origen y el código son taxonomías abiertas, así que no hay conjunto completo para rellenar con `0`, a diferencia de los estados de la métrica 11.
+- **Validación**: los fallidos no superan el total, la suma de los grupos es igual a los fallidos y la tasa es su cociente, entre 0 y 100 %.
+- **Disponibilidad**: la métrica se muestra como "no disponible", y no como `0` ni como "sin datos", cuando la ingestión no está configurada en el entorno **y** el período no tiene ningún evento (brief-7.3, D-1). La configuración se lee en cada llamada; una configuración inválida cuenta como no configurada. Con eventos registrados la métrica muestra su valor aunque el endpoint esté apagado: apagarlo después de un incidente no borra de la vista los fallos ya registrados.
+- **Estados**: los tres —valor, "sin datos" y "no disponible"— son distintos entre sí y ninguno se presenta como `0`.
 
 ## Criterios de validación del dashboard
 

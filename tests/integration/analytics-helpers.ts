@@ -127,3 +127,40 @@ export async function users() {
     adminB: await contextFor("admin-b@example.com"),
   };
 }
+
+// Eventos de ingestión para la métrica 12 (brief-7.3). Se insertan por SQL con el rol dueño, como
+// los tests de esquema de la 6.1: ingestion_events no se borra ni se modifica (ADR 0013), y el reset
+// de la base de test la vacía entre casos. Los CHECK de la tabla obligan a que processed_at sea nulo
+// solo en "received" y a que error_code exista solo en "failed" (brief-6.1, D-2).
+export const INGESTION_SECRET_REF = "ref-externa-secreta";
+export const INGESTION_SECRET_HASH = "hash-de-payload-secreto";
+
+let eventCounter = 0;
+
+export async function insertIngestionEvent(
+  organizationId: string,
+  options: {
+    source: string;
+    status: "received" | "processed" | "failed";
+    receivedAt: string;
+    errorCode?: string;
+  },
+) {
+  eventCounter += 1;
+  const errorCode =
+    options.status === "failed" ? (options.errorCode ?? null) : null;
+  if (options.status === "failed" && errorCode === null) {
+    throw new Error("un evento failed necesita su código de error");
+  }
+  const processedAt = options.status === "received" ? null : options.receivedAt;
+  const result = await getDb().execute<{ id: string }>(
+    sql`insert into ingestion_events
+          (organization_id, source, external_ref, event_type, payload_hash, status, error_code,
+           received_at, processed_at)
+        values (${organizationId}, ${options.source}, ${`${INGESTION_SECRET_REF}-${eventCounter}`},
+                'message.received', ${`${INGESTION_SECRET_HASH}-${eventCounter}`},
+                ${options.status}, ${errorCode}, ${options.receivedAt}, ${processedAt})
+        returning id`,
+  );
+  return result.rows[0]!.id;
+}

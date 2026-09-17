@@ -1,3 +1,4 @@
+import { readIngestionConfig, type IngestionConfig } from "@/modules/ingestion";
 import {
   authorize,
   getOrganizationTimezone,
@@ -25,8 +26,10 @@ export type MetricsPeriod = {
   timezone: string;
 };
 
-// Valor de una métrica con denominador (D-4). La 7.3 suma el estado "unavailable".
-export type RatioMetric<T> = ({ status: "value" } & T) | { status: "no_data" };
+// Valor de una métrica con denominador (7.1, D-4), con el estado "unavailable" que suma la 7.3.
+// Los tres estados son distintos entre sí y ninguno se presenta como 0 (MetricsCatalog).
+export type RatioMetric<T> =
+  ({ status: "value" } & T) | { status: "no_data" } | { status: "unavailable" };
 
 export type MetricResult<T> =
   | { ok: true; period: MetricsPeriod; value: T }
@@ -244,4 +247,52 @@ export function getDailyActivity(
   input: MetricsPeriodInput,
 ): Promise<MetricResult<DailyActivity[]>> {
   return withPeriod(context, input, repository.dailyActivity);
+}
+
+export type IngestionErrorGroup = repository.IngestionErrorGroup;
+
+export type IngestionErrors = RatioMetric<{
+  // Eventos registrados en el período, en cualquier estado: es el denominador de la tasa.
+  total: number;
+  failed: number;
+  // Porcentaje sin redondear, entre 0 y 100 (7.1, D-3).
+  percentage: number;
+  groups: IngestionErrorGroup[];
+}>;
+
+// Parte pura de la disponibilidad (brief-7.3, D-1): la métrica es "no disponible" cuando la
+// ingestión no está configurada en el entorno —apagada o con configuración inválida— y el período
+// no tiene ningún evento. Con eventos registrados se muestran, aunque hoy el endpoint esté apagado:
+// apagarlo después de un incidente no borra de la vista los fallos que quedaron registrados.
+export function isIngestionUnavailable(
+  config: IngestionConfig,
+  totalEvents: number,
+): boolean {
+  return !config.enabled && totalEvents === 0;
+}
+
+// Métrica 12: eventos de ingestión fallidos por origen y código de error, y su tasa sobre el total
+// del período. Mide solo lo que el CRM aceptó procesar: los rechazos de validación, autenticación y
+// límite de tasa no dejan fila, así que no cuentan (contrato de ingestión v1, brief-6.5.1, D-6).
+// El entorno viaja por parámetro para que la decisión de D-1 sea verificable sin variables globales.
+export function getIngestionErrors(
+  context: AuthContext,
+  input: MetricsPeriodInput,
+  env: Record<string, string | undefined> = process.env,
+): Promise<MetricResult<IngestionErrors>> {
+  return withPeriod(context, input, async (query) => {
+    const found = await repository.ingestionErrors(query);
+    if (isIngestionUnavailable(readIngestionConfig(env), found.total)) {
+      return { status: "unavailable" };
+    }
+    // Sin un solo evento no hay tasa: "sin datos" nunca se presenta como 0 %.
+    if (found.total === 0) return { status: "no_data" };
+    return {
+      status: "value",
+      total: found.total,
+      failed: found.failed,
+      percentage: (found.failed * 100) / found.total,
+      groups: found.groups,
+    };
+  });
 }
