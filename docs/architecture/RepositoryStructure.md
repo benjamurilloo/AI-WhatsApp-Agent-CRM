@@ -177,6 +177,7 @@ Ninguna carpeta se crea vacía: nace con el primer archivo real de la subfase qu
 | 6.5.2 — Registro idempotente y proyección | En `src/modules/ingestion/`: `service.ts` (`recordIngestionEvent`), `repository.ts` y `service.test.ts`; `recordIngestedMessage` en `conversations`; `findClientIdByPhone` en `crm`; `tests/integration/ingestion.test.ts` |
 | 6.5.3 — Autenticación de servicio y rate limit | En `src/modules/ingestion/`: `credentials.ts`, `rate-limit.ts`, `config.ts` y `credentials.test.ts`, y las tablas nuevas en `schema.ts`; `drizzle/0013` y `0014`; `src/shared/http/`; `src/app/api/ingestion/v1/events/` (`route.ts` y `handler.ts`); `scripts/ingestion-credential.ts`; `tests/integration/ingestion-http.test.ts` y `tests/e2e/ingestion.spec.ts` |
 | 7.1 — Métricas de volumen | En `src/modules/analytics/`: `index.ts`, `service.ts` (período y métricas 1 a 6 y 10), `repository.ts` (lecturas sobre `conversations/schema`) y `service.test.ts`, sin `schema.ts`; `tests/integration/analytics.test.ts` |
+| 7.2 — Métricas de respuesta y estado | Métricas 7, 8, 9 y 11 en `service.ts` y `repository.ts` de `analytics`; `tests/integration/analytics-response.test.ts` con su propio fixture y `tests/integration/analytics-helpers.ts`, con los ayudantes de inserción que comparten las dos suites de métricas |
 | Fase 4 | `src/modules/catalog/` e `inventory/` |
 | Fase 5 | `src/modules/crm/` |
 | Fase 6 | `src/modules/conversations/` e `ingestion/` |

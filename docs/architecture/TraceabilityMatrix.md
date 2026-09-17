@@ -130,6 +130,12 @@ Las métricas 1 a 6 y 10 se confirmaron con `EXPLAIN (ANALYZE, BUFFERS)` en la 7
 - **Con 180 días**, el período contiene casi todos los mensajes de esa organización, que tiene casi toda la tabla, así que PostgreSQL recorre `conversations` y `messages` completas. Forzado, usa índices y no es más rápido.
 - **Con los índices forzados**, las lecturas de `messages` sobre 180 días eligen `(conversation_id, sent_at)` en lugar de `(organization_id, sent_at)`.
 
+Las métricas 7, 8, 9 y 11 se confirmaron igual en la 7.2 ([brief-7.2](../decisions/brief-7.2-metricas-de-respuesta-y-estado.md), mediciones):
+
+- **Con 180 días**, repiten el recorrido completo de `messages` y `conversations` por la misma razón, ya aceptada. Con 30 días usan los índices previstos.
+- **Las búsquedas por conversación de la métrica 9** usan `(conversation_id, sent_at)`, como preveía esta matriz: una búsqueda por conversación candidata, no un recorrido.
+- **El CTE del primer entrante de la métrica 9 se materializa**: sin eso, PostgreSQL lo inlinea y repite esa subconsulta una vez por cada condición que la filtra, lo que duplicaba las búsquedas por índice y el tiempo de la métrica.
+
 Todo esto se vuelve a medir con varias organizaciones en staging (Fase 9).
 
 ## Hallazgos

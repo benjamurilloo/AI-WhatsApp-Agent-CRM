@@ -160,6 +160,82 @@ export function getMessagesPerConversation(
   });
 }
 
+// Métrica 7: conversaciones con un entrante y un saliente posterior, los dos dentro de I. Un empate
+// de timestamps no es una respuesta (MetricsCatalog).
+export function getRespondedConversations(
+  context: AuthContext,
+  input: MetricsPeriodInput,
+): Promise<MetricResult<number>> {
+  return withPeriod(context, input, repository.countRespondedConversations);
+}
+
+export type ResponseCoverage = RatioMetric<{
+  responded: number;
+  // |A_in|: conversaciones con al menos un entrante en I. Las que solo tienen salientes no cuentan,
+  // porque no tienen nada que responder (MetricsCatalog).
+  withInbound: number;
+  // Porcentaje sin redondear, entre 0 y 100 (7.1, D-3).
+  percentage: number;
+}>;
+
+// Métrica 8: con |A_in| = 0, "sin datos".
+export function getResponseCoverage(
+  context: AuthContext,
+  input: MetricsPeriodInput,
+): Promise<MetricResult<ResponseCoverage>> {
+  return withPeriod(context, input, async (query) => {
+    const found = await repository.responseCoverage(query);
+    if (found.withInbound === 0) return { status: "no_data" };
+    return {
+      status: "value",
+      responded: found.responded,
+      withInbound: found.withInbound,
+      percentage: (found.responded * 100) / found.withInbound,
+    };
+  });
+}
+
+export type FirstResponseTime = {
+  // Conversaciones cuyo primer entrante de toda la conversación cae en I.
+  population: number;
+  // Las que no tienen primera respuesta: se muestran aparte y no se les imputa valor. Viajan
+  // siempre, también cuando la mediana es "sin datos" (brief-7.2, D-3).
+  withoutResponse: number;
+  median: RatioMetric<{ minutes: number }>;
+};
+
+// Métrica 9: mediana del tiempo a la primera respuesta. La respuesta puede ser posterior al fin de
+// I, así que el valor de los días recientes cambia mientras llegan respuestas (MetricsCatalog).
+export function getFirstResponseTime(
+  context: AuthContext,
+  input: MetricsPeriodInput,
+): Promise<MetricResult<FirstResponseTime>> {
+  return withPeriod(context, input, async (query) => {
+    const found = await repository.firstResponseTime(query);
+    return {
+      population: found.population,
+      withoutResponse: found.population - found.withResponse,
+      median:
+        found.withResponse === 0 || found.medianMinutes === null
+          ? { status: "no_data" }
+          : { status: "value", minutes: found.medianMinutes },
+    };
+  });
+}
+
+export type StatusDistribution = Awaited<
+  ReturnType<typeof repository.statusDistribution>
+>;
+
+// Métrica 11: conversaciones de A por su estado actual, con los tres estados siempre presentes. Es
+// el estado de ahora, no el que la conversación tenía durante I (MetricsCatalog).
+export function getStatusDistribution(
+  context: AuthContext,
+  input: MetricsPeriodInput,
+): Promise<MetricResult<StatusDistribution>> {
+  return withPeriod(context, input, repository.statusDistribution);
+}
+
 export type DailyActivity = repository.DailyRow;
 
 // Métrica 10: métricas 1, 2, 4 y 5 por día, con 0 explícito. La 2 diaria no se suma.

@@ -142,6 +142,157 @@ export async function messagesPerConversation(query: MetricsQuery): Promise<{
   };
 }
 
+// Conversaciones de A con un entrante y un saliente estrictamente posterior, los dos en I
+// (métrica 7). Existe ese par si el primer entrante de I es anterior al último saliente de I, así
+// que no hace falta comparar los mensajes de a pares. Un empate de timestamps no cuenta.
+export async function countRespondedConversations(
+  query: MetricsQuery,
+): Promise<number> {
+  const result = await getDb().execute<{ responded: string }>(sql`
+    with per_conversation as (
+      select min(${messages.sentAt}) filter (where ${messages.direction} = 'inbound') as first_inbound,
+             max(${messages.sentAt}) filter (where ${messages.direction} = 'outbound') as last_outbound
+      from ${messages}
+      where ${messagesInPeriod(query)}
+      group by ${messages.conversationId}
+    )
+    select count(*) as responded
+    from per_conversation
+    where first_inbound is not null
+      and last_outbound is not null
+      and last_outbound > first_inbound
+  `);
+  return Number(result.rows[0]!.responded);
+}
+
+// Métrica 8: la métrica 7 sobre |A_in|, en la misma consulta (brief-7.2, D-1).
+export async function responseCoverage(
+  query: MetricsQuery,
+): Promise<{ responded: number; withInbound: number }> {
+  const result = await getDb().execute<{
+    responded: string;
+    with_inbound: string;
+  }>(sql`
+    with per_conversation as (
+      select min(${messages.sentAt}) filter (where ${messages.direction} = 'inbound') as first_inbound,
+             max(${messages.sentAt}) filter (where ${messages.direction} = 'outbound') as last_outbound
+      from ${messages}
+      where ${messagesInPeriod(query)}
+      group by ${messages.conversationId}
+    )
+    select count(*) filter (
+             where last_outbound is not null and last_outbound > first_inbound
+           ) as responded,
+           count(*) as with_inbound
+    from per_conversation
+    where first_inbound is not null
+  `);
+  const row = result.rows[0]!;
+  return {
+    responded: Number(row.responded),
+    withInbound: Number(row.with_inbound),
+  };
+}
+
+// Métrica 9: mediana del tiempo a la primera respuesta, en minutos sin redondear.
+//
+// La población es la conversación cuyo primer entrante de TODA la conversación cae en I, y su
+// respuesta puede ser posterior al fin de I (MetricsCatalog). Las dos lecturas salen del período,
+// así que los candidatos se acotan primero con las conversaciones que tienen mensajes en I —toda
+// conversación con su primer entrante en I tiene un mensaje en I— y después cada candidata se
+// resuelve con el índice (conversation_id, sent_at) (brief-7.2, D-2).
+export async function firstResponseTime(query: MetricsQuery): Promise<{
+  population: number;
+  withResponse: number;
+  medianMinutes: number | null;
+}> {
+  const result = await getDb().execute<{
+    population: string;
+    with_response: string;
+    median_minutes: string | null;
+  }>(sql`
+    with candidates as (
+      select distinct ${messages.conversationId} as conversation_id
+      from ${messages}
+      where ${messagesInPeriod(query)}
+    ),
+    -- materialized: sin esto, PostgreSQL inlinea el CTE y repite la subconsulta del primer
+    -- entrante una vez por cada condición que la filtra, duplicando las búsquedas por índice
+    -- (brief-7.2, medición).
+    first_inbound as materialized (
+      select candidates.conversation_id,
+             (select min(m.sent_at)
+              from ${messages} m
+              where m.conversation_id = candidates.conversation_id
+                and m.organization_id = ${query.organizationId}
+                and m.direction = 'inbound') as sent_at
+      from candidates
+    ),
+    population as (
+      select conversation_id, sent_at
+      from first_inbound
+      where sent_at >= ${periodStart(query)}
+        and sent_at < ${periodEnd(query)}
+    ),
+    deltas as (
+      select population.conversation_id,
+             (select min(m.sent_at)
+              from ${messages} m
+              where m.conversation_id = population.conversation_id
+                and m.organization_id = ${query.organizationId}
+                and m.direction = 'outbound'
+                and m.sent_at > population.sent_at) - population.sent_at as delta
+      from population
+    )
+    select count(*) as population,
+           count(delta) as with_response,
+           percentile_cont(0.5) within group (
+             order by extract(epoch from delta) / 60
+           ) filter (where delta is not null) as median_minutes
+    from deltas
+  `);
+  const row = result.rows[0]!;
+  return {
+    population: Number(row.population),
+    withResponse: Number(row.with_response),
+    medianMinutes:
+      row.median_minutes === null ? null : Number(row.median_minutes),
+  };
+}
+
+// Métrica 11: conversaciones de A por su estado actual. Devuelve los tres estados del enum, con 0
+// en los que no tienen conversaciones (brief-7.2, D-4).
+export async function statusDistribution(
+  query: MetricsQuery,
+): Promise<Record<"open" | "pending" | "closed", number>> {
+  const active = getDb()
+    .selectDistinct({ id: messages.conversationId })
+    .from(messages)
+    .where(messagesInPeriod(query));
+  const rows = await getDb()
+    .select({
+      open: sql<number>`count(*) filter (where ${conversations.status} = 'open')`.mapWith(
+        Number,
+      ),
+      pending:
+        sql<number>`count(*) filter (where ${conversations.status} = 'pending')`.mapWith(
+          Number,
+        ),
+      closed:
+        sql<number>`count(*) filter (where ${conversations.status} = 'closed')`.mapWith(
+          Number,
+        ),
+    })
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.organizationId, query.organizationId),
+        sql`${conversations.id} in ${active}`,
+      ),
+    );
+  return rows[0]!;
+}
+
 export type DailyRow = {
   day: string;
   started: number;

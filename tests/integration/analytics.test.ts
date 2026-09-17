@@ -7,117 +7,27 @@ import {
   getMessageCounts,
   getMessagesPerConversation,
   getUniqueClients,
-  type MetricResult,
   type MetricsPeriodInput,
 } from "@/modules/analytics";
-import { hashPassword, login } from "@/modules/auth";
-import { getAuthContext, type AuthContext } from "@/modules/organizations";
 import { getDb } from "@/shared/db";
+import {
+  addUser,
+  contextFor,
+  createOrganization,
+  inbound,
+  insertClient,
+  insertConversation,
+  outbound,
+  preparePasswordHash,
+  SECRET_BODY,
+  users,
+  valueOf,
+} from "./analytics-helpers";
 import { resetDatabase } from "./reset-database";
 
 // Métricas de volumen contra PostgreSQL real (brief-7.1): valores calculados a mano sobre fixtures
 // sintéticos, invariantes de MetricsCatalog, bordes de zona horaria, aislamiento y autorización.
-
-const PASSWORD = "contraseña-correcta-larga";
-const SECRET_BODY = "Texto privado del mensaje";
-let storedHash: string;
-
-async function createOrganization(name: string, timezone?: string) {
-  const result = await getDb().execute<{ id: string }>(
-    timezone
-      ? sql`insert into organizations (name, timezone) values (${name}, ${timezone}) returning id`
-      : sql`insert into organizations (name) values (${name}) returning id`,
-  );
-  return result.rows[0]!.id;
-}
-
-async function addUser(
-  organizationId: string,
-  email: string,
-  role: "admin" | "viewer",
-  mustChangePassword = false,
-) {
-  const user = await getDb().execute<{ id: string }>(
-    sql`insert into users (email, password_hash, name, must_change_password)
-        values (${email}, ${storedHash}, ${`Persona ${email}`}, ${mustChangePassword}) returning id`,
-  );
-  await getDb().execute(
-    sql`insert into organization_members (organization_id, user_id, role)
-        values (${organizationId}, ${user.rows[0]!.id}, ${role})`,
-  );
-}
-
-async function contextFor(email: string): Promise<AuthContext> {
-  const logged = await login({ email, password: PASSWORD, ip: null });
-  if (!logged.ok) throw new Error(`login rechazado: ${logged.code}`);
-  const result = await getAuthContext(logged.token);
-  if (!result.ok) throw new Error(`contexto rechazado: ${result.code}`);
-  return result.context;
-}
-
-async function insertClient(
-  organizationId: string,
-  displayName: string,
-  phone: string,
-) {
-  const result = await getDb().execute<{ id: string }>(
-    sql`insert into clients (organization_id, display_name, phone_e164)
-        values (${organizationId}, ${displayName}, ${phone}) returning id`,
-  );
-  return result.rows[0]!.id;
-}
-
-type SeedMessage = { at: string; direction: "inbound" | "outbound" };
-const inbound = (at: string): SeedMessage => ({ at, direction: "inbound" });
-const outbound = (at: string): SeedMessage => ({ at, direction: "outbound" });
-
-// Conversación con started_at igual a su primer mensaje (MetricsCatalog, convenciones).
-async function insertConversation(
-  organizationId: string,
-  options: {
-    clientId?: string | null;
-    status?: "open" | "pending" | "closed";
-    messages: SeedMessage[];
-  },
-) {
-  const times = options.messages.map((message) => message.at).sort();
-  const result = await getDb().execute<{ id: string }>(
-    sql`insert into conversations (organization_id, client_id, channel, status, started_at, last_message_at)
-        values (${organizationId}, ${options.clientId ?? null}, 'whatsapp', ${options.status ?? "open"},
-                ${times[0]!}, ${times.at(-1)!})
-        returning id`,
-  );
-  const id = result.rows[0]!.id;
-  for (const message of options.messages) {
-    await getDb().execute(
-      sql`insert into messages (organization_id, conversation_id, direction, sent_at, body_text)
-          values (${organizationId}, ${id}, ${message.direction}, ${message.at}, ${SECRET_BODY})`,
-    );
-  }
-  return id;
-}
-
-function valueOf<T>(result: MetricResult<T>): T {
-  if (!result.ok) throw new Error(`métrica rechazada: ${result.code}`);
-  return result.value;
-}
-
-async function users() {
-  const orgA = await createOrganization("Negocio A");
-  const orgB = await createOrganization("Negocio B");
-  await addUser(orgA, "admin-a@example.com", "admin");
-  await addUser(orgA, "viewer-a@example.com", "viewer");
-  await addUser(orgA, "pendiente-a@example.com", "admin", true);
-  await addUser(orgB, "admin-b@example.com", "admin");
-  return {
-    orgA,
-    orgB,
-    adminA: await contextFor("admin-a@example.com"),
-    viewerA: await contextFor("viewer-a@example.com"),
-    pendingA: await contextFor("pendiente-a@example.com"),
-    adminB: await contextFor("admin-b@example.com"),
-  };
-}
+// Los ayudantes de inserción son compartidos (brief-7.2, D-5); el fixture y sus valores son de acá.
 
 // Fixture principal, en America/Argentina/Buenos_Aires (UTC−3, sin horario de verano en 2026).
 // Período I = 01/09 a 03/09 locales = [2026-09-01T03:00Z, 2026-09-04T03:00Z).
@@ -206,7 +116,7 @@ async function mainFixture(orgA: string, orgB: string) {
 const PERIOD: MetricsPeriodInput = { from: "2026-09-01", to: "2026-09-03" };
 
 beforeAll(async () => {
-  storedHash = await hashPassword(PASSWORD);
+  await preparePasswordHash();
 });
 
 beforeEach(async () => {

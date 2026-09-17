@@ -3,7 +3,8 @@
 **Estado**:
 
 - **Métricas 1 a 6 y 10**: implementadas y validadas localmente y en CI con fixtures sintéticos ([brief-7.1](../decisions/brief-7.1-metricas-de-volumen.md)).
-- **Métricas 7 a 9, 11 y 12**: diseñadas.
+- **Métricas 7, 8, 9 y 11**: implementadas y validadas localmente y en CI con fixtures sintéticos ([brief-7.2](../decisions/brief-7.2-metricas-de-respuesta-y-estado.md)).
+- **Métrica 12**: diseñada.
 
 Ninguna está validada con datos reales.
 
@@ -36,7 +37,7 @@ Todas las métricas se calculan por consulta (vistas SQL o queries del módulo `
 - **Estado de una conversación**: es el estado actual al momento de la consulta. No existe historial de transiciones en el MVP.
 - **Denominador cero**: la métrica muestra "sin datos", nunca `0` ni un error. El servicio lo devuelve como un estado propio (`no_data`), distinto del "no disponible" de la métrica 12 (brief-7.1, D-4).
 - **Mediana**: `percentile_cont(0.5)`. Con una cantidad par, es el promedio de los dos valores centrales (brief-7.1, D-3).
-- **Redondeo**: el servicio devuelve los valores sin redondear, y la presentación los muestra con un decimal (brief-7.1, D-3).
+- **Redondeo**: el servicio devuelve los valores sin redondear, y la presentación los muestra con un decimal (brief-7.1, D-3). Donde una métrica dice "con un decimal", ese decimal es de la pantalla, no del valor calculado.
 - **Lecturas independientes**: cada tarjeta se calcula con su propia consulta (brief-7.1, D-1). Si llega un mensaje entre dos lecturas, dos tarjetas pueden diferir en ese mensaje.
 - **Población A (conversaciones con actividad)**: conversaciones con al menos un mensaje con `sent_at ∈ I`.
 - **Población A_in**: conversaciones de A con al menos un mensaje `inbound` con `sent_at ∈ I`.
@@ -97,7 +98,7 @@ Todas las métricas se calculan por consulta (vistas SQL o queries del módulo `
 - **Población**: conversaciones cuyo primer mensaje `inbound` de toda la conversación tiene `sent_at ∈ I`.
 - **Por conversación**: `delta` = `sent_at` del primer `outbound` estrictamente posterior a ese primer `inbound` (en cualquier momento hasta la consulta) menos `sent_at` del primer `inbound`.
 - **Fórmula**: mediana de `delta` en minutos, con un decimal, sobre las conversaciones de la población que tienen respuesta.
-- **Nulos**: las conversaciones sin respuesta no entran en la mediana y no se les imputa valor. Se muestran aparte como "N sin primera respuesta".
+- **Nulos**: las conversaciones sin respuesta no entran en la mediana y no se les imputa valor. Se muestran aparte como "N sin primera respuesta". Ese conteo acompaña siempre al valor, también cuando ninguna conversación tiene respuesta y la mediana es "sin datos" (brief-7.2, D-3).
 - **Casos límite**: los mensajes salientes anteriores al primer entrante (proactivos) se ignoran. Se mide solo la primera respuesta de la conversación, no la de cada reapertura. A diferencia de la métrica 7, la respuesta puede caer después del fin de `I`, así que el valor de los días recientes puede cambiar mientras llegan respuestas. El dashboard lo aclara.
 
 ### 10. Evolución diaria de conversaciones y mensajes
@@ -111,6 +112,7 @@ Todas las métricas se calculan por consulta (vistas SQL o queries del módulo `
 - **Fuente**: `conversations` y `messages`.
 - **Validación**: la suma de los grupos es igual a `|A|`.
 - **Casos límite**: una conversación cerrada después de `I` aparece como `closed`, porque se usa el estado actual y no el que tenía durante `I`.
+- **Estados sin conversaciones**: la métrica devuelve los tres estados (`open`, `pending`, `closed`) en el orden del dominio, con `0` explícito, igual que los días vacíos de la serie diaria (brief-7.2, D-4).
 
 ### 12. Errores de ingestión
 

@@ -77,6 +77,21 @@
     - **período**: valor por defecto con el reloj de la base, período invertido, de más de 366 días, futuro o con una fecha inválida;
     - **autorización y aislamiento**: `viewer` lee lo mismo que `admin`; con la contraseña pendiente, `FORBIDDEN`; cada organización ve solo sus datos; ninguna respuesta contiene cuerpos, teléfonos ni nombres;
     - **mutaciones** (evidencia en el brief): días en UTC, sin filtro de organización en `messages`, métrica 2 sin `DISTINCT` y serie sin días vacíos. Con cada una, fallan los casos previstos.
+  - Métricas de respuesta y estado ([brief-7.2](../decisions/brief-7.2-metricas-de-respuesta-y-estado.md)), cubiertas desde la 7.2 en `tests/integration/analytics-response.test.ts`, con fixture propio: el de la 7.1 no se toca, y las dos suites comparten solo sus ayudantes de inserción (`analytics-helpers.ts`):
+    - **valor calculado a mano** para las métricas 7, 8, 9 y 11, sobre un fixture con su tabla de cálculo en un comentario;
+    - **casos que discriminan entre las tres métricas de respuesta**:
+      - empate exacto de timestamps: no es una respuesta, y un segundo después sí;
+      - saliente anterior al entrante dentro de I: no cuenta en la 7 y deja la conversación sin primera respuesta;
+      - respuesta posterior al fin de I: no cuenta en la 7, sí aporta su delta a la 9;
+      - conversación solo con salientes: está en `A` pero no en `A_in`, así que no entra en el denominador de la 8;
+      - primer entrante anterior a I: está en `A_in` y no en la población de la 9;
+      - salientes proactivos anteriores al primer entrante: se ignoran, y la 9 toma el primer saliente posterior;
+    - **mediana de la 9** con una cantidad par (`percentile_cont`) e impar de deltas;
+    - **invariantes de MetricsCatalog** sobre el mismo período: la 7 no supera `|A_in|`; la cobertura es su cociente y está entre 0 y 100 %; los grupos de la 11 suman `|A|`; la población de la 9 se reparte entre con y sin respuesta y no supera `|A_in|`;
+    - **sin datos**: sin entrantes en I, la 8 y la mediana de la 9 son "sin datos" y no `0`; una población sin ninguna respuesta informa cuántas quedaron sin responder, con la cobertura en 0 %;
+    - **zona horaria**: bordes del día de 23 horas (19/10/2008), con una respuesta en el fin exacto del intervalo; en el de 25 horas (14/03/2009), un entrante y su respuesta caen en el mismo horario local y el delta es de 60 minutos reales; una organización en `UTC` decide distinto si el primer entrante cae en I;
+    - **autorización y aislamiento**: `viewer` lee lo mismo que `admin`; con la contraseña pendiente, `FORBIDDEN`; período inválido con sus campos; cada organización ve solo sus datos; ninguna respuesta contiene cuerpos, teléfonos ni nombres;
+    - **mutaciones** (evidencia en el brief): `>=` en lugar de `>` en la 7, primera respuesta acotada al período, primer entrante de I en lugar del de la conversación, la 8 dividida por `|A|`, la 11 sin los estados en `0`, y sin filtro de organización en la 8. Con cada una, fallan los casos previstos; quitar ese filtro en la 11 no hace fallar nada, porque el subconjunto de conversaciones ya está acotado por organización (defensa doble registrada en el brief).
   - Servicio de catálogo ([brief-4.2](../decisions/brief-4.2-servicio-de-catalogo.md)), cubierto desde la 4.2 en `tests/integration/catalog.test.ts`:
     - alta, edición, desactivación y reactivación auditadas en la misma transacción con `diff` exacto; un cambio sin diferencias no escribe ni audita; si la auditoría falla, el producto no persiste;
     - SKU duplicado, también con otras mayúsculas, en alta y en edición → `CONFLICT` sin auditoría; dos altas simultáneas con el mismo SKU → una sola se crea;
