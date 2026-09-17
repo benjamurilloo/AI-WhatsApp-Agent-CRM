@@ -255,3 +255,11 @@ La implementación está terminada. No se activó ninguna condición de detenci�
   - no hay tokens `crm_ing_` literales;
   - `.env` no tiene variables de ingestión.
 - **Revisión**: autoevaluación del mismo agente.
+
+## Cierre (2026-09-17)
+
+- **Desvíos, migración de la base de desarrollo, commit y push** `53c3394`, confirmados y autorizados por el usuario el 2026-09-17.
+- **AC-7**: CI en verde en la [ejecución 35233410207](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35233410207), con todos los pasos.
+- **Nivel alcanzado**: **validado localmente y en CI** (`deterministic`) para el endpoint, la credencial de servicio, el límite de tasa y el modo de prueba. La compatibilidad con un emisor real queda para el proyecto de integración.
+- **Revisión**: autoevaluación del mismo agente, sin revisión independiente.
+- **Sigue**: el cierre de la Fase 6, con su gate de salida y la tarea madre 6.5 en Notion.

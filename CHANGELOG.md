@@ -2,6 +2,31 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-17 — Subfase 6.5.3 cerrada (Autenticación de servicio y rate limit)
+
+**Certifica:**
+
+- **Endpoint `POST /api/ingestion/v1/events`**, según el [brief-6.5.3](docs/decisions/brief-6.5.3-autenticacion-de-servicio-y-rate-limit.md), con D-1 a D-6 resueltas según la recomendación:
+  - credencial de servicio en `ingestion_credentials`, con solo el SHA-256 del token; de ella salen la organización y el `source` (D-1);
+  - token `crm_ing_` por `Authorization: Bearer`, creado y revocado con `npm run ingestion:credential` (D-2);
+  - límite de 120 requests por minuto por credencial en `ingestion_rate_windows`, con un contador atómico (D-3);
+  - modo de prueba: apagado por defecto (`404`) y, encendido, solo las credenciales de `INGESTION_ALLOWED_CREDENTIALS` (D-4);
+  - sin verificación de `Origin`: el endpoint no lee cookies, y una sesión del CRM no lo autentica (D-5);
+  - lectura del cuerpo con límite de 64 KiB en `src/shared/http/`, y log sin token, payload, teléfono ni cuerpo.
+- **Migraciones 0013 y 0014**, aplicadas también a la base de desarrollo con autorización del usuario.
+- **Desvíos confirmados por el usuario**: el campo `source` en el log estructurado, las tablas nuevas en las listas de `audit.test.ts` e `identity-schema.test.ts`, y la lógica del endpoint en `handler.ts`, junto a `route.ts`.
+- **Tests**: 13 casos en `tests/integration/ingestion-http.test.ts` contra PostgreSQL real, incluido el límite bajo concurrencia; 2 en `tests/e2e/ingestion.spec.ts`, con el evento visible en la pantalla 8; 16 unitarios. Mutaciones: sin la revocación, sin la allowlist, sin el contador atómico o sin el límite de bytes, fallan casos.
+- **Suite local**: `npm run test` pasa 623 de 623 y `npm run test:e2e`, 65 de 65. Con la base detenida pasan typecheck, lint, formato, guardas, unitarios y build, y `db:generate` no produce migraciones.
+- **Sin orígenes reales**: una búsqueda confirma que no hay emisores, URLs ni credenciales reales configurados.
+- **CI**: [35233410207](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35233410207), commit `53c3394`, en verde con todos los pasos.
+- **Nivel alcanzado**: **validado localmente y en CI** (`deterministic`) para el endpoint, la credencial, el límite de tasa y el modo de prueba.
+
+**No certifica:**
+
+- **Compatibilidad con un emisor real y su autenticación con tráfico real**: proyecto de integración.
+- **Verificación del límite de tasa en seguridad, gestión de secretos e IP detrás de un proxy**: Fases 8 y 9.
+- **Revisión independiente**: es autoevaluación del mismo agente.
+
 ## 2026-09-17 — Subfase 6.5.2 cerrada (Registro idempotente y proyección)
 
 **Certifica:**
