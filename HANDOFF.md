@@ -2,9 +2,9 @@
 schema: project-state.v1
 project: ai-whatsapp-agent-crm
 generated_at: 2026-09-17
-git_ref: main — 53c3394 en origin/main (CI en verde, 6.5.3), más el cierre de la 6.5.3 (commit y push autorizados por el usuario el 2026-09-17)
-active_phase: Fase 6 — Conversaciones, mensajes e ingestión (en curso)
-active_task: ninguna; la 6.5.3 está cerrada y lo siguiente es el cierre de la Fase 6
+git_ref: main — 7cda5fc en origin/main (CI en verde, cierre de la 6.5.3), más el cierre de la Fase 6
+active_phase: Fase 7 — Métricas y dashboard (por empezar, en una sesión nueva)
+active_task: ninguna; la Fase 6 está cerrada y lo siguiente es el brief de la 7.1
 confidence: confirmado
 ---
 
@@ -21,14 +21,14 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 ## 1. Identificación
 
 - **Proyecto**: AI WhatsApp Agent CRM. Independiente del agente de WhatsApp: no comparte código, infraestructura ni base de datos, y no depende de Airtable. `confirmado`
-- **Fase 6 — Conversaciones, mensajes e ingestión, en curso** desde el 2026-09-16. En Notion: el proyecto (`3d8702be6f4e81bb95d0e3a6e38bcb2d`) está "En progreso" y su tarea espejo (`3d8702be6f4e8199b641e48deb47febb`) "En proceso"; la 6.1 (`3d8702be6f4e815e99e8cabf2eb35636`), la 6.2 (`3d8702be6f4e811591dfcd0b3ca9ea2a`), la 6.3 (`3d8702be6f4e817fa354cec04a08d54d`), la 6.4 (`3d8702be6f4e81bea9abed75e0f16691`), la 6.5.1 (`3d8702be6f4e81c983d6da84d890052e`), la 6.5.2 (`3d8702be6f4e818fbd61e5dc99b683a3`) y la 6.5.3 (`3d8702be6f4e817eb92fe723d3c430c7`) están "Completado". Sigue en "Bandeja de Entrada":
-  - la tarea madre 6.5 (`3d8702be6f4e814b95a9d5d2c1351198`), con todas sus subtareas completadas; se cierra con la Fase 6.
-  `confirmado`
+- **Fase 7 — Métricas y dashboard, por empezar.** En Notion, el proyecto (`3d8702be6f4e812fbe7ad0ec132bcedf`) y su tarea espejo (`3d8702be6f4e81939baee9107b3e3c7c`) no se tocaron al cerrar la Fase 6: su estado se verifica y se cambia al abrir la fase. Hay otro proyecto llamado "Fase 7 — Cierre y Producción" (`3d5702be6f4e814594a7ff67f0c219be`), que es de otro proyecto y no se toca. `confirmado`
+- **Fase 6 — Conversaciones, mensajes e ingestión, cerrada** el 2026-09-17. En Notion, el proyecto (`3d8702be6f4e81bb95d0e3a6e38bcb2d`), su tarea espejo (`3d8702be6f4e8199b641e48deb47febb`), la tarea madre 6.5 (`3d8702be6f4e814b95a9d5d2c1351198`) y las subfases 6.1 a 6.4 y 6.5.1 a 6.5.3 están "Completado"; se verificaron las ocho tareas del proyecto. `confirmado`
 - **Valores de estado en Notion**: los proyectos usan "En progreso"; las tareas, "En proceso", "Bandeja de Entrada", "Esperando", "Sin fecha" y "Completado". `confirmado`
-- **Fases 0 a 5 cerradas** (2026-09-11 a 2026-09-16). `confirmado`
+- **Fases 0 a 6 cerradas** (2026-09-11 a 2026-09-17). `confirmado`
 
 ## 2. Último punto aprobado
 
+- **Fase 6 — Conversaciones, mensajes e ingestión**, cerrada a pedido del usuario el 2026-09-17. Gate de salida cumplido: FR-CONV-01 a 05 y FR-CLI-04 probados según TraceabilityMatrix, y una búsqueda sin orígenes reales configurados en el repositorio, la CI, `.env` ni la base de desarrollo. Detalle en [CHANGELOG.md](CHANGELOG.md). `confirmado`
 - **Subfase 6.5.3 — Autenticación de servicio y rate limit**, cerrada con autorización del usuario el 2026-09-17, con D-1 a D-6 según la recomendación y tres desvíos confirmados: el campo `source` en el log, las tablas nuevas en las listas de `audit.test.ts` e `identity-schema.test.ts`, y `handler.ts` junto a `route.ts`. Migraciones 0013 y 0014 aplicadas también a la base de desarrollo, con autorización. Detalle en [CHANGELOG.md](CHANGELOG.md) y en el [brief-6.5.3](docs/decisions/brief-6.5.3-autenticacion-de-servicio-y-rate-limit.md). CI en verde en `53c3394` ([ejecución 35233410207](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35233410207)). `confirmado`
 - **Subfase 6.5.2 — Registro idempotente y proyección**, cerrada con autorización del usuario el 2026-09-17, con D-1 a D-3 según la recomendación y un desvío confirmado: `isOpaqueReference` exportado desde `contract.ts`. Detalle en [CHANGELOG.md](CHANGELOG.md) y en el [brief-6.5.2](docs/decisions/brief-6.5.2-registro-idempotente-y-proyeccion.md). CI en verde en `6d7626a` ([ejecución 35227372751](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35227372751)). `confirmado`
 - **Subfase 6.5.1 — Contrato de ingestión y validación**, cerrada con autorización del usuario el 2026-09-16, con D-1 a D-7 según la recomendación y un desvío confirmado: límite del request de 64 KiB en lugar de 16 KB. Detalle en [CHANGELOG.md](CHANGELOG.md), en el [brief-6.5.1](docs/decisions/brief-6.5.1-contrato-de-ingestion.md) y en el [contrato](docs/contracts/ingestion-v1.md). CI en verde en `6f026a9` ([ejecución 35158967940](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35158967940)). `confirmado`
@@ -42,15 +42,15 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 
 ## 3. Próximo paso
 
-1. **Al retomar**: seguir el arranque de `CLAUDE.md` y verificar que el commit de cierre de la 6.5.3 esté en `origin/main` con la CI en verde (`gh run list -L 1`). `pendiente`
-2. **Cierre de la Fase 6**, con su gate de salida (Roadmap):
-   - FR-CONV-01 a 05 y FR-CLI-04 probados, según TraceabilityMatrix;
-   - una búsqueda que confirme que no hay orígenes reales configurados (la de la 6.5.3 está en su brief);
-   - pasar a "Completado" la tarea madre 6.5, la tarea espejo y el proyecto de la Fase 6, revisando que no quede ninguna tarea abierta;
-   - entrada de fase en CHANGELOG, líneas de estado y Knowledge Capture.
+1. **Al retomar, en una sesión nueva** (convención del usuario): seguir el arranque de `CLAUDE.md` y verificar que el commit de cierre de la Fase 6 esté en `origin/main` con la CI en verde (`gh run list -L 1`). `pendiente`
+2. **Abrir la Fase 7 — Métricas y dashboard** ([Roadmap](docs/planning/Roadmap.md)): subfases 7.1 a 7.4, con las 12 métricas de [MetricsCatalog.md](docs/analytics/MetricsCatalog.md) y la pantalla 2. Consultar en Notion el proyecto y sus tareas, pasarlos a "En progreso" y "En proceso" con autorización, y preparar el brief de la 7.1. `confirmado`
+3. **A tener en cuenta en la Fase 7**:
+   - la métrica 12 cuenta solo los eventos `failed` de `ingestion_events` (brief-6.5.1, D-6), con el índice `(organization_id, received_at)`;
+   - la 7.3 depende de la 6.5.2 (Roadmap), ya cerrada;
+   - cada métrica lleva un test de fixture con el valor calculado a mano (Roadmap, riesgos de la Fase 7);
+   - `analytics` solo lee esquemas de otros módulos, sin importar sus repositorios (guarda de frontera).
 
    `confirmado`
-3. **Después**: Fase 7 — Métricas y dashboard, en una sesión nueva (convención del usuario: una sesión por fase). `confirmado`
 
 ## 4. Contratos vigentes
 
@@ -256,10 +256,12 @@ Nivel del proyecto: **validado en integración** para las pantallas de conversac
 ## 8. Rutas necesarias para continuar
 
 - [CLAUDE.md](CLAUDE.md), este archivo, [CHANGELOG.md](CHANGELOG.md).
-- [planning/Roadmap.md](docs/planning/Roadmap.md): alcance, subfases, criterios y gates de la Fase 6.
-- [architecture/DataModel.md](docs/architecture/DataModel.md) §`conversations` y §`messages`; [architecture/IntegrationBoundaries.md](docs/architecture/IntegrationBoundaries.md); [brief-1.2](docs/decisions/brief-1.2-validacion-cruzada-del-modelo.md) (D-2 a D-4).
-- FR-CONV-01 a 05 y FR-CLI-04 en [product/FunctionalRequirements.md](docs/product/FunctionalRequirements.md); [product/Screens.md](docs/product/Screens.md) §7 a §9 y los wireframes 07 a 09.
-- [brief-6.1](docs/decisions/brief-6.1-migraciones-de-conversaciones.md) (D-3 y D-4: protección y resultado de `ingestion_events`), briefs [6.5.1](docs/decisions/brief-6.5.1-contrato-de-ingestion.md), [6.5.2](docs/decisions/brief-6.5.2-registro-idempotente-y-proyeccion.md) y [6.5.3](docs/decisions/brief-6.5.3-autenticacion-de-servicio-y-rate-limit.md), y [contracts/ingestion-v1.md](docs/contracts/ingestion-v1.md); [TraceabilityMatrix.md](docs/architecture/TraceabilityMatrix.md) para el gate de salida de la Fase 6, y [brief-6.3](docs/decisions/brief-6.3-servicio-de-consulta-y-estado.md) (precedente de servicio con transacción auditada).
+- [planning/Roadmap.md](docs/planning/Roadmap.md): alcance, subfases, criterios y gates de la Fase 7.
+- [analytics/MetricsCatalog.md](docs/analytics/MetricsCatalog.md): definición de las 12 métricas.
+- FR-MET-01 a 03 en [product/FunctionalRequirements.md](docs/product/FunctionalRequirements.md); [product/Screens.md](docs/product/Screens.md) §2 y el [wireframe 02](docs/product/wireframes/02-dashboard.md).
+- [architecture/TraceabilityMatrix.md](docs/architecture/TraceabilityMatrix.md) (pantalla 2 y vista por métrica) y [architecture/DataModel.md](docs/architecture/DataModel.md) (`conversations`, `messages`, `clients` e `ingestion_events`).
+- [architecture/RepositoryStructure.md](docs/architecture/RepositoryStructure.md): módulo `analytics` y su frontera, que le permite leer los `schema.ts` de otros módulos pero no sus repositorios ni servicios.
+- Precedentes: [brief-6.3](docs/decisions/brief-6.3-servicio-de-consulta-y-estado.md) (consultas y períodos en la zona de la organización), [brief-6.2](docs/decisions/brief-6.2-seeds-sinteticos-de-conversaciones.md) (seeds y volumen) y [brief-6.5.1](docs/decisions/brief-6.5.1-contrato-de-ingestion.md) (D-6, métrica 12).
 
 ## 9. Cambios ajenos del usuario detectados
 
@@ -267,9 +269,9 @@ Ninguno en el repositorio. `confirmado`
 
 ## 10. Autorizaciones vigentes
 
-**Ninguna.** Los desvíos, la migración de la base de desarrollo, el commit y push de la 6.5.3 y de su cierre, y los cambios en Notion quedan consumidos al ejecutarse. Instalar dependencias, ejecutar migraciones, cambios en Notion y cualquier operación Git futura necesitan autorización explícita.
+**Ninguna.** El cierre de la Fase 6 y sus cambios en Notion quedan consumidos al ejecutarse. Abrir la Fase 7 en Notion, las operaciones Git, las migraciones y las dependencias necesitan autorización explícita en la sesión nueva. Instalar dependencias, ejecutar migraciones, cambios en Notion y cualquier operación Git futura necesitan autorización explícita.
 
 ## 11. Aspectos pendientes de confirmar
 
-- Que el commit de cierre de la 6.5.3 esté en `origin/main` con la CI en verde.
-- Si el cierre de la Fase 6 necesita algo más que documentación y Notion.
+- Que el commit de cierre de la Fase 6 esté en `origin/main` con la CI en verde.
+- El estado en Notion del proyecto y las tareas de la Fase 7.

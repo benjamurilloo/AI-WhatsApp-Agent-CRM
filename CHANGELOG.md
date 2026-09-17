@@ -2,6 +2,31 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-17 — Fase 6 cerrada (Conversaciones, mensajes e ingestión)
+
+**Certifica:**
+
+- **Las siete subfases cerradas con confirmación del usuario**: 6.1 → 6.2 → 6.3 → 6.4, y 6.5.1 → 6.5.2 → 6.5.3. El detalle de cada una está en sus entradas, debajo.
+- **Criterios de aceptación del [Roadmap](docs/planning/Roadmap.md)**:
+  - idempotencia probada, incluido el reenvío con otro contenido: `ingestion.test.ts` (6.5.2) en el caso de uso, e `ingestion-http.test.ts` y `ingestion.spec.ts` (6.5.3) en el endpoint;
+  - cuerpo de los mensajes escapado en la UI: `conversations.spec.ts` (6.4), con su corrida de mutación;
+  - ninguna credencial ni configuración apunta a sistemas reales: el endpoint está apagado por defecto, y la búsqueda del cierre no encontró URLs, webhooks, proveedores ni credenciales configurados en el repositorio, la CI, `.env` ni la base de desarrollo, que no tiene credenciales ni eventos.
+- **Gate de salida**: FR-CONV-01 a 05 y FR-CLI-04 probados según [TraceabilityMatrix](docs/architecture/TraceabilityMatrix.md), con CI en verde en el commit `53c3394` ([ejecución 35233410207](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35233410207)), end-to-end incluido, y en su cierre `7cda5fc`.
+- **Entregables**: FR-CONV-01 a 05, FR-CLI-04 y [docs/contracts/ingestion-v1.md](docs/contracts/ingestion-v1.md).
+- **Nivel alcanzado**:
+  - **validado en integración** para las pantallas 8 y 9 y las conversaciones en las pantallas 6 y 7;
+  - **validado localmente y en CI** (`deterministic`) para el esquema, los seeds, el servicio de conversaciones, el contrato, el registro idempotente, la proyección y el endpoint con su autenticación de servicio, como pedía el Roadmap.
+
+**No certifica:**
+
+- **Compatibilidad con un emisor real**, incluida su autenticación con tráfico real: proyecto de integración.
+- **Recorridos completos de `conversations` con una sola organización grande** (6.3, D-4): se vuelven a medir con varias organizaciones en staging (Fase 9).
+- **Retención de `messages`**: Fase 9.
+- **Verificación del límite de tasa, secretos e IP detrás de un proxy real**: Fases 8 y 9.
+- **Métricas y dashboard**, incluida la métrica 12 sobre `ingestion_events`: Fase 7.
+- **Firefox y WebKit**.
+- **Revisión independiente**: es autoevaluación del mismo agente. El usuario aprobó los briefs y los cierres.
+
 ## 2026-09-17 — Subfase 6.5.3 cerrada (Autenticación de servicio y rate limit)
 
 **Certifica:**
