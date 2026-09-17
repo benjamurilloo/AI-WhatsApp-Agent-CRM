@@ -41,3 +41,10 @@ desktop.ini
 *.sqlite
 *.sqlite3
 pgdata/
+
+# Skills de Claude Code instaladas a nivel de proyecto.
+# Las de terceros (MIT, copiadas de repos auditados) NO se versionan: vendorizar
+# código ajeno al repo del producto exige una decisión registrada como ADR.
+# La skill propia del proyecto sí queda visible para versionarse.
+.claude/skills/*
+!.claude/skills/crm-write-discipline/
