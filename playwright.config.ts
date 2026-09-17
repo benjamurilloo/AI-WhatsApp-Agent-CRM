@@ -8,6 +8,11 @@ import { e2eDatabaseUrl } from "./tests/integration/test-database";
 if (existsSync(".env")) process.loadEnvFile(".env");
 
 const PORT = 3100;
+// Segundo servidor, con la ingestión apagada: es la única forma de ver en el navegador el estado
+// "No disponible" de la métrica 12, porque el primero la enciende para el spec de ingestión
+// (brief-6.5.3, D-6; brief-7.4). Comparte la base _e2e, y los tests corren en serie.
+const PORT_SIN_INGESTION = 3101;
+const SIN_INGESTION_SPEC = /dashboard-sin-ingestion\.spec\.ts/;
 const databaseUrl = process.env.DATABASE_URL;
 
 export default defineConfig({
@@ -26,20 +31,50 @@ export default defineConfig({
     baseURL: `http://localhost:${PORT}`,
     trace: "retain-on-failure",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
-  webServer: {
-    command: `npx next start --port ${PORT}`,
-    // /login sin cookie no consulta la base: el servidor puede arrancar antes que la base _e2e.
-    url: `http://localhost:${PORT}/login`,
-    reuseExistingServer: false,
-    timeout: 60_000,
-    env: {
-      ...(process.env as Record<string, string>),
-      ...(databaseUrl ? { DATABASE_URL: e2eDatabaseUrl(databaseUrl) } : {}),
-      NEXT_TELEMETRY_DISABLED: "1",
-      // Modo de prueba de la ingestión, solo con la credencial sintética (brief-6.5.3, D-4).
-      INGESTION_ENABLED: "true",
-      INGESTION_ALLOWED_CREDENTIALS: E2E_INGESTION_CREDENTIAL_ID,
+  projects: [
+    {
+      name: "chromium",
+      use: { ...devices["Desktop Chrome"] },
+      testIgnore: SIN_INGESTION_SPEC,
     },
-  },
+    {
+      name: "chromium-sin-ingestion",
+      use: {
+        ...devices["Desktop Chrome"],
+        baseURL: `http://localhost:${PORT_SIN_INGESTION}`,
+      },
+      testMatch: SIN_INGESTION_SPEC,
+    },
+  ],
+  webServer: [
+    {
+      command: `npx next start --port ${PORT}`,
+      // /login sin cookie no consulta la base: el servidor puede arrancar antes que la base _e2e.
+      url: `http://localhost:${PORT}/login`,
+      reuseExistingServer: false,
+      timeout: 60_000,
+      env: {
+        ...(process.env as Record<string, string>),
+        ...(databaseUrl ? { DATABASE_URL: e2eDatabaseUrl(databaseUrl) } : {}),
+        NEXT_TELEMETRY_DISABLED: "1",
+        // Modo de prueba de la ingestión, solo con la credencial sintética (brief-6.5.3, D-4).
+        INGESTION_ENABLED: "true",
+        INGESTION_ALLOWED_CREDENTIALS: E2E_INGESTION_CREDENTIAL_ID,
+      },
+    },
+    {
+      command: `npx next start --port ${PORT_SIN_INGESTION}`,
+      url: `http://localhost:${PORT_SIN_INGESTION}/login`,
+      reuseExistingServer: false,
+      timeout: 60_000,
+      env: {
+        ...(process.env as Record<string, string>),
+        ...(databaseUrl ? { DATABASE_URL: e2eDatabaseUrl(databaseUrl) } : {}),
+        NEXT_TELEMETRY_DISABLED: "1",
+        // Sin ingestión configurada: la métrica 12 tiene que decir "No disponible".
+        INGESTION_ENABLED: "false",
+        INGESTION_ALLOWED_CREDENTIALS: "",
+      },
+    },
+  ],
 });

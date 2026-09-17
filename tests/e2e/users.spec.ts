@@ -126,7 +126,7 @@ test("caso 1: un admin ve la lista con (vos), el marco común con su organizaci�
   await expect(banner.getByRole("button", { name: "Salir" })).toBeVisible();
 
   const nav = page.getByRole("navigation", { name: "Principal" });
-  await expect(nav.getByRole("link", { name: "Inicio" })).toHaveAttribute(
+  await expect(nav.getByRole("link", { name: "Dashboard" })).toHaveAttribute(
     "aria-current",
     "page",
   );
@@ -345,7 +345,7 @@ test("caso 7: un viewer no ve el enlace y las páginas de usuarios muestran el p
 }) => {
   await login(page, VIEWER);
   const nav = page.getByRole("navigation", { name: "Principal" });
-  await expect(nav.getByRole("link", { name: "Inicio" })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Dashboard" })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Usuarios" })).toHaveCount(0);
 
   const adminMemberId = await memberIdOf(ADMIN_SEED.id);

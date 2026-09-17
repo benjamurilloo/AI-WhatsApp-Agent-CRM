@@ -36,12 +36,12 @@
 
 - **Objetivo**: ver las métricas de WhatsApp de [analytics/MetricsCatalog.md](../analytics/MetricsCatalog.md).
 - **Usuario autorizado**: `admin` y `viewer`.
-- **Información mostrada**: tarjetas de las métricas 1 a 9, 11 y 12, gráfico diario (métrica 10), zona horaria y período activo. Cada tarjeta incluye un enlace a la definición de la métrica.
+- **Información mostrada**: tarjetas de las métricas 1 a 9, 11 y 12, gráfico diario (métrica 10), zona horaria y período activo. Cada tarjeta trae la definición de su métrica en un desplegable, con el texto en la pantalla: el catálogo no se sirve desde la aplicación ([brief-7.4](../decisions/brief-7.4-dashboard.md), D-3). La pantalla es la portada de la sesión, en `/`, y el marco común la enlaza como "Dashboard" (D-1).
 - **Acciones**: cambiar el período.
-- **Filtros**: período, por defecto los últimos 30 días completos.
+- **Filtros**: período, por defecto los últimos 30 días completos. Atajos de 7, 30 y 90 días más un rango personalizado, en la URL; no existe "todas las fechas", porque en métricas un período vacío es el de defecto y el máximo es de 366 días ([brief-7.4](../decisions/brief-7.4-dashboard.md), D-5).
 - **Paginación**: no aplica.
 - **Carga**: cada tarjeta carga por separado, así una métrica lenta no bloquea a las demás.
-- **Vacío**: "sin datos" cuando el denominador es 0. La métrica 12 muestra "no disponible" mientras la ingestión no esté habilitada en el entorno; la condición sale de la configuración, no de los datos (subfase 1.2, D-7).
+- **Vacío**: "sin datos" cuando el denominador es 0. La métrica 12 muestra "no disponible" cuando la ingestión no está configurada en el entorno **y** el período no registró eventos ([brief-7.3](../decisions/brief-7.3-metrica-de-errores-de-ingestion.md), D-1): la condición mira la configuración y los datos, y con eventos registrados los muestra aunque el endpoint esté apagado.
 - **Errores**: el fallo de una métrica se muestra en su tarjeta y no rompe el resto.
 - **Responsive**: tarjetas en una columna en móvil y gráfico con desplazamiento horizontal.
 - **Accesibilidad**: el gráfico tiene una tabla de datos alternativa.

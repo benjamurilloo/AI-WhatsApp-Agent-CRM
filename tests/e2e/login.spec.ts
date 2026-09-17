@@ -82,7 +82,7 @@ test("caso 1: un ingreso correcto lleva a / con la cookie de sesión según D-5"
 
   await expect(page).toHaveURL("/");
   await expect(
-    page.getByRole("heading", { name: "AI WhatsApp Agent CRM" }),
+    page.getByRole("heading", { name: "Dashboard", level: 1 }),
   ).toBeVisible();
 
   const cookie = await sessionCookie(page);

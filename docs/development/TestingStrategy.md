@@ -190,6 +190,17 @@
   - conversación de otra organización o id inválido, móvil a 375 px y axe en cada estado, en claro y oscuro.
 
   El caso 2 verifica que ni los documentos ni las respuestas de RSC de la pantalla 8 traen el cuerpo de un mensaje. Con un cuerpo agregado a la lista, ese caso falla; con el cuerpo interpretado como HTML, falla el caso 5 (evidencia en el brief-6.4).
+- Pantalla 2 cubierta en `tests/e2e/dashboard.spec.ts` (7.4), con conversaciones, mensajes y eventos de ingestión insertados por SQL y el cálculo a mano en un comentario:
+  - la portada de la sesión muestra el período resuelto, la zona horaria y "hoy no incluido"; sin datos, los conteos son `0` y las métricas con denominador dicen "Sin datos";
+  - las doce tarjetas con sus valores, incluidos el detalle de la 3, el promedio y la mediana de la 6, el conteo sin primera respuesta de la 9, los tres estados de la 11 y los grupos de la 12;
+  - `0`, "Sin datos" y el error de una tarjeta se distinguen entre sí en pantalla, y en un período sin actividad ninguna métrica con denominador muestra `0`;
+  - el período viaja en la URL por el selector y por navegación directa; uno inválido muestra un solo aviso, marca los campos y no calcula ninguna métrica;
+  - el gráfico diario con su tabla de datos, con un día sin actividad en `0` explícito, y el cambio de serie por la URL;
+  - un `viewer` ve lo mismo que un `admin`, y ni el HTML ni las respuestas RSC traen cuerpos, nombres de clientes, teléfonos ni referencias externas de ingestión;
+  - el fallo de una métrica: el caso renombra la tabla que lee la métrica 12, así que su consulta falla de verdad; la tarjeta muestra "No se pudo calcular" con el código con el que quedó en el log y las once restantes siguen mostrando sus valores. El nombre se restaura en un `finally`, y los end-to-end corren en serie;
+  - la definición de una métrica se abre con el teclado, y a 375 px las tarjetas son una columna sin desplazamiento horizontal, con axe en claro y oscuro en cada estado.
+
+  El estado "No disponible" necesita un servidor sin ingestión: el principal la enciende para el spec de ingestión (brief-6.5.3, D-6), así que ahí la métrica sin eventos es "Sin datos". Por eso `playwright.config.ts` levanta un segundo servidor en el puerto 3101, con la ingestión apagada, y el proyecto `chromium-sin-ingestion` corre solo `tests/e2e/dashboard-sin-ingestion.spec.ts`: sin eventos la tarjeta dice "No disponible" y no "Sin datos" ni `0`, y con eventos registrados muestra su valor aunque el endpoint esté apagado. Los dos proyectos comparten la base `_e2e` y corren en serie. La distinción entre los tres estados está cubierta además por los unitarios de `metricStateText` y por los casos de integración de la 7.3.
 - Todos los specs esperan que la página tenga título antes de analizar con axe (brief-6.4, D-6).
 
 ## Datos de prueba

@@ -1,6 +1,6 @@
 # 02 — Dashboard
 
-**Estado: diseñado.** Especificación: [Screens.md §2](../Screens.md#2-dashboard). Métricas: [MetricsCatalog.md](../../analytics/MetricsCatalog.md). Convenciones en el [índice](README.md).
+**Estado: implementado y validado en integración** en la subfase 7.4 ([brief-7.4](../../decisions/brief-7.4-dashboard.md)), con datos sintéticos. Tres detalles se resolvieron ahí: la pantalla vive en `/` y el marco común la enlaza como "Dashboard" en lugar de "Inicio" (D-1); "Definición" es un desplegable con el texto en la pantalla, no un enlace al catálogo, que no se sirve desde la aplicación (D-3); el selector de serie del gráfico son dos enlaces que viajan en la URL, sin estado de cliente (D-4). Especificación: [Screens.md §2](../Screens.md#2-dashboard). Métricas: [MetricsCatalog.md](../../analytics/MetricsCatalog.md). Convenciones en el [índice](README.md).
 
 Este es el único wireframe que dibuja el marco común; las demás pantallas lo omiten.
 
@@ -86,9 +86,9 @@ Este es el único wireframe que dibuja el marco común; las demás pantallas lo 
 | Métricas 1 a 9 y 11 | derivado: fórmula de cada métrica en `MetricsCatalog.md` sobre `conversations` y `messages` | |
 | "N sin cliente" (métrica 3) | derivado: conversaciones de A con `client_id IS NULL` | |
 | "N sin primera respuesta" (métrica 9) | derivado: población de la métrica 9 sin `outbound` posterior | |
-| Métrica 12 | derivado: `ingestion_events` con `status = 'failed'` | "No disponible" sale de la configuración del entorno, no de los datos (D-7 de la 1.2) |
+| Métrica 12 | derivado: `ingestion_events` con `status = 'failed'`, por origen y código | "No disponible" cuando la ingestión no está configurada **y** el período no registró eventos (7.3, D-1) |
 | Gráfico diario (métrica 10) | derivado: métricas 1, 2, 4 y 5 por día | con tabla alternativa |
-| Enlace "Definición" | enlace a la sección de la métrica en `MetricsCatalog.md` | |
+| Definición de la métrica | texto corto versionado en la pantalla, en un desplegable | el catálogo sigue siendo la fuente de verdad (7.4, D-3) |
 
 ## Acciones por rol
 

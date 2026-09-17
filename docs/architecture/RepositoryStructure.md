@@ -179,6 +179,7 @@ Ninguna carpeta se crea vacía: nace con el primer archivo real de la subfase qu
 | 7.1 — Métricas de volumen | En `src/modules/analytics/`: `index.ts`, `service.ts` (período y métricas 1 a 6 y 10), `repository.ts` (lecturas sobre `conversations/schema`) y `service.test.ts`, sin `schema.ts`; `tests/integration/analytics.test.ts` |
 | 7.2 — Métricas de respuesta y estado | Métricas 7, 8, 9 y 11 en `service.ts` y `repository.ts` de `analytics`; `tests/integration/analytics-response.test.ts` con su propio fixture y `tests/integration/analytics-helpers.ts`, con los ayudantes de inserción que comparten las dos suites de métricas |
 | 7.3 — Métrica de errores de ingestión | Métrica 12 en `service.ts` y `repository.ts` de `analytics`, que pasa a leer `ingestion/schema` y la interfaz pública de `ingestion`; `tests/integration/analytics-ingestion.test.ts` con su propio fixture, y el ayudante de inserción de eventos en `analytics-helpers.ts` |
+| 7.4 — Dashboard | Pantalla 2 en `src/app/(autenticado)/page.tsx`, que reemplaza la página provisional, con sus piezas en `_dashboard/` (período de la URL, textos de los estados, definiciones, formato, geometría del gráfico, tarjeta y tarjetas por métrica); `getMetricsPeriod` en `analytics`; `tests/e2e/dashboard.spec.ts` |
 | Fase 4 | `src/modules/catalog/` e `inventory/` |
 | Fase 5 | `src/modules/crm/` |
 | Fase 6 | `src/modules/conversations/` e `ingestion/` |

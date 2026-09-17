@@ -18,7 +18,7 @@ export default async function AuthenticatedLayout({
   const frame = await getAppFrame(context);
   const theme = await readTheme();
   const links = [
-    { href: "/", label: "Inicio" },
+    { href: "/", label: "Dashboard" },
     { href: "/productos", label: "Productos" },
     { href: "/clientes", label: "Clientes" },
     { href: "/conversaciones", label: "Conversaciones" },

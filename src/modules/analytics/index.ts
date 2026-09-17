@@ -1,4 +1,4 @@
-// Interfaz pública del módulo analytics (briefs 7.1, 7.2 y 7.3).
+// Interfaz pública del módulo analytics (briefs 7.1, 7.2, 7.3 y 7.4).
 export {
   DEFAULT_PERIOD_DAYS,
   getActiveConversations,
@@ -8,6 +8,7 @@ export {
   getIngestionErrors,
   getMessageCounts,
   getMessagesPerConversation,
+  getMetricsPeriod,
   getRespondedConversations,
   getResponseCoverage,
   getStatusDistribution,
@@ -24,6 +25,7 @@ export {
   type MetricsPeriod,
   type MetricsPeriodField,
   type MetricsPeriodInput,
+  type MetricsPeriodResult,
   type RatioMetric,
   type ResponseCoverage,
   type StatusDistribution,

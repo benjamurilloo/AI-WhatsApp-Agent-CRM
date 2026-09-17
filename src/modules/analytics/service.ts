@@ -103,6 +103,23 @@ async function withPeriod<T>(
   return { ok: true, period: { from, to, days, timezone }, value };
 }
 
+export type MetricsPeriodResult =
+  | { ok: true; period: MetricsPeriod }
+  | Failure<"FORBIDDEN">
+  | Failure<"VALIDATION_ERROR", { fields: MetricsPeriodField[] }>;
+
+// Resuelve el período una sola vez para toda la pantalla (brief-7.4, D-6): autoriza, toma la zona
+// de la organización y el "hoy" del reloj de la base, igual que cada métrica por dentro, pero sin
+// leer ninguna tabla de datos. Un período inválido es un error de la entrada compartida, no de una
+// métrica, así que la pantalla lo muestra una vez y no pide las doce.
+export async function getMetricsPeriod(
+  context: AuthContext,
+  input: MetricsPeriodInput,
+): Promise<MetricsPeriodResult> {
+  const result = await withPeriod(context, input, async () => null);
+  return result.ok ? { ok: true, period: result.period } : result;
+}
+
 // Métrica 1: conversaciones con started_at en el período.
 export function getConversationsStarted(
   context: AuthContext,
