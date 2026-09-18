@@ -25,6 +25,7 @@ Ubica en carpetas los módulos y las reglas de dependencia de [Overview.md](Over
 │   │   └── api/
 │   │       └── health/
 │   │           └── route.ts         GET /api/health
+│   ├── proxy.ts                     Cabeceras de seguridad y CSP con nonce por request (8.1)
 │   ├── modules/                     Un directorio por módulo de Overview.md
 │   │   └── <modulo>/
 │   │       ├── index.ts             Interfaz pública: lo único que otros importan
@@ -105,6 +106,7 @@ No hay otros módulos. Uno nuevo requiere primero cambiar la tabla de [Overview.
 - Las carpetas con guion bajo (`_auth/`, `_components/`, `_theme/`, `_fonts/`) son privadas de Next.js: no crean rutas. Guardan lo que comparten varias pantallas (3.5 y 4.0).
 - Las carpetas entre paréntesis, como `(autenticado)/`, son grupos de rutas: comparten un layout sin agregar un segmento a la URL. El layout del grupo muestra el marco común, pero no reemplaza la verificación de sesión de cada página y cada acción (3.7).
 - Un componente de cliente no importa `@/modules/*`: recibe datos y estado ya resueltos por la página o la Server Action.
+- `src/proxy.ts` (8.1) es el proxy de Next: corre antes de cada respuesta que no sea un estático y escribe las cabeceras de seguridad y la CSP con su nonce ([brief-8.1](../decisions/brief-8.1-endurecimiento-web.md), D-1). Existe solo por el nonce, que una cabecera estática de `next.config.ts` no puede dar. **No valida la sesión, no lee la base y no redirige**: eso sigue en cada página y cada acción ([brief-3.5](../decisions/brief-3.5-pantalla-de-inicio-de-sesion.md), D-6). Meterle lógica de dominio o de sesión necesita otra subfase con su brief.
 
 ### Código compartido
 

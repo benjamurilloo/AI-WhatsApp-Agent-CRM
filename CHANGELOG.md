@@ -2,6 +2,30 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-18 — Subfase 8.1 cerrada (Endurecimiento web)
+
+**Certifica:**
+
+- **Content-Security-Policy en enforce y cabeceras de seguridad** según el [brief-8.1](docs/decisions/brief-8.1-endurecimiento-web.md), con D-1 a D-6 resueltas según la recomendación. Las emite [`src/proxy.ts`](src/proxy.ts), nuevo, en todas las respuestas salvo los estáticos de Next.
+- **Nonce por request** (D-1): el proxy pone la política en la cabecera del request, de donde Next la lee para nonce-ar sus scripts, y en la de la respuesta. Por eso `script-src` no necesita `'unsafe-inline'` pese a que Next emite el payload RSC inline. El proxy existe solo para eso: no valida la sesión, no lee la base y no redirige, así que la D-6 de la 3.5 sigue vigente en lo suyo.
+- **Sin `'unsafe-inline'` en ninguna directiva y sin `'unsafe-eval'`**: `default-src 'self'`; `script-src` con nonce y `'strict-dynamic'`; `style-src-attr 'none'`; `object-src`, `base-uri`, `frame-ancestors` y `frame-src` en `'none'`.
+- **La medición de D-3 desmintió una suposición del brief**: se anticipaba que los `<style>` inline obligarían a `'unsafe-inline'` en `style-src`, y se dejaba como limitación aceptable. Las diez pantallas se recorrieron en report-only, en claro y oscuro, con **cero violaciones**, y una corrida con `style-src 'self'` sin nonce también dio cero: las pantallas no tienen ni un `<style>` inline ni un atributo `style=`. La limitación aceptada no se usó.
+- **Cabeceras** (D-2): `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`, `Cross-Origin-Opener-Policy: same-origin` y `Permissions-Policy` negando cámara, micrófono y geolocalización.
+- **CSRF demostrado, no confiado al framework** (D-5): un test captura una Server Action real y la reenvía con el `Origin` de otro sitio; Next aborta con 500 y la base no cambia.
+- **Evidencia de mutación**, las tres con efecto: `style-src 'none'` hace fallar el recorrido con violaciones nombradas, así que el colector no está roto; quitar el nonce de `script-src` rompe la hidratación y hace fallar tres casos; agregar el origen atacante a `serverActions.allowedOrigins` hace que la acción pase de 500 a 200, así que el caso de CSRF mide la guarda y no un 500 accidental.
+- **Tests**: `tests/e2e/security-headers.spec.ts` (5 casos). Suite completa: 707 de 707 unitarios y de integración, y **81 de 81 end-to-end** — los 76 existentes sin modificar más los 5 nuevos. Ninguna pantalla necesitó cambios para cumplir la CSP.
+- **Nivel alcanzado**: **validado en integración** (`producer-consumer`) para las cabeceras, la CSP y el rechazo CSRF, con Chromium real sobre `next start` y PostgreSQL real, sin mocks.
+
+**No certifica:**
+
+- **`Strict-Transport-Security`**: está definido en [SecurityModel](docs/architecture/SecurityModel.md) pero **no se emite**, porque sin TLS no hace nada. Se enciende en la Fase 9, junto con la cookie detrás de TLS y de un proxy real.
+- **Reporte de violaciones de CSP**: no hay `report-uri` ni endpoint receptor; quedó fuera de alcance.
+- **Navegadores distintos de Chromium**: la política se midió solo ahí. `'strict-dynamic'` cambia de comportamiento en navegadores que no lo entienden.
+- **La revisión ítem por ítem de SecurityModel y del threat model**: es la 8.4. Esta subfase actualizó solo la sección que ella misma cambió.
+- **Logs sin PII, exportación y eliminación de datos de cliente** (8.2) y **auditoría de dependencias en CI** (8.3).
+- **El helper de verificación de `Origin`** previsto en la 3.4 (D-5): sigue sin escribirse porque no hay ningún Route Handler con sesión que lo consuma. Escribirlo sin consumidor sería un módulo especulativo.
+- **Revisión independiente**: es autoevaluación del mismo agente. El usuario aprobó el brief y el cierre.
+
 ## 2026-09-17 — Fase 7 cerrada (Métricas y dashboard)
 
 **Certifica:**
