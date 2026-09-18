@@ -1,10 +1,10 @@
 ---
 schema: project-state.v1
 project: ai-whatsapp-agent-crm
-generated_at: 2026-09-17
-git_ref: main — d1f5c96 en origin/main (CI en verde, 7.4), más el cierre de la Fase 7
-active_phase: ninguna; la Fase 7 está cerrada y sigue la Fase 8 — Calidad, seguridad y observabilidad
-active_task: ninguna; lo siguiente es abrir la Fase 8 y preparar el brief de su primera subfase
+generated_at: 2026-09-18
+git_ref: main — 9658bf1 en origin/main (CI en verde, 8.4), más el cierre de la 8.5 y de la Fase 8
+active_phase: ninguna; la Fase 8 está cerrada y sigue la Fase 9 — Staging y piloto controlado
+active_task: ninguna; lo siguiente es abrir la Fase 9 y preparar el brief de la 9.1
 confidence: confirmado
 ---
 
@@ -21,6 +21,7 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 ## 1. Identificación
 
 - **Proyecto**: AI WhatsApp Agent CRM. Independiente del agente de WhatsApp: no comparte código, infraestructura ni base de datos, y no depende de Airtable. `confirmado`
+- **Fase 8 — Calidad, seguridad y observabilidad, cerrada** el 2026-09-18, con sus cinco subfases (8.1 a 8.5) y CI en verde en cada commit. Gate de salida cumplido: revisión de seguridad sin bloqueantes. En Notion, el proyecto (`3d8702be6f4e81798158c549c734b218`), su tarea espejo (`3d8702be6f4e81bab85cf9819bb7048c`) y las cinco tareas están "Completado": 8.1 (`3d8702be6f4e81f497c6db8a25c1337f`), 8.2 (`3d8702be6f4e81128fb5eb0def5fc61a`), 8.3 (`3d8702be6f4e81f6817bd922a7e13e07`), 8.4 (`3d8702be6f4e81048071f23381ae249c`) y 8.5 (`3df702be6f4e81239b9efbb04dc4f36f`). `confirmado`
 - **Fase 7 — Métricas y dashboard, cerrada** el 2026-09-17, con sus cuatro subfases. Estado en Notion:
   - el proyecto (`3d8702be6f4e812fbe7ad0ec132bcedf`) está "En progreso";
   - su tarea espejo (`3d8702be6f4e81939baee9107b3e3c7c`) está "En proceso";
@@ -35,6 +36,12 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 
 ## 2. Último punto aprobado
 
+- **Fase 8 — Calidad, seguridad y observabilidad**, cerrada a pedido del usuario el 2026-09-18. Gate de salida cumplido: revisión de seguridad sin bloqueantes, sin hallazgos críticos abiertos y con los no críticos en `Risks.md` con su plan. Detalle en [CHANGELOG.md](CHANGELOG.md). `confirmado`
+- **Subfase 8.5 — Rendimiento de los listados**, cerrada el 2026-09-18, con D-1 a D-6 según la recomendación y autorización explícita para escribir en la base de desarrollo. El seed de volumen se extendió a productos, inventario y miembros; once consultas medidas; **ningún índice faltaba y nada resultó patológico**, así que D-5 no se activó y `src/` no se tocó. Detalle en el [brief-8.5](docs/decisions/brief-8.5-rendimiento-de-listados.md). `confirmado`
+- **Subfase 8.4 — Revisión de seguridad**, cerrada el 2026-09-18, con D-1 a D-6 según la recomendación. 95 afirmaciones con veredicto; tres hallazgos mayores abiertos y ninguno crítico; guarda nueva de superficie expuesta. Es **autoevaluación**, no revisión independiente. CI en verde en `9658bf1` ([ejecución 35392853821](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35392853821)). `confirmado`
+- **Subfase 8.3 — Dependencias**, cerrada el 2026-09-18, con D-1 a D-5 según la recomendación. Dos puertas de auditoría en CI; los cuatro avisos conocidos aceptados con condición de salida. CI en verde en `cae7061` ([ejecución 35386198342](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35386198342)). `confirmado`
+- **Subfase 8.2 — Logs y privacidad**, cerrada el 2026-09-18, con D-1 a D-4 según la recomendación y dos desvíos confirmados por el usuario (el test de integración nuevo, y `package.json` sin tocar, así que los scripts se invocan con `npx tsx`). CI en verde en `1b124a1` ([ejecución 35381730196](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35381730196)). `confirmado`
+- **Subfase 8.1 — Endurecimiento web**, cerrada el 2026-09-18, con D-1 a D-6 según la recomendación. De su cierre salió la subfase 8.5. CI en verde en `a5518ad` ([ejecución 35356670129](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35356670129)). `confirmado`
 - **Fase 7 — Métricas y dashboard**, cerrada a pedido del usuario el 2026-09-17. Gate de salida cumplido: las doce métricas probadas individualmente, cada tanda con su fixture y su cálculo a mano, y la pantalla 2 validada en integración. Detalle en [CHANGELOG.md](CHANGELOG.md). `confirmado`
 - **Subfase 7.4 — Dashboard**, cerrada con autorización del usuario el 2026-09-17, con D-1 a D-6 según la recomendación y dos desvíos autorizados en el turno: las tres aserciones end-to-end que nombraban la página provisional, y `playwright.config.ts` con `tests/e2e/dashboard-sin-ingestion.spec.ts`, que agregan un segundo servidor de end-to-end con la ingestión apagada para poder ver "No disponible" en el navegador. Detalle en [CHANGELOG.md](CHANGELOG.md) y en el [brief-7.4](docs/decisions/brief-7.4-dashboard.md). CI en verde en `d1f5c96` ([ejecución 35283074243](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35283074243)). `confirmado`
 - **Subfase 7.3 — Métrica de errores de ingestión**, cerrada con autorización del usuario el 2026-09-17, con D-1 a D-4 según la recomendación y una ampliación autorizada: la medición de D-4 se hizo con las dos opciones, `EXPLAIN` sobre la tabla vacía y volumen sintético en la base de test. Ninguna condición de detención quedó activa. Con ella **el catálogo de métricas queda completo**: las doce implementadas. Detalle en [CHANGELOG.md](CHANGELOG.md) y en el [brief-7.3](docs/decisions/brief-7.3-metrica-de-errores-de-ingestion.md). CI en verde en `a66d655` ([ejecución 35272618405](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35272618405)). `confirmado`
@@ -54,16 +61,21 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 
 ## 3. Próximo paso
 
-1. **Al retomar**: verificar que el commit de cierre de la Fase 7 esté en `origin/main` con la CI en verde (`gh run list -L 1`). `pendiente`
-2. **Abrir la Fase 8 — Calidad, seguridad y observabilidad** (Roadmap): verifica los requisitos no funcionales contra el código real, antes de staging. Su alcance son CSP, CSRF y XSS; logs sin datos personales y el procedimiento de exportación y eliminación de datos de cliente; auditoría de dependencias en la CI; y la revisión de [SecurityModel.md](docs/architecture/SecurityModel.md) y del threat model ítem por ítem. Subfases 8.1 a 8.4. Su gate de entrada son las Fases 3 a 7 cerradas, que ya lo están. `confirmado`
-3. **Lo que la Fase 8 hereda y conviene tener a mano**:
-   - el rate limiting se implementó en la 3.3 (ingreso) y en la 6.5.3 (ingestión), y en la Fase 8 se verifica, no se reimplementa;
+1. **Al retomar**: verificar que el commit de cierre de la Fase 8 esté en `origin/main` con la CI en verde (`gh run list -L 1`). `pendiente`
+2. **Abrir la Fase 9 — Staging y piloto controlado** (Roadmap): ejercitar el sistema en un entorno equivalente a producción, sin tráfico real. Su alcance es infraestructura de staging con gestor de secretos, backups automáticos con restauración probada, datos sintéticos de volumen y el piloto. Subfases 9.1 a 9.4. Su gate de entrada es la Fase 8 cerrada, que ya lo está. `confirmado`
+3. **Lo que la Fase 9 hereda y conviene tener a mano**:
+   - **es la primera fase que despliega algo**: hasta acá nada corre fuera de la máquina de desarrollo y de la CI;
+   - **la Fase 9 aplica la disciplina de ventana de observación** durante el piloto (Roadmap): cada observación se registra en `docs/decisions/notas-piloto-9.md` sin implementar cambios hasta el triage;
+   - **seis afirmaciones del modelo de seguridad quedaron `no-verificable-aquí`** y son deuda de esta fase: HSTS, la cookie `__Host-` bajo TLS, `TRUSTED_PROXY` con un proxy real, los backups y su restauración, el gestor de secretos (9.1) y la conexión con el rol `crm_app`;
+   - **los tres hallazgos mayores de la 8.4 siguen abiertos**, con su plan en `Risks.md`: el bloqueo global del ingreso sin proxy de confianza (H-3), la falta de prueba del límite por IP (H-2) y la lectura de usuarios sin filtro de organización (H-1). H-2 y H-3 se resuelven juntos y conviene hacerlo al montar el proxy;
+   - **los planes de consulta se midieron con una sola organización**, que tiene casi todas las filas: medir con varias es de esta fase;
+   - **ninguna métrica está validada con datos reales**, y el rendimiento del dashboard —doce consultas por carga— nunca se midió fuera de local;
+   - **la reevaluación de APM y tracing** se movió acá en la 8.4 (D-6), porque pide evidencia que sin entorno desplegado no existe;
    - la CI no bloquea pushes ni merges: el plan gratuito no ofrece protección de rama, y se compensa verificando la CI antes de cada cierre (Risks);
-   - hay dos guardas versionadas con casos que demuestran que fallan: referencias prohibidas y frontera entre módulos;
+   - hay **cinco guardas** versionadas con casos que demuestran que fallan: referencias prohibidas, frontera entre módulos, escrituras de stock, superficie de logs y superficie expuesta;
    - el bloque de ESLint de `analytics` no le prohíbe importar `next` ni `@/app/*`: corregirlo necesita una subfase que autorice tocar `eslint.config.mjs`;
-   - el paso de guardas de `ci.yml` sigue con un nombre que conviene renombrar cuando una subfase lo autorice;
-   - ninguna métrica está validada con datos reales, y el rendimiento del dashboard —doce consultas por carga— nunca se midió fuera de local (Fase 9);
-   - los textos de las definiciones de las métricas están duplicados respecto del catálogo, que es la fuente de verdad (7.4, D-3).
+   - los textos de las definiciones de las métricas están duplicados respecto del catálogo, que es la fuente de verdad (7.4, D-3);
+   - **`unaccent` para buscar sin acentos** estaba asignado a la Fase 8 en el brief-4.4 y ninguna subfase lo tomó; se detectó en el preflight del cierre y **está pendiente de destino** (ver §11).
 
    `confirmado`
 
@@ -79,7 +91,7 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 | Rol de aplicación y solo inserción | ADR 0013 con nota de la 6.1; `audit_logs`, `inventory_movements` y `messages`; `ingestion_events` sin borrado | [decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md](docs/decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md) |
 | Esquema de catálogo e inventario | `products`, `inventories`, `inventory_movements`; migraciones 0004 a 0007 | [src/modules/catalog/schema.ts](src/modules/catalog/schema.ts), [src/modules/inventory/schema.ts](src/modules/inventory/schema.ts) |
 | Esquema de clientes | `clients`; migraciones 0008, 0009 y 0010 (`UNIQUE(organization_id, id)`) | [src/modules/crm/schema.ts](src/modules/crm/schema.ts) |
-| Seeds | `seedBasic` (sin cambios; lo usan los end-to-end); `seedConversations` (ejemplo, en `npm run db:seed`, fechas fijadas en la primera corrida); `seedVolume` (`npm run db:seed:volume`, organización y usuario propios, determinista por fila) | [seeds/](seeds/basic.ts), [Environments.md](docs/development/Environments.md) |
+| Seeds | `seedBasic` (sin cambios; lo usan los end-to-end); `seedConversations` (ejemplo, en `npm run db:seed`, fechas fijadas en la primera corrida); `seedVolume` (`npm run db:seed:volume`, organización y usuario propios, determinista por fila), **extendido en la 8.5** a 10.000 productos, 8.563 saldos, 37.967 movimientos y 500 miembros, con el saldo derivado de la cadena de movimientos y un hash de contraseña compartido por los usuarios sintéticos | [seeds/](seeds/basic.ts), [Environments.md](docs/development/Environments.md) |
 | Esquema de conversaciones e ingestión | `conversations` y `messages` (solo inserción) en `conversations`; `ingestion_events` (identidad inmutable, sin borrado) en `ingestion`; migraciones 0011 y 0012 | [src/modules/conversations/schema.ts](src/modules/conversations/schema.ts), [src/modules/ingestion/schema.ts](src/modules/ingestion/schema.ts) |
 | Interfaz pública de `crm` | `createClient`, `updateClient`, `deactivateClient`, `reactivateClient`, `getClient`, `searchClients`, `CLIENTS_PAGE_SIZE`, `listClientAudit`, `listClientOrderKeys`, `getClientsByIds`, `findClientIdByPhone(tx, …)` (solo el id, para la ingestión), `ClientPhone` y sus tipos; el teléfono sale enmascarado para `viewer` | [src/modules/crm/index.ts](src/modules/crm/index.ts) |
 | Interfaz pública de `conversations` | `listConversations`, `getConversation`, `listConversationMessages` (cursor `before`), `changeConversationStatus` (solo `admin`, auditado), `getClientActivity`, `searchClientsByLastInteraction`, `recordIngestedMessage(tx, …)` (proyección de la ingestión), `CONVERSATION_STATUSES`, `CONVERSATION_CHANNELS`, `CONVERSATIONS_PAGE_SIZE` (25), `MESSAGES_PAGE_SIZE` (50) y sus tipos; la lista no entrega cuerpos | [src/modules/conversations/index.ts](src/modules/conversations/index.ts) |
@@ -99,7 +111,10 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 | Marco común | route group `(autenticado)`: organización, navegación (Productos, Clientes, Conversaciones y Usuarios), usuario, tema y salida | [src/app/(autenticado)/layout.tsx](<src/app/(autenticado)/layout.tsx>) |
 | Pantallas implementadas | 1, 3 a 9 y 10, con filtros en `filters.ts` y mensajes en `messages.ts` por ruta; teléfono con `phoneDisplay` y `PhoneText`; tabla y etiqueta de estado de conversaciones compartidas por la 7 y la 8 | [productos/](<src/app/(autenticado)/productos/page.tsx>), [clientes/](<src/app/(autenticado)/clientes/page.tsx>), [conversaciones/](<src/app/(autenticado)/conversaciones/page.tsx>), [usuarios/](<src/app/(autenticado)/usuarios/page.tsx>) |
 | Estructura del repositorio | aprobada; lo de la 2.x, las Fases 3 a 5, la 6.1 a la 6.5.3, la 7.1 y la 7.2, implementado; `src/shared/http/` y `scripts/` desde la 6.5.3 | [architecture/RepositoryStructure.md](docs/architecture/RepositoryStructure.md) |
-| CI | dependencias, desfase, lint, typecheck, formato, guardas, unitarios, integración, build, Chromium y end-to-end | [.github/workflows/ci.yml](.github/workflows/ci.yml) |
+| CI | dependencias, **auditoría con dos puertas** (`--omit=dev --audit-level=high` y `--audit-level=critical`), desfase, lint, typecheck, formato, guardas, unitarios, integración, build, Chromium y end-to-end | [.github/workflows/ci.yml](.github/workflows/ci.yml) |
+| Cabeceras y CSP | `src/proxy.ts` (en Next 16 el archivo de middleware se llama `proxy.ts`): CSP en enforce con nonce por request, `strict-dynamic`, sin `'unsafe-inline'`, más nosniff, Referrer-Policy, COOP y Permissions-Policy. Solo emite cabeceras: no valida sesión, no lee la base y no redirige | [src/proxy.ts](src/proxy.ts), [brief-8.1](docs/decisions/brief-8.1-endurecimiento-web.md) |
+| Guardas | cinco: referencias prohibidas, frontera entre módulos, escrituras de stock, superficie de logs (8.2) y **superficie expuesta** (8.4), que declara los 20 puntos de entrada con su exigencia de sesión | [tests/guards/](tests/guards/) |
+| Datos de un cliente | runbook de operador y dos scripts (`npx tsx scripts/…`): la exportación es completa; el borrado de un cliente con conversaciones es una **minimización**, no una eliminación, y no se audita en la base | [runbooks/datos-de-un-cliente.md](docs/runbooks/datos-de-un-cliente.md), [scripts/](scripts/) |
 | Entornos | Docker Compose; migraciones; base `_test`; rol `crm_app`; seed básico; base `_e2e` | [development/Environments.md](docs/development/Environments.md) |
 | Modelo de datos | todas las tablas implementadas; conversaciones con su servicio y sus pantallas; ingestión con su esquema, la validación del contrato, el registro con proyección, las credenciales de servicio y el límite de tasa (`ingestion_credentials` e `ingestion_rate_windows`, migraciones 0013 y 0014); `ingestion_events` sin columnas de resultado (6.5.1, D-5) | [architecture/DataModel.md](docs/architecture/DataModel.md) |
 | Modelo de seguridad | autenticación, autorización, auditoría, ingreso, gestión de miembros, enmascarado del teléfono y autenticación de servicio de la ingestión implementados; `Origin` sin verificar en el endpoint de ingestión, que no usa la sesión (6.5.3, D-5) | [architecture/SecurityModel.md](docs/architecture/SecurityModel.md) |
@@ -113,7 +128,18 @@ Nivel del proyecto: **validado en integración** para la pantalla 2 del dashboar
 
 | Afirmación | Nivel | Evidencia |
 |---|---|---|
-| Todos los pasos de CI, incluido el desfase de migraciones y el end-to-end | validado en CI | Ejecución 35283074243 `success`, commit `d1f5c96` `confirmado` |
+| Todos los pasos de CI, incluida la auditoría de dependencias y el end-to-end | validado en CI | Ejecución 35392853821 `success`, commit `9658bf1` `confirmado` |
+| CSP en enforce con nonce por request y cuatro cabeceras de seguridad, en las diez pantallas, en claro y oscuro, con cero violaciones | validado en integración | `tests/e2e/security-headers.spec.ts` (5), con una corrida de mutación contra el propio instrumento (`style-src 'none'` → 3 violaciones) `confirmado` |
+| Una Server Action con `Origin` ajeno se aborta y no escribe en la base | validado en integración | mismo spec; Next responde 500, no 403, y la mutación que agrega el origen a `allowedOrigins` la hace pasar a 200 `confirmado` |
+| Los logs no llevan datos personales ni cuerpos de mensajes | validado localmente, en guarda y en integración | unitarios del formateador, `tests/guards/log-surface.test.ts` y `tests/integration/log-privacy.test.ts`, con mutaciones con efecto `confirmado` |
+| `next start` no registra las peticiones; `next dev` sí, con la query completa | medición local, los dos modos | brief-8.2; registrado en SecurityModel y Risks, sin corregir `confirmado` |
+| Un cliente con conversaciones no se puede borrar ni anonimizar con ningún rol | validado localmente | `tests/integration/client-data.test.ts` (10): la cadena se verificó ejecutándola, no leyendo el esquema `confirmado` |
+| La CI falla ante una vulnerabilidad alta en producción o crítica en el árbol | validado localmente y en CI | dos puertas en `ci.yml`; con el umbral bajado a `moderate` la auditoría sale en código 1 (brief-8.3) `confirmado` |
+| Los 20 puntos de entrada exigen la sesión y el rol que declaran | revisión por lectura, fijada por guarda | brief-8.4 §superficie expuesta y `tests/guards/exposed-surface.test.ts`; la guarda comprueba la declaración, no el mecanismo `confirmado` |
+| El modelo de seguridad coincide con el código | revisión declarada como autoevaluación | brief-8.4: 95 afirmaciones con veredicto, 3 hallazgos mayores abiertos, ninguno crítico `confirmado` |
+| Rate limiting: por cuenta en el ingreso y por credencial en la ingestión | validado localmente y en CI | `auth-service.test.ts` e `ingestion-http.test.ts` caso 9. **El límite por IP no tiene prueba** (H-2) `confirmado` |
+| Las consultas de listado de productos, inventario y clientes usan sus índices; ninguna es patológica | medición local con volumen sintético | brief-8.5: once planes con `EXPLAIN (ANALYZE, BUFFERS)` y ocho caminos completos; con una sola organización, falta staging `confirmado` |
+| Suite completa local tras la Fase 8 | validado localmente | 62 guardas, 302 unitarios, 390 de integración y 81 end-to-end `confirmado` |
 | Pantalla 2: las doce métricas con el cálculo a mano, período en la URL, período inválido sin calcular nada, gráfico con tabla de datos, `0` frente a "Sin datos", el fallo aislado de una tarjeta con una falla real, teclado, móvil y axe en claro y oscuro | validado en integración (`producer-consumer`) | `tests/e2e/dashboard.spec.ts` (9) y `tests/e2e/dashboard-sin-ingestion.spec.ts` (2, con la ingestión apagada, para "No disponible"), con cinco corridas de mutación en el brief-7.4 `confirmado` |
 | Partes puras de la pantalla 2: período de la URL, formato de los valores, textos de los tres estados y geometría del gráfico | validado localmente y en CI | 27 unitarios en `src/app/(autenticado)/_dashboard/` `confirmado` |
 | Métrica 12: conteo, tasa y grupos calculados a mano, invariantes del catálogo, bordes del período, día local frente a UTC, los tres estados distinguidos entre sí, aislamiento, autorización y respuestas sin referencias externas ni hashes | validado localmente y en CI (`deterministic`) | `tests/integration/analytics-ingestion.test.ts` (11) y `analytics/service.test.ts` (4 de disponibilidad), con cinco corridas de mutación en el brief-7.3, todas con efecto `confirmado` |
@@ -143,7 +169,7 @@ Nivel del proyecto: **validado en integración** para la pantalla 2 del dashboar
 | Ajuste secuencial atómico; movimientos inmutables; servicio de catálogo | validado localmente y en CI | `inventory-adjustment.test.ts`, `catalog-inventory-schema.test.ts`, `stock-writes.test.ts`, `catalog.test.ts` `confirmado` |
 | Pantallas 1 y 10 y marco común | validado en integración (`producer-consumer`) | `login.spec.ts` (12) y `users.spec.ts` (13) `confirmado` |
 | Regla del último `admin`, auditoría de miembros y `audit_logs` de solo inserción | validado localmente y en CI | `members.test.ts` y `audit.test.ts` `confirmado` |
-| Suite completa local | validado localmente | `npm run test`: 707 de 707 y `npm run test:e2e`: 76 de 76 (7.4) `confirmado` |
+| Suite completa local antes de la Fase 8 | validado localmente | `npm run test`: 707 de 707 y `npm run test:e2e`: 76 de 76 (7.4) `historico` |
 | Compatibilidad del contrato y de la autenticación con un emisor real | sin validar | proyecto de integración (Risks) `confirmado` |
 | La cookie detrás de TLS y de un proxy real; la aplicación restringida por `crm_app` | diseñado | Fases 8 y 9 `confirmado` |
 
@@ -152,7 +178,13 @@ Nivel del proyecto: **validado en integración** para la pantalla 2 del dashboar
 ### Vigentes
 
 - ADRs 0001 a 0013 aceptados. `confirmado`
-- Resoluciones de los briefs 1.1 a 1.3, 2.1 a 2.5, 3.1 a 3.7, 4.0 a 4.2, 4.3.1 a 4.3.3, 4.4, 5.1 a 5.3, 6.1 a 6.4, 6.5.1 a 6.5.3 y 7.1 en [docs/decisions/](docs/decisions/README.md). `confirmado`
+- Resoluciones de los briefs 1.1 a 1.3, 2.1 a 2.5, 3.1 a 3.7, 4.0 a 4.2, 4.3.1 a 4.3.3, 4.4, 5.1 a 5.3, 6.1 a 6.4, 6.5.1 a 6.5.3, 7.1 a 7.4 y **8.1 a 8.5** en [docs/decisions/](docs/decisions/README.md). `confirmado`
+- Convenciones que dejó la Fase 8, y que conviene aplicar en la 9:
+  - **el criterio se fija antes de mirar**: la severidad de una revisión (8.4, D-2) y el umbral de una medición (8.5, D-1) se aprueban antes de ejecutarla, para que no se acomoden al resultado;
+  - **un aviso que no se arregla hoy se acepta por escrito con condición de salida verificable**, no se silencia (8.3, D-2);
+  - **una medición mide el camino completo, no solo el plan**: la lista de stock tarda 4,5 ms de consulta y 133 ms de camino (8.5);
+  - **una guarda puede fijar la declaración cuando el mecanismo no se puede reconocer por patrón**, y entonces dice en su cabecera qué no comprueba (8.4, D-4);
+  - **una obligación diferida nombra una sola fase y, si el trabajo se reparte en subfases, llega hasta la subfase**; si no, no la toma nadie (8.4, D-5 y D-6; 8.5, D-6). `confirmado`
 - Convenciones:
   - enums `pgEnum`, `gen_random_uuid()`, `updated_at` en la aplicación y validación con `zod`;
   - resultados tipados con `Failure`, y orden de autorización `must_change_password` → rol → recurso filtrado por organización; un id que no es UUID devuelve `VALIDATION_ERROR` sin `fields` (4.4, D-6);
@@ -243,9 +275,9 @@ Nivel del proyecto: **validado en integración** para la pantalla 2 del dashboar
 
 ### Pendientes
 
-- **Eliminar los datos de un cliente** frente a `audit_logs` de solo inserción, que guarda su teléfono y notas (5.2, D-6): Fase 8, registrado en Risks. `confirmado`
+- **Eliminar los datos de un cliente** frente a `audit_logs` de solo inserción (5.2, D-6): **atendido en la 8.2** como minimización y no como eliminación, con runbook y scripts; el borrado real sigue abierto en Risks y exige revisar el ADR 0013. `confirmado`
 - **Recorridos completos de `conversations` con una sola organización grande** (6.3, D-4): se vuelven a medir con varias organizaciones en staging (Fase 9, Risks). `confirmado`
-- **Volumen de productos e inventario, y `EXPLAIN` de las consultas de las Fases 4 y 5**: Fase 8 (6.2, D-4; Risks). `confirmado`
+- **Volumen de productos e inventario, y `EXPLAIN` de las consultas de las Fases 4 y 5** (6.2, D-4): **cerrado en la 8.5**. Ningún índice faltaba. Falta medir con varias organizaciones (Fase 9, Risks). `confirmado`
 - **Cliente creado por el usuario en desarrollo**: "Matias Garavano", en la organización de ejemplo (2026-09-16 18:12 UTC). Los seeds no lo tocan. `confirmado`
 - **Retención de `messages`**: la Fase 9 revisa también su trigger de solo inserción. `confirmado`
 - **Verificación de `Origin`**: el endpoint de ingestión no la necesita (6.5.3, D-5); se implementa con el primer Route Handler que use la sesión. `confirmado`
@@ -254,12 +286,12 @@ Nivel del proyecto: **validado en integración** para la pantalla 2 del dashboar
 - **Frontera de `analytics` en ESLint**: su bloque no le prohíbe importar `next` ni `@/app/*`, a diferencia de los demás módulos de dominio, y la tabla de RepositoryStructure tampoco lo incluye (brief-7.1, hallazgo 9). Se corrige en una subfase que autorice `eslint.config.mjs` y su guarda. `confirmado`
 - **Nombre del paso de guardas en `ci.yml`**: no menciona `stock-writes.test.ts`. Se renombra en una subfase que autorice `ci.yml`. `confirmado`
 - **`proxy`**: se reevalúa con más rutas protegidas. `confirmado`
-- **Búsqueda sin distinguir acentos**, costo de listas en memoria y de `offset` con volumen real: Fase 8. `confirmado`
+- **Costo de las listas en memoria y del `offset` con volumen**: **medido en la 8.5**, los tres límites se sostienen. **La búsqueda sin distinguir acentos (`unaccent`) sigue pendiente y sin fase asignada**: ver §11. `confirmado`
 - **Lint de accesibilidad**: cuando `eslint-plugin-jsx-a11y` soporte ESLint 10. `confirmado`
 - **Timeouts bajo carga**: la guarda de frontera (4.0) y un caso de `product-audit.test.ts` (4.4) los superaron una vez en local; si se repiten en CI, subir el `testTimeout` del proyecto con su brief. `confirmado`
 - **Conexión con un rol con login miembro de `crm_app`, y `CREATEROLE` en un servicio gestionado**: Fases 8 y 9. `confirmado`
-- **Avisos de `npm audit`**: 4 moderados vía `drizzle-kit`. Fase 8. `historico`
-- **IP detrás de un proxy real** (`TRUSTED_PROXY`): Fase 8 o 9. `historico`
+- **Avisos de `npm audit`**: 4 moderados vía `drizzle-kit`, **aceptados por escrito en la 8.3** con condición de salida verificable (Drizzle Kit 1.0 suelta la cadena). No están silenciados: la CI los imprime. `confirmado`
+- **IP detrás de un proxy real** (`TRUSTED_PROXY`): **asignado a la Fase 9** en la 8.4 (D-5), donde existe el proxy. Hasta entonces rige H-3. `confirmado`
 - **Protección de rama**: se revisa si se suma otra persona o antes de producción (Fase 9). `historico`
 - **Revisiones del stack**: Node 26 al entrar a LTS (2026-10-28); TypeScript 7.1; Drizzle 1.0; `crypto.argon2` nativo. `historico`
 - **Ya asignadas a fases posteriores**: retención de mensajes → Fase 9; secretos → 9.1; backups → 9.2. `historico`
@@ -283,7 +315,10 @@ Nivel del proyecto: **validado en integración** para la pantalla 2 del dashboar
 - **Limitación aceptada (brief-3.5, D-4)**: quien robe la sesión del primer ingreso puede definir la contraseña sin la inicial. `historico`
 - **Solo inserción de `audit_logs` e `inventory_movements`**: con el rol dueño la defensa efectiva es el trigger. `confirmado`
 - **`npm run test` requiere la base local levantada.** `confirmado`
-- **Un solo agente planifica, implementa y revisa.** Toda revisión es autoevaluación. `confirmado`
+- **Un solo agente planifica, implementa y revisa.** Toda revisión es autoevaluación, incluida la revisión de seguridad de la 8.4. `confirmado`
+- **Tres hallazgos mayores abiertos de la 8.4**, con su plan en `Risks.md`: sin proxy de confianza todas las peticiones comparten la clave de IP, así que 20 ingresos fallidos de cualquiera bloquean el ingreso de todos (H-3); el límite por IP no tiene prueba (H-2); `findUserSummaries` lee usuarios por id sin filtro de organización, hoy solo con ids ya filtrados por sus llamadores (H-1). `confirmado`
+- **Un script de medición no funciona desde el scratchpad de la sesión**: `tsx` no resuelve `drizzle-orm` ni los alias `@/` fuera del árbol del proyecto. Va en `dist/`, que `.gitignore` excluye, y se borra al terminar (8.5). `confirmado`
+- **Una medición de paginación profunda necesita un `offset` que devuelva filas**, o mide el orden sin materializar la página (8.5). `confirmado`
 - **Tests con `db.execute` crudo**: `timestamptz` llega como texto; `numeric` llega con la escala completa (`"5.000"`); `ON DELETE RESTRICT` informa `23001`; ordenar en JavaScript para comparar mayúsculas. `confirmado`
 - **Formatear antes de verificar**: Prettier puede partir líneas y dejar sin efecto directivas. `confirmado`
 - **Avisos inocuos**: Vite por el import sin extensión en `vitest.config.mts`; Next.js por un `package-lock.json` en `C:\Users\benja`; Git por la conversión LF a CRLF. `confirmado`
@@ -294,13 +329,14 @@ Nivel del proyecto: **validado en integración** para la pantalla 2 del dashboar
 ## 8. Rutas necesarias para continuar
 
 - [CLAUDE.md](CLAUDE.md), este archivo, [CHANGELOG.md](CHANGELOG.md).
-- [planning/Roadmap.md](docs/planning/Roadmap.md): alcance, subfases, criterios y gates de la Fase 8.
-- [analytics/MetricsCatalog.md](docs/analytics/MetricsCatalog.md): definición de las 12 métricas.
-- FR-MET-01 a 03 en [product/FunctionalRequirements.md](docs/product/FunctionalRequirements.md); [product/Screens.md](docs/product/Screens.md) §2 y el [wireframe 02](docs/product/wireframes/02-dashboard.md).
-- [architecture/TraceabilityMatrix.md](docs/architecture/TraceabilityMatrix.md) (pantalla 2 y vista por métrica) y [architecture/DataModel.md](docs/architecture/DataModel.md) (`conversations`, `messages`, `clients` e `ingestion_events`).
-- [architecture/RepositoryStructure.md](docs/architecture/RepositoryStructure.md): módulo `analytics` y su frontera, que le permite leer los `schema.ts` de otros módulos pero no sus repositorios ni servicios.
-- Precedentes: [brief-6.3](docs/decisions/brief-6.3-servicio-de-consulta-y-estado.md) (consultas y períodos en la zona de la organización), [brief-6.2](docs/decisions/brief-6.2-seeds-sinteticos-de-conversaciones.md) (seeds y volumen) y [brief-6.5.1](docs/decisions/brief-6.5.1-contrato-de-ingestion.md) (D-6, métrica 12) y [brief-7.1](docs/decisions/brief-7.1-metricas-de-volumen.md) (período, forma de las métricas y medición) y [brief-7.2](docs/decisions/brief-7.2-metricas-de-respuesta-y-estado.md) (métricas de respuesta, población fuera del período y fixture propio) y [brief-7.3](docs/decisions/brief-7.3-metrica-de-errores-de-ingestion.md) (métrica 12, el estado "no disponible" y la medición sin datos reales) y [brief-7.4](docs/decisions/brief-7.4-dashboard.md) (pantalla 2, carga y error por tarjeta, y el segundo servidor de end-to-end).
-- [architecture/SecurityModel.md](docs/architecture/SecurityModel.md) y [product/NonFunctionalRequirements.md](docs/product/NonFunctionalRequirements.md), que son lo que la Fase 8 verifica ítem por ítem.
+- [planning/Roadmap.md](docs/planning/Roadmap.md): alcance, subfases, criterios y gates de la **Fase 9**, y su disciplina de ventana de observación durante el piloto.
+- [planning/Risks.md](docs/planning/Risks.md): los tres hallazgos mayores abiertos de la 8.4 y el índice de preguntas abiertas con su fase límite. Es lo primero que conviene leer al abrir la Fase 9.
+- [architecture/SecurityModel.md](docs/architecture/SecurityModel.md): revisado ítem por ítem en la 8.4; las seis afirmaciones `no-verificable-aquí` son deuda de la Fase 9.
+- [architecture/Overview.md](docs/architecture/Overview.md) §Despliegue y [development/Environments.md](docs/development/Environments.md): punto de partida del entorno de staging.
+- [architecture/TraceabilityMatrix.md](docs/architecture/TraceabilityMatrix.md): planes de consulta confirmados en la 6.3 y la 8.5; falta medir con varias organizaciones.
+- [architecture/DataModel.md](docs/architecture/DataModel.md) y [analytics/MetricsCatalog.md](docs/analytics/MetricsCatalog.md).
+- Precedentes de la Fase 8: [brief-8.1](docs/decisions/brief-8.1-endurecimiento-web.md) (CSP con nonce y CSRF demostrado), [brief-8.2](docs/decisions/brief-8.2-logs-y-privacidad.md) (logs y el procedimiento de datos de un cliente), [brief-8.3](docs/decisions/brief-8.3-dependencias.md) (auditoría en CI), [brief-8.4](docs/decisions/brief-8.4-revision-de-seguridad.md) (veredictos, severidad fijada antes de mirar, superficie expuesta) y [brief-8.5](docs/decisions/brief-8.5-rendimiento-de-listados.md) (seed de volumen extendido y método de medición).
+- [runbooks/datos-de-un-cliente.md](docs/runbooks/datos-de-un-cliente.md): el único runbook de operador que existe.
 
 ## 9. Cambios ajenos del usuario detectados
 
@@ -308,9 +344,10 @@ Ninguno en el repositorio. `confirmado`
 
 ## 10. Autorizaciones vigentes
 
-**Ninguna.** Las autorizaciones de la 7.4 (Notion, índice de decisiones, el segundo proyecto de Playwright, commitear los cambios que el usuario había dejado preparados, commit, push y cierre de la subfase y de la fase) quedaron consumidas al ejecutarse. Instalar dependencias, ejecutar migraciones, cambios en Notion y cualquier operación Git futura necesitan autorización explícita.
+**Ninguna.** Las de la Fase 8 (escribir en la base de desarrollo para el seed de la 8.5, commit, push, índice de decisiones, CHANGELOG, Notion y el cierre de fase) quedaron consumidas al ejecutarse. Instalar dependencias, ejecutar migraciones, cambios en Notion y cualquier operación Git futura necesitan autorización explícita en el turno.
 
 ## 11. Aspectos pendientes de confirmar
 
-- Que el commit de cierre de la Fase 7 esté en `origin/main` con la CI en verde.
-- La apertura de la Fase 8 y la aprobación del brief de su primera subfase, cuando se prepare.
+- Que el commit de cierre de la Fase 8 esté en `origin/main` con la CI en verde.
+- La apertura de la Fase 9 y la aprobación del brief de la 9.1, cuando se prepare.
+- **Destino de `unaccent` (búsqueda sin distinguir acentos)**: el [brief-4.4](docs/decisions/brief-4.4-ui-de-productos-e-inventario.md) lo asignó a la Fase 8 y ninguna de sus cinco subfases lo tomó; el alcance de la fase en el Roadmap tampoco lo enumeraba. Detectado en el preflight del cierre. No es de seguridad ni de rendimiento, así que no bloqueaba el gate. **Falta decidir si va a la Fase 9, después del MVP, o se descarta.** `confirmado`

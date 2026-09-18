@@ -71,6 +71,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-8.2](brief-8.2-logs-y-privacidad.md) | 8.2 — Logs y privacidad | aprobado y cerrado el 2026-09-18 |
 | [brief-8.3](brief-8.3-dependencias.md) | 8.3 — Dependencias | aprobado y cerrado el 2026-09-18 |
 | [brief-8.4](brief-8.4-revision-de-seguridad.md) | 8.4 — Revisión de seguridad | aprobado y cerrado el 2026-09-18 |
+| [brief-8.5](brief-8.5-rendimiento-de-listados.md) | 8.5 — Rendimiento de los listados | aprobado y cerrado el 2026-09-18 |
 
 ## Plantilla
 

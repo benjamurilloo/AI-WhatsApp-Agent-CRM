@@ -2,6 +2,54 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-18 — Fase 8 cerrada (Calidad, seguridad y observabilidad)
+
+Cierra contra los criterios del [Roadmap](docs/planning/Roadmap.md), con las cinco subfases cerradas y CI en verde en cada commit.
+
+**Certifica:**
+
+- **Gate de salida alcanzado: revisión de seguridad sin bloqueantes** (8.4). Ningún hallazgo crítico abierto; los no críticos están en [Risks](docs/planning/Risks.md) con su plan, que es exactamente lo que el criterio de aceptación de la fase pedía.
+- **Entregable de la fase**: `SecurityModel.md` verificado ítem por ítem — 95 afirmaciones con veredicto y evidencia, más las 6 filas del threat model.
+- **Los requisitos no funcionales de seguridad, privacidad y rendimiento quedaron contrastados contra el código real**, que era el objetivo de la fase:
+  - **8.1 Endurecimiento web**: CSP en enforce con nonce por request, sin `'unsafe-inline'` en ninguna directiva, más cuatro cabeceras de seguridad; el rechazo CSRF de las Server Actions pasó de confiarse al framework a estar demostrado. **Validado en integración.**
+  - **8.2 Logs y privacidad**: los logs no llevan datos personales, verificado en tres capas; y el procedimiento de exportación y borrado existe como runbook de operador, con su límite declarado: la exportación es completa, el borrado es una **minimización**. **Validado localmente y en integración.**
+  - **8.3 Dependencias**: la CI audita en cada ejecución con dos puertas de umbral explícito, y los cuatro avisos conocidos quedaron aceptados con condición de salida verificable en vez de silenciados. **Validado localmente y en CI.**
+  - **8.4 Revisión de seguridad**: el gate de la fase, con tres hallazgos mayores registrados y ninguno crítico, más una guarda nueva que fija los 20 puntos de entrada. **Revisión declarada como autoevaluación.**
+  - **8.5 Rendimiento de los listados**: once consultas medidas con `EXPLAIN (ANALYZE, BUFFERS)` sobre volumen sintético. **Ningún índice faltaba y ninguna consulta resultó patológica.** **Validado localmente.**
+- **La deuda de medición más vieja del proyecto quedó saldada.** La matriz de trazabilidad decía desde la subfase **1.2** que "ninguna consulta se ejecutó: los índices se asignan por la forma de la consulta descrita, no por un plan real". Ya no lo dice.
+- **Cuatro obligaciones que la fase se había asignado a sí misma y que ninguna subfase había tomado** se ejecutaron o se reasignaron con razón escrita (8.4 D-5 y D-6, 8.5 D-6): el rate limiting de ingestión y la minimización de FR-CLI-05 se verificaron; la IP real con proxy, la reevaluación de APM y la decisión de hosting pasaron a la Fase 9 y a la 9.1; las dos listas compuestas en memoria entraron en la 8.5.
+- **Nivel de validación de la fase**: *validado localmente, más revisión de seguridad declarada como autoevaluación* — el que el Roadmap fijó, sin inferir ninguno superior.
+
+**No certifica:**
+
+- **Que el sistema sea seguro ni que escale.** Certifica que lo declarado se contrastó contra el código, con el veredicto de cada afirmación a la vista, y que ninguna consulta de listado es patológica con una organización de 10.000 filas por tabla en una máquina de desarrollo.
+- **Revisión independiente**: las cinco subfases y su revisión las hizo el mismo agente. El Roadmap ya lo declaraba como riesgo de la fase y la fase no lo resolvió: lo declaró.
+- **Nada que exija TLS, proxy real, entorno persistente o varias organizaciones**: HSTS, la cookie `__Host-` bajo TLS, `TRUSTED_PROXY`, los backups y su restauración, el gestor de secretos, la conexión con el rol `crm_app` y los planes de consulta con varias organizaciones. Todo eso es Fase 9 y está nombrado, no omitido.
+- **Los tres hallazgos mayores de la 8.4**, que quedan abiertos con su plan: el bloqueo global del ingreso sin proxy de confianza, la falta de prueba del límite por IP y la lectura de usuarios sin filtro de organización.
+- **Búsqueda sin distinguir acentos** (`unaccent`): estaba asignada a la Fase 8 en [brief-4.4](docs/decisions/brief-4.4-ui-de-productos-e-inventario.md) y ninguna subfase la tomó. Detectada en el preflight de este cierre y **reasignada explícitamente**, no silenciada.
+
+---
+
+## 2026-09-18 — Subfase 8.5 cerrada (Rendimiento de los listados)
+
+**Certifica:**
+
+- **Las consultas de listado de las Fases 4 y 5 quedaron medidas con planes reales**, según el [brief-8.5](docs/decisions/brief-8.5-rendimiento-de-listados.md), con D-1 a D-6 resueltas según la recomendación. **El umbral se fijó antes de medir** (200 ms por consulta, 400 ms por camino completo), igual que la 8.4 fijó la severidad antes de revisar.
+- **Ningún índice faltaba.** Con un filtro selectivo el planificador elige los cinco índices que la matriz daba por buenos "por la forma de la consulta": los dos de `products`, los dos de `clients` y el de historial de `inventory_movements`, este último también como *Index Only Scan* para el total. **D-5 no se activó: `src/` no se tocó.**
+- **El seed de volumen se extendió** a 10.000 productos, 8.563 saldos, 37.967 movimientos y 500 miembros, en 8,2 s. Es determinista e idempotente —la segunda corrida devuelve los mismos siete conteos sin error— y la idempotencia sobre `inventory_movements` es por id, nunca por `UPDATE`, que el trigger rechazaría. Cuatro comprobaciones de consistencia dan cero filas en falta: el saldo coincide con la suma de sus movimientos y con el último `balance_after`, y ningún `balance_after` es negativo.
+- **Medir solo el plan habría dado un informe falso.** La lista de stock tarda **4,5 ms en la consulta y 133 ms en el camino completo**: el 96 % del tiempo ocurre después del `EXPLAIN`, en la composición en memoria. Fue la razón de decidir, antes de medir, que el umbral cubriera el camino completo y no solo la consulta.
+- **Los tres límites aceptados de [Overview](docs/architecture/Overview.md) se midieron en o por encima de su condición de revisión**: la lista de stock con 10.000 productos (cinco veces su límite de 2.000), la de miembros con 500 (su límite exacto) y la de clientes por última interacción con 10.000. Los tres se sostienen: 133 ms, 8,7 ms y 53,6 ms.
+- **Cuatro recorridos secuenciales registrados aunque cumplieran el tiempo**, por decisión de D-1: son consultas sin filtro selectivo sobre tablas de ~10.000 filas, donde recorrerlas enteras corresponde. El caso a vigilar —la última página de clientes por nombre, 24,7 ms— tiene su costo en el orden y crece con el total, y queda en [Risks](docs/planning/Risks.md) para medirlo con datos de staging.
+- **El hash de contraseña se calcula una vez y lo comparten los 500 usuarios sintéticos**, declarado en el seed: hashear 500 contraseñas con los parámetros de producción habría costado más que toda la medición, y este seed no prueba autenticación.
+- **Tests**: 62 de 62 de guardas, 302 de 302 unitarios y 390 de 390 de integración, sin escribir ni modificar ningún test — la suite ya ejercitaba el seed de volumen, así que la extensión quedó cubierta por tests existentes.
+
+**No certifica:**
+
+- **Que el sistema escale**: una organización, 10.000 filas por tabla, una máquina de desarrollo. Medir con **varias organizaciones** sigue siendo Fase 9, y la 6.3 ya había registrado que con una organización dueña de casi todas las filas el planificador no se comporta como lo hará en producción.
+- **Ningún objetivo de latencia productiva**: los umbrales son criterios de detección de patologías, no un SLA.
+- **El comportamiento con volúmenes mayores**: lo medido cubre el límite escrito en la NFR y las tres condiciones de revisión de `Overview`, y nada dice sobre 100.000 productos.
+- **Las pantallas**: se midieron los servicios, no el render ni la carga completa de la página.
+
 ## 2026-09-18 — Subfase 8.4 cerrada (Revisión de seguridad)
 
 **Certifica:**
