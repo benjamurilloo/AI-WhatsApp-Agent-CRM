@@ -52,6 +52,17 @@ jobs:
       - name: Instalar dependencias
         run: npm ci
 
+      # Dos puertas con umbral explícito (brief-8.3, D-1 y D-3): lo que se
+      # despliega no admite vulnerabilidades altas ni críticas; el árbol
+      # completo, que incluye las herramientas de desarrollo, solo críticas.
+      # Los avisos moderados conocidos de la cadena drizzle-kit →
+      # @esbuild-kit/esm-loader → esbuild están aceptados por escrito, con su
+      # condición de salida, en docs/planning/Risks.md.
+      - name: Auditoría de dependencias
+        run: |
+          npm audit --omit=dev --audit-level=high
+          npm audit --audit-level=critical
+
       # Falla si un schema.ts cambió sin generar su migración (brief-3.1, D-4).
       - name: Migraciones al día con los esquemas
         run: |
@@ -68,7 +79,8 @@ jobs:
       - name: Formato
         run: npm run format:check
 
-      - name: Guardas (referencias prohibidas y frontera entre módulos)
+      # El detalle de cuáles son vive en tests/guards/, no en este nombre.
+      - name: Guardas del repositorio
         run: npm run test:guards
 
       - name: Tests unitarios

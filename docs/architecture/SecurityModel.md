@@ -130,7 +130,19 @@ Implementada en la 6.5.3 ([brief-6.5.3](../decisions/brief-6.5.3-autenticacion-d
 
 ## Revisión de dependencias
 
-- Todo paquete de terceros agregado se revisa por mantenimiento activo y ausencia de vulnerabilidades conocidas antes de incorporarse; se ejecuta auditoría automática de dependencias en CI (Fase 8).
+- Todo paquete de terceros agregado se revisa por mantenimiento activo y ausencia de vulnerabilidades conocidas antes de incorporarse.
+- **La CI audita las dependencias en cada ejecución**, con dos puertas de umbral explícito ([brief-8.3](../decisions/brief-8.3-dependencias.md), D-1), inmediatamente después de instalar:
+
+  | Puerta | Comando | Qué cubre |
+  | --- | --- | --- |
+  | Producción | `npm audit --omit=dev --audit-level=high` | Lo que se despliega. Falla ante una vulnerabilidad alta o crítica. |
+  | Árbol completo | `npm audit --audit-level=critical` | Además, las herramientas de desarrollo. Falla solo ante una crítica. |
+
+  La separación es deliberada: una vulnerabilidad en algo que llega a un usuario y una en una herramienta que corre en la máquina de quien desarrolla no merecen el mismo umbral. Ninguna de las dos lleva `continue-on-error`.
+
+- **Medición del 2026-09-18**: `npm audit --omit=dev` informa **cero vulnerabilidades de cualquier severidad**. Lo que se despliega no arrastra ninguna vulnerabilidad conocida. Sobre el árbol completo hay **4 moderadas, 0 altas y 0 críticas**, todas de `devDependencies` y todas de una sola cadena (`drizzle-kit` → `@esbuild-kit/esm-loader` → `@esbuild-kit/core-utils` → `esbuild`), aceptadas por escrito con su condición de salida en [Risks](../planning/Risks.md).
+- **Alcance de la garantía**: una auditoría compara un lockfile contra una base de avisos **en un momento dado**, y esa base cambia sin que el proyecto cambie. Que la CI esté en verde hoy no dice nada sobre mañana; lo que la CI garantiza es que se vuelve a comprobar en cada ejecución. No es una garantía permanente ni sustituye la revisión al incorporar un paquete.
+- **La CI informa, no bloquea**: sin protección de rama, una auditoría en rojo no impide un push ni un merge (ver [EngineeringStandards](../development/EngineeringStandards.md) §CI).
 
 ## Separación de entornos
 

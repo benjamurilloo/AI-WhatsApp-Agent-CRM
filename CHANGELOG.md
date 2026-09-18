@@ -2,6 +2,34 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-18 — Subfase 8.3 cerrada (Dependencias)
+
+**Certifica:**
+
+- **La CI audita las dependencias en cada ejecución**, según el [brief-8.3](docs/decisions/brief-8.3-dependencias.md), con D-1 a D-5 resueltas según la recomendación. Son **dos puertas con el umbral escrito en el comando**, inmediatamente después de instalar y sin `continue-on-error`:
+  - `npm audit --omit=dev --audit-level=high` sobre lo que se despliega;
+  - `npm audit --audit-level=critical` sobre el árbol completo, que incluye las herramientas de desarrollo.
+
+  La separación es deliberada: una vulnerabilidad que llega a un usuario y una que corre en la máquina de quien desarrolla no merecen el mismo umbral. El umbral va explícito para no heredar el valor por defecto de npm, que puede cambiar entre versiones.
+
+- **Producción no arrastra ninguna vulnerabilidad conocida** (medición del 2026-09-18): `npm audit --omit=dev` informa cero de cualquier severidad. Por eso la puerta estricta sale gratis donde de verdad importa.
+- **Los cuatro avisos moderados conocidos quedan aceptados por escrito, no silenciados** (D-2): la cadena `drizzle-kit` → `@esbuild-kit/esm-loader` → `@esbuild-kit/core-utils` → `esbuild`, toda de `devDependencies`. Siguen visibles en la salida de la auditoría; no se agregó lista de excepciones, ni `overrides`, ni se corrió `npm audit fix`, cuyo arreglo es bajar `drizzle-kit` a 0.18.1, un major hacia atrás. Registrados en [Risks](docs/planning/Risks.md) **con condición de salida verificable**: desaparecen al adoptar Drizzle Kit 1.0, que reemplaza `@esbuild-kit/esm-loader` por `jiti` y declara `esbuild ^0.25.10`.
+- **La condición de salida se verificó sobre las versiones reales del registro.** El brief citaba una `1.0.0-rc.5` que **no existe con ese nombre**: la línea 1.0 solo publica prelanzamientos con sufijo de commit (`rc` → `1.0.0-rc.4`, `rc5` → `1.0.0-rc.5-5935859`) y `latest` sigue siendo `0.31.10`. La conclusión no cambió, pero ahora los identificadores son comprobables con un comando.
+- **Evidencia de mutación, con efecto**: con el umbral bajado a `moderate`, la auditoría falla con los cuatro avisos a la vista y sale en código 1. Sin esa corrida, un paso que siempre pasa es indistinguible de uno que no mira nada. El umbral mutado no se commiteó y la salida quedó en el brief.
+- **El paso de guardas dejó de mentir** (D-5): se llama "Guardas del repositorio" a secas. Nombraba dos de las cuatro guardas y ya se había desactualizado dos veces; el detalle de cuáles son vive en `tests/guards/` y en [EngineeringStandards](docs/development/EngineeringStandards.md), no en el nombre de un paso.
+- **Dos correcciones de documentación que la ejecución destapó**: la lista de pasos de CI de EngineeringStandards tenía el orden equivocado —ponía el control de desfase de migraciones después de lint, cuando en `ci.yml` va inmediatamente tras `npm ci`—, y la descripción de las guardas mencionaba dos de cuatro. Ninguna era un defecto de comportamiento: eran documentación citable y equivocada.
+- **Sin dependencias nuevas y sin tocar el lockfile**: `package.json` y `package-lock.json` quedaron fuera de los archivos autorizados a propósito, para que la subfase no pudiera volverse una actualización de dependencias encubierta.
+- **Tests**: 49 de 49 de guardas y 302 de 302 unitarios, sin modificar ningún test. Ningún paso existente de la CI cambió de comportamiento.
+
+**No certifica:**
+
+- **Que el proyecto esté libre de vulnerabilidades.** Una auditoría compara un lockfile contra una base de avisos **en un momento dado**, y esa base cambia sin que el proyecto cambie. Lo que la CI garantiza es que se vuelve a comprobar en cada ejecución, no que el resultado de hoy siga valiendo mañana.
+- **Que un aviso alto en una herramienta de desarrollo frene la CI**: la puerta del árbol completo está en `critical` por decisión de D-1. Queda escrito en [Risks](docs/planning/Risks.md) como consecuencia conocida, no descubierta.
+- **Que la auditoría impida un merge**: sin protección de rama, la CI informa y no bloquea. Es la limitación ya aceptada, y la política no promete más que eso.
+- **Actualización automática de dependencias** (Dependabot o Renovate), SBOM y verificación de procedencia de paquetes: fuera de alcance por D-4, registrados como mejora posterior.
+- **Adoptar Drizzle Kit 1.0**: es un cambio de versión mayor con su propia revisión, que además exige convertir `drizzle/` con `drizzle-kit up`. Esta subfase solo fijó la condición.
+- **Revisión independiente**: es autoevaluación del mismo agente. El usuario aprobó el brief con sus cinco recomendaciones y autorizó el cierre.
+
 ## 2026-09-18 — Subfase 8.2 cerrada (Logs y privacidad)
 
 **Certifica:**

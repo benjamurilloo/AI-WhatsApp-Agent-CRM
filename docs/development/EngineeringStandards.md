@@ -45,11 +45,11 @@ La versión exacta de cada paquete queda fijada en el lockfile al instalar (2.3)
 - `eslint-config-next` 16.3.5 trae `eslint-plugin-react`, `eslint-plugin-import` y `eslint-plugin-jsx-a11y`, que solo aceptan ESLint 9: por eso el lint se arma con plugins sueltos ([ADR 0011](../decisions/0011-lint-con-eslint-10-sin-eslint-config-next.md)). Verificado instalando en la 2.3: `npm install` sin avisos de dependencias pares.
 - Next.js 16.3.5 escribe reglas para agentes de IA en `CLAUDE.md` o `AGENTS.md` al correr `next dev`. `next.config.ts` lo desactiva con `agentRules: false`: las reglas del proyecto viven solo en `CLAUDE.md`.
 - Next.js 16.3.5 acepta React `^18.2.0 || ^19.0.0` y `@playwright/test ^1.51.1`.
-- Drizzle 1.0 cambia el formato de migraciones y trae `drizzle-kit up` para convertirlas. Al 2026-09-13 seguía en `1.0.0-rc.5` (registro npm), así que la migración inicial de la 3.1 se generó con `drizzle-kit` 0.31.10. Adoptar 1.0 más adelante requiere convertir `drizzle/` con `drizzle-kit up`.
+- Drizzle 1.0 cambia el formato de migraciones y trae `drizzle-kit up` para convertirlas. Al 2026-09-18 sigue sin versión estable: `latest` es 0.31.10 y la línea 1.0 solo publica prelanzamientos con sufijo de commit (`rc` → `1.0.0-rc.4`, `rc5` → `1.0.0-rc.5-5935859`). Por eso la migración inicial de la 3.1 se generó con `drizzle-kit` 0.31.10. Adoptar 1.0 más adelante requiere convertir `drizzle/` con `drizzle-kit up`, y **además saca del árbol los 4 avisos de `npm audit`**: la 1.0 reemplaza `@esbuild-kit/esm-loader` por `jiti` y declara `esbuild ^0.25.10` (verificado con `npm view` el 2026-09-18).
 - **Migraciones** ([brief-3.1](../decisions/brief-3.1-migraciones-de-identidad.md)): `drizzle-kit generate` las crea y `drizzle-kit migrate` las aplica a la base de desarrollo. Los tests y CI usan el migrador programático de `drizzle-orm` sobre la base `_test`. CI falla si un `schema.ts` cambió sin su migración.
 - **PostgreSQL 18 con Drizzle 0.45 y `pg` 8.23**: conectividad validada localmente en la 2.4. Los tests de integración ejecutan consultas con Drizzle contra `postgres:18.6-trixie` y comprueban `server_version_num` 18.x. Desde la 3.1, las tablas de identidad, el enum de rol, las unicidades y las claves foráneas también están validados localmente contra esa imagen. `postgres` 3.4 no se probó.
 - La imagen de PostgreSQL 18 guarda los datos en `/var/lib/postgresql/18/docker` y declara el volumen en `/var/lib/postgresql`. Un volumen montado en `/var/lib/postgresql/data`, como hasta la 17, no conserva los datos.
-- `drizzle-kit` 0.31.10 depende de `@esbuild-kit/esm-loader` (deprecado) y de un `esbuild` antiguo. Por eso `npm audit` informa 4 avisos moderados, que afectan solo al servidor de desarrollo de esbuild. Se registran para la Fase 8 sin `npm audit fix`, que bajaría `drizzle-kit` a 0.18.
+- `drizzle-kit` 0.31.10 depende de `@esbuild-kit/esm-loader` (deprecado) y, por debajo, de un `esbuild` antiguo. Por eso `npm audit` informa 4 avisos moderados, que afectan solo al servidor de desarrollo de esbuild. Sin `npm audit fix`, que bajaría `drizzle-kit` a 0.18.1, un major hacia atrás. Desde la 8.3 están aceptados por escrito con su condición de salida en [planning/Risks.md](../planning/Risks.md), y el umbral de la auditoría de CI los deja pasar sin silenciarlos.
 
 ## Convenciones de código
 
@@ -72,20 +72,24 @@ La versión exacta de cada paquete queda fijada en el lockfile al instalar (2.3)
 `.github/workflows/ci.yml` corre en cada push a `main` y en cada pull request, con Node 24 en `ubuntu-latest` ([brief-2.5](../decisions/brief-2.5-pipeline-de-ci.md)). Los pasos son, en orden:
 
 1. `npm ci`
-2. lint
-3. typecheck
-4. `format:check`
-5. desfase de migraciones: `db:generate` no debe cambiar `drizzle/` ([brief-3.1](../decisions/brief-3.1-migraciones-de-identidad.md))
-6. `test:guards`
-7. `test:unit`: proyecto `unit` de Vitest, `src/**/*.test.ts` ([brief-3.4](../decisions/brief-3.4-autorizacion-y-errores.md); hasta la 3.3 no corría en CI)
-8. `test:integration`, contra un service container `postgres:18.6-trixie` efímero
-9. build
-10. instalar Chromium de Playwright con sus dependencias del sistema
-11. `test:e2e`: Playwright sobre `next start` del build anterior, en la base `crm_ci_e2e` ([brief-3.5](../decisions/brief-3.5-pantalla-de-inicio-de-sesion.md), D-8)
+2. auditoría de dependencias: dos puertas con umbral explícito ([brief-8.3](../decisions/brief-8.3-dependencias.md))
+3. desfase de migraciones: `db:generate` no debe cambiar `drizzle/` ([brief-3.1](../decisions/brief-3.1-migraciones-de-identidad.md))
+4. lint
+5. typecheck
+6. `format:check`
+7. `test:guards`
+8. `test:unit`: proyecto `unit` de Vitest, `src/**/*.test.ts` ([brief-3.4](../decisions/brief-3.4-autorizacion-y-errores.md); hasta la 3.3 no corría en CI)
+9. `test:integration`, contra un service container `postgres:18.6-trixie` efímero
+10. build
+11. instalar Chromium de Playwright con sus dependencias del sistema
+12. `test:e2e`: Playwright sobre `next start` del build anterior, en la base `crm_ci_e2e` ([brief-3.5](../decisions/brief-3.5-pantalla-de-inicio-de-sesion.md), D-8)
 
-- **Guardas** (`tests/guards/`, sin base de datos):
+- **Auditoría de dependencias** (desde la 8.3): `npm audit --omit=dev --audit-level=high` para lo que se despliega y `npm audit --audit-level=critical` para el árbol completo. Va inmediatamente después de instalar, para que una vulnerabilidad crítica aparezca en los primeros segundos y no después de los tests. El umbral se escribe en el comando y no se hereda del valor por defecto de npm, que puede cambiar entre versiones. El detalle y los avisos aceptados están en [architecture/SecurityModel.md](../architecture/SecurityModel.md) §"Revisión de dependencias".
+- **Guardas** (`tests/guards/`, sin base de datos). Son cuatro, y el paso de CI se llama "Guardas del repositorio" a secas: el detalle de cuáles son vive en la carpeta, no en el nombre del paso, que quedó desactualizado dos veces por nombrarlas.
   - **referencias prohibidas**: Airtable o el repositorio del agente de WhatsApp en archivos versionados que no son `.md`;
-  - **frontera entre módulos**: aplica `eslint.config.mjs` a 9 archivos virtuales con `ESLint#lintText`.
+  - **frontera entre módulos**: aplica `eslint.config.mjs` a 9 archivos virtuales con `ESLint#lintText`;
+  - **escrituras de stock** (4.3.1): `inventories` e `inventory_movements` solo se escriben desde las funciones autorizadas de `src/modules/inventory/repository.ts`;
+  - **superficie de logs** (8.2): solo el módulo de log usa `console.*`, y ningún `route` de un evento se arma interpolando.
 
   Cada guarda incluye casos que demuestran que detecta lo que prohíbe.
 - **Acciones fijadas por SHA de commit**, con la versión en un comentario. Actualizarlas es un cambio explícito.
