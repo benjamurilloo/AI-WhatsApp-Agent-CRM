@@ -133,6 +133,18 @@ Y la severidad:
 
 **Recomendación: adoptarlo tal cual**, con una regla añadida: **un hallazgo crítico detiene la revisión y se reporta de inmediato** (condición de detención 2), en vez de anotarse y seguir.
 
+#### Enmienda del 2026-09-18 — cláusula de disponibilidad
+
+La revisión independiente encontró que esta escala **califica una fila del threat model que no puede expresar**. Los cuatro supuestos de "crítico" hablan solo de confidencialidad y de autorización, así que **ningún defecto de disponibilidad puede alcanzar el umbral por construcción** — y sin embargo el threat model tiene una fila de denegación de servicio, que esta misma escala graduó. Que H-3 fuera `mayor` no salió de mirar el código: salió de que la escala no tenía dónde ponerlo.
+
+No es que la equivalencia "bloqueante = crítico" no estuviera aprobada: **lo estaba**, porque está escrita en esta misma D-2 —"Crítico (bloquea el gate de la fase)"— y la D-2 se aprobó con el brief. El defecto es la enumeración, no la equivalencia.
+
+Se agrega un quinto supuesto, con el mismo criterio de fijarlo por escrito antes de aplicarlo:
+
+- **Crítico**, además de los cuatro anteriores: **permite a un actor no autenticado impedir el uso del sistema a todos los usuarios de una organización, a costo despreciable y de forma renovable.**
+
+Y una regla de aplicación que el resto del proyecto ya usaba sin escribirla: **la severidad se evalúa contra los entornos que existen, no contra los hipotéticos**, y cuando depende del entorno se declara condicional en vez de elegir el número cómodo.
+
 Pendiente de confirmación.
 
 ### D-3 — Qué se corrige dentro de la 8.4
@@ -241,6 +253,8 @@ El usuario aprobó las seis recomendaciones: **D-1 (b)**, **D-2** tal cual con l
 
 Quedan **tres hallazgos mayores** y tres menores, todos con su plan en [Risks](../planning/Risks.md).
 
+> **Ratificado el 2026-09-18 con una condición que antes no tenía** (§Resolución del gate). La escala D-2 se amplió con un supuesto de disponibilidad que le faltaba, H-3 quedó `crítico` en cualquier entorno compartido y `mayor` en el único que existe hoy, y **H-3 pasó a ser precondición bloqueante de la 9.1**. El veredicto se sostiene sobre los entornos que existen, no sobre los que vienen.
+
 ### Superficie expuesta (AC-3)
 
 **36 puntos de entrada**: 15 páginas, 19 Server Actions y 2 Route Handlers. Ninguno sin declarar. La guarda fija los 21 que no son páginas.
@@ -305,6 +319,15 @@ Del código (`login`): la clave de IP es `sha256(ip ?? "sin-proxy")`, y `clientI
 El mecanismo está documentado ("sin proxy de confianza todas las requests comparten una clave de IP"), pero **su consecuencia no está escrita en ninguna parte**, y es de otro orden que el mecanismo. Peor: la fila de denegación de servicio del threat model da "rate limiting en ambos puntos" como mitigación, cuando en esta configuración el límite del ingreso es también un **vector** de denegación de servicio, más barato de ejecutar que el que pretende frenar.
 
 No es `crítico` según la D-2 —no da acceso a nada— pero es el hallazgo con más consecuencia práctica de esta revisión.
+
+> **Reevaluado el 2026-09-18 bajo la D-2 con cláusula de disponibilidad.** H-3 cumple el quinto supuesto de crítico al pie de la letra: un actor no autenticado, con veinte peticiones fallidas, deja sin ingreso a todos los usuarios, y puede renovarlo indefinidamente. **La severidad es condicional y así queda declarada:**
+>
+> | Entorno | Severidad | Por qué |
+> | --- | --- | --- |
+> | Cualquiera compartido (staging, piloto, producción) | **crítico** | Hay a quién negarle el servicio y hay quien pueda hacerlo |
+> | El único que existe hoy: desarrollo local, un usuario, sin proxy y sin adversario | **mayor** | La condición técnica se cumple, pero no hay ni víctima ni atacante distintos del propio desarrollador |
+>
+> La regla de aplicación de la enmienda —evaluar contra los entornos que existen— es la que sostiene el segundo renglón, y es la misma por la que este proyecto no llama a nada "preparado para producción". **No es una atenuante permanente: deja de valer en el minuto en que exista el primer entorno compartido**, que es la Fase 9. Por eso la corrección no se agota en reclasificar: convierte H-3 en precondición bloqueante de la 9.1 (ver §Resolución del gate).
 
 **Plan**: decidir entre desactivar el límite por IP mientras no haya proxy de confianza (la clave compartida no aporta defensa y sí un riesgo) o mantenerlo con un umbral mucho más alto. La decisión no es de esta subfase; el riesgo queda registrado con las dos opciones.
 
@@ -446,6 +469,16 @@ Después de cerrada la Fase 8, un revisor que no participó del trabajo leyó es
 
 Y un defecto del instrumento, no del análisis: la guarda no detectaba las acciones escritas como constante. Corregido con su caso versionado.
 
-**Lo que esta corrección no resuelve, y queda como decisión del usuario.** El Roadmap fija para la Fase 8 dos cosas distintas: el criterio de aceptación "sin hallazgos críticos abiertos" y el gate de salida "revisión de seguridad **sin bloqueantes**". Esta subfase escribió que "sin bloqueantes" significa "ningún hallazgo alcanza el umbral de crítico de la D-2", y **esa equivalencia nunca se aprobó**: la definió el mismo agente que después la aplicó a su propio trabajo. Además la escala D-2 define lo crítico solo en términos de confidencialidad y de autorización, así que **un defecto de disponibilidad no puede alcanzar el umbral por construcción**, aunque el threat model trate la denegación de servicio como amenaza en alcance. Que H-3 —bloqueo global del ingreso, el hallazgo con más consecuencia práctica de la revisión— sea `mayor` y no `crítico` no salió de mirar el código: salió de la escala.
+### Resolución del gate (2026-09-18, por indicación del usuario)
 
-El criterio de aceptación está cumplido: no hay hallazgos críticos abiertos. El gate está declarado sobre una escala que no puede expresar el riesgo que la propia revisión señaló como el peor. Las dos salidas son ampliar la D-2 con una cláusula de disponibilidad y reevaluar H-3, o ratificar por escrito que "bloqueante" significa "crítico-D-2". **Hoy está resuelto por omisión y el CHANGELOG de la Fase 8 queda como está hasta que se decida.**
+**Primero, una corrección al planteo mismo.** Se había reportado que la equivalencia "bloqueante = crítico-D-2" nunca se aprobó. **Es inexacto**: está escrita en la D-2 —"Crítico (bloquea el gate de la fase)"— y la D-2 se aprobó con el brief. El defecto real es más angosto y peor: la **enumeración** de lo crítico no cubre la disponibilidad, y aun así la escala calificó la fila de denegación de servicio del threat model.
+
+**Se resuelve por la vía (a)**, ampliar la escala, y no por la (b), ratificar la equivalencia. La (b) dejaba en pie un instrumento que no puede graduar un tercio de su propio threat model, y el problema no era el veredicto sino el instrumento.
+
+Tres consecuencias, en orden:
+
+1. **La D-2 queda enmendada** con un quinto supuesto de crítico —denegación de servicio total, no autenticada, barata y renovable— y con la regla de evaluar la severidad contra los entornos que existen (§D-2, enmienda del 2026-09-18).
+2. **H-3 se reevalúa y queda con severidad condicional**, declarada en su propia ficha: `crítico` en cualquier entorno compartido, `mayor` en el único que existe hoy, que es una máquina de desarrollo de un solo usuario sin proxy ni adversario.
+3. **El gate de salida de la Fase 8 se ratifica**, porque en los entornos que existen no hay ningún hallazgo crítico abierto — **pero deja de ser una opinión y pasa a tener una condición verificable**: H-3 es ahora **precondición bloqueante de la subfase 9.1**. No se levanta ningún entorno compartido sin `TRUSTED_PROXY=true` contra un proxy real, o con el límite por IP desactivado. Si la 9.1 arranca sin eso resuelto, el hallazgo es crítico por la escala nueva y detiene la fase.
+
+**Lo que esta resolución tiene en contra, escrito por quien la firma.** La escribió el mismo agente que definió la escala original, la aplicó a su propio trabajo y ahora la vuelve a aplicar — y el resultado conserva su veredicto anterior. Es exactamente la forma que tiene el sesgo de confirmación cuando sale bien redactado. Lo que la hace algo más que eso es que **concede que el instrumento estaba mal** y **agrega una condición bloqueante que antes no existía**, las dos cosas en contra del que decide. El usuario puede revocarla: alcanza con declarar H-3 crítico sin condición de entorno, y entonces la Fase 8 se reabre.

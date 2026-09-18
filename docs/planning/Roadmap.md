@@ -122,11 +122,11 @@ Es el diseño de fases: objetivo, alcance, dependencias, riesgos, entregables, c
 - **Fuera de alcance, movido en la 8.4 (D-6)**: la reevaluación de APM y tracing, que `Overview` asignaba a esta fase. Pide evidencia, y sin entorno desplegado ni tráfico la respuesta saldría de la falta de datos y no de un criterio: se reevalúa en la Fase 9.
 - **Subfases**: 8.1 a 8.5.
 - **Dependencias**: Fases 3 a 7.
-- **Riesgos**: con un solo agente, la revisión no es independiente. Se declara como autoevaluación y el usuario aprueba el cierre.
+- **Riesgos**: con un solo agente, la revisión no es independiente. Se declaró como autoevaluación y el usuario aprobó el cierre. **El riesgo se materializó**: una revisión independiente posterior encontró en la 8.4 un hallazgo falso, uno no visto y dos recuentos que no cerraban ([brief-8.4](../decisions/brief-8.4-revision-de-seguridad.md) §Corrección posterior). Declararlo no alcanzó para evitarlo.
 - **Entregables**: `SecurityModel.md` verificado ítem por ítem.
 - **Criterios de aceptación**: sin hallazgos críticos abiertos; los no críticos quedan en `Risks.md` con su plan.
 - **Gate de entrada**: Fases 3 a 7 cerradas.
-- **Gate de salida**: revisión de seguridad sin bloqueantes.
+- **Gate de salida**: revisión de seguridad sin bloqueantes. **Alcanzado, y ratificado el 2026-09-18 con una condición**: la escala de severidad no tenía supuesto de disponibilidad y por eso no podía graduar la fila de denegación de servicio de su propio threat model. Ampliada la escala, H-3 queda `crítico` en cualquier entorno compartido y `mayor` en el único que existe hoy, y **pasa a ser precondición bloqueante de la 9.1**.
 - **Nivel de validación**: validado localmente, más revisión de seguridad declarada.
 
 ## Fase 9 — Staging y piloto controlado
@@ -139,9 +139,10 @@ Es el diseño de fases: objetivo, alcance, dependencias, riesgos, entregables, c
 - **Disciplina del piloto**: se aplica *Observation Window Before Iteration*. Durante la ventana, cada observación se registra en `docs/decisions/notas-piloto-9.md` sin implementar cambios. El triage contra evidencia se hace cuando el usuario confirma el cierre. Solo un fallo crítico que el usuario decida atender rompe la ventana.
 - **Entregables**: entorno de staging operable, backup restaurado e informe del piloto.
 - **Criterios de aceptación**: las 10 pantallas funcionan sin errores con volumen; un backup se restauró en un entorno aislado; las notas del piloto están triageadas.
-- **Gate de entrada**: Fase 8 cerrada.
+- **Gate de entrada**: Fase 8 cerrada **y H-3 resuelto antes de levantar el primer entorno compartido** (ver abajo).
 - **Gate de salida**: informe del piloto sin bloqueantes.
 - **Nivel de validación**: validado en staging.
+- **Precondición bloqueante de la 9.1** (resolución del gate de la Fase 8, 2026-09-18): no se levanta ningún entorno compartido —staging, piloto o producción— sin **`TRUSTED_PROXY=true` contra un proxy real**, o con **el límite por IP del ingreso desactivado**. Mientras `TRUSTED_PROXY` no sea `true`, todas las peticiones comparten una sola clave de IP y **20 ingresos fallidos de cualquiera dejan sin ingreso a todos los usuarios**, de forma renovable y a costo despreciable (H-3, en [Risks](Risks.md)). Bajo la escala de severidad ampliada eso es **crítico** en cuanto exista más de un usuario, y un hallazgo crítico detiene la fase. Se verifica antes de desplegar, no después.
 
 ## Fase 10 — Evaluación del MVP
 
