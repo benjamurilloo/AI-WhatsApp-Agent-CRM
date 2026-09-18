@@ -273,3 +273,20 @@ El caso 5 pasaba aislado y fallaba en la suite completa: el `beforeEach` del spe
 - Endpoint de reporte de violaciones de CSP: fuera de alcance, sin receptor.
 - El helper de `Origin` de `src/shared/http/` sigue sin escribirse, por no tener consumidor (D-5).
 - El `EXPLAIN` con volumen de productos e inventario que Risks asigna a la Fase 8 sigue sin subfase (hallazgo 11): decisión del usuario, pendiente.
+
+## Cierre (2026-09-18)
+
+Cerrado con autorización del usuario, con D-1 a D-6 resueltas según la recomendación y **sin desvíos respecto del alcance autorizado**: los siete archivos tocados son exactamente los de la lista cerrada. `next.config.ts` estaba autorizado y no hizo falta tocarlo, así que quedó como estaba.
+
+- **Commit**: `a5518ad` — "Endurecimiento web (8.1)".
+- **CI en verde** en `a5518ad` ([ejecución 35356670129](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35356670129)), con sus quince pasos, incluidos el desfase de migraciones, las guardas y el end-to-end con Chromium.
+- **Ninguna condición de detención quedó activa.** La 2 y la 3 no se activaron porque la medición dio cero violaciones y ninguna pantalla necesitó cambios.
+- **La limitación que el brief admitía —`'unsafe-inline'` en `style-src`— no se usó**: la medición demostró que no hacía falta.
+
+### Resolución del hallazgo 11
+
+El hallazgo se elevó al usuario como pendiente de la fase, fuera de esta subfase. **Decisión: se agrega una subfase 8.5**, en lugar de mover el ítem a la Fase 9.
+
+Razón: la Fase 8 se llama "Calidad, seguridad y observabilidad" y su objetivo en el Roadmap es verificar los requisitos no funcionales contra el código real antes de staging; el rendimiento de los listados es un requisito no funcional ([NonFunctionalRequirements](../product/NonFunctionalRequirements.md), §Rendimiento), y [Risks](../planning/Risks.md) ya lo asignaba a la Fase 8. Lo que estaba incompleto era la lista de subfases, no la asignación. Se consideró y se descartó moverlo a la Fase 9 —donde igual se vuelve a medir con varias organizaciones— porque productos e inventario son la única área del sistema sin ninguna medición, ni siquiera local, y un índice faltante descubierto en staging cuesta más que descubierto antes.
+
+Alcance previsto para la 8.5, angosto a propósito: extender el seed de volumen de la 6.2 a productos e inventario, correr `EXPLAIN` sobre las consultas de listado de las Fases 4 y 5 con sus planes registrados, y corregir solo lo patológico. Varias organizaciones, staging y cualquier objetivo de SLA quedan en la Fase 9. La 8.5 necesita su propio brief antes de tocar código.
