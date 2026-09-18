@@ -43,7 +43,7 @@ Cada FR tiene al menos una pantalla, endpoint o invariante con test que lo satis
 | FR-CLI-02 | Pantalla 7 | pantalla |
 | FR-CLI-03 | Pantalla 6 | pantalla |
 | FR-CLI-04 | Pantallas 6 y 7, implementadas en la 6.4 sobre `conversations` (brief-6.3, D-1) | pantalla |
-| FR-CLI-05 | Pantallas 6 y 7; revisión de minimización en la Fase 8 | pantalla y revisión |
+| FR-CLI-05 | Pantallas 6 y 7. **Minimización revisada en la 8.4**: `clients` almacena `display_name`, `phone_e164` (opcional) y `notes`, y ningún otro campo personal; lo que ve un `viewer` lo acota el enmascarado de FR-CLI-06 desde el servidor | pantalla y revisión contra el esquema |
 | FR-CLI-06 | Pantallas 6 y 7, enmascarado en el servidor | pantalla |
 | FR-CLI-07 | `UNIQUE(organization_id, phone_e164)`; test de unicidad | invariante con test |
 | FR-CONV-01 | Pantalla 8, implementada en la 6.4; `conversations.spec.ts` verifica que ni el HTML ni las respuestas de RSC traen cuerpos | pantalla e invariante con test |

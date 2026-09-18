@@ -39,14 +39,14 @@ Monolito modular en TypeScript. Una sola aplicación desplegable, organizada int
 - La base de datos es compartida (un único schema), pero el acceso está encapsulado por módulo: cada módulo posee sus tablas y expone su propio repositorio; otro módulo no hace `JOIN` directo contra tablas ajenas fuera de `analytics`.
 - Un cambio auditado le pasa su transacción a `audit`: `recordAudit(tx, entry)` solo acepta una transacción, así que el registro persiste o se revierte junto con el cambio ([brief-3.6](../decisions/brief-3.6-modulo-de-auditoria.md), D-3).
 - Un caso de uso que escribe tablas de varios módulos abre la transacción en el módulo dueño de la regla de negocio y la pasa a las funciones de los otros módulos, que la exigen por tipo. El alta de un miembro la abre `organizations`, que escribe `users` a través de `auth` y `audit_logs` a través de `audit` ([brief-3.7](../decisions/brief-3.7-gestion-de-usuarios-y-roles.md), D-2).
-- Una lista con datos de dos módulos se compone en memoria, sin `JOIN`. La lista de miembros lee las membresías en `organizations` (filtradas por organización en SQL), pide a `auth` nombre, email y estado por ids, y filtra, ordena y pagina en memoria (brief-3.7, D-3). **Límite aceptado**: el costo crece con la cantidad de miembros; se revisa en la Fase 8 o si una organización supera los 500.
-- El estado de stock cruza `catalog` e `inventory` ([brief-4.2](../decisions/brief-4.2-servicio-de-catalogo.md), D-1). `catalog` lo deriva con `deriveStockStatus`, una función pura. `inventory`, que depende de `catalog`, compone la lista y el detalle: lee los productos por la interfaz de `catalog` (texto y actividad filtrados en SQL), sus saldos por ids con 0 si no hay fila, y filtra por estado, ordena y pagina en memoria. `catalog` nunca importa `inventory`. **Límite aceptado**: la lista lee todos los productos que cumplen texto y actividad; se revisa en la Fase 8 o si una organización supera los 2 000 productos.
+- Una lista con datos de dos módulos se compone en memoria, sin `JOIN`. La lista de miembros lee las membresías en `organizations` (filtradas por organización en SQL), pide a `auth` nombre, email y estado por ids, y filtra, ordena y pagina en memoria (brief-3.7, D-3). **Límite aceptado**: el costo crece con la cantidad de miembros; se mide en la **subfase 8.5**, junto con las consultas de productos e inventario (brief-8.4, D-6), o antes si una organización supera los 500.
+- El estado de stock cruza `catalog` e `inventory` ([brief-4.2](../decisions/brief-4.2-servicio-de-catalogo.md), D-1). `catalog` lo deriva con `deriveStockStatus`, una función pura. `inventory`, que depende de `catalog`, compone la lista y el detalle: lee los productos por la interfaz de `catalog` (texto y actividad filtrados en SQL), sus saldos por ids con 0 si no hay fila, y filtra por estado, ordena y pagina en memoria. `catalog` nunca importa `inventory`. **Límite aceptado**: la lista lee todos los productos que cumplen texto y actividad; se mide en la **subfase 8.5**, o antes si una organización supera los 2 000 productos.
 - La lista de clientes por última interacción cruza `crm` y `conversations` ([brief-6.3](../decisions/brief-6.3-servicio-de-consulta-y-estado.md), D-1). La compone `conversations`, que depende de `crm`:
   1. `crm` devuelve, con `listClientOrderKeys`, los ids que cumplen texto y actividad, en orden de nombre y sin datos del cliente;
   2. `conversations` lee la última interacción por cliente con una consulta agrupada, ordena de forma estable y corta la página en memoria;
   3. `crm` devuelve los clientes de la página con `getClientsByIds`, con el teléfono según el rol.
 
-  Los nombres de los clientes de las conversaciones también llegan por `getClientsByIds`, y `conversations` descarta el teléfono. `crm` nunca importa `conversations`. **Límite aceptado**: la lista lee los ids de todos los clientes que cumplen el filtro. Con 10.000 clientes tarda menos de 100 ms en local (medición en el brief-6.3); se revisa en la Fase 8.
+  Los nombres de los clientes de las conversaciones también llegan por `getClientsByIds`, y `conversations` descarta el teléfono. `crm` nunca importa `conversations`. **Límite aceptado**: la lista lee los ids de todos los clientes que cumplen el filtro. Con 10.000 clientes tarda menos de 100 ms en local (medición en el brief-6.3); se vuelve a medir en la **subfase 8.5** (brief-8.4, D-6).
 
 Dónde vive cada módulo en el repositorio y cómo se hacen cumplir estas reglas: [RepositoryStructure.md](RepositoryStructure.md).
 
@@ -107,12 +107,12 @@ Implementación ([brief-3.4](../decisions/brief-3.4-autorizacion-y-errores.md)):
 - Un log estructurado (JSON) por request, con `request_id`, `organization_id`, `user_id`, ruta, código de resultado y duración. No incluye contenido de mensajes ni PII ([SecurityModel.md](SecurityModel.md)).
 - Cada evento de ingestión queda en `ingestion_events` con estado terminal y `error_code` normalizado. Esa tabla, y no los logs, es la fuente de la métrica de errores de ingestión.
 - Un endpoint `/api/health` verifica la conectividad con la base sin exponer detalles.
-- No hay APM ni tracing distribuido en el MVP: en un monolito alcanza con logs correlacionados por `request_id`. Se reevalúa en la Fase 8 con evidencia.
+- No hay APM ni tracing distribuido en el MVP: en un monolito alcanza con logs correlacionados por `request_id`. **Se reevalúa en la Fase 9**, no en la 8 (brief-8.4, D-6): la reevaluación pide evidencia, y sin un entorno desplegado ni tráfico la respuesta saldría de la falta de datos y no de un criterio.
 
 ## Despliegue (diseño, no implementado)
 
 - Una única imagen/proceso de aplicación por entorno, sin estado en memoria compartido entre requests salvo cache local no crítico.
-- Base de datos PostgreSQL gestionada por entorno (dev local vía Docker Compose; staging/producción como servicio gestionado o VM dedicada, a decidir en Fase 8/9).
+- Base de datos PostgreSQL gestionada por entorno (dev local vía Docker Compose; staging/producción como servicio gestionado o VM dedicada, **a decidir en la subfase 9.1** junto con el gestor de secretos; la 8.4 quitó el "Fase 8/9" porque una decisión que cabe en dos fases no se toma en ninguna).
 - Migraciones SQL versionadas se aplican como paso explícito del pipeline de despliegue, nunca automáticamente contra producción sin aprobación.
 
 ## Backups (diseño)

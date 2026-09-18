@@ -118,7 +118,8 @@ Es el diseño de fases: objetivo, alcance, dependencias, riesgos, entregables, c
 ## Fase 8 — Calidad, seguridad y observabilidad
 
 - **Objetivo**: verificar los requisitos no funcionales contra el código real antes de staging.
-- **Alcance**: CSP, CSRF y XSS; logs sin PII y procedimiento de exportación y eliminación de datos de cliente; auditoría de dependencias en CI; revisión del modelo de seguridad y del threat model; y el rendimiento de las consultas de productos e inventario con volumen sintético, que es el requisito no funcional que faltaba enumerar acá y que [Risks](Risks.md) ya asignaba a esta fase (agregado en el cierre de la 8.1). El rate limiting se implementa en la 3.3 y la 6.5.3 y aquí se verifica.
+- **Alcance**: CSP, CSRF y XSS; logs sin PII y procedimiento de exportación y eliminación de datos de cliente; auditoría de dependencias en CI; revisión del modelo de seguridad y del threat model; y el rendimiento con volumen sintético de las consultas de productos e inventario —el requisito no funcional que faltaba enumerar acá y que [Risks](Risks.md) ya asignaba a esta fase (agregado en el cierre de la 8.1)— **más las dos listas que se componen en memoria**: la de miembros y la de clientes por última interacción, que [Overview](../architecture/Overview.md) también asignaba a esta fase sin que ninguna subfase las tomara (agregadas en la 8.4, D-6). El rate limiting se implementa en la 3.3 y la 6.5.3 y aquí se verifica.
+- **Fuera de alcance, movido en la 8.4 (D-6)**: la reevaluación de APM y tracing, que `Overview` asignaba a esta fase. Pide evidencia, y sin entorno desplegado ni tráfico la respuesta saldría de la falta de datos y no de un criterio: se reevalúa en la Fase 9.
 - **Subfases**: 8.1 a 8.5.
 - **Dependencias**: Fases 3 a 7.
 - **Riesgos**: con un solo agente, la revisión no es independiente. Se declara como autoevaluación y el usuario aprueba el cierre.

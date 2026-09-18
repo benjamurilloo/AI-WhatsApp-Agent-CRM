@@ -1,13 +1,13 @@
 # Requisitos No Funcionales
 
-**Estado: diseñado.**
+**Estado: los requisitos de seguridad y privacidad se revisaron contra el código el 2026-09-18** ([brief-8.4](../decisions/brief-8.4-revision-de-seguridad.md), autoevaluación); los de rendimiento se miden en la 8.5. El resto sigue **diseñado**, y cada sección dice qué alcanzó.
 
 ## Seguridad
 
 - Contraseñas hasheadas con un algoritmo de hashing lento y con sal (argon2id o bcrypt con costo adecuado), nunca en texto plano ni con hash rápido (SHA-256 simple).
 - Sesiones server-side con cookies `HttpOnly`, `Secure` (en todo entorno con TLS) y `SameSite=Lax` o `Strict`.
 - Autorización evaluada en el servidor en cada operación, nunca solo ocultando UI en el cliente.
-- Todo query de datos de negocio filtra por `organization_id` de la sesión activa; no existe una vía de acceso cross-organización.
+- Todo query de datos de negocio filtra por `organization_id` de la sesión activa; no existe una vía de acceso cross-organización. **Verificado en la 8.4**, con una excepción declarada: las tablas de `auth` son globales por diseño y `findUserSummaries` lee usuarios por id sin filtrar, hoy solo con ids ya filtrados por sus llamadores (H-1, en [Risks](../planning/Risks.md)).
 
 ## Privacidad
 

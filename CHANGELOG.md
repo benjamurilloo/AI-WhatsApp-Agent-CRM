@@ -2,6 +2,35 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-18 — Subfase 8.4 cerrada (Revisión de seguridad)
+
+**Certifica:**
+
+- **`SecurityModel.md` y su threat model contrastados contra el código real**, afirmación por afirmación, según el [brief-8.4](docs/decisions/brief-8.4-revision-de-seguridad.md), con D-1 a D-6 resueltas según la recomendación. De **95 afirmaciones**: 73 `verificado` con test, guarda o medición citada; 11 `verificado-por-lectura`, distinguidas a propósito porque nada las fija; 6 `parcial` o con hallazgo; 6 `no-verificable-aquí` por necesitar TLS, proxy real o entorno persistente, con destino Fase 9. El vocabulario de veredictos y el criterio de severidad **se fijaron antes de mirar** (D-2): definirlos al final los habría ajustado, sin mala intención, al resultado encontrado.
+- **Veredicto del gate de salida de la Fase 8: sin bloqueantes.** Ningún hallazgo alcanza el umbral de crítico —acceso o modificación cross-organización, un `viewer` ejecutando una operación de `admin`, credenciales expuestas, u operar sin sesión algo que la exija—. Quedan tres hallazgos mayores y tres menores, todos en [Risks](docs/planning/Risks.md) con su plan, como pide el Roadmap.
+- **Inventario de la superficie expuesta**: 20 puntos de entrada revisados uno por uno —13 páginas autenticadas, 2 del ingreso, 15 Server Actions con sesión, 2 previas a la sesión, 2 públicas a propósito y 2 Route Handlers—, con su exigencia y cómo se resuelve. Incorporado a `SecurityModel`, que no lo tenía.
+- **Tres hallazgos mayores, ninguno explotable hoy y los tres registrados sin arreglar**, porque la D-3 solo autorizaba corregir documentación y hallazgos críticos:
+  - **H-3**: mientras `TRUSTED_PROXY` no sea `true` —hoy, en todos los entornos— la clave de IP del límite de ingreso es la misma para todas las peticiones, así que **20 ingresos fallidos de cualquiera, en cualquier cuenta, bloquean el ingreso de todos** durante la ventana. El mecanismo estaba documentado; su consecuencia no. En esa configuración el límite por IP es también un vector de denegación de servicio, más barato que el que pretende frenar;
+  - **H-2**: el límite por IP (20/15 min) **no tiene ninguna prueba**; el de cuenta (5/15 min) sí. Era la única defensa declarada del ingreso sin evidencia;
+  - **H-1**: `findUserSummaries` lee `id`, `name`, `email` e `isActive` de cualquier usuario por id **sin filtro de organización**, contra la afirmación de que todo repositorio recibe `organization_id`. No es alcanzable: sus cinco llamadores pasan ids de filas ya filtradas. La garantía vivía en el llamador y no en el repositorio, y la afirmación general se corrigió con la excepción escrita.
+- **Rate limiting verificado en sus dos puntos** (obligación que `SecurityModel` y el Roadmap asignaban a esta fase): ingreso por cuenta e ingestión por credencial, citando los tests que ya existían; el de IP queda como H-2.
+- **Minimización de FR-CLI-05 revisada**: `clients` almacena `display_name`, `phone_e164` (opcional) y `notes`, y ningún otro campo personal, ni declarado ni de hecho. El requisito se cumple en el almacenamiento y no solo en la pantalla. `TraceabilityMatrix` queda cerrada en esa fila.
+- **Threat model con veredicto por fila**, diciendo **cómo** se comprobó cada mitigación: una mitigación diseñada y una probada no son lo mismo y la tabla no las distinguía. Se sumó además qué **no** cubre ese modelo: atacante con acceso a la base o al servidor, cadena de suministro más allá de la auditoría de dependencias, y abuso por un `admin` legítimo de su organización.
+- **Un recuento no habría servido, y queda escrito por qué**: `analytics` mostraba 14 funciones exportadas contra 1 `authorize(` y `inventory` 10 contra 1, y las dos son falsas alarmas —las doce métricas pasan por `withPeriod`, que autoriza en su primera línea, y las lecturas de inventario delegan en `catalog`, que autoriza antes de leer un saldo—. La autorización por delegación es correcta e invisible para cualquier instrumento que cuente.
+- **Instrumento permanente** (D-4), uno solo y no tres: `tests/guards/exposed-surface.test.ts` declara los 20 puntos de entrada con su exigencia, exige una razón escrita a lo público y prohíbe que algo bajo `(autenticado)` se declare público. **Evidencia de mutación**: una Server Action nueva en un archivo real hace fallar la guarda nombrándola. Su cabecera dice qué **no** comprueba —que la exigencia declarada se cumpla— y por qué reducirlo a un patrón de texto sería mentir.
+- **Obligaciones de fase que flotaban, ahora asignadas** (D-5 y D-6): la IP real con proxy pasó de "Fase 8 o 9" a **Fase 9**; las dos listas compuestas en memoria —miembros y clientes por última interacción— entran en la **8.5**; la reevaluación de APM y tracing pasa a la **Fase 9**, porque pide evidencia que sin entorno desplegado no existe; y la decisión de hosting dejó de decir "Fase 8/9" para quedar en la **9.1**. Una obligación que cabe en dos fases no se cumple en ninguna.
+- **Dos líneas de estado corregidas**: `SecurityModel.md` y `NonFunctionalRequirements.md` decían "Estado: diseñado" mientras media docena de secciones citaba implementaciones validadas en integración.
+- **Tests**: 62 de 62 de guardas (antes 49), 302 de 302 unitarios y 390 de 390 de integración, sin modificar ningún test existente y sin tocar `src/`.
+
+**No certifica:**
+
+- **Que no existan defectos de seguridad.** Certifica que 95 afirmaciones se contrastaron contra el código y que los 20 puntos de entrada se revisaron uno por uno, con el veredicto de cada uno a la vista.
+- **Revisión independiente**: es autoevaluación del mismo agente que escribió lo revisado. El Roadmap ya lo anticipaba como riesgo de la fase y esta subfase no lo compensa, solo lo declara.
+- **Lo que necesita TLS, proxy real o entorno persistente**: HSTS, la cookie `__Host-` bajo TLS, `TRUSTED_PROXY` con un proxy de verdad, los backups y su restauración, el gestor de secretos y la conexión con el rol `crm_app`. Seis afirmaciones quedan `no-verificable-aquí`, con destino Fase 9.
+- **Que la guarda de superficie verifique la autorización**: comprueba que nada aparezca sin declararse, no que lo declarado se cumpla. Tampoco ve un archivo sin versionar, porque recorre `git ls-files`.
+- **Que los tres hallazgos mayores estén resueltos**: están registrados con su plan y su decisión pendiente, no corregidos.
+- **Ningún nivel de validación subió** por esta revisión: revisar no valida.
+
 ## 2026-09-18 — Subfase 8.3 cerrada (Dependencias)
 
 **Certifica:**
