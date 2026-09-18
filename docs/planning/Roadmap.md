@@ -118,8 +118,8 @@ Es el diseño de fases: objetivo, alcance, dependencias, riesgos, entregables, c
 ## Fase 8 — Calidad, seguridad y observabilidad
 
 - **Objetivo**: verificar los requisitos no funcionales contra el código real antes de staging.
-- **Alcance**: CSP, CSRF y XSS; logs sin PII y procedimiento de exportación y eliminación de datos de cliente; auditoría de dependencias en CI; revisión del modelo de seguridad y del threat model. El rate limiting se implementa en la 3.3 y la 6.5.3 y aquí se verifica.
-- **Subfases**: 8.1 a 8.4.
+- **Alcance**: CSP, CSRF y XSS; logs sin PII y procedimiento de exportación y eliminación de datos de cliente; auditoría de dependencias en CI; revisión del modelo de seguridad y del threat model; y el rendimiento de las consultas de productos e inventario con volumen sintético, que es el requisito no funcional que faltaba enumerar acá y que [Risks](Risks.md) ya asignaba a esta fase (agregado en el cierre de la 8.1). El rate limiting se implementa en la 3.3 y la 6.5.3 y aquí se verifica.
+- **Subfases**: 8.1 a 8.5.
 - **Dependencias**: Fases 3 a 7.
 - **Riesgos**: con un solo agente, la revisión no es independiente. Se declara como autoevaluación y el usuario aprueba el cierre.
 - **Entregables**: `SecurityModel.md` verificado ítem por ítem.
