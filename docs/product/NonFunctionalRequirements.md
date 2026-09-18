@@ -13,7 +13,7 @@
 
 - Minimización de datos personales de clientes: solo se almacenan y muestran los campos necesarios para operar (ver [FR-CLI-05](FunctionalRequirements.md)).
 - Los logs de aplicación no contienen cuerpo de mensajes ni PII innecesaria — solo identificadores.
-- Existe un mecanismo (aunque sea manual en el MVP) para exportar o eliminar los datos de un cliente a pedido.
+- Existe un mecanismo (aunque sea manual en el MVP) para exportar o eliminar los datos de un cliente a pedido. **Cumplido en la 8.2** con el runbook [datos-de-un-cliente](../runbooks/datos-de-un-cliente.md) y sus dos scripts, con una precisión que este requisito no anticipaba: la exportación es completa, pero **la eliminación es parcial para un cliente con conversaciones**, porque `messages` y `audit_logs` son de solo inserción y la cadena de claves foráneas está cerrada. Para ese caso el procedimiento minimiza la ficha —teléfono, nombre y notas— y declara lo retenido. Un borrado real exige revisar el [ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md) y está en [Risks](../planning/Risks.md).
 
 ## Auditabilidad
 

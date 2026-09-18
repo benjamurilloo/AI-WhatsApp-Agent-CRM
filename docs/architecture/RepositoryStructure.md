@@ -58,6 +58,7 @@ Ubica en carpetas los módulos y las reglas de dependencia de [Overview.md](Over
 │   └── workflows/
 │       └── ci.yml                   CI de GitHub Actions
 ├── docs/                            Incluye contracts/ con los contratos versionados (6.5.1)
+│                                    y runbooks/ con los procedimientos de operador (8.2)
 ├── package.json · package-lock.json
 ├── tsconfig.json                    strict: true; alias @/* → src/*
 ├── next.config.ts
@@ -115,7 +116,7 @@ No hay otros módulos. Uno nuevo requiere primero cambiar la tabla de [Overview.
 - `src/shared/log/` (3.5) contiene el log estructurado con `request_id`.
 - `src/shared/quantity/` (4.2) contiene las cantidades `numeric(14, 3)` como `bigint` en milésimas: parseo de entrada, conversión desde y hacia la base, sin `number` ([brief-4.2](../decisions/brief-4.2-servicio-de-catalogo.md), D-2).
 - `src/shared/http/` (6.5.3) contiene la lectura del cuerpo con límite de bytes y la comprobación de `Content-Type`. Estaba prevista en la 3.4 (D-5) para la verificación de `Origin`, que el endpoint de ingestión no necesita (brief-6.5.3, D-5).
-- `scripts/` (6.5.3) contiene tareas locales que se corren con `tsx`, como `ingestion-credential.ts`. No se importa desde `src/`.
+- `scripts/` (6.5.3) contiene tareas locales que se corren con `tsx`, como `ingestion-credential.ts` y, desde la 8.2, `client-data-export.ts` y `client-data-delete.ts`. No se importa desde `src/`; los tests sí lo importan, para probar lo que el script hace. Un script que atiende un pedido de datos personales tiene su runbook en `docs/runbooks/`, que es la fuente del procedimiento.
 - `src/shared/` no importa nada de `src/modules/`, para no crear ciclos.
 
 ## Frontera entre módulos

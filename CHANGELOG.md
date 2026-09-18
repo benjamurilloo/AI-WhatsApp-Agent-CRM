@@ -2,6 +2,33 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-18 — Subfase 8.2 cerrada (Logs y privacidad)
+
+**Certifica:**
+
+- **Los logs no contienen datos personales ni contenido de conversaciones**, según el [brief-8.2](docs/decisions/brief-8.2-logs-y-privacidad.md), con D-1 a D-4 resueltas según la recomendación. La evidencia está en tres capas, cada una con su nivel declarado:
+  - **unitaria**: el formateador arma el JSON campo por campo, así que un dato fuera de `LogEvent` no puede salir. Se sumaron teléfono, nombre, notas y cuerpo de mensaje a los casos, y un error de unicidad de PostgreSQL cuyo mensaje trae el teléfono —el caso realista, porque el teléfono es único por organización— que se registra reducido a `{ name, code }`;
+  - **guarda** (`tests/guards/log-surface.test.ts`, nueva): en `src/`, solo el módulo de log usa `console.*`, con dos excepciones declaradas por nombre en `src/shared/db/`; y ningún `route` de un evento se arma interpolando ni concatenando, porque una ruta armada con datos los mete en el log. La guarda también comprueba que las dos excepciones siguen existiendo y siguen usando `console.*`, para que la lista no mienta;
+  - **integración** (`tests/integration/log-privacy.test.ts`, nueva): contra PostgreSQL real, el módulo de dominio no escribe nada en consola ni al crear ni al rechazar, la línea que registra la acción no lleva datos personales en ninguno de los tres rechazos, y un error inesperado que sí trae el teléfono en su mensaje se registra sin él.
+- **No se duplicó evidencia existente**: el camino de ingestión ya estaba cubierto por el caso 12 de `ingestion-http.test.ts` (6.5.3), que manda eventos reales con teléfono y cuerpo. Lo que faltaba era el camino de la UI, y ahí fue el test nuevo.
+- **Qué registra el proceso además de la aplicación** (medición local, los dos modos): `next start` —el modo con el que corre un entorno desplegado— **no registra las peticiones**, así que una URL como `/clientes?q=<teléfono>` no llega a ningún log. **`next dev` sí las registra con la query completa**, así que la terminal de una máquina de desarrollo puede quedar con el teléfono que alguien buscó. Registrado en [SecurityModel](docs/architecture/SecurityModel.md) y en [Risks](docs/planning/Risks.md), sin corregir: la condición de detención del brief lo mandaba elevar, no arreglar.
+- **Procedimiento de exportación y eliminación de los datos de un cliente**, como runbook de operador ([docs/runbooks/datos-de-un-cliente.md](docs/runbooks/datos-de-un-cliente.md)) con dos scripts en `scripts/`, sin pantalla:
+  - **exportación completa**: `clients`, `conversations`, `messages` con su cuerpo y `audit_logs` con los valores anteriores. `ingestion_events` queda fuera porque no tiene datos personales, y el propio archivo lo declara en su campo `excluded`;
+  - **eliminación parcial, nombrada como minimización y no como eliminación** (D-3). Un cliente sin conversaciones se borra de verdad. Uno con conversaciones **no se puede borrar con ningún rol**: la 8.2 confirmó ejecutándolo que la cadena está cerrada —`messages` rechaza `DELETE` y `UPDATE` por trigger, y las claves foráneas hacia `conversations` y `clients` son `ON DELETE RESTRICT`—, y tampoco se puede anonimizar. Para ese caso el procedimiento vacía teléfono, nombre y notas de la ficha y declara qué queda retenido;
+  - **la ejecución no se audita en la base**, a propósito: auditar la minimización volvería a escribir el teléfono y las notas en el `diff` de `audit_logs`, que es de solo inserción, deshaciendo su propio efecto. Un test fija que la cantidad de entradas de auditoría no cambia al minimizar.
+- **Los dos casos se probaron por separado**, porque son distintos: con conversaciones y sin conversaciones. Un cliente sin conversaciones pero con cambios auditados tampoco queda del todo limpio, y el runbook lo dice.
+- **Evidencia de mutación**, las dos con efecto: quitar la reducción del error hace fallar el test de privacidad con el teléfono a la vista; un `console.log` y un `route` interpolado en un archivo real hacen fallar las dos reglas del recorrido de la guarda.
+- **Tests**: 741 de 741 unitarios, de guardas y de integración (antes 707), y 81 de 81 end-to-end sin modificar ningún spec.
+
+**No certifica:**
+
+- **Borrado real** de un cliente con conversaciones: no es posible sin revisar el [ADR 0013](docs/decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md). Es una subfase propia si el negocio lo exige, registrada en [Risks](docs/planning/Risks.md).
+- **Los procedimientos contra datos reales**: se ejercitaron con datos sintéticos en la base de test. Un procedimiento de borrado no está probado de verdad hasta correrse en un entorno con datos reales y backups (Fase 9). El runbook lo dice en su encabezado.
+- **La política de retención de mensajes**, que es lo que podría vencer los cuerpos retenidos: pendiente de definición de negocio, Fase 9.
+- **Que no exista PII en ningún log de ningún entorno**: lo verificado son los caminos de la aplicación y los dos modos del servidor en local. Un proxy, un balanceador o un agregador de logs de un despliegue no están en este alcance.
+- **Alias de npm para los dos scripts**: se invocan con `npx tsx scripts/…`, porque `package.json` no estaba entre los archivos autorizados.
+- **Revisión independiente**: es autoevaluación del mismo agente. El usuario aprobó el brief, confirmó los dos desvíos y aprobó el cierre.
+
 ## 2026-09-18 — Subfase 8.1 cerrada (Endurecimiento web)
 
 **Certifica:**

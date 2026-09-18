@@ -68,6 +68,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-7.3](brief-7.3-metrica-de-errores-de-ingestion.md) | 7.3 — Métrica de errores de ingestión | aprobado y cerrado el 2026-09-17 |
 | [brief-7.4](brief-7.4-dashboard.md) | 7.4 — Dashboard (pantalla 2) | aprobado y cerrado el 2026-09-17 |
 | [brief-8.1](brief-8.1-endurecimiento-web.md) | 8.1 — Endurecimiento web | aprobado y cerrado el 2026-09-18 |
+| [brief-8.2](brief-8.2-logs-y-privacidad.md) | 8.2 — Logs y privacidad | aprobado y cerrado el 2026-09-18 |
 
 ## Plantilla
 

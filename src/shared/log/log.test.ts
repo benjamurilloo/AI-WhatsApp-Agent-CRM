@@ -5,6 +5,13 @@ const EMAIL = "ana@example.com";
 const PASSWORD = "contraseña-secreta-larga";
 const TOKEN = "Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6";
 
+// Datos personales de un cliente y contenido de conversación (brief-8.2, D-1). El test de la 3.5
+// cubría credenciales; estos son los que la política de logs de SecurityModel nombra aparte.
+const PHONE = "+5491155550123";
+const CLIENT_NAME = "Ana Pérez";
+const NOTES = "Prefiere retirar por la tarde";
+const MESSAGE_BODY = "Hola, ¿tenés stock del producto azul?";
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -126,6 +133,51 @@ describe("log estructurado", () => {
     for (const secret of [EMAIL, PASSWORD, TOKEN]) {
       expect(line).not.toContain(secret);
     }
+  });
+
+  it("ignora datos personales de cliente y cuerpos de mensaje que lleguen de más", () => {
+    const event = {
+      level: "info",
+      requestId: newRequestId(),
+      route: "clientes.crear",
+      code: "OK",
+      organizationId: "5eed0000-0000-4000-8000-000000000001",
+      phone: PHONE,
+      displayName: CLIENT_NAME,
+      notes: NOTES,
+      bodyText: MESSAGE_BODY,
+      client: { phoneE164: PHONE, notes: NOTES },
+    } as unknown as LogEvent;
+    const line = formatLogEvent(event);
+    for (const personal of [PHONE, CLIENT_NAME, NOTES, MESSAGE_BODY]) {
+      expect(line).not.toContain(personal);
+    }
+    // Lo que sí tiene que salir: identificadores y resultado.
+    expect(JSON.parse(line)).toMatchObject({
+      route: "clientes.crear",
+      code: "OK",
+      organization_id: "5eed0000-0000-4000-8000-000000000001",
+    });
+  });
+
+  it("de un error con datos personales en el mensaje registra solo el tipo", () => {
+    // El mensaje de un error de base puede traer el valor que violó una restricción: con un
+    // teléfono único por organización, ese valor es el teléfono del cliente.
+    const error = Object.assign(
+      new Error(
+        `duplicate key value violates unique constraint "clients_org_phone_unique" DETAIL: Key (phone_e164)=(${PHONE}) already exists.`,
+      ),
+      { code: "23505" },
+    );
+    const line = formatLogEvent({
+      level: "error",
+      requestId: newRequestId(),
+      route: "clientes.crear",
+      code: "CONFLICT",
+      error,
+    });
+    expect(line).not.toContain(PHONE);
+    expect(JSON.parse(line).error).toEqual({ name: "Error", code: "23505" });
   });
 
   it("los errores van a console.error y el resto a console.log", () => {

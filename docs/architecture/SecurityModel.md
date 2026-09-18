@@ -84,6 +84,11 @@ Implementada en la 6.5.3 ([brief-6.5.3](../decisions/brief-6.5.3-autenticacion-d
 - Los logs de aplicación registran identificadores (`organization_id`, `user_id`, `request_id`, `entity_id`) y resultados de operación, nunca el cuerpo de mensajes de conversación ni datos personales innecesarios del cliente.
 - Los errores no exponen detalles internos (stack traces, queries SQL) al cliente; se registran en el log del servidor con un `request_id` correlacionable.
 - Implementación ([brief-3.5](../decisions/brief-3.5-pantalla-de-inicio-de-sesion.md), D-9): `src/shared/log/` escribe solo los campos de su evento (nivel, `request_id`, ruta, código de resultado y `user_id`). De un error registra el tipo y el código, nunca el mensaje, que puede traer datos del usuario. Un test unitario verifica que no aparecen la contraseña, el token ni el email usados.
+- **Verificado en la 8.2** ([brief-8.2](../decisions/brief-8.2-logs-y-privacidad.md), D-1), en tres capas, cada una con su nivel:
+  - **unitaria**: el formateador arma el JSON campo por campo, así que un dato que no esté en `LogEvent` no puede salir aunque llegue en ejecución. Además del email, la contraseña y el token, se cubren teléfono, nombre, notas y cuerpo de mensaje, y un error de unicidad de PostgreSQL cuyo mensaje trae el teléfono.
+  - **guarda** ([`tests/guards/log-surface.test.ts`](../../tests/guards/log-surface.test.ts)): en `src/`, solo el módulo de log usa `console.*`, con dos excepciones declaradas en `src/shared/db/` que reducen el error a `code ?? name`; y ningún `route` de un evento se arma interpolando o concatenando, porque una ruta armada con datos los mete en el log. La guarda falla sobre el repositorio real cuando se la mutó.
+  - **integración** ([`tests/integration/log-privacy.test.ts`](../../tests/integration/log-privacy.test.ts)): contra PostgreSQL real, el módulo de dominio no escribe nada en consola ni al crear ni al rechazar, y la línea que registra la acción no lleva datos personales en ningún resultado, incluido un error inesperado que sí trae el teléfono en su mensaje. El camino de ingestión ya estaba cubierto por el caso 12 de `ingestion-http.test.ts`.
+- **Lo que registra el proceso, además de la aplicación** (8.2, medición): `next start` —el modo con el que corre un entorno desplegado— **no registra las peticiones**, así que una URL como `/clientes?q=<teléfono>` no llega a ningún log. **`next dev` sí las registra, con la query completa**: en una máquina de desarrollo, la terminal puede terminar conteniendo el teléfono que alguien escribió en el buscador. No afecta a staging ni a producción; queda anotado en [Risks](../planning/Risks.md) para el día que exista un entorno compartido de desarrollo.
 
 ## Auditoría
 
@@ -106,7 +111,11 @@ Implementada en la 6.5.3 ([brief-6.5.3](../decisions/brief-6.5.3-autenticacion-d
 ## Retención de datos
 
 - Mensajes y conversaciones: política de retención pendiente de definición de negocio antes de conectar tráfico real (ver pregunta abierta en [DataModel.md](DataModel.md)).
-- Datos de clientes: mecanismo de exportación/eliminación a pedido, aunque sea un procedimiento manual asistido por un admin en el MVP, no necesariamente autoservicio.
+- Datos de clientes: mecanismo de exportación/eliminación a pedido, aunque sea un procedimiento manual asistido por un admin en el MVP, no necesariamente autoservicio. **Implementado en la 8.2** como procedimiento de operador: el runbook [datos-de-un-cliente](../runbooks/datos-de-un-cliente.md) con dos scripts en `scripts/`, sin pantalla.
+  - **Exportación**: completa. Reúne `clients`, `conversations`, `messages` con su cuerpo y `audit_logs` con los valores anteriores. `ingestion_events` queda fuera porque no tiene datos personales, y el archivo lo declara.
+  - **Eliminación**: **parcial, y se nombra como minimización, no como eliminación** (brief-8.2, D-3). Un cliente sin conversaciones se borra de verdad. Un cliente con conversaciones **no se puede borrar con ningún rol**: `messages` rechaza `DELETE` y `UPDATE` por trigger ([ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md)) y las claves foráneas hacia `conversations` y `clients` son `ON DELETE RESTRICT`, así que la cadena está cerrada. Para ese caso el procedimiento vacía `phone_e164`, `notes` y el nombre de la ficha, y declara qué queda retenido: los cuerpos de `messages`, las conversaciones y el `diff` de `audit_logs`.
+  - **La ejecución no se audita en la base**, a propósito: no hay usuario actor, y auditar el cambio volvería a escribir el teléfono y las notas en el `diff`. Se registra fuera.
+  - **Un borrado real necesita revisar el ADR 0013** y es una subfase propia, registrada en [Risks](../planning/Risks.md).
 
 ## Amenazas consideradas (threat model inicial, nivel STRIDE simplificado)
 
