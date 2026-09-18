@@ -1,12 +1,14 @@
 # Modelo de Seguridad
 
-**Estado: revisado contra el código el 2026-09-18** ([brief-8.4](../decisions/brief-8.4-revision-de-seguridad.md)), en una **autoevaluación** del mismo agente que escribió lo revisado, no en una revisión independiente. De 95 afirmaciones: 73 verificadas con test, guarda o medición citada; 11 verificadas por lectura del código, sin instrumento que las fije; 6 parciales o con hallazgo; 6 no verificables sin TLS, proxy real o entorno persistente, que quedan para la Fase 9.
+**Estado: revisado contra el código el 2026-09-18** ([brief-8.4](../decisions/brief-8.4-revision-de-seguridad.md)) y **corregido el mismo día por una revisión independiente**, que encontró cuatro defectos en la revisión anterior: un hallazgo falso (H-2, retirado), un caso no visto de la clase de H-1 (hoy H-7), dos recuentos que no cerraban y un agujero en la guarda que la subfase había dejado como instrumento. De 104 afirmaciones: 75 verificadas con test, guarda o medición citada; 18 verificadas por lectura del código, sin instrumento que las fije; 5 parciales o con hallazgo; 6 no verificables sin TLS, proxy real o entorno persistente, que quedan para la Fase 9.
 
 Cada sección cita el nivel de validación de lo que afirma. Los hallazgos abiertos están en [Risks](../planning/Risks.md); ninguno es crítico.
 
 ## Superficie expuesta
 
-20 puntos de entrada al 2026-09-18, revisados uno por uno y fijados por la guarda [`tests/guards/exposed-surface.test.ts`](../../tests/guards/exposed-surface.test.ts), que falla si aparece uno nuevo sin declarar.
+**36 puntos de entrada** al 2026-09-18 —15 páginas, 19 Server Actions y 2 Route Handlers—, revisados uno por uno. La guarda [`tests/guards/exposed-surface.test.ts`](../../tests/guards/exposed-surface.test.ts) fija los **21 que no son páginas** y falla si aparece uno nuevo sin declarar; las páginas se revisaron por lectura y ninguna guarda las fija.
+
+> El documento decía "20 puntos de entrada" hasta la revisión independiente del 2026-09-18. Era un número que no salía de ninguna agrupación de esta tabla, que suma 36. Corregido.
 
 | Punto de entrada | Cantidad | Exigencia |
 | --- | --- | --- |
@@ -46,7 +48,9 @@ La guarda verifica que la superficie no crezca sin que alguien la declare. **No*
   - la IP sale de la última entrada de `x-forwarded-for` solo con `TRUSTED_PROXY=true`; sin proxy de confianza todas las requests comparten una clave de IP (D-4). Que la IP sea la correcta depende del proxy del despliegue y **se verifica en la Fase 9**, cuando exista uno: antes no hay nada que medir (8.4, D-5).
   - **Limitación aceptada del MVP**: un atacante puede bloquear temporalmente la cuenta de otro usuario con 5 intentos cada 15 minutos.
   - **Hallazgo abierto de la 8.4 (H-3)**: mientras `TRUSTED_PROXY` no sea `true` —hoy, en todos los entornos— la clave de IP es la misma para todas las peticiones, así que **20 ingresos fallidos de cualquiera, en cualquier cuenta, bloquean el ingreso de todos** hasta que venza la ventana. El mecanismo estaba escrito; su consecuencia no. En esta configuración el límite por IP es también un vector de denegación de servicio, y qué hacer con él se decide en su propia tarea ([Risks](../planning/Risks.md)).
-  - **Hallazgo abierto de la 8.4 (H-2)**: el límite por cuenta está probado en integración; **el límite por IP no tiene ninguna prueba**.
+  - Los **dos** límites están probados en integración (`tests/integration/auth-service.test.ts`): el de cuenta, y el de IP con el caso "20 fallos desde una IP bloquean también a otras cuentas", que además comprueba que otra IP sigue pudiendo ingresar.
+
+> **Corrección del 2026-09-18.** La revisión de la 8.4 había registrado como hallazgo H-2 que el límite por IP no tenía ninguna prueba. **Era falso**: el test existía desde antes. El error vino de buscarlo con un patrón (`it("`) que no ve la forma de tres argumentos que ese test usa por su `timeout`, y de "confirmarlo" con una segunda búsqueda de `IP_FAILURE_LIMIT`, constante que el test no usa porque escribe `20` a mano. Dos búsquedas ciegas a lo mismo, tomadas como confirmación. H-2 queda retirado y su lugar en la numeración no se reutiliza.
 
 ## Autorización
 
@@ -55,6 +59,18 @@ La guarda verifica que la superficie no crezca sin que alguien la declare. **No*
 - Teléfono del cliente (FR-CLI-06, [brief-5.2](../decisions/brief-5.2-servicio-de-clientes.md), D-2): el enmascarado vive en el módulo `crm`, no en la presentación. Sus lecturas devuelven a un `viewer` solo los últimos 4 dígitos (ninguno si el número tiene 4 o menos), así que el número completo nunca sale de `crm` hacia una página de `viewer`. La búsqueda por teléfono completo funciona para ambos roles: **riesgo aceptado** en la 1.3 (D-1), un `viewer` puede confirmar si un número es cliente.
 - Aislamiento por organización: **todo repositorio de datos de negocio** recibe `organization_id` de la sesión autenticada, nunca de un parámetro de request sin verificar contra la membresía del usuario. Verificado en integración desde la 3.4: un recurso de otra organización da `NOT_FOUND`.
   - **Excepción declarada (8.4, H-1)**: las tablas de `auth` —`users`, `sessions`, `login_attempts`— son globales por diseño, porque un usuario se ata a una organización en `organization_members`, que sí filtra. En particular `findUserSummaries(userIds)` lee `id`, `name`, `email` e `isActive` de cualquier usuario por id, **sin filtro de organización**. Hoy no es alcanzable: sus cinco llamadores arman la lista de ids desde filas ya filtradas por organización. Pero la garantía vive en cada llamador y no en el repositorio, así que un llamador futuro que pase ids sin filtrar expondría nombre y email de otra organización. Registrado en [Risks](../planning/Risks.md) con su plan; la afirmación general se corrigió acá porque, sin esta excepción, era falsa.
+  - **Excepción declarada (H-7, revisión independiente del 2026-09-18)**: la lectura no era el único caso. **Siete funciones de repositorio escriben datos de negocio filtrando solo por id**, sin `organization_id` en el `where`:
+
+    | Función | Tabla |
+    | --- | --- |
+    | `catalog.updateProductValues`, `catalog.updateProductActive` | `products` |
+    | `crm.updateClientValues`, `crm.updateClientActive` | `clients` |
+    | `organizations.updateMemberRole` | `organization_members` |
+    | `conversations.updateConversationStatus`, `conversations.widenConversationDates` | `conversations` |
+
+    Ninguna es alcanzable hoy: los siete llamadores cargan antes la fila filtrada por organización —con `FOR UPDATE` en la misma transacción— y solo entonces pasan el id. Es exactamente la situación de H-1, con dos diferencias que importan: son **escrituras**, y no son tablas globales por diseño, así que acá no hay nada que justifique la excepción más allá de la disciplina del llamador. `inventory.applyStockChange` sí filtra por `organization_id` y muestra que la forma defendible existe en el propio código.
+
+    La corrección de la 8.4 había escrito que la única excepción era `auth`. También era falsa, y más angosta que la anterior. Registrado en [Risks](../planning/Risks.md) con su plan.
 - Implementación ([brief-3.4](../decisions/brief-3.4-autorizacion-y-errores.md)):
   - `organizations.getAuthContext(token)` resuelve usuario, organización, rol y `must_change_password` en cada request. Sin sesión válida, usuario inactivo o sin membresía → `UNAUTHENTICATED`.
   - Todo caso de uso protegido llama primero a `authorize(context, { role })`, que verifica en este orden:
@@ -99,7 +115,7 @@ Implementada en la 6.5.3 ([brief-6.5.3](../decisions/brief-6.5.3-autenticacion-d
   | Punto | Límite | Evidencia |
   | --- | --- | --- |
   | Ingreso, por cuenta | 5 / 15 min | `tests/integration/auth-service.test.ts`: bloquea aun con la contraseña correcta, la ventana vence, un ingreso correcto limpia los fallos, y los intentos guardan hashes y no el email ni la IP |
-  | Ingreso, por IP | 20 / 15 min | **ninguna** (H-2), y ver H-3 arriba |
+  | Ingreso, por IP | 20 / 15 min | `tests/integration/auth-service.test.ts`, caso "20 fallos desde una IP bloquean también a otras cuentas": agota la clave de IP con emails distintos y comprueba que otra IP sigue ingresando. Ver H-3 arriba: probado no es lo mismo que sano |
   | Ingestión, por credencial | 120 / min | `tests/integration/ingestion-http.test.ts` caso 9: el pedido excedente responde `429` con `Retry-After`, no escribe nada, otra credencial de la misma organización no se ve afectada y la ventana siguiente reinicia la cuenta |
 
 ## Gestión de secretos
@@ -152,12 +168,12 @@ Revisado fila por fila en la 8.4. La columna de veredicto dice **cómo se compro
 
 | Amenaza | Vector | Mitigación de diseño | Veredicto (2026-09-18) |
 |---|---|---|---|
-| Suplantación | Robo de credenciales | Hash lento, rate limit de login, sesión revocable | `verificado`: argon2id con los mínimos de OWASP y verificación contra un hash ficticio para un email inexistente; la sesión guarda el SHA-256 del token y se revoca al cambiar la contraseña o desactivar al usuario; límite por cuenta probado. Salvo la mitad por IP (H-2) |
-| Manipulación de datos | Bypass de autorización cross-org | Filtro obligatorio por `organization_id` en cada repositorio | `parcial`: probado en integración desde la 3.4 para todos los datos de negocio. La excepción es `auth` (H-1), cuyas tablas son globales por diseño |
+| Suplantación | Robo de credenciales | Hash lento, rate limit de login, sesión revocable | `verificado`: argon2id con los mínimos de OWASP y verificación contra un hash ficticio para un email inexistente; la sesión guarda el SHA-256 del token y se revoca al cambiar la contraseña o desactivar al usuario; los dos límites del ingreso probados en integración, el de cuenta y el de IP |
+| Manipulación de datos | Bypass de autorización cross-org | Filtro obligatorio por `organization_id` en cada repositorio | `parcial`: probado en integración desde la 3.4 para todos los datos de negocio. Dos excepciones: `auth` (H-1), cuyas tablas son globales por diseño, y **siete escrituras que filtran solo por id** (H-7), no alcanzables hoy porque el llamador carga la fila filtrada, pero sin la garantía en el repositorio |
 | Repudio | Cambios de stock sin rastro | `inventory_movements` inmutable + `audit_logs` | `verificado`: rol `crm_app` y trigger `BEFORE UPDATE OR DELETE` ([ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md)), con la limitación ya aceptada de que la aplicación se conecta hoy con el rol dueño |
 | Divulgación de información | Logs con contenido de mensajes | Política de logs sin PII/contenido de negocio | `verificado`: las tres capas de la 8.2 —unitaria, guarda y integración— más el enmascarado del teléfono probado en la 5.2 |
-| Denegación de servicio | Abuso del login o de ingestión | Rate limiting en ambos puntos | `parcial`, **y con hallazgo**: la ingestión está probada; el ingreso tiene probada solo la mitad por cuenta y, sin proxy de confianza, su límite por IP es además un vector de denegación de servicio (H-3) |
-| Elevación de privilegios | Un `viewer` invoca una acción de `admin` directamente por API | Autorización server-side en cada caso de uso, no solo en la UI | `verificado-por-lectura`: los 20 puntos de entrada revisados uno por uno; probado en integración para productos, clientes, stock y miembros |
+| Denegación de servicio | Abuso del login o de ingestión | Rate limiting en ambos puntos | `parcial`, **y con hallazgo**: la ingestión y los dos límites del ingreso están probados, pero sin proxy de confianza el límite por IP es además un vector de denegación de servicio (H-3). Que la defensa esté probada no la vuelve sana: el test confirma que bloquea, y H-3 dice a quién |
+| Elevación de privilegios | Un `viewer` invoca una acción de `admin` directamente por API | Autorización server-side en cada caso de uso, no solo en la UI | `verificado-por-lectura`: los 36 puntos de entrada revisados uno por uno; probado en integración para productos, clientes, stock y miembros |
 
 **Lo que este threat model no cubre**: no contempla un atacante con acceso a la base ni al servidor, ni cadena de suministro más allá de la auditoría de dependencias, ni abuso por parte de un `admin` legítimo de su propia organización.
 

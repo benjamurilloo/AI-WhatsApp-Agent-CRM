@@ -7,7 +7,11 @@
 - Contraseñas hasheadas con un algoritmo de hashing lento y con sal (argon2id o bcrypt con costo adecuado), nunca en texto plano ni con hash rápido (SHA-256 simple).
 - Sesiones server-side con cookies `HttpOnly`, `Secure` (en todo entorno con TLS) y `SameSite=Lax` o `Strict`.
 - Autorización evaluada en el servidor en cada operación, nunca solo ocultando UI en el cliente.
-- Todo query de datos de negocio filtra por `organization_id` de la sesión activa; no existe una vía de acceso cross-organización. **Verificado en la 8.4**, con una excepción declarada: las tablas de `auth` son globales por diseño y `findUserSummaries` lee usuarios por id sin filtrar, hoy solo con ids ya filtrados por sus llamadores (H-1, en [Risks](../planning/Risks.md)).
+- Toda **lectura** de datos de negocio filtra por `organization_id` de la sesión activa. **Verificado en la 8.4**, con dos excepciones declaradas, ninguna alcanzable hoy porque la garantía la sostiene el llamador y no el repositorio:
+  - las tablas de `auth` son globales por diseño y `findUserSummaries` lee usuarios por id sin filtrar (H-1);
+  - **siete funciones escriben datos de negocio filtrando solo por id**, sin `organization_id` en el `where` (H-7, agregado por la revisión independiente del 2026-09-18).
+
+  Las dos están en [Risks](../planning/Risks.md) con su plan. La redacción anterior —"no existe una vía de acceso cross-organización"— se corrigió dos veces: primero por H-1 y después por H-7, que la primera corrección había dejado igual de falsa en un alcance más chico.
 
 ## Privacidad
 

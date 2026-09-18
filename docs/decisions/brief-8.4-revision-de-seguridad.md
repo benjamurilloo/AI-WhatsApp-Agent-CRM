@@ -243,7 +243,9 @@ Quedan **tres hallazgos mayores** y tres menores, todos con su plan en [Risks](.
 
 ### Superficie expuesta (AC-3)
 
-20 puntos de entrada. Ninguno sin declarar.
+**36 puntos de entrada**: 15 páginas, 19 Server Actions y 2 Route Handlers. Ninguno sin declarar. La guarda fija los 21 que no son páginas.
+
+> Decía "20 puntos de entrada" hasta la revisión independiente del 2026-09-18. La tabla de abajo suma 36 y el número 20 no sale de ninguna de sus agrupaciones: era un recuento equivocado usado después como evidencia en el threat model. Corregido acá y en `SecurityModel`.
 
 | Punto de entrada | Cantidad | Exigencia | Cómo se resuelve |
 | --- | --- | --- | --- |
@@ -277,11 +279,24 @@ Es `mayor` y no `crítico` porque no abre por sí solo ningún acceso indebido: 
 
 **Plan**: aceptar `auth` como excepción explícita y escrita —sus tablas son globales por diseño, un usuario se ata a una organización en `organization_members`— y corregir la afirmación barrida, que hoy es falsa tal como está redactada. Si además se quiere la defensa en el repositorio, es una tarea propia: cambiar la firma para que reciba la organización y filtrar por `organization_members`.
 
-#### H-2 (mayor) — El límite de intentos por IP no tiene ninguna prueba
+#### ~~H-2 (mayor) — El límite de intentos por IP no tiene ninguna prueba~~ — **RETIRADO, era falso**
 
-`SecurityModel` declara dos límites en el ingreso: 5 fallos por cuenta y **20 por IP** en 15 minutos. El de cuenta está probado (`tests/integration/auth-service.test.ts`: bloquea aun con la contraseña correcta, la ventana vence y un ingreso correcto limpia los fallos). El de IP **no tiene ni un test**: `IP_FAILURE_LIMIT` aparece una sola vez en todo el repositorio, en la línea que lo usa.
+> Lo que este hallazgo decía se deja escrito porque borrarlo escondería que la revisión falló. **No es cierto.**
 
-Es la única defensa declarada del ingreso sin evidencia. **Plan**: un caso de integración que agote la clave de IP con cuentas distintas, en la misma subfase que atienda H-3.
+~~`SecurityModel` declara dos límites en el ingreso: 5 fallos por cuenta y **20 por IP** en 15 minutos. El de cuenta está probado (`tests/integration/auth-service.test.ts`: bloquea aun con la contraseña correcta, la ventana vence y un ingreso correcto limpia los fallos). El de IP **no tiene ni un test**: `IP_FAILURE_LIMIT` aparece una sola vez en todo el repositorio, en la línea que lo usa.~~
+
+~~Es la única defensa declarada del ingreso sin evidencia. **Plan**: un caso de integración que agote la clave de IP con cuentas distintas, en la misma subfase que atienda H-3.~~
+
+**Corrección (2026-09-18, revisión independiente).** El test existe y es anterior a esta subfase: `tests/integration/auth-service.test.ts`, caso **"20 fallos desde una IP bloquean también a otras cuentas"**, que agota la clave de IP con emails distintos y además comprueba que otra IP sigue pudiendo ingresar. Es exactamente el caso que el "plan" pedía escribir.
+
+**Mecanismo del error**, que es lo que hay que aprender de acá:
+
+1. La búsqueda de casos usó el patrón `it("`, que exige la comilla pegada al paréntesis. Ese test usa la forma de tres argumentos por su `{ timeout: 30000 }`, así que el título está en la línea siguiente y nunca apareció.
+2. La "confirmación" fue una segunda búsqueda de `IP_FAILURE_LIMIT`, constante que el test no usa porque escribe `20` a mano. Dos búsquedas ciegas a la misma cosa, y su coincidencia se leyó como corroboración.
+
+Es **la misma falacia del hallazgo previo 7 de este brief** —"contar no responde la pregunta"—, que esta subfase supo evitar en la dirección del falso positivo (`analytics` 14:1, `inventory` 10:1) y no vio en la dirección del falso negativo. La asimetría importa: un falso positivo cuesta una comprobación, un falso negativo inventa trabajo y declara sin evidencia una defensa que la tiene.
+
+La numeración no se reutiliza: no hay H-2 en este proyecto.
 
 #### H-3 (mayor) — Sin proxy de confianza, el límite por IP es un bloqueo global del ingreso
 
@@ -291,7 +306,7 @@ El mecanismo está documentado ("sin proxy de confianza todas las requests compa
 
 No es `crítico` según la D-2 —no da acceso a nada— pero es el hallazgo con más consecuencia práctica de esta revisión.
 
-**Plan**: decidir en la misma tarea que H-2 entre desactivar el límite por IP mientras no haya proxy de confianza (la clave compartida no aporta defensa y sí un riesgo) o mantenerlo con un umbral mucho más alto. La decisión no es de esta subfase; el riesgo queda registrado con las dos opciones.
+**Plan**: decidir entre desactivar el límite por IP mientras no haya proxy de confianza (la clave compartida no aporta defensa y sí un riesgo) o mantenerlo con un umbral mucho más alto. La decisión no es de esta subfase; el riesgo queda registrado con las dos opciones.
 
 #### H-4 (menor) — Dos documentos decían "Estado: diseñado"
 
@@ -307,12 +322,31 @@ Un endpoint sin autenticación que revela si la base responde. No expone datos, 
 - "Se verifica en la Fase 8 **o** 9" para la IP real → una obligación que puede cumplirse en cualquiera de dos fases no se cumple en ninguna. Asignada a la Fase 9 (D-5).
 - `TraceabilityMatrix` línea 46, minimización de FR-CLI-05 → **cerrada** por esta revisión.
 
+#### H-7 (mayor, agregado por la revisión independiente del 2026-09-18) — Siete escrituras de datos de negocio filtran solo por id
+
+H-1 encontró **una lectura** sin filtro de organización y esta revisión escribió, al corregir `SecurityModel`, que la única excepción al aislamiento era `auth`. Esa corrección también era falsa. Siete funciones de repositorio **escriben** datos de negocio con un `where` que solo compara el id:
+
+| Función | Tabla |
+| --- | --- |
+| `catalog.updateProductValues`, `catalog.updateProductActive` | `products` |
+| `crm.updateClientValues`, `crm.updateClientActive` | `clients` |
+| `organizations.updateMemberRole` | `organization_members` |
+| `conversations.updateConversationStatus`, `conversations.widenConversationDates` | `conversations` |
+
+No son alcanzables hoy, por la misma razón que H-1: los siete llamadores cargan antes la fila filtrada por organización, con `FOR UPDATE` en la misma transacción, y recién entonces pasan el id. Dos diferencias con H-1 que importan: son **escrituras**, y `products`, `clients`, `organization_members` y `conversations` **no** son tablas globales por diseño, así que no hay nada que justifique la excepción salvo la disciplina de cada llamador. `inventory.applyStockChange` filtra por `organization_id` en su `where` y demuestra que la forma defendible ya existe en este código.
+
+Es `mayor` y no `crítico` por el mismo criterio que H-1: hace falta escribir código nuevo y equivocado para llegar.
+
+**Por qué esta revisión no lo vio**: buscó el patrón de H-1 —lecturas de `auth` sin `organization_id`— y no la clase del defecto, que es "el `where` no incluye la organización". Un `grep` de `.update(` sobre los repositorios lo habría mostrado entero en una pantalla.
+
+**Plan**: o pasar `organizationId` a las siete firmas y agregarlo al `where` —cambio mecánico y barato, y las siete tienen ya el dato en el llamador—, o escribir la excepción honesta, que es "la garantía vive en el llamador". La primera es preferible: la segunda repite el patrón que obligó a corregir el documento dos veces. Registrado en [Risks](../planning/Risks.md).
+
 ### Rate limiting: verificado en los dos puntos (AC-4)
 
 | Punto | Límite declarado | Evidencia | Veredicto |
 | --- | --- | --- | --- |
 | Ingreso, por cuenta | 5 / 15 min | `tests/integration/auth-service.test.ts`: bloquea aun con la contraseña correcta, la ventana vence, un ingreso correcto limpia los fallos, y los intentos guardan hashes y no el email ni la IP | `verificado` |
-| Ingreso, por IP | 20 / 15 min | ninguna | **H-2**, `sin-verificar` |
+| Ingreso, por IP | 20 / 15 min | `tests/integration/auth-service.test.ts`, caso "20 fallos desde una IP bloquean también a otras cuentas": agota la clave de IP con emails distintos y comprueba que otra IP sigue ingresando | `verificado` (corregido el 2026-09-18; esta fila decía "ninguna" y **H-2**) |
 | Ingestión, por credencial | 120 / min | `tests/integration/ingestion-http.test.ts` caso 9: el pedido excedente responde `429` con `Retry-After` calculado y `RATE_LIMITED`, no escribe nada, otra credencial de la misma organización no se ve afectada, y la ventana siguiente reinicia la cuenta | `verificado` |
 
 ### Minimización de FR-CLI-05 (AC-5)
@@ -327,18 +361,21 @@ Lo que un `viewer` recibe está acotado desde el servidor por el enmascarado de 
 
 | Amenaza | Veredicto | Evidencia |
 | --- | --- | --- |
-| Suplantación | `verificado` | argon2id con los parámetros mínimos de OWASP y verificación contra un hash ficticio para un email inexistente; sesión server-side revocable que guarda el SHA-256 del token; límite por cuenta probado. Con la salvedad de H-2 en la mitad por IP |
-| Manipulación de datos (cross-org) | `parcial` | Todos los repositorios de datos de negocio filtran por `organization_id`, probado en integración desde la 3.4 (otra organización da `NOT_FOUND`). La excepción es H-1, que no es de datos de negocio pero contradice la afirmación tal como está escrita |
+| Suplantación | `verificado` | argon2id con los parámetros mínimos de OWASP y verificación contra un hash ficticio para un email inexistente; sesión server-side revocable que guarda el SHA-256 del token; los dos límites del ingreso probados en integración |
+| Manipulación de datos (cross-org) | `parcial` | Las lecturas de datos de negocio filtran por `organization_id`, probado en integración desde la 3.4 (otra organización da `NOT_FOUND`). Dos excepciones: H-1, que no es de datos de negocio pero contradice la afirmación tal como está escrita, y **H-7**, siete escrituras que filtran solo por id |
 | Repudio | `verificado` | `inventory_movements` y `audit_logs` de solo inserción con rol y trigger ([ADR 0013](0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md)), con la limitación ya aceptada de que hoy la aplicación se conecta con el rol dueño |
 | Divulgación de información | `verificado` | Las tres capas de evidencia de la 8.2, más el enmascarado del teléfono probado en la 5.2 |
-| Denegación de servicio | `parcial`, **y el hallazgo H-3** | La ingestión está probada. El ingreso tiene la mitad probada, y en la configuración actual su límite por IP es también un vector de denegación de servicio |
-| Elevación de privilegios | `verificado-por-lectura` | Los 20 puntos de entrada revisados uno por uno; `authorize(context, { role: "admin" })` en cada caso de uso de escritura sensible, probado en integración para productos, clientes, stock y miembros |
+| Denegación de servicio | `parcial`, **y el hallazgo H-3** | La ingestión y los dos límites del ingreso están probados, y en la configuración actual el límite por IP es también un vector de denegación de servicio |
+| Elevación de privilegios | `verificado-por-lectura` | Los 36 puntos de entrada revisados uno por uno; `authorize(context, { role: "admin" })` en cada caso de uso de escritura sensible, probado en integración para productos, clientes, stock y miembros |
 
 ### Veredictos por sección de `SecurityModel` (AC-1)
 
+Corregida el 2026-09-18 por la revisión independiente, en tres puntos: **faltaba la sección §Superficie expuesta**, agregada por esta misma subfase al documento y nunca incorporada al recuento —así que la tabla no demostraba el AC-1, que pide veredicto de *cada* sección—; la fila del threat model declaraba 6 afirmaciones y repartía 7 veredictos, con lo que las dos sumas del total no coincidían entre sí; y H-2 pasó de `parcial` a `verificado` en Autenticación.
+
 | Sección | Afirmaciones | `verificado` | `verificado-por-lectura` | `parcial` / hallazgo | `no-verificable-aquí` |
 | --- | --- | --- | --- | --- | --- |
-| Autenticación | 18 | 13 | 2 | 2 (H-2, H-3) | 1 (cookie `__Host-` bajo TLS) |
+| Superficie expuesta | 9 | 2 | 7 | — | — |
+| Autenticación | 18 | 14 | 2 | 1 (H-3) | 1 (cookie `__Host-` bajo TLS) |
 | Autorización | 14 | 10 | 3 | 1 (H-1) | — |
 | Autenticación de servicio | 7 | 6 | 1 | — | — |
 | Protección de la aplicación web | 16 | 13 | 2 | — | 1 (HSTS) |
@@ -347,12 +384,16 @@ Lo que un `viewer` recibe está acotado desde el servidor por el enmascarado de 
 | Auditoría | 6 | 5 | — | 1 (rol dueño, limitación ya aceptada) | — |
 | Backups y restauración | 2 | — | — | — | 2 |
 | Retención de datos | 7 | 6 | 1 | — | — |
-| Threat model | 6 | 4 | 1 | 2 (H-1, H-3) | — |
+| Threat model | 6 | 3 | 1 | 2 (H-1, H-3) | — |
 | Revisión de dependencias | 6 | 6 | — | — | — |
 | Separación de entornos | 2 | 1 | — | — | 1 (staging) |
-| **Total** | **95** | **73** | **11** | **6** | **6** |
+| **Total** | **104** | **75** | **18** | **5** | **6** |
 
 Qué sostiene cada veredicto: lo `verificado` cita el test, la guarda o la medición con fecha del brief correspondiente (3.3 a 3.7, 4.x, 5.2, 6.5.3, 8.1, 8.2 y 8.3); lo `verificado-por-lectura` se comprobó en el código en esta subfase y se distingue a propósito, porque nada lo fija; lo `no-verificable-aquí` necesita TLS, proxy real o entorno persistente y queda para la Fase 9.
+
+En §Superficie expuesta, lo `verificado` son las dos afirmaciones con instrumento —que una sesión válida no autentica `/api/ingestion/v1/events`, con su test, y que la guarda falla ante un punto de entrada sin declarar, con su mutación—; las otras siete —las seis filas de exigencia y `/api/health`— se comprobaron leyendo cada punto de entrada, que es justamente lo que la guarda no hace.
+
+Las dos sumas de esta tabla cierran ahora: la columna de afirmaciones da 104 y las cuatro de veredicto también. En la versión anterior daban 95 y 96, y nadie lo notó porque nadie las sumó.
 
 ### Instrumento permanente (D-4, AC-9)
 
@@ -362,10 +403,13 @@ La guarda **no** comprueba que la exigencia declarada se cumpla, y su comentario
 
 **Evidencia de mutación**: agregar `export async function borrarTodoAction()` a un archivo de acciones existente hace fallar la guarda nombrando el archivo y la función. Límite conocido y heredado de las otras guardas: recorre `git ls-files`, así que un archivo **sin versionar** no lo ve.
 
+> **Corrección del 2026-09-18.** La revisión independiente encontró un agujero: el detector solo veía `export function` / `export async function`, no `export const accion = async () => {}`, que Next acepta igual. La mutación que validó la guarda usó justamente la forma que sí detectaba, así que la evidencia de mutación era real pero no probaba lo que parecía. El detector ahora cubre las dos formas y hay un caso versionado con las cuatro variantes que antes se escapaban. **Mutación nueva, corrida el 2026-09-18**: agregar `export const borrarTodoAction = async (): Promise<void> => {};` a `src/app/(autenticado)/clientes/actions.ts` hace fallar la guarda nombrando archivo y función (`src/app/(autenticado)/clientes/actions.ts#borrarTodoAction`); con el detector anterior esa misma acción entraba sin que nada la viera. Sobre el repositorio real el conjunto declarado no cambió: no existía ninguna acción escrita como constante.
+
 ### Lo que esta revisión no certifica
 
-- **Que no existan defectos de seguridad.** Certifica que 95 afirmaciones del modelo se contrastaron contra el código y que los 20 puntos de entrada se revisaron uno por uno, con el veredicto de cada uno a la vista.
-- **Revisión independiente**: es autoevaluación del mismo agente que escribió lo revisado.
+- **Que no existan defectos de seguridad.** Certifica que 104 afirmaciones del modelo se contrastaron contra el código y que los 36 puntos de entrada se revisaron uno por uno, con el veredicto de cada uno a la vista.
+- **Que esta revisión sea correcta.** La revisión independiente del 2026-09-18 encontró en ella un hallazgo falso, un hallazgo no visto y dos recuentos mal sumados. Lo que sigue en pie es lo que sobrevivió a esa segunda lectura, no lo que esta subfase declaró.
+- **Revisión independiente**: el cuerpo de este brief es autoevaluación del mismo agente que escribió lo revisado. La corrección posterior no lo es (ver abajo).
 - **Nada bajo TLS, proxy real o entorno persistente**: 6 afirmaciones quedan `no-verificable-aquí` con destino Fase 9.
 - **Ningún nivel de validación subió** por esta revisión. Revisar no valida.
 
@@ -383,8 +427,25 @@ Con autorización explícita del usuario en el turno, además de los archivos de
 
 | Qué | Dónde queda |
 | --- | --- |
-| H-1, H-2 y H-3, con su plan y su decisión pendiente | [Risks](../planning/Risks.md) |
+| H-1, H-3 y H-7, con su plan y su decisión pendiente | [Risks](../planning/Risks.md) |
 | Las 6 afirmaciones `no-verificable-aquí` | Fase 9, nombradas en el resultado |
 | La verificación de la IP real con un proxy | Fase 9 (D-5) |
 | Las dos listas en memoria | Subfase 8.5 (D-6) |
 | La reevaluación de APM y tracing | Fase 9 (D-6) |
+
+## Corrección posterior — revisión independiente (2026-09-18)
+
+Después de cerrada la Fase 8, un revisor que no participó del trabajo leyó esta subfase contra su brief y contra el código. Es la primera revisión del proyecto que no es autoevaluación. Encontró cuatro defectos, los cuatro verificados contra el código antes de aceptarlos:
+
+| Qué | Resultado |
+| --- | --- |
+| **H-2 era falso**: el test del límite por IP existía desde antes | Hallazgo **retirado**. El error vino de dos búsquedas ciegas a lo mismo, leídas como confirmación mutua |
+| **H-7, no visto**: siete escrituras de datos de negocio filtran solo por id | Hallazgo **nuevo**, mayor, de la misma clase que H-1. La corrección que esta subfase hizo a `SecurityModel` —"la única excepción es `auth`"— también era falsa |
+| **"20 puntos de entrada"** no salía de ninguna agrupación; la tabla suma 36 | Corregido acá y en `SecurityModel`; el threat model usaba el número como evidencia |
+| **La tabla del AC-1 no demostraba el AC-1**: le faltaba §Superficie expuesta, y sus dos totales daban 95 y 96 | Fila agregada, suma del threat model corregida; ahora las dos dan 104 |
+
+Y un defecto del instrumento, no del análisis: la guarda no detectaba las acciones escritas como constante. Corregido con su caso versionado.
+
+**Lo que esta corrección no resuelve, y queda como decisión del usuario.** El Roadmap fija para la Fase 8 dos cosas distintas: el criterio de aceptación "sin hallazgos críticos abiertos" y el gate de salida "revisión de seguridad **sin bloqueantes**". Esta subfase escribió que "sin bloqueantes" significa "ningún hallazgo alcanza el umbral de crítico de la D-2", y **esa equivalencia nunca se aprobó**: la definió el mismo agente que después la aplicó a su propio trabajo. Además la escala D-2 define lo crítico solo en términos de confidencialidad y de autorización, así que **un defecto de disponibilidad no puede alcanzar el umbral por construcción**, aunque el threat model trate la denegación de servicio como amenaza en alcance. Que H-3 —bloqueo global del ingreso, el hallazgo con más consecuencia práctica de la revisión— sea `mayor` y no `crítico` no salió de mirar el código: salió de la escala.
+
+El criterio de aceptación está cumplido: no hay hallazgos críticos abiertos. El gate está declarado sobre una escala que no puede expresar el riesgo que la propia revisión señaló como el peor. Las dos salidas son ampliar la D-2 con una cláusula de disponibilidad y reevaluar H-3, o ratificar por escrito que "bloqueante" significa "crítico-D-2". **Hoy está resuelto por omisión y el CHANGELOG de la Fase 8 queda como está hasta que se decida.**

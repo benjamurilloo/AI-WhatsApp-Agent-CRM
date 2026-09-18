@@ -116,11 +116,17 @@ export function isServerActionModule(text: string): boolean {
   return /^\s*["']use server["']\s*;/m.test(text);
 }
 
+// Dos formas de exportar una Server Action: la declaración `export function` y la asignación
+// `export const x = async () => {}`, que Next acepta igual. La segunda se agregó tras la
+// revisión independiente de la 8.4: la guarda original solo veía la primera, así que una
+// acción escrita como constante habría entrado sin declararse y la mutación que la validó
+// usó justamente la forma que sí detectaba.
+const EXPORTED_FUNCTION =
+  /^export\s+(?:async\s+)?function\s+([A-Za-z_$][\w$]*)|^export\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]*)?=\s*(?:async\s+)?(?:function\b|\([^)]*\)\s*(?::[^=]*?)?=>|[A-Za-z_$][\w$]*\s*=>)/gm;
+
 export function exportedFunctions(text: string): string[] {
-  return [
-    ...text.matchAll(/^export\s+(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/gm),
-  ]
-    .map((match) => match[1])
+  return [...text.matchAll(EXPORTED_FUNCTION)]
+    .map((match) => match[1] ?? match[2])
     .filter((name): name is string => name !== undefined);
 }
 
@@ -151,6 +157,25 @@ describe("detección de funciones exportadas", () => {
     ].join("\n");
 
     expect(exportedFunctions(text)).toEqual(["unaAccion", "otra"]);
+  });
+
+  // Caso que falla con el regex anterior a la revisión independiente de la 8.4.
+  it("encuentra también las exportadas como constante", () => {
+    const text = [
+      "export const flecha = async (formData: FormData) => {};",
+      "export const tipada: Accion = async (formData) => {};",
+      "export const expresion = function () {};",
+      "export const unArgumento = (x) => x;",
+      "export const noEsFuncion = 1;",
+      'export const tampoco = "async () => {}";',
+    ].join("\n");
+
+    expect(exportedFunctions(text)).toEqual([
+      "flecha",
+      "tipada",
+      "expresion",
+      "unArgumento",
+    ]);
   });
 });
 
