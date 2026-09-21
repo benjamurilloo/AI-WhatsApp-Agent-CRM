@@ -2,6 +2,54 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-21 — 9.0.3: la frontera de `analytics`, y dos pendientes que no existían
+
+Cierre de subfase, y con ella cierra la tarea madre **9.0**. Autoevaluación, no revisión independiente: la 9.0.3 no abre ni cierra gate — eso es la 9.1.
+
+**Certifica:**
+
+- **`analytics` dejó de poder importar `next`, `next/*` y `@/app/*`.** Era el único módulo de dominio que podía, y no por una decisión: su bloque existe por un permiso extra —leer `@/modules/*/schema` para calcular métricas entre dominios— y, como ESLint **reemplaza** la configuración de una regla cuando otro bloque aplica a los mismos archivos, ese bloque no heredó las prohibiciones generales. La excepción por un motivo arrastró una excepción que nadie decidió.
+- **Ese permiso de leer esquemas ajenos ahora excluye `@/modules/auth/schema`.** Era la vía por la que `analytics` podía leer `users` directo, sorteando `organizations.getMemberSummaries` — el agujero que la guarda de la 9.0.1 **declaró abierto en su propia cabecera** en vez de dejarlo implícito. El recorte es nominal y no general porque no puede serlo: `audit`, `inventory` y `organizations` importan ese esquema para su clave foránea a `users`, y hay un caso por cada uno que lo fija.
+- **Ningún archivo de `src/` cambió**, que era la predicción del brief: los permisos que se cerraron no estaban en uso. La subfase cierra puertas abiertas, no corrige abusos.
+- **La guarda pasó de 9 casos a 20**, en pares: por cada fila corregida, uno que debe estar prohibido y uno que debe seguir permitido. `module-boundary` aplica `eslint.config.mjs` **real** sobre archivos virtuales, así que la tabla de [RepositoryStructure](docs/architecture/RepositoryStructure.md) y la configuración no pueden separarse sin que un caso lo note.
+- **Cinco mutaciones ejecutadas, no supuestas**, cada caso nuevo cubierto por al menos una. Tres de ellas existen para los casos que esperan «permitido»: sin ellas, un caso así pasa aunque la corrección se haya llevado puesto un permiso legítimo, que es la forma en que este tipo de cambio hace daño.
+- **Tests**: 797 — 302 unitarios, **90** de guardas y 405 de integración — y 81 de 81 end-to-end, con typecheck, lint y formato limpios.
+
+**No certifica:**
+
+- **Que `analytics` no pueda llegar a `users` por ninguna vía.** Cierra la del esquema. Una guarda de importaciones comprueba lo que dice un `import`, no todo lo que un módulo puede alcanzar.
+- **Dos de los tres puntos con que esta subfase se había descompuesto no existían, y eso vale registrarlo más que el trabajo que ahorraron.** El nombre del paso de guardas en `ci.yml` ya estaba arreglado desde `cae7061` (8.3), con la forma genérica que no vuelve a envejecer: **el pendiente sobrevivió a su propia solución y llegó a figurar en el alcance de una subfase futura.** Y el del timeout de las guardas **era falso**: decía que corren con el default de 5 s de Vitest, pero `vitest.config.mts` fija `testTimeout: 30000` para el proyecto `guards` desde la 2.5. Lo cierto y lo falso venían pegados —ningún *archivo* de guarda fija timeout, eso sí— y de ahí se concluyó el default sin abrir la configuración del proyecto. La corrida de 44 s que originó ese pendiente **no pudo fallar por un techo de 5 s**; sigue sin explicación, ahora sin diagnóstico inventado. Quedó fe de errata en el cierre de la 9.0.1, que es donde el error estaba escrito.
+- **Dos fallas end-to-end del mismo día, con la misma firma y un patrón en común, que quedan como hallazgo sin subfase.** `conversations` caso 2 en CI y `clients` caso 9 en local, las dos con «Target page, context or browser has been closed», las dos pasando al reintentar. Lo común no es el caso sino el patrón: solo tres archivos de `tests/e2e/` escuchan `page.on("response")` y acumulan `response.text()`, y las dos fallas cayeron ahí. La hipótesis **está declarada como hipótesis** y el propio código ya la nombra: una respuesta que la navegación corta deja su lectura sin resolver, el `Promise.all` no termina y el test agota su presupuesto. Falta reproducirla.
+- **Nada en runtime**: la frontera es estática, la hacen cumplir ESLint en local y en CI.
+
+Detalle en [brief-9.0.3](docs/decisions/brief-9.0.3-frontera-de-analytics-en-eslint.md).
+
+---
+
+## 2026-09-21 — 9.0.2: buscar sin acentos, y el fin de la deuda más vieja del proyecto
+
+Cierre de subfase. Buscar clientes y productos por nombre ya no distingue acentos. La deuda venía de la 4.2, que la excluyó; la 4.4 la asignó a la Fase 8; ninguna de las cinco subfases de esa fase la tomó; el preflight de su cierre la encontró sin hacer y la reasignó a la Fase 9, que ese mismo día la aterrizó en una subfase nominal. **Sobrevivió una fase entera por nombrar una fase y no una subfase.**
+
+**Certifica:**
+
+- **`azucar` encuentra «Azúcar» y `azúcar` encuentra «Azucar», en clientes y en productos.** Las cuatro direcciones tienen caso propio. Sigue siendo búsqueda por prefijo: `zucar` no encuentra nada, y los comodines `%` y `_` siguen escapados.
+- **Los dos índices que sostienen esas búsquedas no se perdieron.** Es lo que hacía que la subfase no fuera «agregarle `unaccent` a la consulta»: `unaccent()` está declarada **`STABLE`**, y PostgreSQL solo admite funciones inmutables en una expresión de índice, así que la vía directa costaba los dos índices — o sea introducir a mano la regresión que la 8.5 midió para evitar. Verificado en la fuente instalada de la extensión y después en `pg_proc.provolatile`, dos instrumentos independientes. La salida fue la envoltura `immutable_unaccent`, con los dos índices recreados sobre ella y `text_pattern_ops`.
+- **La expresión del índice y la de la consulta se definen una sola vez.** El brief planeaba escribirlas dos veces y vigilarlas con un test; al implementar se vio que el esquema y el repositorio de cada módulo son el mismo módulo, así que se define una vez en `searchNormalized` y la importan las dos. **La desincronización pasó de vigilada a imposible**, que es la diferencia entre una garantía estructural y una que depende de quien edite.
+- **Primera extensión de PostgreSQL del proyecto**, en la migración `0015`, aplicada en la base local, en la de test y en el PostgreSQL de CI.
+- **Tests**: 786 — 302 unitarios, 79 de guardas y **405** de integración, cinco más que la 9.0.4 — y 81 de 81 end-to-end, con typecheck, lint y formato limpios. `drizzle-kit generate` responde «No schema changes, nothing to migrate».
+
+**No certifica:**
+
+- **Que el diccionario `unaccent` no cambie.** La envoltura declarada `IMMUTABLE` **promete al planificador algo que la función no cumple**: es la práctica habitual y tiene esa mentira adentro. Solo es correcta mientras el diccionario no cambie; si cambiara —otra versión de la extensión, o uno propio—, los índices quedan mal **en silencio** y hay que `REINDEX`. Es una limitación **aceptada y escrita** —en la cabecera de la migración y en [DataModel](docs/architecture/DataModel.md)—, no resuelta, y **no hay chequeo automático de ella**.
+- **Rendimiento con volumen.** Los dos casos de `EXPLAIN` comprueban la **forma del plan**, no un umbral de tiempo, y para eso insertan 2.000 filas sintéticas porque con pocas el planificador no tiene con qué decidir. Medir con volumen y con varias organizaciones es de la 9.3.
+- **El orden de la lista de clientes**, que sigue distinguiendo acentos a propósito: «Ángel», «Avila», «Ávila», «Bravo», fijado ahora en un caso propio. Unificarlo sería una decisión de producto con su propia subfase.
+- **Una aserción propia que no discriminaba nada, encontrada al comprobar que podía fallar.** La primera versión del caso de `EXPLAIN` afirmaba que el plan **nombra** el índice, y eso pasaba igual sin la normalización: los dos índices empiezan por `organization_id`, así que el planificador los usa para resolver la organización y deja el nombre en `Filter`. Tercera vez en este linaje que aparece una aserción incapaz de fallar, y **la primera que la encuentra la propia implementación** — por ejecutar la mutación en lugar de suponer su resultado, el paso que faltó las dos veces anteriores. La aserción quedó en que el prefijo entre como **cota del índice** (`~>=~`).
+- **La verificación en CI necesitó dos intentos, y por qué no es lo mismo que un reintento a ciegas.** El intento 1 del run 35646632631 falló en un caso end-to-end de `conversations` **ajeno a la subfase**, por timeout de 30 s donde históricamente tarda entre 1,9 y 3,0 s. Antes de relanzar se descartó que fuera del cambio —el caso nunca busca por nombre, y migraciones, integración y build pasaron— y se intentó reproducirlo en local diez veces, 10/10. El intento 2 dio los 16 pasos en verde con ese caso en 2,2 s. La comparación caso por caso muestra que el runner del intento 1 fue **uniformemente ~30 % más lento**, lo que contribuye pero **no explica** un factor catorce. Queda en `HANDOFF.md` **sin causa determinada y sin subfase**, con lo que faltó para poder mirarlo: subir los artefactos de Playwright cuando el paso falla.
+
+Detalle en [brief-9.0.2](docs/decisions/brief-9.0.2-busqueda-sin-distinguir-acentos.md).
+
+---
+
 ## 2026-09-21 — 9.0.4: la octava escritura, la que la 9.0.1 no vio
 
 Cierre de subfase. Existe porque la revisión independiente de la 9.0.1 encontró una escritura de su misma clase en un módulo que esa subfase no había mirado, y porque la 9.0.1 **no la corrigió por analogía**: su condición de detención manda registrar y elevar la decisión de alcance. El usuario decidió que entraba.

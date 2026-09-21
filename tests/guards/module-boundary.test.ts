@@ -51,6 +51,69 @@ const cases = [
     code: 'import { h } from "@/modules/crm"; export const i = h;',
     forbidden: true,
   },
+  // analytics es el único módulo de dominio con un permiso extra, y por eso su bloque
+  // no heredaba las prohibiciones generales: ESLint reemplaza la configuración de una
+  // regla cuando otro bloque aplica a los mismos archivos (9.0.3, D-1 y D-2).
+  {
+    file: "src/modules/analytics/presentacion.ts",
+    code: 'import { cache } from "next"; export const l = cache;',
+    forbidden: true,
+  },
+  {
+    file: "src/modules/analytics/http.ts",
+    code: 'import { NextResponse } from "next/server"; export const m = NextResponse;',
+    forbidden: true,
+  },
+  {
+    file: "src/modules/analytics/pantalla.ts",
+    code: 'import { periodo } from "@/app/(autenticado)/_dashboard/period"; export const n = periodo;',
+    forbidden: true,
+  },
+  {
+    file: "src/modules/analytics/usuarios.ts",
+    code: 'import { users } from "@/modules/auth/schema"; export const o = users;',
+    forbidden: true,
+  },
+  {
+    file: "src/modules/analytics/conversaciones.ts",
+    code: 'import { messages } from "@/modules/conversations/schema"; export const p = messages;',
+    forbidden: false,
+  },
+  {
+    file: "src/modules/analytics/ingestion.ts",
+    code: 'import { ingestionEvents } from "@/modules/ingestion/schema"; export const q = ingestionEvents;',
+    forbidden: false,
+  },
+  {
+    file: "src/modules/analytics/publico.ts",
+    code: 'import { r } from "@/modules/organizations"; export const s = r;',
+    forbidden: false,
+  },
+  // El recorte de D-2 es nominal, no general: estos tres declaran una clave foránea a
+  // users y tienen que seguir pudiendo (9.0.3, H-5).
+  {
+    file: "src/modules/audit/schema.ts",
+    code: 'import { users } from "@/modules/auth/schema"; export const u = users;',
+    forbidden: false,
+  },
+  {
+    file: "src/modules/inventory/schema.ts",
+    code: 'import { users } from "@/modules/auth/schema"; export const v = users;',
+    forbidden: false,
+  },
+  {
+    file: "src/modules/organizations/schema.ts",
+    code: 'import { users } from "@/modules/auth/schema"; export const w = users;',
+    forbidden: false,
+  },
+  // El bloque de schema.ts está antes que el de analytics, así que para un schema.ts
+  // dentro de analytics gana el de analytics, que es el último que aplica. analytics no
+  // tiene tablas propias; el caso fija el orden, no una intención de dárselas (H-6).
+  {
+    file: "src/modules/analytics/schema.ts",
+    code: 'import { users } from "@/modules/auth/schema"; export const x2 = users;',
+    forbidden: true,
+  },
 ];
 
 describe("frontera entre módulos", () => {

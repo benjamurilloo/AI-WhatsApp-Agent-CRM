@@ -31,6 +31,17 @@ const httpAndPresentation = {
   message: "El dominio no conoce HTTP ni presentación (Overview.md).",
 };
 
+// analytics puede leer esquemas ajenos para calcular métricas, pero no el de auth:
+// la tabla users se lee por organizations.getMemberSummaries, que interseca contra
+// organization_members en SQL (H-1, 9.0.1). La guarda user-summaries-entry-point fija
+// el punto de entrada contra el acceso literal; esta regla cierra la vía del esquema,
+// que esa guarda declara como no cubierta (9.0.3, D-2).
+const authSchema = {
+  group: ["@/modules/auth/schema"],
+  message:
+    "No leas users por su esquema: pasá por organizations.getMemberSummaries.",
+};
+
 const anyModule = {
   group: ["@/modules/*", "@/modules/*/**"],
   message: "src/shared no importa módulos, para no crear ciclos.",
@@ -83,7 +94,12 @@ export default defineConfig([
   },
   {
     files: ["src/modules/analytics/**/*.{ts,tsx}"],
-    rules: restrict(moduleInternalsExceptSchema, leaveModuleRelative),
+    rules: restrict(
+      moduleInternalsExceptSchema,
+      authSchema,
+      leaveModuleRelative,
+      httpAndPresentation,
+    ),
   },
   {
     files: ["src/shared/**/*.{ts,tsx}"],
