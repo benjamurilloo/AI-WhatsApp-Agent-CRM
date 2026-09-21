@@ -1,6 +1,6 @@
 import { and, asc, count, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { getDb, type Db, type DbTransaction } from "@/shared/db";
-import { clients } from "./schema";
+import { clients, searchNormalized } from "./schema";
 
 // Acceso a clients. Toda consulta filtra por organization_id en SQL (brief-5.2).
 
@@ -82,8 +82,10 @@ function searchConditions(
   if (search.kind === "phone") {
     conditions.push(eq(clients.phoneE164, search.e164));
   } else if (search.kind === "name") {
+    // `searchNormalized` es la misma función que define el índice
+    // `clients_organization_display_name_unaccent_idx`, para que no puedan separarse (D-2).
     conditions.push(
-      sql`lower(${clients.displayName}) like ${likePrefix(search.prefix)}`,
+      sql`${searchNormalized(clients.displayName)} like immutable_unaccent(lower(${likePrefix(search.prefix)}))`,
     );
   }
   return and(...conditions)!;

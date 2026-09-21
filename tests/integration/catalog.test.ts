@@ -538,6 +538,54 @@ describe("listProductStock", () => {
     expect(await names(s.adminA, { text: "YER-5" })).toEqual([]);
   });
 
+  it("el prefijo del nombre entra en el Index Cond del índice normalizado (9.0.2, AC-4)", async () => {
+    const s = await seedList();
+    // Hacen falta filas: con tres, el planificador elige cualquier índice para resolver solo
+    // `organization_id` y deja el nombre en `Filter`. El fixture es sintético y su único fin es que
+    // el planificador tenga con qué decidir.
+    await getDb().execute(
+      sql`insert into products (organization_id, sku, name, unit)
+          select ${s.orgA}, 'VOL-'||g, 'Producto '||g, 'unidad'
+          from generate_series(1, 2000) g`,
+    );
+    await getDb().execute(sql`analyze products`);
+
+    const plan = (
+      await getDb().execute<{ "QUERY PLAN": string }>(
+        sql`explain select id from products
+            where organization_id = ${s.orgA}
+              and immutable_unaccent(lower(name)) like immutable_unaccent(lower('caf%'))`,
+      )
+    ).rows
+      .map((row) => row["QUERY PLAN"])
+      .join("\n");
+
+    // La aserción que importa NO es que aparezca el nombre del índice: ese índice empieza por
+    // organization_id, así que el planificador lo usa igual para resolver solo la organización,
+    // con el nombre en `Filter`. Se verificó: quitando la normalización de la consulta, el plan
+    // sigue nombrando el índice. Lo que discrimina es que el prefijo se convierta en cota del
+    // índice (`~>=~`), y eso solo pasa si la expresión de la consulta es la del índice.
+    expect(plan).toContain("products_organization_name_unaccent_idx");
+    expect(plan).toContain("immutable_unaccent(lower(name)) ~>=~");
+
+    // Lo que este caso NO prueba: que la consulta cumpla un umbral de tiempo con volumen real
+    // (9.3), ni que consulta e índice compartan expresión — eso lo sostiene `searchNormalized`,
+    // que las define una sola vez, no este test.
+  });
+
+  it("no distingue acentos, en las dos direcciones (9.0.2)", async () => {
+    const s = await seedList();
+    // Sin acentos encuentra lo acentuado.
+    expect(await names(s.adminA, { text: "azucar" })).toEqual(["Azúcar 1 kg"]);
+    expect(await names(s.adminA, { text: "cafe molido" })).toEqual([
+      "Café molido 250 g",
+    ]);
+    // Y con acentos encuentra lo que no los tiene.
+    expect(await names(s.adminA, { text: "yérba" })).toEqual(["Yerba 500 g"]);
+    // Sigue siendo prefijo, no "contiene".
+    expect(await names(s.adminA, { text: "zucar" })).toEqual([]);
+  });
+
   it("trata % y _ como texto literal", async () => {
     const s = await seedList();
     expect(await names(s.adminA, { text: "%" })).toEqual([]);

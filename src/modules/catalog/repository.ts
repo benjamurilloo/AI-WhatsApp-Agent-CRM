@@ -1,6 +1,6 @@
 import { and, eq, or, sql, type SQL } from "drizzle-orm";
 import { getDb, type Db, type DbTransaction } from "@/shared/db";
-import { products } from "./schema";
+import { products, searchNormalized } from "./schema";
 
 // Acceso a products. Toda consulta filtra por organization_id en SQL (brief-4.2).
 
@@ -94,8 +94,16 @@ function likePrefix(text: string): string {
   return `${text.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 }
 
-// Prefijo de nombre o SKU exacto, sin distinguir mayúsculas (brief-4.2, D-3). Sin límite:
-// el estado de stock se filtra y la lista se pagina en memoria (D-1).
+// Prefijo de nombre o SKU exacto, sin distinguir mayúsculas ni acentos (brief-4.2, D-3;
+// brief-9.0.2). Sin límite: el estado de stock se filtra y la lista se pagina en memoria (D-1).
+//
+// La expresión del nombre sale de `searchNormalized`, la misma función que define el índice
+// `products_organization_name_unaccent_idx`. No están escritas dos veces a propósito: si se
+// separaran, el índice dejaría de usarse y la búsqueda recorrería la tabla **sin que ningún test
+// falle**, solo más lento. Un test con EXPLAIN comprueba que el índice se usa (brief-9.0.2, AC-4).
+//
+// El SKU no se normaliza: es igualdad exacta sobre un código, con un índice único que define la
+// identidad del producto. Tocarlo cambiaría qué SKUs colisionan (brief-9.0.2, hallazgo 6).
 export function findProducts(
   organizationId: string,
   filters: { text: string; activity: ActivityFilter },
@@ -107,7 +115,7 @@ export function findProducts(
   if (filters.text !== "") {
     conditions.push(
       or(
-        sql`lower(${products.name}) like ${likePrefix(filters.text)}`,
+        sql`${searchNormalized(products.name)} like immutable_unaccent(lower(${likePrefix(filters.text)}))`,
         sql`lower(${products.sku}) = lower(${filters.text})`,
       )!,
     );

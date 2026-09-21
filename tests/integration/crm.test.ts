@@ -479,6 +479,76 @@ describe("searchClients", () => {
     expect(await listNames(s.adminA, { text: "5_" })).toEqual(["5_0 Otro"]);
   });
 
+  it("el prefijo del nombre entra en el Index Cond del índice normalizado (9.0.2, AC-4)", async () => {
+    const s = await seed();
+    await insertClient(s.orgA, "Ana Pérez");
+    // Mismo razonamiento que el caso equivalente de catalog: hacen falta filas para que el
+    // planificador tenga con qué decidir. Fixture sintético.
+    await getDb().execute(
+      sql`insert into clients (organization_id, display_name)
+          select ${s.orgA}, 'Cliente '||g from generate_series(1, 2000) g`,
+    );
+    await getDb().execute(sql`analyze clients`);
+
+    const plan = (
+      await getDb().execute<{ "QUERY PLAN": string }>(
+        sql`explain select id from clients
+            where organization_id = ${s.orgA}
+              and immutable_unaccent(lower(display_name)) like immutable_unaccent(lower('an%'))`,
+      )
+    ).rows
+      .map((row) => row["QUERY PLAN"])
+      .join("\n");
+
+    // Lo que discrimina es la cota `~>=~` sobre la expresión, no que aparezca el nombre del índice:
+    // ese índice empieza por organization_id y se usa igual sin normalizar, con el nombre en
+    // `Filter`. Ver el comentario del caso equivalente en catalog.test.ts.
+    expect(plan).toContain("clients_organization_display_name_unaccent_idx");
+    expect(plan).toContain("immutable_unaccent(lower(display_name)) ~>=~");
+  });
+
+  it("no distingue acentos, en las dos direcciones (9.0.2)", async () => {
+    const s = await seed();
+    await insertClient(s.orgA, "José Ñandú");
+    await insertClient(s.orgA, "Jose Simple");
+    await insertClient(s.orgA, "Ángel");
+    await insertClient(s.orgB, "José de B");
+
+    // Sin acentos encuentra lo acentuado.
+    expect((await listNames(s.adminA, { text: "jose" })).sort()).toEqual([
+      "Jose Simple",
+      "José Ñandú",
+    ]);
+    // Y con acentos encuentra lo que no los tiene: la normalización va en los dos lados.
+    expect((await listNames(s.adminA, { text: "josé" })).sort()).toEqual([
+      "Jose Simple",
+      "José Ñandú",
+    ]);
+    expect(await listNames(s.adminA, { text: "angel" })).toEqual(["Ángel"]);
+    // Sigue siendo prefijo, no "contiene": ampliar eso es otra subfase.
+    expect(await listNames(s.adminA, { text: "andu" })).toEqual([]);
+    // Y sigue sin cruzar organizaciones.
+    expect(await listNames(s.adminB, { text: "jose" })).toEqual(["José de B"]);
+  });
+
+  it("el orden de la lista no cambió con la normalización (9.0.2, AC-6)", async () => {
+    const s = await seed();
+    await insertClient(s.orgA, "Bravo");
+    await insertClient(s.orgA, "Ávila");
+    await insertClient(s.orgA, "Avila");
+    await insertClient(s.orgA, "Ángel");
+
+    // El ORDEN sigue usando lower(display_name) a secas, sin normalizar acentos: la 9.0.2 cambió
+    // la búsqueda, no el orden. Este caso fija la conducta actual para que no se mueva sin que
+    // nos enteremos; unir "Avila" con "Ávila" al ordenar sería otra decisión de producto.
+    expect(await listNames(s.adminA, {})).toEqual([
+      "Ángel",
+      "Avila",
+      "Ávila",
+      "Bravo",
+    ]);
+  });
+
   it("busca por teléfono completo escrito de cualquier forma, y no por fragmentos", async () => {
     const s = await seed();
     await insertClient(s.orgA, "Ana", PHONE);

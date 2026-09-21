@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { sql, type AnyColumn, type SQL } from "drizzle-orm";
 import {
   boolean,
   check,
@@ -11,6 +11,17 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { organizations } from "@/modules/organizations/schema";
+
+// Normalización de texto para buscar por prefijo sin distinguir mayúsculas ni acentos
+// (brief-9.0.2, D-1 y D-2). `immutable_unaccent` la define la migración 0015.
+//
+// Una sola definición por módulo, usada por **el índice y la consulta**: si las dos expresiones se
+// separan, el índice deja de usarse y la búsqueda recorre la tabla sin que ningún test falle.
+// Está duplicada respecto de `catalog` a propósito, igual que `likePrefix`: un módulo no importa
+// internos de otro, y compartirla exigiría un módulo común que hoy no se justifica.
+export function searchNormalized(column: AnyColumn): SQL {
+  return sql`immutable_unaccent(lower(${column}))`;
+}
 
 // docs/architecture/DataModel.md, tabla clients (brief-5.1).
 export const clients = pgTable(
@@ -44,10 +55,13 @@ export const clients = pgTable(
       table.organizationId,
       table.id,
     ),
-    // Prefijo de nombre sin distinguir mayúsculas, como productos (D-2).
-    index("clients_organization_display_name_lower_idx").on(
+    // Prefijo de nombre sin distinguir mayúsculas ni acentos, como productos (D-2; brief-9.0.2).
+    // La expresión tiene que ser IDÉNTICA a la de `searchConditions`. El ORDEN de la lista sigue
+    // usando `lower(display_name)` a secas y no se toca: unir "Avila" con "Ávila" en el orden es
+    // otra decisión de producto (brief-9.0.2, hallazgo 5).
+    index("clients_organization_display_name_unaccent_idx").on(
       table.organizationId,
-      sql`lower(${table.displayName}) text_pattern_ops`,
+      sql`${searchNormalized(table.displayName)} text_pattern_ops`,
     ),
     // Solo E.164 canónico: sin forma única, la unicidad no detecta el mismo número (D-1).
     check(

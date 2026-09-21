@@ -139,7 +139,7 @@ Limpieza: en cada intento se borran los registros vencidos de esa clave; un logi
 | `created_at`, `updated_at` | timestamptz not null | |
 | — | `UNIQUE(organization_id, phone_e164) WHERE phone_e164 IS NOT NULL` | índice `clients_organization_phone_unique`. Evita duplicados de teléfono por organización sin bloquear clientes sin teléfono. **Alcanza también a los inactivos**: un número pertenece a un solo cliente de la organización, y un alta con el número de un cliente inactivo devuelve `CONFLICT` para que se reactive el existente (brief-5.1, D-3) |
 
-Índices: `clients_organization_display_name_lower_idx` sobre `(organization_id, lower(display_name) text_pattern_ops)` para la búsqueda por prefijo de nombre sin distinguir mayúsculas, `lower(display_name) LIKE 'ana%'` (brief-5.1, D-2, igual que productos); el `UNIQUE` parcial cubre la búsqueda exacta por teléfono completo. La búsqueda no ignora acentos ni encuentra palabras en medio del nombre.
+Índices: `clients_organization_display_name_unaccent_idx` sobre `(organization_id, immutable_unaccent(lower(display_name)) text_pattern_ops)` para la búsqueda por prefijo de nombre sin distinguir mayúsculas **ni acentos** (brief-5.1, D-2, igual que productos; normalizado en la 9.0.2, migración `drizzle/0015_*`, que reemplazó al índice sobre `lower(display_name)` de la 5.1); el `UNIQUE` parcial cubre la búsqueda exacta por teléfono completo. La búsqueda **sigue sin** encontrar palabras en medio del nombre: es por prefijo. **El ORDEN de la lista sigue usando `lower(display_name)` a secas y no se normalizó**: unir «Avila» con «Ávila» al ordenar es otra decisión de producto, y un test fija el orden actual (brief-9.0.2, hallazgo 5).
 
 `display_name` vacío lo rechaza el servicio de la 5.2, que también recorta espacios: es editable y se corrige (mismo criterio que la 4.1, D-5).
 
@@ -162,7 +162,7 @@ Limpieza: en cada intento se borran los registros vencidos de esa clave; un logi
 | `created_at`, `updated_at` | timestamptz not null | |
 | — | `UNIQUE(organization_id, id)` | destino de las claves foráneas compuestas de `inventories` e `inventory_movements` (brief-4.1, D-3) |
 
-Índices: el único sobre `(organization_id, lower(sku))` cubre la unicidad y la búsqueda exacta por SKU; `products_organization_name_lower_idx` sobre `(organization_id, lower(name) text_pattern_ops)` sirve la búsqueda por prefijo de nombre sin distinguir mayúsculas, `lower(name) LIKE 'caf%'` (migración `drizzle/0006_*`, brief-4.2, D-3; reemplaza al índice sobre `name` de la 4.1, que distinguía mayúsculas). La búsqueda no ignora acentos; `UNIQUE(organization_id, id)` existe solo porque PostgreSQL lo exige para la referencia compuesta.
+Índices: el único sobre `(organization_id, lower(sku))` cubre la unicidad y la búsqueda exacta por SKU; `products_organization_name_unaccent_idx` sobre `(organization_id, immutable_unaccent(lower(name)) text_pattern_ops)` sirve la búsqueda por prefijo de nombre sin distinguir mayúsculas **ni acentos** (migración `drizzle/0015_*`, brief-9.0.2; reemplaza al de `lower(name)` de la 4.2, que a su vez reemplazó al de `name` de la 4.1). El SKU **no** se normaliza: su índice único define la identidad del producto y cambiarlo cambiaría qué SKUs colisionan; `UNIQUE(organization_id, id)` existe solo porque PostgreSQL lo exige para la referencia compuesta.
 
 `sku`, `name` y `unit` vacíos los rechaza el servicio de la 4.2, que también recorta espacios: son editables y se corrigen.
 
@@ -376,3 +376,19 @@ Cerradas en la subfase 1.2 (2026-09-12), a partir de las brechas de los [wirefra
 - Última interacción del cliente y cantidad de mensajes: derivadas, con los índices de `conversations` y `messages`. Si en staging resultan lentas, se revisan con medición.
 - Trazabilidad completa de pantallas, requisitos, índices y métricas: [TraceabilityMatrix.md](TraceabilityMatrix.md).
 - Columnas sin consumidor detectadas al armar la matriz: se quitaron `deleted_at` de `users`, `clients` y `products` (H-1) y `organizations.slug` con su índice único (H-2).
+
+## Extensiones de PostgreSQL
+
+Una sola, desde la 9.0.2 (migración `drizzle/0015_unaccent_search_indexes.sql`).
+
+| Extensión | Para qué | Notas |
+| --- | --- | --- |
+| `unaccent` | buscar clientes y productos por prefijo de nombre sin distinguir acentos | `trusted = true`, así que la instala el dueño de la base sin superusuario (PostgreSQL 13+) |
+
+La migración define además la función `immutable_unaccent(text)`, y conviene entender por qué existe antes de tocarla:
+
+- `unaccent()` está declarada **`STABLE`**, no `IMMUTABLE` —verificado en la fuente de la extensión y en `pg_proc.provolatile`, que devuelve `s`—, y PostgreSQL solo admite funciones inmutables en una expresión de índice.
+- `immutable_unaccent` es una envoltura declarada `IMMUTABLE` que llama a `unaccent('public.unaccent'::regdictionary, $1)`, con el diccionario explícito para no depender del `search_path`.
+- **Limitación aceptada, no un detalle de implementación**: esa declaración le promete al planificador una inmutabilidad que la función no tiene. Es correcta mientras el diccionario `unaccent` no cambie. Si cambiara —otra versión de la extensión con reglas distintas, o un diccionario propio—, los índices que la usan quedan silenciosamente mal y hay que `REINDEX`. Está escrito también en la cabecera de la migración.
+- La expresión de cada índice y la de su consulta salen de **una sola función** por módulo, `searchNormalized` en el `schema.ts` de `catalog` y de `crm`. Si se separaran, el índice dejaría de usarse y la búsqueda recorrería la tabla sin que ningún test falle. Dos tests con `EXPLAIN` comprueban que el prefijo entra como cota del índice (`~>=~`) y no como `Filter`.
+

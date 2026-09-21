@@ -73,7 +73,7 @@ No crea pantallas ni Server Actions: las pantallas 3 y 4 llegan en la 4.4.
 - Ajustes de stock y cualquier escritura en `inventories` o `inventory_movements`: 4.3.1.
 - Últimos movimientos e historial: 4.3.3.
 - Lectura del historial de auditoría (FR-AUD-02): según D-6.
-- Búsqueda sin distinguir acentos, que necesitaría la extensión `unaccent`.
+- ~~Búsqueda sin distinguir acentos, que necesitaría la extensión `unaccent`.~~ **Hecha en la 9.0.2** el 2026-09-21 ([brief-9.0.2](brief-9.0.2-busqueda-sin-distinguir-acentos.md)). Tardó porque quedó asignada a una fase y no a una subfase: ver el puntero del [brief-4.4](brief-4.4-ui-de-productos-e-inventario.md).
 - Seeds de productos.
 - `organization_id` y duración en el log: llegan con las Server Actions de la 4.4.
 - Cambios en `audit_logs`, sus enums o `recordAudit`.

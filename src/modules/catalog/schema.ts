@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { sql, type AnyColumn, type SQL } from "drizzle-orm";
 import {
   boolean,
   check,
@@ -12,6 +12,17 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { organizations } from "@/modules/organizations/schema";
+
+// Normalización de texto para buscar por prefijo sin distinguir mayúsculas ni acentos
+// (brief-9.0.2, D-1 y D-2). `immutable_unaccent` la define la migración 0015.
+//
+// Vive acá, en una sola función, y la usan **el índice y la consulta**. No es una comodidad: si la
+// expresión del índice y la de la consulta se separan, el índice deja de usarse, la búsqueda pasa
+// a recorrer la tabla y **ningún test falla** — solo se vuelve lenta. Una sola definición hace que
+// esa desincronización sea imposible en vez de dejarla como algo que hay que recordar.
+export function searchNormalized(column: AnyColumn): SQL {
+  return sql`immutable_unaccent(lower(${column}))`;
+}
 
 // docs/architecture/DataModel.md, tabla products (brief-4.1).
 export const products = pgTable(
@@ -50,10 +61,13 @@ export const products = pgTable(
       table.organizationId,
       table.id,
     ),
-    // Prefijo de nombre sin distinguir mayúsculas: lower(name) LIKE 'caf%' (brief-4.2, D-3).
-    index("products_organization_name_lower_idx").on(
+    // Prefijo de nombre sin distinguir mayúsculas ni acentos: buscar "cafe" encuentra "Café"
+    // (brief-4.2, D-3; brief-9.0.2, D-1 y D-2). La expresión tiene que ser IDÉNTICA a la de la
+    // consulta de `findProducts`, o el índice no se usa y la búsqueda pasa a recorrer la tabla
+    // sin que nada falle. `immutable_unaccent` la define la migración 0015.
+    index("products_organization_name_unaccent_idx").on(
       table.organizationId,
-      sql`lower(${table.name}) text_pattern_ops`,
+      sql`${searchNormalized(table.name)} text_pattern_ops`,
     ),
     check(
       "products_reorder_point_non_negative",
