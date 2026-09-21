@@ -3,6 +3,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import * as catalogRepository from "@/modules/catalog/repository";
 import * as conversationsRepository from "@/modules/conversations/repository";
 import * as crmRepository from "@/modules/crm/repository";
+import * as ingestionRepository from "@/modules/ingestion/repository";
 import { getMemberSummaries } from "@/modules/organizations";
 import * as organizationsRepository from "@/modules/organizations/repository";
 import { getDb } from "@/shared/db";
@@ -16,7 +17,12 @@ import { resetDatabase } from "./reset-database";
 // inalcanzable, y también lo que hace imposible probar el invariante del repositorio desde
 // afuera. Para producir evidencia del filtro en el `where` hay que llamar al repositorio con una
 // organización que no es la dueña de la fila. Es el único lugar del proyecto donde un test de
-// integración importa un `repository` de un módulo, y es deliberado.
+// integración importa un `repository` de un módulo, y es deliberado: la excepción está registrada
+// en docs/architecture/RepositoryStructure.md §Frontera entre módulos.
+//
+// La 9.0.4 sumó `ingestion.finishEvent`, de la misma clase, con un motivo todavía más fuerte para
+// no pasar por la interfaz pública: su id lo crea `reserveEvent` dentro de la transacción, así que
+// desde afuera no hay forma de construir la llamada cruzada que este test necesita.
 //
 // Los datos se insertan por SQL: son fixtures sintéticos, declarados como tales (brief-6.4, D-5).
 
@@ -28,6 +34,7 @@ type Fixture = {
   memberB: string;
   userB: string;
   conversationB: string;
+  eventB: string;
 };
 
 let fixture: Fixture;
@@ -65,9 +72,20 @@ async function seed(): Promise<Fixture> {
         returning id`,
   );
 
+  // La fila de ingestion_events se inserta por SQL y no con `reserveEvent` (9.0.4, D-3): lo que
+  // este test prueba es el `where` de la escritura, y montar el contexto de ingestión completo no
+  // agregaría evidencia sobre eso.
+  const event = await getDb().execute<{ id: string }>(
+    sql`insert into ingestion_events
+          (organization_id, source, external_ref, event_type, payload_hash)
+        values (${orgB}, 'fuente-b', 'evt-b-1', 'message.received', 'hash-irrelevante')
+        returning id`,
+  );
+
   return {
     orgA,
     orgB,
+    eventB: event.rows[0]!.id,
     productB: product.rows[0]!.id,
     clientB: client.rows[0]!.id,
     memberB: member.rows[0]!.id,
@@ -229,6 +247,33 @@ describe("las siete escrituras de H-7 no alcanzan a otra organización", () => {
     // Sin el filtro, least() habría movido started_at a 2020 y la transacción lo habría
     // confirmado, porque nada lanzaría.
     expect(after.rows[0]!.started_at).toContain("2026-09-01");
+    expect((error as Error | undefined)?.message).toContain(
+      "no existe en esta organización",
+    );
+  });
+});
+
+describe("la escritura de ingestion de la 9.0.4 no alcanza a otra organización", () => {
+  it("finishEvent", async () => {
+    const error = await attempt((tx) =>
+      ingestionRepository.finishEvent(tx, fixture.orgA, fixture.eventB, {
+        status: "failed",
+        errorCode: "CONFLICT",
+      }),
+    );
+    const after = await getDb().execute<{
+      status: string;
+      error_code: string | null;
+      processed_at: string | null;
+    }>(
+      sql`select status, error_code, processed_at
+          from ingestion_events where id = ${fixture.eventB}`,
+    );
+    // Sin el filtro, el evento de B quedaría en 'failed' con su error_code y su processed_at
+    // escritos por A, y la transacción lo confirmaría porque nada lanzaría.
+    expect(after.rows[0]!.status).toBe("received");
+    expect(after.rows[0]!.error_code).toBeNull();
+    expect(after.rows[0]!.processed_at).toBeNull();
     expect((error as Error | undefined)?.message).toContain(
       "no existe en esta organización",
     );

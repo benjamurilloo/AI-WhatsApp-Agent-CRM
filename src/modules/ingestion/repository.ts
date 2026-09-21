@@ -67,17 +67,32 @@ export async function findEvent(
 
 export async function finishEvent(
   tx: DbTransaction,
+  organizationId: string,
   eventId: string,
   outcome: { status: "processed" } | { status: "failed"; errorCode: string },
 ): Promise<void> {
-  await tx
+  // A diferencia de las siete escrituras de la 9.0.1, acá el llamador no LEE la fila antes de
+  // escribir: la CREA. `reserveEvent` la inserta en esta misma transacción con su
+  // organization_id y devuelve el id, y el insert mantiene su bloqueo hasta el commit. Por eso
+  // cero filas actualizadas no puede ser una carrera ni una fila ajena: es un defecto de
+  // programación, y se lanza dentro de la transacción, que revierte (9.0.4, D-1).
+  const rows = await tx
     .update(ingestionEvents)
     .set({
       status: outcome.status,
       errorCode: outcome.status === "failed" ? outcome.errorCode : null,
       processedAt: sql`clock_timestamp()`,
     })
-    .where(eq(ingestionEvents.id, eventId));
+    .where(
+      and(
+        eq(ingestionEvents.organizationId, organizationId),
+        eq(ingestionEvents.id, eventId),
+      ),
+    )
+    .returning({ id: ingestionEvents.id });
+  if (rows.length === 0) {
+    throw new Error("finishEvent: la fila no existe en esta organización");
+  }
 }
 
 // Credenciales de servicio (brief-6.5.3, D-1).

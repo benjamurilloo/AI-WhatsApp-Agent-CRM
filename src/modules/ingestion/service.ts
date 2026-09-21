@@ -120,13 +120,15 @@ export async function recordIngestionEvent(
         },
       });
       if (!projected.ok) {
-        await repository.finishEvent(tx, reserved, {
+        await repository.finishEvent(tx, context.organizationId, reserved, {
           status: "failed",
           errorCode: projected.code,
         });
         return { ok: false, code: "CONFLICT", recorded: true };
       }
-      await repository.finishEvent(tx, reserved, { status: "processed" });
+      await repository.finishEvent(tx, context.organizationId, reserved, {
+        status: "processed",
+      });
       return accepted(event, "accepted");
     },
   );
