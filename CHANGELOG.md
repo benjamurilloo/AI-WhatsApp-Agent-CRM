@@ -2,6 +2,53 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-21 — 9.0.4: la octava escritura, la que la 9.0.1 no vio
+
+Cierre de subfase. Existe porque la revisión independiente de la 9.0.1 encontró una escritura de su misma clase en un módulo que esa subfase no había mirado, y porque la 9.0.1 **no la corrigió por analogía**: su condición de detención manda registrar y elevar la decisión de alcance. El usuario decidió que entraba.
+
+**Certifica:**
+
+- **`ingestion.finishEvent` filtra por organización.** Actualizaba `status`, `error_code` y `processed_at` de `ingestion_events` filtrando solo por id, y esa tabla tiene `organization_id`. Ahora recibe `organizationId`, lo incluye en el `where` y verifica el `returning`.
+- **La justificación del `throw` es distinta de la de las siete de la 9.0.1, y el comentario del código no la repite.** Ahí el llamador leía la fila con `FOR UPDATE`; acá **no lee: crea**. `reserveEvent` inserta la fila en la misma transacción y devuelve su id, con el bloqueo del insert vigente hasta el commit, así que cero filas actualizadas no puede ser una carrera ni una fila ajena. Copiar el comentario habría puesto una razón falsa al lado de un código correcto — el defecto que la revisión de la 9.0.1 acababa de encontrar en este mismo linaje. Quedó fijado como decisión D-1 del brief **antes** de implementar, para no dejarlo al criterio del momento.
+- **Evidencia de mutación por el estado, no por el mensaje.** Quitando el filtro, el caso nuevo falla con `expected 'failed' to be 'received'`: la fila de la otra organización efectivamente modificada y confirmada. La aserción de estado se evalúa antes que la del mensaje y la transacción se deja confirmar, como quedó el archivo tras la corrección de la 9.0.1.
+- **Tests**: 781 de 781 — 302 unitarios, 79 de guardas y **400** de integración, uno más que la 9.0.1 — y 81 de 81 end-to-end, con typecheck, lint y formato limpios.
+
+**No certifica:**
+
+- **`ingestion.revokeCredential` sigue sin filtro de organización.** Es de la misma clase y queda **diferida por decisión de alcance**, no descartada: su id lo provee un operador que ya tiene acceso al script y a la base, así que el filtro no defendería de nadie que no haya pasado esa puerta. La condición que la reabre está escrita en [Risks](docs/planning/Risks.md) — que la revocación se exponga por HTTP o pase a manos no operativas. **Lo que hay que vigilar es esa condición, no la función.**
+- **Nada estructural.** Igual que en la 9.0.1, la garantía la sostiene el código de cada función, no la base. RLS por organización sigue sin decidirse.
+- **Una caída de proceso que no se explicó.** Un worker de Vitest murió con código 0xC0000409 corriendo `tests/integration/db-connectivity.test.ts`, y la suite lo reportó como 69 de 70 archivos **sin marcar ningún test como fallado**. No se reprodujo en tres corridas del archivo ni en tres de la suite completa. Se registra en vez de archivarse como intermitencia porque ese archivo prueba justamente que el proceso **no** se cae cuando la base corta una conexión. Queda en `HANDOFF.md` **sin subfase asignada**, con la hipótesis declarada como hipótesis.
+- **Otras dos tandas de fallas de esa verificación no eran del repositorio y quedan escritas para no confundirlas**: cuatro tests de autenticación cayeron con `Connection terminated unexpectedly` por un build lanzado en paralelo —esos tests hashean contraseñas—, y dos corridas end-to-end se cortaron a los 66 y 31 casos con el contenedor de Postgres arriba más de dos horas; reiniciado, 81 de 81.
+
+Detalle en [brief-9.0.4](docs/decisions/brief-9.0.4-aislamiento-de-la-escritura-de-ingestion.md).
+
+---
+
+## 2026-09-21 — 9.0.1: aislamiento por organización, y la primera revisión independiente dentro del ciclo
+
+Cierre de subfase. Primera de la Fase 9, y primera vez en el proyecto que la revisión independiente corre **antes** del cierre y no después de uno ya publicado.
+
+**Certifica:**
+
+- **H-7 cerrado.** Las siete escrituras de datos de negocio que filtraban solo por id reciben `organizationId` y lo incluyen en el `where`; además verifican el `returning` y lanzan dentro de la transacción, que revierte. La serialización **no es igual en todas**: seis leen su fila con `FOR UPDATE` en la misma transacción y `updateMemberRole` se serializa por `withOrganizationLock`, porque `findMember` no usa `FOR UPDATE`.
+- **H-1 acotado a un punto de entrada único**, con una forma distinta de la que [Risks](docs/planning/Risks.md) prescribía. Filtrar dentro de `auth` era **inviable**: no puede leer `organization_members` sin importar `organizations`, que ya importa `auth`, y la frontera de ESLint bloquea el ciclo. El filtro vive entonces del lado dueño de la membresía: `organizations.getMemberSummaries` interseca en SQL antes de leer.
+- **Dos instrumentos nuevos.** Una guarda que impide a cualquier módulo fuera de `auth` y `organizations` acceder a `getUserSummaries`, con tres detectores —import con nombre, namespace y reexportación— y 16 casos; y un test de integración de aislamiento con un caso por escritura, que llama a los repositorios directamente porque por la interfaz pública la operación da `NOT_FOUND` y nunca llega a escribir. Esa excepción quedó registrada en [RepositoryStructure](docs/architecture/RepositoryStructure.md), con la aclaración de que no se hereda en `src/**`.
+- **Tests**: 780 de 780 —302 unitarios, **79** de guardas y 399 de integración— y 81 de 81 end-to-end. Los 81 sin cambios respecto de la Fase 8 son la evidencia de que ninguna conducta visible se movió.
+- **Recuento corregido, el cuarto de este linaje.** `HANDOFF.md` daba 62 guardas de línea base; eran **63**, como decía este changelog. La cifra equivocada era la del handoff.
+
+**No certifica:**
+
+- **Nada estructural para H-1.** La garantía pasó de siete llamadores a uno, no a una defensa de la base: la consulta de `auth` sigue sin filtro propio y un llamador dentro de `organizations` podría esquivarla. Lo estructural sería RLS, que exige un rol sin `BYPASSRLS` y **no está decidido**. La guarda fija el punto de entrada **contra el acceso literal, no contra toda vía posible**: su cabecera enumera lo que no cubre, incluido que `analytics` pueda importar `@/modules/*/schema` y leer `users` directo, frontera que cierra la 9.0.3.
+- **La revisión independiente encontró cuatro defectos y los cuatro eran reales.** Ninguno falso, a diferencia de la primera revisión del proyecto. Dos estaban **en instrumentos que iban a quedar versionados**: el detector de la guarda nueva era ciego a tres formas de importación —una de ellas la que usa el test hermano del mismo commit—, y el ayudante del test de integración forzaba el rollback **siempre**, así que las siete aserciones sobre el estado de la base no podían fallar y solo discriminaba el mensaje de error. Los otros dos: la afirmación de que las siete escrituras usaban `FOR UPDATE`, que venía del brief y era falsa para una, propagada a tres archivos; y una promesa sobreescrita en el modelo de seguridad.
+  - **El agujero del detector es la segunda vez**, después de `exposed-surface` en la 8.4, y la lección ya estaba escrita. Repetirla con la advertencia delante es el dato útil de este cierre.
+- **Dos escrituras más de la clase de H-7 quedaron sin corregir**, en `ingestion`, registradas y elevadas según la condición de detención del brief en vez de arregladas por analogía. Su destino se decidió el mismo día: `finishEvent` a la 9.0.4, `revokeCredential` diferida.
+- **El invariante de `ingestion_events` del brief estaba mal escrito**: lo declaró de solo inserción y [DataModel](docs/architecture/DataModel.md) dice que admite `UPDATE` de su estado. Manda DataModel.
+- **La revisión tuvo solo acceso de lectura**, así que dos criterios de aceptación le quedaron como no verificables por lectura y la ejecución la respalda quien implementó. Es autoevaluación en esa parte, y se declara.
+
+Detalle en [brief-9.0.1](docs/decisions/brief-9.0.1-aislamiento-por-organizacion.md).
+
+---
+
 ## 2026-09-21 — Revisión independiente obligatoria en los gates, y `unaccent` con destino
 
 No es un cierre: son los pendientes que la Fase 8 dejó abiertos, resueltos antes de abrir la Fase 9.
