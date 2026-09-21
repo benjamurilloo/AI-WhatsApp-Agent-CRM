@@ -60,7 +60,7 @@ generated_at: 2026-09-15
 - Exportar el historial, imprimir, y cualquier acción sobre un movimiento: no existen.
 - Pantallas 6 a 9 y la 2 (dashboard): Fases 5 a 7.
 - Seeds de productos para desarrollo.
-- `unaccent` para buscar sin acentos: Fase 8.
+- `unaccent` para buscar sin acentos: ~~Fase 8~~ → **Fase 9**, reasignada el 2026-09-21 por decisión del usuario. Ninguna de las cinco subfases de la Fase 8 la tomó y la fase cerró sin ella; el preflight del cierre la detectó. El destino nuevo está enumerado en el alcance de la Fase 9 en el [Roadmap](../planning/Roadmap.md), con la condición de aterrizar en una subfase concreta cuando la fase se descomponga.
 
 ## Archivos o componentes autorizados
 

@@ -24,7 +24,11 @@ El proyecto sigue la metodología Vixora del vault de Obsidian en `C:\Users\benj
 3. Verificar el estado real del repositorio: Git, documentación y código.
 4. Resumir el contexto, las contradicciones y el alcance antes de actuar.
 
-Claude Code es el único agente de IA del proyecto: prepara briefs, implementa, verifica, revisa (declarando que es autoevaluación), actualiza Notion y ejecuta el Knowledge Capture. El usuario aprueba el alcance y los cierres, y autoriza Git, despliegues y efectos externos. El ciclo completo está en [docs/development/ExecutionProtocol.md](docs/development/ExecutionProtocol.md).
+Claude Code conduce el ciclo: prepara briefs, implementa, verifica, revisa, actualiza Notion y ejecuta el Knowledge Capture. El usuario aprueba el alcance y los cierres, y autoriza Git, despliegues y efectos externos. El ciclo completo está en [docs/development/ExecutionProtocol.md](docs/development/ExecutionProtocol.md).
+
+**Toda revisión del propio trabajo se declara como autoevaluación y nunca se presenta como independiente.** Además, desde el 2026-09-21, **una subfase cuyo resultado abre o cierra un gate no se cierra solo con autoevaluación**: necesita una revisión de un agente que no participó del trabajo, con acceso de solo lectura, contra el brief y contra las reglas vigentes. El motivo está medido, no supuesto: la primera revisión independiente del proyecto encontró **cuatro defectos** en la subfase 8.4 —un hallazgo falso, uno no visto, dos recuentos que no cerraban y un agujero en la guarda que esa subfase dejó como instrumento—, y la 8.4 había aplicado todas las precauciones conocidas, incluida fijar la escala de severidad antes de mirar. Declarar el sesgo no lo mitigó.
+
+Un subagente revisor **no otorga ninguna autorización**: informa hallazgos, que se verifican contra el código antes de aceptarse. Ni sus hallazgos ni sus recomendaciones sustituyen la aprobación del usuario.
 
 ## Uso de skills
 

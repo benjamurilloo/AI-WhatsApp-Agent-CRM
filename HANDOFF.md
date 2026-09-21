@@ -1,10 +1,10 @@
 ---
 schema: project-state.v1
 project: ai-whatsapp-agent-crm
-generated_at: 2026-09-18
-git_ref: main — 9658bf1 en origin/main (CI en verde, 8.4), más el cierre de la 8.5 y de la Fase 8
+generated_at: 2026-09-21
+git_ref: main — 10bec71 en origin/main, CI en verde (run 35402663898). Incluye el cierre de la Fase 8 (c7a3dea), su corrección por revisión independiente (27aedba) y la resolución del gate (10bec71)
 active_phase: ninguna; la Fase 8 está cerrada y sigue la Fase 9 — Staging y piloto controlado
-active_task: ninguna; lo siguiente es abrir la Fase 9 y preparar el brief de la 9.1
+active_task: ninguna; lo siguiente es abrir la Fase 9 y preparar el brief de la 9.1, que arranca con una precondición bloqueante: H-3 resuelto antes de levantar cualquier entorno compartido
 confidence: confirmado
 ---
 
@@ -77,7 +77,7 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
    - hay **cinco guardas** versionadas con casos que demuestran que fallan: referencias prohibidas, frontera entre módulos, escrituras de stock, superficie de logs y superficie expuesta;
    - el bloque de ESLint de `analytics` no le prohíbe importar `next` ni `@/app/*`: corregirlo necesita una subfase que autorice tocar `eslint.config.mjs`;
    - los textos de las definiciones de las métricas están duplicados respecto del catálogo, que es la fuente de verdad (7.4, D-3);
-   - **`unaccent` para buscar sin acentos** estaba asignado a la Fase 8 en el brief-4.4 y ninguna subfase lo tomó; se detectó en el preflight del cierre y **está pendiente de destino** (ver §11).
+   - **`unaccent` para buscar sin acentos** estaba asignado a la Fase 8 en el brief-4.4 y ninguna subfase lo tomó; se detectó en el preflight del cierre y el 2026-09-21 el usuario lo **reasignó a la Fase 9**, ya enumerado en su alcance en el Roadmap. Queda una condición escrita: tiene que aterrizar en una subfase concreta cuando la Fase 9 se descomponga, porque nombrar la fase es exactamente lo que ya falló una vez.
 
    `confirmado`
 
@@ -288,7 +288,7 @@ Nivel del proyecto: **validado en integración** para la pantalla 2 del dashboar
 - **Frontera de `analytics` en ESLint**: su bloque no le prohíbe importar `next` ni `@/app/*`, a diferencia de los demás módulos de dominio, y la tabla de RepositoryStructure tampoco lo incluye (brief-7.1, hallazgo 9). Se corrige en una subfase que autorice `eslint.config.mjs` y su guarda. `confirmado`
 - **Nombre del paso de guardas en `ci.yml`**: no menciona `stock-writes.test.ts`. Se renombra en una subfase que autorice `ci.yml`. `confirmado`
 - **`proxy`**: se reevalúa con más rutas protegidas. `confirmado`
-- **Costo de las listas en memoria y del `offset` con volumen**: **medido en la 8.5**, los tres límites se sostienen. **La búsqueda sin distinguir acentos (`unaccent`) sigue pendiente y sin fase asignada**: ver §11. `confirmado`
+- **Costo de las listas en memoria y del `offset` con volumen**: **medido en la 8.5**, los tres límites se sostienen. **La búsqueda sin distinguir acentos (`unaccent`) quedó reasignada a la Fase 9** el 2026-09-21: ver §11. `confirmado`
 - **Lint de accesibilidad**: cuando `eslint-plugin-jsx-a11y` soporte ESLint 10. `confirmado`
 - **Timeouts bajo carga**: la guarda de frontera (4.0) y un caso de `product-audit.test.ts` (4.4) los superaron una vez en local; si se repiten en CI, subir el `testTimeout` del proyecto con su brief. `confirmado`
 - **Conexión con un rol con login miembro de `crm_app`, y `CREATEROLE` en un servicio gestionado**: Fases 8 y 9. `confirmado`
@@ -317,7 +317,7 @@ Nivel del proyecto: **validado en integración** para la pantalla 2 del dashboar
 - **Limitación aceptada (brief-3.5, D-4)**: quien robe la sesión del primer ingreso puede definir la contraseña sin la inicial. `historico`
 - **Solo inserción de `audit_logs` e `inventory_movements`**: con el rol dueño la defensa efectiva es el trigger. `confirmado`
 - **`npm run test` requiere la base local levantada.** `confirmado`
-- **Un solo agente planifica, implementa y revisa**, con una excepción: la 8.4 tuvo además una **revisión independiente** el 2026-09-18, que encontró en ella un hallazgo falso, uno no visto y dos recuentos mal sumados. Es el dato que mide cuánto vale una autoevaluación en este proyecto: cuatro defectos en la subfase cuyo objeto era, precisamente, revisar. `confirmado`
+- **Un solo agente planifica, implementa y revisa**, y desde el 2026-09-21 con una obligación nueva: **toda subfase que abra o cierre un gate lleva además una revisión independiente** ([ExecutionProtocol](docs/development/ExecutionProtocol.md), paso 4b, y [CLAUDE.md](CLAUDE.md)). Salió de medirlo: la 8.4 tuvo una el 2026-09-18 y encontró cuatro defectos —un hallazgo falso, uno no visto, dos recuentos mal sumados y un agujero en su propia guarda— en la subfase cuyo objeto era, precisamente, revisar, y con todas las precauciones conocidas aplicadas. El límite conocido de la regla: **se usó una sola vez y después del cierre; dentro del ciclo todavía no se probó.** `confirmado`
 - **Tres hallazgos mayores abiertos de la 8.4**, con su plan en `Risks.md`: sin proxy de confianza todas las peticiones comparten la clave de IP, así que 20 ingresos fallidos de cualquiera bloquean el ingreso de todos (H-3); `findUserSummaries` lee usuarios por id sin filtro de organización (H-1); siete funciones escriben datos de negocio filtrando solo por id (H-7). Los tres son hoy inalcanzables o acotados, y los tres dependen de la disciplina del llamador. `confirmado`
 - **El gate de la Fase 8 se ratificó sobre una escala corregida.** La D-2 no tenía supuesto de disponibilidad, así que no podía graduar la fila de denegación de servicio de su propio threat model. Ampliada el 2026-09-18, H-3 quedó `crítico` en cualquier entorno compartido y `mayor` en el único que existe hoy, y es **precondición bloqueante de la 9.1**. La resolución la firmó el mismo agente que escribió la escala original: revocarla es declarar H-3 crítico sin condición de entorno, y eso reabre la Fase 8. `confirmado`
 - **Un script de medición no funciona desde el scratchpad de la sesión**: `tsx` no resuelve `drizzle-orm` ni los alias `@/` fuera del árbol del proyecto. Va en `dist/`, que `.gitignore` excluye, y se borra al terminar (8.5). `confirmado`
@@ -351,6 +351,8 @@ Ninguno en el repositorio. `confirmado`
 
 ## 11. Aspectos pendientes de confirmar
 
-- Que el commit de cierre de la Fase 8 esté en `origin/main` con la CI en verde.
 - La apertura de la Fase 9 y la aprobación del brief de la 9.1, cuando se prepare.
-- **Destino de `unaccent` (búsqueda sin distinguir acentos)**: el [brief-4.4](docs/decisions/brief-4.4-ui-de-productos-e-inventario.md) lo asignó a la Fase 8 y ninguna de sus cinco subfases lo tomó; el alcance de la fase en el Roadmap tampoco lo enumeraba. Detectado en el preflight del cierre. No es de seguridad ni de rendimiento, así que no bloqueaba el gate. **Falta decidir si va a la Fase 9, después del MVP, o se descarta.** `confirmado`
+- **Que `unaccent` quede enumerado en el alcance de una subfase concreta** al descomponer la Fase 9. Su destino ya está decidido —Fase 9, el 2026-09-21— y escrito en el Roadmap y en el [brief-4.4](docs/decisions/brief-4.4-ui-de-productos-e-inventario.md), pero una obligación que nombra una fase y no llega a una subfase es la forma exacta en que esta se perdió durante toda la Fase 8. `confirmado`
+- **Cómo se aplica la revisión independiente en la práctica.** Desde el 2026-09-21 es obligatoria en toda subfase que abra o cierre un gate ([ExecutionProtocol](docs/development/ExecutionProtocol.md), paso 4b, y [CLAUDE.md](CLAUDE.md)). Se usó una sola vez, después del cierre; **todavía no se usó dentro del ciclo, antes de cerrar**, que es donde tiene que funcionar. `confirmado`
+
+Ya no está pendiente: el cierre de la Fase 8 está en `origin/main` con la CI en verde (`10bec71`, run 35402663898), verificado el 2026-09-21.

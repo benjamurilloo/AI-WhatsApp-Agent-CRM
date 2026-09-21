@@ -2,6 +2,24 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-21 — Revisión independiente obligatoria en los gates, y `unaccent` con destino
+
+No es un cierre: son los pendientes que la Fase 8 dejó abiertos, resueltos antes de abrir la Fase 9.
+
+**Certifica:**
+
+- **`unaccent` (búsqueda sin distinguir acentos) va a la Fase 9**, por decisión del usuario. Estaba asignada a la Fase 8 desde el [brief-4.4](docs/decisions/brief-4.4-ui-de-productos-e-inventario.md), ninguna de las cinco subfases la tomó y la fase cerró sin ella. Ahora está enumerada en el alcance de la Fase 9 en el [Roadmap](docs/planning/Roadmap.md), con el puntero de vuelta desde el brief-4.4 y **una condición escrita: tiene que aterrizar en una subfase concreta cuando la Fase 9 se descomponga.** Nombrar la fase es justamente lo que ya falló una vez.
+- **Se corrigió una afirmación falsa del cierre de la Fase 8**: decía que `unaccent` había quedado "reasignada explícitamente" cuando en esa fecha seguía sin destino. Estaba escrita en la lista de lo que el cierre **no** certificaba, en la línea que se felicitaba por no silenciarla.
+- **La revisión independiente pasa a ser obligatoria en toda subfase que abra o cierre un gate** ([ExecutionProtocol](docs/development/ExecutionProtocol.md) paso 4b y regla 6, y [CLAUDE.md](CLAUDE.md)). El motivo está medido, no supuesto: la primera del proyecto encontró **cuatro defectos** en la 8.4, que había fijado la escala de severidad antes de mirar y declarado su sesgo por escrito. **Declarar el sesgo no lo mitigó.** Quedan escritos sus dos límites: el revisor **informa, no aprueba** —sus hallazgos se verifican contra el código y un subagente nunca transporta autoridad del usuario—, y **corregir no es borrar**: un hallazgo invalidado se tacha con el mecanismo del error al lado.
+- **`HANDOFF.md` quedó al día**: su encabezado seguía apuntando a `9658bf1` y listaba como pendiente de confirmar algo ya confirmado. Otra línea de estado que dejó de ser cierta, que es el defecto H-4 de la 8.4 por cuarta vez en el proyecto.
+
+**No certifica:**
+
+- **Que la regla nueva funcione.** La revisión independiente se usó **una sola vez, y después de cerrar la fase**. Dentro del ciclo, antes de cerrar —que es donde tiene que servir— todavía no se probó. La primera oportunidad real es la Fase 9.
+- **Ningún cambio en `src/`, en las pruebas ni en el comportamiento.** Es documentación y método.
+
+---
+
 ## 2026-09-18 — La 8.4, corregida por una revisión independiente
 
 No es un cierre: es la corrección de uno ya publicado. Después de cerrada la Fase 8, un revisor que no participó del trabajo leyó la subfase 8.4 contra su brief y contra el código. Es **la primera revisión del proyecto que no es autoevaluación**, y encontró cuatro defectos. Los cuatro se verificaron contra el código antes de aceptarse.
@@ -50,10 +68,10 @@ Cierra contra los criterios del [Roadmap](docs/planning/Roadmap.md), con las cin
 **No certifica:**
 
 - **Que el sistema sea seguro ni que escale.** Certifica que lo declarado se contrastó contra el código, con el veredicto de cada afirmación a la vista, y que ninguna consulta de listado es patológica con una organización de 10.000 filas por tabla en una máquina de desarrollo.
-- **Revisión independiente**: las cinco subfases y su revisión las hizo el mismo agente. El Roadmap ya lo declaraba como riesgo de la fase y la fase no lo resolvió: lo declaró.
+- **Revisión independiente**: las cinco subfases y su revisión las hizo el mismo agente. El Roadmap ya lo declaraba como riesgo de la fase y la fase no lo resolvió: lo declaró. *(El riesgo se materializó: una revisión independiente posterior encontró cuatro defectos en la 8.4 — ver la entrada del 2026-09-18 más arriba. Desde el 2026-09-21 esa revisión es obligatoria en toda subfase que abra o cierre un gate.)*
 - **Nada que exija TLS, proxy real, entorno persistente o varias organizaciones**: HSTS, la cookie `__Host-` bajo TLS, `TRUSTED_PROXY`, los backups y su restauración, el gestor de secretos, la conexión con el rol `crm_app` y los planes de consulta con varias organizaciones. Todo eso es Fase 9 y está nombrado, no omitido.
 - **Los tres hallazgos mayores de la 8.4**, que quedan abiertos con su plan: el bloqueo global del ingreso sin proxy de confianza, ~~la falta de prueba del límite por IP~~ y la lectura de usuarios sin filtro de organización. *(Corregido el 2026-09-18: el segundo era falso y quedó retirado; en su lugar hay otro, H-7, que esta revisión no había visto. Siguen siendo tres.)*
-- **Búsqueda sin distinguir acentos** (`unaccent`): estaba asignada a la Fase 8 en [brief-4.4](docs/decisions/brief-4.4-ui-de-productos-e-inventario.md) y ninguna subfase la tomó. Detectada en el preflight de este cierre y **reasignada explícitamente**, no silenciada.
+- **Búsqueda sin distinguir acentos** (`unaccent`): estaba asignada a la Fase 8 en [brief-4.4](docs/decisions/brief-4.4-ui-de-productos-e-inventario.md) y ninguna subfase la tomó. Detectada en el preflight de este cierre y **elevada al usuario sin destino, no silenciada**. *(Esta línea decía "reasignada explícitamente" y era falsa: en la fecha de este cierre la obligación seguía sin destino. Se reasignó a la Fase 9 el 2026-09-21, por decisión del usuario.)*
 
 ---
 

@@ -132,8 +132,9 @@ Es el diseño de fases: objetivo, alcance, dependencias, riesgos, entregables, c
 ## Fase 9 — Staging y piloto controlado
 
 - **Objetivo**: ejercitar el sistema en un entorno equivalente a producción, sin tráfico real.
-- **Alcance**: infraestructura de staging con gestor de secretos, backups automáticos con restauración probada, datos sintéticos de volumen y piloto.
+- **Alcance**: infraestructura de staging con gestor de secretos, backups automáticos con restauración probada, datos sintéticos de volumen y piloto. **Más la búsqueda sin distinguir acentos** (`unaccent`), reasignada acá el 2026-09-21 por decisión del usuario: el [brief-4.4](../decisions/brief-4.4-ui-de-productos-e-inventario.md) la había asignado a la Fase 8 y ninguna de sus cinco subfases la tomó.
 - **Subfases**: 9.1 a 9.4.
+  - **Al descomponer la fase en subfases, `unaccent` tiene que quedar enumerado en el alcance de una de ellas.** Se escribe como condición y no como intención porque el defecto que lo trajo hasta acá fue exactamente ese: una obligación asignada a una fase, correctamente, que nunca llegó a una subfase y sobrevivió a un cierre entero sin que nada fallara. Nombrar la fase no alcanza cuando el trabajo se reparte y se cierra por subfases.
 - **Dependencias**: Fase 8 cerrada.
 - **Riesgos**: el primer despliegue siempre revela supuestos del entorno que no se probaron en local.
 - **Disciplina del piloto**: se aplica *Observation Window Before Iteration*. Durante la ventana, cada observación se registra en `docs/decisions/notas-piloto-9.md` sin implementar cambios. El triage contra evidencia se hace cuando el usuario confirma el cierre. Solo un fallo crítico que el usuario decida atender rompe la ventana.
