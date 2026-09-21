@@ -135,6 +135,7 @@ Se hace cumplir con la regla `no-restricted-imports` de ESLint, incluida en ESLi
 - `tests/guards/module-boundary.test.ts` (2.5) aplica la configuración real a los 9 casos de esta tabla como archivos virtuales, y corre en local y en CI.
 - La excepción de `schema.ts` sale de combinar D-3 (el esquema vive en el módulo dueño) con D-6 (solo se importa la interfaz pública): sin ella, una clave foránea entre módulos violaría la regla.
 - ESLint reemplaza la configuración de una regla cuando otro bloque aplica a los mismos archivos. Los bloques de excepción repiten las prohibiciones generales en vez de heredarlas.
+- **La regla alcanza solo a `src/**`, y hay una excepción de prueba registrada.** `tests/integration/organization-isolation.test.ts` (9.0.1) importa a propósito el `repository` de `catalog`, `crm`, `conversations` y `organizations`. Es el único archivo del proyecto que lo hace. El motivo: el invariante que prueba —que el `where` de cada escritura filtra por `organization_id`— es inalcanzable desde la interfaz pública, porque el servicio lee la fila filtrada y devuelve `NOT_FOUND` antes de llegar a escribir, así que por el camino público el test pasaría con y sin el filtro. La excepción **no se hereda en `src/**`**: ahí la primera fila de esta tabla rige sin matices. Quedó escrita al cerrar la 9.0.1, porque la revisión independiente marcó que el test contradecía esa fila y que el documento no lo decía.
 
 ## Tests, seeds y migraciones
 

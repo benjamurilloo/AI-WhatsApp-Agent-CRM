@@ -4,8 +4,11 @@ import {
   recordAudit,
   type AuditLogEntry,
 } from "@/modules/audit";
-import { getUserSummaries } from "@/modules/auth";
-import { authorize, type AuthContext } from "@/modules/organizations";
+import {
+  authorize,
+  getMemberSummaries,
+  type AuthContext,
+} from "@/modules/organizations";
 import type { DbTransaction } from "@/shared/db";
 import { failure, type Failure } from "@/shared/errors";
 import {
@@ -190,7 +193,7 @@ export async function listProductAudit(
   });
   const actors = new Map(
     (
-      await getUserSummaries([
+      await getMemberSummaries(context.organizationId, [
         ...new Set(found.entries.map((entry) => entry.actorUserId)),
       ])
     ).map((user) => [user.id, user.name]),
@@ -290,6 +293,7 @@ export async function updateProduct(
       );
       const updated = await repository.updateProductValues(
         tx,
+        context.organizationId,
         productId,
         after,
       );
@@ -333,7 +337,12 @@ async function setProductActive(
       if (!current) return failure("NOT_FOUND");
       if (current.isActive === isActive) return { ok: true, changed: false };
 
-      await repository.updateProductActive(tx, productId, isActive);
+      await repository.updateProductActive(
+        tx,
+        context.organizationId,
+        productId,
+        isActive,
+      );
       await recordAudit(tx, {
         organizationId: context.organizationId,
         actorUserId: context.userId,

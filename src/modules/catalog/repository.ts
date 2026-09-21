@@ -159,23 +159,51 @@ export function insertProduct(
   });
 }
 
+// El llamador ya leyó la fila filtrada por organización y con FOR UPDATE en esta misma
+// transacción, así que cero filas actualizadas no es una carrera: es un defecto de
+// programación. Se lanza dentro de la transacción, que revierte (9.0.1, D-1).
+function assertUpdatedOne(rows: unknown[], what: string): void {
+  if (rows.length === 0) {
+    throw new Error(`${what}: la fila no existe en esta organización`);
+  }
+}
+
 export function updateProductValues(
   tx: DbTransaction,
+  organizationId: string,
   productId: string,
   values: Partial<ProductValues>,
 ): Promise<void | "sku_taken"> {
   return inSavepoint(tx, async (savepoint) => {
-    await savepoint
+    const rows = await savepoint
       .update(products)
       .set(values)
-      .where(eq(products.id, productId));
+      .where(
+        and(
+          eq(products.organizationId, organizationId),
+          eq(products.id, productId),
+        ),
+      )
+      .returning({ id: products.id });
+    assertUpdatedOne(rows, "updateProductValues");
   });
 }
 
 export async function updateProductActive(
   tx: DbTransaction,
+  organizationId: string,
   productId: string,
   isActive: boolean,
 ): Promise<void> {
-  await tx.update(products).set({ isActive }).where(eq(products.id, productId));
+  const rows = await tx
+    .update(products)
+    .set({ isActive })
+    .where(
+      and(
+        eq(products.organizationId, organizationId),
+        eq(products.id, productId),
+      ),
+    )
+    .returning({ id: products.id });
+  assertUpdatedOne(rows, "updateProductActive");
 }

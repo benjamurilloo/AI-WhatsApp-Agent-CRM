@@ -190,22 +190,50 @@ export function insertClient(
   });
 }
 
+// El llamador ya leyó la fila filtrada por organización y con FOR UPDATE en esta misma
+// transacción, así que cero filas actualizadas no es una carrera: es un defecto de
+// programación. Se lanza dentro de la transacción, que revierte (9.0.1, D-1).
+function assertUpdatedOne(rows: unknown[], what: string): void {
+  if (rows.length === 0) {
+    throw new Error(`${what}: la fila no existe en esta organización`);
+  }
+}
+
 export function updateClientValues(
   tx: DbTransaction,
+  organizationId: string,
   clientId: string,
   values: Partial<ClientValues>,
 ): Promise<void | "phone_taken"> {
   return inSavepoint(tx, async (savepoint) => {
-    await savepoint.update(clients).set(values).where(eq(clients.id, clientId));
+    const rows = await savepoint
+      .update(clients)
+      .set(values)
+      .where(
+        and(
+          eq(clients.organizationId, organizationId),
+          eq(clients.id, clientId),
+        ),
+      )
+      .returning({ id: clients.id });
+    assertUpdatedOne(rows, "updateClientValues");
   });
 }
 
 export async function updateClientActive(
   tx: DbTransaction,
+  organizationId: string,
   clientId: string,
   isActive: boolean,
 ): Promise<void> {
-  await tx.update(clients).set({ isActive }).where(eq(clients.id, clientId));
+  const rows = await tx
+    .update(clients)
+    .set({ isActive })
+    .where(
+      and(eq(clients.organizationId, organizationId), eq(clients.id, clientId)),
+    )
+    .returning({ id: clients.id });
+  assertUpdatedOne(rows, "updateClientActive");
 }
 
 // Cliente de la organización con ese teléfono, activo o no (brief-6.5.2).

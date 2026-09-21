@@ -173,15 +173,32 @@ export async function findConversation(
   return rows[0];
 }
 
+// El llamador ya leyó la fila filtrada por organización y con FOR UPDATE en esta misma
+// transacción, así que cero filas actualizadas no es una carrera: es un defecto de
+// programación. Se lanza dentro de la transacción, que revierte (9.0.1, D-1).
+function assertUpdatedOne(rows: unknown[], what: string): void {
+  if (rows.length === 0) {
+    throw new Error(`${what}: la fila no existe en esta organización`);
+  }
+}
+
 export async function updateConversationStatus(
   tx: DbTransaction,
+  organizationId: string,
   conversationId: string,
   status: ConversationStatus,
 ): Promise<void> {
-  await tx
+  const rows = await tx
     .update(conversations)
     .set({ status })
-    .where(eq(conversations.id, conversationId));
+    .where(
+      and(
+        eq(conversations.organizationId, organizationId),
+        eq(conversations.id, conversationId),
+      ),
+    )
+    .returning({ id: conversations.id });
+  assertUpdatedOne(rows, "updateConversationStatus");
 }
 
 export type MessageRow = {
@@ -346,14 +363,22 @@ export async function insertMessageIfAbsent(
 // started_at y last_message_at siguen al menor y al mayor sent_at (contrato v1).
 export async function widenConversationDates(
   tx: DbTransaction,
+  organizationId: string,
   conversationId: string,
   sentAt: Date,
 ): Promise<void> {
-  await tx
+  const rows = await tx
     .update(conversations)
     .set({
       startedAt: sql`least(${conversations.startedAt}, ${sentAt})`,
       lastMessageAt: sql`greatest(${conversations.lastMessageAt}, ${sentAt})`,
     })
-    .where(eq(conversations.id, conversationId));
+    .where(
+      and(
+        eq(conversations.organizationId, organizationId),
+        eq(conversations.id, conversationId),
+      ),
+    )
+    .returning({ id: conversations.id });
+  assertUpdatedOne(rows, "widenConversationDates");
 }

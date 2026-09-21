@@ -392,7 +392,12 @@ export async function changeConversationStatus(
     if (!current) return failure("NOT_FOUND");
     if (current.status === status.data) return { ok: true, changed: false };
 
-    await repository.updateConversationStatus(tx, current.id, status.data);
+    await repository.updateConversationStatus(
+      tx,
+      context.organizationId,
+      current.id,
+      status.data,
+    );
     await recordAudit(tx, {
       organizationId: context.organizationId,
       actorUserId: context.userId,
@@ -578,7 +583,12 @@ export async function recordIngestedMessage(
     return failure("CONFLICT");
   }
   if (!createdId) {
-    await repository.widenConversationDates(tx, conversationId, message.sentAt);
+    await repository.widenConversationDates(
+      tx,
+      organizationId,
+      conversationId,
+      message.sentAt,
+    );
   }
   return { ok: true, conversationCreated: createdId !== undefined };
 }

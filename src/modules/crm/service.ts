@@ -4,8 +4,11 @@ import {
   recordAudit,
   type AuditLogEntry,
 } from "@/modules/audit";
-import { getUserSummaries } from "@/modules/auth";
-import { authorize, type AuthContext } from "@/modules/organizations";
+import {
+  authorize,
+  getMemberSummaries,
+  type AuthContext,
+} from "@/modules/organizations";
 import type { DbTransaction } from "@/shared/db";
 import { failure, type Failure } from "@/shared/errors";
 import {
@@ -263,7 +266,7 @@ export async function listClientAudit(
   });
   const actors = new Map(
     (
-      await getUserSummaries([
+      await getMemberSummaries(context.organizationId, [
         ...new Set(found.entries.map((entry) => entry.actorUserId)),
       ])
     ).map((user) => [user.id, user.name]),
@@ -358,7 +361,12 @@ export async function updateClient(
     const after = Object.fromEntries(
       changedFields.map((field) => [field, values[field]]),
     );
-    const updated = await repository.updateClientValues(tx, clientId, after);
+    const updated = await repository.updateClientValues(
+      tx,
+      context.organizationId,
+      clientId,
+      after,
+    );
     if (updated === "phone_taken") return failure("CONFLICT");
     await recordAudit(tx, {
       organizationId: context.organizationId,
@@ -398,7 +406,12 @@ async function setClientActive(
     if (current.isActive === isActive) return { ok: true, changed: false };
 
     // Reactivar no puede chocar: el número de un inactivo no lo toma nadie (hallazgo 10).
-    await repository.updateClientActive(tx, clientId, isActive);
+    await repository.updateClientActive(
+      tx,
+      context.organizationId,
+      clientId,
+      isActive,
+    );
     await recordAudit(tx, {
       organizationId: context.organizationId,
       actorUserId: context.userId,

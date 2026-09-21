@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { recordAudit } from "@/modules/audit";
-import { getUserSummaries } from "@/modules/auth";
 import {
   deriveStockStatus,
   getProduct,
@@ -12,6 +11,7 @@ import {
 } from "@/modules/catalog";
 import {
   authorize,
+  getMemberSummaries,
   getOrganizationTimezone,
   type AuthContext,
 } from "@/modules/organizations";
@@ -459,10 +459,12 @@ export async function listStockMovements(
     (filtered &&
       (await repository.hasMovements(query.organizationId, query.productId)));
 
-  // Autores sin JOIN con users: auth devuelve también a los desactivados.
+  // Autores sin JOIN con users: la lectura devuelve también a los desactivados.
   const authors = new Map(
     (
-      await getUserSummaries([...new Set(rows.map((row) => row.createdBy))])
+      await getMemberSummaries(query.organizationId, [
+        ...new Set(rows.map((row) => row.createdBy)),
+      ])
     ).map((user) => [user.id, user.name]),
   );
   return {

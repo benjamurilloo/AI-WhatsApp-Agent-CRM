@@ -7,6 +7,7 @@ export {
   getAppFrame,
   getAuthContext,
   getMember,
+  getMemberSummaries,
   getOrganizationTimezone,
   listMembers,
   reactivateMember,

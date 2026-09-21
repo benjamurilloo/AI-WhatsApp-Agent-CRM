@@ -222,6 +222,28 @@ export async function getAppFrame(context: AuthContext): Promise<AppFrame> {
   };
 }
 
+// Punto de entrada único de los resúmenes de usuario para los módulos de negocio
+// (9.0.1, D-2; H-1 de la 8.4). Antes cada módulo llamaba a auth.getUserSummaries, que lee
+// users por id sin filtro de organización, y la garantía de aislamiento vivía en siete
+// llamadores distintos. Acá la organización se interseca en SQL contra organization_members
+// antes de leer los usuarios, así que un id de otra organización no devuelve nada.
+//
+// Lo que esto NO hace: la consulta de auth sigue sin filtro propio. La garantía pasó de
+// siete lugares a uno, que es mejor, pero no es estructural. Lo estructural sería RLS, que
+// exige un rol sin BYPASSRLS y tiene su propio ADR pendiente.
+export async function getMemberSummaries(
+  organizationId: string,
+  userIds: string[],
+  tx?: DbTransaction,
+): Promise<UserSummary[]> {
+  const memberUserIds = await repository.findMemberUserIds(
+    organizationId,
+    userIds,
+    tx,
+  );
+  return getUserSummaries(memberUserIds, tx);
+}
+
 // Zona IANA de la organización, para períodos y fechas (brief-4.3.3, D-4). La columna es
 // not null con default, así que una organización existente siempre la tiene.
 export async function getOrganizationTimezone(
@@ -401,7 +423,12 @@ async function changeMember(
         entityId: target.id,
       };
       if (after.role !== before.role) {
-        await repository.updateMemberRole(tx, target.id, after.role);
+        await repository.updateMemberRole(
+          tx,
+          context.organizationId,
+          target.id,
+          after.role,
+        );
         await recordAudit(tx, {
           ...audit,
           action: "role_change",

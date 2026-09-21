@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getDb, type Db, type DbTransaction } from "@/shared/db";
 import { organizationMembers, organizations } from "./schema";
 
@@ -114,11 +114,50 @@ export async function insertMember(
 
 export async function updateMemberRole(
   tx: DbTransaction,
+  organizationId: string,
   memberId: string,
   role: "admin" | "viewer",
 ): Promise<void> {
-  await tx
+  // A diferencia de las otras seis escrituras de H-7, acá el llamador NO lee la fila con
+  // FOR UPDATE: `findMember` no lo usa. La serialización la da `withOrganizationLock`, que
+  // bloquea la fila de la organización, así que todos los cambios de miembros de esa
+  // organización se ordenan igual. Por eso cero filas actualizadas sigue siendo un defecto de
+  // programación y no una carrera, y se lanza dentro de la transacción, que revierte
+  // (9.0.1, D-1; la distinción la encontró la revisión independiente).
+  const rows = await tx
     .update(organizationMembers)
     .set({ role })
-    .where(eq(organizationMembers.id, memberId));
+    .where(
+      and(
+        eq(organizationMembers.organizationId, organizationId),
+        eq(organizationMembers.id, memberId),
+      ),
+    )
+    .returning({ id: organizationMembers.id });
+  if (rows.length === 0) {
+    throw new Error("updateMemberRole: la fila no existe en esta organización");
+  }
+}
+
+// Ids de los usuarios que son miembros de esta organización, entre los pedidos.
+// Es la intersección que convierte la lectura de usuarios en una lectura aislada:
+// `auth` no puede filtrar por organización sin importar este módulo, lo que crearía
+// un ciclo, así que el filtro vive acá, del lado que sí es dueño de la membresía
+// (9.0.1, D-2; H-1 de la 8.4).
+export async function findMemberUserIds(
+  organizationId: string,
+  userIds: string[],
+  executor: Executor = getDb(),
+): Promise<string[]> {
+  if (userIds.length === 0) return [];
+  const rows = await executor
+    .select({ userId: organizationMembers.userId })
+    .from(organizationMembers)
+    .where(
+      and(
+        eq(organizationMembers.organizationId, organizationId),
+        inArray(organizationMembers.userId, userIds),
+      ),
+    );
+  return rows.map((row) => row.userId);
 }
