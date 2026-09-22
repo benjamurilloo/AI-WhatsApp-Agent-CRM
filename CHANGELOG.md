@@ -2,6 +2,30 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-22 — 9.1: staging existe, H-3 cerrado, y cuatro revisiones independientes
+
+Cierre de subfase. **Abre gate**, así que no se cierra con autoevaluación: la revisaron cuatro agentes que no participaron del trabajo, en rondas sucesivas sobre las correcciones de la anterior.
+
+**Certifica, con nivel *validado en staging* y ni un escalón más:**
+
+- **Existe un entorno equivalente a producción en `https://staging.vixoraai.app`**, sin tráfico real: Ubuntu 24.04, Node 24, PostgreSQL 18.6 con `unaccent`, TLS de Let's Encrypt, `systemd` y nginx. La aplicación escucha **solo en loopback** y el puerto 3000 nunca se abre.
+- **H-3 quedó resuelto y medido por consecuencia**, no por lectura: 20 fallos desde una IP la bloquean mientras la misma cuenta ingresa desde otra en el mismo momento. Era el último hallazgo mayor abierto de la 8.4 y precondición bloqueante de esta subfase. La clave del límite se comparó por hash contra tres cadenas conocidas, así que la afirmación es una medición y no un relato.
+- **La configuración del servidor está versionada en [deploy/staging/](deploy/staging/)** y fijada por una guarda que **parsea nginx** y calcula las cabeceras efectivas por contexto que proxea, con la regla de herencia real del servidor. Rechaza las tres directivas de `realip`, que reescriben `$remote_addr` desde una cabecera del cliente.
+- **HSTS se emite sobre TLS y no sobre texto plano**, con los casos que ejercitan `proxy()` real y no solo el predicado.
+- **La aplicación no corre con el rol dueño de la base**: `DELETE FROM audit_logs` responde `permission denied` y un `UPDATE` legítimo funciona, que es el par que le da poder a la comprobación.
+- **Ocho guardas**, 129 casos. Dos nacieron en esta subfase y **las dos con un agujero**, encontrado por revisiones independientes y no por autoevaluación.
+- **Evidencia de runtime versionada** en [evidencia-9.1-staging.md](docs/decisions/evidencia-9.1-staging.md), con los bloques transcritos marcados como tales y lo que no consta declarado como que no consta.
+
+**No certifica:**
+
+- **Que el servidor tenga lo que el repositorio dice.** La guarda fija el archivo versionado; nadie puede leer la máquina desde un test. La comparación es un paso manual y queda como tal.
+- **El AC-2 está cumplido a medias**: la corrida en seco de `certbot` no tiene salida capturada.
+- **El AC-4 se verificó por inferencia**, no sobre el `Set-Cookie` crudo como el criterio enuncia. El AC-11 dejó dos rutas de producto sin recorrer.
+- **Una discrepancia en la evidencia del AC-6 que no se pudo reconstruir** (`account|13|17` contra el método declarado). La conclusión del criterio se reapoyó en un argumento que la salida sí cierra; el relato original no se sostiene.
+- **Nada de esto es *preparado para producción***: faltan backups probados, rollback y retención, que son de la 9.2.
+
+**Lo que la subfase midió sobre el propio método, y es su resultado menos cómodo:** cuatro revisiones independientes informaron **33 hallazgos, todos reales**. Dos rondas de correcciones **introdujeron defectos nuevos mientras corregían**, y ninguna de las cuatro resultó limpia. Cuatro detectores del proyecto nacieron viendo una sola forma sintáctica de lo que debían prohibir, y las cuatro veces lo encontró una revisión independiente. De ahí la regla nueva de [EngineeringStandards](docs/development/EngineeringStandards.md): **una mutación ejecutada por cada forma sintáctica que un detector dice cubrir**, con el resultado antes y después. El riesgo del agente único pasó a probabilidad **alta** en [Risks.md](docs/planning/Risks.md), medida y no estimada.
+
 ## 2026-09-21 — 9.0.3: la frontera de `analytics`, y dos pendientes que no existían
 
 Cierre de subfase, y con ella cierra la tarea madre **9.0**. Autoevaluación, no revisión independiente: la 9.0.3 no abre ni cierra gate — eso es la 9.1.

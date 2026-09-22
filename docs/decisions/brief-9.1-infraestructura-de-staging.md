@@ -336,3 +336,24 @@ Un tercer agente, que tampoco participó del trabajo, revisó la segunda ronda d
 - **El rechazo de `realip` cubre la forma escrita en este archivo**, no un `include` que la traiga de otro. Declarado en la cabecera de la guarda.
 - **`account|13|17` sigue sin explicación.** Queda dicho que no consta, que es el criterio, pero no deja de ser evidencia que no se puede reconstruir.
 - **Las tres rondas de correcciones fueron trabajo propio y ninguna resultó limpia.** Esta tampoco se da por buena sin revisarla.
+
+## Cuarta revisión independiente, acotada (2026-09-22)
+
+Las tres primeras revisaron la subfase entera. Esta no: se acotó **a propósito** a la única lógica que la tercera ronda agregó al instrumento del que depende H-3, con dos preguntas —¿la guarda promete más de lo que cubre? ¿el cambio es estrictamente aditivo?— y con la **regla de parada fijada antes de lanzarla**: cerrar salvo que aparezca un hallazgo mayor o superior, o uno que afecte al instrumento del gate.
+
+La regla existe porque el recuento de las tres rondas (11, 11, 9) no bajaba, y la razón no era que el trabajo no mejorara sino que **cada ronda escribía cosas nuevas sobre las que revisar**. Con la regla «cerrar cuando una revisión no encuentre nada» no se cierra nunca: sobre documentación siempre hay algo. Lo que valida esta regla es que aplicada hacia atrás da las decisiones que efectivamente se tomaron: ronda 1 con un mayor (H-1) → no cerrar; ronda 2 con un mayor (N-1) → no cerrar; ronda 3 sin críticos pero con T-1 tocando la guarda del gate → no cerrar.
+
+**Resultado: 2 hallazgos, los dos menores, los dos de la misma familia** —prosa que promete una clase más ancha que la que el código detecta—. Ninguno mayor. Se corrigieron igual, porque eran baratos:
+
+| Hallazgo | Qué era | Cómo se cerró |
+| --- | --- | --- |
+| **C-1** | La cabecera decía rechazar «cualquier directiva del módulo `realip`» y la constante tenía **dos de las tres**: faltaba `real_ip_recursive` | Agregada la tercera. **Mutación ejecutada** sobre el archivo real con `real_ip_recursive` **sola**, que es la forma que antes pasaba en verde: 8 casos en rojo. No debilitaba la defensa —sin `set_real_ip_from` el módulo no actúa, así que ninguna configuración con realip activo podía pasar—, pero la afirmación de clase completa era falsa |
+| **C-2** | «Toda la resolución de H-3 descansa en» enumeraba **dos de tres patas**: faltaba `TRUSTED_PROXY=true`, sin la cual la aplicación ignora la cabecera y todas las peticiones vuelven a compartir clave, con esta guarda en verde | Las tres patas enumeradas en la cabecera, diciendo cuáles fija este archivo y cuál **ninguna guarda puede comprobar**, porque vive en un archivo no versionado |
+
+La revisión confirmó por lectura del flujo de control que el rechazo de `realip` es **estrictamente aditivo**: el único `return` temprano de `revisarProxy` es el de «ningún `proxy_pass`», anterior a esta lógica, y en ese estado no hay ninguna comprobación de cabeceras que suprimir. Registró un matiz que no es defecto y conviene conservar: los mensajes de realip se **anteponen**, así que «aditivo» significa aditivo en contenido, no que una expectativa anterior siga siendo prefijo del resultado.
+
+### Con esto se cierra la 9.1
+
+Cuatro revisiones independientes, 11 + 11 + 9 + 2 = **33 hallazgos, todos verificados contra el código y todos reales**. Lo que la subfase deja medido, y que vale más que el recuento: **ninguna de las cuatro rondas de correcciones propias resultó limpia**, y dos introdujeron defectos nuevos mientras corregían. Está registrado en [Risks.md](../planning/Risks.md) como riesgo de probabilidad **alta**, medida y no estimada.
+
+Lo que queda abierto y no lo tapa el cierre: la corrida en seco de `certbot` sin capturar (T-8), `account|13|17` sin explicación (T-3), el AC-4 verificado por inferencia, el AC-11 con dos rutas sin recorrer, y que el servidor sigue sin poder leerse desde un test.

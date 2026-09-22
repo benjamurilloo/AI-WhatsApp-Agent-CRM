@@ -4,11 +4,21 @@ import { describe, expect, it } from "vitest";
 // Guarda de la configuración del proxy de staging (brief-9.1, D-9; hallazgo H-1 de la
 // revisión independiente del 2026-09-22, y N-1 de la segunda revisión del mismo día).
 //
-// Por qué existe: toda la resolución de H-3 descansa en que haya **un solo salto de proxy**
-// y en que nginx **reemplace** `x-forwarded-for` en vez de agregarlo. La aplicación lee la
-// última entrada de esa cabecera (`session-cookie.ts`), así que con dos saltos la última
-// entrada deja de ser la IP del cliente, todas las peticiones vuelven a compartir clave y
-// H-3 se reproduce **en silencio y pasando en verde**.
+// Por qué existe: la resolución de H-3 descansa en **tres** patas, y esta guarda cubre dos.
+//   1. Que haya **un solo salto de proxy**.
+//   2. Que nginx **reemplace** `x-forwarded-for` en vez de agregarlo.
+//   3. Que la aplicación corra con `TRUSTED_PROXY=true` (`session-cookie.ts:33`): con
+//      cualquier otro valor ignora la cabecera y devuelve `null`, y **todas** las peticiones
+//      vuelven a compartir la clave de IP. Esa variable vive en `/etc/crm-staging/app.env`,
+//      que no está versionado, así que **ninguna guarda puede comprobarla**: se midió en el
+//      AC-5 y se vuelve a mirar en el paso 2 de `deploy/staging/README.md`.
+//
+// Las dos primeras son las que este archivo fija. La tercera se nombra acá para que nadie
+// lea «guarda en verde» como «premisa de H-3 intacta» (C-2 de la cuarta revisión).
+//
+// La aplicación lee la última entrada de la cabecera (`session-cookie.ts:38`), así que con
+// dos saltos la última entrada deja de ser la IP del cliente, todas las peticiones vuelven a
+// compartir clave y H-3 se reproduce **en silencio y pasando en verde**.
 //
 // **Reescrita el 2026-09-22.** La primera versión comprobaba *presencia de subcadenas* sobre
 // el archivo entero, y se midió que dejaba pasar en verde las dos regresiones más plausibles:
@@ -36,9 +46,10 @@ import { describe, expect, it } from "vitest";
 // resultado se registra al desplegar. Una guarda que fingiera comprobarlo sería peor que
 // no tenerla.
 //
-// Además **rechaza** cualquier directiva del módulo `realip` (`set_real_ip_from`,
-// `real_ip_header`), que reescribe `$remote_addr` a partir de una cabecera del cliente y dejaría
-// intacta la directiva que esta guarda inspecciona. Ver el comentario de `REESCRIBEN_REMOTE_ADDR`.
+// Además **rechaza** las tres directivas del módulo `realip` (`set_real_ip_from`,
+// `real_ip_header`, `real_ip_recursive`), que reescriben `$remote_addr` a partir de una
+// cabecera del cliente y dejarían intacta la directiva que esta guarda inspecciona. Ver el
+// comentario de `REESCRIBEN_REMOTE_ADDR`.
 //
 // Otros límites del analizador, declarados para no confundirlos con cobertura:
 //   - No resuelve `include`: una directiva traída de otro archivo es invisible acá. Un `include`
@@ -214,7 +225,16 @@ function recolectarDirectivas(
 //
 // Lo señaló el hallazgo T-1 de la tercera revisión independiente: el analizador enumeraba sus
 // límites y este no estaba ni cubierto ni declarado.
-const REESCRIBEN_REMOTE_ADDR = ["set_real_ip_from", "real_ip_header"];
+// Las **tres** del módulo, no dos. `real_ip_recursive` por sí sola no reescribe nada —sin
+// `set_real_ip_from` el módulo no actúa—, así que ninguna configuración con realip activo
+// podía pasar en verde con las otras dos; pero la cabecera decía «cualquier directiva» y eran
+// dos de tres, que es la misma clase de promesa ancha que este archivo viene corrigiendo
+// (C-1 de la cuarta revisión independiente).
+const REESCRIBEN_REMOTE_ADDR = [
+  "set_real_ip_from",
+  "real_ip_header",
+  "real_ip_recursive",
+];
 
 const EXIGIDAS = [
   // El valor tiene que ser `$remote_addr` y no `$proxy_add_x_forwarded_for`: el segundo
@@ -313,11 +333,25 @@ describe("el analizador distingue las regresiones que la versión anterior dejab
   it("detecta set_real_ip_from, que hace que $remote_addr venga del cliente", () => {
     const regresion = NGINX.replace(
       "    location / {",
-      "    set_real_ip_from 10.0.0.0/8;\n    real_ip_header X-Forwarded-For;\n\n    location / {",
+      "    set_real_ip_from 10.0.0.0/8;\n    real_ip_header X-Forwarded-For;\n    real_ip_recursive on;\n\n    location / {",
     );
     expect(revisarProxy(regresion)).toEqual([
       expect.stringContaining("set_real_ip_from 10.0.0.0/8"),
       expect.stringContaining("real_ip_header X-Forwarded-For"),
+      expect.stringContaining("real_ip_recursive on"),
+    ]);
+  });
+
+  // La tercera directiva **sola**, que es la forma que la versión anterior de la constante
+  // dejaba pasar en verde (C-1). Va en su propio caso y no junto a las otras dos: un caso que
+  // las trae a las tres no distingue si la guarda detecta tres o detecta una.
+  it("detecta real_ip_recursive sola, aunque por sí misma no reescriba nada", () => {
+    const regresion = NGINX.replace(
+      "    location / {",
+      "    real_ip_recursive on;\n\n    location / {",
+    );
+    expect(revisarProxy(regresion)).toEqual([
+      expect.stringContaining("real_ip_recursive on"),
     ]);
   });
 
