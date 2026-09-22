@@ -145,3 +145,60 @@ Se para y se consulta, no se sigue con una solución alternativa:
 - **Que el entorno resista carga.** No se mide rendimiento acá; eso es la 9.3, y medirlo en 1 núcleo con 961 MB daría un número que no significa nada para producción.
 - **Que no haya defectos de seguridad.** Certifica que cinco afirmaciones concretas del modelo pasaron de declaradas a verificadas, cada una con su evidencia a la vista.
 - **Que esta autoevaluación sea correcta.** Abre gate: lo que quede en pie es lo que sobreviva a la revisión independiente, no lo que esta subfase declare.
+
+## Evidencia de runtime (2026-09-22)
+
+El entorno está en `https://staging.vixoraai.app`, sobre el droplet `134.209.70.162`. Todo lo de abajo se midió contra ese entorno, desde fuera, y se reproduce con los comandos indicados.
+
+### Entorno desplegado
+
+| Pieza | Versión / estado |
+| --- | --- |
+| Ubuntu | 24.04.4 LTS, kernel 6.8.0-124 |
+| Node | **24.21.0** (local: 24.15.0 — misma línea mayor, dentro de `>=24 <25` de `package.json`) |
+| PostgreSQL | **18.6** (`18.6-1.pgdg24.04+2`), la misma de CI |
+| nginx | 1.24.0, proxy inverso con TLS |
+| Aplicación | `next start` bajo `systemd`, `enabled`, enlazada a `127.0.0.1:3000` |
+| Swap | 2 GB, `vm.swappiness=10` |
+
+### Criterios verificados
+
+| AC | Cómo se verificó | Resultado |
+| --- | --- | --- |
+| **AC-1** | `curl https://staging.vixoraai.app/login` desde fuera | `200` con la aplicación real |
+| **AC-2** | `openssl s_client` + `certbot renew --dry-run` | `CN=staging.vixoraai.app`, emisor Let's Encrypt, vence 2026-12-21; renovación simulada con éxito y `certbot.timer` activo |
+| **AC-3** | `curl -I` sobre HTTPS **y sobre HTTP** | HTTPS: `strict-transport-security: max-age=31536000; includeSubDomains`. HTTP: `301` de nginx **sin** la cabecera. El control es lo que le da valor: si saliera en las dos, verla no probaría nada |
+| **AC-4** | Ingreso real con Chromium | Cookie `__Host-crm_session`, `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`. Que el navegador **acepte** el prefijo `__Host-` es en sí la prueba de que no viajó `Domain`: el navegador rechaza esa cookie si lo lleva |
+| **AC-5** | Hash de la clave del límite por IP contra tres candidatos | La fila almacenada es `sha256("186.182.26.146")` = la IP pública real del cliente. **No** es `sha256("203.0.113.9")`, la cabecera falsificada que el navegador envió; **no** es `sha256("sin-proxy")`, la firma de H-3 |
+| **AC-6** | 20 fallos desde una IP, ingreso desde otra | Desde la IP saturada: *«Demasiados intentos»*. Desde la IP del droplet, misma cuenta y misma contraseña en el mismo momento: **ingresó** |
+| **AC-7** | Operaciones reales con la conexión de la aplicación | `DELETE FROM audit_logs` → `permission denied`; `SELECT` → `0`; `UPDATE clients` → `UPDATE 0`; `has_table_privilege` sobre `audit_logs`: `INSERT=t`, `DELETE=f` |
+| **AC-9** | `ls -l /etc/crm-staging/` | `app.env` y `migrate.env`, `0600`, `root:root`, fuera del repositorio y fuera de CI |
+| **AC-10** | `systemctl reboot` real | Secuencia `000` → `502` → `200` sin intervención. HSTS sigue presente después |
+
+### Lo que el AC-5 demuestra y lo que no
+
+Demuestra que **la aplicación ve la IP real del cliente** y que **falsificar `x-forwarded-for` no la cambia**, porque la comparación es contra el hash exacto de tres cadenas conocidas y solo una coincide. No demuestra que la lectura siga siendo correcta si algún día se agrega **otro** proxy delante: con dos saltos la última entrada dejaría de ser la IP del cliente. Esa premisa quedó escrita en el bloque de nginx, al lado de la directiva de la que depende.
+
+### El AC-6: el primer intento estuvo mal diseñado
+
+El primer intento usó **un solo correo** en los 20 fallos. Con `ACCOUNT_FAILURE_LIMIT = 5` y `IP_FAILURE_LIMIT = 20`, el límite por cuenta salta a los 5 y **el límite por IP no puede alcanzarse nunca**. El resultado fue que las dos IPs quedaron bloqueadas, y leído de apuro parecía H-3 reproduciéndose. No lo era: la base mostró 5 filas de alcance `account` bajo el hash del correo y solo 8 de alcance `ip`, muy por debajo de 20.
+
+El segundo intento usó **20 correos distintos**, de modo que ninguna cuenta llega a 5 y lo único que puede dispararse es el límite por IP, y cerró con una cuenta que nunca había fallado. Ahí sí: bloqueada una IP, la otra ingresó.
+
+Queda registrado porque el diseño confundido es el hallazgo: **una prueba que no puede distinguir dos causas no es evidencia de ninguna**, y esta pasaba por evidencia de la peor de las dos.
+
+### Hallazgos del despliegue
+
+Ninguno alcanza el umbral de crítico de la escala fijada: no abren acceso indebido ni permiten denegar el servicio.
+
+1. **La migración `0003` no corre con un rol sin `CREATEROLE`** (`mayor`). Crea el rol `crm_app`, que es un objeto del servidor. En desarrollo nunca falló porque el usuario de `docker-compose` es superusuario. Agravante: **`drizzle-kit migrate` salió con código 1 sin imprimir ningún error** — cero tablas y ningún mensaje. Resuelto creando `crm_app` con el superusuario y dejando que el `IF NOT EXISTS` de la migración lo saltee, en vez de otorgar `CREATEROLE` al rol dueño. **Queda pendiente decidir** si el procedimiento se documenta en `Environments.md` o si la migración deja de crear roles.
+2. **`next start` ignoró la variable `HOSTNAME`** y se enlazó a `*:3000` (`mayor`). En silencio. Se comprobó desde fuera que UFW lo bloqueaba, así que no estuvo expuesto, pero **el cortafuegos era la única barrera**. Corregido con `-H 127.0.0.1` explícito en la unidad de `systemd`.
+3. **`SecurityModel.md:119` y `:132`** decían cosas que el código no sostenía. Ya documentado arriba; se corrige en el AC-12.
+
+### Limitaciones declaradas de esta verificación
+
+- **El AC-11 está cubierto en parte.** Se recorrieron 8 rutas (`/`, `/clientes`, `/clientes/nuevo`, `/productos`, `/productos/nuevo`, `/conversaciones`, `/usuarios`, `/usuarios/nuevo`), todas `200` y **cero errores de consola**. No se visitaron las pantallas de detalle, que necesitan ids de registros existentes, ni `/cambiar-contrasena`.
+- **La suite e2e del proyecto no corrió contra staging.** Arranca dos servidores locales propios y su `global-setup` repone la base directamente, así que apuntarla acá exigiría un túnel hasta el PostgreSQL del droplet y cambiar su configuración. Se verificó con un recorrido escrito para esta subfase, que es menos cobertura que la suite.
+- **La prueba de integración del seed no corrió localmente**: Docker no estaba levantado. Queda a cargo de CI.
+- **El aprovisionamiento aceptó la clave de host SSH con `StrictHostKeyChecking=accept-new`**, sin verificación fuera de banda. Confianza en el primer uso.
+- **Lo medido vale para el commit desplegado.** No dice nada sobre carga, ni sobre volumen, ni sobre backups: son la 9.2 y la 9.3.
