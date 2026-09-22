@@ -1,11 +1,13 @@
 # Evidencia de runtime — subfase 9.1
 
-Salidas **crudas** de la verificación de `https://staging.vixoraai.app`, con el comando que las produjo. Existe por el hallazgo **H-9** de la revisión independiente del 2026-09-22: el brief comprometía «capturar y versionar la evidencia de cada AC, con fecha y comando» y lo versionado era una tabla en prosa, así que la revisión no tenía nada que auditar salvo la narración del autor.
+Salidas de la verificación de `https://staging.vixoraai.app`, con el comando que las produjo. Existe por el hallazgo **H-9** de la revisión independiente del 2026-09-22: el brief comprometía «capturar y versionar la evidencia de cada AC, con fecha y comando» y lo versionado era una tabla en prosa, así que la revisión no tenía nada que auditar salvo la narración del autor.
 
 **Qué es esto y qué no.** Es una captura, no una prueba automatizada: se reproduce corriendo los comandos, no corre sola en CI. Nada de acá sube el nivel de validación de nada; el nivel lo fija [brief-9.1](brief-9.1-infraestructura-de-staging.md).
 
+**Crudo y transcrito no son lo mismo.** La versión anterior de este documento se presentaba entera como «salidas crudas» y tres bloques no lo eran: estaban compuestos a mano a partir de varias corridas. Lo señaló el hallazgo **N-8** de la segunda revisión independiente, y es un defecto de la misma familia que el documento venía a corregir — declarar un nivel de evidencia por encima del real. Desde acá, cada bloque transcrito está marcado **`[transcrito]`** y dice qué se elidió; lo que no lleva marca es copia literal de la terminal.
+
 - **Capturado**: 2026-09-22
-- **Ref desplegado**: `1545040` (los commits posteriores de la 9.1 no cambiaron `src/`)
+- **Ref desplegado**: `1545040`. Desde ese ref, lo único que cambió bajo `src/` son archivos de prueba (`git diff --name-only 1545040 HEAD -- src/` devuelve `src/proxy.test.ts`), así que el código que corre en el servidor es el mismo. La redacción anterior —«no cambiaron `src/`»— era falsa (N-5).
 - **IP del cliente durante la medición**: `186.182.26.146`
 
 ---
@@ -46,8 +48,13 @@ $ psql "$DATABASE_URL" -c "DELETE FROM audit_logs;"
 ERROR:  permission denied for table audit_logs
 $ psql "$DATABASE_URL" -c "UPDATE clients SET updated_at = updated_at WHERE false;"
 UPDATE 0
-$ has_table_privilege(crm_staging_app, audit_logs, INSERT/DELETE)
-true / false
+[transcrito] Lo que consta de esta comprobación es el resultado, no su salida literal: sobre
+`audit_logs`, el rol de la aplicación tiene INSERT y no tiene DELETE. La línea de abajo está
+escrita con forma de comando y no lo es, y la salida literal de psql no se conservó. Se
+reproduce con:
+  psql "$DATABASE_URL" -tAc "SELECT has_table_privilege('crm_staging_app','audit_logs','INSERT'),
+                                    has_table_privilege('crm_staging_app','audit_logs','DELETE');"
+Los dos comandos de arriba, que sí son copia literal, ya muestran lo mismo por consecuencia.
 
 ### AC-9 — permisos de los archivos de secretos
 $ sudo ls -l /etc/crm-staging/
@@ -57,10 +64,16 @@ total 12
 -rw------- 1 root root  48 Sep 22 15:30 seed.env
 
 ### AC-10 — el servicio arranca solo y escucha en loopback
-$ systemctl is-active / is-enabled
+[transcrito] Resultado de consultar `systemctl is-active` e `is-enabled` para los tres
+servicios, condensado en tres líneas. La salida literal no se conservó; se reproduce con
+`systemctl is-active crm-staging postgresql nginx` y lo mismo con `is-enabled`.
 crm-staging: active / enabled
 postgresql: active / enabled
 nginx: active / enabled
+
+[transcrito] De la salida de `ss` se conservó el estado y la dirección local, que es lo que
+decide el AC; las demás columnas no se conservaron. Lo que importa y sí consta: la dirección
+es `127.0.0.1`, no `0.0.0.0` ni `*`.
 $ sudo ss -tlnp | grep 3000
 LISTEN 127.0.0.1:3000
 ```

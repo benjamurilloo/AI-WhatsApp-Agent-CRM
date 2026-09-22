@@ -51,8 +51,33 @@ const IPV6_LOCAL = /^(?:::1?$|fe80:|f[cd][0-9a-f]{2}:)/i;
 const URL_ABSOLUTA = /https?:\/\/(\[[0-9a-f:]+\]|[a-z0-9._-]+)/gi;
 // Hosts que no identifican ningún entorno: desarrollo, y los dominios que la RFC 2606
 // reserva para documentación y ejemplos.
-const HOST_LOCAL =
-  /^(?:localhost|127\.\d+\.\d+\.\d+|\[::1\]|0\.0\.0\.0|.*\.?example\.(?:com|net|org|test)|.*\.?(?:test|invalid|localhost)|schemas?\..*|www\.w3\.org)$/i;
+//
+// **Corregido el 2026-09-22** por el hallazgo N-6 de la segunda revisión independiente. La
+// versión anterior tenía dos problemas, y los dos los introduje al cerrar H-8:
+//   1. Ramas inventadas. `schemas?\..*` y `www\.w3\.org` eximían por prefijo cualquier host
+//      que empezara con `schema.`, así que `schema.staging.vixoraai.app` pasaba. Ningún falso
+//      positivo las pedía: no hay una sola ocurrencia de ninguna de las dos en `src/`.
+//   2. `.*\.?` no es un anclaje de subdominio. `notexample.com` y `fooexample.net` quedaban
+//      exentos porque `.*` se comía el prefijo y el punto era opcional.
+// Ahora los subdominios se escriben `(?:[a-z0-9-]+\.)`, que exige punto de verdad, y la lista
+// es solo lo que la RFC 2606 reserva. Cada exención tiene abajo un caso que la fija y otro
+// que comprueba que no se desbordó.
+const HOST_LOCAL = new RegExp(
+  [
+    "^(?:",
+    "localhost",
+    "|127\\.\\d+\\.\\d+\\.\\d+",
+    "|\\[::1\\]",
+    "|0\\.0\\.0\\.0",
+    // RFC 2606 §3: example.com/net/org y sus subdominios.
+    "|(?:[a-z0-9-]+\\.)*example\\.(?:com|net|org)",
+    // RFC 2606 §2 y RFC 6761: los TLD reservados. Se exige al menos una etiqueta delante
+    // para que el punto sea obligatorio y `notest` no cuente como `.test`.
+    "|(?:[a-z0-9-]+\\.)+(?:test|invalid|example|localhost)",
+    ")$",
+  ].join(""),
+  "i",
+);
 
 export type Finding = { readonly line: number; readonly match: string };
 
@@ -199,6 +224,45 @@ describe("src/ no contiene nombres de despliegue", () => {
     );
 
     expect(offenders).toEqual([]);
+  });
+});
+
+describe("las exenciones de hosts locales no se desbordan (N-6)", () => {
+  // Estos cuatro casos son agujeros **medidos** en la versión anterior del filtro: los
+  // cuatro hosts quedaban exentos y ninguno tenía por qué estarlo. Van versionados para
+  // que la corrección no se pierda.
+
+  it("no exime un host por empezar con `schema.`", () => {
+    const found = findDeploymentHostnames(
+      '"https://schema.staging.vixoraai.app"',
+    );
+    expect(found[0]?.match).toBe("schema.staging.vixoraai.app");
+  });
+
+  it("no exime `schemas.` tampoco", () => {
+    expect(
+      findDeploymentHostnames('"https://schemas.vixoraai.app"'),
+    ).toHaveLength(1);
+  });
+
+  it("no exime un dominio que solo termina en `example.com` sin punto", () => {
+    const found = findDeploymentHostnames(
+      '"https://notexample.com" "https://fooexample.net"',
+    );
+    expect(found.map((f) => f.match)).toEqual([
+      "notexample.com",
+      "fooexample.net",
+    ]);
+  });
+
+  // El par de los anteriores: los subdominios legítimos de la RFC 2606 sí siguen exentos.
+  // Sin este caso, el filtro podría haberse roto entero y los de arriba pasarían igual.
+  it("sigue eximiendo los subdominios de los dominios reservados", () => {
+    expect(
+      findDeploymentHostnames(
+        '"https://api.example.com" "https://a.b.example.org" "https://mi-app.test"',
+      ),
+    ).toHaveLength(0);
   });
 });
 

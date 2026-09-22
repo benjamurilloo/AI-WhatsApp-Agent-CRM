@@ -64,7 +64,22 @@ Los dos primeros comprueban lo que ninguna guarda puede: que el servidor tenga l
    ssh crm-staging 'sudo cat /etc/nginx/sites-available/crm-staging' | diff - deploy/staging/nginx-crm-staging.conf
    ssh crm-staging 'sudo cat /etc/systemd/system/crm-staging.service' | diff - deploy/staging/crm-staging.service
    ```
-2. **Que siga habiendo un solo salto de proxy.** Si alguna vez hay dos, `session-cookie.ts` lee una IP interna idéntica para todas las peticiones y H-3 vuelve sin que nada falle.
+2. **Que siga habiendo un solo salto de proxy.** Si alguna vez hay dos, `session-cookie.ts` lee una IP interna idéntica para todas las peticiones y H-3 vuelve sin que nada falle. La aplicación **no registra** la cabecera en el log, así que no se mira ahí: se mide por consecuencia, con el mismo método del AC-5. La clave del límite por IP es `sha256(ip)` sin sal y queda guardada en `login_attempts.key_hash`, así que comparar hashes decide el asunto sin ambigüedad.
+
+   El ingreso es una **Server Action**: un `POST` suelto de `curl` no genera el intento. La fila se produce fallando el ingreso desde el navegador, en `https://staging.vixoraai.app/login`.
+
+   ```
+   # 1. Fallar el ingreso una vez desde el navegador. Después, la clave que quedó:
+   ssh crm-staging "psql \"\$DATABASE_URL\" -tAc \
+     \"select key_hash from login_attempts where scope='ip' order by attempted_at desc limit 1;\""
+
+   # 2. El hash de tu IP pública, que es contra lo que se compara.
+   curl -s https://api.ipify.org | tr -d '\n' | sha256sum
+   ```
+
+   Tienen que ser **iguales**. Si no lo son, la aplicación no está viendo la IP del cliente: hay un salto de proxy de más, todas las peticiones comparten una clave interna y eso **es** H-3 reproducido. El control que le da valor a la comparación es repetirla desde otra IP —un túnel SOCKS alcanza, `ssh -f -N -D 1080`— y comprobar que el hash cambia.
+
+   Lo que este paso **no** cubre: que un cliente pueda falsificar la cabecera. Eso depende de que nginx reemplace en vez de agregar, y de eso se ocupa la guarda sobre el archivo versionado más el paso 1 de esta lista, que comprueba que el servidor tenga ese archivo. Ninguno de los dos sustituye al otro.
 3. **HSTS presente sobre HTTPS y ausente sobre HTTP**: `curl -I https://staging.vixoraai.app/login` y `curl -I http://staging.vixoraai.app/login`. El segundo es el que da valor al primero.
 4. **La aplicación solo en loopback**: `sudo ss -tlnp | grep 3000` tiene que decir `127.0.0.1:3000`. `next start` **ignora la variable `HOSTNAME`**; el enlace depende del flag `-H` de la unidad.
 5. **El rol de la aplicación no es el dueño**: `DELETE FROM audit_logs` con la conexión de `app.env` tiene que responder `permission denied`.

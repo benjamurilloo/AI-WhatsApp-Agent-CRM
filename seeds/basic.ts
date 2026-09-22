@@ -42,10 +42,23 @@ export const SEED_USERS = [
 // y nunca promovidos desde desarrollo. Lo que esta guarda protege no cambia: el sufijo sigue
 // anclado al final del nombre, así que una base de producción —`crm`, `crm_prod`— se rechaza
 // igual, y `crm_staging_backup` también.
-const seedableName = /_(dev|test|e2e|staging)$/;
+//
+// Los sufijos son la única fuente: el patrón y el mensaje de error se derivan de esta lista.
+// Antes estaban escritos por separado, y la 9.1 agregó `_staging` al patrón dejando el mensaje
+// de `conversations.ts` diciendo «_dev, _test o _e2e» — hallazgo N-10 de la segunda revisión
+// independiente. Así, agregar un sufijo no puede dejar un texto viejo detrás.
+const SUFIJOS_SEEDEABLES = ["dev", "test", "e2e", "staging"] as const;
+
+const seedableName = new RegExp(`_(?:${SUFIJOS_SEEDEABLES.join("|")})$`);
 
 export function isSeedableDatabase(name: string): boolean {
   return seedableName.test(name);
+}
+
+export function mensajeBaseNoSeedeable(name: string): string {
+  const lista = SUFIJOS_SEEDEABLES.map((sufijo) => `_${sufijo}`);
+  const enumerado = `${lista.slice(0, -1).join(", ")} o ${lista.at(-1)}`;
+  return `El seed solo corre contra una base ${enumerado}, no contra "${name}".`;
 }
 
 export async function seedBasic(db: Db, password: string): Promise<void> {
@@ -54,9 +67,7 @@ export async function seedBasic(db: Db, password: string): Promise<void> {
   );
   const name = current.rows[0]?.name ?? "";
   if (!isSeedableDatabase(name)) {
-    throw new Error(
-      `El seed solo corre contra una base _dev, _test, _e2e o _staging, no contra "${name}".`,
-    );
+    throw new Error(mensajeBaseNoSeedeable(name));
   }
   if (password.length < PASSWORD_MIN_LENGTH) {
     throw new Error(

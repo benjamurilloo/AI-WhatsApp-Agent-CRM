@@ -2,7 +2,11 @@ import { sql } from "drizzle-orm";
 import { conversations, messages } from "@/modules/conversations/schema";
 import { clients } from "@/modules/crm/schema";
 import { type Db, type DbTransaction } from "@/shared/db";
-import { isSeedableDatabase, SEED_ORGANIZATION_ID } from "./basic";
+import {
+  isSeedableDatabase,
+  mensajeBaseNoSeedeable,
+  SEED_ORGANIZATION_ID,
+} from "./basic";
 
 // Seed de conversaciones sintéticas para desarrollo (brief-6.2, D-1 y D-2), sobre la organización
 // del seed básico. Lo llama npm run db:seed; los end-to-end no lo usan.
@@ -293,9 +297,7 @@ export async function assertSeedableDatabase(db: Db): Promise<void> {
   );
   const name = current.rows[0]?.name ?? "";
   if (!isSeedableDatabase(name)) {
-    throw new Error(
-      `El seed solo corre contra una base _dev, _test o _e2e, no contra "${name}".`,
-    );
+    throw new Error(mensajeBaseNoSeedeable(name));
   }
 }
 

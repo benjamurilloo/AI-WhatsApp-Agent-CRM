@@ -266,5 +266,48 @@ Dos falsos positivos aparecieron al ampliar el barrido del detector, los dos sob
 
 - **Que el servidor tenga lo que el repositorio dice.** La guarda fija el archivo versionado; nadie puede leer la máquina desde un test. La comparación es un paso manual de `deploy/staging/README.md`. Es una mitigación de H-1, no su desaparición.
 - **Un hostname armado por concatenación o partido en dos líneas** sigue escapándosele al detector, y ahora está declarado en su cabecera en vez de quedar implícito.
+- **Un hostname sin esquema** —`staging.ejemplo.app` suelto, sin `https://` delante— tampoco se detecta. Lo detectaba la versión anterior del detector y la reescritura lo perdió; es una pérdida real de cobertura a cambio de dejar de depender de la marca, y el motivo es que buscarlo por forma marcaría `next.config`, `package.json` y cualquier llamada con punto. Estaba declarado en la cabecera de la guarda pero no acá (N-7 de la segunda revisión).
 - **El AC-4 sigue verificándose por inferencia**, no sobre el `Set-Cookie` crudo como el criterio enuncia.
 - **La suite e2e del proyecto sigue sin correr contra staging.**
+
+## Segunda revisión independiente (2026-09-22)
+
+Un segundo agente, que tampoco participó del trabajo, revisó **la ronda de correcciones anterior**. Informó **11 hallazgos** —0 críticos, 1 mayor, 8 menores, 2 de proceso— y **no aprobó el cierre**. Los 11 se verificaron contra el código y los 11 resultaron reales.
+
+El resultado que importa no es el recuento: **tres de las correcciones no cerraron su hallazgo, y dos de ellas lo empeoraron**. La ronda que cerraba H-5 creó una contradicción nueva de recuento; la que cerraba H-6 dejó el `git_ref` desactualizado otra vez, en el mismo commit que lo corregía; y la que cerraba H-8 metió en el filtro dos exenciones que ningún falso positivo pedía. Ninguna autoevaluación de esa ronda lo vio, y la ronda había sido escrita sabiendo que una revisión previa había encontrado exactamente esta clase de defecto.
+
+| Hallazgo | Qué era | Cómo se cerró |
+| --- | --- | --- |
+| **N-1** (mayor) | La guarda de `deploy/staging/` comprobaba **presencia de subcadenas** sobre el archivo entero, sin noción de bloques. Dos regresiones plausibles pasaban en verde: una **segunda** directiva `X-Forwarded-For` después de la correcta, y un `location` nuevo con `proxy_pass` y sin la cabecera | Reescrita como analizador: parsea bloques y calcula las cabeceras efectivas por contexto que proxea, con la regla de herencia real de nginx (`proxy_set_header` se hereda solo si el nivel actual no declara **ninguno**). **Las dos regresiones ejecutadas sobre el archivo real**: las dos en rojo |
+| **N-2** | `HANDOFF` decía «siete guardas» en una línea y «ocho» en otra: la corrección de H-5 creó la contradicción siguiente | Ocho, contadas contra `ls tests/guards/`, en un solo lugar |
+| **N-3** | `HANDOFF` citaba dos hashes distintos y ninguno era el HEAD real: H-6 recurrió en el commit que lo cerraba | El hash vive **solo** en la cabecera; el paso «al retomar» ahora remite a ella en vez de repetirlo |
+| **N-4** | Dos líneas de `HANDOFF` seguían declarando H-3 abierto; la corrección solo tocó una sección | Las dos actualizadas, contra la fila real de `Risks.md` |
+| **N-5** | «Los refs posteriores no cambiaron `src/`» era literalmente falso: `src/proxy.test.ts` cambió | Reemplazado por lo que el comando devuelve, con el comando escrito al lado |
+| **N-6** | La corrección de H-8 agregó al filtro de hosts locales `schemas?\..*` y `www\.w3\.org`, que **ningún falso positivo pedía**, y `.*\.?example\.` no anclaba el subdominio. Quedaban exentos `schema.staging.vixoraai.app`, `schemas.vixoraai.app`, `notexample.com` y `fooexample.net` | Filtro reducido a lo que reservan la RFC 2606 y la RFC 6761, con el punto obligatorio. **Quitar las dos ramas no produjo ningún falso positivo sobre `src/`**, que es la medición que demuestra que sobraban |
+| **N-7** | La reescritura del detector perdió la detección del host sin esquema y el brief no lo declaraba | Declarado arriba, en las limitaciones |
+| **N-8** | `evidencia-9.1-staging.md` se presentaba entera como «salidas crudas» y tres bloques estaban compuestos a mano | Cada bloque transcrito va marcado `[transcrito]` y dice qué no se conservó. Donde no consta la salida literal, se dice que no consta en vez de reconstruirla |
+| **N-9** | `HANDOFF` atribuía a «un tercero» la revisión de mediciones de runtime que ninguna revisión por lectura puede confirmar | Atribuido a quien las hizo, con enlace a la evidencia |
+| **N-10** | El patrón del seed admitía `_staging` y el mensaje de `conversations.ts` seguía diciendo «_dev, _test o _e2e» | Patrón y mensaje derivados de **una sola lista**, con un caso que falla si vuelven a separarse |
+| **N-11** | Líneas de método envejecidas en `EngineeringStandards` y en el propio brief | Actualizadas |
+
+### Las mutaciones de esta ronda, ejecutadas sobre los archivos reales
+
+| Instrumento | Mutación | Resultado |
+| --- | --- | --- |
+| `staging-proxy-config` | Agregar una **segunda** `X-Forwarded-For` con `$http_x_forwarded_for` después de la correcta | Antes: **9/9 en verde**. Ahora: 6 casos en rojo, nombrando «fija x-forwarded-for 2 veces» |
+| `staging-proxy-config` | Agregar `location /api` con `proxy_pass` y sin la cabecera | Antes: **9/9 en verde**. Ahora: 6 casos en rojo, nombrando el `location` |
+| `staging-proxy-config` | Restaurar el archivo | Verde, y `git diff` vacío |
+| `deployment-hostnames` | Quitar las ramas `schemas?\.` y `www\.w3\.org` del filtro | El barrido de `src/` sigue en verde: no eximían ningún caso real |
+
+### Por qué se repite, y qué cambia
+
+**Cuatro** detectores del proyecto nacieron viendo **una sola forma sintáctica** de lo que debían prohibir: superficie expuesta (8.4), punto de entrada del resumen de usuarios (9.0.1), nombres de despliegue (9.1) y configuración del proxy de staging (9.1). Las cuatro veces lo encontró una revisión independiente. La cuarta —la de N-1— la escribí **un día después** de dejar registrado ese mismo modo de falla en la cabecera de la tercera. Declararlo no lo evitó, y conocerlo tampoco.
+
+Lo único que sí lo encontró, las cuatro veces, fue **ejecutar la mutación**. De acá en adelante, un detector nuevo no se da por escrito hasta que exista al menos una mutación ejecutada por **cada forma sintáctica** que el detector dice cubrir —no una por detector—, y la tabla de mutaciones se escribe con el resultado *antes* y *después*, porque «falla» sin el «antes pasaba» no distingue una guarda que sirve de una que siempre estuvo en rojo.
+
+### Lo que esta segunda ronda **no** resuelve
+
+- **Nada de lo anterior deja de valer**: el servidor sigue sin poder leerse desde un test, el AC-4 sigue verificándose por inferencia y la suite e2e sigue sin correr contra staging.
+- **El analizador de nginx no resuelve `include`, `map` ni `set`**, y compara valores literales. Una directiva traída de otro archivo le es invisible.
+- **Las salidas literales que no se conservaron no se recuperaron**: quedan marcadas como transcritas, con el comando para reproducirlas. Marcar no es recapturar.
+- **Esta ronda es, otra vez, trabajo propio.** Que haya cerrado 11 hallazgos no dice nada sobre lo que introdujo, que es exactamente lo que pasó la vez anterior. Antes de cerrar la 9.1 corresponde una tercera revisión independiente.

@@ -4,6 +4,7 @@ import { login } from "@/modules/auth";
 import { createDb, getDb } from "@/shared/db";
 import {
   isSeedableDatabase,
+  mensajeBaseNoSeedeable,
   SEED_ORGANIZATION_ID,
   SEED_USERS,
   seedBasic,
@@ -126,6 +127,18 @@ describe("seed básico", () => {
     ]) {
       expect(isSeedableDatabase(name)).toBe(false);
     }
+  });
+
+  // N-10 de la segunda revisión independiente: el patrón admitía `_staging` y el mensaje de
+  // `conversations.ts` seguía diciendo «_dev, _test o _e2e». Ahora los dos salen de la misma
+  // lista, y este caso falla si vuelven a separarse.
+  it("el mensaje de rechazo nombra exactamente los sufijos que el patrón admite", () => {
+    const mensaje = mensajeBaseNoSeedeable("crm_prod");
+    for (const sufijo of ["_dev", "_test", "_e2e", "_staging"]) {
+      expect(mensaje).toContain(sufijo);
+      expect(isSeedableDatabase(`crm${sufijo}`)).toBe(true);
+    }
+    expect(mensaje).toContain('"crm_prod"');
   });
 
   it("rechaza una contraseña más corta que la política sin escribir nada", async () => {
