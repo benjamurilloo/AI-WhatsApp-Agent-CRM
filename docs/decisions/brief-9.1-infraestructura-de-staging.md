@@ -174,7 +174,7 @@ El entorno está en `https://staging.vixoraai.app`, sobre el droplet `134.209.70
 | AC | Cómo se verificó | Resultado |
 | --- | --- | --- |
 | **AC-1** | `curl https://staging.vixoraai.app/login` desde fuera | `200` con la aplicación real |
-| **AC-2** | `openssl s_client` + `certbot renew --dry-run` | `CN=staging.vixoraai.app`, emisor Let's Encrypt, vence 2026-12-21; renovación simulada con éxito y `certbot.timer` activo |
+| **AC-2** | `openssl s_client` + `certbot renew --dry-run` | `CN=staging.vixoraai.app`, emisor Let's Encrypt, vence 2026-12-21. **Cumplido a medias**: la corrida en seco de `certbot` y el estado de `certbot.timer` no tienen salida capturada (T-8), y el criterio los exige explícitamente |
 | **AC-3** | `curl -I` sobre HTTPS **y sobre HTTP** | HTTPS: `strict-transport-security: max-age=31536000; includeSubDomains`. HTTP: `301` de nginx **sin** la cabecera. El control es lo que le da valor: si saliera en las dos, verla no probaría nada |
 | **AC-4** | Ingreso real con Chromium | Cookie `__Host-crm_session`, `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`. Que el navegador **acepte** el prefijo `__Host-` es en sí la prueba de que no viajó `Domain`: el navegador rechaza esa cookie si lo lleva |
 | **AC-5** | Hash de la clave del límite por IP contra tres candidatos | La fila almacenada es `sha256("186.182.26.146")` = la IP pública real del cliente. **No** es `sha256("203.0.113.9")`, la cabecera falsificada que el navegador envió; **no** es `sha256("sin-proxy")`, la firma de H-3 |
@@ -191,7 +191,7 @@ Demuestra que **la aplicación ve la IP real del cliente** y que **falsificar `x
 
 El primer intento usó **un solo correo** en los 20 fallos. Con `ACCOUNT_FAILURE_LIMIT = 5` y `IP_FAILURE_LIMIT = 20`, el límite por cuenta salta a los 5 y **el límite por IP no puede alcanzarse nunca**. El resultado fue que las dos IPs quedaron bloqueadas, y leído de apuro parecía H-3 reproduciéndose. No lo era: la base mostró 5 filas de alcance `account` bajo el hash del correo y solo 8 de alcance `ip`, muy por debajo de 20.
 
-El segundo intento usó **20 correos distintos**, de modo que ninguna cuenta llega a 5 y lo único que puede dispararse es el límite por IP, y cerró con una cuenta que nunca había fallado. Ahí sí: bloqueada una IP, la otra ingresó.
+El segundo intento repartió los fallos entre varios correos para que el límite por cuenta no se disparara, y cerró con `lectura@example.com` probada desde las dos IPs. Ahí sí: bloqueada una IP, la otra ingresó. Lo que hace concluyente a esa medición no es el relato del reparto —que la evidencia capturada **no sostiene**, ver T-3 en [evidencia-9.1](evidencia-9.1-staging.md)— sino que el límite por cuenta es independiente de la IP: si la cuenta del ingreso final hubiera estado bloqueada por cuenta, habría fallado también desde la segunda IP, y no falló.
 
 Queda registrado porque el diseño confundido es el hallazgo: **una prueba que no puede distinguir dos causas no es evidencia de ninguna**, y esta pasaba por evidencia de la peor de las dos.
 
@@ -260,7 +260,7 @@ Un agente que no participó del trabajo revisó la subfase contra este brief y c
 | `staging-proxy-config` | **Comentar** la directiva en vez de borrarla | Falla: los comentarios no cuentan como presencia |
 | `staging-proxy-config` | Quitar `-H 127.0.0.1` de la unidad | Falla «enlaza la aplicación solo a loopback» |
 
-Dos falsos positivos aparecieron al ampliar el barrido del detector, los dos sobre el repositorio real y no imaginados: el cast `d::date` de PostgreSQL en `analytics/repository.ts`, que parece una IPv6 comprimida, y las URL de la licencia de la tipografía en `src/app/_fonts/OFL.txt`. Los dos quedaron con su caso versionado.
+Dos falsos positivos aparecieron al ampliar el barrido del detector, los dos sobre el repositorio real y no imaginados: el cast `d::date` de PostgreSQL en `analytics/repository.ts`, que parece una IPv6 comprimida, y las URL de la licencia de la tipografía en `src/app/_fonts/OFL.txt`. **Se resolvieron de formas distintas, y conviene no confundirlas** (T-6 de la tercera revisión): el del cast se arregló afinando el detector y quedó con su caso versionado y con su par discriminante; el de la tipografía se resolvió **excluyendo `src/app/_fonts/` del barrido**, que no es un caso sino una exención, y como toda exención tiene el defecto de que lo que se meta ahí deja de mirarse. Es aceptable porque son activos de terceros que no se editan, pero la cabecera de la guarda, que dice recorrer «todo archivo versionado de `src/` que no sea un test», tiene ahí una excepción que ahora está escrita.
 
 ### Lo que esta ronda de correcciones **no** resuelve
 
@@ -311,3 +311,28 @@ Lo único que sí lo encontró, las cuatro veces, fue **ejecutar la mutación**.
 - **El analizador de nginx no resuelve `include`, `map` ni `set`**, y compara valores literales. Una directiva traída de otro archivo le es invisible.
 - **Las salidas literales que no se conservaron no se recuperaron**: quedan marcadas como transcritas, con el comando para reproducirlas. Marcar no es recapturar.
 - **Esta ronda es, otra vez, trabajo propio.** Que haya cerrado 11 hallazgos no dice nada sobre lo que introdujo, que es exactamente lo que pasó la vez anterior. Antes de cerrar la 9.1 corresponde una tercera revisión independiente.
+
+## Tercera revisión independiente (2026-09-22)
+
+Un tercer agente, que tampoco participó del trabajo, revisó la segunda ronda de correcciones. Informó **9 hallazgos** —ninguno alcanza el umbral de crítico de la D-2— y **no aprobó el cierre**. Los 9 se verificaron contra el código y los 9 resultaron reales.
+
+**Una atribución del informe no se aceptó.** El informe presentaba T-2 como estado falso *introducido* por la ronda anterior. No lo es: `git show 21d85ab:HANDOFF.md` ya contenía las dos frases y el commit no las tocó, y `CHANGELOG.md:75` muestra que eran falsas desde la 9.0.1. El defecto es real —dos líneas afirmaban que la revisión independiente nunca se había usado dentro del ciclo— pero es N-4 repitiéndose, no una regresión nueva. Se registra la diferencia porque un hallazgo se acepta por lo que se comprueba, no por cómo viene redactado.
+
+| Hallazgo | Qué era | Cómo se cerró |
+| --- | --- | --- |
+| **T-1** | El analizador de nginx no contemplaba el módulo `realip`. Con `set_real_ip_from` y `real_ip_header`, `$remote_addr` pasa a derivarse de una cabecera del cliente y la directiva que la guarda inspecciona **no cambia**: queda en verde reenviando un valor falsificable. Es la configuración que se agrega al poner Cloudflare delante, o sea el escenario que motiva todo el directorio | La guarda **rechaza** cualquier directiva de `realip`, aunque esté bien configurada: el momento de revisar H-3 es antes de desplegar ese cambio, y la guarda en rojo es lo que fuerza esa revisión. **Mutación ejecutada** sobre el archivo real con un rango de Cloudflare: 8 casos en rojo |
+| **T-2** | `HANDOFF` decía en dos líneas que la revisión independiente «todavía no se usó dentro del ciclo», con cuatro usos ya ocurridos | Las **cuatro** líneas del archivo que hablan del estado de la revisión, no una. El texto ahora dice lo que esos cuatro usos midieron |
+| **T-3** | La evidencia del AC-6 contradecía su propio método: «20 correos distintos» contra `account\|13\|17`, cuando cada fallo escribe una fila de cada alcance | Se dice que la diferencia **no se puede reconstruir**, en vez de explicarla. La conclusión del AC-6 se reapoyó en un argumento que la salida sí cierra: el límite por cuenta es independiente de la IP, así que el ingreso exitoso desde la segunda IP prueba que el bloqueo de la primera fue del alcance `ip` |
+| **T-4** | El procedimiento nuevo del paso 2 del README no era ejecutable: `ssh … "psql \"$DATABASE_URL\""` expande la variable **en el servidor**, donde no existe por D-8, y `psql ""` se conecta a otra base sin avisar | Corregido a `sudo -u postgres psql -d crm_staging`, que es la forma con la que se midió el AC-5, con el motivo escrito al lado. También el ` -` que `sha256sum` agrega a su salida |
+| **T-5** | Tres bloques más de la evidencia sin marca `[transcrito]`, contra la regla escrita en la línea 7 de ese mismo archivo una ronda antes | Los tres marcados, diciendo qué se realineó y qué no consta |
+| **T-6** | El brief decía que los dos falsos positivos quedaron «con su caso versionado»; el de la tipografía se resolvió excluyendo el directorio, que es una exención y no un caso | Distinguidas las dos formas, en el brief y en la cabecera de la guarda |
+| **T-7** | El caso «no marca una hora» probaba `08:30` y `12:34`, formas de dos grupos que el patrón no puede marcar, y afirmaba una cobertura que el detector no tiene: `02:59:59` **sí** se marca | Caso renombrado y agregado su par honesto, que fija la limitación medida |
+| **T-8** | La mitad del AC-2 —`certbot renew --dry-run` y `certbot.timer`— no tenía salida capturada en ninguna parte, aunque el brief la afirmaba | Declarado **cumplido a medias**, con la corrida pendiente. No se reconstruyó de memoria |
+| **T-9** | `Risks.md` describía el riesgo del agente único sin la obligación vigente, y dos títulos de test conservaban la lista de sufijos vieja | Fila actualizada con lo que las tres revisiones midieron; títulos sin la lista embebida |
+
+### Lo que esta tercera ronda **no** resuelve
+
+- **La corrida en seco de `certbot` sigue sin capturarse** (T-8). Es un efecto sobre un servicio externo y no se ejecutó sin autorización explícita.
+- **El rechazo de `realip` cubre la forma escrita en este archivo**, no un `include` que la traiga de otro. Declarado en la cabecera de la guarda.
+- **`account|13|17` sigue sin explicación.** Queda dicho que no consta, que es el criterio, pero no deja de ser evidencia que no se puede reconstruir.
+- **Las tres rondas de correcciones fueron trabajo propio y ninguna resultó limpia.** Esta tampoco se da por buena sin revisarla.

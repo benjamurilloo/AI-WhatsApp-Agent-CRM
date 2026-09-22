@@ -92,7 +92,7 @@ describe("seed básico", () => {
     ).resolves.toMatchObject({ ok: true });
   });
 
-  it("se niega a correr contra una base que no es _dev, _test ni _e2e", async () => {
+  it("se niega a correr contra una base sin sufijo seedeable", async () => {
     const maintenance = createDb(maintenanceUrl(process.env.DATABASE_URL!));
     try {
       await expect(seedBasic(maintenance, PASSWORD)).rejects.toThrow(
@@ -107,7 +107,7 @@ describe("seed básico", () => {
     }
   });
 
-  it("solo admite nombres de base con sufijo _dev, _test, _e2e o _staging", () => {
+  it("solo admite nombres de base con un sufijo seedeable, anclado al final", () => {
     for (const name of [
       "crm_dev",
       "crm_dev_test",

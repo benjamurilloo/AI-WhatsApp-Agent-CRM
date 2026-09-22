@@ -36,8 +36,14 @@ import { describe, expect, it } from "vitest";
 // resultado se registra al desplegar. Una guarda que fingiera comprobarlo sería peor que
 // no tenerla.
 //
+// Además **rechaza** cualquier directiva del módulo `realip` (`set_real_ip_from`,
+// `real_ip_header`), que reescribe `$remote_addr` a partir de una cabecera del cliente y dejaría
+// intacta la directiva que esta guarda inspecciona. Ver el comentario de `REESCRIBEN_REMOTE_ADDR`.
+//
 // Otros límites del analizador, declarados para no confundirlos con cobertura:
-//   - No resuelve `include`: una directiva traída de otro archivo es invisible acá.
+//   - No resuelve `include`: una directiva traída de otro archivo es invisible acá. Un `include`
+//     puede traer realip desde otro archivo y eso no se ve: el rechazo de arriba cubre la forma
+//     escrita en este archivo, no todas las formas de conseguir el mismo efecto.
 //   - No modela `map`, `set` ni variables derivadas: compara el valor escrito, literal.
 //   - No sabe qué `location` gana para una URL dada. No le hace falta: exige la cabecera
 //     correcta en **todos** los contextos que proxean, que es más estricto.
@@ -185,6 +191,31 @@ export function contextosQueProxean(texto: string): ContextoProxy[] {
   return encontrados;
 }
 
+function recolectarDirectivas(
+  bloque: Bloque,
+  salida: Directiva[] = [],
+): Directiva[] {
+  salida.push(...bloque.directivas);
+  bloque.hijos.forEach((hijo) => recolectarDirectivas(hijo, salida));
+  return salida;
+}
+
+// El módulo `ngx_http_realip` reescribe `$remote_addr` a partir de una cabecera que manda el
+// cliente. Con él presente, `proxy_set_header X-Forwarded-For $remote_addr` reenvía fielmente
+// un valor que el cliente controla, y todo lo que comprueba esta guarda sigue en verde sin que
+// cambie una letra de la directiva que inspecciona. Es peor que el caso de dos saltos sin
+// realip: ese deja a la aplicación ciega, este la deja engañable.
+//
+// Por eso cualquier directiva de realip se reporta, aunque esté bien configurada. No es que
+// sean incorrectas en sí: son exactamente lo que se agrega al poner Cloudflare o un balanceador
+// delante —el escenario que `deploy/staging/README.md` nombra como el riesgo que motiva este
+// directorio—, y en ese momento H-3 se revisa antes de desplegar, no después. La guarda en rojo
+// es la forma de que esa revisión ocurra.
+//
+// Lo señaló el hallazgo T-1 de la tercera revisión independiente: el analizador enumeraba sus
+// límites y este no estaba ni cubierto ni declarado.
+const REESCRIBEN_REMOTE_ADDR = ["set_real_ip_from", "real_ip_header"];
+
 const EXIGIDAS = [
   // El valor tiene que ser `$remote_addr` y no `$proxy_add_x_forwarded_for`: el segundo
   // conserva en la cadena lo que mandó el cliente, y la app lee la última entrada.
@@ -195,12 +226,22 @@ const EXIGIDAS = [
 
 /** Devuelve la lista de problemas. Vacía significa configuración correcta. */
 export function revisarProxy(texto: string): string[] {
+  const problemas: string[] = recolectarDirectivas(parsear(texto))
+    .filter((directiva) => REESCRIBEN_REMOTE_ADDR.includes(directiva.nombre))
+    .map(
+      (directiva) =>
+        `\`${directiva.nombre} ${directiva.valor}\` reescribe $remote_addr desde una cabecera del cliente: ` +
+        `si hay otro proxy delante, H-3 se revisa antes de desplegar (brief-9.1, D-9)`,
+    );
+
   const contextos = contextosQueProxean(texto);
   if (contextos.length === 0) {
-    return ["ningún bloque hace proxy_pass: el archivo no es el que se cree"];
+    problemas.push(
+      "ningún bloque hace proxy_pass: el archivo no es el que se cree",
+    );
+    return problemas;
   }
 
-  const problemas: string[] = [];
   for (const contexto of contextos) {
     for (const { cabecera, valor } of EXIGIDAS) {
       const valores = contexto.cabeceras.get(cabecera) ?? [];
@@ -264,6 +305,31 @@ describe("el analizador distingue las regresiones que la versión anterior dejab
     expect(revisarProxy(regresion)).toEqual([
       expect.stringContaining('"$proxy_add_x_forwarded_for"'),
     ]);
+  });
+
+  // T-1 de la tercera revisión: la forma falsificable, no solo la ciega. Con realip, la
+  // directiva que esta guarda inspecciona no cambia y `$remote_addr` pasa a salir de una
+  // cabecera del cliente.
+  it("detecta set_real_ip_from, que hace que $remote_addr venga del cliente", () => {
+    const regresion = NGINX.replace(
+      "    location / {",
+      "    set_real_ip_from 10.0.0.0/8;\n    real_ip_header X-Forwarded-For;\n\n    location / {",
+    );
+    expect(revisarProxy(regresion)).toEqual([
+      expect.stringContaining("set_real_ip_from 10.0.0.0/8"),
+      expect.stringContaining("real_ip_header X-Forwarded-For"),
+    ]);
+  });
+
+  // El par del anterior: el nombre no se busca como subcadena suelta, así que mencionarlo en
+  // un comentario no alcanza para disparar el hallazgo. Sin este caso, la comprobación de
+  // arriba pasaría igual con una implementación que solo hiciera `texto.includes(...)`.
+  it("no confunde una mención de realip en un comentario con la directiva", () => {
+    const comentado = NGINX.replace(
+      "    location / {",
+      "    # no usamos set_real_ip_from ni real_ip_header: un solo salto\n    location / {",
+    );
+    expect(revisarProxy(comentado)).toEqual([]);
   });
 
   // La trampa de la herencia: declarar **otra** cabecera en el location corta la herencia

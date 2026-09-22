@@ -26,6 +26,13 @@ issuer=C=US, O=Let's Encrypt, CN=YE2
 notBefore=Sep 22 13:26:52 2026 GMT
 notAfter=Dec 21 13:26:51 2026 GMT
 
+[no capturado] El AC-2 tiene dos mitades y acá está una sola. La otra —`certbot renew
+--dry-run` y `systemctl is-active certbot.timer`, que el criterio exige porque pide la
+renovación «probada con una corrida en seco, no solo instalada»— **no tiene salida capturada
+en ninguna parte**, aunque el brief la afirma. Lo señaló el hallazgo T-8 de la tercera
+revisión. No se reconstruye de memoria: queda como pendiente ejecutar las dos y pegarlas acá,
+y hasta entonces el AC-2 está cumplido a medias.
+
 ### AC-3 — HSTS sobre HTTPS
 $ curl -sI https://staging.vixoraai.app/login
 HTTP/1.1 200 OK
@@ -93,6 +100,8 @@ $ node -e 'const{createHash}=require("node:crypto");const h=v=>createHash("sha25
            console.log("mi_ip_real "+h("186.182.26.146"));
            console.log("ip_falsa   "+h("203.0.113.9"));
            console.log("sin-proxy  "+h("sin-proxy"));'
+[transcrito] Las tres líneas de abajo están realineadas a mano: el comando imprime una sola
+columna de separación y acá hay tres. Los hashes no se tocaron.
 mi_ip_real   362e48d25936a0713f2b6f6f12292449e7168e21f1d40c249d4ff67303058d3e
 ip_falsa     d861b7e91033ebc1c1e8e7af3929010158b3241b54ca87ef73e79c32f26400ec
 sin-proxy    8a7b67f1679fdd7e92d61f0fc54701f4d674b0e1ed9fa4de351500e5d58fa1b2
@@ -108,7 +117,11 @@ La fila almacenada coincide con el hash de la IP pública real. **No** coincide 
 
 ### AC-6 — 20 fallos desde una IP no dejan sin ingreso a otra
 
-Segundo intento del criterio. El primero usó un solo correo y, con `ACCOUNT_FAILURE_LIMIT = 5` contra `IP_FAILURE_LIMIT = 20`, el límite por cuenta saltaba antes y el de IP no podía alcanzarse: las dos IPs quedaban bloqueadas y parecía H-3. La corrección usa **20 correos distintos**, de modo que ninguna cuenta llega a 5 y lo único que puede dispararse es el límite por IP; el ingreso final usa `lectura@example.com`, una cuenta que nunca falló, probada **desde las dos IPs**.
+Segundo intento del criterio. El primero usó un solo correo y, con `ACCOUNT_FAILURE_LIMIT = 5` contra `IP_FAILURE_LIMIT = 20`, el límite por cuenta saltaba antes y el de IP no podía alcanzarse: las dos IPs quedaban bloqueadas y parecía H-3. El segundo intento usó varios correos distintos para que el límite por cuenta no se disparara, y el ingreso final se probó **desde las dos IPs** con `lectura@example.com`.
+
+> **Lo que la medición no sostiene, y por qué el criterio igual se cumple.** El texto de esta sección decía «20 correos distintos». La salida de abajo lo contradice: cada fallo inserta **una fila `account` y una `ip` en la misma llamada** (`src/modules/auth/service.ts:144-150`), así que 20 fallos con 20 correos distintos tendrían que dar `account|20|20`, y dan `account|13|17`. No puedo reconstruir a qué se debe la diferencia, y siguiendo el criterio que quedó fijado al cerrar N-8, se dice que no consta en vez de inventarle una explicación. Lo señaló el hallazgo **T-3** de la tercera revisión independiente.
+>
+> La **conclusión** del AC-6 no depende de ese relato, y se sostiene por un camino que la salida sí cierra: `lectura@example.com` ingresó desde OTRA_IP en ese mismo momento. El límite por cuenta es **independiente de la IP** —su clave es `sha256(email)` y nada más, `service.ts:125` y `:131`—, así que si esa cuenta hubiera estado bloqueada por cuenta, también habría fallado desde ahí. Por lo tanto el bloqueo visto desde MI_IP solo puede venir del alcance `ip`, que es exactamente lo que el criterio pide distinguir. `ip|1|20` confirma que hubo 20 fallos bajo una sola clave de IP.
 
 El segundo origen sale por un túnel SOCKS hacia el droplet, así que su IP de origen es la del servidor:
 
@@ -117,6 +130,9 @@ $ ssh -f -N -D 1080 crm-staging
 $ curl -s --socks5-hostname 127.0.0.1:1080 https://api.ipify.org
 134.209.70.162
 
+[transcrito] Las dos líneas de abajo las imprimió un script de Playwright que no quedó
+versionado, así que el comando que las produjo no consta. Son el texto visible de la página
+tras el intento de ingreso, recortado; el `...` y el corte de `Clar` son del recorte.
 MI_IP   ingreso=false :: Iniciar sesión ... Demasiados intentos. Probá de nuevo en 12 minutos.
 OTRA_IP ingreso=true  :: O Organización de ejemplo Dashboard Productos Clientes Conversaciones
                           Lectura de ejemplo (viewer) Sistema Clar
@@ -134,6 +150,8 @@ Misma cuenta, misma contraseña, mismo momento; lo único distinto es la IP de o
 ### AC-4 — la cookie de sesión
 
 ```
+[transcrito] El objeto lo imprimió en una sola línea el mismo script de Playwright, que no
+quedó versionado; acá está partido y sangrado a mano para que entre. Los valores no se tocaron.
 COOKIE={"nombre":"__Host-crm_session","secure":true,"httpOnly":true,
         "sameSite":"Lax","path":"/","domain":"staging.vixoraai.app"}
 ```
@@ -145,6 +163,8 @@ COOKIE={"nombre":"__Host-crm_session","secure":true,"httpOnly":true,
 Doce rutas, todas `200` y **cero errores de consola**:
 
 ```
+[transcrito] Recorrido con un script de Playwright que no quedó versionado: el comando no
+consta. Las líneas son las que imprimió, una por ruta.
 PANTALLA /                 -> 200 errores=0
 PANTALLA /clientes         -> 200 errores=0
 PANTALLA /clientes/nuevo   -> 200 errores=0

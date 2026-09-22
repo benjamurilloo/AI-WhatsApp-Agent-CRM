@@ -15,7 +15,9 @@ import { describe, expect, it } from "vitest";
 // justo lo que la D-3 quiere sobrevivir. Ahora el criterio no es la marca: es cualquier URL
 // absoluta hacia un host que no sea local. También le faltaba IPv6, y el droplet tiene una.
 //
-// Lo que esta guarda comprueba, sobre todo archivo versionado de src/ que no sea un test:
+// Lo que esta guarda comprueba, sobre todo archivo versionado de src/ que no sea un test
+// **ni esté bajo `src/app/_fonts/`** —activos de terceros con su licencia, que traen URL y no
+// se editan acá; es una exención, no un caso, y lo que se meta ahí deja de mirarse (T-6):
 //   1. URLs absolutas (`http://` o `https://`) hacia un host que no sea local ni de ejemplo;
 //   2. IPv4 públicas;
 //   3. IPv6 públicas.
@@ -185,10 +187,20 @@ describe("findDeploymentHostnames", () => {
     expect(findDeploymentHostnames('"::1" "fe80::1234:5678"')).toHaveLength(0);
   });
 
-  it("no marca una hora ni un rango de líneas, que también tienen dos puntos", () => {
+  it("no marca una hora de dos grupos ni un rango de líneas", () => {
     expect(
       findDeploymentHostnames("a las 08:30, ver líneas 12:34"),
     ).toHaveLength(0);
+  });
+
+  // El par honesto del anterior, y una limitación medida, no supuesta (T-3 de la primera
+  // revisión de este detector, T-7 de la tercera): pedir tres grupos descarta `08:30` pero
+  // **no** una hora con segundos. `02:59:59` cumple el patrón de IPv6 y se marca. Hoy la
+  // única aparición de esa forma en `src/` está en un archivo de test, que el barrido
+  // excluye, así que no hay falso positivo activo; el día que aparezca en código que se
+  // despliega, esta guarda lo va a marcar y habrá que decidir entre afinar o eximir.
+  it("marca una hora con segundos, que es indistinguible de una IPv6 por su forma", () => {
+    expect(findDeploymentHostnames("a las 02:59:59")).toHaveLength(1);
   });
 
   it("marca una versión de cuatro segmentos, y eso es sabido", () => {

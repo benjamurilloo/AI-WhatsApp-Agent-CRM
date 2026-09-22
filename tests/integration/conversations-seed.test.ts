@@ -280,7 +280,7 @@ describe("seed de volumen", () => {
 });
 
 describe("seeds fuera de una base sembrable", () => {
-  it("ninguno corre contra una base que no es _dev, _test ni _e2e", async () => {
+  it("ninguno corre contra una base sin sufijo seedeable", async () => {
     const maintenance = createDb(maintenanceUrl(process.env.DATABASE_URL!));
     try {
       await expect(seedConversations(maintenance)).rejects.toThrow(

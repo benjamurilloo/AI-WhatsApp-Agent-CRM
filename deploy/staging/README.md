@@ -69,15 +69,18 @@ Los dos primeros comprueban lo que ninguna guarda puede: que el servidor tenga l
    El ingreso es una **Server Action**: un `POST` suelto de `curl` no genera el intento. La fila se produce fallando el ingreso desde el navegador, en `https://staging.vixoraai.app/login`.
 
    ```
-   # 1. Fallar el ingreso una vez desde el navegador. Después, la clave que quedó:
-   ssh crm-staging "psql \"\$DATABASE_URL\" -tAc \
+   # 1. Fallar el ingreso una vez desde el navegador. Después, la clave que quedó.
+   #    Se consulta como `postgres` y no con DATABASE_URL: esa variable no existe en una
+   #    sesión ssh —vive en /etc/crm-staging/app.env, 0600 de root (D-8)— y `psql ""` se
+   #    conectaría a la base por defecto sin avisar. Es la forma que se usó al medir el AC-5.
+   ssh crm-staging "sudo -u postgres psql -d crm_staging -tAc \
      \"select key_hash from login_attempts where scope='ip' order by attempted_at desc limit 1;\""
 
    # 2. El hash de tu IP pública, que es contra lo que se compara.
-   curl -s https://api.ipify.org | tr -d '\n' | sha256sum
+   curl -s https://api.ipify.org | tr -d '\n' | sha256sum | cut -d' ' -f1
    ```
 
-   Tienen que ser **iguales**. Si no lo son, la aplicación no está viendo la IP del cliente: hay un salto de proxy de más, todas las peticiones comparten una clave interna y eso **es** H-3 reproducido. El control que le da valor a la comparación es repetirla desde otra IP —un túnel SOCKS alcanza, `ssh -f -N -D 1080`— y comprobar que el hash cambia.
+   Los dos hashes tienen que ser **iguales** (el `cut` está para quitarle a `sha256sum` el ` -` del final, que si no impide compararlos de un vistazo). Si no lo son, la aplicación no está viendo la IP del cliente: hay un salto de proxy de más, todas las peticiones comparten una clave interna y eso **es** H-3 reproducido. El control que le da valor a la comparación es repetirla desde otra IP —un túnel SOCKS alcanza, `ssh -f -N -D 1080`— y comprobar que el hash cambia.
 
    Lo que este paso **no** cubre: que un cliente pueda falsificar la cabecera. Eso depende de que nginx reemplace en vez de agregar, y de eso se ocupa la guarda sobre el archivo versionado más el paso 1 de esta lista, que comprueba que el servidor tenga ese archivo. Ninguno de los dos sustituye al otro.
 3. **HSTS presente sobre HTTPS y ausente sobre HTTP**: `curl -I https://staging.vixoraai.app/login` y `curl -I http://staging.vixoraai.app/login`. El segundo es el que da valor al primero.
