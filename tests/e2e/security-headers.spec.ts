@@ -152,7 +152,9 @@ test("1. la respuesta de un documento lleva las cabeceras de seguridad", async (
   expect(headers["cross-origin-opener-policy"]).toBe("same-origin");
   expect(headers["permissions-policy"]).toContain("camera=()");
 
-  // HSTS se define en SecurityModel pero no se emite sin TLS (brief-8.1, D-2).
+  // HSTS se emite SOLO sobre HTTPS (brief-9.1, AC-3): acá el servidor local es http, así que
+  // no tiene que estar. La emisión positiva la cubre `src/proxy.test.ts`, que ejercita la
+  // función real — este caso por sí solo también pasaría si nadie emitiera la cabecera nunca.
   expect(headers["strict-transport-security"]).toBeUndefined();
 });
 

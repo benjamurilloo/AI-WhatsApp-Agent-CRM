@@ -1,0 +1,31 @@
+[Unit]
+Description=AI WhatsApp Agent CRM - staging
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=benja
+Group=benja
+WorkingDirectory=/srv/crm-staging
+# Secretos fuera del repositorio, 0600 de root (brief-9.1, D-8). systemd lo lee como
+# root antes de bajar a User=benja, asi que el usuario de la app nunca puede leerlo.
+EnvironmentFile=/etc/crm-staging/app.env
+ExecStart=/usr/bin/npm run start -- -H 127.0.0.1 -p 3000
+Restart=on-failure
+RestartSec=5
+
+# Endurecimiento: la aplicacion no necesita nada de esto.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/crm-staging/.next
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

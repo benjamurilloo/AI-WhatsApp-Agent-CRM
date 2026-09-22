@@ -62,7 +62,9 @@ Acceso por clave, `root` rechazado, `unattended-upgrades` activo. La clave priva
 
 **D-2. El dominio es `vixoraai.app`, con `staging.vixoraai.app` para este entorno.** Registrado por el usuario el 2026-09-22. Con la limitación de HSTS precargado ya declarada arriba.
 
-**D-3. El hostname vive en variable de entorno, nunca escrito en el código.** Es lo que hace que cambiar de dominio sea una línea de configuración y no una búsqueda por todo el repositorio. Se verifica con una guarda, no con una promesa (AC-8).
+**D-3. El hostname no vive en el código.** Es lo que hace que cambiar de dominio sea una línea de configuración y no una búsqueda por todo el repositorio. Se verifica con una guarda, no con una promesa (AC-8).
+
+> **Precisión agregada al cerrar el hallazgo H-10.2.** El brief decía «vive en variable de entorno», y eso describe un mecanismo que no existe: **la aplicación nunca necesita su propio hostname** —no hay ningún `APP_HOSTNAME`, `BASE_URL` ni equivalente en `src/`, comprobado el 2026-09-22—. El único lugar donde el nombre aparece es la configuración de nginx, ahora versionada en `deploy/staging/` (D-10). La decisión se cumple; la razón por la que se cumple es más simple que la escrita, y se corrige en vez de dejar en pie una variable inventada.
 
 **D-4. TLS termina en el servidor, no en Cloudflare.** Registro `A` en *DNS only*. Si Cloudflare terminara el TLS, los AC-2, AC-3 y AC-4 medirían el certificado y las cabeceras **de Cloudflare** y pasarían en verde sin haber verificado nada del servidor; además el salto extra rompería el conteo de `x-forwarded-for` del AC-5.
 
@@ -73,6 +75,10 @@ Acceso por clave, `root` rechazado, `unattended-upgrades` activo. La clave priva
 **D-7. PostgreSQL corre en el mismo droplet.** Aprobado por el usuario el 2026-09-22. La alternativa gestionada de DigitalOcean cuesta unos 15 USD/mes e incluye backups que la 9.2 podría aprovechar. **Condición de reapertura explícita**: la decisión se vuelve a mirar en la **9.2**, con la medición de backups delante, que es cuando el argumento a favor de la gestionada deja de ser hipotético.
 
 **D-8. Los secretos viven en un `EnvironmentFile` de `systemd` con permisos `0600` de `root`.** Aprobado por el usuario el 2026-09-22, en reemplazo del «gestor de secretos del proveedor» que `SecurityModel.md:132` daba por supuesto y que un VPS desnudo no tiene. La alternativa era cifrarlos versionados con `sops`/`age`, que agrega una herramienta y una clave más que custodiar para un entorno sin datos reales. **Límite declarado**: un `EnvironmentFile` protege contra otro usuario del sistema, **no** contra quien tenga `root` ni contra un respaldo del disco sin cifrar. Es suficiente para staging y **no** es lo que se lleva a producción sin volver a decidirlo. Bajo ninguna opción es aceptable que un secreto de staging quede en el repositorio o en la configuración de CI en texto plano (AC-9).
+
+**D-9. nginx REEMPLAZA `x-forwarded-for` con `$remote_addr`, no lo agrega a la cadena.** Con `$proxy_add_x_forwarded_for`, una cabecera falsificada por el cliente sobrevive en la cadena y solo queda tapada por la IP real que nginx añade al final; la lectura de la aplicación seguiría siendo correcta, pero la superficie de falsificación existiría. Al reemplazar hay **exactamente una entrada** y es la IP que vio nginx. Esta decisión existía en el bloque de nginx desde el despliegue y se cita ahí, pero **no estaba registrada en este brief**: la agregó el cierre del hallazgo H-10 de la revisión independiente, que encontró la referencia colgada.
+
+**D-10. La configuración de nginx y de `systemd` se versiona en `deploy/staging/`.** Cierra el hallazgo **H-1** de la revisión independiente: la premisa de la que dependen el AC-3, el AC-5 y la resolución de H-3 vivía solo en el servidor, donde nadie podía auditarla ni detectar su regresión. `tests/guards/staging-proxy-config.test.ts` la fija con casos de fallo. **Límite declarado, y es el que importa**: la guarda comprueba el archivo **versionado**, no el del servidor — ningún test puede leer la máquina. La comparación entre lo versionado y lo desplegado es un paso manual del procedimiento de [`deploy/staging/README.md`](../../deploy/staging/README.md). Una guarda que fingiera comprobarlo sería peor que no tenerla.
 
 ## Escala de severidad, fijada antes de empezar
 
@@ -94,7 +100,7 @@ Con sus dos reglas de aplicación, que también vienen de la 8.4 y no se reescri
 3. **Abrir 80 y 443 en UFW**, y solo esos dos además de SSH.
 4. **Emitir `Strict-Transport-Security`** desde `src/proxy.ts`, condicionado a TLS.
 5. **Un rol de base con login, miembro de `crm_app`**, y que la aplicación se conecte con él. Las migraciones siguen corriendo con el dueño.
-6. **Gestión de secretos** según DP-4, con `.env.example` actualizado.
+6. **Gestión de secretos** según la D-8, con `.env.example` actualizado.
 7. **La aplicación corriendo** como servicio que sobrevive a un reinicio del servidor.
 8. **Reevaluar `src/proxy.ts`** con más rutas protegidas, como pide el Roadmap §9.1.
 9. **Capturar y versionar la evidencia** de cada AC, con fecha y comando, para que la revisión independiente tenga qué auditar.
@@ -132,7 +138,7 @@ Cada uno se cumple con evidencia capturada y versionada, no con una afirmación.
 
 Se para y se consulta, no se sigue con una solución alternativa:
 
-1. **Si `next build` muere por memoria** y agregar swap no lo resuelve. Cambiar de estrategia de compilación es DP-2 y la decide el usuario.
+1. **Si `next build` muere por memoria** y agregar swap no lo resuelve. Cambiar de estrategia de compilación es la D-6 y su cambio lo decide el usuario.
 2. **Si Let's Encrypt no emite** el certificado tras dos intentos. Hay límites de tasa y reintentar a ciegas los consume.
 3. **Si el AC-5 (b) falla** —o sea, si un cliente puede falsificar su IP—. Eso es H-3 con otra cara y detiene la fase igual.
 4. **Si aparece cualquier dato real** de un cliente o de una conversación real. Este entorno no los recibe hasta la 9.4.
@@ -147,6 +153,8 @@ Se para y se consulta, no se sigue con una solución alternativa:
 - **Que esta autoevaluación sea correcta.** Abre gate: lo que quede en pie es lo que sobreviva a la revisión independiente, no lo que esta subfase declare.
 
 ## Evidencia de runtime (2026-09-22)
+
+> Las salidas **crudas**, con su comando, están en [evidencia-9.1-staging.md](evidencia-9.1-staging.md). Esta sección las resume; la de allá es la que se audita.
 
 El entorno está en `https://staging.vixoraai.app`, sobre el droplet `134.209.70.162`. Todo lo de abajo se midió contra ese entorno, desde fuera, y se reproduce con los comandos indicados.
 
@@ -172,7 +180,7 @@ El entorno está en `https://staging.vixoraai.app`, sobre el droplet `134.209.70
 | **AC-5** | Hash de la clave del límite por IP contra tres candidatos | La fila almacenada es `sha256("186.182.26.146")` = la IP pública real del cliente. **No** es `sha256("203.0.113.9")`, la cabecera falsificada que el navegador envió; **no** es `sha256("sin-proxy")`, la firma de H-3 |
 | **AC-6** | 20 fallos desde una IP, ingreso desde otra | Desde la IP saturada: *«Demasiados intentos»*. Desde la IP del droplet, misma cuenta y misma contraseña en el mismo momento: **ingresó** |
 | **AC-7** | Operaciones reales con la conexión de la aplicación | `DELETE FROM audit_logs` → `permission denied`; `SELECT` → `0`; `UPDATE clients` → `UPDATE 0`; `has_table_privilege` sobre `audit_logs`: `INSERT=t`, `DELETE=f` |
-| **AC-9** | `ls -l /etc/crm-staging/` | `app.env` y `migrate.env`, `0600`, `root:root`, fuera del repositorio y fuera de CI |
+| **AC-9** | Lectura de `.env.example` y de `.github/workflows/ci.yml`, más `ls -l /etc/crm-staging/` | Ni el repositorio ni la configuración de CI contienen un secreto de staging: `.env.example` solo trae valores locales y el workflow solo `crm_ci_ephemeral`. El `ls` prueba **dónde** están los secretos (`0600`, `root:root`), no la negación que el criterio afirma — las dos cosas juntas sí. Lo separó el hallazgo H-10.3 de la revisión |
 | **AC-10** | `systemctl reboot` real | Secuencia `000` → `502` → `200` sin intervención. HSTS sigue presente después |
 
 ### Lo que el AC-5 demuestra y lo que no
@@ -219,3 +227,44 @@ El Roadmap §9.1 pedía volver sobre la decisión del [brief-3.5](brief-3.5-pant
 **Condición de reapertura**: si alguna vez existe una ruta protegida que **no** pueda comprobar la sesión por sí misma —por ejemplo un Route Handler de streaming, o un recurso estático que deba quedar tras la sesión—, la decisión se vuelve a mirar para esa ruta, no para todas.
 
 **Lo que esta reevaluación no hace**: no comprueba que las 13 páginas autoricen **bien**. Comprueba que cada una lo hace por sí misma. La corrección de cada autorización se revisó punto por punto en la 8.4 y su superficie está fijada por una guarda.
+
+## Cierre de los hallazgos de la revisión independiente (2026-09-22)
+
+Un agente que no participó del trabajo revisó la subfase contra este brief y contra las reglas vigentes. Informó **11 hallazgos**: 0 críticos, 1 mayor, 8 menores y 2 de proceso. Cada uno se verificó contra el código antes de aceptarse; los 11 resultaron reales.
+
+> **Nota sobre la verificación.** Dos hallazgos citaban texto que mi primera comprobación no encontró, y estuve a punto de descartarlos. El error era mío: `HANDOFF.md` y `SecurityModel.md` tienen líneas de miles de caracteres y los estaba truncando a 400. Aparecieron al buscar dentro de la línea completa. **Ningún hallazgo del revisor resultó falso.**
+
+| Hallazgo | Qué era | Cómo se cerró |
+| --- | --- | --- |
+| **H-1** (mayor) | La configuración de nginx y `systemd` vivía solo en el servidor. La premisa de la que dependen AC-3, AC-5 y la resolución de H-3 no era auditable ni tenía detector de regresión | `deploy/staging/` versionado (D-10) + guarda `staging-proxy-config` con 9 casos y 3 mutaciones ejecutadas |
+| **H-2** | `SecurityModel` prometía backup diario «desde que exista un entorno persistente», que ya existe | Declarado **incumplido** con su motivo y su destino (9.2) |
+| **H-3** | `SecurityModel` difería a la Fase 4 la reevaluación de `proxy.ts` que la 9.1 ya hizo | Resultado incorporado al documento de nivel 2 |
+| **H-4** | `Risks.md` decía en presente que H-3 seguía abierto y los secretos sin decidir | Las dos filas actualizadas, con el alcance exacto de la resolución |
+| **H-5** | Recuento de guardas: `HANDOFF` decía «cinco» y «siete» en el mismo archivo | Ocho, enumeradas, en `HANDOFF` y en `EngineeringStandards` |
+| **H-6** | `HANDOFF` desactualizado en el commit que lo actualizaba: «Nada está desplegado», nivel `diseñado` para lo ya medido, `git_ref` viejo, sin ids de corrida | Las cuatro corregidas, con los cinco run id |
+| **H-7** | Borrar el `if` que emite HSTS no hacía fallar ningún test: los casos probaban el predicado, no el cableado | 4 casos que ejercitan `proxy()` real. **Mutación ejecutada**: borrar el bloque hace fallar |
+| **H-8** | El detector de nombres de despliegue no veía IPv6, tenía lista cerrada de TLD, dependía de la marca actual, y un caso «permitido» sin poder discriminante | Reescrito: URLs absolutas a hosts no locales, IPv4 e IPv6. **Sobrevive a un cambio de dominio**, que es lo que la D-3 quiere |
+| **H-9** | El punto 9 del alcance prometía evidencia cruda versionada y lo versionado era prosa | [evidencia-9.1-staging.md](evidencia-9.1-staging.md) |
+| **H-10** | `DP-4`, `DP-2` y `D-9` colgados; `.env.example` sin actualizar; AC-9 evidenciado con lo que no toca; brief ausente del índice | Todo corregido. D-9 y D-10 registradas |
+| **H-11** | Afirmaciones que el revisor no pudo sostener por lectura | Método del AC-5(b) precisado; run id agregados |
+
+### Las mutaciones, ejecutadas y no supuestas
+
+| Instrumento | Mutación | Resultado |
+| --- | --- | --- |
+| `deployment-hostnames` | Escribir `https://staging.vixoraai.app` en `src/proxy.ts` | Falla nombrando `src/proxy.ts:1 → staging.vixoraai.app` |
+| `deployment-hostnames` | Escribir la IPv6 del droplet en `src/proxy.ts` | Falla nombrando `2604:a880:400:d0` |
+| `proxy.test.ts` | Cambiar `split(",")[0]` por `.at(-1)` | Fallan los 2 casos que existen para eso, y solo esos |
+| `proxy.test.ts` | **Borrar** el bloque que emite HSTS | Falla «la emite cuando el cliente llegó por https» |
+| `staging-proxy-config` | `$remote_addr` → `$proxy_add_x_forwarded_for` | Fallan 2 casos |
+| `staging-proxy-config` | **Comentar** la directiva en vez de borrarla | Falla: los comentarios no cuentan como presencia |
+| `staging-proxy-config` | Quitar `-H 127.0.0.1` de la unidad | Falla «enlaza la aplicación solo a loopback» |
+
+Dos falsos positivos aparecieron al ampliar el barrido del detector, los dos sobre el repositorio real y no imaginados: el cast `d::date` de PostgreSQL en `analytics/repository.ts`, que parece una IPv6 comprimida, y las URL de la licencia de la tipografía en `src/app/_fonts/OFL.txt`. Los dos quedaron con su caso versionado.
+
+### Lo que esta ronda de correcciones **no** resuelve
+
+- **Que el servidor tenga lo que el repositorio dice.** La guarda fija el archivo versionado; nadie puede leer la máquina desde un test. La comparación es un paso manual de `deploy/staging/README.md`. Es una mitigación de H-1, no su desaparición.
+- **Un hostname armado por concatenación o partido en dos líneas** sigue escapándosele al detector, y ahora está declarado en su cabecera en vez de quedar implícito.
+- **El AC-4 sigue verificándose por inferencia**, no sobre el `Set-Cookie` crudo como el criterio enuncia.
+- **La suite e2e del proyecto sigue sin correr contra staging.**

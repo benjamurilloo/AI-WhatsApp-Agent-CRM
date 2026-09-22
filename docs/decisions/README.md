@@ -72,6 +72,12 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-8.3](brief-8.3-dependencias.md) | 8.3 — Dependencias | aprobado y cerrado el 2026-09-18 |
 | [brief-8.4](brief-8.4-revision-de-seguridad.md) | 8.4 — Revisión de seguridad | aprobado y cerrado el 2026-09-18 |
 | [brief-8.5](brief-8.5-rendimiento-de-listados.md) | 8.5 — Rendimiento de los listados | aprobado y cerrado el 2026-09-18 |
+| [brief-9.0.1](brief-9.0.1-aislamiento-por-organizacion.md) | 9.0.1 — Aislamiento por organización | aprobado y cerrado el 2026-09-21 |
+| [brief-9.0.2](brief-9.0.2-busqueda-sin-distinguir-acentos.md) | 9.0.2 — Búsqueda sin distinguir acentos | aprobado y cerrado el 2026-09-21 |
+| [brief-9.0.3](brief-9.0.3-frontera-de-analytics-en-eslint.md) | 9.0.3 — La frontera de `analytics` en ESLint | aprobado y cerrado el 2026-09-21 |
+| [brief-9.0.4](brief-9.0.4-aislamiento-de-la-escritura-de-ingestion.md) | 9.0.4 — La escritura de `ingestion` que la 9.0.1 no cubrió | aprobado y cerrado el 2026-09-21 |
+| [brief-9.1](brief-9.1-infraestructura-de-staging.md) | 9.1 — Infraestructura de staging | aprobado, **sin cerrar**: abre gate |
+| [evidencia-9.1](evidencia-9.1-staging.md) | 9.1 — Salidas crudas de la verificación en staging | captura del 2026-09-22 |
 
 ## Plantilla
 

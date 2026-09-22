@@ -87,12 +87,16 @@ La versión exacta de cada paquete queda fijada en el lockfile al instalar (2.3)
 - **Auditoría de dependencias** (desde la 8.3): `npm audit --omit=dev --audit-level=high` para lo que se despliega y `npm audit --audit-level=critical` para el árbol completo. Va inmediatamente después de instalar, para que una vulnerabilidad crítica aparezca en los primeros segundos y no después de los tests. El umbral se escribe en el comando y no se hereda del valor por defecto de npm, que puede cambiar entre versiones. El detalle y los avisos aceptados están en [architecture/SecurityModel.md](../architecture/SecurityModel.md) §"Revisión de dependencias".
 - **Guardas** (`tests/guards/`, sin base de datos). El paso de CI se llama "Guardas del repositorio" a secas: el detalle de cuáles son vive en la carpeta, no en el nombre del paso, que quedó desactualizado dos veces por nombrarlas. Al 2026-09-18 son cinco:
   - **referencias prohibidas**: Airtable o el repositorio del agente de WhatsApp en archivos versionados que no son `.md`;
-  - **frontera entre módulos**: aplica `eslint.config.mjs` a 9 archivos virtuales con `ESLint#lintText`;
+  - **frontera entre módulos**: aplica `eslint.config.mjs` a 20 archivos virtuales con `ESLint#lintText`, en pares prohibido/permitido (9.0.3);
   - **escrituras de stock** (4.3.1): `inventories` e `inventory_movements` solo se escriben desde las funciones autorizadas de `src/modules/inventory/repository.ts`;
   - **superficie de logs** (8.2): solo el módulo de log usa `console.*`, y ningún `route` de un evento se arma interpolando;
   - **superficie expuesta** (8.4): cada Server Action exportada y cada Route Handler de `src/app` está declarado con su exigencia de sesión, y lo declarado público dice por qué. Comprueba la declaración, no el mecanismo, y su cabecera explica por qué no puede comprobar el mecanismo sin mentir.
 
-  Cada guarda incluye casos que demuestran que detecta lo que prohíbe.
+  - **punto de entrada del resumen de usuarios** (9.0.1): `users` se lee por `organizations.getMemberSummaries` y no por acceso literal;
+  - **nombres de despliegue** (9.1): ninguna URL absoluta a un host no local, ni IPv4 o IPv6 pública, en el código de `src/` que se despliega;
+  - **configuración del proxy de staging** (9.1): el nginx versionado reemplaza `x-forwarded-for` en vez de agregarlo, y la unidad de `systemd` enlaza solo a loopback. Es la premisa de la que depende que H-3 siga resuelto.
+
+  Cada guarda incluye casos que demuestran que detecta lo que prohíbe. **Son ocho al 2026-09-22**, y la lista de arriba es la enumeración viva: agregar una guarda sin agregarla acá es el defecto H-4 de la 8.4, que ya ocurrió una vez.
 - **Acciones fijadas por SHA de commit**, con la versión en un comentario. Actualizarlas es un cambio explícito.
 - **Permisos**: `contents: read`. Sin secrets: la base de CI es efímera y sus valores no son secretos.
 - **Sin protección de rama**: el plan gratuito de GitHub no la ofrece para repositorios privados. La CI informa pero no bloquea un push ni un merge. Por procedimiento, ninguna subfase se cierra sin verificar con `gh run view` que la ejecución de su commit está en verde. Se revisa si se suma otra persona al proyecto o antes de producción (Fase 9).
