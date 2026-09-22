@@ -1,0 +1,16 @@
+[Unit]
+Description=Dispara el backup logico de staging una vez por dia (brief-9.2, D-3)
+
+[Timer]
+# 03:15 UTC, no 03:00: los horarios redondos concentran trabajo de fondo de toda la
+# maquina en el mismo minuto, y este droplet tiene un solo nucleo.
+OnCalendar=*-*-* 03:15:00 UTC
+# Si la maquina estuvo apagada a esa hora, el backup corre al arrancar. Sin esto, un
+# reinicio a las 03:00 se come el backup del dia y nadie se entera.
+Persistent=true
+# Desparrama el disparo hasta 5 minutos para no chocar con otros timers.
+RandomizedDelaySec=300
+Unit=crm-backup.service
+
+[Install]
+WantedBy=timers.target

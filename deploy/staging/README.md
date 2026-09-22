@@ -12,6 +12,16 @@ Los archivos de acá son la fuente de verdad. `tests/guards/staging-proxy-config
 | --- | --- |
 | `nginx-crm-staging.conf` | `/etc/nginx/sites-available/crm-staging`, enlazado en `sites-enabled/` |
 | `crm-staging.service` | `/etc/systemd/system/crm-staging.service` |
+| `crm-backup.sh` | `/usr/local/bin/crm-backup.sh`, `0755` (9.2) |
+| `crm-restore-check.sh` | `/usr/local/bin/crm-restore-check.sh`, `0755` (9.2) |
+| `crm-backup.service` | `/etc/systemd/system/crm-backup.service` (9.2) |
+| `crm-backup.timer` | `/etc/systemd/system/crm-backup.timer` (9.2) |
+| `crm-restore-check.service` | `/etc/systemd/system/crm-restore-check.service` (9.2) — **versionado, todavía no desplegado** |
+| `crm-restore-check.timer` | `/etc/systemd/system/crm-restore-check.timer` (9.2) — **versionado, todavía no desplegado** |
+
+El procedimiento de restauración y el ejercicio mensual viven en [docs/runbooks/restaurar-la-base.md](../../docs/runbooks/restaurar-la-base.md).
+
+> **El repositorio va adelante del servidor.** Desde las correcciones de la revisión de la 9.2 (2026-09-22), `crm-restore-check.sh` cambió —se le quitó `--no-owner` y se le agregó la comprobación de dueño— y aparecieron las dos unidades del ejercicio mensual, que el droplet todavía no tiene. Desplegar es un efecto sobre la máquina y va con autorización propia. Mientras tanto, el `diff` de la sección «Verificar después de desplegar» **va a dar diferencias, y eso es lo esperado**: lo que no puede pasar es que dé diferencias sin que nadie sepa por qué.
 
 Las líneas marcadas `# managed by Certbot` las escribió `certbot --nginx` y **no se editan a mano**: se regeneran al renovar.
 
@@ -24,6 +34,8 @@ Los secretos. Viven en `/etc/crm-staging/`, con permisos `0600` de `root`, fuera
 | `app.env` | El que lee `systemd`. `DATABASE_URL` con el rol de aplicación, `TRUSTED_PROXY=true`, `NODE_ENV=production` |
 | `migrate.env` | `DATABASE_URL` con el rol dueño. Solo para migraciones |
 | `seed.env` | `SEED_USER_PASSWORD` de los usuarios sintéticos |
+| `backup.env` | Variables `PG*` y la política de rotación del backup (9.2). **No trae la contraseña** |
+| `backup.pgpass` | La contraseña del rol dueño, para el backup. Va acá y no en `backup.env` porque `pg_dump "postgres://user:pass@…"` la dejaría visible en `ps` para cualquier usuario del sistema |
 
 **Límite declarado**: un `EnvironmentFile` `0600` protege contra otro usuario del sistema, **no** contra quien tenga `root` ni contra un respaldo de disco sin cifrar. Alcanza para un entorno sin datos reales y **no** es lo que se lleva a producción sin volver a decidirlo.
 

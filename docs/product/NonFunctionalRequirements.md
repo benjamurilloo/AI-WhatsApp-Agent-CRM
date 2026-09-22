@@ -50,7 +50,7 @@
 
 ## Retención y backups
 
-- Se define una política de retención de mensajes antes de conectar tráfico real (pendiente, ver [planning/Risks.md](../planning/Risks.md)).
+- **Política de retención de mensajes: conservar indefinidamente**, decidida el 2026-09-22 en el [brief-9.2](../decisions/brief-9.2-backups-y-restauracion.md) (D-2) y registrada con su análisis en [architecture/DataModel.md](../architecture/DataModel.md). No se agregó ningún mecanismo de expiración: `messages` es de solo inserción por [ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md), así que un borrado por retención exigiría reabrir ese ADR y decidir quién puede borrar. **Condición de reapertura**: se vuelve a decidir en la 9.4, o antes si entra un dato personal que no sea sintético.
 - Backups lógicos automáticos desde que exista un entorno de staging persistente, con prueba periódica de restauración (ver [architecture/SecurityModel.md](../architecture/SecurityModel.md)).
 
 ## Separación de entornos

@@ -1,0 +1,688 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+
+// Guarda de la configuración de backup de staging (brief-9.2).
+//
+// Por qué existe: un backup roto **no avisa**. La base sigue andando, el timer sigue
+// en verde y el archivo sigue apareciendo; lo único que cambia es que el día que haga
+// falta no va a servir. No hay síntoma hasta la emergencia, así que la única defensa
+// posible es fijar la configuración y detectar su regresión.
+//
+// **Las unidades de `systemd` se parsean, no se grepean.** La 9.1 aprendió por qué: su
+// primera guarda del proxy comprobaba presencia de subcadenas sobre el archivo entero y
+// dejaba pasar en verde dos regresiones plausibles (N-1). Un archivo INI tiene secciones
+// y claves, y una clave puesta en la sección equivocada no hace nada — que es justo la
+// regresión que una búsqueda de texto no distingue de la configuración correcta.
+//
+// **Y la rotación se simula, no se grepea.** La primera versión de esta guarda sí
+// grepeaba: comprobaba que existiera la subcadena `head -n "-$BACKUP_KEEP"`. La revisión
+// independiente de la 9.2 midió que cambiar `sort` por `sort -r` —cinco caracteres, la
+// subcadena intacta— invierte la rotación para que **borre las copias más nuevas**, y
+// los 20 casos seguían en verde, incluido el que se llamaba «la rotación conserva las
+// más nuevas». Fue la quinta aparición de este patrón en el proyecto y la primera en un
+// instrumento escrito el mismo día que la regla que lo prohíbe. Abajo, la tubería real
+// del script se extrae, se interpreta y se ejecuta sobre nombres sintéticos: lo que se
+// afirma es **qué archivos sobrevivirían**, no cómo está escrito el comando.
+//
+// Lo que NO comprueba, declarado para no confundirlo con cobertura:
+//   - **Que el servidor tenga estos archivos.** Igual que la guarda del proxy: nadie lee
+//     la máquina desde un test. La comparación es un paso manual del runbook.
+//   - **Que el backup funcione.** Eso no lo puede decir ningún test de este repositorio;
+//     lo dice el ejercicio de restauración, que corre en el servidor y deja su evidencia.
+//   - **El resto de la lógica de los scripts.** El simulador conoce tres órdenes
+//     (`find`, `sort`, `head`/`tail`) y **falla ante cualquier otra**: si la rotación
+//     cambia de herramienta, el test se pone rojo hasta que el simulador la aprenda. Es
+//     deliberado — un simulador que ignora lo que no entiende vuelve al problema de
+//     origen.
+
+type Unidad = Map<string, Map<string, string[]>>;
+
+/**
+ * Parsea un archivo de unidad de `systemd`. Devuelve sección → clave → valores, en
+ * orden. Las claves se acumulan en una lista porque en systemd repetir una clave
+ * **agrega** para las de tipo lista y **reemplaza** para las escalares; la guarda no
+ * adivina cuál es cuál, expone las dos y cada caso decide.
+ */
+export function parsearUnidad(texto: string): Unidad {
+  const unidad: Unidad = new Map();
+  let seccion = "";
+
+  for (const cruda of texto.split("\n")) {
+    const linea = cruda.trim();
+    if (!linea || linea.startsWith("#") || linea.startsWith(";")) continue;
+
+    if (linea.startsWith("[") && linea.endsWith("]")) {
+      seccion = linea.slice(1, -1);
+      if (!unidad.has(seccion)) unidad.set(seccion, new Map());
+      continue;
+    }
+
+    const igual = linea.indexOf("=");
+    if (igual === -1 || !seccion) continue;
+
+    const clave = linea.slice(0, igual).trim();
+    const valor = linea.slice(igual + 1).trim();
+    const claves = unidad.get(seccion) ?? new Map<string, string[]>();
+    claves.set(clave, [...(claves.get(clave) ?? []), valor]);
+    unidad.set(seccion, claves);
+  }
+
+  return unidad;
+}
+
+/** Último valor de una clave en una sección, o `null` si no está en esa sección. */
+export function valor(
+  unidad: Unidad,
+  seccion: string,
+  clave: string,
+): string | null {
+  return unidad.get(seccion)?.get(clave)?.at(-1) ?? null;
+}
+
+/**
+ * ¿La expresión `OnCalendar` dispara todos los días? Solo mira la parte de fecha: un
+ * `*-*-01` es un archivo válido, systemd no se queja, el timer queda en verde y el
+ * backup pasa de diario a mensual. D-3 dice diario.
+ */
+export function esDiario(onCalendar: string): boolean {
+  const campos = onCalendar.trim().split(/\s+/);
+  // Con día de la semana delante (`Mon *-*-* ...`) tampoco es diario, y ese caso cae
+  // acá porque el primer campo deja de ser la fecha.
+  return campos.length >= 2 && campos[0] === "*-*-*";
+}
+
+/**
+ * ¿La expresión `OnCalendar` dispara una vez por mes? La falla que importa es la
+ * simétrica de la anterior: un `*-*-*` en el ejercicio de restauración lo convierte en
+ * diario, crea y borra una base entera todos los días, y nadie lo nota hasta que el
+ * disco o el journal se quejan.
+ */
+export function esMensual(onCalendar: string): boolean {
+  const campos = onCalendar.trim().split(/\s+/);
+  return campos.length >= 2 && /^\*-\*-\d{2}$/.test(campos[0] ?? "");
+}
+
+// --- Simulador de la tubería de rotación --------------------------------------------
+
+/**
+ * Extrae el cuerpo de una asignación `variable=$( ... )` del script, uniendo las
+ * continuaciones de línea. Si no está, falla: la guarda no puede quedarse callada
+ * porque la rotación haya cambiado de forma.
+ */
+export function extraerAsignacion(texto: string, variable: string): string {
+  const marca = `${variable}=$(`;
+  const inicio = texto.indexOf(marca);
+  if (inicio === -1) {
+    throw new Error(`no hay ninguna asignación ${marca}...) en el script`);
+  }
+
+  let profundidad = 1;
+  let comilla: string | null = null;
+  let cuerpo = "";
+
+  for (let i = inicio + marca.length; i < texto.length; i++) {
+    const c = texto[i];
+    if (comilla) {
+      if (c === comilla) comilla = null;
+    } else if (c === '"' || c === "'") {
+      comilla = c;
+    } else if (c === "(") {
+      profundidad++;
+    } else if (c === ")") {
+      profundidad--;
+      if (profundidad === 0) return cuerpo.replace(/\\\n/g, " ");
+    }
+    cuerpo += c;
+  }
+
+  throw new Error(`la asignación ${variable}=$(...) no cierra`);
+}
+
+/** Parte una tubería en etapas, sin cortar dentro de comillas. */
+export function etapasDe(cuerpo: string): string[] {
+  const partes: string[] = [];
+  let actual = "";
+  let comilla: string | null = null;
+
+  for (const c of cuerpo) {
+    if (comilla) {
+      actual += c;
+      if (c === comilla) comilla = null;
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      comilla = c;
+      actual += c;
+      continue;
+    }
+    if (c === "|") {
+      partes.push(actual);
+      actual = "";
+      continue;
+    }
+    actual += c;
+  }
+  partes.push(actual);
+
+  return partes.map((parte) => {
+    const etapa = parte.trim();
+    if (!etapa) {
+      throw new Error("etapa vacía en la tubería: ¿un || donde iba un |?");
+    }
+    return etapa;
+  });
+}
+
+/** Trocea una etapa en argumentos, quitando las comillas. */
+export function aArgv(etapa: string): string[] {
+  const argv: string[] = [];
+  let actual = "";
+  let hubo = false;
+  let comilla: string | null = null;
+
+  for (const c of etapa) {
+    if (comilla) {
+      if (c === comilla) comilla = null;
+      else actual += c;
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      comilla = c;
+      hubo = true;
+      continue;
+    }
+    if (/\s/.test(c)) {
+      if (hubo || actual) argv.push(actual);
+      actual = "";
+      hubo = false;
+      continue;
+    }
+    actual += c;
+  }
+  if (hubo || actual) argv.push(actual);
+
+  return argv;
+}
+
+function expandir(token: string, entorno: Record<string, string>): string {
+  return token.replace(/\$\{(\w+)\}|\$(\w+)/g, (_crudo, llave, plano) => {
+    const nombre: string = llave ?? plano;
+    if (!(nombre in entorno)) {
+      throw new Error(
+        `la tubería usa $${nombre}, que el simulador no tiene definida`,
+      );
+    }
+    return entorno[nombre] as string;
+  });
+}
+
+function ordenar(lineas: string[], banderas: string[]): string[] {
+  let reverso = false;
+  for (const bandera of banderas) {
+    if (bandera === "-r" || bandera === "--reverse") {
+      reverso = true;
+      continue;
+    }
+    throw new Error(
+      `sort ${bandera} no está modelado: el simulador no puede opinar`,
+    );
+  }
+  const ordenadas = [...lineas].sort();
+  return reverso ? ordenadas.reverse() : ordenadas;
+}
+
+function cuantas(banderas: string[], orden: string): string {
+  let n: string | null = null;
+
+  for (let i = 0; i < banderas.length; i++) {
+    const bandera = banderas[i] ?? "";
+    if (bandera === "-n") {
+      n = banderas[++i] ?? "";
+      continue;
+    }
+    if (/^-n./.test(bandera)) {
+      n = bandera.slice(2);
+      continue;
+    }
+    if (/^-\d+$/.test(bandera)) {
+      n = bandera.slice(1);
+      continue;
+    }
+    throw new Error(`${orden} ${bandera} no está modelado`);
+  }
+
+  if (n === null) {
+    throw new Error(`${orden} sin -n: el tope queda implícito en 10 líneas`);
+  }
+  return n;
+}
+
+/**
+ * Interpreta la tubería sobre una lista de nombres y devuelve lo que saldría por la
+ * otra punta. Ante una orden que no conoce **falla**, en vez de dejarla pasar.
+ */
+export function simular(
+  cuerpo: string,
+  entrada: string[],
+  entorno: Record<string, string>,
+): string[] {
+  let lineas = [...entrada];
+
+  etapasDe(cuerpo).forEach((etapa, indice) => {
+    const argv = aArgv(etapa).map((token) => expandir(token, entorno));
+    const orden = argv[0];
+
+    if (indice === 0) {
+      if (orden !== "find") {
+        throw new Error(`la tubería empieza con '${orden}', no con find`);
+      }
+      // `find` no ordena: entrega los archivos en el orden del directorio, que no está
+      // garantizado. Por eso abajo la entrada se le pasa desordenada a propósito.
+      return;
+    }
+
+    switch (orden) {
+      case "sort":
+        lineas = ordenar(lineas, argv.slice(1));
+        return;
+
+      case "head": {
+        const n = cuantas(argv.slice(1), "head");
+        if (n.startsWith("-")) {
+          const k = Number(n.slice(1));
+          lineas =
+            k === 0 ? lineas : lineas.slice(0, Math.max(0, lineas.length - k));
+          return;
+        }
+        lineas = lineas.slice(0, Number(n));
+        return;
+      }
+
+      case "tail": {
+        const n = cuantas(argv.slice(1), "tail");
+        if (n.startsWith("+")) {
+          lineas = lineas.slice(Number(n.slice(1)) - 1);
+          return;
+        }
+        const k = Number(n.replace(/^-/, ""));
+        lineas = k === 0 ? [] : lineas.slice(Math.max(0, lineas.length - k));
+        return;
+      }
+
+      default:
+        throw new Error(
+          `el simulador no conoce '${orden}'. Si la rotación cambió de herramienta, ` +
+            `el simulador tiene que aprenderla antes de que el cambio cuente como cubierto.`,
+        );
+    }
+  });
+
+  return lineas;
+}
+
+const SERVICIO = parsearUnidad(
+  readFileSync("deploy/staging/crm-backup.service", "utf8"),
+);
+const TIMER = parsearUnidad(
+  readFileSync("deploy/staging/crm-backup.timer", "utf8"),
+);
+const EJERCICIO = parsearUnidad(
+  readFileSync("deploy/staging/crm-restore-check.service", "utf8"),
+);
+const EJERCICIO_TIMER = parsearUnidad(
+  readFileSync("deploy/staging/crm-restore-check.timer", "utf8"),
+);
+const BACKUP = readFileSync("deploy/staging/crm-backup.sh", "utf8");
+const RESTORE = readFileSync("deploy/staging/crm-restore-check.sh", "utf8");
+
+/**
+ * El script sin sus comentarios. Hace falta para afirmar que algo NO está: los dos
+ * scripts explican en prosa las trampas que evitan, así que buscar `--no-owner` sobre
+ * el texto entero encuentra el comentario que dice que no hay que usarlo.
+ */
+export function codigoDe(script: string): string {
+  return script
+    .split("\n")
+    .filter((linea) => !linea.trim().startsWith("#"))
+    .join("\n");
+}
+
+describe("el parser de unidades distingue sección y clave", () => {
+  // Los casos de abajo son los que le dan sentido a parsear en vez de grepear. Sin
+  // ellos, la guarda entera podría estar haciendo `texto.includes(...)` y pasaría igual.
+
+  it("no confunde una clave puesta en la sección equivocada", () => {
+    const mal = parsearUnidad("[Unit]\nWantedBy=timers.target\n[Install]\n");
+    expect(valor(mal, "Install", "WantedBy")).toBeNull();
+    expect(valor(mal, "Unit", "WantedBy")).toBe("timers.target");
+  });
+
+  it("ignora los comentarios, que no son configuración activa", () => {
+    const comentada = parsearUnidad("[Timer]\n# Persistent=true\n");
+    expect(valor(comentada, "Timer", "Persistent")).toBeNull();
+  });
+
+  it("se queda con la última de una clave repetida", () => {
+    const repetida = parsearUnidad(
+      "[Timer]\nPersistent=true\nPersistent=false\n",
+    );
+    expect(valor(repetida, "Timer", "Persistent")).toBe("false");
+  });
+
+  it("no inventa secciones que no existen", () => {
+    expect(valor(SERVICIO, "Timer", "OnCalendar")).toBeNull();
+  });
+});
+
+describe("el timer versionado", () => {
+  // Estas regresiones son silenciosas. Ninguna hace fallar nada al desplegar: el archivo
+  // sigue siendo válido y `systemctl` no se queja. Lo único que cambia es que deja de
+  // haber backups, y eso no se nota hasta que hace falta uno.
+
+  it("se instala: sin [Install] WantedBy, un timer habilitado nunca arranca", () => {
+    expect(valor(TIMER, "Install", "WantedBy")).toBe("timers.target");
+  });
+
+  it("dispara todos los días, no un día del mes (D-3)", () => {
+    const calendario = valor(TIMER, "Timer", "OnCalendar");
+    expect(calendario).not.toBeNull();
+    expect(esDiario(calendario as string)).toBe(true);
+    expect(calendario).toMatch(/\d{2}:\d{2}:\d{2}/);
+  });
+
+  it("`esDiario` distingue lo diario de lo que solo lo parece", () => {
+    // Mutación ejecutada en la revisión: `*-*-*` → `*-*-01` convierte el backup diario
+    // en mensual y pasaba los 20 casos de la versión anterior de esta guarda.
+    expect(esDiario("*-*-* 03:15:00 UTC")).toBe(true);
+    expect(esDiario("*-*-01 03:15:00 UTC")).toBe(false);
+    expect(esDiario("*-01-* 03:15:00 UTC")).toBe(false);
+    expect(esDiario("Mon *-*-* 03:15:00 UTC")).toBe(false);
+  });
+
+  it("es Persistent: si la máquina estuvo apagada a esa hora, el backup se recupera", () => {
+    expect(valor(TIMER, "Timer", "Persistent")).toBe("true");
+  });
+
+  it("dispara el servicio de backup y no otra cosa", () => {
+    expect(valor(TIMER, "Timer", "Unit")).toBe("crm-backup.service");
+  });
+});
+
+describe("el servicio versionado", () => {
+  it("es oneshot: un backup termina, no se queda corriendo", () => {
+    expect(valor(SERVICIO, "Service", "Type")).toBe("oneshot");
+  });
+
+  it("ejecuta el script de backup", () => {
+    expect(valor(SERVICIO, "Service", "ExecStart")).toContain("crm-backup.sh");
+  });
+
+  it("puede escribir en el directorio de copias, que ProtectSystem le cerraría", () => {
+    // El par del anterior: con ProtectSystem=strict y sin ReadWritePaths el servicio
+    // corre, sale en verde y no escribe nada. Es la regresión más silenciosa de todas.
+    expect(valor(SERVICIO, "Service", "ProtectSystem")).toBe("strict");
+    expect(valor(SERVICIO, "Service", "ReadWritePaths")).toContain(
+      "/var/backups/crm-staging",
+    );
+  });
+
+  it("no trae ningún secreto embebido", () => {
+    const texto = readFileSync("deploy/staging/crm-backup.service", "utf8");
+    expect(texto).not.toMatch(/PASSWORD=|PGPASSWORD|DATABASE_URL=|SECRET=/i);
+  });
+});
+
+describe("el ejercicio de restauración también está agendado", () => {
+  // Por qué existe este bloque: hasta la revisión de la 9.2, el backup tenía timer y el
+  // ejercicio que comprueba que el backup sirve no lo tenía. O sea que la parte
+  // automatizada era la que produce el archivo, y la parte que depende de que alguien se
+  // acuerde era justamente la que distingue un backup de un archivo cualquiera.
+
+  it("el ejercicio se instala como timer", () => {
+    expect(valor(EJERCICIO_TIMER, "Install", "WantedBy")).toBe("timers.target");
+  });
+
+  it("dispara una vez por mes, no todos los días (D-3)", () => {
+    const calendario = valor(EJERCICIO_TIMER, "Timer", "OnCalendar");
+    expect(calendario).not.toBeNull();
+    expect(esMensual(calendario as string)).toBe(true);
+    expect(esDiario(calendario as string)).toBe(false);
+  });
+
+  it("`esMensual` no acepta lo diario disfrazado", () => {
+    expect(esMensual("*-*-01 04:30:00 UTC")).toBe(true);
+    expect(esMensual("*-*-* 04:30:00 UTC")).toBe(false);
+    expect(esMensual("*-01-01 04:30:00 UTC")).toBe(false);
+  });
+
+  it("corre después del backup del día, no antes", () => {
+    // Si corriera antes, el ejercicio validaría la copia de ayer y el backup de hoy
+    // se quedaría sin ejercitar nunca.
+    const backup = valor(TIMER, "Timer", "OnCalendar") as string;
+    const ejercicio = valor(EJERCICIO_TIMER, "Timer", "OnCalendar") as string;
+    const hora = (cal: string) => cal.trim().split(/\s+/)[1] ?? "";
+    expect(hora(ejercicio) > hora(backup)).toBe(true);
+    expect(hora(backup)).not.toBe("");
+  });
+
+  it("es Persistent: un reinicio el día 1 se comería el único ejercicio del mes", () => {
+    expect(valor(EJERCICIO_TIMER, "Timer", "Persistent")).toBe("true");
+  });
+
+  it("dispara el ejercicio y no el backup", () => {
+    expect(valor(EJERCICIO_TIMER, "Timer", "Unit")).toBe(
+      "crm-restore-check.service",
+    );
+    expect(valor(EJERCICIO, "Service", "ExecStart")).toContain(
+      "crm-restore-check.sh",
+    );
+  });
+
+  it("corre como postgres, que es quien puede crear y borrar una base", () => {
+    // Como root funcionaría también, y por eso es fácil que alguien lo cambie: un
+    // ejercicio de restauración que necesita root es un ejercicio que no se corre.
+    expect(valor(EJERCICIO, "Service", "User")).toBe("postgres");
+  });
+
+  it("no necesita escribir fuera de su /tmp privado", () => {
+    expect(valor(EJERCICIO, "Service", "PrivateTmp")).toBe("true");
+    expect(valor(EJERCICIO, "Service", "ProtectSystem")).toBe("strict");
+  });
+});
+
+// --- La rotación, por comportamiento ------------------------------------------------
+
+const ENTORNO = {
+  BACKUP_DIR: "/var/backups/crm-staging",
+  PGDATABASE: "crm_staging",
+  BACKUP_KEEP: "7",
+};
+
+/** Diez copias, de la más vieja a la más nueva. */
+const COPIAS = [
+  "20260913T031500Z",
+  "20260914T031500Z",
+  "20260915T031500Z",
+  "20260916T031500Z",
+  "20260917T031500Z",
+  "20260918T031500Z",
+  "20260919T031500Z",
+  "20260920T031500Z",
+  "20260921T031500Z",
+  "20260922T031500Z",
+].map((marca) => `${ENTORNO.BACKUP_DIR}/crm_staging-${marca}.dump`);
+
+const LAS_TRES_MAS_VIEJAS = COPIAS.slice(0, 3);
+const LAS_SIETE_MAS_NUEVAS = COPIAS.slice(3);
+
+/** El orden en que `find` entrega los archivos no está garantizado. */
+const DESORDENADAS = [...COPIAS].reverse();
+
+const ROTACION = extraerAsignacion(BACKUP, "sobrantes");
+
+describe("la rotación, simulada sobre la tubería real del script", () => {
+  it("con 10 copias y BACKUP_KEEP=7, borra exactamente las 3 más viejas", () => {
+    // `sobrantes` es la lista de lo que se BORRA. Que sean las más viejas es la
+    // propiedad entera de la rotación.
+    expect(simular(ROTACION, COPIAS, ENTORNO)).toEqual(LAS_TRES_MAS_VIEJAS);
+  });
+
+  it("no depende del orden en que find entregue los archivos", () => {
+    // `find` recorre el directorio, no ordena. Una tubería que se apoye en ese orden
+    // funciona hasta el día que el directorio cambia de forma.
+    expect(simular(ROTACION, DESORDENADAS, ENTORNO)).toEqual(
+      LAS_TRES_MAS_VIEJAS,
+    );
+  });
+
+  it("no borra nada cuando hay menos copias que el tope", () => {
+    expect(simular(ROTACION, COPIAS.slice(0, 5), ENTORNO)).toEqual([]);
+  });
+
+  it("no borra nada cuando hay exactamente el tope", () => {
+    expect(simular(ROTACION, LAS_SIETE_MAS_NUEVAS, ENTORNO)).toEqual([]);
+  });
+
+  it("con el tope en 1 conserva una sola copia, y es la más nueva", () => {
+    const sobrantes = simular(ROTACION, COPIAS, {
+      ...ENTORNO,
+      BACKUP_KEEP: "1",
+    });
+    expect(sobrantes).toEqual(COPIAS.slice(0, 9));
+    expect(sobrantes).not.toContain(COPIAS.at(-1));
+  });
+
+  it("solo mira un directorio, solo archivos y solo los dumps de esta base", () => {
+    const argv = aArgv(etapasDe(ROTACION)[0] ?? "").map((token) =>
+      token.replace("${PGDATABASE}", ENTORNO.PGDATABASE),
+    );
+    expect(argv[0]).toBe("find");
+    expect(argv[argv.indexOf("-maxdepth") + 1]).toBe("1");
+    expect(argv[argv.indexOf("-type") + 1]).toBe("f");
+    // Sin el prefijo de la base, la rotación borraría dumps de otra base que compartiera
+    // directorio; sin el sufijo `.dump`, se llevaría puestos los `.sha256`.
+    expect(argv[argv.indexOf("-name") + 1]).toBe("crm_staging-*.dump");
+  });
+});
+
+describe("el simulador detecta lo que la búsqueda de texto no distinguía", () => {
+  // Cada caso de acá es una mutación **ejecutada** contra el script real durante la
+  // revisión independiente de la 9.2, y cada una pasaba en verde con la guarda anterior.
+  // Quedan versionadas acá, y no solo narradas en la evidencia, porque una mutación que
+  // no corre no protege de nada (EngineeringStandards, regla de mutación).
+
+  it("`sort -r` invertiría la rotación y borraría las 3 más nuevas", () => {
+    // Cinco caracteres. La subcadena `head -n "-$BACKUP_KEEP"` queda intacta, así que
+    // la guarda anterior seguía en verde mientras la rotación se llevaba puesto el
+    // backup de anoche y conservaba los siete más viejos.
+    const mutada = ROTACION.replace(/\bsort\b/, "sort -r");
+    const borradas = simular(mutada, COPIAS, ENTORNO);
+    expect(borradas).toEqual([...COPIAS.slice(7)].reverse());
+    expect(borradas).toContain(COPIAS.at(-1));
+  });
+
+  it("`head -n N` sin el signo dejaría pasar las 7 más viejas", () => {
+    const mutada = ROTACION.replace(
+      'head -n "-$BACKUP_KEEP"',
+      'head -n "$BACKUP_KEEP"',
+    );
+    expect(simular(mutada, COPIAS, ENTORNO)).toEqual(COPIAS.slice(0, 7));
+  });
+
+  it("quitar el `sort` deja el resultado a merced del orden del directorio", () => {
+    const mutada = ROTACION.replace(/\|\s*sort\b/, "");
+    expect(simular(mutada, COPIAS, ENTORNO)).not.toEqual(
+      simular(mutada, DESORDENADAS, ENTORNO),
+    );
+  });
+
+  it("falla ante una orden que no conoce, en vez de dejarla pasar", () => {
+    const mutada = ROTACION.replace(/\bsort\b/, "shuf");
+    expect(() => simular(mutada, COPIAS, ENTORNO)).toThrow(/no conoce 'shuf'/);
+  });
+
+  it("falla si la asignación desaparece del script", () => {
+    expect(() => extraerAsignacion("echo hola\n", "sobrantes")).toThrow(
+      /no hay ninguna asignación/,
+    );
+  });
+});
+
+describe("decisiones de los scripts cuya regresión sería silenciosa", () => {
+  // Esto es comprobación **por texto** y por lo tanto más débil que lo de arriba. Va
+  // igual porque cada una de estas regresiones deja el script corriendo en verde.
+
+  it("los dos scripts abortan ante el primer error y ante un fallo de tubería", () => {
+    // Sin `-e` el script sigue después de un pg_dump fallido y renombra el parcial como
+    // si fuera bueno; sin `-o pipefail` una tubería devuelve el estado de la última
+    // orden, no el del dump. En los dos casos el servicio sale 0 y el timer queda en
+    // verde. Mutación ejecutada: quitar la línea pasaba los 20 casos anteriores.
+    expect(BACKUP).toMatch(/^set -euo pipefail$/m);
+    expect(RESTORE).toMatch(/^set -euo pipefail$/m);
+  });
+
+  it("el dump usa formato custom: el plano no permite restaurar una sola tabla", () => {
+    expect(BACKUP).toMatch(/--format=custom/);
+  });
+
+  it("escribe a un archivo parcial y lo renombra al final", () => {
+    // Sin esto, un corte a mitad del dump deja un archivo con nombre definitivo que la
+    // rotación cuenta como copia válida.
+    expect(BACKUP).toMatch(/\$destino\.parcial/);
+    expect(BACKUP).toMatch(/mv "\$parcial" "\$destino"/);
+  });
+
+  it("valida BACKUP_KEEP antes de rotar, y eso evita borrarlo todo", () => {
+    expect(BACKUP).toMatch(/BACKUP_KEEP =~ \^\[0-9\]\+\$/);
+    expect(BACKUP).toMatch(/BACKUP_KEEP < 1/);
+    // Lo que esa validación evita, medido en vez de razonado: con el tope en cero,
+    // `head -n -0` deja pasar TODO y la rotación se lleva las diez copias.
+    expect(simular(ROTACION, COPIAS, { ...ENTORNO, BACKUP_KEEP: "0" })).toEqual(
+      COPIAS,
+    );
+  });
+
+  it("el ejercicio de restauración compara contenido, no el código de salida", () => {
+    expect(RESTORE).toMatch(/select count\(\*\) from public/);
+    expect(RESTORE).toMatch(/diff -u/);
+  });
+
+  it("el ejercicio falla si no hay ninguna tabla", () => {
+    // Sin este corte, comparar dos conjuntos vacíos pasa siempre y el ejercicio entero
+    // se vuelve incapaz de fallar.
+    expect(RESTORE).toMatch(/tablas == 0/);
+  });
+
+  it("el ejercicio restaura SIN --no-owner, como manda el runbook", () => {
+    // Con `--no-owner` las tablas quedan de `postgres` y no de `crm_owner`: la
+    // aplicación anda, el ejercicio pasa, y la próxima migración falla con `must be
+    // owner of table clients`, muy lejos del momento en que se causó. Medido el
+    // 2026-09-22 en el simulacro. Si el ejercicio usa el flag, deja de ensayar
+    // exactamente el paso que rompe una recuperación real.
+    expect(codigoDe(RESTORE)).not.toMatch(/--no-owner/);
+    // Y el comentario que lo explica sigue ahí: si alguien vuelve a poner el flag,
+    // que al menos lea por qué no va.
+    expect(RESTORE).toMatch(/SIN --no-owner/);
+  });
+
+  it("`codigoDe` no confunde una advertencia con la cosa advertida", () => {
+    // El caso que hace falsa la aserción de arriba si se la escribe sobre el texto
+    // entero: el script dice «SIN --no-owner» en un comentario.
+    expect(
+      codigoDe("# ojo con --no-owner\npg_restore --dbname=x\n"),
+    ).not.toMatch(/--no-owner/);
+    expect(codigoDe("  pg_restore --no-owner x\n")).toMatch(/--no-owner/);
+  });
+
+  it("la base restaurada se borra aunque el ejercicio reviente a la mitad", () => {
+    expect(RESTORE).toMatch(/trap limpiar EXIT/);
+    expect(RESTORE).toMatch(/dropdb --if-exists/);
+  });
+
+  it("ninguno de los dos scripts imprime un secreto", () => {
+    for (const script of [BACKUP, RESTORE]) {
+      expect(script).not.toMatch(/echo .*\$(PGPASSWORD|DATABASE_URL)/);
+      expect(script).not.toMatch(/PGPASSWORD=/);
+    }
+  });
+});

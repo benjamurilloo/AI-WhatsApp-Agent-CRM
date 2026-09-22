@@ -118,7 +118,7 @@ Implementación ([brief-3.4](../decisions/brief-3.4-autorizacion-y-errores.md)):
 ## Backups (diseño)
 
 - Backup lógico automático diario de la base de datos desde que exista staging persistente.
-- Prueba de restauración periódica documentada (frecuencia a definir en la subfase 9.2) para que un backup no probado no se asuma válido.
+- Prueba de restauración periódica **ejecutada**, no solo documentada, para que un backup no probado no se asuma válido. **Cadencia fijada en la 9.2 el 2026-09-22**: backup diario, ejercicio de restauración mensual, con control negativo que demuestra que el ejercicio puede fallar.
 
 ## Evolución hacia ERP
 
