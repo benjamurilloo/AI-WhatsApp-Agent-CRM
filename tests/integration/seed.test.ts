@@ -106,11 +106,24 @@ describe("seed básico", () => {
     }
   });
 
-  it("solo admite nombres de base con sufijo _dev, _test o _e2e", () => {
-    for (const name of ["crm_dev", "crm_dev_test", "crm_ci_e2e"]) {
+  it("solo admite nombres de base con sufijo _dev, _test, _e2e o _staging", () => {
+    for (const name of [
+      "crm_dev",
+      "crm_dev_test",
+      "crm_ci_e2e",
+      "crm_staging",
+    ]) {
       expect(isSeedableDatabase(name)).toBe(true);
     }
-    for (const name of ["crm", "crm_prod", "postgres", "crm_dev_backup"]) {
+    // El sufijo sigue anclado al final del nombre: agregar _staging en la 9.1 no abre la
+    // puerta a una base de producción ni a una copia con un sufijo posterior.
+    for (const name of [
+      "crm",
+      "crm_prod",
+      "postgres",
+      "crm_dev_backup",
+      "crm_staging_backup",
+    ]) {
       expect(isSeedableDatabase(name)).toBe(false);
     }
   });

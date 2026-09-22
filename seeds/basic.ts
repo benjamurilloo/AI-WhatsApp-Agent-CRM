@@ -37,7 +37,12 @@ export const SEED_USERS = [
   },
 ] as const;
 
-const seedableName = /_(dev|test|e2e)$/;
+// `_staging` se agregó en la 9.1: el entorno de staging necesita usuarios sintéticos para
+// ejercitar el ingreso, y el Roadmap ya exigía que llegaran por un seed versionado y explícito
+// y nunca promovidos desde desarrollo. Lo que esta guarda protege no cambia: el sufijo sigue
+// anclado al final del nombre, así que una base de producción —`crm`, `crm_prod`— se rechaza
+// igual, y `crm_staging_backup` también.
+const seedableName = /_(dev|test|e2e|staging)$/;
 
 export function isSeedableDatabase(name: string): boolean {
   return seedableName.test(name);
@@ -50,7 +55,7 @@ export async function seedBasic(db: Db, password: string): Promise<void> {
   const name = current.rows[0]?.name ?? "";
   if (!isSeedableDatabase(name)) {
     throw new Error(
-      `El seed solo corre contra una base _dev, _test o _e2e, no contra "${name}".`,
+      `El seed solo corre contra una base _dev, _test, _e2e o _staging, no contra "${name}".`,
     );
   }
   if (password.length < PASSWORD_MIN_LENGTH) {
