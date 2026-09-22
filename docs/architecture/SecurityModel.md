@@ -1,6 +1,6 @@
 # Modelo de Seguridad
 
-**Estado: revisado contra el código el 2026-09-18** ([brief-8.4](../decisions/brief-8.4-revision-de-seguridad.md)) y **corregido el mismo día por una revisión independiente**, que encontró cuatro defectos en la revisión anterior: un hallazgo falso (H-2, retirado), un caso no visto de la clase de H-1 (hoy H-7), dos recuentos que no cerraban y un agujero en la guarda que la subfase había dejado como instrumento. De 104 afirmaciones: 75 verificadas con test, guarda o medición citada; 18 verificadas por lectura del código, sin instrumento que las fije; 5 parciales o con hallazgo; 6 no verificables sin TLS, proxy real o entorno persistente, que quedan para la Fase 9.
+**Estado: revisado contra el código el 2026-09-18** ([brief-8.4](../decisions/brief-8.4-revision-de-seguridad.md)) y **corregido el mismo día por una revisión independiente**, que encontró cuatro defectos en la revisión anterior: un hallazgo falso (H-2, retirado), un caso no visto de la clase de H-1 (hoy H-7), dos recuentos que no cerraban y un agujero en la guarda que la subfase había dejado como instrumento. De 104 afirmaciones: 75 verificadas con test, guarda o medición citada; 18 verificadas por lectura del código, sin instrumento que las fije; 5 parciales o con hallazgo; 6 no verificables sin TLS, proxy real o entorno persistente, que quedan para la Fase 9. **Ampliado el 2026-09-22** con la verificación en staging de la subfase 9.1: cinco afirmaciones que estaban declaradas `no-verificable-aquí` —HSTS, la cookie `__Host-` bajo TLS, `TRUSTED_PROXY` contra un proxy real, la gestión de secretos y la conexión con un rol miembro de `crm_app`— se midieron contra el entorno desplegado y pasan a `verificado`, cada una con su evidencia en [brief-9.1](../decisions/brief-9.1-infraestructura-de-staging.md). Esa verificación **es autoevaluación** hasta que la revisión independiente de la subfase la confirme.
 
 Cada sección cita el nivel de validación de lo que afirma. Los hallazgos abiertos están en [Risks](../planning/Risks.md); ninguno es crítico.
 
@@ -13,7 +13,7 @@ Cada sección cita el nivel de validación de lo que afirma. Los hallazgos abier
 | Punto de entrada | Cantidad | Exigencia |
 | --- | --- | --- |
 | Páginas bajo `(autenticado)` | 13 | sesión, y el rol lo exige el caso de uso |
-| Páginas del ingreso (`/login`, `/cambiar-contrasena`) | 2 | previo a la sesión |
+| Páginas del ingreso (`/login`, `/cambiar-contraseña`) | 2 | previo a la sesión |
 | Server Actions bajo `(autenticado)` | 15 | sesión, resuelta antes de cualquier efecto |
 | Server Actions del ingreso | 2 | previo a la sesión |
 | Server Actions públicas (`logoutAction`, `setThemeAction`) | 2 | ninguna, a propósito: cerrar sesión es idempotente y el tema es una cookie sin dato de negocio |
@@ -45,9 +45,9 @@ La guarda verifica que la superficie no crezca sin que alguien la declare. **No*
   - ventana deslizante de 15 minutos: 5 fallos por cuenta o 20 por IP devuelven `RATE_LIMITED` con el tiempo de espera;
   - se evalúa antes de verificar la contraseña, y un email inexistente acumula igual que uno existente;
   - un login correcto borra los fallos de la cuenta;
-  - la IP sale de la última entrada de `x-forwarded-for` solo con `TRUSTED_PROXY=true`; sin proxy de confianza todas las requests comparten una clave de IP (D-4). Que la IP sea la correcta depende del proxy del despliegue y **se verifica en la Fase 9**, cuando exista uno: antes no hay nada que medir (8.4, D-5).
+  - la IP sale de la última entrada de `x-forwarded-for` solo con `TRUSTED_PROXY=true`; sin proxy de confianza todas las requests comparten una clave de IP (D-4). Que la IP sea la correcta depende del proxy del despliegue. **Verificado en staging el 2026-09-22** (9.1, AC-5): la clave almacenada es `sha256` de la IP pública real del cliente, y no la de una cabecera `x-forwarded-for` falsificada por el navegador, porque nginx la reemplaza por `$remote_addr` en vez de agregarla. La lectura por la ultima entrada es correcta **con un solo salto de proxy**, que es la topología desplegada; agregar otro proxy delante invalida esa premisa y obliga a revisarla antes de desplegarlo.
   - **Limitación aceptada del MVP**: un atacante puede bloquear temporalmente la cuenta de otro usuario con 5 intentos cada 15 minutos.
-  - **Hallazgo abierto de la 8.4 (H-3)**: mientras `TRUSTED_PROXY` no sea `true` —hoy, en todos los entornos— la clave de IP es la misma para todas las peticiones, así que **20 ingresos fallidos de cualquiera, en cualquier cuenta, bloquean el ingreso de todos** hasta que venza la ventana. El mecanismo estaba escrito; su consecuencia no. En esta configuración el límite por IP es también un vector de denegación de servicio. **Severidad condicional (2026-09-18): `crítico` en cualquier entorno compartido, `mayor` en el único que existe hoy**, que es una máquina de desarrollo de un usuario sin proxy ni adversario. Es **precondición bloqueante de la 9.1**: no se levanta ningún entorno compartido sin `TRUSTED_PROXY=true` contra un proxy real, o con el límite por IP desactivado ([Risks](../planning/Risks.md), [Roadmap](../planning/Roadmap.md) §Fase 9).
+  - **H-3, resuelto en staging el 2026-09-22** (9.1, AC-6), **medido por consecuencia**: con 20 fallos desde una IP, esa IP queda bloqueada mientras la misma cuenta, con la misma contraseña y en el mismo momento, ingresa desde otra. Sigue abierto en cualquier entorno donde `TRUSTED_PROXY` no sea `true`. El enunciado original: mientras `TRUSTED_PROXY` no sea `true`, la clave de IP es la misma para todas las peticiones, así que **20 ingresos fallidos de cualquiera, en cualquier cuenta, bloquean el ingreso de todos** hasta que venza la ventana. El mecanismo estaba escrito; su consecuencia no. En esta configuración el límite por IP es también un vector de denegación de servicio. **Severidad condicional (2026-09-18): `crítico` en cualquier entorno compartido, `mayor` en el único que existe hoy**, que es una máquina de desarrollo de un usuario sin proxy ni adversario. Es **precondición bloqueante de la 9.1**: no se levanta ningún entorno compartido sin `TRUSTED_PROXY=true` contra un proxy real, o con el límite por IP desactivado ([Risks](../planning/Risks.md), [Roadmap](../planning/Roadmap.md) §Fase 9).
   - Los **dos** límites están probados en integración (`tests/integration/auth-service.test.ts`): el de cuenta, y el de IP con el caso "20 fallos desde una IP bloquean también a otras cuentas", que además comprueba que otra IP sigue pudiendo ingresar.
 
 > **Corrección del 2026-09-18.** La revisión de la 8.4 había registrado como hallazgo H-2 que el límite por IP no tenía ninguna prueba. **Era falso**: el test existía desde antes. El error vino de buscarlo con un patrón (`it("`) que no ve la forma de tres argumentos que ese test usa por su `timeout`, y de "confirmarlo" con una segunda búsqueda de `IP_FAILURE_LIMIT`, constante que el test no usa porque escribe `20` a mano. Dos búsquedas ciegas a lo mismo, tomadas como confirmación. H-2 queda retirado y su lugar en la numeración no se reutiliza.
@@ -116,7 +116,8 @@ Implementada en la 6.5.3 ([brief-6.5.3](../decisions/brief-6.5.3-autenticacion-d
   - **Medición (8.1, D-3)**: las diez pantallas se recorrieron en report-only, en claro y oscuro, con cero violaciones. Las pantallas no tienen ni un `<style>` inline ni un solo atributo `style=`, así que `'unsafe-inline'` no hizo falta en `style-src`, que era la limitación que el brief dejaba aceptable.
   - **Cabeceras** (D-2): `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`, `Cross-Origin-Opener-Policy: same-origin` y `Permissions-Policy` negando cámara, micrófono y geolocalización. `frame-ancestors` de la CSP reemplaza a `X-Frame-Options`.
   - **Sin `report-uri`**: no hay receptor de reportes; un endpoint propio quedó fuera de alcance.
-  - **Pendiente de la Fase 9**: `Strict-Transport-Security` está definido pero **no se emite**, porque sin TLS no hace nada. Se enciende con el entorno de staging, junto con la cookie detrás de TLS y de un proxy real.
+  - **`Strict-Transport-Security`**, emitido desde la 9.1: `max-age=31536000; includeSubDomains`, **sin** `preload`. Se emite solo cuando `x-forwarded-proto` dice `https` (`src/proxy.ts`), no siempre: si saliera tambien sobre texto plano, verla en la respuesta no probaría que el TLS está en su lugar. **Verificado en staging el 2026-09-22** (AC-3) con su control sobre HTTP, que devuelve `301` sin la cabecera.
+    > **Fe de errata.** Hasta la 9.1 esta línea decía que la cabecera «está definida pero no se emite». En el codigo no estaba definida: había un comentario explicando por qué no se emitía. La afirmación sobrevivió porque «definida» se podía leer como «definida en este documento».
 - **Validación de entradas**: todo input de usuario se valida con un esquema explícito (tipo, longitud, formato) antes de tocar la capa de dominio; rechazo explícito, no coerción silenciosa.
 - **Rate limiting**, verificado en la 8.4 en sus dos puntos:
 
@@ -129,7 +130,7 @@ Implementada en la 6.5.3 ([brief-6.5.3](../decisions/brief-6.5.3-autenticacion-d
 ## Gestión de secretos
 
 - Variables de entorno para secretos locales (`.env`, nunca commiteado; `.env.example` sí versionado con placeholders).
-- En staging/producción, un gestor de secretos del proveedor de hosting elegido (a definir en la subfase 9.1), no variables de entorno planas en el repositorio de CI.
+- En staging, un `EnvironmentFile` de `systemd` con permisos `0600` de `root`, fuera del repositorio y fuera de la configuración de CI (9.1, D-8). **El proveedor elegido es un VPS y no tiene gestor de secretos propio**, así que la decisión no fue cuál usar sino qué lo reemplaza. **Límite declarado**: protege contra otro usuario del sistema, **no** contra quien tenga `root` ni contra un respaldo de disco sin cifrar. Es suficiente para un entorno sin datos reales y **no** es lo que se lleva a produccion sin volver a decidirlo.
 - Ninguna clave de API, contraseña de base de datos o secreto de sesión se escribe en documentación ni en código.
 
 ## Política de logs
@@ -154,7 +155,7 @@ Implementada en la 6.5.3 ([brief-6.5.3](../decisions/brief-6.5.3-autenticacion-d
 - Es de solo inserción, con dos defensas ([ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md)):
   - el rol de aplicación `crm_app` tiene solo `SELECT` e `INSERT` sobre la tabla;
   - un trigger rechaza `UPDATE` y `DELETE` para cualquier rol.
-- **Limitación aceptada**: la aplicación todavía se conecta con el rol dueño, así que hoy la defensa efectiva es el trigger. El dueño puede vaciar la tabla con `TRUNCATE`, y un superusuario puede desactivar el trigger. La conexión con `crm_app` llega con el aprovisionamiento de entornos y secretos (Fases 8 y 9).
+- **En staging la aplicación ya se conecta con un rol miembro de `crm_app`** (9.1, AC-7), no con el dueño. Verificado por efecto el 2026-09-22: `DELETE FROM audit_logs` responde `permission denied`, mientras `SELECT` e `INSERT` siguen permitidos. **La limitación sigue vigente en desarrollo local**, donde la conexión es la del dueño y la defensa efectiva es el trigger: el dueño puede vaciar la tabla con `TRUNCATE` y un superusuario puede desactivar el trigger.
 
 ## Backups y restauración
 

@@ -197,8 +197,25 @@ Ninguno alcanza el umbral de crítico de la escala fijada: no abren acceso indeb
 
 ### Limitaciones declaradas de esta verificación
 
-- **El AC-11 está cubierto en parte.** Se recorrieron 8 rutas (`/`, `/clientes`, `/clientes/nuevo`, `/productos`, `/productos/nuevo`, `/conversaciones`, `/usuarios`, `/usuarios/nuevo`), todas `200` y **cero errores de consola**. No se visitaron las pantallas de detalle, que necesitan ids de registros existentes, ni `/cambiar-contrasena`.
+- **El AC-11 está cubierto salvo dos rutas.** Se recorrieron **12**: `/`, `/clientes`, `/clientes/nuevo`, `/clientes/[id]`, `/productos`, `/productos/nuevo`, `/conversaciones`, `/conversaciones/[id]`, `/usuarios`, `/usuarios/nuevo`, `/usuarios/[id]` y `/cambiar-contrasena`. Todas devolvieron `200` con **cero errores de consola**; `/cambiar-contrasena` redirige a `/` para un usuario sin contraseña pendiente, que es lo correcto. **Quedan sin cubrir `/productos/[id]` y `/productos/[id]/movimientos`**, porque el seed básico no crea productos y en staging no hay ninguno: visitarlas exigiría dar de alta un producto, que es una escritura fuera del alcance de esta subfase. Se cubren en la **9.3**, que carga datos de volumen.
 - **La suite e2e del proyecto no corrió contra staging.** Arranca dos servidores locales propios y su `global-setup` repone la base directamente, así que apuntarla acá exigiría un túnel hasta el PostgreSQL del droplet y cambiar su configuración. Se verificó con un recorrido escrito para esta subfase, que es menos cobertura que la suite.
-- **La prueba de integración del seed no corrió localmente**: Docker no estaba levantado. Queda a cargo de CI.
+- **Los intentos de ingreso se borraron de `login_attempts` después de medir el AC-6**, para poder seguir verificando desde la misma IP sin esperar la ventana de 15 minutos. Son filas sintéticas de una prueba propia, sin valor de auditoría, pero queda dicho porque el estado de esa tabla ya no refleja lo que se midió.
+- **La prueba de integración del seed no corrió localmente**: Docker no estaba levantado. Corrió en CI, en verde, sobre el commit `1545040`.
 - **El aprovisionamiento aceptó la clave de host SSH con `StrictHostKeyChecking=accept-new`**, sin verificación fuera de banda. Confianza en el primer uso.
 - **Lo medido vale para el commit desplegado.** No dice nada sobre carga, ni sobre volumen, ni sobre backups: son la 9.2 y la 9.3.
+
+## Reevaluación de `proxy.ts` con más rutas protegidas (punto 8 del alcance)
+
+El Roadmap §9.1 pedía volver sobre la decisión del [brief-3.5](brief-3.5-pantalla-de-inicio-de-sesion.md) D-6 —`proxy.ts` no valida sesión, no lee la base y no redirige— ahora que hay muchas más rutas protegidas que cuando se tomó.
+
+**Lo que se midió** (2026-09-22): hay **13 páginas** bajo `src/app/(autenticado)/`, y **las 13 llaman a `requireSession` o a `getAuthContext` por sí mismas**, además del `layout.tsx` del grupo, que también lo hace. No hay ninguna que dependa del layout para protegerse.
+
+**Decisión: la D-6 se mantiene. `proxy.ts` sigue sin validar sesión.** Tres razones, en orden de peso:
+
+1. **La defensa ya está donde se accede al dato, no en una puerta previa.** Mover la comprobación al proxy no agregaría una defensa: agregaría una **segunda** donde equivocarse, y las dos tendrían que coincidir para siempre.
+2. **Un chequeo en el middleware invita a relajar el de la página.** Ese es el modo de falla real: no que el middleware falle, sino que alguien lo vea y concluya que la página ya no necesita comprobar. La guarda `exposed-surface` fija la superficie; nada fijaría esa expectativa.
+3. **El middleware de Next tiene antecedentes de ser evadible.** CVE-2025-29927 permitía saltear el middleware con una cabecera; la versión en uso no es vulnerable, pero el episodio dice algo sobre la clase de componente: un punto único de control que se puede esquivar es peor que no tenerlo, porque produce confianza sin sostenerla.
+
+**Condición de reapertura**: si alguna vez existe una ruta protegida que **no** pueda comprobar la sesión por sí misma —por ejemplo un Route Handler de streaming, o un recurso estático que deba quedar tras la sesión—, la decisión se vuelve a mirar para esa ruta, no para todas.
+
+**Lo que esta reevaluación no hace**: no comprueba que las 13 páginas autoricen **bien**. Comprueba que cada una lo hace por sí misma. La corrección de cada autorización se revisó punto por punto en la 8.4 y su superficie está fijada por una guarda.
