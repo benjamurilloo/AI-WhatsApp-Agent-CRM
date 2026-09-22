@@ -45,9 +45,32 @@ const SECURITY_HEADERS: ReadonlyArray<readonly [string, string]> = [
   ["Referrer-Policy", "same-origin"],
   ["Cross-Origin-Opener-Policy", "same-origin"],
   ["Permissions-Policy", "camera=(), microphone=(), geolocation=()"],
-  // Strict-Transport-Security no se emite todavía: sin TLS no hace nada y en http://localhost
-  // solo confunde. Llega con el entorno de staging (Fase 9, SecurityModel).
 ];
+
+// Un año, sin `preload` (brief-9.1). `preload` es un compromiso que se pide una vez y se
+// revierte con meses de demora: no se declara desde staging. `includeSubDomains` alcanza
+// solo a los subdominios del host que responde, no al dominio padre.
+export const HSTS_VALUE = "max-age=31536000; includeSubDomains";
+
+/*
+ * Se emite solo sobre HTTPS (brief-9.1). Dos motivos, y el segundo es el que importa:
+ *
+ * 1. Sobre texto plano la cabecera no hace nada: la especificación obliga al navegador a
+ *    ignorarla, así que en http://localhost solo confunde a quien lee las respuestas.
+ * 2. Emitirla siempre volvería la verificación del AC-3 incapaz de fallar. Si la cabecera
+ *    saliera igual sin TLS, verla en la respuesta no probaría que el TLS está en su lugar.
+ *
+ * La condición se lee de `x-forwarded-proto`, que en este despliegue pone nginx y no el
+ * cliente. Que un cliente la falsifique no logra nada: el navegador ignora un HSTS que
+ * llega sobre texto plano, así que no hay forma de convertir esto en una denegación.
+ */
+export function isHttpsRequest(forwardedProto: string | null): boolean {
+  // La PRIMERA entrada, no la última: acá la cadena describe el protocolo del cliente
+  // original, al revés que x-forwarded-for, donde la última es la que agregó el proxy
+  // de confianza (session-cookie.ts:27-38). Son dos cabeceras con dos convenciones y
+  // confundirlas es un error silencioso.
+  return forwardedProto?.split(",")[0]?.trim().toLowerCase() === "https";
+}
 
 function createNonce(): string {
   const bytes = new Uint8Array(16);
@@ -69,6 +92,9 @@ export default function proxy(request: NextRequest): NextResponse {
   response.headers.set("Content-Security-Policy", policy);
   for (const [name, value] of SECURITY_HEADERS) {
     response.headers.set(name, value);
+  }
+  if (isHttpsRequest(request.headers.get("x-forwarded-proto"))) {
+    response.headers.set("Strict-Transport-Security", HSTS_VALUE);
   }
   return response;
 }
