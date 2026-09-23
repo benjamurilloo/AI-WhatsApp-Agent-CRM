@@ -203,8 +203,8 @@ async function main(): Promise<void> {
         listConversations(context, {
           from: "",
           to: "",
-          status: "",
-          channel: "",
+          status: "all",
+          channel: "all",
           clientId: "",
           page: 1,
         }),
@@ -228,7 +228,7 @@ async function main(): Promise<void> {
       `inventory.listStockMovements (producto con ${movimientos})`,
       () =>
         listStockMovements(context, productoId, {
-          type: "",
+          type: "all",
           from: "",
           to: "",
           page: 1,
