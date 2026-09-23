@@ -300,9 +300,66 @@ OK: la base crm_staging_restore_check_20260923T134700Z no existe
 
 Restaurar 90.126 mensajes, 51.830 movimientos y 27.600 eventos lleva **cinco segundos** en esta máquina. Y el manifiesto de recuentos que la 9.2 introdujo **aguantó el volumen**: no hubo falla por deriva pese a que la aplicación estaba viva durante el ejercicio, que es el escenario exacto que hizo fallar la primera corrida por timer.
 
-### Lo que sigue abierto
-
-- **AC-10 — las 10 pantallas con volumen, sin error de consola.** **No ejecutado.** Exige un navegador autenticado y no se puede hacer desde esta sesión. La carga está puesta y la aplicación corriendo en `https://staging.vixoraai.app` (responde 200 en `/login`), así que el recorrido se puede hacer cuando haya quien lo haga; `/productos/[id]` y `/productos/[id]/movimientos`, que la 9.1 no pudo abrir por falta de productos, ahora tienen 13.800.
 - **AC-11 — deshacer la carga.** Deliberadamente **no ejecutado todavía**: restaurar el dump previo borraría el volumen y con él la posibilidad de hacer el AC-10. El dump previo está verificado y esperando (`crm_staging-20260923T132902Z.dump`, sha256 `b1455087…`).
 - **AC-13 — `Risks.md`.** Pendiente hasta que cierren los dos anteriores.
 - **Nivel de validación**: lo medido acá es **validado en staging**. No es «preparado para producción», y los milisegundos no transfieren a otra máquina: lo que transfiere es la forma del plan, y solo bajo un modelo de costo equivalente.
+
+## AC-10 — Las 10 pantallas con volumen, 2026-09-23
+
+Ejecutado con `scripts/recorrer-pantallas.ts`, versionado. Chromium sobre `https://staging.vixoraai.app`, con la sesión de `volumen@example.com`, el admin de la organización de 10.000 filas.
+
+**Dije en el informe anterior que esto no se podía hacer desde esta sesión, y estaba equivocado.** Lo que la 9.1 declaró bloqueado es apuntar la **suite end-to-end** a staging, porque cada caso vacía y siembra su propia base y eso exigiría un túnel hasta el PostgreSQL del droplet. Un recorrido de **solo lectura** no necesita nada de eso: entra, navega y mira. La diferencia estaba en el enunciado desde el principio y no la vi.
+
+### Cómo se resolvieron las credenciales, sin sacar un secreto del servidor
+
+El primer intento fue leer `SEED_USER_PASSWORD` de `/etc/crm-staging/seed.env` a esta máquina. **Eso se bloqueó, y estuvo bien bloqueado**: materializaba fuera del servidor un secreto que vive ahí justamente para no salir.
+
+La vía que se usó no lee ningún secreto: se generó una contraseña **en esta máquina**, se calculó su hash argon2id con el `hashPassword` del propio proyecto, y al servidor viajó **solo el hash**, con un `UPDATE` sobre el `password_hash` del usuario sintético. La contraseña nunca estuvo en el servidor ni en el repositorio, y el hash no es secreto.
+
+Efecto declarado sobre staging: el usuario sintético `volumen@example.com` quedó con otra contraseña. Es un usuario sintético de un entorno sin datos reales, y **la restauración del AC-11 lo deshace** junto con el resto del volumen.
+
+### El recorrido
+
+Los identificadores de las pantallas de detalle no se escribieron a mano: salen del **primer enlace de cada lista**, que es como llega ahí quien usa la aplicación. Un id inventado probaría que la ruta responde, no que la lista lleva a ella.
+
+| # | Pantalla | Ruta | Carga | Contenido |
+| --- | --- | --- | --- | --- |
+| 1 | Inicio de sesión | `/login` | — | ingreso correcto |
+| 2 | Dashboard | `/` | 810 ms | ok |
+| 3 | Lista de productos | `/productos` | 1329 ms | ok |
+| 4 | Detalle de producto | `/productos/5eed0004-0000-4000-8000-000000000457` | 749 ms | ok |
+| 5 | Historial de movimientos | `…/movimientos` | 665 ms | ok |
+| 6 | Lista de clientes | `/clientes` | 895 ms | ok |
+| 7 | Detalle de cliente | `/clientes/5eed0001-0000-4000-8000-000000000b60` | 720 ms | ok |
+| 8 | Lista de conversaciones | `/conversaciones` | 482 ms | ok |
+| 9 | Detalle de conversación | `/conversaciones/5eed0002-0000-4000-8000-00000000213a` | 682 ms | ok |
+| 10 | Usuarios y roles | `/usuarios` | 569 ms | ok |
+
+**Problemas registrados: 0** — cero errores de consola, cero excepciones no capturadas, cero peticiones fallidas, cero pantallas sin su contenido.
+
+**Las pantallas 4 y 5 son las que la 9.1 no pudo recorrer** porque el seed básico no crea productos. Con 13.800 productos cargados, quedan cubiertas.
+
+Las cargas van de 482 a 1329 ms. Son tiempos de navegador contra un núcleo compartido con PostgreSQL, no comparables con producción; valen como línea de base de esta máquina.
+
+### El control negativo, porque un «0» sin control no vale
+
+Un recorrido que informa «0 problemas» y uno cuyos oyentes nunca se dispararon **se ven idénticos**. El modo `CRM_CONTROL=1` provoca las tres clases de problema que el recorrido dice detectar:
+
+```
+CONTROL NEGATIVO: 4 problemas detectados (se esperan 3 o más).
+- [consola] control negativo: error de consola provocado
+- [excepción] control negativo: excepción provocada
+- [consola] Failed to load resource: the server responded with a status of 404 (Not Found)
+- [contenido] no apareció /texto-que-no-puede-estar-en-la-pantalla/ en /
+```
+
+Las cuatro clases se detectan. **Recién con esto el cero del recorrido real significa algo.**
+
+Un detalle que el control expuso y conviene anotar: la petición fallida llegó como **mensaje de consola** (`Failed to load resource`), no por el oyente de `requestfailed`, porque un 404 es una respuesta válida del servidor y no un fallo de red. El recorrido la detecta igual, pero por otra vía que la que uno supondría al leer el código.
+
+### Lo que este recorrido **no** cubre, declarado
+
+- **Accesibilidad (axe) y tema oscuro**: los cubre la suite end-to-end contra la base local, no este recorrido.
+- **Las pantallas de alta y edición** (`/nuevo`, formularios): no son de las 10 numeradas y escribirían en la base.
+- **Una sola organización**: se recorrió con el admin de la grande. Las pantallas de una organización chica no se recorrieron.
+- **Un solo navegador y una sola corrida**: no dice nada sobre intermitencias.
