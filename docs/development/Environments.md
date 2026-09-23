@@ -108,7 +108,8 @@ Desde la 6.2 ([brief-6.2](../decisions/brief-6.2-seeds-sinteticos-de-conversacio
 | Acción | Comando |
 |---|---|
 | Sembrar conversaciones de ejemplo | `npm run db:seed` (después del seed básico, en el mismo comando) |
-| Sembrar el volumen | `npm run db:seed:volume`, o `npm run db:seed:volume -- 2000` para otro tamaño |
+| Sembrar el volumen (una organización) | `npm run db:seed:volume`, o `npm run db:seed:volume -- 2000` para otro tamaño |
+| Sembrar la distribución de veinte organizaciones (9.3) | `npm run db:seed:volume:distribucion` |
 
 - **Conversaciones de ejemplo**, en la organización del seed básico:
   - 6 clientes (uno sin teléfono, uno inactivo), 10 conversaciones y 26 mensajes;
@@ -121,8 +122,13 @@ Desde la 6.2 ([brief-6.2](../decisions/brief-6.2-seeds-sinteticos-de-conversacio
   - es determinista: la fila *i* es la misma con cualquier tamaño, y una corrida posterior no toca las filas existentes;
   - en la máquina local tarda unos 5 s;
   - no corre en CI;
-  - no incluye productos ni inventario (D-4).
-- Los dos seeds se niegan a correr si el nombre de la base no termina en `_dev`, `_test` o `_e2e`.
+  - no incluye productos ni inventario (D-4). La 8.5 lo extendió a productos, inventario y miembros.
+- **Distribución de varias organizaciones** (9.3, D-1), con `npm run db:seed:volume:distribucion`:
+  - veinte organizaciones: una de 10.000 clientes, tres de 1.000 y dieciséis de 50;
+  - existe porque hasta la 9.3 todos los planes de consulta del proyecto se midieron con **una sola** organización dueña de casi todas las filas, y con esa distribución `organization_id = X` no filtra nada: el planificador elige recorridos completos, correctamente, y ese no es el plan que elegirá con veinte organizaciones;
+  - la organización **ordinal 0 es la histórica y sus filas no cambian**, para que la calibración de la 9.3 pueda compararse contra los números de la 8.5;
+  - siembra además `ingestion_events` sintéticos (9.3, D-5), que el seed de una sola organización no toca.
+- Los seeds se niegan a correr si el nombre de la base no termina en `_dev`, `_test`, `_e2e` o `_staging`. El último lo agregó la 9.1: el entorno de staging necesita usuarios sintéticos y llegan por un seed versionado, nunca promovidos desde desarrollo.
 
 ## Base de end-to-end
 
