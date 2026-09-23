@@ -25,9 +25,11 @@ Un backoffice web propio — el CRM — con:
 ## Qué no construimos (todavía)
 
 - No es un ERP. No hay ventas, compras, proveedores, pagos, caja ni contabilidad en el MVP.
-- No reemplaza al agente de WhatsApp ni a Airtable hoy. La migración es un proyecto futuro separado, posterior a validar que este CRM funciona.
+- ~~No reemplaza al agente de WhatsApp ni a Airtable hoy. La migración es un proyecto futuro separado, posterior a validar que este CRM funciona.~~ **Enmendado el 2026-09-23 ([ADR 0014](../decisions/0014-el-agente-de-whatsapp-como-consumidor-del-crm.md))**: el CRM no reemplaza al agente, **lo abastece**. Validado el MVP, el agente pasa a leer y escribir sus datos en el CRM en lugar de Airtable, por contratos de servicio que diseña el CRM. La migración de los datos existentes es la última fase de esa integración, en este repositorio, por CSV exportado.
 - No es un clon de Airtable con tablas genéricas editables por el usuario. El modelo de datos es específico del dominio (productos, clientes, conversaciones), no una plataforma no-code.
 
 ## Definición de éxito del MVP
 
 El MVP es exitoso si, sin tráfico productivo, un usuario administrador puede: dar de alta y mantener su catálogo con trazabilidad de stock, mantener su cartera de clientes, consultar conversaciones y mensajes cargados vía seeds/fixtures, y leer métricas de WhatsApp calculadas correctamente desde datos transaccionales — todo esto validado con datos sintéticos y con pruebas automatizadas, antes de considerar cualquier conexión a datos reales.
+
+*Esta definición es la del MVP y no se enmienda: se evaluó en la [subfase 10.1](../decisions/evaluacion-10.1-mvp.md), y el usuario confirmó el 2026-09-23 que el backoffice resuelve el dolor descrito arriba. Las fases de integración tienen sus propios criterios en el [Roadmap](../planning/Roadmap.md).*

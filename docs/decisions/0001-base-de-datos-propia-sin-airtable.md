@@ -21,3 +21,7 @@ El CRM tiene su propia base de datos PostgreSQL y es dueño de sus datos. En nin
 - Modelado, migraciones y seeds propios desde cero.
 - Control total sobre integridad referencial, transacciones e idempotencia, expresadas como constraints de base.
 - Los datos históricos solo llegan al CRM mediante el proyecto futuro de migración ([0003](0003-migracion-legado-proyecto-separado.md)).
+
+## Nota del 2026-09-23
+
+Este ADR no se reescribe y su decisión sigue vigente entera. Solo cambia el marco de la última consecuencia: el [ADR 0014](0014-el-agente-de-whatsapp-como-consumidor-del-crm.md) reemplazó parcialmente al 0003, y la migración dejó de ser un «proyecto futuro» independiente para pasar a ser la última fase de integración de este repositorio. Los datos históricos siguen llegando solo por esa vía, desde **CSV exportado**: el CRM tampoco llama a la API de Airtable para migrar.

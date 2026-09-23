@@ -161,6 +161,11 @@ La aprobación del brief no autoriza commits, push ni operaciones en staging: se
 - **Una consulta de solo lectura en staging** (O-41). Autorizada por el usuario; bloqueada la primera vez por el clasificador de permisos de Claude Code, y ejecutada después de que el usuario agregara una regla acotada a `psql` en modo de solo lectura. Resultado: apagado.
 - **El gate de la Fase 9**: el usuario estuvo de acuerdo en registrar, sin reabrir el cierre, que su criterio de las diez pantallas vale menos de lo que se dijo (evaluación, §6, R-18).
 
+**Ampliación autorizada durante la 10.2** (2026-09-23, por el usuario, «autorizo los dos»): el `grep` de AC-10 encontró dos contradicciones con el ADR 0014 que no estaban en C-1 a C-6, en archivos fuera de la lista. Se paró y se reportó, como pide la condición de detención. Se suman a la lista, **solo** para enmiendas fechadas con el texto anterior visible:
+
+- `README.md` de la raíz: el principio 6 («proyecto futuro separado») y la frase de «Qué es» sobre integrarse por un contrato de ingestión. Su sección «Estado», desactualizada desde la Fase 8, **no** se toca acá: se corrige al cerrar la 10.3, con el HANDOFF.
+- `docs/decisions/0001-base-de-datos-propia-sin-airtable.md`: solo una nota fechada al final, sin reescribir la consecuencia que cita el «proyecto futuro de migración».
+
 ## Criterios de las reevaluaciones
 
 Fijados antes de mirar, como manda la convención de la 8.4 (D-2) y la 8.5 (D-1).
@@ -251,3 +256,15 @@ Aprobado por el usuario. Resultado en la [evaluación 10.1](evaluacion-10.1-mvp.
 - **AC-7**: revisión independiente de la 9.3 con 22 hallazgos, 10 mayores, ninguno bloqueante; los de más peso verificados contra el código. Corrige números que la integración iba a citar y el valor del criterio de las diez pantallas con que se cerró el gate de la Fase 9.
 
 **Lo que no se cerró acá y pasa a la 10.3**: reemplazar los rótulos provisionales por números de fase, corregir los números de la 9.3 en `Roadmap.md`, `CHANGELOG.md` y `HANDOFF.md` (O-42), y escribir la opción de decisión que el Roadmap no tiene.
+
+## Cierre de la 10.2 — 2026-09-23
+
+Aprobado por el usuario. Todo es **autoevaluación**; la revisión obligatoria de la fase (D-7) la cubre al cierre de la 10.3.
+
+- **AC-8**: el [ADR 0014](0014-el-agente-de-whatsapp-como-consumidor-del-crm.md) existe y está en el índice, con los cinco puntos del criterio.
+- **AC-9**: el ADR 0003 figura como reemplazado parcialmente por el 0014, con su texto intacto y una nota fechada.
+- **AC-10**: `Scope.md`, `FR-CONV-05`, `IntegrationBoundaries.md`, `Vision.md` y la fila de la matriz, enmendados con fecha y el texto anterior visible. El `grep` encontró dos contradicciones nuevas (`README.md` y el ADR 0001); se paró, se reportó y se enmendaron con la ampliación autorizada. Lo que el `grep` sigue encontrando está tachado, calificado como del MVP o es cita histórica, salvo `Roadmap.md:183`, que es de la 10.3.
+- **AC-11**: `CLAUDE.md` cambió en una sola línea, la frase de C-4.
+- **AC-12**: ninguna prohibición cambió; la guarda de referencias prohibidas, 10 de 10 en verde, sin modificarse.
+
+**Lo que pasa a la 10.3**: `Roadmap.md:183` y el resto de C-2 y C-3, y la sección «Estado» de `README.md`, desactualizada desde la Fase 8.

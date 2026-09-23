@@ -10,7 +10,9 @@ Backoffice propio de productos e inventario, clientes, conversaciones y métrica
 
 Un backoffice web con base de datos PostgreSQL propia para administrar productos e inventario y clientes, consultar conversaciones y mensajes, y ver métricas de WhatsApp con definiciones auditables.
 
-Pese al nombre, es un proyecto **independiente** del agente de WhatsApp ("AI WhatsApp Agent"), que hoy usa Airtable: no comparte con él código, infraestructura ni base de datos. Si en el futuro se integran, será a través de un contrato de ingestión propio de este repositorio ([IntegrationBoundaries.md](docs/architecture/IntegrationBoundaries.md)).
+Pese al nombre, es un proyecto **independiente** del agente de WhatsApp ("AI WhatsApp Agent"), que hoy usa Airtable: no comparte con él código, infraestructura ni base de datos. ~~Si en el futuro se integran, será a través de un contrato de ingestión propio de este repositorio~~ ([IntegrationBoundaries.md](docs/architecture/IntegrationBoundaries.md)).
+
+*Enmendado el 2026-09-23 por el [ADR 0014](docs/decisions/0014-el-agente-de-whatsapp-como-consumidor-del-crm.md)*: después del MVP, el agente es un **consumidor** del CRM. Lo usa por contratos de servicio versionados que el CRM diseña desde su propio modelo —el de ingestión, que ya existe, y una API de lectura que todavía no—, y nunca al revés. La independencia en código, infraestructura y base de datos sigue igual.
 
 ## Principios no negociables
 
@@ -19,7 +21,7 @@ Pese al nombre, es un proyecto **independiente** del agente de WhatsApp ("AI Wha
 3. Cero dependencia de Airtable: sin SDK, adaptadores, IDs, variables de entorno, sincronización, dual-write ni consultas en tiempo real.
 4. Sin referencias arquitectónicas al repositorio del agente de WhatsApp.
 5. Desarrollo con datos sintéticos y seeds propios, sin tráfico productivo en el MVP.
-6. La migración del sistema legado es un proyecto futuro separado, posterior a validar el CRM.
+6. ~~La migración del sistema legado es un proyecto futuro separado, posterior a validar el CRM.~~ *Enmendado el 2026-09-23 ([ADR 0014](docs/decisions/0014-el-agente-de-whatsapp-como-consumidor-del-crm.md))*: la migración del sistema legado es la última fase de integración de este repositorio, posterior a validar el CRM, con los datos por CSV exportado y nunca por la API de Airtable.
 7. Preparado para evolucionar a un ERP, pero sin tablas ni módulos especulativos.
 
 Detalle en [docs/product/Scope.md](docs/product/Scope.md) y en [docs/decisions/](docs/decisions/README.md).

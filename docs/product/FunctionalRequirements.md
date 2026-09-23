@@ -36,7 +36,7 @@
 - **FR-CONV-02**: El detalle de una conversación muestra el timeline cronológico de mensajes, diferenciando visualmente entrantes y salientes.
 - **FR-CONV-03**: Una conversación tiene un estado (`open`, `pending`, `closed`) consultable y filtrable. Un admin puede cambiarlo manualmente y el cambio queda auditado.
 - **FR-CONV-04**: Existe un contrato de ingestión (endpoint y esquema de payload versionados), documentado y probado con datos sintéticos, que crea conversaciones y mensajes de forma idempotente por `(organization_id, source, external_ref)` del evento. Reenviar el mismo evento no duplica datos. Reenviarlo con otro contenido se rechaza con `CONFLICT` sin modificar nada.
-- **FR-CONV-05**: El contrato de ingestión no está conectado a ningún origen de tráfico real en el MVP; solo se ejercita con fixtures y tests.
+- **FR-CONV-05**: El contrato de ingestión no está conectado a ningún origen de tráfico real en el MVP; solo se ejercita con fixtures y tests. **Enmendado el 2026-09-23 por el [ADR 0014](../decisions/0014-el-agente-de-whatsapp-como-consumidor-del-crm.md)**: el requisito rige **para el MVP** y se cumplió ([evaluación 10.1](../decisions/evaluacion-10.1-mvp.md)). En las fases de integración, el contrato puede recibir tráfico de un emisor real **solo** detrás del modo de prueba (`INGESTION_ENABLED` y la allowlist de credenciales) y con el gate de la fase que lo conecta, que incluye validar la autenticación y los fixtures con tráfico del propio emisor ([IntegrationBoundaries](../architecture/IntegrationBoundaries.md)).
 
 ## Métricas
 

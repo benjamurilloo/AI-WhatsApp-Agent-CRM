@@ -1,6 +1,6 @@
 # Instrucciones para Claude Code — AI WhatsApp Agent CRM
 
-Este repositorio es el CRM propio **AI WhatsApp Agent CRM**. Pese al nombre, es independiente del agente de WhatsApp (**AI WhatsApp Agent**, repositorio `AI-WhatsApp-Agent`). Estas reglas rigen toda sesión de trabajo aquí, sea humana o agéntica.
+Este repositorio es el CRM propio **AI WhatsApp Agent CRM**. Pese al nombre, es independiente del agente de WhatsApp (**AI WhatsApp Agent**, repositorio `AI-WhatsApp-Agent`) en código, infraestructura y base de datos. Desde el [ADR 0014](docs/decisions/0014-el-agente-de-whatsapp-como-consumidor-del-crm.md) (2026-09-23), el agente es un **consumidor** del CRM: lo usa a través de contratos de servicio versionados, diseñados desde el modelo del CRM, y nunca al revés. Estas reglas rigen toda sesión de trabajo aquí, sea humana o agéntica.
 
 ## Prohibiciones absolutas (violarlas es un defecto crítico, no una preferencia de estilo)
 
