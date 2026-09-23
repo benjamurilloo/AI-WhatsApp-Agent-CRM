@@ -292,3 +292,12 @@ Subfase **cerrada el 2026-09-23**. CI en verde en `b492bf0` ([ejecución 3587282
 - **Una deriva que el AC-11 no midió y conviene no perder**: la base desplazada tenía `datdba = postgres` y la restaurada tiene `datdba = crm_owner`, porque el runbook la crea con `createdb -O crm_owner`. Las **tablas** quedaron de `crm_owner` en las dos —eso sí se comprobó—, pero el dueño **a nivel de base** cambió al restaurar y nadie lo estaba mirando. No rompe nada hoy; es exactamente la clase de diferencia que una comprobación de recuentos no puede ver.
 - **La métrica 12 sigue sin emisor real.** Se midió con eventos sintéticos, y eso no cambió acá.
 - **Segunda observación de la intermitencia del proyecto `guards`**, sin diagnóstico.
+
+## Revisión independiente posterior al cierre — 2026-09-23
+
+Hecha dentro de la 10.1, por decisión del usuario ([brief-10](brief-10-evaluacion-del-mvp.md), D-6), con el subagente `independent-reviewer` de solo lectura. **Este cierre no se reescribe**: lo de arriba sigue diciendo lo que se dijo, y las correcciones están en la [evaluación 10.1](evaluacion-10.1-mvp.md) §6 y al principio de la [evidencia-9.3](evidencia-9.3-volumen.md).
+
+- **22 hallazgos: 0 bloqueantes, 10 mayores, 6 menores y 6 notas.** Los de más peso se verificaron contra el código y se confirmaron todos.
+- **La condición de cierre que esta subfase se fijó a sí misma no se cumple.** §Revisión independiente decía: «ningún hallazgo sea mayor ni toque un número que vaya a citarse». Hay diez mayores, y tocan justamente los números que se iban a citar: el dashboard «de doce métricas», los «productos ajenos», la «paginación profunda» y los planes.
+- **El gate de la Fase 9** se cerró contando el AC-10 de esta subfase como criterio cumplido. Con R-7, lo que el AC-10 prueba es que las diez pantallas cargan sin error de consola, excepción ni petición fallida, no que muestren su contenido. **El usuario estuvo de acuerdo el 2026-09-23 en registrarlo sin reabrir el cierre.** Y queda registrada la contradicción que el revisor señaló: esta sección decía que la subfase «no abre ni cierra gate», y su resultado alimentó uno, que es el caso en que el [ExecutionProtocol](../development/ExecutionProtocol.md) exige la revisión.
+- Lo que falta medir va a la fase de producción de la integración, y los instrumentos que corregir a la primera fase de integración ([evaluación 10.1](evaluacion-10.1-mvp.md), O-39 y O-40).

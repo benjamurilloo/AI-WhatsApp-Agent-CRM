@@ -4,7 +4,15 @@ Salidas crudas de la subfase 9.3 ([brief-9.3](brief-9.3-datos-de-volumen-en-stag
 
 **Estado al 2026-09-23**: los trece criterios de aceptación están ejecutados. El seed multiorganización está implementado y validado localmente; la medición en staging, el recorrido de las 10 pantallas y la vuelta atrás de la carga están hechos y con sus salidas crudas acá. Staging quedó en su estado previo a la carga.
 
----
+> **Corrección posterior, 2026-09-23 — leer antes de citar cualquier número de este documento.** Una revisión independiente, hecha después del cierre dentro de la 10.1 ([evaluación](evaluacion-10.1-mvp.md) §6), informó 22 hallazgos, 10 mayores. El texto de abajo **no se cambió**; estas son las correcciones verificadas contra el código:
+>
+> - **«Las doce métricas de una carga» (226,8 ms y 39,3 ms)** son **diez llamadas** de `scripts/medir-caminos.ts`, sin la métrica 12, y sin comprobar lo que devolvió cada una (R-1, R-9).
+> - **El plan de la métrica 12** no pudo salir del log de ese script, que no la llama. Su origen no consta (R-2).
+> - **«4.309 productos descartados»** es correcto como salida del plan, pero **no son todos ajenos**: 3.800 son de otras organizaciones y 509 son inactivos de la propia (R-5). Los 3.806 clientes sí son ajenos.
+> - **La «página profunda»** es la página 100 de clientes (offset 2.475 de 10.000) y la 20 de stock, no la última. La calibración compara esas páginas con la 380 de la 8.5 (R-6).
+> - **La tabla de planes tiene seis consultas**, resumidas, sin salida cruda de `EXPLAIN` ni tiempo. No sostiene «todo recorrido secuencial registrado» (R-3, R-4).
+> - **El recorrido de pantallas** comprueba contenido con expresiones que coinciden con el menú en 6 de 9 pantallas (R-7). Lo que sí prueba es que las diez cargan sin error de consola, excepción ni petición fallida.
+> - **La ventana del manifiesto** que la 9.2 difirió a esta subfase no se midió (R-10).
 
 ## Estado de partida del servidor, medido el 2026-09-23
 
