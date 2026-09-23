@@ -22,7 +22,13 @@ Los archivos de acá son la fuente de verdad. **Tres** guardas los fijan con cas
 
 El procedimiento de restauración y el ejercicio mensual viven en [docs/runbooks/restaurar-la-base.md](../../docs/runbooks/restaurar-la-base.md).
 
-**Estado al 2026-09-23**: los **siete** archivos están desplegados y el `diff` de la sección «Verificar después de desplegar» da **cero diferencias** en los siete. Los dos timers están habilitados. El séptimo lo agregó la 9.3: los parámetros de costo del planificador, que hasta entonces describían una máquina de 4 GB sobre una de 961 MB.
+**Estado al 2026-09-23**: los **nueve** archivos de la tabla de arriba están desplegados y el `diff` de la sección «Verificar después de desplegar» da **cero diferencias** en los nueve. Los dos timers están habilitados. El noveno lo agregó la 9.3: los parámetros de costo del planificador, que hasta entonces describían una máquina de 4 GB sobre una de 961 MB.
+
+**El número se cuenta, no se hereda.** Esta línea dijo «seis» mientras la tabla tenía ocho filas, y la 9.3 lo «corrigió» a siete sumándole uno al número equivocado en vez de contar la tabla. Es el cuarto recuento mal registrado de este linaje (antes H-5, N-2 y R-7). Se comprueba así, y el resultado tiene que coincidir con las filas de la tabla:
+
+```
+ls deploy/staging/ | grep -v README | wc -l
+```
 
 Las líneas marcadas `# managed by Certbot` las escribió `certbot --nginx` y **no se editan a mano**: se regeneran al renovar.
 
@@ -73,7 +79,7 @@ Si el cambio trae migraciones, correrlas con `migrate.env` **antes** del `build`
 Los dos primeros comprueban lo que ninguna guarda puede: que el servidor tenga lo que el repositorio dice.
 
 1. **Que la configuración desplegada sea la versionada.** Es el único paso que cierra el hueco de H-1, y es manual a propósito: un test que fingiera comprobarlo sería peor que no tenerlo.
-   **Los siete archivos, no dos.** La versión anterior de este paso comparaba solo los dos de la 9.1 y dejaba fuera los cuatro que agregó la 9.2 y el que agregó la 9.3, pese a ser el paso que este mismo README llama «el único que cierra el hueco de H-1».
+   **Los nueve archivos, no dos.** La versión anterior de este paso comparaba solo los dos de la 9.1 y dejaba fuera los que agregaron la 9.2 y la 9.3, pese a ser el paso que este mismo README llama «el único que cierra el hueco de H-1».
 
    ```
    ssh crm-staging 'sudo cat /etc/nginx/sites-available/crm-staging' | diff - deploy/staging/nginx-crm-staging.conf
