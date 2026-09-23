@@ -2,6 +2,41 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-23 — Fase 9 cerrada (Staging y piloto controlado), con el gate enmendado
+
+Cierra contra los criterios del [Roadmap](docs/planning/Roadmap.md) **salvo uno, por decisión del usuario**. Cuatro subfases cerradas —la 9.0 con sus cuatro hijas, la 9.1, la 9.2 y la 9.3— y la **9.4 disuelta sin abrirse**. CI en verde en el commit de cierre de cada subfase.
+
+**Es la primera vez en el proyecto que un gate no se cumple como está escrito.** El de esta fase era «informe del piloto sin bloqueantes», y no hubo piloto. El usuario lo enmendó el 2026-09-23, y queda acá como decisión con fecha y no como omisión.
+
+**Por qué se disolvió la 9.4.** Contenía dos cosas que se movían en direcciones opuestas. El **piloto sintético perdió valor**: el usuario decidió conectar al agente de WhatsApp como consumidor del CRM, y eso va a cambiar las pantallas 3 a 5 y agregar una que no existe, así que se iba a pilotear lo equivocado. **Las tres reevaluaciones que traía ganaron valor** —APM y tracing, protección de rama y la retención de `messages`—, porque con un consumidor sincrónico y datos de clientes reales dejan de ser opcionales. Las tres pasan a la Fase 10. **El piloto se reasigna con condición escrita, no se pospone**: el roadmap de la Fase 10 tiene que enumerarlo como subfase propia de la primera fase de integración.
+
+**Certifica, con nivel *validado en staging* y ni un escalón más:**
+
+- **Dos de los tres criterios de aceptación de la fase**:
+  - **Las 10 pantallas funcionan sin errores con volumen** (9.3, AC-10): cero errores de consola, cero excepciones, cero peticiones fallidas, sobre 13.800 productos y veinte organizaciones, **con control negativo que detecta cuatro**.
+  - **Un backup se restauró en un entorno aislado** (9.2), y se volvió a medir al volumen real en la 9.3: **5,08 s** el ejercicio completo, con la aplicación corriendo.
+- **Existe un entorno equivalente a producción** en `https://staging.vixoraai.app` (9.1): TLS, `systemd`, nginx, PostgreSQL 18.6 con el rol `crm_app` y la aplicación solo en loopback.
+- **Las seis afirmaciones `no-verificable-aquí` del modelo de seguridad quedaron verificadas** —cinco en la 9.1 y la de backups en la 9.2—, que era la deuda que la Fase 8 le dejó nombrada.
+- **Los tres hallazgos mayores de la 8.4 están cerrados**: H-1 y H-7 en la 9.0.1, y **H-3 medido por consecuencia** en la 9.1, que era precondición bloqueante de la fase.
+- **Las deudas que la fase absorbió al descomponerse quedaron saldadas**, cada una en una subfase con número: `unaccent` (9.0.2, la deuda más vieja del proyecto), la frontera de `analytics` en ESLint (9.0.3), la escritura de `ingestion` que la 9.0.1 no vio (9.0.4) y la medición con varias organizaciones que arrastraban la 6.3, la 7.1 a la 7.3 y la 8.5 (9.3).
+- **Backup diario disparado por timer**, ejercicio de restauración mensual agendado con control negativo por tres vías, simulacro de recuperación completo con ingreso autenticado, y **un runbook ejercitado contra su propio hallazgo** (9.2 y 9.3).
+- **Veinte organizaciones medidas**: tres de seis consultas cambian de forma de plan, y la organización dominante paga por las demás (9.3). Nada patológico.
+- **Once guardas con 205 casos**, seis de ellas nuevas en esta fase.
+
+**No certifica:**
+
+- **El tercer criterio de aceptación: las notas del piloto triageadas.** No hubo piloto. Y con eso **tampoco se cumple el ítem de la Definición de Terminado del MVP «piloto en staging sin bloqueantes, con datos sintéticos»**: la Fase 10 tiene que registrarlo como incumplido por decisión, que es lo que su propio criterio de aceptación le pide.
+- **Uso real del producto por una persona.** Todo lo validado lo ejercitaron scripts y tests. Que las pantallas carguen sin error está demostrado; que se pueda **trabajar** con ellas, no. Es exactamente lo que el piloto iba a medir y lo que la condición de reasignación protege.
+- **El gate no lo cerró una revisión independiente.** La 9.4 la llevaba por obligación y no hubo entrega que revisar. La 9.3 tampoco la tuvo, por decisión del usuario. Las que sí hubo en la fase —una en la 9.0.1, cuatro en la 9.1 y una en la 9.2— informaron **58 hallazgos reales en total, ninguno falso**.
+- **Lo que la 9.1 dejó abierto y ninguna subfase posterior cerró**: la corrida en seco de `certbot` sin capturar; la discrepancia `account|13|17` sin explicación; el AC-4 verificado por inferencia; que la migración `0003` no corra sin `CREATEROLE`; que `drizzle-kit migrate` salga con código 1 sin imprimir error; y que el servidor sigue sin poder leerse desde un test.
+- **Lo que la 9.2 declaró y sigue igual**: la recuperación en una máquina nueva no se ejecutó; el ejercicio compara tablas y recuentos, **no valores**; la copia fuera del droplet es manual; el backup **no está cifrado en reposo**.
+- **Lo que la 9.3 declaró**: los planes son *custom*, no genéricos; y al restaurar, **el dueño a nivel de base cambió de `postgres` a `crm_owner`** sin que nada lo estuviera mirando.
+- **Nada es *preparado para producción*.** Y la Fase 10 lo va a necesitar por primera vez: la integración con el agente es el primer camino del proyecto que termina con datos reales.
+
+**Lo que la fase midió sobre el propio método:** el patrón que más se repitió no fue de código sino de **instrumentos que corrían en verde sin hacer lo que decían**: una guarda ciega a `sort -r`, un control negativo que no controlaba nada, un ejercicio que restauraba con `--no-owner`, un medidor que publicaba como el camino más rápido del sistema uno que nunca tocó la base, un monitor cuyo rótulo había escrito yo a mano. Los tres primeros los encontró la revisión independiente de la 9.2. Los dos últimos los encontré yo en la 9.3, y en los dos casos solo porque un número no cerraba contra otro: un camino más rápido en la máquina lenta, y un `cancelled` donde había escrito `success`. **Un instrumento que no puede fallar no es evidencia.**
+
+---
+
 ## 2026-09-23 — 9.3: veinte organizaciones, y tres de seis consultas cambian de plan
 
 Cierre de subfase. **No abre ni cierra gate** —los de la Fase 9 son la 9.1 y la 9.4—, así que la revisión independiente no era obligatoria. **Esta vez no se hizo**, y eso queda declarado abajo y no tapado: todo el cuerpo de esta entrada es **autoevaluación**.
