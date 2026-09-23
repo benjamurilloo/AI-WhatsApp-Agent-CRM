@@ -50,6 +50,37 @@ function mediana(valores: number[]): number {
     : orden[medio]!;
 }
 
+// Describe lo que devolvió una llamada, para que **un camino que no corrió no pueda pasar por
+// un camino rápido**. La primera corrida de este script dio 0,4 ms en `listConversations` y un
+// tiempo menor que el de desarrollo en `listStockMovements`: las dos llamadas estaban fallando
+// la validación de filtros y volviendo sin tocar la base. Un `Failure` devuelto en microsegundos
+// es indistinguible de una consulta veloz si solo se mira el reloj.
+function describir(resultado: unknown): string {
+  if (resultado === null || typeof resultado !== "object") return "sin forma";
+  const r = resultado as Record<string, unknown>;
+  if (r.ok === false) {
+    const codigo = typeof r.code === "string" ? r.code : "?";
+    const campos = Array.isArray(r.fields) ? ` ${r.fields.join(",")}` : "";
+    return `FALLA ${codigo}${campos}`;
+  }
+  for (const clave of [
+    "products",
+    "clients",
+    "conversations",
+    "members",
+    "movements",
+    "rows",
+  ]) {
+    const valor = r[clave];
+    if (Array.isArray(valor)) {
+      const total = typeof r.total === "number" ? `/${r.total}` : "";
+      return `${valor.length}${total} filas`;
+    }
+  }
+  if ("value" in r) return `valor ${JSON.stringify(r.value)}`.slice(0, 40);
+  return "ok";
+}
+
 async function medir(
   nombre: string,
   ejecutar: () => Promise<unknown>,
@@ -58,10 +89,11 @@ async function medir(
   mediana: number;
   minimo: number;
   maximo: number;
+  resultado: string;
 }> {
   // Una corrida de calentamiento que no cuenta: la primera paga la compilación del plan y la
   // lectura fría de las páginas, y mezclarla con las demás inventa una dispersión que no existe.
-  await ejecutar();
+  const primera = await ejecutar();
   const tiempos: number[] = [];
   for (let i = 0; i < CORRIDAS; i++) {
     const desde = performance.now();
@@ -73,6 +105,7 @@ async function medir(
     mediana: mediana(tiempos),
     minimo: Math.min(...tiempos),
     maximo: Math.max(...tiempos),
+    resultado: describir(primera),
   };
 }
 
@@ -239,12 +272,12 @@ async function main(): Promise<void> {
 
   console.log(`\n## Caminos completos — ${etiqueta}`);
   console.log(`Mediana de ${CORRIDAS} corridas, tras una de calentamiento.\n`);
-  console.log("| Camino | Mediana | Mínimo | Máximo |");
-  console.log("| --- | --- | --- | --- |");
+  console.log("| Camino | Mediana | Mínimo | Máximo | Resultado |");
+  console.log("| --- | --- | --- | --- | --- |");
   for (const [nombre, ejecutar] of [...listados, ...metricas]) {
     const r = await medir(nombre, ejecutar);
     console.log(
-      `| ${r.nombre} | ${r.mediana.toFixed(1)} ms | ${r.minimo.toFixed(1)} ms | ${r.maximo.toFixed(1)} ms |`,
+      `| ${r.nombre} | ${r.mediana.toFixed(1)} ms | ${r.minimo.toFixed(1)} ms | ${r.maximo.toFixed(1)} ms | ${r.resultado} |`,
     );
   }
 
