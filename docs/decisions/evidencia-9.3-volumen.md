@@ -2,7 +2,7 @@
 
 Salidas crudas de la subfase 9.3 ([brief-9.3](brief-9.3-datos-de-volumen-en-staging.md)). Se escribe a medida que se mide; lo que no está acá **no está medido**.
 
-**Estado al 2026-09-23**: el seed multiorganización está implementado y validado localmente, y la medición en staging está hecha. **Quedan abiertos el AC-10** —recorrer las 10 pantallas con volumen, que exige un navegador— **y el AC-11**, deshacer la carga, que se deja para después del AC-10 porque restaurar borraría el volumen.
+**Estado al 2026-09-23**: los trece criterios de aceptación están ejecutados. El seed multiorganización está implementado y validado localmente; la medición en staging, el recorrido de las 10 pantallas y la vuelta atrás de la carga están hechos y con sus salidas crudas acá. Staging quedó en su estado previo a la carga.
 
 ---
 
@@ -300,8 +300,6 @@ OK: la base crm_staging_restore_check_20260923T134700Z no existe
 
 Restaurar 90.126 mensajes, 51.830 movimientos y 27.600 eventos lleva **cinco segundos** en esta máquina. Y el manifiesto de recuentos que la 9.2 introdujo **aguantó el volumen**: no hubo falla por deriva pese a que la aplicación estaba viva durante el ejercicio, que es el escenario exacto que hizo fallar la primera corrida por timer.
 
-- **AC-11 — deshacer la carga.** Deliberadamente **no ejecutado todavía**: restaurar el dump previo borraría el volumen y con él la posibilidad de hacer el AC-10. El dump previo está verificado y esperando (`crm_staging-20260923T132902Z.dump`, sha256 `b1455087…`).
-- **AC-13 — `Risks.md`.** Pendiente hasta que cierren los dos anteriores.
 - **Nivel de validación**: lo medido acá es **validado en staging**. No es «preparado para producción», y los milisegundos no transfieren a otra máquina: lo que transfiere es la forma del plan, y solo bajo un modelo de costo equivalente.
 
 ## AC-10 — Las 10 pantallas con volumen, 2026-09-23
@@ -363,3 +361,71 @@ Un detalle que el control expuso y conviene anotar: la petición fallida llegó 
 - **Las pantallas de alta y edición** (`/nuevo`, formularios): no son de las 10 numeradas y escribirían en la base.
 - **Una sola organización**: se recorrió con el admin de la grande. Las pantallas de una organización chica no se recorrieron.
 - **Un solo navegador y una sola corrida**: no dice nada sobre intermitencias.
+
+## AC-11 — Deshacer la carga, 2026-09-23
+
+Según D-4(a): restaurando el dump previo, sin desactivar ningún trigger. Se siguió el procedimiento de [restaurar-la-base.md](../runbooks/restaurar-la-base.md) §«Recuperación real», que es el camino probado, en vez de improvisar uno.
+
+### La trampa del paso 2 apareció otra vez, y el runbook ya la tenía escrita
+
+```
+$ sudo ls -lh /var/backups/crm-staging/*.dump
+ls: cannot access '/var/backups/crm-staging/*.dump': No such file or directory
+```
+
+El glob se expande en el shell de quien llama, que no puede leer un directorio `drwxr-x--- root:postgres`. Es exactamente el hallazgo R-2 de la 9.2 —el que resultó ser el octavo mayor— y el runbook lo documenta desde entonces. La forma que sí funciona, la que el runbook publica, dio lo que tenía que dar:
+
+```
+$ sudo bash -c 'cd /var/backups/crm-staging && \
+    sha256sum -c <(printf "%s  %s\n" "$(cat crm_staging-20260923T132902Z.dump.sha256)" \
+    crm_staging-20260923T132902Z.dump)'
+crm_staging-20260923T132902Z.dump: OK
+```
+
+**Que el defecto vuelva a aparecer y el texto publicado lo resuelva es la primera vez que el runbook se ejercita contra su propio hallazgo.**
+
+### La restauración
+
+```
+$ sudo systemctl stop crm-staging
+$ sudo -u postgres createdb -O crm_owner crm_staging_nueva
+$ time sudo -u postgres pg_restore --dbname=crm_staging_nueva --exit-on-error \
+    /var/backups/crm-staging/crm_staging-20260923T132902Z.dump
+real	0m0.639s
+```
+
+Comprobaciones **antes** de tocar la base viva, que es donde el procedimiento permite volver atrás:
+
+| Comprobación | Resultado |
+| --- | --- |
+| usuarios / clientes / conversaciones / mensajes / productos / eventos / organizaciones | `3\|6\|10\|26\|0\|0\|1` |
+| Dueño de las tablas | `crm_owner` |
+| `SET ROLE crm_app; DELETE FROM audit_logs;` | `ERROR: permission denied for table audit_logs` |
+
+Los siete recuentos coinciden **exactamente** con el manifiesto del dump previo, y las dos defensas sobrevivieron a la restauración.
+
+### El cambio y la verificación por la puerta de entrada
+
+```
+ALTER DATABASE crm_staging RENAME TO crm_staging_con_volumen;
+ALTER DATABASE crm_staging_nueva RENAME TO crm_staging;
+```
+
+| Comprobación | Resultado |
+| --- | --- |
+| `systemctl is-active crm-staging` | `active` |
+| `curl -sI https://staging.vixoraai.app/login` | `200` |
+| Organizaciones, clientes, productos | `Organización de ejemplo\|6\|0` |
+| Tamaño de la base | **8846 kB**, el mismo de antes de la carga |
+| `select count(*) from users where email = 'volumen@example.com'` | **0** |
+
+La última fila es la que cierra el AC-11 por consecuencia y no por confianza: **la credencial efímera que se creó para el AC-10 ya no existe**, porque el usuario que la tenía lo había creado el seed después del dump. Si la restauración no hubiera ocurrido de verdad, ese usuario seguiría ahí.
+
+### Lo que quedó en el servidor
+
+| Base | Tamaño | Qué es |
+| --- | --- | --- |
+| `crm_staging` | 8846 kB | la viva, restaurada al estado previo a la carga |
+| `crm_staging_con_volumen` | 69 MB | la que tenía el volumen, conservada por ahora |
+
+El runbook manda no borrar la base desplazada el mismo día en una recuperación real, porque es la única forma de volver atrás. Acá el caso es distinto —lo desplazado no está roto, es el volumen— y además **es exactamente reproducible** con `npm run db:seed:volume:distribucion`, que es determinista y tarda 36 s. Se deja la decisión de borrarla al usuario, y queda anotado que tener dos bases parecidas al lado es precisamente la ambigüedad contra la que el runbook advierte.
