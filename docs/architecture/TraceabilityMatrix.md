@@ -8,7 +8,7 @@
 - **Recorridos secuenciales registrados, todos esperables**: el listado base de productos (4,5 ms), el total de clientes (2,0 ms), la última página de clientes por nombre (24,7 ms) y los 501 miembros (0,1 ms). Son consultas sin filtro selectivo sobre tablas de ~10.000 filas, donde recorrerlas enteras es lo que corresponde. El caso a vigilar es la página profunda de clientes, cuyo costo está en el orden y crece con el total.
 - **El plan no es toda la historia**: la lista de stock tarda 4,5 ms en la consulta y 133 ms en el camino completo, porque compone en memoria. Ver el brief.
 - En la 6.3 hubo tres recorridos completos de `conversations` —el total sin filtros, una página profunda y la última interacción por cliente— que se deben a que esa organización tiene el 99,9 % de las filas; forzado, el planificador usa el índice previsto.
-- **Sigue pendiente para la Fase 9**: medir con **varias organizaciones** en staging. Con una sola organización dueña de casi todas las filas, el planificador no se comporta como lo hará en producción.
+- **Medido con varias organizaciones el 2026-09-23** (9.3, [brief-9.3](../decisions/brief-9.3-datos-de-volumen-en-staging.md), [evidencia-9.3](../decisions/evidencia-9.3-volumen.md)), que era lo que quedaba pendiente de esta sección. Con veinte organizaciones en staging —1×10.000, 3×1.000 y 16×50—, **tres de seis consultas cambian de forma de plan** entre la organización grande y una chica: los productos activos y el total de clientes pasan a índice en la chica, y la página profunda de clientes pasa de `Seq Scan` con *top-N heapsort* a `Index Scan`. Con una sola organización eso era invisible por construcción. **Lo que se agrega a esta matriz y no estaba**: sobre la organización grande, los recorridos secuenciales ahora **leen y descartan filas ajenas** —4.309 productos y 3.806 clientes—, así que su costo crece con el total de la tabla y no con el tamaño de la organización que consulta. Los tiempos son de una máquina de un núcleo y **no transfieren**; lo que transfiere es la forma del plan, y solo bajo un modelo de costo equivalente. **Sigue sin medirse** si alguno de los seis pasa al plan **genérico** de las sentencias preparadas: lo de la 9.3 es el plan *custom*, tomado con valores literales.
 
 ## 1. Por pantalla
 
@@ -147,7 +147,7 @@ La métrica 12 se midió en la 7.3 ([brief-7.3](../decisions/brief-7.3-metrica-d
 - **Con la tabla vacía**, `EXPLAIN` confirma el índice previsto: un solo `Index Scan` sobre `ingestion_events_organization_received_idx` con las tres condiciones —organización y los dos extremos del período— en el `Index Cond`.
 - **Con 200.011 eventos** y 34.895 en un período de 30 días, la mediana de cinco corridas fue de 26,2 ms. El CTE de los eventos se materializa solo, porque las tres agregaciones lo leen: es el caso opuesto al de la métrica 9, donde el CTE de un solo uso había que materializarlo a mano.
 
-Todo esto se vuelve a medir con varias organizaciones en staging (Fase 9).
+Vuelto a medir con veinte organizaciones en staging el 2026-09-23 (9.3): el plan **no cambia** de forma —sigue siendo un `Index Only Scan` sobre `ingestion_events_organization_received_idx`—, con 3.281 filas desde la organización grande y 23 desde una chica. Sigue en pie el límite de fondo: **la métrica 12 no tiene emisor real**, así que los eventos de esa medición también son sintéticos.
 
 ## Hallazgos
 

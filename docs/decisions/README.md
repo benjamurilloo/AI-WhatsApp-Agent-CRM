@@ -77,9 +77,11 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-9.0.3](brief-9.0.3-frontera-de-analytics-en-eslint.md) | 9.0.3 — La frontera de `analytics` en ESLint | aprobado y cerrado el 2026-09-21 |
 | [brief-9.0.4](brief-9.0.4-aislamiento-de-la-escritura-de-ingestion.md) | 9.0.4 — La escritura de `ingestion` que la 9.0.1 no cubrió | aprobado y cerrado el 2026-09-21 |
 | [brief-9.1](brief-9.1-infraestructura-de-staging.md) | 9.1 — Infraestructura de staging | aprobado y cerrado el 2026-09-22, tras cuatro revisiones independientes |
-| [brief-9.2](brief-9.2-backups-y-restauracion.md) | 9.2 — Backups y restauración | aprobado el 2026-09-22 |
+| [brief-9.2](brief-9.2-backups-y-restauracion.md) | 9.2 — Backups y restauración | aprobado y cerrado el 2026-09-22, tras una revisión independiente no obligatoria |
+| [brief-9.3](brief-9.3-datos-de-volumen-en-staging.md) | 9.3 — Datos de volumen en staging | aprobado y cerrado el 2026-09-23, **sin revisión independiente** |
 | [evidencia-9.1](evidencia-9.1-staging.md) | 9.1 — Salidas crudas de la verificación en staging | captura del 2026-09-22 |
 | [evidencia-9.2](evidencia-9.2-backups.md) | 9.2 — Backup y restauración verificados en staging | captura del 2026-09-22 |
+| [evidencia-9.3](evidencia-9.3-volumen.md) | 9.3 — Volumen, planes y tiempos medidos en staging | captura del 2026-09-23 |
 
 ## Plantilla
 

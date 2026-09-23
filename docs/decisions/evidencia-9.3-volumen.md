@@ -426,6 +426,22 @@ La última fila es la que cierra el AC-11 por consecuencia y no por confianza: *
 | Base | Tamaño | Qué es |
 | --- | --- | --- |
 | `crm_staging` | 8846 kB | la viva, restaurada al estado previo a la carga |
-| `crm_staging_con_volumen` | 69 MB | la que tenía el volumen, conservada por ahora |
+| `crm_staging_con_volumen` | 69 MB | la que tenía el volumen |
 
-El runbook manda no borrar la base desplazada el mismo día en una recuperación real, porque es la única forma de volver atrás. Acá el caso es distinto —lo desplazado no está roto, es el volumen— y además **es exactamente reproducible** con `npm run db:seed:volume:distribucion`, que es determinista y tarda 36 s. Se deja la decisión de borrarla al usuario, y queda anotado que tener dos bases parecidas al lado es precisamente la ambigüedad contra la que el runbook advierte.
+El runbook manda no borrar la base desplazada el mismo día en una recuperación real, porque es la única forma de volver atrás. Acá el caso es distinto —lo desplazado no está roto, es el volumen— y además **es exactamente reproducible** con `npm run db:seed:volume:distribucion`, que es determinista y tarda 36 s. Aun así la decisión se dejó al usuario y no se tomó sola, porque tener dos bases parecidas al lado es precisamente la ambigüedad contra la que el runbook advierte.
+
+### Borrada el mismo día, con autorización
+
+```
+$ sudo -u postgres dropdb --if-exists crm_staging_con_volumen
+DROP OK
+$ sudo -u postgres psql -Atc "select datname, pg_size_pretty(pg_database_size(datname)),
+    pg_get_userbyid(datdba) from pg_database where datname like 'crm%'"
+crm_staging|8846 kB|crm_owner
+$ systemctl is-active crm-staging
+active
+$ curl -sI -o /dev/null -w '%{http_code}\n' https://staging.vixoraai.app/login
+200
+```
+
+**Y una deriva que apareció al mirar esa salida, que el AC-11 no había medido**: la base desplazada tenía `datdba = postgres` y la restaurada tiene `datdba = crm_owner`, porque el runbook la crea con `createdb -O crm_owner`. Las **tablas** quedaron de `crm_owner` en las dos —eso sí se comprobó en el AC-11—, pero **el dueño a nivel de base cambió al restaurar** y nadie lo estaba mirando. No rompe nada hoy. Es la clase de diferencia que una comparación de tablas y recuentos no puede ver, que es justamente lo que el CHANGELOG de la 9.2 ya declaraba como límite del ejercicio.

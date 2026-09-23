@@ -7,7 +7,7 @@
 - **Orden**: después de la **9.2**, cerrada el 2026-09-22.
 - **No abre ni cierra gate.** Los gates de la Fase 9 son la 9.1 (entrada) y la 9.4 (salida), según [Roadmap](../planning/Roadmap.md) §Fase 9. La revisión independiente **no es obligatoria** acá; se recomienda igual, y el argumento es propio: esta subfase produce **números que van a citarse como evidencia** en la 9.4 y en la Fase 10, y un número mal medido no falla — se cita.
 - **Sin precondición bloqueante.** La 9.1 dejó el entorno y la 9.2 dejó el backup que hace reversible cargar volumen.
-- **Estado de este documento**: **aprobado el 2026-09-23**. Las siete decisiones están resueltas; ver §Resolución. Las cuatro que bloqueaban el arranque las respondió el usuario ese día, las siete por la recomendación.
+- **Estado de este documento**: **aprobado y cerrado el 2026-09-23**. Las siete decisiones están resueltas; ver §Resolución. Las cuatro que bloqueaban el arranque las respondió el usuario ese día, las siete por la recomendación. El cierre y lo que quedó abierto, en §Cierre.
 
 ## Objetivo
 
@@ -259,3 +259,36 @@ El precedente pesa: la revisión independiente de la 9.2 informó **21 hallazgos
 3. **Que la limpieza haya limpiado**, verificado por consulta y no por la ausencia de errores.
 
 La escala de severidad se fija **antes** de mirar el código, como desde la 8.4. La condición de cierre no es que una revisión no encuentre nada: es que ningún hallazgo sea mayor ni toque un número que vaya a citarse.
+
+## Cierre — 2026-09-23
+
+Subfase **cerrada el 2026-09-23**. CI en verde en `b492bf0` ([ejecución 35872820244](https://github.com/benjamurilloo/AI-WhatsApp-Agent-CRM/actions/runs/35872820244)). Evidencia cruda en [evidencia-9.3](evidencia-9.3-volumen.md); resumen certificado en [CHANGELOG](../../CHANGELOG.md).
+
+**Los trece criterios, uno por uno:**
+
+| Criterio | Estado | Dónde consta |
+| --- | --- | --- |
+| AC-1 — seed determinista e idempotente con la distribución de D-1 | cumplido | `tests/integration/volume-distribution.test.ts`, 8 casos |
+| AC-2 — ids derivables y sin colisión entre organizaciones | cumplido | `tests/guards/volume-seed-identity.test.ts`, 16 casos, con dos mutaciones ejecutadas |
+| AC-3 — dump previo con `sha256` y manifiesto | cumplido | `crm_staging-20260923T132902Z.dump`, verificado `OK` |
+| AC-4 — calibración de D-3 y su factor | cumplido | factor 0,82×–4,17×, mediana **2,29×**, umbral **916 ms** |
+| AC-5 — parámetros de costo junto a cada plan | cumplido | [postgresql-crm-staging.conf](../../deploy/staging/postgresql-crm-staging.conf), `diff` cero contra el servidor |
+| AC-6 — plan y tiempo desde una organización grande y una chica | cumplido | seis consultas, las dos salidas capturadas |
+| AC-7 — todo recorrido secuencial registrado aunque cumpla | cumplido | dos, con 4.309 productos y 3.806 clientes ajenos descartados |
+| AC-8 — consultas que cambian de forma de plan, identificadas | cumplido | **tres de seis** |
+| AC-9 — camino completo del dashboard en staging | cumplido | 226,8 ms desde la grande, 39,3 ms desde una chica |
+| AC-10 — las 10 pantallas sin error de consola, con volumen | cumplido | **0 problemas**, con control negativo que detecta 4 |
+| AC-11 — la carga deshecha y verificado que se deshizo | cumplido | verificado **por consecuencia**: el usuario que creó el seed después del dump ya no existe |
+| AC-12 — restauración medida al volumen real | cumplido | dump 4.746.187 bytes, ejercicio completo **5,08 s** con la aplicación corriendo |
+| AC-13 — `Risks.md` refleja qué saldó y qué no | cumplido | tres filas actualizadas |
+
+**Ninguna condición de detención se activó.** En particular la tercera: no apareció ninguna consulta patológica, así que **D-7 no llegó a consultarse y `src/` no se tocó**, comprobado con `git diff`.
+
+**Lo que el cierre no tapa:**
+
+- **No hubo revisión independiente.** Este brief la recomendaba —no la exigía, porque la subfase no abre ni cierra gate— y no se hizo. Todo el veredicto de arriba es **autoevaluación**. El argumento de la recomendación sigue en pie y ahora con fecha: los números de esta subfase se van a citar en la 9.4 y en la Fase 10.
+- **Los planes son *custom*, no genéricos.** Declarado en el §«Límite del método» de la evidencia y sin medir.
+- **`crm_staging_con_volumen` quedó borrada** el 2026-09-23, con autorización del usuario en el turno. Era la base de 69 MB que la restauración del AC-11 desplazó, y se conservó hasta que él decidiera, porque el runbook advierte que dos bases parecidas al lado son la ambigüedad que causa accidentes. El volumen es exactamente reproducible con `npm run db:seed:volume:distribucion`. En el servidor queda **una sola** base `crm%`, y la aplicación siguió `active` con `200` en `/login` después del `dropdb`.
+- **Una deriva que el AC-11 no midió y conviene no perder**: la base desplazada tenía `datdba = postgres` y la restaurada tiene `datdba = crm_owner`, porque el runbook la crea con `createdb -O crm_owner`. Las **tablas** quedaron de `crm_owner` en las dos —eso sí se comprobó—, pero el dueño **a nivel de base** cambió al restaurar y nadie lo estaba mirando. No rompe nada hoy; es exactamente la clase de diferencia que una comprobación de recuentos no puede ver.
+- **La métrica 12 sigue sin emisor real.** Se midió con eventos sintéticos, y eso no cambió acá.
+- **Segunda observación de la intermitencia del proyecto `guards`**, sin diagnóstico.
