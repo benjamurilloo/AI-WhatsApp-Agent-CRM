@@ -47,7 +47,17 @@ export function parsearUnidad(texto: string): Unidad {
   const unidad: Unidad = new Map();
   let seccion = "";
 
-  for (const cruda of texto.split("\n")) {
+  // systemd permite partir un valor largo en varias líneas terminándolas en `\`, y es
+  // la forma habitual de escribir un `ExecStart` o un `ReadWritePaths` con muchos
+  // elementos. Sin unirlas, la guarda leería `ReadWritePaths=/a \` y no encontraría
+  // `/var/backups/crm-staging` en la línea siguiente: daría rojo sobre una unidad
+  // perfectamente válida. La revisión de la 9.2 lo señaló (R-21) sobre un parser que no
+  // lo modelaba; no había unidad que lo usara todavía, que es justo cuando conviene.
+  // Solo espacios y tabuladores alrededor, nunca `\s`: un `\s*` final se comería una
+  // línea en blanco y con ella la clave siguiente, que es peor que no unir nada.
+  const unido = texto.replace(/[ \t]*\\\r?\n[ \t]*/g, " ");
+
+  for (const cruda of unido.split("\n")) {
     const linea = cruda.trim();
     if (!linea || linea.startsWith("#") || linea.startsWith(";")) continue;
 
@@ -372,6 +382,27 @@ describe("el parser de unidades distingue sección y clave", () => {
   it("no inventa secciones que no existen", () => {
     expect(valor(SERVICIO, "Timer", "OnCalendar")).toBeNull();
   });
+
+  it("une las continuaciones de línea de systemd", () => {
+    // Sin esto, una unidad válida escrita en varias líneas daría rojo: la guarda leería
+    // el valor cortado y no encontraría lo que busca. Es un falso negativo del detector,
+    // no del archivo (R-21 de la revisión de la 9.2).
+    const partida = parsearUnidad(
+      "[Service]\nReadWritePaths=/var/log \\\n  /var/backups/crm-staging\n",
+    );
+    expect(valor(partida, "Service", "ReadWritePaths")).toBe(
+      "/var/log /var/backups/crm-staging",
+    );
+  });
+
+  it("una continuación no se traga la clave siguiente", () => {
+    // El control del anterior: si el `\` uniera de más, `Type` desaparecería.
+    const dos = parsearUnidad(
+      "[Service]\nExecStart=/bin/a \\\n  --x\nType=oneshot\n",
+    );
+    expect(valor(dos, "Service", "ExecStart")).toBe("/bin/a --x");
+    expect(valor(dos, "Service", "Type")).toBe("oneshot");
+  });
 });
 
 describe("el timer versionado", () => {
@@ -642,8 +673,53 @@ describe("decisiones de los scripts cuya regresión sería silenciosa", () => {
     );
   });
 
+  it("el backup escribe un manifiesto de recuentos junto al dump", () => {
+    // Sin manifiesto, el ejercicio solo puede compararse contra el origen leído en su
+    // propio momento, que es un blanco móvil: toda escritura posterior al dump lo hace
+    // fallar. Medido el 2026-09-22 al desplegar el timer por primera vez — falló con
+    // `login_attempts 2 -> 0` por escrituras normales de la aplicación.
+    expect(codigoDe(BACKUP)).toMatch(/\$parcial\.recuentos/);
+    expect(codigoDe(BACKUP)).toMatch(
+      /mv "\$parcial\.recuentos" "\$destino\.recuentos"/,
+    );
+  });
+
+  it("un manifiesto vacío aborta el backup en vez de guardarse", () => {
+    // Un manifiesto vacío haría pasar el ejercicio siempre: comparar dos conjuntos
+    // vacíos da igual. Es el mismo agujero que el corte de `tablas == 0`, un paso antes.
+    expect(codigoDe(BACKUP)).toMatch(/! -s \$parcial\.recuentos/);
+  });
+
+  it("la rotación se lleva el manifiesto junto con su dump", () => {
+    // Si quedaran huérfanos, el directorio acumularía manifiestos de dumps borrados para
+    // siempre: la rotación dejaría de acotar lo que ocupa.
+    expect(codigoDe(BACKUP)).toMatch(
+      /rm -f "\$viejo" "\$viejo\.sha256" "\$viejo\.recuentos"/,
+    );
+  });
+
+  it("el ejercicio compara contra el manifiesto, no contra el origen", () => {
+    expect(codigoDe(RESTORE)).toMatch(/MANIFIESTO="\$DUMP\.recuentos"/);
+    expect(codigoDe(RESTORE)).toMatch(/referencia="\$MANIFIESTO"/);
+  });
+
+  it("los dos scripts cuentan filas con la MISMA consulta", () => {
+    // Acoplamiento real y no evidente: si las dos consultas divergieran —una contando
+    // `pg_tables` y la otra `pg_class`, por ejemplo— el ejercicio fallaría por la
+    // diferencia entre dos consultas y nadie miraría el backup, que estaría sano.
+    const consulta = (script: string) => {
+      const desde = script.indexOf("SELECT c.relname");
+      expect(desde).toBeGreaterThan(-1);
+      return script
+        .slice(desde, script.indexOf("ORDER BY c.relname", desde))
+        .replace(/\s+/g, " ")
+        .trim();
+    };
+    expect(consulta(BACKUP)).toBe(consulta(RESTORE));
+  });
+
   it("el ejercicio de restauración compara contenido, no el código de salida", () => {
-    expect(RESTORE).toMatch(/select count\(\*\) from public/);
+    expect(RESTORE).toMatch(/select count\(\*\) as cnt from public/);
     expect(RESTORE).toMatch(/diff -u/);
   });
 

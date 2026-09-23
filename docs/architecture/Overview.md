@@ -109,13 +109,13 @@ Implementación ([brief-3.4](../decisions/brief-3.4-autorizacion-y-errores.md)):
 - Un endpoint `/api/health` verifica la conectividad con la base sin exponer detalles.
 - No hay APM ni tracing distribuido en el MVP: en un monolito alcanza con logs correlacionados por `request_id`. **Se reevalúa en la Fase 9**, no en la 8 (brief-8.4, D-6): la reevaluación pide evidencia, y sin un entorno desplegado ni tráfico la respuesta saldría de la falta de datos y no de un criterio.
 
-## Despliegue (diseño, no implementado)
+## Despliegue (implementado en staging; producción sigue siendo diseño)
 
 - Una única imagen/proceso de aplicación por entorno, sin estado en memoria compartido entre requests salvo cache local no crítico.
-- Base de datos PostgreSQL gestionada por entorno (dev local vía Docker Compose; staging/producción como servicio gestionado o VM dedicada, **a decidir en la subfase 9.1** junto con el gestor de secretos; la 8.4 quitó el "Fase 8/9" porque una decisión que cabe en dos fases no se toma en ninguna).
+- Base de datos PostgreSQL gestionada por entorno (dev local vía Docker Compose; staging resuelto en la 9.1 el 2026-09-22 como **VM dedicada** —un droplet con PostgreSQL 18.6 en la misma máquina— y los secretos en archivos `0600` de `root` bajo `/etc/crm-staging/`, sin gestor; **producción sigue a decidir**, y la 9.2 le agregó una incógnita concreta: está sin verificar si un servicio gestionado exige superusuario para restaurar. La 8.4 quitó el "Fase 8/9" porque una decisión que cabe en dos fases no se toma en ninguna).
 - Migraciones SQL versionadas se aplican como paso explícito del pipeline de despliegue, nunca automáticamente contra producción sin aprobación.
 
-## Backups (diseño)
+## Backups (implementado en staging)
 
 - Backup lógico automático diario de la base de datos desde que exista staging persistente.
 - Prueba de restauración periódica **ejecutada**, no solo documentada, para que un backup no probado no se asuma válido. **Cadencia fijada en la 9.2 el 2026-09-22**: backup diario, ejercicio de restauración mensual, con control negativo que demuestra que el ejercicio puede fallar.

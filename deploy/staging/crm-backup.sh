@@ -53,12 +53,44 @@ parcial="$destino.parcial"
 # Se escribe a .parcial y se renombra al final. Sin esto, un corte a mitad del dump
 # deja un archivo con nombre definitivo que la rotacion cuenta como copia valida y
 # que nadie distingue de una buena hasta que hace falta.
-limpiar() { rm -f "$parcial"; }
+limpiar() { rm -f "$parcial" "$parcial.recuentos"; }
 trap limpiar EXIT
 
 pg_dump --format=custom --no-password --file="$parcial"
 
+# Manifiesto de recuentos, escrito INMEDIATAMENTE despues del dump.
+#
+# Por que existe: el ejercicio de restauracion tiene que comparar lo restaurado contra
+# algo. Compararlo contra los recuentos de la base LEIDOS EN EL MOMENTO DEL EJERCICIO es
+# compararlo contra un blanco movil: cualquier escritura de la aplicacion entre el backup
+# y la comprobacion hace fallar el ejercicio por un motivo que no tiene nada que ver con
+# el backup. Medido el 2026-09-22 al desplegar: el primer ejercicio por timer fallo con
+# `login_attempts 2 -> 0` y `sessions 4 -> 3`, que eran escrituras normales posteriores
+# al dump. Una alarma falsa en un verificador de backups es peor que no tenerlo: entrena
+# a ignorarlo, que es exactamente el modo de falla que esta subfase existe para evitar.
+#
+# Es UNA sola sentencia, asi que sus recuentos son consistentes entre si (un snapshot).
+# LIMITE DECLARADO Y MEDIBLE: entre el fin del dump y esta consulta puede entrar una
+# escritura. La ventana es la que separa las dos ordenes -- del orden del segundo en esta
+# base-- y no las horas que separaban el backup del ejercicio. Con volumen la ventana
+# crece con la duracion del dump, y eso se vuelve a medir en la 9.3.
+psql --no-password --tuples-only --no-align --command="
+  SELECT c.relname || ' ' ||
+         (xpath('/row/cnt/text()',
+                query_to_xml(format('select count(*) as cnt from public.%I', c.relname),
+                             false, true, '')))[1]::text
+  FROM pg_class c
+  JOIN pg_namespace n ON n.oid = c.relnamespace
+  WHERE n.nspname = 'public' AND c.relkind = 'r'
+  ORDER BY c.relname" > "$parcial.recuentos"
+
+if [[ ! -s $parcial.recuentos ]]; then
+  echo "El manifiesto de recuentos salio vacio: la base no tiene tablas o psql fallo" >&2
+  exit 1
+fi
+
 mv "$parcial" "$destino"
+mv "$parcial.recuentos" "$destino.recuentos"
 trap - EXIT
 
 sha256sum "$destino" | awk '{print $1}' > "$destino.sha256"
@@ -70,8 +102,8 @@ sha256sum "$destino" | awk '{print $1}' > "$destino.sha256"
 # equivocado. No agrega exposicion: `postgres` es superusuario de la base y ya podia
 # leer esos mismos datos en la base misma.
 if [[ -n ${BACKUP_GROUP:-} ]]; then
-  chgrp "$BACKUP_GROUP" "$destino" "$destino.sha256"
-  chmod 0640 "$destino" "$destino.sha256"
+  chgrp "$BACKUP_GROUP" "$destino" "$destino.sha256" "$destino.recuentos"
+  chmod 0640 "$destino" "$destino.sha256" "$destino.recuentos"
 fi
 
 echo "backup: $destino"
@@ -93,7 +125,7 @@ sobrantes=$(find "$BACKUP_DIR" -maxdepth 1 -type f -name "${PGDATABASE}-*.dump" 
 
 if [[ -n $sobrantes ]]; then
   while IFS= read -r viejo; do
-    rm -f "$viejo" "$viejo.sha256"
+    rm -f "$viejo" "$viejo.sha256" "$viejo.recuentos"
     echo "rotado: $viejo"
   done <<< "$sobrantes"
 else

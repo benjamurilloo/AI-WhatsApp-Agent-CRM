@@ -4,7 +4,7 @@ Configuración versionada del entorno `staging.vixoraai.app` ([brief-9.1](../../
 
 **Por qué existe este directorio.** Hasta el 2026-09-22 esta configuración vivía solo en el servidor. La revisión independiente de la 9.1 lo señaló como hallazgo **mayor** (H-1): toda la resolución de H-3 descansa en que nginx **reemplace** `x-forwarded-for` en vez de agregarlo, y esa premisa no se podía auditar ni detectar su regresión. Re-aprovisionar la máquina o poner algo delante —Cloudflare, un balanceador— reintroduce H-3 **en silencio y pasando en verde**.
 
-Los archivos de acá son la fuente de verdad. `tests/guards/staging-proxy-config.test.ts` los fija con casos de fallo.
+Los archivos de acá son la fuente de verdad. Dos guardas los fijan con casos de fallo: `tests/guards/staging-proxy-config.test.ts` (nginx y la unidad de la aplicación, 9.1) y `tests/guards/staging-backup-config.test.ts` (los scripts y las unidades de backup, 9.2).
 
 ## Archivos
 
@@ -16,12 +16,12 @@ Los archivos de acá son la fuente de verdad. `tests/guards/staging-proxy-config
 | `crm-restore-check.sh` | `/usr/local/bin/crm-restore-check.sh`, `0755` (9.2) |
 | `crm-backup.service` | `/etc/systemd/system/crm-backup.service` (9.2) |
 | `crm-backup.timer` | `/etc/systemd/system/crm-backup.timer` (9.2) |
-| `crm-restore-check.service` | `/etc/systemd/system/crm-restore-check.service` (9.2) — **versionado, todavía no desplegado** |
-| `crm-restore-check.timer` | `/etc/systemd/system/crm-restore-check.timer` (9.2) — **versionado, todavía no desplegado** |
+| `crm-restore-check.service` | `/etc/systemd/system/crm-restore-check.service` (9.2) |
+| `crm-restore-check.timer` | `/etc/systemd/system/crm-restore-check.timer` (9.2) |
 
 El procedimiento de restauración y el ejercicio mensual viven en [docs/runbooks/restaurar-la-base.md](../../docs/runbooks/restaurar-la-base.md).
 
-> **El repositorio va adelante del servidor.** Desde las correcciones de la revisión de la 9.2 (2026-09-22), `crm-restore-check.sh` cambió —se le quitó `--no-owner` y se le agregó la comprobación de dueño— y aparecieron las dos unidades del ejercicio mensual, que el droplet todavía no tiene. Desplegar es un efecto sobre la máquina y va con autorización propia. Mientras tanto, el `diff` de la sección «Verificar después de desplegar» **va a dar diferencias, y eso es lo esperado**: lo que no puede pasar es que dé diferencias sin que nadie sepa por qué.
+**Estado al 2026-09-22**: los seis archivos están desplegados y el `diff` de la sección «Verificar después de desplegar» da **cero diferencias** en los seis. Los dos timers están habilitados.
 
 Las líneas marcadas `# managed by Certbot` las escribió `certbot --nginx` y **no se editan a mano**: se regeneran al renovar.
 
@@ -72,9 +72,18 @@ Si el cambio trae migraciones, correrlas con `migrate.env` **antes** del `build`
 Los dos primeros comprueban lo que ninguna guarda puede: que el servidor tenga lo que el repositorio dice.
 
 1. **Que la configuración desplegada sea la versionada.** Es el único paso que cierra el hueco de H-1, y es manual a propósito: un test que fingiera comprobarlo sería peor que no tenerlo.
+   **Los seis archivos, no dos.** La versión anterior de este paso comparaba solo los dos de la 9.1 y dejaba fuera los cuatro que agregó la 9.2, pese a ser el paso que este mismo README llama «el único que cierra el hueco de H-1».
+
    ```
    ssh crm-staging 'sudo cat /etc/nginx/sites-available/crm-staging' | diff - deploy/staging/nginx-crm-staging.conf
-   ssh crm-staging 'sudo cat /etc/systemd/system/crm-staging.service' | diff - deploy/staging/crm-staging.service
+   ssh crm-staging 'sudo cat /etc/systemd/system/crm-staging.service'  | diff - deploy/staging/crm-staging.service
+
+   for f in crm-backup.sh crm-restore-check.sh; do
+     ssh crm-staging "sudo cat /usr/local/bin/$f" | diff - "deploy/staging/$f" && echo "$f OK"
+   done
+   for f in crm-backup.service crm-backup.timer crm-restore-check.service crm-restore-check.timer; do
+     ssh crm-staging "sudo cat /etc/systemd/system/$f" | diff - "deploy/staging/$f" && echo "$f OK"
+   done
    ```
 2. **Que siga habiendo un solo salto de proxy.** Si alguna vez hay dos, `session-cookie.ts` lee una IP interna idéntica para todas las peticiones y H-3 vuelve sin que nada falle. La aplicación **no registra** la cabecera en el log, así que no se mira ahí: se mide por consecuencia, con el mismo método del AC-5. La clave del límite por IP es `sha256(ip)` sin sal y queda guardada en `login_attempts.key_hash`, así que comparar hashes decide el asunto sin ambigüedad.
 

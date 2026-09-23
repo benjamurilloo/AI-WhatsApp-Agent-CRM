@@ -96,7 +96,9 @@ OK: la base crm_staging_restore_check_20260922T204210Z fue borrada
 SALIDA: 0
 ```
 
-Las 15 tablas del origen existen en la restauración con el mismo recuento fila por fila. La comparación es contra el origen leído en ese momento: **vale porque staging no tiene tráfico concurrente**, y el script lo declara. En producción haría falta un método consistente con el snapshot, y este no lo es.
+Las 15 tablas del origen existen en la restauración con el mismo recuento fila por fila.
+
+> **Esta corrida es histórica y el razonamiento que la acompañaba era falso.** Decía: «la comparación es contra el origen leído en ese momento, y **vale porque staging no tiene tráfico concurrente**». Desplegar el timer lo desmintió el mismo día — el ejercicio falló por dos escrituras normales de la aplicación posteriores al dump. La premisa deja de valer en cuanto alguien usa la aplicación, que es todo el tiempo. Desde la corrección, el ejercicio compara contra un manifiesto escrito junto al dump; ver «Despliegue de las correcciones» al final de este documento.
 
 ### El primer intento falló, y el defecto era del script
 
@@ -179,16 +181,35 @@ crm_staging-20260923T000000Z.dump
 
 El par completo: borró exactamente los 4 más viejos y **conservó los 7 más nuevos**, incluidos los dos reales. Los `.sha256` acompañaron a sus dumps y no quedó ninguno huérfano (7 dumps, 7 sumas).
 
+**La secuencia completa, que la primera versión no dejaba reconstruir** (R-10). Leída del journal, que registra cada rotación:
+
+```
+$ sudo journalctl -u crm-backup.service -o short-iso --since '20:40' --until '20:56' | grep -E 'backup:|rotado:'
+20:41:24 backup: .../crm_staging-20260922T204124Z.dump
+20:41:24 rotado: nada (hay <= 7 copias)
+20:43:14 backup: .../crm_staging-20260922T204314Z.dump
+20:43:14 rotado: .../crm_staging-20260915T000000Z.dump
+20:43:14 rotado: .../crm_staging-20260916T000000Z.dump
+20:43:14 rotado: .../crm_staging-20260917T000000Z.dump
+20:43:14 rotado: .../crm_staging-20260918T000000Z.dump
+20:44:56 backup: .../crm_staging-20260922T204455Z.dump
+20:44:56 rotado: nada (hay <= 7 copias)
+```
+
+A las 20:43:14 quedaron 7 copias, así que el backup de las 20:44:56 debería haber sido el octavo y rotado uno — y dice «nada». **La explicación es que entre medio borré a mano los 5 dumps falsos que quedaban**, y eso no estaba escrito. Se confirma por ausencia: la rotación registra en el journal cada archivo que borra, y **no hay ninguna línea `rotado:` para esos cinco**, así que no los borró el script. Hoy el directorio no tiene ningún dump falso.
+
+La aritmética de AC-7 no depende de esto: el par que importa —4 borrados, 7 conservados, los 7 lexicográficamente mayores— está en las dos salidas de arriba y se sostiene solo.
+
 ## AC-8 — la copia fuera del droplet
 
 ```
-$ scp crm-staging:<dump> ~/crm-backups/
+$ scp crm-staging:/var/backups/crm-staging/crm_staging-20260922T204314Z.dump ~/crm-backups/
 
 sha256 en el servidor:  6495b375fd4d9f8e53bbb3b1838cb3d0ce1843f96e54163cc2b70289b42c3675
 sha256 de la copia:     6495b375fd4d9f8e53bbb3b1838cb3d0ce1843f96e54163cc2b70289b42c3675
 ```
 
-Idénticos. La copia vive en `~/crm-backups/`, **fuera del repositorio**, para que no haya forma de que termine en un commit.
+Idénticos. **Cuál dump es, que la primera versión elidía** (R-18 de la revisión): el de las 20:43:14, el de AC-7 — no el de AC-1 (`07112d7c…`, 20:41:24) ni el de AC-2 (`0e37109a…`, 20:44:55). Los tres hashes son distintos porque son tres dumps distintos, y sin el nombre del archivo esa diferencia parecía una contradicción. Comprobado el 2026-09-22 con `sha256sum` sobre los cinco dumps del servidor. La copia vive en `~/crm-backups/`, **fuera del repositorio**, para que no haya forma de que termine en un commit.
 
 **Limitación, no detalle**: esta copia es manual (D-1, opción b). Si la máquina de destino no está encendida, ese día no hay copia externa. El almacenamiento de objetos queda registrado como requisito antes de producción.
 
@@ -342,6 +363,131 @@ crm_staging
 Una sola base. La copia del simulacro se borró: en un simulacro `crm_staging_rota` no está rota, es la original sana, y dejar las dos invita a confundir cuál es cuál. En una recuperación real se conserva, y el runbook ahora distingue los dos casos.
 
 ---
+
+## Despliegue de las correcciones — 2026-09-22, y el defecto que encontró
+
+Desplegar lo corregido no fue un trámite: el primer ejercicio disparado **por la unidad**, y no a mano, falló. Queda acá porque es el hallazgo más instructivo de la ronda.
+
+```
+$ sudo systemctl start crm-restore-check.service
+...
+FALLA: lo restaurado no coincide con el origen
+-login_attempts 2
++login_attempts 0
+-sessions 4
++sessions 3
+```
+
+El backup estaba sano. Lo que fallaba era el **instrumento**: comparaba lo restaurado contra los recuentos del origen **leídos en ese momento**, y entre el dump y la comprobación la aplicación había escrito un intento de ingreso y una sesión. El script declaraba ese límite en su encabezado —«los recuentos del origen se leen AHORA»— y yo lo había dado por aceptable razonando que en staging no hay tráfico concurrente. Ejecutarlo mostró que la premisa es falsa en cuanto alguien usa la aplicación, y que con el timer mensual esto habría dado rojo casi todos los meses **por un motivo que no es el backup**.
+
+Es el mismo patrón que R-1, R-5 y R-6: un instrumento que existe, corre, y no hace lo que se espera de él. La diferencia es que este solo aparece cuando se lo dispara de verdad.
+
+**La corrección**: `crm-backup.sh` escribe un `.recuentos` junto al dump, en **una sola sentencia** (recuentos consistentes entre sí) e inmediatamente después del `pg_dump`; el ejercicio compara contra ese manifiesto. Contra el origen se compara solo el **conjunto de tablas**, que no deriva con el tráfico y detecta el caso que el manifiesto no puede ver: una migración desplegada sin que el backup volviera a correr.
+
+**Límite declarado y medible**, porque esto no es atómico: entre el fin del `pg_dump` y la consulta del manifiesto puede entrar una escritura. La ventana pasó de *horas* (backup a las 03:15, ejercicio a las 04:30) a *la que separa dos órdenes consecutivas*. Con volumen crece con la duración del dump, y se vuelve a medir en la 9.3.
+
+### Después de corregir
+
+```
+$ sudo systemctl start crm-restore-check.service
+Result=success   ExecMainStatus=0
+
+OK: 15 tablas coinciden en existencia y en recuento
+OK: el conjunto de tablas del origen es el mismo que el restaurado
+OK: las tablas restauradas siguen siendo de crm_owner
+OK: la base crm_staging_restore_check_20260922T230630Z no existe
+```
+
+La tercera línea es la que prueba que quitar `--no-owner` (R-5) hace lo que tenía que hacer: el dueño se restituye y la próxima migración no va a fallar.
+
+### Que el ejercicio pueda fallar, por las dos vías
+
+**`[transcrito]`**: se elidieron rutas y las líneas intermedias del diff.
+
+```
+$ truncate -s 27998 /tmp/roto.dump            # el dump a la mitad
+$ sudo -u postgres /usr/local/bin/crm-restore-check.sh /tmp/roto.dump
+pg_restore: error: could not read from input file: end of file
+SALIDA: 1
+
+$ sed -i "s/^messages 26$/messages 99/" /tmp/manifiesto.dump.recuentos   # el manifiesto miente
+$ sudo -u postgres /usr/local/bin/crm-restore-check.sh /tmp/manifiesto.dump
+-messages 99
++messages 26
+SALIDA: 1
+
+$ sudo -u postgres psql -d postgres -tAc "select datname from pg_database where datname like '%restore_check%'" | grep . || echo "(psql no imprimio nada: no hay ninguna)"
+(psql no imprimio nada: no hay ninguna)
+```
+
+El segundo control es nuevo y hacía falta: sin él, el manifiesto podría no compararse con nada y el ejercicio pasaría igual.
+
+### El camino de fallo del borrado (R-16)
+
+`dropdb --if-exists … || true` se tragaba el fallo, y la comprobación de no-existencia vivía al final del **camino feliz** — o sea que no corría nunca en el único camino donde el borrado puede fallar de verdad. Se reprodujo el fallo abriendo una conexión contra la base antes de borrarla:
+
+```
+$ createdb "$B"; psql --dbname="$B" -c "select pg_sleep(25)" &   # conexion abierta
+$ dropdb --if-exists "$B" 2>/dev/null || true
+$ psql -d postgres -tAc "select 1 from pg_database where datname='$B'" | grep -q 1 && echo DETECTADO
+DETECTADO: quedo viva la base crm_staging_restore_check_pruebafallo
+```
+
+Ahora el borrado y su comprobación viven los dos en el `trap`, que corre en **todos** los caminos, y el script sale distinto de cero si la base sobrevive.
+
+### El paso 2 del runbook no se podía ejecutar (R-2)
+
+La comprobación de integridad —el primer comando de una recuperación real, el que decide si el backup sirve— estaba escrita sin `sudo`:
+
+```
+$ cd /var/backups/crm-staging
+bash: line 1: cd: /var/backups/crm-staging: Permission denied
+$ cat /var/backups/crm-staging/<elegido>.dump.sha256
+cat: ...: Permission denied
+```
+
+El directorio es `drwxr-x--- root:postgres` y el operador está en `sudo`, no en `postgres`. Un `sudo` delante de cada orden tampoco alcanza: la sustitución `$(cat …)` corre en el shell del usuario. La forma corregida, ejecutada, con su control negativo:
+
+```
+$ sudo bash -c 'cd /var/backups/crm-staging && sha256sum -c <(printf "%s  %s\n" "$(cat ELEGIDO.dump.sha256)" ELEGIDO.dump)'
+crm_staging-20260922T230050Z.dump: OK
+SALIDA: 0
+
+$ printf ZZZZ >> /tmp/x.dump && sudo bash -c 'cd /tmp && sha256sum -c <(...)'
+x.dump: FAILED
+sha256sum: WARNING: 1 computed checksum did NOT match
+SALIDA: 1
+```
+
+### Cinco mutaciones más sobre la guarda
+
+Las de la conducta nueva, ejecutadas sobre los archivos reales. Con las diez de AC-11 son **quince**.
+
+| # | Mutación | Qué causaría | Resultado |
+| --- | --- | --- | --- |
+| M11 | quitar la escritura del manifiesto | el ejercicio vuelve a compararse contra un blanco móvil | **1 falla** |
+| M12 | quitar el corte del manifiesto vacío | un manifiesto vacío hace pasar el ejercicio siempre | **1 falla** |
+| M13 | el ejercicio se compara contra el origen otra vez | la alarma falsa vuelve | **1 falla** |
+| M14 | las dos consultas de recuento divergen | el ejercicio falla por la diferencia entre dos consultas, no por el backup | **1 falla** |
+| M15 | la rotación deja huérfanos los `.recuentos` | el directorio acumula manifiestos de dumps borrados | **1 falla** |
+
+### El servidor tiene lo que el repositorio dice
+
+```
+crm-backup.sh OK              crm-backup.service OK            nginx-crm-staging.conf OK (9.1)
+crm-restore-check.sh OK       crm-backup.timer OK              crm-staging.service OK (9.1)
+                              crm-restore-check.service OK
+                              crm-restore-check.timer OK
+```
+
+Los ocho sin diferencias, comprobado después de desplegar. Y los dos timers agendados:
+
+```
+$ systemctl list-timers 'crm-*' --all
+NEXT                             LEFT         UNIT                     ACTIVATES
+Wed 2026-09-23 03:15:47 UTC      4h 18min     crm-backup.timer         crm-backup.service
+Thu 2026-10-01 04:33:18 UTC      1 week 1 day crm-restore-check.timer  crm-restore-check.service
+```
 
 ## Lo que esta evidencia **no** demuestra
 

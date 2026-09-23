@@ -8,11 +8,13 @@ Procedimiento de recuperación de `crm_staging` ([brief-9.2](../decisions/brief-
 
 | Sección | Estado |
 | --- | --- |
-| Ejercicio mensual | **ejecutado** el 2026-09-22, salidas en [evidencia-9.2](../decisions/evidencia-9.2-backups.md) — pero con la versión del script que todavía llevaba `--no-owner`. La versión corregida, que además comprueba el dueño, **no está corrida en el servidor** |
-| Comprobar que el ejercicio puede fallar | **ejecutado**, y encontró un defecto en este mismo runbook |
-| Comprobar servidor contra repositorio | **ejecutado** |
-| Crear los roles en una **máquina nueva** | **diseñado, no ejecutado** — no hay una segunda máquina donde probarlo |
-| Timer del ejercicio mensual | **versionado, no desplegado** — los archivos están en `deploy/staging/`, el servidor todavía no los tiene |
+| Ejercicio mensual | **ejecutado** el 2026-09-22 con la versión corregida —sin `--no-owner`, comprobando el dueño y contra el manifiesto del dump—, disparado **por la unidad de `systemd`** y no a mano. Salidas en [evidencia-9.2](../decisions/evidencia-9.2-backups.md) |
+| Comprobar que el ejercicio puede fallar | **ejecutado** por las dos vías: dump truncado y manifiesto que no coincide. Encontró un defecto en este mismo runbook |
+| Comprobar que el borrado puede fallar | **ejecutado**: se reprodujo un `dropdb` fallido con una conexión abierta y el ejercicio lo detecta |
+| Comprobar servidor contra repositorio | **ejecutado**, los ocho archivos sin diferencias |
+| Comprobar la integridad antes de restaurar (paso 2) | **ejecutado**, con control negativo. La versión anterior de ese paso **no se podía ejecutar**: faltaba `sudo` |
+| Crear los roles en una **máquina nueva** | **diseñado, no ejecutado** — no hay una segunda máquina donde probarlo. Es lo único de este runbook que no está ejecutado |
+| Timer del ejercicio mensual | **desplegado y habilitado** el 2026-09-22: `crm-restore-check.timer`, próxima corrida el 2026-10-01 |
 | **Recuperación real** (renombrar la base viva) | **ejecutada** el 2026-09-22 como simulacro, de punta a punta: la aplicación quedó corriendo sobre la base restaurada y se verificó con un **ingreso autenticado** desde afuera. Encontró dos defectos en este runbook, corregidos arriba |
 
 ## Antes de empezar: tres trampas que ya costaron tiempo
@@ -48,8 +50,15 @@ sudo ls -lh /var/backups/crm-staging/
 
 # 2. Comprobar que el archivo está entero ANTES de tocar nada.
 #    Si esto no coincide, el backup está corrupto: probar con el anterior.
-cd /var/backups/crm-staging
-sha256sum -c <(printf '%s  %s\n' "$(cat ELEGIDO.dump.sha256)" ELEGIDO.dump)
+#
+#    TODO adentro de un `sudo bash -c`. El directorio es drwxr-x--- root:postgres, así
+#    que ni el `cd` ni el `cat` funcionan como tu usuario, aunque estés en el grupo sudo.
+#    La primera versión de este paso no llevaba sudo y no se podía ejecutar: fallaba con
+#    `Permission denied` en el primer comando de una recuperación real. Medido el
+#    2026-09-22. Un `sudo` delante de cada orden tampoco alcanza — la sustitución de
+#    orden `$(cat ...)` corre en TU shell, no en el de root.
+sudo bash -c 'cd /var/backups/crm-staging && \
+  sha256sum -c <(printf "%s  %s\n" "$(cat ELEGIDO.dump.sha256)" ELEGIDO.dump)'
 
 # 3. Parar la aplicación. Restaurar con la app escribiendo deja un estado mezclado.
 sudo systemctl stop crm-staging
@@ -163,4 +172,5 @@ done
 - **Restaurar al volumen real.** Staging tiene datos sintéticos y pocos. El tiempo de restauración que sale acá no predice el de una base con volumen; esa medición es de la [9.3](../planning/Roadmap.md).
 - **Restaurar en un servicio gestionado.** Podría exigir superusuario para `createdb` o para los `GRANT`. Está sin verificar y condiciona la elección de hosting de producción.
 - **La copia fuera del droplet.** Es manual (D-1, opción b): si la máquina de destino no está encendida, ese día no hay copia externa.
-- **Que alguien sepa hacer esto bajo presión.** Un ejercicio en calma no es un simulacro.
+- **Que el contenido de los datos sea el correcto.** El ejercicio compara qué tablas hay y cuántas filas tienen. **No compara ni un solo valor de columna**, ni índices, ni restricciones, ni triggers — el `messages_insert_only` no se ejercita. Un dump con la cantidad de filas correcta y el contenido alterado pasaría. Lo que acota ese riesgo es el `sha256`: si el archivo es el que el backup escribió, su contenido es el que era.
+- **Que alguien sepa hacer esto bajo presión.** Un ejercicio en calma no es un simulacro. Y hay una variante peor, medida acá: **un runbook ejecutado por quien lo escribió no está ejecutado.** El paso 2 de la recuperación real no se podía correr —faltaba `sudo`— y el simulacro no lo detectó porque lo corrí yo, poniendo el `sudo` por costumbre en vez de leer el texto publicado. Lo encontró una revisión que leyó el texto sin saber la respuesta.

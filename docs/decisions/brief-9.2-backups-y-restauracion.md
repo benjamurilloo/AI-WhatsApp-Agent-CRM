@@ -5,7 +5,7 @@
 - **Nivel de evidencia objetivo**: `isolated-runtime`
 - **Nivel de validación alcanzable**: **validado en staging**, y solo para el **mecanismo**. Esta subfase no puede alcanzar *preparado para producción* y el motivo está en la sección de limitaciones: staging tiene datos sintéticos y un volumen que no se parece al real.
 - **Orden**: después de la **9.1**, cerrada el 2026-09-22.
-- **No abre ni cierra gate.** Los gates de la Fase 9 son la 9.1 (entrada) y la 9.4 (salida), según [Roadmap](../planning/Roadmap.md) §Fase 9. Por lo tanto la revisión independiente **no es obligatoria** acá. Se recomienda igual, por la regla que el mismo Roadmap fijó tras la 9.0.1: *las subfases que dejan guardas o tests como instrumento la llevan*. Esta deja un script y un runbook que son instrumentos de recuperación, y un instrumento de recuperación que no funciona no avisa hasta que hace falta.
+- **No abre ni cierra gate.** Los gates de la Fase 9 son la 9.1 (entrada) y la 9.4 (salida), según [Roadmap](../planning/Roadmap.md) §Fase 9. Por lo tanto la revisión independiente **no es obligatoria** acá. Se recomienda igual, **por analogía y no por regla heredada**. La distinción importa: [Roadmap](../planning/Roadmap.md) §Fase 9 dice que «las subfases **de la 9.0** que dejen guardas o tests como instrumento también la llevan» — está acotado a la 9.0, no es una regla general, y una versión anterior de esta línea citaba el Roadmap habiéndole quitado ese alcance. El argumento para aplicarla acá es propio: esta subfase deja un script, dos unidades de `systemd` y un runbook que son **instrumentos de recuperación**, y un instrumento de recuperación que no funciona no avisa hasta el día que hace falta, cuando ya no se puede corregir.
 - **Sin precondición bloqueante.** La 9.1 dejó el entorno persistente que esta subfase necesita.
 
 ## Objetivo
@@ -159,10 +159,11 @@ Escrito antes de empezar, para que no se lea después como un descubrimiento:
 
 La 9.2 **no abre ni cierra gate**, así que la revisión no era obligatoria. Se hizo igual, por lo que la 9.1 dejó medido: ninguna ronda de trabajo propio de este proyecto resultó limpia al ser revisada por alguien que no participó. La escala de severidad se fijó antes de mirar el código, como manda el protocolo.
 
-Un agente con acceso de solo lectura revisó contra este brief y contra las reglas vigentes: **21 hallazgos, 7 mayores**. Los 21 se verificaron contra el código antes de aceptarse; los mayores se confirmaron **ejecutando** la mutación o leyendo el archivo citado. Ninguno fue rechazado por falso.
+Un agente con acceso de solo lectura revisó contra este brief y contra las reglas vigentes: **21 hallazgos, 8 mayores**. Los 21 se verificaron contra el código antes de aceptarse; los mayores se confirmaron **ejecutando** la mutación o el comando, o leyendo el archivo citado. **Ninguno fue rechazado por falso**, que es la primera vez que eso pasa en el proyecto.
 
 | Id | Hallazgo | Cómo se verificó | Corrección |
 | --- | --- | --- | --- |
+| **R-2** | El paso 2 del runbook —la comprobación de integridad, el primer comando de una recuperación real— no lo puede ejecutar quien sigue el texto: sin `sudo`, y el directorio es `drwxr-x--- root:postgres` | ejecutado en el servidor: `cd` y `cat` responden `Permission denied` | `sudo bash -c '...'` alrededor de todo, porque un `sudo` por orden tampoco alcanza: la sustitución `$(cat …)` corre en el shell del usuario. Ejecutado, con control negativo |
 | **R-3** | La guarda de backup era ciega a `sort -r`, a `OnCalendar` mensual y a la ausencia de `set -euo pipefail` | tres mutaciones ejecutadas: las tres pasaban 20/20 | la guarda **simula** la tubería en vez de buscarla como texto; 42 casos y 10 mutaciones ejecutadas (AC-11 en la evidencia) |
 | **R-1** | El runbook creaba `crm_app` pero no `crm_owner`, así que la recuperación en una máquina nueva fallaría — el único escenario donde la copia externa sirve | lectura del runbook contra la salida medida de `pg_restore` sin el rol | se crean los dos, con comprobación previa, y se declara que ese camino está **diseñado, no ejecutado** |
 | **R-5** | El ejercicio recurrente restauraba con `--no-owner`, que el runbook prohíbe para una recuperación real: nunca ensayaba la restitución de dueño | lectura del script contra el trap 3 del runbook | se quitó el flag y se agregó una comprobación de dueño contra el origen |
@@ -171,10 +172,22 @@ Un agente con acceso de solo lectura revisó contra este brief y contra las regl
 | **R-9** | La evidencia presentaba como salida de `psql` dos cosas que imprimió un `echo` o que escribí yo (`ninguna`, `(ninguna fila)`), y anotaciones editoriales dentro de bloques sin marca `[transcrito]` | lectura contra el comando real | bloques marcados, comando real mostrado, y dicho explícitamente qué salió de dónde |
 | **R-7, R-8** | `HANDOFF` decía «ocho guardas» contra nueve en disco, y afirmaba que **la 9.2 abre gate**, contradiciendo la primera línea de este brief | `ls tests/guards/*.test.ts \| wc -l`; `Roadmap.md` | ambas corregidas, y el recuento ahora dice con qué orden se comprueba |
 
-**Tres cosas que esta revisión deja medidas, y que valen más que las correcciones:**
+**Cuatro cosas que esta revisión deja medidas, y que valen más que las correcciones:**
+
+0. **R-2 es el peor de los ocho y el más barato de evitar.** El primer comando de una recuperación real no se podía ejecutar. No lo detectó el simulacro porque el simulacro lo corrí yo, con `sudo` puesto por costumbre, sin leer el texto publicado. Un runbook «ejecutado» por quien lo escribió no está ejecutado: está confirmado por quien ya sabía la respuesta.
 
 1. **R-9 es la tercera aparición del mismo defecto** (N-8 y T-5 en la 9.1) en el mismo tipo de documento. La regla «crudo y transcrito no son lo mismo» estaba escrita *en el encabezado de la evidencia que la violaba*. Escribir la regla en el documento no alcanza para cumplirla.
 2. **R-3 es la quinta aparición del patrón del detector ciego**, y ocurrió el mismo día en que se escribió la regla de mutación. La regla decía «una mutación por forma sintáctica»; se ejecutaron mutaciones, pero no una por forma. Cumplir la letra de una regla propia no es cumplirla.
 3. **R-1, R-5 y R-6 son la misma falla con tres caras**: el instrumento existía y no hacía lo que se esperaba de él el día que hiciera falta. Ninguno de los tres habría fallado en verde — habrían fallado en una emergencia, que es el único momento en que no se puede corregir.
 
-**Criterio de cierre aplicado**, el mismo que la 9.1 fijó: se cierra cuando ningún hallazgo sea mayor ni toque un instrumento del que dependa un gate. Esta ronda **no lo cumplía** —cuatro de los siete mayores tocaban instrumentos de recuperación—, así que se corrigió antes de commitear en vez de registrar la deuda.
+**Los menores**, corregidos todos: R-10 (la secuencia de AC-7 no era reconstruible: se agregó el journal y se dijo que los dumps falsos los borré a mano), R-12 y R-13 (afirmaciones falsas en `HANDOFF`), R-14 (`Overview` declaraba «diseño» lo que ya está implementado, y dos líneas heredadas de la 9.1 que también eran falsas hoy), R-15 (el ejercicio no compara valores de columna ni índices, y no estaba declarado), R-16 (el `|| true` del borrado), R-17 (un comentario que describía otro comando), R-18 (el `sha256` de la copia externa parecía contradictorio porque faltaba el nombre del archivo), R-19 (una regla del Roadmap citada sin su alcance), R-20 (el README nombraba una guarda de dos y comparaba dos archivos de seis), R-21 (el parser no modelaba la continuación de línea de `systemd`).
+
+### Lo que encontró desplegar las correcciones
+
+La ronda de correcciones es trabajo nuevo, así que se desplegó y se ejecutó en vez de darse por buena. **El primer ejercicio disparado por la unidad falló**, y el defecto era del instrumento: comparaba lo restaurado contra los recuentos del origen leídos en ese momento, y la aplicación había escrito entre el dump y la comprobación. Con el timer mensual habría dado rojo casi todos los meses por un motivo que no es el backup.
+
+Eso obligó a un cambio de diseño que la revisión no pidió y que no estaba en el brief: el backup escribe un **manifiesto de recuentos** junto al dump y el ejercicio compara contra él; contra el origen se compara solo el conjunto de tablas, que no deriva. Cinco mutaciones más sobre la guarda (quince en total) y dos controles negativos nuevos. Todo está en [evidencia-9.2](evidencia-9.2-backups.md) §«Despliegue de las correcciones».
+
+**Es el cuarto instrumento de esta subfase que existía y no hacía lo que se esperaba de él**, después de R-1, R-5 y R-6. Los tres primeros los encontró una revisión leyendo; este solo apareció al dispararlo de verdad. La lección no es que falte revisar más, es que **un instrumento no cuenta como entregado hasta que corre en el lugar donde va a correr, disparado como va a dispararse**.
+
+**Criterio de cierre aplicado**, el mismo que la 9.1 fijó: se cierra cuando ningún hallazgo sea mayor ni toque un instrumento del que dependa un gate. La ronda de revisión **no lo cumplía** —cinco de los ocho mayores tocaban instrumentos de recuperación—, así que se corrigió antes de commitear en vez de registrar la deuda; y el despliegue encontró uno más, que también se corrigió y se midió. A partir de acá no queda ningún hallazgo mayor abierto.

@@ -2,6 +2,36 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-22 — 9.2: el backup se restaura, y seis instrumentos que no hacían lo que decían
+
+Cierre de subfase. **No abre ni cierra gate** —los de la Fase 9 son la 9.1 y la 9.4—, así que la revisión independiente no era obligatoria. Se hizo igual, y fue la decisión que definió la subfase.
+
+**Certifica, con nivel *validado en staging* y ni un escalón más:**
+
+- **Hay backup lógico diario disparado por `systemd`**, con el rol dueño, en formato `custom` —el único que permite restaurar una sola tabla— y rotación de 7 copias. Se observó correr **sin que nadie lo arrancara**.
+- **El backup se restaura y lo restaurado sirve.** El ejercicio crea una base nueva, restaura **sin `--no-owner`**, compara los recuentos contra un manifiesto escrito junto al dump, comprueba que el conjunto de tablas sea el del origen y que el **dueño se haya restituido**, y borra la base comprobándolo. Corre **agendado**, el día 1 de cada mes, después del backup de esa madrugada.
+- **El ejercicio puede fallar, medido por tres vías**: dump truncado, manifiesto que no coincide y `dropdb` que falla con una conexión abierta. Las tres salen distinto de cero.
+- **Se ejecutó un simulacro de recuperación completo**: se renombró la base viva, la aplicación quedó corriendo sobre la restaurada y se verificó con un **ingreso autenticado** desde afuera. Encontró dos defectos del runbook.
+- **La retención de `messages` quedó decidida**: se conservan indefinidamente, con condición de reapertura en la 9.4. **No se agregó ningún mecanismo de expiración** — `git diff` sobre `drizzle/` y `src/` vacío de cambios de esquema, que es como se comprueba una decisión de no hacer algo.
+- **Nueve guardas**, 178 casos. La de backup **simula la tubería de rotación** en vez de buscarla como texto: la extrae del script, la interpreta y afirma qué archivos sobrevivirían. **Quince mutaciones ejecutadas** con su resultado antes y después.
+- **Runbook ejecutado**, no escrito, en [docs/runbooks/restaurar-la-base.md](docs/runbooks/restaurar-la-base.md), y evidencia en [evidencia-9.2](docs/decisions/evidencia-9.2-backups.md).
+
+**No certifica:**
+
+- **Que la recuperación funcione en una máquina nueva.** Crear los roles ahí está **diseñado, no ejecutado**: no hay una segunda máquina. Es el único escenario donde la copia de fuera del droplet sirve, y es el único paso del runbook sin ejecutar.
+- **Que el contenido restaurado sea el correcto.** El ejercicio compara tablas y recuentos. **No compara ni un valor de columna**, ni índices, ni triggers.
+- **Que la restauración funcione al volumen real.** Staging tiene datos sintéticos y pocos; el tiempo medido acá no predice nada. Se vuelve a medir en la 9.3.
+- **Que la copia externa exista todos los días.** Es manual (D-1, opción b): depende de una máquina que puede estar apagada.
+- **Nada de esto es *preparado para producción***: falta cifrado del backup en reposo, y está sin verificar si un servicio gestionado exige superusuario para restaurar — lo que condiciona la elección de hosting.
+
+**Lo que la subfase midió sobre el propio método, y es su resultado:** la revisión independiente informó **21 hallazgos, 8 mayores, y ninguno resultó falso** — la primera vez que eso pasa en el proyecto. Cinco de los ocho mayores eran **instrumentos que existían, corrían en verde y no hacían lo que se esperaba de ellos**: una guarda ciega a `sort -r` que dejaba invertir la rotación para borrar las copias más nuevas; un ejercicio que restauraba con `--no-owner`, o sea sin ensayar el paso que rompe una recuperación real; un ejercicio mensual que nada disparaba; un runbook que no creaba el rol dueño; y el paso 2 del runbook —el primer comando de una recuperación real— que **no se podía ejecutar** por falta de `sudo`.
+
+Ese último es el que más enseña: el simulacro no lo detectó porque lo corrí yo, poniendo el `sudo` por costumbre en vez de leer el texto publicado. **Un runbook ejecutado por quien lo escribió no está ejecutado.**
+
+Y un sexto instrumento apareció al **desplegar** las correcciones: el primer ejercicio disparado por la unidad falló por escrituras normales de la aplicación posteriores al dump, porque se comparaba contra un blanco móvil. Con el timer mensual habría dado rojo casi todos los meses por un motivo que no es el backup. De ahí el manifiesto de recuentos. **Un instrumento no cuenta como entregado hasta que corre en el lugar donde va a correr, disparado como va a dispararse.**
+
+La guarda de backup fue la **quinta** aparición del patrón del detector ciego, y se escribió el mismo día que la regla de mutación que la habría evitado. La regla se afinó en [EngineeringStandards](docs/development/EngineeringStandards.md): **la mutación útil es la que uno espera que pase en verde**, y cuando una guarda comprueba texto donde podría comprobar comportamiento, la salida no es agregar mutaciones sino dejar de comprobar texto.
+
 ## 2026-09-22 — 9.1: staging existe, H-3 cerrado, y cuatro revisiones independientes
 
 Cierre de subfase. **Abre gate**, así que no se cierra con autoevaluación: la revisaron cuatro agentes que no participaron del trabajo, en rondas sucesivas sobre las correcciones de la anterior.
