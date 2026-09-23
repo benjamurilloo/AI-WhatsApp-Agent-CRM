@@ -9,12 +9,12 @@
 
 La 10.3 numera las fases de integración. Mientras tanto, este documento asigna destinos con **cuatro rótulos provisionales**, uno por fase del orden acordado. La 10.3 está obligada a reemplazar cada rótulo por su número en todos los documentos donde aparezca (ver §Traspaso a la 10.3), para que ninguna obligación quede apuntando a un nombre que no existe.
 
-| Rótulo | Fase del orden acordado |
-|---|---|
-| **I-Lectura** | Catálogo comercial, información del negocio y API de servicio de solo lectura; termina con el piloto |
-| **I-Turno** | Contexto del turno: cliente, conversación, derivación, mensajes e historial |
-| **I-Producción** | Producción |
-| **I-Migración** | Migración por CSV |
+| Rótulo | Fase del orden acordado | Número (10.3) |
+|---|---|---|
+| **I-Lectura** | Catálogo comercial, información del negocio y API de servicio de solo lectura; termina con el piloto | **Fase 11** |
+| **I-Turno** | Contexto del turno: cliente, conversación, derivación, mensajes e historial | **Fase 12** |
+| **I-Producción** | Producción | **Fase 13** |
+| **I-Migración** | Migración por CSV | **Fase 14** |
 
 ## 1. Definición de Terminado (AC-1)
 
@@ -53,6 +53,20 @@ La matriz dice *dónde* se satisface cada uno, casi siempre por pantalla, no *qu
 | FR-CONV-05 | `contract.test.ts` («fixtures del contrato (forma asumida)»), `credentials.test.ts` («apagado por defecto»), `ingestion-http.test.ts` caso 5 |
 | FR-MET-01 | `dashboard.spec.ts` casos 2, 7 y 8 |
 | FR-MET-02 | `dashboard.spec.ts` casos 1 y 4 |
+
+> **Corrección del 2026-09-23** (revisión independiente de la Fase 10, M-2): «15 de los 29 aparecen etiquetados en algún test» es falso. **En los tests aparecen 8**: FR-AUD-02, FR-CLI-04, FR-CLI-06, FR-CONV-01, FR-CONV-03, FR-ORG-03, FR-PROD-05 y FR-PROD-07. Los otros siete del recuento —FR-AUD-01, FR-CLI-01, FR-MET-03, FR-PROD-01, FR-PROD-04, FR-PROD-06 y FR-PROD-09— estaban etiquetados en código de `src/`, no en tests, y la tabla de arriba no les daba caso. Buscado ahora por nombre:
+>
+> | FR | Caso que lo prueba |
+> |---|---|
+> | FR-PROD-01 | `products.spec.ts` caso 1; `catalog.test.ts`, `describe("createProduct")`; `catalog-inventory-schema.test.ts` («rechaza un SKU repetido…») |
+> | FR-PROD-04 | `catalog.test.ts` («busca por prefijo de nombre o SKU exacto…» y «filtra por estado de stock y por actividad») |
+> | FR-PROD-06 | `products.spec.ts` casos 5 a 7; `inventory-adjustment.test.ts` |
+> | FR-PROD-09 | `inventory-history.test.ts`; `products.spec.ts` caso 9 |
+> | FR-CLI-01 | `crm.test.ts` («crea el cliente normalizado y lo audita en la misma transacción»); `clients.spec.ts` caso 1 |
+> | FR-AUD-01 | `crm.test.ts`, el mismo caso; `products.spec.ts` caso 3; `clients.spec.ts` caso 5 |
+> | FR-MET-03 | **Ningún caso lo afirma.** Se sostiene de forma indirecta: cada test de métricas calcula el valor desde filas sembradas, y el esquema no tiene ninguna tabla de valores de métricas que se pueda editar |
+>
+> El criterio 1 de §1 sigue **cumplido**, con esa salvedad: 28 de 29 con un caso concreto y FR-MET-03 probado solo de forma indirecta. El «29 de 29» de arriba no se sostenía como estaba escrito.
 
 **Observación, no defecto**: la trazabilidad requisito → caso existe, pero para la mitad de los requisitos solo se reconstruye leyendo nombres de tests. Las fases de integración van a agregar requisitos; conviene que su brief exija la etiqueta en el caso que los prueba. Destino: **I-Lectura**, como convención del primer brief.
 
@@ -107,7 +121,7 @@ Resultado: **se asigna a I-Producción**, con la condición de que el usuario el
 
 ### R-3. Retención de `messages` — **la política vigente sigue; se reabre en I-Producción, antes del primer mensaje real**
 
-La condición de reapertura escrita en la 9.2 es «el primer tráfico real». Ni I-Lectura ni I-Turno lo traen: I-Lectura carga el catálogo y la información del primer negocio, no mensajes, e I-Turno trabaja en staging detrás del modo de prueba. El primer mensaje real llega con el corte a producción.
+La condición de reapertura escrita en la 9.2 es «el primer tráfico real». Ni I-Lectura ni I-Turno lo traen: I-Lectura carga el catálogo y la información del primer negocio, no mensajes, e I-Turno trabaja en staging detrás del modo de prueba. El primer mensaje real llega con el corte a producción. *Corrección del 2026-09-23, decidida por el usuario (revisión independiente de la Fase 10, M-1): I-Lectura (Fase 11) no carga los datos reales del primer negocio, porque staging no recibe datos reales. Los carga la 13.5. El resultado de esta reevaluación no cambia.*
 
 Resultado: **conservar indefinidamente** sigue vigente, y se reabre en **I-Producción**, en una subfase de datos reales que decide la retención junto con el borrado real de los datos de un cliente (§5, O-11). Cualquier horizonte de borrado exige revisar el [ADR 0013](0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md): el trigger `messages_insert_only` rechaza `DELETE` para todo rol.
 
@@ -119,7 +133,7 @@ Fuentes barridas: [HANDOFF.md](../../HANDOFF.md) §3.2 (lo que deja la 9.3), §3
 
 | # | Obligación | Origen | Destino |
 |---|---|---|---|
-| O-1 | La 9.3 se cerró sin revisión independiente | HANDOFF §3.2 | **En curso en esta subfase** (D-6, AC-7) |
+| O-1 | La 9.3 se cerró sin revisión independiente | HANDOFF §3.2 | **En curso en esta subfase** (D-6, AC-7). *Hecha el 2026-09-23 (§6); cerrada, como la cuenta el recuento de abajo* |
 | O-2 | Los planes de la 9.3 son *custom*; no se midió si alguno pasa al plan genérico de las sentencias preparadas | HANDOFF §3.2 | **I-Producción**. Antes de medir, leer en el paquete instalado cómo prepara las sentencias el driver: si no las nombra, la pregunta puede no aplicar |
 | O-3 | El dueño a nivel de base cambia de `postgres` a `crm_owner` al restaurar | HANDOFF §3.2 | **I-Producción**, en el runbook de restauración del entorno productivo |
 | O-4 | AC-2 de la 9.1: la corrida en seco de `certbot renew` y el estado del timer sin salida capturada | HANDOFF §3.3 | **I-Producción**: el certificado productivo no puede depender de algo que nunca se vio renovar |
@@ -139,7 +153,7 @@ Fuentes barridas: [HANDOFF.md](../../HANDOFF.md) §3.2 (lo que deja la 9.3), §3
 | O-18 | `audit_logs.created_at` con `now()` y desempate por `id` | HANDOFF §6 | **Aceptada con condición**: se revisa si una pantalla lo necesita |
 | O-19 | Un worker de Vitest murió una vez con `0xC0000409` en `db-connectivity.test.ts` | HANDOFF §6 | **Aceptada con condición**: no se reprodujo. Se reabre si se repite. El HANDOFF pedía mirarlo «antes de la 9.1» y no se hizo; queda dicho |
 | O-20 | Intermitencia del proyecto `guards` (dos veces) | HANDOFF §6 y §7 | **Aceptada con condición**, igual que O-19 |
-| O-21 | Fallas end-to-end «Target page, context or browser has been closed» y un caso que se multiplicó por catorce en CI | HANDOFF §6 | **I-Lectura**: subir los artefactos de Playwright cuando el paso falla. Es lo que faltó para diagnosticarlo, y la primera fase de integración va a agregar pantallas y end-to-end |
+| O-21 | Fallas end-to-end «Target page, context or browser has been closed» y un caso que se multiplicó por catorce en CI | HANDOFF §6 | **I-Lectura**: subir los artefactos de Playwright cuando el paso falla. Es lo que faltó para diagnosticarlo, y la primera fase de integración (Fase 11) va a agregar pantallas y end-to-end |
 | O-22 | `proxy.ts` se reevalúa con más rutas protegidas | HANDOFF §6 | **Aceptada con condición**: `proxy.ts` solo emite cabeceras. I-Lectura agrega rutas de servicio y verifica que las cabeceras sigan aplicando |
 | O-23 | Los índices de `unaccent` dependen de que el diccionario no cambie | HANDOFF §6 | **Aceptada**, documentada en `drizzle/0015_*` y en DataModel. Se reabre ante cualquier cambio de versión de la extensión |
 | O-24 | Los tests de `EXPLAIN` de la 9.0.2 prueban forma, no tiempo | HANDOFF §6 | **Aceptada**: el tiempo se midió en la 9.3 |
@@ -206,6 +220,12 @@ El cierre de la 9.3 no se borra: [brief-9.3](brief-9.3-datos-de-volumen-en-stagi
 
 R-8 (el control negativo no ejercitó dos de sus clases), R-11 (parámetros registrados una sola vez), R-13 (las mutaciones de la guarda de identidad son simuladas y una codificación aditiva pasaría), R-15 (la causa del cambio de índice en «Clientes, total» no se separó de `random_page_cost`), R-17 (nivel de validación inflado), R-19 (`effective_cache_size`: 4.096 / 961 = 4,26 veces, no «seis»), R-20 (el «1» previo de `n_distinct` no se midió), R-21 (el recorrido escribe sesiones), R-22 (+11 % del dashboard llamado ruido sin evidencia).
 
+> **Corrección del 2026-09-23** (revisión independiente de la Fase 10, M-3): aceptar sin verificar no cumplía AC-7. Verificados después, contra la evidencia y los scripts:
+>
+> - **Confirmados (5)**: R-8 —la salida del control negativo (`evidencia-9.3`, §El control negativo) no tiene ninguna línea de la clase «petición fallida»: el 404 aparece como error de consola, y la clase de contenido se ejercitó con una expresión imposible—; R-15 —el cambio de índice de «Clientes, total» coincide con el cambio de parámetros y con las veinte organizaciones, y ninguna medición los separa—; R-19 —`brief-9.3:54` dice «unas seis veces», y 4.096 / 961 = 4,26—; R-20 —la evidencia solo tiene el `n_distinct` posterior a `ANALYZE`; el «1» previo que cita el Roadmap no se midió—; R-21 —`recorrer-pantallas.ts` ingresa por `/login`, y cada ingreso crea una sesión en la base de staging.
+> - **De criterio, aceptado (1)**: R-17. La evidencia declara «validado en staging», y con R-3, R-4 y R-7 confirmados el nivel no se sostiene para todo el alcance.
+> - **No reproducidos (3)**: R-11, R-13 y R-22. No encontré en la evidencia el «+11 %» de R-22, ni pude comprobar la codificación aditiva de R-13 o el registro único de parámetros de R-11 sin ejecutar nada. **Quedan como no verificados, no como aceptados**, y no sostienen ninguna conclusión de esta evaluación.
+
 ### R-18 — lo que toca al gate de la Fase 9
 
 El revisor señala una contradicción que no le corresponde resolver, y que este documento tampoco resuelve solo: el [ExecutionProtocol](../development/ExecutionProtocol.md) exige revisión independiente a toda subfase cuyo resultado abra o cierre un gate; el brief-9.3 dice que no cierra ninguno; y el [Roadmap](../planning/Roadmap.md) §Fase 9 cerró el gate de salida contando el AC-10 de la 9.3 como uno de sus dos criterios cumplidos.
@@ -225,3 +245,13 @@ Lo que la 10.3 recibe de esta subfase, y tiene que cumplir para no dejar huérfa
 - Reemplazar **I-Lectura, I-Turno, I-Producción e I-Migración** por los números de fase, aquí y en todos los documentos que los usen, y bajar cada obligación asignada a una subfase de esa fase. Fuera de este documento los rótulos se escribieron en prosa, así que la búsqueda tiene que cubrir las dos formas: `grep -rn "I-Lectura\|I-Turno\|I-Producción\|I-Migración\|primera fase de integración\|fase del contexto del turno\|fase de producción de la integración" docs`. Los documentos tocados por esta subfase son `Overview.md`, `DataModel.md`, `SecurityModel.md`, `NonFunctionalRequirements.md` y `Risks.md`.
 - Escribir la opción de decisión que el Roadmap no tiene (§3).
 - Dejar la protección de rama (R-2) como decisión del usuario con fecha límite en I-Producción.
+
+## 7. Decisión del usuario (10.3, AC-17)
+
+**2026-09-23: continuar ampliando el alcance.** Con las palabras del usuario: «Continuar ampliando». Es la opción que la 10.3 agregó al [Roadmap](../planning/Roadmap.md) §Criterios (C-2): sobre el backend validado, sin volver a la Fase 1, con el alcance nuevo en las Fases 11 a 14.
+
+Tomada con la brecha a la vista, no derivada de los criterios:
+
+- **Criterios de la Definición de Terminado incumplidos: uno**, el 4 (piloto en staging sin bloqueantes, con datos sintéticos), **incumplido por decisión**. El piloto es ahora la subfase 11.4.
+- **Salvedad sobre un criterio cumplido**: el 1 (todos los FR probados) se sostiene con 28 de 29 FR con un caso concreto y FR-MET-03 probado solo de forma indirecta (§2, corrección).
+- **El criterio de «continuar» como estaba escrito no se cumplía** (§3): la decisión es del usuario, como lo permite el gate de salida.

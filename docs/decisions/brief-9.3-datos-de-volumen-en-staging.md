@@ -244,7 +244,7 @@ La condición de detención 1 queda **levantada**: D-1 a D-4 están resueltas.
 
 - **Que el sistema rinde en producción.** Un núcleo, 961 MB y la base compartiendo máquina con la aplicación. Los milisegundos de acá no predicen los de allá, y el brief no va a presentarlos como si lo hicieran.
 - **Que los planes de producción serán estos.** Dependen de los parámetros de costo y de las estadísticas reales. Con D-2(a) dependen de un modelo de costo *correcto para esta máquina*, que no es el de producción.
-- **Que la distribución elegida es la real.** Es una hipótesis sobre cómo se van a repartir las organizaciones, declarada como tal. Si el uso real resulta distinto, la medición se rehace — y eso es de la Fase 10, no una falla de acá.
+- **Que la distribución elegida es la real.** Es una hipótesis sobre cómo se van a repartir las organizaciones, declarada como tal. Si el uso real resulta distinto, la medición se rehace — y eso es de la Fase 10, no una falla de acá. *Nota del 2026-09-23 (revisión independiente de la Fase 10, m-1): la Fase 10 no la tomó; pasa a la 13.2, junto con O-39, con el uso real a la vista.*
 - **Nada sobre concurrencia.** Ni un solo usuario simultáneo se ejercita acá.
 - **Que la métrica 12 funciona con datos reales.** Sigue sin emisor.
 
@@ -300,4 +300,4 @@ Hecha dentro de la 10.1, por decisión del usuario ([brief-10](brief-10-evaluaci
 - **22 hallazgos: 0 bloqueantes, 10 mayores, 6 menores y 6 notas.** Los de más peso se verificaron contra el código y se confirmaron todos.
 - **La condición de cierre que esta subfase se fijó a sí misma no se cumple.** §Revisión independiente decía: «ningún hallazgo sea mayor ni toque un número que vaya a citarse». Hay diez mayores, y tocan justamente los números que se iban a citar: el dashboard «de doce métricas», los «productos ajenos», la «paginación profunda» y los planes.
 - **El gate de la Fase 9** se cerró contando el AC-10 de esta subfase como criterio cumplido. Con R-7, lo que el AC-10 prueba es que las diez pantallas cargan sin error de consola, excepción ni petición fallida, no que muestren su contenido. **El usuario estuvo de acuerdo el 2026-09-23 en registrarlo sin reabrir el cierre.** Y queda registrada la contradicción que el revisor señaló: esta sección decía que la subfase «no abre ni cierra gate», y su resultado alimentó uno, que es el caso en que el [ExecutionProtocol](../development/ExecutionProtocol.md) exige la revisión.
-- Lo que falta medir va a la fase de producción de la integración, y los instrumentos que corregir a la primera fase de integración ([evaluación 10.1](evaluacion-10.1-mvp.md), O-39 y O-40).
+- Lo que falta medir va a la fase de producción de la integración (Fase 13), y los instrumentos que corregir a la primera fase de integración (Fase 11) ([evaluación 10.1](evaluacion-10.1-mvp.md), O-39 y O-40).

@@ -213,7 +213,7 @@
   - el volumen es determinista (misma huella con el mismo tamaño), queda en su propia organización y un tamaño mayor conserva las filas existentes;
   - ninguno corre fuera de una base `_dev`, `_test` o `_e2e`.
 - Los fixtures de métricas incluyen bordes temporales: un mensaje cerca de la medianoche local que en UTC cae en otro día, y un día con cambio de horario.
-- Los payloads de ingestión del MVP se marcan en el propio fixture como **forma asumida, no verificada**, porque todavía no existe un emisor real. En el proyecto de integración se derivan de capturas reales del emisor, y recién ahí cuentan como evidencia de compatibilidad.
+- Los payloads de ingestión del MVP se marcan en el propio fixture como **forma asumida, no verificada**, porque todavía no existe un emisor real. En el proyecto de integración (Fase 12, 12.3) se derivan de capturas reales del emisor, y recién ahí cuentan como evidencia de compatibilidad.
   - Desde la 6.5.1 viven en `tests/fixtures/ingestion/v1/`, fuera de un test, porque los usan la validación (6.5.1) y la ingestión (6.5.2).
   - Cada archivo declara `"shape": "assumed"` con una nota, el payload, la hora de recepción y el resultado esperado.
   - `src/modules/ingestion/contract.test.ts` los recorre y exige el marcador. También cubre cada regla del [contrato](../contracts/ingestion-v1.md) y el vector de `payload_hash`.

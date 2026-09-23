@@ -12,7 +12,7 @@ generated_at: 2026-09-23
 - **Nivel de evidencia objetivo**: ninguno nuevo. La fase **no produce evidencia de runtime**: cada veredicto cita la evidencia vigente con el nivel que ya tiene, y ninguno sube de nivel por figurar en el informe.
 - **Orden**: después de la **Fase 9**, cerrada el 2026-09-23 con el gate enmendado.
 - **Gate de entrada**: Fase 9 cerrada — cumplido (`15c8faf`, CI `success`). **Gate de salida**: decisión explícita del usuario ([Roadmap](../planning/Roadmap.md) §Fase 10). La subfase que lo cierra (10.3) lleva **revisión independiente obligatoria** ([ExecutionProtocol](../development/ExecutionProtocol.md), paso 4b).
-- **Estado de este documento**: **aprobado el 2026-09-23**, con D-1 a D-7 resueltas por la recomendación. Ver §Resolución.
+- **Estado de este documento**: **aprobado el 2026-09-23**, con D-1 a D-7 resueltas por la recomendación. Ver §Resolución. **Cerrado el 2026-09-23**: las tres subfases y la fase, con la decisión del usuario.
 
 ## Objetivo
 
@@ -166,6 +166,10 @@ La aprobación del brief no autoriza commits, push ni operaciones en staging: se
 - `README.md` de la raíz: el principio 6 («proyecto futuro separado») y la frase de «Qué es» sobre integrarse por un contrato de ingestión. Su sección «Estado», desactualizada desde la Fase 8, **no** se toca acá: se corrige al cerrar la 10.3, con el HANDOFF.
 - `docs/decisions/0001-base-de-datos-propia-sin-airtable.md`: solo una nota fechada al final, sin reescribir la consecuencia que cita el «proyecto futuro de migración».
 
+**Ampliación autorizada durante la 10.3** (2026-09-23, por el usuario, opción «a»): la [evaluación 10.1](evaluacion-10.1-mvp.md) §Traspaso manda reemplazar los rótulos provisionales «en todos los documentos que los usen», y siete de esos documentos no estaban en la lista de la 10.3. Inconsistencia interna de este brief, detectada antes de escribir, reportada y resuelta. Se suman `Overview.md`, `DataModel.md`, `SecurityModel.md`, `NonFunctionalRequirements.md`, `IntegrationBoundaries.md`, el ADR 0014 y `brief-9.3`, más la evaluación 10.1 fuera de su decisión, **solo** para agregar el número de fase junto al rótulo, sin reescribir el texto. Las entradas ya cerradas de `CHANGELOG.md` no se tocan: son historia.
+
+**Segunda ampliación de la 10.3** (2026-09-23, por el usuario, a partir de la revisión independiente de la fase): se suman, **solo** para notas fechadas o números de fase, sin borrar texto: la evaluación 10.1 (correcciones de M-1, M-2, M-3 y m-5), `brief-9.3` (m-1), `docs/contracts/ingestion-v1.md` y `docs/development/TestingStrategy.md` (número junto a «proyecto de integración», m-3), `docs/README.md` (la frase de independencia, m-4), `docs/decisions/README.md` (índice, m-6) y el ADR 0003 (nota de la decisión, n-2). En la misma respuesta el usuario decidió que **los datos reales del primer negocio entran en la Fase 13**, no antes (M-1).
+
 ## Criterios de las reevaluaciones
 
 Fijados antes de mirar, como manda la convención de la 8.4 (D-2) y la 8.5 (D-1).
@@ -268,3 +272,61 @@ Aprobado por el usuario. Todo es **autoevaluación**; la revisión obligatoria d
 - **AC-12**: ninguna prohibición cambió; la guarda de referencias prohibidas, 10 de 10 en verde, sin modificarse.
 
 **Lo que pasa a la 10.3**: `Roadmap.md:183` y el resto de C-2 y C-3, y la sección «Estado» de `README.md`, desactualizada desde la Fase 8.
+
+## Resultados de la 10.3
+
+### Cumplimiento del traspaso de la evaluación 10.1
+
+Los rótulos quedan numerados en la tabla de [evaluación 10.1](evaluacion-10.1-mvp.md) §Destinos provisionales, y cada destino baja a una subfase del [Roadmap](../planning/Roadmap.md). *Esta tabla estaba primero en la evaluación; la revisión independiente (M-4) señaló que excedía la ampliación, que solo permitía agregar números allí, y se trasladó acá.*
+
+| Subfase | Obligaciones y decisiones de esta evaluación | Preguntas de las brechas y hallazgos del brief |
+|---|---|---|
+| 11.0 | O-8, O-21, O-40; `cancel-in-progress` en `main` (R-2, a registrar); convención de etiquetar los FR (§2) | — |
+| 11.1 | O-17 (con su condición) | — |
+| 11.3 | R-1, piezas 1 y 2; O-22 y O-33 (comprobaciones de sus condiciones) | pregunta 5 (límite de 120/min); C-6 (nombre del emisor frente a la guarda) |
+| 11.4 | O-10, O-36 | — |
+| 12.1 | R-3: decidir si las pruebas usan datos personales reales, y adelantar la reapertura si los usan | — |
+| 12.2 | — | preguntas 1 (derivación) y 2 (vencimiento de sesión) |
+| 12.3 | O-34, O-35 | — |
+| 12.4 | — | pregunta 3 (memorias, B-10) |
+| 13.1 | O-3, O-4, O-6, O-7, O-27, O-29, O-31, O-38; R-2 (decisión del usuario antes del primer despliegue); O-9 si se reabre | — |
+| 13.2 | O-2, O-39 | — |
+| 13.3 | R-1, pieza 3 y la reevaluación de APM | pregunta 6 (disponibilidad) |
+| 13.4 | R-3, O-11 | — |
+| 14.1 | — | pregunta 4 (qué se migra) |
+
+**Recuento**, contado fila por fila contra la evaluación, §5: las 5 de I-Lectura, las 2 de I-Turno y las 11 de I-Producción tienen subfase (18 de 18); las tres reevaluaciones también, en las piezas en que se dividieron; las seis preguntas y C-6, también. I-Migración no tenía obligaciones heredadas: solo la pregunta 4.
+
+## Cierre de la 10.3 y de la Fase 10 — 2026-09-23
+
+Aprobado por el usuario («sí», 2026-09-23), con la decisión de salida: continuar ampliando el alcance.
+
+### Criterios de la 10.3
+
+Autoevaluación, contrastada con la revisión independiente de la fase (abajo).
+
+- **AC-13**: las Fases 11 a 14 en el [Roadmap](../planning/Roadmap.md), cada una con objetivo, alcance, brechas, subfases, entregables, criterios de aceptación y gates de entrada y salida.
+- **AC-14**: el piloto es la **11.4**, después de la 11.1 (catálogo) y la 11.2 (información del negocio), y antes de la carga de los datos del primer negocio, que el usuario ubicó en la **13.5**. La condición de la Fase 9 figura cumplida, con la referencia.
+- **AC-15**: las seis preguntas de las brechas en 11.3, 12.2 (dos), 12.4, 13.3 y 14.1; B-10 en la 12.4; C-6 en la 11.3.
+- **AC-16**: §Criterios, §Fases futuras, §Camino crítico y §Decisiones enmendados, con el texto anterior tachado.
+- **AC-17**: decisión del usuario del 2026-09-23, **continuar ampliando el alcance**, registrada en la [evaluación 10.1](evaluacion-10.1-mvp.md) §7 y en el Roadmap §Fase 10, con los criterios incumplidos a la vista.
+- **AC-18**: revisión independiente hecha, hallazgos verificados y registrados abajo; ninguno bloqueante.
+
+### Revisión independiente de la fase (D-7)
+
+Hecha el 2026-09-23 con el subagente `independent-reviewer`, de solo lectura, contra este brief y las reglas vigentes, sobre la 10.1, la 10.2 y la 10.3. `self_assessment: false`. No pudo leer Git, la CI ni Notion. **23 hallazgos: 0 bloqueantes, 7 mayores, 11 menores, 5 notas.** Verificados antes de aceptarse:
+
+| # | Qué | Verificación | Resolución |
+|---|---|---|---|
+| M-1 | Contradicción sobre cuándo entran los datos reales del primer negocio | confirmada: Roadmap §Fase 9, evaluación §4 y `Environments.md:17` | **el usuario decidió: Fase 13 (13.5)**; notas fechadas en Roadmap y evaluación |
+| M-2 | «15 FR etiquetados en tests» es falso: son 8 | confirmada con `grep` en `tests/` | corrección en la evaluación §2, con un caso para 6 de los 7 restantes; FR-MET-03 solo indirecto |
+| M-3 | Nueve hallazgos de la 9.3 aceptados sin verificar | confirmada por lectura | verificados: 5 confirmados, 1 de criterio, 3 no reproducidos y declarados así |
+| M-4 | La tabla de subfases excedía la ampliación en la evaluación | confirmada | trasladada a este brief, §Resultados de la 10.3 |
+| M-5 | La Fase 12 planifica escrituras que el ADR 0014 no prevé | confirmada: `0014:16` | registrada en el Roadmap como decisión previa de la 12.1, con ADR si es tercera superficie |
+| M-6 | El importador de la Fase 14 choca con la prohibición de mappers de Airtable | confirmada por lectura de `CLAUDE.md` | registrado en el Roadmap: la 14.1 lo resuelve antes de diseñar o se detiene y eleva |
+| M-7 | Filas de Risks con destinos vencidos | confirmada: filas de personas y de borrado real | notas fechadas |
+| m-1 a m-11 | Rótulos sin número, «proyecto de integración», la frase de `docs/README.md`, O-1 en curso, índice de decisiones, CHANGELOG por subfase, protección de rama en dos lugares, tráfico real de la 13.5, campos faltantes de las Fases 11 a 14, filas de Risks | confirmadas | corregidas; las que estaban fuera de la lista, con la segunda ampliación. La m-7 se resuelve con una sola entrada de CHANGELOG que cubre las tres subfases, y queda dicho ahí |
+| n-1 a n-4 | Corrección de O-42 en el CHANGELOG, frase en futuro del ADR 0003, subfase que cierra el gate de la Fase 12, dependencia de la 11.0 | confirmadas | corregidas (la 12.5 es nueva) |
+| n-5 | Numeración de las seis preguntas | verificada contra el documento de brechas, §7 | coincide; sin cambio |
+
+**Recuento**: 7 + 11 + 5 = 23. Ninguno quedó abierto. Esta revisión es **una sola pasada**: no garantiza que no quede otro defecto.

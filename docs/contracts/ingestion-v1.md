@@ -176,6 +176,6 @@ La hace `conversations` con la transacción de `ingestion` (brief-6.5.2, D-2).
   - en `tests/integration/ingestion.test.ts` (6.5.2), contra PostgreSQL real: la proyección, el cliente, las fechas y el estado, los tres tipos de reenvío, los rechazos sin registro, la reversión ante un error inesperado y dos casos de entregas simultáneas.
   - en `tests/integration/ingestion-http.test.ts` (6.5.3), contra PostgreSQL real: las respuestas y sus encabezados, la credencial (ausente, desconocida, mal formada, revocada, fuera de la allowlist, o reemplazada por una sesión del CRM), el modo de prueba, el cuerpo (tipo, tamaño y UTF-8), el límite de tasa también bajo concurrencia, el token guardado solo como hash y el log sin secretos;
   - en `tests/e2e/ingestion.spec.ts` (6.5.3), contra `next start`: un evento aceptado que aparece en la pantalla 8, y los `401`. Los requests son sintéticos, así que no es evidencia de integración con un emisor.
-- **Sin validar hasta el proyecto de integración**:
+- **Sin validar hasta el proyecto de integración (Fase 12, 12.3)**:
   - la compatibilidad con un emisor real;
   - la autenticación con su tráfico ([Risks](../planning/Risks.md)).

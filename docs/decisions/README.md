@@ -80,8 +80,8 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-9.1](brief-9.1-infraestructura-de-staging.md) | 9.1 — Infraestructura de staging | aprobado y cerrado el 2026-09-22, tras cuatro revisiones independientes |
 | [brief-9.2](brief-9.2-backups-y-restauracion.md) | 9.2 — Backups y restauración | aprobado y cerrado el 2026-09-22, tras una revisión independiente no obligatoria |
 | [brief-9.3](brief-9.3-datos-de-volumen-en-staging.md) | 9.3 — Datos de volumen en staging | aprobado y cerrado el 2026-09-23 sin revisión independiente; **revisada después, en la 10.1**: 22 hallazgos, 10 mayores |
-| [brief-10](brief-10-evaluacion-del-mvp.md) | Fase 10 — Evaluación del MVP (10.1 a 10.3, un solo brief) | aprobado el 2026-09-23; 10.1 cerrada el 2026-09-23 |
-| [evaluacion-10.1](evaluacion-10.1-mvp.md) | 10.1 — El MVP contra su Definición de Terminado | cerrada el 2026-09-23 |
+| [brief-10](brief-10-evaluacion-del-mvp.md) | Fase 10 — Evaluación del MVP (10.1 a 10.3, un solo brief) | aprobado y cerrado el 2026-09-23: 10.1, 10.2 y 10.3 cerradas; decisión del usuario: continuar ampliando el alcance |
+| [evaluacion-10.1](evaluacion-10.1-mvp.md) | 10.1 — El MVP contra su Definición de Terminado | cerrada el 2026-09-23; corregida en la 10.3 por la revisión independiente, con la decisión en §7 |
 | [evidencia-9.1](evidencia-9.1-staging.md) | 9.1 — Salidas crudas de la verificación en staging | captura del 2026-09-22 |
 | [evidencia-9.2](evidencia-9.2-backups.md) | 9.2 — Backup y restauración verificados en staging | captura del 2026-09-22 |
 | [evidencia-9.3](evidencia-9.3-volumen.md) | 9.3 — Volumen, planes y tiempos medidos en staging | captura del 2026-09-23 |

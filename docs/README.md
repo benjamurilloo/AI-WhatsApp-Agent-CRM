@@ -1,6 +1,6 @@
 # Documentación — AI WhatsApp Agent CRM
 
-Este repositorio es la fuente técnica de verdad del proyecto: diseño, contratos de datos, decisiones y, más adelante, código y migraciones. Pese al nombre, es independiente del agente de WhatsApp ([architecture/IntegrationBoundaries.md](architecture/IntegrationBoundaries.md)).
+Este repositorio es la fuente técnica de verdad del proyecto: diseño, contratos de datos, decisiones y, más adelante, código y migraciones. Pese al nombre, es independiente del agente de WhatsApp en código, infraestructura y base de datos ([architecture/IntegrationBoundaries.md](architecture/IntegrationBoundaries.md)). *Enmendado el 2026-09-23 ([ADR 0014](decisions/0014-el-agente-de-whatsapp-como-consumidor-del-crm.md))*: el agente es un **consumidor** del CRM, por contratos de servicio versionados que el CRM diseña desde su propio modelo, y nunca al revés.
 
 ## Estado actual
 

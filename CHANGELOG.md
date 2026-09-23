@@ -2,6 +2,51 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-23 — Fase 10 cerrada (Evaluación del MVP): continuar ampliando el alcance
+
+Cierra con la **decisión explícita del usuario**, que es su gate de salida: **continuar ampliando el alcance**, sobre el backend validado, hacia las Fases 11 a 14 de integración con el agente de WhatsApp. La decisión se tomó con la brecha a la vista, no se derivó de los criterios. Un solo [brief](docs/decisions/brief-10-evaluacion-del-mvp.md) con tres subfases, sin código. Esta entrada cubre las tres: la 10.1 y la 10.2 cerraron sin entrada propia, porque el brief reservaba `CHANGELOG.md` para el cierre de la fase, aunque el [ExecutionProtocol](docs/development/ExecutionProtocol.md) pide una por subfase. Queda dicho.
+
+**Certifica:**
+
+- **10.1 — Evaluación** ([evaluación 10.1](docs/decisions/evaluacion-10.1-mvp.md), `15597ee`):
+  - la Definición de Terminado de `15c8faf` con **cinco de seis criterios cumplidos** y el piloto **incumplido por decisión**;
+  - el usuario confirmó que el backoffice resuelve el dolor de la visión;
+  - las tres reevaluaciones heredadas: APM, tres piezas mínimas antes de producción; protección de rama, decisión del usuario antes del primer despliegue productivo; retención, sigue y se reabre en la 13.4;
+  - 42 obligaciones inventariadas, cada una con destino;
+  - la revisión independiente de la 9.3.
+- **10.2 — Enmiendas** (`347f88c`):
+  - el [ADR 0014](docs/decisions/0014-el-agente-de-whatsapp-como-consumidor-del-crm.md): el agente es consumidor del CRM, por contratos versionados diseñados desde el modelo del CRM, con dependencia unidireccional; la migración es una fase de este repositorio, por CSV y nunca por la API de Airtable. Reemplaza parcialmente al ADR 0003;
+  - enmiendas fechadas, con el texto anterior visible, en once archivos;
+  - `CLAUDE.md` cambió en una sola frase, y **ninguna prohibición cambió**.
+- **10.3 — Roadmap y decisión**:
+  - las **Fases 11 a 14** en el [Roadmap](docs/planning/Roadmap.md): lectura (con el **piloto como subfase propia, la 11.4**), contexto del turno, producción y migración;
+  - cada fase con objetivo, alcance, brechas, subfases, entregables, criterios y gates;
+  - las 18 obligaciones con destino de integración, las tres reevaluaciones, las seis preguntas abiertas de las brechas y C-6, cada una en **una** subfase;
+  - una opción de decisión nueva, «continuar ampliando el alcance», que ninguna de las tres escritas describía.
+- **Revisión independiente de la fase** (obligatoria, D-7): 23 hallazgos, **0 bloqueantes**, 7 mayores, 11 menores y 5 notas, verificados antes de aceptarse. Corrigió:
+  - un recuento falso de la propia evaluación: 8 FR etiquetados en tests, no 15;
+  - nueve hallazgos de la 9.3 que se habían aceptado sin verificar;
+  - una contradicción sobre cuándo entran datos reales: el usuario decidió que en la **Fase 13**, nunca en staging;
+  - y registró antes de llegar dos choques futuros: escrituras de servicio que el ADR 0014 no prevé (12.1) y un importador de CSV frente a la prohibición de mappers de Airtable (14.1).
+
+**No certifica:**
+
+- **El piloto**: no hubo, y el criterio 4 de la Definición de Terminado queda incumplido.
+- **FR-MET-03** (ninguna métrica editable) no tiene ningún caso que lo afirme: se sostiene de forma indirecta. Los otros 28 FR tienen un caso concreto.
+- **Nada nuevo sube de nivel.** La fase no produjo evidencia de runtime: cita la vigente con el nivel que ya tenía.
+- **Tres hallazgos de la revisión de la 9.3 (R-11, R-13 y R-22) no se pudieron reproducir** y quedan como no verificados.
+- **La revisión independiente es una sola pasada**: no garantiza que no quede un defecto más.
+
+**Correcciones a entradas anteriores** (O-42; las entradas no se reescriben):
+
+- **Entrada «9.3: veinte organizaciones…»**:
+  - los «4.309 productos que no son suyos» son **3.800 ajenos y 509 inactivos de la propia organización** (los 3.806 clientes sí son ajenos);
+  - «las doce métricas en paralelo, 226,8 ms» midieron **diez llamadas, sin la métrica 12**, y sin comprobar su resultado;
+  - la «página profunda» es la **página 100**, no la última.
+- **Entrada «Fase 9 cerrada»**: «las 10 pantallas funcionan sin errores con volumen» probó que cargan sin error, **no que muestren su contenido**. La comprobación de contenido coincide con el menú en 6 de 9 pantallas. El usuario decidió registrarlo sin reabrir el cierre.
+
+---
+
 ## 2026-09-23 — Fase 9 cerrada (Staging y piloto controlado), con el gate enmendado
 
 Cierra contra los criterios del [Roadmap](docs/planning/Roadmap.md) **salvo uno, por decisión del usuario**. Cuatro subfases cerradas —la 9.0 con sus cuatro hijas, la 9.1, la 9.2 y la 9.3— y la **9.4 disuelta sin abrirse**. CI en verde en el commit de cierre de cada subfase.
