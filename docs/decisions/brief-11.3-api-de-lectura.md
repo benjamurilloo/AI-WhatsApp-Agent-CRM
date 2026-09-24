@@ -6,7 +6,7 @@
 - **Nivel de validación alcanzable**: **validado localmente y en CI**. **No** llega a validado en integración: el contrato no tiene consumidor. Según el gate de la Fase 11, eso se declara y no se infiere ([Roadmap](../planning/Roadmap.md) §Fase 11). Nada se despliega a staging. El primero en usarlo allá es el piloto (11.4).
 - **Orden**: va después de la 11.1 y de la 11.2, que cerraron el 2026-09-24. La 11.4 depende de esta subfase.
 - **No abre ni cierra gate.** El gate de salida de la Fase 11 lo cierra la 11.4. La revisión independiente no es obligatoria. Se recomienda igual (D-12): es la primera superficie de lectura del CRM hacia otro sistema.
-- **Estado de este documento**: **aprobado el 2026-09-24**, con las doce decisiones resueltas por la recomendación (ver §Resolución). En implementación.
+- **Estado de este documento**: **aprobado el 2026-09-24**, con las doce decisiones resueltas por la recomendación (ver §Resolución). **Cerrado el 2026-09-24** (ver §Cierre de la subfase).
 
 ## Objetivo
 
@@ -543,5 +543,24 @@ Un agente que no participó, de solo lectura, revisó las dos etapas contra este
   - 6 en `service-read-entry-points`.
 - **End-to-end completo** (`npm run build` y `npm run test:e2e`): **97 de 97**, con el caso nuevo de `/api/read/v1/knowledge`. Corrió antes de las correcciones de la revisión. Esas correcciones tocan tests de integración, guardas, documentos y un comentario de `knowledge/service.ts`; ninguna cambia código que corra en `next start`.
 - `format:check`, `lint` y `typecheck`, limpios.
-- **CI**: pendiente del push, que necesita autorización.
+- **CI**, commit `4066a53`, run 36071051286: **`success` en el intento 1**, leída por `headSha`.
 - **Nivel**: validado localmente (`deterministic`). **No validado en integración**: ningún consumidor usa el contrato, y los fixtures tienen forma asumida. Se valida con el agente en la 12.3.
+
+## Cierre de la subfase, 2026-09-24
+
+El usuario autorizó el commit y el push de la 11.3.2 y el cierre de la subfase en el mismo turno.
+
+- **Implementación**:
+  - 11.3.1 en `2eb1110`: CI 36065777017, `success` en el intento 2, después de un fallo intermitente conocido en `conversations.spec.ts`;
+  - 11.3.2 en `4066a53`: CI 36071051286, `success` en el intento 1.
+- **Criterios**: AC-1 a AC-15, cumplidos. El detalle de cada uno está en §Resultados de cada etapa.
+- **Revisión independiente** (D-12): nueve hallazgos, todos confirmados y resueltos. R-1 se resolvió corrigiendo la documentación, no la conducta.
+- **Nivel alcanzado**: **validado localmente y en CI**. **No validado en integración**: el contrato no tiene consumidor, y sus fixtures tienen forma asumida. Nada se desplegó a staging.
+- **Pendientes que salen de esta subfase**:
+  - **Para la 12.3**:
+    - medir con tráfico real si alcanzan 120 pedidos por minuto (`Risks.md`);
+    - decidir si el `correlation_id` tiene que llegar al log también en los `429`, lo que cambiaría el contrato (R-1);
+    - validar el contrato con el agente, detrás del modo de prueba.
+  - **Para la 11.4**: siguen N-5 y D-8 de la 11.2.
+  - **Sin destino fijo**: N-6 de la 11.2, el NUL en los formularios de las pantallas; la API ya lo rechaza. Y el caso intermitente de `conversations.spec.ts`, con una aparición más.
+  - **Deuda de nombre** (D-2): `ingestion_credentials` guarda también las credenciales de lectura. Se renombra si aparece un tercer alcance.

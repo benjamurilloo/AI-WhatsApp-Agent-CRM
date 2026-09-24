@@ -2,6 +2,54 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-24 — 11.3 cerrada: API de servicio de lectura
+
+Cuarta subfase de la Fase 11 ([brief-11.3](docs/decisions/brief-11.3-api-de-lectura.md)), en dos etapas:
+
+- **11.3.1** en `2eb1110`: corrida 36065777017, `success` en el intento 2. El intento 1 falló en el caso intermitente conocido de `conversations.spec.ts`, que la etapa no toca.
+- **11.3.2** en `4066a53`: corrida 36071051286, `success` en el intento 1.
+
+No abre ni cierra gate. La revisión independiente se hizo igual (D-12).
+
+**Certifica (validado localmente y en CI, con requests sintéticos):**
+
+- **Credencial de lectura** (D-2): la columna `scope` (`ingest` | `read`) en `ingestion_credentials`, con la migración `0020`. Cada credencial tiene un solo alcance y el token de lectura es `crm_read_`. Una credencial de lectura no escribe por la ingestión, y una de ingestión no lee. El script de credenciales acepta `--scope`.
+- **El borde de la API** (FR-API-03). Se comprueba en este orden:
+  - el modo de prueba, propio (`READ_API_ENABLED`, `READ_API_ALLOWED_CREDENTIALS`), que la ingestión no enciende;
+  - la credencial y su alcance;
+  - la allowlist;
+  - el límite de 120 pedidos por minuto, con un presupuesto por credencial;
+  - `X-Correlation-Id`, que se valida, se devuelve y queda en el log como `correlation_id`.
+
+  Toda respuesta lleva `no-store` y `X-Request-Id`, y queda en el log con la ruta fija, nunca con el texto ni el id buscados. Una sesión del CRM no autentica.
+- **Productos** (FR-API-01), en `/api/read/v1/products` y `/products/{product_id}`:
+  - solo activos, por palabras o por SKU exacto, ordenados por relevancia en SQL y con `limit`;
+  - el precio vigente como decimal en texto, con los decimales de la moneda;
+  - el estado de stock, sin la cantidad.
+- **Información del negocio** (FR-API-02), en `/api/read/v1/knowledge`: solo las entradas vigentes hoy en la zona de la organización, con o sin texto.
+- **Contrato de lectura v1** ([read-v1.md](docs/contracts/read-v1.md)), con un validador estricto por el que pasa toda respuesta de éxito de los tests, y fixtures con forma asumida. Un NUL o un carácter de control en `q` da `400` y nunca llega a PostgreSQL.
+- **Guardas**:
+  - `service-read-entry-points`, la decimotercera: fuera de los módulos, solo `src/app/api/read/` llama a las lecturas `…ForService`, que no pasan por `authorize`, y nadie las renombra;
+  - O-33: ningún archivo de `src/app` nombra la revocación;
+  - `stock-writes` ve las cuatro formas que tenía `price-writes`. Se comprobó que antes no las veía;
+  - `module-boundary` tiene los casos de `knowledge`.
+- **Planes**: la búsqueda de productos (GIN y SKU), el precio vigente (el índice del historial, pendiente desde la 11.1) y la búsqueda de información (GIN), capturados sobre el SQL real, cada uno con su mutación.
+- **O-22**: las cabeceras de `proxy.ts` llegan a las tres rutas, en end-to-end sobre `next start`, con su mutación.
+- **`SecurityModel.md`**: 48 puntos de entrada, 29 de ellos fijados por guarda.
+- **Suite local**: 1164 de 1164 en 89 archivos, y 97 de 97 end-to-end.
+
+**Revisión independiente** (D-12): nueve hallazgos, dos mayores, cuatro menores y tres notas. Cada uno se verificó contra el código, y los nueve se confirmaron:
+- **R-1**: `Risks.md` y FR-API-03 decían que un `429` registra la correlación. El código la valida después del límite, como fija el contrato, y la afirmación era falsa. Se corrigió la documentación.
+- **R-2**: varias respuestas `200` no pasaban por el validador. Ahora pasan todas.
+- **R-7 y R-8**: dos huecos en las guardas nuevas. Cerrados, con su mutación.
+
+**No certifica:**
+
+- **Integración con el agente**: ningún consumidor usa el contrato. Se valida en la 12.3.
+- **Que 120 pedidos por minuto alcancen**: es una estimación, y se mide en la 12.3 ([Risks](docs/planning/Risks.md)).
+- **El `correlation_id` en un `401`, `403` o `429`**: no llega al log. Cambiarlo es un cambio del contrato.
+- **Nada en staging.** Tampoco la medición con volumen de precios ni de información: el seed de desarrollo no los tiene.
+
 ## 2026-09-24 — 11.2 cerrada: información del negocio
 
 Tercera subfase de la Fase 11 ([brief-11.2](docs/decisions/brief-11.2-informacion-del-negocio.md)). La implementación está en `dd26e9c`, con la corrida 36056855249 en `success` al primer intento. No abre ni cierra gate. La revisión independiente se hizo igual (D-10).
