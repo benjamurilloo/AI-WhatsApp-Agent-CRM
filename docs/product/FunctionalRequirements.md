@@ -25,6 +25,8 @@ Agregados en la Fase 11, catálogo comercial ([brief-11.1](../decisions/brief-11
 
 - **FR-PROD-10**: Un admin puede registrar la marca, la categoría y la condición (nuevo o reacondicionado) de un producto, con el cambio auditado. Marca y categoría son texto libre y opcional; la condición es obligatoria y, si no se indica al crear por SQL, es «nuevo».
 - **FR-PROD-11**: Cualquier usuario puede buscar productos por palabras sueltas sobre nombre, marca y categoría, sin distinguir mayúsculas ni acentos, con todas las palabras a la vez y cada una como comienzo de una palabra del producto; o por SKU exacto. No encuentra por el medio de una palabra ni reduce plurales.
+- **FR-PROD-12**: Un admin puede fijar el precio de venta de un producto activo, con monto y moneda (ISO 4217, hasta dos decimales). El precio vigente es el último fijado; un producto sin precios no tiene precio. Cualquier usuario ve el precio vigente y el historial completo, con fecha y autor. Fijar un precio igual al vigente no cambia nada, y si el vigente cambió mientras se completaba el formulario, la respuesta es `CONFLICT` y se pide confirmar de nuevo.
+- **FR-PROD-13**: No existe ninguna vía en la aplicación para modificar ni borrar un precio ya fijado. Un precio nuevo se agrega y el anterior queda en el historial.
 
 ## Clientes
 

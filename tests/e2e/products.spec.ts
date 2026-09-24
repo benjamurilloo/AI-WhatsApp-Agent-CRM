@@ -27,11 +27,11 @@ test.afterAll(async () => {
   await db.$client.end();
 });
 
-// inventory_movements y audit_logs son de solo inserción: TRUNCATE es la vía documentada
-// para vaciarlas (ADR 0013).
+// inventory_movements, product_prices y audit_logs son de solo inserción: TRUNCATE es la vía
+// documentada para vaciarlas (ADR 0013).
 test.beforeEach(async () => {
   await db.execute(
-    sql`truncate table audit_logs, inventory_movements, inventories, products`,
+    sql`truncate table audit_logs, inventory_movements, inventories, product_prices, products`,
   );
   await db.execute(sql`delete from login_attempts`);
   await db.execute(sql`delete from sessions`);
@@ -656,4 +656,204 @@ test("caso 14: FR-PROD-11 busca por marca y categoría; FR-PROD-10 un viewer ve 
   await expect(datos).toContainText("Nuevo");
   await expect(page.getByLabel("Marca")).toBeHidden();
   await expectAccessible(page, "detalle con marca y categoría");
+});
+
+async function prices(productId: string) {
+  const result = await db.execute<{ amount: string; currency: string }>(
+    sql`select amount, currency from product_prices
+        where product_id = ${productId} order by created_at, id`,
+  );
+  return result.rows;
+}
+
+// FR-PROD-12 y D-6 (brief-11.1, AC-11): el admin fija un precio desde la pantalla nueva. «300.000»
+// en pesos chilenos se rechaza con su mensaje; el monto formateado se muestra antes de confirmar,
+// y el precio aparece en el historial, en el detalle, en la lista y en la auditoría.
+test("caso 15: FR-PROD-12 el admin fija precios; «300.000» en CLP se rechaza", async ({
+  page,
+}) => {
+  const productId = await insertProduct("CAF-250", "Café molido 250 g", {
+    balance: "20",
+  });
+  await login(page, ADMIN);
+  await page.goto(`/productos/${productId}`);
+  const datos = page.getByRole("region", { name: "Datos" });
+  await expect(datos).toContainText("Sin precio");
+  await datos
+    .getByRole("link", { name: "Ver historial y fijar precio" })
+    .click();
+  await expect(page).toHaveURL(new RegExp(`/productos/${productId}/precios$`));
+  await expect(
+    page.getByText("Este producto todavía no tiene precio."),
+  ).toBeVisible();
+  await expectAccessible(page, "precios sin precio");
+
+  await page.getByLabel("Moneda *").selectOption("CLP");
+  await page.getByLabel("Monto *").fill("300.000");
+  await page.getByRole("button", { name: "Confirmar precio" }).click();
+  await expect(page.getByLabel("Monto *")).toBeFocused();
+  await expect(
+    page.getByText(/escribí el monto sin puntos ni comas/),
+  ).toBeVisible();
+  await expectAccessible(page, "precio rechazado");
+  expect(await prices(productId)).toEqual([]);
+
+  // Antes de confirmar, el monto se muestra en su moneda.
+  await page.getByLabel("Monto *").fill("300000");
+  await expect(page.getByText("Precio nuevo: CLP 300.000")).toBeVisible();
+  await page.getByRole("button", { name: "Confirmar precio" }).click();
+  await expect(page.getByText("Precio fijado.")).toBeVisible();
+  await expect(
+    page.getByText("Precios · Precio vigente: CLP 300.000"),
+  ).toBeVisible();
+  expect(await prices(productId)).toEqual([
+    { amount: "300000.00", currency: "CLP" },
+  ]);
+
+  // Un precio nuevo en otra moneda: el anterior queda en el historial.
+  await page.getByLabel("Moneda *").selectOption("USD");
+  await page.getByLabel("Monto *").fill("1.234,5");
+  await expect(page.getByText("Precio nuevo: US$ 1.234,50")).toBeVisible();
+  await page.getByRole("button", { name: "Confirmar precio" }).click();
+  await expect(
+    page.getByText("Precios · Precio vigente: US$ 1.234,50"),
+  ).toBeVisible();
+  const history = page.getByRole("table", {
+    name: "Historial de precios de Café molido 250 g",
+  });
+  await expect(history.getByRole("row")).toHaveCount(1 + 2);
+  await expect(history.getByRole("row").nth(1)).toContainText("vigente");
+  await expect(history).toContainText("CLP 300.000");
+  await expect(history).toContainText(ADMIN_NAME);
+  await expectAccessible(page, "precios con historial");
+
+  await page.goto("/productos");
+  await expect(productsTable(page)).toContainText("US$ 1.234,50");
+  await page.goto(`/productos/${productId}`);
+  await expect(datos).toContainText("US$ 1.234,50");
+  const audit = page.getByRole("region", { name: "Historial de auditoría" });
+  await expect(audit).toContainText("Precio: CLP 300.000 → US$ 1.234,50");
+  await expect(audit).toContainText("Precio: sin precio → CLP 300.000");
+});
+
+// D-7: si otro admin fijó un precio mientras se completaba el formulario, el servidor responde
+// CONFLICT, la pantalla muestra el vigente nuevo y confirmar otra vez lo reemplaza. Un rechazo de
+// validación en el medio no hace olvidar qué precio vio (revisión independiente de la 11.1, M-1),
+// y después de fijarlo se puede fijar otro sin un CONFLICT falso ni el mensaje anterior (M-4).
+test("caso 16: FR-PROD-12 si el precio cambió mientras se completaba, pide confirmar de nuevo", async ({
+  page,
+  browser,
+}) => {
+  const productId = await insertProduct("CAF-250", "Café molido 250 g");
+  await login(page, ADMIN);
+  await page.goto(`/productos/${productId}/precios`);
+  await page.getByLabel("Moneda *").selectOption("ARS");
+  // Ambiguo en una moneda con decimales: cinco mil, o cinco. Se rechaza.
+  await page.getByLabel("Monto *").fill("5.000");
+
+  const other = await browser.newContext();
+  try {
+    const otherPage = await other.newPage();
+    await login(otherPage, ADMIN);
+    await otherPage.goto(`/productos/${productId}/precios`);
+    await otherPage.getByLabel("Moneda *").selectOption("ARS");
+    await otherPage.getByLabel("Monto *").fill("4500");
+    await otherPage.getByRole("button", { name: "Confirmar precio" }).click();
+    await expect(otherPage.getByText("Precio fijado.")).toBeVisible();
+  } finally {
+    await other.close();
+  }
+
+  await page.getByRole("button", { name: "Confirmar precio" }).click();
+  await expect(page.getByLabel("Monto *")).toBeFocused();
+  await expect(page.getByText(/más decimales de los que usa/)).toBeVisible();
+  expect(await prices(productId)).toHaveLength(1);
+
+  // Corregido el monto, el precio que vio sigue siendo el de antes: CONFLICT, no una escritura
+  // encima del de la otra sesión.
+  await page.getByLabel("Monto *").fill("5000");
+  await page.getByRole("button", { name: "Confirmar precio" }).click();
+  await expect(
+    page.getByText(/El precio cambió mientras fijabas uno nuevo\./),
+  ).toBeFocused();
+  await expect(
+    // Intl separa el símbolo con U+00A0, y una regex no normaliza los espacios.
+    page.getByText(/Precio vigente: \$\s4\.500,00\. Revisá/),
+  ).toBeVisible();
+  await expect(page.getByLabel("Monto *")).toHaveValue("5000");
+  // El reinicio del formulario tras la acción no vacía la moneda: con el select vacío, el
+  // navegador bloqueaba el envío siguiente sin avisar (defecto encontrado en esta etapa).
+  await expect(page.getByLabel("Moneda *")).toHaveValue("ARS");
+  await expectAccessible(page, "precio con cambio concurrente");
+  expect(await prices(productId)).toHaveLength(1);
+
+  await page.getByRole("button", { name: "Confirmar precio" }).click();
+  await expect(page.getByText("Precio fijado.")).toBeVisible();
+  expect(await prices(productId)).toEqual([
+    { amount: "4500.00", currency: "ARS" },
+    { amount: "5000.00", currency: "ARS" },
+  ]);
+
+  // Otro precio sobre el recién fijado, desde la misma URL: sin CONFLICT falso ni mensaje viejo.
+  await expect(page.getByText(/El precio cambió/)).toBeHidden();
+  await page.getByLabel("Monto *").fill("5100");
+  await page.getByRole("button", { name: "Confirmar precio" }).click();
+  await expect(
+    page.getByText(/^Precios · Precio vigente: \$\s5\.100,00$/),
+  ).toBeVisible();
+  await expect(page.getByText(/El precio cambió/)).toBeHidden();
+  expect(await prices(productId)).toHaveLength(3);
+
+  // El mismo precio otra vez: se avisa y no se escribe (D-7).
+  await page.getByLabel("Monto *").fill("5100");
+  await page.getByRole("button", { name: "Confirmar precio" }).click();
+  await expect(
+    page.getByText(
+      "Ese ya es el precio vigente: no se registró ningún cambio.",
+    ),
+  ).toBeVisible();
+  expect(await prices(productId)).toHaveLength(3);
+});
+
+// FR-PROD-12 y FR-PROD-13: un viewer ve el precio y el historial, sin formulario; ninguna pantalla
+// ofrece editar ni borrar un precio.
+test("caso 17: FR-PROD-13 un viewer ve precios e historial sin formulario", async ({
+  page,
+}) => {
+  const productId = await insertProduct("CAF-250", "Café molido 250 g");
+  await insertProduct("YER-500", "Yerba 500 g");
+  const admin = await db.execute<{ id: string }>(
+    sql`select id from users where email = ${ADMIN}`,
+  );
+  await db.execute(
+    sql`insert into product_prices (organization_id, product_id, amount, currency, created_by)
+        values (${SEED_ORGANIZATION_ID}, ${productId}, 1500, 'ARS', ${admin.rows[0]!.id})`,
+  );
+
+  await login(page, VIEWER);
+  await page.goto("/productos");
+  const table = productsTable(page);
+  await expect(table.getByRole("row", { name: /Café molido/ })).toContainText(
+    "$ 1.500,00",
+  );
+  await expect(table.getByRole("row", { name: /Yerba/ })).toContainText(
+    "Sin precio",
+  );
+  await expectAccessible(page, "lista con precios");
+
+  await page.goto(`/productos/${productId}`);
+  await page.getByRole("link", { name: "Ver historial de precios" }).click();
+  await expect(
+    page.getByText("Precios · Precio vigente: $ 1.500,00"),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("table", {
+      name: "Historial de precios de Café molido 250 g",
+    }),
+  ).toContainText("$ 1.500,00");
+  await expect(page.getByLabel("Monto *")).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: /Editar|Borrar|Eliminar/ }),
+  ).toHaveCount(0);
+  await expectAccessible(page, "precios para viewer");
 });

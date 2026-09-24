@@ -1,8 +1,25 @@
-import { and, eq, isNotNull, or, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  count,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { getDb, type Db, type DbTransaction } from "@/shared/db";
-import { productCondition, products, productSearchCondition } from "./schema";
+import {
+  productCondition,
+  productPrices,
+  products,
+  productSearchCondition,
+} from "./schema";
 
-// Acceso a products. Toda consulta filtra por organization_id en SQL (brief-4.2).
+// Acceso a products y product_prices. Toda consulta filtra por organization_id en SQL (brief-4.2).
+// La única escritura de product_prices es insertProductPrice, que vigila
+// tests/guards/price-writes.test.ts (brief-11.1, AC-10).
 
 type Executor = Db | DbTransaction;
 
@@ -238,4 +255,107 @@ export async function updateProductActive(
     )
     .returning({ id: products.id });
   assertUpdatedOne(rows, "updateProductActive");
+}
+
+// Precios (brief-11.1, D-5). Montos como texto con la escala de la base ("1234.50").
+
+export type PriceRow = {
+  id: string;
+  productId: string;
+  amount: string;
+  currency: string;
+  createdBy: string;
+  createdAt: Date;
+};
+
+const priceColumns = {
+  id: productPrices.id,
+  productId: productPrices.productId,
+  amount: productPrices.amount,
+  currency: productPrices.currency,
+  createdBy: productPrices.createdBy,
+  createdAt: productPrices.createdAt,
+};
+
+// El precio vigente de cada producto: su última fila, por hora de inserción y, ante un empate,
+// por id. Un producto sin filas no aparece: no tiene precio. El orden coincide con el índice
+// (organization_id, product_id, created_at desc), pensado para esta consulta; que el plan lo use no
+// está medido (revisión independiente de la 11.1, M-6). Queda para la 11.3, cuando sea una
+// lectura de servicio.
+export async function findCurrentPrices(
+  organizationId: string,
+  productIds: string[],
+  executor: Executor = getDb(),
+): Promise<Map<string, PriceRow>> {
+  if (productIds.length === 0) return new Map();
+  const rows = await executor
+    .selectDistinctOn([productPrices.productId], priceColumns)
+    .from(productPrices)
+    .where(
+      and(
+        eq(productPrices.organizationId, organizationId),
+        inArray(productPrices.productId, productIds),
+      ),
+    )
+    .orderBy(
+      productPrices.productId,
+      desc(productPrices.createdAt),
+      desc(productPrices.id),
+    );
+  return new Map(rows.map((row) => [row.productId, row]));
+}
+
+function priceHistoryCondition(organizationId: string, productId: string) {
+  return and(
+    eq(productPrices.organizationId, organizationId),
+    eq(productPrices.productId, productId),
+  );
+}
+
+export async function countPrices(
+  organizationId: string,
+  productId: string,
+): Promise<number> {
+  const rows = await getDb()
+    .select({ total: count() })
+    .from(productPrices)
+    .where(priceHistoryCondition(organizationId, productId));
+  return rows[0]!.total;
+}
+
+// Historial, del más reciente al más antiguo: el primero es el vigente.
+export function findPrices(
+  organizationId: string,
+  productId: string,
+  limit: number,
+  offset: number,
+): Promise<PriceRow[]> {
+  return getDb()
+    .select(priceColumns)
+    .from(productPrices)
+    .where(priceHistoryCondition(organizationId, productId))
+    .orderBy(desc(productPrices.createdAt), desc(productPrices.id))
+    .limit(limit)
+    .offset(offset);
+}
+
+export type NewPrice = {
+  organizationId: string;
+  productId: string;
+  amount: string;
+  currency: string;
+  createdBy: string;
+};
+
+// Única escritura de product_prices (FR-PROD-13): un precio se agrega, nunca se modifica ni se
+// borra. Exige la transacción que ya bloqueó el producto (brief-11.1, D-7).
+export async function insertProductPrice(
+  tx: DbTransaction,
+  price: NewPrice,
+): Promise<PriceRow> {
+  const rows = await tx
+    .insert(productPrices)
+    .values(price)
+    .returning(priceColumns);
+  return rows[0]!;
 }

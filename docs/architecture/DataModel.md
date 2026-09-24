@@ -20,9 +20,9 @@ Convenciones fijadas en la 3.1, que siguen las tablas futuras salvo justificaci�
 5. Toda relación referencial usa `FOREIGN KEY` real con política `ON DELETE` explícita (`RESTRICT` por defecto; `CASCADE` solo donde el borrado lógico no aplica, ej. tablas puramente dependientes como `organization_members`).
 6. Los índices se crean solo para consultas concretas del MVP (ver sección de índices), no especulativamente.
 7. Unicidad e idempotencia se expresan como constraints `UNIQUE` de base de datos, no solo como validación de aplicación.
-8. Borrado lógico con `is_active boolean` en entidades editables por el usuario (`products`, `clients`, `users`). Ninguna pantalla borra, solo desactiva, así que no existe `deleted_at` (subfase 1.2, H-1). Las tablas de eventos (`inventory_movements`, `audit_logs`, `ingestion_events`, `messages`) no se borran nunca, ni física ni lógicamente.
+8. Borrado lógico con `is_active boolean` en entidades editables por el usuario (`products`, `clients`, `users`). Ninguna pantalla borra, solo desactiva, así que no existe `deleted_at` (subfase 1.2, H-1). Las tablas de eventos (`inventory_movements`, `product_prices`, `audit_logs`, `ingestion_events`, `messages`) no se borran nunca, ni física ni lógicamente.
 9. Auditoría de cambios sensibles vía `audit_logs`, poblada por la capa de aplicación dentro de la misma transacción que el cambio.
-10. `inventory_movements`, `audit_logs` y, desde la 6.1, `messages` son estrictamente insert-only: el rol de aplicación `crm_app` no tiene `UPDATE` ni `DELETE` sobre ellas, y un trigger rechaza ambas operaciones para cualquier rol ([ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md)). `ingestion_events` admite `UPDATE` de su estado, pero no el borrado ni el cambio de su identidad (brief-6.1, D-3).
+10. `inventory_movements`, `audit_logs`, desde la 6.1 `messages` y desde la 11.1 `product_prices` son estrictamente insert-only: el rol de aplicación `crm_app` no tiene `UPDATE` ni `DELETE` sobre ellas, y un trigger rechaza ambas operaciones para cualquier rol ([ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md)). `ingestion_events` admite `UPDATE` de su estado, pero no el borrado ni el cambio de su identidad (brief-6.1, D-3).
 11. Todo ajuste de stock ocurre dentro de una transacción de base de datos que actualiza `inventories` e inserta en `inventory_movements` atómicamente.
 12. `inventories.quantity_on_hand >= 0` por `CHECK` constraint — no se permiten cantidades negativas en el MVP (ver ADR correspondiente si el negocio decide lo contrario explícitamente).
 13. El modelo de `conversations`/`messages` incluye `channel` como enum extensible desde el día uno, aunque el MVP solo usa `whatsapp`, para no rediseñar el dominio al agregar un segundo canal.
@@ -39,6 +39,8 @@ erDiagram
     ORGANIZATIONS ||--o{ PRODUCTS : owns
     PRODUCTS ||--o| INVENTORIES : has
     PRODUCTS ||--o{ INVENTORY_MOVEMENTS : tracks
+    PRODUCTS ||--o{ PRODUCT_PRICES : prices
+    USERS ||--o{ PRODUCT_PRICES : sets
     ORGANIZATIONS ||--o{ INVENTORY_MOVEMENTS : scopes
     ORGANIZATIONS ||--o{ CONVERSATIONS : owns
     CLIENTS ||--o{ CONVERSATIONS : participates
@@ -174,6 +176,28 @@ Limpieza: en cada intento se borran los registros vencidos de esa clave; un logi
 - No encuentra por el medio de una palabra («phone» no encuentra «iPhone») ni reduce plurales.
 
 El SKU **no** se normaliza: su índice único define la identidad del producto y cambiarlo cambiaría qué SKUs colisionan; `UNIQUE(organization_id, id)` existe solo porque PostgreSQL lo exige para la referencia compuesta. `sku`, `name` y `unit` vacíos los rechaza el servicio de la 4.2, que también recorta espacios: son editables y se corrigen.
+
+### `product_prices`
+
+**Implementada en la 11.1** ([brief-11.1](../decisions/brief-11.1-catalogo-comercial.md), D-5, migración `drizzle/0017_*`). Módulo dueño: `catalog`.
+
+Precio de venta de un producto, con historial. Es un atributo del catálogo, no una transacción: no hay ventas, descuentos, listas por cliente, impuestos ni costo (regla 14). **El precio vigente es la última fila del producto** (`created_at desc, id desc`); un producto sin filas no tiene precio. No hay fecha de vigencia futura ni forma de retirar un precio sin fijar otro: para dejar de vender, el producto se desactiva.
+
+Insert-only según la regla 10: `crm_app` solo tiene `SELECT` e `INSERT`, y el trigger `product_prices_insert_only` rechaza `UPDATE` y `DELETE` para cualquier rol con SQLSTATE `P0001`. En la aplicación, la única escritura es `insertProductPrice` de `src/modules/catalog/repository.ts`, y `tests/guards/price-writes.test.ts` falla ante cualquier otra en `src/` (FR-PROD-13).
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | uuid PK | |
+| `organization_id` | uuid FK → organizations, not null | `ON DELETE RESTRICT` |
+| `product_id` | uuid not null | FK compuesta `(organization_id, product_id)` → `products(organization_id, id)`, `ON DELETE RESTRICT`: un precio no puede apuntar al producto de otra organización |
+| `amount` | numeric(14, 2) not null | `CHECK (amount > 0)`. Hasta doce dígitos enteros. La aplicación lo lee en centésimas como `bigint` (`src/shared/money`), nunca como `number` |
+| `currency` | text not null | ISO 4217, `CHECK (currency ~ '^[A-Z]{3}$')`. Por fila: cambiar de moneda es fijar un precio nuevo. El servicio la valida contra la lista de `Intl` y rechaza las monedas con tres decimales (KWD, BHD, JOD, LYD, OMR, TND), que `numeric(14, 2)` no guarda |
+| `created_by` | uuid FK → users, not null | `ON DELETE RESTRICT` |
+| `created_at` | timestamptz not null default `clock_timestamp()` | Hora del `INSERT`, con el producto bloqueado (`FOR UPDATE`): el orden por `created_at` es el orden en que se fijaron los precios, como en `inventory_movements` |
+
+Índice: `(organization_id, product_id, created_at desc)`, para el precio vigente (`DISTINCT ON (product_id)`) y el historial paginado. Asignado por la forma de la consulta: que el plan lo use **no está medido** y queda para la 11.3, cuando el precio sea una lectura de servicio.
+
+Como en `audit_logs`, el trigger no frena un `TRUNCATE`: el rol dueño puede vaciar la tabla, y es la vía que usan los tests. `crm_app` no tiene el privilegio.
 
 ### `inventories`
 
@@ -338,7 +362,7 @@ Justificación de necesidad real: requisitos FR-AUD-01 y FR-AUD-02 sobre product
 | `actor_user_id` | uuid FK → users, not null | |
 | `entity_type` | enum(`product`,`client`,`inventory`,`conversation`,`organization_member`) not null | |
 | `entity_id` | uuid not null | |
-| `action` | enum(`create`,`update`,`deactivate`,`reactivate`,`stock_adjustment`,`status_change`,`role_change`) not null | |
+| `action` | enum(`create`,`update`,`deactivate`,`reactivate`,`stock_adjustment`,`status_change`,`role_change`,`price_change`) not null | `price_change` desde la 0017 (brief-11.1, D-7) |
 | `diff` | jsonb not null | antes/después relevante |
 | `created_at` | timestamptz not null | |
 
@@ -364,6 +388,12 @@ Productor `inventory`, desde la 4.3.1 ([brief-4.3.1](../decisions/brief-4.3.1-tr
 - `stock_adjustment`: `{ quantityOnHand }`, con el saldo antes y después en la escala de la base (`"6.000"`);
 - el id del movimiento no entra al `diff`; el movimiento se ubica por producto y fecha;
 - un ajuste rechazado no escribe auditoría.
+
+Productor `product`, acción `price_change`, desde la 11.1 ([brief-11.1](../decisions/brief-11.1-catalogo-comercial.md), D-7). `entity_id` es el id del producto:
+
+- `{ amount, currency }`, antes y después, con el monto en la escala de la base (`"1234.50"`);
+- en el primer precio, `before` es `{ amount: null, currency: null }` y no `null`: `recordAudit` reserva `before: null` para `create`, y fijar un precio es un cambio del producto, no su alta;
+- un precio igual al vigente, en monto y moneda, no escribe auditoría.
 
 ## Explícitamente fuera de este modelo
 

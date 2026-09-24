@@ -119,7 +119,12 @@ function asAppRole<T>(fn: (tx: DbTransaction) => Promise<T>): Promise<T> {
 
 // Tablas de public cuyos privilegios para crm_app no son los esperados (ADR 0013).
 // El resto de las tablas es escribible: SELECT, INSERT, UPDATE y DELETE.
-const INSERT_ONLY_TABLES = ["audit_logs", "inventory_movements", "messages"];
+const INSERT_ONLY_TABLES = [
+  "audit_logs",
+  "inventory_movements",
+  "messages",
+  "product_prices",
+];
 // Se actualizan pero no se borran (brief-6.1, D-3; credenciales, brief-6.5.3, D-1).
 const NO_DELETE_TABLES = ["ingestion_credentials", "ingestion_events"];
 

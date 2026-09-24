@@ -347,5 +347,124 @@ Todo lo de esta sección es **autoevaluación**. La revisión independiente (D-1
   
   Productos: `14 passed`.
 - **AC-6 (FR)** — cumplido. FR-PROD-10 y FR-PROD-11 están en `FunctionalRequirements.md`, la enmienda de FR-PROD-04 está fechada con el texto anterior intacto, y los dos están en `TraceabilityMatrix.md`. Cada identificador aparece en el nombre de los casos que lo prueban: `service.test.ts`, `catalog.test.ts` y `products.spec.ts`.
-- **AC-13, parte de la etapa**: `format:check`, `lint` y `typecheck` con salida 0; `npm run test` con **959 de 959 en 77 archivos**; `npm run test:e2e` con **82 de 82** (5,0 min). La CI se lee después del push.
+- **AC-13, parte de la etapa**: `format:check`, `lint` y `typecheck` con salida 0; `npm run test` con **959 de 959 en 77 archivos**; `npm run test:e2e` con **82 de 82** (5,0 min). **CI**: el commit `487def8` corrió en la run 36013939490 con resultado `success`, con todos sus pasos en `success` y el de artefactos en `skipped`. El push necesitó tres intentos: GitHub respondió dos veces `Internal Server Error`, sin incidente publicado.
 - **AC-14, parte de la etapa**: `git status` muestra 25 archivos modificados más la migración y su snapshot, todos de la lista, con los dos que el usuario sumó. `forbidden-references.test.ts` sin cambios.
+
+## Resultados — etapa 11.1.2, 2026-09-24 (autoevaluación)
+
+Todo lo de esta sección es **autoevaluación**. La revisión independiente (D-10) va aparte, más abajo.
+
+**Segunda ampliación de la lista de archivos, 2026-09-24.** Dos archivos fuera de la lista quedaron afectados por la tabla nueva, y el usuario autorizó sumarlos **solo para estos cambios**:
+
+- `tests/e2e/security-headers.spec.ts` ya fallaba: vaciaba `products` con TRUNCATE sin `product_prices`, y PostgreSQL respondía `cannot truncate a table referenced in a foreign key constraint`. Se sumó `product_prices` a sus dos TRUNCATE, sin cambiar ninguna afirmación.
+- `tests/guards/exposed-surface.test.ts` tenía que declarar `setPriceAction` con la exigencia `sesion`, como las demás acciones de productos. Antes de declararla, la guarda daba un **falso verde**: lista los archivos con `git ls-files` y la acción todavía no estaba en git. Registrada solo como intención en el índice (`git add -N`, deshecho después), la guarda falló y señaló la acción.
+
+### Lo que la implementación encontró que el brief no decía
+
+- **El brief se contradecía sobre la representación del monto.** El ítem 7 decía «`bigint` en centésimas» y D-5, `numeric(14, 2)`. Son compatibles, y quedaron así: `numeric(14, 2)` en la base, texto con la escala de la base en Drizzle y `bigint` en centésimas en `src/shared/money`.
+- **D-7 chocaba con la validación de auditoría.** D-7 pedía `before: null` en el primer precio, y `recordAudit` solo acepta `before: null` en `create`. El servicio de auditoría está fuera de la lista. El primer precio se audita con `before: { amount: null, currency: null }`: dice lo mismo sin tocar `audit`, y quedó documentado en `DataModel.md`.
+- **AC-8 pide aceptar «1.234,5» en USD, y D-6 hablaba de un solo separador.** El parser acepta un separador decimal (coma o punto) y, además, separador de miles **solo con el otro signo, en grupos de tres y seguido del separador decimal**: «1.234,5» y «1,234.5». «1.234» en USD se rechaza, porque es ambiguo: mil doscientos treinta y cuatro, o uno con veintitrés. En una moneda sin decimales se rechaza cualquier separador, como decía D-6.
+- **`Intl` asigna dos decimales a una moneda que no conoce.** «ZZZ» da 2. La validación exige primero que el código esté en `Intl.supportedValuesOf("currency")`, que en Node 24 tiene 162, y después rechaza las seis con tres decimales (BHD, JOD, KWD, LYD, OMR y TND).
+- **`Intl` separa el símbolo del monto con un espacio que no se corta (U+00A0).** Las expectativas de los tests unitarios lo escriben explícito. En el end-to-end, los textos literales lo normalizan y las expresiones regulares no, así que la de CONFLICT usa `\s`.
+- **Un defecto propio de la 11.1.1, encontrado en esta etapa.** El resumen de auditoría no tenía etiquetas para marca, categoría ni condición, así que una edición de solo la marca mostraba la columna «Cambio» vacía. La 11.1.1 no lo vio porque ningún caso editaba solo esos campos y miraba la auditoría. Se corrigió en `audit-summary.ts`, que está en la lista de esta etapa, con su test.
+- **Un defecto propio de esta etapa, encontrado por el end-to-end.** Al terminar la acción, React reinicia el formulario. Un `select` controlado quedaba en la primera opción, vacía, mientras el estado decía otra moneda, y como la moneda es obligatoria, el navegador bloqueaba el envío siguiente **sin ningún aviso**: después de un rechazo, «Confirmar precio» no hacía nada. Pasar a un campo no controlado no alcanzó, porque React fija la opción por defecto de un `select` solo al montarlo. Quedó así: los campos se inicializan con lo enviado, que la acción devuelve en el estado, y el `select` se vuelve a montar con cada rechazo. El caso 16 comprueba que la moneda se conserva y que confirmar de nuevo guarda el precio. El trace mostró el síntoma: dos envíos donde tenía que haber tres.
+- **`seeds/basic.ts` sigue sin productos**, así que el ítem 12 del brief (precios de ejemplo) tampoco tiene efecto en esta etapa, como D-9 en la 11.1.1. Los precios del end-to-end los inserta cada caso.
+- **El brief no nombraba la pantalla nueva.** En `Screens.md` quedó como **5b**, para no renumerar las pantallas 6 a 10, que la matriz y los wireframes citan por número.
+
+### Contraste por criterio
+
+- **AC-7 (tabla de solo inserción, FR-PROD-13)** — cumplido. La `0017` generada por `drizzle-kit` crea la tabla, sus claves y su índice, y agrega `price_change` a `audit_action`. No toca otra tabla. Los privilegios y el trigger van escritos a mano al final, como la `0005`, y se aplicó a la base de desarrollo (`Migraciones aplicadas.`). `product-prices.test.ts` comprueba:
+  - `crm_app` tiene exactamente `INSERT` y `SELECT`, y su `UPDATE` y su `DELETE` fallan con `42501`;
+  - con el rol dueño, el trigger los rechaza con `P0001`, y la fila no cambia;
+  - un precio que apunta al producto de otra organización falla con `23503` sobre `product_prices_product_fk`;
+  - los `CHECK` de monto y moneda responden `23514`, y un monto de trece dígitos enteros, `22003`.
+
+  `identity-schema` y `audit` incluyen la tabla.
+- **AC-8 (dinero, D-6)** — cumplido. `money.test.ts`, con 13 casos:
+  - «300.000» y «300,000» se rechazan en CLP (`separator`), y «300000» se acepta;
+  - «1.234,5», «1,234.5» y «1234,50» se aceptan en USD, y «1234,567» se rechaza (`decimals`);
+  - KWD y las otras cinco monedas de tres decimales se rechazan;
+  - trece dígitos enteros se rechazan (`too_large`), y el máximo de `numeric(14, 2)` se acepta.
+
+  **Mutación**: el servicio con `parseQuantityInput` en lugar del parser de dinero dio `2 failed | 12 passed` en `product-prices.test.ts`. «300.000» en CLP se **aceptó** y se habría guardado como 300, que es el error de mil veces de D-6, y «1.234,5» en USD no se entendió. Restaurado: `19 passed`.
+- **AC-9 (FR-PROD-12)** — cumplido.
+  - Solo `admin`: el `viewer`, el admin con contraseña pendiente y el admin de otra organización no escriben nada.
+  - Precio y auditoría van en la misma transacción.
+  - El vigente es el último, y el desempate por `id` tiene su caso.
+  - Tienen caso: el mismo monto y la misma moneda sin escritura, el producto desactivado y el `CONFLICT` con el vigente cambiado.
+  - Concurrencia: con el producto retenido desde una tercera conexión y las dos llamadas esperando en `pg_stat_activity`, una escribe y la otra recibe `CONFLICT` con el precio de la primera.
+
+  **Mutación** sin el `FOR UPDATE`: `1 failed | 18 passed`, `expected [ …(2) ] to have a length of 1 but got 2`. Las dos escribieron. Restaurado: `19 passed`.
+- **AC-10 (guarda)** — cumplido. `price-writes.test.ts` tiene 7 casos virtuales de detección, 2 de lo permitido y el control de que el repositorio tiene exactamente `insertProductPrice: insert product_prices`. **Seis corridas de mutación contra el código real**, una por forma, fallan todas y restauradas dan `11 passed`:
+  - `update` con Drizzle dentro de `insertProductPrice`;
+  - `delete` con Drizzle en otra función del repositorio;
+  - `insert` con Drizzle en `service.ts`;
+  - `insert`, `update` y `delete` en SQL literal.
+
+  `EngineeringStandards.md` la lista como la número doce, y `ls tests/guards/*.test.ts | wc -l` da 12.
+- **AC-11 (pantallas)** — cumplido. La pantalla `/productos/[id]/precios`:
+  - muestra el vigente y el historial paginado;
+  - fija un precio mostrando antes el monto formateado en su moneda, con `aria-live`;
+  - ante un `CONFLICT`, muestra el vigente nuevo y conserva lo escrito.
+
+  La 3 y la 4 muestran el precio vigente o «Sin precio», y la 4 enlaza a la pantalla nueva. Casos nuevos del end-to-end:
+  - 15: el admin fija precios, con «300.000» en CLP rechazado;
+  - 16: `CONFLICT` con otra sesión;
+  - 17: el viewer ve precios e historial, sin formulario y sin ninguna acción de editar o borrar.
+
+  axe da cero violaciones en claro y en oscuro en cada estado.
+- **AC-12 (FR)** — cumplido. FR-PROD-12 y FR-PROD-13 están en `FunctionalRequirements.md` y en `TraceabilityMatrix.md` (por requisito, y la pantalla 5b en la vista por pantalla). Cada identificador aparece en el nombre de los casos que lo prueban: `product-prices.test.ts`, `audit-summary.test.ts` y `products.spec.ts`.
+- **AC-13, parte de la etapa**:
+  - `format:check`, `lint` y `typecheck` con salida 0;
+  - `npm run test`: **1003 de 1004 en 80 archivos**. El que falta es `exposed-surface` > «toda Server Action declarada sigue existiendo», porque `git ls-files` no ve los archivos todavía sin registrar. Con `git add -N` de la carpeta de precios, deshecho después, las guardas dan **233 de 233**. En el commit pasa a ser 1004 de 1004;
+  - `npm run test:e2e`: **85 de 85** (5,4 min), sobre un build nuevo.
+
+  La CI se lee cuando haya commit.
+- **AC-14, parte de la etapa**: `git status` muestra solo archivos de la lista autorizada, más los dos que el usuario sumó. `forbidden-references.test.ts` no cambió.
+
+## Revisión independiente — 2026-09-24 (D-10)
+
+La hizo un agente que no participó del trabajo, con acceso de solo lectura, contra este brief y `CLAUDE.md`, y **fijó la escala de severidad antes de leer**. No ejecutó nada. De la 11.1.1 leyó solo la migración `0016`, `ProductInput` y el armado de la búsqueda, así que AC-2 a AC-6 los dio como no verificables por lectura. **Informó 6 hallazgos**: 2 mayores y 4 menores, uno de ellos documental y fuera de la lista. Agregó 5 notas y encontró **el parser de dinero sin defectos**. Cada hallazgo se verificó contra el código antes de aceptarlo; cuando se pudo, **primero con un test que lo reproduce en rojo** y después con la corrección.
+
+| Hallazgo | Verificación | Qué se hizo |
+|---|---|---|
+| **M-1** (mayor). Tras un rechazo que no era `CONFLICT`, el formulario tomaba el vigente nuevo de la página y D-7 dejaba de detectar el cambio | **Confirmado.** El caso 16 se amplió con un rechazo de validación («5.000», ambiguo en ARS) entre el precio de la otra sesión y la corrección, y falló: sin `CONFLICT` | Dos defensas: la acción revalida solo ante `CONFLICT`, producto desactivado o inexistente, y el id del precio esperado viaja en el estado del formulario, no en la prop. **Mutaciones**: sin ninguna de las dos, el caso 16 falla en el `CONFLICT`; con una sola de las dos, cualquiera, pasa. Cada una alcanza sola |
+| **M-2** (mayor). `price-writes` no veía la tabla interpolada (`${productPrices}`), el esquema, el espacio de nombres ni `TRUNCATE` | **Confirmado.** Los 8 casos virtuales nuevos fallaron con la guarda original | Guarda ampliada, con su cabecera reescrita: qué ve, qué no ve y por qué el `INSERT` depende solo de ella. 22 casos. **Diez corridas de mutación** contra el código real dan rojo: las seis de antes y cuatro nuevas (interpolada, esquema, espacio de nombres y `TRUNCATE`). **Dos límites declarados** dan verde, como se esperaba: la tabla en una variable con otro nombre y el nombre armado en tiempo de ejecución. `stock-writes` tiene el mismo hueco desde la 4.3.1, pero está fuera de la lista: queda pendiente, abajo |
+| **M-3** (menor). Un `productId` en mayúsculas salteaba el `CONFLICT` y la regla de mismo precio | **Confirmado.** `z.uuid()` acepta mayúsculas (lo comprobé en Node), y un caso nuevo de integración falló: se escribió en lugar de dar `CONFLICT` | `setProductPrice` usa el id que devuelve la base desde el bloqueo en adelante. `product-prices.test.ts`: **20 de 20** |
+| **M-4** (menor, sospecha). Estado viejo del formulario al fijar dos precios seguidos desde `?aviso=fijado` | **No reproducido.** Dos mutaciones sin la corrección tentativa —la segunda con la redirección exactamente a la misma URL— pasaron en verde: con Next 16, la redirección reinicia el estado de la acción | La corrección tentativa se quitó, por ser código defensivo sin un defecto que la justifique. Quedan en el caso 16 los pasos que lo comprueban: fijar otro precio sin `CONFLICT` falso ni mensaje residual. Además, «mismo precio» ya no redirige: responde con estado y un aviso, con su paso en el caso 16 |
+| **M-5** (menor, documental, fuera de la lista). `SecurityModel.md` sigue diciendo que la guarda fija «21» puntos de entrada y «36 revisados», y ahora son 22 | **Confirmado** (`SecurityModel.md:9`) | El archivo no está en la lista: se esperó la decisión del usuario, que **autorizó corregirlo** el 2026-09-24. Ahora dice 38 puntos de entrada (16 páginas, 20 Server Actions, 2 Route Handlers) y 22 fijados por la guarda, contados contra `exposed-surface.test.ts` y `src/app` |
+| **M-6** (menor, documental). Se afirmaba que el índice sirve el precio vigente, sin ningún plan que lo mostrara | **Confirmado**: no hay `EXPLAIN` de esa consulta | El comentario del repositorio, `DataModel.md` y la matriz dicen ahora «asignado por la forma de la consulta, sin plan medido». Queda para la 11.3 |
+
+**Las notas:**
+
+- **N-1** («0.000,5» se aceptaba como 0,50): se corrigió. El primer grupo de miles ya no puede empezar en cero, y el test falló antes de la corrección.
+- **N-2** (la vista previa depende del `Intl` del navegador): se acepta. Solo afecta la vista previa, y el servidor vuelve a validar.
+- **N-3** (`TRUNCATE` con el rol dueño): quedó documentado en `DataModel.md`.
+- **N-4**: es parte de M-1.
+- **N-5**: se confirma. En `security-headers.spec.ts` también se editó **el comentario** que enumera las tablas de solo inserción, para sumar `product_prices`. No es solo el TRUNCATE; no cambia ninguna afirmación.
+
+**Una explicación propia que resultó equivocada, y se corrige acá.** Durante la corrección de M-4, una `key` del formulario atada al precio vigente hizo fallar el caso 16. Primero lo atribuí a que la página se vuelve a renderizar después de cualquier acción, por una cookie de sesión. No había ninguna escritura de cookies, y las mutaciones mostraron la causa real: la `key` montaba de nuevo el formulario justo en el `CONFLICT`, que sí revalida la página, y así borraba el mensaje del conflicto.
+
+**Pendientes con destino:**
+
+- `stock-writes.test.ts`: el mismo hueco que M-2 (tabla interpolada, esquema, espacio de nombres, `TRUNCATE`). Está fuera de la lista de esta subfase y va a la 11.3, o a la próxima que toque `inventory`.
+- El plan del precio vigente (M-6): la 11.3.
+
+**Recuentos después de las correcciones**: los de §Contraste por criterio de la 11.1.2 son anteriores a la revisión. Los finales están en §Cierre.
+
+## Cierre — etapa 11.1.2, 2026-09-24 (autoevaluación)
+
+Recuentos finales, después de las correcciones de la revisión independiente:
+
+- `format:check`, `lint` y `typecheck`: limpios.
+- Vitest: **1016 de 1016**, en 80 archivos. Los archivos nuevos se registraron con `git add -N` para que `exposed-surface` los viera, y después se volvió atrás.
+- `product-prices.test.ts`: 20 de 20. `price-writes.test.ts`: 22 de 22. `money.test.ts`: 13 de 13.
+- End-to-end: **85 de 85 en 4,5 minutos**, con `products.spec.ts` en 17 de 17.
+  - Una corrida anterior tardó 41 minutos y dio 84 de 85. Falló el caso 8, que no toca precios, por el tiempo máximo de 30 s dentro de la revisión de accesibilidad (`axe`).
+  - `products.spec.ts` solo pasó 17 de 17 en 1,2 minutos, y la suite completa, 85 de 85 en 4,5. Se registra como una corrida lenta del entorno, no como un defecto. Si vuelve a pasar, se investiga.
+
+**Nivel alcanzado**: validado en integración (`producer-consumer`), UI ↔ servicio ↔ base, en local. Falta la CI, que se lee por `headSha` después del push.
+
+**Tercera extensión de la lista**: `docs/architecture/SecurityModel.md`, por M-5, con autorización del usuario del 2026-09-24.
+
+**Pendientes**: los de §Revisión independiente.

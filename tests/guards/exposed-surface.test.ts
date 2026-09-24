@@ -60,6 +60,8 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
   "src/app/(autenticado)/productos/actions.ts#adjustStockAction": {
     requirement: "sesion",
   },
+  "src/app/(autenticado)/productos/[productId]/precios/actions.ts#setPriceAction":
+    { requirement: "sesion" },
   "src/app/(autenticado)/usuarios/actions.ts#createMemberAction": {
     requirement: "sesion",
   },

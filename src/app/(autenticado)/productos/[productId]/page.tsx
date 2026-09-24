@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { listProductAudit, listProductSuggestions } from "@/modules/catalog";
+import {
+  getCurrentPrices,
+  listProductAudit,
+  listProductSuggestions,
+} from "@/modules/catalog";
 import { getProductStock, listStockMovements } from "@/modules/inventory";
 import { getOrganizationTimezone } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
@@ -18,6 +22,7 @@ import {
 } from "@/app/_components/form-styles";
 import { PageNotice } from "@/app/_components/page-notice";
 import { formatShortDateTime } from "@/app/_format/date-time";
+import { formatMoney } from "@/shared/money";
 import { formatQuantity } from "@/shared/quantity";
 import type { SearchParams } from "../filters";
 import {
@@ -44,7 +49,8 @@ function page(value: string | string[] | undefined): number {
 }
 
 // Pantalla 4 (wireframe 04): datos, stock, últimos movimientos y, solo para admin, edición,
-// desactivación con confirmación e historial de auditoría paginado (FR-AUD-02).
+// desactivación con confirmación e historial de auditoría paginado (FR-AUD-02). El precio vigente
+// enlaza a la pantalla de precios (brief-11.1, FR-PROD-12).
 export default async function ProductPage({
   params,
   searchParams,
@@ -76,6 +82,9 @@ export default async function ProductPage({
   const confirming =
     isAdmin && query.confirmar === "desactivar" && product.isActive;
   const notice = noticeMessage(query.aviso);
+
+  const prices = await getCurrentPrices(context, [product.id]);
+  const price = prices.ok ? prices.prices.get(product.id) : undefined;
 
   const timeZone = await getOrganizationTimezone(context);
   const history = await listStockMovements(context, product.id, {
@@ -195,6 +204,23 @@ export default async function ProductPage({
               </dd>
               <dt className="font-semibold">Condición</dt>
               <dd>{CONDITION_LABEL[product.condition]}</dd>
+              <dt className="font-semibold">Precio</dt>
+              <dd>
+                <span className={price ? "tabular-nums" : "text-muted"}>
+                  {price
+                    ? formatMoney(price.amount, price.currency)
+                    : "Sin precio"}
+                </span>{" "}
+                ·{" "}
+                <Link
+                  href={`/productos/${product.id}/precios`}
+                  className={linkClass}
+                >
+                  {isAdmin && product.isActive
+                    ? "Ver historial y fijar precio"
+                    : "Ver historial de precios"}
+                </Link>
+              </dd>
               <dt className="font-semibold">Descripción</dt>
               <dd className="text-muted">{product.description ?? "—"}</dd>
               <dt className="font-semibold">Unidad</dt>

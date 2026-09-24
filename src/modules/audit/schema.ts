@@ -29,6 +29,8 @@ export const auditAction = pgEnum("audit_action", [
   "stock_adjustment",
   "status_change",
   "role_change",
+  // Cambio del precio de un producto (brief-11.1, D-7).
+  "price_change",
 ]);
 
 export const auditLogs = pgTable(

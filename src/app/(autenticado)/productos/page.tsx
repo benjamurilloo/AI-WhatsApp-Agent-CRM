@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { getCurrentPrices } from "@/modules/catalog";
 import { listProductStock } from "@/modules/inventory";
 import { requireSession } from "@/app/_auth/session";
 import {
@@ -17,6 +18,7 @@ import {
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
 import { PageNotice } from "@/app/_components/page-notice";
+import { formatMoney } from "@/shared/money";
 import { formatQuantity } from "@/shared/quantity";
 import {
   hasActiveFilters,
@@ -40,7 +42,8 @@ const TITLE = "Productos";
 
 // Pantalla 3 (wireframe 03): búsqueda, filtros y página en la URL. Tabla en escritorio y
 // tarjetas en móvil; la versión oculta no entra al árbol de accesibilidad. La búsqueda es por
-// palabras sobre nombre, marca y categoría, o por SKU exacto (brief-11.1, FR-PROD-11).
+// palabras sobre nombre, marca y categoría, o por SKU exacto (brief-11.1, FR-PROD-11), y cada
+// producto muestra su precio vigente o «Sin precio» (FR-PROD-12).
 export default async function ProductsPage({
   searchParams,
 }: {
@@ -52,6 +55,17 @@ export default async function ProductsPage({
   if (!result.ok) {
     return <PageNotice title={TITLE} message={FORBIDDEN_PAGE_MESSAGE} />;
   }
+
+  // Solo los precios de la página que se muestra.
+  const found = await getCurrentPrices(
+    context,
+    result.products.map((product) => product.id),
+  );
+  const prices = found.ok ? found.prices : new Map();
+  const priceText = (productId: string) => {
+    const price = prices.get(productId);
+    return price ? formatMoney(price.amount, price.currency) : "Sin precio";
+  };
 
   const filtered = hasActiveFilters(filters);
   const isAdmin = context.role === "admin";
@@ -180,6 +194,12 @@ export default async function ProductsPage({
                     scope="col"
                     className={`${tableHeadCellClass} text-right`}
                   >
+                    Precio
+                  </th>
+                  <th
+                    scope="col"
+                    className={`${tableHeadCellClass} text-right`}
+                  >
                     Stock
                   </th>
                   <th scope="col" className={tableHeadCellClass}>
@@ -210,6 +230,11 @@ export default async function ProductsPage({
                     <td className={tableCellClass}>{product.brand ?? "—"}</td>
                     <td className={tableCellClass}>
                       {product.category ?? "—"}
+                    </td>
+                    <td
+                      className={`${tableCellClass} text-right whitespace-nowrap tabular-nums ${prices.has(product.id) ? "" : "text-muted"}`}
+                    >
+                      {priceText(product.id)}
                     </td>
                     <td className={`${tableCellClass} text-right tabular-nums`}>
                       {formatQuantity(product.quantityOnHand)}
@@ -260,6 +285,11 @@ export default async function ProductsPage({
                       .join(" · ")}
                   </p>
                 ) : null}
+                <p
+                  className={`mt-1 text-sm tabular-nums ${prices.has(product.id) ? "" : "text-muted"}`}
+                >
+                  {priceText(product.id)}
+                </p>
                 <div className="mt-2 flex items-center justify-between gap-3">
                   <p className="text-sm tabular-nums">
                     {formatQuantity(product.quantityOnHand)} {product.unit}

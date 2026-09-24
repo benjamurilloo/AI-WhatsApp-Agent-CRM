@@ -6,15 +6,15 @@ Cada sección cita el nivel de validación de lo que afirma. Los hallazgos abier
 
 ## Superficie expuesta
 
-**36 puntos de entrada** al 2026-09-18 —15 páginas, 19 Server Actions y 2 Route Handlers—, revisados uno por uno. La guarda [`tests/guards/exposed-surface.test.ts`](../../tests/guards/exposed-surface.test.ts) fija los **21 que no son páginas** y falla si aparece uno nuevo sin declarar; las páginas se revisaron por lectura y ninguna guarda las fija.
+**38 puntos de entrada** al 2026-09-24 —16 páginas, 20 Server Actions y 2 Route Handlers—, revisados uno por uno. Eran 36 al 2026-09-18; la etapa 11.1.2 ([brief-11.1](../decisions/brief-11.1-catalogo-comercial.md)) sumó la página de precios de un producto y `setPriceAction`, que exige sesión y rol `admin` en el caso de uso, probado en integración. La guarda [`tests/guards/exposed-surface.test.ts`](../../tests/guards/exposed-surface.test.ts) fija los **22 que no son páginas** y falla si aparece uno nuevo sin declarar; las páginas se revisaron por lectura y ninguna guarda las fija.
 
 > El documento decía "20 puntos de entrada" hasta la revisión independiente del 2026-09-18. Era un número que no salía de ninguna agrupación de esta tabla, que suma 36. Corregido.
 
 | Punto de entrada | Cantidad | Exigencia |
 | --- | --- | --- |
-| Páginas bajo `(autenticado)` | 13 | sesión, y el rol lo exige el caso de uso |
+| Páginas bajo `(autenticado)` | 14 | sesión, y el rol lo exige el caso de uso |
 | Páginas del ingreso (`/login`, `/cambiar-contraseña`) | 2 | previo a la sesión |
-| Server Actions bajo `(autenticado)` | 15 | sesión, resuelta antes de cualquier efecto |
+| Server Actions bajo `(autenticado)` | 16 | sesión, resuelta antes de cualquier efecto |
 | Server Actions del ingreso | 2 | previo a la sesión |
 | Server Actions públicas (`logoutAction`, `setThemeAction`) | 2 | ninguna, a propósito: cerrar sesión es idempotente y el tema es una cookie sin dato de negocio |
 | Route Handlers | 2 | ninguna de sesión (ver abajo) |
@@ -187,7 +187,7 @@ Revisado fila por fila en la 8.4. La columna de veredicto dice **cómo se compro
 | Repudio | Cambios de stock sin rastro | `inventory_movements` inmutable + `audit_logs` | `verificado`: rol `crm_app` y trigger `BEFORE UPDATE OR DELETE` ([ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md)), con la limitación ya aceptada de que la aplicación se conecta hoy con el rol dueño |
 | Divulgación de información | Logs con contenido de mensajes | Política de logs sin PII/contenido de negocio | `verificado`: las tres capas de la 8.2 —unitaria, guarda y integración— más el enmascarado del teléfono probado en la 5.2 |
 | Denegación de servicio | Abuso del login o de ingestión | Rate limiting en ambos puntos | `parcial`, **y con hallazgo**: la ingestión y los dos límites del ingreso están probados, pero sin proxy de confianza el límite por IP es además un vector de denegación de servicio (H-3). Que la defensa esté probada no la vuelve sana: el test confirma que bloquea, y H-3 dice a quién |
-| Elevación de privilegios | Un `viewer` invoca una acción de `admin` directamente por API | Autorización server-side en cada caso de uso, no solo en la UI | `verificado-por-lectura`: los 36 puntos de entrada revisados uno por uno; probado en integración para productos, clientes, stock y miembros |
+| Elevación de privilegios | Un `viewer` invoca una acción de `admin` directamente por API | Autorización server-side en cada caso de uso, no solo en la UI | `verificado-por-lectura`: los 38 puntos de entrada revisados uno por uno; probado en integración para productos, precios, clientes, stock y miembros |
 
 **Lo que este threat model no cubre**: no contempla un atacante con acceso a la base ni al servidor, ni cadena de suministro más allá de la auditoría de dependencias, ni abuso por parte de un `admin` legítimo de su propia organización.
 

@@ -51,14 +51,14 @@
 
 - **Objetivo**: encontrar productos y ver su situación de stock.
 - **Usuario autorizado**: `admin` y `viewer`.
-- **Información mostrada**: SKU, nombre, marca, categoría, stock disponible, unidad, estado de stock (disponible, bajo stock, sin stock) y si está activo. Marca y categoría desde la 11.1.
+- **Información mostrada**: SKU, nombre, marca, categoría, precio vigente o «Sin precio», stock disponible, unidad, estado de stock (disponible, bajo stock, sin stock) y si está activo. Marca, categoría y precio desde la 11.1.
 - **Acciones**: buscar y abrir el detalle. Solo `admin` puede crear producto.
 - **Filtros**: texto, estado de stock y activos/inactivos (por defecto, solo activos). Desde la 11.1 el texto busca por palabras sueltas sobre nombre, marca y categoría, o por SKU exacto (FR-PROD-11); antes era prefijo de nombre o SKU.
 - **Paginación**: 25 por página, ordenado por nombre.
 - **Carga**: skeleton de la tabla.
 - **Vacío**: distingue "no hay productos" de "sin resultados".
 - **Errores**: generales.
-- **Responsive**: tarjetas en móvil con nombre, marca y categoría, stock y estado.
+- **Responsive**: tarjetas en móvil con nombre, marca y categoría, precio, stock y estado.
 - **Accesibilidad**: el estado se muestra con texto e ícono además del color. «Bajo stock» usa el token de advertencia desde la 11.1 (O-17).
 - **No mostrar**: nada sensible específico.
 
@@ -66,7 +66,7 @@
 
 - **Objetivo**: consultar y mantener los datos de un producto.
 - **Usuario autorizado**: lectura para `admin` y `viewer`; edición y desactivación solo para `admin`.
-- **Información mostrada**: datos del producto —con marca, categoría y condición desde la 11.1—, stock actual, estado, punto de reposición y los últimos movimientos (enlace a la pantalla 5). El historial de auditoría solo lo ve `admin`. El formulario sugiere las marcas y categorías que ya existen en la organización.
+- **Información mostrada**: datos del producto —con marca, categoría, condición y precio vigente desde la 11.1, y el enlace a la pantalla 5b—, stock actual, estado, punto de reposición y los últimos movimientos (enlace a la pantalla 5). El historial de auditoría solo lo ve `admin`. El formulario sugiere las marcas y categorías que ya existen en la organización.
 - **Acciones**: editar, y desactivar o reactivar con confirmación explícita.
 - **Filtros**: no aplican.
 - **Paginación**: el historial de auditoría pagina de a 25.
@@ -91,6 +91,23 @@
 - **Responsive**: el formulario se muestra arriba y el historial en tarjetas.
 - **Accesibilidad**: el saldo resultante se anuncia con `aria-live`.
 - **No mostrar**: nada sensible específico. No existe ninguna acción para editar ni borrar un movimiento.
+
+## 5b. Precios de un producto
+
+Agregada en la 11.1 ([brief-11.1](../decisions/brief-11.1-catalogo-comercial.md), FR-PROD-12 y FR-PROD-13). Ruta `/productos/[id]/precios`.
+
+- **Objetivo**: fijar el precio de venta y consultar su historial.
+- **Usuario autorizado**: el precio vigente y el historial los ven `admin` y `viewer`; fijar un precio, solo `admin` y con el producto activo.
+- **Información mostrada**: el precio vigente o «Sin precio», y el historial (fecha, precio formateado en su moneda y autor), con el vigente marcado.
+- **Acciones**: fijar un precio nuevo con moneda y monto. Antes de confirmar se ve el monto formateado en su moneda (`CLP 300.000`, `US$ 1.234,50`), y si es igual al vigente se avisa que no cambia nada. El monto se escribe según los decimales de la moneda: en una moneda sin decimales, un punto o una coma se rechazan con «escribí el monto sin puntos ni comas» (D-6).
+- **Filtros**: no aplican.
+- **Paginación**: 25 por página, del más reciente al más antiguo.
+- **Carga**: el botón queda deshabilitado hasta que responde el servidor.
+- **Vacío**: «este producto todavía no tiene precio».
+- **Errores**: validación del monto con un mensaje por motivo, y de la moneda. `BUSINESS_RULE_VIOLATION` si el producto está desactivado. Ante un `CONFLICT` porque otro fijó un precio, se muestra el vigente nuevo, se conserva lo escrito y se pide confirmar de nuevo.
+- **Responsive**: el historial pasa a tarjetas.
+- **Accesibilidad**: el monto formateado se anuncia con `aria-live`; los errores se asocian a su campo con `aria-describedby` y reciben el foco.
+- **No mostrar**: ninguna acción para editar ni borrar un precio. El formulario, a `viewer`.
 
 ## 6. Lista de clientes
 

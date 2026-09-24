@@ -22,17 +22,18 @@ test.beforeAll(() => {
 test.afterAll(async () => {
   await db.execute(
     sql`truncate table messages, conversations, clients,
-        inventory_movements, inventories, products`,
+        inventory_movements, inventories, product_prices, products`,
   );
   await db.$client.end();
 });
 
 test.beforeEach(async () => {
-  // inventory_movements, messages, ingestion_events y audit_logs son de solo inserción: TRUNCATE
-  // es la vía documentada (ADR 0013), y vacía en la misma sentencia lo que las referencia (6.1).
+  // inventory_movements, product_prices, messages, ingestion_events y audit_logs son de solo
+  // inserción: TRUNCATE es la vía documentada (ADR 0013), y vacía en la misma sentencia lo que las
+  // referencia (6.1).
   await db.execute(
     sql`truncate table audit_logs, ingestion_events, messages, conversations, clients,
-        inventory_movements, inventories, products`,
+        inventory_movements, inventories, product_prices, products`,
   );
   await db.execute(sql`delete from login_attempts`);
   await db.execute(sql`delete from sessions`);

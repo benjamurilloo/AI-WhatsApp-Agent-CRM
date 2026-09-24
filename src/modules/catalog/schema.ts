@@ -3,6 +3,7 @@ import {
   boolean,
   check,
   customType,
+  foreignKey,
   index,
   numeric,
   pgEnum,
@@ -13,6 +14,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { users } from "@/modules/auth/schema";
 import { organizations } from "@/modules/organizations/schema";
 
 // Búsqueda por palabras sueltas sobre nombre, marca y categoría (brief-11.1, D-4), sin distinguir
@@ -114,3 +116,48 @@ export const products = pgTable(
 export function productSearchCondition(text: string): SQL {
   return sql`${products.search} @@ ${productSearchQuery(text)}`;
 }
+
+// docs/architecture/DataModel.md, tabla product_prices (brief-11.1, D-5). Solo inserción: el rol
+// crm_app no tiene UPDATE ni DELETE y un trigger rechaza ambos (ADR 0013). El precio vigente de
+// un producto es su última fila; un producto sin filas no tiene precio.
+export const productPrices = pgTable(
+  "product_prices",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    productId: uuid("product_id").notNull(),
+    // Dos decimales como máximo: las monedas con tres se rechazan (D-5). Drizzle lo devuelve
+    // como string, y la aplicación lo lee en centésimas con src/shared/money.
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    // ISO 4217, validada contra Intl al fijar el precio; la base solo exige la forma.
+    currency: text("currency").notNull(),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    // Hora del INSERT, con el producto bloqueado: el orden por created_at es el orden en que se
+    // fijaron los precios, como en inventory_movements (brief-4.3.3, D-1).
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(sql`clock_timestamp()`),
+  },
+  (table) => [
+    // Un precio no puede apuntar al producto de otra organización, como el inventario.
+    foreignKey({
+      name: "product_prices_product_fk",
+      columns: [table.organizationId, table.productId],
+      foreignColumns: [products.organizationId, products.id],
+    }).onDelete("restrict"),
+    index("product_prices_product_history_idx").on(
+      table.organizationId,
+      table.productId,
+      table.createdAt.desc(),
+    ),
+    check("product_prices_amount_positive", sql`${table.amount} > 0`),
+    check(
+      "product_prices_currency_format",
+      sql`${table.currency} ~ '^[A-Z]{3}$'`,
+    ),
+  ],
+);

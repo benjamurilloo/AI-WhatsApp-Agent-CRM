@@ -29,6 +29,9 @@ describe("auditActionLabel", () => {
         entry({ entityType: "inventory", action: "stock_adjustment" }),
       ),
     ).toBe("Ajuste de stock");
+    expect(auditActionLabel(entry({ action: "price_change" }))).toBe(
+      "Cambio de precio",
+    );
   });
 });
 
@@ -93,6 +96,53 @@ describe("describeAuditDiff", () => {
     ).toBe(
       "SKU: CAF-250 · Nombre: Café · Descripción: vacío · Unidad: unidad · Punto de reposición: 2,5 · Activo: sí",
     );
+  });
+
+  // FR-PROD-10 (brief-11.1): sin estas etiquetas, una edición de solo la marca quedaba vacía.
+  it("FR-PROD-10: una edición de marca, categoría y condición se lee con sus etiquetas", () => {
+    expect(
+      describeAuditDiff(
+        entry({
+          diff: {
+            before: { brand: null, category: "Almacén", condition: "new" },
+            after: {
+              brand: "Cafetal",
+              category: "Bebidas",
+              condition: "refurbished",
+            },
+          },
+        }),
+      ),
+    ).toBe(
+      "Marca: vacío → Cafetal · Categoría: Almacén → Bebidas · Condición: Nuevo → Reacondicionado",
+    );
+  });
+
+  // FR-PROD-12 (brief-11.1, D-7): monto y moneda se leen juntos, con los decimales de la moneda.
+  it("FR-PROD-12: un cambio de precio muestra el precio antes y después, formateado", () => {
+    const nbsp = "\u00a0";
+    expect(
+      describeAuditDiff(
+        entry({
+          action: "price_change",
+          diff: {
+            before: { amount: null, currency: null },
+            after: { amount: "300000.00", currency: "CLP" },
+          },
+        }),
+      ),
+    ).toBe(`Precio: sin precio → CLP${nbsp}300.000`);
+    expect(
+      describeAuditDiff(
+        entry({
+          action: "price_change",
+          diff: {
+            before: { amount: "1234.50", currency: "USD" },
+            after: { amount: "1300.00", currency: "USD" },
+          },
+        }),
+      ),
+    ).toBe(`Precio: US$${nbsp}1.234,50 → US$${nbsp}1.300,00`);
   });
 
   it("ignora claves que no son campos conocidos", () => {
