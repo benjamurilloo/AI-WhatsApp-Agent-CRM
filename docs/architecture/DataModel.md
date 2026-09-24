@@ -196,7 +196,7 @@ Insert-only según la regla 10: `crm_app` solo tiene `SELECT` e `INSERT`, y el t
 | `created_by` | uuid FK → users, not null | `ON DELETE RESTRICT` |
 | `created_at` | timestamptz not null default `clock_timestamp()` | Hora del `INSERT`, con el producto bloqueado (`FOR UPDATE`): el orden por `created_at` es el orden en que se fijaron los precios, como en `inventory_movements` |
 
-Índice: `(organization_id, product_id, created_at desc)`, para el precio vigente (`DISTINCT ON (product_id)`) y el historial paginado. Asignado por la forma de la consulta: que el plan lo use **no está medido** y queda para la 11.3, cuando el precio sea una lectura de servicio.
+Índice: `(organization_id, product_id, created_at desc)`, para el precio vigente (`DISTINCT ON (product_id)`) y el historial paginado. Asignado por la forma de la consulta. **Medido en la 11.3.2** ([brief-11.3](../decisions/brief-11.3-api-de-lectura.md), D-10): con 15 000 precios sintéticos, el precio vigente de los productos de una búsqueda usa el índice con `organization_id` y `product_id = ANY (…)` en la condición (`read-api.test.ts`, caso 21, con su corrida de mutación). El historial paginado sigue sin plan medido.
 
 Como en `audit_logs`, el trigger no frena un `TRUNCATE`: el rol dueño puede vaciar la tabla, y es la vía que usan los tests. `crm_app` no tiene el privilegio.
 

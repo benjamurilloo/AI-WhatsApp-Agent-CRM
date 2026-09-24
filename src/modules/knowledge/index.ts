@@ -7,6 +7,7 @@ export {
   KNOWLEDGE_STATUSES,
   listKnowledgeAudit,
   listKnowledgeCategories,
+  listCurrentEntriesForService,
   listKnowledgeEntries,
   reactivateKnowledgeEntry,
   updateKnowledgeEntry,

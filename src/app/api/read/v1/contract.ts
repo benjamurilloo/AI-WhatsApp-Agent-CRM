@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ServiceCatalogProduct } from "@/modules/inventory";
+import type { KnowledgeEntry } from "@/modules/knowledge";
 import { ERROR_CODES } from "@/shared/errors";
 import { currencyDecimals } from "@/shared/money";
 
@@ -15,6 +16,8 @@ export const READ_CONTRACT_VERSION = "1";
 export const MAX_QUERY_LENGTH = 200;
 export const PRODUCTS_DEFAULT_LIMIT = 10;
 export const PRODUCTS_MAX_LIMIT = 25;
+export const KNOWLEDGE_DEFAULT_LIMIT = 20;
+export const KNOWLEDGE_MAX_LIMIT = 50;
 
 // Un carácter de control, NUL incluido, nunca llega a PostgreSQL (N-6 de la 11.2), y un surrogate
 // suelto no es UTF-8 válido.
@@ -89,6 +92,23 @@ export const productResponseSchema = z.strictObject({
   product: productSchema,
 });
 
+// Fecha de calendario, inclusiva, o null si ese lado no tiene límite (brief-11.2, D-3).
+const calendarDate = z.iso.date().nullable();
+
+export const knowledgeEntrySchema = z.strictObject({
+  entry_id: z.uuid(),
+  title: z.string().min(1),
+  category: z.string().min(1),
+  content: z.string().min(1),
+  valid_from: calendarDate,
+  valid_until: calendarDate,
+});
+
+export const knowledgeListResponseSchema = z.strictObject({
+  contract_version: z.literal(READ_CONTRACT_VERSION),
+  items: z.array(knowledgeEntrySchema),
+});
+
 export const errorResponseSchema = z.strictObject({
   code: z.enum(ERROR_CODES),
   request_id: z.uuid(),
@@ -96,6 +116,7 @@ export const errorResponseSchema = z.strictObject({
 });
 
 export type ContractProduct = z.infer<typeof productSchema>;
+export type ContractKnowledgeEntry = z.infer<typeof knowledgeEntrySchema>;
 
 // La base guarda numeric(14, 2) («300000.00»). El contrato lo escribe con los decimales de la
 // moneda: «300000» en CLP, «1234.50» en ARS. La escritura ya rechaza decimales que la moneda no
@@ -131,5 +152,19 @@ export function toContractProduct(
         }
       : null,
     stock_status: product.stockStatus,
+  };
+}
+
+// Solo los campos del contrato: ni el estado, ni si está activa, ni las fechas de alta.
+export function toContractKnowledgeEntry(
+  entry: KnowledgeEntry,
+): ContractKnowledgeEntry {
+  return {
+    entry_id: entry.id,
+    title: entry.title,
+    category: entry.category,
+    content: entry.content,
+    valid_from: entry.validFrom,
+    valid_until: entry.validUntil,
   };
 }

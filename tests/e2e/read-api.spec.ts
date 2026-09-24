@@ -16,6 +16,7 @@ import { expect, test } from "@playwright/test";
 const ROUTES = [
   "/api/read/v1/products?q=auriculares",
   "/api/read/v1/products/0b6f3c2e-5a4d-4e8f-9c1b-2a3d4e5f6a7b",
+  "/api/read/v1/knowledge?q=horarios",
 ];
 
 for (const route of ROUTES) {

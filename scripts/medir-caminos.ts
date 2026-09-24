@@ -16,6 +16,10 @@
 //   ALTER ROLE crm_owner SET log_min_duration_statement = 0;   -- y se apaga al terminar
 //
 // Lo que este script NO mide: concurrencia. Corre una llamada por vez.
+//
+// Las rutas de la API de lectura (brief-11.3, D-10) se miden por las lecturas de servicio que
+// llama cada una, con el mismo texto y el mismo límite. No miden el borde: ni la credencial, ni la
+// ventana del límite de tasa, ni el log.
 
 import { existsSync } from "node:fs";
 import { searchProducts } from "@/modules/catalog";
@@ -37,7 +41,13 @@ import {
   searchClientsByLastInteraction,
 } from "@/modules/conversations";
 import { searchClients } from "@/modules/crm";
-import { listProductStock, listStockMovements } from "@/modules/inventory";
+import {
+  getCatalogProductForService,
+  listProductStock,
+  listStockMovements,
+  searchCatalogForService,
+} from "@/modules/inventory";
+import { listCurrentEntriesForService } from "@/modules/knowledge";
 import { listMembers, type AuthContext } from "@/modules/organizations";
 import { getDb } from "@/shared/db";
 
@@ -59,6 +69,8 @@ function mediana(valores: number[]): number {
 function describir(resultado: unknown): string {
   if (resultado === null || typeof resultado !== "object") return "sin forma";
   const r = resultado as Record<string, unknown>;
+  // Las lecturas de servicio de la API devuelven la lista sola.
+  if (Array.isArray(resultado)) return `${resultado.length} filas`;
   if (r.ok === false) {
     const codigo = typeof r.code === "string" ? r.code : "?";
     const campos = Array.isArray(r.fields) ? ` ${r.fields.join(",")}` : "";
@@ -252,6 +264,66 @@ async function main(): Promise<void> {
         }),
     ]);
   }
+
+  // La API de lectura, con los límites por defecto del contrato (10 y 20). El detalle devuelve
+  // null si el producto no existe o está inactivo: se lo cuenta como falla, porque no midió una
+  // lectura.
+  const activo = await db.execute<{ id: string }>(
+    sql`select id from products
+         where organization_id = ${organizationId} and is_active
+         order by id limit 1`,
+  );
+  const activoId = activo.rows[0]?.id;
+  listados.push(
+    [
+      "API products: palabras («cafe molido»)",
+      () =>
+        searchCatalogForService(organizationId, {
+          text: "cafe molido",
+          limit: 10,
+        }),
+    ],
+    [
+      "API products: SKU exacto",
+      () =>
+        searchCatalogForService(organizationId, {
+          text: "SKU-000001",
+          limit: 10,
+        }),
+    ],
+    [
+      "API products: sin coincidencias",
+      () =>
+        searchCatalogForService(organizationId, {
+          text: "inexistente",
+          limit: 10,
+        }),
+    ],
+    [
+      "API products/{product_id}",
+      async () => {
+        if (!activoId) return null;
+        const found = await getCatalogProductForService(
+          organizationId,
+          activoId,
+        );
+        return found ? [found] : null;
+      },
+    ],
+    [
+      "API knowledge: vigentes sin texto",
+      () =>
+        listCurrentEntriesForService(organizationId, { text: null, limit: 20 }),
+    ],
+    [
+      "API knowledge: vigentes con texto",
+      () =>
+        listCurrentEntriesForService(organizationId, {
+          text: "horario",
+          limit: 20,
+        }),
+    ],
+  );
 
   const metricas: [string, () => Promise<unknown>][] = [
     [

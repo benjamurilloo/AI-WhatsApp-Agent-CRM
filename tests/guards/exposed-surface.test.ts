@@ -122,6 +122,10 @@ const HANDLERS: Readonly<Record<string, Entry>> = {
     requirement: "sin-sesion",
     why: "API de lectura (brief-11.3): autentica con una credencial de alcance read, apagada salvo READ_API_ENABLED, y una sesión válida no la autentica",
   },
+  "src/app/api/read/v1/knowledge/route.ts": {
+    requirement: "sin-sesion",
+    why: "API de lectura (brief-11.3): autentica con una credencial de alcance read, apagada salvo READ_API_ENABLED, y una sesión válida no la autentica",
+  },
 };
 
 const APP_FILES = execFileSync("git", ["ls-files", "-z", "src/app"], {
@@ -207,8 +211,9 @@ describe("detección de funciones exportadas", () => {
 // credenciales, ni reexporta todo el módulo que la tiene. Buscar el nombre, y no solo la línea
 // del import, cubre las formas `import { }`, `import * as m` seguido de `m.revoke…`,
 // `export { } from` y el import dinámico. Límite declarado: un nombre armado en tiempo de
-// ejecución (`m["revoke" + x]`) no se ve.
-const REVOCATION_NAME = /\brevoke\w*Credential\b/;
+// ejecución (`m["revoke" + x]`) no se ve. Admite plural y sufijo (`revokeCredentials`,
+// `revokeCredentialById`): R-7 de la revisión independiente de la 11.3.
+const REVOCATION_NAME = /\brevoke\w*Credential\w*/;
 const MODULE_REEXPORT =
   /export\s*\*\s*(?:as\s+\w+\s+)?from\s*["']@\/modules\/ingestion["']/;
 
@@ -224,6 +229,8 @@ describe("detección de la revocación de credenciales (O-33)", () => {
     'const { revokeIngestionCredential: r } = await import("@/modules/ingestion");',
     'export * from "@/modules/ingestion";',
     "export * as ingestion from '@/modules/ingestion';",
+    'import { revokeCredentials } from "@/modules/ingestion";',
+    "await ingestion.revokeCredentialById(id);",
   ])("detecta: %j", (text) => {
     expect(exposesRevocation(text)).toBe(true);
   });
@@ -232,6 +239,7 @@ describe("detección de la revocación de credenciales (O-33)", () => {
     'import { authenticateServiceRequest } from "@/modules/ingestion";',
     'export * from "@/modules/inventory";',
     "// la credencial revocada da FORBIDDEN",
+    "const revoked = credential.revokedAt !== null;",
   ])("no detecta: %j", (text) => {
     expect(exposesRevocation(text)).toBe(false);
   });

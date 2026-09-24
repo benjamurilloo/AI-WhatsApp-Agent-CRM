@@ -4,7 +4,15 @@ import { describe, expect, it } from "vitest";
 
 // Guarda de FR-PROD-07 (brief-4.3.1, D-6): en src/, inventories e inventory_movements solo se
 // escriben desde las funciones autorizadas de src/modules/inventory/repository.ts.
-// Límite: no ve SQL escrito a mano contra la base ni una tabla que llega por un alias.
+//
+// Ve: Drizzle (.insert/.update/.delete con la tabla, también por un espacio de nombres), y SQL
+// literal con INSERT INTO, UPDATE, DELETE FROM o TRUNCATE sobre el nombre de la tabla (con o sin
+// esquema y comillas) o sobre la tabla interpolada (`${inventories}`). Las formas que no son el
+// nombre desnudo se sumaron en la 11.3.2 (brief-11.3, D-10): son las que M-2 de la 11.1 encontró
+// en price-writes.
+// No ve: SQL escrito a mano contra la base; la tabla bajo otro nombre (un alias en el import, una
+// variable que la guarda); el nombre armado en tiempo de ejecución; ni una escritura en una CTE o
+// en un trigger nuevo.
 
 const REPOSITORY = "src/modules/inventory/repository.ts";
 
@@ -21,10 +29,17 @@ const TABLES = new Map([
   ["inventory_movements", "inventory_movements"],
 ]);
 
+// La tabla en SQL: su nombre, con o sin esquema y comillas, o el objeto de Drizzle interpolado.
+// El nombre queda en el grupo 2 o en el 3.
+const SQL_TABLE = String.raw`(?:"?public"?\s*\.\s*)?"?(inventories|inventory_movements)"?\b|\$\{\s*(?:\w+\.)?(inventories|inventoryMovements)\s*\}`;
+
 // Escrituras con Drizzle y con SQL literal.
 const WRITE_PATTERNS = [
-  /\.(insert|update|delete)\(\s*(inventories|inventoryMovements)\s*\)/g,
-  /\b(insert\s+into|update|delete\s+from)\s+"?(inventories|inventory_movements)\b/gi,
+  /\.(insert|update|delete)\(\s*(?:\w+\.)?(inventories|inventoryMovements)\s*\)/g,
+  new RegExp(
+    String.raw`\b(insert\s+into|update|delete\s+from|truncate(?:\s+table)?)(?:\s+only)?\s+(?:${SQL_TABLE})`,
+    "gi",
+  ),
 ];
 
 const FUNCTION_PATTERN =
@@ -41,7 +56,7 @@ function findStockWrites(code: string): Write[] {
   return WRITE_PATTERNS.flatMap((pattern) =>
     [...code.matchAll(pattern)].map((match) => ({
       line: code.slice(0, match.index).split("\n").length,
-      operation: `${match[1]!.toLowerCase().split(/\s+/)[0]} ${TABLES.get(match[2]!.toLowerCase())}`,
+      operation: `${match[1]!.toLowerCase().split(/\s+/)[0]} ${TABLES.get((match[2] ?? match[3])!.toLowerCase())}`,
       fn:
         functions.find((f) => match.index >= f.start && match.index < f.end)
           ?.name ?? null,
@@ -94,6 +109,52 @@ describe("detección de escrituras del saldo", () => {
       file: "src/app/accion.ts",
       code: 'await db.execute(sql`delete from "inventory_movements"`);',
     },
+    // Las formas de M-2 de la 11.1, sumadas en la 11.3.2.
+    {
+      name: "update con la tabla interpolada en sql",
+      file: "src/modules/inventory/service.ts",
+      code: "await tx.execute(sql`update ${inventories} set quantity_on_hand = 0`);",
+    },
+    {
+      name: "insert de movimientos con la tabla interpolada",
+      file: "src/modules/inventory/service.ts",
+      code: "await tx.execute(sql`insert into ${inventoryMovements} (quantity) values (1)`);",
+    },
+    {
+      name: "delete con la tabla interpolada por espacio de nombres",
+      file: "src/app/accion.ts",
+      code: "await db.execute(sql`delete from ${schema.inventories}`);",
+    },
+    {
+      name: "nombre con esquema",
+      file: "src/app/accion.ts",
+      code: "await db.execute(sql`UPDATE public.inventories SET quantity_on_hand = 0`);",
+    },
+    {
+      name: "nombre con esquema entre comillas",
+      file: "src/app/accion.ts",
+      code: 'await db.execute(sql`delete from "public"."inventory_movements"`);',
+    },
+    {
+      name: "Drizzle con import de espacio de nombres",
+      file: "src/modules/inventory/service.ts",
+      code: "await tx.update(stockSchema.inventories).set(v);",
+    },
+    {
+      name: "TRUNCATE",
+      file: "src/app/accion.ts",
+      code: "await db.execute(sql`TRUNCATE inventories`);",
+    },
+    {
+      name: "TRUNCATE TABLE ONLY",
+      file: "src/app/accion.ts",
+      code: "await db.execute(sql`truncate table only inventory_movements`);",
+    },
+    {
+      name: "UPDATE ONLY",
+      file: "src/app/accion.ts",
+      code: "await db.execute(sql`UPDATE ONLY inventories SET quantity_on_hand = 0`);",
+    },
   ])("detecta: $name", ({ file, code }) => {
     expect(findViolations(file, code)).not.toEqual([]);
   });
@@ -110,6 +171,14 @@ describe("detección de escrituras del saldo", () => {
     {
       name: "una lectura",
       code: "export async function findBalances() {\n  return db.select().from(inventories);\n}",
+    },
+    {
+      name: "una lectura con la tabla interpolada",
+      code: "export async function countBalances() {\n  return db.execute(sql`select count(*) from ${inventories}`);\n}",
+    },
+    {
+      name: "la escritura de otra tabla de nombre parecido",
+      code: "export async function touch() {\n  await db.execute(sql`update products set name = 1`);\n  await db.execute(sql`delete from inventories_archive`);\n}",
     },
   ])("permite: $name", ({ code }) => {
     expect(findViolations(REPOSITORY, code)).toEqual([]);

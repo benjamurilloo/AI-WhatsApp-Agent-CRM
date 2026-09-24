@@ -25,8 +25,16 @@ import { describe, expect, it } from "vitest";
 // Lo que NO ve, y hay que saberlo: un nombre armado en tiempo de ejecución
 // (`m["search" + "CatalogForService"]`), y cualquier cosa fuera de src/ (scripts/ y tests/ las
 // llaman a propósito: el operador mide y los tests prueban). Lee el texto, no el grafo de módulos.
+// Tampoco ve un envoltorio con otro nombre dentro de un módulo (`const x = aForService`).
+//
+// Segunda regla, en todo src/, módulos incluidos: ningún archivo renombra una `…ForService` a un
+// nombre que no termine igual (`export { searchCatalogForService as searchCatalog }`). Sin ella,
+// un index.ts de módulo podría exportarla con otro nombre y una página la importaría sin que la
+// primera regla la viera (R-8 de la revisión independiente de la 11.3).
 
 const ALLOWED = [/^src\/modules\//, /^src\/app\/api\/read\//];
+
+const SERVICE_RENAME = /\b\w+ForService\s+as\s+(?!\w*ForService\b)\w+/;
 
 const SERVICE_NAME = /\b\w+ForService\b/;
 const MODULE_STAR_REEXPORT =
@@ -97,6 +105,21 @@ describe("detección de las lecturas de servicio", () => {
   ])("no detecta: %j", (text) => {
     expect(reachesServiceReads(text)).toBe(false);
   });
+
+  it.each([
+    'export { searchCatalogForService as searchCatalog } from "./service";',
+    "export {\n  listCurrentEntriesForService as listCurrent,\n} from './service';",
+    'import { getCatalogProductForService as leer } from "@/modules/inventory";',
+  ])("detecta el renombre: %j", (text) => {
+    expect(SERVICE_RENAME.test(text)).toBe(true);
+  });
+
+  it.each([
+    'export { searchCatalogForService } from "./service";',
+    'import { searchActiveProductsForService as searchForService } from "./x";',
+  ])("no detecta como renombre: %j", (text) => {
+    expect(SERVICE_RENAME.test(text)).toBe(false);
+  });
 });
 
 describe("repositorio", () => {
@@ -117,7 +140,10 @@ describe("repositorio", () => {
       expect.arrayContaining([
         "src/modules/catalog/service.ts",
         "src/modules/inventory/service.ts",
+        "src/modules/knowledge/service.ts",
+        "src/modules/organizations/service.ts",
         "src/app/api/read/v1/products/handler.ts",
+        "src/app/api/read/v1/knowledge/handler.ts",
       ]),
     );
   });
@@ -129,6 +155,16 @@ describe("repositorio", () => {
     expect(
       reaching,
       `estas lecturas no pasan por authorize; solo las llama src/app/api/read/ (brief-11.3, D-3):\n${reaching.join("\n")}`,
+    ).toEqual([]);
+  });
+
+  it("ningún archivo de src/, módulos incluidos, renombra una lectura de servicio", () => {
+    const renaming = files.filter((file) =>
+      SERVICE_RENAME.test(readFileSync(file, "utf8")),
+    );
+    expect(
+      renaming,
+      `un renombre saca la función de la vista de esta guarda:\n${renaming.join("\n")}`,
     ).toEqual([]);
   });
 });

@@ -90,6 +90,52 @@ Ejemplo (`tests/fixtures/read/v1/products-search.json`):
 
 Lo que un producto **no** trae: la cantidad en stock, el punto de reposición, el historial de precios, quién los fijó, las fechas y la auditoría.
 
+### `GET /api/read/v1/knowledge`
+
+La información del negocio **vigente hoy** de la organización de la credencial (FR-API-02). Desde la 11.3.2.
+
+| Parámetro | Obligatorio | Reglas |
+|---|---|---|
+| `q` | no | de 1 a 200 caracteres después de recortar los espacios; sin caracteres de control. Vacío o solo espacios es lo mismo que no mandarlo |
+| `limit` | no | entero de 1 a 50, sin signo ni ceros de relleno; por defecto, 20 |
+
+- **Vigente** (FR-INFO-03): activa, y el día de hoy **en la zona horaria de la organización** cae dentro de su vigencia. Las dos fechas son opcionales e inclusivas. Nunca sale una entrada inactiva, programada o vencida.
+- **Con `q`**: todas las palabras como prefijo de palabras del título, la categoría o el contenido, sin distinguir mayúsculas ni acentos. Ordena por relevancia: una coincidencia en el título sale antes que una solo en el contenido. Después, por título y por id.
+- **Sin `q`**: todas las vigentes, por categoría, título e id.
+- **Respuesta `200`**: `{ "contract_version": "1", "items": [entrada, …] }`. Sin resultados, `items` es `[]`.
+- No hay paginación: el consumidor refina la búsqueda.
+
+### Entrada de información del negocio
+
+| Campo | Tipo | Nulable | Notas |
+|---|---|---|---|
+| `entry_id` | string | no | UUID de la entrada en el CRM; estable |
+| `title` | string | no | único por organización, sin distinguir mayúsculas |
+| `category` | string | no | texto libre |
+| `content` | string | no | texto plano, hasta 4000 caracteres, con saltos de línea `\n`; el consumidor lo escapa si lo muestra |
+| `valid_from` | string | sí | fecha de calendario `YYYY-MM-DD`, inclusiva; `null` si no tiene inicio |
+| `valid_until` | string | sí | fecha de calendario `YYYY-MM-DD`, inclusiva; `null` si no vence |
+
+Ejemplo (`tests/fixtures/read/v1/knowledge-current.json`):
+
+```json
+{
+  "contract_version": "1",
+  "items": [
+    {
+      "entry_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+      "title": "Horarios",
+      "category": "Atención",
+      "content": "De lunes a viernes, de 9 a 18.\nSábados, de 9 a 13.",
+      "valid_from": null,
+      "valid_until": null
+    }
+  ]
+}
+```
+
+Lo que una entrada **no** trae: su estado, si está activa, las fechas de alta y de cambio, y la auditoría.
+
 ## Errores
 
 El cuerpo de error tiene `code`, `request_id` y, en `VALIDATION_ERROR`, `fields`: los parámetros inválidos (`q`, `limit`, `product_id` o `correlation_id`). Ningún error repite el texto buscado.
@@ -106,7 +152,7 @@ El cuerpo de error tiene `code`, `request_id` y, en `VALIDATION_ERROR`, `fields`
 
 ## Log
 
-Cada respuesta de la API encendida, incluidos los rechazos y el `500`, queda en el log estructurado con `request_id`, la ruta **fija** (`/api/read/v1/products` o `/api/read/v1/products/{product_id}`, nunca la URL), el código, la duración y, cuando se conocen, la organización, el `source` y el `correlation_id` (R-1 de la [evaluación 10.1](../decisions/evaluacion-10.1-mvp.md), piezas 1 y 2). **Nunca** el token, el texto buscado, el `limit` ni un id buscado: el texto viene de lo que escribió un cliente.
+Cada respuesta de la API encendida, incluidos los rechazos y el `500`, queda en el log estructurado con `request_id`, la ruta **fija** (`/api/read/v1/products`, `/api/read/v1/products/{product_id}` o `/api/read/v1/knowledge`, nunca la URL), el código, la duración y, cuando se conocen, la organización, el `source` y el `correlation_id` (R-1 de la [evaluación 10.1](../decisions/evaluacion-10.1-mvp.md), piezas 1 y 2). **Nunca** el token, el texto buscado, el `limit` ni un id buscado: el texto viene de lo que escribió un cliente.
 
 ## Versionado
 
@@ -118,9 +164,11 @@ Cada respuesta de la API encendida, incluidos los rechazos y el `500`, queda en 
 
 - **Validado localmente** (`deterministic`):
   - en `src/app/api/read/v1/contract.test.ts`: los parámetros, el monto con los decimales de la moneda, el validador estricto y los fixtures de `tests/fixtures/read/v1/`, todos con `"shape": "assumed"`;
-  - en `tests/integration/read-api.test.ts`, contra PostgreSQL real: toda respuesta de éxito pasa el validador; el borde completo (modo de prueba, credencial, alcance, allowlist, límite, sesión que no autentica, encabezados, correlación); el aislamiento entre organizaciones; los productos inactivos; los caracteres de búsqueda; el NUL, que nunca llega a PostgreSQL; el log sin secretos y el `500`;
+  - en `tests/integration/read-api.test.ts`, contra PostgreSQL real: toda respuesta de éxito pasa el validador; el borde completo (modo de prueba, credencial, alcance, allowlist, límite, sesión que no autentica, encabezados, correlación); el aislamiento entre organizaciones; los productos inactivos; la vigencia de la información, con la zona de la organización; los caracteres de búsqueda; el NUL, que nunca llega a PostgreSQL; el log sin secretos y el `500`;
+  - en el mismo archivo, el plan de las tres consultas de la API, capturadas tal como las ejecuta la lectura: la búsqueda de productos usa el índice GIN y el del SKU, el precio vigente usa el índice del historial y la búsqueda de información usa su GIN;
   - en `tests/integration/ingestion-http.test.ts`, caso 14: una credencial de lectura no escribe;
-  - en `tests/e2e/read-api.spec.ts`, sobre `next start`: las cabeceras de `proxy.ts` en las rutas nuevas y la API apagada por defecto.
+  - en `tests/e2e/read-api.spec.ts`, sobre `next start`: las cabeceras de `proxy.ts` en las tres rutas y la API apagada por defecto;
+  - en `scripts/medir-caminos.ts`: las lecturas de las tres rutas contra el volumen de desarrollo (10 000 productos), sin el borde. Ese volumen no tiene precios ni entradas de información ([brief-11.3](../decisions/brief-11.3-api-de-lectura.md), §Resultados de la 11.3.2).
 - **Sin validar hasta la 12.3**:
   - la compatibilidad con un consumidor real;
   - la autenticación con su tráfico;

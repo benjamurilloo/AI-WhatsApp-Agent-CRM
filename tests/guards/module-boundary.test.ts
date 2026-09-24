@@ -106,6 +106,28 @@ const cases = [
     code: 'import { users } from "@/modules/auth/schema"; export const w = users;',
     forbidden: false,
   },
+  // knowledge es módulo de dominio desde la 11.2 (AC-7); estos casos dejan esa mutación como
+  // guarda permanente (N-3 de su revisión independiente, resuelta en la 11.3.2).
+  {
+    file: "src/modules/knowledge/service.ts",
+    code: 'import { revalidatePath } from "next/cache"; export const k1 = revalidatePath;',
+    forbidden: true,
+  },
+  {
+    file: "src/modules/knowledge/relativa.ts",
+    code: 'import { k2 } from "../catalog/service"; export const k3 = k2;',
+    forbidden: true,
+  },
+  {
+    file: "src/modules/knowledge/repository.ts",
+    code: 'import { organizations } from "@/modules/organizations/schema"; export const k4 = organizations;',
+    forbidden: true,
+  },
+  {
+    file: "src/modules/knowledge/publico.ts",
+    code: 'import { k5 } from "@/modules/organizations"; export const k6 = k5;',
+    forbidden: false,
+  },
   // El bloque de schema.ts está antes que el de analytics, así que para un schema.ts
   // dentro de analytics gana el de analytics, que es el último que aplica. analytics no
   // tiene tablas propias; el caso fija el orden, no una intención de dárselas (H-6).

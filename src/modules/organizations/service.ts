@@ -256,6 +256,16 @@ export async function getOrganizationTimezone(
   return timezone;
 }
 
+// La misma zona para la API de lectura (brief-11.3, D-3): la organización sale de la credencial
+// que ya autenticó la API, no de una persona.
+export async function getOrganizationTimezoneForService(
+  organizationId: string,
+): Promise<string> {
+  const timezone = await repository.findOrganizationTimezone(organizationId);
+  if (!timezone) throw new Error("organización sin zona horaria");
+  return timezone;
+}
+
 // Escrituras sobre miembros (brief-3.7). Cada una abre la transacción con la organización
 // bloqueada (D-2 y D-4), escribe y audita dentro de ella (D-8).
 

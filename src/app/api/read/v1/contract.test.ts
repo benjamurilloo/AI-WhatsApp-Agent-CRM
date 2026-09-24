@@ -5,6 +5,8 @@ import { isReadCredentialAllowed, readReadApiConfig } from "./config";
 import {
   contractAmount,
   errorResponseSchema,
+  knowledgeEntrySchema,
+  knowledgeListResponseSchema,
   parseLimit,
   parseQuery,
   productListResponseSchema,
@@ -131,6 +133,50 @@ describe("validador estricto (D-8)", () => {
   });
 });
 
+const ENTRY = {
+  entry_id: "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  title: "Horarios",
+  category: "Atención",
+  content: "De lunes a viernes, de 9 a 18",
+  valid_from: null,
+  valid_until: "2026-12-31",
+};
+
+describe("validador estricto de la información del negocio (FR-API-02)", () => {
+  it("acepta una entrada con o sin fechas", () => {
+    expect(knowledgeEntrySchema.safeParse(ENTRY).success).toBe(true);
+    expect(
+      knowledgeEntrySchema.safeParse({
+        ...ENTRY,
+        valid_from: "2026-01-01",
+        valid_until: null,
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rechaza un campo de más, el estado, una fecha con hora y una fecha imposible", () => {
+    for (const entry of [
+      { ...ENTRY, status: "current" },
+      { ...ENTRY, is_active: true },
+      { ...ENTRY, valid_until: "2026-12-31T00:00:00Z" },
+      { ...ENTRY, valid_until: "2026-02-30" },
+      { ...ENTRY, content: "" },
+    ]) {
+      expect(
+        knowledgeEntrySchema.safeParse(entry).success,
+        JSON.stringify(entry),
+      ).toBe(false);
+    }
+    expect(
+      knowledgeListResponseSchema.safeParse({
+        contract_version: "1",
+        items: [ENTRY],
+        total: 1,
+      }).success,
+    ).toBe(false);
+  });
+});
+
 describe("modo de prueba de la lectura (D-7)", () => {
   it("está apagado por defecto, con false, y no lo encienden las variables de ingestión", () => {
     for (const env of [
@@ -192,9 +238,11 @@ describe("fixtures del contrato (D-8)", () => {
     const schema =
       status !== 200
         ? errorResponseSchema
-        : "items" in body
-          ? productListResponseSchema
-          : productResponseSchema;
+        : data.request.path.startsWith("/api/read/v1/knowledge")
+          ? knowledgeListResponseSchema
+          : "items" in body
+            ? productListResponseSchema
+            : productResponseSchema;
     const parsed = schema.safeParse(body);
     expect(parsed.success, parsed.error?.message).toBe(true);
   });

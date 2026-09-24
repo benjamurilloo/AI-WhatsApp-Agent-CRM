@@ -84,7 +84,7 @@ Dos etapas (D-1).
 7. **Las comprobaciones**: O-22 (cabeceras en las rutas nuevas, end-to-end), O-33 (revocación sin ruta HTTP, guarda) y C-6 (el nombre del emisor, D-9).
 8. **Requisitos**:
    - **FR-API-01**: un sistema externo con una credencial de lectura de una organización puede buscar los productos activos de esa organización por palabras, y leer uno por su id, con su precio vigente y su estado de stock, sin la cantidad;
-   - **FR-API-03**: la lectura exige una credencial de alcance `read`, no activa y en la allowlist, con un límite de pedidos por minuto. Cada respuesta queda en el log con su identificador de correlación.
+   - **FR-API-03**: la lectura exige una credencial de alcance `read`, no revocada (decía «no activa», errata corregida el 2026-09-24 por R-9 de la revisión independiente) y en la allowlist, con un límite de pedidos por minuto. Cada respuesta queda en el log con su identificador de correlación.
 
 ### Etapa 11.3.2 — información del negocio y herencias
 
@@ -288,6 +288,11 @@ En el mismo turno autorizó el commit del brief, pasar la tarea 11.3 de Notion (
 - `src/modules/ingestion/repository.ts`: **solo** para que `insertCredential` guarde `scope` y `findCredentialByTokenHash` lo devuelva. Sin eso, `credentials.ts` no compilaba (tres errores de `typecheck`, todos por `scope`).
 - `docs/contracts/ingestion-v1.md`: **solo** para que su tabla de errores diga que una credencial de otro alcance también da `403`, con fecha.
 
+**Segunda ampliación, autorizada por el usuario el 2026-09-24**, durante la 11.3.2 (opción 1 de las tres que se le plantearon). La lectura de vigentes necesita la zona de la organización, y la única función que la da, `getOrganizationTimezone`, recibe un `AuthContext`:
+
+- `src/modules/organizations/service.ts` e `index.ts`: **solo** para agregar `getOrganizationTimezoneForService(organizationId)`, la misma consulta con la organización de la credencial. Su nombre la pone bajo `service-read-entry-points.test.ts`.
+- Se descartaron un `AuthContext` armado a mano, que es la opción (b) de D-3, y leer `organizations` por SQL desde `knowledge`, que esquiva `module-boundary`.
+
 ## Invariantes
 
 - Ninguna prohibición de `CLAUDE.md` cambia. `forbidden-references.test.ts` no se toca y sigue en verde.
@@ -429,5 +434,114 @@ Todo lo de esta sección es **autoevaluación**. La revisión independiente (D-1
   - Corrido solo, `ingestion.spec.ts` dio 2 de 2.
   - Se registra como caída del entorno local, no como un paso. La CI de esta etapa es la evidencia del end-to-end completo.
 - **Mutaciones**: las cinco de §Resultados fallaron como debían y se restauraron.
-- **CI**: pendiente del push, que necesita autorización.
+- **CI**, commit `2eb1110`, run 36065777017:
+  - **Intento 1: `failure`.** Falló un solo caso, `conversations.spec.ts` caso 2, que la etapa no toca. Llegó al tiempo máximo de 30 s con «Target page, context or browser has been closed» (línea 246). Es la misma firma registrada en HANDOFF y en la 11.1. Los otros 95 casos pasaron, incluidos los de `read-api.spec.ts`.
+  - **Intento 2: `success`**, relanzando solo el job fallido y sin cambiar código: 96 de 96 end-to-end.
+  - El caso intermitente sigue sin corregir. Se suma una aparición más a su registro.
 - **Nivel**: validado localmente (`deterministic`). No validado en integración: ningún consumidor usa el contrato y los fixtures tienen forma asumida.
+
+## Resultados — etapa 11.3.2, 2026-09-24 (autoevaluación)
+
+### Lo que la implementación encontró que el brief no decía
+
+- **La zona de la organización solo se leía con un `AuthContext`.** `getOrganizationTimezone` recibe el contexto de una persona. Se paró antes de tocar `organizations`, que no estaba en la lista, y el usuario autorizó la segunda ampliación (ver §Resolución): `getOrganizationTimezoneForService(organizationId)`, que la guarda de lecturas de servicio vigila por su nombre.
+- **La lectura de vigentes reusa el repositorio de la 11.2.** `listCurrentEntriesForService` llama a `findEntries` con `status: "current"`, así que el estado sale de la misma expresión SQL que la pantalla 12. `knowledge/repository.ts` estaba autorizado y no hizo falta tocarlo.
+- **Los planes miran la consulta real.** Los tres `EXPLAIN` capturan el SQL y los parámetros que la lectura ejecuta, espiando `pool.query`, y le piden el plan a PostgreSQL. No usan una copia de la consulta. `mockRestore` borra las llamadas registradas, así que se copian antes de restaurar.
+- **La búsqueda de productos combina dos índices.** El plan es un `BitmapOr` del GIN de `search` y del único `(organization_id, lower(sku))`. PostgreSQL resuelve `lower('cafe molido')` a una constante, y la aserción lo tiene en cuenta.
+- **El volumen de desarrollo no tiene precios, marcas ni entradas de información.** Por eso la medición de las rutas no mide el costo del precio vigente ni de la búsqueda de información con filas. Eso lo cubren los planes, con 15 000 precios y 5 000 entradas sintéticas.
+
+### Salida cruda de `medir-caminos.ts` (AC-11)
+
+`npx tsx scripts/medir-caminos.ts 5eed0000-0000-4000-8000-000000000021 "volumen de desarrollo"`, contra `crm_dev`: 10 000 productos, 9 491 activos, sin precios ni entradas de información. Salida 0 y ninguna corrida fallida. Las filas de la API:
+
+| Camino | Mediana | Mínimo | Máximo | Resultado |
+| --- | --- | --- | --- | --- |
+| API products: palabras («cafe molido») | 8.9 ms | 8.3 ms | 10.1 ms | 10 filas |
+| API products: SKU exacto | 7.4 ms | 6.1 ms | 8.4 ms | 1 filas |
+| API products: sin coincidencias | 3.5 ms | 2.6 ms | 4.1 ms | 0 filas |
+| API products/{product_id} | 7.1 ms | 5.8 ms | 8.1 ms | 1 filas |
+| API knowledge: vigentes sin texto | 4.6 ms | 3.7 ms | 5.3 ms | 0 filas |
+| API knowledge: vigentes con texto | 4.2 ms | 4.0 ms | 4.4 ms | 0 filas |
+
+Mediana de 5 corridas, después de una de calentamiento, en la máquina local. **Lo que no mide**:
+
+- el borde: la credencial, la ventana del límite de tasa y el log;
+- la concurrencia;
+- el precio vigente con historial;
+- la información del negocio con filas, porque el seed no las tiene: las dos filas de `knowledge` miden una consulta que devuelve 0 filas.
+
+Las demás filas del script, las de listados y métricas, no cambiaron de orden de magnitud respecto de la 11.0.
+
+### Corridas de mutación
+
+Cada una se aplicó, se corrió el caso y se restauró el archivo.
+
+| Criterio | Mutación | Antes | Con la mutación |
+|---|---|---|---|
+| AC-11, plan de productos | `upper(sku) = upper(q)` en lugar de `lower` | caso 20 en verde | caso 20 falla: `Seq Scan on products`, sin `Index Cond: (search @@` |
+| AC-11, precio vigente | sin `organization_id` en `findCurrentPrices` | caso 21 en verde | caso 21 falla: `Index Cond: (product_id = ANY (…))`, sin la organización |
+| AC-11, plan de información | `coalesce(search, ''::tsvector) @@ …` en `knowledgeSearchCondition` | caso 22 en verde | caso 22 falla: `Seq Scan on knowledge_entries` |
+| AC-11, `stock-writes` | una escritura real en `inventory/service.ts` por cada forma: tabla interpolada, esquema entre comillas, espacio de nombres y `TRUNCATE TABLE ONLY` | **con la guarda anterior, las cuatro pasaban** | con la guarda nueva, las cuatro hacen fallar «ningún archivo de src/ escribe el saldo» |
+| AC-11, `module-boundary` | `knowledge` fuera de la lista de módulos de dominio de `eslint.config.mjs` | 24 en verde | falla el caso de `next/cache` en `knowledge/service.ts`. Los otros tres los cubren las reglas generales |
+| AC-10, contrato | `status` de más en `toContractKnowledgeEntry` | casos 15 a 17 en verde | los tres fallan por el validador estricto |
+| AC-10, vigencia | `status: "all"` en `listCurrentEntriesForService` | casos 15 a 17 en verde | los tres fallan: salen entradas programadas, vencidas e inactivas |
+| R-7 | la regex anterior contra `revokeCredentials` y `revokeCredentialById` | — | la anterior no ve ninguno; la nueva, los dos |
+| R-8 | `export { listCurrentEntriesForService as listCurrentEntries }` en `knowledge/index.ts` | 24 en verde | falla «ningún archivo de src/, módulos incluidos, renombra una lectura de servicio» |
+
+`eslint.config.mjs`, `catalog/repository.ts`, `knowledge/schema.ts`, `knowledge/index.ts` e `inventory/service.ts` quedaron como estaban antes de cada mutación.
+
+### Revisión independiente (D-12)
+
+Un agente que no participó, de solo lectura, revisó las dos etapas contra este brief y `CLAUDE.md`. No corrió nada. Encontró **nueve hallazgos: ninguno crítico, dos mayores, cuatro menores y tres notas**. Cada uno se verificó contra el código antes de aceptarlo, y los nueve se confirmaron.
+
+| Hallazgo | Verificación | Resolución |
+|---|---|---|
+| **R-1** (mayor). Un `401`, `403` o `429` no registra el `correlation_id`, y `Risks.md` y FR-API-03 decían que sí | **Confirmado**: `serve.ts` valida la correlación después del límite, en el orden que fija el contrato (`read-v1.md`, §Orden de las comprobaciones). La fila de `Risks.md` la escribió esta misma etapa | La conducta queda como está: es la del contrato, y manda el código. Se corrigieron `Risks.md` y FR-API-03. Registrar una correlación antes de autenticar pondría en el log un texto de quien no se autenticó. Si la 12.3 necesita la correlación en los `429`, es un cambio del contrato |
+| **R-2** (mayor). Varias respuestas `200` no pasaban por el validador, contra AC-6 y D-8 | **Confirmado**: casos 11, 12, 13, 19 y 20 a 22 | Todas pasan por `valid()`. En `read-api.test.ts` no queda ningún `toBe(200)` fuera de `valid()` |
+| **R-3** (menor). La tabla de `SecurityModel.md` decía 4 Route Handlers | **Confirmado**: la tabla sumaba 47 y el párrafo, 48 | 5 |
+| **R-4** (menor). Faltaban §Resultados y §Cierre de la 11.3.2 | **Confirmado**: el enlace de `read-v1.md` apuntaba a una sección que no existía | Esta sección |
+| **R-5** (menor). Un comentario de `knowledge/service.ts` hablaba de la 11.3 en futuro | **Confirmado** | Reescrito |
+| **R-6** (menor). Los casos 5, 6, 10, 12, 14 y 18 no llevaban la etiqueta del FR | **Confirmado** | Etiquetados |
+| **R-7** (nota). La regla de O-33 no veía `revokeCredentials` ni `revokeCredentialById` | **Confirmado**: `\b` exigía terminar en «Credential» | Regex ampliada y dos casos, con la comprobación de la tabla de mutaciones |
+| **R-8** (nota). Un `index.ts` podía reexportar una `…ForService` con otro nombre | **Confirmado** | Segunda regla de la guarda, en todo `src/`, con cinco casos y su mutación |
+| **R-9** (nota). El brief decía «no activa» en FR-API-03 | **Confirmado**: errata | Corregida en §Alcance, con fecha |
+
+### Contraste por criterio (etapa 11.3.2)
+
+- **AC-10 (FR-API-02)** — cumplido. Los casos 15 a 18 cubren:
+  - solo las vigentes de la organización, con las dos fechas inclusivas;
+  - una entrada programada, una vencida, una inactiva y una de otra organización, que no salen;
+  - la zona donde ya es mañana, con Kiritimati y Pago Pago;
+  - por relevancia, con el título primero, y sin texto por categoría y título;
+  - `limit` y las validaciones de `q` y `limit`, con el NUL.
+  
+  Toda respuesta pasa el validador estricto. Las dos mutaciones están arriba.
+- **AC-11 (herencias)** — cumplido:
+  - `stock-writes` detecta las cuatro formas. El hueco se comprobó antes de cerrarlo;
+  - los tres `EXPLAIN` miran la consulta real, con su mutación cada uno;
+  - `medir-caminos.ts` mide las tres rutas, con la salida cruda y lo que no mide;
+  - `module-boundary` tiene los casos de `knowledge` (N-3 de la 11.2);
+  - el comentario de `catalog/repository.ts` está corregido.
+- **AC-12 (pregunta 5)** — cumplido: `Risks.md` tiene la estimación, su razonamiento y la revisión en la 12.3, con la corrección de R-1.
+- **AC-13 (documentación)** — cumplido:
+  - `read-v1.md` tiene la ruta y la entrada;
+  - `FunctionalRequirements.md` tiene FR-API-02;
+  - `TraceabilityMatrix.md`, `SecurityModel.md`, `IntegrationBoundaries.md`, `RepositoryStructure.md` y `DataModel.md` están actualizados. `DataModel.md` tiene el plan del precio vigente, que la 11.1 dejó sin medir;
+  - el recuento: **48 puntos de entrada** (19 páginas, 24 Server Actions y 5 Route Handlers), con **29 fijados por la guarda**, contados contra `src/app` y `exposed-surface.test.ts`;
+  - FR-API-01 a FR-API-03 están etiquetados en los casos.
+- **AC-14** — en §Cierre.
+- **AC-15** — cumplido. `git status` muestra solo archivos de la lista y de las dos ampliaciones. `forbidden-references.test.ts`, `proxy.ts` y `eslint.config.mjs` no cambiaron.
+
+## Cierre de la etapa 11.3.2, 2026-09-24 (autoevaluación)
+
+- **Vitest**: 1164 de 1164 en 89 archivos, contra PostgreSQL real de desarrollo, después de las correcciones de la revisión. Antes de ellas eran 1155. Son 35 casos más que en la 11.3.1:
+  - 8 en `read-api.test.ts`;
+  - 3 en el contrato;
+  - 4 en `module-boundary`;
+  - 11 en `stock-writes`;
+  - 3 en `exposed-surface`;
+  - 6 en `service-read-entry-points`.
+- **End-to-end completo** (`npm run build` y `npm run test:e2e`): **97 de 97**, con el caso nuevo de `/api/read/v1/knowledge`. Corrió antes de las correcciones de la revisión. Esas correcciones tocan tests de integración, guardas, documentos y un comentario de `knowledge/service.ts`; ninguna cambia código que corra en `next start`.
+- `format:check`, `lint` y `typecheck`, limpios.
+- **CI**: pendiente del push, que necesita autorización.
+- **Nivel**: validado localmente (`deterministic`). **No validado en integración**: ningún consumidor usa el contrato, y los fixtures tienen forma asumida. Se valida con el agente en la 12.3.

@@ -9,6 +9,7 @@ export {
   getMember,
   getMemberSummaries,
   getOrganizationTimezone,
+  getOrganizationTimezoneForService,
   listMembers,
   reactivateMember,
   MEMBERS_PAGE_SIZE,

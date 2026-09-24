@@ -122,8 +122,9 @@ export type ActivityFilter = "active" | "inactive" | "all";
 // acentos (brief-11.1, D-4; FR-PROD-11). Sin límite: el estado de stock se filtra y la lista se
 // pagina en memoria (brief-4.2, D-1).
 //
-// La consulta sale de `productSearchQuery`, que normaliza y parte el texto igual que la columna
-// generada `search`. Un test con EXPLAIN comprueba que usa el índice GIN (brief-11.1, AC-4).
+// La condición es `productSearchCondition`, cuya consulta sale de `searchQuery` en
+// src/shared/search: normaliza y parte el texto igual que la columna generada `search`. Un test
+// con EXPLAIN comprueba que usa el índice GIN (brief-11.1, AC-4).
 //
 // El SKU no se normaliza: es igualdad exacta sobre un código, con un índice único que define la
 // identidad del producto. Tocarlo cambiaría qué SKUs colisionan (brief-9.0.2, hallazgo 6).

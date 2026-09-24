@@ -12,9 +12,11 @@ import {
 import type { z } from "zod";
 import {
   errorResponseSchema,
+  knowledgeListResponseSchema,
   productListResponseSchema,
   productResponseSchema,
 } from "@/app/api/read/v1/contract";
+import { handleKnowledgeList } from "@/app/api/read/v1/knowledge/handler";
 import {
   handleProductDetail,
   handleProductSearch,
@@ -29,7 +31,8 @@ import { getDb } from "@/shared/db";
 import { resetDatabase } from "./reset-database";
 
 // API de lectura v1 contra PostgreSQL real (brief-11.3): el borde (modo de prueba, credencial con
-// alcance, allowlist, límite, correlación y log) y las lecturas de productos. Los requests son
+// alcance, allowlist, límite, correlación y log), las lecturas de productos y la de información
+// del negocio vigente, con el plan de sus consultas. Los requests son
 // sintéticos: no hay consumidor real, y nada de esto es evidencia de integración con el agente.
 
 const BASE = "http://localhost/api/read/v1";
@@ -77,6 +80,17 @@ function search(
   );
 }
 
+function knowledge(
+  query: string,
+  token: string | null,
+  headers: Record<string, string> = {},
+) {
+  return handleKnowledgeList(
+    request(`/knowledge${query}`, token, headers),
+    NOW,
+  );
+}
+
 function detail(
   productId: string,
   token: string | null,
@@ -110,9 +124,40 @@ async function rejected(response: Response, status: number) {
   return body as { code: string; fields?: string[] };
 }
 
-async function createOrganization(name: string) {
+async function createOrganization(name: string, timezone?: string) {
   const result = await getDb().execute<{ id: string }>(
-    sql`insert into organizations (name) values (${name}) returning id`,
+    timezone
+      ? sql`insert into organizations (name, timezone) values (${name}, ${timezone}) returning id`
+      : sql`insert into organizations (name) values (${name}) returning id`,
+  );
+  return result.rows[0]!.id;
+}
+
+// El día de hoy en una zona, más un corrimiento, calculado por PostgreSQL como la vigencia.
+async function dayIn(timezone: string, offset = 0): Promise<string> {
+  const result = await getDb().execute<{ day: string }>(
+    sql`select ((now() at time zone ${timezone})::date + ${offset}::int)::text as day`,
+  );
+  return result.rows[0]!.day;
+}
+
+type EntrySeed = {
+  title: string;
+  category?: string;
+  content?: string;
+  isActive?: boolean;
+  validFrom?: string | null;
+  validUntil?: string | null;
+};
+
+async function entry(organizationId: string, seed: EntrySeed): Promise<string> {
+  const result = await getDb().execute<{ id: string }>(
+    sql`insert into knowledge_entries (organization_id, title, category, content, is_active,
+          valid_from, valid_until)
+        values (${organizationId}, ${seed.title}, ${seed.category ?? "General"},
+          ${seed.content ?? "Contenido"}, ${seed.isActive ?? true}, ${seed.validFrom ?? null},
+          ${seed.validUntil ?? null})
+        returning id`,
   );
   return result.rows[0]!.id;
 }
@@ -388,7 +433,7 @@ describe("API de lectura: productos", { timeout: TEST_TIMEOUT }, () => {
     );
   });
 
-  it("5. valida q y limit con 400, y un NUL nunca llega a PostgreSQL", async () => {
+  it("5. FR-API-01: valida q y limit con 400, y un NUL nunca llega a PostgreSQL", async () => {
     const cases: [string, string[]][] = [
       ["", ["q"]],
       ["?q=", ["q"]],
@@ -411,7 +456,7 @@ describe("API de lectura: productos", { timeout: TEST_TIMEOUT }, () => {
     }
   });
 
-  it("6. los caracteres de tsquery no producen errores", async () => {
+  it("6. FR-API-01: los caracteres de tsquery no producen errores", async () => {
     for (const text of [
       "!sonora",
       "sonora & | :*",
@@ -486,7 +531,7 @@ describe("API de lectura: el borde", { timeout: TEST_TIMEOUT }, () => {
     expect(await rateWindows()).toBe(0);
   });
 
-  it("10. una sesión válida del CRM no autentica la API", async () => {
+  it("10. FR-API-03: una sesión válida del CRM no autentica la API", async () => {
     const token = randomBytes(32).toString("base64url");
     await getDb().execute(
       sql`insert into sessions (id, user_id, expires_at)
@@ -507,7 +552,10 @@ describe("API de lectura: el borde", { timeout: TEST_TIMEOUT }, () => {
 
   it("11. FR-API-03: aplica el límite por credencial, con Retry-After, y cada credencial tiene su presupuesto", async () => {
     for (let i = 0; i < INGESTION_RATE_LIMIT; i++) {
-      expect((await search("?q=sonora", readerA.token)).status).toBe(200);
+      await valid(
+        await search("?q=sonora", readerA.token),
+        productListResponseSchema,
+      );
     }
     const limited = await search("?q=sonora", readerA.token);
     const body = await rejected(limited, 429);
@@ -515,14 +563,18 @@ describe("API de lectura: el borde", { timeout: TEST_TIMEOUT }, () => {
     expect(limited.headers.get("retry-after")).toBe("60");
 
     // Otra credencial no comparte el presupuesto, y la ventana siguiente lo reinicia.
-    expect((await search("?q=sonora", readerB.token)).status).toBe(200);
+    await valid(
+      await search("?q=sonora", readerB.token),
+      productListResponseSchema,
+    );
     const next = new Date(NOW.getTime() + 60_000);
-    expect(
-      (await search("?q=sonora", readerA.token, { now: next })).status,
-    ).toBe(200);
+    await valid(
+      await search("?q=sonora", readerA.token, { now: next }),
+      productListResponseSchema,
+    );
   });
 
-  it("12. toda respuesta lleva no-store y X-Request-Id, y la correlación vuelve", async () => {
+  it("12. FR-API-03: toda respuesta lleva no-store y X-Request-Id, y la correlación vuelve", async () => {
     const responses = [
       await search("?q=sonora", readerA.token),
       await search("?q=", readerA.token),
@@ -537,7 +589,7 @@ describe("API de lectura: el borde", { timeout: TEST_TIMEOUT }, () => {
     const correlated = await search("?q=sonora", readerA.token, {
       headers: { "x-correlation-id": "turno-0001" },
     });
-    expect(correlated.status).toBe(200);
+    await valid(correlated, productListResponseSchema);
     expect(correlated.headers.get("x-correlation-id")).toBe("turno-0001");
 
     // Los espacios de los bordes no llegan: HTTP los recorta del valor de un encabezado, y
@@ -565,9 +617,15 @@ describe("API de lectura: el borde", { timeout: TEST_TIMEOUT }, () => {
     const secret = "cliente-busca-algo-privado";
     const correlation = { "x-correlation-id": "turno-0042" };
 
-    await search(`?q=${secret}`, readerA.token, { headers: correlation });
+    await valid(
+      await search(`?q=${secret}`, readerA.token, { headers: correlation }),
+      productListResponseSchema,
+    );
     await search(`?q=${secret}&limit=99`, readerA.token);
-    await detail(auriculares, readerA.token, correlation);
+    await valid(
+      await detail(auriculares, readerA.token, correlation),
+      productResponseSchema,
+    );
     await detail(inactivo, readerA.token);
     await search(`?q=${secret}`, ingestA.token);
     await search(`?q=${secret}`, `crm_read_${"a".repeat(43)}`);
@@ -604,7 +662,7 @@ describe("API de lectura: el borde", { timeout: TEST_TIMEOUT }, () => {
     });
   });
 
-  it("14. un error inesperado responde 500 sin detalles y queda en el log", async () => {
+  it("14. FR-API-03: un error inesperado responde 500 sin detalles y queda en el log", async () => {
     // Un precio que la escritura nunca deja guardar: centavos en una moneda sin decimales.
     await product(orgA, await memberOf(orgA), {
       sku: "ROTO-1",
@@ -626,3 +684,332 @@ describe("API de lectura: el borde", { timeout: TEST_TIMEOUT }, () => {
     });
   });
 });
+
+describe(
+  "API de lectura: información del negocio",
+  { timeout: TEST_TIMEOUT },
+  () => {
+    const ZONE = "America/Argentina/Buenos_Aires";
+
+    it("15. FR-API-02: devuelve solo las vigentes de la organización, por categoría y título, con las fechas", async () => {
+      const today = await dayIn(ZONE);
+      await entry(orgA, { title: "Horarios", category: "Atención" });
+      const envios = await entry(orgA, {
+        title: "Envíos",
+        category: "Logística",
+        content: "Por correo, en <b>48 h</b>",
+        validFrom: today,
+        validUntil: today,
+      });
+      await entry(orgA, {
+        title: "Promo de primavera",
+        category: "Promociones",
+        validFrom: await dayIn(ZONE, 1),
+      });
+      await entry(orgA, {
+        title: "Promo de invierno",
+        category: "Promociones",
+        validUntil: await dayIn(ZONE, -1),
+      });
+      await entry(orgA, { title: "Feriado viejo", isActive: false });
+      await entry(orgB, { title: "Horarios de B", category: "Atención" });
+
+      const body = await valid(
+        await knowledge("", readerA.token),
+        knowledgeListResponseSchema,
+      );
+      expect(body.items.map((item) => item.title)).toEqual([
+        "Horarios",
+        "Envíos",
+      ]);
+      // Las dos fechas son inclusivas: una entrada de solo hoy es vigente.
+      expect(body.items[1]).toStrictEqual({
+        entry_id: envios,
+        title: "Envíos",
+        category: "Logística",
+        content: "Por correo, en <b>48 h</b>",
+        valid_from: today,
+        valid_until: today,
+      });
+      expect(body.items[0]).toMatchObject({
+        valid_from: null,
+        valid_until: null,
+      });
+
+      const fromB = await valid(
+        await knowledge("", readerB.token),
+        knowledgeListResponseSchema,
+      );
+      expect(fromB.items.map((item) => item.title)).toEqual(["Horarios de B"]);
+    });
+
+    it("16. FR-API-02: «hoy» es el de la zona de la organización de la credencial, no el de UTC", async () => {
+      // Kiritimati va 14 horas adelante de UTC y Pago Pago, 11 atrás: a cualquier hora, el día de al
+      // menos una difiere del de UTC (brief-11.2, AC-3).
+      const ahead = await createOrganization("Adelante", "Pacific/Kiritimati");
+      const behind = await createOrganization("Atrás", "Pacific/Pago_Pago");
+      await entry(ahead, {
+        title: "Empieza hoy allá",
+        validFrom: await dayIn("Pacific/Kiritimati"),
+      });
+      await entry(ahead, {
+        title: "Empieza mañana allá",
+        validFrom: await dayIn("Pacific/Kiritimati", 1),
+      });
+      await entry(behind, {
+        title: "Termina hoy allá",
+        validUntil: await dayIn("Pacific/Pago_Pago"),
+      });
+      await entry(behind, {
+        title: "Terminó ayer allá",
+        validUntil: await dayIn("Pacific/Pago_Pago", -1),
+      });
+      const readerAhead = await credential(ahead, "read");
+      const readerBehind = await credential(behind, "read");
+      allow(readerAhead, readerBehind);
+
+      for (const [reader, expected] of [
+        [readerAhead, ["Empieza hoy allá"]],
+        [readerBehind, ["Termina hoy allá"]],
+      ] as const) {
+        const body = await valid(
+          await knowledge("", reader.token),
+          knowledgeListResponseSchema,
+        );
+        expect(body.items.map((item) => item.title)).toEqual(expected);
+      }
+    });
+
+    it("17. FR-API-02: con texto busca por palabras sin acentos, el título primero, solo entre vigentes y con limit", async () => {
+      await entry(orgA, {
+        title: "Horarios",
+        content: "Los domingos no hacemos envíos",
+      });
+      await entry(orgA, {
+        title: "Envíos a domicilio",
+        category: "Logística",
+        content: "Por correo",
+      });
+      await entry(orgA, {
+        title: "Envíos gratis",
+        category: "Promociones",
+        validFrom: await dayIn(ZONE, 1),
+      });
+      await entry(orgA, { title: "Medios de pago" });
+
+      const found = await valid(
+        await knowledge("?q=ENVIOS", readerA.token),
+        knowledgeListResponseSchema,
+      );
+      expect(found.items.map((item) => item.title)).toEqual([
+        "Envíos a domicilio",
+        "Horarios",
+      ]);
+
+      const limited = await valid(
+        await knowledge("?q=envios&limit=1", readerA.token),
+        knowledgeListResponseSchema,
+      );
+      expect(limited.items.map((item) => item.title)).toEqual([
+        "Envíos a domicilio",
+      ]);
+
+      const none = await valid(
+        await knowledge("?q=garantia", readerA.token),
+        knowledgeListResponseSchema,
+      );
+      expect(none.items).toEqual([]);
+
+      // Un q vacío o de espacios es sin búsqueda, no un error.
+      for (const query of ["?q=", "?q=%20%20", "?limit=50"]) {
+        const all = await valid(
+          await knowledge(query, readerA.token),
+          knowledgeListResponseSchema,
+        );
+        expect(all.items, query).toHaveLength(3);
+      }
+
+      for (const text of ["!envios", "envios & | :*", "'", "\\", "("]) {
+        await valid(
+          await knowledge(`?q=${encodeURIComponent(text)}`, readerA.token),
+          knowledgeListResponseSchema,
+        );
+      }
+    });
+
+    it("18. FR-API-02: valida q y limit con 400, y un NUL nunca llega a PostgreSQL", async () => {
+      const cases: [string, string[]][] = [
+        [`?q=${"a".repeat(201)}`, ["q"]],
+        ["?q=env%00ios", ["q"]],
+        ["?q=env%0Dios", ["q"]],
+        ["?limit=0", ["limit"]],
+        ["?limit=51", ["limit"]],
+        ["?limit=05", ["limit"]],
+        ["?limit=veinte", ["limit"]],
+        ["?q=%00&limit=0", ["q", "limit"]],
+      ];
+      for (const [query, fields] of cases) {
+        const body = await rejected(await knowledge(query, readerA.token), 400);
+        expect(body, query).toStrictEqual({
+          code: "VALIDATION_ERROR",
+          request_id: expect.any(String),
+          fields,
+        });
+      }
+    });
+
+    it("19. FR-API-03: la ruta tiene el mismo borde, y el log su ruta fija sin el texto buscado", async () => {
+      await entry(orgA, { title: "Horarios" });
+      const lines: string[] = [];
+      const capture = (...args: unknown[]) => void lines.push(args.join(" "));
+      const spies: MockInstance[] = [
+        vi.spyOn(console, "log").mockImplementation(capture),
+        vi.spyOn(console, "error").mockImplementation(capture),
+        vi.spyOn(console, "warn").mockImplementation(capture),
+      ];
+      const secret = "cliente-pregunta-algo-privado";
+
+      const correlated = await knowledge(`?q=${secret}`, readerA.token, {
+        "x-correlation-id": "turno-0077",
+      });
+      await valid(correlated, knowledgeListResponseSchema);
+      expect(correlated.headers.get("x-correlation-id")).toBe("turno-0077");
+      expect(correlated.headers.get("cache-control")).toBe("no-store");
+      await rejected(await knowledge(`?q=${secret}`, ingestA.token), 403);
+      await rejected(await knowledge(`?q=${secret}`, null), 401);
+      for (const spy of spies) spy.mockRestore();
+
+      const output = lines.join("\n");
+      expect(output).not.toContain(secret);
+      expect(output).not.toContain(readerA.token.slice("crm_read_".length));
+      expect(
+        lines.map((line) => {
+          const event = JSON.parse(line);
+          return [event.route, event.code, event.correlation_id ?? null];
+        }),
+      ).toEqual([
+        ["/api/read/v1/knowledge", "OK", "turno-0077"],
+        ["/api/read/v1/knowledge", "FORBIDDEN", null],
+        ["/api/read/v1/knowledge", "UNAUTHENTICATED", null],
+      ]);
+
+      delete process.env.READ_API_ENABLED;
+      const off = await knowledge("", readerA.token);
+      expect(off.status).toBe(404);
+      expect(await off.text()).toBe("");
+    });
+  },
+);
+
+// El plan de las tres consultas de la API (brief-11.3, D-10; herencia M-6 de la 11.1 y de la
+// 11.2). Se captura el SQL que la lectura ejecuta de verdad, con sus parámetros, y se le pide el
+// plan a PostgreSQL: así el test mira la consulta del repositorio y no una copia. Las aserciones
+// van sobre la condición del índice, no sobre su nombre (vault, «A Mutation Run Must Change What
+// the Query Returns», adenda 3).
+async function planOf(
+  matches: RegExp,
+  run: () => Promise<unknown>,
+): Promise<string> {
+  const client = getDb().$client;
+  const spy = vi.spyOn(client, "query");
+  let recorded: unknown[][];
+  try {
+    await run();
+  } finally {
+    // mockRestore borra las llamadas registradas: se copian antes.
+    recorded = spy.mock.calls.map((call) => [...call]);
+    spy.mockRestore();
+  }
+  // drizzle llama query(config, params), con el texto en config.text.
+  const calls = recorded.map(([first, second]) => ({
+    text: typeof first === "string" ? first : (first as { text: string }).text,
+    values: (second as unknown[] | undefined) ?? [],
+  }));
+  const target = calls.filter((call) => matches.test(call.text));
+  expect(target, String(matches)).toHaveLength(1);
+  const result = await client.query<{ "QUERY PLAN": string }>(
+    `explain ${target[0]!.text}`,
+    target[0]!.values,
+  );
+  return result.rows.map((row) => row["QUERY PLAN"]).join("\n");
+}
+
+describe(
+  "API de lectura: planes de consulta",
+  { timeout: TEST_TIMEOUT },
+  () => {
+    // Con pocas filas el planificador recorre la tabla sin mirar ningún índice. Los fixtures son
+    // sintéticos y su único fin es que el planificador tenga con qué decidir.
+    async function volume() {
+      const userA = await memberOf(orgA);
+      await getDb().execute(
+        sql`insert into products (organization_id, sku, name, brand, category)
+          select ${orgA}, 'VOL-'||g,
+            case when g % 500 = 0 then 'Café molido '||g else 'Producto '||g end,
+            'Marca '||(g % 50), 'Categoría '||(g % 20)
+          from generate_series(1, 5000) g`,
+      );
+      await getDb().execute(
+        sql`insert into product_prices (organization_id, product_id, amount, currency, created_by)
+          select organization_id, id, 100 + k, 'ARS', ${userA}
+          from products, generate_series(1, 3) k
+          where organization_id = ${orgA}`,
+      );
+      await getDb().execute(
+        sql`insert into knowledge_entries (organization_id, title, category, content)
+          select ${orgA}, 'Entrada '||g, 'Categoría '||(g % 20), 'Contenido número '||g
+          from generate_series(1, 5000) g`,
+      );
+      // La lista pendiente de GIN encarece el índice hasta un vacuum (brief-11.1, §Resultados).
+      for (const index of [
+        "products_search_idx",
+        "knowledge_entries_search_idx",
+      ]) {
+        await getDb().execute(
+          sql`select gin_clean_pending_list(${index}::regclass)`,
+        );
+      }
+      for (const table of ["products", "product_prices", "knowledge_entries"]) {
+        await getDb().execute(sql.raw(`analyze ${table}`));
+      }
+    }
+
+    it("20. la búsqueda de productos usa el índice GIN para las palabras y el del SKU para el código", async () => {
+      await volume();
+      const plan = await planOf(/ts_rank/, async () =>
+        valid(
+          await search("?q=cafe%20molido", readerA.token),
+          productListResponseSchema,
+        ),
+      );
+      expect(plan).toMatch(/Index Cond: \(search @@/);
+      expect(plan).toMatch(
+        /Index Cond: \(\(organization_id = .*\) AND \(lower\(sku\) = /,
+      );
+    });
+
+    it("21. el precio vigente de varios productos usa el índice del historial de precios", async () => {
+      await volume();
+      const plan = await planOf(/distinct on/i, async () =>
+        valid(
+          await search("?q=cafe%20molido", readerA.token),
+          productListResponseSchema,
+        ),
+      );
+      expect(plan).toMatch(
+        /Index Cond: \(\(organization_id = .*\) AND \(product_id = ANY /,
+      );
+    });
+
+    it("22. la búsqueda de información vigente usa el índice GIN", async () => {
+      await volume();
+      const plan = await planOf(/knowledge_entries/, async () =>
+        valid(
+          await knowledge("?q=horario%20feriado", readerA.token),
+          knowledgeListResponseSchema,
+        ),
+      );
+      expect(plan).toMatch(/Index Cond: \(search @@/);
+    });
+  },
+);

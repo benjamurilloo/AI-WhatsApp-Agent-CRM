@@ -8,6 +8,7 @@ import {
   authorize,
   getMemberSummaries,
   getOrganizationTimezone,
+  getOrganizationTimezoneForService,
   type AuthContext,
 } from "@/modules/organizations";
 import { isCalendarDate } from "@/shared/calendar";
@@ -143,9 +144,10 @@ export type KnowledgeListResult =
     }
   | Failure<"FORBIDDEN">;
 
-// Lista y búsqueda (FR-INFO-02). Con status "current" es la lectura de las vigentes (FR-INFO-03),
-// la que la 11.3 va a exponer: el filtro de estado lo resuelve PostgreSQL con el día de la zona de
-// la organización, así que una entrada programada, vencida o inactiva nunca sale como vigente.
+// Lista y búsqueda (FR-INFO-02). Con status "current" es la lectura de las vigentes (FR-INFO-03):
+// el filtro de estado lo resuelve PostgreSQL con el día de la zona de la organización, así que una
+// entrada programada, vencida o inactiva nunca sale como vigente. La API de lectura usa el mismo
+// filtro por listCurrentEntriesForService.
 export async function listKnowledgeEntries(
   context: AuthContext,
   filters: { text: string; status: KnowledgeStatusFilter; page: number },
@@ -170,6 +172,26 @@ export async function listKnowledgeEntries(
           (page - 1) * KNOWLEDGE_PAGE_SIZE,
         );
   return { ok: true, entries, total, page, pageCount };
+}
+
+// Lectura de servicio (brief-11.3, D-3; FR-API-02). La llama la API de lectura, que ya autenticó
+// una credencial de alcance `read`: la organización sale de esa credencial, sin persona ni rol,
+// así que no pasa por `authorize`. Solo vigentes, con la misma definición de estado que la
+// pantalla. El texto y el límite llegan ya validados por la API; texto null es sin búsqueda.
+export async function listCurrentEntriesForService(
+  organizationId: string,
+  query: { text: string | null; limit: number },
+): Promise<KnowledgeEntry[]> {
+  return repository.findEntries(
+    {
+      organizationId,
+      timezone: await getOrganizationTimezoneForService(organizationId),
+      text: query.text?.trim() ?? "",
+      status: "current",
+    },
+    query.limit,
+    0,
+  );
 }
 
 // Categorías ya usadas, para el formulario (D-2).
