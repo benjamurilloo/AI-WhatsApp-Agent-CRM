@@ -6,7 +6,7 @@
 - **Nivel de validación alcanzable**: **validado localmente y en CI**, y **validado en integración** para las pantallas. Nada de esta subfase se despliega a staging. El primero en usarla allá es el piloto (11.4), y el agente, recién con el contrato de lectura (11.3).
 - **Orden**: va después de la 11.0 y en paralelo con la 11.1, que cerró el 2026-09-24 ([Roadmap](../planning/Roadmap.md) §Fase 11). La 11.3 depende de esta subfase.
 - **No abre ni cierra gate.** La revisión independiente no es obligatoria. Se recomienda igual (D-10): la de la 11.1 encontró dos hallazgos mayores.
-- **Estado de este documento**: **aprobado el 2026-09-24**, con las diez decisiones resueltas por la recomendación (ver §Resolución). En implementación.
+- **Estado de este documento**: **aprobado el 2026-09-24**, con las diez decisiones resueltas por la recomendación (ver §Resolución). **Cerrado el 2026-09-24** por el usuario (ver §Cierre).
 
 ## Objetivo
 
@@ -386,6 +386,10 @@ Recuentos finales, después de las correcciones de la revisión independiente:
 - `knowledge.test.ts`: 21 de 21. `service.test.ts` de `knowledge`: 11 de 11.
 - End-to-end: **94 de 94 en 7,1 minutos**, con `knowledge.spec.ts` en 9 de 9 y `users.spec.ts` en verde con el tope nuevo.
 
-**Nivel alcanzado**: validado localmente, y validado en integración (`producer-consumer`) para las pantallas: UI, servicio y base. La CI queda pendiente del commit, que necesita autorización.
+**Nivel alcanzado**: validado localmente y en CI, y validado en integración (`producer-consumer`) para las pantallas: UI, servicio y base.
+
+**CI**: el commit `dd26e9c` corrió en la run 36056855249, leída por `headSha`: **`success` en el intento 1**, con todos los pasos en `success` y el de artefactos de Playwright en `skipped`.
+
+**Cierre**: el usuario autorizó el commit y el push de la implementación y el cierre de la subfase el 2026-09-24.
 
 **Pendientes**: N-3, N-5 y N-6 de §Revisión independiente; el comentario de `catalog/repository.ts` que todavía nombra `productSearchQuery`, fuera de la lista; y D-8, para la 11.4.

@@ -2,6 +2,43 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-24 — 11.2 cerrada: información del negocio
+
+Tercera subfase de la Fase 11 ([brief-11.2](docs/decisions/brief-11.2-informacion-del-negocio.md)). La implementación está en `dd26e9c`, con la corrida 36056855249 en `success` al primer intento. No abre ni cierra gate. La revisión independiente se hizo igual (D-10).
+
+**Certifica (validado localmente y en CI; las pantallas, validadas en integración):**
+
+- **Entradas de información del negocio** (FR-INFO-01): el módulo nuevo `knowledge`, con título único sin distinguir mayúsculas, categoría, contenido de hasta 4000 caracteres y vigencia opcional. Migraciones `0018` y `0019`. `crm_app` tiene `SELECT`, `INSERT` y `UPDATE`, sin `DELETE`: las entradas se editan y se desactivan, nunca se borran. Cada alta, edición, desactivación y reactivación se audita (`knowledge_entry`), y la edición registra solo lo que cambió.
+- **Vigencia** (FR-INFO-03): fechas de calendario de la zona de la organización. El estado (vigente, programada, vencida, inactiva) lo calcula PostgreSQL contra el día de esa zona. Lo prueban dos zonas extremas, Kiritimati y Pago Pago, con una mutación en UTC que falla.
+- **Búsqueda por palabras con pesos** (FR-INFO-02): título, categoría y contenido, sin acentos, por prefijo, ordenada por relevancia, con un índice GIN que un caso con `EXPLAIN` exige. La búsqueda de `catalog` pasó a `src/shared/search`, compartida, sin cambiar el esquema (`drizzle-kit generate`: sin cambios). Un caso con una URL con comilla prueba el escape contra PostgreSQL.
+- **Pantallas 11 y 12**: la lista con búsqueda y filtro de estado, el alta, el detalle con su auditoría y la edición. El contenido conserva los saltos de línea y la sangría. Se probaron con axe en claro y en oscuro en doce estados, para `admin` y para `viewer`, con teclado y a 375 px.
+- **Saltos de línea**: un `textarea` envía CRLF; el servicio los normaliza a `\n` antes de validar el límite. Lo encontró el end-to-end.
+- **`SecurityModel.md`**: la superficie expuesta pasa a 45 puntos de entrada, 26 de ellos fijados por guarda.
+- **Suite local**: 1067 de 1067 en 86 archivos, y 94 de 94 end-to-end.
+
+**Revisión independiente** (D-10, no obligatoria): 5 hallazgos menores y 8 notas, sin bloqueantes ni mayores. Cada uno se verificó contra el código:
+- **m-4**: ningún test probaba el filtro de organización en las escrituras del repositorio. Corregido, con su mutación.
+- **m-5**: la afirmación de que los casos de integración probaban el escape de la búsqueda **era falsa**. Ahora hay un caso que sí lo prueba, con su mutación.
+- **m-1, m-2 y m-3**: listas de la documentación sin la tabla nueva (una tampoco tenía `product_prices`) y un recuento de axe. Corregidos.
+- **N-8**: `pre-line` juntaba la sangría del contenido. Corregido a `pre-wrap`, con su mutación.
+
+**No certifica:**
+
+- **Nada en staging.** El primero en usarlo allá es el piloto (11.4).
+- **`lower()` fuera de ASCII en staging** (N-5): depende del `LC_CTYPE` de la base, verificado solo en local. Va al piloto.
+- **La búsqueda con volumen**: el `EXPLAIN` se hizo con pocas filas.
+
+**Registrado sin corregir** (fuera de la lista):
+
+- **N-3**: `module-boundary.test.ts` no tiene casos para `knowledge`. La frontera la hace cumplir ESLint, probado con una mutación y su control, pero no queda una guarda permanente.
+- **N-6**: un carácter NUL en un formulario o en la búsqueda llega a PostgreSQL. Es transversal a todos los formularios, sin subfase propia.
+- **Un comentario de `catalog/repository.ts`** todavía nombra `productSearchQuery`, que ya no existe.
+- **D-8**: las pantallas 5b, 11 y 12 no están en `recorrer-pantallas.ts` ni en `security-headers.spec.ts`. Las suma la 11.4.
+
+**Ampliación de la lista autorizada por el usuario**: `tests/e2e/users.spec.ts`, cuyo caso 11 contaba las paradas de tabulación de la navegación. El tope pasó de 10 a 12.
+
+---
+
 ## 2026-09-24 — 11.1 cerrada: catálogo comercial
 
 Segunda subfase de la Fase 11 ([brief-11.1](docs/decisions/brief-11.1-catalogo-comercial.md)). Se hizo en dos etapas verticales (D-1): la 11.1.1 en `487def8` (run 36013939490, `success`) y la 11.1.2 en `aa29504` (run 36045565521, `success` en el intento 2, ver abajo). No abre ni cierra gate. La revisión independiente se hizo igual (D-10).
