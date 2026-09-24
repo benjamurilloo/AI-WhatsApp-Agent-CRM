@@ -33,23 +33,54 @@ const UNIDADES: Record<string, number> = {
   TB: 1024 * 1024 * 1024 * 1024,
 };
 
+// Corta el comentario: `#` hasta el fin de línea, salvo dentro de un valor entre comillas simples.
+function sinComentario(linea: string): string {
+  let entreComillas = false;
+  for (let i = 0; i < linea.length; i++) {
+    const c = linea[i];
+    // Una comilla escapada con barra invertida no abre ni cierra el valor.
+    if (c === "\\" && entreComillas) i++;
+    else if (c === "'") entreComillas = !entreComillas;
+    else if (c === "#" && !entreComillas) return linea.slice(0, i);
+  }
+  return linea;
+}
+
+// Sigue la sintaxis de PostgreSQL 18 (docs, §19.1.2): un parámetro por línea, `=` opcional, nombre
+// sin distinguir mayúsculas y, con entradas repetidas, gana la última. Las claves salen en
+// minúsculas. Lo que no reconoce **lanza**: con la versión de la 9.3, que salteaba toda línea sin
+// `=`, `effective_cache_size 4GB` al final del archivo cambiaba el servidor con la guarda en verde
+// (R-12 de la revisión de la 9.3).
 export function parsear(texto: string): Map<string, string> {
   const valores = new Map<string, string>();
   for (const cruda of texto.split("\n")) {
-    // El comentario empieza en `#` y llega hasta el fin de línea, también a mitad de una clave.
-    const linea = cruda.split("#")[0]!.trim();
+    const linea = sinComentario(cruda).trim();
     if (linea === "") continue;
-    const igual = linea.indexOf("=");
-    if (igual === -1) continue;
-    valores.set(
-      linea.slice(0, igual).trim(),
-      linea
-        .slice(igual + 1)
-        .trim()
-        .replace(/^'|'$/g, ""),
+    const partes = /^([A-Za-z_][A-Za-z0-9_.]*)\s*(?:=\s*|\s+)(\S.*)$/.exec(
+      linea,
     );
+    if (!partes) throw new Error(`no entiendo la línea '${linea}'`);
+    const nombre = partes[1]!.toLowerCase();
+    // Un include trae otro archivo que esta guarda no puede leer: aceptarlo sería no mirar.
+    if (nombre === "include" || nombre.startsWith("include_")) {
+      throw new Error(`la guarda no sigue un ${nombre}: '${linea}'`);
+    }
+    valores.set(nombre, valor(partes[2]!.trim(), linea));
   }
   return valores;
+}
+
+// «Parameter values that are not simple identifiers or numbers must be single-quoted» (§19.1.2).
+// Sin comillas, el valor es una sola palabra: `600 MB` es un error de sintaxis para PostgreSQL, y
+// la guarda lo aceptaba (M-3 de la revisión independiente de la 11.0). Entre comillas, la comilla
+// se escapa duplicándola o con barra invertida, y solo ahí se desescapa.
+function valor(crudo: string, linea: string): string {
+  const entreComillas = /^'((?:[^'\\]|''|\\.)*)'$/.exec(crudo);
+  if (entreComillas) {
+    return entreComillas[1]!.replace(/''/g, "'").replace(/\\(.)/g, "$1");
+  }
+  if (/^[A-Za-z0-9_.+-]+$/.test(crudo)) return crudo;
+  throw new Error(`no entiendo la línea '${linea}'`);
 }
 
 // Convierte `600MB`, `1.1`, `4GB` a un número comparable. Una unidad desconocida **lanza** en vez
@@ -64,6 +95,16 @@ export function aBytes(valor: string): number {
     throw new Error(`no conozco la unidad '${unidad}' en '${valor}'`);
   }
   return Number(coincidencia[1]) * factor;
+}
+
+// effective_cache_size sin unidad está en bloques de 8 kB: «If this value is specified without
+// units, it is taken as blocks, that is BLCKSZ bytes, typically 8kB» (§19.7.2). Leerlo con
+// `aBytes` lo tomaba como bytes, y `500000000` —unos 3,7 TB para PostgreSQL— pasaba por 477 MB
+// (M-3 de la revisión independiente de la 11.0). BLCKSZ es 8 kB en el paquete de PostgreSQL de
+// staging; es una premisa de compilación que ningún test puede ver.
+const BLOQUE = 8 * 1024;
+export function cacheEnBytes(texto: string): number {
+  return /^[0-9]+$/.test(texto.trim()) ? Number(texto) * BLOQUE : aBytes(texto);
 }
 
 describe("el parser", () => {
@@ -88,6 +129,70 @@ describe("el parser", () => {
     expect(() => aBytes("600 petabytes")).toThrow(/no conozco la unidad/);
     expect(() => aBytes("mucho")).toThrow(/no entiendo el valor/);
   });
+
+  // Las formas que acepta PostgreSQL 18 (docs, §19.1.2 y §19.1.1): «The equal sign between name
+  // and value is optional», «All parameter names are case-insensitive» y «If the file contains
+  // multiple entries for the same parameter, all but the last one are ignored». La versión de la
+  // 9.3 salteaba la línea sin `=` y distinguía mayúsculas (R-12 de la revisión de la 9.3).
+  it("lee la línea sin signo igual, como PostgreSQL", () => {
+    expect(
+      parsear("effective_cache_size 4GB\n").get("effective_cache_size"),
+    ).toBe("4GB");
+  });
+
+  it("no distingue mayúsculas en el nombre del parámetro", () => {
+    expect(
+      parsear("Effective_Cache_Size = 4GB\n").get("effective_cache_size"),
+    ).toBe("4GB");
+  });
+
+  it("con el parámetro repetido, gana la última entrada", () => {
+    expect(parsear("a = 1\nA 2\n").get("a")).toBe("2");
+  });
+
+  it("no corta en un `#` después de una comilla escapada", () => {
+    expect(parsear("c = 'a\\'b # c' # comentario\n").get("c")).toBe("a'b # c");
+  });
+
+  it("no corta un valor entre comillas en un `#`", () => {
+    expect(parsear("c = 'uno # dos' # comentario\n").get("c")).toBe(
+      "uno # dos",
+    );
+  });
+
+  // Lo que no entiende lo hace fallar: una línea ignorada es un parámetro que el servidor sí lee.
+  it("falla ante una línea que no reconoce, en vez de saltearla", () => {
+    expect(() => parsear("= 4GB\n")).toThrow(/no entiendo la línea/);
+    expect(() => parsear("effective_cache_size\n")).toThrow(
+      /no entiendo la línea/,
+    );
+  });
+
+  // Revisión independiente de la 11.0 (M-3): un valor sin comillas que no es un identificador ni
+  // un número es un error de sintaxis para PostgreSQL, y la guarda lo aceptaba.
+  it("falla ante un valor sin comillas con espacios, como PostgreSQL", () => {
+    expect(() => parsear("effective_cache_size = 600 MB\n")).toThrow(
+      /no entiendo la línea/,
+    );
+  });
+
+  it("desescapa las comillas solo dentro de un valor entre comillas", () => {
+    expect(parsear("c = 'a''b'\n").get("c")).toBe("a'b");
+    expect(parsear("c = 'a\\'b'\n").get("c")).toBe("a'b");
+    expect(() => parsear("c = a''b\n")).toThrow(/no entiendo la línea/);
+  });
+
+  // Sin unidad, PostgreSQL lee effective_cache_size en bloques de 8 kB, no en bytes (docs,
+  // §19.7.2: «If this value is specified without units, it is taken as blocks»).
+  it("lee effective_cache_size sin unidad en bloques de 8 kB", () => {
+    expect(cacheEnBytes("76800")).toBe(600 * 1024 * 1024);
+    expect(cacheEnBytes("600MB")).toBe(600 * 1024 * 1024);
+  });
+
+  it("falla ante un include, porque no puede leer el archivo que trae", () => {
+    expect(() => parsear("include 'otro.conf'\n")).toThrow(/include/);
+    expect(() => parsear("include_dir 'conf.d'\n")).toThrow(/include/);
+  });
 });
 
 describe("los parámetros de costo describen la máquina real", () => {
@@ -99,7 +204,7 @@ describe("los parámetros de costo describen la máquina real", () => {
   });
 
   it("effective_cache_size no supera la memoria de la máquina", () => {
-    const declarado = aBytes(valores.get("effective_cache_size")!);
+    const declarado = cacheEnBytes(valores.get("effective_cache_size")!);
     expect(declarado).toBeLessThanOrEqual(RAM_BYTES);
     // Y tampoco es absurdamente chico: por debajo de shared_buffers el planificador creería que
     // no hay caché y volvería a elegir mal, en la dirección contraria.
@@ -120,7 +225,9 @@ describe("los parámetros de costo describen la máquina real", () => {
       /^effective_cache_size = \S+/m,
       "effective_cache_size = 4GB",
     );
-    const declarado = aBytes(parsear(mutada).get("effective_cache_size")!);
+    const declarado = cacheEnBytes(
+      parsear(mutada).get("effective_cache_size")!,
+    );
     expect(declarado).toBeGreaterThan(RAM_BYTES);
   });
 
@@ -138,11 +245,32 @@ describe("los parámetros de costo describen la máquina real", () => {
     expect(aBytes(parsear(mutada).get("random_page_cost")!)).toBe(4);
   });
 
+  // R-12: las dos formas que la guarda de la 9.3 no veía, agregadas al final del archivo. En los
+  // dos casos PostgreSQL toma el valor agregado, porque la última entrada gana.
+  it.each([
+    ["sin signo igual", "effective_cache_size 4GB"],
+    ["con otras mayúsculas", "Effective_Cache_Size = 4GB"],
+    // M-3 de la revisión independiente de la 11.0: 500.000.000 leído como bytes son unos 477 MB y
+    // pasaba las dos cotas; PostgreSQL lo lee como bloques de 8 kB, unos 3,7 TB.
+    ["sin unidad", "effective_cache_size = 500000000"],
+  ])(
+    "con un effective_cache_size mayor que la RAM agregado %s, el caso anterior falla",
+    (_, linea) => {
+      const mutada = `${CONFIGURACION}\n${linea}\n`;
+      const declarado = cacheEnBytes(
+        parsear(mutada).get("effective_cache_size")!,
+      );
+      expect(declarado).toBeGreaterThan(RAM_BYTES);
+    },
+  );
+
   // Control de que las dos mutaciones de arriba muerden el parámetro y no el comentario: si el
   // ancla se perdiera, el valor efectivo seguiría siendo el bueno y estos dos casos lo dirían.
   it("las mutaciones cambian el parámetro efectivo, no la cabecera", () => {
     const efectivo = (texto: string, clave: string) =>
-      aBytes(parsear(texto).get(clave)!);
+      (clave === "effective_cache_size" ? cacheEnBytes : aBytes)(
+        parsear(texto).get(clave)!,
+      );
     expect(efectivo(CONFIGURACION, "effective_cache_size")).not.toBe(
       efectivo(
         CONFIGURACION.replace(

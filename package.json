@@ -19,7 +19,7 @@
     "test:integration": "vitest run --project integration",
     "test:e2e": "playwright test",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "tsx scripts/migrar.ts",
     "db:seed": "tsx seeds/basic.ts",
     "db:seed:volume": "tsx seeds/volume.ts",
     "db:seed:volume:distribucion": "tsx seeds/volume.ts distribucion",

@@ -97,4 +97,18 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Tests end-to-end (Chromium)
+        id: e2e
         run: npm run test:e2e
+
+      # Las trazas que playwright.config.ts retiene al fallar (`retain-on-failure`) viven en
+      # test-results/ y se perdían con el runner: sin ellas, un «Target page, context or browser has
+      # been closed» no se puede diagnosticar (brief-11.0, O-21). Solo si falló el end-to-end, no
+      # un paso anterior. Las trazas llevan solo los datos sintéticos de la base _e2e.
+      - name: Subir artefactos de Playwright
+        if: failure() && steps.e2e.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-test-results
+          path: test-results/
+          if-no-files-found: error
+          retention-days: 7

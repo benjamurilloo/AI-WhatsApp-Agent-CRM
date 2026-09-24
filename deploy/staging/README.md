@@ -24,6 +24,8 @@ El procedimiento de restauración y el ejercicio mensual viven en [docs/runbooks
 
 **Estado al 2026-09-23**: los **nueve** archivos de la tabla de arriba están desplegados y el `diff` de la sección «Verificar después de desplegar» da **cero diferencias** en los nueve. Los dos timers están habilitados. El noveno lo agregó la 9.3: los parámetros de costo del planificador, que hasta entonces describían una máquina de 4 GB sobre una de 961 MB.
 
+> **Desde la 11.0 (2026-09-23), `crm-backup.sh` del repositorio difiere del desplegado en un comentario** (líneas 76-78: la ventana del manifiesto no se midió en la 9.3 y va a la 13.2). No cambia ninguna instrucción. Hasta que se copie al servidor, el `diff` de ese archivo muestra esas líneas y ninguna otra; copiarlo requiere autorización ([brief-11.0](../../docs/decisions/brief-11.0-instrumentos-antes-de-construir-encima.md), D-5). Cuando se copie, esta nota se borra y la línea de arriba vuelve a ser cierta.
+
 **El número se cuenta, no se hereda.** Esta línea dijo «seis» mientras la tabla tenía ocho filas, y la 9.3 lo «corrigió» a siete sumándole uno al número equivocado en vez de contar la tabla. Es el cuarto recuento mal registrado de este linaje (antes H-5, N-2 y R-7). Se comprueba así, y el resultado tiene que coincidir con las filas de la tabla:
 
 ```
@@ -54,10 +56,10 @@ Orden importante. Los pasos 4 y 5 son los que el primer despliegue reveló.
 2. **Node 24** (NodeSource) y **PostgreSQL 18.6** con `postgresql-contrib` — `contrib` trae `unaccent`, de la que depende la 9.0.2. La versión de PostgreSQL de Ubuntu 24.04 es la 16: hace falta el repositorio `pgdg`.
 3. **Base y rol dueño**: `crm_staging`, propiedad de `crm_owner`.
 4. **Crear el rol `crm_app` con el superusuario, antes de migrar.** La migración `0003` lo crea si no existe, pero crear un rol es un objeto **del servidor** y exige `CREATEROLE`, que el rol dueño no tiene. En desarrollo nunca falla porque el usuario de `docker-compose` es superusuario.
-   > **Cuidado**: si se omite este paso, `drizzle-kit migrate` sale con **código 1 sin imprimir ningún error**. Cero tablas y ningún mensaje. Si las migraciones "no hacen nada", empezar por acá.
+   > **Cuidado**: si se omite este paso, la migración `0003` falla por falta de privilegio. Hasta la 11.0, `npm run db:migrate` corría `drizzle-kit migrate`, que en ese caso salía con **código 1 sin imprimir ningún error**: cero tablas y ningún mensaje. *Desde la 11.0* corre `scripts/migrar.ts`, que imprime el error de PostgreSQL con su SQLSTATE y la sentencia que falló (O-8). Si las migraciones fallan, empezar por acá.
    >
    > Se resuelve así, y no otorgándole `CREATEROLE` al rol dueño, por menor privilegio: el `IF NOT EXISTS` de la migración lo saltea y el resto de sus `GRANT` corre normal.
-5. **Migrar** con `migrate.env`, después **crear el rol con login miembro de `crm_app`** y recién entonces escribir `app.env`. Las migraciones siguen corriendo con el dueño; la aplicación nunca.
+5. **Migrar** con `migrate.env` (`set -a && . /etc/crm-staging/migrate.env && set +a && npm run db:migrate`), después **crear el rol con login miembro de `crm_app`** y recién entonces escribir `app.env`. Las migraciones siguen corriendo con el dueño; la aplicación nunca.
 6. **nginx y certbot.** TLS antes del primer intento de ingreso, **no después**: con `NODE_ENV=production` la cookie de sesión pasa a `__Host-` con `Secure`, y sobre HTTP el navegador la descarta. El síntoma parece un fallo de autenticación y no lo es.
 7. **UFW**: solo `OpenSSH` y `Nginx Full`. El puerto 3000 nunca se abre.
 
@@ -72,7 +74,14 @@ npm run build
 sudo systemctl restart crm-staging
 ```
 
-Si el cambio trae migraciones, correrlas con `migrate.env` **antes** del `build`.
+Si el cambio trae migraciones, correrlas con `migrate.env` **antes** del `build`, en una shell aparte para no mezclar las variables con las de `app.env`:
+
+```
+set -a && . /etc/crm-staging/migrate.env && set +a
+npm run db:migrate
+```
+
+Todas las migraciones pendientes se aplican en **una sola transacción**: si falla una, no queda aplicada ninguna del lote. El comando sale con código distinto de 0 e imprime el error; un `Migraciones aplicadas.` es la única salida buena.
 
 ## Verificar después de desplegar
 

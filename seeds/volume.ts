@@ -305,14 +305,25 @@ export async function seedVolumeOrganization(
     const values = {
       email: user.email,
       name: user.name,
-      passwordHash,
       mustChangePassword: false,
       isActive: true,
     };
+    // Una segunda corrida no reescribe la fila (11.0, D-3; R-14 de la revisión de la 9.3). Dos
+    // cosas la reescribían: el hash, porque argon2 usa sal aleatoria, y `updated_at`, porque su
+    // `$onUpdate` lo cambia en cualquier `DO UPDATE`. Por eso el hash solo se escribe al crear el
+    // usuario, y el resto solo se repone si difiere. Costo: para cambiar la contraseña de los
+    // usuarios de volumen hay que borrarlos y volver a sembrar.
     await tx
       .insert(users)
-      .values({ id: user.id, ...values })
-      .onConflictDoUpdate({ target: users.id, set: values });
+      .values({ id: user.id, passwordHash, ...values })
+      .onConflictDoUpdate({
+        target: users.id,
+        set: values,
+        setWhere: sql`${users.email} is distinct from excluded.email
+          or ${users.name} is distinct from excluded.name
+          or ${users.mustChangePassword} is distinct from excluded.must_change_password
+          or ${users.isActive} is distinct from excluded.is_active`,
+      });
     await tx
       .insert(organizationMembers)
       .values({

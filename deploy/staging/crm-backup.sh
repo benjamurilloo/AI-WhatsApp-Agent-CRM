@@ -73,7 +73,9 @@ pg_dump --format=custom --no-password --file="$parcial"
 # LIMITE DECLARADO Y MEDIBLE: entre el fin del dump y esta consulta puede entrar una
 # escritura. La ventana es la que separa las dos ordenes -- del orden del segundo en esta
 # base-- y no las horas que separaban el backup del ejercicio. Con volumen la ventana
-# crece con la duracion del dump, y eso se vuelve a medir en la 9.3.
+# crece con la duracion del dump. La 9.3 NO la midio (evaluacion 10.1, R-10): su medicion
+# esta asignada a la 13.2 (O-39). Hasta entonces, el tamano de la ventana con volumen es
+# desconocido.
 psql --no-password --tuples-only --no-align --command="
   SELECT c.relname || ' ' ||
          (xpath('/row/cnt/text()',

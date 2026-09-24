@@ -70,6 +70,20 @@ async function fingerprint(organizationId: string) {
   return result.rows[0]!.digest;
 }
 
+// Las filas de `users` de una organización, con el hash de la contraseña. La huella de arriba no
+// las mira, y por eso la segunda corrida podía reescribir el hash del admin con la prueba de
+// idempotencia en verde (R-14 de la revisión de la 9.3).
+async function usersFingerprint(organizationId: string) {
+  const result = await getDb().execute<{ digest: string }>(
+    sql`select md5(string_agg(concat_ws(',', u.id, u.email, u.name, u.password_hash,
+              u.must_change_password, u.is_active, u.updated_at), ';' order by u.id)) as digest
+        from users u
+        join organization_members m on m.user_id = u.id
+        where m.organization_id = ${organizationId}`,
+  );
+  return result.rows[0]!.digest;
+}
+
 describe("seedVolumeDistribution", () => {
   beforeEach(async () => {
     await resetDatabase(getDb());
@@ -130,11 +144,16 @@ describe("seedVolumeDistribution", () => {
     );
   });
 
-  it("es idempotente: la segunda corrida no cambia ninguna fila", async () => {
+  it("es idempotente: la segunda corrida no cambia clientes, conversaciones, mensajes ni users", async () => {
     const options = { shapes: FORMA, referenceDate: REFERENCE_DATE };
     await seedVolumeDistribution(getDb(), PASSWORD, options);
     const huellas = await Promise.all(
       FORMA.map((shape) => fingerprint(volumeOrganizationId(shape.ordinal))),
+    );
+    const usuarios = await Promise.all(
+      FORMA.map((shape) =>
+        usersFingerprint(volumeOrganizationId(shape.ordinal)),
+      ),
     );
 
     await seedVolumeDistribution(getDb(), PASSWORD, options);
@@ -143,10 +162,37 @@ describe("seedVolumeDistribution", () => {
       expect(await fingerprint(volumeOrganizationId(shape.ordinal))).toBe(
         huellas[i],
       );
+      expect(await usersFingerprint(volumeOrganizationId(shape.ordinal))).toBe(
+        usuarios[i],
+      );
       expect(
         await countIn("clients", volumeOrganizationId(shape.ordinal)),
       ).toBe(shape.size);
     }
+  });
+
+  // Control del caso anterior: que la segunda corrida no reescriba no puede significar que ya no
+  // repone nada. Un admin con otro nombre vuelve al suyo, y su hash sigue siendo el mismo.
+  it("la segunda corrida repone un admin modificado sin tocar su contraseña", async () => {
+    const options = { shapes: [CHICA], referenceDate: REFERENCE_DATE };
+    await seedVolumeDistribution(getDb(), PASSWORD, options);
+    const admin = volumeUser(CHICA.ordinal);
+    const leer = async () =>
+      (
+        await getDb().execute<{ name: string; password_hash: string }>(
+          sql`select name, password_hash from users where id = ${admin.id}`,
+        )
+      ).rows[0]!;
+    const antes = await leer();
+    await getDb().execute(
+      sql`update users set name = 'otro nombre' where id = ${admin.id}`,
+    );
+
+    await seedVolumeDistribution(getDb(), PASSWORD, options);
+
+    const despues = await leer();
+    expect(despues.name).toBe(admin.name);
+    expect(despues.password_hash).toBe(antes.password_hash);
   });
 
   // `users.email` es único en toda la tabla y no por organización. Con una sola organización esta

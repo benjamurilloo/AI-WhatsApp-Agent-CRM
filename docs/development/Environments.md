@@ -66,7 +66,7 @@ Se generan y se aplican siempre de forma explícita, nunca al arrancar la aplica
 | Generar una migración después de cambiar un `schema.ts` | `npm run db:generate` |
 | Aplicar las migraciones pendientes a la base de desarrollo | `npm run db:migrate` |
 
-`db:migrate` actúa solo sobre la base de `DATABASE_URL`. Una migración generada se revisa como SQL antes de aplicarla y se versiona en `drizzle/`.
+`db:migrate` actúa solo sobre la base de `DATABASE_URL`. *Desde la 11.0* corre `scripts/migrar.ts` con el migrador de `drizzle-orm`, el mismo que usan los tests, y no `drizzle-kit migrate`, que ante un error de PostgreSQL salía con código 1 sin imprimirlo (O-8). Aplica todas las pendientes en una sola transacción. `drizzle-kit` se sigue usando para `db:generate`. Una migración generada se revisa como SQL antes de aplicarla y se versiona en `drizzle/`.
 
 Los roles, privilegios y triggers, que Drizzle no expresa en `schema.ts`, van en migraciones a medida: `npx drizzle-kit generate --custom --name <nombre>` crea el archivo vacío y su entrada en el journal.
 

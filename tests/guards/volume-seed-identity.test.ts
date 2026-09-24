@@ -87,25 +87,89 @@ describe("los ids no colisionan entre organizaciones", () => {
     expect(new Set([...orgs, ...admins]).size).toBe(ordinales.length * 2);
   });
 
-  it("ningún id de fila se repite entre organizaciones, para ningún tipo", () => {
+  // Cuenta los ids repetidos que una derivación produce **con los tamaños reales** de la
+  // distribución. La versión de la 9.3 miraba 50 índices por organización y sus mutaciones
+  // recalculaban aparte, sin pasar por el chequeo: una codificación aditiva como
+  // `index + ordinal × 1000` no repite nada en los primeros 50 y sí a tamaño real, y la guarda
+  // quedaba en verde (R-13 de la revisión de la 9.3, reproducido en la 11.0). Ahora la función
+  // real y las mutantes pasan por el mismo chequeo.
+  type Derivacion = (kind: 1, index: number, ordinal: number) => string;
+  function repetidos(derivar: Derivacion): number {
+    const ids = VOLUME_DISTRIBUTION.flatMap((shape) =>
+      Array.from({ length: shape.size }, (_, i) =>
+        derivar(1, i, shape.ordinal),
+      ),
+    );
+    return ids.length - new Set(ids).size;
+  }
+
+  it("ningún id de fila se repite entre organizaciones, a tamaño real", () => {
+    expect(repetidos(volumeId)).toBe(0);
+  });
+
+  it("para ningún tipo, en los bordes de cada organización", () => {
     for (const kind of KINDS) {
-      const ids = ordinales.flatMap((ordinal) =>
-        Array.from({ length: 50 }, (_, i) => volumeId(kind, i, ordinal)),
+      const ids = VOLUME_DISTRIBUTION.flatMap((shape) =>
+        [0, 1, shape.size - 1, shape.size, 130_000].map((i) =>
+          volumeId(kind, i, shape.ordinal),
+        ),
       );
       expect(new Set(ids).size).toBe(ids.length);
     }
   });
 
-  // Mutación ejecutada: se le quita al id la dimensión de organización, que es exactamente la
-  // forma que tenía antes de la 9.3. Sin este caso, el anterior pasaría en verde aunque la
-  // función hubiera dejado de mirar el ordinal.
-  it("si el id pierde el ordinal, el caso anterior falla", () => {
-    // Cada organización deriva sus ids como si fuera la 0, que es la forma anterior a la 9.3.
-    const ids = ordinales.flatMap(() =>
-      Array.from({ length: 50 }, (_, i) => volumeId(1, i, 0)),
-    );
-    expect(ids).toHaveLength(ordinales.length * 50);
-    expect(new Set(ids).size).toBe(50);
+  // Mutaciones ejecutadas por el mismo chequeo. La primera es la forma anterior a la 9.3, sin el
+  // ordinal; la segunda es la aditiva que la guarda de la 9.3 dejaba pasar.
+  it("si el id pierde el ordinal, el chequeo lo detecta", () => {
+    expect(repetidos((kind, i) => volumeId(kind, i, 0))).toBeGreaterThan(0);
+  });
+
+  it("si el ordinal se suma al índice, el chequeo lo detecta", () => {
+    expect(
+      repetidos((kind, i, ordinal) => volumeId(kind, i + ordinal * 1000, 0)),
+    ).toBeGreaterThan(0);
+  });
+
+  // El chequeo de arriba mira el tipo 1 con índices menores que `size`, pero los mensajes, los
+  // movimientos y los eventos usan índices mucho mayores (hasta unos 4 millones en los
+  // movimientos). Una codificación aditiva con un desplazamiento más grande —`index + ordinal ×
+  // 100.000`— no repite nada en el tipo 1 y sí en los mensajes (M-4 de la revisión independiente
+  // de la 11.0). Por eso, además, la **forma** del id: cada id se desarma y tiene que devolver su
+  // tipo, su ordinal y su índice, para todos los tipos y con índices grandes. Si el ordinal no
+  // vive en su propio campo, ninguna codificación pasa, sea cual sea el desplazamiento.
+  type DerivacionCualquiera = (
+    kind: (typeof KINDS)[number],
+    index: number,
+    ordinal: number,
+  ) => string;
+  const INDICES = [0, 1, 9_999, 10_000, 130_000, 4_100_000, 2 ** 40];
+  function deformados(derivar: DerivacionCualquiera): number {
+    let malos = 0;
+    for (const kind of KINDS) {
+      for (const ordinal of ordinales) {
+        for (const index of INDICES) {
+          const partes = derivar(kind, index, ordinal).split("-");
+          const ok =
+            partes[0] === `5eed000${kind}` &&
+            parseInt(partes[1]!, 16) === ordinal &&
+            parseInt(partes[4]!, 16) === index;
+          if (!ok) malos++;
+        }
+      }
+    }
+    return malos;
+  }
+
+  it("cada id devuelve su tipo, su ordinal y su índice, para todos los tipos", () => {
+    expect(deformados(volumeId)).toBe(0);
+  });
+
+  it("con el ordinal sumado al índice con un desplazamiento grande, la forma lo detecta", () => {
+    const aditivoGrande: DerivacionCualquiera = (kind, i, ordinal) =>
+      volumeId(kind, i + ordinal * 100_000, 0);
+    // El chequeo de repetidos no lo ve, que es exactamente el hueco de M-4.
+    expect(repetidos(aditivoGrande)).toBe(0);
+    expect(deformados(aditivoGrande)).toBeGreaterThan(0);
   });
 
   it("todos los ids son UUID versión 4 bien formados", () => {

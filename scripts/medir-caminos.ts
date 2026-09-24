@@ -29,6 +29,7 @@ import {
   getRespondedConversations,
   getResponseCoverage,
   getFirstResponseTime,
+  getIngestionErrors,
   getStatusDistribution,
 } from "@/modules/analytics";
 import {
@@ -81,6 +82,10 @@ function describir(resultado: unknown): string {
   return "ok";
 }
 
+function esFalla(descripcion: string): boolean {
+  return descripcion.startsWith("FALLA") || descripcion === "sin forma";
+}
+
 async function medir(
   nombre: string,
   ejecutar: () => Promise<unknown>,
@@ -90,14 +95,19 @@ async function medir(
   minimo: number;
   maximo: number;
   resultado: string;
+  valores: unknown[];
 }> {
   // Una corrida de calentamiento que no cuenta: la primera paga la compilación del plan y la
   // lectura fría de las páginas, y mezclarla con las demás inventa una dispersión que no existe.
   const primera = await ejecutar();
+  // Se guarda lo que devuelve **cada** corrida, no solo la de calentamiento: un `Failure` que
+  // aparece en una corrida medida entraría a la mediana como si fuera una medición (M-2 de la
+  // revisión independiente de la 11.0).
+  const valores: unknown[] = [primera];
   const tiempos: number[] = [];
   for (let i = 0; i < CORRIDAS; i++) {
     const desde = performance.now();
-    await ejecutar();
+    valores.push(await ejecutar());
     tiempos.push(performance.now() - desde);
   }
   return {
@@ -105,7 +115,8 @@ async function medir(
     mediana: mediana(tiempos),
     minimo: Math.min(...tiempos),
     maximo: Math.max(...tiempos),
-    resultado: describir(primera),
+    resultado: valores.map(describir).find(esFalla) ?? describir(primera),
+    valores,
   };
 }
 
@@ -159,7 +170,13 @@ async function main(): Promise<void> {
   const productoId = producto.rows[0]?.id ?? null;
   const movimientos = producto.rows[0]?.n ?? 0;
 
-  const periodo = { from: "", to: "" };
+  // Control negativo (CRM_CONTROL=1): un período imposible hace que todas las métricas devuelvan
+  // un `Failure`. Si con él la tabla no muestra fallas y el script sale con 0, el verde del modo
+  // normal no vale nada (11.0, AC-4).
+  const periodo =
+    process.env.CRM_CONTROL === "1"
+      ? { from: "2026-13-45", to: "" }
+      : { from: "", to: "" };
   const listados: [string, () => Promise<unknown>][] = [
     [
       "catalog.searchProducts (sin texto)",
@@ -268,14 +285,42 @@ async function main(): Promise<void> {
       "analytics 11 distribución de estado",
       () => getStatusDistribution(context, periodo),
     ],
+    // La métrica 12 faltaba: la 9.3 informó «el dashboard de doce métricas» midiendo diez llamadas
+    // (R-1 de la revisión de la 9.3). Con las métricas 4 y 5 en una sola llamada, son once.
+    [
+      "analytics 12 errores de ingestión",
+      () => getIngestionErrors(context, periodo),
+    ],
   ];
+
+  // Control intermitente (CRM_CONTROL=intermitente): la métrica 1 responde bien la primera vez y
+  // devuelve un `Failure` desde la segunda, que es la corrida de calentamiento contra las medidas.
+  // Si con él el script sale con 0, vuelve a mirar solo el calentamiento (M-2).
+  if (process.env.CRM_CONTROL === "intermitente") {
+    const [nombre, ejecutar] = metricas[0]!;
+    let llamadas = 0;
+    metricas[0] = [
+      nombre,
+      async () =>
+        ++llamadas === 1
+          ? ejecutar()
+          : { ok: false, code: "CONTROL_INTERMITENTE" },
+    ];
+  }
 
   console.log(`\n## Caminos completos — ${etiqueta}`);
   console.log(`Mediana de ${CORRIDAS} corridas, tras una de calentamiento.\n`);
   console.log("| Camino | Mediana | Mínimo | Máximo | Resultado |");
   console.log("| --- | --- | --- | --- | --- |");
+  const fallas: string[] = [];
   for (const [nombre, ejecutar] of [...listados, ...metricas]) {
     const r = await medir(nombre, ejecutar);
+    r.valores.forEach((valor, corrida) => {
+      const descripcion = describir(valor);
+      if (esFalla(descripcion)) {
+        fallas.push(`${r.nombre}, corrida ${corrida}: ${descripcion}`);
+      }
+    });
     console.log(
       `| ${r.nombre} | ${r.mediana.toFixed(1)} ms | ${r.minimo.toFixed(1)} ms | ${r.maximo.toFixed(1)} ms | ${r.resultado} |`,
     );
@@ -283,13 +328,37 @@ async function main(): Promise<void> {
 
   // El dashboard pide las doce métricas por carga (brief-7.4). Medirlas sueltas no dice cuánto
   // tarda la pantalla: esto mide la carga entera, que es lo que ve quien la abre.
+  //
+  // Lo que devuelve `Promise.all` se mira: la versión de la 9.3 lo descartaba, así que una carga
+  // en la que todas las métricas fallaban en microsegundos pasaba por una carga rápida (R-9 de la
+  // revisión de la 9.3), en todas las corridas y no solo en la de calentamiento (M-2).
   const carga = await medir("pantalla 2 completa", async () => {
-    await Promise.all(metricas.map(([, ejecutar]) => ejecutar()));
+    const resultados = await Promise.all(
+      metricas.map(([, ejecutar]) => ejecutar()),
+    );
+    return resultados.map((r, i) => [metricas[i]![0], describir(r)] as const);
   });
   console.log(
-    `\n**Dashboard, las métricas de una carga en paralelo**: mediana ${carga.mediana.toFixed(1)} ms ` +
+    `\n**Dashboard, las ${metricas.length} llamadas de una carga en paralelo**: mediana ${carga.mediana.toFixed(1)} ms ` +
       `(mínimo ${carga.minimo.toFixed(1)}, máximo ${carga.maximo.toFixed(1)}).`,
   );
+  carga.valores.forEach((valor, corrida) => {
+    for (const [nombre, resultado] of valor as (readonly [string, string])[]) {
+      if (esFalla(resultado)) {
+        fallas.push(
+          `carga del dashboard, corrida ${corrida}, ${nombre}: ${resultado}`,
+        );
+      }
+    }
+  });
+
+  if (fallas.length > 0) {
+    console.log(
+      `\n**${fallas.length} corridas fallaron**: su tiempo no es una medición.`,
+    );
+    for (const falla of fallas) console.log(`- ${falla}`);
+    process.exitCode = 1;
+  }
 
   await db.$client.end();
 }
