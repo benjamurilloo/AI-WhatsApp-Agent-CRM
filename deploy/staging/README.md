@@ -22,9 +22,7 @@ Los archivos de acá son la fuente de verdad. **Tres** guardas los fijan con cas
 
 El procedimiento de restauración y el ejercicio mensual viven en [docs/runbooks/restaurar-la-base.md](../../docs/runbooks/restaurar-la-base.md).
 
-**Estado al 2026-09-23**: los **nueve** archivos de la tabla de arriba están desplegados y el `diff` de la sección «Verificar después de desplegar» da **cero diferencias** en los nueve. Los dos timers están habilitados. El noveno lo agregó la 9.3: los parámetros de costo del planificador, que hasta entonces describían una máquina de 4 GB sobre una de 961 MB.
-
-> **Desde la 11.0 (2026-09-23), `crm-backup.sh` del repositorio difiere del desplegado en un comentario** (líneas 76-78: la ventana del manifiesto no se midió en la 9.3 y va a la 13.2). No cambia ninguna instrucción. Hasta que se copie al servidor, el `diff` de ese archivo muestra esas líneas y ninguna otra; copiarlo requiere autorización ([brief-11.0](../../docs/decisions/brief-11.0-instrumentos-antes-de-construir-encima.md), D-5). Cuando se copie, esta nota se borra y la línea de arriba vuelve a ser cierta.
+**Estado al 2026-09-24**: los **nueve** archivos de la tabla de arriba están desplegados y el `diff` de la sección «Verificar después de desplegar» da **cero diferencias** en los nueve. Los dos timers están habilitados. El noveno lo agregó la 9.3: los parámetros de costo del planificador, que hasta entonces describían una máquina de 4 GB sobre una de 961 MB. La última copia fue `crm-backup.sh`, el 2026-09-24, con un cambio que solo toca comentarios ([brief-11.0](../../docs/decisions/brief-11.0-instrumentos-antes-de-construir-encima.md), D-5).
 
 **El número se cuenta, no se hereda.** Esta línea dijo «seis» mientras la tabla tenía ocho filas, y la 9.3 lo «corrigió» a siete sumándole uno al número equivocado en vez de contar la tabla. Es el cuarto recuento mal registrado de este linaje (antes H-5, N-2 y R-7). Se comprueba así, y el resultado tiene que coincidir con las filas de la tabla:
 

@@ -2,6 +2,53 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-24 — 11.0 cerrada: instrumentos antes de construir encima
+
+Primera subfase de la Fase 11 ([brief-11.0](docs/decisions/brief-11.0-instrumentos-antes-de-construir-encima.md)). Corrige los instrumentos que el piloto de la 11.4 va a reutilizar y la herramienta de migración, antes de que la 11.1 y la 11.2 construyan encima. No abre ni cierra gate. La implementación está en `174276a`, con la corrida 36004268721 en `success`.
+
+**Certifica (validado localmente y en CI):**
+
+- **Recorrido de pantallas** (R-7, R-8, R-21):
+  - cada una de las nueve pantallas se comprueba con un elemento propio, buscado dentro de `main`, que no coincide con el menú;
+  - el dashboard, además, sin esqueletos y sin tarjetas en error;
+  - las respuestas HTTP ≥ 400 son una clase propia, porque `requestfailed` no las ve (verificado en playwright-core@1.63.0);
+  - el control negativo exige cada provocación en su clase y con su propio texto;
+  - al terminar, sale y comprueba que la cookie anterior ya no entra.
+- **Medición de caminos** (R-1, R-9): mide la métrica 12 y revisa **cada** corrida, incluida la carga en paralelo. Un `Failure` sale como falla, con código 1.
+- **`npm run db:migrate`** (O-8): corre `scripts/migrar.ts` con el migrador de `drizzle-orm` e imprime el error de PostgreSQL con su SQLSTATE. Antes, `drizzle-kit migrate` salía con 1 y stderr vacío: reproducido en local y verificado en `bin.cjs` de drizzle-kit@0.31.10.
+- **Guardas**:
+  - la de PostgreSQL de staging acepta la gramática de PostgreSQL 18, falla ante una línea que no entiende y lee `effective_cache_size` sin unidad en bloques de 8 kB (R-12);
+  - la de identidad del seed comprueba la forma de los ids en los ocho tipos (R-13, **reproducido**).
+- **Seed de volumen** (R-14): la segunda corrida ya no reescribe `users`. Tenía dos causas: el hash y el `$onUpdate` de `updated_at`.
+- **Artefactos de Playwright** (O-21): la CI sube `test-results/` solo cuando falla el end-to-end, con retención de 7 días. Probado con el PR de borrador #1, que falló a propósito: el artefacto trae `trace.zip`. El PR se cerró sin mergear y la rama se borró. En `main`, el paso queda `skipped`.
+- **Staging** (D-5): `crm-backup.sh` copiado, con un cambio que solo toca comentarios. El `diff` de los **nueve** archivos da cero otra vez.
+- **Documentación**:
+  - `Risks.md` registra `cancel-in-progress` en `main`, sin decidir (R-2);
+  - `EngineeringStandards.md` define la convención de etiquetar los FR desde la 11.1 y lista **once** guardas: decía nueve, porque la 9.3 agregó dos sin sumarlas.
+- **Suite local**: 953 de 953 en 77 archivos, y 81 de 81 end-to-end.
+
+**Revisión independiente** (D-7, no obligatoria): 9 hallazgos, **0 bloqueantes**, 4 mayores, 4 menores y 1 nota. Los nueve se verificaron contra el código: 8 corregidos y 1 registrado. **Dos de los mayores eran huecos de las correcciones de esta misma subfase**, de la clase que venían a cerrar:
+
+- la guarda corregida leía mal un valor sin unidad;
+- el chequeo nuevo de ids miraba un solo tipo.
+
+**No certifica:**
+
+- **Nada contra staging salvo la copia de D-5.** Ningún instrumento corregido se volvió a correr allá; el primero en usarlos es el piloto (11.4). El recorrido y la medición están probados contra `next start` local.
+- **La CI no ejecuta `scripts/migrar.ts`**: prueba el migrador que usa. El script se probó a mano, con un caso que falla y uno que pasa.
+- **O-8 se reprodujo por el síntoma, no por su causa original.** `crm_app` ya existe en el clúster local, así que se provocó otra falla de privilegio de la misma clase.
+- **Un end-to-end que se cuelga termina `cancelled` y no sube artefactos.**
+
+**Registrado sin corregir** (fuera de la lista autorizada):
+
+- **`module-boundary`**: la intermitencia de `guards` ya tiene nombre. Es el primer caso de ese archivo, que carga ESLint en frío y superó los 30 s. La hipótesis está sin verificar.
+- **Seed de volumen**: `organizations` y `organization_members` se reescriben en cada corrida (m-3).
+- **Detalle de producto**: un historial de movimientos que falla se muestra como vacío (`productos/[productId]/page.tsx:86-88`).
+
+**Notion**: el proyecto de la Fase 11 se había creado sin la plantilla y con sus subfases en «Sin fecha». Ya tiene la plantilla, las tareas pendientes pasaron a «Esperando», y la convención quedó escrita en `CLAUDE.md` §Convenciones de Notion, por decisión del usuario.
+
+---
+
 ## 2026-09-23 — Fase 10 cerrada (Evaluación del MVP): continuar ampliando el alcance
 
 Cierra con la **decisión explícita del usuario**, que es su gate de salida: **continuar ampliando el alcance**, sobre el backend validado, hacia las Fases 11 a 14 de integración con el agente de WhatsApp. La decisión se tomó con la brecha a la vista, no se derivó de los criterios. Un solo [brief](docs/decisions/brief-10-evaluacion-del-mvp.md) con tres subfases, sin código. Esta entrada cubre las tres: la 10.1 y la 10.2 cerraron sin entrada propia, porque el brief reservaba `CHANGELOG.md` para el cierre de la fase, aunque el [ExecutionProtocol](docs/development/ExecutionProtocol.md) pide una por subfase. Queda dicho.
