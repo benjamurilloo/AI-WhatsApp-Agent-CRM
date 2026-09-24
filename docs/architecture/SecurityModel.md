@@ -6,7 +6,7 @@ Cada sección cita el nivel de validación de lo que afirma. Los hallazgos abier
 
 ## Superficie expuesta
 
-**45 puntos de entrada** al 2026-09-24 —19 páginas, 24 Server Actions y 2 Route Handlers—, revisados uno por uno. Eran 36 al 2026-09-18. La etapa 11.1.2 ([brief-11.1](../decisions/brief-11.1-catalogo-comercial.md)) sumó la página de precios de un producto y `setPriceAction`, que exige sesión y rol `admin` en el caso de uso, probado en integración. La 11.2 ([brief-11.2](../decisions/brief-11.2-informacion-del-negocio.md)) sumó las tres páginas de información del negocio (`/informacion`, `/informacion/nueva` y `/informacion/[id]`) y cuatro Server Actions (crear, editar, desactivar y reactivar una entrada), que exigen sesión y rol `admin` en el caso de uso, probado en integración. La guarda [`tests/guards/exposed-surface.test.ts`](../../tests/guards/exposed-surface.test.ts) fija los **26 que no son páginas** y falla si aparece uno nuevo sin declarar; las páginas se revisaron por lectura y ninguna guarda las fija.
+**47 puntos de entrada** al 2026-09-24 —19 páginas, 24 Server Actions y 4 Route Handlers—, revisados uno por uno. Eran 36 al 2026-09-18. La etapa 11.1.2 ([brief-11.1](../decisions/brief-11.1-catalogo-comercial.md)) sumó la página de precios de un producto y `setPriceAction`, que exige sesión y rol `admin` en el caso de uso, probado en integración. La 11.2 ([brief-11.2](../decisions/brief-11.2-informacion-del-negocio.md)) sumó las tres páginas de información del negocio (`/informacion`, `/informacion/nueva` y `/informacion/[id]`) y cuatro Server Actions (crear, editar, desactivar y reactivar una entrada), que exigen sesión y rol `admin` en el caso de uso, probado en integración. La etapa 11.3.1 ([brief-11.3](../decisions/brief-11.3-api-de-lectura.md)) sumó los dos Route Handlers de la API de lectura, que no usan la sesión (ver abajo). La guarda [`tests/guards/exposed-surface.test.ts`](../../tests/guards/exposed-surface.test.ts) fija los **28 que no son páginas** y falla si aparece uno nuevo sin declarar; las páginas se revisaron por lectura y ninguna guarda las fija.
 
 > El documento decía "20 puntos de entrada" hasta la revisión independiente del 2026-09-18. Era un número que no salía de ninguna agrupación de esta tabla, que suma 36. Corregido.
 
@@ -17,10 +17,11 @@ Cada sección cita el nivel de validación de lo que afirma. Los hallazgos abier
 | Server Actions bajo `(autenticado)` | 20 | sesión, resuelta antes de cualquier efecto |
 | Server Actions del ingreso | 2 | previo a la sesión |
 | Server Actions públicas (`logoutAction`, `setThemeAction`) | 2 | ninguna, a propósito: cerrar sesión es idempotente y el tema es una cookie sin dato de negocio |
-| Route Handlers | 2 | ninguna de sesión (ver abajo) |
+| Route Handlers | 4 | ninguna de sesión (ver abajo) |
 
 - **`/api/health`**: sin autenticación. Devuelve `{"status":"ok"}` con 200, o `"unavailable"` con 503, y `Cache-Control: no-store`. No expone datos, versiones ni detalles del error; revela únicamente si la base responde.
 - **`/api/ingestion/v1/events`**: no usa la sesión. Autentica con una credencial de servicio (ver abajo), y un test confirma que una sesión válida **no** lo autentica.
+- **`/api/read/v1/products`** y **`/api/read/v1/products/{product_id}`** (11.3): no usan la sesión. Autentican con una credencial de servicio de alcance `read`, están apagadas salvo `READ_API_ENABLED`, y un test confirma que una sesión válida **no** las autentica. Solo leen: productos activos con su precio vigente y su estado de stock, sin la cantidad ([contrato de lectura v1](../contracts/read-v1.md)). Las funciones de módulo que usan no pasan por `authorize`, porque no hay persona ni rol; la guarda `service-read-entry-points.test.ts` exige que fuera de los módulos solo las llame `src/app/api/read/`.
 
 La guarda verifica que la superficie no crezca sin que alguien la declare. **No** verifica que la exigencia declarada se cumpla: eso se revisó leyendo cada punto de entrada, porque la autorización se delega entre módulos o vive en un helper del mismo archivo, y ningún patrón de texto lo distingue sin mentir.
 
@@ -95,16 +96,17 @@ La guarda verifica que la superficie no crezca sin que alguien la declare. **No*
   - contraseña inicial (D-5): 16 caracteres de un alfabeto de 32 sin símbolos ambiguos, elegidos con `crypto.randomInt` (80 bits) y mostrados en 4 grupos. Solo persiste su hash argon2id. El texto en claro viaja una única vez, en la respuesta de la Server Action del alta, y nunca en la URL, los logs, la auditoría ni el almacenamiento del cliente. Es la excepción declarada a que ninguna contraseña salga del formulario en curso;
   - un `viewer` que abre una página de usuarios recibe "No tenés permiso para ver esta página." sin datos, y sus Server Actions devuelven `FORBIDDEN` (D-10). **Limitación aceptada**: la respuesta es HTTP 200, no 403, mientras `forbidden()` siga siendo experimental.
 
-## Autenticación de servicio (ingestión)
+## Autenticación de servicio (ingestión y lectura)
 
 Implementada en la 6.5.3 ([brief-6.5.3](../decisions/brief-6.5.3-autenticacion-de-servicio-y-rate-limit.md)), **validada localmente** con requests sintéticos. No se valida con un emisor real hasta el proyecto de integración (Fase 12, 12.3) ([IntegrationBoundaries](IntegrationBoundaries.md)).
 
-- **Credencial** (D-1 y D-2): una fila de `ingestion_credentials` por organización y emisor, con el SHA-256 de un token `crm_ing_` de 32 bytes aleatorios. El token se muestra una sola vez, al crearlo con `npm run ingestion:credential`, y nunca se guarda ni se registra. Una credencial se revoca con fecha y no se reactiva; para rotarla se crea otra y se revoca la vieja.
+- **Credencial** (D-1 y D-2): una fila de `ingestion_credentials` por organización y emisor, con el SHA-256 de un token `crm_ing_` de 32 bytes aleatorios. **Desde la 11.3** (D-2), cada credencial tiene un solo alcance: `ingest` para la ingestión o `read` para la API de lectura, con token `crm_read_`. El alcance se compara con el guardado en la base, no con el prefijo; una credencial en la superficie de otro alcance da `403` sin consumir el límite. Así, una credencial de lectura filtrada no escribe. El token se muestra una sola vez, al crearlo con `npm run ingestion:credential`, y nunca se guarda ni se registra. Una credencial se revoca con fecha y no se reactiva; para rotarla se crea otra y se revoca la vieja.
 - **Transporte**: `Authorization: Bearer <token>`. Sin credencial reconocible, `401`; revocada, `403`.
-- **Modo de prueba** (D-4): `INGESTION_ENABLED` apagado por defecto (`404`), y `INGESTION_ALLOWED_CREDENTIALS` con los ids aceptados. Una configuración inválida apaga el endpoint y queda en el log.
-- **Límite de tasa** (D-3): 120 requests por minuto por credencial, en `ingestion_rate_windows`, con un `INSERT … ON CONFLICT DO UPDATE` atómico. Se cuenta después de autenticar y antes de leer el cuerpo.
+- **Modo de prueba** (D-4): `INGESTION_ENABLED` apagado por defecto (`404`), y `INGESTION_ALLOWED_CREDENTIALS` con los ids aceptados. Una configuración inválida apaga el endpoint y queda en el log. La API de lectura tiene los suyos, `READ_API_ENABLED` y `READ_API_ALLOWED_CREDENTIALS`, independientes (11.3, D-7).
+- **Límite de tasa** (D-3): 120 requests por minuto por credencial, en `ingestion_rate_windows`, con un `INSERT … ON CONFLICT DO UPDATE` atómico. Se cuenta después de autenticar y antes de leer el cuerpo. La credencial de lectura tiene su propio presupuesto (11.3, D-6).
 - **Sin auditoría en `audit_logs`**: la creación y la revocación no tienen usuario; la tabla guarda `created_at` y `revoked_at`.
-- **Log**: código, organización, `source` y duración; nunca el token, el payload, el teléfono ni el cuerpo.
+- **Log**: código, organización, `source` y duración; nunca el token, el payload, el teléfono ni el cuerpo. La API de lectura registra además el `correlation_id` del emisor, y nunca el texto buscado ni un id buscado (11.3, D-5).
+- **Revocación** (O-33): `revokeIngestionCredential` filtra solo por id y la usa solo el script de operador. Desde la 11.3, una regla de `exposed-surface.test.ts` falla si un archivo de `src/app` la nombra o reexporta el módulo entero, con su corrida de mutación: la condición que reabre O-33 queda fijada por guarda.
 
 ## Protección de la aplicación web
 
@@ -187,7 +189,7 @@ Revisado fila por fila en la 8.4. La columna de veredicto dice **cómo se compro
 | Repudio | Cambios de stock sin rastro | `inventory_movements` inmutable + `audit_logs` | `verificado`: rol `crm_app` y trigger `BEFORE UPDATE OR DELETE` ([ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md)), con la limitación ya aceptada de que la aplicación se conecta hoy con el rol dueño |
 | Divulgación de información | Logs con contenido de mensajes | Política de logs sin PII/contenido de negocio | `verificado`: las tres capas de la 8.2 —unitaria, guarda y integración— más el enmascarado del teléfono probado en la 5.2 |
 | Denegación de servicio | Abuso del login o de ingestión | Rate limiting en ambos puntos | `parcial`, **y con hallazgo**: la ingestión y los dos límites del ingreso están probados, pero sin proxy de confianza el límite por IP es además un vector de denegación de servicio (H-3). Que la defensa esté probada no la vuelve sana: el test confirma que bloquea, y H-3 dice a quién |
-| Elevación de privilegios | Un `viewer` invoca una acción de `admin` directamente por API | Autorización server-side en cada caso de uso, no solo en la UI | `verificado-por-lectura`: los 45 puntos de entrada revisados uno por uno; probado en integración para productos, precios, clientes, stock, miembros e información del negocio |
+| Elevación de privilegios | Un `viewer` invoca una acción de `admin` directamente por API | Autorización server-side en cada caso de uso, no solo en la UI | `verificado-por-lectura`: los 47 puntos de entrada revisados uno por uno; probado en integración para productos, precios, clientes, stock, miembros e información del negocio |
 
 **Lo que este threat model no cubre**: no contempla un atacante con acceso a la base ni al servidor, ni cadena de suministro más allá de la auditoría de dependencias, ni abuso por parte de un `admin` legítimo de su propia organización.
 

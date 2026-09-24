@@ -101,12 +101,15 @@ export type StoredCredential = {
   id: string;
   organizationId: string;
   source: string;
+  // Alcance de la credencial (brief-11.3, D-2).
+  scope: "ingest" | "read";
   revokedAt: Date | null;
 };
 
 export async function insertCredential(input: {
   organizationId: string;
   source: string;
+  scope: "ingest" | "read";
   tokenHash: string;
 }): Promise<string> {
   const rows = await getDb()
@@ -126,6 +129,7 @@ export async function findCredentialByTokenHash(
       id: ingestionCredentials.id,
       organizationId: ingestionCredentials.organizationId,
       source: ingestionCredentials.source,
+      scope: ingestionCredentials.scope,
       revokedAt: ingestionCredentials.revokedAt,
     })
     .from(ingestionCredentials)

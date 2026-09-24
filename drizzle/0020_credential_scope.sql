@@ -1,0 +1,2 @@
+ALTER TABLE "ingestion_credentials" ADD COLUMN "scope" text DEFAULT 'ingest' NOT NULL;--> statement-breakpoint
+ALTER TABLE "ingestion_credentials" ADD CONSTRAINT "ingestion_credentials_scope_valid" CHECK ("ingestion_credentials"."scope" IN ('ingest', 'read'));

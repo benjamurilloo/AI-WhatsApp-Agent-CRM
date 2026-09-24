@@ -553,4 +553,22 @@ describe("endpoint de ingestión", { timeout: TEST_TIMEOUT }, () => {
     expect(String(errors.mock.calls[0]?.[0])).not.toContain("falla forzada");
     expect(await counts()).toMatchObject(NOTHING_WRITTEN);
   });
+
+  it("14. una credencial de lectura no escribe: 403 sin consumir el límite (brief-11.3, D-2)", async () => {
+    const created = await createIngestionCredential(orgA, "emisor-a", "read");
+    if (!created.ok) throw new Error("credencial inválida");
+    expect(created.token).toMatch(/^crm_read_/);
+    allow(emitterA, { id: created.credentialId, token: created.token });
+
+    const response = await send(created.token, event());
+    expect(response.status).toBe(403);
+    expect(await response.json()).toStrictEqual({
+      code: "FORBIDDEN",
+      request_id: expect.any(String),
+    });
+    expect(await counts()).toEqual({ ...NOTHING_WRITTEN, windows: 0 });
+
+    // La de ingestión de la misma organización y el mismo source sigue escribiendo.
+    expect((await send(emitterA.token, event())).status).toBe(201);
+  });
 });

@@ -54,6 +54,8 @@ Next.js, Vitest y Drizzle Kit leen `DATABASE_URL` de `.env`. En CI las variables
 
 Nunca se configura una credencial de un emisor real. Los end-to-end encienden el modo de prueba en `playwright.config.ts`, con una credencial sintética que inserta `ingestion.spec.ts`.
 
+`READ_API_ENABLED` y `READ_API_ALLOWED_CREDENTIALS` ([brief-11.3](../decisions/brief-11.3-api-de-lectura.md), D-7) controlan la [API de lectura](../contracts/read-v1.md), con la misma conducta y **por separado**: encender la ingestión no la enciende. Por defecto está apagada y responde `404`. Para probarla en local, se crea una credencial de lectura con `npm run ingestion:credential -- create --org <organization_id> --source <source> --scope read`, que imprime un token `crm_read_`, se pone `READ_API_ENABLED=true` con el id en `READ_API_ALLOWED_CREDENTIALS`, y se revoca al terminar. Una credencial de lectura no sirve para la ingestión, ni al revés. Los end-to-end la dejan apagada: `read-api.spec.ts` comprueba las cabeceras sobre ese `404`.
+
 - `/api/health` responde 200 `{"status":"ok"}` o 503 `{"status":"unavailable"}`, sin detalles.
 - `npm run test` corre los tests de integración y **requiere la base levantada**.
 

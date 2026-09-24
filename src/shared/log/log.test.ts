@@ -66,6 +66,22 @@ describe("log estructurado", () => {
     expect(Object.hasOwn(event, "organization_id")).toBe(false);
     expect(Object.hasOwn(event, "duration_ms")).toBe(false);
     expect(Object.hasOwn(event, "source")).toBe(false);
+    expect(Object.hasOwn(event, "correlation_id")).toBe(false);
+  });
+
+  it("registra la correlación del emisor cuando llega (brief-11.3, D-5)", () => {
+    const line = formatLogEvent({
+      level: "info",
+      requestId: newRequestId(),
+      route: "/api/read/v1/products",
+      code: "OK",
+      source: "agente-whatsapp",
+      correlationId: "turno-0001",
+    });
+    expect(JSON.parse(line)).toMatchObject({
+      source: "agente-whatsapp",
+      correlation_id: "turno-0001",
+    });
   });
 
   it("registra el source de un evento de ingestión cuando llega (brief-6.5.3)", () => {

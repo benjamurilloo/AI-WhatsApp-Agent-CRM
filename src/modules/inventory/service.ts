@@ -2,11 +2,14 @@ import { z } from "zod";
 import { recordAudit } from "@/modules/audit";
 import {
   deriveStockStatus,
+  getActiveProductForService,
   getProduct,
   lockProductForStockChange,
+  searchActiveProductsForService,
   searchProducts,
   type Product,
   type ProductActivityFilter,
+  type ServiceProduct,
   type StockStatus,
 } from "@/modules/catalog";
 import {
@@ -138,6 +141,45 @@ export async function getProductStock(
     found.product.id,
   ]);
   return { ok: true, product: withStock(found.product, balances) };
+}
+
+// Lecturas de servicio de la API (brief-11.3, D-3): catalog aporta los activos con su precio, y
+// acá se suma el estado de stock, como en la pantalla 3. **Sin la cantidad**: el agente recibe el
+// estado, no el saldo (D-4). La organización sale de la credencial que autenticó la API.
+export type ServiceCatalogProduct = ServiceProduct & {
+  stockStatus: StockStatus;
+};
+
+async function withStockStatus(
+  organizationId: string,
+  products: ServiceProduct[],
+): Promise<ServiceCatalogProduct[]> {
+  const balances = await repository.findBalances(
+    organizationId,
+    products.map((product) => product.id),
+  );
+  return products.map((product) => ({
+    ...product,
+    stockStatus: withStock(product, balances).stockStatus,
+  }));
+}
+
+export async function searchCatalogForService(
+  organizationId: string,
+  query: { text: string; limit: number },
+): Promise<ServiceCatalogProduct[]> {
+  const products = await searchActiveProductsForService(organizationId, query);
+  return withStockStatus(organizationId, products);
+}
+
+export async function getCatalogProductForService(
+  organizationId: string,
+  productId: string,
+): Promise<ServiceCatalogProduct | null> {
+  const product = await getActiveProductForService(organizationId, productId);
+  if (!product) return null;
+  const [withStatus] = await withStockStatus(organizationId, [product]);
+  return withStatus ?? null;
 }
 
 // Ajuste manual de stock (brief-4.3.1): movimiento, saldo y auditoría en una sola transacción

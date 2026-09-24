@@ -114,6 +114,14 @@ const HANDLERS: Readonly<Record<string, Entry>> = {
     requirement: "sin-sesion",
     why: "no usa la sesión: autentica con una credencial de servicio (brief-6.5.3) y una sesión válida no lo autentica",
   },
+  "src/app/api/read/v1/products/route.ts": {
+    requirement: "sin-sesion",
+    why: "API de lectura (brief-11.3): autentica con una credencial de alcance read, apagada salvo READ_API_ENABLED, y una sesión válida no la autentica",
+  },
+  "src/app/api/read/v1/products/[productId]/route.ts": {
+    requirement: "sin-sesion",
+    why: "API de lectura (brief-11.3): autentica con una credencial de alcance read, apagada salvo READ_API_ENABLED, y una sesión válida no la autentica",
+  },
 };
 
 const APP_FILES = execFileSync("git", ["ls-files", "-z", "src/app"], {
@@ -193,6 +201,42 @@ describe("detección de funciones exportadas", () => {
   });
 });
 
+// O-33 (evaluación 10.1, brief-11.3, D-11). `revokeIngestionCredential` filtra solo por id: se
+// aceptó mientras la usara solo el script de operador, y se reabre si queda expuesta por HTTP.
+// Esta regla fija la condición: ningún archivo de src/app nombra una función de revocación de
+// credenciales, ni reexporta todo el módulo que la tiene. Buscar el nombre, y no solo la línea
+// del import, cubre las formas `import { }`, `import * as m` seguido de `m.revoke…`,
+// `export { } from` y el import dinámico. Límite declarado: un nombre armado en tiempo de
+// ejecución (`m["revoke" + x]`) no se ve.
+const REVOCATION_NAME = /\brevoke\w*Credential\b/;
+const MODULE_REEXPORT =
+  /export\s*\*\s*(?:as\s+\w+\s+)?from\s*["']@\/modules\/ingestion["']/;
+
+export function exposesRevocation(text: string): boolean {
+  return REVOCATION_NAME.test(text) || MODULE_REEXPORT.test(text);
+}
+
+describe("detección de la revocación de credenciales (O-33)", () => {
+  it.each([
+    'import { revokeIngestionCredential } from "@/modules/ingestion";',
+    'import * as ingestion from "@/modules/ingestion";\nawait ingestion.revokeIngestionCredential(id);',
+    'export { revokeIngestionCredential } from "@/modules/ingestion";',
+    'const { revokeIngestionCredential: r } = await import("@/modules/ingestion");',
+    'export * from "@/modules/ingestion";',
+    "export * as ingestion from '@/modules/ingestion';",
+  ])("detecta: %j", (text) => {
+    expect(exposesRevocation(text)).toBe(true);
+  });
+
+  it.each([
+    'import { authenticateServiceRequest } from "@/modules/ingestion";',
+    'export * from "@/modules/inventory";',
+    "// la credencial revocada da FORBIDDEN",
+  ])("no detecta: %j", (text) => {
+    expect(exposesRevocation(text)).toBe(false);
+  });
+});
+
 describe("repositorio", () => {
   const actionModules = APP_FILES.filter(
     (file) => file !== SELF && isServerActionModule(readFileSync(file, "utf8")),
@@ -245,6 +289,16 @@ describe("repositorio", () => {
     expect(
       silent,
       `sin razón escrita; un punto de entrada público sin justificación es un hallazgo:\n${silent.join("\n")}`,
+    ).toEqual([]);
+  });
+
+  it("ningún archivo de src/app expone la revocación de credenciales (O-33)", () => {
+    const exposing = APP_FILES.filter((file) =>
+      exposesRevocation(readFileSync(file, "utf8")),
+    );
+    expect(
+      exposing,
+      `la revocación filtra solo por id (O-33) y no se expone por HTTP sin reabrir esa decisión:\n${exposing.join("\n")}`,
     ).toEqual([]);
   });
 

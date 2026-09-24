@@ -10,6 +10,7 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { getDb, type Db, type DbTransaction } from "@/shared/db";
+import { searchQuery } from "@/shared/search";
 import {
   productCondition,
   productPrices,
@@ -146,6 +147,31 @@ export function findProducts(
     .select(productColumns)
     .from(products)
     .where(and(...conditions));
+}
+
+// Búsqueda de la API de lectura (brief-11.3, D-4): solo activos, con la misma coincidencia que
+// findProducts, pero ordenada y cortada en SQL. Primero el SKU exacto, que es la señal más fuerte;
+// después la relevancia, con desempate por nombre y por id. Un texto sin palabras deja la
+// consulta en NULL, y `coalesce` evita que ese NULL ordene primero.
+export function findActiveProductsRanked(
+  organizationId: string,
+  text: string,
+  limit: number,
+): Promise<ProductRow[]> {
+  const skuMatch = sql`lower(${products.sku}) = lower(${text})`;
+  const rank = sql`coalesce(ts_rank(${products.search}, ${searchQuery(text)}), 0)`;
+  return getDb()
+    .select(productColumns)
+    .from(products)
+    .where(
+      and(
+        eq(products.organizationId, organizationId),
+        eq(products.isActive, true),
+        or(productSearchCondition(text), skuMatch),
+      ),
+    )
+    .orderBy(desc(skuMatch), desc(rank), products.name, products.id)
+    .limit(limit);
 }
 
 // Valores distintos de marca y categoría que ya existen en la organización, para sugerirlos en el

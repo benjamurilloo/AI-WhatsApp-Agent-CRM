@@ -524,6 +524,53 @@ export async function getCurrentPrices(
   };
 }
 
+// Lecturas de servicio (brief-11.3, D-3). Las llama la API de lectura, que ya autenticó una
+// credencial de alcance `read`: la organización sale de esa credencial y no hay persona ni rol,
+// así que no pasan por `authorize`. Solo productos activos. La guarda
+// tests/guards/service-read-entry-points.test.ts exige que fuera de los módulos solo las importe
+// src/app/api/read/: una pantalla que las usara se saltearía el rol del usuario.
+
+export type ServiceProduct = Product & { price: ProductPrice | null };
+
+async function withCurrentPrices(
+  organizationId: string,
+  rows: Product[],
+): Promise<ServiceProduct[]> {
+  const prices = await repository.findCurrentPrices(
+    organizationId,
+    rows.map((row) => row.id),
+  );
+  return rows.map((row) => {
+    const price = prices.get(row.id);
+    return { ...row, price: price ? toPrice(price) : null };
+  });
+}
+
+// El texto y el límite llegan ya validados por la API (D-4).
+export async function searchActiveProductsForService(
+  organizationId: string,
+  query: { text: string; limit: number },
+): Promise<ServiceProduct[]> {
+  const rows = await repository.findActiveProductsRanked(
+    organizationId,
+    query.text.trim(),
+    query.limit,
+  );
+  return withCurrentPrices(organizationId, rows);
+}
+
+// Un producto inactivo, de otra organización o inexistente da null, sin distinguir.
+export async function getActiveProductForService(
+  organizationId: string,
+  productId: string,
+): Promise<ServiceProduct | null> {
+  if (!productIdSchema.safeParse(productId).success) return null;
+  const row = await repository.findProduct(organizationId, productId);
+  if (!row?.isActive) return null;
+  const [product] = await withCurrentPrices(organizationId, [row]);
+  return product ?? null;
+}
+
 export const PRICES_PAGE_SIZE = 25;
 
 export type ProductPriceEntry = ProductPrice & {

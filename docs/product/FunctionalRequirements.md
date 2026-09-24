@@ -54,6 +54,13 @@ Desde la subfase 11.2 ([brief-11.2](../decisions/brief-11.2-informacion-del-nego
 - **FR-INFO-02**: Cualquier usuario puede listar las entradas, filtrarlas por estado y buscarlas por palabras sueltas sobre título, categoría y contenido, sin distinguir mayúsculas ni acentos. Una coincidencia en el título sale antes que una solo en el contenido.
 - **FR-INFO-03**: Una entrada está **vigente** si está activa y el día de hoy, en la zona horaria de la organización, cae dentro de su vigencia, cuyas dos fechas son opcionales e inclusivas. Las demás están programadas, vencidas o inactivas. Las lecturas de vigentes no devuelven ninguna otra.
 
+## API de lectura para sistemas externos
+
+Agregada el 2026-09-24 por la 11.3 ([brief-11.3](../decisions/brief-11.3-api-de-lectura.md)), con el [contrato de lectura v1](../contracts/read-v1.md). El consumidor previsto es el agente de WhatsApp ([ADR 0014](../decisions/0014-el-agente-de-whatsapp-como-consumidor-del-crm.md)); ninguno está conectado.
+
+- **FR-API-01**: Un sistema externo con una credencial de lectura de una organización puede buscar por palabras los productos activos de esa organización, y leer uno por su id, con su precio vigente y su estado de stock, sin la cantidad. Nunca recibe un producto inactivo ni de otra organización.
+- **FR-API-03**: La lectura exige una credencial de servicio de alcance `read`, no revocada y en la lista del modo de prueba, con un límite de pedidos por minuto. Una credencial de lectura no escribe, y una sesión de usuario no autentica la lectura. Cada respuesta queda en el log con su identificador de correlación, y nunca con el texto buscado.
+
 ## Métricas
 
 - **FR-MET-01**: El dashboard muestra, como mínimo, las métricas definidas en [analytics/MetricsCatalog.md](../analytics/MetricsCatalog.md), cada una calculada según su fórmula documentada.

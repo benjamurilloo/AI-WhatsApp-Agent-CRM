@@ -23,8 +23,10 @@ Ubica en carpetas los módulos y las reglas de dependencia de [Overview.md](Over
 │   │   ├── _theme/                  Preferencia de tema: lectura, validación y Server Action (4.0)
 │   │   ├── _fonts/                  Manrope variable y su licencia OFL (4.0)
 │   │   └── api/
-│   │       └── health/
-│   │           └── route.ts         GET /api/health
+│   │       ├── health/
+│   │       │   └── route.ts         GET /api/health
+│   │       ├── ingestion/v1/        Contrato de ingestión (6.5.3)
+│   │       └── read/v1/             Contrato de lectura: borde común, validador y rutas (11.3)
 │   ├── proxy.ts                     Cabeceras de seguridad y CSP con nonce por request (8.1)
 │   ├── modules/                     Un directorio por módulo de Overview.md
 │   │   └── <modulo>/
@@ -50,7 +52,7 @@ Ubica en carpetas los módulos y las reglas de dependencia de [Overview.md](Over
 │   │   ├── test-database.ts         Deriva las URL de las bases _test y _e2e desde DATABASE_URL
 │   │   ├── reset-database.ts        Vacía las tablas antes de cada test
 │   │   └── *.test.ts                db-connectivity (2.4), identity-schema (3.1) y siguientes
-│   ├── fixtures/                    Fixtures compartidos: ingestion/v1/, con forma asumida (6.5.1)
+│   ├── fixtures/                    Fixtures compartidos: ingestion/v1/ (6.5.1) y read/v1/ (11.3), con forma asumida
 │   └── e2e/                         Playwright sobre las pantallas, en la base <nombre>_e2e (3.5)
 │       ├── global-setup.ts          Recrea, migra y siembra la base de e2e
 │       └── *.spec.ts                login (3.5) y users (3.7)
@@ -105,6 +107,7 @@ No hay otros módulos. Uno nuevo requiere primero cambiar la tabla de [Overview.
 - `src/app/` contiene páginas, layouts y `route.ts`. Una página o un handler obtiene la sesión, llama a la interfaz pública de uno o más módulos y traduce los errores tipados a código HTTP o a mensaje visible.
 - Ningún archivo de `src/app/` ejecuta SQL ni importa `repository.ts` o `schema.ts`.
 - `/api/health` es infraestructura, no dominio: su handler llama al health check de `src/shared/db/`.
+- `src/app/api/read/` (11.3) es la API de lectura para sistemas externos. No usa la sesión: autentica una credencial de alcance `read` y llama a las funciones `…ForService` de los módulos, que reciben la organización de la credencial y no pasan por `authorize`. Fuera de los módulos, solo esta carpeta puede llamarlas (guarda `service-read-entry-points.test.ts`). `contract.ts` es el validador ejecutable del [contrato](../contracts/read-v1.md).
 - Las carpetas con guion bajo (`_auth/`, `_components/`, `_theme/`, `_fonts/`) son privadas de Next.js: no crean rutas. Guardan lo que comparten varias pantallas (3.5 y 4.0).
 - Las carpetas entre paréntesis, como `(autenticado)/`, son grupos de rutas: comparten un layout sin agregar un segmento a la URL. El layout del grupo muestra el marco común, pero no reemplaza la verificación de sesión de cada página y cada acción (3.7).
 - Un componente de cliente no importa `@/modules/*`: recibe datos y estado ya resueltos por la página o la Server Action.
@@ -189,6 +192,7 @@ Ninguna carpeta se crea vacía: nace con el primer archivo real de la subfase qu
 | 7.2 — Métricas de respuesta y estado | Métricas 7, 8, 9 y 11 en `service.ts` y `repository.ts` de `analytics`; `tests/integration/analytics-response.test.ts` con su propio fixture y `tests/integration/analytics-helpers.ts`, con los ayudantes de inserción que comparten las dos suites de métricas |
 | 7.3 — Métrica de errores de ingestión | Métrica 12 en `service.ts` y `repository.ts` de `analytics`, que pasa a leer `ingestion/schema` y la interfaz pública de `ingestion`; `tests/integration/analytics-ingestion.test.ts` con su propio fixture, y el ayudante de inserción de eventos en `analytics-helpers.ts` |
 | 7.4 — Dashboard | Pantalla 2 en `src/app/(autenticado)/page.tsx`, que reemplaza la página provisional, con sus piezas en `_dashboard/` (período de la URL, textos de los estados, definiciones, formato, geometría del gráfico, tarjeta y tarjetas por métrica); `getMetricsPeriod` en `analytics`; `tests/e2e/dashboard.spec.ts` |
+| 11.3.1 — API de lectura: credencial, borde y productos | `drizzle/0020` (alcance de la credencial); en `ingestion`, el alcance en `schema.ts`, `credentials.ts` y `repository.ts`; `searchActiveProductsForService` y `getActiveProductForService` en `catalog`, y `searchCatalogForService` y `getCatalogProductForService` en `inventory`; `correlation_id` en `src/shared/log/`; `src/app/api/read/v1/` (`config.ts`, `contract.ts`, `serve.ts` y las rutas de productos); `docs/contracts/read-v1.md`; `tests/fixtures/read/v1/`; `tests/integration/read-api.test.ts`, `tests/guards/service-read-entry-points.test.ts` y `tests/e2e/read-api.spec.ts` |
 | Fase 4 | `src/modules/catalog/` e `inventory/` |
 | Fase 5 | `src/modules/crm/` |
 | Fase 6 | `src/modules/conversations/` e `ingestion/` |

@@ -17,6 +17,9 @@ export type LogEvent = {
   durationMs?: number;
   // Emisor de un evento de ingestión, tomado de su credencial (brief-6.5.3).
   source?: string;
+  // Identificador de correlación que manda el emisor en X-Correlation-Id, ya validado como
+  // referencia opaca (brief-11.3, D-5). Permite encontrar las peticiones de un turno del agente.
+  correlationId?: string;
   error?: unknown;
 };
 
@@ -54,6 +57,7 @@ export function formatLogEvent(event: LogEvent, now = new Date()): string {
     user_id: event.userId,
     organization_id: event.organizationId,
     source: event.source,
+    correlation_id: event.correlationId,
     duration_ms:
       event.durationMs === undefined ? undefined : Math.round(event.durationMs),
     error: event.error === undefined ? undefined : describeError(event.error),

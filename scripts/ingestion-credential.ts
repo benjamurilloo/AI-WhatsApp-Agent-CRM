@@ -5,13 +5,14 @@ import {
 } from "@/modules/ingestion";
 import { getDb } from "@/shared/db";
 
-// Crea o revoca una credencial de servicio de ingestión (brief-6.5.3, D-2). Solo uso local:
-//   npm run ingestion:credential -- create --org <organization_id> --source <source>
+// Crea o revoca una credencial de servicio (brief-6.5.3, D-2). Solo uso local:
+//   npm run ingestion:credential -- create --org <organization_id> --source <source> [--scope ingest|read]
 //   npm run ingestion:credential -- revoke --id <credential_id>
-// El token se imprime una sola vez y no se guarda en ningún lado.
+// El token se imprime una sola vez y no se guarda en ningún lado. Sin --scope, la credencial es de
+// ingestión; con --scope read, de la API de lectura (brief-11.3, D-2).
 
 const usage =
-  "Uso: npm run ingestion:credential -- create --org <organization_id> --source <source>\n" +
+  "Uso: npm run ingestion:credential -- create --org <organization_id> --source <source> [--scope ingest|read]\n" +
   "     npm run ingestion:credential -- revoke --id <credential_id>";
 
 function option(args: string[], name: string): string | undefined {
@@ -26,17 +27,24 @@ async function main() {
   if (command === "create") {
     const organizationId = option(args, "--org");
     const source = option(args, "--source");
+    const scope = option(args, "--scope") ?? "ingest";
     if (organizationId === undefined || source === undefined) {
       throw new Error(usage);
     }
-    const result = await createIngestionCredential(organizationId, source);
+    const result = await createIngestionCredential(
+      organizationId,
+      source,
+      scope,
+    );
     if (!result.ok) {
       throw new Error(`Datos inválidos: ${result.fields.join(", ")}.`);
     }
     console.log(`Credencial creada: ${result.credentialId}`);
     console.log(`Token (se muestra una sola vez): ${result.token}`);
     console.log(
-      "Para aceptarla, sumá el id a INGESTION_ALLOWED_CREDENTIALS y poné INGESTION_ENABLED=true.",
+      scope === "read"
+        ? "Para aceptarla, sumá el id a READ_API_ALLOWED_CREDENTIALS y poné READ_API_ENABLED=true."
+        : "Para aceptarla, sumá el id a INGESTION_ALLOWED_CREDENTIALS y poné INGESTION_ENABLED=true.",
     );
     return;
   }

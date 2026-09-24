@@ -1,9 +1,10 @@
 // Interfaz pública del módulo catalog (brief-4.2; historial de auditoría, brief-4.4; marca,
-// categoría, condición, sugerencias y precio, brief-11.1).
+// categoría, condición, sugerencias y precio, brief-11.1; lecturas de servicio, brief-11.3).
 export {
   createProduct,
   deactivateProduct,
   deriveStockStatus,
+  getActiveProductForService,
   getCurrentPrices,
   getProduct,
   listProductAudit,
@@ -13,6 +14,7 @@ export {
   PRICES_PAGE_SIZE,
   PRODUCT_CONDITIONS,
   reactivateProduct,
+  searchActiveProductsForService,
   searchProducts,
   setProductPrice,
   updateProduct,
@@ -32,6 +34,7 @@ export {
   type ProductPriceEntry,
   type ProductPriceHistoryResult,
   type ProductSuggestions,
+  type ServiceProduct,
   type SetPriceResult,
   type StockStatus,
   type UpdateProductResult,

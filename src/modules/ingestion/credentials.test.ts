@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { isCredentialAllowed, readIngestionConfig } from "./config";
 import {
   generateIngestionToken,
+  generateServiceToken,
   hashIngestionToken,
+  isCredentialScope,
   tokenFromAuthorization,
 } from "./credentials";
 import { rateWindowStart, retryAfterSeconds } from "./rate-limit";
@@ -42,6 +44,32 @@ describe("token de ingestión", () => {
       `Bearer ${token.replace("crm_ing_", "crm_xxx_")}`,
     ]) {
       expect(tokenFromAuthorization(header), String(header)).toBeNull();
+    }
+  });
+});
+
+describe("alcance de la credencial (brief-11.3, D-2)", () => {
+  it("el token de lectura lleva su propio prefijo y se lee del mismo encabezado", () => {
+    const read = generateServiceToken("read");
+    expect(read).toMatch(/^crm_read_[A-Za-z0-9_-]{43}$/);
+    expect(generateServiceToken("ingest")).toMatch(
+      /^crm_ing_[A-Za-z0-9_-]{43}$/,
+    );
+    expect(tokenFromAuthorization(`Bearer ${read}`)).toBe(read);
+    for (const header of [
+      "Bearer crm_read_corto",
+      `Bearer ${read.replace("crm_read_", "crm_reads_")}`,
+      `Bearer ${read.replace("crm_read_", "crm_Read_")}`,
+    ]) {
+      expect(tokenFromAuthorization(header), header).toBeNull();
+    }
+  });
+
+  it("solo admite los dos alcances", () => {
+    expect(isCredentialScope("ingest")).toBe(true);
+    expect(isCredentialScope("read")).toBe(true);
+    for (const value of ["", "READ", "write", "ingest,read"]) {
+      expect(isCredentialScope(value), value).toBe(false);
     }
   });
 });

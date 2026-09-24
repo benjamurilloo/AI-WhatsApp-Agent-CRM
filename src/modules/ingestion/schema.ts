@@ -74,6 +74,11 @@ export const ingestionEvents = pgTable(
 
 // Credenciales de servicio (brief-6.5.3, D-1 y D-2). Solo se guarda el SHA-256 del token: el token
 // se muestra una vez al crearlo. De la credencial salen la organización y el source del evento.
+//
+// Desde la 11.3 (D-2) cada credencial tiene un solo alcance: `ingest` escribe por la ingestión y
+// `read` lee por la API de lectura. La tabla conserva su nombre aunque guarde las dos clases.
+export const CREDENTIAL_SCOPES = ["ingest", "read"] as const;
+
 export const ingestionCredentials = pgTable(
   "ingestion_credentials",
   {
@@ -82,6 +87,9 @@ export const ingestionCredentials = pgTable(
       .notNull()
       .references(() => organizations.id, { onDelete: "restrict" }),
     source: text("source").notNull(),
+    scope: text("scope", { enum: CREDENTIAL_SCOPES })
+      .notNull()
+      .default("ingest"),
     tokenHash: text("token_hash").notNull().unique(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -94,6 +102,10 @@ export const ingestionCredentials = pgTable(
     check(
       "ingestion_credentials_not_blank",
       sql`btrim(${table.source}) <> '' AND btrim(${table.tokenHash}) <> ''`,
+    ),
+    check(
+      "ingestion_credentials_scope_valid",
+      sql`${table.scope} IN ('ingest', 'read')`,
     ),
   ],
 );

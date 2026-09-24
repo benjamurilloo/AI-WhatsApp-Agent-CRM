@@ -1,0 +1,45 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: ningún consumidor real leyó esta respuesta (brief-11.3, D-8).",
+  "description": "Búsqueda de productos por palabras: uno con precio y stock disponible, otro reacondicionado sin precio y con bajo stock.",
+  "request": {
+    "method": "GET",
+    "path": "/api/read/v1/products?q=auriculares&limit=10",
+    "headers": {
+      "authorization": "Bearer crm_read_<token>",
+      "x-correlation-id": "turno-0001"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "contract_version": "1",
+      "items": [
+        {
+          "product_id": "0b6f3c2e-5a4d-4e8f-9c1b-2a3d4e5f6a7b",
+          "sku": "AUR-01",
+          "name": "Auriculares inalámbricos",
+          "description": "Con estuche de carga",
+          "unit": "unidad",
+          "brand": "Sonora",
+          "category": "Audio",
+          "condition": "new",
+          "price": { "amount": "1234.50", "currency": "ARS" },
+          "stock_status": "disponible"
+        },
+        {
+          "product_id": "5d2e8f1a-3b4c-4d5e-8f6a-7b8c9d0e1f2a",
+          "sku": "AUR-02",
+          "name": "Auriculares con cable",
+          "description": null,
+          "unit": "unidad",
+          "brand": null,
+          "category": null,
+          "condition": "refurbished",
+          "price": null,
+          "stock_status": "bajo_stock"
+        }
+      ]
+    }
+  }
+}

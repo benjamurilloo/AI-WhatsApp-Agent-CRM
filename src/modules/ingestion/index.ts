@@ -1,4 +1,5 @@
-// Interfaz pública del módulo ingestion (brief-6.5.1, 6.5.2 y 6.5.3).
+// Interfaz pública del módulo ingestion (brief-6.5.1, 6.5.2 y 6.5.3; alcance de la credencial,
+// brief-11.3).
 export {
   canonicalJson,
   INGESTION_CONTRACT_VERSION,
@@ -28,11 +29,15 @@ export {
 } from "./config";
 export {
   authenticateIngestionRequest,
+  authenticateServiceRequest,
   createIngestionCredential,
   INGESTION_TOKEN_PREFIX,
+  isCredentialScope,
   revokeIngestionCredential,
+  TOKEN_PREFIXES,
   type AuthenticateIngestionResult,
   type CreateIngestionCredentialResult,
+  type CredentialScope,
   type IngestionCredential,
 } from "./credentials";
 export {

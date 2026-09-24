@@ -1,0 +1,28 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: ningún consumidor real leyó esta respuesta (brief-11.3, D-8).",
+  "description": "Detalle de un producto con precio en una moneda sin decimales: el monto no lleva punto.",
+  "request": {
+    "method": "GET",
+    "path": "/api/read/v1/products/9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+    "headers": { "authorization": "Bearer crm_read_<token>" }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "contract_version": "1",
+      "product": {
+        "product_id": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+        "sku": "PAR-07",
+        "name": "Parlante portátil",
+        "description": "Resistente al agua",
+        "unit": "unidad",
+        "brand": "Sonora",
+        "category": "Audio",
+        "condition": "new",
+        "price": { "amount": "300000", "currency": "CLP" },
+        "stock_status": "sin_stock"
+      }
+    }
+  }
+}

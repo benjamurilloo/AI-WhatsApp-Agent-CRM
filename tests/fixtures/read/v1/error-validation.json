@@ -1,0 +1,18 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: ningún consumidor real leyó esta respuesta (brief-11.3, D-8).",
+  "description": "Búsqueda sin texto y con un límite fuera de rango: un solo error con los dos campos.",
+  "request": {
+    "method": "GET",
+    "path": "/api/read/v1/products?limit=0",
+    "headers": { "authorization": "Bearer crm_read_<token>" }
+  },
+  "response": {
+    "status": 400,
+    "body": {
+      "code": "VALIDATION_ERROR",
+      "request_id": "2c4e6a8b-1d3f-4a5b-9c7d-8e0f1a2b3c4d",
+      "fields": ["q", "limit"]
+    }
+  }
+}

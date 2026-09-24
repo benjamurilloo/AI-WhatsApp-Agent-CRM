@@ -283,6 +283,11 @@ El usuario aprobó el brief **con las recomendaciones** de las doce decisiones: 
 
 En el mismo turno autorizó el commit del brief, pasar la tarea 11.3 de Notion (`3e4702be6f4e8123b407cb8d477cb71d`) a «En proceso» y empezar la implementación. No autorizó push.
 
+**Ampliación de la lista, autorizada por el usuario el 2026-09-24**, durante la 11.3.1. Se paró antes de tocarlos, como pide la condición de detención; los dos faltaban en la lista:
+
+- `src/modules/ingestion/repository.ts`: **solo** para que `insertCredential` guarde `scope` y `findCredentialByTokenHash` lo devuelva. Sin eso, `credentials.ts` no compilaba (tres errores de `typecheck`, todos por `scope`).
+- `docs/contracts/ingestion-v1.md`: **solo** para que su tabla de errores diga que una credencial de otro alcance también da `403`, con fecha.
+
 ## Invariantes
 
 - Ninguna prohibición de `CLAUDE.md` cambia. `forbidden-references.test.ts` no se toca y sigue en verde.
@@ -370,3 +375,59 @@ En el mismo turno autorizó el commit del brief, pasar la tarea 11.3 de Notion (
 - Antes de instalar dependencias.
 - Antes de ejecutar migraciones contra una base que no sea la local de desarrollo, la de test o la de e2e.
 - Antes de crear una credencial en cualquier base que no sea local.
+
+## Resultados — etapa 11.3.1, 2026-09-24 (autoevaluación)
+
+Todo lo de esta sección es **autoevaluación**. La revisión independiente (D-12) va al final de la 11.3.2.
+
+### Lo que la implementación encontró que el brief no decía
+
+- **Faltaban dos archivos en la lista**: `src/modules/ingestion/repository.ts` y `docs/contracts/ingestion-v1.md`. Se paró antes de tocarlos, y el usuario los autorizó (ver §Resolución).
+- **HTTP recorta los espacios de los bordes de un encabezado**, y `Headers` también. `" turno"` llega como `"turno"` y es válido, así que la regla «sin espacios al borde» de las referencias opacas no se aplica a `X-Correlation-Id`: nunca le llega un valor con espacios. Tampoco pueden llegar otros caracteres de control, porque `Headers` los rechaza antes. Lo mostró el caso 12, que esperaba `400` para `" turno"` y recibió `200`. El caso quedó con lo que sí llega: una tabulación interna y el largo. El contrato lo dice.
+- **Sin el filtro de caracteres de control, un NUL en `q` llega a PostgreSQL y la API responde `500`.** Lo mostró la mutación de AC-4. Era la sospecha de N-6 de la 11.2, ahora medida para esta superficie.
+- **El `404` de la API apagada no lleva `X-Request-Id`**, a propósito: responde como una ruta que no existe, igual que la ingestión. «Toda respuesta lleva `X-Request-Id`» vale para la API encendida, y así quedó escrito en el contrato.
+- **O-22 se comprobó con la API apagada.** Encenderla en `next start` exigía tocar `playwright.config.ts` y la preparación global, fuera de la lista. `proxy.ts` agrega las cabeceras a toda respuesta de las rutas que cubre su `matcher`, sin mirar qué devolvió la ruta, así que el `404` alcanza para saber si la ruta está cubierta. La mutación lo confirma. **No hay un end-to-end de una lectura con la API encendida**: las lecturas se prueban en integración.
+- **El orden de la búsqueda pone primero el SKU exacto**, antes que la relevancia. El brief decía «por relevancia». Un SKU exacto es la señal más fuerte que puede mandar el agente, y la relevancia de un SKU sin palabras en común es cero. Quedó en el contrato.
+- **El monto en CLP**: la base guarda `300000.00`, y el contrato escribe `300000`. Si una moneda sin decimales trae centavos, que la escritura nunca deja guardar, la API responde `500` en vez de redondear. El caso 14 usa justamente eso para provocar el error inesperado.
+
+### Corridas de mutación
+
+| Criterio | Mutación | Resultado | Restaurado |
+|---|---|---|---|
+| AC-6 | un campo de más (`is_active`) en cada producto de la respuesta | 4 casos de `read-api.test.ts` fallan con «respuesta fuera del contrato» | 14 de 14 |
+| AC-7 | una página real (`productos/page.tsx`) importa `inventory` como namespace y usa `searchCatalogForService`: la forma menos parecida a un import con nombre | la guarda falla nombrando `src/app/(autenticado)/productos/page.tsx` | 18 de 18 |
+| AC-7, O-33 | la ruta de productos importa `ingestion` como namespace y nombra `revokeIngestionCredential` | `exposed-surface` falla nombrando `src/app/api/read/v1/products/route.ts` | 24 de 24 |
+| AC-4 | `q` sin el filtro de caracteres de control | el caso 5 falla: `expected 500 to be 400`. El NUL llega a PostgreSQL | 14 de 14 |
+| AC-8, O-22 | `matcher` de `proxy.ts` sin `/api/read` y `npm run build` | `read-api.spec.ts`: 2 de 2 fallan, sin CSP | `proxy.ts` sin cambios en `git status`, y build repetido |
+
+### Contraste por criterio
+
+- **AC-1 (esquema)** — cumplido. La `0020`, generada, tiene dos sentencias: la columna `scope` con `'ingest'` por defecto y el `CHECK` `ingestion_credentials_scope_valid`. `drizzle-kit generate` después responde «No schema changes». Aplicada a la base de desarrollo, que tiene 21 migraciones. `DataModel.md` la describe, con la deuda de nombre.
+- **AC-2 (alcance)** — cumplido. `ingestion-http.test.ts` caso 14: una credencial `read` en la ingestión da `403`, sin escribir ni consumir ventanas, y la de ingestión del mismo emisor sigue escribiendo. `read-api.test.ts` caso 9: una `ingest` en la lectura da `403`. El token `crm_read_` tiene su test unitario, y el script crea las dos clases con `--scope`.
+- **AC-3 (borde)** — cumplido. Casos 7 a 12 de `read-api.test.ts`: apagada o mal configurada da `404` sin cuerpo, y encender la ingestión no la enciende; `401` con `WWW-Authenticate` en cuatro variantes; `403` revocada, de otro alcance o fuera de la allowlist; `429` con `Retry-After` y presupuestos separados por credencial; ninguno de los rechazos anteriores al límite consume ventanas; la sesión no autentica; `no-store` y `X-Request-Id` en las respuestas de la API encendida.
+- **AC-4 (FR-API-01)** — cumplido. Casos 1 a 6: solo activos y de la organización de la credencial; precio vigente o `null`; estado sin cantidad; el monto en ARS y en CLP; palabras sin acentos, SKU exacto primero y `limit`; el detalle con `404` igual para inactivo, ajeno e inexistente, y `400` para un id inválido; diez variantes de `q` y `limit` inválidos; seis textos con caracteres de `tsquery` sin error. El NUL, con su mutación.
+- **AC-5 (FR-API-03, log)** — cumplido. El caso 13 recorre seis respuestas (éxito, validación, detalle, `404`, `403` y `401`). Cada una deja una línea con la ruta fija, el código y la correlación cuando la hubo. Ninguna contiene los tokens, el texto buscado ni los dos ids buscados. El caso 14 comprueba que el `500` también queda en el log. `log-surface.test.ts` pasa sin cambios.
+- **AC-6 (contrato)** — cumplido. `read-v1.md` existe. Toda respuesta de éxito de los tests pasa por el validador estricto. Los tres fixtures tienen `"shape": "assumed"` y pasan el validador. La mutación está arriba.
+- **AC-7 (guardas)** — cumplido. `exposed-surface` declara las dos rutas. `service-read-entry-points.test.ts` es la **decimotercera guarda**: 11 casos, uno por cada una de sus siete formas sintácticas, y cinco que no debe detectar. La regla de O-33 está en `exposed-surface`, con seis formas y tres negativas. Las dos mutaciones están arriba.
+- **AC-8 (O-22)** — cumplido, con la API apagada (ver arriba).
+- **AC-9 (C-6)** — cumplido. El `source` de los tests y de los ejemplos es `agente-whatsapp`. `forbidden-references.test.ts` pasa, y `git diff` sobre él está vacío.
+- **AC-13 (documentación de la etapa)** — cumplido:
+  - `read-v1.md` y la enmienda fechada de `ingestion-v1.md`;
+  - `IntegrationBoundaries.md`, `DataModel.md`, `Overview.md`, `RepositoryStructure.md` y `TraceabilityMatrix.md`;
+  - `FunctionalRequirements.md`, con FR-API-01 y FR-API-03. FR-API-02 va en la 11.3.2;
+  - `Environments.md` y `.env.example`;
+  - `Risks.md`, con O-33 fijada por guarda;
+  - `SecurityModel.md` pasa a **47 puntos de entrada**: 19 páginas, 24 Server Actions y 4 Route Handlers, con 28 fijados por la guarda. Contados contra `src/app`: cuatro `route.ts`.
+- **AC-14** — `format:check`, `lint` y `typecheck` limpios. `npm run test` da **1129 de 1129 en 89 archivos**, con los archivos nuevos registrados con `git add -N` para que las guardas los vieran. El end-to-end completo y la CI van en §Cierre de la etapa.
+- **AC-15** — `git status` muestra solo archivos de la lista, con las dos ampliaciones autorizadas. `forbidden-references.test.ts` y `proxy.ts` no cambiaron.
+
+## Cierre de la etapa 11.3.1, 2026-09-24 (autoevaluación)
+
+- **Vitest**: 1129 de 1129 en 89 archivos, contra PostgreSQL real de desarrollo.
+- **End-to-end completo** (`npm run build` y `npm run test:e2e`): **95 de 96**. Los dos casos nuevos de `read-api.spec.ts` pasaron.
+  - Falló `ingestion.spec.ts`, caso 2, y **no por una aserción**: el proceso worker de Playwright terminó con el código 3221226505 (`0xC0000409`, una caída del proceso en Windows) antes de reportar un resultado.
+  - Corrido solo, `ingestion.spec.ts` dio 2 de 2.
+  - Se registra como caída del entorno local, no como un paso. La CI de esta etapa es la evidencia del end-to-end completo.
+- **Mutaciones**: las cinco de §Resultados fallaron como debían y se restauraron.
+- **CI**: pendiente del push, que necesita autorización.
+- **Nivel**: validado localmente (`deterministic`). No validado en integración: ningún consumidor usa el contrato y los fixtures tienen forma asumida.
