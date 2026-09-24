@@ -2,7 +2,6 @@ import { sql, type SQL } from "drizzle-orm";
 import {
   boolean,
   check,
-  customType,
   foreignKey,
   index,
   numeric,
@@ -16,31 +15,11 @@ import {
 } from "drizzle-orm/pg-core";
 import { users } from "@/modules/auth/schema";
 import { organizations } from "@/modules/organizations/schema";
+import { searchQuery, searchVector, tsvector } from "@/shared/search";
 
-// Búsqueda por palabras sueltas sobre nombre, marca y categoría (brief-11.1, D-4), sin distinguir
-// mayúsculas ni acentos. `immutable_unaccent` la define la migración 0015.
-//
-// El documento y la consulta pasan por **la misma normalización y el mismo parser** (`simple`):
-// vive acá, en una sola función, y la usan la columna generada y la consulta. Si se separaran,
-// una palabra se partiría distinto en cada lado y la búsqueda dejaría de encontrar sin que falle
-// nada. Por el mismo motivo la consulta no parte el texto en TypeScript: «1.5» es una sola palabra
-// para el parser y serían dos para un `split`.
-function searchVector(text: SQL): SQL {
-  return sql`to_tsvector('simple', immutable_unaccent(lower(${text})))`;
-}
-
-const tsvector = customType<{ data: string }>({
-  dataType: () => "tsvector",
-});
-
-// La consulta: cada palabra que el parser saca del texto buscado, como prefijo, unidas con Y. Las
-// palabras se arman como `tsquery` desde el vector, nunca con el texto crudo, así que `&`, `|`,
-// `!`, `:` o una comilla que escriba el usuario no son sintaxis. Sin palabras da NULL, y
-// `search @@ NULL` no encuentra nada.
-export function productSearchQuery(text: string): SQL {
-  return sql`(select string_agg('''' || replace(replace(l.lexeme, '\\', '\\\\'), '''', '''''') || ''':*', ' & ')::tsquery
-    from unnest(${searchVector(sql`${text}`)}) l)`;
-}
+// Búsqueda por palabras sueltas sobre nombre, marca y categoría (brief-11.1, D-4). La
+// normalización y el armado de la consulta viven en src/shared/search, compartidos con
+// knowledge (brief-11.2, D-6).
 
 // Condición comercial (brief-11.1, D-3). Agregar un valor es un ALTER TYPE aditivo.
 export const productCondition = pgEnum("product_condition", [
@@ -114,7 +93,7 @@ export const products = pgTable(
 // cambiara para recalcular el vector en lugar de leer la columna, el índice dejaría de usarse
 // sin que la búsqueda devuelva nada distinto, y el test lo ve.
 export function productSearchCondition(text: string): SQL {
-  return sql`${products.search} @@ ${productSearchQuery(text)}`;
+  return sql`${products.search} @@ ${searchQuery(text)}`;
 }
 
 // docs/architecture/DataModel.md, tabla product_prices (brief-11.1, D-5). Solo inserción: el rol

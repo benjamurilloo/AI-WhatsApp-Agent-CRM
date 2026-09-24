@@ -1,6 +1,6 @@
 # Pantallas del MVP
 
-**Estado: implementado.** Las diez pantallas del MVP existen: 1 y 10 (subfases 3.5 y 3.7), 3, 4 y 5 (4.4), 6 y 7 (5.3, completadas con las conversaciones en la 6.4), 8 y 9 (6.4) y 2, el dashboard (7.4), con los desvíos anotados en sus wireframes. Especificación funcional de pantalla, no wireframes visuales. Los wireframes de baja fidelidad están en [wireframes/](wireframes/README.md) (subfase 1.1); su validación cruzada contra el modelo de datos corresponde a la subfase 1.2.
+**Estado: implementado.** Las diez pantallas del MVP existen: 1 y 10 (subfases 3.5 y 3.7), 3, 4 y 5 (4.4), 6 y 7 (5.3, completadas con las conversaciones en la 6.4), 8 y 9 (6.4) y 2, el dashboard (7.4), con los desvíos anotados en sus wireframes. Desde la Fase 11 se suman, sin wireframe propio, la 5b (precios, 11.1) y la 11 y la 12 (información del negocio, 11.2). Especificación funcional de pantalla, no wireframes visuales. Los wireframes de baja fidelidad están en [wireframes/](wireframes/README.md) (subfase 1.1); su validación cruzada contra el modelo de datos corresponde a la subfase 1.2.
 
 ## Reglas comunes a todas las pantallas
 
@@ -184,3 +184,37 @@ Agregada en la 11.1 ([brief-11.1](../decisions/brief-11.1-catalogo-comercial.md)
 - **Accesibilidad**: estándar.
 - **No mostrar**: hashes ni la contraseña inicial después de crearla.
 - **Alcance**: esta pantalla entra al MVP y la implementa la Fase 3 (subfase 1.3, D-3). Se descartó resolver el alta con un script de administración, porque un script no deja registro auditado de quién hizo el cambio y FR-ORG-02 lo exige.
+
+## 11. Información del negocio
+
+Agregada en la 11.2 ([brief-11.2](../decisions/brief-11.2-informacion-del-negocio.md), FR-INFO-02 y FR-INFO-03). Ruta `/informacion`, en la navegación como «Información». Sin wireframe propio, como la 5b.
+
+- **Objetivo**: ver y encontrar la información que el negocio da a diario: horarios, ubicación, medios de pago, envíos, garantía.
+- **Usuario autorizado**: `admin` y `viewer`. «Nueva entrada», solo `admin`.
+- **Información mostrada**: título, categoría, estado de vigencia (vigente, programada, vencida o inactiva, con ícono y texto) y vigencia («Sin límite», «Desde el …», «Hasta el …», «Del … al …»).
+- **Acciones**: buscar; ir al detalle; `admin`, crear una entrada.
+- **Filtros**: búsqueda por palabras sueltas sobre título, categoría y contenido, y estado (todas, vigentes, programadas, vencidas e inactivas; por defecto, todas). Todo en la URL (`?q=&estado=&pagina=`).
+- **Paginación**: 25 por página. Sin texto, por categoría y título; con texto, por relevancia (el título pesa más que el contenido).
+- **Carga**: estándar.
+- **Vacío**: «Todavía no hay información del negocio», con «Crear la primera» para `admin`. Sin resultados: «Ninguna entrada coincide con estos filtros», con «Limpiar filtros».
+- **Errores**: estándar.
+- **Responsive**: tarjetas en móvil.
+- **Accesibilidad**: estándar. El estado nunca depende solo del color.
+- **No mostrar**: entradas de otra organización.
+
+## 12. Detalle y edición de una entrada
+
+Agregada en la 11.2 ([brief-11.2](../decisions/brief-11.2-informacion-del-negocio.md), FR-INFO-01). Rutas `/informacion/nueva` (alta) y `/informacion/[id]` (detalle, `?editar=1` para editar y `?confirmar=desactivar` para confirmar).
+
+- **Objetivo**: leer una entrada completa y, para `admin`, mantenerla.
+- **Usuario autorizado**: el detalle, `admin` y `viewer`; el alta, la edición, la desactivación, la reactivación y la auditoría, solo `admin`.
+- **Información mostrada**: título, estado, categoría, vigencia, fecha de la última actualización y el contenido completo, escapado y con sus saltos de línea. Para `admin`, el historial de auditoría paginado, con el contenido resumido como «modificado».
+- **Acciones**: crear y editar (título, categoría con sugerencias de las ya usadas, contenido y las dos fechas de vigencia, opcionales e inclusivas); desactivar con confirmación en un segundo paso; reactivar. Ninguna entrada se borra.
+- **Filtros**: no aplican.
+- **Paginación**: la de la auditoría, 25 por página.
+- **Carga**: el botón queda deshabilitado hasta que responde el servidor.
+- **Vacío**: no aplica.
+- **Errores**: validación por campo, con el foco en el primero, y la vigencia invertida en «Vigente hasta». `CONFLICT` si el título ya existe, también en otras mayúsculas o en una entrada inactiva, en el campo del título y con lo escrito conservado. Una entrada de otra organización o un id inválido: «Esta entrada no existe».
+- **Responsive**: una columna.
+- **Accesibilidad**: estándar. Los campos de fecha son nativos y se recorren con el teclado por segmento.
+- **No mostrar**: formularios ni auditoría a `viewer`, tampoco forzando la URL.

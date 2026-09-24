@@ -127,6 +127,20 @@
       "when": 1790261310160,
       "tag": "0017_product_prices",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790278985243,
+      "tag": "0018_knowledge_entries",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1790278993127,
+      "tag": "0019_knowledge_entries_privileges",
+      "breakpoints": true
     }
   ]
 }

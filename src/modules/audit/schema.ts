@@ -19,6 +19,8 @@ export const auditEntityType = pgEnum("audit_entity_type", [
   "inventory",
   "conversation",
   "organization_member",
+  // Entrada de información del negocio (brief-11.2).
+  "knowledge_entry",
 ]);
 
 export const auditAction = pgEnum("audit_action", [

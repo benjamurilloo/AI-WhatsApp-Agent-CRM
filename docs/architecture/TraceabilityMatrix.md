@@ -25,8 +25,10 @@
 | 8 Lista de conversaciones | FR-CONV-01, 03 | `conversations`, `clients`, `messages` | `conversations (organization_id, last_message_at desc)`; `messages (conversation_id, sent_at)` |
 | 9 Detalle de conversación | FR-CONV-02, 03; FR-AUD-01 | `conversations`, `messages`, `clients`, `audit_logs` | PK de `conversations`; `messages (conversation_id, sent_at)` |
 | 10 Usuarios y roles | FR-ORG-01, 02; FR-AUD-01 | `users`, `organization_members`, `audit_logs` | `organization_members (organization_id)`; `users UNIQUE(email)` |
+| 11 Información del negocio | FR-INFO-02, 03 | `knowledge_entries`, `organizations` (zona) | `knowledge_entries_search_idx`, GIN sobre la columna generada `search` (11.2, con `EXPLAIN` en `knowledge.test.ts`); el filtro de estado va sin índice (ver abajo) |
+| 12 Detalle de una entrada | FR-INFO-01, 03; FR-AUD-01, 02 | `knowledge_entries`, `audit_logs`, `users` | PK de `knowledge_entries` (bloqueo `FOR UPDATE` al editar); `knowledge_entries UNIQUE(organization_id, lower(title))` (`CONFLICT`); `audit_logs (organization_id, entity_type, entity_id, created_at desc)` |
 
-Marco común (pantallas 2 a 10): `organizations.name`, `users.name`, `organization_members.role`, resueltos con el `UNIQUE(user_id)` de la membresía en cada request.
+Marco común (pantallas 2 a 12): `organizations.name`, `users.name`, `organization_members.role`, resueltos con el `UNIQUE(user_id)` de la membresía en cada request.
 
 ## 2. Por requisito funcional
 
@@ -50,6 +52,9 @@ Cada FR tiene al menos una pantalla, endpoint o invariante con test que lo satis
 | FR-PROD-11 | Buscador de la pantalla 3 (11.1); `catalog.test.ts`, con el caso de `EXPLAIN` sobre `products_search_idx`, y `products.spec.ts` caso 14 | pantalla e invariante con test |
 | FR-PROD-12 | Pantalla 5b, y precio vigente en las pantallas 3 y 4 (11.1); `product-prices.test.ts`, con la concurrencia desde una tercera conexión, `money.test.ts` y `products.spec.ts` casos 15 y 16 | pantalla e invariante con test |
 | FR-PROD-13 | Sin vía de modificación: privilegios de `crm_app` y trigger en `product_prices` (`product-prices.test.ts`), guarda `price-writes.test.ts`, y `products.spec.ts` caso 17 | invariante con test |
+| FR-INFO-01 | Pantalla 12 (11.2); `knowledge.test.ts` (escrituras de `admin`, auditoría, `CONFLICT` por título, sin `DELETE` para `crm_app`) y `knowledge.spec.ts` casos 1 a 4 | pantalla e invariante con test |
+| FR-INFO-02 | Pantalla 11 (11.2); `knowledge.test.ts`, con el caso de `EXPLAIN` sobre `knowledge_entries_search_idx` y el orden por relevancia, y `knowledge.spec.ts` caso 5 | pantalla e invariante con test |
+| FR-INFO-03 | Pantallas 11 y 12 (11.2); `knowledge.test.ts`, con organizaciones en UTC+14 y UTC−11 y su corrida de mutación, y `knowledge.spec.ts` caso 5 | pantalla e invariante con test |
 | FR-CLI-01 | Pantalla 6 (acción crear) y formulario de la pantalla 7 en modo alta | pantalla |
 | FR-CLI-02 | Pantalla 7 | pantalla |
 | FR-CLI-03 | Pantalla 6 | pantalla |
@@ -65,7 +70,7 @@ Cada FR tiene al menos una pantalla, endpoint o invariante con test que lo satis
 | FR-MET-01 | Pantalla 2, implementada en la 7.4: las doce tarjetas del catálogo | pantalla |
 | FR-MET-02 | Pantalla 2 (período en la URL y zona horaria de la organización en el encabezado) | pantalla |
 | FR-MET-03 | Pantalla 2 sin valores editables; cálculo por consulta en cada carga ([ADR 0005](../decisions/0005-metricas-desde-datos-transaccionales.md)) | pantalla e invariante |
-| FR-AUD-01 | Escritura de `audit_logs` en la misma transacción que cada cambio (pantallas 4, 5, 7, 9 y 10) | invariante |
+| FR-AUD-01 | Escritura de `audit_logs` en la misma transacción que cada cambio (pantallas 4, 5, 5b, 7, 9, 10 y 12) | invariante |
 | FR-AUD-02 | Pantalla 4, implementada en la 4.4: `catalog` autoriza y compone, `audit` consulta ediciones y ajustes en una sola lista paginada (brief-4.4, D-1). Pantalla 7: Fase 5 | pantalla e invariante con test |
 
 ## 3. Por índice
@@ -93,7 +98,9 @@ Cada índice tiene al menos una consulta real que lo usa.
 | `messages` | `(organization_id, sent_at)` | mensajes de la organización en el intervalo | métricas 2 a 10 |
 | `ingestion_events` | `UNIQUE(organization_id, source, external_ref)` | reserva atómica del ledger | endpoint de ingestión |
 | `ingestion_events` | `(organization_id, received_at)` | eventos recibidos en el intervalo | métrica 12 |
-| `audit_logs` | `(organization_id, entity_type, entity_id, created_at desc)` | historial de auditoría de una entidad | pantallas 4 y 7 |
+| `knowledge_entries` | `UNIQUE(organization_id, lower(title))` | `CONFLICT` por título repetido, también frente a las inactivas (brief-11.2, D-5) | pantalla 12 |
+| `knowledge_entries` | `knowledge_entries_search_idx`, GIN sobre `search` | búsqueda por palabras de título, categoría y contenido (brief-11.2, D-6) | pantalla 11 |
+| `audit_logs` | `(organization_id, entity_type, entity_id, created_at desc)` | historial de auditoría de una entidad | pantallas 4, 7 y 12 |
 
 ### Índices quitados en esta subfase
 
@@ -113,6 +120,7 @@ Cada índice tiene al menos una consulta real que lo usa.
 | Orden de la lista de clientes por última interacción | pantalla 6 | Se compone en `conversations` (brief-6.3, D-1): `crm` da los ids en orden de nombre con `(organization_id)` y un ordenamiento, `conversations` agrega la última interacción con `(organization_id, client_id, last_message_at desc)`, y el orden y el corte de la página se hacen en memoria. |
 | Timeline por cursor | pantalla 9 | `(sent_at, id) < cursor` sobre `(conversation_id, sent_at)`, con desempate por `id` en un ordenamiento incremental (brief-6.3, D-2). |
 | Filtro por tipo y período de movimientos | pantalla 5 | Se aplica sobre el historial de un solo producto, ya acotado por su índice. |
+| Filtro por estado de vigencia de la información del negocio | pantalla 11 | Es derivado del día de la organización (FR-INFO-03) y no se puede indexar: cambia solo con el paso de los días. Se evalúa sobre las entradas de una organización, decenas o cientos (brief-11.2). |
 | Filtro por rol | pantalla 10 | Se aplica sobre los miembros de una organización, pocas filas. |
 | Agrupación por estado | métrica 11 | Se aplica sobre la población A, ya acotada por `messages (organization_id, sent_at)`. |
 | Cambio de estado y lecturas por id | pantallas 4, 7 y 9 | Clave primaria. |

@@ -46,6 +46,14 @@ Agregados en la Fase 11, catálogo comercial ([brief-11.1](../decisions/brief-11
 - **FR-CONV-04**: Existe un contrato de ingestión (endpoint y esquema de payload versionados), documentado y probado con datos sintéticos, que crea conversaciones y mensajes de forma idempotente por `(organization_id, source, external_ref)` del evento. Reenviar el mismo evento no duplica datos. Reenviarlo con otro contenido se rechaza con `CONFLICT` sin modificar nada.
 - **FR-CONV-05**: El contrato de ingestión no está conectado a ningún origen de tráfico real en el MVP; solo se ejercita con fixtures y tests. **Enmendado el 2026-09-23 por el [ADR 0014](../decisions/0014-el-agente-de-whatsapp-como-consumidor-del-crm.md)**: el requisito rige **para el MVP** y se cumplió ([evaluación 10.1](../decisions/evaluacion-10.1-mvp.md)). En las fases de integración, el contrato puede recibir tráfico de un emisor real **solo** detrás del modo de prueba (`INGESTION_ENABLED` y la allowlist de credenciales) y con el gate de la fase que lo conecta, que incluye validar la autenticación y los fixtures con tráfico del propio emisor ([IntegrationBoundaries](../architecture/IntegrationBoundaries.md)).
 
+## Información del negocio
+
+Desde la subfase 11.2 ([brief-11.2](../decisions/brief-11.2-informacion-del-negocio.md)). Es lo que el agente de WhatsApp va a leer por el contrato de la 11.3.
+
+- **FR-INFO-01**: Un admin puede crear, editar, desactivar y reactivar entradas de información del negocio, cada una con título, categoría, contenido y vigencia. Ninguna entrada se borra. El título es único por organización, sin distinguir mayúsculas. Cada cambio queda auditado.
+- **FR-INFO-02**: Cualquier usuario puede listar las entradas, filtrarlas por estado y buscarlas por palabras sueltas sobre título, categoría y contenido, sin distinguir mayúsculas ni acentos. Una coincidencia en el título sale antes que una solo en el contenido.
+- **FR-INFO-03**: Una entrada está **vigente** si está activa y el día de hoy, en la zona horaria de la organización, cae dentro de su vigencia, cuyas dos fechas son opcionales e inclusivas. Las demás están programadas, vencidas o inactivas. Las lecturas de vigentes no devuelven ninguna otra.
+
 ## Métricas
 
 - **FR-MET-01**: El dashboard muestra, como mínimo, las métricas definidas en [analytics/MetricsCatalog.md](../analytics/MetricsCatalog.md), cada una calculada según su fórmula documentada.
@@ -58,5 +66,6 @@ Agregados en la Fase 11, catálogo comercial ([brief-11.1](../decisions/brief-11
   - toda creación, edición, desactivación o reactivación de un producto o un cliente;
   - todo ajuste de stock;
   - todo cambio de estado de una conversación;
-  - todo cambio de rol o de estado de un miembro de la organización.
-- **FR-AUD-02**: Un admin puede consultar el historial de auditoría de una entidad específica (producto, cliente), en las pantallas 4 y 7 (subfase 1.2, D-8).
+  - todo cambio de rol o de estado de un miembro de la organización;
+  - toda creación, edición, desactivación o reactivación de una entrada de información del negocio (agregado el 2026-09-24 por la 11.2, FR-INFO-01).
+- **FR-AUD-02**: Un admin puede consultar el historial de auditoría de una entidad específica (producto, cliente), en las pantallas 4 y 7 (subfase 1.2, D-8). Desde la 11.2, también el de una entrada de información del negocio, en la pantalla 12.

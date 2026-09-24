@@ -45,6 +45,18 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
   "src/app/(autenticado)/conversaciones/actions.ts#loadOlderMessagesAction": {
     requirement: "sesion",
   },
+  "src/app/(autenticado)/informacion/actions.ts#createKnowledgeAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/informacion/actions.ts#updateKnowledgeAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/informacion/actions.ts#deactivateKnowledgeAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/informacion/actions.ts#reactivateKnowledgeAction": {
+    requirement: "sesion",
+  },
   "src/app/(autenticado)/productos/actions.ts#createProductAction": {
     requirement: "sesion",
   },

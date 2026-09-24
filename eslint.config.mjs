@@ -81,6 +81,7 @@ export default defineConfig([
       "src/modules/crm/**/*.{ts,tsx}",
       "src/modules/conversations/**/*.{ts,tsx}",
       "src/modules/inventory/**/*.{ts,tsx}",
+      "src/modules/knowledge/**/*.{ts,tsx}",
     ],
     rules: restrict(moduleInternals, leaveModuleRelative, httpAndPresentation),
   },

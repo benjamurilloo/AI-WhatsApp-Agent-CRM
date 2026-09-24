@@ -125,8 +125,13 @@ const INSERT_ONLY_TABLES = [
   "messages",
   "product_prices",
 ];
-// Se actualizan pero no se borran (brief-6.1, D-3; credenciales, brief-6.5.3, D-1).
-const NO_DELETE_TABLES = ["ingestion_credentials", "ingestion_events"];
+// Se actualizan pero no se borran (brief-6.1, D-3; credenciales, brief-6.5.3, D-1; información
+// del negocio, brief-11.2, D-4).
+const NO_DELETE_TABLES = [
+  "ingestion_credentials",
+  "ingestion_events",
+  "knowledge_entries",
+];
 
 async function tablesWithWrongPrivileges(executor: Db | DbTransaction) {
   const result = await executor.execute<{

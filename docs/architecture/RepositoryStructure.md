@@ -88,6 +88,7 @@ Los nombres de los archivos de configuración son los convencionales de cada her
 | `conversations` | `src/modules/conversations/` | Fase 6 |
 | `ingestion` | `src/modules/ingestion/` | Fase 6 |
 | `analytics` | `src/modules/analytics/` | Fase 7 |
+| `knowledge` | `src/modules/knowledge/` | Fase 11 (11.2) |
 
 No hay otros módulos. Uno nuevo requiere primero cambiar la tabla de [Overview.md](Overview.md).
 
@@ -115,6 +116,8 @@ No hay otros módulos. Uno nuevo requiere primero cambiar la tabla de [Overview.
 - `src/shared/errors/` (3.4) contiene la taxonomía de errores de Overview: códigos, HTTP por código y tipo `Failure`.
 - `src/shared/log/` (3.5) contiene el log estructurado con `request_id`.
 - `src/shared/quantity/` (4.2) contiene las cantidades `numeric(14, 3)` como `bigint` en milésimas: parseo de entrada, conversión desde y hacia la base, sin `number` ([brief-4.2](../decisions/brief-4.2-servicio-de-catalogo.md), D-2).
+- `src/shared/money/` (11.1) contiene el dinero `numeric(14, 2)` como `bigint` en centésimas, con los decimales de cada moneda.
+- `src/shared/search/` (11.2) contiene la búsqueda por palabras: el vector normalizado y el armado de la consulta, compartidos por `catalog` y `knowledge` para que el escape del texto buscado exista una sola vez ([brief-11.2](../decisions/brief-11.2-informacion-del-negocio.md), D-6).
 - `src/shared/http/` (6.5.3) contiene la lectura del cuerpo con límite de bytes y la comprobación de `Content-Type`. Estaba prevista en la 3.4 (D-5) para la verificación de `Origin`, que el endpoint de ingestión no necesita (brief-6.5.3, D-5).
 - `scripts/` (6.5.3) contiene tareas locales que se corren con `tsx`, como `ingestion-credential.ts` y, desde la 8.2, `client-data-export.ts` y `client-data-delete.ts`. No se importa desde `src/`; los tests sí lo importan, para probar lo que el script hace. Un script que atiende un pedido de datos personales tiene su runbook en `docs/runbooks/`, que es la fuente del procedimiento.
 - `src/shared/` no importa nada de `src/modules/`, para no crear ciclos.
@@ -128,7 +131,7 @@ Se hace cumplir con la regla `no-restricted-imports` de ESLint, incluida en ESLi
 | Cualquier archivo | `@/modules/<modulo>` (su `index.ts`) y `@/shared/...` | `@/modules/<modulo>/<archivo interno>` y rutas relativas que salgan del propio módulo (`../`) |
 | `src/modules/*/schema.ts` | Además, `@/modules/<dueño>/schema` para declarar claves foráneas | Cualquier otro archivo interno ajeno |
 | `src/modules/analytics/**` | Además, `@/modules/*/schema` para lecturas de solo lectura entre dominios, **salvo `@/modules/auth/schema`** | `repository.ts` y `service.ts` internos de otros módulos, y `@/modules/auth/schema`: `users` se lee por `organizations.getMemberSummaries` |
-| `catalog`, `crm`, `conversations`, `inventory`, `analytics` | — | `next`, `next/*` y `@/app/*`: el dominio no conoce HTTP ni presentación |
+| `catalog`, `crm`, `conversations`, `inventory`, `knowledge` (desde la 11.2), `analytics` | — | `next`, `next/*` y `@/app/*`: el dominio no conoce HTTP ni presentación |
 | `src/shared/**` | — | `@/modules/*` |
 
 - La 2.3 escribe la regla en `eslint.config.mjs`.

@@ -280,3 +280,112 @@ En el mismo turno autorizó el commit del brief, pasar la tarea 11.2 de Notion (
 - Si algún test existente fuera de la lista falla por los cambios.
 - Antes de instalar dependencias o crear extensiones de PostgreSQL.
 - Antes de ejecutar migraciones contra una base que no sea la local de desarrollo, la de test o la de e2e.
+
+## Resultados — 2026-09-24 (autoevaluación)
+
+Todo lo de esta sección es **autoevaluación**. La revisión independiente (D-10) va en su propia sección.
+
+### Lo que la implementación encontró que el brief no decía
+
+- **Un `textarea` envía los saltos de línea como CRLF.** Lo mostró el end-to-end: el contenido quedaba guardado con `\r\n`. Así lo define HTML para el envío de formularios. Tenía dos efectos: el agente habría recibido retornos de carro, y cada salto de línea contaba doble para el límite de 4000 caracteres. El servicio ahora normaliza `\r\n` y `\r` a `\n` antes de validar. Primero se agregó un test unitario, que falló, y después la corrección.
+- **Un campo de fecha de Chromium tiene una parada de tabulación por segmento** (día, mes y año, en el orden del locale del navegador). Es la conducta nativa del control, no un defecto. El caso de teclado avanza hasta salir de cada campo sin suponer cuántas paradas tiene, y `Screens.md` lo dice.
+- **Un formulario GET envía todos sus campos**, así que buscar desde el formulario deja `estado=todas` en la URL. Es la convención de la 4.4: los enlaces de paginación y «Limpiar filtros» usan la URL canónica. El end-to-end lo afirma.
+- **Un comentario de `catalog/repository.ts` quedó nombrando una función que ya no existe** (`productSearchQuery`, que la búsqueda compartida reemplazó por `searchQuery`). El archivo no está en la lista, así que no se tocó. Por error lo edité y lo revertí con `git checkout`; Git lo dejó con finales CRLF y Prettier lo marcó. Lo devolví a LF, y su contenido es idéntico al de `HEAD` (mismo hash). Queda para la próxima subfase que toque `catalog`.
+- **`RepositoryStructure.md` no listaba `src/shared/money/`**, que agregó la 11.1 sin tener el archivo en su lista. Se sumó junto con `src/shared/search/`.
+- **Dentro de `src/app/(autenticado)/informacion/`**, además de lo que el brief enumeraba, hay tres archivos más: `status-badge.tsx` (la etiqueta de estado), `[entryId]/entry-actions.tsx` (desactivar y reactivar) y `[entryId]/audit-summary.ts` con su test. Siguen el patrón de productos, y el directorio entero está en la lista.
+- **El filtro de estado no tiene índice**: es derivado del día de la organización y cambia solo con el paso de los días. Se justifica en `TraceabilityMatrix.md`, en las consultas sin índice propio.
+
+### Corridas de mutación
+
+| Criterio | Mutación | Resultado | Restaurado |
+|---|---|---|---|
+| AC-3 | «hoy» calculado en UTC en lugar de la zona de la organización | `Tests 1 failed / 18 passed`. Falla el caso de las dos zonas extremas: era las 19:48 UTC, y la organización de Kiritimati (UTC+14) ya estaba en el día siguiente | 19 de 19 |
+| AC-4 | la condición de búsqueda recalculando el vector en lugar de leer la columna | `Tests 1 failed / 18 passed`: el plan pasa a `Seq Scan on knowledge_entries` | 19 de 19 |
+| AC-7 | un `import` de `next/cache` en `knowledge/service.ts` | con `knowledge` en la lista de `eslint.config.mjs`, 1 error (`no-restricted-imports`); **control**: sin esa línea, el mismo import da 0 errores | `lint` limpio |
+
+Una salvedad sobre AC-3: el caso de las dos zonas se diseñó para que la mutación falle a cualquier hora. Kiritimati va 14 horas adelante de UTC y Pago Pago, 11 atrás, así que el día de al menos una de las dos siempre difiere del de UTC. La corrida de arriba lo comprobó a una hora; que falle a las demás es un razonamiento, no una medición.
+
+**AC-5**: con la búsqueda movida a `src/shared/search/`, `drizzle-kit generate` respondió `No schema changes, nothing to migrate`, antes de agregar la tabla nueva. `catalog.test.ts` pasa sin modificarlo, con su `EXPLAIN`.
+
+### Contraste por criterio
+
+- **AC-1 (esquema)** — cumplido.
+  - La `0018` generada crea la tabla con sus cuatro `CHECK`, el índice único sobre `lower(title)`, la columna `search` con su GIN y el valor `knowledge_entry` del enum. No toca otra tabla.
+  - La `0019`, `--custom`, otorga `SELECT`, `INSERT` y `UPDATE`.
+  - Aplicadas a la base de desarrollo con `npm run db:migrate`.
+  - `knowledge.test.ts` comprueba los privilegios exactos, `42501` al borrar como `crm_app` y `23514` para la vigencia invertida y los límites.
+  - `identity-schema` y `audit` incluyen la tabla; en `audit.test.ts`, entre las que no se borran.
+- **AC-2 (FR-INFO-01)** — cumplido. Hay casos para:
+  - el alta auditada con los valores recortados;
+  - un `viewer` rechazado en cada escritura y en la auditoría, sin escribir nada;
+  - la edición auditada solo con lo que cambió, y sin diferencias no audita;
+  - un id en mayúsculas, que audita con el id de la base (la lección M-3 de la 11.1);
+  - el `CONFLICT` con otras mayúsculas y frente a una inactiva;
+  - las validaciones, y desactivar y reactivar con su repetición.
+- **AC-3 (FR-INFO-03)** — cumplido. Hay casos para:
+  - los siete estados relativos al día de Buenos Aires;
+  - las dos zonas extremas, con la mutación de arriba.
+- **AC-4 (FR-INFO-02)** — cumplido. Hay casos para:
+  - prefijo de palabras en los tres campos, sin acentos, con todas las palabras;
+  - el límite de prefijo («ferencia» no encuentra);
+  - el orden por relevancia;
+  - los caracteres de `tsquery` (`!pago` no niega);
+  - `EXPLAIN` con `Bitmap Index Scan on knowledge_entries_search_idx`, con su mutación.
+- **AC-5 (búsqueda compartida)** — cumplido. `search.test.ts` prueba que el texto buscado viaja como parámetro y nunca dentro del SQL, y la forma del escape. Decía que el escape contra PostgreSQL lo probaban los casos de integración, y **no era cierto**: `'` y `\` son separadores para el parser, así que esos casos pasaban igual sin el escape (revisión independiente, m-5). Ahora hay un caso que sí lo prueba, con su mutación.
+- **AC-6 (aislamiento)** — cumplido: lectura, edición, desactivación, auditoría, lista, búsqueda y sugerencias de categoría, con la entrada de la otra organización intacta. Los ids inválidos dan `VALIDATION_ERROR` sin `fields`.
+- **AC-7 (frontera)** — cumplido, con la mutación y su control.
+- **AC-8 (pantallas)** — cumplido. `knowledge.spec.ts`, 9 casos:
+  - alta desde la navegación, con el contenido escapado y sus saltos de línea;
+  - validación y `CONFLICT` con lo escrito conservado;
+  - edición auditada y sin cambios;
+  - desactivar con confirmación, y reactivar;
+  - búsqueda y los cinco estados desde la URL;
+  - `viewer`, también forzando la URL;
+  - otra organización e id inválido;
+  - teclado;
+  - móvil a 375 px sin desplazamiento horizontal.
+  
+  axe corre en claro y en oscuro en doce estados. Decía «once»: lo corrigió la revisión independiente (m-3).
+- **AC-9 (FR y documentación)** — cumplido.
+  - `FunctionalRequirements.md` suma la sección con FR-INFO-01 a 03 y enmienda FR-AUD-01 y FR-AUD-02 con fecha.
+  - `Screens.md` suma las pantallas 11 y 12.
+  - `TraceabilityMatrix.md`, `DataModel.md`, `Overview.md` y `RepositoryStructure.md` tienen lo nuevo.
+  - `SecurityModel.md` pasa a 45 puntos de entrada (19 páginas, 24 Server Actions, 2 Route Handlers), con 26 fijados por la guarda, contados contra el código.
+  - Cada FR está en el nombre de los casos que lo prueban.
+- **AC-10** — `format:check`, `lint` y `typecheck` limpios. `npm run test` da **1064 de 1064 en 86 archivos** antes de la revisión, y **1067** después, con los archivos nuevos registrados con `git add -N` para que `exposed-surface` los viera, y después vuelto atrás. El end-to-end completo y la CI van en §Cierre.
+- **AC-11** — `git status` muestra solo archivos de la lista. `catalog/repository.ts` figura como modificado, pero con el mismo hash que en `HEAD`, así que ningún commit lo incluye. `forbidden-references.test.ts` no cambió.
+
+## Revisión independiente — 2026-09-24 (D-10)
+
+La hizo un agente que no participó del trabajo, con acceso de solo lectura, contra este brief y `CLAUDE.md`, y **fijó la escala de severidad antes de leer el código**. No ejecutó nada. Leyó la sección de resultados mientras se escribía. **Informó 5 hallazgos menores y 8 notas, sin bloqueantes ni mayores.** Cada uno se verificó antes de aceptarlo, y las disposiciones las aprobó el usuario el 2026-09-24.
+
+| Hallazgo | Verificación | Qué se hizo |
+|---|---|---|
+| **m-1**. `RepositoryStructure.md` no suma `knowledge` a los módulos con la frontera de HTTP | **Confirmado** (línea 134) | Sumado |
+| **m-2**. Tres listas generales de `DataModel.md` no nombran la tabla nueva (estado, esquemas por módulo, privilegios) | **Confirmado**. La del estado tampoco nombraba `product_prices`, de la 11.1 | Sumadas las dos tablas |
+| **m-3**. axe corre en 12 estados, no en 11 | **Confirmado**: 12 llamadas | Recuento corregido |
+| **m-4**. Ningún test prueba el filtro de organización en el `WHERE` de las escrituras: por el servicio, `NOT_FOUND` llega antes | **Confirmado** como hueco de test | Un caso en `knowledge.test.ts` llama al repositorio directamente, dentro de la lista y sin tocar `organization-isolation.test.ts`, como aprobó el usuario. **Mutación**: sin el filtro en `updateEntryActive`, `1 failed / 20 passed`; restaurado, 21 de 21 |
+| **m-5**. El escape de `searchQuery` no tenía un test de comportamiento | **Confirmado, con un matiz**, contra PostgreSQL: el parser `simple` deja una URL entera con su comilla (`'x.com/a''b?c=d'`), así que ese escape es alcanzable. La barra invertida nunca sobrevive como lexema: ese escape es defensivo | Un caso busca una URL con comilla. **Mutación**: sin duplicar la comilla, PostgreSQL rechaza la consulta (`syntax error in tsquery`); restaurado, verde. Se corrigió la afirmación de AC-5 |
+| **N-1**. `catalog/repository.ts` figura como modificado | Mismo hash que en `HEAD` (`0d4761b`) | Ninguna: no entra en el commit |
+| **N-2**. Tres archivos de `informacion/` que el brief no enumeraba | Están en el directorio autorizado y declarados en §Resultados | Ninguna |
+| **N-3**. AC-7 no deja una guarda permanente | **Confirmado**: `module-boundary.test.ts` no tiene casos para `knowledge` | **Pendiente**: el archivo está fuera de la lista |
+| **N-4**. Casos sin la etiqueta del FR que prueban | **Confirmado** | Etiquetados. Los de aislamiento e id inválido prueban AC-6, no un FR, y quedan sin etiqueta |
+| **N-5**. `lower()` fuera de ASCII depende del `LC_CTYPE` | Las tres bases locales usan `en_US.utf8`. Staging, sin verificar. Mismo patrón que el SKU | **Pendiente** para el piloto (11.4) |
+| **N-6**. Un carácter NUL en la búsqueda o en un campo llega a PostgreSQL | Sospecha sin ejecutar; `catalog` se comporta igual | **Pendiente**, sin subfase propia: es transversal a los formularios |
+| **N-7**. Nombres de test que dicen más de lo que prueban | **Confirmado** | «en la misma transacción» salió del nombre; el caso del viewer suma `reactivar` |
+| **N-8**. `whitespace-pre-line` junta la sangría | **Confirmado** | `whitespace-pre-wrap`, y el caso 1 lleva una línea con sangría. **Mutación**: con `pre-line`, el caso 1 falla; restaurado, verde |
+
+**Una ampliación de la lista, autorizada por el usuario el 2026-09-24**: `tests/e2e/users.spec.ts`. El caso 11 tabula desde el principio de la página hasta «Nombre» con un tope de 10, y el ítem «Información» de la navegación suma una parada. Fue la condición de detención «un test existente fuera de la lista falla por los cambios». Se subió el tope a 12, como el de `products.spec.ts`, y nada más.
+
+## Cierre — 2026-09-24 (autoevaluación)
+
+Recuentos finales, después de las correcciones de la revisión independiente:
+
+- `format:check`, `lint` y `typecheck`: limpios.
+- Vitest: **1067 de 1067**, en 86 archivos. Los archivos nuevos se registraron con `git add -N` para que `exposed-surface` los viera, y después se volvió atrás.
+- `knowledge.test.ts`: 21 de 21. `service.test.ts` de `knowledge`: 11 de 11.
+- End-to-end: **94 de 94 en 7,1 minutos**, con `knowledge.spec.ts` en 9 de 9 y `users.spec.ts` en verde con el tope nuevo.
+
+**Nivel alcanzado**: validado localmente, y validado en integración (`producer-consumer`) para las pantallas: UI, servicio y base. La CI queda pendiente del commit, que necesita autorización.
+
+**Pendientes**: N-3, N-5 y N-6 de §Revisión independiente; el comentario de `catalog/repository.ts` que todavía nombra `productSearchQuery`, fuera de la lista; y D-8, para la 11.4.

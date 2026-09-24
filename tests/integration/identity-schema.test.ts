@@ -66,6 +66,7 @@ describe("base de test", () => {
       "ingestion_rate_windows",
       "inventories",
       "inventory_movements",
+      "knowledge_entries",
       "login_attempts",
       "messages",
       "organization_members",

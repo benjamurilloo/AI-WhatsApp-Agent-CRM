@@ -22,6 +22,7 @@ export default async function AuthenticatedLayout({
     { href: "/productos", label: "Productos" },
     { href: "/clientes", label: "Clientes" },
     { href: "/conversaciones", label: "Conversaciones" },
+    { href: "/informacion", label: "Información" },
     ...(context.role === "admin"
       ? [{ href: "/usuarios", label: "Usuarios" }]
       : []),
