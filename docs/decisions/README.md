@@ -83,7 +83,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-10](brief-10-evaluacion-del-mvp.md) | Fase 10 — Evaluación del MVP (10.1 a 10.3, un solo brief) | aprobado y cerrado el 2026-09-23: 10.1, 10.2 y 10.3 cerradas; decisión del usuario: continuar ampliando el alcance |
 | [evaluacion-10.1](evaluacion-10.1-mvp.md) | 10.1 — El MVP contra su Definición de Terminado | cerrada el 2026-09-23; corregida en la 10.3 por la revisión independiente, con la decisión en §7 |
 | [brief-11.0](brief-11.0-instrumentos-antes-de-construir-encima.md) | 11.0 — Instrumentos y herramienta antes de construir encima | aprobado el 2026-09-23 con las recomendaciones de D-1 a D-7; cerrado el 2026-09-24 |
-| [brief-11.1](brief-11.1-catalogo-comercial.md) | 11.1 — Catálogo comercial | aprobado el 2026-09-24 con las recomendaciones de D-1 a D-10; en implementación |
+| [brief-11.1](brief-11.1-catalogo-comercial.md) | 11.1 — Catálogo comercial | aprobado el 2026-09-24 con las recomendaciones de D-1 a D-10; cerrado el 2026-09-24 |
 | [evidencia-9.1](evidencia-9.1-staging.md) | 9.1 — Salidas crudas de la verificación en staging | captura del 2026-09-22 |
 | [evidencia-9.2](evidencia-9.2-backups.md) | 9.2 — Backup y restauración verificados en staging | captura del 2026-09-22 |
 | [evidencia-9.3](evidencia-9.3-volumen.md) | 9.3 — Volumen, planes y tiempos medidos en staging | captura del 2026-09-23 |

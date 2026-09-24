@@ -6,7 +6,7 @@
 - **Nivel de validación alcanzable**: **validado localmente y en CI**, y **validado en integración** para las pantallas. Nada de esta subfase se despliega a staging. El primero en usarlo allá es el piloto (11.4), y el agente, recién con el contrato de lectura (11.3).
 - **Orden**: va después de la 11.0, que cerró el 2026-09-24, y en paralelo con la 11.2 ([Roadmap](../planning/Roadmap.md) §Fase 11). La 11.3 depende de esta subfase.
 - **No abre ni cierra gate.** La revisión independiente no es obligatoria. Se recomienda igual (D-10).
-- **Estado de este documento**: **aprobado el 2026-09-24**, con las diez decisiones resueltas por la recomendación (ver §Resolución). En implementación.
+- **Estado de este documento**: **aprobado el 2026-09-24**, con las diez decisiones resueltas por la recomendación (ver §Resolución). **Cerrado el 2026-09-24** por el usuario (ver §Cierre).
 
 ## Objetivo
 
@@ -463,7 +463,15 @@ Recuentos finales, después de las correcciones de la revisión independiente:
   - Una corrida anterior tardó 41 minutos y dio 84 de 85. Falló el caso 8, que no toca precios, por el tiempo máximo de 30 s dentro de la revisión de accesibilidad (`axe`).
   - `products.spec.ts` solo pasó 17 de 17 en 1,2 minutos, y la suite completa, 85 de 85 en 4,5. Se registra como una corrida lenta del entorno, no como un defecto. Si vuelve a pasar, se investiga.
 
-**Nivel alcanzado**: validado en integración (`producer-consumer`), UI ↔ servicio ↔ base, en local. Falta la CI, que se lee por `headSha` después del push.
+**Nivel alcanzado**: validado localmente y en CI, y validado en integración (`producer-consumer`) para las pantallas: UI, servicio y base.
+
+**CI**: el commit `aa29504` corrió en la run 36045565521.
+- **Intento 1: `failure`.** Falló un solo caso, `conversations.spec.ts` caso 2, que no toca productos ni precios. Llegó al tiempo máximo de 30 s con «Target page, context or browser has been closed» (línea 246), y los otros 84 casos pasaron. Es **la misma firma** que HANDOFF ya registraba para ese caso, en la run 35646632631.
+- **Intento 2 (`gh run rerun --failed`): `success`**, con todos los pasos en `success` y el de artefactos en `skipped`.
+
+Es la tercera vez que aparece esta firma, y sigue sin causa. No se corrigió: está fuera de la lista.
+
+**Cierre**: el usuario autorizó el commit y el push de la 11.1.2 y el cierre de la subfase el 2026-09-24.
 
 **Tercera extensión de la lista**: `docs/architecture/SecurityModel.md`, por M-5, con autorización del usuario del 2026-09-24.
 

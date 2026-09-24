@@ -2,6 +2,46 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-24 — 11.1 cerrada: catálogo comercial
+
+Segunda subfase de la Fase 11 ([brief-11.1](docs/decisions/brief-11.1-catalogo-comercial.md)). Se hizo en dos etapas verticales (D-1): la 11.1.1 en `487def8` (run 36013939490, `success`) y la 11.1.2 en `aa29504` (run 36045565521, `success` en el intento 2, ver abajo). No abre ni cierra gate. La revisión independiente se hizo igual (D-10).
+
+**Certifica (validado localmente y en CI; las pantallas, validadas en integración):**
+
+- **Marca, categoría y condición** (FR-PROD-10). Migración `0016`, sin cambiar ninguna fila existente: la huella de las 10 001 filas de desarrollo es igual antes y después. El tipo de entrada exige los tres campos. «Bajo stock» usa el token de advertencia nuevo (O-17).
+- **Búsqueda por palabras** (FR-PROD-11). Busca por prefijo de palabras de nombre, marca y categoría, sin acentos, o por SKU exacto, con un índice GIN. El texto buscado pasa por el mismo parser que el documento, así que la sintaxis de `tsquery` nunca llega cruda. Un caso con `EXPLAIN` exige el índice, con su corrida de mutación.
+- **Precio vigente con historial** (FR-PROD-12 y FR-PROD-13):
+  - **Tabla y dinero.** `product_prices` es de solo inserción, en la migración `0017`: `crm_app` solo tiene `SELECT` e `INSERT`, un trigger rechaza `UPDATE` y `DELETE`, y la FK es compuesta. El dinero son centésimos en `bigint` (`src/shared/money`), con un parser que conoce los decimales de cada moneda: «300.000» se rechaza en CLP.
+  - **Quién y cómo.** Fijar un precio es solo de `admin` y exige el producto activo. Se hace con `FOR UPDATE` y da `CONFLICT` si el precio vigente cambió mientras se editaba. Un precio igual al vigente no escribe nada. La auditoría registra `price_change` con el antes y el después.
+  - **Probado.** La concurrencia se probó con el bloqueo retenido desde una tercera conexión y con una mutación sin el `FOR UPDATE`.
+- **Guarda `price-writes`, la duodécima.** `insertProductPrice` es la única escritura de la tabla. La prueban diez corridas de mutación en rojo y dos límites declarados, que pasan en verde como se esperaba.
+- **Pantallas**: la de precios (5b), y el precio vigente en la lista y en el detalle. Se probaron con axe en claro y en oscuro, para `admin` y para `viewer`.
+- **`SecurityModel.md`**: la superficie expuesta pasa a 38 puntos de entrada, 22 de ellos fijados por guarda.
+- **Suite local**: 1016 de 1016 en 80 archivos, y 85 de 85 end-to-end.
+
+**Revisión independiente** (D-10, no obligatoria): 6 hallazgos, 2 mayores y 4 menores. Cada uno se verificó contra el código, en lo posible primero con un test en rojo:
+- **M-1**, mayor: tras un rechazo de validación, el formulario perdía la detección del `CONFLICT`. Corregido.
+- **M-2**, mayor: la guarda no veía cuatro formas de escribir en la tabla. Corregido.
+- **M-3**: un id en mayúsculas salteaba el `CONFLICT`. Corregido.
+- **M-4**: no se reprodujo, y la corrección tentativa se quitó.
+- **M-5** (`SecurityModel.md`): corregido con autorización del usuario.
+- **M-6**: el plan del índice sin medir quedó documentado.
+
+**No certifica:**
+
+- **Nada en staging.** El primero en usarlo allá es el piloto (11.4).
+- **El plan de la consulta del precio vigente**: el índice se asignó por la forma de la consulta, sin `EXPLAIN`. Queda para la 11.3.
+- **La búsqueda por palabras con volumen** fuera del `EXPLAIN` de desarrollo: `medir-caminos.ts` no la mide. Queda para la 11.3.
+- **D-9 no tuvo efecto**: `seeds/basic.ts` no tiene productos.
+
+**Registrado sin corregir** (fuera de la lista):
+
+- **`stock-writes.test.ts`** tiene el mismo hueco que tenía `price-writes` (M-2). Va a la 11.3, o a la próxima subfase que toque `inventory`.
+- **`conversations.spec.ts` caso 2** falló en el intento 1 de la CI con la firma ya conocida («Target page, context or browser has been closed»), y pasó al volver a correrlo. Es la tercera vez, y sigue sin causa.
+- **Una corrida end-to-end local tardó 41 minutos** y falló el caso 8 de productos por el tiempo máximo dentro de axe. La siguiente dio 85 de 85 en 4,5 minutos.
+
+---
+
 ## 2026-09-24 — 11.0 cerrada: instrumentos antes de construir encima
 
 Primera subfase de la Fase 11 ([brief-11.0](docs/decisions/brief-11.0-instrumentos-antes-de-construir-encima.md)). Corrige los instrumentos que el piloto de la 11.4 va a reutilizar y la herramienta de migración, antes de que la 11.1 y la 11.2 construyan encima. No abre ni cierra gate. La implementación está en `174276a`, con la corrida 36004268721 en `success`.
