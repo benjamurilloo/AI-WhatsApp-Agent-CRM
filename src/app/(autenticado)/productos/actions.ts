@@ -36,6 +36,9 @@ function productValues(formData: FormData): ProductFormValues {
     description: String(formData.get("description") ?? ""),
     unit: String(formData.get("unit") ?? ""),
     reorderPoint: String(formData.get("reorderPoint") ?? ""),
+    brand: String(formData.get("brand") ?? ""),
+    category: String(formData.get("category") ?? ""),
+    condition: String(formData.get("condition") ?? ""),
   };
 }
 

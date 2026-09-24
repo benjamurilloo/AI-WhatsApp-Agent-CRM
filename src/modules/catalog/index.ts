@@ -1,11 +1,14 @@
-// Interfaz pública del módulo catalog (brief-4.2; historial de auditoría, brief-4.4).
+// Interfaz pública del módulo catalog (brief-4.2; historial de auditoría, brief-4.4; marca,
+// categoría, condición y sugerencias, brief-11.1).
 export {
   createProduct,
   deactivateProduct,
   deriveStockStatus,
   getProduct,
   listProductAudit,
+  listProductSuggestions,
   lockProductForStockChange,
+  PRODUCT_CONDITIONS,
   reactivateProduct,
   searchProducts,
   updateProduct,
@@ -15,8 +18,10 @@ export {
   type Product,
   type ProductActiveResult,
   type ProductActivityFilter,
+  type ProductCondition,
   type ProductField,
   type ProductInput,
+  type ProductSuggestions,
   type StockStatus,
   type UpdateProductResult,
 } from "./service";

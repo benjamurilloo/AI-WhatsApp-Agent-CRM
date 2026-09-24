@@ -76,6 +76,9 @@ const coffee: ProductInput = {
   description: "Tostado medio",
   unit: "unidad",
   reorderPoint: "5",
+  brand: null,
+  category: null,
+  condition: "new",
 };
 
 async function create(context: AuthContext, input: ProductInput = coffee) {

@@ -147,7 +147,7 @@ Limpieza: en cada intento se borran los registros vencidos de esa clave; un logi
 
 ### `products`
 
-**Implementada en la 4.1** ([brief-4.1](../decisions/brief-4.1-migraciones-de-catalogo-e-inventario.md)), migraciones `drizzle/0004_*` y `drizzle/0005_*`. Módulo dueño: `catalog`.
+**Implementada en la 4.1** ([brief-4.1](../decisions/brief-4.1-migraciones-de-catalogo-e-inventario.md)), migraciones `drizzle/0004_*` y `drizzle/0005_*`; marca, categoría, condición y búsqueda por palabras desde la **11.1** ([brief-11.1](../decisions/brief-11.1-catalogo-comercial.md)), migración `drizzle/0016_*`. Módulo dueño: `catalog`.
 
 | Columna | Tipo | Notas |
 |---|---|---|
@@ -158,13 +158,22 @@ Limpieza: en cada intento se borran los registros vencidos de esa clave; un logi
 | `description` | text null | |
 | `unit` | text not null default `'unidad'` | |
 | `reorder_point` | numeric(14, 3) not null default 0 | `CHECK (reorder_point >= 0)` (brief-4.1, D-5). Único umbral del estado de stock (FR-PROD-05). `min_stock` se quitó en la subfase 1.2 (D-10) por no tener regla que lo usara |
+| `brand` | text null | texto libre, recortado, hasta 100 caracteres; vacío se guarda como nulo (brief-11.1, D-2). Sin tabla propia de marcas |
+| `category` | text null | ídem. Sin tabla propia ni jerarquía de categorías |
+| `condition` | `product_condition` enum(`new`,`refurbished`) not null default `new` | condición comercial (brief-11.1, D-3). Los productos anteriores a la 0016 quedaron en `new` |
+| `search` | tsvector, **columna generada** `to_tsvector('simple', immutable_unaccent(lower(name ‖ ' ' ‖ coalesce(brand, '') ‖ ' ' ‖ coalesce(category, ''))))` stored | la escribe PostgreSQL; un `UPDATE` de la columna falla con `428C9`. Búsqueda por palabras (brief-11.1, D-4) |
 | `is_active` | boolean not null default true | |
 | `created_at`, `updated_at` | timestamptz not null | |
 | — | `UNIQUE(organization_id, id)` | destino de las claves foráneas compuestas de `inventories` e `inventory_movements` (brief-4.1, D-3) |
 
-Índices: el único sobre `(organization_id, lower(sku))` cubre la unicidad y la búsqueda exacta por SKU; `products_organization_name_unaccent_idx` sobre `(organization_id, immutable_unaccent(lower(name)) text_pattern_ops)` sirve la búsqueda por prefijo de nombre sin distinguir mayúsculas **ni acentos** (migración `drizzle/0015_*`, brief-9.0.2; reemplaza al de `lower(name)` de la 4.2, que a su vez reemplazó al de `name` de la 4.1). El SKU **no** se normaliza: su índice único define la identidad del producto y cambiarlo cambiaría qué SKUs colisionan; `UNIQUE(organization_id, id)` existe solo porque PostgreSQL lo exige para la referencia compuesta.
+Índices: el único sobre `(organization_id, lower(sku))` cubre la unicidad y la búsqueda exacta por SKU; **`products_search_idx`**, GIN sobre `search`, sirve la búsqueda por palabras sueltas de nombre, marca y categoría (migración `drizzle/0016_*`, brief-11.1). Reemplaza a `products_organization_name_unaccent_idx` (prefijo de nombre sin acentos, 0015, brief-9.0.2), que la 0016 borra porque la búsqueda nueva lo contiene: «caf» sigue encontrando «Café». Límites de la 11.1:
 
-`sku`, `name` y `unit` vacíos los rechaza el servicio de la 4.2, que también recorta espacios: son editables y se corrigen.
+- **El índice no lleva `organization_id`**: un GIN no lo combina sin la extensión `btree_gin`, así que la organización se filtra después del índice (`Filter` en el plan).
+- **Las filas insertadas después de crear el índice esperan en su lista pendiente** hasta que un vacuum las integra, y el planificador cobra leerla: con 10 000 filas recién insertadas el índice costó 259 contra 13 y ganó el recorrido secuencial. En uso normal lo resuelve el autovacuum; el test con `EXPLAIN` la vacía con `gin_clean_pending_list`.
+- **La consulta sale del mismo parser que el documento**: `productSearchQuery` en `catalog/schema.ts` pasa el texto buscado por `to_tsvector('simple', …)` y arma el `tsquery` con sus palabras como prefijo, así que «1.5» es una sola palabra en los dos lados, y `&`, `|` o una comilla no son sintaxis.
+- No encuentra por el medio de una palabra («phone» no encuentra «iPhone») ni reduce plurales.
+
+El SKU **no** se normaliza: su índice único define la identidad del producto y cambiarlo cambiaría qué SKUs colisionan; `UNIQUE(organization_id, id)` existe solo porque PostgreSQL lo exige para la referencia compuesta. `sku`, `name` y `unit` vacíos los rechaza el servicio de la 4.2, que también recorta espacios: son editables y se corrigen.
 
 ### `inventories`
 
@@ -390,12 +399,12 @@ Una sola, desde la 9.0.2 (migración `drizzle/0015_unaccent_search_indexes.sql`)
 
 | Extensión | Para qué | Notas |
 | --- | --- | --- |
-| `unaccent` | buscar clientes y productos por prefijo de nombre sin distinguir acentos | `trusted = true`, así que la instala el dueño de la base sin superusuario (PostgreSQL 13+) |
+| `unaccent` | buscar clientes por prefijo de nombre, y productos por palabras (desde la 11.1), sin distinguir acentos | `trusted = true`, así que la instala el dueño de la base sin superusuario (PostgreSQL 13+) |
 
 La migración define además la función `immutable_unaccent(text)`, y conviene entender por qué existe antes de tocarla:
 
 - `unaccent()` está declarada **`STABLE`**, no `IMMUTABLE` —verificado en la fuente de la extensión y en `pg_proc.provolatile`, que devuelve `s`—, y PostgreSQL solo admite funciones inmutables en una expresión de índice.
 - `immutable_unaccent` es una envoltura declarada `IMMUTABLE` que llama a `unaccent('public.unaccent'::regdictionary, $1)`, con el diccionario explícito para no depender del `search_path`.
 - **Limitación aceptada, no un detalle de implementación**: esa declaración le promete al planificador una inmutabilidad que la función no tiene. Es correcta mientras el diccionario `unaccent` no cambie. Si cambiara —otra versión de la extensión con reglas distintas, o un diccionario propio—, los índices que la usan quedan silenciosamente mal y hay que `REINDEX`. Está escrito también en la cabecera de la migración.
-- La expresión de cada índice y la de su consulta salen de **una sola función** por módulo, `searchNormalized` en el `schema.ts` de `catalog` y de `crm`. Si se separaran, el índice dejaría de usarse y la búsqueda recorrería la tabla sin que ningún test falle. Dos tests con `EXPLAIN` comprueban que el prefijo entra como cota del índice (`~>=~`) y no como `Filter`.
+- La expresión de cada índice y la de su consulta salen de **una sola función** por módulo: `searchNormalized` en el `schema.ts` de `crm` y, desde la 11.1, `searchVector`, `productSearchQuery` y `productSearchCondition` en el de `catalog`. Si se separaran, el índice dejaría de usarse y la búsqueda recorrería la tabla sin que ningún test falle, porque los resultados no cambian. Un test con `EXPLAIN` lo comprueba en cada módulo: en `crm`, que el prefijo entra como cota del índice (`~>=~`) y no como `Filter`; en `catalog`, que el plan hace `Bitmap Index Scan on products_search_idx` (brief-11.1, AC-4, con su corrida de mutación).
 

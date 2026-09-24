@@ -10,12 +10,12 @@ const ICON: Record<StockStatus, string> = {
   sin_stock: "✕",
 };
 
-// El diseño visual base (brief-4.0) no define un token de advertencia y globals.css no entra
-// en el alcance de la 4.4: "bajo stock" usa el token de énfasis existente. Lo que distingue
-// los tres estados es el texto y el ícono, no el color.
+// "Bajo stock" usa el token de advertencia que agregó la 11.1 (O-17, brief-11.1, D-8); hasta
+// entonces usaba el de énfasis. Lo que distingue los tres estados sigue siendo el texto y el
+// ícono, no el color.
 const TONE: Record<StockStatus, string> = {
   disponible: "bg-success-soft text-on-success-soft",
-  bajo_stock: "bg-primary-soft text-on-primary-soft",
+  bajo_stock: "bg-warning-soft text-on-warning-soft",
   sin_stock: "bg-danger-soft text-on-danger-soft",
 };
 

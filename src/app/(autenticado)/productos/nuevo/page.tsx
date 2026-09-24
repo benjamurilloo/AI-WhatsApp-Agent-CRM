@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { listProductSuggestions } from "@/modules/catalog";
 import { authorize } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
 import {
@@ -25,6 +26,8 @@ export default async function NewProductPage() {
     return <PageNotice title={TITLE} message={FORBIDDEN_PAGE_MESSAGE} />;
   }
 
+  const suggestions = await listProductSuggestions(context);
+
   return (
     <main className="mx-auto max-w-xl px-4 py-8">
       <p>
@@ -34,7 +37,10 @@ export default async function NewProductPage() {
       </p>
       <h1 className={`mt-4 ${pageTitleClass}`}>{TITLE}</h1>
       <div className={`mt-6 ${cardClass} p-6`}>
-        <ProductForm mode="crear" />
+        <ProductForm
+          mode="crear"
+          suggestions={suggestions.ok ? suggestions : undefined}
+        />
       </div>
     </main>
   );

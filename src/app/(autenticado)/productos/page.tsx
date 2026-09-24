@@ -39,7 +39,8 @@ export const metadata: Metadata = {
 const TITLE = "Productos";
 
 // Pantalla 3 (wireframe 03): búsqueda, filtros y página en la URL. Tabla en escritorio y
-// tarjetas en móvil; la versión oculta no entra al árbol de accesibilidad.
+// tarjetas en móvil; la versión oculta no entra al árbol de accesibilidad. La búsqueda es por
+// palabras sobre nombre, marca y categoría, o por SKU exacto (brief-11.1, FR-PROD-11).
 export default async function ProductsPage({
   searchParams,
 }: {
@@ -81,8 +82,8 @@ export default async function ProductsPage({
             name="q"
             type="search"
             defaultValue={filters.text}
-            placeholder="Nombre o SKU"
-            className={`${inputClass} w-56`}
+            placeholder="Nombre, marca, categoría o SKU"
+            className={`${inputClass} w-72`}
           />
         </div>
         <div className="flex flex-col gap-1">
@@ -169,6 +170,12 @@ export default async function ProductsPage({
                   <th scope="col" className={tableHeadCellClass}>
                     Nombre
                   </th>
+                  <th scope="col" className={tableHeadCellClass}>
+                    Marca
+                  </th>
+                  <th scope="col" className={tableHeadCellClass}>
+                    Categoría
+                  </th>
                   <th
                     scope="col"
                     className={`${tableHeadCellClass} text-right`}
@@ -199,6 +206,10 @@ export default async function ProductsPage({
                       >
                         {product.name}
                       </Link>
+                    </td>
+                    <td className={tableCellClass}>{product.brand ?? "—"}</td>
+                    <td className={tableCellClass}>
+                      {product.category ?? "—"}
                     </td>
                     <td className={`${tableCellClass} text-right tabular-nums`}>
                       {formatQuantity(product.quantityOnHand)}
@@ -242,6 +253,13 @@ export default async function ProductsPage({
                     </span>
                   )}
                 </p>
+                {product.brand || product.category ? (
+                  <p className="mt-1 text-sm text-muted">
+                    {[product.brand, product.category]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                ) : null}
                 <div className="mt-2 flex items-center justify-between gap-3">
                   <p className="text-sm tabular-nums">
                     {formatQuantity(product.quantityOnHand)} {product.unit}

@@ -28,7 +28,8 @@ export const STOCK_STATUS_LABEL: Record<StockStatus, string> = {
   sin_stock: "Sin stock",
 };
 
-// El texto que se busca se recorta y se acota: la búsqueda es por prefijo (brief-4.2, D-3).
+// El texto que se busca se recorta y se acota: la búsqueda es por palabras sueltas sobre nombre,
+// marca y categoría, o por SKU exacto (brief-11.1, D-4).
 const MAX_TEXT_LENGTH = 100;
 
 export const DEFAULT_FILTERS: ProductListFilters = {

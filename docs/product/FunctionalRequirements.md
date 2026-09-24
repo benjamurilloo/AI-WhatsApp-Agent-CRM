@@ -14,11 +14,17 @@
 - **FR-PROD-02**: Un admin puede editar los datos de un producto existente, con el cambio auditado.
 - **FR-PROD-03**: Un admin puede desactivar (borrado lógico) un producto; un producto desactivado no aparece en búsquedas por defecto ni puede recibir ajustes de stock nuevos.
 - **FR-PROD-04**: Cualquier usuario puede buscar productos por nombre o SKU y filtrar por estado de stock (disponible, bajo stock, sin stock).
+  - *Enmendado el 2026-09-24 por la 11.1* ([brief-11.1](../decisions/brief-11.1-catalogo-comercial.md), D-4): la parte de **búsqueda** la reemplaza FR-PROD-11, que busca por palabras sueltas sobre nombre, marca y categoría. El filtro por estado de stock sigue como está escrito arriba.
 - **FR-PROD-05**: El estado de stock de un producto se deriva de `quantity_on_hand` vs. `reorder_point`, único umbral (subfase 1.2, D-10): `sin_stock` si `quantity_on_hand = 0`; `bajo_stock` si `0 < quantity_on_hand <= reorder_point`; `disponible` en otro caso.
 - **FR-PROD-06**: Un admin puede realizar un ajuste manual de stock (positivo o negativo) indicando motivo; el ajuste se registra como un movimiento de inventario inmutable, que guarda el saldo resultante (`balance_after`), y actualiza el saldo en la misma transacción (subfase 1.2, D-1).
 - **FR-PROD-07**: No existe ninguna vía en la aplicación para modificar `quantity_on_hand` sin crear el movimiento de inventario correspondiente.
 - **FR-PROD-08**: Un ajuste que dejaría el stock en un valor negativo es rechazado con `BUSINESS_RULE_VIOLATION`, informando el saldo actual y la cantidad solicitada. No hay excepciones: ni por rol, ni por producto, ni por organización ([ADR 0008](../decisions/0008-stock-nunca-negativo.md)).
 - **FR-PROD-09**: Cualquier usuario puede consultar el historial completo de movimientos de un producto, ordenado cronológicamente.
+
+Agregados en la Fase 11, catálogo comercial ([brief-11.1](../decisions/brief-11.1-catalogo-comercial.md)). Desde la 11.1, el identificador de cada requisito nuevo aparece en el caso de test que lo prueba ([EngineeringStandards](../development/EngineeringStandards.md)).
+
+- **FR-PROD-10**: Un admin puede registrar la marca, la categoría y la condición (nuevo o reacondicionado) de un producto, con el cambio auditado. Marca y categoría son texto libre y opcional; la condición es obligatoria y, si no se indica al crear por SQL, es «nuevo».
+- **FR-PROD-11**: Cualquier usuario puede buscar productos por palabras sueltas sobre nombre, marca y categoría, sin distinguir mayúsculas ni acentos, con todas las palabras a la vez y cada una como comienzo de una palabra del producto; o por SKU exacto. No encuentra por el medio de una palabra ni reduce plurales.
 
 ## Clientes
 

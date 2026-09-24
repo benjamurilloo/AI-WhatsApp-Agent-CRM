@@ -32,6 +32,9 @@ const valid = {
   description: "Tostado medio",
   unit: "unidad",
   reorderPoint: "10",
+  brand: "Cafetal",
+  category: "Almacén",
+  condition: "new",
 };
 
 describe("validateProductInput (brief-4.2, D-4)", () => {
@@ -43,6 +46,9 @@ describe("validateProductInput (brief-4.2, D-4)", () => {
         description: "  Tostado medio  ",
         unit: " kg ",
         reorderPoint: " 2,5 ",
+        brand: "  Cafetal ",
+        category: " Almacén  ",
+        condition: "refurbished",
       }),
     ).toEqual({
       ok: true,
@@ -52,6 +58,9 @@ describe("validateProductInput (brief-4.2, D-4)", () => {
         description: "Tostado medio",
         unit: "kg",
         reorderPoint: "2.500",
+        brand: "Cafetal",
+        category: "Almacén",
+        condition: "refurbished",
       },
     });
   });
@@ -63,6 +72,19 @@ describe("validateProductInput (brief-4.2, D-4)", () => {
     }
   });
 
+  // FR-PROD-10: marca y categoría son opcionales; vacías se guardan como null (brief-11.1, D-2).
+  it("FR-PROD-10: guarda una marca o una categoría vacía o solo con espacios como null", () => {
+    for (const value of ["", "   ", null]) {
+      const result = validateProductInput({
+        ...valid,
+        brand: value,
+        category: value,
+      });
+      expect(result.ok && result.values.brand).toBeNull();
+      expect(result.ok && result.values.category).toBeNull();
+    }
+  });
+
   it("acepta los máximos de cada campo", () => {
     expect(
       validateProductInput({
@@ -71,6 +93,9 @@ describe("validateProductInput (brief-4.2, D-4)", () => {
         description: "D".repeat(2000),
         unit: "U".repeat(32),
         reorderPoint: "99999999999,999",
+        brand: "B".repeat(100),
+        category: "C".repeat(100),
+        condition: "new",
       }).ok,
     ).toBe(true);
   });
@@ -83,11 +108,23 @@ describe("validateProductInput (brief-4.2, D-4)", () => {
         description: "D".repeat(2001),
         unit: "U".repeat(33),
         reorderPoint: "-1",
+        brand: "B".repeat(101),
+        category: "C".repeat(101),
+        condition: "usado",
       }),
     ).toEqual({
       ok: false,
       code: "VALIDATION_ERROR",
-      fields: ["sku", "name", "description", "unit", "reorderPoint"],
+      fields: [
+        "sku",
+        "name",
+        "description",
+        "unit",
+        "reorderPoint",
+        "brand",
+        "category",
+        "condition",
+      ],
     });
   });
 
@@ -99,6 +136,10 @@ describe("validateProductInput (brief-4.2, D-4)", () => {
       [{ unit: "" }, "unit"],
       [{ reorderPoint: "" }, "reorderPoint"],
       [{ reorderPoint: "1,2345" }, "reorderPoint"],
+      // FR-PROD-10: solo las dos condiciones del enum (brief-11.1, D-3).
+      [{ condition: "" }, "condition"],
+      [{ condition: "used" }, "condition"],
+      [{ condition: "NEW" }, "condition"],
     ] as const) {
       expect(validateProductInput({ ...valid, ...override })).toEqual({
         ok: false,

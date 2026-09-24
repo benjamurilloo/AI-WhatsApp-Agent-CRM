@@ -9,6 +9,7 @@ import {
   updateProduct,
   type ProductInput,
 } from "@/modules/catalog";
+import { productSearchCondition } from "@/modules/catalog/schema";
 import { getProductStock, listProductStock } from "@/modules/inventory";
 import { getAuthContext, type AuthContext } from "@/modules/organizations";
 import { getDb } from "@/shared/db";
@@ -16,6 +17,7 @@ import { resetDatabase } from "./reset-database";
 
 // Servicio de catálogo contra PostgreSQL real (brief-4.2): escrituras auditadas, CONFLICT por SKU,
 // autorización, aislamiento entre organizaciones, y lista y detalle con saldo y estado de stock.
+// Marca, categoría y condición (FR-PROD-10) y búsqueda por palabras (FR-PROD-11), brief-11.1.
 
 const PASSWORD = "contraseña-correcta-larga";
 let storedHash: string;
@@ -76,6 +78,9 @@ const coffee: ProductInput = {
   description: "Tostado medio",
   unit: "unidad",
   reorderPoint: "5",
+  brand: null,
+  category: null,
+  condition: "new",
 };
 
 async function create(context: AuthContext, input: ProductInput = coffee) {
@@ -101,7 +106,7 @@ async function auditRows() {
 
 async function productRow(productId: string) {
   const result = await getDb().execute(
-    sql`select sku, name, description, unit, reorder_point, is_active
+    sql`select sku, name, description, unit, reorder_point, brand, category, condition, is_active
         from products where id = ${productId}`,
   );
   return result.rows[0];
@@ -113,15 +118,17 @@ async function insertProduct(
   values: {
     sku: string;
     name: string;
+    brand?: string;
+    category?: string;
     reorderPoint?: string;
     isActive?: boolean;
     balance?: string;
   },
 ) {
   const result = await getDb().execute<{ id: string }>(
-    sql`insert into products (organization_id, sku, name, reorder_point, is_active)
-        values (${organizationId}, ${values.sku}, ${values.name}, ${values.reorderPoint ?? "10"},
-                ${values.isActive ?? true})
+    sql`insert into products (organization_id, sku, name, brand, category, reorder_point, is_active)
+        values (${organizationId}, ${values.sku}, ${values.name}, ${values.brand ?? null},
+                ${values.category ?? null}, ${values.reorderPoint ?? "10"}, ${values.isActive ?? true})
         returning id`,
   );
   const productId = result.rows[0]!.id;
@@ -165,6 +172,9 @@ describe("createProduct", () => {
       description: "Tostado medio",
       unit: "unidad",
       reorder_point: "2.500",
+      brand: null,
+      category: null,
+      condition: "new",
       is_active: true,
     });
     expect(await auditRows()).toEqual([
@@ -182,6 +192,9 @@ describe("createProduct", () => {
             description: "Tostado medio",
             unit: "unidad",
             reorderPoint: "2.500",
+            brand: null,
+            category: null,
+            condition: "new",
             isActive: true,
           },
         },
@@ -284,6 +297,62 @@ describe("updateProduct", () => {
       diff: {
         before: { name: "Café molido 250 g", reorderPoint: "5.000" },
         after: { name: "Café molido 500 g", reorderPoint: "10.000" },
+      },
+    });
+  });
+
+  it("FR-PROD-10: crea con marca, categoría y condición, recortadas y auditadas", async () => {
+    const s = await seed();
+    const productId = await create(s.adminA, {
+      ...coffee,
+      brand: "  Cafetal ",
+      category: " Almacén",
+      condition: "refurbished",
+    });
+    expect(await productRow(productId)).toMatchObject({
+      brand: "Cafetal",
+      category: "Almacén",
+      condition: "refurbished",
+    });
+    expect((await auditRows())[0]).toMatchObject({
+      action: "create",
+      diff: {
+        after: {
+          brand: "Cafetal",
+          category: "Almacén",
+          condition: "refurbished",
+        },
+      },
+    });
+  });
+
+  it("FR-PROD-10: edita marca, categoría y condición, y vaciar una la deja en null a propósito", async () => {
+    const s = await seed();
+    const productId = await create(s.adminA, {
+      ...coffee,
+      brand: "Cafetal",
+      category: "Almacén",
+    });
+    expect(
+      await updateProduct(s.adminA, productId, {
+        ...coffee,
+        brand: "   ",
+        category: "Bebidas",
+        condition: "refurbished",
+      }),
+    ).toEqual({ ok: true, changed: true });
+
+    expect(await productRow(productId)).toMatchObject({
+      brand: null,
+      category: "Bebidas",
+      condition: "refurbished",
+    });
+    // Solo lo que cambió, con el antes real (AC-2).
+    expect((await auditRows())[1]).toMatchObject({
+      action: "update",
+      diff: {
+        before: { brand: "Cafetal", category: "Almacén", condition: "new" },
+        after: { brand: null, category: "Bebidas", condition: "refurbished" },
       },
     });
   });
@@ -462,14 +531,21 @@ describe("listProductStock", () => {
     await insertProduct(s.orgA, {
       sku: "CAF-250",
       name: "Café molido 250 g",
+      brand: "Nescafé",
+      category: "Bebidas",
       balance: "6",
     });
     await insertProduct(s.orgA, {
       sku: "YER-500",
       name: "Yerba 500 g",
+      category: "Almacén",
       balance: "48",
     });
-    await insertProduct(s.orgA, { sku: "AZU-1K", name: "Azúcar 1 kg" });
+    await insertProduct(s.orgA, {
+      sku: "AZU-1K",
+      name: "Azúcar 1 kg",
+      category: "Almacen",
+    });
     await insertProduct(s.orgA, {
       sku: "CAC-100",
       name: "Cacao 100% puro",
@@ -523,7 +599,10 @@ describe("listProductStock", () => {
     });
   });
 
-  it("busca por prefijo de nombre o SKU exacto, sin distinguir mayúsculas", async () => {
+  // FR-PROD-11 (brief-11.1, D-4): cada palabra buscada es prefijo de alguna palabra de nombre,
+  // marca o categoría, todas a la vez; o el texto entero es el SKU. Reemplaza al prefijo del
+  // nombre de la 4.2, que queda contenido: "caf" sigue encontrando "Café molido 250 g".
+  it("FR-PROD-11: busca por palabras sueltas de nombre, marca y categoría, o por SKU exacto", async () => {
     const s = await seedList();
     expect(await names(s.adminA, { text: "caf" })).toEqual([
       "Café molido 250 g",
@@ -531,71 +610,109 @@ describe("listProductStock", () => {
     expect(await names(s.adminA, { text: "  CAFÉ MOLIDO " })).toEqual([
       "Café molido 250 g",
     ]);
+    // Palabras sueltas, en cualquier orden y de campos distintos.
+    expect(await names(s.adminA, { text: "molido caf" })).toEqual([
+      "Café molido 250 g",
+    ]);
+    expect(await names(s.adminA, { text: "nesc" })).toEqual([
+      "Café molido 250 g",
+    ]);
+    expect(await names(s.adminA, { text: "almacen yerba" })).toEqual([
+      "Yerba 500 g",
+    ]);
+    expect(await names(s.adminA, { text: "almacén" })).toEqual([
+      "Azúcar 1 kg",
+      "Yerba 500 g",
+    ]);
+    // Todas las palabras: una que no está en ningún campo deja sin resultados.
+    expect(await names(s.adminA, { text: "yerba bebidas" })).toEqual([]);
+    // Un número es una palabra más.
+    expect(await names(s.adminA, { text: "500" })).toEqual(["Yerba 500 g"]);
+    // SKU exacto, sin distinguir mayúsculas; no por prefijo.
     expect(await names(s.adminA, { text: "yer-500" })).toEqual(["Yerba 500 g"]);
-    // Ni "contiene" ni prefijo de SKU.
-    expect(await names(s.adminA, { text: "500" })).toEqual([]);
-    expect(await names(s.adminA, { text: "YER" })).toEqual(["Yerba 500 g"]);
-    expect(await names(s.adminA, { text: "YER-5" })).toEqual([]);
+    expect(await names(s.adminA, { text: "CAC-10" })).toEqual([]);
   });
 
-  it("el prefijo del nombre entra en el Index Cond del índice normalizado (9.0.2, AC-4)", async () => {
+  it("FR-PROD-11: no distingue acentos, en las dos direcciones", async () => {
     const s = await seedList();
-    // Hacen falta filas: con tres, el planificador elige cualquier índice para resolver solo
-    // `organization_id` y deja el nombre en `Filter`. El fixture es sintético y su único fin es que
-    // el planificador tenga con qué decidir.
+    expect(await names(s.adminA, { text: "azucar" })).toEqual(["Azúcar 1 kg"]);
+    expect(await names(s.adminA, { text: "cafe molido" })).toEqual([
+      "Café molido 250 g",
+    ]);
+    expect(await names(s.adminA, { text: "yérba" })).toEqual(["Yerba 500 g"]);
+  });
+
+  // Los dos límites de D-4, escritos como lo que la búsqueda NO hace.
+  it("FR-PROD-11: no encuentra por el medio de una palabra ni reduce plurales (límites de D-4)", async () => {
+    const s = await seedList();
+    expect(await names(s.adminA, { text: "zucar" })).toEqual([]);
+    expect(await names(s.adminA, { text: "yerbas" })).toEqual([]);
+  });
+
+  // El texto del usuario nunca llega crudo a to_tsquery: las palabras salen del parser.
+  it("FR-PROD-11: la sintaxis de tsquery y los comodines de LIKE son texto, no operadores", async () => {
+    const s = await seedList();
+    for (const text of [
+      "&",
+      "|",
+      "!",
+      ":",
+      "(",
+      "'",
+      "\\",
+      "%",
+      "_",
+      "caf & | !",
+    ]) {
+      const result = await listProductStock(s.adminA, {
+        ...listDefaults,
+        text,
+      });
+      expect(result.ok, text).toBe(true);
+    }
+    expect(await names(s.adminA, { text: "%" })).toEqual([]);
+    expect(await names(s.adminA, { text: "caf:*" })).toEqual([
+      "Café molido 250 g",
+    ]);
+    expect(
+      await names(s.adminA, { text: "cacao 100%", activity: "all" }),
+    ).toEqual(["Cacao 100% puro"]);
+    // Una palabra con punto es una sola palabra para el parser, como en el documento.
+    await insertProduct(s.orgA, { sku: "ACE-15", name: "Aceite 1.5 L" });
+    expect(await names(s.adminA, { text: "1.5" })).toEqual(["Aceite 1.5 L"]);
+  });
+
+  it("FR-PROD-11: la búsqueda usa el índice GIN de la columna generada (AC-4)", async () => {
+    const s = await seedList();
+    // Con pocas filas el planificador recorre la tabla sin mirar ningún índice. 10 000 es el tamaño
+    // de la organización de volumen de desarrollo. El fixture es sintético y su único fin es que el
+    // planificador tenga con qué decidir.
     await getDb().execute(
       sql`insert into products (organization_id, sku, name, unit)
           select ${s.orgA}, 'VOL-'||g, 'Producto '||g, 'unidad'
-          from generate_series(1, 2000) g`,
+          from generate_series(1, 10000) g`,
+    );
+    // Las filas insertadas después de crear un índice GIN esperan en su lista pendiente hasta un
+    // vacuum, y el planificador cobra leerla: sin esto el índice costaba 259 contra 13 y ganaba el
+    // Seq Scan (brief-11.1, §Resultados). En la base de verdad lo hace el autovacuum.
+    await getDb().execute(
+      sql`select gin_clean_pending_list('products_search_idx')`,
     );
     await getDb().execute(sql`analyze products`);
 
+    // La condición sale de la misma función que usa el repositorio.
     const plan = (
       await getDb().execute<{ "QUERY PLAN": string }>(
         sql`explain select id from products
             where organization_id = ${s.orgA}
-              and immutable_unaccent(lower(name)) like immutable_unaccent(lower('caf%'))`,
+              and ${productSearchCondition("cafe molido")}`,
       )
     ).rows
       .map((row) => row["QUERY PLAN"])
       .join("\n");
 
-    // La aserción que importa NO es que aparezca el nombre del índice: ese índice empieza por
-    // organization_id, así que el planificador lo usa igual para resolver solo la organización,
-    // con el nombre en `Filter`. Se verificó: quitando la normalización de la consulta, el plan
-    // sigue nombrando el índice. Lo que discrimina es que el prefijo se convierta en cota del
-    // índice (`~>=~`), y eso solo pasa si la expresión de la consulta es la del índice.
-    expect(plan).toContain("products_organization_name_unaccent_idx");
-    expect(plan).toContain("immutable_unaccent(lower(name)) ~>=~");
-
-    // Lo que este caso NO prueba: que la consulta cumpla un umbral de tiempo con volumen real
-    // (9.3), ni que consulta e índice compartan expresión — eso lo sostiene `searchNormalized`,
-    // que las define una sola vez, no este test.
-  });
-
-  it("no distingue acentos, en las dos direcciones (9.0.2)", async () => {
-    const s = await seedList();
-    // Sin acentos encuentra lo acentuado.
-    expect(await names(s.adminA, { text: "azucar" })).toEqual(["Azúcar 1 kg"]);
-    expect(await names(s.adminA, { text: "cafe molido" })).toEqual([
-      "Café molido 250 g",
-    ]);
-    // Y con acentos encuentra lo que no los tiene.
-    expect(await names(s.adminA, { text: "yérba" })).toEqual(["Yerba 500 g"]);
-    // Sigue siendo prefijo, no "contiene".
-    expect(await names(s.adminA, { text: "zucar" })).toEqual([]);
-  });
-
-  it("trata % y _ como texto literal", async () => {
-    const s = await seedList();
-    expect(await names(s.adminA, { text: "%" })).toEqual([]);
-    expect(await names(s.adminA, { text: "_" })).toEqual([]);
-    expect(
-      await names(s.adminA, { text: "cacao 100%", activity: "all" }),
-    ).toEqual(["Cacao 100% puro"]);
-    expect(
-      await names(s.adminA, { text: "cacao 100_", activity: "all" }),
-    ).toEqual([]);
+    expect(plan).toContain("Bitmap Index Scan on products_search_idx");
+    expect(plan).toMatch(/Index Cond: \(search @@/);
   });
 
   it("filtra por estado de stock y por actividad", async () => {

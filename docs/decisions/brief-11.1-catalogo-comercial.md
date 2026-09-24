@@ -305,3 +305,47 @@ El usuario aprobó el brief **con las recomendaciones** de las diez decisiones:
 - **D-10**: una revisión independiente al final de la 11.1.2.
 
 En el mismo turno, el usuario autorizó registrar el brief, hacer su commit y mover la tarea 11.1 de Notion (`3e4702be6f4e818a88bec2cb52103821`) a «En proceso». No autorizó push.
+
+**Ampliación de la lista de archivos, 2026-09-24** (etapa 11.1.1). Al hacer obligatorios en `ProductInput` los tres campos nuevos (AC-2), `typecheck` marcó dos datos de prueba escritos a mano fuera de la lista: `src/modules/inventory/service.test.ts` (el constructor `product()`) y `tests/integration/product-audit.test.ts` (el producto `coffee`). El usuario autorizó sumarlos **solo para completar esos datos de prueba**, sin cambiar ninguna afirmación. La alternativa, dejar los campos opcionales en el tipo, contradecía AC-2.
+
+## Resultados — etapa 11.1.1, 2026-09-24 (autoevaluación)
+
+Todo lo de esta sección es **autoevaluación**. La revisión independiente (D-10) va al final de la 11.1.2.
+
+### Lo que la implementación encontró que el brief no decía
+
+- **Cambió cómo se arma la consulta de búsqueda.** D-4 decía que los términos se reducen a letras y dígitos antes de armar la consulta. Eso rompía palabras que el parser de PostgreSQL guarda enteras: el documento guarda «Aceite 1.5 L» como `'1.5'`, y un `split` por lo que no es letra ni dígito buscaría `1` y `5`, y no lo encontraría. Probado en una base desechable. La consulta ahora pasa el texto buscado **por el mismo `to_tsvector('simple', …)` que el documento** y arma el `tsquery` con esas palabras como prefijo, en SQL (`productSearchQuery`). Lo que el brief quería asegurar se mantiene: el texto del usuario nunca llega crudo a `to_tsquery`. `&`, `|`, `!`, `:`, `(`, `'` y `\` no son sintaxis, y hay un caso que lo prueba.
+- **La lista pendiente de GIN decide el plan.** Las filas insertadas después de crear el índice esperan en su lista pendiente hasta un vacuum, y el planificador cobra leerla. Con 10 000 filas recién insertadas, el `Bitmap Index Scan` costaba 259 contra 13 del índice construido sobre filas existentes, y el planificador eligió `Seq Scan`. No es un defecto: en uso normal lo resuelve el autovacuum. El test con `EXPLAIN` vacía la lista con `gin_clean_pending_list` antes de planificar, y quedó documentado en `DataModel.md`.
+- **El índice no lleva `organization_id`**: un GIN no lo combina sin `btree_gin`, así que la organización se filtra después del índice. Quedó documentado.
+- **`seeds/basic.ts` no tiene productos.** El brief suponía «los productos de ejemplo» del seed básico, y no existen: los productos de desarrollo vienen del seed de volumen, y cada end-to-end inserta los suyos. No se tocó el seed básico, porque agregarle productos era alcance nuevo. **D-9 queda sin efecto en esta etapa**, y los productos de volumen no tienen marca ni categoría.
+- **Un defecto propio, encontrado antes de cerrar**: la primera versión del formulario ponía el `select` de condición después del punto de reposición, mientras el orden de los mensajes de error lo pone después de la categoría. El foco al primer error y el orden del teclado habrían divergido. Se corrigió con una sola lista de campos para los dos, y el caso 12 del end-to-end recorre el orden nuevo campo por campo.
+- **`src/modules/inventory/service.ts` no se tocó**: la firma de `searchProducts` no cambió.
+- **`scripts/medir-caminos.ts` no mide la búsqueda con texto**: solo mide la lista sin filtro. La búsqueda por palabras con volumen queda sin medir fuera del `EXPLAIN` de la base de desarrollo, que da `Bitmap Index Scan on products_search_idx` sobre las 10 000 filas de la organización de volumen, con 138 filas en 107 buffers. Queda para la 11.3, cuando la búsqueda pase a ser una lectura de servicio.
+
+### Contraste por criterio
+
+- **AC-1 (esquema)** — cumplido. La `0016` generada por `drizzle-kit` crea el enum, borra `products_organization_name_unaccent_idx`, agrega las cuatro columnas y crea `products_search_idx`. No toca ninguna otra tabla. Aplicada sobre la base de desarrollo con `npm run db:migrate` (`Migraciones aplicadas.`, salida 0). La huella de `products` sin las columnas nuevas dio `10001|26f26bca19c45ac0d573588372ba909f` **antes y después**. Las 10 001 filas quedaron con `condition = new` y marca y categoría nulas.
+- **AC-2 (FR-PROD-10)** — cumplido. `ProductInput` exige los tres campos. Hay casos para crear con los tres recortados y auditados, editar solo lo que cambió con el antes real, y vaciar la marca para que quede nula a propósito. La validación rechaza marca o categoría de más de 100 caracteres y cualquier condición fuera del enum (`""`, `used`, `NEW`).
+- **AC-3 (FR-PROD-11)** — cumplido:
+  - encuentra por prefijo de palabras de campos distintos y en cualquier orden, por SKU exacto y sin acentos en las dos direcciones;
+  - un número es una palabra («500»);
+  - los dos límites de D-4 tienen su caso de lo que **no** encuentra: «zucar» e «yerbas»;
+  - los caracteres de `tsquery` y de `LIKE` no producen errores;
+  - «1.5» encuentra «Aceite 1.5 L».
+  
+  Dos cambios de conducta respecto de la 4.2, esperados: «500» ahora encuentra «Yerba 500 g», y el SKU sigue exacto.
+- **AC-4 (índice)** — cumplido. El caso de `EXPLAIN` usa la misma función que el repositorio, `productSearchCondition`, y exige `Bitmap Index Scan on products_search_idx` con `Index Cond: (search @@`. **Mutación**: con la condición recalculando el vector en lugar de leer la columna, `Tests 1 failed | 27 passed (28)` (`expected 'Seq Scan on products…'`), y los resultados de la búsqueda no cambiaron. Restaurado: `28 passed (28)`.
+- **AC-5 (pantallas)** — cumplido:
+  - la lista muestra marca y categoría, también en las tarjetas de móvil;
+  - el detalle muestra los tres campos;
+  - el formulario los pide, con sugerencias (`datalist`) de los valores de la organización.
+  
+  «Bajo stock» usa `bg-warning-soft text-on-warning-soft`, con contraste de 7,59:1 en claro y 9,33:1 en oscuro, calculado. El end-to-end tiene los casos 1, 12 y el caso nuevo 14:
+  - búsqueda por marca sin acentos, por categoría y con palabras de campos distintos;
+  - un `viewer` ve los campos y no recibe el formulario;
+  - axe da cero violaciones en claro y en oscuro sobre la lista con «Bajo stock» y sobre el detalle.
+  
+  Productos: `14 passed`.
+- **AC-6 (FR)** — cumplido. FR-PROD-10 y FR-PROD-11 están en `FunctionalRequirements.md`, la enmienda de FR-PROD-04 está fechada con el texto anterior intacto, y los dos están en `TraceabilityMatrix.md`. Cada identificador aparece en el nombre de los casos que lo prueban: `service.test.ts`, `catalog.test.ts` y `products.spec.ts`.
+- **AC-13, parte de la etapa**: `format:check`, `lint` y `typecheck` con salida 0; `npm run test` con **959 de 959 en 77 archivos**; `npm run test:e2e` con **82 de 82** (5,0 min). La CI se lee después del push.
+- **AC-14, parte de la etapa**: `git status` muestra 25 archivos modificados más la migración y su snapshot, todos de la lista, con los dos que el usuario sumó. `forbidden-references.test.ts` sin cambios.

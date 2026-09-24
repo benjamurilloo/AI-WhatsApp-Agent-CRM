@@ -78,11 +78,21 @@ async function expectAccessible(page: Page, state: string) {
 async function insertProduct(
   sku: string,
   name: string,
-  { balance, isActive = true }: { balance?: string; isActive?: boolean } = {},
+  {
+    balance,
+    isActive = true,
+    brand = null,
+    category = null,
+  }: {
+    balance?: string;
+    isActive?: boolean;
+    brand?: string | null;
+    category?: string | null;
+  } = {},
 ) {
   const result = await db.execute<{ id: string }>(
-    sql`insert into products (organization_id, sku, name, unit, reorder_point, is_active)
-        values (${SEED_ORGANIZATION_ID}, ${sku}, ${name}, 'unidad', 5, ${isActive})
+    sql`insert into products (organization_id, sku, name, unit, reorder_point, is_active, brand, category)
+        values (${SEED_ORGANIZATION_ID}, ${sku}, ${name}, 'unidad', 5, ${isActive}, ${brand}, ${category})
         returning id`,
   );
   const productId = result.rows[0]!.id;
@@ -134,6 +144,10 @@ test("caso 1: un admin llega desde la navegación, ve el vacío y crea el primer
   await expect(page).toHaveURL("/productos/nuevo");
   await page.getByLabel("SKU").fill("CAF-250");
   await page.getByLabel("Nombre").fill("Café molido 250 g");
+  // FR-PROD-10 (brief-11.1): marca, categoría y condición.
+  await page.getByLabel("Marca").fill("Cafetal");
+  await page.getByLabel("Categoría").fill("Almacén");
+  await page.getByLabel("Condición").selectOption("refurbished");
   await page.getByLabel("Descripción").fill("Tostado medio");
   await page.getByLabel("Unidad").fill("unidad");
   await page.getByLabel("Punto de reposición").fill("10");
@@ -148,12 +162,22 @@ test("caso 1: un admin llega desde la navegación, ve el vacío y crea el primer
   await expect(page.getByText("Sin stock")).toBeVisible();
   await expect(page.getByText("Sin movimientos todavía.")).toBeVisible();
   await expect(page.getByText(`Fechas en ${TIMEZONE}.`)).toBeVisible();
+  const datos = page.getByRole("region", { name: "Datos" });
+  await expect(datos).toContainText("Cafetal");
+  await expect(datos).toContainText("Almacén");
+  await expect(datos).toContainText("Reacondicionado");
   await expectAccessible(page, "detalle recién creado");
 
-  const stored = await db.execute<{ count: number }>(
-    sql`select count(*)::int as count from products where sku = 'CAF-250'`,
+  const stored = await db.execute<{
+    brand: string;
+    category: string;
+    condition: string;
+  }>(
+    sql`select brand, category, condition from products where sku = 'CAF-250'`,
   );
-  expect(stored.rows[0]!.count).toBe(1);
+  expect(stored.rows).toEqual([
+    { brand: "Cafetal", category: "Almacén", condition: "refurbished" },
+  ]);
 });
 
 test("caso 2: un SKU repetido muestra el mensaje en el campo y no crea nada", async ({
@@ -522,6 +546,14 @@ test("caso 12: el alta se completa solo con teclado", async ({ page }) => {
   await page.keyboard.press("Tab");
   await page.keyboard.type("Producto de teclado");
   await page.keyboard.press("Tab");
+  await expect(page.getByLabel("Marca")).toBeFocused();
+  await page.keyboard.type("Teclados SA");
+  await page.keyboard.press("Tab");
+  await expect(page.getByLabel("Categoría")).toBeFocused();
+  await page.keyboard.type("Periféricos");
+  await page.keyboard.press("Tab");
+  await expect(page.getByLabel("Condición")).toBeFocused();
+  await page.keyboard.press("Tab");
   await page.keyboard.type("Sin descripción");
   await page.keyboard.press("Tab");
   await page.keyboard.type("unidad");
@@ -569,4 +601,59 @@ test("caso 13: en móvil la lista y el historial se ven como tarjetas", async ({
   await expect(movementCards.getByRole("listitem")).toHaveCount(1);
   await expect(movementCards).toContainText("Rotura");
   await expectAccessible(page, "historial en móvil");
+});
+
+// FR-PROD-10 y FR-PROD-11 (brief-11.1, AC-5): la búsqueda por palabras encuentra por marca y por
+// categoría, un viewer ve los campos nuevos sin poder editarlos, y "bajo stock" usa el token de
+// advertencia (O-17) sin violaciones de axe en claro ni en oscuro.
+test("caso 14: FR-PROD-11 busca por marca y categoría; FR-PROD-10 un viewer ve los campos", async ({
+  page,
+}) => {
+  const coffee = await insertProduct("CAF-250", "Café molido 250 g", {
+    balance: "3",
+    brand: "Nescafé",
+    category: "Bebidas",
+  });
+  await insertProduct("YER-500", "Yerba 500 g", {
+    balance: "40",
+    brand: "Playadito",
+    category: "Almacén",
+  });
+  await insertProduct("AZU-1K", "Azúcar 1 kg", {
+    balance: "40",
+    category: "Almacén",
+  });
+
+  await login(page, VIEWER);
+  await page.goto("/productos");
+  const table = productsTable(page);
+  await expect(table).toContainText("Nescafé");
+  await expect(table).toContainText("Bebidas");
+  // "Bajo stock" con el token de advertencia, y la lista sin violaciones (O-17).
+  await expect(table.getByText("Bajo stock")).toBeVisible();
+  await expectAccessible(page, "lista con bajo stock");
+
+  // Por marca, sin acentos y por prefijo.
+  await page.getByLabel("Buscar").fill("nesca");
+  await page.getByRole("button", { name: "Aplicar filtros" }).click();
+  await expect(table.getByRole("row")).toHaveCount(1 + 1);
+  await expect(table).toContainText("Café molido 250 g");
+
+  // Por categoría, sin acentos: los dos de almacén.
+  await page.goto("/productos?q=almacen");
+  await expect(table.getByRole("row")).toHaveCount(1 + 2);
+
+  // Palabras de campos distintos, todas a la vez.
+  await page.goto("/productos?q=almacen+playa");
+  await expect(table.getByRole("row")).toHaveCount(1 + 1);
+  await expect(table).toContainText("Yerba 500 g");
+
+  // El viewer ve marca, categoría y condición en el detalle, sin formulario.
+  await page.goto(`/productos/${coffee}`);
+  const datos = page.getByRole("region", { name: "Datos" });
+  await expect(datos).toContainText("Nescafé");
+  await expect(datos).toContainText("Bebidas");
+  await expect(datos).toContainText("Nuevo");
+  await expect(page.getByLabel("Marca")).toBeHidden();
+  await expectAccessible(page, "detalle con marca y categoría");
 });

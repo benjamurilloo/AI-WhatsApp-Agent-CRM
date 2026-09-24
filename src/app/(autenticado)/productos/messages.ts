@@ -1,4 +1,4 @@
-import type { ProductField } from "@/modules/catalog";
+import type { ProductCondition, ProductField } from "@/modules/catalog";
 import type { ErrorCode } from "@/shared/errors";
 import type {
   StockAdjustmentField,
@@ -43,6 +43,11 @@ export const UNIT_REQUIRED_MESSAGE =
   "Ingresá una unidad de hasta 32 caracteres.";
 export const REORDER_POINT_MESSAGE =
   "Ingresá una cantidad con hasta tres decimales, por ejemplo 10 o 2,5.";
+export const BRAND_TOO_LONG_MESSAGE =
+  "La marca no puede superar los 100 caracteres.";
+export const CATEGORY_TOO_LONG_MESSAGE =
+  "La categoría no puede superar los 100 caracteres.";
+export const CONDITION_REQUIRED_MESSAGE = "Elegí la condición del producto.";
 
 const PRODUCT_FIELD_MESSAGES: Record<ProductField, string> = {
   sku: SKU_REQUIRED_MESSAGE,
@@ -50,11 +55,17 @@ const PRODUCT_FIELD_MESSAGES: Record<ProductField, string> = {
   description: DESCRIPTION_TOO_LONG_MESSAGE,
   unit: UNIT_REQUIRED_MESSAGE,
   reorderPoint: REORDER_POINT_MESSAGE,
+  brand: BRAND_TOO_LONG_MESSAGE,
+  category: CATEGORY_TOO_LONG_MESSAGE,
+  condition: CONDITION_REQUIRED_MESSAGE,
 };
 
 const PRODUCT_FIELD_ORDER: ProductField[] = [
   "sku",
   "name",
+  "brand",
+  "category",
+  "condition",
   "description",
   "unit",
   "reorderPoint",
@@ -77,6 +88,15 @@ export type ProductFormValues = {
   description: string;
   unit: string;
   reorderPoint: string;
+  brand: string;
+  category: string;
+  condition: string;
+};
+
+// Condición comercial (brief-11.1, D-3), como se lee en pantalla.
+export const CONDITION_LABEL: Record<ProductCondition, string> = {
+  new: "Nuevo",
+  refurbished: "Reacondicionado",
 };
 
 export type ProductFormState =

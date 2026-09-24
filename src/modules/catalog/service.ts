@@ -17,12 +17,16 @@ import {
   type Quantity,
 } from "@/shared/quantity";
 import * as repository from "./repository";
+import { productCondition } from "./schema";
 
 // Casos de uso de productos (brief-4.2): FR-PROD-01 a 03, con auditoría en la misma
-// transacción (FR-AUD-01), y el estado de stock de FR-PROD-05.
+// transacción (FR-AUD-01), y el estado de stock de FR-PROD-05. Marca, categoría y condición
+// (FR-PROD-10) y la búsqueda por palabras (FR-PROD-11), brief-11.1.
 
 export type Product = repository.ProductRow;
 export type ProductActivityFilter = repository.ActivityFilter;
+export type ProductCondition = repository.ProductCondition;
+export const PRODUCT_CONDITIONS = productCondition.enumValues;
 
 export type StockStatus = "disponible" | "bajo_stock" | "sin_stock";
 
@@ -44,18 +48,28 @@ export type ProductInput = {
   description?: string | null;
   unit: string;
   reorderPoint: string;
+  // Obligatorios en el tipo, aunque admitan vacío: un llamador que los omitiera por olvido los
+  // borraría al editar (brief-11.1, AC-2). Vacío o solo espacios se guarda como nulo.
+  brand: string | null;
+  category: string | null;
+  condition: string;
 };
 
-// Límites de brief-4.2, D-4. Los textos se recortan antes de validar.
+// Texto opcional recortado: vacío se guarda como nulo.
+function optionalText(max: number) {
+  return z
+    .string()
+    .trim()
+    .max(max)
+    .nullish()
+    .transform((value) => (value ? value : null));
+}
+
+// Límites de brief-4.2, D-4, y de brief-11.1, D-2. Los textos se recortan antes de validar.
 const productInputSchema = z.object({
   sku: z.string().trim().min(1).max(64).regex(/^\S+$/),
   name: z.string().trim().min(1).max(200),
-  description: z
-    .string()
-    .trim()
-    .max(2000)
-    .nullish()
-    .transform((value) => (value ? value : null)),
+  description: optionalText(2000),
   unit: z.string().trim().min(1).max(32),
   reorderPoint: z.string().transform((value, ctx) => {
     const quantity = parseQuantityInput(value);
@@ -65,6 +79,9 @@ const productInputSchema = z.object({
     }
     return quantityToDatabase(quantity);
   }),
+  brand: optionalText(100),
+  category: optionalText(100),
+  condition: z.enum(productCondition.enumValues),
 });
 
 const PRODUCT_FIELDS: ProductField[] = [
@@ -73,6 +90,9 @@ const PRODUCT_FIELDS: ProductField[] = [
   "description",
   "unit",
   "reorderPoint",
+  "brand",
+  "category",
+  "condition",
 ];
 
 export function validateProductInput(
@@ -132,6 +152,21 @@ export async function searchProducts(
     activity: filters.activity,
   });
   return { ok: true, products };
+}
+
+// Marcas y categorías ya usadas en la organización, para el formulario (brief-11.1, D-2).
+export type ProductSuggestions = { brands: string[]; categories: string[] };
+
+export async function listProductSuggestions(
+  context: AuthContext,
+): Promise<({ ok: true } & ProductSuggestions) | Failure<"FORBIDDEN">> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  const [brands, categories] = await Promise.all([
+    repository.findDistinctValues(context.organizationId, "brand"),
+    repository.findDistinctValues(context.organizationId, "category"),
+  ]);
+  return { ok: true, brands, categories };
 }
 
 // Para el ajuste de stock de inventory (brief-4.3.1, D-1): verifica y bloquea el producto dentro

@@ -29,6 +29,9 @@
   --success: #17704a;
   --success-soft: #e3f4ea;
   --on-success-soft: #0f4f34;
+  /* Advertencia, para «bajo stock» (O-17, brief-11.1, D-8): contraste 7,59:1. */
+  --warning-soft: #fdf0d5;
+  --on-warning-soft: #6b4400;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -55,6 +58,8 @@
     --success: #56c98f;
     --success-soft: #10301f;
     --on-success-soft: #aee8c8;
+    --warning-soft: #3a2a0c;
+    --on-warning-soft: #f5cf85;
   }
 }
 
@@ -81,6 +86,9 @@
   --success: #56c98f;
   --success-soft: #10301f;
   --on-success-soft: #aee8c8;
+  /* Advertencia en oscuro: contraste 9,33:1. */
+  --warning-soft: #3a2a0c;
+  --on-warning-soft: #f5cf85;
 }
 
 @theme {
@@ -109,6 +117,8 @@
   --color-success: var(--success);
   --color-success-soft: var(--success-soft);
   --color-on-success-soft: var(--on-success-soft);
+  --color-warning-soft: var(--warning-soft);
+  --color-on-warning-soft: var(--on-warning-soft);
 
   /* Manrope local (D-3), con respaldo del sistema. */
   --font-sans: var(--font-manrope), system-ui, sans-serif;

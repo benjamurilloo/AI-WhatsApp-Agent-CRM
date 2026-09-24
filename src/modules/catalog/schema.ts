@@ -1,9 +1,11 @@
-import { sql, type AnyColumn, type SQL } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import {
   boolean,
   check,
+  customType,
   index,
   numeric,
+  pgEnum,
   pgTable,
   text,
   timestamp,
@@ -13,18 +15,39 @@ import {
 } from "drizzle-orm/pg-core";
 import { organizations } from "@/modules/organizations/schema";
 
-// Normalización de texto para buscar por prefijo sin distinguir mayúsculas ni acentos
-// (brief-9.0.2, D-1 y D-2). `immutable_unaccent` la define la migración 0015.
+// Búsqueda por palabras sueltas sobre nombre, marca y categoría (brief-11.1, D-4), sin distinguir
+// mayúsculas ni acentos. `immutable_unaccent` la define la migración 0015.
 //
-// Vive acá, en una sola función, y la usan **el índice y la consulta**. No es una comodidad: si la
-// expresión del índice y la de la consulta se separan, el índice deja de usarse, la búsqueda pasa
-// a recorrer la tabla y **ningún test falla** — solo se vuelve lenta. Una sola definición hace que
-// esa desincronización sea imposible en vez de dejarla como algo que hay que recordar.
-export function searchNormalized(column: AnyColumn): SQL {
-  return sql`immutable_unaccent(lower(${column}))`;
+// El documento y la consulta pasan por **la misma normalización y el mismo parser** (`simple`):
+// vive acá, en una sola función, y la usan la columna generada y la consulta. Si se separaran,
+// una palabra se partiría distinto en cada lado y la búsqueda dejaría de encontrar sin que falle
+// nada. Por el mismo motivo la consulta no parte el texto en TypeScript: «1.5» es una sola palabra
+// para el parser y serían dos para un `split`.
+function searchVector(text: SQL): SQL {
+  return sql`to_tsvector('simple', immutable_unaccent(lower(${text})))`;
 }
 
-// docs/architecture/DataModel.md, tabla products (brief-4.1).
+const tsvector = customType<{ data: string }>({
+  dataType: () => "tsvector",
+});
+
+// La consulta: cada palabra que el parser saca del texto buscado, como prefijo, unidas con Y. Las
+// palabras se arman como `tsquery` desde el vector, nunca con el texto crudo, así que `&`, `|`,
+// `!`, `:` o una comilla que escriba el usuario no son sintaxis. Sin palabras da NULL, y
+// `search @@ NULL` no encuentra nada.
+export function productSearchQuery(text: string): SQL {
+  return sql`(select string_agg('''' || replace(replace(l.lexeme, '\\', '\\\\'), '''', '''''') || ''':*', ' & ')::tsquery
+    from unnest(${searchVector(sql`${text}`)}) l)`;
+}
+
+// Condición comercial (brief-11.1, D-3). Agregar un valor es un ALTER TYPE aditivo.
+export const productCondition = pgEnum("product_condition", [
+  "new",
+  "refurbished",
+]);
+
+// docs/architecture/DataModel.md, tabla products (brief-4.1; marca, categoría, condición y
+// búsqueda, brief-11.1).
 export const products = pgTable(
   "products",
   {
@@ -41,6 +64,18 @@ export const products = pgTable(
     reorderPoint: numeric("reorder_point", { precision: 14, scale: 3 })
       .notNull()
       .default("0"),
+    // Texto libre y opcional (brief-11.1, D-2): la búsqueda por palabras los cubre sin tablas propias.
+    brand: text("brand"),
+    category: text("category"),
+    condition: productCondition("condition").notNull().default("new"),
+    // La escribe PostgreSQL; ningún insert ni update la envía.
+    search: tsvector("search")
+      .notNull()
+      .generatedAlwaysAs((): SQL =>
+        searchVector(
+          sql`${products.name} || ' ' || coalesce(${products.brand}, '') || ' ' || coalesce(${products.category}, '')`,
+        ),
+      ),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -61,17 +96,21 @@ export const products = pgTable(
       table.organizationId,
       table.id,
     ),
-    // Prefijo de nombre sin distinguir mayúsculas ni acentos: buscar "cafe" encuentra "Café"
-    // (brief-4.2, D-3; brief-9.0.2, D-1 y D-2). La expresión tiene que ser IDÉNTICA a la de la
-    // consulta de `findProducts`, o el índice no se usa y la búsqueda pasa a recorrer la tabla
-    // sin que nada falle. `immutable_unaccent` la define la migración 0015.
-    index("products_organization_name_unaccent_idx").on(
-      table.organizationId,
-      sql`${searchNormalized(table.name)} text_pattern_ops`,
-    ),
+    // Búsqueda por palabras (brief-11.1, D-4). Reemplaza al índice de prefijo de nombre de la
+    // 9.0.2. No lleva organization_id: un GIN no lo combina sin la extensión btree_gin, así que la
+    // organización se filtra después del índice.
+    index("products_search_idx").using("gin", table.search),
     check(
       "products_reorder_point_non_negative",
       sql`${table.reorderPoint} >= 0`,
     ),
   ],
 );
+
+// La condición completa de la búsqueda por palabras, contra la columna generada que tiene el
+// índice GIN. La usan el repositorio y el test con EXPLAIN (brief-11.1, AC-4): si alguien la
+// cambiara para recalcular el vector en lugar de leer la columna, el índice dejaría de usarse
+// sin que la búsqueda devuelva nada distinto, y el test lo ve.
+export function productSearchCondition(text: string): SQL {
+  return sql`${products.search} @@ ${productSearchQuery(text)}`;
+}

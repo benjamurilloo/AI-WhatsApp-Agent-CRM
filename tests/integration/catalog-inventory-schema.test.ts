@@ -146,11 +146,14 @@ describe("products", () => {
       reorder_point: string;
       is_active: boolean;
       description: string | null;
+      brand: string | null;
+      category: string | null;
+      condition: string;
       timestamps_now: boolean;
     }>(
       sql`insert into products (organization_id, sku, name)
           values (${s.orgA}, 'CAF-250', 'Café 250 g')
-          returning id, unit, reorder_point, is_active, description,
+          returning id, unit, reorder_point, is_active, description, brand, category, condition,
             (created_at = now() and updated_at = now()) as timestamps_now`,
     );
     expect(result.rows[0]).toEqual({
@@ -159,8 +162,57 @@ describe("products", () => {
       reorder_point: "0.000",
       is_active: true,
       description: null,
+      // brief-11.1, D-2 y D-3.
+      brand: null,
+      category: null,
+      condition: "new",
       timestamps_now: true,
     });
+  });
+
+  it("rechaza una condición fuera del enum y una condición NULL (brief-11.1, D-3)", async () => {
+    const s = await seed();
+    expect(
+      await codeOf(
+        sql`insert into products (organization_id, sku, name, condition)
+            values (${s.orgA}, 'A', 'A', 'used')`,
+      ),
+    ).toBe("22P02");
+    expect(
+      await codeOf(
+        sql`insert into products (organization_id, sku, name, condition)
+            values (${s.orgA}, 'A', 'A', null)`,
+      ),
+    ).toBe("23502");
+  });
+
+  // La columna de búsqueda la escribe PostgreSQL (brief-11.1, D-4): sigue a nombre, marca y
+  // categoría en el insert y en el update, sin acentos ni mayúsculas, y nadie puede escribirla.
+  it("search es una columna generada que sigue a nombre, marca y categoría", async () => {
+    const s = await seed();
+    const search = async () =>
+      (
+        await getDb().execute<{ search: string }>(
+          sql`select search::text as search from products where sku = 'CAF-250'`,
+        )
+      ).rows[0]!.search;
+
+    await getDb().execute(
+      sql`insert into products (organization_id, sku, name, brand)
+          values (${s.orgA}, 'CAF-250', 'Café Molido', 'Nescafé')`,
+    );
+    expect(await search()).toBe("'cafe':1 'molido':2 'nescafe':3");
+
+    await getDb().execute(
+      sql`update products set category = 'Almacén', brand = null where sku = 'CAF-250'`,
+    );
+    expect(await search()).toBe("'almacen':3 'cafe':1 'molido':2");
+
+    expect(
+      await codeOf(
+        sql`update products set search = to_tsvector('simple', 'otra') where sku = 'CAF-250'`,
+      ),
+    ).toBe("428C9");
   });
 
   it("rechaza columnas obligatorias en NULL", async () => {

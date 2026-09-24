@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { listProductAudit } from "@/modules/catalog";
+import { listProductAudit, listProductSuggestions } from "@/modules/catalog";
 import { getProductStock, listStockMovements } from "@/modules/inventory";
 import { getOrganizationTimezone } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
@@ -21,6 +21,7 @@ import { formatShortDateTime } from "@/app/_format/date-time";
 import { formatQuantity } from "@/shared/quantity";
 import type { SearchParams } from "../filters";
 import {
+  CONDITION_LABEL,
   FORBIDDEN_PAGE_MESSAGE,
   noticeMessage,
   PRODUCT_NOT_FOUND_MESSAGE,
@@ -90,6 +91,8 @@ export default async function ProductPage({
   const audit = isAdmin
     ? await listProductAudit(context, product.id, page(query.auditoria))
     : null;
+  // Las sugerencias de marca y categoría solo hacen falta si se edita (brief-11.1, D-2).
+  const suggestions = editing ? await listProductSuggestions(context) : null;
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-8">
@@ -169,7 +172,11 @@ export default async function ProductPage({
                   description: product.description ?? "",
                   unit: product.unit,
                   reorderPoint: formatQuantity(product.reorderPoint),
+                  brand: product.brand ?? "",
+                  category: product.category ?? "",
+                  condition: product.condition,
                 }}
+                suggestions={suggestions?.ok ? suggestions : undefined}
               />
             </div>
           ) : (
@@ -178,6 +185,16 @@ export default async function ProductPage({
               <dd className="font-mono">{product.sku}</dd>
               <dt className="font-semibold">Nombre</dt>
               <dd>{product.name}</dd>
+              <dt className="font-semibold">Marca</dt>
+              <dd className={product.brand ? undefined : "text-muted"}>
+                {product.brand ?? "—"}
+              </dd>
+              <dt className="font-semibold">Categoría</dt>
+              <dd className={product.category ? undefined : "text-muted"}>
+                {product.category ?? "—"}
+              </dd>
+              <dt className="font-semibold">Condición</dt>
+              <dd>{CONDITION_LABEL[product.condition]}</dd>
               <dt className="font-semibold">Descripción</dt>
               <dd className="text-muted">{product.description ?? "—"}</dd>
               <dt className="font-semibold">Unidad</dt>

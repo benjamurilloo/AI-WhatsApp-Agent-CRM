@@ -16,8 +16,8 @@
 |---|---|---|---|
 | 1 Inicio de sesión | FR-ORG-02 (cambio de contraseña), FR-ORG-03 | `users`, `organization_members` | `users UNIQUE(email)`; `organization_members UNIQUE(user_id)` |
 | 2 Dashboard | FR-MET-01, 02, 03 | `organizations`, `conversations`, `messages`, `clients`, `ingestion_events` | ver vista 4 |
-| 3 Lista de productos | FR-PROD-01, 03, 04, 05 | `products`, `inventories` | `products UNIQUE(organization_id, lower(sku))`; `products (organization_id, lower(name) text_pattern_ops)`; `inventories UNIQUE(product_id)` |
-| 4 Detalle de producto | FR-PROD-01, 02, 03, 05, 09; FR-AUD-02 | `products`, `inventories`, `inventory_movements`, `audit_logs`, `users` | PK de `products`; `inventories UNIQUE(product_id)`; `inventory_movements (organization_id, product_id, created_at desc)`; `audit_logs (organization_id, entity_type, entity_id, created_at desc)` |
+| 3 Lista de productos | FR-PROD-01, 03, 04, 05, 10, 11 | `products`, `inventories` | `products UNIQUE(organization_id, lower(sku))`; `products_search_idx`, GIN sobre la columna generada `search` (desde la 11.1; reemplaza al de `lower(name) text_pattern_ops`, que después fue `immutable_unaccent(lower(name))` en la 9.0.2); `inventories UNIQUE(product_id)` |
+| 4 Detalle de producto | FR-PROD-01, 02, 03, 05, 09, 10; FR-AUD-02 | `products`, `inventories`, `inventory_movements`, `audit_logs`, `users` | PK de `products`; `inventories UNIQUE(product_id)`; `inventory_movements (organization_id, product_id, created_at desc)`; `audit_logs (organization_id, entity_type, entity_id, created_at desc)` |
 | 5 Ajuste e historial | FR-PROD-06, 07, 08, 09 | `inventories`, `inventory_movements`, `products`, `users` | `inventories UNIQUE(product_id)` (bloqueo de fila del ajuste); `inventory_movements (organization_id, product_id, created_at desc)` |
 | 6 Lista de clientes | FR-CLI-01, 03, 05, 06 | `clients`, `conversations` | `clients UNIQUE(organization_id, phone_e164) WHERE phone_e164 IS NOT NULL`; `clients (organization_id, display_name text_pattern_ops)`; `conversations (organization_id, client_id, last_message_at desc)` |
 | 7 Detalle de cliente | FR-CLI-01, 02, 04, 05, 06, 07; FR-AUD-02 | `clients`, `conversations`, `messages`, `audit_logs`, `users` | PK de `clients`; `conversations (organization_id, client_id, last_message_at desc)`; `messages (conversation_id, sent_at)`; `audit_logs (organization_id, entity_type, entity_id, created_at desc)` |
@@ -45,6 +45,8 @@ Cada FR tiene al menos una pantalla, endpoint o invariante con test que lo satis
 | FR-PROD-07 | Sin vía de escritura directa; test de que `balance_after` coincide con el saldo | invariante con test |
 | FR-PROD-08 | Pantalla 5; test de rechazo sin movimiento ([ADR 0008](../decisions/0008-stock-nunca-negativo.md)) | pantalla e invariante |
 | FR-PROD-09 | Pantallas 4 y 5, implementadas en la 4.4; historial paginado con filtros de tipo y período, ordenado por la hora del `INSERT` (brief-4.3.3, D-1) | pantalla e invariante con test |
+| FR-PROD-10 | Formulario de las pantallas 3 y 4, y detalle de la pantalla 4 (11.1); `catalog.test.ts` y `products.spec.ts` casos 1 y 14 | pantalla con test |
+| FR-PROD-11 | Buscador de la pantalla 3 (11.1); `catalog.test.ts`, con el caso de `EXPLAIN` sobre `products_search_idx`, y `products.spec.ts` caso 14 | pantalla e invariante con test |
 | FR-CLI-01 | Pantalla 6 (acción crear) y formulario de la pantalla 7 en modo alta | pantalla |
 | FR-CLI-02 | Pantalla 7 | pantalla |
 | FR-CLI-03 | Pantalla 6 | pantalla |

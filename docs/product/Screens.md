@@ -51,22 +51,22 @@
 
 - **Objetivo**: encontrar productos y ver su situación de stock.
 - **Usuario autorizado**: `admin` y `viewer`.
-- **Información mostrada**: SKU, nombre, stock disponible, unidad, estado de stock (disponible, bajo stock, sin stock) y si está activo.
+- **Información mostrada**: SKU, nombre, marca, categoría, stock disponible, unidad, estado de stock (disponible, bajo stock, sin stock) y si está activo. Marca y categoría desde la 11.1.
 - **Acciones**: buscar y abrir el detalle. Solo `admin` puede crear producto.
-- **Filtros**: texto (nombre o SKU), estado de stock y activos/inactivos (por defecto, solo activos).
+- **Filtros**: texto, estado de stock y activos/inactivos (por defecto, solo activos). Desde la 11.1 el texto busca por palabras sueltas sobre nombre, marca y categoría, o por SKU exacto (FR-PROD-11); antes era prefijo de nombre o SKU.
 - **Paginación**: 25 por página, ordenado por nombre.
 - **Carga**: skeleton de la tabla.
 - **Vacío**: distingue "no hay productos" de "sin resultados".
 - **Errores**: generales.
-- **Responsive**: tarjetas en móvil con nombre, stock y estado.
-- **Accesibilidad**: el estado se muestra con texto e ícono además del color.
+- **Responsive**: tarjetas en móvil con nombre, marca y categoría, stock y estado.
+- **Accesibilidad**: el estado se muestra con texto e ícono además del color. «Bajo stock» usa el token de advertencia desde la 11.1 (O-17).
 - **No mostrar**: nada sensible específico.
 
 ## 4. Detalle y edición de producto
 
 - **Objetivo**: consultar y mantener los datos de un producto.
 - **Usuario autorizado**: lectura para `admin` y `viewer`; edición y desactivación solo para `admin`.
-- **Información mostrada**: datos del producto, stock actual, estado, punto de reposición y los últimos movimientos (enlace a la pantalla 5). El historial de auditoría solo lo ve `admin`.
+- **Información mostrada**: datos del producto —con marca, categoría y condición desde la 11.1—, stock actual, estado, punto de reposición y los últimos movimientos (enlace a la pantalla 5). El historial de auditoría solo lo ve `admin`. El formulario sugiere las marcas y categorías que ya existen en la organización.
 - **Acciones**: editar, y desactivar o reactivar con confirmación explícita.
 - **Filtros**: no aplican.
 - **Paginación**: el historial de auditoría pagina de a 25.

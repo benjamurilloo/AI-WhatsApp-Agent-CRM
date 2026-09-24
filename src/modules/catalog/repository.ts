@@ -1,10 +1,12 @@
-import { and, eq, or, sql, type SQL } from "drizzle-orm";
+import { and, eq, isNotNull, or, sql, type SQL } from "drizzle-orm";
 import { getDb, type Db, type DbTransaction } from "@/shared/db";
-import { products, searchNormalized } from "./schema";
+import { productCondition, products, productSearchCondition } from "./schema";
 
 // Acceso a products. Toda consulta filtra por organization_id en SQL (brief-4.2).
 
 type Executor = Db | DbTransaction;
+
+export type ProductCondition = (typeof productCondition.enumValues)[number];
 
 export type ProductRow = {
   id: string;
@@ -13,6 +15,9 @@ export type ProductRow = {
   description: string | null;
   unit: string;
   reorderPoint: string;
+  brand: string | null;
+  category: string | null;
+  condition: ProductCondition;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -25,6 +30,9 @@ export type ProductValues = {
   description: string | null;
   unit: string;
   reorderPoint: string;
+  brand: string | null;
+  category: string | null;
+  condition: ProductCondition;
 };
 
 const productColumns = {
@@ -34,6 +42,9 @@ const productColumns = {
   description: products.description,
   unit: products.unit,
   reorderPoint: products.reorderPoint,
+  brand: products.brand,
+  category: products.category,
+  condition: products.condition,
   isActive: products.isActive,
   createdAt: products.createdAt,
   updatedAt: products.updatedAt,
@@ -89,18 +100,12 @@ export async function lockProductShared(
 
 export type ActivityFilter = "active" | "inactive" | "all";
 
-// % y _ del texto buscado se escapan: LIKE los trata como literales.
-function likePrefix(text: string): string {
-  return `${text.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-}
-
-// Prefijo de nombre o SKU exacto, sin distinguir mayúsculas ni acentos (brief-4.2, D-3;
-// brief-9.0.2). Sin límite: el estado de stock se filtra y la lista se pagina en memoria (D-1).
+// Palabras sueltas sobre nombre, marca y categoría, o SKU exacto, sin distinguir mayúsculas ni
+// acentos (brief-11.1, D-4; FR-PROD-11). Sin límite: el estado de stock se filtra y la lista se
+// pagina en memoria (brief-4.2, D-1).
 //
-// La expresión del nombre sale de `searchNormalized`, la misma función que define el índice
-// `products_organization_name_unaccent_idx`. No están escritas dos veces a propósito: si se
-// separaran, el índice dejaría de usarse y la búsqueda recorrería la tabla **sin que ningún test
-// falle**, solo más lento. Un test con EXPLAIN comprueba que el índice se usa (brief-9.0.2, AC-4).
+// La consulta sale de `productSearchQuery`, que normaliza y parte el texto igual que la columna
+// generada `search`. Un test con EXPLAIN comprueba que usa el índice GIN (brief-11.1, AC-4).
 //
 // El SKU no se normaliza: es igualdad exacta sobre un código, con un índice único que define la
 // identidad del producto. Tocarlo cambiaría qué SKUs colisionan (brief-9.0.2, hallazgo 6).
@@ -115,7 +120,7 @@ export function findProducts(
   if (filters.text !== "") {
     conditions.push(
       or(
-        sql`${searchNormalized(products.name)} like immutable_unaccent(lower(${likePrefix(filters.text)}))`,
+        productSearchCondition(filters.text),
         sql`lower(${products.sku}) = lower(${filters.text})`,
       )!,
     );
@@ -124,6 +129,25 @@ export function findProducts(
     .select(productColumns)
     .from(products)
     .where(and(...conditions));
+}
+
+// Valores distintos de marca y categoría que ya existen en la organización, para sugerirlos en el
+// formulario (brief-11.1, D-2): reducen las variantes de escritura de un texto libre. Con tope,
+// porque es una ayuda y no un listado.
+export const SUGGESTIONS_LIMIT = 200;
+
+export async function findDistinctValues(
+  organizationId: string,
+  column: "brand" | "category",
+): Promise<string[]> {
+  const target = column === "brand" ? products.brand : products.category;
+  const rows = await getDb()
+    .selectDistinct({ value: target })
+    .from(products)
+    .where(and(eq(products.organizationId, organizationId), isNotNull(target)))
+    .orderBy(target)
+    .limit(SUGGESTIONS_LIMIT);
+  return rows.map((row) => row.value!);
 }
 
 // drizzle-orm envuelve el error de pg; el código y la constraint quedan en la causa.
