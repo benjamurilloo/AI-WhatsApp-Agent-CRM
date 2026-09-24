@@ -30,6 +30,16 @@ Claude Code conduce el ciclo: prepara briefs, implementa, verifica, revisa, actu
 
 Un subagente revisor **no otorga ninguna autorización**: informa hallazgos, que se verifican contra el código antes de aceptarse. Ni sus hallazgos ni sus recomendaciones sustituyen la aprobación del usuario.
 
+## Convenciones de Notion
+
+Cada fase es un proyecto, subproyecto del proyecto raíz «AI WhatsApp Agent CRM», con su tarea espejo en el proyecto raíz. Cada subfase `X.Y` es una tarea dentro del proyecto de su fase. Al crear cualquiera de ellos:
+
+- **Un proyecto de fase se crea siempre con la plantilla nativa** «Nuevo Proyecto»: el `default_page_template` del data source de Proyectos, pasado como `template_id`. Crearlo solo con propiedades deja la página en blanco, sin las bases inline de Tareas, Notas, Reuniones y Referencias. Si ya ocurrió y el cuerpo está vacío, se corrige con `apply_template` sobre la misma página.
+- **Toda tarea pendiente va en «Esperando»**, nunca en «Sin fecha» ni en «Bandeja de Entrada», que las vistas de la plantilla no muestran. La subfase en curso va en «En proceso» y la cerrada, en «Completado».
+- Después de crear, se relee la página y se verifica: proyecto padre, las cuatro bases inline, tarea espejo y estado de cada tarea.
+
+El detalle está en `10 Methodologies/Vixora AI Development Workflow.md` del vault, §«Plantilla, iconos y verificación». Estas reglas se agregaron el 2026-09-24, cuando el proyecto de la Fase 11 se creó sin plantilla y con sus subfases en «Sin fecha».
+
 ## Uso de skills
 
 Al invocar una skill, nombrarla explícitamente y decir en una línea por qué aplica a
