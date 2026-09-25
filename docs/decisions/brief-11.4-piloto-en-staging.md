@@ -500,4 +500,31 @@ Cada una se aplicó, se corrió, se registró y se restauró.
 
   Cada spec pasó en al menos una corrida, pero **no en la misma**. La corrida completa limpia es la de CI.
 - `format:check`, `lint` y `typecheck`, limpios.
+- **CI de `f241f62`** (run `36090109504`, leído por `headSha` y `conclusion`): **`success`**. Vitest **296 + 384 + 490 = 1170** en **13 + 46 + 31 = 90** archivos, igual que en local, y el end-to-end completo **97 de 97 en 3,3 min**. Es la corrida completa limpia que en local no se obtuvo. **AC-4 cumplido.**
 - **Nivel**: validado localmente (`deterministic`). Nada de esta etapa se desplegó.
+
+## Resultados — etapa 11.4.2, 2026-09-25 (autoevaluación)
+
+La salida cruda de cada paso está en [evidencia-11.4-piloto.md](evidencia-11.4-piloto.md), §Etapa 11.4.2. Se ejecutó entre las 13:11 y las 13:22 UTC, después de leer el CI de `f241f62` en `success`.
+
+- **AC-5** — cumplido: `C.UTF-8` y `lower('ÁÉÑ')` → `áéñ`.
+- **AC-6** — cumplido:
+  - backup `crm_staging-20260925T131120Z.dump`, de 55 997 bytes;
+  - `Migraciones aplicadas.`, con `__drizzle_migrations` de 16 a 21;
+  - HEAD `f241f62` en el servidor.
+- **AC-7** — cumplido:
+  - los nueve archivos sin diferencias;
+  - un solo salto de proxy, con su control desde otra IP;
+  - HSTS solo sobre HTTPS;
+  - la aplicación solo en `127.0.0.1:3000`;
+  - `permission denied` para el rol de la aplicación.
+- **AC-8** — cumplido: 13 pantallas con el `admin` del piloto, **0 problemas**, y el control negativo detectó cada clase.
+- **AC-9** — cumplido:
+  - `probar-api-lectura.ts`, 0 fallas;
+  - 12 pedidos y 12 líneas de log, sin el token, sin `q` y sin ids buscados;
+  - al terminar, `404`, `app.env` igual byte a byte al previo, y la credencial `38bf78e9-…` revocada.
+- **Seed del piloto**, con el rol de la aplicación: los recuentos de D-2 en la base, iguales tras una segunda corrida, y la organización de ejemplo intacta.
+
+**Lo que la ejecución encontró que el brief no decía**: el procedimiento del README no corre tal como está escrito (**E-1**). `. /etc/crm-staging/migrate.env` da `Permission denied` al usuario del ssh, porque los archivos son `0600` de `root`. Ese primer intento no llegó a la base, así que no fue un fallo de migración ni la condición de detención de D-10. Se corrió con `sudo bash -c "… exec sudo -u benja --preserve-env=<variables> npm run …"`. La corrección del README no está en la lista de archivos de esta etapa. Va al triage con E-2 a E-4.
+
+**Nivel**: validado en staging (`isolated-runtime`). La 11.4.2 terminó **sin bloqueantes**, así que la ventana de la 11.4.3 puede abrir (§Etapa 11.4.3, paso 1).
