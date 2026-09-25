@@ -2,6 +2,36 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-25 — 12.1 cerrada: actor de servicio y cliente por teléfono
+
+Primera subfase de la Fase 12 ([brief-12.1](docs/decisions/brief-12.1-actor-de-servicio-y-cliente-por-telefono.md)). Tuvo dos etapas:
+
+- **12.1.1, actor de servicio y E-1**, en `273d277`: corrida 36174142257, `success`.
+- **12.1.2, `client.resolved`**, en `51843dc`: corrida 36180602360, `success`. 1209 tests en Vitest y 98 end-to-end.
+
+Llevó revisión independiente (D-13): 12 hallazgos, 2 mayores, todos verificados y resueltos o registrados.
+
+**Certifica:**
+
+- **El actor de servicio en la auditoría** (FR-AUD-03). Cada fila de `audit_logs` tiene exactamente un actor, un usuario o una credencial de servicio, con un `CHECK` y una clave foránea compuesta por organización (migraciones `0021` y `0022`). `audit_logs` sigue siendo de solo inserción. El detalle de cliente, producto e información muestra «Servicio · &lt;source&gt;», compuesto en la página sin `JOIN` entre módulos.
+- **El cliente por teléfono** (FR-API-04), con el evento `client.resolved` del contrato de ingestión v1, en el mismo endpoint y sin una tercera superficie (M-5).
+  - Si el teléfono es de un cliente, activo o no, lo devuelve sin escribir ni reactivar ni renombrar.
+  - Si no, lo crea con el nombre del evento o «Sin nombre», auditado con la credencial como actor.
+  - Un reenvío nunca crea. Dos resoluciones simultáneas dejan un cliente y una fila de auditoría, probado con el bloqueo retenido desde una tercera conexión.
+  - La respuesta no lleva el teléfono, y el log tampoco lleva el nombre.
+- **`message.recorded` sin cambios**: el mismo vector de `payload_hash` y sus tests sin tocar.
+- **La métrica 12 excluye `client.resolved`** (R-2): ese evento no es un mensaje y bajaba la tasa de errores.
+- **E-1**: `deploy/staging/README.md` corregido con la forma que funcionó en la 11.4.
+
+**Nivel**: validado localmente y en CI (`deterministic`, requests sintéticos); la pantalla 7 con el autor de servicio, `producer-consumer`.
+
+**No certifica:**
+
+- **Compatibilidad con un emisor real**: los fixtures tienen forma asumida. Es la 12.3.
+- **Nada en staging**: la 12.1 no desplegó (D-2). El README de E-1 se ejecuta por primera vez en el próximo despliegue.
+- **Que un emisor no mande el teléfono como nombre** (R-6): limitación escrita, a revisar en la 12.3.
+- **Los 4 fixtures nuevos con identificador de requisito** (R-3): el `it.each` compartido los nombra por archivo.
+
 ## 2026-09-25 — Fase 11 cerrada (Lo que el agente necesita leer)
 
 Cierra con el gate de salida cumplido como está escrito: **piloto sin bloqueantes y contrato de lectura publicado con su validador en verde** ([Roadmap](docs/planning/Roadmap.md), §Fase 11). El cierre lo confirmó el usuario el 2026-09-25.

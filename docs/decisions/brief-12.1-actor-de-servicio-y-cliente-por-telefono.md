@@ -353,3 +353,20 @@ Lo que el revisor dejó anotado sobre HANDOFF (la API que «todavía no existe»
 **Mutaciones de la etapa**: M1 a M4, las cuatro detectadas y restauradas.
 
 **Nivel**: validado localmente (`deterministic`). Falta la CI del commit.
+
+**CI de la etapa 12.1.2**: commit `51843dc`, run 36180602360, `success` en el intento 1. Queda **validada localmente y en CI**.
+
+## Cierre de la subfase 12.1, 2026-09-25
+
+1. **Confirmación**: el usuario confirmó el cierre el 2026-09-25 («Si»), sobre la propuesta de cierre presentada en el mismo turno.
+2. **Criterios**: AC-1 a AC-14 cumplidos. Tienen salvedades escritas AC-5 (el `revoke` no está literal en la evidencia de la 11.4), AC-8 (el tipo del ayudante `parsed`) y AC-14 (los 4 fixtures sin identificador de requisito, R-3).
+3. **Nivel**:
+   - el actor de servicio y `client.resolved`: **validados localmente y en CI** (`deterministic`, requests sintéticos);
+   - la pantalla 7 con el autor de servicio: `producer-consumer`.
+
+   **No** se certifica compatibilidad con ningún emisor real ni nada en staging: la 12.1 no desplegó (D-2).
+4. **Revisión independiente**: hecha (D-13). 12 hallazgos, todos verificados y resueltos o registrados, con las decisiones del usuario sobre R-2, R-6, R-7 y R-8.
+5. **Lo que queda abierto**:
+   - **E-1**: el README de staging está corregido, pero su primera corrida real es el próximo despliegue. Hasta entonces, AC-5 es una comparación con la evidencia, no una ejecución.
+   - **R-6**: un emisor puede mandar el teléfono como `display_name`. A la 12.3, con capturas reales.
+   - **La intermitencia de guardas** de la 12.1.1, sin identificar.
