@@ -594,8 +594,10 @@ export async function recordIngestedMessage(
   return { ok: true, conversationCreated: createdId !== undefined };
 }
 
-// Ventana de vigencia (brief-12.2, D-3): 24 horas desde el último mensaje, medidas contra el
-// sent_at del mensaje nuevo y no contra la recepción. Una closed nunca es vigente.
+// Ventana de vigencia (brief-12.2, D-3): 24 horas a cada lado del sent_at del mensaje nuevo, no de
+// la recepción. Hacia atrás, desde el último mensaje de la conversación; hacia adelante, hasta su
+// inicio, para que un mensaje tardío no caiga en una conversación posterior (revisión
+// independiente, R-2, decisión del usuario). Una closed nunca es vigente.
 export const CURRENT_CONVERSATION_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export type IngestedInboundMessage = {
@@ -643,7 +645,9 @@ export async function resolveIngestedConversation(
     organizationId,
     clientId,
     channel,
+    sentAt: message.sentAt,
     since: new Date(message.sentAt.getTime() - CURRENT_CONVERSATION_WINDOW_MS),
+    until: new Date(message.sentAt.getTime() + CURRENT_CONVERSATION_WINDOW_MS),
   });
   const conversationId =
     current?.id ??
@@ -686,6 +690,86 @@ export async function resolveIngestedConversation(
       : { externalRef: input.proposedExternalRef, status: "open" },
     created: !current,
   };
+}
+
+export type EscalateIngestedConversationResult =
+  | { ok: true; conversation: ResolvedConversation }
+  | Failure<
+      "BUSINESS_RULE_VIOLATION",
+      { rule: "conversation_not_found" | "conversation_closed" }
+    >;
+
+// Proyección de conversation.escalated (brief-12.2, D-4 y D-6): derivar a una persona es pasar a
+// pending, auditado con la credencial como actor (FR-AUD-03). Ya pending no escribe ni audita;
+// una closed no se reabre por servicio. La transacción la abre ingestion.
+export async function escalateIngestedConversation(
+  tx: DbTransaction,
+  input: {
+    organizationId: string;
+    credentialId: string;
+    channel: ConversationChannel;
+    externalRef: string;
+  },
+): Promise<EscalateIngestedConversationResult> {
+  const current = await repository.findConversationByExternalRef(
+    tx,
+    {
+      organizationId: input.organizationId,
+      channel: input.channel,
+      externalRef: input.externalRef,
+    },
+    { forUpdate: true },
+  );
+  if (!current) {
+    return {
+      ok: false,
+      code: "BUSINESS_RULE_VIOLATION",
+      rule: "conversation_not_found",
+    };
+  }
+  if (current.status === "closed") {
+    return {
+      ok: false,
+      code: "BUSINESS_RULE_VIOLATION",
+      rule: "conversation_closed",
+    };
+  }
+  if (current.status === "open") {
+    await repository.updateConversationStatus(
+      tx,
+      input.organizationId,
+      current.id,
+      "pending",
+    );
+    await recordAudit(tx, {
+      organizationId: input.organizationId,
+      actorCredentialId: input.credentialId,
+      entityType: "conversation",
+      entityId: current.id,
+      action: "status_change",
+      diff: { before: { status: "open" }, after: { status: "pending" } },
+    });
+  }
+  return {
+    ok: true,
+    conversation: { externalRef: current.externalRef, status: "pending" },
+  };
+}
+
+// Reenvío de conversation.escalated: el estado actual de la conversación, sin escribir. null si ya
+// no existe con esa referencia.
+export async function findEscalatedConversation(
+  tx: DbTransaction,
+  input: {
+    organizationId: string;
+    channel: ConversationChannel;
+    externalRef: string;
+  },
+): Promise<ResolvedConversation | null> {
+  const found = await repository.findConversationByExternalRef(tx, input);
+  return found
+    ? { externalRef: found.externalRef, status: found.status }
+    : null;
 }
 
 // Reenvío de conversation.resolved (D-5): la conversación del cliente que contiene el mensaje,

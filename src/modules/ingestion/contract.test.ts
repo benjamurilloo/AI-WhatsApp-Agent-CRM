@@ -533,3 +533,92 @@ describe("conversation.resolved", () => {
     );
   });
 });
+
+describe("conversation.escalated", () => {
+  function escalatedPayload() {
+    return {
+      contract_version: "1",
+      event_type: "conversation.escalated",
+      event_id: "evt-escalada-0001",
+      occurred_at: "2026-09-16T11:59:58-03:00",
+      conversation: {
+        external_ref: "conv-propuesta-0001",
+        channel: "whatsapp",
+      },
+    } as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  }
+
+  // Serialización canónica escrita a mano y su SHA-256, calculado sobre este texto y no con
+  // canonicalJson.
+  const ESCALATED_VECTOR_CANONICAL =
+    '{"contract_version":"1","conversation":{"channel":"whatsapp","external_ref":"conv-propuesta-0001"},"event_id":"evt-escalada-0001","event_type":"conversation.escalated","occurred_at":"2026-09-16T14:59:58.000Z"}';
+  const ESCALATED_VECTOR_HASH =
+    "6dca33410e379557ccac17e0be61716110ba4d09ce2ea62de77be787b51f5eea";
+
+  it("FR-API-06: normaliza occurred_at y coincide con el vector del contrato", () => {
+    const result = parse(escalatedPayload());
+    if (!result.ok) throw new Error(result.fields.join(", "));
+    expect(result.event).toEqual({
+      ...escalatedPayload(),
+      occurred_at: "2026-09-16T14:59:58.000Z",
+    });
+    expect(canonicalJson(result.event)).toBe(ESCALATED_VECTOR_CANONICAL);
+    expect(ingestionPayloadHash(result.event)).toBe(ESCALATED_VECTOR_HASH);
+    expect(
+      createHash("sha256").update(ESCALATED_VECTOR_CANONICAL).digest("hex"),
+    ).toBe(ESCALATED_VECTOR_HASH);
+  });
+
+  it("FR-API-06: no lleva estado destino, teléfono ni mensaje: el servicio solo deriva", () => {
+    for (const [field, value] of [
+      ["status", "closed"],
+      ["client_phone", "+5491155550001"],
+    ] as const) {
+      const extra = escalatedPayload();
+      extra.conversation[field] = value;
+      expect(fieldsOf(extra), field).toEqual(["conversation"]);
+    }
+    const withMessage = escalatedPayload();
+    withMessage.message = { external_ref: "msg-0001" };
+    expect(fieldsOf(withMessage)).toEqual(["event"]);
+  });
+
+  it("FR-API-06: la referencia es obligatoria y opaca, y el canal es whatsapp", () => {
+    for (const bad of [null, "", " conv", "conv\n1", "c".repeat(201)]) {
+      const value = escalatedPayload();
+      value.conversation.external_ref = bad;
+      expect(fieldsOf(value), JSON.stringify(bad)).toEqual([
+        "conversation.external_ref",
+      ]);
+    }
+    const channel = escalatedPayload();
+    channel.conversation.channel = "sms";
+    expect(fieldsOf(channel)).toEqual(["conversation.channel"]);
+  });
+
+  it("FR-API-06: rechaza occurred_at más de 5 minutos en el futuro", () => {
+    const value = escalatedPayload();
+    value.occurred_at = "2026-09-16T15:05:00.001Z";
+    expect(fieldsOf(value)).toEqual(["occurred_at"]);
+    value.occurred_at = "2026-09-16T15:05:00.000Z";
+    expect(parse(value).ok).toBe(true);
+  });
+
+  it("FR-API-06: el hash cambia con cada campo", () => {
+    const changes: ((value: ReturnType<typeof escalatedPayload>) => void)[] = [
+      (v) => (v.event_id = "evt-escalada-0002"),
+      (v) => (v.occurred_at = "2026-09-16T11:59:59-03:00"),
+      (v) => (v.conversation.external_ref = "conv-propuesta-0002"),
+    ];
+    const hashes = changes.map((change) => {
+      const value = escalatedPayload();
+      change(value);
+      const result = parse(value);
+      if (!result.ok) throw new Error(result.fields.join(", "));
+      return ingestionPayloadHash(result.event);
+    });
+    expect(new Set([ESCALATED_VECTOR_HASH, ...hashes]).size).toBe(
+      changes.length + 1,
+    );
+  });
+});

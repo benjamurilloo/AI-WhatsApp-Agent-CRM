@@ -3,7 +3,10 @@
 export {
   changeConversationStatus,
   CURRENT_CONVERSATION_WINDOW_MS,
+  escalateIngestedConversation,
+  findEscalatedConversation,
   findIngestedConversation,
+  type EscalateIngestedConversationResult,
   resolveIngestedConversation,
   type IngestedInboundMessage,
   type ResolveIngestedConversationResult,

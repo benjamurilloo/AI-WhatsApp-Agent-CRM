@@ -64,7 +64,7 @@ Cada FR tiene al menos una pantalla, endpoint o invariante con test que lo satis
 | FR-CLI-07 | `UNIQUE(organization_id, phone_e164)`; test de unicidad | invariante con test |
 | FR-CONV-01 | Pantalla 8, implementada en la 6.4; `conversations.spec.ts` verifica que ni el HTML ni las respuestas de RSC traen cuerpos | pantalla e invariante con test |
 | FR-CONV-02 | Pantalla 9, implementada en la 6.4; el cuerpo escapado se verifica en `conversations.spec.ts` | pantalla e invariante con test |
-| FR-CONV-03 | Pantalla 8 (filtro) y pantalla 9 (cambio, auditado), implementadas en la 6.4 | pantalla |
+| FR-CONV-03 | Pantalla 8 (filtro) y pantalla 9 (cambio, auditado), implementadas en la 6.4. Desde la 12.2, la derivación por servicio a `pending` (FR-API-06), auditada con la credencial | pantalla |
 | FR-CONV-04 | [Contrato v1](../contracts/ingestion-v1.md) y su validación con `payload_hash` (6.5.1, `contract.test.ts`); registro idempotente y proyección con `ingestion.test.ts` (6.5.2); endpoint con credencial y límite de tasa con `ingestion-http.test.ts` e `ingestion.spec.ts` (6.5.3) | contrato, caso de uso y endpoint |
 | FR-CONV-05 | Configuración sin orígenes reales; fixtures con forma asumida marcada y verificada por test (6.5.1); endpoint apagado por defecto con allowlist de credenciales y búsqueda sin orígenes reales (6.5.3); verificación en el gate de la Fase 6. **Enmendado el 2026-09-23 ([ADR 0014](../decisions/0014-el-agente-de-whatsapp-como-consumidor-del-crm.md))**: invariante **del MVP**, cumplido en la evaluación 10.1. En las fases de integración lo reemplaza el gate de la fase que conecte un emisor real, detrás del modo de prueba | invariante del MVP |
 | FR-API-01 | Sin pantalla: [contrato de lectura v1](../contracts/read-v1.md), rutas `/api/read/v1/products` y `/products/{product_id}` (11.3.1); `read-api.test.ts` casos 1 a 6, con toda respuesta validada contra el esquema estricto | contrato y endpoint |
@@ -72,12 +72,13 @@ Cada FR tiene al menos una pantalla, endpoint o invariante con test que lo satis
 | FR-API-03 | Sin pantalla: el borde de la API de lectura (11.3.1); `read-api.test.ts` casos 7 a 14 y 19, `ingestion-http.test.ts` caso 14 (una credencial de lectura no escribe) y `read-api.spec.ts` (cabeceras y apagada por defecto) | endpoint e invariante con test |
 | FR-API-04 | Sin pantalla: el evento `client.resolved` del contrato de ingestión v1 (12.1.2); `client-resolution.test.ts`, `ingestion-http.test.ts` casos 15 a 18 y `contract.test.ts` | endpoint e invariante con test |
 | FR-API-05 | Sin pantalla: el evento `conversation.resolved` del contrato de ingestión v1 (12.2.1); `conversation-resolution.test.ts`, `ingestion-http.test.ts` casos 19 a 22, `contract.test.ts` y `analytics-ingestion.test.ts` (métrica 12) | endpoint e invariante con test |
+| FR-API-06 | Sin pantalla: el evento `conversation.escalated` del contrato de ingestión v1 (12.2.2); la derivación se ve en el estado de las pantallas 8 y 9; `conversation-escalation.test.ts`, `ingestion-http.test.ts` casos 23 a 25, `contract.test.ts` y `analytics-ingestion.test.ts` (métrica 12) | endpoint e invariante con test |
 | FR-MET-01 | Pantalla 2, implementada en la 7.4: las doce tarjetas del catálogo | pantalla |
 | FR-MET-02 | Pantalla 2 (período en la URL y zona horaria de la organización en el encabezado) | pantalla |
 | FR-MET-03 | Pantalla 2 sin valores editables; cálculo por consulta en cada carga ([ADR 0005](../decisions/0005-metricas-desde-datos-transaccionales.md)) | pantalla e invariante |
 | FR-AUD-01 | Escritura de `audit_logs` en la misma transacción que cada cambio (pantallas 4, 5, 5b, 7, 9, 10 y 12) | invariante |
 | FR-AUD-02 | Pantalla 4, implementada en la 4.4: `catalog` autoriza y compone, `audit` consulta ediciones y ajustes en una sola lista paginada (brief-4.4, D-1). Pantalla 7: Fase 5 | pantalla e invariante con test |
-| FR-AUD-03 | `audit_logs` con exactamente un actor y la credencial por clave foránea compuesta (12.1.1); `audit.test.ts` bloque «actor de servicio», `crm.test.ts`, `actor.test.ts` y `clients.spec.ts` caso 16 (el autor «Servicio · emisor» en la pantalla 7) | pantalla e invariante con test |
+| FR-AUD-03 | `audit_logs` con exactamente un actor y la credencial por clave foránea compuesta (12.1.1); `audit.test.ts` bloque «actor de servicio», `crm.test.ts`, `actor.test.ts` y `clients.spec.ts` caso 16 (el autor «Servicio · emisor» en la pantalla 7); desde la 12.2, `conversation-escalation.test.ts` (la derivación auditada con la credencial) | pantalla e invariante con test |
 
 ## 3. Por índice
 
@@ -97,7 +98,7 @@ Cada índice tiene al menos una consulta real que lo usa.
 | `inventory_movements` | `(organization_id, product_id, created_at desc)` | historial del producto, del más reciente al más antiguo | pantallas 4 y 5 |
 | `conversations` | `UNIQUE(organization_id, channel, external_ref) WHERE external_ref IS NOT NULL` | idempotencia de ingestión (segunda defensa) | endpoint de ingestión |
 | `conversations` | `(organization_id, last_message_at desc)` | lista filtrada por período y ordenada por último mensaje | pantalla 8 |
-| `conversations` | `(organization_id, client_id, last_message_at desc)` | última interacción por cliente; conversaciones de un cliente | pantallas 6 y 7 |
+| `conversations` | `(organization_id, client_id, last_message_at desc)` | última interacción por cliente; conversaciones de un cliente; desde la 12.2, la búsqueda de la conversación vigente filtra por sus columnas (plan no medido) | pantallas 6 y 7 |
 | `conversations` | `(organization_id, started_at)` | conversaciones iniciadas en el intervalo | métricas 1 y 10 |
 | `messages` | `UNIQUE(organization_id, conversation_id, external_ref) WHERE external_ref IS NOT NULL` | idempotencia de ingestión (segunda defensa) | endpoint de ingestión |
 | `messages` | `(conversation_id, sent_at)` | timeline; conteo por conversación; primer mensaje de la conversación | pantallas 7, 8 y 9; métrica 9 |

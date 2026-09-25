@@ -736,7 +736,7 @@ describe("endpoint de ingestión", { timeout: TEST_TIMEOUT }, () => {
         source: "emisor-a",
         external_ref: inbound.event_id,
         status: "failed",
-        error_code: "BUSINESS_RULE_VIOLATION",
+        error_code: "client_not_found",
       },
     ]);
     expect(await counts()).toMatchObject({ conversations: 0, messages: 0 });
@@ -802,5 +802,107 @@ describe("endpoint de ingestión", { timeout: TEST_TIMEOUT }, () => {
       "BUSINESS_RULE_VIOLATION",
       "OK",
     ]);
+  });
+
+  // conversation.escalated por el mismo endpoint (brief-12.2, D-6 y C-2).
+  const escalated = fixture("valid-conversation-escalated.json")
+    .payload as unknown as {
+    event_id: string;
+    conversation: { external_ref: string };
+  };
+
+  async function conversationOf(organizationId: string, status: string) {
+    const result = await getDb().execute<{ id: string }>(
+      sql`insert into conversations
+            (organization_id, channel, external_ref, status, started_at, last_message_at)
+          values (${organizationId}, 'whatsapp', ${escalated.conversation.external_ref},
+            ${status}, ${NOW}, ${NOW})
+          returning id`,
+    );
+    return result.rows[0]!.id;
+  }
+
+  it("23. FR-API-06: conversation.escalated responde 200 con la referencia y pending, audita con la credencial y el reenvío no audita otra vez", async () => {
+    await conversationOf(orgA, "open");
+    const first = await send(emitterA.token, escalated);
+    expect(first.status).toBe(200);
+    const body = await first.json();
+    expect(body).toStrictEqual({
+      contract_version: "1",
+      event_id: escalated.event_id,
+      result: "accepted",
+      conversation: {
+        external_ref: escalated.conversation.external_ref,
+        status: "pending",
+      },
+    });
+    const again = await send(emitterA.token, escalated);
+    expect(again.status).toBe(200);
+    expect(await again.json()).toStrictEqual({ ...body, result: "duplicate" });
+    const audit = await getDb().execute<{ actor_credential_id: string }>(
+      sql`select actor_credential_id from audit_logs where organization_id = ${orgA}`,
+    );
+    expect(audit.rows).toEqual([{ actor_credential_id: emitterA.id }]);
+  });
+
+  it("24. FR-API-06: una conversación inexistente o cerrada responde 422 con su regla, guardada en error_code", async () => {
+    const missing = await send(emitterA.token, escalated);
+    expect(missing.status).toBe(422);
+    expect(await missing.json()).toStrictEqual({
+      code: "BUSINESS_RULE_VIOLATION",
+      request_id: expect.any(String),
+      rule: "conversation_not_found",
+    });
+
+    await conversationOf(orgB, "closed");
+    const closed = await send(emitterB.token, escalated);
+    expect(closed.status).toBe(422);
+    expect(await closed.json()).toMatchObject({ rule: "conversation_closed" });
+    expect(await eventsOf(orgA)).toMatchObject([
+      { status: "failed", error_code: "conversation_not_found" },
+    ]);
+    expect(await eventsOf(orgB)).toMatchObject([
+      { status: "failed", error_code: "conversation_closed" },
+    ]);
+  });
+
+  it("25. FR-API-06: conversation.escalated pasa por la misma cadena: apagado, credencial, lectura y allowlist, sin escribir", async () => {
+    const id = await conversationOf(orgA, "open");
+    process.env.INGESTION_ENABLED = "false";
+    const off = await send(emitterA.token, escalated);
+    expect(off.status).toBe(404);
+    expect(await off.text()).toBe("");
+
+    const reader = await createIngestionCredential(orgA, "emisor-a", "read");
+    if (!reader.ok) throw new Error("credencial inválida");
+    allow(emitterA, { id: reader.credentialId, token: reader.token });
+    expect((await post(null, JSON.stringify(escalated))).status).toBe(401);
+    expect((await send(reader.token, escalated)).status).toBe(403);
+    expect((await send(emitterA2.token, escalated)).status).toBe(403);
+
+    const status = await getDb().execute<{ status: string }>(
+      sql`select status from conversations where id = ${id}`,
+    );
+    expect(status.rows[0]!.status).toBe("open");
+    expect(await counts()).toMatchObject({ events: 0 });
+
+    // El límite es por credencial y lo comparten todos los tipos (revisión independiente, R-3).
+    for (let index = 0; index < INGESTION_RATE_LIMIT - 1; index += 1) {
+      await send(
+        emitterA.token,
+        event((p) => (p.event_id = `evt-limite-${index}`)),
+      );
+    }
+    expect((await send(emitterA.token, escalated)).status).toBe(200);
+    const limited = await send(emitterA.token, {
+      ...escalated,
+      event_id: "evt-escalada-limitada",
+    });
+    expect(limited.status).toBe(429);
+    expect(
+      (await eventsOf(orgA)).filter((e) =>
+        e.external_ref.startsWith("evt-escalada"),
+      ),
+    ).toHaveLength(1);
   });
 });

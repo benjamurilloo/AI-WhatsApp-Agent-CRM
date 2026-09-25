@@ -379,6 +379,112 @@ describe("conversation.resolved: la ventana de vigencia (D-3)", () => {
   );
 });
 
+// Ventana simétrica (revisión independiente, R-2, decisión del usuario): un mensaje que llega tarde
+// va a la conversación de su momento, no a una posterior. M es el sent_at del mensaje tardío,
+// 30 horas antes del vector; las conversaciones previas tienen un solo mensaje, así que su inicio
+// y su último mensaje coinciden.
+describe("conversation.resolved: mensajes tardíos (ventana simétrica)", () => {
+  const M = new Date(SENT_AT.getTime() - 30 * HOUR_MS);
+
+  it(
+    "FR-API-05: un mensaje tardío va a la conversación de su momento y no atrasa el inicio de una posterior",
+    async () => {
+      const a = await organizationWithCredential("Negocio A", "emisor-a");
+      const clientId = await insertClient(a.organizationId);
+      await insertConversation(a.organizationId, clientId, {
+        externalRef: "conv-de-su-momento",
+        lastMessageAt: new Date(M.getTime() - HOUR_MS),
+      });
+      // Empezó 29 horas después del mensaje: fuera de la ventana hacia adelante.
+      const later = await insertConversation(a.organizationId, clientId, {
+        externalRef: "conv-posterior",
+        lastMessageAt: new Date(SENT_AT.getTime() - HOUR_MS),
+      });
+      expect(await send(a, another(2, M))).toMatchObject({
+        conversation: { externalRef: "conv-de-su-momento" },
+      });
+      expect(
+        (await conversationsOf(a.organizationId)).find((c) => c.id === later),
+      ).toMatchObject({ started_at: "2026-09-16T13:59:57.250Z" });
+      expect(await messagesOf(later)).toHaveLength(1);
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "FR-API-05: entre dos candidatas gana la más cercana al mensaje, no la más reciente",
+    async () => {
+      const a = await organizationWithCredential("Negocio A", "emisor-a");
+      const clientId = await insertClient(a.organizationId);
+      await insertConversation(a.organizationId, clientId, {
+        externalRef: "conv-cercana",
+        lastMessageAt: new Date(M.getTime() - 2 * HOUR_MS),
+      });
+      await insertConversation(a.organizationId, clientId, {
+        externalRef: "conv-lejana",
+        lastMessageAt: new Date(M.getTime() + 20 * HOUR_MS),
+      });
+      expect(await send(a, another(2, M))).toMatchObject({
+        conversation: { externalRef: "conv-cercana" },
+      });
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "FR-API-05: hacia adelante, un inicio a 24 horas exactas es candidato y a 24 horas y 1 milisegundo ya no",
+    async () => {
+      const a = await organizationWithCredential("Negocio A", "emisor-a");
+      const clientId = await insertClient(a.organizationId);
+      await insertConversation(a.organizationId, clientId, {
+        externalRef: "conv-borde-adelante",
+        lastMessageAt: new Date(M.getTime() + 24 * HOUR_MS),
+      });
+      expect(await send(a, another(2, M))).toMatchObject({
+        conversation: { externalRef: "conv-borde-adelante" },
+      });
+
+      const b = await organizationWithCredential("Negocio B", "emisor-b");
+      const other = await insertClient(b.organizationId);
+      await insertConversation(b.organizationId, other, {
+        externalRef: "conv-fuera-adelante",
+        lastMessageAt: new Date(M.getTime() + 24 * HOUR_MS + 1),
+      });
+      expect(await send(b, another(2, M))).toMatchObject({
+        conversation: { externalRef: "conv-propuesta-2", status: "open" },
+      });
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "FR-API-05: un mensaje de hace 30 días sin candidata abre una conversación en su fecha y no toca la de hoy",
+    async () => {
+      const a = await organizationWithCredential("Negocio A", "emisor-a");
+      const clientId = await insertClient(a.organizationId);
+      const today = await insertConversation(a.organizationId, clientId, {
+        externalRef: "conv-de-hoy",
+        lastMessageAt: new Date(SENT_AT.getTime() - HOUR_MS),
+      });
+      const old = new Date(SENT_AT.getTime() - 30 * 24 * HOUR_MS);
+      expect(await send(a, another(2, old))).toMatchObject({
+        conversation: { externalRef: "conv-propuesta-2", status: "open" },
+      });
+      const conversations = await conversationsOf(a.organizationId);
+      expect(conversations.find((c) => c.id === today)).toMatchObject({
+        started_at: "2026-09-16T13:59:57.250Z",
+      });
+      expect(
+        conversations.find((c) => c.external_ref === "conv-propuesta-2"),
+      ).toMatchObject({
+        started_at: "2026-08-17T14:59:57.250Z",
+        last_message_at: "2026-08-17T14:59:57.250Z",
+      });
+    },
+    TEST_TIMEOUT,
+  );
+});
+
 describe("conversation.resolved: reenvíos y rechazos", () => {
   it(
     "FR-API-05: el mismo evento responde duplicate con la misma conversación, sin otro mensaje",
@@ -454,7 +560,7 @@ describe("conversation.resolved: reenvíos y rechazos", () => {
         {
           external_ref: "evt-conv-0001",
           status: "failed",
-          error_code: "BUSINESS_RULE_VIOLATION",
+          error_code: "client_not_found",
         },
       ]);
       // Un failed es terminal: aunque el cliente exista ahora, el reenvío no crea nada.

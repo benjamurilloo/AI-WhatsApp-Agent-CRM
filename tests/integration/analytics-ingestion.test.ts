@@ -150,7 +150,7 @@ describe("métrica 12: errores de ingestión (brief-7.3)", () => {
             (organization_id, source, external_ref, event_type, payload_hash, status,
              error_code, received_at, processed_at)
           values (${orgA}, 'wa-cloud', 'evt-conv-sin-cliente', 'conversation.resolved',
-                  'hash-conversacion', 'failed', 'BUSINESS_RULE_VIOLATION',
+                  'hash-conversacion', 'failed', 'client_not_found',
                   '2026-09-02T18:00:00Z', '2026-09-02T18:00:00Z')`,
     );
 
@@ -162,9 +162,38 @@ describe("métrica 12: errores de ingestión (brief-7.3)", () => {
     expect(value.failed).toBe(6);
     expect(value.groups).toContainEqual({
       source: "wa-cloud",
-      errorCode: "BUSINESS_RULE_VIOLATION",
+      errorCode: "client_not_found",
       count: 1,
     });
+  });
+
+  // Un conversation.escalated del período, failed, y otro processed: derivar no es un mensaje, así
+  // que ninguno de los dos cuenta. Calculado a mano: sigue en total 7 y fallidos 5.
+  it("FR-API-06: una derivación, fallida o no, no cuenta en la métrica 12", async () => {
+    const { orgA, orgB, adminA } = await users();
+    await mainFixture(orgA, orgB);
+    await getDb().execute(
+      sql`insert into ingestion_events
+            (organization_id, source, external_ref, event_type, payload_hash, status,
+             error_code, received_at, processed_at)
+          values
+            (${orgA}, 'wa-cloud', 'evt-escalada-fallida', 'conversation.escalated',
+             'hash-escalada-1', 'failed', 'conversation_closed',
+             '2026-09-02T18:00:00Z', '2026-09-02T18:00:00Z'),
+            (${orgA}, 'wa-cloud', 'evt-escalada-ok', 'conversation.escalated',
+             'hash-escalada-2', 'processed', null,
+             '2026-09-02T18:00:00Z', '2026-09-02T18:00:00Z')`,
+    );
+
+    const value = valueOf(
+      await getIngestionErrors(adminA, PERIOD, INGESTION_OFF),
+    );
+    if (value.status !== "value") throw new Error("se esperaba un valor");
+    expect(value.total).toBe(7);
+    expect(value.failed).toBe(5);
+    expect(value.groups.map((group) => group.errorCode)).not.toContain(
+      "conversation_closed",
+    );
   });
 
   it("agrupa por origen y código, ordenado por conteo y con desempate alfabético", async () => {

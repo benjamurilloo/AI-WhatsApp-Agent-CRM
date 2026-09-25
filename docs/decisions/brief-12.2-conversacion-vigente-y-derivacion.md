@@ -72,6 +72,7 @@ Cada una lleva mi recomendación. **Si el usuario elige otra opción en D-1 o D-
   - **Una `closed` nunca es vigente**, igual que hoy ningún mensaje la reabre.
   - **24 horas** es la ventana de atención de la Cloud API de WhatsApp ([IntegrationBoundaries](../architecture/IntegrationBoundaries.md), §Conocimiento transversal), no una regla del emisor. **El valor lo decide el usuario**: es una regla de negocio.
   - **Constante en el código**, no configurable por organización. Si un negocio necesita otra, se agrega la columna con su brief.
+- *Enmienda del 2026-09-25, por decisión del usuario sobre R-2 de la revisión independiente*: la ventana es **simétrica**. Una conversación es candidata si su último mensaje no es anterior a `sent_at − 24 h` y su inicio no es posterior a `sent_at + 24 h`. Entre varias gana la **más cercana** al mensaje y, a igual distancia, la de último mensaje más reciente. Sin la cota hacia adelante, un mensaje tardío caía en una conversación posterior y le atrasaba el `started_at`.
 - **La conversación vencida no se toca**: no se cierra sola. Cerrarla sería un cambio de estado de servicio que nadie pidió, y una `pending` vencida perdería la señal de que espera a una persona. El vencimiento se deriva, no se guarda.
 
 ### D-4 — Qué equivale a «Escalada a humano» (pregunta 1)
@@ -249,7 +250,7 @@ Lista cerrada. Tocar otro archivo es un hallazgo bloqueante, salvo ampliación a
 
 ### Decisiones de implementación
 
-1. **Qué guarda `error_code` en un rechazo de negocio**: el código de la taxonomía, `BUSINESS_RULE_VIOLATION`, como dice DataModel. La regla no se guarda: un reenvío la deduce del tipo, porque `conversation.resolved` tiene una sola (`client_not_found`). **Queda abierto para la 12.2.2**: `conversation.escalated` tiene dos reglas (`conversation_closed` y `conversation_not_found`), así que la regla ya no se deduce del tipo. Antes de implementarla hay que decidir dónde se guarda. Se eleva al usuario al empezar la etapa.
+1. *(Superado en la 12.2.2 por decisión del usuario: `error_code` guarda la regla. Ver §Resultados — etapa 12.2.2.)* **Qué guarda `error_code` en un rechazo de negocio**: el código de la taxonomía, `BUSINESS_RULE_VIOLATION`, como dice DataModel. La regla no se guarda: un reenvío la deduce del tipo, porque `conversation.resolved` tiene una sola (`client_not_found`). **Queda abierto para la 12.2.2**: `conversation.escalated` tiene dos reglas (`conversation_closed` y `conversation_not_found`), así que la regla ya no se deduce del tipo. Antes de implementarla hay que decidir dónde se guarda. Se eleva al usuario al empezar la etapa.
 2. **La conversación vigente exige `external_ref`**: una conversación sin referencia, como las de los seeds, no es candidata, porque el emisor no podría seguir usándola con `message.recorded`.
 3. **Una referencia propuesta que ya es de otra conversación** (vencida, cerrada o de otro cliente) responde `CONFLICT`, registrado como `failed`, sin escribir. El brief no lo previó: es la unicidad de `(organization_id, channel, external_ref)`, que la conversación nueva no puede saltear. El contrato lo documenta en §Errores.
 4. **El reenvío busca el mensaje por su referencia** entre las conversaciones del cliente del teléfono, con un `JOIN` dentro del mismo módulo. Si el teléfono ya no es de ningún cliente, responde `conversation: null`, como `client.resolved`.
@@ -284,3 +285,85 @@ Lista cerrada. Tocar otro archivo es un hallazgo bloqueante, salvo ampliación a
 - **Mutaciones**: M1 a M5, las cinco detectadas y restauradas. Se verificó con `grep` que no quedó ninguna en el código.
 
 **Nivel**: validado localmente (`deterministic`, requests sintéticos). **No** se certifica compatibilidad con ningún emisor real: eso es la 12.3. Falta la CI del commit de la etapa.
+
+**CI de la etapa 12.2.1**: commit `840d9d1`, run 36188422058, `success` en el intento 1. Queda **validada localmente y en CI**.
+
+## Resultados — etapa 12.2.2
+
+**Autoevaluación** (`self_assessment: true`), del 2026-09-25, antes de la revisión independiente de D-11.
+
+### Decisión del usuario al empezar la etapa
+
+**Dónde se guarda la regla de un rechazo de negocio** (la decisión 1 de la 12.2.1, que quedó abierta). `conversation.escalated` tiene dos reglas, así que la regla ya no se deduce del tipo. El usuario eligió, entre tres opciones (la regla en `error_code`, una sola regla, o una columna nueva con migración), **guardar la regla en `error_code`**:
+- `error_code` guarda `client_not_found`, `conversation_not_found` o `conversation_closed` en lugar de `BUSINESS_RULE_VIOLATION`. Un reenvío responde la regla guardada, y la métrica 12 agrupa por ella.
+- **Cambia lo que guarda `conversation.resolved` desde la 12.2.1** (`840d9d1`): tres aserciones de la 12.2.1 pasaron de `BUSINESS_RULE_VIOLATION` a `client_not_found` (en `conversation-resolution.test.ts`, `ingestion-http.test.ts` caso 20 y `analytics-ingestion.test.ts`). Ningún ambiente tiene filas de ese tipo fuera de los tests: staging no tiene la 12.2.
+- DataModel lo registra en la columna `error_code`, con fecha.
+
+### Decisiones de implementación
+
+1. **La derivación bloquea la conversación** (`FOR UPDATE`) y calcula el diff sobre lo leído, como el cambio de estado del `admin` (6.3, D-3). Dos derivaciones simultáneas dejan una sola fila de auditoría.
+2. **El reenvío responde el estado actual**, no `pending`: el ledger no guarda resultados, y el estado puede haber cambiado desde el backoffice. Lo documentan el contrato y DataModel.
+3. **Sin credencial en el contexto**, `conversation.escalated` lanza un error antes de escribir, como `client.resolved`.
+
+### Contraste por criterio
+
+| AC | Resultado | Evidencia |
+|---|---|---|
+| AC-10 | cumplido | El contrato documenta el evento, su tabla, su respuesta, su proyección, su vector escrito a mano (`6dca3341…`, comparado con el del validador) y **la nota fechada de C-1** junto a «Fuera de v1». `contract.test.ts`: 5 casos nuevos y 2 fixtures con `"shape": "assumed"`. Rechaza el estado destino, el teléfono, el mensaje, la referencia inválida y otro canal. |
+| AC-11 | cumplido | `conversation-escalation.test.ts`: `open` a `pending` con la fila `status_change`, `actor_credential_id` y el diff exacto; `pending` sin escritura ni auditoría; `conversation_closed` y `conversation_not_found` con `422`, `failed` y la regla en `error_code`, sin escribir, y **terminales** (el reenvío responde lo mismo aunque la conversación se reabra o aparezca). La fila de `422` está en §Errores. **M7**: con `pending` escribiendo, fallan 2 casos. **M8**: con `closed` derivable, falla el caso de la cerrada. |
+| AC-12 | cumplido | El reenvío responde `duplicate` con el estado actual, sin otra auditoría; `CONFLICT` con otro contenido. Además, dos derivaciones simultáneas con la conversación bloqueada desde una tercera conexión (2 esperas en `pg_stat_activity`) dejan una fila de auditoría. **M6**: sin el `FOR UPDATE`, quedan **2 filas**. |
+| AC-13 | cumplido | `ingestion-http.test.ts` casos 23 a 25: `200` con referencia y `pending`, reenvío sin otra auditoría, `422` con cada regla y guardada en `error_code`, `404` sin cuerpo, `401` y `403` (lectura y allowlist) sin escribir. Aislamiento: la conversación de otra organización con la misma referencia no se toca (`conversation_not_found`). |
+| AC-14 | cumplido | `analytics-ingestion.test.ts`: una derivación fallida y otra procesada no cambian la métrica (total 7, fallidos 5, calculados a mano). **M9**: contándolas, el total da 9. |
+| AC-15 | cumplido | FR-CONV-03 y DataModel escriben el significado de `pending`, con fecha. FR-API-05 y FR-API-06 están en FunctionalRequirements y en TraceabilityMatrix. |
+| AC-16 | cumplido, con la salvedad de la 12.1 | Los casos nuevos llevan FR-API-06, FR-API-05 o FR-AUD-03. Los fixtures, por archivo (R-3 de la 12.1). |
+
+**Además**: la cadena completa dentro del CRM está probada. `conversation.resolved` crea la conversación, `conversation.escalated` la deriva y el mensaje siguiente del cliente entra en la misma conversación, que sigue `pending`.
+
+**DataModel** quedó corregido, como se registró en la 12.2.1: las reglas del ledger nombran los cuatro tipos, y el reenvío de cada uno.
+
+### Verificación de la etapa
+
+- `lint`, `typecheck` y `format:check`: 0.
+- `npm run test`: **1261 de 1261 en 94 archivos**. Son los 1240 de la 12.2.1 más 21: 7 de `contract.test.ts`, 10 de `conversation-escalation.test.ts`, 3 de HTTP y 1 de la métrica 12.
+- `npm run build`: 0.
+- `npm run test:e2e`: **98 de 98**.
+- **Mutaciones**: M6 a M9, las cuatro detectadas y restauradas. `grep` confirma que no quedó ninguna. M6 cambió solo la línea de la derivación: el cambio de estado del `admin` tiene la misma llamada con otra sangría, y se verificó intacto.
+
+**Nivel**: validado localmente (`deterministic`). Falta la revisión independiente y la CI del commit.
+
+## Revisión independiente (D-11)
+
+La hizo el 2026-09-25 un subagente `independent-reviewer` que no participó del trabajo, con acceso de solo lectura, sobre la 12.2.1 commiteada y la 12.2.2 en el árbol de trabajo.
+- **Resultado**: 8 hallazgos. 1 bloqueante (por la regla del propio brief), 1 mayor, 3 menores y 3 observaciones, más notas fuera de la 12.2.
+- **Límite declarado por el revisor**: no pudo correr `git`, tests, lint, build ni la CI. Las mutaciones y los recuentos de corridas no los verificó; los recuentos de casos nuevos, sí, por lectura, y cierran.
+
+Cada hallazgo se verificó contra el código antes de aceptarlo. La autoevaluación de arriba se conserva como estaba; donde el revisor la contradice, lo dice esta tabla.
+
+| # | Severidad | Verificación | Resolución |
+|---|---|---|---|
+| **R-1** | bloqueante (regla del brief) | **Confirmado** con `git status`: la 12.2.2 modificó `conversation-resolution.test.ts`, que solo está en la lista de la 12.2.1. Era consecuencia de la decisión del usuario sobre `error_code`, pero no estaba registrado como ampliación. | **Ampliación autorizada por el usuario**. El archivo se toca también por R-2. |
+| **R-2** | mayor | **Confirmado** leyendo la consulta: la vigencia solo acotaba hacia atrás (`last_message_at >= sent_at − 24 h`) y elegía la de último mensaje más reciente. Un mensaje tardío caía en una conversación posterior y le atrasaba el `started_at`; uno de hace 30 días, 30 días. FR-API-05 decía «24 horas antes» y el test del desordenado aceptaba una posterior: los documentos no coincidían. | **Decidido por el usuario: ventana simétrica** (enmienda de D-3). Candidata si `last_message_at >= sent_at − 24 h` y `started_at <= sent_at + 24 h`; entre varias, la más cercana. 4 casos nuevos: el mensaje tardío, la más cercana contra la más reciente, el borde hacia adelante (24 h exactas y 1 ms más) y el mensaje de hace 30 días. **M10**: sin la cota hacia adelante, fallan 2 (el del mensaje tardío no, porque el orden por cercanía también lo protege). **M11**: con el orden anterior, falla el de la más cercana. Contrato, FR-API-05 y DataModel reescritos. |
+| **R-3** | menor | **Confirmado.** El caso 25 no probaba el `429` de `conversation.escalated`, y AC-13 pedía «la misma cadena que AC-7». **La autoevaluación de AC-13 decía «cumplido»: no lo estaba del todo.** | **Corregido**: el caso 25 suma el límite compartido. |
+| **R-4** | menor | **Confirmado.** IntegrationBoundaries (líneas 23, 31 y 32) y el ADR 0014 no mencionaban la derivación por servicio. | **Ampliación autorizada por el usuario**: nota fechada en el ADR 0014 y texto fechado en IntegrationBoundaries. |
+| **R-5** | menor | **Confirmado.** `ingestion-v1.md:36` decía que el único tipo agregado era `client.resolved`. | **Corregido.** |
+| **R-6** | observación | **Confirmado.** DataModel omitía la candidata más reciente y la exigencia de `external_ref`, decía que el estado cambia solo en la 6.3 y no nombraba a `conversation.resolved` como productor de la regla de fechas. | **Corregido.** |
+| **R-7** | observación | **Confirmado.** TraceabilityMatrix: FR-CONV-03 sin la derivación, FR-AUD-03 sin `conversation-escalation.test.ts`, y el índice de la vigente sin mencionar. El comentario del repositorio afirmaba que la consulta usa el índice sin haberlo medido. | **Corregido.** El comentario ahora dice que filtra por sus columnas y que **el plan no se midió con `EXPLAIN`**. |
+| **R-8** | observación | **Confirmado por lectura**, sin defecto demostrado: sin deadlocks posibles; el `FOR UPDATE` del cliente bloquea más de lo necesario (`FOR NO KEY UPDATE` alcanzaría y no esperaría la clave foránea de `message.recorded`); y `ORDER BY … LIMIT 1 FOR UPDATE` puede devolver cero filas si un `admin` cierra la candidata en ese momento, y entonces se crearía otra conversación. | **Registrado, sin cambios.** Las dos son bordes de concurrencia raros; cambiar el modo de bloqueo exige volver a medir M1. Quedan para la 12.3, que mide con tráfico real. |
+
+**Notas fuera de la 12.2 que el revisor dejó**:
+- `Overview.md:30` no listaba `crm` entre las dependencias de `ingestion`, que lo importa desde la 12.1. **Verificado con `grep`** y **corregido con ampliación autorizada por el usuario**.
+- **Registradas, sin cambios**:
+  - las funciones de ingestión que escriben sin `authorize` se protegen solo por exigir una transacción, sin una guarda como `service-read-entry-points`: es el patrón de `recordIngestedMessage` desde la 6.5.2;
+  - HANDOFF y el Roadmap (línea 232, «decisión pendiente» de M-5) se corrigen en el cierre;
+  - el comentario de `contract.ts` y las notas junto a los resultados de la 12.2.1 ya están corregidos.
+
+**Ampliaciones de la lista de archivos de la 12.2.2**, autorizadas por el usuario el 2026-09-25: `tests/integration/conversation-resolution.test.ts`, `docs/architecture/IntegrationBoundaries.md`, `docs/decisions/0014-el-agente-de-whatsapp-como-consumidor-del-crm.md` y `docs/architecture/Overview.md`.
+
+**Verificación después de las correcciones de la revisión** (2026-09-25):
+- `lint`, `typecheck` y `format:check`: 0.
+- `npm run test`: **1265 de 1265 en 94 archivos**: los 1261 anteriores más los 4 casos de la ventana simétrica.
+- `npm run build`: 0.
+- `npm run test:e2e`: **98 de 98**.
+- **Mutaciones de la etapa**: M6 a M11, las seis detectadas y restauradas. Se verificó con `grep` que no quedó ninguna.
+
+**Nivel**: validado localmente (`deterministic`). Falta la CI del commit.

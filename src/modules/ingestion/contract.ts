@@ -7,12 +7,13 @@ import type { Failure } from "@/shared/errors";
 // y la proyección llegan en la 6.5.2, y la credencial de servicio en la 6.5.3.
 
 export const INGESTION_CONTRACT_VERSION = "1";
-// client.resolved desde la 12.1 (D-1) y conversation.resolved desde la 12.2 (D-1): un event_type
-// nuevo es un cambio compatible dentro de v1.
+// client.resolved desde la 12.1 (D-1), y conversation.resolved y conversation.escalated desde la
+// 12.2 (D-1 y D-6): un event_type nuevo es un cambio compatible dentro de v1.
 export const INGESTION_EVENT_TYPES = [
   "message.recorded",
   "client.resolved",
   "conversation.resolved",
+  "conversation.escalated",
 ] as const;
 // Mismo límite que el alta desde el backoffice (brief-5.2, D-5).
 export const MAX_CLIENT_NAME_LENGTH = 200;
@@ -84,9 +85,9 @@ const bodyText = z
   .refine((value) => !value.includes("\u0000"), "carácter NUL")
   .refine((value) => !LONE_SURROGATE.test(value), "UTF-16 inválido");
 
-// Cualquier tipo que no sea client.resolved ni conversation.resolved se valida con este esquema,
-// como antes de la 12.1: un
-// tipo desconocido sigue informando event_type y, si los hay, los demás campos inválidos (AC-8).
+// Cualquier tipo que no sea client.resolved, conversation.resolved ni conversation.escalated se
+// valida con este esquema, como antes de la 12.1: un tipo desconocido sigue informando event_type
+// y, si los hay, los demás campos inválidos (AC-8).
 const messageRecordedSchema = z.strictObject({
   contract_version: z.literal(INGESTION_CONTRACT_VERSION),
   event_type: z.literal("message.recorded"),
@@ -146,13 +147,32 @@ const conversationResolvedSchema = z.strictObject({
   }),
 });
 
+// Derivación de una conversación a una persona (brief-12.2, D-6): la conversación por la
+// referencia del emisor, sin estado destino, porque el servicio solo puede derivar.
+const conversationEscalatedSchema = z.strictObject({
+  contract_version: z.literal(INGESTION_CONTRACT_VERSION),
+  event_type: z.literal("conversation.escalated"),
+  event_id: externalRef,
+  occurred_at: timestamp,
+  conversation: z.strictObject({
+    external_ref: externalRef,
+    channel: z.literal("whatsapp"),
+  }),
+});
+
 export type MessageRecordedEventV1 = z.infer<typeof messageRecordedSchema>;
 export type ClientResolvedEventV1 = z.infer<typeof clientResolvedSchema>;
 export type ConversationResolvedEventV1 = z.infer<
   typeof conversationResolvedSchema
 >;
+export type ConversationEscalatedEventV1 = z.infer<
+  typeof conversationEscalatedSchema
+>;
 export type IngestionEventV1 =
-  MessageRecordedEventV1 | ClientResolvedEventV1 | ConversationResolvedEventV1;
+  | MessageRecordedEventV1
+  | ClientResolvedEventV1
+  | ConversationResolvedEventV1
+  | ConversationEscalatedEventV1;
 
 export type ParseIngestionEventResult =
   | { ok: true; event: IngestionEventV1 }
@@ -206,6 +226,19 @@ export function parseIngestionEventV1(
     };
     if (Date.parse(event.occurred_at) > latest) future.add("occurred_at");
     if (future.size > 0) return invalid(future);
+    return { ok: true, event };
+  }
+
+  if (
+    (json as { event_type?: unknown }).event_type === "conversation.escalated"
+  ) {
+    const parsed = conversationEscalatedSchema.safeParse(json);
+    if (!parsed.success) return invalid(fieldsOf(parsed.error.issues));
+    const event: ConversationEscalatedEventV1 = {
+      ...parsed.data,
+      occurred_at: toUtc(parsed.data.occurred_at),
+    };
+    if (Date.parse(event.occurred_at) > latest) return invalid(["occurred_at"]);
     return { ok: true, event };
   }
 

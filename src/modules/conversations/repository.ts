@@ -366,19 +366,26 @@ export type AddressableConversation = {
   status: ConversationStatus;
 };
 
-// Conversación vigente de un cliente en un canal (brief-12.2, D-3): la más reciente abierta o
-// pendiente cuyo último mensaje no es anterior a since. Solo las que tienen external_ref, porque
-// el emisor la sigue usando por esa referencia. La bloquea hasta el final de la transacción. Usa
-// conversations_organization_client_last_message_idx.
+// Conversación vigente de un cliente en un canal (brief-12.2, D-3, ventana simétrica desde la
+// revisión independiente, R-2): abierta o pendiente, con external_ref (el emisor la sigue usando
+// por esa referencia) y cuyo tramo [started_at, last_message_at] queda a menos de la ventana del
+// mensaje: last_message_at >= since y started_at <= until. Entre varias, la más cercana al mensaje
+// y, a igual distancia, la de último mensaje más reciente. La bloquea hasta el final de la
+// transacción.
+// Filtra y ordena por las columnas de conversations_organization_client_last_message_idx; el plan
+// no se midió con EXPLAIN.
 export async function lockCurrentConversation(
   tx: DbTransaction,
   values: {
     organizationId: string;
     clientId: string;
     channel: ConversationChannel;
+    sentAt: Date;
     since: Date;
+    until: Date;
   },
 ): Promise<AddressableConversation | undefined> {
+  const sentAt = sql`${values.sentAt}::timestamptz`;
   const result = await tx.execute<{
     id: string;
     external_ref: string;
@@ -392,12 +399,47 @@ export async function lockCurrentConversation(
       and status in ('open', 'pending')
       and external_ref is not null
       and last_message_at >= ${values.since}
-    order by last_message_at desc, id desc
+      and started_at <= ${values.until}
+    order by greatest(started_at - ${sentAt}, ${sentAt} - last_message_at, interval '0'),
+      last_message_at desc, id desc
     limit 1
     for update`);
   const row = result.rows[0];
   return (
     row && { id: row.id, externalRef: row.external_ref, status: row.status }
+  );
+}
+
+// Conversación de la organización con esa referencia del emisor, con su estado. forUpdate la
+// bloquea hasta el final de la transacción: la derivación calcula el diff sobre lo leído
+// (brief-12.2, D-6).
+export async function findConversationByExternalRef(
+  tx: DbTransaction,
+  values: {
+    organizationId: string;
+    channel: ConversationChannel;
+    externalRef: string;
+  },
+  { forUpdate = false } = {},
+): Promise<AddressableConversation | undefined> {
+  const query = tx
+    .select({
+      id: conversations.id,
+      externalRef: conversations.externalRef,
+      status: conversations.status,
+    })
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.organizationId, values.organizationId),
+        eq(conversations.channel, values.channel),
+        eq(conversations.externalRef, values.externalRef),
+      ),
+    );
+  const rows = forUpdate ? await query.for("update") : await query;
+  const row = rows[0];
+  return (
+    row && { id: row.id, externalRef: values.externalRef, status: row.status }
   );
 }
 

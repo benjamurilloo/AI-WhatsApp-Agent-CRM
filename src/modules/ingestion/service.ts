@@ -1,4 +1,6 @@
 import {
+  escalateIngestedConversation,
+  findEscalatedConversation,
   findIngestedConversation,
   recordIngestedMessage,
   resolveIngestedConversation,
@@ -16,6 +18,7 @@ import {
   isOpaqueReference,
   parseIngestionEventV1,
   type ClientResolvedEventV1,
+  type ConversationEscalatedEventV1,
   type ConversationResolvedEventV1,
   type IngestionEventV1,
   type IngestionField,
@@ -30,10 +33,12 @@ import * as repository from "./repository";
 // Desde la 12.1 (D-1) hay dos tipos de evento con el mismo ledger: message.recorded proyecta un
 // mensaje en conversations, y client.resolved resuelve un cliente en crm, que lo audita con la
 // credencial como actor. Desde la 12.2 (D-1), conversation.resolved registra un mensaje entrante
-// en la conversación vigente del cliente o en una nueva.
+// en la conversación vigente del cliente o en una nueva, y conversation.escalated (D-6) deriva una
+// conversación a una persona, auditada con la credencial.
 
-// credentialId es el actor de la auditoría de client.resolved (brief-12.1, D-3). Lo trae el
-// endpoint; sin él, un client.resolved es un error de programación, no del emisor.
+// credentialId es el actor de la auditoría de client.resolved (brief-12.1, D-3) y de
+// conversation.escalated (brief-12.2, D-6). Lo trae el endpoint; sin él, esos eventos son un error
+// de programación, no del emisor.
 export type IngestionContext = {
   organizationId: string;
   source: string;
@@ -56,8 +61,9 @@ export type ClientAccepted = {
   client: ResolvedClient | null;
 };
 
-// conversation es null solo en un reenvío cuyo mensaje ya no se encuentra por el cliente del
-// teléfono (brief-12.2, D-5).
+// conversation.resolved y conversation.escalated. conversation es null solo en un reenvío: el de
+// un conversation.resolved cuyo mensaje ya no se encuentra por el cliente del teléfono (brief-12.2,
+// D-5), o el de un conversation.escalated cuya conversación ya no existe con esa referencia.
 export type ConversationAccepted = {
   ok: true;
   result: "accepted" | "duplicate";
@@ -69,8 +75,18 @@ export type IngestionAccepted =
   MessageAccepted | ClientAccepted | ConversationAccepted;
 
 // Reglas de negocio de los tipos nuevos (brief-12.2, C-2): responden 422 y quedan como failed con
-// error_code BUSINESS_RULE_VIOLATION. message.recorded y client.resolved no las devuelven nunca.
-export type IngestionRule = "client_not_found";
+// la regla en error_code, para que un reenvío responda la misma (decisión del usuario del
+// 2026-09-25, al empezar la 12.2.2). message.recorded y client.resolved no las devuelven nunca.
+export const INGESTION_RULES = [
+  "client_not_found",
+  "conversation_not_found",
+  "conversation_closed",
+] as const;
+export type IngestionRule = (typeof INGESTION_RULES)[number];
+
+function isIngestionRule(value: string): value is IngestionRule {
+  return (INGESTION_RULES as readonly string[]).includes(value);
+}
 
 export type RecordIngestionEventResult =
   | IngestionAccepted
@@ -131,6 +147,19 @@ async function duplicate(
         clientPhone: event.conversation.client_phone,
         channel: event.conversation.channel,
         messageExternalRef: event.message.external_ref,
+      }),
+    };
+  }
+  if (event.event_type === "conversation.escalated") {
+    // El estado actual, sin escribir ni auditar otra vez.
+    return {
+      ok: true,
+      result: "duplicate",
+      eventId: event.event_id,
+      conversation: await findEscalatedConversation(tx, {
+        organizationId: context.organizationId,
+        channel: event.conversation.channel,
+        externalRef: event.conversation.external_ref,
       }),
     };
   }
@@ -197,20 +226,14 @@ async function projectConversation(
       bodyText: event.message.body_text,
     },
   });
-  if (!resolved.ok) {
+  if (!resolved.ok && resolved.code === "CONFLICT") {
     await repository.finishEvent(tx, context.organizationId, reserved, {
       status: "failed",
-      errorCode: resolved.code,
+      errorCode: "CONFLICT",
     });
-    return resolved.code === "CONFLICT"
-      ? { ok: false, code: "CONFLICT", recorded: true }
-      : {
-          ok: false,
-          code: "BUSINESS_RULE_VIOLATION",
-          rule: resolved.rule,
-          recorded: true,
-        };
+    return { ok: false, code: "CONFLICT", recorded: true };
   }
+  if (!resolved.ok) return rejectByRule(tx, context, reserved, resolved.rule);
   await repository.finishEvent(tx, context.organizationId, reserved, {
     status: "processed",
   });
@@ -222,11 +245,47 @@ async function projectConversation(
   };
 }
 
-// La regla de un rechazo de negocio guardado (brief-12.2, C-2). error_code guarda el código de la
-// taxonomía, y la regla se deduce del tipo: conversation.resolved tiene una sola.
-function storedRule(event: IngestionEventV1): IngestionRule {
-  if (event.event_type === "conversation.resolved") return "client_not_found";
-  throw new Error(`${event.event_type} no tiene reglas de negocio`);
+// Un rechazo de negocio queda failed con la regla en error_code (brief-12.2, C-2).
+async function rejectByRule(
+  tx: DbTransaction,
+  context: IngestionContext,
+  reserved: string,
+  rule: IngestionRule,
+): Promise<RecordIngestionEventResult> {
+  await repository.finishEvent(tx, context.organizationId, reserved, {
+    status: "failed",
+    errorCode: rule,
+  });
+  return { ok: false, code: "BUSINESS_RULE_VIOLATION", rule, recorded: true };
+}
+
+async function projectEscalation(
+  tx: DbTransaction,
+  context: IngestionContext,
+  reserved: string,
+  event: ConversationEscalatedEventV1,
+): Promise<RecordIngestionEventResult> {
+  if (!context.credentialId) {
+    throw new Error("conversation.escalated sin credencial para auditar");
+  }
+  const escalated = await escalateIngestedConversation(tx, {
+    organizationId: context.organizationId,
+    credentialId: context.credentialId,
+    channel: event.conversation.channel,
+    externalRef: event.conversation.external_ref,
+  });
+  if (!escalated.ok) {
+    return rejectByRule(tx, context, reserved, escalated.rule);
+  }
+  await repository.finishEvent(tx, context.organizationId, reserved, {
+    status: "processed",
+  });
+  return {
+    ok: true,
+    result: "accepted",
+    eventId: event.event_id,
+    conversation: escalated.conversation,
+  };
 }
 
 async function projectClient(
@@ -294,14 +353,11 @@ export async function recordIngestionEvent(
         if (outcome.kind === "failed" && outcome.errorCode === "CONFLICT") {
           return { ok: false, code: "CONFLICT", recorded: true };
         }
-        if (
-          outcome.kind === "failed" &&
-          outcome.errorCode === "BUSINESS_RULE_VIOLATION"
-        ) {
+        if (outcome.kind === "failed" && isIngestionRule(outcome.errorCode)) {
           return {
             ok: false,
             code: "BUSINESS_RULE_VIOLATION",
-            rule: storedRule(event),
+            rule: outcome.errorCode,
             recorded: true,
           };
         }
@@ -318,6 +374,9 @@ export async function recordIngestionEvent(
       }
       if (event.event_type === "conversation.resolved") {
         return projectConversation(tx, context, reserved, event);
+      }
+      if (event.event_type === "conversation.escalated") {
+        return projectEscalation(tx, context, reserved, event);
       }
       return projectClient(tx, context, reserved, event);
     },
