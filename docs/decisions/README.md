@@ -89,6 +89,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-11.4](brief-11.4-piloto-en-staging.md) | 11.4 — Piloto en staging | aprobado el 2026-09-24 con las recomendaciones de D-1 a D-12; cerrado el 2026-09-25, y con él la Fase 11 |
 | [brief-12.1](brief-12.1-actor-de-servicio-y-cliente-por-telefono.md) | 12.1 — Actor de servicio y cliente por teléfono | aprobado el 2026-09-25 con las recomendaciones de D-1 a D-13; cerrado el 2026-09-25 |
 | [brief-12.2](brief-12.2-conversacion-vigente-y-derivacion.md) | 12.2 — Conversación vigente y derivación | aprobado el 2026-09-25 con las recomendaciones de D-1 a D-11, C-1 y C-2; cerrado el 2026-09-25 |
+| [brief-12.3](brief-12.3-contrato-de-ingestion-v2.md) | 12.3 — Contrato de ingestión v2 | aprobado el 2026-09-25 con las recomendaciones de D-1 a D-11 |
 | [evidencia-9.1](evidencia-9.1-staging.md) | 9.1 — Salidas crudas de la verificación en staging | captura del 2026-09-22 |
 | [evidencia-9.2](evidencia-9.2-backups.md) | 9.2 — Backup y restauración verificados en staging | captura del 2026-09-22 |
 | [evidencia-9.3](evidencia-9.3-volumen.md) | 9.3 — Volumen, planes y tiempos medidos en staging | captura del 2026-09-23 |
