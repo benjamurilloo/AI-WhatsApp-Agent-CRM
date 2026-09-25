@@ -57,27 +57,41 @@ Orden importante. Los pasos 4 y 5 son los que el primer despliegue reveló.
    > **Cuidado**: si se omite este paso, la migración `0003` falla por falta de privilegio. Hasta la 11.0, `npm run db:migrate` corría `drizzle-kit migrate`, que en ese caso salía con **código 1 sin imprimir ningún error**: cero tablas y ningún mensaje. *Desde la 11.0* corre `scripts/migrar.ts`, que imprime el error de PostgreSQL con su SQLSTATE y la sentencia que falló (O-8). Si las migraciones fallan, empezar por acá.
    >
    > Se resuelve así, y no otorgándole `CREATEROLE` al rol dueño, por menor privilegio: el `IF NOT EXISTS` de la migración lo saltea y el resto de sus `GRANT` corre normal.
-5. **Migrar** con `migrate.env` (`set -a && . /etc/crm-staging/migrate.env && set +a && npm run db:migrate`), después **crear el rol con login miembro de `crm_app`** y recién entonces escribir `app.env`. Las migraciones siguen corriendo con el dueño; la aplicación nunca.
+5. **Migrar** con `migrate.env`, con la forma de [Desplegar un cambio](#desplegar-un-cambio), después **crear el rol con login miembro de `crm_app`** y recién entonces escribir `app.env`. Las migraciones siguen corriendo con el dueño; la aplicación nunca.
 6. **nginx y certbot.** TLS antes del primer intento de ingreso, **no después**: con `NODE_ENV=production` la cookie de sesión pasa a `__Host-` con `Secure`, y sobre HTTP el navegador la descarta. El síntoma parece un fallo de autenticación y no lo es.
 7. **UFW**: solo `OpenSSH` y `Nginx Full`. El puerto 3000 nunca se abre.
 
 ## Desplegar un cambio
 
+*Corregido el 2026-09-25 ([brief-12.1](../../docs/decisions/brief-12.1-actor-de-servicio-y-cliente-por-telefono.md), E-1).* Los archivos de `/etc/crm-staging/` son `0600` de `root` (D-8 de la 9.1), así que `. /etc/crm-staging/<x>.env` como el usuario del ssh falla con `Permission denied`. La forma que funciona es la que se usó en la 11.4 ([evidencia](../../docs/decisions/evidencia-11.4-piloto.md), §AC-6):
+- `root` lee el archivo;
+- `npm` corre como `benja`, el dueño de `/srv/crm-staging`, para que ningún archivo del repositorio quede de `root`;
+- a `npm` le llegan **solo** las variables que nombra `--preserve-env`.
+
+Los nombres de cada archivo se listan sin sus valores con `sudo sed -E "s/=.*//" /etc/crm-staging/<x>.env`.
+
+Código y dependencias, como `benja`:
+
 ```
 cd /srv/crm-staging
 git fetch && git reset --hard origin/main
 npm ci --no-audit --no-fund
-set -a && . /etc/crm-staging/app.env && set +a
-npm run build
+```
+
+Si el cambio trae migraciones, correrlas con `migrate.env` **antes** del `build`. Cada comando carga su propio archivo, así que las variables de `migrate.env` y de `app.env` no se mezclan:
+
+```
+sudo bash -c "set -a && . /etc/crm-staging/migrate.env && set +a && cd /srv/crm-staging && exec sudo -u benja --preserve-env=DATABASE_URL npm run db:migrate"
+```
+
+Build con `app.env` y reinicio. La lista de `--preserve-env` son las variables de `app.env` al 2026-09-25; si el archivo gana una, se agrega acá:
+
+```
+sudo bash -c "set -a && . /etc/crm-staging/app.env && set +a && cd /srv/crm-staging && exec sudo -u benja --preserve-env=NODE_ENV,PORT,HOSTNAME,DATABASE_URL,TRUSTED_PROXY,INGESTION_ENABLED,INGESTION_ALLOWED_CREDENTIALS npm run build"
 sudo systemctl restart crm-staging
 ```
 
-Si el cambio trae migraciones, correrlas con `migrate.env` **antes** del `build`, en una shell aparte para no mezclar las variables con las de `app.env`:
-
-```
-set -a && . /etc/crm-staging/migrate.env && set +a
-npm run db:migrate
-```
+*La primera corrida de esta sección tal como está escrita queda pendiente del próximo despliegue.* La 12.1 no despliega (D-2 y D-11), y lo que se comparó es el texto contra la evidencia, no una corrida nueva.
 
 Todas las migraciones pendientes se aplican en **una sola transacción**: si falla una, no queda aplicada ninguna del lote. El comando sale con código distinto de 0 e imprime el error; un `Migraciones aplicadas.` es la única salida buena.
 
@@ -88,10 +102,10 @@ La [API de lectura](../../docs/contracts/read-v1.md) está **apagada** en stagin
 1. **Crear una credencial sintética** con el rol de la aplicación, que tiene `INSERT` sobre `ingestion_credentials` (migración `0014`). El token se muestra **una sola vez**: se copia a un gestor local y nunca a un archivo del repositorio, a la evidencia ni a un mensaje.
 
    ```
-   cd /srv/crm-staging
-   set -a && . /etc/crm-staging/app.env && set +a
-   npm run ingestion:credential -- create --org <organization_id> --source <source> --scope read
+   sudo bash -c "set -a && . /etc/crm-staging/app.env && set +a && cd /srv/crm-staging && exec sudo -u benja --preserve-env=DATABASE_URL npm run --silent ingestion:credential -- create --org <organization_id> --source <source> --scope read"
    ```
+
+   Es la forma de [Desplegar un cambio](#desplegar-un-cambio). Solo hace falta la conexión de `app.env`.
 
 2. **Encenderla**: agregar a `/etc/crm-staging/app.env` las dos líneas de abajo, con el id que imprimió el paso 1, y reiniciar.
 
@@ -105,8 +119,10 @@ La [API de lectura](../../docs/contracts/read-v1.md) está **apagada** en stagin
 3. **Apagarla**: borrar esas dos líneas de `app.env`, reiniciar y revocar la credencial.
 
    ```
-   npm run ingestion:credential -- revoke --id <credential_id>
+   sudo bash -c "set -a && . /etc/crm-staging/app.env && set +a && cd /srv/crm-staging && exec sudo -u benja --preserve-env=DATABASE_URL npm run --silent ingestion:credential -- revoke --id <credential_id>"
    ```
+
+   La evidencia de la 11.4 registra la salida de la revocación, no su comando literal. Esta línea aplica la forma probada con `create`.
 
    El mismo `GET` tiene que volver a dar `404`, y `select revoked_at from ingestion_credentials where id = '<credential_id>'` no puede ser nulo.
 

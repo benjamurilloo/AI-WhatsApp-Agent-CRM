@@ -12,7 +12,7 @@ function entry(
     action,
     diff,
     createdAt: new Date(0),
-    actor: { id: "u", name: "Ana" },
+    actor: { kind: "user", id: "u", name: "Ana" },
   };
 }
 

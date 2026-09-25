@@ -680,8 +680,41 @@ describe("listClientAudit (FR-AUD-02)", () => {
     expect(result.entries[0]).toMatchObject({
       entityType: "client",
       diff: { before: { isActive: true }, after: { isActive: false } },
-      actor: { id: s.adminA.userId, name: "Persona admin-a@example.com" },
+      actor: {
+        kind: "user",
+        id: s.adminA.userId,
+        name: "Persona admin-a@example.com",
+      },
     });
+  });
+
+  // Una fila de servicio insertada por SQL, como fixture sintético: la escritura por servicio llega
+  // en la 12.1.2 (brief-12.1, D-4).
+  it("FR-AUD-03: una fila de servicio se entrega como servicio, sin nombre de usuario", async () => {
+    const s = await seed();
+    const clientId = await create(s.adminA);
+    const credential = await getDb().execute<{ id: string }>(
+      sql`insert into ingestion_credentials (organization_id, source, scope, token_hash)
+          values (${s.orgA}, 'emisor-a', 'ingest', ${randomUUID()}) returning id`,
+    );
+    const credentialId = credential.rows[0]!.id;
+    await getDb().execute(
+      sql`insert into audit_logs
+            (organization_id, actor_credential_id, entity_type, entity_id, action, diff)
+          values (${s.orgA}, ${credentialId}, 'client', ${clientId}, 'update',
+            ${JSON.stringify({ before: { notes: null }, after: { notes: "x" } })}::jsonb)`,
+    );
+
+    const result = await listClientAudit(s.adminA, clientId, 1);
+    if (!result.ok) throw new Error(result.code);
+    expect(result.entries.map((entry) => entry.actor)).toEqual([
+      { kind: "service", credentialId },
+      {
+        kind: "user",
+        id: s.adminA.userId,
+        name: "Persona admin-a@example.com",
+      },
+    ]);
   });
 
   it("solo admin de la propia organización", async () => {

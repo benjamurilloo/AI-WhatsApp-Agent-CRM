@@ -226,3 +226,60 @@ Lista cerrada. Tocar otro archivo es un hallazgo bloqueante, salvo ampliación a
 - Si la clave foránea de D-3 choca con una regla de frontera o con una guarda: se detiene y se pregunta.
 - Si hace falta tocar un archivo fuera de la lista.
 - Antes de cambiar estados en Notion sin el cierre confirmado por el usuario.
+
+## Resultados — etapa 12.1.1
+
+**Autoevaluación** (`self_assessment: true`), del 2026-09-25. La revisión independiente es la de D-13, al final de la 12.1.2.
+
+### Decisión tomada durante la implementación: cómo se compone el autor de servicio
+
+Al escribir la lectura apareció un choque que el brief no vio.
+- D-4 pide «Servicio · &lt;source&gt;», y el `source` vive en `ingestion_credentials`.
+- La convención vigente prohíbe el `JOIN` entre módulos.
+- Que `crm` importara `ingestion` crearía un ciclo (`ingestion` → `conversations` → `crm`).
+
+Se detuvo el trabajo y se preguntó. **El usuario eligió componerlo en la página**:
+- `audit` y los tres lectores devuelven el actor de servicio con su `credentialId`;
+- la página le pide el `source` a `ingestion` por su interfaz, con `getCredentialSources`.
+
+Es el mismo hallazgo que el paso 5 de la planificación debía encontrar antes de aprobar: se registra como tal.
+
+### Desvíos respecto del brief
+
+1. **Dos migraciones, no una.**
+   - `0021` agrega el `UNIQUE (organization_id, id)` de `ingestion_credentials`.
+   - `0022` agrega el actor en `audit_logs`.
+
+   Motivo: la convención de la 6.1. Drizzle Kit emite el `UNIQUE` al final si va en la misma migración que la clave foránea que lo usa, y PostgreSQL la rechaza con `42830`. Se generaron en dos pasos, sin editar SQL a mano. **No hizo falta migración `--custom`**: los privilegios y el trigger de `audit_logs` no cambian.
+2. **Clave foránea compuesta** `(organization_id, actor_credential_id)`, no simple. Lo exige la convención de la 4.1, D-3, y la sección 4 de `crm-write-discipline`. D-3 no la especificaba.
+3. **Forma de la entrada**: `recordAudit` acepta `actorUserId` o `actorCredentialId`, con una unión de objetos estrictos, en lugar de `{ userId }` o `{ credentialId }`. Los 14 productores existentes no cambian de código.
+
+### Ampliación de la lista de archivos
+
+Todas se desprenden de la decisión del usuario sobre la composición y de la clave foránea compuesta:
+- `src/modules/ingestion/schema.ts`, `credentials.ts`, `repository.ts` e `index.ts`: el `UNIQUE` y `getCredentialSources`;
+- `src/app/(autenticado)/_audit/actor.ts` y `actor.test.ts`, nuevos: el rótulo del autor, compartido por las tres páginas;
+- las páginas y los `audit-summary.test.ts` de productos y de información, que el brief listaba como condicionales, y `tests/integration/product-audit.test.ts` y `knowledge.test.ts`, que construían el actor con la forma anterior.
+
+### Contraste por criterio
+
+| AC | Resultado | Evidencia |
+|---|---|---|
+| AC-1 | cumplido | `audit.test.ts`, bloque «actor de servicio»: credencial como único actor; sin actor o con los dos, `23514` con el nombre del `CHECK`; credencial inexistente o de otra organización, `23503`; borrar la credencial, `23001`; `UPDATE` de la fila, `P0001`. Las pruebas previas de privilegios y trigger pasan sin cambios. |
+| AC-2 | cumplido | `service.test.ts`, caso FR-AUD-03: acepta la credencial y rechaza ninguno, los dos y un id que no es uuid. Los 14 productores siguen igual (typecheck y suite en verde). |
+| AC-3 | cumplido | `audit.test.ts` (lectura discriminada) y `crm.test.ts` (fila de servicio sin nombre de usuario), más `actor.test.ts` («Servicio · emisor», «Servicio» sin emisor, nunca vacío). **Mutación**: con la rama de servicio de `nameAuditActors` convertida en usuario, el caso de `crm.test.ts` falla (1 fallado, salida 1). Restaurada. |
+| AC-4 | cumplido | `clients.spec.ts` caso 16: el `admin` ve «Servicio · emisor-e2e» y «Alta», con axe en claro y oscuro; el `viewer` no recibe el emisor. 16 de 16. **Sin corrida de mutación del end-to-end**: la rama la fijan AC-3 y `actor.test.ts`. |
+| AC-5 | cumplido, con una salvedad | Las tres secciones usan la forma de la evidencia de la 11.4 (§AC-6, líneas 100, 114 y 293). **El `revoke` no está literal en la evidencia**: solo su salida. La línea aplica la forma probada con `create`, y el README lo dice. Guardas de staging en verde. |
+| AC-6 | cumplido | DataModel (columna, `CHECK`, clave compuesta y enmienda del brief-3.6 D-5, con fecha), SecurityModel y FR-AUD-03 en FunctionalRequirements. |
+
+**Mutación adicional**, de la clave foránea compuesta. En una transacción revertida sobre la base de desarrollo, se reemplazó por una simple hacia `ingestion_credentials(id)`: una credencial de la organización B firmó una fila de la A («MUTACION: credencial ajena aceptada con FK simple»). Después del `rollback`, las tres restricciones siguen en su lugar.
+
+### Verificación de la etapa
+
+- `lint`, `typecheck` y `format:check`: 0.
+- `npm run test`: **1181 de 1181 en 91 archivos**.
+- `npm run build`: 0.
+- `npm run test:e2e`: **98 de 98**.
+- **Una corrida de guardas dio 1 falla que no se capturó**: la salida se filtró con `Select-String` y se perdió el nombre del caso, justo lo que el HANDOFF §7 advierte. Las tres corridas siguientes dieron 296 de 296. Queda como falla no identificada. Que sea la intermitencia de `module-boundary` es una hipótesis.
+
+**Nivel**: validado localmente (`deterministic`), y `producer-consumer` para la pantalla 7. Falta la CI del commit de la etapa.

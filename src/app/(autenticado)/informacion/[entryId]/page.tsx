@@ -7,6 +7,7 @@ import {
 } from "@/modules/knowledge";
 import { getOrganizationTimezone } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
+import { auditActorLabels } from "@/app/(autenticado)/_audit/actor";
 import {
   cardClass,
   linkClass,
@@ -84,6 +85,9 @@ export default async function KnowledgeEntryPage({
   // La auditoría solo se pide para un admin: el servidor no la entrega a un viewer.
   const audit = isAdmin
     ? await listKnowledgeAudit(context, entry.id, page(query.auditoria))
+    : null;
+  const actorLabel = audit?.ok
+    ? await auditActorLabels(context.organizationId, audit.entries)
     : null;
   const categories = editing ? await listKnowledgeCategories(context) : null;
 
@@ -223,7 +227,9 @@ export default async function KnowledgeEntryPage({
                     <td className={`${tableCellClass} whitespace-nowrap`}>
                       {formatShortDateTime(log.createdAt, timeZone)}
                     </td>
-                    <td className={tableCellClass}>{log.actor.name}</td>
+                    <td className={tableCellClass}>
+                      {actorLabel?.(log.actor)}
+                    </td>
                     <td className={tableCellClass}>{auditActionLabel(log)}</td>
                     <td className={`${tableCellClass} text-muted`}>
                       {describeAuditDiff(log)}

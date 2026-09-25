@@ -134,6 +134,18 @@ export function authenticateIngestionRequest(
   return authenticateServiceRequest(authorization, "ingest");
 }
 
+// El emisor de cada credencial, para mostrar el autor de servicio de la auditoría (brief-12.1, D-4).
+// Solo las de la organización: un id ajeno o que no es uuid no aparece en el resultado.
+export async function getCredentialSources(
+  organizationId: string,
+  credentialIds: string[],
+): Promise<Map<string, string>> {
+  const ids = [...new Set(credentialIds)].filter(isUuid);
+  if (!isUuid(organizationId) || ids.length === 0) return new Map();
+  const rows = await repository.findCredentialSources(organizationId, ids);
+  return new Map(rows.map((row) => [row.id, row.source]));
+}
+
 export function isUuid(value: string): boolean {
   return uuidPattern.test(value);
 }

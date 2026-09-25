@@ -388,7 +388,8 @@ Justificación de necesidad real: requisitos FR-AUD-01 y FR-AUD-02 sobre product
 |---|---|---|
 | `id` | uuid PK | |
 | `organization_id` | uuid FK → organizations, not null | |
-| `actor_user_id` | uuid FK → users, not null | |
+| `actor_user_id` | uuid FK → users, nulable desde la 0022 | ~~not null~~ (brief-12.1, D-3) |
+| `actor_credential_id` | uuid, nulable; FK compuesta `(organization_id, actor_credential_id)` → `ingestion_credentials (organization_id, id)` | actor de servicio, desde la 0022 (brief-12.1, D-3) |
 | `entity_type` | enum(`product`,`client`,`inventory`,`conversation`,`organization_member`,`knowledge_entry`) not null | `knowledge_entry` desde la 0018 (brief-11.2) |
 | `entity_id` | uuid not null | |
 | `action` | enum(`create`,`update`,`deactivate`,`reactivate`,`stock_adjustment`,`status_change`,`role_change`,`price_change`) not null | `price_change` desde la 0017 (brief-11.1, D-7) |
@@ -397,7 +398,14 @@ Justificación de necesidad real: requisitos FR-AUD-01 y FR-AUD-02 sobre product
 
 Índice: `(organization_id, entity_type, entity_id, created_at desc)` para "historial de esta entidad".
 
-Las dos claves foráneas usan `ON DELETE RESTRICT`: un registro de auditoría impide borrar su organización o su actor.
+Las claves foráneas usan `ON DELETE RESTRICT`: un registro de auditoría impide borrar su organización o su actor, sea usuario o credencial.
+
+**Actor de servicio, desde la 12.1** ([brief-12.1](../decisions/brief-12.1-actor-de-servicio-y-cliente-por-telefono.md), D-3; migraciones `0021` y `0022`):
+- Cada fila tiene **exactamente un actor**: `CHECK audit_logs_exactly_one_actor`, con `num_nonnulls(actor_user_id, actor_credential_id) = 1`.
+- La credencial es de la misma organización que la fila, por la clave foránea compuesta hacia el `UNIQUE (organization_id, id)` de `ingestion_credentials` (`0021`), como exige la convención de la 4.1, D-3. Con `actor_credential_id` nulo, `MATCH SIMPLE` no la comprueba.
+- Una credencial revocada sigue siendo autor de sus filas: se revoca con fecha, no se borra.
+
+*Enmienda del 2026-09-25 al brief-3.6, D-5*: `audit` ya no depende solo de `auth` y `organizations`. `audit/schema.ts` importa también `ingestion/schema`, que ESLint permite (`!@/modules/*/schema`). La lectura sigue sin `JOIN` entre módulos: `audit` devuelve el actor discriminado, y el `source` de la credencial lo compone la página con `getCredentialSources` de `ingestion` (D-4).
 
 Forma de `diff` (brief-3.6, D-4), validada por `recordAudit` antes de insertar:
 

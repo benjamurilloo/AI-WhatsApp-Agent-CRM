@@ -1,0 +1,1 @@
+ALTER TABLE "ingestion_credentials" ADD CONSTRAINT "ingestion_credentials_organization_id_id_unique" UNIQUE("organization_id","id");

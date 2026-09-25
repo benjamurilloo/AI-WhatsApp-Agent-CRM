@@ -1,8 +1,10 @@
 import { z } from "zod";
 import {
+  auditUserIds,
   listEntityAuditLogs,
+  nameAuditActors,
   recordAudit,
-  type AuditLogEntry,
+  type NamedAuditLogEntry,
 } from "@/modules/audit";
 import {
   authorize,
@@ -208,9 +210,7 @@ export async function listKnowledgeCategories(
 // knowledge, dueño de la entrada, verifica el rol y la organización y compone el nombre del autor
 // (brief-4.4, ajuste 1).
 
-export type KnowledgeAuditEntry = Omit<AuditLogEntry, "actorUserId"> & {
-  actor: { id: string; name: string };
-};
+export type KnowledgeAuditEntry = NamedAuditLogEntry;
 
 export type KnowledgeAuditResult =
   | {
@@ -238,19 +238,17 @@ export async function listKnowledgeAudit(
     entityId: found.entry.id,
     page,
   });
-  const actors = new Map(
+  const names = new Map(
     (
-      await getMemberSummaries(context.organizationId, [
-        ...new Set(logs.entries.map((entry) => entry.actorUserId)),
-      ])
+      await getMemberSummaries(
+        context.organizationId,
+        auditUserIds(logs.entries),
+      )
     ).map((user) => [user.id, user.name]),
   );
   return {
     ok: true,
-    entries: logs.entries.map(({ actorUserId, ...entry }) => ({
-      ...entry,
-      actor: { id: actorUserId, name: actors.get(actorUserId) ?? "" },
-    })),
+    entries: nameAuditActors(logs.entries, names),
     total: logs.total,
     page: logs.page,
     pageCount: logs.pageCount,

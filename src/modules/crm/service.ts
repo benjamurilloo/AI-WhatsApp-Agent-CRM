@@ -1,8 +1,10 @@
 import { z } from "zod";
 import {
+  auditUserIds,
   listEntityAuditLogs,
+  nameAuditActors,
   recordAudit,
-  type AuditLogEntry,
+  type NamedAuditLogEntry,
 } from "@/modules/audit";
 import {
   authorize,
@@ -231,9 +233,7 @@ export async function getClientsByIds(
 // Historial de auditoría del cliente (FR-AUD-02, brief-5.2, D-7), como listProductAudit: audit no
 // autoriza ni conoce a auth; crm verifica el rol y la organización y compone el autor.
 
-export type ClientAuditEntry = Omit<AuditLogEntry, "actorUserId"> & {
-  actor: { id: string; name: string };
-};
+export type ClientAuditEntry = NamedAuditLogEntry;
 
 export type ClientAuditResult =
   | {
@@ -264,19 +264,17 @@ export async function listClientAudit(
     entityId: client.id,
     page,
   });
-  const actors = new Map(
+  const names = new Map(
     (
-      await getMemberSummaries(context.organizationId, [
-        ...new Set(found.entries.map((entry) => entry.actorUserId)),
-      ])
+      await getMemberSummaries(
+        context.organizationId,
+        auditUserIds(found.entries),
+      )
     ).map((user) => [user.id, user.name]),
   );
   return {
     ok: true,
-    entries: found.entries.map(({ actorUserId, ...entry }) => ({
-      ...entry,
-      actor: { id: actorUserId, name: actors.get(actorUserId) ?? "" },
-    })),
+    entries: nameAuditActors(found.entries, names),
     total: found.total,
     page: found.page,
     pageCount: found.pageCount,

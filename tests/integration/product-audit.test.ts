@@ -128,9 +128,13 @@ describe("listProductAudit: contenido y orden", () => {
     expect(
       result.entries.every((entry) => entry.createdAt instanceof Date),
     ).toBe(true);
-    expect(new Set(result.entries.map((entry) => entry.actor.name))).toEqual(
-      new Set(["Ana Pérez"]),
-    );
+    expect(
+      new Set(
+        result.entries.map((entry) =>
+          entry.actor.kind === "user" ? entry.actor.name : "",
+        ),
+      ),
+    ).toEqual(new Set(["Ana Pérez"]));
     expect(result.entries[1]!.diff).toEqual({
       before: { quantityOnHand: "0.000" },
       after: { quantityOnHand: "4.000" },
@@ -164,6 +168,7 @@ describe("listProductAudit: contenido y orden", () => {
     );
     const result = await audit(s.adminA, productId);
     expect(result.entries[0]!.actor).toEqual({
+      kind: "user",
       id: s.adminA.userId,
       name: "Ana Pérez",
     });

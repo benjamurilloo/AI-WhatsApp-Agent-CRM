@@ -405,7 +405,10 @@ describe("FR-INFO-01: escrituras de admin, auditadas (AC-2)", () => {
       "deactivate",
       "create",
     ]);
-    expect(audit.ok && audit.entries[0]!.actor.name).toBe("Persona");
+    expect(audit.ok && audit.entries[0]!.actor).toMatchObject({
+      kind: "user",
+      name: "Persona",
+    });
   });
 });
 

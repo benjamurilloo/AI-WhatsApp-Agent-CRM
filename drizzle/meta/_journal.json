@@ -148,6 +148,20 @@
       "when": 1790284916335,
       "tag": "0020_credential_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1790359235319,
+      "tag": "0021_credential_organization_id_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1790359238626,
+      "tag": "0022_audit_service_actor",
+      "breakpoints": true
     }
   ]
 }

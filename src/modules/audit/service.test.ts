@@ -35,6 +35,15 @@ describe("validateAuditEntry", () => {
     expect(validateAuditEntry(creation)).toEqual(creation);
   });
 
+  it("FR-AUD-03: acepta una credencial de servicio como actor, y exactamente un actor", () => {
+    const { actorUserId, ...rest } = entry() as Record<string, unknown>;
+    const byService = { ...rest, actorCredentialId: randomUUID() };
+    expect(validateAuditEntry(byService)).toEqual(byService);
+    rejects(rest);
+    rejects({ ...rest, actorUserId, actorCredentialId: randomUUID() });
+    rejects({ ...rest, actorCredentialId: "no-es-uuid" });
+  });
+
   it("rechaza tipo de entidad o acción fuera de los enums", () => {
     rejects(entry({ entityType: "user" }));
     rejects(entry({ action: "delete" }));

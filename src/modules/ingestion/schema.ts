@@ -99,6 +99,12 @@ export const ingestionCredentials = pgTable(
   },
   (table) => [
     index("ingestion_credentials_organization_id_idx").on(table.organizationId),
+    // Destino de la clave foránea compuesta del actor de servicio de audit_logs: una credencial
+    // no puede firmar la auditoría de otra organización (brief-12.1, D-3).
+    unique("ingestion_credentials_organization_id_id_unique").on(
+      table.organizationId,
+      table.id,
+    ),
     check(
       "ingestion_credentials_not_blank",
       sql`btrim(${table.source}) <> '' AND btrim(${table.tokenHash}) <> ''`,

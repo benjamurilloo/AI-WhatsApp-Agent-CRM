@@ -77,3 +77,4 @@ Agregada el 2026-09-24 por la 11.3 ([brief-11.3](../decisions/brief-11.3-api-de-
   - todo cambio de rol o de estado de un miembro de la organización;
   - toda creación, edición, desactivación o reactivación de una entrada de información del negocio (agregado el 2026-09-24 por la 11.2, FR-INFO-01).
 - **FR-AUD-02**: Un admin puede consultar el historial de auditoría de una entidad específica (producto, cliente), en las pantallas 4 y 7 (subfase 1.2, D-8). Desde la 11.2, también el de una entrada de información del negocio, en la pantalla 12.
+- **FR-AUD-03** (agregado el 2026-09-25 por la 12.1, D-3 y D-4): un cambio hecho por un servicio autenticado queda auditado con la **credencial de servicio** como actor, no con un usuario humano. Cada registro tiene exactamente un actor, y la credencial es de la misma organización. En el historial, ese autor se muestra como «Servicio · &lt;emisor&gt;».

@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getDb, type DbTransaction } from "@/shared/db";
 import { ingestionCredentials, ingestionEvents } from "./schema";
 
@@ -136,6 +136,26 @@ export async function findCredentialByTokenHash(
     .where(eq(ingestionCredentials.tokenHash, tokenHash))
     .limit(1);
   return rows[0];
+}
+
+// El source de cada credencial de la organización, revocada o no: la auditoría la sigue nombrando
+// después de revocarla (brief-12.1, D-4).
+export function findCredentialSources(
+  organizationId: string,
+  credentialIds: string[],
+): Promise<{ id: string; source: string }[]> {
+  return getDb()
+    .select({
+      id: ingestionCredentials.id,
+      source: ingestionCredentials.source,
+    })
+    .from(ingestionCredentials)
+    .where(
+      and(
+        eq(ingestionCredentials.organizationId, organizationId),
+        inArray(ingestionCredentials.id, credentialIds),
+      ),
+    );
 }
 
 // Devuelve false si la credencial no existe o ya estaba revocada.

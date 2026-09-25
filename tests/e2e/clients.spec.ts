@@ -32,6 +32,11 @@ test.beforeAll(() => {
 // TRUNCATE de clients exige vaciar en la misma sentencia las tablas que la referencian (brief-6.1).
 test.afterAll(async () => {
   await db.execute(sql`truncate table messages, conversations, clients`);
+  // La credencial del caso 16 queda referenciada por su fila de auditoría (RESTRICT, brief-12.1).
+  await db.execute(sql`truncate table audit_logs`);
+  await db.execute(
+    sql`delete from ingestion_credentials where source = ${SERVICE_SOURCE}`,
+  );
   await db.$client.end();
 });
 
@@ -113,6 +118,9 @@ async function clientCount() {
 
 const clientsTable = (page: Page) =>
   page.getByRole("table", { name: "Clientes de la organización" });
+
+// Emisor sintético del caso 16 (brief-12.1, D-4): no coincide con ningún nombre real.
+const SERVICE_SOURCE = "emisor-e2e";
 
 test("caso 1: un admin llega desde la navegación, ve el vacío y crea el primer cliente", async ({
   page,
@@ -670,4 +678,36 @@ test("caso 15: un cliente sin conversaciones muestra el vacío", async ({
     section.getByRole("link", { name: "Ver en Conversaciones" }),
   ).toBeHidden();
   await expectAccessible(page, "cliente sin conversaciones");
+});
+
+// La escritura por servicio llega en la 12.1.2: acá la fila de servicio se inserta por SQL, como
+// fixture sintético (brief-12.1, D-4; brief-6.4, D-5).
+test("caso 16 (FR-AUD-03): la auditoría muestra al servicio como autor, solo para admin", async ({
+  page,
+}) => {
+  const clientId = await insertClient("Carla Ruiz");
+  const credential = await db.execute<{ id: string }>(
+    sql`insert into ingestion_credentials (organization_id, source, scope, token_hash)
+        values (${SEED_ORGANIZATION_ID}, ${SERVICE_SOURCE}, 'ingest', ${`hash-${clientId}`})
+        returning id`,
+  );
+  await db.execute(
+    sql`insert into audit_logs
+          (organization_id, actor_credential_id, entity_type, entity_id, action, diff)
+        values (${SEED_ORGANIZATION_ID}, ${credential.rows[0]!.id}, 'client', ${clientId},
+          'create', ${JSON.stringify({ before: null, after: { displayName: "Carla Ruiz" } })}::jsonb)`,
+  );
+
+  await login(page, ADMIN);
+  await page.goto(`/clientes/${clientId}`);
+  const audit = page.getByRole("table", { name: /Auditoría de/ });
+  await expect(audit).toContainText(`Servicio · ${SERVICE_SOURCE}`);
+  await expect(audit).toContainText("Alta");
+  await expectAccessible(page, "auditoría con autor de servicio");
+
+  await page.context().clearCookies();
+  await login(page, VIEWER);
+  await page.goto(`/clientes/${clientId}`);
+  await expect(page.getByRole("heading", { name: "Carla Ruiz" })).toBeVisible();
+  expect(await page.content()).not.toContain(SERVICE_SOURCE);
 });

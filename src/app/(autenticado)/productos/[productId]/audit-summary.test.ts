@@ -9,7 +9,11 @@ function entry(overrides: Partial<ProductAuditEntry>): ProductAuditEntry {
     action: "update",
     diff: { before: {}, after: {} },
     createdAt: new Date("2026-09-15T12:00:00Z"),
-    actor: { id: "b3c5b1f4-0000-4000-8000-000000000002", name: "Ana Pérez" },
+    actor: {
+      kind: "user",
+      id: "b3c5b1f4-0000-4000-8000-000000000002",
+      name: "Ana Pérez",
+    },
     ...overrides,
   };
 }

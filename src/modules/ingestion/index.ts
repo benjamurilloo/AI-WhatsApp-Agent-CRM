@@ -31,6 +31,7 @@ export {
   authenticateIngestionRequest,
   authenticateServiceRequest,
   createIngestionCredential,
+  getCredentialSources,
   INGESTION_TOKEN_PREFIX,
   isCredentialScope,
   revokeIngestionCredential,

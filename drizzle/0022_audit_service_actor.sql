@@ -1,0 +1,4 @@
+ALTER TABLE "audit_logs" ALTER COLUMN "actor_user_id" DROP NOT NULL;--> statement-breakpoint
+ALTER TABLE "audit_logs" ADD COLUMN "actor_credential_id" uuid;--> statement-breakpoint
+ALTER TABLE "audit_logs" ADD CONSTRAINT "audit_logs_actor_credential_fk" FOREIGN KEY ("organization_id","actor_credential_id") REFERENCES "public"."ingestion_credentials"("organization_id","id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "audit_logs" ADD CONSTRAINT "audit_logs_exactly_one_actor" CHECK (num_nonnulls("audit_logs"."actor_user_id", "audit_logs"."actor_credential_id") = 1);

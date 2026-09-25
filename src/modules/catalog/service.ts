@@ -1,8 +1,10 @@
 import { z } from "zod";
 import {
+  auditUserIds,
   listEntityAuditLogs,
+  nameAuditActors,
   recordAudit,
-  type AuditLogEntry,
+  type NamedAuditLogEntry,
 } from "@/modules/audit";
 import {
   authorize,
@@ -197,9 +199,7 @@ export async function lockProductForStockChange(
 // compone el nombre del autor. El producto reúne sus ediciones (product) y sus ajustes de
 // stock (inventory, con el id del producto, brief-4.3.1, D-4).
 
-export type ProductAuditEntry = Omit<AuditLogEntry, "actorUserId"> & {
-  actor: { id: string; name: string };
-};
+export type ProductAuditEntry = NamedAuditLogEntry;
 
 export type ProductAuditResult =
   | {
@@ -233,19 +233,17 @@ export async function listProductAudit(
     entityId: product.id,
     page,
   });
-  const actors = new Map(
+  const names = new Map(
     (
-      await getMemberSummaries(context.organizationId, [
-        ...new Set(found.entries.map((entry) => entry.actorUserId)),
-      ])
+      await getMemberSummaries(
+        context.organizationId,
+        auditUserIds(found.entries),
+      )
     ).map((user) => [user.id, user.name]),
   );
   return {
     ok: true,
-    entries: found.entries.map(({ actorUserId, ...entry }) => ({
-      ...entry,
-      actor: { id: actorUserId, name: actors.get(actorUserId) ?? "" },
-    })),
+    entries: nameAuditActors(found.entries, names),
     total: found.total,
     page: found.page,
     pageCount: found.pageCount,

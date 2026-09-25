@@ -5,6 +5,7 @@ import { getClientActivity } from "@/modules/conversations";
 import { getClient, listClientAudit } from "@/modules/crm";
 import { getOrganizationTimezone } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
+import { auditActorLabels } from "@/app/(autenticado)/_audit/actor";
 import {
   activeBadgeClass,
   cardClass,
@@ -92,6 +93,9 @@ export default async function ClientPage({
     ? await listClientAudit(context, client.id, sections.auditPage)
     : null;
   const timeZone = audit?.ok ? await getOrganizationTimezone(context) : null;
+  const actorLabel = audit?.ok
+    ? await auditActorLabels(context.organizationId, audit.entries)
+    : null;
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-8">
@@ -245,7 +249,9 @@ export default async function ClientPage({
                     <td className={`${tableCellClass} whitespace-nowrap`}>
                       {formatShortDateTime(entry.createdAt, timeZone)}
                     </td>
-                    <td className={tableCellClass}>{entry.actor.name}</td>
+                    <td className={tableCellClass}>
+                      {actorLabel?.(entry.actor)}
+                    </td>
                     <td className={tableCellClass}>
                       {auditActionLabel(entry)}
                     </td>

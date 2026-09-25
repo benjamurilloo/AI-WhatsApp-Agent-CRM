@@ -1,4 +1,7 @@
+import { sql } from "drizzle-orm";
 import {
+  check,
+  foreignKey,
   index,
   jsonb,
   pgEnum,
@@ -7,6 +10,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { users } from "@/modules/auth/schema";
+import { ingestionCredentials } from "@/modules/ingestion/schema";
 import { organizations } from "@/modules/organizations/schema";
 
 // docs/architecture/DataModel.md, tabla audit_logs (brief-3.6).
@@ -39,13 +43,16 @@ export const auditLogs = pgTable(
   "audit_logs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    // Claves foráneas hacia auth y organizations: la única dependencia de audit (D-5).
+    // Claves foráneas hacia auth, organizations e ingestion: desde la 12.1 (D-3), audit depende
+    // también del esquema de ingestion, por el actor de servicio.
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "restrict" }),
-    actorUserId: uuid("actor_user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+    // Exactamente uno de los dos actores: un usuario o una credencial de servicio (brief-12.1, D-3).
+    actorUserId: uuid("actor_user_id").references(() => users.id, {
+      onDelete: "restrict",
+    }),
+    actorCredentialId: uuid("actor_credential_id"),
     entityType: auditEntityType("entity_type").notNull(),
     entityId: uuid("entity_id").notNull(),
     action: auditAction("action").notNull(),
@@ -60,6 +67,20 @@ export const auditLogs = pgTable(
       table.entityType,
       table.entityId,
       table.createdAt.desc(),
+    ),
+    // Compuesta: la credencial es de la misma organización que la fila (convención de la 4.1, D-3).
+    // Con actor_credential_id nulo, MATCH SIMPLE no la comprueba.
+    foreignKey({
+      name: "audit_logs_actor_credential_fk",
+      columns: [table.organizationId, table.actorCredentialId],
+      foreignColumns: [
+        ingestionCredentials.organizationId,
+        ingestionCredentials.id,
+      ],
+    }).onDelete("restrict"),
+    check(
+      "audit_logs_exactly_one_actor",
+      sql`num_nonnulls(${table.actorUserId}, ${table.actorCredentialId}) = 1`,
     ),
   ],
 );

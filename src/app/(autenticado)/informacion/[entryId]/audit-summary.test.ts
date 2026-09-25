@@ -15,7 +15,7 @@ function entry(
     action,
     diff: { before, after },
     createdAt: new Date(0),
-    actor: { id: "u", name: "Ana" },
+    actor: { kind: "user", id: "u", name: "Ana" },
   } as KnowledgeAuditEntry;
 }
 

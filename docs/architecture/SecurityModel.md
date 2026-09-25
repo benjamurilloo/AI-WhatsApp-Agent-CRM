@@ -154,6 +154,12 @@ Implementada en la 6.5.3 ([brief-6.5.3](../decisions/brief-6.5.3-autenticacion-d
   - todo cambio de estado de una conversación;
   - todo cambio de rol o de estado de un miembro.
 - Se escribe con `recordAudit(tx, entry)` dentro de la transacción del cambio, y nunca guarda contraseñas, hashes, tokens ni secretos ([brief-3.6](../decisions/brief-3.6-modulo-de-auditoria.md), D-3 y D-4).
+- **Desde la 12.1 el actor puede ser una credencial de servicio** (FR-AUD-03, [brief-12.1](../decisions/brief-12.1-actor-de-servicio-y-cliente-por-telefono.md), D-3):
+  - exactamente un actor por fila, por `CHECK`;
+  - la credencial es de la organización de la fila, por la clave foránea compuesta, así que una credencial ajena no puede firmar;
+  - lo que se guarda es el id de la credencial, nunca su token ni su hash.
+
+  La creación y la revocación de una credencial siguen sin auditarse en `audit_logs` (ver arriba): no tienen actor. Lo que cambia es que las escrituras **hechas con** una credencial sí se auditan.
 - Es de solo inserción, con dos defensas ([ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md)):
   - el rol de aplicación `crm_app` tiene solo `SELECT` e `INSERT` sobre la tabla;
   - un trigger rechaza `UPDATE` y `DELETE` para cualquier rol.

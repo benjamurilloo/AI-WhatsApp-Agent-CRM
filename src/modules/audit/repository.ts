@@ -25,7 +25,8 @@ export type AuditLogRow = {
   entityType: (typeof auditLogs.$inferSelect)["entityType"];
   action: (typeof auditLogs.$inferSelect)["action"];
   diff: unknown;
-  actorUserId: string;
+  actorUserId: string | null;
+  actorCredentialId: string | null;
   createdAt: Date;
 };
 
@@ -58,6 +59,7 @@ export function findAuditLogs(
       action: auditLogs.action,
       diff: auditLogs.diff,
       actorUserId: auditLogs.actorUserId,
+      actorCredentialId: auditLogs.actorCredentialId,
       createdAt: auditLogs.createdAt,
     })
     .from(auditLogs)

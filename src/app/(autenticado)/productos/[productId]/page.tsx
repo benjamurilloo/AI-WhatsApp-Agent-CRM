@@ -8,6 +8,7 @@ import {
 import { getProductStock, listStockMovements } from "@/modules/inventory";
 import { getOrganizationTimezone } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
+import { auditActorLabels } from "@/app/(autenticado)/_audit/actor";
 import {
   activeBadgeClass,
   cardClass,
@@ -99,6 +100,9 @@ export default async function ProductPage({
   // La auditoría solo se pide para un admin: el servidor no la entrega a un viewer.
   const audit = isAdmin
     ? await listProductAudit(context, product.id, page(query.auditoria))
+    : null;
+  const actorLabel = audit?.ok
+    ? await auditActorLabels(context.organizationId, audit.entries)
     : null;
   // Las sugerencias de marca y categoría solo hacen falta si se edita (brief-11.1, D-2).
   const suggestions = editing ? await listProductSuggestions(context) : null;
@@ -304,7 +308,9 @@ export default async function ProductPage({
                     <td className={`${tableCellClass} whitespace-nowrap`}>
                       {formatShortDateTime(entry.createdAt, timeZone)}
                     </td>
-                    <td className={tableCellClass}>{entry.actor.name}</td>
+                    <td className={tableCellClass}>
+                      {actorLabel?.(entry.actor)}
+                    </td>
                     <td className={tableCellClass}>
                       {auditActionLabel(entry)}
                     </td>

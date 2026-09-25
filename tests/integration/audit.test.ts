@@ -3,9 +3,11 @@ import { sql } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import {
   InvalidAuditEntryError,
+  listEntityAuditLogs,
   recordAudit,
   type AuditEntry,
 } from "@/modules/audit";
+import { getCredentialSources } from "@/modules/ingestion";
 import { getDb, type Db, type DbTransaction } from "@/shared/db";
 import { resetDatabase } from "./reset-database";
 
@@ -262,6 +264,139 @@ describe("audit_logs: esquema", () => {
       ).code,
     ).toBe("23001");
     expect(await auditCount()).toBe(1);
+  });
+});
+
+// Actor de servicio (brief-12.1, D-3): exactamente un actor por fila, y la credencial de la misma
+// organización que la fila, por la clave foránea compuesta.
+async function insertCredential(organizationId: string, source: string) {
+  const result = await getDb().execute<{ id: string }>(
+    sql`insert into ingestion_credentials (organization_id, source, scope, token_hash)
+        values (${organizationId}, ${source}, 'ingest', ${randomUUID()})
+        returning id`,
+  );
+  return result.rows[0]!.id;
+}
+
+function insertWithActors(
+  s: Seed,
+  actors: { userId: string | null; credentialId: string | null },
+) {
+  return getDb().execute<{ id: string }>(
+    sql`insert into audit_logs
+          (organization_id, actor_user_id, actor_credential_id, entity_type, entity_id, action, diff)
+        values (${s.organizationId}, ${actors.userId}, ${actors.credentialId},
+          'client', ${s.memberId}, 'create', '{}'::jsonb)
+        returning id`,
+  );
+}
+
+describe("audit_logs: actor de servicio (brief-12.1)", () => {
+  it("FR-AUD-03: acepta una credencial como único actor", async () => {
+    const s = await seed();
+    const credentialId = await insertCredential(s.organizationId, "emisor-a");
+    const result = await insertWithActors(s, { userId: null, credentialId });
+    expect(result.rows[0]?.id).toMatch(uuidPattern);
+  });
+
+  it("FR-AUD-03: sin actor o con los dos: 23514", async () => {
+    const s = await seed();
+    const credentialId = await insertCredential(s.organizationId, "emisor-a");
+    for (const actors of [
+      { userId: null, credentialId: null },
+      { userId: s.actorUserId, credentialId },
+    ]) {
+      const error = await pgError(insertWithActors(s, actors));
+      expect(error.code).toBe("23514");
+      expect(error.message).toContain("audit_logs_exactly_one_actor");
+    }
+  });
+
+  it("FR-AUD-03: una credencial inexistente o de otra organización: 23503", async () => {
+    const s = await seed();
+    const other = await getDb().execute<{ id: string }>(
+      sql`insert into organizations (name) values ('Negocio B') returning id`,
+    );
+    const foreign = await insertCredential(other.rows[0]!.id, "emisor-b");
+    for (const credentialId of [randomUUID(), foreign]) {
+      const error = await pgError(
+        insertWithActors(s, { userId: null, credentialId }),
+      );
+      expect(error.code).toBe("23503");
+    }
+    expect(await auditCount()).toBe(0);
+  });
+
+  it("FR-AUD-03: no deja borrar la credencial de un registro, y la fila sigue siendo de solo inserción", async () => {
+    const s = await seed();
+    const credentialId = await insertCredential(s.organizationId, "emisor-a");
+    const id = (await insertWithActors(s, { userId: null, credentialId }))
+      .rows[0]!.id;
+    expect(
+      (
+        await pgError(
+          getDb().execute(
+            sql`delete from ingestion_credentials where id = ${credentialId}`,
+          ),
+        )
+      ).code,
+    ).toBe("23001");
+    expect(
+      (
+        await pgError(
+          getDb().execute(
+            sql`update audit_logs set actor_credential_id = null, actor_user_id = ${s.actorUserId} where id = ${id}`,
+          ),
+        )
+      ).code,
+    ).toBe("P0001");
+  });
+
+  it("FR-AUD-03: recordAudit registra una credencial y la lectura la devuelve como servicio", async () => {
+    const s = await seed();
+    const credentialId = await insertCredential(s.organizationId, "emisor-a");
+    await getDb().transaction((tx) =>
+      recordAudit(tx, {
+        organizationId: s.organizationId,
+        actorCredentialId: credentialId,
+        entityType: "client",
+        entityId: s.memberId,
+        action: "create",
+        diff: { before: null, after: { displayName: "Sin nombre" } },
+      }),
+    );
+    await getDb().transaction((tx) =>
+      recordAudit(tx, roleChange(s, { entityType: "client" })),
+    );
+
+    const page = await listEntityAuditLogs({
+      organizationId: s.organizationId,
+      entityTypes: ["client"],
+      entityId: s.memberId,
+      page: 1,
+    });
+    expect(page.entries.map((entry) => entry.actor)).toEqual(
+      expect.arrayContaining([
+        { kind: "service", credentialId },
+        { kind: "user", userId: s.actorUserId },
+      ]),
+    );
+    expect(page.entries).toHaveLength(2);
+  });
+
+  it("FR-AUD-03: getCredentialSources devuelve solo las credenciales de la organización", async () => {
+    const s = await seed();
+    const own = await insertCredential(s.organizationId, "emisor-a");
+    const other = await getDb().execute<{ id: string }>(
+      sql`insert into organizations (name) values ('Negocio B') returning id`,
+    );
+    const foreign = await insertCredential(other.rows[0]!.id, "emisor-b");
+    const sources = await getCredentialSources(s.organizationId, [
+      own,
+      foreign,
+      "no-es-uuid",
+    ]);
+    expect([...sources]).toEqual([[own, "emisor-a"]]);
   });
 });
 

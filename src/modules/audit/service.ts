@@ -18,18 +18,24 @@ const fieldsSchema = z.record(
   z.union([z.string(), z.number(), z.boolean(), z.null()]),
 );
 
+const entryFields = {
+  organizationId: z.uuid(),
+  entityType: z.enum(auditEntityType.enumValues),
+  entityId: z.uuid(),
+  action: z.enum(auditAction.enumValues),
+  diff: z.strictObject({
+    before: fieldsSchema.nullable(),
+    after: fieldsSchema.nullable(),
+  }),
+};
+
+// Exactamente un actor: un usuario o, desde la 12.1 (D-3), una credencial de servicio. Los objetos
+// son estrictos, así que una entrada con los dos, o con ninguno, no coincide con ninguna rama.
 const entrySchema = z
-  .strictObject({
-    organizationId: z.uuid(),
-    actorUserId: z.uuid(),
-    entityType: z.enum(auditEntityType.enumValues),
-    entityId: z.uuid(),
-    action: z.enum(auditAction.enumValues),
-    diff: z.strictObject({
-      before: fieldsSchema.nullable(),
-      after: fieldsSchema.nullable(),
-    }),
-  })
+  .union([
+    z.strictObject({ ...entryFields, actorUserId: z.uuid() }),
+    z.strictObject({ ...entryFields, actorCredentialId: z.uuid() }),
+  ])
   .superRefine(({ action, diff: { before, after } }, ctx) => {
     const issue = (message: string) =>
       ctx.addIssue({ code: "custom", path: ["diff"], message });
@@ -94,6 +100,11 @@ export async function recordAudit(
   await insertAuditLog(tx, validateAuditEntry(entry));
 }
 
+// Quién hizo el cambio. audit no conoce nombres: el de un usuario lo compone quien llama con auth,
+// y el `source` de una credencial lo compone la página con ingestion (brief-12.1, D-4).
+export type AuditActor =
+  { kind: "user"; userId: string } | { kind: "service"; credentialId: string };
+
 // Lectura del historial de una entidad (FR-AUD-02, brief-4.4, D-1). No recibe contexto ni
 // verifica el rol: audit no importa organizations ni auth fuera de schema.ts, así que quien
 // llama ya autorizó y compone el nombre del autor (catalog para productos).
@@ -107,9 +118,60 @@ export type AuditLogEntry = {
   entityType: AuditEntityType;
   action: AuditAction;
   diff: AuditDiff;
-  actorUserId: string;
+  actor: AuditActor;
   createdAt: Date;
 };
+
+// El actor con nombre, como lo entregan los módulos que componen el historial. El de servicio no
+// lleva nombre: su `source` lo compone la página con ingestion (brief-12.1, D-4).
+export type NamedAuditActor =
+  | { kind: "user"; id: string; name: string }
+  | { kind: "service"; credentialId: string };
+
+export type NamedAuditLogEntry = Omit<AuditLogEntry, "actor"> & {
+  actor: NamedAuditActor;
+};
+
+// Los usuarios cuyo nombre hay que pedir a auth.
+export function auditUserIds(entries: AuditLogEntry[]): string[] {
+  return [
+    ...new Set(
+      entries.flatMap((entry) =>
+        entry.actor.kind === "user" ? [entry.actor.userId] : [],
+      ),
+    ),
+  ];
+}
+
+export function nameAuditActors(
+  entries: AuditLogEntry[],
+  names: ReadonlyMap<string, string>,
+): NamedAuditLogEntry[] {
+  return entries.map(({ actor, ...entry }) => ({
+    ...entry,
+    actor:
+      actor.kind === "user"
+        ? {
+            kind: "user",
+            id: actor.userId,
+            name: names.get(actor.userId) ?? "",
+          }
+        : actor,
+  }));
+}
+
+// El CHECK audit_logs_exactly_one_actor garantiza que uno de los dos está.
+function toActor(row: {
+  actorUserId: string | null;
+  actorCredentialId: string | null;
+}): AuditActor {
+  if (row.actorUserId !== null)
+    return { kind: "user", userId: row.actorUserId };
+  if (row.actorCredentialId !== null) {
+    return { kind: "service", credentialId: row.actorCredentialId };
+  }
+  throw new Error("fila de auditoría sin actor");
+}
 
 export type AuditLogPage = {
   entries: AuditLogEntry[];
@@ -133,7 +195,11 @@ export async function listEntityAuditLogs(
   const rows =
     total === 0 ? [] : await findAuditLogs(query, AUDIT_PAGE_SIZE, offset);
   return {
-    entries: rows.map((row) => ({ ...row, diff: row.diff as AuditDiff })),
+    entries: rows.map(({ actorUserId, actorCredentialId, ...row }) => ({
+      ...row,
+      diff: row.diff as AuditDiff,
+      actor: toActor({ actorUserId, actorCredentialId }),
+    })),
     total,
     page,
     pageCount,
