@@ -87,11 +87,14 @@ sudo bash -c "set -a && . /etc/crm-staging/migrate.env && set +a && cd /srv/crm-
 Build con `app.env` y reinicio. La lista de `--preserve-env` son las variables de `app.env` al 2026-09-25 que el build y la aplicación usan. Se agrega una si la aplicación pasa a necesitarla para compilar; las dos de la API de lectura (`READ_API_*`) no hacen falta en el build y no se agregan al encenderla:
 
 ```
-sudo bash -c "set -a && . /etc/crm-staging/app.env && set +a && cd /srv/crm-staging && exec sudo -u benja --preserve-env=NODE_ENV,PORT,HOSTNAME,DATABASE_URL,TRUSTED_PROXY,INGESTION_ENABLED,INGESTION_ALLOWED_CREDENTIALS npm run build"
-sudo systemctl restart crm-staging
+sudo bash -c "set -a && . /etc/crm-staging/app.env && set +a && export NODE_OPTIONS=--max-old-space-size=1536 && cd /srv/crm-staging && exec sudo -u benja --preserve-env=NODE_ENV,PORT,HOSTNAME,DATABASE_URL,TRUSTED_PROXY,INGESTION_ENABLED,INGESTION_ALLOWED_CREDENTIALS,NODE_OPTIONS npm run build" && sudo systemctl restart crm-staging
 ```
 
-*La primera corrida de esta sección tal como está escrita queda pendiente del próximo despliegue.* La 12.1 no despliega (D-2 y D-11), y lo que se comparó es el texto contra la evidencia, no una corrida nueva.
+*Corregido el 2026-09-25 en la primera corrida real de esta sección ([brief-12.3](../../docs/decisions/brief-12.3-contrato-de-ingestion-v2.md), 12.3.2, E-1). Dos cambios:*
+- **`NODE_OPTIONS=--max-old-space-size=1536`**: con 961 MB, Node reserva 529 MB de heap por defecto, y desde la 12.3.1 el chequeo de tipos de `next build` los supera. Muere con `JavaScript heap out of memory` y el build termina en `Failed to type check.` El resto lo cubren los 2 GB de swap del paso 1 del aprovisionamiento.
+- **El reinicio va encadenado con `&&`**: solo corre si el build terminó bien. La versión anterior eran dos líneas, y la segunda corría aunque la primera fallara. Con el `.next` a medio escribir, el servicio no arranca: en esa corrida staging respondió **`502`** hasta que un build correcto lo recuperó.
+
+Las migraciones de arriba y el `npm ci` funcionaron tal como están escritos.
 
 Todas las migraciones pendientes se aplican en **una sola transacción**: si falla una, no queda aplicada ninguna del lote. El comando sale con código distinto de 0 e imprime el error; un `Migraciones aplicadas.` es la única salida buena.
 

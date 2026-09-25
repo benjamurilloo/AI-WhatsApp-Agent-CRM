@@ -426,3 +426,30 @@ Todas se restauraron desde una copia, y `diff` confirmó que cada archivo, la mi
 **Alcance real contra la lista**: los 43 archivos tocados (30 más los 13 fixtures) están en la lista de la 12.3.1 o en la ampliación autorizada. `page.tsx` estaba en la lista y no hizo falta tocarlo.
 
 **Nivel**: validado localmente (`deterministic`, requests sintéticos). **No** está validado en staging ni con un emisor real. Falta la CI del commit.
+
+**CI de la etapa 12.3.1**: commit `49a3cb4`, run 36199681876, `success` en el intento 1. Queda **validada localmente y en CI**.
+
+## Resultados — etapa 12.3.2
+
+**Autoevaluación** (`self_assessment: true`), del 2026-09-25. Las salidas están en [evidencia-12.3](evidencia-12.3-ingestion-v2.md).
+
+### Autorizaciones y decisiones del usuario durante la etapa
+
+- **Tres pasos autorizados**: el script, el despliegue y la prueba en staging.
+- **Permiso `Bash(ssh crm-staging:*)`**: el usuario lo agregó a su configuración local cuando el clasificador del modo automático bloqueó la primera escritura remota. Conviene sacarlo al cerrar la 12.3.3.
+- **AC-15 trasladado a la 13.2**, entre tres opciones. Staging tenía solo el seed del piloto, no el volumen de la 9.3. El Roadmap lleva la enmienda, junto con la de R-8 que D-10 ya había aprobado.
+
+### Contraste por criterio
+
+| AC | Resultado | Evidencia |
+|---|---|---|
+| AC-13 | cumplido | Backup previo (`crm_staging-20260925T231942Z.dump`, 74 533 bytes), de 21 a 24 migraciones, y los nueve `diff` en cero. **E-1**: la línea del build falló por falta de heap y quedó corregida en el README con lo que funcionó. **Un error de quien desplegó dejó staging en `502` durante 3 min 11 s**: encadenó el reinicio con `;`. Las cinco comprobaciones posteriores están hechas. La 2 (un solo salto de proxy) y la 5 (el rol de la aplicación no borra) se hicieron después, con la autorización del usuario: la 2 con control desde otra IP por un túnel SOCKS, y la 5 dio `permission denied`. |
+| AC-14 | cumplido | `probar-ingestion.ts` por el borde real: **0 fallas en 18 pedidos**, con respuestas de esquema estricto, los dos `409` con su `reason`, los siete inválidos con sus campos, la correlación inválida y el `401`. El log tiene 18 líneas, 16 con la correlación, y ningún secreto ni dato del mensaje. La base de staging tiene el tipo, el autor y el motivo guardados. La ingestión quedó apagada (v1 y v2 en `404`) y la credencial revocada. **Incidente**: 6 caracteres del token se imprimieron en la conversación con el asistente; registrado en la evidencia. |
+| AC-15 | **trasladado a la 13.2** | Decisión del usuario. No se midió en staging. |
+
+### Verificación de la etapa
+
+- `scripts/probar-ingestion.ts`: lint y tipos limpios, y 0 fallas contra `next start` local antes de staging.
+- `format:check`: 0. Guardas: 296 de 296.
+
+**Nivel**: el contrato v2 está **validado en staging** con requests sintéticos a través del borde real (`isolated-runtime`). **No** con un emisor real: eso es la 12.3.3, que empieza cuando el agente emita.
