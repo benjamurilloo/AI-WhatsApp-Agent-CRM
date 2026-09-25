@@ -215,7 +215,7 @@ test("caso 2: la lista muestra cliente, estado, fechas y cantidad, sin contenido
   // Nada de lo que recibe el navegador en la pantalla 8 trae un cuerpo (FR-CONV-01): ni el
   // documento ni los datos de RSC de una navegación en el cliente.
   const bodies: string[] = [];
-  const pending: Promise<void>[] = [];
+  let pending: Promise<void>[] = [];
   const listener = (response: Response) => {
     if (!response.url().startsWith("http://localhost")) return;
     pending.push(
@@ -225,20 +225,30 @@ test("caso 2: la lista muestra cliente, estado, fechas y cantidad, sin contenido
         .catch(() => undefined),
     );
   };
+  // Cada cuerpo se lee antes de la navegación siguiente, como en clients.spec.ts: una respuesta
+  // que la navegación corta (un prefetch de RSC) deja su lectura sin resolver ni rechazar, y el
+  // Promise.all esperaría hasta agotar el test. Visto en la traza del run 36150156775 (2026-09-25).
+  const drain = async () => {
+    await page.waitForLoadState("networkidle");
+    await Promise.all(pending);
+    pending = [];
+  };
   page.on("response", listener);
   for (const route of ["/conversaciones", "/conversaciones?estado=pendiente"]) {
     await page.goto(route);
+    await drain();
     bodies.push(await page.content());
     bodies.push(await (await page.request.get(route)).text());
   }
   await page.goto("/");
+  await drain();
   await page
     .getByRole("navigation", { name: "Principal" })
     .getByRole("link", { name: "Conversaciones" })
     .click();
   await expect(conversationsTable(page)).toBeVisible();
+  await drain();
   page.off("response", listener);
-  await Promise.all(pending);
   expect(bodies.length).toBeGreaterThan(4);
   for (const body of bodies) expect(body).not.toContain(SECRET_BODY);
 
