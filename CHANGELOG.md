@@ -2,6 +2,37 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-25 — 12.2 cerrada: conversación vigente y derivación
+
+Segunda subfase de la Fase 12 ([brief-12.2](docs/decisions/brief-12.2-conversacion-vigente-y-derivacion.md)). Tuvo dos etapas:
+
+- **12.2.1, `conversation.resolved`**, en `840d9d1`: corrida 36188422058, `success`.
+- **12.2.2, `conversation.escalated`**, en `94590ce`: corrida 36193461054, `success`. 1265 tests en Vitest y 98 end-to-end.
+
+Llevó revisión independiente (D-11): 8 hallazgos, 1 bloqueante por la regla del brief y 1 mayor, todos verificados y resueltos o registrados.
+
+**Certifica:**
+
+- **La conversación vigente** (FR-API-05), con el evento `conversation.resolved` del contrato de ingestión v1. El mensaje entrante va a la conversación del cliente abierta o pendiente cuyo tramo queda a 24 horas o menos del mensaje, a cada lado, y entre varias a la más cercana; si no hay, a una nueva que nace con él.
+  - Una `closed` nunca recibe el mensaje ni se reabre.
+  - Un mensaje tardío va a la conversación de su momento (ventana simétrica, R-2).
+  - Dos mensajes simultáneos del mismo cliente dejan una conversación, probado con el cliente bloqueado desde una tercera conexión.
+  - La respuesta trae la referencia y el estado, sin id, teléfono ni texto.
+- **La derivación** (FR-API-06), con `conversation.escalated`: `open` pasa a `pending`, que significa «espera a una persona» (FR-CONV-03), auditado con la credencial como actor. Una `pending` no escribe; una `closed` o inexistente se rechaza con su regla. Dos derivaciones simultáneas dejan una sola fila de auditoría.
+- **Los rechazos de negocio de los tipos nuevos** responden `422` con la regla, que queda en `error_code`, así que un reenvío responde la misma.
+- **Las preguntas 1 y 2 de las brechas**, contestadas en el modelo del CRM y no copiadas del emisor.
+- **La métrica 12** cuenta `conversation.resolved`, que registra un mensaje, y excluye `conversation.escalated`.
+- **`message.recorded` y `client.resolved` sin cambios**: mismos vectores y los tests de su forma sin tocar.
+
+**Nivel**: validado localmente y en CI (`deterministic`, requests sintéticos).
+
+**No certifica:**
+
+- **Compatibilidad con un emisor real**: los fixtures tienen forma asumida. Es la 12.3.
+- **Nada en staging**: la 12.2 no desplegó.
+- **Dos bordes de concurrencia** (R-8), sin defecto demostrado, registrados para la 12.3.
+- **El plan de la consulta de la vigente**: no se midió con `EXPLAIN`.
+
 ## 2026-09-25 — 12.1 cerrada: actor de servicio y cliente por teléfono
 
 Primera subfase de la Fase 12 ([brief-12.1](docs/decisions/brief-12.1-actor-de-servicio-y-cliente-por-telefono.md)). Tuvo dos etapas:

@@ -367,3 +367,20 @@ Cada hallazgo se verificó contra el código antes de aceptarlo. La autoevaluaci
 - **Mutaciones de la etapa**: M6 a M11, las seis detectadas y restauradas. Se verificó con `grep` que no quedó ninguna.
 
 **Nivel**: validado localmente (`deterministic`). Falta la CI del commit.
+
+**CI de la etapa 12.2.2**: commit `94590ce`, run 36193461054, `success` en el intento 1. Queda **validada localmente y en CI**.
+
+## Cierre de la subfase 12.2, 2026-09-25
+
+1. **Confirmación**: el usuario confirmó el cierre el 2026-09-25 («Confirmo cierre»), sobre la propuesta presentada en el turno anterior.
+2. **Criterios**: AC-1 a AC-16 cumplidos. AC-13 se completó después de la revisión (R-3). AC-16 lleva la salvedad de los fixtures de la 12.1.
+3. **Preguntas de las brechas contestadas**:
+   - **pregunta 1**: «Escalada a humano» es `pending`, con el significado «espera a una persona» (D-4);
+   - **pregunta 2**: una conversación es vigente mientras su tramo quede a 24 horas o menos del mensaje, a cada lado; una `closed` nunca lo es (D-3, con la enmienda de R-2).
+4. **Nivel**: validado localmente y en CI (`deterministic`, requests sintéticos). **No** se certifica compatibilidad con ningún emisor real ni nada en staging: la 12.2 no desplegó (D-10).
+5. **Revisión independiente**: hecha (D-11). 8 hallazgos, todos verificados, con las decisiones del usuario sobre R-1, R-2 y R-4.
+6. **Lo que queda abierto**:
+   - **R-8, a la 12.3**: el `FOR UPDATE` del cliente bloquea más de lo necesario, y una candidata cerrada en ese momento por un `admin` hace crear otra conversación;
+   - **R-6 de la 12.1, a la 12.3**: un emisor puede mandar el teléfono como nombre;
+   - **el plan de la consulta de la vigente** no se midió con `EXPLAIN`;
+   - las funciones de ingestión que escriben sin `authorize` no tienen guarda, como desde la 6.5.2.
