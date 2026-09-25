@@ -439,6 +439,75 @@ export function reactivateClient(
   return setClientActive(context, clientId, true);
 }
 
+// Resolución del cliente por teléfono para un servicio (brief-12.1, D-5 a D-10). La transacción y
+// el ledger de idempotencia son de ingestion, que la llama; crm crea y audita con la credencial
+// como actor (FR-AUD-03). Nunca renombra, reactiva ni crea otro: un cliente existente, activo o no,
+// se devuelve tal cual y sin escribir nada.
+
+export const UNNAMED_CLIENT_LABEL = "Sin nombre";
+
+export type ResolvedClient = repository.ResolvedClientRow;
+
+export async function resolveClientByPhone(
+  tx: DbTransaction,
+  input: {
+    organizationId: string;
+    credentialId: string;
+    phoneE164: string;
+    // Ya validado por el contrato. null: se crea como «Sin nombre», nunca con el teléfono (D-5).
+    displayName: string | null;
+  },
+): Promise<ResolvedClient> {
+  const values = {
+    displayName: input.displayName ?? UNNAMED_CLIENT_LABEL,
+    phoneE164: input.phoneE164,
+  };
+  const created = await repository.insertClientIfPhoneAbsent(
+    tx,
+    input.organizationId,
+    values,
+  );
+  if (created) {
+    await recordAudit(tx, {
+      organizationId: input.organizationId,
+      actorCredentialId: input.credentialId,
+      entityType: "client",
+      entityId: created.id,
+      action: "create",
+      diff: {
+        before: null,
+        after: { ...values, notes: null, isActive: true },
+      },
+    });
+    return created;
+  }
+  const existing = await repository.findResolvedClientByPhone(
+    tx,
+    input.organizationId,
+    input.phoneE164,
+  );
+  if (!existing) {
+    throw new Error("cliente ausente después del conflicto por teléfono");
+  }
+  return existing;
+}
+
+// Lectura sin escritura para el reenvío de una resolución ya procesada (D-9): si el teléfono ya no
+// pertenece a ningún cliente, null. Un reenvío nunca crea.
+export async function findResolvedClientByPhone(
+  tx: DbTransaction,
+  organizationId: string,
+  phoneE164: string,
+): Promise<ResolvedClient | null> {
+  return (
+    (await repository.findResolvedClientByPhone(
+      tx,
+      organizationId,
+      phoneE164,
+    )) ?? null
+  );
+}
+
 // Para la ingestión, que no tiene usuario (brief-6.5.2): exige una transacción, así que una
 // pantalla no puede usarla, y devuelve solo el id, sin datos personales. El teléfono ya viene en
 // E.164 canónico (contrato v1); cualquier otra forma no coincide con ningún cliente.

@@ -238,6 +238,59 @@ export async function updateClientActive(
   assertUpdatedOne(rows, "updateClientActive");
 }
 
+// Lo que la resolución por servicio devuelve de un cliente (brief-12.1, D-9): sin teléfono.
+export type ResolvedClientRow = {
+  id: string;
+  displayName: string;
+  isActive: boolean;
+};
+
+// Alta por servicio (brief-12.1, D-10): con otra resolución del mismo teléfono en curso, espera en
+// el índice único parcial y no inserta nada. El ON CONFLICT repite el predicado del índice
+// `clients_organization_phone_unique` (convención de la 6.5.2). Devuelve la fila solo si insertó.
+export async function insertClientIfPhoneAbsent(
+  tx: DbTransaction,
+  organizationId: string,
+  values: { displayName: string; phoneE164: string },
+): Promise<ResolvedClientRow | undefined> {
+  const result = await tx.execute<{
+    id: string;
+    display_name: string;
+    is_active: boolean;
+  }>(sql`
+    insert into clients (organization_id, display_name, phone_e164)
+    values (${organizationId}, ${values.displayName}, ${values.phoneE164})
+    on conflict (organization_id, phone_e164) where phone_e164 is not null
+    do nothing
+    returning id, display_name, is_active`);
+  const row = result.rows[0];
+  return row
+    ? { id: row.id, displayName: row.display_name, isActive: row.is_active }
+    : undefined;
+}
+
+export async function findResolvedClientByPhone(
+  tx: DbTransaction,
+  organizationId: string,
+  phoneE164: string,
+): Promise<ResolvedClientRow | undefined> {
+  const rows = await tx
+    .select({
+      id: clients.id,
+      displayName: clients.displayName,
+      isActive: clients.isActive,
+    })
+    .from(clients)
+    .where(
+      and(
+        eq(clients.organizationId, organizationId),
+        eq(clients.phoneE164, phoneE164),
+      ),
+    )
+    .limit(1);
+  return rows[0];
+}
+
 // Cliente de la organización con ese teléfono, activo o no (brief-6.5.2).
 export async function findClientIdByPhoneE164(
   tx: DbTransaction,

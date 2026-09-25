@@ -1,0 +1,25 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: no proviene de ningún emisor real (brief-12.1).",
+  "description": "Un client.resolved con los campos de message.recorded: el objeto es estricto.",
+  "received_at": "2026-09-16T15:00:00.000Z",
+  "payload": {
+    "contract_version": "1",
+    "event_type": "client.resolved",
+    "event_id": "evt-client-0004",
+    "occurred_at": "2026-09-16T11:59:58-03:00",
+    "client": {
+      "phone": "+5491155550004",
+      "display_name": "Ana"
+    },
+    "conversation": {
+      "external_ref": "conv-0001",
+      "channel": "whatsapp",
+      "client_phone": "+5491155550004"
+    }
+  },
+  "expected": {
+    "ok": false,
+    "fields": ["event"]
+  }
+}

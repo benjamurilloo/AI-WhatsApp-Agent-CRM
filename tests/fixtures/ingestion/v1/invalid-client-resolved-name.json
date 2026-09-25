@@ -1,0 +1,20 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: no proviene de ningún emisor real (brief-12.1).",
+  "description": "Nombre con espacios al borde y teléfono sin el signo más: el CRM rechaza, no normaliza.",
+  "received_at": "2026-09-16T15:00:00.000Z",
+  "payload": {
+    "contract_version": "1",
+    "event_type": "client.resolved",
+    "event_id": "evt-client-0003",
+    "occurred_at": "2026-09-16T11:59:58-03:00",
+    "client": {
+      "phone": "5491155550003",
+      "display_name": " María "
+    }
+  },
+  "expected": {
+    "ok": false,
+    "fields": ["client.phone", "client.display_name"]
+  }
+}

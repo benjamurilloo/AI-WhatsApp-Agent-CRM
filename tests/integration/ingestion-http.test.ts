@@ -571,4 +571,108 @@ describe("endpoint de ingestión", { timeout: TEST_TIMEOUT }, () => {
     // La de ingestión de la misma organización y el mismo source sigue escribiendo.
     expect((await send(emitterA.token, event())).status).toBe(201);
   });
+
+  // client.resolved por el mismo endpoint (brief-12.1, D-1 y D-9).
+  const resolved = fixture("valid-client-resolved.json").payload as unknown as {
+    event_id: string;
+    client: { phone: string; display_name: string };
+  };
+
+  it("15. FR-API-04: client.resolved responde 200 con el cliente y sin su teléfono, también al reenvío", async () => {
+    const first = await send(emitterA.token, resolved);
+    expect(first.status).toBe(200);
+    expect(first.headers.get("cache-control")).toBe("no-store");
+    const body = await first.json();
+    expect(body).toStrictEqual({
+      contract_version: "1",
+      event_id: resolved.event_id,
+      result: "accepted",
+      client: {
+        id: expect.stringMatching(/^[0-9a-f-]{36}$/),
+        display_name: resolved.client.display_name,
+        is_active: true,
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain(resolved.client.phone);
+
+    const again = await send(emitterA.token, resolved);
+    expect(again.status).toBe(200);
+    expect(await again.json()).toStrictEqual({ ...body, result: "duplicate" });
+    const audit = await getDb().execute<{ actor_credential_id: string }>(
+      sql`select actor_credential_id from audit_logs where organization_id = ${orgA}`,
+    );
+    expect(audit.rows).toEqual([{ actor_credential_id: emitterA.id }]);
+  });
+
+  it("16. FR-API-04: client.resolved pasa por la misma cadena: lectura, allowlist y límite compartido", async () => {
+    const reader = await createIngestionCredential(orgA, "emisor-a", "read");
+    if (!reader.ok) throw new Error("credencial inválida");
+    allow(emitterA, { id: reader.credentialId, token: reader.token });
+    expect((await send(reader.token, resolved)).status).toBe(403);
+    expect((await send(emitterA2.token, resolved)).status).toBe(403);
+
+    // El límite es por credencial y lo comparten los dos tipos de evento.
+    for (let index = 0; index < INGESTION_RATE_LIMIT - 1; index += 1) {
+      await send(
+        emitterA.token,
+        event((p) => (p.event_id = `evt-limite-${index}`)),
+      );
+    }
+    expect((await send(emitterA.token, resolved)).status).toBe(200);
+    const limited = await send(emitterA.token, {
+      ...resolved,
+      event_id: "evt-client-limitado",
+    });
+    expect(limited.status).toBe(429);
+    const clients = await getDb().execute<{ count: number }>(
+      sql`select count(*)::int as count from clients where organization_id = ${orgA}`,
+    );
+    expect(clients.rows[0]!.count).toBe(1);
+  });
+
+  it("17. FR-API-04: el log de client.resolved no lleva el teléfono ni el nombre", async () => {
+    const lines: string[] = [];
+    const capture = (...args: unknown[]) => void lines.push(args.join(" "));
+    const spies: MockInstance[] = [
+      vi.spyOn(console, "log").mockImplementation(capture),
+      vi.spyOn(console, "error").mockImplementation(capture),
+      vi.spyOn(console, "warn").mockImplementation(capture),
+    ];
+    await send(emitterA.token, resolved);
+    await send(
+      emitterA.token,
+      fixture("invalid-client-resolved-name.json").payload,
+    );
+    for (const spy of spies) spy.mockRestore();
+
+    const output = lines.join("\n");
+    expect(lines).toHaveLength(2);
+    for (const secret of [
+      resolved.client.phone,
+      resolved.client.display_name,
+      "María",
+      "5491155550003",
+    ]) {
+      expect(output).not.toContain(secret);
+    }
+    expect(lines.map((line) => JSON.parse(line).code)).toEqual([
+      "OK",
+      "VALIDATION_ERROR",
+    ]);
+  });
+
+  it("18. FR-API-04: client.resolved responde 404 con el endpoint apagado y 401 sin credencial, sin escribir", async () => {
+    process.env.INGESTION_ENABLED = "false";
+    const off = await send(emitterA.token, resolved);
+    expect(off.status).toBe(404);
+    expect(await off.text()).toBe("");
+    allow(emitterA);
+    const anonymous = await post(null, JSON.stringify(resolved));
+    expect(anonymous.status).toBe(401);
+    const clients = await getDb().execute<{ count: number }>(
+      sql`select count(*)::int as count from clients`,
+    );
+    expect(clients.rows[0]!.count).toBe(0);
+    expect(await counts()).toMatchObject({ events: 0, windows: 0 });
+  });
 });

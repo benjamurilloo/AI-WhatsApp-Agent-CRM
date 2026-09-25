@@ -7,7 +7,7 @@ import {
   ingestionPayloadHash,
   MAX_INGESTION_BODY_BYTES,
   parseIngestionEventV1,
-  type IngestionEventV1,
+  type MessageRecordedEventV1,
 } from "./contract";
 
 // Contrato de ingestión v1 (brief-6.5.1). Los payloads son sintéticos, con forma asumida.
@@ -44,9 +44,13 @@ function fieldsOf(value: unknown) {
   return result.fields;
 }
 
-function parsed(value: unknown): IngestionEventV1 {
+// Desde la 12.1 el evento es una unión: estos casos son todos de message.recorded.
+function parsed(value: unknown): MessageRecordedEventV1 {
   const result = parse(value);
   if (!result.ok) throw new Error(`rechazado: ${result.fields.join(", ")}`);
+  if (result.event.event_type !== "message.recorded") {
+    throw new Error(`tipo inesperado: ${result.event.event_type}`);
+  }
   return result.event;
 }
 
@@ -284,5 +288,121 @@ describe("fixtures del contrato (forma asumida)", () => {
         ? { ok: true, payload_hash: ingestionPayloadHash(result.event) }
         : { ok: false, fields: result.fields },
     ).toEqual(fixture.expected);
+  });
+});
+
+// client.resolved (brief-12.1, D-1 y D-5): mismo ledger y mismo hash, otro objeto.
+describe("client.resolved", () => {
+  function clientPayload() {
+    return {
+      contract_version: "1",
+      event_type: "client.resolved",
+      event_id: "evt-client-0001",
+      occurred_at: "2026-09-16T11:59:58-03:00",
+      client: { phone: "+5491155550001", display_name: "María Gómez" },
+    } as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  }
+
+  // Serialización canónica escrita a mano y su SHA-256, calculado sobre este texto y no con
+  // canonicalJson.
+  const CLIENT_VECTOR_CANONICAL =
+    '{"client":{"display_name":"María Gómez","phone":"+5491155550001"},"contract_version":"1","event_id":"evt-client-0001","event_type":"client.resolved","occurred_at":"2026-09-16T14:59:58.000Z"}';
+  const CLIENT_VECTOR_HASH =
+    "69779577a3a2aa226ef36ccf53a7ed817f3827f2955073967ed3d724b80728cc";
+
+  it("FR-API-04: normaliza occurred_at y coincide con el vector del contrato", () => {
+    const result = parse(clientPayload());
+    if (!result.ok) throw new Error(result.fields.join(", "));
+    expect(result.event).toEqual({
+      ...clientPayload(),
+      occurred_at: "2026-09-16T14:59:58.000Z",
+    });
+    expect(canonicalJson(result.event)).toBe(CLIENT_VECTOR_CANONICAL);
+    expect(ingestionPayloadHash(result.event)).toBe(CLIENT_VECTOR_HASH);
+    expect(
+      createHash("sha256").update(CLIENT_VECTOR_CANONICAL).digest("hex"),
+    ).toBe(CLIENT_VECTOR_HASH);
+  });
+
+  it("FR-API-04: acepta el nombre nulo y el de 200 caracteres", () => {
+    const value = clientPayload();
+    value.client.display_name = null;
+    expect(parse(value).ok).toBe(true);
+    value.client.display_name = "n".repeat(200);
+    expect(parse(value).ok).toBe(true);
+  });
+
+  it("FR-API-04: rechaza el nombre vacío, largo, con espacios al borde, de control, NUL o UTF-16 inválido", () => {
+    for (const bad of [
+      "",
+      "n".repeat(201),
+      " Ana",
+      "Ana ",
+      "Ana\nPérez",
+      "Ana\u0000",
+      "Ana\uD800",
+      42,
+    ]) {
+      const value = clientPayload();
+      value.client.display_name = bad;
+      expect(fieldsOf(value), JSON.stringify(bad)).toEqual([
+        "client.display_name",
+      ]);
+    }
+  });
+
+  it("FR-API-04: el teléfono es obligatorio y en E.164 canónico", () => {
+    for (const bad of [
+      null,
+      "",
+      "5491155550001",
+      "+54 9 11 5555-0001",
+      "+0123",
+    ]) {
+      const value = clientPayload();
+      value.client.phone = bad;
+      expect(fieldsOf(value), JSON.stringify(bad)).toEqual(["client.phone"]);
+    }
+  });
+
+  it("FR-API-04: el objeto es estricto y client es obligatorio", () => {
+    const extra = clientPayload();
+    extra.client.notes = "x";
+    expect(fieldsOf(extra)).toEqual(["client"]);
+    const missing = clientPayload();
+    delete missing.client;
+    expect(fieldsOf(missing)).toEqual(["client"]);
+    const withMessage = clientPayload();
+    withMessage.message = { external_ref: "m" };
+    expect(fieldsOf(withMessage)).toEqual(["event"]);
+  });
+
+  it("FR-API-04: rechaza occurred_at más de 5 minutos en el futuro", () => {
+    const value = clientPayload();
+    value.occurred_at = "2026-09-16T15:05:00.001Z";
+    expect(fieldsOf(value)).toEqual(["occurred_at"]);
+    value.occurred_at = "2026-09-16T15:05:00.000Z";
+    expect(parse(value).ok).toBe(true);
+  });
+
+  it("FR-API-04: el hash cambia con cada campo", () => {
+    const changes: ((value: ReturnType<typeof clientPayload>) => void)[] = [
+      (v) => (v.event_id = "evt-client-0002"),
+      (v) => (v.occurred_at = "2026-09-16T11:59:59-03:00"),
+      (v) => (v.client.phone = "+5491155550002"),
+      (v) => (v.client.display_name = "María Gómez "),
+      (v) => (v.client.display_name = null),
+      (v) => (v.client.display_name = "María Gomez"),
+    ];
+    const hashes = changes.map((change) => {
+      const value = clientPayload();
+      change(value);
+      const result = parse(value);
+      return result.ok ? ingestionPayloadHash(result.event) : "rechazado";
+    });
+    expect(hashes.filter((hash) => hash === "rechazado")).toHaveLength(1);
+    expect(new Set([CLIENT_VECTOR_HASH, ...hashes]).size).toBe(
+      changes.length + 1,
+    );
   });
 });

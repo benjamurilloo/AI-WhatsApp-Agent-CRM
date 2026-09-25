@@ -2,6 +2,7 @@
 
 - Estado: aceptada (decisión del usuario del 2026-09-23, registrada en la subfase 10.2). **Reemplaza parcialmente al [ADR 0003](0003-migracion-legado-proyecto-separado.md)**: la migración deja de ser un proyecto aparte.
 - Fecha: 2026-09-23
+- *Nota del 2026-09-25 ([brief-12.1](brief-12.1-actor-de-servicio-y-cliente-por-telefono.md), D-1)*: por el contrato de ingestión también se resuelve el cliente de un teléfono (`client.resolved`), no solo se registran conversaciones y mensajes. Es la misma superficie de escritura: la decisión no cambia y no hay una tercera superficie.
 
 ## Contexto
 

@@ -315,8 +315,8 @@ Protección (brief-6.1, D-3): `crm_app` tiene `SELECT`, `INSERT` y `UPDATE`, sin
 
 Reglas del ledger, derivadas del patrón *Reliable External Effects* del vault:
 
-- **Reserva atómica**: `INSERT ... ON CONFLICT (organization_id, source, external_ref) DO NOTHING`, en la misma transacción que crea `conversations` y `messages`. Si no se insertó nada, es un reenvío.
-- **Reenvío con el mismo `payload_hash`**: devuelve el resultado original sin generar efectos nuevos.
+- **Reserva atómica**: `INSERT ... ON CONFLICT (organization_id, source, external_ref) DO NOTHING`, en la misma transacción que produce el efecto: la que crea `conversations` y `messages` o, *desde la 12.1*, la que resuelve el cliente de un `client.resolved`. Si no se insertó nada, es un reenvío.
+- **Reenvío con el mismo `payload_hash`**: no genera efectos nuevos. Para `message.recorded` devuelve el resultado original. *Para `client.resolved` (12.1, D-9)*, vuelve a buscar el cliente por teléfono sin escribir: si el teléfono se editó en el backoffice, puede devolver `null`, porque el ledger no guarda resultados.
 - **Reenvío con otro `payload_hash`**: `CONFLICT`, sin modificar datos. Nunca se sobrescribe en silencio.
 - **Tabla dedicada**: la unicidad de `conversations.external_ref` y `messages.external_ref` es una segunda defensa, no el mecanismo de idempotencia.
 - **Sanitización**: no se guarda el payload completo. El contenido útil ya vive en `messages` y el ledger solo guarda identidad, hash y resultado.
@@ -340,6 +340,7 @@ Protección: `crm_app` tiene `SELECT`, `INSERT` y `UPDATE`, sin `DELETE`. Una cr
 | `revoked_at` | timestamptz null | con valor, la credencial responde `FORBIDDEN` |
 | — | `CHECK` | `ingestion_credentials_not_blank`: `source` y `token_hash` no vacíos |
 | — | `CHECK` | `ingestion_credentials_scope_valid`: `scope` es `ingest` o `read` |
+| — | `UNIQUE (organization_id, id)` | `ingestion_credentials_organization_id_id_unique`, desde la `0021` (brief-12.1, D-3): destino de la clave foránea compuesta del actor de servicio de `audit_logs` |
 
 Índice: `ingestion_credentials_organization_id_idx`. Varias credenciales pueden compartir organización y `source`, para rotar sin corte.
 

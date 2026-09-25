@@ -368,10 +368,13 @@ export async function ingestionErrors(query: MetricsQuery): Promise<{
   // Orden fijado por el brief-7.3, D-3: conteo descendente y, a igual conteo, alfabético.
   groups: IngestionErrorGroup[];
 }> {
+  // La resolución de un cliente (client.resolved, brief-12.1) no es un mensaje ingerido: no entra
+  // ni al numerador ni al denominador (revisión independiente de la 12.1, R-2).
   const inPeriod = and(
     eq(ingestionEvents.organizationId, query.organizationId),
     sql`${ingestionEvents.receivedAt} >= ${periodStart(query)}`,
     sql`${ingestionEvents.receivedAt} < ${periodEnd(query)}`,
+    sql`${ingestionEvents.eventType} <> 'client.resolved'`,
   );
   // El CHECK de la tabla garantiza error_code no nulo si y solo si el estado es failed, así que
   // agrupar por el código no necesita tratar nulos dentro de los fallidos (brief-6.1, D-2).

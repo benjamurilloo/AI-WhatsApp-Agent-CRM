@@ -7,19 +7,24 @@ export {
   INGESTION_FIELDS,
   ingestionPayloadHash,
   isOpaqueReference,
+  MAX_CLIENT_NAME_LENGTH,
   MAX_CLOCK_SKEW_MS,
   MAX_EXTERNAL_REF_LENGTH,
   MAX_INGESTION_BODY_BYTES,
   MAX_MESSAGE_BODY_LENGTH,
   parseIngestionEventV1,
+  type ClientResolvedEventV1,
   type IngestionEventV1,
   type IngestionField,
+  type MessageRecordedEventV1,
   type ParseIngestionEventResult,
 } from "./contract";
 export {
   recordIngestionEvent,
+  type ClientAccepted,
   type IngestionAccepted,
   type IngestionContext,
+  type MessageAccepted,
   type RecordIngestionEventResult,
 } from "./service";
 export {

@@ -70,11 +70,13 @@ Cada FR tiene al menos una pantalla, endpoint o invariante con test que lo satis
 | FR-API-01 | Sin pantalla: [contrato de lectura v1](../contracts/read-v1.md), rutas `/api/read/v1/products` y `/products/{product_id}` (11.3.1); `read-api.test.ts` casos 1 a 6, con toda respuesta validada contra el esquema estricto | contrato y endpoint |
 | FR-API-02 | Sin pantalla: [contrato de lectura v1](../contracts/read-v1.md), ruta `/api/read/v1/knowledge` (11.3.2); `read-api.test.ts` casos 15 a 18, con la vigencia en la zona de la organización y toda respuesta validada contra el esquema estricto | contrato y endpoint |
 | FR-API-03 | Sin pantalla: el borde de la API de lectura (11.3.1); `read-api.test.ts` casos 7 a 14 y 19, `ingestion-http.test.ts` caso 14 (una credencial de lectura no escribe) y `read-api.spec.ts` (cabeceras y apagada por defecto) | endpoint e invariante con test |
+| FR-API-04 | Sin pantalla: el evento `client.resolved` del contrato de ingestión v1 (12.1.2); `client-resolution.test.ts`, `ingestion-http.test.ts` casos 15 a 18 y `contract.test.ts` | endpoint e invariante con test |
 | FR-MET-01 | Pantalla 2, implementada en la 7.4: las doce tarjetas del catálogo | pantalla |
 | FR-MET-02 | Pantalla 2 (período en la URL y zona horaria de la organización en el encabezado) | pantalla |
 | FR-MET-03 | Pantalla 2 sin valores editables; cálculo por consulta en cada carga ([ADR 0005](../decisions/0005-metricas-desde-datos-transaccionales.md)) | pantalla e invariante |
 | FR-AUD-01 | Escritura de `audit_logs` en la misma transacción que cada cambio (pantallas 4, 5, 5b, 7, 9, 10 y 12) | invariante |
 | FR-AUD-02 | Pantalla 4, implementada en la 4.4: `catalog` autoriza y compone, `audit` consulta ediciones y ajustes en una sola lista paginada (brief-4.4, D-1). Pantalla 7: Fase 5 | pantalla e invariante con test |
+| FR-AUD-03 | `audit_logs` con exactamente un actor y la credencial por clave foránea compuesta (12.1.1); `audit.test.ts` bloque «actor de servicio», `crm.test.ts`, `actor.test.ts` y `clients.spec.ts` caso 16 (el autor «Servicio · emisor» en la pantalla 7) | pantalla e invariante con test |
 
 ## 3. Por índice
 

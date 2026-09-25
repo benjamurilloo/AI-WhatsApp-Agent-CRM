@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   getIngestionErrors,
@@ -117,6 +118,26 @@ describe("métrica 12: errores de ingestión (brief-7.3)", () => {
     expect(value.total).toBe(7);
     expect(value.failed).toBe(5);
     expect(value.percentage).toBeCloseTo((5 * 100) / 7, 10);
+  });
+
+  // Un client.resolved del período, processed, que sin el filtro bajaría la tasa a 5 / 8.
+  it("FR-API-04: una resolución de cliente no cuenta como evento de la métrica 12", async () => {
+    const { orgA, orgB, adminA } = await users();
+    await mainFixture(orgA, orgB);
+    await getDb().execute(
+      sql`insert into ingestion_events
+            (organization_id, source, external_ref, event_type, payload_hash, status,
+             received_at, processed_at)
+          values (${orgA}, 'wa-cloud', 'evt-client-resuelto', 'client.resolved', 'hash-cliente',
+                  'processed', '2026-09-02T18:00:00Z', '2026-09-02T18:00:00Z')`,
+    );
+
+    const value = valueOf(
+      await getIngestionErrors(adminA, PERIOD, INGESTION_OFF),
+    );
+    if (value.status !== "value") throw new Error("se esperaba un valor");
+    expect(value.total).toBe(7);
+    expect(value.failed).toBe(5);
   });
 
   it("agrupa por origen y código, ordenado por conteo y con desempate alfabético", async () => {

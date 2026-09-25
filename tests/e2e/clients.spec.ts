@@ -680,8 +680,8 @@ test("caso 15: un cliente sin conversaciones muestra el vacío", async ({
   await expectAccessible(page, "cliente sin conversaciones");
 });
 
-// La escritura por servicio llega en la 12.1.2: acá la fila de servicio se inserta por SQL, como
-// fixture sintético (brief-12.1, D-4; brief-6.4, D-5).
+// La fila de servicio se inserta por SQL, como fixture sintético, para probar la pantalla sin
+// depender de client.resolved (brief-12.1, D-4; brief-6.4, D-5).
 test("caso 16 (FR-AUD-03): la auditoría muestra al servicio como autor, solo para admin", async ({
   page,
 }) => {

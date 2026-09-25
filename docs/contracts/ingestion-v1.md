@@ -5,12 +5,13 @@
 - **Implementado y validado localmente** en la 6.5.1, solo en su validación del payload y su `payload_hash`: [src/modules/ingestion/contract.ts](../../src/modules/ingestion/contract.ts).
 - **Implementado y validado localmente** en la 6.5.2 ([brief-6.5.2](../decisions/brief-6.5.2-registro-idempotente-y-proyeccion.md)): el registro, los reenvíos y la proyección, como caso de uso sin HTTP (`recordIngestionEvent`).
 - **Implementado y validado localmente** en la 6.5.3 ([brief-6.5.3](../decisions/brief-6.5.3-autenticacion-de-servicio-y-rate-limit.md)): el endpoint, la credencial de servicio, el límite de tasa y el modo de prueba, con requests sintéticos.
+- **Implementado y validado localmente** en la 12.1.2 ([brief-12.1](../decisions/brief-12.1-actor-de-servicio-y-cliente-por-telefono.md)): el evento `client.resolved`, con requests sintéticos.
 
 **Ningún emisor real está conectado ni configurado** (FR-CONV-05, [IntegrationBoundaries](../architecture/IntegrationBoundaries.md)). Este contrato no deriva de la forma de eventos de ningún sistema existente. Sus fixtures tienen **forma asumida, no verificada**, y no prueban compatibilidad con ningún emisor.
 
 ## Propósito
 
-Permitir que un sistema externo registre en el CRM los mensajes de sus conversaciones, sin conocer el modelo interno y sin crear duplicados cuando reintenta.
+Permitir que un sistema externo registre en el CRM los mensajes de sus conversaciones y, *desde la 12.1*, resuelva el cliente de un teléfono, sin conocer el modelo interno y sin crear duplicados cuando reintenta.
 
 ## Transporte
 
@@ -30,7 +31,7 @@ Cada evento registra un mensaje de una conversación. La conversación no se cre
 | Campo | Tipo | Nulable | Reglas | Ejemplo |
 |---|---|---|---|---|
 | `contract_version` | string | no | exactamente `"1"` | `"1"` |
-| `event_type` | string | no | `"message.recorded"`; cualquier otro tipo se rechaza | `"message.recorded"` |
+| `event_type` | string | no | `"message.recorded"` para este evento. Desde la 12.1 existe también `"client.resolved"` (ver abajo); cualquier otro tipo se rechaza | `"message.recorded"` |
 | `event_id` | string | no | referencia opaca (ver abajo); identidad del evento | `"evt-0001"` |
 | `occurred_at` | string | no | fecha (ver abajo); cuándo el emisor produjo el evento | `"2026-09-16T11:59:58-03:00"` |
 | `conversation` | objeto | no | | |
@@ -76,10 +77,41 @@ Ejemplo, el vector de prueba:
 }
 ```
 
+## Evento `client.resolved`
+
+*Agregado el 2026-09-25 ([brief-12.1](../decisions/brief-12.1-actor-de-servicio-y-cliente-por-telefono.md), D-1).* Es un `event_type` nuevo dentro de v1, que §Versionado admite como cambio compatible. Tiene su propia respuesta con datos, algo que `message.recorded` no hace. Esa interpretación la aprobó el usuario con el brief.
+
+Resuelve el cliente de un teléfono: lo devuelve si existe y lo crea si no. Usa el mismo endpoint, la misma credencial `ingest`, el mismo límite de tasa y el mismo registro de idempotencia que `message.recorded`. El objeto es estricto: un campo de `message.recorded` en un `client.resolved` lo rechaza.
+
+| Campo | Tipo | Nulable | Reglas | Ejemplo |
+|---|---|---|---|---|
+| `contract_version` | string | no | exactamente `"1"` | `"1"` |
+| `event_type` | string | no | `"client.resolved"` | `"client.resolved"` |
+| `event_id` | string | no | referencia opaca; identidad del evento | `"evt-client-0001"` |
+| `occurred_at` | string | no | fecha; como máximo 5 minutos después de la recepción | `"2026-09-16T11:59:58-03:00"` |
+| `client` | objeto | no | | |
+| `client.phone` | string | no | E.164 canónico (`^\+[1-9][0-9]{1,14}$`); el CRM no lo normaliza | `"+5491155550001"` |
+| `client.display_name` | string | sí | de 1 a 200 caracteres, sin espacios al borde, sin caracteres de control y UTF-16 válido; se rechaza, no se recorta. `null` si el emisor no lo conoce | `"María Gómez"` |
+
+Ejemplo, el vector de prueba:
+
+```json
+{
+  "contract_version": "1",
+  "event_type": "client.resolved",
+  "event_id": "evt-client-0001",
+  "occurred_at": "2026-09-16T11:59:58-03:00",
+  "client": {
+    "phone": "+5491155550001",
+    "display_name": "María Gómez"
+  }
+}
+```
+
 ## Identidad e idempotencia
 
 - **Identidad del evento**: `(organization_id, source, event_id)`, que se guarda en `ingestion_events` como `(organization_id, source, external_ref)`. La organización y el `source` salen de la credencial (D-3). Dos emisores pueden usar el mismo `event_id` sin chocar.
-- **Registro antes de proyectar**: el evento se reserva en `ingestion_events` con `INSERT … ON CONFLICT ON CONSTRAINT ingestion_events_organization_source_external_ref_unique`. La reserva y la proyección sobre `conversations` y `messages` van en la misma transacción. Con otra entrega del mismo evento en curso, la reserva espera a que termine y responde según lo que esa entrega confirmó (brief-6.5.2, D-3).
+- **Registro antes de proyectar**: el evento se reserva en `ingestion_events` con `INSERT … ON CONFLICT ON CONSTRAINT ingestion_events_organization_source_external_ref_unique`. La reserva y su efecto van en la misma transacción: la proyección sobre `conversations` y `messages`, o la resolución del cliente de un `client.resolved`. Con otra entrega del mismo evento en curso, la reserva espera a que termine y responde según lo que esa entrega confirmó (brief-6.5.2, D-3).
 - **Segunda defensa**: las unicidades parciales de `conversations (organization_id, channel, external_ref)` y `messages (organization_id, conversation_id, external_ref)`.
 - **No se depende de que el emisor deduplique**: el CRM se sostiene solo.
 
@@ -104,6 +136,14 @@ Consecuencias:
 
 y su `payload_hash` es `529004aa199e81238af332e09262a30ec458f581188b6da0cdfa1ab53746ee2a`.
 
+**Vector de `client.resolved`**: se serializa como
+
+```text
+{"client":{"display_name":"María Gómez","phone":"+5491155550001"},"contract_version":"1","event_id":"evt-client-0001","event_type":"client.resolved","occurred_at":"2026-09-16T14:59:58.000Z"}
+```
+
+y su `payload_hash` es `69779577a3a2aa226ef36ccf53a7ed817f3827f2955073967ed3d724b80728cc`, calculado sobre este texto escrito a mano.
+
 ## Respuestas
 
 ### Éxito y reenvío (D-5)
@@ -124,6 +164,27 @@ El cuerpo solo trae referencias del emisor, nunca ids internos del CRM:
   "message_external_ref": "msg-0001"
 }
 ```
+
+### Éxito y reenvío de `client.resolved` (brief-12.1, D-9)
+
+Siempre responde `200`, con `result: "accepted"` o `"duplicate"`. Trae el id interno del cliente, porque el emisor lo necesita para seguir el turno. **No trae el teléfono**, que el emisor ya tiene.
+
+```json
+{
+  "contract_version": "1",
+  "event_id": "evt-client-0001",
+  "result": "accepted",
+  "client": {
+    "id": "0b6c…",
+    "display_name": "María Gómez",
+    "is_active": true
+  }
+}
+```
+
+- **No trae `created`**: `ingestion_events` no guarda resultados, así que un reenvío no podría responderlo igual que el original.
+- **Un reenvío** (mismo `event_id` y mismo hash) vuelve a buscar por teléfono, sin escribir. Si el teléfono ya no pertenece a ningún cliente, porque se editó en el backoffice, responde `duplicate` con `"client": null`. Un reenvío nunca crea.
+- **Un cliente inactivo** se devuelve con `is_active: false`. Qué hacer con él lo decide el emisor.
 
 ### Errores
 
@@ -154,7 +215,7 @@ La hace `conversations` con la transacción de `ingestion` (brief-6.5.2, D-2).
   - si no existe, se crea con el primer mensaje, `status = 'open'` y `started_at = last_message_at = message.sent_at`.
 - **Cliente** (D-7):
   - al crear la conversación, si `client_phone` coincide con un cliente de la organización, activo o no, la conversación lo referencia; si no, queda sin cliente;
-  - la ingestión nunca crea clientes;
+  - `message.recorded` nunca crea clientes (*desde la 12.1, el que los crea es `client.resolved`: ver abajo*);
   - los mensajes siguientes no cambian el cliente de la conversación.
 - **Mensaje**: se inserta con `direction`, `sent_at`, `body_text` y `external_ref`. `messages` es de solo inserción.
 - **Fechas de la conversación**:
@@ -162,6 +223,17 @@ La hace `conversations` con la transacción de `ingestion` (brief-6.5.2, D-2).
   - un mensaje anterior a `started_at` lo adelanta.
 - **Estado**: la ingestión no cambia el `status` de una conversación existente. Un mensaje nuevo en una conversación `closed` no la reabre.
 - **Registro**: el evento termina `processed` con `processed_at`, o `failed` con su `error_code`, en la misma transacción.
+
+### Resolución de `client.resolved` (brief-12.1, D-5 a D-10)
+
+La hace `crm` con la transacción de `ingestion`, que antes reservó el evento.
+
+- **Teléfono nuevo en la organización**:
+  - se crea el cliente con `display_name` o, si viene `null`, con **«Sin nombre»**. Nunca con el teléfono, porque el nombre no se enmascara para `viewer`;
+  - se audita la creación en `audit_logs` con la **credencial como actor** (`actor_credential_id`, FR-AUD-03).
+- **Teléfono de un cliente existente**, activo o no: se devuelve tal cual. No se renombra, no se reactiva, no se crea otro y no se audita nada.
+- **Dos eventos distintos con el mismo teléfono a la vez**: la inserción usa `ON CONFLICT (organization_id, phone_e164) WHERE phone_e164 IS NOT NULL DO NOTHING`, así que uno crea y el otro espera en el índice y lee lo que el primero confirmó. Queda un cliente y una fila de auditoría.
+- **Después**: un `message.recorded` con ese teléfono asocia la conversación nueva a ese cliente, como siempre.
 
 ## Versionado
 
@@ -176,6 +248,10 @@ La hace `conversations` con la transacción de `ingestion` (brief-6.5.2, D-2).
   - en `tests/integration/ingestion.test.ts` (6.5.2), contra PostgreSQL real: la proyección, el cliente, las fechas y el estado, los tres tipos de reenvío, los rechazos sin registro, la reversión ante un error inesperado y dos casos de entregas simultáneas.
   - en `tests/integration/ingestion-http.test.ts` (6.5.3), contra PostgreSQL real: las respuestas y sus encabezados, la credencial (ausente, desconocida, mal formada, revocada, fuera de la allowlist, de alcance `read` —caso 14, 11.3— o reemplazada por una sesión del CRM), el modo de prueba, el cuerpo (tipo, tamaño y UTF-8), el límite de tasa también bajo concurrencia, el token guardado solo como hash y el log sin secretos;
   - en `tests/e2e/ingestion.spec.ts` (6.5.3), contra `next start`: un evento aceptado que aparece en la pantalla 8, y los `401`. Los requests son sintéticos, así que no es evidencia de integración con un emisor.
+  - **`client.resolved`** (12.1.2):
+    - en `contract.test.ts`: el esquema, el vector y los cuatro fixtures con forma asumida;
+    - en `tests/integration/client-resolution.test.ts`: el alta auditada, el cliente existente y el inactivo, los reenvíos, seis resoluciones simultáneas, el aislamiento y la cadena con `message.recorded`;
+    - en `ingestion-http.test.ts`, casos 15 a 17: la respuesta sin teléfono, la misma cadena de rechazos, el límite compartido y el log sin teléfono ni nombre.
 - **Sin validar hasta el proyecto de integración (Fase 12, 12.3)**:
   - la compatibilidad con un emisor real;
   - la autenticación con su tráfico ([Risks](../planning/Risks.md)).

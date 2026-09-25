@@ -84,7 +84,7 @@ Si el cambio trae migraciones, correrlas con `migrate.env` **antes** del `build`
 sudo bash -c "set -a && . /etc/crm-staging/migrate.env && set +a && cd /srv/crm-staging && exec sudo -u benja --preserve-env=DATABASE_URL npm run db:migrate"
 ```
 
-Build con `app.env` y reinicio. La lista de `--preserve-env` son las variables de `app.env` al 2026-09-25; si el archivo gana una, se agrega acá:
+Build con `app.env` y reinicio. La lista de `--preserve-env` son las variables de `app.env` al 2026-09-25 que el build y la aplicación usan. Se agrega una si la aplicación pasa a necesitarla para compilar; las dos de la API de lectura (`READ_API_*`) no hacen falta en el build y no se agregan al encenderla:
 
 ```
 sudo bash -c "set -a && . /etc/crm-staging/app.env && set +a && cd /srv/crm-staging && exec sudo -u benja --preserve-env=NODE_ENV,PORT,HOSTNAME,DATABASE_URL,TRUSTED_PROXY,INGESTION_ENABLED,INGESTION_ALLOWED_CREDENTIALS npm run build"

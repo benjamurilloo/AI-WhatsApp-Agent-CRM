@@ -185,7 +185,7 @@ Lista cerrada. Tocar otro archivo es un hallazgo bloqueante, salvo ampliación a
 - La organización sale de la credencial, nunca del payload.
 - Un teléfono pertenece a un solo cliente por organización, activo o no.
 - Ni los logs ni las respuestas llevan el teléfono. El nombre del cliente no va a los logs.
-- El `viewer` nunca recibe el teléfono completo (H-5), tampoco a través del nombre (D-5).
+- El `viewer` nunca recibe el teléfono completo (H-5). ~~tampoco a través del nombre (D-5)~~ *Acotado el 2026-09-25 por decisión del usuario (revisión independiente, R-6)*: el CRM nunca usa el teléfono como nombre (D-5). Que un emisor mande el teléfono como `display_name` queda como limitación escrita, a revisar en la 12.3 con capturas reales. Hoy solo opera el dueño como `admin`, y el enmascarado para `viewer` quedó refutado en el piloto (O-36).
 - Un reenvío nunca produce una segunda escritura.
 
 ## Criterios de aceptación
@@ -283,3 +283,73 @@ Todas se desprenden de la decisión del usuario sobre la composición y de la cl
 - **Una corrida de guardas dio 1 falla que no se capturó**: la salida se filtró con `Select-String` y se perdió el nombre del caso, justo lo que el HANDOFF §7 advierte. Las tres corridas siguientes dieron 296 de 296. Queda como falla no identificada. Que sea la intermitencia de `module-boundary` es una hipótesis.
 
 **Nivel**: validado localmente (`deterministic`), y `producer-consumer` para la pantalla 7. Falta la CI del commit de la etapa.
+
+**CI de la etapa 12.1.1**: commit `273d277`, run 36174142257, `success` en el intento 1. Queda **validada localmente y en CI**.
+
+## Resultados — etapa 12.1.2
+
+**Autoevaluación** (`self_assessment: true`), del 2026-09-25, antes de la revisión independiente de D-13.
+
+### Decisiones de implementación
+
+1. **Cómo se elige el esquema**: por el `event_type` del JSON crudo. `client.resolved` usa su esquema; cualquier otro valor, el de `message.recorded`, con `event_type` como literal. Así, un tipo desconocido sigue informando `event_type` y los demás campos inválidos igual que antes. El fixture `invalid-version-and-type.json` pasa sin cambios.
+2. **Cómo se distinguen los dos resultados aceptados**: por la presencia de `client`, no con un campo `eventType`. Agregarlo cambiaba el objeto que compara `tests/integration/ingestion.test.ts` caso 1, que AC-8 exige no tocar.
+3. **La credencial en el contexto**: `IngestionContext.credentialId` es opcional, para no cambiar las llamadas existentes. Un `client.resolved` sin ella lanza un error antes de escribir, porque es un error de programación, no del emisor. Hay un caso que lo prueba.
+4. **El `diff` de la auditoría** tiene la misma forma que el alta desde el backoffice: `{ displayName, phoneE164, notes: null, isActive: true }`. El teléfono entra al `diff`, como en el backoffice (brief-5.2, D-6), y solo lo lee el `admin`.
+
+### Contraste por criterio
+
+| AC | Resultado | Evidencia |
+|---|---|---|
+| AC-7 | cumplido | El contrato documenta el evento, su vector escrito a mano (`69779577…`), la respuesta y la resolución. `contract.test.ts`: 39 de 39, con 7 casos nuevos y 4 fixtures con `"shape": "assumed"`: 2 válidos con su `payload_hash` y 2 inválidos. Se rechazan el NUL, los caracteres de control, el UTF-16 inválido, los espacios al borde, el largo, el teléfono no canónico, los campos extra y el futuro. |
+| AC-8 | cumplido, con una salvedad | El vector de `message.recorded` sigue en `529004aa…`. `ingestion.test.ts` e `ingestion-http.test.ts` (casos 1 a 14) pasan sin cambios. **Salvedad**: en `contract.test.ts` cambió el tipo del ayudante `parsed`, que ahora recibe una unión y la estrecha a `message.recorded`. Ninguna aserción cambió. |
+| AC-9 | cumplido | `client-resolution.test.ts`: alta con nombre y con «Sin nombre», con el `diff` y `actor_credential_id` comparados fila por fila; cliente activo e inactivo devueltos sin escribir ni renombrar ni reactivar. |
+| AC-10 | cumplido | Reenvío `duplicate` con el mismo cliente, sin otra escritura; `CONFLICT` con otro contenido; reenvío con `client: null` cuando el teléfono ya no es de nadie; **seis** resoluciones simultáneas dejan un cliente y una fila de auditoría. **M1**: sin el `ON CONFLICT`, fallan 3 casos, entre ellos el de concurrencia. **M2**: con un reenvío que vuelve a resolver creando, falla el caso de `client: null`. Los dos restaurados. |
+| AC-11 | cumplido | `ingestion-http.test.ts` casos 15 a 17: `200` con la respuesta de D-9 y sin el teléfono, también al reenvío; `403` para la credencial `read` y para una fuera de la allowlist; el límite es compartido con `message.recorded` (`429` al pasarlo); el log sin teléfono ni nombre, y `log-surface` en verde. **M3**: con el teléfono en la respuesta, el caso 15 falla. Restaurado. |
+| AC-12 | cumplido | El cliente de otra organización con el mismo teléfono no se devuelve y no recibe auditoría; el nuevo se crea en la organización de la credencial. |
+| AC-13 | cumplido | Un `message.recorded` posterior con el mismo teléfono asocia la conversación al cliente resuelto. |
+| AC-14 | cumplido | Los casos nuevos llevan FR-API-04 o FR-AUD-03 en su nombre, y los dos requisitos están en FunctionalRequirements. |
+
+### Verificación de la etapa
+
+- `lint`, `typecheck` y `format:check`: 0.
+- `npm run test`: **1206 de 1206 en 92 archivos**, con las guardas en 296 de 296.
+- `npm run build`: 0.
+- `npm run test:e2e`: **98 de 98**.
+
+**Nivel**: validado localmente (`deterministic`, requests sintéticos). **No** se certifica compatibilidad con ningún emisor real: eso es la 12.3. Falta la CI del commit de la etapa, y la revisión independiente.
+
+## Revisión independiente (D-13)
+
+La hizo el 2026-09-25 un subagente `independent-reviewer` que no participó del trabajo, con acceso de solo lectura.
+- **Resultado**: 12 hallazgos. 0 bloqueantes, 2 mayores, 5 menores y 5 observaciones.
+- **Límite declarado por el propio revisor**: no pudo correr `git` ni tests, así que revisó el estado de los archivos, no los diffs.
+
+Cada hallazgo se verificó contra el código antes de aceptarlo. La autoevaluación de arriba se conserva tal como estaba; donde el revisor la contradice, lo dice esta tabla.
+
+| # | Severidad | Verificación | Resolución |
+|---|---|---|---|
+| **R-1** | mayor | **Confirmado.** El caso de concurrencia lanzaba 6 envíos con `Promise.all`, sin retener ningún bloqueo. M1 también lo habría tumbado corriendo en serie, así que no probaba el solapamiento. Contradecía la convención de la 4.3.2. **La autoevaluación de AC-10 decía «seis resoluciones simultáneas»: la simultaneidad no estaba demostrada.** | **Corregido.** Dos casos nuevos: una tercera conexión inserta el mismo teléfono sin confirmar, las dos resoluciones esperan en el índice (**2 esperas comprobadas en `pg_stat_activity`**) y la tercera revierte (una resolución crea y la otra la lee) o confirma (ninguna crea ni audita). M1 repetida: fallan los 2. |
+| **R-2** | mayor | **Confirmado.** `analytics/repository.ts:383-397` cuenta todos los `ingestion_events` del período, sin filtrar `event_type`. Cada `client.resolved` suma al denominador de la tasa de errores de la métrica 12 y nunca termina `failed`, así que la tasa baja sin que fallen menos mensajes. El brief no lo vio. | **Decidido por el usuario: la métrica 12 excluye `client.resolved`.** Se eligió excluir ese tipo, no filtrar a `message.recorded`: los fixtures de la 7.3 y la 7.4 usan el valor `message.received`, que no existe en el contrato, y filtrar habría obligado a tocarlos. Ampliación autorizada: `analytics/repository.ts`, un caso en `analytics-ingestion.test.ts` y MetricsCatalog. **M4**: sin el filtro, el caso nuevo da total 8 en lugar de 7. Restaurado. |
+| **R-3** | menor | **Confirmado.** El caso sin credencial no llevaba identificador, y los 4 fixtures corren con el `it.each` compartido, que se nombra por archivo. **La autoevaluación de AC-14 decía «cumplido»: no lo estaba del todo.** | El caso sin credencial lleva ahora FR-AUD-03. **Los fixtures quedan sin identificador**, con esta salvedad escrita: nombrarlos exigiría cambiar el `it.each` compartido de todos los fixtures. |
+| **R-4** | menor | **Confirmado.** DataModel no listaba el `UNIQUE` de `ingestion_credentials`, y sus reglas del ledger decían «devuelve el resultado original», falso para `client.resolved`. | **Corregido** en DataModel, archivo de la lista de la 12.1.1. |
+| **R-5** | menor | **Confirmado.** Frases del contrato (estado, propósito, `event_type` y registro antes de proyectar) y de IntegrationBoundaries (propósito e idempotencia) que la 12.1.2 volvió falsas o incompletas. | **Corregido.** |
+| **R-6** | menor | **Confirmado.** El validador acepta un `display_name` igual al teléfono o que lo contiene, y el nombre no se enmascara para `viewer`. D-5 se cumple (el CRM nunca usa el teléfono como nombre), pero el invariante del brief está escrito como absoluto. | **Decidido por el usuario: se acota el invariante y se registra la limitación**, a revisar en la 12.3 con capturas reales (ver §Invariantes). |
+| **R-7** | menor | **Confirmado.** FR-AUD-03 y FR-API-04 no están en TraceabilityMatrix, que exige una fila por requisito. | **Decidido por el usuario: se agregan.** Dos filas nuevas en TraceabilityMatrix (ampliación autorizada). |
+| **R-8** | observación | **Confirmado.** El texto del ADR 0014 dice «conversaciones y mensajes». D-1 decidió que `client.resolved` entra por esa misma superficie sin enmendarlo. | **Decidido por el usuario: nota fechada** en el ADR 0014, que remite a D-1. La decisión no cambia. |
+| **R-9** | observación | **Confirmado.** D-9 fijó `{ result, event_id, client }`, y el contrato y el código agregan `contract_version`, como toda respuesta de éxito de v1. | Se registra acá. Manda el contrato, que coincide con el código. |
+| **R-10** | observación | **Confirmado.** Faltaban el `404` y el `401` para `client.resolved`, y el caso del hash no cubría un cambio entre dos nombres válidos. AC-1 («sobre una base con datos») no cita evidencia. | Caso 18 nuevo (`404` y `401`, sin escribir) y un cambio de nombre válido en el test del hash. **AC-1**: la `0022` se aplicó sobre la base de desarrollo, con los seeds básico, de conversaciones y de volumen, y en la CI sobre una base vacía. Queda escrito así. |
+| **R-11** | observación | **Confirmado.** El README pedía agregar a `--preserve-env` cualquier variable nueva de `app.env`, incluidas las de la API de lectura, que el build no usa. | **Corregido.** |
+| **R-12** | observación | **Confirmado.** El comentario del caso 16 de `clients.spec.ts` hablaba en futuro de la 12.1.2. | **Corregido.** Ampliación mínima de un archivo de la lista de la 12.1.1. |
+
+Lo que el revisor dejó anotado sobre HANDOFF (la API que «todavía no existe», el estado de la fase y las interfaces sin actualizar) se corrige en el cierre, como manda la lista de archivos de este brief.
+
+**Verificación después de las correcciones de la revisión** (2026-09-25):
+- `lint`, `typecheck` y `format:check`: 0.
+- `npm run test`: **1209 de 1209 en 92 archivos**. Son los 1206 anteriores, menos el caso de concurrencia reemplazado, más los dos nuevos, el caso 18 y el de la métrica 12.
+- `npm run build`: 0.
+- `npm run test:e2e`: **98 de 98**.
+
+**Mutaciones de la etapa**: M1 a M4, las cuatro detectadas y restauradas.
+
+**Nivel**: validado localmente (`deterministic`). Falta la CI del commit.

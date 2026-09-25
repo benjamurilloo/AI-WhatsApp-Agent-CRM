@@ -7,7 +7,13 @@ import type { Failure } from "@/shared/errors";
 // y la proyección llegan en la 6.5.2, y la credencial de servicio en la 6.5.3.
 
 export const INGESTION_CONTRACT_VERSION = "1";
-export const INGESTION_EVENT_TYPES = ["message.recorded"] as const;
+// client.resolved desde la 12.1 (D-1): un event_type nuevo es un cambio compatible dentro de v1.
+export const INGESTION_EVENT_TYPES = [
+  "message.recorded",
+  "client.resolved",
+] as const;
+// Mismo límite que el alta desde el backoffice (brief-5.2, D-5).
+export const MAX_CLIENT_NAME_LENGTH = 200;
 // Alcanza para un cuerpo de 4096 puntos de código escritos como escapes \uXXXX (brief-6.5.1).
 export const MAX_INGESTION_BODY_BYTES = 64 * 1024;
 export const MAX_EXTERNAL_REF_LENGTH = 200;
@@ -33,6 +39,10 @@ export const INGESTION_FIELDS = [
   "message.direction",
   "message.sent_at",
   "message.body_text",
+  // client.resolved (brief-12.1).
+  "client",
+  "client.phone",
+  "client.display_name",
 ] as const;
 
 export type IngestionField = (typeof INGESTION_FIELDS)[number];
@@ -72,9 +82,11 @@ const bodyText = z
   .refine((value) => !value.includes("\u0000"), "carácter NUL")
   .refine((value) => !LONE_SURROGATE.test(value), "UTF-16 inválido");
 
-const eventSchema = z.strictObject({
+// Cualquier tipo que no sea client.resolved se valida con este esquema, como antes de la 12.1: un
+// tipo desconocido sigue informando event_type y, si los hay, los demás campos inválidos (AC-8).
+const messageRecordedSchema = z.strictObject({
   contract_version: z.literal(INGESTION_CONTRACT_VERSION),
-  event_type: z.enum(INGESTION_EVENT_TYPES),
+  event_type: z.literal("message.recorded"),
   event_id: externalRef,
   occurred_at: timestamp,
   conversation: z.strictObject({
@@ -90,7 +102,30 @@ const eventSchema = z.strictObject({
   }),
 });
 
-export type IngestionEventV1 = z.infer<typeof eventSchema>;
+// Nombre propuesto por el emisor (brief-12.1, D-5). Se rechaza, no se normaliza: sin espacios al
+// borde, sin caracteres de control y UTF-16 válido, como las referencias opacas.
+const clientName = z
+  .string()
+  .min(1)
+  .max(MAX_CLIENT_NAME_LENGTH)
+  .refine((value) => value.trim() === value, "espacios al borde")
+  .refine((value) => !CONTROL.test(value), "caracteres de control")
+  .refine((value) => !LONE_SURROGATE.test(value), "UTF-16 inválido");
+
+const clientResolvedSchema = z.strictObject({
+  contract_version: z.literal(INGESTION_CONTRACT_VERSION),
+  event_type: z.literal("client.resolved"),
+  event_id: externalRef,
+  occurred_at: timestamp,
+  client: z.strictObject({
+    phone: z.string().regex(E164),
+    display_name: clientName.nullable(),
+  }),
+});
+
+export type MessageRecordedEventV1 = z.infer<typeof messageRecordedSchema>;
+export type ClientResolvedEventV1 = z.infer<typeof clientResolvedSchema>;
+export type IngestionEventV1 = MessageRecordedEventV1 | ClientResolvedEventV1;
 
 export type ParseIngestionEventResult =
   | { ok: true; event: IngestionEventV1 }
@@ -128,16 +163,28 @@ export function parseIngestionEventV1(
     return invalid(["body"]);
   }
 
-  const parsed = eventSchema.safeParse(json);
-  if (!parsed.success) {
-    return invalid(
-      parsed.error.issues.map((issue) =>
-        issue.path.length === 0 ? "event" : issue.path.join("."),
-      ),
+  const fieldsOf = (issues: z.core.$ZodIssue[]) =>
+    issues.map((issue) =>
+      issue.path.length === 0 ? "event" : issue.path.join("."),
     );
+  const latest = receivedAt.getTime() + MAX_CLOCK_SKEW_MS;
+  const future = new Set<string>();
+
+  if ((json as { event_type?: unknown }).event_type === "client.resolved") {
+    const parsed = clientResolvedSchema.safeParse(json);
+    if (!parsed.success) return invalid(fieldsOf(parsed.error.issues));
+    const event: ClientResolvedEventV1 = {
+      ...parsed.data,
+      occurred_at: toUtc(parsed.data.occurred_at),
+    };
+    if (Date.parse(event.occurred_at) > latest) future.add("occurred_at");
+    if (future.size > 0) return invalid(future);
+    return { ok: true, event };
   }
 
-  const event: IngestionEventV1 = {
+  const parsed = messageRecordedSchema.safeParse(json);
+  if (!parsed.success) return invalid(fieldsOf(parsed.error.issues));
+  const event: MessageRecordedEventV1 = {
     ...parsed.data,
     occurred_at: toUtc(parsed.data.occurred_at),
     message: {
@@ -145,8 +192,6 @@ export function parseIngestionEventV1(
       sent_at: toUtc(parsed.data.message.sent_at),
     },
   };
-  const latest = receivedAt.getTime() + MAX_CLOCK_SKEW_MS;
-  const future = new Set<string>();
   if (Date.parse(event.occurred_at) > latest) future.add("occurred_at");
   if (Date.parse(event.message.sent_at) > latest) {
     future.add("message.sent_at");

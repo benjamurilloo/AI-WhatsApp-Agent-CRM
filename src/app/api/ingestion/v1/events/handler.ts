@@ -50,6 +50,23 @@ function acceptedResponse(
   requestId: string,
   accepted: IngestionAccepted,
 ): Response {
+  const headers = { ...baseHeaders, "X-Request-Id": requestId };
+  if ("client" in accepted) {
+    // Siempre 200, con el cliente y sin su teléfono (brief-12.1, D-9).
+    return Response.json(
+      {
+        contract_version: INGESTION_CONTRACT_VERSION,
+        event_id: accepted.eventId,
+        result: accepted.result,
+        client: accepted.client && {
+          id: accepted.client.id,
+          display_name: accepted.client.displayName,
+          is_active: accepted.client.isActive,
+        },
+      },
+      { status: 200, headers },
+    );
+  }
   return Response.json(
     {
       contract_version: INGESTION_CONTRACT_VERSION,
@@ -58,10 +75,7 @@ function acceptedResponse(
       conversation_external_ref: accepted.conversationExternalRef,
       message_external_ref: accepted.messageExternalRef,
     },
-    {
-      status: accepted.result === "accepted" ? 201 : 200,
-      headers: { ...baseHeaders, "X-Request-Id": requestId },
-    },
+    { status: accepted.result === "accepted" ? 201 : 200, headers },
   );
 }
 
@@ -136,7 +150,11 @@ async function evaluate(
   const body = await readBodyWithLimit(request, MAX_INGESTION_BODY_BYTES);
   if (!body.ok) return invalidBody();
 
-  const result = await recordIngestionEvent(credential, body.text, now);
+  const result = await recordIngestionEvent(
+    { ...who, credentialId: credential.id },
+    body.text,
+    now,
+  );
   if (result.ok) {
     return {
       ...who,
