@@ -2,6 +2,101 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-25 — Fase 11 cerrada (Lo que el agente necesita leer)
+
+Cierra con el gate de salida cumplido como está escrito: **piloto sin bloqueantes y contrato de lectura publicado con su validador en verde** ([Roadmap](docs/planning/Roadmap.md), §Fase 11). El cierre lo confirmó el usuario el 2026-09-25.
+
+**Certifica:**
+
+- **Las cinco subfases cerradas**:
+  - 11.0, instrumentos;
+  - 11.1, catálogo comercial;
+  - 11.2, información del negocio;
+  - 11.3, API de lectura;
+  - 11.4, piloto.
+
+  Cada una tiene su entrada abajo.
+- **El contrato de lectura v1** ([read-v1.md](docs/contracts/read-v1.md)), con su validador estricto en verde en CI. Además, **una corrida en staging**, a través de nginx, TLS y `TRUSTED_PROXY`, con 0 fallas contra ese validador.
+- **El backoffice en staging**, con las migraciones `0016` a `0020`:
+  - las 13 pantallas cargan con su contenido;
+  - el guion del piloto lo recorrió una persona con `admin` y con `viewer`.
+- **Brechas cerradas**: B-8 (catálogo comercial), B-9 (información del negocio) y la parte de lectura de B-2 (API de servicio).
+- **Obligaciones asignadas a la Fase 11**:
+  - cerradas: O-8, O-10, O-17, O-21, O-22, O-33, O-40, R-1 (piezas 1 y 2), R-2 (el registro) y C-6;
+  - O-36, cerrada en parte: falta la observación de un operador real, que va a la 13.5;
+  - la pregunta 5, estimada en `Risks.md`, con la medición en la 12.3.
+
+**Nivel**:
+
+- **El contrato de lectura**: validado localmente y en CI, más una corrida en staging. **No está validado en integración**, porque ningún agente lo consumió. Es la rama «si no» del gate del Roadmap, y se dice (brief-11.4, H-1).
+- **El backoffice**: validado en staging, con datos sintéticos.
+
+**No certifica:**
+
+- **Integración con el agente**: el contrato llega a validado en integración recién en la 12.3 o en la 12.5, cuando el agente lo consuma.
+- **Que 120 pedidos por minuto alcancen**: se mide en la 12.3.
+- **Uso real sostenido y observación de un operador real**: los dos van a la 13.5.
+- **Preparado para producción**: es de la Fase 13.
+
+## 2026-09-25 — 11.4 cerrada: piloto en staging
+
+Última subfase de la Fase 11 ([brief-11.4](docs/decisions/brief-11.4-piloto-en-staging.md)). Tuvo tres etapas:
+
+- **11.4.1, preparación**, en `f241f62`: corrida 36090109504, `success`. 1170 tests en Vitest y 97 end-to-end.
+- **11.4.2, despliegue y verificación en staging**, en `c51cb47`: corrida 36141464167, `success`. Evidencia cruda en [evidencia-11.4-piloto.md](docs/decisions/evidencia-11.4-piloto.md).
+- **11.4.3, ventana de observación y triage**: el usuario recorrió el guion el 2026-09-25. Notas y triage en [notas-piloto-11.4.md](docs/decisions/notas-piloto-11.4.md).
+
+Cierra el gate de la Fase 11, así que lleva revisión independiente.
+
+**Certifica:**
+
+- **El seed del piloto** (`npm run db:seed:pilot`): un comercio de tecnología inventado.
+  - 60 productos en 6 categorías y 8 marcas, un tercio reacondicionados, 5 inactivos y los tres estados de stock;
+  - 15 entradas de información, con una programada, una vencida y una inactiva;
+  - 30 clientes y 40 conversaciones.
+
+  Es determinista e idempotente, y lo prueba `pilot-seed.test.ts`. En staging se corrió dos veces, con los mismos recuentos.
+- **Los instrumentos**:
+  - `recorrer-pantallas.ts` cubre 13 pantallas, incluidas precios, información y el detalle de una entrada;
+  - `probar-api-lectura.ts` valida contra el contrato y no imprime el token.
+
+  Los dos tienen una mutación que los pone en rojo.
+- **El despliegue en staging** (validado en staging, `isolated-runtime`):
+  - backup previo;
+  - migraciones de 16 a 21;
+  - HEAD en `f241f62`;
+  - las cinco comprobaciones del README, entre ellas el salto único de proxy, con su control desde otra IP;
+  - 13 pantallas con 0 problemas, y el control negativo en verde.
+- **La API de lectura en staging**:
+  - encendida solo para la prueba, con 0 fallas;
+  - 12 pedidos y 12 líneas de log, sin el token ni el texto buscado;
+  - apagada al terminar, con `app.env` igual byte a byte al anterior y la credencial revocada.
+- **La ventana**:
+  - las 12 tareas del guion, hechas;
+  - staging sin cambios entre la apertura y el cierre;
+  - la auditoría coincide con lo que el `admin` hizo, y el `viewer` no tiene ninguna escritura.
+- **El triage**: 12 filas, **0 bloqueantes**, 1 mayor, 1 menor y 10 observaciones.
+  - **E-1**, el único mayor: el procedimiento de despliegue del README no corre tal como está escrito, porque los archivos de `/etc/crm-staging/` son `0600` de `root`. El usuario aceptó su destino el 2026-09-25: se corrige en la **12.1**, antes de su primer despliegue.
+- **Las personas (O-36)**, contrastadas con el dueño del negocio:
+  - `admin` confirmado: hoy opera solo el dueño;
+  - `viewer` confirmado como necesidad futura;
+  - el teléfono enmascarado para `viewer`, **refutado**, sin cambiarse todavía;
+  - se pidió un rol intermedio, a futuro.
+
+  Todo está en [Personas.md](docs/product/Personas.md), con el límite de D-4.
+- **O-10**: no hace falta un end-to-end contra staging hasta la 13.1 ([TestingStrategy](docs/development/TestingStrategy.md)).
+
+**Revisión independiente** (D-11): veredicto R1, 0 bloqueantes, 1 mayor, 5 menores y 6 observaciones. Cada hallazgo se verificó, y los doce se aceptaron. El mayor, **H-1**, bajó el nivel declarado de la API de «validada en staging» a lo que se midió: validada localmente y en CI, más una corrida en staging. El usuario siguió esa recomendación al cerrar.
+
+**Pedidos del dueño en la ventana, registrados y no implementados**: métricas de productos, ordenar las listas, mejorar el alta de productos y la estética, y la cantidad de stock para el agente (N-1, pregunta de la 12.5). El dueño resumió: el CRM «sí sirve como respaldo para el agente», pero para manejar un negocio «todavía no sirve». Eso coincide con el plan: el ERP es posterior a la Fase 13.
+
+**No certifica:**
+
+- **Validado en integración**: el agente no consumió la API.
+- **`authenticated-end-to-end` con un operador real**: una sola persona hizo de las dos personas, con datos sintéticos. El `viewer` no deja auditoría.
+- **El orden de las listas con la collation `C.UTF-8` de staging** (E-2): el piloto no lo midió. Va a la 13.1.
+- **Rendimiento en staging** (13.2).
+
 ## 2026-09-24 — 11.3 cerrada: API de servicio de lectura
 
 Cuarta subfase de la Fase 11 ([brief-11.3](docs/decisions/brief-11.3-api-de-lectura.md)), en dos etapas:

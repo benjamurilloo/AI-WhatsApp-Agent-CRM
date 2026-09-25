@@ -86,7 +86,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-11.1](brief-11.1-catalogo-comercial.md) | 11.1 — Catálogo comercial | aprobado el 2026-09-24 con las recomendaciones de D-1 a D-10; cerrado el 2026-09-24 |
 | [brief-11.2](brief-11.2-informacion-del-negocio.md) | 11.2 — Información del negocio | aprobado el 2026-09-24 con las recomendaciones de D-1 a D-10; cerrado el 2026-09-24 |
 | [brief-11.3](brief-11.3-api-de-lectura.md) | 11.3 — API de servicio de lectura | aprobado el 2026-09-24 con las recomendaciones de D-1 a D-12; cerrado el 2026-09-24 |
-| [brief-11.4](brief-11.4-piloto-en-staging.md) | 11.4 — Piloto en staging | aprobado el 2026-09-24 con las recomendaciones de D-1 a D-12 |
+| [brief-11.4](brief-11.4-piloto-en-staging.md) | 11.4 — Piloto en staging | aprobado el 2026-09-24 con las recomendaciones de D-1 a D-12; cerrado el 2026-09-25, y con él la Fase 11 |
 | [evidencia-9.1](evidencia-9.1-staging.md) | 9.1 — Salidas crudas de la verificación en staging | captura del 2026-09-22 |
 | [evidencia-9.2](evidencia-9.2-backups.md) | 9.2 — Backup y restauración verificados en staging | captura del 2026-09-22 |
 | [evidencia-9.3](evidencia-9.3-volumen.md) | 9.3 — Volumen, planes y tiempos medidos en staging | captura del 2026-09-23 |

@@ -214,6 +214,16 @@ Reglas comunes a las cuatro fases:
 - **Gate de entrada**: Fase 10 cerrada.
 - **Gate de salida**: piloto sin bloqueantes y contrato de lectura publicado con su validador en verde. Si el agente ya lo consume en staging, detrás del modo de prueba, el contrato llega a **validado en integración**; si no, queda en validado localmente y en CI, y se dice.
 - **Nivel de validación**: validado en staging, sin datos reales.
+- **Fase 11 CERRADA el 2026-09-25**, con sus cinco subfases cerradas (11.0 a 11.4) y el cierre confirmado por el usuario ([CHANGELOG](../../CHANGELOG.md)).
+  - **Gate de salida, cumplido como está escrito**:
+    - el piloto terminó **sin bloqueantes** ([notas-piloto-11.4](../decisions/notas-piloto-11.4.md), §Triage: 0 bloqueantes, 1 mayor aceptado con destino en la 12.1);
+    - el contrato de lectura está publicado ([read-v1](../contracts/read-v1.md)), con su validador en verde en CI.
+  - **Nivel alcanzado**:
+    - el backoffice, **validado en staging** con datos sintéticos;
+    - el contrato, **validado localmente y en CI, más una corrida en staging**, y **no** validado en integración, porque el agente todavía no lo consume. Es la rama «si no» de este gate, y se dice ([brief-11.4](../decisions/brief-11.4-piloto-en-staging.md), H-1).
+  - **Lo que hereda la Fase 12 del piloto**:
+    - E-1, corregir el procedimiento de despliegue de `deploy/staging/README.md`, en la **12.1**;
+    - N-1, si el agente necesita la cantidad en stock, como pregunta de la **12.5**.
 
 ## Fase 12 — El contexto del turno
 

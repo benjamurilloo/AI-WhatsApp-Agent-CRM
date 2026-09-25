@@ -527,4 +527,79 @@ La salida cruda de cada paso está en [evidencia-11.4-piloto.md](evidencia-11.4-
 
 **Lo que la ejecución encontró que el brief no decía**: el procedimiento del README no corre tal como está escrito (**E-1**). `. /etc/crm-staging/migrate.env` da `Permission denied` al usuario del ssh, porque los archivos son `0600` de `root`. Ese primer intento no llegó a la base, así que no fue un fallo de migración ni la condición de detención de D-10. Se corrió con `sudo bash -c "… exec sudo -u benja --preserve-env=<variables> npm run …"`. La corrección del README no está en la lista de archivos de esta etapa. Va al triage con E-2 a E-4.
 
-**Nivel**: validado en staging (`isolated-runtime`). La 11.4.2 terminó **sin bloqueantes**, así que la ventana de la 11.4.3 puede abrir (§Etapa 11.4.3, paso 1).
+**Nivel**: el despliegue y las pantallas, validados en staging (`isolated-runtime`). La API de lectura, **validada localmente y en CI, más una corrida en staging**, y **no** validada en integración (ver H-1 abajo). La 11.4.2 terminó **sin bloqueantes**, así que la ventana de la 11.4.3 puede abrir (§Etapa 11.4.3, paso 1).
+
+## Resultados — etapa 11.4.3, 2026-09-25 (autoevaluación)
+
+El guion, las respuestas, el cierre de la ventana y el triage están en [notas-piloto-11.4.md](notas-piloto-11.4.md).
+
+- **AC-10 (guion)** — cumplido. El guion se escribió antes de abrir la ventana, junto con el estado de apertura, tomado a las 13:32 UTC. La primera escritura del `admin` en la auditoría es de las 13:53:39. Las 12 tareas quedaron hechas:
+  - A-1 a A-7 y V-1 a V-4, informadas por el usuario. La auditoría confirma las cinco tareas del `admin` que escriben;
+  - G-1, leyendo la salida ya registrada.
+
+  **Lo que no mide**: de V-1 a V-4 no hay evidencia independiente del relato del usuario, porque las lecturas no dejan auditoría. Se declara así (H-7).
+- **AC-11 (ventana)** — cumplido:
+  - los seis valores de apertura y cierre coinciden, con su salida cruda;
+  - el servicio no se reinició;
+  - el cierre lo confirmó el usuario el 2026-09-25: «Confirmo cierre».
+- **AC-12 (triage)** — cumplido, **salvo la aceptación del mayor**:
+  - 12 filas: 0 bloqueantes, 1 mayor, 1 menor y 10 observaciones. Cada una tiene severidad, contraste y destino;
+  - **E-1, el único mayor, necesita que el usuario acepte explícitamente** su destino propuesto, la 12.1.
+- **AC-13 (O-36)** — cumplido:
+  - las cinco preguntas están contestadas, con las respuestas textuales;
+  - `Personas.md` tiene §Resultado del piloto 11.4, con el límite de D-4;
+  - en `Risks.md`, la fila del riesgo se reescribió con fecha, y la de la pregunta abierta quedó «hecha en parte», con el resto en la 13.5.
+- **AC-14 (O-10)** — cumplido en la 11.4.1: `TestingStrategy.md`, §«Contra staging (O-10)».
+- **AC-16 (alcance)**:
+  - `git log d727990..HEAD` sobre `tests/guards/forbidden-references.test.ts`, `src/proxy.ts` y `eslint.config.mjs` sale vacío: no cambiaron;
+  - los archivos que tocaron los tres commits y el trabajo sin commitear están en la lista;
+  - hay tres desvíos de **etapa**, no de lista (H-12):
+    - el brief registró resultados en cada etapa, aunque figura solo «al cerrar»;
+    - `evidencia-11.4-piloto.md` se creó en la 11.4.1, con la medición N-5, que es el paso 1 de la 11.4.2 adelantado;
+    - `docs/decisions/README.md` se tocó al aprobar el brief (`d3e9a38`), no al cerrar.
+
+**Desvíos de D-6** (H-8):
+- No se volvió a correr la prueba de la API durante la ventana, como preveía D-6. Encenderla habría cambiado `app.env` durante la ventana.
+- Tampoco se cumplió «el log la muestra revocada». La revocación se ve en la base (`revoked_at`) y en la salida del comando, porque el log de la aplicación no registra revocaciones.
+
+Ver notas, §Desde el lado del agente.
+
+## Revisión independiente, 2026-09-25
+
+La hizo un agente `independent-reviewer` que no participó del trabajo, con acceso de solo lectura, después del triage y antes del cierre (D-11).
+
+- **Veredicto: R1**, con cambios menores. Ningún bloqueante.
+- El revisor no pudo ejecutar `git`. Por eso AC-16 y los tres archivos protegidos se comprobaron después con `git log`; el resultado está en §Resultados — etapa 11.4.3.
+- **Cada hallazgo se verificó contra la fuente antes de aceptarlo.** Ninguno otorga autorización.
+
+| # | Severidad | Hallazgo | Verificación | Resolución |
+| --- | --- | --- | --- | --- |
+| H-1 | mayor | La evidencia y D-6 declaran la API «validada en staging». El Roadmap (§Fase 11, gate de salida) dice que, sin el agente, el contrato «queda en validado localmente y en CI, y se dice». Y en la escala de `CLAUDE.md`, «validado en staging» está por encima de «validado en integración» | **Aceptado.** D-6 (a) dice «el contrato llega a **validado en staging**», y el Roadmap dice lo contrario. Son dos fuentes del mismo rango | La evidencia y §Resultados — 11.4.2 pasan a lo que se midió: «validada localmente y en CI, más una corrida en staging; no validada en integración». **D-6 no se edita**, porque es texto aprobado. La discrepancia queda registrada acá, y **el cierre de la Fase 11 cita el nivel del Roadmap**. Decide el usuario al cerrar |
+| H-2 | menor | El recuento del triage decía «11 filas… 9 observaciones», pero la tabla tiene 12 filas y 10 observaciones | Aceptado: N-7 está partida en 7a y 7b | Corregido en las notas |
+| H-3 | menor | Seis destinos no eran ninguno de los tres que admite §Etapa 11.4.3, paso 4 | Aceptado | N-2 a N-5, N-7a y N-7b pasan a «descartada para las Fases 11 a 14», con motivo y condición de reapertura |
+| H-4 | menor | El destino de E-1 le atribuye a la 12.1 un despliegue que el Roadmap no menciona | Aceptado en parte. El Roadmap le da a la 12.1 «las pruebas contra staging», así que va a desplegar, pero eso es una inferencia | El destino queda como **propuesto**, con la inferencia explícita y el README en la lista de archivos de la 12.1. El usuario lo acepta o lo cambia |
+| H-5 | menor | Hay cifras de apertura, cierre y auditoría sin salida cruda y sin decir que no lo son. La salida de `create` que muestra la evidencia estaba procesada | Aceptado: el invariante lo exige | Se agregaron las salidas crudas de apertura, cierre y diffs de auditoría. La salida de `create` se declara procesada |
+| H-6 | menor | El README que escribió la 11.4.1 dice que el token nunca va a un archivo, y pasó por uno local. Además, su sección de la API repite el patrón de E-1 | Aceptado: `deploy/staging/README.md:88` y `:92` | El desvío queda registrado en la evidencia. E-1 cubre ahora las tres secciones del README, incluida la de esta subfase |
+| H-7 | observación | V-1 a V-4 dependen solo del relato del usuario | Aceptado. Ya estaba declarado | Registrado en AC-10 como «lo que no mide» |
+| H-8 | observación | La ventana se apartó de D-6, que preveía volver a correr la prueba | Aceptado | Registrado como desvío |
+| H-9 | observación | El triage de E-2 decía «el usuario no la notó», y el piloto nunca preguntó por el orden | Aceptado | Corregido: «el piloto no la midió» |
+| H-10 | observación | N-1 llamaba «aditivo» a un campo nuevo, y `read-v1.md` (§Versionado) exige v2 para eso | Aceptado | Corregido: «requiere v2» |
+| H-11 | observación | La evidencia dice «53 bytes», y el token tiene 52 caracteres | Aceptado: la diferencia es el salto de línea que agrega `sed` | Aclarado en la evidencia |
+| H-12 | observación | Hay archivos tocados en una etapa distinta de la que los autorizaba | Aceptado y verificado con `git show --stat d3e9a38` | Registrado en AC-16 |
+
+- **Personas.md**: el `admin` confirmado incluía «clientes», y ninguna pregunta trataba los clientes. Aceptado; se quitó.
+- **`HANDOFF.md`** está desactualizado: dice que el brief de la 11.4 no existe y que staging corre `c2edbb5`. Aceptado. Se corrige al cerrar, que es cuando la lista de archivos lo autoriza.
+
+## Cierre de la subfase 11.4 y de la Fase 11, 2026-09-25
+
+Decisiones del usuario del 2026-09-25, en respuesta a las tres preguntas del cierre:
+
+1. **E-1**: «Acepto». El único mayor del triage va a la **12.1**, con `deploy/staging/README.md` en su lista de archivos. AC-12 queda cumplido.
+2. **Nivel del contrato de lectura (H-1)**: «Seguimos la recomendacion». Validado localmente y en CI, más una corrida en staging, y no validado en integración. Es el nivel que citan el `CHANGELOG` y el Roadmap. D-6 conserva su texto aprobado, y la discrepancia queda registrada en §Revisión independiente.
+3. **Cierre**: «Confirmo cierre de 11.4 y fase 11». Autorizó en el mismo turno:
+   - commit y push;
+   - la actualización de los archivos de cierre;
+   - Notion;
+   - el Knowledge Capture.
+
+**Estado final**: los AC-1 a AC-16 están cumplidos, con los desvíos registrados en §Resultados — etapa 11.4.3. El gate de salida de la Fase 11 está cumplido: el piloto terminó sin bloqueantes, y el contrato está publicado con su validador en verde. **La Fase 12 no se abre en este turno** (D-12).

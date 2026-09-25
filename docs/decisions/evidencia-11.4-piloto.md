@@ -283,7 +283,11 @@ Sesión cerrada: la cookie anterior ya no entra.
 
 ### AC-9 — La API de lectura en staging
 
-La credencial se creó con el rol de la aplicación. La salida fue a un archivo local, del que se sacaron el id y el token. El token fue a un archivo aparte, que nunca se imprimió y que se borró al terminar.
+La credencial se creó con el rol de la aplicación. La salida completa fue a `cred.out`, un archivo local del directorio temporal de la sesión, **fuera del repositorio**. De ahí se sacaron el id y el token: el token fue a otro archivo, que nunca se imprimió. `cred.out` se borró en ese mismo comando, y el archivo del token, al terminar la etapa.
+
+**Lo de abajo no es la salida cruda de `create`**: es la de ese comando, que imprime el id, el tamaño del token y las líneas de `cred.out` salvo la del token. «53 bytes» incluye el salto de línea final que agrega `sed`: el token tiene el formato `crm_read_` más 43 caracteres, 52 en total.
+
+**Desvío del README, registrado**: `deploy/staging/README.md` dice que el token «se copia a un gestor local y nunca a un archivo del repositorio, a la evidencia ni a un mensaje». Nunca entró al repositorio, a la evidencia ni a un mensaje, pero sí pasó por dos archivos locales temporales. Se hizo para no imprimirlo nunca en la terminal. Los dos archivos se borraron.
 
 ```
 $ ssh crm-staging 'sudo bash -c "set -a && . /etc/crm-staging/app.env && set +a && cd /srv/crm-staging && exec sudo -u benja --preserve-env=DATABASE_URL npm run --silent ingestion:credential -- create --org 5eed0000-0000-4000-9000-000000000001 --source piloto-11-4 --scope read"' > cred.out
@@ -507,4 +511,8 @@ Se registran acá y se clasifican en el triage de la 11.4.3, con la escala de D-
   - 0 fallas, y el token no aparece en la salida;
   - una línea de log por pedido, sin el token ni `q`;
   - al terminar, la API responde `404` y la credencial figura revocada.
-- **Nivel**: validado en staging (`isolated-runtime`) para el despliegue, las pantallas y la API de lectura, sobre el seed del piloto. **No** es `authenticated-end-to-end`: ese nivel lo da la ventana de la 11.4.3, hecha por una persona.
+- **Nivel**:
+  - **El despliegue y las 13 pantallas**: validados en staging (`isolated-runtime`), sobre el seed del piloto.
+  - **La API de lectura**: validada localmente y en CI, **más una corrida en staging** con evidencia `isolated-runtime`: el borde real (nginx, TLS, `TRUSTED_PROXY`) con un script sintético. **No está validada en integración**, porque ningún agente la consumió. Por eso no se la llama «validada en staging»: en la escala de `CLAUDE.md`, ese nivel está por encima de «validado en integración», y un nivel superior no se infiere de uno inferior.
+  - Esto sigue al Roadmap (§Fase 11, gate de salida) y se aparta de D-6, que decía «validado en staging». La discrepancia está en el brief, §Resultados — etapa 11.4.2 (H-1 de la revisión independiente).
+  - **No** es `authenticated-end-to-end`: ese nivel lo da la ventana de la 11.4.3, hecha por una persona.
