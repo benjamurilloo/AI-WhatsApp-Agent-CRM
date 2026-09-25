@@ -81,6 +81,37 @@ npm run db:migrate
 
 Todas las migraciones pendientes se aplican en **una sola transacción**: si falla una, no queda aplicada ninguna del lote. El comando sale con código distinto de 0 e imprime el error; un `Migraciones aplicadas.` es la única salida buena.
 
+## Encender y apagar la API de lectura
+
+La [API de lectura](../../docs/contracts/read-v1.md) está **apagada** en staging y responde `404`. Se enciende solo para una prueba y se apaga al terminar ([brief-11.4](../../docs/decisions/brief-11.4-piloto-en-staging.md), D-6). Nunca se configura una credencial de un emisor real.
+
+1. **Crear una credencial sintética** con el rol de la aplicación, que tiene `INSERT` sobre `ingestion_credentials` (migración `0014`). El token se muestra **una sola vez**: se copia a un gestor local y nunca a un archivo del repositorio, a la evidencia ni a un mensaje.
+
+   ```
+   cd /srv/crm-staging
+   set -a && . /etc/crm-staging/app.env && set +a
+   npm run ingestion:credential -- create --org <organization_id> --source <source> --scope read
+   ```
+
+2. **Encenderla**: agregar a `/etc/crm-staging/app.env` las dos líneas de abajo, con el id que imprimió el paso 1, y reiniciar.
+
+   ```
+   READ_API_ENABLED=true
+   READ_API_ALLOWED_CREDENTIALS=<credential_id>
+   ```
+
+   `sudo systemctl restart crm-staging`. Un `GET /api/read/v1/knowledge` sin credencial tiene que dar `401`, no `404`.
+
+3. **Apagarla**: borrar esas dos líneas de `app.env`, reiniciar y revocar la credencial.
+
+   ```
+   npm run ingestion:credential -- revoke --id <credential_id>
+   ```
+
+   El mismo `GET` tiene que volver a dar `404`, y `select revoked_at from ingestion_credentials where id = '<credential_id>'` no puede ser nulo.
+
+`app.env` no está versionado (D-8), así que ningún `diff` detecta que la API quedó encendida. Se comprueba con ese `GET`.
+
 ## Verificar después de desplegar
 
 Los dos primeros comprueban lo que ninguna guarda puede: que el servidor tenga lo que el repositorio dice.

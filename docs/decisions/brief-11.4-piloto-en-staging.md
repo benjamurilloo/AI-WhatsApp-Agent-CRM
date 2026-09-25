@@ -433,3 +433,71 @@ En el mismo turno autorizó el commit del brief y pasar la tarea 11.4 de Notion 
 - Si D-2 no está contestada: el seed no se escribe con una forma inventada.
 - Antes de instalar cualquier dependencia. Esta subfase no prevé ninguna.
 - Antes de cambiar el estado en Notion sin que el usuario haya aprobado el brief o confirmado el cierre.
+
+## Autorización de la ejecución — 2026-09-24
+
+En el turno siguiente a la aprobación, el usuario autorizó **el push y cualquier paso sobre staging**, y pidió arrancar con la 11.4.1. Con eso quedan autorizados, en ese turno:
+
+- el push del brief (`d3e9a38`) y el commit y el push de la 11.4.1;
+- los pasos de la 11.4.2: el backup previo, el despliegue, las migraciones `0016` a `0020`, el seed del piloto, la credencial sintética y los cambios de `app.env` para encender y apagar la API de lectura.
+
+Las condiciones de detención siguen en pie: un `LC_CTYPE` que no sea UTF-8, una migración que falla o una comprobación posterior que no da lo esperado detienen la subfase igual.
+
+## Resultados — etapa 11.4.1, 2026-09-24 (autoevaluación)
+
+### Lo que la implementación encontró que el brief no decía
+
+- **El seed repone la organización y los usuarios, y eso cambia su `updated_at`.** El primer intento del caso de idempotencia comparaba la fila entera y falló solo en `organizations` y `organization_members`. Es la conducta buscada: la contraseña vuelve a ser la de `SEED_USER_PASSWORD`, como en el seed básico. La huella excluye `updated_at` **solo** en esas dos tablas; en las demás, que se insertan con `DO NOTHING`, compara la fila entera.
+- **La primera versión del seed ponía todos los reacondicionados en dos categorías.** `index % 3` coincide con `index % 6` en las mismas posiciones. Se vio al leer el código antes de correrlo. Ahora rota con la vuelta, y el test exige reacondicionados en las seis categorías.
+- **Una mutación puede medir el proceso equivocado.** La primera corrida de la mutación del AC-3 dio **0 fallas**. El `next start` anterior seguía escuchando en el puerto 3200 después de detener su tarea, y el nuevo, con la mutación, murió con `EADDRINUSE` sin que nada lo mostrara. Se detectó por el log del proceso nuevo y por `netstat`, se mató el viejo (PID 42252) y se repitió. Esa primera corrida **no cuenta**.
+- **N-5, medido antes de la 11.4.2** porque es de solo lectura: `crm_staging` usa `C.UTF-8` como `LC_CTYPE` y `lower('ÁÉÑ')` da `áéñ`. **No detiene la subfase.** La *collation* también es `C.UTF-8`, no `en_US.utf8` como en las bases locales: el orden alfabético de staging es por código de carácter, así que un nombre que empieza con una letra acentuada queda después de la «z». Se registra como observación para el triage del piloto. Salida cruda en `evidencia-11.4-piloto.md`.
+
+### Corridas locales
+
+- **Seed**: `npm run db:seed:pilot`, dos veces seguidas, contra `crm_dev`. Las dos imprimieron `Seed del piloto aplicado: piloto-admin@example.com, piloto-lectura@example.com; 60 productos, 15 entradas, 30 clientes y 40 conversaciones.`
+- **Prueba de la API** (`probar-api-lectura.ts`) contra `next start` en el puerto 3200, con una credencial `read` sintética de la organización del piloto:
+  - 4 búsquedas de productos, el detalle, 3 rechazos y 4 lecturas de información;
+  - **0 fallas**, con salida 0. El token aparece 0 veces en la salida (`grep -c`);
+  - la credencial se revocó al terminar.
+- **Recorrido** (`recorrer-pantallas.ts`) contra el mismo servidor, con `piloto-admin@example.com`: **13 pantallas, 0 problemas**, y la sesión cerrada al final.
+
+### Corridas de mutación
+
+Cada una se aplicó, se corrió, se registró y se restauró.
+
+| Criterio | Mutación | Sin la mutación | Con la mutación |
+|---|---|---|---|
+| AC-2, recorrido | la comprobación de la pantalla 11 busca la columna «Vigencia inexistente» | 13 pantallas, 0 problemas | la 11 queda en **NO APARECIÓ**, «Problemas registrados: 1» y salida 1 |
+| AC-3, prueba de la API | `toContractProduct` agrega `quantity_on_hand` a cada producto, con `build` nuevo | 0 fallas | **5 fallas**: las 4 búsquedas, fuera del contrato, y el detalle, que no tuvo producto que pedir. Salida 1. Medido contra el proceso nuevo (PID 35464), no contra el viejo (ver arriba) |
+
+`scripts/recorrer-pantallas.ts` y `src/app/api/read/v1/contract.ts` quedaron como antes de cada mutación: `git diff` de `contract.ts`, vacío.
+
+### Contraste por criterio (etapa 11.4.1)
+
+- **AC-1 (seed)** — cumplido. `tests/integration/pilot-seed.test.ts`, 6 casos:
+  - los recuentos de la forma aprobada, escritos a mano, contra la base;
+  - seis categorías, ocho marcas y reacondicionados en las seis;
+  - todo en `ARS`, y ningún saldo distinto del último `balance_after` de su cadena;
+  - los tres estados de stock entre los activos;
+  - una entrada programada, una vencida, una inactiva y 12 vigentes;
+  - una segunda corrida, con otro día, que no cambia la huella ni pisa una entrada editada;
+  - el rechazo de una base no permitida;
+  - la API sobre esos datos: ningún inactivo en cuatro búsquedas, `404` para el detalle de uno inactivo, y 12 entradas sin ninguna de las tres no vigentes.
+- **AC-2 (instrumentos)** — cumplido en lo que se corrió en local:
+  - el recorrido de las 13 pantallas y su mutación, arriba;
+  - `security-headers.spec.ts` suma la 5b, la 11 y la 12, en claro y en oscuro. El resultado va en §Cierre de la etapa.
+- **AC-3 (prueba de la API)** — cumplido: contrato validado, mutación en rojo y el token fuera de la salida.
+- **AC-4 (CI)** — en §Cierre de la etapa.
+
+## Cierre de la etapa 11.4.1, 2026-09-25 (autoevaluación)
+
+- **Vitest**: **1170 de 1170** en 90 archivos, contra PostgreSQL real de desarrollo. Son los 6 casos de `pilot-seed.test.ts` sobre los 1164 de la 11.3.
+- **End-to-end en local: no hay una corrida completa limpia**, y se dice así:
+  - la corrida completa dio **96 de 97** en **2,8 horas**, cuando lo normal son minutos. Falló el caso 3 de `knowledge.spec.ts`, que esta etapa no toca, por un timeout de 30 s en un `page.evaluate`;
+  - la repetición de `knowledge.spec.ts` y `security-headers.spec.ts` dio 13 de 14 en 40 minutos. Falló el caso 3 de `security-headers.spec.ts` con **`net::ERR_NETWORK_IO_SUSPENDED`** al navegar a `/usuarios`: Windows suspendió la red a mitad de la corrida. Es la firma de la máquina entrando en reposo, y explica también las dos duraciones;
+  - `security-headers.spec.ts` solo, con la máquina despierta: **5 de 5 en 23,5 s**, con el caso de las 13 pantallas en claro y en oscuro;
+  - `knowledge.spec.ts` pasó entero en la repetición.
+
+  Cada spec pasó en al menos una corrida, pero **no en la misma**. La corrida completa limpia es la de CI.
+- `format:check`, `lint` y `typecheck`, limpios.
+- **Nivel**: validado localmente (`deterministic`). Nada de esta etapa se desplegó.

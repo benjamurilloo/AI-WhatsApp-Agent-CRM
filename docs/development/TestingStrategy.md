@@ -203,6 +203,18 @@
   El estado "No disponible" necesita un servidor sin ingestión: el principal la enciende para el spec de ingestión (brief-6.5.3, D-6), así que ahí la métrica sin eventos es "Sin datos". Por eso `playwright.config.ts` levanta un segundo servidor en el puerto 3101, con la ingestión apagada, y el proyecto `chromium-sin-ingestion` corre solo `tests/e2e/dashboard-sin-ingestion.spec.ts`: sin eventos la tarjeta dice "No disponible" y no "Sin datos" ni `0`, y con eventos registrados muestra su valor aunque el endpoint esté apagado. Los dos proyectos comparten la base `_e2e` y corren en serie. La distinción entre los tres estados está cubierta además por los unitarios de `metricStateText` y por los casos de integración de la 7.3.
 - Todos los specs esperan que la página tenga título antes de analizar con axe (brief-6.4, D-6).
 
+### Contra staging (O-10)
+
+Decidido en la 11.4 ([brief-11.4](../decisions/brief-11.4-piloto-en-staging.md), D-7): **la suite de Playwright no corre contra staging.** Vacía y siembra su base antes de cada caso, así que apuntarla a staging exigiría un túnel al PostgreSQL del droplet y una base aparte, en una máquina de 961 MB que la comparte con la aplicación. Lo que probaría —la aplicación sobre PostgreSQL 18 con `next start`— ya lo prueba CI.
+
+El recorrido contra staging son tres instrumentos que no escriben datos de negocio:
+
+- `scripts/recorrer-pantallas.ts`: las 13 pantallas (las 10 del MVP, la 5b, la 11 y la 12) con su comprobación de contenido dentro de `main`, y su control negativo (`CRM_CONTROL=1`). Sin el control, el cero no vale;
+- `scripts/probar-api-lectura.ts`: cada ruta de la [API de lectura](../contracts/read-v1.md), con toda respuesta de éxito validada por los esquemas estrictos de `src/app/api/read/v1/contract.ts`, más los rechazos `401` y `404`. Con una respuesta que trae un campo de más, sale con código 1 (brief-11.4, AC-3);
+- el guion del piloto, que recorre una persona.
+
+**Condición de reapertura**: se reevalúa en la **13.1**, cuando exista producción y haga falta un smoke test del despliegue.
+
 ## Datos de prueba
 
 - Fixtures y seeds propios, sintéticos y versionados en el repo: seeds en `seeds/`, fixtures junto al test que los usa ([RepositoryStructure.md](../architecture/RepositoryStructure.md)). Ningún fixture usa datos reales ni provenientes de Airtable.
@@ -212,6 +224,7 @@
   - los dos son idempotentes: una segunda corrida, aun con otra fecha, no agrega ni mueve filas; el de conversaciones repone el estado y los clientes;
   - el volumen es determinista (misma huella con el mismo tamaño), queda en su propia organización y un tamaño mayor conserva las filas existentes;
   - ninguno corre fuera de una base `_dev`, `_test` o `_e2e`.
+- Desde la 11.4 existe el **seed del piloto** (`seeds/pilot.ts`), con la forma de los datos del primer negocio y ninguno de sus datos reales. Lo cubre `tests/integration/pilot-seed.test.ts`: los recuentos de la forma aprobada, los tres estados de stock, una entrada programada, una vencida y una inactiva, una segunda corrida que no cambia ninguna fila ni pisa lo editado, el rechazo de una base no permitida, y que la API de lectura sobre esos datos no devuelve inactivos ni entradas no vigentes.
 - Los fixtures de métricas incluyen bordes temporales: un mensaje cerca de la medianoche local que en UTC cae en otro día, y un día con cambio de horario.
 - Los payloads de ingestión del MVP se marcan en el propio fixture como **forma asumida, no verificada**, porque todavía no existe un emisor real. En el proyecto de integración (Fase 12, 12.3) se derivan de capturas reales del emisor, y recién ahí cuentan como evidencia de compatibilidad.
   - Desde la 6.5.1 viven en `tests/fixtures/ingestion/v1/`, fuera de un test, porque los usan la validación (6.5.1) y la ingestión (6.5.2).

@@ -6,7 +6,8 @@ import { e2eDatabaseUrl } from "../integration/test-database";
 import { E2E_PASSWORD } from "./global-setup";
 
 // Endurecimiento web de punta a punta (brief-8.1): las cabeceras que emite src/proxy.ts sobre
-// next start, la ausencia de violaciones de CSP en las diez pantallas, y el rechazo CSRF de una
+// next start, la ausencia de violaciones de CSP en las diez pantallas —más la 5b, la 11 y la 12
+// desde la 11.4 (D-8)—, y el rechazo CSRF de una
 // Server Action con Origin ajeno. No mide accesibilidad: eso ya lo hace el spec de cada pantalla.
 
 const [ADMIN_SEED, VIEWER_SEED] = SEED_USERS;
@@ -21,7 +22,7 @@ test.beforeAll(() => {
 
 test.afterAll(async () => {
   await db.execute(
-    sql`truncate table messages, conversations, clients,
+    sql`truncate table messages, conversations, clients, knowledge_entries,
         inventory_movements, inventories, product_prices, products`,
   );
   await db.$client.end();
@@ -33,7 +34,7 @@ test.beforeEach(async () => {
   // referencia (6.1).
   await db.execute(
     sql`truncate table audit_logs, ingestion_events, messages, conversations, clients,
-        inventory_movements, inventories, product_prices, products`,
+        knowledge_entries, inventory_movements, inventories, product_prices, products`,
   );
   await db.execute(sql`delete from login_attempts`);
   await db.execute(sql`delete from sessions`);
@@ -86,6 +87,16 @@ async function insertProduct(): Promise<string> {
   const result = await db.execute<{ id: string }>(
     sql`insert into products (organization_id, sku, name, unit, reorder_point, is_active)
         values (${SEED_ORGANIZATION_ID}, 'SEG-001', 'Producto de seguridad', 'unidad', 5, true)
+        returning id`,
+  );
+  return result.rows[0]!.id;
+}
+
+async function insertKnowledgeEntry(): Promise<string> {
+  const result = await db.execute<{ id: string }>(
+    sql`insert into knowledge_entries (organization_id, title, category, content)
+        values (${SEED_ORGANIZATION_ID}, 'Horario de seguridad', 'Horarios',
+          'De lunes a viernes de 10 a 19 h.')
         returning id`,
   );
   return result.rows[0]!.id;
@@ -173,12 +184,13 @@ test("2. el nonce es distinto en cada respuesta", async ({ page }) => {
   expect(firstNonce).not.toBe(secondNonce);
 });
 
-test("3. las diez pantallas cargan sin violaciones de CSP, en claro y oscuro", async ({
+test("3. las trece pantallas cargan sin violaciones de CSP, en claro y oscuro", async ({
   page,
 }) => {
   const violations = await collectViolations(page);
   const productId = await insertProduct();
   const { clientId, conversationId } = await insertClientWithConversation();
+  const entryId = await insertKnowledgeEntry();
 
   await login(page, ADMIN);
 
@@ -188,11 +200,14 @@ test("3. las diez pantallas cargan sin violaciones de CSP, en claro y oscuro", a
     ["3 — Productos", "/productos"],
     ["4 — Detalle de producto", `/productos/${productId}`],
     ["5 — Movimientos", `/productos/${productId}/movimientos`],
+    ["5b — Precios", `/productos/${productId}/precios`],
     ["6 — Clientes", "/clientes"],
     ["7 — Detalle de cliente", `/clientes/${clientId}`],
     ["8 — Conversaciones", "/conversaciones"],
     ["9 — Detalle de conversación", `/conversaciones/${conversationId}`],
     ["10 — Usuarios", "/usuarios"],
+    ["11 — Información del negocio", "/informacion"],
+    ["12 — Detalle de una entrada", `/informacion/${entryId}`],
   ];
 
   for (const colorScheme of ["light", "dark"] as const) {

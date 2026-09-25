@@ -132,6 +132,24 @@ Desde la 6.2 ([brief-6.2](../decisions/brief-6.2-seeds-sinteticos-de-conversacio
   - siembra además `ingestion_events` sintéticos (9.3, D-5), que el seed de una sola organización no toca.
 - Los seeds se niegan a correr si el nombre de la base no termina en `_dev`, `_test`, `_e2e` o `_staging`. El último lo agregó la 9.1: el entorno de staging necesita usuarios sintéticos y llegan por un seed versionado, nunca promovidos desde desarrollo.
 
+## Seed del piloto
+
+Desde la 11.4 ([brief-11.4](../decisions/brief-11.4-piloto-en-staging.md), D-2 y D-3):
+
+| Acción | Comando |
+|---|---|
+| Sembrar la organización del piloto | `npm run db:seed:pilot` |
+
+- Crea la «Organización del piloto» (`ARS`, `America/Argentina/Buenos_Aires`), con `piloto-admin@example.com` (`admin`) y `piloto-lectura@example.com` (`viewer`), ambos con la contraseña de `SEED_USER_PASSWORD`.
+- Tiene la forma de los datos del primer negocio, un comercio de tecnología, y **ninguno de sus datos reales**:
+  - 60 productos en 6 categorías y 8 marcas inventadas, un tercio reacondicionados, 5 inactivos, 51 con precio (10 con historial) y los tres estados de stock;
+  - 15 entradas de información, con una programada, una vencida y una inactiva;
+  - 30 clientes y 40 conversaciones con mensajes, en los últimos 30 días.
+- Es determinista. La organización y los dos usuarios se reponen en cada corrida; todo lo demás se inserta sin pisar lo existente, así que lo editado desde las pantallas se conserva y las fechas quedan fijadas en la primera corrida.
+- No escribe en `audit_logs`.
+- Es el seed que usa el piloto en staging. No lo usan los end-to-end.
+- Se niega a correr fuera de una base `_dev`, `_test`, `_e2e` o `_staging`, como los demás.
+
 ## Base de end-to-end
 
 Desde la 3.5 ([brief-3.5](../decisions/brief-3.5-pantalla-de-inicio-de-sesion.md), D-8) los tests de Playwright usan `<nombre de DATABASE_URL>_e2e` (`crm_dev_e2e` en local, `crm_ci_e2e` en CI), separada de la de integración para que `npm run test` y `npm run test:e2e` no se vacíen los datos entre sí:

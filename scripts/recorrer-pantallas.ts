@@ -1,6 +1,7 @@
-// Recorre las 10 pantallas del MVP contra un entorno desplegado y **recoge los errores de
-// consola, las excepciones, las fallas de red, las respuestas HTTP de error y el contenido que no
-// aparece** (9.3, AC-10; corregido en la 11.0). Uso:
+// Recorre las 10 pantallas del MVP, más la 5b (precios, 11.1) y la 11 y la 12 (información del
+// negocio, 11.2), contra un entorno desplegado y **recoge los errores de consola, las
+// excepciones, las fallas de red, las respuestas HTTP de error y el contenido que no aparece**
+// (9.3, AC-10; corregido en la 11.0; las tres pantallas nuevas, en la 11.4, D-8). Uso:
 //
 //   CRM_BASE_URL=https://staging.vixoraai.app CRM_EMAIL=… CRM_PASSWORD=… \
 //     npx tsx scripts/recorrer-pantallas.ts
@@ -140,7 +141,7 @@ const DASHBOARD: Esperado = {
 };
 
 type Fila = {
-  numero: number;
+  numero: number | string;
   nombre: string;
   ruta: string;
   ms: number;
@@ -149,7 +150,7 @@ type Fila = {
 
 async function visitar(
   page: Page,
-  numero: number,
+  numero: number | string,
   nombre: string,
   ruta: string,
   esperado: Esperado,
@@ -368,6 +369,16 @@ async function recorrido(page: Page): Promise<void> {
         encabezado("Stock"),
       ),
     );
+    // A la 5b se llega por el enlace del detalle, no armando la ruta: se comprueba que esté.
+    const precios = `/productos/${productoId}/precios`;
+    const hayEnlaceAPrecios =
+      (await page.locator(`main a[href="${precios}"]`).count()) > 0;
+    if (!hayEnlaceAPrecios) {
+      registrar(
+        "navegación",
+        "el detalle del producto no ofreció el enlace a sus precios",
+      );
+    }
     filas.push(
       await visitar(
         page,
@@ -377,6 +388,17 @@ async function recorrido(page: Page): Promise<void> {
         encabezado("Historial de movimientos"),
       ),
     );
+    if (hayEnlaceAPrecios) {
+      filas.push(
+        await visitar(
+          page,
+          "5b",
+          "Precios de un producto",
+          precios,
+          encabezado("Historial de precios"),
+        ),
+      );
+    }
   } else {
     registrar(
       "navegación",
@@ -439,7 +461,34 @@ async function recorrido(page: Page): Promise<void> {
     await visitar(page, 10, "Usuarios y roles", "/usuarios", columna("Rol")),
   );
 
-  console.log(`\n## Recorrido de las 10 pantallas — ${BASE}\n`);
+  filas.push(
+    await visitar(
+      page,
+      11,
+      "Información del negocio",
+      "/informacion",
+      columna("Vigencia"),
+    ),
+  );
+  const entradaId = await primerId(page, "/informacion");
+  if (entradaId) {
+    filas.push(
+      await visitar(
+        page,
+        12,
+        "Detalle de una entrada",
+        `/informacion/${entradaId}`,
+        encabezado("Datos"),
+      ),
+    );
+  } else {
+    registrar(
+      "navegación",
+      "la lista de información del negocio no ofreció ningún enlace a un detalle",
+    );
+  }
+
+  console.log(`\n## Recorrido de las 13 pantallas — ${BASE}\n`);
   console.log("| # | Pantalla | Ruta | Carga | Contenido |");
   console.log("| --- | --- | --- | --- | --- |");
   console.log("| 1 | Inicio de sesión | /login | — | ingreso correcto |");
