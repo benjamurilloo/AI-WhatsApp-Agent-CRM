@@ -1,0 +1,20 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: no proviene de ningún emisor real (brief-12.3). La 12.3.3 la reemplaza por capturas del agente.",
+  "description": "Derivación de la conversación a una persona (vector del contrato).",
+  "received_at": "2026-09-16T15:00:00.000Z",
+  "payload": {
+    "contract_version": "2",
+    "event_type": "conversation.escalated",
+    "event_id": "evt-v2-escalada-0001",
+    "occurred_at": "2026-09-16T12:00:10-03:00",
+    "conversation": {
+      "external_ref": "conv-propuesta-0001",
+      "channel": "whatsapp"
+    }
+  },
+  "expected": {
+    "ok": true,
+    "payload_hash": "3aa0d77eae924f70a6478082c8e163057b5478557b4f6872ee7dcfe6894ad3a3"
+  }
+}

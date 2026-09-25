@@ -31,6 +31,19 @@ export const messageDirection = pgEnum("message_direction", [
   "outbound",
 ]);
 
+// Tipo original del mensaje y autor de una salida (brief-12.3, D-2 y D-3). Los dos son nulables:
+// null es «sin dato», el de los mensajes de v1 y de los seeds, que no se rellenan.
+export const messageKind = pgEnum("message_kind", [
+  "text",
+  "audio",
+  "image",
+  "video",
+  "document",
+  "other",
+]);
+
+export const messageSender = pgEnum("message_sender", ["agent", "person"]);
+
 export const conversations = pgTable(
   "conversations",
   {
@@ -110,6 +123,8 @@ export const messages = pgTable(
     sentAt: timestamp("sent_at", { withTimezone: true }).notNull(),
     // Solo texto: los adjuntos quedan fuera del MVP.
     bodyText: text("body_text"),
+    kind: messageKind("kind"),
+    sentBy: messageSender("sent_by"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -136,6 +151,11 @@ export const messages = pgTable(
     check(
       "messages_external_ref_not_blank",
       sql`btrim(${table.externalRef}) <> ''`,
+    ),
+    // El autor de una entrada siempre es el cliente (brief-12.3, D-3).
+    check(
+      "messages_sent_by_only_outbound",
+      sql`${table.direction} = 'outbound' OR ${table.sentBy} IS NULL`,
     ),
   ],
 );

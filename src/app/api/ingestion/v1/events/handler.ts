@@ -3,10 +3,13 @@ import {
   consumeIngestionRate,
   INGESTION_CONTRACT_VERSION,
   isCredentialAllowed,
+  isOpaqueReference,
   MAX_INGESTION_BODY_BYTES,
   readIngestionConfig,
   recordIngestionEvent,
   type IngestionAccepted,
+  type IngestionContext,
+  type RecordIngestionEventResult,
 } from "@/modules/ingestion";
 import { HTTP_STATUS, type ErrorCode } from "@/shared/errors";
 import { isJsonContentType, readBodyWithLimit } from "@/shared/http";
@@ -15,8 +18,34 @@ import { logEvent, newRequestId, type LogEvent } from "@/shared/log";
 // Endpoint del contrato de ingestión v1 (brief-6.5.3). Está fuera de route.ts para que los tests
 // de integración le pasen la hora. Orden: modo de prueba, credencial, allowlist, límite de tasa,
 // cuerpo y caso de uso. No lee cookies ni verifica Origin (D-5).
+//
+// Desde la 12.3 (D-1), el borde es compartido con v2 (serveIngestion): cambian la ruta, la versión
+// de las respuestas, el caso de uso y dos cosas que solo tiene v2, la correlación antes del límite
+// (D-6) y el motivo del CONFLICT (D-7). Con la especificación de v1, el comportamiento es el mismo.
 
 export const INGESTION_ROUTE = "/api/ingestion/v1/events";
+
+export type IngestionEdge = {
+  route: string;
+  contractVersion: string;
+  record: (
+    context: IngestionContext,
+    body: string,
+    now: Date,
+  ) => Promise<RecordIngestionEventResult>;
+  // Solo v2: X-Correlation-Id validado antes del límite y devuelto en cada respuesta (D-6), y el
+  // reason del CONFLICT (D-7).
+  correlation: boolean;
+  conflictReason: boolean;
+};
+
+const V1: IngestionEdge = {
+  route: INGESTION_ROUTE,
+  contractVersion: INGESTION_CONTRACT_VERSION,
+  record: recordIngestionEvent,
+  correlation: false,
+  conflictReason: false,
+};
 
 const baseHeaders = { "Cache-Control": "no-store" };
 
@@ -34,6 +63,7 @@ function errorResponse(
   options: {
     fields?: string[];
     rule?: string;
+    reason?: string;
     headers?: Record<string, string>;
   } = {},
 ): Response {
@@ -43,6 +73,7 @@ function errorResponse(
       request_id: requestId,
       ...(options.fields ? { fields: options.fields } : {}),
       ...(options.rule ? { rule: options.rule } : {}),
+      ...(options.reason ? { reason: options.reason } : {}),
     },
     {
       status: HTTP_STATUS[code],
@@ -52,15 +83,17 @@ function errorResponse(
 }
 
 function acceptedResponse(
+  edge: IngestionEdge,
   requestId: string,
   accepted: IngestionAccepted,
+  extra: Record<string, string>,
 ): Response {
-  const headers = { ...baseHeaders, "X-Request-Id": requestId };
+  const headers = { ...baseHeaders, ...extra, "X-Request-Id": requestId };
   if ("client" in accepted) {
     // Siempre 200, con el cliente y sin su teléfono (brief-12.1, D-9).
     return Response.json(
       {
-        contract_version: INGESTION_CONTRACT_VERSION,
+        contract_version: edge.contractVersion,
         event_id: accepted.eventId,
         result: accepted.result,
         client: accepted.client && {
@@ -77,7 +110,7 @@ function acceptedResponse(
     // (brief-12.2, D-5).
     return Response.json(
       {
-        contract_version: INGESTION_CONTRACT_VERSION,
+        contract_version: edge.contractVersion,
         event_id: accepted.eventId,
         result: accepted.result,
         conversation: accepted.conversation && {
@@ -90,7 +123,7 @@ function acceptedResponse(
   }
   return Response.json(
     {
-      contract_version: INGESTION_CONTRACT_VERSION,
+      contract_version: edge.contractVersion,
       event_id: accepted.eventId,
       result: accepted.result,
       conversation_external_ref: accepted.conversationExternalRef,
@@ -101,9 +134,11 @@ function acceptedResponse(
 }
 
 async function evaluate(
+  edge: IngestionEdge,
   request: Request,
   requestId: string,
   now: Date,
+  state: { correlationId?: string },
 ): Promise<Outcome | null> {
   const config = readIngestionConfig();
   if (!config.enabled) {
@@ -112,12 +147,18 @@ async function evaluate(
       logEvent({
         level: "error",
         requestId,
-        route: INGESTION_ROUTE,
+        route: edge.route,
         code: "INTERNAL",
       });
     }
     return null;
   }
+
+  // La correlación viaja en toda respuesta desde que se valida (v2, D-6).
+  const correlated = (): Record<string, string> =>
+    state.correlationId === undefined
+      ? {}
+      : { "X-Correlation-Id": state.correlationId };
 
   const authenticated = await authenticateIngestionRequest(
     request.headers.get("authorization"),
@@ -147,13 +188,33 @@ async function evaluate(
     };
   }
 
+  if (edge.correlation) {
+    // Antes del límite, para que un 429 también la registre (brief-12.3, D-6 y C-4).
+    const correlation = request.headers.get("x-correlation-id");
+    if (correlation !== null) {
+      if (!isOpaqueReference(correlation)) {
+        return {
+          ...who,
+          code: "VALIDATION_ERROR",
+          response: errorResponse(requestId, "VALIDATION_ERROR", {
+            fields: ["correlation_id"],
+          }),
+        };
+      }
+      state.correlationId = correlation;
+    }
+  }
+
   const rate = await consumeIngestionRate(credential.id, now);
   if (!rate.ok) {
     return {
       ...who,
       code: rate.code,
       response: errorResponse(requestId, rate.code, {
-        headers: { "Retry-After": String(rate.retryAfterSeconds) },
+        headers: {
+          ...correlated(),
+          "Retry-After": String(rate.retryAfterSeconds),
+        },
       }),
     };
   }
@@ -163,6 +224,7 @@ async function evaluate(
     code: "VALIDATION_ERROR" as const,
     response: errorResponse(requestId, "VALIDATION_ERROR", {
       fields: ["body"],
+      headers: correlated(),
     }),
   });
   if (!isJsonContentType(request.headers.get("content-type"))) {
@@ -171,7 +233,7 @@ async function evaluate(
   const body = await readBodyWithLimit(request, MAX_INGESTION_BODY_BYTES);
   if (!body.ok) return invalidBody();
 
-  const result = await recordIngestionEvent(
+  const result = await edge.record(
     { ...who, credentialId: credential.id },
     body.text,
     now,
@@ -180,7 +242,7 @@ async function evaluate(
     return {
       ...who,
       code: "OK",
-      response: acceptedResponse(requestId, result),
+      response: acceptedResponse(edge, requestId, result, correlated()),
     };
   }
   if (result.code === "VALIDATION_ERROR") {
@@ -193,6 +255,7 @@ async function evaluate(
       code: result.code,
       response: errorResponse(requestId, result.code, {
         fields: result.fields,
+        headers: correlated(),
       }),
     };
   }
@@ -201,25 +264,33 @@ async function evaluate(
     return {
       ...who,
       code: result.code,
-      response: errorResponse(requestId, result.code, { rule: result.rule }),
+      response: errorResponse(requestId, result.code, {
+        rule: result.rule,
+        headers: correlated(),
+      }),
     };
   }
   return {
     ...who,
     code: result.code,
-    response: errorResponse(requestId, result.code),
+    response: errorResponse(requestId, result.code, {
+      reason: edge.conflictReason ? result.reason : undefined,
+      headers: correlated(),
+    }),
   };
 }
 
-export async function handleIngestionEvent(
+export async function serveIngestion(
+  edge: IngestionEdge,
   request: Request,
-  now: Date = new Date(),
+  now: Date,
 ): Promise<Response> {
   const started = performance.now();
   const requestId = newRequestId();
+  const state: { correlationId?: string } = {};
   let outcome: Outcome;
   try {
-    const processed = await evaluate(request, requestId, now);
+    const processed = await evaluate(edge, request, requestId, now, state);
     if (processed === null) {
       return new Response(null, { status: 404, headers: baseHeaders });
     }
@@ -228,7 +299,12 @@ export async function handleIngestionEvent(
     outcome = {
       code: "INTERNAL",
       error,
-      response: errorResponse(requestId, "INTERNAL"),
+      response: errorResponse(requestId, "INTERNAL", {
+        headers:
+          state.correlationId === undefined
+            ? undefined
+            : { "X-Correlation-Id": state.correlationId },
+      }),
     };
   }
 
@@ -241,12 +317,20 @@ export async function handleIngestionEvent(
           ? "info"
           : "warn",
     requestId,
-    route: INGESTION_ROUTE,
+    route: edge.route,
     code: outcome.code,
     organizationId: outcome.organizationId,
     source: outcome.source,
+    correlationId: state.correlationId,
     durationMs: performance.now() - started,
     error: outcome.error,
   });
   return outcome.response;
+}
+
+export function handleIngestionEvent(
+  request: Request,
+  now: Date = new Date(),
+): Promise<Response> {
+  return serveIngestion(V1, request, now);
 }

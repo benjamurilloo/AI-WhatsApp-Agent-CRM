@@ -118,9 +118,15 @@ export function Timeline({
                 <p className="text-sm text-muted">
                   <span className="font-semibold text-foreground">
                     {item.directionLabel}
-                  </span>{" "}
-                  · {item.time}
+                  </span>
+                  {item.senderLabel ? ` · ${item.senderLabel}` : null} ·{" "}
+                  {item.time}
                 </p>
+                {item.kindLabel ? (
+                  <p className="text-xs font-semibold text-muted">
+                    {item.kindLabel}
+                  </p>
+                ) : null}
                 <p
                   className={`w-full rounded-lg border px-3 py-2 break-words whitespace-pre-wrap ${outbound ? "border-primary bg-primary-soft text-on-primary-soft" : "border-border bg-surface-muted text-foreground"} ${item.body === null ? "italic" : ""}`}
                 >

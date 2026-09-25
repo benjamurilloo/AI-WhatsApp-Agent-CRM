@@ -1,5 +1,5 @@
 // Interfaz pública del módulo ingestion (brief-6.5.1, 6.5.2 y 6.5.3; alcance de la credencial,
-// brief-11.3).
+// brief-11.3; contrato v2, brief-12.3).
 export {
   canonicalJson,
   INGESTION_CONTRACT_VERSION,
@@ -22,7 +22,22 @@ export {
   type ParseIngestionEventResult,
 } from "./contract";
 export {
+  INGESTION_CONTRACT_VERSION_V2,
+  INGESTION_FIELDS_V2,
+  ingestionPayloadHashV2,
+  isPhoneAsName,
+  MESSAGE_KINDS_V2,
+  MESSAGE_SENDERS_V2,
+  parseIngestionEventV2,
+  type IngestionEventV2,
+  type IngestionFieldV2,
+  type ParseIngestionEventV2Result,
+} from "./contract-v2";
+export {
   recordIngestionEvent,
+  recordIngestionEventV2,
+  CONFLICT_REASONS,
+  type ConflictReason,
   type ClientAccepted,
   type ConversationAccepted,
   INGESTION_RULES,

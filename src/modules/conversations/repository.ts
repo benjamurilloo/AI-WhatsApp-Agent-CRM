@@ -14,7 +14,9 @@ import {
   conversationStatus,
   conversations,
   messageDirection,
+  messageKind,
   messages,
+  messageSender,
 } from "./schema";
 
 // Acceso a conversations y messages (brief-6.3). Toda consulta filtra por organization_id en SQL.
@@ -27,6 +29,8 @@ export type ConversationStatus = (typeof conversationStatus.enumValues)[number];
 export type ConversationChannel =
   (typeof conversationChannel.enumValues)[number];
 export type MessageDirection = (typeof messageDirection.enumValues)[number];
+export type MessageKind = (typeof messageKind.enumValues)[number];
+export type MessageSender = (typeof messageSender.enumValues)[number];
 
 export function withTransaction<T>(
   work: (tx: DbTransaction) => Promise<T>,
@@ -208,6 +212,9 @@ export type MessageRow = {
   // sent_at con microsegundos, en UTC: Date solo tiene milisegundos y el cursor no puede perderlos.
   sentAtExact: string;
   body: string | null;
+  // null: sin dato, en los mensajes de v1 y de los seeds (brief-12.3, D-2 y D-3).
+  kind: MessageKind | null;
+  sentBy: MessageSender | null;
 };
 
 export type MessageCursor = { sentAt: string; id: string };
@@ -226,6 +233,8 @@ export function findMessagesBefore(
       sentAt: messages.sentAt,
       sentAtExact: sql<string>`to_char(${messages.sentAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
       body: messages.bodyText,
+      kind: messages.kind,
+      sentBy: messages.sentBy,
     })
     .from(messages)
     .where(
@@ -347,13 +356,16 @@ export async function insertMessageIfAbsent(
     externalRef: string;
     sentAt: Date;
     bodyText: string | null;
+    // Desde la 12.3: null en los mensajes de v1 (D-2 y D-3).
+    kind: MessageKind | null;
+    sentBy: MessageSender | null;
   },
 ): Promise<boolean> {
   const result = await tx.execute<{ id: string }>(sql`
     insert into messages
-      (organization_id, conversation_id, direction, external_ref, sent_at, body_text)
+      (organization_id, conversation_id, direction, external_ref, sent_at, body_text, kind, sent_by)
     values (${values.organizationId}, ${values.conversationId}, ${values.direction},
-      ${values.externalRef}, ${values.sentAt}, ${values.bodyText})
+      ${values.externalRef}, ${values.sentAt}, ${values.bodyText}, ${values.kind}, ${values.sentBy})
     on conflict (organization_id, conversation_id, external_ref) where external_ref is not null
     do nothing
     returning id`);

@@ -19,7 +19,12 @@ import { optionalCalendarDate } from "@/shared/calendar";
 import type { DbTransaction } from "@/shared/db";
 import { failure, type Failure } from "@/shared/errors";
 import * as repository from "./repository";
-import { conversationChannel, conversationStatus } from "./schema";
+import {
+  conversationChannel,
+  conversationStatus,
+  messageKind,
+  messageSender,
+} from "./schema";
 
 // Consulta y estado de conversaciones (brief-6.3): FR-CONV-01 a 03 y FR-CLI-04. Los datos de los
 // clientes llegan por la interfaz de crm y se componen en memoria, sin JOIN entre módulos.
@@ -27,9 +32,14 @@ import { conversationChannel, conversationStatus } from "./schema";
 export type ConversationStatus = repository.ConversationStatus;
 export type ConversationChannel = repository.ConversationChannel;
 export type MessageDirection = repository.MessageDirection;
+export type MessageKind = repository.MessageKind;
+export type MessageSender = repository.MessageSender;
 
 export const CONVERSATION_STATUSES = conversationStatus.enumValues;
 export const CONVERSATION_CHANNELS = conversationChannel.enumValues;
+// Tipo original y autor de una salida (brief-12.3, D-2 y D-3).
+export const MESSAGE_KINDS = messageKind.enumValues;
+export const MESSAGE_SENDERS = messageSender.enumValues;
 export const CONVERSATIONS_PAGE_SIZE = 25;
 export const MESSAGES_PAGE_SIZE = 50;
 
@@ -311,6 +321,9 @@ export type ConversationMessage = {
   sentAt: Date;
   // Tal cual se guardó: el escape es de la presentación (6.4).
   body: string | null;
+  // null: sin dato, en los mensajes de v1 y de los seeds (brief-12.3, D-2 y D-3).
+  kind: MessageKind | null;
+  sentBy: MessageSender | null;
 };
 
 export type ConversationMessagesResult =
@@ -345,12 +358,16 @@ export async function listConversationMessages(
   const oldest = page.at(-1);
   return {
     ok: true,
-    messages: page.reverse().map(({ id, direction, sentAt, body }) => ({
-      id,
-      direction,
-      sentAt,
-      body,
-    })),
+    messages: page
+      .reverse()
+      .map(({ id, direction, sentAt, body, kind, sentBy }) => ({
+        id,
+        direction,
+        sentAt,
+        body,
+        kind,
+        sentBy,
+      })),
     before:
       rows.length > MESSAGES_PAGE_SIZE && oldest
         ? encodeMessageCursor({ sentAt: oldest.sentAtExact, id: oldest.id })
@@ -533,11 +550,19 @@ export type IngestedMessage = {
     direction: MessageDirection;
     sentAt: Date;
     bodyText: string | null;
+    // null en los mensajes de v1 (brief-12.3, D-2 y D-3).
+    kind: MessageKind | null;
+    sentBy: MessageSender | null;
   };
 };
 
+// Por qué un mensaje no se registró (brief-12.3, D-7): el contrato v2 se lo dice al emisor.
+export type IngestedMessageConflict =
+  "message_already_recorded" | "conversation_ref_taken";
+
 export type RecordIngestedMessageResult =
-  { ok: true; conversationCreated: boolean } | Failure<"CONFLICT">;
+  | { ok: true; conversationCreated: boolean }
+  | Failure<"CONFLICT", { reason: "message_already_recorded" }>;
 
 // Proyección de un evento de ingestión (brief-6.5.2, D-2). La transacción la abre ingestion, que
 // ya validó el evento. El cliente se resuelve solo al crear la conversación y nunca se crea; el
@@ -577,11 +602,13 @@ export async function recordIngestedMessage(
     externalRef: message.externalRef,
     sentAt: message.sentAt,
     bodyText: message.bodyText,
+    kind: message.kind,
+    sentBy: message.sentBy,
   });
   if (!inserted) {
     if (createdId)
       throw new Error("mensaje existente en una conversación nueva");
-    return failure("CONFLICT");
+    return { ok: false, code: "CONFLICT", reason: "message_already_recorded" };
   }
   if (!createdId) {
     await repository.widenConversationDates(
@@ -606,7 +633,13 @@ export type IngestedInboundMessage = {
   channel: ConversationChannel;
   // Referencia propuesta por el emisor: solo se usa si hay que crear la conversación (D-2).
   proposedExternalRef: string;
-  message: { externalRef: string; sentAt: Date; bodyText: string | null };
+  message: {
+    externalRef: string;
+    sentAt: Date;
+    bodyText: string | null;
+    // null en v1 (brief-12.3, D-2). Una entrada nunca tiene autor (D-3).
+    kind: MessageKind | null;
+  };
 };
 
 export type ResolvedConversation = {
@@ -616,7 +649,7 @@ export type ResolvedConversation = {
 
 export type ResolveIngestedConversationResult =
   | { ok: true; conversation: ResolvedConversation; created: boolean }
-  | Failure<"CONFLICT">
+  | Failure<"CONFLICT", { reason: IngestedMessageConflict }>
   | Failure<"BUSINESS_RULE_VIOLATION", { rule: "client_not_found" }>;
 
 // Proyección de conversation.resolved (brief-12.2, D-1): el mensaje entrante va a la conversación
@@ -660,7 +693,9 @@ export async function resolveIngestedConversation(
     }));
   // La referencia propuesta ya es de otra conversación (vencida, cerrada o de otro cliente): el
   // emisor tiene que proponer una nueva.
-  if (!conversationId) return failure("CONFLICT");
+  if (!conversationId) {
+    return { ok: false, code: "CONFLICT", reason: "conversation_ref_taken" };
+  }
 
   const inserted = await repository.insertMessageIfAbsent(tx, {
     organizationId,
@@ -669,11 +704,13 @@ export async function resolveIngestedConversation(
     externalRef: message.externalRef,
     sentAt: message.sentAt,
     bodyText: message.bodyText,
+    kind: message.kind,
+    sentBy: null,
   });
   if (!inserted) {
     if (!current)
       throw new Error("mensaje existente en una conversación nueva");
-    return failure("CONFLICT");
+    return { ok: false, code: "CONFLICT", reason: "message_already_recorded" };
   }
   if (current) {
     await repository.widenConversationDates(

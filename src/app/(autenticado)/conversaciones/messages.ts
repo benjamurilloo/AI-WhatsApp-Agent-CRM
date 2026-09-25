@@ -3,6 +3,8 @@ import type {
   ConversationListField,
   ConversationStatus,
   MessageDirection,
+  MessageKind,
+  MessageSender,
 } from "@/modules/conversations";
 import type { ErrorCode } from "@/shared/errors";
 
@@ -52,6 +54,29 @@ export const DIRECTION_LABEL: Record<MessageDirection, string> = {
   outbound: "Negocio",
 };
 
+// Tipo original y autor de una salida (brief-12.3, D-5). Un texto no lleva rótulo, y null (sin
+// dato: mensajes de v1 y de los seeds) tampoco: el rótulo solo dice lo que se registró.
+export const KIND_LABEL: Record<Exclude<MessageKind, "text">, string> = {
+  audio: "Audio (transcripción)",
+  image: "Imagen",
+  video: "Video",
+  document: "Documento",
+  other: "Otro",
+};
+
+export const SENDER_LABEL: Record<MessageSender, string> = {
+  agent: "Agente",
+  person: "Persona",
+};
+
+export function kindLabel(kind: MessageKind | null): string | null {
+  return kind === null || kind === "text" ? null : KIND_LABEL[kind];
+}
+
+export function senderLabel(sentBy: MessageSender | null): string | null {
+  return sentBy === null ? null : SENDER_LABEL[sentBy];
+}
+
 export function periodHasError(fields: ConversationListField[]): boolean {
   return fields.includes("from") || fields.includes("to");
 }
@@ -100,6 +125,9 @@ export type TimelineItem = {
   id: string;
   direction: MessageDirection;
   directionLabel: string;
+  // null: sin rótulo (brief-12.3, D-5).
+  kindLabel: string | null;
+  senderLabel: string | null;
   day: string;
   time: string;
   body: string | null;

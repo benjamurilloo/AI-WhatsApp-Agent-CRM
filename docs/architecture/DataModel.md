@@ -280,7 +280,9 @@ Se quitaron `(organization_id, status, started_at desc)` y `(client_id, started_
 | `direction` | `message_direction` enum(`inbound`,`outbound`) not null | |
 | `external_ref` | text null | referencia del sistema origen. Si no es nula, no puede estar vacía: `messages_external_ref_not_blank` |
 | `sent_at` | timestamptz not null | |
-| `body_text` | text null | contenido textual; adjuntos fuera de alcance del MVP |
+| `body_text` | text null | contenido textual; adjuntos fuera de alcance del MVP. *Desde la 12.3*, la transcripción de un audio o el epígrafe de una imagen |
+| `kind` | `message_kind` enum(`text`,`audio`,`image`,`video`,`document`,`other`) null | *Agregada el 2026-09-25 por la 12.3* ([brief-12.3](../decisions/brief-12.3-contrato-de-ingestion-v2.md), D-2; migración `0023`): el tipo original del mensaje, del modelo del CRM y no de la lista de ningún emisor. **`null` es «sin dato»**: los mensajes de v1 y de los seeds, que no se rellenan con `text` |
+| `sent_by` | `message_sender` enum(`agent`,`person`) null | *Agregada el 2026-09-25 por la 12.3* (D-3): quién envió una salida. `person` no dice qué persona. `null` es «sin dato» en las salidas de v1, y siempre en las entradas: `CHECK messages_sent_by_only_outbound` (`direction = 'outbound' OR sent_by IS NULL`) |
 | `created_at` | timestamptz not null default `now()` | |
 | — | `UNIQUE(organization_id, conversation_id, external_ref) WHERE external_ref IS NOT NULL` | índice `messages_organization_conversation_external_ref_unique`; idempotencia (segunda defensa) |
 
@@ -301,7 +303,7 @@ Protección (brief-6.1, D-3): `crm_app` tiene `SELECT`, `INSERT` y `UPDATE`, sin
 | `event_type` | text not null | |
 | `payload_hash` | text not null | hash del payload canónico; detecta reenvíos con contenido distinto bajo la misma ref. SHA-256 en hexadecimal del evento normalizado con las claves ordenadas ([contrato v1](../contracts/ingestion-v1.md#payload_hash), brief-6.5.1, D-4); la base solo exige que no esté vacío |
 | `status` | `ingestion_event_status` enum(`received`,`processed`,`failed`) not null default `'received'` | |
-| `error_code` | text null | código normalizado de la taxonomía de [Overview.md](Overview.md#estrategia-de-errores-diseño); nunca payload crudo, headers ni credenciales. Presente si y solo si `status = 'failed'`: `ingestion_events_error_code_matches_status`. *Desde la 12.2 (decisión del usuario del 2026-09-25)*, un rechazo de negocio de los tipos nuevos guarda **la regla** en lugar del código general: `client_not_found`, `conversation_not_found` o `conversation_closed`. Así un reenvío responde la misma regla, y la métrica 12 agrupa por ella |
+| `error_code` | text null | código normalizado de la taxonomía de [Overview.md](Overview.md#estrategia-de-errores-diseño); nunca payload crudo, headers ni credenciales. Presente si y solo si `status = 'failed'`: `ingestion_events_error_code_matches_status`. *Desde la 12.2 (decisión del usuario del 2026-09-25)*, un rechazo de negocio de los tipos nuevos guarda **la regla** en lugar del código general: `client_not_found`, `conversation_not_found` o `conversation_closed`. Así un reenvío responde la misma regla, y la métrica 12 agrupa por ella. *Desde la 12.3 (enmienda de D-7, decisión del usuario del 2026-09-25)*, un `CONFLICT` de un evento de **v2** guarda su motivo: `message_already_recorded` o `conversation_ref_taken`. Los de v1 siguen guardando `CONFLICT` |
 | `received_at` | timestamptz not null default `now()` | |
 | `processed_at` | timestamptz null | nulo si y solo si `status = 'received'`: `ingestion_events_processed_at_matches_status` |
 | — | `UNIQUE(organization_id, source, external_ref)` | constraint `ingestion_events_organization_source_external_ref_unique`, que usa `ON CONFLICT ON CONSTRAINT`; idempotencia dura |
@@ -320,7 +322,8 @@ Reglas del ledger, derivadas del patrón *Reliable External Effects* del vault:
   - *`client.resolved` (12.1, D-9)*: el cliente por teléfono; si el teléfono se editó en el backoffice, puede devolver `null`;
   - *`conversation.resolved` (12.2, D-5)*: la conversación del cliente que contiene el mensaje del evento, o `null`;
   - *`conversation.escalated` (12.2, D-6)*: el estado **actual** de la conversación, que puede no ser `pending`, o `null`.
-- **Reenvío de un evento `failed`**: responde el mismo rechazo, aunque la causa ya no exista. Desde la 12.2, la regla de un rechazo de negocio sale de `error_code`.
+- **Reenvío de un evento `failed`**: responde el mismo rechazo, aunque la causa ya no exista. Desde la 12.2, la regla de un rechazo de negocio sale de `error_code`, y desde la 12.3, también el motivo del `CONFLICT` de un evento de v2.
+- **v1 y v2 comparten el ledger** (12.3, D-1): la misma identidad `(organization_id, source, external_ref)`. El mismo `event_id` enviado por las dos versiones da `CONFLICT`, porque `contract_version` entra en el `payload_hash`.
 - **Reenvío con otro `payload_hash`**: `CONFLICT`, sin modificar datos. Nunca se sobrescribe en silencio.
 - **Tabla dedicada**: la unicidad de `conversations.external_ref` y `messages.external_ref` es una segunda defensa, no el mecanismo de idempotencia.
 - **Sanitización**: no se guarda el payload completo. El contenido útil ya vive en `messages` y el ledger solo guarda identidad, hash y resultado.

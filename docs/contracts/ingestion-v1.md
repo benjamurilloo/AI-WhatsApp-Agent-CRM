@@ -9,6 +9,8 @@
 - **Implementado y validado localmente** en la 12.2.1 ([brief-12.2](../decisions/brief-12.2-conversacion-vigente-y-derivacion.md)): el evento `conversation.resolved`, con requests sintéticos.
 - **Implementado y validado localmente** en la 12.2.2 (mismo brief): el evento `conversation.escalated`, con requests sintéticos.
 
+*Nota del 2026-09-25 ([brief-12.3](../decisions/brief-12.3-contrato-de-ingestion-v2.md), D-1)*: existe el [contrato de ingestión v2](ingestion-v2.md), en otra ruta, con el tipo original y el autor de cada mensaje y el `CONFLICT` con motivo. **v1 queda congelada**: sigue funcionando igual y no recibe nada nuevo. Sus mensajes quedan sin tipo ni autor (`null`). Se retira cuando ningún emisor la use, y eso se decide en la Fase 13.
+
 **Ningún emisor real está conectado ni configurado** (FR-CONV-05, [IntegrationBoundaries](../architecture/IntegrationBoundaries.md)). Este contrato no deriva de la forma de eventos de ningún sistema existente. Sus fixtures tienen **forma asumida, no verificada**, y no prueban compatibilidad con ningún emisor.
 
 ## Propósito

@@ -24,6 +24,16 @@ import {
   type IngestionField,
   type MessageRecordedEventV1,
 } from "./contract";
+import {
+  ingestionPayloadHashV2,
+  parseIngestionEventV2,
+  type ClientResolvedEventV2,
+  type ConversationEscalatedEventV2,
+  type ConversationResolvedEventV2,
+  type IngestionEventV2,
+  type IngestionFieldV2,
+  type MessageRecordedEventV2,
+} from "./contract-v2";
 import * as repository from "./repository";
 
 // Registro idempotente y proyección de un evento del contrato v1 (brief-6.5.2). Sin HTTP: el
@@ -35,6 +45,12 @@ import * as repository from "./repository";
 // credencial como actor. Desde la 12.2 (D-1), conversation.resolved registra un mensaje entrante
 // en la conversación vigente del cliente o en una nueva, y conversation.escalated (D-6) deriva una
 // conversación a una persona, auditada con la credencial.
+
+// Desde la 12.3 (D-1), el contrato v2 entra por recordIngestionEventV2 con el mismo ledger y la
+// misma proyección. Lo único que cambia según la versión es el CONFLICT: v2 dice por qué (D-7).
+
+type IngestionEvent = IngestionEventV1 | IngestionEventV2;
+type ContractVersion = "1" | "2";
 
 // credentialId es el actor de la auditoría de client.resolved (brief-12.1, D-3) y de
 // conversation.escalated (brief-12.2, D-6). Lo trae el endpoint; sin él, esos eventos son un error
@@ -88,11 +104,34 @@ function isIngestionRule(value: string): value is IngestionRule {
   return (INGESTION_RULES as readonly string[]).includes(value);
 }
 
+// Por qué un evento de v2 da CONFLICT (brief-12.3, D-7). event_payload_mismatch no se guarda: el
+// registro existente no se modifica. Los otros dos quedan en error_code, solo en los eventos de v2,
+// para que un reenvío responda el mismo (decisión del usuario del 2026-09-25, enmienda de D-7). Los
+// de v1 siguen guardando CONFLICT.
+export const CONFLICT_REASONS = [
+  "event_payload_mismatch",
+  "message_already_recorded",
+  "conversation_ref_taken",
+] as const;
+export type ConflictReason = (typeof CONFLICT_REASONS)[number];
+
+type StoredConflictReason = Exclude<ConflictReason, "event_payload_mismatch">;
+
+function isStoredConflictReason(value: string): value is StoredConflictReason {
+  return (
+    value === "message_already_recorded" || value === "conversation_ref_taken"
+  );
+}
+
 export type RecordIngestionEventResult =
   | IngestionAccepted
-  | Failure<"VALIDATION_ERROR", { fields: (IngestionField | "source")[] }>
-  // recorded: el rechazo quedó en ingestion_events como failed (brief-6.5.1, D-6).
-  | Failure<"CONFLICT", { recorded: boolean }>
+  | Failure<
+      "VALIDATION_ERROR",
+      { fields: (IngestionField | IngestionFieldV2 | "source")[] }
+    >
+  // recorded: el rechazo quedó en ingestion_events como failed (brief-6.5.1, D-6). reason, solo en
+  // v2.
+  | Failure<"CONFLICT", { recorded: boolean; reason?: ConflictReason }>
   | Failure<"BUSINESS_RULE_VIOLATION", { rule: IngestionRule; recorded: true }>;
 
 type ExistingOutcome =
@@ -115,7 +154,7 @@ export function existingEventOutcome(
 }
 
 function messageAccepted(
-  event: MessageRecordedEventV1,
+  event: MessageRecordedEventV1 | MessageRecordedEventV2,
   result: MessageAccepted["result"],
 ): MessageAccepted {
   return {
@@ -132,7 +171,7 @@ function messageAccepted(
 async function duplicate(
   tx: DbTransaction,
   context: IngestionContext,
-  event: IngestionEventV1,
+  event: IngestionEvent,
 ): Promise<IngestionAccepted> {
   if (event.event_type === "message.recorded") {
     return messageAccepted(event, "duplicate");
@@ -176,11 +215,29 @@ async function duplicate(
   };
 }
 
+// Un mensaje que no se registró queda failed: en v1 con CONFLICT, y en v2 con el motivo (D-7).
+async function rejectConflict(
+  tx: DbTransaction,
+  context: IngestionContext,
+  reserved: string,
+  version: ContractVersion,
+  reason: StoredConflictReason,
+): Promise<RecordIngestionEventResult> {
+  await repository.finishEvent(tx, context.organizationId, reserved, {
+    status: "failed",
+    errorCode: version === "2" ? reason : "CONFLICT",
+  });
+  return version === "2"
+    ? { ok: false, code: "CONFLICT", recorded: true, reason }
+    : { ok: false, code: "CONFLICT", recorded: true };
+}
+
 async function projectMessage(
   tx: DbTransaction,
   context: IngestionContext,
   reserved: string,
-  event: MessageRecordedEventV1,
+  version: ContractVersion,
+  event: MessageRecordedEventV1 | MessageRecordedEventV2,
 ): Promise<RecordIngestionEventResult> {
   const projected = await recordIngestedMessage(tx, {
     organizationId: context.organizationId,
@@ -194,14 +251,13 @@ async function projectMessage(
       direction: event.message.direction,
       sentAt: new Date(event.message.sent_at),
       bodyText: event.message.body_text,
+      // v1 no los trae: quedan null, sin dato (brief-12.3, D-2 y D-3).
+      kind: "kind" in event.message ? event.message.kind : null,
+      sentBy: "kind" in event.message ? (event.message.sent_by ?? null) : null,
     },
   });
   if (!projected.ok) {
-    await repository.finishEvent(tx, context.organizationId, reserved, {
-      status: "failed",
-      errorCode: projected.code,
-    });
-    return { ok: false, code: "CONFLICT", recorded: true };
+    return rejectConflict(tx, context, reserved, version, projected.reason);
   }
   await repository.finishEvent(tx, context.organizationId, reserved, {
     status: "processed",
@@ -213,7 +269,8 @@ async function projectConversation(
   tx: DbTransaction,
   context: IngestionContext,
   reserved: string,
-  event: ConversationResolvedEventV1,
+  version: ContractVersion,
+  event: ConversationResolvedEventV1 | ConversationResolvedEventV2,
 ): Promise<RecordIngestionEventResult> {
   const resolved = await resolveIngestedConversation(tx, {
     organizationId: context.organizationId,
@@ -224,14 +281,11 @@ async function projectConversation(
       externalRef: event.message.external_ref,
       sentAt: new Date(event.message.sent_at),
       bodyText: event.message.body_text,
+      kind: "kind" in event.message ? event.message.kind : null,
     },
   });
   if (!resolved.ok && resolved.code === "CONFLICT") {
-    await repository.finishEvent(tx, context.organizationId, reserved, {
-      status: "failed",
-      errorCode: "CONFLICT",
-    });
-    return { ok: false, code: "CONFLICT", recorded: true };
+    return rejectConflict(tx, context, reserved, version, resolved.reason);
   }
   if (!resolved.ok) return rejectByRule(tx, context, reserved, resolved.rule);
   await repository.finishEvent(tx, context.organizationId, reserved, {
@@ -263,7 +317,7 @@ async function projectEscalation(
   tx: DbTransaction,
   context: IngestionContext,
   reserved: string,
-  event: ConversationEscalatedEventV1,
+  event: ConversationEscalatedEventV1 | ConversationEscalatedEventV2,
 ): Promise<RecordIngestionEventResult> {
   if (!context.credentialId) {
     throw new Error("conversation.escalated sin credencial para auditar");
@@ -292,7 +346,7 @@ async function projectClient(
   tx: DbTransaction,
   context: IngestionContext,
   reserved: string,
-  event: ClientResolvedEventV1,
+  event: ClientResolvedEventV1 | ClientResolvedEventV2,
 ): Promise<RecordIngestionEventResult> {
   if (!context.credentialId) {
     throw new Error("client.resolved sin credencial para auditar");
@@ -325,14 +379,44 @@ export async function recordIngestionEvent(
   }
   const parsed = parseIngestionEventV1(body, receivedAt);
   if (!parsed.ok) return parsed;
-  const event = parsed.event;
+  return recordEvent(
+    context,
+    parsed.event,
+    ingestionPayloadHash(parsed.event),
+    "1",
+  );
+}
+
+// Contrato v2 (brief-12.3, D-1): mismo ledger, misma identidad y misma proyección que v1.
+export async function recordIngestionEventV2(
+  context: IngestionContext,
+  body: string,
+  receivedAt: Date = new Date(),
+): Promise<RecordIngestionEventResult> {
+  if (!isOpaqueReference(context.source)) {
+    return { ok: false, code: "VALIDATION_ERROR", fields: ["source"] };
+  }
+  const parsed = parseIngestionEventV2(body, receivedAt);
+  if (!parsed.ok) return parsed;
+  return recordEvent(
+    context,
+    parsed.event,
+    ingestionPayloadHashV2(parsed.event),
+    "2",
+  );
+}
+
+async function recordEvent(
+  context: IngestionContext,
+  event: IngestionEvent,
+  payloadHash: string,
+  version: ContractVersion,
+): Promise<RecordIngestionEventResult> {
   const identity = {
     organizationId: context.organizationId,
     source: context.source,
     externalRef: event.event_id,
   };
-  const payloadHash = ingestionPayloadHash(event);
-
   return repository.withTransaction(
     async (tx): Promise<RecordIngestionEventResult> => {
       const reserved = await repository.reserveEvent(tx, {
@@ -353,6 +437,18 @@ export async function recordIngestionEvent(
         if (outcome.kind === "failed" && outcome.errorCode === "CONFLICT") {
           return { ok: false, code: "CONFLICT", recorded: true };
         }
+        // Solo los eventos de v2 guardan el motivo, y su reenvío responde el mismo (D-7).
+        if (
+          outcome.kind === "failed" &&
+          isStoredConflictReason(outcome.errorCode)
+        ) {
+          return {
+            ok: false,
+            code: "CONFLICT",
+            recorded: true,
+            reason: outcome.errorCode,
+          };
+        }
         if (outcome.kind === "failed" && isIngestionRule(outcome.errorCode)) {
           return {
             ok: false,
@@ -366,14 +462,21 @@ export async function recordIngestionEvent(
             `código de rechazo desconocido: ${outcome.errorCode}`,
           );
         }
-        return { ok: false, code: "CONFLICT", recorded: false };
+        return version === "2"
+          ? {
+              ok: false,
+              code: "CONFLICT",
+              recorded: false,
+              reason: "event_payload_mismatch",
+            }
+          : { ok: false, code: "CONFLICT", recorded: false };
       }
 
       if (event.event_type === "message.recorded") {
-        return projectMessage(tx, context, reserved, event);
+        return projectMessage(tx, context, reserved, version, event);
       }
       if (event.event_type === "conversation.resolved") {
-        return projectConversation(tx, context, reserved, event);
+        return projectConversation(tx, context, reserved, version, event);
       }
       if (event.event_type === "conversation.escalated") {
         return projectEscalation(tx, context, reserved, event);

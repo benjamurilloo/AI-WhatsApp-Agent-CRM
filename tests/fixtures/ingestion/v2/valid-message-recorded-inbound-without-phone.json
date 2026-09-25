@@ -1,0 +1,28 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: no proviene de ningún emisor real (brief-12.3). La 12.3.3 la reemplaza por capturas del agente.",
+  "description": "Documento entrante sin teléfono y sin autor: el autor de una entrada es el cliente.",
+  "received_at": "2026-09-16T15:00:00.000Z",
+  "payload": {
+    "contract_version": "2",
+    "event_type": "message.recorded",
+    "event_id": "evt-v2-msg-0003",
+    "occurred_at": "2026-09-16T12:00:05-03:00",
+    "conversation": {
+      "external_ref": "conv-propuesta-0001",
+      "channel": "whatsapp",
+      "client_phone": null
+    },
+    "message": {
+      "external_ref": "msg-v2-0004",
+      "direction": "inbound",
+      "kind": "document",
+      "sent_at": "2026-09-16T12:00:04.500-03:00",
+      "body_text": "Sí, tenemos stock."
+    }
+  },
+  "expected": {
+    "ok": true,
+    "payload_hash": "36173634c8036dd5bcfa44fe385a5dc6964eae346d761504a8e7ca28d3f30f6d"
+  }
+}

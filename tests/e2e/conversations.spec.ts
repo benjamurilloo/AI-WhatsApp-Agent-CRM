@@ -98,6 +98,9 @@ type MessageInput = {
   direction: "inbound" | "outbound";
   sentAt: Date;
   body: string | null;
+  // Tipo original y autor de una salida (brief-12.3); sin ellos, null como en v1.
+  kind?: "text" | "audio" | "image" | "video" | "document" | "other";
+  sentBy?: "agent" | "person";
 };
 
 // Conversación con sus mensajes; inicio y último mensaje salen de ellos, como en la ingestión.
@@ -125,9 +128,11 @@ async function insertConversation({
   const conversationId = result.rows[0]!.id;
   for (const message of messages) {
     await db.execute(
-      sql`insert into messages (organization_id, conversation_id, direction, sent_at, body_text)
+      sql`insert into messages
+            (organization_id, conversation_id, direction, sent_at, body_text, kind, sent_by)
           values (${organizationId}, ${conversationId}, ${message.direction},
-            ${message.sentAt.toISOString()}, ${message.body})`,
+            ${message.sentAt.toISOString()}, ${message.body}, ${message.kind ?? null},
+            ${message.sentBy ?? null})`,
     );
   }
   return conversationId;
@@ -611,4 +616,52 @@ test("caso 10: en móvil la lista son tarjetas y las burbujas ocupan el ancho", 
   );
   expect(scrollWidth).toBeLessThanOrEqual(375);
   await expectAccessible(page, "detalle en móvil");
+});
+
+test("caso 11: FR-API-07: el timeline rotula el tipo original y quién respondió (brief-12.3, D-5)", async ({
+  page,
+}) => {
+  const conversationId = await insertConversation({
+    messages: [
+      {
+        direction: "inbound",
+        sentAt: new Date("2026-09-10T12:00:00Z"),
+        body: "Hola, ¿tienen café molido?",
+        kind: "audio",
+      },
+      {
+        direction: "outbound",
+        sentAt: new Date("2026-09-10T12:01:00Z"),
+        body: "Sí, nos quedan 6 unidades.",
+        kind: "text",
+        sentBy: "agent",
+      },
+      {
+        direction: "outbound",
+        sentAt: new Date("2026-09-10T12:05:00Z"),
+        body: null,
+        kind: "image",
+        sentBy: "person",
+      },
+      {
+        direction: "inbound",
+        sentAt: new Date("2026-09-10T12:06:00Z"),
+        body: "Gracias",
+      },
+    ],
+  });
+
+  await login(page, VIEWER);
+  await page.goto(`/conversaciones/${conversationId}`);
+  const items = timeline(page).getByRole("listitem");
+  await expect(items).toHaveCount(4);
+  await expect(items.nth(0)).toContainText("Cliente · 09:00");
+  await expect(items.nth(0)).toContainText("Audio (transcripción)");
+  await expect(items.nth(1)).toContainText("Negocio · Agente · 09:01");
+  await expect(items.nth(1)).not.toContainText("Texto");
+  await expect(items.nth(2)).toContainText("Negocio · Persona · 09:05");
+  await expect(items.nth(2)).toContainText("Imagen");
+  // Sin dato (un mensaje de v1 o de los seeds): sin rótulo.
+  await expect(items.nth(3)).toHaveText(/^Cliente · 09:06s*Gracias$/);
+  await expectAccessible(page, "timeline con tipo y autor");
 });

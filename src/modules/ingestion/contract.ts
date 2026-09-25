@@ -53,11 +53,12 @@ export type IngestionField = (typeof INGESTION_FIELDS)[number];
 // Un surrogate suelto no es UTF-8 válido, y PostgreSQL rechaza el carácter NUL en text.
 const LONE_SURROGATE = /[\uD800-\uDFFF]/u;
 const CONTROL = /\p{Cc}/u;
-const E164 = /^\+[1-9][0-9]{1,14}$/;
+export const E164 = /^\+[1-9][0-9]{1,14}$/;
 const MORE_THAN_MILLISECONDS = /\.\d{4,}/;
 
-// Referencia opaca del emisor: el CRM no la interpreta.
-const externalRef = z
+// Referencia opaca del emisor: el CRM no la interpreta. Las piezas exportadas las reutiliza el
+// contrato v2 (brief-12.3, D-1), con las mismas reglas.
+export const externalRef = z
   .string()
   .min(1)
   .max(MAX_EXTERNAL_REF_LENGTH)
@@ -71,11 +72,11 @@ export function isOpaqueReference(value: unknown): boolean {
 }
 
 // Fecha ISO 8601 con zona y hasta milisegundos, que el hash guarda en UTC.
-const timestamp = z.iso
+export const timestamp = z.iso
   .datetime({ offset: true })
   .refine((value) => !MORE_THAN_MILLISECONDS.test(value), "precisión");
 
-const bodyText = z
+export const bodyText = z
   .string()
   .min(1)
   .refine(
@@ -108,7 +109,7 @@ const messageRecordedSchema = z.strictObject({
 
 // Nombre propuesto por el emisor (brief-12.1, D-5). Se rechaza, no se normaliza: sin espacios al
 // borde, sin caracteres de control y UTF-16 válido, como las referencias opacas.
-const clientName = z
+export const clientName = z
   .string()
   .min(1)
   .max(MAX_CLIENT_NAME_LENGTH)
@@ -187,7 +188,7 @@ function invalid(fields: Iterable<string>): ParseIngestionEventResult {
   };
 }
 
-function toUtc(value: string): string {
+export function toUtc(value: string): string {
   return new Date(value).toISOString();
 }
 

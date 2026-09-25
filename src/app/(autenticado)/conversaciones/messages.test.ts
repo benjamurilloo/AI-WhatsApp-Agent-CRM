@@ -51,12 +51,16 @@ describe("timeline (pantalla 9)", () => {
           // 23:30 del 9 en Buenos Aires.
           sentAt: new Date("2026-09-10T02:30:00Z"),
           body: "<b>Hola</b>",
+          kind: null,
+          sentBy: null,
         },
         {
           id: "b",
           direction: "outbound",
           sentAt: new Date("2026-09-10T03:10:00Z"),
           body: null,
+          kind: null,
+          sentBy: null,
         },
       ],
       BUENOS_AIRES,
@@ -66,6 +70,8 @@ describe("timeline (pantalla 9)", () => {
         id: "a",
         direction: "inbound",
         directionLabel: "Cliente",
+        kindLabel: null,
+        senderLabel: null,
         day: "09/09/2026",
         time: "23:30",
         body: "<b>Hola</b>",
@@ -74,10 +80,61 @@ describe("timeline (pantalla 9)", () => {
         id: "b",
         direction: "outbound",
         directionLabel: "Negocio",
+        kindLabel: null,
+        senderLabel: null,
         day: "10/09/2026",
         time: "00:10",
         body: null,
       },
+    ]);
+  });
+
+  it("FR-API-07: rotula el tipo original y el autor de una salida, y nada si no hay dato", () => {
+    const at = new Date("2026-09-10T15:00:00Z");
+    const items = toTimelineItems(
+      [
+        {
+          id: "a",
+          direction: "inbound",
+          sentAt: at,
+          body: "hola",
+          kind: "audio",
+          sentBy: null,
+        },
+        {
+          id: "b",
+          direction: "outbound",
+          sentAt: at,
+          body: "ok",
+          kind: "text",
+          sentBy: "agent",
+        },
+        {
+          id: "c",
+          direction: "outbound",
+          sentAt: at,
+          body: "ya",
+          kind: "image",
+          sentBy: "person",
+        },
+        {
+          id: "d",
+          direction: "outbound",
+          sentAt: at,
+          body: "v1",
+          kind: null,
+          sentBy: null,
+        },
+      ],
+      BUENOS_AIRES,
+    );
+    expect(
+      items.map(({ kindLabel, senderLabel }) => [kindLabel, senderLabel]),
+    ).toEqual([
+      ["Audio (transcripción)", null],
+      [null, "Agente"],
+      ["Imagen", "Persona"],
+      [null, null],
     ]);
   });
 
@@ -86,6 +143,8 @@ describe("timeline (pantalla 9)", () => {
       id,
       direction: "inbound",
       directionLabel: "Cliente",
+      kindLabel: null,
+      senderLabel: null,
       day,
       time: "10:00",
       body: "x",

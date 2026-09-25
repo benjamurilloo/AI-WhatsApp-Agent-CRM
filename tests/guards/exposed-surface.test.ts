@@ -114,6 +114,10 @@ const HANDLERS: Readonly<Record<string, Entry>> = {
     requirement: "sin-sesion",
     why: "no usa la sesión: autentica con una credencial de servicio (brief-6.5.3) y una sesión válida no lo autentica",
   },
+  "src/app/api/ingestion/v2/events/route.ts": {
+    requirement: "sin-sesion",
+    why: "contrato de ingestión v2 (brief-12.3): el mismo borde que v1, con credencial de servicio de alcance ingest, apagado salvo INGESTION_ENABLED, y una sesión válida no lo autentica",
+  },
   "src/app/api/read/v1/products/route.ts": {
     requirement: "sin-sesion",
     why: "API de lectura (brief-11.3): autentica con una credencial de alcance read, apagada salvo READ_API_ENABLED, y una sesión válida no la autentica",

@@ -1,0 +1,28 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: no proviene de ningún emisor real (brief-12.3). La 12.3.3 la reemplaza por capturas del agente.",
+  "description": "Una salida sin sent_by: el emisor tiene que decir si respondió el agente o una persona.",
+  "received_at": "2026-09-16T15:00:00.000Z",
+  "payload": {
+    "contract_version": "2",
+    "event_type": "message.recorded",
+    "event_id": "evt-v2-msg-0001",
+    "occurred_at": "2026-09-16T12:00:05-03:00",
+    "conversation": {
+      "external_ref": "conv-propuesta-0001",
+      "channel": "whatsapp",
+      "client_phone": "+5491155550001"
+    },
+    "message": {
+      "external_ref": "msg-v2-0002",
+      "direction": "outbound",
+      "kind": "text",
+      "sent_at": "2026-09-16T12:00:04.500-03:00",
+      "body_text": "Sí, tenemos stock."
+    }
+  },
+  "expected": {
+    "ok": false,
+    "fields": ["message.sent_by"]
+  }
+}

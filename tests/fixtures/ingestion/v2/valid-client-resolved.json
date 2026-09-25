@@ -1,0 +1,20 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: no proviene de ningún emisor real (brief-12.3). La 12.3.3 la reemplaza por capturas del agente.",
+  "description": "Resolución del cliente de un teléfono (vector del contrato).",
+  "received_at": "2026-09-16T15:00:00.000Z",
+  "payload": {
+    "contract_version": "2",
+    "event_type": "client.resolved",
+    "event_id": "evt-v2-client-0001",
+    "occurred_at": "2026-09-16T11:59:58-03:00",
+    "client": {
+      "phone": "+5491155550001",
+      "display_name": "María Gómez"
+    }
+  },
+  "expected": {
+    "ok": true,
+    "payload_hash": "a58c8ae0d0a4fef267b8b887345c8e9718c9b60052138cf55c652c67a7fd4ab4"
+  }
+}

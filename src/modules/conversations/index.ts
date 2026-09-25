@@ -38,6 +38,11 @@ export {
   type ConversationStatus,
   type ConversationSummary,
   type IngestedMessage,
+  type IngestedMessageConflict,
+  MESSAGE_KINDS,
+  MESSAGE_SENDERS,
+  type MessageKind,
+  type MessageSender,
   type RecordIngestedMessageResult,
   type MessageDirection,
 } from "./service";

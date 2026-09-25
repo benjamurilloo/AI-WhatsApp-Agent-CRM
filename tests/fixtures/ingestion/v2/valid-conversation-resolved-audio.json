@@ -1,0 +1,27 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: no proviene de ningún emisor real (brief-12.3). La 12.3.3 la reemplaza por capturas del agente.",
+  "description": "Audio transcripto que entra a la conversación vigente o a una nueva (vector del contrato).",
+  "received_at": "2026-09-16T15:00:00.000Z",
+  "payload": {
+    "contract_version": "2",
+    "event_type": "conversation.resolved",
+    "event_id": "evt-v2-conv-0001",
+    "occurred_at": "2026-09-16T11:59:58-03:00",
+    "conversation": {
+      "external_ref": "conv-propuesta-0001",
+      "channel": "whatsapp",
+      "client_phone": "+5491155550001"
+    },
+    "message": {
+      "external_ref": "msg-v2-0001",
+      "kind": "audio",
+      "sent_at": "2026-09-16T11:59:57.250-03:00",
+      "body_text": "Hola, ¿tienen stock?"
+    }
+  },
+  "expected": {
+    "ok": true,
+    "payload_hash": "415aca6aabdcd6e3aeb69361d7a4f47f1275985f9cf9f173bbb1ba2cc28bfba9"
+  }
+}

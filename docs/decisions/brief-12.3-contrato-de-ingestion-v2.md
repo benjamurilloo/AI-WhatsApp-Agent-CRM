@@ -360,3 +360,69 @@ Lista cerrada. Tocar otro archivo es un hallazgo bloqueante, salvo una ampliaci�
 - Si la medición muestra `429` con tráfico normal: subir el límite es una decisión del usuario (Risks).
 - Si hace falta tocar un archivo fuera de la lista.
 - Antes de cambiar estados en Notion sin la confirmación del usuario.
+
+## Decisiones del usuario durante la 12.3.1
+
+Del 2026-09-25, antes de terminar la etapa.
+
+- **Enmienda de D-7: dónde queda el `reason`.**
+  - D-7 decía que el `409` de v2 lleva `reason` y, a la vez, que el ledger guarda `CONFLICT` como en v1. Así, un reenvío no podría responder el `reason`, y es justo el caso del timeout, cuando el emisor no vio la primera respuesta.
+  - El usuario eligió, entre tres opciones (guardarlo en `error_code`, reenvío sin `reason`, o recalcularlo al reenviar), **guardarlo en `error_code`, solo en los eventos de v2**: `message_already_recorded` o `conversation_ref_taken`.
+  - `event_payload_mismatch` no se guarda, porque el registro existente no se modifica. Los eventos de v1 siguen guardando `CONFLICT`.
+  - La métrica 12 muestra esos códigos: su taxonomía de grupos ya es abierta (MetricsCatalog, brief-7.3, D-3).
+- **Ampliación de la lista de archivos**, para D-5: `src/app/(autenticado)/conversaciones/messages.ts`, `messages.test.ts` y `[conversationId]/timeline-items.ts`. El rótulo y el armado del timeline viven ahí, no en `timeline.tsx`.
+
+## Resultados — etapa 12.3.1
+
+**Autoevaluación** (`self_assessment: true`), del 2026-09-25. La revisión independiente de D-11 va al final de la 12.3.3.
+
+### Decisiones de implementación
+
+1. **El borde HTTP es uno solo.** `v1/events/handler.ts` exporta `serveIngestion`, que recibe una especificación con la ruta, la versión, el caso de uso y las dos cosas que solo tiene v2: la correlación y el `reason`. v2 importa ese borde y no lo duplica. Con la especificación de v1, el comportamiento es el mismo: los 25 casos HTTP de v1 pasan sin tocar ninguna aserción, también los que comparan el cuerpo con `toStrictEqual`.
+2. **El ledger y la proyección son los de v1.** `recordIngestionEventV2` valida con v2 y llama al mismo `recordEvent`. La versión solo decide qué se guarda y qué se responde en un `CONFLICT`.
+3. **`conversations` dice por qué no registró un mensaje.** Devuelve `message_already_recorded` o `conversation_ref_taken`, e `ingestion` lo traduce según la versión. Antes, las dos causas volvían como el mismo `CONFLICT`.
+4. **Las piezas de v1 que v2 reutiliza se exportan de `contract.ts`**: `externalRef`, `timestamp`, `bodyText`, `clientName`, `E164` y `toUtc`. No cambió ninguna regla, y los vectores de v1 dan el mismo hash.
+5. **El rótulo de la pantalla 9 va en la línea del autor**: «Negocio · Agente · 09:01». El tipo va como una línea chica sobre el cuerpo, por ejemplo «Audio (transcripción)». `text` y `null` no llevan rótulo.
+6. **D-8 compara solo los dígitos**, sin agregar el código de país. «11 5555-0001», el teléfono en formato local, se acepta. El contrato lo escribe como límite, y la 12.3.3 lo revisa con capturas.
+
+### Contraste por criterio
+
+| AC | Resultado | Evidencia |
+|---|---|---|
+| AC-1 | cumplido | [ingestion-v2](../contracts/ingestion-v2.md) documenta los cuatro eventos, las respuestas, el `409` con motivo, la correlación y la guía del emisor. Cada vector tiene su texto canónico escrito a mano y su SHA-256 calculado sobre ese texto; `contract-v2.test.ts` los compara con el validador. 13 fixtures con `"shape": "assumed"`: 6 válidos, 4 de ellos los vectores, y 7 inválidos. Los hashes de los 2 válidos que no son vectores salen del validador, como en v1. |
+| AC-2 | cumplido | `contract-v2.test.ts`: `kind` obligatorio y del enum (`null`, `"TEXT"`, `""` y `"sticker"` rechazados); `sent_by` obligatorio en una salida y rechazado en una entrada, también con `null`; en `conversation.resolved`, campo desconocido. D-8 con cuatro formas del teléfono rechazadas y cuatro nombres aceptados, entre ellos «Local 12». NUL, UTF-16 inválido, fecha futura y campo desconocido. |
+| AC-3 | cumplido | Todos los tests de v1 pasan sin tocar ninguna aserción: `contract.test.ts`, `ingestion.test.ts`, `ingestion-http.test.ts` (25 casos), `client-resolution`, `conversation-resolution` y `conversation-escalation`. `ingestion-v2.test.ts`: un `message.recorded` y un `conversation.resolved` de v1 quedan con `kind` y `sent_by` en `null`. |
+| AC-4 | cumplido | La migración `0023` crea los dos enums, las dos columnas nulables sin default y el `CHECK`, sin reescribir filas. Contra PostgreSQL, el `CHECK` rechaza una entrada con autor (`23514`, `messages_sent_by_only_outbound`) y acepta las otras tres combinaciones; un `UPDATE` de `kind` sigue dando `P0001`. |
+| AC-5 | cumplido | Un turno completo por v2 (cliente, audio entrante, respuesta del agente y derivación) deja `audio`/`null` y `text`/`agent`. Una entrada sin teléfono queda `document`/`null`, y una imagen de una persona, `image`/`person`. La vigencia por v2: 24 horas exactas es vigente, 24 horas y 1 ms no, y una `closed` nunca. |
+| AC-6 | cumplido | Los tres motivos: `message_already_recorded` por `message.recorded` y por `conversation.resolved`, y `conversation_ref_taken`, los dos guardados en `error_code` y **repetidos al reenviar**; `event_payload_mismatch` sin tocar el registro, y también con el mismo `event_id` por v1 y por v2. v1 sigue guardando `CONFLICT` y responde sin motivo, también por HTTP. |
+| AC-7 | cumplido | Un reenvío idéntico después de confirmar responde `duplicate` con los mismos datos, sin otro mensaje. Un error inesperado no deja el evento, y el reenvío del mismo evento se procesa. Un `422` es terminal. Por HTTP, el `429` lleva `Retry-After`. |
+| AC-8 | cumplido | `ingestion-v2-http.test.ts`: `404` sin cuerpo y sin correlación con el endpoint apagado; `401` con `WWW-Authenticate`; `403` para una credencial `read` y para una fuera de la allowlist, sin escribir ni abrir ventana. La correlación se devuelve y se registra en el `201`, el `400`, el `429` y el `500`; una inválida da `400` sin consumir el límite. El límite es compartido: 120 pedidos por v1 dejan el siguiente de v2 en `429`. El log no lleva token, teléfono, nombre ni texto. `exposed-surface.test.ts` declara la ruta nueva. |
+| AC-9 | cumplido | Los cuatro tipos por v2 en la organización A no tocan la B, que tiene un cliente con el mismo teléfono y una conversación con la misma referencia. La B queda sin mensajes nuevos ni auditoría, y su conversación sigue `open`. |
+| AC-10 | cumplido | `messages.test.ts`: los rótulos, y nada sin dato. `conversations.spec.ts` caso 11, contra `next start`: «Audio (transcripción)», «Negocio · Agente», «Negocio · Persona» con «Imagen», y un mensaje sin dato sin rótulo, con el chequeo de accesibilidad. Los casos 5 y 10 siguen pasando. |
+| AC-11 | cumplido | FR-API-07 en FunctionalRequirements y en TraceabilityMatrix. DataModel escribe las dos columnas, el `CHECK`, el motivo en `error_code` y el ledger compartido. IntegrationBoundaries lleva texto fechado, e ingestion-v1 su nota de congelamiento. |
+| AC-12 | cumplido | Seis mutaciones, todas detectadas y restauradas (ver abajo). |
+| AC-20 | cumplido, con la salvedad de la 12.1 | Los casos nuevos llevan FR-API-07, o FR-API-05 los de vigencia. Los 13 fixtures corren con el `it.each` que los nombra por archivo (R-3 de la 12.1). |
+
+### Mutaciones (AC-12)
+
+| # | Qué se rompió | Resultado |
+|---|---|---|
+| M12 | Sin el `CHECK` en la migración `0023` | **Detectada**: falla el caso del `CHECK`. *El primer intento no midió nada*: borré la restricción de la base de test, pero el `global-setup` de vitest recrea esa base desde las migraciones en cada corrida, así que el test corrió con el `CHECK` puesto y pasó. La mutación válida es sobre el archivo de la migración. |
+| M13 | `kind` opcional en los dos esquemas | **Detectada**: 2 casos fallan. |
+| M14 | Sin la regla de D-8 | **Detectada**: 5 casos fallan, las cuatro formas del teléfono y el fixture. |
+| M15 | La correlación después del límite de tasa | **Detectada**: fallan el caso 5, porque la correlación inválida consume el límite, y el caso 6, porque el `429` no la lleva. |
+| M16 | Sin la regla de `sent_by` | **Detectada**: 5 casos fallan. |
+| M17 | v2 guarda `CONFLICT` en lugar del motivo | **Detectada**: 3 casos fallan, porque el reenvío pierde el motivo. |
+
+Todas se restauraron desde una copia, y `diff` confirmó que cada archivo, la migración incluida, quedó igual a su copia.
+
+### Verificación de la etapa
+
+- `lint`, `typecheck` y `format:check`: 0.
+- `npm run test`: **1345 de 1345 en 97 archivos**. Son los 1265 de la 12.2 más 80: 52 de `contract-v2.test.ts`, 18 de `ingestion-v2.test.ts`, 9 de `ingestion-v2-http.test.ts` y 1 de `messages.test.ts`.
+- `npm run build`: 0.
+- `npm run test:e2e`: **99 de 99**, los 98 de antes más el caso 11.
+
+**Alcance real contra la lista**: los 43 archivos tocados (30 más los 13 fixtures) están en la lista de la 12.3.1 o en la ampliación autorizada. `page.tsx` estaba en la lista y no hizo falta tocarlo.
+
+**Nivel**: validado localmente (`deterministic`, requests sintéticos). **No** está validado en staging ni con un emisor real. Falta la CI del commit.

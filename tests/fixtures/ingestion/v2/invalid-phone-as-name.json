@@ -1,0 +1,20 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: no proviene de ningún emisor real (brief-12.3). La 12.3.3 la reemplaza por capturas del agente.",
+  "description": "El teléfono como nombre, con otros separadores (brief-12.1, R-6; brief-12.3, D-8).",
+  "received_at": "2026-09-16T15:00:00.000Z",
+  "payload": {
+    "contract_version": "2",
+    "event_type": "client.resolved",
+    "event_id": "evt-v2-client-0001",
+    "occurred_at": "2026-09-16T11:59:58-03:00",
+    "client": {
+      "phone": "+5491155550001",
+      "display_name": "+54 9 11 5555-0001"
+    }
+  },
+  "expected": {
+    "ok": false,
+    "fields": ["client.display_name"]
+  }
+}
