@@ -518,3 +518,14 @@ export function findClientIdByPhone(
 ): Promise<string | null> {
   return repository.findClientIdByPhoneE164(tx, organizationId, phoneE164);
 }
+
+// Como findClientIdByPhone, pero bloquea al cliente hasta el final de la transacción recibida.
+// conversations la usa para que dos mensajes simultáneos del mismo cliente no abran dos
+// conversaciones (brief-12.2, D-8), como lockProductForStockChange en catalog.
+export function lockClientByPhone(
+  tx: DbTransaction,
+  organizationId: string,
+  phoneE164: string,
+): Promise<string | null> {
+  return repository.lockClientIdByPhoneE164(tx, organizationId, phoneE164);
+}

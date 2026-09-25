@@ -1,0 +1,26 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: no proviene de ningún emisor real (brief-12.2).",
+  "description": "Mensaje entrante sin texto y con otra zona horaria: el CRM guarda las fechas en UTC.",
+  "received_at": "2026-09-16T15:00:00.000Z",
+  "payload": {
+    "contract_version": "1",
+    "event_type": "conversation.resolved",
+    "event_id": "evt-conv-0002",
+    "occurred_at": "2026-09-16T14:59:58Z",
+    "conversation": {
+      "external_ref": "conv-propuesta-0002",
+      "channel": "whatsapp",
+      "client_phone": "+5491155550002"
+    },
+    "message": {
+      "external_ref": "msg-conv-0002",
+      "sent_at": "2026-09-16T16:59:57+02:00",
+      "body_text": null
+    }
+  },
+  "expected": {
+    "ok": true,
+    "payload_hash": "9c493f1a1e616f190b2d3b42ec8c36cefbfed5105afa206a5ac4436983590348"
+  }
+}

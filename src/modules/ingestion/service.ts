@@ -1,4 +1,9 @@
-import { recordIngestedMessage } from "@/modules/conversations";
+import {
+  findIngestedConversation,
+  recordIngestedMessage,
+  resolveIngestedConversation,
+  type ResolvedConversation,
+} from "@/modules/conversations";
 import {
   findResolvedClientByPhone,
   resolveClientByPhone,
@@ -11,6 +16,7 @@ import {
   isOpaqueReference,
   parseIngestionEventV1,
   type ClientResolvedEventV1,
+  type ConversationResolvedEventV1,
   type IngestionEventV1,
   type IngestionField,
   type MessageRecordedEventV1,
@@ -23,7 +29,8 @@ import * as repository from "./repository";
 //
 // Desde la 12.1 (D-1) hay dos tipos de evento con el mismo ledger: message.recorded proyecta un
 // mensaje en conversations, y client.resolved resuelve un cliente en crm, que lo audita con la
-// credencial como actor.
+// credencial como actor. Desde la 12.2 (D-1), conversation.resolved registra un mensaje entrante
+// en la conversación vigente del cliente o en una nueva.
 
 // credentialId es el actor de la auditoría de client.resolved (brief-12.1, D-3). Lo trae el
 // endpoint; sin él, un client.resolved es un error de programación, no del emisor.
@@ -49,13 +56,28 @@ export type ClientAccepted = {
   client: ResolvedClient | null;
 };
 
-export type IngestionAccepted = MessageAccepted | ClientAccepted;
+// conversation es null solo en un reenvío cuyo mensaje ya no se encuentra por el cliente del
+// teléfono (brief-12.2, D-5).
+export type ConversationAccepted = {
+  ok: true;
+  result: "accepted" | "duplicate";
+  eventId: string;
+  conversation: ResolvedConversation | null;
+};
+
+export type IngestionAccepted =
+  MessageAccepted | ClientAccepted | ConversationAccepted;
+
+// Reglas de negocio de los tipos nuevos (brief-12.2, C-2): responden 422 y quedan como failed con
+// error_code BUSINESS_RULE_VIOLATION. message.recorded y client.resolved no las devuelven nunca.
+export type IngestionRule = "client_not_found";
 
 export type RecordIngestionEventResult =
   | IngestionAccepted
   | Failure<"VALIDATION_ERROR", { fields: (IngestionField | "source")[] }>
   // recorded: el rechazo quedó en ingestion_events como failed (brief-6.5.1, D-6).
-  | Failure<"CONFLICT", { recorded: boolean }>;
+  | Failure<"CONFLICT", { recorded: boolean }>
+  | Failure<"BUSINESS_RULE_VIOLATION", { rule: IngestionRule; recorded: true }>;
 
 type ExistingOutcome =
   | { kind: "duplicate" }
@@ -98,6 +120,19 @@ async function duplicate(
 ): Promise<IngestionAccepted> {
   if (event.event_type === "message.recorded") {
     return messageAccepted(event, "duplicate");
+  }
+  if (event.event_type === "conversation.resolved") {
+    return {
+      ok: true,
+      result: "duplicate",
+      eventId: event.event_id,
+      conversation: await findIngestedConversation(tx, {
+        organizationId: context.organizationId,
+        clientPhone: event.conversation.client_phone,
+        channel: event.conversation.channel,
+        messageExternalRef: event.message.external_ref,
+      }),
+    };
   }
   return {
     ok: true,
@@ -143,6 +178,55 @@ async function projectMessage(
     status: "processed",
   });
   return messageAccepted(event, "accepted");
+}
+
+async function projectConversation(
+  tx: DbTransaction,
+  context: IngestionContext,
+  reserved: string,
+  event: ConversationResolvedEventV1,
+): Promise<RecordIngestionEventResult> {
+  const resolved = await resolveIngestedConversation(tx, {
+    organizationId: context.organizationId,
+    clientPhone: event.conversation.client_phone,
+    channel: event.conversation.channel,
+    proposedExternalRef: event.conversation.external_ref,
+    message: {
+      externalRef: event.message.external_ref,
+      sentAt: new Date(event.message.sent_at),
+      bodyText: event.message.body_text,
+    },
+  });
+  if (!resolved.ok) {
+    await repository.finishEvent(tx, context.organizationId, reserved, {
+      status: "failed",
+      errorCode: resolved.code,
+    });
+    return resolved.code === "CONFLICT"
+      ? { ok: false, code: "CONFLICT", recorded: true }
+      : {
+          ok: false,
+          code: "BUSINESS_RULE_VIOLATION",
+          rule: resolved.rule,
+          recorded: true,
+        };
+  }
+  await repository.finishEvent(tx, context.organizationId, reserved, {
+    status: "processed",
+  });
+  return {
+    ok: true,
+    result: "accepted",
+    eventId: event.event_id,
+    conversation: resolved.conversation,
+  };
+}
+
+// La regla de un rechazo de negocio guardado (brief-12.2, C-2). error_code guarda el código de la
+// taxonomía, y la regla se deduce del tipo: conversation.resolved tiene una sola.
+function storedRule(event: IngestionEventV1): IngestionRule {
+  if (event.event_type === "conversation.resolved") return "client_not_found";
+  throw new Error(`${event.event_type} no tiene reglas de negocio`);
 }
 
 async function projectClient(
@@ -210,6 +294,17 @@ export async function recordIngestionEvent(
         if (outcome.kind === "failed" && outcome.errorCode === "CONFLICT") {
           return { ok: false, code: "CONFLICT", recorded: true };
         }
+        if (
+          outcome.kind === "failed" &&
+          outcome.errorCode === "BUSINESS_RULE_VIOLATION"
+        ) {
+          return {
+            ok: false,
+            code: "BUSINESS_RULE_VIOLATION",
+            rule: storedRule(event),
+            recorded: true,
+          };
+        }
         if (outcome.kind === "failed") {
           throw new Error(
             `código de rechazo desconocido: ${outcome.errorCode}`,
@@ -218,9 +313,13 @@ export async function recordIngestionEvent(
         return { ok: false, code: "CONFLICT", recorded: false };
       }
 
-      return event.event_type === "message.recorded"
-        ? projectMessage(tx, context, reserved, event)
-        : projectClient(tx, context, reserved, event);
+      if (event.event_type === "message.recorded") {
+        return projectMessage(tx, context, reserved, event);
+      }
+      if (event.event_type === "conversation.resolved") {
+        return projectConversation(tx, context, reserved, event);
+      }
+      return projectClient(tx, context, reserved, event);
     },
   );
 }

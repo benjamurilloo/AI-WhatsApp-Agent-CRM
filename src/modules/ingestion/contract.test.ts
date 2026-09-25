@@ -406,3 +406,130 @@ describe("client.resolved", () => {
     );
   });
 });
+
+describe("conversation.resolved", () => {
+  function conversationPayload() {
+    return {
+      contract_version: "1",
+      event_type: "conversation.resolved",
+      event_id: "evt-conv-0001",
+      occurred_at: "2026-09-16T11:59:58-03:00",
+      conversation: {
+        external_ref: "conv-propuesta-0001",
+        channel: "whatsapp",
+        client_phone: "+5491155550001",
+      },
+      message: {
+        external_ref: "msg-conv-0001",
+        sent_at: "2026-09-16T11:59:57.250-03:00",
+        body_text: "Hola, ¿tienen stock?",
+      },
+    } as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  }
+
+  // Serialización canónica escrita a mano y su SHA-256, calculado sobre este texto y no con
+  // canonicalJson.
+  const CONVERSATION_VECTOR_CANONICAL =
+    '{"contract_version":"1","conversation":{"channel":"whatsapp","client_phone":"+5491155550001","external_ref":"conv-propuesta-0001"},"event_id":"evt-conv-0001","event_type":"conversation.resolved","message":{"body_text":"Hola, ¿tienen stock?","external_ref":"msg-conv-0001","sent_at":"2026-09-16T14:59:57.250Z"},"occurred_at":"2026-09-16T14:59:58.000Z"}';
+  const CONVERSATION_VECTOR_HASH =
+    "d6e436aa902e14099858f114fa85b12412246a9cb9b44f158ef50ad5a30e5d1d";
+
+  it("FR-API-05: normaliza las fechas y coincide con el vector del contrato", () => {
+    const result = parse(conversationPayload());
+    if (!result.ok) throw new Error(result.fields.join(", "));
+    expect(result.event).toEqual({
+      ...conversationPayload(),
+      occurred_at: "2026-09-16T14:59:58.000Z",
+      message: {
+        ...conversationPayload().message,
+        sent_at: "2026-09-16T14:59:57.250Z",
+      },
+    });
+    expect(canonicalJson(result.event)).toBe(CONVERSATION_VECTOR_CANONICAL);
+    expect(ingestionPayloadHash(result.event)).toBe(CONVERSATION_VECTOR_HASH);
+    expect(
+      createHash("sha256").update(CONVERSATION_VECTOR_CANONICAL).digest("hex"),
+    ).toBe(CONVERSATION_VECTOR_HASH);
+  });
+
+  it("FR-API-05: el teléfono es obligatorio y en E.164 canónico", () => {
+    for (const bad of [null, "", "5491155550001", "+54 9 11 5555-0001"]) {
+      const value = conversationPayload();
+      value.conversation.client_phone = bad;
+      expect(fieldsOf(value), JSON.stringify(bad)).toEqual([
+        "conversation.client_phone",
+      ]);
+    }
+  });
+
+  it("FR-API-05: el mensaje no lleva direction, porque siempre es entrante", () => {
+    for (const direction of ["inbound", "outbound"]) {
+      const value = conversationPayload();
+      value.message.direction = direction;
+      expect(fieldsOf(value), direction).toEqual(["message"]);
+    }
+  });
+
+  it("FR-API-05: rechaza el texto con NUL o UTF-16 inválido, la referencia con espacios y el campo desconocido", () => {
+    const nul = conversationPayload();
+    nul.message.body_text = "Hola\u0000";
+    expect(fieldsOf(nul)).toEqual(["message.body_text"]);
+    const surrogate = conversationPayload();
+    surrogate.message.body_text = "Hola\uD800";
+    expect(fieldsOf(surrogate)).toEqual(["message.body_text"]);
+    const spaced = conversationPayload();
+    spaced.conversation.external_ref = " conv ";
+    expect(fieldsOf(spaced)).toEqual(["conversation.external_ref"]);
+    const extra = conversationPayload();
+    extra.conversation.status = "open";
+    expect(fieldsOf(extra)).toEqual(["conversation"]);
+    const withClient = conversationPayload();
+    withClient.client = { phone: "+5491155550001", display_name: null };
+    expect(fieldsOf(withClient)).toEqual(["event"]);
+  });
+
+  it("FR-API-05: acepta el texto nulo y rechaza sent_at más de 5 minutos en el futuro", () => {
+    const nullBody = conversationPayload();
+    nullBody.message.body_text = null;
+    expect(parse(nullBody).ok).toBe(true);
+    const future = conversationPayload();
+    future.message.sent_at = "2026-09-16T15:05:00.001Z";
+    expect(fieldsOf(future)).toEqual(["message.sent_at"]);
+  });
+
+  it("FR-API-05: el hash cambia con cada campo", () => {
+    const changes: ((value: ReturnType<typeof conversationPayload>) => void)[] =
+      [
+        (v) => (v.event_id = "evt-conv-0002"),
+        (v) => (v.occurred_at = "2026-09-16T11:59:59-03:00"),
+        (v) => (v.conversation.external_ref = "conv-propuesta-0002"),
+        (v) => (v.conversation.client_phone = "+5491155550002"),
+        (v) => (v.message.external_ref = "msg-conv-0002"),
+        (v) => (v.message.sent_at = "2026-09-16T11:59:57.251-03:00"),
+        (v) => (v.message.body_text = "Hola, ¿tienen stock"),
+        (v) => (v.message.body_text = null),
+      ];
+    const hashes = changes.map((change) => {
+      const value = conversationPayload();
+      change(value);
+      const result = parse(value);
+      if (!result.ok) throw new Error(result.fields.join(", "));
+      return ingestionPayloadHash(result.event);
+    });
+    expect(new Set([CONVERSATION_VECTOR_HASH, ...hashes]).size).toBe(
+      changes.length + 1,
+    );
+  });
+
+  it("FR-API-05: un message.recorded con el mismo contenido no comparte hash", () => {
+    const recorded = payload();
+    recorded.conversation.external_ref = "conv-propuesta-0001";
+    recorded.event_id = "evt-conv-0001";
+    recorded.message.external_ref = "msg-conv-0001";
+    const result = parse(recorded);
+    if (!result.ok) throw new Error(result.fields.join(", "));
+    expect(ingestionPayloadHash(result.event)).not.toBe(
+      CONVERSATION_VECTOR_HASH,
+    );
+  });
+});

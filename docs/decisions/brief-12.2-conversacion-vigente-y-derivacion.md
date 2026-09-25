@@ -242,3 +242,45 @@ Lista cerrada. Tocar otro archivo es un hallazgo bloqueante, salvo ampliación a
 - Si el bloqueo de D-8 choca con una regla de frontera o con una guarda.
 - Si hace falta tocar un archivo fuera de la lista.
 - Antes de cambiar estados en Notion sin la confirmación del usuario.
+
+## Resultados — etapa 12.2.1
+
+**Autoevaluación** (`self_assessment: true`), del 2026-09-25. La revisión independiente es la de D-11, al final de la 12.2.2.
+
+### Decisiones de implementación
+
+1. **Qué guarda `error_code` en un rechazo de negocio**: el código de la taxonomía, `BUSINESS_RULE_VIOLATION`, como dice DataModel. La regla no se guarda: un reenvío la deduce del tipo, porque `conversation.resolved` tiene una sola (`client_not_found`). **Queda abierto para la 12.2.2**: `conversation.escalated` tiene dos reglas (`conversation_closed` y `conversation_not_found`), así que la regla ya no se deduce del tipo. Antes de implementarla hay que decidir dónde se guarda. Se eleva al usuario al empezar la etapa.
+2. **La conversación vigente exige `external_ref`**: una conversación sin referencia, como las de los seeds, no es candidata, porque el emisor no podría seguir usándola con `message.recorded`.
+3. **Una referencia propuesta que ya es de otra conversación** (vencida, cerrada o de otro cliente) responde `CONFLICT`, registrado como `failed`, sin escribir. El brief no lo previó: es la unicidad de `(organization_id, channel, external_ref)`, que la conversación nueva no puede saltear. El contrato lo documenta en §Errores.
+4. **El reenvío busca el mensaje por su referencia** entre las conversaciones del cliente del teléfono, con un `JOIN` dentro del mismo módulo. Si el teléfono ya no es de ningún cliente, responde `conversation: null`, como `client.resolved`.
+5. **Registrar un mensaje no audita nada**, igual que `message.recorded`: no cambia ningún estado.
+
+### Fuera de la etapa, registrado
+
+- **DataModel**: las reglas del ledger (líneas 318 y 319) no mencionan `conversation.resolved`, y lo que dicen del reenvío queda incompleto para él. DataModel está en la lista de la 12.2.2 y no en la de la 12.2.1, así que **se corrige en la 12.2.2**. Es la clase de hallazgo que la revisión de la 12.1 marcó como R-4.
+- **§Evidencia de ingestion-v1** seguía diciendo «seis resoluciones simultáneas» y «casos 15 a 17» para `client.resolved`, cosa que la corrección de R-1 de la 12.1 volvió falsa. Se corrigió acá, porque el archivo está en la lista.
+
+### Contraste por criterio
+
+| AC | Resultado | Evidencia |
+|---|---|---|
+| AC-1 | cumplido | El contrato documenta el evento, su tabla, su respuesta y su vector escrito a mano (`d6e436aa…`, calculado sobre el texto canónico y comparado con el del validador). `contract.test.ts`: 7 casos nuevos y 3 fixtures con `"shape": "assumed"` (2 válidos con su `payload_hash` y 1 inválido). Rechaza NUL, UTF-16 inválido, `direction`, el teléfono nulo o no canónico, la referencia con espacios y los campos desconocidos. |
+| AC-2 | cumplido | Los vectores de `message.recorded` (`529004aa…`) y `client.resolved` (`69779577…`) no cambiaron, y sus tests pasan sin tocar ninguna aserción. `contract.test.ts` solo agregó un bloque. |
+| AC-3 | cumplido | `conversation-resolution.test.ts`: la conversación nueva con la referencia propuesta, `open`, el cliente, las dos fechas en el `sent_at` y el mensaje `inbound`; con una vigente, el mensaje entra en ella, se ignora la propuesta y se amplían las fechas. |
+| AC-4 | cumplido | Bordes calculados a mano: 24 horas exactas vigente y 24 horas y 1 ms no (con la vencida intacta y `open`), la `pending` vigente que sigue `pending`, la `closed` a un minuto que no se reabre, la más reciente de dos candidatas con una tercera sin referencia descartada, y un mensaje desordenado que adelanta `started_at`. **M2**: con `>` en lugar de `>=`, falla el caso del borde. **M3**: con `closed` entre los estados vigentes, falla el caso de la cerrada. |
+| AC-5 | cumplido | Reenvío `duplicate` con la misma conversación y sin otro mensaje; `conversation: null` si el teléfono ya no es de nadie; `CONFLICT` con otro contenido; `client_not_found` registrado como `failed` y **terminal**: el reenvío responde lo mismo aunque el cliente ya exista. Más los dos `CONFLICT` de la decisión 3. |
+| AC-6 | cumplido | Una tercera conexión bloquea al cliente, **2 esperas comprobadas en `pg_stat_activity`**, y al soltarla queda una conversación con los dos mensajes y las dos respuestas con la misma referencia. **M1**: sin el `FOR UPDATE`, quedan **2 conversaciones**. La espera en `pg_stat_activity` se cumplió igual, porque la clave foránea hacia `clients` también espera al `FOR UPDATE` retenido. Por eso el test afirma el resultado y no solo la espera, como advierte la nota del vault sobre este patrón. |
+| AC-7 | cumplido | `ingestion-http.test.ts` casos 19 a 22: `200` con referencia y estado, sin id, teléfono ni texto, también al reenvío; `422` con `rule` y con cuerpo, distinto del `404` sin cuerpo del endpoint apagado; `401`, `403` para la credencial `read` y la que está fuera de la allowlist; límite compartido (`429`); log sin teléfono ni texto, con códigos `BUSINESS_RULE_VIOLATION` y `OK`. **M5**: con el teléfono en la respuesta, el caso 19 falla. |
+| AC-8 | cumplido | La vigente de otra organización con un cliente del mismo teléfono no se usa ni recibe el mensaje. |
+| AC-9 | cumplido | `analytics-ingestion.test.ts`: un `conversation.resolved` fallido da total 8 y fallidos 6, calculados a mano sobre el fixture de la 7.3 (7 y 5), con el grupo `BUSINESS_RULE_VIOLATION`. **M4**: excluyéndolo, el total da 7. |
+| AC-16 | cumplido, con la salvedad de la 12.1 | Los casos nuevos llevan FR-API-05 en su nombre. Los 3 fixtures corren con el `it.each` compartido, que los nombra por archivo (R-3 de la 12.1). |
+
+### Verificación de la etapa
+
+- `lint`, `typecheck` y `format:check`: 0.
+- `npm run test`: **1240 de 1240 en 93 archivos**. Son los 1209 de la 12.1 más 31: 10 de `contract.test.ts`, 16 de `conversation-resolution.test.ts`, 4 de HTTP y 1 de la métrica 12.
+- `npm run build`: 0.
+- `npm run test:e2e`: **98 de 98**.
+- **Mutaciones**: M1 a M5, las cinco detectadas y restauradas. Se verificó con `grep` que no quedó ninguna en el código.
+
+**Nivel**: validado localmente (`deterministic`, requests sintéticos). **No** se certifica compatibilidad con ningún emisor real: eso es la 12.3. Falta la CI del commit de la etapa.

@@ -1,0 +1,26 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: no proviene de ningún emisor real (brief-12.2).",
+  "description": "Mensaje entrante a la conversación vigente del cliente o a una nueva, con la referencia propuesta por el emisor (vector del contrato).",
+  "received_at": "2026-09-16T15:00:00.000Z",
+  "payload": {
+    "contract_version": "1",
+    "event_type": "conversation.resolved",
+    "event_id": "evt-conv-0001",
+    "occurred_at": "2026-09-16T11:59:58-03:00",
+    "conversation": {
+      "external_ref": "conv-propuesta-0001",
+      "channel": "whatsapp",
+      "client_phone": "+5491155550001"
+    },
+    "message": {
+      "external_ref": "msg-conv-0001",
+      "sent_at": "2026-09-16T11:59:57.250-03:00",
+      "body_text": "Hola, ¿tienen stock?"
+    }
+  },
+  "expected": {
+    "ok": true,
+    "payload_hash": "d6e436aa902e14099858f114fa85b12412246a9cb9b44f158ef50ad5a30e5d1d"
+  }
+}

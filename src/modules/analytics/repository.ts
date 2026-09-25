@@ -369,7 +369,8 @@ export async function ingestionErrors(query: MetricsQuery): Promise<{
   groups: IngestionErrorGroup[];
 }> {
   // La resolución de un cliente (client.resolved, brief-12.1) no es un mensaje ingerido: no entra
-  // ni al numerador ni al denominador (revisión independiente de la 12.1, R-2).
+  // ni al numerador ni al denominador (revisión independiente de la 12.1, R-2). conversation.resolved
+  // sí cuenta: registra un mensaje, y su fallo es un mensaje perdido (brief-12.2, D-9).
   const inPeriod = and(
     eq(ingestionEvents.organizationId, query.organizationId),
     sql`${ingestionEvents.receivedAt} >= ${periodStart(query)}`,

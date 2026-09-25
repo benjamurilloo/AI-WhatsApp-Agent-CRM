@@ -6,6 +6,7 @@ import {
   getClient,
   getClientsByIds,
   listClientOrderKeys,
+  lockClientByPhone,
   type Client,
   type ClientListFilters,
 } from "@/modules/crm";
@@ -591,4 +592,126 @@ export async function recordIngestedMessage(
     );
   }
   return { ok: true, conversationCreated: createdId !== undefined };
+}
+
+// Ventana de vigencia (brief-12.2, D-3): 24 horas desde el último mensaje, medidas contra el
+// sent_at del mensaje nuevo y no contra la recepción. Una closed nunca es vigente.
+export const CURRENT_CONVERSATION_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+export type IngestedInboundMessage = {
+  organizationId: string;
+  clientPhone: string;
+  channel: ConversationChannel;
+  // Referencia propuesta por el emisor: solo se usa si hay que crear la conversación (D-2).
+  proposedExternalRef: string;
+  message: { externalRef: string; sentAt: Date; bodyText: string | null };
+};
+
+export type ResolvedConversation = {
+  externalRef: string;
+  status: ConversationStatus;
+};
+
+export type ResolveIngestedConversationResult =
+  | { ok: true; conversation: ResolvedConversation; created: boolean }
+  | Failure<"CONFLICT">
+  | Failure<"BUSINESS_RULE_VIOLATION", { rule: "client_not_found" }>;
+
+// Proyección de conversation.resolved (brief-12.2, D-1): el mensaje entrante va a la conversación
+// vigente del cliente o a una nueva, que nace con él. La transacción la abre ingestion. El
+// cliente se bloquea antes de buscar la vigente, así que dos mensajes simultáneos del mismo
+// cliente no abren dos conversaciones (D-8). No autoriza ni audita: nada de esto cambia un estado.
+export async function resolveIngestedConversation(
+  tx: DbTransaction,
+  input: IngestedInboundMessage,
+): Promise<ResolveIngestedConversationResult> {
+  const { organizationId, channel, message } = input;
+  const clientId = await lockClientByPhone(
+    tx,
+    organizationId,
+    input.clientPhone,
+  );
+  if (clientId === null) {
+    return {
+      ok: false,
+      code: "BUSINESS_RULE_VIOLATION",
+      rule: "client_not_found",
+    };
+  }
+
+  const current = await repository.lockCurrentConversation(tx, {
+    organizationId,
+    clientId,
+    channel,
+    since: new Date(message.sentAt.getTime() - CURRENT_CONVERSATION_WINDOW_MS),
+  });
+  const conversationId =
+    current?.id ??
+    (await repository.insertConversationIfAbsent(tx, {
+      organizationId,
+      channel,
+      externalRef: input.proposedExternalRef,
+      clientId,
+      sentAt: message.sentAt,
+    }));
+  // La referencia propuesta ya es de otra conversación (vencida, cerrada o de otro cliente): el
+  // emisor tiene que proponer una nueva.
+  if (!conversationId) return failure("CONFLICT");
+
+  const inserted = await repository.insertMessageIfAbsent(tx, {
+    organizationId,
+    conversationId,
+    direction: "inbound",
+    externalRef: message.externalRef,
+    sentAt: message.sentAt,
+    bodyText: message.bodyText,
+  });
+  if (!inserted) {
+    if (!current)
+      throw new Error("mensaje existente en una conversación nueva");
+    return failure("CONFLICT");
+  }
+  if (current) {
+    await repository.widenConversationDates(
+      tx,
+      organizationId,
+      conversationId,
+      message.sentAt,
+    );
+  }
+  return {
+    ok: true,
+    conversation: current
+      ? { externalRef: current.externalRef, status: current.status }
+      : { externalRef: input.proposedExternalRef, status: "open" },
+    created: !current,
+  };
+}
+
+// Reenvío de conversation.resolved (D-5): la conversación del cliente que contiene el mensaje,
+// sin escribir. null si el teléfono ya no es de ningún cliente o el mensaje no está.
+export async function findIngestedConversation(
+  tx: DbTransaction,
+  input: {
+    organizationId: string;
+    clientPhone: string;
+    channel: ConversationChannel;
+    messageExternalRef: string;
+  },
+): Promise<ResolvedConversation | null> {
+  const clientId = await findClientIdByPhone(
+    tx,
+    input.organizationId,
+    input.clientPhone,
+  );
+  if (clientId === null) return null;
+  const found = await repository.findConversationByMessageRef(tx, {
+    organizationId: input.organizationId,
+    clientId,
+    channel: input.channel,
+    messageExternalRef: input.messageExternalRef,
+  });
+  return found
+    ? { externalRef: found.externalRef, status: found.status }
+    : null;
 }

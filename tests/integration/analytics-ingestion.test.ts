@@ -140,6 +140,33 @@ describe("métrica 12: errores de ingestión (brief-7.3)", () => {
     expect(value.failed).toBe(5);
   });
 
+  // Un conversation.resolved del período, failed: registra un mensaje, así que su fallo es un
+  // mensaje perdido y cuenta. Calculado a mano: total 7 + 1 = 8, fallidos 5 + 1 = 6.
+  it("FR-API-05: un conversation.resolved fallido cuenta como evento y como fallo de la métrica 12", async () => {
+    const { orgA, orgB, adminA } = await users();
+    await mainFixture(orgA, orgB);
+    await getDb().execute(
+      sql`insert into ingestion_events
+            (organization_id, source, external_ref, event_type, payload_hash, status,
+             error_code, received_at, processed_at)
+          values (${orgA}, 'wa-cloud', 'evt-conv-sin-cliente', 'conversation.resolved',
+                  'hash-conversacion', 'failed', 'BUSINESS_RULE_VIOLATION',
+                  '2026-09-02T18:00:00Z', '2026-09-02T18:00:00Z')`,
+    );
+
+    const value = valueOf(
+      await getIngestionErrors(adminA, PERIOD, INGESTION_OFF),
+    );
+    if (value.status !== "value") throw new Error("se esperaba un valor");
+    expect(value.total).toBe(8);
+    expect(value.failed).toBe(6);
+    expect(value.groups).toContainEqual({
+      source: "wa-cloud",
+      errorCode: "BUSINESS_RULE_VIOLATION",
+      count: 1,
+    });
+  });
+
   it("agrupa por origen y código, ordenado por conteo y con desempate alfabético", async () => {
     const { orgA, orgB, adminA } = await users();
     await mainFixture(orgA, orgB);

@@ -309,3 +309,23 @@ export async function findClientIdByPhoneE164(
     .limit(1);
   return rows[0]?.id ?? null;
 }
+
+// Lo mismo, bloqueando la fila hasta el final de la transacción: serializa la resolución de la
+// conversación vigente de un cliente (brief-12.2, D-8).
+export async function lockClientIdByPhoneE164(
+  tx: DbTransaction,
+  organizationId: string,
+  phoneE164: string,
+): Promise<string | null> {
+  const rows = await tx
+    .select({ id: clients.id })
+    .from(clients)
+    .where(
+      and(
+        eq(clients.organizationId, organizationId),
+        eq(clients.phoneE164, phoneE164),
+      ),
+    )
+    .for("update");
+  return rows[0]?.id ?? null;
+}

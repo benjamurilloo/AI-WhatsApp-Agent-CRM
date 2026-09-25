@@ -360,6 +360,81 @@ export async function insertMessageIfAbsent(
   return result.rows.length > 0;
 }
 
+export type AddressableConversation = {
+  id: string;
+  externalRef: string;
+  status: ConversationStatus;
+};
+
+// Conversación vigente de un cliente en un canal (brief-12.2, D-3): la más reciente abierta o
+// pendiente cuyo último mensaje no es anterior a since. Solo las que tienen external_ref, porque
+// el emisor la sigue usando por esa referencia. La bloquea hasta el final de la transacción. Usa
+// conversations_organization_client_last_message_idx.
+export async function lockCurrentConversation(
+  tx: DbTransaction,
+  values: {
+    organizationId: string;
+    clientId: string;
+    channel: ConversationChannel;
+    since: Date;
+  },
+): Promise<AddressableConversation | undefined> {
+  const result = await tx.execute<{
+    id: string;
+    external_ref: string;
+    status: ConversationStatus;
+  }>(sql`
+    select id, external_ref, status
+    from conversations
+    where organization_id = ${values.organizationId}
+      and client_id = ${values.clientId}
+      and channel = ${values.channel}
+      and status in ('open', 'pending')
+      and external_ref is not null
+      and last_message_at >= ${values.since}
+    order by last_message_at desc, id desc
+    limit 1
+    for update`);
+  const row = result.rows[0];
+  return (
+    row && { id: row.id, externalRef: row.external_ref, status: row.status }
+  );
+}
+
+// Conversación del cliente que contiene el mensaje con esa referencia, para responder un reenvío
+// de conversation.resolved sin escribir (brief-12.2, D-5). Si hubiera más de una, la del mensaje
+// más reciente. Mismo módulo: el JOIN no cruza módulos.
+export async function findConversationByMessageRef(
+  tx: DbTransaction,
+  values: {
+    organizationId: string;
+    clientId: string;
+    channel: ConversationChannel;
+    messageExternalRef: string;
+  },
+): Promise<AddressableConversation | undefined> {
+  const result = await tx.execute<{
+    id: string;
+    external_ref: string;
+    status: ConversationStatus;
+  }>(sql`
+    select c.id, c.external_ref, c.status
+    from conversations c
+    join messages m
+      on m.organization_id = c.organization_id and m.conversation_id = c.id
+    where c.organization_id = ${values.organizationId}
+      and c.client_id = ${values.clientId}
+      and c.channel = ${values.channel}
+      and c.external_ref is not null
+      and m.external_ref = ${values.messageExternalRef}
+    order by m.sent_at desc, m.id desc
+    limit 1`);
+  const row = result.rows[0];
+  return (
+    row && { id: row.id, externalRef: row.external_ref, status: row.status }
+  );
+}
+
 // started_at y last_message_at siguen al menor y al mayor sent_at (contrato v1).
 export async function widenConversationDates(
   tx: DbTransaction,

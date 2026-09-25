@@ -6,12 +6,13 @@
 - **Implementado y validado localmente** en la 6.5.2 ([brief-6.5.2](../decisions/brief-6.5.2-registro-idempotente-y-proyeccion.md)): el registro, los reenvíos y la proyección, como caso de uso sin HTTP (`recordIngestionEvent`).
 - **Implementado y validado localmente** en la 6.5.3 ([brief-6.5.3](../decisions/brief-6.5.3-autenticacion-de-servicio-y-rate-limit.md)): el endpoint, la credencial de servicio, el límite de tasa y el modo de prueba, con requests sintéticos.
 - **Implementado y validado localmente** en la 12.1.2 ([brief-12.1](../decisions/brief-12.1-actor-de-servicio-y-cliente-por-telefono.md)): el evento `client.resolved`, con requests sintéticos.
+- **Implementado y validado localmente** en la 12.2.1 ([brief-12.2](../decisions/brief-12.2-conversacion-vigente-y-derivacion.md)): el evento `conversation.resolved`, con requests sintéticos.
 
 **Ningún emisor real está conectado ni configurado** (FR-CONV-05, [IntegrationBoundaries](../architecture/IntegrationBoundaries.md)). Este contrato no deriva de la forma de eventos de ningún sistema existente. Sus fixtures tienen **forma asumida, no verificada**, y no prueban compatibilidad con ningún emisor.
 
 ## Propósito
 
-Permitir que un sistema externo registre en el CRM los mensajes de sus conversaciones y, *desde la 12.1*, resuelva el cliente de un teléfono, sin conocer el modelo interno y sin crear duplicados cuando reintenta.
+Permitir que un sistema externo registre en el CRM los mensajes de sus conversaciones, *desde la 12.1* resuelva el cliente de un teléfono y, *desde la 12.2*, registre el mensaje entrante de un cliente en su conversación vigente o en una nueva, sin conocer el modelo interno y sin crear duplicados cuando reintenta.
 
 ## Transporte
 
@@ -108,10 +109,56 @@ Ejemplo, el vector de prueba:
 }
 ```
 
+## Evento `conversation.resolved`
+
+*Agregado el 2026-09-25 ([brief-12.2](../decisions/brief-12.2-conversacion-vigente-y-derivacion.md), D-1).* Es un `event_type` nuevo dentro de v1, con su propia respuesta y su propio rechazo de negocio (C-2), con la misma interpretación de §Versionado que aprobó la 12.1.
+
+Registra el **mensaje entrante** de un cliente en su **conversación vigente** o, si no tiene una, en una nueva que nace con ese mensaje. La regla de vigencia es del CRM, no del emisor (§Proyección). Usa el mismo endpoint, la misma credencial `ingest`, el mismo límite de tasa y el mismo registro de idempotencia. El objeto es estricto.
+
+| Campo | Tipo | Nulable | Reglas | Ejemplo |
+|---|---|---|---|---|
+| `contract_version` | string | no | exactamente `"1"` | `"1"` |
+| `event_type` | string | no | `"conversation.resolved"` | `"conversation.resolved"` |
+| `event_id` | string | no | referencia opaca; identidad del evento | `"evt-conv-0001"` |
+| `occurred_at` | string | no | fecha; como máximo 5 minutos después de la recepción | `"2026-09-16T11:59:58-03:00"` |
+| `conversation` | objeto | no | | |
+| `conversation.external_ref` | string | no | referencia opaca **propuesta**: solo se usa si el CRM crea la conversación (D-2) | `"conv-propuesta-0001"` |
+| `conversation.channel` | string | no | `"whatsapp"` | `"whatsapp"` |
+| `conversation.client_phone` | string | **no** | E.164 canónico; tiene que ser de un cliente de la organización, activo o no (D-7) | `"+5491155550001"` |
+| `message` | objeto | no | | |
+| `message.external_ref` | string | no | referencia opaca del mensaje | `"msg-conv-0001"` |
+| `message.sent_at` | string | no | fecha; como máximo 5 minutos después de la recepción | `"2026-09-16T11:59:57.250-03:00"` |
+| `message.body_text` | string | sí | las reglas de `message.recorded` | `"Hola, ¿tienen stock?"` |
+
+- **Sin `direction`**: el mensaje siempre es entrante. Mandarla rechaza el evento con el campo `message`.
+- **El cliente se resuelve antes**, con `client.resolved`. Un teléfono sin cliente se rechaza con `422` (§Errores).
+- **Las salidas** del turno se registran después con `message.recorded`, usando **la referencia de la respuesta**, que puede no ser la propuesta.
+
+Ejemplo, el vector de prueba:
+
+```json
+{
+  "contract_version": "1",
+  "event_type": "conversation.resolved",
+  "event_id": "evt-conv-0001",
+  "occurred_at": "2026-09-16T11:59:58-03:00",
+  "conversation": {
+    "external_ref": "conv-propuesta-0001",
+    "channel": "whatsapp",
+    "client_phone": "+5491155550001"
+  },
+  "message": {
+    "external_ref": "msg-conv-0001",
+    "sent_at": "2026-09-16T11:59:57.250-03:00",
+    "body_text": "Hola, ¿tienen stock?"
+  }
+}
+```
+
 ## Identidad e idempotencia
 
 - **Identidad del evento**: `(organization_id, source, event_id)`, que se guarda en `ingestion_events` como `(organization_id, source, external_ref)`. La organización y el `source` salen de la credencial (D-3). Dos emisores pueden usar el mismo `event_id` sin chocar.
-- **Registro antes de proyectar**: el evento se reserva en `ingestion_events` con `INSERT … ON CONFLICT ON CONSTRAINT ingestion_events_organization_source_external_ref_unique`. La reserva y su efecto van en la misma transacción: la proyección sobre `conversations` y `messages`, o la resolución del cliente de un `client.resolved`. Con otra entrega del mismo evento en curso, la reserva espera a que termine y responde según lo que esa entrega confirmó (brief-6.5.2, D-3).
+- **Registro antes de proyectar**: el evento se reserva en `ingestion_events` con `INSERT … ON CONFLICT ON CONSTRAINT ingestion_events_organization_source_external_ref_unique`. La reserva y su efecto van en la misma transacción: la proyección sobre `conversations` y `messages` de un `message.recorded` o de un `conversation.resolved`, o la resolución del cliente de un `client.resolved`. Con otra entrega del mismo evento en curso, la reserva espera a que termine y responde según lo que esa entrega confirmó (brief-6.5.2, D-3).
 - **Segunda defensa**: las unicidades parciales de `conversations (organization_id, channel, external_ref)` y `messages (organization_id, conversation_id, external_ref)`.
 - **No se depende de que el emisor deduplique**: el CRM se sostiene solo.
 
@@ -143,6 +190,14 @@ y su `payload_hash` es `529004aa199e81238af332e09262a30ec458f581188b6da0cdfa1ab5
 ```
 
 y su `payload_hash` es `69779577a3a2aa226ef36ccf53a7ed817f3827f2955073967ed3d724b80728cc`, calculado sobre este texto escrito a mano.
+
+**Vector de `conversation.resolved`**: se serializa como
+
+```text
+{"contract_version":"1","conversation":{"channel":"whatsapp","client_phone":"+5491155550001","external_ref":"conv-propuesta-0001"},"event_id":"evt-conv-0001","event_type":"conversation.resolved","message":{"body_text":"Hola, ¿tienen stock?","external_ref":"msg-conv-0001","sent_at":"2026-09-16T14:59:57.250Z"},"occurred_at":"2026-09-16T14:59:58.000Z"}
+```
+
+y su `payload_hash` es `d6e436aa902e14099858f114fa85b12412246a9cb9b44f158ef50ad5a30e5d1d`, calculado sobre este texto escrito a mano.
 
 ## Respuestas
 
@@ -186,6 +241,27 @@ Siempre responde `200`, con `result: "accepted"` o `"duplicate"`. Trae el id int
 - **Un reenvío** (mismo `event_id` y mismo hash) vuelve a buscar por teléfono, sin escribir. Si el teléfono ya no pertenece a ningún cliente, porque se editó en el backoffice, responde `duplicate` con `"client": null`. Un reenvío nunca crea.
 - **Un cliente inactivo** se devuelve con `is_active: false`. Qué hacer con él lo decide el emisor.
 
+### Éxito y reenvío de `conversation.resolved` (brief-12.2, D-5)
+
+Siempre responde `200`, con `result: "accepted"` o `"duplicate"`. Trae la referencia de la conversación donde quedó el mensaje y su estado. **No trae el id interno, el teléfono ni el texto.**
+
+```json
+{
+  "contract_version": "1",
+  "event_id": "evt-conv-0001",
+  "result": "accepted",
+  "conversation": {
+    "external_ref": "conv-propuesta-0001",
+    "status": "open"
+  }
+}
+```
+
+- **`external_ref`** es la propuesta si el CRM creó la conversación, o la de la vigente si el mensaje entró en ella. El emisor usa esta para las salidas.
+- **`status`** puede ser `open` o `pending`: una conversación derivada sigue vigente.
+- **No trae `created`**, por la misma razón que `client.resolved`.
+- **Un reenvío** (mismo `event_id` y mismo hash) no escribe: busca, entre las conversaciones del cliente del teléfono, la que contiene el mensaje del evento. Si el teléfono ya no es de ningún cliente, responde `duplicate` con `"conversation": null`. Un reenvío nunca crea ni registra.
+
 ### Errores
 
 El cuerpo de error tiene `code`, `request_id` y, en `VALIDATION_ERROR`, `fields`: la lista de campos de la tabla de arriba con notación de puntos, más `body` (cuerpo ilegible o demasiado grande) y `event` (campo desconocido en la raíz). Un campo desconocido se informa por su objeto, nunca por su nombre. Ningún error repite el payload, el teléfono ni el cuerpo.
@@ -197,6 +273,8 @@ El cuerpo de error tiene `code`, `request_id` y, en `VALIDATION_ERROR`, `fields`
 | Credencial revocada, fuera de la allowlist del modo de prueba o de otro alcance (desde la 11.3) | `FORBIDDEN` | 403 | no | no |
 | Mismo `event_id` con otro `payload_hash` | `CONFLICT` | 409 | no se modifica el registro existente | no: el emisor usa un `event_id` nuevo |
 | El mensaje ya existe en la conversación con el mismo `external_ref`, llegado con otro `event_id` | `CONFLICT` | 409 | sí, `failed` con `error_code = 'CONFLICT'` | no |
+| *Desde la 12.2, solo `conversation.resolved`*: la referencia propuesta ya es de otra conversación (vencida, cerrada o de otro cliente), o el mensaje ya está en la conversación vigente con otro `event_id` | `CONFLICT` | 409 | sí, `failed` con `error_code = 'CONFLICT'` | no: con una referencia propuesta nueva y un `event_id` nuevo |
+| *Desde la 12.2, solo los tipos nuevos* (C-2): una regla de negocio. El cuerpo trae `rule`: `client_not_found` si el teléfono de un `conversation.resolved` no es de ningún cliente de la organización | `BUSINESS_RULE_VIOLATION` | 422 | sí, `failed` con `error_code = 'BUSINESS_RULE_VIOLATION'`; un reenvío responde lo mismo, aunque la regla ya se cumpla | no con el mismo `event_id`: resolver el cliente y mandar un evento nuevo |
 | Límite de tasa superado | `RATE_LIMITED` | 429 | no | sí, después de `Retry-After` |
 | Endpoint apagado (modo de prueba) | — | 404, sin cuerpo | no | no |
 | Error inesperado | `INTERNAL` | 500 | no: la transacción se revierte, reserva incluida | sí, con el mismo `event_id` y el mismo contenido |
@@ -235,6 +313,19 @@ La hace `crm` con la transacción de `ingestion`, que antes reservó el evento.
 - **Dos eventos distintos con el mismo teléfono a la vez**: la inserción usa `ON CONFLICT (organization_id, phone_e164) WHERE phone_e164 IS NOT NULL DO NOTHING`, así que uno crea y el otro espera en el índice y lee lo que el primero confirmó. Queda un cliente y una fila de auditoría.
 - **Después**: un `message.recorded` con ese teléfono asocia la conversación nueva a ese cliente, como siempre.
 
+### Proyección de `conversation.resolved` (brief-12.2, D-1 a D-8)
+
+La hace `conversations` con la transacción de `ingestion`, que antes reservó el evento. No autoriza ni audita: registrar un mensaje no cambia ningún estado.
+
+- **Cliente**: se busca por teléfono en la organización y **se bloquea** hasta el final de la transacción (lo hace `crm`). Si no existe, `422` con `client_not_found`, sin escribir la conversación.
+- **Conversación vigente** (D-3): la del cliente en ese canal con estado `open` o `pending`, con `external_ref` y cuyo último mensaje tiene **como mucho 24 horas** respecto del `sent_at` del mensaje nuevo. Exactamente 24 horas es vigente; un milisegundo más, no. Si hay varias, la de último mensaje más reciente.
+  - **Se mide contra `sent_at`**, no contra la recepción: la decisión no depende de cuánto tarde la entrega.
+  - **Una `closed` nunca es vigente** y no se reabre.
+  - **La vencida no se toca**: no se cierra sola.
+- **Con una vigente**: el mensaje entra en ella, como `inbound`, y sus fechas se amplían como en `message.recorded`. La referencia propuesta se ignora.
+- **Sin una vigente**: se crea la conversación con la referencia propuesta, `status = 'open'`, el cliente y `started_at = last_message_at = sent_at`, y el mensaje. La conversación nace con su primer mensaje, como siempre.
+- **Dos eventos simultáneos del mismo cliente** sin vigente: el segundo espera el bloqueo del cliente y encuentra la conversación que creó el primero. Queda una conversación con los dos mensajes.
+
 ## Versionado
 
 - **Cambios compatibles dentro de v1**: agregar un `event_type` nuevo, o un valor nuevo de `channel` que el modelo de datos ya admita. Un emisor v1 que no los usa no nota el cambio.
@@ -250,8 +341,12 @@ La hace `crm` con la transacción de `ingestion`, que antes reservó el evento.
   - en `tests/e2e/ingestion.spec.ts` (6.5.3), contra `next start`: un evento aceptado que aparece en la pantalla 8, y los `401`. Los requests son sintéticos, así que no es evidencia de integración con un emisor.
   - **`client.resolved`** (12.1.2):
     - en `contract.test.ts`: el esquema, el vector y los cuatro fixtures con forma asumida;
-    - en `tests/integration/client-resolution.test.ts`: el alta auditada, el cliente existente y el inactivo, los reenvíos, seis resoluciones simultáneas, el aislamiento y la cadena con `message.recorded`;
-    - en `ingestion-http.test.ts`, casos 15 a 17: la respuesta sin teléfono, la misma cadena de rechazos, el límite compartido y el log sin teléfono ni nombre.
+    - en `tests/integration/client-resolution.test.ts`: el alta auditada, el cliente existente y el inactivo, los reenvíos, dos resoluciones simultáneas que esperan una inserción retenida desde una tercera conexión (corregido en la revisión de la 12.1, R-1; antes decía «seis resoluciones simultáneas»), el aislamiento y la cadena con `message.recorded`;
+    - en `ingestion-http.test.ts`, casos 15 a 18: la respuesta sin teléfono, la misma cadena de rechazos, el límite compartido, el log sin teléfono ni nombre, y el `404` y el `401`.
+  - **`conversation.resolved`** (12.2.1):
+    - en `contract.test.ts`: el esquema, el vector y los tres fixtures con forma asumida;
+    - en `tests/integration/conversation-resolution.test.ts`: la conversación nueva que nace con el mensaje, la vigente, los bordes de la ventana (24 horas exactas y un milisegundo más), la `pending` vigente, la `closed` que no se reabre, la candidata más reciente y la que no tiene referencia, el mensaje desordenado, los reenvíos, `client_not_found` terminal, los dos `CONFLICT`, dos mensajes simultáneos con el cliente bloqueado desde una tercera conexión y el aislamiento;
+    - en `ingestion-http.test.ts`, casos 19 a 22: la respuesta sin id, teléfono ni texto, el `422` con la regla, la misma cadena de rechazos, el límite compartido y el log.
 - **Sin validar hasta el proyecto de integración (Fase 12, 12.3)**:
   - la compatibilidad con un emisor real;
   - la autenticación con su tráfico ([Risks](../planning/Risks.md)).

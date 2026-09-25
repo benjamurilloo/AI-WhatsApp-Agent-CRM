@@ -31,13 +31,18 @@ type Outcome = {
 function errorResponse(
   requestId: string,
   code: ErrorCode,
-  options: { fields?: string[]; headers?: Record<string, string> } = {},
+  options: {
+    fields?: string[];
+    rule?: string;
+    headers?: Record<string, string>;
+  } = {},
 ): Response {
   return Response.json(
     {
       code,
       request_id: requestId,
       ...(options.fields ? { fields: options.fields } : {}),
+      ...(options.rule ? { rule: options.rule } : {}),
     },
     {
       status: HTTP_STATUS[code],
@@ -62,6 +67,22 @@ function acceptedResponse(
           id: accepted.client.id,
           display_name: accepted.client.displayName,
           is_active: accepted.client.isActive,
+        },
+      },
+      { status: 200, headers },
+    );
+  }
+  if ("conversation" in accepted) {
+    // Siempre 200, con la referencia de la conversación y sin el id interno ni el teléfono
+    // (brief-12.2, D-5).
+    return Response.json(
+      {
+        contract_version: INGESTION_CONTRACT_VERSION,
+        event_id: accepted.eventId,
+        result: accepted.result,
+        conversation: accepted.conversation && {
+          external_ref: accepted.conversation.externalRef,
+          status: accepted.conversation.status,
         },
       },
       { status: 200, headers },
@@ -173,6 +194,14 @@ async function evaluate(
       response: errorResponse(requestId, result.code, {
         fields: result.fields,
       }),
+    };
+  }
+  if (result.code === "BUSINESS_RULE_VIOLATION") {
+    // 422 con la regla, solo para los tipos nuevos (brief-12.2, C-2).
+    return {
+      ...who,
+      code: result.code,
+      response: errorResponse(requestId, result.code, { rule: result.rule }),
     };
   }
   return {

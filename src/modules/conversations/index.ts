@@ -1,6 +1,13 @@
-// Interfaz pública del módulo conversations (brief-6.3).
+// Interfaz pública del módulo conversations (brief-6.3; conversación vigente para ingestion,
+// brief-12.2).
 export {
   changeConversationStatus,
+  CURRENT_CONVERSATION_WINDOW_MS,
+  findIngestedConversation,
+  resolveIngestedConversation,
+  type IngestedInboundMessage,
+  type ResolveIngestedConversationResult,
+  type ResolvedConversation,
   CONVERSATION_CHANNELS,
   CONVERSATION_STATUSES,
   CONVERSATIONS_PAGE_SIZE,

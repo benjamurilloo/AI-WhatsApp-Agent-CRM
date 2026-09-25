@@ -14,6 +14,7 @@ export {
   MAX_MESSAGE_BODY_LENGTH,
   parseIngestionEventV1,
   type ClientResolvedEventV1,
+  type ConversationResolvedEventV1,
   type IngestionEventV1,
   type IngestionField,
   type MessageRecordedEventV1,
@@ -22,6 +23,8 @@ export {
 export {
   recordIngestionEvent,
   type ClientAccepted,
+  type ConversationAccepted,
+  type IngestionRule,
   type IngestionAccepted,
   type IngestionContext,
   type MessageAccepted,

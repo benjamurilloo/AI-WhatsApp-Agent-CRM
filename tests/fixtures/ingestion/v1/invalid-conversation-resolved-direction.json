@@ -1,0 +1,27 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: no proviene de ningún emisor real (brief-12.2).",
+  "description": "Sin teléfono y con direction: la vigencia se calcula por cliente, y el mensaje siempre es entrante.",
+  "received_at": "2026-09-16T15:00:00.000Z",
+  "payload": {
+    "contract_version": "1",
+    "event_type": "conversation.resolved",
+    "event_id": "evt-conv-0003",
+    "occurred_at": "2026-09-16T11:59:58-03:00",
+    "conversation": {
+      "external_ref": "conv-propuesta-0003",
+      "channel": "whatsapp",
+      "client_phone": null
+    },
+    "message": {
+      "external_ref": "msg-conv-0003",
+      "direction": "inbound",
+      "sent_at": "2026-09-16T11:59:57.250-03:00",
+      "body_text": "Hola"
+    }
+  },
+  "expected": {
+    "ok": false,
+    "fields": ["conversation.client_phone", "message"]
+  }
+}
