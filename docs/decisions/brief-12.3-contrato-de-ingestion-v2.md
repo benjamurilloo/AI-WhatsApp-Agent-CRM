@@ -453,3 +453,5 @@ Todas se restauraron desde una copia, y `diff` confirmó que cada archivo, la mi
 - `format:check`: 0. Guardas: 296 de 296.
 
 **Nivel**: el contrato v2 está **validado en staging** con requests sintéticos a través del borde real (`isolated-runtime`). **No** con un emisor real: eso es la 12.3.3, que empieza cuando el agente emita.
+
+**CI de la etapa 12.3.2**: commit `cc90eaf`, run 36202372270, `success` en el intento 1. El commit solo trae documentación y el script, así que staging sigue en `49a3cb4` sin redesplegar.
