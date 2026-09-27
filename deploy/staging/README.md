@@ -167,19 +167,22 @@ Los dos primeros comprueban lo que ninguna guarda puede: que el servidor tenga l
 
    El ingreso es una **Server Action**: un `POST` suelto de `curl` no genera el intento. La fila se produce fallando el ingreso desde el navegador, en `https://staging.vixoraai.app/login`.
 
+   **La contraseña del intento tiene que tener 12 caracteres o más**, por ejemplo `contrasena-falsa-2026` con el email `prueba@ejemplo.invalid`. Una más corta no pasa la validación del formato, que corta antes de contar el intento: no deja fila, y la pantalla muestra el mismo «Email o contraseña incorrectos.», así que no se nota (E-4, 12.5.1).
+
    ```
-   # 1. Fallar el ingreso una vez desde el navegador. Después, la clave que quedó.
+   # 1. Fallar el ingreso una vez desde el navegador. Después, las claves que quedaron,
+   #    con su hora: una fila vieja de otro despliegue da «iguales» sin probar nada.
    #    Se consulta como `postgres` y no con DATABASE_URL: esa variable no existe en una
    #    sesión ssh —vive en /etc/crm-staging/app.env, 0600 de root (D-8)— y `psql ""` se
    #    conectaría a la base por defecto sin avisar. Es la forma que se usó al medir el AC-5.
    ssh crm-staging "sudo -u postgres psql -d crm_staging -tAc \
-     \"select key_hash from login_attempts where scope='ip' order by attempted_at desc limit 1;\""
+     \"select attempted_at, key_hash from login_attempts where scope='ip' order by attempted_at desc limit 3;\""
 
    # 2. El hash de tu IP pública, que es contra lo que se compara.
    curl -s https://api.ipify.org | tr -d '\n' | sha256sum | cut -d' ' -f1
    ```
 
-   Los dos hashes tienen que ser **iguales** (el `cut` está para quitarle a `sha256sum` el ` -` del final, que si no impide compararlos de un vistazo). Si no lo son, la aplicación no está viendo la IP del cliente: hay un salto de proxy de más, todas las peticiones comparten una clave interna y eso **es** H-3 reproducido. El control que le da valor a la comparación es repetirla desde otra IP —un túnel SOCKS alcanza, `ssh -f -N -D 1080`— y comprobar que el hash cambia.
+   La primera fila tiene que ser **de recién** (la hora sale en UTC), y su hash y el tuyo, **iguales** (el `cut` está para quitarle a `sha256sum` el ` -` del final, que si no impide compararlos de un vistazo). Si no lo son, la aplicación no está viendo la IP del cliente: hay un salto de proxy de más, todas las peticiones comparten una clave interna y eso **es** H-3 reproducido. El control que le da valor a la comparación es repetirla desde otra IP —un túnel SOCKS alcanza, `ssh -f -N -D 1080`— y comprobar que el hash cambia.
 
    Lo que este paso **no** cubre: que un cliente pueda falsificar la cabecera. Eso depende de que nginx reemplace en vez de agregar, y de eso se ocupa la guarda sobre el archivo versionado más el paso 1 de esta lista, que comprueba que el servidor tenga ese archivo. Ninguno de los dos sustituye al otro.
 3. **HSTS presente sobre HTTPS y ausente sobre HTTP**: `curl -I https://staging.vixoraai.app/login` y `curl -I http://staging.vixoraai.app/login`. El segundo es el que da valor al primero.

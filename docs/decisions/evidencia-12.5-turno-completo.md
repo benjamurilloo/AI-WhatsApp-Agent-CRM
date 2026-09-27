@@ -41,10 +41,17 @@ Autorizado por el usuario el 2026-09-27 en tres pasos: el commit de la etapa, el
 |---|---|---|
 | — | `/login`, la ingestión y la lectura | `/login` `200`; ingestión v1 y v2 `404`; lectura `404` en `knowledge` y en `messages` |
 | 1 | los nueve archivos contra los versionados | **cero diferencias** en los nueve |
-| 2 | un solo salto de proxy | **pendiente**: necesita fallar un ingreso desde el navegador |
+| 2 | un solo salto de proxy | **cumplida**, por el usuario: la fila de `login_attempts` de las 20:55:29 UTC tiene el mismo `key_hash` que su IP pública (`362e48d2…`), la misma que ve su navegador. Antes hubo dos lecturas fallidas (E-4, abajo) |
 | 3 | HSTS | presente sobre HTTPS (`max-age=31536000; includeSubDomains`), ausente sobre HTTP |
 | 4 | la aplicación solo en loopback | `127.0.0.1:3000` |
-| 5 | el rol de la aplicación no borra | **pendiente**: el clasificador del modo automático bloqueó el `DELETE`, aunque iba dentro de una transacción con `rollback`. No se reintentó por otro camino, y queda para el usuario |
+| 5 | el rol de la aplicación no borra | **cumplida**, por el usuario: `BEGIN`, `ERROR: permission denied for table audit_logs`, `ROLLBACK`. El clasificador del modo automático había bloqueado el `DELETE` de quien hizo el trabajo, aunque iba dentro de una transacción con `rollback`; no se reintentó por otro camino |
+
+**E-4, hallazgo del README en la comprobación 2.** La primera comparación dio hashes distintos, y la segunda no mostró ninguna fila de hoy: las filas que había eran del 2026-09-25, de antes de este despliegue. No era un salto de proxy de más. Se descartó que la fila guardada fuera la de una IP interna, que la diferencia viniera de IPv6 (staging solo tiene registro A) y que el navegador saliera por otra IP. Tenía dos causas, y las dos estaban en el README:
+
+- **una contraseña de menos de 12 caracteres no deja fila**: la validación del formato corta antes de contar el intento, y la pantalla muestra el mismo mensaje que ante credenciales incorrectas;
+- **la consulta usaba `limit 1` sin la hora**, así que una fila vieja se leía como la del intento. La fila del 25 con el hash del usuario habría dado «iguales» sin probar nada de este despliegue.
+
+El README se corrigió en esta etapa: pide una contraseña de 12 caracteres o más, y la consulta muestra la hora de las tres últimas filas.
 
 ### AC-2 — La lectura en staging, con `read` y `context`
 

@@ -333,7 +333,7 @@ Tocar cualquier otro archivo se detiene y se pide al usuario.
 
 | AC | Resultado | Evidencia |
 |---|---|---|
-| AC-1 | **cumplido en parte** | staging en `c530558` con `0000` a `0024`, backup previo y el README funcionó tal como está. Comprobaciones 1, 3 y 4 hechas; **la 2 y la 5 quedan para el usuario** (el navegador; y el `DELETE` que el clasificador bloqueó). Hallazgo E-3: la advertencia de npm 11.19 sobre los `postinstall` de esbuild |
+| AC-1 | cumplido | staging en `c530558` con `0000` a `0024`, backup previo y el despliegue funcionó tal como está en el README. Comprobaciones 1, 3 y 4 hechas por quien hizo el trabajo; la 2 y la 5, por el usuario. Dos hallazgos: E-3, la advertencia de npm 11.19 sobre los `postinstall` de esbuild, abierto; y E-4, la comprobación 2 del README, que no pedía el mínimo de 12 caracteres ni mostraba la hora de la fila, corregido |
 | AC-2 | cumplido | 0 fallas en staging con `read` y `context`. Log sin tokens ni la referencia. Todo apagado y las dos credenciales revocadas |
 | AC-3 | cumplido | `conciliar-turnos.ts`: 7 casos contra PostgreSQL real, M26 y M27 |
 | AC-4 | cumplido | read-v1 corregido (H-1), y todo terminó apagado |
