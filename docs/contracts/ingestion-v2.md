@@ -183,8 +183,16 @@ El cuerpo del `409` es `{ "code": "CONFLICT", "request_id", "reason" }`.
 | `409` con `conversation_ref_taken` | el mensaje **no** se guardó | reenvía con una referencia propuesta **y** un `event_id` nuevos |
 | `409` con `event_payload_mismatch` | el emisor armó dos contenidos con el mismo `event_id` | **alerta**: es un defecto del emisor, y el segundo contenido no se guardó |
 | `400 VALIDATION_ERROR` | el evento o la correlación son inválidos | no reenvía el mismo: corrige y manda uno nuevo |
-| `401`, `403` o `404` | credencial, alcance, allowlist o endpoint apagado | no reenvía hasta corregir la configuración |
+| `401`, `403` o `404` | credencial, alcance, allowlist o endpoint apagado | no reenvía hasta corregir la configuración: **retiene** el evento, avisa y lo reenvía igual cuando la configuración se corrige. **Nunca lo descarta** |
 | `422 BUSINESS_RULE_VIOLATION` | una regla de negocio, con `rule`; es **terminal** | no reenvía el mismo `event_id`: corrige la causa y manda un evento nuevo |
+
+*Aclarado el 2026-09-27 por la 12.5* ([brief-12.5](../decisions/brief-12.5-turno-completo-en-staging.md), a partir del hallazgo H-5 del emisor, con la aprobación del usuario). La fila de `401`, `403` y `404` decía solo «no reenvía hasta corregir la configuración». Se leyó como «el evento se descarta», y con esa lectura, **apagar la ingestión para mantenimiento hace perder mensajes**. No es lo que quería decir:
+
+- un error de configuración **detiene el envío, no el evento**. El emisor lo guarda en un lugar durable, avisa a una persona y lo reenvía, **idéntico**, cuando la ruta vuelve a aceptarlo. Un reenvío idéntico nunca duplica (§Lo que el CRM garantiza);
+- mientras tanto puede volver a probar con una espera creciente. **Mientras la ingestión esté apagada**, el CRM responde `404` sin cuerpo, sin distinguir el mantenimiento de una ruta que no existe. Es a propósito: la ruta apagada no se deja ver;
+- **perder un evento por una credencial mal cargada es tan grave como perderlo por un apagón**. Por eso la regla vale para los tres códigos.
+
+Las respuestas del CRM no cambian: es una aclaración de la guía, no un cambio de contrato.
 
 ## Proyección
 

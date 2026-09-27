@@ -299,3 +299,47 @@ Tocar cualquier otro archivo se detiene y se pide al usuario.
 - **El clasificador del modo automático bloquea una acción**: no se busca otro camino. La corre el usuario o se le pregunta.
 - **Hace falta tocar un archivo fuera de la lista**, o cambiar un contrato: se detiene y se pide al usuario.
 - **El agente pide un cambio de contrato**: vuelve como hallazgo y lo decide el usuario. No se implementa dentro de la 12.5.
+
+## Decisiones del usuario durante la implementación
+
+**Respuesta del agente al pedido de la 12.5** (2026-09-27, fuera del repositorio, leída como insumo):
+- de las cinco condiciones de entrada, **una está hecha** (el filtro de tokens), **una es chica** (un `conversation.resolved` por mensaje) y **tres son subfases con brief propio** allá (el emisor cableado, las tools de lectura y una cola durable con su ADR);
+- **con su diseño de hoy, los eventos que no entran se descartan.** El gate «sin pérdida» no se cumple hasta que construyan esa cola;
+- no dan fecha hasta tener las respuestas a sus H-5 y H-7;
+- devolvieron tres hallazgos de contrato. Cada uno se verificó contra los documentos del CRM, y el usuario decidió los tres con las recomendaciones, el 2026-09-27.
+
+- **H-5 del agente, el turno 4 no se podía cumplir.** La guía decía, para `401`, `403` y `404`, «no reenvía hasta corregir la configuración», y se leyó como «descarta».
+  - **Decisión: aclarar la guía**, sin cambiar respuestas. Un error de configuración detiene el envío, no el evento: el emisor lo retiene, avisa y lo reenvía idéntico cuando se corrige. Vale para los tres códigos.
+  - Se descartó responder `503` en el apagado de mantenimiento: es un cambio de respuesta que alcanza también a v1, y el `404` existe para que la ruta apagada no se vea.
+  - `ingestion-v2.md` no estaba en la lista de la 12.5, y **lo autorizó el usuario**.
+- **H-6 del agente, `GET /knowledge` exige todas las palabras**, y el agente pregunta en lenguaje natural.
+  - **Decisión: la tool pide `/knowledge?limit=50` sin `q`**, que devuelve toda la información vigente, y filtra de su lado. Es un solo pedido, sin cambio de contrato.
+  - **Disparador registrado**: si una organización supera las 50 entradas vigentes, o la calidad de las respuestas lo muestra, el CRM agrega búsqueda por «cualquier palabra», en una subfase propia.
+  - **Se le avisa** que la búsqueda de productos tiene la misma semántica (`read-v1`, §Productos).
+- **H-7 del agente, leer el historial obliga a esperar al CRM.**
+  - **Recomendación del CRM**, porque la decisión es de la arquitectura del agente: emitir el entrante esperando la respuesta, con un tiempo máximo corto. Si responde, lee el historial del CRM; si no, deja el evento en la cola y responde con su historial propio.
+  - Se desaconseja guardar la referencia del turno anterior: pasadas las 24 horas, el mensaje nuevo cae en otra conversación y la referencia guardada leería la vieja.
+  - El turno 2 del guion sigue valiendo.
+- **Los dos `CONFLICT` sin sembrar nada**:
+  - `conversation_ref_taken`: el agente propone, para el cliente del turno 5, la referencia de la conversación de la 12.3.3 (`wa-conv-wamid-fict-p20260927182133-0001`), que es de otro cliente;
+  - `message_already_recorded`: reenvía un mensaje del turno 1 con otro `event_id`.
+- **La ventana: dos de 60 minutos.** La primera, con los turnos 1 a 3; la segunda, con la interrupción del turno 4, el turno 5 y los dos `CONFLICT`.
+- **N-1 cerrada**: el agente no necesita la cantidad en stock. Coincide con lo que se decidió en las brechas (B-8). Adaptar su prompt de ventas al `stock_status` es trabajo de ellos.
+- **El doble de WhatsApp tiene que devolver un id distinto por segmento.** Es precondición del agente, y `conciliar-turnos.ts` marca uno repetido como duplicado.
+
+## Resultados — etapa 12.5.1
+
+**Autoevaluación** (`self_assessment: true`), del 2026-09-27. Las salidas están en [evidencia-12.5](evidencia-12.5-turno-completo.md).
+
+| AC | Resultado | Evidencia |
+|---|---|---|
+| AC-1 | **cumplido en parte** | staging en `c530558` con `0000` a `0024`, backup previo y el README funcionó tal como está. Comprobaciones 1, 3 y 4 hechas; **la 2 y la 5 quedan para el usuario** (el navegador; y el `DELETE` que el clasificador bloqueó). Hallazgo E-3: la advertencia de npm 11.19 sobre los `postinstall` de esbuild |
+| AC-2 | cumplido | 0 fallas en staging con `read` y `context`. Log sin tokens ni la referencia. Todo apagado y las dos credenciales revocadas |
+| AC-3 | cumplido | `conciliar-turnos.ts`: 7 casos contra PostgreSQL real, M26 y M27 |
+| AC-4 | cumplido | read-v1 corregido (H-1), y todo terminó apagado |
+| AC-14 | cumplido en local y en la CI de `c530558` | 1379 de 1379, 100 de 100 end-to-end |
+| AC-16 | cumplido | los casos nuevos llevan FR-API-07 |
+
+**Nivel**: la lectura de las tres rutas queda **validada en staging** (`isolated-runtime`), con requests sintéticos. **No** con el agente.
+
+**Estado de la 12.5.2**: **no empieza** hasta que el agente complete su lado: el turno por mensaje, la cola durable con su ADR, las tools de lectura y el cableado. La Fase 12 queda abierta.
