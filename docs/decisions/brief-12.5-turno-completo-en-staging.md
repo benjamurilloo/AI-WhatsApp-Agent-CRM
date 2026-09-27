@@ -323,9 +323,24 @@ Tocar cualquier otro archivo se detiene y se pide al usuario.
 - **Los dos `CONFLICT` sin sembrar nada**:
   - `conversation_ref_taken`: el agente propone, para el cliente del turno 5, la referencia de la conversación de la 12.3.3 (`wa-conv-wamid-fict-p20260927182133-0001`), que es de otro cliente;
   - `message_already_recorded`: reenvía un mensaje del turno 1 con otro `event_id`.
+  - **Enmendado el mismo día por H-8**, abajo: la primera salida no funciona.
 - **La ventana: dos de 60 minutos.** La primera, con los turnos 1 a 3; la segunda, con la interrupción del turno 4, el turno 5 y los dos `CONFLICT`.
 - **N-1 cerrada**: el agente no necesita la cantidad en stock. Coincide con lo que se decidió en las brechas (B-8). Adaptar su prompt de ventas al `stock_status` es trabajo de ellos.
 - **El doble de WhatsApp tiene que devolver un id distinto por segmento.** Es precondición del agente, y `conciliar-turnos.ts` marca uno repetido como duplicado.
+
+**Segunda respuesta del agente** (2026-09-27, fuera del repositorio): acepta H-5, H-6 y H-7 y se compromete con cuatro subfases propias, en orden: el turno por mensaje, la cola durable con su ADR, las tools de lectura y el cableado. La primera ventana va después de la cuarta, y las fechas las fija el usuario. Trae dos hallazgos, que se verificaron contra el código del CRM, y el usuario decidió los dos con las recomendaciones, el 2026-09-27:
+
+- **H-8, la semilla del `409 conversation_ref_taken`.** El agente no elige la referencia que propone: la deriva del id del mensaje de WhatsApp (`wa-conv-` más ese id), sin un camino para cambiarla, y no quiere agregar uno solo para la prueba.
+  - **Su motivo, corregido**: dice que con la referencia de la 12.3.3 el mensaje del turno 5 quedaría en la conversación vieja. No es así: el `external_ref` de un mensaje es único **por conversación** (`messages_organization_conversation_external_ref_unique`, migración `0011`), y el reenvío lo guardaría en la conversación nueva. Pero la organización quedaría con dos mensajes con el mismo `external_ref`, y `conciliar-turnos.ts` lo marcaría como duplicado. La conclusión sigue en pie por ese otro motivo.
+  - **Decisión: sembrar la referencia por el contrato de ingestión**, sin código nuevo ni escrituras a mano en la base, como **primer paso de la segunda ventana**. Son un `client.resolved` y un `conversation.resolved` de un cliente sintético que no está en el guion (`+5491155550090`), con `source` `siembra-12-5-2`:
+    - la referencia propuesta es `wa-conv-wamid-fict-t5-conflict-0001`, la que el agente va a proponer en el turno 5;
+    - el mensaje lleva otro `external_ref`, `wa-msg-seed-h8-0001`. El CRM crea siempre la conversación con su primer mensaje, así que lo que se garantiza es que **no exista** `wa-msg-wamid-fict-t5-conflict-0001`, que es lo que el agente necesita.
+  - La semilla no entra en la conciliación del agente, que filtra por `source`. **Sí suma un `conversation.resolved` a la métrica 12**, que es de toda la organización: el conteo a mano del AC-12 lo incluye.
+  - Esto reemplaza la primera salida de «Los dos `CONFLICT` sin sembrar nada».
+- **`message_already_recorded`** lo provoca un **llamador temporal**: el cuerpo exacto de un mensaje del turno 1 con otro `event_id`, como en la 12.3.3, porque el agente deriva también el `event_id` del id del mensaje. Se declara como prueba **del emisor y su clasificador**, no de la cadena real, y va fuera de la lista de esperados. No altera la conciliación: el CRM responde `409` y no guarda nada.
+- **E-1 del agente**: su emisor clasificaba `conversation_ref_taken` como «reintentar con referencias nuevas», pero no tenía con qué generarlas. Lo arreglan en la subfase de la cola, con un sufijo de intento. No cambia el contrato: las referencias son opacas. El turno 5 es su primera prueba real (AC-3 de la 12.3, que allí quedó cumplido pero no discriminante).
+- **El turno 4 llega junto y tarde.** Con H-7, si el entrante no entra, las salidas de ese turno tampoco, porque necesitan la referencia que devuelve `conversation.resolved`. La cola drena el turno entero, en orden, cuando la ingestión vuelve. `conciliar-turnos.ts` cuenta por el `created_at` del CRM y la conversación se elige por `sent_at`, así que no se rompe: **el `--hasta` de la conciliación se fija después de que la cola terminó de drenar**.
+- **H-9, `/knowledge` sin total.** Sin total ni paginación, el consumidor no puede saber si la respuesta vino recortada a 50. El agente tratará 50 ítems exactos como posible recorte y lo registrará. **Decisión: anotarlo como límite conocido en `read-v1.md`**, sin cambiar el contrato. Lo cubre el disparador de H-6.
 
 ## Resultados — etapa 12.5.1
 

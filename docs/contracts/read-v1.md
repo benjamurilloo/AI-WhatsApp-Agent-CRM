@@ -106,6 +106,7 @@ La información del negocio **vigente hoy** de la organización de la credencial
 - **Sin `q`**: todas las vigentes, por categoría, título e id.
 - **Respuesta `200`**: `{ "contract_version": "1", "items": [entrada, …] }`. Sin resultados, `items` es `[]`.
 - No hay paginación: el consumidor refina la búsqueda.
+- **Límite conocido** (H-9 del agente, brief-12.5, 2026-09-27): la respuesta no trae el total. Sin `q` y con `limit=50`, el consumidor no puede distinguir una organización con 50 entradas vigentes de una con más, y **el recorte no se nota**. El agente trata 50 ítems exactos como posible recorte y lo registra. Si una organización supera las 50 entradas vigentes, se revisa en la subfase que agregue la búsqueda por «cualquier palabra» (el disparador de H-6), que es cuando conviene agregar el total.
 
 ### Entrada de información del negocio
 
