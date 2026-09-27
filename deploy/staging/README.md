@@ -131,6 +131,17 @@ La [API de lectura](../../docs/contracts/read-v1.md) está **apagada** en stagin
 
 `app.env` no está versionado (D-8), así que ningún `diff` detecta que la API quedó encendida. Se comprueba con ese `GET`.
 
+*Agregado el 2026-09-27 ([brief-12.5](../../docs/decisions/brief-12.5-turno-completo-en-staging.md), 12.5.1).* **Desde la 12.4 hay dos alcances de lectura**, y cada uno lleva su propia credencial:
+
+- **`read`**: catálogo e información del negocio;
+- **`context`**: el historial, `GET /api/read/v1/messages`. Necesita la migración `0024`.
+
+Cada una se crea con el paso 1, cambiando `--scope`. Los dos ids van juntos en la allowlist, separados por coma: `READ_API_ALLOWED_CREDENTIALS=<id_read>,<id_context>`. Al apagar, se revocan las dos.
+
+- **Comprobación de más**: un `GET /api/read/v1/messages?conversation_ref=x` sin credencial tiene que dar `401` con la API encendida, y `404` apagada.
+- **La ingestión se enciende igual**, con `INGESTION_ENABLED=true` e `INGESTION_ALLOWED_CREDENTIALS`, y una credencial `--scope ingest`. Se comprueba con un `POST /api/ingestion/v2/events` sin credencial: `401` encendida, `404` apagada ([evidencia-12.3](../../docs/decisions/evidencia-12.3-ingestion-v2.md), §12.3.3).
+- **Si el token va a un emisor, lo crea el usuario en su propia terminal** y lo pega directo en el emisor. Así no pasa por la conversación con un asistente. Desde la 12.3.3, porque en la 12.3.2 un `echo` imprimió 6 caracteres de un token.
+
 ## Verificar después de desplegar
 
 Los dos primeros comprueban lo que ninguna guarda puede: que el servidor tenga lo que el repositorio dice.

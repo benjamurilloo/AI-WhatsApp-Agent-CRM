@@ -5,6 +5,14 @@
 //   CRM_BASE_URL=https://staging.vixoraai.app CRM_READ_TOKEN=crm_read_… \
 //     npx tsx scripts/probar-api-lectura.ts
 //
+// Desde la 12.5 (brief-12.5, AC-2) prueba también el historial, si se le da una credencial de
+// alcance `context` y la referencia de una conversación de esa organización:
+//
+//   … CRM_CONTEXT_TOKEN=crm_ctx_… CRM_CONVERSATION_REF=<external_ref> npx tsx …
+//
+// Del historial imprime solo la forma de cada mensaje (dirección, tipo, autor y hora), nunca el
+// texto: es lo que escribió un cliente, aunque en staging sea sintético.
+//
 // Está pensado para la organización del seed del piloto (`seeds/pilot.ts`): además del contrato,
 // comprueba que no sale ningún producto inactivo ni ninguna entrada no vigente de ese seed. Contra
 // otra organización esas dos comprobaciones no significan nada, y el script lo avisa.
@@ -23,6 +31,7 @@ import type { z } from "zod";
 import {
   errorResponseSchema,
   knowledgeListResponseSchema,
+  messageListResponseSchema,
   productListResponseSchema,
   productResponseSchema,
 } from "@/app/api/read/v1/contract";
@@ -35,6 +44,8 @@ import {
 
 const BASE = process.env.CRM_BASE_URL;
 const TOKEN = process.env.CRM_READ_TOKEN;
+const CONTEXT_TOKEN = process.env.CRM_CONTEXT_TOKEN;
+const CONVERSATION_REF = process.env.CRM_CONVERSATION_REF;
 
 // Preguntas típicas de un cliente, convertidas en lo que el agente buscaría.
 const PRODUCT_QUERIES = ["reacondicionado", "Aria", "auriculares", "Novatek"];
@@ -65,8 +76,9 @@ async function pedir(
 async function valida<T extends z.ZodType>(
   ruta: string,
   esquema: T,
+  opciones: { token?: string | null } = {},
 ): Promise<z.infer<T> | null> {
-  const respuesta = await pedir(ruta);
+  const respuesta = await pedir(ruta, opciones);
   const requestId = respuesta.headers.get("x-request-id");
   console.log(`\nGET ${ruta} → ${respuesta.status} (request_id ${requestId})`);
   if (respuesta.status !== 200) {
@@ -105,6 +117,46 @@ async function rechazo(
   if (!errorResponseSchema.safeParse(cuerpo).success) {
     fallar(`${ruta}: el cuerpo del ${estado} no es el de error del contrato`);
   }
+}
+
+// El historial (brief-12.4 y brief-12.5, AC-2): los últimos N en orden cronológico, solo con la
+// credencial `context`, y la `context` no lee el catálogo.
+async function probarHistorial(contexto: string, referencia: string) {
+  const ruta = (ref: string, limit: number) =>
+    `/messages?conversation_ref=${encodeURIComponent(ref)}&limit=${limit}`;
+  const todo = await valida(ruta(referencia, 50), messageListResponseSchema, {
+    token: contexto,
+  });
+  if (todo) {
+    console.log(`  ${todo.items.length} mensajes (sin el texto):`);
+    for (const item of todo.items) {
+      console.log(
+        `  - ${item.sent_at} · ${item.direction} · ${item.kind ?? "sin tipo"} · ${item.sent_by ?? "—"}`,
+      );
+    }
+    const horas = todo.items.map((item) => item.sent_at);
+    if (horas.some((hora, i) => i > 0 && hora < horas[i - 1]!)) {
+      fallar("el historial no viene en orden cronológico");
+    }
+    const ultimo = await valida(
+      ruta(referencia, 1),
+      messageListResponseSchema,
+      { token: contexto },
+    );
+    if (
+      ultimo &&
+      todo.items.length > 0 &&
+      ultimo.items[0]?.external_ref !== todo.items.at(-1)?.external_ref
+    ) {
+      fallar("con limit=1 el historial no devolvió el último mensaje");
+    }
+  }
+  await rechazo(ruta(`inexistente-${randomUUID()}`, 5), 404, {
+    token: contexto,
+  });
+  await rechazo("/products?q=cafe", 403, { token: contexto });
+  await rechazo(ruta(referencia, 5), 403);
+  await rechazo(ruta(referencia, 5), 401, { token: null });
 }
 
 function precio(p: { amount: string; currency: string } | null): string {
@@ -182,6 +234,14 @@ async function main(): Promise<void> {
         fallar(`${ruta} devolvió la entrada no vigente ${item.entry_id}`);
       }
     }
+  }
+
+  if (CONTEXT_TOKEN && CONVERSATION_REF) {
+    await probarHistorial(CONTEXT_TOKEN, CONVERSATION_REF);
+  } else {
+    console.log(
+      "\nAVISO: sin CRM_CONTEXT_TOKEN y CRM_CONVERSATION_REF, el historial no se prueba.",
+    );
   }
 
   if (vistosDelPiloto === 0) {

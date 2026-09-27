@@ -4,7 +4,7 @@
 - **Diseñado e implementado** en la 11.3 ([brief-11.3](../decisions/brief-11.3-api-de-lectura.md)), en dos etapas: productos en la 11.3.1 e información del negocio en la 11.3.2.
 - **Ampliado en la 12.4** ([brief-12.4](../decisions/brief-12.4-historial-y-memorias.md)) con el historial de una conversación, `GET /api/read/v1/messages`, y su propio alcance de credencial, `context`. Es una ruta nueva, un cambio compatible dentro de v1 (§Versionado): ninguna respuesta existente cambia.
 - **Validado localmente y en CI**, con requests sintéticos, contra PostgreSQL real.
-- **No validado en integración**: ningún consumidor lo usa todavía. Sus fixtures tienen **forma asumida, no verificada**. Productos e información del negocio se validan con el agente en la 12.3, detrás del modo de prueba. El historial, en la 12.5: no se despliega a staging antes (brief-12.4, D-9).
+- **No validado en integración**: ningún consumidor lo usa todavía. Sus fixtures tienen **forma asumida, no verificada**. Productos e información del negocio se validan con el agente en la 12.3, detrás del modo de prueba. El historial, en la 12.5: no se despliega a staging antes (brief-12.4, D-9). *Corregido el 2026-09-27* ([brief-12.5](../decisions/brief-12.5-turno-completo-en-staging.md), H-1, aprobado por el usuario): **la 12.3 no validó la lectura**, porque su corrida con el agente fue solo de ingestión. Las tres rutas se validan con el agente como consumidor en la 12.5.
 
 El contrato se diseñó desde el modelo del CRM ([ADR 0014](../decisions/0014-el-agente-de-whatsapp-como-consumidor-del-crm.md), punto 2). No espeja las tablas ni los campos del sistema que hoy usa el agente, y el agente se adapta a él.
 
@@ -228,7 +228,7 @@ Cada respuesta de la API encendida, incluidos los rechazos y el `500`, queda en 
   - en `tests/e2e/read-api.spec.ts`, sobre `next start`: las cabeceras de `proxy.ts` en las tres rutas (cuatro desde la 12.4) y la API apagada por defecto;
   - en `scripts/medir-caminos.ts`: las lecturas de las tres rutas contra el volumen de desarrollo (10 000 productos), sin el borde. Ese volumen no tiene precios ni entradas de información ([brief-11.3](../decisions/brief-11.3-api-de-lectura.md), §Resultados de la 11.3.2);
   - **el historial, desde la 12.4**, en `tests/integration/read-api-messages.test.ts`: los últimos N y nunca los primeros; el orden por `sent_at` con desempate estable; los mensajes sin tipo ni autor; el mismo `404` para una conversación ajena o inexistente; el alcance `context` en las dos direcciones; el borde, el log sin la referencia ni el texto y el `500`; y el plan de la consulta, que usa `messages_conversation_sent_idx` y corta con `LIMIT` en SQL. `read-api.spec.ts` suma la ruta a las cabeceras de `proxy.ts`. **No** se desplegó en staging (brief-12.4, D-9): llega con la 12.5.
-- **Sin validar hasta la 12.3** para productos e información del negocio, y **hasta la 12.5** para el historial:
+- **Sin validar hasta la 12.5**, las tres rutas (antes decía «hasta la 12.3» para productos e información; corregido el 2026-09-27, brief-12.5, H-1):
   - la compatibilidad con un consumidor real;
   - la autenticación con su tráfico;
   - si 120 pedidos por minuto alcanzan: es una estimación, no una medición ([Risks](../planning/Risks.md)).
