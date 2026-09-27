@@ -169,6 +169,7 @@ El cuerpo del `409` es `{ "code": "CONFLICT", "request_id", "reason" }`.
 **Lo que el CRM garantiza**: un reenvío **idéntico** (mismo `event_id` y mismo contenido) nunca pierde ni duplica un mensaje, cualquiera sea el resultado del primero. **Lo que no garantiza**: un mensaje que el emisor deja de reenviar. Cuántas veces reintenta y qué hace mientras tanto lo decide el emisor.
 
 - **`event_id` estable por hecho**: se deriva de la identidad del mensaje en el canal y del tipo de evento, nunca del teléfono ni del contenido. El mismo hecho siempre lleva el mismo `event_id`, y dos hechos distintos, dos distintos.
+- **Contenido reproducible**: todo el cuerpo se deriva del hecho, incluido `occurred_at`, que sale del momento del mensaje o del envío y nunca del reloj del emisor al armar el pedido. Si el reenvío lleva otro contenido bajo el mismo `event_id`, el CRM responde `409 event_payload_mismatch` y el reenvío deja de ser seguro. *Agregado el 2026-09-27 por la 12.3.3, a partir de un hallazgo del emisor (H-1), con la aprobación del usuario.*
 - **Una correlación por turno**, en `X-Correlation-Id`, sin datos personales: permite encontrar en el log del CRM todos los pedidos de ese turno.
 
 | Respuesta | Qué significa | Qué hace el emisor |

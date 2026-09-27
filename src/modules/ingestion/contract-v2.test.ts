@@ -315,21 +315,63 @@ describe("reglas heredadas de v1", () => {
   });
 });
 
-describe("fixtures del contrato v2 (forma asumida)", () => {
+describe("fixtures del contrato v2 (forma asumida y capturas del emisor)", () => {
   const dir = path.join(process.cwd(), "tests/fixtures/ingestion/v2");
   const files = readdirSync(dir).filter((file) => file.endsWith(".json"));
+  const captured = files.filter((file) => file.startsWith("captured-"));
 
   it("existen casos válidos e inválidos", () => {
     expect(files.some((file) => file.startsWith("valid-"))).toBe(true);
     expect(files.some((file) => file.startsWith("invalid-"))).toBe(true);
   });
 
+  it("FR-API-07: las capturas del emisor real cubren los cuatro tipos y una salida con autor (brief-12.3, AC-17)", () => {
+    const events = captured
+      .map((file) => JSON.parse(readFileSync(path.join(dir, file), "utf8")))
+      .filter((fixture) => fixture.expected.ok)
+      .map((fixture) => JSON.parse(fixture.body));
+    expect(new Set(events.map((event) => event.event_type))).toEqual(
+      new Set([
+        "client.resolved",
+        "conversation.resolved",
+        "message.recorded",
+        "conversation.escalated",
+      ]),
+    );
+    expect(
+      events.some(
+        (event) =>
+          event.message?.direction === "outbound" &&
+          event.message?.sent_by === "agent",
+      ),
+    ).toBe(true);
+  });
+
   it.each(files)("%s declara su forma y valida como espera", (file) => {
     const fixture = JSON.parse(readFileSync(path.join(dir, file), "utf8"));
-    expect(fixture.shape).toBe("assumed");
-    expect(fixture.note).toMatch(/forma asumida/i);
-    const result = parse(fixture.payload, new Date(fixture.received_at));
-    expect(result.ok).toBe(file.startsWith("valid-"));
+    const isCaptured = file.startsWith("captured-");
+    // Una captura guarda el cuerpo tal como salió del emisor, y se valida ese texto.
+    expect(fixture.shape).toBe(isCaptured ? "captured" : "assumed");
+    expect(fixture.note).toMatch(
+      isCaptured ? /capturada del emisor real/i : /forma asumida/i,
+    );
+    const result = isCaptured
+      ? parseIngestionEventV2(fixture.body, new Date(fixture.received_at))
+      : parse(fixture.payload, new Date(fixture.received_at));
+    expect(result.ok).toBe(
+      file.startsWith("valid-") ||
+        (isCaptured && !file.startsWith("captured-invalid-")),
+    );
+    if (isCaptured) {
+      expect(result.ok).toBe(fixture.staging_status < 300);
+      // Ni un prefijo de token en todo el archivo, y solo teléfonos del rango sintético (D-9).
+      expect(readFileSync(path.join(dir, file), "utf8")).not.toMatch(
+        /crm_[a-z]+_/,
+      );
+      for (const phone of fixture.body.match(/\+\d+/g) ?? []) {
+        expect(phone).toMatch(/^\+54911555500\d\d$/);
+      }
+    }
     expect(
       result.ok
         ? { ok: true, payload_hash: ingestionPayloadHashV2(result.event) }

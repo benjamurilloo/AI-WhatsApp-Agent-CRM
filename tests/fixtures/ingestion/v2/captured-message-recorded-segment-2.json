@@ -1,0 +1,13 @@
+{
+  "shape": "captured",
+  "note": "Capturada del emisor real: la instancia de n8n del agente, contra staging, el 2026-09-27 (brief-12.3, etapa 12.3.3). Datos sintéticos. El cuerpo va tal como salió, byte a byte.",
+  "description": "Captura 04 de la corrida del agente: message.recorded de salida con sent_by agent (segmento 2), aceptado con 201.",
+  "received_at": "2026-09-27T18:21:36.029Z",
+  "correlation_id": "probe-12-3-3-p20260927182133",
+  "staging_status": 201,
+  "body": "{\"contract_version\":\"2\",\"event_type\":\"message.recorded\",\"event_id\":\"wa-out-wamid-out-p20260927182133-0002\",\"occurred_at\":\"2026-09-27T18:00:05.250Z\",\"conversation\":{\"external_ref\":\"wa-conv-wamid-fict-p20260927182133-0001\",\"channel\":\"whatsapp\",\"client_phone\":\"+5491155550007\"},\"message\":{\"external_ref\":\"wa-msg-wamid-out-p20260927182133-0002\",\"direction\":\"outbound\",\"kind\":\"text\",\"sent_by\":\"agent\",\"sent_at\":\"2026-09-27T18:00:05.250Z\",\"body_text\":\"Si, tenemos la ficticia 12.\"}}",
+  "expected": {
+    "ok": true,
+    "payload_hash": "33e8448551500cb91677d94ee238fb371ae781380f772d4e9659149881b7fd9e"
+  }
+}

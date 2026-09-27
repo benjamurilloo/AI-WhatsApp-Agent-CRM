@@ -1,0 +1,13 @@
+{
+  "shape": "captured",
+  "note": "Capturada del emisor real: la instancia de n8n del agente, contra staging, el 2026-09-27 (brief-12.3, etapa 12.3.3). Datos sintéticos. El cuerpo va tal como salió, byte a byte.",
+  "description": "Captura 05 de la corrida del agente: conversation.escalated, aceptado con 200 y la conversación pending.",
+  "received_at": "2026-09-27T18:21:36.486Z",
+  "correlation_id": "probe-12-3-3-p20260927182133",
+  "staging_status": 200,
+  "body": "{\"contract_version\":\"2\",\"event_type\":\"conversation.escalated\",\"event_id\":\"wa-esc-wamid-fict-p20260927182133-0001\",\"occurred_at\":\"2026-09-27T18:00:05.500Z\",\"conversation\":{\"external_ref\":\"wa-conv-wamid-fict-p20260927182133-0001\",\"channel\":\"whatsapp\"}}",
+  "expected": {
+    "ok": true,
+    "payload_hash": "3e284159002b38b32964f646670d7314226d9d1f643cfc79e98090ac58284e0d"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "shape": "captured",
+  "note": "Capturada del emisor real: la instancia de n8n del agente, contra staging, el 2026-09-27 (brief-12.3, etapa 12.3.3). Datos sintéticos. El cuerpo va tal como salió, byte a byte.",
+  "description": "Captura 02 de la corrida del agente: conversation.resolved, aceptado con 200 y la conversación open.",
+  "received_at": "2026-09-27T18:21:35.034Z",
+  "correlation_id": "probe-12-3-3-p20260927182133",
+  "staging_status": 200,
+  "body": "{\"contract_version\":\"2\",\"event_type\":\"conversation.resolved\",\"event_id\":\"wa-conv-wamid-fict-p20260927182133-0001\",\"occurred_at\":\"2026-09-27T17:59:57.000Z\",\"conversation\":{\"external_ref\":\"wa-conv-wamid-fict-p20260927182133-0001\",\"channel\":\"whatsapp\",\"client_phone\":\"+5491155550007\"},\"message\":{\"external_ref\":\"wa-msg-wamid-fict-p20260927182133-0001\",\"kind\":\"text\",\"sent_at\":\"2026-09-27T17:59:57.000Z\",\"body_text\":\"Tenes stock de la ficticia 12?\"}}",
+  "expected": {
+    "ok": true,
+    "payload_hash": "f835026c1d29be9491f03efccf0e9089f331d5b7cc728b8c5e0edf8b43565304"
+  }
+}

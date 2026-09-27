@@ -455,3 +455,77 @@ Todas se restauraron desde una copia, y `diff` confirmó que cada archivo, la mi
 **Nivel**: el contrato v2 está **validado en staging** con requests sintéticos a través del borde real (`isolated-runtime`). **No** con un emisor real: eso es la 12.3.3, que empieza cuando el agente emita.
 
 **CI de la etapa 12.3.2**: commit `cc90eaf`, run 36202372270, `success` en el intento 1. El commit solo trae documentación y el script, así que staging sigue en `49a3cb4` sin redesplegar.
+
+## Resultados — etapa 12.3.3
+
+**Autoevaluación** (`self_assessment: true`), del 2026-09-27. Las salidas están en [evidencia-12.3](evidencia-12.3-ingestion-v2.md), §12.3.3. El emisor fue la instancia de n8n del agente, conducida por la sesión de su repositorio con su brief-3.22. El CRM leyó su informe y sus capturas como insumo y las cruzó con su log y su base.
+
+### Autorizaciones y decisiones del usuario durante la etapa
+
+- **La ventana de staging**, de 15:00 a 16:00 ART, y tocar staging para abrirla y cerrarla. Se usó de 18:10 a 18:30 UTC.
+- **El token lo creó el usuario en su propia terminal** y fue directo a la credencial de n8n, para que no pasara por la conversación con el asistente, como sí pasó en la 12.3.2.
+- **Una línea más en la guía del emisor de `ingestion-v2.md`**, «Contenido reproducible», a partir del hallazgo H-1 del agente. Es una aclaración, no un cambio de contrato, y **ese archivo no estaba en la lista de la 12.3.3**: lo autorizó el usuario.
+- **Las lecturas de la base de staging las hizo el usuario**: el clasificador del modo automático bloqueó la del asistente, y no se reintentó por otro camino.
+- **Respuestas al agente**, fuera del repositorio (`Respuesta-12.3.3-CRM-al-Agente.md`, en el Escritorio del usuario):
+  - H-3, una correlación por turno, ya estaba en la guía;
+  - su filtro de tokens tiene que cubrir `crm_ctx_`;
+  - **H-2, el turno consolidado, es condición de entrada de la 12.5**.
+
+### Contraste por criterio
+
+| AC | Resultado | Evidencia |
+|---|---|---|
+| AC-16 | cumplido | 7 pedidos del emisor real: los cuatro tipos, dos salidas con `sent_by: agent`, un reenvío `duplicate` con el mismo `client.id` y un `400` deliberado. Siete líneas del log con la correlación, sin secretos ni datos del mensaje. Ningún rechazo inesperado. Cinco filas `processed` en `ingestion_events` |
+| AC-17 | cumplido en local; la CI, con el commit | 6 fixtures `captured-*.json` con el cuerpo tal como salió; el validador da lo mismo que staging. Un caso nuevo con FR-API-07 y una corrida de mutación |
+| AC-18 | cumplido | 3 eventos y 0 fallidos, a mano y en el dashboard. **El valor anunciado antes de mirar fue 4, por un error de quien hizo el trabajo**: olvidó que `conversation.escalated` no cuenta desde la 12.2. Registrado en la evidencia |
+| AC-19 | **cumplido en parte** | **Trasladado a la 12.5 por decisión del usuario** (2026-09-27, revisión independiente H-1): las lecturas por turno y R-6, con la enmienda del Roadmap y la fila de R-6 en Risks. 5 escrituras por turno, 0 lecturas y ningún `429`, en Risks. Las lecturas por turno se miden en la 12.5. **R-6 ni confirmada ni descartada**: el nombre sintético no trae el teléfono |
+| AC-20 | cumplido, con la salvedad de la 12.1 | el caso de cobertura lleva FR-API-07; los seis del recorrido por archivo se nombran por el archivo (R-3 de la 12.1) |
+
+### Limitaciones
+
+- **El turno fue sintético**, y el emisor del agente sigue sin cablear a su pipeline.
+- **La referencia devuelta no se puso a prueba**: el CRM devolvió la propuesta. Tampoco se ejercitaron los dos `409` con el emisor real.
+- **Los encabezados de las capturas son los que declara el emisor.** La correlación sí se ve en el log del CRM.
+
+### Verificación de la etapa
+
+- `lint`, `typecheck` y `format:check` limpios.
+- Vitest `unit`: **483 de 483**; guardas: **296 de 296**. **Integración y end-to-end no se corrieron en local** en esta etapa: Docker estaba apagado, y la etapa no cambió código de producción. Los corre la CI con el commit.
+- **Corridas de mutación**, todas restauradas y comprobadas:
+
+| Id | Mutación | Resultado |
+|---|---|---|
+| M22 | sin el `sent_by` de la captura del segmento 1 | falla el recorrido de ese archivo: el validador rechaza una salida sin autor |
+| M23 | sin la captura de `conversation.escalated` (agregada por H-6 de la revisión) | falla el caso de cobertura de FR-API-07 |
+| M24 | un teléfono fuera del rango `+54911555500xx` | falla el recorrido del archivo, en la aserción del rango |
+| M25 | un prefijo `crm_ing_` en la nota de una captura | falla el recorrido del archivo, en la aserción de prefijos |
+
+- **Pendiente del usuario**: sacar de su configuración local los permisos `Bash(ssh crm-staging:*)`, el del túnel SOCKS y el de `pkill`, que la 12.3.2 dejó para cerrar con la 12.3.3.
+
+### Revisión independiente (D-11)
+
+Del 2026-09-27, por un agente de solo lectura que no participó del trabajo, contra este brief y las reglas vigentes. **Veredicto: R2**, con 2 hallazgos mayores y 6 menores, ninguno bloqueante. El nivel `producer-consumer` quedó bien acotado, y las cifras del dashboard son coherentes con el turno.
+
+Cada hallazgo se verificó contra el código antes de aceptarlo. Se aceptaron los ocho:
+
+| Id | Severidad | Hallazgo | Resolución |
+|---|---|---|---|
+| H-1 | mayor | AC-19 pedía las lecturas por turno y R-6 confirmada o descartada, se lo dio por cumplido para la ingestión sin decisión registrada, y Risks no tenía fila para R-6 | **decisión del usuario**: las dos pasan a la 12.5. Enmienda del Roadmap, fila de R-6 en Risks y AC-19 «cumplido en parte» |
+| H-2 | mayor | la fidelidad del cuerpo de las capturas se apoyaba solo en la captura del emisor, y el `payload_hash` del fixture salía del propio validador | se cruzaron los 5 `payload_hash` guardados por staging, consulta del usuario, y **coinciden**. La evidencia separa lo que vio el CRM de lo que solo consta en el agente |
+| H-3 | menor | Risks seguía diciendo que las lecturas se medían en la 12.3 | enmienda fechada: pasan a la 12.5 |
+| H-4 | menor | «la fórmula es firme» y «24 turnos por minuto», a partir de un solo turno | «observada en un solo turno de un mensaje», condicionada al turno consolidado |
+| H-5 | menor | la verificación de la etapa estaba vacía, sin las mutaciones ni el pendiente del permiso `ssh` | completada, con M22 a M25 y el pendiente del usuario |
+| H-6 | menor | el caso de cobertura no tenía mutación propia; los prefijos de token se buscaban solo en el cuerpo; el rango de teléfonos no se comprobaba | M23; prefijos en todo el archivo (M25) y rango `+54911555500xx` (M24) |
+| H-7 | menor | AC-20 «cumplido» sin la salvedad de los casos por archivo | con la salvedad de la 12.1 |
+| H-8 | menor | el conteo a mano filtraba por `source` y el dashboard cuenta por organización y período | consulta de la organización en el día: 5 filas, las mismas |
+
+**Estado documental** que la revisión marcó como viejo: HANDOFF, Roadmap, `IntegrationBoundaries.md` (el gate como pendiente) e `ingestion-v2.md`, línea de `client.display_name` («la 12.3.3 revisa con capturas»). **Se actualizan al cerrar la 12.3**, por decisión del usuario. `IntegrationBoundaries.md` no estaba en la lista y lo autorizó el usuario.
+
+**Lo que la revisión no pudo verificar**:
+- el `git diff`, porque no tenía shell;
+- los datos de staging, que tomó como provistos;
+- que el cuerpo lo haya armado el nodo HTTP del agente con su propia serialización (D-9). Del lado del CRM hay un indicio: el token solo vivía en la credencial de n8n;
+- las afirmaciones sobre el código del agente;
+- la CI.
+
+**Nivel**: el contrato de ingestión v2 queda **validado en integración** (`producer-consumer`), con el agente como emisor y datos sintéticos. **No** es el turno completo (12.5) ni producción.

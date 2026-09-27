@@ -93,3 +93,89 @@ Pedidos enviados: 18
 Las comprobaciones 2 y 5 las autorizó el usuario después del resto, con dos permisos más para el túnel. Dejaron **dos filas** en `login_attempts`, lejos del umbral de 20. El túnel se cerró con `Stop-Process`, porque Git Bash en Windows no trae `pkill`, y se comprobó cerrado.
 
 **Nivel de la 12.3.2 hasta acá**: el contrato v2 está **validado en staging** con requests sintéticos a través del borde real (`isolated-runtime`). **No** con un emisor real.
+
+## 12.3.3 — Emisor real, 2026-09-27
+
+Autorizado por el usuario el 2026-09-27: la ventana de staging de 15:00 a 16:00 ART, y tocar staging para abrirla y cerrarla. El emisor es la instancia de n8n del agente, con su brief-3.22 en su repositorio. Esta sección registra lo que el CRM vio de su lado. El informe y las capturas del agente se leyeron como insumo, y lo que el CRM puede ver de su lado (respuestas, log, filas y dashboard) se cruzó antes de aceptarlo. Lo que solo consta en el agente (su serialización, su guarda de nombres) se declara como tal.
+
+### La ventana
+
+1. **Estado previo**: staging en `49a3cb4`, `INGESTION_ENABLED=false`, `/login` `200`, v1 y v2 `404`.
+2. **Credencial**: la creó **el usuario en su propia terminal**, con la línea del README, de alcance `ingest` y `source` `agente-12-3-3`: `8c516f09-161a-457b-aebe-373a91496f19`. El token fue directo a la credencial Bearer `CRM Ingestion v2 - staging` de la instancia del agente. **No pasó por la conversación con el asistente**, a diferencia de la 12.3.2.
+3. **Encendido**, a las 18:10 UTC: copia previa de `app.env` en `/etc/crm-staging/app.env.bak-12-3-3`; `INGESTION_ENABLED=true` y la credencial en la allowlist, y reinicio. Sin credencial, v1 y v2 respondieron **`401`**; la API de lectura siguió en `404` y `/login` en `200`.
+4. **Corrida del agente**: de 18:21:33Z a 18:23:24Z, 7 pedidos.
+5. **Apagado**, a las 18:30 UTC: `INGESTION_ENABLED=false` y la allowlist vacía, reinicio y revocación. v1 y v2 volvieron a `404`, y `/login` a `200`. `revoked_at = 2026-09-27 18:30:28.943417+00`, leído por el usuario en su terminal.
+
+### AC-16 — Los pedidos del emisor real
+
+| # | Evento | Correlación | Respuesta de staging | Línea del log del CRM |
+|---|---|---|---|---|
+| 1 | `client.resolved` | turno | `200 accepted` | 18:21:34.556Z `OK`, 123 ms |
+| 2 | `conversation.resolved` | turno | `200 accepted`, `open` | 18:21:35.034Z `OK`, 41 ms |
+| 3 | `message.recorded` de salida, `sent_by: agent` | turno | `201 accepted` | 18:21:35.596Z `OK`, 34 ms |
+| 4 | `message.recorded` de salida, `sent_by: agent` | turno | `201 accepted` | 18:21:36.029Z `OK`, 27 ms |
+| 5 | `conversation.escalated` | turno | `200 accepted`, `pending` | 18:21:36.486Z `OK`, 26 ms |
+| 6 | reenvío idéntico del 1 | turno | `200 duplicate`, el mismo `client.id` | 18:21:36.992Z `OK`, 24 ms |
+| 7 | `client.resolved` con `display_name` vacío, **deliberado** | la suya | `400 VALIDATION_ERROR`, `client.display_name` | 18:23:23.604Z `VALIDATION_ERROR`, el mismo `request_id` `ebdcbc93-…` |
+
+- Correlación del turno: `probe-12-3-3-p20260927182133`; la del caso deliberado: `probe-12-3-3-ac6-b20260927182323`. **Las siete líneas del log llevan la correlación**, la organización del piloto y el `source` `agente-12-3-3`, y **ninguna** lleva token, teléfono ni texto del mensaje.
+- **Ningún rechazo inesperado.** El único `400` fue deliberado: el emisor salteó a propósito su propia guarda, que en producción convierte el nombre vacío en `null`.
+- **La base de staging** (consulta del usuario en su terminal, sobre `source = 'agente-12-3-3'`):
+
+  ```
+         event_type       |  status   | error_code | count
+  ------------------------+-----------+------------+-------
+   client.resolved        | processed |            |     1
+   conversation.escalated | processed |            |     1
+   conversation.resolved  | processed |            |     1
+   message.recorded       | processed |            |     2
+  ```
+
+  Son las **cinco filas** que da la cuenta a mano: el reenvío no dejó otra, y el `400` no deja fila (brief-6.5.1, D-6).
+
+### AC-17 — Las capturas como fixtures
+
+Seis archivos `tests/fixtures/ingestion/v2/captured-*.json`, con `"shape": "captured"` y el cuerpo como texto, **tal como lo registró la captura del emisor**: el log del CRM no guarda el cuerpo, así que su fidelidad se apoya en la captura (ver el cruce de `payload_hash` más abajo). El reenvío no se guardó, porque es idéntico al pedido 1. `contract-v2.test.ts` valida ese texto con `parseIngestionEventV2` y da lo mismo que staging: cinco válidos y un inválido en `client.display_name`. Un caso nuevo exige que las capturas cubran los cuatro tipos y una salida con autor, y ninguna puede contener un prefijo `crm_…_`. **Corrida de mutación**: sin el `sent_by` de una captura, el test falla. El archivo se restauró.
+
+**Cruce de los cuerpos con staging** (revisión independiente, H-2). El log del CRM no guarda el cuerpo, así que la fidelidad de las capturas se comprobó por el `payload_hash` que staging calculó y guardó al recibir cada evento. La consulta la corrió el usuario en su terminal:
+
+```
+              external_ref               |                           payload_hash
+-----------------------------------------+------------------------------------------------------------------
+ wa-cli-wamid-fict-p20260927182133-0001  | cb0422d245725a082ff338b0b425f274813931d2a83bd3dbbeb66f08d4b3126a
+ wa-conv-wamid-fict-p20260927182133-0001 | f835026c1d29be9491f03efccf0e9089f331d5b7cc728b8c5e0edf8b43565304
+ wa-out-wamid-out-p20260927182133-0001   | 0f09768b90a14ab4bed11711e8b95211decc58e57469bc618531f16b5d625d2e
+ wa-out-wamid-out-p20260927182133-0002   | 33e8448551500cb91677d94ee238fb371ae781380f772d4e9659149881b7fd9e
+ wa-esc-wamid-fict-p20260927182133-0001  | 3e284159002b38b32964f646670d7314226d9d1f643cfc79e98090ac58284e0d
+```
+
+**Los cinco coinciden** con el `expected.payload_hash` de su fixture. Staging normalizó y hasheó lo que recibió, así que las capturas guardan el mismo evento que llegó. El pedido inválido no deja fila y no tiene con qué cruzarse: su `400` y su campo se cruzan con el log.
+
+### AC-19 — Pedidos por turno y R-6
+
+- **5 pedidos de escritura en el turno de la prueba** (un mensaje, dos segmentos y la derivación; coincide con la fórmula `2 + segmentos`, más 1 si deriva, que informa el emisor, observada en un solo turno), **0 lecturas** (esta prueba era solo de ingestión) y **ningún `429`**. Registrado en [Risks](../planning/Risks.md).
+- **R-6 ni confirmada ni descartada**: el nombre sintético no trae el teléfono. La regla del CRM (`isPhoneAsName`) sigue como defensa, y la guarda del emisor usa la misma regla.
+
+### AC-18 — La métrica 12 con eventos del emisor real (O-34)
+
+**Conteo a mano sobre `ingestion_events`**, aplicando la regla de [MetricsCatalog](../analytics/MetricsCatalog.md) §12: de las cinco filas, `client.resolved` no cuenta (desde la 12.1) y `conversation.escalated` tampoco (desde la 12.2). Quedan **3 eventos**: `conversation.resolved` y los dos `message.recorded`. Los tres son `processed`, así que hay **0 fallidos** y la tasa es **0 %**, sin grupos.
+
+**El dashboard de staging**, leído por el usuario para la organización del piloto con el período del 27/09/2026 al 27/09/2026 en `America/Argentina/Buenos_Aires`: **«0,0 %», «0 fallidos de 3 eventos»**. **Coincide.**
+**Supuesto comprobado** (revisión independiente, H-8): el conteo a mano filtra por `source` y el dashboard cuenta por organización y período. Una consulta de la organización del piloto entre `2026-09-27 03:00+00` y `2026-09-28 03:00+00` (el 27/09 en ART) dio **5 filas**, las mismas cinco: ese día no hubo otros eventos de ingestión.
+
+**Error de quien hizo el trabajo, registrado**: antes de mirar el dashboard, el valor esperado se anunció como **4 eventos**, olvidando que `conversation.escalated` no cuenta. El dashboard dio 3, y la regla escrita en el catálogo le da la razón. El recuento se corrigió contra la regla, no contra la pantalla.
+
+Las otras métricas de ese día también coinciden con el turno:
+- **1** conversación iniciada, con actividad y respondida, con **1** cliente único;
+- **1** mensaje entrante, **2** salientes y un promedio de **3,0** mensajes por conversación;
+- **cobertura del 100 %** y una **mediana de primera respuesta de 0,1 min**: 7,5 s entre 17:59:57.000Z y 18:00:04.500Z;
+- **1 conversación `pending`**, por la derivación.
+
+**Nivel de la 12.3.3**: el contrato de ingestión v2 queda **validado en integración** (`producer-consumer`), con el agente como emisor y datos sintéticos. **No** es el turno completo (12.5) ni producción, y el turno no recorrió la cadena real del agente.
+
+### Limitaciones
+
+1. **El turno fue sintético.** Ningún mensaje real de WhatsApp recorrió la cadena del agente, y su emisor sigue sin cablear al pipeline.
+2. **La referencia devuelta no se puso a prueba**: el CRM devolvió la misma que se propuso, así que la corrida no distingue si el emisor usaría otra (el AC-3 de ellos). Ni `409 conversation_ref_taken` ni `message_already_recorded` se ejercitaron con el emisor real.
+3. **Los encabezados de las capturas son los que el emisor dice que manda**, no los que n8n puso en el pedido. La correlación sí se ve del lado del CRM, en el log.
+4. **El turno consolidado del agente** (su H-2) no afectó esta prueba, que usó un turno de un solo mensaje. Es condición de entrada de la 12.5.

@@ -1,0 +1,13 @@
+{
+  "shape": "captured",
+  "note": "Capturada del emisor real: la instancia de n8n del agente, contra staging, el 2026-09-27 (brief-12.3, etapa 12.3.3). Datos sintéticos. El cuerpo va tal como salió, byte a byte.",
+  "description": "Captura 03 de la corrida del agente: message.recorded de salida con sent_by agent (segmento 1), aceptado con 201.",
+  "received_at": "2026-09-27T18:21:35.596Z",
+  "correlation_id": "probe-12-3-3-p20260927182133",
+  "staging_status": 201,
+  "body": "{\"contract_version\":\"2\",\"event_type\":\"message.recorded\",\"event_id\":\"wa-out-wamid-out-p20260927182133-0001\",\"occurred_at\":\"2026-09-27T18:00:04.500Z\",\"conversation\":{\"external_ref\":\"wa-conv-wamid-fict-p20260927182133-0001\",\"channel\":\"whatsapp\",\"client_phone\":\"+5491155550007\"},\"message\":{\"external_ref\":\"wa-msg-wamid-out-p20260927182133-0001\",\"direction\":\"outbound\",\"kind\":\"text\",\"sent_by\":\"agent\",\"sent_at\":\"2026-09-27T18:00:04.500Z\",\"body_text\":\"Hola, como va?\"}}",
+  "expected": {
+    "ok": true,
+    "payload_hash": "0f09768b90a14ab4bed11711e8b95211decc58e57469bc618531f16b5d625d2e"
+  }
+}

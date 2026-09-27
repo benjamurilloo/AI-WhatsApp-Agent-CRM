@@ -1,0 +1,13 @@
+{
+  "shape": "captured",
+  "note": "Capturada del emisor real: la instancia de n8n del agente, contra staging, el 2026-09-27 (brief-12.3, etapa 12.3.3). Datos sintéticos. El cuerpo va tal como salió, byte a byte.",
+  "description": "Captura 07 de la corrida del agente, deliberada (su AC-6): client.resolved con display_name vacío, armado salteando la guarda del emisor. Staging respondió 400 con el campo client.display_name.",
+  "received_at": "2026-09-27T18:23:23.604Z",
+  "correlation_id": "probe-12-3-3-ac6-b20260927182323",
+  "staging_status": 400,
+  "body": "{\"contract_version\":\"2\",\"event_type\":\"client.resolved\",\"event_id\":\"wa-cli-deliberado-b20260927182323\",\"occurred_at\":\"2026-09-27T17:59:57.000Z\",\"client\":{\"phone\":\"+5491155550007\",\"display_name\":\"\"}}",
+  "expected": {
+    "ok": false,
+    "fields": ["client.display_name"]
+  }
+}

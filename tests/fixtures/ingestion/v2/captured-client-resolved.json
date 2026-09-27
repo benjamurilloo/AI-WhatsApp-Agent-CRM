@@ -1,0 +1,13 @@
+{
+  "shape": "captured",
+  "note": "Capturada del emisor real: la instancia de n8n del agente, contra staging, el 2026-09-27 (brief-12.3, etapa 12.3.3). Datos sintéticos. El cuerpo va tal como salió, byte a byte.",
+  "description": "Captura 01 de la corrida del agente: client.resolved, aceptado con 200.",
+  "received_at": "2026-09-27T18:21:34.556Z",
+  "correlation_id": "probe-12-3-3-p20260927182133",
+  "staging_status": 200,
+  "body": "{\"contract_version\":\"2\",\"event_type\":\"client.resolved\",\"event_id\":\"wa-cli-wamid-fict-p20260927182133-0001\",\"occurred_at\":\"2026-09-27T17:59:57.000Z\",\"client\":{\"phone\":\"+5491155550007\",\"display_name\":\"Camila Ficticia\"}}",
+  "expected": {
+    "ok": true,
+    "payload_hash": "cb0422d245725a082ff338b0b425f274813931d2a83bd3dbbeb66f08d4b3126a"
+  }
+}

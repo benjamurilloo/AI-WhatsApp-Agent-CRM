@@ -125,6 +125,7 @@ Todas las métricas se calculan por consulta (vistas SQL o queries del módulo `
 - **Validación**: los fallidos no superan el total, la suma de los grupos es igual a los fallidos y la tasa es su cociente, entre 0 y 100 %.
 - **Disponibilidad**: la métrica se muestra como "no disponible", y no como `0` ni como "sin datos", cuando la ingestión no está configurada en el entorno **y** el período no tiene ningún evento (brief-7.3, D-1). La configuración se lee en cada llamada; una configuración inválida cuenta como no configurada. Con eventos registrados la métrica muestra su valor aunque el endpoint esté apagado: apagarlo después de un incidente no borra de la vista los fallos ya registrados.
 - **Estados**: los tres —valor, "sin datos" y "no disponible"— son distintos entre sí y ninguno se presenta como `0`.
+- **Primera medición con un emisor real** (*2026-09-27, 12.3.3*, [evidencia-12.3](../decisions/evidencia-12.3-ingestion-v2.md), AC-18): un turno sintético emitido por la instancia del agente contra staging dejó cinco filas en `ingestion_events`. El conteo a mano con las exclusiones de arriba dio 3 eventos y 0 fallidos, y el dashboard mostró «0,0 %, 0 fallidos de 3 eventos». Un solo turno sin fallos: prueba que la métrica cuenta bien los eventos de un emisor real, no cómo se comporta con la distribución real (pocos orígenes, ráfagas de un mismo código).
 
 ## Criterios de validación del dashboard
 
