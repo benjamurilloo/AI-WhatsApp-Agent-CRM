@@ -1,4 +1,11 @@
 import { z } from "zod";
+import {
+  MESSAGE_DIRECTIONS,
+  MESSAGE_KINDS,
+  MESSAGE_SENDERS,
+  type HistoryMessage,
+} from "@/modules/conversations";
+import { isOpaqueReference } from "@/modules/ingestion";
 import type { ServiceCatalogProduct } from "@/modules/inventory";
 import type { KnowledgeEntry } from "@/modules/knowledge";
 import { ERROR_CODES } from "@/shared/errors";
@@ -18,15 +25,29 @@ export const PRODUCTS_DEFAULT_LIMIT = 10;
 export const PRODUCTS_MAX_LIMIT = 25;
 export const KNOWLEDGE_DEFAULT_LIMIT = 20;
 export const KNOWLEDGE_MAX_LIMIT = 50;
+// Historial (brief-12.4, D-3): el emisor usa hoy 15, así que 20 le deja margen, y 50 acota una
+// respuesta con texto de clientes.
+export const MESSAGES_DEFAULT_LIMIT = 20;
+export const MESSAGES_MAX_LIMIT = 50;
 
 // Un carácter de control, NUL incluido, nunca llega a PostgreSQL (N-6 de la 11.2), y un surrogate
 // suelto no es UTF-8 válido.
 const CONTROL = /\p{Cc}/u;
 const LONE_SURROGATE = /[\uD800-\uDFFF]/u;
 
-export type ReadField = "q" | "limit" | "product_id" | "correlation_id";
+export type ReadField =
+  "q" | "limit" | "product_id" | "conversation_ref" | "correlation_id";
 
 type Parsed<T> = { ok: true; value: T } | { ok: false; field: ReadField };
+
+// conversation_ref: obligatorio, con las reglas de las referencias opacas de la ingestión, que
+// son las mismas con que se creó la conversación (brief-12.4, D-3). No se recorta: una referencia
+// con espacios al borde no existe.
+export function parseConversationRef(raw: string | null): Parsed<string> {
+  return raw !== null && isOpaqueReference(raw)
+    ? { ok: true, value: raw }
+    : { ok: false, field: "conversation_ref" };
+}
 
 // q: obligatorio o no según la ruta, de 1 a 200 caracteres después de recortar.
 export function parseQuery(
@@ -109,6 +130,27 @@ export const knowledgeListResponseSchema = z.strictObject({
   items: z.array(knowledgeEntrySchema),
 });
 
+// Mensaje del historial (brief-12.4, D-4). kind y sent_by en null son «sin dato»: los mensajes
+// de v1 y de los seeds. sent_by solo en salidas.
+export const historyMessageSchema = z
+  .strictObject({
+    external_ref: nullableText,
+    direction: z.enum(MESSAGE_DIRECTIONS),
+    kind: z.enum(MESSAGE_KINDS).nullable(),
+    sent_by: z.enum(MESSAGE_SENDERS).nullable(),
+    sent_at: z.iso.datetime({ precision: 3 }),
+    body_text: nullableText,
+  })
+  .refine(
+    (message) => message.direction === "outbound" || message.sent_by === null,
+    { path: ["sent_by"] },
+  );
+
+export const messageListResponseSchema = z.strictObject({
+  contract_version: z.literal(READ_CONTRACT_VERSION),
+  items: z.array(historyMessageSchema),
+});
+
 export const errorResponseSchema = z.strictObject({
   code: z.enum(ERROR_CODES),
   request_id: z.uuid(),
@@ -117,6 +159,7 @@ export const errorResponseSchema = z.strictObject({
 
 export type ContractProduct = z.infer<typeof productSchema>;
 export type ContractKnowledgeEntry = z.infer<typeof knowledgeEntrySchema>;
+export type ContractHistoryMessage = z.infer<typeof historyMessageSchema>;
 
 // La base guarda numeric(14, 2) («300000.00»). El contrato lo escribe con los decimales de la
 // moneda: «300000» en CLP, «1234.50» en ARS. La escritura ya rechaza decimales que la moneda no
@@ -166,5 +209,20 @@ export function toContractKnowledgeEntry(
     content: entry.content,
     valid_from: entry.validFrom,
     valid_until: entry.validUntil,
+  };
+}
+
+// Solo los campos del contrato: ni el id del mensaje o de la conversación, ni el cliente, ni el
+// estado (brief-12.4, D-4). La hora, en UTC con milisegundos.
+export function toContractHistoryMessage(
+  message: HistoryMessage,
+): ContractHistoryMessage {
+  return {
+    external_ref: message.externalRef,
+    direction: message.direction,
+    kind: message.kind,
+    sent_by: message.sentBy,
+    sent_at: message.sentAt.toISOString(),
+    body_text: message.body,
   };
 }

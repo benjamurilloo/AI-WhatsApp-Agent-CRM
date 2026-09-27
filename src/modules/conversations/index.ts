@@ -1,5 +1,5 @@
 // Interfaz pública del módulo conversations (brief-6.3; conversación vigente para ingestion,
-// brief-12.2).
+// brief-12.2; historial para la API de lectura, brief-12.4).
 export {
   changeConversationStatus,
   CURRENT_CONVERSATION_WINDOW_MS,
@@ -18,6 +18,9 @@ export {
   getConversation,
   listConversationMessages,
   listConversations,
+  listRecentMessagesForService,
+  type ConversationHistoryResult,
+  type HistoryMessage,
   recordIngestedMessage,
   MESSAGES_PAGE_SIZE,
   searchClientsByLastInteraction,
@@ -39,6 +42,7 @@ export {
   type ConversationSummary,
   type IngestedMessage,
   type IngestedMessageConflict,
+  MESSAGE_DIRECTIONS,
   MESSAGE_KINDS,
   MESSAGE_SENDERS,
   type MessageKind,

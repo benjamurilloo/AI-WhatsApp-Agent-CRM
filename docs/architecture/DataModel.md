@@ -332,7 +332,7 @@ Reglas del ledger, derivadas del patrón *Reliable External Effects* del vault:
 
 Credenciales de servicio del endpoint de ingestión. **Implementada en la 6.5.3** ([brief-6.5.3](../decisions/brief-6.5.3-autenticacion-de-servicio-y-rate-limit.md), D-1 y D-2), migraciones 0013 y 0014. Módulo dueño: `ingestion`.
 
-**Desde la 11.3** ([brief-11.3](../decisions/brief-11.3-api-de-lectura.md), D-2; migración `0020`) guarda también las credenciales de la [API de lectura](../contracts/read-v1.md), con la columna `scope`. Cada credencial tiene **un solo alcance**, así que el consumidor que lee y escribe usa dos. **Deuda de nombre, registrada**: la tabla y el módulo se llaman `ingestion` aunque guarden credenciales que no son de ingestión. Se renombran cuando aparezca un tercer alcance, no antes.
+**Desde la 11.3** ([brief-11.3](../decisions/brief-11.3-api-de-lectura.md), D-2; migración `0020`) guarda también las credenciales de la [API de lectura](../contracts/read-v1.md), con la columna `scope`. Cada credencial tiene **un solo alcance**, así que el consumidor que lee y escribe usa dos. **Deuda de nombre, registrada**: la tabla y el módulo se llaman `ingestion` aunque guarden credenciales que no son de ingestión. Se renombran cuando aparezca un tercer alcance, no antes. *Enmienda del 2026-09-26, por decisión del usuario en la 12.4* ([brief-12.4](../decisions/brief-12.4-historial-y-memorias.md), H-1): el tercer alcance, `context`, llegó en la 12.4, y **el renombre se posterga**. Tocaría la tabla, una migración, el módulo y sus imports: un cambio grande de puro nombre, sin conducta nueva, que no se mezcla con una subfase de funcionalidad. La deuda sigue registrada y se paga en su propia subfase, con su brief. No se agenda en la Fase 12.
 
 Protección: `crm_app` tiene `SELECT`, `INSERT` y `UPDATE`, sin `DELETE`. Una credencial se revoca, no se borra.
 
@@ -341,12 +341,12 @@ Protección: `crm_app` tiene `SELECT`, `INSERT` y `UPDATE`, sin `DELETE`. Una cr
 | `id` | uuid PK | se lista en `INGESTION_ALLOWED_CREDENTIALS` |
 | `organization_id` | uuid FK → organizations not null | `ON DELETE RESTRICT`; organización de los eventos |
 | `source` | text not null | referencia opaca del emisor; `source` de los eventos |
-| `scope` | text not null default `'ingest'` | `ingest` (token `crm_ing_`) o `read` (token `crm_read_`), desde la 11.3; las credenciales anteriores quedaron en `ingest` |
+| `scope` | text not null default `'ingest'` | `ingest` (token `crm_ing_`) o `read` (token `crm_read_`), desde la 11.3; las credenciales anteriores quedaron en `ingest`. *Desde la 12.4* ([brief-12.4](../decisions/brief-12.4-historial-y-memorias.md), D-6; migración `0024`), también `context` (token `crm_ctx_`): lee el historial de conversaciones de la API de lectura, y nada más |
 | `token_hash` | text not null unique | SHA-256 en hexadecimal del token; el token nunca se guarda |
 | `created_at` | timestamptz not null default now() | |
 | `revoked_at` | timestamptz null | con valor, la credencial responde `FORBIDDEN` |
 | — | `CHECK` | `ingestion_credentials_not_blank`: `source` y `token_hash` no vacíos |
-| — | `CHECK` | `ingestion_credentials_scope_valid`: `scope` es `ingest` o `read` |
+| — | `CHECK` | `ingestion_credentials_scope_valid`: `scope` es `ingest`, `read` o, desde la `0024`, `context` |
 | — | `UNIQUE (organization_id, id)` | `ingestion_credentials_organization_id_id_unique`, desde la `0021` (brief-12.1, D-3): destino de la clave foránea compuesta del actor de servicio de `audit_logs` |
 
 Índice: `ingestion_credentials_organization_id_idx`. Varias credenciales pueden compartir organización y `source`, para rotar sin corte.

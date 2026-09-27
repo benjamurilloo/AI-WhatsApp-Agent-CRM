@@ -2,6 +2,7 @@ import {
   authenticateServiceRequest,
   consumeIngestionRate,
   isOpaqueReference,
+  type CredentialScope,
 } from "@/modules/ingestion";
 import { HTTP_STATUS, type ErrorCode } from "@/shared/errors";
 import { logEvent, newRequestId, type LogEvent } from "@/shared/log";
@@ -18,6 +19,11 @@ import type { ReadField } from "./contract";
 
 // Organización y emisor, tomados de la credencial.
 export type ReadCaller = { organizationId: string; source: string };
+
+// Alcance de la credencial que acepta cada ruta: `read` para el catálogo y la información del
+// negocio, y `context` para el historial de conversaciones (brief-12.4, D-6). Una credencial de
+// otro alcance da FORBIDDEN.
+export type ReadScope = Extract<CredentialScope, "read" | "context">;
 
 export type ReadResult =
   | { ok: true; status: 200; body: unknown }
@@ -67,6 +73,7 @@ function errorResponse(
 async function evaluate(
   request: Request,
   route: string,
+  scope: ReadScope,
   requestId: string,
   now: Date,
   state: { correlationId?: string },
@@ -93,7 +100,7 @@ async function evaluate(
 
   const authenticated = await authenticateServiceRequest(
     request.headers.get("authorization"),
-    "read",
+    scope,
   );
   if (!authenticated.ok) {
     return fail(authenticated.code, {
@@ -148,6 +155,7 @@ async function evaluate(
 export async function serveRead(
   request: Request,
   route: string,
+  scope: ReadScope,
   now: Date,
   read: (caller: ReadCaller, url: URL) => Promise<ReadResult>,
 ): Promise<Response> {
@@ -159,6 +167,7 @@ export async function serveRead(
     const evaluated = await evaluate(
       request,
       route,
+      scope,
       requestId,
       now,
       state,

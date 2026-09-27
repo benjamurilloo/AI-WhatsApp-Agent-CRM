@@ -271,3 +271,87 @@ Todo archivo fuera de esta lista se pide antes de tocarlo.
 - Si algo obliga a cambiar el contrato de ingestión v2, o una respuesta existente de la lectura v1.
 - Si una prueba necesita datos reales.
 - Si aparece un archivo fuera de la lista autorizada.
+
+## Decisiones del usuario durante la implementación
+
+Del 2026-09-26, sobre los hallazgos H-1 y H-2 de abajo:
+
+- **H-1: el renombre de `ingestion` se posterga**, con una enmienda fechada en DataModel. La deuda sigue registrada y se paga en su propia subfase, con su brief, fuera de la Fase 12.
+- **H-2: la ampliación queda autorizada** para los cuatro archivos: `serve.ts`, los dos handlers existentes e `ingestion/repository.ts`.
+
+## Resultados — implementación
+
+**Autoevaluación** (`self_assessment: true`), del 2026-09-26. La revisión independiente (AC-13) todavía no se hizo.
+
+### Hallazgos durante la implementación
+
+- **H-1 — Deuda de nombre que vence con el tercer alcance.** [DataModel](../architecture/DataModel.md) §`ingestion_credentials` dice que la tabla y el módulo `ingestion` «se renombran cuando aparezca un tercer alcance, no antes». `context` es ese tercer alcance. El brief no lo vio: el paso 5 de la planificación reabrió DataModel buscando `messages`, no las credenciales. Renombrar queda fuera de la lista autorizada, así que **no se hizo**. La frase de DataModel queda sin tocar y se eleva al usuario.
+- **H-2 — Cuatro archivos fuera de la lista autorizada**, tocados antes de pedirlos:
+  - `src/app/api/read/v1/serve.ts`: el borde de la lectura tenía el alcance `read` fijo. Ahora cada ruta pasa el suyo (D-6);
+  - `products/handler.ts` y `knowledge/handler.ts`: pasan `"read"` explícito, sin cambio de conducta;
+  - `src/modules/ingestion/repository.ts`: tenía el tipo `"ingest" | "read"` escrito a mano. Ahora sale del esquema, y sin el cambio no compila.
+
+  Se elevan al usuario para autorizarlos o revertirlos.
+- **H-3 — El plan depende de la forma de los datos.** La primera versión del test de AC-9 usaba una conversación de 5000 mensajes sobre 15 000 de la organización, y todos eran los más recientes. En una corrida, el planificador recorrió `messages_organization_sent_idx` hacia atrás, filtrando por conversación, con `Incremental Sort`. En otra corrida usó el índice de la conversación. Con esa proporción, los dos caminos cuestan parecido.
+  - El test pasó a la forma del caso real: 200 conversaciones de 50 mensajes, intercaladas en el tiempo. Así quedó estable en **seis corridas seguidas**.
+  - **El caso de una conversación con una fracción grande de los mensajes de la organización queda sin medir.** Su costo está acotado por esa misma fracción. Corresponde a la 13.2, que mide planes con volumen.
+
+  No hizo falta un índice nuevo, así que la condición de detención no se activó.
+
+### Contraste por criterio
+
+| AC | Resultado | Evidencia |
+|---|---|---|
+| AC-1 | cumplido | D-1 en este brief, en la enmienda del Roadmap (§12.4) y en IntegrationBoundaries. `git diff` de `src/` y `drizzle/`: **0** líneas nuevas con `memor` |
+| AC-2 | cumplido | `read-api-messages.test.ts` caso 1: 11 a 30 con `limit=20` y sin `limit`, 1 a 30 con 50, y el 30 con 1. M18 |
+| AC-3 | cumplido | caso 2: el mensaje tardío queda en su lugar, y tres empates en el mismo microsegundo salen por id, igual en tres pedidos |
+| AC-4 | cumplido | caso 3, con `toStrictEqual` sobre la respuesta entera; `contract.test.ts`: validador estricto y dos fixtures nuevos con forma asumida |
+| AC-5 | cumplido | caso 4: el `404` de una conversación ajena y el de una inexistente son iguales salvo el `request_id`; la misma referencia en dos organizaciones; una cerrada y una vacía. M19 |
+| AC-6 | cumplido | caso 5: `read` e `ingest` dan `403` en el historial, `context` da `403` en productos y en información del negocio, sin consumir el límite. Caso 12: una sesión válida no autentica; caso 13: una `context` no escribe por la ingestión v2 (los dos, por R-5 de la revisión). M20 |
+| AC-7 | cumplido | casos 6 y 7, y `read-api.spec.ts` con la ruta nueva sobre `next start` |
+| AC-8 | cumplido | caso 8: el log no trae la referencia (que tiene un teléfono sintético adentro), el texto ni los tokens; caso 9: el `500`, con una falla que cita la referencia (R-6). M21 |
+| AC-9 | cumplido, con H-3 | caso 10: primera línea `Limit`, `messages_conversation_sent_idx` con `Index Cond` sobre `conversation_id`, sin `Seq Scan` |
+| AC-10 | cumplido | `0024` solo cambia el `CHECK` (un `DROP` y un `ADD`, sin tocar filas); caso 11: crea una credencial `context` con `crm_ctx_`, y el `CHECK` rechaza `write`, `CONTEXT`, `ctx` y la cadena vacía; `credentials.test.ts`: el prefijo y los tres alcances |
+| AC-11 | cumplido | FR-API-08 en los casos de test; read-v1, TraceabilityMatrix, DataModel, IntegrationBoundaries, Risks y la guarda de superficie al día |
+| AC-12 | cumplido en local; la CI, con el commit | ver abajo |
+| AC-13 | cumplido | revisión independiente del 2026-09-26: R1, 8 hallazgos menores, todos verificados y corregidos (ver abajo) |
+
+### Mutaciones
+
+Cada una se aplicó sobre una copia del archivo, se corrió `read-api-messages.test.ts`, y el archivo se restauró. `cmp` confirmó los dos archivos idénticos al original.
+
+| Id | Mutación | Resultado |
+|---|---|---|
+| M18 | `findLatestMessages` ordena ascendente | fallan los casos 1, 2 y 3: devuelve los primeros N |
+| M19 | `findConversationIdByExternalRef` sin el filtro de organización | fallan los casos 4 y 6: la credencial de A recibe `200` con `items: []` por una conversación de B, en vez del `404`. Revela que la conversación existe; no lee sus mensajes, porque `findLatestMessages` vuelve a filtrar por organización. Ese segundo filtro no tiene mutación propia (revisión independiente, R-7) |
+| M20 | la ruta acepta el alcance `read` | fallan 10 de 11, el 5 entre ellos |
+| M21 | el log registra el mensaje del error (agregada por R-6 de la revisión) | falla el caso 9: la referencia de la conversación aparece en el log. `src/shared/log/index.ts` se restauró y `git diff` lo da idéntico a `HEAD` |
+
+### Verificación
+
+- `lint`, `typecheck` y `format:check` limpios.
+- Vitest completo: **1365 de 1365** en 98 archivos (antes 1345), después de las correcciones de la revisión.
+  - Suma 13 casos de integración, 4 del contrato, 2 de fixtures y 1 de credenciales.
+- Guardas: 296 de 296.
+- End-to-end completos sobre un build nuevo: **100 de 100** (antes 99).
+  - La primera corrida usó un build viejo, y el caso de la ruta nueva falló con el 404 HTML de Next. Se reconstruyó y se volvió a correr completo.
+- **Nivel**: la lectura del historial queda **validada localmente** (`deterministic`) contra PostgreSQL real. No en staging (D-9) ni en integración.
+
+### Revisión independiente (AC-13)
+
+Del 2026-09-26, por un agente de solo lectura que no participó del trabajo, contra este brief y las reglas vigentes. **Veredicto: R1**, con 8 hallazgos menores, ninguno bloqueante ni mayor. Sobre aislamiento y alcance, no encontró ningún camino por el que una credencial lea mensajes de otra organización, distinga «ajena» de «inexistente», o por el que `read` o `ingest` lean el historial.
+
+Cada hallazgo se verificó contra el código antes de aceptarlo. Se aceptaron los ocho:
+
+| Id | Hallazgo | Corrección |
+|---|---|---|
+| R-1 | read-v1 decía que el contrato se valida con el agente en la 12.3, y el historial no llega a staging antes de la 12.5; «tres rutas» en el e2e; §Propósito sin el historial | estado y evidencia por ruta, «cuatro desde la 12.4» y el propósito ampliado |
+| R-2 | FR-API-03 decía que toda la lectura exige `read` | precisión fechada: salvo el historial, que exige `context` |
+| R-3 | Risks prometía contar las lecturas por turno en la 12.3, que no incluye el historial | el historial se cuenta en la 12.5 |
+| R-4 | el caso 10 y el test de los tres alcances no llevaban `FR-API-08` | los dos lo llevan, y la matriz dice «casos 1 a 13» |
+| R-5 | sin test de que la sesión no autentique el historial, ni de que `context` no escriba | casos 12 y 13 |
+| R-6 | la aserción de privacidad del caso 9 no podía fallar: la falla iba en una consulta sin la referencia | la falla va en la consulta de `conversations` y su mensaje cita la referencia. M21 prueba que ahora puede fallar |
+| R-7 | la descripción de M19 exageraba: sin el primer filtro, A recibe `200` vacío, no los mensajes de B | descripción corregida; el segundo filtro queda sin mutación propia, declarado |
+| R-8 | el caso desfavorable del plan (H-3) solo estaba en este brief | agregado a la entrada de la 13.2 del Roadmap |
+
+**Lo que la revisión no pudo verificar sin ejecutar**: las corridas, la CI y la estabilidad del plan en seis corridas. Las corridas están en §Verificación. La CI se registra con el commit.

@@ -6,13 +6,14 @@ import {
 import { getDb } from "@/shared/db";
 
 // Crea o revoca una credencial de servicio (brief-6.5.3, D-2). Solo uso local:
-//   npm run ingestion:credential -- create --org <organization_id> --source <source> [--scope ingest|read]
+//   npm run ingestion:credential -- create --org <organization_id> --source <source> [--scope ingest|read|context]
 //   npm run ingestion:credential -- revoke --id <credential_id>
 // El token se imprime una sola vez y no se guarda en ningún lado. Sin --scope, la credencial es de
-// ingestión; con --scope read, de la API de lectura (brief-11.3, D-2).
+// ingestión; con --scope read, de la API de lectura (brief-11.3, D-2), y con --scope context, del
+// historial de conversaciones de la API de lectura (brief-12.4, D-6).
 
 const usage =
-  "Uso: npm run ingestion:credential -- create --org <organization_id> --source <source> [--scope ingest|read]\n" +
+  "Uso: npm run ingestion:credential -- create --org <organization_id> --source <source> [--scope ingest|read|context]\n" +
   "     npm run ingestion:credential -- revoke --id <credential_id>";
 
 function option(args: string[], name: string): string | undefined {
@@ -42,7 +43,7 @@ async function main() {
     console.log(`Credencial creada: ${result.credentialId}`);
     console.log(`Token (se muestra una sola vez): ${result.token}`);
     console.log(
-      scope === "read"
+      scope === "read" || scope === "context"
         ? "Para aceptarla, sumá el id a READ_API_ALLOWED_CREDENTIALS y poné READ_API_ENABLED=true."
         : "Para aceptarla, sumá el id a INGESTION_ALLOWED_CREDENTIALS y poné INGESTION_ENABLED=true.",
     );

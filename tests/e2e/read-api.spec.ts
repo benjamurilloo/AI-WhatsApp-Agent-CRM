@@ -17,6 +17,8 @@ const ROUTES = [
   "/api/read/v1/products?q=auriculares",
   "/api/read/v1/products/0b6f3c2e-5a4d-4e8f-9c1b-2a3d4e5f6a7b",
   "/api/read/v1/knowledge?q=horarios",
+  // El historial (brief-12.4).
+  "/api/read/v1/messages?conversation_ref=conv-propuesta-0001",
 ];
 
 for (const route of ROUTES) {

@@ -5,13 +5,19 @@ import { isReadCredentialAllowed, readReadApiConfig } from "./config";
 import {
   contractAmount,
   errorResponseSchema,
+  historyMessageSchema,
   knowledgeEntrySchema,
   knowledgeListResponseSchema,
+  MESSAGES_DEFAULT_LIMIT,
+  MESSAGES_MAX_LIMIT,
+  messageListResponseSchema,
+  parseConversationRef,
   parseLimit,
   parseQuery,
   productListResponseSchema,
   productResponseSchema,
   productSchema,
+  toContractHistoryMessage,
 } from "./contract";
 
 // Partes puras de la API de lectura v1 (brief-11.3): parámetros, montos, validador y modo de
@@ -177,6 +183,96 @@ describe("validador estricto de la información del negocio (FR-API-02)", () => 
   });
 });
 
+describe("historial (FR-API-08, brief-12.4)", () => {
+  const MESSAGE = {
+    external_ref: "msg-v2-0002",
+    direction: "outbound",
+    kind: "text",
+    sent_by: "agent",
+    sent_at: "2026-09-16T15:00:04.500Z",
+    body_text: "Sí, tenemos stock.",
+  };
+
+  it("FR-API-08: conversation_ref sigue la regla de las referencias opacas, sin recortar", () => {
+    for (const ok of ["conv-1", "a".repeat(200), "wa-conv-3EB0/ÄÖ?&=", "ñ"]) {
+      expect(parseConversationRef(ok), ok).toEqual({ ok: true, value: ok });
+    }
+    for (const bad of [
+      null,
+      "",
+      " conv-1",
+      "conv-1 ",
+      "conv\u00001",
+      "conv\t1",
+      "a".repeat(201),
+      "\uD800",
+    ]) {
+      expect(parseConversationRef(bad), JSON.stringify(bad)).toEqual({
+        ok: false,
+        field: "conversation_ref",
+      });
+    }
+  });
+
+  it("FR-API-08: limit de 1 a 50, por defecto 20", () => {
+    const range = {
+      defaultLimit: MESSAGES_DEFAULT_LIMIT,
+      maxLimit: MESSAGES_MAX_LIMIT,
+    };
+    expect(parseLimit(null, range)).toEqual({ ok: true, value: 20 });
+    expect(parseLimit("50", range)).toEqual({ ok: true, value: 50 });
+    for (const bad of ["0", "51", "+5", "05", "abc", ""]) {
+      expect(parseLimit(bad, range).ok, bad).toBe(false);
+    }
+  });
+
+  it("FR-API-08: el mensaje es estricto, con kind y sent_by nulables y sent_by solo en salidas", () => {
+    expect(historyMessageSchema.safeParse(MESSAGE).success).toBe(true);
+    for (const valid of [
+      { ...MESSAGE, kind: null, sent_by: null, external_ref: null },
+      { ...MESSAGE, direction: "inbound", sent_by: null, body_text: null },
+    ]) {
+      expect(historyMessageSchema.safeParse(valid).success).toBe(true);
+    }
+    for (const invalid of [
+      { ...MESSAGE, id: "0b6f3c2e-5a4d-4e8f-9c1b-2a3d4e5f6a7b" },
+      { ...MESSAGE, direction: "inbound" },
+      { ...MESSAGE, kind: "sticker" },
+      { ...MESSAGE, sent_by: "bot" },
+      { ...MESSAGE, sent_at: "2026-09-16T15:00:04Z" },
+      { ...MESSAGE, sent_at: "2026-09-16T12:00:04.500-03:00" },
+      Object.fromEntries(
+        Object.entries(MESSAGE).filter(([key]) => key !== "body_text"),
+      ),
+    ]) {
+      expect(
+        historyMessageSchema.safeParse(invalid).success,
+        JSON.stringify(invalid),
+      ).toBe(false);
+    }
+  });
+
+  it("FR-API-08: el mapeo lleva solo los campos del contrato, con la hora en UTC y milisegundos", () => {
+    const mapped = toContractHistoryMessage({
+      externalRef: null,
+      direction: "inbound",
+      sentAt: new Date("2026-09-16T12:00:00-03:00"),
+      body: "Hola",
+      kind: null,
+      sentBy: null,
+    });
+    expect(mapped).toStrictEqual({
+      external_ref: null,
+      direction: "inbound",
+      kind: null,
+      sent_by: null,
+      sent_at: "2026-09-16T15:00:00.000Z",
+      body_text: "Hola",
+    });
+    expect(historyMessageSchema.safeParse(mapped).success).toBe(true);
+  });
+});
+
 describe("modo de prueba de la lectura (D-7)", () => {
   it("está apagado por defecto, con false, y no lo encienden las variables de ingestión", () => {
     for (const env of [
@@ -240,9 +336,11 @@ describe("fixtures del contrato (D-8)", () => {
         ? errorResponseSchema
         : data.request.path.startsWith("/api/read/v1/knowledge")
           ? knowledgeListResponseSchema
-          : "items" in body
-            ? productListResponseSchema
-            : productResponseSchema;
+          : data.request.path.startsWith("/api/read/v1/messages")
+            ? messageListResponseSchema
+            : "items" in body
+              ? productListResponseSchema
+              : productResponseSchema;
     const parsed = schema.safeParse(body);
     expect(parsed.success, parsed.error?.message).toBe(true);
   });

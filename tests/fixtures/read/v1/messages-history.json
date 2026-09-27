@@ -1,0 +1,61 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: ningún consumidor real leyó esta respuesta (brief-12.4, D-4).",
+  "description": "Los últimos mensajes de una conversación, del más viejo al más nuevo: uno de v1 sin tipo ni autor, un audio transcripto, la respuesta del agente y una imagen que mandó una persona del negocio. El último es el entrante que el agente está por contestar.",
+  "request": {
+    "method": "GET",
+    "path": "/api/read/v1/messages?conversation_ref=conv-propuesta-0001&limit=20",
+    "headers": {
+      "authorization": "Bearer crm_ctx_<token>",
+      "x-correlation-id": "turno-0002"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "contract_version": "1",
+      "items": [
+        {
+          "external_ref": "msg-0001",
+          "direction": "inbound",
+          "kind": null,
+          "sent_by": null,
+          "sent_at": "2026-09-16T14:50:00.000Z",
+          "body_text": "Hola"
+        },
+        {
+          "external_ref": "msg-v2-0001",
+          "direction": "inbound",
+          "kind": "audio",
+          "sent_by": null,
+          "sent_at": "2026-09-16T14:59:57.250Z",
+          "body_text": "Hola, ¿tienen stock?"
+        },
+        {
+          "external_ref": "msg-v2-0002",
+          "direction": "outbound",
+          "kind": "text",
+          "sent_by": "agent",
+          "sent_at": "2026-09-16T15:00:04.500Z",
+          "body_text": "Sí, tenemos stock."
+        },
+        {
+          "external_ref": "msg-v2-0003",
+          "direction": "outbound",
+          "kind": "image",
+          "sent_by": "person",
+          "sent_at": "2026-09-16T15:02:00.000Z",
+          "body_text": null
+        },
+        {
+          "external_ref": "msg-v2-0004",
+          "direction": "inbound",
+          "kind": "text",
+          "sent_by": null,
+          "sent_at": "2026-09-16T15:03:10.000Z",
+          "body_text": "¿Y el precio?"
+        }
+      ]
+    }
+  }
+}

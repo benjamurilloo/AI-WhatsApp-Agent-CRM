@@ -8,20 +8,22 @@ import { CREDENTIAL_SCOPES } from "./schema";
 // guarda solo su SHA-256, como el de la sesión (ADR 0012): con 32 bytes no hace falta un hash lento.
 //
 // Desde la 11.3 (D-2) cada credencial tiene un solo alcance, y el prefijo del token lo dice a la
-// vista: `crm_ing_` escribe por la ingestión y `crm_read_` lee por la API de lectura. Una
-// credencial presentada en la superficie de otro alcance da FORBIDDEN.
+// vista: `crm_ing_` escribe por la ingestión y `crm_read_` lee por la API de lectura. Desde la
+// 12.4 (D-6), `crm_ctx_` lee el historial de las conversaciones. Una credencial presentada en la
+// superficie de otro alcance da FORBIDDEN.
 
 export type CredentialScope = (typeof CREDENTIAL_SCOPES)[number];
 
 export const TOKEN_PREFIXES: Readonly<Record<CredentialScope, string>> = {
   ingest: "crm_ing_",
   read: "crm_read_",
+  context: "crm_ctx_",
 };
 
 export const INGESTION_TOKEN_PREFIX = TOKEN_PREFIXES.ingest;
 
 // Prefijo y 32 bytes en base64url, sin relleno: 43 caracteres.
-const tokenPattern = /^crm_(ing|read)_[A-Za-z0-9_-]{43}$/;
+const tokenPattern = /^crm_(ing|read|ctx)_[A-Za-z0-9_-]{43}$/;
 const bearerPattern = /^Bearer ([^\s]+)$/;
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

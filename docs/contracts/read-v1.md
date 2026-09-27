@@ -2,22 +2,24 @@
 
 **Estado**:
 - **Diseñado e implementado** en la 11.3 ([brief-11.3](../decisions/brief-11.3-api-de-lectura.md)), en dos etapas: productos en la 11.3.1 e información del negocio en la 11.3.2.
+- **Ampliado en la 12.4** ([brief-12.4](../decisions/brief-12.4-historial-y-memorias.md)) con el historial de una conversación, `GET /api/read/v1/messages`, y su propio alcance de credencial, `context`. Es una ruta nueva, un cambio compatible dentro de v1 (§Versionado): ninguna respuesta existente cambia.
 - **Validado localmente y en CI**, con requests sintéticos, contra PostgreSQL real.
-- **No validado en integración**: ningún consumidor lo usa todavía. Sus fixtures tienen **forma asumida, no verificada**. Se valida con el agente en la 12.3, detrás del modo de prueba.
+- **No validado en integración**: ningún consumidor lo usa todavía. Sus fixtures tienen **forma asumida, no verificada**. Productos e información del negocio se validan con el agente en la 12.3, detrás del modo de prueba. El historial, en la 12.5: no se despliega a staging antes (brief-12.4, D-9).
 
 El contrato se diseñó desde el modelo del CRM ([ADR 0014](../decisions/0014-el-agente-de-whatsapp-como-consumidor-del-crm.md), punto 2). No espeja las tablas ni los campos del sistema que hoy usa el agente, y el agente se adapta a él.
 
 ## Propósito
 
-Que un sistema externo lea del CRM, sin sesión humana, lo que necesita para responder a un cliente: los productos activos con su precio y su estado de stock, y la información del negocio vigente. **Solo lectura**: ninguna ruta de este contrato cambia nada. Para escribir mensajes está el [contrato de ingestión](ingestion-v1.md).
+Que un sistema externo lea del CRM, sin sesión humana, lo que necesita para responder a un cliente: los productos activos con su precio y su estado de stock, la información del negocio vigente y, *desde la 12.4*, los últimos mensajes de una conversación. **Solo lectura**: ninguna ruta de este contrato cambia nada. Para escribir mensajes está el [contrato de ingestión](ingestion-v1.md).
 
 La dependencia es unidireccional: el consumidor llama al CRM, y el CRM nunca lo llama a él.
 
 ## Transporte
 
 - **Rutas**: `GET` bajo `/api/read/v1/`. La versión va en la ruta; una versión nueva es otra ruta.
-- **Autenticación**: `Authorization: Bearer <token>`, con una **credencial de alcance `read`**, por organización y emisor. El token es `crm_read_` seguido de 32 bytes aleatorios en base64url; el CRM guarda solo su SHA-256. De la credencial salen la organización y el `source`: ningún parámetro los trae. La API no lee cookies, así que una sesión del CRM no la autentica.
+- **Autenticación**: `Authorization: Bearer <token>`, con una **credencial de alcance `read`** (o `context` para el historial, ver abajo), por organización y emisor. El token es `crm_read_` seguido de 32 bytes aleatorios en base64url; el CRM guarda solo su SHA-256. De la credencial salen la organización y el `source`: ningún parámetro los trae. La API no lee cookies, así que una sesión del CRM no la autentica.
 - **Una credencial, un alcance** (brief-11.3, D-2): una credencial `read` no escribe por la ingestión, y una de ingestión no lee. El consumidor que hace las dos cosas usa dos credenciales, que se revocan por separado.
+- **El historial tiene su propio alcance, `context`** (brief-12.4, D-6), con token `crm_ctx_`. Es la única ruta que devuelve lo que escribió un cliente: una credencial `read` no lee el historial, y una `context` no lee productos ni información del negocio. Así, la credencial que el consumidor carga para el catálogo no lee conversaciones. Tiene su propio presupuesto de pedidos y el mismo modo de prueba que el resto de la lectura.
 - **Límite de tasa**: 120 pedidos por minuto por credencial, en ventanas fijas de un minuto; en el borde entre dos ventanas pueden pasar hasta el doble. La credencial de lectura tiene su propio presupuesto, separado del de la de ingestión (D-6).
 - **Modo de prueba**: la API responde `404` sin cuerpo salvo que `READ_API_ENABLED` sea `true`, y encendida solo acepta las credenciales de `READ_API_ALLOWED_CREDENTIALS`. Es independiente del modo de prueba de la ingestión (D-7).
 - **Correlación** (D-5): el consumidor puede mandar `X-Correlation-Id`, que el CRM registra en su log y devuelve en la respuesta. Tiene las reglas de las referencias opacas de la ingestión: de 1 a 200 caracteres y sin caracteres de control. HTTP recorta los espacios de los bordes antes de que el valor llegue. **No debe llevar datos personales**: el CRM no puede comprobarlo.
@@ -136,9 +138,65 @@ Ejemplo (`tests/fixtures/read/v1/knowledge-current.json`):
 
 Lo que una entrada **no** trae: su estado, si está activa, las fechas de alta y de cambio, y la auditoría.
 
+### `GET /api/read/v1/messages`
+
+Los **últimos mensajes** de una conversación de la organización de la credencial, del más viejo al más nuevo (FR-API-08). Desde la 12.4. **Exige una credencial de alcance `context`.**
+
+| Parámetro | Obligatorio | Reglas |
+|---|---|---|
+| `conversation_ref` | sí | la referencia de la conversación que devolvió `conversation.resolved` del [contrato de ingestión](ingestion-v2.md), con sus reglas: de 1 a 200 caracteres, sin espacios al borde ni caracteres de control. No se recorta |
+| `limit` | no | entero de 1 a 50, sin signo ni ceros de relleno; por defecto, 20 |
+
+- **Los últimos, nunca los primeros**: los `limit` mensajes con `sent_at` más reciente, desempatados por su id, y devueltos en orden ascendente. Un mensaje que llegó tarde con un `sent_at` anterior queda en su lugar, como en la pantalla 9.
+- **Entra el último mensaje registrado**, así que después de `conversation.resolved` el último ítem es el entrante que el consumidor está por contestar. Lo reconoce por su `external_ref`.
+- **Solo esa conversación**, del canal `whatsapp`. Nunca otras conversaciones del mismo cliente (brief-12.4, D-2).
+- **Una conversación cerrada también se lee**, y una sin mensajes da `items: []`.
+- **Respuesta `200`**: `{ "contract_version": "1", "items": [mensaje, …] }`.
+- Una conversación de otra organización o inexistente da `404 NOT_FOUND`, **sin distinguir entre las dos**.
+- No hay paginación hacia atrás. Un cursor, si hace falta, es un parámetro opcional y compatible.
+
+### Mensaje del historial
+
+| Campo | Tipo | Nulable | Notas |
+|---|---|---|---|
+| `external_ref` | string | sí | la referencia del mensaje que mandó el emisor; `null` si el mensaje no la tiene |
+| `direction` | string | no | `inbound` u `outbound` |
+| `kind` | string | sí | `text`, `audio`, `image`, `video`, `document` u `other`. `null` es «sin dato»: mensajes de la ingestión v1 y de los seeds |
+| `sent_by` | string | sí | `agent` o `person`, solo en salidas. `null` en toda entrada y en las salidas sin dato |
+| `sent_at` | string | no | ISO 8601 en UTC, con milisegundos |
+| `body_text` | string | sí | tal como se guardó; el consumidor lo escapa si lo muestra |
+
+Ejemplo (`tests/fixtures/read/v1/messages-history.json`, recortado):
+
+```json
+{
+  "contract_version": "1",
+  "items": [
+    {
+      "external_ref": "msg-v2-0001",
+      "direction": "inbound",
+      "kind": "audio",
+      "sent_by": null,
+      "sent_at": "2026-09-16T14:59:57.250Z",
+      "body_text": "Hola, ¿tienen stock?"
+    },
+    {
+      "external_ref": "msg-v2-0002",
+      "direction": "outbound",
+      "kind": "text",
+      "sent_by": "agent",
+      "sent_at": "2026-09-16T15:00:04.500Z",
+      "body_text": "Sí, tenemos stock."
+    }
+  ]
+}
+```
+
+Lo que un mensaje **no** trae: su id y el de la conversación, el cliente, su teléfono, el estado de la conversación y si hay mensajes más viejos. El estado lo devuelve `conversation.resolved`. **Agregar cualquiera de estos campos es un cambio de v2** (§Versionado).
+
 ## Errores
 
-El cuerpo de error tiene `code`, `request_id` y, en `VALIDATION_ERROR`, `fields`: los parámetros inválidos (`q`, `limit`, `product_id` o `correlation_id`). Ningún error repite el texto buscado.
+El cuerpo de error tiene `code`, `request_id` y, en `VALIDATION_ERROR`, `fields`: los parámetros inválidos (`q`, `limit`, `product_id`, `conversation_ref` o `correlation_id`). Ningún error repite el texto buscado ni la referencia.
 
 | Situación | Código | HTTP | ¿Reintentar? |
 |---|---|---|---|
@@ -147,12 +205,12 @@ El cuerpo de error tiene `code`, `request_id` y, en `VALIDATION_ERROR`, `fields`
 | Credencial revocada, de otro alcance o fuera de la allowlist | `FORBIDDEN` | 403 | no |
 | Límite de tasa superado | `RATE_LIMITED` | 429 | sí, después de `Retry-After` |
 | Parámetro o correlación inválidos | `VALIDATION_ERROR` | 400 | no: corregir el pedido |
-| Producto inactivo, ajeno o inexistente | `NOT_FOUND` | 404 | no |
+| Producto inactivo, ajeno o inexistente; conversación ajena o inexistente | `NOT_FOUND` | 404 | no |
 | Error inesperado | `INTERNAL` | 500 | sí |
 
 ## Log
 
-Cada respuesta de la API encendida, incluidos los rechazos y el `500`, queda en el log estructurado con `request_id`, la ruta **fija** (`/api/read/v1/products`, `/api/read/v1/products/{product_id}` o `/api/read/v1/knowledge`, nunca la URL), el código, la duración y, cuando se conocen, la organización, el `source` y el `correlation_id` (R-1 de la [evaluación 10.1](../decisions/evaluacion-10.1-mvp.md), piezas 1 y 2). **Nunca** el token, el texto buscado, el `limit` ni un id buscado: el texto viene de lo que escribió un cliente.
+Cada respuesta de la API encendida, incluidos los rechazos y el `500`, queda en el log estructurado con `request_id`, la ruta **fija** (`/api/read/v1/products`, `/api/read/v1/products/{product_id}`, `/api/read/v1/knowledge` o `/api/read/v1/messages`, nunca la URL), el código, la duración y, cuando se conocen, la organización, el `source` y el `correlation_id` (R-1 de la [evaluación 10.1](../decisions/evaluacion-10.1-mvp.md), piezas 1 y 2). **Nunca** el token, el texto buscado, el `limit`, un id buscado, la referencia de una conversación ni el texto de un mensaje: el texto viene de lo que escribió un cliente, y la referencia la genera el consumidor, así que el CRM no puede comprobar que no traiga un teléfono.
 
 ## Versionado
 
@@ -167,9 +225,10 @@ Cada respuesta de la API encendida, incluidos los rechazos y el `500`, queda en 
   - en `tests/integration/read-api.test.ts`, contra PostgreSQL real: toda respuesta de éxito pasa el validador; el borde completo (modo de prueba, credencial, alcance, allowlist, límite, sesión que no autentica, encabezados, correlación); el aislamiento entre organizaciones; los productos inactivos; la vigencia de la información, con la zona de la organización; los caracteres de búsqueda; el NUL, que nunca llega a PostgreSQL; el log sin secretos y el `500`;
   - en el mismo archivo, el plan de las tres consultas de la API, capturadas tal como las ejecuta la lectura: la búsqueda de productos usa el índice GIN y el del SKU, el precio vigente usa el índice del historial y la búsqueda de información usa su GIN;
   - en `tests/integration/ingestion-http.test.ts`, caso 14: una credencial de lectura no escribe;
-  - en `tests/e2e/read-api.spec.ts`, sobre `next start`: las cabeceras de `proxy.ts` en las tres rutas y la API apagada por defecto;
-  - en `scripts/medir-caminos.ts`: las lecturas de las tres rutas contra el volumen de desarrollo (10 000 productos), sin el borde. Ese volumen no tiene precios ni entradas de información ([brief-11.3](../decisions/brief-11.3-api-de-lectura.md), §Resultados de la 11.3.2).
-- **Sin validar hasta la 12.3**:
+  - en `tests/e2e/read-api.spec.ts`, sobre `next start`: las cabeceras de `proxy.ts` en las tres rutas (cuatro desde la 12.4) y la API apagada por defecto;
+  - en `scripts/medir-caminos.ts`: las lecturas de las tres rutas contra el volumen de desarrollo (10 000 productos), sin el borde. Ese volumen no tiene precios ni entradas de información ([brief-11.3](../decisions/brief-11.3-api-de-lectura.md), §Resultados de la 11.3.2);
+  - **el historial, desde la 12.4**, en `tests/integration/read-api-messages.test.ts`: los últimos N y nunca los primeros; el orden por `sent_at` con desempate estable; los mensajes sin tipo ni autor; el mismo `404` para una conversación ajena o inexistente; el alcance `context` en las dos direcciones; el borde, el log sin la referencia ni el texto y el `500`; y el plan de la consulta, que usa `messages_conversation_sent_idx` y corta con `LIMIT` en SQL. `read-api.spec.ts` suma la ruta a las cabeceras de `proxy.ts`. **No** se desplegó en staging (brief-12.4, D-9): llega con la 12.5.
+- **Sin validar hasta la 12.3** para productos e información del negocio, y **hasta la 12.5** para el historial:
   - la compatibilidad con un consumidor real;
   - la autenticación con su tráfico;
   - si 120 pedidos por minuto alcanzan: es una estimación, no una medición ([Risks](../planning/Risks.md)).

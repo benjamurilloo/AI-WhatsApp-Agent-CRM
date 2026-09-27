@@ -76,8 +76,10 @@ export const ingestionEvents = pgTable(
 // se muestra una vez al crearlo. De la credencial salen la organización y el source del evento.
 //
 // Desde la 11.3 (D-2) cada credencial tiene un solo alcance: `ingest` escribe por la ingestión y
-// `read` lee por la API de lectura. La tabla conserva su nombre aunque guarde las dos clases.
-export const CREDENTIAL_SCOPES = ["ingest", "read"] as const;
+// `read` lee por la API de lectura. Desde la 12.4 (D-6), `context` lee el historial de las
+// conversaciones, que son datos personales, y no el catálogo. La tabla conserva su nombre aunque
+// guarde las tres clases.
+export const CREDENTIAL_SCOPES = ["ingest", "read", "context"] as const;
 
 export const ingestionCredentials = pgTable(
   "ingestion_credentials",
@@ -111,7 +113,7 @@ export const ingestionCredentials = pgTable(
     ),
     check(
       "ingestion_credentials_scope_valid",
-      sql`${table.scope} IN ('ingest', 'read')`,
+      sql`${table.scope} IN ('ingest', 'read', 'context')`,
     ),
   ],
 );

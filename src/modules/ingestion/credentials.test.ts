@@ -65,10 +65,24 @@ describe("alcance de la credencial (brief-11.3, D-2)", () => {
     }
   });
 
-  it("solo admite los dos alcances", () => {
+  it("FR-API-08: el token del historial lleva su propio prefijo (brief-12.4, D-6)", () => {
+    const context = generateServiceToken("context");
+    expect(context).toMatch(/^crm_ctx_[A-Za-z0-9_-]{43}$/);
+    expect(tokenFromAuthorization(`Bearer ${context}`)).toBe(context);
+    for (const header of [
+      "Bearer crm_ctx_corto",
+      `Bearer ${context.replace("crm_ctx_", "crm_context_")}`,
+      `Bearer ${context.replace("crm_ctx_", "crm_Ctx_")}`,
+    ]) {
+      expect(tokenFromAuthorization(header), header).toBeNull();
+    }
+  });
+
+  it("FR-API-08: solo admite los tres alcances", () => {
     expect(isCredentialScope("ingest")).toBe(true);
     expect(isCredentialScope("read")).toBe(true);
-    for (const value of ["", "READ", "write", "ingest,read"]) {
+    expect(isCredentialScope("context")).toBe(true);
+    for (const value of ["", "READ", "write", "ingest,read", "ctx"]) {
       expect(isCredentialScope(value), value).toBe(false);
     }
   });

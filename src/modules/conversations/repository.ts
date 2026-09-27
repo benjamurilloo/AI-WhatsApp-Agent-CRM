@@ -250,6 +250,64 @@ export function findMessagesBefore(
     .limit(limit);
 }
 
+// Id de la conversación de la organización con esa referencia del emisor, sin bloquear: la
+// lectura del historial no escribe (brief-12.4, D-3).
+export async function findConversationIdByExternalRef(values: {
+  organizationId: string;
+  channel: ConversationChannel;
+  externalRef: string;
+}): Promise<string | undefined> {
+  const rows = await getDb()
+    .select({ id: conversations.id })
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.organizationId, values.organizationId),
+        eq(conversations.channel, values.channel),
+        eq(conversations.externalRef, values.externalRef),
+      ),
+    )
+    .limit(1);
+  return rows[0]?.id;
+}
+
+export type RecentMessageRow = {
+  externalRef: string | null;
+  direction: MessageDirection;
+  sentAt: Date;
+  body: string | null;
+  kind: MessageKind | null;
+  sentBy: MessageSender | null;
+};
+
+// Los últimos `limit` mensajes de la conversación, del más reciente al más antiguo, por la hora
+// del mensaje y con desempate por id (brief-12.4, D-5). El LIMIT va en SQL, sobre
+// messages_conversation_sent_idx: nunca lee la conversación entera.
+export function findLatestMessages(
+  organizationId: string,
+  conversationId: string,
+  limit: number,
+): Promise<RecentMessageRow[]> {
+  return getDb()
+    .select({
+      externalRef: messages.externalRef,
+      direction: messages.direction,
+      sentAt: messages.sentAt,
+      body: messages.bodyText,
+      kind: messages.kind,
+      sentBy: messages.sentBy,
+    })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.organizationId, organizationId),
+        eq(messages.conversationId, conversationId),
+      ),
+    )
+    .orderBy(sql`${messages.sentAt} desc`, sql`${messages.id} desc`)
+    .limit(limit);
+}
+
 // Última interacción de cada cliente con conversaciones (brief-1.2, D-2), para componer el orden
 // de la lista de clientes (brief-6.3, D-1).
 export async function findLastInteractionByClient(

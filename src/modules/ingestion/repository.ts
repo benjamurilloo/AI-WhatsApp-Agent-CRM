@@ -1,6 +1,12 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getDb, type DbTransaction } from "@/shared/db";
-import { ingestionCredentials, ingestionEvents } from "./schema";
+import {
+  type CREDENTIAL_SCOPES,
+  ingestionCredentials,
+  ingestionEvents,
+} from "./schema";
+
+type Scope = (typeof CREDENTIAL_SCOPES)[number];
 
 // Acceso a ingestion_events (brief-6.5.2) y a las credenciales y el límite de tasa (brief-6.5.3).
 // De ingestion_events solo cambian status, error_code y processed_at; el trigger de la 6.1
@@ -101,15 +107,15 @@ export type StoredCredential = {
   id: string;
   organizationId: string;
   source: string;
-  // Alcance de la credencial (brief-11.3, D-2).
-  scope: "ingest" | "read";
+  // Alcance de la credencial (brief-11.3, D-2; `context` desde la 12.4, D-6).
+  scope: Scope;
   revokedAt: Date | null;
 };
 
 export async function insertCredential(input: {
   organizationId: string;
   source: string;
-  scope: "ingest" | "read";
+  scope: Scope;
   tokenHash: string;
 }): Promise<string> {
   const rows = await getDb()

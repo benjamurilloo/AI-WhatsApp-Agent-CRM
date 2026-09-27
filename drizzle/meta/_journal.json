@@ -169,6 +169,13 @@
       "when": 1790375595618,
       "tag": "0023_message_kind_and_sender",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1790425534577,
+      "tag": "0024_credential_scope_context",
+      "breakpoints": true
     }
   ]
 }

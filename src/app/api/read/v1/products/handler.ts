@@ -27,31 +27,37 @@ export function handleProductSearch(
   request: Request,
   now: Date = new Date(),
 ): Promise<Response> {
-  return serveRead(request, PRODUCTS_ROUTE, now, async (caller, url) => {
-    const query = parseQuery(url.searchParams.get("q"), { required: true });
-    const limit = parseLimit(url.searchParams.get("limit"), {
-      defaultLimit: PRODUCTS_DEFAULT_LIMIT,
-      maxLimit: PRODUCTS_MAX_LIMIT,
-    });
-    const fields = [query, limit].flatMap((parsed) =>
-      parsed.ok ? [] : [parsed.field],
-    );
-    if (!query.ok || !limit.ok || query.value === null) {
-      return { ok: false, code: "VALIDATION_ERROR", fields };
-    }
-    const products = await searchCatalogForService(caller.organizationId, {
-      text: query.value,
-      limit: limit.value,
-    });
-    return {
-      ok: true,
-      status: 200,
-      body: {
-        contract_version: READ_CONTRACT_VERSION,
-        items: products.map(toContractProduct),
-      },
-    };
-  });
+  return serveRead(
+    request,
+    PRODUCTS_ROUTE,
+    "read",
+    now,
+    async (caller, url) => {
+      const query = parseQuery(url.searchParams.get("q"), { required: true });
+      const limit = parseLimit(url.searchParams.get("limit"), {
+        defaultLimit: PRODUCTS_DEFAULT_LIMIT,
+        maxLimit: PRODUCTS_MAX_LIMIT,
+      });
+      const fields = [query, limit].flatMap((parsed) =>
+        parsed.ok ? [] : [parsed.field],
+      );
+      if (!query.ok || !limit.ok || query.value === null) {
+        return { ok: false, code: "VALIDATION_ERROR", fields };
+      }
+      const products = await searchCatalogForService(caller.organizationId, {
+        text: query.value,
+        limit: limit.value,
+      });
+      return {
+        ok: true,
+        status: 200,
+        body: {
+          contract_version: READ_CONTRACT_VERSION,
+          items: products.map(toContractProduct),
+        },
+      };
+    },
+  );
 }
 
 // GET /api/read/v1/products/{product_id}: un producto activo. Inactivo, de otra organización o
@@ -61,7 +67,7 @@ export function handleProductDetail(
   productId: string,
   now: Date = new Date(),
 ): Promise<Response> {
-  return serveRead(request, PRODUCT_ROUTE, now, async (caller) => {
+  return serveRead(request, PRODUCT_ROUTE, "read", now, async (caller) => {
     if (!UUID.test(productId)) {
       return { ok: false, code: "VALIDATION_ERROR", fields: ["product_id"] };
     }

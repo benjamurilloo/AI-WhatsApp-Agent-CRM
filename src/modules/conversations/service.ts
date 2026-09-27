@@ -22,6 +22,7 @@ import * as repository from "./repository";
 import {
   conversationChannel,
   conversationStatus,
+  messageDirection,
   messageKind,
   messageSender,
 } from "./schema";
@@ -37,6 +38,7 @@ export type MessageSender = repository.MessageSender;
 
 export const CONVERSATION_STATUSES = conversationStatus.enumValues;
 export const CONVERSATION_CHANNELS = conversationChannel.enumValues;
+export const MESSAGE_DIRECTIONS = messageDirection.enumValues;
 // Tipo original y autor de una salida (brief-12.3, D-2 y D-3).
 export const MESSAGE_KINDS = messageKind.enumValues;
 export const MESSAGE_SENDERS = messageSender.enumValues;
@@ -374,6 +376,43 @@ export async function listConversationMessages(
         : null,
     timezone: await getOrganizationTimezone(context),
   };
+}
+
+export type HistoryMessage = repository.RecentMessageRow;
+
+export type ConversationHistoryResult =
+  | {
+      ok: true;
+      // Del más antiguo al más reciente.
+      messages: HistoryMessage[];
+    }
+  | Failure<"NOT_FOUND">;
+
+// Historial de la API de lectura (brief-12.4; FR-API-08): los últimos `limit` mensajes de la
+// conversación con esa referencia del emisor, en orden cronológico. Nunca los primeros. La
+// organización sale de la credencial y la referencia y el límite ya vienen validados por el
+// contrato. Una conversación de otra organización o inexistente da el mismo NOT_FOUND (D-7), y
+// una cerrada se lee (D-5).
+export async function listRecentMessagesForService(
+  organizationId: string,
+  input: {
+    channel: ConversationChannel;
+    conversationRef: string;
+    limit: number;
+  },
+): Promise<ConversationHistoryResult> {
+  const conversationId = await repository.findConversationIdByExternalRef({
+    organizationId,
+    channel: input.channel,
+    externalRef: input.conversationRef,
+  });
+  if (conversationId === undefined) return failure("NOT_FOUND");
+  const rows = await repository.findLatestMessages(
+    organizationId,
+    conversationId,
+    input.limit,
+  );
+  return { ok: true, messages: rows.reverse() };
 }
 
 export type ChangeStatusResult =

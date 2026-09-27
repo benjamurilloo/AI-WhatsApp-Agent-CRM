@@ -21,29 +21,38 @@ export function handleKnowledgeList(
   request: Request,
   now: Date = new Date(),
 ): Promise<Response> {
-  return serveRead(request, KNOWLEDGE_ROUTE, now, async (caller, url) => {
-    const query = parseQuery(url.searchParams.get("q"), { required: false });
-    const limit = parseLimit(url.searchParams.get("limit"), {
-      defaultLimit: KNOWLEDGE_DEFAULT_LIMIT,
-      maxLimit: KNOWLEDGE_MAX_LIMIT,
-    });
-    if (!query.ok || !limit.ok) {
-      const fields = [query, limit].flatMap((parsed) =>
-        parsed.ok ? [] : [parsed.field],
+  return serveRead(
+    request,
+    KNOWLEDGE_ROUTE,
+    "read",
+    now,
+    async (caller, url) => {
+      const query = parseQuery(url.searchParams.get("q"), { required: false });
+      const limit = parseLimit(url.searchParams.get("limit"), {
+        defaultLimit: KNOWLEDGE_DEFAULT_LIMIT,
+        maxLimit: KNOWLEDGE_MAX_LIMIT,
+      });
+      if (!query.ok || !limit.ok) {
+        const fields = [query, limit].flatMap((parsed) =>
+          parsed.ok ? [] : [parsed.field],
+        );
+        return { ok: false, code: "VALIDATION_ERROR", fields };
+      }
+      const entries = await listCurrentEntriesForService(
+        caller.organizationId,
+        {
+          text: query.value,
+          limit: limit.value,
+        },
       );
-      return { ok: false, code: "VALIDATION_ERROR", fields };
-    }
-    const entries = await listCurrentEntriesForService(caller.organizationId, {
-      text: query.value,
-      limit: limit.value,
-    });
-    return {
-      ok: true,
-      status: 200,
-      body: {
-        contract_version: READ_CONTRACT_VERSION,
-        items: entries.map(toContractKnowledgeEntry),
-      },
-    };
-  });
+      return {
+        ok: true,
+        status: 200,
+        body: {
+          contract_version: READ_CONTRACT_VERSION,
+          items: entries.map(toContractKnowledgeEntry),
+        },
+      };
+    },
+  );
 }
