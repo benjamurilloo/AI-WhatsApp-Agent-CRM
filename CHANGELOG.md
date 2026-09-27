@@ -2,6 +2,31 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-27 — 12.4 cerrada: historial y memorias
+
+Cuarta subfase de la Fase 12 ([brief-12.4](docs/decisions/brief-12.4-historial-y-memorias.md)); se cerró antes que la 12.3, que espera al emisor real (12.3.3). Una sola entrega, en `225b35a`: corrida 36337842640, `success`. 1365 tests en Vitest y 100 end-to-end.
+
+Llevó revisión independiente (AC-13): R1, con 8 hallazgos menores, todos verificados y corregidos.
+
+**Certifica:**
+
+- **La lectura del historial** (FR-API-08): `GET /api/read/v1/messages?conversation_ref=&limit=` devuelve los últimos N mensajes (1 a 50, 20 por defecto) en orden cronológico, con dirección, tipo, autor, hora y texto. El corte se hace en SQL.
+  - Una conversación ajena o inexistente responde el mismo `404 NOT_FOUND`; una cerrada se lee; una vacía devuelve `items: []`.
+  - Pasa por la misma cadena que la lectura: modo de prueba, credencial, allowlist, límite por credencial y correlación. El log no guarda la referencia ni el texto.
+- **Un alcance de credencial nuevo, `context`** (prefijo `crm_ctx_`, migración `0024`): es el único que lee el historial, y no lee el catálogo ni escribe. La sesión del CRM tampoco lo autentica.
+- **La pregunta 3 de las brechas** (B-10): las memorias tienen dueño en el CRM y las genera el emisor, pero no se construyen en la Fase 12 (enmienda del Roadmap).
+- **Las rutas de productos e información sin cambios de contrato**: siguen exigiendo `read`.
+- **Mutaciones M18 a M21**, las cuatro detectadas y restauradas.
+
+**Nivel**: validado localmente y en CI (`deterministic`, datos sintéticos).
+
+**No certifica:**
+
+- **Compatibilidad con el agente**: los fixtures del historial tienen forma asumida. Es la 12.5.
+- **Nada en staging**: la 12.4 no desplegó, y la `0024` no está aplicada allá.
+- **El plan con una conversación que concentra los mensajes de su organización** (H-3): pasa a la 13.2.
+- **El renombre del módulo `ingestion`**, postergado por decisión del usuario (H-1).
+
 ## 2026-09-25 — 12.2 cerrada: conversación vigente y derivación
 
 Segunda subfase de la Fase 12 ([brief-12.2](docs/decisions/brief-12.2-conversacion-vigente-y-derivacion.md)). Tuvo dos etapas:

@@ -355,3 +355,19 @@ Cada hallazgo se verificó contra el código antes de aceptarlo. Se aceptaron lo
 | R-8 | el caso desfavorable del plan (H-3) solo estaba en este brief | agregado a la entrada de la 13.2 del Roadmap |
 
 **Lo que la revisión no pudo verificar sin ejecutar**: las corridas, la CI y la estabilidad del plan en seis corridas. Las corridas están en §Verificación. La CI se registra con el commit.
+
+**CI de la subfase 12.4**: commit `225b35a`, run 36337842640, `success` en el intento 1. Queda **validada localmente y en CI**.
+
+## Cierre de la subfase 12.4, 2026-09-27
+
+1. **Confirmación**: el usuario confirmó el cierre el 2026-09-27 («Confirmo cierre junto con commit y push»), después de la CI en verde.
+2. **Criterios**: AC-1 a AC-13 cumplidos. AC-12 se completa con la CI de `225b35a`; AC-13, con la revisión independiente.
+3. **Pregunta 3 de las brechas contestada** (B-10): las memorias tienen dueño en el CRM y las genera el emisor, pero no se construyen en la Fase 12 (D-1 C, enmienda C-1 del Roadmap).
+4. **Nivel**: validado localmente y en CI (`deterministic`, datos sintéticos). **No** se certifica nada en staging, porque la 12.4 no desplegó (D-9). Tampoco compatibilidad con un consumidor real: los fixtures del historial tienen forma asumida, y el agente lo consume recién en la 12.5.
+5. **Revisión independiente**: hecha (AC-13). R1, 8 hallazgos menores, todos verificados y corregidos.
+6. **Decisiones del usuario durante la implementación**: H-1, el renombre de `ingestion` se posterga con una enmienda en DataModel; H-2, cuatro archivos más en la lista (`serve.ts`, los handlers de productos y de información, y `ingestion/repository.ts`).
+7. **Lo que queda abierto**:
+   - **a la 13.2**: el plan del historial de una conversación que concentra gran parte de los mensajes de su organización (H-3, R-8);
+   - **a la 12.5**: contar las lecturas por turno con el historial contra el presupuesto de `context`, y validar el historial con el agente;
+   - **la migración `0024`** no está en staging; se aplica con el próximo despliegue;
+   - **el segundo filtro por organización** de la lectura de mensajes no tiene mutación propia (R-7).
