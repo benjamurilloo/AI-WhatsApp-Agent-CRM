@@ -3,9 +3,10 @@
 **Estado**:
 - **Diseñado e implementado** en la 12.3.1 ([brief-12.3](../decisions/brief-12.3-contrato-de-ingestion-v2.md)): el validador, el `payload_hash`, el endpoint y la proyección del tipo y el autor.
 - **Validado localmente y en CI**, con requests sintéticos (`deterministic`).
-- **No** está validado en staging (12.3.2) ni con un emisor real (12.3.3).
+- **Validado en staging** con requests sintéticos a través del borde real (12.3.2, `isolated-runtime`).
+- **Validado en integración** con el agente como emisor, desde su instancia de n8n y con datos sintéticos (12.3.3, `producer-consumer`, 2026-09-27). **No** es el turno completo (12.5) ni producción.
 
-**Ningún emisor real está conectado.** Los fixtures de `tests/fixtures/ingestion/v2/` tienen **forma asumida, no verificada**, y la 12.3.3 los reemplaza por capturas del agente. Este contrato no deriva de la forma de eventos de ningún sistema existente.
+**El agente emitió contra staging en una ventana de prueba, pero no está conectado**: su emisor sigue sin cablear a su pipeline. En `tests/fixtures/ingestion/v2/` conviven los fixtures de **forma asumida** (`"shape": "assumed"`, los vectores del contrato) y **seis capturas del agente** (`"shape": "captured"`), que guardan el cuerpo tal como llegó a staging. Este contrato no deriva de la forma de eventos de ningún sistema existente.
 
 ## Qué cambia respecto de v1
 
@@ -45,7 +46,7 @@ v2 es la misma superficie de escritura que [v1](ingestion-v1.md), en otra ruta, 
   - En una **salida** es obligatorio: sin él, `400` con el campo `message.sent_by`.
   - En una **entrada** está prohibido, porque el autor siempre es el cliente: mandarlo, aunque sea `null`, da `400` con `message.sent_by`.
   - En `conversation.resolved`, que siempre es entrante, `sent_by` y `direction` son campos desconocidos: `400` con el campo `message`.
-- **`client.display_name`** (brief-12.3, D-8, que cierra R-6 de la 12.1): se rechaza con `400` y el campo `client.display_name` si sus dígitos son los del teléfono del evento. Se comparan solo los dígitos, así que `"+54 9 11 5555-0001"` es el teléfono `+5491155550001`. Un nombre con otros dígitos, como `"Local 12"`, se acepta. **Límite**: un nombre con el teléfono en formato local, sin el código de país (`"11 5555-0001"`), se acepta; la 12.3.3 revisa con capturas reales si hace falta más.
+- **`client.display_name`** (brief-12.3, D-8, que cierra R-6 de la 12.1): se rechaza con `400` y el campo `client.display_name` si sus dígitos son los del teléfono del evento. Se comparan solo los dígitos, así que `"+54 9 11 5555-0001"` es el teléfono `+5491155550001`. Un nombre con otros dígitos, como `"Local 12"`, se acepta. **Límite**: un nombre con el teléfono en formato local, sin el código de país (`"11 5555-0001"`), se acepta. *Desde el 2026-09-27*: la 12.3.3 no pudo confirmarlo ni descartarlo, porque el nombre sintético no traía el teléfono; se revisa en la 12.5 con el turno completo, por decisión del usuario ([Risks](../planning/Risks.md)).
 
 Los demás campos de cada evento son los de v1, con `contract_version: "2"`.
 
@@ -200,10 +201,10 @@ Las reglas de v1: agregar un `event_type` o un canal que el modelo admita es com
 ## Evidencia
 
 - **Validado localmente y en CI** (`deterministic`), con requests sintéticos:
-  - `src/modules/ingestion/contract-v2.test.ts`: los cuatro vectores comparados con su texto canónico, cada regla nueva, las heredadas de v1 y los fixtures de `tests/fixtures/ingestion/v2/`, todos con `"shape": "assumed"`;
+  - `src/modules/ingestion/contract-v2.test.ts`: los cuatro vectores comparados con su texto canónico, cada regla nueva, las heredadas de v1 y los fixtures de `tests/fixtures/ingestion/v2/`, con `"shape": "assumed"` o, desde la 12.3.3, `"captured"`;
   - `tests/integration/ingestion-v2.test.ts`, contra PostgreSQL real: la migración `0023` y su `CHECK`, `messages` todavía de solo inserción, v1 guardando `null`, el turno completo con tipo y autor, los bordes de la vigencia por v2, los tres motivos del `CONFLICT` y su reenvío, lo que afirma la guía (reenvío idéntico, reversión ante un error inesperado, `422` terminal) y el aislamiento;
   - `tests/integration/ingestion-v2-http.test.ts`: las respuestas de v2, el `409` con motivo y el de v1 sin él, la correlación en cada respuesta y en el log (también en el `429` y el `500`), la correlación inválida sin consumir el límite, el límite compartido con v1, la cadena de rechazos y el log sin secretos;
   - `tests/e2e/conversations.spec.ts`, caso 11: el rótulo de tipo y autor en la pantalla 9.
-- **Sin validar**:
-  - el borde real de staging (12.3.2);
-  - la compatibilidad con un emisor real y la autenticación con su tráfico (12.3.3, O-35).
+- **Validado en staging** (12.3.2): el borde real con requests sintéticos, en [evidencia-12.3](../decisions/evidencia-12.3-ingestion-v2.md).
+- **Validado en integración** (12.3.3, O-35): la autenticación y el validador con el tráfico del agente, cruzados con el log, las filas, el `payload_hash` y el dashboard, en la misma evidencia.
+- **Sin validar**: un turno que haya recorrido la cadena real del agente, la referencia que el CRM devuelve distinta de la propuesta, y los dos `409` con el emisor real.

@@ -529,3 +529,34 @@ Cada hallazgo se verificó contra el código antes de aceptarlo. Se aceptaron lo
 - la CI.
 
 **Nivel**: el contrato de ingestión v2 queda **validado en integración** (`producer-consumer`), con el agente como emisor y datos sintéticos. **No** es el turno completo (12.5) ni producción.
+
+**CI de la etapa 12.3.3**: commit `b778850`, run 36342686970, `success` en el intento 1. Corrió la integración y el end-to-end completos, que en local no se habían corrido. Queda **validada en integración**.
+
+## Cierre de la subfase 12.3, 2026-09-27
+
+1. **Confirmación**: el usuario confirmó el cierre el 2026-09-27 («Confirmo cierre»), con la CI de las tres etapas en verde.
+2. **Etapas**: 12.3.1 en `49a3cb4`, 12.3.2 en `cc90eaf` y 12.3.3 en `b778850`, todas con la CI en verde en el intento 1.
+3. **Criterios**: AC-1 a AC-14 y AC-16 a AC-20 cumplidos, con sus salvedades escritas.
+   - **AC-15**, trasladado a la 13.2 por decisión del usuario.
+   - **AC-19**, cumplido en parte: las lecturas por turno y R-6 pasan a la 12.5, por decisión del usuario.
+4. **Gates**:
+   - **O-35 cumplido para la ingestión v2**: autenticación y fixtures validados con requests del emisor real, en staging y detrás del modo de prueba;
+   - **O-34 hecho**: la métrica 12 se midió por primera vez con eventos de un emisor real.
+5. **Nivel**: el contrato de ingestión v2 queda **validado en integración** (`producer-consumer`), con el agente como emisor y datos sintéticos.
+   - **No** se certifica el turno completo, que es la 12.5, ni producción.
+   - **No** se certifica un turno que haya recorrido la cadena real del agente.
+6. **Revisión independiente**: hecha (D-11). R2, 8 hallazgos, todos verificados y resueltos.
+7. **Lo que queda abierto**:
+   - **para la 12.5**:
+     - las lecturas por turno;
+     - R-6;
+     - **condición de entrada**: un `conversation.resolved` por cada mensaje real de WhatsApp (H-2 del agente), y la emisión no bloqueante del agente conciliada con «sin pérdida de mensajes»;
+     - la referencia devuelta distinta de la propuesta y los dos `409`, con el emisor real;
+   - **para la 13.2**: AC-15, el plan de la vigente, y R-8 de la 12.2;
+   - **del lado del agente**: cubrir `crm_ctx_` en su filtro de tokens, y cablear el emisor a su pipeline.
+8. **Limpieza**: la ingestión de staging quedó apagada y la credencial `8c516f09-…` revocada.
+   - El usuario borró de su configuración local los permisos de `ssh`, del túnel SOCKS y de `pkill`.
+   - La copia `app.env.bak-12-3-3` del servidor se borró: era idéntica al `app.env` vigente.
+   - **Ampliaciones autorizadas por el usuario al cerrar**:
+     - `IntegrationBoundaries.md`, el gate cumplido;
+     - `ingestion-v2.md`: la línea de R-6, y el estado y la evidencia, que habían quedado viejos.

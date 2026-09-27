@@ -2,6 +2,43 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-27 — 12.3 cerrada: contrato de ingestión v2
+
+Tercera subfase de la Fase 12 ([brief-12.3](docs/decisions/brief-12.3-contrato-de-ingestion-v2.md)); cerró después que la 12.4 porque esperaba al emisor real. Tuvo tres etapas, las tres con la CI en verde al primer intento:
+
+- **12.3.1, contrato v2**, en `49a3cb4`: corrida 36199681876.
+- **12.3.2, staging**, en `cc90eaf`: corrida 36202372270.
+- **12.3.3, emisor real**, en `b778850`: corrida 36342686970.
+
+Llevó revisión independiente (D-11): R2, con 8 hallazgos (2 mayores), todos verificados y resueltos.
+
+**Certifica:**
+
+- **El contrato de ingestión v2** (FR-API-07), en su propia ruta y con v1 congelada. Agrega:
+  - el tipo original del mensaje (`messages.kind`) y su autor (`sent_by`), con la migración `0023` y el rótulo en la pantalla 9;
+  - el `409` con `reason`, guardado en `error_code`;
+  - la correlación por turno, validada antes del límite de tasa;
+  - la guía del emisor, que desde la 12.3.3 exige también contenido reproducible;
+  - el teléfono como nombre, rechazado con `400`.
+- **El borde real de staging** (12.3.2): 18 pedidos sintéticos, 0 fallas, y el log sin secretos.
+- **La compatibilidad con el agente como emisor real** (12.3.3, gate O-35):
+  - en una ventana autorizada, la instancia de n8n del agente mandó un turno con los cuatro tipos, dos salidas con autor, un reenvío `duplicate` y un `400` deliberado, sin rechazos inesperados;
+  - se cruzaron con el log, las filas, el `payload_hash` guardado por staging y el dashboard;
+  - las seis capturas son fixtures con `"shape": "captured"`.
+- **La métrica 12 con eventos de un emisor real** (O-34): 3 eventos y 0 fallidos, igual a mano y en el dashboard.
+
+**Nivel**:
+- el contrato de ingestión v2, **validado en integración** (`producer-consumer`, datos sintéticos);
+- el borde, validado en staging;
+- el resto, validado localmente y en CI.
+
+**No certifica:**
+
+- **El turno completo**: es la 12.5. Tampoco un turno que haya recorrido la cadena real del agente, cuyo emisor sigue sin cablear.
+- **Las lecturas por turno y R-6** (el teléfono como nombre): pasan a la 12.5, por decisión del usuario.
+- **La referencia devuelta distinta de la propuesta y los dos `409`** con el emisor real.
+- **El plan de la vigente (AC-15) y R-8 de la 12.2**: pasan a la 13.2.
+
 ## 2026-09-27 — 12.4 cerrada: historial y memorias
 
 Cuarta subfase de la Fase 12 ([brief-12.4](docs/decisions/brief-12.4-historial-y-memorias.md)); se cerró antes que la 12.3, que espera al emisor real (12.3.3). Una sola entrega, en `225b35a`: corrida 36337842640, `success`. 1365 tests en Vitest y 100 end-to-end.
