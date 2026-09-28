@@ -342,6 +342,33 @@ Tocar cualquier otro archivo se detiene y se pide al usuario.
 - **El turno 4 llega junto y tarde.** Con H-7, si el entrante no entra, las salidas de ese turno tampoco, porque necesitan la referencia que devuelve `conversation.resolved`. La cola drena el turno entero, en orden, cuando la ingestión vuelve. `conciliar-turnos.ts` cuenta por el `created_at` del CRM y la conversación se elige por `sent_at`, así que no se rompe: **el `--hasta` de la conciliación se fija después de que la cola terminó de drenar**.
 - **H-9, `/knowledge` sin total.** Sin total ni paginación, el consumidor no puede saber si la respuesta vino recortada a 50. El agente tratará 50 ítems exactos como posible recorte y lo registrará. **Decisión: anotarlo como límite conocido en `read-v1.md`**, sin cambiar el contrato. Lo cubre el disparador de H-6.
 
+**Tercera respuesta del agente** (2026-09-28, fuera del repositorio): cerró su primera subfase, el turno por mensaje. **Cambia la forma de los eventos de entrada**, sin cambiar el contrato:
+- un solo `client.resolved` por turno, con el `event_id` y el `occurred_at` del **primer** mensaje;
+- un `conversation.resolved` por mensaje real, en orden de llegada, con su propio `event_id`, `external_ref`, `kind`, `sent_at` (la hora del hecho) y texto;
+- **todos proponen la referencia del primer mensaje**. El agente corrige lo que había dicho: es el primero, no el último.
+- **Verificado contra el código** (`resolveIngestedConversation`): el primero abre la conversación o cae en la vigente, y los siguientes encuentran la vigente, así que su referencia propuesta se ignora. Con E-1, un reintento con sufijo del primero deja la conversación nueva como vigente para el resto del turno. `conciliar-turnos.ts` y el guion no asumían ni primero ni último. La semilla de H-8 no cambia, porque el turno 5 es de un mensaje.
+- El agente anuncia un ADR propio para reemplazar Airtable por el CRM, que cambiaría el sentido de su cuarta subfase. **No cambia nada en la 12.5**: el CRM sigue solo con datos sintéticos hasta el cierre de la Fase 12, y el tráfico real es la Fase 13. Se le respondió que las memorias (B-10) siguen la decisión de la 12.4 y que producción (B-11) es la Fase 13.
+
+**Ensayo con todo apagado** (2026-09-28, 21:11–21:14 UTC): el agente mandó a staging un `POST` de ingestión y un `GET` de productos, y los dos respondieron `404`. Con la ingestión o la lectura apagadas, el pedido se corta antes de leer el cuerpo, la credencial o la base, y no deja fila ni línea de log. No es evidencia de la 12.5: prueba que su cola retiene, no que drena.
+
+**Aviso del agente: listo para la 12.5.2** (2026-09-28, fuera del repositorio). Cumplió las cinco condiciones de entrada (D-10) y mandó el guion con ids, teléfonos (`+5491155550051` a `…053`) y el orden de cada ventana. El usuario decidió, con las recomendaciones:
+- **Los teléfonos del guion y las referencias del turno 5 no existen en staging**: la consulta del usuario, sobre `clients`, `conversations` y `messages`, no devolvió filas. Incluía `+5491155550090`, el de la semilla de H-8.
+- **Las dos ventanas, el mismo día.** Si entre el turno 3 y el 4 pasan más de 24 horas, el turno 4 abre otra conversación en lugar de seguir la que quedó `pending`.
+- **En el turno 4 se apaga solo la ingestión.** Apagarla reinicia la aplicación, que corta también la lectura unos segundos: el turno 4 empieza cuando el CRM avisa que el reinicio terminó.
+- **La credencial de la semilla la crea quien hace el trabajo**, solo para su script, y la revoca al terminar, como en la prueba de lectura de la 12.5.1. Las tres del agente las crea el usuario (D-4).
+- **Hallazgo antes de la ventana, para el agente**: la búsqueda de productos toma cada palabra como prefijo, así que «fundas» y «cargadores» no encuentran «Funda rígida» ni «Cargador 20W». Los turnos 5 y 5b preguntan justo eso. El agente lo verifica en su tool antes de la ventana. No cambia el contrato (H-6).
+- **La conciliación**:
+  - la lista de esperados de cada ventana la completa el agente al terminar, con sus salidas (`wa-msg-wamid-dbl-…`), porque la cantidad de segmentos la decide el modelo;
+  - la semilla de H-8 va en la lista de la ventana 2, porque `conciliar-turnos.ts` cuenta los mensajes de toda la organización;
+  - la métrica 12 a mano, con las exclusiones del catálogo y *N* salidas:
+    - ventana 1: 4 + *N* eventos y 0 fallidos;
+    - ventana 2: 6 + *N* eventos y 2 fallidos, que son el `409 conversation_ref_taken` del turno 5 y el `409 message_already_recorded` del duplicado.
+- **El agente confirmó** (2026-09-28):
+  - los ids del turno 3 y del 5b son `wamid-fict-w1-t3-1` y `wamid-fict-w2-t5b-1`;
+  - **el agente responde en una conversación `pending`**, así que el turno 4 tiene salidas, que llegan después de la reapertura, junto con la entrada;
+  - manda la lista de sus salidas al terminar cada ventana;
+  - **confirmó el hallazgo de los plurales**: su tool manda `q` sin pasarlo a singular. Avisa si la corrección entra antes de la ventana.
+
 ## Resultados — etapa 12.5.1
 
 **Autoevaluación** (`self_assessment: true`), del 2026-09-27. Las salidas están en [evidencia-12.5](evidencia-12.5-turno-completo.md).
