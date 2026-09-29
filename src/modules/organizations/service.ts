@@ -381,6 +381,116 @@ export async function createMember(
   );
 }
 
+export const ORGANIZATION_NAME_MAX_LENGTH = 200;
+export const DEFAULT_ORGANIZATION_TIMEZONE = "America/Argentina/Buenos_Aires";
+
+export type CreateOrganizationField =
+  "organizationName" | "timezone" | "adminName" | "adminEmail";
+
+export type CreateOrganizationResult =
+  | {
+      ok: true;
+      organizationId: string;
+      userId: string;
+      memberId: string;
+      // Única vez que existe en claro (como en createMember): no se loguea ni se audita.
+      initialPassword: string;
+    }
+  | Failure<"CONFLICT">
+  | Failure<"VALIDATION_ERROR", { fields: CreateOrganizationField[] }>;
+
+const organizationNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(ORGANIZATION_NAME_MAX_LENGTH);
+
+function isValidTimezone(timezone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: timezone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Alta de una organización con su primer admin (brief-13.1, D-9). No hay contexto de sesión:
+// la llama solo el script de operador `scripts/crear-organizacion.ts`, porque un entorno nuevo
+// no tiene ningún admin que pueda usar createMember. Todo ocurre en una transacción: un correo
+// ya tomado revierte también la organización, así que nunca queda una organización sin admin.
+// La auditoría del alta del miembro lleva como actor al propio admin creado: es el único usuario
+// que existe en la organización, y audit_logs exige exactamente un actor.
+export async function createOrganizationWithAdmin(input: {
+  organizationName: string;
+  timezone?: string;
+  adminName: string;
+  adminEmail: string;
+}): Promise<CreateOrganizationResult> {
+  const fields: CreateOrganizationField[] = [];
+  const name = organizationNameSchema.safeParse(input.organizationName);
+  if (!name.success) fields.push("organizationName");
+  const timezone = input.timezone ?? DEFAULT_ORGANIZATION_TIMEZONE;
+  if (!isValidTimezone(timezone)) fields.push("timezone");
+  const user = validateNewUser({
+    name: input.adminName,
+    email: input.adminEmail,
+  });
+  if (!user.ok) {
+    for (const field of user.fields) {
+      fields.push(field === "name" ? "adminName" : "adminEmail");
+    }
+  }
+  if (!name.success || !user.ok || fields.length > 0) {
+    return { ok: false, code: "VALIDATION_ERROR", fields };
+  }
+
+  const { initialPassword, passwordHash } = await prepareInitialPassword();
+
+  try {
+    return await repository.inTransaction(async (tx) => {
+      const organizationId = await repository.insertOrganization(tx, {
+        name: name.data,
+        timezone,
+      });
+      const created = await createUserWithInitialPassword(tx, {
+        ...user.user,
+        passwordHash,
+      });
+      // Lanzar revierte la organización ya insertada; el catch de abajo lo traduce.
+      if (!created.ok) throw new EmailTakenError();
+
+      const memberId = await repository.insertMember(tx, {
+        organizationId,
+        userId: created.userId,
+        role: "admin",
+      });
+      await recordAudit(tx, {
+        organizationId,
+        actorUserId: created.userId,
+        entityType: "organization_member",
+        entityId: memberId,
+        action: "create",
+        diff: {
+          before: null,
+          after: { userId: created.userId, role: "admin", isActive: true },
+        },
+      });
+      return {
+        ok: true as const,
+        organizationId,
+        userId: created.userId,
+        memberId,
+        initialPassword,
+      };
+    });
+  } catch (error) {
+    if (error instanceof EmailTakenError) return failure("CONFLICT");
+    throw error;
+  }
+}
+
+class EmailTakenError extends Error {}
+
 // changed en false: el miembro ya estaba así; no se escribe ni se audita.
 export type MemberChangeResult =
   | { ok: true; changed: boolean }

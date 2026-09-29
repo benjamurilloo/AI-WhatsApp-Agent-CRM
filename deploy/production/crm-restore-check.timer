@@ -1,0 +1,15 @@
+[Unit]
+Description=Dispara el ejercicio de restauracion una vez por mes (brief-9.2, D-3)
+
+[Timer]
+# El dia 1 a las 04:30 UTC: despues del backup diario de las 03:15, para que el ejercicio
+# corra contra una copia recien hecha y no contra la de ayer.
+OnCalendar=*-*-01 04:30:00 UTC
+# Si la maquina estuvo apagada ese dia, el ejercicio corre al arrancar. Sin esto, un
+# reinicio el dia 1 se come el unico ejercicio del mes y no queda rastro de que falto.
+Persistent=true
+RandomizedDelaySec=900
+Unit=crm-restore-check.service
+
+[Install]
+WantedBy=timers.target

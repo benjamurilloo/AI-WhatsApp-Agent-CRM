@@ -330,20 +330,16 @@ export function simular(
   return lineas;
 }
 
-const SERVICIO = parsearUnidad(
-  readFileSync("deploy/staging/crm-backup.service", "utf8"),
-);
-const TIMER = parsearUnidad(
-  readFileSync("deploy/staging/crm-backup.timer", "utf8"),
-);
-const EJERCICIO = parsearUnidad(
-  readFileSync("deploy/staging/crm-restore-check.service", "utf8"),
-);
-const EJERCICIO_TIMER = parsearUnidad(
-  readFileSync("deploy/staging/crm-restore-check.timer", "utf8"),
-);
-const BACKUP = readFileSync("deploy/staging/crm-backup.sh", "utf8");
-const RESTORE = readFileSync("deploy/staging/crm-restore-check.sh", "utf8");
+// Los dos entornos con backup (brief-13.1, D-12). Todo lo de abajo corre sobre cada uno; lo que
+// solo tiene producción —el cifrado y la copia externa— va en su propio bloque al final.
+const ENTORNOS_BACKUP = [
+  { nombre: "staging", directorio: "deploy/staging", base: "crm_staging" },
+  {
+    nombre: "production",
+    directorio: "deploy/production",
+    base: "crm_production",
+  },
+] as const;
 
 /**
  * El script sin sus comentarios. Hace falta para afirmar que algo NO está: los dos
@@ -357,408 +353,577 @@ export function codigoDe(script: string): string {
     .join("\n");
 }
 
-describe("el parser de unidades distingue sección y clave", () => {
-  // Los casos de abajo son los que le dan sentido a parsear en vez de grepear. Sin
-  // ellos, la guarda entera podría estar haciendo `texto.includes(...)` y pasaría igual.
+describe.each(ENTORNOS_BACKUP)("$nombre", (entorno) => {
+  const leer = (archivo: string) =>
+    readFileSync(`${entorno.directorio}/${archivo}`, "utf8");
+  const SERVICIO = parsearUnidad(leer("crm-backup.service"));
+  const TIMER = parsearUnidad(leer("crm-backup.timer"));
+  const EJERCICIO = parsearUnidad(leer("crm-restore-check.service"));
+  const EJERCICIO_TIMER = parsearUnidad(leer("crm-restore-check.timer"));
+  const BACKUP = leer("crm-backup.sh");
+  const RESTORE = leer("crm-restore-check.sh");
 
-  it("no confunde una clave puesta en la sección equivocada", () => {
-    const mal = parsearUnidad("[Unit]\nWantedBy=timers.target\n[Install]\n");
-    expect(valor(mal, "Install", "WantedBy")).toBeNull();
-    expect(valor(mal, "Unit", "WantedBy")).toBe("timers.target");
-  });
+  describe("el parser de unidades distingue sección y clave", () => {
+    // Los casos de abajo son los que le dan sentido a parsear en vez de grepear. Sin
+    // ellos, la guarda entera podría estar haciendo `texto.includes(...)` y pasaría igual.
 
-  it("ignora los comentarios, que no son configuración activa", () => {
-    const comentada = parsearUnidad("[Timer]\n# Persistent=true\n");
-    expect(valor(comentada, "Timer", "Persistent")).toBeNull();
-  });
-
-  it("se queda con la última de una clave repetida", () => {
-    const repetida = parsearUnidad(
-      "[Timer]\nPersistent=true\nPersistent=false\n",
-    );
-    expect(valor(repetida, "Timer", "Persistent")).toBe("false");
-  });
-
-  it("no inventa secciones que no existen", () => {
-    expect(valor(SERVICIO, "Timer", "OnCalendar")).toBeNull();
-  });
-
-  it("une las continuaciones de línea de systemd", () => {
-    // Sin esto, una unidad válida escrita en varias líneas daría rojo: la guarda leería
-    // el valor cortado y no encontraría lo que busca. Es un falso negativo del detector,
-    // no del archivo (R-21 de la revisión de la 9.2).
-    const partida = parsearUnidad(
-      "[Service]\nReadWritePaths=/var/log \\\n  /var/backups/crm-staging\n",
-    );
-    expect(valor(partida, "Service", "ReadWritePaths")).toBe(
-      "/var/log /var/backups/crm-staging",
-    );
-  });
-
-  it("una continuación no se traga la clave siguiente", () => {
-    // El control del anterior: si el `\` uniera de más, `Type` desaparecería.
-    const dos = parsearUnidad(
-      "[Service]\nExecStart=/bin/a \\\n  --x\nType=oneshot\n",
-    );
-    expect(valor(dos, "Service", "ExecStart")).toBe("/bin/a --x");
-    expect(valor(dos, "Service", "Type")).toBe("oneshot");
-  });
-});
-
-describe("el timer versionado", () => {
-  // Estas regresiones son silenciosas. Ninguna hace fallar nada al desplegar: el archivo
-  // sigue siendo válido y `systemctl` no se queja. Lo único que cambia es que deja de
-  // haber backups, y eso no se nota hasta que hace falta uno.
-
-  it("se instala: sin [Install] WantedBy, un timer habilitado nunca arranca", () => {
-    expect(valor(TIMER, "Install", "WantedBy")).toBe("timers.target");
-  });
-
-  it("dispara todos los días, no un día del mes (D-3)", () => {
-    const calendario = valor(TIMER, "Timer", "OnCalendar");
-    expect(calendario).not.toBeNull();
-    expect(esDiario(calendario as string)).toBe(true);
-    expect(calendario).toMatch(/\d{2}:\d{2}:\d{2}/);
-  });
-
-  it("`esDiario` distingue lo diario de lo que solo lo parece", () => {
-    // Mutación ejecutada en la revisión: `*-*-*` → `*-*-01` convierte el backup diario
-    // en mensual y pasaba los 20 casos de la versión anterior de esta guarda.
-    expect(esDiario("*-*-* 03:15:00 UTC")).toBe(true);
-    expect(esDiario("*-*-01 03:15:00 UTC")).toBe(false);
-    expect(esDiario("*-01-* 03:15:00 UTC")).toBe(false);
-    expect(esDiario("Mon *-*-* 03:15:00 UTC")).toBe(false);
-  });
-
-  it("es Persistent: si la máquina estuvo apagada a esa hora, el backup se recupera", () => {
-    expect(valor(TIMER, "Timer", "Persistent")).toBe("true");
-  });
-
-  it("dispara el servicio de backup y no otra cosa", () => {
-    expect(valor(TIMER, "Timer", "Unit")).toBe("crm-backup.service");
-  });
-});
-
-describe("el servicio versionado", () => {
-  it("es oneshot: un backup termina, no se queda corriendo", () => {
-    expect(valor(SERVICIO, "Service", "Type")).toBe("oneshot");
-  });
-
-  it("ejecuta el script de backup", () => {
-    expect(valor(SERVICIO, "Service", "ExecStart")).toContain("crm-backup.sh");
-  });
-
-  it("puede escribir en el directorio de copias, que ProtectSystem le cerraría", () => {
-    // El par del anterior: con ProtectSystem=strict y sin ReadWritePaths el servicio
-    // corre, sale en verde y no escribe nada. Es la regresión más silenciosa de todas.
-    expect(valor(SERVICIO, "Service", "ProtectSystem")).toBe("strict");
-    expect(valor(SERVICIO, "Service", "ReadWritePaths")).toContain(
-      "/var/backups/crm-staging",
-    );
-  });
-
-  it("no trae ningún secreto embebido", () => {
-    const texto = readFileSync("deploy/staging/crm-backup.service", "utf8");
-    expect(texto).not.toMatch(/PASSWORD=|PGPASSWORD|DATABASE_URL=|SECRET=/i);
-  });
-});
-
-describe("el ejercicio de restauración también está agendado", () => {
-  // Por qué existe este bloque: hasta la revisión de la 9.2, el backup tenía timer y el
-  // ejercicio que comprueba que el backup sirve no lo tenía. O sea que la parte
-  // automatizada era la que produce el archivo, y la parte que depende de que alguien se
-  // acuerde era justamente la que distingue un backup de un archivo cualquiera.
-
-  it("el ejercicio se instala como timer", () => {
-    expect(valor(EJERCICIO_TIMER, "Install", "WantedBy")).toBe("timers.target");
-  });
-
-  it("dispara una vez por mes, no todos los días (D-3)", () => {
-    const calendario = valor(EJERCICIO_TIMER, "Timer", "OnCalendar");
-    expect(calendario).not.toBeNull();
-    expect(esMensual(calendario as string)).toBe(true);
-    expect(esDiario(calendario as string)).toBe(false);
-  });
-
-  it("`esMensual` no acepta lo diario disfrazado", () => {
-    expect(esMensual("*-*-01 04:30:00 UTC")).toBe(true);
-    expect(esMensual("*-*-* 04:30:00 UTC")).toBe(false);
-    expect(esMensual("*-01-01 04:30:00 UTC")).toBe(false);
-  });
-
-  it("corre después del backup del día, no antes", () => {
-    // Si corriera antes, el ejercicio validaría la copia de ayer y el backup de hoy
-    // se quedaría sin ejercitar nunca.
-    const backup = valor(TIMER, "Timer", "OnCalendar") as string;
-    const ejercicio = valor(EJERCICIO_TIMER, "Timer", "OnCalendar") as string;
-    const hora = (cal: string) => cal.trim().split(/\s+/)[1] ?? "";
-    expect(hora(ejercicio) > hora(backup)).toBe(true);
-    expect(hora(backup)).not.toBe("");
-  });
-
-  it("es Persistent: un reinicio el día 1 se comería el único ejercicio del mes", () => {
-    expect(valor(EJERCICIO_TIMER, "Timer", "Persistent")).toBe("true");
-  });
-
-  it("dispara el ejercicio y no el backup", () => {
-    expect(valor(EJERCICIO_TIMER, "Timer", "Unit")).toBe(
-      "crm-restore-check.service",
-    );
-    expect(valor(EJERCICIO, "Service", "ExecStart")).toContain(
-      "crm-restore-check.sh",
-    );
-  });
-
-  it("corre como postgres, que es quien puede crear y borrar una base", () => {
-    // Como root funcionaría también, y por eso es fácil que alguien lo cambie: un
-    // ejercicio de restauración que necesita root es un ejercicio que no se corre.
-    expect(valor(EJERCICIO, "Service", "User")).toBe("postgres");
-  });
-
-  it("no necesita escribir fuera de su /tmp privado", () => {
-    expect(valor(EJERCICIO, "Service", "PrivateTmp")).toBe("true");
-    expect(valor(EJERCICIO, "Service", "ProtectSystem")).toBe("strict");
-  });
-});
-
-// --- La rotación, por comportamiento ------------------------------------------------
-
-const ENTORNO = {
-  BACKUP_DIR: "/var/backups/crm-staging",
-  PGDATABASE: "crm_staging",
-  BACKUP_KEEP: "7",
-};
-
-/** Diez copias, de la más vieja a la más nueva. */
-const COPIAS = [
-  "20260913T031500Z",
-  "20260914T031500Z",
-  "20260915T031500Z",
-  "20260916T031500Z",
-  "20260917T031500Z",
-  "20260918T031500Z",
-  "20260919T031500Z",
-  "20260920T031500Z",
-  "20260921T031500Z",
-  "20260922T031500Z",
-].map((marca) => `${ENTORNO.BACKUP_DIR}/crm_staging-${marca}.dump`);
-
-const LAS_TRES_MAS_VIEJAS = COPIAS.slice(0, 3);
-const LAS_SIETE_MAS_NUEVAS = COPIAS.slice(3);
-
-/** El orden en que `find` entrega los archivos no está garantizado. */
-const DESORDENADAS = [...COPIAS].reverse();
-
-const ROTACION = extraerAsignacion(BACKUP, "sobrantes");
-
-describe("la rotación, simulada sobre la tubería real del script", () => {
-  it("con 10 copias y BACKUP_KEEP=7, borra exactamente las 3 más viejas", () => {
-    // `sobrantes` es la lista de lo que se BORRA. Que sean las más viejas es la
-    // propiedad entera de la rotación.
-    expect(simular(ROTACION, COPIAS, ENTORNO)).toEqual(LAS_TRES_MAS_VIEJAS);
-  });
-
-  it("no depende del orden en que find entregue los archivos", () => {
-    // `find` recorre el directorio, no ordena. Una tubería que se apoye en ese orden
-    // funciona hasta el día que el directorio cambia de forma.
-    expect(simular(ROTACION, DESORDENADAS, ENTORNO)).toEqual(
-      LAS_TRES_MAS_VIEJAS,
-    );
-  });
-
-  it("no borra nada cuando hay menos copias que el tope", () => {
-    expect(simular(ROTACION, COPIAS.slice(0, 5), ENTORNO)).toEqual([]);
-  });
-
-  it("no borra nada cuando hay exactamente el tope", () => {
-    expect(simular(ROTACION, LAS_SIETE_MAS_NUEVAS, ENTORNO)).toEqual([]);
-  });
-
-  it("con el tope en 1 conserva una sola copia, y es la más nueva", () => {
-    const sobrantes = simular(ROTACION, COPIAS, {
-      ...ENTORNO,
-      BACKUP_KEEP: "1",
+    it("no confunde una clave puesta en la sección equivocada", () => {
+      const mal = parsearUnidad("[Unit]\nWantedBy=timers.target\n[Install]\n");
+      expect(valor(mal, "Install", "WantedBy")).toBeNull();
+      expect(valor(mal, "Unit", "WantedBy")).toBe("timers.target");
     });
-    expect(sobrantes).toEqual(COPIAS.slice(0, 9));
-    expect(sobrantes).not.toContain(COPIAS.at(-1));
+
+    it("ignora los comentarios, que no son configuración activa", () => {
+      const comentada = parsearUnidad("[Timer]\n# Persistent=true\n");
+      expect(valor(comentada, "Timer", "Persistent")).toBeNull();
+    });
+
+    it("se queda con la última de una clave repetida", () => {
+      const repetida = parsearUnidad(
+        "[Timer]\nPersistent=true\nPersistent=false\n",
+      );
+      expect(valor(repetida, "Timer", "Persistent")).toBe("false");
+    });
+
+    it("no inventa secciones que no existen", () => {
+      expect(valor(SERVICIO, "Timer", "OnCalendar")).toBeNull();
+    });
+
+    it("une las continuaciones de línea de systemd", () => {
+      // Sin esto, una unidad válida escrita en varias líneas daría rojo: la guarda leería
+      // el valor cortado y no encontraría lo que busca. Es un falso negativo del detector,
+      // no del archivo (R-21 de la revisión de la 9.2).
+      const partida = parsearUnidad(
+        "[Service]\nReadWritePaths=/var/log \\\n  /var/backups/crm-staging\n",
+      );
+      expect(valor(partida, "Service", "ReadWritePaths")).toBe(
+        "/var/log /var/backups/crm-staging",
+      );
+    });
+
+    it("una continuación no se traga la clave siguiente", () => {
+      // El control del anterior: si el `\` uniera de más, `Type` desaparecería.
+      const dos = parsearUnidad(
+        "[Service]\nExecStart=/bin/a \\\n  --x\nType=oneshot\n",
+      );
+      expect(valor(dos, "Service", "ExecStart")).toBe("/bin/a --x");
+      expect(valor(dos, "Service", "Type")).toBe("oneshot");
+    });
   });
 
-  it("solo mira un directorio, solo archivos y solo los dumps de esta base", () => {
-    const argv = aArgv(etapasDe(ROTACION)[0] ?? "").map((token) =>
-      token.replace("${PGDATABASE}", ENTORNO.PGDATABASE),
-    );
-    expect(argv[0]).toBe("find");
-    expect(argv[argv.indexOf("-maxdepth") + 1]).toBe("1");
-    expect(argv[argv.indexOf("-type") + 1]).toBe("f");
-    // Sin el prefijo de la base, la rotación borraría dumps de otra base que compartiera
-    // directorio; sin el sufijo `.dump`, se llevaría puestos los `.sha256`.
-    expect(argv[argv.indexOf("-name") + 1]).toBe("crm_staging-*.dump");
+  describe("el timer versionado", () => {
+    // Estas regresiones son silenciosas. Ninguna hace fallar nada al desplegar: el archivo
+    // sigue siendo válido y `systemctl` no se queja. Lo único que cambia es que deja de
+    // haber backups, y eso no se nota hasta que hace falta uno.
+
+    it("se instala: sin [Install] WantedBy, un timer habilitado nunca arranca", () => {
+      expect(valor(TIMER, "Install", "WantedBy")).toBe("timers.target");
+    });
+
+    it("dispara todos los días, no un día del mes (D-3)", () => {
+      const calendario = valor(TIMER, "Timer", "OnCalendar");
+      expect(calendario).not.toBeNull();
+      expect(esDiario(calendario as string)).toBe(true);
+      expect(calendario).toMatch(/\d{2}:\d{2}:\d{2}/);
+    });
+
+    it("`esDiario` distingue lo diario de lo que solo lo parece", () => {
+      // Mutación ejecutada en la revisión: `*-*-*` → `*-*-01` convierte el backup diario
+      // en mensual y pasaba los 20 casos de la versión anterior de esta guarda.
+      expect(esDiario("*-*-* 03:15:00 UTC")).toBe(true);
+      expect(esDiario("*-*-01 03:15:00 UTC")).toBe(false);
+      expect(esDiario("*-01-* 03:15:00 UTC")).toBe(false);
+      expect(esDiario("Mon *-*-* 03:15:00 UTC")).toBe(false);
+    });
+
+    it("es Persistent: si la máquina estuvo apagada a esa hora, el backup se recupera", () => {
+      expect(valor(TIMER, "Timer", "Persistent")).toBe("true");
+    });
+
+    it("dispara el servicio de backup y no otra cosa", () => {
+      expect(valor(TIMER, "Timer", "Unit")).toBe("crm-backup.service");
+    });
+  });
+
+  describe("el servicio versionado", () => {
+    it("es oneshot: un backup termina, no se queda corriendo", () => {
+      expect(valor(SERVICIO, "Service", "Type")).toBe("oneshot");
+    });
+
+    it("ejecuta el script de backup", () => {
+      expect(valor(SERVICIO, "Service", "ExecStart")).toContain(
+        "crm-backup.sh",
+      );
+    });
+
+    it("puede escribir en el directorio de copias, que ProtectSystem le cerraría", () => {
+      // El par del anterior: con ProtectSystem=strict y sin ReadWritePaths el servicio
+      // corre, sale en verde y no escribe nada. Es la regresión más silenciosa de todas.
+      expect(valor(SERVICIO, "Service", "ProtectSystem")).toBe("strict");
+      expect(valor(SERVICIO, "Service", "ReadWritePaths")).toContain(
+        `/var/backups/${entorno.base.replace("_", "-")}`,
+      );
+    });
+
+    it("no trae ningún secreto embebido", () => {
+      const texto = leer("crm-backup.service");
+      expect(texto).not.toMatch(/PASSWORD=|PGPASSWORD|DATABASE_URL=|SECRET=/i);
+    });
+  });
+
+  describe("el ejercicio de restauración también está agendado", () => {
+    // Por qué existe este bloque: hasta la revisión de la 9.2, el backup tenía timer y el
+    // ejercicio que comprueba que el backup sirve no lo tenía. O sea que la parte
+    // automatizada era la que produce el archivo, y la parte que depende de que alguien se
+    // acuerde era justamente la que distingue un backup de un archivo cualquiera.
+
+    it("el ejercicio se instala como timer", () => {
+      expect(valor(EJERCICIO_TIMER, "Install", "WantedBy")).toBe(
+        "timers.target",
+      );
+    });
+
+    it("dispara una vez por mes, no todos los días (D-3)", () => {
+      const calendario = valor(EJERCICIO_TIMER, "Timer", "OnCalendar");
+      expect(calendario).not.toBeNull();
+      expect(esMensual(calendario as string)).toBe(true);
+      expect(esDiario(calendario as string)).toBe(false);
+    });
+
+    it("`esMensual` no acepta lo diario disfrazado", () => {
+      expect(esMensual("*-*-01 04:30:00 UTC")).toBe(true);
+      expect(esMensual("*-*-* 04:30:00 UTC")).toBe(false);
+      expect(esMensual("*-01-01 04:30:00 UTC")).toBe(false);
+    });
+
+    it("corre después del backup del día, no antes", () => {
+      // Si corriera antes, el ejercicio validaría la copia de ayer y el backup de hoy
+      // se quedaría sin ejercitar nunca.
+      const backup = valor(TIMER, "Timer", "OnCalendar") as string;
+      const ejercicio = valor(EJERCICIO_TIMER, "Timer", "OnCalendar") as string;
+      const hora = (cal: string) => cal.trim().split(/\s+/)[1] ?? "";
+      expect(hora(ejercicio) > hora(backup)).toBe(true);
+      expect(hora(backup)).not.toBe("");
+    });
+
+    it("es Persistent: un reinicio el día 1 se comería el único ejercicio del mes", () => {
+      expect(valor(EJERCICIO_TIMER, "Timer", "Persistent")).toBe("true");
+    });
+
+    it("dispara el ejercicio y no el backup", () => {
+      expect(valor(EJERCICIO_TIMER, "Timer", "Unit")).toBe(
+        "crm-restore-check.service",
+      );
+      expect(valor(EJERCICIO, "Service", "ExecStart")).toContain(
+        "crm-restore-check.sh",
+      );
+    });
+
+    it("corre como postgres, que es quien puede crear y borrar una base", () => {
+      // Como root funcionaría también, y por eso es fácil que alguien lo cambie: un
+      // ejercicio de restauración que necesita root es un ejercicio que no se corre.
+      expect(valor(EJERCICIO, "Service", "User")).toBe("postgres");
+    });
+
+    it("no necesita escribir fuera de su /tmp privado", () => {
+      expect(valor(EJERCICIO, "Service", "PrivateTmp")).toBe("true");
+      expect(valor(EJERCICIO, "Service", "ProtectSystem")).toBe("strict");
+    });
+  });
+
+  // --- La rotación, por comportamiento ------------------------------------------------
+
+  const ENTORNO = {
+    BACKUP_DIR: `/var/backups/${entorno.base.replace("_", "-")}`,
+    PGDATABASE: entorno.base,
+    BACKUP_KEEP: "7",
+  };
+
+  /** Diez copias, de la más vieja a la más nueva. */
+  const COPIAS = [
+    "20260913T031500Z",
+    "20260914T031500Z",
+    "20260915T031500Z",
+    "20260916T031500Z",
+    "20260917T031500Z",
+    "20260918T031500Z",
+    "20260919T031500Z",
+    "20260920T031500Z",
+    "20260921T031500Z",
+    "20260922T031500Z",
+  ].map((marca) => `${ENTORNO.BACKUP_DIR}/${entorno.base}-${marca}.dump`);
+
+  const LAS_TRES_MAS_VIEJAS = COPIAS.slice(0, 3);
+  const LAS_SIETE_MAS_NUEVAS = COPIAS.slice(3);
+
+  /** El orden en que `find` entrega los archivos no está garantizado. */
+  const DESORDENADAS = [...COPIAS].reverse();
+
+  const ROTACION = extraerAsignacion(BACKUP, "sobrantes");
+
+  describe("la rotación, simulada sobre la tubería real del script", () => {
+    it("con 10 copias y BACKUP_KEEP=7, borra exactamente las 3 más viejas", () => {
+      // `sobrantes` es la lista de lo que se BORRA. Que sean las más viejas es la
+      // propiedad entera de la rotación.
+      expect(simular(ROTACION, COPIAS, ENTORNO)).toEqual(LAS_TRES_MAS_VIEJAS);
+    });
+
+    it("no depende del orden en que find entregue los archivos", () => {
+      // `find` recorre el directorio, no ordena. Una tubería que se apoye en ese orden
+      // funciona hasta el día que el directorio cambia de forma.
+      expect(simular(ROTACION, DESORDENADAS, ENTORNO)).toEqual(
+        LAS_TRES_MAS_VIEJAS,
+      );
+    });
+
+    it("no borra nada cuando hay menos copias que el tope", () => {
+      expect(simular(ROTACION, COPIAS.slice(0, 5), ENTORNO)).toEqual([]);
+    });
+
+    it("no borra nada cuando hay exactamente el tope", () => {
+      expect(simular(ROTACION, LAS_SIETE_MAS_NUEVAS, ENTORNO)).toEqual([]);
+    });
+
+    it("con el tope en 1 conserva una sola copia, y es la más nueva", () => {
+      const sobrantes = simular(ROTACION, COPIAS, {
+        ...ENTORNO,
+        BACKUP_KEEP: "1",
+      });
+      expect(sobrantes).toEqual(COPIAS.slice(0, 9));
+      expect(sobrantes).not.toContain(COPIAS.at(-1));
+    });
+
+    it("solo mira un directorio, solo archivos y solo los dumps de esta base", () => {
+      const argv = aArgv(etapasDe(ROTACION)[0] ?? "").map((token) =>
+        token.replace("${PGDATABASE}", ENTORNO.PGDATABASE),
+      );
+      expect(argv[0]).toBe("find");
+      expect(argv[argv.indexOf("-maxdepth") + 1]).toBe("1");
+      expect(argv[argv.indexOf("-type") + 1]).toBe("f");
+      // Sin el prefijo de la base, la rotación borraría dumps de otra base que compartiera
+      // directorio; sin el sufijo `.dump`, se llevaría puestos los `.sha256`.
+      expect(argv[argv.indexOf("-name") + 1]).toBe(`${entorno.base}-*.dump`);
+    });
+  });
+
+  describe("el simulador detecta lo que la búsqueda de texto no distinguía", () => {
+    // Cada caso de acá es una mutación **ejecutada** contra el script real durante la
+    // revisión independiente de la 9.2, y cada una pasaba en verde con la guarda anterior.
+    // Quedan versionadas acá, y no solo narradas en la evidencia, porque una mutación que
+    // no corre no protege de nada (EngineeringStandards, regla de mutación).
+
+    it("`sort -r` invertiría la rotación y borraría las 3 más nuevas", () => {
+      // Cinco caracteres. La subcadena `head -n "-$BACKUP_KEEP"` queda intacta, así que
+      // la guarda anterior seguía en verde mientras la rotación se llevaba puesto el
+      // backup de anoche y conservaba los siete más viejos.
+      const mutada = ROTACION.replace(/\bsort\b/, "sort -r");
+      const borradas = simular(mutada, COPIAS, ENTORNO);
+      expect(borradas).toEqual([...COPIAS.slice(7)].reverse());
+      expect(borradas).toContain(COPIAS.at(-1));
+    });
+
+    it("`head -n N` sin el signo dejaría pasar las 7 más viejas", () => {
+      const mutada = ROTACION.replace(
+        'head -n "-$BACKUP_KEEP"',
+        'head -n "$BACKUP_KEEP"',
+      );
+      expect(simular(mutada, COPIAS, ENTORNO)).toEqual(COPIAS.slice(0, 7));
+    });
+
+    it("quitar el `sort` deja el resultado a merced del orden del directorio", () => {
+      const mutada = ROTACION.replace(/\|\s*sort\b/, "");
+      expect(simular(mutada, COPIAS, ENTORNO)).not.toEqual(
+        simular(mutada, DESORDENADAS, ENTORNO),
+      );
+    });
+
+    it("falla ante una orden que no conoce, en vez de dejarla pasar", () => {
+      const mutada = ROTACION.replace(/\bsort\b/, "shuf");
+      expect(() => simular(mutada, COPIAS, ENTORNO)).toThrow(
+        /no conoce 'shuf'/,
+      );
+    });
+
+    it("falla si la asignación desaparece del script", () => {
+      expect(() => extraerAsignacion("echo hola\n", "sobrantes")).toThrow(
+        /no hay ninguna asignación/,
+      );
+    });
+  });
+
+  describe("decisiones de los scripts cuya regresión sería silenciosa", () => {
+    // Esto es comprobación **por texto** y por lo tanto más débil que lo de arriba. Va
+    // igual porque cada una de estas regresiones deja el script corriendo en verde.
+
+    it("los dos scripts abortan ante el primer error y ante un fallo de tubería", () => {
+      // Sin `-e` el script sigue después de un pg_dump fallido y renombra el parcial como
+      // si fuera bueno; sin `-o pipefail` una tubería devuelve el estado de la última
+      // orden, no el del dump. En los dos casos el servicio sale 0 y el timer queda en
+      // verde. Mutación ejecutada: quitar la línea pasaba los 20 casos anteriores.
+      expect(BACKUP).toMatch(/^set -euo pipefail$/m);
+      expect(RESTORE).toMatch(/^set -euo pipefail$/m);
+    });
+
+    it("el dump usa formato custom: el plano no permite restaurar una sola tabla", () => {
+      expect(BACKUP).toMatch(/--format=custom/);
+    });
+
+    it("escribe a un archivo parcial y lo renombra al final", () => {
+      // Sin esto, un corte a mitad del dump deja un archivo con nombre definitivo que la
+      // rotación cuenta como copia válida.
+      expect(BACKUP).toMatch(/\$destino\.parcial/);
+      expect(BACKUP).toMatch(/mv "\$parcial" "\$destino"/);
+    });
+
+    it("valida BACKUP_KEEP antes de rotar, y eso evita borrarlo todo", () => {
+      expect(BACKUP).toMatch(/BACKUP_KEEP =~ \^\[0-9\]\+\$/);
+      expect(BACKUP).toMatch(/BACKUP_KEEP < 1/);
+      // Lo que esa validación evita, medido en vez de razonado: con el tope en cero,
+      // `head -n -0` deja pasar TODO y la rotación se lleva las diez copias.
+      expect(
+        simular(ROTACION, COPIAS, { ...ENTORNO, BACKUP_KEEP: "0" }),
+      ).toEqual(COPIAS);
+    });
+
+    it("el backup escribe un manifiesto de recuentos junto al dump", () => {
+      // Sin manifiesto, el ejercicio solo puede compararse contra el origen leído en su
+      // propio momento, que es un blanco móvil: toda escritura posterior al dump lo hace
+      // fallar. Medido el 2026-09-22 al desplegar el timer por primera vez — falló con
+      // `login_attempts 2 -> 0` por escrituras normales de la aplicación.
+      expect(codigoDe(BACKUP)).toMatch(/\$parcial\.recuentos/);
+      expect(codigoDe(BACKUP)).toMatch(
+        /mv "\$parcial\.recuentos" "\$destino\.recuentos"/,
+      );
+    });
+
+    it("un manifiesto vacío aborta el backup en vez de guardarse", () => {
+      // Un manifiesto vacío haría pasar el ejercicio siempre: comparar dos conjuntos
+      // vacíos da igual. Es el mismo agujero que el corte de `tablas == 0`, un paso antes.
+      expect(codigoDe(BACKUP)).toMatch(/! -s \$parcial\.recuentos/);
+    });
+
+    it("la rotación se lleva el manifiesto junto con su dump", () => {
+      // Si quedaran huérfanos, el directorio acumularía manifiestos de dumps borrados para
+      // siempre: la rotación dejaría de acotar lo que ocupa.
+      expect(codigoDe(BACKUP)).toMatch(
+        /rm -f "\$viejo" "\$viejo\.sha256" "\$viejo\.recuentos"/,
+      );
+    });
+
+    it("el ejercicio compara contra el manifiesto, no contra el origen", () => {
+      expect(codigoDe(RESTORE)).toMatch(/MANIFIESTO="\$DUMP\.recuentos"/);
+      expect(codigoDe(RESTORE)).toMatch(/referencia="\$MANIFIESTO"/);
+    });
+
+    it("los dos scripts cuentan filas con la MISMA consulta", () => {
+      // Acoplamiento real y no evidente: si las dos consultas divergieran —una contando
+      // `pg_tables` y la otra `pg_class`, por ejemplo— el ejercicio fallaría por la
+      // diferencia entre dos consultas y nadie miraría el backup, que estaría sano.
+      const consulta = (script: string) => {
+        const desde = script.indexOf("SELECT c.relname");
+        expect(desde).toBeGreaterThan(-1);
+        return script
+          .slice(desde, script.indexOf("ORDER BY c.relname", desde))
+          .replace(/\s+/g, " ")
+          .trim();
+      };
+      expect(consulta(BACKUP)).toBe(consulta(RESTORE));
+    });
+
+    it("el ejercicio de restauración compara contenido, no el código de salida", () => {
+      expect(RESTORE).toMatch(/select count\(\*\) as cnt from public/);
+      expect(RESTORE).toMatch(/diff -u/);
+    });
+
+    it("el ejercicio falla si no hay ninguna tabla", () => {
+      // Sin este corte, comparar dos conjuntos vacíos pasa siempre y el ejercicio entero
+      // se vuelve incapaz de fallar.
+      expect(RESTORE).toMatch(/tablas == 0/);
+    });
+
+    it("el ejercicio restaura SIN --no-owner, como manda el runbook", () => {
+      // Con `--no-owner` las tablas quedan de `postgres` y no de `crm_owner`: la
+      // aplicación anda, el ejercicio pasa, y la próxima migración falla con `must be
+      // owner of table clients`, muy lejos del momento en que se causó. Medido el
+      // 2026-09-22 en el simulacro. Si el ejercicio usa el flag, deja de ensayar
+      // exactamente el paso que rompe una recuperación real.
+      expect(codigoDe(RESTORE)).not.toMatch(/--no-owner/);
+      // Y el comentario que lo explica sigue ahí: si alguien vuelve a poner el flag,
+      // que al menos lea por qué no va.
+      expect(RESTORE).toMatch(/SIN --no-owner/);
+    });
+
+    it("`codigoDe` no confunde una advertencia con la cosa advertida", () => {
+      // El caso que hace falsa la aserción de arriba si se la escribe sobre el texto
+      // entero: el script dice «SIN --no-owner» en un comentario.
+      expect(
+        codigoDe("# ojo con --no-owner\npg_restore --dbname=x\n"),
+      ).not.toMatch(/--no-owner/);
+      expect(codigoDe("  pg_restore --no-owner x\n")).toMatch(/--no-owner/);
+    });
+
+    it("la base restaurada se borra aunque el ejercicio reviente a la mitad", () => {
+      expect(RESTORE).toMatch(/trap limpiar EXIT/);
+      expect(RESTORE).toMatch(/dropdb --if-exists/);
+    });
+
+    it("ninguno de los dos scripts imprime un secreto", () => {
+      for (const script of [BACKUP, RESTORE]) {
+        expect(script).not.toMatch(/echo .*\$(PGPASSWORD|DATABASE_URL)/);
+        expect(script).not.toMatch(/PGPASSWORD=/);
+      }
+    });
   });
 });
 
-describe("el simulador detecta lo que la búsqueda de texto no distinguía", () => {
-  // Cada caso de acá es una mutación **ejecutada** contra el script real durante la
-  // revisión independiente de la 9.2, y cada una pasaba en verde con la guarda anterior.
-  // Quedan versionadas acá, y no solo narradas en la evidencia, porque una mutación que
-  // no corre no protege de nada (EngineeringStandards, regla de mutación).
+// --- Solo producción: el cifrado y la copia externa (brief-13.1, D-8) -----------------
 
-  it("`sort -r` invertiría la rotación y borraría las 3 más nuevas", () => {
-    // Cinco caracteres. La subcadena `head -n "-$BACKUP_KEEP"` queda intacta, así que
-    // la guarda anterior seguía en verde mientras la rotación se llevaba puesto el
-    // backup de anoche y conservaba los siete más viejos.
-    const mutada = ROTACION.replace(/\bsort\b/, "sort -r");
-    const borradas = simular(mutada, COPIAS, ENTORNO);
-    expect(borradas).toEqual([...COPIAS.slice(7)].reverse());
-    expect(borradas).toContain(COPIAS.at(-1));
-  });
+const PROD_BACKUP = readFileSync("deploy/production/crm-backup.sh", "utf8");
+const PROD_OFFSITE = readFileSync(
+  "deploy/production/crm-backup-offsite.sh",
+  "utf8",
+);
+const PROD_SERVICIO = parsearUnidad(
+  readFileSync("deploy/production/crm-backup.service", "utf8"),
+);
+const PROD_OFFSITE_SERVICIO = parsearUnidad(
+  readFileSync("deploy/production/crm-backup-offsite.service", "utf8"),
+);
 
-  it("`head -n N` sin el signo dejaría pasar las 7 más viejas", () => {
-    const mutada = ROTACION.replace(
-      'head -n "-$BACKUP_KEEP"',
-      'head -n "$BACKUP_KEEP"',
+/** Línea (base 0) de la primera coincidencia en el código sin comentarios, o -1. */
+function lineaDe(script: string, patron: RegExp): number {
+  return codigoDe(script)
+    .split("\n")
+    .findIndex((linea) => patron.test(linea));
+}
+
+describe("producción: el dump se cifra antes de que exista con nombre definitivo", () => {
+  it("cifra con age para una clave pública, nunca con una contraseña", () => {
+    expect(codigoDe(PROD_BACKUP)).toMatch(
+      /age --encrypt --recipients-file "\$BACKUP_AGE_RECIPIENTS"/,
     );
-    expect(simular(mutada, COPIAS, ENTORNO)).toEqual(COPIAS.slice(0, 7));
+    expect(codigoDe(PROD_BACKUP)).not.toMatch(/age .*--passphrase|age .* -p\b/);
   });
 
-  it("quitar el `sort` deja el resultado a merced del orden del directorio", () => {
-    const mutada = ROTACION.replace(/\|\s*sort\b/, "");
-    expect(simular(mutada, COPIAS, ENTORNO)).not.toEqual(
-      simular(mutada, DESORDENADAS, ENTORNO),
+  it("falla sin clave pública ANTES del dump, no después", () => {
+    const control = lineaDe(PROD_BACKUP, /! -s \$BACKUP_AGE_RECIPIENTS/);
+    const dump = lineaDe(PROD_BACKUP, /^pg_dump /);
+    expect(control).toBeGreaterThan(-1);
+    expect(dump).toBeGreaterThan(control);
+  });
+
+  it("cifra antes de renombrar el dump: un corte no deja un .age definitivo", () => {
+    const cifrado = lineaDe(PROD_BACKUP, /^age --encrypt/);
+    const renombre = lineaDe(PROD_BACKUP, /^mv "\$parcial" "\$destino"$/);
+    expect(cifrado).toBeGreaterThan(-1);
+    expect(renombre).toBeGreaterThan(cifrado);
+  });
+
+  // La mutación de los dos casos anteriores, ejecutada sobre el archivo real: mover el cifrado
+  // después del renombre invierte el orden y el caso lo detecta.
+  it("mover el cifrado después del renombre se detecta", () => {
+    const lineas = codigoDe(PROD_BACKUP).split("\n");
+    const cifrado = lineas.findIndex((l) => /^age --encrypt/.test(l));
+    const [linea] = lineas.splice(cifrado, 1);
+    const renombre = lineas.findIndex((l) =>
+      /^mv "\$parcial" "\$destino"$/.test(l),
+    );
+    lineas.splice(renombre + 1, 0, linea as string);
+    const mutado = lineas.join("\n");
+    expect(lineaDe(mutado, /^mv "\$parcial" "\$destino"$/)).toBeLessThan(
+      lineaDe(mutado, /^age --encrypt/),
     );
   });
 
-  it("falla ante una orden que no conoce, en vez de dejarla pasar", () => {
-    const mutada = ROTACION.replace(/\bsort\b/, "shuf");
-    expect(() => simular(mutada, COPIAS, ENTORNO)).toThrow(/no conoce 'shuf'/);
+  it("el trap limpia también la copia cifrada parcial", () => {
+    expect(codigoDe(PROD_BACKUP)).toMatch(
+      /limpiar\(\) \{ rm -f .*"\$parcial\.age"/,
+    );
   });
 
-  it("falla si la asignación desaparece del script", () => {
-    expect(() => extraerAsignacion("echo hola\n", "sobrantes")).toThrow(
-      /no hay ninguna asignación/,
+  it("la rotación local se lleva también la copia cifrada", () => {
+    expect(codigoDe(PROD_BACKUP)).toMatch(
+      /rm -f "\$viejo" "\$viejo\.sha256" "\$viejo\.recuentos" "\$viejo\.age" "\$viejo\.age\.sha256"/,
     );
   });
 });
 
-describe("decisiones de los scripts cuya regresión sería silenciosa", () => {
-  // Esto es comprobación **por texto** y por lo tanto más débil que lo de arriba. Va
-  // igual porque cada una de estas regresiones deja el script corriendo en verde.
-
-  it("los dos scripts abortan ante el primer error y ante un fallo de tubería", () => {
-    // Sin `-e` el script sigue después de un pg_dump fallido y renombra el parcial como
-    // si fuera bueno; sin `-o pipefail` una tubería devuelve el estado de la última
-    // orden, no el del dump. En los dos casos el servicio sale 0 y el timer queda en
-    // verde. Mutación ejecutada: quitar la línea pasaba los 20 casos anteriores.
-    expect(BACKUP).toMatch(/^set -euo pipefail$/m);
-    expect(RESTORE).toMatch(/^set -euo pipefail$/m);
-  });
-
-  it("el dump usa formato custom: el plano no permite restaurar una sola tabla", () => {
-    expect(BACKUP).toMatch(/--format=custom/);
-  });
-
-  it("escribe a un archivo parcial y lo renombra al final", () => {
-    // Sin esto, un corte a mitad del dump deja un archivo con nombre definitivo que la
-    // rotación cuenta como copia válida.
-    expect(BACKUP).toMatch(/\$destino\.parcial/);
-    expect(BACKUP).toMatch(/mv "\$parcial" "\$destino"/);
-  });
-
-  it("valida BACKUP_KEEP antes de rotar, y eso evita borrarlo todo", () => {
-    expect(BACKUP).toMatch(/BACKUP_KEEP =~ \^\[0-9\]\+\$/);
-    expect(BACKUP).toMatch(/BACKUP_KEEP < 1/);
-    // Lo que esa validación evita, medido en vez de razonado: con el tope en cero,
-    // `head -n -0` deja pasar TODO y la rotación se lleva las diez copias.
-    expect(simular(ROTACION, COPIAS, { ...ENTORNO, BACKUP_KEEP: "0" })).toEqual(
-      COPIAS,
+describe("producción: la copia externa sube solo lo cifrado", () => {
+  it("elige la última copia por su extensión .age", () => {
+    expect(codigoDe(PROD_OFFSITE)).toMatch(
+      /-name "\$\{PGDATABASE\}-\*\.dump\.age"/,
     );
   });
 
-  it("el backup escribe un manifiesto de recuentos junto al dump", () => {
-    // Sin manifiesto, el ejercicio solo puede compararse contra el origen leído en su
-    // propio momento, que es un blanco móvil: toda escritura posterior al dump lo hace
-    // fallar. Medido el 2026-09-22 al desplegar el timer por primera vez — falló con
-    // `login_attempts 2 -> 0` por escrituras normales de la aplicación.
-    expect(codigoDe(BACKUP)).toMatch(/\$parcial\.recuentos/);
-    expect(codigoDe(BACKUP)).toMatch(
-      /mv "\$parcial\.recuentos" "\$destino\.recuentos"/,
+  it("sube solo el .age, su suma y el manifiesto: nunca el dump en claro", () => {
+    const subidas = /for archivo in (.+); do/.exec(codigoDe(PROD_OFFSITE))?.[1];
+    expect(subidas).toBe('"$ultima" "$ultima.sha256" "$base.recuentos"');
+    // `$base` es el dump en claro: puede aparecer solo con el sufijo del manifiesto.
+    expect(subidas).not.toMatch(/"\$base"/);
+  });
+
+  // La mutación: agregar el dump en claro a la lista de subida.
+  it("agregar el dump en claro a la subida se detecta", () => {
+    const mutado = codigoDe(PROD_OFFSITE).replace(
+      'for archivo in "$ultima"',
+      'for archivo in "$base" "$ultima"',
+    );
+    const subidas = /for archivo in (.+); do/.exec(mutado)?.[1];
+    expect(subidas).toMatch(/"\$base"/);
+  });
+
+  it("comprueba el tamaño remoto contra el local, no confía en el código de salida", () => {
+    expect(codigoDe(PROD_OFFSITE)).toMatch(/rclone size/);
+    expect(codigoDe(PROD_OFFSITE)).toMatch(/\$local_bytes != "\$remoto_bytes"/);
+  });
+
+  it("valida la retención externa: al menos 7 días", () => {
+    expect(codigoDe(PROD_OFFSITE)).toMatch(/OFFSITE_KEEP_DAYS < 7/);
+    expect(codigoDe(PROD_OFFSITE)).toMatch(
+      /rclone delete .*--min-age "\$\{OFFSITE_KEEP_DAYS\}d"/,
     );
   });
 
-  it("un manifiesto vacío aborta el backup en vez de guardarse", () => {
-    // Un manifiesto vacío haría pasar el ejercicio siempre: comparar dos conjuntos
-    // vacíos da igual. Es el mismo agujero que el corte de `tablas == 0`, un paso antes.
-    expect(codigoDe(BACKUP)).toMatch(/! -s \$parcial\.recuentos/);
+  it("aborta ante el primer error", () => {
+    expect(PROD_OFFSITE).toMatch(/^set -euo pipefail$/m);
   });
+});
 
-  it("la rotación se lleva el manifiesto junto con su dump", () => {
-    // Si quedaran huérfanos, el directorio acumularía manifiestos de dumps borrados para
-    // siempre: la rotación dejaría de acotar lo que ocupa.
-    expect(codigoDe(BACKUP)).toMatch(
-      /rm -f "\$viejo" "\$viejo\.sha256" "\$viejo\.recuentos"/,
+describe("producción: las unidades separan la base de la red", () => {
+  it("la copia externa corre solo después de un backup exitoso", () => {
+    expect(valor(PROD_SERVICIO, "Unit", "OnSuccess")).toBe(
+      "crm-backup-offsite.service",
     );
   });
 
-  it("el ejercicio compara contra el manifiesto, no contra el origen", () => {
-    expect(codigoDe(RESTORE)).toMatch(/MANIFIESTO="\$DUMP\.recuentos"/);
-    expect(codigoDe(RESTORE)).toMatch(/referencia="\$MANIFIESTO"/);
+  it("OnSuccess puesto en [Service] no hace nada, y se detecta", () => {
+    const mal = parsearUnidad(
+      "[Service]\nOnSuccess=crm-backup-offsite.service\n",
+    );
+    expect(valor(mal, "Unit", "OnSuccess")).toBeNull();
   });
 
-  it("los dos scripts cuentan filas con la MISMA consulta", () => {
-    // Acoplamiento real y no evidente: si las dos consultas divergieran —una contando
-    // `pg_tables` y la otra `pg_class`, por ejemplo— el ejercicio fallaría por la
-    // diferencia entre dos consultas y nadie miraría el backup, que estaría sano.
-    const consulta = (script: string) => {
-      const desde = script.indexOf("SELECT c.relname");
-      expect(desde).toBeGreaterThan(-1);
-      return script
-        .slice(desde, script.indexOf("ORDER BY c.relname", desde))
-        .replace(/\s+/g, " ")
-        .trim();
-    };
-    expect(consulta(BACKUP)).toBe(consulta(RESTORE));
+  it("el backup sigue sin red: la subida vive en otra unidad", () => {
+    expect(valor(PROD_SERVICIO, "Service", "IPAddressDeny")).toBe("any");
   });
 
-  it("el ejercicio de restauración compara contenido, no el código de salida", () => {
-    expect(RESTORE).toMatch(/select count\(\*\) as cnt from public/);
-    expect(RESTORE).toMatch(/diff -u/);
-  });
-
-  it("el ejercicio falla si no hay ninguna tabla", () => {
-    // Sin este corte, comparar dos conjuntos vacíos pasa siempre y el ejercicio entero
-    // se vuelve incapaz de fallar.
-    expect(RESTORE).toMatch(/tablas == 0/);
-  });
-
-  it("el ejercicio restaura SIN --no-owner, como manda el runbook", () => {
-    // Con `--no-owner` las tablas quedan de `postgres` y no de `crm_owner`: la
-    // aplicación anda, el ejercicio pasa, y la próxima migración falla con `must be
-    // owner of table clients`, muy lejos del momento en que se causó. Medido el
-    // 2026-09-22 en el simulacro. Si el ejercicio usa el flag, deja de ensayar
-    // exactamente el paso que rompe una recuperación real.
-    expect(codigoDe(RESTORE)).not.toMatch(/--no-owner/);
-    // Y el comentario que lo explica sigue ahí: si alguien vuelve a poner el flag,
-    // que al menos lea por qué no va.
-    expect(RESTORE).toMatch(/SIN --no-owner/);
-  });
-
-  it("`codigoDe` no confunde una advertencia con la cosa advertida", () => {
-    // El caso que hace falsa la aserción de arriba si se la escribe sobre el texto
-    // entero: el script dice «SIN --no-owner» en un comentario.
+  it("la unidad de la copia externa ejecuta el script de subida y no escribe en disco", () => {
+    expect(valor(PROD_OFFSITE_SERVICIO, "Service", "ExecStart")).toBe(
+      "/usr/local/bin/crm-backup-offsite.sh",
+    );
+    expect(valor(PROD_OFFSITE_SERVICIO, "Service", "ProtectSystem")).toBe(
+      "strict",
+    );
     expect(
-      codigoDe("# ojo con --no-owner\npg_restore --dbname=x\n"),
-    ).not.toMatch(/--no-owner/);
-    expect(codigoDe("  pg_restore --no-owner x\n")).toMatch(/--no-owner/);
+      valor(PROD_OFFSITE_SERVICIO, "Service", "ReadWritePaths"),
+    ).toBeNull();
   });
 
-  it("la base restaurada se borra aunque el ejercicio reviente a la mitad", () => {
-    expect(RESTORE).toMatch(/trap limpiar EXIT/);
-    expect(RESTORE).toMatch(/dropdb --if-exists/);
-  });
-
-  it("ninguno de los dos scripts imprime un secreto", () => {
-    for (const script of [BACKUP, RESTORE]) {
-      expect(script).not.toMatch(/echo .*\$(PGPASSWORD|DATABASE_URL)/);
-      expect(script).not.toMatch(/PGPASSWORD=/);
+  it("ningún archivo de producción trae un secreto embebido", () => {
+    for (const texto of [PROD_BACKUP, PROD_OFFSITE]) {
+      expect(texto).not.toMatch(
+        /PGPASSWORD=|AWS_SECRET|RCLONE_CONFIG_.*_SECRET|secret_access_key/i,
+      );
     }
   });
 });

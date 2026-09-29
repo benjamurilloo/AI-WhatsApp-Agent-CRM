@@ -24,7 +24,8 @@
     "db:seed:volume": "tsx seeds/volume.ts",
     "db:seed:volume:distribucion": "tsx seeds/volume.ts distribucion",
     "db:seed:pilot": "tsx seeds/pilot.ts",
-    "ingestion:credential": "tsx scripts/ingestion-credential.ts"
+    "ingestion:credential": "tsx scripts/ingestion-credential.ts",
+    "org:create": "tsx scripts/crear-organizacion.ts"
   },
   "dependencies": {
     "@node-rs/argon2": "~2.2.1",

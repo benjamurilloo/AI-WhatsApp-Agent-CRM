@@ -19,11 +19,28 @@ import { describe, expect, it } from "vitest";
 // comprueban con el paso manual de `deploy/staging/README.md`. Es una mitigación de H-1, no su
 // desaparición.
 
-const ARCHIVO = "deploy/staging/postgresql-crm-staging.conf";
-const CONFIGURACION = readFileSync(ARCHIVO, "utf8");
-
-// Memoria total del droplet, medida con `free -m` el 2026-09-23: 961 MB.
-const RAM_BYTES = 961 * 1024 * 1024;
+// Un archivo por entorno (brief-13.1, D-12). La RAM de cada máquina es una constante porque ningún
+// test puede medirla.
+//   - staging: medida con `free -m` el 2026-09-23, 961 MB.
+//   - production: PROVISIONAL. Es la del droplet dimensionado en la 13.1 (D-1: 2 GB), que todavía
+//     no existe. Se reemplaza por la medida con `free -m` en la 13.1.2, en el mismo cambio que
+//     recalcula effective_cache_size.
+const ENTORNOS_POSTGRES = [
+  {
+    nombre: "staging",
+    archivo: "deploy/staging/postgresql-crm-staging.conf",
+    destino: /\/etc\/postgresql\/18\/main\/conf\.d\/crm-staging\.conf/,
+    ramMb: 961,
+    ramTexto: /961 MB/,
+  },
+  {
+    nombre: "production",
+    archivo: "deploy/production/postgresql-crm-production.conf",
+    destino: /\/etc\/postgresql\/18\/main\/conf\.d\/crm-production\.conf/,
+    ramMb: 2048,
+    ramTexto: /2 GB/,
+  },
+] as const;
 
 const UNIDADES: Record<string, number> = {
   "": 1,
@@ -195,115 +212,118 @@ describe("el parser", () => {
   });
 });
 
-describe("los parámetros de costo describen la máquina real", () => {
-  const valores = parsear(CONFIGURACION);
+describe.each(ENTORNOS_POSTGRES)(
+  "$nombre: los parámetros de costo describen la máquina real",
+  (entorno) => {
+    const CONFIGURACION = readFileSync(entorno.archivo, "utf8");
+    const RAM_BYTES = entorno.ramMb * 1024 * 1024;
+    const valores = parsear(CONFIGURACION);
 
-  it("fija los dos parámetros que estaban mal", () => {
-    expect(valores.has("effective_cache_size")).toBe(true);
-    expect(valores.has("random_page_cost")).toBe(true);
-  });
+    it("fija los dos parámetros que estaban mal", () => {
+      expect(valores.has("effective_cache_size")).toBe(true);
+      expect(valores.has("random_page_cost")).toBe(true);
+    });
 
-  it("effective_cache_size no supera la memoria de la máquina", () => {
-    const declarado = cacheEnBytes(valores.get("effective_cache_size")!);
-    expect(declarado).toBeLessThanOrEqual(RAM_BYTES);
-    // Y tampoco es absurdamente chico: por debajo de shared_buffers el planificador creería que
-    // no hay caché y volvería a elegir mal, en la dirección contraria.
-    expect(declarado).toBeGreaterThan(128 * 1024 * 1024);
-  });
+    it("effective_cache_size no supera la memoria de la máquina", () => {
+      const declarado = cacheEnBytes(valores.get("effective_cache_size")!);
+      expect(declarado).toBeLessThanOrEqual(RAM_BYTES);
+      // Y tampoco es absurdamente chico: por debajo de shared_buffers el planificador creería que
+      // no hay caché y volvería a elegir mal, en la dirección contraria.
+      expect(declarado).toBeGreaterThan(128 * 1024 * 1024);
+    });
 
-  // La mutación: el valor que tenía el servidor antes de la 9.3. Sin este caso, el anterior
-  // pasaría igual si alguien restaurara el valor por defecto de PostgreSQL.
-  //
-  // El ancla `^` con `m` no es cosmética. La primera versión de esta mutación usaba
-  // `/effective_cache_size = \S+/` sin anclar y **reemplazaba el comentario de la cabecera**,
-  // donde el archivo cita `effective_cache_size = 4GB` justamente para explicar el defecto: el
-  // parámetro real quedaba intacto y la mutación no mutaba nada. Es la misma forma del hallazgo
-  // que la 9.2 ya tuvo una vez, cuando una aserción sobre `--no-owner` se cumplía contra el
-  // comentario que advertía sobre `--no-owner`.
-  it("con effective_cache_size en su valor anterior, el caso anterior falla", () => {
-    const mutada = CONFIGURACION.replace(
-      /^effective_cache_size = \S+/m,
-      "effective_cache_size = 4GB",
-    );
-    const declarado = cacheEnBytes(
-      parsear(mutada).get("effective_cache_size")!,
-    );
-    expect(declarado).toBeGreaterThan(RAM_BYTES);
-  });
-
-  it("random_page_cost es el de un SSD, no el de un disco con cabezal", () => {
-    const costo = aBytes(valores.get("random_page_cost")!);
-    expect(costo).toBeLessThan(4);
-    expect(costo).toBeGreaterThanOrEqual(1);
-  });
-
-  it("con random_page_cost en su valor anterior, el caso anterior falla", () => {
-    const mutada = CONFIGURACION.replace(
-      /^random_page_cost = \S+/m,
-      "random_page_cost = 4",
-    );
-    expect(aBytes(parsear(mutada).get("random_page_cost")!)).toBe(4);
-  });
-
-  // R-12: las dos formas que la guarda de la 9.3 no veía, agregadas al final del archivo. En los
-  // dos casos PostgreSQL toma el valor agregado, porque la última entrada gana.
-  it.each([
-    ["sin signo igual", "effective_cache_size 4GB"],
-    ["con otras mayúsculas", "Effective_Cache_Size = 4GB"],
-    // M-3 de la revisión independiente de la 11.0: 500.000.000 leído como bytes son unos 477 MB y
-    // pasaba las dos cotas; PostgreSQL lo lee como bloques de 8 kB, unos 3,7 TB.
-    ["sin unidad", "effective_cache_size = 500000000"],
-  ])(
-    "con un effective_cache_size mayor que la RAM agregado %s, el caso anterior falla",
-    (_, linea) => {
-      const mutada = `${CONFIGURACION}\n${linea}\n`;
+    // La mutación: el valor que tenía el servidor antes de la 9.3. Sin este caso, el anterior
+    // pasaría igual si alguien restaurara el valor por defecto de PostgreSQL.
+    //
+    // El ancla `^` con `m` no es cosmética. La primera versión de esta mutación usaba
+    // `/effective_cache_size = \S+/` sin anclar y **reemplazaba el comentario de la cabecera**,
+    // donde el archivo cita `effective_cache_size = 4GB` justamente para explicar el defecto: el
+    // parámetro real quedaba intacto y la mutación no mutaba nada. Es la misma forma del hallazgo
+    // que la 9.2 ya tuvo una vez, cuando una aserción sobre `--no-owner` se cumplía contra el
+    // comentario que advertía sobre `--no-owner`.
+    it("con effective_cache_size en su valor anterior, el caso anterior falla", () => {
+      const mutada = CONFIGURACION.replace(
+        /^effective_cache_size = \S+/m,
+        "effective_cache_size = 4GB",
+      );
       const declarado = cacheEnBytes(
         parsear(mutada).get("effective_cache_size")!,
       );
       expect(declarado).toBeGreaterThan(RAM_BYTES);
-    },
-  );
+    });
 
-  // Control de que las dos mutaciones de arriba muerden el parámetro y no el comentario: si el
-  // ancla se perdiera, el valor efectivo seguiría siendo el bueno y estos dos casos lo dirían.
-  it("las mutaciones cambian el parámetro efectivo, no la cabecera", () => {
-    const efectivo = (texto: string, clave: string) =>
-      (clave === "effective_cache_size" ? cacheEnBytes : aBytes)(
-        parsear(texto).get(clave)!,
+    it("random_page_cost es el de un SSD, no el de un disco con cabezal", () => {
+      const costo = aBytes(valores.get("random_page_cost")!);
+      expect(costo).toBeLessThan(4);
+      expect(costo).toBeGreaterThanOrEqual(1);
+    });
+
+    it("con random_page_cost en su valor anterior, el caso anterior falla", () => {
+      const mutada = CONFIGURACION.replace(
+        /^random_page_cost = \S+/m,
+        "random_page_cost = 4",
       );
-    expect(efectivo(CONFIGURACION, "effective_cache_size")).not.toBe(
-      efectivo(
-        CONFIGURACION.replace(
-          /^effective_cache_size = \S+/m,
-          "effective_cache_size = 4GB",
-        ),
-        "effective_cache_size",
-      ),
-    );
-    expect(efectivo(CONFIGURACION, "random_page_cost")).not.toBe(
-      efectivo(
-        CONFIGURACION.replace(
-          /^random_page_cost = \S+/m,
-          "random_page_cost = 4",
-        ),
-        "random_page_cost",
-      ),
-    );
-  });
+      expect(aBytes(parsear(mutada).get("random_page_cost")!)).toBe(4);
+    });
 
-  // Cambiar estos dos en silencio movería los tiempos y las comparaciones contra la 8.5 dejarían
-  // de medir lo que dicen medir, sin que nada falle.
-  it("no toca shared_buffers ni work_mem, que quedan declarados fuera de alcance", () => {
-    expect(valores.has("shared_buffers")).toBe(false);
-    expect(valores.has("work_mem")).toBe(false);
-  });
-
-  it("declara en su cabecera por qué existe y qué no toca", () => {
-    expect(CONFIGURACION).toMatch(/961 MB/);
-    expect(CONFIGURACION).toMatch(/NO toca/);
-    // El archivo dice a dónde va: sin eso, versionarlo no sirve para desplegarlo.
-    expect(CONFIGURACION).toMatch(
-      /\/etc\/postgresql\/18\/main\/conf\.d\/crm-staging\.conf/,
+    // R-12: las dos formas que la guarda de la 9.3 no veía, agregadas al final del archivo. En los
+    // dos casos PostgreSQL toma el valor agregado, porque la última entrada gana.
+    it.each([
+      ["sin signo igual", "effective_cache_size 4GB"],
+      ["con otras mayúsculas", "Effective_Cache_Size = 4GB"],
+      // M-3 de la revisión independiente de la 11.0: 500.000.000 leído como bytes son unos 477 MB y
+      // pasaba las dos cotas; PostgreSQL lo lee como bloques de 8 kB, unos 3,7 TB.
+      ["sin unidad", "effective_cache_size = 500000000"],
+    ])(
+      "con un effective_cache_size mayor que la RAM agregado %s, el caso anterior falla",
+      (_, linea) => {
+        const mutada = `${CONFIGURACION}\n${linea}\n`;
+        const declarado = cacheEnBytes(
+          parsear(mutada).get("effective_cache_size")!,
+        );
+        expect(declarado).toBeGreaterThan(RAM_BYTES);
+      },
     );
-  });
-});
+
+    // Control de que las dos mutaciones de arriba muerden el parámetro y no el comentario: si el
+    // ancla se perdiera, el valor efectivo seguiría siendo el bueno y estos dos casos lo dirían.
+    it("las mutaciones cambian el parámetro efectivo, no la cabecera", () => {
+      const efectivo = (texto: string, clave: string) =>
+        (clave === "effective_cache_size" ? cacheEnBytes : aBytes)(
+          parsear(texto).get(clave)!,
+        );
+      expect(efectivo(CONFIGURACION, "effective_cache_size")).not.toBe(
+        efectivo(
+          CONFIGURACION.replace(
+            /^effective_cache_size = \S+/m,
+            "effective_cache_size = 4GB",
+          ),
+          "effective_cache_size",
+        ),
+      );
+      expect(efectivo(CONFIGURACION, "random_page_cost")).not.toBe(
+        efectivo(
+          CONFIGURACION.replace(
+            /^random_page_cost = \S+/m,
+            "random_page_cost = 4",
+          ),
+          "random_page_cost",
+        ),
+      );
+    });
+
+    // Cambiar estos dos en silencio movería los tiempos y las comparaciones contra la 8.5 dejarían
+    // de medir lo que dicen medir, sin que nada falle.
+    it("no toca shared_buffers ni work_mem, que quedan declarados fuera de alcance", () => {
+      expect(valores.has("shared_buffers")).toBe(false);
+      expect(valores.has("work_mem")).toBe(false);
+    });
+
+    it("declara en su cabecera por qué existe y qué no toca", () => {
+      expect(CONFIGURACION).toMatch(entorno.ramTexto);
+      expect(CONFIGURACION).toMatch(/NO toca/);
+      // El archivo dice a dónde va: sin eso, versionarlo no sirve para desplegarlo.
+      expect(CONFIGURACION).toMatch(entorno.destino);
+    });
+  },
+);

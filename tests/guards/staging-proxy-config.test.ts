@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 // Guarda de la configuración del proxy de staging (brief-9.1, D-9; hallazgo H-1 de la
@@ -281,95 +281,148 @@ export function revisarProxy(texto: string): string[] {
   return problemas;
 }
 
-const NGINX = readFileSync("deploy/staging/nginx-crm-staging.conf", "utf8");
-const UNIDAD = readFileSync("deploy/staging/crm-staging.service", "utf8");
+// Los entornos desplegados, cada uno con su directorio en `deploy/`. Desde la 13.1 son dos: la
+// premisa de H-3 es la misma en los dos, y el directorio de producción sin esta guarda habría
+// repetido el H-1 de la 9.1 (brief-13.1, D-12 y H-6). Las guardas de backup y de PostgreSQL
+// recorren esta misma lista.
+export const ENTORNOS = [
+  {
+    nombre: "staging",
+    directorio: "deploy/staging",
+    nginx: "deploy/staging/nginx-crm-staging.conf",
+    unidad: "deploy/staging/crm-staging.service",
+    secretos: "/etc/crm-staging/app.env",
+  },
+  {
+    nombre: "production",
+    directorio: "deploy/production",
+    nginx: "deploy/production/nginx-crm-production.conf",
+    unidad: "deploy/production/crm-production.service",
+    secretos: "/etc/crm-production/app.env",
+  },
+] as const;
 
-describe("el analizador distingue las regresiones que la versión anterior dejaba pasar", () => {
-  // Los tres primeros casos son las regresiones **medidas** contra la guarda anterior: las
-  // tres pasaban en verde. Van versionadas para que la corrección no se pierda.
+/** Directorios de `deploy/` que ninguna entrada de ENTORNOS cubre. */
+export function directoriosSinGuarda(directorios: readonly string[]): string[] {
+  const cubiertos = new Set<string>(ENTORNOS.map((e) => e.directorio));
+  return directorios
+    .map((nombre) => `deploy/${nombre}`)
+    .filter((directorio) => !cubiertos.has(directorio));
+}
 
-  it("la configuración real no tiene problemas", () => {
-    expect(revisarProxy(NGINX)).toEqual([]);
+describe("todo directorio de deploy/ está cubierto por las guardas", () => {
+  const presentes = readdirSync("deploy", { withFileTypes: true })
+    .filter((entrada) => entrada.isDirectory())
+    .map((entrada) => entrada.name);
+
+  it("no hay ningún directorio de despliegue sin su entorno en ENTORNOS", () => {
+    expect(directoriosSinGuarda(presentes)).toEqual([]);
   });
 
-  it("detecta una segunda directiva X-Forwarded-For agregada después de la correcta", () => {
-    const regresion = NGINX.replace(
-      "proxy_set_header X-Forwarded-Proto $scheme;",
-      'proxy_set_header X-Forwarded-For "$http_x_forwarded_for, $remote_addr";\n        proxy_set_header X-Forwarded-Proto $scheme;',
-    );
-    expect(revisarProxy(regresion)).toEqual([
-      expect.stringContaining("fija x-forwarded-for 2 veces"),
+  // La mutación del caso anterior: un entorno nuevo agregado sin extender las guardas.
+  it("un directorio nuevo sin guarda se detecta", () => {
+    expect(directoriosSinGuarda([...presentes, "demo"])).toEqual([
+      "deploy/demo",
     ]);
   });
 
-  it("detecta un location nuevo que proxea sin la cabecera", () => {
-    const regresion = NGINX.replace(
-      "    location / {",
-      "    location /api {\n        proxy_pass http://127.0.0.1:3000;\n    }\n\n    location / {",
-    );
-    expect(revisarProxy(regresion)).toEqual([
-      expect.stringContaining(
-        "location /api: proxea sin fijar x-forwarded-for",
-      ),
-      expect.stringContaining(
-        "location /api: proxea sin fijar x-forwarded-proto",
-      ),
-    ]);
+  it("cada entorno de ENTORNOS existe de verdad en el repositorio", () => {
+    for (const entorno of ENTORNOS) {
+      expect(presentes).toContain(entorno.directorio.replace("deploy/", ""));
+    }
   });
+});
 
-  it("detecta $proxy_add_x_forwarded_for, que es la regresión original de H-3", () => {
-    const regresion = NGINX.replace(
-      "X-Forwarded-For $remote_addr;",
-      "X-Forwarded-For $proxy_add_x_forwarded_for;",
-    );
-    expect(revisarProxy(regresion)).toEqual([
-      expect.stringContaining('"$proxy_add_x_forwarded_for"'),
-    ]);
-  });
+describe.each(ENTORNOS)("$nombre", (entorno) => {
+  const NGINX = readFileSync(entorno.nginx, "utf8");
+  const UNIDAD = readFileSync(entorno.unidad, "utf8");
 
-  // T-1 de la tercera revisión: la forma falsificable, no solo la ciega. Con realip, la
-  // directiva que esta guarda inspecciona no cambia y `$remote_addr` pasa a salir de una
-  // cabecera del cliente.
-  it("detecta set_real_ip_from, que hace que $remote_addr venga del cliente", () => {
-    const regresion = NGINX.replace(
-      "    location / {",
-      "    set_real_ip_from 10.0.0.0/8;\n    real_ip_header X-Forwarded-For;\n    real_ip_recursive on;\n\n    location / {",
-    );
-    expect(revisarProxy(regresion)).toEqual([
-      expect.stringContaining("set_real_ip_from 10.0.0.0/8"),
-      expect.stringContaining("real_ip_header X-Forwarded-For"),
-      expect.stringContaining("real_ip_recursive on"),
-    ]);
-  });
+  describe("el analizador distingue las regresiones que la versión anterior dejaba pasar", () => {
+    // Los tres primeros casos son las regresiones **medidas** contra la guarda anterior: las
+    // tres pasaban en verde. Van versionadas para que la corrección no se pierda.
 
-  // La tercera directiva **sola**, que es la forma que la versión anterior de la constante
-  // dejaba pasar en verde (C-1). Va en su propio caso y no junto a las otras dos: un caso que
-  // las trae a las tres no distingue si la guarda detecta tres o detecta una.
-  it("detecta real_ip_recursive sola, aunque por sí misma no reescriba nada", () => {
-    const regresion = NGINX.replace(
-      "    location / {",
-      "    real_ip_recursive on;\n\n    location / {",
-    );
-    expect(revisarProxy(regresion)).toEqual([
-      expect.stringContaining("real_ip_recursive on"),
-    ]);
-  });
+    it("la configuración real no tiene problemas", () => {
+      expect(revisarProxy(NGINX)).toEqual([]);
+    });
 
-  // El par del anterior: el nombre no se busca como subcadena suelta, así que mencionarlo en
-  // un comentario no alcanza para disparar el hallazgo. Sin este caso, la comprobación de
-  // arriba pasaría igual con una implementación que solo hiciera `texto.includes(...)`.
-  it("no confunde una mención de realip en un comentario con la directiva", () => {
-    const comentado = NGINX.replace(
-      "    location / {",
-      "    # no usamos set_real_ip_from ni real_ip_header: un solo salto\n    location / {",
-    );
-    expect(revisarProxy(comentado)).toEqual([]);
-  });
+    it("detecta una segunda directiva X-Forwarded-For agregada después de la correcta", () => {
+      const regresion = NGINX.replace(
+        "proxy_set_header X-Forwarded-Proto $scheme;",
+        'proxy_set_header X-Forwarded-For "$http_x_forwarded_for, $remote_addr";\n        proxy_set_header X-Forwarded-Proto $scheme;',
+      );
+      expect(revisarProxy(regresion)).toEqual([
+        expect.stringContaining("fija x-forwarded-for 2 veces"),
+      ]);
+    });
 
-  // La trampa de la herencia: declarar **otra** cabecera en el location corta la herencia
-  // entera del nivel de arriba. Nadie escribe X-Forwarded-For para romperlo.
-  it("detecta que declarar otra cabecera en un location corta la herencia del server", () => {
-    const configuracion = `
+    it("detecta un location nuevo que proxea sin la cabecera", () => {
+      const regresion = NGINX.replace(
+        "    location / {",
+        "    location /api {\n        proxy_pass http://127.0.0.1:3000;\n    }\n\n    location / {",
+      );
+      expect(revisarProxy(regresion)).toEqual([
+        expect.stringContaining(
+          "location /api: proxea sin fijar x-forwarded-for",
+        ),
+        expect.stringContaining(
+          "location /api: proxea sin fijar x-forwarded-proto",
+        ),
+      ]);
+    });
+
+    it("detecta $proxy_add_x_forwarded_for, que es la regresión original de H-3", () => {
+      const regresion = NGINX.replace(
+        "X-Forwarded-For $remote_addr;",
+        "X-Forwarded-For $proxy_add_x_forwarded_for;",
+      );
+      expect(revisarProxy(regresion)).toEqual([
+        expect.stringContaining('"$proxy_add_x_forwarded_for"'),
+      ]);
+    });
+
+    // T-1 de la tercera revisión: la forma falsificable, no solo la ciega. Con realip, la
+    // directiva que esta guarda inspecciona no cambia y `$remote_addr` pasa a salir de una
+    // cabecera del cliente.
+    it("detecta set_real_ip_from, que hace que $remote_addr venga del cliente", () => {
+      const regresion = NGINX.replace(
+        "    location / {",
+        "    set_real_ip_from 10.0.0.0/8;\n    real_ip_header X-Forwarded-For;\n    real_ip_recursive on;\n\n    location / {",
+      );
+      expect(revisarProxy(regresion)).toEqual([
+        expect.stringContaining("set_real_ip_from 10.0.0.0/8"),
+        expect.stringContaining("real_ip_header X-Forwarded-For"),
+        expect.stringContaining("real_ip_recursive on"),
+      ]);
+    });
+
+    // La tercera directiva **sola**, que es la forma que la versión anterior de la constante
+    // dejaba pasar en verde (C-1). Va en su propio caso y no junto a las otras dos: un caso que
+    // las trae a las tres no distingue si la guarda detecta tres o detecta una.
+    it("detecta real_ip_recursive sola, aunque por sí misma no reescriba nada", () => {
+      const regresion = NGINX.replace(
+        "    location / {",
+        "    real_ip_recursive on;\n\n    location / {",
+      );
+      expect(revisarProxy(regresion)).toEqual([
+        expect.stringContaining("real_ip_recursive on"),
+      ]);
+    });
+
+    // El par del anterior: el nombre no se busca como subcadena suelta, así que mencionarlo en
+    // un comentario no alcanza para disparar el hallazgo. Sin este caso, la comprobación de
+    // arriba pasaría igual con una implementación que solo hiciera `texto.includes(...)`.
+    it("no confunde una mención de realip en un comentario con la directiva", () => {
+      const comentado = NGINX.replace(
+        "    location / {",
+        "    # no usamos set_real_ip_from ni real_ip_header: un solo salto\n    location / {",
+      );
+      expect(revisarProxy(comentado)).toEqual([]);
+    });
+
+    // La trampa de la herencia: declarar **otra** cabecera en el location corta la herencia
+    // entera del nivel de arriba. Nadie escribe X-Forwarded-For para romperlo.
+    it("detecta que declarar otra cabecera en un location corta la herencia del server", () => {
+      const configuracion = `
       server {
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -378,17 +431,17 @@ describe("el analizador distingue las regresiones que la versión anterior dejab
           proxy_pass http://127.0.0.1:3000;
         }
       }`;
-    expect(revisarProxy(configuracion)).toEqual([
-      expect.stringContaining("proxea sin fijar x-forwarded-for"),
-      expect.stringContaining("proxea sin fijar x-forwarded-proto"),
-    ]);
-  });
+      expect(revisarProxy(configuracion)).toEqual([
+        expect.stringContaining("proxea sin fijar x-forwarded-for"),
+        expect.stringContaining("proxea sin fijar x-forwarded-proto"),
+      ]);
+    });
 
-  // El par del caso anterior, y el que le da poder discriminante: un location **sin ningún**
-  // proxy_set_header sí hereda, y eso es configuración correcta. Sin este caso, la guarda
-  // podría estar exigiendo la directiva literal dentro de cada location y pasaría igual.
-  it("acepta un location que hereda del server porque no declara ninguna cabecera", () => {
-    const configuracion = `
+    // El par del caso anterior, y el que le da poder discriminante: un location **sin ningún**
+    // proxy_set_header sí hereda, y eso es configuración correcta. Sin este caso, la guarda
+    // podría estar exigiendo la directiva literal dentro de cada location y pasaría igual.
+    it("acepta un location que hereda del server porque no declara ninguna cabecera", () => {
+      const configuracion = `
       server {
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -396,63 +449,83 @@ describe("el analizador distingue las regresiones que la versión anterior dejab
           proxy_pass http://127.0.0.1:3000;
         }
       }`;
-    expect(revisarProxy(configuracion)).toEqual([]);
+      expect(revisarProxy(configuracion)).toEqual([]);
+    });
+
+    it("acepta el valor entre comillas, que es la misma configuración", () => {
+      const equivalente = NGINX.replace(
+        "X-Forwarded-For $remote_addr;",
+        'X-Forwarded-For "$remote_addr";',
+      );
+      expect(revisarProxy(equivalente)).toEqual([]);
+    });
+
+    it("no cuenta como activa una directiva comentada", () => {
+      const comentada = NGINX.replace(
+        "proxy_set_header X-Forwarded-For $remote_addr;",
+        "# proxy_set_header X-Forwarded-For $remote_addr;",
+      );
+      expect(revisarProxy(comentada)).toEqual([
+        expect.stringContaining("proxea sin fijar x-forwarded-for"),
+      ]);
+    });
+
+    it("avisa si el archivo deja de tener un proxy_pass", () => {
+      expect(revisarProxy("server { listen 80; }")).toEqual([
+        expect.stringContaining("ningún bloque hace proxy_pass"),
+      ]);
+    });
   });
 
-  it("acepta el valor entre comillas, que es la misma configuración", () => {
-    const equivalente = NGINX.replace(
-      "X-Forwarded-For $remote_addr;",
-      'X-Forwarded-For "$remote_addr";',
-    );
-    expect(revisarProxy(equivalente)).toEqual([]);
+  describe("configuración de nginx versionada", () => {
+    it("proxea solo a loopback: la aplicación no se expone directamente", () => {
+      const destinos = contextosQueProxean(NGINX).map((c) => c.destino);
+      expect(destinos.length).toBeGreaterThan(0);
+      expect(destinos).toEqual(destinos.map(() => "http://127.0.0.1:3000"));
+    });
+
+    it("redirige HTTP a HTTPS", () => {
+      expect(NGINX).toMatch(/return\s+301\s+https:\/\//);
+    });
   });
 
-  it("no cuenta como activa una directiva comentada", () => {
-    const comentada = NGINX.replace(
-      "proxy_set_header X-Forwarded-For $remote_addr;",
-      "# proxy_set_header X-Forwarded-For $remote_addr;",
-    );
-    expect(revisarProxy(comentada)).toEqual([
-      expect.stringContaining("proxea sin fijar x-forwarded-for"),
-    ]);
-  });
+  describe("unidad de systemd versionada", () => {
+    it("enlaza la aplicación solo a loopback", () => {
+      // `next start` ignora la variable HOSTNAME: se comprobó el 2026-09-22, cuando se
+      // enlazó a *:3000 y el cortafuegos quedó como única barrera. El flag es explícito
+      // justamente porque la variable no alcanza.
+      expect(UNIDAD).toMatch(/ExecStart=.*-H\s+127\.0\.0\.1/);
+    });
 
-  it("avisa si el archivo deja de tener un proxy_pass", () => {
-    expect(revisarProxy("server { listen 80; }")).toEqual([
-      expect.stringContaining("ningún bloque hace proxy_pass"),
-    ]);
+    it("lee los secretos de un archivo fuera del repositorio", () => {
+      expect(UNIDAD).toContain(`EnvironmentFile=${entorno.secretos}`);
+    });
+
+    it("no trae ningún secreto embebido", () => {
+      expect(UNIDAD).not.toMatch(/PASSWORD=|DATABASE_URL=|SECRET=/i);
+    });
+
+    it("arranca sola tras un reinicio", () => {
+      expect(UNIDAD).toMatch(/WantedBy=multi-user\.target/);
+    });
   });
 });
 
-describe("configuración de nginx versionada", () => {
-  it("proxea solo a loopback: la aplicación no se expone directamente", () => {
-    const destinos = contextosQueProxean(NGINX).map((c) => c.destino);
-    expect(destinos.length).toBeGreaterThan(0);
-    expect(destinos).toEqual(destinos.map(() => "http://127.0.0.1:3000"));
+describe("producción: la aplicación corre sin camino a root", () => {
+  // Diferencia con staging registrada en deploy/production/README.md: en staging la aplicación
+  // corre como el usuario del ssh, que tiene sudo. En producción, con datos reales, corre como un
+  // usuario de sistema propio.
+  const unidad = readFileSync(ENTORNOS[1].unidad, "utf8");
+  const usuario = /^User=(.+)$/m.exec(unidad)?.[1]?.trim();
+
+  it("corre como el usuario de sistema crm", () => {
+    expect(usuario).toBe("crm");
   });
 
-  it("redirige HTTP a HTTPS", () => {
-    expect(NGINX).toMatch(/return\s+301\s+https:\/\//);
-  });
-});
-
-describe("unidad de systemd versionada", () => {
-  it("enlaza la aplicación solo a loopback", () => {
-    // `next start` ignora la variable HOSTNAME: se comprobó el 2026-09-22, cuando se
-    // enlazó a *:3000 y el cortafuegos quedó como única barrera. El flag es explícito
-    // justamente porque la variable no alcanza.
-    expect(UNIDAD).toMatch(/ExecStart=.*-H\s+127\.0\.0\.1/);
-  });
-
-  it("lee los secretos de un archivo fuera del repositorio", () => {
-    expect(UNIDAD).toMatch(/EnvironmentFile=\/etc\/crm-staging\/app\.env/);
-  });
-
-  it("no trae ningún secreto embebido", () => {
-    expect(UNIDAD).not.toMatch(/PASSWORD=|DATABASE_URL=|SECRET=/i);
-  });
-
-  it("arranca sola tras un reinicio", () => {
-    expect(UNIDAD).toMatch(/WantedBy=multi-user\.target/);
+  it("la mutación de volver al usuario del ssh o a root se detecta", () => {
+    for (const otro of ["benja", "root"]) {
+      const mutada = unidad.replace(/^User=.+$/m, `User=${otro}`);
+      expect(/^User=(.+)$/m.exec(mutada)?.[1]).not.toBe("crm");
+    }
   });
 });

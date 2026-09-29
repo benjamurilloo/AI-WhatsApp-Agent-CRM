@@ -133,6 +133,11 @@ Implementada en la 6.5.3 ([brief-6.5.3](../decisions/brief-6.5.3-autenticacion-d
 
 - Variables de entorno para secretos locales (`.env`, nunca commiteado; `.env.example` sí versionado con placeholders).
 - En staging, un `EnvironmentFile` de `systemd` con permisos `0600` de `root`, fuera del repositorio y fuera de la configuración de CI (9.1, D-8). **El proveedor elegido es un VPS y no tiene gestor de secretos propio**, así que la decisión no fue cuál usar sino qué lo reemplaza. **Límite declarado**: protege contra otro usuario del sistema, **no** contra quien tenga `root` ni contra un respaldo de disco sin cifrar. Es suficiente para un entorno sin datos reales y **no** es lo que se lleva a produccion sin volver a decidirlo.
+- En producción, **decidido el 2026-09-29** ([brief-13.1](../decisions/brief-13.1-entorno-productivo.md), D-5; O-38): el mismo esquema en `/etc/crm-production/`, con secretos propios que no se comparten con staging. Lo que cambia con datos reales es la amenaza del respaldo de disco sin cifrar, y se cubre de dos maneras:
+  - **sin backups ni snapshots de droplet del proveedor**, así el disco con los secretos y el dump en claro no se copia fuera;
+  - **el backup lógico sale del servidor solo cifrado** con `age`, y la clave privada nunca entra al droplet (D-8).
+
+  El límite contra `root` se mantiene. La aplicación corre como un usuario de sistema sin `sudo`, así que un proceso comprometido no hereda un camino a `root`. **Diseñado, no desplegado**: se verifica en la 13.1.2 (AC-19).
 - Ninguna clave de API, contraseña de base de datos o secreto de sesión se escribe en documentación ni en código.
 
 ## Política de logs

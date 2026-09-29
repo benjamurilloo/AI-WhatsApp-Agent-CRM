@@ -1,0 +1,36 @@
+[Unit]
+Description=Ejercicio de restauracion del backup de produccion (brief-9.2, D-3 y D-6; brief-13.1, D-8)
+Documentation=file:///srv/crm-production/docs/runbooks/restaurar-la-base.md
+# Que exista el backup no prueba nada. Lo que esta unidad ejercita es lo unico que
+# distingue un backup de un archivo: que se pueda restaurar y que lo restaurado sirva.
+# Hasta la revision de la 9.2 este ejercicio era mensual pero MANUAL, o sea que dependia
+# de que alguien se acordara -- exactamente el modo de falla que el brief denuncia en el
+# backup, trasladado un nivel arriba.
+
+[Service]
+Type=oneshot
+# Como `postgres`, no como root: crear y borrar una base exige CREATEDB, que el rol
+# dueno no tiene a proposito, y el ejercicio no necesita ningun secreto (peer auth).
+User=postgres
+Group=postgres
+ExecStart=/usr/local/bin/crm-restore-check.sh
+
+# Un fallo aca es la senal entera de la subfase. Sin esto queda enterrado en el journal.
+# `systemctl list-timers` no distingue un timer que corrio bien de uno que corrio mal.
+SuccessExitStatus=0
+
+NoNewPrivileges=true
+PrivateTmp=true
+# PrivateTmp le da su propio /tmp, donde el script hace su mktemp -d. El socket de
+# PostgreSQL vive en /var/run/postgresql en Debian y Ubuntu, NO en /tmp, asi que esto
+# no lo rompe. Si alguna vez se mueve el socket a /tmp, esta unidad deja de conectar:
+# queda declarado porque es una dependencia real y no evidente.
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+# No escribe fuera de su /tmp privado: lee el dump y habla con la base por el socket.
+# Por eso no lleva ReadWritePaths, al reves que crm-backup.service.
+IPAddressAllow=localhost
+IPAddressDeny=any

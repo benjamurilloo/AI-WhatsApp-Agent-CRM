@@ -9,7 +9,7 @@
 | Desarrollo local | Trabajo del día a día | Seeds sintéticos vía Docker Compose (Postgres local) | Solo la máquina del desarrollador |
 | Test (CI) | Ejecución automatizada de la suite de pruebas | Base de datos efímera, seeds mínimos por test | Solo el pipeline de CI |
 | Staging | Validación funcional end-to-end antes de cualquier decisión de producción | Seeds sintéticos "de volumen", nunca datos reales | Equipo del proyecto |
-| Producción | No existe todavía en el MVP | N/A | N/A |
+| Producción | Atender a los negocios reales. **Diseñada y preparada en el repositorio desde la 13.1.1 (2026-09-29); todavía no desplegada** ([brief-13.1](../decisions/brief-13.1-entorno-productivo.md), [deploy/production/](../../deploy/production/README.md)) | Datos reales, recién desde la 13.5. Nunca un seed: los seeds rechazan la base `crm_production` | El operador. La aplicación corre con un usuario de sistema propio, sin `sudo` |
 
 ## Reglas
 

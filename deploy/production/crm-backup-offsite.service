@@ -1,0 +1,23 @@
+[Unit]
+Description=AI WhatsApp Agent CRM - copia externa cifrada del backup de produccion
+Documentation=file:///srv/crm-production/docs/runbooks/restaurar-la-base.md
+# La dispara OnSuccess= de crm-backup.service; no tiene timer propio. Asi nunca sube una copia
+# vieja por su cuenta ni corre con un backup fallido.
+
+[Service]
+Type=oneshot
+# Root para leer /etc/crm-production/backup.env y rclone.conf, 0600 de root. A diferencia del
+# backup, esta unidad SI tiene red: es la que habla con el object storage. En cambio no puede
+# escribir nada: sube archivos y los compara, no los modifica.
+User=root
+Group=root
+ExecStart=/usr/local/bin/crm-backup-offsite.sh
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true

@@ -167,10 +167,39 @@ for f in crm-backup.service crm-backup.timer crm-restore-check.service crm-resto
 done
 ```
 
+## Producción (brief-13.1)
+
+Todo lo de arriba vale para `crm_production` cambiando `crm-staging` por `crm-production` y `crm_staging` por `crm_production`. Hay tres diferencias ([deploy/production/README.md](../../deploy/production/README.md)).
+
+**1. El dueño de la base (O-3).** En staging, la base original la creó `postgres`, y una restauración con `createdb -O crm_owner` la deja de `crm_owner`: el dueño **a nivel de base** cambia al restaurar, y las tablas no. En producción no pasa: `crm_production` se crea **propiedad de `crm_owner` desde el primer día** (paso 5 del aprovisionamiento), así que la base restaurada con `-O crm_owner` tiene el mismo dueño que la original, a nivel de base y de tablas. Se comprueba después de restaurar:
+
+```
+sudo -u postgres psql -tAc "select pg_get_userbyid(datdba) from pg_database where datname='crm_production_nueva'"   # -> crm_owner
+```
+
+**2. La copia externa está cifrada, y la clave para descifrarla no está en el droplet.** Si el droplet se perdió, la recuperación empieza en la máquina del operador, que es donde vive la clave privada de `age`:
+
+```
+# 1. Bajar la copia elegida, su suma y su manifiesto.
+rclone copy <remoto>:<bucket>/crm_production-ELEGIDO.dump.age .
+rclone copy <remoto>:<bucket>/crm_production-ELEGIDO.dump.age.sha256 .
+rclone copy <remoto>:<bucket>/crm_production-ELEGIDO.dump.recuentos .
+
+# 2. Comprobar el archivo cifrado ANTES de descifrarlo.
+sha256sum -c <(printf "%s  %s\n" "$(cat crm_production-ELEGIDO.dump.age.sha256)" crm_production-ELEGIDO.dump.age)
+
+# 3. Descifrar con la clave privada, que nunca estuvo en el droplet.
+age --decrypt --identity <archivo de la clave privada> --output crm_production-ELEGIDO.dump crm_production-ELEGIDO.dump.age
+```
+
+Desde ahí, el dump en claro sigue el camino de «Recuperación real» en la máquina nueva, empezando por crear los roles (trampa 1). El dump en claro se borra de la máquina del operador al terminar.
+
+**3. El ejercicio de la copia externa es manual.** El ejercicio mensual del timer restaura la copia **local**, en claro, porque el droplet no tiene la clave privada, y así tiene que ser. La copia del bucket se ejercita a mano: los tres pasos de arriba y una restauración en una base local aislada, comparada contra el `.recuentos`. La 13.1.2 lo hace una vez (AC-18). Después, se repite **cada vez que se rote la clave de `age`**, porque es la única forma de saber que la clave nueva descifra lo que el servidor cifra.
+
 ## Lo que este runbook NO cubre
 
 - **Restaurar al volumen real.** Staging tiene datos sintéticos y pocos. El tiempo de restauración que sale acá no predice el de una base con volumen; esa medición es de la [9.3](../planning/Roadmap.md).
 - **Restaurar en un servicio gestionado.** Podría exigir superusuario para `createdb` o para los `GRANT`. Está sin verificar y condiciona la elección de hosting de producción.
-- **La copia fuera del droplet.** Es manual (D-1, opción b): si la máquina de destino no está encendida, ese día no hay copia externa.
+- **La copia fuera del droplet de staging.** Es manual (D-1, opción b): si la máquina de destino no está encendida, ese día no hay copia externa. En producción es automática y cifrada (brief-13.1, D-8; sección «Producción»).
 - **Que el contenido de los datos sea el correcto.** El ejercicio compara qué tablas hay y cuántas filas tienen. **No compara ni un solo valor de columna**, ni índices, ni restricciones, ni triggers — el `messages_insert_only` no se ejercita. Un dump con la cantidad de filas correcta y el contenido alterado pasaría. Lo que acota ese riesgo es el `sha256`: si el archivo es el que el backup escribió, su contenido es el que era.
 - **Que alguien sepa hacer esto bajo presión.** Un ejercicio en calma no es un simulacro. Y hay una variante peor, medida acá: **un runbook ejecutado por quien lo escribió no está ejecutado.** El paso 2 de la recuperación real no se podía correr —faltaba `sudo`— y el simulacro no lo detectó porque lo corrí yo, poniendo el `sudo` por costumbre en vez de leer el texto publicado. Lo encontró una revisión que leyó el texto sin saber la respuesta.

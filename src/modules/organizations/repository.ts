@@ -101,6 +101,25 @@ export function withOrganizationLock<T>(
   });
 }
 
+// Alta de una organización con su primer admin (brief-13.1, D-9): no hay fila que bloquear
+// todavía, así que la atomicidad la da una transacción simple.
+export function inTransaction<T>(
+  work: (tx: DbTransaction) => Promise<T>,
+): Promise<T> {
+  return getDb().transaction(work);
+}
+
+export async function insertOrganization(
+  tx: DbTransaction,
+  organization: { name: string; timezone: string },
+): Promise<string> {
+  const rows = await tx
+    .insert(organizations)
+    .values(organization)
+    .returning({ id: organizations.id });
+  return rows[0]!.id;
+}
+
 export async function insertMember(
   tx: DbTransaction,
   member: { organizationId: string; userId: string; role: "admin" | "viewer" },
