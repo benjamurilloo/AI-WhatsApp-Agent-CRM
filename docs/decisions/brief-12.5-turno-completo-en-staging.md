@@ -394,7 +394,7 @@ Tocar cualquier otro archivo se detiene y se pide al usuario.
 
 | AC | Resultado | Evidencia |
 |---|---|---|
-| AC-5 | **cumplido en parte** | los cinco turnos, más el 5b, con la cadena real del agente, entrada simulada, un doble de WhatsApp y datos sintéticos. **El turno 3 no derivó**: es el límite decidido arriba |
+| AC-5 | **cumplido en parte** | los cinco turnos, más el 5b, con la cadena real del agente, entrada simulada, un doble de WhatsApp y datos sintéticos. **El turno 3 no derivó**: es el límite decidido arriba. *Pasa a cumplido el 2026-09-29: el turno 3 derivó en la ventana 12.5.3 (§Ventana 12.5.3)* |
 | AC-6 | cumplido | dos ventanas con conciliación `ok` (7 de 7 cada una), sin faltantes, duplicados ni mensajes en otra conversación. El turno 4 quedó retenido ante `404` y llegó entero, en orden y sin duplicados después de la reapertura. `conversation_ref_taken` terminó en `…~r2` con el mensaje guardado, separado de la semilla, y `message_already_recorded` no guardó nada. **Salvedad**: ese último lo mandó el llamador temporal acordado, así que prueba el emisor y su clasificador, no la cadena real |
 | AC-7 | cumplido | la captura del historial del turno 2 trae el turno 1 completo (el entrante y la respuesta con `sent_by: agent`) y los dos mensajes del turno 2, en orden por `sent_at`. Lo prueba un caso en CI que exige los cuatro mensajes exactos, con su dirección y su autor (M29 y M32; reforzado por la revisión independiente, R-5) |
 | AC-8 | cumplido | pedidos por turno y por ruta desde el log: escritura de 3 a 4, lectura de 1 a 3, **ningún `429`**. Registrado en Risks (pregunta 5) |
@@ -446,3 +446,15 @@ El revisor también señaló que `HANDOFF.md` describe un staging y un siguiente
    - **a la 13.5**: la capacidad por credencial con tráfico real (Risks, fila 24);
    - **sin destino fijo**: E-3, la advertencia de npm 11.19 sobre los `postinstall` de esbuild;
    - **R-1**: la IP del usuario y sus hashes siguen en el historial de Git, por decisión del usuario.
+
+## Ventana 12.5.3 — La derivación, 2026-09-29
+
+*Agregado después del cierre.* El agente corrigió su clasificación (su brief 3.30) y propuso una ventana de un turno (aviso 3.30.1). El usuario autorizó encender y apagar staging. Detalle en [evidencia-12.5](evidencia-12.5-turno-completo.md), §12.5.3.
+
+- **Resultado**: el turno 3 derivó con la cadena real del agente.
+  - `wa-conv-wamid-fict-w1-t1-1` pasó de `open` a `pending`, con una fila de auditoría y la credencial como actor.
+  - La conciliación dio `ok` (3 de 3), y todos los eventos quedaron `processed`.
+- **Sin pérdida**: un primer intento se cortó por un timeout de OpenAI del lado del agente. Su entrante quedó registrado sin respuesta, y el reintento derivó en la misma conversación.
+- **AC-5 pasa a cumplido.** El límite conocido del cierre queda resuelto. El resto del cierre no cambia.
+- **Hallazgo para el agente resuelto**: según el log, usa una correlación por turno.
+- **Todo apagado** a las 17:53:58 UTC, con las tres credenciales revocadas.

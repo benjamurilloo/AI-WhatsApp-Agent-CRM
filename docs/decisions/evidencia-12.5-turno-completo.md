@@ -237,6 +237,45 @@ Después de restaurar: 41 de 41 entre `conciliar-turnos.test.ts`, contra Postgre
 
 ### Lo que queda sin probar
 
-- **La derivación por el agente real** (turno 3): no se probaron el `conversation.escalated` emitido por la cadena real ni el paso a `pending`. La ingestión de ese evento está validada desde la 12.3.3, con el emisor. **El usuario decidió cerrar la 12.5 con esto como límite conocido** (2026-09-29, opción a). Se prueba en una ventana corta cuando el agente lo corrija.
+- **La derivación por el agente real** (turno 3): no se probaron el `conversation.escalated` emitido por la cadena real ni el paso a `pending`. La ingestión de ese evento está validada desde la 12.3.3, con el emisor. **El usuario decidió cerrar la 12.5 con esto como límite conocido** (2026-09-29, opción a). Se prueba en una ventana corta cuando el agente lo corrija. *Probada el 2026-09-29 en la 12.5.3 (abajo): derivó, con la conciliación `ok`.*
 
 **Nivel**: el turno completo del agente queda **validado en integración, en staging** (`producer-consumer`), con la cadena real del agente, entrada simulada, envío a un doble y datos sintéticos. **No** es `authenticated-end-to-end`, porque ningún mensaje real de WhatsApp pasó. **No** es producción.
+
+## 12.5.3 — La derivación con el agente, 2026-09-29
+
+*Agregado después del cierre de la fase.* Es la ventana corta que el cierre dejó prevista para el límite conocido del turno 3. El agente corrigió su clasificación en su brief 3.30: el prompt del router ahora deriva el pedido de una persona, y una guarda en código lo fuerza después del modelo. Propuso un solo turno, con el mismo guion y el mismo cliente de la ventana 1 (aviso 3.30.1). El usuario autorizó encender y apagar staging. No cambió ningún contrato.
+
+### Preparación
+
+- **La conversación seguía vigente.** La consulta del usuario dio `wa-conv-wamid-fict-w1-t1-1` en `open`, con el último mensaje a las 22:41:56 UTC del 2026-09-28, así que el límite era las 22:41:56 UTC del 2026-09-29. Se le pidió al agente que el turno saliera antes de las 22:30 UTC. El agente confirmó que `conversation.escalated` lleva la referencia que devolvió el `conversation.resolved` de ese mismo turno.
+- **Tres credenciales nuevas**, creadas por el usuario en su terminal, con `source` `agente-12-5-3`: ingestión `8f31becd-…`, lectura `aaf2a614-…` y contexto `b82e5885-…`. Los tokens fueron directo a n8n.
+- **Encendido a las 17:30:58 UTC**, con la copia `app.env.bak-12-5-3`. Sin credencial, la ingestión v2, `knowledge`, `products` y `messages` respondieron `401`. Una consulta confirmó las tres credenciales con su alcance, la organización del piloto y sin revocar.
+
+### El turno, de 17:41 a 17:50 UTC
+
+- **Según el agente**, el primer intento (corrida `w3`, 17:41 UTC) se cortó porque OpenAI no respondió. Para entonces ya había mandado `client.resolved` y `conversation.resolved`, que registró el entrante `wa-msg-wamid-fict-w3-t3-1`. El entrante quedó sin respuesta. El agente repitió el turno con la corrida `w3b`, que derivó. **El entrante del intento cortado no se perdió**: quedó en la conversación, sin respuesta.
+- **La conciliación**, corrida por quien hizo el trabajo desde el 2026-09-29 (el usuario agregó el permiso de `ssh crm-staging`), con `--desde 17:41:00` y `--hasta 17:50:00` y 3 esperados: los dos entrantes y la respuesta de derivación.
+  ```
+  events: client.resolved processed 2 · conversation.escalated processed 1 · conversation.resolved processed 2 · message.recorded processed 1
+  metric_12_by_hand: total 3, failed 0
+  conversations: wa-conv-wamid-fict-w1-t1-1  pending  inbound 2  outbound 1
+  reconciliation: expected 3, found 3, missing [], duplicated [], wrong_conversation [], wrong_direction [], unexpected [], ok true
+  ```
+  El esperado de la métrica era 3: los dos `conversation.resolved` y el `message.recorded`. `client.resolved` y `conversation.escalated` no cuentan (MetricsCatalog §12).
+- **La derivación y su auditoría**:
+  ```
+  wa-conv-wamid-fict-w1-t1-1 | pending | status_change | {"after": {"status": "pending"}, "before": {"status": "open"}} | actor_credential_id 8f31becd-… | actor_user_id (nulo) | 2026-09-29 17:49:22.690655+00
+  ```
+  Es la única fila de auditoría de esa conversación. El actor es la credencial de ingestión, y la conversación pasó de `open` a `pending` una sola vez.
+- **El log**: 8 líneas entre las 17:40 y las 17:51, todas `OK` y con `source` `agente-12-5-3`:
+  - 6 en la ingestión v2 y 2 en el historial, una por intento;
+  - ningún `429` y ningún token (`crm_`);
+  - **una correlación por turno**: `69661` en los tres pedidos del intento `w3` y `69687` en los cinco del `w3b`, incluida la lectura. En la 12.5.2 el agente usaba una por pedido, y eso quedó como hallazgo para él. **Según este log, ya no pasa.**
+
+### Apagado, a las 17:53:58 UTC
+
+- `app.env` se restauró desde la copia, idéntico según `cmp`, y la copia se borró.
+- Las tres credenciales quedaron revocadas; una consulta lo confirmó (`revoked_at` no nulo en las tres).
+- La ingestión v2 y las tres rutas de lectura responden `404`, y la lista de esperados se borró del servidor.
+
+**Nivel**: la derivación con la cadena real del agente queda **validada en integración, en staging** (`producer-consumer`), con entrada simulada, envío a un doble y datos sintéticos. **No** es `authenticated-end-to-end` ni producción.

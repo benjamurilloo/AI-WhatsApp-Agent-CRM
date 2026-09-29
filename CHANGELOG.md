@@ -2,6 +2,20 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-29 — 12.5.3: la derivación con el agente, en staging
+
+Ventana corta, después del cierre de la fase, para el límite conocido del turno 3 ([evidencia-12.5](docs/decisions/evidencia-12.5-turno-completo.md), §12.5.3). El agente corrigió su clasificación de su lado.
+
+**Certifica**: el turno 3 derivó con la cadena real del agente.
+- La conversación pasó de `open` a `pending`, con una fila de auditoría y la credencial como actor.
+- La conciliación dio `ok` (3 de 3), y los eventos quedaron todos `processed`.
+- Un primer intento, cortado por un timeout de OpenAI del lado del agente, dejó su entrante registrado sin respuesta: no se perdió.
+- Todo terminó apagado y con las tres credenciales revocadas.
+
+**Nivel**: validado en integración, en staging (`producer-consumer`, datos sintéticos).
+
+**No certifica**: `authenticated-end-to-end` ni producción. Tampoco qué hace el agente con un mensaje nuevo en una conversación `pending`: el turno terminó en la derivación.
+
 ## 2026-09-29 — Fase 12 cerrada (El contexto del turno)
 
 Cierra con el gate de salida cumplido: **el agente completa turnos contra el CRM en staging, detrás del modo de prueba, sin pérdida de mensajes** ([Roadmap](docs/planning/Roadmap.md), §Fase 12). Tiene un límite conocido: la derivación del turno 3, decidida por el usuario. El usuario confirmó el cierre el 2026-09-29.
@@ -30,7 +44,7 @@ Cierra con el gate de salida cumplido: **el agente completa turnos contra el CRM
 
 **No certifica:**
 
-- **La derivación con la cadena real del agente**: el agente no derivó en el turno 3. La ingestión de `conversation.escalated` está validada desde la 12.3.3. Se prueba en una ventana corta cuando el agente corrija su clasificación.
+- ~~**La derivación con la cadena real del agente**~~ *Probada el mismo día en la 12.5.3 (arriba)*: el agente no derivó en el turno 3. La ingestión de `conversation.escalated` está validada desde la 12.3.3. Se prueba en una ventana corta cuando el agente corrija su clasificación.
 - **Un timeout del lado del emisor**: no se provocó. La indisponibilidad probada fue el `404` de la ingestión apagada.
 - **`authenticated-end-to-end`**: ningún mensaje real de WhatsApp pasó; la entrada fue simulada.
 - **Producción, tráfico real y datos personales reales**: son de la Fase 13.
@@ -71,7 +85,7 @@ Llevó revisión independiente (D-11): 11 hallazgos, 3 mayores, todos verificado
 
 **No certifica:**
 
-- **La derivación del turno 3** (AC-5 cumplido en parte). Por decisión del usuario queda como límite conocido.
+- ~~**La derivación del turno 3**~~ *Probada el mismo día en la 12.5.3; AC-5 pasa a cumplido* (AC-5 cumplido en parte). Por decisión del usuario queda como límite conocido.
 - **Los bytes de las respuestas de lectura**: n8n guarda el cuerpo ya parseado, así que las capturas validan el esquema.
 - **`authenticated-end-to-end` ni producción.**
 - **Hallazgos para el agente, que no bloquean**:
