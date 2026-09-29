@@ -41,7 +41,7 @@ Autorizado por el usuario el 2026-09-27 en tres pasos: el commit de la etapa, el
 |---|---|---|
 | — | `/login`, la ingestión y la lectura | `/login` `200`; ingestión v1 y v2 `404`; lectura `404` en `knowledge` y en `messages` |
 | 1 | los nueve archivos contra los versionados | **cero diferencias** en los nueve |
-| 2 | un solo salto de proxy | **cumplida**, por el usuario: la fila de `login_attempts` de las 20:55:29 UTC tiene el mismo `key_hash` que su IP pública (`362e48d2…`), la misma que ve su navegador. Antes hubo dos lecturas fallidas (E-4, abajo) |
+| 2 | un solo salto de proxy | **cumplida**, por el usuario: la fila de `login_attempts` de las 20:55:29 UTC tiene el mismo `key_hash` que el `sha256` de su IP pública, la misma que ve su navegador. Antes hubo dos lecturas fallidas (E-4, abajo) |
 | 3 | HSTS | presente sobre HTTPS (`max-age=31536000; includeSubDomains`), ausente sobre HTTP |
 | 4 | la aplicación solo en loopback | `127.0.0.1:3000` |
 | 5 | el rol de la aplicación no borra | **cumplida**, por el usuario: `BEGIN`, `ERROR: permission denied for table audit_logs`, `ROLLBACK`. El clasificador del modo automático había bloqueado el `DELETE` de quien hizo el trabajo, aunque iba dentro de una transacción con `rollback`; no se reintentó por otro camino |
@@ -119,7 +119,10 @@ Autorizado por el usuario el 2026-09-28, para ese día y solo para las dos venta
    - `409 conversation_ref_taken` sobre la semilla, y reintento con `wa-conv-wamid-fict-t5-conflict-0001~r2`;
    - el mensaje quedó en la conversación nueva, **no** en la de la semilla. Esa conversación sigue con su único entrante y sin salidas.
 7. **Turno 5b**: un cliente nuevo y una conversación nueva, `wa-conv-wamid-fict-w2-t5b-1`.
-8. **Duplicado**, a las 22:57:32: `wa-conv-wamid-fict-w1-t1-1-dup-w1` recibió `409 message_already_recorded`. El CRM no guardó nada.
+8. **Duplicado**, a las 22:57:32: el `conversation.resolved` con `event_id` `wa-conv-wamid-fict-w1-t1-1-dup-w1` y correlación `dup-w1` recibió `409 message_already_recorded`. El CRM no guardó nada.
+   - **Origen**: el llamador temporal acordado, que reenvía el cuerpo del primer mensaje del turno 1 con otro `event_id`, porque el agente deriva el `event_id` del id del mensaje y su cadena real no puede producir este caso.
+   - Por eso es una prueba **del emisor y su clasificador, no de la cadena real**.
+   - El CRM no distingue quién lo mandó: el origen consta en lo acordado y en el aviso del agente. El resultado no depende de eso, porque el mensaje ya estaba en la conversación vigente del cliente y el `409` sale igual.
 9. **El agente informó** la cola vacía a las 22:57 UTC.
 
 **Conciliación**, con 7 esperados: la semilla, los entrantes de los turnos 4, 5 y 5b y sus 3 salidas. El duplicado quedó fuera.
@@ -141,7 +144,7 @@ El esperado de la métrica era 6 + *N*, con *N* = 3. Incluye la semilla, porque 
 +5491155550052|Sin nombre
 +5491155550053|1155550053
 ```
-- El turno 5 mandó el teléfono como nombre, y la guarda del agente lo convirtió en `null`. El CRM, ante `null`, crea el cliente como «Sin nombre» (`UNNAMED_CLIENT_LABEL`), nunca con el teléfono.
+- **Según el agente**, el perfil del turno 5 traía el teléfono como nombre y su guarda lo convirtió en `null`. El CRM solo ve el resultado: ante `null`, crea el cliente como «Sin nombre» (`UNNAMED_CLIENT_LABEL`), nunca con el teléfono.
 - El 5b, con el formato local, pasó las dos guardas, que es el límite escrito.
 
 **Dashboard**, mirado por el usuario el 2026-09-29, con el período del 2026-09-28: métrica 12 **«12,5 %, 2 fallidos de 16 eventos»**, con `agente-12-5-2 · conversation_ref_taken: 1` y `agente-12-5-2 · message_already_recorded: 1`. Coincide con los dos conteos a mano: 7 + 9 eventos, 0 + 2 fallidos.
@@ -157,8 +160,15 @@ De 22:19 a 23:00 UTC hubo 45 líneas con ruta. **Ninguna contiene `crm_`**, y no
    5 /api/read/v1/messages OK agente-12-5-2
    4 /api/read/v1/products OK agente-12-5-2
   10 rechazos UNAUTHENTICATED sin source: las comprobaciones sin credencial de quien hizo el trabajo, a las 22:20, 22:40 y 22:46
-   1 login UNAUTHENTICATED, a las 22:39:54: coincide con el sondeo de /login tras el reinicio del apagado (inferido)
+   1 login UNAUTHENTICATED, a las 22:39:54: no explicado (ver abajo)
 ```
+**El rechazo de ingreso de las 22:39:54 queda sin explicar.** Primero se lo atribuyó al sondeo de `/login` tras un reinicio, pero no cierra (revisión independiente, R-10):
+- el reinicio de la semilla terminó a las 22:39:46;
+- el del apagado se comprobó a las 22:40:04;
+- los sondeos de quien hizo el trabajo son `GET` y en los otros reinicios no dejaron línea.
+
+Es un intento de ingreso fallido, sin `source`, en un entorno público. Un solo intento está por debajo de los límites de la 3.3 y no afecta a la corrida.
+
 Los 21 pedidos de ingestión del agente son los 10 eventos de la ventana 1 más los 11 de la ventana 2. Duración: mediana de 35 ms y máximo de 128 ms, en la ingestión.
 
 **Pedidos por turno** (AC-8), agrupados por correlación. El agente usa una correlación para la ingestión de cada turno y otra para cada lectura del catálogo o la información. Los turnos se reconstruyen por hora:
@@ -203,7 +213,7 @@ El agente mandó una respuesta de cada ruta, tomada de los datos de ejecución q
 - **AC-7 confirmado** con la captura: el historial del turno 2 trae el entrante y la respuesta del turno 1 (`sent_by: agent`) y los dos entrantes del turno 2, del más viejo al más nuevo.
 - **Lo que muestran las capturas**:
   - **en el catálogo**, `q=cargador` devolvió «Cargador 20W (2da gen.)»;
-  - **en la información**, llegaron doce entradas vigentes. Una, «Promoción Día de la Madre», no viene del seed: su id no es del rango del piloto;
+  - **en la información**, llegaron doce entradas vigentes. Una, «Promoción Día de la Madre», no viene del seed: la cargó `piloto-admin` desde la UI en el piloto del 2026-09-25 ([notas-piloto-11.4](notas-piloto-11.4.md), registro de auditoría);
   - **en el turno 1**, la respuesta del agente preguntó si el horario era «en tienda o atención telefónica», en vez de leerlo de la información. Coincide con el log, que no tiene lectura de `knowledge` en ese turno.
 
 **Mutaciones**, cada una restaurada después:
@@ -215,6 +225,15 @@ El agente mandó una respuesta de cada ruta, tomada de los datos de ejecución q
 | M30 | la captura de la información con un encabezado `Authorization` | «D-8: captured-knowledge.json es una captura declarada, sin encabezados ni tokens» |
 
 Después de restaurar: 33 de 33 en el archivo, y 787 de 787 entre unitarios y guardas. Lint, tipos y formato quedaron limpios.
+
+**Después de la revisión independiente** (2026-09-29), dos mutaciones más, también restauradas:
+
+| # | Cambio | Falla |
+|---|---|---|
+| M31 | `reconcile` sin exigir esperados únicos ni conteos iguales (R-4) | «FR-API-07: una referencia repetida en los esperados no tapa un faltante» |
+| M32 | el historial capturado sin los dos mensajes del turno 2 (R-5). Con el test anterior, esta mutación pasaba | «FR-API-08 (AC-7): el historial capturado trae el turno anterior con la respuesta del agente, en orden» |
+
+Después de restaurar: 41 de 41 entre `conciliar-turnos.test.ts`, contra PostgreSQL real, y `contract.test.ts`.
 
 ### Lo que queda sin probar
 

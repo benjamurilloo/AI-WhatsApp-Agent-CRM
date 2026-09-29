@@ -132,6 +132,7 @@ describe("conciliar-turnos (brief-12.5, D-7)", () => {
       wrong_conversation: [],
       wrong_direction: [],
       unexpected: [],
+      repeated_expected: [],
       ok: true,
     });
     expect(result.events).toEqual([
@@ -190,6 +191,20 @@ describe("conciliar-turnos (brief-12.5, D-7)", () => {
       duplicated: ["msg-out-1"],
       wrong_conversation: ["msg-out-1"],
       wrong_direction: ["msg-out-1"],
+      ok: false,
+    });
+  });
+
+  it("FR-API-07: una referencia repetida en los esperados no tapa un faltante", async () => {
+    await insertTurn();
+    const first = TURN[0];
+    if (!first) throw new Error("TURN vacío");
+    const result = await report([...TURN, first]);
+    expect(result.reconciliation).toMatchObject({
+      repeated_expected: [first.message_ref],
+      missing: [],
+      duplicated: [],
+      unexpected: [],
       ok: false,
     });
   });

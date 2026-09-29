@@ -1,7 +1,7 @@
 {
   "shape": "captured",
   "note": "Capturada del consumidor real: la instancia de n8n del agente, contra staging, el 2026-09-28 (brief-12.5, etapa 12.5.2, D-8). Datos sintéticos. n8n guarda el cuerpo ya parseado: esto es ese objeto reserializado, con las claves, los tipos y los textos que llegaron, pero no necesariamente los mismos bytes. Sirve para validar el esquema, no para comparar bytes. Sin encabezados.",
-  "description": "Toda la información vigente, sin q y con limit=50 (H-6), leída en el turno 3. Doce entradas; una, «Promoción Día de la Madre», no viene del seed: su id no es del rango del piloto.",
+  "description": "Toda la información vigente, sin q y con limit=50 (H-6), leída en el turno 3. Doce entradas; una, «Promoción Día de la Madre», no viene del seed: la cargó piloto-admin desde la UI en el piloto del 2026-09-25 (notas-piloto-11.4).",
   "request": {
     "method": "GET",
     "path": "/api/read/v1/knowledge?limit=50"

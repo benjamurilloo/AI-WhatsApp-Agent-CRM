@@ -331,7 +331,7 @@ Tocar cualquier otro archivo se detiene y se pide al usuario.
 **Segunda respuesta del agente** (2026-09-27, fuera del repositorio): acepta H-5, H-6 y H-7 y se compromete con cuatro subfases propias, en orden: el turno por mensaje, la cola durable con su ADR, las tools de lectura y el cableado. La primera ventana va después de la cuarta, y las fechas las fija el usuario. Trae dos hallazgos, que se verificaron contra el código del CRM, y el usuario decidió los dos con las recomendaciones, el 2026-09-27:
 
 - **H-8, la semilla del `409 conversation_ref_taken`.** El agente no elige la referencia que propone: la deriva del id del mensaje de WhatsApp (`wa-conv-` más ese id), sin un camino para cambiarla, y no quiere agregar uno solo para la prueba.
-  - **Su motivo, corregido**: dice que con la referencia de la 12.3.3 el mensaje del turno 5 quedaría en la conversación vieja. No es así: el `external_ref` de un mensaje es único **por conversación** (`messages_organization_conversation_external_ref_unique`, migración `0011`), y el reenvío lo guardaría en la conversación nueva. Pero la organización quedaría con dos mensajes con el mismo `external_ref`, y `conciliar-turnos.ts` lo marcaría como duplicado. La conclusión sigue en pie por ese otro motivo.
+  - **Su motivo, corregido**: dice que con la referencia de la 12.3.3 el mensaje del turno 5 quedaría en la conversación vieja. No es así: el `external_ref` de un mensaje es único **por conversación** (`messages_organization_conversation_external_ref_unique`, migración `0011`), y el reenvío lo guardaría en la conversación nueva. Pero la organización quedaría con dos mensajes con el mismo `external_ref` en dos conversaciones: un mensaje que, para el CRM, sería de dos clientes. La conclusión sigue en pie por ese otro motivo. *Corregido el 2026-09-29 (revisión independiente de la 12.5, R-7)*: antes decía que `conciliar-turnos.ts` lo marcaría como duplicado. No es así: el script solo mira los mensajes insertados dentro de la ventana, y la copia de la 12.3.3 es del 2026-09-27.
   - **Decisión: sembrar la referencia por el contrato de ingestión**, sin código nuevo ni escrituras a mano en la base, como **primer paso de la segunda ventana**. Son un `client.resolved` y un `conversation.resolved` de un cliente sintético que no está en el guion (`+5491155550090`), con `source` `siembra-12-5-2`:
     - la referencia propuesta es `wa-conv-wamid-fict-t5-conflict-0001`, la que el agente va a proponer en el turno 5;
     - el mensaje lleva otro `external_ref`, `wa-msg-seed-h8-0001`. El CRM crea siempre la conversación con su primer mensaje, así que lo que se garantiza es que **no exista** `wa-msg-wamid-fict-t5-conflict-0001`, que es lo que el agente necesita.
@@ -384,7 +384,7 @@ Tocar cualquier otro archivo se detiene y se pide al usuario.
 
 **Nivel**: la lectura de las tres rutas queda **validada en staging** (`isolated-runtime`), con requests sintéticos. **No** con el agente.
 
-**Estado de la 12.5.2**: **no empieza** hasta que el agente complete su lado: el turno por mensaje, la cola durable con su ADR, las tools de lectura y el cableado. La Fase 12 queda abierta.
+**Estado de la 12.5.2, al cerrar la 12.5.1 (2026-09-27)**: no empezaba hasta que el agente completara su lado: el turno por mensaje, la cola durable con su ADR, las tools de lectura y el cableado. La Fase 12 quedaba abierta.
 
 ## Resultados — etapa 12.5.2
 
@@ -395,17 +395,17 @@ Tocar cualquier otro archivo se detiene y se pide al usuario.
 | AC | Resultado | Evidencia |
 |---|---|---|
 | AC-5 | **cumplido en parte** | los cinco turnos, más el 5b, con la cadena real del agente, entrada simulada, un doble de WhatsApp y datos sintéticos. **El turno 3 no derivó**: es el límite decidido arriba |
-| AC-6 | cumplido | dos ventanas con conciliación `ok` (7 de 7 cada una), sin faltantes, duplicados ni mensajes en otra conversación. El turno 4 quedó retenido ante `404` y llegó entero, en orden y sin duplicados después de la reapertura. `conversation_ref_taken` terminó en `…~r2` con el mensaje guardado, separado de la semilla, y `message_already_recorded` no guardó nada |
-| AC-7 | cumplido | la captura del historial del turno 2 trae el turno 1 completo (el entrante y la respuesta con `sent_by: agent`) y los dos mensajes del turno 2, en orden por `sent_at`. Lo prueba un caso en CI, con la mutación M29 |
+| AC-6 | cumplido | dos ventanas con conciliación `ok` (7 de 7 cada una), sin faltantes, duplicados ni mensajes en otra conversación. El turno 4 quedó retenido ante `404` y llegó entero, en orden y sin duplicados después de la reapertura. `conversation_ref_taken` terminó en `…~r2` con el mensaje guardado, separado de la semilla, y `message_already_recorded` no guardó nada. **Salvedad**: ese último lo mandó el llamador temporal acordado, así que prueba el emisor y su clasificador, no la cadena real |
+| AC-7 | cumplido | la captura del historial del turno 2 trae el turno 1 completo (el entrante y la respuesta con `sent_by: agent`) y los dos mensajes del turno 2, en orden por `sent_at`. Lo prueba un caso en CI que exige los cuatro mensajes exactos, con su dirección y su autor (M29 y M32; reforzado por la revisión independiente, R-5) |
 | AC-8 | cumplido | pedidos por turno y por ruta desde el log: escritura de 3 a 4, lectura de 1 a 3, **ningún `429`**. Registrado en Risks (pregunta 5) |
 | AC-9 | cumplido | catálogo, información e historial respondieron `200` al agente, y, según el agente, con los plurales corregidos `q=funda` y `q=cargador` devolvieron un ítem cada una. Tres capturas, una por ruta, son fixtures `"shape": "captured"` que pasan los esquemas estrictos en CI, sin encabezados ni tokens (M28 y M30). **Salvedad**: n8n guarda el cuerpo ya parseado, así que las capturas validan el esquema, no los bytes |
 | AC-10 | cumplido | R-6 de punta a punta: el teléfono como nombre terminó en «Sin nombre»; el formato local pasa (límite escrito). Registrado en Risks |
 | AC-11 | cumplido | N-1 cerrada el 2026-09-27 (arriba) |
 | AC-12 | cumplido | métrica 12 a mano: 7 y 0 en la ventana 1; 9 y 2 en la ventana 2, que son los dos `409` del guion. Dashboard del día: «12,5 %, 2 fallidos de 16 eventos», con los dos códigos bajo `agente-12-5-2` |
 | AC-13 | cumplido | todo apagado a las 23:04:35 UTC, con `app.env` idéntico a la copia (`cmp`). Se revocaron **cuatro** credenciales: las tres del agente y la de la semilla. Todo en `404` desde afuera |
-| AC-14 | cumplido en local; la CI, en el commit | el único código es el test de los fixtures. En local, lint, tipos y formato limpios, y 787 de 787 entre unitarios y guardas. La integración y el end-to-end corren en la CI, porque Docker no estaba levantado |
+| AC-14 | cumplido | CI en verde en cada commit de la subfase: `5c015a7` (36346090012), `c530558` (36347725367), `9f01c90` (36348996795), `d6d6e98` (36350337291, que cubre `3debba8`, cancelado por la concurrencia de la CI), `79f1186` (36488356548) y `dc49787` (36582055676). En `dc49787`, la integración y el end-to-end corrieron solo en la CI, porque Docker no estaba levantado en local. *Corregido el 2026-09-29 (R-6)*: antes figuraba «cumplido en local», antes de leer la CI |
 | AC-16 | cumplido | los casos nuevos llevan D-8 o FR-API-08 |
-| AC-15 | pendiente | revisión independiente antes del cierre de la fase |
+| AC-15 | cumplido | revisión independiente del 2026-09-29: 11 hallazgos, todos resueltos (§Revisión independiente) |
 
 **Hallazgos para el agente**, que no bloquean:
 - el turno 3 no derivó (arriba);
@@ -413,3 +413,23 @@ Tocar cualquier otro archivo se detiene y se pide al usuario.
 - el agente usa una correlación para la ingestión y otra por cada lectura, y la guía pide una por turno.
 
 **Nivel**: el turno completo queda **validado en integración, en staging** (`producer-consumer`). **No** `authenticated-end-to-end`, porque ningún mensaje real de WhatsApp pasó. **No** producción.
+
+## Revisión independiente
+
+Hecha el 2026-09-29 por un agente revisor que no participó del trabajo, con acceso de solo lectura, contra el brief, la evidencia, los contratos y el código (D-11, AC-15). **Veredicto: 11 hallazgos, ninguno bloqueante, 3 mayores.** Los números cerraron todos. Cada hallazgo se verificó contra el repositorio antes de aceptarse. El revisor no autorizó nada.
+
+| # | Severidad | Hallazgo | Resolución |
+|---|---|---|---|
+| R-1 | mayor | la evidencia versionaba un prefijo del hash sin sal de la IP pública del usuario. **Al verificarlo, era más amplio**: el hash completo estaba en las evidencias de la 9.1, la 11.4, la 12.3 y la 12.5, y la IP en texto plano en el brief y la evidencia de la 9.1 | la IP y sus hashes se reemplazaron por marcadores en los archivos actuales. El README de staging suma la regla de no versionar nunca una IP ni su hash. **Decisión del usuario**: no reescribir el historial de Git, porque el repositorio es privado |
+| R-2 | mayor | `read-v1.md`, `IntegrationBoundaries.md` e `ingestion-v2.md` afirmaban un estado anterior a la 12.5.2 | estado actualizado en los tres. **El usuario autorizó** tocar `read-v1.md` e `ingestion-v2.md`, que no estaban en la lista de la 12.5.2 |
+| R-3 | mayor | el `409 message_already_recorded` no se declaró como llamador temporal | declarado en la evidencia y en la salvedad del AC-6, con el `event_id` y la correlación |
+| R-4 | menor | `conciliar-turnos.ts` podía dar `ok` con esperados repetidos y conteos distintos | exige esperados únicos y `expected = found`, y agrega `repeated_expected`. Caso nuevo y mutación M31 |
+| R-5 | menor | el test del historial capturado pasaba con un historial incompleto | exige los cuatro mensajes exactos, con dirección y autor. La nota tiene que declarar la salvedad de bytes, y el fixture no puede tener encabezados en ninguna parte. Mutación M32 |
+| R-6 | menor | AC-14 «cumplido en local» sin la CI leída | AC-14 con el run y el resultado de cada commit |
+| R-7 | menor | el motivo corregido de H-8 decía que la conciliación marcaría el duplicado, y no lo haría: la copia vieja queda fuera de la ventana | motivo corregido |
+| R-8 | menor | estado viejo en Risks (fila 24) y en el brief, y turnos por minuto imprecisos | fila 24, con cada credencial por separado y su próximo punto en la 13.5; la frase del brief, fechada |
+| R-9 | menor | la evidencia atribuía al CRM el `null` del turno 5, que solo consta en el agente | marcado «según el agente» |
+| R-10 | menor | la inferencia sobre el `login UNAUTHENTICATED` de las 22:39:54 no cerraba con los tiempos | queda «sin explicar», con el porqué |
+| R-11 | menor | la entrada «Promoción Día de la Madre» no citaba su origen | citada: `piloto-admin`, piloto del 2026-09-25 (notas-piloto-11.4) |
+
+El revisor también señaló que `HANDOFF.md` describe un staging y un siguiente paso viejos. Se reescribe en el cierre de la fase.

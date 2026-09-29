@@ -174,22 +174,22 @@ $ node -e '… chromium.launch() … fill("control-proxy@example.com") … fill(
 url: https://staging.vixoraai.app/login
 alerta:
 == key_hash
-362e48d25936a0713f2b6f6f12292449e7168e21f1d40c249d4ff67303058d3e|2026-09-25 13:17:11.141+00
+<sha256 de la IP pública del usuario>|2026-09-25 13:17:11.141+00
 == sha256(ip pública)
-362e48d25936a0713f2b6f6f12292449e7168e21f1d40c249d4ff67303058d3e
+<sha256 de la IP pública del usuario>
 ```
 
 **Control**: lo mismo por un túnel SOCKS (`ssh -f -N -D 1080 crm-staging`), que sale con la IP del droplet.
 
 ```
 == key_hash
-b9e00b76e068f403be7357635f19fbc47fdb5f094c1ddbad14205489c34b337f|2026-09-25 13:17:32.817+00
-362e48d25936a0713f2b6f6f12292449e7168e21f1d40c249d4ff67303058d3e|2026-09-25 13:17:11.141+00
+<sha256 de la IP del droplet>|2026-09-25 13:17:32.817+00
+<sha256 de la IP pública del usuario>|2026-09-25 13:17:11.141+00
 == sha256(ip del túnel)
-b9e00b76e068f403be7357635f19fbc47fdb5f094c1ddbad14205489c34b337f
+<sha256 de la IP del droplet>
 ```
 
-En los dos casos, la clave sigue a la IP del cliente: hay un solo salto de proxy. Después se cerró el túnel y se comprobó que el puerto 1080 quedó libre.
+En los dos casos, la clave sigue a la IP del cliente: hay un solo salto de proxy. *El 2026-09-29* los hashes se reemplazaron por marcadores, porque un `sha256` sin sal de una IPv4 se revierte (revisión independiente de la 12.5, R-1). Después se cerró el túnel y se comprobó que el puerto 1080 quedó libre.
 
 **Lo que no mide**: `alerta:` salió vacío. El script lee `role=alert`, y el aviso de credenciales inválidas no usa ese rol o no apareció en 3 s. La prueba no depende del aviso, sino de la fila en `login_attempts`.
 

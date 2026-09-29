@@ -369,8 +369,10 @@ describe("fixtures del contrato (D-8)", () => {
       const data = JSON.parse(raw);
       expect(data.shape).toBe("captured");
       expect(data.note).toMatch(/Capturada del consumidor real/);
+      // n8n guarda el cuerpo parseado: la captura valida el esquema, no los bytes.
+      expect(data.note).toMatch(/no necesariamente los mismos bytes/);
       expect(data.received_at).toMatch(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/);
-      expect(data.request).not.toHaveProperty("headers");
+      expect(raw).not.toMatch(/"headers"\s*:/i);
       expect(raw).not.toMatch(/crm_[a-z]+_/);
     },
   );
@@ -380,17 +382,26 @@ describe("fixtures del contrato (D-8)", () => {
       readFileSync(path.join(dir, "captured-messages-history.json"), "utf8"),
     );
     const items = data.response.body.items as {
+      external_ref: string;
       direction: string;
       sent_by: string | null;
       sent_at: string;
     }[];
+    // El turno 1 completo (entrada y respuesta del agente) y los dos mensajes del turno 2,
+    // exactamente en este orden y con su autor.
+    expect(
+      items.map((item) => [item.external_ref, item.direction, item.sent_by]),
+    ).toEqual([
+      ["wa-msg-wamid-fict-w1-t1-1", "inbound", null],
+      [
+        "wa-msg-wamid-dbl-1b6850b9-a7c0-4458-9851-284b2abfbd34-1",
+        "outbound",
+        "agent",
+      ],
+      ["wa-msg-wamid-fict-w1-t2-1", "inbound", null],
+      ["wa-msg-wamid-fict-w1-t2-2", "inbound", null],
+    ]);
     const times = items.map((item) => item.sent_at);
     expect(times).toEqual([...times].sort());
-    expect(
-      items.some(
-        (item) => item.direction === "outbound" && item.sent_by === "agent",
-      ),
-    ).toBe(true);
-    expect(items[0]?.direction).toBe("inbound");
   });
 });

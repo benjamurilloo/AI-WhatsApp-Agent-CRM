@@ -51,6 +51,7 @@ export type Reconciliation = {
   wrong_conversation: string[];
   wrong_direction: string[];
   unexpected: string[];
+  repeated_expected: string[];
   ok: boolean;
 };
 
@@ -89,6 +90,15 @@ export function reconcile(
     byRef.set(key, [...(byRef.get(key) ?? []), message]);
   }
   const expectedRefs = new Set(expected.map((item) => item.message_ref));
+  // Una referencia repetida en la lista del emisor taparía un faltante: con [A, A] y un solo A
+  // guardado no hay faltante ni duplicado (revisión independiente de la 12.5, R-4).
+  const repeatedExpected = [
+    ...new Set(
+      expected
+        .map((item) => item.message_ref)
+        .filter((ref, index, refs) => refs.indexOf(ref) !== index),
+    ),
+  ];
   const missing: string[] = [];
   const duplicated: string[] = [];
   const wrongConversation: string[] = [];
@@ -115,7 +125,10 @@ export function reconcile(
     wrong_conversation: wrongConversation,
     wrong_direction: wrongDirection,
     unexpected,
+    repeated_expected: repeatedExpected,
     ok:
+      expected.length === found.length &&
+      repeatedExpected.length === 0 &&
       missing.length === 0 &&
       duplicated.length === 0 &&
       wrongConversation.length === 0 &&

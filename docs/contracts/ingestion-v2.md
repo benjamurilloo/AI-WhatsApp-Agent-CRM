@@ -6,7 +6,9 @@
 - **Validado en staging** con requests sintéticos a través del borde real (12.3.2, `isolated-runtime`).
 - **Validado en integración** con el agente como emisor, desde su instancia de n8n y con datos sintéticos (12.3.3, `producer-consumer`, 2026-09-27). **No** es el turno completo (12.5) ni producción.
 
-**El agente emitió contra staging en una ventana de prueba, pero no está conectado**: su emisor sigue sin cablear a su pipeline. En `tests/fixtures/ingestion/v2/` conviven los fixtures de **forma asumida** (`"shape": "assumed"`, los vectores del contrato) y **seis capturas del agente** (`"shape": "captured"`), que guardan el cuerpo tal como llegó a staging. Este contrato no deriva de la forma de eventos de ningún sistema existente.
+- **Validado en integración con el turno completo** (12.5.2, `producer-consumer`, 2026-09-28; [evidencia-12.5](../decisions/evidencia-12.5-turno-completo.md)): el emisor ya está cableado a la cadena real del agente, con una cola durable que retiene ante `404` y reenvía idéntico. En dos ventanas, la conciliación dio cada mensaje una sola vez, en su conversación. Los dos `409` terminaron según la guía, incluido el reintento con referencias nuevas. El agente **no** está conectado a tráfico real: solo emite en ventanas de prueba. Fuera de ellas, la ingestión de staging está apagada y sus credenciales, revocadas.
+
+*Hasta la 12.5 este párrafo decía que el emisor seguía sin cablear a su pipeline; actualizado por la revisión independiente de la 12.5 (R-2).* En `tests/fixtures/ingestion/v2/` conviven los fixtures de **forma asumida** (`"shape": "assumed"`, los vectores del contrato) y **seis capturas del agente** (`"shape": "captured"`), que guardan el cuerpo tal como llegó a staging. Este contrato no deriva de la forma de eventos de ningún sistema existente.
 
 ## Qué cambia respecto de v1
 

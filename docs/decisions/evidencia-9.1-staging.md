@@ -8,7 +8,7 @@ Salidas de la verificación de `https://staging.vixoraai.app`, con el comando qu
 
 - **Capturado**: 2026-09-22
 - **Ref desplegado**: `1545040`. Desde ese ref, lo único que cambió bajo `src/` son archivos de prueba (`git diff --name-only 1545040 HEAD -- src/` devuelve `src/proxy.test.ts`), así que el código que corre en el servidor es el mismo. La redacción anterior —«no cambiaron `src/`»— era falsa (N-5).
-- **IP del cliente durante la medición**: `186.182.26.146`
+- **IP del cliente durante la medición**: `<IP pública del usuario>`
 
 ---
 
@@ -97,18 +97,18 @@ La clave del límite es `sha256(ip ?? "sin-proxy")` sin sal ni prefijo (`src/mod
 
 ```
 $ node -e 'const{createHash}=require("node:crypto");const h=v=>createHash("sha256").update(v).digest("hex");
-           console.log("mi_ip_real "+h("186.182.26.146"));
+           console.log("mi_ip_real "+h("<IP pública del usuario>"));
            console.log("ip_falsa   "+h("203.0.113.9"));
            console.log("sin-proxy  "+h("sin-proxy"));'
 [transcrito] Las tres líneas de abajo están realineadas a mano: el comando imprime una sola
-columna de separación y acá hay tres. Los hashes no se tocaron.
-mi_ip_real   362e48d25936a0713f2b6f6f12292449e7168e21f1d40c249d4ff67303058d3e
+columna de separación y acá hay tres. Los hashes no se tocaron al transcribir. *El 2026-09-29* la IP pública del usuario y su hash se reemplazaron por marcadores: un `sha256` sin sal de una IPv4 se revierte probando todas las direcciones (revisión independiente de la 12.5, R-1). Los hashes de la IP falsa y de `sin-proxy` quedan, porque no identifican a nadie.
+mi_ip_real   <sha256 de la IP pública del usuario>
 ip_falsa     d861b7e91033ebc1c1e8e7af3929010158b3241b54ca87ef73e79c32f26400ec
 sin-proxy    8a7b67f1679fdd7e92d61f0fc54701f4d674b0e1ed9fa4de351500e5d58fa1b2
 
 $ sudo -u postgres psql -d crm_staging -tAc \
     "SELECT scope, key_hash, count(*) FROM login_attempts GROUP BY scope, key_hash ORDER BY scope;"
-ip|362e48d25936a0713f2b6f6f12292449e7168e21f1d40c249d4ff67303058d3e|3
+ip|<sha256 de la IP pública del usuario>|3
 ```
 
 La fila almacenada coincide con el hash de la IP pública real. **No** coincide con el de la cabecera falsificada, ni con el de `"sin-proxy"`, que es la firma de H-3.
