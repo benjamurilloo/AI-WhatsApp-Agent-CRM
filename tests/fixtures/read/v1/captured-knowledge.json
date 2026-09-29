@@ -1,0 +1,115 @@
+{
+  "shape": "captured",
+  "note": "Capturada del consumidor real: la instancia de n8n del agente, contra staging, el 2026-09-28 (brief-12.5, etapa 12.5.2, D-8). Datos sintéticos. n8n guarda el cuerpo ya parseado: esto es ese objeto reserializado, con las claves, los tipos y los textos que llegaron, pero no necesariamente los mismos bytes. Sirve para validar el esquema, no para comparar bytes. Sin encabezados.",
+  "description": "Toda la información vigente, sin q y con limit=50 (H-6), leída en el turno 3. Doce entradas; una, «Promoción Día de la Madre», no viene del seed: su id no es del rango del piloto.",
+  "request": {
+    "method": "GET",
+    "path": "/api/read/v1/knowledge?limit=50"
+  },
+  "received_at": "2026-09-28T22:30:55.631Z",
+  "n8n_execution": "67299",
+  "response": {
+    "status": 200,
+    "body": {
+      "contract_version": "1",
+      "items": [
+        {
+          "entry_id": "5eed0000-0000-4000-9000-060000000011",
+          "title": "Cambios y devoluciones",
+          "category": "Devoluciones",
+          "content": "Aceptamos cambios dentro de los 10 días de la compra, con el producto sin uso y en su caja original.",
+          "valid_from": null,
+          "valid_until": null
+        },
+        {
+          "entry_id": "5eed0000-0000-4000-9000-060000000008",
+          "title": "Costo de envío",
+          "category": "Envíos",
+          "content": "El envío es gratis en compras de más de 150.000 pesos. Por debajo de ese monto se cotiza según el código postal.",
+          "valid_from": null,
+          "valid_until": null
+        },
+        {
+          "entry_id": "5eed0000-0000-4000-9000-060000000007",
+          "title": "Envíos a domicilio",
+          "category": "Envíos",
+          "content": "Enviamos a todo el país por correo. En la ciudad, el envío llega en 24 a 48 h hábiles.",
+          "valid_from": null,
+          "valid_until": null
+        },
+        {
+          "entry_id": "5eed0000-0000-4000-9000-060000000009",
+          "title": "Garantía de productos nuevos",
+          "category": "Garantía",
+          "content": "Los productos nuevos tienen 12 meses de garantía oficial del fabricante, con la factura de compra.",
+          "valid_from": null,
+          "valid_until": null
+        },
+        {
+          "entry_id": "5eed0000-0000-4000-9000-060000000012",
+          "title": "Servicio técnico",
+          "category": "Garantía",
+          "content": "El servicio técnico recibe equipos de lunes a viernes de 10 a 17 h. El diagnóstico tarda hasta 72 h.",
+          "valid_from": null,
+          "valid_until": null
+        },
+        {
+          "entry_id": "5eed0000-0000-4000-9000-060000000001",
+          "title": "Horario de atención",
+          "category": "Horarios",
+          "content": "Atendemos de lunes a viernes de 10 a 19 h y los sábados de 10 a 14 h. Domingos y feriados, cerrado.",
+          "valid_from": null,
+          "valid_until": null
+        },
+        {
+          "entry_id": "5eed0000-0000-4000-9000-060000000002",
+          "title": "Horario de atención por WhatsApp",
+          "category": "Horarios",
+          "content": "Respondemos mensajes de lunes a sábado de 9 a 21 h. Fuera de ese horario contestamos al día siguiente.",
+          "valid_from": null,
+          "valid_until": null
+        },
+        {
+          "entry_id": "5eed0000-0000-4000-9000-060000000006",
+          "title": "Cuotas sin interés",
+          "category": "Medios de pago",
+          "content": "Tres cuotas sin interés con tarjetas de crédito bancarias en celulares y notebooks nuevos.",
+          "valid_from": "2026-09-15",
+          "valid_until": "2026-10-15"
+        },
+        {
+          "entry_id": "5eed0000-0000-4000-9000-060000000005",
+          "title": "Medios de pago",
+          "category": "Medios de pago",
+          "content": "Aceptamos efectivo, transferencia bancaria, tarjetas de débito y tarjetas de crédito de todas las marcas.",
+          "valid_from": null,
+          "valid_until": null
+        },
+        {
+          "entry_id": "a0e19c37-f48f-45d3-8f6d-d0c5761815bc",
+          "title": "Promoción Día de la Madre",
+          "category": "Promoción",
+          "content": "Por la semana del Día de la Madre todos los productos tienen un 20% de descuento pagando con cualquier medio de pago.",
+          "valid_from": "2026-09-26",
+          "valid_until": "2026-10-18"
+        },
+        {
+          "entry_id": "5eed0000-0000-4000-9000-060000000003",
+          "title": "Dirección del local",
+          "category": "Ubicación",
+          "content": "Estamos en Avenida Siempreviva 742, local 3, a dos cuadras de la estación. Hay estacionamiento medido en la cuadra.",
+          "valid_from": null,
+          "valid_until": null
+        },
+        {
+          "entry_id": "5eed0000-0000-4000-9000-060000000004",
+          "title": "Retiro en el local",
+          "category": "Ubicación",
+          "content": "Las compras se pueden retirar en el local desde el día hábil siguiente, con el número de pedido y el DNI del titular.",
+          "valid_from": null,
+          "valid_until": null
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "shape": "captured",
+  "note": "Capturada del consumidor real: la instancia de n8n del agente, contra staging, el 2026-09-28 (brief-12.5, etapa 12.5.2, D-8). Datos sintéticos. n8n guarda el cuerpo ya parseado: esto es ese objeto reserializado, con las claves, los tipos y los textos que llegaron, pero no necesariamente los mismos bytes. Sirve para validar el esquema, no para comparar bytes. Sin encabezados.",
+  "description": "Búsqueda de productos del turno 5b, con el plural ya pasado a singular por la tool del agente (q=cargador): un resultado.",
+  "request": {
+    "method": "GET",
+    "path": "/api/read/v1/products?q=cargador&limit=10"
+  },
+  "received_at": "2026-09-28T22:56:25.624Z",
+  "n8n_execution": "67449",
+  "response": {
+    "status": 200,
+    "body": {
+      "contract_version": "1",
+      "items": [
+        {
+          "product_id": "5eed0000-0000-4000-9000-020000000036",
+          "sku": "PIL-ACC-036",
+          "name": "Cargador 20W (2da gen.)",
+          "description": "Accesorios Arkon, nuevo en caja cerrada.",
+          "unit": "unidad",
+          "brand": "Arkon",
+          "category": "Accesorios",
+          "condition": "new",
+          "price": {
+            "amount": "12000.00",
+            "currency": "ARS"
+          },
+          "stock_status": "disponible"
+        }
+      ]
+    }
+  }
+}

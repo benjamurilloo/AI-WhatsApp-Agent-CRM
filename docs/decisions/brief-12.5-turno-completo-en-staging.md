@@ -385,3 +385,31 @@ Tocar cualquier otro archivo se detiene y se pide al usuario.
 **Nivel**: la lectura de las tres rutas queda **validada en staging** (`isolated-runtime`), con requests sintéticos. **No** con el agente.
 
 **Estado de la 12.5.2**: **no empieza** hasta que el agente complete su lado: el turno por mensaje, la cola durable con su ADR, las tools de lectura y el cableado. La Fase 12 queda abierta.
+
+## Resultados — etapa 12.5.2
+
+**Autoevaluación** (`self_assessment: true`), del 2026-09-29, sobre las dos ventanas del 2026-09-28. Las salidas están en [evidencia-12.5](evidencia-12.5-turno-completo.md), §12.5.2.
+
+**Decisión del usuario, 2026-09-29**: la 12.5 cierra con **la derivación del turno 3 como límite conocido** (opción a). El agente no derivó, así que no hubo `conversation.escalated` ni paso a `pending` con la cadena real. La ingestión de ese evento está validada desde la 12.3.3. Se prueba en una ventana corta cuando el agente corrija su clasificación. Se descartó una ventana extra antes del cierre (opción b), porque el objetivo de la fase, turnos completos sin pérdida, está cumplido.
+
+| AC | Resultado | Evidencia |
+|---|---|---|
+| AC-5 | **cumplido en parte** | los cinco turnos, más el 5b, con la cadena real del agente, entrada simulada, un doble de WhatsApp y datos sintéticos. **El turno 3 no derivó**: es el límite decidido arriba |
+| AC-6 | cumplido | dos ventanas con conciliación `ok` (7 de 7 cada una), sin faltantes, duplicados ni mensajes en otra conversación. El turno 4 quedó retenido ante `404` y llegó entero, en orden y sin duplicados después de la reapertura. `conversation_ref_taken` terminó en `…~r2` con el mensaje guardado, separado de la semilla, y `message_already_recorded` no guardó nada |
+| AC-7 | cumplido | la captura del historial del turno 2 trae el turno 1 completo (el entrante y la respuesta con `sent_by: agent`) y los dos mensajes del turno 2, en orden por `sent_at`. Lo prueba un caso en CI, con la mutación M29 |
+| AC-8 | cumplido | pedidos por turno y por ruta desde el log: escritura de 3 a 4, lectura de 1 a 3, **ningún `429`**. Registrado en Risks (pregunta 5) |
+| AC-9 | cumplido | catálogo, información e historial respondieron `200` al agente, y, según el agente, con los plurales corregidos `q=funda` y `q=cargador` devolvieron un ítem cada una. Tres capturas, una por ruta, son fixtures `"shape": "captured"` que pasan los esquemas estrictos en CI, sin encabezados ni tokens (M28 y M30). **Salvedad**: n8n guarda el cuerpo ya parseado, así que las capturas validan el esquema, no los bytes |
+| AC-10 | cumplido | R-6 de punta a punta: el teléfono como nombre terminó en «Sin nombre»; el formato local pasa (límite escrito). Registrado en Risks |
+| AC-11 | cumplido | N-1 cerrada el 2026-09-27 (arriba) |
+| AC-12 | cumplido | métrica 12 a mano: 7 y 0 en la ventana 1; 9 y 2 en la ventana 2, que son los dos `409` del guion. Dashboard del día: «12,5 %, 2 fallidos de 16 eventos», con los dos códigos bajo `agente-12-5-2` |
+| AC-13 | cumplido | todo apagado a las 23:04:35 UTC, con `app.env` idéntico a la copia (`cmp`). Se revocaron **cuatro** credenciales: las tres del agente y la de la semilla. Todo en `404` desde afuera |
+| AC-14 | cumplido en local; la CI, en el commit | el único código es el test de los fixtures. En local, lint, tipos y formato limpios, y 787 de 787 entre unitarios y guardas. La integración y el end-to-end corren en la CI, porque Docker no estaba levantado |
+| AC-16 | cumplido | los casos nuevos llevan D-8 o FR-API-08 |
+| AC-15 | pendiente | revisión independiente antes del cierre de la fase |
+
+**Hallazgos para el agente**, que no bloquean:
+- el turno 3 no derivó (arriba);
+- el turno 1 no leyó la información del negocio, aunque la pregunta incluía el horario;
+- el agente usa una correlación para la ingestión y otra por cada lectura, y la guía pide una por turno.
+
+**Nivel**: el turno completo queda **validado en integración, en staging** (`producer-consumer`). **No** `authenticated-end-to-end`, porque ningún mensaje real de WhatsApp pasó. **No** producción.

@@ -327,9 +327,9 @@ describe("fixtures del contrato (D-8)", () => {
     expect(files.length).toBeGreaterThan(0);
   });
 
-  it.each(files)("%s tiene forma asumida y pasa el validador", (file) => {
+  it.each(files)("%s declara su forma y pasa el validador", (file) => {
     const data = JSON.parse(readFileSync(path.join(dir, file), "utf8"));
-    expect(data.shape).toBe("assumed");
+    expect(["assumed", "captured"]).toContain(data.shape);
     const { status, body } = data.response;
     const schema =
       status !== 200
@@ -343,5 +343,54 @@ describe("fixtures del contrato (D-8)", () => {
               : productResponseSchema;
     const parsed = schema.safeParse(body);
     expect(parsed.success, parsed.error?.message).toBe(true);
+  });
+
+  // Capturas del agente como consumidor real (brief-12.5, D-8 y AC-9).
+  const captured = files.filter((file) => file.startsWith("captured-"));
+
+  it("D-8: hay una captura de cada ruta de lectura", () => {
+    const paths = captured.map(
+      (file) =>
+        JSON.parse(readFileSync(path.join(dir, file), "utf8")).request
+          .path as string,
+    );
+    for (const route of ["products", "knowledge", "messages"]) {
+      expect(
+        paths.some((p) => p.startsWith(`/api/read/v1/${route}?`)),
+        route,
+      ).toBe(true);
+    }
+  });
+
+  it.each(captured)(
+    "D-8: %s es una captura declarada, sin encabezados ni tokens",
+    (file) => {
+      const raw = readFileSync(path.join(dir, file), "utf8");
+      const data = JSON.parse(raw);
+      expect(data.shape).toBe("captured");
+      expect(data.note).toMatch(/Capturada del consumidor real/);
+      expect(data.received_at).toMatch(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/);
+      expect(data.request).not.toHaveProperty("headers");
+      expect(raw).not.toMatch(/crm_[a-z]+_/);
+    },
+  );
+
+  it("FR-API-08 (AC-7): el historial capturado trae el turno anterior con la respuesta del agente, en orden", () => {
+    const data = JSON.parse(
+      readFileSync(path.join(dir, "captured-messages-history.json"), "utf8"),
+    );
+    const items = data.response.body.items as {
+      direction: string;
+      sent_by: string | null;
+      sent_at: string;
+    }[];
+    const times = items.map((item) => item.sent_at);
+    expect(times).toEqual([...times].sort());
+    expect(
+      items.some(
+        (item) => item.direction === "outbound" && item.sent_by === "agent",
+      ),
+    ).toBe(true);
+    expect(items[0]?.direction).toBe("inbound");
   });
 });

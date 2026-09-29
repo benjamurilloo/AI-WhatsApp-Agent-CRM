@@ -1,0 +1,51 @@
+{
+  "shape": "captured",
+  "note": "Capturada del consumidor real: la instancia de n8n del agente, contra staging, el 2026-09-28 (brief-12.5, etapa 12.5.2, D-8). Datos sintéticos. n8n guarda el cuerpo ya parseado: esto es ese objeto reserializado, con las claves, los tipos y los textos que llegaron, pero no necesariamente los mismos bytes. Sirve para validar el esquema, no para comparar bytes. Sin encabezados.",
+  "description": "Historial leído en el turno 2 (AC-7): el turno 1 completo, con la respuesta del agente (sent_by: agent), y los dos mensajes del turno 2, del más viejo al más nuevo.",
+  "request": {
+    "method": "GET",
+    "path": "/api/read/v1/messages?conversation_ref=wa-conv-wamid-fict-w1-t1-1&limit=10"
+  },
+  "received_at": "2026-09-28T22:29:09.798Z",
+  "n8n_execution": "67253",
+  "response": {
+    "status": 200,
+    "body": {
+      "contract_version": "1",
+      "items": [
+        {
+          "external_ref": "wa-msg-wamid-fict-w1-t1-1",
+          "direction": "inbound",
+          "kind": "text",
+          "sent_by": null,
+          "sent_at": "2026-09-28T22:26:52.225Z",
+          "body_text": "hola que celulares tienen y en que horario atienden"
+        },
+        {
+          "external_ref": "wa-msg-wamid-dbl-1b6850b9-a7c0-4458-9851-284b2abfbd34-1",
+          "direction": "outbound",
+          "kind": "text",
+          "sent_by": "agent",
+          "sent_at": "2026-09-28T22:27:38.000Z",
+          "body_text": "Hola! Tenemos varios modelos de celulares disponibles: Aria 5, Aria 5 (2da gen.) reacondicionado, Aria 7, Aria 7 (2da gen.), Nova S, Nova S (2da gen.), Pulse Mini, Pulse Mini (2da gen.) reacondicionado, Pulse X (2da gen.) y Pulse X reacondicionado. Algunos están disponibles y otros con bajo stock o sin stock. En cuanto al horario de atención, ¿podrías indicarme si quieres saber el horario de atención en tienda o atención telefónica para darte la información correcta?"
+        },
+        {
+          "external_ref": "wa-msg-wamid-fict-w1-t2-1",
+          "direction": "inbound",
+          "kind": "text",
+          "sent_by": null,
+          "sent_at": "2026-09-28T22:28:38.495Z",
+          "body_text": "me interesa el mas barato"
+        },
+        {
+          "external_ref": "wa-msg-wamid-fict-w1-t2-2",
+          "direction": "inbound",
+          "kind": "text",
+          "sent_by": null,
+          "sent_at": "2026-09-28T22:28:41.495Z",
+          "body_text": "tienen stock"
+        }
+      ]
+    }
+  }
+}
