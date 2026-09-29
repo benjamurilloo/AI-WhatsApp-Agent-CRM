@@ -145,11 +145,23 @@ Se despliega un **SHA**, no `origin/main`: lo que se comprobó en el paso 1 es u
 
 ## Volver atrás
 
-Es el mismo procedimiento de «Desplegar un cambio» con el SHA anterior: la última línea de `/var/lib/crm-production/despliegues`. **Incluye el paso 1**: ese SHA ya pasó la CI cuando se desplegó, y se vuelve a comprobar igual, porque la comprobación es barata.
+Es el mismo procedimiento de «Desplegar un cambio» con el SHA anterior. **Incluye el paso 1**: ese SHA ya pasó la CI cuando se desplegó, y se vuelve a comprobar igual, porque la comprobación es barata.
+
+**Cuál es el SHA anterior.** `/var/lib/crm-production/despliegues` anota, en cada despliegue, el SHA que **estaba** corriendo:
+- **Justo después de un despliegue**, el anterior es la última línea.
+- **Después de una vuelta atrás, no.** La vuelta atrás también es un despliegue, y anota la versión de la que se volvió. Seguir la regla una segunda vez desplegaría esa misma versión.
+
+Se mira el registro entero, se elige el SHA a propósito y se lo compara con el que corre:
+
+```
+ssh crm-production 'sudo tail -n 5 /var/lib/crm-production/despliegues; sudo -u crm git -C /srv/crm-production rev-parse HEAD'
+```
+
+Lo midió la 13.1.2 al ejecutar la vuelta atrás (AC-21). Ese ensayo, un despliegue y su vuelta atrás, tardó 90 s de ida y 62 s de vuelta.
 
 **Lo que la vuelta atrás no deshace: las migraciones.** Volver el código no vuelve el esquema. Las migraciones del proyecto son aditivas, así que el código anterior sigue funcionando sobre el esquema nuevo **mientras la migración no borre ni renombre nada que ese código use**. Una migración que sí lo haga necesita su propio plan de vuelta atrás, escrito en su brief **antes** de desplegarla. Si la base misma quedó mal, la vuelta atrás es la restauración ([runbook](../../docs/runbooks/restaurar-la-base.md)), no esto.
 
-La 13.1.2 ejecuta una vuelta atrás completa (AC-21): despliega un ref, despliega el siguiente, vuelve al primero y mide el tiempo.
+La 13.1.2 ejecutó una vuelta atrás completa el 2026-09-29 (AC-21): de `938423d` a `c8fde19` y de vuelta a `938423d`, con la aplicación sana al final ([evidencia-13.1](../../docs/decisions/evidencia-13.1-produccion.md)).
 
 ## Verificar después de desplegar
 

@@ -1151,3 +1151,109 @@ drwxr-xr-x 112 root root 4096 Sep 29 20:48 ..
 - ninguno coincide con uno de staging.
 
 Límite declarado: el cruce con el repositorio compara cadenas completas, no subcadenas. Un secreto incrustado dentro de una cadena más larga no se detectaría.
+
+### AC-21 (H-3): una vuelta atrás completa, 2026-09-29
+
+Autorizado por el usuario en su turno. Se siguió el [README](../../deploy/production/README.md), §«Desplegar un cambio» y §«Volver atrás»:
+1. se desplegó un SHA posterior;
+2. se volvió al anterior, tomado de la última línea de `/var/lib/crm-production/despliegues`.
+
+Los pasos 2 y 3 del README corrieron **al pie de la letra** dentro de un guion (`desplegar.sh`, en el scratchpad del asistente, fuera del repositorio). El guion agrega marcas de tiempo, espera a que `/login` responda 200 (hasta 60 s) y muestra el SHA antes y después.
+
+**El SHA de ida fue `c8fde19`, no el último commit.** `3ade19b` tenía la CI todavía `in_progress`, y el README solo permite desplegar un SHA con `success` (D-4). Entre `938423d` y `c8fde19` no hay migraciones ni cambios en `src/`: cambian `deploy/`, `tests/` y `docs/`. El ensayo mide entonces el **mecanismo** de despliegue y vuelta atrás, no la compatibilidad de un código distinto con el esquema. Ese riesgo está escrito en el README, §«Lo que la vuelta atrás no deshace».
+
+**Paso 1, la CI de los SHA:**
+
+```text
+3ade19b: [{"conclusion":"","databaseId":36639661504,"headSha":"3ade19b09f211a5feee46ea11b215b1a88d64353","status":"in_progress"}]
+c8fde19: [{"conclusion":"success","databaseId":36634183367,"headSha":"c8fde194eea6bfaa39e6e758284b2ad1eabb959f","status":"completed"}]
+938423d: [{"conclusion":"success","databaseId":36616168249,"headSha":"938423d0a832e65eb9c42474c51a47a44c54689e","status":"completed"}]
+```
+
+`[transcrito]`: la salida de `gh` venía en una línea por SHA, y se le agregó el prefijo con el SHA corto.
+
+**Ida, a `c8fde19`**, corrida por el asistente:
+
+```text
+$ ssh crm-production "SHA=c8fde194eea6bfaa39e6e758284b2ad1eabb959f bash -s" < desplegar.sh
+[22:28:28 +0s] desplegado antes: 938423d0a832e65eb9c42474c51a47a44c54689e
+[22:28:28 +0s] anotado; últimas líneas de despliegues:
+938423d0a832e65eb9c42474c51a47a44c54689e
+
+added 263 packages in 47s
+[22:29:17 +49s] código y dependencias: c8fde194eea6bfaa39e6e758284b2ad1eabb959f
+
+Migraciones aplicadas.
+[22:29:19 +51s] migraciones
+[22:29:54 +86s] build
+[22:29:55 +87s] restart
+[22:29:58 +90s] /login -> 200
+[22:29:58 +90s] servicio: active, NRestarts=0
+[22:29:58 +90s] desplegado ahora: c8fde194eea6bfaa39e6e758284b2ad1eabb959f
+```
+
+**Vuelta, a `938423d`.** El clasificador de permisos del asistente la bloqueó como «Production Deploy», así que **la corrió el usuario** en su terminal, con los mismos comandos. Salida pegada por el usuario:
+
+```text
+última línea de despliegues: 938423d0a832e65eb9c42474c51a47a44c54689e
+[
+  {
+    "conclusion": "success",
+    "databaseId": 36616168249,
+    "headSha": "938423d0a832e65eb9c42474c51a47a44c54689e",
+    "status": "completed"
+  }
+]
+inicio de la vuelta atrás: 23:02:53 UTC
+[23:02:56 +0s] desplegado antes: c8fde194eea6bfaa39e6e758284b2ad1eabb959f
+[23:02:56 +0s] anotado; últimas líneas de despliegues:
+938423d0a832e65eb9c42474c51a47a44c54689e
+c8fde194eea6bfaa39e6e758284b2ad1eabb959f
+
+added 263 packages in 25s
+[23:03:23 +27s] código y dependencias: 938423d0a832e65eb9c42474c51a47a44c54689e
+
+Migraciones aplicadas.
+[23:03:24 +28s] migraciones
+[23:03:53 +57s] build
+[23:03:53 +57s] restart
+[23:03:55 +59s] /login -> 200
+[23:03:55 +59s] servicio: active, NRestarts=0
+[23:03:55 +59s] desplegado ahora: 938423d0a832e65eb9c42474c51a47a44c54689e
+```
+
+**Después, desde afuera:**
+
+```text
+2026-09-29T23:04:37Z
+GET /login -> 200
+GET /api/health -> 200
+POST /api/ingestion/v1/events -> 404
+POST /api/ingestion/v2/events -> 404
+GET /api/read/v1/products -> 404
+HSTS: strict-transport-security: max-age=31536000; includeSubDomains
+938423d0a832e65eb9c42474c51a47a44c54689e
+c8fde194eea6bfaa39e6e758284b2ad1eabb959f
+active
+active
+active
+```
+
+Las últimas líneas son `despliegues`, seguido de `crm-production`, `crm-backup.timer` y `crm-restore-check.timer`.
+
+**AC-21 cumplido**:
+- la vuelta atrás tardó **62 s**, desde que el usuario la inició (23:02:53) hasta `/login` 200 (23:03:55); el guion solo midió 59 s;
+- la aplicación quedó sana, sin reinicios, con la ingestión y la lectura apagadas y los timers activos;
+- el SHA desplegado es el anterior, y su CI está en `success`.
+
+**Qué ocupa el tiempo:**
+- `npm ci`: 47 s la primera vez, 25 s la segunda, con la caché caliente;
+- `next build`: unos 30 s.
+
+**Inferido, no medido**: nadie observó la disponibilidad durante el despliegue. Por el procedimiento:
+- la aplicación no responde entre el `restart` y el primer 200, unos 2 s según las marcas;
+- durante el `npm ci` y el build, el proceso viejo sigue sirviendo con `node_modules` y `.next` cambiándole debajo.
+
+Para un entorno de un operador sin tráfico real es aceptable. Queda anotado para cuando haya tráfico.
+
+**Defecto del README encontrado al ejecutarlo.** Cada despliegue anota el SHA que **estaba** corriendo. «Volver atrás = la última línea» vale justo después de un despliegue, pero **no después de una vuelta atrás**: ahí la última línea es `c8fde19`, la versión de la que se acaba de volver. Una segunda vuelta atrás, siguiendo el texto, volvería a desplegar la versión abandonada. Se corrige en el README, §«Volver atrás».
