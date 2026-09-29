@@ -16,7 +16,7 @@ Cada una es una decisión del brief, o su consecuencia directa.
 | 2 | La aplicación corre como un usuario de sistema propio, `crm`, sin shell ni `sudo`. En staging corre como `benja` | Consecuencia de tener datos reales: en staging, un proceso comprometido corre como un usuario con `sudo`. En producción no hereda ese camino a `root`. **No estaba en el brief**, y se registra acá |
 | 3 | Base `crm_production`, creada con collation ICU `es` y **propiedad de `crm_owner` desde el primer día** | D-7, medida en AC-6. Que sea del dueño desde el principio cierra O-3: una restauración con `-O crm_owner` deja el mismo dueño que el original |
 | 4 | El backup se cifra con `age` y la copia cifrada sube a object storage en una unidad aparte, con red | D-8. `crm-backup.sh` y los dos archivos nuevos: `crm-backup-offsite.sh` y `crm-backup-offsite.service` |
-| 5 | `postgresql-crm-production.conf` con los valores de costo **provisionales** para 2 GB | El método de la 9.3. Se recalcula con `free -m` en el droplet ya aprovisionado |
+| 5 | `postgresql-crm-production.conf` con los valores de costo para la RAM medida del droplet (1967 MB) | El método de la 9.3: `free -m` en el droplet aprovisionado, el 2026-09-29, y se reconfirma con la aplicación corriendo |
 | 6 | Antes de cada despliegue, la CI del SHA exacto tiene que estar en `success` | D-4 (R-2), opción (a) |
 | 7 | Cada despliegue registra el SHA anterior, y hay un procedimiento de vuelta atrás | H-3 del brief: staging no lo tiene |
 | 8 | Sin backups ni snapshots de droplet del proveedor | D-5: el disco tiene el dump en claro y los secretos |
@@ -50,7 +50,7 @@ Los secretos. Viven en `/etc/crm-production/`, con permisos `0600` de `root`, y 
 | `backup.env` | `PG*`, `BACKUP_DIR=/var/backups/crm-production`, `BACKUP_KEEP`, `BACKUP_GROUP=postgres`, `BACKUP_AGE_RECIPIENTS=/etc/crm-production/backup.age.pub`, `OFFSITE_REMOTE`, `OFFSITE_KEEP_DAYS` y `RCLONE_CONFIG=/etc/crm-production/rclone.conf`. **No trae la contraseña** |
 | `backup.pgpass` | La contraseña del rol dueño, para el backup |
 | `backup.age.pub` | La clave **pública** de `age`. La privada **nunca** entra al droplet: la guarda el operador fuera de él |
-| `rclone.conf` | La clave de acceso al bucket, con permiso **solo** sobre ese bucket |
+| `rclone.conf` | La clave de acceso al bucket, con permiso **solo** sobre ese bucket. Un remoto `[spaces]` con `type = s3`, `provider = DigitalOcean`, `endpoint = nyc3.digitaloceanspaces.com`, `acl = private` y las dos claves. Lo escribe el operador en el servidor, con `nano`, y nunca pasa por una conversación con un asistente |
 
 No hay `seed.env`: en producción no corre ningún seed, y los seeds rechazan la base `crm_production` (AC-5).
 
@@ -65,7 +65,24 @@ Es el orden de staging, con los cambios marcados. **Cada paso que crea algo afue
 1. **El droplet**: Ubuntu 24.04, 2 GB o más, en la misma región que staging. **Sin** backups ni snapshots del proveedor. El acceso es por clave, con `root` rechazado, igual que staging. La clave de host se verifica contra la consola del proveedor, no con `accept-new`: en staging quedó como confianza en el primer uso (brief-9.1).
 2. **El DNS**: registro `A` de `crm.vixoraai.app` en *DNS only*, apuntando al droplet. Se verifica desde dos resolvers independientes, como en la 9.1.
 3. **Node 24 LTS** (NodeSource), con la versión exacta anotada en la evidencia (D-6), y **PostgreSQL 18.6** del repositorio `pgdg`, con `postgresql-contrib`. Se instalan también `age` y `rclone`. **El swap solo si `next build` lo necesita**: si hace falta en régimen normal, es un hallazgo.
-4. **El usuario de sistema**: `sudo useradd --system --home /srv/crm-production --shell /usr/sbin/nologin crm`. El código vive en `/srv/crm-production`, que es de `crm`. El registro de despliegues vive en `/var/lib/crm-production/despliegues` (`sudo install -d -m 0750 /var/lib/crm-production`).
+4. **El usuario de sistema, con su home fuera del código** (I-6 del brief):
+
+   ```
+   sudo useradd --system --home /var/lib/crm-production/home --shell /usr/sbin/nologin crm
+   sudo install -d -m 0750 -o root -g crm /var/lib/crm-production
+   sudo install -d -m 0700 -o crm -g crm /var/lib/crm-production/home /var/lib/crm-production/ssh
+   sudo install -d -m 0755 -o crm -g crm /srv/crm-production
+   ```
+
+   El código vive en `/srv/crm-production`, que es de `crm`. **El home no puede ser esa carpeta**: la caché de `npm` (`~/.npm`) y cualquier `~/.ssh` quedarían dentro del repositorio clonado. Pasó en la 13.1.2, con `.npm/` como archivo sin seguimiento. El registro de despliegues vive en `/var/lib/crm-production/despliegues`. La carpeta es del grupo `crm` para que `crm` llegue a `ssh/`, pero no puede escribir en ella.
+
+   **La deploy key de producción**, propia y de solo lectura (no se comparte con staging):
+
+   ```
+   sudo -u crm ssh-keygen -q -t ed25519 -N "" -C "crm-production-deploy" -f /var/lib/crm-production/ssh/id_ed25519_deploy
+   ```
+
+   La pública se agrega en GitHub con `gh repo deploy-key add` (solo lectura, el valor por defecto). El `known_hosts` de GitHub se arma desde su API (`gh api meta --jq '.ssh_keys[] | "github.com " + .'`), no con confianza en el primer uso. El repositorio clonado lleva `core.sshCommand` apuntando a esa clave y a ese `known_hosts`, así que `git fetch` no depende del home.
 5. **La base, con la collation decidida** (AC-6, ensayada el 2026-09-29 en `postgres:18.6-trixie`):
 
    ```
@@ -111,8 +128,10 @@ Solo se despliega con `"conclusion":"success"` de **ese** `headSha`. `cancelled`
 **2. Anotar lo que está desplegado**, para poder volver atrás:
 
 ```
-ssh crm-production 'cd /srv/crm-production && git rev-parse HEAD | sudo tee -a /var/lib/crm-production/despliegues'
+ssh crm-production 'sudo -u crm git -C /srv/crm-production rev-parse HEAD | sudo tee -a /var/lib/crm-production/despliegues'
 ```
+
+Git corre como `crm`, que es el dueño del repositorio. Como el usuario del `ssh`, Git se niega a leerlo (`fatal: detected dubious ownership`). Lo midió la 13.1.2 con la primera versión de este comando, que no tenía `sudo -u crm`.
 
 **3. Código, dependencias, migraciones, build y reinicio**, con la forma de staging:
 

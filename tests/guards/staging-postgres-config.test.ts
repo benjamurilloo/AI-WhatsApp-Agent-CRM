@@ -22,9 +22,8 @@ import { describe, expect, it } from "vitest";
 // Un archivo por entorno (brief-13.1, D-12). La RAM de cada máquina es una constante porque ningún
 // test puede medirla.
 //   - staging: medida con `free -m` el 2026-09-23, 961 MB.
-//   - production: PROVISIONAL. Es la del droplet dimensionado en la 13.1 (D-1: 2 GB), que todavía
-//     no existe. Se reemplaza por la medida con `free -m` en la 13.1.2, en el mismo cambio que
-//     recalcula effective_cache_size.
+//   - production: medida con `free -m` el 2026-09-29 (13.1.2), 1967 MB. Reemplaza los 2048 MB
+//     provisionales de la 13.1.1.
 const ENTORNOS_POSTGRES = [
   {
     nombre: "staging",
@@ -37,8 +36,8 @@ const ENTORNOS_POSTGRES = [
     nombre: "production",
     archivo: "deploy/production/postgresql-crm-production.conf",
     destino: /\/etc\/postgresql\/18\/main\/conf\.d\/crm-production\.conf/,
-    ramMb: 2048,
-    ramTexto: /2 GB/,
+    ramMb: 1967,
+    ramTexto: /1967 MB/,
   },
 ] as const;
 

@@ -323,7 +323,8 @@ Las tomé yo al implementar. Las tres primeras necesitaban la confirmación del 
 - **I-2. En producción, la aplicación corre con un usuario de sistema propio (`crm`), sin shell ni `sudo`.** En staging corre como `benja`, el usuario del `ssh`, que tiene `sudo`. Con datos reales, un proceso comprometido no debería heredar un camino a `root`. Es una diferencia con staging que el brief no nombraba. Está registrada en [deploy/production/README.md](../../deploy/production/README.md), diferencia 2, y la fija la guarda del proxy. *Confirmada.*
 - **I-3. La copia externa corre en una unidad aparte**, disparada por `OnSuccess=` del backup. El backup queda sin red y la subida sin acceso a la base. D-8 no decía cómo repartirlo. *Confirmada.*
 - **I-4. Los archivos de las guardas conservan su nombre `staging-*.test.ts`.** D-12 permitía renombrarlos, y no lo hice: el HANDOFF, EngineeringStandards y los dos README los citan por ese nombre, y cambiarlo tocaba archivos solo para eso.
-- **I-5. La RAM de producción en la guarda de PostgreSQL es provisional (2048 MB)**, igual que `effective_cache_size = 1GB`. Los dos se reemplazan en la 13.1.2 con `free -m` medido en el droplet.
+- **I-5. La RAM de producción en la guarda de PostgreSQL es provisional (2048 MB)**, igual que `effective_cache_size = 1GB`. Los dos se reemplazan en la 13.1.2 con `free -m` medido en el droplet. *Resuelta en la 13.1.2: 1967 MB medidos; `1GB` se mantiene.*
+- **I-6 (13.1.2). El home de `crm` va fuera del código, en `/var/lib/crm-production/home`, y la deploy key en `/var/lib/crm-production/ssh/`.** El README de la 13.1.1 ponía el home en `/srv/crm-production`, la carpeta del repositorio. El primer `npm ci` dejó ahí su caché `.npm/` como archivo sin seguimiento. Se corrigió con `usermod -d`, se borró la caché, y `git status --ignored` quedó solo con `node_modules/`. `/var/lib/crm-production` pasó a ser del grupo `crm` (`0750`) para que `crm` llegue a su clave. El README tiene los comandos corregidos.
 
 ## Resultados — etapa 13.1.1, 2026-09-29
 
@@ -338,6 +339,6 @@ Las salidas crudas están en [evidencia-13.1-produccion.md](evidencia-13.1-produ
 | AC-5 | cumplido | Por efecto: cinco seeds contra una base `crm_production` real (test) y `db:seed` contra la base de ensayo. La mutación que demuestra que el caso puede fallar se ejecutó con autorización del usuario, y el test falló como se esperaba (ver la evidencia) |
 | AC-6 | cumplido | Medición con salida cruda: `es-x-icu` es la única candidata que ordena como en castellano. D-7 confirmada |
 | AC-7 | cumplido | Ensayo en un contenedor descartable: la falla (`42501`, cero tablas), el procedimiento y las 25 migraciones aplicadas con un dueño sin `CREATEROLE` |
-| AC-8 | cumplido en local; **CI pendiente** | Local, 2026-09-29: lint, typecheck y formato en verde; Vitest 1494 de 1494 (100 archivos); build y 100 de 100 end-to-end. La CI se lee por `headSha` cuando haya commit, que espera autorización |
+| AC-8 | cumplido | Local, 2026-09-29: lint, typecheck y formato en verde; Vitest 1494 de 1494 (100 archivos); build y 100 de 100 end-to-end. CI: corrida 36616168249, `headSha` `938423d0a832e65eb9c42474c51a47a44c54689e`, `conclusion: success` |
 
 **Hallazgo al pasar, corregido**: la lista de guardas de EngineeringStandards no nombraba la de lecturas de servicio de la 11.3, y decía «doce» con trece en la carpeta. Es la tercera vez del defecto H-4 de la 8.4. Es el H-8 de este brief, que había detectado el número pero no la guarda que faltaba.

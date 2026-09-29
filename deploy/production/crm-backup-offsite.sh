@@ -47,9 +47,15 @@ fi
 # Se sube el .age, su suma y el manifiesto de recuentos. El manifiesto tiene nombres de tabla y
 # cantidades de filas, ningun dato de un cliente, y es lo que permite verificar una restauracion
 # hecha desde el bucket sin acceso al servidor.
+#
+# --s3-no-check-bucket: la clave de acceso tiene permiso solo sobre este bucket (D-8), y sin esta
+# opcion rclone intenta CREAR el bucket antes de subir, para asegurarse de que existe. La clave no
+# puede crear buckets, y la subida falla con 403 AccessDenied aunque listar funcione. Medido en la
+# 13.1.2: la primera subida fallo asi, y con esta opcion subio y borro.
 base=${ultima%.age}
 for archivo in "$ultima" "$ultima.sha256" "$base.recuentos"; do
-  rclone copyto --config "$RCLONE_CONFIG" "$archivo" "$OFFSITE_REMOTE/$(basename "$archivo")"
+  rclone copyto --config "$RCLONE_CONFIG" --s3-no-check-bucket \
+    "$archivo" "$OFFSITE_REMOTE/$(basename "$archivo")"
 done
 
 # La subida se COMPRUEBA, no se supone: el remoto tiene que devolver el mismo tamano que el

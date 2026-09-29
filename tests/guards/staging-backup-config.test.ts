@@ -872,6 +872,14 @@ describe("producción: la copia externa sube solo lo cifrado", () => {
     expect(subidas).toMatch(/"\$base"/);
   });
 
+  // 13.1.2: con una clave limitada a un bucket, rclone sin esta opción intenta crear el bucket
+  // antes de subir y falla con 403 aunque listar funcione. Medido en la primera subida real.
+  it("sube sin intentar crear el bucket, que la clave limitada no puede", () => {
+    expect(codigoDe(PROD_OFFSITE)).toMatch(
+      /rclone copyto --config "\$RCLONE_CONFIG" --s3-no-check-bucket/,
+    );
+  });
+
   it("comprueba el tamaño remoto contra el local, no confía en el código de salida", () => {
     expect(codigoDe(PROD_OFFSITE)).toMatch(/rclone size/);
     expect(codigoDe(PROD_OFFSITE)).toMatch(/\$local_bytes != "\$remoto_bytes"/);

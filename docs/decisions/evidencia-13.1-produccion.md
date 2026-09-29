@@ -241,3 +241,629 @@ Antes: `Tests 396 passed (396)` en el proyecto `guards` entero.
 | `random_page_cost = 4` | postgres | 2 fallan, 33 pasan (35) |
 
 **Una mutación no mutó en el primer intento**: la de `sort -r`. `sed` rechazó la expresión mal escapada y el script lo detectó al comparar el archivo contra el original («SIN CAMBIO»), en vez de informarla en verde. Se repitió con una expresión más simple, y la tabla muestra ese segundo resultado.
+
+## Etapa 13.1.2 — El entorno productivo
+
+### El droplet, el acceso y el DNS, 2026-09-29
+
+Creados por el usuario, con los pasos del asistente. `[transcrito]`: lo informó el usuario y el asistente lo verificó donde se indica.
+
+- **Droplet** `crm-production`: NYC1, la misma región que staging; Ubuntu 24.04 LTS x64; Basic Regular, 2 GB / 1 vCPU; **sin backups ni snapshots del proveedor** (D-5). Costo informado por el usuario: **USD 12 por mes**.
+- **Clave SSH propia de producción** (`id_ed25519_crm_production`), distinta de la de staging. La privada no salió de la máquina del usuario.
+- **Clave de host verificada fuera de banda**: el usuario comparó la huella ED25519 de la primera conexión con la de `ssh-keygen -lf` en la Web Console de DigitalOcean. Cierra, para producción, la limitación de confianza en el primer uso que declaró la 9.1.
+- **Acceso**: usuario `benja` con `sudo`, `root` y contraseñas rechazados con `/etc/ssh/sshd_config.d/00-crm.conf`.
+- **DNS**: registro `A` de `crm.vixoraai.app` en Cloudflare, *DNS only*.
+- **Bucket** `crm-production-backups` en NYC3, la región de Spaces más cercana a NYC1 (que Spaces esté o no en NYC1 no se verificó), con una clave de acceso *Limited* solo sobre ese bucket. Costo informado por el usuario: **USD 5 por mes**. El secreto lo guarda el usuario y no pasó por la conversación.
+- **Clave de `age`** generada en la máquina del usuario. La privada vive fuera del droplet (gestor de contraseñas y copia fuera de línea); la pública la recibió el asistente para `backup.age.pub`.
+- **Techo de costo** para la condición de detención 9: **USD 17 por mes**.
+
+Verificación del asistente, 2026-09-29. La IP no se imprime: se compara la que resuelve cada servidor DNS con la del alias de `ssh`, dentro del mismo comando.
+
+```text
+$ cfg=$(ssh -G crm-production | awk '/^hostname /{print $2}'); for r in 8.8.8.8 1.1.1.1; do d=$(nslookup crm.vixoraai.app $r | awk '/^Address/{a=$2} END{print a}'); [ "$d" = "$cfg" ] && echo "$r: coincide" || echo "$r: NO coincide"; done
+8.8.8.8: coincide
+1.1.1.1: coincide
+$ ssh crm-production 'echo "usuario: $(whoami)"; sudo -n true && echo "sudo: OK"; lsb_release -ds; free -m | awk "/^Mem:/{print \"RAM total MB: \" \$2}"; sudo sshd -T | grep -E "^(permitrootlogin|passwordauthentication) "; systemctl is-active unattended-upgrades'
+usuario: benja
+sudo: OK
+Ubuntu 24.04.5 LTS
+RAM total MB: 1967
+permitrootlogin no
+passwordauthentication no
+active
+```
+
+### Los paquetes (AC-16, primera parte), 2026-09-29
+
+Autorizado por el usuario en su turno. Pasos:
+1. `apt-get update` y `upgrade`, sin reinicio pendiente al terminar.
+2. El repositorio `pgdg` con el script de `postgresql-common`. La versión candidata era `18.6-1.pgdg24.04+2`, la misma de staging y de la CI, y se instaló fijada: `postgresql-18=18.6-1.pgdg24.04+2`. Trae `unaccent`, así que no hace falta el paquete `postgresql-contrib`.
+3. NodeSource 24, fijado en `nodejs=24.21.0-1nodesource1`, la misma versión de staging (`v24.21.0`).
+4. `nginx`, `certbot`, `python3-certbot-nginx`, `age` y `rclone`, de los repositorios de Ubuntu.
+
+Salida literal:
+
+```text
+$ ssh crm-production 'date -u …; lsb_release -ds; node --version; npm --version; psql --version; sudo -u postgres psql -tAc "select version()"; nginx -v; certbot --version; age --version; rclone version | head -1; systemctl is-active postgresql nginx; systemctl is-enabled certbot.timer; free -m | head -3; swapon --show'
+2026-09-29T20:35:04Z
+Ubuntu 24.04.5 LTS
+node v24.21.0
+npm 11.19.0
+psql (PostgreSQL) 18.6 (Ubuntu 18.6-1.pgdg24.04+2)
+PostgreSQL 18.6 (Ubuntu 18.6-1.pgdg24.04+2) on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0, 64-bit
+nginx version: nginx/1.24.0 (Ubuntu)
+certbot 2.9.0
+1.1.1
+rclone v1.60.1-DEV
+active
+active
+enabled
+               total        used        free      shared  buff/cache   available
+Mem:            1967         392         272          21        1503        1575
+Swap:              0           0           0
+```
+
+- **Node `v24.21.0`**, dentro del `>=24 <25` de `package.json` (D-6). **PostgreSQL 18.6** (D-6). La collation de la base se mide cuando se cree la base.
+- **Sin swap.** Si `next build` lo necesita, se agrega con el motivo registrado (condición de detención 6).
+- `rclone v1.60.1` es la del repositorio de Ubuntu. `copyto`, `size --json` y `delete --min-age`, que usa `crm-backup-offsite.sh`, existen desde antes de esa versión. Se confirma por efecto en AC-18.
+
+### El usuario `crm`, los roles y la base (AC-16, collation), 2026-09-29
+
+Autorizado por el usuario en su turno. Son los pasos 4 y 5 del [README](../../deploy/production/README.md), corridos como `root` con un guion (`ssh crm-production 'sudo bash -s' < aprovisionar-base.sh`). La contraseña de `crm_owner` la generó `openssl rand -hex 32` en el servidor, y fue directo a `/etc/crm-production/migrate.env` (`0600`, `root`) y a `psql` por una tubería. **No se imprimió ni pasó por los argumentos de ningún proceso.** El guion aborta si `migrate.env` ya existe, para no pisar un secreto.
+
+Salida literal, salvo los espacios al final de las líneas de `\l`, que se quitaron. La consulta de roles es `select rolname, rolsuper, rolcreaterole, rolcreatedb, rolcanlogin from pg_roles where rolname like 'crm%'`:
+
+```text
+2026-09-29T20:38:51Z
+--- id crm
+uid=997(crm) gid=987(crm) groups=987(crm)
+/srv/crm-production:/usr/sbin/nologin
+--- carpetas
+drwx------ 2 root root 4096 Sep 29 20:38 /etc/crm-production
+drwxr-xr-x 2 crm  crm  4096 Sep 29 20:38 /srv/crm-production
+drwxr-x--- 2 root root 4096 Sep 29 20:38 /var/lib/crm-production
+total 4
+-rw------- 1 root root 131 Sep 29 20:38 migrate.env
+--- roles
+crm_app|f|f|f|f
+crm_owner|f|f|f|t
+--- \l crm_production
+                                                  List of databases
+      Name      |   Owner   | Encoding | Locale Provider | Collate |  Ctype  | Locale | ICU Rules | Access privileges
+----------------+-----------+----------+-----------------+---------+---------+--------+-----------+-------------------
+ crm_production | crm_owner | UTF8     | icu             | C.UTF-8 | C.UTF-8 | es     |           |
+(1 row)
+
+--- conexión del dueño con migrate.env
+crm_owner|crm_production
+```
+
+- `crm` es un usuario de sistema sin shell (I-2).
+- `crm_owner` tiene login, pero no es superusuario ni tiene `CREATEROLE` ni `CREATEDB`.
+- `crm_app` es `NOLOGIN`, y lo creó el superusuario antes de migrar (O-7).
+- **`\l` da proveedor `icu`, locale `es` y dueño `crm_owner`**, como decide D-7 y como se ensayó en AC-6.
+
+Este es el orden real sobre la base productiva, con la versión de la collation que registró PostgreSQL:
+
+```text
+$ ssh crm-production "sudo -u postgres psql -d crm_production -tA -c \"select string_agg(n, ' < ' order by n) from (values ('Nora'),('Ñandú'),('Oscar'),('ávila'),('Avila'),('Zapata'),('de la Fuente'),('Delgado')) v(n)\" -c \"select datcollversion from pg_database where datname='crm_production'\""
+Avila < ávila < de la Fuente < Delgado < Nora < Ñandú < Oscar < Zapata
+153.121.44.8
+```
+
+La `Ñ` va después de la `N`, los acentos quedan junto a su letra y el espacio cuenta. Es lo mismo que midió AC-6 en `postgres:18.6-trixie`.
+
+### La configuración de PostgreSQL, 2026-09-29
+
+Los 2048 MB provisionales de la 13.1.1 se reemplazaron por los **1967 MB** medidos, en el archivo y en la guarda, en el mismo cambio. `effective_cache_size = 1GB` no cambió: es un poco más de la mitad de 1967 MB, y se reconfirma con la aplicación corriendo.
+
+La guarda pasó 35 de 35. Con la mutación `1967 MB` → `1976 MB` en la cabecera, falló 1 (la de la cabecera) y pasaron 34. Después se restauró el archivo, y `cmp` lo confirmó.
+
+Se instaló el archivo versionado y se recargó PostgreSQL. Estos dos parámetros no piden reinicio.
+
+```text
+$ ssh crm-production 'sudo install -m 0644 -o root -g root /dev/stdin /etc/postgresql/18/main/conf.d/crm-production.conf && sudo systemctl reload postgresql@18-main && sudo -u postgres psql -tA -c "show effective_cache_size" -c "show random_page_cost" -c "select name, sourcefile from pg_settings where name in (…)"' < deploy/production/postgresql-crm-production.conf
+1GB
+1.1
+effective_cache_size|/etc/postgresql/18/main/conf.d/crm-production.conf
+random_page_cost|/etc/postgresql/18/main/conf.d/crm-production.conf
+$ ssh crm-production 'sudo cat /etc/postgresql/18/main/conf.d/crm-production.conf' | diff - deploy/production/postgresql-crm-production.conf && echo "servidor = versionado"
+servidor = versionado
+```
+
+### La deploy key, el código y las dependencias, 2026-09-29
+
+Autorizado por el usuario en su turno (pasos 1 a 3 de ese pedido).
+
+**La deploy key de producción**, generada en el servidor como `crm`. La privada no salió de ahí.
+
+El primer intento falló con `Saving key "/var/lib/crm-production/ssh/id_ed25519_deploy" failed: Permission denied`: `/var/lib/crm-production` era `0750` de `root`, y `crm` no podía entrar. Se corrigió con `chgrp crm` (I-6).
+
+```text
+drwxr-x--- 3 root crm 4096 Sep 29 20:46 /var/lib/crm-production
+drwx------ 2 crm  crm 4096 Sep 29 20:46 /var/lib/crm-production/ssh
+total 8
+-rw------- 1 crm crm 411 Sep 29 20:46 id_ed25519_deploy
+-rw-r--r-- 1 crm crm 103 Sep 29 20:46 id_ed25519_deploy.pub
+```
+
+La pública se agregó con `gh repo deploy-key add`. Las dos claves son de solo lectura, y distintas:
+
+```text
+$ gh repo deploy-key list
+164090952	crm-staging (solo lectura)	read-only	ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOTJNxN4QrNWKTpAhvSE3H+5IqYpF77FcoXLLpDdCnLo	2026-09-22T14:24:49Z
+164864214	crm-production (solo lectura)	read-only	ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPD9zFRTLKQFGbk111enWBw23/AlrZW2QZCIVYX34Ud+	2026-09-29T20:46:35Z
+```
+
+**La clave de host de GitHub se tomó de su API**, no con confianza en el primer uso. El `known_hosts` de `crm` se escribió desde `gh api meta --jq '.ssh_keys[] | "github.com " + .'`, y la conexión se probó con `StrictHostKeyChecking=yes`:
+
+```text
+256 SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU github.com (ED25519)
+256 SHA256:p2QAMXNIC1TJYWeIOttrVc98/R1BUFWu3/LiyKgUfQM github.com (ECDSA)
+3072 SHA256:uNiVztksCsDhcc0u9e8BujQXVUpKZIDTMczCvj3tD2s github.com (RSA)
+Hi benjamurilloo/AI-WhatsApp-Agent-CRM! You've successfully authenticated, but GitHub does not provide shell access.
+```
+
+**La CI del SHA exacto (D-4), antes de clonar:**
+
+```text
+$ gh run list --commit 938423d0a832e65eb9c42474c51a47a44c54689e --json headSha,conclusion,status
+[{"conclusion":"success","headSha":"938423d0a832e65eb9c42474c51a47a44c54689e","status":"completed"}]
+```
+
+**El clonado y `npm ci`**, como `crm`, en `/srv/crm-production`. El guion comprueba antes que la carpeta esté vacía. `HEAD` quedó en el SHA verificado, sin cambios locales (`git status --short` da 0 líneas). `npm ci` instaló 183 paquetes en `node_modules/`, con `node_modules/.bin/next` presente.
+
+**Un defecto propio, corregido (I-6).** El home de `crm` era `/srv/crm-production`, como decía el README de la 13.1.1, y `npm ci` dejó su caché dentro del repositorio:
+
+```text
+?? .npm/
+!! .npm/_logs/
+!! node_modules/
+```
+
+Se le dio a `crm` un home propio y se borró la caché:
+
+```text
+$ ssh crm-production 'sudo install -d -m 0700 -o crm -g crm /var/lib/crm-production/home; sudo usermod -d /var/lib/crm-production/home crm; sudo rm -rf /srv/crm-production/.npm; …'
+/var/lib/crm-production/home:/usr/sbin/nologin
+!! node_modules/
+HOME=/var/lib/crm-production/home
+/var/lib/crm-production/home/.npm
+```
+
+El registro de despliegues (`/var/lib/crm-production/despliegues`) **no se escribió**: guarda el SHA que estaba desplegado **antes** de cada despliegue, para poder volver atrás, y este es el primero. El próximo despliegue anota `938423d…`.
+
+### La migración, 2026-09-29
+
+El usuario la autorizó (paso 4 de ese pedido), pero el clasificador de permisos de Claude Code bloqueó al asistente, porque la clasificó como «Production Deploy». **La corrió el usuario en su terminal**, con el comando del README, y pegó la salida:
+
+```text
+$ ssh crm-production 'sudo bash -c "set -a && . /etc/crm-production/migrate.env && set +a && cd /srv/crm-production && exec sudo -u crm --preserve-env=DATABASE_URL npm run db:migrate"'
+
+> ai-whatsapp-agent-crm@0.1.0 db:migrate
+> tsx scripts/migrar.ts
+
+Migraciones aplicadas.
+```
+
+Después, el asistente verificó con consultas de solo lectura:
+
+```text
+$ ssh crm-production "sudo -u postgres psql -d crm_production -tA -c \"select count(*) from drizzle.__drizzle_migrations\" -c \"select count(*) from pg_tables where schemaname='public'\" -c \"select e.extname||'|'||r.rolname from pg_extension e join pg_roles r on r.oid=e.extowner where e.extname='unaccent'\" -c \"select count(*) from pg_tables where schemaname='public' and tableowner<>'crm_owner'\" -c \"select (select count(*) from organizations)||'|'||(select count(*) from users)||'|'||(select count(*) from clients)||'|'||(select count(*) from conversations)||'|'||(select count(*) from messages)||'|'||(select count(*) from products)\""
+25
+17
+unaccent|crm_owner
+0
+0|0|0|0|0|0
+$ ls drizzle/*.sql | wc -l
+25
+```
+
+- Las **25 migraciones** del repositorio, aplicadas, con un dueño sin `CREATEROLE`. `crm_app` ya existía, y la `0003` lo salteó (O-7), igual que en el ensayo de AC-7.
+- **17 tablas**, las 17 de `crm_owner`.
+- `unaccent` la creó la migración, con dueño `crm_owner`, no a mano.
+- `organizations`, `users`, `clients`, `conversations`, `messages` y `products`, **todas en 0**.
+
+### El rol de la aplicación y `app.env` (AC-15), 2026-09-29
+
+Autorizado por el usuario (paso 5). El primer intento del asistente lo bloqueó el clasificador de permisos como «Cloud Storage Mass Delete», por el `delete from audit_logs` sin filtro, que es justamente la prueba de que el rol **no** puede borrar. No se ejecutó nada. El usuario agregó entonces la regla `Bash(ssh crm-production:*)` a su configuración de Claude Code, y el asistente corrió el mismo guion. **La regla se saca al cerrar la 13.1.**
+
+La contraseña la generó `openssl rand -hex 32` en el servidor. Fue a `psql` por una tubería y a `app.env` (`0600`, `root`), y no se imprimió. El guion se detiene si `app.env` ya existe.
+
+Salida literal:
+
+```text
+2026-09-29T20:58:31Z
+--- archivos
+total 8
+-rw------- 1 root root 174 Sep 29 20:58 app.env
+-rw------- 1 root root 131 Sep 29 20:38 migrate.env
+--- claves de app.env (sin valores)
+DATABASE_URL
+TRUSTED_PROXY
+NODE_ENV
+--- rol
+crm_app_login|f|f|t|crm_app
+--- AC-15: conexión con app.env y DELETE sobre audit_logs
+crm_app_login|crm_production
+ERROR:  permission denied for table audit_logs
+```
+
+- `crm_app_login` no es superusuario ni tiene `CREATEROLE`. Tiene login y es miembro de `crm_app` (ADR 0013, punto 5).
+- `app.env` **no trae** `INGESTION_ENABLED` ni `READ_API_ENABLED`: la ingestión y la API de lectura quedan apagadas (invariante del brief).
+- **AC-15 cumplido**: la conexión de la aplicación recibe `permission denied` al intentar el `DELETE` sobre `audit_logs`. La tabla estaba vacía, así que el intento no podía borrar nada aunque hubiera fallado la protección.
+
+### El certificado, nginx y el firewall (AC-11), 2026-09-29
+
+Autorizado por el usuario en su turno, con la cuenta de Let's Encrypt **sin correo**, como eligió.
+
+**El certificado**, emitido al primer intento. Se usó `certonly`, que no toca la configuración de nginx, porque el archivo versionado ya trae las líneas de TLS:
+
+```text
+$ ssh crm-production 'sudo certbot certonly --nginx -d crm.vixoraai.app --non-interactive --agree-tos --register-unsafely-without-email'
+2026-09-29T21:01:31Z
+Saving debug log to /var/log/letsencrypt/letsencrypt.log
+Account registered.
+Requesting a certificate for crm.vixoraai.app
+Successfully received certificate.
+Certificate is saved at: /etc/letsencrypt/live/crm.vixoraai.app/fullchain.pem
+Key is saved at:         /etc/letsencrypt/live/crm.vixoraai.app/privkey.pem
+This certificate expires on 2026-12-28.
+These files will be updated when the certificate renews.
+Certbot has set up a scheduled task to automatically renew this certificate in the background.
+```
+
+La renovación quedó con el mismo instalador que staging, así que certbot recarga nginx al renovar:
+
+```text
+$ ssh crm-production 'sudo grep -E "authenticator|installer|hook" /etc/letsencrypt/renewal/crm.vixoraai.app.conf'
+authenticator = nginx
+installer = nginx
+$ ssh crm-staging 'sudo grep -E "authenticator|installer|hook" /etc/letsencrypt/renewal/*.conf'
+authenticator = nginx
+installer = nginx
+```
+
+**nginx**: el archivo versionado se instaló tal cual, se desactivó el sitio por defecto, y el servidor quedó igual al repositorio:
+
+```text
+/etc/letsencrypt/options-ssl-nginx.conf
+/etc/letsencrypt/ssl-dhparams.pem
+total 0
+lrwxrwxrwx 1 root root 41 Sep 29 21:01 crm-production -> /etc/nginx/sites-available/crm-production
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+active
+$ ssh crm-production 'sudo cat /etc/nginx/sites-available/crm-production' | diff - deploy/production/nginx-crm-production.conf && echo "servidor = versionado"
+servidor = versionado
+```
+
+**UFW**: la regla de SSH se agregó antes de activar el firewall, y `ssh` siguió funcionando después. Es `ufw status verbose` sin los espacios al final de las líneas:
+
+```text
+Status: active
+Logging: on (low)
+Default: deny (incoming), allow (outgoing), disabled (routed)
+New profiles: skip
+
+To                         Action      From
+--                         ------      ----
+22/tcp (OpenSSH)           ALLOW IN    Anywhere
+80,443/tcp (Nginx Full)    ALLOW IN    Anywhere
+22/tcp (OpenSSH (v6))      ALLOW IN    Anywhere (v6)
+80,443/tcp (Nginx Full (v6)) ALLOW IN    Anywhere (v6)
+```
+
+**AC-11 (O-4): la renovación en seco y el timer**, con la salida entera, salvo un espacio al final de la línea `Congratulations…`:
+
+```text
+$ ssh crm-production 'date -u …; sudo certbot renew --dry-run 2>&1; echo "--- timers"; systemctl list-timers --all certbot.timer; echo "--- unidad"; systemctl cat certbot.timer | grep -E "OnCalendar|RandomizedDelaySec|Persistent"'
+2026-09-29T21:02:43Z
+Saving debug log to /var/log/letsencrypt/letsencrypt.log
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Processing /etc/letsencrypt/renewal/crm.vixoraai.app.conf
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Account registered.
+Simulating renewal of an existing certificate for crm.vixoraai.app
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Congratulations, all simulated renewals succeeded:
+  /etc/letsencrypt/live/crm.vixoraai.app/fullchain.pem (success)
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+--- timers
+NEXT                            LEFT LAST PASSED UNIT          ACTIVATES
+Wed 2026-09-30 00:52:47 UTC 3h 48min -         - certbot.timer certbot.service
+
+1 timers listed.
+--- unidad
+OnCalendar=*-*-* 00,12:00:00
+RandomizedDelaySec=43200
+Persistent=true
+```
+
+El timer corre dos veces por día, con hasta 12 horas de demora al azar, y `Persistent=true` recupera una corrida perdida si el droplet estuvo apagado. **AC-11 cumplido.**
+
+La línea `Account registered.` aparece también en la simulación. Es la cuenta del entorno de pruebas de Let's Encrypt, que `--dry-run` usa, y no es una segunda cuenta de producción.
+
+**Desde afuera**, antes de que exista la aplicación: el certificado verifica (`ssl_verify=0` es «sin error») y HTTP redirige a HTTPS. El `502` es lo esperado, porque todavía no hay nada escuchando en el puerto 3000.
+
+```text
+$ curl -sS -o /dev/null -w "https: %{http_code} ssl_verify=%{ssl_verify_result}\n" https://crm.vixoraai.app/login
+https: 502 ssl_verify=0
+$ curl -sS -o /dev/null -w "http: %{http_code} -> %{redirect_url}\n" http://crm.vixoraai.app/login
+http: 301 -> https://crm.vixoraai.app/login
+```
+
+### La compilación y el arranque (AC-9, AC-10, AC-12), 2026-09-29
+
+Autorizado por el usuario en su turno.
+
+**La compilación**, del SHA `938423d…`, como `crm`, con `app.env` y la forma del README, **sin swap y sin `NODE_OPTIONS`**. No murió por memoria (condición de detención 6), y `dmesg` no registra ningún corte por falta de memoria. Salida literal, desde el final del `next build`, más `free -m` después:
+
+```text
+2026-09-29T21:07:46Z
+fatal: detected dubious ownership in repository at '/srv/crm-production'
+To add an exception for this directory, call:
+
+	git config --global --add safe.directory /srv/crm-production
+codigo: 0, segundos: 126
+✓ Compiled successfully in 57s
+  Running TypeScript ...
+  Finished TypeScript in 59s ...
+  Collecting page data using 1 worker ...
+✓ Generating static pages using 1 worker (20/20) in 894ms
+  Finalizing page optimization ...
+               total        used        free      shared  buff/cache   available
+Mem:            1967         485        1374          38         326        1482
+Swap:              0           0           0
+```
+
+`[transcrito]`: se quitaron las líneas intermedias del progreso de las páginas estáticas y la tabla de rutas.
+
+**Un defecto del README, corregido.** El `fatal: detected dubious ownership` vino del `git rev-parse HEAD` del guion, que corrió como `benja` sobre el repositorio de `crm`. La compilación no lo usa. Pero es la misma forma del paso «Anotar lo que está desplegado» del README, que en el próximo despliegue habría fallado. El README pasa a `sudo -u crm git -C /srv/crm-production rev-parse HEAD`. Con esa forma, el mismo SHA se leyó bien en el paso siguiente.
+
+**La unidad**, versionada, instalada, habilitada y arrancada:
+
+```text
+938423d0a832e65eb9c42474c51a47a44c54689e
+Created symlink /etc/systemd/system/multi-user.target.wants/crm-production.service → /etc/systemd/system/crm-production.service.
+active
+enabled
+MainPID=11209
+NRestarts=0
+User=crm
+LISTEN 0      511          0.0.0.0:443       0.0.0.0:*    users:(("nginx",pid=10697,fd=12),("nginx",pid=8475,fd=12))
+LISTEN 0      511          0.0.0.0:80        0.0.0.0:*    users:(("nginx",pid=10697,fd=5),("nginx",pid=8475,fd=5))
+LISTEN 0      511        127.0.0.1:3000      0.0.0.0:*    users:(("next-server (v1",pid=11222,fd=21))
+LISTEN 0      511             [::]:443          [::]:*    users:(("nginx",pid=10697,fd=11),("nginx",pid=8475,fd=11))
+LISTEN 0      511             [::]:80           [::]:*    users:(("nginx",pid=10697,fd=6),("nginx",pid=8475,fd=6))
+Started crm-production.service - AI WhatsApp Agent CRM - produccion.
+> ai-whatsapp-agent-crm@0.1.0 start
+> next start -H 127.0.0.1 -p 3000
+▲ Next.js 16.3.5
+- Local:         http://127.0.0.1:3000
+- Network:       http://127.0.0.1:3000
+✓ Ready in 618ms
+✓ Running next.config.ts took 268ms
+$ ssh crm-production 'sudo cat /etc/systemd/system/crm-production.service' | diff - deploy/production/crm-production.service && echo "servidor = versionado"
+servidor = versionado
+```
+
+La aplicación corre como `crm` (I-2) y escucha **solo en `127.0.0.1:3000`**. Hacia afuera, solo nginx.
+
+**Desde afuera**, desde la máquina del operador. Salida literal:
+
+```text
+2026-09-29T21:10:27Z
+--- AC-9
+GET   /login                         200
+POST  /api/ingestion/v1/events       404
+POST  /api/ingestion/v2/events       404
+GET   /api/read/v1/products          404
+<title>Iniciar sesión — AI WhatsApp Agent CRM</title>
+--- AC-10
+verify=0 code=200
+subject=CN=crm.vixoraai.app
+issuer=C=US, O=Let's Encrypt, CN=YE2
+notBefore=Sep 29 20:03:11 2026 GMT
+notAfter=Dec 28 20:03:10 2026 GMT
+X509v3 Subject Alternative Name:
+    DNS:crm.vixoraai.app
+--- AC-12 HTTPS
+HTTP/1.1 200 OK
+strict-transport-security: max-age=31536000; includeSubDomains
+--- AC-12 HTTP
+HTTP/1.1 301 Moved Permanently
+Location: https://crm.vixoraai.app/login
+--- puerto 3000 desde afuera
+000
+```
+
+- **AC-9 cumplido**: `/login` responde `200` con la aplicación real, y la ingestión v1, la v2 y la API de lectura, `404`.
+- **AC-10 cumplido**: `curl` sin `-k` verifica el certificado (`ssl_verify_result` 0), emitido para el host.
+- **AC-12 cumplido**: HSTS con `max-age` en la respuesta HTTPS, y sin HSTS en el `301` de HTTP.
+- El `000` del puerto 3000 es «sin conexión»: el firewall no lo deja pasar, y la aplicación además escucha solo en loopback.
+
+**La memoria con la aplicación corriendo**, el método de la 9.3:
+
+```text
+2026-09-29T21:10:53Z
+               total        used        free      shared  buff/cache   available
+Mem:            1967         474        1352          38         359        1493
+Swap:              0           0           0
+RSS de crm (MB): 200
+RSS de postgres (MB): 91
+```
+
+Hay 1493 MB disponibles con la aplicación y PostgreSQL corriendo, y `effective_cache_size = 1GB` queda por debajo. **Se confirma**, y la RAM de 1967 MB de la guarda es la medida.
+
+### El backup cifrado y la copia externa (AC-18, primera parte), 2026-09-29
+
+Autorizado por el usuario en su turno, con 30 días de retención en el bucket.
+
+**La configuración**: el guion corrió como `root`. La contraseña del dueño pasó de `migrate.env` a `backup.pgpass` dentro del servidor, sin imprimirse, y el guion se detiene si alguno de los tres archivos ya existe. `backup.env` no tiene secretos y va entero:
+
+```text
+2026-09-29T21:15:45Z
+--- archivos
+total 20
+-rw------- 1 root root 174 Sep 29 20:58 app.env
+-rw------- 1 root root  63 Sep 29 21:15 backup.age.pub
+-rw------- 1 root root 361 Sep 29 21:15 backup.env
+-rw------- 1 root root 105 Sep 29 21:15 backup.pgpass
+-rw------- 1 root root 131 Sep 29 20:38 migrate.env
+drwxr-x--- 2 root postgres 4096 Sep 29 21:15 /var/backups/crm-production
+--- backup.env
+PGHOST=127.0.0.1
+PGPORT=5432
+PGUSER=crm_owner
+PGDATABASE=crm_production
+PGPASSFILE=/etc/crm-production/backup.pgpass
+BACKUP_DIR=/var/backups/crm-production
+BACKUP_GROUP=postgres
+BACKUP_KEEP=7
+BACKUP_AGE_RECIPIENTS=/etc/crm-production/backup.age.pub
+OFFSITE_REMOTE=spaces:crm-production-backups
+OFFSITE_KEEP_DAYS=30
+RCLONE_CONFIG=/etc/crm-production/rclone.conf
+--- backup.age.pub
+age1zvyqdc6plltpp25se5jw6dtf3426z3vu8q3dzve2mqt2mydtavgqwh09cz
+--- el dueño se conecta con backup.pgpass
+crm_owner|crm_production
+```
+
+**Los tres scripts y las cinco unidades**, instalados desde el repositorio. `diff` contra lo versionado dio `OK` en los ocho, `systemd-analyze verify` no reportó nada, ningún archivo tiene `\r` y `bash -n` pasa en los tres scripts.
+
+**`rclone.conf`**: lo escribió el usuario en el servidor, con `nano`. El asistente lo verificó sin imprimir las claves:
+
+```text
+-rw------- 1 root root 197 Sep 29 21:23 /etc/crm-production/rclone.conf
+7
+[spaces]
+type = s3
+provider = DigitalOcean
+endpoint = nyc3.digitaloceanspaces.com
+acl = private
+2
+rc=0
+```
+
+El `2` cuenta las dos líneas de clave con un valor no vacío. `rc=0` es un `rclone lsf` del bucket vacío, sin error.
+
+**El primer backup falló en la subida (defecto propio, corregido).** El backup local salió bien. La unidad de copia externa falló con `403`:
+
+```text
+backup: /var/backups/crm-production/crm_production-20260929T212425Z.dump
+tamano: 64396 bytes
+sha256: 05365d43066872f976f3ef421c134d2e5ee33c1a34005540560b5ec841a03e84
+cifrado: /var/backups/crm-production/crm_production-20260929T212425Z.dump.age (64596 bytes)
+rotado: nada (hay <= 7 copias)
+…
+ERROR : crm_production-20260929T212425Z.dump.age: Failed to copy: AccessDenied: Access Denied.
+	status code: 403, request id: 049e9658-ba39-219463604, host id:
+…
+crm-backup-offsite.service: Failed with result 'exit-code'.
+```
+
+`[transcrito]`: se omitieron los dos reintentos, que repiten el mismo error.
+
+Se probó con un archivo de 5 bytes, de a una hipótesis por vez:
+- **Sin el encabezado de ACL** (`--s3-acl ""`): seguía en `403`. No era eso.
+- **Sin la comprobación del bucket** (`--s3-no-check-bucket`): subió, se listó y se borró.
+
+La causa: sin esa opción, `rclone` 1.60 intenta **crear** el bucket antes de subir, y la clave limitada a un bucket no puede crear buckets. Listar sí funcionaba, y por eso el primer control no lo vio.
+
+```text
+--- sin chequeo de bucket
+        7 2026-09-29 21:24:56.965409328 prueba-rclone.txt
+--- borrado de la prueba
+fin
+```
+
+La corrección va en el script versionado (`--s3-no-check-bucket` en la subida), con su motivo, y no en `rclone.conf`: así queda en el repositorio y la guarda la ve. La guarda de backup tiene una aserción nueva. Pasó 397 de 397, y con la opción quitada del script real falla justo esa aserción (1 falla, 116 pasan en el archivo); después se restauró el script, y `cmp` lo confirmó. El script se reinstaló, y `diff` lo dio igual al versionado.
+
+**El segundo backup**, por la unidad, como lo va a correr el timer:
+
+```text
+2026-09-29T21:26:54Z
+Result=success
+Result=success
+ExecMainStatus=0
+--- journal offsite
+Starting crm-backup-offsite.service - AI WhatsApp Agent CRM - copia externa cifrada del backup de produccion...
+subido: crm_production-20260929T212654Z.dump.age (64596 bytes)
+retencion externa: se borro lo de mas de 30 dias
+crm-backup-offsite.service: Deactivated successfully.
+Finished crm-backup-offsite.service - AI WhatsApp Agent CRM - copia externa cifrada del backup de produccion.
+--- bucket
+    64596 2026-09-29 21:26:54.741794387 crm_production-20260929T212654Z.dump.age
+       65 2026-09-29 21:26:54.777798200 crm_production-20260929T212654Z.dump.age.sha256
+      277 2026-09-29 21:26:54.723792481 crm_production-20260929T212654Z.dump.recuentos
+--- suma local vs remota del .age
+caf7306df15fcbdd5a6b66292af3417e573dc8389c0056c597a01dae2880a8c7
+caf7306df15fcbdd5a6b66292af3417e573dc8389c0056c597a01dae2880a8c7
+--- cabecera del .age remoto
+age-encryption.org/v1
+-> X25519 F5Gv7wZlI6CiJSsciRpQQNy5yMtk
+```
+
+- **En el bucket hay solo lo cifrado**: el `.age`, su suma y el manifiesto de recuentos. El dump en claro no salió del servidor.
+- La suma del `.age` remoto, bajado del bucket, es idéntica a la del local.
+- El remoto empieza con la cabecera de `age` para una clave X25519: está cifrado para la clave pública del operador.
+
+**Los timers**, habilitados, y **la prueba de restauración local**, corrida una vez a mano. Es la de la 9.2, con la base de producción:
+
+```text
+2026-09-29T21:27:09Z
+NEXT                            LEFT LAST PASSED UNIT                    ACTIVATES
+Wed 2026-09-30 03:19:42 UTC 5h 52min -         - crm-backup.timer        crm-backup.service
+Thu 2026-10-01 04:37:13 UTC 1 day 7h -         - crm-restore-check.timer crm-restore-check.service
+
+2 timers listed.
+--- prueba de restauración
+Result=success
+ExecMainStatus=0
+== dump ==
+archivo: /var/backups/crm-production/crm_production-20260929T212654Z.dump
+sha256:  e1ea5064e4c1025740e406e7fdd5adddc961123a8a4eef3baa35b05afe5e9cc2
+== restauracion a una base nueva: crm_production_restore_check_20260929T212710Z ==
+pg_restore termino sin error
+== recuentos: restaurado contra el manifiesto del dump ==
+audit_logs 0
+…
+users 0
+OK: 17 tablas coinciden en existencia y en recuento
+OK: el conjunto de tablas del origen es el mismo que el restaurado
+OK: las tablas restauradas siguen siendo de crm_owner
+OK: la base crm_production_restore_check_20260929T212710Z no existe
+```
+
+`[transcrito]`: se omitieron 15 de las 17 líneas de recuento. Las 17 dan 0, porque la base todavía no tiene la organización del operador.
+
+**Lo que falta de AC-18**: la restauración **desde el bucket, descifrando con la clave privada fuera del droplet**, con su control negativo contra un dump truncado. Se hace en la máquina del operador, con datos (la organización del operador) para que los recuentos no sean todos cero.
+
+### La primera organización: una corrida de más, 2026-09-29
+
+El usuario corrió `org:create` en su terminal, con el comando que le pasó el asistente, para que la contraseña inicial no pasara por la conversación. **La primera vez lo pegó sin reemplazar los valores de ejemplo**, y la segunda, con los suyos. Las dos corridas crearon su organización. El asistente lo verificó con consultas de solo lectura. Por el principio de este archivo, el correo real del operador no se transcribe:
+
+```text
+                  id                  |           name            |            timezone            |          created_at           | miembros
+--------------------------------------+---------------------------+--------------------------------+-------------------------------+----------
+ aa8c2477-491e-478c-b4f1-a50cbb491793 | Nombre de tu organización | America/Argentina/Buenos_Aires | 2026-09-29 21:30:46.741026+00 |        1
+ 0633244b-13f7-4cf6-8051-803b7e2fee27 | Vixora                    | America/Argentina/Buenos_Aires | 2026-09-29 21:31:50.178741+00 |        1
+(2 rows)
+
+ sesiones | intentos
+----------+----------
+        0 |        0
+```
+
+`[transcrito]`: se omitieron la tabla de `users` (dos filas: `tu@correo.com`, el valor de ejemplo, y el correo del operador) y la de `audit_logs` (una fila `organization_member | create` por organización).
+
+- **Ninguna de las dos cuentas se usó**: 0 sesiones y 0 intentos de ingreso.
+- **AC-22 no se cumple así**: pide una sola organización, la del operador.
+- La organización de ejemplo **no se puede borrar sin más**. `audit_logs` tiene el trigger `audit_logs_insert_only` (`drizzle/0003`), que rechaza `UPDATE` y `DELETE` para cualquier rol. Su fila del alta apunta a la organización y al usuario con claves foráneas `ON DELETE restrict` (`drizzle/0002`).
+- **Defecto del asistente**: el comando traía valores de ejemplo con forma válida, y `org:create` los aceptó. Un marcador que el script rechazara (por ejemplo `<correo>`, que no pasa la validación de correo) habría fallado sin crear nada.
+
+Cómo se resuelve lo decide el usuario. Queda registrado en la sección siguiente cuando se resuelva.
