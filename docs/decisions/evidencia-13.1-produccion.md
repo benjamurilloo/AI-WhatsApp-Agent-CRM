@@ -866,4 +866,288 @@ El usuario corrió `org:create` en su terminal, con el comando que le pasó el a
 - La organización de ejemplo **no se puede borrar sin más**. `audit_logs` tiene el trigger `audit_logs_insert_only` (`drizzle/0003`), que rechaza `UPDATE` y `DELETE` para cualquier rol. Su fila del alta apunta a la organización y al usuario con claves foráneas `ON DELETE restrict` (`drizzle/0002`).
 - **Defecto del asistente**: el comando traía valores de ejemplo con forma válida, y `org:create` los aceptó. Un marcador que el script rechazara (por ejemplo `<correo>`, que no pasa la validación de correo) habría fallado sin crear nada.
 
-Cómo se resuelve lo decide el usuario. Queda registrado en la sección siguiente cuando se resuelva.
+### La organización de ejemplo, borrada, 2026-09-29
+
+**Decisión del usuario**: borrar solo la organización de ejemplo, con el trigger de auditoría desactivado dentro de una sola transacción. Era la opción B. Las otras eran recrear la base de cero (A), que conservaba intacto el principio de que la auditoría productiva nunca se toca, o dejarla y declarar AC-22 como límite (C).
+
+El asistente lo intentó con la autorización del usuario, pero el clasificador de permisos de Claude Code lo bloqueó como «Logging/Audit Tampering», aunque estaba la regla de `ssh crm-production`. No se ejecutó nada. **Lo corrió el usuario en su terminal**, con el guion del asistente:
+- el guion comprueba antes de borrar que la organización y el usuario sean los de ejemplo, por id, nombre y correo, y que ese usuario no sea miembro de otra organización;
+- cada `DELETE` exige exactamente una fila, o se revierte todo;
+- el trigger se reactiva **antes** del `COMMIT`, así que la protección nunca queda apagada fuera de esa transacción.
+
+Salida pegada por el usuario, sin el eco del guion:
+
+```text
+--- antes
+ orgs | usuarios | miembros | auditoria
+------+----------+----------+-----------
+    2 |        2 |        2 |         2
+(1 row)
+
+BEGIN
+ALTER TABLE
+DO
+NOTICE:  borradas 4 filas: auditoría, miembro, usuario y organización de ejemplo
+ALTER TABLE
+COMMIT
+--- después
+ orgs | usuarios | miembros | auditoria
+------+----------+----------+-----------
+    1 |        1 |        1 |         1
+(1 row)
+
+  name
+--------
+ Vixora
+(1 row)
+
+         tgname         | tgenabled
+------------------------+-----------
+ audit_logs_insert_only | O
+(1 row)
+```
+
+**Lo que se borró de la auditoría productiva**: una fila, `organization_member | create`, de la organización `aa8c2477-491e-478c-b4f1-a50cbb491793` («Nombre de tu organización»). Registraba el alta de la cuenta de ejemplo `tu@correo.com`, que nunca ingresó. **No hubo otro borrado ni otra modificación de `audit_logs` en producción.**
+
+Verificación del asistente, con lecturas. La consulta compara el correo con el valor de ejemplo, para no imprimir el real:
+
+```text
+$ ssh crm-production "sudo -u postgres psql -d crm_production -tA -c \"select o.name, m.role, (u.email = 'tu@correo.com') as es_ejemplo, u.must_change_password from organizations o join organization_members m on m.organization_id=o.id join users u on u.id=m.user_id\" -c \"select entity_type, action, (actor_user_id = (select id from users)) as actor_es_admin from audit_logs\" -c \"select tgname, tgenabled, tgfoid::regproc from pg_trigger where tgname='audit_logs_insert_only'\" -c \"select (select count(*) from clients)||'|'||(select count(*) from conversations)||'|'||(select count(*) from messages)||'|'||(select count(*) from products)||'|'||(select count(*) from sessions)\""
+Vixora|admin|f|t
+organization_member|create|t
+audit_logs_insert_only|O|audit_logs_reject_change
+0|0|0|0|0
+```
+
+- Queda una sola organización, «Vixora», con un único `admin`: el operador, con **cambio de contraseña obligatorio** (D-9).
+- La fila de auditoría que queda es la de su alta, con el propio admin como actor (I-1).
+- El trigger está **activo** (`O`) y apunta a la misma función de rechazo. **No se probó borrando**: un `DELETE` de prueba sobre `audit_logs` en producción es lo mismo que el clasificador acaba de bloquear, y el rechazo del rol de la aplicación ya lo midió AC-15.
+- Clientes, conversaciones, mensajes, productos y sesiones: **0**.
+
+**Corrección para la próxima vez**: el comando de `org:create` del README usa marcadores (`'<organización>'`, `<correo>`) que el script rechaza si no se reemplazan. El que el asistente le pasó al usuario usaba valores de ejemplo válidos, y ese fue el defecto. Comprobado en local: `npm run -s org:create -- --name x --admin-name y --admin-email "<correo>"` responde `Datos inválidos: adminEmail. No se creó nada.`
+
+El operador ingresó después por primera vez y cambió la contraseña inicial, como obliga D-9. Lo informó el usuario; el asistente no lo vio.
+
+### AC-20 (O-9): lo versionado contra lo desplegado, 2026-09-29
+
+Autorizado por el usuario. Salida literal, corrida desde `deploy/production/`:
+
+```text
+$ chk(){ ssh crm-production "sudo cat $2" | diff - "$1" > /dev/null && echo "$1 OK" || echo "$1 DIFIERE"; }; chk nginx-crm-production.conf /etc/nginx/sites-available/crm-production; …
+2026-09-29T21:50:25Z
+archivos en el repo: 11
+nginx-crm-production.conf OK
+crm-production.service OK
+crm-backup.sh OK
+crm-backup-offsite.sh OK
+crm-restore-check.sh OK
+crm-backup.service OK
+crm-backup-offsite.service OK
+crm-backup.timer OK
+crm-restore-check.service OK
+crm-restore-check.timer OK
+postgresql-crm-production.conf OK
+/etc/nginx/sites-available/crm-production
+crm-production
+```
+
+**AC-20 cumplido**: los 11 archivos de la tabla del README coinciden con los del servidor. El recuento sale de contar los archivos, no de heredarlo del README. En `sites-enabled` hay un solo sitio, y apunta al archivo versionado.
+
+### AC-17: un reinicio real, 2026-09-29
+
+Autorizado por el usuario. `sudo systemctl reboot`, y después la espera desde la máquina del operador:
+
+```text
+--- antes
+2026-09-29T21:51:08Z
+2026-09-29 19:51:27
+11209
+ssh de vuelta a los 37 s
+https /login: 200 a los 43 s
+--- después
+2026-09-29T21:52:01Z
+2026-09-29 21:51:18
+crm-production             active enabled
+nginx                      active enabled
+postgresql@18-main         active enabled-runtime
+crm-backup.timer           active enabled
+crm-restore-check.timer    active enabled
+certbot.timer              active enabled
+ufw                        active enabled
+MainPID=1076
+NRestarts=0
+User=crm
+0.0.0.0:22 0.0.0.0:443 0.0.0.0:80 127.0.0.1:3000 127.0.0.1:5432 127.0.0.53%lo:53 127.0.0.54:53 [::1]:5432 [::]:22 [::]:443 [::]:80
+Status: active
+0
+```
+
+**AC-17 cumplido.**
+- `uptime -s` cambió de 19:51 a 21:51: el reinicio fue real.
+- La aplicación volvió sola, con un PID nuevo y **sin reinicios de `systemd`** (`NRestarts=0`). Respondió `200` desde afuera a los 43 segundos de pedir el reinicio.
+- nginx, PostgreSQL, los tres timers y el firewall arrancaron solos, y ninguna unidad quedó fallida (el `0` final).
+- Los puertos son los mismos que antes: la aplicación y PostgreSQL, solo en loopback.
+
+`enabled-runtime` en `postgresql@18-main` es cómo lo arranca el paquete de Debian, por la unidad `postgresql.service`. Volvió activo igual.
+
+### AC-22: la base productiva sin datos de clientes, 2026-09-29
+
+```text
+$ ssh crm-production "sudo -u postgres psql -d crm_production -tA -c \"select 'clients='||(select count(*) from clients)||…\" -c \"select name from organizations\""
+clients=0 conversations=0 messages=0 products=0 organizations=1 users=1 organization_members=1
+Vixora
+```
+
+**AC-22, primera parte, cumplida**: 0 clientes, 0 conversaciones, 0 mensajes y 0 productos, con una sola organización, la del operador.
+
+**Segunda parte, revisada el 2026-09-29.** Lo que contradecía al entorno desplegado, y cómo quedó:
+- [Environments.md](../development/Environments.md):
+  - el estado decía «diseñado» y la fila de producción, «todavía no desplegada». Ahora dice desplegada, con la ingestión y la lectura apagadas y sin datos de clientes;
+  - la sección del rol `crm_app` no decía cómo se crea en producción, con un dueño sin `CREATEROLE`. Ahora lo dice (O-7, AC-15).
+- [SecurityModel.md](../architecture/SecurityModel.md):
+  - la gestión de secretos de producción decía «Diseñado, no desplegado». Ahora cita AC-19;
+  - la cookie, la IP detrás del proxy, H-3, HSTS y el rol de la aplicación estaban verificados solo en staging. Se agregó la medición en producción (AC-12 a AC-15);
+  - la sección de backups solo describía staging, con la copia externa manual y sin cifrado. Se agregó producción, con **AC-18 declarado pendiente**: la corrida del timer y la restauración desde el bucket.
+
+Todo lo agregado se declara autoevaluación hasta AC-23. **AC-22 cumplido en sus dos partes**, con una salvedad: la línea de backups de SecurityModel se vuelve a tocar cuando se cierre AC-18.
+
+### AC-13 (O-6): el `Set-Cookie` crudo de un ingreso real, 2026-09-29
+
+Es un ingreso real del operador en producción, **capturado de la cabecera de la respuesta con la API de respuestas de Playwright**, no deducido de que el navegador aceptara la cookie. Esa deducción fue el método de la 9.1, que su revisión independiente señaló. El script (`capturar-cookie.cjs`, en el scratchpad del asistente, fuera del repositorio):
+- abre Chromium sin ventana e ingresa por el formulario;
+- lee con `response.headersArray()` las cabeceras `Set-Cookie` del `POST` a `/login`;
+- **tapa el valor de la cookie** antes de imprimir: reemplaza lo que va entre el primer `=` y el primer `;`.
+
+El correo y la contraseña los tipeó el operador en su terminal con `read` (la contraseña con `read -s`) y le llegaron al script por variables de entorno. El script no los imprime, y no pasaron por la conversación. Salida pegada por el usuario:
+
+```text
+2026-09-29T21:59:15.643Z
+después del ingreso: /
+cabeceras Set-Cookie en el POST de /login: 1
+[200] __Host-crm_session=<valor omitido>; Path=/; Expires=Thu, 29 Oct 2026 21:59:15 GMT; Secure; HttpOnly; SameSite=lax
+```
+
+**AC-13 cumplido**: `__Host-crm_session`, `Secure`, `HttpOnly`, `SameSite=Lax` (Next.js lo escribe en minúsculas), `Path=/`, y **sin `Domain`**, leído en la cabecera cruda. La sesión dura 30 días. El `200` es cómo responde Next.js a una Server Action que redirige: la navegación a `/` la hace el cliente.
+
+### AC-14 (O-29, H-3): la IP que ve la aplicación y el límite por IP, 2026-09-29
+
+Autorizado por el usuario. Se usaron dos IP de salida:
+- **la del operador**: la máquina desde la que corre el asistente;
+- **la del droplet de staging**: un túnel SOCKS (`ssh -N -D 1080 crm-staging`), que se cerró al terminar.
+
+Antes de empezar se comprobó que las dos IP son distintas, comparándolas sin imprimirlas.
+
+Los intentos los hizo Chromium con Playwright, por el formulario real, porque el ingreso es una Server Action y un `POST` de `curl` no genera el intento. El script es `medir-ac14.cjs`, en el scratchpad del asistente. Usa correos que no existen (`prueba-NN@ejemplo.invalid`, **uno distinto por intento**, para que no salte el límite por cuenta, que es 5) y una contraseña falsa de 21 caracteres, que pasa la validación del formato y deja su fila (E-4 de la 12.5.1).
+
+El orden fue:
+1. desde la IP del operador, con un `x-forwarded-for: 203.0.113.7` falsificado (una dirección de documentación, RFC 5737);
+2. desde la IP de staging, 20 fallos y un intento 21;
+3. desde la IP del operador, un fallo más.
+
+Salida literal:
+
+```text
+2026-09-29T22:01:46.529Z casa+xff prueba-xff@ejemplo.invalid: Email o contraseña incorrectos.
+2026-09-29T22:01:49.004Z tunel#1 prueba-01@ejemplo.invalid: Email o contraseña incorrectos.
+2026-09-29T22:01:51.444Z tunel#2 prueba-02@ejemplo.invalid: Email o contraseña incorrectos.
+…
+2026-09-29T22:02:34.535Z tunel#19 prueba-19@ejemplo.invalid: Email o contraseña incorrectos.
+2026-09-29T22:02:37.003Z tunel#20 prueba-20@ejemplo.invalid: Email o contraseña incorrectos.
+2026-09-29T22:02:39.437Z tunel#21 prueba-21@ejemplo.invalid: Demasiados intentos. Probá de nuevo en 15 minutos.
+2026-09-29T22:02:41.601Z casa prueba-casa@ejemplo.invalid: Email o contraseña incorrectos.
+```
+
+`[transcrito]`: se omitieron los intentos 3 a 18 del túnel. Los 20 primeros dieron todos «Email o contraseña incorrectos.».
+
+Después se compararon las claves de IP de `login_attempts` con el `sha256` de cada IP y de la dirección falsificada, **dentro del mismo comando y sin imprimir ninguno de los valores**. Se anota solo a cuál corresponde cada clave, cuántos fallos tiene y a qué hora:
+
+```text
+claves de IP en la base (últimos 30 min): 2
+clave -> IP del operador: 2 fallos, de 22:01:46 a 22:02:42 UTC
+clave -> IP de staging (túnel): 20 fallos, de 22:01:49 a 22:02:37 UTC
+filas con la IP falsificada: 0
+account|22
+ip|22
+túnel cerrado
+```
+
+**AC-14 cumplido, en sus tres partes:**
+1. **Dos IP distintas producen claves distintas**: hay dos claves de IP, cada una igual al hash de su IP.
+2. **Un `x-forwarded-for` falsificado no cambia la IP que ve la aplicación**: el intento con la cabecera falsa quedó con la clave de la IP del operador, y ninguna fila tiene la dirección falsificada. nginx **reemplaza** la cabecera en vez de agregarle (brief-9.1, D-9), y queda un solo salto de proxy.
+3. **20 fallos desde una IP no bloquean el ingreso desde otra**: el intento 21 desde staging salió bloqueado por 15 minutos, y el siguiente desde la IP del operador se evaluó normal («Email o contraseña incorrectos.», no «Demasiados intentos»).
+
+Los recuentos cierran: 22 filas por cuenta y 22 por IP (1 + 20 + 1). El intento 21 no dejó fila, porque el límite corta antes de contar. **Lo que quedó en producción**: esas 44 filas de `login_attempts`, con hashes de correos inexistentes y de las dos IP, que caducan de la ventana a los 15 minutos. No se crearon cuentas.
+
+### AC-19: los secretos productivos, fuera del repositorio, de la CI y de staging, 2026-09-29
+
+**Ningún valor ni hash se imprimió**: todas las comparaciones corren en un mismo comando y dan solo recuentos o nombres de clave. El método:
+- En el droplet se extrae cada valor de los archivos de `/etc/crm-production/`: el lado derecho de cada `CLAVE=valor`, la contraseña de cada URL de conexión y el quinto campo de `backup.pgpass`.
+- Se toman los de **16 o más caracteres** y se reduce cada uno a su `sha256`.
+- Lo mismo en staging, sobre sus archivos de secretos.
+- Del repositorio, el `sha256` de cada cadena de 16 o más caracteres del contenido de `git ls-files`.
+- Los conjuntos de hashes se cruzan en la máquina del operador.
+
+El umbral de 16 caracteres deja fuera valores cortos que no son secretos, como puertos o nombres de región. Las contraseñas y claves generadas para producción son todas más largas.
+
+**Producción contra staging:**
+
+```text
+valores de 16+ caracteres: producción 12, staging 7
+coincidencias producción-staging: 0
+control, producción contra sí misma: 12 de 12
+```
+
+El control prueba que el método encuentra una coincidencia cuando existe, así que el 0 no sale de un cruce roto.
+
+**Producción contra el repositorio y la CI:**
+
+```text
+cadenas de 16+ caracteres en el repositorio: 6607
+coincidencias producción-repositorio: 6
+--- secretos de GitHub Actions
+(fin)
+```
+
+GitHub Actions no tiene secretos ni variables. Las 6 coincidencias se identificaron por nombre de clave, sin valores, etiquetando cada hash del droplet con su archivo y su clave:
+
+```text
+--- claves de producción que aparecen en el repositorio:
+backup.env:BACKUP_AGE_RECIPIENTS
+backup.env:BACKUP_DIR
+backup.env:OFFSITE_REMOTE
+backup.env:PGPASSFILE
+backup.env:RCLONE_CONFIG
+rclone.conf:endpoint
+```
+
+Las seis son **configuración, no secretos**: rutas, el nombre del remoto, la ruta del archivo de destinatarios age y el endpoint de Spaces. El README de producción y los scripts las documentan a propósito.
+
+Los valores que sí son secretos **no coinciden con nada del repositorio**:
+- `app.env:DATABASE_URL` y su contraseña;
+- `migrate.env:DATABASE_URL` y su contraseña;
+- `backup.pgpass`, la contraseña;
+- `rclone.conf:access_key_id` y `secret_access_key`.
+
+Son 7 de las 13 etiquetas. Las etiquetas son 13 y los valores únicos 12 porque un valor aparece en dos archivos. Esto es una inferencia: no se imprimió qué valor se repite.
+
+**Permisos:**
+
+```text
+$ sudo ls -la /etc/crm-production
+total 32
+drwx------   2 root root 4096 Sep 29 21:23 .
+drwxr-xr-x 112 root root 4096 Sep 29 20:48 ..
+-rw-------   1 root root  174 Sep 29 20:58 app.env
+-rw-------   1 root root   63 Sep 29 21:15 backup.age.pub
+-rw-------   1 root root  361 Sep 29 21:15 backup.env
+-rw-------   1 root root  105 Sep 29 21:15 backup.pgpass
+-rw-------   1 root root  131 Sep 29 20:38 migrate.env
+-rw-------   1 root root  197 Sep 29 21:23 rclone.conf
+```
+
+**AC-19 cumplido**:
+- los seis archivos son `0600` de `root`, dentro de un directorio `0700`;
+- ningún secreto productivo está en el repositorio ni en la CI;
+- ninguno coincide con uno de staging.
+
+Límite declarado: el cruce con el repositorio compara cadenas completas, no subcadenas. Un secreto incrustado dentro de una cadena más larga no se detectaría.

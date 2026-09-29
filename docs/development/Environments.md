@@ -1,6 +1,6 @@
 # Entornos
 
-**Estado: diseñado; el desarrollo local con PostgreSQL existe desde la 2.4** ([brief-2.4](../decisions/brief-2.4-base-de-datos-local.md)).
+**Estado:** el desarrollo local con PostgreSQL existe desde la 2.4 ([brief-2.4](../decisions/brief-2.4-base-de-datos-local.md)), staging desde la 9.1, y producción está desplegada desde el 2026-09-29 (13.1.2).
 
 ## Entornos
 
@@ -9,7 +9,7 @@
 | Desarrollo local | Trabajo del día a día | Seeds sintéticos vía Docker Compose (Postgres local) | Solo la máquina del desarrollador |
 | Test (CI) | Ejecución automatizada de la suite de pruebas | Base de datos efímera, seeds mínimos por test | Solo el pipeline de CI |
 | Staging | Validación funcional end-to-end antes de cualquier decisión de producción | Seeds sintéticos "de volumen", nunca datos reales | Equipo del proyecto |
-| Producción | Atender a los negocios reales. **Diseñada y preparada en el repositorio desde la 13.1.1 (2026-09-29); todavía no desplegada** ([brief-13.1](../decisions/brief-13.1-entorno-productivo.md), [deploy/production/](../../deploy/production/README.md)) | Datos reales, recién desde la 13.5. Nunca un seed: los seeds rechazan la base `crm_production` | El operador. La aplicación corre con un usuario de sistema propio, sin `sudo` |
+| Producción | Atender a los negocios reales. **Desplegada el 2026-09-29** en `crm.vixoraai.app`, en un droplet propio y separado del de staging ([brief-13.1](../decisions/brief-13.1-entorno-productivo.md), [deploy/production/](../../deploy/production/README.md), [evidencia](../decisions/evidencia-13.1-produccion.md)). La ingestión y la API de lectura están apagadas (`404`) | Hoy solo la organización del operador, sin clientes, conversaciones, mensajes ni productos. Datos reales, recién desde la 13.5. Nunca un seed: los seeds rechazan la base `crm_production` | El operador. La aplicación corre con un usuario de sistema propio, sin `sudo`, y se conecta con un rol miembro de `crm_app` |
 
 ## Reglas
 
@@ -80,6 +80,7 @@ Desde la 3.6 ([ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-in
 - Es `NOLOGIN`. La aplicación, las migraciones y los tests se siguen conectando con el usuario de `DATABASE_URL`, que en el contenedor y en CI es superusuario.
 - Los tests prueban sus permisos con `SET LOCAL ROLE crm_app` dentro de una transacción.
 - Crear el rol exige `CREATEROLE` al usuario de migraciones. En un servicio gestionado se verifica en las Fases 8 y 9, junto con el rol con login con el que se conectará la aplicación.
+- **En producción el dueño no tiene `CREATEROLE`** (brief-13.1, O-7). `postgres` crea `crm_app` antes de migrar, y la `0003` lo saltea porque ya existe. La aplicación se conecta con `crm_app_login`, miembro de `crm_app`, sin `CREATEROLE` ni superusuario ([evidencia-13.1](../decisions/evidencia-13.1-produccion.md), AC-15).
 
 ## Base de test
 
