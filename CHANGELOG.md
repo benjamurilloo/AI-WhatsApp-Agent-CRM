@@ -2,6 +2,84 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-29 — Fase 12 cerrada (El contexto del turno)
+
+Cierra con el gate de salida cumplido: **el agente completa turnos contra el CRM en staging, detrás del modo de prueba, sin pérdida de mensajes** ([Roadmap](docs/planning/Roadmap.md), §Fase 12). Tiene un límite conocido: la derivación del turno 3, decidida por el usuario. El usuario confirmó el cierre el 2026-09-29.
+
+**Certifica:**
+
+- **Las cinco subfases cerradas**:
+  - 12.1, actor de servicio y cliente por teléfono;
+  - 12.2, conversación vigente y derivación;
+  - 12.3, contrato de ingestión v2;
+  - 12.4, historial y memorias;
+  - 12.5, turno completo en staging.
+
+  Cada una tiene su entrada abajo, y las cinco llevaron revisión independiente.
+- **Brechas cerradas**: B-3 (cliente por teléfono), B-4 (conversación vigente), B-5 (derivación, con el límite de abajo), B-6 (mensajes con tipo y autor) y B-7 (historial). **B-10 (memorias) quedó decidida**: tienen dueño en el CRM y las genera el emisor, pero no se construyen en esta fase.
+- **Los criterios de aceptación de la fase**:
+  - toda escritura de servicio se audita con la credencial como actor;
+  - la idempotencia está probada en cada operación nueva, incluido el reenvío;
+  - ninguna pérdida de mensajes ante `CONFLICT` ni ante la ingestión apagada (el turno 4 de la 12.5.2);
+  - el historial trae los últimos N, en orden.
+- **Los dos contratos con el agente como consumidor real**: la ingestión v2 (desde la 12.3.3) y la lectura v1, que incluye el catálogo, la información y el historial (12.5.2).
+
+**Nivel**:
+- el turno completo y los dos contratos, **validados en integración, en staging** (`producer-consumer`, datos sintéticos);
+- el resto, validado localmente y en CI.
+
+**No certifica:**
+
+- **La derivación con la cadena real del agente**: el agente no derivó en el turno 3. La ingestión de `conversation.escalated` está validada desde la 12.3.3. Se prueba en una ventana corta cuando el agente corrija su clasificación.
+- **Un timeout del lado del emisor**: no se provocó. La indisponibilidad probada fue el `404` de la ingestión apagada.
+- **`authenticated-end-to-end`**: ningún mensaje real de WhatsApp pasó; la entrada fue simulada.
+- **Producción, tráfico real y datos personales reales**: son de la Fase 13.
+- **Lo que hereda la Fase 13**:
+  - la 13.2 recibe AC-15 de la 12.3 (el plan de la conversación vigente con volumen), R-8 de la 12.2 y el plan del historial de una conversación grande (H-3 de la 12.4);
+  - la 13.1 recibe E-2, la collation de la base de producción;
+  - la 13.5 recibe la capacidad por credencial con tráfico real (Risks, fila 24).
+
+  Quedan abiertos, sin destino fijo, E-3 (la advertencia de npm 11.19 sobre los `postinstall` de esbuild) y N-6 de la 11.2.
+
+## 2026-09-29 — 12.5 cerrada: turno completo en staging
+
+Quinta y última subfase de la Fase 12 ([brief-12.5](docs/decisions/brief-12.5-turno-completo-en-staging.md), [evidencia-12.5](docs/decisions/evidencia-12.5-turno-completo.md)). Tuvo dos etapas:
+
+- **12.5.1, preparación del CRM**, en `c530558`: corrida 36347725367, `success`. Staging pasó a `c530558`, con las migraciones `0000` a `0024`.
+- **12.5.2, turno completo con el agente**, el 2026-09-28, en dos ventanas de staging. Se registró en `dc49787`: corrida 36582055676, `success`.
+
+Llevó revisión independiente (D-11): 11 hallazgos, 3 mayores, todos verificados y resueltos en `21a615c`: corrida 36587111693, `success`. 1388 tests en Vitest y 100 end-to-end.
+
+**Certifica:**
+
+- **Turnos completos del agente contra el CRM** con su cadena real (n8n), entrada simulada, un doble de WhatsApp y datos sintéticos:
+  - los turnos 1 a 5, más el 5b;
+  - dos ventanas, cada una con la conciliación `ok` (7 de 7): sin faltantes, duplicados ni mensajes en otra conversación.
+- **Sin pérdida de mensajes** (AC-6):
+  - el turno 4 quedó retenido mientras la ingestión respondía `404`, y llegó entero y en orden después de la reapertura;
+  - `conversation_ref_taken` terminó en `…~r2`, con el mensaje guardado y separado de la semilla;
+  - `message_already_recorded` no guardó nada. Este `409` lo mandó el llamador temporal acordado, así que prueba el emisor y su clasificador, no la cadena real.
+- **La lectura v1 con el agente como consumidor** (AC-9): el catálogo, la información y el historial respondieron `200`. Hay tres capturas `"shape": "captured"` que pasan los esquemas estrictos en CI. El historial del turno 2 trae el turno 1 completo, con la respuesta del agente y su autor (AC-7).
+- **Los pedidos por turno** (AC-8, pregunta 5): de 3 a 4 escrituras y de 1 a 3 lecturas, **ningún `429`**. La capacidad por credencial quedó en Risks.
+- **R-6 de punta a punta** (AC-10): el teléfono como nombre terminó en «Sin nombre». El formato local pasa, y es un límite escrito.
+- **La métrica 12** (AC-12): 7 y 0 en la ventana 1; 9 y 2 en la ventana 2, que son los dos `409` del guion. El dashboard muestra «12,5 %, 2 fallidos de 16».
+- **N-1 de la 11.4 cerrada**: el agente no necesita la cantidad en stock.
+- **Todo apagado** a las 23:04:35 UTC, con `app.env` idéntico a la copia. Las cuatro credenciales quedaron revocadas y todo responde `404` desde afuera.
+- **Mutaciones M26 a M32**, detectadas y restauradas.
+
+**Nivel**: **validado en integración, en staging** (`producer-consumer`, datos sintéticos).
+
+**No certifica:**
+
+- **La derivación del turno 3** (AC-5 cumplido en parte). Por decisión del usuario queda como límite conocido.
+- **Los bytes de las respuestas de lectura**: n8n guarda el cuerpo ya parseado, así que las capturas validan el esquema.
+- **`authenticated-end-to-end` ni producción.**
+- **Hallazgos para el agente, que no bloquean**:
+  - el turno 1 no leyó la información del negocio;
+  - usa una correlación por pedido y no una por turno;
+  - la búsqueda del catálogo no encuentra plurales («fundas» no es «Funda»), y el agente lo corrigió de su lado.
+- **R-1, la IP del usuario y sus hashes**: se quitaron de los archivos actuales, pero siguen en el historial de Git. El usuario decidió no reescribirlo.
+
 ## 2026-09-27 — 12.3 cerrada: contrato de ingestión v2
 
 Tercera subfase de la Fase 12 ([brief-12.3](docs/decisions/brief-12.3-contrato-de-ingestion-v2.md)); cerró después que la 12.4 porque esperaba al emisor real. Tuvo tres etapas, las tres con la CI en verde al primer intento:

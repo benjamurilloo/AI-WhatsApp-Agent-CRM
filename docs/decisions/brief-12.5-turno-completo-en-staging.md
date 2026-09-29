@@ -7,7 +7,7 @@ generated_at: 2026-09-27
 
 # Brief: 12.5 — Turno completo en staging
 
-**Estado: aprobado el 2026-09-27 por el usuario, con las recomendaciones de D-1 a D-11**: un guion de cinco turnos (D-1 A); sin pérdida demostrada con conciliación, una interrupción controlada y los dos `CONFLICT` (D-2 A); la cadena real del agente con entrada simulada y envío a un doble (D-3 A); tres credenciales creadas por el usuario (D-4 A); R-6 probada de punta a punta, con la frecuencia real para la 13.5 (D-5 A); despliegue de la `0024` con autorización en el momento (D-6 A); conciliación con un script versionado (D-7 A); capturas de lectura como fixtures (D-8 A); N-1 preguntada al agente (D-9 A); dos etapas, 12.5.1 y 12.5.2 (D-10); revisión independiente y cierre de la fase (D-11). **Se aprueba también** que la 12.5 tome la validación de la lectura con el agente (H-1, AC-9) y la corrección de read-v1.
+**Estado: aprobado el 2026-09-27 por el usuario, con las recomendaciones de D-1 a D-11; cerrado el 2026-09-29, y con él la Fase 12 (§Cierre)**: un guion de cinco turnos (D-1 A); sin pérdida demostrada con conciliación, una interrupción controlada y los dos `CONFLICT` (D-2 A); la cadena real del agente con entrada simulada y envío a un doble (D-3 A); tres credenciales creadas por el usuario (D-4 A); R-6 probada de punta a punta, con la frecuencia real para la 13.5 (D-5 A); despliegue de la `0024` con autorización en el momento (D-6 A); conciliación con un script versionado (D-7 A); capturas de lectura como fixtures (D-8 A); N-1 preguntada al agente (D-9 A); dos etapas, 12.5.1 y 12.5.2 (D-10); revisión independiente y cierre de la fase (D-11). **Se aprueba también** que la 12.5 tome la validación de la lectura con el agente (H-1, AC-9) y la corrección de read-v1.
 
 ## Objetivo
 
@@ -432,4 +432,17 @@ Hecha el 2026-09-29 por un agente revisor que no participó del trabajo, con acc
 | R-10 | menor | la inferencia sobre el `login UNAUTHENTICATED` de las 22:39:54 no cerraba con los tiempos | queda «sin explicar», con el porqué |
 | R-11 | menor | la entrada «Promoción Día de la Madre» no citaba su origen | citada: `piloto-admin`, piloto del 2026-09-25 (notas-piloto-11.4) |
 
-El revisor también señaló que `HANDOFF.md` describe un staging y un siguiente paso viejos. Se reescribe en el cierre de la fase.
+El revisor también señaló que `HANDOFF.md` describe un staging y un siguiente paso viejos. Se reescribió en el cierre de la fase.
+
+## Cierre de la subfase 12.5 y de la Fase 12, 2026-09-29
+
+1. **Confirmación**: el usuario confirmó el cierre el 2026-09-29 («confirmo cierre»), después de la CI en verde de `21a615c` (corrida 36587111693).
+2. **Criterios**: AC-1 a AC-4 y AC-6 a AC-16 cumplidos. AC-5 se cumplió en parte: la derivación del turno 3 queda como límite conocido, por decisión del usuario (opción a).
+3. **Nivel**: el turno completo queda **validado en integración, en staging** (`producer-consumer`, datos sintéticos). **No** `authenticated-end-to-end` y **no** producción.
+4. **Revisión independiente**: hecha (AC-15). 11 hallazgos, 3 mayores, todos verificados y resueltos en `21a615c`.
+5. **Gate de la Fase 12**: cumplido con ese límite. El agente completa turnos contra el CRM en staging, detrás del modo de prueba, sin pérdida de mensajes. La fase se cierra con esta subfase ([Roadmap](../planning/Roadmap.md), §Fase 12).
+6. **Lo que queda abierto**:
+   - **para el agente**: derivar en el turno 3, leer la información del negocio en el turno 1 y usar una correlación por turno. La derivación se prueba en una ventana corta de staging cuando la corrija;
+   - **a la 13.5**: la capacidad por credencial con tráfico real (Risks, fila 24);
+   - **sin destino fijo**: E-3, la advertencia de npm 11.19 sobre los `postinstall` de esbuild;
+   - **R-1**: la IP del usuario y sus hashes siguen en el historial de Git, por decisión del usuario.
