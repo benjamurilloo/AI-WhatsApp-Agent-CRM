@@ -2,6 +2,36 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-30 — 13.2 cerrada: las mediciones previas a exponer datos reales
+
+Segunda subfase de la Fase 13 ([brief-13.2](docs/decisions/brief-13.2-mediciones-previas-a-datos-reales.md), [evidencia-13.2](docs/decisions/evidencia-13.2-mediciones.md), [planes](docs/decisions/planes-13.2/)). En dos etapas: la 13.2.1 (`803571e`), los instrumentos en local; la 13.2.2 (`f278d0a`), la medición en el droplet de producción, en una base aparte que se borró al terminar.
+
+**Certifica**: qué plan elige PostgreSQL para cada consulta del producto, con datos sintéticos, en la máquina de producción.
+- **O-2**: la aplicación no deja sentencias preparadas con nombre, así que el plan genérico no aplica. Comprobado por efecto en el pool, en local y en el servidor, y fijado por una guarda.
+- **O-39**: 118, 116 y 118 consultas con su plan crudo y su tiempo, desde una organización de 10.000 clientes, una de 50 y una con una conversación de 4.000 mensajes.
+- Todos los recorridos secuenciales registrados, y los cambios de forma entre organizaciones explicados: 28 contra la chica y 18 contra la concentrada.
+- La última página de cada listado, el dashboard con la métrica 12, la conversación vigente y el historial de la conversación concentrada.
+- La ventana del manifiesto del backup: entre 2,28 y 2,62 s con una base de 78 MB.
+- El umbral recalibrado en esa máquina: factor 3,77×, 754 ms por consulta y 1508 ms por camino.
+- **R-8 de la 12.2**, con tests de tres conexiones: el bloqueo del cliente hace esperar sin perder nada, y la candidata cerrada no abre una tercera conversación. El usuario decidió no cambiar el bloqueo.
+- La limpieza: ni la base ni el rol de medición existen, y `crm_production` conserva sus recuentos.
+- **Revisión independiente** (D-7): 14 hallazgos, uno mayor y uno de proceso; los 14 verificados y resueltos.
+
+**Veredicto**: ninguna consulta es patológica. La más lenta tardó 91,0 ms y el camino más lento, 573,9 ms de mediana. No hizo falta ningún índice y `src/` no se tocó.
+
+**Lo más importante que encontró la revisión**:
+- la guarda de sentencias preparadas no cubría el pool crudo: cualquier archivo llegaba a `pg` por `$client` sin importarlo;
+- `inventory.listProductStock` manda un parámetro por producto activo, y PostgreSQL admite 65.535 por sentencia. Quedó como riesgo y como tarea.
+
+**Nivel**: medido en la máquina de producción, con datos sintéticos y sin tráfico (`isolated-runtime`).
+
+**No certifica**:
+- ningún tiempo con tráfico real ni con concurrencia: el script corre una llamada por vez;
+- desde qué proporción de la tabla PostgreSQL deja el índice: no se midió desde una organización de 1.000 clientes;
+- la conversación vigente con varias candidatas por cliente;
+- la ventana del manifiesto con escrituras concurrentes;
+- el AC-3 por revisión independiente: el revisor no leyó a fondo el seed.
+
 ## 2026-09-30 — 13.1 cerrada: el entorno productivo
 
 Primera subfase de la Fase 13 ([brief-13.1](docs/decisions/brief-13.1-entorno-productivo.md), [evidencia-13.1](docs/decisions/evidencia-13.1-produccion.md)). El usuario la cerró el 2026-09-30, después de aceptar las correcciones de la revisión independiente.

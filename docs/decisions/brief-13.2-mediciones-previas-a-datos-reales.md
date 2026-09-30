@@ -269,8 +269,8 @@ La medición corrió en el droplet de producción, en cinco pasos que el usuario
 | AC-15 | cumplido | 2,28, 2,48 y 2,62 s con una base de 78 MB. No se midió con escrituras concurrentes |
 | AC-16 | cumplido | Factor de 1,40× a 5,96×, mediana 3,77×. Umbrales: 754 ms para la consulta y 1508 ms para el camino. Los parámetros de costo encabezan cada archivo de planes y de tiempos |
 | AC-17 | cumplido | La base, el rol, sus permisos, `/etc/crm-medicion` y el segundo checkout no existen más. `log_statement = none` y ninguna biblioteca precargada. Los recuentos de `crm_production` son los de la línea de base. `/login` respondió `200` en las 26 muestras de la carga y en las 14 de la medición |
-| AC-18 | cumplido en parte | `Risks.md`, filas de los planes y de la paginación profunda, y `TraceabilityMatrix.md`. `Roadmap.md`, `CHANGELOG.md` y `HANDOFF.md` se actualizan en el cierre. El comentario de la ventana del manifiesto en `deploy/staging/crm-backup.sh` y en `deploy/production/crm-backup.sh` se actualizó con autorización expresa del usuario: `deploy/` no estaba en la lista de archivos autorizados |
-| AC-19 | **pendiente** | La revisión independiente de D-7 |
+| AC-18 | cumplido | `Risks.md`, filas de los planes y de la paginación profunda, y `TraceabilityMatrix.md`. `Roadmap.md`, `CHANGELOG.md` y `HANDOFF.md` se actualizaron en el cierre. El comentario de la ventana del manifiesto en `deploy/staging/crm-backup.sh` y en `deploy/production/crm-backup.sh` se actualizó con autorización expresa del usuario: `deploy/` no estaba en la lista de archivos autorizados |
+| AC-19 | cumplido | 14 hallazgos, los 14 verificados y resueltos, o decididos por el usuario (§Revisión independiente) |
 
 **Veredicto: ninguna consulta es patológica.** La más lenta tarda 91,0 ms en una ejecución contra 754 ms, y el camino más lento, 573,9 ms contra 1508 ms. D-6 no se activó, no hay migración que consultar y `src/` no se tocó.
 
@@ -325,3 +325,11 @@ El revisor no otorgó ninguna autorización.
 2. **El límite de 65.535 parámetros**: se registra como riesgo en `Risks.md` y como tarea en «Esperando» en Notion. `src/` no se toca ahora.
 3. **R-8**: no se cambia el bloqueo del cliente. La espera que impone es la duración de una resolución, entre 7,4 y 8,4 ms. R-8 queda cerrado.
 4. Autorizó el commit y el push de la etapa.
+
+## Cierre de la subfase 13.2, 2026-09-30
+
+- **Commits**: `803571e` (13.2.1, CI `success`, run 36726314512) y `f278d0a` (13.2.2 y las correcciones de la revisión, CI `success`, run 36741602701), leídas por `headSha`.
+- **Criterios**: AC-1 a AC-19 cumplidos, con los límites de §Resultados — etapa 13.2.2.
+- **Nivel**: medido en la máquina de producción, con datos sintéticos y sin tráfico (`isolated-runtime`). No es «preparado para producción»: faltan la 13.3 y la 13.4.
+- **Lo que hereda el resto de la fase**: el riesgo del límite de 65.535 parámetros, con su tarea en Notion; la medición desde una organización de 1.000 clientes; y los umbrales de esta máquina, que valen para datos sintéticos.
+- **Local, al cerrar**: formato, lint, typecheck y guardas (443 de 443) en verde. Integración y end-to-end no se volvieron a correr en local después de `803571e`; los corrió la CI de `f278d0a`.
