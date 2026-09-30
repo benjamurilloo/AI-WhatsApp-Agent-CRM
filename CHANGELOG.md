@@ -2,6 +2,19 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-30 — Next.js 16.3.8 por GHSA-vcvr-r3jv-pc5j, desplegado en producción
+
+Fuera de subfase. El aviso, publicado el 2026-09-30 a las 14:48 UTC, es crítico: ejecución remota de código en `ImageResponse` de `next/og`, de la 16.2.0 a la 16.3.5. La CI del cierre de la 13.2 (`5d77e93`) falló por él en la auditoría de dependencias.
+
+**Certifica**:
+- `next` y `@next/eslint-plugin-next` en `^16.3.8` (`471cf7b`), con la CI en `success` (run 36754258894).
+- El usuario lo desplegó en producción a las 18:02 UTC, siguiendo el [README de producción](deploy/production/README.md). La versión anterior, para volver atrás, es `938423d`.
+- Verificado después: HEAD en `471cf7b` y `next` 16.3.8 instalado en el servidor, la aplicación solo en loopback, `/login` y `/api/health` en 200, la ingestión y la lectura en 404 desde afuera, HSTS presente y los recuentos de `crm_production` sin cambios.
+
+**No certifica**:
+- Que el CRM haya estado expuesto: no usa `next/og`. La versión instalada sí era vulnerable.
+- La comparación de los once archivos de configuración ni la del salto único de proxy: no se repitieron, porque el despliegue no toca `/etc` ni nginx.
+
 ## 2026-09-30 — 13.2 cerrada: las mediciones previas a exponer datos reales
 
 Segunda subfase de la Fase 13 ([brief-13.2](docs/decisions/brief-13.2-mediciones-previas-a-datos-reales.md), [evidencia-13.2](docs/decisions/evidencia-13.2-mediciones.md), [planes](docs/decisions/planes-13.2/)). En dos etapas: la 13.2.1 (`803571e`), los instrumentos en local; la 13.2.2 (`f278d0a`), la medición en el droplet de producción, en una base aparte que se borró al terminar.
