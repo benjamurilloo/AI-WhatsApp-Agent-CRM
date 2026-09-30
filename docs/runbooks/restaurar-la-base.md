@@ -14,7 +14,7 @@ Procedimiento de recuperación de `crm_staging` ([brief-9.2](../decisions/brief-
 | Comprobar servidor contra repositorio | **ejecutado**, los ocho archivos sin diferencias |
 | Comprobar la integridad antes de restaurar (paso 2) | **ejecutado**, con control negativo. La versión anterior de ese paso **no se podía ejecutar**: faltaba `sudo` |
 | Crear los roles en una **máquina nueva** | **ejecutado** el 2026-09-30 (13.1, AC-18): se restauró la copia de producción del bucket en un contenedor `postgres:18.6` sin red y sin ningún rol `crm%`, con los dos `CREATE ROLE` de la trampa 1, y el `pg_restore --exit-on-error` salió con 0. Salidas en [evidencia-13.1](../decisions/evidencia-13.1-produccion.md). No se probó levantar la aplicación en esa máquina, lo que exigiría también el rol con login |
-| Copia externa de producción: bajar, descifrar y restaurar (§Producción) | **ejecutado** el 2026-09-30 (13.1, AC-18), con el control negativo contra un dump truncado |
+| Copia externa de producción: descifrar y restaurar (§Producción, punto 2) | **ejecutado** el 2026-09-30 (13.1, AC-18), con el control negativo contra un dump truncado. La bajada fue por el caso «el droplet está vivo» del punto 2: con el `rclone` del droplet. El caso «el droplet se perdió» (una clave nueva del bucket, `rclone` en la máquina del operador) está **diseñado, no ejecutado** |
 | Timer del ejercicio mensual | **desplegado y habilitado** el 2026-09-22: `crm-restore-check.timer`, próxima corrida el 2026-10-01 |
 | **Recuperación real** (renombrar la base viva) | **ejecutada** el 2026-09-22 como simulacro, de punta a punta: la aplicación quedó corriendo sobre la base restaurada y se verificó con un **ingreso autenticado** desde afuera. Encontró dos defectos en este runbook, corregidos arriba |
 
@@ -170,7 +170,7 @@ done
 
 ## Producción (brief-13.1)
 
-Todo lo de arriba vale para `crm_production` cambiando `crm-staging` por `crm-production` y `crm_staging` por `crm_production`. Hay tres diferencias ([deploy/production/README.md](../../deploy/production/README.md)).
+Todo lo de arriba vale para `crm_production` cambiando `crm-staging` por `crm-production`, `crm_staging` por `crm_production` y `staging.vixoraai.app` por `crm.vixoraai.app`. Hay cinco diferencias ([deploy/production/README.md](../../deploy/production/README.md)).
 
 **1. El dueño de la base (O-3).** En staging, la base original la creó `postgres`, y una restauración con `createdb -O crm_owner` la deja de `crm_owner`: el dueño **a nivel de base** cambia al restaurar, y las tablas no. En producción no pasa: `crm_production` se crea **propiedad de `crm_owner` desde el primer día** (paso 5 del aprovisionamiento), así que la base restaurada con `-O crm_owner` tiene el mismo dueño que la original, a nivel de base y de tablas. Se comprueba después de restaurar:
 
@@ -178,26 +178,87 @@ Todo lo de arriba vale para `crm_production` cambiando `crm-staging` por `crm-pr
 sudo -u postgres psql -tAc "select pg_get_userbyid(datdba) from pg_database where datname='crm_production_nueva'"   # -> crm_owner
 ```
 
+**Y la collation (D-7): en producción, el paso 4 NO es `createdb -O crm_owner` a secas.** `pg_restore` sin `--create` no trae la configuración regional de la base: la base nueva toma la de `template1`. En el droplet es libc `C.UTF-8`, y en un contenedor Debian, `en_US.utf8`. Con eso, el orden deja de ser el castellano de D-7, sin ningún aviso. En el contenedor, la `Ñ` quedó antes de la `N`. Con `C.UTF-8` el orden es por punto de código, y la `Ñ` y las vocales con tilde quedan después de la `Z`. Medido el 2026-09-30 ([evidencia-13.1](../decisions/evidencia-13.1-produccion.md), H13 y N2). En producción, el paso 4 crea la base así:
+
+```
+sudo -u postgres createdb -O crm_owner --template=template0 --encoding=UTF8 \
+  --locale-provider=icu --icu-locale=es --locale=C.UTF-8 crm_production_nueva
+sudo -u postgres psql -tAc "select datlocprovider, datlocale from pg_database where datname='crm_production_nueva'"   # -> i|es
+```
+
+Son los parámetros del paso 5 del aprovisionamiento. La restauración de AC-18 usó el `createdb` a secas y quedó en libc. Sus recuentos y defensas no dependen de la collation, pero no ensayó esto.
+
 **2. La copia externa está cifrada, y la clave para descifrarla no está en el droplet.** Si el droplet se perdió, la recuperación empieza en la máquina del operador, que es donde vive la clave privada de `age`:
 
+**De dónde salen las credenciales del bucket.** La clave de acceso vive solo en `/etc/crm-production/rclone.conf`, en el droplet. Hay dos casos:
+- **El droplet está vivo** (lo que ejecutó AC-18): se baja a través de él, sin copiar credenciales afuera:
+
+  ```
+  ssh crm-production "sudo rclone --config /etc/crm-production/rclone.conf cat spaces:crm-production-backups/crm_production-ELEGIDO.dump.age" > crm_production-ELEGIDO.dump.age
+  ```
+
+  Lo mismo para el `.age.sha256` y el `.recuentos`.
+- **El droplet se perdió**: su clave se perdió con él.
+  - Se crea una clave de acceso **nueva** en el panel de DigitalOcean (Spaces → Access Keys), limitada al bucket.
+  - Se configura un remoto `spaces` en `rclone` de la máquina del operador, con la misma forma que la tabla de secretos del README de producción.
+  - Se revoca la clave vieja desde el panel.
+
+  **Diseñado, no ejecutado.**
+
 ```
-# 1. Bajar la copia elegida, su suma y su manifiesto.
-rclone copy <remoto>:<bucket>/crm_production-ELEGIDO.dump.age .
-rclone copy <remoto>:<bucket>/crm_production-ELEGIDO.dump.age.sha256 .
-rclone copy <remoto>:<bucket>/crm_production-ELEGIDO.dump.recuentos .
+# 0. Elegir la copia y decir dónde está la clave privada. Sin marcadores que reemplazar.
+rclone lsl spaces:crm-production-backups
+read -r -p "Copia, sin extensión extra (p. ej. crm_production-20260930T031700Z.dump): " B
+read -r -p "Archivo de la clave privada de age: " CLAVE
+
+# 1. Bajar la copia elegida, su suma y su manifiesto (caso «droplet perdido»).
+for s in .age .age.sha256 .recuentos; do rclone copyto "spaces:crm-production-backups/$B$s" "$B$s"; done
 
 # 2. Comprobar el archivo cifrado ANTES de descifrarlo.
-sha256sum -c <(printf "%s  %s\n" "$(cat crm_production-ELEGIDO.dump.age.sha256)" crm_production-ELEGIDO.dump.age)
+sha256sum -c <(printf "%s  %s\n" "$(cat "$B.age.sha256")" "$B.age")
 
 # 3. Descifrar con la clave privada, que nunca estuvo en el droplet.
-age --decrypt --identity <archivo de la clave privada> --output crm_production-ELEGIDO.dump crm_production-ELEGIDO.dump.age
+age --decrypt --identity "$CLAVE" --output "$B" "$B.age"
 ```
+
+Hasta la verificación independiente de la 13.1, este bloque traía marcadores como `<remoto>:<bucket>` y `<archivo de la clave privada>` sin comillas. Bash los lee como redirecciones, y es la misma clase de defecto que el de `org:create` (H14, N4).
 
 Desde ahí, el dump en claro sigue el camino de «Recuperación real» en la máquina nueva, empezando por crear los roles (trampa 1). El dump en claro se borra de la máquina del operador al terminar.
 
 **3. El ejercicio de la copia externa es manual.** El ejercicio mensual del timer restaura la copia **local**, en claro, porque el droplet no tiene la clave privada, y así tiene que ser. La copia del bucket se ejercita a mano: los tres pasos de arriba y una restauración en una base local aislada, comparada contra el `.recuentos`. La 13.1.2 lo hizo el 2026-09-30 (AC-18), con la copia del timer de esa madrugada: descifrada en la máquina del operador, idéntica byte a byte al dump del servidor, restaurada en un contenedor aislado, y con el control negativo en rojo contra un dump truncado. Después, se repite **cada vez que se rote la clave de `age`**, porque es la única forma de saber que la clave nueva descifra lo que el servidor cifra.
 
+**4. En producción el dueño tiene login.** La trampa 1 crea `crm_owner NOLOGIN`. Alcanza para restaurar, pero en producción `migrate.env` y `backup.pgpass` se conectan **como** `crm_owner`. En una máquina nueva, después de restaurar, se le da login con una contraseña nueva y se escriben los dos archivos. Si no, la próxima migración y el próximo backup fallan. Como `root`, para que la contraseña no pase por los argumentos de ningún proceso:
+
+```
+umask 077
+install -d -m 0700 -o root -g root /etc/crm-production &&
+  PW=$(openssl rand -hex 32) &&
+  printf 'DATABASE_URL=postgresql://crm_owner:%s@localhost:5432/crm_production\n' "$PW" > /etc/crm-production/migrate.env &&
+  printf '127.0.0.1:5432:crm_production:crm_owner:%s\n' "$PW" > /etc/crm-production/backup.pgpass &&
+  printf "ALTER ROLE crm_owner LOGIN PASSWORD '%s';\n" "$PW" | sudo -u postgres psql -v ON_ERROR_STOP=1 -q
+unset PW
+```
+
+Los pasos van encadenados con `&&`: si falla la escritura de un archivo, la contraseña no llega a la base. Sin eso, una base con una contraseña que ningún archivo tiene fue la regresión que encontró la verificación independiente (N1). En `backup.pgpass`, el host tiene que ser igual al `PGHOST` de `backup.env`, que es `127.0.0.1`.
+
+El rol con login de la aplicación, `crm_app_login`, se crea como dice el paso 6 del aprovisionamiento. **Diseñado, no ejecutado**: AC-18 restauró en un contenedor y no levantó la aplicación.
+
+**5. La comprobación servidor contra repositorio cubre los once archivos** de la tabla del README de producción, no los seis de staging. Entre ellos van los dos de la copia externa:
+
+```
+for f in crm-backup.sh crm-backup-offsite.sh crm-restore-check.sh; do
+  ssh crm-production "sudo cat /usr/local/bin/$f" | diff - "deploy/production/$f" && echo "$f OK"
+done
+for f in crm-production.service crm-backup.service crm-backup-offsite.service crm-backup.timer crm-restore-check.service crm-restore-check.timer; do
+  ssh crm-production "sudo cat /etc/systemd/system/$f" | diff - "deploy/production/$f" && echo "$f OK"
+done
+ssh crm-production "sudo cat /etc/nginx/sites-available/crm-production" | diff - deploy/production/nginx-crm-production.conf && echo "nginx OK"
+ssh crm-production "sudo cat /etc/postgresql/18/main/conf.d/crm-production.conf" | diff - deploy/production/postgresql-crm-production.conf && echo "postgresql OK"
+```
+
 ## Lo que este runbook NO cubre
+
+- **Que otra versión de ICU ordene igual.** El droplet tiene ICU `153.121.44.8` (Ubuntu 24.04), y un contenedor Debian, `153.128.46`. Una restauración lógica reconstruye los índices con la biblioteca de destino, así que no hereda índices inconsistentes. Pero que las dos versiones ordenen igual todo el alfabeto es una inferencia, comprobada solo sobre muestras chicas.
 
 - **Restaurar al volumen real.** Staging tiene datos sintéticos y pocos. El tiempo de restauración que sale acá no predice el de una base con volumen; esa medición es de la [9.3](../planning/Roadmap.md).
 - **Restaurar en un servicio gestionado.** Podría exigir superusuario para `createdb` o para los `GRANT`. Está sin verificar y condiciona la elección de hosting de producción.

@@ -284,7 +284,7 @@ export function revisarProxy(texto: string): string[] {
 // Los entornos desplegados, cada uno con su directorio en `deploy/`. Desde la 13.1 son dos: la
 // premisa de H-3 es la misma en los dos, y el directorio de producción sin esta guarda habría
 // repetido el H-1 de la 9.1 (brief-13.1, D-12 y H-6). Las guardas de backup y de PostgreSQL
-// recorren esta misma lista.
+// tienen listas propias, y cada una comprueba por su cuenta que cubre todo `deploy/`.
 export const ENTORNOS = [
   {
     nombre: "staging",
@@ -522,10 +522,7 @@ describe("producción: la aplicación corre sin camino a root", () => {
     expect(usuario).toBe("crm");
   });
 
-  it("la mutación de volver al usuario del ssh o a root se detecta", () => {
-    for (const otro of ["benja", "root"]) {
-      const mutada = unidad.replace(/^User=.+$/m, `User=${otro}`);
-      expect(/^User=(.+)$/m.exec(mutada)?.[1]).not.toBe("crm");
-    }
-  });
+  // La mutación (volver a `User=benja`) se corrió sobre el archivo real y hace fallar
+  // el caso de arriba (evidencia-13.1, AC-3). El caso que la simulaba acá miraba su propio cambio
+  // y no podía fallar; lo sacó la revisión independiente.
 });

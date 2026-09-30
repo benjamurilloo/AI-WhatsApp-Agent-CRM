@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 // Guarda de la configuración de backup de staging (brief-9.2).
@@ -340,6 +340,31 @@ const ENTORNOS_BACKUP = [
     base: "crm_production",
   },
 ] as const;
+
+// Esta guarda tiene su propia lista, así que la cobertura de `deploy/` se comprueba acá contra
+// ella, no contra la de la guarda del proxy. Hasta la revisión independiente de la 13.1 solo la
+// del proxy lo hacía, y un entorno agregado solo a su lista quedaba sin guarda de backup.
+/** Directorios de `deploy/` que ninguna entrada de ENTORNOS_BACKUP cubre. */
+export function directoriosSinBackup(directorios: readonly string[]): string[] {
+  const cubiertos = new Set<string>(ENTORNOS_BACKUP.map((e) => e.directorio));
+  return directorios
+    .map((nombre) => `deploy/${nombre}`)
+    .filter((directorio) => !cubiertos.has(directorio));
+}
+
+describe("todo directorio de deploy/ tiene su guarda de backup", () => {
+  const presentes = readdirSync("deploy", { withFileTypes: true })
+    .filter((entrada) => entrada.isDirectory())
+    .map((entrada) => entrada.name);
+
+  it("no hay ningún directorio de despliegue sin su entorno en ENTORNOS_BACKUP", () => {
+    expect(directoriosSinBackup(presentes)).toEqual([]);
+  });
+
+  it("un directorio nuevo sin guarda de backup se detecta", () => {
+    expect(directoriosSinBackup([...presentes, "demo"])).toEqual(["deploy/demo"]);
+  });
+});
 
 /**
  * El script sin sus comentarios. Hace falta para afirmar que algo NO está: los dos
@@ -819,21 +844,9 @@ describe("producción: el dump se cifra antes de que exista con nombre definitiv
     expect(renombre).toBeGreaterThan(cifrado);
   });
 
-  // La mutación de los dos casos anteriores, ejecutada sobre el archivo real: mover el cifrado
-  // después del renombre invierte el orden y el caso lo detecta.
-  it("mover el cifrado después del renombre se detecta", () => {
-    const lineas = codigoDe(PROD_BACKUP).split("\n");
-    const cifrado = lineas.findIndex((l) => /^age --encrypt/.test(l));
-    const [linea] = lineas.splice(cifrado, 1);
-    const renombre = lineas.findIndex((l) =>
-      /^mv "\$parcial" "\$destino"$/.test(l),
-    );
-    lineas.splice(renombre + 1, 0, linea as string);
-    const mutado = lineas.join("\n");
-    expect(lineaDe(mutado, /^mv "\$parcial" "\$destino"$/)).toBeLessThan(
-      lineaDe(mutado, /^age --encrypt/),
-    );
-  });
+  // La mutación de este caso (mover el cifrado después del renombre) se corrió sobre el archivo
+  // real y hace fallar el caso de arriba (evidencia-13.1, AC-3). Había acá un caso que mutaba el
+  // texto y miraba su propio cambio: no podía fallar, y lo sacó la revisión independiente.
 
   it("el trap limpia también la copia cifrada parcial", () => {
     expect(codigoDe(PROD_BACKUP)).toMatch(
@@ -862,15 +875,9 @@ describe("producción: la copia externa sube solo lo cifrado", () => {
     expect(subidas).not.toMatch(/"\$base"/);
   });
 
-  // La mutación: agregar el dump en claro a la lista de subida.
-  it("agregar el dump en claro a la subida se detecta", () => {
-    const mutado = codigoDe(PROD_OFFSITE).replace(
-      'for archivo in "$ultima"',
-      'for archivo in "$base" "$ultima"',
-    );
-    const subidas = /for archivo in (.+); do/.exec(mutado)?.[1];
-    expect(subidas).toMatch(/"\$base"/);
-  });
+  // La mutación de este caso (agregar el dump en claro a la subida) se corrió sobre el archivo real
+  // y hace fallar el caso de arriba (evidencia-13.1, AC-3). El caso que la simulaba acá miraba su
+  // propio cambio y no podía fallar; lo sacó la revisión independiente.
 
   // 13.1.2: con una clave limitada a un bucket, rclone sin esta opción intenta crear el bucket
   // antes de subir y falla con 403 aunque listar funcione. Medido en la primera subida real.

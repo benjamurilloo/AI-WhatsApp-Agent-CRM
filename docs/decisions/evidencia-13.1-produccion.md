@@ -1,8 +1,16 @@
 # Evidencia 13.1 — Entorno productivo
 
-Salidas crudas de la verificación del [brief-13.1](brief-13.1-entorno-productivo.md). Cada bloque trae su comando y su fecha. Un bloque marcado `[transcrito]` no es literal y dice qué se compuso a mano (regla de la 9.1, N-8).
+Salidas crudas de la verificación del [brief-13.1](brief-13.1-entorno-productivo.md). Un bloque marcado `[transcrito]` no es literal y dice qué se compuso a mano (regla de la 9.1, N-8).
 
-**Autoevaluación.** Todo lo de este archivo lo midió el mismo agente que implementó la subfase. La revisión independiente de D-11 viene después.
+**Cada bloque trae su comando y su fecha, salvo estos.** Salieron de guiones corridos en el servidor (`ssh crm-production 'sudo bash -s' < guion`) o de comandos que no se copiaron acá, y ni unos ni otros quedaron registrados:
+- «El usuario `crm`, los roles y la base» (`aprovisionar-base.sh`);
+- «El rol de la aplicación y `app.env`»;
+- en «La compilación y el arranque», los bloques de la compilación, de la unidad y de la memoria;
+- en «El backup cifrado y la copia externa», los de la configuración, de `rclone.conf`, del primer backup por la unidad y de los timers.
+
+La salida de cada uno sí es literal. Esta lista la pidió la verificación independiente de las correcciones. A los demás bloques que no tenían comando se les agregó en las correcciones de H12, tomándolo del registro de la sesión.
+
+**Autoevaluación.** Todo lo de este archivo lo midió el mismo agente que implementó la subfase. La revisión independiente de D-11 está al final, en «AC-23».
 
 ## Etapa 13.1.1 — local, 2026-09-29
 
@@ -303,6 +311,8 @@ Mem:            1967         392         272          21        1503        1575
 Swap:              0           0           0
 ```
 
+`[transcrito]`: parte del comando se abrevió con `…` (fechas, repeticiones o pasos ya mostrados arriba). La salida es literal.
+
 - **Node `v24.21.0`**, dentro del `>=24 <25` de `package.json` (D-6). **PostgreSQL 18.6** (D-6). La collation de la base se mide cuando se cree la base.
 - **Sin swap.** Si `next build` lo necesita, se agrega con el motivo registrado (condición de detención 6).
 - `rclone v1.60.1` es la del repositorio de Ubuntu. `copyto`, `size --json` y `delete --min-age`, que usa `crm-backup-offsite.sh`, existen desde antes de esa versión. Se confirma por efecto en AC-18.
@@ -351,7 +361,41 @@ Avila < ávila < de la Fuente < Delgado < Nora < Ñandú < Oscar < Zapata
 153.121.44.8
 ```
 
-La `Ñ` va después de la `N`, los acentos quedan junto a su letra y el espacio cuenta. Es lo mismo que midió AC-6 en `postgres:18.6-trixie`.
+La `Ñ` va después de la `N`, los acentos quedan junto a su letra y el espacio cuenta. Es el mismo orden que midió AC-6 en `postgres:18.6-trixie`, en estos 8 nombres.
+
+**Lo que no es igual, y no se declaró hasta la revisión independiente (H13)**: la versión de ICU.
+- AC-6 midió en el contenedor Debian, con `es-x-icu` en **`153.128.46`**.
+- Producción, en Ubuntu 24.04, registra `datcollversion` **`153.121.44.8`**.
+
+Son dos bibliotecas ICU distintas, y acá se comparó una muestra de 8 nombres, no el juego de 20 de AC-6. **Que ordenen igual los 20 es una inferencia**: coherente con D-7 y con los 8 comparados, pero no medida.
+
+**El riesgo real de la recuperación es otro, y es mayor que la diferencia de versión.** Lo señaló la verificación independiente de las correcciones (N2), y se midió el 2026-09-30:
+- `pg_restore` sin `--create`, sobre una base hecha con `createdb`, **no trae la configuración regional de la base**: la toma de `template1` del servidor de destino.
+- En el droplet, `template1` es libc `C.UTF-8`; solo `crm_production` es ICU `es`:
+
+```text
+$ ssh crm-production "sudo -u postgres psql -tA -c \"select datname, datlocprovider, datcollate, coalesce(datlocale,'-') from pg_database order by 1\""
+crm_production|i|C.UTF-8|es
+postgres|c|C.UTF-8|-
+template0|c|C.UTF-8|-
+template1|c|C.UTF-8|-
+```
+
+- Una recuperación con el `createdb -O crm_owner` del runbook perdía entonces la ICU `es` de D-7, sin ningún aviso. En un contenedor descartable, `postgres:18.6-trixie` sin red:
+
+```text
+$ docker exec -u postgres crm-icu createdb -O crm_owner como_runbook; docker exec -u postgres crm-icu createdb -O crm_owner --template=template0 --encoding=UTF8 --locale-provider=icu --icu-locale=es --locale=C.UTF-8 con_icu; docker exec -u postgres crm-icu psql -tA -c "select datname, datlocprovider, datcollate, coalesce(datlocale,'-') from pg_database where datname in ('como_runbook','con_icu') order by 1"; for db in como_runbook con_icu; do printf "%s: " $db; docker exec -u postgres crm-icu psql -d $db -tA -c "select string_agg(n, ' ' order by n) from (values ('Ñandú'),('Nube'),('Oso'),('ñoño'),('Árbol'),('Zorro')) t(n)"; done
+como_runbook|c|en_US.utf8|-
+con_icu|i|C.UTF-8|es
+como_runbook: Árbol Ñandú ñoño Nube Oso Zorro
+con_icu: Árbol Nube Ñandú ñoño Oso Zorro
+```
+
+`[transcrito]`: se omitieron el `docker run`, la espera a `pg_isready`, el `CREATE ROLE crm_owner` y el `docker stop`.
+
+Con el `createdb` del runbook, en ese contenedor, la `Ñ` quedó antes de la `N`, contra lo que decidió D-7. En el droplet, con `C.UTF-8`, el orden sería por punto de código, también distinto de D-7. Esto último se infiere, no se midió. **El runbook se corrigió** (§Producción, punto 1): en producción, la base nueva se crea con los mismos parámetros ICU que la original.
+
+**Y la restauración de AC-18 también quedó en libc**, porque creó la base con `createdb -O crm_owner crm_production`. Eso no cambia lo que AC-18 comprobó: recuentos, dueños, triggers y permisos no dependen de la collation. Pero la afirmación «AC-18 restauró en otra versión de ICU», agregada por H13, era falsa y se retiró.
 
 ### La configuración de PostgreSQL, 2026-09-29
 
@@ -370,6 +414,8 @@ random_page_cost|/etc/postgresql/18/main/conf.d/crm-production.conf
 $ ssh crm-production 'sudo cat /etc/postgresql/18/main/conf.d/crm-production.conf' | diff - deploy/production/postgresql-crm-production.conf && echo "servidor = versionado"
 servidor = versionado
 ```
+
+`[transcrito]`: parte del comando se abrevió con `…` (fechas, repeticiones o pasos ya mostrados arriba). La salida es literal.
 
 ### La deploy key, el código y las dependencias, 2026-09-29
 
@@ -430,6 +476,8 @@ $ ssh crm-production 'sudo install -d -m 0700 -o crm -g crm /var/lib/crm-product
 HOME=/var/lib/crm-production/home
 /var/lib/crm-production/home/.npm
 ```
+
+`[transcrito]`: parte del comando se abrevió con `…` (fechas, repeticiones o pasos ya mostrados arriba). La salida es literal.
 
 El registro de despliegues (`/var/lib/crm-production/despliegues`) **no se escribió**: guarda el SHA que estaba desplegado **antes** de cada despliegue, para poder volver atrás, y este es el primero. El próximo despliegue anota `938423d…`.
 
@@ -582,6 +630,8 @@ RandomizedDelaySec=43200
 Persistent=true
 ```
 
+`[transcrito]`: parte del comando se abrevió con `…` (fechas, repeticiones o pasos ya mostrados arriba). La salida es literal.
+
 El timer corre dos veces por día, con hasta 12 horas de demora al azar, y `Persistent=true` recupera una corrida perdida si el droplet estuvo apagado. **AC-11 cumplido.**
 
 La línea `Account registered.` aparece también en la simulación. Es la cuenta del entorno de pruebas de Let's Encrypt, que `--dry-run` usa, y no es una segunda cuenta de producción.
@@ -655,6 +705,7 @@ La aplicación corre como `crm` (I-2) y escucha **solo en `127.0.0.1:3000`**. Ha
 **Desde afuera**, desde la máquina del operador. Salida literal:
 
 ```text
+$ date -u +"%Y-%m-%dT%H:%M:%SZ"; H=https://crm.vixoraai.app; echo "--- AC-9"; for r in "GET /login" "POST /api/ingestion/v1/events" "POST /api/ingestion/v2/events" "GET /api/read/v1/products"; do set -- $r; printf "%-5s %-30s %s\n" "$1" "$2" "$(curl -sS -o /dev/null -w '%{http_code}' -X $1 -H 'content-type: application/json' --data-binary '{}' $( [ $1 = GET ] && echo -G ) "$H$2")"; done; curl -sS "$H/login" | grep -o "<title>[^<]*</title>"; echo "--- AC-10"; curl -sS -o /dev/null -w "verify=%{ssl_verify_result} code=%{http_code}\n" "$H/login"; echo | openssl s_client -connect crm.vixoraai.app:443 -servername crm.vixoraai.app 2>/dev/null | openssl x509 -noout -subject -issuer -dates -ext subjectAltName 2>/dev/null; echo "--- AC-12 HTTPS"; curl -sS -D - -o /dev/null "$H/login" | grep -i -E "^HTTP|strict-transport"; echo "--- AC-12 HTTP"; curl -sS -D - -o /dev/null "http://crm.vixoraai.app/login" | grep -i -E "^HTTP|strict-transport|^location"; echo "--- puerto 3000 desde afuera"; curl -sS -m 5 -o /dev/null -w "%{http_code}\n" "http://crm.vixoraai.app:3000/" 2>&1 | tail -1
 2026-09-29T21:10:27Z
 --- AC-9
 GET   /login                         200
@@ -924,7 +975,13 @@ audit_logs_insert_only|O|audit_logs_reject_change
 - El trigger está **activo** (`O`) y apunta a la misma función de rechazo. **No se probó borrando**: un `DELETE` de prueba sobre `audit_logs` en producción es lo mismo que el clasificador acaba de bloquear, y el rechazo del rol de la aplicación ya lo midió AC-15.
 - Clientes, conversaciones, mensajes, productos y sesiones: **0**.
 
-**Corrección para la próxima vez**: el comando de `org:create` del README usa marcadores (`'<organización>'`, `<correo>`) que el script rechaza si no se reemplazan. El que el asistente le pasó al usuario usaba valores de ejemplo válidos, y ese fue el defecto. Comprobado en local: `npm run -s org:create -- --name x --admin-name y --admin-email "<correo>"` responde `Datos inválidos: adminEmail. No se creó nada.`
+**Corrección para la próxima vez**: el defecto fue el comando que el asistente le pasó al usuario, que traía valores de ejemplo válidos. Comprobado en local: `npm run -s org:create -- --name x --admin-name y --admin-email "<correo>"` responde `Datos inválidos: adminEmail. No se creó nada.`
+
+**Esta nota decía que los marcadores del README los rechaza el script, y era incorrecta** (H14 de la revisión independiente):
+- `<correo>` iba **sin comillas** dentro del comando del README. Lo rechazaba la shell, que lo leía como una redirección, no el script. La prueba de arriba usa comillas, así que es otro comando.
+- `'<organización>'` el script lo **acepta**. Reemplazar solo el correo creaba una organización con ese nombre.
+
+El README ya no usa marcadores: pide los valores con `read`.
 
 El operador ingresó después por primera vez y cambió la contraseña inicial, como obliga D-9. Lo informó el usuario; el asistente no lo vio.
 
@@ -951,6 +1008,8 @@ postgresql-crm-production.conf OK
 crm-production
 ```
 
+`[transcrito]`: parte del comando se abrevió con `…` (fechas, repeticiones o pasos ya mostrados arriba). La salida es literal.
+
 **AC-20 cumplido**: los 11 archivos de la tabla del README coinciden con los del servidor. El recuento sale de contar los archivos, no de heredarlo del README. En `sites-enabled` hay un solo sitio, y apunta al archivo versionado.
 
 ### AC-17: un reinicio real, 2026-09-29
@@ -958,12 +1017,14 @@ crm-production
 Autorizado por el usuario. `sudo systemctl reboot`, y después la espera desde la máquina del operador:
 
 ```text
+$ ssh crm-production 'echo "--- antes"; date -u +"%Y-%m-%dT%H:%M:%SZ"; uptime -s; systemctl show crm-production -p MainPID --value; sudo systemctl reboot' 2>&1 | grep -v Pseudo; T0=$(date +%s); sleep 20; for i in $(seq 1 30); do ssh -o ConnectTimeout=5 crm-production true 2>/dev/null && break; sleep 5; done; echo "ssh de vuelta a los $(( $(date +%s) - T0 )) s"; for i in $(seq 1 30); do c=$(curl -s -o /dev/null -w "%{http_code}" https://crm.vixoraai.app/login); [ "$c" = 200 ] && break; sleep 3; done; echo "https /login: $c a los $(( $(date +%s) - T0 )) s"
 --- antes
 2026-09-29T21:51:08Z
 2026-09-29 19:51:27
 11209
 ssh de vuelta a los 37 s
 https /login: 200 a los 43 s
+$ ssh crm-production 'echo "--- después"; date -u +"%Y-%m-%dT%H:%M:%SZ"; uptime -s; for u in crm-production nginx postgresql@18-main crm-backup.timer crm-restore-check.timer certbot.timer ufw; do printf "%-26s %s %s\n" $u $(systemctl is-active $u) $(systemctl is-enabled $u); done; systemctl show crm-production -p MainPID -p NRestarts -p User; sudo ss -ltn | awk "NR>1{print \$4}" | sort -u | tr "\n" " "; echo; sudo ufw status | head -1; systemctl --failed --no-legend | wc -l' 2>&1 | grep -v Pseudo
 --- después
 2026-09-29T21:52:01Z
 2026-09-29 21:51:18
@@ -998,6 +1059,8 @@ clients=0 conversations=0 messages=0 products=0 organizations=1 users=1 organiza
 Vixora
 ```
 
+`[transcrito]`: parte del comando se abrevió con `…` (fechas, repeticiones o pasos ya mostrados arriba). La salida es literal.
+
 **AC-22, primera parte, cumplida**: 0 clientes, 0 conversaciones, 0 mensajes y 0 productos, con una sola organización, la del operador.
 
 **Segunda parte, revisada el 2026-09-29.** Lo que contradecía al entorno desplegado, y cómo quedó:
@@ -1009,7 +1072,7 @@ Vixora
   - la cookie, la IP detrás del proxy, H-3, HSTS y el rol de la aplicación estaban verificados solo en staging. Se agregó la medición en producción (AC-12 a AC-15);
   - la sección de backups solo describía staging, con la copia externa manual y sin cifrado. Se agregó producción, con **AC-18 declarado pendiente**: la corrida del timer y la restauración desde el bucket.
 
-Todo lo agregado se declara autoevaluación hasta AC-23. **AC-22 cumplido en sus dos partes**, con una salvedad: la línea de backups de SecurityModel se vuelve a tocar cuando se cierre AC-18.
+Todo lo agregado se declara autoevaluación hasta AC-23. **AC-22 cumplido en sus dos partes**. La línea de backups de SecurityModel se actualizó al cerrar AC-18, el 2026-09-30.
 
 ### AC-13 (O-6): el `Set-Cookie` crudo de un ingreso real, 2026-09-29
 
@@ -1035,7 +1098,16 @@ Autorizado por el usuario. Se usaron dos IP de salida:
 - **la del operador**: la máquina desde la que corre el asistente;
 - **la del droplet de staging**: un túnel SOCKS (`ssh -N -D 1080 crm-staging`), que se cerró al terminar.
 
-Antes de empezar se comprobó que las dos IP son distintas, comparándolas sin imprimirlas.
+Antes de empezar se comprobó que las dos IP son distintas, comparándolas sin imprimirlas. Cada IP de salida **la informa un servicio externo** (`api.ipify.org`), no nginx ni la aplicación, así que la comparación posterior contra las claves de la base no es circular:
+
+```text
+$ ssh -N -D 1080 -o ExitOnForwardFailure=yes crm-staging &
+$ echo $! > "$TEMP/tunel.pid"; sleep 4; curl -s --socks5-hostname 127.0.0.1:1080 -o /dev/null -w "tunel: %{http_code}\n" https://crm.vixoraai.app/login; A=$(curl -s https://api.ipify.org); B=$(curl -s --socks5-hostname 127.0.0.1:1080 https://api.ipify.org); [ -n "$A" ] && [ -n "$B" ] && [ "$A" != "$B" ] && echo "dos IP distintas: sí" || echo "dos IP distintas: NO"
+tunel: 200
+dos IP distintas: sí
+```
+
+Este comando y los dos que siguen se agregaron el 2026-09-30, tomados del registro de la sesión, por el hallazgo H1 de la revisión independiente: la evidencia original traía las salidas sin sus comandos.
 
 Los intentos los hizo Chromium con Playwright, por el formulario real, porque el ingreso es una Server Action y un `POST` de `curl` no genera el intento. El script es `medir-ac14.cjs`, en el scratchpad del asistente. Usa correos que no existen (`prueba-NN@ejemplo.invalid`, **uno distinto por intento**, para que no salte el límite por cuenta, que es 5) y una contraseña falsa de 21 caracteres, que pasa la validación del formato y deja su fila (E-4 de la 12.5.1).
 
@@ -1044,7 +1116,58 @@ El orden fue:
 2. desde la IP de staging, 20 fallos y un intento 21;
 3. desde la IP del operador, un fallo más.
 
-Salida literal:
+El script, **completo**. La cabecera falsificada la envía `extraHTTPHeaders` en el contexto del primer intento. La contraseña es falsa y los correos son de un dominio `.invalid`:
+
+```js
+const { chromium } = require("@playwright/test");
+
+const BASE = "https://crm.vixoraai.app";
+const PASSWORD = "contrasena-falsa-2026";
+const XFF_FALSA = "203.0.113.7";
+const SOCKS = "socks5://127.0.0.1:1080";
+
+async function intento(browser, email, opciones = {}) {
+  const context = await browser.newContext(opciones);
+  const page = await context.newPage();
+  await page.goto(`${BASE}/login`);
+  await page.fill("#email", email);
+  await page.fill('input[name="password"]', PASSWORD);
+  await page.click('button[type="submit"]');
+  const mensaje = page.getByText(/Email o contraseña incorrectos\.|Demasiados intentos/);
+  await mensaje.waitFor({ timeout: 30000 });
+  const texto = await mensaje.textContent();
+  await context.close();
+  return texto.trim();
+}
+
+(async () => {
+  const casa = await chromium.launch();
+  const tunel = await chromium.launch({ proxy: { server: SOCKS } });
+  const log = (fase, email, texto) =>
+    console.log(`${new Date().toISOString()} ${fase} ${email}: ${texto}`);
+
+  const e1 = "prueba-xff@ejemplo.invalid";
+  log("casa+xff", e1, await intento(casa, e1, { extraHTTPHeaders: { "x-forwarded-for": XFF_FALSA } }));
+
+  for (let i = 1; i <= 21; i++) {
+    const email = `prueba-${String(i).padStart(2, "0")}@ejemplo.invalid`;
+    log(`tunel#${i}`, email, await intento(tunel, email));
+  }
+
+  const e3 = "prueba-casa@ejemplo.invalid";
+  log("casa", e3, await intento(casa, e3));
+
+  await casa.close();
+  await tunel.close();
+})().catch((error) => {
+  console.error(`FALLA: ${error.message}`);
+  process.exit(1);
+});
+```
+
+`[transcrito]`: se quitaron del script los comentarios de cabecera y de cada fase.
+
+Salida literal de `NODE_PATH=./node_modules node medir-ac14.cjs`:
 
 ```text
 2026-09-29T22:01:46.529Z casa+xff prueba-xff@ejemplo.invalid: Email o contraseña incorrectos.
@@ -1059,9 +1182,10 @@ Salida literal:
 
 `[transcrito]`: se omitieron los intentos 3 a 18 del túnel. Los 20 primeros dieron todos «Email o contraseña incorrectos.».
 
-Después se compararon las claves de IP de `login_attempts` con el `sha256` de cada IP y de la dirección falsificada, **dentro del mismo comando y sin imprimir ninguno de los valores**. Se anota solo a cuál corresponde cada clave, cuántos fallos tiene y a qué hora:
+Después se compararon las claves de IP de `login_attempts` con el `sha256` de cada IP y de la dirección falsificada, **dentro del mismo comando y sin imprimir ninguno de los valores**. Se anota solo a cuál corresponde cada clave, cuántos fallos tiene y a qué hora. Las IP salen otra vez de `api.ipify.org`, y se borran de la shell (`unset`) antes de consultar la base:
 
 ```text
+$ h(){ printf '%s' "$1" | sha256sum | cut -d' ' -f1; }; A=$(curl -s https://api.ipify.org); B=$(curl -s --socks5-hostname 127.0.0.1:1080 https://api.ipify.org); HA=$(h "$A"); HB=$(h "$B"); HX=$(h 203.0.113.7); unset A B; ssh crm-production "sudo -u postgres psql -d crm_production -tA -F ' ' -c \"select key_hash, count(*), to_char(min(attempted_at) at time zone 'UTC','HH24:MI:SS'), to_char(max(attempted_at) at time zone 'UTC','HH24:MI:SS') from login_attempts where scope='ip' and attempted_at > now() - interval '30 minutes' group by key_hash order by 2\"" 2>/dev/null > "$TEMP/filas.txt"; echo "claves de IP en la base (últimos 30 min): $(wc -l < "$TEMP/filas.txt")"; while read -r k n t0 t1; do q="otra"; [ "$k" = "$HA" ] && q="IP del operador"; [ "$k" = "$HB" ] && q="IP de staging (túnel)"; [ "$k" = "$HX" ] && q="LA IP FALSIFICADA"; echo "clave -> $q: $n fallos, de $t0 a $t1 UTC"; done < "$TEMP/filas.txt"; grep -c "$HX" "$TEMP/filas.txt" | sed 's/^/filas con la IP falsificada: /'; rm -f "$TEMP/filas.txt"; ssh crm-production "sudo -u postgres psql -d crm_production -tA -c \"select scope, count(*) from login_attempts where attempted_at > now() - interval '30 minutes' group by scope order by 1\"" 2>/dev/null; kill $(cat "$TEMP/tunel.pid") 2>/dev/null; sleep 1; curl -s -m 3 --socks5-hostname 127.0.0.1:1080 https://crm.vixoraai.app >/dev/null && echo "túnel sigue" || echo "túnel cerrado"
 claves de IP en la base (últimos 30 min): 2
 clave -> IP del operador: 2 fallos, de 22:01:46 a 22:02:42 UTC
 clave -> IP de staging (túnel): 20 fallos, de 22:01:49 a 22:02:37 UTC
@@ -1073,7 +1197,10 @@ túnel cerrado
 
 **AC-14 cumplido, en sus tres partes:**
 1. **Dos IP distintas producen claves distintas**: hay dos claves de IP, cada una igual al hash de su IP.
-2. **Un `x-forwarded-for` falsificado no cambia la IP que ve la aplicación**: el intento con la cabecera falsa quedó con la clave de la IP del operador, y ninguna fila tiene la dirección falsificada. nginx **reemplaza** la cabecera en vez de agregarle (brief-9.1, D-9), y queda un solo salto de proxy.
+2. **Un `x-forwarded-for` falsificado no cambia la IP que ve la aplicación**: el intento con la cabecera falsa quedó con la clave de la IP del operador, y ninguna fila tiene la dirección falsificada. **Lo que esta medición no distingue** (H2 de la revisión independiente): la aplicación lee la **última** entrada de `x-forwarded-for`. Si nginx le *agregara* la IP real a la cabecera del cliente en vez de reemplazarla, la cadena sería `203.0.113.7, <IP real>` y la clave saldría igual. La medición solo fallaría si nginx no fijara la cabecera. Que la **reemplaza** (brief-9.1, D-9), con un solo salto de proxy, sale de otro lado:
+- de la configuración (`proxy_set_header X-Forwarded-For $remote_addr`);
+- de su guarda, con la mutación `$proxy_add_x_forwarded_for` en AC-3;
+- del `diff` servidor contra repositorio en AC-20.
 3. **20 fallos desde una IP no bloquean el ingreso desde otra**: el intento 21 desde staging salió bloqueado por 15 minutos, y el siguiente desde la IP del operador se evaluó normal («Email o contraseña incorrectos.», no «Demasiados intentos»).
 
 Los recuentos cierran: 22 filas por cuenta y 22 por IP (1 + 20 + 1). El intento 21 no dejó fila, porque el límite corta antes de contar. **Lo que quedó en producción**: esas 44 filas de `login_attempts`, con hashes de correos inexistentes y de las dos IP, que caducan de la ventana a los 15 minutos. No se crearon cuentas.
@@ -1089,28 +1216,46 @@ Los recuentos cierran: 22 filas por cuenta y 22 por IP (1 + 20 + 1). El intento 
 
 El umbral de 16 caracteres deja fuera valores cortos que no son secretos, como puertos o nombres de región. Las contraseñas y claves generadas para producción son todas más largas.
 
-**Producción contra staging:**
+**Producción contra staging**, y los permisos:
 
 ```text
-valores de 16+ caracteres: producción 12, staging 7
-coincidencias producción-staging: 0
-control, producción contra sí misma: 12 de 12
+$ EXTRAER='for f in $(sudo find /etc/crm-DIR -maxdepth 1 -type f); do sudo sed -n "s/^[A-Za-z_]*[ ]*=[ ]*//p" "$f"; sudo sed -n "s#.*://[^:]*:\([^@]*\)@.*#\1#p" "$f"; sudo awk -F: "NF==5{print \$5}" "$f"; done | grep -E ".{16,}" | sort -u | while read -r v; do printf "%s" "$v" | sha256sum | cut -d" " -f1; done'; ssh crm-production "${EXTRAER//DIR/production}" 2>/dev/null | sort -u > "$TEMP/hp.txt"; ssh crm-staging "${EXTRAER//DIR/staging}" 2>/dev/null | sort -u > "$TEMP/hs.txt"; echo "valores de 16+ caracteres en producción: $(wc -l < "$TEMP/hp.txt")"; echo "valores de 16+ caracteres en staging: $(wc -l < "$TEMP/hs.txt")"; echo "coincidencias: $(comm -12 "$TEMP/hp.txt" "$TEMP/hs.txt" | wc -l)"; rm -f "$TEMP/hp.txt" "$TEMP/hs.txt"; echo "--- permisos"; ssh crm-production 'date -u +"%Y-%m-%dT%H:%M:%SZ"; sudo ls -la /etc/crm-production/' 2>&1 | grep -v Pseudo
+valores de 16+ caracteres en producción: 12
+valores de 16+ caracteres en staging: 7
+coincidencias: 0
+--- permisos
+2026-09-29T22:03:53Z
+total 32
+drwx------   2 root root 4096 Sep 29 21:23 .
+drwxr-xr-x 112 root root 4096 Sep 29 20:48 ..
+-rw-------   1 root root  174 Sep 29 20:58 app.env
+-rw-------   1 root root   63 Sep 29 21:15 backup.age.pub
+-rw-------   1 root root  361 Sep 29 21:15 backup.env
+-rw-------   1 root root  105 Sep 29 21:15 backup.pgpass
+-rw-------   1 root root  131 Sep 29 20:38 migrate.env
+-rw-------   1 root root  197 Sep 29 21:23 rclone.conf
 ```
 
-El control prueba que el método encuentra una coincidencia cuando existe, así que el 0 no sale de un cruce roto.
-
-**Producción contra el repositorio y la CI:**
+**El control, el repositorio y la CI**, en un segundo comando. El control extrae dos veces los valores de producción y los cruza entre sí. Sirve para probar que el método encuentra una coincidencia cuando existe, así que el 0 de arriba no sale de un cruce roto:
 
 ```text
+$ EXTRAER='…el mismo, con /etc/crm-production…'; ssh crm-production "$EXTRAER" 2>/dev/null | sort -u > "$TEMP/hp.txt"; ssh crm-production "$EXTRAER" 2>/dev/null | sort -u > "$TEMP/hp2.txt"; echo "control, producción contra sí misma: $(comm -12 "$TEMP/hp.txt" "$TEMP/hp2.txt" | wc -l) de $(wc -l < "$TEMP/hp.txt")"; git ls-files -z | xargs -0 grep -ohE "[A-Za-z0-9+/_.:@-]{16,}" 2>/dev/null | sort -u | while read -r v; do printf "%s" "$v" | sha256sum | cut -d' ' -f1; done | sort -u > "$TEMP/hr.txt"; echo "cadenas de 16+ caracteres en el repositorio: $(wc -l < "$TEMP/hr.txt")"; echo "coincidencias producción-repositorio: $(comm -12 "$TEMP/hp.txt" "$TEMP/hr.txt" | wc -l)"; comm -12 "$TEMP/hp.txt" "$TEMP/hr.txt" > "$TEMP/coinc.txt"; rm -f "$TEMP/hp2.txt" "$TEMP/hr.txt"; echo "--- secretos de GitHub Actions"; gh secret list 2>&1; gh variable list 2>&1; echo "(fin)"
+control, producción contra sí misma: 12 de 12
 cadenas de 16+ caracteres en el repositorio: 6607
 coincidencias producción-repositorio: 6
 --- secretos de GitHub Actions
 (fin)
 ```
 
-GitHub Actions no tiene secretos ni variables. Las 6 coincidencias se identificaron por nombre de clave, sin valores, etiquetando cada hash del droplet con su archivo y su clave:
+`[transcrito]`: el primer `EXTRAER` del comando se abrevió con `…`. Es el del bloque anterior, con la ruta fija a `/etc/crm-production`.
+
+Entre el encabezado y `(fin)` corrieron **dos** comandos: `gh secret list` y `gh variable list`. Ninguno imprimió nada, así que **GitHub Actions no tiene secretos ni variables**. El encabezado nombra solo los secretos.
+
+Las 6 coincidencias se identificaron por nombre de clave, sin valores. Cada hash del droplet se etiquetó con su archivo y su clave, y se filtró contra los 6 hashes coincidentes:
 
 ```text
+$ ETIQ='for f in $(sudo find /etc/crm-production -maxdepth 1 -type f); do n=$(basename "$f"); sudo sed -n "s/^\([A-Za-z_]*\)[ ]*=[ ]*\(.*\)/\1\t\2/p" "$f" | while IFS="$(printf "\t")" read -r k v; do [ ${#v} -ge 16 ] && echo "$n:$k $(printf "%s" "$v" | sha256sum | cut -d" " -f1)"; done; …(lo mismo para la contraseña de cada URL y el quinto campo de backup.pgpass)…; done'; ssh crm-production "$ETIQ" 2>/dev/null > "$TEMP/etiq.txt"; echo "etiquetas: $(wc -l < "$TEMP/etiq.txt")"; echo "--- claves de producción que aparecen en el repositorio:"; grep -F -f "$TEMP/coinc.txt" "$TEMP/etiq.txt" | cut -d" " -f1 | sort -u; echo "(fin)"
+etiquetas: 13
 --- claves de producción que aparecen en el repositorio:
 backup.env:BACKUP_AGE_RECIPIENTS
 backup.env:BACKUP_DIR
@@ -1118,7 +1263,10 @@ backup.env:OFFSITE_REMOTE
 backup.env:PGPASSFILE
 backup.env:RCLONE_CONFIG
 rclone.conf:endpoint
+(fin)
 ```
+
+`[transcrito]`: en `ETIQ` se resumieron entre `…` los dos ciclos que etiquetan la contraseña de las URL y el quinto campo de `backup.pgpass`, con la misma forma que el primero.
 
 Las seis son **configuración, no secretos**: rutas, el nombre del remoto, la ruta del archivo de destinatarios age y el endpoint de Spaces. El README de producción y los scripts las documentan a propósito.
 
@@ -1133,7 +1281,7 @@ Son 7 de las 13 etiquetas. Las etiquetas son 13 y los valores únicos 12 porque 
 **Permisos:**
 
 ```text
-$ sudo ls -la /etc/crm-production
+$ ssh crm-production 'sudo ls -la /etc/crm-production'
 total 32
 drwx------   2 root root 4096 Sep 29 21:23 .
 drwxr-xr-x 112 root root 4096 Sep 29 20:48 ..
@@ -1158,7 +1306,40 @@ Autorizado por el usuario en su turno. Se siguió el [README](../../deploy/produ
 1. se desplegó un SHA posterior;
 2. se volvió al anterior, tomado de la última línea de `/var/lib/crm-production/despliegues`.
 
-Los pasos 2 y 3 del README corrieron **al pie de la letra** dentro de un guion (`desplegar.sh`, en el scratchpad del asistente, fuera del repositorio). El guion agrega marcas de tiempo, espera a que `/login` responda 200 (hasta 60 s) y muestra el SHA antes y después.
+Los pasos 2 y 3 del README, **en su versión de ese día**, corrieron dentro de un guion. Los comandos son los del README, con cuatro agregados que solo cambian lo que se imprime: `-q`, `--loglevel=error`, `| tail` y la redirección del log del build. El paso 3 del README se reescribió después, por H3. El guion es `desplegar.sh`, del scratchpad del asistente, fuera del repositorio. Agrega marcas de tiempo, espera a que `/login` responda 200 (hasta 60 s) y muestra el SHA antes y después.
+
+El guion, sin sus comentarios. Se agregó el 2026-09-30 por la revisión independiente, porque no estaba registrado en ningún lado. `SHA` le llega por el entorno de la invocación, así que no tuvo el defecto H3 del README:
+
+```bash
+set -euo pipefail
+: "${SHA:?falta SHA}"
+t0=$(date +%s)
+marca() { echo "[$(date -u +%H:%M:%S) +$(( $(date +%s) - t0 ))s] $*"; }
+marca "desplegado antes: $(sudo -u crm git -C /srv/crm-production rev-parse HEAD)"
+sudo -u crm git -C /srv/crm-production rev-parse HEAD | sudo tee -a /var/lib/crm-production/despliegues > /dev/null
+marca "anotado; últimas líneas de despliegues:"
+sudo tail -n 3 /var/lib/crm-production/despliegues
+sudo -u crm bash -c "cd /srv/crm-production && git fetch -q && git checkout -q --detach $SHA && npm ci --no-audit --no-fund --loglevel=error"
+marca "código y dependencias: $(sudo -u crm git -C /srv/crm-production rev-parse HEAD)"
+sudo bash -c "set -a && . /etc/crm-production/migrate.env && set +a && cd /srv/crm-production && exec sudo -u crm --preserve-env=DATABASE_URL npm run db:migrate" 2>&1 | tail -n 2
+marca "migraciones"
+sudo bash -c "set -a && . /etc/crm-production/app.env && set +a && cd /srv/crm-production && exec sudo -u crm --preserve-env=NODE_ENV,PORT,HOSTNAME,DATABASE_URL,TRUSTED_PROXY npm run build" > /tmp/build-ac21.log 2>&1 \
+  || { tail -n 30 /tmp/build-ac21.log; exit 1; }
+marca "build"
+sudo systemctl restart crm-production
+marca "restart"
+for i in $(seq 1 60); do
+  codigo=$(curl -s -o /dev/null -w '%{http_code}' https://crm.vixoraai.app/login || true)
+  [[ $codigo == 200 ]] && break
+  sleep 1
+done
+marca "/login -> $codigo"
+marca "servicio: $(systemctl is-active crm-production), NRestarts=$(systemctl show -p NRestarts --value crm-production)"
+marca "desplegado ahora: $(sudo -u crm git -C /srv/crm-production rev-parse HEAD)"
+rm -f /tmp/build-ac21.log
+```
+
+**Límite del guion**: imprime el SHA desplegado al final pero **no lo compara** con el pedido. En las dos corridas coincidió, y así se lee abajo. La comparación la agregó el README corregido.
 
 **El SHA de ida fue `c8fde19`, no el último commit.** `3ade19b` tenía la CI todavía `in_progress`, y el README solo permite desplegar un SHA con `success` (D-4). Entre `938423d` y `c8fde19` no hay migraciones ni cambios en `src/`: cambian `deploy/`, `tests/` y `docs/`. El ensayo mide entonces el **mecanismo** de despliegue y vuelta atrás, no la compatibilidad de un código distinto con el esquema. Ese riesgo está escrito en el README, §«Lo que la vuelta atrás no deshace».
 
@@ -1225,6 +1406,7 @@ Migraciones aplicadas.
 **Después, desde afuera:**
 
 ```text
+$ date -u +%FT%TZ; for u in /login /api/health; do printf "GET %s -> " $u; curl -s -o /dev/null -w '%{http_code}\n' https://crm.vixoraai.app$u; done; for u in /api/ingestion/v1/events /api/ingestion/v2/events; do printf "POST %s -> " $u; curl -s -o /dev/null -w '%{http_code}\n' -X POST https://crm.vixoraai.app$u; done; printf "GET /api/read/v1/products -> "; curl -s -o /dev/null -w '%{http_code}\n' https://crm.vixoraai.app/api/read/v1/products; printf "HSTS: "; curl -sI https://crm.vixoraai.app/login | grep -i strict-transport || echo "ausente"; ssh crm-production 'sudo tail -n 3 /var/lib/crm-production/despliegues; systemctl is-active crm-production crm-backup.timer crm-restore-check.timer'
 2026-09-29T23:04:37Z
 GET /login -> 200
 GET /api/health -> 200
@@ -1287,11 +1469,20 @@ Thu 2026-10-01 04:37:02 UTC  17h Tue 2026-09-29 21:27:10 UTC      - crm-restore-
       278 2026-09-30 03:17:01.331696307 crm_production-20260930T031700Z.dump.recuentos
 ```
 
-`[transcrito]`: en el comando se abreviaron con `...` las opciones de `journalctl` y la ruta de `rclone.conf`, y de la salida se quitaron las dos líneas de ayuda de `list-timers`.
+`[transcrito]`, en tres puntos:
+- En el comando se abreviaron con `...` las opciones de `journalctl` y la ruta de `rclone.conf`.
+- Lo que no se declaró hasta la revisión independiente (H12): la salida de `journalctl` **pasó por un filtro**, `grep -E "Started|Finished|Deactivated|backup:|cifrado:|rotado|subido|Failed|ERROR"`. Por eso faltan líneas que los scripts imprimen siempre: `tamano:` y `sha256:` del backup, y `retencion externa:` de la copia externa. El filtro deja pasar cualquier `Failed` o `ERROR`, así que no ocultó una falla.
+- De la salida se quitaron las dos líneas de ayuda de `list-timers`.
 
 **La copia, bajada del bucket** a la máquina del operador (`~/crm-ac18`), con el `rclone` del droplet (`rclone cat`), para no tener credenciales del bucket fuera del servidor:
 
 ```text
+$ cd ~/crm-ac18 && B=crm_production-20260930T031700Z.dump; for s in .age .age.sha256 .recuentos; do ssh crm-production "sudo rclone --config /etc/crm-production/rclone.conf cat spaces:crm-production-backups/$B$s" > "$B$s"; done; ls -l; echo "--- sha256 del .age bajado contra el .sha256 del bucket:"; sha256sum -c <(printf "%s  %s\n" "$(cat $B.age.sha256)" $B.age); echo "--- cabecera:"; head -c 21 $B.age; echo; echo "--- manifiesto:"; cat $B.recuentos
+total 70
+-rw-r--r-- 1 benja 197609 67605 Sep 30 08:15 crm_production-20260930T031700Z.dump.age
+-rw-r--r-- 1 benja 197609    65 Sep 30 08:15 crm_production-20260930T031700Z.dump.age.sha256
+-rw-r--r-- 1 benja 197609   278 Sep 30 08:15 crm_production-20260930T031700Z.dump.recuentos
+--- sha256 del .age bajado contra el .sha256 del bucket:
 crm_production-20260930T031700Z.dump.age: OK
 --- cabecera:
 age-encryption.org/v1
@@ -1315,7 +1506,7 @@ sessions 2
 users 1
 ```
 
-La primera línea es el `sha256` del `.age` bajado, contra el `.age.sha256` del bucket.
+El `OK` es el `sha256` del `.age` bajado, contra el `.age.sha256` del bucket.
 
 **El descifrado lo hizo el usuario**, en su terminal, con la clave privada que nunca estuvo en el droplet ni pasó por la conversación:
 
@@ -1330,8 +1521,11 @@ $ ls -l crm_production-20260930T031700Z.dump
 El dump descifrado se comparó con la suma en claro que el servidor escribió al hacer el backup (`.dump.sha256`), en un mismo comando y sin imprimir ninguna de las dos:
 
 ```text
+$ cd ~/crm-ac18 && B=crm_production-20260930T031700Z.dump; servidor=$(ssh crm-production "sudo cat /var/backups/crm-production/$B.sha256"); local_=$(sha256sum $B | cut -d' ' -f1); [ -n "$servidor" ] && [ "$servidor" = "$local_" ] && echo "sha256 del dump descifrado = sha256 que escribió el servidor: SÍ" || echo "NO COINCIDE (o vacío)"
 sha256 del dump descifrado = sha256 que escribió el servidor: SÍ
 ```
+
+Más abajo, `crm-restore-check.sh` imprime el `sha256` completo del dump, porque siempre lo hace. No es un secreto: identifica el archivo, no permite reconstruirlo. Que esta comparación no lo imprimiera fue una elección de método, no una necesidad.
 
 **La restauración, en una máquina nueva.** Se usó un contenedor `postgres:18.6-trixie` descartable, con `--network none` y sin los roles del proyecto, que se borró al terminar. El guion (`restaurar-ac18.sh`, en el scratchpad del asistente) sigue el [runbook](../runbooks/restaurar-la-base.md):
 - la trampa 1;
@@ -1342,6 +1536,7 @@ sha256 del dump descifrado = sha256 que escribió el servidor: SÍ
 Imprime solo recuentos y resultados. Salida literal:
 
 ```text
+$ date -u +%FT%TZ && MSYS_NO_PATHCONV=1 CHECK_SCRIPT="$(cygpath -m "$PWD/deploy/production/crm-restore-check.sh")" bash restaurar-ac18.sh "$(cygpath -m ~/crm-ac18)" crm_production-20260930T031700Z.dump
 2026-09-30T11:23:30Z
 
 == contenedor descartable, sin red ==
@@ -1403,7 +1598,7 @@ salida: 1
 contenedor crm-ac18: borrado
 ```
 
-`[transcrito]`: el guion filtró las 17 líneas `tabla recuento` que `crm-restore-check.sh` imprime al mostrar el manifiesto. Son las mismas del manifiesto de arriba. Al control negativo se le dejaron solo sus últimas 6 líneas.
+`[transcrito]`: en el comando, la ruta de `restaurar-ac18.sh` en el scratchpad se abrevió a su nombre. Además, el guion filtró las 17 líneas `tabla recuento` que `crm-restore-check.sh` imprime al mostrar el manifiesto. Son las mismas del manifiesto de arriba. Al control negativo se le dejaron solo sus últimas 6 líneas.
 
 Al terminar se borró `~/crm-ac18` con el dump en claro, como pide el runbook, y se comprobó que el contenedor ya no existe.
 
@@ -1423,3 +1618,205 @@ Al terminar se borró `~/crm-ac18` con el dump en claro, como pide el runbook, y
 - Dentro del contenedor, la «base de origen» contra la que `crm-restore-check.sh` compara el conjunto de tablas y los dueños **es la misma restauración** del paso 4. Esas dos comparaciones son tautológicas acá. Las que prueban algo son el manifiesto, que viene del servidor, y la igualdad del `sha256` con el dump en claro del servidor.
 - Como en staging, no se compara ni un valor de columna. Lo acota el `sha256`.
 - No se probó que la aplicación arranque sobre la base restaurada: eso lo cubrió el simulacro de staging de la 9.2, y en producción no hace falta para el criterio.
+
+## AC-23: la revisión independiente (D-11), 2026-09-30
+
+Un agente de solo lectura que no participó del trabajo revisó la subfase contra el brief, con la escala de severidad fijada antes de empezar. No tenía acceso al servidor: lo de la 13.1.2 lo conoció por esta evidencia.
+
+**Resultado:**
+- 14 hallazgos, **ninguno crítico ni mayor**.
+- **H1 tocaba el instrumento de H-3** y, por la regla de parada de D-11, la subfase no se cerraba sin resolverlo.
+
+El revisor señaló además que el brief usa «H-3» para dos cosas: la IP detrás del proxy (O-29) y la vuelta atrás. **El usuario decidió que la D-11 se refiere a O-29**, porque hereda la regla de la 9.1.
+
+**Verificación antes de aceptarlos.** El asistente verificó los 14 contra el código, y los 14 se confirmaron.
+
+Para H1 revisó en el registro de la sesión las dos dudas que el revisor no podía cerrar leyendo:
+- la IP del operador salió de un servicio externo (`api.ipify.org`), así que la comparación no era circular;
+- el script sí enviaba la cabecera falsificada.
+
+**El usuario aprobó corregir los 14 en una sola tanda, y hacer después una verificación independiente breve de las correcciones.**
+
+| # | Hallazgo | Corrección |
+| --- | --- | --- |
+| H1 | AC-14 sin comandos ni script: el instrumento de H-3 no se podía auditar leyendo | AC-14 trae ahora los tres comandos y el script completo, tomados del registro de la sesión. No se repitió la medición |
+| H2 | La evidencia atribuía a la medición que nginx *reemplaza* la cabecera, y la medición no distingue reemplazar de agregar | Declarado en AC-14. Que la reemplaza sale de la configuración, de su guarda y del `diff` de AC-20 |
+| H3 | README, paso 3: `$SHA` se definía en la máquina del operador y se usaba en el servidor. Con `SHA` vacío, `git checkout --detach` no cambia de versión y el despliegue «sale bien» | El paso 3 corre desde la máquina del operador, con `SHA` expandido antes del `ssh`, `test -n`, `set -e` y la comparación final de HEAD contra el SHA pedido. Probado en seco en el servidor, sin desplegar: sale 0 con el SHA corriendo, 1 con otro SHA y 1 con `SHA` vacío. Se agregaron el clonado y `core.sshCommand`, leído del servidor |
+| H4 | README, paso 6: la contraseña de `crm_app_login` iba en los argumentos de `psql` | Los pasos 5 y 6 usan el método del aprovisionamiento real: la genera `openssl`, la escribe `printf` y llega a `psql` por la entrada estándar |
+| H5 | README: «el entorno no existe todavía» | Estado actualizado |
+| H6 | README pedía `postgresql-contrib`, y la evidencia decía que no hacía falta | Corregido en el README |
+| H7 | La versión exacta de Node no estaba en el README (D-6) | El README trae `nodejs=24.21.0-1nodesource1` y `postgresql-18=18.6-1.pgdg24.04+2`. Se midió que **no están retenidos** (`apt-mark showhold` vacío) y que `unattended-upgrades` no los toca. Retenerlos cambiaba el servidor: el usuario lo autorizó y quedaron retenidos (salida en «Las mediciones de las correcciones») |
+| H8 | Solo la guarda del proxy fallaba ante un directorio de `deploy/` sin cubrir | Las guardas de backup y de PostgreSQL comprueban su propia lista. Mutación: con un `deploy/demo` temporal, **las tres** fallan (2 casos cada una); se borró el directorio |
+| H9 | Tres casos de guarda comprobaban su propia mutación, no el detector | Borrados, con un comentario que remite a la mutación real de AC-3 |
+| H10 | El runbook no decía de dónde salen las credenciales del bucket si se pierde el droplet, y marcaba «ejecutado» un paso que se corrió de otra forma | El runbook trae los dos casos: con el droplet vivo, lo ejecutado; con el droplet perdido, una clave nueva desde el panel, **diseñado, no ejecutado**. La fila de la tabla dice cómo se bajó de verdad |
+| H11 | «Todo lo de arriba vale para producción» dejaba tres huecos | El runbook agrega: `crm_owner` con login después de restaurar, la URL de producción y la comprobación de los 11 archivos. Ese ciclo **se corrió contra el servidor: los 11 coinciden**. Al escribirlo apareció un error propio: el `pgpass` real usa `127.0.0.1`, igual que `PGHOST`, y no `localhost`. Se corrigió antes de versionar |
+| H12 | Comandos abreviados sin `[transcrito]`, bloques sin comando, y un filtro `grep` sin declarar en el journal del timer | Los seis comandos abreviados se marcaron. Los bloques de AC-9/10/12, AC-17, AC-18 y AC-19 traen sus comandos, tomados del registro de la sesión. Se declaró el filtro, y se aclaró el `sha256` que imprime `crm-restore-check.sh` |
+| H13 | AC-6 midió ICU `153.128.46` y producción tiene `153.121.44.8`, y la evidencia decía «es lo mismo» | Declarado como inferencia. El riesgo que esta corrección agregó estaba mal descrito; ver N2 |
+| H14 | En el comando de `org:create` del README, `<correo>` lo rechazaba la shell y `'<organización>'` el script lo aceptaba | El README pide los valores con `read`, sin marcadores. El paso de variables por `sudo` se probó en el servidor con un valor con apóstrofo, sin tocar la base. La nota de esta evidencia que decía lo contrario se corrigió |
+
+**Un defecto que no vio el revisor, encontrado al corregir H12.** El bloque «producción contra staging» de AC-19 **no era literal**: juntaba en uno la salida de dos comandos distintos, con otro formato, y no estaba marcado. Se reemplazó por los dos comandos con su salida literal, tomados del registro de la sesión. Las cifras no cambian: 12, 7, 0, y el control 12 de 12.
+
+**Guardas**: 398 de 398, contra 397 antes: se sacaron 3 casos y se agregaron 4. **Intermitencia**: 2 de las 6 corridas completas dieron 1 falla, siempre en el mismo caso de `module-boundary.test.ts`: el primero, que arranca ESLint. Lo que se midió:
+- en las corridas verdes ese caso tarda unos 5,7 s (5752 y 5659 ms), y el archivo solo, 4,7 s en total;
+- en las que fallaron, llegó a 45 s y superó el `testTimeout` de 30 s.
+
+**No lo causan estos cambios.** Contra el último commit (`4cc884e`), en un worktree aparte, ese mismo caso tardó 27,8 s en la primera corrida y 3,4 y 3,6 s en las siguientes. Arrancar ESLint en frío ya estaba al borde del límite de 30 s antes de esta tanda, y con la máquina cargada lo supera. Al final de la tanda se contaron 3 fallas en 9 corridas completas. No se agrandó el timeout, y queda como hallazgo aparte, fuera de la 13.1.
+
+Ese worktree mostró además otra cosa, también ajena a la 13.1: al hacer el checkout en esta máquina, Git escribe los scripts con finales de línea CRLF (`core.autocrlf`), y la guarda de backup falla con 17 casos (`sort \ no está modelado`). La copia de trabajo actual tiene LF y pasa. Un `.gitattributes` que fije LF para `deploy/**` lo resolvería. Queda anotado.
+
+**La verificación independiente de las correcciones.** La hizo otro agente, que no participó ni de la subfase, ni de la revisión, ni de las correcciones. Resultado:
+- de los 14, 11 resueltos y 3 parciales (H10, H12 y H13), ninguno sin resolver;
+- **H1 resuelto**, así que la regla de parada de D-11 ya no aplica;
+- **7 hallazgos nuevos, todos menores**, ninguno sobre el instrumento de H-3.
+
+El asistente verificó los 7 contra el código y el servidor, y los 7 se confirmaron. Se corrigieron así:
+
+| # | Hallazgo | Corrección |
+| --- | --- | --- |
+| N1 | Ni el README ni el runbook creaban `/etc/crm-production/`. Sin el directorio, el rol se creaba con una contraseña que ningún archivo tiene | `install -d`, y la contraseña encadenada con `&&` a la escritura del archivo: si falla una, no corre la otra |
+| N2 | El riesgo de ICU agregado por H13 estaba mal descrito. El real es que `pg_restore` sin `--create` toma la configuración regional de `template1`, y **una recuperación con el runbook perdía la ICU `es` de D-7** | Medido en el droplet y en un contenedor (AC-6, arriba). El runbook crea la base con ICU `es` en producción, y se retiró la afirmación falsa sobre AC-18, que también quedó en libc |
+| N3 | La fila del runbook decía que la bajada no se hizo «como dice el punto 2», y el punto 2 ya describe ese camino | Reescrita |
+| N4 | Los marcadores sin comillas del runbook (`<remoto>:<bucket>`, `<archivo de la clave privada>`) y del README (`<ref a desplegar>`) eran la misma clase de defecto que H14 | Reemplazados por `read` y variables. El paso 1 del README hace `unset SHA` primero, y se probó en local con un SHA, una rama y una referencia inexistente |
+| N5 | El clonado remitía a un paso que no se puede usar ahí: corre en otra máquina y migra, compila y reinicia | Comando propio desde la máquina del operador, con `test -n` y la comparación de HEAD |
+| N6 | Mediciones de las correcciones afirmadas sin salida en la evidencia | La subsección siguiente las trae, con comando y salida |
+| N7 | Tres frases de estado viejas: «la revisión viene después», «al pie de la letra» sobre AC-21 y «SecurityModel se vuelve a tocar» | Actualizadas |
+
+**Los tres parciales**:
+- H10 se cerró con N3 y N4.
+- H13 se cerró con N2.
+- H12 se cerró declarando al principio de este archivo los bloques que siguen sin comando, porque salieron de guiones o comandos que no se registraron, y corrigiendo el `ls` de AC-19, que no traía el `ssh`.
+
+Fuera de las correcciones, el verificador notó que `deploy/staging/README.md` dice que `contrib` trae `unaccent`. No se tocó: es staging y no es parte de la 13.1.
+
+**Las decisiones del usuario, 2026-09-30**:
+- **aceptó las correcciones y dio por cumplido el AC-23**, sin una tercera ronda de revisión;
+- autorizó retener Node y PostgreSQL (H7). Quedó hecho; la salida está al final de la subsección siguiente;
+- pidió registrar en Notion, para después de la 13.1, la nota de `contrib` del README de staging, el timeout de `module-boundary` y la regla de `.gitattributes` para `deploy/**`.
+
+### Las mediciones de las correcciones, 2026-09-30
+
+Las correcciones de arriba afirmaban mediciones que esta evidencia no traía (N6 de la verificación independiente). Acá van, con comando y salida literal. Todas son de solo lectura en el servidor, salvo que se diga otra cosa.
+
+**H7, versiones y retención:**
+
+```text
+$ ssh crm-production 'apt-mark showhold; echo "---"; node --version; dpkg-query -W -f="\${Package} \${Version}\n" nodejs postgresql-18'
+---
+v24.21.0
+nodejs 24.21.0-1nodesource1
+postgresql-18 18.6-1.pgdg24.04+2
+$ ssh crm-production 'systemctl is-enabled unattended-upgrades 2>&1; grep -v "^\s*//" /etc/apt/apt.conf.d/50unattended-upgrades | sed -n "/Allowed-Origins/,/};/p;/Origins-Pattern/,/};/p" | grep -v "^\s*$"; apt-cache policy nodejs postgresql-18 | grep -E "^[a-z]|Installed|Candidate"'
+enabled
+Unattended-Upgrade::Allowed-Origins {
+	"${distro_id}:${distro_codename}";
+	"${distro_id}:${distro_codename}-security";
+	"${distro_id}ESMApps:${distro_codename}-apps-security";
+	"${distro_id}ESM:${distro_codename}-infra-security";
+};
+nodejs:
+  Installed: 24.21.0-1nodesource1
+  Candidate: 24.21.0-1nodesource1
+postgresql-18:
+  Installed: 18.6-1.pgdg24.04+2
+  Candidate: 18.6-1.pgdg24.04+2
+```
+
+`apt-mark showhold` no imprime nada antes del `---`. `unattended-upgrades` solo acepta los orígenes de Ubuntu y de ESM, sin `Origins-Pattern`. NodeSource y `pgdg` quedan fuera.
+
+Con la autorización del usuario, después de aceptar el AC-23, se retuvieron los dos paquetes:
+
+```text
+$ ssh crm-production 'sudo apt-mark hold nodejs postgresql-18; echo "---"; apt-mark showhold'
+nodejs set on hold.
+postgresql-18 set on hold.
+---
+nodejs
+postgresql-18
+```
+
+**H3, el paso 3 nuevo del README, en seco.** Se usaron los mismos `test`, y el checkout se reemplazó por un `echo`:
+
+```text
+$ for SHA in 938423d0a832e65eb9c42474c51a47a44c54689e c8fde194eea6bfaa39e6e758284b2ad1eabb959f ""; do echo "=== SHA='${SHA:0:7}'"; ssh crm-production "set -euo pipefail
+test -n '$SHA'
+sudo -u crm bash -c 'cd /srv/crm-production && echo simulado: git checkout --detach $SHA'
+test \"\$(sudo -u crm git -C /srv/crm-production rev-parse HEAD)\" = '$SHA' && echo 'desplegado: $SHA'"; echo "salida: $?"; done
+=== SHA='938423d'
+simulado: git checkout --detach 938423d0a832e65eb9c42474c51a47a44c54689e
+desplegado: 938423d0a832e65eb9c42474c51a47a44c54689e
+salida: 0
+=== SHA='c8fde19'
+simulado: git checkout --detach c8fde194eea6bfaa39e6e758284b2ad1eabb959f
+salida: 1
+=== SHA=''
+salida: 1
+```
+
+**N4, el paso 1 nuevo del README**, en la máquina del operador:
+
+```text
+$ SHA=viejo; for entrada in 938423d main no-existe; do unset SHA; read -r REF <<< "$entrada"; SHA=$(git rev-parse --verify "$REF^{commit}" 2>/dev/null) && echo "$entrada -> SHA: $SHA" || echo "$entrada -> falló, SHA='${SHA:-}'"; done
+938423d -> SHA: 938423d0a832e65eb9c42474c51a47a44c54689e
+main -> SHA: 4cc884e63517d306e3a2cd85c0b96b038189dc70
+no-existe -> falló, SHA=''
+```
+
+**H14, que `sudo` pasa las variables al `bash -c`**, con un apóstrofo en el valor y sin tocar la base:
+
+```text
+$ ssh crm-production 'ORG="Mi Org d'"'"'Prueba"; sudo ORG="$ORG" bash -c '"'"'printf "[%s]\n" "$ORG"; exec sudo -u crm --preserve-env=ORG bash -c "printf \"como crm: [%s]\n\" \"\$ORG\""'"'"''
+[Mi Org d'Prueba]
+como crm: [Mi Org d'Prueba]
+```
+
+**H11, el `backup.pgpass` real y los 11 archivos.** Del `pgpass` se leyeron solo los primeros cuatro campos, sin la contraseña:
+
+```text
+$ ssh crm-production 'sudo cut -d: -f1-4 /etc/crm-production/backup.pgpass'
+127.0.0.1:5432:crm_production:crm_owner
+$ ssh crm-production 'sudo grep -E "^PGHOST=" /etc/crm-production/backup.env'
+PGHOST=127.0.0.1
+```
+
+El ciclo de los 11 archivos es el del runbook, §Producción, punto 5:
+
+```text
+crm-backup.sh OK
+crm-backup-offsite.sh OK
+crm-restore-check.sh OK
+crm-production.service OK
+crm-backup.service OK
+crm-backup-offsite.service OK
+crm-backup.timer OK
+crm-restore-check.service OK
+crm-restore-check.timer OK
+nginx OK
+postgresql OK
+```
+
+`[transcrito]`: el comando no se repite acá; es el del runbook.
+
+**H8, la mutación con un directorio sin guarda.** Se creó `deploy/demo` vacío, se corrió cada guarda y se borró el directorio:
+
+```text
+$ mkdir deploy/demo && for g in proxy backup postgres; do printf "%s: " $g; npx vitest run --project guards tests/guards/staging-$g-config.test.ts 2>&1 | grep -E "^\s+Tests " ; done; rmdir deploy/demo; ls deploy
+proxy:       Tests  2 failed | 38 passed (40)
+backup:       Tests  2 failed | 114 passed (116)
+postgres:       Tests  2 failed | 35 passed (37)
+production
+staging
+```
+
+**Datos de la app**: las claves de `app.env`, leídas sin valores:
+
+```text
+$ ssh crm-production 'sudo sed -n "s/=.*//p" /etc/crm-production/app.env; echo ---; sudo grep -E "^(TRUSTED_PROXY|NODE_ENV|PORT|HOSTNAME)=" /etc/crm-production/app.env'
+DATABASE_URL
+TRUSTED_PROXY
+NODE_ENV
+---
+TRUSTED_PROXY=true
+NODE_ENV=production
+```
+
+**N2** tiene sus dos bloques en AC-6, más arriba: la configuración regional de las bases del droplet y la prueba de `createdb` en un contenedor.

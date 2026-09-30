@@ -4,7 +4,7 @@ Configuración versionada del entorno `crm.vixoraai.app` ([brief-13.1](../../doc
 
 Es el mecanismo de staging ([deploy/staging/README.md](../staging/README.md)), que se verificó en la 9.1 y la 9.2, con las diferencias de la tabla de abajo. **Todo lo que este README no dice se hace como en staging.** Las tres guardas de `tests/guards/staging-*.test.ts` fijan los dos directorios desde la 13.1 (D-12), y fallan si aparece un directorio nuevo bajo `deploy/` sin cubrir.
 
-**Estado al 2026-09-29**: el entorno **no existe todavía**. Estos archivos son la etapa 13.1.1: están validados en local y en CI, y todavía no se desplegaron en ninguna máquina. Lo que los ejercita de verdad es la 13.1.2.
+**Estado al 2026-09-30**: **desplegado**. El entorno existe desde el 2026-09-29 y corre la configuración de este directorio. La etapa 13.1.1 escribió estos archivos, y la 13.1.2 los desplegó y los verificó contra el entorno ([evidencia-13.1](../../docs/decisions/evidencia-13.1-produccion.md)).
 
 ## Diferencias con staging
 
@@ -64,7 +64,20 @@ Es el orden de staging, con los cambios marcados. **Cada paso que crea algo afue
 
 1. **El droplet**: Ubuntu 24.04, 2 GB o más, en la misma región que staging. **Sin** backups ni snapshots del proveedor. El acceso es por clave, con `root` rechazado, igual que staging. La clave de host se verifica contra la consola del proveedor, no con `accept-new`: en staging quedó como confianza en el primer uso (brief-9.1).
 2. **El DNS**: registro `A` de `crm.vixoraai.app` en *DNS only*, apuntando al droplet. Se verifica desde dos resolvers independientes, como en la 9.1.
-3. **Node 24 LTS** (NodeSource), con la versión exacta anotada en la evidencia (D-6), y **PostgreSQL 18.6** del repositorio `pgdg`, con `postgresql-contrib`. Se instalan también `age` y `rclone`. **El swap solo si `next build` lo necesita**: si hace falta en régimen normal, es un hallazgo.
+3. **Node y PostgreSQL, con versión exacta** (D-6). Las instaladas el 2026-09-29 son:
+   - **`nodejs=24.21.0-1nodesource1`**, de NodeSource, que es Node `v24.21.0`;
+   - **`postgresql-18=18.6-1.pgdg24.04+2`**, del repositorio `pgdg`.
+
+   Se instalan también `age` y `rclone`. **No hace falta `postgresql-contrib`**: el paquete del servidor ya trae `unaccent`, la única extensión que usa el proyecto. **El swap solo si `next build` lo necesita**: si hace falta en régimen normal, es un hallazgo.
+
+   Después de instalarlos, se retienen, para que un `apt upgrade` a mano no los actualice. `unattended-upgrades` tampoco los toca, porque solo toma los orígenes de Ubuntu. En producción quedaron retenidos el 2026-09-30:
+
+   ```
+   sudo apt-mark hold nodejs postgresql-18
+   apt-mark showhold   # -> nodejs, postgresql-18
+   ```
+
+   Una versión nueva de cualquiera de los dos se sube a propósito, con su propio brief: `apt-mark unhold`, la instalación con la versión exacta y otra vez `apt-mark hold`.
 4. **El usuario de sistema, con su home fuera del código** (I-6 del brief):
 
    ```
@@ -82,23 +95,66 @@ Es el orden de staging, con los cambios marcados. **Cada paso que crea algo afue
    sudo -u crm ssh-keygen -q -t ed25519 -N "" -C "crm-production-deploy" -f /var/lib/crm-production/ssh/id_ed25519_deploy
    ```
 
-   La pública se agrega en GitHub con `gh repo deploy-key add` (solo lectura, el valor por defecto). El `known_hosts` de GitHub se arma desde su API (`gh api meta --jq '.ssh_keys[] | "github.com " + .'`), no con confianza en el primer uso. El repositorio clonado lleva `core.sshCommand` apuntando a esa clave y a ese `known_hosts`, así que `git fetch` no depende del home.
-5. **La base, con la collation decidida** (AC-6, ensayada el 2026-09-29 en `postgres:18.6-trixie`):
+   La pública se agrega en GitHub desde la máquina del operador, de solo lectura, que es el valor por defecto. El `known_hosts` de GitHub se arma desde su API, no con confianza en el primer uso:
 
    ```
-   sudo -u postgres psql <<'SQL'
-   CREATE ROLE crm_owner LOGIN PASSWORD '<desde migrate.env>' NOCREATEROLE NOCREATEDB;
+   ssh crm-production 'sudo cat /var/lib/crm-production/ssh/id_ed25519_deploy.pub' > deploy-production.pub
+   gh repo deploy-key add deploy-production.pub --title "crm-production (solo lectura)" && rm deploy-production.pub
+   gh api meta --jq '.ssh_keys[] | "github.com " + .' | ssh crm-production 'sudo -u crm tee /var/lib/crm-production/ssh/known_hosts > /dev/null'
+   ```
+
+   **El clonado**, en el servidor (`ssh crm-production`). `core.sshCommand` queda fijado en el repositorio, así que `git fetch` usa esa clave y ese `known_hosts` sin depender del home:
+
+   ```
+   SSHCMD="ssh -i /var/lib/crm-production/ssh/id_ed25519_deploy -o IdentitiesOnly=yes -o UserKnownHostsFile=/var/lib/crm-production/ssh/known_hosts -o StrictHostKeyChecking=yes"
+   sudo -u crm env GIT_SSH_COMMAND="$SSHCMD" git clone git@github.com:benjamurilloo/AI-WhatsApp-Agent-CRM.git /srv/crm-production
+   sudo -u crm git -C /srv/crm-production config core.sshCommand "$SSHCMD"
+   ```
+
+   Después, **desde la máquina del operador**, se hace el checkout del SHA y `npm ci`. Primero se corre el paso 1 de «Desplegar un cambio», que fija `$SHA` y comprueba su CI. En esa misma terminal:
+
+   ```
+   ssh crm-production "set -euo pipefail
+   test -n '$SHA'
+   sudo -u crm bash -c 'cd /srv/crm-production && git checkout --detach $SHA && npm ci --no-audit --no-fund'
+   test \"\$(sudo -u crm git -C /srv/crm-production rev-parse HEAD)\" = '$SHA' && echo 'código en: $SHA'"
+   ```
+
+   Es la primera mitad del paso 3 de «Desplegar un cambio», sin la migración, el build ni el reinicio, que en este punto todavía no pueden correr: no hay base, `app.env` ni unidad.
+5. **La base, con la collation decidida** (AC-6, ensayada el 2026-09-29 en `postgres:18.6-trixie`):
+
+   Como `root` (`sudo -i`), para que la contraseña no pase por los argumentos de ningún proceso:
+   - la genera `openssl`;
+   - la escribe `printf`, que es un comando interno de `bash` y no aparece en `ps`;
+   - llega a `psql` por la entrada estándar.
+
+   ```
+   umask 077
+   install -d -m 0700 -o root -g root /etc/crm-production &&
+     PW=$(openssl rand -hex 32) &&
+     printf 'DATABASE_URL=postgresql://crm_owner:%s@localhost:5432/crm_production\n' "$PW" > /etc/crm-production/migrate.env &&
+     printf "CREATE ROLE crm_owner LOGIN PASSWORD '%s' NOCREATEROLE NOCREATEDB;\n" "$PW" | sudo -u postgres psql -v ON_ERROR_STOP=1 -q
+   unset PW
+   sudo -u postgres psql -v ON_ERROR_STOP=1 <<'SQL'
    CREATE DATABASE crm_production OWNER crm_owner TEMPLATE template0 ENCODING 'UTF8'
      LOCALE_PROVIDER icu ICU_LOCALE 'es' LOCALE 'C.UTF-8';
    CREATE ROLE crm_app NOLOGIN;
    SQL
    ```
 
+   La contraseña nunca se escribe a mano en un comando: quedaría en el historial de la shell y, como argumento de `psql -c`, visible en `ps` y en el registro de `sudo`.
+
+   Los pasos van encadenados con `&&`. Si falla la escritura del archivo, por ejemplo porque falta el directorio, el rol no se crea. Sin eso quedaría un rol con una contraseña que ningún archivo tiene (N1 de la verificación independiente de la 13.1).
+
    `crm_app` se crea **acá, con el superusuario, antes de migrar**. La `0003` lo crea solo si no existe, y crear un rol exige `CREATEROLE`, que el dueño no tiene a propósito (O-7). Sin este paso, `npm run db:migrate` sale con `permission denied to create role` (`42501`) y cero tablas, medido en el ensayo. **No se crea `unaccent` a mano**: la crea la migración `0015` con el dueño, y así quedó en el ensayo.
-6. **Migrar** con `migrate.env`, como en staging. Después se crea el rol con login miembro de `crm_app`, y recién entonces se escribe `app.env`:
+6. **Migrar** con `migrate.env`, como en staging. Después se crea el rol con login miembro de `crm_app` y se escribe `app.env`, con el mismo cuidado con la contraseña. Como `root`:
 
    ```
-   sudo -u postgres psql -c "CREATE ROLE crm_app_login LOGIN PASSWORD '<desde app.env>' IN ROLE crm_app"
+   umask 077
+   PW=$(openssl rand -hex 32) &&
+     printf 'DATABASE_URL=postgresql://crm_app_login:%s@localhost:5432/crm_production\nTRUSTED_PROXY=true\nNODE_ENV=production\n' "$PW" > /etc/crm-production/app.env &&
+     printf "CREATE ROLE crm_app_login LOGIN PASSWORD '%s' IN ROLE crm_app;\n" "$PW" | sudo -u postgres psql -v ON_ERROR_STOP=1 -q
+   unset PW
    ```
 
 7. **nginx y certbot**, con TLS antes del primer ingreso (motivo en el README de staging, paso 6). Después: `sudo certbot renew --dry-run` y `systemctl list-timers` para la renovación, **con la salida capturada** (O-4).
@@ -106,9 +162,18 @@ Es el orden de staging, con los cambios marcados. **Cada paso que crea algo afue
 9. **El backup**: los scripts, las unidades y los timers de la tabla de archivos. Los dos timers se habilitan; `crm-backup-offsite.service` no lleva timer, porque lo dispara el backup.
 10. **La primera organización**: la del operador, con el script de D-9. Corre con la conexión de `app.env`:
 
+    En el servidor (`ssh crm-production`):
+
     ```
-    sudo bash -c "set -a && . /etc/crm-production/app.env && set +a && cd /srv/crm-production && exec sudo -u crm --preserve-env=DATABASE_URL npm run --silent org:create -- --name '<organización>' --admin-name '<nombre>' --admin-email <correo>"
+    read -r -p "Organización: " ORG; read -r -p "Tu nombre: " NOMBRE; read -r -p "Tu correo: " CORREO
+    sudo ORG="$ORG" NOMBRE="$NOMBRE" CORREO="$CORREO" bash -c 'set -a && . /etc/crm-production/app.env && set +a && cd /srv/crm-production && exec sudo -u crm --preserve-env=DATABASE_URL npm run --silent org:create -- --name "$ORG" --admin-name "$NOMBRE" --admin-email "$CORREO"'
     ```
+
+    **El comando no lleva marcadores a propósito.** La versión anterior tenía `'<organización>'`, `'<nombre>'` y `<correo>`, con dos problemas:
+    - `<correo>` no lo rechazaba el script sino la shell, porque lo leía como una redirección;
+    - `'<organización>'` el script lo aceptaba, así que reemplazar solo el correo creaba una organización con ese nombre.
+
+    Es la clase de defecto que dejó una organización de ejemplo en producción el 2026-09-29 ([evidencia-13.1](../../docs/decisions/evidencia-13.1-produccion.md)). Con `read`, no hay nada que olvidarse de reemplazar.
 
     Imprime la contraseña inicial **una sola vez**. La ejecuta el operador en su propia terminal, para que no pase por una conversación con un asistente, y la cambia en el primer ingreso.
 
@@ -119,9 +184,12 @@ Como en staging, pero con `crm` en lugar de `benja` y con dos pasos nuevos al pr
 **1. La CI del SHA exacto (D-4, R-2).** Se corre en la máquina del operador, antes de tocar el servidor:
 
 ```
-SHA=$(git rev-parse <ref a desplegar>)
+unset SHA; read -r -p "Ref a desplegar (SHA, rama o tag): " REF
+SHA=$(git rev-parse --verify "$REF^{commit}") && echo "SHA: $SHA"
 gh run list --commit "$SHA" --json headSha,conclusion,status
 ```
+
+El `unset` va primero: en una terminal reutilizada, un `SHA` viejo no puede sobrevivir a un `rev-parse` que falla. Hasta la verificación independiente de la 13.1, este paso traía un marcador (`<ref a desplegar>`) que la shell lee como una redirección (N4).
 
 Solo se despliega con `"conclusion":"success"` de **ese** `headSha`. `cancelled` no es `success`: `ci.yml` cancela la corrida de un commit cuando llega el siguiente (H-5), y ese commit queda sin resultado. Sin una corrida en `success`, **no se despliega**, y se vuelve a lanzar la CI de ese commit.
 
@@ -133,13 +201,22 @@ ssh crm-production 'sudo -u crm git -C /srv/crm-production rev-parse HEAD | sudo
 
 Git corre como `crm`, que es el dueño del repositorio. Como el usuario del `ssh`, Git se niega a leerlo (`fatal: detected dubious ownership`). Lo midió la 13.1.2 con la primera versión de este comando, que no tenía `sudo -u crm`.
 
-**3. Código, dependencias, migraciones, build y reinicio**, con la forma de staging:
+**3. Código, dependencias, migraciones, build y reinicio.** Desde la máquina del operador, en la **misma terminal** del paso 1, porque usa su `$SHA`:
 
 ```
-sudo -u crm bash -c "cd /srv/crm-production && git fetch && git checkout --detach $SHA && npm ci --no-audit --no-fund"
-sudo bash -c "set -a && . /etc/crm-production/migrate.env && set +a && cd /srv/crm-production && exec sudo -u crm --preserve-env=DATABASE_URL npm run db:migrate"
-sudo bash -c "set -a && . /etc/crm-production/app.env && set +a && cd /srv/crm-production && exec sudo -u crm --preserve-env=NODE_ENV,PORT,HOSTNAME,DATABASE_URL,TRUSTED_PROXY npm run build" && sudo systemctl restart crm-production
+ssh crm-production "set -euo pipefail
+test -n '$SHA'
+sudo -u crm bash -c 'cd /srv/crm-production && git fetch && git checkout --detach $SHA && npm ci --no-audit --no-fund'
+sudo bash -c 'set -a && . /etc/crm-production/migrate.env && set +a && cd /srv/crm-production && exec sudo -u crm --preserve-env=DATABASE_URL npm run db:migrate'
+sudo bash -c 'set -a && . /etc/crm-production/app.env && set +a && cd /srv/crm-production && exec sudo -u crm --preserve-env=NODE_ENV,PORT,HOSTNAME,DATABASE_URL,TRUSTED_PROXY npm run build'
+sudo systemctl restart crm-production
+test \"\$(sudo -u crm git -C /srv/crm-production rev-parse HEAD)\" = '$SHA' && echo 'desplegado: $SHA'"
 ```
+
+`$SHA` lo expande la shell del operador, **antes** de que el comando salga por `ssh`. Así llega al servidor como texto fijo. La primera versión de este paso se corría ya dentro del servidor, donde `$SHA` no existe. `git checkout --detach` sin argumento no falla: deja HEAD donde estaba. Así, el despliegue «salía bien» sin cambiar de versión. Lo encontró la revisión independiente de la 13.1. Por eso:
+- `test -n` corta si `SHA` llegó vacío;
+- la última línea compara HEAD con el SHA pedido;
+- `set -e` detiene todo en el primer paso que falle.
 
 Se despliega un **SHA**, no `origin/main`: lo que se comprobó en el paso 1 es un SHA, y `main` puede haber avanzado entre la comprobación y el despliegue.
 

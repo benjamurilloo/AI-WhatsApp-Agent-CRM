@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 // Guarda de los parámetros de costo del planificador en staging (9.3, D-2 y AC-5).
@@ -40,6 +40,33 @@ const ENTORNOS_POSTGRES = [
     ramTexto: /1967 MB/,
   },
 ] as const;
+
+// Esta guarda tiene su propia lista, así que la cobertura de `deploy/` se comprueba acá contra
+// ella, no contra la de la guarda del proxy. Hasta la revisión independiente de la 13.1 solo la
+// del proxy lo hacía, y un entorno agregado solo a su lista quedaba sin guarda de PostgreSQL.
+/** Directorios de `deploy/` que ninguna entrada de ENTORNOS_POSTGRES cubre. */
+export function directoriosSinPostgres(directorios: readonly string[]): string[] {
+  const cubiertos = new Set<string>(
+    ENTORNOS_POSTGRES.map((e) => e.archivo.split("/").slice(0, 2).join("/")),
+  );
+  return directorios
+    .map((nombre) => `deploy/${nombre}`)
+    .filter((directorio) => !cubiertos.has(directorio));
+}
+
+describe("todo directorio de deploy/ tiene su guarda de PostgreSQL", () => {
+  const presentes = readdirSync("deploy", { withFileTypes: true })
+    .filter((entrada) => entrada.isDirectory())
+    .map((entrada) => entrada.name);
+
+  it("no hay ningún directorio de despliegue sin su entorno en ENTORNOS_POSTGRES", () => {
+    expect(directoriosSinPostgres(presentes)).toEqual([]);
+  });
+
+  it("un directorio nuevo sin guarda de PostgreSQL se detecta", () => {
+    expect(directoriosSinPostgres([...presentes, "demo"])).toEqual(["deploy/demo"]);
+  });
+});
 
 const UNIDADES: Record<string, number> = {
   "": 1,
