@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   VOLUME_DEFAULT_SIZE,
+  VOLUME_CONCENTRATED_ORDINAL,
   VOLUME_DISTRIBUTION,
+  VOLUME_MEASUREMENT,
   VOLUME_ORDINAL_0,
   VOLUME_ORGANIZATION_ID,
   VOLUME_USER,
@@ -31,7 +33,9 @@ import {
 // se comprueba contra la base en `tests/integration/conversations-seed.test.ts`, que es el único
 // lugar donde se puede mirar una fila escrita.
 
-const KINDS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+// Del 9 en adelante son de la 13.2: precios, información del negocio, la conversación concentrada
+// y sus mensajes.
+const KINDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b", "c"] as const;
 const UUID_V4 =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -76,7 +80,8 @@ describe("la organización histórica no cambia", () => {
 });
 
 describe("los ids no colisionan entre organizaciones", () => {
-  const ordinales = VOLUME_DISTRIBUTION.map((shape) => shape.ordinal);
+  // La distribución de la medición de la 13.2 contiene a la de la 9.3 y le suma una organización.
+  const ordinales = VOLUME_MEASUREMENT.map((shape) => shape.ordinal);
 
   it("cada organización tiene un id y un admin propios", () => {
     const orgs = new Set(ordinales.map(volumeOrganizationId));
@@ -95,7 +100,7 @@ describe("los ids no colisionan entre organizaciones", () => {
   // real y las mutantes pasan por el mismo chequeo.
   type Derivacion = (kind: 1, index: number, ordinal: number) => string;
   function repetidos(derivar: Derivacion): number {
-    const ids = VOLUME_DISTRIBUTION.flatMap((shape) =>
+    const ids = VOLUME_MEASUREMENT.flatMap((shape) =>
       Array.from({ length: shape.size }, (_, i) =>
         derivar(1, i, shape.ordinal),
       ),
@@ -109,7 +114,7 @@ describe("los ids no colisionan entre organizaciones", () => {
 
   it("para ningún tipo, en los bordes de cada organización", () => {
     for (const kind of KINDS) {
-      const ids = VOLUME_DISTRIBUTION.flatMap((shape) =>
+      const ids = VOLUME_MEASUREMENT.flatMap((shape) =>
         [0, 1, shape.size - 1, shape.size, 130_000].map((i) =>
           volumeId(kind, i, shape.ordinal),
         ),
@@ -249,6 +254,57 @@ describe("la distribución cumple D-1", () => {
       expect(shape.heavyProducts).toBeGreaterThanOrEqual(0);
       // Un producto pesado exige un producto: los productos acompañan al tamaño de clientes.
       expect(shape.heavyProducts).toBeLessThanOrEqual(shape.size);
+    }
+  });
+});
+
+describe("la distribución de la medición de la 13.2 (D-3)", () => {
+  it("es la de la 9.3, con referencias, precios e información, más una organización", () => {
+    expect(VOLUME_MEASUREMENT).toHaveLength(VOLUME_DISTRIBUTION.length + 1);
+    for (const [i, shape] of VOLUME_DISTRIBUTION.entries()) {
+      const { externalRefs, prices, knowledgeEntries, ...resto } =
+        VOLUME_MEASUREMENT[i]!;
+      // Lo que ya medía la 9.3 no cambia: mismos tamaños, mismos ordinales, mismos eventos.
+      expect(resto).toEqual(shape);
+      expect(externalRefs).toBe(true);
+      expect(prices).toBe(true);
+      expect(knowledgeEntries).toBeGreaterThan(0);
+    }
+  });
+
+  it("la organización nueva es chica y su conversación concentrada domina sus mensajes", () => {
+    const nueva = VOLUME_MEASUREMENT.at(-1)!;
+    expect(nueva.ordinal).toBe(VOLUME_CONCENTRATED_ORDINAL);
+    expect(VOLUME_DISTRIBUTION.map((s) => s.ordinal)).not.toContain(
+      nueva.ordinal,
+    );
+    // Las demás conversaciones tienen entre 1 y 12 mensajes: como mucho 12 por conversación.
+    expect(nueva.concentratedMessages!).toBeGreaterThan(nueva.size * 12 * 0.5);
+    expect(nueva.externalRefs).toBe(true);
+  });
+
+  it("solo esa organización tiene una conversación concentrada", () => {
+    const conConcentrada = VOLUME_MEASUREMENT.filter(
+      (shape) => (shape.concentratedMessages ?? 0) > 0,
+    );
+    expect(conConcentrada.map((shape) => shape.ordinal)).toEqual([
+      VOLUME_CONCENTRATED_ORDINAL,
+    ]);
+  });
+
+  // La conversación concentrada y sus mensajes tienen tipo propio, así que no pueden pisar a una
+  // conversación ni a un mensaje comunes, sea cual sea el tamaño de la organización.
+  it("los ids de la conversación concentrada no pisan a los comunes", () => {
+    const o = VOLUME_CONCENTRATED_ORDINAL;
+    const comunes = new Set(
+      [0, 1, 299, 300, 4_000, 130_000].flatMap((i) => [
+        volumeId(2, i, o),
+        volumeId(3, i, o),
+      ]),
+    );
+    expect(comunes.has(volumeId("b", 0, o))).toBe(false);
+    for (const i of [0, 1, 299, 300, 3_999]) {
+      expect(comunes.has(volumeId("c", i, o))).toBe(false);
     }
   });
 });

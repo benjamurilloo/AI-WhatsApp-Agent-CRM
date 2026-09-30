@@ -274,3 +274,173 @@ describe("seedVolumeDistribution", () => {
     expect(await countIn("clients", volumeOrganizationId(2))).toBe(0);
   });
 });
+
+// Lo que la 13.2 le agrega al seed (D-3): referencias del emisor, precios, información del
+// negocio y la conversación concentrada. Todo es opcional, y una forma que no lo declara siembra
+// lo mismo que antes.
+describe("las formas de la 13.2", () => {
+  const COMPLETA: VolumeShape = {
+    ...GRANDE,
+    externalRefs: true,
+    prices: true,
+    knowledgeEntries: 60,
+  };
+  const CONCENTRADA: VolumeShape = {
+    ordinal: 2,
+    size: 20,
+    heavyProducts: 0,
+    members: 3,
+    ingestionEvents: 0,
+    externalRefs: true,
+    concentratedMessages: 300,
+  };
+
+  // Precios e información del negocio con sus columnas de contenido, para la idempotencia.
+  async function huellaNueva(organizationId: string) {
+    const result = await getDb().execute<{ digest: string }>(
+      sql`select md5(concat_ws('|',
+            (select string_agg(concat_ws(',', id, product_id, amount, currency, created_at), ';' order by id)
+               from product_prices where organization_id = ${organizationId}),
+            (select string_agg(concat_ws(',', id, title, category, is_active, valid_from, valid_until, updated_at), ';' order by id)
+               from knowledge_entries where organization_id = ${organizationId}),
+            (select string_agg(concat_ws(',', id, external_ref), ';' order by id)
+               from conversations where organization_id = ${organizationId})
+          )) as digest`,
+    );
+    return result.rows[0]!.digest;
+  }
+
+  beforeEach(async () => {
+    await resetDatabase(getDb());
+  });
+
+  it("sin declararlas, no hay precios, ni información, ni referencias", async () => {
+    const { byOrganization } = await seedVolumeDistribution(getDb(), PASSWORD, {
+      shapes: [GRANDE],
+      referenceDate: REFERENCE_DATE,
+    });
+
+    expect(byOrganization[0]!.prices).toBe(0);
+    expect(byOrganization[0]!.knowledgeEntries).toBe(0);
+    const conReferencia = await getDb().execute<{ count: number }>(
+      sql`select count(*)::int as count from conversations where external_ref is not null`,
+    );
+    expect(conReferencia.rows[0]!.count).toBe(0);
+  });
+
+  it("con ellas, los clientes, las conversaciones y los mensajes son los mismos", async () => {
+    await seedVolumeDistribution(getDb(), PASSWORD, {
+      shapes: [GRANDE],
+      referenceDate: REFERENCE_DATE,
+    });
+    const historica = await fingerprint(volumeOrganizationId(0));
+
+    await resetDatabase(getDb());
+    await seedVolumeDistribution(getDb(), PASSWORD, {
+      shapes: [COMPLETA],
+      referenceDate: REFERENCE_DATE,
+    });
+
+    expect(await fingerprint(volumeOrganizationId(0))).toBe(historica);
+  });
+
+  it("siembra precios con historial, información con vigencias y una referencia por conversación", async () => {
+    const { byOrganization } = await seedVolumeDistribution(getDb(), PASSWORD, {
+      shapes: [COMPLETA],
+      referenceDate: REFERENCE_DATE,
+    });
+    const org = volumeOrganizationId(0);
+
+    expect(byOrganization[0]!.knowledgeEntries).toBe(60);
+    const precios = await getDb().execute<{ productos: number; filas: number }>(
+      sql`select count(distinct product_id)::int as productos, count(*)::int as filas
+            from product_prices where organization_id = ${org}`,
+    );
+    // Hay productos sin precio y productos con más de uno.
+    expect(precios.rows[0]!.productos).toBeGreaterThan(0);
+    expect(precios.rows[0]!.productos).toBeLessThan(COMPLETA.size);
+    expect(precios.rows[0]!.filas).toBeGreaterThan(precios.rows[0]!.productos);
+
+    const vigencias = await getDb().execute<{
+      vencidas: number;
+      futuras: number;
+      abiertas: number;
+    }>(
+      sql`select count(*) filter (where valid_until < ${REFERENCE_DATE})::int as vencidas,
+                 count(*) filter (where valid_from > ${REFERENCE_DATE})::int as futuras,
+                 count(*) filter (where valid_from is null and valid_until is null)::int as abiertas
+            from knowledge_entries where organization_id = ${org}`,
+    );
+    expect(vigencias.rows[0]!.vencidas).toBeGreaterThan(0);
+    expect(vigencias.rows[0]!.futuras).toBeGreaterThan(0);
+    expect(vigencias.rows[0]!.abiertas).toBeGreaterThan(0);
+
+    const referencias = await getDb().execute<{
+      total: number;
+      distintas: number;
+    }>(
+      sql`select count(*)::int as total, count(distinct external_ref)::int as distintas
+            from conversations where organization_id = ${org}`,
+    );
+    expect(referencias.rows[0]!.distintas).toBe(COMPLETA.size);
+    expect(referencias.rows[0]!.total).toBe(COMPLETA.size);
+  });
+
+  it("la segunda corrida no cambia precios, información ni referencias", async () => {
+    const options = { shapes: [COMPLETA], referenceDate: REFERENCE_DATE };
+    await seedVolumeDistribution(getDb(), PASSWORD, options);
+    const antes = await huellaNueva(volumeOrganizationId(0));
+
+    await seedVolumeDistribution(getDb(), PASSWORD, options);
+
+    expect(await huellaNueva(volumeOrganizationId(0))).toBe(antes);
+  });
+
+  // Determinismo, que no es lo mismo que idempotencia: dos cargas desde cero dan las mismas filas.
+  // El caso de arriba pasa aunque una fecha salga del reloj, porque la segunda corrida no escribe.
+  it("dos cargas desde cero dan los mismos precios, la misma información y las mismas referencias", async () => {
+    const options = { shapes: [COMPLETA], referenceDate: REFERENCE_DATE };
+    await seedVolumeDistribution(getDb(), PASSWORD, options);
+    const primera = await huellaNueva(volumeOrganizationId(0));
+
+    await resetDatabase(getDb());
+    await seedVolumeDistribution(getDb(), PASSWORD, options);
+
+    expect(await huellaNueva(volumeOrganizationId(0))).toBe(primera);
+  });
+
+  it("la conversación concentrada tiene la mayoría de los mensajes, y son los más recientes", async () => {
+    await seedVolumeDistribution(getDb(), PASSWORD, {
+      shapes: [CONCENTRADA],
+      referenceDate: REFERENCE_DATE,
+    });
+    const org = volumeOrganizationId(CONCENTRADA.ordinal);
+
+    const result = await getDb().execute<{
+      suyos: number;
+      total: number;
+      posteriores: boolean;
+      estado: string;
+      telefono: string | null;
+    }>(
+      sql`with c as (
+            select id, status, client_id from conversations
+             where organization_id = ${org}
+               and external_ref = ${`vol-conv-${CONCENTRADA.ordinal}-concentrada`}
+          )
+          select (select count(*)::int from messages m, c where m.conversation_id = c.id) as suyos,
+                 (select count(*)::int from messages where organization_id = ${org}) as total,
+                 (select min(m.sent_at) from messages m, c where m.conversation_id = c.id)
+                   > (select max(m.sent_at) from messages m, c
+                       where m.organization_id = ${org} and m.conversation_id <> c.id) as posteriores,
+                 (select status::text from c) as estado,
+                 (select cl.phone_e164 from clients cl, c where cl.id = c.client_id) as telefono`,
+    );
+    const fila = result.rows[0]!;
+    expect(fila.suyos).toBe(300);
+    expect(fila.suyos / fila.total).toBeGreaterThan(0.5);
+    expect(fila.posteriores).toBe(true);
+    expect(fila.estado).toBe("open");
+    expect(fila.telefono).not.toBeNull();
+  });
+});

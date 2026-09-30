@@ -17,11 +17,30 @@
 //
 // Lo que este script NO mide: concurrencia. Corre una llamada por vez.
 //
+// Desde la 13.2 (brief-13.2, AC-4 a AC-6) tiene tres modos, que se eligen con variables de entorno:
+//
+//   (sin nada)            los tiempos de todos los caminos, como siempre;
+//   CRM_TANDA=8.5         solo los caminos que ya existían en la 8.5 y la 9.3, para calibrar el
+//                         umbral contra una organización sembrada sin referencias del emisor;
+//   CRM_PLANES=<archivo>  en vez de tiempos, el plan de cada consulta que emite cada camino.
+//
+// Los planes no salen de una copia de la consulta: `auto_explain` los toma de la sentencia que
+// la aplicación ejecuta, con `ANALYZE` y `BUFFERS`, y los devuelve a esta conexión como avisos
+// (`auto_explain.log_level = notice`). No se escriben en el log del servidor, que filtra por
+// `log_min_messages`. Requisitos: que el rol pueda cargar la biblioteca (superusuario, o
+// `session_preload_libraries` fijado en el rol) y fijar sus parámetros. **Un camino que corre sin
+// dejar ningún plan hace fallar la corrida**: es lo que pasa si la biblioteca no está cargada.
+// Los tiempos y los planes van en corridas separadas porque `ANALYZE` encarece cada consulta.
+//
+// Al terminar, en cualquier modo, comprueba que ninguna conexión del pool quedó con una sentencia
+// preparada con nombre y que `plan_cache_mode` es `auto` (AC-1).
+//
 // Las rutas de la API de lectura (brief-11.3, D-10) se miden por las lecturas de servicio que
 // llama cada una, con el mismo texto y el mismo límite. No miden el borde: ni la credencial, ni la
 // ventana del límite de tasa, ni el log.
 
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
+import { sql, TransactionRollbackError } from "drizzle-orm";
 import { searchProducts } from "@/modules/catalog";
 import {
   getConversationsStarted,
@@ -38,6 +57,8 @@ import {
 } from "@/modules/analytics";
 import {
   listConversations,
+  listRecentMessagesForService,
+  resolveIngestedConversation,
   searchClientsByLastInteraction,
 } from "@/modules/conversations";
 import { searchClients } from "@/modules/crm";
@@ -82,6 +103,7 @@ function describir(resultado: unknown): string {
     "conversations",
     "members",
     "movements",
+    "messages",
     "rows",
   ]) {
     const valor = r[clave];
@@ -89,6 +111,10 @@ function describir(resultado: unknown): string {
       const total = typeof r.total === "number" ? `/${r.total}` : "";
       return `${valor.length}${total} filas`;
     }
+  }
+  // La resolución de la conversación vigente (12.2) dice si usó una o abrió otra.
+  if (typeof r.created === "boolean") {
+    return r.created ? "conversación nueva" : "conversación vigente";
   }
   if ("value" in r) return `valor ${JSON.stringify(r.value)}`.slice(0, 40);
   return "ok";
@@ -132,6 +158,90 @@ async function medir(
   };
 }
 
+// La última página de un listado, **calculada**: pide la primera, lee de ahí cuántas páginas hay
+// y pide esa. La 9.3 informó como «paginación profunda» la página 100 de 400 (R-6 de su revisión):
+// un número de página escrito a mano deja de ser el peor caso apenas cambia el tamaño.
+function ultimaPagina(
+  pedir: (page: number) => Promise<unknown>,
+): () => Promise<unknown> {
+  let ultima: number | undefined;
+  return async () => {
+    if (ultima === undefined) {
+      const primera = await pedir(1);
+      const paginas = (primera as { pageCount?: unknown } | null)?.pageCount;
+      // Sin `pageCount` no se sabe cuál es la última: se devuelve lo que vino, que `describir`
+      // informa como falla o como sin forma.
+      if (typeof paginas !== "number") return primera;
+      ultima = paginas;
+    }
+    return pedir(ultima);
+  };
+}
+
+// Enciende `auto_explain` en cada conexión nueva del pool y junta los planes que llegan como
+// avisos. Devuelve cómo leer y vaciar lo juntado.
+function capturarPlanes(
+  pool: ReturnType<typeof getDb>["$client"],
+  encender: boolean,
+): () => string[] {
+  let juntados: string[] = [];
+  pool.on("connect", (client) => {
+    client.on("notice", (aviso) => {
+      if (aviso.message?.includes("plan:")) juntados.push(aviso.message);
+    });
+    if (!encender) return;
+    const fallar = (error: unknown) => {
+      console.error(
+        `No se pudo encender auto_explain: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    };
+    // Se encolan antes que la primera consulta del camino, porque el pool entrega la conexión
+    // después de emitir `connect`. `load` falla sin privilegios si el rol no la trae precargada:
+    // se intenta y se sigue, y si no quedó cargada ningún camino deja planes.
+    client.query("load 'auto_explain'").catch(() => {});
+    client
+      .query(
+        `set auto_explain.log_min_duration = 0;
+         set auto_explain.log_analyze = on;
+         set auto_explain.log_buffers = on;
+         set auto_explain.log_timing = on;
+         set auto_explain.log_level = notice;
+         set client_min_messages = notice`,
+      )
+      .catch(fallar);
+  });
+  return () => {
+    const salida = juntados;
+    juntados = [];
+    return salida;
+  };
+}
+
+// Las sentencias preparadas con nombre de todas las conexiones del pool, tomadas a la vez para
+// no mirar dos veces la misma (AC-1).
+async function sentenciasPreparadas(
+  pool: ReturnType<typeof getDb>["$client"],
+): Promise<{ conexiones: number; nombres: string[] }> {
+  const clientes = await Promise.all(
+    Array.from({ length: Math.max(1, pool.totalCount) }, () => pool.connect()),
+  );
+  try {
+    const porConexion = await Promise.all(
+      clientes.map((cliente) =>
+        cliente.query<{ name: string }>(
+          "select name from pg_prepared_statements order by name",
+        ),
+      ),
+    );
+    return {
+      conexiones: clientes.length,
+      nombres: porConexion.flatMap((r) => r.rows.map((row) => row.name)),
+    };
+  } finally {
+    for (const cliente of clientes) cliente.release();
+  }
+}
+
 async function main(): Promise<void> {
   if (existsSync(".env")) process.loadEnvFile(".env");
   const url = process.env.DATABASE_URL;
@@ -149,9 +259,18 @@ async function main(): Promise<void> {
   // un pool distinto del que la aplicación usa de verdad.
   const db = getDb();
 
+  const archivoPlanes = process.env.CRM_PLANES;
+  const modoPlanes = archivoPlanes !== undefined && archivoPlanes !== "";
+  const tandaHistorica = process.env.CRM_TANDA === "8.5";
+  // Control negativo de los planes (CRM_CONTROL=sin-planes): no enciende `auto_explain`. Si con
+  // él la corrida de planes sale con 0, un camino sin plan puede pasar por medido (AC-6).
+  const leerPlanes = capturarPlanes(
+    db.$client,
+    modoPlanes && process.env.CRM_CONTROL !== "sin-planes",
+  );
+
   // El admin de la organización, que es quien ve todo: medir con `viewer` daría otros caminos
   // —el teléfono sale enmascarado— y no es el caso más caro.
-  const { sql } = await import("drizzle-orm");
   const admin = await db.execute<{ user_id: string }>(
     sql`select user_id from organization_members
          where organization_id = ${organizationId} and role = 'admin'
@@ -252,6 +371,69 @@ async function main(): Promise<void> {
       () => listMembers(context, { role: "all", status: "all", page: 1 }),
     ],
   ];
+  // La última página de cada listado paginado (13.2, AC-4; R-6 de la revisión de la 9.3). Las
+  // dos «páginas profundas» de arriba quedan como estaban, para comparar con la 9.3.
+  listados.push(
+    [
+      "inventory.listProductStock (última página)",
+      ultimaPagina((page) =>
+        listProductStock(context, {
+          text: "",
+          stockStatus: "all",
+          activity: "active",
+          page,
+        }),
+      ),
+    ],
+    [
+      "crm.searchClients (última página)",
+      ultimaPagina((page) =>
+        searchClients(context, { text: "", activity: "all", page }),
+      ),
+    ],
+    [
+      "conversations.listConversations (última página)",
+      ultimaPagina((page) =>
+        listConversations(context, {
+          from: "",
+          to: "",
+          status: "all",
+          channel: "all",
+          clientId: "",
+          page,
+        }),
+      ),
+    ],
+    [
+      "conversations.searchClientsByLastInteraction (última página)",
+      ultimaPagina((page) =>
+        searchClientsByLastInteraction(context, {
+          text: "",
+          activity: "all",
+          page,
+        }),
+      ),
+    ],
+    [
+      "organizations.listMembers (última página)",
+      ultimaPagina((page) =>
+        listMembers(context, { role: "all", status: "all", page }),
+      ),
+    ],
+  );
+  if (productoId) {
+    listados.push([
+      `inventory.listStockMovements (producto con ${movimientos}, última página)`,
+      ultimaPagina((page) =>
+        listStockMovements(context, productoId, {
+          type: "all",
+          from: "",
+          to: "",
+          page,
+        }),
+      ),
+    ]);
+  }
   if (productoId) {
     listados.push([
       `inventory.listStockMovements (producto con ${movimientos})`,
@@ -325,6 +507,123 @@ async function main(): Promise<void> {
     ],
   );
 
+  // La Fase 12 (13.2, AC-5): la resolución de la conversación vigente (12.2) y el historial de
+  // una conversación (12.4). Necesitan conversaciones con referencia del emisor, que el seed
+  // histórico no tiene: la tanda de calibración las saltea, y lo dice.
+  if (tandaHistorica) {
+    console.log(
+      "\nTanda 8.5 (CRM_TANDA): no se miden la conversación vigente ni el historial.",
+    );
+  } else {
+    // La conversación con más mensajes: el caso desfavorable del historial (12.4, H-3).
+    const mayor = await db.execute<{ external_ref: string; n: number }>(
+      sql`select c.external_ref, count(m.id)::int as n
+            from conversations c
+            join messages m
+              on m.organization_id = c.organization_id and m.conversation_id = c.id
+           where c.organization_id = ${organizationId}
+             and c.channel = 'whatsapp' and c.external_ref is not null
+           group by c.id order by n desc, c.id limit 1`,
+    );
+    const totalMensajes = await db.execute<{ n: number }>(
+      sql`select count(*)::int as n from messages where organization_id = ${organizationId}`,
+    );
+    // Un cliente con teléfono y una conversación abierta o pendiente: el último mensaje de esa
+    // conversación da la hora del mensaje nuevo, así la vigencia no depende del día en que corre
+    // el script.
+    const conVigente = await db.execute<{
+      phone_e164: string;
+      last_message_at: string;
+    }>(
+      sql`select cl.phone_e164,
+                 to_char(c.last_message_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+                   as last_message_at
+            from conversations c
+            join clients cl
+              on cl.organization_id = c.organization_id and cl.id = c.client_id
+           where c.organization_id = ${organizationId}
+             and c.channel = 'whatsapp' and c.external_ref is not null
+             and c.status in ('open', 'pending') and cl.phone_e164 is not null
+           order by c.last_message_at desc, c.id limit 1`,
+    );
+    const referencia = mayor.rows[0];
+    const vigente = conVigente.rows[0];
+    const sinDatos = async () => ({
+      ok: false,
+      code: "SIN_CONVERSACIONES_CON_REFERENCIA",
+    });
+
+    // La resolución escribe: se corre dentro de una transacción que se deshace, así cada corrida
+    // parte del mismo estado y la base queda como estaba.
+    // `esperaNueva` es lo que el caso dice medir. Si la resolución hace lo otro, el tiempo es el
+    // de otro camino y se informa como falla, no como medición.
+    const resolver = (minutos: number, esperaNueva: boolean) => async () => {
+      if (!vigente) return sinDatos();
+      const sentAt = new Date(
+        new Date(vigente.last_message_at).getTime() + minutos * 60_000,
+      );
+      let resultado: unknown;
+      try {
+        await db.transaction(async (tx) => {
+          resultado = await resolveIngestedConversation(tx, {
+            organizationId,
+            clientPhone: vigente.phone_e164,
+            channel: "whatsapp",
+            proposedExternalRef: "medicion-13-2-propuesta",
+            message: {
+              externalRef: "medicion-13-2-mensaje",
+              sentAt,
+              bodyText: "Mensaje de la medición",
+              kind: null,
+            },
+          });
+          tx.rollback();
+        });
+      } catch (error) {
+        if (!(error instanceof TransactionRollbackError)) throw error;
+      }
+      const creada = (resultado as { created?: unknown } | undefined)?.created;
+      if (typeof creada === "boolean" && creada !== esperaNueva) {
+        return { ok: false, code: "VIGENCIA_INESPERADA" };
+      }
+      return resultado;
+    };
+
+    listados.push(
+      [
+        "conversations.resolveIngestedConversation (con vigente)",
+        resolver(1, false),
+      ],
+      [
+        // Un mes después del último mensaje no queda ninguna candidata: abre una conversación.
+        "conversations.resolveIngestedConversation (sin vigente)",
+        resolver(30 * 24 * 60, true),
+      ],
+      [
+        `conversations.listRecentMessagesForService (20 de ${referencia?.n ?? 0}, de ${totalMensajes.rows[0]?.n ?? 0} de la organización)`,
+        () =>
+          referencia
+            ? listRecentMessagesForService(organizationId, {
+                channel: "whatsapp",
+                conversationRef: referencia.external_ref,
+                limit: 20,
+              })
+            : sinDatos(),
+      ],
+      [
+        "conversations.listRecentMessagesForService (50, el máximo del contrato)",
+        () =>
+          referencia
+            ? listRecentMessagesForService(organizationId, {
+                channel: "whatsapp",
+                conversationRef: referencia.external_ref,
+                limit: 50,
+              })
+            : sinDatos(),
+      ],
+    );
+  }
+
   const metricas: [string, () => Promise<unknown>][] = [
     [
       "analytics 1 conversaciones iniciadas",
@@ -380,6 +679,67 @@ async function main(): Promise<void> {
     ];
   }
 
+  // Los parámetros de costo, junto a lo que se mida (13.2, AC-16): un plan sin ellos no se puede
+  // comparar con el de otra máquina.
+  const parametros = await db.execute<{ name: string; valor: string }>(
+    sql`select name, setting || coalesce(' ' || unit, '') as valor from pg_settings
+         where name in ('effective_cache_size', 'random_page_cost', 'seq_page_cost',
+                        'shared_buffers', 'work_mem', 'plan_cache_mode', 'server_version')
+         order by name`,
+  );
+  console.log(
+    `\nParámetros: ${parametros.rows.map((r) => `${r.name} = ${r.valor}`).join("; ")}.`,
+  );
+
+  if (modoPlanes) {
+    // Un camino por vez, una sola corrida, y lo que `auto_explain` devolvió mientras corría.
+    const bloques: string[] = [
+      `# Planes — ${etiqueta}`,
+      "",
+      `Parámetros: ${parametros.rows.map((r) => `${r.name} = ${r.valor}`).join("; ")}.`,
+    ];
+    const sinPlan: string[] = [];
+    const fallidos: string[] = [];
+    console.log(`\n## Planes — ${etiqueta}\n`);
+    console.log("| Camino | Consultas con plan | Resultado |");
+    console.log("| --- | --- | --- |");
+    for (const [nombre, ejecutar] of [...listados, ...metricas]) {
+      // La llamada de `ultimaPagina` que averigua cuántas páginas hay también deja sus planes:
+      // se corre una vez antes y se descartan, para que queden solo los de la página pedida.
+      if (nombre.includes("última página")) await ejecutar();
+      leerPlanes();
+      const resultado = describir(await ejecutar());
+      const planes = leerPlanes();
+      if (esFalla(resultado)) fallidos.push(`${nombre}: ${resultado}`);
+      if (planes.length === 0) sinPlan.push(nombre);
+      console.log(`| ${nombre} | ${planes.length} | ${resultado} |`);
+      bloques.push("", `## ${nombre}`, "", `Resultado: ${resultado}.`);
+      planes.forEach((plan, i) => {
+        bloques.push(
+          "",
+          `### Consulta ${i + 1} de ${planes.length}`,
+          "",
+          "```text",
+          plan,
+          "```",
+        );
+      });
+    }
+    writeFileSync(archivoPlanes, `${bloques.join("\n")}\n`);
+    console.log(`\nPlanes escritos en ${archivoPlanes}.`);
+    if (sinPlan.length > 0 || fallidos.length > 0) {
+      console.log(
+        `\n**${sinPlan.length} caminos sin ningún plan y ${fallidos.length} fallidos**: la corrida no vale.`,
+      );
+      for (const nombre of sinPlan) console.log(`- sin plan: ${nombre}`);
+      for (const falla of fallidos) console.log(`- ${falla}`);
+      process.exitCode = 1;
+    }
+    await comprobarPreparadas(db);
+    await db.$client.end();
+    return;
+  }
+
   console.log(`\n## Caminos completos — ${etiqueta}`);
   console.log(`Mediana de ${CORRIDAS} corridas, tras una de calentamiento.\n`);
   console.log("| Camino | Mediana | Mínimo | Máximo | Resultado |");
@@ -432,7 +792,43 @@ async function main(): Promise<void> {
     process.exitCode = 1;
   }
 
+  await comprobarPreparadas(db);
   await db.$client.end();
+}
+
+// AC-1 de la 13.2: después de correr los caminos, ninguna conexión tiene una sentencia preparada
+// con nombre, y el modo de plan es el de fábrica, también en los roles y en la base.
+async function comprobarPreparadas(
+  db: ReturnType<typeof getDb>,
+): Promise<void> {
+  const preparadas = await sentenciasPreparadas(db.$client);
+  const modo = await db.execute<{ plan_cache_mode: string }>(
+    sql`show plan_cache_mode`,
+  );
+  const fijados = await db.execute<{ donde: string }>(
+    sql`select coalesce(r.rolname, '(todos)') || ' en ' || coalesce(d.datname, '(todas)')
+                || ': ' || array_to_string(s.setconfig, ', ') as donde
+           from pg_db_role_setting s
+           left join pg_roles r on r.oid = s.setrole
+           left join pg_database d on d.oid = s.setdatabase
+          where array_to_string(s.setconfig, ',') like '%plan_cache_mode%'`,
+  );
+  console.log(
+    `\n**Sentencias preparadas con nombre**: ${preparadas.nombres.length} en ${preparadas.conexiones} conexiones del pool` +
+      `${preparadas.nombres.length > 0 ? ` (${preparadas.nombres.join(", ")})` : ""}. ` +
+      `\`plan_cache_mode\` = ${modo.rows[0]?.plan_cache_mode}; fijado por rol o base: ` +
+      `${fijados.rows.length === 0 ? "en ninguno" : fijados.rows.map((r) => r.donde).join("; ")}.`,
+  );
+  if (
+    preparadas.nombres.length > 0 ||
+    modo.rows[0]?.plan_cache_mode !== "auto" ||
+    fijados.rows.length > 0
+  ) {
+    console.log(
+      "**Los planes medidos pueden no ser los que corren**: ver O-2.",
+    );
+    process.exitCode = 1;
+  }
 }
 
 main().catch((error: unknown) => {

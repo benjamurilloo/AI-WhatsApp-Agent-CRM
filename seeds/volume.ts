@@ -3,11 +3,12 @@ import { existsSync } from "node:fs";
 import { sql } from "drizzle-orm";
 import { hashPassword, PASSWORD_MIN_LENGTH } from "@/modules/auth";
 import { users } from "@/modules/auth/schema";
-import { products } from "@/modules/catalog/schema";
+import { productPrices, products } from "@/modules/catalog/schema";
 import { conversations, messages } from "@/modules/conversations/schema";
 import { clients } from "@/modules/crm/schema";
 import { ingestionEvents } from "@/modules/ingestion/schema";
 import { inventories, inventoryMovements } from "@/modules/inventory/schema";
+import { knowledgeEntries } from "@/modules/knowledge/schema";
 import {
   organizationMembers,
   organizations,
@@ -93,6 +94,20 @@ export type VolumeShape = {
   members: number;
   // Eventos de ingestión (9.3, D-5). En 0 la tabla no se toca, que es el estado previo a la 9.3.
   ingestionEvents: number;
+  // Lo que sigue es de la 13.2 (D-3) y es opcional: una forma que no lo declara siembra
+  // exactamente lo mismo que antes, y la organización histórica no lo declara.
+  //
+  // Referencia del emisor en cada conversación. Sin ella, la consulta de la conversación vigente
+  // (12.2) no tiene ninguna candidata: exige `external_ref is not null`.
+  externalRefs?: boolean;
+  // Precios (11.1): un precio vigente para nueve de cada diez productos, y uno anterior para uno
+  // de cada cinco de esos.
+  prices?: boolean;
+  // Entradas de información del negocio (11.2).
+  knowledgeEntries?: number;
+  // Una conversación más, con esta cantidad de mensajes, todos más recientes que los demás: el
+  // caso del plan del historial que la 12.4 dejó sin medir (H-3).
+  concentratedMessages?: number;
 };
 
 export const VOLUME_ORDINAL_0: VolumeShape = {
@@ -122,6 +137,31 @@ export const VOLUME_DISTRIBUTION: readonly VolumeShape[] = [
     members: 5,
     ingestionEvents: 100,
   })),
+];
+
+// La distribución de la medición de la 13.2 (D-3): la de la 9.3 con referencias, precios e
+// información del negocio, más una organización chica donde una conversación concentra la
+// mayoría de los mensajes. Es una hipótesis, como la de la 9.3: no hay uso real que la corrija
+// hasta que entre el primer negocio.
+export const VOLUME_CONCENTRATED_ORDINAL = 20;
+export const VOLUME_MEASUREMENT: readonly VolumeShape[] = [
+  ...VOLUME_DISTRIBUTION.map((shape) => ({
+    ...shape,
+    externalRefs: true,
+    prices: true,
+    knowledgeEntries: shape.size >= 1_000 ? 200 : 30,
+  })),
+  {
+    ordinal: VOLUME_CONCENTRATED_ORDINAL,
+    size: 300,
+    heavyProducts: 0,
+    members: 5,
+    ingestionEvents: 100,
+    externalRefs: true,
+    prices: true,
+    knowledgeEntries: 30,
+    concentratedMessages: 4_000,
+  },
 ];
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -206,6 +246,25 @@ const MOVEMENT_REASONS = [
   "Corrección de carga",
 ];
 
+const KNOWLEDGE_TOPICS = [
+  "Horario de atención",
+  "Medios de pago",
+  "Envíos",
+  "Ubicación del local",
+  "Cambios y devoluciones",
+  "Garantía",
+  "Promociones",
+  "Retiro en el local",
+];
+const KNOWLEDGE_CATEGORIES = ["Atención", "Pagos", "Envíos", "Local"];
+const KNOWLEDGE_CONTENTS = [
+  "Atendemos de lunes a viernes, de 9 a 19, y los sábados de 10 a 14.",
+  "Aceptamos efectivo, transferencia y tarjetas de crédito y débito.",
+  "Enviamos a todo el país. El costo depende del destino y del peso.",
+  "Estamos en el centro, a dos cuadras de la plaza principal.",
+  "Los cambios se hacen dentro de los 30 días, con el comprobante.",
+];
+
 // Códigos normalizados de la taxonomía de errores, que es lo único que `error_code` admite: nunca
 // payload, cabeceras ni credenciales. La métrica 12 agrupa por esta columna.
 const EVENT_ERROR_CODES = ["VALIDATION_ERROR", "CONFLICT", "INTERNAL_ERROR"];
@@ -234,13 +293,12 @@ function rowGenerator(kind: number, index: number, ordinal = 0): () => number {
 }
 
 // 1 clientes · 2 conversaciones · 3 mensajes · 4 productos · 5 saldos · 6 movimientos · 7 usuarios
-// · 8 eventos de ingestión (9.3). El ordinal de organización va en el segundo grupo, que estaba
+// · 8 eventos de ingestión (9.3) · 9 precios · a información del negocio · b la conversación
+// concentrada · c sus mensajes (13.2). El ordinal de organización va en el segundo grupo, que estaba
 // fijo en `0000`: con ordinal 0 el id es el histórico y con otro ordinal no puede colisionar.
-export function volumeId(
-  kind: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8,
-  index: number,
-  ordinal = 0,
-): string {
+export type VolumeKind = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | "a" | "b" | "c";
+
+export function volumeId(kind: VolumeKind, index: number, ordinal = 0): string {
   return `5eed000${kind}-${hex4(ordinal)}-4000-8000-${index.toString(16).padStart(12, "0")}`;
 }
 
@@ -262,7 +320,16 @@ export type VolumeCounts = {
   movements: number;
   members: number;
   ingestionEvents: number;
+  prices: number;
+  knowledgeEntries: number;
 };
+
+// Una fecha de calendario desplazada en días, sin pasar por la zona horaria de la máquina.
+function shiftDate(date: string, days: number): string {
+  const moved = new Date(`${date}T00:00:00Z`);
+  moved.setUTCDate(moved.getUTCDate() + days);
+  return moved.toISOString().slice(0, 10);
+}
 
 // Siembra **una** organización del volumen. `seedVolume` la llama con el ordinal 0 y
 // `seedVolumeDistribution` recorre la distribución de D-1.
@@ -397,6 +464,50 @@ export async function seedVolumeOrganization(
       status: pick(STATUSES),
       startedAt: new Date(start),
       lastMessageAt: new Date(sentAt),
+      ...(shape.externalRefs
+        ? { externalRef: `vol-conv-${ordinal}-${i + 1}` }
+        : {}),
+    });
+  }
+
+  // La conversación concentrada (13.2, D-3): abierta, del primer cliente activo con teléfono, con
+  // un mensaje cada cinco minutos hasta una hora antes del día de referencia. Todos sus mensajes
+  // son posteriores a los de las demás, que terminan dos días antes: es la forma en la que el
+  // planificador dudó entre los dos índices de `messages` (12.4, H-3).
+  const concentrated = shape.concentratedMessages ?? 0;
+  if (concentrated > 0) {
+    const owner = clientRows.find(
+      (client) => client.isActive && client.phoneE164 !== null,
+    );
+    if (!owner) {
+      throw new Error(
+        "La conversación concentrada necesita un cliente activo con teléfono.",
+      );
+    }
+    const conversationId = volumeId("b", 0, ordinal);
+    const last = end!.getTime() - 60 * 60 * 1000;
+    const step = 5 * 60 * 1000;
+    const first = last - (concentrated - 1) * step;
+    for (let position = 0; position < concentrated; position++) {
+      const direction = position % 2 === 0 ? "inbound" : "outbound";
+      messageRows.push({
+        id: volumeId("c", position, ordinal),
+        organizationId,
+        conversationId,
+        direction,
+        sentAt: new Date(first + position * step),
+        bodyText: `${(direction === "inbound" ? INBOUND : OUTBOUND)[position % INBOUND.length]} (concentrada ${position + 1})`,
+      });
+    }
+    conversationRows.push({
+      id: conversationId,
+      organizationId,
+      clientId: owner.id,
+      channel: "whatsapp",
+      status: "open",
+      startedAt: new Date(first),
+      lastMessageAt: new Date(last),
+      externalRef: `vol-conv-${ordinal}-concentrada`,
     });
   }
 
@@ -455,6 +566,70 @@ export async function seedVolumeOrganization(
         quantityOnHand: String(balance),
       });
     }
+  }
+
+  // Precios (13.2, D-3). `product_prices` es de solo inserción: la idempotencia es por id. La
+  // fecha se fija acá, y no con el `clock_timestamp()` de la columna, para que el precio vigente
+  // sea el mismo en cualquier corrida.
+  const priceRows: (typeof productPrices.$inferInsert)[] = [];
+  if (shape.prices) {
+    for (let i = 0; i < size; i++) {
+      const random = rowGenerator(9, i, ordinal);
+      if (random() >= 0.9) continue;
+      const amount = () =>
+        ((100 + Math.floor(random() * 99_900)) / 100).toFixed(2);
+      const currency = random() < 0.05 ? "USD" : "ARS";
+      const current = end!.getTime() - (1 + Math.floor(random() * 60)) * DAY_MS;
+      if (random() < 0.2) {
+        priceRows.push({
+          id: volumeId(9, i * 2, ordinal),
+          organizationId,
+          productId: volumeId(4, i, ordinal),
+          amount: amount(),
+          currency,
+          createdBy: user.id,
+          createdAt: new Date(current - 30 * DAY_MS),
+        });
+      }
+      priceRows.push({
+        id: volumeId(9, i * 2 + 1, ordinal),
+        organizationId,
+        productId: volumeId(4, i, ordinal),
+        amount: amount(),
+        currency,
+        createdBy: user.id,
+        createdAt: new Date(current),
+      });
+    }
+  }
+
+  // Información del negocio (13.2, D-3). El título es único por organización sin distinguir
+  // mayúsculas, así que lleva el número de fila. Una de cada seis está vencida y una de cada
+  // seis todavía no rige, para que el filtro de vigencia tenga algo que descartar.
+  const knowledgeRows: (typeof knowledgeEntries.$inferInsert)[] = [];
+  for (let i = 0; i < (shape.knowledgeEntries ?? 0); i++) {
+    const random = rowGenerator(10, i, ordinal);
+    const pick = <T>(list: readonly T[]): T =>
+      list[Math.floor(random() * list.length)]!;
+    const validity = random();
+    knowledgeRows.push({
+      id: volumeId("a", i, ordinal),
+      organizationId,
+      title: `${pick(KNOWLEDGE_TOPICS)} ${i + 1}`,
+      category: pick(KNOWLEDGE_CATEGORIES),
+      content: pick(KNOWLEDGE_CONTENTS),
+      isActive: random() >= 0.1,
+      validFrom:
+        validity > 5 / 6
+          ? shiftDate(referenceDate, 1 + Math.floor(random() * 30))
+          : null,
+      validUntil:
+        validity < 1 / 6
+          ? shiftDate(referenceDate, -(1 + Math.floor(random() * 30)))
+          : null,
+      createdAt: end!,
+      updatedAt: end!,
+    });
   }
 
   // Miembros sintéticos: 500 usuarios con el mismo hash, un cuarto de ellos viewer y algunos
@@ -580,6 +755,27 @@ export async function seedVolumeOrganization(
         .onConflictDoNothing({ target: inventories.productId }),
     ),
   );
+  // Los precios van después de los productos y de los usuarios: referencian a los dos.
+  if (priceRows.length > 0) {
+    await db.transaction((tx) =>
+      insertInBatches(priceRows, (batch) =>
+        tx
+          .insert(productPrices)
+          .values(batch)
+          .onConflictDoNothing({ target: productPrices.id }),
+      ),
+    );
+  }
+  if (knowledgeRows.length > 0) {
+    await db.transaction((tx) =>
+      insertInBatches(knowledgeRows, (batch) =>
+        tx
+          .insert(knowledgeEntries)
+          .values(batch)
+          .onConflictDoNothing({ target: knowledgeEntries.id }),
+      ),
+    );
+  }
   // ingestion_events rechaza DELETE por trigger para cualquier rol (ADR 0013, migración 0012):
   // la idempotencia es por id y nunca por borrado y reinserción.
   if (eventRows.length > 0) {
@@ -602,7 +798,9 @@ export async function seedVolumeOrganization(
           (select count(*)::int from inventories where organization_id = ${organizationId}) as balances,
           (select count(*)::int from inventory_movements where organization_id = ${organizationId}) as movements,
           (select count(*)::int from organization_members where organization_id = ${organizationId}) as members,
-          (select count(*)::int from ingestion_events where organization_id = ${organizationId}) as "ingestionEvents"`,
+          (select count(*)::int from ingestion_events where organization_id = ${organizationId}) as "ingestionEvents",
+          (select count(*)::int from product_prices where organization_id = ${organizationId}) as prices,
+          (select count(*)::int from knowledge_entries where organization_id = ${organizationId}) as "knowledgeEntries"`,
   );
   return counts.rows[0]!;
 }
@@ -658,9 +856,11 @@ async function main(): Promise<void> {
     throw new Error("Falta SEED_USER_PASSWORD: copiá .env.example a .env.");
   }
   const argument = process.argv[2];
-  // `distribucion` siembra las veinte organizaciones de D-1; un número siembra solo la ordinal 0
-  // con ese tamaño, que es la forma de antes de la 9.3 y la que usa la calibración de D-3.
-  const distribution = argument === "distribucion";
+  // `distribucion` siembra las veinte organizaciones de D-1; `medicion`, las veintiuna de la 13.2;
+  // un número siembra solo la ordinal 0 con ese tamaño, que es la forma de antes de la 9.3 y la
+  // que usa la calibración de D-3.
+  const measurement = argument === "medicion";
+  const distribution = argument === "distribucion" || measurement;
   const size =
     argument === undefined || distribution ? undefined : Number(argument);
 
@@ -668,7 +868,9 @@ async function main(): Promise<void> {
   const started = performance.now();
   try {
     if (distribution) {
-      const { byOrganization } = await seedVolumeDistribution(db, password);
+      const { byOrganization } = await seedVolumeDistribution(db, password, {
+        shapes: measurement ? VOLUME_MEASUREMENT : VOLUME_DISTRIBUTION,
+      });
       const seconds = ((performance.now() - started) / 1000).toFixed(1);
       const total = (key: keyof VolumeCounts): number =>
         byOrganization.reduce((sum, row) => sum + row[key], 0);
@@ -676,15 +878,17 @@ async function main(): Promise<void> {
         console.log(
           `  organización ${row.ordinal}: ${row.clients} clientes, ${row.conversations} conversaciones, ` +
             `${row.messages} mensajes, ${row.products} productos, ${row.movements} movimientos, ` +
-            `${row.members} miembros, ${row.ingestionEvents} eventos.`,
+            `${row.members} miembros, ${row.ingestionEvents} eventos, ${row.prices} precios, ` +
+            `${row.knowledgeEntries} entradas de información.`,
         );
       }
       console.log(
         `Distribución de volumen aplicada: ${byOrganization.length} organizaciones, ` +
           `${total("clients")} clientes, ${total("conversations")} conversaciones, ` +
           `${total("messages")} mensajes, ${total("products")} productos, ` +
-          `${total("movements")} movimientos, ${total("members")} miembros y ` +
-          `${total("ingestionEvents")} eventos de ingestión en ${seconds} s.`,
+          `${total("movements")} movimientos, ${total("members")} miembros, ` +
+          `${total("ingestionEvents")} eventos de ingestión, ${total("prices")} precios y ` +
+          `${total("knowledgeEntries")} entradas de información en ${seconds} s.`,
       );
       return;
     }
