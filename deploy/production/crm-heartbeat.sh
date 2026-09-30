@@ -48,9 +48,16 @@ fi
 # eso el mensaje de curl se descarta y solo se informa su codigo de salida, que alcanza
 # para distinguir DNS (6), conexion (7), timeout (28) y respuesta HTTP de error (22).
 # --fail convierte un 4xx o 5xx en error. Los reintentos cubren un corte breve de red.
+#
+# La URL entra a curl por su configuracion en la entrada estandar (--config -), no como
+# argumento: los argumentos de un proceso se leen en /proc/<pid>/cmdline, y el droplet no
+# monta /proc con hidepid, asi que cualquier usuario local la veria mientras dura el
+# pedido (revision independiente de la 13.3, hallazgo 6). printf es un builtin de bash:
+# no crea un proceso con la URL en sus argumentos.
 codigo=0
-curl --fail --silent --max-time 10 --retry 3 --retry-all-errors \
-  --output /dev/null "$url" 2>/dev/null || codigo=$?
+printf 'url = "%s"\n' "$url" |
+  curl --config - --fail --silent --max-time 10 --retry 3 --retry-all-errors \
+    --output /dev/null 2>/dev/null || codigo=$?
 
 if ((codigo != 0)); then
   echo "El aviso de '$trabajo' no llego al servicio externo (curl salio con $codigo)." >&2

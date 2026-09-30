@@ -225,7 +225,7 @@ Las tomé yo al implementar, dentro de lo que el brief fijaba. Ninguna cambia un
 - **I-2. El script acepta una lista cerrada de trabajos**, y la guarda exige que coincida con los que disparan las unidades. Un nombre mal escrito sale con error y la alerta suena por ausencia: es una falsa alarma y no un silencio.
 - **I-3. El script nunca imprime la URL**, ni en el mensaje de error de `curl`, que puede traerla. Informa solo el código de salida de `curl`.
 - **I-4. La guarda de AC-2 es un archivo nuevo**, `tests/guards/heartbeat-urls.test.ts`, y no un bloque de la de backup: recorre todo el repositorio, no `deploy/`. Mira también los archivos nuevos sin versionar.
-- **I-5. El procedimiento de `duration_ms` vive en el runbook de alertas** como comandos de `jq`, no como script: `scripts/` no estaba en la lista de archivos autorizados. **Se probó en el droplet, no en local**, como pedía AC-5: la máquina local no tiene `jq`. Se le pasaron por la entrada estándar líneas del formateador real de la aplicación, sin escribir nada en el servidor.
+- **I-5. El procedimiento de `duration_ms` vive en el runbook de alertas** como comandos de `jq`, no como script: `scripts/` no estaba en la lista de archivos autorizados. **Se probó en el droplet, no en local**, como pedía AC-5: la máquina local no tiene `jq`. Se le pasaron por la entrada estándar líneas del formateador real de la aplicación, sin escribir nada en el servidor. *Aceptado por el usuario el 2026-09-30, a raíz de la revisión independiente (hallazgo 4): esta decisión sí cambiaba un criterio aprobado, y la frase de arriba que dice lo contrario no la cubría.*
 - **I-6. El monitoreo de producción es un apartado nuevo del README**, «Monitoreo y alertas», con la instalación y la prueba de cada aviso.
 
 ## Resultados — etapa 13.3.1, 2026-09-30
@@ -258,12 +258,38 @@ Las salidas están en [evidencia-13.3-disponibilidad.md](evidencia-13.3-disponib
 | AC-9 | cumplido en el segundo intento (I-8) | Base detenida a las 20:42:38, `/api/health` en `503` y `/login` en `200`. Alerta a las 20:47 (eu_west). Base de vuelta a las 20:47:37, y la aplicación reconectó sola: `200` al primer pedido y ningún reinicio. Recuperación avisada a las 20:59 y a las 21:03 |
 | AC-10 | **la mitad cumplida**; la otra, el 2026-10-01 (I-7) | Chequeo de prueba: un ping a las 21:14, *down* a las 21:16:12, email y Telegram a las 21:16. Los tres avisos de prueba salieron a las 19:29, con `Result=success`. Falta ver las corridas programadas con su aviso: la del ejercicio de restauración es la condición de detención 2 |
 | AC-11 | cumplido | Umbral bajado a 5 % a las 21:10, email a las 21:11, vuelta a 80 % a las 21:12, confirmada con la captura del panel |
-| AC-12 | cumplido | Corte de 1 a 3 s en el despliegue de `579397e`: un `502` en 521 pedidos a `/login`, uno por segundo durante 10 minutos. `npm ci` y `next build` no cortaron nada. Solo se midió `/login` |
+| AC-12 | cumplido | Corte de 1 a 3 s en el despliegue de `579397e`: un `502` en 521 pedidos a `/login` en 10 minutos, uno cada 1,15 s de promedio, porque cada pedido espera el segundo después de terminar. `npm ci` y `next build` no cortaron nada. Solo se midió `/login` |
 | AC-13 | cumplido | Los 17 recuentos, iguales en la línea de base y después de cada una de las tres paradas. `/login` en `200` después de cada una |
-| AC-14 | cumplido | `Risks.md`: fila nueva con lo que quedó y lo que no cubre. `Overview.md` §Observabilidad: la tercera pieza existe. README de producción: las herramientas, los umbrales y cuánto tarda cada alerta. Runbook: el estado de cada alerta y los hallazgos de AC-8 y AC-9 |
+| AC-14 | cumplido, **después de la revisión independiente** (hallazgos 1 y 10) | `Risks.md`: fila nueva con lo que quedó y lo que no cubre. `Overview.md` §Observabilidad: la tercera pieza existe. README de producción: las herramientas, los umbrales y cuánto tarda cada alerta. Runbook: el estado de cada alerta y los hallazgos de AC-8 y AC-9 |
 
 **Hallazgos de la etapa**, además de las filas:
 
 1. **Uptime avisa tarde y a veces fuera de tiempo.** Recuperación avisada entre 11 y 16 minutos después. Dos avisos de caída con el sitio arriba. Una caída de 40 segundos, sin alerta. El runbook ya manda confirmar `/api/health` a mano antes de actuar.
 2. **Detener `postgresql` detiene la aplicación, y levantarla no la levanta** (`Requires=`). Queda en el runbook. No se cambió la unidad: es un cambio de comportamiento de producción, fuera del alcance de esta etapa.
 3. **El diagnóstico del runbook miraba el envoltorio de PostgreSQL**, que sigue `active` con la base caída. Corregido: mira `postgresql@18-main`.
+
+## Revisión independiente (AC-15), 2026-09-30
+
+Un agente que no participó del trabajo revisó la subfase entera, con acceso de solo lectura, salvo la mitad de AC-10 que todavía no ocurrió. Informó **1 crítico, 1 mayor, 10 menores y 3 observaciones**. Cada hallazgo se verificó contra el código o contra el servidor antes de aceptarlo, y **los doce se confirmaron**. Los dos que la revisión marcó como inferidos (6 y 9) se confirmaron en el droplet. Las salidas están en la [evidencia](evidencia-13.3-disponibilidad.md#correcciones-de-la-revisión-independiente).
+
+| # | Severidad | Hallazgo | Resolución |
+|---|---|---|---|
+| 1 | crítico, por la letra de la escala | Overview y Risks decían que cada alerta se vio llegar con su falla provocada; la memoria, la latencia y el certificado no se provocaron | Corregidos los dos: qué se provocó y qué está solo configurado |
+| 2 | mayor | D-5 pedía correo más el teléfono, y las alertas de Uptime y de recursos llegan solo por email, sin registrarlo | I-10, abajo. **Aceptado por el usuario el 2026-09-30** |
+| 3 | menor | El runbook no tenía procedimiento para la alerta de latencia (AC-3) | Sección nueva, con el comando probado en el droplet |
+| 4 | menor | I-5 cambió dónde se probó AC-5 sin aprobación registrada | **Aceptado por el usuario el 2026-09-30**, después de hecho: I-5 queda como desvío aprobado |
+| 5 | menor | La guarda no veía un aviso en `OnFailure=`, un `OnSuccess=` vacío ni otros modos de imprimir la URL | Tres reglas nuevas, de 126 a 131 casos, cinco mutaciones en rojo. Una encontró un defecto de la corrección misma, corregido |
+| 6 | menor | La URL iba en los argumentos de `curl`, legibles en `/proc` | El droplet no tiene `hidepid`: confirmado. La URL va ahora por la entrada estándar de `curl`, con una guarda. **Se instala en el droplet con el próximo despliegue** |
+| 7 | menor | El comando de prueba del README mostraba la línea de systemd, no la del script | Muestra el resultado y las tres últimas líneas. La evidencia dice qué comando produjo su salida |
+| 8 | menor | Una línea en blanco partía la tabla de secretos del README | Quitada |
+| 9 | menor | El runbook decía que la aplicación queda caída tras cinco fallas; con `RestartSec=5` reintenta para siempre | Confirmado en el droplet y corregido |
+| 10 | menor | NonFunctionalRequirements decía que el corte del despliegue «se mide en la 13.3.2» y que el despliegue corta mientras dura | Dice lo medido: de 1 a 3 s, solo en el reinicio |
+| 11 | menor | La nota de una salida recortada de AC-1 no coincidía con el bloque | Nota corregida, y la mutación repetida entera |
+| 12 | menor | `HANDOFF.md` decía que producción corre `471cf7b` y que sigue el brief de la 13.3 | Actualizado |
+| O-1 | observación | Dos rangos de detección sin decir cuál es estimado y cuál medido | Aclarado en la evidencia |
+| O-2 | observación | «Uno por segundo» en AC-12, cuando fue uno cada 1,15 s | Corregido |
+| O-3 | observación | Dos archivos modificados fuera de la lista | Solo finales de línea, anteriores a la 13.3, fuera de todo commit: `git diff --ignore-cr-at-eol` vacío |
+
+La revisión también señaló dos frases viejas de Overview que no son de la 13.3: la de los campos que `logEvent` «todavía no registra» y la de «producción sigue siendo diseño». Se corrigieron, porque Overview está en la lista autorizada.
+
+- **I-10. D-5 se cumple con el email en el teléfono.** Las alertas de Uptime y de recursos de DigitalOcean llegan por email. Los canales que ofrecía el panel eran email y Slack, sin Telegram. En el paso E, el usuario confirmó que la casilla de esas alertas la lee en el celular, con notificaciones. Healthchecks.io llega además por Telegram. **Límite**: una notificación de email se silencia más fácil que un canal dedicado. *Aceptado por el usuario el 2026-09-30.*

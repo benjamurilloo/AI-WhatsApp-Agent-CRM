@@ -12,6 +12,7 @@ Qué hacer cuando llega una alerta de `crm.vixoraai.app` ([brief-13.3](../decisi
 | Un aviso de vida no llegó | **provocado** el 2026-09-30 con un chequeo de prueba que recibió un ping y no más (AC-10): la alerta llegó por email y Telegram. El diagnóstico de abajo no se ejecutó, porque ningún trabajo real falló |
 | Disco o memoria | La de disco, **provocada** el 2026-09-30 con el umbral bajado a 5 % (AC-11). La de memoria, **configurada y no provocada** |
 | El certificado vence pronto | **configurada y no provocada**: alerta de Uptime a 14 días del vencimiento |
+| `/api/health` lento | **configurada y no provocada**: alerta de Uptime con más de 2000 ms durante 5 minutos |
 | Distribución de `duration_ms` por ruta | **probado** el 2026-09-30 en el droplet, con `jq` 1.7, contra líneas del formateador real de la aplicación ([evidencia-13.3](../decisions/evidencia-13.3-disponibilidad.md)). Contra el journal de producción corre sin error, pero todavía no hay eventos de servicio: la ingestión y la lectura están apagadas |
 
 ## Antes de cualquier alerta: tres preguntas
@@ -41,7 +42,7 @@ sudo journalctl -u crm-production -n 30 --no-pager'
 
 | Lo que se ve | Qué hacer |
 | --- | --- |
-| `crm-production` no está `active` | `sudo systemctl restart crm-production`. Tiene `Restart=on-failure`, así que si está caída es porque falló cinco veces seguidas o porque alguien la detuvo. El journal dice cuál |
+| `crm-production` no está `active` | `sudo systemctl restart crm-production`. Tiene `Restart=on-failure` con 5 s entre intentos, y el límite de systemd es de 5 arranques en 10 s, que así no se alcanza: **si falla, reintenta para siempre** y se ve `activating (auto-restart)`, no `inactive`. `inactive` quiere decir que alguien la detuvo, o que se detuvo con `postgresql` (fila de abajo). El journal dice cuál. *Corregido el 2026-09-30 por la revisión independiente de la 13.3 (hallazgo 9)*: decía que quedaba caída tras cinco fallas seguidas |
 | `postgresql` no está `active`, o `/api/health` da `503` | La base corre en `postgresql@18-main.service`; `postgresql.service` es un envoltorio que queda `active (exited)` aunque la base esté caída. Mirar `systemctl status postgresql@18-main`, y `sudo systemctl start postgresql@18-main` con `sudo journalctl -u postgresql@18-main -n 50`. Si no arranca, mirar el disco primero: un disco lleno es la causa más común |
 | Alguien detuvo `postgresql` (el envoltorio) | `crm-production` tiene `Requires=postgresql.service`, así que **se detuvo con ella, y no vuelve sola**: `sudo systemctl start postgresql crm-production`. Un `restart` de `postgresql` sí reinicia las dos |
 | Local da `200` y desde afuera no | El problema está entre nginx y afuera: `sudo nginx -t`, `sudo systemctl status nginx`, y el certificado (`sudo certbot certificates`) |
@@ -49,6 +50,24 @@ sudo journalctl -u crm-production -n 30 --no-pager'
 | La base arranca, pero los datos están mal | No es esta alerta: es el [runbook de restauración](restaurar-la-base.md) |
 
 Reiniciar la aplicación no pierde datos: no guarda estado propio fuera de la base. Reiniciar PostgreSQL corta las conexiones abiertas, y la aplicación reconecta en el pedido siguiente: el 2026-09-30, con la base detenida cinco minutos y vuelta a levantar, `/api/health` dio `200` en el primer pedido, sin reiniciar la aplicación (AC-9).
+
+## `/api/health` tarda más de 2 segundos
+
+La alerta de latencia de Uptime mide `/api/health` desde cuatro regiones. Lo normal, el 2026-09-30, era de 0,25 s a 0,8 s según la región. `/api/health` hace una sola consulta a la base, así que si tarda, casi siempre es la máquina o la base, no la aplicación.
+
+```
+curl -sS -o /dev/null -w "%{http_code} %{time_total}s\n" https://crm.vixoraai.app/api/health
+ssh crm-production 'uptime; free -m | sed -n 2p; df -h / | tail -1
+curl -s -o /dev/null -w "local: %{http_code} %{time_total}s\n" http://127.0.0.1:3000/api/health
+sudo -u postgres psql -XAt -c "select count(*), max(now() - query_start) from pg_stat_activity where state = '"'"'active'"'"'"'
+```
+
+| Lo que se ve | Qué hacer |
+| --- | --- |
+| Rápido desde tu máquina y lento en el monitor | Es una región o la red del monitor. Mirar en el panel si es una sola región: si es una, esperar |
+| Lento también en local, con la carga (`uptime`) alta | Algo consume la máquina. `ps -eo pid,user,pcpu,rss,comm --sort=-pcpu \| head` dice qué. Un despliegue en curso lo explica (`next build`) |
+| Lento en local, con consultas activas largas | La base está ocupada o bloqueada. Anotar la hora y la consulta más larga; no se cancela nada sin entender qué es |
+| Coincide con la alerta de memoria | Seguir en [Memoria](#memoria-por-encima-del-90--sostenida) |
 
 ## El droplet no responde
 

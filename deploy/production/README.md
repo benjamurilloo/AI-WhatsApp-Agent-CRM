@@ -54,7 +54,6 @@ Los secretos. Viven en `/etc/crm-production/`, con permisos `0600` de `root`, y 
 | `backup.pgpass` | La contraseña del rol dueño, para el backup |
 | `backup.age.pub` | La clave **pública** de `age`. La privada **nunca** entra al droplet: la guarda el operador fuera de él |
 | `rclone.conf` | La clave de acceso al bucket, con permiso **solo** sobre ese bucket. Un remoto `[spaces]` con `type = s3`, `provider = DigitalOcean`, `endpoint = nyc3.digitaloceanspaces.com`, `acl = private` y las dos claves. Lo escribe el operador en el servidor, con `nano`, y nunca pasa por una conversación con un asistente |
-
 | `heartbeat.env` | Desde la 13.3: `HEARTBEAT_URL_BACKUP`, `HEARTBEAT_URL_OFFSITE` y `HEARTBEAT_URL_RESTORE_CHECK`, las URLs de aviso de vida. **Son credenciales**: quien tenga una puede marcar un trabajo como vivo y apagar su alerta. Lo escribe el operador en el servidor, con `nano`, y nunca pasa por una conversación con un asistente. Una guarda (`tests/guards/heartbeat-urls.test.ts`) falla si una aparece en un archivo del repositorio |
 
 No hay `seed.env`: en producción no corre ningún seed, y los seeds rechazan la base `crm_production` (AC-5).
@@ -275,7 +274,7 @@ Desde la 13.3 ([brief-13.3](../../docs/decisions/brief-13.3-disponibilidad-y-obs
 
 La herramienta de cada fila y su precio están en la evidencia. **Las URLs de aviso no**: viven solo en `/etc/crm-production/heartbeat.env`.
 
-**Por qué el aviso sale de una unidad aparte.** `crm-backup.service` no tiene red (`IPAddressDeny=any`), y dársela para esto le abriría la red a un proceso que lee el `.pgpass` del dueño. `crm-heartbeat@.service` corre con un usuario efímero (`DynamicUser=true`), sin escribir en disco. systemd lee `heartbeat.env` como `root` antes de soltar privilegios, así que el archivo sigue siendo `0600` de `root` y el proceso no puede leer ningún otro secreto.
+**Por qué el aviso sale de una unidad aparte.** `crm-backup.service` no tiene red (`IPAddressDeny=any`), y dársela para esto le abriría la red a un proceso que lee el `.pgpass` del dueño. `crm-heartbeat@.service` corre con un usuario efímero (`DynamicUser=true`), sin escribir en disco. systemd lee `heartbeat.env` como `root` antes de soltar privilegios, así que el archivo sigue siendo `0600` de `root` y el proceso no puede leer ningún otro secreto. **Límites**: el proceso recibe las tres URLs, no solo la de su trabajo. Y la URL no va en los argumentos de `curl` sino en su configuración por la entrada estándar, porque el droplet no monta `/proc` con `hidepid` y cualquier usuario local leería los argumentos (revisión independiente de la 13.3, hallazgo 6).
 
 **Lo que el aviso no dice.** Que el trabajo terminó con código 0, no que su resultado sirva. Que el backup se pueda restaurar lo dice el ejercicio de restauración, que tiene su propio aviso.
 
@@ -312,7 +311,7 @@ sudo stat -c "%a %U %n" /etc/crm-production/heartbeat.env'
 La última línea tiene que decir `600 root`. **Probar cada aviso sin correr su trabajo**:
 
 ```
-ssh crm-production 'for t in backup offsite restore-check; do sudo systemctl start "crm-heartbeat@$t.service"; sudo journalctl -u "crm-heartbeat@$t.service" -n 1 -o cat; done'
+ssh crm-production 'for t in backup offsite restore-check; do sudo systemctl start "crm-heartbeat@$t.service"; systemctl show -p Result --value "crm-heartbeat@$t.service"; sudo journalctl -u "crm-heartbeat@$t.service" -n 3 -o cat; done'
 ```
 
-Cada uno tiene que decir `Aviso de '<trabajo>' enviado.`, y el servicio externo tiene que mostrar el aviso recibido. Un error dice el código de salida de `curl`, nunca la URL.
+Cada uno tiene que decir `success` y, entre sus tres últimas líneas, `Aviso de '<trabajo>' enviado.` Las otras dos son de systemd («Deactivated successfully» y «Finished»). Además, el servicio externo tiene que mostrar el aviso recibido. Un error dice el código de salida de `curl`, nunca la URL.

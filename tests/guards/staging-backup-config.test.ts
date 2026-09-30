@@ -91,16 +91,20 @@ export function valor(
 
 /**
  * Todos los valores de una clave de tipo lista, como `OnSuccess=`. systemd los acumula:
- * dos líneas o una línea con dos unidades separadas por espacio valen lo mismo.
+ * dos líneas o una línea con dos unidades separadas por espacio valen lo mismo. Y una
+ * asignación vacía **vacía la lista**: después de `OnSuccess=` solo cuenta lo que venga
+ * debajo (revisión independiente de la 13.3, hallazgo 5b).
  */
 export function valores(
   unidad: Unidad,
   seccion: string,
   clave: string,
 ): string[] {
-  return (unidad.get(seccion)?.get(clave) ?? []).flatMap((v) =>
-    v.split(/\s+/).filter(Boolean),
-  );
+  let lista: string[] = [];
+  for (const v of unidad.get(seccion)?.get(clave) ?? []) {
+    lista = v === "" ? [] : [...lista, ...v.split(/\s+/).filter(Boolean)];
+  }
+  return lista;
 }
 
 /**
@@ -1013,6 +1017,41 @@ export function trabajosSinAviso(
   return sinAviso.sort();
 }
 
+/**
+ * Cada lugar de las unidades que nombra un aviso de vida fuera de `[Unit] OnSuccess=`,
+ * como `archivo [Sección] Clave`. Un aviso en `OnFailure=` o en un `ExecStopPost=` sale
+ * también cuando el trabajo falla, y eso apaga la alerta: es peor que no tener aviso
+ * (revisión independiente de la 13.3, hallazgo 5a). La unidad del aviso no cuenta.
+ */
+export function avisosFueraDeOnSuccess(
+  archivos: ReadonlyMap<string, string>,
+): string[] {
+  const fuera: string[] = [];
+  for (const [nombre, texto] of archivos) {
+    if (nombre === "crm-heartbeat@.service") continue;
+    for (const [seccion, claves] of parsearUnidad(texto)) {
+      for (const [clave, vals] of claves) {
+        if (seccion === "Unit" && clave === "OnSuccess") continue;
+        if (vals.some((v) => v.includes("crm-heartbeat"))) {
+          fuera.push(`${nombre} [${seccion}] ${clave}`);
+        }
+      }
+    }
+  }
+  return fuera.sort();
+}
+
+/**
+ * Las líneas de código del script de aviso que tocan la URL: la leen (`${!variable}`), la
+ * asignan o la usan (`$url`, `${url}`). Recortadas, sin comentarios.
+ */
+export function usosDeLaUrl(script: string): string[] {
+  return codigoDe(script)
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => /\$\{?url\b|\$\{!variable|^url=/.test(l));
+}
+
 /** Los trabajos que aceptan los `case` del script de aviso, en el orden en que aparecen. */
 export function trabajosDelScript(script: string): string[] {
   return [...codigoDe(script).matchAll(/^\s*([a-z-]+)\) variable=/gm)].map(
@@ -1093,6 +1132,45 @@ describe("producción: cada trabajo programado manda su aviso de vida", () => {
       disparados,
     );
   });
+
+  it("ningún aviso sale por otro camino que OnSuccess=", () => {
+    expect(avisosFueraDeOnSuccess(PROD_ARCHIVOS)).toEqual([]);
+  });
+
+  it("un aviso conectado a la falla se detecta", () => {
+    const original = PROD_ARCHIVOS.get("crm-backup.service") ?? "";
+    const conFalla = new Map(PROD_ARCHIVOS);
+    conFalla.set(
+      "crm-backup.service",
+      original.replace(
+        /^\[Unit\]$/m,
+        "[Unit]\nOnFailure=crm-heartbeat@backup.service",
+      ),
+    );
+    conFalla.set(
+      "crm-restore-check.service",
+      (PROD_ARCHIVOS.get("crm-restore-check.service") ?? "").replace(
+        /^\[Service\]$/m,
+        "[Service]\nExecStopPost=/bin/systemctl start crm-heartbeat@restore-check.service",
+      ),
+    );
+    expect(avisosFueraDeOnSuccess(conFalla)).toEqual([
+      "crm-backup.service [Unit] OnFailure",
+      "crm-restore-check.service [Service] ExecStopPost",
+    ]);
+  });
+
+  it("un OnSuccess= vacío debajo del aviso lo borra, como en systemd", () => {
+    const original = PROD_ARCHIVOS.get("crm-backup.service") ?? "";
+    const mutado = original.replace(
+      /^(OnSuccess=crm-heartbeat@backup\.service)$/m,
+      "$1\nOnSuccess=",
+    );
+    expect(mutado).not.toBe(original);
+    const conReinicio = new Map(PROD_ARCHIVOS);
+    conReinicio.set("crm-backup.service", mutado);
+    expect(trabajosSinAviso(conReinicio)).toContain("crm-backup.service");
+  });
 });
 
 describe("producción: la unidad del aviso no puede más que avisar", () => {
@@ -1112,12 +1190,41 @@ describe("producción: la unidad del aviso no puede más que avisar", () => {
   });
 
   it("el script nunca imprime la URL, ni en el mensaje de curl", () => {
-    const codigo = codigoDe(PROD_AVISO_SCRIPT);
-    const ecos = codigo.split("\n").filter((l) => /\becho\b/.test(l));
-    expect(ecos.length).toBeGreaterThan(0);
-    for (const linea of ecos) expect(linea).not.toMatch(/\$\{?url\b/);
+    // Una lista cerrada de los usos de la URL, en vez de buscar formas de imprimirla: la
+    // primera versión miraba solo los `echo` y no veía `printf`, `${!variable}`, `curl -v`
+    // ni `--write-out` (revisión independiente de la 13.3, hallazgo 5c).
+    expect(usosDeLaUrl(PROD_AVISO_SCRIPT)).toEqual([
+      "url=${!variable:-}",
+      "if [[ -z $url ]]; then",
+      `printf 'url = "%s"\\n' "$url" |`,
+    ]);
     // El mensaje de error de curl puede traer la URL: se descarta y queda el código.
-    expect(codigo).toMatch(/"\$url" 2>\/dev\/null \|\| codigo=\$\?/);
+    // Y ninguna opción de curl que la escriba en la salida.
+    const codigo = codigoDe(PROD_AVISO_SCRIPT);
+    expect(codigo).toMatch(
+      /--output \/dev\/null 2>\/dev\/null \|\| codigo=\$\?/,
+    );
+    expect(codigo).not.toMatch(
+      /\s(-v|--verbose|-w|--write-out|--trace\S*|-i|--include|-D|--dump-header|--stderr)\b/,
+    );
+  });
+
+  it("la URL no va en los argumentos de curl, que se leen en /proc", () => {
+    // Las líneas continuadas con `\` son un solo comando: se unen antes de mirar. La
+    // primera versión de este caso miraba línea por línea y no vio la URL agregada en la
+    // continuación, con la mutación ejecutada.
+    const codigo = codigoDe(PROD_AVISO_SCRIPT).replace(/\\\r?\n\s*/g, " ");
+    expect(codigo).toMatch(/\|\s*curl --config - /);
+    expect(codigo).not.toMatch(/curl[^\n|]*\$\{?url/);
+  });
+
+  it("un uso nuevo de la URL se detecta", () => {
+    const conPrintf = PROD_AVISO_SCRIPT.replace(
+      /^echo "Aviso de '\$trabajo' enviado\."$/m,
+      'printf "%s\\n" "${!variable}"',
+    );
+    expect(conPrintf).not.toBe(PROD_AVISO_SCRIPT);
+    expect(usosDeLaUrl(conPrintf)).toContain('printf "%s\\n" "${!variable}"');
   });
 
   it("aborta ante el primer error", () => {

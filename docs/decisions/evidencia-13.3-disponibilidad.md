@@ -65,7 +65,7 @@ código de salida: 1
 restaurado: bytes idénticos
 ```
 
-La tercera salida está recortada a sus cuatro primeras líneas de fallas; el código de salida es el de la corrida entera.
+La tercera salida está recortada: muestra dos de sus líneas de fallas y no tiene la línea del recuento. *Corregido el 2026-09-30 por la revisión independiente (hallazgo 11)*: esta nota decía «a sus cuatro primeras líneas», y el bloque tiene dos. La corrida entera, repetida con la guarda de después de la revisión, está en [Correcciones de la revisión independiente](#correcciones-de-la-revisión-independiente).
 
 **Lo que muestran**:
 
@@ -244,7 +244,13 @@ crm-heartbeat@offsite.service
 crm-heartbeat@restore-check.service
 ```
 
-**Un aviso de prueba de cada trabajo**, sin correr ningún trabajo:
+**Un aviso de prueba de cada trabajo**, sin correr ningún trabajo. Primero `systemctl start crm-heartbeat@<trabajo>.service` para los tres; después, las líneas de cada uno:
+
+```
+ssh crm-production 'for t in backup offsite restore-check; do sudo journalctl -u "crm-heartbeat@$t.service" -n 3 -o short-iso --no-hostname; done'
+```
+
+Salida, con la línea «Finished» de systemd quitada de cada trabajo `[transcrito]`:
 
 ```
 2026-09-30T19:29:34+00:00 crm-heartbeat.sh[20675]: Aviso de 'backup' enviado.
@@ -343,7 +349,7 @@ origen-C: 19:44:08/200 19:52:57/200 20:01:48/200 20:11:15/200 20:20:55/502 20:30
 origen-D: 19:44:39/200 19:49:24/200 19:54:08/200 19:58:48/200 20:03:29/200 20:08:11/200 20:12:51/200 20:17:33/502 20:22:14/502 20:26:52/200 20:31:38/200 20:36:18/200
 ```
 
-Cada origen consulta cada 3, 4, 9 y 5 minutos. Una región necesita fallos que cubran los 2 minutos de espera, así que con esas frecuencias la alerta tarda de 5 a 10 minutos. Unos cinco minutos después de la recuperación, el panel mostraba todavía «Europe DOWN for 9 minutes» y «USA West DOWN for 7 minutes» `[transcrito]`, con todas las consultas en `200`.
+Cada origen consulta cada 3, 4, 9 y 5 minutos. Una región necesita fallos que cubran los 2 minutos de espera, así que con esas frecuencias **la estimación** es de 5 a 10 minutos. **Lo medido**, en AC-8 y AC-9, es de 4,5 a 9,5 minutos, y es el número que citan los demás documentos. Unos cinco minutos después de la recuperación, el panel mostraba todavía «Europe DOWN for 9 minutes» y «USA West DOWN for 7 minutes» `[transcrito]`, con todas las consultas en `200`.
 
 ### AC-9: la base detenida
 
@@ -455,3 +461,96 @@ Email: «"crm-prueba-ac10" is DOWN (success signal did not arrive on time, grace
 | Umbral de vuelta en 80 % | 21:12 |
 
 Texto: «Disk Utilization Percent is currently at 7.77%, above setting of 5.00% for the last 5m». Después, en el panel: «crm-production-disco-80 — Disk Utilization Percent is above 80% for 5 min», sobre `crm-production` `[transcrito]`. Llegó al minuto porque la alerta evalúa los 5 minutos anteriores, en los que el disco ya estaba por encima del 5 %.
+
+## Correcciones de la revisión independiente
+
+La revisión independiente de la 13.3 (AC-15), del 2026-09-30, informó 12 hallazgos y 3 observaciones. Cada uno se verificó contra el código o el servidor antes de aceptarlo. Lo que se corrigió en el código tiene su salida acá.
+
+**En el servidor**, para los hallazgos 6 y 9, que la revisión marcó como inferidos:
+
+```
+rw,nosuid,nodev,noexec,relatime
+RestartUSec=5s
+StartLimitIntervalUSec=10s
+StartLimitBurst=5
+```
+
+(`findmnt -no OPTIONS /proc` y los límites de arranque de `crm-production`). `/proc` no tiene `hidepid`: cualquier usuario local lee los argumentos de un proceso. Y con 5 s entre reinicios, 5 arranques en 10 s no se alcanzan nunca: la aplicación reintenta para siempre en lugar de quedar detenida.
+
+**El script del aviso** ya no pasa la URL como argumento de `curl`, sino por su configuración en la entrada estándar (`--config -`). Probado en local, sin ninguna URL real:
+
+```
+sintaxis OK
+Aviso de 'backup' enviado.
+exit 0
+El aviso de 'backup' no llego al servicio externo (curl salio con 6).
+exit 1
+El aviso de 'backup' no llego al servicio externo (curl salio con 22).
+exit 1
+```
+
+(`bash -n`, y el script con `https://example.com/`, con un host que no existe y con una ruta que da `404`). **En el droplet sigue la versión anterior** hasta el próximo despliegue y la reinstalación del script.
+
+**La guarda**, de 126 a 131 casos, todos en verde. Tapa los tres huecos del hallazgo 5: un aviso fuera de `OnSuccess=`, un `OnSuccess=` vacío que vacía la lista, y cualquier uso de la URL fuera de una lista cerrada, que reemplaza a la búsqueda de `echo`. Mutaciones sobre los archivos reales, todas en rojo:
+
+```
+mutación: deploy/production/crm-backup.service: «[Unit]» → «[Unit]
+OnFailure=crm-heartbeat@backup.service»
+     × ningún aviso sale por otro camino que OnSuccess= 8ms
+      Tests  1 failed | 130 passed (131)
+código de salida: 1
+restaurado: bytes idénticos
+
+mutación: deploy/production/crm-backup.service: «OnSuccess=crm-heartbeat@backup.service» → «OnSuccess=crm-heartbeat@backup.service
+OnSuccess=»
+     × la copia externa corre solo después de un backup exitoso 6ms
+     × todo servicio alcanzado desde un timer dispara su aviso 3ms
+     × recorre los tres trabajos: el backup, la copia externa y el ejercicio 1ms
+     × un trabajo nuevo con timer y sin aviso se detecta 1ms
+     × un aviso puesto en [Service] no cuenta: systemd lo ignora ahí 1ms
+     × el script acepta exactamente los trabajos que las unidades disparan 1ms
+      Tests  6 failed | 125 passed (131)
+código de salida: 1
+restaurado: bytes idénticos
+
+mutación: deploy/production/crm-heartbeat.sh: «echo "Aviso de '$trabajo' enviado."» → «printf '%s\n' "${!variable}"»
+     × el script nunca imprime la URL, ni en el mensaje de curl 9ms
+     × un uso nuevo de la URL se detecta 1ms
+      Tests  2 failed | 129 passed (131)
+código de salida: 1
+restaurado: bytes idénticos
+
+mutación: deploy/production/crm-heartbeat.sh: «curl --config - --fail» → «curl --config - -w '%{url_effective}' --fail»
+     × el script nunca imprime la URL, ni en el mensaje de curl 6ms
+      Tests  1 failed | 130 passed (131)
+código de salida: 1
+restaurado: bytes idénticos
+
+mutación: deploy/production/crm-heartbeat.sh: «--output /dev/null 2>/dev/null» → «--output /dev/null "$url" 2>/dev/null»
+     × el script nunca imprime la URL, ni en el mensaje de curl 6ms
+     × la URL no va en los argumentos de curl, que se leen en /proc 1ms
+      Tests  2 failed | 129 passed (131)
+código de salida: 1
+restaurado: bytes idénticos
+```
+
+**La última encontró un defecto mío**: en su primera corrida, el caso «la URL no va en los argumentos de curl» quedó en verde, porque miraba línea por línea y la URL estaba en la línea de continuación del comando. Ahora une las líneas continuadas con `\` antes de mirar. La salida de arriba es la de después.
+
+**La tercera mutación de AC-1, repetida entera** con la guarda de después (hallazgo 11):
+
+```
+mutación: deploy/production/crm-backup.service: «OnSuccess=crm-backup-offsite.service
+OnSuccess=crm-heartbeat@backup.service» → «OnSuccess=crm-backup-offsite.service»
+     × todo servicio alcanzado desde un timer dispara su aviso 7ms
+     × recorre los tres trabajos: el backup, la copia externa y el ejercicio 1ms
+     × un trabajo que pierde su aviso se detecta 1ms
+     × un trabajo nuevo con timer y sin aviso se detecta 1ms
+     × un aviso puesto en [Service] no cuenta: systemd lo ignora ahí 1ms
+     × el script acepta exactamente los trabajos que las unidades disparan 1ms
+     × un OnSuccess= vacío debajo del aviso lo borra, como en systemd 0ms
+      Tests  7 failed | 124 passed (131)
+código de salida: 1
+restaurado: bytes idénticos
+```
+
+**Observación O-3**, los dos archivos modificados fuera de la lista: `git diff --ignore-cr-at-eol --stat scripts/migrar.ts src/modules/crm/repository.ts` sale vacío. Son solo finales de línea, anteriores a la 13.3, y no entran en ningún commit.
