@@ -45,7 +45,9 @@ const ENTORNOS_POSTGRES = [
 // ella, no contra la de la guarda del proxy. Hasta la revisión independiente de la 13.1 solo la
 // del proxy lo hacía, y un entorno agregado solo a su lista quedaba sin guarda de PostgreSQL.
 /** Directorios de `deploy/` que ninguna entrada de ENTORNOS_POSTGRES cubre. */
-export function directoriosSinPostgres(directorios: readonly string[]): string[] {
+export function directoriosSinPostgres(
+  directorios: readonly string[],
+): string[] {
   const cubiertos = new Set<string>(
     ENTORNOS_POSTGRES.map((e) => e.archivo.split("/").slice(0, 2).join("/")),
   );
@@ -64,7 +66,9 @@ describe("todo directorio de deploy/ tiene su guarda de PostgreSQL", () => {
   });
 
   it("un directorio nuevo sin guarda de PostgreSQL se detecta", () => {
-    expect(directoriosSinPostgres([...presentes, "demo"])).toEqual(["deploy/demo"]);
+    expect(directoriosSinPostgres([...presentes, "demo"])).toEqual([
+      "deploy/demo",
+    ]);
   });
 });
 

@@ -2,6 +2,36 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-09-30 — 13.1 cerrada: el entorno productivo
+
+Primera subfase de la Fase 13 ([brief-13.1](docs/decisions/brief-13.1-entorno-productivo.md), [evidencia-13.1](docs/decisions/evidencia-13.1-produccion.md)). El usuario la cerró el 2026-09-30, después de aceptar las correcciones de la revisión independiente.
+
+**Certifica**: los mecanismos del entorno productivo, verificados ahí y desde afuera, sin tráfico real.
+- `crm.vixoraai.app` en un droplet propio, separado del de staging, con PostgreSQL 18.6 y collation ICU `es`, Node 24.21.0 y TLS con su renovación vista funcionar.
+- **H-3 (O-29)**: dos IP distintas dan claves de límite distintas, un `x-forwarded-for` falsificado no cambia la IP que ve la aplicación, y 20 fallos desde una IP no bloquean a otra.
+- La cookie de sesión sobre el `Set-Cookie` crudo, HSTS, y `permission denied` en el `DELETE` sobre `audit_logs`.
+- Los secretos fuera del repositorio y de la CI, en `0600` de `root`, y ninguno igual a uno de staging.
+- El backup diario cifrado, con copia externa, y una restauración desde el bucket a una base aislada, con su control negativo.
+- Un reinicio real, y un despliegue con su vuelta atrás: 90 s y 62 s.
+- La base sin datos de clientes, con una sola organización; la ingestión y la lectura apagadas.
+- **Revisión independiente** (D-11): 14 hallazgos, ninguno crítico ni mayor, y 7 más, menores, en la verificación de las correcciones. Los 21 verificados y corregidos.
+
+**Lo más importante que encontró la revisión**:
+- el paso de despliegue del README salía bien con el SHA vacío, sin cambiar de versión;
+- una recuperación con el runbook perdía la collation ICU `es`, porque la base nueva toma la de `template1`.
+
+**Nivel**: verificado en el entorno productivo (`isolated-runtime`).
+
+**No certifica**:
+- «preparado para producción»: faltan la 13.2, la 13.3 y la 13.4;
+- el caso «droplet perdido» de la restauración, que está diseñado y no ejecutado;
+- una restauración con ICU `es` en el droplet: se midió en un contenedor, y la del AC-18 quedó en libc;
+- que nginx reemplaza `x-forwarded-for` por medición: sale de la configuración y de su guarda.
+
+**Pendiente, fuera de la subfase** (en Notion): la nota de `contrib` del README de staging, el timeout de `module-boundary` y la regla de finales LF para `deploy/**`.
+
+**CI**: `3cab09a` dio `failure` en el paso de formato; se corrigió en el commit de cierre, cuya corrida hay que leer por `headSha`.
+
 ## 2026-09-29 — 12.5.3: la derivación con el agente, en staging
 
 Ventana corta, después del cierre de la fase, para el límite conocido del turno 3 ([evidencia-12.5](docs/decisions/evidencia-12.5-turno-completo.md), §12.5.3). El agente corrigió su clasificación de su lado.

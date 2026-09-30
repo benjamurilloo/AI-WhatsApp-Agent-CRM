@@ -342,3 +342,44 @@ Las salidas crudas están en [evidencia-13.1-produccion.md](evidencia-13.1-produ
 | AC-8 | cumplido | Local, 2026-09-29: lint, typecheck y formato en verde; Vitest 1494 de 1494 (100 archivos); build y 100 de 100 end-to-end. CI: corrida 36616168249, `headSha` `938423d0a832e65eb9c42474c51a47a44c54689e`, `conclusion: success` |
 
 **Hallazgo al pasar, corregido**: la lista de guardas de EngineeringStandards no nombraba la de lecturas de servicio de la 11.3, y decía «doce» con trece en la carpeta. Es la tercera vez del defecto H-4 de la 8.4. Es el H-8 de este brief, que había detectado el número pero no la guarda que faltaba.
+
+## Resultados — etapa 13.1.2, 2026-09-29 y 2026-09-30
+
+Las salidas crudas están en [evidencia-13.1-produccion.md](evidencia-13.1-produccion.md), §Etapa 13.1.2. **Autoevaluación** hasta AC-22: lo midió el mismo agente que lo implementó. AC-23 es la revisión independiente.
+
+| AC | Estado | Evidencia |
+|---|---|---|
+| AC-9 | cumplido | `/login` con `200` y la aplicación real; la ingestión v1 y v2 y la lectura v1, con `404` |
+| AC-10 | cumplido | Certificado válido para `crm.vixoraai.app`; `curl` sin `-k` no protesta |
+| AC-11 | cumplido | `certbot renew --dry-run` y `systemctl list-timers`, enteras |
+| AC-12 | cumplido | HSTS con `max-age` en la respuesta HTTPS, y sin HSTS en el `301` |
+| AC-13 | cumplido | `Set-Cookie` crudo de un ingreso real: `__Host-crm_session`, `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`, sin `Domain` |
+| AC-14 | cumplido, con una salvedad | Las tres demostraciones, con dos IP distintas de verdad. **Salvedad (H2 de la revisión)**: la medición no distingue si nginx reemplaza la cabecera o le agrega; que la reemplaza sale de la configuración, de su guarda y del `diff` de AC-20 |
+| AC-15 | cumplido | `permission denied` en el `DELETE` sobre `audit_logs` con la conexión de la aplicación |
+| AC-16 | cumplido | `nodejs 24.21.0`, `postgresql-18 18.6`, y la base con ICU `es`. Desde el 2026-09-30 los dos paquetes están retenidos |
+| AC-17 | cumplido | Un `reboot` real; el servicio volvió solo |
+| AC-18 | cumplido, con una salvedad | El timer corrió el 2026-09-30, la copia cifrada está en el bucket, y se restauró a una base aislada descifrando con la clave de fuera del droplet, con su control negativo. **Salvedad (N2 de la revisión)**: esa restauración quedó en libc y no en ICU `es`; lo que comprobó (recuentos, dueños, triggers y permisos) no depende de la collation. El caso «droplet perdido» del runbook está **diseñado, no ejecutado** |
+| AC-19 | cumplido | Ningún secreto en el repositorio ni en la CI; `0600` de `root`; 0 coincidencias con staging por hash |
+| AC-20 | cumplido | Los 11 archivos versionados coinciden con los desplegados |
+| AC-21 | cumplido | Despliegue hacia adelante en 90 s y vuelta atrás en 62 s, con la aplicación sana al final. La vuelta atrás la ejecutó el usuario |
+| AC-22 | cumplido | 0 clientes, 0 conversaciones, 0 mensajes, 0 productos y una organización. Environments y SecurityModel, actualizados |
+| AC-23 | cumplido | Revisión independiente con 14 hallazgos, ninguno crítico ni mayor, y una verificación independiente de las correcciones con 7 más, menores. Los 21 se verificaron contra el código y se corrigieron. **El usuario aceptó las correcciones el 2026-09-30** |
+
+## Cierre de la subfase 13.1, 2026-09-30
+
+**Cerrada por el usuario el 2026-09-30.**
+
+- **Nivel**: los mecanismos quedan **verificados en el entorno productivo** (`isolated-runtime`), sin tráfico real. **No** es «preparado para producción»: faltan las mediciones (13.2), la observabilidad (13.3) y las decisiones de datos reales (13.4).
+- **Estado del entorno al cerrar**: producción corre `938423d`, con la ingestión y la lectura apagadas, sin datos de clientes y con una sola organización. Los commits posteriores tocan documentación, guardas y el README de despliegue, y no se desplegaron.
+- **Decisiones del usuario en la 13.1.2**: que la D-11 se refiere a O-29 cuando dice «H-3»; corregir los 14 hallazgos en una tanda y verificar las correcciones con otro agente; no hacer una tercera ronda; retener `nodejs` y `postgresql-18` con `apt-mark hold`.
+- **CI**: el commit de las correcciones, `3cab09a`, dio `failure` en el paso de formato: Prettier marcaba dos guardas. Antes de ese commit se corrieron las guardas y el lint, y no `format:check`. Se corrigió en el commit de cierre, **cuya corrida se lee por `headSha` al retomar**.
+
+**Lo que queda abierto, fuera de la 13.1** (registrado en Notion, en el proyecto de la Fase 13):
+- el README de staging dice que `contrib` trae `unaccent`;
+- `module-boundary` falla a veces por timeout: 27,8 s en frío contra un límite de 30 s;
+- falta una regla de `.gitattributes` que fije finales LF en `deploy/**`: con un checkout en CRLF, la guarda de backup falla con 17 casos.
+
+**Lo que hereda el resto de la fase**:
+- el caso «droplet perdido» del runbook de restauración, sin ejecutar;
+- la restauración periódica (`crm-restore-check.timer`) corre por primera vez el 2026-10-01;
+- una recuperación real tiene que crear la base con ICU `es`, como dice ahora el runbook. Ese paso está medido en un contenedor, no en el droplet.

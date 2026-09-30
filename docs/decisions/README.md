@@ -92,7 +92,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-12.3](brief-12.3-contrato-de-ingestion-v2.md) | 12.3 — Contrato de ingestión v2 | aprobado el 2026-09-25 con las recomendaciones de D-1 a D-11; cerrado el 2026-09-27 |
 | [brief-12.4](brief-12.4-historial-y-memorias.md) | 12.4 — Historial y memorias | aprobado el 2026-09-26 con las recomendaciones de D-1 a D-11, incluida la enmienda del Roadmap de C-1; cerrado el 2026-09-27 |
 | [brief-12.5](brief-12.5-turno-completo-en-staging.md) | 12.5 — Turno completo en staging | aprobado el 2026-09-27 con las recomendaciones de D-1 a D-11, incluido H-1; cerrado el 2026-09-29, y con él la Fase 12 |
-| [brief-13.1](brief-13.1-entorno-productivo.md) | 13.1 — Entorno productivo | aprobado el 2026-09-29 con las recomendaciones de D-1 a D-12 |
+| [brief-13.1](brief-13.1-entorno-productivo.md) | 13.1 — Entorno productivo | aprobado el 2026-09-29 con las recomendaciones de D-1 a D-12; cerrado el 2026-09-30. Salidas crudas en [evidencia-13.1](evidencia-13.1-produccion.md) |
 | [evidencia-9.1](evidencia-9.1-staging.md) | 9.1 — Salidas crudas de la verificación en staging | captura del 2026-09-22 |
 | [evidencia-9.2](evidencia-9.2-backups.md) | 9.2 — Backup y restauración verificados en staging | captura del 2026-09-22 |
 | [evidencia-9.3](evidencia-9.3-volumen.md) | 9.3 — Volumen, planes y tiempos medidos en staging | captura del 2026-09-23 |

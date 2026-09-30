@@ -362,7 +362,9 @@ describe("todo directorio de deploy/ tiene su guarda de backup", () => {
   });
 
   it("un directorio nuevo sin guarda de backup se detecta", () => {
-    expect(directoriosSinBackup([...presentes, "demo"])).toEqual(["deploy/demo"]);
+    expect(directoriosSinBackup([...presentes, "demo"])).toEqual([
+      "deploy/demo",
+    ]);
   });
 });
 
