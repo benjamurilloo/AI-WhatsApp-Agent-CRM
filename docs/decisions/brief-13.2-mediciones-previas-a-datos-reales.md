@@ -251,3 +251,77 @@ Las salidas crudas están en [evidencia-13.2-mediciones.md](evidencia-13.2-medic
 
 **Decisión del usuario, 2026-09-30: no se cambia el bloqueo ahora.** Se vuelve a mirar con los tiempos de la 13.2.2. El borde 2 queda cerrado: no hay defecto.
 
+
+## Resultados — etapa 13.2.2, 2026-09-30
+
+La medición corrió en el droplet de producción, en cinco pasos que el usuario autorizó cada uno en su turno: la base y el rol, el segundo checkout, la calibración y la carga, la medición y la limpieza. Las salidas crudas están en [evidencia-13.2-mediciones.md](evidencia-13.2-mediciones.md) y los planes, en [planes-13.2/](planes-13.2/). **Autoevaluación**: midió y analizó el mismo agente que escribió el instrumento.
+
+| AC | Estado | Evidencia |
+|---|---|---|
+| AC-1 | cumplido | Leído en el servidor donde se midió: 0 sentencias preparadas con nombre en las 10 conexiones del pool, desde las tres organizaciones y en la calibración. `plan_cache_mode` es `auto` y no está fijado por rol ni por base |
+| AC-8 | cumplido | CI del commit `803571e` en `success`, leída por `headSha` (run 36726314512) |
+| AC-9 | cumplido | 118 consultas desde la grande, 116 desde la chica y 118 desde la concentrada, con su plan y su tiempo. Los recorridos secuenciales están todos en una tabla: `organizations` en las tres, y `products`, `clients` y `conversations` solo desde la grande. Las 19 líneas de más de 3000 caracteres se versionaron recortadas; 8 son la condición de índice de un nodo, que pierde su lista de identificadores |
+| AC-10 | cumplido | 28 consultas cambian de forma contra la chica y 18 contra la concentrada, en siete clases, todas explicadas por el tamaño |
+| AC-11 | cumplido | Última página de seis listados desde la grande. El peor caso es `listProductStock`: 552,5 ms, lo mismo que su primera página |
+| AC-12 | cumplido | Las 11 llamadas en paralelo: 277,6 ms desde la grande, 43,2 ms desde la chica y 81,4 ms desde la concentrada. La métrica 12 devuelve `value` en las tres |
+| AC-13 | cumplido | El mismo plan desde las tres: `Index Scan` por `conversations_organization_client_last_message_idx`. Con vigente: 1 fila, 3 buffers, entre 0,047 y 0,059 ms. Sin vigente: 0 filas, 2 buffers, entre 0,033 y 0,039 ms |
+| AC-14 | cumplido | La conversación concentrada tiene 4.000 de 5.916 mensajes, el 68 %. El historial lee 51 filas para devolver 50, en 0,17 ms. **No hace falta un índice nuevo** |
+| AC-15 | cumplido | 2,28, 2,48 y 2,62 s con una base de 78 MB. No se midió con escrituras concurrentes |
+| AC-16 | cumplido | Factor de 1,40× a 5,96×, mediana 3,77×. Umbrales: 754 ms para la consulta y 1508 ms para el camino. Los parámetros de costo encabezan cada archivo de planes y de tiempos |
+| AC-17 | cumplido | La base, el rol, sus permisos, `/etc/crm-medicion` y el segundo checkout no existen más. `log_statement = none` y ninguna biblioteca precargada. Los recuentos de `crm_production` son los de la línea de base. `/login` respondió `200` en las 26 muestras de la carga y en las 14 de la medición |
+| AC-18 | cumplido en parte | `Risks.md`, filas de los planes y de la paginación profunda, y `TraceabilityMatrix.md`. `Roadmap.md`, `CHANGELOG.md` y `HANDOFF.md` se actualizan en el cierre. El comentario de la ventana del manifiesto en `deploy/staging/crm-backup.sh` y en `deploy/production/crm-backup.sh` se actualizó con autorización expresa del usuario: `deploy/` no estaba en la lista de archivos autorizados |
+| AC-19 | **pendiente** | La revisión independiente de D-7 |
+
+**Veredicto: ninguna consulta es patológica.** La más lenta tarda 91,0 ms en una ejecución contra 754 ms, y el camino más lento, 573,9 ms contra 1508 ms. D-6 no se activó, no hay migración que consultar y `src/` no se tocó.
+
+**Lo que la medición no cubre**, declarado:
+
+- No se midió desde una organización de 1.000 clientes: no se sabe a partir de qué proporción de la tabla PostgreSQL deja el índice.
+- El umbral de 1508 ms es un detector más flojo que el de staging (916 ms). El veredicto descansa más en la forma de los planes.
+- Las corridas son ruidosas: la aplicación productiva comparte el único núcleo. `listProductStock` fue de 391,1 a 665,7 ms en una tanda y llegó a 950,8 ms en la de calibración.
+- La conversación vigente se midió con una candidata por cliente.
+- La ventana del manifiesto es una duración, no una frecuencia de diferencias.
+
+**Una observación fuera del veredicto**: `listProductStock` tarda más de medio segundo con 10.000 productos en esta máquina. Sus consultas suman unos 100 ms; el resto es la página armada en memoria. No depende de un índice y no es de esta subfase.
+
+**Incidentes de la etapa**:
+
+- El guion del paso 1 se cortó en la primera comprobación de aislamiento: el `permission denied` que se esperaba lo terminó, por `set -e` con `pipefail`. Todo lo que tenía que crear ya estaba creado. Las comprobaciones se completaron con un segundo guion de solo lectura.
+- `npm ci` avisó que el `postinstall` de `esbuild` no corrió (E-3 de la Fase 12). No impidió nada.
+- Una corrida local de las guardas dio una falla que no se repitió en las dos siguientes. No se capturó el nombre del test.
+
+**R-8, con los tiempos a la vista (D-5).** La resolución de la conversación vigente tarda entre 7,4 y 8,4 ms en la máquina de producción, desde las tres organizaciones. Esa es la espera que el bloqueo del cliente le impone a otro evento simultáneo del mismo cliente. **Recomendación: no cambiar el bloqueo.** La decisión es del usuario.
+
+## Revisión independiente (AC-19, D-7), 2026-09-30
+
+La hizo un subagente que no participó del trabajo, con acceso de solo lectura, contra este brief, la evidencia, los tres archivos de planes y los instrumentos. No ejecutó nada. Declaró no haber leído a fondo `seeds/volume.ts` ni su test, así que **no opinó sobre AC-3**. Informó 14 hallazgos y 5 observaciones; cada uno se verificó contra el código o contra los planes antes de aceptarlo. Los 14 se confirmaron.
+
+| Hallazgo | Severidad | Qué encontró | Qué se hizo |
+|---|---|---|---|
+| H-1 | bloqueante de proceso | `deploy/staging/crm-backup.sh` se modificó y `deploy/` no está en la lista de archivos autorizados (condición de detención 7) | **Revertido**, y elevado al usuario, que autorizó el cambio el 2026-09-30 (abajo) |
+| H-2 | mayor | La guarda decía confinar a dos archivos la consulta con nombre armada en una variable, y no lo hacía: `Db` expone el pool como `$client`. Además, una llave antes de `name` cortaba el patrón, `set_config` no estaba cubierto y las migraciones no se miraban | **Corregido en la guarda**: `$client` solo puede usarse para cerrar el pool, salvo en dos archivos; el patrón llega hasta `name`; `set_config` y las migraciones de `drizzle/` están cubiertos. 41 casos. Tres mutaciones sobre archivos reales, las tres en rojo |
+| H-3 | menor | La evidencia decía que ninguna línea de un nodo de plan se había recortado; 8 de las 19 son `Index Cond` | Corregido en la evidencia |
+| H-4 | menor | Contra la concentrada cambian de forma 18 consultas, no 17; una de las tres «miradas a mano» sí difiere | Corregido en la evidencia, en este brief y en `Risks.md` |
+| H-5 | menor | «El 67 % de la tabla» para `products` es la proporción de productos activos; la organización ocupa el 71 % | Corregido en la evidencia y en `Risks.md` |
+| H-6 | menor | «La consulta más lenta, 91,0 ms» es una sola ejecución instrumentada | Declarado, con las otras tres ejecuciones de la misma consulta |
+| H-7 | menor | «1 fila, 3 buffers» vale solo con una conversación vigente | Agregado el caso sin vigente |
+| H-8 | menor | AC-18 marcado cumplido con `TraceabilityMatrix.md`, `Roadmap.md` y `HANDOFF.md` citando todavía la 9.3 | `TraceabilityMatrix.md` actualizado. AC-18 pasa a «cumplido en parte» hasta el cierre |
+| H-9 | menor | `HANDOFF.md` y `CHANGELOG.md` sin la 13.2; el encabezado de `medir-caminos.ts` todavía instruía encender `log_min_duration_statement` en un rol | El encabezado del script, corregido. Los otros dos son del cierre |
+| H-10 | menor | Los guiones de los cinco pasos y los del análisis no estaban en el repositorio | Versionados en [planes-13.2/guiones/](planes-13.2/guiones/) |
+| H-11 | menor | La fila «página profunda» de la calibración compara páginas distintas | Declarado en la evidencia |
+| H-12 | menor | El control de los planes exige un plan por camino, no uno por consulta | Declarado como límite. No se cambió el instrumento: la base de medición ya no existe |
+| H-13 | menor | La comprobación de sentencias preparadas mira las conexiones vivas al final | Declarado como límite |
+| H-14 | menor | El comentario de `crm-backup.sh` mezclaba dos definiciones de la ventana | Corregido al reescribirlo con la autorización del usuario: una sola definición, y dice que el número es de otro servidor |
+
+Las cinco observaciones sobre los planes están en la evidencia, §«Lo que el análisis no había mencionado». Ninguna contradice el veredicto. Una merece decisión del usuario: `listProductStock` manda un parámetro por producto activo, y PostgreSQL admite 65.535 por sentencia.
+
+**Lo que la revisión no cubrió**: AC-3, la ejecución de los tests, la CI y el estado del servidor después de la limpieza, que solo consta por la salida transcrita.
+
+El revisor no otorgó ninguna autorización.
+
+**Decisiones del usuario, 2026-09-30**, sobre la etapa 13.2.2 y la revisión:
+
+1. **`deploy/`**: autorizó actualizar el comentario de la ventana del manifiesto en los dos scripts de backup. Solo el comentario.
+2. **El límite de 65.535 parámetros**: se registra como riesgo en `Risks.md` y como tarea en «Esperando» en Notion. `src/` no se toca ahora.
+3. **R-8**: no se cambia el bloqueo del cliente. La espera que impone es la duración de una resolución, entre 7,4 y 8,4 ms. R-8 queda cerrado.
+4. Autorizó el commit y el push de la etapa.

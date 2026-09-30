@@ -1,8 +1,9 @@
 // Mide el camino completo de los listados y del dashboard invocando los **servicios reales**
 // (9.3, AC-6 y AC-9). Uso:
 //
-//   set -a; . /etc/crm-staging/migrate.env; set +a
-//   npx tsx scripts/medir-caminos.ts <organizationId> [etiqueta]
+//   DATABASE_URL=… npx tsx scripts/medir-caminos.ts <organizationId> [etiqueta]
+//
+// Contra una base de medición, con un rol propio: nunca contra la base de un entorno con datos.
 //
 // Por qué está versionado, a diferencia del de la 8.5: aquel vivió en el scratchpad y se perdió,
 // así que su tanda no se podía repetir y la 9.3 tuvo que reconstruirla. Un número que no se puede
@@ -10,10 +11,10 @@
 //
 // Por qué llama a los servicios y no a SQL escrito a mano: una consulta reescrita para el
 // `EXPLAIN` se parece a la de la aplicación pero no es la misma, y entonces el plan medido
-// tampoco. Acá corre el mismo código que la pantalla. Para obtener el SQL exacto que sale de
-// estas llamadas, se enciende antes el registro del rol:
-//
-//   ALTER ROLE crm_owner SET log_min_duration_statement = 0;   -- y se apaga al terminar
+// tampoco. Acá corre el mismo código que la pantalla. El SQL exacto y su plan salen del modo
+// de planes (`CRM_PLANES`), que los recibe como avisos en esta conexión. En la 9.3 se obtenían
+// encendiendo `log_min_duration_statement` en el rol: desde la 13.2 eso no se hace, porque deja
+// las sentencias con sus parámetros en el log del servidor.
 //
 // Lo que este script NO mide: concurrencia. Corre una llamada por vez.
 //

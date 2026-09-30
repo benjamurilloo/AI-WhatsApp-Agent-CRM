@@ -70,12 +70,14 @@ pg_dump --format=custom --no-password --file="$parcial"
 # a ignorarlo, que es exactamente el modo de falla que esta subfase existe para evitar.
 #
 # Es UNA sola sentencia, asi que sus recuentos son consistentes entre si (un snapshot).
-# LIMITE DECLARADO Y MEDIBLE: entre el fin del dump y esta consulta puede entrar una
-# escritura. La ventana es la que separa las dos ordenes -- del orden del segundo en esta
-# base-- y no las horas que separaban el backup del ejercicio. Con volumen la ventana
-# crece con la duracion del dump. La 9.3 NO la midio (evaluacion 10.1, R-10): su medicion
-# esta asignada a la 13.2 (O-39). Hasta entonces, el tamano de la ventana con volumen es
-# desconocido.
+# LIMITE DECLARADO Y MEDIDO: el dump ve la base como estaba al EMPEZAR, y esta consulta la
+# ve al correr. Una escritura que entre en el medio queda en el manifiesto y no en el dump.
+# La ventana va del inicio del dump al fin de esta consulta -- y no las horas que separaban
+# el backup del ejercicio--, asi que crece con la duracion del dump. La 9.3 NO la midio
+# (evaluacion 10.1, R-10). La midio la 13.2 el 2026-09-30, en el droplet de produccion y no
+# en este servidor, con una base de 78 MB y 96.016 mensajes: entre 2,28 y 2,62 s, de los
+# que el dump son entre 2,10 y 2,43 s (docs/decisions/evidencia-13.2-mediciones.md). No se
+# midio con escrituras concurrentes: es una duracion, no una frecuencia de diferencias.
 psql --no-password --tuples-only --no-align --command="
   SELECT c.relname || ' ' ||
          (xpath('/row/cnt/text()',
