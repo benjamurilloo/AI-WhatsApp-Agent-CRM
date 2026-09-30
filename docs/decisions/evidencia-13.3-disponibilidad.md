@@ -168,3 +168,290 @@ La búsqueda por correlación, con el mismo método:
 ```
 
 `jq` en el droplet: `jq-1.7`.
+
+## Etapa 13.3.2 — producción, 2026-09-30
+
+Todas las horas son UTC. La configuración de las cuentas externas la hizo el usuario en sus paneles; lo que se ve de ella está descrito por lo que él mostró, y se marca `[transcrito]`. Los emails de las alertas traen enlaces con identificadores del chequeo y, uno de DigitalOcean y uno de Healthchecks, una IP: **no se copian**. Van solo el texto de la alerta y su hora.
+
+### AC-12: el corte de un despliegue (D-7)
+
+Medido durante el despliegue de `579397e`, con un pedido por segundo a `/login` desde la máquina del operador. El método, un script del scratchpad de la sesión, no versionado:
+
+```
+r=$(curl -s -o /dev/null -m 5 -w "%{http_code}\t%{time_total}" https://crm.vixoraai.app/login || true)
+[[ -z $r ]] && r=$'000\t5'
+printf "%s\t%s\n" "$(date -u +%H:%M:%S)" "$r" >> corte.tsv
+```
+
+Un pedido por línea: hora de fin, código y tiempo total. Recuento sobre el archivo:
+
+```
+521
+19:05:33	200	0.715927
+19:15:32	200	0.583229
+    520 200
+      1 502
+124-19:07:53	200	0.559914
+125-19:07:54	200	0.606875
+126:19:07:55	502	0.566163
+127-19:07:58	200	1.757785
+128-19:07:58	200	0.626973
+129-19:08:00	200	0.619713
+```
+
+`ActiveEnterTimestamp` de `crm-production` después del despliegue: 19:07:57. **El corte es de 1 a 3 segundos**: un `502` a las 19:07:55, y el pedido siguiente, que empezó cerca de las 19:07:56, tardó 1,76 s porque esperó el arranque. `npm ci` y `next build`, que corren con la aplicación vieja arriba, no cortaron `/login`. **Límite**: se midió `/login`, no las rutas de servicio, que están apagadas; H-8 no se confirma para ellas.
+
+### Pasos A a E: configuración externa
+
+**Healthchecks.io** `[transcrito]`. Tres chequeos en el proyecto «CRM producción», con integraciones de email y Telegram. El botón «Test!» de cada integración llegó a los dos canales.
+
+| Chequeo | Horario (UTC) | Gracia |
+| --- | --- | --- |
+| `crm-backup` | `15 3 * * *` | 1 h |
+| `crm-offsite` | `15 3 * * *` | 1 h |
+| `crm-restore-check` | `30 4 1 * *` | 2 h |
+
+**El archivo de URLs**, verificado sin imprimirlas: dueño, modo, y la forma de cada línea `[transcrito]`, resumido de dos salidas.
+
+```
+600 root:root /etc/crm-production/heartbeat.env
+HEARTBEAT_URL_BACKUP: forma OK, 56 caracteres
+HEARTBEAT_URL_OFFSITE: forma OK, 56 caracteres
+HEARTBEAT_URL_RESTORE_CHECK: forma OK, 56 caracteres
+URLs repetidas: 0
+```
+
+**Instalación de las unidades**, 19:29, con el comando de [Instalar el aviso de vida](../../deploy/production/README.md#instalar-el-aviso-de-vida) más un `diff` de cada archivo contra el checkout:
+
+```
+verify OK
+script idéntico
+crm-heartbeat@.service idéntico
+crm-backup.service idéntico
+crm-backup-offsite.service idéntico
+crm-restore-check.service idéntico
+600 root /etc/crm-production/heartbeat.env
+755 root /usr/local/bin/crm-heartbeat.sh
+```
+
+`OnSuccess=` de los tres trabajos, en ese orden:
+
+```
+crm-backup-offsite.service crm-heartbeat@backup.service
+
+crm-heartbeat@offsite.service
+
+crm-heartbeat@restore-check.service
+```
+
+**Un aviso de prueba de cada trabajo**, sin correr ningún trabajo:
+
+```
+2026-09-30T19:29:34+00:00 crm-heartbeat.sh[20675]: Aviso de 'backup' enviado.
+2026-09-30T19:29:34+00:00 systemd[1]: crm-heartbeat@backup.service: Deactivated successfully.
+2026-09-30T19:29:34+00:00 crm-heartbeat.sh[20687]: Aviso de 'offsite' enviado.
+2026-09-30T19:29:34+00:00 systemd[1]: crm-heartbeat@offsite.service: Deactivated successfully.
+2026-09-30T19:29:35+00:00 crm-heartbeat.sh[20698]: Aviso de 'restore-check' enviado.
+2026-09-30T19:29:35+00:00 systemd[1]: crm-heartbeat@restore-check.service: Deactivated successfully.
+```
+
+Los tres con `Result=success`. En Healthchecks los tres pasaron de «new» a «up» `[transcrito]`.
+
+**DigitalOcean Uptime** `[transcrito]`. Chequeo `crm-production-health`, HTTPS sobre `https://crm.vixoraai.app/api/health`, desde cuatro regiones. Estado *Up* antes de las fallas. Alertas activas, por email:
+
+| Alerta | Umbral | Espera |
+| --- | --- | --- |
+| Caída (Down) | — (el panel muestra «1ms», que no se usa en este tipo) | 2 min |
+| Certificado SSL | 14 días | 2 min |
+| Latencia | 2000 ms | 5 min |
+
+**DigitalOcean Monitoring** `[transcrito]`, sobre el droplet `crm-production`, por email:
+
+```
+crm-production-memoria-90   Memory Utilization Percent is above 90% for 10 min
+crm-production-disco-80     Disk Utilization Percent is above 80% for 5 min
+```
+
+Uso del droplet en ese momento:
+
+```
+/dev/vda1        48G  3.7G   44G   8% /
+               total        used        free      shared  buff/cache   available
+Mem:            1967         552         664         114        1038        1415
+active
+```
+
+### AC-7: la herramienta y su precio
+
+| Qué | Herramienta | Precio, 2026-09-30 |
+| --- | --- | --- |
+| Disponibilidad desde afuera (D-2) | DigitalOcean Uptime | El primer chequeo, sin costo; cada chequeo más, USD 1 por mes. Se usa uno |
+| Avisos de vida (D-3) | Healthchecks.io | Plan gratuito, hasta 20 chequeos. Se usan tres |
+| Disco y memoria (D-4) | DigitalOcean Monitoring | Sin costo, sobre el `do-agent` que ya corría |
+
+**Frecuencia**: D-2 pedía una consulta por minuto. **Sumando las cuatro regiones se cumple**: de 19:40 a 20:14, 32 consultas en 34 minutos. **Por región, no**: cada una consulta cada 3 a 9 minutos (AC-8), y la alerta depende de una región, así que el tiempo de detección medido es de 4,5 a 9,5 minutos y no el de una consulta por minuto.
+
+### AC-13: los recuentos de `crm_production`
+
+El mismo comando antes y después de cada falla, en una transacción de solo lectura, con las 17 tablas de las migraciones en orden alfabético: `audit_logs`, `clients`, `conversations`, `ingestion_credentials`, `ingestion_events`, `ingestion_rate_windows`, `inventories`, `inventory_movements`, `knowledge_entries`, `login_attempts`, `messages`, `organization_members`, `organizations`, `product_prices`, `products`, `sessions`, `users`.
+
+```
+ssh crm-production 'sudo -u postgres psql -d crm_production -qXAt -c "begin read only; select (select count(*) from audit_logs), (select count(*) from clients), ... (select count(*) from users); commit"'
+```
+
+| Momento | Recuentos | `/login` |
+| --- | --- | --- |
+| Línea de base, 20:11:24 | `1\|0\|0\|0\|0\|0\|0\|0\|0\|44\|0\|1\|1\|0\|0\|2\|1` | — |
+| Después de AC-8, 20:24:46 | `1\|0\|0\|0\|0\|0\|0\|0\|0\|44\|0\|1\|1\|0\|0\|2\|1` | `200`, 0,56 s |
+| Después del primer intento de AC-9, ~20:40 | `1\|0\|0\|0\|0\|0\|0\|0\|0\|44\|0\|1\|1\|0\|0\|2\|1` | `200`, 0,91 s |
+| Después de AC-9, ~20:48 | `1\|0\|0\|0\|0\|0\|0\|0\|0\|44\|0\|1\|1\|0\|0\|2\|1` | `200`, 0,63 s |
+
+Iguales en las cuatro. AC-10 y AC-11 no tocaron el servidor.
+
+### AC-8: la aplicación detenida
+
+```
+2026-09-30T20:14:51Z
+2026-09-30T20:14:51Z
+inactive
+502
+```
+
+(hora antes y después de `sudo systemctl stop crm-production`, su estado, y `/api/health` desde afuera). La vuelta:
+
+```
+2026-09-30T20:24:22Z
+2026-09-30T20:24:29Z
+active
+health 200 a las 20:24:29
+```
+
+Emails de DigitalOcean `[transcrito]`:
+
+| Llegó | Texto |
+| --- | --- |
+| 20:24 | «has been down in se_asia for 2m, beginning at 30 Sep 2026 20:24 UTC» |
+| ~20:25 | «has been down in eu_west for 2m, beginning at 30 Sep 2026 20:25 UTC» — **con el sitio ya arriba** |
+| 20:35 | «Alert Caída (Down): Your site … is back up» — «has reported as back up in se_asia for 2m, beginning at 30 Sep 2026 20:35 UTC» |
+
+**La alerta llegó unos 9,5 minutos después de la falla, no a los 3 o 4 que había estimado.** La estimación suponía una consulta por minuto. Los logs de nginx la corrigen: las consultas de Uptime por origen, con la dirección reemplazada por una letra y sin imprimirla.
+
+```
+origen-A: 19:40:55/200 19:43:55/200 19:46:57/200 19:49:56/200 19:53:02/200 19:55:56/200 19:58:49/200 20:01:52/200 20:04:52/200 20:07:48/200 20:10:47/200 20:13:52/200 20:16:50/502 20:19:49/502 20:22:49/502 20:25:46/200 20:28:40/200 20:31:40/200 20:34:37/200
+origen-B: 19:42:12/200 19:45:53/200 19:49:43/200 19:53:34/200 19:57:24/200 20:01:15/200 20:05:13/200 20:09:01/200 20:12:47/200 20:16:37/502 20:20:30/502 20:24:12/502 20:27:55/200 20:31:40/200 20:35:29/200
+origen-C: 19:44:08/200 19:52:57/200 20:01:48/200 20:11:15/200 20:20:55/502 20:30:12/200
+origen-D: 19:44:39/200 19:49:24/200 19:54:08/200 19:58:48/200 20:03:29/200 20:08:11/200 20:12:51/200 20:17:33/502 20:22:14/502 20:26:52/200 20:31:38/200 20:36:18/200
+```
+
+Cada origen consulta cada 3, 4, 9 y 5 minutos. Una región necesita fallos que cubran los 2 minutos de espera, así que con esas frecuencias la alerta tarda de 5 a 10 minutos. Unos cinco minutos después de la recuperación, el panel mostraba todavía «Europe DOWN for 9 minutes» y «USA West DOWN for 7 minutes» `[transcrito]`, con todas las consultas en `200`.
+
+### AC-9: la base detenida
+
+**Primer intento, fallido como prueba.** `sudo systemctl stop postgresql` a las 20:39:13 detuvo también la aplicación:
+
+```
+2026-09-30T20:39:13Z
+2026-09-30T20:39:13Z
+inactive
+inactive
+api/health 502 0.520660s
+login 502 0.559551s
+```
+
+La causa está en la unidad: `Requires=postgresql.service`. En el journal de la aplicación:
+
+```
+2026-09-30T20:39:13+00:00 systemd[1]: Stopping crm-production.service - AI WhatsApp Agent CRM - produccion...
+2026-09-30T20:39:13+00:00 systemd[1]: Stopped crm-production.service - AI WhatsApp Agent CRM - produccion.
+```
+
+Se levantaron las dos a las 20:39:53, porque iniciar `postgresql` no inicia la aplicación que la requiere:
+
+```
+2026-09-30T20:39:53Z
+active
+active
+  postgresql.service         loaded active exited  PostgreSQL RDBMS
+  postgresql@18-main.service loaded active running PostgreSQL Cluster 18-main
+health 200 a las 20:39:53
+```
+
+La base corre en `postgresql@18-main.service`, con `PartOf=postgresql.service`. Detener solo esa unidad es lo que pasa cuando la base se cae sola: el envoltorio sigue `active (exited)` y la aplicación, arriba. Los 40 segundos de este intento no produjeron alerta.
+
+**Segundo intento**, con autorización propia porque cambiaba el comando:
+
+```
+2026-09-30T20:42:38Z
+2026-09-30T20:42:38Z
+inactive
+active
+active
+api/health 503 0.570150s
+login 200 0.631808s
+```
+
+(la base, el envoltorio y la aplicación, en ese orden). Consultas de Uptime durante la falla, con las letras reasignadas en esta ventana:
+
+```
+origen-A: 20:40:22/200
+origen-B: 20:40:29/200 20:43:29/503 20:46:26/503
+origen-C: 20:40:58/200 20:45:40/503
+origen-D: 20:43:02/503 20:46:44/503
+```
+
+La vuelta, a las 20:47:37, sin tocar la aplicación:
+
+```
+2026-09-30T20:47:45Z
+active
+active
+NRestarts=0
+ActiveEnterTimestamp=Wed 2026-09-30 20:39:53 UTC
+health 200 a las 20:47:44, intento 1
+```
+
+(la hora del `date` remoto va un segundo adelante de la local). **La aplicación reconectó sola**: ningún reinicio, y la misma hora de arranque que antes de la falla.
+
+Emails `[transcrito]`:
+
+| Llegó | Texto |
+| --- | --- |
+| 20:47 | «has been down in eu_west for 2m, beginning at 30 Sep 2026 20:47 UTC» |
+| 20:50 | «has been down in se_asia for 2m, beginning at 30 Sep 2026 20:50 UTC» — **con el sitio ya arriba** |
+| 20:59 | «has reported as back up in se_asia for 2m, beginning at 30 Sep 2026 20:59 UTC» |
+| 21:03 | «has reported as back up in eu_west for 2m, beginning at 30 Sep 2026 21:03 UTC» |
+
+Todas las consultas de Uptime después de la vuelta dieron `200`:
+
+```
+20:49:20 200 20:50:20 200 20:50:32 200 20:51:01 200 20:52:14 200 20:54:14 200 20:54:59 200 20:55:12 200 20:58:06 200 20:58:10 200
+```
+
+La alerta de se_asia de las 20:50 no corresponde a ninguna consulta fallida que haya llegado a nginx. Desde el servidor no se puede saber si es un atraso de la evaluación de DigitalOcean o consultas de esa región que no llegaron; queda sin determinar.
+
+### AC-10: un aviso que no llega
+
+Con un chequeo de prueba en Healthchecks, `crm-prueba-ac10`, de período 1 minuto y gracia 1 minuto, con las mismas integraciones que los de producción. Se le mandó un ping desde el navegador del usuario, y nada más. `[transcrito]`:
+
+| Momento | Hora |
+| --- | --- |
+| Chequeo creado | 21:13 |
+| Ping | 21:14 |
+| «Status Changed to Down at» | 21:16:12 |
+| Email y Telegram | 21:16, los dos |
+
+Email: «"crm-prueba-ac10" is DOWN (success signal did not arrive on time, grace time passed)», «Total Pings 1», «Last Ping Type: Success». El usuario borró el chequeo de prueba después.
+
+**La otra mitad de AC-10**, que cada trabajo llegue a su aviso, se verifica con las corridas programadas y no a mano: la desviación la aprobó el usuario el 2026-09-30 (ver el brief).
+
+### AC-11: la alerta de disco
+
+`[transcrito]`:
+
+| Momento | Hora |
+| --- | --- |
+| Umbral de `crm-production-disco-80` bajado a 5 % | 21:10 |
+| Email «DigitalOcean monitoring triggered: crm-production-disco-80 - crm-production» | 21:11 |
+| Umbral de vuelta en 80 % | 21:12 |
+
+Texto: «Disk Utilization Percent is currently at 7.77%, above setting of 5.00% for the last 5m». Después, en el panel: «crm-production-disco-80 — Disk Utilization Percent is above 80% for 5 min», sobre `crm-production` `[transcrito]`. Llegó al minuto porque la alerta evalúa los 5 minutos anteriores, en los que el disco ya estaba por encima del 5 %.

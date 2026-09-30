@@ -239,4 +239,31 @@ Las salidas crudas están en [evidencia-13.3-disponibilidad.md](evidencia-13.3-d
 | AC-3 | cumplido | README de producción: 13 archivos en la tabla, `heartbeat.env` entre los secretos, el apartado de monitoreo con la instalación y la prueba. Runbook nuevo con un procedimiento por alerta |
 | AC-4 | cumplido | NonFunctionalRequirements, el contrato de lectura (§Disponibilidad) e IntegrationBoundaries dicen el 99,5 % mensual y la consecuencia para el consumidor. La línea «No hay SLA» está tachada, con su fecha |
 | AC-5 | cumplido, **con el desvío de I-5** | La enmienda del Roadmap traslada el APM a la 13.5 con su disparador. El procedimiento dio los percentiles calculados a mano sobre líneas del formateador real, y corre sin error sobre el journal de producción, que todavía no tiene eventos de servicio |
-| AC-6 | cumplido en local; **falta la CI** | Formato, lint y typecheck en verde; guardas 465 de 465 (15 archivos); unitarios 491 de 491. No se corrieron en local la integración ni el end-to-end: esta etapa no toca `src/`. La CI del commit se lee por `headSha` |
+| AC-6 | cumplido | Formato, lint y typecheck en verde; guardas 465 de 465 (15 archivos); unitarios 491 de 491. No se corrieron en local la integración ni el end-to-end: esta etapa no toca `src/`. CI del commit `579397e`: `success`, corrida 36762045106, leída por `headSha` |
+
+## Decisiones durante la etapa 13.3.2
+
+- **I-7. Desviación de AC-10, aprobada por el usuario el 2026-09-30.** «Cada trabajo corrido a mano llega a su aviso» se verifica con las **corridas programadas**: el backup y la copia externa del 2026-10-01 a las 03:15, y el ejercicio de restauración del mismo día a las 04:30. Recorren el camino real completo, del timer al trabajo y del trabajo al aviso, y no generan un backup ni una subida externa de más. El camino del aviso ya se probó sin correr ningún trabajo, con `systemctl start crm-heartbeat@<trabajo>`. La otra mitad, un aviso que no llega, se provocó con un chequeo de prueba en Healthchecks y no rompiendo un trabajo real: los chequeos de producción usan las mismas integraciones.
+- **I-8. La base se detiene por su unidad de cluster, `postgresql@18-main`.** El primer intento de AC-9 detuvo `postgresql`, y systemd detuvo también la aplicación, que tiene `Requires=postgresql.service`: dio `502`, no `503`. El segundo intento, con su propia autorización, detuvo solo el cluster, que es lo que pasa cuando la base se cae sola.
+- **I-9. Los recuentos de AC-13 se toman con un único comando exacto**, de solo lectura, que el usuario habilitó como permiso para esta subfase. Se saca al cerrarla.
+
+## Resultados — etapa 13.3.2, 2026-09-30
+
+Las salidas están en [evidencia-13.3-disponibilidad.md](evidencia-13.3-disponibilidad.md). Todas las horas son UTC. **Autoevaluación**. Las alertas las vio llegar el usuario, y lo que él mostró está marcado `[transcrito]`.
+
+| AC | Estado | Evidencia |
+|---|---|---|
+| AC-7 | cumplido, **con un hallazgo de frecuencia** | DigitalOcean Uptime sobre `/api/health`, cuatro regiones, un chequeo sin costo. Sumando las regiones hay una consulta por minuto, como pedía D-2. Por región, una cada 3 a 9 minutos, así que la detección tarda de 4,5 a 9,5 minutos. **Aceptado por el usuario el 2026-09-30** (opción a): el atraso no compromete el margen del 99,5 %, y se revisa en la 13.5 con tráfico real (fila de `Risks.md`). La alternativa era sumar un monitor de otro proveedor |
+| AC-8 | cumplido | Detenida a las 20:14:51. Alerta de caída a las 20:24 (se_asia). Levantada a las 20:24:29. Alerta de recuperación a las 20:35. Llegó además un aviso de caída de eu_west con el sitio ya arriba |
+| AC-9 | cumplido en el segundo intento (I-8) | Base detenida a las 20:42:38, `/api/health` en `503` y `/login` en `200`. Alerta a las 20:47 (eu_west). Base de vuelta a las 20:47:37, y la aplicación reconectó sola: `200` al primer pedido y ningún reinicio. Recuperación avisada a las 20:59 y a las 21:03 |
+| AC-10 | **la mitad cumplida**; la otra, el 2026-10-01 (I-7) | Chequeo de prueba: un ping a las 21:14, *down* a las 21:16:12, email y Telegram a las 21:16. Los tres avisos de prueba salieron a las 19:29, con `Result=success`. Falta ver las corridas programadas con su aviso: la del ejercicio de restauración es la condición de detención 2 |
+| AC-11 | cumplido | Umbral bajado a 5 % a las 21:10, email a las 21:11, vuelta a 80 % a las 21:12, confirmada con la captura del panel |
+| AC-12 | cumplido | Corte de 1 a 3 s en el despliegue de `579397e`: un `502` en 521 pedidos a `/login`, uno por segundo durante 10 minutos. `npm ci` y `next build` no cortaron nada. Solo se midió `/login` |
+| AC-13 | cumplido | Los 17 recuentos, iguales en la línea de base y después de cada una de las tres paradas. `/login` en `200` después de cada una |
+| AC-14 | cumplido | `Risks.md`: fila nueva con lo que quedó y lo que no cubre. `Overview.md` §Observabilidad: la tercera pieza existe. README de producción: las herramientas, los umbrales y cuánto tarda cada alerta. Runbook: el estado de cada alerta y los hallazgos de AC-8 y AC-9 |
+
+**Hallazgos de la etapa**, además de las filas:
+
+1. **Uptime avisa tarde y a veces fuera de tiempo.** Recuperación avisada entre 11 y 16 minutos después. Dos avisos de caída con el sitio arriba. Una caída de 40 segundos, sin alerta. El runbook ya manda confirmar `/api/health` a mano antes de actuar.
+2. **Detener `postgresql` detiene la aplicación, y levantarla no la levanta** (`Requires=`). Queda en el runbook. No se cambió la unidad: es un cambio de comportamiento de producción, fuera del alcance de esta etapa.
+3. **El diagnóstico del runbook miraba el envoltorio de PostgreSQL**, que sigue `active` con la base caída. Corregido: mira `postgresql@18-main`.

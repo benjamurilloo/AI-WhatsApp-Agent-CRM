@@ -8,10 +8,10 @@ Qué hacer cuando llega una alerta de `crm.vixoraai.app` ([brief-13.3](../decisi
 
 | Alerta | Estado |
 | --- | --- |
-| El CRM no responde o `/api/health` da `503` | **diseñado**. Se provoca en la 13.3.2 (AC-8 y AC-9) |
-| Un aviso de vida no llegó | **diseñado**. Se provoca en la 13.3.2 (AC-10) |
-| Disco o memoria | **diseñado**. La de disco se provoca en la 13.3.2 (AC-11); la de memoria no se provoca |
-| El certificado vence pronto | **diseñado**, sin falla provocada: depende de lo que ofrezca la herramienta de D-2 |
+| El CRM no responde o `/api/health` da `503` | **provocado** el 2026-09-30: la aplicación detenida (AC-8) y la base detenida con la aplicación arriba (AC-9). Las alertas de caída y de recuperación llegaron las dos veces |
+| Un aviso de vida no llegó | **provocado** el 2026-09-30 con un chequeo de prueba que recibió un ping y no más (AC-10): la alerta llegó por email y Telegram. El diagnóstico de abajo no se ejecutó, porque ningún trabajo real falló |
+| Disco o memoria | La de disco, **provocada** el 2026-09-30 con el umbral bajado a 5 % (AC-11). La de memoria, **configurada y no provocada** |
+| El certificado vence pronto | **configurada y no provocada**: alerta de Uptime a 14 días del vencimiento |
 | Distribución de `duration_ms` por ruta | **probado** el 2026-09-30 en el droplet, con `jq` 1.7, contra líneas del formateador real de la aplicación ([evidencia-13.3](../decisions/evidencia-13.3-disponibilidad.md)). Contra el journal de producción corre sin error, pero todavía no hay eventos de servicio: la ingestión y la lectura están apagadas |
 
 ## Antes de cualquier alerta: tres preguntas
@@ -22,18 +22,18 @@ Qué hacer cuando llega una alerta de `crm.vixoraai.app` ([brief-13.3](../decisi
    curl -sS -o /dev/null -w "%{http_code} %{time_total}s\n" https://crm.vixoraai.app/api/health
    ```
 
-   `200` en menos de un segundo, y la alerta sigue abierta: mirar el monitor antes que el servidor.
+   `200` en menos de un segundo, y la alerta sigue abierta: mirar el monitor antes que el servidor. **Pasa de verdad**: el 2026-09-30, dos alertas de caída de Uptime llegaron con el sitio ya arriba, porque cada región avisa por su cuenta y tarde. Por el mismo motivo, **no esperar un aviso de recuperación por cada región**: llegan entre 11 y 16 minutos después, y no siempre de todas.
 2. **¿Hubo un despliegue en los últimos minutos?** `ssh crm-production 'sudo tail -n 2 /var/lib/crm-production/despliegues; systemctl show crm-production -p ActiveEnterTimestamp'`. Si la caída empezó con el despliegue, lo primero es [volver atrás](../../deploy/production/README.md#volver-atrás), no diagnosticar.
 3. **¿Llega el `ssh`?** Si no llega, el droplet entero está caído o sin red: se sigue en [El droplet no responde](#el-droplet-no-responde).
 
-**Anotar la hora de la alerta y la de la recuperación.** El objetivo de disponibilidad (99,5 % mensual, brief-13.3, D-1) se cuenta con el historial del monitor. Una caída que el monitor no vio porque duró menos de un minuto no cuenta, y eso es un límite del instrumento, no un dato.
+**Anotar la hora de la alerta y la de la recuperación.** El objetivo de disponibilidad (99,5 % mensual, brief-13.3, D-1) se cuenta con el historial del monitor. **El monitor tarda en ver una caída**: cada región consulta cada 3 a 9 minutos, y el aviso llegó entre 4,5 y 9,5 minutos después de la falla. Una caída de menos de unos minutos puede no verse (una de 40 segundos, el 2026-09-30, no produjo alerta), y eso es un límite del instrumento, no un dato.
 
 ## El CRM no responde, o `/api/health` da `503`
 
 `/api/health` consulta la base: `503` quiere decir que la aplicación responde y la base no. Un timeout o un `502` quiere decir que no responde la aplicación.
 
 ```
-ssh crm-production 'systemctl is-active crm-production postgresql nginx
+ssh crm-production 'systemctl is-active crm-production postgresql@18-main nginx
 curl -s -o /dev/null -w "local: %{http_code}\n" http://127.0.0.1:3000/api/health
 df -h / | tail -1; free -m | sed -n 2p
 sudo journalctl -u crm-production -n 30 --no-pager'
@@ -42,12 +42,13 @@ sudo journalctl -u crm-production -n 30 --no-pager'
 | Lo que se ve | Qué hacer |
 | --- | --- |
 | `crm-production` no está `active` | `sudo systemctl restart crm-production`. Tiene `Restart=on-failure`, así que si está caída es porque falló cinco veces seguidas o porque alguien la detuvo. El journal dice cuál |
-| `postgresql` no está `active` | `sudo systemctl start postgresql` y `sudo journalctl -u postgresql -n 50`. Si no arranca, mirar el disco primero: un disco lleno es la causa más común |
+| `postgresql` no está `active`, o `/api/health` da `503` | La base corre en `postgresql@18-main.service`; `postgresql.service` es un envoltorio que queda `active (exited)` aunque la base esté caída. Mirar `systemctl status postgresql@18-main`, y `sudo systemctl start postgresql@18-main` con `sudo journalctl -u postgresql@18-main -n 50`. Si no arranca, mirar el disco primero: un disco lleno es la causa más común |
+| Alguien detuvo `postgresql` (el envoltorio) | `crm-production` tiene `Requires=postgresql.service`, así que **se detuvo con ella, y no vuelve sola**: `sudo systemctl start postgresql crm-production`. Un `restart` de `postgresql` sí reinicia las dos |
 | Local da `200` y desde afuera no | El problema está entre nginx y afuera: `sudo nginx -t`, `sudo systemctl status nginx`, y el certificado (`sudo certbot certificates`) |
 | El disco al 100 % | Ir a [Disco](#disco-por-encima-del-80-) antes de reiniciar nada: reiniciar con el disco lleno no arregla nada |
 | La base arranca, pero los datos están mal | No es esta alerta: es el [runbook de restauración](restaurar-la-base.md) |
 
-Reiniciar la aplicación no pierde datos: no guarda estado propio fuera de la base. Reiniciar PostgreSQL corta las conexiones abiertas, y la aplicación reconecta en el pedido siguiente.
+Reiniciar la aplicación no pierde datos: no guarda estado propio fuera de la base. Reiniciar PostgreSQL corta las conexiones abiertas, y la aplicación reconecta en el pedido siguiente: el 2026-09-30, con la base detenida cinco minutos y vuelta a levantar, `/api/health` dio `200` en el primer pedido, sin reiniciar la aplicación (AC-9).
 
 ## El droplet no responde
 

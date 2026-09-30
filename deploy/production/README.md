@@ -263,11 +263,17 @@ Desde la 13.3 ([brief-13.3](../../docs/decisions/brief-13.3-disponibilidad-y-obs
 
 | Qué se vigila | Cómo | Decisión |
 | --- | --- | --- |
-| La aplicación y la base, desde afuera | Un monitor externo consulta `https://crm.vixoraai.app/api/health` cada minuto. `/api/health` consulta la base y responde `503` si no llega | D-1 y D-2 |
-| El backup diario, la copia externa y el ejercicio mensual de restauración | Cada uno, al terminar bien, dispara `crm-heartbeat@<trabajo>.service`, que manda un aviso de vida. Si el aviso no llega a tiempo, el servicio externo alerta | D-3 |
-| El disco y la memoria del droplet | Políticas de alerta del proveedor sobre las métricas de `do-agent` | D-4 |
+| La aplicación y la base, desde afuera | Un chequeo de Uptime de DigitalOcean consulta `https://crm.vixoraai.app/api/health` desde cuatro regiones. `/api/health` consulta la base y responde `503` si no llega. Alertas: caída (2 min de espera), latencia de más de 2000 ms durante 5 min, y certificado a 14 días de vencer. Llegan por email | D-1 y D-2 |
+| El backup diario, la copia externa y el ejercicio mensual de restauración | Cada uno, al terminar bien, dispara `crm-heartbeat@<trabajo>.service`, que manda un aviso de vida a Healthchecks.io. Si el aviso no llega a tiempo, alerta por email y Telegram. Backup y copia: `15 3 * * *` UTC con 1 h de gracia; ejercicio: `30 4 1 * *` UTC con 2 h | D-3 |
+| El disco y la memoria del droplet | Alertas de recursos de DigitalOcean sobre las métricas de `do-agent`: disco por encima del 80 % durante 5 min y memoria por encima del 90 % durante 10 min. Llegan por email | D-4 |
 
-La herramienta de cada fila, su precio verificado y el canal por el que llega la alerta se registran en la etapa 13.3.2, en la [evidencia de la 13.3](../../docs/decisions/evidencia-13.3-disponibilidad.md). **Las URLs de aviso no**: viven solo en `/etc/crm-production/heartbeat.env`.
+**Cuánto tarda cada alerta**, medido el 2026-09-30 con fallas provocadas ([evidencia de la 13.3](../../docs/decisions/evidencia-13.3-disponibilidad.md)). Cada número salió de una o dos mediciones: es un orden de magnitud, no una garantía.
+
+- **Uptime no consulta cada minuto.** En los logs de nginx, cada región consultó cada 3 a 9 minutos. El aviso de caída llegó entre 4,5 y 9,5 minutos después de la falla, y el de recuperación, entre 11 y 16 minutos después de que el sitio volvió. Dos veces llegó un aviso de caída con el sitio ya arriba.
+- **Healthchecks.io avisa al segundo** en que vencen el período y la gracia.
+- **La alerta de disco** llegó al minuto de bajar el umbral, porque evalúa los 5 minutos ya transcurridos.
+
+La herramienta de cada fila y su precio están en la evidencia. **Las URLs de aviso no**: viven solo en `/etc/crm-production/heartbeat.env`.
 
 **Por qué el aviso sale de una unidad aparte.** `crm-backup.service` no tiene red (`IPAddressDeny=any`), y dársela para esto le abriría la red a un proceso que lee el `.pgpass` del dueño. `crm-heartbeat@.service` corre con un usuario efímero (`DynamicUser=true`), sin escribir en disco. systemd lee `heartbeat.env` como `root` antes de soltar privilegios, así que el archivo sigue siendo `0600` de `root` y el proceso no puede leer ningún otro secreto.
 
