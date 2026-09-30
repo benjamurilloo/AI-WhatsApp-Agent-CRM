@@ -6,6 +6,10 @@ Documentation=file:///srv/crm-production/docs/runbooks/restaurar-la-base.md
 # Hasta la revision de la 9.2 este ejercicio era mensual pero MANUAL, o sea que dependia
 # de que alguien se acordara -- exactamente el modo de falla que el brief denuncia en el
 # backup, trasladado un nivel arriba.
+# Y hasta la 13.3, su falla quedaba en el journal sin que nadie la leyera. Ahora un
+# ejercicio bueno manda su aviso de vida, y uno que falla o no corre hace sonar la
+# alerta por ausencia (brief-13.3, D-3). La unidad del aviso tiene red; esta no.
+OnSuccess=crm-heartbeat@restore-check.service
 
 [Service]
 Type=oneshot

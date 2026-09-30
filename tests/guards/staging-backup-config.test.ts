@@ -90,6 +90,20 @@ export function valor(
 }
 
 /**
+ * Todos los valores de una clave de tipo lista, como `OnSuccess=`. systemd los acumula:
+ * dos líneas o una línea con dos unidades separadas por espacio valen lo mismo.
+ */
+export function valores(
+  unidad: Unidad,
+  seccion: string,
+  clave: string,
+): string[] {
+  return (unidad.get(seccion)?.get(clave) ?? []).flatMap((v) =>
+    v.split(/\s+/).filter(Boolean),
+  );
+}
+
+/**
  * ¿La expresión `OnCalendar` dispara todos los días? Solo mira la parte de fecha: un
  * `*-*-01` es un archivo válido, systemd no se queja, el timer queda en verde y el
  * backup pasa de diario a mensual. D-3 dice diario.
@@ -908,7 +922,9 @@ describe("producción: la copia externa sube solo lo cifrado", () => {
 
 describe("producción: las unidades separan la base de la red", () => {
   it("la copia externa corre solo después de un backup exitoso", () => {
-    expect(valor(PROD_SERVICIO, "Unit", "OnSuccess")).toBe(
+    // Desde la 13.3 el backup dispara dos unidades, así que se mira la lista entera: con
+    // `valor`, que devuelve la última, este caso habría pasado a mirar el aviso de vida.
+    expect(valores(PROD_SERVICIO, "Unit", "OnSuccess")).toContain(
       "crm-backup-offsite.service",
     );
   });
@@ -942,5 +958,169 @@ describe("producción: las unidades separan la base de la red", () => {
         /PGPASSWORD=|AWS_SECRET|RCLONE_CONFIG_.*_SECRET|secret_access_key/i,
       );
     }
+  });
+});
+
+// --- Solo producción: el aviso de vida de cada trabajo programado (brief-13.3, D-3) -------
+//
+// Un trabajo programado que falla no avisa (H-1 de la 13.3). El aviso de vida es lo único
+// que convierte esa falla en una alerta, así que perderlo es volver al silencio, y perderlo
+// tampoco avisa. Lo que se afirma acá es **el grafo**: desde cada timer, siguiendo los
+// `OnSuccess=`, todo servicio alcanzado que no sea el aviso mismo tiene que disparar su
+// aviso. Así, un trabajo nuevo con su timer y sin aviso se pone rojo solo, sin que nadie
+// se acuerde de sumarlo a una lista.
+//
+// Lo que NO comprueba: que el servidor tenga estas unidades, ni que el servicio externo
+// esté configurado. Eso se ve provocando la falla (AC-10 de la 13.3).
+
+const AVISO = /^crm-heartbeat@([a-z-]+)\.service$/;
+
+/**
+ * Servicios alcanzados desde los timers de un directorio, siguiendo `OnSuccess=`, que no
+ * disparan su aviso de vida. Recibe los archivos por nombre para poder mutarlos en memoria.
+ */
+export function trabajosSinAviso(
+  archivos: ReadonlyMap<string, string>,
+): string[] {
+  const unidad = (nombre: string) => {
+    const texto = archivos.get(nombre);
+    return texto === undefined ? undefined : parsearUnidad(texto);
+  };
+
+  const pendientes = [...archivos.keys()]
+    .filter((nombre) => nombre.endsWith(".timer"))
+    .map(
+      (nombre) =>
+        valor(parsearUnidad(archivos.get(nombre) ?? ""), "Timer", "Unit") ??
+        nombre.replace(/\.timer$/, ".service"),
+    );
+  const vistos = new Set<string>();
+  const sinAviso: string[] = [];
+
+  while (pendientes.length > 0) {
+    const servicio = pendientes.pop() as string;
+    if (vistos.has(servicio) || AVISO.test(servicio)) continue;
+    vistos.add(servicio);
+
+    const leida = unidad(servicio);
+    // Un timer que apunta a un servicio que no está versionado también es un trabajo sin
+    // aviso: no hay de dónde saldría.
+    const siguientes = leida ? valores(leida, "Unit", "OnSuccess") : [];
+    if (!siguientes.some((s) => AVISO.test(s))) sinAviso.push(servicio);
+    pendientes.push(...siguientes);
+  }
+
+  return sinAviso.sort();
+}
+
+/** Los trabajos que aceptan los `case` del script de aviso, en el orden en que aparecen. */
+export function trabajosDelScript(script: string): string[] {
+  return [...codigoDe(script).matchAll(/^\s*([a-z-]+)\) variable=/gm)].map(
+    (m) => m[1] as string,
+  );
+}
+
+const PROD_DIR = "deploy/production";
+const PROD_ARCHIVOS: ReadonlyMap<string, string> = new Map(
+  readdirSync(PROD_DIR)
+    .filter((nombre) => /\.(service|timer)$/.test(nombre))
+    .map((nombre) => [nombre, readFileSync(`${PROD_DIR}/${nombre}`, "utf8")]),
+);
+const PROD_AVISO_SCRIPT = readFileSync(`${PROD_DIR}/crm-heartbeat.sh`, "utf8");
+const PROD_AVISO_UNIDAD = parsearUnidad(
+  readFileSync(`${PROD_DIR}/crm-heartbeat@.service`, "utf8"),
+);
+
+describe("producción: cada trabajo programado manda su aviso de vida", () => {
+  it("todo servicio alcanzado desde un timer dispara su aviso", () => {
+    expect(trabajosSinAviso(PROD_ARCHIVOS)).toEqual([]);
+  });
+
+  it("recorre los tres trabajos: el backup, la copia externa y el ejercicio", () => {
+    // El control del anterior: si el recorrido no siguiera los OnSuccess=, la copia
+    // externa, que no tiene timer, quedaría fuera y el caso de arriba pasaría igual.
+    const avisos = [...PROD_ARCHIVOS.values()]
+      .flatMap((texto) => valores(parsearUnidad(texto), "Unit", "OnSuccess"))
+      .filter((s) => AVISO.test(s))
+      .sort();
+    expect(avisos).toEqual([
+      "crm-heartbeat@backup.service",
+      "crm-heartbeat@offsite.service",
+      "crm-heartbeat@restore-check.service",
+    ]);
+  });
+
+  it("un trabajo que pierde su aviso se detecta", () => {
+    // Se quita la unidad del aviso esté escrita como esté: en su propia línea o junto a
+    // otra en la misma. La primera versión de este caso borraba una línea exacta y dejó de
+    // mutar nada cuando el archivo pasó a una sola línea, que systemd acepta igual.
+    const original = PROD_ARCHIVOS.get("crm-backup.service") ?? "";
+    const mutado = original
+      .replace(/[ \t]*crm-heartbeat@backup\.service/g, "")
+      .replace(/^OnSuccess=[ \t]*\r?\n/gm, "");
+    expect(mutado).not.toBe(original);
+
+    const sinAvisoDelBackup = new Map(PROD_ARCHIVOS);
+    sinAvisoDelBackup.set("crm-backup.service", mutado);
+    expect(trabajosSinAviso(sinAvisoDelBackup)).toEqual(["crm-backup.service"]);
+  });
+
+  it("un trabajo nuevo con timer y sin aviso se detecta", () => {
+    const conTrabajoNuevo = new Map(PROD_ARCHIVOS);
+    conTrabajoNuevo.set("crm-demo.timer", "[Timer]\nUnit=crm-demo.service\n");
+    conTrabajoNuevo.set("crm-demo.service", "[Service]\nType=oneshot\n");
+    expect(trabajosSinAviso(conTrabajoNuevo)).toEqual(["crm-demo.service"]);
+  });
+
+  it("un aviso puesto en [Service] no cuenta: systemd lo ignora ahí", () => {
+    const mal = new Map(PROD_ARCHIVOS);
+    mal.set(
+      "crm-restore-check.service",
+      "[Unit]\n[Service]\nOnSuccess=crm-heartbeat@restore-check.service\n",
+    );
+    expect(trabajosSinAviso(mal)).toEqual(["crm-restore-check.service"]);
+  });
+
+  it("el script acepta exactamente los trabajos que las unidades disparan", () => {
+    // Un aviso disparado para un trabajo que el script no conoce sale con error y la
+    // alerta suena por ausencia; uno que el script conoce y nadie dispara es código muerto.
+    const disparados = [...PROD_ARCHIVOS.values()]
+      .flatMap((texto) => valores(parsearUnidad(texto), "Unit", "OnSuccess"))
+      .map((s) => AVISO.exec(s)?.[1])
+      .filter((t): t is string => t !== undefined)
+      .sort();
+    expect([...trabajosDelScript(PROD_AVISO_SCRIPT)].sort()).toEqual(
+      disparados,
+    );
+  });
+});
+
+describe("producción: la unidad del aviso no puede más que avisar", () => {
+  it("corre con un usuario efímero y lee las URLs de un archivo fuera del repositorio", () => {
+    expect(valor(PROD_AVISO_UNIDAD, "Service", "DynamicUser")).toBe("true");
+    expect(valor(PROD_AVISO_UNIDAD, "Service", "EnvironmentFile")).toBe(
+      "/etc/crm-production/heartbeat.env",
+    );
+    expect(valor(PROD_AVISO_UNIDAD, "Service", "ExecStart")).toBe(
+      "/usr/local/bin/crm-heartbeat.sh %i",
+    );
+  });
+
+  it("no escribe en disco", () => {
+    expect(valor(PROD_AVISO_UNIDAD, "Service", "ProtectSystem")).toBe("strict");
+    expect(valor(PROD_AVISO_UNIDAD, "Service", "ReadWritePaths")).toBeNull();
+  });
+
+  it("el script nunca imprime la URL, ni en el mensaje de curl", () => {
+    const codigo = codigoDe(PROD_AVISO_SCRIPT);
+    const ecos = codigo.split("\n").filter((l) => /\becho\b/.test(l));
+    expect(ecos.length).toBeGreaterThan(0);
+    for (const linea of ecos) expect(linea).not.toMatch(/\$\{?url\b/);
+    // El mensaje de error de curl puede traer la URL: se descarta y queda el código.
+    expect(codigo).toMatch(/"\$url" 2>\/dev\/null \|\| codigo=\$\?/);
+  });
+
+  it("aborta ante el primer error", () => {
+    expect(PROD_AVISO_SCRIPT).toMatch(/^set -euo pipefail$/m);
   });
 });

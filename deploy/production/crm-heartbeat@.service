@@ -1,0 +1,25 @@
+[Unit]
+Description=AI WhatsApp Agent CRM - aviso de vida de %i (brief-13.3, D-3)
+Documentation=file:///srv/crm-production/docs/runbooks/responder-a-una-alerta.md
+# Plantilla. La instancia es el trabajo: crm-heartbeat@backup, @offsite y @restore-check.
+# La disparan los OnSuccess= de crm-backup, crm-backup-offsite y crm-restore-check; no
+# tiene timer propio. Un aviso que sale sin que el trabajo haya terminado bien es peor
+# que ninguno: apaga la alerta que tendria que sonar.
+
+[Service]
+Type=oneshot
+# Un usuario efimero, sin nada en disco: el script solo manda un pedido HTTP. systemd lee
+# el archivo de URLs como root ANTES de soltar privilegios, asi que ese archivo puede
+# seguir siendo 0600 de root y el proceso no puede leer ningun otro secreto del servidor.
+DynamicUser=true
+EnvironmentFile=/etc/crm-production/heartbeat.env
+ExecStart=/usr/local/bin/crm-heartbeat.sh %i
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true

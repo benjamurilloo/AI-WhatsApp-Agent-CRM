@@ -30,7 +30,12 @@
 
 ## Disponibilidad
 
-- No hay SLA de disponibilidad en el MVP: no hay tráfico productivo. Staging puede tener downtime sin impacto de negocio.
+- ~~No hay SLA de disponibilidad en el MVP: no hay tráfico productivo.~~ *Reemplazado el 2026-09-30 por la 13.3* ([brief-13.3](../decisions/brief-13.3-disponibilidad-y-observabilidad.md), D-1, pregunta 6). El agente depende del CRM en cada turno ([ADR 0014](../decisions/0014-el-agente-de-whatsapp-como-consumidor-del-crm.md)), así que la disponibilidad pasó a ser un requisito. **Producción tiene un objetivo del 99,5 % mensual**, unas 3 h 39 min de caída por mes, **medido desde afuera** sobre `/api/health`, que incluye la base.
+  - **Es un objetivo, no un SLA.** No hay guardia: la alerta llega a cualquier hora, y la respuesta es la que el operador pueda dar.
+  - **Por qué no más.** Un solo droplet, una sola base y un solo operador, con despliegues que cortan el servicio mientras duran (H-8 de la 13.3, que se mide en la 13.3.2).
+  - **La consecuencia para el consumidor.** El CRM no garantiza estar disponible en cada turno, así que el emisor tiene que tolerar una falla o un timeout sin perder el mensaje. La ingestión ya lo exige desde la Fase 12; la lectura lo dice en su [contrato](../contracts/read-v1.md), §Disponibilidad.
+  - **Lo que no está medido.** Que el objetivo se cumpla: hace falta un mes de medición.
+- Staging puede tener downtime sin impacto de negocio, y no tiene alertas.
 
 ## Observabilidad
 

@@ -4,8 +4,10 @@ Documentation=file:///srv/crm-production/docs/runbooks/restaurar-la-base.md
 After=postgresql.service
 Requires=postgresql.service
 # La copia externa corre solo si el backup termino bien, y en su propia unidad: esta no tiene
-# red y aquella si (brief-13.1, D-8).
+# red y aquella si (brief-13.1, D-8). El aviso de vida sale igual, desde su propia unidad
+# (brief-13.3, D-3): OnSuccess= es una lista, y cada linea agrega una unidad.
 OnSuccess=crm-backup-offsite.service
+OnSuccess=crm-heartbeat@backup.service
 
 [Service]
 Type=oneshot

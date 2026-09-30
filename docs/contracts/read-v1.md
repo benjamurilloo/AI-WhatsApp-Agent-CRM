@@ -210,6 +210,14 @@ El cuerpo de error tiene `code`, `request_id` y, en `VALIDATION_ERROR`, `fields`
 | Producto inactivo, ajeno o inexistente; conversación ajena o inexistente | `NOT_FOUND` | 404 | no |
 | Error inesperado | `INTERNAL` | 500 | sí |
 
+## Disponibilidad
+
+*Agregado el 2026-09-30 por la 13.3* ([brief-13.3](../decisions/brief-13.3-disponibilidad-y-observabilidad.md), D-1). No es un cambio del contrato: no toca ninguna ruta, campo ni código.
+
+- **El objetivo de producción es el 99,5 % mensual**, medido desde afuera ([NonFunctionalRequirements](../product/NonFunctionalRequirements.md), §Disponibilidad). No es un SLA.
+- **El consumidor tiene que tolerar que el CRM no responda**: un timeout, un error de conexión, un `502` o un `503` durante una caída o un despliegue. Esos casos no traen el cuerpo de error de §Errores, porque la aplicación no llegó a responder.
+- **Qué hace el consumidor en ese caso lo decide el consumidor.** El CRM no fija su timeout, sus reintentos ni su respuesta al cliente. Reintentar una lectura es seguro: no tiene efectos.
+
 ## Log
 
 Cada respuesta de la API encendida, incluidos los rechazos y el `500`, queda en el log estructurado con `request_id`, la ruta **fija** (`/api/read/v1/products`, `/api/read/v1/products/{product_id}`, `/api/read/v1/knowledge` o `/api/read/v1/messages`, nunca la URL), el código, la duración y, cuando se conocen, la organización, el `source` y el `correlation_id` (R-1 de la [evaluación 10.1](../decisions/evaluacion-10.1-mvp.md), piezas 1 y 2). **Nunca** el token, el texto buscado, el `limit`, un id buscado, la referencia de una conversación ni el texto de un mensaje: el texto viene de lo que escribió un cliente, y la referencia la genera el consumidor, así que el CRM no puede comprobar que no traiga un teléfono.

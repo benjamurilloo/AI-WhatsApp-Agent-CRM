@@ -20,6 +20,7 @@ Cada una es una decisión del brief, o su consecuencia directa.
 | 6 | Antes de cada despliegue, la CI del SHA exacto tiene que estar en `success` | D-4 (R-2), opción (a) |
 | 7 | Cada despliegue registra el SHA anterior, y hay un procedimiento de vuelta atrás | H-3 del brief: staging no lo tiene |
 | 8 | Sin backups ni snapshots de droplet del proveedor | D-5: el disco tiene el dump en claro y los secretos |
+| 9 | Cada trabajo programado manda un aviso de vida a un servicio externo, que alerta si no llega; la disponibilidad se mide desde afuera, con alerta | brief-13.3, D-2 a D-5. Staging no lo tiene: su caída no tiene impacto de negocio. Ver [Monitoreo y alertas](#monitoreo-y-alertas) |
 
 ## Archivos
 
@@ -36,8 +37,10 @@ Cada una es una decisión del brief, o su consecuencia directa.
 | `crm-restore-check.service` | `/etc/systemd/system/crm-restore-check.service` |
 | `crm-restore-check.timer` | `/etc/systemd/system/crm-restore-check.timer` |
 | `postgresql-crm-production.conf` | `/etc/postgresql/18/main/conf.d/crm-production.conf` |
+| `crm-heartbeat.sh` | `/usr/local/bin/crm-heartbeat.sh`, `0755` |
+| `crm-heartbeat@.service` | `/etc/systemd/system/crm-heartbeat@.service` |
 
-El número de archivos se cuenta, no se hereda: `ls deploy/production/ | grep -v README | wc -l` tiene que dar lo mismo que las filas de esta tabla (**11**).
+El número de archivos se cuenta, no se hereda: `ls deploy/production/ | grep -v README | wc -l` tiene que dar lo mismo que las filas de esta tabla (**13**, desde la 13.3; eran 11).
 
 ## Lo que NO está acá, a propósito
 
@@ -51,6 +54,8 @@ Los secretos. Viven en `/etc/crm-production/`, con permisos `0600` de `root`, y 
 | `backup.pgpass` | La contraseña del rol dueño, para el backup |
 | `backup.age.pub` | La clave **pública** de `age`. La privada **nunca** entra al droplet: la guarda el operador fuera de él |
 | `rclone.conf` | La clave de acceso al bucket, con permiso **solo** sobre ese bucket. Un remoto `[spaces]` con `type = s3`, `provider = DigitalOcean`, `endpoint = nyc3.digitaloceanspaces.com`, `acl = private` y las dos claves. Lo escribe el operador en el servidor, con `nano`, y nunca pasa por una conversación con un asistente |
+
+| `heartbeat.env` | Desde la 13.3: `HEARTBEAT_URL_BACKUP`, `HEARTBEAT_URL_OFFSITE` y `HEARTBEAT_URL_RESTORE_CHECK`, las URLs de aviso de vida. **Son credenciales**: quien tenga una puede marcar un trabajo como vivo y apagar su alerta. Lo escribe el operador en el servidor, con `nano`, y nunca pasa por una conversación con un asistente. Una guarda (`tests/guards/heartbeat-urls.test.ts`) falla si una aparece en un archivo del repositorio |
 
 No hay `seed.env`: en producción no corre ningún seed, y los seeds rechazan la base `crm_production` (AC-5).
 
@@ -244,10 +249,64 @@ La 13.1.2 ejecutó una vuelta atrás completa el 2026-09-29 (AC-21): de `938423d
 
 Los mismos cinco pasos de staging, con `crm-production` en lugar de `crm-staging` y `crm.vixoraai.app` en lugar de `staging.vixoraai.app`, más dos pasos propios de producción:
 
-1. **La configuración desplegada es la versionada** (O-9). Se hace el `diff` de los **once** archivos de la tabla, como en staging.
+1. **La configuración desplegada es la versionada** (O-9). Se hace el `diff` de los **trece** archivos de la tabla, como en staging. Eran once hasta la 13.3.
 2. **Un solo salto de proxy**, medido por consecuencia (AC-14). Se comparan hashes y **nunca se versiona ni la IP ni su hash**.
 3. **HSTS** presente sobre HTTPS y ausente sobre HTTP.
 4. **La aplicación escucha solo en loopback.**
 5. **El rol de la aplicación no es el dueño.**
 6. **La ingestión y la API de lectura, apagadas**: `POST /api/ingestion/v1/events`, `POST /api/ingestion/v2/events` y `GET /api/read/v1/products` responden `404` desde afuera.
 7. **Ningún dato real de un cliente**: `select count(*)` de `clients`, `conversations`, `messages` y `products` da 0 en las cuatro, y `organizations` da 1.
+
+## Monitoreo y alertas
+
+Desde la 13.3 ([brief-13.3](../../docs/decisions/brief-13.3-disponibilidad-y-observabilidad.md)). Antes, una falla de un trabajo programado quedaba en el journal y nadie la leía (H-1), y nadie consultaba `/api/health` desde afuera (H-2). Qué hacer cuando llega cada alerta está en el [runbook de alertas](../../docs/runbooks/responder-a-una-alerta.md).
+
+| Qué se vigila | Cómo | Decisión |
+| --- | --- | --- |
+| La aplicación y la base, desde afuera | Un monitor externo consulta `https://crm.vixoraai.app/api/health` cada minuto. `/api/health` consulta la base y responde `503` si no llega | D-1 y D-2 |
+| El backup diario, la copia externa y el ejercicio mensual de restauración | Cada uno, al terminar bien, dispara `crm-heartbeat@<trabajo>.service`, que manda un aviso de vida. Si el aviso no llega a tiempo, el servicio externo alerta | D-3 |
+| El disco y la memoria del droplet | Políticas de alerta del proveedor sobre las métricas de `do-agent` | D-4 |
+
+La herramienta de cada fila, su precio verificado y el canal por el que llega la alerta se registran en la etapa 13.3.2, en la [evidencia de la 13.3](../../docs/decisions/evidencia-13.3-disponibilidad.md). **Las URLs de aviso no**: viven solo en `/etc/crm-production/heartbeat.env`.
+
+**Por qué el aviso sale de una unidad aparte.** `crm-backup.service` no tiene red (`IPAddressDeny=any`), y dársela para esto le abriría la red a un proceso que lee el `.pgpass` del dueño. `crm-heartbeat@.service` corre con un usuario efímero (`DynamicUser=true`), sin escribir en disco. systemd lee `heartbeat.env` como `root` antes de soltar privilegios, así que el archivo sigue siendo `0600` de `root` y el proceso no puede leer ningún otro secreto.
+
+**Lo que el aviso no dice.** Que el trabajo terminó con código 0, no que su resultado sirva. Que el backup se pueda restaurar lo dice el ejercicio de restauración, que tiene su propio aviso.
+
+### Instalar el aviso de vida
+
+Con el código de la 13.3.1 ya desplegado en `/srv/crm-production` (el procedimiento de [Desplegar un cambio](#desplegar-un-cambio)). Primero, **el operador** escribe el archivo de URLs, en su terminal:
+
+```
+ssh -t crm-production 'sudo test -e /etc/crm-production/heartbeat.env || sudo install -m 0600 -o root -g root /dev/null /etc/crm-production/heartbeat.env; sudo nano /etc/crm-production/heartbeat.env'
+```
+
+Con las tres líneas, sin comillas:
+
+```
+HEARTBEAT_URL_BACKUP=<la URL del aviso del backup>
+HEARTBEAT_URL_OFFSITE=<la URL del aviso de la copia externa>
+HEARTBEAT_URL_RESTORE_CHECK=<la URL del aviso del ejercicio>
+```
+
+El `test -e` va primero porque `install` sobre un archivo que ya existe lo vacía. Después, las unidades:
+
+```
+ssh crm-production 'set -euo pipefail
+cd /srv/crm-production/deploy/production
+sudo install -m 0755 -o root -g root crm-heartbeat.sh /usr/local/bin/crm-heartbeat.sh
+for f in crm-heartbeat@.service crm-backup.service crm-backup-offsite.service crm-restore-check.service; do
+  sudo install -m 0644 -o root -g root "$f" "/etc/systemd/system/$f"
+done
+sudo systemctl daemon-reload
+sudo systemd-analyze verify /etc/systemd/system/crm-heartbeat@.service /etc/systemd/system/crm-backup.service /etc/systemd/system/crm-backup-offsite.service /etc/systemd/system/crm-restore-check.service
+sudo stat -c "%a %U %n" /etc/crm-production/heartbeat.env'
+```
+
+La última línea tiene que decir `600 root`. **Probar cada aviso sin correr su trabajo**:
+
+```
+ssh crm-production 'for t in backup offsite restore-check; do sudo systemctl start "crm-heartbeat@$t.service"; sudo journalctl -u "crm-heartbeat@$t.service" -n 1 -o cat; done'
+```
+
+Cada uno tiene que decir `Aviso de '<trabajo>' enviado.`, y el servicio externo tiene que mostrar el aviso recibido. Un error dice el código de salida de `curl`, nunca la URL.

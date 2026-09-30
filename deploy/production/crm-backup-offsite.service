@@ -3,6 +3,8 @@ Description=AI WhatsApp Agent CRM - copia externa cifrada del backup de producci
 Documentation=file:///srv/crm-production/docs/runbooks/restaurar-la-base.md
 # La dispara OnSuccess= de crm-backup.service; no tiene timer propio. Asi nunca sube una copia
 # vieja por su cuenta ni corre con un backup fallido.
+# Su aviso de vida sale solo si la subida termino bien (brief-13.3, D-3).
+OnSuccess=crm-heartbeat@offsite.service
 
 [Service]
 Type=oneshot
