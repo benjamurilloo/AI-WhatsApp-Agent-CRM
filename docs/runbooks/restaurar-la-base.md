@@ -13,7 +13,8 @@ Procedimiento de recuperación de `crm_staging` ([brief-9.2](../decisions/brief-
 | Comprobar que el borrado puede fallar | **ejecutado**: se reprodujo un `dropdb` fallido con una conexión abierta y el ejercicio lo detecta |
 | Comprobar servidor contra repositorio | **ejecutado**, los ocho archivos sin diferencias |
 | Comprobar la integridad antes de restaurar (paso 2) | **ejecutado**, con control negativo. La versión anterior de ese paso **no se podía ejecutar**: faltaba `sudo` |
-| Crear los roles en una **máquina nueva** | **diseñado, no ejecutado** — no hay una segunda máquina donde probarlo. Es lo único de este runbook que no está ejecutado |
+| Crear los roles en una **máquina nueva** | **ejecutado** el 2026-09-30 (13.1, AC-18): se restauró la copia de producción del bucket en un contenedor `postgres:18.6` sin red y sin ningún rol `crm%`, con los dos `CREATE ROLE` de la trampa 1, y el `pg_restore --exit-on-error` salió con 0. Salidas en [evidencia-13.1](../decisions/evidencia-13.1-produccion.md). No se probó levantar la aplicación en esa máquina, lo que exigiría también el rol con login |
+| Copia externa de producción: bajar, descifrar y restaurar (§Producción) | **ejecutado** el 2026-09-30 (13.1, AC-18), con el control negativo contra un dump truncado |
 | Timer del ejercicio mensual | **desplegado y habilitado** el 2026-09-22: `crm-restore-check.timer`, próxima corrida el 2026-10-01 |
 | **Recuperación real** (renombrar la base viva) | **ejecutada** el 2026-09-22 como simulacro, de punta a punta: la aplicación quedó corriendo sobre la base restaurada y se verificó con un **ingreso autenticado** desde afuera. Encontró dos defectos en este runbook, corregidos arriba |
 
@@ -36,7 +37,7 @@ sudo -u postgres psql -tAc \
 
 Los dos tienen que aparecer. Falta un tercero, **el rol con login del que se conecta la aplicación**, miembro de `crm_app`: no hace falta para restaurar, pero sí para que la aplicación levante después. Su nombre y su contraseña están en `DATABASE_URL` de `/etc/crm-staging/app.env` y se crean como dice el paso 5 de [deploy/staging/README.md](../../deploy/staging/README.md) — no se inventan acá.
 
-> **Sin verificar**: este bloque está *ejecutado* en la parte que el simulacro del 2026-09-22 recorrió, que fue la restauración en el droplet, donde los roles ya existían. La creación de roles en una máquina nueva está **diseñada, no ejecutada**. Es la diferencia que separa este runbook de estar probado de punta a punta, y se cierra cuando haya una segunda máquina donde probarlo.
+> **Ejecutado el 2026-09-30** (13.1, AC-18), en una máquina nueva: un contenedor sin ningún rol `crm%`, donde estos dos `CREATE ROLE` bastaron para que `pg_restore --exit-on-error` saliera con 0. Hasta entonces este bloque estaba *diseñado, no ejecutado*: el simulacro del 2026-09-22 restauró en el droplet, donde los roles ya existían. **Lo que sigue sin probar**: crear el rol con login y levantar la aplicación en esa máquina.
 
 **2. Restaurar sobre una base con datos no funciona.** Choca por clave primaria y deja la base a medio llenar. La restauración va **siempre** a una base nueva y vacía. Si hay que reemplazar la base viva, se restaura al lado y se renombra — nunca se restaura encima.
 
@@ -194,7 +195,7 @@ age --decrypt --identity <archivo de la clave privada> --output crm_production-E
 
 Desde ahí, el dump en claro sigue el camino de «Recuperación real» en la máquina nueva, empezando por crear los roles (trampa 1). El dump en claro se borra de la máquina del operador al terminar.
 
-**3. El ejercicio de la copia externa es manual.** El ejercicio mensual del timer restaura la copia **local**, en claro, porque el droplet no tiene la clave privada, y así tiene que ser. La copia del bucket se ejercita a mano: los tres pasos de arriba y una restauración en una base local aislada, comparada contra el `.recuentos`. La 13.1.2 lo hace una vez (AC-18). Después, se repite **cada vez que se rote la clave de `age`**, porque es la única forma de saber que la clave nueva descifra lo que el servidor cifra.
+**3. El ejercicio de la copia externa es manual.** El ejercicio mensual del timer restaura la copia **local**, en claro, porque el droplet no tiene la clave privada, y así tiene que ser. La copia del bucket se ejercita a mano: los tres pasos de arriba y una restauración en una base local aislada, comparada contra el `.recuentos`. La 13.1.2 lo hizo el 2026-09-30 (AC-18), con la copia del timer de esa madrugada: descifrada en la máquina del operador, idéntica byte a byte al dump del servidor, restaurada en un contenedor aislado, y con el control negativo en rojo contra un dump truncado. Después, se repite **cada vez que se rote la clave de `age`**, porque es la única forma de saber que la clave nueva descifra lo que el servidor cifra.
 
 ## Lo que este runbook NO cubre
 

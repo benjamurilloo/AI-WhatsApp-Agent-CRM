@@ -188,9 +188,12 @@ Implementada en la 6.5.3 ([brief-6.5.3](../decisions/brief-6.5.3-autenticacion-d
   - la copia externa es **automática**: `crm-backup-offsite.service` corre después de cada backup y sube a un bucket de Spaces solo el dump cifrado, su `sha256` y el manifiesto de recuentos. La retención es de 7 copias locales y 30 días en el bucket;
   - el dump sale **cifrado con `age`**, y la clave privada vive fuera del droplet.
 
-  Lo ejecutado: el backup y la subida por la unidad, disparados a mano; la suma del archivo del bucket coincide con la local; y el ejercicio de restauración local salió bien. **Pendiente (AC-18)**:
-  - que el timer corra solo;
-  - la restauración desde el bucket, descifrando en la máquina del operador, con su control negativo.
+  **Ejecutado el 2026-09-30** (13.1, AC-18):
+  - el timer corrió solo a las 03:17 UTC y la copia cifrada llegó al bucket;
+  - se bajó, se descifró en la máquina del operador (idéntica byte a byte al dump del servidor) y se restauró en una máquina nueva y aislada: los 17 recuentos coinciden con el manifiesto, la base y las tablas son de `crm_owner`, y los triggers y el `permission denied` de `crm_app` sobrevivieron;
+  - el control negativo contra un dump truncado sale con 1.
+
+  **Nivel**: el mecanismo, sobre una base de pocas filas. El tiempo de restauración con volumen sigue sin medirse en producción.
 
   El dueño de la base restaurada está en el [runbook](../runbooks/restaurar-la-base.md), §Producción (O-3).
 

@@ -841,7 +841,7 @@ OK: la base crm_production_restore_check_20260929T212710Z no existe
 
 `[transcrito]`: se omitieron 15 de las 17 líneas de recuento. Las 17 dan 0, porque la base todavía no tiene la organización del operador.
 
-**Lo que falta de AC-18**: la restauración **desde el bucket, descifrando con la clave privada fuera del droplet**, con su control negativo contra un dump truncado. Se hace en la máquina del operador, con datos (la organización del operador) para que los recuentos no sean todos cero.
+**Lo que falta de AC-18**: la restauración **desde el bucket, descifrando con la clave privada fuera del droplet**, con su control negativo contra un dump truncado. Se hace en la máquina del operador, con datos (la organización del operador) para que los recuentos no sean todos cero. *Hecho el 2026-09-30: ver «AC-18, segunda parte», al final.*
 
 ### La primera organización: una corrida de más, 2026-09-29
 
@@ -1257,3 +1257,169 @@ Las últimas líneas son `despliegues`, seguido de `crm-production`, `crm-backup
 Para un entorno de un operador sin tráfico real es aceptable. Queda anotado para cuando haya tráfico.
 
 **Defecto del README encontrado al ejecutarlo.** Cada despliegue anota el SHA que **estaba** corriendo. «Volver atrás = la última línea» vale justo después de un despliegue, pero **no después de una vuelta atrás**: ahí la última línea es `c8fde19`, la versión de la que se acaba de volver. Una segunda vuelta atrás, siguiendo el texto, volvería a desplegar la versión abandonada. Se corrige en el README, §«Volver atrás».
+
+### AC-18, segunda parte: el timer y la restauración desde el bucket, 2026-09-30
+
+**Primer intento, descartado.** El 2026-09-29 se bajó la única copia que había en el bucket, la de las 21:26:54 UTC, subida por la unidad arrancada a mano. Su manifiesto daba **0 filas en las 17 tablas**, porque era anterior a la primera organización. Restaurarla habría comparado ceros contra ceros: prueba que el descifrado y `pg_restore` funcionan, pero no que el contenido llega entero. El usuario eligió esperar la corrida del timer, que además es la otra mitad del criterio.
+
+**El timer corrió solo**, sin que nadie lo arrancara:
+
+```text
+$ ssh crm-production 'systemctl list-timers crm-backup.timer crm-restore-check.timer --no-pager; sudo journalctl -u crm-backup.service -u crm-backup-offsite.service --since "2026-09-30 00:00" ...; sudo rclone ... lsl spaces:crm-production-backups'
+NEXT                        LEFT LAST                        PASSED UNIT                    ACTIVATES
+Thu 2026-10-01 03:17:09 UTC  16h Wed 2026-09-30 03:17:00 UTC 7h ago crm-backup.timer        crm-backup.service
+Thu 2026-10-01 04:37:02 UTC  17h Tue 2026-09-29 21:27:10 UTC      - crm-restore-check.timer crm-restore-check.service
+---
+2026-09-30T03:17:01+00:00 crm-production crm-backup.sh[5659]: backup: /var/backups/crm-production/crm_production-20260930T031700Z.dump
+2026-09-30T03:17:01+00:00 crm-production crm-backup.sh[5659]: cifrado: /var/backups/crm-production/crm_production-20260930T031700Z.dump.age (67605 bytes)
+2026-09-30T03:17:01+00:00 crm-production crm-backup.sh[5659]: rotado: nada (hay <= 7 copias)
+2026-09-30T03:17:01+00:00 crm-production systemd[1]: crm-backup.service: Deactivated successfully.
+2026-09-30T03:17:01+00:00 crm-production systemd[1]: Finished crm-backup.service - AI WhatsApp Agent CRM - backup logico de produccion.
+2026-09-30T03:17:02+00:00 crm-production crm-backup-offsite.sh[5690]: subido: crm_production-20260930T031700Z.dump.age (67605 bytes)
+2026-09-30T03:17:02+00:00 crm-production systemd[1]: crm-backup-offsite.service: Deactivated successfully.
+2026-09-30T03:17:02+00:00 crm-production systemd[1]: Finished crm-backup-offsite.service - AI WhatsApp Agent CRM - copia externa cifrada del backup de produccion.
+---
+    64596 2026-09-29 21:26:54.741794387 crm_production-20260929T212654Z.dump.age
+       65 2026-09-29 21:26:54.777798200 crm_production-20260929T212654Z.dump.age.sha256
+      277 2026-09-29 21:26:54.723792481 crm_production-20260929T212654Z.dump.recuentos
+    67605 2026-09-30 03:17:01.380700386 crm_production-20260930T031700Z.dump.age
+       65 2026-09-30 03:17:01.409702799 crm_production-20260930T031700Z.dump.age.sha256
+      278 2026-09-30 03:17:01.331696307 crm_production-20260930T031700Z.dump.recuentos
+```
+
+`[transcrito]`: en el comando se abreviaron con `...` las opciones de `journalctl` y la ruta de `rclone.conf`, y de la salida se quitaron las dos líneas de ayuda de `list-timers`.
+
+**La copia, bajada del bucket** a la máquina del operador (`~/crm-ac18`), con el `rclone` del droplet (`rclone cat`), para no tener credenciales del bucket fuera del servidor:
+
+```text
+crm_production-20260930T031700Z.dump.age: OK
+--- cabecera:
+age-encryption.org/v1
+--- manifiesto:
+audit_logs 1
+clients 0
+conversations 0
+ingestion_credentials 0
+ingestion_events 0
+ingestion_rate_windows 0
+inventories 0
+inventory_movements 0
+knowledge_entries 0
+login_attempts 44
+messages 0
+organization_members 1
+organizations 1
+product_prices 0
+products 0
+sessions 2
+users 1
+```
+
+La primera línea es el `sha256` del `.age` bajado, contra el `.age.sha256` del bucket.
+
+**El descifrado lo hizo el usuario**, en su terminal, con la clave privada que nunca estuvo en el droplet ni pasó por la conversación:
+
+```text
+$ age --decrypt --identity ~/crm-production-backup.agekey --output crm_production-20260930T031700Z.dump crm_production-20260930T031700Z.dump.age
+$ ls -l crm_production-20260930T031700Z.dump
+-rw-r--r-- 1 benja 197609 67389 Sep 30 08:20 crm_production-20260930T031700Z.dump
+```
+
+`[transcrito]`: el usuario invocó `age` por su ruta completa de WinGet.
+
+El dump descifrado se comparó con la suma en claro que el servidor escribió al hacer el backup (`.dump.sha256`), en un mismo comando y sin imprimir ninguna de las dos:
+
+```text
+sha256 del dump descifrado = sha256 que escribió el servidor: SÍ
+```
+
+**La restauración, en una máquina nueva.** Se usó un contenedor `postgres:18.6-trixie` descartable, con `--network none` y sin los roles del proyecto, que se borró al terminar. El guion (`restaurar-ac18.sh`, en el scratchpad del asistente) sigue el [runbook](../runbooks/restaurar-la-base.md):
+- la trampa 1;
+- la «Recuperación real», pasos 4 y 5;
+- §Producción, punto 1;
+- el `crm-restore-check.sh` **versionado**, copiado del repositorio al contenedor.
+
+Imprime solo recuentos y resultados. Salida literal:
+
+```text
+2026-09-30T11:23:30Z
+
+== contenedor descartable, sin red ==
+PostgreSQL 18.6 (Debian 18.6-1.pgdg13+2) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
+red: no
+sha256 del dump (12 primeros): 53af8409d3fc
+
+== roles del proyecto antes de crearlos (máquina nueva: tiene que salir vacío) ==
+(fin)
+
+== runbook, trampa 1: crear los dos roles, el dueño primero ==
+CREATE ROLE
+CREATE ROLE
+crm_app
+crm_owner
+
+== runbook, paso 4: restaurar a una base nueva, de crm_owner, SIN --no-owner ==
+pg_restore: salida 0
+
+== runbook, paso 5: recuentos restaurados contra el manifiesto del bucket ==
+OK: 17 tablas, recuentos idénticos al manifiesto
+
+== las defensas ==
+dueño de la base: crm_owner
+dueño de las tablas: crm_owner
+triggers de solo inserción: audit_logs_insert_only, inventory_movements_insert_only, messages_insert_only, product_prices_insert_only
+crm_app DELETE audit_logs: SET
+crm_app DELETE audit_logs: ERROR:  permission denied for table audit_logs
+superusuario DELETE audit_logs: ERROR:  audit_logs es de solo inserción: DELETE rechazado
+superusuario DELETE audit_logs: CONTEXT:  PL/pgSQL function audit_logs_reject_change() line 3 at RAISE
+audit_logs después: 1
+
+== crm-restore-check.sh contra el dump ENTERO (tiene que salir 0) ==
+== dump ==
+archivo: /tmp/crm_production-20260930T031700Z.dump
+sha256:  53af8409d3fc93a72567bd309cc9253ffd7d2ce6da7d8439f636da47a5033d56
+
+== restauracion a una base nueva: crm_production_restore_check_20260930T112343Z ==
+pg_restore termino sin error
+
+== recuentos: restaurado contra el manifiesto del dump ==
+
+OK: 17 tablas coinciden en existencia y en recuento
+OK: el conjunto de tablas del origen es el mismo que el restaurado
+OK: las tablas restauradas siguen siendo de crm_owner
+OK: la base crm_production_restore_check_20260930T112343Z no existe
+salida: 0
+
+== control negativo: el mismo dump truncado a la mitad (tiene que salir distinto de 0) ==
+tamaño: entero 67389, truncado 33694
+archivo: /tmp/roto.dump
+sha256:  5912a0992a021809e3b031946a683ebcfe3095409d5c48662a3066e137737dd6
+
+== restauracion a una base nueva: crm_production_restore_check_20260930T112347Z ==
+pg_restore: error: could not read from input file: end of file
+OK: la base crm_production_restore_check_20260930T112347Z no existe
+salida: 1
+
+contenedor crm-ac18: borrado
+```
+
+`[transcrito]`: el guion filtró las 17 líneas `tabla recuento` que `crm-restore-check.sh` imprime al mostrar el manifiesto. Son las mismas del manifiesto de arriba. Al control negativo se le dejaron solo sus últimas 6 líneas.
+
+Al terminar se borró `~/crm-ac18` con el dump en claro, como pide el runbook, y se comprobó que el contenedor ya no existe.
+
+**AC-18 cumplido**:
+- **El timer ejecuta el backup, y la copia cifrada existe en el object storage.** El timer corrió solo el 2026-09-30 a las 03:17 UTC, y la unidad de la copia externa la subió un segundo después.
+- **Se restauró a una base aislada, descifrando con la clave que está fuera del droplet, y se verificó el contenido:**
+  - el dump descifrado es byte a byte el que escribió el servidor;
+  - los 17 recuentos coinciden con el manifiesto que viajó junto al dump;
+  - la base y las tablas son de `crm_owner`;
+  - las cuatro tablas de solo inserción conservan su trigger, y `crm_app` recibe `permission denied`.
+- **El control negativo falla contra un dump truncado**: `crm-restore-check.sh` sale con 1 y no deja base huérfana.
+- **El runbook dice quién queda como dueño** (O-3): en §Producción, punto 1, y medido acá con `crm_owner`.
+
+**De paso, se ejecutó por primera vez lo único del runbook que estaba «diseñado, no ejecutado»: crear los roles en una máquina nueva.** El contenedor no tenía ningún rol `crm%`, y con los dos `CREATE ROLE` del runbook el `pg_restore --exit-on-error` salió con 0. Se actualiza en su tabla de estado.
+
+**Límites declarados:**
+- Dentro del contenedor, la «base de origen» contra la que `crm-restore-check.sh` compara el conjunto de tablas y los dueños **es la misma restauración** del paso 4. Esas dos comparaciones son tautológicas acá. Las que prueban algo son el manifiesto, que viene del servidor, y la igualdad del `sha256` con el dump en claro del servidor.
+- Como en staging, no se compara ni un valor de columna. Lo acota el `sha256`.
+- No se probó que la aplicación arranque sobre la base restaurada: eso lo cubrió el simulacro de staging de la 9.2, y en producción no hace falta para el criterio.
