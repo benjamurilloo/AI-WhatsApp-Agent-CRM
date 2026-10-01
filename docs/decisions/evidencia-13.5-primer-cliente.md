@@ -126,7 +126,7 @@ restaurado: bytes idénticos
 - [alta de un negocio](../runbooks/alta-de-un-negocio.md): las precondiciones, la organización, la carga por la UI, las credenciales, el encendido de la lectura, H-4 con el primer mensaje controlado, la apertura, la allowlist contra una credencial de control, el apagado y qué se registra.
 - [observar el primer negocio](../runbooks/observar-el-primer-negocio.md): capacidad por credencial, R-6, latencia, APM, detección de caídas y privacidad, cada una con su regla de decisión escrita antes de ver datos.
 
-**Una corrección del autor al escribirlo**: el primer borrador del paso 5 pasaba el teléfono como `sudo VERIFICAR_TELEFONO="$TEL" …`, que lo deja en los argumentos de `sudo`, legibles con `ps` por cualquier usuario del servidor. Es el defecto del hallazgo 6 de la revisión de la 13.3. Ahora va exportado y con `--preserve-env`.
+**Una corrección del autor al escribirlo**: el primer borrador del paso 5 pasaba el teléfono como `sudo VERIFICAR_TELEFONO="$TEL" …`, que lo deja en los argumentos de `sudo`, legibles con `ps` por cualquier usuario del servidor. Es el defecto del hallazgo 6 de la revisión de la 13.3. Ahora va exportado y con `--preserve-env`. *Corregido después*: `--preserve-env` también deja el valor en el log de `sudo`; la forma vigente lo lee dentro del shell de `root` (ver «Lo que encontró la verificación de H-5»).
 
 **Sin probar al escribirlos**: ningún comando de los dos runbooks había corrido. Los probó el ensayo en staging del 2026-10-01, más abajo, y dos se corrigieron por lo que encontró.
 
@@ -220,7 +220,7 @@ ruta	n	p50_ms	p95_ms	max_ms	errores
 /api/read/v1/products/{product_id}	2	9	15	15	2
 ```
 
-El `VERIFICAR_TELEFONO` viajó exportado y con `--preserve-env`, como en el runbook. Los «errores» de la latencia son los `400`, `403`, `404` y `409` que las sondas provocan a propósito. Los números son de un ensayo de minutos: prueban que los programas corren contra el formato real del journal, **no** dicen nada de la capacidad ni de la latencia con tráfico real.
+El `VERIFICAR_TELEFONO` viajó exportado y con `--preserve-env`, como en el runbook de ese momento; la forma vigente es otra (ver «Lo que encontró la verificación de H-5»). Los «errores» de la latencia son los `400`, `403`, `404` y `409` que las sondas provocan a propósito. Los números son de un ensayo de minutos: prueban que los programas corren contra el formato real del journal, **no** dicen nada de la capacidad ni de la latencia con tráfico real.
 
 **Hallazgo 2. El chequeo de privacidad del journal se disparaba con los uuid.** La primera versión (`grep -cE '[0-9]{10,}'`) dio 2 en la ventana del ensayo: las dos líneas `FORBIDDEN` de control, por el `organization_id` `5eed…-000000000001`. El defecto es general. El último bloque de un uuid tiene 12 caracteres hexadecimales, y en uno de cada cuarenta, más o menos, diez son dígitos seguidos. Toda línea lleva el `request_id`, así que en producción el recuento casi nunca daría 0, y cada vez sería una condición de detención falsa. Sobre 30 días del journal de staging (1624 líneas): 120 con la versión original, 7 quitando los uuid. Las 7 son `correlation_id` de una sonda de una fase anterior con una marca de tiempo de 14 dígitos (`probe-99-9-9-p99999999999999`, dígitos enmascarados). **Corregido** en la §6 del runbook: los uuid se quitan antes de contar, y si queda algo, un segundo comando dice en qué campo está, con los dígitos enmascarados. Corregido, la ventana del ensayo da 0.
 
@@ -396,7 +396,7 @@ Al preparar la rotación, el 2026-10-01, se listaron los nombres de variable de 
 
 Autorizada por el usuario el 2026-10-01 y hecha el mismo día, en este orden: `crm_owner` en staging y en producción, y después `crm_staging_app` y `crm_app_login`. Un solo script, que corre entero como `root` por la entrada estándar (`ssh <host> "sudo bash -s -- <owner|app> <entorno>"`), así que `sudo` registra solo `bash -s`. Lo que hace:
 
-1. Lee la contraseña vieja de la URL del archivo de entorno, sin imprimirla, y exige que esté en una sola línea y que coincida con la de `backup.pgpass`.
+1. Lee la contraseña vieja de la URL del archivo de entorno, sin imprimirla, y exige que esté en una sola línea; para `crm_owner`, además, que coincida con la de `backup.pgpass`.
 2. Busca la contraseña vieja en `/etc`, `/root`, `/home` y los `.env*` de la aplicación, y **se detiene** si aparece en un archivo que no espera.
 3. Genera la nueva con `openssl rand -hex 32` y calcula su verificador SCRAM-SHA-256 en el servidor. A PostgreSQL llega solo el verificador, por la entrada estándar de `psql`.
 4. Reescribe los archivos en el mismo inodo, con el mismo dueño y los mismos permisos.
@@ -434,3 +434,28 @@ Los recuentos de antes coinciden con los de la medición (52 y 31). **El journal
 - unitarios: 492 de 492;
 - guardas: 485 de 485;
 - typecheck, lint y formato: sin errores.
+
+**El backup de producción con el `backup.pgpass` nuevo**, corrido a mano el 2026-10-01 con autorización del usuario, para no esperar a la corrida programada `[transcrito]`:
+
+```
+crm-backup: success; fin Thu 2026-10-01 21:52:24 UTC
+crm-backup-offsite: success; fin Thu 2026-10-01 21:52:26 UTC
+crm-heartbeat@backup: success; fin Thu 2026-10-01 21:52:25 UTC
+crm-heartbeat@offsite: success; fin Thu 2026-10-01 21:52:26 UTC
+```
+
+Con eso, la fila de [Risks](../planning/Risks.md) queda cerrada.
+
+### Verificación independiente de las correcciones
+
+El 2026-10-01, a cargo de otro agente que no participó del trabajo, con acceso de solo lectura y sin git. Revisó H-1 a H-11 contra el código y los runbooks, todos los comandos operativos vigentes en busca de valores que pasen por `sudo`, la evidencia de la rotación y la purga, y Risks y HANDOFF. **H-1 a H-11 resueltos; ningún comando vigente pasa un secreto ni un dato personal por `sudo`; la evidencia no tiene valores, y sus recuentos cierran.** Encontró **7 hallazgos menores**, todos verificados contra los archivos:
+
+| Hallazgo | Qué era | Cómo quedó |
+|---|---|---|
+| R-1 | el apagado definitivo remitía al comando del paso 5, que revoca dos credenciales; el negocio tiene tres | el paso 8 tiene su propio comando, para las tres |
+| R-2 | dos frases de esta evidencia daban como vigente la forma con `--preserve-env` | anotadas, con remisión a la sección de H-5 |
+| R-3 | Risks decía que H-4 es el paso 5 del alta | paso 6 |
+| R-4 | HANDOFF: «sin commit» de la rotación, el último ref en verde y la 13.5 en «Esperando» | corregidos; Notion releído: la 13.5 está «En proceso» |
+| R-5 | el README de staging enseña a listar los nombres de variable con `sed -E "s/=.*//"`, el filtro del incidente | el comando extrae solo `^[A-Z_]+=`, de un archivo por vez; autorizado por el usuario |
+| R-6 | la rotación decía comparar con `backup.pgpass` también para el rol de la aplicación | dice que la comparación es solo para `crm_owner`, que es lo que hace el script |
+| R-7 | el README de staging se cambió a `runuser` por la revisión, no por el ensayo, y la ampliación no lo nombra | ratificado por el usuario y registrado en la ampliación del brief |

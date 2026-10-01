@@ -167,7 +167,7 @@ La decisión puede esperar a conocer al cliente: el runbook cubre las dos.
 - `deploy/staging/README.md`, **solo** si el ensayo encuentra un error en él.
 - En staging: una ventana para el ensayo, con una organización sintética, credenciales que crea el usuario y se revocan, y todo apagado al terminar.
 - En producción, en la 13.5.2: lo que dice el runbook, cada paso en su turno.
-- *Ampliación del 2026-10-01, aprobada por el usuario dentro de la 13.5.1* (revisión independiente, H-5, y lo que encontró su verificación): `scripts/crear-organizacion.ts`, para que lea los datos del `admin` del entorno; `docs/runbooks/datos-de-un-cliente.md` y el comentario de uso de `scripts/conciliar-turnos.ts`, para cambiar `sudo -u … --preserve-env` por `runuser`, porque `sudo` escribe en su log el valor de las variables que se le pasan; y en staging y producción, recuentos de solo lectura de esos logs. Rotar contraseñas y purgar logs **no** entra: cada una lleva su autorización.
+- *Ampliación del 2026-10-01, aprobada por el usuario dentro de la 13.5.1* (revisión independiente, H-5, y lo que encontró su verificación): `scripts/crear-organizacion.ts`, para que lea los datos del `admin` del entorno; `docs/runbooks/datos-de-un-cliente.md` y el comentario de uso de `scripts/conciliar-turnos.ts`, para cambiar `sudo -u … --preserve-env` por `runuser`, porque `sudo` escribe en su log el valor de las variables que se le pasan; y en staging y producción, recuentos de solo lectura de esos logs. Rotar contraseñas y purgar logs **no** entra: cada una lleva su autorización. *Ratificado el 2026-10-01 por el usuario* (verificación independiente, R-7 y R-5): `deploy/staging/README.md`, por el cambio a `runuser` que trajo `6705457` y por el comando que lista los nombres de variable. La rotación y la purga se autorizaron aparte y están hechas.
 
 ## Invariantes
 
@@ -219,3 +219,27 @@ Un archivo `evidencia-13.5-primer-cliente.md` con cada comando y su salida liter
 - **Que el 99,5 % se cumpla**: hace falta el mes de medición de la 13.3, que corre aparte.
 - **Que el agente atienda bien**: el CRM mide lo suyo, no la calidad de las respuestas del agente.
 - **Cumplimiento legal** (D-10).
+
+## Cierre de la etapa 13.5.1, 2026-10-01
+
+La preparación sin el cliente está hecha. Contrastada contra la [evidencia](evidencia-13.5-primer-cliente.md); autoevaluación, más dos miradas independientes.
+
+| Criterio | Estado |
+|---|---|
+| AC-1 | cumplido: el runbook del alta cubre crear, cargar, encender, comprobar, apagar y revocar, con comandos que no pasan valores por `sudo` |
+| AC-2 | cumplido: `verificar-identificadores`, 20 tests de integración, mutaciones M1 a M14 en rojo |
+| AC-3 | cumplido con el desvío aceptado por el usuario (`probar-api-lectura`, cubierto a mano); dos runbooks corregidos |
+| AC-4 | cumplido con el desvío aceptado por el usuario; los procedimientos corrieron sobre los logs del ensayo |
+| AC-5 | cumplido: el pedido entregado; el agente respondió y la respuesta del CRM está en manos del usuario |
+| AC-6 | cumplido: Environments, Risks y el README de producción; la suite en verde; la CI de cada commit de la etapa en `success`, leída por `headSha` |
+| AC-7 | cumplido: la revisión independiente (11 hallazgos) y la verificación de sus correcciones (7 menores), todos resueltos o decididos por el usuario |
+
+**Lo que la etapa dejó además**: el problema de las contraseñas en el log de `sudo`, corregido en todos los comandos operativos, con las contraseñas de los cuatro roles vivos rotadas y `auth.log` purgado; y un incidente propio, dos contraseñas impresas en la conversación, cubierto por esa misma rotación.
+
+**La 13.5.2 no empieza todavía.** Hace falta:
+
+1. la decisión explícita del usuario (condición de detención 1);
+2. que el agente termine sus subfases A a C: identificadores con HMAC, configuración por entorno y la API oficial. Hasta entonces sus identificadores no cumplen la guía de ingestion-v2 y no puede apuntar a producción;
+3. que separe su instancia de n8n entre piloto y producción antes de que existan credenciales de producción.
+
+El agente está trabajando en eso desde el 2026-10-01. Que lo corrija él, sin cambiar el contrato, es lo previsto: no activa la condición de detención 3.

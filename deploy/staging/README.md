@@ -70,7 +70,7 @@ Orden importante. Los pasos 4 y 5 son los que el primer despliegue reveló.
 
 *Corregido el 2026-10-01 ([brief-13.5](../../docs/decisions/brief-13.5-primer-cliente.md), revisión independiente de la 13.5.1).* La forma anterior pasaba `DATABASE_URL` con `sudo -u … --preserve-env`, y `sudo` registra en su log, `/var/log/auth.log` y el journal, **el valor** de cada variable que se le pasa así: la contraseña de la base quedaba escrita en cada línea. Ahora el shell de `root` carga el archivo sin `set -a`, exporta solo las variables que nombra, y cambia de usuario con `runuser`, que no pasa por `sudo`. Medido en staging y en producción ([evidencia-13.5](../../docs/decisions/evidencia-13.5-primer-cliente.md)).
 
-Los nombres de cada archivo se listan sin sus valores con `sudo sed -E "s/=.*//" /etc/crm-staging/<x>.env`.
+Los nombres de cada archivo se listan sin sus valores con `sudo grep -oE '^[A-Z_]+=' /etc/crm-staging/<x>.env`, un archivo por vez. *Corregido el 2026-10-01* (verificación independiente de la 13.5.1, R-5): antes decía `sed -E "s/=.*//"`, que borra lo que sigue a `=` e imprime entera cualquier línea sin `=`; así se filtraron dos contraseñas de un `.pgpass` ([evidencia-13.5](../../docs/decisions/evidencia-13.5-primer-cliente.md)). Se extrae solo lo que tiene la forma esperada.
 
 Código y dependencias, como `benja`:
 

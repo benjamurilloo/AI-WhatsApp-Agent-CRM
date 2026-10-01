@@ -166,9 +166,10 @@ sudo sed -i '/^READ_API_/d' /etc/crm-production/app.env     # la lectura
 sudo systemctl restart crm-production
 ```
 
-El `POST` y el `GET` sin credencial de los pasos 4 y 5 tienen que volver a dar `404`. Si el apagado es definitivo, además se revocan las tres credenciales del negocio, con el comando de revocación del paso 5, y se comprueba:
+El `POST` y el `GET` sin credencial de los pasos 4 y 5 tienen que volver a dar `404`. Si el apagado es definitivo, además se revocan las tres credenciales del negocio, `ingest`, `read` y `context`, y se comprueba:
 
 ```
+sudo bash -c '. /etc/crm-production/app.env && export DATABASE_URL && cd /srv/crm-production && for i in 1 2 3; do read -r -p "Id de una credencial del negocio: " ID; runuser -u crm -- npm run --silent ingestion:credential -- revoke --id "$ID"; done'
 read -r -p "Id de la organización: " ORG_ID
 ssh crm-production "sudo -u postgres psql -d crm_production -XA -F ' | ' -c \"select id, scope, source, revoked_at is not null as revocada from ingestion_credentials where organization_id = '$ORG_ID' order by created_at\""
 ```
