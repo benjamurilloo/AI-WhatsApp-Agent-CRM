@@ -450,6 +450,20 @@ Email: «"crm-prueba-ac10" is DOWN (success signal did not arrive on time, grace
 
 **La otra mitad de AC-10**, que cada trabajo llegue a su aviso, se verifica con las corridas programadas y no a mano: la desviación la aprobó el usuario el 2026-09-30 (ver el brief).
 
+#### Las corridas programadas del 2026-10-01
+
+Leídas en el droplet el 2026-10-01 con `systemctl list-timers`, `systemctl show -p Result -p ExecMainStatus` y `sudo journalctl` de las cinco unidades, sin cambiar nada. Horas UTC.
+
+| Trabajo | Corrió | Resultado | Aviso |
+| --- | --- | --- | --- |
+| `crm-backup.service` | 03:18:50 → 03:18:51 | `Result=success`, `ExecMainStatus=0`; dump de 67.389 bytes, cifrado en 67.605; «rotado: nada (hay <= 7 copias)» | `crm-heartbeat@backup`: «Aviso de backup enviado.» a las 03:18:52 |
+| `crm-backup-offsite.service` | 03:18:51 → 03:18:53 | `Result=success`, `ExecMainStatus=0`; «subido: crm_production-20261001T031850Z.dump.age (67605 bytes)»; «retencion externa: se borro lo de mas de 30 dias» | `crm-heartbeat@offsite`: enviado a las 03:18:53 |
+| `crm-restore-check.service` | 04:39:20 → 04:39:22 | `Result=success`, `ExecMainStatus=0`; restauró el dump de las 03:18:50 (mismo sha256); «OK: 17 tablas coinciden en existencia y en recuento», mismo conjunto de tablas, dueño `crm_owner`, base temporal borrada | `crm-heartbeat@restore-check`: enviado a las 04:39:22 |
+
+Los tres avisos salieron por `OnSuccess=` («Triggering OnSuccess= dependencies»). Los recuentos restaurados son los de la línea de base de AC-13. **El primer ejercicio de restauración programado en producción salió bien**: la condición de detención 2 no se activó.
+
+Del lado de Healthchecks.io, `[transcrito]`: el usuario confirmó que `crm-backup`, `crm-offsite` y `crm-restore-check` están *up*, con el último ping a esas mismas horas, y que no llegó ningún aviso de caída por email ni por Telegram durante la noche.
+
 ### AC-11: la alerta de disco
 
 `[transcrito]`:
@@ -489,7 +503,17 @@ El aviso de 'backup' no llego al servicio externo (curl salio con 22).
 exit 1
 ```
 
-(`bash -n`, y el script con `https://example.com/`, con un host que no existe y con una ruta que da `404`). **En el droplet sigue la versión anterior** hasta el próximo despliegue y la reinstalación del script.
+(`bash -n`, y el script con `https://example.com/`, con un host que no existe y con una ruta que da `404`). **Instalado en el droplet el 2026-10-01**, sin desplegar la aplicación (`9ffd112` no toca `src/`), con autorización del usuario. Se copió el archivo de `git show 9ffd112:deploy/production/crm-heartbeat.sh`, sin ningún CR:
+
+| Paso | Resultado |
+| --- | --- |
+| Script instalado antes | sha256 `e11c79e5…46df`, igual al de `579397e` |
+| Script de `9ffd112` | sha256 `7e2999d9…976c`, verificado en el droplet con `sha256sum -c` antes de instalarlo; `bash -n` sin error |
+| `install -m 0755 -o root -g root` | `/usr/local/bin/crm-heartbeat.sh`: `755 root root`, sha256 `7e2999d9…976c`; `heartbeat.env` sigue `600 root` |
+| Los tres avisos con `systemctl start crm-heartbeat@<trabajo>`, corridos por el usuario (el clasificador de permisos bloqueó la prueba) | `success` y «Aviso de '<trabajo>' enviado.» en `backup`, `offsite` y `restore-check` `[transcrito]` |
+| Healthchecks.io | los tres chequeos con un ping nuevo a esa hora, confirmado por el usuario `[transcrito]` |
+
+La copia del repositorio en el droplet, `/srv/crm-production`, sigue en `579397e`: su `crm-heartbeat.sh` es el anterior hasta el próximo despliegue. La aplicación no se reinició.
 
 **La guarda**, de 126 a 131 casos, todos en verde. Tapa los tres huecos del hallazgo 5: un aviso fuera de `OnSuccess=`, un `OnSuccess=` vacío que vacía la lista, y cualquier uso de la URL fuera de una lista cerrada, que reemplaza a la búsqueda de `echo`. Mutaciones sobre los archivos reales, todas en rojo:
 

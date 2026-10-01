@@ -2,6 +2,28 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-01 — 13.3 cerrada: disponibilidad y observabilidad
+
+Tercera subfase de la Fase 13 ([brief-13.3](docs/decisions/brief-13.3-disponibilidad-y-observabilidad.md), [evidencia-13.3](docs/decisions/evidencia-13.3-disponibilidad.md), [runbook de alertas](docs/runbooks/responder-a-una-alerta.md)). En dos etapas: la 13.3.1 (`579397e`), los avisos de vida y el criterio de disponibilidad, desplegada; la 13.3.2 (`e96ec8e`), la configuración externa y las fallas provocadas en producción. Las correcciones de la revisión independiente van en `9ffd112`.
+
+**Certifica**:
+- **Pregunta 6**: un objetivo del 99,5 % mensual, medido desde afuera y sin SLA, con la consecuencia escrita para el consumidor.
+- La medición externa: DigitalOcean Uptime sobre `/api/health`, desde cuatro regiones y sin costo. Con la aplicación detenida, la alerta y la recuperación se vieron llegar. Con la base detenida, se vio llegar la alerta por `503`, y la aplicación reconectó sola.
+- Un aviso de vida por trabajo programado, en Healthchecks.io, que sale solo por `OnSuccess=` y lo cuida una guarda. Un aviso que no llega alerta por email y por Telegram, visto con un chequeo de prueba. Las corridas programadas del 2026-10-01 llegaron a su aviso, incluido **el primer ejercicio de restauración programado en producción**, con sus 17 tablas iguales.
+- La alerta de disco, vista llegar con el umbral bajado, y el umbral devuelto a 80 %.
+- El corte de un despliegue: de 1 a 3 s, solo en el reinicio.
+- Los recuentos de `crm_production` iguales después de cada falla.
+- **Revisión independiente** (D-8): 1 crítico por la letra de la escala, 1 mayor, 10 menores y 3 observaciones. Los doce hallazgos se confirmaron y se corrigieron. El script del aviso corregido, con la URL fuera de los argumentos de `curl`, se instaló en el droplet el 2026-10-01.
+
+**No certifica**:
+- que el 99,5 % se cumpla: hace falta un mes de medición;
+- la latencia de las rutas de servicio con tráfico, ni la herramienta de APM: las dos pasan a la 13.5;
+- que el agente tolere una caída del CRM;
+- que las alertas lleguen siempre: la de memoria, la de latencia y la del certificado están configuradas y no se provocaron;
+- una detección rápida: Uptime avisa la caída entre 4,5 y 9,5 minutos después y la recuperación entre 11 y 16; mandó dos avisos de caída con el sitio arriba, y una caída de 40 s no produjo alerta. El usuario lo aceptó, y se revisa en la 13.5.
+
+**Nivel**: verificado en el entorno productivo, sin tráfico real (`isolated-runtime`).
+
 ## 2026-09-30 — Next.js 16.3.8 por GHSA-vcvr-r3jv-pc5j, desplegado en producción
 
 Fuera de subfase. El aviso, publicado el 2026-09-30 a las 14:48 UTC, es crítico: ejecución remota de código en `ImageResponse` de `next/og`, de la 16.2.0 a la 16.3.5. La CI del cierre de la 13.2 (`5d77e93`) falló por él en la auditoría de dependencias.
