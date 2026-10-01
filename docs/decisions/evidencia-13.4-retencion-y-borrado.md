@@ -248,4 +248,236 @@ npx vitest run --project guards
 
 `npm run typecheck`, `npm run lint` y `npm run format:check` salen con código 0 `[transcrito]`.
 
-**La CI del commit de esta etapa** se registra cuando exista, leída por `headSha`.
+**La CI del commit de esta etapa**, leída por `headSha`:
+
+```
+gh run list --commit 9f3dc2b26ceb51b1a80d942941a7c01a11cd936f --json databaseId,headSha,status,conclusion,name
+[{"conclusion":"success","databaseId":36881395401,"headSha":"9f3dc2b26ceb51b1a80d942941a7c01a11cd936f","name":"CI","status":"completed"}]
+```
+
+AC-7 cumplida.
+
+## Etapa 13.4.2 — en el droplet de producción, 2026-10-01
+
+Autorizada por el usuario el 2026-10-01, los tres pasos en un mismo mensaje. Los comandos se mandaron por `ssh crm-production` desde la máquina del operador.
+
+### AC-8 (D-4): H-4
+
+No se verificó en el droplet: se resolvió en el contrato (brief, I-1, opción A1) y se mira con el primer evento real de la API oficial, en la 13.5.
+
+### AC-9: la migración 0025 en producción
+
+**Recuentos de `crm_production`**, en una transacción de solo lectura. Son las 17 tablas en orden alfabético, como en AC-13 de la 13.3:
+
+```
+2026-10-01T15:18:38Z antes 1|0|0|0|0|0|0|0|0|44|0|1|1|0|0|2|1
+2026-10-01T15:21:05Z despues 1|0|0|0|0|0|0|0|0|44|0|1|1|0|0|2|1
+2026-10-01T15:26:16Z final 1|0|0|0|0|0|0|0|0|44|0|1|1|0|0|2|1
+```
+
+`login_attempts` sigue en 44 filas. El vencimiento global (D-7) corre cuando alguien intenta iniciar sesión, y entre los dos recuentos nadie lo hizo.
+
+**El despliegue de `9f3dc2b`**, con el script de AC-21 de la 13.1, que sigue los pasos 2 y 3 del README de producción. Antes había 25 migraciones aplicadas; `npm run db:migrate` aplicó la 0025:
+
+```
+[15:19:02 +0s] desplegado antes: 579397ef7be533c901d9afb88d539e2caf20046c
+[15:19:03 +1s] anotado; últimas líneas de despliegues:
+938423d0a832e65eb9c42474c51a47a44c54689e
+471cf7be29878097652cc3f53c76ae2977296b24
+579397ef7be533c901d9afb88d539e2caf20046c
+
+added 263 packages in 25s
+[15:19:29 +27s] código y dependencias: 9f3dc2b26ceb51b1a80d942941a7c01a11cd936f
+
+Migraciones aplicadas.
+[15:19:32 +30s] migraciones
+[15:20:40 +98s] build
+[15:20:41 +99s] restart
+[15:20:44 +102s] /login -> 200
+[15:20:44 +102s] servicio: active, NRestarts=0
+[15:20:44 +102s] desplegado ahora: 9f3dc2b26ceb51b1a80d942941a7c01a11cd936f
+```
+
+La aplicación estuvo caída entre el reinicio y el primer `200`, unos 3 s. El cambio de las funciones no se midió por separado: un `CREATE OR REPLACE FUNCTION` no reescribe tablas. La condición de detención 4 no se activó.
+
+**Después**, `[transcrito]` de un solo comando por `ssh`:
+
+- `drizzle.__drizzle_migrations`: 26 filas;
+- `messages_reject_change` y `audit_logs_reject_change` contienen `vaciada`: son las de la 0025;
+- triggers `messages_insert_only` y `audit_logs_insert_only`, habilitados (`O`);
+- `crm_app` en `messages` y `audit_logs`: `INSERT,SELECT`, sin `UPDATE` ni `DELETE`;
+- `/login`: `200`, 0,71 s.
+
+### AC-10 (D-6): la retención del journal
+
+**Antes**, `[transcrito]`:
+
+- no existía `/etc/systemd/journald.conf.d/`, y `cat-config` no mostraba ninguna de las claves: todo estaba en los valores por defecto;
+- 33,5 MB, con la primera entrada del 2026-09-29T19:51:33Z;
+- el archivo de `/srv/crm-production` y el de `9f3dc2b` tenían el mismo sha256, `228c0d8b…893f92`.
+
+**Instalación**, con los comandos del README §Retención del journal, al pie de la letra:
+
+```
+Vacuuming done, freed 0B of archived journals from /var/log/journal.
+Vacuuming done, freed 0B of archived journals from /var/log/journal/40e536c8010e4d8495ddfada0248ad81.
+Vacuuming done, freed 0B of archived journals from /run/log/journal.
+exit 0
+```
+
+**Verificación**, con el comando del README más el estado de las unidades:
+
+```
+MaxRetentionSec=30day
+MaxFileSec=1day
+SystemMaxUse=1G
+Archived and active journals take up 52.6M in the file system.
+2026-09-29T19:51:33+00:00
+total 4
+-rw-r--r-- 1 root root 690 Oct  1 15:21 crm-production.conf
+active
+active
+Journal started
+System Journal (/var/log/journal/40e536c8010e4d8495ddfada0248ad81) is 37.5M, max 1.0G, 986.4M free.
+System Journal (/var/log/journal/40e536c8010e4d8495ddfada0248ad81) is 37.5M, max 1.0G, 986.4M free.
+Received client request to rotate journal, rotating.
+Vacuuming done, freed 0B of archived journals from /var/log/journal/40e536c8010e4d8495ddfada0248ad81.
+200
+```
+
+journald tomó el tope («max 1.0G»). El uso creció a 52,6 MB porque `--rotate` abre archivos nuevos. **Límite:** el vencimiento a los 30 días no se puede observar todavía, porque la entrada más vieja tiene dos días. Se puede comprobar a partir del 2026-10-30, mirando que la primera entrada tenga como mucho 31 días.
+
+### AC-11 (D-8): el vaciado en una base aparte
+
+Tres scripts, corridos como `root` con `ssh crm-production "sudo bash -s" < script`, con el patrón de la 13.2.2: un rol propio sin privilegios de administración, y una base que solo ese rol y `postgres` pueden abrir. La contraseña se generó en el servidor y no salió de él. Los datos son inventados: los teléfonos son del rango ficticio del proyecto, y los identificadores, UUID fijos que empiezan con `13400000`.
+
+Un primer intento de la parte B no llegó a ejecutarse: la shell local lo rechazó por un error de comillas antes de mandarlo. La base seguía vacía (`select count(*) from clients` → `0`).
+
+**Parte A: el rol, la base y las migraciones**, con el código desplegado:
+
+```
+2026-10-01T15:23:31Z
+--- migraciones, con el código desplegado, como crm
+
+Migraciones aplicadas.
+--- lo creado
+crm_vaciado_test|crm_vaciado
+migraciones: 26
+tablas: 17
+dueño de messages: crm_vaciado
+funciones con vaciado: 2
+crm_app_login|f
+crm_owner|f
+crm_vaciado|t
+postgres|t
+```
+
+**Parte B: el recorrido.** Se cargan dos clientes: Ana, que se vacía, y Bruno, que es el control. El barrido busca cada texto en todas las columnas `text`, `varchar`, `jsonb` y `json` de cada tabla.
+
+«Lo que cuentan las métricas» es una aproximación: las columnas que conserva el vaciado, fila por fila (dirección, tipo, autor y fecha de cada mensaje; estado y fechas de cada conversación; acción y fecha de cada entrada de auditoría). Las funciones de métricas de la aplicación no se corrieron acá. Esa comparación está en el test 6 de `client-data.test.ts`, en local.
+
+```
+2026-10-01T15:25:30Z
+--- 1. datos inventados, como el dueño
+insertado: salida 0
+--- 2. control: el barrido encuentra los datos antes del vaciado (aguja | columna | filas)
+5491155550191|audit_logs.diff|1
+5491155550191|clients.phone_e164|1
+Ana Vaciado|audit_logs.diff|1
+Ana Vaciado|clients.display_name|1
+Bruno Control|audit_logs.diff|1
+Bruno Control|clients.display_name|1
+conv-inventada-134-a|conversations.external_ref|1
+Mensaje de control de Bruno|messages.body_text|1
+Mensaje inventado de Ana|messages.body_text|1
+msg-inventado-134-in|messages.external_ref|1
+msg-inventado-134-out|messages.external_ref|1
+Nota inventada|audit_logs.diff|2
+Nota inventada|clients.notes|1
+Respuesta inventada para Ana|messages.body_text|1
+--- 3. el informe, con el script real, como crm y con el rol dueño
+Cliente 13400000-0000-4000-8000-00000000000a: 1 conversaciones, 2 mensajes, 2 entradas de auditoría.
+Con conversaciones: la ficha no se puede borrar. Con --vaciar se vacía su contenido y el de todo lo suyo.
+Después del vaciado quedaría:
+  - En la base: 2 mensajes en 'messages', sin texto ni referencia externa: quedan la fecha, la dirección, el tipo y el autor, que cuentan las métricas.
+  - En la base: 1 conversaciones en 'conversations', sin referencia externa: quedan sus fechas y su estado.
+  - En la base: 2 entradas en 'audit_logs', sin valores: queda que hubo un cambio, de qué tipo y cuándo.
+  - Fuera de la base: Las copias de seguridad: hasta 30 días en la copia externa y 7 en el servidor. Si se restaura una copia anterior a hoy, este vaciado se vuelve a aplicar (docs/runbooks/restaurar-la-base.md).
+  - Fuera de la base: La copia del agente de WhatsApp y de su n8n: el CRM no la alcanza. Hay que avisarle al agente.
+Informe solamente: no se escribió nada.
+informe: salida 0
+--- 4. el vaciado
+Cliente 13400000-0000-4000-8000-00000000000a: 1 conversaciones, 2 mensajes, 2 entradas de auditoría.
+Vaciado: la ficha, 1 conversaciones, 2 mensajes y 2 entradas de auditoría.
+Queda, sin nada que identifique a la persona:
+  - En la base: 2 mensajes en 'messages', sin texto ni referencia externa: quedan la fecha, la dirección, el tipo y el autor, que cuentan las métricas.
+  - En la base: 1 conversaciones en 'conversations', sin referencia externa: quedan sus fechas y su estado.
+  - En la base: 2 entradas en 'audit_logs', sin valores: queda que hubo un cambio, de qué tipo y cuándo.
+  - Fuera de la base: Las copias de seguridad: hasta 30 días en la copia externa y 7 en el servidor. Si se restaura una copia anterior a hoy, este vaciado se vuelve a aplicar (docs/runbooks/restaurar-la-base.md).
+  - Fuera de la base: La copia del agente de WhatsApp y de su n8n: el CRM no la alcanza. Hay que avisarle al agente.
+Registrá la ejecución fuera de la base, como indica docs/runbooks/datos-de-un-cliente.md.
+vaciado: salida 0
+--- 5. el barrido después: solo pueden aparecer las agujas de Bruno
+Bruno Control|audit_logs.diff|1
+Bruno Control|clients.display_name|1
+Mensaje de control de Bruno|messages.body_text|1
+--- 6. lo que cuentan las métricas, antes contra después (vacío = igual)
+iguales: 11 filas
+--- 7. cómo quedaron la ficha, los mensajes, la conversación y la auditoría de Ana
+Cliente eliminado 13400000|null|null
+inbound|null|null
+outbound|null|null
+null|closed
+create|{"after": null, "before": null, "vaciado": true}
+update|{"after": null, "before": null, "vaciado": true}
+product|create|Producto inventado 13.4
+--- 8. un segundo vaciado no cambia nada
+  - En la base: 2 mensajes en 'messages', sin texto ni referencia externa: quedan la fecha, la dirección, el tipo y el autor, que cuentan las métricas.
+  - En la base: 1 conversaciones en 'conversations', sin referencia externa: quedan sus fechas y su estado.
+  - En la base: 2 entradas en 'audit_logs', sin valores: queda que hubo un cambio, de qué tipo y cuándo.
+  - Fuera de la base: Las copias de seguridad: hasta 30 días en la copia externa y 7 en el servidor. Si se restaura una copia anterior a hoy, este vaciado se vuelve a aplicar (docs/runbooks/restaurar-la-base.md).
+  - Fuera de la base: La copia del agente de WhatsApp y de su n8n: el CRM no la alcanza. Hay que avisarle al agente.
+Registrá la ejecución fuera de la base, como indica docs/runbooks/datos-de-un-cliente.md.
+--- 9. los rechazos (cada uno tiene que fallar)
+dueño, otro texto en un mensaje vaciado: ERROR:  messages es de solo inserción: UPDATE rechazado
+dueño, otro texto en un mensaje vaciado: CONTEXT:  PL/pgSQL function messages_reject_change() line 13 at RAISE
+dueño, cambiar un mensaje sin vaciar: ERROR:  messages es de solo inserción: UPDATE rechazado
+dueño, cambiar un mensaje sin vaciar: CONTEXT:  PL/pgSQL function messages_reject_change() line 13 at RAISE
+dueño, DELETE de auditoría: ERROR:  audit_logs es de solo inserción: DELETE rechazado
+dueño, DELETE de auditoría: CONTEXT:  PL/pgSQL function audit_logs_reject_change() line 12 at RAISE
+dueño, vaciar un producto: ERROR:  audit_logs es de solo inserción: UPDATE rechazado
+dueño, vaciar un producto: CONTEXT:  PL/pgSQL function audit_logs_reject_change() line 12 at RAISE
+crm_app, vaciado: ERROR:  permission denied for table messages
+--- 10. Bruno sigue intacto
+Bruno Control Inventado|+5491155550192
+Mensaje de control de Bruno 13.4|msg-inventado-134-b
+2026-10-01T15:25:39Z
+Cliente 13400000-0000-4000-8000-00000000000a: 1 conversaciones, 2 mensajes, 2 entradas de auditoría.
+Vaciado: la ficha, 0 conversaciones, 0 mensajes y 0 entradas de auditoría.
+```
+
+Las dos últimas líneas son de una corrida más del vaciado: en el punto 8, `tail` había cortado la línea con los recuentos. La ficha se vuelve a escribir con el mismo valor, porque `clients` no es de solo inserción.
+
+**Parte C: la limpieza**, seguida del recuento final de `crm_production` (al pie del bloque de AC-9):
+
+```
+2026-10-01T15:26:13Z
+--- 1. la base y el rol
+psql: salida 0
+--- 2. los archivos
+/etc/crm-vaciado: no existe
+--- 3. lo que queda
+bases de vaciado: 0
+roles de vaciado: 0
+bases: crm_production,postgres,template0,template1
+roles con login: crm_app_login,crm_owner,postgres
+--- 4. /srv/crm-production y la aplicación
+desplegado: 9f3dc2b26ceb51b1a80d942941a7c01a11cd936f
+archivos modificados en /srv/crm-production: 0
+active
+active
+/login -> 200
+2026-10-01T15:26:14Z
+```
+
+El recuento final es igual a la línea de base. **Nivel alcanzado:** `isolated-runtime`. El vaciado se probó en el entorno productivo, con el código desplegado y sin datos reales.
