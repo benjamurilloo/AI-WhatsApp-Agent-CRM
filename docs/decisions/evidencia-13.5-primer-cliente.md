@@ -360,9 +360,73 @@ sin valores, código: 1
 
 (El texto de uso se amplió después de esta corrida para nombrar las tres variables.)
 
-**Sin hacer, y pendiente de autorización**: rotar las contraseñas de los cuatro roles vivos y purgar las líneas de los logs. Mientras no se haga, las contraseñas siguen en el log durante su retención. Registrado en [Risks](../planning/Risks.md).
+La rotación y la purga quedaron hechas el mismo día: ver «La rotación de las contraseñas» más abajo.
 
-**Sin probar en un servidor**: `org:create` por el entorno, la verificación corregida y los comandos de despliegue con `runuser` necesitan un despliegue; staging corre f7c728d.
+### Staging con `6705457`
+
+Desplegado el 2026-10-01 a las 21:15 UTC, con autorización del usuario, con los comandos nuevos (`runuser`) y un backup antes de migrar `[transcrito]`:
+
+```
+desplegado antes: f7c728d…
+backup: success
+código y dependencias: 6705457…
+migraciones: 26
+/login -> 200; servicio: active
+ingestión sin credencial: 404; lectura: 404
+log de sudo desde el inicio: URL con contraseña 0; líneas ENV= 0
+```
+
+Las correcciones, probadas en el servidor `[transcrito]`:
+
+| Prueba | Resultado |
+|---|---|
+| Paso 0 del alta: `--org no-es-un-uuid` | código `3` |
+| H-1: la organización de ejemplo, sin eventos | «no tiene eventos de ingestión», código `2` |
+| H-2: dos teléfonos distintos | «No coinciden. No se corrió nada.», código `3` |
+| H-5: `org:create` por el entorno, con datos inventados | organización «Prueba H-5» creada (`a0cb86ab-…`, sintética, queda en staging), código `0` |
+| El journal desde el inicio de esas pruebas | correo del `admin`, nombre de la organización, teléfono, URL con contraseña y líneas `ENV=`: 0 |
+
+El correo inventado aparece una vez en `auth.log`: es el `sudo grep` de la propia comprobación, que registra su patrón. Es sintético.
+
+### Un incidente propio: dos contraseñas en la conversación
+
+Al preparar la rotación, el 2026-10-01, se listaron los nombres de variable de los archivos de `/etc/crm-staging/` y `/etc/crm-production/` con un filtro que borraba lo que sigue a `=`. `backup.pgpass` no tiene `=`: sus líneas salieron enteras, y con ellas **las contraseñas de `crm_owner` de staging y de producción quedaron en la conversación con el asistente**. Se informó al usuario en el acto, sin repetir los valores, y se adelantó la rotación de `crm_owner`. La regla quedó en la memoria del asistente: los archivos de secretos solo se miran con un filtro de lo que se espera encontrar, nombrando cada archivo, y nunca recorriendo un directorio.
+
+### La rotación de las contraseñas
+
+Autorizada por el usuario el 2026-10-01 y hecha el mismo día, en este orden: `crm_owner` en staging y en producción, y después `crm_staging_app` y `crm_app_login`. Un solo script, que corre entero como `root` por la entrada estándar (`ssh <host> "sudo bash -s -- <owner|app> <entorno>"`), así que `sudo` registra solo `bash -s`. Lo que hace:
+
+1. Lee la contraseña vieja de la URL del archivo de entorno, sin imprimirla, y exige que esté en una sola línea y que coincida con la de `backup.pgpass`.
+2. Busca la contraseña vieja en `/etc`, `/root`, `/home` y los `.env*` de la aplicación, y **se detiene** si aparece en un archivo que no espera.
+3. Genera la nueva con `openssl rand -hex 32` y calcula su verificador SCRAM-SHA-256 en el servidor. A PostgreSQL llega solo el verificador, por la entrada estándar de `psql`.
+4. Reescribe los archivos en el mismo inodo, con el mismo dueño y los mismos permisos.
+5. Verifica con los consumidores reales. Para `crm_owner`, `db:migrate` con `migrate.env` y una conexión con `backup.pgpass`; para la aplicación, un reinicio y `/api/health`, que consulta la base. Si algo falla, restaura los archivos y el verificador anterior.
+6. Borra las copias y cuenta la contraseña nueva en los logs.
+
+La salida, sin valores `[transcrito]`:
+
+| Rol | Archivos (líneas: con la nueva / con la vieja) | Dueño y permisos, antes y después | Verificación | Nueva en journal, log de PostgreSQL y `auth.log` |
+|---|---|---|---|---|
+| `crm_owner`, staging | `migrate.env` 1/0, `backup.pgpass` 1/0 | `root:root 600` | `db:migrate` código 0; `backup.pgpass` conecta como `crm_owner`; `crm-backup.service`: `success` | 0, 0, 0 |
+| `crm_owner`, producción | `migrate.env` 1/0, `backup.pgpass` 1/0 | `root:root 600` | `db:migrate` código 0; `backup.pgpass` conecta como `crm_owner` | 0, 0, 0 |
+| `crm_staging_app` | `app.env` 1/0 | `root:root 600` | `/api/health` 200, `/login` 200, servicio `active` | 0, 0, 0 |
+| `crm_app_login` | `app.env` 1/0 | `root:root 600` | `/api/health` 200, `/login` 200, servicio `active` | 0, 0, 0 |
+
+En los cuatro casos, la contraseña vieja estaba solo en los archivos esperados. **El backup de producción no se corrió a mano**: habría subido una copia más al bucket. Lo prueba la corrida programada siguiente, y su aviso de vida falla si no llega.
+
+**La purga de `auth.log`**, también autorizada: se borraron las líneas con una URL de la base con contraseña, reescribiendo cada archivo en su mismo inodo. `[transcrito]`:
+
+```
+staging     /var/log/auth.log    con URL antes 40, después 0; syslog:adm 640
+staging     /var/log/auth.log.1  con URL antes 12, después 0; syslog:adm 640
+staging     /var/log/syslog*     con URL 0 (sin tocar)
+staging     journal              con URL 52 (vence solo)
+producción  /var/log/auth.log    con URL antes 31, después 0; syslog:adm 640
+producción  /var/log/syslog      con URL 0 (sin tocar)
+producción  journal              con URL 31 (vence solo)
+```
+
+Los recuentos de antes coinciden con los de la medición (52 y 31). **El journal no se tocó**, por decisión del usuario: vence con su retención. Las contraseñas que quedan ahí, y las dos de `crm_owner` que pasaron por la conversación, ya no abren nada. Las dos líneas de producción con el correo del operador (13.1, paso 10) no son contraseñas y siguen en `auth.log`.
 
 **La suite, en local, con las correcciones de la revisión** `[transcrito]`, el 2026-10-01:
 
