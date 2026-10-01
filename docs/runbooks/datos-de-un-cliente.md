@@ -51,7 +51,7 @@ versionado, y se entrega por un canal acordado con quien lo pidió. Borralo cuan
 
 ## Eliminar
 
-**Borrar es vaciar el contenido y conservar la forma** ([brief-13.4](../decisions/brief-13.4-retencion-y-borrado.md), D-2, decidido por el usuario el 2026-10-01). Se borra todo lo que identifica a la persona o dice algo de ella. Quedan fechas, direcciones, tipos y estados, que es lo que cuentan las métricas. Así las métricas de los períodos pasados no cambian.
+**Borrar es vaciar el contenido y conservar la forma** ([brief-13.4](../decisions/brief-13.4-retencion-y-borrado.md), D-2, decidido por el usuario el 2026-10-01). Se borra todo lo que el CRM puede atribuirle a la persona, con una excepción: las conversaciones sin cliente (§Lo que el vaciado no alcanza). Quedan fechas, direcciones, tipos y estados, que es lo que cuentan las métricas. Así las métricas de los períodos pasados no cambian.
 
 ### Con qué rol
 
@@ -90,7 +90,16 @@ En una sola transacción:
 | `messages` | el texto y la referencia externa | fecha, dirección, tipo y autor |
 | `audit_logs` (entradas del cliente) | los valores anteriores y nuevos | que hubo un cambio, de qué tipo y cuándo |
 
-Un segundo vaciado no cambia nada ni falla. Si después llega un mensaje nuevo de la misma persona, entra como una conversación nueva: el vaciado no impide que vuelva a escribir.
+Un segundo vaciado no cambia nada ni falla. Con la ingestión encendida, el vaciado espera a los mensajes de esa persona que se están guardando en ese momento, y los alcanza (revisión independiente de la 13.4, R-2).
+
+**Si la persona vuelve a escribir**, el vaciado no lo impide, pero la ficha ya no tiene teléfono:
+
+- un `conversation.resolved` se rechaza con `422 client_not_found` hasta que la persona vuelva a tener una ficha con su teléfono;
+- un `message.recorded` crea una conversación **sin cliente**, que cae en la excepción de abajo.
+
+### Lo que el vaciado no alcanza
+
+**Las conversaciones sin cliente.** Las crea la ingestión v1, o un mensaje de un teléfono que todavía no era cliente, y nada las enlaza después a una ficha. Sus mensajes conservan el texto. El CRM no guarda el teléfono de una conversación sin cliente, así que no tiene cómo atribuirla a quien pide el borrado. En el flujo normal de v2 no aparecen: `conversation.resolved` exige el cliente. El script lo dice en su salida, y quien atienda el pedido tiene que decirlo así (revisión independiente de la 13.4, R-1; decidido por el usuario el 2026-10-01).
 
 ### Lo que queda fuera de la base
 
@@ -98,10 +107,11 @@ El script no lo alcanza, y quien atienda el pedido tiene que decirlo así:
 
 | Dónde | Por cuánto | Qué hacer |
 |---|---|---|
-| Las copias de seguridad | hasta 7 días en el servidor y 30 en la copia externa | nada: vencen solas. Si se restaura una copia anterior al vaciado, se vuelve a aplicar ([runbook de restauración](restaurar-la-base.md)) |
+| Las copias de seguridad | unos 7 días en el servidor y unos 30 en la copia externa, **mientras el backup diario funcione**: el servidor conserva una cantidad de copias, no días, y la copia externa se poda solo después de un backup exitoso. Si los backups fallan varios días, lo vaciado dura más | nada: vencen solas. Si se restaura una copia anterior al vaciado, se vuelve a aplicar ([runbook de restauración](restaurar-la-base.md)) |
 | La copia del agente de WhatsApp y su n8n | lo que decida el agente | avisarle al agente: el CRM no la alcanza ([ADR 0014](../decisions/0014-el-agente-de-whatsapp-como-consumidor-del-crm.md)) |
 | `ingestion_events` | mientras exista la base | nada: guarda identificadores del emisor, que por contrato no llevan el teléfono ([ingestion-v2](../contracts/ingestion-v2.md), §Guía para el emisor). **El CRM no lo valida** ([brief-13.4](../decisions/brief-13.4-retencion-y-borrado.md), I-1) |
-| El journal del servidor | 30 días como mucho | nada: guarda identificadores internos, no el teléfono ni el texto |
+| El journal del servidor | 31 días como mucho: 30 de retención más un día de archivo | nada: guarda identificadores internos, no el teléfono ni el texto |
+| `/var/log/syslog` del servidor | hasta unos 35 días: `rsyslog` copia ahí lo que la aplicación escribe por pantalla, y rota cada semana con 4 archivos | nada: son los mismos identificadores que el journal. Alinearlo a 30 días tiene tarea en Notion (revisión independiente de la 13.4, R-12) |
 
 ### Registro del pedido, fuera de la base
 
@@ -114,4 +124,4 @@ Registrá la ejecución fuera de la base, en el ticket o el canal donde se pidi�
 
 ### Lo que no se hace
 
-No desactives un trigger para borrar a mano. Es la defensa que el ADR 0013 levantó: hacerlo en producción deja la tabla sin garantía y sin rastro. El único cambio que admiten `messages` y `audit_logs` es el de este script.
+No desactives un trigger para borrar a mano. Es la defensa que el ADR 0013 levantó: hacerlo en producción deja la tabla sin garantía y sin rastro. **Esta regla es de procedimiento, no de permisos**: el rol dueño, el mismo con el que se corre el vaciado, puede desactivar el trigger de sus tablas (`ALTER TABLE … DISABLE TRIGGER`); no hace falta un superusuario (revisión independiente de la 13.4, R-10). El único cambio que admiten `messages` y `audit_logs` es el de este script.

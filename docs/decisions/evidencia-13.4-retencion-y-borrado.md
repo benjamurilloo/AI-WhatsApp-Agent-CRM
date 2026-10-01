@@ -481,3 +481,128 @@ active
 ```
 
 El recuento final es igual a la línea de base. **Nivel alcanzado:** `isolated-runtime`. El vaciado se probó en el entorno productivo, con el código desplegado y sin datos reales.
+
+## Revisión independiente (AC-13), 2026-10-01
+
+La resolución de cada hallazgo está en el [brief](brief-13.4-retencion-y-borrado.md#revisión-independiente-ac-13). Acá van las salidas de lo que se ejecutó para verificarlos y corregirlos. **Autoevaluación**: la verificación y las correcciones son del mismo agente que implementó; la revisión fue de otro.
+
+### R-3: las mutaciones que faltaban
+
+Con el mismo método de bytes guardados, sobre la migración real. Las tres en rojo:
+
+```
+== M10 (audit_logs: el DELETE sigue rechazado) — drizzle/0025_vaciado_de_mensajes_y_auditoria.sql
+     × 10. DELETE sigue rechazado, también en una entrada de cliente: P0001
+      Tests  1 failed | 24 passed (25)
+código de salida: 1
+restaurado: bytes idénticos
+== M11 (audit_logs: el diff tiene que ser exactamente el marcador) — drizzle/0025_vaciado_de_mensajes_y_auditoria.sql
+     × 9. rechaza un diff distinto del marcador: P0001, y la fila no cambia
+     × 9. rechaza el marcador con otra clave: P0001, y la fila no cambia
+      Tests  2 failed | 23 passed (25)
+código de salida: 1
+restaurado: bytes idénticos
+== M12 (messages: vaciar el texto, no solo la referencia) — drizzle/0025_vaciado_de_mensajes_y_auditoria.sql
+     × 3. rechaza la referencia vaciada sin vaciar el texto: P0001, y la fila no cambia
+     × 5. un mensaje vaciado no recupera su texto
+      Tests  2 failed | 23 passed (25)
+código de salida: 1
+restaurado: bytes idénticos
+```
+
+- **M10**: deja pasar el `DELETE` en `audit_logs`.
+- **M11**: acepta cualquier `diff` en lugar del marcador.
+- **M12**: no exige vaciar `body_text`.
+
+### R-2: la carrera con la ingestión
+
+El vaciado ahora bloquea la ficha y después las conversaciones del cliente, antes de vaciar. Hay dos tests nuevos en `client-data.test.ts`, y en cada uno una conexión aparte hace lo que la ingestión y retiene su transacción sin confirmar:
+
+- el **14** hace lo que `conversation.resolved` (v2): bloquea la ficha y abre una conversación nueva con su mensaje;
+- el **15** hace lo que `message.recorded` (v1): bloquea solo la conversación y agrega un mensaje.
+
+En los dos, el vaciado espera en el bloqueo (se comprueba en `pg_stat_activity`), y después de que la otra transacción confirma, alcanza lo que escribió. Cada bloqueo tiene su mutación, y cada mutación pone en rojo exactamente su escenario:
+
+```
+== M13 (el vaciado bloquea la ficha antes de vaciar) — scripts/client-data-delete.ts
+     × 14. la conversación que la ingestión v2 abre durante el vaciado también se vacía (R-2)
+      Tests  1 failed | 15 passed (16)
+código de salida: 1
+restaurado: bytes idénticos
+== M14 (el vaciado bloquea las conversaciones antes de vaciar) — scripts/client-data-delete.ts
+     × 15. el mensaje que la ingestión v1 agrega durante el vaciado también se vacía (R-2)
+      Tests  1 failed | 15 passed (16)
+código de salida: 1
+restaurado: bytes idénticos
+```
+
+`client-data.test.ts` pasó **16 de 16 en tres corridas seguidas**, para descartar que el test de la carrera fuera inestable `[transcrito]`.
+
+### R-1: las conversaciones sin cliente
+
+Un test nuevo, el **16**, carga una conversación sin cliente con un mensaje y vacía al cliente. El barrido sigue encontrando ese texto, y `NOT_REACHED`, la línea que el script imprime, lo declara. El test fija lo que el usuario decidió: declararlo y no alcanzarlo.
+
+### R-10: el dueño puede desactivar el trigger
+
+En PostgreSQL local (el contenedor de desarrollo), con un rol que no es superusuario y es dueño de la tabla y de la función, en un esquema aparte que después se borró:
+
+```
+create role r10_duenio nologin nosuperuser;
+create schema r10 authorization r10_duenio;
+set role r10_duenio;
+create table r10.t (x int);
+create function r10.rechazo() returns trigger language plpgsql as $$ begin raise exception 'solo inserción'; end $$;
+create trigger t_solo before update or delete on r10.t for each row execute function r10.rechazo();
+insert into r10.t values (1);
+alter table r10.t disable trigger t_solo;
+update r10.t set x = 2;
+select 'después de desactivar como dueño no superusuario: x = ' || x from r10.t;
+```
+
+```
+después de desactivar como dueño no superusuario: x = 2
+```
+
+### R-12: `/var/log/syslog` en el droplet
+
+Solo lectura, `[transcrito]`:
+
+- `rsyslog`: `active` y `enabled`.
+- `/etc/logrotate.d/rsyslog`: `rotate 4`, `weekly`, `compress`, `delaycompress`.
+- `/var/log/syslog`: la primera línea es del 2026-09-29T19:52:04Z; todavía no rotó.
+- Los identificadores que más aparecen son `kernel`, `systemd`, `CRON` y `npm` (306 líneas). `npm` es la salida de la aplicación: errores de Next.js por pedidos con un identificador de acción del servidor inválido.
+- Líneas con `organization_id`: `0`, porque no hubo tráfico real.
+
+### R-11 y los demás
+
+- `erasure.test.ts`: los tests 6, 8, 10 y 12 ahora comparan la fila antes y después del rechazo. Sigue con 25 tests.
+- El script rechaza `--vaciar` y `--borrar` juntos, y con `--borrar` informa lo que queda.
+- Los documentos (R-4 a R-10, R-13 y R-14) se corrigieron sin reescribir la historia: lo reemplazado se marca como tal.
+- R-9: la exportación ya no afirma «Sin datos personales» sobre `ingestion_events`, y el test 1 comprueba la frase nueva.
+
+### Las suites, después de las correcciones
+
+`[transcrito]`:
+
+- unitarios: 492 de 492;
+- guardas: 485 de 485;
+- typecheck, lint y formato: sin errores;
+- los dos archivos tocados de integración: `erasure` 25 de 25 y `client-data` 16 de 16.
+
+**La suite de integración completa no pasó entera en esta máquina.** Hubo dos corridas, con 654 tests cada una:
+
+- primera: 3 fallas, las tres de `volume-distribution.test.ts`, entre 5151 y 6619 ms;
+- segunda: 1 falla, de `conversations-seed.test.ts`, 5126 ms.
+
+Todas superan el límite de 5 s por test, en archivos que esta subfase no tocó y que siembran volumen. `volume-distribution` solo pasa 15 de 15, con sus tests más lentos en 2728, 3251 y 3688 ms. Es la misma fragilidad que I-2 corrigió en `organization-bootstrap`, ahora en otros archivos.
+
+**Corrección (I-3, autorizada por el usuario el 2026-10-01):** `vi.setConfig({ testTimeout: 30000 })` al principio de los dos archivos. No cambia lo que comprueban. Antes se verificó que `setConfig` se aplica a todo el archivo, con un test temporal de 6 s que se borró después: con la línea pasa, y sin ella vence a los 5012 ms (`Test timed out in 5000ms`). Después, `[transcrito]`:
+
+```
+npx vitest run --project integration
+ Test Files  42 passed (42)
+      Tests  654 passed (654)
+```
+
+Typecheck, lint y formato, sin errores.
+

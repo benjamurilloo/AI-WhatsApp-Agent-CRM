@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { login } from "@/modules/auth";
 import { createDb, getDb } from "@/shared/db";
 import { SEED_ORGANIZATION_ID, seedBasic } from "../../seeds/basic";
@@ -18,6 +18,10 @@ import {
 } from "../../seeds/volume";
 import { resetDatabase } from "./reset-database";
 import { maintenanceUrl } from "./test-database";
+
+// Siembran volumen: solos tardan hasta 3,7 s por test, y con la suite entera pasaron los 5 s por
+// defecto en esta máquina (brief-13.4, revisión independiente; mismo caso que I-2).
+vi.setConfig({ testTimeout: 30000 });
 
 // Seeds de conversaciones y de volumen contra PostgreSQL real (brief-6.2), con fecha fija.
 

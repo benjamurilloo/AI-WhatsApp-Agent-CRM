@@ -200,12 +200,13 @@ describe("messages: el único UPDATE admitido es el vaciado (AC-2)", () => {
 
   it("6. DELETE sigue rechazado: P0001", async () => {
     const s = await seed();
+    const before = await messageRow(s.messageId);
     expect(
       await pgCode(
         getDb().execute(sql`delete from messages where id = ${s.messageId}`),
       ),
     ).toBe("P0001");
-    expect(await messageRow(s.messageId)).toBeDefined();
+    expect(await messageRow(s.messageId)).toEqual(before);
   });
 });
 
@@ -228,6 +229,7 @@ describe("audit_logs: el único UPDATE admitido es el vaciado de un cliente (AC-
   it("8. rechaza el mismo vaciado en una entrada de producto: P0001", async () => {
     const s = await seed();
     const id = await insertAudit(s, "product");
+    const before = await auditRow(id);
     expect(
       await pgCode(
         getDb().execute(
@@ -235,6 +237,7 @@ describe("audit_logs: el único UPDATE admitido es el vaciado de un cliente (AC-
         ),
       ),
     ).toBe("P0001");
+    expect(await auditRow(id)).toEqual(before);
   });
 
   const rejected: [string, string][] = [
@@ -280,11 +283,13 @@ describe("audit_logs: el único UPDATE admitido es el vaciado de un cliente (AC-
   it("10. DELETE sigue rechazado, también en una entrada de cliente: P0001", async () => {
     const s = await seed();
     const id = await insertAudit(s, "client");
+    const before = await auditRow(id);
     expect(
       await pgCode(
         getDb().execute(sql`delete from audit_logs where id = ${id}`),
       ),
     ).toBe("P0001");
+    expect(await auditRow(id)).toEqual(before);
   });
 });
 
@@ -308,6 +313,7 @@ describe("crm_app no puede vaciar (AC-4)", () => {
   it("12. el vaciado de una entrada de cliente como crm_app: 42501", async () => {
     const s = await seed();
     const id = await insertAudit(s, "client");
+    const before = await auditRow(id);
     expect(
       await pgCode(
         asAppRole((tx) =>
@@ -317,5 +323,6 @@ describe("crm_app no puede vaciar (AC-4)", () => {
         ),
       ),
     ).toBe("42501");
+    expect(await auditRow(id)).toEqual(before);
   });
 });

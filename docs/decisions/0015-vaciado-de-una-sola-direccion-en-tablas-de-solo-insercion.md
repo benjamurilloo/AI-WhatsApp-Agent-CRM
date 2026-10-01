@@ -30,5 +30,5 @@ El usuario decidió el 2026-10-01 que borrar es **vaciar el contenido y conserva
 - El test de cobertura de privilegios de `audit.test.ts` no cambia: `messages` y `audit_logs` siguen en la lista de solo inserción.
 - **Limitaciones aceptadas**:
   - el dueño puede vaciar, que es justamente el propósito. Un vaciado no queda registrado en la base, porque auditarlo volvería a escribir lo que se borra; se registra fuera, en el ticket del pedido;
-  - las del ADR 0013 siguen: el dueño puede `TRUNCATE`, y un superusuario puede desactivar el trigger;
-  - lo vaciado sigue en las copias de seguridad hasta que vencen, a los 30 días como mucho, y una restauración lo trae de vuelta. El runbook de restauración manda volver a aplicar los vaciados posteriores a la copia (brief-13.4, D-5).
+  - las del ADR 0013 siguen: el dueño puede `TRUNCATE` y puede desactivar el trigger, igual que un superusuario. *Corregido el 2026-10-01* (revisión independiente de la 13.4, R-10): decía «un superusuario puede desactivar el trigger»; el dueño de la tabla también puede, comprobado en PostgreSQL local. Pesa más que antes, porque el vaciado se corre con ese rol: el runbook lo prohíbe por procedimiento;
+  - lo vaciado sigue en las copias de seguridad hasta que vencen, a unos 30 días mientras el backup diario funcione (precisado por la revisión independiente de la 13.4, R-8: decía «a los 30 días como mucho»), y una restauración lo trae de vuelta. El runbook de restauración manda volver a aplicar los vaciados posteriores a la copia (brief-13.4, D-5).

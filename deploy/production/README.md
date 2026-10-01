@@ -342,3 +342,5 @@ ssh crm-production 'systemd-analyze cat-config systemd/journald.conf | grep -E "
 ```
 
 Tienen que aparecer `MaxRetentionSec=30day`, `MaxFileSec=1day` y `SystemMaxUse=1G`, sin ninguna línea posterior que los pise: en `cat-config` gana la última. La primera entrada del journal no puede tener más de 31 días.
+
+**`rsyslog` guarda una copia aparte**, comprobado en el droplet el 2026-10-01 (revisión independiente de la 13.4, R-12). Está activo y escribe en `/var/log/syslog` lo que la aplicación saca por pantalla (las líneas de `npm`), con la rotación del paquete: semanal, 4 archivos, o sea hasta unos 35 días. Son los mismos identificadores que el journal, sin cuerpos de mensajes ni teléfonos. **Queda declarado y no se cambió**, por decisión del usuario: tocar la rotación o el reenvío afecta a todos los logs del sistema, y antes hay que ver qué los lee. Tiene tarea en Notion.

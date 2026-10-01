@@ -12,11 +12,12 @@ import {
   getStatusDistribution,
   getUniqueClients,
 } from "@/modules/analytics";
-import { getDb } from "@/shared/db";
+import { getDb, type DbTransaction } from "@/shared/db";
 import { exportClientData } from "../../scripts/client-data-export";
 import {
   deleteClientRow,
   describeRetained,
+  NOT_REACHED,
   ERASED_DIFF,
   eraseClientData,
   minimizedName,
@@ -159,7 +160,7 @@ describe("exportación de los datos de un cliente", () => {
     );
     expect(data.audit_logs).toHaveLength(1);
     // El propio archivo dice qué no incluye y por qué.
-    expect(data.excluded.ingestion_events).toContain("Sin datos personales");
+    expect(data.excluded.ingestion_events).toContain("el CRM no lo valida");
   });
 
   it("2. no incluye datos de otro cliente ni de otra organización", async () => {
@@ -392,5 +393,126 @@ describe("cliente sin conversaciones: se borra de verdad", () => {
           where organization_id = ${organizationId} and entity_id = ${clientId}`,
     );
     expect(remaining.rows.map((row) => row.diff)).toEqual([ERASED_DIFF]);
+  });
+});
+
+// Una conexión aparte hace lo que la ingestión y retiene su transacción sin confirmar. El vaciado
+// tiene que esperarla y alcanzar lo que escribió (revisión independiente de la 13.4, R-2). Cada
+// escenario lo detiene un bloqueo distinto del vaciado: la ficha o la conversación.
+async function holdIngestion(work: (tx: DbTransaction) => Promise<void>) {
+  let taken!: () => void;
+  let release!: () => void;
+  const lockTaken = new Promise<void>((resolve) => (taken = resolve));
+  const released = new Promise<void>((resolve) => (release = resolve));
+  const holder = getDb().transaction(async (tx) => {
+    await work(tx);
+    taken();
+    await released;
+  });
+  await lockTaken;
+  return async () => {
+    release();
+    await holder;
+  };
+}
+
+async function insertLateMessage(
+  tx: DbTransaction,
+  conversationId: string,
+  ref: string,
+) {
+  await tx.execute(
+    sql`insert into messages (organization_id, conversation_id, direction, sent_at, body_text, external_ref)
+        values (${organizationId}, ${conversationId}, 'inbound', '2026-09-10T12:10:00Z', ${LATE}, ${ref})`,
+  );
+}
+
+async function waitForLockWaiters(count: number, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  let waiting = -1;
+  while (Date.now() < deadline) {
+    const result = await getDb().execute<{ waiting: number }>(
+      sql`select count(*)::int as waiting from pg_stat_activity
+          where datname = current_database() and wait_event_type = ${"Lock"}`,
+    );
+    waiting = result.rows[0]!.waiting;
+    if (waiting === count) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error(
+    `se esperaban ${count} conexiones en un bloqueo y hay ${waiting}`,
+  );
+}
+
+const LATE = "Llego justo, ¿me lo guardás?";
+
+describe("lo que el vaciado alcanza y lo que no (revisión independiente de la 13.4)", () => {
+  // Como conversation.resolved: bloquea la ficha y abre una conversación nueva con su mensaje.
+  it("14. la conversación que la ingestión v2 abre durante el vaciado también se vacía (R-2)", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    await insertConversationWithMessage(clientId, BODY);
+    const commit = await holdIngestion(async (tx) => {
+      await tx.execute(
+        sql`select id from clients where id = ${clientId} for update`,
+      );
+      const created = await tx.execute<{ id: string }>(
+        sql`insert into conversations (organization_id, client_id, channel, status, started_at, external_ref)
+            values (${organizationId}, ${clientId}, 'whatsapp', 'open', '2026-09-10T12:10:00Z', 'conv-tarde')
+            returning id`,
+      );
+      await insertLateMessage(tx, created.rows[0]!.id, "msg-tarde-v2");
+    });
+
+    const erasure = eraseClientData(getDb(), organizationId, clientId);
+    await waitForLockWaiters(1);
+    await commit();
+
+    expect(await erasure).toMatchObject({ conversations: 2, messages: 3 });
+    for (const value of [LATE, "conv-tarde", "msg-tarde-v2"]) {
+      expect(await columnsContaining(value), value).toEqual([]);
+    }
+  });
+
+  // Como message.recorded de v1: bloquea solo la conversación, por su referencia, y agrega el mensaje.
+  it("15. el mensaje que la ingestión v1 agrega durante el vaciado también se vacía (R-2)", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    const conversationId = await insertConversationWithMessage(clientId, BODY);
+    const commit = await holdIngestion(async (tx) => {
+      await tx.execute(
+        sql`select id from conversations where id = ${conversationId} for update`,
+      );
+      await insertLateMessage(tx, conversationId, "msg-tarde-v1");
+    });
+
+    const erasure = eraseClientData(getDb(), organizationId, clientId);
+    await waitForLockWaiters(1);
+    await commit();
+
+    expect(await erasure).toMatchObject({ conversations: 1, messages: 3 });
+    for (const value of [LATE, "msg-tarde-v1"]) {
+      expect(await columnsContaining(value), value).toEqual([]);
+    }
+  });
+
+  it("16. una conversación sin cliente no la alcanza, y el script lo declara (R-1)", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    await insertConversationWithMessage(clientId, BODY);
+    const orphan = await getDb().execute<{ id: string }>(
+      sql`insert into conversations (organization_id, client_id, channel, status, started_at)
+          values (${organizationId}, null, 'whatsapp', 'open', '2026-09-01T12:00:00Z')
+          returning id`,
+    );
+    await getDb().execute(
+      sql`insert into messages (organization_id, conversation_id, direction, sent_at, body_text)
+          values (${organizationId}, ${orphan.rows[0]!.id}, 'inbound', '2026-09-01T12:00:00Z',
+                  'Soy Ana, antes de tener ficha')`,
+    );
+
+    await eraseClientData(getDb(), organizationId, clientId);
+
+    expect(await columnsContaining("Soy Ana, antes de tener ficha")).toEqual([
+      "messages.body_text",
+    ]);
+    expect(NOT_REACHED.join(" ")).toContain("conversaciones sin cliente");
   });
 });

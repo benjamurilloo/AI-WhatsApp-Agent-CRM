@@ -219,6 +219,31 @@ Un archivo `evidencia-13.4-retencion-y-borrado.md` con cada comando y su salida 
 
   `src/` de la aplicación no se toca: `audit-summary.ts` ya tolera la marca.
 
+## Revisión independiente (AC-13)
+
+Hecha el 2026-10-01 por un agente que no participó del trabajo, con acceso de solo lectura, contra este brief, las reglas vigentes y la evidencia. Encontró **14 hallazgos: 1 crítico condicional, 2 mayores y 11 menores**. Los 14 se verificaron contra el código antes de aceptarse, y se confirmaron todos. El detalle de lo ejecutado está en la [evidencia](evidencia-13.4-retencion-y-borrado.md#revisión-independiente-ac-13).
+
+| Hallazgo | Severidad | Resolución |
+|---|---|---|
+| R-1. El vaciado no alcanza las conversaciones sin cliente, y nada lo declaraba | crítico, condicional | **Declarado**, por decisión del usuario (opción a): en la salida del script (`NOT_REACHED`), el runbook, NonFunctionalRequirements y Risks. El test 16 de `client-data.test.ts` lo fija |
+| R-2. Un mensaje que la ingestión confirmaba durante el vaciado quedaba con su texto | mayor | **Corregido**: el vaciado bloquea primero la ficha y después las conversaciones, en el orden de la ingestión. Tests 14 (v2, conversación nueva) y 15 (v1, mensaje en una conversación existente), con las mutaciones M13 y M14 |
+| R-3. Tres reglas del trigger sin mutación ejecutada | mayor | **Resuelto**: M10 (DELETE de auditoría), M11 (el marcador exacto) y M12 (vaciar el texto), las tres en rojo |
+| R-4. SecurityModel decía «indefinidamente», «no se puede borrar con ningún rol» y que `ingestion_events` no tiene datos personales | menor | Corregido, con la historia marcada como tal |
+| R-5. Risks con la política vieja y la 13.4.2 como futura | menor | Corregido |
+| R-6. DataModel decía que se borran los vencidos «de esa clave» | menor | Corregido: de todas las claves |
+| R-7. NonFunctionalRequirements decía «inmutable» sin la excepción | menor | Corregido |
+| R-8. Plazos de las copias más firmes que el mecanismo; 30 o 31 días para el journal | menor | Corregido: «unos 30 días mientras el backup diario funcione», y el journal en 31 |
+| R-9. La exportación decía que `ingestion_events` está «Sin datos personales» | menor | Corregido. El archivo estaba fuera de la lista: **autorizado por el usuario el 2026-10-01** (condición de detención 5), con su test |
+| R-10. Los documentos decían que solo un superusuario puede desactivar el trigger | menor | **Confirmado en PostgreSQL local**: el dueño también puede. Corregido en los ADR 0013 y 0015, DataModel y SecurityModel; el runbook dice que la prohibición es de procedimiento |
+| R-11. Dos rechazos sin comprobar la fila; `--borrar` sin informar lo que queda; `--vaciar` y `--borrar` juntos sin aviso | menor | Corregido: los tests 6, 8, 10 y 12 de `erasure.test.ts` comparan la fila; `--borrar` informa; las dos opciones juntas se rechazan |
+| R-12. Una copia de los logs en `/var/log/syslog` | menor | **Confirmado en el droplet**: hasta unos 35 días. **Declarado**, por decisión del usuario (opción a), con una tarea en Notion para alinearlo |
+| R-13. HANDOFF decía «sin commit» | menor | Corregido |
+| R-14. «Entra como una conversación nueva» era impreciso | menor | Corregido en el runbook |
+
+**I-3. Dos archivos de test más, autorizados por el usuario el 2026-10-01** (condición de detención 5): `tests/integration/volume-distribution.test.ts` y `conversations-seed.test.ts` llevan un límite de 30 s por test. Con los tests nuevos de la revisión, la suite completa los pasaba de los 5 s en esta máquina, el mismo caso que I-2.
+
+Además, el revisor marcó como no verificados `scripts/migrar.ts` y `src/modules/crm/repository.ts`, modificados sin commitear. Solo difieren en los finales de línea, no entraron en ningún commit de la 13.4 y no se tocan.
+
 ## Lo que esta subfase no va a poder demostrar
 
 - **Un borrado real a pedido de una persona real.** No hay datos reales hasta la 13.5.

@@ -111,6 +111,21 @@ export async function eraseClientData(
   clientId: string,
 ): Promise<ErasureResult> {
   return db.transaction(async (tx) => {
+    // Primero la ficha y después sus conversaciones, en el orden en que las bloquea la ingestión
+    // (resolveIngestedConversation). Sin esto, un mensaje que la ingestión confirma mientras corre
+    // el vaciado quedaba fuera de la foto del UPDATE de messages, con su texto, y el script
+    // informaba éxito (revisión independiente de la 13.4, R-2).
+    await tx.execute(
+      sql`select id from clients
+          where organization_id = ${organizationId} and id = ${clientId}
+          for update`,
+    );
+    await tx.execute(
+      sql`select id from conversations
+          where organization_id = ${organizationId} and client_id = ${clientId}
+          order by id
+          for update`,
+    );
     const messages = await tx.execute(
       sql`update messages m set body_text = null, external_ref = null
           from conversations c
@@ -183,8 +198,14 @@ export function describeRetained(report: ClientDataReport): string[] {
 
 // Fuera de la base, siempre: el script no lo puede borrar (brief-13.4, H-5 y H-8).
 export const RETAINED_OUTSIDE = [
-  "Las copias de seguridad: hasta 30 días en la copia externa y 7 en el servidor. Si se restaura una copia anterior a hoy, este vaciado se vuelve a aplicar (docs/runbooks/restaurar-la-base.md).",
+  "Las copias de seguridad: unos 30 días en la copia externa y unos 7 en el servidor, mientras el backup diario funcione. Si se restaura una copia anterior a hoy, este vaciado se vuelve a aplicar (docs/runbooks/restaurar-la-base.md).",
+  "Los logs del servidor: identificadores internos, sin el teléfono ni el texto. El journal, hasta 31 días; /var/log/syslog, hasta unos 35.",
   "La copia del agente de WhatsApp y de su n8n: el CRM no la alcanza. Hay que avisarle al agente.",
+];
+
+// En la base, pero fuera del alcance del vaciado (revisión independiente de la 13.4, R-1).
+export const NOT_REACHED = [
+  "Las conversaciones sin cliente: las crea la ingestión v1, o un mensaje de un teléfono que todavía no era cliente, y nada las enlaza después. Sus mensajes conservan el texto. El CRM no guarda el teléfono de una conversación sin cliente, así que no puede atribuirla a esta persona.",
 ];
 
 const usage =
@@ -211,6 +232,8 @@ function explainRole(error: unknown): never {
 function printRetained(report: ClientDataReport) {
   for (const line of describeRetained(report))
     console.log(`  - En la base: ${line}`);
+  for (const line of NOT_REACHED)
+    console.log(`  - En la base, sin alcanzar: ${line}`);
   for (const line of RETAINED_OUTSIDE)
     console.log(`  - Fuera de la base: ${line}`);
 }
@@ -239,6 +262,7 @@ async function main() {
 
   const vaciar = args.includes("--vaciar");
   const borrar = args.includes("--borrar");
+  if (vaciar && borrar) throw new Error("Elegí una sola: --vaciar o --borrar.");
 
   if (!vaciar && !borrar) {
     // Sin una opción explícita no escribe nada: primero se ve qué va a pasar.
@@ -260,9 +284,8 @@ async function main() {
       );
     }
     await deleteClientRow(db, organizationId, clientId).catch(explainRole);
-    console.log("Ficha borrada y su auditoría vaciada.");
-    for (const line of RETAINED_OUTSIDE)
-      console.log(`  - Fuera de la base: ${line}`);
+    console.log("Ficha borrada y su auditoría vaciada. Queda:");
+    printRetained(report);
     return;
   }
 

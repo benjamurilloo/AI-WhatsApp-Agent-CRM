@@ -71,7 +71,7 @@ export async function exportClientData(
     client_id: clientId,
     excluded: {
       ingestion_events:
-        "Sin datos personales: source, referencia opaca del emisor, hash del payload y fechas.",
+        "No se exporta: source, referencia del emisor, hash del payload y fechas. La referencia no debería llevar datos personales (guía del emisor de ingestion-v2), pero el CRM no lo valida.",
     },
     client: client.rows[0] ?? null,
     conversations: conversations.rows,

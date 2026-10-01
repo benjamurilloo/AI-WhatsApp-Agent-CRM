@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "@/shared/db";
 import {
   seedVolume,
@@ -10,6 +10,10 @@ import {
   type VolumeShape,
 } from "../../seeds/volume";
 import { resetDatabase } from "./reset-database";
+
+// Siembran volumen: solos tardan hasta 3,7 s por test, y con la suite entera pasaron los 5 s por
+// defecto en esta máquina (brief-13.4, revisión independiente; mismo caso que I-2).
+vi.setConfig({ testTimeout: 30000 });
 
 // Distribución de volumen en varias organizaciones (9.3, D-1), contra PostgreSQL real.
 //

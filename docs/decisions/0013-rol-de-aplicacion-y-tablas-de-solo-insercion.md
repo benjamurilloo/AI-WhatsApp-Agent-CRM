@@ -37,7 +37,7 @@ Los roles son objetos del servidor, no de cada base: la base de desarrollo y la 
 - **Limitaciones aceptadas**:
   - hasta que la aplicación se conecte con `crm_app`, la defensa efectiva es el trigger;
   - el dueño todavía puede vaciar una tabla de solo inserción con `TRUNCATE`, que usa `resetDatabase` en los tests;
-  - un superusuario puede desactivar el trigger;
+  - un superusuario puede desactivar el trigger, y también el dueño de la tabla (*precisado el 2026-10-01*, revisión independiente de la 13.4, R-10);
   - crear el rol exige `CREATEROLE` al usuario de migraciones, algo a verificar en un servicio gestionado.
 
 ## Nota de la 6.1 (2026-09-16)
