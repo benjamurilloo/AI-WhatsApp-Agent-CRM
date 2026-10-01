@@ -7,7 +7,7 @@ generated_at: 2026-09-30
 
 # Brief: 13.4 — Retención y borrado de datos reales
 
-**Estado: aprobado el 2026-10-01 por el usuario, con las recomendaciones de D-1 a D-9.** Eso fija: conservar los mensajes mientras haga falta, con borrado a pedido y sin horizonte por edad (D-1); borrar es vaciar el contenido y conservar la forma (D-2); un vaciado de una sola dirección garantizado por el trigger, hecho por el operador con el rol dueño, y el ADR 0015 que enmienda el ADR 0013 (D-3); verificar H-4 primero, y si se confirma, detener y elevar (D-4); lo borrado vence con las copias, a los 30 días como mucho, y los borrados se vuelven a aplicar después de restaurar (D-5); el journal a 30 días (D-6); el vencimiento global de `login_attempts` en cada intento (D-7); la validación local y después en una base aparte del droplet (D-8); revisión independiente al final (D-9). La aprobación no autoriza migrar producción, cambiar la configuración del droplet ni ningún commit: cada uno se autoriza en su turno.
+**Estado: cerrado el 2026-10-01 por el usuario** (§Cierre de la subfase 13.4). Aprobado el 2026-10-01 por el usuario, con las recomendaciones de D-1 a D-9.** Eso fija: conservar los mensajes mientras haga falta, con borrado a pedido y sin horizonte por edad (D-1); borrar es vaciar el contenido y conservar la forma (D-2); un vaciado de una sola dirección garantizado por el trigger, hecho por el operador con el rol dueño, y el ADR 0015 que enmienda el ADR 0013 (D-3); verificar H-4 primero, y si se confirma, detener y elevar (D-4); lo borrado vence con las copias, a los 30 días como mucho, y los borrados se vuelven a aplicar después de restaurar (D-5); el journal a 30 días (D-6); el vencimiento global de `login_attempts` en cada intento (D-7); la validación local y después en una base aparte del droplet (D-8); revisión independiente al final (D-9). La aprobación no autoriza migrar producción, cambiar la configuración del droplet ni ningún commit: cada uno se autoriza en su turno.
 
 - **Nivel de evidencia objetivo**: `deterministic` para la etapa local (triggers, permisos y scripts contra PostgreSQL real de test, con mutaciones), e `isolated-runtime` para la etapa en el droplet: la migración aplicada en producción y el borrado recorrido de punta a punta en una base aparte, con datos sintéticos, que se borra al terminar.
 - **Nivel de validación alcanzable**: el mecanismo de borrado **validado localmente y en el entorno productivo sin datos reales**. No se ejerce contra un pedido real hasta que haya uno.
@@ -249,3 +249,12 @@ Además, el revisor marcó como no verificados `scripts/migrar.ts` y `src/module
 - **Un borrado real a pedido de una persona real.** No hay datos reales hasta la 13.5.
 - **Que lo borrado desaparezca del agente.** Es del agente.
 - **Cumplimiento legal.** El brief implementa lo que el usuario decida; no lo certifica.
+
+## Cierre de la subfase 13.4, 2026-10-01
+
+- **Commits**: `9f3dc2b` (13.4.1, CI `success`, run 36881395401), `75577b1` (registro de la 13.4.2, CI `success`, run 36899059887) y `9354c42` (correcciones de la revisión, CI `success`, run 36905779853), leídas por `headSha`.
+- **Criterios**: AC-1 a AC-7 y AC-9 a AC-13 cumplidos. AC-8 con el desvío I-1, decidido por el usuario: H-4 se resuelve en el contrato y se verifica en la 13.5. Los archivos agregados a la lista, I-1 a I-3 y R-9, autorizados por el usuario.
+- **En el droplet**: la aplicación corre `9f3dc2b`, con las migraciones `0000` a `0025`. El journal tiene su retención. La base aparte del recorrido y su rol, borrados.
+- **Nivel**: validado localmente (`deterministic`) y en el entorno productivo sin datos reales (`isolated-runtime`). No es «preparado para producción»: falta la 13.5.
+- **Lo que hereda el resto de la fase**: verificar H-4 con el primer evento del agente por la API oficial, antes de abrir el tráfico real; alinear `/var/log/syslog` a 30 días (tarea en Notion); comprobar después del 2026-10-30 que el journal venció; las conversaciones sin cliente, declaradas como no alcanzadas.
+- **Local, al cerrar**: integración 654 de 654, unitarios 492 de 492, guardas 485 de 485, typecheck, lint y formato en verde. End-to-end no se corrió: la subfase no cambió código de pantallas.

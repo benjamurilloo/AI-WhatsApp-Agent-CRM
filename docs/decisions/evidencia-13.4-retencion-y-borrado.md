@@ -606,3 +606,13 @@ npx vitest run --project integration
 
 Typecheck, lint y formato, sin errores.
 
+## Las CI de la 13.4.2 y de la revisión
+
+Leídas por `headSha`:
+
+```
+gh run list --commit 75577b1c407865000044a372075893d3e9d478bb --json databaseId,headSha,status,conclusion,name
+[{"conclusion":"success","databaseId":36899059887,"headSha":"75577b1c407865000044a372075893d3e9d478bb","name":"CI","status":"completed"}]
+gh run list --commit 9354c4258a102b6f49e9e635ca8101ac98fbb047 --json databaseId,headSha,status,conclusion,name
+[{"conclusion":"success","databaseId":36905779853,"headSha":"9354c4258a102b6f49e9e635ca8101ac98fbb047","name":"CI","status":"completed"}]
+```

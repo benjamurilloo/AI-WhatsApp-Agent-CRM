@@ -2,6 +2,28 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-01 — 13.4 cerrada: retención y borrado de datos reales
+
+Cuarta subfase de la Fase 13 ([brief-13.4](docs/decisions/brief-13.4-retencion-y-borrado.md), [evidencia-13.4](docs/decisions/evidencia-13.4-retencion-y-borrado.md), [ADR 0015](docs/decisions/0015-vaciado-de-una-sola-direccion-en-tablas-de-solo-insercion.md), [runbook de datos de un cliente](docs/runbooks/datos-de-un-cliente.md)). En dos etapas: la 13.4.1 (`9f3dc2b`), local; la 13.4.2 (`75577b1`), en el droplet de producción. Las correcciones de la revisión independiente van en `9354c42`.
+
+**Certifica**:
+- **La retención de `messages` (R-3)**: mientras haga falta, con borrado a pedido, sin horizonte por edad (D-1, decisión del usuario).
+- **El borrado real (O-11)**: borrar es vaciar el contenido y conservar la forma. El ADR 0015 enmienda el 0013: los triggers de `messages` y `audit_logs` dejan pasar un único `UPDATE`, el vaciado, comparando la fila entera; `crm_app` sigue sin `UPDATE`. Probado por efecto, con 14 mutaciones en rojo.
+- El script `client-data-delete.ts --vaciar`: después del vaciado, ninguna columna de texto de ninguna tabla tiene el nombre, el teléfono, las notas, los mensajes ni las referencias de la persona, y las métricas del período dan lo mismo. Espera a la ingestión que escribe en ese momento y la alcanza.
+- La migración `0025` en producción, con los recuentos iguales y `/login` en `200`; el vaciado recorrido en una base aparte del droplet, que se borró.
+- El journal de producción a 30 días, instalado y verificado, con su guarda; el vencimiento global de `login_attempts`.
+- **Revisión independiente** (D-9): 1 crítico condicional, 2 mayores y 11 menores, los 14 confirmados y resueltos.
+
+**No certifica**:
+- un borrado a pedido de una persona real: no hay datos reales hasta la 13.5;
+- **H-4**: que los identificadores del agente no lleven el teléfono. Se resolvió en el contrato (I-1, opción A1), sin validación del CRM, y se verifica con el primer evento real, en la 13.5;
+- que el vaciado alcance las **conversaciones sin cliente**: queda declarado, por decisión del usuario (R-1);
+- que `/var/log/syslog` respete los 30 días: guarda hasta unos 35, declarado y con tarea en Notion (R-12);
+- que el journal venza a los 30 días: no se puede observar antes del 2026-10-30;
+- lo que guarda el agente, ni cumplimiento legal.
+
+**Nivel**: validado localmente y en el entorno productivo sin datos reales (`deterministic` e `isolated-runtime`).
+
 ## 2026-10-01 — 13.3 cerrada: disponibilidad y observabilidad
 
 Tercera subfase de la Fase 13 ([brief-13.3](docs/decisions/brief-13.3-disponibilidad-y-observabilidad.md), [evidencia-13.3](docs/decisions/evidencia-13.3-disponibilidad.md), [runbook de alertas](docs/runbooks/responder-a-una-alerta.md)). En dos etapas: la 13.3.1 (`579397e`), los avisos de vida y el criterio de disponibilidad, desplegada; la 13.3.2 (`e96ec8e`), la configuración externa y las fallas provocadas en producción. Las correcciones de la revisión independiente van en `9ffd112`.
