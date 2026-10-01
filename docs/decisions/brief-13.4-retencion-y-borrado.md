@@ -7,7 +7,7 @@ generated_at: 2026-09-30
 
 # Brief: 13.4 — Retención y borrado de datos reales
 
-**Estado: propuesto el 2026-09-30, sin aprobar.** Nada de este brief se implementa hasta que el usuario lo apruebe. La aprobación no autoriza migrar producción, cambiar la configuración del droplet ni ningún commit: cada uno se autoriza en su turno.
+**Estado: aprobado el 2026-10-01 por el usuario, con las recomendaciones de D-1 a D-9.** Eso fija: conservar los mensajes mientras haga falta, con borrado a pedido y sin horizonte por edad (D-1); borrar es vaciar el contenido y conservar la forma (D-2); un vaciado de una sola dirección garantizado por el trigger, hecho por el operador con el rol dueño, y el ADR 0015 que enmienda el ADR 0013 (D-3); verificar H-4 primero, y si se confirma, detener y elevar (D-4); lo borrado vence con las copias, a los 30 días como mucho, y los borrados se vuelven a aplicar después de restaurar (D-5); el journal a 30 días (D-6); el vencimiento global de `login_attempts` en cada intento (D-7); la validación local y después en una base aparte del droplet (D-8); revisión independiente al final (D-9). La aprobación no autoriza migrar producción, cambiar la configuración del droplet ni ningún commit: cada uno se autoriza en su turno.
 
 - **Nivel de evidencia objetivo**: `deterministic` para la etapa local (triggers, permisos y scripts contra PostgreSQL real de test, con mutaciones), e `isolated-runtime` para la etapa en el droplet: la migración aplicada en producción y el borrado recorrido de punta a punta en una base aparte, con datos sintéticos, que se borra al terminar.
 - **Nivel de validación alcanzable**: el mecanismo de borrado **validado localmente y en el entorno productivo sin datos reales**. No se ejerce contra un pedido real hasta que haya uno.
@@ -196,6 +196,28 @@ Un archivo `evidencia-13.4-retencion-y-borrado.md` con cada comando y su salida 
 3. H-4 se confirma y el borrado choca con la idempotencia de `ingestion_events` o con el contrato: se eleva al usuario, y al agente si hace falta.
 4. La migración no se puede aplicar en producción sin bloquear la aplicación más que un despliegue: se mide antes y se decide.
 5. Hace falta tocar un archivo fuera de la lista.
+
+## Decisiones durante la implementación (13.4.1)
+
+- **I-1. H-4 se resuelve en el contrato, sin verificarlo hoy. Desvío de AC-8, decidido por el usuario el 2026-10-01** (opción A1). H-4 no se puede verificar ahora:
+  - el agente funciona temporalmente con Evolution API, que se conecta como dispositivo vinculado y no usa el `wamid`;
+  - el primer cliente real va a entrar por la API oficial de Meta, que todavía no está montada;
+  - todas las corridas del agente contra staging (12.3.3 y 12.5) usaron identificadores inventados (`wa-msg-wamid-fict-…`), así que el CRM nunca recibió uno derivado de un mensaje real.
+
+  **H-4 queda presunto para la API oficial.** El usuario eligió resolverlo en el origen. La guía para el emisor de [ingestion-v2](../contracts/ingestion-v2.md) suma una regla: `event_id` y los dos `external_ref` no llevan el teléfono, ni el `wamid` crudo ni el `remoteJid`; el emisor manda un hash con clave propia.
+  - **El CRM no lo valida.** Rechazarlo cambiaría una respuesta, y §Versionado del contrato exige v3 para eso. La alternativa, A2, era un contrato v3 con la validación, como subfase propia.
+  - **Límite:** si el agente manda el `wamid` crudo, el teléfono entra en `ingestion_events` sin aviso. Queda en Risks.
+  - **Verificación, en la 13.5:** antes de abrir el tráfico real, se mira el primer evento del agente con la API oficial y se comprueba que sus identificadores no lleven el teléfono.
+
+  **Archivo agregado a la lista autorizada**, con la misma decisión: `docs/contracts/ingestion-v2.md`. `src/modules/ingestion/` no se toca.
+
+  Con esto, D-4 (a) se reduce a vaciar las referencias de `messages` y `conversations`. `ingestion_events` no se toca, y la condición de detención 3 no se activa.
+
+- **I-2. Dos archivos de test más, autorizados por el usuario el 2026-10-01** (condición de detención 5):
+  - `tests/integration/organization-bootstrap.test.ts`: un límite de 30 s en el `describe` de los seeds contra la base productiva. Con la suite entera, su único test superaba los 5 s por defecto (5,04 s; solo tarda 1,2 s). No cambia lo que comprueba. Medición y bisección en [evidencia-13.4](evidencia-13.4-retencion-y-borrado.md#ac-7-la-suite-completa).
+  - `src/app/(autenticado)/clientes/[clientId]/audit-summary.test.ts`: un caso para la entrada vaciada. La ficha muestra la acción y «—», y no se rompe; la mutación M9 lo prueba.
+
+  `src/` de la aplicación no se toca: `audit-summary.ts` ya tolera la marca.
 
 ## Lo que esta subfase no va a poder demostrar
 

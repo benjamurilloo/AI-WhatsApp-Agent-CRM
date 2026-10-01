@@ -119,3 +119,25 @@ describe("describeAuditDiff (brief-5.3, D-4)", () => {
     ).toBe("Activo: sí → no");
   });
 });
+
+describe("entrada vaciada (brief-13.4, D-3; ADR 0015)", () => {
+  // La marca la escribe el operador con el rol dueño y no pasa por validateAuditEntry: trae una
+  // clave más que el tipo no declara. La ficha conserva la acción y no muestra datos.
+  const erased = {
+    before: null,
+    after: null,
+    vaciado: true,
+  } as unknown as ClientAuditEntry["diff"];
+
+  it("muestra la acción y un guion en lugar del cambio, en cualquier acción", () => {
+    for (const [action, label] of [
+      ["create", "Alta"],
+      ["update", "Edición"],
+      ["deactivate", "Desactivación"],
+      ["reactivate", "Reactivación"],
+    ] as const) {
+      expect(auditActionLabel(entry(action, erased))).toBe(label);
+      expect(describeAuditDiff(entry(action, erased))).toBe("—");
+    }
+  });
+});

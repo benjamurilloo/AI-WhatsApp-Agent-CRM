@@ -48,3 +48,7 @@ Los roles son objetos del servidor, no de cada base: la base de desarrollo y la 
 - **`ingestion_events`** es una tercera categoría: `crm_app` con `SELECT`, `INSERT` y `UPDATE`, sin `DELETE`, porque el estado del evento cambia. El trigger `ingestion_events_identity_immutable` rechaza con `P0001` el borrado y todo cambio de `id`, `organization_id`, `source`, `external_ref`, `event_type`, `payload_hash` o `received_at`.
 - El test de cobertura de `audit.test.ts` lleva las dos listas: solo inserción y sin borrado.
 - La retención de mensajes (Fase 9) revisará el trigger de `messages` con su propia decisión.
+
+## Nota de la 13.4 (2026-10-01)
+
+**Enmendada por el [ADR 0015](0015-vaciado-de-una-sola-direccion-en-tablas-de-solo-insercion.md)** ([brief-13.4](brief-13.4-retencion-y-borrado.md), D-3): los triggers de `messages` y `audit_logs` dejan pasar un único `UPDATE`, el vaciado del contenido de un mensaje o de la entrada de auditoría de un cliente, con el resto de la fila idéntico. `crm_app` sigue sin `UPDATE` ni `DELETE`, y el test de cobertura no cambia. `inventory_movements`, `product_prices` e `ingestion_events` no cambian.

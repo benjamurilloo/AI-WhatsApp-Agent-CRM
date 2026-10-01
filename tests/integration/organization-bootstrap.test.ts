@@ -208,7 +208,10 @@ describe("createOrganizationWithAdmin", () => {
 
 // AC-5: los seeds se niegan a correr contra una base con el nombre productivo. Se prueba por
 // efecto, sobre una base real con ese nombre en el servidor de test, no leyendo el patrón.
-describe("seeds contra la base productiva", () => {
+// Solo tarda 1,2 s, pero con la suite entera llegó a 5,04 s y superó el límite por defecto. Causa
+// probable, no comprobada: crear la base fuerza un checkpoint de lo que escribieron los archivos
+// anteriores (brief-13.4, 13.4.1).
+describe("seeds contra la base productiva", { timeout: 30000 }, () => {
   it("todos los seeds rechazan la base productiva sin crear nada", async () => {
     const maintenance = createDb(maintenanceUrl(process.env.DATABASE_URL!));
     await maintenance.execute(

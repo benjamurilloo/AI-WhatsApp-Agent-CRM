@@ -39,8 +39,9 @@ Cada una es una decisión del brief, o su consecuencia directa.
 | `postgresql-crm-production.conf` | `/etc/postgresql/18/main/conf.d/crm-production.conf` |
 | `crm-heartbeat.sh` | `/usr/local/bin/crm-heartbeat.sh`, `0755` |
 | `crm-heartbeat@.service` | `/etc/systemd/system/crm-heartbeat@.service` |
+| `journald-crm-production.conf` | `/etc/systemd/journald.conf.d/crm-production.conf`, `0644` |
 
-El número de archivos se cuenta, no se hereda: `ls deploy/production/ | grep -v README | wc -l` tiene que dar lo mismo que las filas de esta tabla (**13**, desde la 13.3; eran 11).
+El número de archivos se cuenta, no se hereda: `ls deploy/production/ | grep -v README | wc -l` tiene que dar lo mismo que las filas de esta tabla (**14**, desde la 13.4; eran 13 desde la 13.3 y 11 antes).
 
 ## Lo que NO está acá, a propósito
 
@@ -248,7 +249,7 @@ La 13.1.2 ejecutó una vuelta atrás completa el 2026-09-29 (AC-21): de `938423d
 
 Los mismos cinco pasos de staging, con `crm-production` en lugar de `crm-staging` y `crm.vixoraai.app` en lugar de `staging.vixoraai.app`, más dos pasos propios de producción:
 
-1. **La configuración desplegada es la versionada** (O-9). Se hace el `diff` de los **trece** archivos de la tabla, como en staging. Eran once hasta la 13.3.
+1. **La configuración desplegada es la versionada** (O-9). Se hace el `diff` de los **catorce** archivos de la tabla, como en staging, con el bucle del [runbook de restauración](../../docs/runbooks/restaurar-la-base.md) §Producción, punto 5. Eran once hasta la 13.3 y trece hasta la 13.4.
 2. **Un solo salto de proxy**, medido por consecuencia (AC-14). Se comparan hashes y **nunca se versiona ni la IP ni su hash**.
 3. **HSTS** presente sobre HTTPS y ausente sobre HTTP.
 4. **La aplicación escucha solo en loopback.**
@@ -315,3 +316,29 @@ ssh crm-production 'for t in backup offsite restore-check; do sudo systemctl sta
 ```
 
 Cada uno tiene que decir `success` y, entre sus tres últimas líneas, `Aviso de '<trabajo>' enviado.` Las otras dos son de systemd («Deactivated successfully» y «Finished»). Además, el servicio externo tiene que mostrar el aviso recibido. Un error dice el código de salida de `curl`, nunca la URL.
+
+## Retención del journal
+
+El journal guarda `organization_id`, `user_id` y `request_id` de cada pedido, nunca cuerpos de mensajes ni teléfonos. Se conserva **30 días** ([brief-13.4](../../docs/decisions/brief-13.4-retencion-y-borrado.md), D-6), lo mismo que la copia externa. nginx rota sus logs a 14 días, con la configuración del paquete.
+
+journald borra archivos enteros, no entradas. Por eso el archivo fija también un archivo por día (`MaxFileSec=1day`): con el valor por defecto, un mes, una entrada viviría hasta casi dos. La guarda `tests/guards/production-journald-config.test.ts` comprueba que una entrada no pueda vivir más de 31 días.
+
+Para instalarlo, con la copia del repositorio al día:
+
+```
+ssh crm-production 'set -euo pipefail
+cd /srv/crm-production/deploy/production
+sudo install -d -m 0755 -o root -g root /etc/systemd/journald.conf.d
+sudo install -m 0644 -o root -g root journald-crm-production.conf /etc/systemd/journald.conf.d/crm-production.conf
+sudo systemctl restart systemd-journald
+sudo journalctl --rotate
+sudo journalctl --vacuum-time=30d'
+```
+
+Para verificarlo:
+
+```
+ssh crm-production 'systemd-analyze cat-config systemd/journald.conf | grep -E "^(Storage|MaxRetentionSec|MaxFileSec|SystemMaxUse)="; sudo journalctl --disk-usage; sudo journalctl -o short-iso --no-pager | head -1'
+```
+
+Tienen que aparecer `MaxRetentionSec=30day`, `MaxFileSec=1day` y `SystemMaxUse=1G`, sin ninguna línea posterior que los pise: en `cat-config` gana la última. La primera entrada del journal no puede tener más de 31 días.

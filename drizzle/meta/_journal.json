@@ -176,6 +176,13 @@
       "when": 1790425534577,
       "tag": "0024_credential_scope_context",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1790862681367,
+      "tag": "0025_vaciado_de_mensajes_y_auditoria",
+      "breakpoints": true
     }
   ]
 }

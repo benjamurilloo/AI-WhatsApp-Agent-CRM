@@ -243,18 +243,29 @@ Los pasos van encadenados con `&&`: si falla la escritura de un archivo, la cont
 
 El rol con login de la aplicación, `crm_app_login`, se crea como dice el paso 6 del aprovisionamiento. **Diseñado, no ejecutado**: AC-18 restauró en un contenedor y no levantó la aplicación.
 
-**5. La comprobación servidor contra repositorio cubre los once archivos** de la tabla del README de producción, no los seis de staging. Entre ellos van los dos de la copia externa:
+**5. La comprobación servidor contra repositorio cubre los catorce archivos** de la tabla del README de producción, no los seis de staging. Entre ellos van los dos de la copia externa, los dos del aviso de vida (13.3) y la retención del journal (13.4). *Corregido el 2026-10-01*: decía once, la cuenta de la 13.1, y el bucle no cubría los archivos del aviso de vida.
 
 ```
-for f in crm-backup.sh crm-backup-offsite.sh crm-restore-check.sh; do
+for f in crm-backup.sh crm-backup-offsite.sh crm-restore-check.sh crm-heartbeat.sh; do
   ssh crm-production "sudo cat /usr/local/bin/$f" | diff - "deploy/production/$f" && echo "$f OK"
 done
-for f in crm-production.service crm-backup.service crm-backup-offsite.service crm-backup.timer crm-restore-check.service crm-restore-check.timer; do
+for f in crm-production.service crm-backup.service crm-backup-offsite.service crm-backup.timer crm-restore-check.service crm-restore-check.timer crm-heartbeat@.service; do
   ssh crm-production "sudo cat /etc/systemd/system/$f" | diff - "deploy/production/$f" && echo "$f OK"
 done
 ssh crm-production "sudo cat /etc/nginx/sites-available/crm-production" | diff - deploy/production/nginx-crm-production.conf && echo "nginx OK"
 ssh crm-production "sudo cat /etc/postgresql/18/main/conf.d/crm-production.conf" | diff - deploy/production/postgresql-crm-production.conf && echo "postgresql OK"
+ssh crm-production "sudo cat /etc/systemd/journald.conf.d/crm-production.conf" | diff - deploy/production/journald-crm-production.conf && echo "journald OK"
 ```
+
+**6. Volver a aplicar los vaciados posteriores a la copia** ([brief-13.4](../decisions/brief-13.4-retencion-y-borrado.md), D-5). Una copia guarda los datos como estaban el día que se hizo. Si un cliente pidió el borrado después, **la restauración trae de vuelta sus datos**: su nombre, su teléfono y el texto de sus mensajes. El registro de cada vaciado vive fuera de la base, en el ticket del pedido ([runbook de datos de un cliente](datos-de-un-cliente.md)), justamente para que sobreviva a una restauración.
+
+Después de restaurar y **antes de levantar la aplicación**:
+
+1. Buscá en los tickets los vaciados y borrados con fecha **posterior** a la de la copia (el nombre del archivo lleva la hora UTC del dump).
+2. Para cada uno, corré el script con la misma opción, `--vaciar` o `--borrar`, y el rol dueño, como dice el runbook de datos de un cliente. Si la ficha ya no existe en la copia, el informe lo dice y no hay nada que aplicar.
+3. Anotá en cada ticket que se volvió a aplicar, con la fecha de la restauración.
+
+Un vaciado aplicado dos veces no cambia nada ni falla, así que ante la duda se vuelve a correr.
 
 ## Lo que este runbook NO cubre
 

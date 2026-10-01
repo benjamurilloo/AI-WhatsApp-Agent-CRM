@@ -606,6 +606,43 @@ describe("límite de intentos", () => {
     },
   );
 
+  // brief-13.4, D-7 y AC-6: con el borrado solo por clave, el hash de una IP que no vuelve
+  // quedaba para siempre.
+  it("un intento borra los vencidos de todas las claves, no solo los de la suya", async () => {
+    await login({
+      email: "nadie@example.com",
+      password: OTHER_PASSWORD,
+      ip: "198.51.100.200",
+    });
+    await getDb().execute(
+      sql`update login_attempts set attempted_at = attempted_at - interval '16 minutes'`,
+    );
+    // Uno dentro de la ventana, de otra clave: no se borra.
+    await login({
+      email: "otro@example.com",
+      password: OTHER_PASSWORD,
+      ip: "198.51.100.201",
+    });
+
+    await login({
+      email: "tercero@example.com",
+      password: OTHER_PASSWORD,
+      ip: IP,
+    });
+
+    const rows = await getDb().execute<{ key_hash: string }>(
+      sql`select key_hash from login_attempts`,
+    );
+    expect(rows.rows.map((row) => row.key_hash).sort()).toEqual(
+      [
+        sha256("otro@example.com"),
+        sha256("198.51.100.201"),
+        sha256("tercero@example.com"),
+        sha256(IP),
+      ].sort(),
+    );
+  });
+
   it("los intentos guardan hashes, no el email ni la IP", async () => {
     await login({
       email: "nadie@example.com",

@@ -27,6 +27,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [0012](0012-mecanismo-de-sesion.md) | Sesiones server-side propias en PostgreSQL | aceptada |
 | [0013](0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md) | Rol de aplicación `crm_app` y tablas de solo inserción | aceptada |
 | [0014](0014-el-agente-de-whatsapp-como-consumidor-del-crm.md) | El agente de WhatsApp como consumidor del CRM (reemplaza parcialmente al 0003) | aceptada |
+| [0015](0015-vaciado-de-una-sola-direccion-en-tablas-de-solo-insercion.md) | Vaciado de una sola dirección en las tablas de solo inserción (enmienda al 0013) | aceptada |
 
 ## Briefs
 
@@ -95,6 +96,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-13.1](brief-13.1-entorno-productivo.md) | 13.1 — Entorno productivo | aprobado el 2026-09-29 con las recomendaciones de D-1 a D-12; cerrado el 2026-09-30. Salidas crudas en [evidencia-13.1](evidencia-13.1-produccion.md) |
 | [brief-13.2](brief-13.2-mediciones-previas-a-datos-reales.md) | 13.2 — Mediciones previas a exponer datos reales | aprobado el 2026-09-30 con las recomendaciones de D-1 a D-7; cerrado el 2026-09-30. Salidas crudas en [evidencia-13.2](evidencia-13.2-mediciones.md) y planes en [planes-13.2/](planes-13.2/) |
 | [brief-13.3](brief-13.3-disponibilidad-y-observabilidad.md) | 13.3 — Disponibilidad y observabilidad | aprobado el 2026-09-30 con las recomendaciones de D-1 a D-8 y un cambio en la condición de detención 2; cerrado el 2026-10-01. Salidas crudas en [evidencia-13.3](evidencia-13.3-disponibilidad.md) |
+| [brief-13.4](brief-13.4-retencion-y-borrado.md) | 13.4 — Retención y borrado de datos reales | aprobado el 2026-10-01 con las recomendaciones de D-1 a D-9; en curso. H-4 resuelto en el contrato (I-1, opción A1). Salidas crudas en [evidencia-13.4](evidencia-13.4-retencion-y-borrado.md) |
 | [evidencia-9.1](evidencia-9.1-staging.md) | 9.1 — Salidas crudas de la verificación en staging | captura del 2026-09-22 |
 | [evidencia-9.2](evidencia-9.2-backups.md) | 9.2 — Backup y restauración verificados en staging | captura del 2026-09-22 |
 | [evidencia-9.3](evidencia-9.3-volumen.md) | 9.3 — Volumen, planes y tiempos medidos en staging | captura del 2026-09-23 |

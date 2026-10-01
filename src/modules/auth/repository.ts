@@ -191,16 +191,12 @@ export async function recentFailures(
   windowStart: Date,
 ): Promise<{ count: number; oldest: Date | null }> {
   const db = getDb();
-  // Los registros vencidos de esta clave ya no cuentan: se borran en cada intento.
+  // Los registros vencidos ya no cuentan: se borran en cada intento, los de todas las claves. Si
+  // solo se borraran los de esta, el hash de una IP que no vuelve quedaría para siempre, y un hash
+  // sin sal de una IP es la IP (brief-13.4, D-7). La ventana es la misma para los dos alcances.
   await db
     .delete(loginAttempts)
-    .where(
-      and(
-        eq(loginAttempts.scope, scope),
-        eq(loginAttempts.keyHash, keyHash),
-        lte(loginAttempts.attemptedAt, windowStart),
-      ),
-    );
+    .where(lte(loginAttempts.attemptedAt, windowStart));
   const rows = await db
     .select({
       count: sql`count(*)`.mapWith(Number),
