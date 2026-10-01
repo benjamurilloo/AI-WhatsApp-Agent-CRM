@@ -2,7 +2,7 @@
 
 Qué se mide durante la ventana de observación del primer negocio, cómo, y **qué se decide con cada resultado** ([brief-13.5](../decisions/brief-13.5-primer-cliente.md), D-7). Las reglas de decisión se escribieron el 2026-10-01, **antes de ver un solo dato real**, para que el resultado no las acomode.
 
-**La ventana**: 14 días desde la apertura al negocio ([alta de un negocio](alta-de-un-negocio.md), paso 6), salvo que el usuario fije otra. Las mediciones se corren al final de la ventana, y la de privacidad además cada día.
+**La ventana**: 14 días desde la apertura al negocio ([alta de un negocio](alta-de-un-negocio.md), paso 7), salvo que el usuario fije otra. Las mediciones se corren al final de la ventana, y la de privacidad además cada día.
 
 **Lo que sale de acá son recuentos y tiempos**, nunca un mensaje, un nombre, un teléfono ni un identificador. Las consultas están escritas para devolver solo eso.
 
@@ -82,7 +82,15 @@ Un turno se revisa cuando el agente o el negocio lo reportan como lento o fallid
 
 ## 6. Privacidad, cada día
 
-**Que H-4 siga en cero**: el script de [alta de un negocio](alta-de-un-negocio.md), paso 5, sin `VERIFICAR_TELEFONO`: busca los teléfonos de los clientes que ya existen.
+**Que H-4 siga en cero**: el script de [alta de un negocio](alta-de-un-negocio.md), paso 6, sin `VERIFICAR_TELEFONO`: busca los teléfonos de los clientes que ya existen.
+
+```
+sudo bash -c 'read -r -p "Id de la organización: " ORG_ID; . /etc/crm-production/app.env && export DATABASE_URL && cd /srv/crm-production && exec runuser -u crm -- npx tsx scripts/verificar-identificadores.ts --org "$ORG_ID"'; echo "código: $?"
+```
+
+Con `0` sigue limpio. Con `1`, la regla de abajo. Con `2`, no prueba nada (sin clientes con teléfono, o sin eventos): se revisa el id. Con `3`, un error: se corrige y se repite.
+
+**Límite**: el script mira los identificadores guardados, `event_id` y los `external_ref`. No mira el `correlation_id`, que solo queda en el journal. Un `wamid` usado como correlación llevaría el teléfono en base64, y el recuento de abajo no lo ve: solo encuentra dígitos seguidos. La guía de ingestion-v2 lo prohíbe; el CRM no lo verifica (revisión independiente de la 13.5.1, H-10). Vence con el journal, a los 31 días.
 
 **Que el journal no tenga números largos**:
 
@@ -90,7 +98,7 @@ Un turno se revisa cuando el agente o el negocio lo reportan como lento o fallid
 ssh crm-production "sudo journalctl -u crm-production -o cat --since '-1 day' | sed -E 's/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}//g' | grep -cE '[0-9]{10,}'"
 ```
 
-Cuenta las líneas con diez o más dígitos seguidos, que es la forma de un teléfono. No imprime ninguna. **Los uuid se quitan antes de contar**: el último bloque de un uuid tiene 12 caracteres hexadecimales y en uno de cada cuarenta, más o menos, diez de ellos son dígitos seguidos. Toda línea lleva al menos el `request_id`, así que sin quitarlos el recuento casi nunca da 0. En el ensayo de staging del 2026-10-01, la primera versión de este comando contó 120 líneas en 30 días de journal, y ninguna llevaba un teléfono; sin los uuid quedaron 7 ([evidencia-13.5](../decisions/evidencia-13.5-primer-cliente.md)).
+Cuenta las líneas con diez o más dígitos seguidos, que es la forma de un teléfono. No imprime ninguna. **Los uuid se quitan antes de contar**: el último bloque de un uuid tiene 12 caracteres hexadecimales, y en un uuid al azar diez de ellos son dígitos seguidos con probabilidad (10/16)^10 × 1,75, cerca de 1 en 63. Toda línea lleva al menos el `request_id`, así que sin quitarlos el recuento casi nunca da 0. En el ensayo de staging del 2026-10-01, la primera versión de este comando contó 120 líneas en 30 días de journal, y ninguna llevaba un teléfono; sin los uuid quedaron 7 ([evidencia-13.5](../decisions/evidencia-13.5-primer-cliente.md)). Buena parte de esas 120 venía de los uuid del seed, llenos de ceros.
 
 Si da más de 0, este dice **en qué campo** está el número, con los dígitos cambiados por `9`:
 
@@ -98,9 +106,15 @@ Si da más de 0, este dice **en qué campo** está el número, con los dígitos 
 ssh crm-production "sudo journalctl -u crm-production -o cat --since '-1 day' | grep '^{' | sed -E 's/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}//g' | grep -E '[0-9]{10,}' | jq -c '[to_entries[] | select((.value|tostring) | test(\"[0-9]{10,}\")) | {k: .key, forma: (.value|tostring|gsub(\"[0-9]\"; \"9\"))}]' | sort | uniq -c"
 ```
 
+El primer recuento incluye las líneas que no son JSON, como las del arranque de Next; el segundo comando las deja afuera. Si el primero da más de 0 y el segundo no muestra nada, la línea no es JSON, y se ve con los dígitos cambiados:
+
+```
+ssh crm-production "sudo journalctl -u crm-production -o cat --since '-1 day' | grep -v '^{' | grep -E '[0-9]{10,}' | sed -E 's/[0-9]/9/g' | cut -c1-160"
+```
+
 Un `correlation_id` con una marca de tiempo tiene forma de número largo y no es un teléfono. El agente arma esos identificadores, así que el `correlation_id` y cualquier `error` se miran igual.
 
-**Regla de decisión**: el script de H-4 distinto de 0, o una línea del journal cuyo número sea un teléfono, es la **condición de detención 5**. El operador mira las líneas en su terminal, sin copiarlas, y decide; si un teléfono entró por un identificador, se apaga la ingestión ([alta de un negocio](alta-de-un-negocio.md), paso 8).
+**Regla de decisión**: el script de H-4 con código `1`, o una línea del journal cuyo número sea un teléfono, es la **condición de detención 5**. Los códigos `2` y `3` no lo son: se resuelven y se repite. El operador mira las líneas en su terminal, sin copiarlas, y decide; si un teléfono entró por un identificador, se apaga la ingestión ([alta de un negocio](alta-de-un-negocio.md), paso 8).
 
 ## 7. Qué se registra al cerrar la ventana
 

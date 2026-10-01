@@ -170,9 +170,10 @@ Es el orden de staging, con los cambios marcados. **Cada paso que crea algo afue
     En el servidor (`ssh crm-production`):
 
     ```
-    read -r -p "Organización: " ORG; read -r -p "Tu nombre: " NOMBRE; read -r -p "Tu correo: " CORREO
-    sudo ORG="$ORG" NOMBRE="$NOMBRE" CORREO="$CORREO" bash -c 'set -a && . /etc/crm-production/app.env && set +a && cd /srv/crm-production && exec sudo -u crm --preserve-env=DATABASE_URL npm run --silent org:create -- --name "$ORG" --admin-name "$NOMBRE" --admin-email "$CORREO"'
+    sudo bash -c 'read -r -p "Organización: " CREAR_ORG_NOMBRE; read -r -p "Tu nombre: " CREAR_ORG_ADMIN_NOMBRE; read -r -p "Tu correo: " CREAR_ORG_ADMIN_CORREO; export CREAR_ORG_NOMBRE CREAR_ORG_ADMIN_NOMBRE CREAR_ORG_ADMIN_CORREO; . /etc/crm-production/app.env && export DATABASE_URL && cd /srv/crm-production && exec runuser -u crm -- npm run --silent org:create'
     ```
+
+    *Corregido el 2026-10-01* (revisión independiente de la 13.5.1). Todos los comandos de este README pasaban los valores a `sudo`: estos tres como `sudo VAR=…`, y `DATABASE_URL` con `sudo -u crm --preserve-env`. **`sudo` escribe en su log, `/var/log/auth.log` y el journal, el valor de cada variable que se le pasa así**, y en producción quedaron 31 líneas con la URL de la base y su contraseña ([evidencia-13.5](../../docs/decisions/evidencia-13.5-primer-cliente.md)). Ahora el shell de `root` pide los valores con `read`, carga el archivo sin `set -a`, exporta solo lo que nombra y cambia de usuario con `runuser`, que no pasa por `sudo`.
 
     **El comando no lleva marcadores a propósito.** La versión anterior tenía `'<organización>'`, `'<nombre>'` y `<correo>`, con dos problemas:
     - `<correo>` no lo rechazaba el script sino la shell, porque lo leía como una redirección;
@@ -216,8 +217,8 @@ Git corre como `crm`, que es el dueño del repositorio. Como el usuario del `ssh
 ssh crm-production "set -euo pipefail
 test -n '$SHA'
 sudo -u crm bash -c 'cd /srv/crm-production && git fetch && git checkout --detach $SHA && npm ci --no-audit --no-fund'
-sudo bash -c 'set -a && . /etc/crm-production/migrate.env && set +a && cd /srv/crm-production && exec sudo -u crm --preserve-env=DATABASE_URL npm run db:migrate'
-sudo bash -c 'set -a && . /etc/crm-production/app.env && set +a && cd /srv/crm-production && exec sudo -u crm --preserve-env=NODE_ENV,PORT,HOSTNAME,DATABASE_URL,TRUSTED_PROXY npm run build'
+sudo bash -c '. /etc/crm-production/migrate.env && export DATABASE_URL && cd /srv/crm-production && exec runuser -u crm -- npm run db:migrate'
+sudo bash -c '. /etc/crm-production/app.env && export NODE_ENV PORT HOSTNAME DATABASE_URL TRUSTED_PROXY && cd /srv/crm-production && exec runuser -u crm -- npm run build'
 sudo systemctl restart crm-production
 test \"\$(sudo -u crm git -C /srv/crm-production rev-parse HEAD)\" = '$SHA' && echo 'desplegado: $SHA'"
 ```

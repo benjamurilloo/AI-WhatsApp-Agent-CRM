@@ -66,7 +66,9 @@ Orden importante. Los pasos 4 y 5 son los que el primer despliegue reveló.
 *Corregido el 2026-09-25 ([brief-12.1](../../docs/decisions/brief-12.1-actor-de-servicio-y-cliente-por-telefono.md), E-1).* Los archivos de `/etc/crm-staging/` son `0600` de `root` (D-8 de la 9.1), así que `. /etc/crm-staging/<x>.env` como el usuario del ssh falla con `Permission denied`. La forma que funciona es la que se usó en la 11.4 ([evidencia](../../docs/decisions/evidencia-11.4-piloto.md), §AC-6):
 - `root` lee el archivo;
 - `npm` corre como `benja`, el dueño de `/srv/crm-staging`, para que ningún archivo del repositorio quede de `root`;
-- a `npm` le llegan **solo** las variables que nombra `--preserve-env`.
+- a `npm` le llegan **solo** las variables que nombra el `export`.
+
+*Corregido el 2026-10-01 ([brief-13.5](../../docs/decisions/brief-13.5-primer-cliente.md), revisión independiente de la 13.5.1).* La forma anterior pasaba `DATABASE_URL` con `sudo -u … --preserve-env`, y `sudo` registra en su log, `/var/log/auth.log` y el journal, **el valor** de cada variable que se le pasa así: la contraseña de la base quedaba escrita en cada línea. Ahora el shell de `root` carga el archivo sin `set -a`, exporta solo las variables que nombra, y cambia de usuario con `runuser`, que no pasa por `sudo`. Medido en staging y en producción ([evidencia-13.5](../../docs/decisions/evidencia-13.5-primer-cliente.md)).
 
 Los nombres de cada archivo se listan sin sus valores con `sudo sed -E "s/=.*//" /etc/crm-staging/<x>.env`.
 
@@ -81,13 +83,13 @@ npm ci --no-audit --no-fund
 Si el cambio trae migraciones, correrlas con `migrate.env` **antes** del `build`. Cada comando carga su propio archivo, así que las variables de `migrate.env` y de `app.env` no se mezclan:
 
 ```
-sudo bash -c "set -a && . /etc/crm-staging/migrate.env && set +a && cd /srv/crm-staging && exec sudo -u benja --preserve-env=DATABASE_URL npm run db:migrate"
+sudo bash -c ". /etc/crm-staging/migrate.env && export DATABASE_URL && cd /srv/crm-staging && exec runuser -u benja -- npm run db:migrate"
 ```
 
-Build con `app.env` y reinicio. La lista de `--preserve-env` son las variables de `app.env` al 2026-09-25 que el build y la aplicación usan. Se agrega una si la aplicación pasa a necesitarla para compilar; las dos de la API de lectura (`READ_API_*`) no hacen falta en el build y no se agregan al encenderla:
+Build con `app.env` y reinicio. La lista del `export` son las variables de `app.env` al 2026-09-25 que el build y la aplicación usan. Se agrega una si la aplicación pasa a necesitarla para compilar; las dos de la API de lectura (`READ_API_*`) no hacen falta en el build y no se agregan al encenderla:
 
 ```
-sudo bash -c "set -a && . /etc/crm-staging/app.env && set +a && export NODE_OPTIONS=--max-old-space-size=1536 && cd /srv/crm-staging && exec sudo -u benja --preserve-env=NODE_ENV,PORT,HOSTNAME,DATABASE_URL,TRUSTED_PROXY,INGESTION_ENABLED,INGESTION_ALLOWED_CREDENTIALS,NODE_OPTIONS npm run build" && sudo systemctl restart crm-staging
+sudo bash -c ". /etc/crm-staging/app.env && export NODE_ENV PORT HOSTNAME DATABASE_URL TRUSTED_PROXY INGESTION_ENABLED INGESTION_ALLOWED_CREDENTIALS && export NODE_OPTIONS=--max-old-space-size=1536 && cd /srv/crm-staging && exec runuser -u benja -- npm run build" && sudo systemctl restart crm-staging
 ```
 
 *Corregido el 2026-09-25 en la primera corrida real de esta sección ([brief-12.3](../../docs/decisions/brief-12.3-contrato-de-ingestion-v2.md), 12.3.2, E-1). Dos cambios:*
@@ -105,7 +107,7 @@ La [API de lectura](../../docs/contracts/read-v1.md) está **apagada** en stagin
 1. **Crear una credencial sintética** con el rol de la aplicación, que tiene `INSERT` sobre `ingestion_credentials` (migración `0014`). El token se muestra **una sola vez**: se copia a un gestor local y nunca a un archivo del repositorio, a la evidencia ni a un mensaje.
 
    ```
-   sudo bash -c "set -a && . /etc/crm-staging/app.env && set +a && cd /srv/crm-staging && exec sudo -u benja --preserve-env=DATABASE_URL npm run --silent ingestion:credential -- create --org <organization_id> --source <source> --scope read"
+   sudo bash -c ". /etc/crm-staging/app.env && export DATABASE_URL && cd /srv/crm-staging && exec runuser -u benja -- npm run --silent ingestion:credential -- create --org <organization_id> --source <source> --scope read"
    ```
 
    Es la forma de [Desplegar un cambio](#desplegar-un-cambio). Solo hace falta la conexión de `app.env`.
@@ -122,7 +124,7 @@ La [API de lectura](../../docs/contracts/read-v1.md) está **apagada** en stagin
 3. **Apagarla**: borrar esas dos líneas de `app.env`, reiniciar y revocar la credencial.
 
    ```
-   sudo bash -c "set -a && . /etc/crm-staging/app.env && set +a && cd /srv/crm-staging && exec sudo -u benja --preserve-env=DATABASE_URL npm run --silent ingestion:credential -- revoke --id <credential_id>"
+   sudo bash -c ". /etc/crm-staging/app.env && export DATABASE_URL && cd /srv/crm-staging && exec runuser -u benja -- npm run --silent ingestion:credential -- revoke --id <credential_id>"
    ```
 
    La evidencia de la 11.4 registra la salida de la revocación, no su comando literal. Esta línea aplica la forma probada con `create`.

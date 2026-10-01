@@ -36,6 +36,11 @@ const WAMID_URLSAFE = `wamid.${wamidPayload(DIGITS).toString("base64url")}`;
 const WAMID_MISALIGNED = `wa-${wamidPayload(DIGITS).toString("base64")}`;
 const REMOTE_JID = `${DIGITS}@s.whatsapp.net`;
 const HEX_REF = `evt-${Buffer.from(DIGITS, "latin1").toString("hex")}`;
+// La «d» de «id» es hexadecimal: corre medio byte el tramo que lleva el teléfono.
+const HEX_MISALIGNED = `id${Buffer.from(DIGITS, "latin1").toString("hex")}`;
+// Un wamid entero codificado otra vez, en lugar de pasado por un hash con clave.
+const NESTED_BASE64 = `evt-${Buffer.from(WAMID, "latin1").toString("base64url")}`;
+const NESTED_HEX = `evt-${Buffer.from(WAMID, "latin1").toString("hex")}`;
 // El mismo número sin el 9 de los móviles: los últimos 8 dígitos lo alcanzan igual.
 const WITHOUT_NINE = "541155550191@s.whatsapp.net";
 
@@ -134,6 +139,20 @@ describe("en qué forma aparece un teléfono en un identificador", () => {
     for (const ref of CLEAN) {
       expect([...phoneEncodings(ref, NEEDLES)], ref).toEqual([]);
     }
+  });
+
+  // Revisión independiente de la 13.5.1, H-3 y H-4.
+  it("17. en hexadecimal corrido medio byte", () => {
+    expect([...phoneEncodings(HEX_MISALIGNED, NEEDLES)]).toEqual(["hex"]);
+  });
+
+  it("18. un wamid entero en base64, otra vez", () => {
+    expect(NESTED_BASE64).not.toContain("wamid");
+    expect([...phoneEncodings(NESTED_BASE64, NEEDLES)]).toEqual(["base64"]);
+  });
+
+  it("19. un wamid entero en hexadecimal", () => {
+    expect([...phoneEncodings(NESTED_HEX, NEEDLES)]).toEqual(["hex"]);
   });
 });
 
@@ -250,13 +269,29 @@ describe("el script, como lo corre el operador", () => {
   );
 
   it(
-    "16. VERIFICAR_TELEFONO inválido se rechaza sin repetir el valor",
+    "16. VERIFICAR_TELEFONO inválido se rechaza con 3, sin repetir el valor",
     { timeout: 60000 },
     async () => {
       const { status, output } = run({ VERIFICAR_TELEFONO: "11-5555-0191" });
-      expect(status).toBe(1);
+      // 3 y no 1: un error no es un teléfono encontrado (revisión de la 13.5.1, H-7).
+      expect(status).toBe(3);
       expect(output).toContain("no está en formato E.164");
       expect(output).not.toContain("5555-0191");
+    },
+  );
+
+  it(
+    "20. sale con 2 si la organización no tiene eventos de ingestión",
+    { timeout: 60000 },
+    async () => {
+      // Un teléfono para buscar y nada donde buscarlo: el id equivocado, o el mensaje que no
+      // llegó (revisión de la 13.5.1, H-1).
+      await insertClient(organizationId, PHONE);
+
+      const { status, output } = run({ VERIFICAR_TELEFONO: PHONE });
+      expect(status).toBe(2);
+      expect(output).toContain("no tiene eventos de ingestión");
+      expect(output).not.toContain("Ningún identificador lleva");
     },
   );
 });

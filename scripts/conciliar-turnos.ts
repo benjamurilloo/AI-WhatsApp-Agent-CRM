@@ -10,8 +10,11 @@ import { getDb, type Db } from "@/shared/db";
  *
  * En staging se corre con la conexión de `app.env`, que solo lee lo que la aplicación lee:
  *
- *   sudo bash -c "set -a && . /etc/crm-staging/app.env && set +a && cd /srv/crm-staging && \
- *     exec sudo -u benja --preserve-env=DATABASE_URL npx tsx scripts/conciliar-turnos.ts …"
+ *   sudo bash -c ". /etc/crm-staging/app.env && export DATABASE_URL && cd /srv/crm-staging && \
+ *     exec runuser -u benja -- npx tsx scripts/conciliar-turnos.ts …"
+ *
+ * Con runuser y no con `sudo -u … --preserve-env`: sudo escribe en su log el valor de las
+ * variables que se le pasan, y DATABASE_URL lleva la contraseña (revisión de la 13.5.1).
  *
  * `--esperados` es la lista de los mensajes que el emisor dice haber procesado, sin textos:
  *

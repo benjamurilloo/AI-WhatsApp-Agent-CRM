@@ -58,7 +58,7 @@ versionado, y se entrega por un canal acordado con quien lo pidió. Borralo cuan
 **Con el rol dueño**, el de `migrate.env` en producción. `messages` y `audit_logs` son de solo inserción: su trigger deja pasar un único `UPDATE`, que es este vaciado, y el rol de la aplicación no tiene `UPDATE` sobre ellas ([ADR 0015](../decisions/0015-vaciado-de-una-sola-direccion-en-tablas-de-solo-insercion.md)). Con el rol de la aplicación, la base lo rechaza por permisos y no se escribe nada. En el droplet de producción:
 
 ```
-sudo bash -c 'set -a && . /etc/crm-production/migrate.env && set +a && cd /srv/crm-production && exec sudo -u crm --preserve-env=DATABASE_URL npx tsx scripts/client-data-delete.ts --org <organization_id> --client <client_id>'
+sudo bash -c '. /etc/crm-production/migrate.env && export DATABASE_URL && cd /srv/crm-production && exec runuser -u crm -- npx tsx scripts/client-data-delete.ts --org <organization_id> --client <client_id>'
 ```
 
 Esa línea corre el informe. Para vaciar o borrar se le agrega `--vaciar` o `--borrar`.

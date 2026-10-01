@@ -17,7 +17,12 @@ import { getDb, type Db } from "@/shared/db";
  *   - en claro, como en un remoteJid;
  *   - decodificado de base64, estándar o url-safe, como lo lleva un wamid de la API oficial
  *     según su formato público (no verificado en este proyecto);
- *   - decodificado de hexadecimal.
+ *   - decodificado de hexadecimal;
+ *   - con dos codificaciones, una dentro de otra: un wamid entero pasado por base64 o por
+ *     hexadecimal, en lugar de por un hash con clave, lleva los dígitos en base64 dentro de otra
+ *     codificación (revisión independiente de la 13.5.1, H-4).
+ * No detecta un hash sin clave del teléfono (sha256 del número): no es una codificación, y se
+ * revierte probando los ~10^8 números posibles. La guía de ingestion-v2 pide un hash con clave.
  * Los últimos 8 dígitos alcanzan el número con y sin el 9 de los móviles argentinos, y con y sin
  * código de país.
  *
@@ -25,9 +30,13 @@ import { getDb, type Db } from "@/shared/db";
  * buscarlo igual, se pasa en la variable de entorno VERIFICAR_TELEFONO, en formato E.164, desde
  * la terminal del operador: nunca por argumento, que queda en el historial y en `ps`.
  *
- * Sale con 1 si algún identificador lleva un teléfono, y con 2 si no hay ningún teléfono para
- * buscar, porque entonces no prueba nada. En el primer mensaje controlado, la salida 1 es la
- * condición de detención 2 del brief-13.5.
+ * Sale con:
+ *   - 0 si revisó y ningún identificador lleva un teléfono;
+ *   - 1 si algún identificador lleva un teléfono. En el primer mensaje controlado es la condición
+ *     de detención 2 del brief-13.5;
+ *   - 2 si el resultado no prueba nada: no hay ningún teléfono para buscar, o la organización no
+ *     tiene ningún evento de ingestión (un id equivocado, o un mensaje que no llegó);
+ *   - 3 ante un error: un argumento inválido, la base caída. Un error no es un hallazgo.
  */
 
 export type IdentifierTable = "ingestion_events" | "conversations" | "messages";
@@ -92,7 +101,26 @@ function hexDecodings(segment: string): string[] {
   return decodings;
 }
 
-/** En qué formas aparece alguno de los teléfonos en un identificador. */
+// Dos niveles alcanzan para un wamid entero codificado otra vez. Cada nivel más multiplica las
+// decodificaciones y los falsos positivos posibles, sin un caso conocido que lo pida.
+const MAX_DEPTH = 2;
+
+// Si un texto ya decodificado lleva el teléfono, en claro o con una codificación más.
+function hides(
+  decoded: string,
+  contains: (text: string) => boolean,
+  depth: number,
+): boolean {
+  if (contains(decoded)) return true;
+  if (depth >= MAX_DEPTH) return false;
+  return segments(decoded).some((segment) =>
+    [...base64Decodings(segment), ...hexDecodings(segment)].some((inner) =>
+      hides(inner, contains, depth + 1),
+    ),
+  );
+}
+
+/** En qué formas aparece alguno de los teléfonos en un identificador: la de afuera. */
 export function phoneEncodings(
   identifier: string,
   needles: string[],
@@ -101,8 +129,10 @@ export function phoneEncodings(
   const contains = (text: string) => needles.some((n) => text.includes(n));
   if (contains(identifier)) found.add("plain");
   for (const segment of segments(identifier)) {
-    if (base64Decodings(segment).some(contains)) found.add("base64");
-    if (hexDecodings(segment).some(contains)) found.add("hex");
+    if (base64Decodings(segment).some((d) => hides(d, contains, 1)))
+      found.add("base64");
+    if (hexDecodings(segment).some((d) => hides(d, contains, 1)))
+      found.add("hex");
   }
   return found;
 }
@@ -195,20 +225,28 @@ async function main() {
       `${t.table}: ${t.checked} identificadores; con un teléfono en claro ${t.plain}, en base64 ${t.base64}, en hexadecimal ${t.hex}.`,
     );
   }
-  if (report.phones === 0) {
-    // Sale distinto de 0: un «ningún identificador lleva un teléfono» sin teléfonos no es un pase.
-    console.log("Sin teléfonos para buscar: el resultado no prueba nada.");
-    process.exitCode = 2;
-    return;
-  }
-  if (report.clean) {
-    console.log("Ningún identificador lleva un teléfono buscado.");
-  } else {
+  if (!report.clean) {
     console.log(
       "HAY identificadores con un teléfono. No se imprimen. Condición de detención 2 del brief-13.5.",
     );
     process.exitCode = 1;
+    return;
   }
+  // Sale distinto de 0: un «ningún identificador lleva un teléfono» sin nada que buscar, o sin
+  // nada donde buscar, no es un pase.
+  if (report.phones === 0) {
+    console.log("Sin teléfonos para buscar: el resultado no prueba nada.");
+    process.exitCode = 2;
+    return;
+  }
+  if (report.tables[0]!.checked === 0) {
+    console.log(
+      "La organización no tiene eventos de ingestión: el resultado no prueba nada. ¿Es el id correcto? ¿Llegó el mensaje?",
+    );
+    process.exitCode = 2;
+    return;
+  }
+  console.log("Ningún identificador lleva un teléfono buscado.");
 }
 
 if (
@@ -219,7 +257,7 @@ if (
   main()
     .catch((error: unknown) => {
       console.error(error instanceof Error ? error.message : error);
-      process.exitCode = 1;
+      process.exitCode = 3;
     })
     .finally(async () => {
       if (process.env.DATABASE_URL) await getDb().$client.end();

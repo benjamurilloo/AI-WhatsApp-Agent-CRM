@@ -227,3 +227,146 @@ El `VERIFICAR_TELEFONO` viajó exportado y con `--preserve-env`, como en el runb
 **Límite, sin corregir**: el programa de capacidad agrupa por alcance y no por organización, así que suma los pedidos de las credenciales de control del paso 7. Son uno o dos pedidos, y no mueven ninguna regla de decisión.
 
 **Sin medir**: los puntos 4 (APM) y 5 (detección de caídas) dependen de turnos del agente y de una caída real; en un ensayo no hay ninguno de los dos.
+
+### AC-7: la revisión independiente de la 13.5.1
+
+El 2026-10-01, a cargo de un agente que no participó del trabajo, con acceso de solo lectura, contra el brief y las reglas. Encontró **11 hallazgos: ninguno crítico, 5 mayores y 6 menores**. Cada uno se verificó contra el código antes de aceptarlo, y todos se sostuvieron. El usuario autorizó corregirlos, incluido `scripts/crear-organizacion.ts`, que estaba fuera de la lista del brief (ampliación registrada en el brief), y **aceptó los desvíos de AC-3 y AC-4** declarados arriba.
+
+| Hallazgo | Severidad | Qué era | Cómo quedó |
+|---|---|---|---|
+| H-1 | mayor | el script daba pase con 0 identificadores revisados: un id equivocado o un mensaje que no llegó pasaban como «limpio» | sale con `2` si la organización no tiene eventos de ingestión; el runbook exige 1 o más (test 20, M13) |
+| H-2 | mayor | un teléfono mal tecleado daba limpio | se pide dos veces y se compara; el runbook dice qué «Teléfonos buscados» se espera y qué significa uno de más |
+| H-3 | mayor | el desplazamiento de medio byte en hexadecimal no tenía test ni mutación | test 17, con el prefijo `id`; M11 |
+| H-4 | mayor | un `wamid` entero codificado otra vez (base64 o hex) no se veía | dos niveles de decodificación (tests 18 y 19, M12); el hash sin clave, declarado como límite en el script |
+| H-5 | mayor | el nombre y el correo del `admin` iban como variables de `sudo` y quedaban en su log | `org:create` los lee del entorno, y el runbook los pide dentro del shell de `root`. **Su verificación encontró algo más grave**: abajo |
+| H-6 | menor | producción corre un SHA sin el script | el paso 0 exige que la verificación salga con `3` ante un id inválido, lo que solo hace la versión corregida |
+| H-7 | menor | el código 1 mezclaba «encontró un teléfono» con cualquier error | los errores salen con `3` (test 16, M14) |
+| H-8 | menor | «el `403` trae la organización» vale solo para el de la allowlist | el runbook lo dice, y qué significa `organization_id` nulo |
+| H-9 | menor | el control de la ingestión iba después de abrir al negocio, y `tail -n 3` se perdía con tráfico | el control va en el paso 5, antes del mensaje controlado; el comando filtra por `FORBIDDEN`. Los pasos 5 a 7 se renumeraron: H-4 es ahora el paso 6 y la apertura, el 7 |
+| H-10 | menor | el chequeo del journal no ve un teléfono en base64 en el `correlation_id` | declarado como límite en la §6 de observación |
+| H-11 | menor | cuatro imprecisiones | (a) abajo; (b) «uno de cada cuarenta» era falso: es (10/16)^10 × 1,75, cerca de 1 en 63; (c) la consulta de `revoked_at` es un comando completo; (d) los códigos `2` y `3` no son la condición de detención 5 |
+
+**H-11 (a)**: la traza `SyntaxError` dentro del bloque de mutaciones es del primer intento del runner de M9 y M10, que tenía un salto de línea literal dentro de un texto de JavaScript. Node no lo compiló, así que **no aplicó ninguna mutación** ni tocó el archivo. La corrida siguiente, con el salto escrito como `\n`, es la que da M9 y M10 en rojo.
+
+**Los dos archivos fuera de la lista** que la revisión vio en `git status`, `scripts/migrar.ts` y `src/modules/crm/repository.ts`, solo difieren en los finales de línea, no son de esta etapa y no están en ningún commit.
+
+**Las mutaciones de las reglas nuevas**, con el mismo método de bytes guardados:
+
+```
+== M11 (hexadecimal corrido medio byte (H-3)) — scripts/verificar-identificadores.ts
+     × 17. en hexadecimal corrido medio byte
+      Tests  1 failed | 19 passed (20)
+código de salida: 1
+restaurado: bytes idénticos
+== M12 (dos niveles de codificación (H-4)) — scripts/verificar-identificadores.ts
+     × 18. un wamid entero en base64, otra vez
+     × 19. un wamid entero en hexadecimal
+      Tests  2 failed | 18 passed (20)
+código de salida: 1
+restaurado: bytes idénticos
+== M13 (sin eventos no es un pase (H-1)) — scripts/verificar-identificadores.ts
+     × 20. sale con 2 si la organización no tiene eventos de ingestión
+      Tests  1 failed | 19 passed (20)
+código de salida: 1
+restaurado: bytes idénticos
+== M14 (un error sale con 3 (H-7)) — scripts/verificar-identificadores.ts
+     × 16. VERIFICAR_TELEFONO inválido se rechaza con 3, sin repetir el valor
+      Tests  1 failed | 19 passed (20)
+código de salida: 1
+restaurado: bytes idénticos
+```
+
+### Lo que encontró la verificación de H-5: contraseñas de la base en el log de `sudo`
+
+Al comprobar H-5 en staging apareció que **`sudo` escribe en su log el valor de toda variable que se le pasa**, también con `--preserve-env`, que era la forma que los READMEs y runbooks usaban para `DATABASE_URL` desde la 11.4. Prueba con una marca inofensiva, en staging, con la marca enmascarada:
+
+```
+   benja : PWD=/home/benja ; USER=root ; ENV=CREAR_ORG_ADMIN_CORREO=<MARCA> ; COMMAND=/usr/bin/bash -c 'exec sudo -u benja --preserve-env=CREAR_ORG_ADMIN_CORREO printenv CREAR_ORG_ADMIN_CORREO'
+    root : PWD=/home/benja ; USER=benja ; ENV=CREAR_ORG_ADMIN_CORREO=<MARCA> ; COMMAND=/usr/bin/printenv CREAR_ORG_ADMIN_CORREO
+```
+
+**Los recuentos**, sin imprimir ningún valor. Staging, desde el 2026-09-22:
+
+```
+lineas_sudo: 2172
+con_contrasena_en_url: 52
+      4 crm_owner
+     48 crm_staging_app
+auth_log: /var/log/auth.log:40 /var/log/auth.log.1:12
+```
+
+Producción, desde el 2026-09-29, con autorización del usuario:
+
+```
+lineas_sudo: 1563
+con_contrasena_en_url: 31
+      8 crm_app_login
+     12 crm_medicion
+      6 crm_owner
+      5 crm_vaciado
+con_ORG_NOMBRE_CORREO: 0
+con_admin_email_en_comando: 2
+auth_log: 31
+```
+
+`crm_medicion` (13.2) y `crm_vaciado` (13.4) ya no existen; los roles vivos son `crm_app_login` y `crm_owner` en producción, y `crm_staging_app` y `crm_owner` en staging. Las dos líneas con `admin-email` son del alta de la organización del operador (13.1, paso 10): su propio correo. **El alcance**: `/var/log/auth.log` es `syslog:adm 640`, el grupo `adm` solo tiene a `syslog`, el journal lo lee `root`, y PostgreSQL escucha solo en `localhost` en los dos servidores. No abre un acceso que `root` no tenga ya; es un secreto guardado en un segundo lugar, no declarado, durante la retención de los logs.
+
+**La forma nueva**: el shell de `root` carga el archivo sin `set -a`, exporta solo las variables que nombra, pide con `read` lo que tipea el operador, y cambia de usuario con `runuser`, que no pasa por `sudo`. Probada en staging tres veces. La primera, con una marca por la entrada estándar:
+
+```
+usuario: benja; HOME: /home/benja; dir: /srv/crm-staging
+DATABASE_URL presente
+VALOR presente
+código: 0
+marca en el journal: 0
+URL con contraseña: 0
+líneas ENV=: 0
+```
+
+La segunda, con el paso 6 del alta y un teléfono sintético por la entrada estándar:
+
+```
+Teléfonos buscados: 2 (uno de VERIFICAR_TELEFONO).
+ingestion_events: 7 identificadores; con un teléfono en claro 0, en base64 0, en hexadecimal 0.
+conversations: 1 identificadores; con un teléfono en claro 0, en base64 0, en hexadecimal 0.
+messages: 4 identificadores; con un teléfono en claro 0, en base64 0, en hexadecimal 0.
+Ningún identificador lleva un teléfono buscado.
+código: 0
+número en el journal: 0
+URL con contraseña: 0
+líneas ENV=: 0
+```
+
+La tercera, con la carga sin `set -a` y el `export` explícito:
+
+```
+DATABASE_URL: presente; NODE_ENV: presente; TRUSTED_PROXY: no llega
+TRUSTED_PROXY está en app.env: 1
+Ningún identificador lleva un teléfono buscado.
+URL con contraseña: 0; líneas ENV=: 0
+```
+
+La tercera muestra que se conserva lo que el README de staging buscaba con `--preserve-env`: al proceso le llega solo lo exportado. `runuser` deja en el journal la apertura y el cierre de su sesión, sin valores.
+
+**Lo que se cambió**: los comandos de `deploy/staging/README.md`, `deploy/production/README.md`, los runbooks del alta y de la observación, `datos-de-un-cliente.md` y el comentario de uso de `conciliar-turnos.ts`. **No** se reescribieron los briefs, las evidencias ni los guiones de fases cerradas: son registro. `org:create` lee los datos del `admin` de `CREAR_ORG_NOMBRE`, `CREAR_ORG_ADMIN_NOMBRE` y `CREAR_ORG_ADMIN_CORREO`. Probado en la base local de desarrollo, con la contraseña inicial filtrada de la salida:
+
+```
+Organización creada: 5a1dc916-e489-470d-9bb8-2e5c389f994c
+Admin creado: 2ec91901-3793-4bfa-9cbd-aa02b89348c5
+código: 0
+Uso: npm run org:create -- --name "<organización>" --admin-name "<nombre>" --admin-email <correo> [--timezone <IANA>]
+sin valores, código: 1
+```
+
+(El texto de uso se amplió después de esta corrida para nombrar las tres variables.)
+
+**Sin hacer, y pendiente de autorización**: rotar las contraseñas de los cuatro roles vivos y purgar las líneas de los logs. Mientras no se haga, las contraseñas siguen en el log durante su retención. Registrado en [Risks](../planning/Risks.md).
+
+**Sin probar en un servidor**: `org:create` por el entorno, la verificación corregida y los comandos de despliegue con `runuser` necesitan un despliegue; staging corre f7c728d.
+
+**La suite, en local, con las correcciones de la revisión** `[transcrito]`, el 2026-10-01:
+
+- integración: 674 de 674, en 43 archivos: los 670 anteriores y los tests 17 a 20;
+- unitarios: 492 de 492;
+- guardas: 485 de 485;
+- typecheck, lint y formato: sin errores.
