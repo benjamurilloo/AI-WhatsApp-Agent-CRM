@@ -52,7 +52,7 @@ done
 
 Cada una imprime su id y su token. Se registran los tres ids, nunca los tokens.
 
-**Una credencial de control**, para comprobar que la allowlist rechaza lo ajeno: en la organización del operador, con `--source control-allowlist`, una de `read` y otra de `ingest`. Se revocan en el paso 7.
+**Una credencial de control**, para comprobar que la allowlist rechaza lo ajeno: en la organización del operador, con `--source control-allowlist`, una de `read` y otra de `ingest`. Se revocan en el paso 7. Sus tokens se guardan **rotulados como de control**, aparte de los tres del negocio: en el ensayo de staging del 2026-10-01 se probó la allowlist con un token del negocio por error, y el código HTTP solo no lo delató ([evidencia-13.5](../decisions/evidencia-13.5-primer-cliente.md)).
 
 ## 4. Encender la lectura
 
@@ -74,6 +74,14 @@ curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $T" https://c
 ```
 
 La primera tiene que dar `401`, que es la API encendida; con `404` sigue apagada. La segunda tiene que dar **`403`**: una credencial válida que no está en la allowlist. Si da `200`, se apaga en el acto (paso 8) y se detiene.
+
+**El código no alcanza: se confirma de quién era el token.** Un token del negocio pegado por error da `200` y se lee como un agujero; uno de otra organización que también esté en la allowlist daría el mismo `403` sin probar nada. El log de cada pedido lleva la organización y el `source` de la credencial, también en el `403`:
+
+```
+ssh crm-production "sudo journalctl -u crm-production -o cat --since '-10 min' | jq -Rc 'fromjson? | select(type == \"object\" and (.route // \"\" | startswith(\"/api/\"))) | {time, route, code, organization_id, source}' | tail -n 3"
+```
+
+La línea del pedido de control tiene que decir `code` `FORBIDDEN`, la organización del operador y `source` `control-allowlist`. Si dice la organización del negocio, el token era del negocio: se repite con el de control antes de decidir nada.
 
 El agente prueba su lectura con sus credenciales, y confirma `200`.
 
@@ -117,7 +125,7 @@ read -r -s -p "Token de control (ingest): " T; echo
 curl -s -o /dev/null -w '%{http_code}\n' -X POST -H "Authorization: Bearer $T" -H 'Content-Type: application/json' -d '{}' https://crm.vixoraai.app/api/ingestion/v2/events; unset T
 ```
 
-Tiene que dar **`403`**. Después se revocan las dos credenciales de control:
+Tiene que dar **`403`**, y se confirma en el log que el pedido salió de la credencial de control, con el mismo comando del paso 4. La allowlist se mira antes que el cuerpo, así que el `{}` no cambia el resultado: un `400` quiere decir que el token estaba en la allowlist. Después se revocan las dos credenciales de control:
 
 ```
 for i in 1 2; do read -r -p "Id de una credencial de control: " ID

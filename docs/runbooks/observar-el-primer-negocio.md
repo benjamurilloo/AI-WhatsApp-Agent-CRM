@@ -87,12 +87,20 @@ Un turno se revisa cuando el agente o el negocio lo reportan como lento o fallid
 **Que el journal no tenga números largos**:
 
 ```
-ssh crm-production "sudo journalctl -u crm-production -o cat --since '-1 day' | grep -cE '[0-9]{10,}'"
+ssh crm-production "sudo journalctl -u crm-production -o cat --since '-1 day' | sed -E 's/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}//g' | grep -cE '[0-9]{10,}'"
 ```
 
-Cuenta las líneas con diez o más dígitos seguidos, que es la forma de un teléfono. No imprime ninguna.
+Cuenta las líneas con diez o más dígitos seguidos, que es la forma de un teléfono. No imprime ninguna. **Los uuid se quitan antes de contar**: el último bloque de un uuid tiene 12 caracteres hexadecimales y en uno de cada cuarenta, más o menos, diez de ellos son dígitos seguidos. Toda línea lleva al menos el `request_id`, así que sin quitarlos el recuento casi nunca da 0. En el ensayo de staging del 2026-10-01, la primera versión de este comando contó 120 líneas en 30 días de journal, y ninguna llevaba un teléfono; sin los uuid quedaron 7 ([evidencia-13.5](../decisions/evidencia-13.5-primer-cliente.md)).
 
-**Regla de decisión**: cualquiera de los dos distinto de 0 es la **condición de detención 5**. El operador mira las líneas en su terminal, sin copiarlas, y decide; si un teléfono entró por un identificador, se apaga la ingestión ([alta de un negocio](alta-de-un-negocio.md), paso 8).
+Si da más de 0, este dice **en qué campo** está el número, con los dígitos cambiados por `9`:
+
+```
+ssh crm-production "sudo journalctl -u crm-production -o cat --since '-1 day' | grep '^{' | sed -E 's/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}//g' | grep -E '[0-9]{10,}' | jq -c '[to_entries[] | select((.value|tostring) | test(\"[0-9]{10,}\")) | {k: .key, forma: (.value|tostring|gsub(\"[0-9]\"; \"9\"))}]' | sort | uniq -c"
+```
+
+Un `correlation_id` con una marca de tiempo tiene forma de número largo y no es un teléfono. El agente arma esos identificadores, así que el `correlation_id` y cualquier `error` se miran igual.
+
+**Regla de decisión**: el script de H-4 distinto de 0, o una línea del journal cuyo número sea un teléfono, es la **condición de detención 5**. El operador mira las líneas en su terminal, sin copiarlas, y decide; si un teléfono entró por un identificador, se apaga la ingestión ([alta de un negocio](alta-de-un-negocio.md), paso 8).
 
 ## 7. Qué se registra al cerrar la ventana
 

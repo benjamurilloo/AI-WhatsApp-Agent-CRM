@@ -128,7 +128,7 @@ restaurado: bytes idénticos
 
 **Una corrección del autor al escribirlo**: el primer borrador del paso 5 pasaba el teléfono como `sudo VERIFICAR_TELEFONO="$TEL" …`, que lo deja en los argumentos de `sudo`, legibles con `ps` por cualquier usuario del servidor. Es el defecto del hallazgo 6 de la revisión de la 13.3. Ahora va exportado y con `--preserve-env`.
 
-**Sin probar todavía**: ningún comando de los dos runbooks corrió. El ensayo en staging (AC-3) es el que los prueba, y el programa de `jq` de capacidad corre sobre los logs del ensayo (AC-4). Esta máquina no tiene `jq`.
+**Sin probar al escribirlos**: ningún comando de los dos runbooks había corrido. Los probó el ensayo en staging del 2026-10-01, más abajo, y dos se corrigieron por lo que encontró.
 
 ### AC-5: el pedido al agente
 
@@ -142,3 +142,88 @@ Escrito el 2026-10-01 en el Escritorio del usuario, fuera del repositorio: `Pedi
 - unitarios: 492 de 492;
 - guardas: 485 de 485;
 - typecheck, lint y formato: sin errores.
+
+CI del commit f7c728d: run 36915787928, `success`.
+
+### AC-3: el ensayo del alta en staging
+
+El 2026-10-01, con autorización del usuario. Staging no recibe datos reales: la organización, el producto, la entrada de información y los clientes son inventados, y los teléfonos son del rango ficticio.
+
+**El despliegue**, con los pasos de `deploy/staging/README.md` y un backup antes de migrar:
+
+```
+[19:52:49] desplegado antes: c530558…; backup: success
+[19:53:18] código y dependencias: f7c728d…
+Migraciones aplicadas. migraciones: 26
+[19:55:58] /login -> 200; servicio: active
+ingestión sin credencial: 404; lectura: 404
+```
+
+**Los pasos, en orden** (horas UTC). `[transcrito]` donde el comando corrió en la terminal del usuario, porque imprime una contraseña o usa un token:
+
+| Paso | Quién | Resultado |
+|---|---|---|
+| 1. Organización «Ensayo 13.5» y su `admin` | usuario | creada; la contraseña quedó solo en su terminal `[transcrito]` |
+| 2. Carga por la UI | usuario | 1 producto y 1 entrada de información, comprobados con un recuento en la base |
+| 3. Tres credenciales (`source` `ensayo-13-5`) y dos de control en la «Organización de ejemplo» | usuario | cinco ids, comprobados en la base; los tokens no pasaron por la conversación |
+| 4 y 5.1. Encender la lectura y la ingestión con sus allowlists | agente | 20:08:50 y 20:08:53; `401` y `401` |
+| Allowlist, primer intento | usuario | `200` en lectura y `400` en ingestión: **ver el hallazgo 1**. Se apagó todo a las 20:15:05 (`404` y `404`), como manda el paso 4 |
+| Reencendido | agente | 20:18:25, con autorización; `401` y `401` |
+| Allowlist (pasos 4 y 7) | usuario | `403` y `403` `[transcrito]`; el journal confirma `FORBIDDEN` con la organización `5eed0000-0000-4000-8000-000000000001` y `source` `control-allowlist` en los dos |
+| `probar-ingestion` | usuario | 18 pedidos, **0 fallas** `[transcrito]` |
+| `probar-api-lectura`, con `read`, `context` y la conversación de la sonda | usuario | conocimiento, historial, alcances cruzados (`403`), referencia inexistente (`404`) y `401` bien; **1 falla**, ver abajo `[transcrito]` |
+| Búsqueda y detalle del producto del ensayo | usuario | `200` y `200`, con el producto y `price` `null`, `stock_status` `sin_stock`, que es lo que corresponde a un producto sin precio ni inventario `[transcrito]` |
+| 5.3. H-4 | agente | ver AC-4 |
+| 7. Revocar las de control | agente | 20:28:38 |
+| 8. Apagar, y revocar las tres del ensayo | agente | 20:28:41; `404` y `404`; las cinco con `revoked_at` no nulo; 0 líneas `INGESTION_` o `READ_API_` en `app.env`; servicio `active` |
+
+**La falla de `probar-api-lectura`** es de la sonda, no del CRM: busca términos del seed del piloto («Aria», «Novatek»…), así que contra otra organización no encuentra productos y no llega a pedir un detalle. El propio script lo avisa. La búsqueda y el detalle se cubrieron con dos pedidos a mano sobre el producto del ensayo. **Desvío de AC-3**, que pedía la sonda sin fallas: queda declarado, no se cambió la sonda.
+
+**Hallazgo 1. La allowlist se probó con el token equivocado, y el código no lo delataba.** En el primer intento se usaron los tokens `read` e `ingest` del ensayo en lugar de los de control. El `200` parecía un agujero en la allowlist. El journal lo resolvió: cada pedido registra la organización y el `source` de su credencial, y los dos decían `ensayo-13-5`. El error inverso es peor: un token de otra organización que esté en la allowlist daría el `403` esperado sin probar nada. **Corregido** en el [alta](../runbooks/alta-de-un-negocio.md): en el paso 3, los tokens de control se guardan rotulados; en el paso 4, después del `curl` se confirma en el journal de quién era el token, con un comando de `jq` probado en staging contra los dos pedidos equivocados; en el paso 7, lo mismo, y se aclara que en la ingestión un `400` significa que el token estaba en la allowlist, porque la allowlist se mira antes que el cuerpo (`src/app/api/ingestion/v1/events/handler.ts`, `isCredentialAllowed` antes de leer el cuerpo).
+
+### AC-4: las mediciones, sobre los logs del ensayo
+
+Con los comandos de [observar el primer negocio](../runbooks/observar-el-primer-negocio.md), cambiando `crm-production` por `crm-staging`, sobre el journal desde las 20:08:00:
+
+```
+## H-4 (alta, paso 5.3), con un teléfono sintético del rango ficticio
+Teléfonos buscados: 2 (uno de VERIFICAR_TELEFONO).
+ingestion_events: 7 identificadores; con un teléfono en claro 0, en base64 0, en hexadecimal 0.
+conversations: 1 identificadores; con un teléfono en claro 0, en base64 0, en hexadecimal 0.
+messages: 4 identificadores; con un teléfono en claro 0, en base64 0, en hexadecimal 0.
+Ningún identificador lleva un teléfono buscado.
+código: 0
+
+## H-4 diario (observar, 6), sin VERIFICAR_TELEFONO
+Teléfonos buscados: 1.
+ingestion_events: 7 identificadores; con un teléfono en claro 0, en base64 0, en hexadecimal 0.
+conversations: 1 identificadores; con un teléfono en claro 0, en base64 0, en hexadecimal 0.
+messages: 4 identificadores; con un teléfono en claro 0, en base64 0, en hexadecimal 0.
+Ningún identificador lleva un teléfono buscado.
+código: 0
+
+## 1. Capacidad por credencial
+alcance	minutos_con_pedidos	max_por_minuto	p99_por_minuto	rechazados_por_tasa
+context	1	3	3	0
+ingest	3	17	17	0
+read	3	10	10	0
+
+## 2. R-6
+1 0 0
+
+## 3. Latencia por ruta
+ruta	n	p50_ms	p95_ms	max_ms	errores
+/api/ingestion/v2/events	22	10	43	96	15
+/api/read/v1/knowledge	9	16	72	72	4
+/api/read/v1/messages	5	7	15	15	3
+/api/read/v1/products	6	11	55	55	2
+/api/read/v1/products/{product_id}	2	9	15	15	2
+```
+
+El `VERIFICAR_TELEFONO` viajó exportado y con `--preserve-env`, como en el runbook. Los «errores» de la latencia son los `400`, `403`, `404` y `409` que las sondas provocan a propósito. Los números son de un ensayo de minutos: prueban que los programas corren contra el formato real del journal, **no** dicen nada de la capacidad ni de la latencia con tráfico real.
+
+**Hallazgo 2. El chequeo de privacidad del journal se disparaba con los uuid.** La primera versión (`grep -cE '[0-9]{10,}'`) dio 2 en la ventana del ensayo: las dos líneas `FORBIDDEN` de control, por el `organization_id` `5eed…-000000000001`. El defecto es general. El último bloque de un uuid tiene 12 caracteres hexadecimales, y en uno de cada cuarenta, más o menos, diez son dígitos seguidos. Toda línea lleva el `request_id`, así que en producción el recuento casi nunca daría 0, y cada vez sería una condición de detención falsa. Sobre 30 días del journal de staging (1624 líneas): 120 con la versión original, 7 quitando los uuid. Las 7 son `correlation_id` de una sonda de una fase anterior con una marca de tiempo de 14 dígitos (`probe-99-9-9-p99999999999999`, dígitos enmascarados). **Corregido** en la §6 del runbook: los uuid se quitan antes de contar, y si queda algo, un segundo comando dice en qué campo está, con los dígitos enmascarados. Corregido, la ventana del ensayo da 0.
+
+**Límite, sin corregir**: el programa de capacidad agrupa por alcance y no por organización, así que suma los pedidos de las credenciales de control del paso 7. Son uno o dos pedidos, y no mueven ninguna regla de decisión.
+
+**Sin medir**: los puntos 4 (APM) y 5 (detección de caídas) dependen de turnos del agente y de una caída real; en un ensayo no hay ninguno de los dos.
