@@ -14,7 +14,7 @@
 ## Reglas
 
 - Cada entorno tiene su propia base de datos y sus propios secretos; nada se comparte entre entornos.
-- Ningún entorno no productivo recibe datos reales del negocio en esta fase del proyecto — es una consecuencia directa de que el MVP no se conecta a tráfico productivo (ver [product/Scope.md](../product/Scope.md)).
+- Ningún entorno no productivo recibe datos reales del negocio en esta fase del proyecto — es una consecuencia directa de que el MVP no se conecta a tráfico productivo (ver [product/Scope.md](../product/Scope.md)). *Precisión del 2026-10-01* ([brief-13.5](../decisions/brief-13.5-primer-cliente.md), H-7): desde la 13.5 el CRM sí recibe tráfico real, **solo en producción** y de un negocio por vez, detrás del modo de prueba. La regla sigue igual; el motivo ya no es que no haya tráfico real, sino que los datos reales se quedan en el entorno que tiene su retención, su borrado y sus copias decididos (13.4). Staging sigue con datos sintéticos, también en el ensayo del alta.
 - Las migraciones se aplican de forma explícita y versionada en cada entorno; nunca de forma automática e implícita en staging o producción sin un paso de aprobación.
 - Variables de entorno documentadas en `.env.example`, con valores de ejemplo solo locales. El `.env` real nunca se versiona.
 

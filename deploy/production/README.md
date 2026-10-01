@@ -182,6 +182,10 @@ Es el orden de staging, con los cambios marcados. **Cada paso que crea algo afue
 
     Imprime la contraseña inicial **una sola vez**. La ejecuta el operador en su propia terminal, para que no pase por una conversación con un asistente, y la cambia en el primer ingreso.
 
+## Dar de alta un negocio
+
+Crear su organización, cargar sus datos y encender la ingestión y la lectura solo para él, con la vuelta atrás, está en el runbook [alta de un negocio](../../docs/runbooks/alta-de-un-negocio.md) (brief-13.5). Lo que se mide después, en [observar el primer negocio](../../docs/runbooks/observar-el-primer-negocio.md).
+
 ## Desplegar un cambio
 
 Como en staging, pero con `crm` en lugar de `benja` y con dos pasos nuevos al principio.
