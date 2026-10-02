@@ -48,7 +48,11 @@ El `admin` ingresa en `https://crm.vixoraai.app/login` y carga, desde las pantal
 - el stock inicial, si lo usa;
 - los usuarios `viewer`, si hacen falta.
 
-Los clientes **no** se cargan a mano: los crea la ingestión cuando escriben. Nada de lo cargado se copia al repositorio ni a la evidencia; se registra solo cuántos productos y cuántas entradas de información hay.
+Los clientes **no** se cargan a mano: los crea la ingestión cuando escriben.
+
+**Si después el negocio agrega un cliente desde la pantalla, un celular argentino va con el `9`: `+54 9 11 …`.** El CRM guarda el teléfono tal como llega y no agrega ni quita el `9` ([phone.ts](../../src/modules/crm/phone.ts)). El agente lo manda con el `9` (aviso del agente del 2026-10-02). Si el negocio lo carga como `+54 11 …`, cuando esa persona escriba, la ingestión no la encuentra y crea un segundo cliente para la misma persona. Se le dice al `admin` al entregarle el acceso.
+
+Nada de lo cargado se copia al repositorio ni a la evidencia; se registra solo cuántos productos y cuántas entradas de información hay.
 
 ## 3. Las credenciales
 

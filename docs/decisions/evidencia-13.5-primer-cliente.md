@@ -459,3 +459,24 @@ El 2026-10-01, a cargo de otro agente que no participó del trabajo, con acceso 
 | R-5 | el README de staging enseña a listar los nombres de variable con `sed -E "s/=.*//"`, el filtro del incidente | el comando extrae solo `^[A-Z_]+=`, de un archivo por vez; autorizado por el usuario |
 | R-6 | la rotación decía comparar con `backup.pgpass` también para el rol de la aplicación | dice que la comparación es solo para `crm_owner`, que es lo que hace el script |
 | R-7 | el README de staging se cambió a `runuser` por la revisión, no por el ensayo, y la ampliación no lo nombra | ratificado por el usuario y registrado en la ampliación del brief |
+
+## Entre la 13.5.1 y la 13.5.2
+
+### El aviso del agente del 2026-10-02
+
+El agente cerró las subfases A, B y C de su respuesta: los identificadores con HMAC (`wa-<tipo>-k1-<64 hex>`), la configuración por entorno y la API oficial de Meta. Contrastado con el código del CRM, **nada obliga a cambiar el CRM**:
+
+- las referencias aceptan de 1 a 200 caracteres (`externalRef`, `src/modules/ingestion/contract.ts`);
+- `text`, `audio` e `image` están en `MESSAGE_KINDS_V2`;
+- el CRM no recalcula el HMAC, así que el cambio del texto que entra a él no lo afecta.
+
+El nivel que declara el agente es determinístico y en aislamiento, sin emisión al CRM.
+
+Decisiones del usuario, el 2026-10-02:
+
+1. Para las conversaciones de staging con la forma vieja, el agente usa **números sintéticos nuevos**.
+2. **El primer cliente se atiende solo con teléfono.** El remitente sin teléfono queda registrado en [Risks](../planning/Risks.md) para una subfase propia, y se le pidió al agente que no descarte esos mensajes en silencio.
+3. **La advertencia del `9`** va en el paso 2 del [runbook del alta](../runbooks/alta-de-un-negocio.md). El CRM guarda el teléfono tal como llega, y un celular cargado a mano sin el `9` sería un segundo cliente.
+4. **Una ventana de staging antes del mensaje controlado**, con números sintéticos, para ver que el CRM acepta la forma nueva. Un turno de Meta no puede pasar por staging.
+
+La respuesta al agente está en el Escritorio del usuario (`Respuesta-3.31-3.32-CRM-al-Agente.md`), fuera del repositorio, como las anteriores. Se le recordó que los tokens reales de producción no se cargan en n8n hasta que cierre la separación entre piloto y producción.
