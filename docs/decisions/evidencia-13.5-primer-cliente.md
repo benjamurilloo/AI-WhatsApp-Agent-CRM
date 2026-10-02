@@ -480,3 +480,55 @@ Decisiones del usuario, el 2026-10-02:
 4. **Una ventana de staging antes del mensaje controlado**, con números sintéticos, para ver que el CRM acepta la forma nueva. Un turno de Meta no puede pasar por staging.
 
 La respuesta al agente está en el Escritorio del usuario (`Respuesta-3.31-3.32-CRM-al-Agente.md`), fuera del repositorio, como las anteriores. Se le recordó que los tokens reales de producción no se cargan en n8n hasta que cierre la separación entre piloto y producción.
+
+### La ventana s1 en staging: los identificadores nuevos del agente
+
+El 2026-10-02, con autorización del usuario para ese día: tocar staging, crear, usar y revocar la credencial de la semilla, y revocar las del agente. Organización del piloto (`5eed0000-0000-4000-9000-000000000001`), números sintéticos `+5491155550061` y `…062` del agente, y `…063` para la semilla. La ventana del agente es su brief 3.37.1.
+
+**Antes**, a las 19:26 UTC:
+
+- `…061`, `…062` y `…063`: 0 clientes en staging, en todas las organizaciones;
+- backup `success`, y copia de `app.env`;
+- todo en `404`, con `6705457`.
+
+**Encendido** a las 19:33:25 UTC. Se comprobó que las tres credenciales del agente (`9a0ce088-…` `ingest`, `38313de5-…` `read`, `c9b8e0f2-…` `context`), creadas por el usuario en su terminal, eran del piloto, con `source` `agente-13-5-s1` y vigentes. Sin credencial, la ingestión y la lectura daban `401`.
+
+**La semilla del turno 3**, a las 19:41:48. La referencia la calculó el usuario con la clave del agente, que no pasó por la conversación: `wa-conv-k1-7b73…baeb`. Se descartó que fuera un SHA-256 sin clave del texto de entrada. La sembró un script en el servidor, con la credencial `siembra-13-5-s1` (`21fb3e4d-…`), creada y revocada ahí, con el token en una variable que nunca se imprimió (0 en el journal). Fueron dos eventos con `200 accepted`, a nombre de «Cliente Semilla S1». Sus identificadores tienen la forma del agente, con valores al azar, para que la medición de la forma no tenga excepciones.
+
+**Los turnos**, de 19:44:45 a 19:49:05, según el agente: 10 pedidos, con 9 aceptados y el `409` esperado.
+
+**Lo medido** `[transcrito]`:
+
+```
+conciliación (agente-13-5-s1, 19:44:00 a 19:51:00): esperados 6, encontrados 6, ok: true
+  client.resolved processed 3; conversation.resolved processed 3; conversation.resolved failed conversation_ref_taken 1; message.recorded processed 3
+  métrica 12 a mano: total 7, fallidos 1
+  wa-conv-k1-99b5…8579 open: entrantes 2, salientes 2 (turnos 1 y 2)
+  wa-conv-k1-7b73…baeb~r2 open: entrantes 1, salientes 1 (turno 3)
+
+identificadores de la organización desde las 19:33:25, total y fuera de ^wa-[a-z]+-k1-[0-9a-f]{64}(~r[1-9][0-9]*)?$:
+  ingestion_events.external_ref 12, 0 fuera
+  conversations.external_ref     3, 0 fuera
+  messages.external_ref          7, 0 fuera
+
+conversación sembrada: abierta, con 1 mensaje (el de la semilla); la del turno 3 es la de ~r2
+
+verificar-identificadores (VERIFICAR_TELEFONO = …061): Teléfonos buscados: 36
+  ingestion_events 53, conversations 9, messages 31; con un teléfono en claro, base64 o hexadecimal: 0
+  Ningún identificador lleva un teléfono buscado. código: 0
+
+journal de la aplicación desde las 19:33:25: 429 0; tokens crm_ 0
+  ingestión: OK 11, CONFLICT 1, UNAUTHENTICATED 1 (la comprobación del encendido)
+  lectura: knowledge OK 1, messages OK 3, products OK 2, UNAUTHENTICATED 1 (la comprobación del encendido)
+```
+
+El turno 2 propuso otra referencia, y el CRM devolvió la conversación vigente del turno 1, como manda la regla de vigencia de la 12.2. El turno 3 dio el `409` sobre la semilla, y el reintento con `~r2` abrió la conversación nueva. **Que la semilla diera el conflicto prueba además que la referencia calculada por el usuario es la que calcula el agente.** La métrica 12 a mano da 7 eventos con 1 fallido: el `409` cuenta como fallido sin ser una pérdida, como en la 12.5. El esperado de la conciliación son los seis mensajes del agente; la semilla queda fuera por `source` y por horario.
+
+**Apagado** a las 19:56:29:
+
+- `app.env`, igual byte a byte a la copia previa, y la copia, borrada;
+- ingestión y lectura en `404`;
+- las tres credenciales del agente y la de la semilla, revocadas;
+- en el log de `sudo` desde las 19:20: 0 URLs con contraseña y 0 líneas `ENV=`.
+
+**Nivel**: los identificadores nuevos del agente quedan **validados en integración, en staging** (`producer-consumer`, datos sintéticos), por el camino de Evolution con entrada simulada. **No** cubre un turno de Meta, que solo puede verse en producción con el mensaje controlado (paso 6 del alta). Autoevaluación.
