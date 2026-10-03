@@ -550,3 +550,170 @@ El agente propuso dos etapas y preguntó tres cosas: dónde caen los turnos ante
 5. Preparar el despliegue de `main` a producción. Correrlo se autoriza en su turno.
 
 Producción corre `9f3dc2b`, que no trae `scripts/verificar-identificadores.ts` (`git ls-tree 9f3dc2b scripts/` no lo lista). Tampoco trae la versión de `scripts/crear-organizacion.ts` que pide el paso 1. De `9f3dc2b` a `main` hay 11 commits. Solo cambian cinco archivos de `scripts/`: ni `src/`, ni dependencias, ni migraciones (`git diff --stat 9f3dc2b main -- drizzle src scripts package.json package-lock.json`).
+
+### El despliegue de `29d6ccc` en producción, 2026-10-03
+
+El commit `29d6ccc` registra el agregado de las dos etapas, y su CI 37125434015 dio `success`, leída por `headSha`. El clasificador de permisos le bloqueó al asistente el despliegue, así que **lo corrió el usuario**, con los pasos 1 a 3 de [deploy/production/README.md](../../deploy/production/README.md), §Desplegar un cambio. Informó que todo salió como se esperaba, con esta última línea [transcrito]:
+
+```
+desplegado: 29d6cccb116e6825f55dd15b0c5c65d842d04a14
+```
+
+Las comprobaciones de solo lectura, corridas por el asistente:
+
+```
+HEAD en /srv/crm-production: 29d6cccb116e6825f55dd15b0c5c65d842d04a14; crm-production: active
+despliegues, últimas dos líneas: 579397e…, 9f3dc2b…   (9f3dc2b es la versión para volver atrás)
+/login 200; /api/health 200; ingestión 404; lectura 404
+verificar-identificadores --org no-es-un-uuid: código 3   (paso 0 del alta)
+crm_production: organizations 1, users 1, audit_logs 1; clients, conversations, messages,
+  ingestion_events, ingestion_credentials, products y knowledge_entries en 0
+```
+
+**Configuración servidor contra repositorio**: 13 de los 14 archivos son iguales. **`crm-backup.sh` difiere, y solo en comentarios**: el instalado es el de `938423d`. Las dos líneas de comentario que la 13.2.2 (`f278d0a`) agregó sobre la ventana del manifiesto nunca se instalaron. En staging pasa lo mismo: un bloque de comentarios, y ninguna línea que no sea comentario cambia. Es anterior a este despliegue, y ninguna evidencia anterior había dado ese archivo por igual. **El backup hace lo mismo** con cualquiera de las dos versiones. Para que el `diff` vuelva a dar igual hay que reinstalar el script en los dos servidores, con su propia autorización. No bloquea la 13.5.2-a.
+
+### El aviso 3.39 del agente y la decisión sobre la reunión
+
+El agente mandó, el 2026-10-03:
+- el guion: cuatro turnos desde el teléfono del usuario al número de prueba de Meta. El turno 1 es el mensaje controlado, y los turnos 2 a 4 esperan la verificación en cero;
+- la forma de lo esperado: los valores llegan después de cada turno, porque salen del `wamid` que asigna Meta;
+- lo que mide de su lado;
+- qué hace si algo falla.
+
+Confirmó además que su modo de prueba y su lista de la ingestión tienen el teléfono del usuario, comprobados por una sonda antes del turno 1. Propuso dejar la demostración encendida para una reunión con un cliente. **El usuario decidió** que, durante la 13.5.2-a, la lista y el modo de prueba tengan solo su teléfono: en la reunión escribe él. Un tercero que escriba deja datos personales permanentes en `ingestion_events`, y eso es de la 13.5.2-b, con D-10.
+
+### Pasos 1 y 2 del alta: la organización y su catálogo, 2026-10-03
+
+El usuario creó la organización en su terminal con el paso 1, a las 19:30:07 UTC; la contraseña inicial no pasó por la conversación. **Id de la organización: `865fca6e-8984-4037-9adc-29b487de53b6`.** El usuario pasó primero el id del `admin` por error. La consulta lo mostró: ese id está en `users` y no en `organizations`. Con el id equivocado, todos los recuentos daban 0.
+
+El usuario cargó el catálogo ficticio por la UI. Recuentos en `crm_production`, leídos por el asistente:
+
+```
+organizaciones 2 (la del operador y la demostración); miembros de la demostración 1
+productos activos 5, los 5 con precio en ARS; entradas de información activas 3
+stock: 8, 1 (bajo su punto de reposición de 2), 15, 0 y 20, como en lo planeado
+clientes 0; credenciales 0
+```
+
+### Pasos 3 a 5 del alta: credenciales, encendido y allowlists, 2026-10-03
+
+**Paso 3.** El usuario creó en su terminal las tres credenciales del agente en la demostración, con `source` `agente-demo`:
+- `ingest` `8a7e987c-1b27-4689-aead-de5548845719`;
+- `read` `fe07a803-88c6-4638-b132-2b187a7f0e3a`;
+- `context` `11e1a412-c847-4899-bb97-533c19cb3371`.
+
+Los tokens no pasaron por la conversación; los guarda el usuario hasta cargarlos en la instancia de producción del agente.
+
+**Desvío: las primeras dos credenciales de control quedaron en la organización equivocada.** Son `9f1894f0…` (`read`) y `454eac5d…` (`ingest`), y quedaron en la demostración: en la pregunta por la organización del operador se pegó el id de la demostración. Lo mostró la consulta de verificación, antes de cualquier prueba. Se crearon dos nuevas en la organización del operador, «Vixora»: `259acc3d…` (`read`) y `afcf16af…` (`ingest`).
+
+**Pasos 4 y 5**, corridos por el asistente con autorización del usuario. La lectura y la ingestión se encendieron juntas, en un solo reinicio, porque el agente todavía no tenía sus tokens y no podía haber tráfico suyo entre una y otra:
+
+```
+encendido a las 20:02:53 UTC; /login 200; servicio active
+lectura sin token: 401; ingestión sin token: 401
+app.env root:root 600, 4 líneas de encendido; copia previa en /etc/crm-production/app.env.antes-13-5-2a
+READ_API_ALLOWED_CREDENTIALS=fe07a803-…,11e1a412-…   INGESTION_ALLOWED_CREDENTIALS=8a7e987c-…
+```
+
+Las comprobaciones con los tokens de control las corrió el usuario en su terminal; los rechazos los leyó el asistente en el journal:
+
+```
+20:08:44 /api/read/v1/knowledge     FORBIDDEN        0633244b-… (Vixora)  control-allowlist
+20:08:51 /api/ingestion/v2/events   UNAUTHENTICATED  null                 null
+20:10:25 /api/ingestion/v2/events   FORBIDDEN        0633244b-… (Vixora)  control-allowlist
+```
+
+El `401` de las 20:08:51 no es un hallazgo. El token que llegó no corresponde a ninguna credencial: un token de otro alcance o revocado da `403`, no `401` (`authenticateServiceRequest`, `src/modules/ingestion/credentials.ts`). Se repitió mostrando solo el prefijo del token, `crm_ing_`, y dio el `403` esperado.
+
+**Las cuatro credenciales de control, revocadas.** Quedan vigentes solo las tres de `agente-demo`, que son las de las allowlists. Tokens `crm_` en el journal desde las 19:50: 0.
+
+AC-11 de la 13.5.2-a: **cumplido**. Las superficies están encendidas solo para la demostración, y una credencial de otra organización se rechaza en las dos. Autoevaluación.
+
+### Turno 1 y paso 6: H-4 con el primer mensaje real por Meta, 2026-10-03
+
+El usuario cargó la configuración del agente en su instancia de producción: la clave del HMAC nueva, `CRM_ENV=production`, su teléfono en la lista y los tres tokens. La sonda de lectura del agente dio `200` en productos e información (20:20:44 y 20:20:45 UTC). El turno 1, «Hola, ¿qué celulares Aurora tienen?», entró a las 20:25 UTC:
+
+```
+eventos: client.resolved, conversation.resolved y message.recorded, los tres processed
+base: 1 cliente, 1 conversación abierta, 2 mensajes de texto (1 entrante, 1 saliente)
+identificadores de la organización: ingestion_events 3, conversations 1, messages 2; fuera de la forma k1: 0
+lectura del agente: messages, products y knowledge en 200; ningún 401, 403 ni 429
+```
+
+**Conciliación del turno 1** contra los valores del agente (`Salidas-3.39`, en el Escritorio del usuario), con `conciliar-turnos` entre las 20:24 y las 20:27 UTC:
+
+```
+expected 2, found 2; missing, duplicated, wrong_conversation, wrong_direction, unexpected: ninguno; ok: true
+métrica 12 a mano: 2, fallidos 0
+event_id del agente contra ingestion_events.external_ref: 3 de 3
+```
+
+**La clave del HMAC**: el usuario calculó en su terminal la referencia de la conversación con la clave nueva. **Coincidió** con la que devolvió el CRM (`wa-conv-k1-f439829d…`) [transcrito, informado por el usuario].
+
+**Paso 6**, corrido por el usuario en su terminal, con su teléfono tecleado dos veces y sin eco [transcrito]:
+
+```
+Teléfonos buscados: 1 (uno de VERIFICAR_TELEFONO).
+ingestion_events: 3 identificadores; con un teléfono en claro 0, en base64 0, en hexadecimal 0.
+conversations: 1 identificadores; con un teléfono en claro 0, en base64 0, en hexadecimal 0.
+messages: 2 identificadores; con un teléfono en claro 0, en base64 0, en hexadecimal 0.
+Ningún identificador lleva un teléfono buscado.
+código: 0
+```
+
+**H-4 queda verificado con el primer mensaje real por la API oficial de Meta** (AC-10 de la 13.5.2-a): los identificadores del agente no llevan el teléfono. Se repite en la 13.5.2-b, sobre la organización del negocio.
+
+### Turnos 2 a 5, 2026-10-03
+
+El guion tenía cuatro turnos y entraron cinco. Los eventos se recibieron a las 20:25, 20:40, 20:43, 20:45 y 20:53 UTC, tres por turno. **El quinto repite el cuarto**: el usuario volvió a preguntar porque no le había llegado la respuesta. El CRM registró una respuesta del agente por cada mensaje entrante, también la del cuarto. La demora está del lado de la ejecución del agente o de la entrega de Meta, y se le pidió al agente que la mida.
+
+Medido por el asistente a las 20:56 UTC, en solo lectura:
+
+```
+ingestion_events 15 (5 de cada tipo), todos processed; fuera de la forma k1: 0; con ~r: 0
+conversations 1, abierta, 5 entrantes y 5 salientes; messages 10, fuera de la forma: 0; clientes 1
+verificar-identificadores, modo diario (sin VERIFICAR_TELEFONO): Teléfonos buscados: 1;
+  ingestion_events 15, conversations 1, messages 10; con un teléfono en claro, base64 o hexadecimal: 0
+  Ningún identificador lleva un teléfono buscado. código: 0
+journal desde las 20:15: 429 0; tokens crm_ 0
+  ingestión OK 15; lectura: messages OK 5, products OK 4, knowledge OK 2; todos agente-demo
+```
+
+Del turno 2 en adelante, el CRM devolvió la conversación del turno 1, como manda la regla de vigencia. Falta la conciliación de los turnos 2 a 5 contra los valores del agente: su documento de salidas tiene solo el turno 1.
+
+### La conciliación de los cinco turnos y el cierre de la 13.5.2-a
+
+El agente mandó los valores de los cinco turnos (`Salidas-3.39-Demostracion.md`, completo) y su respuesta al pedido (`Respuesta-3.39-Agente-al-CRM.md`), los dos en el Escritorio del usuario. `conciliar-turnos` entre las 20:24 y las 20:55 UTC, con los diez mensajes del agente como esperado:
+
+```
+events: client.resolved 5, conversation.resolved 5, message.recorded 5; todos processed
+metric_12_by_hand: total 10, failed 0
+conversations: wa-conv-k1-f439829d…, open, inbound 5, outbound 5
+reconciliation: expected 10, found 10; missing, duplicated, wrong_conversation, wrong_direction,
+  unexpected, repeated_expected: ninguno; ok: true
+event_id del agente contra ingestion_events.external_ref: 15 de 15
+referencias propuestas por el agente en los turnos 2 a 5: 4; conversaciones con esas referencias: 0
+```
+
+En los turnos 2 a 5 el agente propuso una referencia nueva, y el CRM devolvió la conversación vigente, como manda la regla de vigencia de la 12.2.
+
+**Lo que informó el agente de su lado** [transcrito]:
+
+- El contexto salió del CRM en los cinco turnos, con el historial desde el turno 2.
+- Las respuestas coincidieron con el catálogo: el cargador sin stock, a $18.500, y los auriculares Brisa, a $35.000.
+- Los 15 eventos se aceptaron en el primer intento, sin `held` ni `dead_letter`, y sin alertas.
+- **El turno 4 respondió con una pregunta de aclaración en vez de los medios de pago.** El validador del agente descartó la consulta de información por un campo secundario. Es un defecto del agente, que lo corrige en una subfase propia: ningún pedido al CRM falló, y ese turno no leyó información. Tardó 33 s del entrante a la entrega, 20 de ellos en la ventana de agrupación. El turno 5 repitió la pregunta y leyó las tres entradas.
+- Las lecturas de productos e información del journal incluyen las dos de su sonda de las 20:20, previas al turno 1.
+
+**Cierre de la 13.5.2-a, 2026-10-03**:
+
+| Criterio | Estado |
+|---|---|
+| AC-8 | cumplido: el aviso del agente con la separación de su n8n, y `29d6ccc` desplegado con la verificación del paso 6 |
+| AC-9 | cumplido: el alta siguió el runbook, y el usuario cargó los datos ficticios por la UI. Un desvío: las primeras credenciales de control quedaron en la organización equivocada, y se rehicieron antes de la prueba |
+| AC-10 | cumplido: el paso 6 en `0` con el primer mensaje real por Meta, y en `0` otra vez sobre los cinco turnos |
+| AC-11 | cumplido: encendido solo para `agente-demo`, y una credencial de otra organización rechazada en lectura e ingestión |
+
+**Nivel**: la cadena Meta → agente → CRM de producción queda **validada end-to-end** (`authenticated-end-to-end`), con un solo remitente consentido y datos ficticios. Son cinco turnos reales, conciliados mensaje por mensaje, con la clave del HMAC verificada con una respuesta conocida. **No** es «preparado para producción para un negocio»: falta la 13.5.2-b, con el negocio, la ventana de D-7, la observación de D-6 y la revisión independiente final (D-9). Autoevaluación.
+
+**Estado al cerrar**: la ingestión y la lectura de producción quedan encendidas solo para las tres credenciales de `agente-demo`, hasta la 13.5.2-b, por decisión del usuario. En ese período, la lista del agente tiene solo el teléfono del usuario.

@@ -259,3 +259,5 @@ El agente avisó el 2026-10-03 que separó su n8n en dos instancias, piloto y pr
 **Cómo se leen los criterios.** AC-9, AC-10 y AC-11 se cumplen una vez en cada etapa. AC-8 en la 13.5.2-a son sus dos precondiciones; con todo D-10, en la 13.5.2-b. AC-12 y AC-13 son solo de la 13.5.2-b. La 13.5.2-a llega a **validado end-to-end para la cadena Meta, agente y CRM de producción, con un solo remitente**; no es todavía «preparado para producción para un negocio».
 
 - *Archivos y efectos*: los de la 13.5.2. Además, un despliegue de `main` a producción antes del paso 0, autorizado en su turno, porque `9f3dc2b` no trae `scripts/verificar-identificadores.ts` (paso 6) ni la versión de `scripts/crear-organizacion.ts` que lee los datos del `admin` del entorno (paso 1).
+
+**La 13.5.2-a se cerró el 2026-10-03**: AC-8 a AC-11 cumplidos y cinco turnos reales por Meta conciliados, 10 de 10. Queda **validada end-to-end** la cadena Meta → agente → CRM de producción, con un remitente consentido y datos ficticios. La demostración queda encendida hasta la 13.5.2-b ([evidencia](evidencia-13.5-primer-cliente.md), §La conciliación de los cinco turnos).
