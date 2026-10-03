@@ -532,3 +532,21 @@ El turno 2 propuso otra referencia, y el CRM devolvió la conversación vigente 
 - en el log de `sudo` desde las 19:20: 0 URLs con contraseña y 0 líneas `ENV=`.
 
 **Nivel**: los identificadores nuevos del agente quedan **validados en integración, en staging** (`producer-consumer`, datos sintéticos), por el camino de Evolution con entrada simulada. **No** cubre un turno de Meta, que solo puede verse en producción con el mensaje controlado (paso 6 del alta). Autoevaluación.
+
+## La 13.5.2 en dos etapas
+
+### El aviso del agente del 2026-10-03
+
+El piloto y producción son dos instancias de n8n separadas, cada una con su base, su clave de cifrado, sus variables, su Postgres y su Redis. Meta pasó a producción con el número de prueba de Meta; el piloto quedó solo con Evolution. Producción lee del CRM (`CRM_READ_SOURCE=crm`) y no usa Airtable. Sus tres credenciales del CRM existen y están **vacías**; del lado del CRM todo sigue apagado. Un mensaje real por el número de prueba recibió respuesta de producción sin tocar el CRM. Ese es el nivel del agente: validado end-to-end para su cadena de Meta, no para la integración con el CRM. **Ningún contrato cambia** [transcrito del aviso].
+
+El agente propuso dos etapas y preguntó tres cosas: dónde caen los turnos antes del negocio, quién carga el catálogo y si los tokens siguen el paso 3.
+
+### Las decisiones del usuario, 2026-10-03
+
+1. Las dos etapas, como agregado al brief (§Agregado del 2026-10-03).
+2. Una organización de demostración en producción, «Demostración Vixora», con `source` `agente-demo`.
+3. El catálogo de la demostración lo carga el usuario por la UI, con datos ficticios que le prepara el asistente. En este documento se registran solo los recuentos.
+4. Los tokens, como en el paso 3, con las dos credenciales de control.
+5. Preparar el despliegue de `main` a producción. Correrlo se autoriza en su turno.
+
+Producción corre `9f3dc2b`, que no trae `scripts/verificar-identificadores.ts` (`git ls-tree 9f3dc2b scripts/` no lo lista). Tampoco trae la versión de `scripts/crear-organizacion.ts` que pide el paso 1. De `9f3dc2b` a `main` hay 11 commits. Solo cambian cinco archivos de `scripts/`: ni `src/`, ni dependencias, ni migraciones (`git diff --stat 9f3dc2b main -- drizzle src scripts package.json package-lock.json`).

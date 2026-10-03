@@ -244,3 +244,18 @@ La preparación sin el cliente está hecha. Contrastada contra la [evidencia](ev
 3. que separe su instancia de n8n entre piloto y producción antes de que existan credenciales de producción.
 
 El agente está trabajando en eso desde el 2026-10-01. Que lo corrija él, sin cambiar el contrato, es lo previsto: no activa la condición de detención 3.
+
+## Agregado del 2026-10-03: la 13.5.2 en dos etapas
+
+El agente avisó el 2026-10-03 que separó su n8n en dos instancias, piloto y producción: la tercera condición de arriba quedó cumplida. Como el negocio del primer cliente todavía no está definido, propuso partir el mensaje controlado en dos. **El usuario lo aprobó el mismo día**, con las condiciones de abajo, y con eso tomó la decisión explícita de abrir la 13.5.2 (condición de detención 1) para su primera etapa ([evidencia](evidencia-13.5-primer-cliente.md), §La 13.5.2 en dos etapas).
+
+- **13.5.2-a, la demostración.** Una organización propia en producción, «Demostración Vixora», con el usuario como `admin` y `source` `agente-demo`. El agente atiende con el número de prueba de Meta, y el único remitente es el teléfono del usuario. El catálogo y la información son ficticios: los carga el usuario por la UI (paso 2 del alta). Corren los pasos 0 a 6 del runbook sobre esa organización, cada efecto sobre producción en su turno. Precondiciones: el aviso del agente y un SHA desplegado que traiga la verificación del paso 6. **No** dependen del negocio ni de D-10: la demostración no lleva datos de terceros.
+- **13.5.2-b, el cliente.** Cuando el negocio esté confirmado y su número esté bajo la app de Meta: los pasos 0 a 7 sobre la organización del negocio, con sus propias credenciales, y **el paso 6 de nuevo**, porque el script mira una organización por vez. Siguen la ventana de D-7, la observación de D-6 y el cierre.
+
+**Un solo negocio encendido a la vez.** Durante la 13.5.2-a, las allowlists tienen solo las credenciales de la demostración. Antes de encender las del cliente, se revocan y salen de las allowlists (paso 8). La organización queda, sin credenciales vigentes, para mostrarle el CRM a otros clientes desde la UI. Volver a conectarle el agente mientras haya un cliente encendido es sacar tráfico del modo de prueba (D-8).
+
+**Lo que queda para siempre.** El teléfono del usuario queda como cliente de la demostración, con su consentimiento, y sus eventos de ingestión no se pueden borrar.
+
+**Cómo se leen los criterios.** AC-9, AC-10 y AC-11 se cumplen una vez en cada etapa. AC-8 en la 13.5.2-a son sus dos precondiciones; con todo D-10, en la 13.5.2-b. AC-12 y AC-13 son solo de la 13.5.2-b. La 13.5.2-a llega a **validado end-to-end para la cadena Meta, agente y CRM de producción, con un solo remitente**; no es todavía «preparado para producción para un negocio».
+
+- *Archivos y efectos*: los de la 13.5.2. Además, un despliegue de `main` a producción antes del paso 0, autorizado en su turno, porque `9f3dc2b` no trae `scripts/verificar-identificadores.ts` (paso 6) ni la versión de `scripts/crear-organizacion.ts` que lee los datos del `admin` del entorno (paso 1).
