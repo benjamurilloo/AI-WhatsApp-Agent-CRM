@@ -188,6 +188,10 @@ export function KnowledgeForm({
                             ? "category-sugerencias"
                             : undefined
                         }
+                        // Sin el historial del navegador: solo las categorías cargadas.
+                        autoComplete={
+                          field.name === "category" ? "off" : undefined
+                        }
                       />
                     )}
                     {field.name === "category" ? (

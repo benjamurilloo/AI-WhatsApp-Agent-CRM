@@ -179,6 +179,8 @@ export function ProductForm({
             required={field.required}
             defaultValue={shown[field.name]}
             list={listId}
+            // Sin el historial del navegador: solo las sugerencias de la lista.
+            autoComplete={field.list ? "off" : undefined}
             placeholder={field.placeholder}
             aria-invalid={invalid ? true : undefined}
             aria-describedby={describedBy}
