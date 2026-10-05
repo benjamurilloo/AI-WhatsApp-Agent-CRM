@@ -98,7 +98,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-13.3](brief-13.3-disponibilidad-y-observabilidad.md) | 13.3 — Disponibilidad y observabilidad | aprobado el 2026-09-30 con las recomendaciones de D-1 a D-8 y un cambio en la condición de detención 2; cerrado el 2026-10-01. Salidas crudas en [evidencia-13.3](evidencia-13.3-disponibilidad.md) |
 | [brief-13.4](brief-13.4-retencion-y-borrado.md) | 13.4 — Retención y borrado de datos reales | aprobado el 2026-10-01 con las recomendaciones de D-1 a D-9; cerrado el 2026-10-01. H-4 resuelto en el contrato (I-1, opción A1). Salidas crudas en [evidencia-13.4](evidencia-13.4-retencion-y-borrado.md) |
 | [brief-13.5](brief-13.5-primer-cliente.md) | 13.5 — Primer cliente | aprobado el 2026-10-01 con las recomendaciones de D-1 a D-11; en curso. Salidas crudas en [evidencia-13.5](evidencia-13.5-primer-cliente.md) |
-| [brief-15.1](brief-15.1-identidad-visual-y-marco.md) | 15.1 — Identidad visual, marco y pantallas principales | aprobado el 2026-10-05 con las recomendaciones de D-1 a D-12; en curso |
+| [brief-15.1](brief-15.1-identidad-visual-y-marco.md) | 15.1 — Identidad visual, marco y pantallas principales | aprobado el 2026-10-05 con las recomendaciones de D-1 a D-12; cerrado el 2026-10-05 |
 | [evidencia-9.1](evidencia-9.1-staging.md) | 9.1 — Salidas crudas de la verificación en staging | captura del 2026-09-22 |
 | [evidencia-9.2](evidencia-9.2-backups.md) | 9.2 — Backup y restauración verificados en staging | captura del 2026-09-22 |
 | [evidencia-9.3](evidencia-9.3-volumen.md) | 9.3 — Volumen, planes y tiempos medidos en staging | captura del 2026-09-23 |

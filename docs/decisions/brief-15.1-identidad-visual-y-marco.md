@@ -7,7 +7,7 @@ generated_at: 2026-10-05
 
 # Brief: 15.1 — Identidad visual, marco y pantallas principales
 
-**Estado: aprobado el 2026-10-05 por el usuario, con las recomendaciones de D-1 a D-12.** Eso fija: las piezas de los bocetos según la tabla de D-1; la paleta con el token `action` aparte (D-2); íconos propios copiados de Lucide, sin dependencia (D-3); la marca Vixora con la organización debajo (D-4); el menú para pantallas chicas (D-5); las tres opciones de tema como íconos (D-6); íconos de categoría por palabras clave (D-7); un ícono genérico para el canal (D-8); la paginación numerada (D-9); las etapas 15.1.1, 15.1.2 y 15.1.3 (D-10); el despliegue a producción (D-11); y la autoevaluación declarada (D-12). Ese mismo día, el usuario autorizó crear la Fase 15 en Notion y hacer el commit del Roadmap y de este brief. La aprobación no autoriza ningún commit, ningún cambio en Notion, ninguna dependencia nueva ni el despliegue a producción: cada uno se autoriza en su turno.
+**Estado: cerrado el 2026-10-05** (§Cierre de la subfase 15.1). Aprobado ese mismo día por el usuario, con las recomendaciones de D-1 a D-12. Eso fija: las piezas de los bocetos según la tabla de D-1; la paleta con el token `action` aparte (D-2); íconos propios copiados de Lucide, sin dependencia (D-3); la marca Vixora con la organización debajo (D-4); el menú para pantallas chicas (D-5); las tres opciones de tema como íconos (D-6); íconos de categoría por palabras clave (D-7); un ícono genérico para el canal (D-8); la paginación numerada (D-9); las etapas 15.1.1, 15.1.2 y 15.1.3 (D-10); el despliegue a producción (D-11); y la autoevaluación declarada (D-12). Ese mismo día, el usuario autorizó crear la Fase 15 en Notion y hacer el commit del Roadmap y de este brief. La aprobación no autoriza ningún commit, ningún cambio en Notion, ninguna dependencia nueva ni el despliegue a producción: cada uno se autoriza en su turno.
 
 - **Nivel de evidencia objetivo**: `deterministic` (cálculo de contraste y tests unitarios), `producer-consumer` (Playwright sobre `next start` contra PostgreSQL real, con axe en claro y en oscuro) e `isolated-runtime` (la versión desplegada en producción, mirada por el usuario).
 - **Nivel de validación alcanzable**: **validado en integración** y **verificado en producción**. No certifica «preparado para producción»: eso sigue siendo el gate de la Fase 13.
@@ -275,9 +275,9 @@ La 15.1 no abre ni cierra un gate y solo cambia la presentación.
 | AC-5 | cumplido | `frame.spec.ts`, casos 1 y 2 |
 | AC-6 | cumplido | `grep` de clases de la paleta de Tailwind en `src/app/`: 0 |
 | AC-7 | cumplido | `typecheck`, `lint` y `format:check` limpios; 992 de 992 unitarios y guardas (67 archivos); 674 de 674 de integración (43 archivos); `build` compila. El `git diff --ignore-cr-at-eol` de `src/modules/`, `package.json` y `package-lock.json` está vacío (`src/modules/crm/repository.ts` arrastra un cambio previo, solo de finales de línea, que no entra al commit) |
-| AC-8 | hecho, espera la revisión del usuario | 24 capturas (6 pantallas × claro y oscuro × 1280 y 375 px) sobre la semilla del piloto en la base local, entregadas en el Escritorio del usuario |
-| AC-9 | pendiente | requiere commit y push, con autorización |
-| AC-10 | pendiente | etapa 15.1.3 |
+| AC-8 | cumplido | aprobadas por el usuario el 2026-10-05; 24 capturas (6 pantallas × claro y oscuro × 1280 y 375 px) sobre la semilla del piloto en la base local, entregadas en el Escritorio del usuario |
+| AC-9 | cumplido | `b00b333`, con autorización del usuario del 2026-10-05; CI 37347328043 en `success` para ese `headSha` |
+| AC-10 | cumplido | el usuario miró la demostración en producción, en los dos modos, y la dio por correcta el 2026-10-05. desplegado el 2026-10-05 por el procedimiento del README, ejecutado por Claude Code con aprobación manual del usuario; antes corría `29d6ccc`, anotado en `despliegues`. `HEAD` es `b00b333`, el servicio está `active`, sin errores en el journal; `/login` 200; lectura e ingestión v1 y v2 sin token, 401. La allowlist de `agente-demo` vive en `app.env`, que no cambió desde el 2026-10-03, y el cambio no toca `src/modules/` |
 | AC-11 | cumplido, con los agregados de abajo | `git status` |
 
 **Cambios en end-to-end existentes**, cada uno por un texto o un valor que la 15.1 cambia a propósito:
@@ -296,3 +296,12 @@ La 15.1 no abre ni cierra un gate y solo cambia la presentación.
 - **Una falla intermitente**: en una de las corridas completas, `clients.spec.ts` caso 9 superó los 30 s mientras se sembraba la base de desarrollo en paralelo. Solo, pasó en 32,9 s con el arranque del servidor, y en la corrida final pasó.
 
 **No certifica**: la estética, que juzga el usuario con las capturas; el aspecto en navegadores distintos de Chromium; el contraste de cada pantalla más allá de lo que mide axe; ni nada de la 15.2, la 15.3 o la Fase 16.
+
+## Cierre de la subfase 15.1, 2026-10-05
+
+- **Commits**: `bb21073` (Roadmap y este brief) y `b00b333` (15.1.1 y 15.1.2, en uno solo porque se verificaron juntas; CI `success`, run 37347328043, leída por `headSha`).
+- **Criterios**: AC-1 a AC-11 cumplidos, con los desvíos y agregados de §Resultados, aceptados por el usuario al aprobar las capturas.
+- **En producción**: `crm.vixoraai.app` corre `b00b333` desde el 2026-10-05, sin migraciones nuevas y con `app.env` sin tocar; la ingestión y la lectura siguen encendidas solo para `agente-demo`. La versión anterior, para volver atrás, es `29d6ccc`. El clasificador de permisos bloqueó el despliegue al asistente; lo corrió el asistente con la aprobación manual del usuario.
+- **Nivel**: validado en integración (`producer-consumer`: Playwright con axe sobre PostgreSQL real) y verificado en producción por el usuario (`isolated-runtime`). No es «preparado para producción», que sigue siendo el gate de la Fase 13.
+- **Revisión**: autoevaluación declarada (D-12). La subfase no abre ni cierra un gate, así que no lleva revisión independiente.
+- **Lo que hereda el resto de la fase**: el orden y las filas por página (15.2); el dashboard interactivo, la variación, «Ver detalles» y las dos métricas nuevas (15.3); los detalles y formularios, de a uno (15.4 en adelante). Lo funcional de los bocetos, a la Fase 16.

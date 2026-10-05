@@ -2,6 +2,22 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-05 — 15.1 cerrada: identidad visual, marco y pantallas principales
+
+Primera subfase de la Fase 15, «Identidad visual y presentación», abierta el mismo día en paralelo con la 13.5.2-b ([brief-15.1](docs/decisions/brief-15.1-identidad-visual-y-marco.md), [Roadmap](docs/planning/Roadmap.md), §Fase 15). Commits: `bb21073` (Roadmap y brief) y `b00b333` (las etapas 15.1.1 y 15.1.2; CI 37347328043, `success`). Desplegada en producción el mismo día (15.1.3).
+
+**Certifica**:
+- **La paleta violeta** en claro y en oscuro, con los tokens nuevos `sidebar`, `action`, `action-hover` y `on-action`: `primary` queda para texto y enlaces, y `action` para el relleno de botones, que es lo que permite el violeta saturado de los bocetos con AA en oscuro. Contraste AA calculado en los 25 pares de cada modo.
+- **El marco**: panel lateral con la marca Vixora y la navegación con íconos, plegable en pantallas angostas (Escape lo cierra y devuelve el foco), y barra superior con la organización, el tema en tres íconos y el usuario. Los nombres accesibles del marco anterior se conservan.
+- **Las seis pantallas de los bocetos** con lo que ya existía: el dashboard con tarjetas e íconos y el gráfico diario rediseñado; los cinco listados con avatar, acción de editar para `admin` y la paginación «Mostrando X a Y de Z». Íconos copiados de Lucide (ISC), sin dependencia nueva.
+- **Sin cambios de comportamiento**: `src/modules/`, `package.json` y `package-lock.json` sin diferencias; ninguna clase de la paleta por defecto de Tailwind en `src/app/`.
+- **Local**: 102 de 102 end-to-end con axe sin violaciones en los dos modos (2 casos nuevos del marco; 6 aserciones existentes cambiadas por textos y colores que la subfase cambia a propósito); 992 de 992 unitarios y guardas; 674 de 674 de integración.
+- **En producción**: `crm.vixoraai.app` corre `b00b333`, sin migraciones ni cambios en `app.env`; `/login` en 200; la ingestión y la lectura siguen encendidas solo para `agente-demo`. El usuario miró la demostración en los dos modos y la dio por correcta. Versión anterior: `29d6ccc`.
+
+**No certifica**: la estética más allá del juicio del usuario; otros navegadores que Chromium; el contraste de cada pantalla más allá de lo que mide axe; la allowlist de `agente-demo` probada con tokens después del despliegue (la configuración no cambió); las pantallas de detalle y los formularios (15.4 en adelante); el orden y las filas por página (15.2); el dashboard interactivo (15.3). Revisión: autoevaluación declarada (D-12); la subfase no abre ni cierra un gate.
+
+**Nivel**: validado en integración (`producer-consumer`) y verificado en producción por el usuario (`isolated-runtime`).
+
 ## 2026-10-01 — 13.4 cerrada: retención y borrado de datos reales
 
 Cuarta subfase de la Fase 13 ([brief-13.4](docs/decisions/brief-13.4-retencion-y-borrado.md), [evidencia-13.4](docs/decisions/evidencia-13.4-retencion-y-borrado.md), [ADR 0015](docs/decisions/0015-vaciado-de-una-sola-direccion-en-tablas-de-solo-insercion.md), [runbook de datos de un cliente](docs/runbooks/datos-de-un-cliente.md)). En dos etapas: la 13.4.1 (`9f3dc2b`), local; la 13.4.2 (`75577b1`), en el droplet de producción. Las correcciones de la revisión independiente van en `9354c42`.
