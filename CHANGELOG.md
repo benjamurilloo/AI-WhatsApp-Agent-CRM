@@ -2,6 +2,22 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-05 — 15.4 cerrada: pantallas de detalle y formularios
+
+Segunda subfase cerrada de la Fase 15, adelantada a la 15.2 por decisión del usuario ([brief-15.4](docs/decisions/brief-15.4-detalles-y-formularios.md), [Roadmap](docs/planning/Roadmap.md), §Fase 15). El mismo día se aceptó el [ADR 0016](docs/decisions/0016-el-crm-se-amplia-hacia-un-erp-por-fases.md): el ERP (pedidos, ventas, caja y cobros, compras y proveedores) va en las Fases 18 a 22, y la prohibición de `CLAUDE.md` pasa a «fuera de la fase abierta que los incluye». Commits: `81a07ec` (ADR 0016, Roadmap y brief), `a7aa97d` (las etapas 15.4.1 a 15.4.4; CI 37371792455, `success`) y `2aaa619` (ajuste; CI 37374970769, `success`). Desplegada en producción el mismo día (15.4.5).
+
+**Certifica**:
+- **Los detalles y formularios de los cinco módulos**, con lo que ya existía: Productos (detalle con las tarjetas de información, precio y stock, alta, edición, historial de precios y movimientos, con una barra de páginas propia), Clientes (detalle con estadísticas de conversaciones y días desde la última interacción, alta y edición), Conversaciones (mensajes como burbujas y los datos al costado), Información (detalle con el ícono de su categoría, alta y edición) y Usuarios (edición y alta, con el aviso que describe lo que pasa de verdad: una contraseña de un solo uso, sin email).
+- **Los componentes compartidos**: encabezado de detalle, tarjeta de sección, lista de definición con íconos, barra de páginas, tarjeta de estadística y tarjeta de auditoría con su paginación.
+- **Las listas de sugerencias** de Marca y Categoría sin el historial del navegador (`autoComplete="off"`), pedido por el usuario después del primer despliegue.
+- **Sin cambios de comportamiento**: `src/modules/`, `package.json` y `package-lock.json` sin diferencias; ninguna clase de la paleta por defecto de Tailwind en `src/app/`.
+- **Local**: 102 de 102 end-to-end con axe sin violaciones en los dos modos (8 aserciones existentes cambiadas por nombres de región y un texto de paginación); 510 de 510 unitarios y 485 de 485 guardas; 674 de 674 de integración.
+- **En producción**: `crm.vixoraai.app` corre `2aaa619`, sin migraciones ni cambios en `app.env`; `/login` en 200; la ingestión y la lectura, sin token, en 401. El usuario miró las pantallas y las dio por correctas. Versiones anteriores: `a7aa97d` y `b00b333`.
+
+**No certifica**: la estética más allá del juicio del usuario; otros navegadores que Chromium; el contraste de cada pantalla más allá de lo que mide axe; que la lista de sugerencias ya no muestre el historial, que Playwright no ve y comprobó el usuario a ojo; la allowlist de `agente-demo` probada con tokens después del despliegue (la configuración no cambió); el componente propio de sugerencias, el orden, los filtros y el autocompletar (15.2); el dashboard interactivo (15.3). Revisión: autoevaluación declarada (D-11); la subfase no abre ni cierra un gate.
+
+**Nivel**: validado en integración (`producer-consumer`) y verificado en producción por el usuario (`isolated-runtime`).
+
 ## 2026-10-05 — 15.1 cerrada: identidad visual, marco y pantallas principales
 
 Primera subfase de la Fase 15, «Identidad visual y presentación», abierta el mismo día en paralelo con la 13.5.2-b ([brief-15.1](docs/decisions/brief-15.1-identidad-visual-y-marco.md), [Roadmap](docs/planning/Roadmap.md), §Fase 15). Commits: `bb21073` (Roadmap y brief) y `b00b333` (las etapas 15.1.1 y 15.1.2; CI 37347328043, `success`). Desplegada en producción el mismo día (15.1.3).

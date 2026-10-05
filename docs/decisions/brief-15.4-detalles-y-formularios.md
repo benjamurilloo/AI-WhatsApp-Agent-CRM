@@ -227,8 +227,8 @@ Los bocetos muestran «0/500» y «0/4000» bajo los campos de texto largo.
 | AC-4 | cumplido | `grep` de clases de la paleta de Tailwind en `src/app/`: 0 |
 | AC-5 | cumplido | `typecheck`, `lint` y `format:check` limpios; 510 de 510 unitarios y 485 de 485 guardas; 674 de 674 de integración (43 archivos); `build` compila. El `git diff --ignore-cr-at-eol` de `src/modules/`, `package.json` y `package-lock.json` está vacío (`src/modules/crm/repository.ts` arrastra un cambio previo, solo de finales de línea, que no entra al commit) |
 | AC-6 | cumplido | aprobadas por el usuario el 2026-10-05; 60 capturas (15 pantallas × claro y oscuro × 1280 y 375 px) sobre la semilla del piloto en la base local, entregadas en el Escritorio del usuario |
-| AC-7 | pendiente | se registra al cerrar, con el SHA del commit y su CI |
-| AC-8 | pendiente | se registra al cerrar, después del despliegue |
+| AC-7 | cumplido, en un solo commit | `a7aa97d`, CI 37371792455 en `success` para ese `headSha`; el ajuste, `2aaa619`, CI 37374970769 en `success`. Un commit para las cuatro etapas, no uno por etapa como pedía D-10 (a): se verificaron juntas |
+| AC-8 | cumplido | desplegado el 2026-10-05 por el procedimiento del README, ejecutado por Claude Code con aprobación manual del usuario. `a7aa97d` reemplazó a `b00b333`, y `2aaa619` a `a7aa97d`; las dos versiones anteriores quedaron anotadas en `despliegues`. El servicio está `active`, sin errores en el journal; `/login` y `/api/health` 200; la ingestión v1 y v2 y las tres lecturas, sin token, 401. La allowlist de `agente-demo` vive en `app.env`, que no cambió. El usuario miró las pantallas en producción y las dio por correctas |
 | AC-9 | cumplido, con los agregados de abajo | `git status` |
 
 **Cambios en end-to-end existentes**, cada uno por un nombre que la 15.4 cambia a propósito:
@@ -252,3 +252,12 @@ Los bocetos muestran «0/500» y «0/4000» bajo los campos de texto largo.
 - **Ajuste pedido por el usuario después del despliegue** (2026-10-05): la lista de sugerencias de Marca y Categoría del producto, y la de Categoría de la información, mezclaba el historial del navegador con valores de otros formularios. Esos tres campos pasan a `autoComplete="off"`. La ventana sigue siendo la nativa del navegador: un componente propio con el estilo del CRM va a la 15.2, junto con el autocompletar de los buscadores, porque suma JavaScript a formularios que hoy funcionan sin él. Verificado: `typecheck`, `lint`, `format:check`, `build` y 26 de 26 end-to-end de Productos e Información. Playwright no ve la ventana nativa: el efecto lo comprueba el usuario en producción.
 
 **No certifica**: la estética, que juzga el usuario con las capturas; el aspecto en navegadores distintos de Chromium; el contraste de cada pantalla más allá de lo que mide axe; ni nada de la 15.2, la 15.3 o las Fases 16 a 18.
+
+## Cierre de la subfase 15.4, 2026-10-05
+
+- **Commits**: `81a07ec` (ADR 0016, Roadmap y este brief), `a7aa97d` (15.4.1 a 15.4.4, en uno solo porque se verificaron juntas; CI `success`, run 37371792455, leída por `headSha`) y `2aaa619` (el ajuste de las listas de sugerencias; CI `success`, run 37374970769). La corrida propia de `81a07ec` falló dos veces sin conseguir runner, por un incidente de GitHub Actions; la de `a7aa97d` incluye ese commit.
+- **Criterios**: AC-1 a AC-9 cumplidos, con los desvíos y agregados de §Resultados, aceptados por el usuario al aprobar las capturas y las pantallas en producción.
+- **En producción**: `crm.vixoraai.app` corre `2aaa619` desde el 2026-10-05, sin migraciones nuevas y con `app.env` sin tocar; la ingestión y la lectura siguen encendidas solo para `agente-demo`. Para volver atrás, `a7aa97d`, y antes `b00b333`. El clasificador de permisos bloqueó el primer despliegue al asistente; lo corrió el asistente con la aprobación manual del usuario.
+- **Nivel**: validado en integración (`producer-consumer`: Playwright con axe sobre PostgreSQL real) y verificado en producción por el usuario (`isolated-runtime`). No es «preparado para producción», que sigue siendo el gate de la Fase 13.
+- **Revisión**: autoevaluación declarada (D-11). La subfase no abre ni cierra un gate, así que no lleva revisión independiente.
+- **Lo que hereda el resto de la fase**: el componente propio de sugerencias, que reemplaza la lista nativa en Marca y Categoría y sirve al autocompletar de los buscadores, junto con el orden, las filas por página y los filtros (15.2); el dashboard interactivo (15.3). Lo que los bocetos dibujan y no existe, a las Fases 16, 17 y 18 según D-1.
