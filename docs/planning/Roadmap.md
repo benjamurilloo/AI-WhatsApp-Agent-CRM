@@ -292,6 +292,39 @@ Reglas comunes a las cuatro fases:
 - **Gate de salida**: datos migrados conciliados y decisión del usuario.
 - **Nivel de validación**: preparado para producción.
 
+## Fase 15 — Identidad visual y presentación
+
+*Abierta el 2026-10-05 por decisión del usuario. Corre en paralelo con la 13.5.2-b y no espera el cierre de la Fase 13. El mismo día, el usuario decidió separar lo estético de lo funcional: lo funcional es la Fase 16.*
+
+- **Objetivo**: que el CRM se vea como las pantallas de referencia del usuario, en claro y en oscuro, con contraste AA, empezando por lo que se ve en una demostración a un posible cliente.
+- **Motivo y prioridad**: hay una reunión con un posible cliente, probablemente el jueves o el viernes de la semana del 2026-10-05. Lo que se muestre ahí tiene que estar desplegado en producción. **La 13.5.2-b tiene prioridad**: cuando haya un negocio confirmado, la Fase 15 se pausa. No hay dos sesiones de trabajo sobre el repositorio al mismo tiempo.
+- **Alcance**: la presentación del CRM: paleta, marco, pantallas, gráficos y controles de los listados. Ningún dato nuevo en la base ni ningún contrato nuevo con el agente. **Fuera**: lo funcional (Fase 16), la migración por CSV (Fase 14) y todo lo que sea ERP.
+- **Referencia visual**: siete pantallas que el usuario trajo el 2026-10-05, en claro y en oscuro: el dashboard, Productos, Clientes, Conversaciones, Información del negocio y Usuarios. Son bocetos generados con otra herramienta. Las piezas que dibujan sin respaldo en el CRM no entran por estar dibujadas: cada una se asigna a una subfase o se descarta con su motivo ([brief-15.1](../decisions/brief-15.1-identidad-visual-y-marco.md), D-1).
+- **Subfases**:
+  - **15.1 — Identidad visual, marco y pantallas principales** ([brief-15.1](../decisions/brief-15.1-identidad-visual-y-marco.md)): la paleta nueva, el marco como panel lateral con barra superior y las seis pantallas de referencia llevadas al boceto con lo que ya existe. Se despliega a producción antes de la reunión. Solo cambia la presentación: ni datos, ni fórmulas, ni contratos.
+  - **15.2 — Controles de los listados**: ordenar los listados de productos, clientes y conversaciones, y elegir cuántas filas mostrar por página (el «10» de los bocetos). Toca las consultas: el orden cambia el índice que sostiene la paginación, y la 13.2 midió los planes con el orden actual.
+  - **15.3 — Dashboard más atractivo e interactivo**, con las mismas fórmulas del [MetricsCatalog](../analytics/MetricsCatalog.md): interacción en los gráficos, la variación contra el período anterior, «Ver detalles» y las dos visualizaciones nuevas del boceto, la distribución por tipo de mensaje y la del tiempo a primera respuesta. Las dos últimas son métricas nuevas de solo lectura: entran al catálogo con su definición antes de dibujarse. Si hace falta una librería de gráficos, se pide autorización.
+  - **15.4 en adelante — Pantallas de detalle y formularios**, una por vez, a medida que el usuario las revise («Nuevo producto», el detalle de un cliente, la conversación, etc.). Cada una entra con su enmienda fechada.
+- **Dependencias**: la 15.1 antes que las demás, porque fija la paleta, el marco y los componentes compartidos.
+- **Riesgos**: diseñar desde bocetos generados, que dibujan datos y controles que no existen; que la apuración por la reunión rebaje la verificación de accesibilidad; tocar el marco común, que comparten todas las pantallas y casi todos los end-to-end.
+- **Entregables**: una subfase a la vez, cada una con su brief aprobado.
+- **Gate de entrada**: decisión del usuario del 2026-10-05.
+- **Gate de salida**: decisión del usuario. Ninguna subfase abre ni cierra un gate de producción, así que cada una se cierra con autoevaluación declarada, salvo que su brief diga otra cosa.
+- **Nivel de validación**: el de cada subfase. Las que se despliegan quedan **verificadas en producción**, sin certificar un nivel superior.
+
+## Fase 16 — Herramientas de operación
+
+*Planificada el 2026-10-05, sin abrir. Se abre con la decisión del usuario, con su proyecto en Notion y el brief de su primera subfase. El orden de abajo es el de la prioridad que dio el usuario, no un compromiso.*
+
+- **Objetivo**: funciones nuevas para quien atiende a los clientes todos los días.
+- **Candidatas**:
+  - **Etiquetas de clientes, manuales**: «interesado», «quiere señar», «reclamo», «no interesado» y las que defina la organización, puestas y quitadas por un usuario del CRM, con auditoría. Toca el modelo de datos: [DataModel](../architecture/DataModel.md) primero. «Quiere señar» es solo una etiqueta, nunca un pago.
+  - **Etiquetas puestas por el agente**: un evento nuevo del contrato de ingestión, diseñado desde el modelo del CRM y coordinado con el agente, que hace su parte en su repositorio y con sus briefs ([ADR 0014](../decisions/0014-el-agente-de-whatsapp-como-consumidor-del-crm.md)). Va después de las manuales.
+  - **Pausar y reanudar al agente en una conversación**: una marca que pone un usuario del CRM y que el agente lee en el contexto que ya pide en cada turno. Respeta la dirección del ADR 0014, porque el CRM no llama al agente. Exige que el agente lea la marca y la respete, en su repositorio.
+  - **Responder desde el CRM**: empieza por un ADR, no por código. Hoy ya existen `messages.sent_by` (`agent` o `person`) y el estado `pending`. **La pregunta central**: cómo llega a WhatsApp una respuesta escrita en el CRM sin que el CRM llame al agente, o si el ADR 0014 se enmienda con decisión del usuario. **Riesgo**: que el dueño conteste desde la app de WhatsApp, por fuera de la API, y esa respuesta no quede en el CRM.
+  - **Lo que los bocetos de la Fase 15 dibujan y no existe**: imágenes de producto, acciones rápidas en el menú «…» de cada fila, un buscador global y notificaciones. Cada una necesita decidir qué hace antes de dibujarse ([brief-15.1](../decisions/brief-15.1-identidad-visual-y-marco.md), D-1).
+- **Gate de salida**: decisión del usuario. Las candidatas que cambian un contrato con el agente deciden en su brief si llevan revisión independiente.
+
 ---
 
 ## Fases futuras, sin planificar en detalle
@@ -301,7 +334,7 @@ Reglas comunes a las cuatro fases:
 
 ## Camino crítico
 
-0.1 → 0.2 → 0.3 → Fase 1 → Fase 2 → Fase 3 → (Fase 4 ∥ Fase 5) → Fase 6 → Fase 7 → Fase 8 → Fase 9 → Fase 10 → Fase 11 → Fase 12 → Fase 13 → Fase 14. *(Extendido el 2026-09-23: terminaba en la Fase 10.)*
+0.1 → 0.2 → 0.3 → Fase 1 → Fase 2 → Fase 3 → (Fase 4 ∥ Fase 5) → Fase 6 → Fase 7 → Fase 8 → Fase 9 → Fase 10 → Fase 11 → Fase 12 → Fase 13 → Fase 14. *(Extendido el 2026-09-23: terminaba en la Fase 10.)* *(Nota del 2026-10-05: la Fase 15 no está en el camino crítico. Corre en paralelo con la 13.5.2-b y se pausa cuando la 13.5.2-b arranca.)*
 
 Dentro de la Fase 6: 6.1 → 6.2 → 6.3 → 6.4, y en paralelo 6.5.1 → 6.5.2 → 6.5.3.
 
@@ -316,6 +349,7 @@ Dentro de la Fase 11: 11.0 → (11.1 ∥ 11.2) → 11.3 → 11.4.
 - En la Fase 7, la 7.1 y la 7.2.
 - En la Fase 8, la 8.3 junto al resto.
 - En la Fase 11, la 11.1 (catálogo) y la 11.2 (información del negocio).
+- La Fase 15, mientras la 13.5.2-b espera un negocio confirmado *(agregado el 2026-10-05)*. Es paralela en el calendario, no en la ejecución: nunca hay dos sesiones de trabajo sobre el repositorio al mismo tiempo.
 
 ## Hitos demostrables
 
@@ -327,6 +361,7 @@ Dentro de la Fase 11: 11.0 → (11.1 ∥ 11.2) → 11.3 → 11.4.
 6. El agente lee catálogo e información del negocio del CRM, en staging (fin de la Fase 11).
 7. Un turno completo del agente contra el CRM, en staging y detrás del modo de prueba (fin de la Fase 12).
 8. Primer cliente atendido en producción (fin de la Fase 13).
+9. La identidad visual nueva, desplegada en producción para la reunión con un posible cliente (fin de la 15.1).
 
 ## Definición de Terminado del MVP
 
@@ -357,3 +392,6 @@ Dentro de la Fase 11: 11.0 → (11.1 ∥ 11.2) → 11.3 → 11.4.
 - Hosting productivo (13.1, *decidido el 2026-09-29*: brief-13.1, D-1) y apertura del tráfico real (gate de salida de la Fase 13).
 - Qué se migra del sistema legado (14.1).
 - Inicio del ERP, no antes de que la integración esté en producción.
+- Cada mejora que entra a la Fase 15 y su orden, y la pausa de la fase cuando la 13.5.2-b arranca *(agregado el 2026-10-05)*.
+- Toda librería nueva de la Fase 15, sea de íconos o de gráficos.
+- La apertura de la Fase 16 y qué candidatas entran *(agregado el 2026-10-05)*.
