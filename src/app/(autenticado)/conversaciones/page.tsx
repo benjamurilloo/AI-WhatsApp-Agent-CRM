@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
+  CONVERSATIONS_PAGE_SIZE,
   listConversations,
   type ConversationListField,
 } from "@/modules/conversations";
@@ -10,14 +11,16 @@ import { getOrganizationTimezone } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
 import {
   cardClass,
+  inlineButtonClass,
   inputClass,
   labelClass,
   linkClass,
-  pageTitleClass,
-  secondaryButtonClass,
   selectClass,
 } from "@/app/_components/form-styles";
+import { Icon } from "@/app/_components/icons";
+import { PageHeader, SearchIcon } from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
+import { Pagination, shownRangeText } from "@/app/_components/pagination";
 import { ConversationTable } from "./conversation-table";
 import {
   conversationFiltersHref,
@@ -124,7 +127,10 @@ export default async function ConversationsPage({
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8">
-      <h1 className={pageTitleClass}>{TITLE}</h1>
+      <PageHeader
+        title={TITLE}
+        subtitle="Analizá y gestioná todas las conversaciones con tus clientes."
+      />
 
       <form
         key={conversationFiltersHref(view)}
@@ -218,17 +224,21 @@ export default async function ConversationsPage({
             <label htmlFor="buscar_cliente" className={labelClass}>
               Cliente
             </label>
-            <input
-              id="buscar_cliente"
-              name="buscar_cliente"
-              type="search"
-              defaultValue={view.clientSearch}
-              placeholder="Nombre del cliente"
-              className={`${inputClass} w-56`}
-            />
+            <div className="relative">
+              <SearchIcon />
+              <input
+                id="buscar_cliente"
+                name="buscar_cliente"
+                type="search"
+                defaultValue={view.clientSearch}
+                placeholder="Nombre del cliente"
+                className={`${inputClass} w-60 pl-9`}
+              />
+            </div>
           </div>
         )}
-        <button type="submit" className={secondaryButtonClass}>
+        <button type="submit" className={inlineButtonClass}>
+          <Icon name="filter" className="size-4" />
           Aplicar filtros
         </button>
         {filtered ? (
@@ -343,43 +353,26 @@ export default async function ConversationsPage({
             caption="Conversaciones de la organización"
             showClient
           />
-          {result.pageCount > 1 ? (
-            <nav
-              aria-label="Paginación"
-              className="mt-6 flex flex-wrap items-center justify-center gap-4"
-            >
-              {result.page > 1 ? (
-                <Link
-                  href={conversationFiltersHref({
-                    ...view,
-                    page: result.page - 1,
-                  })}
-                  className={linkClass}
-                >
-                  Página anterior
-                </Link>
-              ) : null}
-              <p className="text-sm text-muted tabular-nums">
-                Página {result.page} de {result.pageCount} · {result.total}{" "}
-                {result.total === 1 ? "conversación" : "conversaciones"}
-              </p>
-              {result.page < result.pageCount ? (
-                <Link
-                  href={conversationFiltersHref({
-                    ...view,
-                    page: result.page + 1,
-                  })}
-                  className={linkClass}
-                >
-                  Página siguiente
-                </Link>
-              ) : null}
-            </nav>
-          ) : null}
+          <Pagination
+            page={result.page}
+            pageCount={result.pageCount}
+            rangeText={shownRangeText({
+              page: result.page,
+              pageSize: CONVERSATIONS_PAGE_SIZE,
+              shown: result.conversations.length,
+              total: result.total,
+              singular: "conversación",
+              plural: "conversaciones",
+            })}
+            hrefFor={(page) => conversationFiltersHref({ ...view, page })}
+          />
         </>
       )}
 
-      <p className="mt-6 text-sm text-muted">Fechas en {timeZone}.</p>
+      <p className="mt-6 flex items-center gap-2 text-sm text-muted">
+        <Icon name="mapPin" className="size-4" />
+        Fechas en {timeZone}.
+      </p>
     </main>
   );
 }

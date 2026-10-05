@@ -3,15 +3,18 @@ import type { Metadata } from "next";
 import { getMetricsPeriod } from "@/modules/analytics";
 import { requireSession } from "@/app/_auth/session";
 import {
+  cardClass,
   fieldErrorClass,
   formMessageClass,
+  inlineButtonClass,
   inputClass,
   labelClass,
   mutedTextClass,
+  pageSubtitleClass,
   pageTitleClass,
-  secondaryButtonClass,
   selectClass,
 } from "@/app/_components/form-styles";
+import { Icon } from "@/app/_components/icons";
 import { PageNotice } from "@/app/_components/page-notice";
 import {
   ActiveConversationsCard,
@@ -57,7 +60,10 @@ export const metadata: Metadata = {
   title: "Dashboard — AI WhatsApp Agent CRM",
 };
 
-const CARD_GRID = "mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4";
+// Cuadrícula del boceto (brief-15.1): dos filas de cuatro y una de tres, que ocupa el ancho.
+const CARD_GRID = "mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-12";
+const NARROW = "xl:col-span-3";
+const WIDE = "xl:col-span-4";
 
 export default async function DashboardPage({
   searchParams,
@@ -110,70 +116,80 @@ export default async function DashboardPage({
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8">
-      <h1 className={pageTitleClass}>Dashboard</h1>
-
-      <form
-        key={retryHref}
-        method="get"
-        action="/"
-        className="mt-6 flex flex-wrap items-end gap-3"
-      >
-        <div className="flex flex-col gap-1">
-          <label htmlFor="periodo" className={labelClass}>
-            Período
-          </label>
-          <select
-            id="periodo"
-            name="periodo"
-            defaultValue={view.period}
-            className={selectClass}
-          >
-            {PERIOD_KEYS.map((key) => (
-              <option key={key} value={key}>
-                {PERIOD_LABEL[key]}
-              </option>
-            ))}
-          </select>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className={pageTitleClass}>Dashboard</h1>
+          <p className={pageSubtitleClass}>
+            Resumen general de la actividad del CRM
+          </p>
         </div>
-        {view.period === "personalizado" ? (
-          <>
-            <div className="flex flex-col gap-1">
-              <label htmlFor="desde" className={labelClass}>
-                Desde
-              </label>
-              <input
-                id="desde"
-                name="desde"
-                type="date"
-                defaultValue={view.from}
-                aria-invalid={invalidFields.includes("from") || undefined}
-                aria-describedby={periodInvalid ? "periodo-error" : undefined}
-                className={inputClass}
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label htmlFor="hasta" className={labelClass}>
-                Hasta
-              </label>
-              <input
-                id="hasta"
-                name="hasta"
-                type="date"
-                defaultValue={view.to}
-                aria-invalid={invalidFields.includes("to") || undefined}
-                aria-describedby={periodInvalid ? "periodo-error" : undefined}
-                className={inputClass}
-              />
-            </div>
-          </>
-        ) : null}
-        {series === "conversaciones" ? null : (
-          <input type="hidden" name="serie" value={series} />
-        )}
-        <button type="submit" className={secondaryButtonClass}>
-          Aplicar
-        </button>
-      </form>
+
+        <form
+          key={retryHref}
+          method="get"
+          action="/"
+          className={`${cardClass} flex flex-wrap items-end gap-3 p-3`}
+        >
+          <span className="grid size-10 place-items-center self-center rounded-xl bg-primary-soft text-primary">
+            <Icon name="calendar" />
+          </span>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="periodo" className={labelClass}>
+              Período
+            </label>
+            <select
+              id="periodo"
+              name="periodo"
+              defaultValue={view.period}
+              className={selectClass}
+            >
+              {PERIOD_KEYS.map((key) => (
+                <option key={key} value={key}>
+                  {PERIOD_LABEL[key]}
+                </option>
+              ))}
+            </select>
+          </div>
+          {view.period === "personalizado" ? (
+            <>
+              <div className="flex flex-col gap-1">
+                <label htmlFor="desde" className={labelClass}>
+                  Desde
+                </label>
+                <input
+                  id="desde"
+                  name="desde"
+                  type="date"
+                  defaultValue={view.from}
+                  aria-invalid={invalidFields.includes("from") || undefined}
+                  aria-describedby={periodInvalid ? "periodo-error" : undefined}
+                  className={inputClass}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label htmlFor="hasta" className={labelClass}>
+                  Hasta
+                </label>
+                <input
+                  id="hasta"
+                  name="hasta"
+                  type="date"
+                  defaultValue={view.to}
+                  aria-invalid={invalidFields.includes("to") || undefined}
+                  aria-describedby={periodInvalid ? "periodo-error" : undefined}
+                  className={inputClass}
+                />
+              </div>
+            </>
+          ) : null}
+          {series === "conversaciones" ? null : (
+            <input type="hidden" name="serie" value={series} />
+          )}
+          <button type="submit" className={inlineButtonClass}>
+            Aplicar
+          </button>
+        </form>
+      </div>
 
       {period ? (
         <p className={`mt-3 ${mutedTextClass}`}>
@@ -201,39 +217,61 @@ export default async function DashboardPage({
       {cards === null ? null : (
         <>
           <div className={CARD_GRID}>
-            <Suspense fallback={<LoadingCard metric={1} />}>
-              <ConversationsStartedCard {...cards} />
-            </Suspense>
-            <Suspense fallback={<LoadingCard metric={2} />}>
-              <ActiveConversationsCard {...cards} />
-            </Suspense>
-            <Suspense fallback={<LoadingCard metric={3} />}>
-              <UniqueClientsCard {...cards} />
-            </Suspense>
-            <Suspense fallback={<LoadingCard metric={4} />}>
-              <InboundMessagesCard {...cards} />
-            </Suspense>
-            <Suspense fallback={<LoadingCard metric={5} />}>
-              <OutboundMessagesCard {...cards} />
-            </Suspense>
-            <Suspense fallback={<LoadingCard metric={6} />}>
-              <MessagesPerConversationCard {...cards} />
-            </Suspense>
-            <Suspense fallback={<LoadingCard metric={7} />}>
-              <RespondedConversationsCard {...cards} />
-            </Suspense>
-            <Suspense fallback={<LoadingCard metric={8} />}>
-              <ResponseCoverageCard {...cards} />
-            </Suspense>
-            <Suspense fallback={<LoadingCard metric={9} />}>
-              <FirstResponseTimeCard {...cards} />
-            </Suspense>
-            <Suspense fallback={<LoadingCard metric={11} />}>
-              <StatusDistributionCard {...cards} />
-            </Suspense>
-            <Suspense fallback={<LoadingCard metric={12} />}>
-              <IngestionErrorsCard {...cards} />
-            </Suspense>
+            <div className={NARROW}>
+              <Suspense fallback={<LoadingCard metric={1} />}>
+                <ConversationsStartedCard {...cards} />
+              </Suspense>
+            </div>
+            <div className={NARROW}>
+              <Suspense fallback={<LoadingCard metric={2} />}>
+                <ActiveConversationsCard {...cards} />
+              </Suspense>
+            </div>
+            <div className={NARROW}>
+              <Suspense fallback={<LoadingCard metric={3} />}>
+                <UniqueClientsCard {...cards} />
+              </Suspense>
+            </div>
+            <div className={NARROW}>
+              <Suspense fallback={<LoadingCard metric={4} />}>
+                <InboundMessagesCard {...cards} />
+              </Suspense>
+            </div>
+            <div className={NARROW}>
+              <Suspense fallback={<LoadingCard metric={5} />}>
+                <OutboundMessagesCard {...cards} />
+              </Suspense>
+            </div>
+            <div className={NARROW}>
+              <Suspense fallback={<LoadingCard metric={6} />}>
+                <MessagesPerConversationCard {...cards} />
+              </Suspense>
+            </div>
+            <div className={NARROW}>
+              <Suspense fallback={<LoadingCard metric={7} />}>
+                <RespondedConversationsCard {...cards} />
+              </Suspense>
+            </div>
+            <div className={NARROW}>
+              <Suspense fallback={<LoadingCard metric={8} />}>
+                <ResponseCoverageCard {...cards} />
+              </Suspense>
+            </div>
+            <div className={WIDE}>
+              <Suspense fallback={<LoadingCard metric={9} />}>
+                <FirstResponseTimeCard {...cards} />
+              </Suspense>
+            </div>
+            <div className={WIDE}>
+              <Suspense fallback={<LoadingCard metric={11} />}>
+                <StatusDistributionCard {...cards} />
+              </Suspense>
+            </div>
+            <div className={WIDE}>
+              <Suspense fallback={<LoadingCard metric={12} />}>
+                <IngestionErrorsCard {...cards} />
+              </Suspense>
+            </div>
           </div>
 
           <div className="mt-6">

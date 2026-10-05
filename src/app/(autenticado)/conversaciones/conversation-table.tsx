@@ -6,13 +6,16 @@ import {
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
+import { Avatar } from "@/app/_components/avatar";
+import { Icon } from "@/app/_components/icons";
 import { formatShortDateTime } from "@/app/_format/date-time";
 import { CHANNEL_LABEL, NO_CLIENT_TEXT } from "./messages";
 import { StatusBadge } from "./status-badge";
 
 // Conversaciones de la pantalla 8 y de la sección de la 7 (wireframes 07 y 08): tabla en
 // escritorio y tarjetas en móvil; la versión oculta no entra al árbol de accesibilidad. Sin
-// contenido de mensajes ni teléfono. Componente de servidor.
+// contenido de mensajes ni teléfono. Componente de servidor. Desde la brief-15.1, con avatar del
+// cliente y un ícono genérico de canal junto a su nombre (D-8).
 export function ConversationTable({
   conversations,
   timeZone,
@@ -65,15 +68,26 @@ export function ConversationTable({
             {conversations.map((conversation) => (
               <tr key={conversation.id}>
                 <td className={`${tableCellClass} font-semibold`}>
-                  <Link
-                    href={`/conversaciones/${conversation.id}`}
-                    className={linkClass}
-                  >
-                    {linkText(conversation)}
-                  </Link>
+                  <span className="flex items-center gap-3">
+                    {showClient && conversation.client ? (
+                      <Avatar name={conversation.client.name} />
+                    ) : null}
+                    <Link
+                      href={`/conversaciones/${conversation.id}`}
+                      className={linkClass}
+                    >
+                      {linkText(conversation)}
+                    </Link>
+                  </span>
                 </td>
                 <td className={tableCellClass}>
-                  {CHANNEL_LABEL[conversation.channel]}
+                  <span className="flex items-center gap-2">
+                    <Icon
+                      name="messageCircle"
+                      className="size-4 text-success"
+                    />
+                    {CHANNEL_LABEL[conversation.channel]}
+                  </span>
                 </td>
                 <td className={tableCellClass}>
                   <StatusBadge status={conversation.status} />

@@ -35,6 +35,7 @@ La versión exacta de cada paquete queda fijada en el lockfile al instalar (2.3)
 
 - Las pantallas usan solo los tokens de `globals.css` (`bg-surface`, `text-muted`, `bg-primary`…), nunca colores de la paleta de Tailwind ni valores hexadecimales sueltos. La paleta por defecto está anulada con `--color-*: initial`, así que una clase como `bg-slate-50` no genera CSS.
 - Un token nuevo se agrega con su valor en claro y en oscuro, y con el contraste AA de su uso verificado.
+- Desde la 15.1 ([brief-15.1](../decisions/brief-15.1-identidad-visual-y-marco.md), D-2) el relleno de un botón primario es `bg-action text-on-action`, no `bg-primary`: `primary` es el color de los enlaces y del texto destacado, y en oscuro es un lavanda que no admite texto blanco encima. `sidebar` es el fondo del panel lateral. Los íconos son SVG en línea de `src/app/_components/icons.tsx`, con trazos copiados de Lucide y su licencia ISC en el encabezado, sin dependencia (D-3).
 - Las clases que se repiten viven en `src/app/_components/form-styles.ts`. Un patrón que aparece en tres pantallas se extrae como componente en esa subfase.
 - El tema lo decide la cookie `crm_theme`, leída en el layout raíz; sin cookie manda `prefers-color-scheme`. No hay scripts en línea.
 

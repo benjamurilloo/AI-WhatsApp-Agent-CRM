@@ -2,25 +2,32 @@
 @import "tailwindcss";
 
 /*
- * Diseño visual base "Laguna" (brief-4.0, D-1 y D-2). Las pantallas usan solo estos tokens:
+ * Diseño visual base (brief-4.0, D-1), con la paleta violeta de la brief-15.1 (D-2), que reemplaza
+ * a «Laguna». Las pantallas usan solo estos tokens:
  * la paleta por defecto de Tailwind queda anulada. Cada valor cumple WCAG AA en su uso.
  * Sin cookie de tema sigue prefers-color-scheme; con cookie, el layout raíz marca data-theme (D-4).
  */
 :root {
   color-scheme: light;
-  --background: #f3f7f6;
+  --background: #f6f5fb;
   --surface: #ffffff;
-  --surface-muted: #e6efee;
-  --foreground: #10211f;
-  --muted: #4b5e5c;
-  --border: #d2dfdd;
-  --border-strong: #6f8785;
-  --primary: #0b6e69;
-  --primary-hover: #08524f;
+  --surface-muted: #efecf9;
+  --sidebar: #f1eefb;
+  --foreground: #17142e;
+  --muted: #5a5573;
+  --border: #e3dff0;
+  --border-strong: #7d7799;
+  --primary: #6d28d9;
+  --primary-hover: #5b21b6;
   --on-primary: #ffffff;
-  --primary-soft: #ddf1ee;
-  --on-primary-soft: #07423f;
-  --focus: #1c5d8c;
+  --primary-soft: #ede7fe;
+  --on-primary-soft: #4c1d95;
+  /* Relleno de los botones primarios y del ítem activo (brief-15.1, D-2): aparte de primary,
+     que es texto y enlace, para que el violeta saturado cumpla también en oscuro. */
+  --action: #6d28d9;
+  --action-hover: #5b21b6;
+  --on-action: #ffffff;
+  --focus: #1d4ed8;
   --danger: #b42318;
   --danger-hover: #8a1b12;
   --on-danger: #ffffff;
@@ -37,22 +44,26 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --background: #0b1514;
-    --surface: #11201f;
-    --surface-muted: #172a29;
-    --foreground: #e3eeec;
-    --muted: #9bb1ae;
-    --border: #24393a;
-    --border-strong: #6c8785;
-    --primary: #3dbfb2;
-    --primary-hover: #62d2c6;
-    --on-primary: #04201d;
-    --primary-soft: #123634;
-    --on-primary-soft: #a6e6de;
-    --focus: #6bb6e8;
+    --background: #0c0b1d;
+    --surface: #15142c;
+    --surface-muted: #1e1c3b;
+    --sidebar: #100f25;
+    --foreground: #ebe9f7;
+    --muted: #a9a5c6;
+    --border: #2b2950;
+    --border-strong: #7a75a0;
+    --primary: #a48bfa;
+    --primary-hover: #bba6fc;
+    --on-primary: #160f33;
+    --primary-soft: #2c2163;
+    --on-primary-soft: #d9cffd;
+    --action: #7c3aed;
+    --action-hover: #6d28d9;
+    --on-action: #ffffff;
+    --focus: #7cb4f5;
     --danger: #f47a6e;
     --danger-hover: #f79a90;
-    --on-danger: #04201d;
+    --on-danger: #160f33;
     --danger-soft: #3a1714;
     --on-danger-soft: #fbc4bd;
     --success: #56c98f;
@@ -65,22 +76,26 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --background: #0b1514;
-  --surface: #11201f;
-  --surface-muted: #172a29;
-  --foreground: #e3eeec;
-  --muted: #9bb1ae;
-  --border: #24393a;
-  --border-strong: #6c8785;
-  --primary: #3dbfb2;
-  --primary-hover: #62d2c6;
-  --on-primary: #04201d;
-  --primary-soft: #123634;
-  --on-primary-soft: #a6e6de;
-  --focus: #6bb6e8;
+  --background: #0c0b1d;
+  --surface: #15142c;
+  --surface-muted: #1e1c3b;
+  --sidebar: #100f25;
+  --foreground: #ebe9f7;
+  --muted: #a9a5c6;
+  --border: #2b2950;
+  --border-strong: #7a75a0;
+  --primary: #a48bfa;
+  --primary-hover: #bba6fc;
+  --on-primary: #160f33;
+  --primary-soft: #2c2163;
+  --on-primary-soft: #d9cffd;
+  --action: #7c3aed;
+  --action-hover: #6d28d9;
+  --on-action: #ffffff;
+  --focus: #7cb4f5;
   --danger: #f47a6e;
   --danger-hover: #f79a90;
-  --on-danger: #04201d;
+  --on-danger: #160f33;
   --danger-soft: #3a1714;
   --on-danger-soft: #fbc4bd;
   --success: #56c98f;
@@ -99,6 +114,7 @@
   --color-background: var(--background);
   --color-surface: var(--surface);
   --color-surface-muted: var(--surface-muted);
+  --color-sidebar: var(--sidebar);
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
   --color-border: var(--border);
@@ -108,6 +124,9 @@
   --color-on-primary: var(--on-primary);
   --color-primary-soft: var(--primary-soft);
   --color-on-primary-soft: var(--on-primary-soft);
+  --color-action: var(--action);
+  --color-action-hover: var(--action-hover);
+  --color-on-action: var(--on-action);
   --color-focus: var(--focus);
   --color-danger: var(--danger);
   --color-danger-hover: var(--danger-hover);

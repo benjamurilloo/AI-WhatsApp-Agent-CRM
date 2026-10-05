@@ -1,22 +1,25 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { listMembers } from "@/modules/organizations";
+import { listMembers, MEMBERS_PAGE_SIZE } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
 import {
   activeBadgeClass,
   cardClass,
   inactiveBadgeClass,
+  inlineButtonClass,
   labelClass,
   linkClass,
-  pageTitleClass,
-  primaryLinkClass,
   roleBadgeClass,
-  secondaryButtonClass,
+  secondaryLinkClass,
   selectClass,
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
+import { Avatar } from "@/app/_components/avatar";
+import { Icon } from "@/app/_components/icons";
+import { PageHeader } from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
+import { Pagination, shownRangeText } from "@/app/_components/pagination";
 import {
   hasActiveFilters,
   memberFiltersHref,
@@ -32,7 +35,8 @@ export const metadata: Metadata = {
 const TITLE = "Usuarios y roles";
 
 // Pantalla 10: lista con filtros y página en la URL (brief-3.7). Tabla en escritorio y
-// tarjetas en móvil; la versión oculta no entra al árbol de accesibilidad.
+// tarjetas en móvil; la versión oculta no entra al árbol de accesibilidad. Desde la brief-15.1,
+// con el aspecto de los bocetos: avatar, «Editar» como botón y paginación numerada.
 export default async function UsersPage({
   searchParams,
 }: {
@@ -51,12 +55,11 @@ export default async function UsersPage({
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className={pageTitleClass}>{TITLE}</h1>
-        <Link href="/usuarios/nuevo" className={primaryLinkClass}>
-          + Nuevo usuario
-        </Link>
-      </div>
+      <PageHeader
+        title={TITLE}
+        subtitle="Gestioná los usuarios del CRM y sus permisos de acceso."
+        action={{ href: "/usuarios/nuevo", label: "+ Nuevo usuario" }}
+      />
 
       <form
         key={memberFiltersHref(filters)}
@@ -98,7 +101,8 @@ export default async function UsersPage({
             <option value="todos">Todos</option>
           </select>
         </div>
-        <button type="submit" className={secondaryButtonClass}>
+        <button type="submit" className={inlineButtonClass}>
+          <Icon name="filter" className="size-4" />
           Aplicar filtros
         </button>
         {filtered ? (
@@ -137,7 +141,7 @@ export default async function UsersPage({
                     Activo
                   </th>
                   <th scope="col" className={tableHeadCellClass}>
-                    <span className="sr-only">Acciones</span>
+                    Acciones
                   </th>
                 </tr>
               </thead>
@@ -145,8 +149,13 @@ export default async function UsersPage({
                 {result.members.map((member) => (
                   <tr key={member.id}>
                     <td className={`${tableCellClass} font-semibold`}>
-                      {member.name}
-                      {self(member.isSelf)}
+                      <span className="flex items-center gap-3">
+                        <Avatar name={member.name} />
+                        <span>
+                          {member.name}
+                          {self(member.isSelf)}
+                        </span>
+                      </span>
                     </td>
                     <td className={`${tableCellClass} break-all text-muted`}>
                       {member.email}
@@ -165,11 +174,12 @@ export default async function UsersPage({
                         {member.isActive ? "Sí" : "No"}
                       </span>
                     </td>
-                    <td className={`${tableCellClass} text-right`}>
+                    <td className={tableCellClass}>
                       <Link
                         href={`/usuarios/${member.id}`}
-                        className={linkClass}
+                        className={secondaryLinkClass}
                       >
+                        <Icon name="pencil" className="size-4" />
                         Editar<span className="sr-only"> a {member.name}</span>
                       </Link>
                     </td>
@@ -204,31 +214,20 @@ export default async function UsersPage({
         </>
       )}
 
-      {result.pageCount > 1 ? (
-        <nav
-          aria-label="Paginación"
-          className="mt-6 flex flex-wrap items-center justify-center gap-4"
-        >
-          {result.page > 1 ? (
-            <Link
-              href={memberFiltersHref({ ...filters, page: result.page - 1 })}
-              className={linkClass}
-            >
-              Página anterior
-            </Link>
-          ) : null}
-          <p className="text-sm text-muted tabular-nums">
-            Página {result.page} de {result.pageCount}
-          </p>
-          {result.page < result.pageCount ? (
-            <Link
-              href={memberFiltersHref({ ...filters, page: result.page + 1 })}
-              className={linkClass}
-            >
-              Página siguiente
-            </Link>
-          ) : null}
-        </nav>
+      {result.total > 0 ? (
+        <Pagination
+          page={result.page}
+          pageCount={result.pageCount}
+          rangeText={shownRangeText({
+            page: result.page,
+            pageSize: MEMBERS_PAGE_SIZE,
+            shown: result.members.length,
+            total: result.total,
+            singular: "usuario",
+            plural: "usuarios",
+          })}
+          hrefFor={(page) => memberFiltersHref({ ...filters, page })}
+        />
       ) : null}
     </main>
   );

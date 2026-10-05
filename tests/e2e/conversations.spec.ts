@@ -281,7 +281,7 @@ test("caso 3: filtra por estado y período, distingue sin resultados y pagina", 
   await page.goto("/conversaciones");
   await expect(conversationsTable(page).getByRole("row")).toHaveCount(1 + 25);
   await expect(
-    page.getByText("Página 1 de 2 · 26 conversaciones"),
+    page.getByText("Mostrando 1 a 25 de 26 conversaciones"),
   ).toBeVisible();
   await page.getByRole("link", { name: "Página siguiente" }).click();
   await expect(page).toHaveURL("/conversaciones?pagina=2");

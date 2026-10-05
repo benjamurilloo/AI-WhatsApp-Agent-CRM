@@ -4,13 +4,12 @@ import { logEvent, newRequestId } from "@/shared/log";
 import {
   cardClass,
   mutedTextClass,
-  navLinkClass,
   sectionTitleClass,
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
 import type { CardContext } from "./cards";
-import { chartGeometry } from "./chart-geometry";
+import { CHART_HEIGHT, chartGeometry, type ChartBar } from "./chart-geometry";
 import { METRIC_INFO } from "./definitions";
 import { formatCount } from "./format";
 import { CHART_SERIES_LABEL, DAILY_NOT_ADDITIVE_NOTE } from "./messages";
@@ -19,7 +18,9 @@ import { formatCalendarDay } from "./period";
 
 // Métrica 10 (brief-7.4, D-4): barras en un SVG generado en el servidor, con la tabla de datos
 // siempre disponible, que es la alternativa accesible del gráfico (Screens.md §2). La serie activa
-// viaja en la URL, así que no hace falta estado de cliente.
+// viaja en la URL, así que no hace falta estado de cliente. Desde la brief-15.1 lleva líneas de
+// guía, el máximo y el cero en el eje, algunas fechas debajo y un selector de serie segmentado;
+// la geometría de las barras no cambió.
 
 export type SeriesKey = keyof typeof CHART_SERIES_LABEL;
 
@@ -60,7 +61,7 @@ export async function DailyActivitySection({
     return (
       <section className={`${cardClass} p-4`} aria-labelledby="metrica-10">
         <h2 id="metrica-10" className={sectionTitleClass}>
-          10. {METRIC_INFO[10].name}
+          {METRIC_INFO[10].name}
         </h2>
         <div className="mt-3">
           <MetricError requestId={requestId} retryHref={cards.retryHref} />
@@ -72,24 +73,25 @@ export async function DailyActivitySection({
   const points = pointsOf(rows, series);
   const geometry = chartGeometry(points);
   const label = CHART_SERIES_LABEL[series];
+  const frame = chartFrame(geometry.bars);
 
   return (
-    <section className={`${cardClass} p-4`} aria-labelledby="metrica-10">
+    <section className={`${cardClass} p-5`} aria-labelledby="metrica-10">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <h2 id="metrica-10" className={sectionTitleClass}>
-          10. {METRIC_INFO[10].name}
+          {METRIC_INFO[10].name}
         </h2>
         <nav aria-label="Serie del gráfico" className="sm:ml-auto">
-          <ul className="flex gap-1">
+          <ul className="flex gap-0.5 rounded-lg border border-border bg-surface-muted p-0.5">
             {SERIES_KEYS.map((key) => (
               <li key={key}>
                 <Link
                   href={seriesHref(key)}
                   aria-current={key === series ? "true" : undefined}
-                  className={`${navLinkClass} ${
+                  className={`block rounded-md px-3 py-1.5 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
                     key === series
-                      ? "bg-primary-soft text-on-primary-soft"
-                      : "text-muted hover:bg-surface-muted hover:text-foreground"
+                      ? "bg-action text-on-action shadow-sm"
+                      : "text-muted hover:text-foreground"
                   }`}
                 >
                   {CHART_SERIES_LABEL[key]}
@@ -101,23 +103,69 @@ export async function DailyActivitySection({
       </div>
 
       {/* El gráfico es decorativo: el dato exacto está en la tabla de abajo, que no se oculta. */}
-      <div className="mt-3 overflow-x-auto">
+      {/* Se desplaza en pantallas chicas: se puede enfocar para moverlo con el teclado. */}
+      <div
+        tabIndex={0}
+        role="group"
+        aria-label="Gráfico de barras; los valores exactos están en la tabla de datos"
+        className="mt-4 overflow-x-auto rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+      >
         <svg
-          role="presentation"
-          width={geometry.width}
-          height={geometry.height}
-          viewBox={`0 0 ${geometry.width} ${geometry.height}`}
-          className="block"
+          aria-hidden="true"
+          focusable="false"
+          width={frame.fill ? undefined : frame.width}
+          height={frame.fill ? undefined : frame.height}
+          viewBox={`0 0 ${frame.width} ${frame.height}`}
+          className={frame.fill ? "block h-auto w-full min-w-xl" : "block"}
         >
-          {geometry.bars.map((bar) => (
-            <rect
-              key={bar.day}
-              x={bar.x}
-              y={bar.y}
-              width={bar.width}
-              height={bar.height}
-              className="fill-primary"
+          {[0, 0.5, 1].map((share) => (
+            <line
+              key={share}
+              x1={AXIS_LEFT}
+              x2={frame.width}
+              y1={AXIS_TOP + CHART_HEIGHT * share}
+              y2={AXIS_TOP + CHART_HEIGHT * share}
+              strokeWidth={share === 1 ? 1 : 0.5}
+              className={share === 1 ? "stroke-border-strong" : "stroke-border"}
             />
+          ))}
+          <text
+            x={AXIS_LEFT - 6}
+            y={AXIS_TOP + 4}
+            textAnchor="end"
+            className="fill-muted text-[10px]"
+          >
+            {formatCount(geometry.max)}
+          </text>
+          <text
+            x={AXIS_LEFT - 6}
+            y={AXIS_TOP + CHART_HEIGHT + 3}
+            textAnchor="end"
+            className="fill-muted text-[10px]"
+          >
+            0
+          </text>
+          {frame.bars.map((bar, index) => (
+            <g key={bar.day}>
+              <rect
+                x={bar.x}
+                y={AXIS_TOP + bar.y}
+                width={bar.width}
+                height={bar.height}
+                rx={Math.min(2, bar.height / 2)}
+                className="fill-action"
+              />
+              {index % frame.labelEvery === 0 ? (
+                <text
+                  x={bar.x + bar.width / 2}
+                  y={AXIS_TOP + CHART_HEIGHT + 14}
+                  textAnchor="middle"
+                  className="fill-muted text-[9px]"
+                >
+                  {shortDay(bar.day)}
+                </text>
+              ) : null}
+            </g>
           ))}
         </svg>
       </div>
@@ -128,7 +176,7 @@ export async function DailyActivitySection({
       </p>
 
       <details className="mt-3">
-        <summary className="cursor-pointer text-sm font-semibold text-primary underline decoration-1 underline-offset-4">
+        <summary className="cursor-pointer rounded-sm text-sm font-semibold text-primary underline decoration-1 underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus">
           Ver tabla de datos
         </summary>
         <div className="mt-3 overflow-x-auto">
@@ -182,4 +230,49 @@ export async function DailyActivitySection({
       <p className={`mt-2 ${mutedTextClass}`}>{DAILY_NOT_ADDITIVE_NOTE}</p>
     </section>
   );
+}
+
+// Márgenes del gráfico dentro del SVG: el eje con el máximo a la izquierda y las fechas debajo.
+const AXIS_LEFT = 26;
+const AXIS_TOP = 6;
+const AXIS_BOTTOM = 20;
+// Hasta dos meses, las barras se reparten en un lienzo fijo que se estira al ancho de la tarjeta
+// (en pantallas chicas, con un mínimo y desplazamiento). Con más días conservan su ancho y la
+// tarjeta se desplaza, como antes (brief-7.4, D-4). La altura de cada barra no cambia.
+const FILL_UP_TO_DAYS = 62;
+const FILL_WIDTH = 720;
+const MAX_BAR_WIDTH = 24;
+const MAX_DATE_LABELS = 12;
+
+function chartFrame(bars: readonly ChartBar[]) {
+  const height = AXIS_TOP + CHART_HEIGHT + AXIS_BOTTOM;
+  const labelEvery = Math.max(1, Math.ceil(bars.length / MAX_DATE_LABELS));
+  if (bars.length > FILL_UP_TO_DAYS) {
+    const last = bars.at(-1);
+    return {
+      fill: false,
+      width: AXIS_LEFT + (last ? last.x + last.width : 0) + 2,
+      height,
+      labelEvery,
+      bars: bars.map((bar) => ({ ...bar, x: AXIS_LEFT + bar.x })),
+    };
+  }
+  const slot = (FILL_WIDTH - AXIS_LEFT - 2) / Math.max(1, bars.length);
+  const width = Math.min(MAX_BAR_WIDTH, slot * 0.68);
+  return {
+    fill: true,
+    width: FILL_WIDTH,
+    height,
+    labelEvery,
+    bars: bars.map((bar, index) => ({
+      ...bar,
+      x: AXIS_LEFT + index * slot + (slot - width) / 2,
+      width,
+    })),
+  };
+}
+// «5/10»: día y mes del día de calendario, sin zona horaria de por medio.
+function shortDay(day: string) {
+  const [, month, date] = day.split("-");
+  return `${Number(date)}/${Number(month)}`;
 }

@@ -6,11 +6,12 @@ const focusRing =
   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
 
 const control =
-  "rounded-md border border-border-strong bg-surface px-3 py-2 text-base text-foreground";
+  "rounded-lg border border-border-strong bg-surface px-3 py-2 text-base text-foreground";
 
-const buttonBase = `inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${focusRing}`;
+const buttonBase = `inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${focusRing}`;
 
-const primary = "bg-primary text-on-primary hover:bg-primary-hover";
+// El relleno primario usa action, no primary (brief-15.1, D-2).
+const primary = "bg-action text-on-action shadow-sm hover:bg-action-hover";
 
 export const labelClass = "text-sm font-semibold text-foreground";
 
@@ -18,7 +19,7 @@ export const inputClass = `w-full min-w-0 ${control} aria-invalid:border-danger 
 
 export const buttonClass = `w-full ${buttonBase} ${primary}`;
 
-export const secondaryButtonClass = `inline-flex shrink-0 items-center justify-center rounded-md border border-border-strong bg-surface px-3 py-2 text-sm font-semibold text-foreground hover:bg-surface-muted ${focusRing}`;
+export const secondaryButtonClass = `inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm font-semibold text-foreground hover:bg-surface-muted ${focusRing}`;
 
 export const fieldErrorClass = "text-sm font-medium text-danger";
 
@@ -42,18 +43,26 @@ export const radioClass = `h-4 w-4 accent-primary ${focusRing}`;
 
 export const noticeClass = `rounded-md border border-success bg-success-soft px-3 py-2 text-sm text-on-success-soft ${focusRing}`;
 
-export const navLinkClass = `block rounded-md px-3 py-1.5 text-sm font-semibold ${focusRing}`;
+export const navLinkClass = `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold ${focusRing}`;
 
 // Estructura de página (brief-4.0, D-5).
 
 export const pageTitleClass =
-  "text-2xl font-bold tracking-tight text-balance text-foreground";
+  "text-3xl font-extrabold tracking-tight text-balance text-foreground";
+
+// Subtítulo de una pantalla, debajo del título (brief-15.1).
+export const pageSubtitleClass = "mt-1 text-base text-muted";
 
 export const sectionTitleClass = "text-lg font-bold tracking-tight";
 
 export const mutedTextClass = "text-sm text-muted";
 
-export const cardClass = "rounded-xl border border-border bg-surface";
+export const cardClass =
+  "rounded-2xl border border-border bg-surface shadow-sm";
+
+// Cuadro del ícono de una tarjeta (brief-15.1).
+export const iconTileClass =
+  "grid size-10 shrink-0 place-items-center rounded-xl bg-primary-soft text-primary";
 
 export const tableHeadCellClass =
   "bg-surface-muted px-4 py-2.5 text-xs font-bold tracking-wider text-muted uppercase";
@@ -65,6 +74,7 @@ const badgeClass =
 
 export const roleBadgeClass = `${badgeClass} bg-primary-soft text-on-primary-soft`;
 
-export const activeBadgeClass = `${badgeClass} bg-success-soft text-on-success-soft`;
+// El punto acompaña al texto, no lo reemplaza (brief-15.1).
+export const activeBadgeClass = `${badgeClass} gap-1.5 bg-success-soft text-on-success-soft before:size-1.5 before:rounded-full before:bg-current before:content-['']`;
 
 export const inactiveBadgeClass = `${badgeClass} bg-surface-muted text-muted`;

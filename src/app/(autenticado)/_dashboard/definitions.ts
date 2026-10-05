@@ -1,3 +1,5 @@
+import type { IconName } from "@/app/_components/icons";
+
 // Nombre y definición corta de cada métrica, para el desplegable de su tarjeta (brief-7.4, D-3).
 // El catálogo sigue siendo la fuente de verdad: si un texto de acá lo contradice, manda
 // docs/analytics/MetricsCatalog.md y este archivo se corrige. Viven todos juntos a propósito, para
@@ -87,3 +89,19 @@ export const METRIC_INFO: Record<MetricNumber, MetricInfo> = {
 export function metricLabel(number: MetricNumber): string {
   return `${number}. ${METRIC_INFO[number].name}`;
 }
+
+// Ícono de cada tarjeta (brief-15.1). Es solo presentación: no forma parte de la definición.
+export const METRIC_ICON: Record<MetricNumber, IconName> = {
+  1: "messageCircle",
+  2: "chartColumn",
+  3: "users",
+  4: "mail",
+  5: "send",
+  6: "messagesSquare",
+  7: "circleCheck",
+  8: "pieChart",
+  9: "timer",
+  10: "chartColumn",
+  11: "list",
+  12: "alert",
+};

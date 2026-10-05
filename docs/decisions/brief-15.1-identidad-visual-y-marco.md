@@ -261,3 +261,38 @@ La 15.1 no abre ni cierra un gate y solo cambia la presentación.
 - Si un par de tokens no llega a AA en la UI aunque haya pasado el cálculo: se ajusta el valor dentro de su tono y se informa. Si exige cambiar de tono, se detiene.
 - Si la 13.5.2-b arranca: se pausa en el último punto con la CI en verde.
 - Antes de cambiar el estado en Notion si el usuario no confirmó el cierre.
+
+## Resultados — etapas 15.1.1 y 15.1.2
+
+*Registrado el 2026-10-05. Autoevaluación declarada (D-12): no es una revisión independiente.* Las dos etapas se implementaron en la misma sesión y se verificaron juntas, sobre el mismo árbol: la suite completa corrió sobre las dos, no sobre la 15.1.1 sola con su versión final.
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| AC-1 | cumplido | aprobación del usuario del 2026-10-05, con las recomendaciones de D-1 a D-12 |
+| AC-2 | cumplido | los tokens de D-2 están en los tres bloques de `globals.css`. El cálculo de contraste da AA en los 25 pares de cada modo, más el relleno de acción: mínimo 3,90:1 en el borde fuerte (se exige 3:1) y 5,70:1 en texto. `on-danger` en oscuro pasó de `#04201d` a `#160f33` (6,83:1), para no dejar un verde de Laguna en la paleta |
+| AC-3 | cumplido | 102 de 102 end-to-end sobre `next start` (101 existentes y los 2 nuevos del marco; 8,4 min). Los pasos cambiados se listan abajo |
+| AC-4 | cumplido | axe sin violaciones en claro y en oscuro en todos los estados de `expectAccessible` y en el caso nuevo del marco. Una corrida intermedia encontró `scrollable-region-focusable` en el gráfico diario a 375 px. El contenedor se hizo enfocable, con nombre y foco visible |
+| AC-5 | cumplido | `frame.spec.ts`, casos 1 y 2 |
+| AC-6 | cumplido | `grep` de clases de la paleta de Tailwind en `src/app/`: 0 |
+| AC-7 | cumplido | `typecheck`, `lint` y `format:check` limpios; 992 de 992 unitarios y guardas (67 archivos); 674 de 674 de integración (43 archivos); `build` compila. El `git diff --ignore-cr-at-eol` de `src/modules/`, `package.json` y `package-lock.json` está vacío (`src/modules/crm/repository.ts` arrastra un cambio previo, solo de finales de línea, que no entra al commit) |
+| AC-8 | hecho, espera la revisión del usuario | 24 capturas (6 pantallas × claro y oscuro × 1280 y 375 px) sobre la semilla del piloto en la base local, entregadas en el Escritorio del usuario |
+| AC-9 | pendiente | requiere commit y push, con autorización |
+| AC-10 | pendiente | etapa 15.1.3 |
+| AC-11 | cumplido, con los agregados de abajo | `git status` |
+
+**Cambios en end-to-end existentes**, cada uno por un texto o un valor que la 15.1 cambia a propósito:
+
+- `users.spec.ts`, caso 13: los colores de fondo esperados de los dos temas pasan a los de D-2 (`rgb(246, 245, 251)` y `rgb(12, 11, 29)`). La brief no los había listado: son consecuencia directa de D-2.
+- `users.spec.ts`, caso 9; `products.spec.ts`, caso 8; `conversations.spec.ts`, caso 3; y `clients.spec.ts`, caso 4: el texto de la paginación pasa de «Página X de Y» a «Mostrando X a Y de Z ‹entidad›» (D-9). Los enlaces «Página anterior» y «Página siguiente» conservan su nombre accesible.
+
+**Desvíos y agregados**:
+
+- **D-4**: la organización quedó en la barra superior y no debajo de la marca. `users.spec.ts` la busca dentro del `banner`, que es además donde la encuentra un lector de pantalla. La marca Vixora queda sola en el panel.
+- **Archivo fuera de la lista**: `informacion/category-icon.ts` y su test. Los pedía D-7 («una tabla chica de palabras clave… y un test unitario de la tabla»), pero la lista no los nombraba.
+- **`page-header.tsx`** exporta también `SearchIcon` y `EditLink`, la lupa de los buscadores y el lápiz de las filas, para no sumar dos archivos.
+- **El lápiz** se llama «Editar» y lleva el nombre de la fila como descripción (`aria-describedby`). Si el nombre de la fila fuera parte del nombre del enlace, chocaría con los end-to-end que buscan el enlace por ese nombre. Solo lo ve el `admin`, y lleva a `?editar=1`, la edición que ya existía en cada detalle.
+- **El dashboard** muestra el nombre de cada métrica sin su número. El número sigue en el catálogo y en `definitions.ts`.
+- **Productos** usa menos relleno horizontal en su tabla (diez columnas) y la tarjeta se desplaza en lugar de recortar.
+- **Una falla intermitente**: en una de las corridas completas, `clients.spec.ts` caso 9 superó los 30 s mientras se sembraba la base de desarrollo en paralelo. Solo, pasó en 32,9 s con el arranque del servidor, y en la corrida final pasó.
+
+**No certifica**: la estética, que juzga el usuario con las capturas; el aspecto en navegadores distintos de Chromium; el contraste de cada pantalla más allá de lo que mide axe; ni nada de la 15.2, la 15.3 o la Fase 16.

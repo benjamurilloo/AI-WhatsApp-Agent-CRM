@@ -279,7 +279,7 @@ test("caso 4: busca por nombre y por teléfono, filtra y pagina desde la URL", a
     await insertClient(`Zeta ${String(i).padStart(2, "0")}`);
   }
   await page.goto("/clientes");
-  await expect(page.getByText("Página 1 de 2 · 28 clientes")).toBeVisible();
+  await expect(page.getByText("Mostrando 1 a 25 de 28 clientes")).toBeVisible();
   await page.getByRole("link", { name: "Página siguiente" }).click();
   await expect(page).toHaveURL("/clientes?pagina=2");
   await expect(clientsTable(page).getByRole("row")).toHaveCount(4);

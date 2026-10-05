@@ -1,23 +1,28 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getCurrentPrices } from "@/modules/catalog";
-import { listProductStock } from "@/modules/inventory";
+import { listProductStock, PRODUCTS_PAGE_SIZE } from "@/modules/inventory";
 import { requireSession } from "@/app/_auth/session";
 import {
   activeBadgeClass,
   cardClass,
   inactiveBadgeClass,
+  inlineButtonClass,
   inputClass,
   labelClass,
   linkClass,
-  pageTitleClass,
-  primaryLinkClass,
-  secondaryButtonClass,
   selectClass,
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
+import { Icon } from "@/app/_components/icons";
+import {
+  EditLink,
+  PageHeader,
+  SearchIcon,
+} from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
+import { Pagination, shownRangeText } from "@/app/_components/pagination";
 import { formatMoney } from "@/shared/money";
 import { formatQuantity } from "@/shared/quantity";
 import {
@@ -40,10 +45,15 @@ export const metadata: Metadata = {
 
 const TITLE = "Productos";
 
+// Diez columnas: la tabla usa menos relleno horizontal para entrar sin desplazarse (brief-15.1).
+const cellClass = tableCellClass.replace("px-4", "px-2.5");
+const headCellClass = tableHeadCellClass.replace("px-4", "px-2.5");
+
 // Pantalla 3 (wireframe 03): búsqueda, filtros y página en la URL. Tabla en escritorio y
 // tarjetas en móvil; la versión oculta no entra al árbol de accesibilidad. La búsqueda es por
 // palabras sobre nombre, marca y categoría, o por SKU exacto (brief-11.1, FR-PROD-11), y cada
-// producto muestra su precio vigente o «Sin precio» (FR-PROD-12).
+// producto muestra su precio vigente o «Sin precio» (FR-PROD-12). Desde la brief-15.1, con el
+// aspecto de los bocetos: lápiz para el admin y paginación numerada.
 export default async function ProductsPage({
   searchParams,
 }: {
@@ -72,14 +82,15 @@ export default async function ProductsPage({
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className={pageTitleClass}>{TITLE}</h1>
-        {isAdmin ? (
-          <Link href="/productos/nuevo" className={primaryLinkClass}>
-            + Nuevo producto
-          </Link>
-        ) : null}
-      </div>
+      <PageHeader
+        title={TITLE}
+        subtitle="Gestioná tu catálogo de productos, precios, stock y categorías."
+        action={
+          isAdmin
+            ? { href: "/productos/nuevo", label: "+ Nuevo producto" }
+            : null
+        }
+      />
 
       <form
         key={productFiltersHref(filters)}
@@ -91,14 +102,17 @@ export default async function ProductsPage({
           <label htmlFor="q" className={labelClass}>
             Buscar
           </label>
-          <input
-            id="q"
-            name="q"
-            type="search"
-            defaultValue={filters.text}
-            placeholder="Nombre, marca, categoría o SKU"
-            className={`${inputClass} w-72`}
-          />
+          <div className="relative">
+            <SearchIcon />
+            <input
+              id="q"
+              name="q"
+              type="search"
+              defaultValue={filters.text}
+              placeholder="Nombre, marca, categoría o SKU"
+              className={`${inputClass} w-72 pl-9`}
+            />
+          </div>
         </div>
         <div className="flex flex-col gap-1">
           <label htmlFor="estado" className={labelClass}>
@@ -142,7 +156,8 @@ export default async function ProductsPage({
             <option value="todos">Todos</option>
           </select>
         </div>
-        <button type="submit" className={secondaryButtonClass}>
+        <button type="submit" className={inlineButtonClass}>
+          <Icon name="filter" className="size-4" />
           Aplicar filtros
         </button>
         {filtered ? (
@@ -171,81 +186,81 @@ export default async function ProductsPage({
         </div>
       ) : (
         <>
-          <div className={`mt-8 hidden overflow-hidden md:block ${cardClass}`}>
-            <table className="w-full border-collapse text-left text-[0.9375rem]">
+          <div className={`mt-8 hidden overflow-x-auto md:block ${cardClass}`}>
+            <table className="w-full border-collapse text-left text-sm">
               <caption className="sr-only">
                 Productos de la organización
               </caption>
               <thead>
                 <tr>
-                  <th scope="col" className={tableHeadCellClass}>
+                  <th scope="col" className={headCellClass}>
                     SKU
                   </th>
-                  <th scope="col" className={tableHeadCellClass}>
+                  <th scope="col" className={headCellClass}>
                     Nombre
                   </th>
-                  <th scope="col" className={tableHeadCellClass}>
+                  <th scope="col" className={headCellClass}>
                     Marca
                   </th>
-                  <th scope="col" className={tableHeadCellClass}>
+                  <th scope="col" className={headCellClass}>
                     Categoría
                   </th>
-                  <th
-                    scope="col"
-                    className={`${tableHeadCellClass} text-right`}
-                  >
+                  <th scope="col" className={`${headCellClass} text-right`}>
                     Precio
                   </th>
-                  <th
-                    scope="col"
-                    className={`${tableHeadCellClass} text-right`}
-                  >
+                  <th scope="col" className={`${headCellClass} text-right`}>
                     Stock
                   </th>
-                  <th scope="col" className={tableHeadCellClass}>
+                  <th scope="col" className={headCellClass}>
                     Unidad
                   </th>
-                  <th scope="col" className={tableHeadCellClass}>
+                  <th scope="col" className={headCellClass}>
                     Estado
                   </th>
-                  <th scope="col" className={tableHeadCellClass}>
+                  <th scope="col" className={headCellClass}>
                     Activo
                   </th>
+                  {isAdmin ? (
+                    <th scope="col" className={headCellClass}>
+                      Acciones
+                    </th>
+                  ) : null}
                 </tr>
               </thead>
               <tbody>
                 {result.products.map((product) => (
                   <tr key={product.id}>
-                    <td className={`${tableCellClass} font-mono text-sm`}>
+                    <td
+                      className={`${cellClass} font-mono text-xs whitespace-nowrap`}
+                    >
                       {product.sku}
                     </td>
-                    <td className={`${tableCellClass} font-semibold`}>
+                    <td className={`${cellClass} font-semibold`}>
                       <Link
+                        id={`producto-${product.id}`}
                         href={`/productos/${product.id}`}
                         className={linkClass}
                       >
                         {product.name}
                       </Link>
                     </td>
-                    <td className={tableCellClass}>{product.brand ?? "—"}</td>
-                    <td className={tableCellClass}>
-                      {product.category ?? "—"}
-                    </td>
+                    <td className={cellClass}>{product.brand ?? "—"}</td>
+                    <td className={cellClass}>{product.category ?? "—"}</td>
                     <td
-                      className={`${tableCellClass} text-right whitespace-nowrap tabular-nums ${prices.has(product.id) ? "" : "text-muted"}`}
+                      className={`${cellClass} text-right whitespace-nowrap tabular-nums ${prices.has(product.id) ? "" : "text-muted"}`}
                     >
                       {priceText(product.id)}
                     </td>
-                    <td className={`${tableCellClass} text-right tabular-nums`}>
+                    <td className={`${cellClass} text-right tabular-nums`}>
                       {formatQuantity(product.quantityOnHand)}
                     </td>
-                    <td className={`${tableCellClass} text-muted`}>
+                    <td className={`${cellClass} text-muted`}>
                       {product.unit}
                     </td>
-                    <td className={tableCellClass}>
+                    <td className={cellClass}>
                       <StockStatusBadge status={product.stockStatus} />
                     </td>
-                    <td className={tableCellClass}>
+                    <td className={cellClass}>
                       <span
                         className={
                           product.isActive
@@ -256,6 +271,14 @@ export default async function ProductsPage({
                         {product.isActive ? "Sí" : "No"}
                       </span>
                     </td>
+                    {isAdmin ? (
+                      <td className={cellClass}>
+                        <EditLink
+                          href={`/productos/${product.id}?editar=1`}
+                          describedBy={`producto-${product.id}`}
+                        />
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>
@@ -302,32 +325,20 @@ export default async function ProductsPage({
         </>
       )}
 
-      {result.pageCount > 1 ? (
-        <nav
-          aria-label="Paginación"
-          className="mt-6 flex flex-wrap items-center justify-center gap-4"
-        >
-          {result.page > 1 ? (
-            <Link
-              href={productFiltersHref({ ...filters, page: result.page - 1 })}
-              className={linkClass}
-            >
-              Página anterior
-            </Link>
-          ) : null}
-          <p className="text-sm text-muted tabular-nums">
-            Página {result.page} de {result.pageCount} · {result.total}{" "}
-            {result.total === 1 ? "producto" : "productos"}
-          </p>
-          {result.page < result.pageCount ? (
-            <Link
-              href={productFiltersHref({ ...filters, page: result.page + 1 })}
-              className={linkClass}
-            >
-              Página siguiente
-            </Link>
-          ) : null}
-        </nav>
+      {result.total > 0 ? (
+        <Pagination
+          page={result.page}
+          pageCount={result.pageCount}
+          rangeText={shownRangeText({
+            page: result.page,
+            pageSize: PRODUCTS_PAGE_SIZE,
+            shown: result.products.length,
+            total: result.total,
+            singular: "producto",
+            plural: "productos",
+          })}
+          hrefFor={(page) => productFiltersHref({ ...filters, page })}
+        />
       ) : null}
       <p className="sr-only">
         {STOCK_STATUS_LABEL.disponible}, {STOCK_STATUS_LABEL.bajo_stock} y{" "}

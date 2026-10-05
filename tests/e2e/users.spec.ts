@@ -413,14 +413,20 @@ test("caso 9: filtros y página viven en la URL y sobreviven a recargar", async 
   await page.goto("/usuarios");
 
   const pagination = page.getByRole("navigation", { name: "Paginación" });
-  await expect(pagination.getByText("Página 1 de 2")).toBeVisible();
+  await expect(
+    pagination.getByText("Mostrando 1 a 25 de 27 usuarios"),
+  ).toBeVisible();
   await expect(membersTable(page).getByRole("row")).toHaveCount(1 + 25);
   await pagination.getByRole("link", { name: "Página siguiente" }).click();
   await expect(page).toHaveURL("/usuarios?pagina=2");
-  await expect(pagination.getByText("Página 2 de 2")).toBeVisible();
+  await expect(
+    pagination.getByText("Mostrando 26 a 27 de 27 usuarios"),
+  ).toBeVisible();
   await expect(membersTable(page).getByRole("row")).toHaveCount(1 + 2);
   await page.reload();
-  await expect(pagination.getByText("Página 2 de 2")).toBeVisible();
+  await expect(
+    pagination.getByText("Mostrando 26 a 27 de 27 usuarios"),
+  ).toBeVisible();
 
   await page.goto("/usuarios");
   await page.getByLabel("Rol").selectOption("viewer");
@@ -439,7 +445,9 @@ test("caso 9: filtros y página viven en la URL y sobreviven a recargar", async 
   ).toBeVisible();
   await page.getByRole("link", { name: "Limpiar filtros" }).last().click();
   await expect(page).toHaveURL("/usuarios");
-  await expect(pagination.getByText("Página 1 de 2")).toBeVisible();
+  await expect(
+    pagination.getByText("Mostrando 1 a 25 de 27 usuarios"),
+  ).toBeVisible();
 });
 
 test("caso 11: el alta se completa solo con teclado", async ({ page }) => {
@@ -581,8 +589,8 @@ test("caso 13: el selector de tema cambia el modo, sobrevive a recargar y vuelve
       external.push(request.url());
     }
   });
-  const LIGHT_BACKGROUND = "rgb(243, 247, 246)";
-  const DARK_BACKGROUND = "rgb(11, 21, 20)";
+  const LIGHT_BACKGROUND = "rgb(246, 245, 251)";
+  const DARK_BACKGROUND = "rgb(12, 11, 29)";
   const html = page.locator("html");
   const selector = page.getByRole("group", { name: "Tema" });
   const background = () =>

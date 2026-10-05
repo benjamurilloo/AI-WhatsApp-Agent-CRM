@@ -393,13 +393,17 @@ test("caso 8: filtros y página de la lista viven en la URL", async ({
   await page.goto("/productos");
 
   const pagination = page.getByRole("navigation", { name: "Paginación" });
-  await expect(pagination.getByText("Página 1 de 2")).toBeVisible();
+  await expect(
+    pagination.getByText("Mostrando 1 a 25 de 27 productos"),
+  ).toBeVisible();
   await expect(productsTable(page).getByRole("row")).toHaveCount(1 + 25);
   await pagination.getByRole("link", { name: "Página siguiente" }).click();
   await expect(page).toHaveURL("/productos?pagina=2");
   await expect(productsTable(page).getByRole("row")).toHaveCount(1 + 2);
   await page.reload();
-  await expect(pagination.getByText("Página 2 de 2")).toBeVisible();
+  await expect(
+    pagination.getByText("Mostrando 26 a 27 de 27 productos"),
+  ).toBeVisible();
 
   await page.goto("/productos");
   await page.getByLabel("Buscar").fill("Producto 001");

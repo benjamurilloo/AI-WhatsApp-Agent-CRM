@@ -1,20 +1,27 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { listKnowledgeEntries } from "@/modules/knowledge";
+import { KNOWLEDGE_PAGE_SIZE, listKnowledgeEntries } from "@/modules/knowledge";
 import { requireSession } from "@/app/_auth/session";
 import {
   cardClass,
+  iconTileClass,
+  inlineButtonClass,
   inputClass,
   labelClass,
   linkClass,
-  pageTitleClass,
-  primaryLinkClass,
-  secondaryButtonClass,
   selectClass,
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
+import { Icon } from "@/app/_components/icons";
+import {
+  EditLink,
+  PageHeader,
+  SearchIcon,
+} from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
+import { Pagination, shownRangeText } from "@/app/_components/pagination";
+import { categoryIcon } from "./category-icon";
 import {
   hasActiveFilters,
   knowledgeFiltersHref,
@@ -38,7 +45,9 @@ const TITLE = "Información del negocio";
 
 // Pantalla 11 (brief-11.2, D-7): búsqueda por palabras, filtro de estado y página en la URL
 // (FR-INFO-02). Cada entrada muestra su estado de vigencia (FR-INFO-03). Tabla en escritorio y
-// tarjetas en móvil; la versión oculta no entra al árbol de accesibilidad.
+// tarjetas en móvil; la versión oculta no entra al árbol de accesibilidad. Desde la brief-15.1,
+// con el aspecto de los bocetos: ícono por categoría (D-7), lápiz para el admin y paginación
+// numerada.
 export default async function KnowledgePage({
   searchParams,
 }: {
@@ -56,18 +65,15 @@ export default async function KnowledgePage({
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className={pageTitleClass}>{TITLE}</h1>
-        {isAdmin ? (
-          <Link href="/informacion/nueva" className={primaryLinkClass}>
-            + Nueva entrada
-          </Link>
-        ) : null}
-      </div>
-      <p className="mt-2 text-muted">
-        Horarios, ubicación, medios de pago, envíos y todo lo que el negocio
-        responde a diario.
-      </p>
+      <PageHeader
+        title={TITLE}
+        subtitle="Horarios, ubicación, medios de pago, envíos y todo lo que el negocio responde a diario."
+        action={
+          isAdmin
+            ? { href: "/informacion/nueva", label: "+ Nueva entrada" }
+            : null
+        }
+      />
 
       <form
         key={knowledgeFiltersHref(filters)}
@@ -79,14 +85,17 @@ export default async function KnowledgePage({
           <label htmlFor="q" className={labelClass}>
             Buscar
           </label>
-          <input
-            id="q"
-            name="q"
-            type="search"
-            defaultValue={filters.text}
-            placeholder="Título, categoría o contenido"
-            className={`${inputClass} w-72`}
-          />
+          <div className="relative">
+            <SearchIcon />
+            <input
+              id="q"
+              name="q"
+              type="search"
+              defaultValue={filters.text}
+              placeholder="Título, categoría o contenido"
+              className={`${inputClass} w-72 pl-9`}
+            />
+          </div>
         </div>
         <div className="flex flex-col gap-1">
           <label htmlFor="estado" className={labelClass}>
@@ -105,7 +114,8 @@ export default async function KnowledgePage({
             <option value="inactivas">Inactivas</option>
           </select>
         </div>
-        <button type="submit" className={secondaryButtonClass}>
+        <button type="submit" className={inlineButtonClass}>
+          <Icon name="filter" className="size-4" />
           Aplicar filtros
         </button>
         {filtered ? (
@@ -153,18 +163,29 @@ export default async function KnowledgePage({
                   <th scope="col" className={tableHeadCellClass}>
                     Vigencia
                   </th>
+                  {isAdmin ? (
+                    <th scope="col" className={tableHeadCellClass}>
+                      Acciones
+                    </th>
+                  ) : null}
                 </tr>
               </thead>
               <tbody>
                 {result.entries.map((entry) => (
                   <tr key={entry.id}>
                     <td className={`${tableCellClass} font-semibold`}>
-                      <Link
-                        href={`/informacion/${entry.id}`}
-                        className={linkClass}
-                      >
-                        {entry.title}
-                      </Link>
+                      <span className="flex items-center gap-3">
+                        <span className={iconTileClass}>
+                          <Icon name={categoryIcon(entry.category)} />
+                        </span>
+                        <Link
+                          id={`entrada-${entry.id}`}
+                          href={`/informacion/${entry.id}`}
+                          className={linkClass}
+                        >
+                          {entry.title}
+                        </Link>
+                      </span>
                     </td>
                     <td className={tableCellClass}>{entry.category}</td>
                     <td className={tableCellClass}>
@@ -173,6 +194,14 @@ export default async function KnowledgePage({
                     <td className={`${tableCellClass} text-muted`}>
                       {formatValidity(entry.validFrom, entry.validUntil)}
                     </td>
+                    {isAdmin ? (
+                      <td className={tableCellClass}>
+                        <EditLink
+                          href={`/informacion/${entry.id}?editar=1`}
+                          describedBy={`entrada-${entry.id}`}
+                        />
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>
@@ -203,32 +232,20 @@ export default async function KnowledgePage({
         </>
       )}
 
-      {result.pageCount > 1 ? (
-        <nav
-          aria-label="Paginación"
-          className="mt-6 flex flex-wrap items-center justify-center gap-4"
-        >
-          {result.page > 1 ? (
-            <Link
-              href={knowledgeFiltersHref({ ...filters, page: result.page - 1 })}
-              className={linkClass}
-            >
-              Página anterior
-            </Link>
-          ) : null}
-          <p className="text-sm text-muted tabular-nums">
-            Página {result.page} de {result.pageCount} · {result.total}{" "}
-            {result.total === 1 ? "entrada" : "entradas"}
-          </p>
-          {result.page < result.pageCount ? (
-            <Link
-              href={knowledgeFiltersHref({ ...filters, page: result.page + 1 })}
-              className={linkClass}
-            >
-              Página siguiente
-            </Link>
-          ) : null}
-        </nav>
+      {result.total > 0 ? (
+        <Pagination
+          page={result.page}
+          pageCount={result.pageCount}
+          rangeText={shownRangeText({
+            page: result.page,
+            pageSize: KNOWLEDGE_PAGE_SIZE,
+            shown: result.entries.length,
+            total: result.total,
+            singular: "entrada",
+            plural: "entradas",
+          })}
+          hrefFor={(page) => knowledgeFiltersHref({ ...filters, page })}
+        />
       ) : null}
     </main>
   );

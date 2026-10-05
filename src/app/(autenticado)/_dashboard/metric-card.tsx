@@ -2,10 +2,12 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import {
   cardClass,
+  iconTileClass,
   linkClass,
   mutedTextClass,
 } from "@/app/_components/form-styles";
-import { METRIC_INFO, type MetricNumber } from "./definitions";
+import { Icon } from "@/app/_components/icons";
+import { METRIC_ICON, METRIC_INFO, type MetricNumber } from "./definitions";
 import {
   METRIC_ERROR_MESSAGE,
   METRIC_ERROR_RETRY,
@@ -14,9 +16,9 @@ import {
 
 // Tarjeta de una métrica (brief-7.4, D-2 y D-3): el marco, los tres estados y el desplegable con la
 // definición. Cada tarjeta se monta por separado, así una métrica lenta o fallada no afecta a las
-// demás.
+// demás. Desde la brief-15.1 lleva el ícono de la métrica y el nombre sin su número.
 
-const valueClass = "text-3xl font-bold tracking-tight tabular-nums";
+const valueClass = "text-3xl font-extrabold tracking-tight tabular-nums";
 const stateClass = "text-xl font-semibold text-muted";
 
 export function MetricCard({
@@ -29,13 +31,20 @@ export function MetricCard({
   const info = METRIC_INFO[metric];
   return (
     <section
-      className={`${cardClass} flex flex-col gap-3 p-4`}
+      className={`${cardClass} flex h-full flex-col gap-3 p-5`}
       aria-labelledby={`metrica-${metric}`}
     >
-      <h3 id={`metrica-${metric}`} className="text-sm font-bold text-muted">
-        <span className="text-muted">{metric}. </span>
-        <span className="text-foreground">{info.name}</span>
-      </h3>
+      <div className="flex items-center gap-3">
+        <span className={iconTileClass}>
+          <Icon name={METRIC_ICON[metric]} />
+        </span>
+        <h3
+          id={`metrica-${metric}`}
+          className="text-sm leading-snug font-bold text-foreground"
+        >
+          {info.name}
+        </h3>
+      </div>
       <div className="flex grow flex-col gap-1">{children}</div>
       <details className="text-sm">
         <summary

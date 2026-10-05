@@ -1,22 +1,29 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { searchClientsByLastInteraction } from "@/modules/conversations";
+import { CLIENTS_PAGE_SIZE } from "@/modules/crm";
 import { requireSession } from "@/app/_auth/session";
 import {
   activeBadgeClass,
   cardClass,
   inactiveBadgeClass,
+  inlineButtonClass,
   inputClass,
   labelClass,
   linkClass,
-  pageTitleClass,
-  primaryLinkClass,
-  secondaryButtonClass,
   selectClass,
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
+import { Avatar } from "@/app/_components/avatar";
+import { Icon } from "@/app/_components/icons";
+import {
+  EditLink,
+  PageHeader,
+  SearchIcon,
+} from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
+import { Pagination, shownRangeText } from "@/app/_components/pagination";
 import { formatShortDateTime } from "@/app/_format/date-time";
 import { NO_INTERACTIONS_TEXT } from "@/app/(autenticado)/conversaciones/messages";
 import {
@@ -42,7 +49,8 @@ const TITLE = "Clientes";
 // Pantalla 6 (wireframe 06): búsqueda, actividad y página en la URL. Tabla en escritorio y
 // tarjetas en móvil; la versión oculta no entra al árbol de accesibilidad. Orden por última
 // interacción, compuesto por conversations (brief-6.4). El teléfono llega de crm ya enmascarado
-// para viewer.
+// para viewer. Desde la brief-15.1, con el aspecto de los bocetos: avatar, lápiz para el admin y
+// paginación numerada.
 export default async function ClientsPage({
   searchParams,
 }: {
@@ -60,14 +68,13 @@ export default async function ClientsPage({
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className={pageTitleClass}>{TITLE}</h1>
-        {isAdmin ? (
-          <Link href="/clientes/nuevo" className={primaryLinkClass}>
-            + Nuevo cliente
-          </Link>
-        ) : null}
-      </div>
+      <PageHeader
+        title={TITLE}
+        subtitle="Gestioná tu base de clientes y su información."
+        action={
+          isAdmin ? { href: "/clientes/nuevo", label: "+ Nuevo cliente" } : null
+        }
+      />
 
       <form
         key={clientFiltersHref(filters)}
@@ -79,14 +86,17 @@ export default async function ClientsPage({
           <label htmlFor="q" className={labelClass}>
             Buscar
           </label>
-          <input
-            id="q"
-            name="q"
-            type="search"
-            defaultValue={filters.text}
-            placeholder="Nombre o teléfono completo"
-            className={`${inputClass} w-64`}
-          />
+          <div className="relative">
+            <SearchIcon />
+            <input
+              id="q"
+              name="q"
+              type="search"
+              defaultValue={filters.text}
+              placeholder="Nombre o teléfono completo"
+              className={`${inputClass} w-72 pl-9`}
+            />
+          </div>
         </div>
         <div className="flex flex-col gap-1">
           <label htmlFor="actividad" className={labelClass}>
@@ -103,7 +113,8 @@ export default async function ClientsPage({
             <option value="todos">Todos</option>
           </select>
         </div>
-        <button type="submit" className={secondaryButtonClass}>
+        <button type="submit" className={inlineButtonClass}>
+          <Icon name="filter" className="size-4" />
           Buscar
         </button>
         {filtered ? (
@@ -149,18 +160,27 @@ export default async function ClientsPage({
                   <th scope="col" className={tableHeadCellClass}>
                     Activo
                   </th>
+                  {isAdmin ? (
+                    <th scope="col" className={tableHeadCellClass}>
+                      Acciones
+                    </th>
+                  ) : null}
                 </tr>
               </thead>
               <tbody>
                 {result.clients.map((client) => (
                   <tr key={client.id}>
                     <td className={`${tableCellClass} font-semibold`}>
-                      <Link
-                        href={`/clientes/${client.id}`}
-                        className={linkClass}
-                      >
-                        {client.displayName}
-                      </Link>
+                      <span className="flex items-center gap-3">
+                        <Avatar name={client.displayName} />
+                        <Link
+                          id={`cliente-${client.id}`}
+                          href={`/clientes/${client.id}`}
+                          className={linkClass}
+                        >
+                          {client.displayName}
+                        </Link>
+                      </span>
                     </td>
                     <td className={tableCellClass}>
                       <PhoneText phone={client.phone} emptyText="—" />
@@ -184,6 +204,14 @@ export default async function ClientsPage({
                         {client.isActive ? "Sí" : "No"}
                       </span>
                     </td>
+                    {isAdmin ? (
+                      <td className={tableCellClass}>
+                        <EditLink
+                          href={`/clientes/${client.id}?editar=1`}
+                          describedBy={`cliente-${client.id}`}
+                        />
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>
@@ -224,32 +252,20 @@ export default async function ClientsPage({
         </>
       )}
 
-      {result.pageCount > 1 ? (
-        <nav
-          aria-label="Paginación"
-          className="mt-6 flex flex-wrap items-center justify-center gap-4"
-        >
-          {result.page > 1 ? (
-            <Link
-              href={clientFiltersHref({ ...filters, page: result.page - 1 })}
-              className={linkClass}
-            >
-              Página anterior
-            </Link>
-          ) : null}
-          <p className="text-sm text-muted tabular-nums">
-            Página {result.page} de {result.pageCount} · {result.total}{" "}
-            {result.total === 1 ? "cliente" : "clientes"}
-          </p>
-          {result.page < result.pageCount ? (
-            <Link
-              href={clientFiltersHref({ ...filters, page: result.page + 1 })}
-              className={linkClass}
-            >
-              Página siguiente
-            </Link>
-          ) : null}
-        </nav>
+      {result.total > 0 ? (
+        <Pagination
+          page={result.page}
+          pageCount={result.pageCount}
+          rangeText={shownRangeText({
+            page: result.page,
+            pageSize: CLIENTS_PAGE_SIZE,
+            shown: result.clients.length,
+            total: result.total,
+            singular: "cliente",
+            plural: "clientes",
+          })}
+          hrefFor={(page) => clientFiltersHref({ ...filters, page })}
+        />
       ) : null}
 
       {result.total > 0 ? (
