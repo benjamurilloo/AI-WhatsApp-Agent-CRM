@@ -1,13 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { listProductSuggestions } from "@/modules/catalog";
 import { authorize } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
-import {
-  cardClass,
-  linkClass,
-  pageTitleClass,
-} from "@/app/_components/form-styles";
+import { BackLink, DetailHeader } from "@/app/_components/detail-header";
 import { PageNotice } from "@/app/_components/page-notice";
 import { FORBIDDEN_PAGE_MESSAGE } from "../messages";
 import { ProductForm } from "../product-form";
@@ -19,7 +14,7 @@ export const metadata: Metadata = {
 const TITLE = "Nuevo producto";
 
 // Alta de producto (pantalla 3, FR-PROD-01): solo admin. Un viewer que entre por la URL
-// recibe el aviso, no el formulario.
+// recibe el aviso, no el formulario. Presentación de la 15.4 (brief-15.4).
 export default async function NewProductPage() {
   const context = await requireSession();
   if (!authorize(context, { role: "admin" }).ok) {
@@ -29,14 +24,13 @@ export default async function NewProductPage() {
   const suggestions = await listProductSuggestions(context);
 
   return (
-    <main className="mx-auto max-w-xl px-4 py-8">
-      <p>
-        <Link href="/productos" className={linkClass}>
-          Volver a productos
-        </Link>
-      </p>
-      <h1 className={`mt-4 ${pageTitleClass}`}>{TITLE}</h1>
-      <div className={`mt-6 ${cardClass} p-6`}>
+    <main className="mx-auto max-w-4xl px-4 py-8 lg:px-8">
+      <BackLink href="/productos" label="Volver a productos" />
+      <DetailHeader
+        title={TITLE}
+        subtitle="Completá la información del producto para agregarlo al catálogo."
+      />
+      <div className="mt-6">
         <ProductForm
           mode="crear"
           suggestions={suggestions.ok ? suggestions : undefined}

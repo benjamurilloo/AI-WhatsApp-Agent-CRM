@@ -1,0 +1,66 @@
+import Link from "next/link";
+import type { ReactNode } from "react";
+import { linkClass, pageSubtitleClass, pageTitleClass } from "./form-styles";
+import { Icon } from "./icons";
+
+// Encabezado de las pantallas de detalle y de los formularios (brief-15.4): volver, una imagen a
+// la izquierda (avatar o ícono), el título con sus estados, una línea debajo y las acciones.
+
+export function BackLink({ href, label }: { href: string; label: string }) {
+  return (
+    <p>
+      <Link
+        href={href}
+        className={`${linkClass} inline-flex items-center gap-1.5`}
+      >
+        <Icon name="arrowLeft" className="size-4" />
+        {label}
+      </Link>
+    </p>
+  );
+}
+
+export function DetailHeader({
+  title,
+  leading,
+  badges,
+  subtitle,
+  actions,
+}: {
+  title: string;
+  leading?: ReactNode;
+  badges?: ReactNode;
+  subtitle?: ReactNode;
+  actions?: ReactNode;
+}) {
+  return (
+    <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
+      <div className="flex min-w-0 items-center gap-4">
+        {leading}
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <h1 className={`${pageTitleClass} break-words`}>{title}</h1>
+            {badges}
+          </div>
+          {subtitle ? (
+            <div className={pageSubtitleClass}>{subtitle}</div>
+          ) : null}
+        </div>
+      </div>
+      {actions ? <div className="flex flex-wrap gap-3">{actions}</div> : null}
+    </div>
+  );
+}
+
+// Ícono grande a la izquierda del título, cuando no hay avatar.
+export function HeaderIcon({
+  name,
+}: {
+  name: Parameters<typeof Icon>[0]["name"];
+}) {
+  return (
+    <span className="grid size-14 shrink-0 place-items-center rounded-2xl bg-primary-soft text-primary sm:size-16">
+      <Icon name={name} className="size-7 sm:size-8" />
+    </span>
+  );
+}

@@ -1,24 +1,26 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
+import { AUDIT_PAGE_SIZE } from "@/modules/audit";
 import { getClientActivity } from "@/modules/conversations";
 import { getClient, listClientAudit } from "@/modules/crm";
 import { getOrganizationTimezone } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
 import { auditActorLabels } from "@/app/(autenticado)/_audit/actor";
+import { AuditCard } from "@/app/_components/audit-card";
+import { Avatar } from "@/app/_components/avatar";
+import { BackLink, DetailHeader } from "@/app/_components/detail-header";
+import { DetailList } from "@/app/_components/detail-list";
 import {
   activeBadgeClass,
-  cardClass,
+  dangerOutlineLinkClass,
   inactiveBadgeClass,
-  linkClass,
   noticeClass,
-  pageTitleClass,
   secondaryLinkClass,
-  sectionTitleClass,
-  tableCellClass,
-  tableHeadCellClass,
 } from "@/app/_components/form-styles";
+import { Icon } from "@/app/_components/icons";
 import { PageNotice } from "@/app/_components/page-notice";
+import { SectionCard } from "@/app/_components/section-card";
 import { formatShortDateTime } from "@/app/_format/date-time";
 import {
   clientSectionsHref,
@@ -38,6 +40,8 @@ import { DeactivateConfirm, ReactivateForm } from "./client-actions";
 import {
   ClientConversations,
   ClientConversationsSkeleton,
+  ClientStats,
+  ClientStatsSkeleton,
   LastInteraction,
 } from "./client-conversations";
 
@@ -49,7 +53,8 @@ const TITLE = "Clientes";
 
 // Pantalla 7 (wireframe 07): datos y, solo para admin, edición, desactivación con confirmación e
 // historial de auditoría paginado (FR-AUD-02). La última interacción y las conversaciones cargan
-// por separado, con sus propios parámetros de URL (brief-6.4, D-4).
+// por separado, con sus propios parámetros de URL (brief-6.4, D-4). Presentación de la 15.4:
+// tarjetas, avatar y estadísticas con lo que la página ya carga (brief-15.4, D-6).
 export default async function ClientPage({
   params,
   searchParams,
@@ -87,6 +92,14 @@ export default async function ClientPage({
     status: STATUS_PARAM[sections.conversationStatus],
     page: sections.conversationPage,
   });
+  // Las estadísticas cuentan todas las conversaciones: con un filtro de estado, se piden aparte.
+  const allActivity =
+    sections.conversationStatus === "todos"
+      ? activity
+      : getClientActivity(context, client.id, {
+          status: STATUS_PARAM.todos,
+          page: 1,
+        });
 
   // La auditoría solo se pide para un admin: el servidor no la entrega a un viewer.
   const audit = isAdmin
@@ -98,41 +111,54 @@ export default async function ClientPage({
     : null;
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-8">
-      <p>
-        <Link href="/clientes" className={linkClass}>
-          Volver a clientes
-        </Link>
-      </p>
+    <main className="mx-auto max-w-6xl px-4 py-8 lg:px-8">
+      <BackLink href="/clientes" label="Volver a clientes" />
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className={pageTitleClass}>{client.displayName}</h1>
+      <DetailHeader
+        title={client.displayName}
+        leading={
+          <Avatar
+            name={client.displayName}
+            className="size-14 text-xl sm:size-16 sm:text-2xl"
+          />
+        }
+        badges={
           <span
             className={client.isActive ? activeBadgeClass : inactiveBadgeClass}
           >
             {client.isActive ? "Activo" : "Inactivo"}
           </span>
-        </div>
-        {isAdmin && !editing ? (
-          <div className="flex flex-wrap gap-3">
-            <Link
-              href={`/clientes/${client.id}?editar=1`}
-              className={secondaryLinkClass}
-            >
-              Editar
-            </Link>
-            {client.isActive && !confirming ? (
+        }
+        subtitle={
+          <Suspense fallback="Cargando…">
+            <span className="text-sm">
+              Última interacción: <LastInteraction activity={activity} />
+            </span>
+          </Suspense>
+        }
+        actions={
+          isAdmin && !editing ? (
+            <>
               <Link
-                href={`/clientes/${client.id}?confirmar=desactivar`}
+                href={`/clientes/${client.id}?editar=1`}
                 className={secondaryLinkClass}
               >
-                Desactivar
+                <Icon name="pencil" className="size-4" />
+                Editar
               </Link>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
+              {client.isActive && !confirming ? (
+                <Link
+                  href={`/clientes/${client.id}?confirmar=desactivar`}
+                  className={dangerOutlineLinkClass}
+                >
+                  <Icon name="power" className="size-4" />
+                  Desactivar
+                </Link>
+              ) : null}
+            </>
+          ) : null
+        }
+      />
 
       <div role="status" className="mt-4 empty:hidden">
         {notice ? <p className={noticeClass}>{notice}</p> : null}
@@ -145,65 +171,87 @@ export default async function ClientPage({
       ) : null}
 
       {isAdmin && !client.isActive ? (
-        <section
-          aria-labelledby="estado-titulo"
-          className={`mt-6 ${cardClass} p-6`}
+        <SectionCard
+          id="estado-titulo"
+          title="Estado"
+          icon="power"
+          className="mt-6"
         >
-          <h2 id="estado-titulo" className={sectionTitleClass}>
-            Estado
-          </h2>
-          <div className="mt-3">
-            <ReactivateForm clientId={client.id} />
-          </div>
-        </section>
+          <ReactivateForm clientId={client.id} />
+        </SectionCard>
       ) : null}
 
-      <section
-        aria-labelledby="datos-titulo"
-        className={`mt-6 ${cardClass} p-6`}
-      >
-        <h2 id="datos-titulo" className={sectionTitleClass}>
-          Datos
-        </h2>
-        {editing && client.phone?.kind !== "masked" ? (
-          <div className="mt-4">
-            <ClientForm
-              mode="editar"
-              clientId={client.id}
-              values={{
-                displayName: client.displayName,
-                phone: client.phone?.e164 ?? "",
-                notes: client.notes ?? "",
-              }}
+      {editing && client.phone?.kind !== "masked" ? (
+        <div className="mt-6">
+          <ClientForm
+            mode="editar"
+            clientId={client.id}
+            values={{
+              displayName: client.displayName,
+              phone: client.phone?.e164 ?? "",
+              notes: client.notes ?? "",
+            }}
+          />
+        </div>
+      ) : (
+        <div className="mt-6 grid items-start gap-6 lg:grid-cols-3">
+          <SectionCard
+            id="datos-titulo"
+            title="Información principal"
+            icon="user"
+            className="lg:col-span-2"
+          >
+            <DetailList
+              items={[
+                { label: "Nombre", icon: "user", value: client.displayName },
+                {
+                  label: "Teléfono",
+                  icon: "phone",
+                  value: (
+                    <PhoneText phone={client.phone} emptyText="Sin teléfono" />
+                  ),
+                },
+                {
+                  label: "Última interacción",
+                  icon: "clock",
+                  value: (
+                    <Suspense fallback="Cargando…">
+                      <LastInteraction activity={activity} />
+                    </Suspense>
+                  ),
+                },
+                {
+                  label: "Notas",
+                  icon: "fileText",
+                  value: (
+                    <span className="text-muted">
+                      {client.notes ?? "Sin notas"}
+                    </span>
+                  ),
+                  multiline: true,
+                },
+              ]}
             />
-          </div>
-        ) : (
-          <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-            <dt className="font-semibold">Teléfono</dt>
-            <dd>
-              <PhoneText phone={client.phone} emptyText="Sin teléfono" />
-            </dd>
-            <dt className="font-semibold">Última interacción</dt>
-            <dd>
-              <Suspense fallback="Cargando…">
-                <LastInteraction activity={activity} />
-              </Suspense>
-            </dd>
-            <dt className="font-semibold">Notas</dt>
-            <dd className="whitespace-pre-line text-muted">
-              {client.notes ?? "Sin notas"}
-            </dd>
-          </dl>
-        )}
-      </section>
+          </SectionCard>
 
-      <section
-        aria-labelledby="conversaciones-titulo"
-        className={`mt-6 ${cardClass} p-6`}
+          <SectionCard
+            id="estadisticas-titulo"
+            title="Estadísticas"
+            icon="chartColumn"
+          >
+            <Suspense fallback={<ClientStatsSkeleton />}>
+              <ClientStats activity={allActivity} />
+            </Suspense>
+          </SectionCard>
+        </div>
+      )}
+
+      <SectionCard
+        id="conversaciones-titulo"
+        title="Conversaciones"
+        icon="messageCircle"
+        className="mt-6"
       >
-        <h2 id="conversaciones-titulo" className={sectionTitleClass}>
-          Conversaciones
-        </h2>
         <Suspense fallback={<ClientConversationsSkeleton />}>
           <ClientConversations
             clientId={client.id}
@@ -212,91 +260,29 @@ export default async function ClientPage({
             view={sections}
           />
         </Suspense>
-      </section>
+      </SectionCard>
 
       {audit?.ok && timeZone ? (
-        <section
-          aria-labelledby="auditoria-titulo"
-          className={`mt-6 ${cardClass} p-6`}
-        >
-          <h2 id="auditoria-titulo" className={sectionTitleClass}>
-            Historial de auditoría
-          </h2>
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full border-collapse text-left text-[0.9375rem]">
-              <caption className="sr-only">
-                Auditoría de {client.displayName}
-              </caption>
-              <thead>
-                <tr>
-                  <th scope="col" className={tableHeadCellClass}>
-                    Fecha
-                  </th>
-                  <th scope="col" className={tableHeadCellClass}>
-                    Autor
-                  </th>
-                  <th scope="col" className={tableHeadCellClass}>
-                    Acción
-                  </th>
-                  <th scope="col" className={tableHeadCellClass}>
-                    Cambio
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {audit.entries.map((entry) => (
-                  <tr key={entry.id}>
-                    <td className={`${tableCellClass} whitespace-nowrap`}>
-                      {formatShortDateTime(entry.createdAt, timeZone)}
-                    </td>
-                    <td className={tableCellClass}>
-                      {actorLabel?.(entry.actor)}
-                    </td>
-                    <td className={tableCellClass}>
-                      {auditActionLabel(entry)}
-                    </td>
-                    <td className={`${tableCellClass} text-muted`}>
-                      {describeAuditDiff(entry)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {audit.pageCount > 1 ? (
-            <nav
-              aria-label="Paginación de auditoría"
-              className="mt-4 flex flex-wrap items-center justify-center gap-4"
-            >
-              {audit.page > 1 ? (
-                <Link
-                  href={clientSectionsHref(client.id, {
-                    ...sections,
-                    auditPage: audit.page - 1,
-                  })}
-                  className={linkClass}
-                >
-                  Página anterior
-                </Link>
-              ) : null}
-              <p className="text-sm text-muted tabular-nums">
-                Página {audit.page} de {audit.pageCount}
-              </p>
-              {audit.page < audit.pageCount ? (
-                <Link
-                  href={clientSectionsHref(client.id, {
-                    ...sections,
-                    auditPage: audit.page + 1,
-                  })}
-                  className={linkClass}
-                >
-                  Página siguiente
-                </Link>
-              ) : null}
-            </nav>
-          ) : null}
+        <>
+          <AuditCard
+            caption={`Auditoría de ${client.displayName}`}
+            rows={audit.entries.map((entry) => ({
+              id: entry.id,
+              when: formatShortDateTime(entry.createdAt, timeZone),
+              actor: actorLabel?.(entry.actor),
+              action: auditActionLabel(entry),
+              change: describeAuditDiff(entry),
+            }))}
+            page={audit.page}
+            pageCount={audit.pageCount}
+            pageSize={AUDIT_PAGE_SIZE}
+            total={audit.total}
+            hrefFor={(target) =>
+              clientSectionsHref(client.id, { ...sections, auditPage: target })
+            }
+          />
           <p className="mt-4 text-sm text-muted">Fechas en {timeZone}.</p>
-        </section>
+        </>
       ) : null}
     </main>
   );

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { AUDIT_PAGE_SIZE } from "@/modules/audit";
 import {
   getKnowledgeEntry,
   listKnowledgeAudit,
@@ -8,18 +9,23 @@ import {
 import { getOrganizationTimezone } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
 import { auditActorLabels } from "@/app/(autenticado)/_audit/actor";
+import { AuditCard } from "@/app/_components/audit-card";
 import {
-  cardClass,
-  linkClass,
+  BackLink,
+  DetailHeader,
+  HeaderIcon,
+} from "@/app/_components/detail-header";
+import { DetailList } from "@/app/_components/detail-list";
+import {
+  dangerOutlineLinkClass,
   noticeClass,
-  pageTitleClass,
   secondaryLinkClass,
-  sectionTitleClass,
-  tableCellClass,
-  tableHeadCellClass,
 } from "@/app/_components/form-styles";
+import { Icon } from "@/app/_components/icons";
 import { PageNotice } from "@/app/_components/page-notice";
+import { SectionCard } from "@/app/_components/section-card";
 import { formatShortDateTime } from "@/app/_format/date-time";
+import { categoryIcon } from "../category-icon";
 import type { SearchParams } from "../filters";
 import { KnowledgeForm } from "../knowledge-form";
 import {
@@ -45,7 +51,8 @@ function page(value: string | string[] | undefined): number {
 
 // Pantalla 12 (brief-11.2, D-7): el contenido completo con sus saltos de línea y la vigencia. Solo
 // para admin: edición, desactivación con confirmación, reactivación y la auditoría paginada
-// (FR-INFO-01, FR-AUD-02). Un viewer lee, sin formularios ni auditoría.
+// (FR-INFO-01, FR-AUD-02). Un viewer lee, sin formularios ni auditoría. Presentación de la 15.4:
+// tarjetas y el ícono de la categoría, sin pestañas (brief-15.4, D-3).
 export default async function KnowledgeEntryPage({
   params,
   searchParams,
@@ -92,37 +99,37 @@ export default async function KnowledgeEntryPage({
   const categories = editing ? await listKnowledgeCategories(context) : null;
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-8">
-      <p>
-        <Link href="/informacion" className={linkClass}>
-          Volver a información del negocio
-        </Link>
-      </p>
+    <main className="mx-auto max-w-6xl px-4 py-8 lg:px-8">
+      <BackLink href="/informacion" label="Volver a información del negocio" />
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className={pageTitleClass}>{entry.title}</h1>
-          <KnowledgeStatusBadge status={entry.status} />
-        </div>
-        {isAdmin && !editing ? (
-          <div className="flex flex-wrap gap-3">
-            <Link
-              href={`/informacion/${entry.id}?editar=1`}
-              className={secondaryLinkClass}
-            >
-              Editar
-            </Link>
-            {entry.isActive && !confirming ? (
+      <DetailHeader
+        title={entry.title}
+        leading={<HeaderIcon name={categoryIcon(entry.category)} />}
+        badges={<KnowledgeStatusBadge status={entry.status} />}
+        subtitle={entry.category}
+        actions={
+          isAdmin && !editing ? (
+            <>
               <Link
-                href={`/informacion/${entry.id}?confirmar=desactivar`}
+                href={`/informacion/${entry.id}?editar=1`}
                 className={secondaryLinkClass}
               >
-                Desactivar
+                <Icon name="pencil" className="size-4" />
+                Editar
               </Link>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
+              {entry.isActive && !confirming ? (
+                <Link
+                  href={`/informacion/${entry.id}?confirmar=desactivar`}
+                  className={dangerOutlineLinkClass}
+                >
+                  <Icon name="power" className="size-4" />
+                  Desactivar
+                </Link>
+              ) : null}
+            </>
+          ) : null
+        }
+      />
 
       <div role="status" className="mt-4 empty:hidden">
         {notice ? <p className={noticeClass}>{notice}</p> : null}
@@ -135,137 +142,79 @@ export default async function KnowledgeEntryPage({
       ) : null}
 
       {isAdmin && !entry.isActive ? (
-        <section
-          aria-labelledby="estado-titulo"
-          className={`mt-6 ${cardClass} p-6`}
+        <SectionCard
+          id="estado-titulo"
+          title="Estado"
+          icon="power"
+          description="Está desactivada: no se considera vigente aunque esté dentro de sus fechas."
+          className="mt-6"
         >
-          <h2 id="estado-titulo" className={sectionTitleClass}>
-            Estado
-          </h2>
-          <p className="mt-1 text-sm text-muted">
-            Está desactivada: no se considera vigente aunque esté dentro de sus
-            fechas.
-          </p>
-          <div className="mt-3">
-            <ReactivateForm entryId={entry.id} />
-          </div>
-        </section>
+          <ReactivateForm entryId={entry.id} />
+        </SectionCard>
       ) : null}
 
-      <section
-        aria-labelledby="datos-titulo"
-        className={`mt-6 ${cardClass} p-6`}
-      >
-        <h2 id="datos-titulo" className={sectionTitleClass}>
-          {editing ? "Editar entrada" : "Datos"}
-        </h2>
-        {editing ? (
-          <div className="mt-4">
-            <KnowledgeForm
-              mode="editar"
-              entryId={entry.id}
-              values={{
-                title: entry.title,
-                category: entry.category,
-                content: entry.content,
-                validFrom: entry.validFrom ?? "",
-                validUntil: entry.validUntil ?? "",
-              }}
-              categories={categories?.ok ? categories.categories : []}
-            />
-          </div>
-        ) : (
-          <>
-            <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-              <dt className="font-semibold">Categoría</dt>
-              <dd>{entry.category}</dd>
-              <dt className="font-semibold">Vigencia</dt>
-              <dd>{formatValidity(entry.validFrom, entry.validUntil)}</dd>
-              <dt className="font-semibold">Actualizada</dt>
-              <dd>{formatShortDateTime(entry.updatedAt, timeZone)}</dd>
-            </dl>
-            <h3 className="mt-6 text-sm font-bold tracking-wider text-muted uppercase">
-              Contenido
-            </h3>
-            <p className="mt-2 break-words whitespace-pre-wrap">
-              {entry.content}
-            </p>
-          </>
-        )}
-      </section>
+      {editing ? (
+        <div className="mt-6">
+          <KnowledgeForm
+            mode="editar"
+            entryId={entry.id}
+            values={{
+              title: entry.title,
+              category: entry.category,
+              content: entry.content,
+              validFrom: entry.validFrom ?? "",
+              validUntil: entry.validUntil ?? "",
+            }}
+            categories={categories?.ok ? categories.categories : []}
+          />
+        </div>
+      ) : (
+        <SectionCard
+          id="datos-titulo"
+          title="Información general"
+          icon={categoryIcon(entry.category)}
+          className="mt-6"
+        >
+          <DetailList
+            items={[
+              { label: "Categoría", icon: "list", value: entry.category },
+              {
+                label: "Vigencia",
+                icon: "calendar",
+                value: formatValidity(entry.validFrom, entry.validUntil),
+              },
+              {
+                label: "Actualizada",
+                icon: "clock",
+                value: formatShortDateTime(entry.updatedAt, timeZone),
+              },
+            ]}
+          />
+          <h3 className="mt-6 text-xs font-bold tracking-wider text-muted uppercase">
+            Contenido
+          </h3>
+          <p className="mt-2 break-words whitespace-pre-wrap">
+            {entry.content}
+          </p>
+        </SectionCard>
+      )}
 
       {audit?.ok ? (
-        <section
-          aria-labelledby="auditoria-titulo"
-          className={`mt-6 ${cardClass} p-6`}
-        >
-          <h2 id="auditoria-titulo" className={sectionTitleClass}>
-            Historial de auditoría
-          </h2>
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full border-collapse text-left text-[0.9375rem]">
-              <caption className="sr-only">Auditoría de {entry.title}</caption>
-              <thead>
-                <tr>
-                  <th scope="col" className={tableHeadCellClass}>
-                    Fecha
-                  </th>
-                  <th scope="col" className={tableHeadCellClass}>
-                    Autor
-                  </th>
-                  <th scope="col" className={tableHeadCellClass}>
-                    Acción
-                  </th>
-                  <th scope="col" className={tableHeadCellClass}>
-                    Cambio
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {audit.entries.map((log) => (
-                  <tr key={log.id}>
-                    <td className={`${tableCellClass} whitespace-nowrap`}>
-                      {formatShortDateTime(log.createdAt, timeZone)}
-                    </td>
-                    <td className={tableCellClass}>
-                      {actorLabel?.(log.actor)}
-                    </td>
-                    <td className={tableCellClass}>{auditActionLabel(log)}</td>
-                    <td className={`${tableCellClass} text-muted`}>
-                      {describeAuditDiff(log)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {audit.pageCount > 1 ? (
-            <nav
-              aria-label="Paginación de auditoría"
-              className="mt-4 flex flex-wrap items-center justify-center gap-4"
-            >
-              {audit.page > 1 ? (
-                <Link
-                  href={`/informacion/${entry.id}?auditoria=${audit.page - 1}`}
-                  className={linkClass}
-                >
-                  Página anterior
-                </Link>
-              ) : null}
-              <p className="text-sm text-muted tabular-nums">
-                Página {audit.page} de {audit.pageCount}
-              </p>
-              {audit.page < audit.pageCount ? (
-                <Link
-                  href={`/informacion/${entry.id}?auditoria=${audit.page + 1}`}
-                  className={linkClass}
-                >
-                  Página siguiente
-                </Link>
-              ) : null}
-            </nav>
-          ) : null}
-        </section>
+        <AuditCard
+          caption={`Auditoría de ${entry.title}`}
+          rows={audit.entries.map((log) => ({
+            id: log.id,
+            when: formatShortDateTime(log.createdAt, timeZone),
+            actor: actorLabel?.(log.actor),
+            action: auditActionLabel(log),
+            change: describeAuditDiff(log),
+          }))}
+          page={audit.page}
+          pageCount={audit.pageCount}
+          pageSize={AUDIT_PAGE_SIZE}
+          total={audit.total}
+          hrefFor={(target) => `/informacion/${entry.id}?auditoria=${target}`}
+        />
       ) : null}
 
       <p className="mt-6 text-sm text-muted">

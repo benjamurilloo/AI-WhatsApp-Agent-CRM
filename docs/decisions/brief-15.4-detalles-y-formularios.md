@@ -214,3 +214,40 @@ Los bocetos muestran «0/500» y «0/4000» bajo los campos de texto largo.
 - Si una pieza de los bocetos exige tocar `src/modules/` o una acción del servidor: se detiene. Va a la fase que corresponda según D-1.
 - Si la 13.5.2-b arranca: se pausa en el último punto con la CI en verde.
 - Antes de cambiar el estado en Notion si el usuario no confirmó el cierre.
+
+## Resultados — etapas 15.4.1 a 15.4.4
+
+*Registrado el 2026-10-05. Autoevaluación declarada (D-11): no es una revisión independiente.* Las cuatro etapas se implementaron en la misma sesión y se verificaron juntas, sobre el mismo árbol, y van en un solo commit. Se aparta de D-10 (a), que pedía la CI de cada etapa: el usuario autorizó el commit y el despliegue del conjunto el 2026-10-05.
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| AC-1 | cumplido | aprobación del usuario del 2026-10-05, con las recomendaciones de D-1 a D-11 |
+| AC-2 | cumplido | 102 de 102 end-to-end sobre `next start` (8,1 min). Los pasos cambiados se listan abajo. Los dos errores del registro del servidor los provocan pruebas a propósito: el renombre de `ingestion_events` en `dashboard.spec.ts` (`42P01`) y la Server Action falsificada de `security-headers.spec.ts` |
+| AC-3 | cumplido | axe sin violaciones en claro y en oscuro en todos los estados de `expectAccessible` |
+| AC-4 | cumplido | `grep` de clases de la paleta de Tailwind en `src/app/`: 0 |
+| AC-5 | cumplido | `typecheck`, `lint` y `format:check` limpios; 510 de 510 unitarios y 485 de 485 guardas; 674 de 674 de integración (43 archivos); `build` compila. El `git diff --ignore-cr-at-eol` de `src/modules/`, `package.json` y `package-lock.json` está vacío (`src/modules/crm/repository.ts` arrastra un cambio previo, solo de finales de línea, que no entra al commit) |
+| AC-6 | cumplido | aprobadas por el usuario el 2026-10-05; 60 capturas (15 pantallas × claro y oscuro × 1280 y 375 px) sobre la semilla del piloto en la base local, entregadas en el Escritorio del usuario |
+| AC-7 | pendiente | se registra al cerrar, con el SHA del commit y su CI |
+| AC-8 | pendiente | se registra al cerrar, después del despliegue |
+| AC-9 | cumplido, con los agregados de abajo | `git status` |
+
+**Cambios en end-to-end existentes**, cada uno por un nombre que la 15.4 cambia a propósito:
+
+- `products.spec.ts`, casos 1 y 14: la región «Datos» del detalle pasa a llamarse «Información básica», el título de su tarjeta.
+- `products.spec.ts`, caso 15: el precio vigente que el caso leía en «Datos» ahora está en la tarjeta «Precio».
+- `clients.spec.ts`, casos 1, 5, 8 y 14: la región «Datos» pasa a llamarse «Información principal».
+- `clients.spec.ts`, caso 14: la paginación de las conversaciones del cliente pasa de «Página 1 de 2 · 26 conversaciones» a «Mostrando 1 a 25 de 26 conversaciones», el componente de la 15.1 (H-6).
+
+**Desvíos y agregados**:
+
+- **Archivos fuera de la lista**:
+  - `src/app/_components/audit-card.tsx`: la tarjeta de auditoría con su paginación, que comparten Productos, Clientes e Información;
+  - `productos/[productId]/product-sub-nav.tsx`: la barra de D-3 con las tres páginas del producto, que usan el detalle, los precios y los movimientos;
+  - `clientes/[clientId]/stats.ts` y `stats.test.ts`: el texto de «días desde la última interacción» de D-6, con su test unitario.
+- **`pagination.tsx`** suma las props `label` y `className`, para distinguir la paginación de la auditoría de la de las conversaciones en la misma página.
+- **La descripción del producto** pasó de campo de una línea a `textarea`, con el mismo `name` y el mismo límite de 2000 caracteres. Sigue funcionando sin JavaScript.
+- **Las estadísticas del cliente** cuentan todas sus conversaciones aunque la tabla tenga un filtro de estado: con un filtro, se piden aparte sin filtrar.
+- **El historial de auditoría vacío** muestra «Sin cambios registrados todavía.», en lugar de no mostrar nada.
+- **Visto en las capturas, previo a la 15.4**: el stock muestra la unidad tal como está cargada («6 unidad»). No se tocó.
+
+**No certifica**: la estética, que juzga el usuario con las capturas; el aspecto en navegadores distintos de Chromium; el contraste de cada pantalla más allá de lo que mide axe; ni nada de la 15.2, la 15.3 o las Fases 16 a 18.

@@ -162,7 +162,7 @@ test("caso 1: un admin llega desde la navegación, ve el vacío y crea el primer
   await expect(page.getByText("Sin stock")).toBeVisible();
   await expect(page.getByText("Sin movimientos todavía.")).toBeVisible();
   await expect(page.getByText(`Fechas en ${TIMEZONE}.`)).toBeVisible();
-  const datos = page.getByRole("region", { name: "Datos" });
+  const datos = page.getByRole("region", { name: "Información básica" });
   await expect(datos).toContainText("Cafetal");
   await expect(datos).toContainText("Almacén");
   await expect(datos).toContainText("Reacondicionado");
@@ -654,7 +654,7 @@ test("caso 14: FR-PROD-11 busca por marca y categoría; FR-PROD-10 un viewer ve 
 
   // El viewer ve marca, categoría y condición en el detalle, sin formulario.
   await page.goto(`/productos/${coffee}`);
-  const datos = page.getByRole("region", { name: "Datos" });
+  const datos = page.getByRole("region", { name: "Información básica" });
   await expect(datos).toContainText("Nescafé");
   await expect(datos).toContainText("Bebidas");
   await expect(datos).toContainText("Nuevo");
@@ -681,7 +681,7 @@ test("caso 15: FR-PROD-12 el admin fija precios; «300.000» en CLP se rechaza",
   });
   await login(page, ADMIN);
   await page.goto(`/productos/${productId}`);
-  const datos = page.getByRole("region", { name: "Datos" });
+  const datos = page.getByRole("region", { name: "Precio" });
   await expect(datos).toContainText("Sin precio");
   await datos
     .getByRole("link", { name: "Ver historial y fijar precio" })

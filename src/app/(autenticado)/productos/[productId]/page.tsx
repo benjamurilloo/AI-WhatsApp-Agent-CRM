@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { AUDIT_PAGE_SIZE } from "@/modules/audit";
 import {
   getCurrentPrices,
   listProductAudit,
@@ -9,19 +10,24 @@ import { getProductStock, listStockMovements } from "@/modules/inventory";
 import { getOrganizationTimezone } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
 import { auditActorLabels } from "@/app/(autenticado)/_audit/actor";
+import { AuditCard } from "@/app/_components/audit-card";
+import {
+  BackLink,
+  DetailHeader,
+  HeaderIcon,
+} from "@/app/_components/detail-header";
+import { DetailList } from "@/app/_components/detail-list";
 import {
   activeBadgeClass,
-  cardClass,
+  dangerOutlineLinkClass,
   inactiveBadgeClass,
   linkClass,
   noticeClass,
-  pageTitleClass,
   secondaryLinkClass,
-  sectionTitleClass,
-  tableCellClass,
-  tableHeadCellClass,
 } from "@/app/_components/form-styles";
+import { Icon } from "@/app/_components/icons";
 import { PageNotice } from "@/app/_components/page-notice";
+import { SectionCard } from "@/app/_components/section-card";
 import { formatShortDateTime } from "@/app/_format/date-time";
 import { formatMoney } from "@/shared/money";
 import { formatQuantity } from "@/shared/quantity";
@@ -36,6 +42,7 @@ import { ProductForm } from "../product-form";
 import { StockStatusBadge } from "../stock-status";
 import { auditActionLabel, describeAuditDiff } from "./audit-summary";
 import { DeactivateConfirm, ReactivateForm } from "./product-actions";
+import { ProductSubNav } from "./product-sub-nav";
 
 export const metadata: Metadata = {
   title: "Producto — AI WhatsApp Agent CRM",
@@ -49,9 +56,10 @@ function page(value: string | string[] | undefined): number {
   return raw && /^[1-9][0-9]{0,5}$/.test(raw) ? Number(raw) : 1;
 }
 
-// Pantalla 4 (wireframe 04): datos, stock, últimos movimientos y, solo para admin, edición,
-// desactivación con confirmación e historial de auditoría paginado (FR-AUD-02). El precio vigente
-// enlaza a la pantalla de precios (brief-11.1, FR-PROD-12).
+// Pantalla 4 (wireframe 04): datos, precio, stock, últimos movimientos y, solo para admin,
+// edición, desactivación con confirmación e historial de auditoría paginado (FR-AUD-02). El
+// precio vigente enlaza a la pantalla de precios (brief-11.1, FR-PROD-12). Presentación de la
+// 15.4: tarjetas por sección y la barra de subpantallas (brief-15.4, D-1 y D-3).
 export default async function ProductPage({
   params,
   searchParams,
@@ -108,42 +116,48 @@ export default async function ProductPage({
   const suggestions = editing ? await listProductSuggestions(context) : null;
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-8">
-      <p>
-        <Link href="/productos" className={linkClass}>
-          Volver a productos
-        </Link>
-      </p>
+    <main className="mx-auto max-w-6xl px-4 py-8 lg:px-8">
+      <BackLink href="/productos" label="Volver a productos" />
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className={pageTitleClass}>{product.name}</h1>
-          <StockStatusBadge status={product.stockStatus} />
-          <span
-            className={product.isActive ? activeBadgeClass : inactiveBadgeClass}
-          >
-            {product.isActive ? "Activo" : "Inactivo"}
-          </span>
-        </div>
-        {isAdmin && !editing ? (
-          <div className="flex flex-wrap gap-3">
-            <Link
-              href={`/productos/${product.id}?editar=1`}
-              className={secondaryLinkClass}
+      <DetailHeader
+        title={product.name}
+        leading={<HeaderIcon name="package" />}
+        badges={
+          <>
+            <StockStatusBadge status={product.stockStatus} />
+            <span
+              className={
+                product.isActive ? activeBadgeClass : inactiveBadgeClass
+              }
             >
-              Editar
-            </Link>
-            {product.isActive && !confirming ? (
+              {product.isActive ? "Activo" : "Inactivo"}
+            </span>
+          </>
+        }
+        subtitle={<span className="font-mono text-sm">{product.sku}</span>}
+        actions={
+          isAdmin && !editing ? (
+            <>
               <Link
-                href={`/productos/${product.id}?confirmar=desactivar`}
+                href={`/productos/${product.id}?editar=1`}
                 className={secondaryLinkClass}
               >
-                Desactivar
+                <Icon name="pencil" className="size-4" />
+                Editar
               </Link>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
+              {product.isActive && !confirming ? (
+                <Link
+                  href={`/productos/${product.id}?confirmar=desactivar`}
+                  className={dangerOutlineLinkClass}
+                >
+                  <Icon name="power" className="size-4" />
+                  Desactivar
+                </Link>
+              ) : null}
+            </>
+          ) : null
+        }
+      />
 
       <div role="status" className="mt-4 empty:hidden">
         {notice ? <p className={noticeClass}>{notice}</p> : null}
@@ -156,199 +170,168 @@ export default async function ProductPage({
       ) : null}
 
       {isAdmin && !product.isActive ? (
-        <section
-          aria-labelledby="estado-titulo"
-          className={`mt-6 ${cardClass} p-6`}
+        <SectionCard
+          id="estado-titulo"
+          title="Estado"
+          icon="power"
+          className="mt-6"
         >
-          <h2 id="estado-titulo" className={sectionTitleClass}>
-            Estado
-          </h2>
-          <div className="mt-3">
-            <ReactivateForm productId={product.id} />
-          </div>
-        </section>
+          <ReactivateForm productId={product.id} />
+        </SectionCard>
       ) : null}
 
-      <div className="mt-6 grid gap-6 md:grid-cols-2">
-        <section aria-labelledby="datos-titulo" className={`${cardClass} p-6`}>
-          <h2 id="datos-titulo" className={sectionTitleClass}>
-            Datos
-          </h2>
-          {editing ? (
-            <div className="mt-4">
-              <ProductForm
-                mode="editar"
-                productId={product.id}
-                values={{
-                  sku: product.sku,
-                  name: product.name,
-                  description: product.description ?? "",
-                  unit: product.unit,
-                  reorderPoint: formatQuantity(product.reorderPoint),
-                  brand: product.brand ?? "",
-                  category: product.category ?? "",
-                  condition: product.condition,
-                }}
-                suggestions={suggestions?.ok ? suggestions : undefined}
-              />
-            </div>
-          ) : (
-            <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-              <dt className="font-semibold">SKU</dt>
-              <dd className="font-mono">{product.sku}</dd>
-              <dt className="font-semibold">Nombre</dt>
-              <dd>{product.name}</dd>
-              <dt className="font-semibold">Marca</dt>
-              <dd className={product.brand ? undefined : "text-muted"}>
-                {product.brand ?? "—"}
-              </dd>
-              <dt className="font-semibold">Categoría</dt>
-              <dd className={product.category ? undefined : "text-muted"}>
-                {product.category ?? "—"}
-              </dd>
-              <dt className="font-semibold">Condición</dt>
-              <dd>{CONDITION_LABEL[product.condition]}</dd>
-              <dt className="font-semibold">Precio</dt>
-              <dd>
-                <span className={price ? "tabular-nums" : "text-muted"}>
-                  {price
-                    ? formatMoney(price.amount, price.currency)
-                    : "Sin precio"}
-                </span>{" "}
-                ·{" "}
+      <ProductSubNav productId={product.id} current="resumen" />
+
+      {editing ? (
+        <div className="mt-6">
+          <ProductForm
+            mode="editar"
+            productId={product.id}
+            values={{
+              sku: product.sku,
+              name: product.name,
+              description: product.description ?? "",
+              unit: product.unit,
+              reorderPoint: formatQuantity(product.reorderPoint),
+              brand: product.brand ?? "",
+              category: product.category ?? "",
+              condition: product.condition,
+            }}
+            suggestions={suggestions?.ok ? suggestions : undefined}
+          />
+        </div>
+      ) : (
+        <div className="mt-6 grid items-start gap-6 lg:grid-cols-3">
+          <SectionCard
+            id="datos-titulo"
+            title="Información básica"
+            icon="package"
+            className="lg:col-span-2"
+          >
+            <DetailList
+              items={[
+                {
+                  label: "SKU",
+                  icon: "hash",
+                  value: <span className="font-mono">{product.sku}</span>,
+                },
+                { label: "Nombre", icon: "package", value: product.name },
+                { label: "Marca", icon: "tag", value: product.brand },
+                { label: "Categoría", icon: "list", value: product.category },
+                {
+                  label: "Condición",
+                  icon: "circleCheck",
+                  value: CONDITION_LABEL[product.condition],
+                },
+                { label: "Unidad", icon: "layers", value: product.unit },
+                {
+                  label: "Descripción",
+                  icon: "fileText",
+                  value: product.description,
+                  multiline: true,
+                },
+              ]}
+            />
+          </SectionCard>
+
+          <div className="flex min-w-0 flex-col gap-6">
+            <SectionCard id="precio-titulo" title="Precio" icon="tag">
+              <p className="text-sm font-semibold text-muted">
+                Precio de venta
+              </p>
+              <p
+                className={
+                  price
+                    ? "mt-1 text-2xl font-extrabold tracking-tight tabular-nums"
+                    : "mt-1 text-muted"
+                }
+              >
+                {price
+                  ? formatMoney(price.amount, price.currency)
+                  : "Sin precio"}
+              </p>
+              <p className="mt-4">
                 <Link
                   href={`/productos/${product.id}/precios`}
-                  className={linkClass}
+                  className={`${linkClass} inline-flex items-center gap-1.5 text-sm`}
                 >
+                  <Icon name="trendingUp" className="size-4" />
                   {isAdmin && product.isActive
                     ? "Ver historial y fijar precio"
                     : "Ver historial de precios"}
                 </Link>
-              </dd>
-              <dt className="font-semibold">Descripción</dt>
-              <dd className="text-muted">{product.description ?? "—"}</dd>
-              <dt className="font-semibold">Unidad</dt>
-              <dd>{product.unit}</dd>
-            </dl>
-          )}
-        </section>
+              </p>
+            </SectionCard>
 
-        <section aria-labelledby="stock-titulo" className={`${cardClass} p-6`}>
-          <h2 id="stock-titulo" className={sectionTitleClass}>
-            Stock
-          </h2>
-          <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-            <dt className="font-semibold">Disponible</dt>
-            <dd className="tabular-nums">
-              {formatQuantity(product.quantityOnHand)} {product.unit}
-            </dd>
-            <dt className="font-semibold">Punto de reposición</dt>
-            <dd className="tabular-nums">
-              {formatQuantity(product.reorderPoint)}
-            </dd>
-          </dl>
-
-          <h3 className="mt-6 text-sm font-bold tracking-wider text-muted uppercase">
-            Últimos movimientos
-          </h3>
-          {movements.length === 0 ? (
-            <p className="mt-2 text-sm text-muted">Sin movimientos todavía.</p>
-          ) : (
-            <ul className="mt-2 flex flex-col gap-2 text-sm">
-              {movements.map((movement) => (
-                <li key={movement.id} className="tabular-nums">
-                  {formatShortDateTime(movement.createdAt, timeZone)} ·{" "}
-                  {movement.type === "adjustment_positive" ? "+" : "−"}
-                  {formatQuantity(movement.quantity)} · {movement.reason}
-                </li>
-              ))}
-            </ul>
-          )}
-          <p className="mt-4">
-            <Link
-              href={`/productos/${product.id}/movimientos`}
-              className={linkClass}
-            >
-              Ver historial y ajustar
-            </Link>
-          </p>
-        </section>
-      </div>
+            <SectionCard id="stock-titulo" title="Stock" icon="layers">
+              <DetailList
+                items={[
+                  {
+                    label: "Stock actual",
+                    value: (
+                      <span className="tabular-nums">
+                        {formatQuantity(product.quantityOnHand)} {product.unit}
+                      </span>
+                    ),
+                  },
+                  {
+                    label: "Punto de reposición",
+                    value: (
+                      <span className="tabular-nums">
+                        {formatQuantity(product.reorderPoint)}
+                      </span>
+                    ),
+                  },
+                ]}
+              />
+              <h3 className="mt-5 text-xs font-bold tracking-wider text-muted uppercase">
+                Últimos movimientos
+              </h3>
+              {movements.length === 0 ? (
+                <p className="mt-2 text-sm text-muted">
+                  Sin movimientos todavía.
+                </p>
+              ) : (
+                <ul className="mt-2 flex flex-col gap-2 text-sm">
+                  {movements.map((movement) => (
+                    <li key={movement.id} className="tabular-nums">
+                      {formatShortDateTime(movement.createdAt, timeZone)} ·{" "}
+                      {movement.type === "adjustment_positive" ? "+" : "−"}
+                      {formatQuantity(movement.quantity)} · {movement.reason}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="mt-4">
+                <Link
+                  href={`/productos/${product.id}/movimientos`}
+                  className={`${linkClass} inline-flex items-center gap-1.5 text-sm`}
+                >
+                  <Icon name="trendingUp" className="size-4" />
+                  Ver historial y ajustar
+                </Link>
+              </p>
+            </SectionCard>
+          </div>
+        </div>
+      )}
 
       {audit?.ok ? (
-        <section
-          aria-labelledby="auditoria-titulo"
-          className={`mt-6 ${cardClass} p-6`}
-        >
-          <h2 id="auditoria-titulo" className={sectionTitleClass}>
-            Historial de auditoría
-          </h2>
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full border-collapse text-left text-[0.9375rem]">
-              <caption className="sr-only">Auditoría de {product.name}</caption>
-              <thead>
-                <tr>
-                  <th scope="col" className={tableHeadCellClass}>
-                    Fecha
-                  </th>
-                  <th scope="col" className={tableHeadCellClass}>
-                    Autor
-                  </th>
-                  <th scope="col" className={tableHeadCellClass}>
-                    Acción
-                  </th>
-                  <th scope="col" className={tableHeadCellClass}>
-                    Cambio
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {audit.entries.map((entry) => (
-                  <tr key={entry.id}>
-                    <td className={`${tableCellClass} whitespace-nowrap`}>
-                      {formatShortDateTime(entry.createdAt, timeZone)}
-                    </td>
-                    <td className={tableCellClass}>
-                      {actorLabel?.(entry.actor)}
-                    </td>
-                    <td className={tableCellClass}>
-                      {auditActionLabel(entry)}
-                    </td>
-                    <td className={`${tableCellClass} text-muted`}>
-                      {describeAuditDiff(entry)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {audit.pageCount > 1 ? (
-            <nav
-              aria-label="Paginación de auditoría"
-              className="mt-4 flex flex-wrap items-center justify-center gap-4"
-            >
-              {audit.page > 1 ? (
-                <Link
-                  href={`/productos/${product.id}?auditoria=${audit.page - 1}`}
-                  className={linkClass}
-                >
-                  Página anterior
-                </Link>
-              ) : null}
-              <p className="text-sm text-muted tabular-nums">
-                Página {audit.page} de {audit.pageCount}
-              </p>
-              {audit.page < audit.pageCount ? (
-                <Link
-                  href={`/productos/${product.id}?auditoria=${audit.page + 1}`}
-                  className={linkClass}
-                >
-                  Página siguiente
-                </Link>
-              ) : null}
-            </nav>
-          ) : null}
-        </section>
+        <AuditCard
+          caption={`Auditoría de ${product.name}`}
+          rows={audit.entries.map((entry) => ({
+            id: entry.id,
+            when: formatShortDateTime(entry.createdAt, timeZone),
+            actor: actorLabel?.(entry.actor),
+            action: auditActionLabel(entry),
+            change: describeAuditDiff(entry),
+          }))}
+          page={audit.page}
+          pageCount={audit.pageCount}
+          pageSize={AUDIT_PAGE_SIZE}
+          total={audit.total}
+          hrefFor={(target) => `/productos/${product.id}?auditoria=${target}`}
+        />
       ) : null}
 
       <p className="mt-6 text-sm text-muted">Fechas en {timeZone}.</p>

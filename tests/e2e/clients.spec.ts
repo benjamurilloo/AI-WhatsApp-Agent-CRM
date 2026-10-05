@@ -154,7 +154,7 @@ test("caso 1: un admin llega desde la navegación, ve el vacío y crea el primer
     "aria-current",
     "page",
   );
-  const data = page.getByRole("region", { name: "Datos" });
+  const data = page.getByRole("region", { name: "Información principal" });
   await expect(data).toContainText(PHONE);
   await expect(data).toContainText("Prefiere retirar por la tarde.");
   const audit = page.getByRole("table", { name: "Auditoría de Ana Pérez" });
@@ -305,7 +305,7 @@ test("caso 5: editar deja el cambio resumido en la auditoría", async ({
   await page.getByRole("button", { name: "Guardar cambios" }).click();
   await expect(page.getByText("Cliente actualizado.")).toBeVisible();
 
-  const data = page.getByRole("region", { name: "Datos" });
+  const data = page.getByRole("region", { name: "Información principal" });
   await expect(data).toContainText("Sin teléfono");
   await expect(data).toContainText("Nota nueva");
   const audit = page.getByRole("table", { name: /Auditoría de/ });
@@ -391,7 +391,7 @@ test("caso 8: un viewer ve el teléfono enmascarado y no recibe formularios ni a
   await expectAccessible(page, "lista como viewer");
 
   await page.goto(`/clientes/${clientId}`);
-  const data = page.getByRole("region", { name: "Datos" });
+  const data = page.getByRole("region", { name: "Información principal" });
   await expect(data).toContainText("•••• 7788");
   await expect(data).toContainText("Prefiere la tarde.");
   await expect(page.getByRole("link", { name: "Editar" })).toBeHidden();
@@ -619,7 +619,7 @@ test("caso 14: el detalle muestra la última interacción y las conversaciones d
 
   await login(page, VIEWER);
   await page.goto(`/clientes/${clientId}`);
-  const data = page.getByRole("region", { name: "Datos" });
+  const data = page.getByRole("region", { name: "Información principal" });
   await expect(data).toContainText("Última interacción");
   await expect(data).toContainText("02/09 10:00 · WhatsApp");
   const section = page.getByRole("region", { name: "Conversaciones" });
@@ -629,7 +629,7 @@ test("caso 14: el detalle muestra la última interacción y las conversaciones d
   await expect(table.getByRole("row")).toHaveCount(1 + 25);
   await expect(table.getByRole("row").nth(1)).toContainText("Cerrada");
   await expect(
-    section.getByText("Página 1 de 2 · 26 conversaciones"),
+    section.getByText("Mostrando 1 a 25 de 26 conversaciones"),
   ).toBeVisible();
   await expectAccessible(page, "detalle con conversaciones");
 

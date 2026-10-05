@@ -10,6 +10,8 @@ import {
   labelClass,
   secondaryLinkClass,
 } from "@/app/_components/form-styles";
+import type { IconName } from "@/app/_components/icons";
+import { SectionCard } from "@/app/_components/section-card";
 import { createClientAction, updateClientAction } from "./actions";
 import {
   NOTES_HINT,
@@ -20,6 +22,8 @@ import {
 
 // Formulario de alta y de edición (wireframe 07). Solo lo recibe un admin, así que el teléfono
 // completo que precarga nunca llega a un viewer. El botón queda deshabilitado mientras responde.
+// Desde la 15.4, los campos van en dos tarjetas, en el mismo orden (brief-15.4). El teléfono sigue
+// siendo un solo campo (D-5).
 
 const initialState: ClientFormState = { status: "idle" };
 
@@ -32,16 +36,23 @@ type FieldSpec = {
   hint?: string;
   multiline?: boolean;
   type?: "text" | "tel";
+  placeholder?: string;
 };
 
 const FIELDS: FieldSpec[] = [
-  { name: "displayName", label: "Nombre", required: true },
+  {
+    name: "displayName",
+    label: "Nombre",
+    required: true,
+    placeholder: "Ej. Juan Pérez",
+  },
   {
     name: "phone",
     label: "Teléfono",
     required: false,
     hint: PHONE_HINT,
     type: "tel",
+    placeholder: "Ej. +5491155551234",
   },
   {
     name: "notes",
@@ -49,6 +60,28 @@ const FIELDS: FieldSpec[] = [
     required: false,
     hint: NOTES_HINT,
     multiline: true,
+    placeholder: "Agregá información relevante sobre el cliente…",
+  },
+];
+
+// Las tarjetas del formulario, con sus campos en el orden de FIELDS.
+const GROUPS: {
+  id: string;
+  title: string;
+  icon: IconName;
+  fields: (keyof ClientFormValues)[];
+}[] = [
+  {
+    id: "form-principal-titulo",
+    title: "Información principal",
+    icon: "user",
+    fields: ["displayName", "phone"],
+  },
+  {
+    id: "form-adicional-titulo",
+    title: "Información adicional",
+    icon: "fileText",
+    fields: ["notes"],
   },
 ];
 
@@ -81,53 +114,70 @@ export function ClientForm({
   }, [state]);
 
   return (
-    <form action={formAction} className="flex flex-col gap-4">
+    <form action={formAction} className="flex flex-col gap-6">
       {clientId ? (
         <input type="hidden" name="clientId" value={clientId} />
       ) : null}
 
-      {FIELDS.map((field) => {
-        const invalid = failed && state.field === field.name;
-        const hintId = field.hint ? `${field.name}-ayuda` : undefined;
-        const errorId = invalid ? `${field.name}-error` : undefined;
-        const common = {
-          id: field.name,
-          name: field.name,
-          required: field.required,
-          defaultValue: shown[field.name],
-          "aria-invalid": invalid ? true : undefined,
-          "aria-describedby":
-            [errorId, hintId].filter(Boolean).join(" ") || undefined,
-          className: inputClass,
-        };
-        return (
-          <div key={field.name} className="flex flex-col gap-1">
-            <label htmlFor={field.name} className={labelClass}>
-              {field.label}
-              {field.required ? " *" : ""}
-            </label>
-            {field.multiline ? (
-              <textarea {...common} rows={4} />
-            ) : (
-              <input
-                {...common}
-                type={field.type ?? "text"}
-                autoComplete="off"
-              />
+      {GROUPS.map((group) => (
+        <SectionCard
+          key={group.id}
+          id={group.id}
+          title={group.title}
+          icon={group.icon}
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            {FIELDS.filter((field) => group.fields.includes(field.name)).map(
+              (field) => {
+                const invalid = failed && state.field === field.name;
+                const hintId = field.hint ? `${field.name}-ayuda` : undefined;
+                const errorId = invalid ? `${field.name}-error` : undefined;
+                const common = {
+                  id: field.name,
+                  name: field.name,
+                  required: field.required,
+                  defaultValue: shown[field.name],
+                  "aria-invalid": invalid ? true : undefined,
+                  "aria-describedby":
+                    [errorId, hintId].filter(Boolean).join(" ") || undefined,
+                  className: inputClass,
+                  placeholder: field.placeholder,
+                };
+                return (
+                  <div
+                    key={field.name}
+                    className={`flex flex-col gap-1 ${field.multiline ? "sm:col-span-2" : ""}`}
+                  >
+                    <label htmlFor={field.name} className={labelClass}>
+                      {field.label}
+                      {field.required ? " *" : ""}
+                    </label>
+                    {field.multiline ? (
+                      <textarea {...common} rows={4} />
+                    ) : (
+                      <input
+                        {...common}
+                        type={field.type ?? "text"}
+                        autoComplete="off"
+                      />
+                    )}
+                    {field.hint ? (
+                      <p id={hintId} className="text-sm text-muted">
+                        {field.hint}
+                      </p>
+                    ) : null}
+                    {invalid ? (
+                      <p id={errorId} className={fieldErrorClass}>
+                        {state.message}
+                      </p>
+                    ) : null}
+                  </div>
+                );
+              },
             )}
-            {field.hint ? (
-              <p id={hintId} className="text-sm text-muted">
-                {field.hint}
-              </p>
-            ) : null}
-            {invalid ? (
-              <p id={errorId} className={fieldErrorClass}>
-                {state.message}
-              </p>
-            ) : null}
           </div>
-        );
-      })}
+        </SectionCard>
+      ))}
 
       <div aria-live="polite" aria-atomic="true">
         {failed && !state.field ? (

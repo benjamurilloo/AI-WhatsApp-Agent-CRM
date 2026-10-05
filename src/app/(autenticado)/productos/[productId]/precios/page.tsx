@@ -1,19 +1,22 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { listProductPrices } from "@/modules/catalog";
+import { listProductPrices, PRICES_PAGE_SIZE } from "@/modules/catalog";
 import { getProductStock } from "@/modules/inventory";
 import { getOrganizationTimezone } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
 import {
+  BackLink,
+  DetailHeader,
+  HeaderIcon,
+} from "@/app/_components/detail-header";
+import {
   cardClass,
-  linkClass,
   noticeClass,
-  pageTitleClass,
-  sectionTitleClass,
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
 import { PageNotice } from "@/app/_components/page-notice";
+import { Pagination, shownRangeText } from "@/app/_components/pagination";
+import { SectionCard } from "@/app/_components/section-card";
 import { formatShortDateTime } from "@/app/_format/date-time";
 import { acceptedCurrencies, formatMoney } from "@/shared/money";
 import type { SearchParams } from "../../filters";
@@ -28,6 +31,7 @@ import {
   priceText,
 } from "./messages";
 import { PriceForm } from "./price-form";
+import { ProductSubNav } from "../product-sub-nav";
 
 export const metadata: Metadata = {
   title: "Precios — AI WhatsApp Agent CRM",
@@ -52,6 +56,7 @@ function currencyOptions(): { code: string; label: string }[] {
 // Pantalla de precios (brief-11.1, FR-PROD-12 y FR-PROD-13): el precio vigente, el formulario
 // para fijar uno nuevo, solo para admin y con el producto activo, y el historial completo,
 // paginado, para admin y viewer. Ningún precio se edita ni se borra: uno nuevo se agrega.
+// Presentación de la 15.4: tarjetas y la barra de subpantallas del producto (brief-15.4, D-3).
 export default async function PricesPage({
   params,
   searchParams,
@@ -91,43 +96,42 @@ export default async function PricesPage({
       : `/productos/${product.id}/precios`;
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-8">
-      <p>
-        <Link href={`/productos/${product.id}`} className={linkClass}>
-          Volver al producto
-        </Link>
-      </p>
-      <h1 className={`mt-4 ${pageTitleClass}`}>{product.name}</h1>
-      <p className="mt-1 text-muted">
-        Precios · Precio vigente:{" "}
-        <span className="font-semibold text-foreground tabular-nums">
-          {priceText(history.current)}
-        </span>
-      </p>
+    <main className="mx-auto max-w-6xl px-4 py-8 lg:px-8">
+      <BackLink href={`/productos/${product.id}`} label="Volver al producto" />
+      <DetailHeader
+        title={product.name}
+        leading={<HeaderIcon name="tag" />}
+        subtitle={
+          <p>
+            Precios · Precio vigente:{" "}
+            <span className="font-semibold text-foreground tabular-nums">
+              {priceText(history.current)}
+            </span>
+          </p>
+        }
+      />
 
       <div role="status" className="mt-4 empty:hidden">
         {notice ? <p className={noticeClass}>{notice}</p> : null}
       </div>
 
+      <ProductSubNav productId={product.id} current="precios" />
+
       {isAdmin ? (
         product.isActive ? (
-          <section
-            aria-labelledby="precio-titulo"
-            className={`mt-6 ${cardClass} p-6`}
+          <SectionCard
+            id="precio-titulo"
+            title="Fijar precio"
+            icon="tag"
+            description="El precio nuevo reemplaza al vigente y el anterior queda en el historial."
+            className="mt-6"
           >
-            <h2 id="precio-titulo" className={sectionTitleClass}>
-              Fijar precio
-            </h2>
-            <p className="mt-1 text-sm text-muted">
-              El precio nuevo reemplaza al vigente y el anterior queda en el
-              historial.
-            </p>
             <PriceForm
               productId={product.id}
               current={history.current}
               currencies={currencyOptions()}
             />
-          </section>
+          </SectionCard>
         ) : (
           <p className={`mt-6 ${cardClass} p-6`}>
             {INACTIVE_PRODUCT_PRICE_NOTICE}
@@ -135,97 +139,100 @@ export default async function PricesPage({
         )
       ) : null}
 
-      <h2 className={`mt-8 ${sectionTitleClass}`}>Historial de precios</h2>
-
-      {history.total === 0 ? (
-        <p className={`mt-3 ${cardClass} p-6`}>{NO_PRICES_MESSAGE}</p>
-      ) : (
-        <>
-          <div className={`mt-3 hidden overflow-hidden md:block ${cardClass}`}>
-            <table className="w-full border-collapse text-left text-[0.9375rem]">
-              <caption className="sr-only">
-                Historial de precios de {product.name}
-              </caption>
-              <thead>
-                <tr>
-                  <th scope="col" className={tableHeadCellClass}>
-                    Fecha
-                  </th>
-                  <th
-                    scope="col"
-                    className={`${tableHeadCellClass} text-right`}
-                  >
-                    Precio
-                  </th>
-                  <th scope="col" className={tableHeadCellClass}>
-                    Autor
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {history.entries.map((entry) => (
-                  <tr key={entry.id}>
-                    <td className={`${tableCellClass} whitespace-nowrap`}>
-                      {formatShortDateTime(entry.createdAt, timeZone)}
-                      {entry.id === history.current?.id ? (
-                        <span className="ml-2 text-sm text-muted">
-                          · vigente
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className={`${tableCellClass} text-right tabular-nums`}>
-                      {formatMoney(entry.amount, entry.currency)}
-                    </td>
-                    <td className={`${tableCellClass} text-muted`}>
-                      {entry.author.name}
-                    </td>
+      <SectionCard
+        id="historial-titulo"
+        title="Historial de precios"
+        icon="history"
+        className="mt-6"
+      >
+        {history.total === 0 ? (
+          <p>{NO_PRICES_MESSAGE}</p>
+        ) : (
+          <>
+            <div className="-mx-5 hidden overflow-x-auto sm:-mx-6 md:block">
+              <table className="w-full border-collapse text-left text-sm">
+                <caption className="sr-only">
+                  Historial de precios de {product.name}
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col" className={tableHeadCellClass}>
+                      Fecha
+                    </th>
+                    <th
+                      scope="col"
+                      className={`${tableHeadCellClass} text-right`}
+                    >
+                      Precio
+                    </th>
+                    <th scope="col" className={tableHeadCellClass}>
+                      Autor
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {history.entries.map((entry) => (
+                    <tr key={entry.id}>
+                      <td className={`${tableCellClass} whitespace-nowrap`}>
+                        {formatShortDateTime(entry.createdAt, timeZone)}
+                        {entry.id === history.current?.id ? (
+                          <span className="ml-2 text-sm text-muted">
+                            · vigente
+                          </span>
+                        ) : null}
+                      </td>
+                      <td
+                        className={`${tableCellClass} text-right tabular-nums`}
+                      >
+                        {formatMoney(entry.amount, entry.currency)}
+                      </td>
+                      <td className={`${tableCellClass} text-muted`}>
+                        {entry.author.name}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
-          <ul
-            aria-label={`Historial de precios de ${product.name}`}
-            className="mt-3 flex flex-col gap-3 md:hidden"
-          >
-            {history.entries.map((entry) => (
-              <li key={entry.id} className={`${cardClass} p-4`}>
-                <p className="text-sm text-muted">
-                  {formatShortDateTime(entry.createdAt, timeZone)} ·{" "}
-                  {entry.author.name}
-                  {entry.id === history.current?.id ? " · vigente" : ""}
-                </p>
-                <p className="mt-1 font-semibold tabular-nums">
-                  {formatMoney(entry.amount, entry.currency)}
-                </p>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
+            <ul
+              aria-label={`Historial de precios de ${product.name}`}
+              className="flex flex-col gap-3 md:hidden"
+            >
+              {history.entries.map((entry) => (
+                <li
+                  key={entry.id}
+                  className="rounded-xl border border-border bg-surface-muted p-4"
+                >
+                  <p className="text-sm text-muted">
+                    {formatShortDateTime(entry.createdAt, timeZone)} ·{" "}
+                    {entry.author.name}
+                    {entry.id === history.current?.id ? " · vigente" : ""}
+                  </p>
+                  <p className="mt-1 font-semibold tabular-nums">
+                    {formatMoney(entry.amount, entry.currency)}
+                  </p>
+                </li>
+              ))}
+            </ul>
 
-      {history.pageCount > 1 ? (
-        <nav
-          aria-label="Paginación"
-          className="mt-6 flex flex-wrap items-center justify-center gap-4"
-        >
-          {history.page > 1 ? (
-            <Link href={pageHref(history.page - 1)} className={linkClass}>
-              Página anterior
-            </Link>
-          ) : null}
-          <p className="text-sm text-muted tabular-nums">
-            Página {history.page} de {history.pageCount} · {history.total}{" "}
-            {history.total === 1 ? "precio" : "precios"}
-          </p>
-          {history.page < history.pageCount ? (
-            <Link href={pageHref(history.page + 1)} className={linkClass}>
-              Página siguiente
-            </Link>
-          ) : null}
-        </nav>
-      ) : null}
+            <Pagination
+              className="mt-4"
+              page={history.page}
+              pageCount={history.pageCount}
+              rangeText={shownRangeText({
+                page: history.page,
+                pageSize: PRICES_PAGE_SIZE,
+                shown: history.entries.length,
+                total: history.total,
+                singular: "precio",
+                plural: "precios",
+              })}
+              hrefFor={pageHref}
+            />
+          </>
+        )}
+      </SectionCard>
 
       <p className="mt-6 text-sm text-muted">Fechas en {timeZone}.</p>
     </main>

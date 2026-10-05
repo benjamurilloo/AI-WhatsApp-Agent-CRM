@@ -10,6 +10,8 @@ import {
   labelClass,
   secondaryLinkClass,
 } from "@/app/_components/form-styles";
+import type { IconName } from "@/app/_components/icons";
+import { SectionCard } from "@/app/_components/section-card";
 import { createKnowledgeAction, updateKnowledgeAction } from "./actions";
 import {
   FIELD_ORDER,
@@ -21,6 +23,7 @@ import {
 // mientras responde el servidor. La categoría es texto libre con sugerencias de las que ya usa la
 // organización (D-2). Ningún campo es un select: tras un rechazo, React reinicia el formulario y
 // cada campo vuelve a su valor por defecto, que es lo enviado (brief-11.1, lección del select).
+// Desde la 15.4, los campos van en dos tarjetas, en el mismo orden (brief-15.4).
 
 const initialState: KnowledgeFormState = { status: "idle" };
 
@@ -38,6 +41,7 @@ type FieldSpec = {
   required: boolean;
   kind: "text" | "textarea" | "date";
   hint?: string;
+  placeholder?: string;
 };
 
 const SPECS: Record<keyof KnowledgeFormValues, FieldSpec> = {
@@ -47,6 +51,7 @@ const SPECS: Record<keyof KnowledgeFormValues, FieldSpec> = {
     required: true,
     kind: "text",
     hint: "Por ejemplo, «Horario de atención». No puede repetirse.",
+    placeholder: "Ej. Horario de atención",
   },
   category: {
     name: "category",
@@ -61,6 +66,7 @@ const SPECS: Record<keyof KnowledgeFormValues, FieldSpec> = {
     required: true,
     kind: "textarea",
     hint: "Texto plano, hasta 4000 caracteres.",
+    placeholder: "Escribí el contenido de la entrada…",
   },
   validFrom: {
     name: "validFrom",
@@ -80,6 +86,30 @@ const SPECS: Record<keyof KnowledgeFormValues, FieldSpec> = {
 
 // El orden del formulario es el del foco al primer error (FIELD_ORDER de messages.ts).
 const FIELDS = FIELD_ORDER.map((name) => SPECS[name]);
+
+// Las tarjetas del formulario, con sus campos en el orden de FIELD_ORDER.
+const GROUPS: {
+  id: string;
+  title: string;
+  description: string;
+  icon: IconName;
+  fields: (keyof KnowledgeFormValues)[];
+}[] = [
+  {
+    id: "form-entrada-titulo",
+    title: "Datos de la entrada",
+    description: "Lo que el agente va a leer de esta entrada.",
+    icon: "fileText",
+    fields: ["title", "category", "content"],
+  },
+  {
+    id: "form-vigencia-titulo",
+    title: "Vigencia (opcional)",
+    description: "Un período en el que esta información vale.",
+    icon: "calendar",
+    fields: ["validFrom", "validUntil"],
+  },
+];
 
 export function KnowledgeForm({
   mode,
@@ -111,60 +141,79 @@ export function KnowledgeForm({
   }, [state]);
 
   return (
-    <form action={formAction} className="flex flex-col gap-4">
+    <form action={formAction} className="flex flex-col gap-6">
       {entryId ? <input type="hidden" name="entryId" value={entryId} /> : null}
 
-      {FIELDS.map((field) => {
-        const invalid = failed && state.field === field.name;
-        const hintId = field.hint ? `${field.name}-ayuda` : undefined;
-        const errorId = invalid ? `${field.name}-error` : undefined;
-        const common = {
-          id: field.name,
-          name: field.name,
-          required: field.required,
-          defaultValue: shown[field.name],
-          "aria-invalid": invalid ? true : undefined,
-          "aria-describedby":
-            [errorId, hintId].filter(Boolean).join(" ") || undefined,
-          className: inputClass,
-        };
-        return (
-          <div key={field.name} className="flex flex-col gap-1">
-            <label htmlFor={field.name} className={labelClass}>
-              {field.label}
-              {field.required ? " *" : ""}
-            </label>
-            {field.kind === "textarea" ? (
-              <textarea {...common} rows={8} />
-            ) : (
-              <input
-                {...common}
-                type={field.kind}
-                list={
-                  field.name === "category" ? "category-sugerencias" : undefined
-                }
-              />
+      {GROUPS.map((group) => (
+        <SectionCard
+          key={group.id}
+          id={group.id}
+          title={group.title}
+          description={group.description}
+          icon={group.icon}
+        >
+          <div
+            className={`grid gap-4 ${group.fields.length === 2 ? "sm:grid-cols-2" : ""}`}
+          >
+            {FIELDS.filter((field) => group.fields.includes(field.name)).map(
+              (field) => {
+                const invalid = failed && state.field === field.name;
+                const hintId = field.hint ? `${field.name}-ayuda` : undefined;
+                const errorId = invalid ? `${field.name}-error` : undefined;
+                const common = {
+                  id: field.name,
+                  name: field.name,
+                  required: field.required,
+                  defaultValue: shown[field.name],
+                  "aria-invalid": invalid ? true : undefined,
+                  "aria-describedby":
+                    [errorId, hintId].filter(Boolean).join(" ") || undefined,
+                  className: inputClass,
+                  placeholder: field.placeholder,
+                };
+                return (
+                  <div key={field.name} className="flex flex-col gap-1">
+                    <label htmlFor={field.name} className={labelClass}>
+                      {field.label}
+                      {field.required ? " *" : ""}
+                    </label>
+                    {field.kind === "textarea" ? (
+                      <textarea {...common} rows={8} />
+                    ) : (
+                      <input
+                        {...common}
+                        type={field.kind}
+                        list={
+                          field.name === "category"
+                            ? "category-sugerencias"
+                            : undefined
+                        }
+                      />
+                    )}
+                    {field.name === "category" ? (
+                      <datalist id="category-sugerencias">
+                        {categories.map((value) => (
+                          <option key={value} value={value} />
+                        ))}
+                      </datalist>
+                    ) : null}
+                    {field.hint ? (
+                      <p id={hintId} className="text-sm text-muted">
+                        {field.hint}
+                      </p>
+                    ) : null}
+                    {invalid ? (
+                      <p id={errorId} className={fieldErrorClass}>
+                        {state.message}
+                      </p>
+                    ) : null}
+                  </div>
+                );
+              },
             )}
-            {field.name === "category" ? (
-              <datalist id="category-sugerencias">
-                {categories.map((value) => (
-                  <option key={value} value={value} />
-                ))}
-              </datalist>
-            ) : null}
-            {field.hint ? (
-              <p id={hintId} className="text-sm text-muted">
-                {field.hint}
-              </p>
-            ) : null}
-            {invalid ? (
-              <p id={errorId} className={fieldErrorClass}>
-                {state.message}
-              </p>
-            ) : null}
           </div>
-        );
-      })}
+        </SectionCard>
+      ))}
 
       <div aria-live="polite" aria-atomic="true">
         {failed && !state.field ? (

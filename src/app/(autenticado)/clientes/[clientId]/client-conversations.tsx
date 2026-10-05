@@ -1,5 +1,8 @@
 import Link from "next/link";
-import type { ClientActivityResult } from "@/modules/conversations";
+import {
+  CONVERSATIONS_PAGE_SIZE,
+  type ClientActivityResult,
+} from "@/modules/conversations";
 import {
   cardClass,
   labelClass,
@@ -7,6 +10,9 @@ import {
   secondaryButtonClass,
   selectClass,
 } from "@/app/_components/form-styles";
+import { Icon } from "@/app/_components/icons";
+import { Pagination, shownRangeText } from "@/app/_components/pagination";
+import { StatTile } from "@/app/_components/stat-tile";
 import { formatShortDateTime } from "@/app/_format/date-time";
 import { ConversationTable } from "@/app/(autenticado)/conversaciones/conversation-table";
 import {
@@ -19,6 +25,7 @@ import {
   NO_CLIENT_CONVERSATIONS_MESSAGE,
   NO_INTERACTIONS_TEXT,
 } from "@/app/(autenticado)/conversaciones/messages";
+import { daysSinceText } from "./stats";
 
 // Actividad del cliente en la pantalla 7 (wireframe 07; brief-6.4, D-4). La página crea la
 // promesa sin esperarla, y cada parte la espera dentro de su Suspense: los datos del cliente se
@@ -35,6 +42,41 @@ export async function LastInteraction({ activity }: { activity: Activity }) {
       {formatShortDateTime(result.lastInteraction.at, result.timezone)} ·{" "}
       {CHANNEL_LABEL[result.lastInteraction.channel]}
     </>
+  );
+}
+
+// Estadísticas del cliente (brief-15.4, D-6): la cantidad de conversaciones, sin filtro de
+// estado, y los días desde la última interacción. Sin el total de mensajes: exigiría una consulta
+// nueva.
+export async function ClientStats({ activity }: { activity: Activity }) {
+  const result = await activity;
+  if (!result.ok) return <p className="text-sm text-muted">—</p>;
+  return (
+    <div className="flex flex-col gap-3">
+      <StatTile
+        icon="messageCircle"
+        value={String(result.total)}
+        label={result.total === 1 ? "Conversación" : "Conversaciones"}
+      />
+      <StatTile
+        icon="calendar"
+        value={
+          result.lastInteraction
+            ? daysSinceText(result.lastInteraction.at, new Date())
+            : "—"
+        }
+        label="Desde la última interacción"
+      />
+    </div>
+  );
+}
+
+export function ClientStatsSkeleton() {
+  return (
+    <div aria-hidden="true" className="flex flex-col gap-3">
+      <div className="h-16 animate-pulse rounded-xl bg-surface-muted" />
+      <div className="h-16 animate-pulse rounded-xl bg-surface-muted" />
+    </div>
   );
 }
 
@@ -64,7 +106,7 @@ export async function ClientConversations({
         key={clientSectionsHref(clientId, view)}
         method="get"
         action={`/clientes/${clientId}`}
-        className="mt-4 flex flex-wrap items-end gap-3"
+        className="flex flex-wrap items-end gap-3"
       >
         {view.auditPage > 1 ? (
           <input type="hidden" name="auditoria" value={view.auditPage} />
@@ -86,6 +128,7 @@ export async function ClientConversations({
           </select>
         </div>
         <button type="submit" className={secondaryButtonClass}>
+          <Icon name="filter" className="size-4" />
           Filtrar
         </button>
         {filtered ? (
@@ -126,39 +169,26 @@ export async function ClientConversations({
             caption={`Conversaciones de ${clientName}`}
             showClient={false}
           />
-          {result.pageCount > 1 ? (
-            <nav
-              aria-label="Paginación de conversaciones"
-              className="mt-4 flex flex-wrap items-center justify-center gap-4"
-            >
-              {result.page > 1 ? (
-                <Link
-                  href={clientSectionsHref(clientId, {
-                    ...view,
-                    conversationPage: result.page - 1,
-                  })}
-                  className={linkClass}
-                >
-                  Página anterior
-                </Link>
-              ) : null}
-              <p className="text-sm text-muted tabular-nums">
-                Página {result.page} de {result.pageCount} · {result.total}{" "}
-                {result.total === 1 ? "conversación" : "conversaciones"}
-              </p>
-              {result.page < result.pageCount ? (
-                <Link
-                  href={clientSectionsHref(clientId, {
-                    ...view,
-                    conversationPage: result.page + 1,
-                  })}
-                  className={linkClass}
-                >
-                  Página siguiente
-                </Link>
-              ) : null}
-            </nav>
-          ) : null}
+          <Pagination
+            label="Paginación de conversaciones"
+            className="mt-4"
+            page={result.page}
+            pageCount={result.pageCount}
+            rangeText={shownRangeText({
+              page: result.page,
+              pageSize: CONVERSATIONS_PAGE_SIZE,
+              shown: result.conversations.length,
+              total: result.total,
+              singular: "conversación",
+              plural: "conversaciones",
+            })}
+            hrefFor={(target) =>
+              clientSectionsHref(clientId, {
+                ...view,
+                conversationPage: target,
+              })
+            }
+          />
           <p className="mt-4 text-sm text-muted">
             Fechas en {result.timezone}.
           </p>

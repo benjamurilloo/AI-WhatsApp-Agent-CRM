@@ -11,7 +11,9 @@ import { EMPTY_BODY_TEXT, startsDay, type TimelineItem } from "../messages";
 // Timeline de la pantalla 9 (wireframe 09): lista semántica del más antiguo al más reciente.
 // "Cargar mensajes anteriores" agrega 50 arriba sin mover la lectura (D-3): se mide el primer
 // mensaje visible antes y después de agregarlos, y se compensa la diferencia. El cuerpo se
-// renderiza como texto: React lo escapa, sin HTML ni enlaces automáticos.
+// renderiza como texto: React lo escapa, sin HTML ni enlaces automáticos. Desde la 15.4, los
+// mensajes son burbujas: el texto que dice quién envía se conserva, así el color no informa solo
+// (brief-15.4, D-7).
 
 type Anchor = { id: string; top: number };
 
@@ -106,16 +108,16 @@ export function Timeline({
               className="flex flex-col gap-1"
             >
               {startsDay(items, index) ? (
-                <p className="my-2 text-center text-xs font-bold tracking-wider text-muted">
-                  <span aria-hidden="true">── </span>
+                <p className="my-3 flex items-center gap-3 text-xs font-bold tracking-wider text-muted">
+                  <span aria-hidden="true" className="h-px flex-1 bg-border" />
                   {item.day}
-                  <span aria-hidden="true"> ──</span>
+                  <span aria-hidden="true" className="h-px flex-1 bg-border" />
                 </p>
               ) : null}
               <div
                 className={`flex w-full flex-col gap-1 sm:max-w-[75%] ${outbound ? "sm:items-end sm:self-end" : "sm:items-start sm:self-start"}`}
               >
-                <p className="text-sm text-muted">
+                <p className="text-xs text-muted">
                   <span className="font-semibold text-foreground">
                     {item.directionLabel}
                   </span>
@@ -128,7 +130,7 @@ export function Timeline({
                   </p>
                 ) : null}
                 <p
-                  className={`w-full rounded-lg border px-3 py-2 break-words whitespace-pre-wrap ${outbound ? "border-primary bg-primary-soft text-on-primary-soft" : "border-border bg-surface-muted text-foreground"} ${item.body === null ? "italic" : ""}`}
+                  className={`w-full rounded-2xl border px-4 sm:w-auto py-2.5 break-words whitespace-pre-wrap ${outbound ? "rounded-tr-sm border-action bg-action text-on-action" : "rounded-tl-sm border-border bg-surface-muted text-foreground"} ${item.body === null ? "italic" : ""}`}
                 >
                   {item.body ?? EMPTY_BODY_TEXT}
                 </p>

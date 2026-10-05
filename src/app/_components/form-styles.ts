@@ -35,6 +35,10 @@ export const primaryLinkClass = `${buttonBase} ${primary}`;
 
 export const secondaryLinkClass = secondaryButtonClass;
 
+// Acción peligrosa que abre una confirmación, como «Desactivar» (brief-15.4): borde y texto en
+// danger sobre la superficie. El paso que confirma sigue siendo dangerButtonClass.
+export const dangerOutlineLinkClass = `inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-danger bg-surface px-3 py-2 text-sm font-semibold text-danger hover:bg-danger-soft ${focusRing}`;
+
 export const linkClass = `rounded-sm font-semibold text-primary underline decoration-1 underline-offset-4 hover:decoration-2 ${focusRing}`;
 
 export const selectClass = `${control} ${focusRing}`;

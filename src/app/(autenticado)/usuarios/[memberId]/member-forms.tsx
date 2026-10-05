@@ -50,7 +50,7 @@ export function RoleForm({
   const message = useErrorMessage(state);
 
   return (
-    <form action={formAction} className="mt-3 flex flex-col gap-4">
+    <form action={formAction} className="flex flex-col gap-4">
       <input type="hidden" name="memberId" value={memberId} />
       <fieldset className="flex flex-col gap-2">
         <legend className={labelClass}>Rol del usuario</legend>

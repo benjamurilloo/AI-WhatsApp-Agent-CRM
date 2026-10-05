@@ -10,6 +10,7 @@ import {
   labelClass,
   secondaryLinkClass,
 } from "@/app/_components/form-styles";
+import { SectionCard } from "@/app/_components/section-card";
 import { createProductAction, updateProductAction } from "./actions";
 import type { ProductSuggestions } from "@/modules/catalog";
 import {
@@ -21,7 +22,8 @@ import {
 // Formulario de alta y de edición (wireframes 03 y 04). El stock no se edita acá: se ajusta
 // en la pantalla 5. El botón queda deshabilitado mientras responde el servidor (brief-4.4, D-4).
 // Marca y categoría son texto libre con sugerencias de los valores que ya existen, y la condición
-// es una lista cerrada (brief-11.1, D-2 y D-3).
+// es una lista cerrada (brief-11.1, D-2 y D-3). Desde la 15.4, los campos van en dos tarjetas;
+// el precio y el stock inicial se cargan después, desde el detalle (brief-15.4, D-4).
 
 const initialState: ProductFormState = { status: "idle" };
 
@@ -47,14 +49,28 @@ type FieldSpec = {
   list?: keyof ProductSuggestions;
   // Lista cerrada: se muestra como select.
   options?: Record<string, string>;
+  // Texto largo: se muestra como textarea, a todo el ancho.
+  long?: boolean;
+  placeholder?: string;
 };
 
 // El orden es el del formulario y el del foco al primer error: tiene que coincidir con
-// PRODUCT_FIELD_ORDER de messages.ts.
+// PRODUCT_FIELD_ORDER de messages.ts. Las dos tarjetas lo respetan.
 
-const FIELDS: FieldSpec[] = [
-  { name: "sku", label: "SKU", required: true, hint: "Sin espacios." },
-  { name: "name", label: "Nombre", required: true },
+const BASIC_FIELDS: FieldSpec[] = [
+  {
+    name: "sku",
+    label: "SKU",
+    required: true,
+    hint: "Sin espacios.",
+    placeholder: "Ej. DEMO-AUD-001",
+  },
+  {
+    name: "name",
+    label: "Nombre",
+    required: true,
+    placeholder: "Ej. Auriculares inalámbricos",
+  },
   { name: "brand", label: "Marca", required: false, list: "brands" },
   { name: "category", label: "Categoría", required: false, list: "categories" },
   {
@@ -63,7 +79,17 @@ const FIELDS: FieldSpec[] = [
     required: true,
     options: CONDITION_LABEL,
   },
-  { name: "description", label: "Descripción", required: false },
+  {
+    name: "description",
+    label: "Descripción",
+    required: false,
+    long: true,
+    hint: "Hasta 2000 caracteres.",
+    placeholder: "Describí las características del producto…",
+  },
+];
+
+const STOCK_FIELDS: FieldSpec[] = [
   { name: "unit", label: "Unidad", required: true },
   {
     name: "reorderPoint",
@@ -102,77 +128,117 @@ export function ProductForm({
     }
   }, [state]);
 
+  function renderField(field: FieldSpec) {
+    const invalid = failed && state.field === field.name;
+    const hintId = field.hint ? `${field.name}-ayuda` : undefined;
+    const errorId = invalid ? `${field.name}-error` : undefined;
+    const listId = field.list ? `${field.name}-sugerencias` : undefined;
+    const describedBy =
+      [errorId, hintId].filter(Boolean).join(" ") || undefined;
+    return (
+      <div
+        key={field.name}
+        className={`flex flex-col gap-1 ${field.long ? "sm:col-span-2" : ""}`}
+      >
+        <label htmlFor={field.name} className={labelClass}>
+          {field.label}
+          {field.required ? " *" : ""}
+        </label>
+        {field.options ? (
+          <select
+            id={field.name}
+            name={field.name}
+            required={field.required}
+            defaultValue={shown[field.name]}
+            aria-invalid={invalid ? true : undefined}
+            aria-describedby={errorId}
+            className={inputClass}
+          >
+            {Object.entries(field.options).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        ) : field.long ? (
+          <textarea
+            id={field.name}
+            name={field.name}
+            required={field.required}
+            defaultValue={shown[field.name]}
+            rows={4}
+            placeholder={field.placeholder}
+            aria-invalid={invalid ? true : undefined}
+            aria-describedby={describedBy}
+            className={inputClass}
+          />
+        ) : (
+          <input
+            id={field.name}
+            name={field.name}
+            required={field.required}
+            defaultValue={shown[field.name]}
+            list={listId}
+            placeholder={field.placeholder}
+            aria-invalid={invalid ? true : undefined}
+            aria-describedby={describedBy}
+            className={inputClass}
+          />
+        )}
+        {field.list ? (
+          <datalist id={listId}>
+            {suggestions[field.list].map((value) => (
+              <option key={value} value={value} />
+            ))}
+          </datalist>
+        ) : null}
+        {field.hint ? (
+          <p id={hintId} className="text-sm text-muted">
+            {field.hint}
+          </p>
+        ) : null}
+        {invalid ? (
+          <p id={errorId} className={fieldErrorClass}>
+            {state.message}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
-    <form action={formAction} className="flex flex-col gap-4">
+    <form action={formAction} className="flex flex-col gap-6">
       {productId ? (
         <input type="hidden" name="productId" value={productId} />
       ) : null}
 
-      {FIELDS.map((field) => {
-        const invalid = failed && state.field === field.name;
-        const hintId = field.hint ? `${field.name}-ayuda` : undefined;
-        const errorId = invalid ? `${field.name}-error` : undefined;
-        const listId = field.list ? `${field.name}-sugerencias` : undefined;
-        return (
-          <div key={field.name} className="flex flex-col gap-1">
-            <label htmlFor={field.name} className={labelClass}>
-              {field.label}
-              {field.required ? " *" : ""}
-            </label>
-            {field.options ? (
-              <select
-                id={field.name}
-                name={field.name}
-                required={field.required}
-                defaultValue={shown[field.name]}
-                aria-invalid={invalid ? true : undefined}
-                aria-describedby={errorId}
-                className={inputClass}
-              >
-                {Object.entries(field.options).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <input
-                id={field.name}
-                name={field.name}
-                required={field.required}
-                defaultValue={shown[field.name]}
-                list={listId}
-                aria-invalid={invalid ? true : undefined}
-                aria-describedby={
-                  [errorId, hintId].filter(Boolean).join(" ") || undefined
-                }
-                className={inputClass}
-              />
-            )}
-            {field.list ? (
-              <datalist id={listId}>
-                {suggestions[field.list].map((value) => (
-                  <option key={value} value={value} />
-                ))}
-              </datalist>
-            ) : null}
-            {field.hint ? (
-              <p id={hintId} className="text-sm text-muted">
-                {field.hint}
-              </p>
-            ) : null}
-            {invalid ? (
-              <p id={errorId} className={fieldErrorClass}>
-                {state.message}
-              </p>
-            ) : null}
-          </div>
-        );
-      })}
+      <SectionCard
+        id="form-basica-titulo"
+        title="Información básica"
+        icon="package"
+        description="Cómo se identifica y se describe el producto."
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          {BASIC_FIELDS.map(renderField)}
+        </div>
+      </SectionCard>
 
-      <p className="text-sm text-muted">
-        El stock no se edita acá: se ajusta en el historial de movimientos.
-      </p>
+      <SectionCard
+        id="form-stock-titulo"
+        title="Stock y reposición"
+        icon="layers"
+        description="El stock no se edita acá: se ajusta en el historial de movimientos."
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          {STOCK_FIELDS.map(renderField)}
+        </div>
+        {mode === "crear" ? (
+          <p className="mt-4 text-sm text-muted">
+            El precio y el stock inicial se cargan después de crear el producto,
+            desde su detalle.
+          </p>
+        ) : null}
+      </SectionCard>
 
       <div aria-live="polite" aria-atomic="true">
         {failed && !state.field ? (

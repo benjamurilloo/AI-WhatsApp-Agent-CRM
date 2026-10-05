@@ -58,21 +58,26 @@ export function Pagination({
   pageCount,
   rangeText,
   hrefFor,
+  label = "Paginación",
+  className = "mt-6",
 }: {
   page: number;
   pageCount: number;
   rangeText: string;
   hrefFor: (page: number) => string;
+  // Una pantalla con dos paginaciones les da nombres distintos (brief-15.4).
+  label?: string;
+  className?: string;
 }) {
   const arrow = (
     target: number,
-    label: string,
+    arrowLabel: string,
     icon: "chevronLeft" | "chevronRight",
   ) =>
     target >= 1 && target <= pageCount ? (
       <Link
         href={hrefFor(target)}
-        aria-label={label}
+        aria-label={arrowLabel}
         className={`${pageLinkClass} border border-border bg-surface text-foreground hover:bg-surface-muted`}
       >
         <Icon name={icon} className="size-4" />
@@ -87,12 +92,12 @@ export function Pagination({
     );
 
   const range = <p className="text-sm text-muted tabular-nums">{rangeText}</p>;
-  if (pageCount <= 1) return <div className="mt-6">{range}</div>;
+  if (pageCount <= 1) return <div className={className}>{range}</div>;
   // El rango va dentro de la navegación, como el «Página X de Y» que reemplaza.
   return (
     <nav
-      aria-label="Paginación"
-      className="mt-6 flex flex-wrap items-center justify-between gap-4"
+      aria-label={label}
+      className={`${className} flex flex-wrap items-center justify-between gap-4`}
     >
       {range}
       <ul className="flex flex-wrap items-center gap-1.5">
