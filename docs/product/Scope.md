@@ -15,7 +15,7 @@
 
 ## Explícitamente fuera del MVP
 
-- Ventas, compras, proveedores, pagos, cuentas de caja, contabilidad.
+- Ventas, compras, proveedores, pagos, cuentas de caja, contabilidad. *Siguen fuera del MVP; desde el [ADR 0016](../decisions/0016-el-crm-se-amplia-hacia-un-erp-por-fases.md) (2026-10-05) entran por las fases del ERP, abajo.*
 - Cualquier tabla o módulo "preparado para el futuro ERP" sin uso en el MVP.
 - SDK, adaptadores, IDs, variables de entorno o sincronización con Airtable, en cualquier forma.
 - Dependencia técnica o arquitectónica del repositorio del agente de WhatsApp.
@@ -44,7 +44,22 @@ Agregado el 2026-09-23 por el [ADR 0014](../decisions/0014-el-agente-de-whatsapp
 - Todo lo de Airtable, en cualquier forma: el CRM nunca llama a su API, tampoco para migrar.
 - Cualquier dependencia técnica del repositorio del agente. El agente consume contratos del CRM; el CRM no conoce la implementación del agente.
 - Que el CRM envíe mensajes o produzca efectos externos.
-- El ERP —ventas, compras, proveedores, pagos, caja, contabilidad— **hasta que la integración esté en producción**, por decisión del usuario.
+- ~~El ERP —ventas, compras, proveedores, pagos, caja, contabilidad— **hasta que la integración esté en producción**, por decisión del usuario.~~ *Enmendado el 2026-10-05 por el ADR 0016*: ver §Después de la integración: el ERP.
 - Un segundo canal, no antes de que WhatsApp esté en producción con el agente ([evaluación 10.1](../decisions/evaluacion-10.1-mvp.md), O-37).
 
 **Criterio de exclusión de estas fases**: lo decide el brief de cada una. El del MVP, arriba, no se aplica a ellas.
+
+## Después de la integración: el ERP
+
+Agregado el 2026-10-05 por el [ADR 0016](../decisions/0016-el-crm-se-amplia-hacia-un-erp-por-fases.md). Las fases y su orden están en el [Roadmap](../planning/Roadmap.md) (Fases 18 a 22); acá solo el perímetro.
+
+**Entra**, una fase por vez y cada una con su brief: las bases (costo del producto con historial, numeración de comprobantes, moneda e impuestos), los pedidos, las ventas con comprobantes internos, la caja y los cobros, y las compras con sus proveedores.
+
+**Sigue fuera**:
+
+- Cualquier tabla o módulo del ERP antes de que se abra la fase que lo incluye.
+- La factura electrónica de ARCA, hasta su propio ADR.
+- Que el agente registre cobros, pagos o movimientos de caja.
+- La contabilidad general, la cuenta corriente, las listas de precios y los depósitos múltiples, hasta que el uso los pida y se decidan.
+
+**Cuándo empieza**: la Fase 18 se abre con la Fase 13 cerrada, o antes solo por decisión explícita del usuario registrada con fecha (ADR 0016, punto 3).

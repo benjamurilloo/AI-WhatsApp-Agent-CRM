@@ -9,7 +9,7 @@ Este repositorio es el CRM propio **AI WhatsApp Agent CRM**. Pese al nombre, es 
 - No agregar variables de entorno `AIRTABLE_*` ni equivalentes.
 - No implementar sincronización, dual-write, webhooks salientes ni polling hacia Airtable.
 - No importar, copiar ni referenciar código, esquemas o decisiones arquitectónicas del repositorio del agente de WhatsApp. Ese repositorio solo puede leerse como contexto de negocio al planificar, nunca como dependencia técnica.
-- No crear tablas, módulos, endpoints ni UI de ventas, compras, proveedores, pagos, caja o contabilidad. Están fuera del MVP ([docs/product/Scope.md](docs/product/Scope.md)).
+- No crear tablas, módulos, endpoints ni UI de ERP (ventas, compras, proveedores, pagos, caja o contabilidad) **fuera de la fase abierta que los incluye y de su brief aprobado** ([ADR 0016](docs/decisions/0016-el-crm-se-amplia-hacia-un-erp-por-fases.md), [docs/product/Scope.md](docs/product/Scope.md)). *Enmendado el 2026-10-05*: decía «No crear tablas, módulos, endpoints ni UI de ventas, compras, proveedores, pagos, caja o contabilidad. Están fuera del MVP».
 - No crear tablas vacías ni módulos especulativos "por si el ERP los necesita". Evolucionar hacia un ERP significa un diseño que no impide extender, no implementar por adelantado.
 - No mantener listas de tareas vivas en el repositorio: las tareas viven en Notion ([ADR 0006](docs/decisions/0006-repositorio-registra-decisiones-no-tareas.md)).
 - No hacer commit, push, merge ni deploy sin autorización explícita del usuario en el turno actual. Una autorización anterior no vale para acciones futuras.

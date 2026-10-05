@@ -21,7 +21,7 @@ El MVP se diseñó para que esto fuera posible sin acoplarse: el contrato de ing
 4. **La migración de los datos existentes entra por CSV exportado.** El CRM **nunca** llama a la API de Airtable. El mapeo de los identificadores del sistema legado se diseña en la fase de migración (Fase 14), desde el modelo del CRM.
 5. **El CRM sigue sin producir efectos externos**: no envía mensajes de WhatsApp ni llama a ningún servicio del agente. Enviar es responsabilidad del agente.
 6. **La independencia técnica se mantiene**: el CRM no comparte código, infraestructura ni base de datos con el agente, y el repositorio del agente sigue siendo solo contexto de negocio al planificar.
-7. **El ERP** —ventas, compras, proveedores, pagos, caja, contabilidad— **queda para después de que la integración esté en producción**, por decisión del usuario. Hasta entonces sigue prohibido por `CLAUDE.md`.
+7. **El ERP** —ventas, compras, proveedores, pagos, caja, contabilidad— **queda para después de que la integración esté en producción**, por decisión del usuario. Hasta entonces sigue prohibido por `CLAUDE.md`. *Nota del 2026-10-05*: este punto lo reemplaza el [ADR 0016](0016-el-crm-se-amplia-hacia-un-erp-por-fases.md), que planifica el ERP en fases y fija cuándo empieza (punto 3).
 
 ### Qué conserva del ADR 0003
 

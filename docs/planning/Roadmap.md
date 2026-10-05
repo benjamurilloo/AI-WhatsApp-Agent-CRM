@@ -304,7 +304,9 @@ Reglas comunes a las cuatro fases:
   - **15.1 — Identidad visual, marco y pantallas principales** ([brief-15.1](../decisions/brief-15.1-identidad-visual-y-marco.md)): la paleta nueva, el marco como panel lateral con barra superior y las seis pantallas de referencia llevadas al boceto con lo que ya existe. Se despliega a producción antes de la reunión. Solo cambia la presentación: ni datos, ni fórmulas, ni contratos.
   - **15.2 — Controles de los listados**: ordenar los listados de productos, clientes y conversaciones, y elegir cuántas filas mostrar por página (el «10» de los bocetos). Toca las consultas: el orden cambia el índice que sostiene la paginación, y la 13.2 midió los planes con el orden actual.
   - **15.3 — Dashboard más atractivo e interactivo**, con las mismas fórmulas del [MetricsCatalog](../analytics/MetricsCatalog.md): interacción en los gráficos, la variación contra el período anterior, «Ver detalles» y las dos visualizaciones nuevas del boceto, la distribución por tipo de mensaje y la del tiempo a primera respuesta. Las dos últimas son métricas nuevas de solo lectura: entran al catálogo con su definición antes de dibujarse. Si hace falta una librería de gráficos, se pide autorización.
-  - **15.4 en adelante — Pantallas de detalle y formularios**, una por vez, a medida que el usuario las revise («Nuevo producto», el detalle de un cliente, la conversación, etc.). Cada una entra con su enmienda fechada.
+  - ~~**15.4 en adelante — Pantallas de detalle y formularios**, una por vez, a medida que el usuario las revise («Nuevo producto», el detalle de un cliente, la conversación, etc.). Cada una entra con su enmienda fechada.~~ *Enmendado el 2026-10-05, con los bocetos de once pantallas internas*: **15.4 — Pantallas de detalle y formularios** ([brief-15.4](../decisions/brief-15.4-detalles-y-formularios.md)), una sola subfase en etapas por módulo: Productos, Clientes, Conversaciones e Información, y Usuarios. Solo con los campos que ya existen: los que los bocetos dibujan y no existen van a la Fase 17, o a la 18 si son del ERP, como el costo.
+  - *Agregado el 2026-10-05 a la 15.2*: **filtros por categoría y por marca** en Productos, con listas armadas desde lo ya cargado y sin tablas nuevas, y **autocompletar** en el buscador de Productos y de Clientes, que sugiere lo que ya existe mientras se escribe. Los filtros de Clientes que dependen de campos nuevos (tipo, provincia, segmento, etiqueta) llegan con la Fase 17.
+  - *Orden decidido el 2026-10-05*: **15.4 antes que la 15.2**. Lo que más se ve en una demostración es entrar a un producto, a un cliente o a una conversación. La 15.3 queda para después de las dos.
 - **Dependencias**: la 15.1 antes que las demás, porque fija la paleta, el marco y los componentes compartidos.
 - **Riesgos**: diseñar desde bocetos generados, que dibujan datos y controles que no existen; que la apuración por la reunión rebaje la verificación de accesibilidad; tocar el marco común, que comparten todas las pantallas y casi todos los end-to-end.
 - **Entregables**: una subfase a la vez, cada una con su brief aprobado.
@@ -322,19 +324,45 @@ Reglas comunes a las cuatro fases:
   - **Etiquetas puestas por el agente**: un evento nuevo del contrato de ingestión, diseñado desde el modelo del CRM y coordinado con el agente, que hace su parte en su repositorio y con sus briefs ([ADR 0014](../decisions/0014-el-agente-de-whatsapp-como-consumidor-del-crm.md)). Va después de las manuales.
   - **Pausar y reanudar al agente en una conversación**: una marca que pone un usuario del CRM y que el agente lee en el contexto que ya pide en cada turno. Respeta la dirección del ADR 0014, porque el CRM no llama al agente. Exige que el agente lea la marca y la respete, en su repositorio.
   - **Responder desde el CRM**: empieza por un ADR, no por código. Hoy ya existen `messages.sent_by` (`agent` o `person`) y el estado `pending`. **La pregunta central**: cómo llega a WhatsApp una respuesta escrita en el CRM sin que el CRM llame al agente, o si el ADR 0014 se enmienda con decisión del usuario. **Riesgo**: que el dueño conteste desde la app de WhatsApp, por fuera de la API, y esa respuesta no quede en el CRM.
-  - **Lo que los bocetos de la Fase 15 dibujan y no existe**: imágenes de producto, acciones rápidas en el menú «…» de cada fila, un buscador global y notificaciones. Cada una necesita decidir qué hace antes de dibujarse ([brief-15.1](../decisions/brief-15.1-identidad-visual-y-marco.md), D-1).
+  - **Lo que los bocetos de la Fase 15 dibujan y no existe**: ~~imágenes de producto,~~ acciones rápidas en el menú «…» de cada fila, un buscador global y notificaciones. Cada una necesita decidir qué hace antes de dibujarse ([brief-15.1](../decisions/brief-15.1-identidad-visual-y-marco.md), D-1). *Enmendado el 2026-10-05*: las imágenes pasan a la Fase 17.
+  - *Agregado el 2026-10-05, de los bocetos de las pantallas internas*: **notas de la conversación**, escritas por un usuario del CRM y distintas de las notas del cliente. El cambio de estado de una conversación ya existe: su rediseño («Cambiar estado», «Cerrar conversación») es de la 15.4. **El campo para escribir un mensaje** que dibuja el boceto de la conversación es «responder desde el CRM»: no se dibuja antes de su ADR.
 - **Gate de salida**: decisión del usuario. Las candidatas que cambian un contrato con el agente deciden en su brief si llevan revisión independiente.
+
+## Fase 17 — Datos ampliados de clientes y catálogo
+
+*Planificada el 2026-10-05, sin abrir, con los bocetos de las pantallas internas que trajo el usuario. Se abre con su decisión, su proyecto en Notion y el brief de su primera subfase.*
+
+- **Objetivo**: los campos que los bocetos de la Fase 15 dibujan y el CRM no tiene, para que clientes y productos tengan la información que piden la operación y, después, el ERP.
+- **Candidatas**:
+  - **Clientes**: email, tipo de cliente (persona, empresa o consumidor final), documento y CUIT o CUIL, dirección con ciudad, provincia y código postal, empresa y cargo, y segmento. Los filtros del listado que dependen de ellos llegan acá.
+  - **Productos**: código de barras, peso y dimensiones, ubicación física y estante, «visible en catálogo» (a decidir frente a `is_active` y frente a lo que lee el agente), y marcas y categorías administradas como listas en lugar de texto libre.
+  - **Imágenes** de producto y foto de perfil del cliente: **empiezan por un ADR**. Hoy no hay dónde guardar archivos: hay que decidir el almacenamiento, el respaldo, el tamaño, los formatos y si el agente puede leerlas.
+  - **Información del negocio estructurada** (horarios, zonas y costos de envío, métodos de entrega, el mapa del boceto): hoy una entrada es texto libre y el agente la lee así por el [contrato de lectura](../contracts/read-v1.md). Estructurarla cambia ese contrato: es la candidata de menor prioridad y entra solo con su decisión.
+- **Cuidado**: los datos nuevos de clientes son datos personales. Cada campo entra con su motivo, con quién lo carga (el operador, el agente o los dos) y con su cobertura en el borrado a pedido de la 13.4 ([runbook](../runbooks/datos-de-un-cliente.md)). Toca el modelo de datos: [DataModel](../architecture/DataModel.md) primero.
+- **Gate de salida**: decisión del usuario.
+
+## Fases 18 a 22 — El ERP
+
+*Diseñadas a grandes rasgos el 2026-10-05, en el orden que aprobó el usuario. **Las habilita el [ADR 0016](../decisions/0016-el-crm-se-amplia-hacia-un-erp-por-fases.md)**, aceptado el 2026-10-05, que amplía el alcance y enmienda la prohibición de `CLAUDE.md`. Cada una se detalla al abrirse, con el negocio real delante; lo de abajo es el perímetro, no el diseño.*
+
+- **Fase 18 — Bases del ERP**: el costo del producto con historial (de solo inserción, como el precio) y el margen derivado; la numeración de comprobantes por organización; la moneda y los impuestos (IVA) como datos de los comprobantes. Lo que comparten las fases siguientes.
+- **Fase 19 — Pedidos**: el pedido de un cliente, con sus líneas, su total y sus estados (pendiente, confirmado, entregado, cancelado), y la reserva de stock, que nunca lo deja negativo ([ADR 0008](../decisions/0008-stock-nunca-negativo.md)). Si el agente puede dejar un pedido pendiente para que lo confirme una persona, se decide acá, con su contrato.
+- **Fase 20 — Ventas**: la venta que confirma un pedido o se registra sola, descuenta el stock y emite un **comprobante interno**. La factura electrónica de ARCA es un ADR aparte.
+- **Fase 21 — Caja y cobros**: medios de pago, cobros contra una venta o un pedido (incluidas las señas), apertura y cierre de caja con arqueo. El agente nunca registra un cobro.
+- **Fase 22 — Compras y proveedores**: proveedores, órdenes de compra y recepción, que suma stock y actualiza el costo.
+- **Sin fase todavía**: cuenta corriente de clientes, listas de precios, varios depósitos, reportes de rentabilidad y contabilidad general. Entran cuando el uso los pida, con su decisión.
+- **Gate de entrada de la Fase 18**: la Fase 13 cerrada, o una decisión explícita del usuario registrada con fecha (ADR 0016, punto 3).
 
 ---
 
 ## Fases futuras, sin planificar en detalle
 
 - ~~**Migración y cutover**: proyecto separado, posterior a la Fase 10 si la decisión es continuar ([ADR 0003](../decisions/0003-migracion-legado-proyecto-separado.md)). Incluye la carga desde el sistema legado y la integración con tráfico real detrás de un modo de prueba.~~ *Enmendado el 2026-09-23 ([ADR 0014](../decisions/0014-el-agente-de-whatsapp-como-consumidor-del-crm.md))*: la integración con tráfico real y la migración dejaron de ser un proyecto separado. Son las **Fases 11 a 14** de arriba.
-- **ERP** (ventas, compras, proveedores, pagos, caja, contabilidad): proyectos propios, sobre la base ya construida de `organizations`, `clients` y `products`. *Precisión del 2026-09-23*: **no empieza antes de que la integración esté en producción** (Fase 13), por decisión del usuario. Sin fases ni tablas hasta entonces.
+- **ERP** (ventas, compras, proveedores, pagos, caja, contabilidad): proyectos propios, sobre la base ya construida de `organizations`, `clients` y `products`. *Precisión del 2026-09-23*: **no empieza antes de que la integración esté en producción** (Fase 13), por decisión del usuario. Sin fases ni tablas hasta entonces. *Enmendado el 2026-10-05*: el ERP ya tiene fases planificadas, de la 18 a la 22 (arriba), que habilita el [ADR 0016](../decisions/0016-el-crm-se-amplia-hacia-un-erp-por-fases.md), aceptado el mismo día.
 
 ## Camino crítico
 
-0.1 → 0.2 → 0.3 → Fase 1 → Fase 2 → Fase 3 → (Fase 4 ∥ Fase 5) → Fase 6 → Fase 7 → Fase 8 → Fase 9 → Fase 10 → Fase 11 → Fase 12 → Fase 13 → Fase 14. *(Extendido el 2026-09-23: terminaba en la Fase 10.)* *(Nota del 2026-10-05: la Fase 15 no está en el camino crítico. Corre en paralelo con la 13.5.2-b y se pausa cuando la 13.5.2-b arranca.)*
+0.1 → 0.2 → 0.3 → Fase 1 → Fase 2 → Fase 3 → (Fase 4 ∥ Fase 5) → Fase 6 → Fase 7 → Fase 8 → Fase 9 → Fase 10 → Fase 11 → Fase 12 → Fase 13 → Fase 14. *(Extendido el 2026-09-23: terminaba en la Fase 10.)* *(Nota del 2026-10-05: la Fase 15 no está en el camino crítico. Corre en paralelo con la 13.5.2-b y se pausa cuando la 13.5.2-b arranca.)* *(Nota del 2026-10-05: después siguen la Fase 16, la 17 y, según el ADR 0016, la 18 → 19 → 20 → 21 → 22. La Fase 14 conserva su lugar después de la 13.)*
 
 Dentro de la Fase 6: 6.1 → 6.2 → 6.3 → 6.4, y en paralelo 6.5.1 → 6.5.2 → 6.5.3.
 
@@ -391,7 +419,9 @@ Dentro de la Fase 11: 11.0 → (11.1 ∥ 11.2) → 11.3 → 11.4.
 - Protección de rama, antes del primer despliegue a producción (13.1, R-2). *Decidida el 2026-09-29*: sin protección, con la CI en verde del SHA exacto antes de cada despliegue (brief-13.1, D-4).
 - Hosting productivo (13.1, *decidido el 2026-09-29*: brief-13.1, D-1) y apertura del tráfico real (gate de salida de la Fase 13).
 - Qué se migra del sistema legado (14.1).
-- Inicio del ERP, no antes de que la integración esté en producción.
+- Inicio del ERP, no antes de que la integración esté en producción. *Enmendado el 2026-10-05*: lo decide el ADR 0016, punto 3.
 - Cada mejora que entra a la Fase 15 y su orden, y la pausa de la fase cuando la 13.5.2-b arranca *(agregado el 2026-10-05)*.
 - Toda librería nueva de la Fase 15, sea de íconos o de gráficos.
 - La apertura de la Fase 16 y qué candidatas entran *(agregado el 2026-10-05)*.
+- La apertura de la Fase 17, cada campo nuevo y el ADR de las imágenes *(agregado el 2026-10-05)*.
+- ~~La aceptación del ADR 0016 y su punto 3~~ (aceptado el 2026-10-05); la apertura de cada fase del ERP; la factura electrónica de ARCA, con su ADR *(agregado el 2026-10-05)*.

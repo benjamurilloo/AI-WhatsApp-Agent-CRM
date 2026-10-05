@@ -26,8 +26,9 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [0011](0011-lint-con-eslint-10-sin-eslint-config-next.md) | Lint con ESLint 10, sin `eslint-config-next` (supera al 0004 en el lint) | aceptada |
 | [0012](0012-mecanismo-de-sesion.md) | Sesiones server-side propias en PostgreSQL | aceptada |
 | [0013](0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md) | Rol de aplicación `crm_app` y tablas de solo inserción | aceptada |
-| [0014](0014-el-agente-de-whatsapp-como-consumidor-del-crm.md) | El agente de WhatsApp como consumidor del CRM (reemplaza parcialmente al 0003) | aceptada |
+| [0014](0014-el-agente-de-whatsapp-como-consumidor-del-crm.md) | El agente de WhatsApp como consumidor del CRM (reemplaza parcialmente al 0003) | aceptada; punto 7 reemplazado por 0016 |
 | [0015](0015-vaciado-de-una-sola-direccion-en-tablas-de-solo-insercion.md) | Vaciado de una sola dirección en las tablas de solo inserción (enmienda al 0013) | aceptada |
+| [0016](0016-el-crm-se-amplia-hacia-un-erp-por-fases.md) | El CRM se amplía hacia un ERP, por fases (reemplaza el punto 7 del 0014) | aceptada |
 
 ## Briefs
 
@@ -99,6 +100,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-13.4](brief-13.4-retencion-y-borrado.md) | 13.4 — Retención y borrado de datos reales | aprobado el 2026-10-01 con las recomendaciones de D-1 a D-9; cerrado el 2026-10-01. H-4 resuelto en el contrato (I-1, opción A1). Salidas crudas en [evidencia-13.4](evidencia-13.4-retencion-y-borrado.md) |
 | [brief-13.5](brief-13.5-primer-cliente.md) | 13.5 — Primer cliente | aprobado el 2026-10-01 con las recomendaciones de D-1 a D-11; en curso. Salidas crudas en [evidencia-13.5](evidencia-13.5-primer-cliente.md) |
 | [brief-15.1](brief-15.1-identidad-visual-y-marco.md) | 15.1 — Identidad visual, marco y pantallas principales | aprobado el 2026-10-05 con las recomendaciones de D-1 a D-12; cerrado el 2026-10-05 |
+| [brief-15.4](brief-15.4-detalles-y-formularios.md) | 15.4 — Pantallas de detalle y formularios | aprobado el 2026-10-05 con las recomendaciones de D-1 a D-11; en curso |
 | [evidencia-9.1](evidencia-9.1-staging.md) | 9.1 — Salidas crudas de la verificación en staging | captura del 2026-09-22 |
 | [evidencia-9.2](evidencia-9.2-backups.md) | 9.2 — Backup y restauración verificados en staging | captura del 2026-09-22 |
 | [evidencia-9.3](evidencia-9.3-volumen.md) | 9.3 — Volumen, planes y tiempos medidos en staging | captura del 2026-09-23 |
