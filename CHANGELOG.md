@@ -2,6 +2,43 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-06 — 15.2 cerrada: controles de los listados
+
+Tercera subfase cerrada de la Fase 15 ([brief-15.2](docs/decisions/brief-15.2-controles-de-los-listados.md)), en cinco etapas. Commits: `ebccca0` (brief), `ff139ae` (15.2.1), `d7d5a6d` (15.2.2), `62399ab` (`source-map-js` 1.2.2), `83aa2e5` (15.2.3), `0b902e8` (15.2.4), `defbe57` (`sharp` 0.35.5) y `dd7eed7` (correcciones de la revisión independiente; CI 37502534330, `success`). Las CI de `d7d5a6d` y `0b902e8` fallaron solo en la auditoría de dependencias, por avisos nuevos sobre paquetes transitivos que corrigió el commit siguiente. Desplegada en producción el 2026-10-06 (15.2.5).
+
+**Certifica**:
+- **Orden y filas por página** en Productos (nombre en los dos sentidos, SKU, stock y precio, agrupado por moneda y con los productos sin precio al final), Clientes (última interacción o nombre) y Conversaciones (último mensaje en los dos sentidos o inicio), con 10, 25 o 50 filas. Los dos viven en la URL y se conservan al filtrar y al paginar.
+- **Filtros por categoría y marca** en Productos, con los valores que existen en la organización.
+- **El componente propio de sugerencias** (patrón combobox de ARIA 1.2), en lugar del `datalist`: en Marca y Categoría del producto y en la categoría de Información, con los valores existentes. Sin JavaScript sigue siendo un campo de texto.
+- **El autocompletar de los buscadores** de Productos y Clientes, desde 2 caracteres, con la misma regla del buscador. Elegir una sugerencia abre el detalle. Clientes nunca devuelve teléfonos, y las dos Server Actions rechazan un pedido sin sesión.
+- **Revisión independiente** de solo lectura, sin bloqueantes. Sus cinco hallazgos menores, verificados y resueltos:
+  - la opción marcada vieja en el componente;
+  - el precio con monedas mezcladas;
+  - `DataModel.md` y `TraceabilityMatrix.md` sobre el orden por inicio dentro de un estado, medido en local (6,9 y 7,5 ms);
+  - la cobertura de AC-3;
+  - `.claude/settings.json`, que nunca entró en un commit.
+- **Local**:
+  - 113 de 113 end-to-end sobre `next start`, con axe sin violaciones;
+  - 529 de 529 unitarios y 485 de 485 guardas;
+  - 685 de 685 de integración, en dos corridas seguidas, después de una falla intermitente sin causa conocida (ver «No certifica»).
+- **Medición** en una base local con volumen, borrada después. En la organización grande, el camino más lento es Productos ordenado por precio, con 226 ms de mediana; sin orden, la misma corrida da 162 ms. Los demás tardan menos de 50 ms. Todos quedan debajo del umbral local de 400 ms. Tres planes cambiaron de forma; el usuario los aceptó el 2026-10-05, sin índices nuevos.
+- **En producción**:
+  - `crm.vixoraai.app` corre `dd7eed7`, sin migraciones ni cambios en `app.env`;
+  - `/login` responde 200, y la ingestión y la lectura, sin token, 401;
+  - el usuario miró las pantallas y las dio por correctas.
+
+  Versión anterior: `2aaa619`.
+
+**No certifica**:
+- Otros navegadores que Chromium.
+- El orden por precio con varias monedas reales: el piloto solo tiene ARS, y lo cubre un test unitario.
+- La causa de la falla de integración que apareció una vez y no se repitió («D-6: las sugerencias usan la regla del buscador»).
+- La lista de credenciales permitidas de `agente-demo`, probada con tokens después del despliegue: la configuración no cambió.
+- Mediciones con volumen en producción.
+- El dashboard interactivo (15.3).
+
+**Nivel**: validado en integración (`producer-consumer`) y verificado en producción por el usuario (`isolated-runtime`).
+
 ## 2026-10-05 — 15.4 cerrada: pantallas de detalle y formularios
 
 Segunda subfase cerrada de la Fase 15, adelantada a la 15.2 por decisión del usuario ([brief-15.4](docs/decisions/brief-15.4-detalles-y-formularios.md), [Roadmap](docs/planning/Roadmap.md), §Fase 15). El mismo día se aceptó el [ADR 0016](docs/decisions/0016-el-crm-se-amplia-hacia-un-erp-por-fases.md): el ERP (pedidos, ventas, caja y cobros, compras y proveedores) va en las Fases 18 a 22, y la prohibición de `CLAUDE.md` pasa a «fuera de la fase abierta que los incluye». Commits: `81a07ec` (ADR 0016, Roadmap y brief), `a7aa97d` (las etapas 15.4.1 a 15.4.4; CI 37371792455, `success`) y `2aaa619` (ajuste; CI 37374970769, `success`). Desplegada en producción el mismo día (15.4.5).

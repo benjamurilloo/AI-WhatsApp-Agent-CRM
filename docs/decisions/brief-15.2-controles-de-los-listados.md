@@ -362,3 +362,20 @@ Además, `Screens.md` suma la nota fechada de la 15.2. `scripts/medir-caminos.ts
 - `test:integration`: la primera corrida dio 684 de 685. Falló una vez «D-6: las sugerencias usan la regla del buscador», un test que estas correcciones no tocan. Después pasó 1 de 1 solo, su archivo 3 de 3 y la integración completa 685 de 685, dos veces seguidas. El test tarda 0,2 s, su consulta tiene un orden determinista y los archivos corren en serie. No se guardó el mensaje del primer fallo, así que **la causa no se conoce**: queda registrado como intermitente, sin atribuirle una causa.
 - End-to-end: 113 de 113 sobre `next start`, en dos tandas (46 y 67). El primer intento de la segunda tanda no corrió ningún test, porque el servidor de la primera había quedado ocupando el puerto 3100. Se cortó ese proceso y se volvió a correr.
 - La CI del commit `defbe57`, que actualiza `sharp` a 0.35.5, está en verde, auditoría incluida.
+
+## Cierre de la subfase 15.2, 2026-10-06
+
+- **Commits**: `ebccca0` (este brief), `ff139ae` (15.2.1), `d7d5a6d` (15.2.2), `62399ab` (`source-map-js` 1.2.2), `83aa2e5` (15.2.3), `0b902e8` (15.2.4), `defbe57` (`sharp` 0.35.5) y `dd7eed7` (correcciones de la revisión). La CI de `d7d5a6d` y la de `0b902e8` fallaron solo en la auditoría de dependencias, por avisos publicados en esos días sobre paquetes transitivos; las corrigieron los dos commits aparte que les siguen. Las demás, `success`, leídas por `headSha`; la última, run 37502534330.
+- **Criterios**: AC-1 a AC-13 cumplidos, con los desvíos de §Resultados y de §Revisión independiente, aceptados por el usuario, y estas salvedades:
+  - **AC-3** quedó completo en `dd7eed7` (hallazgo H-4).
+  - **AC-5**: el `grep` de la paleta por defecto en `src/app/` da 0.
+  - **AC-8**: `package.json` y `drizzle/` sin cambios; `package-lock.json` cambia en `source-map-js` y `sharp`, cada uno en un commit aparte autorizado por el usuario.
+  - **AC-9**: las capturas de las etapas 15.2.1 a 15.2.4 se entregaron antes de desplegar; las correcciones de `dd7eed7` no cambian lo que se ve.
+  - **AC-11**: dos etapas tuvieron la CI en rojo solo por la auditoría, corregida en el commit siguiente.
+  - **AC-12**: la lista de credenciales permitidas de `agente-demo` no se probó con tokens después del despliegue (401 sin token; la configuración no cambió).
+  - **AC-13**: además de lo autorizado, `git status` muestra los dos archivos ajenos con cambios solo de finales de línea y `.claude/settings.json`, sin seguimiento; ninguno entró en un commit.
+- **En producción**: `crm.vixoraai.app` corre `dd7eed7` desde el 2026-10-06 (15.2.5), sin migraciones nuevas y con `app.env` sin tocar. `/login` responde 200, las pantallas sin sesión redirigen a `/login`, y la lectura y la ingestión responden 401 sin token. El servicio no registró errores desde el reinicio. Para volver atrás, `2aaa619`, anotado en el registro de despliegues del servidor. El usuario miró las pantallas en producción y las dio por correctas.
+- **Nivel**: validado en integración (`producer-consumer`: Playwright con axe sobre PostgreSQL real, y las dos Server Actions probadas sin sesión) y verificado en producción por el usuario (`isolated-runtime`). No es «preparado para producción», que sigue siendo el gate de la Fase 13.
+- **Revisión**: independiente, de solo lectura (D-9), sin hallazgos bloqueantes; los cinco menores, verificados contra el código y resueltos. Esta revisión no otorgó ninguna autorización.
+- **No certifica**: otros navegadores que Chromium; el orden por precio con varias monedas reales (el piloto solo tiene ARS; lo cubre un test unitario); la causa del fallo intermitente de integración de §Revisión independiente; mediciones con volumen en producción (D-7: solo en local).
+- **Lo que hereda el resto de la fase**: el dashboard interactivo (15.3).
