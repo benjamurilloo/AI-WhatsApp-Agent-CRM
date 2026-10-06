@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
-import { getMetricsPeriod } from "@/modules/analytics";
+import { getMetricsPeriod, previousPeriodInput } from "@/modules/analytics";
 import { requireSession } from "@/app/_auth/session";
 import {
   cardClass,
@@ -35,6 +35,7 @@ import {
   SERIES_KEYS,
   type SeriesKey,
 } from "./_dashboard/daily-chart";
+import { TODAY_INCOMPLETE } from "./_dashboard/variation";
 import {
   FORBIDDEN_PAGE_MESSAGE,
   PERIOD_INVALID_MESSAGE,
@@ -104,8 +105,15 @@ export default async function DashboardPage({
   const invalidFields = resolved.ok ? [] : resolved.fields;
   const periodInvalid = invalidFields.length > 0;
   const retryHref = dashboardHref(view);
+  // Con hoy adentro, el período está incompleto y no se compara (brief-15.3, D-2).
+  const includesToday = period !== null && period.to === today;
   const cards: CardContext | null = period
-    ? { context, input, retryHref }
+    ? {
+        context,
+        input,
+        previous: includesToday ? null : previousPeriodInput(period),
+        retryHref,
+      }
     : null;
   const seriesHref = (key: SeriesKey) => {
     const url = new URL(retryHref, "https://crm.invalid");
@@ -208,6 +216,9 @@ export default async function DashboardPage({
           {PERIOD_INVALID_MESSAGE}
         </p>
       )}
+      {includesToday ? (
+        <p className={`mt-1 ${mutedTextClass}`}>{TODAY_INCOMPLETE}</p>
+      ) : null}
       {periodInvalid ? (
         <p className={`mt-2 ${fieldErrorClass}`}>
           Ninguna métrica se calculó con este período.

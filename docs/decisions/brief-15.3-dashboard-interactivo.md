@@ -263,3 +263,44 @@ El usuario compartió el boceto del dashboard, en oscuro y en claro, al aprobar 
   - la autorización, el aislamiento y que no viajen los cuerpos.
 - End-to-end del dashboard: 11 de 11, sin cambios (la pantalla no se tocó en esta etapa).
 - `package.json`, `package-lock.json` y `drizzle/` sin cambios.
+
+## Resultados — 15.3.2
+
+**Qué se hizo.**
+- **Variación** ([variation.ts](../../src/app/(autenticado)/_dashboard/variation.ts), función pura con 6 tests unitarios):
+  - las cantidades se comparan en porcentaje, las tasas en puntos porcentuales, y el promedio y la mediana como diferencia absoluta;
+  - lo que redondea a 0,0 es «sin cambios»;
+  - con el anterior en 0 o sin valor, «Sin datos del período anterior»;
+  - flecha decorativa (`aria-hidden`), y el texto lleva el signo, con el color atenuado del detalle: sin verde ni rojo.
+  - Las flechas son caracteres (↑ ↓ →), no íconos: `icons.tsx` no está en la lista de archivos.
+- **Tarjetas** ([cards.tsx](../../src/app/(autenticado)/_dashboard/cards.tsx)): cada una pide los dos períodos en paralelo (`Promise.allSettled`). Si el anterior falla, la tarjeta muestra su valor, dice «No se pudo calcular el período anterior» con el código del log, y no se rompe. La 11 no se compara y lo explica en «Ver detalles».
+- **«Ver detalles»** reemplaza a «Definición»: la definición y «Período anterior, del … al …: valor».
+- **Hoy incompleto**: si el período incluye hoy, no se pide el anterior, y una sola línea debajo del período lo explica.
+
+**Desvíos aceptados por el usuario el 2026-10-06 (opción a).** El texto de «Ver detalles» está en la página aunque el desplegable esté cerrado. Cuatro afirmaciones existentes buscaban un texto en toda la tarjeta y pasaron a encontrarlo dos veces, o a encontrarlo donde no debía:
+- `dashboard.spec.ts`, caso 1: «0» en «Conversaciones iniciadas» y «Sin datos» en «Mensajes por conversación» pasan a texto exacto;
+- `dashboard-sin-ingestion.spec.ts`, caso 1: «Sin datos» en «Mensajes por conversación», a texto exacto;
+- `dashboard-sin-ingestion.spec.ts`, caso 2: «la tarjeta no dice "No disponible"» pasa a «ningún elemento es exactamente "No disponible"». El período anterior, sin eventos y con la ingestión apagada, sí es «No disponible», y «Ver detalles» lo nombra con razón.
+
+Se informaron tres y apareció una cuarta en el mismo caso 1, con la misma causa, cuando la primera dejó de cortar el test: se ajustó igual. El caso 8 cambia «Definición» por «Ver detalles», como estaba previsto (H-7). Lo que cada afirmación prueba no cambió.
+
+**Medición (D-7).** En una base local aparte, sembrada con `seeds/volume.ts medicion`, con `ANALYZE` después de sembrar, y borrada al terminar. La siembra reparte los datos en 180 días, así que el período anterior tiene datos. La carga del dashboard, con todas las llamadas en paralelo:
+
+| Carga | Organización grande | Organización chica |
+|---|---|---|
+| 13 llamadas, un período | 40,9 ms | 14,9 ms |
+| 26 llamadas, con el período anterior | 81,1 ms | 28,7 ms |
+
+El costo se duplica, como se esperaba (H-6), y queda debajo del umbral local de 400 ms. `scripts/medir-caminos.ts` arma la lista de métricas como función del período y mide las dos cargas.
+
+**Verificación.** La salida completa de cada paso quedó guardada en el scratchpad de la sesión.
+- `typecheck`, `lint` y `build` pasan, y `prettier --check` sobre los archivos cambiados sale limpio.
+- `test:unit`: 539 de 539, con 6 nuevos de la variación.
+- `test:guards`: 485 de 485.
+- `test:integration`: 696 de 696.
+- Ningún atributo `style` en `src/app/`.
+- End-to-end: 115 de 115 sobre `next start`, en dos tandas (48 y 67). Los dos casos nuevos son:
+  - el caso 10, con cada tipo de comparación calculado a mano contra un período anterior sembrado, «Ver detalles» con sus fechas, la métrica 11 sin comparar, y axe con los detalles abiertos;
+  - el caso 11, con hoy dentro del período: sin comparación y con la explicación.
+
+  Entre las dos tandas se cortó cualquier proceso que quedara escuchando en el puerto 3100 (lección de la 15.2).

@@ -9,24 +9,37 @@ import {
 import { Icon } from "@/app/_components/icons";
 import { METRIC_ICON, METRIC_INFO, type MetricNumber } from "./definitions";
 import {
+  METRIC_DETAILS_LABEL,
   METRIC_ERROR_MESSAGE,
   METRIC_ERROR_RETRY,
   metricStateText,
 } from "./messages";
+import { NO_CURRENT_DATA, type Variation } from "./variation";
 
 // Tarjeta de una métrica (brief-7.4, D-2 y D-3): el marco, los tres estados y el desplegable con la
 // definición. Cada tarjeta se monta por separado, así una métrica lenta o fallada no afecta a las
-// demás. Desde la brief-15.1 lleva el ícono de la métrica y el nombre sin su número.
+// demás. Desde la brief-15.1 lleva el ícono de la métrica y el nombre sin su número. Desde la
+// brief-15.3 (D-2 y D-3) lleva la variación contra el período anterior, sin color de «bueno» o
+// «malo», y el desplegable pasa a «Ver detalles»: la definición y el valor del período anterior.
 
 const valueClass = "text-3xl font-extrabold tracking-tight tabular-nums";
 const stateClass = "text-xl font-semibold text-muted";
 
+// La flecha es decorativa: el texto ya dice si sube o baja, con su signo.
+const ARROW = { up: "↑", down: "↓", same: "→" } as const;
+
 export function MetricCard({
   metric,
   children,
+  variation,
+  details,
 }: {
   metric: MetricNumber;
   children: ReactNode;
+  // Sin variación (cargando, error o una métrica que no se compara): no se muestra la línea.
+  variation?: Variation;
+  // Lo que se suma a la definición en «Ver detalles».
+  details?: ReactNode;
 }) {
   const info = METRIC_INFO[metric];
   return (
@@ -45,14 +58,27 @@ export function MetricCard({
           {info.name}
         </h3>
       </div>
-      <div className="flex grow flex-col gap-1">{children}</div>
+      <div className="flex grow flex-col gap-1">
+        {children}
+        {variation === undefined ? null : variation.status === "change" ? (
+          <p className="text-sm font-semibold text-muted">
+            <span aria-hidden="true">{ARROW[variation.direction]} </span>
+            {variation.text}
+          </p>
+        ) : variation.reason === NO_CURRENT_DATA ? null : (
+          <p className={mutedTextClass}>{variation.reason}</p>
+        )}
+      </div>
       <details className="text-sm">
         <summary
           className={`${linkClass} cursor-pointer list-none marker:content-none`}
         >
-          Definición
+          {METRIC_DETAILS_LABEL}
         </summary>
         <p className="mt-2 text-muted">{info.definition}</p>
+        {details === undefined ? null : (
+          <div className="mt-2 text-muted">{details}</div>
+        )}
       </details>
     </section>
   );

@@ -207,11 +207,14 @@ test("caso 1: el dashboard es la portada y muestra el período y la zona horaria
   await expect(page.getByText("(hoy no incluido)")).toBeVisible();
   await expect(page.getByLabel("Período")).toHaveValue("30d");
   // Sin datos cargados, los conteos son 0 explícito y las métricas con denominador, "Sin datos".
+  // Texto exacto: desde la brief-15.3, «Ver detalles» también nombra el valor del período anterior.
   await expect(
-    card(page, "Conversaciones iniciadas").getByText("0"),
+    card(page, "Conversaciones iniciadas").getByText("0", { exact: true }),
   ).toBeVisible();
   await expect(
-    card(page, "Mensajes por conversación").getByText("Sin datos"),
+    card(page, "Mensajes por conversación").getByText("Sin datos", {
+      exact: true,
+    }),
   ).toBeVisible();
   await expectAccessible(page, "dashboard vacío");
 });
@@ -410,8 +413,9 @@ test("caso 8: la definición de cada métrica se abre con el teclado", async ({
   await seedFixture();
   await login(page, ADMIN);
 
+  // Desde la brief-15.3 (D-3) el desplegable se llama «Ver detalles» y suma el período anterior.
   const definition = card(page, "Errores de ingestión").getByText(
-    "Definición",
+    "Ver detalles",
     { exact: true },
   );
   await definition.focus();
@@ -441,4 +445,102 @@ test.describe("móvil", () => {
     expect(overflow).toBeLessThanOrEqual(0);
     await expectAccessible(page, "dashboard en móvil");
   });
+});
+
+// Período anterior del período por defecto (brief-15.3, D-2): de hoy − 60 a hoy − 31. Dos
+// conversaciones sin cliente en D-40, cada una con un entrante y su respuesta a los 10 min, y un
+// evento procesado:
+//
+// | Métrica | Actual (fixture) | Anterior | Variación                          |
+// |---------|------------------|----------|------------------------------------|
+// | 1       | 3                | 2        | +50,0 %                            |
+// | 3       | 1                | 0        | sin datos del período anterior     |
+// | 4       | 2                | 2        | sin cambios                        |
+// | 6       | prom. 5/3        | prom. 2  | −0,3 (1,67 − 2 = −0,33)            |
+// | 7       | 1                | 2        | −50,0 %                            |
+// | 8       | 50,0 %           | 100,0 %  | −50,0 p. p.                        |
+// | 9       | 30,0 min         | 10,0 min | +20,0 min                          |
+// | 11      | —                | —        | no se compara                      |
+// | 12      | 66,7 %           | 0,0 %    | +66,7 p. p.                        |
+async function seedPreviousPeriod() {
+  const d40 = shiftDays(days().today, -40);
+  for (const [question, answer] of [
+    ["14:00", "14:10"],
+    ["15:00", "15:10"],
+  ] as const) {
+    await insertConversation({
+      messages: [
+        { direction: "inbound", sentAt: at(d40, question) },
+        { direction: "outbound", sentAt: at(d40, answer) },
+      ],
+    });
+  }
+  await insertIngestionEvent({
+    index: 4,
+    status: "processed",
+    receivedAt: at(d40, "14:05"),
+  });
+}
+
+const dmy = (day: string) => day.split("-").reverse().join("/");
+
+test("caso 10: brief-15.3 cada tarjeta compara con el período anterior y «Ver detalles» muestra su valor", async ({
+  page,
+}) => {
+  await seedFixture();
+  await seedPreviousPeriod();
+  await login(page, ADMIN);
+
+  const expected: [string, RegExp][] = [
+    ["Conversaciones iniciadas", /\+50,0 % vs\. período anterior/],
+    ["Clientes únicos", /Sin datos del período anterior/],
+    ["Mensajes entrantes", /Sin cambios vs\. período anterior/],
+    ["Mensajes por conversación", /−0,3 vs\. período anterior/],
+    ["Conversaciones respondidas", /−50,0 % vs\. período anterior/],
+    ["Cobertura de respuesta", /−50,0 p\. p\. vs\. período anterior/],
+    ["Mediana de primera respuesta", /\+20,0 min vs\. período anterior/],
+    ["Errores de ingestión", /\+66,7 p\. p\. vs\. período anterior/],
+  ];
+  for (const [name, variation] of expected) {
+    await expect(card(page, name), name).toContainText(variation);
+  }
+  // Sin color de «bueno» o «malo»: la línea usa el color atenuado, como el detalle.
+  await expect(
+    card(page, "Errores de ingestión").getByText(/vs\. período anterior/),
+  ).toHaveClass(/text-muted/);
+  await expect(card(page, "Conversaciones por estado")).not.toContainText(
+    "vs. período anterior",
+  );
+
+  const { today } = days();
+  const range = `Período anterior, del ${dmy(shiftDays(today, -60))} al ${dmy(shiftDays(today, -31))}`;
+  const firstResponse = card(page, "Mediana de primera respuesta");
+  await firstResponse.getByText("Ver detalles", { exact: true }).click();
+  await expect(firstResponse).toContainText(`${range}: 10,0 min`);
+  const byStatus = card(page, "Conversaciones por estado");
+  await byStatus.getByText("Ver detalles", { exact: true }).click();
+  await expect(byStatus).toContainText(
+    "No se compara con el período anterior: es el estado actual",
+  );
+  await expectAccessible(page, "detalles abiertos con el período anterior");
+});
+
+test("caso 11: brief-15.3 un período que incluye hoy no se compara, y lo dice", async ({
+  page,
+}) => {
+  await seedFixture();
+  await seedPreviousPeriod();
+  await login(page, ADMIN);
+  const { today, d5 } = days();
+  await page.goto(`/?periodo=personalizado&desde=${d5}&hasta=${today}`);
+
+  await expect(
+    page
+      .getByText(
+        "Sin comparación con el período anterior: el período incluye hoy, que está incompleto.",
+      )
+      .first(),
+  ).toBeVisible();
+  await expect(card(page, "Conversaciones iniciadas")).toContainText("3");
+  await expect(page.getByText("vs. período anterior")).toHaveCount(0);
 });

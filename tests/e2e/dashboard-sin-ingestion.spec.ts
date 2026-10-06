@@ -65,8 +65,11 @@ test('caso 1: sin ingestión configurada y sin eventos, la métrica 12 es "No di
   await expect(ingestion).not.toContainText("0,0 %");
   // Y el resto de la pantalla sigue calculando: "no disponible" es de esa métrica, no de la página.
   await expect(card(page, "Conversaciones iniciadas")).toContainText("0");
+  // Texto exacto: desde la brief-15.3, «Ver detalles» también nombra el estado del período anterior.
   await expect(
-    card(page, "Mensajes por conversación").getByText("Sin datos"),
+    card(page, "Mensajes por conversación").getByText("Sin datos", {
+      exact: true,
+    }),
   ).toBeVisible();
 
   for (const colorScheme of ["light", "dark"] as const) {
@@ -106,5 +109,9 @@ test("caso 2: con eventos registrados muestra el valor, aunque la ingestión est
   const ingestion = card(page, "Errores de ingestión");
   await expect(ingestion).toContainText("50,0 %");
   await expect(ingestion).toContainText("1 fallidos de 2 eventos");
-  await expect(ingestion).not.toContainText("No disponible");
+  // El estado de la tarjeta no es «No disponible». Desde la brief-15.3 el período anterior, sin
+  // eventos y con la ingestión apagada, sí lo es, y «Ver detalles» lo nombra: eso es correcto.
+  await expect(
+    ingestion.getByText("No disponible", { exact: true }),
+  ).toHaveCount(0);
 });

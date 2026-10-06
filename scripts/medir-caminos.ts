@@ -60,7 +60,10 @@ import {
   getFirstResponseTime,
   getInboundMessageKinds,
   getIngestionErrors,
+  getMetricsPeriod,
   getStatusDistribution,
+  previousPeriodInput,
+  type MetricsPeriodInput,
 } from "@/modules/analytics";
 import {
   listConversations,
@@ -776,7 +779,10 @@ async function main(): Promise<void> {
     );
   }
 
-  const metricas: [string, () => Promise<unknown>][] = [
+  // Una función del período: la 15.3 mide además la carga con el período anterior (D-7).
+  const metricasPara = (
+    periodo: MetricsPeriodInput,
+  ): [string, () => Promise<unknown>][] => [
     [
       "analytics 1 conversaciones iniciadas",
       () => getConversationsStarted(context, periodo),
@@ -824,6 +830,7 @@ async function main(): Promise<void> {
       () => getFirstResponseDistribution(context, periodo),
     ],
   ];
+  const metricas = metricasPara(periodo);
 
   // Control intermitente (CRM_CONTROL=intermitente): la métrica 1 responde bien la primera vez y
   // devuelve un `Failure` desde la segunda, que es la corrida de calentamiento contra las medidas.
@@ -935,6 +942,34 @@ async function main(): Promise<void> {
     `\n**Dashboard, las ${metricas.length} llamadas de una carga en paralelo**: mediana ${carga.mediana.toFixed(1)} ms ` +
       `(mínimo ${carga.minimo.toFixed(1)}, máximo ${carga.maximo.toFixed(1)}).`,
   );
+  // Desde la 15.3 (D-2) cada tarjeta pide también el período anterior, en paralelo con el actual.
+  // Con el control negativo el período no se resuelve: no hay anterior que medir.
+  const actual = await getMetricsPeriod(context, periodo);
+  if (actual.ok) {
+    const anteriores = metricasPara(previousPeriodInput(actual.period));
+    const doble = await medir(
+      "pantalla 2 con el período anterior",
+      async () => {
+        const resultados = await Promise.all(
+          [...metricas, ...anteriores].map(([, ejecutar]) => ejecutar()),
+        );
+        return resultados.map((r) => describir(r));
+      },
+    );
+    console.log(
+      `**Dashboard con el período anterior, ${metricas.length * 2} llamadas en paralelo**: mediana ${doble.mediana.toFixed(1)} ms ` +
+        `(mínimo ${doble.minimo.toFixed(1)}, máximo ${doble.maximo.toFixed(1)}).`,
+    );
+    doble.valores.forEach((valor, corrida) => {
+      for (const resultado of valor as string[]) {
+        if (esFalla(resultado)) {
+          fallas.push(
+            `carga con el período anterior, corrida ${corrida}: ${resultado}`,
+          );
+        }
+      }
+    });
+  }
   carga.valores.forEach((valor, corrida) => {
     for (const [nombre, resultado] of valor as (readonly [string, string])[]) {
       if (esFalla(resultado)) {

@@ -37,3 +37,9 @@ export const CHART_SERIES_LABEL = {
 } as const;
 
 export const TODAY_EXCLUDED_NOTE = "hoy no incluido";
+
+// El desplegable de cada tarjeta (brief-15.3, D-3): la definición y el período anterior.
+export const METRIC_DETAILS_LABEL = "Ver detalles";
+export const PREVIOUS_ERROR = "No se pudo calcular el período anterior.";
+export const STATUS_NOT_COMPARED =
+  "No se compara con el período anterior: es el estado actual de cada conversación, y el del período anterior no se guarda.";
