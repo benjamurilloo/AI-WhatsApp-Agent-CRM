@@ -120,7 +120,8 @@ export type ActivityFilter = "active" | "inactive" | "all";
 
 // Palabras sueltas sobre nombre, marca y categoría, o SKU exacto, sin distinguir mayúsculas ni
 // acentos (brief-11.1, D-4; FR-PROD-11). Sin límite: el estado de stock se filtra y la lista se
-// pagina en memoria (brief-4.2, D-1).
+// pagina en memoria (brief-4.2, D-1). Marca y categoría, si vienen, con coincidencia exacta
+// (brief-15.2, D-4): son los valores que ya existen, elegidos de una lista.
 //
 // La condición es `productSearchCondition`, cuya consulta sale de `searchQuery` en
 // src/shared/search: normaliza y parte el texto igual que la columna generada `search`. Un test
@@ -130,11 +131,20 @@ export type ActivityFilter = "active" | "inactive" | "all";
 // identidad del producto. Tocarlo cambiaría qué SKUs colisionan (brief-9.0.2, hallazgo 6).
 export function findProducts(
   organizationId: string,
-  filters: { text: string; activity: ActivityFilter },
+  filters: {
+    text: string;
+    activity: ActivityFilter;
+    brand?: string;
+    category?: string;
+  },
 ): Promise<ProductRow[]> {
   const conditions: SQL[] = [eq(products.organizationId, organizationId)];
   if (filters.activity !== "all") {
     conditions.push(eq(products.isActive, filters.activity === "active"));
+  }
+  if (filters.brand) conditions.push(eq(products.brand, filters.brand));
+  if (filters.category) {
+    conditions.push(eq(products.category, filters.category));
   }
   if (filters.text !== "") {
     conditions.push(

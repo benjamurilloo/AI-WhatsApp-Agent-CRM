@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getCurrentPrices } from "@/modules/catalog";
+import { getCurrentPrices, listProductFilterOptions } from "@/modules/catalog";
 import { listProductStock } from "@/modules/inventory";
 import { requireSession } from "@/app/_auth/session";
 import {
@@ -65,7 +65,10 @@ export default async function ProductsPage({
 }) {
   const context = await requireSession();
   const filters = parseProductFilters(await searchParams);
-  const result = await listProductStock(context, filters);
+  const [result, options] = await Promise.all([
+    listProductStock(context, filters),
+    listProductFilterOptions(context),
+  ]);
   if (!result.ok) {
     return <PageNotice title={TITLE} message={FORBIDDEN_PAGE_MESSAGE} />;
   }
@@ -80,6 +83,16 @@ export default async function ProductsPage({
     const price = prices.get(productId);
     return price ? formatMoney(price.amount, price.currency) : "Sin precio";
   };
+
+  // Las listas tienen tope (SUGGESTIONS_LIMIT): un valor de la URL que no entra se agrega para que
+  // el selector lo muestre elegido (brief-15.2, D-4).
+  const choices = (values: string[], current: string) =>
+    current && !values.includes(current) ? [current, ...values] : values;
+  const categories = choices(
+    options.ok ? options.categories : [],
+    filters.category,
+  );
+  const brands = choices(options.ok ? options.brands : [], filters.brand);
 
   const filtered = hasActiveFilters(filters);
   const isAdmin = context.role === "admin";
@@ -158,6 +171,42 @@ export default async function ProductsPage({
             <option value="activos">Solo activos</option>
             <option value="inactivos">Solo inactivos</option>
             <option value="todos">Todos</option>
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label htmlFor="categoria" className={labelClass}>
+            Categoría
+          </label>
+          <select
+            id="categoria"
+            name="categoria"
+            defaultValue={filters.category}
+            className={`${selectClass} max-w-48`}
+          >
+            <option value="">Todas</option>
+            {categories.map((category) => (
+              <option key={category} value={category}>
+                {category}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label htmlFor="marca" className={labelClass}>
+            Marca
+          </label>
+          <select
+            id="marca"
+            name="marca"
+            defaultValue={filters.brand}
+            className={`${selectClass} max-w-48`}
+          >
+            <option value="">Todas</option>
+            {brands.map((brand) => (
+              <option key={brand} value={brand}>
+                {brand}
+              </option>
+            ))}
           </select>
         </div>
         <div className="flex flex-col gap-1">

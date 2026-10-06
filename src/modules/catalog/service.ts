@@ -149,16 +149,26 @@ export async function getProduct(
   return { ok: true, product };
 }
 
-// Productos que cumplen texto y actividad, sin orden ni página: los compone inventory (D-1).
+// Productos que cumplen texto, actividad, marca y categoría, sin orden ni página: los compone
+// inventory (D-1). Marca y categoría vacías no filtran (brief-15.2, D-4).
+export type ProductSearchFilters = {
+  text: string;
+  activity: ProductActivityFilter;
+  brand?: string;
+  category?: string;
+};
+
 export async function searchProducts(
   context: AuthContext,
-  filters: { text: string; activity: ProductActivityFilter },
+  filters: ProductSearchFilters,
 ): Promise<{ ok: true; products: Product[] } | Failure<"FORBIDDEN">> {
   const authorized = authorize(context);
   if (!authorized.ok) return authorized;
   const products = await repository.findProducts(context.organizationId, {
     text: filters.text.trim(),
     activity: filters.activity,
+    brand: filters.brand?.trim() || undefined,
+    category: filters.category?.trim() || undefined,
   });
   return { ok: true, products };
 }
@@ -170,6 +180,20 @@ export async function listProductSuggestions(
   context: AuthContext,
 ): Promise<({ ok: true } & ProductSuggestions) | Failure<"FORBIDDEN">> {
   const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  const [brands, categories] = await Promise.all([
+    repository.findDistinctValues(context.organizationId, "brand"),
+    repository.findDistinctValues(context.organizationId, "category"),
+  ]);
+  return { ok: true, brands, categories };
+}
+
+// Las mismas listas, para los filtros del listado (brief-15.2, D-4): admin y viewer, que ya ven
+// la marca y la categoría de cada producto. Con el tope de SUGGESTIONS_LIMIT.
+export async function listProductFilterOptions(
+  context: AuthContext,
+): Promise<({ ok: true } & ProductSuggestions) | Failure<"FORBIDDEN">> {
+  const authorized = authorize(context);
   if (!authorized.ok) return authorized;
   const [brands, categories] = await Promise.all([
     repository.findDistinctValues(context.organizationId, "brand"),

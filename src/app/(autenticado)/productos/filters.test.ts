@@ -23,6 +23,8 @@ describe("parseProductFilters", () => {
       text: "café",
       stockStatus: "bajo_stock",
       activity: "all",
+      brand: "",
+      category: "",
       page: 3,
       sort: "name_asc",
       pageSize: 25,
@@ -43,6 +45,18 @@ describe("parseProductFilters", () => {
       pageSize: 25,
     });
     expect(parseProductFilters({ filas: ["50", "10"] }).pageSize).toBe(50);
+  });
+
+  it("brief-15.2: lee la categoría y la marca tal como vienen, recortadas y acotadas", () => {
+    expect(
+      parseProductFilters({ categoria: " Notebooks ", marca: "Arkon" }),
+    ).toMatchObject({ category: "Notebooks", brand: "Arkon" });
+    expect(parseProductFilters({ categoria: "", marca: "  " })).toEqual(
+      DEFAULT_FILTERS,
+    );
+    expect(parseProductFilters({ marca: "b".repeat(200) }).brand).toHaveLength(
+      100,
+    );
   });
 
   it("un valor desconocido vuelve al de defecto, sin fallar", () => {
@@ -79,13 +93,15 @@ describe("productFiltersHref", () => {
       text: "café molido",
       stockStatus: "disponible" as const,
       activity: "inactive" as const,
+      brand: "Arkon",
+      category: "Notebooks & tablets",
       page: 4,
       sort: "stock_asc" as const,
       pageSize: 50,
     };
     const href = productFiltersHref(filters);
     expect(href).toBe(
-      "/productos?q=caf%C3%A9+molido&estado=disponible&actividad=inactivos&orden=stock-menor&filas=50&pagina=4",
+      "/productos?q=caf%C3%A9+molido&estado=disponible&actividad=inactivos&categoria=Notebooks+%26+tablets&marca=Arkon&orden=stock-menor&filas=50&pagina=4",
     );
     const query = Object.fromEntries(
       new URL(href, "http://localhost").searchParams,
@@ -111,5 +127,9 @@ describe("hasActiveFilters", () => {
     expect(
       hasActiveFilters({ ...DEFAULT_FILTERS, stockStatus: "sin_stock" }),
     ).toBe(true);
+    expect(
+      hasActiveFilters({ ...DEFAULT_FILTERS, category: "Notebooks" }),
+    ).toBe(true);
+    expect(hasActiveFilters({ ...DEFAULT_FILTERS, brand: "Arkon" })).toBe(true);
   });
 });

@@ -42,7 +42,7 @@
 
 import { existsSync, writeFileSync } from "node:fs";
 import { sql, TransactionRollbackError } from "drizzle-orm";
-import { searchProducts } from "@/modules/catalog";
+import { listProductFilterOptions, searchProducts } from "@/modules/catalog";
 import {
   getConversationsStarted,
   getActiveConversations,
@@ -511,6 +511,36 @@ async function main(): Promise<void> {
           page: 1,
           sort: "name_desc",
         }),
+    ],
+    // Los filtros de la 15.2.2 (D-4). La siembra de volumen no carga marca ni categoría: para
+    // medirlos con datos, la base de medición recibe «Categoría 00» a «Categoría 19» y «Marca 00»
+    // a «Marca 59» repartidas entre sus productos, después de sembrar.
+    [
+      "inventory.listProductStock (por categoría, 15.2)",
+      () =>
+        listProductStock(context, {
+          text: "",
+          stockStatus: "all",
+          activity: "active",
+          page: 1,
+          category: "Categoría 03",
+        }),
+    ],
+    [
+      "inventory.listProductStock (por categoría y marca, 15.2)",
+      () =>
+        listProductStock(context, {
+          text: "",
+          stockStatus: "all",
+          activity: "active",
+          page: 1,
+          category: "Categoría 03",
+          brand: "Marca 07",
+        }),
+    ],
+    [
+      "catalog.listProductFilterOptions (15.2)",
+      () => listProductFilterOptions(context),
     ],
   );
   if (productoId) {

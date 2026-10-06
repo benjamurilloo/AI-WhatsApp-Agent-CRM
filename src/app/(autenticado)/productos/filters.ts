@@ -7,7 +7,8 @@ import type {
 import { DEFAULT_PAGE_SIZE, parsePageSize } from "@/app/_components/pagination";
 
 // Filtros y página de la pantalla 3 en la URL (brief-4.4): ?q=&estado=&actividad=&pagina=, más
-// el orden y las filas por página de la brief-15.2: ?orden=&filas=.
+// la categoría, la marca, el orden y las filas por página de la brief-15.2:
+// ?categoria=&marca=&orden=&filas=. Categoría y marca vacías no filtran.
 // Un valor desconocido se reemplaza por el de defecto, nunca da error.
 
 export type SearchParams = Record<string, string | string[] | undefined>;
@@ -60,6 +61,8 @@ export const DEFAULT_FILTERS: Required<ProductListFilters> = {
   text: "",
   stockStatus: "all",
   activity: "active",
+  brand: "",
+  category: "",
   page: 1,
   sort: "name_asc",
   pageSize: DEFAULT_PAGE_SIZE,
@@ -77,6 +80,8 @@ export function parseProductFilters(
   const activity = single(params.actividad);
   const page = single(params.pagina);
   const sort = single(params.orden);
+  const facet = (value: string | string[] | undefined) =>
+    single(value)?.trim().slice(0, MAX_TEXT_LENGTH) ?? "";
   return {
     text,
     stockStatus:
@@ -89,6 +94,8 @@ export function parseProductFilters(
         Object.hasOwn(ACTIVITY_PARAM, activity) &&
         ACTIVITY_PARAM[activity]) ||
       DEFAULT_FILTERS.activity,
+    brand: facet(params.marca),
+    category: facet(params.categoria),
     page: page && /^[1-9][0-9]{0,5}$/.test(page) ? Number(page) : 1,
     sort:
       (sort && Object.hasOwn(SORT_PARAM, sort) && SORT_PARAM[sort]) ||
@@ -112,6 +119,8 @@ export function productFiltersHref(filters: ProductListFilters): string {
   if (filters.activity !== DEFAULT_FILTERS.activity) {
     query.set("actividad", paramOf(ACTIVITY_PARAM, filters.activity));
   }
+  if (filters.category) query.set("categoria", filters.category);
+  if (filters.brand) query.set("marca", filters.brand);
   if (filters.sort && filters.sort !== DEFAULT_FILTERS.sort) {
     query.set("orden", paramOf(SORT_PARAM, filters.sort));
   }
@@ -127,6 +136,8 @@ export function hasActiveFilters(filters: ProductListFilters): boolean {
   return (
     filters.text !== DEFAULT_FILTERS.text ||
     filters.stockStatus !== DEFAULT_FILTERS.stockStatus ||
-    filters.activity !== DEFAULT_FILTERS.activity
+    filters.activity !== DEFAULT_FILTERS.activity ||
+    Boolean(filters.category) ||
+    Boolean(filters.brand)
   );
 }

@@ -410,7 +410,7 @@ test("caso 8: filtros y página de la lista viven en la URL", async ({
   await page.getByRole("button", { name: "Aplicar filtros" }).click();
   // Un formulario GET envía todos sus campos, también los que están en su valor por defecto.
   await expect(page).toHaveURL(
-    "/productos?q=Producto+001&estado=todos&actividad=activos&orden=nombre",
+    "/productos?q=Producto+001&estado=todos&actividad=activos&categoria=&marca=&orden=nombre",
   );
   await expect(productsTable(page).getByRole("row")).toHaveCount(1 + 1);
 
@@ -920,4 +920,80 @@ test("caso 18: brief-15.2 ordena, elige las filas por página y los conserva al 
   await page.goto("/productos?orden=inventado&filas=7");
   await expect(firstName()).toHaveText("P01");
   await expect(page.getByLabel("Ordenar por")).toHaveValue("nombre");
+});
+
+test("caso 19: brief-15.2 filtra por categoría y por marca, y los conserva al ordenar y paginar", async ({
+  page,
+}) => {
+  await insertProduct("NOT-1", "Atlas", {
+    brand: "Arkon",
+    category: "Notebooks",
+  });
+  await insertProduct("NOT-2", "Zenda", {
+    brand: "Veltra",
+    category: "Notebooks",
+  });
+  await insertProduct("CEL-1", "Nova", {
+    brand: "Arkon",
+    category: "Celulares",
+  });
+  await insertProduct("SIN-1", "Sin datos");
+  await login(page, ADMIN);
+  await page.goto("/productos");
+
+  const category = page.getByLabel("Categoría");
+  const brand = page.getByLabel("Marca");
+  await expect(category).toHaveValue("");
+  await expect(category.getByRole("option")).toHaveText([
+    "Todas",
+    "Celulares",
+    "Notebooks",
+  ]);
+  await expect(brand.getByRole("option")).toHaveText([
+    "Todas",
+    "Arkon",
+    "Veltra",
+  ]);
+
+  const rows = productsTable(page).getByRole("row");
+  const shownNames = () => rows.locator("td:nth-child(2)").allTextContents();
+
+  await category.selectOption("Notebooks");
+  await page.getByRole("button", { name: "Aplicar filtros" }).click();
+  await expect(page).toHaveURL(/[?&]categoria=Notebooks&marca=&orden=nombre$/);
+  await expect(rows).toHaveCount(1 + 2);
+  expect(await shownNames()).toEqual(["Atlas", "Zenda"]);
+  await expect(
+    page.getByRole("link", { name: "Limpiar filtros" }),
+  ).toBeVisible();
+
+  await brand.selectOption("Arkon");
+  await page.getByLabel("Ordenar por").selectOption("nombre-za");
+  await page.getByRole("button", { name: "Aplicar filtros" }).click();
+  await expect(rows).toHaveCount(1 + 1);
+  expect(await shownNames()).toEqual(["Atlas"]);
+  await expect(category).toHaveValue("Notebooks");
+  await expect(brand).toHaveValue("Arkon");
+
+  // Los enlaces de filas por página conservan los dos filtros.
+  await page
+    .getByRole("group", { name: "Filas por página" })
+    .getByRole("link", { name: "10 filas por página" })
+    .click();
+  await expect(page).toHaveURL(
+    "/productos?categoria=Notebooks&marca=Arkon&orden=nombre-za&filas=10",
+  );
+  await expect(rows).toHaveCount(1 + 1);
+
+  // Solo marca, desde la URL.
+  await page.goto("/productos?marca=Arkon");
+  expect(await shownNames()).toEqual(["Atlas", "Nova"]);
+  await expectAccessible(page, "lista filtrada por marca");
+
+  // Un valor que no está en la lista se muestra elegido y no encuentra nada, sin error.
+  await page.goto("/productos?categoria=Inexistente");
+  await expect(category).toHaveValue("Inexistente");
+  await expect(
+    page.getByText("Ningún producto coincide con estos filtros."),
+  ).toBeVisible();
 });

@@ -250,3 +250,30 @@ Tres planes cambian de forma, informados y **aceptados por el usuario el 2026-10
 - End-to-end: la suite completa, 105 de 105 sobre `next start` (11,1 min).
 - Casos nuevos: productos 18 (orden por precio, 10 filas y paginación), clientes 17 (nombre Z–A, 10 filas) y conversaciones 12 (más antiguo, por inicio y 50 filas).
 - `package.json`, `package-lock.json` y `drizzle/` sin cambios. No se tocó `src/modules/crm/repository.ts`: su diff es solo de finales de línea, ajeno, y queda fuera del commit, igual que `scripts/migrar.ts`.
+
+## Resultados — 15.2.2
+
+Etapa 15.2.2, filtros por categoría y por marca en Productos (D-4, opción a). Autoevaluación, no revisión independiente.
+
+**Qué se hizo.** Dos selectores, «Categoría» y «Marca», después de «Actividad», con «Todas» (valor vacío) por defecto, en `?categoria=&marca=`. La coincidencia es exacta y va dentro de la consulta de `findProducts`: «Almacén» no trae «Almacen» (normalizar es de la Fase 17). Las opciones salen de `findDistinctValues`, la misma consulta de los formularios, con su tope de 200: un valor de la URL que no entra en la lista se agrega al selector para mostrarse elegido. `listProductSuggestions` es solo de admin, así que se agregó `listProductFilterOptions`, que permite admin y viewer: los dos ya ven la marca y la categoría de cada producto. Los filtros se conservan al ordenar, al paginar y al cambiar las filas por página, y cuentan para «Limpiar filtros».
+
+**Desvíos.**
+- `scripts/medir-caminos.ts` suma los 3 caminos de esta etapa, como en la 15.2.1.
+- Una aserción de URL de end-to-end existente (`products.spec.ts`, caso 8) cambia porque el formulario envía también `categoria=&marca=`. Se detuvo, y el usuario eligió aceptarlo y actualizar la aserción (opción a), en lugar de `categoria=todas&marca=todas`, que impediría filtrar una categoría o marca llamada «todas».
+
+**Medición (D-7).** En una base local aparte sembrada con `seeds/volume.ts medicion` y borrada después. La siembra no carga marca ni categoría: después de sembrar se asignaron «Categoría 00» a «Categoría 19» y «Marca 00» a «Marca 59» repartidas por hash del id (en la organización grande, «Categoría 03» tiene 472 productos activos y 8 con «Marca 07»). Mediana del camino completo:
+
+| Camino | Organización grande | Organización chica |
+|---|---|---|
+| Productos, sin filtro (referencia de esta corrida) | 191,9 ms | 9,1 ms |
+| Productos, por categoría | 17,4 ms | 2,7 ms |
+| Productos, por categoría y marca | 5,0 ms | 1,1 ms |
+| Opciones de los filtros (las dos listas) | 5,6 ms | 1,4 ms |
+
+Ningún plan cambia de forma. El filtro recorre `products` igual que el camino sin filtro (secuencial en la organización grande, por índice en la chica) y solo suma la condición; filtrar baja el tiempo porque compone menos productos. Las opciones son la consulta que ya usan los formularios desde la 11.1 (recorrido de los productos de la organización, `HashAggregate` y orden); lo nuevo es que el listado la pide en cada carga, unos 5 ms en la organización grande.
+
+**Verificación.**
+- `typecheck`, `lint` y `build` pasan; `prettier --check` sobre los archivos cambiados, limpio.
+- `test:unit` 521 de 521; `test:guards` 485 de 485; `test:integration` 680 de 680 (2 casos nuevos: los filtros y las opciones por organización y rol).
+- End-to-end: la suite completa, 105 de 106 sobre `next start` (7,6 min). Falló por tiempo el caso 9 de Clientes (el navegador de un viewer no recibe el teléfono), que esta etapa no toca: agotó los 30 s sin fallar ninguna aserción, y corrido solo dos veces pasó las dos, en unos 10 s. Antes, el caso 5 de Productos tuvo un cierre del navegador («Target crashed») y pasó al repetirlo. Caso nuevo: productos 19 (los dos filtros, su conservación al ordenar y cambiar las filas, solo marca desde la URL y un valor fuera de la lista).
+- `package.json`, `package-lock.json` y `drizzle/` sin cambios.

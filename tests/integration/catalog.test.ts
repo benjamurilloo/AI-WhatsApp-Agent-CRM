@@ -5,6 +5,7 @@ import { hashPassword, login } from "@/modules/auth";
 import {
   createProduct,
   deactivateProduct,
+  listProductFilterOptions,
   reactivateProduct,
   setProductPrice,
   updateProduct,
@@ -768,6 +769,57 @@ describe("listProductStock", () => {
     ]);
     // Sin orden, por nombre, como antes.
     expect(await names(s.viewerA)).toEqual(["Azúcar", "Café", "Té", "Yerba"]);
+  });
+
+  it("brief-15.2 D-4: filtra por categoría y por marca exactas, junto con el texto y la actividad", async () => {
+    const s = await seedList();
+    await insertProduct(s.orgB, {
+      sku: "OTR-1",
+      name: "Yerba de otra organización",
+      brand: "Nescafé",
+      category: "Almacén",
+    });
+    // Exacta: «Almacén» no trae «Almacen» (normalizar es de la Fase 17).
+    expect(await names(s.viewerA, { category: "Almacén" })).toEqual([
+      "Yerba 500 g",
+    ]);
+    expect(await names(s.viewerA, { category: "Almacen" })).toEqual([
+      "Azúcar 1 kg",
+    ]);
+    expect(await names(s.viewerA, { brand: "Nescafé" })).toEqual([
+      "Café molido 250 g",
+    ]);
+    expect(
+      await names(s.viewerA, { brand: "Nescafé", category: "Almacén" }),
+    ).toEqual([]);
+    expect(
+      await names(s.viewerA, { text: "yerba", category: "Bebidas" }),
+    ).toEqual([]);
+    // Vacías no filtran.
+    expect(await names(s.viewerA, { brand: "", category: "" })).toEqual([
+      "Azúcar 1 kg",
+      "Café molido 250 g",
+      "Yerba 500 g",
+    ]);
+  });
+
+  it("brief-15.2 D-4: las opciones de los filtros son de la organización y las ve un viewer", async () => {
+    const s = await seedList();
+    await insertProduct(s.orgB, {
+      sku: "OTR-1",
+      name: "Otro",
+      brand: "Marca ajena",
+      category: "Categoría ajena",
+    });
+    expect(await listProductFilterOptions(s.viewerA)).toEqual({
+      ok: true,
+      brands: ["Nescafé"],
+      categories: ["Almacen", "Almacén", "Bebidas"],
+    });
+    expect(await listProductFilterOptions(s.pendingA)).toEqual({
+      ok: false,
+      code: "FORBIDDEN",
+    });
   });
 
   it("pagina de a 25 contra la base y lleva una página fuera de rango a la última", async () => {

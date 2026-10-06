@@ -78,6 +78,9 @@ export type ProductListFilters = {
   stockStatus: StockStatusFilter;
   activity: ProductActivityFilter;
   page: number;
+  // Marca y categoría exactas (brief-15.2, D-4); vacías no filtran.
+  brand?: string;
+  category?: string;
   sort?: ProductSort;
   // Filas por página (brief-15.2, D-2); fuera de 1 a 50, PRODUCTS_PAGE_SIZE.
   pageSize?: number;

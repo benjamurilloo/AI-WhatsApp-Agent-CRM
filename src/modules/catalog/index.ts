@@ -1,5 +1,6 @@
 // Interfaz pública del módulo catalog (brief-4.2; historial de auditoría, brief-4.4; marca,
-// categoría, condición, sugerencias y precio, brief-11.1; lecturas de servicio, brief-11.3).
+// categoría, condición, sugerencias y precio, brief-11.1; lecturas de servicio, brief-11.3;
+// filtros de marca y categoría, brief-15.2).
 export {
   createProduct,
   deactivateProduct,
@@ -8,6 +9,7 @@ export {
   getCurrentPrices,
   getProduct,
   listProductAudit,
+  listProductFilterOptions,
   listProductPrices,
   listProductSuggestions,
   lockProductForStockChange,
@@ -33,6 +35,7 @@ export {
   type ProductPrice,
   type ProductPriceEntry,
   type ProductPriceHistoryResult,
+  type ProductSearchFilters,
   type ProductSuggestions,
   type ServiceProduct,
   type SetPriceResult,
