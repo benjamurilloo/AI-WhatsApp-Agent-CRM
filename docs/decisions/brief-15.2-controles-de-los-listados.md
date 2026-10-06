@@ -214,3 +214,39 @@ Un componente cliente compartido, `src/app/_components/suggest-input.tsx`, segú
 - Si hace falta tocar `src/modules/crm/repository.ts`.
 - Si la 13.5.2-b arranca: se pausa en el último punto con la CI en verde.
 - Antes de cambiar el estado en Notion si el usuario no lo autorizó.
+
+## Resultados — 15.2.1
+
+Etapa 15.2.1, orden y filas por página en Productos, Clientes y Conversaciones. Autoevaluación, no revisión independiente: la de D-9 se hace antes del despliegue (15.2.5).
+
+**Qué se hizo.** Los órdenes de D-1 en `?orden=` y las filas de D-2 (10, 25 o 50) en `?filas=`, con un valor desconocido reemplazado por el de defecto. Productos ordena en memoria, como ya componía con el catálogo; el orden por precio pide los precios vigentes solo cuando hace falta, y un producto sin precio va al final en los dos sentidos. Conversaciones ordena en SQL con el mapa `ORDER` del repositorio. Clientes reordena en memoria los ids que el CRM ya devuelve por nombre. Las filas por página son enlaces debajo de la paginación: funcionan sin JavaScript y vuelven a la página 1 con los mismos filtros.
+
+**Desvíos.**
+- `src/modules/inventory/index.ts` no estaba en la lista de archivos autorizados: exporta `PRODUCT_SORTS` y `ProductSort`, que la página necesita.
+- `scripts/medir-caminos.ts` tampoco estaba: se le agregó el bloque «brief-15.2 (D-7)» con los 8 caminos nuevos, para medir con el mismo instrumento de la 13.2.
+- Cuatro aserciones de URL de end-to-end existentes (`clients.spec.ts` ×2, `conversations.spec.ts`, `products.spec.ts`) cambian porque el formulario de filtros ahora envía también `orden`. Es un cambio de comportamiento: se detuvo, y el usuario eligió aceptar `&orden=…` en la URL y actualizar las aserciones (opción a).
+
+**Medición (D-7).** En una base local aparte, sembrada con `seeds/volume.ts medicion` (21 organizaciones, con precios) y borrada después; `crm_dev` no se tocó. Mediana del camino completo, umbral local 400 ms:
+
+| Camino | Organización grande | Organización chica |
+|---|---|---|
+| Productos, por precio | 226 ms | 13 ms |
+| Productos, por stock, 50 filas | 143 ms | 8,5 ms |
+| Conversaciones, más antiguo (primera / última página) | 8,5 / 9,2 ms | 7,2 / 5,7 ms |
+| Conversaciones, por inicio (primera / última página) | 7,3 / 9,2 ms | 7,0 / 5,9 ms |
+| Conversaciones, 50 filas | 9,0 ms | 8,2 ms |
+| Clientes, nombre Z–A | 48,8 ms | 8,3 ms |
+
+Todos debajo del umbral. Productos sin orden mide 162 ms en la grande: el orden por precio suma unos 64 ms. Con el factor 3,77× de la 13.2, en producción serían unos 850 ms contra un umbral de 1.508 ms (inferencia, no medición).
+
+Tres planes cambian de forma, informados y **aceptados por el usuario el 2026-10-05 sin índices nuevos**:
+1. El orden por precio lee `product_prices` con un recorrido secuencial en la organización grande (21 ms, unas 10.000 filas) y por índice en la chica: una organización dueña de casi toda la tabla se lee entera, como ya registró la 13.2 para productos y saldos.
+2. «Más antiguo», en la primera página de la organización grande, lee la tabla y hace un top-N sort (8,5 ms). El índice `last_message_at DESC NULLS LAST` no se puede recorrer al revés para `ASC NULLS LAST`.
+3. «Por inicio» usa su índice en la primera página. Las páginas profundas leen la tabla y ordenan, igual que el orden de siempre.
+
+**Verificación.**
+- `typecheck`, `lint` y `build` pasan; `prettier --check` sobre los 23 archivos cambiados, limpio.
+- `test:unit` 520 de 520; `test:guards` 485 de 485; `test:integration` 678 de 678 (43 archivos).
+- End-to-end: la suite completa, 105 de 105 sobre `next start` (11,1 min).
+- Casos nuevos: productos 18 (orden por precio, 10 filas y paginación), clientes 17 (nombre Z–A, 10 filas) y conversaciones 12 (más antiguo, por inicio y 50 filas).
+- `package.json`, `package-lock.json` y `drizzle/` sin cambios. No se tocó `src/modules/crm/repository.ts`: su diff es solo de finales de línea, ajeno, y queda fuera del commit, igual que `scripts/migrar.ts`.

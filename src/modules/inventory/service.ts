@@ -3,6 +3,7 @@ import { recordAudit } from "@/modules/audit";
 import {
   deriveStockStatus,
   getActiveProductForService,
+  getCurrentPrices,
   getProduct,
   lockProductForStockChange,
   searchActiveProductsForService,
@@ -56,15 +57,40 @@ export function withStock(
 }
 
 export const PRODUCTS_PAGE_SIZE = 25;
+const MAX_PAGE_SIZE = 50;
 
 export type StockStatusFilter = "all" | StockStatus;
+
+// Órdenes del listado (brief-15.2, D-1). Sin orden, por nombre, como antes de la 15.2.
+export const PRODUCT_SORTS = [
+  "name_asc",
+  "name_desc",
+  "sku_asc",
+  "stock_asc",
+  "stock_desc",
+  "price_asc",
+  "price_desc",
+] as const;
+export type ProductSort = (typeof PRODUCT_SORTS)[number];
 
 export type ProductListFilters = {
   text: string;
   stockStatus: StockStatusFilter;
   activity: ProductActivityFilter;
   page: number;
+  sort?: ProductSort;
+  // Filas por página (brief-15.2, D-2); fuera de 1 a 50, PRODUCTS_PAGE_SIZE.
+  pageSize?: number;
 };
+
+export function productPageSize(pageSize: number | undefined): number {
+  return pageSize !== undefined &&
+    Number.isInteger(pageSize) &&
+    pageSize >= 1 &&
+    pageSize <= MAX_PAGE_SIZE
+    ? pageSize
+    : PRODUCTS_PAGE_SIZE;
+}
 
 export type ProductStockPage = {
   products: ProductStock[];
@@ -75,12 +101,65 @@ export type ProductStockPage = {
 
 const collator = new Intl.Collator("es", { sensitivity: "base" });
 
-// Filtra por estado, ordena por nombre y pagina. Una página fuera de rango se lleva a la última.
+const byName = (a: ProductStock, b: ProductStock) =>
+  collator.compare(a.name, b.name) ||
+  collator.compare(a.sku, b.sku) ||
+  a.id.localeCompare(b.id);
+
+const bySku = (a: ProductStock, b: ProductStock) =>
+  collator.compare(a.sku, b.sku) || a.id.localeCompare(b.id);
+
+const byStock = (a: ProductStock, b: ProductStock) => {
+  const left = quantityFromDatabase(a.quantityOnHand);
+  const right = quantityFromDatabase(b.quantityOnHand);
+  return left === right ? 0 : left < right ? -1 : 1;
+};
+
+// El comparador de cada orden. A igual valor, por nombre: una fila no salta de página. Un
+// producto sin precio va al final en los dos sentidos.
+function comparator(
+  sort: ProductSort,
+  prices: Map<string, string>,
+): (a: ProductStock, b: ProductStock) => number {
+  switch (sort) {
+    case "name_asc":
+      return byName;
+    case "name_desc":
+      return (a, b) => byName(b, a);
+    case "sku_asc":
+      return bySku;
+    case "stock_asc":
+      return (a, b) => byStock(a, b) || byName(a, b);
+    case "stock_desc":
+      return (a, b) => byStock(b, a) || byName(a, b);
+    case "price_asc":
+    case "price_desc": {
+      const sign = sort === "price_asc" ? 1 : -1;
+      return (a, b) => {
+        const left = prices.get(a.id);
+        const right = prices.get(b.id);
+        if (left === undefined || right === undefined) {
+          if (left !== right) return left === undefined ? 1 : -1;
+          return byName(a, b);
+        }
+        return sign * (Number(left) - Number(right)) || byName(a, b);
+      };
+    }
+  }
+}
+
+// Filtra por estado, ordena y pagina. Una página fuera de rango se lleva a la última. prices
+// (id → monto) solo hace falta para ordenar por precio.
 export function composeProductStockPage(
   products: Product[],
   balances: Map<string, string>,
-  filters: Pick<ProductListFilters, "stockStatus" | "page">,
+  filters: Pick<
+    ProductListFilters,
+    "stockStatus" | "page" | "sort" | "pageSize"
+  >,
+  prices: Map<string, string> = new Map(),
 ): ProductStockPage {
+  const pageSize = productPageSize(filters.pageSize);
   const matching = products
     .map((product) => withStock(product, balances))
     .filter(
@@ -88,21 +167,13 @@ export function composeProductStockPage(
         filters.stockStatus === "all" ||
         product.stockStatus === filters.stockStatus,
     )
-    .sort(
-      (a, b) =>
-        collator.compare(a.name, b.name) ||
-        collator.compare(a.sku, b.sku) ||
-        a.id.localeCompare(b.id),
-    );
+    .sort(comparator(filters.sort ?? "name_asc", prices));
 
-  const pageCount = Math.max(
-    1,
-    Math.ceil(matching.length / PRODUCTS_PAGE_SIZE),
-  );
+  const pageCount = Math.max(1, Math.ceil(matching.length / pageSize));
   const page = Math.min(Math.max(1, Math.trunc(filters.page) || 1), pageCount);
-  const start = (page - 1) * PRODUCTS_PAGE_SIZE;
+  const start = (page - 1) * pageSize;
   return {
-    products: matching.slice(start, start + PRODUCTS_PAGE_SIZE),
+    products: matching.slice(start, start + pageSize),
     total: matching.length,
     page,
     pageCount,
@@ -117,13 +188,18 @@ export async function listProductStock(
 ): Promise<({ ok: true } & ProductStockPage) | Failure<"FORBIDDEN">> {
   const found = await searchProducts(context, filters);
   if (!found.ok) return found;
-  const balances = await repository.findBalances(
-    context.organizationId,
-    found.products.map((product) => product.id),
-  );
+  const ids = found.products.map((product) => product.id);
+  const balances = await repository.findBalances(context.organizationId, ids);
+  // El precio de todos los que cumplen el filtro, solo para ordenar por precio (brief-15.2, H-2).
+  const prices = new Map<string, string>();
+  if (filters.sort === "price_asc" || filters.sort === "price_desc") {
+    const current = await getCurrentPrices(context, ids);
+    if (!current.ok) return current;
+    for (const [id, price] of current.prices) prices.set(id, price.amount);
+  }
   return {
     ok: true,
-    ...composeProductStockPage(found.products, balances, filters),
+    ...composeProductStockPage(found.products, balances, filters, prices),
   };
 }
 

@@ -422,6 +422,97 @@ async function main(): Promise<void> {
       ),
     ],
   );
+  // Los órdenes y las filas por página de la brief-15.2 (D-7). Sin orden, los caminos de arriba
+  // ya miden el de siempre.
+  const sinFiltroDeConversaciones = {
+    from: "",
+    to: "",
+    status: "all",
+    channel: "all",
+    clientId: "",
+  };
+  listados.push(
+    [
+      "inventory.listProductStock (por precio, 15.2)",
+      () =>
+        listProductStock(context, {
+          text: "",
+          stockStatus: "all",
+          activity: "active",
+          page: 1,
+          sort: "price_desc",
+        }),
+    ],
+    [
+      "inventory.listProductStock (por stock, 50 filas, 15.2)",
+      () =>
+        listProductStock(context, {
+          text: "",
+          stockStatus: "all",
+          activity: "active",
+          page: 1,
+          sort: "stock_asc",
+          pageSize: 50,
+        }),
+    ],
+    [
+      "conversations.listConversations (más antiguo, 15.2)",
+      () =>
+        listConversations(context, {
+          ...sinFiltroDeConversaciones,
+          page: 1,
+          sort: "oldest",
+        }),
+    ],
+    [
+      "conversations.listConversations (más antiguo, última página, 15.2)",
+      ultimaPagina((page) =>
+        listConversations(context, {
+          ...sinFiltroDeConversaciones,
+          page,
+          sort: "oldest",
+        }),
+      ),
+    ],
+    [
+      "conversations.listConversations (por inicio, 15.2)",
+      () =>
+        listConversations(context, {
+          ...sinFiltroDeConversaciones,
+          page: 1,
+          sort: "started",
+        }),
+    ],
+    [
+      "conversations.listConversations (por inicio, última página, 15.2)",
+      ultimaPagina((page) =>
+        listConversations(context, {
+          ...sinFiltroDeConversaciones,
+          page,
+          sort: "started",
+        }),
+      ),
+    ],
+    [
+      "conversations.listConversations (50 filas, 15.2)",
+      () =>
+        listConversations(context, {
+          ...sinFiltroDeConversaciones,
+          page: 1,
+          pageSize: 50,
+        }),
+    ],
+    [
+      "conversations.searchClientsByLastInteraction (nombre inverso, 15.2)",
+      () =>
+        searchClientsByLastInteraction(context, {
+          text: "",
+          activity: "all",
+          page: 1,
+          sort: "name_desc",
+        }),
+    ],
+  );
   if (productoId) {
     listados.push([
       `inventory.listStockMovements (producto con ${movimientos}, última página)`,

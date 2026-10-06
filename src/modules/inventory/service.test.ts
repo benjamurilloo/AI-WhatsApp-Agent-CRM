@@ -10,6 +10,7 @@ import {
   validateMovementHistoryFilters,
   validateStockAdjustmentInput,
   type MovementHistoryFilters,
+  type ProductSort,
   type StockAdjustmentInput,
 } from "./service";
 
@@ -78,6 +79,65 @@ describe("composeProductStockPage", () => {
       page: 1,
     });
     expect(result.products.map((p) => p.sku)).toEqual(["A", "Z", "B"]);
+  });
+
+  it("brief-15.2 D-1: ordena por nombre inverso, SKU y stock, con desempate por nombre", () => {
+    const a = product({ name: "A", sku: "Z-1" });
+    const b = product({ name: "B", sku: "A-1" });
+    const c = product({ name: "C", sku: "M-1" });
+    const balances = new Map([
+      [a.id, "5.000"],
+      [b.id, "12.000"],
+      [c.id, "5.000"],
+    ]);
+    const names = (sort: ProductSort) =>
+      composeProductStockPage([c, a, b], balances, {
+        stockStatus: "all",
+        page: 1,
+        sort,
+      }).products.map((p) => p.name);
+    expect(names("name_desc")).toEqual(["C", "B", "A"]);
+    expect(names("sku_asc")).toEqual(["B", "C", "A"]);
+    expect(names("stock_asc")).toEqual(["A", "C", "B"]);
+    expect(names("stock_desc")).toEqual(["B", "A", "C"]);
+  });
+
+  it("brief-15.2 D-1: por precio, numérico y sin precio al final en los dos sentidos", () => {
+    const cheap = product({ name: "Cheap" });
+    const dear = product({ name: "Dear" });
+    const none = product({ name: "Alpha" });
+    const ten = product({ name: "Ten" });
+    const prices = new Map([
+      [cheap.id, "9.50"],
+      [dear.id, "1200.00"],
+      [ten.id, "10.00"],
+    ]);
+    const names = (sort: ProductSort) =>
+      composeProductStockPage(
+        [none, dear, ten, cheap],
+        new Map(),
+        { stockStatus: "all", page: 1, sort },
+        prices,
+      ).products.map((p) => p.name);
+    expect(names("price_asc")).toEqual(["Cheap", "Ten", "Dear", "Alpha"]);
+    expect(names("price_desc")).toEqual(["Dear", "Ten", "Cheap", "Alpha"]);
+  });
+
+  it("brief-15.2 D-2: pagina con el tamaño pedido; uno fuera de 1 a 50 vuelve a 25", () => {
+    const products = Array.from({ length: 30 }, (_, i) =>
+      product({ name: `P${String(i).padStart(2, "0")}` }),
+    );
+    const page = (pageSize: number) =>
+      composeProductStockPage(products, new Map(), {
+        stockStatus: "all",
+        page: 1,
+        pageSize,
+      });
+    expect(page(10)).toMatchObject({ pageCount: 3 });
+    expect(page(10).products).toHaveLength(10);
+    expect(page(50).products).toHaveLength(30);
+    expect(page(51).products).toHaveLength(PRODUCTS_PAGE_SIZE);
+    expect(page(0).products).toHaveLength(PRODUCTS_PAGE_SIZE);
   });
 
   it("pagina de a 25 y lleva una página fuera de rango a la última", () => {

@@ -1,12 +1,15 @@
 import type {
   ConversationChannel,
   ConversationListFilters,
+  ConversationSort,
   ConversationStatus,
 } from "@/modules/conversations";
 import { calendarDayIn, shiftDays } from "@/app/_format/date-time";
+import { DEFAULT_PAGE_SIZE, parsePageSize } from "@/app/_components/pagination";
 
 // Filtros de la pantalla 8 en la URL (brief-6.4):
-// ?periodo=&desde=&hasta=&estado=&canal=&cliente=&buscar_cliente=&pagina=.
+// ?periodo=&desde=&hasta=&estado=&canal=&cliente=&buscar_cliente=&pagina=, más el orden y las
+// filas por página de la brief-15.2: ?orden=&filas=.
 // El parseo es puro y un valor desconocido vuelve al de defecto. Los atajos de período son los de
 // la pantalla 5, con "todo" por defecto (D-2); la búsqueda de cliente se resuelve en la página
 // con crm (D-1).
@@ -16,6 +19,20 @@ export type SearchParams = Record<string, string | string[] | undefined>;
 export type PeriodKey = "todo" | "7d" | "30d" | "90d" | "personalizado";
 export type StatusKey = "todos" | "abierta" | "pendiente" | "cerrada";
 export type ChannelKey = "todos" | "whatsapp";
+export type SortKey = "reciente" | "antigua" | "inicio";
+
+// Órdenes en la URL y su nombre en el selector, en el orden en que se ofrecen (brief-15.2, D-1).
+export const SORT_PARAM: Record<SortKey, ConversationSort> = {
+  reciente: "recent",
+  antigua: "oldest",
+  inicio: "started",
+};
+
+export const SORT_LABEL: Record<SortKey, string> = {
+  reciente: "Último mensaje (más reciente)",
+  antigua: "Último mensaje (más antiguo)",
+  inicio: "Inicio (más reciente)",
+};
 
 export const PERIOD_KEYS: readonly PeriodKey[] = [
   "todo",
@@ -63,6 +80,8 @@ export type ConversationView = {
   // Texto de la caja de cliente, pendiente de resolver a un id.
   clientSearch: string;
   page: number;
+  sort: SortKey;
+  pageSize: number;
 };
 
 export const DEFAULT_VIEW: ConversationView = {
@@ -74,6 +93,8 @@ export const DEFAULT_VIEW: ConversationView = {
   clientId: "",
   clientSearch: "",
   page: 1,
+  sort: "reciente",
+  pageSize: DEFAULT_PAGE_SIZE,
 };
 
 const MAX_TEXT_LENGTH = 100;
@@ -127,6 +148,12 @@ export function parseConversationView(params: SearchParams): ConversationView {
       ? ""
       : (single(params.buscar_cliente)?.trim().slice(0, MAX_TEXT_LENGTH) ?? ""),
     page: parsePage(params.pagina),
+    sort: keyOf(
+      single(params.orden),
+      Object.keys(SORT_PARAM) as SortKey[],
+      DEFAULT_VIEW.sort,
+    ),
+    pageSize: parsePageSize(params.filas),
   };
 }
 
@@ -142,6 +169,8 @@ export function toListFilters(
     channel: CHANNEL_PARAM[view.channel],
     clientId: view.clientId,
     page: view.page,
+    sort: SORT_PARAM[view.sort],
+    pageSize: view.pageSize,
   };
   if (view.period === "personalizado") {
     return { ...base, from: view.from, to: view.to };
@@ -171,6 +200,10 @@ export function conversationFiltersHref(view: ConversationView): string {
     query.set("cliente", view.clientId);
   } else if (view.clientSearch) {
     query.set("buscar_cliente", view.clientSearch);
+  }
+  if (view.sort !== DEFAULT_VIEW.sort) query.set("orden", view.sort);
+  if (view.pageSize !== DEFAULT_VIEW.pageSize) {
+    query.set("filas", String(view.pageSize));
   }
   if (view.page > 1) query.set("pagina", String(view.page));
   const text = query.toString();

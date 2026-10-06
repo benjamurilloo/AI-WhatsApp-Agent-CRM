@@ -103,13 +103,21 @@ async function summarize(
 }
 
 // Una página fuera de rango se lleva a la última; una no numérica o menor que 1, a la primera.
-export function conversationPageBounds(total: number, requestedPage: number) {
-  const pageCount = Math.max(1, Math.ceil(total / CONVERSATIONS_PAGE_SIZE));
+export function conversationPageBounds(
+  total: number,
+  requestedPage: number,
+  pageSize: number = CONVERSATIONS_PAGE_SIZE,
+) {
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const page = Math.min(Math.max(1, Math.trunc(requestedPage) || 1), pageCount);
-  return { page, pageCount, offset: (page - 1) * CONVERSATIONS_PAGE_SIZE };
+  return { page, pageCount, offset: (page - 1) * pageSize };
 }
 
-// Filtros de la URL, como texto. status y channel son "all" o un valor; vacíos no limitan.
+export type ConversationSort = repository.ConversationSort;
+export const CONVERSATION_SORTS = repository.CONVERSATION_SORTS;
+
+// Filtros de la URL, como texto. status y channel son "all" o un valor; vacíos no limitan. El
+// orden y las filas por página son de la brief-15.2 (D-1 y D-2); sin ellos, los de antes.
 export type ConversationListFilters = {
   from: string;
   to: string;
@@ -117,6 +125,8 @@ export type ConversationListFilters = {
   channel: string;
   clientId: string;
   page: number;
+  sort?: ConversationSort;
+  pageSize?: number;
 };
 
 export type ConversationListField =
@@ -196,20 +206,19 @@ async function conversationPage(
   context: AuthContext,
   query: repository.ConversationQuery,
   requestedPage: number,
+  sort: ConversationSort = "recent",
+  pageSize: number = CONVERSATIONS_PAGE_SIZE,
 ): Promise<ConversationPage> {
   const total = await repository.countConversations(query);
   const { page, pageCount, offset } = conversationPageBounds(
     total,
     requestedPage,
+    pageSize,
   );
   const rows =
     total === 0
       ? []
-      : await repository.findConversations(
-          query,
-          CONVERSATIONS_PAGE_SIZE,
-          offset,
-        );
+      : await repository.findConversations(query, pageSize, offset, sort);
   return {
     conversations: await summarize(context, rows),
     total,
@@ -233,7 +242,17 @@ export async function listConversations(
     ...validated.values,
     timezone: await getOrganizationTimezone(context),
   };
-  const found = await conversationPage(context, query, filters.page);
+  const sort =
+    filters.sort && CONVERSATION_SORTS.includes(filters.sort)
+      ? filters.sort
+      : "recent";
+  const found = await conversationPage(
+    context,
+    query,
+    filters.page,
+    sort,
+    listPageSize(filters.pageSize, CONVERSATIONS_PAGE_SIZE),
+  );
   // Con filtros y sin filas: distingue "sin resultados" de "no hay conversaciones".
   const organizationHasConversations =
     found.total > 0 ||
@@ -537,31 +556,68 @@ export type ClientInteractionPage =
     }
   | Failure<"FORBIDDEN">;
 
-// Orden por última interacción, compuesto en memoria (brief-6.3, D-1): crm da los ids en orden de
-// nombre y el teléfono según el rol; los clientes sin interacciones quedan al final en ese orden.
+// Órdenes del listado de clientes (brief-15.2, D-1). Sin orden, por última interacción.
+export const CLIENT_SORTS = [
+  "last_interaction",
+  "name_asc",
+  "name_desc",
+] as const;
+export type ClientSort = (typeof CLIENT_SORTS)[number];
+
+export type ClientInteractionFilters = ClientListFilters & {
+  sort?: ClientSort;
+  // Filas por página (brief-15.2, D-2); fuera de 1 a 50, CLIENTS_PAGE_SIZE.
+  pageSize?: number;
+};
+
+// Filas por página válidas para los dos listados de este módulo.
+function listPageSize(pageSize: number | undefined, fallback: number): number {
+  return pageSize !== undefined &&
+    Number.isInteger(pageSize) &&
+    pageSize >= 1 &&
+    pageSize <= 50
+    ? pageSize
+    : fallback;
+}
+
+// crm da los ids en orden de nombre (y desempate por id). Por última interacción, la más reciente
+// primero; sort es estable, así que a igual fecha, o sin fecha, se conserva el orden de nombre, y
+// los clientes sin interacciones quedan al final. Por nombre inverso, el mismo orden al revés.
+export function orderClientIds(
+  clientIds: string[],
+  lastInteraction: Map<string, Date>,
+  sort: ClientSort,
+): string[] {
+  if (sort === "name_asc") return [...clientIds];
+  if (sort === "name_desc") return [...clientIds].reverse();
+  return [...clientIds].sort((a, b) => {
+    const left = lastInteraction.get(a)?.getTime() ?? -Infinity;
+    const right = lastInteraction.get(b)?.getTime() ?? -Infinity;
+    return left === right ? 0 : right > left ? 1 : -1;
+  });
+}
+
+// Orden compuesto en memoria (brief-6.3, D-1): crm da los ids y el teléfono según el rol.
 export async function searchClientsByLastInteraction(
   context: AuthContext,
-  filters: ClientListFilters,
+  filters: ClientInteractionFilters,
 ): Promise<ClientInteractionPage> {
   const keys = await listClientOrderKeys(context, filters);
   if (!keys.ok) return keys;
   const lastInteraction = await repository.findLastInteractionByClient(
     context.organizationId,
   );
-  // sort es estable: a igual fecha, o sin fecha, se conserva el orden de nombre de crm.
-  const ordered = [...keys.clientIds].sort((a, b) => {
-    const left = lastInteraction.get(a)?.getTime() ?? -Infinity;
-    const right = lastInteraction.get(b)?.getTime() ?? -Infinity;
-    return left === right ? 0 : right > left ? 1 : -1;
-  });
-
-  const total = ordered.length;
-  const pageCount = Math.max(1, Math.ceil(total / CLIENTS_PAGE_SIZE));
-  const page = Math.min(Math.max(1, Math.trunc(filters.page) || 1), pageCount);
-  const pageIds = ordered.slice(
-    (page - 1) * CLIENTS_PAGE_SIZE,
-    page * CLIENTS_PAGE_SIZE,
+  const ordered = orderClientIds(
+    keys.clientIds,
+    lastInteraction,
+    filters.sort ?? "last_interaction",
   );
+
+  const pageSize = listPageSize(filters.pageSize, CLIENTS_PAGE_SIZE);
+  const total = ordered.length;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(Math.max(1, Math.trunc(filters.page) || 1), pageCount);
+  const pageIds = ordered.slice((page - 1) * pageSize, page * pageSize);
   const found = await getClientsByIds(context, pageIds);
   if (!found.ok) throw new Error(`crm rechazó los clientes: ${found.code}`);
   return {

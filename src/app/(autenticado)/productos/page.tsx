@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getCurrentPrices } from "@/modules/catalog";
-import { listProductStock, PRODUCTS_PAGE_SIZE } from "@/modules/inventory";
+import { listProductStock } from "@/modules/inventory";
 import { requireSession } from "@/app/_auth/session";
 import {
   activeBadgeClass,
@@ -26,9 +26,13 @@ import { Pagination, shownRangeText } from "@/app/_components/pagination";
 import { formatMoney } from "@/shared/money";
 import { formatQuantity } from "@/shared/quantity";
 import {
+  DEFAULT_FILTERS,
   hasActiveFilters,
   parseProductFilters,
   productFiltersHref,
+  SORT_LABEL,
+  SORT_PARAM,
+  sortParam,
   STOCK_STATUS_LABEL,
   type SearchParams,
 } from "./filters";
@@ -156,6 +160,26 @@ export default async function ProductsPage({
             <option value="todos">Todos</option>
           </select>
         </div>
+        <div className="flex flex-col gap-1">
+          <label htmlFor="orden" className={labelClass}>
+            Ordenar por
+          </label>
+          <select
+            id="orden"
+            name="orden"
+            defaultValue={sortParam(filters.sort)}
+            className={selectClass}
+          >
+            {Object.entries(SORT_PARAM).map(([param, sort]) => (
+              <option key={param} value={param}>
+                {SORT_LABEL[sort]}
+              </option>
+            ))}
+          </select>
+        </div>
+        {filters.pageSize !== DEFAULT_FILTERS.pageSize ? (
+          <input type="hidden" name="filas" value={filters.pageSize} />
+        ) : null}
         <button type="submit" className={inlineButtonClass}>
           <Icon name="filter" className="size-4" />
           Aplicar filtros
@@ -331,13 +355,18 @@ export default async function ProductsPage({
           pageCount={result.pageCount}
           rangeText={shownRangeText({
             page: result.page,
-            pageSize: PRODUCTS_PAGE_SIZE,
+            pageSize: filters.pageSize,
             shown: result.products.length,
             total: result.total,
             singular: "producto",
             plural: "productos",
           })}
           hrefFor={(page) => productFiltersHref({ ...filters, page })}
+          pageSize={{
+            current: filters.pageSize,
+            hrefFor: (pageSize) =>
+              productFiltersHref({ ...filters, pageSize, page: 1 }),
+          }}
         />
       ) : null}
       <p className="sr-only">

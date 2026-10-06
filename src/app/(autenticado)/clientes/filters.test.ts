@@ -18,7 +18,13 @@ describe("parseClientFilters", () => {
         actividad: "todos",
         pagina: "3",
       }),
-    ).toEqual({ text: "+54 9 11 5555-1234", activity: "all", page: 3 });
+    ).toEqual({
+      text: "+54 9 11 5555-1234",
+      activity: "all",
+      page: 3,
+      sort: "last_interaction",
+      pageSize: 25,
+    });
     expect(parseClientFilters({ actividad: "inactivos" }).activity).toBe(
       "inactive",
     );
@@ -34,6 +40,21 @@ describe("parseClientFilters", () => {
     for (const pagina of ["-1", "1.5", "abc", "10000000"]) {
       expect(parseClientFilters({ pagina }).page).toBe(1);
     }
+  });
+
+  it("brief-15.2: lee el orden y las filas por página; uno desconocido vuelve al de defecto", () => {
+    expect(
+      parseClientFilters({ orden: "nombre-za", filas: "50" }),
+    ).toMatchObject({
+      sort: "name_desc",
+      pageSize: 50,
+    });
+    expect(parseClientFilters({ orden: "toString", filas: "0" })).toMatchObject(
+      {
+        sort: "last_interaction",
+        pageSize: 25,
+      },
+    );
   });
 
   it("toma el primer valor repetido y acota el texto", () => {
@@ -54,8 +75,17 @@ describe("clientFiltersHref", () => {
   });
 
   it("es la inversa de parseClientFilters", () => {
-    const filters = { text: "Ana Pérez", activity: "all", page: 4 } as const;
+    const filters = {
+      text: "Ana Pérez",
+      activity: "all",
+      page: 4,
+      sort: "name_asc",
+      pageSize: 10,
+    } as const;
     const href = clientFiltersHref(filters);
+    expect(href).toBe(
+      "/clientes?q=Ana+P%C3%A9rez&actividad=todos&orden=nombre&filas=10&pagina=4",
+    );
     const params = Object.fromEntries(new URL(href, "http://x").searchParams);
     expect(parseClientFilters(params)).toEqual(filters);
   });

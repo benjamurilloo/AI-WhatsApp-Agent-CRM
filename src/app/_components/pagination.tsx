@@ -50,8 +50,64 @@ export function shownRangeText({
   return `Mostrando ${first} a ${last} de ${total} ${total === 1 ? singular : plural}`;
 }
 
+// Filas por página de los listados (brief-15.2, D-2), en ?filas=. Sin el parámetro, o con un valor
+// que no está en la lista, el de siempre.
+export const PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
+export const DEFAULT_PAGE_SIZE = 25;
+
+export function parsePageSize(value: string | string[] | undefined): number {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const size = Number(raw);
+  return (PAGE_SIZE_OPTIONS as readonly number[]).includes(size)
+    ? size
+    : DEFAULT_PAGE_SIZE;
+}
+
 const pageLinkClass =
   "grid h-9 min-w-9 place-items-center rounded-lg px-2 text-sm font-semibold tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
+
+// «Filas por página: 10 · 25 · 50», como enlaces: funcionan sin JavaScript y sin enviar el
+// formulario de filtros. Cada enlace vuelve a la página 1 con los mismos filtros.
+function PageSizeLinks({
+  current,
+  hrefFor,
+}: {
+  current: number;
+  hrefFor: (size: number) => string;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Filas por página"
+      className="flex flex-wrap items-center gap-1.5 text-sm"
+    >
+      <span aria-hidden="true" className="mr-1 text-muted">
+        Filas por página
+      </span>
+      {PAGE_SIZE_OPTIONS.map((size) =>
+        size === current ? (
+          <span
+            key={size}
+            aria-current="true"
+            className={`${pageLinkClass} bg-action text-on-action`}
+          >
+            {size}
+            <span className="sr-only"> filas por página</span>
+          </span>
+        ) : (
+          <Link
+            key={size}
+            href={hrefFor(size)}
+            className={`${pageLinkClass} border border-border bg-surface text-foreground hover:bg-surface-muted`}
+          >
+            {size}
+            <span className="sr-only"> filas por página</span>
+          </Link>
+        ),
+      )}
+    </div>
+  );
+}
 
 export function Pagination({
   page,
@@ -60,6 +116,7 @@ export function Pagination({
   hrefFor,
   label = "Paginación",
   className = "mt-6",
+  pageSize,
 }: {
   page: number;
   pageCount: number;
@@ -68,7 +125,24 @@ export function Pagination({
   // Una pantalla con dos paginaciones les da nombres distintos (brief-15.4).
   label?: string;
   className?: string;
+  // Los enlaces de filas por página (brief-15.2, D-2), debajo de la paginación.
+  pageSize?: { current: number; hrefFor: (size: number) => string };
 }) {
+  if (pageSize) {
+    return (
+      <div className={`${className} flex flex-col gap-3`}>
+        <Pagination
+          page={page}
+          pageCount={pageCount}
+          rangeText={rangeText}
+          hrefFor={hrefFor}
+          label={label}
+          className=""
+        />
+        <PageSizeLinks current={pageSize.current} hrefFor={pageSize.hrefFor} />
+      </div>
+    );
+  }
   const arrow = (
     target: number,
     arrowLabel: string,

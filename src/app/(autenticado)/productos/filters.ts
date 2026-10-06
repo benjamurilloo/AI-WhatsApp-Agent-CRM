@@ -1,10 +1,13 @@
 import type { ProductActivityFilter, StockStatus } from "@/modules/catalog";
 import type {
   ProductListFilters,
+  ProductSort,
   StockStatusFilter,
 } from "@/modules/inventory";
+import { DEFAULT_PAGE_SIZE, parsePageSize } from "@/app/_components/pagination";
 
-// Filtros y página de la pantalla 3 en la URL (brief-4.4): ?q=&estado=&actividad=&pagina=.
+// Filtros y página de la pantalla 3 en la URL (brief-4.4): ?q=&estado=&actividad=&pagina=, más
+// el orden y las filas por página de la brief-15.2: ?orden=&filas=.
 // Un valor desconocido se reemplaza por el de defecto, nunca da error.
 
 export type SearchParams = Record<string, string | string[] | undefined>;
@@ -22,6 +25,27 @@ export const ACTIVITY_PARAM: Record<string, ProductActivityFilter> = {
   todos: "all",
 };
 
+// Órdenes en la URL y su nombre en el selector, en el orden en que se ofrecen (brief-15.2, D-1).
+export const SORT_PARAM: Record<string, ProductSort> = {
+  nombre: "name_asc",
+  "nombre-za": "name_desc",
+  sku: "sku_asc",
+  "stock-menor": "stock_asc",
+  "stock-mayor": "stock_desc",
+  "precio-menor": "price_asc",
+  "precio-mayor": "price_desc",
+};
+
+export const SORT_LABEL: Record<ProductSort, string> = {
+  name_asc: "Nombre (A–Z)",
+  name_desc: "Nombre (Z–A)",
+  sku_asc: "SKU",
+  stock_asc: "Menor stock",
+  stock_desc: "Mayor stock",
+  price_asc: "Menor precio",
+  price_desc: "Mayor precio",
+};
+
 export const STOCK_STATUS_LABEL: Record<StockStatus, string> = {
   disponible: "Disponible",
   bajo_stock: "Bajo stock",
@@ -32,22 +56,27 @@ export const STOCK_STATUS_LABEL: Record<StockStatus, string> = {
 // marca y categoría, o por SKU exacto (brief-11.1, D-4).
 const MAX_TEXT_LENGTH = 100;
 
-export const DEFAULT_FILTERS: ProductListFilters = {
+export const DEFAULT_FILTERS: Required<ProductListFilters> = {
   text: "",
   stockStatus: "all",
   activity: "active",
   page: 1,
+  sort: "name_asc",
+  pageSize: DEFAULT_PAGE_SIZE,
 };
 
 function single(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
-export function parseProductFilters(params: SearchParams): ProductListFilters {
+export function parseProductFilters(
+  params: SearchParams,
+): Required<ProductListFilters> {
   const text = single(params.q)?.trim().slice(0, MAX_TEXT_LENGTH) ?? "";
   const status = single(params.estado);
   const activity = single(params.actividad);
   const page = single(params.pagina);
+  const sort = single(params.orden);
   return {
     text,
     stockStatus:
@@ -61,11 +90,17 @@ export function parseProductFilters(params: SearchParams): ProductListFilters {
         ACTIVITY_PARAM[activity]) ||
       DEFAULT_FILTERS.activity,
     page: page && /^[1-9][0-9]{0,5}$/.test(page) ? Number(page) : 1,
+    sort:
+      (sort && Object.hasOwn(SORT_PARAM, sort) && SORT_PARAM[sort]) ||
+      DEFAULT_FILTERS.sort,
+    pageSize: parsePageSize(params.filas),
   };
 }
 
 const paramOf = <T extends string>(map: Record<string, T>, value: T) =>
   Object.keys(map).find((key) => map[key] === value)!;
+
+export const sortParam = (sort: ProductSort) => paramOf(SORT_PARAM, sort);
 
 // Query string sin los valores por defecto: "/productos" limpio equivale a los filtros iniciales.
 export function productFiltersHref(filters: ProductListFilters): string {
@@ -76,6 +111,12 @@ export function productFiltersHref(filters: ProductListFilters): string {
   }
   if (filters.activity !== DEFAULT_FILTERS.activity) {
     query.set("actividad", paramOf(ACTIVITY_PARAM, filters.activity));
+  }
+  if (filters.sort && filters.sort !== DEFAULT_FILTERS.sort) {
+    query.set("orden", paramOf(SORT_PARAM, filters.sort));
+  }
+  if (filters.pageSize && filters.pageSize !== DEFAULT_FILTERS.pageSize) {
+    query.set("filas", String(filters.pageSize));
   }
   if (filters.page > 1) query.set("pagina", String(filters.page));
   const text = query.toString();

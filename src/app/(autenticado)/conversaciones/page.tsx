@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
-  CONVERSATIONS_PAGE_SIZE,
   listConversations,
   type ConversationListField,
 } from "@/modules/conversations";
@@ -24,12 +23,15 @@ import { Pagination, shownRangeText } from "@/app/_components/pagination";
 import { ConversationTable } from "./conversation-table";
 import {
   conversationFiltersHref,
+  DEFAULT_VIEW,
   hasActiveConversationFilters,
   parseConversationView,
   PERIOD_KEYS,
   PERIOD_LABEL,
+  SORT_LABEL,
   toListFilters,
   type ConversationView,
+  type SortKey,
   type SearchParams,
 } from "./filters";
 import {
@@ -237,6 +239,26 @@ export default async function ConversationsPage({
             </div>
           </div>
         )}
+        <div className="flex flex-col gap-1">
+          <label htmlFor="orden" className={labelClass}>
+            Ordenar por
+          </label>
+          <select
+            id="orden"
+            name="orden"
+            defaultValue={view.sort}
+            className={selectClass}
+          >
+            {(Object.keys(SORT_LABEL) as SortKey[]).map((key) => (
+              <option key={key} value={key}>
+                {SORT_LABEL[key]}
+              </option>
+            ))}
+          </select>
+        </div>
+        {view.pageSize !== DEFAULT_VIEW.pageSize ? (
+          <input type="hidden" name="filas" value={view.pageSize} />
+        ) : null}
         <button type="submit" className={inlineButtonClass}>
           <Icon name="filter" className="size-4" />
           Aplicar filtros
@@ -358,13 +380,18 @@ export default async function ConversationsPage({
             pageCount={result.pageCount}
             rangeText={shownRangeText({
               page: result.page,
-              pageSize: CONVERSATIONS_PAGE_SIZE,
+              pageSize: view.pageSize,
               shown: result.conversations.length,
               total: result.total,
               singular: "conversación",
               plural: "conversaciones",
             })}
             hrefFor={(page) => conversationFiltersHref({ ...view, page })}
+            pageSize={{
+              current: view.pageSize,
+              hrefFor: (pageSize) =>
+                conversationFiltersHref({ ...view, pageSize, page: 1 }),
+            }}
           />
         </>
       )}

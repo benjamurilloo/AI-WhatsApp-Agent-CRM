@@ -6,6 +6,7 @@ import {
   createProduct,
   deactivateProduct,
   reactivateProduct,
+  setProductPrice,
   updateProduct,
   type ProductInput,
 } from "@/modules/catalog";
@@ -733,6 +734,40 @@ describe("listProductStock", () => {
     expect(
       await names(s.adminA, { activity: "all", stockStatus: "bajo_stock" }),
     ).toEqual(["Cacao 100% puro", "Café molido 250 g"]);
+  });
+
+  it("brief-15.2 D-1: ordena por precio vigente con los precios de la base; sin precio, al final", async () => {
+    const s = await seed();
+    const price = async (productId: string, amount: string) => {
+      const result = await setProductPrice(s.adminA, productId, {
+        amount,
+        currency: "CLP",
+        expectedPriceId: "",
+      });
+      if (!result.ok) throw new Error(result.code);
+    };
+    const yerba = await insertProduct(s.orgA, { sku: "Y", name: "Yerba" });
+    const cafe = await insertProduct(s.orgA, { sku: "C", name: "Café" });
+    await insertProduct(s.orgA, { sku: "A", name: "Azúcar" });
+    const te = await insertProduct(s.orgA, { sku: "T", name: "Té" });
+    await price(yerba, "20000");
+    await price(cafe, "990");
+    await price(te, "1500");
+
+    expect(await names(s.viewerA, { sort: "price_asc" })).toEqual([
+      "Café",
+      "Té",
+      "Yerba",
+      "Azúcar",
+    ]);
+    expect(await names(s.viewerA, { sort: "price_desc" })).toEqual([
+      "Yerba",
+      "Té",
+      "Café",
+      "Azúcar",
+    ]);
+    // Sin orden, por nombre, como antes.
+    expect(await names(s.viewerA)).toEqual(["Azúcar", "Café", "Té", "Yerba"]);
   });
 
   it("pagina de a 25 contra la base y lleva una página fuera de rango a la última", async () => {

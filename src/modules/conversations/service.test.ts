@@ -4,6 +4,7 @@ import {
   conversationPageBounds,
   decodeMessageCursor,
   encodeMessageCursor,
+  orderClientIds,
   validateConversationListFilters,
 } from "./service";
 
@@ -98,6 +99,55 @@ describe("conversationPageBounds", () => {
       pageCount: 1,
       offset: 0,
     });
+  });
+
+  it("brief-15.2 D-2: pagina con el tamaño pedido", () => {
+    expect(conversationPageBounds(60, 2, 10)).toEqual({
+      page: 2,
+      pageCount: 6,
+      offset: 10,
+    });
+    expect(conversationPageBounds(60, 9, 50)).toEqual({
+      page: 2,
+      pageCount: 2,
+      offset: 50,
+    });
+  });
+});
+
+describe("orderClientIds (brief-15.2, D-1)", () => {
+  // crm entrega los ids en orden de nombre.
+  const byName = ["ana", "beto", "carla", "dario"];
+  const last = new Map([
+    ["beto", new Date("2026-10-01T10:00:00Z")],
+    ["dario", new Date("2026-10-03T10:00:00Z")],
+    ["carla", new Date("2026-10-01T10:00:00Z")],
+  ]);
+
+  it("por última interacción: la más reciente primero, empates y sin fecha en orden de nombre", () => {
+    expect(orderClientIds(byName, last, "last_interaction")).toEqual([
+      "dario",
+      "beto",
+      "carla",
+      "ana",
+    ]);
+  });
+
+  it("por nombre, el orden de crm; por nombre inverso, al revés", () => {
+    expect(orderClientIds(byName, last, "name_asc")).toEqual(byName);
+    expect(orderClientIds(byName, last, "name_desc")).toEqual([
+      "dario",
+      "carla",
+      "beto",
+      "ana",
+    ]);
+  });
+
+  it("no modifica la lista que recibe", () => {
+    const ids = [...byName];
+    orderClientIds(ids, last, "name_desc");
+    orderClientIds(ids, last, "last_interaction");
+    expect(ids).toEqual(byName);
   });
 });
 

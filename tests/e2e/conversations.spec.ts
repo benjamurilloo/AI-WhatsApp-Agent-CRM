@@ -351,7 +351,7 @@ test("caso 4: el filtro de cliente busca con crm, aplica uno y ofrece elegir ent
   await expect(page).toHaveURL("/conversaciones");
   await page.getByLabel("Cliente").fill("Ana");
   await page.getByRole("button", { name: "Aplicar filtros" }).click();
-  await expect(page).toHaveURL(/[?&]buscar_cliente=Ana$/);
+  await expect(page).toHaveURL(/[?&]buscar_cliente=Ana&orden=reciente$/);
   const choices = page.getByRole("list", {
     name: "Varios clientes coinciden. Elegí uno para filtrar:",
   });
@@ -664,4 +664,56 @@ test("caso 11: FR-API-07: el timeline rotula el tipo original y quién respondi�
   // Sin dato (un mensaje de v1 o de los seeds): sin rótulo.
   await expect(items.nth(3)).toHaveText(/^Cliente · 09:06s*Gracias$/);
   await expectAccessible(page, "timeline con tipo y autor");
+});
+
+test("caso 12: brief-15.2 ordena por último mensaje en los dos sentidos y por inicio, con filas por página", async ({
+  page,
+}) => {
+  const ana = await insertClient("Ana Pérez");
+  const bruno = await insertClient("Bruno Díaz");
+  const carla = await insertClient("Carla Gómez");
+  const message = (sentAt: Date) => ({
+    direction: "inbound" as const,
+    sentAt,
+    body: "hola",
+  });
+  // Ana empezó primero y escribió último; Bruno empezó último; Carla está en el medio.
+  await insertConversation({
+    clientId: ana,
+    messages: [message(ago(9)), message(ago(1))],
+  });
+  await insertConversation({ clientId: bruno, messages: [message(ago(3))] });
+  await insertConversation({
+    clientId: carla,
+    messages: [message(ago(6)), message(ago(5))],
+  });
+  await login(page, ADMIN);
+
+  const rows = conversationsTable(page).getByRole("row");
+  const firstClient = () => rows.nth(1).getByRole("cell").first();
+  await page.goto("/conversaciones");
+  await expect(firstClient()).toContainText("Ana Pérez");
+
+  await page.getByLabel("Ordenar por").selectOption("antigua");
+  await page.getByRole("button", { name: "Aplicar filtros" }).click();
+  await expect(page).toHaveURL(/[?&]orden=antigua$/);
+  await expect(firstClient()).toContainText("Carla Gómez");
+  await expect(rows.last().getByRole("cell").first()).toContainText(
+    "Ana Pérez",
+  );
+
+  await page.goto("/conversaciones?orden=inicio");
+  await expect(firstClient()).toContainText("Bruno Díaz");
+  await expect(rows.last().getByRole("cell").first()).toContainText(
+    "Ana Pérez",
+  );
+
+  const sizes = page.getByRole("group", { name: "Filas por página" });
+  await sizes.getByRole("link", { name: "50 filas por página" }).click();
+  await expect(page).toHaveURL("/conversaciones?orden=inicio&filas=50");
+  await expect(
+    sizes.getByText("50 filas por página", { exact: false }),
+  ).toBeVisible();
+  await expect(rows).toHaveCount(1 + 3);
+  await expectAccessible(page, "lista por inicio, 50 filas");
 });

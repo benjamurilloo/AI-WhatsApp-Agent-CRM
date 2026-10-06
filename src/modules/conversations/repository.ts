@@ -101,21 +101,40 @@ export async function countConversations(
   return rows[0]!.total;
 }
 
-// Último mensaje más reciente primero, con el mismo NULLS LAST que los índices (brief-6.1), y
-// desempate estable por id. Nunca trae el cuerpo de un mensaje (FR-CONV-01).
+// Órdenes del listado (brief-15.2, D-1).
+export const CONVERSATION_SORTS = ["recent", "oldest", "started"] as const;
+export type ConversationSort = (typeof CONVERSATION_SORTS)[number];
+
+// Cada orden con desempate estable por id. «recent» es el de siempre: último mensaje más reciente
+// primero, con el mismo NULLS LAST que el índice (brief-6.1). «oldest» deja también al final las
+// conversaciones sin mensajes. «started» usa el índice de inicio.
+const ORDER: Record<ConversationSort, SQL[]> = {
+  recent: [
+    sql`${conversations.lastMessageAt} desc nulls last`,
+    sql`${conversations.id} desc`,
+  ],
+  oldest: [
+    sql`${conversations.lastMessageAt} asc nulls last`,
+    sql`${conversations.id} asc`,
+  ],
+  started: [
+    sql`${conversations.startedAt} desc`,
+    sql`${conversations.id} desc`,
+  ],
+};
+
+// Nunca trae el cuerpo de un mensaje (FR-CONV-01).
 export function findConversations(
   query: ConversationQuery,
   limit: number,
   offset: number,
+  sort: ConversationSort = "recent",
 ): Promise<ConversationRow[]> {
   return getDb()
     .select(conversationColumns)
     .from(conversations)
     .where(conversationConditions(query))
-    .orderBy(
-      sql`${conversations.lastMessageAt} desc nulls last`,
-      sql`${conversations.id} desc`,
-    )
+    .orderBy(...ORDER[sort])
     .limit(limit)
     .offset(offset);
 }

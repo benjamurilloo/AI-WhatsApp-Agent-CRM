@@ -410,7 +410,7 @@ test("caso 8: filtros y página de la lista viven en la URL", async ({
   await page.getByRole("button", { name: "Aplicar filtros" }).click();
   // Un formulario GET envía todos sus campos, también los que están en su valor por defecto.
   await expect(page).toHaveURL(
-    "/productos?q=Producto+001&estado=todos&actividad=activos",
+    "/productos?q=Producto+001&estado=todos&actividad=activos&orden=nombre",
   );
   await expect(productsTable(page).getByRole("row")).toHaveCount(1 + 1);
 
@@ -860,4 +860,64 @@ test("caso 17: FR-PROD-13 un viewer ve precios e historial sin formulario", asyn
     page.getByRole("button", { name: /Editar|Borrar|Eliminar/ }),
   ).toHaveCount(0);
   await expectAccessible(page, "precios para viewer");
+});
+
+test("caso 18: brief-15.2 ordena, elige las filas por página y los conserva al paginar", async ({
+  page,
+}) => {
+  // P01 a P12: el stock crece con el número y el precio también; «Sin precio» no tiene.
+  for (let i = 1; i <= 12; i++) {
+    const n = String(i).padStart(2, "0");
+    const productId = await insertProduct(`SKU-${n}`, `P${n}`, {
+      balance: String(i),
+    });
+    await db.execute(
+      sql`insert into product_prices (organization_id, product_id, amount, currency, created_by)
+          values (${SEED_ORGANIZATION_ID}, ${productId}, ${i * 100}, 'ARS', ${ADMIN_SEED.id})`,
+    );
+  }
+  await insertProduct("SKU-00", "Sin precio", { balance: "50" });
+  await login(page, ADMIN);
+  await page.goto("/productos");
+
+  const rows = productsTable(page).getByRole("row");
+  const firstName = () => rows.nth(1).getByRole("cell").nth(1);
+  await expect(firstName()).toHaveText("P01");
+
+  await page.getByLabel("Ordenar por").selectOption("precio-mayor");
+  await page.getByRole("button", { name: "Aplicar filtros" }).click();
+  await expect(page).toHaveURL(/[?&]orden=precio-mayor$/);
+  await expect(page.getByLabel("Ordenar por")).toHaveValue("precio-mayor");
+  await expect(firstName()).toHaveText("P12");
+  // Sin precio, al final también en este sentido.
+  await expect(rows.last().getByRole("cell").nth(1)).toHaveText("Sin precio");
+
+  const sizes = page.getByRole("group", { name: "Filas por página" });
+  await expect(
+    sizes.getByText("25 filas por página", { exact: false }),
+  ).toBeVisible();
+  await sizes.getByRole("link", { name: "10 filas por página" }).click();
+  await expect(page).toHaveURL("/productos?orden=precio-mayor&filas=10");
+  await expect(rows).toHaveCount(1 + 10);
+  const pagination = page.getByRole("navigation", { name: "Paginación" });
+  await expect(
+    pagination.getByText("Mostrando 1 a 10 de 13 productos"),
+  ).toBeVisible();
+  await pagination.getByRole("link", { name: "Página siguiente" }).click();
+  await expect(page).toHaveURL(/[?&]orden=precio-mayor&filas=10&pagina=2$/);
+  await expect(rows).toHaveCount(1 + 3);
+  await expect(firstName()).toHaveText("P02");
+  await expectAccessible(page, "lista ordenada por precio, 10 filas");
+
+  // Filtrar conserva las filas por página y vuelve a la página 1.
+  await page.getByRole("button", { name: "Aplicar filtros" }).click();
+  await expect(page).toHaveURL(/[?&]filas=10$/);
+  await expect(rows).toHaveCount(1 + 10);
+
+  await page.goto("/productos?orden=stock-mayor&filas=50");
+  await expect(firstName()).toHaveText("Sin precio");
+  await expect(rows).toHaveCount(1 + 13);
+  await page.goto("/productos?orden=inventado&filas=7");
+  await expect(firstName()).toHaveText("P01");
+  await expect(page.getByLabel("Ordenar por")).toHaveValue("nombre");
 });

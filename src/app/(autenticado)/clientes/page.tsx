@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { searchClientsByLastInteraction } from "@/modules/conversations";
-import { CLIENTS_PAGE_SIZE } from "@/modules/crm";
 import { requireSession } from "@/app/_auth/session";
 import {
   activeBadgeClass,
@@ -29,8 +28,13 @@ import { NO_INTERACTIONS_TEXT } from "@/app/(autenticado)/conversaciones/message
 import {
   activityParam,
   clientFiltersHref,
+  DEFAULT_FILTERS,
   hasActiveFilters,
   parseClientFilters,
+  SORT_CAPTION,
+  SORT_LABEL,
+  SORT_PARAM,
+  sortParam,
   type SearchParams,
 } from "./filters";
 import {
@@ -113,6 +117,26 @@ export default async function ClientsPage({
             <option value="todos">Todos</option>
           </select>
         </div>
+        <div className="flex flex-col gap-1">
+          <label htmlFor="orden" className={labelClass}>
+            Ordenar por
+          </label>
+          <select
+            id="orden"
+            name="orden"
+            defaultValue={sortParam(filters.sort)}
+            className={selectClass}
+          >
+            {Object.entries(SORT_PARAM).map(([param, sort]) => (
+              <option key={param} value={param}>
+                {SORT_LABEL[sort]}
+              </option>
+            ))}
+          </select>
+        </div>
+        {filters.pageSize !== DEFAULT_FILTERS.pageSize ? (
+          <input type="hidden" name="filas" value={filters.pageSize} />
+        ) : null}
         <button type="submit" className={inlineButtonClass}>
           <Icon name="filter" className="size-4" />
           Buscar
@@ -258,19 +282,25 @@ export default async function ClientsPage({
           pageCount={result.pageCount}
           rangeText={shownRangeText({
             page: result.page,
-            pageSize: CLIENTS_PAGE_SIZE,
+            pageSize: filters.pageSize,
             shown: result.clients.length,
             total: result.total,
             singular: "cliente",
             plural: "clientes",
           })}
           hrefFor={(page) => clientFiltersHref({ ...filters, page })}
+          pageSize={{
+            current: filters.pageSize,
+            hrefFor: (pageSize) =>
+              clientFiltersHref({ ...filters, pageSize, page: 1 }),
+          }}
         />
       ) : null}
 
       {result.total > 0 ? (
         <p className="mt-6 text-sm text-muted">
-          Ordenados por última interacción · Fechas en {result.timezone}.
+          Ordenados por {SORT_CAPTION[filters.sort]} · Fechas en{" "}
+          {result.timezone}.
         </p>
       ) : null}
     </main>

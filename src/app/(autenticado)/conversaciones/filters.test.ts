@@ -24,6 +24,8 @@ describe("filtros de la pantalla 8 (brief-6.4)", () => {
       channel: "all",
       clientId: "",
       page: 1,
+      sort: "recent",
+      pageSize: 25,
     });
   });
 
@@ -34,6 +36,8 @@ describe("filtros de la pantalla 8 (brief-6.4)", () => {
         estado: "archivada",
         canal: "telegram",
         pagina: "0",
+        orden: "cualquiera",
+        filas: "100",
       }),
     ).toEqual(DEFAULT_VIEW);
     expect(parseConversationView({ pagina: ["3", "4"] }).page).toBe(3);
@@ -47,11 +51,13 @@ describe("filtros de la pantalla 8 (brief-6.4)", () => {
       estado: "pendiente",
       canal: "whatsapp",
       cliente: CLIENT_ID,
+      orden: "antigua",
+      filas: "50",
       pagina: "2",
     });
     const href = conversationFiltersHref(view);
     expect(href).toBe(
-      `/conversaciones?periodo=personalizado&desde=2026-09-01&hasta=2026-09-16&estado=pendiente&canal=whatsapp&cliente=${CLIENT_ID}&pagina=2`,
+      `/conversaciones?periodo=personalizado&desde=2026-09-01&hasta=2026-09-16&estado=pendiente&canal=whatsapp&cliente=${CLIENT_ID}&orden=antigua&filas=50&pagina=2`,
     );
     const again = parseConversationView(
       Object.fromEntries(new URL(href, "http://x").searchParams),
@@ -64,6 +70,8 @@ describe("filtros de la pantalla 8 (brief-6.4)", () => {
       channel: "whatsapp",
       clientId: CLIENT_ID,
       page: 2,
+      sort: "oldest",
+      pageSize: 50,
     });
   });
 

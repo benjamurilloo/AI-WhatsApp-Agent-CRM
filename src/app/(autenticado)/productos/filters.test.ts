@@ -24,7 +24,25 @@ describe("parseProductFilters", () => {
       stockStatus: "bajo_stock",
       activity: "all",
       page: 3,
+      sort: "name_asc",
+      pageSize: 25,
     });
+  });
+
+  it("brief-15.2: lee el orden y las filas por página; uno desconocido vuelve al de defecto", () => {
+    expect(
+      parseProductFilters({ orden: "precio-mayor", filas: "10" }),
+    ).toMatchObject({
+      sort: "price_desc",
+      pageSize: 10,
+    });
+    expect(
+      parseProductFilters({ orden: "inventado", filas: "30" }),
+    ).toMatchObject({
+      sort: "name_asc",
+      pageSize: 25,
+    });
+    expect(parseProductFilters({ filas: ["50", "10"] }).pageSize).toBe(50);
   });
 
   it("un valor desconocido vuelve al de defecto, sin fallar", () => {
@@ -62,10 +80,12 @@ describe("productFiltersHref", () => {
       stockStatus: "disponible" as const,
       activity: "inactive" as const,
       page: 4,
+      sort: "stock_asc" as const,
+      pageSize: 50,
     };
     const href = productFiltersHref(filters);
     expect(href).toBe(
-      "/productos?q=caf%C3%A9+molido&estado=disponible&actividad=inactivos&pagina=4",
+      "/productos?q=caf%C3%A9+molido&estado=disponible&actividad=inactivos&orden=stock-menor&filas=50&pagina=4",
     );
     const query = Object.fromEntries(
       new URL(href, "http://localhost").searchParams,
@@ -75,6 +95,12 @@ describe("productFiltersHref", () => {
 });
 
 describe("hasActiveFilters", () => {
+  it("brief-15.2: el orden y las filas no cuentan como filtro", () => {
+    expect(
+      hasActiveFilters({ ...DEFAULT_FILTERS, sort: "price_asc", pageSize: 10 }),
+    ).toBe(false);
+  });
+
   it("la página no cuenta como filtro", () => {
     expect(hasActiveFilters(DEFAULT_FILTERS)).toBe(false);
     expect(hasActiveFilters({ ...DEFAULT_FILTERS, page: 5 })).toBe(false);

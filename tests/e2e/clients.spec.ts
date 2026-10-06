@@ -235,7 +235,7 @@ test("caso 3: el teléfono de un cliente desactivado da el aviso en el campo y s
   await page.getByLabel("Actividad").selectOption("todos");
   await page.getByRole("button", { name: "Buscar" }).click();
   await expect(page).toHaveURL(
-    "/clientes?q=%2B54+9+11+6666-7788&actividad=todos",
+    "/clientes?q=%2B54+9+11+6666-7788&actividad=todos&orden=interaccion",
   );
   await expect(clientsTable(page)).toContainText("Ana Pérez");
   await expect(clientsTable(page)).toContainText("No");
@@ -255,7 +255,9 @@ test("caso 4: busca por nombre y por teléfono, filtra y pagina desde la URL", a
 
   await page.getByLabel("Buscar").fill("ana");
   await page.getByRole("button", { name: "Buscar" }).click();
-  await expect(page).toHaveURL("/clientes?q=ana&actividad=activos");
+  await expect(page).toHaveURL(
+    "/clientes?q=ana&actividad=activos&orden=interaccion",
+  );
   await expect(clientsTable(page).getByRole("row")).toHaveCount(2);
   await expect(clientsTable(page)).toContainText("Ana Pérez");
 
@@ -710,4 +712,47 @@ test("caso 16 (FR-AUD-03): la auditoría muestra al servicio como autor, solo pa
   await page.goto(`/clientes/${clientId}`);
   await expect(page.getByRole("heading", { name: "Carla Ruiz" })).toBeVisible();
   expect(await page.content()).not.toContain(SERVICE_SOURCE);
+});
+
+test("caso 17: brief-15.2 ordena por nombre en los dos sentidos y elige las filas por página", async ({
+  page,
+}) => {
+  for (let i = 1; i <= 11; i++) {
+    await insertClient(`Cliente ${String(i).padStart(2, "0")}`);
+  }
+  const zoe = await insertClient("Zoe Luna");
+  await insertConversation(zoe, "open", new Date("2026-09-10T12:00:00Z"));
+  await login(page, ADMIN);
+  await page.goto("/clientes");
+
+  const rows = clientsTable(page).getByRole("row");
+  const firstName = () => rows.nth(1).getByRole("cell").first();
+  // Por defecto, por última interacción: Zoe es la única con una.
+  await expect(firstName()).toContainText("Zoe Luna");
+
+  await page.getByLabel("Ordenar por").selectOption("nombre");
+  await page.getByRole("button", { name: "Buscar" }).click();
+  await expect(page).toHaveURL(/[?&]orden=nombre$/);
+  await expect(firstName()).toContainText("Cliente 01");
+  await expect(
+    page.getByText(/^Ordenados por nombre \(A–Z\) · Fechas en/),
+  ).toBeVisible();
+
+  await page.goto("/clientes?orden=nombre-za");
+  await expect(firstName()).toContainText("Zoe Luna");
+  await expect(page.getByLabel("Ordenar por")).toHaveValue("nombre-za");
+
+  const sizes = page.getByRole("group", { name: "Filas por página" });
+  await sizes.getByRole("link", { name: "10 filas por página" }).click();
+  await expect(page).toHaveURL("/clientes?orden=nombre-za&filas=10");
+  await expect(rows).toHaveCount(1 + 10);
+  const pagination = page.getByRole("navigation", { name: "Paginación" });
+  await expect(
+    pagination.getByText("Mostrando 1 a 10 de 12 clientes"),
+  ).toBeVisible();
+  await pagination.getByRole("link", { name: "Página siguiente" }).click();
+  await expect(page).toHaveURL("/clientes?orden=nombre-za&filas=10&pagina=2");
+  await expect(rows).toHaveCount(1 + 2);
+  await expect(firstName()).toContainText("Cliente 02");
+  await expectAccessible(page, "lista por nombre inverso, 10 filas");
 });

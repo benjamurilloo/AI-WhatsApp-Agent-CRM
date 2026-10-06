@@ -9,7 +9,9 @@ import {
   listConversationMessages,
   listConversations,
   searchClientsByLastInteraction,
+  type ClientSort,
   type ConversationListFilters,
+  type ConversationSort,
 } from "@/modules/conversations";
 import { getClientsByIds, listClientOrderKeys } from "@/modules/crm";
 import { getAuthContext, type AuthContext } from "@/modules/organizations";
@@ -317,6 +319,58 @@ describe("listConversations", () => {
     expect(last).toMatchObject({ total: 27, page: 2, pageCount: 2 });
     expect(last.conversations).toHaveLength(2);
     expect((await list(s.adminA, { page: 1 })).conversations).toHaveLength(25);
+  });
+
+  it("brief-15.2 D-1: ordena por último mensaje en los dos sentidos y por inicio; sin mensajes, al final", async () => {
+    const s = await seed();
+    const long = await insertConversation(s.orgA, {
+      messages: [
+        { at: "2026-09-01T12:00:00Z" },
+        { at: "2026-09-20T12:00:00Z" },
+      ],
+    });
+    const short = await insertConversation(s.orgA, {
+      messages: [
+        { at: "2026-09-10T12:00:00Z" },
+        { at: "2026-09-11T12:00:00Z" },
+      ],
+    });
+    // Sin mensajes: empieza el 2026-09-01 00:00 y no tiene último mensaje.
+    const empty = await insertConversation(s.orgA, { messages: [] });
+    await insertConversation(s.orgB, {
+      messages: [{ at: "2026-09-15T12:00:00Z" }],
+    });
+
+    const ids = async (sort?: ConversationSort) =>
+      (await list(s.adminA, { sort })).conversations.map((row) => row.id);
+    expect(await ids()).toEqual([long, short, empty]);
+    expect(await ids("recent")).toEqual([long, short, empty]);
+    expect(await ids("oldest")).toEqual([short, long, empty]);
+    expect(await ids("started")).toEqual([short, long, empty]);
+    // Un orden desconocido es el de siempre.
+    expect(await ids("cualquiera" as ConversationSort)).toEqual([
+      long,
+      short,
+      empty,
+    ]);
+  });
+
+  it("brief-15.2 D-2: pagina con el tamaño pedido; uno fuera de 1 a 50 vuelve a 25", async () => {
+    const s = await seed();
+    for (let i = 0; i < 27; i++) {
+      await insertConversation(s.orgA, {
+        messages: [{ at: new Date(Date.UTC(2026, 8, 1, 0, i)).toISOString() }],
+      });
+    }
+    const ten = await list(s.adminA, { page: 3, pageSize: 10 });
+    expect(ten).toMatchObject({ total: 27, page: 3, pageCount: 3 });
+    expect(ten.conversations).toHaveLength(7);
+    expect((await list(s.adminA, { pageSize: 50 })).conversations).toHaveLength(
+      27,
+    );
+    expect((await list(s.adminA, { pageSize: 51 })).conversations).toHaveLength(
+      25,
+    );
   });
 
   it("distingue una organización sin conversaciones", async () => {
@@ -798,6 +852,32 @@ describe("searchClientsByLastInteraction (D-1)", () => {
       pageCount: 1,
       timezone: TZ,
     });
+  });
+
+  it("brief-15.2: ordena por nombre en los dos sentidos y pagina con el tamaño pedido", async () => {
+    const s = await seed();
+    const zoe = await insertClient(s.orgA, "Zoe");
+    const ana = await insertClient(s.orgA, "ana");
+    const bruno = await insertClient(s.orgA, "Bruno");
+    await insertConversation(s.orgA, {
+      clientId: zoe,
+      messages: [{ at: "2026-09-10T12:00:00Z" }],
+    });
+
+    const ids = async (sort: ClientSort, pageSize?: number, page = 1) => {
+      const result = await searchClientsByLastInteraction(s.adminA, {
+        ...filters,
+        sort,
+        pageSize,
+        page,
+      });
+      if (!result.ok) throw new Error("rechazado");
+      return result.clients.map((client) => client.id);
+    };
+    expect(await ids("name_asc")).toEqual([ana, bruno, zoe]);
+    expect(await ids("name_desc")).toEqual([zoe, bruno, ana]);
+    expect(await ids("last_interaction")).toEqual([zoe, ana, bruno]);
+    expect(await ids("name_asc", 2, 2)).toEqual([zoe]);
   });
 
   it("busca por nombre y por teléfono completo, filtra por actividad y pagina", async () => {
