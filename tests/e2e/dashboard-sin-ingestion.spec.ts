@@ -114,4 +114,6 @@ test("caso 2: con eventos registrados muestra el valor, aunque la ingestión est
   await expect(
     ingestion.getByText("No disponible", { exact: true }),
   ).toHaveCount(0);
+  // La variación nombra el estado real del anterior, no «sin datos» (revisión de la 15.3).
+  await expect(ingestion).toContainText("Período anterior no disponible");
 });

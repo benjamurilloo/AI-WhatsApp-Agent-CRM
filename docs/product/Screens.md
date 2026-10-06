@@ -40,7 +40,7 @@
 
 - **Objetivo**: ver las métricas de WhatsApp de [analytics/MetricsCatalog.md](../analytics/MetricsCatalog.md).
 - **Usuario autorizado**: `admin` y `viewer`.
-- **Información mostrada**: tarjetas de las métricas 1 a 9, 11 y 12, gráfico diario (métrica 10), zona horaria y período activo. Cada tarjeta trae la definición de su métrica en un desplegable, con el texto en la pantalla: el catálogo no se sirve desde la aplicación ([brief-7.4](../decisions/brief-7.4-dashboard.md), D-3). La pantalla es la portada de la sesión, en `/`, y el marco común la enlaza como "Dashboard" (D-1).
+- **Información mostrada**: tarjetas de las métricas 1 a 9, 11 y 12, gráfico diario (métrica 10), la dona de tipos de mensaje (13) y el histograma de primera respuesta (14; desde la 15.3), zona horaria y período activo. Cada tarjeta trae la definición de su métrica en un desplegable, con el texto en la pantalla: el catálogo no se sirve desde la aplicación ([brief-7.4](../decisions/brief-7.4-dashboard.md), D-3). La pantalla es la portada de la sesión, en `/`, y el marco común la enlaza como "Dashboard" (D-1).
 - **Acciones**: cambiar el período.
 - **Filtros**: período, por defecto los últimos 30 días completos. Atajos de 7, 30 y 90 días más un rango personalizado, en la URL; no existe "todas las fechas", porque en métricas un período vacío es el de defecto y el máximo es de 366 días ([brief-7.4](../decisions/brief-7.4-dashboard.md), D-5).
 - **Paginación**: no aplica.

@@ -6,9 +6,17 @@ import { CHART_READOUT_HINT } from "./messages";
 // esos contenedores y escribe la línea.
 //
 // Los SVG en sí los dibujan los componentes de chart-svgs.tsx, desde datos: ahí está por qué ningún
-// <svg> del dashboard se arma con elementos del servidor (la CSP y el streaming, 15.3.3).
+// gráfico se arma con elementos del servidor dentro del <svg> (la CSP y el streaming, 15.3.3).
 
 export const readoutId = (frameId: string) => `${frameId}-lectura`;
+
+// Clave del bloque de un gráfico: cambia con el período y la serie. ChartInteractions escribe la
+// línea y las clases de atenuado fuera de React; si al navegar React reusara esos nodos, quedarían
+// la lectura y el atenuado de antes. Con otra clave, el bloque se monta de nuevo, limpio.
+export const chartKey = (
+  input: { from: string; to: string },
+  ...parts: string[]
+) => [input.from, input.to, ...parts].join(":");
 
 // Atributos del contenedor enfocable que va alrededor del SVG.
 export function chartFrameProps(id: string, label: string) {

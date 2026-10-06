@@ -13,7 +13,7 @@ import { CHART_HEIGHT, chartGeometry, type ChartBar } from "./chart-geometry";
 import { METRIC_INFO } from "./definitions";
 import { formatCount } from "./format";
 import { CHART_SERIES_LABEL, DAILY_NOT_ADDITIVE_NOTE } from "./messages";
-import { chartFrameProps, ReadoutLine } from "./chart-frame";
+import { chartFrameProps, chartKey, ReadoutLine } from "./chart-frame";
 import { BarChartSvg } from "./chart-svgs";
 import { dailyReadout } from "./readouts";
 import { MetricError } from "./metric-card";
@@ -105,10 +105,10 @@ export async function DailyActivitySection({
         </nav>
       </div>
 
-      {/* El dato exacto está en la tabla de abajo, que no se oculta. Desde la brief-15.3 (D-6), pasar
+      {/* El dato exacto está en la tabla de datos de abajo. Desde la brief-15.3 (D-6), pasar
           el mouse por una barra, o recorrerlas con las flechas, muestra el día en la línea de
           lectura; enfocado, el gráfico se sigue desplazando en pantallas chicas. */}
-      <div className="mt-4">
+      <div className="mt-4" key={chartKey(cards.input, series)}>
         <ReadoutLine frameId="grafico-diario" />
         <div
           {...chartFrameProps(

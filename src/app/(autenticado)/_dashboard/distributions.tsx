@@ -11,7 +11,7 @@ import {
 } from "@/app/_components/form-styles";
 import { Card, type CardContext } from "./cards";
 import { CHART_HEIGHT, chartGeometry } from "./chart-geometry";
-import { chartFrameProps, ReadoutLine } from "./chart-frame";
+import { chartFrameProps, chartKey, ReadoutLine } from "./chart-frame";
 import { BarChartSvg, DonutSvg } from "./chart-svgs";
 import { DONUT_SIZE, INNER_RADIUS, donutSegments } from "./donut-geometry";
 import { formatCount } from "./format";
@@ -26,7 +26,7 @@ import {
 
 // Métricas 13 y 14 (brief-15.3, D-4 a D-6): la dona de tipos de mensaje y el histograma del tiempo a
 // primera respuesta, en SVG propio. Son distribuciones: no se comparan con el período anterior. Cada
-// una tiene su alternativa con los valores exactos, visible sin JavaScript.
+// una tiene su alternativa con los valores exactos, sin depender del mouse ni del teclado.
 
 // Un tono por tipo (tokens de la brief-15.3), escrito entero para que Tailwind lo encuentre.
 const KIND_FILL: Record<string, string> = {
@@ -65,7 +65,7 @@ export function MessageKindsCard(cards: CardContext) {
         );
         const segments = donutSegments(groups.map((group) => group.count));
         return (
-          <div className="w-full">
+          <div className="w-full" key={chartKey(cards.input)}>
             <ReadoutLine frameId="grafico-tipos" />
             <div
               {...chartFrameProps(
@@ -217,7 +217,9 @@ export function FirstResponseBucketsCard(cards: CardContext) {
       metric={14}
       cards={cards}
       load={getFirstResponseDistribution}
-      render={(value) => <FirstResponseHistogram value={value} />}
+      render={(value) => (
+        <FirstResponseHistogram key={chartKey(cards.input)} value={value} />
+      )}
     />
   );
 }

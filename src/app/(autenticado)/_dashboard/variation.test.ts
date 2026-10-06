@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { NO_CURRENT_DATA, NO_PREVIOUS_DATA, variationOf } from "./variation";
+import {
+  includesToday,
+  NO_CURRENT_DATA,
+  NO_PREVIOUS_DATA,
+  PREVIOUS_UNAVAILABLE,
+  PREVIOUS_ZERO,
+  variationOf,
+} from "./variation";
 
 describe("variationOf (brief-15.3, D-2)", () => {
   it("cantidades: porcentaje sobre el anterior, con el signo explícito", () => {
@@ -22,7 +29,7 @@ describe("variationOf (brief-15.3, D-2)", () => {
   it("cantidades: con el anterior en 0 no hay porcentaje, nunca +∞ ni +100 %", () => {
     expect(
       variationOf({ kind: "count", value: 4 }, { kind: "count", value: 0 }),
-    ).toEqual({ status: "none", reason: NO_PREVIOUS_DATA });
+    ).toEqual({ status: "none", reason: PREVIOUS_ZERO });
   });
 
   it("cero, o lo que redondea a cero, es «sin cambios»", () => {
@@ -85,5 +92,24 @@ describe("variationOf (brief-15.3, D-2)", () => {
       status: "none",
       reason: NO_PREVIOUS_DATA,
     });
+  });
+
+  it("«no disponible» no se dice «sin datos»: la variación lo nombra", () => {
+    expect(
+      variationOf({ kind: "rate", value: 10 }, { kind: "unavailable" }),
+    ).toEqual({ status: "none", reason: PREVIOUS_UNAVAILABLE });
+    expect(
+      variationOf({ kind: "unavailable" }, { kind: "rate", value: 10 }),
+    ).toEqual({ status: "none", reason: NO_CURRENT_DATA });
+  });
+});
+
+describe("includesToday (brief-15.3, D-2)", () => {
+  it("un período que termina hoy está incompleto y no se compara", () => {
+    expect(includesToday("2026-10-06", "2026-10-06")).toBe(true);
+  });
+  it("uno que termina ayer, o antes, se compara", () => {
+    expect(includesToday("2026-10-05", "2026-10-06")).toBe(false);
+    expect(includesToday("2025-12-31", "2026-01-01")).toBe(false);
   });
 });

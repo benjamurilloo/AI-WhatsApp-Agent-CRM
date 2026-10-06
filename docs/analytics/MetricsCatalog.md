@@ -45,7 +45,7 @@ Todas las métricas se calculan por consulta (vistas SQL o queries del módulo `
 - **Período anterior** (*desde la 15.3*, D-2): el intervalo de la misma cantidad de días que termina el día antes de que empiece `I`. Para `I` del 06/09 al 05/10, del 07/08 al 05/09. Es aritmética de días de calendario; cada día se convierte con la zona de la organización como cualquier `I`, así que un período anterior puede tener un día de 23 o 25 horas. Cada métrica se calcula sobre él con su misma fórmula. La comparación es de la pantalla, no del catálogo:
   - cantidades (1, 2, 3, 4, 5 y 7) en porcentaje; tasas (8 y 12) en puntos porcentuales; promedio y mediana (6 y 9) como diferencia absoluta;
   - la métrica 11 no se compara: es el estado actual, y no existe el del período anterior;
-  - con el período anterior en 0, en «sin datos» o «no disponible», no hay comparación, y se dice así;
+  - con el período anterior en «sin datos» o «no disponible», no hay comparación, y se dice cuál de los dos. Una cantidad con el anterior en 0 tampoco se compara (el porcentaje sería infinito), y se dice que fue 0; una tasa o un promedio con el anterior en 0 sí, porque la diferencia está definida (*precisado el 2026-10-06*, revisión de la 15.3);
   - si `I` incluye hoy, que es un día parcial, no se compara.
 
 ---

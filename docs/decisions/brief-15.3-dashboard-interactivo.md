@@ -60,7 +60,7 @@ El dashboard ([page.tsx](../../src/app/(autenticado)/page.tsx)) tiene once tarje
   | 11 (por estado) | sin variación: es el estado actual de cada conversación y no existe el estado del período anterior (MetricsCatalog, «Estado de una conversación») |
 
 - **Casos**:
-  - con el anterior en 0, o en «sin datos», se muestra «sin datos del período anterior», nunca «+∞ %» ni «+100 %»;
+  - ~~con el anterior en 0, o en «sin datos», se muestra «sin datos del período anterior», nunca «+∞ %» ni «+100 %»;~~ *Enmendado el 2026-10-06 por decisión del usuario (§Revisión independiente, hallazgo 4)*: una cantidad con el anterior en 0 muestra «Sin comparación: el período anterior fue 0», nunca «+∞ %» ni «+100 %»; en «sin datos», «Sin datos del período anterior»; en «no disponible», «Período anterior no disponible». Las tasas y los promedios con el anterior en 0 se comparan;
   - si el período elegido incluye hoy, no se muestra variación y se explica: «hoy está incompleto»;
   - en la métrica 9, la nota existente sobre los días recientes alcanza también a la variación;
   - la métrica 12 «no disponible» no muestra variación.
@@ -184,7 +184,7 @@ El usuario compartió el boceto del dashboard, en oscuro y en claro, al aprobar 
 - Toda consulta filtra por `organization_id`.
 - Ningún valor es editable desde el dashboard (FR-MET-03).
 - «Sin datos», «no disponible» y `0` siguen siendo estados distintos, también en la variación.
-- ~~Todo gráfico tiene una alternativa accesible con los valores exactos, visible sin JavaScript.~~ *Enmendado el 2026-10-06 por decisión del usuario (§Resultados — 15.3.3)*: todo gráfico tiene una alternativa accesible con los valores exactos, a la vista sin depender del mouse ni del teclado. Desde la 7.4 el dashboard carga cada tarjeta con streaming y no muestra valores sin JavaScript.
+- ~~Todo gráfico tiene una alternativa accesible con los valores exactos, visible sin JavaScript.~~ *Enmendado el 2026-10-06 por decisión del usuario (§Resultados — 15.3.3)*: todo gráfico tiene una alternativa accesible con los valores exactos, a la vista sin depender del mouse ni del teclado. *Precisado el 2026-10-06 por decisión del usuario (§Revisión independiente, hallazgo 3)*: una tabla en un desplegable «Ver tabla de datos», como la del gráfico diario desde la 7.4, cuenta como a la vista. Desde la 7.4 el dashboard carga cada tarjeta con streaming y no muestra valores sin JavaScript.
 - Ningún atributo `style` ni clase de la paleta por defecto de Tailwind en `src/app/`.
 - `package.json`, `package-lock.json` y `drizzle/` sin cambios, salvo que D-1 se resuelva por (b).
 
@@ -370,3 +370,23 @@ La tercera fila descartó que la causa fuera el componente cliente: lo es que ha
   - el caso 14: el gráfico diario, con el puntero y el teclado en las dos series, y axe.
 - La primera corrida de la tanda B perdió el servidor de la aplicación a mitad de camino (62 `ERR_CONNECTION_REFUSED`), con 0,4 GB libres en la máquina, como en la 15.2. Repetida sola, pasó 67 de 67.
 - Las capturas se volvieron a tomar con la versión final.
+
+## Revisión independiente (D-9) — 2026-10-06
+
+Agente `independent-reviewer`, de solo lectura, que no participó del trabajo, sobre `7190108`, `7461da3` y `aeb3f2a`. Escala fijada antes de mirar. Informó 9 hallazgos (1 alto, 2 medios, 6 bajos) y 7 observaciones; no encontró errores en las fórmulas de las métricas 13 y 14, ni violaciones de la CSP o de CLAUDE.md. Cada hallazgo se verificó contra el código antes de aceptarlo (autoevaluación de quien implementó).
+
+| # | Severidad | Hallazgo | Verificación | Resolución |
+|---|---|---|---|---|
+| 1 | Alto | Un período anterior «no disponible» se mostraba como «Sin datos del período anterior» (rompe el invariante de estados distintos) | Confirmado: `rateOf` y los promedios devolvían `null` para cualquier estado | `Comparable` suma `{ kind: "unavailable" }`; la variación dice «Período anterior no disponible». Test unitario y aserción en `dashboard-sin-ingestion.spec.ts`, caso 2 |
+| 2 | Medio | Archivos fuera de la lista en el árbol de trabajo | Confirmado, y ajenos a la entrega: `scripts/migrar.ts` y `src/modules/crm/repository.ts` solo difieren en finales de línea, y `.claude/settings.json` es configuración local. Ninguno entró en un commit de la 15.3 | Sin cambio |
+| 3 | Medio | La tabla del histograma está en un desplegable cerrado | Confirmado; el gráfico diario usa el mismo patrón desde la 7.4 | Decisión del usuario (2026-10-06): se deja así; el invariante lo precisa |
+| 4 | Bajo | D-2 manda «sin datos del período anterior» con el anterior en 0, y el invariante distingue 0 de «sin datos» | Confirmado: contradicción del brief | Decisión del usuario (2026-10-06): «Sin comparación: el período anterior fue 0»; D-2 y el catálogo enmendados |
+| 5 | Bajo | «Ver detalles» no se probaba en una cantidad ni en una tasa | Confirmado | El caso 10 abre los detalles de la 1, la 8 y la 9 |
+| 6 | Bajo | «El período incluye hoy» sin test unitario | Confirmado | `includesToday` en `variation.ts`, con tests |
+| 7 | Bajo | Dos aserciones negativas podían pasar sobre el esqueleto de carga | Confirmado | Casos 10 y 11: la negativa va después de esperar el contenido de cada tarjeta |
+| 8 | Bajo | Cambiar la serie con el teclado dejaba la lectura y el atenuado de antes | Plausible por lectura; no se reprodujo contra el código anterior | Cada bloque de gráfico lleva una clave por período y serie (`chartKey`) y se monta de nuevo; el caso 14 cambia la serie con Mayús+Tab y Enter y verifica la línea y el atenuado |
+| 9 | Bajo | Comentarios desactualizados («sin JavaScript», «doce métricas», «no se oculta») y Screens.md sin las métricas 13 y 14; la regla de los SVG no contemplaba los íconos | Confirmado | Corregidos; la regla dice ahora «ningún `<svg>` con formas de datos» y nombra los íconos |
+
+**Observaciones** sin cambio: la variación se calcula sobre valores sin redondear (coherente con el catálogo); las tasas con el anterior en 0 se comparan en puntos porcentuales (el catálogo se precisó con la decisión del hallazgo 4); en pantallas táctiles la lectura dura mientras se toca; el arco casi completo de la dona y la carrera de medianoche son hipotéticos; los lectores de pantalla en modo navegación interceptan las flechas, y la alternativa es la lista o la tabla; la autorización de `globals.css` consta en este brief.
+
+**Verificación después de las correcciones:** tipos y lint pasan; unitarios e integración 1.732 de 1.732; end-to-end del dashboard, sin ingestión y cabeceras de seguridad (CSP) 21 de 21 sobre un build nuevo.

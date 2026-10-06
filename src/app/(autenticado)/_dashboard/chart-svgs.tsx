@@ -9,7 +9,10 @@
 // <svg> con estilo en línea (display:none), que la CSP bloquea (style-src-attr 'none'). Con la lectura de la 15.3
 // el contenido creció y pasó en 7 de 12 cargas (medido en la 15.3.3). Un componente que dibuja el
 // SVG desde sus props no se corta adentro: si hay que esperar, se espera afuera del <svg>, donde
-// React usa el atributo hidden. Se sigue dibujando en el servidor (SSR); sin JavaScript se ve igual.
+// React usa el atributo hidden. Se sigue dibujando en el servidor (SSR).
+//
+// La regla: ningún <svg> con formas de datos se arma con elementos del servidor. Los íconos
+// (icons.tsx) son <svg> del servidor, pero chicos y de una pieza; la guarda de CSP los cubre.
 
 export type BarShape = {
   x: number;

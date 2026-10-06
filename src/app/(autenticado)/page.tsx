@@ -35,7 +35,7 @@ import {
   SERIES_KEYS,
   type SeriesKey,
 } from "./_dashboard/daily-chart";
-import { TODAY_INCOMPLETE } from "./_dashboard/variation";
+import { includesToday, TODAY_INCOMPLETE } from "./_dashboard/variation";
 import {
   FORBIDDEN_PAGE_MESSAGE,
   PERIOD_INVALID_MESSAGE,
@@ -58,7 +58,7 @@ import {
 } from "./_dashboard/period";
 import { shiftDays } from "@/app/_format/date-time";
 
-// Pantalla 2 — Dashboard (brief-7.4; Screens.md §2, wireframe 02). Las doce métricas del catálogo,
+// Pantalla 2 — Dashboard (brief-7.4; Screens.md §2, wireframe 02). Las métricas del catálogo,
 // cada tarjeta con su propia consulta y su propio estado de carga y de error (D-2), y el período
 // compartido resuelto una sola vez (D-6). Solo lee: ningún valor es editable (FR-MET-03).
 
@@ -111,12 +111,12 @@ export default async function DashboardPage({
   const periodInvalid = invalidFields.length > 0;
   const retryHref = dashboardHref(view);
   // Con hoy adentro, el período está incompleto y no se compara (brief-15.3, D-2).
-  const includesToday = period !== null && period.to === today;
+  const incomplete = period !== null && includesToday(period.to, today);
   const cards: CardContext | null = period
     ? {
         context,
         input,
-        previous: includesToday ? null : previousPeriodInput(period),
+        previous: incomplete ? null : previousPeriodInput(period),
         retryHref,
       }
     : null;
@@ -221,7 +221,7 @@ export default async function DashboardPage({
           {PERIOD_INVALID_MESSAGE}
         </p>
       )}
-      {includesToday ? (
+      {incomplete ? (
         <p className={`mt-1 ${mutedTextClass}`}>{TODAY_INCOMPLETE}</p>
       ) : null}
       {periodInvalid ? (

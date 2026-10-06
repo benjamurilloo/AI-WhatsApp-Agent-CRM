@@ -155,10 +155,17 @@ export async function Card<T>({
 }
 
 const countOf = (value: number): Comparable => ({ kind: "count", value });
+// Sin valor, el estado sigue hasta la variación: "no disponible" no se dice "sin datos".
+const missing = (status: "no_data" | "unavailable"): Comparable =>
+  status === "unavailable" ? { kind: "unavailable" } : null;
 const rateOf = (
-  value: { status: "value"; percentage: number } | { status: string },
+  value:
+    | { status: "value"; percentage: number }
+    | { status: "no_data" | "unavailable" },
 ): Comparable =>
-  "percentage" in value ? { kind: "rate", value: value.percentage } : null;
+  value.status === "value"
+    ? { kind: "rate", value: value.percentage }
+    : missing(value.status);
 const stateText = (status: "no_data" | "unavailable") =>
   metricStateText(status).message;
 
@@ -263,7 +270,7 @@ export function MessagesPerConversationCard(cards: CardContext) {
         comparable: (value) =>
           value.status === "value"
             ? { kind: "amount", value: value.average }
-            : null,
+            : missing(value.status),
         summary: (value) =>
           value.status === "value"
             ? `Prom. ${formatDecimal(value.average)}`
@@ -338,7 +345,7 @@ export function FirstResponseTimeCard(cards: CardContext) {
         comparable: (value) =>
           value.median.status === "value"
             ? { kind: "amount", value: value.median.minutes, unit: "min" }
-            : null,
+            : missing(value.median.status),
         summary: (value) =>
           value.median.status === "value"
             ? formatMinutes(value.median.minutes)

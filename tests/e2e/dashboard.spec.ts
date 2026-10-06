@@ -458,7 +458,7 @@ test.describe("móvil", () => {
 // | Métrica | Actual (fixture) | Anterior | Variación                          |
 // |---------|------------------|----------|------------------------------------|
 // | 1       | 3                | 2        | +50,0 %                            |
-// | 3       | 1                | 0        | sin datos del período anterior     |
+// | 3       | 1                | 0        | sin comparación: el anterior fue 0 |
 // | 4       | 2                | 2        | sin cambios                        |
 // | 6       | prom. 5/3        | prom. 2  | −0,3 (1,67 − 2 = −0,33)            |
 // | 7       | 1                | 2        | −50,0 %                            |
@@ -497,7 +497,7 @@ test("caso 10: brief-15.3 cada tarjeta compara con el período anterior y «Ver 
 
   const expected: [string, RegExp][] = [
     ["Conversaciones iniciadas", /\+50,0 % vs\. período anterior/],
-    ["Clientes únicos", /Sin datos del período anterior/],
+    ["Clientes únicos", /Sin comparación: el período anterior fue 0/],
     ["Mensajes entrantes", /Sin cambios vs\. período anterior/],
     ["Mensajes por conversación", /−0,3 vs\. período anterior/],
     ["Conversaciones respondidas", /−50,0 % vs\. período anterior/],
@@ -512,20 +512,26 @@ test("caso 10: brief-15.3 cada tarjeta compara con el período anterior y «Ver 
   await expect(
     card(page, "Errores de ingestión").getByText(/vs\. período anterior/),
   ).toHaveClass(/text-muted/);
-  await expect(card(page, "Conversaciones por estado")).not.toContainText(
-    "vs. período anterior",
-  );
 
+  // «Ver detalles» de una tarjeta de cada tipo: cantidad, tasa y diferencia absoluta.
   const { today } = days();
   const range = `Período anterior, del ${dmy(shiftDays(today, -60))} al ${dmy(shiftDays(today, -31))}`;
-  const firstResponse = card(page, "Mediana de primera respuesta");
-  await firstResponse.getByText("Ver detalles", { exact: true }).click();
-  await expect(firstResponse).toContainText(`${range}: 10,0 min`);
+  for (const [name, previous] of [
+    ["Conversaciones iniciadas", "2"],
+    ["Cobertura de respuesta", "100,0 %"],
+    ["Mediana de primera respuesta", "10,0 min"],
+  ] as const) {
+    const region = card(page, name);
+    await region.getByText("Ver detalles", { exact: true }).click();
+    await expect(region, name).toContainText(`${range}: ${previous}`);
+  }
   const byStatus = card(page, "Conversaciones por estado");
   await byStatus.getByText("Ver detalles", { exact: true }).click();
   await expect(byStatus).toContainText(
     "No se compara con el período anterior: es el estado actual",
   );
+  // Con la tarjeta ya cargada, la ausencia de variación prueba algo.
+  await expect(byStatus).not.toContainText("vs. período anterior");
   await expectAccessible(page, "detalles abiertos con el período anterior");
 });
 
@@ -546,6 +552,21 @@ test("caso 11: brief-15.3 un período que incluye hoy no se compara, y lo dice",
       .first(),
   ).toBeVisible();
   await expect(card(page, "Conversaciones iniciadas")).toContainText("3");
+  // Cada tarjeta que compara ya cargó y dice por qué no compara: recién así la ausencia prueba algo.
+  for (const name of [
+    "Conversaciones iniciadas",
+    "Clientes únicos",
+    "Mensajes entrantes",
+    "Mensajes por conversación",
+    "Conversaciones respondidas",
+    "Cobertura de respuesta",
+    "Mediana de primera respuesta",
+    "Errores de ingestión",
+  ]) {
+    await expect(card(page, name), name).toContainText(
+      "el período incluye hoy, que está incompleto",
+    );
+  }
   await expect(page.getByText("vs. período anterior")).toHaveCount(0);
 });
 
@@ -653,6 +674,7 @@ test("caso 14: brief-15.3 el gráfico diario se lee con el mouse y con el teclad
   const chart = section.getByRole("group", {
     name: /Gráfico de barras por día/,
   });
+  await page.mouse.move(0, 0);
   await chart.focus();
   await page.keyboard.press("End");
   await expect(line).toHaveText(/: 0 conversaciones iniciadas$/);
@@ -663,9 +685,16 @@ test("caso 14: brief-15.3 el gráfico diario se lee con el mouse y con el teclad
     new RegExp(`${dmy(d4)}: 2 conversaciones iniciadas$`),
   );
 
-  // La serie de mensajes lee entrantes y salientes.
-  await section.getByRole("link", { name: "Mensajes" }).click();
+  // Cambiar la serie desde el teclado, con una barra activa, no deja la lectura ni el atenuado de la
+  // serie anterior.
+  await page.keyboard.press("Shift+Tab");
+  await expect(section.getByRole("link", { name: "Mensajes" })).toBeFocused();
+  await page.keyboard.press("Enter");
   await expect(page).toHaveURL("/?serie=mensajes");
+  await expect(line).toContainText("Pasá el mouse");
+  await expect(section.locator("rect.opacity-40")).toHaveCount(0);
+
+  // La serie de mensajes lee entrantes y salientes.
   await section.locator('rect[data-index="25"]').hover();
   await expect(line).toHaveText(
     new RegExp(`${dmy(d5)}: 3 mensajes \\(2 entrantes, 1 saliente\\)$`),
