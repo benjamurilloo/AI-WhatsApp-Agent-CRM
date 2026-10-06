@@ -277,3 +277,11 @@ Ningún plan cambia de forma. El filtro recorre `products` igual que el camino s
 - `test:unit` 521 de 521; `test:guards` 485 de 485; `test:integration` 680 de 680 (2 casos nuevos: los filtros y las opciones por organización y rol).
 - End-to-end: la suite completa, 105 de 106 sobre `next start` (7,6 min). Falló por tiempo el caso 9 de Clientes (el navegador de un viewer no recibe el teléfono), que esta etapa no toca: agotó los 30 s sin fallar ninguna aserción, y corrido solo dos veces pasó las dos, en unos 10 s. Antes, el caso 5 de Productos tuvo un cierre del navegador («Target crashed») y pasó al repetirlo. Caso nuevo: productos 19 (los dos filtros, su conservación al ordenar y cambiar las filas, solo marca desde la URL y un valor fuera de la lista).
 - `package.json`, `package-lock.json` y `drizzle/` sin cambios.
+
+## Desvío — `source-map-js` (2026-10-06)
+
+La CI de `d7d5a6d` (15.2.2) falló solo en «Auditoría de dependencias» (`npm audit --omit=dev --audit-level=high`) por un aviso publicado después de la CI de `ff139ae`: [GHSA-68fv-2mgg-jv7q](https://github.com/advisories/GHSA-68fv-2mgg-jv7q), severidad alta, denegación de servicio en `source-map-js` 1.0.0 a 1.2.1 por un mapa de código fuente armado. Llega por `next` 16.3.8 → `postcss` 8.5.23 → `source-map-js` 1.2.1. Ninguna etapa de la 15.2 tocó dependencias.
+
+El usuario autorizó actualizarla en un commit aparte. Es un desvío de AC-8: `package-lock.json` cambia, `package.json` no. `npm audit fix` subía también `brace-expansion` y `drizzle-kit`, que no estaban autorizados: se revirtió y se aplicó `npm update source-map-js`, que deja solo `source-map-js` 1.2.2, dentro del rango `^1.2.1` que pide `postcss`. `node_modules` se reinstaló con `npm ci` desde ese lock. Las dos auditorías de la CI pasan en local.
+
+Riesgo mientras tanto, inferido del árbol de dependencias y no probado: bajo. `postcss` procesa los estilos propios al compilar y la aplicación no recibe mapas de código fuente de terceros. Producción (`2aaa619`) tiene la 1.2.1 hasta el próximo despliegue (15.2.5).
