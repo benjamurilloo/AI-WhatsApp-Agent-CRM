@@ -2,7 +2,12 @@
 // por teléfono para ingestion, brief-12.1; bloqueo del cliente para conversations, brief-12.2).
 export { type ClientPhone } from "./phone";
 export {
+  CLIENT_SUGGEST_LIMIT,
+  CLIENT_SUGGEST_MIN_LENGTH,
   CLIENTS_PAGE_SIZE,
+  looksLikePhone,
+  suggestClients,
+  type ClientSuggestion,
   createClient,
   deactivateClient,
   findClientIdByPhone,

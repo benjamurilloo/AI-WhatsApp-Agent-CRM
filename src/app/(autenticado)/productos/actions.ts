@@ -6,12 +6,14 @@ import {
   createProduct,
   deactivateProduct,
   reactivateProduct,
+  suggestProducts,
   updateProduct,
   type ProductActiveResult,
 } from "@/modules/catalog";
 import { adjustStock } from "@/modules/inventory";
 import type { AuthContext } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
+import type { RemoteSuggestion } from "@/app/_components/suggest-filter";
 import { logEvent, newRequestId } from "@/shared/log";
 import {
   adjustmentRejectionMessage,
@@ -286,4 +288,38 @@ export async function adjustStockAction(
   }
 
   redirect(destination);
+}
+
+// Sugerencias del buscador (brief-15.2, D-6): lectura, sin mutar ni revalidar. La sesión antes
+// de cualquier lectura; el rol y la organización, en catalog. Ante un error inesperado devuelve
+// una lista vacía y registra el evento, sin el texto buscado.
+export async function suggestProductsAction(
+  text: string,
+): Promise<RemoteSuggestion[]> {
+  const requestId = newRequestId();
+  const started = performance.now();
+  const context = await requireSession();
+  try {
+    if (typeof text !== "string") return [];
+    const result = await suggestProducts(context, text.slice(0, 100));
+    if (!result.ok) return [];
+    return result.products.map((product) => ({
+      id: product.id,
+      label: product.name,
+      detail: product.sku,
+      href: `/productos/${product.id}`,
+    }));
+  } catch (error) {
+    logEvent({
+      level: "error",
+      requestId,
+      route: "productos.sugerencias",
+      code: "INTERNAL",
+      userId: context.userId,
+      organizationId: context.organizationId,
+      durationMs: performance.now() - started,
+      error,
+    });
+    return [];
+  }
 }

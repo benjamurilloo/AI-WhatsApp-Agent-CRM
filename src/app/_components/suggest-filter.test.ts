@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { filterSuggestions, normalizeForSuggest } from "./suggest-filter";
+import {
+  filterSuggestions,
+  looksLikePhone,
+  normalizeForSuggest,
+} from "./suggest-filter";
 
 const CATEGORIES = ["Almacén", "Bebidas", "Celulares", "Notebooks", "Tablets"];
 
@@ -33,5 +37,19 @@ describe("filterSuggestions", () => {
   it("sin coincidencias devuelve una lista vacía", () => {
     expect(filterSuggestions(CATEGORIES, "xyz")).toEqual([]);
     expect(filterSuggestions([], "a")).toEqual([]);
+  });
+});
+
+describe("looksLikePhone", () => {
+  it("reconoce un texto hecho solo de dígitos y signos de teléfono", () => {
+    expect(looksLikePhone("+54 9 11 6666-7788")).toBe(true);
+    expect(looksLikePhone("(011) 4444.5555")).toBe(true);
+    expect(looksLikePhone("11")).toBe(true);
+  });
+
+  it("un texto con letras no es un teléfono", () => {
+    expect(looksLikePhone("Ana")).toBe(false);
+    expect(looksLikePhone("Ana 11")).toBe(false);
+    expect(looksLikePhone("")).toBe(false);
   });
 });

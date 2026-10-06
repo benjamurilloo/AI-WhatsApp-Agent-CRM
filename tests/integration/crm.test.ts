@@ -9,6 +9,7 @@ import {
   listClientAudit,
   reactivateClient,
   searchClients,
+  suggestClients,
   updateClient,
   type ClientInput,
   type ClientListFilters,
@@ -616,6 +617,57 @@ describe("searchClients", () => {
       pageCount: 1,
     });
     expect(await searchClients(s.pendingA, listDefaults)).toEqual({
+      ok: false,
+      code: "FORBIDDEN",
+    });
+  });
+});
+
+describe("suggestClients (brief-15.2, D-6)", () => {
+  async function suggested(context: AuthContext, text: string) {
+    const result = await suggestClients(context, text);
+    if (!result.ok) throw new Error(result.code);
+    return result.clients;
+  }
+
+  it("sugiere por prefijo de nombre sin tildes ni mayúsculas, solo activos, de la organización y hasta 8", async () => {
+    const s = await seed();
+    await insertClient(s.orgA, "Ána Pérez", PHONE);
+    await insertClient(s.orgA, "Anabel Ruiz");
+    await insertClient(s.orgA, "Ana inactiva", null, false);
+    await insertClient(s.orgA, "Mariana");
+    await insertClient(s.orgB, "Ana de B");
+    const names = (await suggested(s.viewerA, "ana")).map((c) => c.name);
+    expect(names.sort()).toEqual(["Anabel Ruiz", "Ána Pérez"].sort());
+
+    for (let i = 0; i < 10; i++) {
+      await insertClient(s.orgA, `Bruno ${String(i).padStart(2, "0")}`);
+    }
+    expect(await suggested(s.adminA, "bru")).toHaveLength(8);
+  });
+
+  it("devuelve solo id y nombre, nunca el teléfono, también para un admin", async () => {
+    const s = await seed();
+    const id = await insertClient(s.orgA, "Ana Pérez", PHONE);
+    for (const context of [s.adminA, s.viewerA]) {
+      const clients = await suggested(context, "an");
+      expect(clients).toEqual([{ id, name: "Ana Pérez" }]);
+      expect(JSON.stringify(clients)).not.toContain("5555");
+    }
+  });
+
+  it("no sugiere con menos de 2 caracteres ni con un texto que parece teléfono", async () => {
+    const s = await seed();
+    await insertClient(s.orgA, "Ana Pérez", PHONE);
+    expect(await suggested(s.adminA, "a")).toEqual([]);
+    expect(await suggested(s.adminA, "  ")).toEqual([]);
+    expect(await suggested(s.adminA, "+54 9 11 5555-1234")).toEqual([]);
+    expect(await suggested(s.adminA, "11")).toEqual([]);
+  });
+
+  it("una contraseña pendiente recibe FORBIDDEN", async () => {
+    const s = await seed();
+    expect(await suggestClients(s.pendingA, "ana")).toEqual({
       ok: false,
       code: "FORBIDDEN",
     });

@@ -1,5 +1,11 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import {
+  expect,
+  test,
+  type Page,
+  type Request,
+  type Response,
+} from "@playwright/test";
 import { sql } from "drizzle-orm";
 import { createDb, type Db } from "@/shared/db";
 import { SEED_ORGANIZATION_ID, SEED_USERS, seedBasic } from "../../seeds/basic";
@@ -755,4 +761,97 @@ test("caso 17: brief-15.2 ordena por nombre en los dos sentidos y elige las fila
   await expect(rows).toHaveCount(1 + 2);
   await expect(firstName()).toContainText("Cliente 02");
   await expectAccessible(page, "lista por nombre inverso, 10 filas");
+});
+
+test("caso 18: brief-15.2 el buscador sugiere nombres, nunca teléfonos, y elegir abre el cliente", async ({
+  page,
+  playwright,
+}) => {
+  const anaId = await insertClient("Ana Pérez", { phone: "+5491166667788" });
+  await insertClient("Anabel Ruiz", { phone: "+5491166660000" });
+  await insertClient("Ana inactiva", { isActive: false });
+  await insertClient("Bruno");
+  await login(page, VIEWER);
+  await page.goto("/clientes");
+
+  // Se captura cada respuesta de la acción: tampoco ahí puede viajar un teléfono.
+  const actionBodies: string[] = [];
+  let captured: Request | undefined;
+  // El cuerpo se lee mientras la página sigue en pie; antes de navegar se deja de escuchar.
+  const onResponse = async (response: Response) => {
+    const request = response.request();
+    if (request.method() === "POST" && request.headers()["next-action"]) {
+      captured ??= request;
+      try {
+        actionBodies.push(await response.text());
+      } catch {
+        // La página navegó antes de leerlo: esa respuesta ya no llega a nadie.
+      }
+    }
+  };
+  page.on("response", onResponse);
+
+  const search = page.getByRole("combobox", { name: "Buscar" });
+  const list = page.getByRole("listbox", { name: "Sugerencias" });
+
+  // Un carácter no pide nada.
+  await search.fill("a");
+  await page.waitForTimeout(600);
+  await expect(list).toBeHidden();
+  expect(actionBodies).toEqual([]);
+
+  await search.fill("ana");
+  // Sin depender del orden: el collation de la base ignora los espacios al ordenar (brief-5.2).
+  await expect(list.getByRole("option")).toHaveCount(2);
+  expect((await list.getByRole("option").allTextContents()).sort()).toEqual([
+    "Ana Pérez",
+    "Anabel Ruiz",
+  ]);
+  await expect(list).not.toContainText("6666");
+  await expectAccessible(page, "buscador con sugerencias abiertas");
+  expect(actionBodies.join("")).not.toContain("6666");
+  expect(actionBodies.join("")).not.toContain("+549");
+
+  // Un texto que parece teléfono no pide sugerencias: esa búsqueda es exacta.
+  const before = actionBodies.length;
+  await search.fill("+54 9 11 6666");
+  await page.waitForTimeout(600);
+  await expect(list).toBeHidden();
+  expect(actionBodies.length).toBe(before);
+
+  page.off("response", onResponse);
+
+  // Enter sin elegir busca como siempre.
+  await search.fill("bru");
+  await expect(list.getByRole("option")).toHaveText(["Bruno"]);
+  await search.press("Escape");
+  await search.press("Enter");
+  await expect(page).toHaveURL(/\/clientes\?q=bru&/);
+
+  // Elegir una sugerencia abre el detalle.
+  await page.goto("/clientes");
+  await search.fill("ana p");
+  await expect(list.getByRole("option")).toHaveText(["Ana Pérez"]);
+  await search.press("ArrowDown");
+  await search.press("ArrowDown");
+  await search.press("Enter");
+  await expect(page).toHaveURL(`/clientes/${anaId}`);
+
+  // AC-6: la misma acción, sin la cookie de sesión, no devuelve sugerencias.
+  expect(captured, "no se capturó la acción de sugerencias").toBeTruthy();
+  const anonymous = await playwright.request.newContext({
+    baseURL: new URL(page.url()).origin,
+  });
+  const response = await anonymous.post(captured!.url(), {
+    headers: captured!.headers(),
+    data: captured!.postData() ?? "",
+    maxRedirects: 0,
+    failOnStatusCode: false,
+  });
+  const body = await response.text();
+  expect(body).not.toContain("Ana Pérez");
+  expect(
+    response.headers()["x-action-redirect"] ?? response.headers()["location"],
+  ).toMatch(/\/login/);
+  await anonymous.dispose();
 });

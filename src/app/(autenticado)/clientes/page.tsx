@@ -22,6 +22,7 @@ import {
   SearchIcon,
 } from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
+import { SuggestInput } from "@/app/_components/suggest-input";
 import { Pagination, shownRangeText } from "@/app/_components/pagination";
 import { formatShortDateTime } from "@/app/_format/date-time";
 import { NO_INTERACTIONS_TEXT } from "@/app/(autenticado)/conversaciones/messages";
@@ -42,6 +43,7 @@ import {
   NO_CLIENT_RESULTS_MESSAGE,
   NO_CLIENTS_MESSAGE,
 } from "./messages";
+import { suggestClientsAction } from "./actions";
 import { PhoneText } from "./phone-text";
 
 export const metadata: Metadata = {
@@ -91,15 +93,20 @@ export default async function ClientsPage({
             Buscar
           </label>
           <div className="relative">
-            <SearchIcon />
-            <input
+            {/* Sugerencias de nombres mientras se escribe, nunca teléfonos; elegir una abre el
+                cliente (brief-15.2, D-6). */}
+            <SuggestInput
               id="q"
               name="q"
               type="search"
               defaultValue={filters.text}
               placeholder="Nombre o teléfono completo"
               className={`${inputClass} w-72 pl-9`}
-            />
+              load={suggestClientsAction}
+              skipPhones
+            >
+              <SearchIcon />
+            </SuggestInput>
           </div>
         </div>
         <div className="flex flex-col gap-1">

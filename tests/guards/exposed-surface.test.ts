@@ -40,6 +40,10 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
   "src/app/(autenticado)/clientes/actions.ts#reactivateClientAction": {
     requirement: "sesion",
   },
+  // Lectura de sugerencias del buscador (brief-15.2, D-6): solo el nombre, nunca el teléfono.
+  "src/app/(autenticado)/clientes/actions.ts#suggestClientsAction": {
+    requirement: "sesion",
+  },
   "src/app/(autenticado)/conversaciones/actions.ts#changeConversationStatusAction":
     { requirement: "sesion" },
   "src/app/(autenticado)/conversaciones/actions.ts#loadOlderMessagesAction": {
@@ -70,6 +74,10 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
     requirement: "sesion",
   },
   "src/app/(autenticado)/productos/actions.ts#adjustStockAction": {
+    requirement: "sesion",
+  },
+  // Lectura de sugerencias del buscador (brief-15.2, D-6).
+  "src/app/(autenticado)/productos/actions.ts#suggestProductsAction": {
     requirement: "sesion",
   },
   "src/app/(autenticado)/productos/[productId]/precios/actions.ts#setPriceAction":

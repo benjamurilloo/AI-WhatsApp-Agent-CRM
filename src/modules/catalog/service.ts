@@ -202,6 +202,33 @@ export async function listProductFilterOptions(
   return { ok: true, brands, categories };
 }
 
+// Sugerencias del buscador de productos (brief-15.2, D-6): la regla de la búsqueda del listado
+// (palabras sobre nombre, marca y categoría, o SKU exacto), solo activos, primero el SKU exacto y
+// después por relevancia. Desde SUGGEST_MIN_LENGTH caracteres; con menos, ninguna.
+export const SUGGEST_LIMIT = 8;
+export const SUGGEST_MIN_LENGTH = 2;
+
+export type ProductSuggestion = { id: string; name: string; sku: string };
+
+export async function suggestProducts(
+  context: AuthContext,
+  text: string,
+): Promise<{ ok: true; products: ProductSuggestion[] } | Failure<"FORBIDDEN">> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  const trimmed = text.trim();
+  if (trimmed.length < SUGGEST_MIN_LENGTH) return { ok: true, products: [] };
+  const rows = await repository.findActiveProductsRanked(
+    context.organizationId,
+    trimmed,
+    SUGGEST_LIMIT,
+  );
+  return {
+    ok: true,
+    products: rows.map((row) => ({ id: row.id, name: row.name, sku: row.sku })),
+  };
+}
+
 // Para el ajuste de stock de inventory (brief-4.3.1, D-1): verifica y bloquea el producto dentro
 // de la transacción de quien ajusta, que ya autorizó. Exige la transacción, como recordAudit.
 export async function lockProductForStockChange(

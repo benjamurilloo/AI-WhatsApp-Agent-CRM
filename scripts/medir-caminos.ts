@@ -42,7 +42,11 @@
 
 import { existsSync, writeFileSync } from "node:fs";
 import { sql, TransactionRollbackError } from "drizzle-orm";
-import { listProductFilterOptions, searchProducts } from "@/modules/catalog";
+import {
+  listProductFilterOptions,
+  searchProducts,
+  suggestProducts,
+} from "@/modules/catalog";
 import {
   getConversationsStarted,
   getActiveConversations,
@@ -62,7 +66,7 @@ import {
   resolveIngestedConversation,
   searchClientsByLastInteraction,
 } from "@/modules/conversations";
-import { searchClients } from "@/modules/crm";
+import { searchClients, suggestClients } from "@/modules/crm";
 import {
   getCatalogProductForService,
   listProductStock,
@@ -542,6 +546,9 @@ async function main(): Promise<void> {
       "catalog.listProductFilterOptions (15.2)",
       () => listProductFilterOptions(context),
     ],
+    // Las sugerencias de la 15.2.4 (D-6): una palabra frecuente del nombre y un prefijo de nombre.
+    ["catalog.suggestProducts (15.2)", () => suggestProducts(context, "café")],
+    ["crm.suggestClients (15.2)", () => suggestClients(context, "ana")],
   );
   if (productoId) {
     listados.push([

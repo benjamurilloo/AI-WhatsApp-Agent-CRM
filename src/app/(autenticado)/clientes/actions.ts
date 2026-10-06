@@ -6,11 +6,13 @@ import {
   createClient,
   deactivateClient,
   reactivateClient,
+  suggestClients,
   updateClient,
   type ClientActiveResult,
 } from "@/modules/crm";
 import type { AuthContext } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
+import type { RemoteSuggestion } from "@/app/_components/suggest-filter";
 import { logEvent, newRequestId } from "@/shared/log";
 import {
   clientChangeMessage,
@@ -213,4 +215,37 @@ export async function reactivateClientAction(
     formData,
     reactivateClient,
   );
+}
+
+// Sugerencias del buscador (brief-15.2, D-6): solo el nombre, nunca el teléfono. Lectura, sin
+// mutar ni revalidar. La sesión antes de cualquier lectura; el rol y la organización, en crm. Ante
+// un error inesperado devuelve una lista vacía y registra el evento, sin el texto buscado.
+export async function suggestClientsAction(
+  text: string,
+): Promise<RemoteSuggestion[]> {
+  const requestId = newRequestId();
+  const started = performance.now();
+  const context = await requireSession();
+  try {
+    if (typeof text !== "string") return [];
+    const result = await suggestClients(context, text.slice(0, 100));
+    if (!result.ok) return [];
+    return result.clients.map((client) => ({
+      id: client.id,
+      label: client.name,
+      href: `/clientes/${client.id}`,
+    }));
+  } catch (error) {
+    logEvent({
+      level: "error",
+      requestId,
+      route: "clientes.sugerencias",
+      code: "INTERNAL",
+      userId: context.userId,
+      organizationId: context.organizationId,
+      durationMs: performance.now() - started,
+      error,
+    });
+    return [];
+  }
 }

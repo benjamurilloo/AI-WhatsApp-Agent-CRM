@@ -301,3 +301,36 @@ El campo no es controlado, para que el reinicio del formulario después de cada 
 - `test:unit` 526 de 526 (5 nuevos del filtrado); `test:guards` 485 de 485; `test:integration` 680 de 680.
 - End-to-end: la suite completa, 109 de 109 sobre `next start`. Casos nuevos: productos 20 (teclado, mouse, Escape, Enter que no envía, valor fuera de la lista y axe en claro y oscuro con la lista abierta), productos 21 (sin JavaScript, el alta con marca y categoría se guarda igual) e información 10 (categorías de la organización, filtrado y teclado, con axe). Ningún end-to-end existente cambió: completan los campos por su etiqueta, que sigue igual.
 - Capturas con la lista abierta, en claro y oscuro, a 1280 y 375 px: Categoría y Marca del producto y Categoría de la información.
+
+## Resultados — 15.2.4
+
+Etapa 15.2.4, el autocompletar de los buscadores de Productos y Clientes (D-6, opción a). Autoevaluación, no revisión independiente: la de D-9 se hace antes del despliegue.
+
+**Qué se hizo.**
+- Dos servicios de lectura:
+  - `catalog.suggestProducts` reutiliza `findActiveProductsRanked`, la consulta de la API de lectura con la misma coincidencia del buscador: palabras sobre nombre, marca y categoría, o SKU exacto, con el SKU exacto primero y después la relevancia. Devuelve id, nombre y SKU.
+  - `crm.suggestClients` usa `interpretSearch` y `findClients`, el prefijo de nombre sin tildes ni mayúsculas, en orden de nombre. Devuelve **solo id y nombre**: el teléfono no sale del servicio, sea cual sea el rol. Un texto que parece teléfono no sugiere nada.
+  - Los dos sugieren solo activos, hasta 8, desde 2 caracteres, y exigen un rol válido: una contraseña pendiente recibe `FORBIDDEN`.
+- Dos Server Actions de lectura, `suggestProductsAction` y `suggestClientsAction`, con el esquema de `loadOlderMessagesAction`: `requireSession` antes de todo, el texto acotado a 100 caracteres, y ante un error inesperado una lista vacía y un evento sin el texto buscado. Las dos están declaradas en la guarda de superficie expuesta con `sesion`.
+- `SuggestInput` suma la fuente remota (`load`): pide 250 ms después de la última tecla, descarta las respuestas viejas con un número de pedido y, con `skipPhones`, no pide nada para un texto que parece teléfono. Elegir una sugerencia abre el detalle; Enter sin elegir envía el formulario y busca como siempre. El buscador de clientes de Conversaciones no cambia.
+
+**Desvíos.**
+- `scripts/medir-caminos.ts` suma los 2 caminos de sugerencias.
+- `SuggestInput` acepta un ícono como hijo: dentro de su contenedor, la lupa de los buscadores quedaba tapada por el campo. Se resolvió en el componente para no tocar `page-header.tsx`, que no está en la lista.
+- Las capturas mostraron el SKU cortado en dos líneas dentro de la sugerencia: pasó a una línea propia, sin cortes.
+
+**Medición (D-7).** En una base local aparte, sembrada con `seeds/volume.ts medicion` y borrada después. Mediana del camino completo:
+
+| Camino | Organización grande | Organización chica |
+|---|---|---|
+| Sugerencias de productos («café») | 4,2 ms | 3,5 ms |
+| Sugerencias de clientes («ana») | 4,7 ms | 1,9 ms |
+
+Ningún plan cambia de forma. Productos usa `BitmapOr` sobre el índice GIN `products_search_idx` y el índice de SKU, con un top-N, igual que la API de lectura. Clientes usa `clients_organization_display_name_unaccent_idx` con un top-N, igual que el buscador del listado («prefijo de nombre», 9,3 ms en la misma corrida).
+
+**Verificación.**
+- `typecheck`, `lint` y `build` pasan; `prettier --check` sobre los archivos cambiados, limpio.
+- `test:unit` 528 de 528 (2 nuevos de `looksLikePhone`); `test:guards` 485 de 485; `test:integration` 685 de 685 (5 nuevos: las reglas, el límite, la organización, el rol y que el teléfono no viaje).
+- End-to-end: 111 de 111 sobre `next start`, en dos tandas (45 y 66). Antes, dos corridas completas seguidas perdieron el servidor de la aplicación a mitad de camino, en puntos distintos (durante productos y antes de clientes 18), sin ningún error en su salida; todo lo posterior dio `ERR_CONNECTION_REFUSED`. La máquina tenía 0,6 GB libres de 7,7 GB: se atribuye a falta de memoria, por inferencia y no por prueba, y la corrida anterior con el mismo código del producto pasó 110 de 111. Casos nuevos: productos 22 (regla de la búsqueda, inactivos fuera, SKU exacto, Enter que busca, mouse que abre el detalle, axe y AC-6) y clientes 18 (un viewer ve nombres, ni la lista ni las respuestas de la acción contienen el teléfono, un texto que parece teléfono no pide nada, Enter que busca, teclado que abre el detalle, axe y AC-6).
+- **AC-6**: cada caso captura la Server Action real y la reenvía sin la cookie de sesión. La respuesta no trae ningún nombre y redirige a `/login`.
+- La primera corrida completa falló en clientes 18 por el test: leía el cuerpo de una respuesta después de que la página navegara. Se protegió la lectura y se deja de escuchar antes de navegar; repetido 5 veces, pasó las 5.

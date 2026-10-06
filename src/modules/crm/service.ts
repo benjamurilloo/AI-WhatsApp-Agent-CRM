@@ -186,6 +186,47 @@ export async function searchClients(
   };
 }
 
+// Sugerencias del buscador de clientes (brief-15.2, D-6): prefijo de nombre, sin tildes ni
+// mayúsculas, como la búsqueda del listado; solo activos y en orden de nombre. Devuelve el id y el
+// nombre, nunca el teléfono, sea cual sea el rol. Un texto que parece teléfono no sugiere nada:
+// esa búsqueda es exacta.
+export const CLIENT_SUGGEST_LIMIT = 8;
+export const CLIENT_SUGGEST_MIN_LENGTH = 2;
+
+export type ClientSuggestion = { id: string; name: string };
+
+export function looksLikePhone(text: string): boolean {
+  return /^[\d\s+().-]+$/.test(text.trim());
+}
+
+export async function suggestClients(
+  context: AuthContext,
+  text: string,
+): Promise<{ ok: true; clients: ClientSuggestion[] } | Failure<"FORBIDDEN">> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  const trimmed = text.trim();
+  const search = interpretSearch(trimmed);
+  if (
+    trimmed.length < CLIENT_SUGGEST_MIN_LENGTH ||
+    looksLikePhone(trimmed) ||
+    search.kind !== "name"
+  ) {
+    return { ok: true, clients: [] };
+  }
+  const rows = await repository.findClients(
+    context.organizationId,
+    search,
+    "active",
+    CLIENT_SUGGEST_LIMIT,
+    0,
+  );
+  return {
+    ok: true,
+    clients: rows.map((row) => ({ id: row.id, name: row.displayName })),
+  };
+}
+
 // Para la lista por última interacción, que compone conversations (brief-6.3, D-1): todos los
 // ids que cumplen los filtros, en orden de nombre, sin ningún dato del cliente.
 export async function listClientOrderKeys(

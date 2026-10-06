@@ -7,6 +7,7 @@ import {
   deactivateProduct,
   listProductFilterOptions,
   reactivateProduct,
+  suggestProducts,
   setProductPrice,
   updateProduct,
   type ProductInput,
@@ -801,6 +802,43 @@ describe("listProductStock", () => {
       "Café molido 250 g",
       "Yerba 500 g",
     ]);
+  });
+
+  it("brief-15.2 D-6: las sugerencias usan la regla del buscador, solo activos, de la organización y hasta 8", async () => {
+    const s = await seedList();
+    await insertProduct(s.orgA, {
+      sku: "NES-1",
+      name: "Nescafé Gold",
+      brand: "Nescafé",
+    });
+    const suggested = async (context: AuthContext, text: string) => {
+      const result = await suggestProducts(context, text);
+      if (!result.ok) throw new Error(result.code);
+      return result.products;
+    };
+    // Por palabra completa sobre nombre o marca, sin tildes, como el buscador (H-6): «cafe» no
+    // encuentra «Nescafé». El de otra organización y el inactivo, no.
+    expect((await suggested(s.viewerA, "cafe")).map((p) => p.name)).toEqual([
+      "Café molido 250 g",
+    ]);
+    expect(
+      (await suggested(s.viewerA, "NESCAFE")).map((p) => p.name).sort(),
+    ).toEqual(["Café molido 250 g", "Nescafé Gold"].sort());
+    expect(await suggested(s.viewerA, "cacao")).toEqual([]);
+    // SKU exacto, primero.
+    expect(await suggested(s.viewerA, "YER-500")).toEqual([
+      expect.objectContaining({ name: "Yerba 500 g", sku: "YER-500" }),
+    ]);
+    expect(await suggested(s.viewerA, "c")).toEqual([]);
+
+    for (let i = 0; i < 10; i++) {
+      await insertProduct(s.orgA, { sku: `MAT-${i}`, name: `Mate ${i}` });
+    }
+    expect(await suggested(s.adminA, "mate")).toHaveLength(8);
+    expect(await suggestProducts(s.pendingA, "mate")).toEqual({
+      ok: false,
+      code: "FORBIDDEN",
+    });
   });
 
   it("brief-15.2 D-4: las opciones de los filtros son de la organización y las ve un viewer", async () => {

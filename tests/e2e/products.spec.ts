@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Request } from "@playwright/test";
 import { sql } from "drizzle-orm";
 import { createDb, type Db } from "@/shared/db";
 import { SEED_ORGANIZATION_ID, SEED_USERS, seedBasic } from "../../seeds/basic";
@@ -1105,4 +1105,68 @@ test("caso 21: brief-15.2 sin JavaScript, marca y categoría son campos de texto
   );
   expect(stored.rows).toEqual([{ brand: "Arkon", category: "Notebooks" }]);
   await context.close();
+});
+
+test("caso 22: brief-15.2 el buscador sugiere productos con la regla de la búsqueda y elegir abre el producto", async ({
+  page,
+  playwright,
+}) => {
+  const atlasId = await insertProduct("NOT-ATL", "Atlas Pro", {
+    brand: "Arkon",
+    category: "Notebooks",
+  });
+  await insertProduct("NOT-ZEN", "Zenda 13", { brand: "Arkon" });
+  await insertProduct("NOT-OLD", "Atlas viejo", { isActive: false });
+  await login(page, VIEWER);
+  await page.goto("/productos");
+
+  let captured: Request | undefined;
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.headers()["next-action"]) {
+      captured ??= request;
+    }
+  });
+
+  const search = page.getByRole("combobox", { name: "Buscar" });
+  const list = page.getByRole("listbox", { name: "Sugerencias" });
+
+  // Por palabra de la marca: los dos activos, con su SKU; el inactivo, no.
+  await search.fill("arkon");
+  await expect(list.getByRole("option")).toHaveCount(2);
+  await expect(list).toContainText("NOT-ATL");
+  await expect(list).not.toContainText("Atlas viejo");
+  await expectAccessible(page, "buscador con sugerencias abiertas");
+
+  // SKU exacto.
+  await search.fill("NOT-ZEN");
+  await expect(list.getByRole("option")).toHaveText(["Zenda 13 NOT-ZEN"]);
+
+  // Enter sin elegir busca como siempre.
+  await search.press("Escape");
+  await search.press("Enter");
+  await expect(page).toHaveURL(/\/productos\?q=NOT-ZEN&/);
+  await expect(productsTable(page).getByRole("row")).toHaveCount(1 + 1);
+
+  // Con el mouse, elegir abre el detalle.
+  await page.goto("/productos");
+  await search.fill("atlas");
+  await list.getByRole("option", { name: /Atlas Pro/ }).click();
+  await expect(page).toHaveURL(`/productos/${atlasId}`);
+
+  // AC-6: la misma acción, sin la cookie de sesión, no devuelve sugerencias.
+  expect(captured, "no se capturó la acción de sugerencias").toBeTruthy();
+  const anonymous = await playwright.request.newContext({
+    baseURL: new URL(page.url()).origin,
+  });
+  const response = await anonymous.post(captured!.url(), {
+    headers: captured!.headers(),
+    data: captured!.postData() ?? "",
+    maxRedirects: 0,
+    failOnStatusCode: false,
+  });
+  expect(await response.text()).not.toContain("Atlas Pro");
+  expect(
+    response.headers()["x-action-redirect"] ?? response.headers()["location"],
+  ).toMatch(/\/login/);
+  await anonymous.dispose();
 });
