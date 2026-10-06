@@ -56,7 +56,9 @@ import {
   getDailyActivity,
   getRespondedConversations,
   getResponseCoverage,
+  getFirstResponseDistribution,
   getFirstResponseTime,
+  getInboundMessageKinds,
   getIngestionErrors,
   getStatusDistribution,
 } from "@/modules/analytics";
@@ -811,6 +813,15 @@ async function main(): Promise<void> {
     [
       "analytics 12 errores de ingestión",
       () => getIngestionErrors(context, periodo),
+    ],
+    // Las dos métricas de la 15.3 (D-7): con ellas, trece llamadas.
+    [
+      "analytics 13 entrantes por tipo (15.3)",
+      () => getInboundMessageKinds(context, periodo),
+    ],
+    [
+      "analytics 14 primera respuesta por rangos (15.3)",
+      () => getFirstResponseDistribution(context, periodo),
     ],
   ];
 

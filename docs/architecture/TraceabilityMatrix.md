@@ -149,6 +149,8 @@ Cada índice tiene al menos una consulta real que lo usa.
 | 10 Evolución diaria | `conversations`, `messages` | `conversations (organization_id, started_at)`; `messages (organization_id, sent_at)` |
 | 11 Distribución por estado | `messages`, `conversations` | `messages (organization_id, sent_at)`; PK de `conversations` |
 | 12 Errores de ingestión | `ingestion_events` | `(organization_id, received_at)`. La disponibilidad sale de la configuración del entorno (D-7) y de la ausencia de eventos en el período (brief-7.3, D-1) |
+| 13 Distribución por tipo de mensaje entrante | `messages` | `(organization_id, sent_at)` |
+| 14 Distribución del tiempo a primera respuesta | `messages` | los de la métrica 9: misma población y mismo delta |
 
 La zona horaria de todas las métricas sale de `organizations.timezone`.
 

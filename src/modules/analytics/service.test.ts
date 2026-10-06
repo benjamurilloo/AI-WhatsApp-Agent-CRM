@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { readIngestionConfig } from "@/modules/ingestion";
-import { isIngestionUnavailable, resolveMetricsPeriod } from "./service";
+import {
+  isIngestionUnavailable,
+  previousPeriodInput,
+  resolveMetricsPeriod,
+} from "./service";
 
 const TODAY = "2026-09-17";
 
@@ -90,5 +94,39 @@ describe("isIngestionUnavailable (brief-7.3, D-1)", () => {
     const on = config({ INGESTION_ENABLED: "true" });
     expect(isIngestionUnavailable(on, 0)).toBe(false);
     expect(isIngestionUnavailable(on, 5)).toBe(false);
+  });
+});
+
+describe("previousPeriodInput (brief-15.3, D-2)", () => {
+  it("toma la misma cantidad de días, terminando el día antes del inicio", () => {
+    expect(previousPeriodInput({ from: "2026-08-18", days: 30 })).toEqual({
+      from: "2026-07-19",
+      to: "2026-08-17",
+    });
+  });
+
+  it("con un solo día, es el día anterior", () => {
+    expect(previousPeriodInput({ from: "2026-03-01", days: 1 })).toEqual({
+      from: "2026-02-28",
+      to: "2026-02-28",
+    });
+  });
+
+  it("cruza años y bisiestos", () => {
+    expect(previousPeriodInput({ from: "2025-01-01", days: 366 })).toEqual({
+      from: "2024-01-01",
+      to: "2024-12-31",
+    });
+  });
+
+  it("el anterior de un período válido también lo es", () => {
+    const period = resolveMetricsPeriod({ from: "", to: "" }, "2026-09-17");
+    if (!period.ok) throw new Error("período inválido");
+    const previous = previousPeriodInput(period);
+    expect(resolveMetricsPeriod(previous, "2026-09-17")).toEqual({
+      ok: true,
+      ...previous,
+      days: 30,
+    });
   });
 });

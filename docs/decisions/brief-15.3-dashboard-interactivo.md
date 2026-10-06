@@ -222,3 +222,44 @@ El usuario compartió el boceto del dashboard, en oscuro y en claro, al aprobar 
 - Si la interacción exige atributos `style` o relajar la CSP: se detiene.
 - Si un end-to-end existente tiene que cambiar algo más que lo listado: se detiene y se informa.
 - Si la 13.5.2-b arranca: se pausa en el último punto con la CI en verde.
+
+## Resultados — 15.3.1
+
+**Qué se hizo.**
+- **MetricsCatalog**: la convención del período anterior (§Convenciones) y las métricas 13 y 14, con su fórmula, grupos o rangos, validación, denominador cero y casos límite. TraceabilityMatrix suma sus filas de índices.
+- **`analytics`**:
+  - `previousPeriodInput`, función pura: la misma cantidad de días, terminando el día antes del inicio. El período anterior se pide por la misma entrada validada que cualquier período, así que no hace falta otro camino en el servicio.
+  - `getInboundMessageKinds` (métrica 13): los seis tipos del enum con 0 explícito, más los nulos al final. Sin entrantes, «sin datos».
+  - `getFirstResponseDistribution` (métrica 14): los cinco rangos del boceto, con las conversaciones sin respuesta aparte. Sin ninguna respuesta, rangos «sin datos».
+- **La consulta de la métrica 9 no cambió.** Su CTE pasó a una función, `firstResponseDeltas`, que comparten la 9 y la 14: la misma población y el mismo delta por construcción. La consulta que llega a la base para la 9 es la misma, salvo espacios en blanco. Se midió con el código de `HEAD` y con el nuevo, sobre la misma base: 16 a 19 ms en los dos.
+- `scripts/medir-caminos.ts` suma las dos métricas nuevas.
+
+**Desvío.** `tests/integration/analytics-helpers.ts` acepta un `kind` opcional por mensaje, para los fixtures de la métrica 13. Está en la lista de archivos autorizados; los fixtures existentes no lo usan y no cambian.
+
+**Medición (D-7).** En una base local aparte, sembrada con `seeds/volume.ts medicion` y borrada después. Mediana del camino completo, umbral local 400 ms:
+
+| Camino | Organización grande | Organización chica |
+|---|---|---|
+| Métrica 9, de referencia | 16,6 ms | 5,6 ms |
+| Métrica 13, entrantes por tipo | 5,6 ms | 3,3 ms |
+| Métrica 14, primera respuesta por rangos | 11,9 ms | 3,9 ms |
+
+- **La primera versión de la métrica 14 tardaba 30,5 ms.** El plan mostraba la subconsulta de la respuesta repetida once veces por conversación: PostgreSQL inlinea el CTE `deltas` y la vuelve a evaluar en cada filtro de rango. Es el mismo efecto que la 7.2 resolvió con `materialized`. La 14 materializa los deltas una vez, y el plan queda con las dos búsquedas por índice de la población.
+- **Observación sobre la métrica 9, sin cambio**: su plan evalúa la misma subconsulta tres veces. Corregirla cambiaría la consulta de una métrica existente, que este brief excluye. Con 16,6 ms no hace falta; queda anotado para cuando haga falta.
+- **La primera corrida dio 2.952 ms en la métrica 9**, inmediatamente después de sembrar, antes del análisis automático de PostgreSQL (`last_autoanalyze` de `messages` a las 19:05:18). Con las estadísticas al día, 19,6 ms. Una medición recién sembrada sin `ANALYZE` no vale: se registra para que la próxima no la tome por un problema.
+- La métrica 13 usa `messages_organization_sent_idx` con un `HashAggregate`, igual que la 4. En la base de volumen todos los mensajes tienen `kind` nulo, porque los seeds no lo cargan. El plan no depende de los valores.
+
+**Mutación.** Con `delta >` en lugar de `delta >=` en los rangos, el test de los bordes falla (3 casos). Restaurado.
+
+**Verificación.** La salida completa de cada paso quedó guardada en el scratchpad de la sesión.
+- `typecheck`, `lint` y `build` pasan, y `prettier --check` sobre los archivos cambiados sale limpio.
+- `test:unit`: 533 de 533, con 4 nuevos de `previousPeriodInput`.
+- `test:guards`: 485 de 485.
+- `test:integration`: 696 de 696, con 11 nuevos en `analytics-distributions.test.ts`:
+  - la métrica 13, con nulos, bordes de medianoche y otra organización;
+  - la métrica 14, con un delta exactamente en cada borde, una respuesta posterior a `I` y el día de 25 horas;
+  - el período anterior en el día de 23 horas;
+  - los invariantes contra las métricas 4 y 9;
+  - la autorización, el aislamiento y que no viajen los cuerpos.
+- End-to-end del dashboard: 11 de 11, sin cambios (la pantalla no se tocó en esta etapa).
+- `package.json`, `package-lock.json` y `drizzle/` sin cambios.

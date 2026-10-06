@@ -1,5 +1,11 @@
 import { and, count, countDistinct, eq, sql, type SQL } from "drizzle-orm";
-import { conversations, messages } from "@/modules/conversations/schema";
+import {
+  conversations,
+  messageKind,
+  messages,
+} from "@/modules/conversations/schema";
+
+type MessageKind = (typeof messageKind.enumValues)[number];
 import { ingestionEvents } from "@/modules/ingestion/schema";
 import { getDb } from "@/shared/db";
 
@@ -112,6 +118,30 @@ export async function countMessagesByDirection(
   return rows[0]!;
 }
 
+// Métrica 13 (brief-15.3, D-4): los entrantes de I por su tipo original. Los seis tipos del enum en
+// el orden del dominio, con 0 explícito, y al final los que no tienen dato (kind nulo: v1 y seeds).
+// La suma es la métrica 4.
+export type MessageKindCount = { kind: MessageKind | null; count: number };
+
+export async function inboundMessagesByKind(
+  query: MetricsQuery,
+): Promise<MessageKindCount[]> {
+  const rows = await getDb()
+    .select({
+      kind: messages.kind,
+      count: sql<number>`count(*)`.mapWith(Number),
+    })
+    .from(messages)
+    .where(and(messagesInPeriod(query), eq(messages.direction, "inbound")))
+    .groupBy(messages.kind);
+  const countOf = (kind: MessageKind | null) =>
+    rows.find((row) => row.kind === kind)?.count ?? 0;
+  return [...messageKind.enumValues, null].map((kind) => ({
+    kind,
+    count: countOf(kind),
+  }));
+}
+
 // Métrica 6: mensajes de I por conversación de A. La mediana es percentile_cont (brief-7.1, D-3):
 // con una cantidad par, el promedio de los dos valores centrales. Nula si A está vacía.
 export async function messagesPerConversation(query: MetricsQuery): Promise<{
@@ -202,16 +232,11 @@ export async function responseCoverage(
 // así que los candidatos se acotan primero con las conversaciones que tienen mensajes en I —toda
 // conversación con su primer entrante en I tiene un mensaje en I— y después cada candidata se
 // resuelve con el índice (conversation_id, sent_at) (brief-7.2, D-2).
-export async function firstResponseTime(query: MetricsQuery): Promise<{
-  population: number;
-  withResponse: number;
-  medianMinutes: number | null;
-}> {
-  const result = await getDb().execute<{
-    population: string;
-    with_response: string;
-    median_minutes: string | null;
-  }>(sql`
+//
+// La métrica 14 usa la misma población y el mismo delta (brief-15.3, D-5): los dos salen de
+// firstResponseDeltas, así la suma de sus rangos es por construcción «con respuesta» de la 9.
+function firstResponseDeltas(query: MetricsQuery): SQL {
+  return sql`
     with candidates as (
       select distinct ${messages.conversationId} as conversation_id
       from ${messages}
@@ -245,6 +270,20 @@ export async function firstResponseTime(query: MetricsQuery): Promise<{
                 and m.sent_at > population.sent_at) - population.sent_at as delta
       from population
     )
+  `;
+}
+
+export async function firstResponseTime(query: MetricsQuery): Promise<{
+  population: number;
+  withResponse: number;
+  medianMinutes: number | null;
+}> {
+  const result = await getDb().execute<{
+    population: string;
+    with_response: string;
+    median_minutes: string | null;
+  }>(sql`
+    ${firstResponseDeltas(query)}
     select count(*) as population,
            count(delta) as with_response,
            percentile_cont(0.5) within group (
@@ -258,6 +297,54 @@ export async function firstResponseTime(query: MetricsQuery): Promise<{
     withResponse: Number(row.with_response),
     medianMinutes:
       row.median_minutes === null ? null : Number(row.median_minutes),
+  };
+}
+
+// Métrica 14 (brief-15.3, D-5): las conversaciones con primera respuesta de la población de la 9,
+// por rango de minutos. Los rangos son semiabiertos [desde, hasta): un delta de exactamente 5 min
+// cae en «5 a 30». El delta es tiempo transcurrido (timestamptz), así que un día de 23 o 25 horas
+// no lo corre.
+export const FIRST_RESPONSE_BUCKETS = [
+  { fromMinutes: 0, toMinutes: 1 },
+  { fromMinutes: 1, toMinutes: 5 },
+  { fromMinutes: 5, toMinutes: 30 },
+  { fromMinutes: 30, toMinutes: 60 },
+  { fromMinutes: 60, toMinutes: null },
+] as const;
+
+export async function firstResponseDistribution(query: MetricsQuery): Promise<{
+  population: number;
+  withResponse: number;
+  counts: number[];
+}> {
+  const bucketCounts = FIRST_RESPONSE_BUCKETS.map(
+    ({ fromMinutes, toMinutes }, index) =>
+      sql`count(*) filter (where delta >= make_interval(mins => ${fromMinutes})${
+        toMinutes === null
+          ? sql``
+          : sql` and delta < make_interval(mins => ${toMinutes})`
+      }) as ${sql.raw(`bucket_${index}`)}`,
+  );
+  // measured, materializado: sin él, PostgreSQL inlinea deltas y repite la subconsulta de la
+  // respuesta una vez por cada filtro de rango (siete búsquedas por índice por conversación, medido
+  // en la 15.3.1). Así se resuelve una sola vez.
+  const result = await getDb().execute<Record<string, string>>(sql`
+    ${firstResponseDeltas(query)},
+    measured as materialized (
+      select delta from deltas
+    )
+    select count(*) as population,
+           count(delta) as with_response,
+           ${sql.join(bucketCounts, sql`, `)}
+    from measured
+  `);
+  const row = result.rows[0]!;
+  return {
+    population: Number(row.population),
+    withResponse: Number(row.with_response),
+    counts: FIRST_RESPONSE_BUCKETS.map((_, index) =>
+      Number(row[`bucket_${index}`]),
+    ),
   };
 }
 

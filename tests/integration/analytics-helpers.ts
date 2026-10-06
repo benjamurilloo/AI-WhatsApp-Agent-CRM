@@ -69,10 +69,18 @@ export async function insertClient(
   return result.rows[0]!.id;
 }
 
-export type SeedMessage = { at: string; direction: "inbound" | "outbound" };
-export const inbound = (at: string): SeedMessage => ({
+export type MessageKind =
+  "text" | "audio" | "image" | "video" | "document" | "other";
+// kind es opcional: sin él, el mensaje queda con kind nulo, como los de v1 y los seeds (brief-15.3).
+export type SeedMessage = {
+  at: string;
+  direction: "inbound" | "outbound";
+  kind?: MessageKind;
+};
+export const inbound = (at: string, kind?: MessageKind): SeedMessage => ({
   at,
   direction: "inbound",
+  kind,
 });
 export const outbound = (at: string): SeedMessage => ({
   at,
@@ -98,8 +106,9 @@ export async function insertConversation(
   const id = result.rows[0]!.id;
   for (const message of options.messages) {
     await getDb().execute(
-      sql`insert into messages (organization_id, conversation_id, direction, sent_at, body_text)
-          values (${organizationId}, ${id}, ${message.direction}, ${message.at}, ${SECRET_BODY})`,
+      sql`insert into messages (organization_id, conversation_id, direction, sent_at, body_text, kind)
+          values (${organizationId}, ${id}, ${message.direction}, ${message.at}, ${SECRET_BODY},
+                  ${message.kind ?? null})`,
     );
   }
   return id;

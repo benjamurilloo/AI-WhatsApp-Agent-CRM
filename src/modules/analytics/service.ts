@@ -80,6 +80,21 @@ export function resolveMetricsPeriod(
   };
 }
 
+// Período anterior (brief-15.3, D-2): la misma cantidad de días, terminando el día antes de que
+// empiece el elegido. Es aritmética de días de calendario; cada día se convierte después con la
+// zona de la organización, como cualquier período. Para el valor por defecto (del 18/08 al 16/09),
+// del 19/07 al 17/08.
+export function previousPeriodInput(period: {
+  from: string;
+  days: number;
+}): MetricsPeriodInput {
+  const start = toDayNumber(period.from);
+  return {
+    from: fromDayNumber(start - period.days),
+    to: fromDayNumber(start - 1),
+  };
+}
+
 async function withPeriod<T>(
   context: AuthContext,
   input: MetricsPeriodInput,
@@ -310,6 +325,71 @@ export function getIngestionErrors(
       failed: found.failed,
       percentage: (found.failed * 100) / found.total,
       groups: found.groups,
+    };
+  });
+}
+
+export type MessageKindCount = repository.MessageKindCount;
+
+export type MessageKindDistribution = RatioMetric<{
+  // Entrantes de I: es la métrica 4, y la suma de los grupos.
+  total: number;
+  groups: MessageKindCount[];
+}>;
+
+// Métrica 13 (brief-15.3, D-4): los entrantes de I por tipo, con los nulos como «sin dato». Sin
+// entrantes no hay distribución: "sin datos", nunca seis ceros.
+export function getInboundMessageKinds(
+  context: AuthContext,
+  input: MetricsPeriodInput,
+): Promise<MetricResult<MessageKindDistribution>> {
+  return withPeriod(context, input, async (query) => {
+    const groups = await repository.inboundMessagesByKind(query);
+    const total = groups.reduce((sum, group) => sum + group.count, 0);
+    if (total === 0) return { status: "no_data" };
+    return { status: "value", total, groups };
+  });
+}
+
+export const FIRST_RESPONSE_BUCKETS = repository.FIRST_RESPONSE_BUCKETS;
+
+export type FirstResponseBucket = {
+  fromMinutes: number;
+  // null en el último rango: «1 h o más».
+  toMinutes: number | null;
+  count: number;
+};
+
+export type FirstResponseDistribution = {
+  // Las mismas dos cifras que la métrica 9, sobre la misma población.
+  population: number;
+  withoutResponse: number;
+  buckets: RatioMetric<{ withResponse: number; ranges: FirstResponseBucket[] }>;
+};
+
+// Métrica 14 (brief-15.3, D-5): las conversaciones con primera respuesta, por rango de minutos. Las
+// que no tienen respuesta no son un rango: viajan aparte, siempre, como en la métrica 9.
+export function getFirstResponseDistribution(
+  context: AuthContext,
+  input: MetricsPeriodInput,
+): Promise<MetricResult<FirstResponseDistribution>> {
+  return withPeriod(context, input, async (query) => {
+    const found = await repository.firstResponseDistribution(query);
+    return {
+      population: found.population,
+      withoutResponse: found.population - found.withResponse,
+      buckets:
+        found.withResponse === 0
+          ? { status: "no_data" }
+          : {
+              status: "value",
+              withResponse: found.withResponse,
+              ranges: FIRST_RESPONSE_BUCKETS.map((bucket, index) => ({
+                fromMinutes: bucket.fromMinutes,
+                toMinutes: bucket.toMinutes,
+                count: found.counts[index]!,
+              })),
+            },
     };
   });
 }

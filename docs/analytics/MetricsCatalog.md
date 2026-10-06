@@ -4,7 +4,8 @@
 
 - **Métricas 1 a 6 y 10**: implementadas y validadas localmente y en CI con fixtures sintéticos ([brief-7.1](../decisions/brief-7.1-metricas-de-volumen.md)).
 - **Métricas 7, 8, 9 y 11**: implementadas y validadas localmente y en CI con fixtures sintéticos ([brief-7.2](../decisions/brief-7.2-metricas-de-respuesta-y-estado.md)).
-- **Métrica 12**: implementada y validada localmente y en CI con fixtures sintéticos ([brief-7.3](../decisions/brief-7.3-metrica-de-errores-de-ingestion.md)). Con ella el catálogo queda completo.
+- **Métrica 12**: implementada y validada localmente y en CI con fixtures sintéticos ([brief-7.3](../decisions/brief-7.3-metrica-de-errores-de-ingestion.md)). Con ella el catálogo del MVP quedó completo.
+- **Métricas 13 y 14 y el período anterior**: agregados el 2026-10-06 por la [brief-15.3](../decisions/brief-15.3-dashboard-interactivo.md) (D-2, D-4 y D-5), implementados y validados localmente con fixtures sintéticos. Son de solo lectura y no cambian ninguna fórmula de las métricas 1 a 12.
 
 Ninguna está validada con datos reales.
 
@@ -41,6 +42,11 @@ Todas las métricas se calculan por consulta (vistas SQL o queries del módulo `
 - **Lecturas independientes**: cada tarjeta se calcula con su propia consulta (brief-7.1, D-1). Si llega un mensaje entre dos lecturas, dos tarjetas pueden diferir en ese mensaje.
 - **Población A (conversaciones con actividad)**: conversaciones con al menos un mensaje con `sent_at ∈ I`.
 - **Población A_in**: conversaciones de A con al menos un mensaje `inbound` con `sent_at ∈ I`.
+- **Período anterior** (*desde la 15.3*, D-2): el intervalo de la misma cantidad de días que termina el día antes de que empiece `I`. Para `I` del 06/09 al 05/10, del 07/08 al 05/09. Es aritmética de días de calendario; cada día se convierte con la zona de la organización como cualquier `I`, así que un período anterior puede tener un día de 23 o 25 horas. Cada métrica se calcula sobre él con su misma fórmula. La comparación es de la pantalla, no del catálogo:
+  - cantidades (1, 2, 3, 4, 5 y 7) en porcentaje; tasas (8 y 12) en puntos porcentuales; promedio y mediana (6 y 9) como diferencia absoluta;
+  - la métrica 11 no se compara: es el estado actual, y no existe el del período anterior;
+  - con el período anterior en 0, en «sin datos» o «no disponible», no hay comparación, y se dice así;
+  - si `I` incluye hoy, que es un día parcial, no se compara.
 
 ---
 
@@ -127,6 +133,24 @@ Todas las métricas se calculan por consulta (vistas SQL o queries del módulo `
 - **Estados**: los tres —valor, "sin datos" y "no disponible"— son distintos entre sí y ninguno se presenta como `0`.
 - **Primera medición con un emisor real** (*2026-09-27, 12.3.3*, [evidencia-12.3](../decisions/evidencia-12.3-ingestion-v2.md), AC-18): un turno sintético emitido por la instancia del agente contra staging dejó cinco filas en `ingestion_events`. El conteo a mano con las exclusiones de arriba dio 3 eventos y 0 fallidos, y el dashboard mostró «0,0 %, 0 fallidos de 3 eventos». Un solo turno sin fallos: prueba que la métrica cuenta bien los eventos de un emisor real, no cómo se comporta con la distribución real (pocos orígenes, ráfagas de un mismo código).
 - **Primera medición con fallidos, con la cadena real del agente** (*2026-09-28, 12.5.2*, [evidencia-12.5](../decisions/evidencia-12.5-turno-completo.md), AC-12): dos ventanas con seis turnos sintéticos, una semilla y un duplicado deliberado. El conteo a mano del script de conciliación dio 7 eventos y 0 fallidos, y 9 y 2. El dashboard del día mostró «12,5 %, 2 fallidos de 16 eventos», con los dos grupos `agente-12-5-2 · conversation_ref_taken` y `agente-12-5-2 · message_already_recorded`. Los dos fallidos son `409` provocados por el guion, **no mensajes perdidos**: un emisor que sigue la guía guarda el mensaje igual. **Leerla con eso en cuenta**: la métrica cuenta un `CONFLICT` como fallido aunque la reacción del emisor lo resuelva, así que en producción una tasa distinta de cero no implica pérdida. Hay que mirar el código de cada grupo.
+
+### 13. Distribución por tipo de mensaje entrante
+
+- **Fórmula**: `COUNT` de los mensajes `inbound` con `sent_at ∈ I`, agrupados por `kind` ([brief-15.3](../decisions/brief-15.3-dashboard-interactivo.md), D-4).
+- **Fuente**: `messages`.
+- **Grupos**: los seis tipos del enum en el orden del dominio (`text`, `audio`, `image`, `video`, `document`, `other`), con `0` explícito, y al final **«sin dato»**: los mensajes con `kind` nulo, que son los de la ingestión v1 y los seeds (DataModel). Nunca se reparten entre los tipos ni se esconden.
+- **Validación**: la suma de los grupos es igual a la métrica 4.
+- **Denominador cero**: sin entrantes en `I`, «sin datos», no siete ceros.
+- **Por qué solo entrantes**: la pregunta es qué mandan los clientes; los salientes son casi todos texto del agente.
+
+### 14. Distribución del tiempo a primera respuesta
+
+- **Población y delta**: los de la métrica 9 ([brief-15.3](../decisions/brief-15.3-dashboard-interactivo.md), D-5).
+- **Fórmula**: `COUNT` de las conversaciones de la población **con** respuesta, por rango de `delta`. Los rangos son semiabiertos `[desde, hasta)`: menos de 1 min; 1 a 5 min; 5 a 30 min; 30 a 60 min; 1 h o más. Un delta de exactamente 5 min cae en «5 a 30».
+- **Nulos**: las conversaciones sin primera respuesta no son un rango; se informan aparte, siempre, como en la métrica 9.
+- **Validación**: la suma de los rangos es igual a las conversaciones con respuesta de la métrica 9, y la población es la misma.
+- **Denominador cero**: sin ninguna conversación con respuesta, los rangos son «sin datos», y las que esperan respuesta se informan igual.
+- **Casos límite**: los de la métrica 9. El delta es tiempo transcurrido: en un día de 25 horas, una respuesta a la misma hora del reloj pero una hora después cae en «1 h o más».
 
 ## Criterios de validación del dashboard
 
