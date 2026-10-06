@@ -101,6 +101,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-13.5](brief-13.5-primer-cliente.md) | 13.5 — Primer cliente | aprobado el 2026-10-01 con las recomendaciones de D-1 a D-11; en curso. Salidas crudas en [evidencia-13.5](evidencia-13.5-primer-cliente.md) |
 | [brief-15.1](brief-15.1-identidad-visual-y-marco.md) | 15.1 — Identidad visual, marco y pantallas principales | aprobado el 2026-10-05 con las recomendaciones de D-1 a D-12; cerrado el 2026-10-05 |
 | [brief-15.2](brief-15.2-controles-de-los-listados.md) | 15.2 — Controles de los listados | aprobado el 2026-10-05 con las recomendaciones de D-1 a D-9; cerrado el 2026-10-06 |
+| [brief-15.3](brief-15.3-dashboard-interactivo.md) | 15.3 — Dashboard más atractivo e interactivo | aprobado el 2026-10-06 con las recomendaciones de D-1 a D-9, salvo los rangos de D-5 (los del boceto); en curso |
 | [brief-15.4](brief-15.4-detalles-y-formularios.md) | 15.4 — Pantallas de detalle y formularios | aprobado el 2026-10-05 con las recomendaciones de D-1 a D-11; cerrado el 2026-10-05 |
 | [evidencia-9.1](evidencia-9.1-staging.md) | 9.1 — Salidas crudas de la verificación en staging | captura del 2026-09-22 |
 | [evidencia-9.2](evidencia-9.2-backups.md) | 9.2 — Backup y restauración verificados en staging | captura del 2026-09-22 |
