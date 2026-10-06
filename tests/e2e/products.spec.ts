@@ -997,3 +997,112 @@ test("caso 19: brief-15.2 filtra por categoría y por marca, y los conserva al o
     page.getByText("Ningún producto coincide con estos filtros."),
   ).toBeVisible();
 });
+
+test("caso 20: brief-15.2 las sugerencias de marca y categoría son propias y se usan con teclado y con el mouse", async ({
+  page,
+}) => {
+  await insertProduct("NOT-1", "Atlas", {
+    brand: "Arkon",
+    category: "Notebooks",
+  });
+  await insertProduct("CEL-1", "Nova", {
+    brand: "Brisa",
+    category: "Celulares",
+  });
+  await insertProduct("ALM-1", "Yerba", { category: "Almacén" });
+  await login(page, ADMIN);
+  await page.goto("/productos/nuevo");
+
+  const category = page.getByRole("combobox", { name: "Categoría" });
+  const list = page.getByRole("listbox", { name: "Sugerencias" });
+  await expect(category).toHaveAttribute("aria-expanded", "false");
+  await expect(list).toBeHidden();
+
+  // Escribir filtra sin tildes ni mayúsculas.
+  await category.fill("ALMACEN");
+  await expect(category).toHaveAttribute("aria-expanded", "true");
+  await expect(list.getByRole("option")).toHaveText(["Almacén"]);
+  await expectAccessible(page, "alta con la lista de sugerencias abierta");
+
+  // Flechas y Enter: el foco queda en el campo y Enter elige sin enviar el formulario.
+  await category.fill("");
+  await category.press("Escape");
+  await expect(list).toBeHidden();
+  // La flecha abre la lista sin marcar ninguna opción; las siguientes se mueven.
+  await category.press("ArrowDown");
+  await expect(category).not.toHaveAttribute("aria-activedescendant", /.+/);
+  await expect(list.getByRole("option")).toHaveText([
+    "Almacén",
+    "Celulares",
+    "Notebooks",
+  ]);
+  await category.press("ArrowDown");
+  await category.press("ArrowDown");
+  const active = list.getByRole("option", { name: "Celulares" });
+  await expect(active).toHaveAttribute("aria-selected", "true");
+  await expect(category).toHaveAttribute(
+    "aria-activedescendant",
+    (await active.getAttribute("id"))!,
+  );
+  await category.press("Enter");
+  await expect(category).toHaveValue("Celulares");
+  await expect(category).toBeFocused();
+  await expect(list).toBeHidden();
+  await expect(page).toHaveURL("/productos/nuevo");
+
+  // Escape cierra sin cambiar el texto.
+  await category.press("ArrowDown");
+  await expect(list).toBeVisible();
+  await category.press("Escape");
+  await expect(list).toBeHidden();
+  await expect(category).toHaveValue("Celulares");
+
+  // Con el mouse, en Marca.
+  const brand = page.getByRole("combobox", { name: "Marca" });
+  await brand.fill("bri");
+  await list.getByRole("option", { name: "Brisa" }).click();
+  await expect(brand).toHaveValue("Brisa");
+  await expect(brand).toBeFocused();
+  await expect(list).toBeHidden();
+
+  // Un valor que no está en la lista se acepta igual: es texto libre.
+  await page.getByLabel("SKU").fill("TAB-1");
+  await page.getByLabel("Nombre").fill("Tableta");
+  await category.fill("Tablets");
+  await page.getByLabel("Unidad").fill("unidad");
+  await page.getByLabel("Punto de reposición").fill("1");
+  await page.getByRole("button", { name: "Crear producto" }).click();
+  await expect(page).toHaveURL(/\/productos\/[0-9a-f-]{36}\?aviso=creado$/);
+  const datos = page.getByRole("region", { name: "Información básica" });
+  await expect(datos).toContainText("Brisa");
+  await expect(datos).toContainText("Tablets");
+});
+
+test("caso 21: brief-15.2 sin JavaScript, marca y categoría son campos de texto que se envían igual", async ({
+  browser,
+  page,
+}) => {
+  await login(page, ADMIN);
+  const context = await browser.newContext({
+    javaScriptEnabled: false,
+    storageState: await page.context().storageState(),
+  });
+  const noScript = await context.newPage();
+  await noScript.goto("/productos/nuevo");
+  await expect(
+    noScript.getByRole("listbox", { name: "Sugerencias" }),
+  ).toBeHidden();
+  await noScript.getByLabel("SKU").fill("SJS-1");
+  await noScript.getByLabel("Nombre").fill("Sin script");
+  await noScript.getByLabel("Marca").fill("Arkon");
+  await noScript.getByLabel("Categoría").fill("Notebooks");
+  await noScript.getByLabel("Unidad").fill("unidad");
+  await noScript.getByLabel("Punto de reposición").fill("1");
+  await noScript.getByRole("button", { name: "Crear producto" }).click();
+  await expect(noScript).toHaveURL(/\/productos\/[0-9a-f-]{36}\?aviso=creado$/);
+  const stored = await db.execute<{ brand: string; category: string }>(
+    sql`select brand, category from products where sku = 'SJS-1'`,
+  );
+  expect(stored.rows).toEqual([{ brand: "Arkon", category: "Notebooks" }]);
+  await context.close();
+});

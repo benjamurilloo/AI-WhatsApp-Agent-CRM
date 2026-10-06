@@ -561,3 +561,32 @@ test("caso 9: FR-INFO-02 en móvil la lista se ve como tarjetas, sin desplazamie
   ).toBe(true);
   await expectAccessible(page, "lista en móvil");
 });
+
+test("caso 10: brief-15.2 la categoría sugiere las ya usadas con su propia lista", async ({
+  page,
+}) => {
+  await insertEntry("Horarios", { category: "Atención" });
+  await insertEntry("Medios de pago", { category: "Pagos" });
+  const other = await db.execute<{ id: string }>(
+    sql`insert into organizations (name) values ('Otra organización') returning id`,
+  );
+  await insertEntry("Entrada ajena", {
+    category: "Ajena",
+    organizationId: other.rows[0]!.id,
+  });
+  await login(page, ADMIN);
+  await page.goto("/informacion/nueva");
+
+  const category = page.getByRole("combobox", { name: "Categoría" });
+  const list = page.getByRole("listbox", { name: "Sugerencias" });
+  await category.press("ArrowDown");
+  await expect(list.getByRole("option")).toHaveText(["Atención", "Pagos"]);
+  await category.fill("aten");
+  await expect(list.getByRole("option")).toHaveText(["Atención"]);
+  await expectAccessible(page, "alta con la lista de categorías abierta");
+  await category.press("ArrowDown");
+  await category.press("Enter");
+  await expect(category).toHaveValue("Atención");
+  await expect(list).toBeHidden();
+  await expect(page).toHaveURL("/informacion/nueva");
+});

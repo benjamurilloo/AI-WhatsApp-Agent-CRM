@@ -285,3 +285,19 @@ La CI de `d7d5a6d` (15.2.2) falló solo en «Auditoría de dependencias» (`npm 
 El usuario autorizó actualizarla en un commit aparte. Es un desvío de AC-8: `package-lock.json` cambia, `package.json` no. `npm audit fix` subía también `brace-expansion` y `drizzle-kit`, que no estaban autorizados: se revirtió y se aplicó `npm update source-map-js`, que deja solo `source-map-js` 1.2.2, dentro del rango `^1.2.1` que pide `postcss`. `node_modules` se reinstaló con `npm ci` desde ese lock. Las dos auditorías de la CI pasan en local.
 
 Riesgo mientras tanto, inferido del árbol de dependencias y no probado: bajo. `postcss` procesa los estilos propios al compilar y la aplicación no recibe mapas de código fuente de terceros. Producción (`2aaa619`) tiene la 1.2.1 hasta el próximo despliegue (15.2.5).
+
+## Resultados — 15.2.3
+
+Etapa 15.2.3, el componente propio de sugerencias (D-5, opción a). Autoevaluación, no revisión independiente.
+
+**Qué se hizo.** `src/app/_components/suggest-input.tsx` reemplaza el `datalist` en Marca y Categoría del producto y en Categoría de la información. Sigue el patrón combobox de ARIA 1.2 con lista: el campo tiene `role="combobox"`, `aria-expanded`, `aria-controls` y `aria-activedescendant`, y la lista es `role="listbox"` con opciones `role="option"` y `aria-selected`. Escribir, hacer clic o la flecha abajo abren la lista. Las flechas mueven la opción activa, que queda a la vista en una lista larga. Enter elige sin enviar el formulario, y Enter sin opción activa lo envía como siempre. Escape cierra sin cambiar el texto, y salir del campo también la cierra. Con el mouse, la opción se elige en `mousedown`, para que el campo no pierda el foco. El filtrado está en `suggest-filter.ts`: sin tildes ni mayúsculas, primero lo que empieza con el texto y después lo que lo contiene. Los colores salen de los tokens y no hay estilos en línea.
+
+El campo no es controlado, para que el reinicio del formulario después de cada envío (`useActionState`) siga funcionando como en los demás campos. Sin JavaScript es un campo de texto con el mismo `name`. Por ahora solo usa la lista fija; el pedido al servidor de la 15.2.4 se le suma en esa etapa.
+
+**Desvíos.** `suggest-filter.ts` y su test son el «archivo aparte con test» que prevé la lista de archivos; no hay otros.
+
+**Verificación.**
+- `typecheck`, `lint` y `build` pasan; `prettier --check` sobre los archivos cambiados, limpio.
+- `test:unit` 526 de 526 (5 nuevos del filtrado); `test:guards` 485 de 485; `test:integration` 680 de 680.
+- End-to-end: la suite completa, 109 de 109 sobre `next start`. Casos nuevos: productos 20 (teclado, mouse, Escape, Enter que no envía, valor fuera de la lista y axe en claro y oscuro con la lista abierta), productos 21 (sin JavaScript, el alta con marca y categoría se guarda igual) e información 10 (categorías de la organización, filtrado y teclado, con axe). Ningún end-to-end existente cambió: completan los campos por su etiqueta, que sigue igual.
+- Capturas con la lista abierta, en claro y oscuro, a 1280 y 375 px: Categoría y Marca del producto y Categoría de la información.

@@ -12,6 +12,7 @@ import {
 } from "@/app/_components/form-styles";
 import type { IconName } from "@/app/_components/icons";
 import { SectionCard } from "@/app/_components/section-card";
+import { SuggestInput } from "@/app/_components/suggest-input";
 import { createKnowledgeAction, updateKnowledgeAction } from "./actions";
 import {
   FIELD_ORDER,
@@ -179,28 +180,12 @@ export function KnowledgeForm({
                     </label>
                     {field.kind === "textarea" ? (
                       <textarea {...common} rows={8} />
+                    ) : field.name === "category" ? (
+                      // Sugerencias propias en lugar del datalist (brief-15.2, D-5).
+                      <SuggestInput {...common} options={categories} />
                     ) : (
-                      <input
-                        {...common}
-                        type={field.kind}
-                        list={
-                          field.name === "category"
-                            ? "category-sugerencias"
-                            : undefined
-                        }
-                        // Sin el historial del navegador: solo las categorías cargadas.
-                        autoComplete={
-                          field.name === "category" ? "off" : undefined
-                        }
-                      />
+                      <input {...common} type={field.kind} />
                     )}
-                    {field.name === "category" ? (
-                      <datalist id="category-sugerencias">
-                        {categories.map((value) => (
-                          <option key={value} value={value} />
-                        ))}
-                      </datalist>
-                    ) : null}
                     {field.hint ? (
                       <p id={hintId} className="text-sm text-muted">
                         {field.hint}

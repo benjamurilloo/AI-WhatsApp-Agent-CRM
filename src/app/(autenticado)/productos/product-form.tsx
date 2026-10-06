@@ -11,6 +11,7 @@ import {
   secondaryLinkClass,
 } from "@/app/_components/form-styles";
 import { SectionCard } from "@/app/_components/section-card";
+import { SuggestInput } from "@/app/_components/suggest-input";
 import { createProductAction, updateProductAction } from "./actions";
 import type { ProductSuggestions } from "@/modules/catalog";
 import {
@@ -132,7 +133,6 @@ export function ProductForm({
     const invalid = failed && state.field === field.name;
     const hintId = field.hint ? `${field.name}-ayuda` : undefined;
     const errorId = invalid ? `${field.name}-error` : undefined;
-    const listId = field.list ? `${field.name}-sugerencias` : undefined;
     const describedBy =
       [errorId, hintId].filter(Boolean).join(" ") || undefined;
     return (
@@ -172,28 +172,31 @@ export function ProductForm({
             aria-describedby={describedBy}
             className={inputClass}
           />
+        ) : field.list ? (
+          // Sugerencias propias en lugar del datalist (brief-15.2, D-5).
+          <SuggestInput
+            id={field.name}
+            name={field.name}
+            required={field.required}
+            defaultValue={shown[field.name]}
+            placeholder={field.placeholder}
+            aria-invalid={invalid ? true : undefined}
+            aria-describedby={describedBy}
+            className={inputClass}
+            options={suggestions[field.list]}
+          />
         ) : (
           <input
             id={field.name}
             name={field.name}
             required={field.required}
             defaultValue={shown[field.name]}
-            list={listId}
-            // Sin el historial del navegador: solo las sugerencias de la lista.
-            autoComplete={field.list ? "off" : undefined}
             placeholder={field.placeholder}
             aria-invalid={invalid ? true : undefined}
             aria-describedby={describedBy}
             className={inputClass}
           />
         )}
-        {field.list ? (
-          <datalist id={listId}>
-            {suggestions[field.list].map((value) => (
-              <option key={value} value={value} />
-            ))}
-          </datalist>
-        ) : null}
         {field.hint ? (
           <p id={hintId} className="text-sm text-muted">
             {field.hint}
