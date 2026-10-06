@@ -498,6 +498,27 @@ async function main(): Promise<void> {
       ),
     ],
     [
+      "conversations.listConversations (abiertas por inicio, 15.2)",
+      () =>
+        listConversations(context, {
+          ...sinFiltroDeConversaciones,
+          status: "open",
+          page: 1,
+          sort: "started",
+        }),
+    ],
+    [
+      "conversations.listConversations (abiertas por inicio, última página, 15.2)",
+      ultimaPagina((page) =>
+        listConversations(context, {
+          ...sinFiltroDeConversaciones,
+          status: "open",
+          page,
+          sort: "started",
+        }),
+      ),
+    ],
+    [
       "conversations.listConversations (50 filas, 15.2)",
       () =>
         listConversations(context, {

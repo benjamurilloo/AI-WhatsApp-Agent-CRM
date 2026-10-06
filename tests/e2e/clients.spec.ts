@@ -761,6 +761,15 @@ test("caso 17: brief-15.2 ordena por nombre en los dos sentidos y elige las fila
   await expect(rows).toHaveCount(1 + 2);
   await expect(firstName()).toContainText("Cliente 02");
   await expectAccessible(page, "lista por nombre inverso, 10 filas");
+
+  // AC-3: 50 filas por página, desde la página 2, vuelve a la primera con el mismo orden.
+  await sizes.getByRole("link", { name: "50 filas por página" }).click();
+  await expect(page).toHaveURL("/clientes?orden=nombre-za&filas=50");
+  await expect(
+    sizes.getByText("50 filas por página", { exact: false }),
+  ).toBeVisible();
+  await expect(rows).toHaveCount(1 + 12);
+  await expect(firstName()).toContainText("Zoe Luna");
 });
 
 test("caso 18: brief-15.2 el buscador sugiere nombres, nunca teléfonos, y elegir abre el cliente", async ({

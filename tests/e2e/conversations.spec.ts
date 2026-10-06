@@ -717,3 +717,49 @@ test("caso 12: brief-15.2 ordena por último mensaje en los dos sentidos y por i
   await expect(rows).toHaveCount(1 + 3);
   await expectAccessible(page, "lista por inicio, 50 filas");
 });
+
+test("caso 13: brief-15.2 con 10 filas por página, el estado y el orden se conservan al paginar", async ({
+  page,
+}) => {
+  // Doce abiertas, que empezaron de 1 a 12 días atrás, y una cerrada que no debe aparecer.
+  for (let i = 1; i <= 12; i++) {
+    const client = await insertClient(`Cliente ${String(i).padStart(2, "0")}`);
+    await insertConversation({
+      clientId: client,
+      messages: [{ direction: "inbound", sentAt: ago(i), body: "hola" }],
+    });
+  }
+  const closed = await insertClient("Cerrada Ruiz");
+  await insertConversation({
+    clientId: closed,
+    status: "closed",
+    messages: [{ direction: "inbound", sentAt: ago(13), body: "hola" }],
+  });
+  await login(page, ADMIN);
+  await page.goto("/conversaciones?estado=abierta&orden=inicio");
+
+  const rows = conversationsTable(page).getByRole("row");
+  const firstClient = () => rows.nth(1).getByRole("cell").first();
+  await expect(firstClient()).toContainText("Cliente 01");
+
+  const sizes = page.getByRole("group", { name: "Filas por página" });
+  await sizes.getByRole("link", { name: "10 filas por página" }).click();
+  await expect(page).toHaveURL(
+    "/conversaciones?estado=abierta&orden=inicio&filas=10",
+  );
+  await expect(rows).toHaveCount(1 + 10);
+  const pagination = page.getByRole("navigation", { name: "Paginación" });
+  await expect(
+    pagination.getByText("Mostrando 1 a 10 de 12 conversaciones"),
+  ).toBeVisible();
+
+  await pagination.getByRole("link", { name: "Página siguiente" }).click();
+  await expect(page).toHaveURL(
+    "/conversaciones?estado=abierta&orden=inicio&filas=10&pagina=2",
+  );
+  await expect(rows).toHaveCount(1 + 2);
+  await expect(firstClient()).toContainText("Cliente 11");
+  await expect(conversationsTable(page)).not.toContainText("Cerrada Ruiz");
+  await expect(page.getByLabel("Estado")).toHaveValue("abierta");
+  await expect(page.getByLabel("Ordenar por")).toHaveValue("inicio");
+});

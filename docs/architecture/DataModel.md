@@ -262,11 +262,13 @@ La regla "`started_at` coincide con el `sent_at` del primer mensaje" (y `last_me
 
 - `conversations_organization_last_message_idx` sobre `(organization_id, last_message_at desc)`: lista de conversaciones de la pantalla 8, filtrada por período y ordenada por último mensaje (D-4).
 - `conversations_organization_client_last_message_idx` sobre `(organization_id, client_id, last_message_at desc)`: última interacción y orden de la lista de clientes (pantalla 6), y conversaciones del cliente en la pantalla 7 (D-2).
-- `conversations_organization_started_idx` sobre `(organization_id, started_at)`: métricas 1 y 10, que cuentan conversaciones por fecha de inicio.
+- `conversations_organization_started_idx` sobre `(organization_id, started_at)`: métricas 1 y 10, que cuentan conversaciones por fecha de inicio. Desde la 15.2 sirve también el orden por inicio de la pantalla 8, con o sin filtro de estado.
 
 PostgreSQL ordena los nulos al final con `desc` (`NULLS LAST`): una conversación sin mensajes queda después de las que tienen.
 
 Se quitaron `(organization_id, status, started_at desc)` y `(client_id, started_at desc)`: ninguna consulta ordena por inicio dentro de un estado, y las conversaciones del cliente se ordenan por último mensaje.
+
+*Enmendado el 2026-10-06 (brief-15.2, hallazgo H-3 de la revisión independiente).* Desde la 15.2.1, `/conversaciones?estado=…&orden=inicio` sí ordena por inicio dentro de un estado. No se repone el índice: el plan recorre `conversations_organization_started_idx` hacia atrás y filtra el estado, y en local, con 10.000 conversaciones y 3.225 abiertas en una organización, la primera página tarda 6,9 ms de mediana y la última 7,5 ms, lejos del umbral de la 13.2. Se revisa si un estado llega a ser una fracción chica de un volumen mucho mayor.
 
 ### `messages`
 

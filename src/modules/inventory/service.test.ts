@@ -107,10 +107,11 @@ describe("composeProductStockPage", () => {
     const dear = product({ name: "Dear" });
     const none = product({ name: "Alpha" });
     const ten = product({ name: "Ten" });
+    const ars = (amount: string) => ({ amount, currency: "ARS" });
     const prices = new Map([
-      [cheap.id, "9.50"],
-      [dear.id, "1200.00"],
-      [ten.id, "10.00"],
+      [cheap.id, ars("9.50")],
+      [dear.id, ars("1200.00")],
+      [ten.id, ars("10.00")],
     ]);
     const names = (sort: ProductSort) =>
       composeProductStockPage(
@@ -121,6 +122,26 @@ describe("composeProductStockPage", () => {
       ).products.map((p) => p.name);
     expect(names("price_asc")).toEqual(["Cheap", "Ten", "Dear", "Alpha"]);
     expect(names("price_desc")).toEqual(["Dear", "Ten", "Cheap", "Alpha"]);
+  });
+
+  it("brief-15.2 H-2: por precio, los montos se comparan dentro de cada moneda", () => {
+    const pesos = product({ name: "Pesos" });
+    const morePesos = product({ name: "Más pesos" });
+    const dollars = product({ name: "Dólares" });
+    const prices = new Map([
+      [pesos.id, { amount: "990.00", currency: "ARS" }],
+      [morePesos.id, { amount: "5000.00", currency: "ARS" }],
+      [dollars.id, { amount: "10.00", currency: "USD" }],
+    ]);
+    const names = (sort: ProductSort) =>
+      composeProductStockPage(
+        [dollars, morePesos, pesos],
+        new Map(),
+        { stockStatus: "all", page: 1, sort },
+        prices,
+      ).products.map((p) => p.name);
+    expect(names("price_asc")).toEqual(["Pesos", "Más pesos", "Dólares"]);
+    expect(names("price_desc")).toEqual(["Más pesos", "Pesos", "Dólares"]);
   });
 
   it("brief-15.2 D-2: pagina con el tamaño pedido; uno fuera de 1 a 50 vuelve a 25", () => {

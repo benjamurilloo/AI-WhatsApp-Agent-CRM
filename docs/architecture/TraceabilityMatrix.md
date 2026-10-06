@@ -101,7 +101,7 @@ Cada índice tiene al menos una consulta real que lo usa.
 | `conversations` | `UNIQUE(organization_id, channel, external_ref) WHERE external_ref IS NOT NULL` | idempotencia de ingestión (segunda defensa) | endpoint de ingestión |
 | `conversations` | `(organization_id, last_message_at desc)` | lista filtrada por período y ordenada por último mensaje | pantalla 8 |
 | `conversations` | `(organization_id, client_id, last_message_at desc)` | última interacción por cliente; conversaciones de un cliente; desde la 12.2, la búsqueda de la conversación vigente filtra por sus columnas (plan no medido) | pantallas 6 y 7 |
-| `conversations` | `(organization_id, started_at)` | conversaciones iniciadas en el intervalo | métricas 1 y 10 |
+| `conversations` | `(organization_id, started_at)` | conversaciones iniciadas en el intervalo; desde la 15.2, lista ordenada por inicio, con o sin filtro de estado | métricas 1 y 10; pantalla 8 |
 | `messages` | `UNIQUE(organization_id, conversation_id, external_ref) WHERE external_ref IS NOT NULL` | idempotencia de ingestión (segunda defensa) | endpoint de ingestión |
 | `messages` | `(conversation_id, sent_at)` | timeline; conteo por conversación; primer mensaje de la conversación | pantallas 7, 8 y 9; métrica 9 |
 | `messages` | `(organization_id, sent_at)` | mensajes de la organización en el intervalo | métricas 2 a 10 |
@@ -113,7 +113,7 @@ Cada índice tiene al menos una consulta real que lo usa.
 
 ### Índices quitados en esta subfase
 
-- `conversations (organization_id, status, started_at desc)`: ninguna consulta ordena por inicio dentro de un estado. El filtro por estado de la pantalla 8 se aplica sobre `(organization_id, last_message_at desc)`, y la métrica 1 usa `(organization_id, started_at)`.
+- `conversations (organization_id, status, started_at desc)`: ninguna consulta ordena por inicio dentro de un estado. El filtro por estado de la pantalla 8 se aplica sobre `(organization_id, last_message_at desc)`, y la métrica 1 usa `(organization_id, started_at)`. **Enmendado el 2026-10-06 (brief-15.2, H-3)**: desde la 15.2.1 la pantalla 8 ordena por inicio dentro de un estado; lo sirve `(organization_id, started_at)` filtrando el estado, medido en local en 6,9 ms (primera página) y 7,5 ms (última) con 10.000 conversaciones, así que el índice no se repone.
 - `conversations (client_id, started_at desc)`: las conversaciones del cliente se ordenan por último mensaje y las sirve `(organization_id, client_id, last_message_at desc)`.
 
 ### Consultas que filtran u ordenan sin índice propio, con justificación

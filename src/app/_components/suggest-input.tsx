@@ -110,7 +110,11 @@ export function SuggestInput({
     timer.current = setTimeout(async () => {
       try {
         const found = await load(query);
-        if (ticket === lastRequest.current) setRemote(found);
+        if (ticket === lastRequest.current) {
+          // Lista nueva: la opción marcada de la anterior ya no significa nada.
+          setRemote(found);
+          setActive(-1);
+        }
       } catch {
         if (ticket === lastRequest.current) setRemote([]);
       }
@@ -147,10 +151,10 @@ export function SuggestInput({
           ? shown.length - 1
           : (current + step + shown.length) % shown.length,
       );
-    } else if (event.key === "Enter" && expanded && active >= 0) {
+    } else if (event.key === "Enter" && expanded && shown[active]) {
       // Elegir no envía el formulario; Enter sin una opción activa sí, como siempre.
       event.preventDefault();
-      choose(shown[active]!);
+      choose(shown[active]);
     } else if (event.key === "Escape" && expanded) {
       event.preventDefault();
       setOpen(false);

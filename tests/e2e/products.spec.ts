@@ -917,6 +917,20 @@ test("caso 18: brief-15.2 ordena, elige las filas por página y los conserva al 
   await page.goto("/productos?orden=stock-mayor&filas=50");
   await expect(firstName()).toHaveText("Sin precio");
   await expect(rows).toHaveCount(1 + 13);
+
+  // AC-3: los demás órdenes del selector, por sus dos primeras filas.
+  const firstTwo = async (orden: string, names: [string, string]) => {
+    await page.goto(`/productos?orden=${orden}`);
+    await expect(page.getByLabel("Ordenar por")).toHaveValue(orden);
+    await expect(firstName()).toHaveText(names[0]);
+    await expect(rows.nth(2).getByRole("cell").nth(1)).toHaveText(names[1]);
+  };
+  await firstTwo("nombre-za", ["Sin precio", "P12"]);
+  await firstTwo("sku", ["Sin precio", "P01"]);
+  await firstTwo("stock-menor", ["P01", "P02"]);
+  await firstTwo("precio-menor", ["P01", "P02"]);
+  await expect(rows.last().getByRole("cell").nth(1)).toHaveText("Sin precio");
+
   await page.goto("/productos?orden=inventado&filas=7");
   await expect(firstName()).toHaveText("P01");
   await expect(page.getByLabel("Ordenar por")).toHaveValue("nombre");
@@ -1169,4 +1183,46 @@ test("caso 22: brief-15.2 el buscador sugiere productos con la regla de la búsq
     response.headers()["x-action-redirect"] ?? response.headers()["location"],
   ).toMatch(/\/login/);
   await anonymous.dispose();
+});
+
+test("caso 23: brief-15.2 una lista nueva de sugerencias reinicia la opción marcada y Enter busca", async ({
+  page,
+}) => {
+  await insertProduct("NOT-ATL", "Atlas Pro", { brand: "Arkon" });
+  await insertProduct("NOT-BRI", "Brisa 14", { brand: "Arkon" });
+  await insertProduct("NOT-ZEN", "Zenda 13", { brand: "Arkon" });
+  const errors: Error[] = [];
+  page.on("pageerror", (error) => errors.push(error));
+  await login(page, VIEWER);
+  await page.goto("/productos");
+
+  // La respuesta a «NOT-ZEN» llega tarde: mientras tanto se marca la tercera opción de la lista vieja.
+  await page.route("**/productos", async (route) => {
+    const request = route.request();
+    if (
+      request.method() === "POST" &&
+      request.headers()["next-action"] &&
+      (request.postData() ?? "").includes("NOT-ZEN")
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    await route.continue();
+  });
+
+  const search = page.getByRole("combobox", { name: "Buscar" });
+  const list = page.getByRole("listbox", { name: "Sugerencias" });
+  await search.fill("arkon");
+  await expect(list.getByRole("option")).toHaveCount(3);
+  await search.fill("NOT-ZEN");
+  await search.press("ArrowDown");
+  await search.press("ArrowDown");
+  await search.press("ArrowDown");
+  await expect(search).toHaveAttribute("aria-activedescendant", /-2$/);
+
+  // Llega la lista de una opción: ninguna queda marcada, y Enter busca en lugar de fallar.
+  await expect(list.getByRole("option")).toHaveText(["Zenda 13 NOT-ZEN"]);
+  await expect(search).not.toHaveAttribute("aria-activedescendant", /.*/);
+  await search.press("Enter");
+  await expect(page).toHaveURL(/\/productos\?q=NOT-ZEN&/);
+  expect(errors).toEqual([]);
 });

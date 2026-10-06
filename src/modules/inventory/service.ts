@@ -119,10 +119,11 @@ const byStock = (a: ProductStock, b: ProductStock) => {
 };
 
 // El comparador de cada orden. A igual valor, por nombre: una fila no salta de página. Un
-// producto sin precio va al final en los dos sentidos.
+// producto sin precio va al final en los dos sentidos. Por precio, los montos solo se comparan
+// dentro de una moneda: primero se agrupa por moneda, en orden alfabético en los dos sentidos.
 function comparator(
   sort: ProductSort,
-  prices: Map<string, string>,
+  prices: Map<string, SortPrice>,
 ): (a: ProductStock, b: ProductStock) => number {
   switch (sort) {
     case "name_asc":
@@ -145,14 +146,21 @@ function comparator(
           if (left !== right) return left === undefined ? 1 : -1;
           return byName(a, b);
         }
-        return sign * (Number(left) - Number(right)) || byName(a, b);
+        if (left.currency !== right.currency) {
+          return left.currency < right.currency ? -1 : 1;
+        }
+        return (
+          sign * (Number(left.amount) - Number(right.amount)) || byName(a, b)
+        );
       };
     }
   }
 }
 
+type SortPrice = { amount: string; currency: string };
+
 // Filtra por estado, ordena y pagina. Una página fuera de rango se lleva a la última. prices
-// (id → monto) solo hace falta para ordenar por precio.
+// (id → monto y moneda) solo hace falta para ordenar por precio.
 export function composeProductStockPage(
   products: Product[],
   balances: Map<string, string>,
@@ -160,7 +168,7 @@ export function composeProductStockPage(
     ProductListFilters,
     "stockStatus" | "page" | "sort" | "pageSize"
   >,
-  prices: Map<string, string> = new Map(),
+  prices: Map<string, SortPrice> = new Map(),
 ): ProductStockPage {
   const pageSize = productPageSize(filters.pageSize);
   const matching = products
@@ -194,11 +202,13 @@ export async function listProductStock(
   const ids = found.products.map((product) => product.id);
   const balances = await repository.findBalances(context.organizationId, ids);
   // El precio de todos los que cumplen el filtro, solo para ordenar por precio (brief-15.2, H-2).
-  const prices = new Map<string, string>();
+  const prices = new Map<string, SortPrice>();
   if (filters.sort === "price_asc" || filters.sort === "price_desc") {
     const current = await getCurrentPrices(context, ids);
     if (!current.ok) return current;
-    for (const [id, price] of current.prices) prices.set(id, price.amount);
+    for (const [id, price] of current.prices) {
+      prices.set(id, { amount: price.amount, currency: price.currency });
+    }
   }
   return {
     ok: true,

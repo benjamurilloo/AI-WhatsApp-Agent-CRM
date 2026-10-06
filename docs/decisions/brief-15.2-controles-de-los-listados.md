@@ -334,3 +334,31 @@ Ningún plan cambia de forma. Productos usa `BitmapOr` sobre el índice GIN `pro
 - End-to-end: 111 de 111 sobre `next start`, en dos tandas (45 y 66). Antes, dos corridas completas seguidas perdieron el servidor de la aplicación a mitad de camino, en puntos distintos (durante productos y antes de clientes 18), sin ningún error en su salida; todo lo posterior dio `ERR_CONNECTION_REFUSED`. La máquina tenía 0,6 GB libres de 7,7 GB: se atribuye a falta de memoria, por inferencia y no por prueba, y la corrida anterior con el mismo código del producto pasó 110 de 111. Casos nuevos: productos 22 (regla de la búsqueda, inactivos fuera, SKU exacto, Enter que busca, mouse que abre el detalle, axe y AC-6) y clientes 18 (un viewer ve nombres, ni la lista ni las respuestas de la acción contienen el teléfono, un texto que parece teléfono no pide nada, Enter que busca, teclado que abre el detalle, axe y AC-6).
 - **AC-6**: cada caso captura la Server Action real y la reenvía sin la cookie de sesión. La respuesta no trae ningún nombre y redirige a `/login`.
 - La primera corrida completa falló en clientes 18 por el test: leía el cuerpo de una respuesta después de que la página navegara. Se protegió la lectura y se deja de escuchar antes de navegar; repetido 5 veces, pasó las 5.
+
+## Revisión independiente (D-9) y correcciones (2026-10-06)
+
+Un agente que no participó del trabajo revisó la 15.2.1 a la 15.2.4 con acceso de solo lectura, contra este brief y las reglas vigentes. **Sin hallazgos bloqueantes.** Confirmó que las dos acciones exigen sesión antes de leer, que el teléfono no viaja por ningún camino, que las consultas filtran por organización y no admiten inyección en el orden, y que no hay colores fuera de los tokens ni estilos en línea. Informó cinco hallazgos menores. Cada uno se verificó contra el código antes de aceptarlo, y el usuario aprobó las correcciones.
+
+- **H-1, defecto del componente.** Al llegar una lista remota nueva, `SuggestInput` conservaba la opción marcada de la anterior. Con la tercera opción marcada y una lista nueva de una sola, Enter llamaba a `choose(undefined)` y fallaba con un `TypeError`. Ahora una lista nueva reinicia la opción marcada, y Enter solo elige si la opción existe. Productos 23 lo prueba retrasando a propósito la respuesta de la acción, para que la carrera ocurra siempre.
+- **H-2, el orden por precio mezclaba monedas.** Comparaba montos sin mirar la moneda, que es por fila (DataModel): 10 USD salía antes que 990 ARS. Ahora se agrupa primero por moneda, en orden alfabético en los dos sentidos, y dentro de cada moneda se ordena por monto. Hay un test unitario nuevo con ARS y USD. En el piloto todos los precios son ARS, así que en la práctica no cambia nada.
+- **H-3, contradicción documental.** `DataModel.md` y `TraceabilityMatrix.md` decían que ninguna consulta ordena por inicio dentro de un estado, pero desde la 15.2.1 `/conversaciones?estado=…&orden=inicio` lo hace. Se midió en una base local aparte, sembrada con `seeds/volume.ts medicion` y borrada después:
+
+  | Camino | Organización grande | Organización chica |
+  |---|---|---|
+  | Abiertas por inicio (primera / última página) | 6,9 / 7,5 ms | 6,2 / 5,7 ms |
+
+  El plan recorre `conversations_organization_started_idx` hacia atrás, con un `Incremental Sort`, y filtra el estado (3.225 abiertas de 10.000). El recuento hace un recorrido secuencial de `conversations`, como cualquier filtro por estado desde antes de la 15.2, porque no depende del orden. No se repone el índice quitado en la 1.2. Las dos frases se enmendaron con fecha. **Desvío:** esos dos documentos no estaban en la lista de archivos autorizados, y el usuario autorizó tocarlos.
+- **H-4, AC-3 no estaba cubierto al pie de la letra.** Se agregaron:
+  - en Productos 18, los órdenes `nombre-za`, `sku`, `stock-menor` y `precio-menor`;
+  - en Clientes 17, las 50 filas;
+  - Conversaciones 13: 10 filas, y el estado y el orden se conservan al paginar.
+- **H-5, sin cambio.** `.claude/settings.json` nunca entró en ningún commit.
+
+Además, `Screens.md` suma la nota fechada de la 15.2. `scripts/medir-caminos.ts` suma los dos caminos de H-3.
+
+**Verificación.**
+- `typecheck`, `lint` y `build` pasan; `prettier --check` sobre los archivos cambiados sale limpio.
+- `test:unit` 529 de 529 y `test:guards` 485 de 485.
+- `test:integration`: la primera corrida dio 684 de 685. Falló una vez «D-6: las sugerencias usan la regla del buscador», un test que estas correcciones no tocan. Después pasó 1 de 1 solo, su archivo 3 de 3 y la integración completa 685 de 685, dos veces seguidas. El test tarda 0,2 s, su consulta tiene un orden determinista y los archivos corren en serie. No se guardó el mensaje del primer fallo, así que **la causa no se conoce**: queda registrado como intermitente, sin atribuirle una causa.
+- End-to-end: 113 de 113 sobre `next start`, en dos tandas (46 y 67). El primer intento de la segunda tanda no corrió ningún test, porque el servidor de la primera había quedado ocupando el puerto 3100. Se cortó ese proceso y se volvió a correr.
+- La CI del commit `defbe57`, que actualiza `sharp` a 0.35.5, está en verde, auditoría incluida.
