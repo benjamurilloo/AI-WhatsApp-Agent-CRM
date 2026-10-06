@@ -123,3 +123,42 @@ test("caso 2: a 375 px el menú se abre, se cierra con Escape y devuelve el foco
   );
   expect(overflow).toBeLessThanOrEqual(0);
 });
+
+test("caso 3: brief-15.5 la marca muestra el símbolo de Vixora y la pestaña tiene su ícono", async ({
+  page,
+  request,
+}) => {
+  // Los íconos responden con su tipo, sin sesión.
+  for (const [path, type] of [
+    ["/favicon.ico", /image\/(x-icon|vnd\.microsoft\.icon)/],
+    ["/icon.png", /image\/png/],
+    ["/apple-icon.png", /image\/png/],
+    ["/marca/vixora-simbolo-32.png", /image\/png/],
+  ] as const) {
+    const response = await request.get(path);
+    expect(response.status(), path).toBe(200);
+    expect(response.headers()["content-type"], path).toMatch(type);
+  }
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/login");
+  await expect(page.locator('link[rel="icon"][href^="/icon.png"]')).toHaveCount(
+    1,
+  );
+  await login(page, ADMIN);
+
+  // El símbolo es decorativo (alt vacío) y cargó; el nombre y el lema son texto.
+  const symbol = page.locator('img[src="/marca/vixora-simbolo-32.png"]');
+  await expect(symbol).toHaveAttribute("alt", "");
+  await expect
+    .poll(() => symbol.evaluate((img: HTMLImageElement) => img.naturalWidth))
+    .toBeGreaterThan(0);
+  await expect(page.getByText("Vixora", { exact: true })).toBeVisible();
+  await expect(page.getByText("AI SOLUTIONS", { exact: true })).toBeVisible();
+  await expectAccessible(page, "marca a 1280 px");
+
+  // En el celular, el símbolo y el nombre, sin el lema.
+  await page.setViewportSize({ width: 375, height: 800 });
+  await expect(symbol).toBeVisible();
+  await expect(page.getByText("AI SOLUTIONS", { exact: true })).toBeHidden();
+});

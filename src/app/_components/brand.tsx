@@ -1,19 +1,27 @@
-// Marca del producto en el panel (brief-15.1, D-4): una «V» en SVG propio, de dos tonos, y el
-// nombre. Decorativa: el nombre visible es el texto.
+// Marca del producto en el panel (brief-15.5, D-2 y D-3): el símbolo de Vixora como imagen, sin
+// fondo, y el nombre como texto en el color del tema, porque el nombre del logo es blanco y no se
+// leería en el tema claro. El lema va solo en el panel de escritorio. La imagen es decorativa: el
+// nombre visible es el texto. Un <img> común y no next/image, que escribe un atributo style que la
+// CSP prohíbe (style-src-attr 'none').
 export function Brand() {
   return (
     <span className="flex items-center gap-2.5">
-      <svg
-        aria-hidden="true"
-        focusable="false"
-        viewBox="0 0 24 24"
+      {/* eslint-disable-next-line @next/next/no-img-element -- ver el comentario de arriba */}
+      <img
+        src="/marca/vixora-simbolo-32.png"
+        srcSet="/marca/vixora-simbolo-64.png 2x, /marca/vixora-simbolo-96.png 3x"
+        alt=""
+        width={32}
+        height={32}
         className="size-8 shrink-0"
-      >
-        <polygon points="1,3 7,3 12,13.5 12,22" className="fill-action" />
-        <polygon points="23,3 17,3 12,13.5 12,22" className="fill-primary" />
-      </svg>
-      <span className="text-xl font-extrabold tracking-tight text-foreground">
-        Vixora
+      />
+      <span className="flex flex-col">
+        <span className="text-xl leading-tight font-extrabold tracking-tight text-foreground">
+          Vixora
+        </span>
+        <span className="hidden text-[10px] leading-tight font-semibold tracking-[0.3em] text-primary lg:block">
+          AI SOLUTIONS
+        </span>
       </span>
     </span>
   );
