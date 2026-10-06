@@ -390,3 +390,11 @@ Agente `independent-reviewer`, de solo lectura, que no participó del trabajo, s
 **Observaciones** sin cambio: la variación se calcula sobre valores sin redondear (coherente con el catálogo); las tasas con el anterior en 0 se comparan en puntos porcentuales (el catálogo se precisó con la decisión del hallazgo 4); en pantallas táctiles la lectura dura mientras se toca; el arco casi completo de la dona y la carrera de medianoche son hipotéticos; los lectores de pantalla en modo navegación interceptan las flechas, y la alternativa es la lista o la tabla; la autorización de `globals.css` consta en este brief.
 
 **Verificación después de las correcciones:** tipos y lint pasan; unitarios e integración 1.732 de 1.732; end-to-end del dashboard, sin ingestión y cabeceras de seguridad (CSP) 21 de 21 sobre un build nuevo.
+
+## Cierre de la subfase 15.3, 2026-10-06
+
+- **15.3.4, despliegue**: autorizado por el usuario. CI de `e7d7b5c` en `success` (37533591795) antes de tocar el servidor; anotado `dd7eed7` en el registro de despliegues; dependencias, migraciones (ninguna nueva), build y reinicio; HEAD igual al SHA pedido. Servicio activo, sin errores en el registro, `/login` 200, `/` sin sesión redirige al login y la CSP sigue con `style-src-attr 'none'`.
+- **AC-14**: el usuario miró el dashboard en producción y lo dio por correcto el 2026-10-06.
+- **Criterios**: AC-1 a AC-15 cumplidos, con lo escrito en los resultados de cada etapa: AC-6 con el invariante enmendado (sin JavaScript, y la tabla en un desplegable, decisiones del usuario) y AC-15 con `globals.css` fuera de la lista, autorizado por el usuario.
+- **Commits**: `5cd632d` (brief), `7190108` (15.3.1), `7461da3` (15.3.2), `aeb3f2a` (15.3.3) y `e7d7b5c` (correcciones de la revisión). Todas sus CI en `success`, leídas por `headSha`.
+- **Nivel**: validado en integración y verificado en producción por el usuario. Detalle en [CHANGELOG.md](../../CHANGELOG.md).

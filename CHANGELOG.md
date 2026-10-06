@@ -2,6 +2,30 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-06 — 15.3 cerrada: dashboard interactivo
+
+Cuarta subfase cerrada de la Fase 15 ([brief-15.3](docs/decisions/brief-15.3-dashboard-interactivo.md)), en cuatro etapas. Commits: `5cd632d` (brief, CI 37515543231), `7190108` (15.3.1, CI 37517549365), `7461da3` (15.3.2, CI 37520512994), `aeb3f2a` (15.3.3, CI 37530121615) y `e7d7b5c` (correcciones de la revisión independiente, CI 37533591795), todas `success`, leídas por `headSha`. Desplegada en producción el 2026-10-06 (15.3.4).
+
+**Certifica**:
+- **Período anterior**: el intervalo de la misma cantidad de días que termina el día antes del elegido, con la misma fórmula de cada métrica ([MetricsCatalog](docs/analytics/MetricsCatalog.md), §Convenciones).
+- **Variación** en cada tarjeta salvo la 11: en porcentaje las cantidades, en puntos porcentuales las tasas y como diferencia absoluta el promedio y la mediana, sin verde ni rojo. No compara si el período incluye hoy, y nombra cada caso sin comparación: «sin datos», «no disponible» y «el período anterior fue 0» (este último, decidido por el usuario a partir de la revisión).
+- **«Ver detalles»** en cada tarjeta, con la definición y el valor del período anterior.
+- **Métricas nuevas 13 (tipos de mensajes entrantes) y 14 (distribución del tiempo a primera respuesta, en los rangos del boceto)**, en el catálogo antes de dibujarse, con tests de integración de bordes, zona horaria e invariantes contra las métricas 4 y 9.
+- **Gráficos en SVG propio, sin librería**: la dona de la 13, el histograma de la 14 y el gráfico diario, legibles con el puntero y con el teclado, con una línea `aria-live` y su alternativa con los valores exactos. Siete tokens de color nuevos, con contraste de 3:1 o más.
+- **Hallazgo de CSP, medido**: React, al mandar la página por partes, inserta un `<svg style="display:none">` cuando corta dentro de un SVG, y la CSP lo bloquea. Ningún gráfico se arma con elementos del servidor dentro del `<svg>`: 0 atributos `style` en 40 cargas.
+- **Revisión independiente** de solo lectura (D-9): 9 hallazgos (1 alto, 2 medios, 6 bajos), verificados contra el código; los que pedían cambio, corregidos en `e7d7b5c`, y dos resueltos por el usuario (la tabla del histograma en un desplegable cuenta como a la vista; el texto del anterior en 0).
+- **Local**: 1.732 de 1.732 unitarios y de integración; end-to-end 118 de 118 con la 15.3.3 y, después de las correcciones, 21 de 21 del dashboard, sin ingestión y CSP, sobre un build nuevo; axe sin violaciones en claro y en oscuro.
+- **En producción**: `crm.vixoraai.app` corre `e7d7b5c`, sin migraciones ni cambios en `app.env`; el servicio activo, sin errores en el registro, `/login` 200 y la CSP con `style-src-attr 'none'`. El usuario miró el dashboard y lo dio por correcto. Versión anterior: `dd7eed7`.
+
+**No certifica**:
+- Que el dashboard muestre valores sin JavaScript: no lo hace desde la 7.4 (streaming de las tarjetas); se registró y el invariante se enmendó por decisión del usuario.
+- Pantallas táctiles: la lectura dura mientras se toca.
+- Otros navegadores que Chromium.
+- Mediciones con volumen en producción: las métricas 13 y 14 se midieron en una base local con volumen (11,9 ms la 14, con la subconsulta materializada).
+- Que el cambio de serie con el teclado dejara la lectura vieja antes de la corrección: el hallazgo vino de leer el código y no se reprodujo contra la versión anterior; el caso 14 cubre el camino corregido.
+
+**Nivel**: validado en integración (`producer-consumer`) y verificado en producción por el usuario (`isolated-runtime`).
+
 ## 2026-10-06 — 15.2 cerrada: controles de los listados
 
 Tercera subfase cerrada de la Fase 15 ([brief-15.2](docs/decisions/brief-15.2-controles-de-los-listados.md)), en cinco etapas. Commits: `ebccca0` (brief), `ff139ae` (15.2.1), `d7d5a6d` (15.2.2), `62399ab` (`source-map-js` 1.2.2), `83aa2e5` (15.2.3), `0b902e8` (15.2.4), `defbe57` (`sharp` 0.35.5) y `dd7eed7` (correcciones de la revisión independiente; CI 37502534330, `success`). Las CI de `d7d5a6d` y `0b902e8` fallaron solo en la auditoría de dependencias, por avisos nuevos sobre paquetes transitivos que corrigió el commit siguiente. Desplegada en producción el 2026-10-06 (15.2.5).
