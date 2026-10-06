@@ -7,7 +7,7 @@ generated_at: 2026-10-06
 
 # Brief: 15.5 — Logo de la marca
 
-**Estado: aprobado el 2026-10-06 por el usuario, con las recomendaciones de D-1 a D-4 y la precisión de D-4 que sigue.** La aprobación no autoriza ningún commit, ningún cambio en Notion, ninguna dependencia nueva ni el despliegue a producción: cada uno se autoriza en su turno.
+**Estado: aprobado el 2026-10-06 por el usuario, con las recomendaciones de D-1 a D-4 y la precisión de D-4 que sigue; cerrado el 2026-10-06** (§Cierre). La aprobación no autoriza ningún commit, ningún cambio en Notion, ninguna dependencia nueva ni el despliegue a producción: cada uno se autoriza en su turno.
 
 - **Nivel de evidencia objetivo**: `producer-consumer` (Playwright sobre `next start`, con axe en claro y en oscuro, y la guarda de CSP) e `isolated-runtime` (la versión desplegada, mirada por el usuario).
 - **Nivel de validación alcanzable**: **validado en integración** y **verificado en producción**.
@@ -89,3 +89,12 @@ Reemplazar la marca provisoria por el logo de Vixora que el usuario entregó el 
 - **Archivos**: `src/app/favicon.ico` (16, 32 y 48 px), `src/app/icon.png`, `src/app/apple-icon.png` (con el fondo de la marca y 14 % de margen) y `public/marca/vixora-simbolo-{32,64,96}.png`. La marca ([brand.tsx](../../src/app/_components/brand.tsx)) usa un `<img>` común con `srcSet`: `next/image` escribe un atributo `style`, que la CSP prohíbe.
 - **Desvío**: `icon.png` es de 192 px y no de 512: a 512 pesaba 186 KB para un ícono de pestaña; a 192, 35 KB.
 - **Verificación**: tipos y lint pasan; `frame.spec.ts` (con el caso 3 nuevo: los cuatro archivos responden 200 con su tipo, el `<link rel="icon">` está en el login, la imagen cargó con `alt=""`, el nombre y el lema son texto, axe en claro y en oscuro, y en el celular sin el lema) y `security-headers.spec.ts` (CSP en las trece pantallas): 8 de 8, sobre un build nuevo. Capturas del panel a 1280 y 375 px, en claro y en oscuro.
+
+## Cierre de la subfase 15.5, 2026-10-06
+
+- **Commit**: `0cbe314` (CI 37537140696, `success`, leída por `headSha`), autorizado por el usuario junto con el cierre de la 15.3 y Notion.
+- **Despliegue**, autorizado por el usuario: CI del SHA en `success` antes de tocar el servidor; anotado `e7d7b5c` en el registro de despliegues; dependencias, migraciones (ninguna nueva), build y reinicio; HEAD igual al SHA pedido. Servicio activo y sin errores en el registro; `/login`, `/favicon.ico` (`image/x-icon`), `/icon.png`, `/apple-icon.png` y `/marca/vixora-simbolo-32.png` (`image/png`) responden 200, y el login trae los dos `<link rel="icon">`.
+- **AC-5**: el usuario miró el ícono de la pestaña y la marca del panel en producción y los dio por correctos el 2026-10-06.
+- **Criterios**: AC-1 a AC-5 cumplidos. Desvío: `icon.png` de 192 px en lugar de 512 (§Resultados).
+- **Revisión**: autoevaluación declarada, sin revisión independiente: la 15.5 no abre ni cierra un gate de producción (Roadmap, §Fase 15, «Gate de salida»).
+- **Nivel**: validado en integración y verificado en producción por el usuario.

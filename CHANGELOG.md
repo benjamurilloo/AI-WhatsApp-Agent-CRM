@@ -2,6 +2,46 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-06 — Fase 15 cerrada (Identidad visual y presentación)
+
+Cierra por decisión del usuario, que es el gate de salida de la fase ([Roadmap](docs/planning/Roadmap.md), §Fase 15). El usuario confirmó el cierre el 2026-10-06, después de mirar la 15.5 en producción.
+
+**Certifica:**
+- **Las cinco subfases cerradas y desplegadas en producción**, cada una con su entrada abajo:
+  - 15.1, identidad visual, marco y pantallas principales;
+  - 15.4, pantallas de detalle y formularios;
+  - 15.2, controles de los listados;
+  - 15.3, dashboard interactivo;
+  - 15.5, logo de la marca.
+
+  La 15.2 y la 15.3 llevaron revisión independiente; la 15.1, la 15.4 y la 15.5, autoevaluación declarada, como permite el gate de la fase.
+- **El alcance de la fase**: solo presentación. Sin tablas nuevas ni contratos nuevos con el agente; las únicas definiciones nuevas son las métricas 13 y 14, de solo lectura, en el catálogo antes de dibujarse.
+- **Producción** corre `0cbe314`. Las versiones anteriores, de la más nueva a la más vieja, están en el registro de despliegues del servidor: `e7d7b5c`, `dd7eed7`, `2aaa619`, `a7aa97d`, `b00b333` y `29d6ccc`.
+
+**Nivel**: el de cada subfase: validado en integración y verificado en producción por el usuario. No certifica «preparado para producción»: ese gate es de la Fase 13.
+
+**No certifica:**
+- Otros navegadores que Chromium.
+- Que el dashboard muestre valores sin JavaScript (desde la 7.4).
+- Lo que los bocetos dibujan y no existe: acciones rápidas, buscador global y notificaciones (Fase 16), y los campos ampliados de clientes y productos (Fase 17).
+
+## 2026-10-06 — 15.5 cerrada: logo de la marca
+
+Quinta subfase de la Fase 15 ([brief-15.5](docs/decisions/brief-15.5-logo-de-la-marca.md)), agregada a pedido del usuario. Commit `0cbe314` (CI 37537140696, `success`, leída por `headSha`). Desplegada en producción el 2026-10-06.
+
+**Certifica**:
+- **El ícono de la pestaña** con el símbolo de Vixora sin fondo: `favicon.ico` (16, 32 y 48 px), `icon.png` (192 px) y `apple-icon.png` (con el fondo de la marca, porque iOS no admite transparencia).
+- **La marca del panel** y de la barra del celular: el símbolo como imagen decorativa (`alt=""`) y «Vixora» como texto en el color del tema, porque el nombre del logo es blanco; el lema «AI SOLUTIONS», solo en el panel de escritorio. Un `<img>` común: `next/image` escribe un atributo `style` que la CSP prohíbe.
+- **El recorte del fondo**, con `sharp` de `node_modules` como herramienta local, sin dependencias nuevas: sin manchas, sin letras perdidas (20 piezas en el logo con el nombre) y revisado sobre claro y oscuro. Las versiones sin fondo quedaron en el vault, en `80 Projects/Marca Vixora/`, como los originales de la marca (decisión del usuario).
+- **Local**: 119 de 119 end-to-end sobre `next start`, con el caso nuevo de la marca, axe en claro y en oscuro y la guarda de CSP.
+- **En producción**: `crm.vixoraai.app` corre `0cbe314`, sin migraciones ni cambios en `app.env`; los cuatro archivos de imagen responden 200 con su tipo y el login trae los `<link rel="icon">`. El usuario miró el ícono y la marca y los dio por correctos. Versión anterior: `e7d7b5c`.
+
+**No certifica**:
+- El ícono en iOS y en Android: no se probó en un dispositivo.
+- Otros navegadores que Chromium.
+
+**Nivel**: validado en integración (`producer-consumer`) y verificado en producción por el usuario (`isolated-runtime`). Autoevaluación declarada.
+
 ## 2026-10-06 — 15.3 cerrada: dashboard interactivo
 
 Cuarta subfase cerrada de la Fase 15 ([brief-15.3](docs/decisions/brief-15.3-dashboard-interactivo.md)), en cuatro etapas. Commits: `5cd632d` (brief, CI 37515543231), `7190108` (15.3.1, CI 37517549365), `7461da3` (15.3.2, CI 37520512994), `aeb3f2a` (15.3.3, CI 37530121615) y `e7d7b5c` (correcciones de la revisión independiente, CI 37533591795), todas `success`, leídas por `headSha`. Desplegada en producción el 2026-10-06 (15.3.4).

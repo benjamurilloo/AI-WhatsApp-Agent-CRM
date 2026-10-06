@@ -294,6 +294,8 @@ Reglas comunes a las cuatro fases:
 
 ## Fase 15 — Identidad visual y presentación
 
+*Cerrada el 2026-10-06 por decisión del usuario, con las cinco subfases cerradas y desplegadas en producción ([CHANGELOG](../../CHANGELOG.md)).*
+
 *Abierta el 2026-10-05 por decisión del usuario. Corre en paralelo con la 13.5.2-b y no espera el cierre de la Fase 13. El mismo día, el usuario decidió separar lo estético de lo funcional: lo funcional es la Fase 16.*
 
 - **Objetivo**: que el CRM se vea como las pantallas de referencia del usuario, en claro y en oscuro, con contraste AA, empezando por lo que se ve en una demostración a un posible cliente.
@@ -307,6 +309,7 @@ Reglas comunes a las cuatro fases:
   - ~~**15.4 en adelante — Pantallas de detalle y formularios**, una por vez, a medida que el usuario las revise («Nuevo producto», el detalle de un cliente, la conversación, etc.). Cada una entra con su enmienda fechada.~~ *Enmendado el 2026-10-05, con los bocetos de once pantallas internas*: **15.4 — Pantallas de detalle y formularios** ([brief-15.4](../decisions/brief-15.4-detalles-y-formularios.md)), una sola subfase en etapas por módulo: Productos, Clientes, Conversaciones e Información, y Usuarios. Solo con los campos que ya existen: los que los bocetos dibujan y no existen van a la Fase 17, o a la 18 si son del ERP, como el costo.
   - *Agregado el 2026-10-05 a la 15.2*: **filtros por categoría y por marca** en Productos, con listas armadas desde lo ya cargado y sin tablas nuevas, y **autocompletar** en el buscador de Productos y de Clientes, que sugiere lo que ya existe mientras se escribe. Los filtros de Clientes que dependen de campos nuevos (tipo, provincia, segmento, etiqueta) llegan con la Fase 17.
   - *Agregado el 2026-10-05 a la 15.2, a pedido del usuario*: un **componente propio de sugerencias** con el estilo del CRM, que reemplaza la lista nativa del navegador (`datalist`) en Marca y Categoría del producto y en Categoría de la información, y que usa también el autocompletar de los buscadores. Sin JavaScript queda un campo de texto común.
+  - *Agregado el 2026-10-06, a pedido del usuario*: **15.5 — Logo de la marca** ([brief-15.5](../decisions/brief-15.5-logo-de-la-marca.md)): el ícono de la pestaña y la marca del panel con el logo de Vixora que entregó el usuario, sin fondo.
   - *Orden decidido el 2026-10-05*: **15.4 antes que la 15.2**. Lo que más se ve en una demostración es entrar a un producto, a un cliente o a una conversación. La 15.3 queda para después de las dos.
 - **Dependencias**: la 15.1 antes que las demás, porque fija la paleta, el marco y los componentes compartidos.
 - **Riesgos**: diseñar desde bocetos generados, que dibujan datos y controles que no existen; que la apuración por la reunión rebaje la verificación de accesibilidad; tocar el marco común, que comparten todas las pantallas y casi todos los end-to-end.
@@ -316,6 +319,8 @@ Reglas comunes a las cuatro fases:
 - **Nivel de validación**: el de cada subfase. Las que se despliegan quedan **verificadas en producción**, sin certificar un nivel superior.
 
 ## Fase 16 — Herramientas de operación
+
+*Decidido el 2026-10-06, al cerrar la Fase 15: el usuario sigue con esta fase, que se abre en la sesión siguiente con su proyecto en Notion y el brief de su primera subfase.*
 
 *Planificada el 2026-10-05, sin abrir. Se abre con la decisión del usuario, con su proyecto en Notion y el brief de su primera subfase. El orden de abajo es el de la prioridad que dio el usuario, no un compromiso.*
 
