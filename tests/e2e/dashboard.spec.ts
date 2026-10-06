@@ -106,7 +106,11 @@ const at = (day: string, time: string) => `${day}T${time}:00Z`;
 async function insertConversation(options: {
   clientId?: string | null;
   status?: "open" | "pending" | "closed";
-  messages: { direction: "inbound" | "outbound"; sentAt: string }[];
+  messages: {
+    direction: "inbound" | "outbound";
+    sentAt: string;
+    kind?: "text" | "audio" | "image" | "video" | "document" | "other";
+  }[];
 }) {
   const times = options.messages.map((message) => message.sentAt).sort();
   const result = await db.execute<{ id: string }>(
@@ -119,9 +123,9 @@ async function insertConversation(options: {
   const id = result.rows[0]!.id;
   for (const message of options.messages) {
     await db.execute(
-      sql`insert into messages (organization_id, conversation_id, direction, sent_at, body_text)
+      sql`insert into messages (organization_id, conversation_id, direction, sent_at, body_text, kind)
           values (${SEED_ORGANIZATION_ID}, ${id}, ${message.direction},
-            ${message.sentAt}, ${SECRET_BODY})`,
+            ${message.sentAt}, ${SECRET_BODY}, ${message.kind ?? null})`,
     );
   }
   return id;
@@ -543,4 +547,128 @@ test("caso 11: brief-15.3 un período que incluye hoy no se compara, y lo dice",
   ).toBeVisible();
   await expect(card(page, "Conversaciones iniciadas")).toContainText("3");
   await expect(page.getByText("vs. período anterior")).toHaveCount(0);
+});
+
+// Métricas 13 y 14 (brief-15.3, D-4 y D-5). Sobre el fixture, una conversación en D-4 con tres
+// entrantes tipados y sin respuesta:
+//
+// 13: entrantes del período = 2 del fixture, sin tipo + texto 1 + audio 2 = 5.
+//     Texto 1 (20,0 %), Audio 2 (40,0 %), Imagen, Video, Documento y Otro en 0, Sin dato 2 (40,0 %).
+//     Segmentos de la dona, en orden: Texto, Audio, Sin dato.
+// 14: población = C1 (30 min), C2 y la nueva (sin respuesta) → «30 a 60 min» 1, el resto 0;
+//     2 sin primera respuesta, de 3.
+// 10: D-5 tiene 2 iniciadas (C1 y C2); D-4, 2 (C3 y la nueva).
+async function seedTypedMessages() {
+  const { d4 } = days();
+  await insertConversation({
+    messages: [
+      { direction: "inbound", sentAt: at(d4, "10:00"), kind: "text" },
+      { direction: "inbound", sentAt: at(d4, "10:01"), kind: "audio" },
+      { direction: "inbound", sentAt: at(d4, "10:02"), kind: "audio" },
+    ],
+  });
+}
+
+const readout = (region: ReturnType<typeof card>) =>
+  region.locator('[aria-live="polite"]');
+
+test("caso 12: brief-15.3 la dona muestra los tipos de mensaje y se lee con el mouse y con el teclado", async ({
+  page,
+}) => {
+  await seedFixture();
+  await seedTypedMessages();
+  await login(page, ADMIN);
+
+  const kinds = card(page, "Tipos de mensajes");
+  const legend = kinds.getByRole("listitem");
+  await expect(legend).toHaveCount(7);
+  await expect(legend.filter({ hasText: "Texto" })).toContainText("1");
+  await expect(legend.filter({ hasText: "Texto" })).toContainText("20,0 %");
+  await expect(legend.filter({ hasText: "Audio" })).toContainText("40,0 %");
+  await expect(legend.filter({ hasText: "Video" })).toContainText("0,0 %");
+  await expect(legend.filter({ hasText: "Sin dato" })).toContainText("2");
+  // Sin variación: es una distribución.
+  await expect(kinds).not.toContainText("vs. período anterior");
+
+  // El centro de la caja de un arco puede caer en el hueco de la dona: el evento va al segmento.
+  await kinds.locator('path[data-index="1"]').dispatchEvent("pointerover");
+  await expect(readout(kinds)).toHaveText("Audio: 2 mensajes (40,0 %)");
+
+  const chart = kinds.getByRole("group", { name: /Dona de tipos de mensaje/ });
+  await chart.focus();
+  await page.keyboard.press("Home");
+  await expect(readout(kinds)).toHaveText("Texto: 1 mensaje (20,0 %)");
+  await page.keyboard.press("End");
+  await expect(readout(kinds)).toHaveText("Sin dato: 2 mensajes (40,0 %)");
+  await expectAccessible(page, "dona con una lectura activa");
+});
+
+test("caso 13: brief-15.3 el histograma reparte la primera respuesta por rangos y tiene su tabla", async ({
+  page,
+}) => {
+  await seedFixture();
+  await seedTypedMessages();
+  await login(page, ADMIN);
+
+  const histogram = card(page, "Tiempo de primera respuesta");
+  await expect(histogram).toContainText("2 sin primera respuesta, de 3");
+  await histogram.getByText("Ver tabla de datos").click();
+  const rows = histogram.getByRole("table").getByRole("row");
+  await expect(rows).toHaveCount(1 + 5);
+  await expect(rows.filter({ hasText: "30 a 60 min" })).toContainText("1");
+  await expect(rows.filter({ hasText: "Menos de 1 min" })).toContainText("0");
+
+  const chart = histogram.getByRole("group", { name: /Histograma/ });
+  await chart.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(readout(histogram)).toHaveText(
+    "Menos de 1 min: 0 conversaciones",
+  );
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
+  await expect(readout(histogram)).toHaveText("30 a 60 min: 1 conversación");
+  await page.keyboard.press("Escape");
+  await expect(readout(histogram)).toContainText("Pasá el mouse");
+  await expectAccessible(page, "histograma con la tabla abierta");
+});
+
+test("caso 14: brief-15.3 el gráfico diario se lee con el mouse y con el teclado", async ({
+  page,
+}) => {
+  await seedFixture();
+  await seedTypedMessages();
+  await login(page, ADMIN);
+
+  const section = page.getByRole("region", { name: /Evolución diaria/ });
+  const line = section.locator('[aria-live="polite"]');
+  await expect(line).toContainText("Pasá el mouse");
+  // El período por defecto va de hoy − 30 a hoy − 1: D-5 es la barra 25.
+  const { d5, d4 } = days();
+  await section.locator('rect[data-index="25"]').hover();
+  await expect(line).toHaveText(
+    new RegExp(`${dmy(d5)}: 2 conversaciones iniciadas$`),
+  );
+
+  const chart = section.getByRole("group", {
+    name: /Gráfico de barras por día/,
+  });
+  await chart.focus();
+  await page.keyboard.press("End");
+  await expect(line).toHaveText(/: 0 conversaciones iniciadas$/);
+  await page.keyboard.press("ArrowLeft");
+  await page.keyboard.press("ArrowLeft");
+  await page.keyboard.press("ArrowLeft");
+  await expect(line).toHaveText(
+    new RegExp(`${dmy(d4)}: 2 conversaciones iniciadas$`),
+  );
+
+  // La serie de mensajes lee entrantes y salientes.
+  await section.getByRole("link", { name: "Mensajes" }).click();
+  await expect(page).toHaveURL("/?serie=mensajes");
+  await section.locator('rect[data-index="25"]').hover();
+  await expect(line).toHaveText(
+    new RegExp(`${dmy(d5)}: 3 mensajes \\(2 entrantes, 1 saliente\\)$`),
+  );
+  await expectAccessible(page, "gráfico diario con una lectura activa");
 });

@@ -13,6 +13,9 @@ import { CHART_HEIGHT, chartGeometry, type ChartBar } from "./chart-geometry";
 import { METRIC_INFO } from "./definitions";
 import { formatCount } from "./format";
 import { CHART_SERIES_LABEL, DAILY_NOT_ADDITIVE_NOTE } from "./messages";
+import { chartFrameProps, ReadoutLine } from "./chart-frame";
+import { BarChartSvg } from "./chart-svgs";
+import { dailyReadout } from "./readouts";
 import { MetricError } from "./metric-card";
 import { formatCalendarDay } from "./period";
 
@@ -102,72 +105,39 @@ export async function DailyActivitySection({
         </nav>
       </div>
 
-      {/* El gráfico es decorativo: el dato exacto está en la tabla de abajo, que no se oculta. */}
-      {/* Se desplaza en pantallas chicas: se puede enfocar para moverlo con el teclado. */}
-      <div
-        tabIndex={0}
-        role="group"
-        aria-label="Gráfico de barras; los valores exactos están en la tabla de datos"
-        className="mt-4 overflow-x-auto rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-      >
-        <svg
-          aria-hidden="true"
-          focusable="false"
-          width={frame.fill ? undefined : frame.width}
-          height={frame.fill ? undefined : frame.height}
-          viewBox={`0 0 ${frame.width} ${frame.height}`}
-          className={frame.fill ? "block h-auto w-full min-w-xl" : "block"}
+      {/* El dato exacto está en la tabla de abajo, que no se oculta. Desde la brief-15.3 (D-6), pasar
+          el mouse por una barra, o recorrerlas con las flechas, muestra el día en la línea de
+          lectura; enfocado, el gráfico se sigue desplazando en pantallas chicas. */}
+      <div className="mt-4">
+        <ReadoutLine frameId="grafico-diario" />
+        <div
+          {...chartFrameProps(
+            "grafico-diario",
+            "Gráfico de barras por día: con el foco, las flechas recorren los días. Los valores exactos están en la tabla de datos",
+          )}
         >
-          {[0, 0.5, 1].map((share) => (
-            <line
-              key={share}
-              x1={AXIS_LEFT}
-              x2={frame.width}
-              y1={AXIS_TOP + CHART_HEIGHT * share}
-              y2={AXIS_TOP + CHART_HEIGHT * share}
-              strokeWidth={share === 1 ? 1 : 0.5}
-              className={share === 1 ? "stroke-border-strong" : "stroke-border"}
-            />
-          ))}
-          <text
-            x={AXIS_LEFT - 6}
-            y={AXIS_TOP + 4}
-            textAnchor="end"
-            className="fill-muted text-[10px]"
-          >
-            {formatCount(geometry.max)}
-          </text>
-          <text
-            x={AXIS_LEFT - 6}
-            y={AXIS_TOP + CHART_HEIGHT + 3}
-            textAnchor="end"
-            className="fill-muted text-[10px]"
-          >
-            0
-          </text>
-          {frame.bars.map((bar, index) => (
-            <g key={bar.day}>
-              <rect
-                x={bar.x}
-                y={AXIS_TOP + bar.y}
-                width={bar.width}
-                height={bar.height}
-                rx={Math.min(2, bar.height / 2)}
-                className="fill-action"
-              />
-              {index % frame.labelEvery === 0 ? (
-                <text
-                  x={bar.x + bar.width / 2}
-                  y={AXIS_TOP + CHART_HEIGHT + 14}
-                  textAnchor="middle"
-                  className="fill-muted text-[9px]"
-                >
-                  {shortDay(bar.day)}
-                </text>
-              ) : null}
-            </g>
-          ))}
-        </svg>
+          <BarChartSvg
+            width={frame.width}
+            height={frame.height}
+            fixedSize={!frame.fill}
+            className={frame.fill ? "block h-auto w-full min-w-xl" : "block"}
+            axisLeft={AXIS_LEFT}
+            gridTop={AXIS_TOP}
+            gridHeight={CHART_HEIGHT}
+            maxLabel={formatCount(geometry.max)}
+            labelY={AXIS_TOP + CHART_HEIGHT + 14}
+            labelClass="fill-muted text-[9px]"
+            bars={frame.bars.map((bar, index) => ({
+              x: bar.x,
+              y: AXIS_TOP + bar.y,
+              width: bar.width,
+              height: bar.height,
+              readout: dailyReadout(rows[index]!, series),
+              label:
+                index % frame.labelEvery === 0 ? shortDay(bar.day) : undefined,
+            }))}
+          />
+        </div>
       </div>
       <p className={`mt-2 ${mutedTextClass}`}>
         {formatCalendarDay(rows[0]?.day ?? "")} –{" "}

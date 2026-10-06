@@ -41,6 +41,11 @@ import {
   PERIOD_INVALID_MESSAGE,
   TODAY_EXCLUDED_NOTE,
 } from "./_dashboard/messages";
+import {
+  FirstResponseBucketsCard,
+  MessageKindsCard,
+} from "./_dashboard/distributions";
+import { ChartInteractions } from "./_dashboard/chart-interactions";
 import { MetricCard, MetricSkeleton } from "./_dashboard/metric-card";
 import {
   dashboardHref,
@@ -298,8 +303,20 @@ export default async function DashboardPage({
               />
             </Suspense>
           </div>
+
+          {/* Métricas 13 y 14 (brief-15.3, D-6): debajo de la evolución diaria, lado a lado. */}
+          <div className="mt-6 grid gap-4 lg:grid-cols-2">
+            <Suspense fallback={<LoadingCard metric={13} />}>
+              <MessageKindsCard {...cards} />
+            </Suspense>
+            <Suspense fallback={<LoadingCard metric={14} />}>
+              <FirstResponseBucketsCard {...cards} />
+            </Suspense>
+          </div>
         </>
       )}
+      {/* Una sola vez, fuera de las tarjetas: escucha los gráficos que llegan por streaming. */}
+      <ChartInteractions />
     </main>
   );
 }
@@ -307,7 +324,7 @@ export default async function DashboardPage({
 function LoadingCard({
   metric,
 }: {
-  metric: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 11 | 12;
+  metric: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 11 | 12 | 13 | 14;
 }) {
   return (
     <MetricCard metric={metric}>

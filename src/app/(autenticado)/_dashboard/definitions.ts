@@ -5,7 +5,8 @@ import type { IconName } from "@/app/_components/icons";
 // docs/analytics/MetricsCatalog.md y este archivo se corrige. Viven todos juntos a propósito, para
 // que la comparación con el catálogo sea una sola lectura.
 
-export type MetricNumber = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
+export type MetricNumber =
+  1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14;
 
 export type MetricInfo = {
   number: MetricNumber;
@@ -84,6 +85,19 @@ export const METRIC_INFO: Record<MetricNumber, MetricInfo> = {
     definition:
       "Eventos de ingestión que fallaron al procesarse, por origen y código, con su porcentaje sobre el total de eventos del período. Cuenta solo los eventos que el CRM aceptó procesar: un envío mal formado, con credencial inválida o por encima del límite de tasa se rechaza sin registrarse, así que no aparece acá.",
   },
+  // Métricas 13 y 14 (brief-15.3, D-4 y D-5), con los nombres del boceto.
+  13: {
+    number: 13,
+    name: "Tipos de mensajes",
+    definition:
+      "Mensajes entrantes del período por su tipo original: texto, audio, imagen, video, documento u otro. Los que llegaron sin tipo (por la versión 1 de la ingestión) se cuentan como «Sin dato». Suman los mensajes entrantes.",
+  },
+  14: {
+    number: 14,
+    name: "Tiempo de primera respuesta",
+    definition:
+      "Las conversaciones de la mediana de primera respuesta, repartidas por cuánto tardó esa respuesta. Las que no tienen respuesta se cuentan aparte. Cada rango incluye su inicio y no su fin: 5 minutos exactos caen en «5 a 30 min».",
+  },
 };
 
 export function metricLabel(number: MetricNumber): string {
@@ -104,4 +118,6 @@ export const METRIC_ICON: Record<MetricNumber, IconName> = {
   10: "chartColumn",
   11: "list",
   12: "alert",
+  13: "mail",
+  14: "clock",
 };

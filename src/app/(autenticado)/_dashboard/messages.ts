@@ -43,3 +43,7 @@ export const METRIC_DETAILS_LABEL = "Ver detalles";
 export const PREVIOUS_ERROR = "No se pudo calcular el período anterior.";
 export const STATUS_NOT_COMPARED =
   "No se compara con el período anterior: es el estado actual de cada conversación, y el del período anterior no se guarda.";
+
+// Indicación de la línea de lectura de los gráficos (brief-15.3, D-6).
+export const CHART_READOUT_HINT =
+  "Pasá el mouse por el gráfico, o enfocalo y usá las flechas, para leer cada valor.";

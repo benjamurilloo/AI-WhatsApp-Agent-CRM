@@ -184,7 +184,7 @@ El usuario compartió el boceto del dashboard, en oscuro y en claro, al aprobar 
 - Toda consulta filtra por `organization_id`.
 - Ningún valor es editable desde el dashboard (FR-MET-03).
 - «Sin datos», «no disponible» y `0` siguen siendo estados distintos, también en la variación.
-- Todo gráfico tiene una alternativa accesible con los valores exactos, visible sin JavaScript.
+- ~~Todo gráfico tiene una alternativa accesible con los valores exactos, visible sin JavaScript.~~ *Enmendado el 2026-10-06 por decisión del usuario (§Resultados — 15.3.3)*: todo gráfico tiene una alternativa accesible con los valores exactos, a la vista sin depender del mouse ni del teclado. Desde la 7.4 el dashboard carga cada tarjeta con streaming y no muestra valores sin JavaScript.
 - Ningún atributo `style` ni clase de la paleta por defecto de Tailwind en `src/app/`.
 - `package.json`, `package-lock.json` y `drizzle/` sin cambios, salvo que D-1 se resuelva por (b).
 
@@ -195,7 +195,7 @@ El usuario compartió el boceto del dashboard, en oscuro y en claro, al aprobar 
 - **AC-3**: tests de integración contra fixtures calculados a mano prueban el período anterior (incluido un período que cruza un cambio de horario histórico), la métrica 13 (con nulos y con un mensaje cerca de medianoche) y la métrica 14 (con un `delta` exactamente en cada borde de rango), y los invariantes de validación de las dos.
 - **AC-4**: tests unitarios prueban el formato y los casos de la variación: anterior en 0, «sin datos», período que incluye hoy, puntos porcentuales y diferencias absolutas.
 - **AC-5**: los end-to-end existentes pasan, con sus pasos sin cambios salvo los listados en el informe.
-- **AC-6**: end-to-end nuevos prueban la variación y «Ver detalles» de al menos una tarjeta de cada tipo, la lectura del gráfico diario con el mouse y con el teclado, la dona y el histograma con sus valores, y que sin JavaScript los valores siguen visibles.
+- **AC-6**: end-to-end nuevos prueban la variación y «Ver detalles» de al menos una tarjeta de cada tipo, la lectura del gráfico diario con el mouse y con el teclado, la dona y el histograma con sus valores, ~~y que sin JavaScript los valores siguen visibles~~ y que los valores están a la vista sin la interacción (*enmendado el 2026-10-06*, ver el invariante).
 - **AC-7**: axe no informa violaciones WCAG 2.x A ni AA, en claro ni en oscuro, en el dashboard con los detalles abiertos y con una lectura activa.
 - **AC-8**: `grep` no encuentra clases de la paleta por defecto de Tailwind ni atributos `style` en `src/app/`.
 - **AC-9**: la medición de D-7 está registrada, debajo del umbral local; o el desvío está informado y decidido por el usuario.
@@ -304,3 +304,69 @@ El costo se duplica, como se esperaba (H-6), y queda debajo del umbral local de 
   - el caso 11, con hoy dentro del período: sin comparación y con la explicación.
 
   Entre las dos tandas se cortó cualquier proceso que quedara escuchando en el puerto 3100 (lección de la 15.2).
+
+## Resultados — 15.3.3
+
+**Qué se hizo.**
+- **Lectura de los gráficos.**
+  - El servidor dibuja la línea de lectura y el contenedor enfocable de cada gráfico ([chart-frame.tsx](../../src/app/(autenticado)/_dashboard/chart-frame.tsx)).
+  - Los SVG los dibujan componentes que reciben solo números y textos ([chart-svgs.tsx](../../src/app/(autenticado)/_dashboard/chart-svgs.tsx)); cada forma lleva `data-index` y `data-readout`.
+  - Un solo componente cliente, montado una vez en la página fuera de las tarjetas ([chart-interactions.tsx](../../src/app/(autenticado)/_dashboard/chart-interactions.tsx)), escucha a todos los gráficos por delegación. Pasar el puntero por una forma, o recorrerlas con las flechas (más Inicio, Fin y Escape) con el gráfico enfocado, escribe su texto en la línea, que es una región `aria-live`.
+  - La forma activa se marca atenuando las demás con una clase, y en un gráfico ancho se desplaza hasta quedar a la vista. No se posiciona ningún globo ni se escriben estilos en línea (H-1).
+- **El gráfico diario** usa esa lectura. Cada barra nombra el día con su día de la semana y la serie elegida, por ejemplo «Sáb 12/09/2026: 2 conversaciones iniciadas», o «3 mensajes (2 entrantes, 1 saliente)».
+- **La dona de la métrica 13**, «Tipos de mensajes»:
+  - segmentos SVG calculados por una función pura ([donut-geometry.ts](../../src/app/(autenticado)/_dashboard/donut-geometry.ts));
+  - el total en el centro, y al costado la lista de los seis tipos con su cantidad y su porcentaje, más «Sin dato» cuando tiene mensajes.
+- **El histograma de la métrica 14**, «Tiempo de primera respuesta»: los cinco rangos con su lectura, las conversaciones sin respuesta aparte y «Ver tabla de datos».
+- Las dos tarjetas van lado a lado debajo de la evolución diaria (en pantallas angostas, una debajo de la otra), sin variación. Los textos de lectura salen de funciones puras ([readouts.ts](../../src/app/(autenticado)/_dashboard/readouts.ts)).
+
+**Colores de los gráficos (decidido por el usuario el 2026-10-06).** Los tokens existentes no daban siete tonos distinguibles sin usar `success` y `danger`, que dirían «bueno» y «malo». El usuario autorizó tocar `src/app/globals.css`, que estaba fuera de la lista, para sumar `--chart-text` a `--chart-none` en los tres bloques de tema y en `@theme`. Solo los usan los gráficos. El contraste con la superficie (WCAG 1.4.11 pide 3:1) se calculó sobre los valores hexadecimales:
+
+| Grupo | Claro | vs. `#ffffff` / `#f6f5fb` | Oscuro | vs. `#15142c` |
+|---|---|---|---|---|
+| Texto | `#6d28d9` | 7,10 / 6,55 | `#a48bfa` | 6,55 |
+| Audio | `#2563eb` | 5,17 / 4,77 | `#60a5fa` | 7,07 |
+| Imagen | `#0e7490` | 5,36 / 4,94 | `#22d3ee` | 9,95 |
+| Video | `#b45309` | 5,02 / 4,63 | `#fbbf24` | 10,77 |
+| Documento | `#be185d` | 6,04 / 5,57 | `#f472b6` | 6,79 |
+| Otro | `#4d7c0f` | 4,99 / 4,61 | `#a3e635` | 11,92 |
+| Sin dato | `#7d7799` | 4,22 / 3,90 | `#8a85b0` | 5,19 |
+
+Es un cálculo, no evidencia de la interfaz; la evidencia de la interfaz es axe.
+
+**Hallazgo: la CSP y el streaming de los SVG.** La primera versión pasaba el SVG que dibuja el servidor como `children` de un componente cliente. La guarda de CSP de `security-headers.spec.ts` (caso 3) encontró violaciones de `style-src-attr` en el dashboard, de forma intermitente. La causa, medida y no supuesta:
+- React manda la página en partes. Cuando una parte se corta **dentro de un `<svg>`**, la inserta con un contenedor `<svg aria-hidden style="display:none">`, porque el atributo `hidden` no vale en SVG, y la CSP lo bloquea. Fuera de un SVG usa `hidden`, que sí está permitido.
+- Antes de la 15.3 el SVG diario era chico y el corte nunca cayó adentro. Con la lectura, el contenido creció. Se probó contando los contenedores en el HTML servido, 12 cargas por versión:
+
+| Versión | Cargas con contenedores en el SVG |
+|---|---|
+| Lectura como `children` del componente cliente | 4 de 12 |
+| Sin la lectura | 0 de 12 |
+| Lectura con atributos en el SVG del servidor y un componente fuera de las tarjetas | 7 de 12 |
+| **SVG dibujado por componentes que reciben solo datos** (la versión final) | **0 de 12**, y después 0 atributos `style` en 40 cargas, con hasta 49 partes por carga |
+
+La tercera fila descartó que la causa fuera el componente cliente: lo es que haya elementos del servidor dentro del `<svg>`. La regla queda escrita en [chart-svgs.tsx](../../src/app/(autenticado)/_dashboard/chart-svgs.tsx): ningún `<svg>` del dashboard se arma con elementos del servidor.
+
+**Desvíos.**
+- **Sin JavaScript (decidido por el usuario el 2026-10-06).** El brief suponía que el dashboard muestra sus valores sin JavaScript, pero desde la 7.4 carga cada tarjeta con `Suspense` y streaming, y sin JavaScript todas quedan en «cargando». Se probó con un caso end-to-end sin JavaScript: fallaba en todas las tarjetas, no solo en las nuevas. El usuario eligió registrarlo y seguir: el invariante y AC-6 se enmendaron con fecha, y el caso se quitó. La limitación es de la 7.4 y queda como dato conocido. Quitar el streaming cambiaría la carga por tarjeta que decidió esa subfase (D-2).
+- `cards.tsx` exporta su componente `Card` para las dos tarjetas nuevas, que están en un archivo propio ([distributions.tsx](../../src/app/(autenticado)/_dashboard/distributions.tsx)).
+- Las métricas 13 y 14 suman su nombre, definición e ícono en `definitions.ts`, con los nombres del boceto. Los íconos (`mail` y `clock`) ya existían.
+- En el caso 12, el puntero sobre un segmento de la dona se simula con el evento `pointerover`. El centro de la caja de un arco puede caer en el hueco, y ahí no hay segmento que leer. El texto del centro de la dona lleva `pointer-events-none`, para no tapar los segmentos.
+- Al aplicar ese último cambio, un reemplazo mal guardado duplicó el contenido de `distributions.tsx`, que todavía no estaba en Git. Se reconstruyó desde la primera copia, que estaba completa, y se volvió a verificar: el formato, los tipos, el build y los casos pasan.
+
+**Medición.** Las métricas 13 y 14 ya estaban en la carga medida en la 15.3.2 (13 llamadas, 40,9 ms; con el período anterior, 81,1 ms). Las dos tarjetas nuevas no se comparan, así que no suman llamadas.
+
+**Capturas (AC-11).** Hay 16, en claro y en oscuro, a 1280 y a 375 px, en el scratchpad de la sesión (`capturas-153`): la página entera, «Ver detalles» abierto, el gráfico diario con una lectura y las distribuciones con lecturas activas. Se tomaron sobre la organización del piloto en `crm_dev`, con el período del 01/09 al 30/09, cuyo período anterior tiene datos desde el 25/08. Allí 66 de los 68 entrantes no tienen tipo, así que la dona muestra sobre todo «Sin dato», que es lo que hay. En la captura oscura de página completa el panel lateral sale abajo: es un efecto de capturar la página entera después de desplazarla, con el panel fijo.
+
+**Verificación.** La salida completa de cada paso quedó guardada en el scratchpad de la sesión (`bateria-1533`).
+- `typecheck`, `lint` y `build` pasan, y `prettier --check` sobre los archivos cambiados sale limpio.
+- `test:unit`: 548 de 548, con 9 nuevos de la geometría de la dona y de los textos de lectura.
+- `test:guards`: 485 de 485.
+- `test:integration`: 696 de 696.
+- En `src/app/`, ningún atributo `style` y ninguna clase de la paleta por defecto de Tailwind (AC-8).
+- End-to-end: 118 de 118 sobre `next start`, en dos tandas (51 y 67), incluida la guarda de CSP. Los tres casos nuevos son:
+  - el caso 12: la dona, con su lista, la lectura con el puntero y con el teclado, y axe;
+  - el caso 13: el histograma, con su tabla, la lectura con el teclado, Escape y axe;
+  - el caso 14: el gráfico diario, con el puntero y el teclado en las dos series, y axe.
+- La primera corrida de la tanda B perdió el servidor de la aplicación a mitad de camino (62 `ERR_CONNECTION_REFUSED`), con 0,4 GB libres en la máquina, como en la 15.2. Repetida sola, pasó 67 de 67.
+- Las capturas se volvieron a tomar con la versión final.

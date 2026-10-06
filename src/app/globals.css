@@ -39,6 +39,15 @@
   /* Advertencia, para «bajo stock» (O-17, brief-11.1, D-8): contraste 7,59:1. */
   --warning-soft: #fdf0d5;
   --on-warning-soft: #6b4400;
+  /* Series de los gráficos (brief-15.3, D-4): un tono por grupo, sin significado de «bueno» o
+     «malo». Contraste con la superficie de 3:1 o más (WCAG 1.4.11), calculado en la brief. */
+  --chart-text: #6d28d9;
+  --chart-audio: #2563eb;
+  --chart-image: #0e7490;
+  --chart-video: #b45309;
+  --chart-document: #be185d;
+  --chart-other: #4d7c0f;
+  --chart-none: #7d7799;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -71,6 +80,15 @@
     --on-success-soft: #aee8c8;
     --warning-soft: #3a2a0c;
     --on-warning-soft: #f5cf85;
+    /* Series de los gráficos (brief-15.3, D-4): un tono por grupo, sin significado de «bueno» o
+       «malo». Contraste con la superficie de 3:1 o más (WCAG 1.4.11), calculado en la brief. */
+    --chart-text: #a48bfa;
+    --chart-audio: #60a5fa;
+    --chart-image: #22d3ee;
+    --chart-video: #fbbf24;
+    --chart-document: #f472b6;
+    --chart-other: #a3e635;
+    --chart-none: #8a85b0;
   }
 }
 
@@ -104,6 +122,15 @@
   /* Advertencia en oscuro: contraste 9,33:1. */
   --warning-soft: #3a2a0c;
   --on-warning-soft: #f5cf85;
+  /* Series de los gráficos (brief-15.3, D-4): un tono por grupo, sin significado de «bueno» o
+     «malo». Contraste con la superficie de 3:1 o más (WCAG 1.4.11), calculado en la brief. */
+  --chart-text: #a48bfa;
+  --chart-audio: #60a5fa;
+  --chart-image: #22d3ee;
+  --chart-video: #fbbf24;
+  --chart-document: #f472b6;
+  --chart-other: #a3e635;
+  --chart-none: #8a85b0;
 }
 
 @theme {
@@ -138,6 +165,13 @@
   --color-on-success-soft: var(--on-success-soft);
   --color-warning-soft: var(--warning-soft);
   --color-on-warning-soft: var(--on-warning-soft);
+  --color-chart-text: var(--chart-text);
+  --color-chart-audio: var(--chart-audio);
+  --color-chart-image: var(--chart-image);
+  --color-chart-video: var(--chart-video);
+  --color-chart-document: var(--chart-document);
+  --color-chart-other: var(--chart-other);
+  --color-chart-none: var(--chart-none);
 
   /* Manrope local (D-3), con respaldo del sistema. */
   --font-sans: var(--font-manrope), system-ui, sans-serif;

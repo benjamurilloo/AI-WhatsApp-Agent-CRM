@@ -75,7 +75,8 @@ type Comparison<T> = {
   summary: (value: T) => string;
 };
 
-async function Card<T>({
+// Exportada para las tarjetas de distribución (distributions.tsx, brief-15.3).
+export async function Card<T>({
   metric,
   load,
   render,
