@@ -458,12 +458,13 @@ export async function ingestionErrors(query: MetricsQuery): Promise<{
   // La resolución de un cliente (client.resolved, brief-12.1) no es un mensaje ingerido: no entra
   // ni al numerador ni al denominador (revisión independiente de la 12.1, R-2), y tampoco la
   // derivación de una conversación (conversation.escalated, brief-12.2, D-9). conversation.resolved
-  // sí cuenta: registra un mensaje, y su fallo es un mensaje perdido.
+  // sí cuenta: registra un mensaje, y su fallo es un mensaje perdido. Poner y quitar una etiqueta
+  // (client.tag_added y client.tag_removed, brief-16.2, D-9) tampoco: no son mensajes.
   const inPeriod = and(
     eq(ingestionEvents.organizationId, query.organizationId),
     sql`${ingestionEvents.receivedAt} >= ${periodStart(query)}`,
     sql`${ingestionEvents.receivedAt} < ${periodEnd(query)}`,
-    sql`${ingestionEvents.eventType} not in ('client.resolved', 'conversation.escalated')`,
+    sql`${ingestionEvents.eventType} not in ('client.resolved', 'conversation.escalated', 'client.tag_added', 'client.tag_removed')`,
   );
   // El CHECK de la tabla garantiza error_code no nulo si y solo si el estado es failed, así que
   // agrupar por el código no necesita tratar nulos dentro de los fallidos (brief-6.1, D-2).

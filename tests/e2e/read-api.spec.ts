@@ -19,6 +19,8 @@ const ROUTES = [
   "/api/read/v1/knowledge?q=horarios",
   // El historial (brief-12.4).
   "/api/read/v1/messages?conversation_ref=conv-propuesta-0001",
+  // El catálogo de etiquetas (brief-16.2).
+  "/api/read/v1/client-tags",
 ];
 
 for (const route of ROUTES) {

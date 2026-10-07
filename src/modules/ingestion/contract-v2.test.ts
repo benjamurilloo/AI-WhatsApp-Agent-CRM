@@ -86,6 +86,25 @@ function escalationPayload(): Payload {
   };
 }
 
+const TAG_ID = "5f0c9a8e-3b1d-4c2a-9e7f-1a2b3c4d5e6f";
+
+// Poner y quitar una etiqueta (brief-16.2, D-1 a D-3).
+function tagPayload(
+  eventType: "client.tag_added" | "client.tag_removed" = "client.tag_added",
+): Payload {
+  const added = eventType === "client.tag_added";
+  return {
+    contract_version: "2",
+    event_type: eventType,
+    event_id: added ? "evt-v2-etiqueta-0001" : "evt-v2-etiqueta-0002",
+    occurred_at: added
+      ? "2026-09-16T12:00:12-03:00"
+      : "2026-09-16T12:00:14-03:00",
+    client: { phone: "+5491155550001" },
+    tag: { id: TAG_ID },
+  };
+}
+
 function parse(value: unknown, receivedAt = RECEIVED_AT) {
   return parseIngestionEventV2(JSON.stringify(value), receivedAt);
 }
@@ -125,6 +144,20 @@ const VECTORS = [
     canonical:
       '{"contract_version":"2","conversation":{"channel":"whatsapp","external_ref":"conv-propuesta-0001"},"event_id":"evt-v2-escalada-0001","event_type":"conversation.escalated","occurred_at":"2026-09-16T15:00:10.000Z"}',
     hash: "3aa0d77eae924f70a6478082c8e163057b5478557b4f6872ee7dcfe6894ad3a3",
+  },
+  {
+    name: "client.tag_added",
+    payload: () => tagPayload("client.tag_added"),
+    canonical:
+      '{"client":{"phone":"+5491155550001"},"contract_version":"2","event_id":"evt-v2-etiqueta-0001","event_type":"client.tag_added","occurred_at":"2026-09-16T15:00:12.000Z","tag":{"id":"5f0c9a8e-3b1d-4c2a-9e7f-1a2b3c4d5e6f"}}',
+    hash: "43304fcc44dc4edf9c13b22467835e922eb16d6ed6ac7f5af60af8ada94b84d8",
+  },
+  {
+    name: "client.tag_removed",
+    payload: () => tagPayload("client.tag_removed"),
+    canonical:
+      '{"client":{"phone":"+5491155550001"},"contract_version":"2","event_id":"evt-v2-etiqueta-0002","event_type":"client.tag_removed","occurred_at":"2026-09-16T15:00:14.000Z","tag":{"id":"5f0c9a8e-3b1d-4c2a-9e7f-1a2b3c4d5e6f"}}',
+    hash: "c2f240f686edbefd11e66c132ea51af6e0fd66e9f3c3c32ba135ff5ac03b7ef2",
   },
 ];
 
@@ -274,8 +307,8 @@ describe("el teléfono como nombre (D-8)", () => {
 });
 
 describe("reglas heredadas de v1", () => {
-  it("FR-API-07: nombra los campos de v1 más kind y sent_by", () => {
-    const added = ["message.kind", "message.sent_by"];
+  it("FR-API-07: nombra los campos de v1 más kind y sent_by, y la etiqueta (brief-16.2)", () => {
+    const added = ["message.kind", "message.sent_by", "tag", "tag.id"];
     expect(
       INGESTION_FIELDS_V2.filter((field) => !added.includes(field)),
     ).toEqual([...INGESTION_FIELDS]);
@@ -377,5 +410,43 @@ describe("fixtures del contrato v2 (forma asumida y capturas del emisor)", () =>
         ? { ok: true, payload_hash: ingestionPayloadHashV2(result.event) }
         : { ok: false, fields: result.fields },
     ).toEqual(fixture.expected);
+  });
+});
+
+describe("FR-CLI-11: poner y quitar una etiqueta (brief-16.2)", () => {
+  it("D-3: la etiqueta va por id, y el cliente solo por teléfono", () => {
+    expect(fieldsOf({ ...tagPayload(), tag: { name: "Reclamo" } })).toEqual([
+      "tag",
+      "tag.id",
+    ]);
+    expect(fieldsOf({ ...tagPayload(), tag: { id: "reclamo" } })).toEqual([
+      "tag.id",
+    ]);
+    expect(
+      fieldsOf({
+        ...tagPayload(),
+        client: { phone: "+5491155550001", id: TAG_ID },
+      }),
+    ).toEqual(["client"]);
+    expect(fieldsOf({ ...tagPayload(), tag: undefined })).toEqual(["tag"]);
+    expect(fieldsOf({ ...tagPayload(), client: undefined })).toEqual([
+      "client",
+    ]);
+    expect(fieldsOf({ ...tagPayload(), conversation: {} })).toEqual(["event"]);
+  });
+
+  it("una fecha más de 5 minutos en el futuro se rechaza, como en los demás tipos", () => {
+    expect(
+      fieldsOf({ ...tagPayload(), occurred_at: "2026-09-16T15:05:01.000Z" }),
+    ).toEqual(["occurred_at"]);
+  });
+
+  it("D-8: los tipos nuevos solo existen en v2; v1 los rechaza como tipo desconocido", () => {
+    const v1 = parseIngestionEventV1(
+      JSON.stringify({ ...tagPayload(), contract_version: "1" }),
+      RECEIVED_AT,
+    );
+    expect(v1.ok).toBe(false);
+    if (!v1.ok) expect(v1.fields).toContain("event_type");
   });
 });

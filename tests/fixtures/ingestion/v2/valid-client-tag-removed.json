@@ -1,0 +1,18 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: no proviene de ningún emisor real (brief-16.2). La 16.2.3 la contrasta con lo que mande el agente.",
+  "description": "Quitar una etiqueta del catálogo de un cliente (vector del contrato).",
+  "received_at": "2026-09-16T15:00:00.000Z",
+  "payload": {
+    "contract_version": "2",
+    "event_type": "client.tag_removed",
+    "event_id": "evt-v2-etiqueta-0002",
+    "occurred_at": "2026-09-16T12:00:14-03:00",
+    "client": { "phone": "+5491155550001" },
+    "tag": { "id": "5f0c9a8e-3b1d-4c2a-9e7f-1a2b3c4d5e6f" }
+  },
+  "expected": {
+    "ok": true,
+    "payload_hash": "c2f240f686edbefd11e66c132ea51af6e0fd66e9f3c3c32ba135ff5ac03b7ef2"
+  }
+}

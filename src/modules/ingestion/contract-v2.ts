@@ -15,7 +15,8 @@ import {
 
 // Contrato de ingestión v2: docs/contracts/ingestion-v2.md (brief-12.3). Los cuatro tipos de
 // evento de v1, con el tipo original del mensaje (kind, D-2) y el autor de una salida (sent_by,
-// D-3). Las referencias, las fechas, el texto y el hash siguen las reglas de v1, que no cambia.
+// D-3). Las referencias, las fechas, el texto y el hash siguen las reglas de v1, que no cambia. Desde
+// la 16.2, dos tipos que solo existen en v2: poner y quitar una etiqueta en un cliente.
 
 export const INGESTION_CONTRACT_VERSION_V2 = "2";
 
@@ -30,7 +31,8 @@ export const MESSAGE_KINDS_V2 = [
 ] as const;
 export const MESSAGE_SENDERS_V2 = ["agent", "person"] as const;
 
-// Campos que puede nombrar un VALIDATION_ERROR de v2, en orden fijo: los de v1 más kind y sent_by.
+// Campos que puede nombrar un VALIDATION_ERROR de v2, en orden fijo: los de v1 más kind y sent_by,
+// y desde la 16.2 la etiqueta.
 export const INGESTION_FIELDS_V2 = [
   "body",
   "event",
@@ -52,6 +54,8 @@ export const INGESTION_FIELDS_V2 = [
   "client",
   "client.phone",
   "client.display_name",
+  "tag",
+  "tag.id",
 ] as const;
 
 export type IngestionFieldV2 = (typeof INGESTION_FIELDS_V2)[number];
@@ -122,6 +126,27 @@ const conversationEscalatedSchema = z.strictObject({
   }),
 });
 
+// Poner y quitar una etiqueta del catálogo en un cliente (brief-16.2, D-1 a D-3): el cliente por
+// teléfono, que tiene que existir, y la etiqueta por su id del CRM, leído de
+// GET /api/read/v1/client-tags. Un tipo nuevo es un cambio compatible dentro de v2.
+export const CLIENT_TAG_EVENT_TYPES_V2 = [
+  "client.tag_added",
+  "client.tag_removed",
+] as const;
+
+const clientTagSchema = z.strictObject({
+  contract_version: z.literal(INGESTION_CONTRACT_VERSION_V2),
+  event_type: z.enum(CLIENT_TAG_EVENT_TYPES_V2),
+  event_id: externalRef,
+  occurred_at: timestamp,
+  client: z.strictObject({
+    phone: z.string().regex(E164),
+  }),
+  tag: z.strictObject({
+    id: z.uuid(),
+  }),
+});
+
 export type MessageRecordedEventV2 = z.infer<typeof messageRecordedSchema>;
 export type ClientResolvedEventV2 = z.infer<typeof clientResolvedSchema>;
 export type ConversationResolvedEventV2 = z.infer<
@@ -130,11 +155,13 @@ export type ConversationResolvedEventV2 = z.infer<
 export type ConversationEscalatedEventV2 = z.infer<
   typeof conversationEscalatedSchema
 >;
+export type ClientTagEventV2 = z.infer<typeof clientTagSchema>;
 export type IngestionEventV2 =
   | MessageRecordedEventV2
   | ClientResolvedEventV2
   | ConversationResolvedEventV2
-  | ConversationEscalatedEventV2;
+  | ConversationEscalatedEventV2
+  | ClientTagEventV2;
 
 export type ParseIngestionEventV2Result =
   | { ok: true; event: IngestionEventV2 }
@@ -199,6 +226,17 @@ export function parseIngestionEventV2(
       rejected.add("client.display_name");
     }
     if (rejected.size > 0) return invalid(rejected);
+    return { ok: true, event };
+  }
+
+  if (eventType === "client.tag_added" || eventType === "client.tag_removed") {
+    const parsed = clientTagSchema.safeParse(json);
+    if (!parsed.success) return invalid(fieldsOf(parsed.error.issues));
+    const event: ClientTagEventV2 = {
+      ...parsed.data,
+      occurred_at: toUtc(parsed.data.occurred_at),
+    };
+    if (late(event.occurred_at)) return invalid(["occurred_at"]);
     return { ok: true, event };
   }
 

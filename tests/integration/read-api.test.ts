@@ -11,11 +11,13 @@ import {
 } from "vitest";
 import type { z } from "zod";
 import {
+  clientTagListResponseSchema,
   errorResponseSchema,
   knowledgeListResponseSchema,
   productListResponseSchema,
   productResponseSchema,
 } from "@/app/api/read/v1/contract";
+import { handleClientTagList } from "@/app/api/read/v1/client-tags/handler";
 import { handleKnowledgeList } from "@/app/api/read/v1/knowledge/handler";
 import {
   handleProductDetail,
@@ -1010,6 +1012,111 @@ describe(
         ),
       );
       expect(plan).toMatch(/Index Cond: \(search @@/);
+    });
+  },
+);
+
+describe(
+  "API de lectura: catálogo de etiquetas (brief-16.2, D-7)",
+  { timeout: TEST_TIMEOUT },
+  () => {
+    function clientTags(token: string | null) {
+      return handleClientTagList(request("/client-tags", token), NOW);
+    }
+
+    async function tag(organizationId: string, name: string, active = true) {
+      const result = await getDb().execute<{ id: string }>(
+        sql`insert into client_tags (organization_id, name, is_active)
+            values (${organizationId}, ${name}, ${active}) returning id`,
+      );
+      return result.rows[0]!.id;
+    }
+
+    it("FR-CLI-11: devuelve las activas de la organización, por nombre, con id y nombre y nada más", async () => {
+      const reclamo = await tag(orgA, "Reclamo");
+      const interesado = await tag(orgA, "interesado");
+      await tag(orgA, "Vieja", false);
+      await tag(orgB, "De B");
+      // Un cliente con una etiqueta: la respuesta no lo nombra (invariante 6).
+      const client = await getDb().execute<{ id: string }>(
+        sql`insert into clients (organization_id, display_name, phone_e164)
+            values (${orgA}, 'Ana Etiquetada', '+5491155550001') returning id`,
+      );
+      await getDb().execute(
+        sql`insert into client_tag_assignments (organization_id, client_id, tag_id)
+            values (${orgA}, ${client.rows[0]!.id}, ${reclamo})`,
+      );
+
+      const body = await valid(
+        await clientTags(readerA.token),
+        clientTagListResponseSchema,
+      );
+      expect(body).toEqual({
+        contract_version: "1",
+        items: [
+          { tag_id: interesado, name: "interesado" },
+          { tag_id: reclamo, name: "Reclamo" },
+        ],
+      });
+      expect(JSON.stringify(body)).not.toMatch(/Ana|5491155550001/);
+
+      const fromB = await valid(
+        await clientTags(readerB.token),
+        clientTagListResponseSchema,
+      );
+      expect(fromB.items.map((item) => item.name)).toEqual(["De B"]);
+    });
+
+    it("FR-CLI-11: un catálogo vacío es una lista vacía", async () => {
+      const body = await valid(
+        await clientTags(readerA.token),
+        clientTagListResponseSchema,
+      );
+      expect(body.items).toEqual([]);
+    });
+
+    it("FR-CLI-11: exige alcance read: 401 sin token y 403 con ingest o context", async () => {
+      await tag(orgA, "Reclamo");
+      expect((await rejected(await clientTags(null), 401)).code).toBe(
+        "UNAUTHENTICATED",
+      );
+      expect((await rejected(await clientTags(ingestA.token), 403)).code).toBe(
+        "FORBIDDEN",
+      );
+      const created = await createIngestionCredential(orgA, SOURCE, "context");
+      if (!created.ok) throw new Error("credencial inválida");
+      allow(readerA, readerB, ingestA, {
+        id: created.credentialId,
+        token: created.token,
+      });
+      expect((await rejected(await clientTags(created.token), 403)).code).toBe(
+        "FORBIDDEN",
+      );
+    });
+
+    // Revisión independiente de la 16.2.1, hallazgo 11.
+    it("FR-CLI-11: una sesión válida del CRM no autentica la ruta", async () => {
+      const token = randomBytes(32).toString("base64url");
+      await getDb().execute(
+        sql`insert into sessions (id, user_id, expires_at)
+            values (${createHash("sha256").update(token).digest("hex")}, ${await memberOf(orgA)},
+              now() + interval '1 hour')`,
+      );
+      expect(await validateSession(token)).not.toBeNull();
+      const response = await handleClientTagList(
+        request("/client-tags", null, {
+          cookie: `__Host-crm_session=${token}`,
+        }),
+        NOW,
+      );
+      await rejected(response, 401);
+    });
+
+    it("FR-CLI-11: con la API apagada responde 404 sin cuerpo", async () => {
+      process.env.READ_API_ENABLED = "false";
+      const response = await clientTags(readerA.token);
+      expect(response.status).toBe(404);
+      expect(await response.text()).toBe("");
     });
   },
 );

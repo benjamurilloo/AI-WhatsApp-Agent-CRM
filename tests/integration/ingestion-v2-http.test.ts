@@ -424,3 +424,73 @@ describe("endpoint de ingestión v2", { timeout: TEST_TIMEOUT }, () => {
     expect(await counts()).toMatchObject({ messages: 0 });
   });
 });
+
+describe(
+  "endpoint de ingestión v2: etiquetas (brief-16.2)",
+  { timeout: TEST_TIMEOUT },
+  () => {
+    const tagAdded = () => fixture("v2", "valid-client-tag-added");
+    const tagRemoved = () => fixture("v2", "valid-client-tag-removed");
+
+    async function catalogTag() {
+      await getDb().execute(
+        sql`insert into client_tags (id, organization_id, name)
+            values (${tagAdded().tag.id}, ${orgA}, 'Reclamo')`,
+      );
+    }
+
+    it("FR-CLI-11: responde 200 sin datos del cliente, también en el reenvío y al quitar (D-5)", async () => {
+      await send(emitter.token, clientEvent());
+      await catalogTag();
+
+      const added = await send(emitter.token, tagAdded(), {
+        "x-correlation-id": "turno-etiqueta",
+      });
+      expect(added.status).toBe(200);
+      expect(added.headers.get("x-correlation-id")).toBe("turno-etiqueta");
+      expect(await added.json()).toStrictEqual({
+        contract_version: "2",
+        event_id: "evt-v2-etiqueta-0001",
+        result: "accepted",
+      });
+
+      const again = await send(emitter.token, tagAdded());
+      expect(again.status).toBe(200);
+      expect(await again.json()).toStrictEqual({
+        contract_version: "2",
+        event_id: "evt-v2-etiqueta-0001",
+        result: "duplicate",
+      });
+
+      const removed = await send(emitter.token, tagRemoved());
+      expect(removed.status).toBe(200);
+      expect(await removed.json()).toStrictEqual({
+        contract_version: "2",
+        event_id: "evt-v2-etiqueta-0002",
+        result: "accepted",
+      });
+    });
+
+    it("FR-CLI-11: una regla responde 422 con rule, y v1 rechaza el tipo con 400", async () => {
+      await catalogTag();
+      const missing = await send(emitter.token, tagAdded());
+      expect(missing.status).toBe(422);
+      expect(await missing.json()).toStrictEqual({
+        code: "BUSINESS_RULE_VIOLATION",
+        request_id: expect.any(String),
+        rule: "client_not_found",
+      });
+
+      const v1 = await sendV1(emitter.token, {
+        ...tagAdded(),
+        contract_version: "1",
+        event_id: "evt-v1-etiqueta",
+      });
+      expect(v1.status).toBe(400);
+      expect(await v1.json()).toMatchObject({
+        code: "VALIDATION_ERROR",
+        fields: expect.arrayContaining(["event_type"]),
+      });
+    });
+  },
+);

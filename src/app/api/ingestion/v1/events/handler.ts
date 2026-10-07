@@ -105,6 +105,18 @@ function acceptedResponse(
       { status: 200, headers },
     );
   }
+  if ("eventType" in accepted) {
+    // Poner o quitar una etiqueta, solo en v2 (brief-16.2, D-5): siempre 200, sin datos del
+    // cliente ni sus etiquetas. v1 nunca llega acá.
+    return Response.json(
+      {
+        contract_version: edge.contractVersion,
+        event_id: accepted.eventId,
+        result: accepted.result,
+      },
+      { status: 200, headers },
+    );
+  }
   if ("conversation" in accepted) {
     // Siempre 200, con la referencia de la conversación y sin el id interno ni el teléfono
     // (brief-12.2, D-5).

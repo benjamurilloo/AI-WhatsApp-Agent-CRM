@@ -8,11 +8,13 @@
 
 - **Validado en integración con el turno completo** (12.5.2, `producer-consumer`, 2026-09-28; [evidencia-12.5](../decisions/evidencia-12.5-turno-completo.md)): el emisor ya está cableado a la cadena real del agente, con una cola durable que retiene ante `404` y reenvía idéntico. En dos ventanas, la conciliación dio cada mensaje una sola vez, en su conversación. Los dos `409` terminaron según la guía, incluido el reintento con referencias nuevas. El agente **no** está conectado a tráfico real: solo emite en ventanas de prueba. Fuera de ellas, la ingestión de staging está apagada y sus credenciales, revocadas.
 
+- *Desde la 16.2* ([brief-16.2](../decisions/brief-16.2-etiquetas-puestas-por-el-agente.md)): **dos tipos nuevos, solo en v2**, para poner y quitar una etiqueta del catálogo en un cliente (§Etiquetas). **Diseñados, implementados y validados localmente** con requests sintéticos; todavía **sin emisor real**: su validación en integración es la 16.2.3.
+
 *Hasta la 12.5 este párrafo decía que el emisor seguía sin cablear a su pipeline; actualizado por la revisión independiente de la 12.5 (R-2).* En `tests/fixtures/ingestion/v2/` conviven los fixtures de **forma asumida** (`"shape": "assumed"`, los vectores del contrato) y **seis capturas del agente** (`"shape": "captured"`), que guardan el cuerpo tal como llegó a staging. Este contrato no deriva de la forma de eventos de ningún sistema existente.
 
 ## Qué cambia respecto de v1
 
-v2 es la misma superficie de escritura que [v1](ingestion-v1.md), en otra ruta, con los mismos cuatro eventos. **v1 sigue funcionando igual**, congelada. Todo lo que este documento no menciona rige como en v1: referencias opacas, fechas, texto, tamaño, identidad, idempotencia, algoritmo del hash, reglas de negocio (`422`), vigencia de la conversación y proyección.
+v2 es la misma superficie de escritura que [v1](ingestion-v1.md), en otra ruta, con los mismos cuatro eventos. *Desde la 16.2* suma dos que v1 no tiene: `client.tag_added` y `client.tag_removed` (§Etiquetas). **v1 sigue funcionando igual**, congelada. Todo lo que este documento no menciona rige como en v1: referencias opacas, fechas, texto, tamaño, identidad, idempotencia, algoritmo del hash, reglas de negocio (`422`), vigencia de la conversación y proyección.
 
 | | v1 | v2 |
 |---|---|---|
@@ -23,6 +25,7 @@ v2 es la misma superficie de escritura que [v1](ingestion-v1.md), en otra ruta, 
 | Nombre del cliente igual al teléfono | se acepta | se rechaza |
 | `CONFLICT` | sin motivo | con `reason`, también al reenviar |
 | Correlación | no existe | `X-Correlation-Id`, validado antes del límite de tasa |
+| Etiquetas del cliente (16.2) | no existen: un `client.tag_added` da `400` en `event_type` | `client.tag_added` y `client.tag_removed` |
 
 ## Transporte
 
@@ -150,9 +153,75 @@ El algoritmo es el de v1. `contract_version` entra en el hash, así que **el mis
 
 `payload_hash`: `3aa0d77eae924f70a6478082c8e163057b5478557b4f6872ee7dcfe6894ad3a3`.
 
+## Etiquetas (desde la 16.2)
+
+[brief-16.2](../decisions/brief-16.2-etiquetas-puestas-por-el-agente.md), D-1 a D-9. Dos tipos que **solo existen en v2**: v1 está congelada y los rechaza como cualquier `event_type` desconocido (D-8). Agregarlos es un cambio compatible dentro de v2 (§Versionado).
+
+| Campo | Tipo | Nulable | Reglas |
+|---|---|---|---|
+| `event_type` | string | no | `"client.tag_added"` o `"client.tag_removed"` |
+| `client.phone` | string | no | E.164, como en `client.resolved`. Es el único campo de `client`: el nombre u otro campo da `400` con `client` |
+| `tag.id` | string | no | el id del CRM de la etiqueta, un uuid, leído de [`GET /api/read/v1/client-tags`](read-v1.md). Es el único campo de `tag`: por nombre da `400` con `tag` y `tag.id` (D-3) |
+
+`event_id` y `occurred_at` siguen las reglas de los demás tipos. **El cliente tiene que existir**: el evento nunca lo crea; para eso está `client.resolved` (D-2).
+
+**Qué hace**: pone o quita la etiqueta con **las mismas reglas que la ficha** (FR-CLI-09), en una sola función de `crm`, y lo audita como `tag_change` en el historial del cliente con la **credencial como actor**. Un cliente desactivado se puede etiquetar, como en la ficha. El emisor no crea, renombra ni desactiva etiquetas: el catálogo es del admin.
+
+**Respuesta** (D-5): siempre `200`, sin datos del cliente ni sus etiquetas:
+
+```json
+{ "contract_version": "2", "event_id": "evt-v2-etiqueta-0001", "result": "accepted" }
+```
+
+- `accepted`: el estado pedido se cumple. Poner una que el cliente ya tiene, o quitar una que no tiene, es `accepted` sin escritura ni auditoría. **Ese caso gana sobre las reglas de abajo**, como en la ficha ([brief-16.1](../decisions/brief-16.1-etiquetas-de-clientes.md), D-6): poner una que el cliente ya tiene es `accepted` aunque esté desactivada o el cliente tenga 10 (revisión independiente de la 16.2.1, hallazgo 1).
+- `duplicate`: el reenvío idéntico, sin leer ni escribir.
+
+**Reglas de negocio** (D-6): `422 BUSINESS_RULE_VIOLATION`, **terminales**, con la regla en `rule` y en `error_code`; un reenvío responde la misma regla, aunque ya se cumpla:
+
+| `rule` | Cuándo |
+|---|---|
+| `client_not_found` | el teléfono no es de ningún cliente de la organización |
+| `tag_not_found` | la etiqueta no existe o es de otra organización; o, **al poner**, está desactivada. Quitar una desactivada que el cliente tiene se acepta, como en la ficha |
+| `client_tag_limit` | al poner, el cliente ya tiene 10 etiquetas |
+
+Lo que hace el emisor ante un `422` es lo de la guía: no reenvía el mismo `event_id`; corrige la causa y manda un evento nuevo. Ante `tag_not_found`, la causa suele ser un catálogo que cambió: vuelve a leer `GET /api/read/v1/client-tags`.
+
+**Orden con `client.resolved`**: un cliente nuevo existe recién cuando su `client.resolved` respondió. Un evento de etiqueta que se manda antes, o en paralelo, puede terminar en `client_not_found`, que es terminal. El emisor espera la respuesta de `client.resolved` antes de etiquetar a ese cliente (revisión independiente de la 16.2.1, duda 3).
+
+**El `tag.id` va en minúsculas, tal como lo devuelve la lectura.** El validador acepta un uuid en mayúsculas y la etiqueta es la misma, pero el contenido no: el mismo `event_id` con otra capitalización da `409 event_payload_mismatch`, como cualquier contenido distinto (revisión independiente de la 16.2.1, duda 4).
+
+**No cuentan en la métrica 12** (D-9): no son mensajes ([MetricsCatalog](../analytics/MetricsCatalog.md) §12).
+
+**`client.tag_added`**:
+
+```json
+{
+  "contract_version": "2",
+  "event_type": "client.tag_added",
+  "event_id": "evt-v2-etiqueta-0001",
+  "occurred_at": "2026-09-16T12:00:12-03:00",
+  "client": { "phone": "+5491155550001" },
+  "tag": { "id": "5f0c9a8e-3b1d-4c2a-9e7f-1a2b3c4d5e6f" }
+}
+```
+
+```text
+{"client":{"phone":"+5491155550001"},"contract_version":"2","event_id":"evt-v2-etiqueta-0001","event_type":"client.tag_added","occurred_at":"2026-09-16T15:00:12.000Z","tag":{"id":"5f0c9a8e-3b1d-4c2a-9e7f-1a2b3c4d5e6f"}}
+```
+
+`payload_hash`: `43304fcc44dc4edf9c13b22467835e922eb16d6ed6ac7f5af60af8ada94b84d8`.
+
+**`client.tag_removed`**, la misma etiqueta:
+
+```text
+{"client":{"phone":"+5491155550001"},"contract_version":"2","event_id":"evt-v2-etiqueta-0002","event_type":"client.tag_removed","occurred_at":"2026-09-16T15:00:14.000Z","tag":{"id":"5f0c9a8e-3b1d-4c2a-9e7f-1a2b3c4d5e6f"}}
+```
+
+`payload_hash`: `c2f240f686edbefd11e66c132ea51af6e0fd66e9f3c3c32ba135ff5ac03b7ef2`. Los dos hashes se calcularon sobre este texto, escrito a mano, con `sha256sum`.
+
 ## Respuestas
 
-- **Éxito y reenvío**: las formas y los códigos de v1 para cada evento, con `"contract_version": "2"`. `message.recorded` responde `201` al aceptar y `200` al reenvío; los otros tres, siempre `200`.
+- **Éxito y reenvío**: las formas y los códigos de v1 para cada evento, con `"contract_version": "2"`. `message.recorded` responde `201` al aceptar y `200` al reenvío; los otros tres, y desde la 16.2 los dos de etiquetas, siempre `200`.
 - **Errores**: la tabla de v1, con dos diferencias: el campo `correlation_id` en `VALIDATION_ERROR` y el `reason` del `409`.
 
 ### `CONFLICT` con motivo (brief-12.3, D-7)
@@ -212,10 +281,11 @@ Las reglas de v1: agregar un `event_type` o un canal que el modelo admita es com
 ## Evidencia
 
 - **Validado localmente y en CI** (`deterministic`), con requests sintéticos:
-  - `src/modules/ingestion/contract-v2.test.ts`: los cuatro vectores comparados con su texto canónico, cada regla nueva, las heredadas de v1 y los fixtures de `tests/fixtures/ingestion/v2/`, con `"shape": "assumed"` o, desde la 12.3.3, `"captured"`;
+  - `src/modules/ingestion/contract-v2.test.ts`: los cuatro vectores (seis desde la 16.2) comparados con su texto canónico, cada regla nueva, las heredadas de v1 y los fixtures de `tests/fixtures/ingestion/v2/`, con `"shape": "assumed"` o, desde la 12.3.3, `"captured"`;
   - `tests/integration/ingestion-v2.test.ts`, contra PostgreSQL real: la migración `0023` y su `CHECK`, `messages` todavía de solo inserción, v1 guardando `null`, el turno completo con tipo y autor, los bordes de la vigencia por v2, los tres motivos del `CONFLICT` y su reenvío, lo que afirma la guía (reenvío idéntico, reversión ante un error inesperado, `422` terminal) y el aislamiento;
   - `tests/integration/ingestion-v2-http.test.ts`: las respuestas de v2, el `409` con motivo y el de v1 sin él, la correlación en cada respuesta y en el log (también en el `429` y el `500`), la correlación inválida sin consumir el límite, el límite compartido con v1, la cadena de rechazos y el log sin secretos;
   - `tests/e2e/conversations.spec.ts`, caso 11: el rótulo de tipo y autor en la pantalla 9.
 - **Validado en staging** (12.3.2): el borde real con requests sintéticos, en [evidencia-12.3](../decisions/evidencia-12.3-ingestion-v2.md).
 - **Validado en integración** (12.3.3, O-35): la autenticación y el validador con el tráfico del agente, cruzados con el log, las filas, el `payload_hash` y el dashboard, en la misma evidencia.
+- **Etiquetas, desde la 16.2** (`deterministic`): `contract-v2.test.ts` con los dos vectores y la validación; `client-tags-ingestion.test.ts`, contra PostgreSQL real, con las tres reglas, los reenvíos, el actor, la concurrencia con la ficha y el aislamiento; `analytics-ingestion.test.ts`, fuera de la métrica 12. Fixtures de forma asumida. **Sin emisor real todavía** (16.2.3).
 - **Sin validar**: un turno que haya recorrido la cadena real del agente, la referencia que el CRM devuelve distinta de la propuesta, y los dos `409` con el emisor real.

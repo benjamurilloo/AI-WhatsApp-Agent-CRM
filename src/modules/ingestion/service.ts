@@ -7,6 +7,7 @@ import {
   type ResolvedConversation,
 } from "@/modules/conversations";
 import {
+  changeClientTagByPhone,
   findResolvedClientByPhone,
   resolveClientByPhone,
   type ResolvedClient,
@@ -25,9 +26,11 @@ import {
   type MessageRecordedEventV1,
 } from "./contract";
 import {
+  CLIENT_TAG_EVENT_TYPES_V2,
   ingestionPayloadHashV2,
   parseIngestionEventV2,
   type ClientResolvedEventV2,
+  type ClientTagEventV2,
   type ConversationEscalatedEventV2,
   type ConversationResolvedEventV2,
   type IngestionEventV2,
@@ -44,7 +47,8 @@ import * as repository from "./repository";
 // mensaje en conversations, y client.resolved resuelve un cliente en crm, que lo audita con la
 // credencial como actor. Desde la 12.2 (D-1), conversation.resolved registra un mensaje entrante
 // en la conversación vigente del cliente o en una nueva, y conversation.escalated (D-6) deriva una
-// conversación a una persona, auditada con la credencial.
+// conversación a una persona, auditada con la credencial. Desde la 16.2, client.tag_added y
+// client.tag_removed ponen y quitan una etiqueta del catálogo, solo en v2.
 
 // Desde la 12.3 (D-1), el contrato v2 entra por recordIngestionEventV2 con el mismo ledger y la
 // misma proyección. Lo único que cambia según la versión es el CONFLICT: v2 dice por qué (D-7).
@@ -87,8 +91,17 @@ export type ConversationAccepted = {
   conversation: ResolvedConversation | null;
 };
 
+// client.tag_added y client.tag_removed (brief-16.2, D-5): siempre 200, sin datos del cliente. Poner una
+// que ya tiene, o quitar una que no tiene, es accepted sin escribir: el estado pedido ya se cumple.
+export type ClientTagAccepted = {
+  ok: true;
+  result: "accepted" | "duplicate";
+  eventId: string;
+  eventType: ClientTagEventV2["event_type"];
+};
+
 export type IngestionAccepted =
-  MessageAccepted | ClientAccepted | ConversationAccepted;
+  MessageAccepted | ClientAccepted | ConversationAccepted | ClientTagAccepted;
 
 // Reglas de negocio de los tipos nuevos (brief-12.2, C-2): responden 422 y quedan como failed con
 // la regla en error_code, para que un reenvío responda la misma (decisión del usuario del
@@ -97,6 +110,9 @@ export const INGESTION_RULES = [
   "client_not_found",
   "conversation_not_found",
   "conversation_closed",
+  // Desde la 16.2 (D-6), de client.tag_added y client.tag_removed.
+  "tag_not_found",
+  "client_tag_limit",
 ] as const;
 export type IngestionRule = (typeof INGESTION_RULES)[number];
 
@@ -175,6 +191,10 @@ async function duplicate(
 ): Promise<IngestionAccepted> {
   if (event.event_type === "message.recorded") {
     return messageAccepted(event, "duplicate");
+  }
+  if (isClientTagEvent(event)) {
+    // Sin leer ni escribir: la respuesta no lleva datos del cliente (brief-16.2, D-5).
+    return clientTagAccepted(event, "duplicate");
   }
   if (event.event_type === "conversation.resolved") {
     return {
@@ -342,6 +362,49 @@ async function projectEscalation(
   };
 }
 
+function isClientTagEvent(event: IngestionEvent): event is ClientTagEventV2 {
+  return (CLIENT_TAG_EVENT_TYPES_V2 as readonly string[]).includes(
+    event.event_type,
+  );
+}
+
+function clientTagAccepted(
+  event: ClientTagEventV2,
+  result: ClientTagAccepted["result"],
+): ClientTagAccepted {
+  return {
+    ok: true,
+    result,
+    eventId: event.event_id,
+    eventType: event.event_type,
+  };
+}
+
+// Poner o quitar una etiqueta (brief-16.2): crm busca y bloquea al cliente por teléfono, aplica las
+// reglas de la ficha y audita con la credencial. Un rechazo queda failed con la regla (D-6).
+async function projectClientTag(
+  tx: DbTransaction,
+  context: IngestionContext,
+  reserved: string,
+  event: ClientTagEventV2,
+): Promise<RecordIngestionEventResult> {
+  if (!context.credentialId) {
+    throw new Error(`${event.event_type} sin credencial para auditar`);
+  }
+  const changed = await changeClientTagByPhone(tx, {
+    organizationId: context.organizationId,
+    credentialId: context.credentialId,
+    phoneE164: event.client.phone,
+    tagId: event.tag.id,
+    assign: event.event_type === "client.tag_added",
+  });
+  if (!changed.ok) return rejectByRule(tx, context, reserved, changed.rule);
+  await repository.finishEvent(tx, context.organizationId, reserved, {
+    status: "processed",
+  });
+  return clientTagAccepted(event, "accepted");
+}
+
 async function projectClient(
   tx: DbTransaction,
   context: IngestionContext,
@@ -480,6 +543,9 @@ async function recordEvent(
       }
       if (event.event_type === "conversation.escalated") {
         return projectEscalation(tx, context, reserved, event);
+      }
+      if (isClientTagEvent(event)) {
+        return projectClientTag(tx, context, reserved, event);
       }
       return projectClient(tx, context, reserved, event);
     },

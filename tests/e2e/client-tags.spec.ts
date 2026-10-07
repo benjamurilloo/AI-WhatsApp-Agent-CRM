@@ -11,6 +11,7 @@ import { E2E_PASSWORD } from "./global-setup";
 // claro y en oscuro, el teclado y el móvil a 375 px. Las etiquetas y los clientes los crea cada
 // caso (D-13).
 
+const AGENT_SOURCE = "agente-e2e-etiquetas";
 const [ADMIN_SEED, VIEWER_SEED] = SEED_USERS;
 const ADMIN = ADMIN_SEED.email;
 const VIEWER = VIEWER_SEED.email;
@@ -26,6 +27,9 @@ test.beforeAll(() => {
 test.afterAll(async () => {
   await db.execute(
     sql`truncate table audit_logs, client_tag_assignments, client_tags, messages, conversations, clients`,
+  );
+  await db.execute(
+    sql`delete from ingestion_credentials where source = ${AGENT_SOURCE}`,
   );
   await db.$client.end();
 });
@@ -420,4 +424,36 @@ test("6. AC-10: alta, asignación y filtro solo con teclado, y la ficha a 375 px
   ).toContainText("Reclamo");
   await expectNoHorizontalScroll(page);
   await expectAccessible(page, "ficha con etiquetas en móvil");
+});
+
+// brief-16.2, AC-4: una etiqueta puesta por el agente se ve en la ficha como cualquier otra, y el
+// historial nombra a la credencial. La escritura por el contrato v2 está probada en integración
+// (client-tags-ingestion.test.ts); acá se arma por SQL, como en clients.spec.ts.
+test("7. FR-CLI-11: la etiqueta que puso el agente se ve en la ficha, con el servicio como autor", async ({
+  page,
+}) => {
+  const clientId = await insertClient("Hilda Agente");
+  const tagId = await insertTag("Interesado", "blue");
+  await assign(clientId, tagId);
+  const credential = await db.execute<{ id: string }>(
+    sql`insert into ingestion_credentials (organization_id, source, scope, token_hash)
+        values (${SEED_ORGANIZATION_ID}, ${AGENT_SOURCE}, 'ingest', ${`hash-${clientId}`})
+        returning id`,
+  );
+  await db.execute(
+    sql`insert into audit_logs
+          (organization_id, actor_credential_id, entity_type, entity_id, action, diff)
+        values (${SEED_ORGANIZATION_ID}, ${credential.rows[0]!.id}, 'client', ${clientId},
+          'tag_change', ${JSON.stringify({ before: { tag: null }, after: { tag: "Interesado" } })}::jsonb)`,
+  );
+
+  await login(page, ADMIN);
+  await page.goto(`/clientes/${clientId}`);
+  await expect(page.getByRole("region", { name: "Etiquetas" })).toContainText(
+    "Interesado",
+  );
+  const audit = page.getByRole("table", { name: /Auditoría de/ });
+  await expect(audit).toContainText(`Servicio · ${AGENT_SOURCE}`);
+  await expect(audit).toContainText("Etiqueta agregada: Interesado");
+  await expectAccessible(page, "ficha con una etiqueta del agente");
 });

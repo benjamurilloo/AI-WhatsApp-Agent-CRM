@@ -590,23 +590,6 @@ export async function findTagsByClient(
   return byClient;
 }
 
-export async function countClientTags(
-  tx: DbTransaction,
-  organizationId: string,
-  clientId: string,
-): Promise<number> {
-  const rows = await tx
-    .select({ total: count() })
-    .from(clientTagAssignments)
-    .where(
-      and(
-        eq(clientTagAssignments.organizationId, organizationId),
-        eq(clientTagAssignments.clientId, clientId),
-      ),
-    );
-  return rows[0]?.total ?? 0;
-}
-
 // Devuelve true solo si insertó: una etiqueta que el cliente ya tiene no escribe nada (D-6).
 export async function insertAssignment(
   tx: DbTransaction,

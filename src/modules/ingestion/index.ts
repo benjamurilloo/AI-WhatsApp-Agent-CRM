@@ -22,6 +22,7 @@ export {
   type ParseIngestionEventResult,
 } from "./contract";
 export {
+  CLIENT_TAG_EVENT_TYPES_V2,
   INGESTION_CONTRACT_VERSION_V2,
   INGESTION_FIELDS_V2,
   ingestionPayloadHashV2,
@@ -29,6 +30,7 @@ export {
   MESSAGE_KINDS_V2,
   MESSAGE_SENDERS_V2,
   parseIngestionEventV2,
+  type ClientTagEventV2,
   type IngestionEventV2,
   type IngestionFieldV2,
   type ParseIngestionEventV2Result,
@@ -40,6 +42,7 @@ export {
   type ConflictReason,
   type ClientAccepted,
   type ConversationAccepted,
+  type ClientTagAccepted,
   INGESTION_RULES,
   type IngestionRule,
   type IngestionAccepted,

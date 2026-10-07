@@ -1,0 +1,18 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: no proviene de ningún emisor real (brief-16.2). La 16.2.3 la contrasta con lo que mande el agente.",
+  "description": "Poner una etiqueta del catálogo en un cliente (vector del contrato).",
+  "received_at": "2026-09-16T15:00:00.000Z",
+  "payload": {
+    "contract_version": "2",
+    "event_type": "client.tag_added",
+    "event_id": "evt-v2-etiqueta-0001",
+    "occurred_at": "2026-09-16T12:00:12-03:00",
+    "client": { "phone": "+5491155550001" },
+    "tag": { "id": "5f0c9a8e-3b1d-4c2a-9e7f-1a2b3c4d5e6f" }
+  },
+  "expected": {
+    "ok": true,
+    "payload_hash": "43304fcc44dc4edf9c13b22467835e922eb16d6ed6ac7f5af60af8ada94b84d8"
+  }
+}

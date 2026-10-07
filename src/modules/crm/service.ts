@@ -822,8 +822,76 @@ export type ClientTagChangeResult =
   | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
   | LimitFailure;
 
-// Poner y quitar bloquean la fila del cliente: dos cambios simultáneos del mismo cliente no pasan
-// juntos el límite de D-11. El diff lleva el nombre que la etiqueta tenía en ese momento (D-7).
+type TagChangeActor = { actorUserId: string } | { actorCredentialId: string };
+
+type TagChangeOutcome =
+  | { ok: true; changed: boolean }
+  | { ok: false; reason: "tag_not_found" | "client_tag_limit" };
+
+// Las reglas de poner y quitar, en un solo lugar para la ficha y para la ingestión (brief-16.2,
+// invariante 2). El cliente ya llega bloqueado por quien llama: dos cambios simultáneos del mismo
+// cliente no pasan juntos el límite de D-11. La etiqueta se lee con FOR SHARE al poner, para
+// esperar a una desactivación en curso (revisión independiente de la 16.1.1, hallazgo 4). El diff
+// lleva el nombre que la etiqueta tenía en ese momento (D-7).
+async function applyClientTagChange(
+  tx: DbTransaction,
+  input: {
+    organizationId: string;
+    actor: TagChangeActor;
+    clientId: string;
+    tagId: string;
+    assign: boolean;
+  },
+): Promise<TagChangeOutcome> {
+  const { organizationId, clientId, assign } = input;
+  const tag = await repository.findTag(organizationId, input.tagId, tx, {
+    lock: assign ? "share" : undefined,
+  });
+  if (!tag) return { ok: false, reason: "tag_not_found" };
+
+  let changed: boolean;
+  if (assign) {
+    const current =
+      (await repository.findTagsByClient(organizationId, [clientId], tx)).get(
+        clientId,
+      ) ?? [];
+    if (current.some((assigned) => assigned.id === tag.id)) {
+      return { ok: true, changed: false };
+    }
+    // Una inactiva no se pone (D-8); la que un cliente ya tiene sí se puede quitar.
+    if (!tag.isActive) return { ok: false, reason: "tag_not_found" };
+    if (current.length >= MAX_TAGS_PER_CLIENT) {
+      return { ok: false, reason: "client_tag_limit" };
+    }
+    changed = await repository.insertAssignment(
+      tx,
+      organizationId,
+      clientId,
+      tag.id,
+    );
+  } else {
+    changed = await repository.deleteAssignment(
+      tx,
+      organizationId,
+      clientId,
+      tag.id,
+    );
+  }
+  if (!changed) return { ok: true, changed: false };
+
+  await recordAudit(tx, {
+    organizationId,
+    ...input.actor,
+    entityType: "client",
+    entityId: clientId,
+    action: "tag_change",
+    diff: assign
+      ? { before: { tag: null }, after: { tag: tag.name } }
+      : { before: { tag: tag.name }, after: { tag: null } },
+  });
+  return { ok: true, changed: true };
+}
+
 async function changeClientTag(
   context: AuthContext,
   clientId: string,
@@ -848,56 +916,17 @@ async function changeClientTag(
         { forUpdate: true },
       );
       if (!client) return failure("NOT_FOUND");
-      const tag = await repository.findTag(context.organizationId, tagId, tx, {
-        lock: assign ? "share" : undefined,
-      });
-      if (!tag) return failure("NOT_FOUND");
-
-      let changed: boolean;
-      if (assign) {
-        const current =
-          (
-            await repository.findTagsByClient(
-              context.organizationId,
-              [client.id],
-              tx,
-            )
-          ).get(client.id) ?? [];
-        if (current.some((assigned) => assigned.id === tag.id)) {
-          return { ok: true, changed: false };
-        }
-        // Una inactiva no se pone (D-8); la que un cliente ya tiene sí se puede quitar.
-        if (!tag.isActive) return failure("NOT_FOUND");
-        if (current.length >= MAX_TAGS_PER_CLIENT) {
-          return limitFailure("client");
-        }
-        changed = await repository.insertAssignment(
-          tx,
-          context.organizationId,
-          client.id,
-          tag.id,
-        );
-      } else {
-        changed = await repository.deleteAssignment(
-          tx,
-          context.organizationId,
-          client.id,
-          tag.id,
-        );
-      }
-      if (!changed) return { ok: true, changed: false };
-
-      await recordAudit(tx, {
+      const outcome = await applyClientTagChange(tx, {
         organizationId: context.organizationId,
-        actorUserId: context.userId,
-        entityType: "client",
-        entityId: client.id,
-        action: "tag_change",
-        diff: assign
-          ? { before: { tag: null }, after: { tag: tag.name } }
-          : { before: { tag: tag.name }, after: { tag: null } },
+        actor: { actorUserId: context.userId },
+        clientId: client.id,
+        tagId,
+        assign,
       });
-      return { ok: true, changed: true };
+      if (outcome.ok) return outcome;
+      return outcome.reason === "client_tag_limit"
+        ? limitFailure("client")
+        : failure("NOT_FOUND");
     },
   );
 }
@@ -1007,4 +1036,50 @@ export function lockClientByPhone(
   phoneE164: string,
 ): Promise<string | null> {
   return repository.lockClientIdByPhoneE164(tx, organizationId, phoneE164);
+}
+
+// Poner o quitar una etiqueta desde la ingestión (brief-16.2, D-1 a D-6). La transacción y el ledger
+// son de ingestion, que la llama; el cliente se busca por teléfono y se bloquea, como en
+// lockClientByPhone, y las reglas son las de la ficha (applyClientTagChange). El actor es la
+// credencial (invariante 4). Un cliente desactivado se puede etiquetar, como en la ficha (D-6).
+export type IngestedTagRule =
+  "client_not_found" | "tag_not_found" | "client_tag_limit";
+
+export type IngestedTagChangeResult =
+  { ok: true; changed: boolean } | { ok: false; rule: IngestedTagRule };
+
+export async function changeClientTagByPhone(
+  tx: DbTransaction,
+  input: {
+    organizationId: string;
+    credentialId: string;
+    // Ya validados por el contrato: E.164 canónico y uuid.
+    phoneE164: string;
+    tagId: string;
+    assign: boolean;
+  },
+): Promise<IngestedTagChangeResult> {
+  const clientId = await repository.lockClientIdByPhoneE164(
+    tx,
+    input.organizationId,
+    input.phoneE164,
+  );
+  if (!clientId) return { ok: false, rule: "client_not_found" };
+  const outcome = await applyClientTagChange(tx, {
+    organizationId: input.organizationId,
+    actor: { actorCredentialId: input.credentialId },
+    clientId,
+    tagId: input.tagId,
+    assign: input.assign,
+  });
+  return outcome.ok ? outcome : { ok: false, rule: outcome.reason };
+}
+
+// El catálogo activo para la API de lectura (brief-16.2, D-7): sin usuario, por la organización de
+// la credencial. Solo id y nombre, por nombre; nunca datos de un cliente (invariante 6).
+export async function listActiveTagsForService(
+  organizationId: string,
+): Promise<{ id: string; name: string }[]> {
+  const tags = await repository.findActiveTags(organizationId);
+  return tags.map((tag) => ({ id: tag.id, name: tag.name }));
 }

@@ -164,6 +164,10 @@ const HANDLERS: Readonly<Record<string, Entry>> = {
     requirement: "sin-sesion",
     why: "historial de la API de lectura (brief-12.4): autentica con una credencial de alcance context, no read, apagada salvo READ_API_ENABLED, y una sesión válida no la autentica",
   },
+  "src/app/api/read/v1/client-tags/route.ts": {
+    requirement: "sin-sesion",
+    why: "catálogo de etiquetas de la API de lectura (brief-16.2, D-7): autentica con una credencial de alcance read, apagada salvo READ_API_ENABLED, una sesión válida no la autentica, y no devuelve datos de clientes",
+  },
 };
 
 const APP_FILES = execFileSync("git", ["ls-files", "-z", "src/app"], {

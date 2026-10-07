@@ -151,6 +151,18 @@ export const messageListResponseSchema = z.strictObject({
   items: z.array(historyMessageSchema),
 });
 
+// Etiqueta del catálogo de la organización (brief-16.2, D-7): solo las activas, con su id para los
+// eventos client.tag_added y client.tag_removed. Nunca datos de un cliente (invariante 6).
+export const clientTagSchema = z.strictObject({
+  tag_id: z.uuid(),
+  name: z.string().min(1),
+});
+
+export const clientTagListResponseSchema = z.strictObject({
+  contract_version: z.literal(READ_CONTRACT_VERSION),
+  items: z.array(clientTagSchema),
+});
+
 export const errorResponseSchema = z.strictObject({
   code: z.enum(ERROR_CODES),
   request_id: z.uuid(),
@@ -160,6 +172,7 @@ export const errorResponseSchema = z.strictObject({
 export type ContractProduct = z.infer<typeof productSchema>;
 export type ContractKnowledgeEntry = z.infer<typeof knowledgeEntrySchema>;
 export type ContractHistoryMessage = z.infer<typeof historyMessageSchema>;
+export type ContractClientTag = z.infer<typeof clientTagSchema>;
 
 // La base guarda numeric(14, 2) («300000.00»). El contrato lo escribe con los decimales de la
 // moneda: «300000» en CLP, «1234.50» en ARS. La escritura ya rechaza decimales que la moneda no

@@ -185,6 +185,8 @@ Qué cliente tiene qué etiqueta. **Es una relación, no una entidad**: quitar u
 
 **Aislamiento en la base**: con las dos claves compuestas, una asignación no puede unir un cliente y una etiqueta de organizaciones distintas, aunque se escriba con SQL directo (invariante 1, con su corrida de mutación). **Límite del servicio**: hasta 10 etiquetas por cliente, contadas con la fila del cliente bloqueada (D-11).
 
+**Quién escribe** (*desde la 16.2*, [brief-16.2](../decisions/brief-16.2-etiquetas-puestas-por-el-agente.md)): un `admin` desde la ficha y el emisor del contrato de ingestión v2 (`client.tag_added` y `client.tag_removed`), con **las mismas reglas en una sola función de `crm`**: solo activas para poner, hasta 10 por cliente, el cliente bloqueado y, al poner, la etiqueta leída con `FOR SHARE`. El emisor encuentra al cliente por teléfono y nunca lo crea. Sin migración: `tag_change` y el actor de servicio ya existían.
+
 Índice: `client_tag_assignments_organization_tag_idx` sobre `(organization_id, tag_id)`, para el filtro de la lista de clientes por etiqueta (FR-CLI-10). La PK sirve las etiquetas de cada cliente.
 
 **El filtro vive en `crm`**: la lista de clientes la compone `conversations` con los ids que `crm` le da (brief-6.3, D-1), y el filtro por etiqueta se resuelve dentro de `listClientOrderKeys`, con un `EXISTS` sobre esta tabla. `conversations` no lee ninguna tabla de etiquetas.
@@ -352,7 +354,7 @@ Protección (brief-6.1, D-3): `crm_app` tiene `SELECT`, `INSERT` y `UPDATE`, sin
 | `event_type` | text not null | |
 | `payload_hash` | text not null | hash del payload canónico; detecta reenvíos con contenido distinto bajo la misma ref. SHA-256 en hexadecimal del evento normalizado con las claves ordenadas ([contrato v1](../contracts/ingestion-v1.md#payload_hash), brief-6.5.1, D-4); la base solo exige que no esté vacío |
 | `status` | `ingestion_event_status` enum(`received`,`processed`,`failed`) not null default `'received'` | |
-| `error_code` | text null | código normalizado de la taxonomía de [Overview.md](Overview.md#estrategia-de-errores-diseño); nunca payload crudo, headers ni credenciales. Presente si y solo si `status = 'failed'`: `ingestion_events_error_code_matches_status`. *Desde la 12.2 (decisión del usuario del 2026-09-25)*, un rechazo de negocio de los tipos nuevos guarda **la regla** en lugar del código general: `client_not_found`, `conversation_not_found` o `conversation_closed`. Así un reenvío responde la misma regla, y la métrica 12 agrupa por ella. *Desde la 12.3 (enmienda de D-7, decisión del usuario del 2026-09-25)*, un `CONFLICT` de un evento de **v2** guarda su motivo: `message_already_recorded` o `conversation_ref_taken`. Los de v1 siguen guardando `CONFLICT` |
+| `error_code` | text null | código normalizado de la taxonomía de [Overview.md](Overview.md#estrategia-de-errores-diseño); nunca payload crudo, headers ni credenciales. Presente si y solo si `status = 'failed'`: `ingestion_events_error_code_matches_status`. *Desde la 12.2 (decisión del usuario del 2026-09-25)*, un rechazo de negocio de los tipos nuevos guarda **la regla** en lugar del código general: `client_not_found`, `conversation_not_found` o `conversation_closed`, y *desde la 16.2* `tag_not_found` o `client_tag_limit`. Así un reenvío responde la misma regla, y la métrica 12 agrupa por ella. *Desde la 12.3 (enmienda de D-7, decisión del usuario del 2026-09-25)*, un `CONFLICT` de un evento de **v2** guarda su motivo: `message_already_recorded` o `conversation_ref_taken`. Los de v1 siguen guardando `CONFLICT` |
 | `received_at` | timestamptz not null default `now()` | |
 | `processed_at` | timestamptz null | nulo si y solo si `status = 'received'`: `ingestion_events_processed_at_matches_status` |
 | — | `UNIQUE(organization_id, source, external_ref)` | constraint `ingestion_events_organization_source_external_ref_unique`, que usa `ON CONFLICT ON CONSTRAINT`; idempotencia dura |
@@ -371,6 +373,7 @@ Reglas del ledger, derivadas del patrón *Reliable External Effects* del vault:
   - *`client.resolved` (12.1, D-9)*: el cliente por teléfono; si el teléfono se editó en el backoffice, puede devolver `null`;
   - *`conversation.resolved` (12.2, D-5)*: la conversación del cliente que contiene el mensaje del evento, o `null`;
   - *`conversation.escalated` (12.2, D-6)*: el estado **actual** de la conversación, que puede no ser `pending`, o `null`.
+  - *`client.tag_added` y `client.tag_removed` (16.2, D-5)*: nada; la respuesta no lleva datos, así que el reenvío no lee ni escribe.
 - **Reenvío de un evento `failed`**: responde el mismo rechazo, aunque la causa ya no exista. Desde la 12.2, la regla de un rechazo de negocio sale de `error_code`, y desde la 12.3, también el motivo del `CONFLICT` de un evento de v2.
 - **v1 y v2 comparten el ledger** (12.3, D-1): la misma identidad `(organization_id, source, external_ref)`. El mismo `event_id` enviado por las dos versiones da `CONFLICT`, porque `contract_version` entra en el `payload_hash`.
 - **Reenvío con otro `payload_hash`**: `CONFLICT`, sin modificar datos. Nunca se sobrescribe en silencio.
@@ -501,6 +504,7 @@ Productor `client`, acción `tag_change`, desde la 16.1 ([brief-16.1](../decisio
 - poner: `{ before: { tag: null }, after: { tag: "Reclamo" } }`; quitar, el inverso. `before` no es `null`, como en el primer precio: `recordAudit` lo reserva para `create`;
 - el valor es el **nombre que la etiqueta tenía en ese momento**, no su id: el historial se sigue leyendo si después se renombra;
 - poner una que ya tiene o quitar una que no tiene no escribe auditoría;
+- *desde la 16.2*, el actor es el usuario de la ficha o la credencial de ingestión que mandó el evento (`actor_credential_id`); el diff tiene la misma forma;
 - el vaciado de la 13.4 vacía estas entradas con el resto de la auditoría del cliente.
 
 Productor `client_tag`, desde la 16.1 (D-7). `entity_id` es el id de la etiqueta:

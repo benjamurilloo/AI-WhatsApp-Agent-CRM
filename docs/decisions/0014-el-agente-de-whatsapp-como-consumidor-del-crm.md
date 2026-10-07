@@ -4,6 +4,7 @@
 - Fecha: 2026-09-23
 - *Nota del 2026-09-25 ([brief-12.1](brief-12.1-actor-de-servicio-y-cliente-por-telefono.md), D-1)*: por el contrato de ingestión también se resuelve el cliente de un teléfono (`client.resolved`), no solo se registran conversaciones y mensajes. Es la misma superficie de escritura: la decisión no cambia y no hay una tercera superficie.
 - *Nota del 2026-09-25 ([brief-12.2](brief-12.2-conversacion-vigente-y-derivacion.md), D-1 y D-6)*: por la misma superficie, el emisor registra el mensaje entrante en la conversación vigente del cliente (`conversation.resolved`, con la regla de vigencia del CRM) y **deriva una conversación a una persona** (`conversation.escalated`), un cambio de estado de `open` a `pending` auditado con la credencial como actor. Es el único cambio de estado por servicio: no cierra ni reabre. La decisión no cambia.
+- *Nota del 2026-10-07 ([brief-16.2](brief-16.2-etiquetas-puestas-por-el-agente.md), H-1)*: por la misma superficie, el emisor **pone y quita etiquetas del catálogo** en un cliente (`client.tag_added` y `client.tag_removed`, solo en v2), con las reglas de la ficha y auditado con la credencial, y **lee el catálogo** por una ruta nueva de la API de lectura. No crea, renombra ni desactiva etiquetas. Es la misma superficie de escritura y la misma de lectura: la decisión no cambia.
 
 ## Contexto
 

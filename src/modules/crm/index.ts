@@ -1,6 +1,6 @@
 // Interfaz pública del módulo crm (brief-5.2; lecturas para conversations, brief-6.3; resolución
 // por teléfono para ingestion, brief-12.1; bloqueo del cliente para conversations, brief-12.2;
-// etiquetas de clientes, brief-16.1).
+// etiquetas de clientes, brief-16.1; etiquetas desde la ingestión y la lectura, brief-16.2).
 export { type ClientPhone } from "./phone";
 export { TAG_COLORS, type TagColor } from "./tag-colors";
 export {
@@ -57,4 +57,8 @@ export {
   type TagInput,
   type TagWithClientCount,
   type UpdateTagResult,
+  changeClientTagByPhone,
+  listActiveTagsForService,
+  type IngestedTagChangeResult,
+  type IngestedTagRule,
 } from "./service";
