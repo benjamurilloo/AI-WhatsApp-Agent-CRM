@@ -183,6 +183,20 @@
       "when": 1790862681367,
       "tag": "0025_vaciado_de_mensajes_y_auditoria",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1791327891406,
+      "tag": "0026_client_tags",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1791327899998,
+      "tag": "0027_client_tags_privileges",
+      "breakpoints": true
     }
   ]
 }

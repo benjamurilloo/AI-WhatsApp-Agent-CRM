@@ -6,8 +6,8 @@ import type { ClientActivityFilter, ClientListFilters } from "@/modules/crm";
 import { DEFAULT_PAGE_SIZE, parsePageSize } from "@/app/_components/pagination";
 
 // Búsqueda, actividad y página de la pantalla 6 en la URL (brief-5.3): ?q=&actividad=&pagina=,
-// más el orden y las filas por página de la brief-15.2: ?orden=&filas=. Un valor desconocido se
-// reemplaza por el de defecto, nunca da error.
+// más el orden y las filas por página de la brief-15.2: ?orden=&filas=, y la etiqueta de la
+// brief-16.1: ?etiqueta=<id>. Un valor desconocido se reemplaza por el de defecto, nunca da error.
 
 export type ClientFilters = Required<ClientInteractionFilters>;
 
@@ -51,7 +51,13 @@ export const DEFAULT_FILTERS: ClientFilters = {
   page: 1,
   sort: "last_interaction",
   pageSize: DEFAULT_PAGE_SIZE,
+  tagId: null,
 };
+
+// Solo la forma de un id: si la etiqueta existe, es de la organización y está activa lo decide crm,
+// que ignora cualquier otra (brief-16.1, D-9).
+const TAG_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function single(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
@@ -62,6 +68,7 @@ export function parseClientFilters(params: SearchParams): ClientFilters {
   const activity = single(params.actividad);
   const page = single(params.pagina);
   const sort = single(params.orden);
+  const tag = single(params.etiqueta);
   return {
     text,
     activity:
@@ -74,6 +81,7 @@ export function parseClientFilters(params: SearchParams): ClientFilters {
       (sort && Object.hasOwn(SORT_PARAM, sort) && SORT_PARAM[sort]) ||
       DEFAULT_FILTERS.sort,
     pageSize: parsePageSize(params.filas),
+    tagId: tag && TAG_ID.test(tag) ? tag.toLowerCase() : null,
   };
 }
 
@@ -96,6 +104,7 @@ export function clientFiltersHref(filters: ClientInteractionFilters): string {
   if (filters.pageSize && filters.pageSize !== DEFAULT_FILTERS.pageSize) {
     query.set("filas", String(filters.pageSize));
   }
+  if (filters.tagId) query.set("etiqueta", filters.tagId);
   if (filters.page > 1) query.set("pagina", String(filters.page));
   const text = query.toString();
   return text ? `/clientes?${text}` : "/clientes";
@@ -104,6 +113,7 @@ export function clientFiltersHref(filters: ClientInteractionFilters): string {
 export function hasActiveFilters(filters: ClientListFilters): boolean {
   return (
     filters.text !== DEFAULT_FILTERS.text ||
-    filters.activity !== DEFAULT_FILTERS.activity
+    filters.activity !== DEFAULT_FILTERS.activity ||
+    Boolean(filters.tagId)
   );
 }

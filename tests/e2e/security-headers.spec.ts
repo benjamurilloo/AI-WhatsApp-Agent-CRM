@@ -22,7 +22,7 @@ test.beforeAll(() => {
 
 test.afterAll(async () => {
   await db.execute(
-    sql`truncate table messages, conversations, clients, knowledge_entries,
+    sql`truncate table messages, conversations, client_tag_assignments, clients, knowledge_entries,
         inventory_movements, inventories, product_prices, products`,
   );
   await db.$client.end();
@@ -33,7 +33,7 @@ test.beforeEach(async () => {
   // inserción: TRUNCATE es la vía documentada (ADR 0013), y vacía en la misma sentencia lo que las
   // referencia (6.1).
   await db.execute(
-    sql`truncate table audit_logs, ingestion_events, messages, conversations, clients,
+    sql`truncate table audit_logs, ingestion_events, messages, conversations, client_tag_assignments, clients,
         knowledge_entries, inventory_movements, inventories, product_prices, products`,
   );
   await db.execute(sql`delete from login_attempts`);
@@ -184,7 +184,7 @@ test("2. el nonce es distinto en cada respuesta", async ({ page }) => {
   expect(firstNonce).not.toBe(secondNonce);
 });
 
-test("3. las trece pantallas cargan sin violaciones de CSP, en claro y oscuro", async ({
+test("3. las catorce pantallas cargan sin violaciones de CSP, en claro y oscuro", async ({
   page,
 }) => {
   const violations = await collectViolations(page);
@@ -208,6 +208,7 @@ test("3. las trece pantallas cargan sin violaciones de CSP, en claro y oscuro", 
     ["10 — Usuarios", "/usuarios"],
     ["11 — Información del negocio", "/informacion"],
     ["12 — Detalle de una entrada", `/informacion/${entryId}`],
+    ["13 — Etiquetas de clientes", "/clientes/etiquetas"],
   ];
 
   for (const colorScheme of ["light", "dark"] as const) {

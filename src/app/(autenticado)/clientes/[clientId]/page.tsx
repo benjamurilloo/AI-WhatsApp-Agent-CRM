@@ -3,7 +3,11 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { AUDIT_PAGE_SIZE } from "@/modules/audit";
 import { getClientActivity } from "@/modules/conversations";
-import { getClient, listClientAudit } from "@/modules/crm";
+import {
+  getClient,
+  listActiveClientTags,
+  listClientAudit,
+} from "@/modules/crm";
 import { getOrganizationTimezone } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
 import { auditActorLabels } from "@/app/(autenticado)/_audit/actor";
@@ -37,6 +41,7 @@ import {
 import { PhoneText } from "../phone-text";
 import { auditActionLabel, describeAuditDiff } from "./audit-summary";
 import { DeactivateConfirm, ReactivateForm } from "./client-actions";
+import { ClientTags } from "./client-tags";
 import {
   ClientConversations,
   ClientConversationsSkeleton,
@@ -101,6 +106,8 @@ export default async function ClientPage({
           page: 1,
         });
 
+  // Las activas para el selector de agregar, solo para un admin (brief-16.1, D-5).
+  const activeTags = isAdmin ? await listActiveClientTags(context) : null;
   // La auditoría solo se pide para un admin: el servidor no la entrega a un viewer.
   const audit = isAdmin
     ? await listClientAudit(context, client.id, sections.auditPage)
@@ -234,15 +241,26 @@ export default async function ClientPage({
             />
           </SectionCard>
 
-          <SectionCard
-            id="estadisticas-titulo"
-            title="Estadísticas"
-            icon="chartColumn"
-          >
-            <Suspense fallback={<ClientStatsSkeleton />}>
-              <ClientStats activity={allActivity} />
-            </Suspense>
-          </SectionCard>
+          <div className="flex flex-col gap-6">
+            <SectionCard
+              id="estadisticas-titulo"
+              title="Estadísticas"
+              icon="chartColumn"
+            >
+              <Suspense fallback={<ClientStatsSkeleton />}>
+                <ClientStats activity={allActivity} />
+              </Suspense>
+            </SectionCard>
+
+            <SectionCard id="etiquetas-titulo" title="Etiquetas" icon="tag">
+              <ClientTags
+                clientId={client.id}
+                tags={client.tags}
+                activeTags={activeTags?.ok ? activeTags.tags : []}
+                canEdit={isAdmin}
+              />
+            </SectionCard>
+          </div>
         </div>
       )}
 

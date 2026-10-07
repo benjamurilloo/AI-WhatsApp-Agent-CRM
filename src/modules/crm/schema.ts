@@ -2,8 +2,10 @@ import { sql, type AnyColumn, type SQL } from "drizzle-orm";
 import {
   boolean,
   check,
+  foreignKey,
   index,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -11,6 +13,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { organizations } from "@/modules/organizations/schema";
+import { DEFAULT_TAG_COLOR, TAG_COLORS } from "./tag-colors";
 
 // Normalización de texto para buscar por prefijo sin distinguir mayúsculas ni acentos
 // (brief-9.0.2, D-1 y D-2). `immutable_unaccent` la define la migración 0015.
@@ -67,6 +70,88 @@ export const clients = pgTable(
     check(
       "clients_phone_e164_format",
       sql`${table.phoneE164} ~ '^\\+[1-9][0-9]{1,14}$'`,
+    ),
+  ],
+);
+
+// docs/architecture/DataModel.md, tabla client_tags (brief-16.1, D-2). El catálogo de etiquetas de
+// clientes de una organización. Editable con auditoría y sin borrado: crm_app no tiene DELETE, se
+// desactiva (D-8).
+export const clientTags = pgTable(
+  "client_tags",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    name: text("name").notNull(),
+    color: text("color").notNull().default(DEFAULT_TAG_COLOR),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    // Un nombre por organización, sin distinguir mayúsculas, también frente a las inactivas (D-2).
+    uniqueIndex("client_tags_organization_name_lower_unique").on(
+      table.organizationId,
+      sql`lower(${table.name})`,
+    ),
+    // Destino de la clave compuesta de client_tag_assignments: una asignación no puede usar la
+    // etiqueta de otra organización (invariante 1).
+    unique("client_tags_organization_id_id_unique").on(
+      table.organizationId,
+      table.id,
+    ),
+    check(
+      "client_tags_name_length",
+      sql`char_length(${table.name}) between 1 and 40`,
+    ),
+    check(
+      "client_tags_color",
+      sql.raw(`color in (${TAG_COLORS.map((c) => `'${c}'`).join(", ")})`),
+    ),
+  ],
+);
+
+// docs/architecture/DataModel.md, tabla client_tag_assignments (brief-16.1, D-2 y D-6). Qué cliente
+// tiene qué etiqueta. Una relación, no una entidad: quitar una etiqueta borra la fila, y el
+// historial está en la auditoría del cliente. crm_app tiene SELECT, INSERT y DELETE, sin UPDATE.
+export const clientTagAssignments = pgTable(
+  "client_tag_assignments",
+  {
+    organizationId: uuid("organization_id").notNull(),
+    clientId: uuid("client_id").notNull(),
+    tagId: uuid("tag_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      name: "client_tag_assignments_pkey",
+      columns: [table.clientId, table.tagId],
+    }),
+    // Compuestas: el cliente y la etiqueta son de la misma organización que la fila (invariante 1).
+    // La asignación depende del cliente y se va con él (regla 5); una etiqueta no se borra nunca.
+    foreignKey({
+      name: "client_tag_assignments_client_fk",
+      columns: [table.organizationId, table.clientId],
+      foreignColumns: [clients.organizationId, clients.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "client_tag_assignments_tag_fk",
+      columns: [table.organizationId, table.tagId],
+      foreignColumns: [clientTags.organizationId, clientTags.id],
+    }).onDelete("restrict"),
+    // El filtro de la lista de clientes por etiqueta (FR-CLI-10).
+    index("client_tag_assignments_organization_tag_idx").on(
+      table.organizationId,
+      table.tagId,
     ),
   ],
 );

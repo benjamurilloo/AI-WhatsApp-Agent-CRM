@@ -27,6 +27,38 @@ describe("auditActionLabel", () => {
   });
 });
 
+describe("etiquetas en el historial (brief-16.1, D-7)", () => {
+  it("FR-CLI-09: dice qué etiqueta se agregó o se quitó", () => {
+    expect(
+      auditActionLabel(
+        entry("tag_change", { before: { tag: null }, after: { tag: "X" } }),
+      ),
+    ).toBe("Etiqueta");
+    expect(
+      describeAuditDiff(
+        entry("tag_change", {
+          before: { tag: null },
+          after: { tag: "Reclamo" },
+        }),
+      ),
+    ).toBe("Etiqueta agregada: Reclamo");
+    expect(
+      describeAuditDiff(
+        entry("tag_change", {
+          before: { tag: "Reclamo" },
+          after: { tag: null },
+        }),
+      ),
+    ).toBe("Etiqueta quitada: Reclamo");
+  });
+
+  it("una entrada vaciada no muestra nada (ADR 0015)", () => {
+    expect(
+      describeAuditDiff(entry("tag_change", { before: null, after: null })),
+    ).toBe("—");
+  });
+});
+
 describe("describeAuditDiff (brief-5.3, D-4)", () => {
   it("un alta muestra nombre y teléfono, y de las notas solo si se cargaron", () => {
     expect(

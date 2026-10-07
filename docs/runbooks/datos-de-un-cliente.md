@@ -31,14 +31,15 @@ previsto que la haya en el MVP.
 npx tsx scripts/client-data-export.ts --org <organization_id> --client <client_id> --out <archivo.json>
 ```
 
-Incluye los cuatro orígenes que guardan datos de la persona:
+Incluye los cinco orígenes que guardan datos de la persona:
 
 | Origen | Qué lleva |
 |---|---|
 | `clients` | nombre, teléfono en E.164 y notas |
 | `conversations` | sus conversaciones, con estado y fechas |
 | `messages` | sus mensajes, **con el cuerpo** |
-| `audit_logs` | los cambios sobre su ficha, **con los valores anteriores** de teléfono y notas |
+| `audit_logs` | los cambios sobre su ficha, **con los valores anteriores** de teléfono y notas, y desde la 16.1 las etiquetas que se le pusieron y quitaron |
+| `client_tag_assignments` | *desde la 16.1*: sus etiquetas actuales, con su nombre, color, estado y fecha (campo `client_tags`; [brief-16.1](../decisions/brief-16.1-etiquetas-de-clientes.md), D-10) |
 
 **No incluye `ingestion_events`**, y es a propósito: esa tabla guarda el emisor, una referencia
 opaca suya, el hash del payload y fechas. El propio archivo lo dice en su campo `excluded`, para
@@ -71,7 +72,7 @@ La ficha se borra de verdad, y sus entradas de auditoría se vacían en la misma
 npx tsx scripts/client-data-delete.ts --org <organization_id> --client <client_id> --borrar
 ```
 
-Queda en `audit_logs` que hubo cambios sobre una ficha, de qué tipo y cuándo, sin los valores.
+Queda en `audit_logs` que hubo cambios sobre una ficha, de qué tipo y cuándo, sin los valores. Sus etiquetas se van con la ficha, por la clave en cascada de `client_tag_assignments` (16.1, D-10); el informe previo dice cuántas tiene.
 
 ### Caso B — el cliente tiene conversaciones
 
@@ -88,7 +89,8 @@ En una sola transacción:
 | `clients` | nombre, teléfono y notas | la ficha, con el nombre `Cliente eliminado <primeros 8 del id>` |
 | `conversations` | la referencia externa | fechas y estado |
 | `messages` | el texto y la referencia externa | fecha, dirección, tipo y autor |
-| `audit_logs` (entradas del cliente) | los valores anteriores y nuevos | que hubo un cambio, de qué tipo y cuándo |
+| `audit_logs` (entradas del cliente) | los valores anteriores y nuevos, también los nombres de las etiquetas | que hubo un cambio, de qué tipo y cuándo |
+| `client_tag_assignments` (desde la 16.1) | **se borran**: «Reclamo» o «Quiere señar» son datos sobre la persona (D-10) | nada; el catálogo de etiquetas no es de la persona y queda |
 
 Un segundo vaciado no cambia nada ni falla. Con la ingestión encendida, el vaciado espera a los mensajes de esa persona que se están guardando en ese momento, y los alcanza (revisión independiente de la 13.4, R-2).
 

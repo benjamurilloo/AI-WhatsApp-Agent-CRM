@@ -24,6 +24,7 @@ describe("parseClientFilters", () => {
       page: 3,
       sort: "last_interaction",
       pageSize: 25,
+      tagId: null,
     });
     expect(parseClientFilters({ actividad: "inactivos" }).activity).toBe(
       "inactive",
@@ -61,6 +62,17 @@ describe("parseClientFilters", () => {
     expect(parseClientFilters({ q: ["Ana", "Bruno"] }).text).toBe("Ana");
     expect(parseClientFilters({ q: "a".repeat(150) }).text).toHaveLength(100);
   });
+
+  it("FR-CLI-10: lee la etiqueta con forma de id; cualquier otra cosa no filtra (brief-16.1)", () => {
+    const tagId = "3f1702be-6f4e-8135-830d-dd1c5d574187";
+    expect(parseClientFilters({ etiqueta: tagId }).tagId).toBe(tagId);
+    expect(parseClientFilters({ etiqueta: tagId.toUpperCase() }).tagId).toBe(
+      tagId,
+    );
+    for (const etiqueta of ["", "reclamo", `${tagId}x`, "toString"]) {
+      expect(parseClientFilters({ etiqueta }).tagId).toBeNull();
+    }
+  });
 });
 
 describe("clientFiltersHref", () => {
@@ -81,10 +93,11 @@ describe("clientFiltersHref", () => {
       page: 4,
       sort: "name_asc",
       pageSize: 10,
+      tagId: "3f1702be-6f4e-8135-830d-dd1c5d574187",
     } as const;
     const href = clientFiltersHref(filters);
     expect(href).toBe(
-      "/clientes?q=Ana+P%C3%A9rez&actividad=todos&orden=nombre&filas=10&pagina=4",
+      "/clientes?q=Ana+P%C3%A9rez&actividad=todos&orden=nombre&filas=10&etiqueta=3f1702be-6f4e-8135-830d-dd1c5d574187&pagina=4",
     );
     const params = Object.fromEntries(new URL(href, "http://x").searchParams);
     expect(parseClientFilters(params)).toEqual(filters);
@@ -98,5 +111,11 @@ describe("hasActiveFilters", () => {
     expect(hasActiveFilters({ ...DEFAULT_FILTERS, activity: "all" })).toBe(
       true,
     );
+    expect(
+      hasActiveFilters({
+        ...DEFAULT_FILTERS,
+        tagId: "3f1702be-6f4e-8135-830d-dd1c5d574187",
+      }),
+    ).toBe(true);
   });
 });

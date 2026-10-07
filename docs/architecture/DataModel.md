@@ -1,15 +1,15 @@
 # Modelo de Datos
 
-**Estado: diseñado; `organizations`, `users` y `organization_members` implementadas y validadas localmente desde la 3.1** ([brief-3.1](../decisions/brief-3.1-migraciones-de-identidad.md)), **`sessions` y `login_attempts` desde la 3.3** ([brief-3.3](../decisions/brief-3.3-autenticacion.md)), **`audit_logs` desde la 3.6** ([brief-3.6](../decisions/brief-3.6-modulo-de-auditoria.md)), **`products`, `inventories` e `inventory_movements` desde la 4.1** ([brief-4.1](../decisions/brief-4.1-migraciones-de-catalogo-e-inventario.md)), con sus servicios desde la 4.2 y la 4.3, **y `clients` desde la 5.1** ([brief-5.1](../decisions/brief-5.1-migracion-de-clientes.md)), con su servicio desde la 5.2 ([brief-5.2](../decisions/brief-5.2-servicio-de-clientes.md)), **y `conversations`, `messages` e `ingestion_events` desde la 6.1** ([brief-6.1](../decisions/brief-6.1-migraciones-de-conversaciones.md)), solo con su esquema, **e `ingestion_credentials` e `ingestion_rate_windows` desde la 6.5.3** ([brief-6.5.3](../decisions/brief-6.5.3-autenticacion-de-servicio-y-rate-limit.md)), **`product_prices` desde la 11.1** ([brief-11.1](../decisions/brief-11.1-catalogo-comercial.md)) **y `knowledge_entries` desde la 11.2** ([brief-11.2](../decisions/brief-11.2-informacion-del-negocio.md)). Las migraciones están en `drizzle/`. Todas las tablas del modelo tienen migración.
+**Estado: diseñado; `organizations`, `users` y `organization_members` implementadas y validadas localmente desde la 3.1** ([brief-3.1](../decisions/brief-3.1-migraciones-de-identidad.md)), **`sessions` y `login_attempts` desde la 3.3** ([brief-3.3](../decisions/brief-3.3-autenticacion.md)), **`audit_logs` desde la 3.6** ([brief-3.6](../decisions/brief-3.6-modulo-de-auditoria.md)), **`products`, `inventories` e `inventory_movements` desde la 4.1** ([brief-4.1](../decisions/brief-4.1-migraciones-de-catalogo-e-inventario.md)), con sus servicios desde la 4.2 y la 4.3, **y `clients` desde la 5.1** ([brief-5.1](../decisions/brief-5.1-migracion-de-clientes.md)), con su servicio desde la 5.2 ([brief-5.2](../decisions/brief-5.2-servicio-de-clientes.md)), **y `conversations`, `messages` e `ingestion_events` desde la 6.1** ([brief-6.1](../decisions/brief-6.1-migraciones-de-conversaciones.md)), solo con su esquema, **e `ingestion_credentials` e `ingestion_rate_windows` desde la 6.5.3** ([brief-6.5.3](../decisions/brief-6.5.3-autenticacion-de-servicio-y-rate-limit.md)), **`product_prices` desde la 11.1** ([brief-11.1](../decisions/brief-11.1-catalogo-comercial.md)) **`knowledge_entries` desde la 11.2** ([brief-11.2](../decisions/brief-11.2-informacion-del-negocio.md)) **y `client_tags` y `client_tag_assignments` desde la 16.1** ([brief-16.1](../decisions/brief-16.1-etiquetas-de-clientes.md)). Las migraciones están en `drizzle/`. Todas las tablas del modelo tienen migración.
 
 Convenciones fijadas en la 3.1, que siguen las tablas futuras salvo justificación:
 
 - Los enums son tipos `ENUM` de PostgreSQL (`pgEnum`), p. ej. `member_role`. Agregar un valor es un `ALTER TYPE ... ADD VALUE` aditivo (D-2).
 - `id` usa `gen_random_uuid()` como default de base (D-6).
 - `updated_at` lo mantiene la aplicación con `$onUpdate` de Drizzle. **Limitación**: un `UPDATE` escrito en SQL crudo no lo actualiza (D-3).
-- Los esquemas viven en el módulo dueño: `users` en `src/modules/auth/schema.ts`; `organizations` y `organization_members` en `src/modules/organizations/schema.ts`; `audit_logs` en `src/modules/audit/schema.ts`; `products` y `product_prices` en `src/modules/catalog/schema.ts`; `inventories` e `inventory_movements` en `src/modules/inventory/schema.ts`; `clients` en `src/modules/crm/schema.ts`; `conversations` y `messages` en `src/modules/conversations/schema.ts`; `ingestion_events`, `ingestion_credentials` e `ingestion_rate_windows` en `src/modules/ingestion/schema.ts`; `knowledge_entries` en `src/modules/knowledge/schema.ts`.
+- Los esquemas viven en el módulo dueño: `users` en `src/modules/auth/schema.ts`; `organizations` y `organization_members` en `src/modules/organizations/schema.ts`; `audit_logs` en `src/modules/audit/schema.ts`; `products` y `product_prices` en `src/modules/catalog/schema.ts`; `inventories` e `inventory_movements` en `src/modules/inventory/schema.ts`; `clients` y, desde la 16.1, `client_tags` y `client_tag_assignments` en `src/modules/crm/schema.ts`; `conversations` y `messages` en `src/modules/conversations/schema.ts`; `ingestion_events`, `ingestion_credentials` e `ingestion_rate_windows` en `src/modules/ingestion/schema.ts`; `knowledge_entries` en `src/modules/knowledge/schema.ts`.
 - Las cantidades son `numeric(14, 3)`: hasta 99 999 999 999,999 con tres decimales, y comparaciones exactas (brief-4.1, D-4). Drizzle devuelve `numeric` como `string`: los servicios comparan y suman en SQL o con una representación decimal exacta, nunca con `number` de JavaScript. La representación exacta es `src/shared/quantity/`: `bigint` en milésimas, con parseo de entrada con coma o punto (brief-4.2, D-2).
-- Privilegios ([ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md), 3.6): cada migración que crea una tabla otorga sus privilegios al rol de aplicación `crm_app`. Una tabla de solo inserción recibe solo `SELECT` e `INSERT`, más un trigger que rechaza `UPDATE` y `DELETE`. `ingestion_events` recibe además `UPDATE`, sin `DELETE`, con un trigger que protege su identidad (brief-6.1, D-3). `knowledge_entries` también recibe `SELECT`, `INSERT` y `UPDATE` sin `DELETE`, pero sin trigger: es editable, y lo que se protege es que ninguna vía la borre (brief-11.2, D-4). Los roles, privilegios y triggers van en migraciones a medida, porque Drizzle no los expresa en `schema.ts`.
+- Privilegios ([ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md), 3.6): cada migración que crea una tabla otorga sus privilegios al rol de aplicación `crm_app`. Una tabla de solo inserción recibe solo `SELECT` e `INSERT`, más un trigger que rechaza `UPDATE` y `DELETE`. `ingestion_events` recibe además `UPDATE`, sin `DELETE`, con un trigger que protege su identidad (brief-6.1, D-3). `knowledge_entries` también recibe `SELECT`, `INSERT` y `UPDATE` sin `DELETE`, pero sin trigger: es editable, y lo que se protege es que ninguna vía la borre (brief-11.2, D-4). Desde la 16.1, `client_tags` recibe lo mismo, sin `DELETE`, y `client_tag_assignments` recibe `SELECT`, `INSERT` y `DELETE`, **sin `UPDATE`**: una asignación se pone y se quita, nunca se modifica (brief-16.1, D-6). Los roles, privilegios y triggers van en migraciones a medida, porque Drizzle no los expresa en `schema.ts`.
 
 ## Reglas de diseño aplicadas a todas las tablas
 
@@ -20,7 +20,7 @@ Convenciones fijadas en la 3.1, que siguen las tablas futuras salvo justificaci�
 5. Toda relación referencial usa `FOREIGN KEY` real con política `ON DELETE` explícita (`RESTRICT` por defecto; `CASCADE` solo donde el borrado lógico no aplica, ej. tablas puramente dependientes como `organization_members`).
 6. Los índices se crean solo para consultas concretas del MVP (ver sección de índices), no especulativamente.
 7. Unicidad e idempotencia se expresan como constraints `UNIQUE` de base de datos, no solo como validación de aplicación.
-8. Borrado lógico con `is_active boolean` en entidades editables por el usuario (`products`, `clients`, `users` y, desde la 11.2, `knowledge_entries`). Ninguna pantalla borra, solo desactiva, así que no existe `deleted_at` (subfase 1.2, H-1). Las tablas de eventos (`inventory_movements`, `product_prices`, `audit_logs`, `ingestion_events`, `messages`) no se borran nunca, ni física ni lógicamente.
+8. Borrado lógico con `is_active boolean` en entidades editables por el usuario (`products`, `clients`, `users`, desde la 11.2 `knowledge_entries` y desde la 16.1 `client_tags`). Ninguna pantalla borra, solo desactiva, así que no existe `deleted_at` (subfase 1.2, H-1). Las tablas de eventos (`inventory_movements`, `product_prices`, `audit_logs`, `ingestion_events`, `messages`) no se borran nunca, ni física ni lógicamente.
 9. Auditoría de cambios sensibles vía `audit_logs`, poblada por la capa de aplicación dentro de la misma transacción que el cambio.
 10. `inventory_movements`, `audit_logs`, desde la 6.1 `messages` y desde la 11.1 `product_prices` son estrictamente insert-only: el rol de aplicación `crm_app` no tiene `UPDATE` ni `DELETE` sobre ellas, y un trigger rechaza ambas operaciones para cualquier rol ([ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md)). **Excepción desde la 13.4** ([ADR 0015](../decisions/0015-vaciado-de-una-sola-direccion-en-tablas-de-solo-insercion.md)): el trigger de `messages` deja pasar un único `UPDATE`, el que lleva `body_text` y `external_ref` a nulo con el resto de la fila idéntico; el de `audit_logs`, el que lleva el `diff` de una entrada de cliente al marcador `{"before": null, "after": null, "vaciado": true}`. `crm_app` sigue sin `UPDATE`: vacía solo el operador con el rol dueño. Un mensaje nunca cambia de contenido, solo puede perderlo. `ingestion_events` admite `UPDATE` de su estado, pero no el borrado ni el cambio de su identidad (brief-6.1, D-3).
 11. Todo ajuste de stock ocurre dentro de una transacción de base de datos que actualiza `inventories` e inserta en `inventory_movements` atómicamente.
@@ -36,6 +36,9 @@ erDiagram
     USERS ||--o{ ORGANIZATION_MEMBERS : has
     USERS ||--o{ SESSIONS : has
     ORGANIZATIONS ||--o{ CLIENTS : owns
+    ORGANIZATIONS ||--o{ CLIENT_TAGS : defines
+    CLIENTS ||--o{ CLIENT_TAG_ASSIGNMENTS : has
+    CLIENT_TAGS ||--o{ CLIENT_TAG_ASSIGNMENTS : marks
     ORGANIZATIONS ||--o{ PRODUCTS : owns
     PRODUCTS ||--o| INVENTORIES : has
     PRODUCTS ||--o{ INVENTORY_MOVEMENTS : tracks
@@ -146,7 +149,49 @@ Limpieza: en cada intento se borran los registros vencidos **de todas las claves
 
 `display_name` vacío lo rechaza el servicio de la 5.2, que también recorta espacios: es editable y se corrige (mismo criterio que la 4.1, D-5).
 
-`UNIQUE(organization_id, id)` (`clients_organization_id_id_unique`, migración `drizzle/0010_*`): destino de la clave foránea compuesta de `conversations`. Llegó en la 6.1 junto con su consumidor (brief-5.1, D-4), en una migración propia, porque Drizzle Kit lo emitía después de la clave que lo usa.
+`UNIQUE(organization_id, id)` (`clients_organization_id_id_unique`, migración `drizzle/0010_*`): destino de la clave foránea compuesta de `conversations`. Llegó en la 6.1 junto con su consumidor (brief-5.1, D-4), en una migración propia, porque Drizzle Kit lo emitía después de la clave que lo usa. Desde la 16.1 también es el destino de la de `client_tag_assignments`.
+
+### `client_tags`
+
+**Implementada en la 16.1** ([brief-16.1](../decisions/brief-16.1-etiquetas-de-clientes.md)), migraciones `drizzle/0026_*` (tabla) y `drizzle/0027_*` (privilegios). Módulo dueño: `crm`.
+
+El catálogo de etiquetas de clientes de una organización: «Interesado», «Quiere señar», «Reclamo», «No interesado» y las que defina. **«Quiere señar» es una etiqueta, nunca un pago** (regla 14): ninguna etiqueta dispara nada. Editable, con borrado lógico según la regla 8: `crm_app` tiene `SELECT`, `INSERT` y `UPDATE`, **sin `DELETE`** (D-8). El historial de cambios es la auditoría, con el tipo de entidad `client_tag`.
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | uuid PK | |
+| `organization_id` | uuid FK → organizations, not null | `ON DELETE RESTRICT` |
+| `name` | text not null | `CHECK client_tags_name_length`, de 1 a 40 caracteres; el servicio recorta. Único por organización sin distinguir mayúsculas, **también frente a las inactivas**: índice único `client_tags_organization_name_lower_unique` sobre `(organization_id, lower(name))`. Un nombre repetido es `CONFLICT` |
+| `color` | text not null default `'gray'` | `CHECK client_tags_color`: uno de `gray`, `violet`, `blue`, `green`, `amber` y `red` (D-4). La lista sale de `TAG_COLORS` en `crm/tag-colors.ts`, la misma que valida el servicio y ofrece la pantalla |
+| `is_active` | boolean not null default true | una inactiva no se ofrece para asignar ni filtra la lista; los clientes que la tienen la conservan (D-8) |
+| `created_at`, `updated_at` | timestamptz not null | |
+| — | `UNIQUE(organization_id, id)` | `client_tags_organization_id_id_unique`: destino de la clave compuesta de `client_tag_assignments` |
+
+**Límites del servicio** (D-11): hasta 50 etiquetas activas por organización; se cuentan y se escriben bajo un `pg_advisory_xact_lock` por organización, así que dos altas simultáneas no lo pasan. El catálogo no tiene datos en ninguna migración: las cuatro sugeridas las crea un `admin` con un botón, solo con el catálogo vacío (D-3).
+
+### `client_tag_assignments`
+
+**Implementada en la 16.1** ([brief-16.1](../decisions/brief-16.1-etiquetas-de-clientes.md)), migraciones `drizzle/0026_*` y `drizzle/0027_*`. Módulo dueño: `crm`.
+
+Qué cliente tiene qué etiqueta. **Es una relación, no una entidad**: quitar una etiqueta borra la fila, y quién la puso o la quitó, y cuándo, está en la auditoría del cliente (D-6). `crm_app` tiene `SELECT`, `INSERT` y `DELETE`, **sin `UPDATE`**.
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `organization_id` | uuid not null | |
+| `client_id` | uuid not null | FK compuesta `client_tag_assignments_client_fk`: `(organization_id, client_id)` → `clients (organization_id, id)`, **`ON DELETE CASCADE`**: la asignación depende del cliente (regla 5) |
+| `tag_id` | uuid not null | FK compuesta `client_tag_assignments_tag_fk`: `(organization_id, tag_id)` → `client_tags (organization_id, id)`, `ON DELETE RESTRICT` |
+| `created_at` | timestamptz not null default `now()` | cuándo se puso; sale en la exportación de los datos del cliente |
+| — | PK `(client_id, tag_id)` | una etiqueta, una vez por cliente; poner una que ya tiene no escribe nada |
+
+**Aislamiento en la base**: con las dos claves compuestas, una asignación no puede unir un cliente y una etiqueta de organizaciones distintas, aunque se escriba con SQL directo (invariante 1, con su corrida de mutación). **Límite del servicio**: hasta 10 etiquetas por cliente, contadas con la fila del cliente bloqueada (D-11).
+
+Índice: `client_tag_assignments_organization_tag_idx` sobre `(organization_id, tag_id)`, para el filtro de la lista de clientes por etiqueta (FR-CLI-10). La PK sirve las etiquetas de cada cliente.
+
+**El filtro vive en `crm`**: la lista de clientes la compone `conversations` con los ids que `crm` le da (brief-6.3, D-1), y el filtro por etiqueta se resuelve dentro de `listClientOrderKeys`, con un `EXISTS` sobre esta tabla. `conversations` no lee ninguna tabla de etiquetas.
+
+**Datos de un cliente (13.4)**: la exportación incluye sus etiquetas actuales; borrar la ficha se lleva sus asignaciones por la cascada, y el vaciado las borra, porque «Reclamo» o «Quiere señar» son datos sobre la persona (brief-16.1, D-10; [runbook](../runbooks/datos-de-un-cliente.md)). El catálogo no es de la persona y queda.
+
+**Al vaciar `clients` con `TRUNCATE`** hay que incluir `client_tag_assignments` en la misma sentencia, como ya pasaba con `conversations`: PostgreSQL rechaza vaciar una tabla referenciada por una clave foránea aunque la otra esté vacía. Lo hacen los specs de end-to-end.
 
 ### `products`
 
@@ -402,9 +447,9 @@ Justificación de necesidad real: requisitos FR-AUD-01 y FR-AUD-02 sobre product
 | `organization_id` | uuid FK → organizations, not null | |
 | `actor_user_id` | uuid FK → users, nulable desde la 0022 | ~~not null~~ (brief-12.1, D-3) |
 | `actor_credential_id` | uuid, nulable; FK compuesta `(organization_id, actor_credential_id)` → `ingestion_credentials (organization_id, id)` | actor de servicio, desde la 0022 (brief-12.1, D-3) |
-| `entity_type` | enum(`product`,`client`,`inventory`,`conversation`,`organization_member`,`knowledge_entry`) not null | `knowledge_entry` desde la 0018 (brief-11.2) |
+| `entity_type` | enum(`product`,`client`,`inventory`,`conversation`,`organization_member`,`knowledge_entry`,`client_tag`) not null | `knowledge_entry` desde la 0018 (brief-11.2); `client_tag` desde la 0026 (brief-16.1) |
 | `entity_id` | uuid not null | |
-| `action` | enum(`create`,`update`,`deactivate`,`reactivate`,`stock_adjustment`,`status_change`,`role_change`,`price_change`) not null | `price_change` desde la 0017 (brief-11.1, D-7) |
+| `action` | enum(`create`,`update`,`deactivate`,`reactivate`,`stock_adjustment`,`status_change`,`role_change`,`price_change`,`tag_change`) not null | `price_change` desde la 0017 (brief-11.1, D-7); `tag_change` desde la 0026 (brief-16.1, D-7) |
 | `diff` | jsonb not null | antes/después relevante |
 | `created_at` | timestamptz not null | |
 
@@ -448,6 +493,20 @@ Productor `knowledge_entry`, desde la 11.2 ([brief-11.2](../decisions/brief-11.2
 
 - `create`: `before` en `null` y `after` con `title`, `category`, `content`, `validFrom`, `validUntil` e `isActive: true`;
 - `update`: solo los campos que cambiaron, con el antes leído bajo `FOR UPDATE`. El contenido entra completo, hasta 4000 caracteres: la auditoría es el historial de versiones de la entrada (D-4);
+- `deactivate` y `reactivate`: `{ isActive }`;
+- una operación que no cambia nada no escribe auditoría.
+
+Productor `client`, acción `tag_change`, desde la 16.1 ([brief-16.1](../decisions/brief-16.1-etiquetas-de-clientes.md), D-7). `entity_id` es el id del **cliente**: la etiqueta puesta o quitada entra en su historial, junto con sus ediciones:
+
+- poner: `{ before: { tag: null }, after: { tag: "Reclamo" } }`; quitar, el inverso. `before` no es `null`, como en el primer precio: `recordAudit` lo reserva para `create`;
+- el valor es el **nombre que la etiqueta tenía en ese momento**, no su id: el historial se sigue leyendo si después se renombra;
+- poner una que ya tiene o quitar una que no tiene no escribe auditoría;
+- el vaciado de la 13.4 vacía estas entradas con el resto de la auditoría del cliente.
+
+Productor `client_tag`, desde la 16.1 (D-7). `entity_id` es el id de la etiqueta:
+
+- `create`: `before` en `null` y `after = { name, color, isActive: true }`; las sugeridas, una entrada por etiqueta;
+- `update`: solo los campos que cambiaron, de `name` y `color`;
 - `deactivate` y `reactivate`: `{ isActive }`;
 - una operación que no cambia nada no escribe auditoría.
 

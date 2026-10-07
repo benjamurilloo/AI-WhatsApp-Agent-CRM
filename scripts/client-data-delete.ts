@@ -14,7 +14,9 @@ import { getDb, type Db } from "@/shared/db";
  *   - la ficha pierde nombre, teléfono y notas;
  *   - sus conversaciones pierden la referencia externa;
  *   - sus mensajes pierden el texto y la referencia externa;
- *   - sus entradas de auditoría pierden los valores.
+ *   - sus entradas de auditoría pierden los valores;
+ *   - sus etiquetas se quitan: «Reclamo» o «Quiere señar» son datos sobre esa persona
+ *     (brief-16.1, D-10). Con --borrar se van con la ficha, por la clave con ON DELETE CASCADE.
  * Quedan fechas, direcciones, tipos y estados, que es lo que cuentan las métricas: las de los
  * períodos pasados no cambian (brief-13.4, H-3).
  *
@@ -32,6 +34,8 @@ export type ClientDataReport = {
   conversations: number;
   messages: number;
   auditEntries: number;
+  // Etiquetas puestas en el cliente (brief-16.1, D-10).
+  tags: number;
   // Un cliente sin conversaciones sí se puede borrar del todo (brief-8.2, hallazgo 7).
   deletable: boolean;
 };
@@ -46,6 +50,7 @@ export async function reportClientData(
     conversations: number;
     messages: number;
     audit_entries: number;
+    tags: number;
   }>(
     sql`select
           exists (select 1 from clients
@@ -58,7 +63,9 @@ export async function reportClientData(
            where m.organization_id = ${organizationId} and c.client_id = ${clientId}) as messages,
           (select count(*)::int from audit_logs
            where organization_id = ${organizationId}
-             and entity_type = 'client' and entity_id = ${clientId}) as audit_entries`,
+             and entity_type = 'client' and entity_id = ${clientId}) as audit_entries,
+          (select count(*)::int from client_tag_assignments
+           where organization_id = ${organizationId} and client_id = ${clientId}) as tags`,
   );
   const row = counts.rows[0]!;
   return {
@@ -66,6 +73,7 @@ export async function reportClientData(
     conversations: row.conversations,
     messages: row.messages,
     auditEntries: row.audit_entries,
+    tags: row.tags,
     deletable: row.exists && row.conversations === 0,
   };
 }
@@ -85,6 +93,7 @@ export type ErasureResult = {
   conversations: number;
   messages: number;
   auditEntries: number;
+  tags: number;
 };
 
 // Lo que una transacción y la base tienen en común.
@@ -139,6 +148,10 @@ export async function eraseClientData(
             and external_ref is not null`,
     );
     const auditEntries = await eraseAuditEntries(tx, organizationId, clientId);
+    const tags = await tx.execute(
+      sql`delete from client_tag_assignments
+          where organization_id = ${organizationId} and client_id = ${clientId}`,
+    );
     const client = await tx.execute(
       sql`update clients
           set display_name = ${minimizedName(clientId)},
@@ -152,13 +165,15 @@ export async function eraseClientData(
       conversations: conversations.rowCount ?? 0,
       messages: messages.rowCount ?? 0,
       auditEntries,
+      tags: tags.rowCount ?? 0,
     };
   });
 }
 
 /**
  * Borra la ficha y vacía su auditoría, en una transacción. Solo funciona sin conversaciones: si
- * no, PostgreSQL rechaza el borrado (RESTRICT). Con auditoría, necesita el rol dueño.
+ * no, PostgreSQL rechaza el borrado (RESTRICT). Con auditoría, necesita el rol dueño. Sus
+ * etiquetas se van con la ficha (ON DELETE CASCADE, brief-16.1, D-10).
  */
 export async function deleteClientRow(
   db: Db,
@@ -257,7 +272,7 @@ async function main() {
 
   console.log(
     `Cliente ${clientId}: ${report.conversations} conversaciones, ${report.messages} mensajes, ` +
-      `${report.auditEntries} entradas de auditoría.`,
+      `${report.auditEntries} entradas de auditoría, ${report.tags} etiquetas.`,
   );
 
   const vaciar = args.includes("--vaciar");
@@ -294,7 +309,7 @@ async function main() {
   );
   console.log(
     `Vaciado: la ficha, ${result.conversations} conversaciones, ${result.messages} mensajes y ` +
-      `${result.auditEntries} entradas de auditoría.`,
+      `${result.auditEntries} entradas de auditoría; ${result.tags} etiquetas quitadas.`,
   );
   console.log("Queda, sin nada que identifique a la persona:");
   printRetained(report);

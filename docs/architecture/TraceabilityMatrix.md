@@ -27,6 +27,9 @@
 | 10 Usuarios y roles | FR-ORG-01, 02; FR-AUD-01 | `users`, `organization_members`, `audit_logs` | `organization_members (organization_id)`; `users UNIQUE(email)` |
 | 11 Información del negocio | FR-INFO-02, 03 | `knowledge_entries`, `organizations` (zona) | `knowledge_entries_search_idx`, GIN sobre la columna generada `search` (11.2, con `EXPLAIN` en `knowledge.test.ts`); el filtro de estado va sin índice (ver abajo) |
 | 12 Detalle de una entrada | FR-INFO-01, 03; FR-AUD-01, 02 | `knowledge_entries`, `audit_logs`, `users` | PK de `knowledge_entries` (bloqueo `FOR UPDATE` al editar); `knowledge_entries UNIQUE(organization_id, lower(title))` (`CONFLICT`); `audit_logs (organization_id, entity_type, entity_id, created_at desc)` |
+| 13 Etiquetas de clientes | FR-CLI-08; FR-AUD-01 | `client_tags`, `client_tag_assignments`, `clients`, `audit_logs` | `client_tags UNIQUE(organization_id, lower(name))` (`CONFLICT`); PK de `client_tags` (bloqueo `FOR UPDATE` al editar); la cantidad de clientes por etiqueta, con `client_tag_assignments (organization_id, tag_id)` (16.1, sin plan medido) |
+
+*Desde la 16.1*, la pantalla 6 suma FR-CLI-10 y las tablas `client_tags` y `client_tag_assignments` (chips por fila y filtro, con `client_tag_assignments (organization_id, tag_id)` para el `EXISTS`), y la pantalla 7 suma FR-CLI-09 y 10 (la PK `(client_id, tag_id)` para las etiquetas del cliente).
 
 Marco común (pantallas 2 a 12): `organizations.name`, `users.name`, `organization_members.role`, resueltos con el `UNIQUE(user_id)` de la membresía en cada request.
 
@@ -62,6 +65,9 @@ Cada FR tiene al menos una pantalla, endpoint o invariante con test que lo satis
 | FR-CLI-05 | Pantallas 6 y 7. **Minimización revisada en la 8.4**: `clients` almacena `display_name`, `phone_e164` (opcional) y `notes`, y ningún otro campo personal; lo que ve un `viewer` lo acota el enmascarado de FR-CLI-06 desde el servidor | pantalla y revisión contra el esquema |
 | FR-CLI-06 | Pantallas 6 y 7, enmascarado en el servidor | pantalla |
 | FR-CLI-07 | `UNIQUE(organization_id, phone_e164)`; test de unicidad | invariante con test |
+| FR-CLI-08 | Pantalla 13 (16.1); `client-tags.test.ts` (catálogo, `CONFLICT`, sugeridas, límite, sin `DELETE` para `crm_app` con su corrida de mutación) y `client-tags.spec.ts` caso 1 | pantalla e invariante con test |
+| FR-CLI-09 | Pantalla 7 (16.1); `client-tags.test.ts` (`tag_change` en el historial del cliente, idempotencia, límite por cliente, claves compuestas con su corrida de mutación), `client-data.test.ts` casos 17 a 20 (exportación, borrado y vaciado, con su corrida de mutación) y `client-tags.spec.ts` casos 2 y 4 | pantalla e invariante con test |
+| FR-CLI-10 | Pantallas 6 y 7 (16.1); `client-tags.test.ts` (filtro en `searchClients` y en la lista por última interacción, etiquetas ajenas o inactivas ignoradas), `filters.test.ts` y `client-tags.spec.ts` casos 3 a 5 | pantalla e invariante con test |
 | FR-CONV-01 | Pantalla 8, implementada en la 6.4; `conversations.spec.ts` verifica que ni el HTML ni las respuestas de RSC traen cuerpos | pantalla e invariante con test |
 | FR-CONV-02 | Pantalla 9, implementada en la 6.4; el cuerpo escapado se verifica en `conversations.spec.ts` | pantalla e invariante con test |
 | FR-CONV-03 | Pantalla 8 (filtro) y pantalla 9 (cambio, auditado), implementadas en la 6.4. Desde la 12.2, la derivación por servicio a `pending` (FR-API-06), auditada con la credencial | pantalla |
@@ -109,6 +115,10 @@ Cada índice tiene al menos una consulta real que lo usa.
 | `ingestion_events` | `(organization_id, received_at)` | eventos recibidos en el intervalo | métrica 12 |
 | `knowledge_entries` | `UNIQUE(organization_id, lower(title))` | `CONFLICT` por título repetido, también frente a las inactivas (brief-11.2, D-5) | pantalla 12 |
 | `knowledge_entries` | `knowledge_entries_search_idx`, GIN sobre `search` | búsqueda por palabras de título, categoría y contenido (brief-11.2, D-6) | pantalla 11 |
+| `client_tags` | `UNIQUE(organization_id, lower(name))` | `CONFLICT` por nombre repetido, también frente a las inactivas (brief-16.1, D-2) | pantalla 13 |
+| `client_tags` | `UNIQUE(organization_id, id)` | destino de la clave compuesta de `client_tag_assignments`; ninguna consulta lo usa (brief-16.1, invariante 1) | — |
+| `client_tag_assignments` | PK `(client_id, tag_id)` | etiquetas de los clientes de una página o de una ficha; asignación idempotente | pantallas 6 y 7 |
+| `client_tag_assignments` | `(organization_id, tag_id)` | filtro de la lista por etiqueta (`EXISTS`); cantidad de clientes por etiqueta (16.1, sin plan medido) | pantallas 6 y 13 |
 | `audit_logs` | `(organization_id, entity_type, entity_id, created_at desc)` | historial de auditoría de una entidad | pantallas 4, 7 y 12 |
 
 ### Índices quitados en esta subfase

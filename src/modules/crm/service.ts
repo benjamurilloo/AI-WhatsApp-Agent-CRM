@@ -20,20 +20,34 @@ import {
   type ClientPhone,
 } from "./phone";
 import * as repository from "./repository";
+import { DEFAULT_TAG_COLOR, isTagColor, type TagColor } from "./tag-colors";
 
 // Casos de uso de clientes (brief-5.2): FR-CLI-01, 02, 03 y 05, con auditoría en la misma
-// transacción (FR-AUD-01) y el teléfono enmascarado para viewer (FR-CLI-06).
+// transacción (FR-AUD-01) y el teléfono enmascarado para viewer (FR-CLI-06). Desde la 16.1, sus
+// etiquetas: FR-CLI-08 a 10.
 
 export type ClientActivityFilter = repository.ActivityFilter;
+
+// Una etiqueta tal como la muestra un cliente: activa o no (brief-16.1, D-8).
+export type ClientTag = repository.ClientTagRow;
 
 // El teléfono sale de crm ya resuelto para el rol: un viewer nunca recibe el número (D-2).
 export type Client = Omit<repository.ClientRow, "phoneE164"> & {
   phone: ClientPhone;
+  tags: ClientTag[];
 };
 
-function toClient(row: repository.ClientRow, context: AuthContext): Client {
+function toClient(
+  row: repository.ClientRow,
+  context: AuthContext,
+  tags: Map<string, ClientTag[]>,
+): Client {
   const { phoneE164, ...rest } = row;
-  return { ...rest, phone: phoneForRole(phoneE164, context.role) };
+  return {
+    ...rest,
+    phone: phoneForRole(phoneE164, context.role),
+    tags: tags.get(row.id) ?? [],
+  };
 }
 
 export type ClientField = "displayName" | "phone" | "notes";
@@ -101,6 +115,7 @@ export function validateClientInput(
 }
 
 const clientIdSchema = z.uuid();
+const tagIdSchema = z.uuid();
 
 // Lecturas: admin y viewer. Un cliente de otra organización da NOT_FOUND (brief-3.4, D-3).
 
@@ -118,7 +133,10 @@ export async function getClient(
   }
   const row = await repository.findClient(context.organizationId, clientId);
   if (!row) return failure("NOT_FOUND");
-  return { ok: true, client: toClient(row, context) };
+  const tags = await repository.findTagsByClient(context.organizationId, [
+    row.id,
+  ]);
+  return { ok: true, client: toClient(row, context, tags) };
 }
 
 export const CLIENTS_PAGE_SIZE = 25;
@@ -127,7 +145,20 @@ export type ClientListFilters = {
   text: string;
   activity: ClientActivityFilter;
   page: number;
+  // Solo los clientes con esta etiqueta (FR-CLI-10). Un id inválido, ajeno o de una etiqueta
+  // inactiva se ignora, como los demás filtros inválidos (brief-16.1, D-8 y D-9).
+  tagId?: string | null;
 };
+
+// El id de etiqueta del filtro, si es de una etiqueta activa de la organización; si no, null.
+async function resolveTagFilter(
+  context: AuthContext,
+  tagId: string | null | undefined,
+): Promise<string | null> {
+  if (!tagId || !tagIdSchema.safeParse(tagId).success) return null;
+  const tag = await repository.findTag(context.organizationId, tagId);
+  return tag?.isActive ? tag.id : null;
+}
 
 export type ClientPage = {
   clients: Client[];
@@ -161,10 +192,12 @@ export async function searchClients(
   const authorized = authorize(context);
   if (!authorized.ok) return authorized;
   const search = interpretSearch(filters.text);
+  const tagId = await resolveTagFilter(context, filters.tagId);
   const total = await repository.countClients(
     context.organizationId,
     search,
     filters.activity,
+    tagId,
   );
   const { page, pageCount, offset } = clientPageBounds(total, filters.page);
   const rows =
@@ -176,10 +209,15 @@ export async function searchClients(
           filters.activity,
           CLIENTS_PAGE_SIZE,
           offset,
+          tagId,
         );
+  const tags = await repository.findTagsByClient(
+    context.organizationId,
+    rows.map((row) => row.id),
+  );
   return {
     ok: true,
-    clients: rows.map((row) => toClient(row, context)),
+    clients: rows.map((row) => toClient(row, context, tags)),
     total,
     page,
     pageCount,
@@ -239,6 +277,7 @@ export async function listClientOrderKeys(
     context.organizationId,
     interpretSearch(filters.text),
     filters.activity,
+    await resolveTagFilter(context, filters.tagId),
   );
   return { ok: true, clientIds };
 }
@@ -262,11 +301,14 @@ export async function getClientsByIds(
       (row) => [row.id, row],
     ),
   );
+  const tags = await repository.findTagsByClient(context.organizationId, [
+    ...rows.keys(),
+  ]);
   return {
     ok: true,
     clients: unique.flatMap((id) => {
       const row = rows.get(id);
-      return row ? [toClient(row, context)] : [];
+      return row ? [toClient(row, context, tags)] : [];
     }),
   };
 }
@@ -478,6 +520,402 @@ export function reactivateClient(
   clientId: string,
 ): Promise<ClientActiveResult> {
   return setClientActive(context, clientId, true);
+}
+
+// Etiquetas de clientes (brief-16.1). El catálogo (FR-CLI-08) y las asignaciones (FR-CLI-09) son
+// escrituras de admin (D-5), auditadas en la misma transacción (D-7). Leer el catálogo y las
+// etiquetas de cada cliente es para cualquier rol (FR-CLI-10).
+
+// Límites de D-11: mantienen usables el selector, la fila de la lista y el filtro.
+export const MAX_ACTIVE_TAGS = 50;
+export const MAX_TAGS_PER_CLIENT = 10;
+
+// Las sugeridas de D-3, en el orden en que se ofrecen.
+export const SUGGESTED_TAGS: readonly { name: string; color: TagColor }[] = [
+  { name: "Interesado", color: "blue" },
+  { name: "Quiere señar", color: "green" },
+  { name: "Reclamo", color: "red" },
+  { name: "No interesado", color: "gray" },
+];
+
+export type TagField = "name" | "color";
+
+export type TagInput = { name: string; color?: string | null };
+
+export type Tag = repository.TagRow;
+export type TagWithClientCount = Tag & { activeClients: number };
+
+const tagInputSchema = z.object({
+  name: z.string().trim().min(1).max(40),
+  // Sin color elegido, gris (D-4). Un valor fuera de la paleta es un error del campo.
+  color: z
+    .string()
+    .nullish()
+    .transform((value) => value || DEFAULT_TAG_COLOR)
+    .refine(isTagColor),
+});
+
+const TAG_FIELDS: TagField[] = ["name", "color"];
+
+export function validateTagInput(
+  input: TagInput,
+):
+  | { ok: true; values: repository.TagValues }
+  | Failure<"VALIDATION_ERROR", { fields: TagField[] }> {
+  const parsed = tagInputSchema.safeParse(input);
+  if (parsed.success) {
+    return {
+      ok: true,
+      values: { name: parsed.data.name, color: parsed.data.color as TagColor },
+    };
+  }
+  const fields = new Set<TagField>();
+  for (const issue of parsed.error.issues) {
+    const field = issue.path[0];
+    if (TAG_FIELDS.includes(field as TagField)) fields.add(field as TagField);
+  }
+  return {
+    ok: false,
+    code: "VALIDATION_ERROR",
+    fields: TAG_FIELDS.filter((field) => fields.has(field)),
+  };
+}
+
+// El límite alcanzado, con qué límite fue (D-11).
+type LimitFailure = Failure<
+  "VALIDATION_ERROR",
+  { limit: "organization" | "client" }
+>;
+
+function limitFailure(limit: "organization" | "client"): LimitFailure {
+  return { ok: false, code: "VALIDATION_ERROR", limit };
+}
+
+export async function listClientTags(
+  context: AuthContext,
+): Promise<{ ok: true; tags: TagWithClientCount[] } | Failure<"FORBIDDEN">> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  return {
+    ok: true,
+    tags: await repository.findTagsWithClientCounts(context.organizationId),
+  };
+}
+
+// Las que se ofrecen para asignar y para filtrar: solo activas (D-8).
+export async function listActiveClientTags(
+  context: AuthContext,
+): Promise<{ ok: true; tags: Tag[] } | Failure<"FORBIDDEN">> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  return {
+    ok: true,
+    tags: await repository.findActiveTags(context.organizationId),
+  };
+}
+
+export type CreateTagResult =
+  | { ok: true; tagId: string }
+  | Failure<"FORBIDDEN" | "CONFLICT">
+  | Failure<"VALIDATION_ERROR", { fields: TagField[] }>
+  | LimitFailure;
+
+export async function createClientTag(
+  context: AuthContext,
+  input: TagInput,
+): Promise<CreateTagResult> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  const validated = validateTagInput(input);
+  if (!validated.ok) return validated;
+  const { values } = validated;
+
+  return repository.withTransaction(async (tx): Promise<CreateTagResult> => {
+    await repository.lockTagCatalog(tx, context.organizationId);
+    const active = await repository.countTags(tx, context.organizationId, {
+      activeOnly: true,
+    });
+    if (active >= MAX_ACTIVE_TAGS) return limitFailure("organization");
+    const tagId = await repository.insertTag(
+      tx,
+      context.organizationId,
+      values,
+    );
+    if (tagId === "name_taken") return failure("CONFLICT");
+    await recordAudit(tx, {
+      organizationId: context.organizationId,
+      actorUserId: context.userId,
+      entityType: "client_tag",
+      entityId: tagId,
+      action: "create",
+      diff: { before: null, after: { ...values, isActive: true } },
+    });
+    return { ok: true, tagId };
+  });
+}
+
+// «Crear las sugeridas» (D-3): solo con el catálogo vacío, contando también las inactivas, y las
+// cuatro en una transacción. Con alguna etiqueta ya creada, CONFLICT y no escribe nada.
+export async function createSuggestedClientTags(
+  context: AuthContext,
+): Promise<{ ok: true; created: number } | Failure<"FORBIDDEN" | "CONFLICT">> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+
+  return repository.withTransaction(async (tx) => {
+    await repository.lockTagCatalog(tx, context.organizationId);
+    const existing = await repository.countTags(tx, context.organizationId, {
+      activeOnly: false,
+    });
+    if (existing > 0) return failure("CONFLICT");
+    for (const values of SUGGESTED_TAGS) {
+      const tagId = await repository.insertTag(
+        tx,
+        context.organizationId,
+        values,
+      );
+      // Con el catálogo vacío y bloqueado, un nombre repetido es un defecto de programación.
+      if (tagId === "name_taken") {
+        throw new Error("nombre repetido en las etiquetas sugeridas");
+      }
+      await recordAudit(tx, {
+        organizationId: context.organizationId,
+        actorUserId: context.userId,
+        entityType: "client_tag",
+        entityId: tagId,
+        action: "create",
+        diff: { before: null, after: { ...values, isActive: true } },
+      });
+    }
+    return { ok: true as const, created: SUGGESTED_TAGS.length };
+  });
+}
+
+export type UpdateTagResult =
+  | { ok: true; changed: boolean }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "CONFLICT" | "VALIDATION_ERROR">
+  | Failure<"VALIDATION_ERROR", { fields: TagField[] }>;
+
+export async function updateClientTag(
+  context: AuthContext,
+  tagId: string,
+  input: TagInput,
+): Promise<UpdateTagResult> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  if (!tagIdSchema.safeParse(tagId).success) {
+    return failure("VALIDATION_ERROR");
+  }
+  const validated = validateTagInput(input);
+  if (!validated.ok) return validated;
+  const { values } = validated;
+
+  return repository.withTransaction(async (tx): Promise<UpdateTagResult> => {
+    const current = await repository.findTag(
+      context.organizationId,
+      tagId,
+      tx,
+      { lock: "update" },
+    );
+    if (!current) return failure("NOT_FOUND");
+
+    const changedFields = TAG_FIELDS.filter(
+      (field) => current[field] !== values[field],
+    );
+    if (changedFields.length === 0) return { ok: true, changed: false };
+
+    const before = Object.fromEntries(
+      changedFields.map((field) => [field, current[field]]),
+    );
+    const after = Object.fromEntries(
+      changedFields.map((field) => [field, values[field]]),
+    );
+    const updated = await repository.updateTagValues(
+      tx,
+      context.organizationId,
+      current.id,
+      after,
+    );
+    if (updated === "name_taken") return failure("CONFLICT");
+    await recordAudit(tx, {
+      organizationId: context.organizationId,
+      actorUserId: context.userId,
+      entityType: "client_tag",
+      entityId: current.id,
+      action: "update",
+      diff: { before, after },
+    });
+    return { ok: true, changed: true };
+  });
+}
+
+export type TagActiveResult =
+  | { ok: true; changed: boolean }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+  | LimitFailure;
+
+// Desactivar no toca a los clientes que ya la tienen: la conservan, como inactiva (D-8).
+async function setTagActive(
+  context: AuthContext,
+  tagId: string,
+  isActive: boolean,
+): Promise<TagActiveResult> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  if (!tagIdSchema.safeParse(tagId).success) {
+    return failure("VALIDATION_ERROR");
+  }
+
+  return repository.withTransaction(async (tx): Promise<TagActiveResult> => {
+    // Reactivar suma una activa: se cuenta con el catálogo bloqueado, como el alta (D-11).
+    await repository.lockTagCatalog(tx, context.organizationId);
+    const current = await repository.findTag(
+      context.organizationId,
+      tagId,
+      tx,
+      { lock: "update" },
+    );
+    if (!current) return failure("NOT_FOUND");
+    if (current.isActive === isActive) return { ok: true, changed: false };
+    if (isActive) {
+      const active = await repository.countTags(tx, context.organizationId, {
+        activeOnly: true,
+      });
+      if (active >= MAX_ACTIVE_TAGS) return limitFailure("organization");
+    }
+
+    await repository.updateTagActive(
+      tx,
+      context.organizationId,
+      current.id,
+      isActive,
+    );
+    await recordAudit(tx, {
+      organizationId: context.organizationId,
+      actorUserId: context.userId,
+      entityType: "client_tag",
+      entityId: current.id,
+      action: isActive ? "reactivate" : "deactivate",
+      diff: { before: { isActive: current.isActive }, after: { isActive } },
+    });
+    return { ok: true, changed: true };
+  });
+}
+
+export function deactivateClientTag(
+  context: AuthContext,
+  tagId: string,
+): Promise<TagActiveResult> {
+  return setTagActive(context, tagId, false);
+}
+
+export function reactivateClientTag(
+  context: AuthContext,
+  tagId: string,
+): Promise<TagActiveResult> {
+  return setTagActive(context, tagId, true);
+}
+
+// changed en false: el cliente ya tenía (o ya no tenía) la etiqueta; no se escribe ni se audita.
+export type ClientTagChangeResult =
+  | { ok: true; changed: boolean }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+  | LimitFailure;
+
+// Poner y quitar bloquean la fila del cliente: dos cambios simultáneos del mismo cliente no pasan
+// juntos el límite de D-11. El diff lleva el nombre que la etiqueta tenía en ese momento (D-7).
+async function changeClientTag(
+  context: AuthContext,
+  clientId: string,
+  tagId: string,
+  assign: boolean,
+): Promise<ClientTagChangeResult> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  if (
+    !clientIdSchema.safeParse(clientId).success ||
+    !tagIdSchema.safeParse(tagId).success
+  ) {
+    return failure("VALIDATION_ERROR");
+  }
+
+  return repository.withTransaction(
+    async (tx): Promise<ClientTagChangeResult> => {
+      const client = await repository.findClient(
+        context.organizationId,
+        clientId,
+        tx,
+        { forUpdate: true },
+      );
+      if (!client) return failure("NOT_FOUND");
+      const tag = await repository.findTag(context.organizationId, tagId, tx, {
+        lock: assign ? "share" : undefined,
+      });
+      if (!tag) return failure("NOT_FOUND");
+
+      let changed: boolean;
+      if (assign) {
+        const current =
+          (
+            await repository.findTagsByClient(
+              context.organizationId,
+              [client.id],
+              tx,
+            )
+          ).get(client.id) ?? [];
+        if (current.some((assigned) => assigned.id === tag.id)) {
+          return { ok: true, changed: false };
+        }
+        // Una inactiva no se pone (D-8); la que un cliente ya tiene sí se puede quitar.
+        if (!tag.isActive) return failure("NOT_FOUND");
+        if (current.length >= MAX_TAGS_PER_CLIENT) {
+          return limitFailure("client");
+        }
+        changed = await repository.insertAssignment(
+          tx,
+          context.organizationId,
+          client.id,
+          tag.id,
+        );
+      } else {
+        changed = await repository.deleteAssignment(
+          tx,
+          context.organizationId,
+          client.id,
+          tag.id,
+        );
+      }
+      if (!changed) return { ok: true, changed: false };
+
+      await recordAudit(tx, {
+        organizationId: context.organizationId,
+        actorUserId: context.userId,
+        entityType: "client",
+        entityId: client.id,
+        action: "tag_change",
+        diff: assign
+          ? { before: { tag: null }, after: { tag: tag.name } }
+          : { before: { tag: tag.name }, after: { tag: null } },
+      });
+      return { ok: true, changed: true };
+    },
+  );
+}
+
+export function assignClientTag(
+  context: AuthContext,
+  clientId: string,
+  tagId: string,
+): Promise<ClientTagChangeResult> {
+  return changeClientTag(context, clientId, tagId, true);
+}
+
+export function removeClientTag(
+  context: AuthContext,
+  clientId: string,
+  tagId: string,
+): Promise<ClientTagChangeResult> {
+  return changeClientTag(context, clientId, tagId, false);
 }
 
 // Resolución del cliente por teléfono para un servicio (brief-12.1, D-5 a D-10). La transacción y

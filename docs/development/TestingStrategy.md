@@ -209,7 +209,7 @@ Decidido en la 11.4 ([brief-11.4](../decisions/brief-11.4-piloto-en-staging.md),
 
 El recorrido contra staging son tres instrumentos que no escriben datos de negocio:
 
-- `scripts/recorrer-pantallas.ts`: las 13 pantallas (las 10 del MVP, la 5b, la 11 y la 12) con su comprobación de contenido dentro de `main`, y su control negativo (`CRM_CONTROL=1`). Sin el control, el cero no vale;
+- `scripts/recorrer-pantallas.ts`: las 14 pantallas (las 10 del MVP, la 5b, la 11, la 12 y, desde la 16.1, la 13) con su comprobación de contenido dentro de `main`, y su control negativo (`CRM_CONTROL=1`). Sin el control, el cero no vale;
 - `scripts/probar-api-lectura.ts`: cada ruta de la [API de lectura](../contracts/read-v1.md), con toda respuesta de éxito validada por los esquemas estrictos de `src/app/api/read/v1/contract.ts`, más los rechazos `401` y `404`. Con una respuesta que trae un campo de más, sale con código 1 (brief-11.4, AC-3);
 - el guion del piloto, que recorre una persona.
 

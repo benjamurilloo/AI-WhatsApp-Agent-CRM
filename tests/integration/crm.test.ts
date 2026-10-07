@@ -437,6 +437,7 @@ describe("getClient", () => {
         isActive: true,
         createdAt: expect.any(Date),
         updatedAt: expect.any(Date),
+        tags: [],
       },
     });
     expect(await getClient(s.viewerA, clientId)).toMatchObject({

@@ -37,7 +37,9 @@ test.beforeAll(() => {
 // Los demás specs borran organizaciones: no pueden quedar clientes que lo impidan.
 // TRUNCATE de clients exige vaciar en la misma sentencia las tablas que la referencian (brief-6.1).
 test.afterAll(async () => {
-  await db.execute(sql`truncate table messages, conversations, clients`);
+  await db.execute(
+    sql`truncate table messages, conversations, client_tag_assignments, clients`,
+  );
   // La credencial del caso 16 queda referenciada por su fila de auditoría (RESTRICT, brief-12.1).
   await db.execute(sql`truncate table audit_logs`);
   await db.execute(
@@ -49,7 +51,7 @@ test.afterAll(async () => {
 // audit_logs y messages son de solo inserción: TRUNCATE es la vía documentada para vaciarlas (ADR 0013).
 test.beforeEach(async () => {
   await db.execute(
-    sql`truncate table audit_logs, messages, conversations, clients`,
+    sql`truncate table audit_logs, messages, conversations, client_tag_assignments, clients`,
   );
   await db.execute(sql`delete from login_attempts`);
   await db.execute(sql`delete from sessions`);

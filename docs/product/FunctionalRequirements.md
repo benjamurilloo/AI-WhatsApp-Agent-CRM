@@ -37,6 +37,9 @@ Agregados en la Fase 11, catálogo comercial ([brief-11.1](../decisions/brief-11
 - **FR-CLI-05**: Los datos personales del cliente mostrados se limitan a los necesarios para operar (minimización): nombre, teléfono, notas operativas; no se exponen campos sensibles no declarados explícitamente como necesarios.
 - **FR-CLI-06**: El teléfono completo se expone únicamente a un `admin`. A un `viewer` se le entrega enmascarado (últimos 4 dígitos) desde el servidor, tanto en la lista como en el detalle; la respuesta que recibe no contiene el número completo. La búsqueda por teléfono completo funciona para ambos roles, porque el filtro se resuelve en la consulta (subfase 1.3, D-1).
 - **FR-CLI-07**: Un cliente se identifica de forma única por `(organization_id, phone_e164)`. No existe ningún otro identificador de negocio en el MVP ([ADR 0007](../decisions/0007-identificador-de-cliente-solo-telefono.md)).
+- **FR-CLI-08** *(16.1, [brief](../decisions/brief-16.1-etiquetas-de-clientes.md))*: Un admin administra el catálogo de etiquetas de clientes de su organización: crea, renombra, cambia el color (uno de seis), desactiva y reactiva, con el nombre único sin distinguir mayúsculas y hasta 50 etiquetas activas por organización. Con el catálogo vacío puede crear las cuatro sugeridas («Interesado», «Quiere señar», «Reclamo» y «No interesado»). Cada cambio queda auditado. Ninguna etiqueta se borra ni dispara nada: «Quiere señar» no es un pago.
+- **FR-CLI-09** *(16.1)*: Un admin pone y quita etiquetas activas en un cliente, hasta 10 por cliente. Cada cambio queda auditado en el historial del cliente, con el nombre de la etiqueta.
+- **FR-CLI-10** *(16.1)*: Cualquier usuario ve las etiquetas de cada cliente en la lista y en la ficha, y filtra la lista por una etiqueta activa. Una etiqueta desactivada sigue en los clientes que la tienen, marcada como inactiva, y no se ofrece para agregar ni para filtrar.
 
 ## Conversaciones y mensajes
 

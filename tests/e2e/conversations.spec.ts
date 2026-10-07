@@ -28,14 +28,16 @@ test.beforeAll(() => {
 
 // Los demás specs borran organizaciones: no pueden quedar filas que lo impidan (brief-6.1).
 test.afterAll(async () => {
-  await db.execute(sql`truncate table messages, conversations, clients`);
+  await db.execute(
+    sql`truncate table messages, conversations, client_tag_assignments, clients`,
+  );
   await db.$client.end();
 });
 
 // audit_logs y messages son de solo inserción: TRUNCATE es la vía documentada para vaciarlas (ADR 0013).
 test.beforeEach(async () => {
   await db.execute(
-    sql`truncate table audit_logs, messages, conversations, clients`,
+    sql`truncate table audit_logs, messages, conversations, client_tag_assignments, clients`,
   );
   await db.execute(sql`delete from login_attempts`);
   await db.execute(sql`delete from sessions`);

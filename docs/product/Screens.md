@@ -127,6 +127,7 @@ Agregada en la 11.1 ([brief-11.1](../decisions/brief-11.1-catalogo-comercial.md)
 - **Errores**: generales.
 - **Responsive**: tarjetas en móvil.
 - **Accesibilidad**: el teléfono enmascarado tiene un texto accesible que lo indica.
+- **Etiquetas** *(16.1, FR-CLI-10)*: hasta tres chips por fila y «+N» con las demás; un filtro «Etiqueta» con las activas, en la URL (`etiqueta=<id>`), combinable con la búsqueda, la actividad y el orden. Una etiqueta ajena, inexistente o inactiva en la URL se ignora. Un botón «Etiquetas» lleva al catálogo (pantalla 13).
 - **No mostrar**: el teléfono completo a un `viewer`, en la lista ni en ninguna otra vista. El enmascarado se aplica en el servidor: la respuesta que recibe un `viewer` no contiene el número completo. La búsqueda por teléfono completo funciona igual para ambos roles, porque el filtro se resuelve en la consulta y no depende de lo que se renderice.
 
 ## 7. Detalle y edición de cliente
@@ -143,6 +144,7 @@ Agregada en la 11.1 ([brief-11.1](../decisions/brief-11.1-catalogo-comercial.md)
 - **Responsive**: los datos van arriba y las conversaciones abajo.
 - **Accesibilidad**: estándar.
 - **No mostrar**: la auditoría a `viewer`. El campo de notas incluye un aviso para no registrar datos sensibles innecesarios.
+- **Etiquetas** *(16.1, FR-CLI-09 y 10)*: una tarjeta «Etiquetas» con los chips, para los dos roles; una inactiva lleva «(inactiva)» y borde punteado. Un `admin` agrega desde un selector con las activas que el cliente no tiene y quita con un botón por chip («Quitar Reclamo»). Son formularios con Server Actions, como el resto de la ficha. La auditoría muestra «Etiqueta agregada: Reclamo» y «Etiqueta quitada: Reclamo».
 
 ## 8. Lista de conversaciones
 
@@ -223,3 +225,17 @@ Agregada en la 11.2 ([brief-11.2](../decisions/brief-11.2-informacion-del-negoci
 - **Responsive**: una columna.
 - **Accesibilidad**: estándar. Los campos de fecha son nativos y se recorren con el teclado por segmento.
 - **No mostrar**: formularios ni auditoría a `viewer`, tampoco forzando la URL.
+
+## 13. Etiquetas de clientes
+
+*Agregada en la 16.1* ([brief-16.1](../decisions/brief-16.1-etiquetas-de-clientes.md), D-9), sin wireframe, como la 5b. La numeración sigue a la 12 de la 11.2.
+
+- **Objetivo**: mantener el catálogo de etiquetas de clientes de la organización (FR-CLI-08).
+- **Ruta**: `/clientes/etiquetas`. Se llega desde el botón «Etiquetas» de la lista de clientes; no tiene ítem en el panel lateral.
+- **Usuario autorizado**: lectura para `admin` y `viewer`; alta, edición, desactivación y reactivación solo para `admin`.
+- **Información mostrada**: cada etiqueta como chip, su estado y la cantidad de clientes activos que la tienen, que lleva a la lista filtrada si la etiqueta está activa.
+- **Acciones**: con el catálogo vacío, «Crear las sugeridas». Crear con nombre y uno de seis colores (radios con la muestra del chip). Editar (`?editar=<id>`), desactivar con confirmación (`?confirmar=<id>`) y reactivar.
+- **Vacío**: «Todavía no hay etiquetas.»
+- **Errores**: nombre repetido sin distinguir mayúsculas, también frente a una inactiva; nombre vacío o de más de 40; el límite de 50 activas.
+- **Responsive**: tabla en escritorio y tarjetas en móvil, sin scroll horizontal a 375 px.
+- **Accesibilidad**: el color nunca es el único dato; los seis colores pasan el contraste de axe en claro y en oscuro; «Editar», «Desactivar» y «Reactivar» llevan el nombre de la etiqueta en su texto accesible.

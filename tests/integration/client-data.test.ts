@@ -117,6 +117,29 @@ async function insertAuditEntry(clientId: string) {
   );
 }
 
+// Una etiqueta del catálogo puesta en el cliente, por SQL (brief-16.1, D-10).
+async function tagClient(clientId: string, name: string): Promise<string> {
+  const tag = await getDb().execute<{ id: string }>(
+    sql`insert into client_tags (organization_id, name, color)
+        values (${organizationId}, ${name}, 'red')
+        on conflict (organization_id, lower(name)) do update set name = excluded.name
+        returning id`,
+  );
+  await getDb().execute(
+    sql`insert into client_tag_assignments (organization_id, client_id, tag_id)
+        values (${organizationId}, ${clientId}, ${tag.rows[0]!.id})`,
+  );
+  return tag.rows[0]!.id;
+}
+
+async function assignmentCount(clientId: string): Promise<number> {
+  const result = await getDb().execute<{ count: number }>(
+    sql`select count(*)::int as count from client_tag_assignments
+        where organization_id = ${organizationId} and client_id = ${clientId}`,
+  );
+  return result.rows[0]!.count;
+}
+
 async function clientRow(clientId: string) {
   const result = await getDb().execute<{
     display_name: string;
@@ -241,6 +264,7 @@ describe("cliente con conversaciones: se vacía, no se borra (brief-13.4, D-2)",
       conversations: 1,
       messages: 2,
       auditEntries: 1,
+      tags: 0,
     });
 
     for (const value of [
@@ -332,6 +356,7 @@ describe("cliente con conversaciones: se vacía, no se borra (brief-13.4, D-2)",
       conversations: 0,
       messages: 0,
       auditEntries: 0,
+      tags: 0,
     });
   });
 
@@ -514,5 +539,62 @@ describe("lo que el vaciado alcanza y lo que no (revisión independiente de la 1
       "messages.body_text",
     ]);
     expect(NOT_REACHED.join(" ")).toContain("conversaciones sin cliente");
+  });
+});
+
+describe("etiquetas del cliente (brief-16.1, D-10, AC-9)", () => {
+  it("17. FR-CLI-09: la exportación incluye sus etiquetas actuales y no las de otro cliente", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    await tagClient(clientId, "Reclamo");
+    const other = await insertClient("Otra Persona", "+5491155552222", "x");
+    await tagClient(other, "Interesado");
+
+    const data = await exportClientData(getDb(), organizationId, clientId);
+
+    expect(data.client_tags).toHaveLength(1);
+    expect(data.client_tags[0]).toMatchObject({
+      name: "Reclamo",
+      color: "red",
+      is_active: true,
+    });
+    expect(data.client_tags[0]!.assigned_at).toBeTruthy();
+  });
+
+  it("18. el informe cuenta sus etiquetas", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    await tagClient(clientId, "Reclamo");
+    await tagClient(clientId, "Quiere señar");
+
+    const report = await reportClientData(getDb(), organizationId, clientId);
+    expect(report.tags).toBe(2);
+  });
+
+  it("19. el vaciado quita sus etiquetas y no las de otro cliente", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    await insertConversationWithMessage(clientId, BODY);
+    await tagClient(clientId, "Reclamo");
+    const other = await insertClient("Otra Persona", "+5491155552222", "x");
+    await tagClient(other, "Reclamo");
+
+    const result = await eraseClientData(getDb(), organizationId, clientId);
+
+    expect(result.tags).toBe(1);
+    expect(await assignmentCount(clientId)).toBe(0);
+    expect(await assignmentCount(other)).toBe(1);
+    // El catálogo no es de la persona: la etiqueta sigue existiendo.
+    const catalog = await getDb().execute<{ count: number }>(
+      sql`select count(*)::int as count from client_tags
+          where organization_id = ${organizationId}`,
+    );
+    expect(catalog.rows[0]!.count).toBe(1);
+  });
+
+  it("20. borrar la ficha se lleva sus etiquetas, por la clave en cascada", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    await tagClient(clientId, "Reclamo");
+
+    expect(await deleteClientRow(getDb(), organizationId, clientId)).toBe(true);
+
+    expect(await assignmentCount(clientId)).toBe(0);
   });
 });

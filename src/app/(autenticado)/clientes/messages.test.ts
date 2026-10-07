@@ -9,7 +9,16 @@ import {
   NOTES_TOO_LONG_MESSAGE,
   PHONE_FORMAT_MESSAGE,
   PHONE_TAKEN_MESSAGE,
+  SUGGESTED_TAGS_TAKEN_MESSAGE,
+  TAG_CLIENT_LIMIT_MESSAGE,
+  TAG_NAME_MESSAGE,
+  TAG_NOT_FOUND_MESSAGE,
+  TAG_ORGANIZATION_LIMIT_MESSAGE,
+  tagChangeMessage,
+  tagFieldError,
+  tagNoticeMessage,
 } from "./messages";
+import { MAX_ACTIVE_TAGS, MAX_TAGS_PER_CLIENT } from "@/modules/crm";
 
 describe("clientFieldError", () => {
   it("elige el primer campo inválido en el orden del formulario", () => {
@@ -61,5 +70,54 @@ describe("noticeMessage", () => {
     expect(noticeMessage("toString")).toBeNull();
     expect(noticeMessage("<script>")).toBeNull();
     expect(noticeMessage(undefined)).toBeNull();
+  });
+
+  it("brief-16.1: avisa al poner y al quitar una etiqueta", () => {
+    expect(noticeMessage("etiqueta-agregada")).toBe("Etiqueta agregada.");
+    expect(noticeMessage("etiqueta-quitada")).toBe("Etiqueta quitada.");
+  });
+});
+
+describe("etiquetas (brief-16.1)", () => {
+  it("D-11: los mensajes de los límites dicen los mismos números que crm", () => {
+    expect(TAG_ORGANIZATION_LIMIT_MESSAGE).toContain(`${MAX_ACTIVE_TAGS} `);
+    expect(TAG_CLIENT_LIMIT_MESSAGE).toContain(`${MAX_TAGS_PER_CLIENT} `);
+  });
+
+  it("tagChangeMessage: el límite manda sobre el código", () => {
+    expect(
+      tagChangeMessage({ code: "VALIDATION_ERROR", limit: "client" }, "r"),
+    ).toBe(TAG_CLIENT_LIMIT_MESSAGE);
+    expect(
+      tagChangeMessage(
+        { code: "VALIDATION_ERROR", limit: "organization" },
+        "r",
+      ),
+    ).toBe(TAG_ORGANIZATION_LIMIT_MESSAGE);
+    expect(tagChangeMessage({ code: "NOT_FOUND" }, "r")).toBe(
+      TAG_NOT_FOUND_MESSAGE,
+    );
+    expect(tagChangeMessage({ code: "FORBIDDEN" }, "r")).toBe(
+      FORBIDDEN_ACTION_MESSAGE,
+    );
+    expect(tagChangeMessage({ code: "CONFLICT" }, "r")).toBe(
+      SUGGESTED_TAGS_TAKEN_MESSAGE,
+    );
+    expect(tagChangeMessage({ code: "INTERNAL" }, "abc")).toContain("abc");
+  });
+
+  it("tagFieldError: el nombre primero", () => {
+    expect(tagFieldError(["color", "name"])).toEqual({
+      field: "name",
+      message: TAG_NAME_MESSAGE,
+    });
+    expect(tagFieldError(["color"]).field).toBe("color");
+  });
+
+  it("tagNoticeMessage solo acepta avisos conocidos", () => {
+    expect(tagNoticeMessage("sugeridas")).toBe("Etiquetas sugeridas creadas.");
+    expect(tagNoticeMessage("desactivada")).toContain("la conservan");
+    expect(tagNoticeMessage("toString")).toBeNull();
+    expect(tagNoticeMessage(undefined)).toBeNull();
   });
 });

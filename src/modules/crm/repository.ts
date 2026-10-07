@@ -1,6 +1,12 @@
 import { and, asc, count, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { getDb, type Db, type DbTransaction } from "@/shared/db";
-import { clients, searchNormalized } from "./schema";
+import {
+  clients,
+  clientTagAssignments,
+  clientTags,
+  searchNormalized,
+} from "./schema";
+import type { TagColor } from "./tag-colors";
 
 // Acceso a clients. Toda consulta filtra por organization_id en SQL (brief-5.2).
 
@@ -74,10 +80,22 @@ function searchConditions(
   organizationId: string,
   search: ClientSearch,
   activity: ActivityFilter,
+  tagId: string | null = null,
 ): SQL {
   const conditions: SQL[] = [eq(clients.organizationId, organizationId)];
   if (activity !== "all") {
     conditions.push(eq(clients.isActive, activity === "active"));
+  }
+  // Solo los clientes que tienen la etiqueta (brief-16.1, FR-CLI-10). El servicio ya comprobó
+  // que es una etiqueta activa de la organización.
+  // Con alias explícitos, como en findTagsWithClientCounts: Drizzle no califica las columnas.
+  if (tagId !== null) {
+    conditions.push(
+      sql`exists (select 1 from client_tag_assignments a
+                  where a.organization_id = ${organizationId}
+                    and a.client_id = "clients"."id"
+                    and a.tag_id = ${tagId})`,
+    );
   }
   if (search.kind === "phone") {
     conditions.push(eq(clients.phoneE164, search.e164));
@@ -95,11 +113,12 @@ export async function countClients(
   organizationId: string,
   search: ClientSearch,
   activity: ActivityFilter,
+  tagId: string | null = null,
 ): Promise<number> {
   const rows = await getDb()
     .select({ total: count() })
     .from(clients)
-    .where(searchConditions(organizationId, search, activity));
+    .where(searchConditions(organizationId, search, activity, tagId));
   return rows[0]?.total ?? 0;
 }
 
@@ -110,27 +129,30 @@ export function findClients(
   activity: ActivityFilter,
   limit: number,
   offset: number,
+  tagId: string | null = null,
 ): Promise<ClientRow[]> {
   return getDb()
     .select(clientColumns)
     .from(clients)
-    .where(searchConditions(organizationId, search, activity))
+    .where(searchConditions(organizationId, search, activity, tagId))
     .orderBy(sql`lower(${clients.displayName})`, asc(clients.id))
     .limit(limit)
     .offset(offset);
 }
 
 // Todos los ids que cumplen los filtros, en el orden de nombre de findClients. Para que otro
-// módulo componga el orden por última interacción sin JOIN (brief-6.3, D-1).
+// módulo componga el orden por última interacción sin JOIN (brief-6.3, D-1). El filtro por
+// etiqueta se resuelve acá, así que conversations no conoce las etiquetas (brief-16.1).
 export async function findClientIdsByName(
   organizationId: string,
   search: ClientSearch,
   activity: ActivityFilter,
+  tagId: string | null = null,
 ): Promise<string[]> {
   const rows = await getDb()
     .select({ id: clients.id })
     .from(clients)
-    .where(searchConditions(organizationId, search, activity))
+    .where(searchConditions(organizationId, search, activity, tagId))
     .orderBy(sql`lower(${clients.displayName})`, asc(clients.id));
   return rows.map((row) => row.id);
 }
@@ -328,4 +350,294 @@ export async function lockClientIdByPhoneE164(
     )
     .for("update");
   return rows[0]?.id ?? null;
+}
+
+// Etiquetas de clientes (brief-16.1). Toda consulta filtra por organization_id; las claves
+// compuestas lo garantizan además en la base (invariante 1).
+
+export type TagRow = {
+  id: string;
+  name: string;
+  color: TagColor;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type TagValues = { name: string; color: TagColor };
+
+const tagColumns = {
+  id: clientTags.id,
+  name: clientTags.name,
+  // El CHECK client_tags_color solo admite la paleta.
+  color: sql<TagColor>`${clientTags.color}`,
+  isActive: clientTags.isActive,
+  createdAt: clientTags.createdAt,
+  updatedAt: clientTags.updatedAt,
+};
+
+const tagOrder = [sql`lower(${clientTags.name})`, asc(clientTags.id)];
+
+// Serializa las escrituras del catálogo de una organización: el límite de etiquetas activas y
+// «Crear las sugeridas» con el catálogo vacío se cuentan y se escriben sin que otra transacción
+// se cruce (D-3, D-11). Se libera con la transacción.
+export async function lockTagCatalog(
+  tx: DbTransaction,
+  organizationId: string,
+): Promise<void> {
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended(${`client_tags:${organizationId}`}, 0))`,
+  );
+}
+
+// `share` es para asignar: espera a una desactivación en curso, que bloquea con `update`,
+// y lee el estado ya confirmado (revisión independiente de la 16.1.1, hallazgo 4).
+export async function findTag(
+  organizationId: string,
+  tagId: string,
+  executor: Executor = getDb(),
+  { lock }: { lock?: "update" | "share" } = {},
+): Promise<TagRow | undefined> {
+  const query = executor
+    .select(tagColumns)
+    .from(clientTags)
+    .where(
+      and(
+        eq(clientTags.organizationId, organizationId),
+        eq(clientTags.id, tagId),
+      ),
+    )
+    .limit(1);
+  const rows = lock ? await query.for(lock) : await query;
+  return rows[0];
+}
+
+// El catálogo con la cantidad de clientes activos que tiene cada etiqueta (pantalla 13, D-9).
+export async function findTagsWithClientCounts(
+  organizationId: string,
+): Promise<(TagRow & { activeClients: number })[]> {
+  return getDb()
+    .select({
+      ...tagColumns,
+      // Con alias explícitos: en un select de una sola tabla, Drizzle no califica las columnas, y
+      // organization_id quedaría ambiguo dentro de la subconsulta.
+      activeClients: sql<number>`(
+        select count(*)::int from client_tag_assignments a
+          join clients c on c.organization_id = a.organization_id and c.id = a.client_id
+        where a.organization_id = "client_tags"."organization_id"
+          and a.tag_id = "client_tags"."id"
+          and c.is_active)`,
+    })
+    .from(clientTags)
+    .where(eq(clientTags.organizationId, organizationId))
+    .orderBy(...tagOrder);
+}
+
+export function findActiveTags(
+  organizationId: string,
+  executor: Executor = getDb(),
+): Promise<TagRow[]> {
+  return executor
+    .select(tagColumns)
+    .from(clientTags)
+    .where(
+      and(
+        eq(clientTags.organizationId, organizationId),
+        eq(clientTags.isActive, true),
+      ),
+    )
+    .orderBy(...tagOrder);
+}
+
+export async function countTags(
+  tx: DbTransaction,
+  organizationId: string,
+  { activeOnly }: { activeOnly: boolean },
+): Promise<number> {
+  const conditions = [eq(clientTags.organizationId, organizationId)];
+  if (activeOnly) conditions.push(eq(clientTags.isActive, true));
+  const rows = await tx
+    .select({ total: count() })
+    .from(clientTags)
+    .where(and(...conditions));
+  return rows[0]?.total ?? 0;
+}
+
+function isTagNameUniqueViolation(error: unknown): boolean {
+  const e = error as {
+    code?: string;
+    constraint?: string;
+    cause?: { code?: string; constraint?: string };
+  } | null;
+  const source = e?.cause ?? e;
+  return (
+    source?.code === "23505" &&
+    source.constraint === "client_tags_organization_name_lower_unique"
+  );
+}
+
+// Como inSavepoint, para el nombre repetido de una etiqueta (D-2).
+async function inTagSavepoint<T>(
+  tx: DbTransaction,
+  work: (savepoint: DbTransaction) => Promise<T>,
+): Promise<T | "name_taken"> {
+  try {
+    return await tx.transaction(work);
+  } catch (error) {
+    if (isTagNameUniqueViolation(error)) return "name_taken";
+    throw error;
+  }
+}
+
+export function insertTag(
+  tx: DbTransaction,
+  organizationId: string,
+  values: TagValues,
+): Promise<string | "name_taken"> {
+  return inTagSavepoint(tx, async (savepoint) => {
+    const rows = await savepoint
+      .insert(clientTags)
+      .values({ organizationId, ...values })
+      .returning({ id: clientTags.id });
+    return rows[0]!.id;
+  });
+}
+
+export function updateTagValues(
+  tx: DbTransaction,
+  organizationId: string,
+  tagId: string,
+  values: Partial<TagValues>,
+): Promise<void | "name_taken"> {
+  return inTagSavepoint(tx, async (savepoint) => {
+    const rows = await savepoint
+      .update(clientTags)
+      .set(values)
+      .where(
+        and(
+          eq(clientTags.organizationId, organizationId),
+          eq(clientTags.id, tagId),
+        ),
+      )
+      .returning({ id: clientTags.id });
+    assertUpdatedOne(rows, "updateTagValues");
+  });
+}
+
+export async function updateTagActive(
+  tx: DbTransaction,
+  organizationId: string,
+  tagId: string,
+  isActive: boolean,
+): Promise<void> {
+  const rows = await tx
+    .update(clientTags)
+    .set({ isActive })
+    .where(
+      and(
+        eq(clientTags.organizationId, organizationId),
+        eq(clientTags.id, tagId),
+      ),
+    )
+    .returning({ id: clientTags.id });
+  assertUpdatedOne(rows, "updateTagActive");
+}
+
+// Lo que un cliente muestra de cada etiqueta: activa o no (D-8).
+export type ClientTagRow = {
+  id: string;
+  name: string;
+  color: TagColor;
+  isActive: boolean;
+};
+
+// Las etiquetas de cada cliente pedido, por nombre. Un cliente sin etiquetas no aparece en el mapa.
+export async function findTagsByClient(
+  organizationId: string,
+  clientIds: string[],
+  executor: Executor = getDb(),
+): Promise<Map<string, ClientTagRow[]>> {
+  const byClient = new Map<string, ClientTagRow[]>();
+  if (clientIds.length === 0) return byClient;
+  const rows = await executor
+    .select({
+      clientId: clientTagAssignments.clientId,
+      id: clientTags.id,
+      name: clientTags.name,
+      color: sql<TagColor>`${clientTags.color}`,
+      isActive: clientTags.isActive,
+    })
+    .from(clientTagAssignments)
+    .innerJoin(
+      clientTags,
+      and(
+        eq(clientTags.organizationId, clientTagAssignments.organizationId),
+        eq(clientTags.id, clientTagAssignments.tagId),
+      ),
+    )
+    .where(
+      and(
+        eq(clientTagAssignments.organizationId, organizationId),
+        inArray(clientTagAssignments.clientId, clientIds),
+      ),
+    )
+    .orderBy(...tagOrder);
+  for (const { clientId, ...tag } of rows) {
+    const list = byClient.get(clientId);
+    if (list) list.push(tag);
+    else byClient.set(clientId, [tag]);
+  }
+  return byClient;
+}
+
+export async function countClientTags(
+  tx: DbTransaction,
+  organizationId: string,
+  clientId: string,
+): Promise<number> {
+  const rows = await tx
+    .select({ total: count() })
+    .from(clientTagAssignments)
+    .where(
+      and(
+        eq(clientTagAssignments.organizationId, organizationId),
+        eq(clientTagAssignments.clientId, clientId),
+      ),
+    );
+  return rows[0]?.total ?? 0;
+}
+
+// Devuelve true solo si insertó: una etiqueta que el cliente ya tiene no escribe nada (D-6).
+export async function insertAssignment(
+  tx: DbTransaction,
+  organizationId: string,
+  clientId: string,
+  tagId: string,
+): Promise<boolean> {
+  const rows = await tx
+    .insert(clientTagAssignments)
+    .values({ organizationId, clientId, tagId })
+    .onConflictDoNothing()
+    .returning({ tagId: clientTagAssignments.tagId });
+  return rows.length > 0;
+}
+
+// Devuelve true solo si borró: quitar una etiqueta que el cliente no tiene no escribe nada (D-6).
+export async function deleteAssignment(
+  tx: DbTransaction,
+  organizationId: string,
+  clientId: string,
+  tagId: string,
+): Promise<boolean> {
+  const rows = await tx
+    .delete(clientTagAssignments)
+    .where(
+      and(
+        eq(clientTagAssignments.organizationId, organizationId),
+        eq(clientTagAssignments.clientId, clientId),
+        eq(clientTagAssignments.tagId, tagId),
+      ),
+    )
+    .returning({ tagId: clientTagAssignments.tagId });
+  return rows.length > 0;
 }

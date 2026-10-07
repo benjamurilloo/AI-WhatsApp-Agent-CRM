@@ -130,10 +130,14 @@ const INSERT_ONLY_TABLES = [
 // Se actualizan pero no se borran (brief-6.1, D-3; credenciales, brief-6.5.3, D-1; información
 // del negocio, brief-11.2, D-4).
 const NO_DELETE_TABLES = [
+  "client_tags",
   "ingestion_credentials",
   "ingestion_events",
   "knowledge_entries",
 ];
+// Se insertan y se borran, pero no se actualizan: una asignación se pone y se quita (brief-16.1,
+// D-6).
+const NO_UPDATE_TABLES = ["client_tag_assignments"];
 
 async function tablesWithWrongPrivileges(executor: Db | DbTransaction) {
   const result = await executor.execute<{
@@ -154,10 +158,11 @@ async function tablesWithWrongPrivileges(executor: Db | DbTransaction) {
     .filter((row) => {
       const insertOnly = INSERT_ONLY_TABLES.includes(row.tablename);
       const noDelete = NO_DELETE_TABLES.includes(row.tablename);
+      const noUpdate = NO_UPDATE_TABLES.includes(row.tablename);
       return !(
         row.can_select &&
         row.can_insert &&
-        row.can_update === !insertOnly &&
+        row.can_update === !(insertOnly || noUpdate) &&
         row.can_delete === !(insertOnly || noDelete)
       );
     })

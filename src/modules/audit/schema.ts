@@ -25,6 +25,8 @@ export const auditEntityType = pgEnum("audit_entity_type", [
   "organization_member",
   // Entrada de información del negocio (brief-11.2).
   "knowledge_entry",
+  // Etiqueta del catálogo de clientes (brief-16.1, D-7).
+  "client_tag",
 ]);
 
 export const auditAction = pgEnum("audit_action", [
@@ -37,6 +39,8 @@ export const auditAction = pgEnum("audit_action", [
   "role_change",
   // Cambio del precio de un producto (brief-11.1, D-7).
   "price_change",
+  // Etiqueta puesta o quitada en un cliente, en su historial (brief-16.1, D-7).
+  "tag_change",
 ]);
 
 export const auditLogs = pgTable(

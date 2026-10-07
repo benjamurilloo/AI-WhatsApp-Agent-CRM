@@ -3,12 +3,15 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
+  assignClientTag,
   createClient,
   deactivateClient,
   reactivateClient,
+  removeClientTag,
   suggestClients,
   updateClient,
   type ClientActiveResult,
+  type ClientTagChangeResult,
 } from "@/modules/crm";
 import type { AuthContext } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
@@ -18,6 +21,7 @@ import {
   clientChangeMessage,
   clientFieldError,
   PHONE_TAKEN_MESSAGE,
+  tagChangeMessage,
   unexpectedErrorMessage,
   type ClientChangeState,
   type ClientFormState,
@@ -214,6 +218,77 @@ export async function reactivateClientAction(
     "reactivado",
     formData,
     reactivateClient,
+  );
+}
+
+// Poner y quitar una etiqueta en la ficha (brief-16.1, FR-CLI-09). El log no lleva el nombre de la
+// etiqueta: dice algo sobre la persona.
+async function runClientTagChange(
+  route: string,
+  notice: string,
+  formData: FormData,
+  operation: (
+    context: AuthContext,
+    clientId: string,
+    tagId: string,
+  ) => Promise<ClientTagChangeResult>,
+): Promise<ClientChangeState> {
+  const requestId = newRequestId();
+  const started = performance.now();
+  const clientId = String(formData.get("clientId") ?? "");
+  const tagId = String(formData.get("tagId") ?? "");
+  const context = await requireSession();
+
+  let destination: string;
+  try {
+    const result = await operation(context, clientId, tagId);
+    if (!result.ok) {
+      logDone(started, requestId, route, result.code, context);
+      revalidatePath(`/clientes/${clientId}`);
+      return {
+        status: "error",
+        requestId,
+        message: tagChangeMessage(result, requestId),
+      };
+    }
+    logDone(started, requestId, route, "OK", context);
+    revalidatePath("/clientes");
+    destination = result.changed
+      ? `/clientes/${clientId}?aviso=${notice}`
+      : `/clientes/${clientId}`;
+  } catch (error) {
+    logDone(started, requestId, route, "INTERNAL", context, error);
+    return {
+      status: "error",
+      requestId,
+      message: unexpectedErrorMessage(requestId),
+    };
+  }
+
+  redirect(destination);
+}
+
+export async function assignClientTagAction(
+  _previous: ClientChangeState,
+  formData: FormData,
+): Promise<ClientChangeState> {
+  return runClientTagChange(
+    "clientes.etiqueta.poner",
+    "etiqueta-agregada",
+    formData,
+    assignClientTag,
+  );
+}
+
+export async function removeClientTagAction(
+  _previous: ClientChangeState,
+  formData: FormData,
+): Promise<ClientChangeState> {
+  return runClientTagChange(
+    "clientes.etiqueta.quitar",
+    "etiqueta-quitada",
+    formData,
+    removeClientTag,
   );
 }
 

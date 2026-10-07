@@ -8,6 +8,7 @@ const ACTION_LABEL: Record<string, string> = {
   update: "Edición",
   deactivate: "Desactivación",
   reactivate: "Reactivación",
+  tag_change: "Etiqueta",
 };
 
 const VALUE_LABEL: Record<string, string> = {
@@ -40,6 +41,12 @@ const FIELD_ORDER = ["displayName", "phoneE164", "notes", "isActive"];
 export function describeAuditDiff(entry: ClientAuditEntry): string {
   const { before, after } = entry.diff;
   if (after === null) return "—";
+  // Etiqueta puesta o quitada, con el nombre que tenía en ese momento (brief-16.1, D-7).
+  if (entry.action === "tag_change" && before !== null) {
+    return after.tag == null
+      ? `Etiqueta quitada: ${show(before.tag)}`
+      : `Etiqueta agregada: ${show(after.tag)}`;
+  }
   if (before === null) {
     return [
       `Nombre: ${show(after.displayName)}`,

@@ -44,6 +44,28 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
   "src/app/(autenticado)/clientes/actions.ts#suggestClientsAction": {
     requirement: "sesion",
   },
+  // Poner y quitar una etiqueta en la ficha (brief-16.1, D-5): solo admin, lo exige crm.
+  "src/app/(autenticado)/clientes/actions.ts#assignClientTagAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/clientes/actions.ts#removeClientTagAction": {
+    requirement: "sesion",
+  },
+  // El catálogo de etiquetas, pantalla 13 (brief-16.1, D-5): solo admin, lo exige crm.
+  "src/app/(autenticado)/clientes/etiquetas/actions.ts#createTagAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/clientes/etiquetas/actions.ts#updateTagAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/clientes/etiquetas/actions.ts#createSuggestedTagsAction":
+    { requirement: "sesion" },
+  "src/app/(autenticado)/clientes/etiquetas/actions.ts#deactivateTagAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/clientes/etiquetas/actions.ts#reactivateTagAction": {
+    requirement: "sesion",
+  },
   "src/app/(autenticado)/conversaciones/actions.ts#changeConversationStatusAction":
     { requirement: "sesion" },
   "src/app/(autenticado)/conversaciones/actions.ts#loadOlderMessagesAction": {

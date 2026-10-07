@@ -3,8 +3,53 @@ import {
   CLIENTS_PAGE_SIZE,
   clientPageBounds,
   interpretSearch,
+  SUGGESTED_TAGS,
   validateClientInput,
+  validateTagInput,
 } from "./service";
+import { TAG_COLORS } from "./tag-colors";
+
+describe("validateTagInput (brief-16.1, D-2 y D-4)", () => {
+  it("recorta el nombre y sin color usa gris", () => {
+    expect(validateTagInput({ name: "  Reclamo  " })).toEqual({
+      ok: true,
+      values: { name: "Reclamo", color: "gray" },
+    });
+    expect(validateTagInput({ name: "Reclamo", color: "" })).toMatchObject({
+      ok: true,
+      values: { color: "gray" },
+    });
+  });
+
+  it("acepta los seis colores de la paleta y ningún otro", () => {
+    for (const color of TAG_COLORS) {
+      expect(validateTagInput({ name: "X", color }).ok, color).toBe(true);
+    }
+    expect(validateTagInput({ name: "X", color: "pink" })).toEqual({
+      ok: false,
+      code: "VALIDATION_ERROR",
+      fields: ["color"],
+    });
+  });
+
+  it("rechaza el nombre vacío y el de más de 40 caracteres", () => {
+    expect(validateTagInput({ name: "   " })).toMatchObject({
+      fields: ["name"],
+    });
+    expect(validateTagInput({ name: "x".repeat(40) }).ok).toBe(true);
+    expect(validateTagInput({ name: "x".repeat(41) })).toMatchObject({
+      fields: ["name"],
+    });
+  });
+
+  it("las sugeridas son válidas y tienen nombres distintos (D-3)", () => {
+    for (const tag of SUGGESTED_TAGS) {
+      expect(validateTagInput(tag).ok, tag.name).toBe(true);
+    }
+    const names = SUGGESTED_TAGS.map((tag) => tag.name.toLowerCase());
+    expect(new Set(names).size).toBe(names.length);
+  });
+});
 
 describe("validateClientInput (brief-5.2, D-5)", () => {
   it("recorta textos, normaliza el teléfono y guarda vacíos como null", () => {

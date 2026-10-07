@@ -1,4 +1,4 @@
-import type { ClientField } from "@/modules/crm";
+import type { ClientField, TagField } from "@/modules/crm";
 import type { ErrorCode } from "@/shared/errors";
 
 // Textos de las pantallas 6 y 7 (wireframes 06 y 07), derivados de la taxonomía de errores
@@ -94,7 +94,93 @@ const NOTICES: Record<string, string> = {
   editado: "Cliente actualizado.",
   desactivado: "Cliente desactivado.",
   reactivado: "Cliente reactivado.",
+  "etiqueta-agregada": "Etiqueta agregada.",
+  "etiqueta-quitada": "Etiqueta quitada.",
 };
+
+// Etiquetas de clientes (brief-16.1): la ficha (pantalla 7) y el catálogo (pantalla 13).
+
+export const NO_TAGS_MESSAGE = "Este cliente no tiene etiquetas.";
+export const NO_TAG_CATALOG_MESSAGE = "Todavía no hay etiquetas.";
+export const TAG_NAME_MESSAGE = "Ingresá un nombre de hasta 40 caracteres.";
+export const TAG_COLOR_MESSAGE = "Elegí uno de los colores.";
+export const TAG_NAME_TAKEN_MESSAGE =
+  "Ya existe una etiqueta con ese nombre. Si está desactivada, reactivala desde la lista.";
+export const TAG_NOT_FOUND_MESSAGE =
+  "Esta etiqueta no existe o está desactivada.";
+// Los límites de D-11 van escritos: este archivo lo usan componentes de cliente, que no pueden
+// importar valores de crm. messages.test.ts comprueba que coincidan con MAX_ACTIVE_TAGS y
+// MAX_TAGS_PER_CLIENT.
+export const TAG_ORGANIZATION_LIMIT_MESSAGE =
+  "Ya hay 50 etiquetas activas, el máximo. Desactivá alguna para sumar otra.";
+export const TAG_CLIENT_LIMIT_MESSAGE =
+  "Un cliente puede tener hasta 10 etiquetas. Quitá alguna para agregar otra.";
+export const SUGGESTED_TAGS_TAKEN_MESSAGE =
+  "Las etiquetas sugeridas solo se crean con el catálogo vacío.";
+
+const TAG_FIELD_MESSAGES: Record<TagField, string> = {
+  name: TAG_NAME_MESSAGE,
+  color: TAG_COLOR_MESSAGE,
+};
+
+export function tagFieldError(fields: TagField[]): {
+  field: TagField;
+  message: string;
+} {
+  const field: TagField = fields.includes("name") ? "name" : "color";
+  return { field, message: TAG_FIELD_MESSAGES[field] };
+}
+
+export type TagFormValues = { name: string; color: string };
+
+export type TagFormState =
+  | { status: "idle" }
+  | {
+      status: "error";
+      requestId: string;
+      field: TagField | null;
+      message: string;
+      values: TagFormValues;
+    };
+
+// Un rechazo al poner, quitar, desactivar o reactivar una etiqueta, con el límite si lo hubo.
+export function tagChangeMessage(
+  result: {
+    code: Exclude<ErrorCode, "UNAUTHENTICATED">;
+    limit?: "organization" | "client";
+  },
+  requestId: string,
+): string {
+  if (result.limit === "client") return TAG_CLIENT_LIMIT_MESSAGE;
+  if (result.limit === "organization") return TAG_ORGANIZATION_LIMIT_MESSAGE;
+  switch (result.code) {
+    case "FORBIDDEN":
+      return FORBIDDEN_ACTION_MESSAGE;
+    case "NOT_FOUND":
+    case "VALIDATION_ERROR":
+      return TAG_NOT_FOUND_MESSAGE;
+    case "CONFLICT":
+      return SUGGESTED_TAGS_TAKEN_MESSAGE;
+    default:
+      return unexpectedErrorMessage(requestId);
+  }
+}
+
+const TAG_NOTICES: Record<string, string> = {
+  creada: "Etiqueta creada.",
+  editada: "Etiqueta actualizada.",
+  desactivada:
+    "Etiqueta desactivada. Los clientes que la tenían la conservan, como inactiva.",
+  reactivada: "Etiqueta reactivada.",
+  sugeridas: "Etiquetas sugeridas creadas.",
+};
+
+export function tagNoticeMessage(
+  value: string | string[] | undefined,
+): string | null {
+  const key = Array.isArray(value) ? value[0] : value;
+  return key && Object.hasOwn(TAG_NOTICES, key) ? TAG_NOTICES[key]! : null;
+}
 
 export function noticeMessage(
   value: string | string[] | undefined,

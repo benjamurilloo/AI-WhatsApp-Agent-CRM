@@ -42,7 +42,14 @@ export function AuditCard({
       {total === 0 ? (
         <p className="text-sm text-muted">Sin cambios registrados todavía.</p>
       ) : (
-        <div className="-mx-5 overflow-x-auto sm:-mx-6">
+        // Se desplaza de costado en un teléfono: con foco y nombre, se recorre con el teclado
+        // (axe, scrollable-region-focusable; revisión independiente de la 16.1.1).
+        <div
+          className="-mx-5 overflow-x-auto sm:-mx-6"
+          tabIndex={0}
+          role="region"
+          aria-label={caption}
+        >
           <table className="w-full border-collapse text-left text-sm">
             <caption className="sr-only">{caption}</caption>
             <thead>

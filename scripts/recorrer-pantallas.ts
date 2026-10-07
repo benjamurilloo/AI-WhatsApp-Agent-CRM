@@ -1,5 +1,5 @@
-// Recorre las 10 pantallas del MVP, más la 5b (precios, 11.1) y la 11 y la 12 (información del
-// negocio, 11.2), contra un entorno desplegado y **recoge los errores de consola, las
+// Recorre las 10 pantallas del MVP, más la 5b (precios, 11.1), la 11 y la 12 (información del
+// negocio, 11.2) y la 13 (etiquetas de clientes, 16.1), contra un entorno desplegado y **recoge los errores de consola, las
 // excepciones, las fallas de red, las respuestas HTTP de error y el contenido que no aparece**
 // (9.3, AC-10; corregido en la 11.0; las tres pantallas nuevas, en la 11.4, D-8). Uso:
 //
@@ -430,6 +430,17 @@ async function recorrido(page: Page): Promise<void> {
     );
   }
 
+  // Con el catálogo vacío no hay tabla: se comprueba el encabezado de la página (16.1).
+  filas.push(
+    await visitar(
+      page,
+      13,
+      "Etiquetas de clientes",
+      "/clientes/etiquetas",
+      encabezado("Etiquetas de clientes"),
+    ),
+  );
+
   filas.push(
     await visitar(
       page,
@@ -488,7 +499,7 @@ async function recorrido(page: Page): Promise<void> {
     );
   }
 
-  console.log(`\n## Recorrido de las 13 pantallas — ${BASE}\n`);
+  console.log(`\n## Recorrido de las 14 pantallas — ${BASE}\n`);
   console.log("| # | Pantalla | Ruta | Carga | Contenido |");
   console.log("| --- | --- | --- | --- | --- |");
   console.log("| 1 | Inicio de sesión | /login | — | ingreso correcto |");

@@ -39,6 +39,10 @@
   /* Advertencia, para «bajo stock» (O-17, brief-11.1, D-8): contraste 7,59:1. */
   --warning-soft: #fdf0d5;
   --on-warning-soft: #6b4400;
+  /* Etiqueta azul de clientes (brief-16.1, D-4). Los otros cinco colores de etiqueta usan los
+     tonos suaves de arriba, ya comprobados. */
+  --tag-blue-soft: #e3eefd;
+  --on-tag-blue-soft: #163f7a;
   /* Series de los gráficos (brief-15.3, D-4): un tono por grupo, sin significado de «bueno» o
      «malo». Contraste con la superficie de 3:1 o más (WCAG 1.4.11), calculado en la brief. */
   --chart-text: #6d28d9;
@@ -80,6 +84,8 @@
     --on-success-soft: #aee8c8;
     --warning-soft: #3a2a0c;
     --on-warning-soft: #f5cf85;
+    --tag-blue-soft: #13284a;
+    --on-tag-blue-soft: #b9d4fb;
     /* Series de los gráficos (brief-15.3, D-4): un tono por grupo, sin significado de «bueno» o
        «malo». Contraste con la superficie de 3:1 o más (WCAG 1.4.11), calculado en la brief. */
     --chart-text: #a48bfa;
@@ -122,6 +128,8 @@
   /* Advertencia en oscuro: contraste 9,33:1. */
   --warning-soft: #3a2a0c;
   --on-warning-soft: #f5cf85;
+  --tag-blue-soft: #13284a;
+  --on-tag-blue-soft: #b9d4fb;
   /* Series de los gráficos (brief-15.3, D-4): un tono por grupo, sin significado de «bueno» o
      «malo». Contraste con la superficie de 3:1 o más (WCAG 1.4.11), calculado en la brief. */
   --chart-text: #a48bfa;
@@ -165,6 +173,8 @@
   --color-on-success-soft: var(--on-success-soft);
   --color-warning-soft: var(--warning-soft);
   --color-on-warning-soft: var(--on-warning-soft);
+  --color-tag-blue-soft: var(--tag-blue-soft);
+  --color-on-tag-blue-soft: var(--on-tag-blue-soft);
   --color-chart-text: var(--chart-text);
   --color-chart-audio: var(--chart-audio);
   --color-chart-image: var(--chart-image);

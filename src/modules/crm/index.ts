@@ -1,6 +1,8 @@
 // Interfaz pública del módulo crm (brief-5.2; lecturas para conversations, brief-6.3; resolución
-// por teléfono para ingestion, brief-12.1; bloqueo del cliente para conversations, brief-12.2).
+// por teléfono para ingestion, brief-12.1; bloqueo del cliente para conversations, brief-12.2;
+// etiquetas de clientes, brief-16.1).
 export { type ClientPhone } from "./phone";
+export { TAG_COLORS, type TagColor } from "./tag-colors";
 export {
   CLIENT_SUGGEST_LIMIT,
   CLIENT_SUGGEST_MIN_LENGTH,
@@ -34,4 +36,25 @@ export {
   type ClientPage,
   type CreateClientResult,
   type UpdateClientResult,
+  MAX_ACTIVE_TAGS,
+  MAX_TAGS_PER_CLIENT,
+  SUGGESTED_TAGS,
+  assignClientTag,
+  createClientTag,
+  createSuggestedClientTags,
+  deactivateClientTag,
+  listActiveClientTags,
+  listClientTags,
+  reactivateClientTag,
+  removeClientTag,
+  updateClientTag,
+  type ClientTag,
+  type ClientTagChangeResult,
+  type CreateTagResult,
+  type Tag,
+  type TagActiveResult,
+  type TagField,
+  type TagInput,
+  type TagWithClientCount,
+  type UpdateTagResult,
 } from "./service";

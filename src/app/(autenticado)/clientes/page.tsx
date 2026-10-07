@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { searchClientsByLastInteraction } from "@/modules/conversations";
+import { listActiveClientTags, type ClientTag } from "@/modules/crm";
 import { requireSession } from "@/app/_auth/session";
 import {
   activeBadgeClass,
@@ -10,6 +11,7 @@ import {
   inputClass,
   labelClass,
   linkClass,
+  secondaryLinkClass,
   selectClass,
   tableCellClass,
   tableHeadCellClass,
@@ -23,6 +25,7 @@ import {
 } from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
 import { SuggestInput } from "@/app/_components/suggest-input";
+import { TagChip } from "@/app/_components/tag-chip";
 import { Pagination, shownRangeText } from "@/app/_components/pagination";
 import { formatShortDateTime } from "@/app/_format/date-time";
 import { NO_INTERACTIONS_TEXT } from "@/app/(autenticado)/conversaciones/messages";
@@ -63,7 +66,15 @@ export default async function ClientsPage({
   searchParams: Promise<SearchParams>;
 }) {
   const context = await requireSession();
-  const filters = parseClientFilters(await searchParams);
+  const parsed = parseClientFilters(await searchParams);
+  const activeTags = await listActiveClientTags(context);
+  const tags = activeTags.ok ? activeTags.tags : [];
+  // Una etiqueta ajena, inexistente o inactiva se ignora, también en la URL y en el formulario
+  // (brief-16.1, D-8 y D-9).
+  const filters = {
+    ...parsed,
+    tagId: tags.some((tag) => tag.id === parsed.tagId) ? parsed.tagId : null,
+  };
   const result = await searchClientsByLastInteraction(context, filters);
   if (!result.ok) {
     return <PageNotice title={TITLE} message={FORBIDDEN_PAGE_MESSAGE} />;
@@ -81,6 +92,12 @@ export default async function ClientsPage({
           isAdmin ? { href: "/clientes/nuevo", label: "+ Nuevo cliente" } : null
         }
       />
+      <p className="mt-4">
+        <Link href="/clientes/etiquetas" className={secondaryLinkClass}>
+          <Icon name="tag" className="size-4" />
+          Etiquetas
+        </Link>
+      </p>
 
       <form
         key={clientFiltersHref(filters)}
@@ -124,6 +141,26 @@ export default async function ClientsPage({
             <option value="todos">Todos</option>
           </select>
         </div>
+        {tags.length > 0 ? (
+          <div className="flex flex-col gap-1">
+            <label htmlFor="etiqueta" className={labelClass}>
+              Etiqueta
+            </label>
+            <select
+              id="etiqueta"
+              name="etiqueta"
+              defaultValue={filters.tagId ?? ""}
+              className={selectClass}
+            >
+              <option value="">Todas</option>
+              {tags.map((tag) => (
+                <option key={tag.id} value={tag.id}>
+                  {tag.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
         <div className="flex flex-col gap-1">
           <label htmlFor="orden" className={labelClass}>
             Ordenar por
@@ -186,6 +223,9 @@ export default async function ClientsPage({
                     Teléfono
                   </th>
                   <th scope="col" className={tableHeadCellClass}>
+                    Etiquetas
+                  </th>
+                  <th scope="col" className={tableHeadCellClass}>
                     Última interacción
                   </th>
                   <th scope="col" className={tableHeadCellClass}>
@@ -215,6 +255,9 @@ export default async function ClientsPage({
                     </td>
                     <td className={tableCellClass}>
                       <PhoneText phone={client.phone} emptyText="—" />
+                    </td>
+                    <td className={tableCellClass}>
+                      <RowTags tags={client.tags} />
                     </td>
                     <td className={`${tableCellClass} whitespace-nowrap`}>
                       {client.lastInteractionAt
@@ -268,6 +311,11 @@ export default async function ClientsPage({
                 <p className="mt-2 text-sm">
                   <PhoneText phone={client.phone} emptyText="Sin teléfono" />
                 </p>
+                {client.tags.length > 0 ? (
+                  <div className="mt-2">
+                    <RowTags tags={client.tags} />
+                  </div>
+                ) : null}
                 <p className="mt-1 text-sm text-muted">
                   Última interacción:{" "}
                   {client.lastInteractionAt
@@ -311,5 +359,29 @@ export default async function ClientsPage({
         </p>
       ) : null}
     </main>
+  );
+}
+
+// Hasta tres etiquetas por fila y «+N» con las demás (brief-16.1, D-9). El «+N» dice en texto
+// cuántas faltan; la lista completa está en la ficha.
+const ROW_TAG_LIMIT = 3;
+
+function RowTags({ tags }: { tags: ClientTag[] }) {
+  if (tags.length === 0) return <span className="text-muted">—</span>;
+  const hidden = tags.length - ROW_TAG_LIMIT;
+  return (
+    <ul className="flex flex-wrap gap-1.5">
+      {tags.slice(0, ROW_TAG_LIMIT).map((tag) => (
+        <li key={tag.id}>
+          <TagChip name={tag.name} color={tag.color} isActive={tag.isActive} />
+        </li>
+      ))}
+      {hidden > 0 ? (
+        <li className="text-sm text-muted">
+          +{hidden}
+          <span className="sr-only"> etiquetas más</span>
+        </li>
+      ) : null}
+    </ul>
   );
 }

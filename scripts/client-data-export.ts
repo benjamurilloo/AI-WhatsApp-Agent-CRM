@@ -8,9 +8,10 @@ import { getDb, type Db } from "@/shared/db";
  *
  *   npx tsx scripts/client-data-export.ts --org <organization_id> --client <client_id> --out <archivo.json>
  *
- * Cuatro orígenes, que son todos los que guardan datos de la persona:
- * su ficha, sus conversaciones, sus mensajes con el cuerpo, y las entradas de auditoría sobre
- * ella, que incluyen valores anteriores de teléfono y notas.
+ * Cinco orígenes, que son todos los que guardan datos de la persona:
+ * su ficha, sus conversaciones, sus mensajes con el cuerpo, las entradas de auditoría sobre
+ * ella, que incluyen valores anteriores de teléfono y notas, y desde la 16.1 sus etiquetas
+ * actuales, con la fecha en que se pusieron (brief-16.1, D-10). Su historial sale con la auditoría.
  *
  * `ingestion_events` queda fuera a propósito: guarda `source`, una referencia opaca del emisor,
  * el hash del payload y fechas. No tiene datos personales (brief-8.2, hallazgo 9). Se dice acá
@@ -30,6 +31,7 @@ export type ClientExport = {
   conversations: Record<string, unknown>[];
   messages: Record<string, unknown>[];
   audit_logs: Record<string, unknown>[];
+  client_tags: Record<string, unknown>[];
 };
 
 export async function exportClientData(
@@ -65,6 +67,14 @@ export async function exportClientData(
         order by created_at, id`,
   );
 
+  const tags = await db.execute<Record<string, unknown>>(
+    sql`select t.name, t.color, t.is_active, a.created_at as assigned_at
+        from client_tag_assignments a
+        join client_tags t on t.organization_id = a.organization_id and t.id = a.tag_id
+        where a.organization_id = ${organizationId} and a.client_id = ${clientId}
+        order by lower(t.name), t.id`,
+  );
+
   return {
     exported_at: now.toISOString(),
     organization_id: organizationId,
@@ -77,6 +87,7 @@ export async function exportClientData(
     conversations: conversations.rows,
     messages: messages.rows,
     audit_logs: auditLogs.rows,
+    client_tags: tags.rows,
   };
 }
 
@@ -104,7 +115,8 @@ async function main() {
   // Nunca se imprime el contenido: solo el recuento y el destino.
   console.log(
     `Export escrito en ${out}: ${data.conversations.length} conversaciones, ` +
-      `${data.messages.length} mensajes, ${data.audit_logs.length} entradas de auditoría.`,
+      `${data.messages.length} mensajes, ${data.audit_logs.length} entradas de auditoría, ` +
+      `${data.client_tags.length} etiquetas.`,
   );
   console.log(
     "Contiene datos personales: no lo versiones ni lo compartas por un canal abierto.",
