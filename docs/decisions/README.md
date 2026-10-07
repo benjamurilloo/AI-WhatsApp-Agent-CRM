@@ -105,6 +105,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-15.4](brief-15.4-detalles-y-formularios.md) | 15.4 — Pantallas de detalle y formularios | aprobado el 2026-10-05 con las recomendaciones de D-1 a D-11; cerrado el 2026-10-05 |
 | [brief-15.5](brief-15.5-logo-de-la-marca.md) | 15.5 — Logo de la marca | aprobado el 2026-10-06 con las recomendaciones de D-1 a D-4 y la precisión de D-4 del usuario; cerrado el 2026-10-06 |
 | [brief-16.1](brief-16.1-etiquetas-de-clientes.md) | 16.1 — Etiquetas de clientes, manuales | aprobado el 2026-10-06 con las recomendaciones de D-1 a D-13, y la precisión de D-4 del 2026-10-07; cerrado el 2026-10-07 |
+| [brief-16.2](brief-16.2-etiquetas-puestas-por-el-agente.md) | 16.2 — Etiquetas puestas por el agente | aprobado el 2026-10-07 con las recomendaciones de D-1 a D-13, y las precisiones de D-7 y de la precedencia del mismo día; cerrado el 2026-10-07 |
 | [evidencia-9.1](evidencia-9.1-staging.md) | 9.1 — Salidas crudas de la verificación en staging | captura del 2026-09-22 |
 | [evidencia-9.2](evidencia-9.2-backups.md) | 9.2 — Backup y restauración verificados en staging | captura del 2026-09-22 |
 | [evidencia-9.3](evidencia-9.3-volumen.md) | 9.3 — Volumen, planes y tiempos medidos en staging | captura del 2026-09-23 |

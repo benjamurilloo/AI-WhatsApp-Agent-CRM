@@ -259,7 +259,7 @@ Los mismos cinco pasos de staging, con `crm-production` en lugar de `crm-staging
 3. **HSTS** presente sobre HTTPS y ausente sobre HTTP.
 4. **La aplicación escucha solo en loopback.**
 5. **El rol de la aplicación no es el dueño.**
-6. **La ingestión y la API de lectura, apagadas**: `POST /api/ingestion/v1/events`, `POST /api/ingestion/v2/events` y `GET /api/read/v1/products` responden `404` desde afuera.
+6. **La ingestión y la API de lectura, como deben estar**: `POST /api/ingestion/v1/events`, `POST /api/ingestion/v2/events` y `GET /api/read/v1/products` responden desde afuera **`401` sin token mientras estén encendidas** para un emisor (desde la 13.5.2-a, solo para `agente-demo`), y **`404` si están apagadas**. *Hasta el cierre de la 16.2 (2026-10-07) este paso pedía siempre `404`; quedó viejo al encenderlas en la 13.5.2-a.*
 7. **Ningún dato real de un cliente**: `select count(*)` de `clients`, `conversations`, `messages` y `products` da 0 en las cuatro, y `organizations` da 1.
 
 ## Monitoreo y alertas

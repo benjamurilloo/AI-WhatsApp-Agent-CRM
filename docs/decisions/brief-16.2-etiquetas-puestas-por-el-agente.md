@@ -12,6 +12,7 @@ generated_at: 2026-10-07
 - **Nivel de evidencia objetivo**: `deterministic` para el contrato, el validador, el servicio y la ruta de lectura, contra PostgreSQL real; `isolated-runtime` para el despliegue; `producer-consumer` para el agente como emisor real.
 - **Nivel de validación alcanzable**: **validado localmente y en CI**, desplegado en producción y **validado en integración** con el agente. No es «preparado para producción»: ninguna subfase de la Fase 16 lo reclama.
 - **Orden**: segunda subfase de la Fase 16 ([Roadmap](../planning/Roadmap.md) §Fase 16). Depende de la 16.1, que dejó el catálogo y las asignaciones ([brief-16.1](brief-16.1-etiquetas-de-clientes.md)).
+- **Estado**: aprobado el 2026-10-07 con las recomendaciones de D-1 a D-13; **cerrado el 2026-10-07** (§Cierre).
 - **No abre ni cierra gate**, pero **cambia un contrato con el agente**: el Roadmap deja que el brief decida la revisión independiente (D-11).
 - **Estado de este documento**: **aprobado el 2026-10-07** por el usuario, con las recomendaciones de D-1 a D-13 y la nota de H-1. La aprobación no autoriza ningún commit, cambio en Notion, despliegue ni pedido al agente: cada uno se autoriza en su turno.
 
@@ -221,12 +222,12 @@ Y siempre **antes de**: el commit de la 16.2.1, el push, el despliegue, el pedid
 
 ## Resultados — etapa 16.2.1 (local)
 
-- **Precisión de D-7**: la respuesta de `GET /api/read/v1/client-tags` nombra el campo `tag_id`, no `id`, como `product_id` y `entry_id` del mismo contrato. Pendiente de la aprobación del usuario al revisar esta etapa.
+- **Precisión de D-7**: la respuesta de `GET /api/read/v1/client-tags` nombra el campo `tag_id`, no `id`, como `product_id` y `entry_id` del mismo contrato. **Aprobada por el usuario el 2026-10-07.**
 - **Base local**: Docker Desktop estaba apagado; se levantó el contenedor con `docker compose up -d --wait`.
 - **Batería**: formato, lint, tipos y build limpios; Vitest 1.811 casos, con la única falla de la guarda de superficie expuesta mientras la ruta nueva no estaba en el índice (con `git add -N`, las 16 guardas dan 485 de 485); Playwright 127 de 127 sobre `next start`, con el caso 7 nuevo y la ruta en `read-api.spec.ts`.
 - **Mutaciones**, todas en rojo y restauradas: M5, sin la comprobación de etiqueta activa (fallan 2 casos de `client-tags-ingestion`); M6, sin el límite de 10 (fallan 2); M7, `findActiveTags` sin el filtro por organización (falla el caso del catálogo de `read-api`); M8, la métrica 12 contando los tipos nuevos (falla su caso de `analytics-ingestion`).
 - **Revisión independiente (D-11, AC-11)**, de solo lectura, por un agente que no participó: 12 hallazgos (2 medios, 10 bajos) y 4 dudas, verificados contra el código:
-  - 1 (medio), qué gana cuando la etiqueta ya está puesta: el código ya daba `accepted` antes de mirar si está inactiva o el límite, **igual que la ficha en HEAD** (se comparó con `git show HEAD`); se escribió en el contrato y tiene test. **Precisión pendiente de la aprobación del usuario**, junto con la de D-7;
+  - 1 (medio), qué gana cuando la etiqueta ya está puesta: el código ya daba `accepted` antes de mirar si está inactiva o el límite, **igual que la ficha en HEAD** (se comparó con `git show HEAD`); se escribió en el contrato y tiene test. **Precisión aprobada por el usuario el 2026-10-07**, junto con la de D-7;
   - 2 (medio), DataModel no nombraba las reglas nuevas en `error_code` ni el reenvío de los tipos nuevos: corregido;
   - 3, 4, 5, 6 y 9, textos: la ruta en §Log de read-v1, los recuentos de ingestion-v2, `tag_id` marcado como pendiente, el `FOR SHARE` solo al poner y una frase de este brief que quedó vieja;
   - 7, `countClientTags` sin uso: borrada. **Ya no se usaba en HEAD**: era código muerto de la 16.1;
@@ -234,3 +235,67 @@ Y siempre **antes de**: el commit de la 16.2.1, el push, el despliegue, el pedid
   - 10 y 11, el reenvío de `tag_not_found` y `client_tag_limit` y la sesión que no autentica la ruta: tests nuevos;
   - 12, la lista de `service-read-entry-points.test.ts` no nombra `listActiveTagsForService`: la guarda la cubre por patrón, y el archivo está fuera de la lista. Queda declarado, sin cambio;
   - dudas: D-1 (¿cambió la ficha?) descartada contra HEAD; D-2, `AGENT_SOURCE` y su limpieza son la preparación del caso 7; D-3 (orden con `client.resolved`) y D-4 (uuid en mayúsculas) quedaron escritas en la guía del contrato.
+
+## Resultados — etapa 16.2.2 (producción)
+
+- **2026-10-07**, autorizado por el usuario en su turno. Se siguió `deploy/production/README.md` §Desplegar un cambio.
+- **Paso 1**: la CI de `95493648f82b22a62fa69f5ee96abe956a881218` en `success` (corrida `37634311710`, leída por `headSha`).
+- **Paso 2**: quedó anotado `b5544d6`, la versión que corría y la ref de vuelta atrás.
+- **Paso 3**: `npm ci`, `db:migrate` sin migraciones nuevas (siguen 28), build y reinicio; la última línea dio `desplegado: 9549364…`, y `crm-production` quedó `active`.
+- **Recuentos de solo lectura**, de todas las tablas de `public` y de `drizzle.__drizzle_migrations`, dentro de `begin read only`: iguales antes y después.
+- **Desde afuera**: `GET /api/read/v1/client-tags` sin token da `401` (AC-12), igual que `GET /api/read/v1/products` y `POST /api/ingestion/v2/events`; `/login` da `200`.
+- **Nivel**: `isolated-runtime` del código desplegado. El emisor real todavía no manda los tipos nuevos: eso es la 16.2.3.
+
+## Coordinación con el agente (D-12)
+
+- **2026-10-07**: el pedido se escribió en el Escritorio del usuario, fuera del repositorio, después de la 16.2.2. El agente respondió ese mismo día, sin cambios de contrato.
+- **Lo que el agente hace**, en lo contractual:
+  - pone etiquetas por `tag_id`, con reglas fijas, no con el modelo;
+  - manda la etiqueta recién cuando respondió el `client.resolved` del mismo cliente;
+  - el `event_id` es estable ante un reintento y no lleva el teléfono;
+  - `occurred_at` es la hora del mensaje que originó el turno;
+  - lee el catálogo con caché, y otra vez ante un `tag_not_found`;
+  - usa sus credenciales `read` e `ingest` de producción, que ya existen. Que la de lectura tenga alcance `read` lo afirma el agente y no se verificó del lado del CRM.
+- **Decisiones del usuario, 2026-10-07**:
+  - las tres etiquetas de la primera versión son «Derivado» (pidió una persona), «Reclamo» (soporte) e «Interesado» (ventas con un producto);
+  - en la 16.2.3, el `client.tag_removed` lo manda un llamador de prueba del agente, con su credencial y por el borde real, y se declara así. Valida el contrato de quitar, pero no que el agente quite etiquetas en un turno: en su primera versión solo pone;
+  - el pedido aparte del agente, la cantidad de stock en la lectura, **no entra en la 16.2**. Pasa a la subfase 16.6 ([Roadmap](../planning/Roadmap.md), Fase 16).
+
+## Resultados — etapa 16.2.3 (integración con el agente)
+
+- **2026-10-07, de 18:35 a 18:55 UTC**, en la organización de demostración de producción, con el teléfono del usuario como único cliente. La autorizó el usuario. El agente usó sus credenciales `read` e `ingest` de producción. Su lectura del catálogo respondió `200`, lo que confirma el alcance `read`.
+- **Etiquetas**: «Derivado» la creó el admin para la ventana; «Interesado» y «Reclamo» ya estaban, de la 16.1. El agente leyó sus tres `tag_id` del catálogo, y coinciden con la base.
+- **Conciliación** de lo que reportó el agente contra `ingestion_events`, `client_tag_assignments` y `audit_logs`, con consultas de solo lectura:
+  - **8 eventos de etiqueta en los dos lados**, con los mismos `event_id` y horas: 6 `client.tag_added` y 2 `client.tag_removed`. 7 terminaron `processed` y 1 `failed` con `tag_not_found` en `error_code`.
+  - **5 `tag_change` con la credencial como actor**: «Interesado» puesta y quitada dos veces, y «Derivado» puesta una vez. Las otras dos veces que el agente mandó «Derivado», el cliente ya la tenía: respondieron `accepted` sin escribir ni auditar.
+  - **El `422`**: el agente puso «Interesado» con la etiqueta desactivada, porque todavía la tenía en su caché del catálogo. Después releyó el catálogo y no mandó más la etiqueta (paso 8). El cliente recibió todas las respuestas en esos turnos.
+  - **Un `accepted` del paso 7 que el agente marcó para revisar**: según la auditoría, el admin desactivó «Interesado» a las 18:53:38, después del evento de las 18:49:37. El CRM aceptó la etiqueta porque en ese momento estaba activa. El usuario confirmó que la desactivó más tarde de lo que se había dicho.
+  - **Estado final**: el cliente tiene «Derivado»; «Interesado» está desactivada y sin asignaciones. La ficha muestra la etiqueta, y su historial muestra los 5 cambios con autor «Servicio · agente-demo» (AC-4).
+- **Límites declarados**:
+  - «Reclamo» no se puso: el agente deriva casi todo reclamo a una persona antes de que responda el agente de soporte, y eso es «Derivado». Lo resuelve el agente en una subfase propia.
+  - Los dos `client.tag_removed` los mandó un llamador de prueba del agente, con su credencial y por su emisor real, no un turno: en su primera versión el agente solo pone etiquetas.
+  - `client_not_found` y `client_tag_limit` no ocurrieron en la ventana: quedan validadas localmente.
+- **Después de la ventana**, el agente sigue etiquetando en la organización de demostración, por decisión del usuario.
+
+## Cierre
+
+**Cerrada el 2026-10-07**, con la aprobación del usuario.
+
+| Criterio | Estado |
+|---|---|
+| AC-1 a AC-10 | cumplidos en la 16.2.1 (§Resultados 16.2.1) |
+| AC-11 | revisión independiente: 12 hallazgos y 4 dudas, verificados; el 12 queda declarado sin cambios |
+| AC-12 | cumplido en la 16.2.2 |
+| AC-13 | cumplido, con los límites de §Resultados 16.2.3 |
+
+- **Nivel**: validado localmente y en CI; desplegado en producción (`isolated-runtime`); **validado en integración** (`producer-consumer`) con el agente como emisor real, para poner, quitar, `accepted` sin escritura y `tag_not_found`. No es «preparado para producción».
+- **Precisiones aprobadas por el usuario el 2026-10-07**:
+  - D-7: el campo se llama `tag_id`;
+  - qué gana cuando el cliente ya tiene la etiqueta: `accepted`, aunque la etiqueta esté desactivada o el cliente tenga 10.
+- **Decisiones del usuario durante la subfase**:
+  - los dos archivos fuera de la lista, el handler de ingestión v1 y `read-api.spec.ts`;
+  - las tres etiquetas del agente y el `client.tag_removed` por un llamador de prueba;
+  - el pedido de la cantidad de stock pasa a la 16.6;
+  - el agente sigue etiquetando después de la ventana.
+- **Fuera de la lista, en el cierre**: `deploy/production/README.md`. Su paso 6 de «Verificar después de desplegar» todavía esperaba `404` de la ingestión y de la lectura, que responden `401` desde la 13.5.2-a.
+- **Autoevaluación declarada** para la 16.2.2, la 16.2.3 y este cierre. La revisión independiente cubrió la 16.2.1.

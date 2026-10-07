@@ -2,6 +2,26 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-07 — 16.2 cerrada: etiquetas puestas por el agente
+
+Segunda subfase de la Fase 16 ([brief-16.2](docs/decisions/brief-16.2-etiquetas-puestas-por-el-agente.md)), en tres etapas. Commit `9549364` (16.2.1, CI 37634311710, `success`, leída por `headSha`). Desplegada en producción el 2026-10-07 sin migraciones (16.2.2) y validada con el agente el mismo día (16.2.3).
+
+**Certifica**:
+- **Dos tipos nuevos, solo en la ingestión v2**: `client.tag_added` y `client.tag_removed` ponen y quitan una etiqueta del catálogo en un cliente, identificado por teléfono, con la etiqueta por su id. Siguen las mismas reglas que la ficha, en una sola función de `crm`, y quedan auditados con la credencial como autor. Responden siempre `200`; las reglas `client_not_found`, `tag_not_found` y `client_tag_limit` dan `422` terminal. v1 los rechaza, y no cuentan en la métrica 12.
+- **`GET /api/read/v1/client-tags`**: el catálogo de etiquetas activas, con `tag_id` y `name`, con alcance `read`. Es una ruta nueva y ninguna respuesta existente cambia.
+- **Revisión independiente** (D-11): 12 hallazgos y 4 dudas, verificados antes del commit.
+- **En producción**: `crm.vixoraai.app` corre `9549364`, con 28 migraciones. Las tablas tienen los mismos recuentos antes y después, y la ruta nueva responde `401` sin token. Versión anterior: `b5544d6`.
+- **Con el agente** (16.2.3), en la organización de demostración: 8 eventos conciliados contra `ingestion_events`, las asignaciones y la auditoría. Incluyen poner, quitar, `accepted` sin escritura y un `422 tag_not_found` con la etiqueta desactivada. La ficha muestra las etiquetas y su historial con el autor «Servicio · agente-demo».
+- **De paso**: el paso 6 de «Verificar después de desplegar» de `deploy/production/README.md` pasa a esperar `401` con la ingestión encendida.
+
+**No certifica**:
+- Que el agente ponga «Reclamo»: lo deriva a una persona, y eso es «Derivado». Lo resuelve el agente.
+- Que el agente quite etiquetas en un turno: los `client.tag_removed` los mandó un llamador de prueba suyo.
+- `client_not_found` y `client_tag_limit` con el emisor real: solo están validados localmente.
+- La cantidad de stock que pidió el agente: es la 16.6.
+
+**Nivel**: validado localmente y en CI, verificado en producción (`isolated-runtime`) y **validado en integración** (`producer-consumer`) con el agente como emisor real. No es «preparado para producción».
+
 ## 2026-10-07 — 16.1 cerrada: etiquetas de clientes, manuales
 
 Primera subfase de la Fase 16 ([brief-16.1](docs/decisions/brief-16.1-etiquetas-de-clientes.md)), en dos etapas. Commit `b5544d6` (16.1.1, CI 37553649605, `success`, leída por `headSha`). Desplegada en producción el 2026-10-07 (16.1.2), con las migraciones `0026` y `0027`.
