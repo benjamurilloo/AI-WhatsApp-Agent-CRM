@@ -1,0 +1,18 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: ningún consumidor real leyó esta respuesta (brief-16.3, D-3).",
+  "description": "Conversación sin pausa: el agente contesta como siempre.",
+  "request": {
+    "method": "GET",
+    "path": "/api/read/v1/conversation-state?conversation_ref=conv-propuesta-0001",
+    "headers": { "authorization": "Bearer crm_ctx_<token>" }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "contract_version": "1",
+      "agent_paused": false,
+      "agent_paused_at": null
+    }
+  }
+}

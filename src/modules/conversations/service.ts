@@ -61,6 +61,8 @@ export type ConversationSummary = {
   status: ConversationStatus;
   startedAt: Date;
   lastMessageAt: Date | null;
+  // Nula: el agente está activo (brief-16.3, D-4).
+  agentPausedAt: Date | null;
   messageCount: number;
 };
 
@@ -487,6 +489,98 @@ export async function changeConversationStatus(
     });
     return { ok: true, changed: true };
   });
+}
+
+export const AGENT_PAUSE_ACTIONS = ["pause", "resume"] as const;
+export type AgentPauseAction = (typeof AGENT_PAUSE_ACTIONS)[number];
+
+export type ChangeAgentPauseResult =
+  | { ok: true; changed: boolean }
+  // VALIDATION_ERROR sin fields: id inválido. Con fields: la acción. BUSINESS_RULE_VIOLATION:
+  // pausar una conversación cerrada (D-5).
+  | Failure<
+      "FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR" | "BUSINESS_RULE_VIOLATION"
+    >
+  | Failure<"VALIDATION_ERROR", { fields: ["action"] }>;
+
+const agentPauseActionSchema = z.enum(AGENT_PAUSE_ACTIONS);
+
+// Pausar o reanudar al agente en una conversación (brief-16.3; FR-CONV-06). Solo admin, auditado
+// en la misma transacción como agent_pause_change (D-6). Solo toca agent_paused_at, nunca el
+// estado (invariante 1). Se pausa una open o pending y se reanuda en cualquier estado (D-5).
+// Repetir la acción no escribe ni audita: una pausa conserva su hora original.
+export async function changeAgentPause(
+  context: AuthContext,
+  input: { conversationId: string; action: string },
+  now: Date = new Date(),
+): Promise<ChangeAgentPauseResult> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  if (!idSchema.safeParse(input.conversationId).success) {
+    return failure("VALIDATION_ERROR");
+  }
+  const action = agentPauseActionSchema.safeParse(input.action);
+  if (!action.success) {
+    return { ok: false, code: "VALIDATION_ERROR", fields: ["action"] };
+  }
+  const pause = action.data === "pause";
+
+  return repository.withTransaction(
+    async (tx): Promise<ChangeAgentPauseResult> => {
+      const current = await repository.findConversation(
+        context.organizationId,
+        input.conversationId,
+        tx,
+        { forUpdate: true },
+      );
+      if (!current) return failure("NOT_FOUND");
+      const paused = current.agentPausedAt !== null;
+      if (paused === pause) return { ok: true, changed: false };
+      if (pause && current.status === "closed") {
+        return failure("BUSINESS_RULE_VIOLATION");
+      }
+
+      await repository.updateAgentPause(
+        tx,
+        context.organizationId,
+        current.id,
+        pause ? now : null,
+      );
+      await recordAudit(tx, {
+        organizationId: context.organizationId,
+        actorUserId: context.userId,
+        entityType: "conversation",
+        entityId: current.id,
+        action: "agent_pause_change",
+        diff: {
+          before: { agentPaused: paused },
+          after: { agentPaused: pause },
+        },
+      });
+      return { ok: true, changed: true };
+    },
+  );
+}
+
+export type AgentPauseState = { agentPausedAt: Date | null };
+
+export type AgentPauseStateResult =
+  ({ ok: true } & AgentPauseState) | Failure<"NOT_FOUND">;
+
+// Marca de pausa para la API de lectura (brief-16.3, D-3; FR-CONV-06). La organización sale de la
+// credencial y la referencia ya viene validada por el contrato. Ajena o inexistente dan el mismo
+// NOT_FOUND, como el historial; una cerrada se lee.
+export async function getAgentPauseForService(
+  organizationId: string,
+  input: { channel: ConversationChannel; conversationRef: string },
+): Promise<AgentPauseStateResult> {
+  const found = await repository.findAgentPauseByExternalRef({
+    organizationId,
+    channel: input.channel,
+    externalRef: input.conversationRef,
+  });
+  if (found === undefined) return failure("NOT_FOUND");
+  return { ok: true, agentPausedAt: found.agentPausedAt };
 }
 
 export type ClientActivityResult =

@@ -3,6 +3,7 @@ import {
   MESSAGE_DIRECTIONS,
   MESSAGE_KINDS,
   MESSAGE_SENDERS,
+  type AgentPauseStateResult,
   type HistoryMessage,
 } from "@/modules/conversations";
 import { isOpaqueReference } from "@/modules/ingestion";
@@ -163,6 +164,19 @@ export const clientTagListResponseSchema = z.strictObject({
   items: z.array(clientTagSchema),
 });
 
+// Marca de pausa de una conversación (brief-16.3, D-3): si un admin pausó al agente y desde
+// cuándo. Nunca datos del cliente ni mensajes (invariante 3). agent_paused_at es null si y solo si
+// agent_paused es false.
+export const conversationStateResponseSchema = z
+  .strictObject({
+    contract_version: z.literal(READ_CONTRACT_VERSION),
+    agent_paused: z.boolean(),
+    agent_paused_at: z.iso.datetime({ precision: 3 }).nullable(),
+  })
+  .refine((state) => state.agent_paused === (state.agent_paused_at !== null), {
+    path: ["agent_paused_at"],
+  });
+
 export const errorResponseSchema = z.strictObject({
   code: z.enum(ERROR_CODES),
   request_id: z.uuid(),
@@ -173,6 +187,9 @@ export type ContractProduct = z.infer<typeof productSchema>;
 export type ContractKnowledgeEntry = z.infer<typeof knowledgeEntrySchema>;
 export type ContractHistoryMessage = z.infer<typeof historyMessageSchema>;
 export type ContractClientTag = z.infer<typeof clientTagSchema>;
+export type ContractConversationState = z.infer<
+  typeof conversationStateResponseSchema
+>;
 
 // La base guarda numeric(14, 2) («300000.00»). El contrato lo escribe con los decimales de la
 // moneda: «300000» en CLP, «1234.50» en ARS. La escritura ya rechaza decimales que la moneda no
@@ -237,5 +254,16 @@ export function toContractHistoryMessage(
     sent_by: message.sentBy,
     sent_at: message.sentAt.toISOString(),
     body_text: message.body,
+  };
+}
+
+// La hora, en UTC con milisegundos; sin la pausa, null.
+export function toContractConversationState(
+  state: Extract<AgentPauseStateResult, { ok: true }>,
+): ContractConversationState {
+  return {
+    contract_version: READ_CONTRACT_VERSION,
+    agent_paused: state.agentPausedAt !== null,
+    agent_paused_at: state.agentPausedAt?.toISOString() ?? null,
   };
 }

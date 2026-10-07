@@ -20,8 +20,8 @@ import {
 } from "./schema";
 
 // Acceso a conversations y messages (brief-6.3). Toda consulta filtra por organization_id en SQL.
-// Solo lectura, salvo el estado de la conversación y las inserciones de la ingestión (brief-6.5.2):
-// messages es de solo inserción (brief-6.1, D-3).
+// Solo lectura, salvo el estado de la conversación, la pausa del agente (brief-16.3) y las
+// inserciones de la ingestión (brief-6.5.2): messages es de solo inserción (brief-6.1, D-3).
 
 type Executor = Db | DbTransaction;
 
@@ -45,6 +45,8 @@ export type ConversationRow = {
   status: ConversationStatus;
   startedAt: Date;
   lastMessageAt: Date | null;
+  // Nula: el agente está activo (brief-16.3, D-1).
+  agentPausedAt: Date | null;
 };
 
 const conversationColumns = {
@@ -54,6 +56,7 @@ const conversationColumns = {
   status: conversations.status,
   startedAt: conversations.startedAt,
   lastMessageAt: conversations.lastMessageAt,
+  agentPausedAt: conversations.agentPausedAt,
 };
 
 // Filtros ya validados; fechas YYYY-MM-DD sobre last_message_at.
@@ -224,6 +227,26 @@ export async function updateConversationStatus(
   assertUpdatedOne(rows, "updateConversationStatus");
 }
 
+// Pausa o reanuda al agente (brief-16.3, D-1): solo agent_paused_at, nunca status.
+export async function updateAgentPause(
+  tx: DbTransaction,
+  organizationId: string,
+  conversationId: string,
+  agentPausedAt: Date | null,
+): Promise<void> {
+  const rows = await tx
+    .update(conversations)
+    .set({ agentPausedAt })
+    .where(
+      and(
+        eq(conversations.organizationId, organizationId),
+        eq(conversations.id, conversationId),
+      ),
+    )
+    .returning({ id: conversations.id });
+  assertUpdatedOne(rows, "updateAgentPause");
+}
+
 export type MessageRow = {
   id: string;
   direction: MessageDirection;
@@ -267,6 +290,27 @@ export function findMessagesBefore(
     )
     .orderBy(sql`${messages.sentAt} desc`, sql`${messages.id} desc`)
     .limit(limit);
+}
+
+// Marca de pausa de la conversación de la organización con esa referencia del emisor, sin
+// bloquear (brief-16.3, D-3). undefined: ajena o inexistente.
+export async function findAgentPauseByExternalRef(values: {
+  organizationId: string;
+  channel: ConversationChannel;
+  externalRef: string;
+}): Promise<{ agentPausedAt: Date | null } | undefined> {
+  const rows = await getDb()
+    .select({ agentPausedAt: conversations.agentPausedAt })
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.organizationId, values.organizationId),
+        eq(conversations.channel, values.channel),
+        eq(conversations.externalRef, values.externalRef),
+      ),
+    )
+    .limit(1);
+  return rows[0];
 }
 
 // Id de la conversación de la organización con esa referencia del emisor, sin bloquear: la

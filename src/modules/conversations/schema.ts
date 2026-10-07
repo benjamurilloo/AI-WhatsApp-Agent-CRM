@@ -59,6 +59,9 @@ export const conversations = pgTable(
     status: conversationStatus("status").notNull().default("open"),
     startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
+    // Desde cuándo un admin pausó al agente en esta conversación; nula, el agente está activo
+    // (brief-16.3, D-1 y D-2). Independiente de status: la derivación no la toca.
+    agentPausedAt: timestamp("agent_paused_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

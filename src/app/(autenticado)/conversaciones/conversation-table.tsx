@@ -9,13 +9,25 @@ import {
 import { Avatar } from "@/app/_components/avatar";
 import { Icon } from "@/app/_components/icons";
 import { formatShortDateTime } from "@/app/_format/date-time";
-import { CHANNEL_LABEL, NO_CLIENT_TEXT } from "./messages";
+import { AGENT_PAUSED_LABEL, CHANNEL_LABEL, NO_CLIENT_TEXT } from "./messages";
 import { StatusBadge } from "./status-badge";
 
 // Conversaciones de la pantalla 8 y de la sección de la 7 (wireframes 07 y 08): tabla en
 // escritorio y tarjetas en móvil; la versión oculta no entra al árbol de accesibilidad. Sin
 // contenido de mensajes ni teléfono. Componente de servidor. Desde la brief-15.1, con avatar del
-// cliente y un ícono genérico de canal junto a su nombre (D-8).
+// cliente y un ícono genérico de canal junto a su nombre (D-8). Desde la brief-16.3, la marca
+// «Agente pausado» junto al estado (D-4).
+
+// Texto con ícono decorativo: el color acompaña, no informa solo.
+export function AgentPausedBadge() {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-warning-soft px-2.5 py-0.5 text-[0.8125rem] font-semibold whitespace-nowrap text-on-warning-soft">
+      <span aria-hidden="true">⏸</span>
+      {AGENT_PAUSED_LABEL}
+    </span>
+  );
+}
+
 export function ConversationTable({
   conversations,
   timeZone,
@@ -90,7 +102,10 @@ export function ConversationTable({
                   </span>
                 </td>
                 <td className={tableCellClass}>
-                  <StatusBadge status={conversation.status} />
+                  <span className="flex flex-wrap items-center gap-2">
+                    <StatusBadge status={conversation.status} />
+                    {conversation.agentPausedAt ? <AgentPausedBadge /> : null}
+                  </span>
                 </td>
                 {showClient ? (
                   <td className={`${tableCellClass} whitespace-nowrap`}>
@@ -122,6 +137,7 @@ export function ConversationTable({
             </p>
             <p className="mt-2 flex flex-wrap items-center gap-2 text-sm">
               <StatusBadge status={conversation.status} />
+              {conversation.agentPausedAt ? <AgentPausedBadge /> : null}
               <span>{CHANNEL_LABEL[conversation.channel]}</span>
             </p>
             <p className="mt-1 text-sm text-muted tabular-nums">

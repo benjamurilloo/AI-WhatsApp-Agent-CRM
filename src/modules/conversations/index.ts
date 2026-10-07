@@ -1,6 +1,12 @@
 // Interfaz pública del módulo conversations (brief-6.3; conversación vigente para ingestion,
-// brief-12.2; historial para la API de lectura, brief-12.4).
+// brief-12.2; historial para la API de lectura, brief-12.4; pausa del agente, brief-16.3).
 export {
+  AGENT_PAUSE_ACTIONS,
+  type AgentPauseAction,
+  type AgentPauseStateResult,
+  changeAgentPause,
+  type ChangeAgentPauseResult,
+  getAgentPauseForService,
   changeConversationStatus,
   CURRENT_CONVERSATION_WINDOW_MS,
   escalateIngestedConversation,

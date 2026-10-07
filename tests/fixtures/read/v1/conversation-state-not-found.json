@@ -1,0 +1,17 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: ningún consumidor real leyó esta respuesta (brief-16.3, D-3).",
+  "description": "Una referencia de conversación inexistente o de otra organización: el mismo 404, sin distinguir los casos.",
+  "request": {
+    "method": "GET",
+    "path": "/api/read/v1/conversation-state?conversation_ref=conv-desconocida",
+    "headers": { "authorization": "Bearer crm_ctx_<token>" }
+  },
+  "response": {
+    "status": 404,
+    "body": {
+      "code": "NOT_FOUND",
+      "request_id": "8b2d4f6a-1c3e-4a5b-9d7f-0e2c4a6b8d1f"
+    }
+  }
+}

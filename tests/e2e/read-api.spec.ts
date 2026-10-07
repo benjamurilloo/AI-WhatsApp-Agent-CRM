@@ -21,6 +21,8 @@ const ROUTES = [
   "/api/read/v1/messages?conversation_ref=conv-propuesta-0001",
   // El catálogo de etiquetas (brief-16.2).
   "/api/read/v1/client-tags",
+  // La marca de pausa del agente (brief-16.3).
+  "/api/read/v1/conversation-state?conversation_ref=conv-propuesta-0001",
 ];
 
 for (const route of ROUTES) {

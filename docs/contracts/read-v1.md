@@ -4,6 +4,7 @@
 - **Diseñado e implementado** en la 11.3 ([brief-11.3](../decisions/brief-11.3-api-de-lectura.md)), en dos etapas: productos en la 11.3.1 e información del negocio en la 11.3.2.
 - **Ampliado en la 12.4** ([brief-12.4](../decisions/brief-12.4-historial-y-memorias.md)) con el historial de una conversación, `GET /api/read/v1/messages`, y su propio alcance de credencial, `context`. Es una ruta nueva, un cambio compatible dentro de v1 (§Versionado): ninguna respuesta existente cambia.
 - **Ampliado en la 16.2** ([brief-16.2](../decisions/brief-16.2-etiquetas-puestas-por-el-agente.md), D-7) con el catálogo de etiquetas de clientes, `GET /api/read/v1/client-tags`, con alcance `read`. Es una ruta nueva, un cambio compatible dentro de v1: ninguna respuesta existente cambia. **Validado localmente**, y **validado en integración** con el agente, que lo leyó con su credencial `read` de producción en la ventana 16.2.3 (2026-10-07).
+- **Ampliado en la 16.3** ([brief-16.3](../decisions/brief-16.3-pausar-y-reanudar-al-agente.md), D-3) con la marca de pausa del agente en una conversación, `GET /api/read/v1/conversation-state`, con alcance `context`. Es una ruta nueva, un cambio compatible dentro de v1: ninguna respuesta existente cambia. **Validado localmente**; **no validado en integración** todavía: sus fixtures tienen forma asumida, y el agente la lee en la ventana 16.3.3.
 - **Validado localmente y en CI**, con requests sintéticos, contra PostgreSQL real.
 - **No validado en integración**: ningún consumidor lo usa todavía. Sus fixtures tienen **forma asumida, no verificada**. Productos e información del negocio se validan con el agente en la 12.3, detrás del modo de prueba. El historial, en la 12.5: no se despliega a staging antes (brief-12.4, D-9). *Corregido el 2026-09-27* ([brief-12.5](../decisions/brief-12.5-turno-completo-en-staging.md), H-1, aprobado por el usuario): **la 12.3 no validó la lectura**, porque su corrida con el agente fue solo de ingestión. Las tres rutas se validan con el agente como consumidor en la 12.5.
 - **Validado en integración, en staging** (`producer-consumer`, 12.5.2, 2026-09-28; [evidencia-12.5](../decisions/evidencia-12.5-turno-completo.md)). El agente, con su cadena real y datos sintéticos, leyó las tres rutas con sus credenciales `read` y `context`, sin ningún `429`. Una respuesta de cada ruta es un fixture `"shape": "captured"` en `tests/fixtures/read/v1/`, junto a los de forma asumida. **Salvedad**: n8n guarda el cuerpo ya parseado, así que esas capturas validan el esquema, no los bytes. **No** es producción, y ningún mensaje real pasó.
@@ -219,6 +220,24 @@ Sirve para que el emisor sepa qué etiquetas existen y con qué `tag_id` las pon
 
 **No trae**: el color, las desactivadas, cuántos clientes la tienen ni las etiquetas de ningún cliente. Agregar cualquiera de esos campos es un cambio de v2 (§Versionado). *La 16.2.1 nombró el campo `tag_id` y no `id`, como `product_id` y `entry_id`; es una precisión de D-7 del [brief-16.2](../decisions/brief-16.2-etiquetas-puestas-por-el-agente.md), aprobada por el usuario el 2026-10-07.*
 
+### `GET /api/read/v1/conversation-state`
+
+Si un `admin` del CRM **pausó al agente** en una conversación de la organización de la credencial, y desde cuándo (FR-CONV-06). Desde la 16.3. **Exige una credencial de alcance `context`**, la misma del historial.
+
+| Parámetro | Obligatorio | Reglas |
+|---|---|---|
+| `conversation_ref` | sí | la misma referencia y las mismas reglas que en `messages` |
+
+- **Respuesta `200`**: `{ "contract_version": "1", "agent_paused": true, "agent_paused_at": "2026-10-07T14:31:07.123Z" }`. Sin pausa, `agent_paused` es `false` y `agent_paused_at`, `null`; uno sin el otro no pasa el validador.
+- **Cuándo leerla**: en cada turno, después de `conversation.resolved` y antes de generar la respuesta. Con `agent_paused: true`, el consumidor **no contesta** ese turno: una persona del negocio está atendiendo la conversación.
+- **La marca no depende del estado**: una conversación `pending` (derivada) puede estar activa, y una `open`, pausada. `conversation.escalated` no la pone ni la quita. Una conversación cerrada también se lee.
+- **Una conversación nueva del cliente nace activa**: la pausa es de la conversación, no del cliente (brief-16.3, D-2).
+- **Un mensaje del agente en una conversación pausada se registra igual** por la ingestión (brief-16.3, D-7): puede pasar en una carrera, si el admin pausa entre la lectura y el envío. Respetar la marca es responsabilidad del consumidor.
+- Una conversación de otra organización o inexistente da `404 NOT_FOUND`, **sin distinguir entre las dos**.
+- **No trae**: el estado de la conversación, el cliente, su teléfono, mensajes ni quién pausó. Agregar cualquiera de esos campos es un cambio de v2 (§Versionado).
+
+Fixtures, con forma asumida: `conversation-state-paused.json`, `conversation-state-active.json` y `conversation-state-not-found.json`.
+
 ## Errores
 
 El cuerpo de error tiene `code`, `request_id` y, en `VALIDATION_ERROR`, `fields`: los parámetros inválidos (`q`, `limit`, `product_id`, `conversation_ref` o `correlation_id`). Ningún error repite el texto buscado ni la referencia.
@@ -243,7 +262,7 @@ El cuerpo de error tiene `code`, `request_id` y, en `VALIDATION_ERROR`, `fields`
 
 ## Log
 
-Cada respuesta de la API encendida, incluidos los rechazos y el `500`, queda en el log estructurado con `request_id`, la ruta **fija** (`/api/read/v1/products`, `/api/read/v1/products/{product_id}`, `/api/read/v1/knowledge`, `/api/read/v1/messages` o, desde la 16.2, `/api/read/v1/client-tags`, nunca la URL), el código, la duración y, cuando se conocen, la organización, el `source` y el `correlation_id` (R-1 de la [evaluación 10.1](../decisions/evaluacion-10.1-mvp.md), piezas 1 y 2). **Nunca** el token, el texto buscado, el `limit`, un id buscado, la referencia de una conversación ni el texto de un mensaje: el texto viene de lo que escribió un cliente, y la referencia la genera el consumidor, así que el CRM no puede comprobar que no traiga un teléfono.
+Cada respuesta de la API encendida, incluidos los rechazos y el `500`, queda en el log estructurado con `request_id`, la ruta **fija** (`/api/read/v1/products`, `/api/read/v1/products/{product_id}`, `/api/read/v1/knowledge`, `/api/read/v1/messages`, desde la 16.2 `/api/read/v1/client-tags` o, desde la 16.3, `/api/read/v1/conversation-state`, nunca la URL), el código, la duración y, cuando se conocen, la organización, el `source` y el `correlation_id` (R-1 de la [evaluación 10.1](../decisions/evaluacion-10.1-mvp.md), piezas 1 y 2). **Nunca** el token, el texto buscado, el `limit`, un id buscado, la referencia de una conversación ni el texto de un mensaje: el texto viene de lo que escribió un cliente, y la referencia la genera el consumidor, así que el CRM no puede comprobar que no traiga un teléfono.
 
 ## Versionado
 
@@ -262,6 +281,7 @@ Cada respuesta de la API encendida, incluidos los rechazos y el `500`, queda en 
   - en `scripts/medir-caminos.ts`: las lecturas de las tres rutas contra el volumen de desarrollo (10 000 productos), sin el borde. Ese volumen no tiene precios ni entradas de información ([brief-11.3](../decisions/brief-11.3-api-de-lectura.md), §Resultados de la 11.3.2);
   - **el historial, desde la 12.4**, en `tests/integration/read-api-messages.test.ts`: los últimos N y nunca los primeros; el orden por `sent_at` con desempate estable; los mensajes sin tipo ni autor; el mismo `404` para una conversación ajena o inexistente; el alcance `context` en las dos direcciones; el borde, el log sin la referencia ni el texto y el `500`; y el plan de la consulta, que usa `messages_conversation_sent_idx` y corta con `LIMIT` en SQL. `read-api.spec.ts` suma la ruta a las cabeceras de `proxy.ts`. No se desplegó en staging en la 12.4 (D-9): llegó con la 12.5.1.
   - **el catálogo de etiquetas, desde la 16.2**, en `tests/integration/read-api.test.ts`: las activas de la organización por nombre, sin datos de clientes, el catálogo vacío, el alcance `read` (`401` sin token, `403` con `ingest` o `context`) y la API apagada. La mutación sin el filtro por organización lo hace fallar;
+  - **la marca de pausa, desde la 16.3**, en `tests/integration/read-api-conversation-state.test.ts`: la marca y su hora con el validador estricto; la independencia del estado; el mismo `404` para una conversación ajena o inexistente; el alcance `context` (`401` sin token, `403` con `read` o `ingest`); el borde; el log sin la referencia; la sesión que no autentica; y que no escribe. La mutación sin el filtro por organización lo hace fallar. `read-api.spec.ts` suma la ruta a las cabeceras de `proxy.ts`;
 - **Validado en staging** (`isolated-runtime`, 12.5.1, 2026-09-27): `scripts/probar-api-lectura.ts` recorrió las tres rutas a través del borde real, con credenciales `read` y `context`, y dio 0 fallas.
 - **Validado en integración, en staging** (`producer-consumer`, 12.5.2, 2026-09-28): el agente como consumidor real. Se validaron la compatibilidad y la autenticación con su tráfico, de 1 a 3 lecturas por turno, sin ningún `429` ([Risks](../planning/Risks.md), pregunta 5). *Hasta la 12.5, esta línea decía «sin validar hasta la 12.5»; actualizada por la revisión independiente de la 12.5 (R-2).*
 - **Sin validar**: el tráfico real y varios clientes a la vez (13.5).

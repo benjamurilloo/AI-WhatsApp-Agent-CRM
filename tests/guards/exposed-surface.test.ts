@@ -68,6 +68,9 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
   },
   "src/app/(autenticado)/conversaciones/actions.ts#changeConversationStatusAction":
     { requirement: "sesion" },
+  "src/app/(autenticado)/conversaciones/actions.ts#changeAgentPauseAction": {
+    requirement: "sesion",
+  },
   "src/app/(autenticado)/conversaciones/actions.ts#loadOlderMessagesAction": {
     requirement: "sesion",
   },
@@ -167,6 +170,10 @@ const HANDLERS: Readonly<Record<string, Entry>> = {
   "src/app/api/read/v1/client-tags/route.ts": {
     requirement: "sin-sesion",
     why: "catálogo de etiquetas de la API de lectura (brief-16.2, D-7): autentica con una credencial de alcance read, apagada salvo READ_API_ENABLED, una sesión válida no la autentica, y no devuelve datos de clientes",
+  },
+  "src/app/api/read/v1/conversation-state/route.ts": {
+    requirement: "sin-sesion",
+    why: "marca de pausa de la API de lectura (brief-16.3, D-3): autentica con una credencial de alcance context, apagada salvo READ_API_ENABLED, una sesión válida no la autentica, y no devuelve datos del cliente ni mensajes",
   },
 };
 

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { isReadCredentialAllowed, readReadApiConfig } from "./config";
 import {
   contractAmount,
+  conversationStateResponseSchema,
   errorResponseSchema,
   historyMessageSchema,
   knowledgeEntrySchema,
@@ -17,6 +18,7 @@ import {
   productListResponseSchema,
   productResponseSchema,
   productSchema,
+  toContractConversationState,
   toContractHistoryMessage,
 } from "./contract";
 
@@ -273,6 +275,60 @@ describe("historial (FR-API-08, brief-12.4)", () => {
   });
 });
 
+describe("marca de pausa (FR-CONV-06, brief-16.3)", () => {
+  const PAUSED = {
+    contract_version: "1",
+    agent_paused: true,
+    agent_paused_at: "2026-10-07T14:31:07.123Z",
+  };
+
+  it("FR-CONV-06: acepta una pausada con su hora y una activa con null", () => {
+    expect(conversationStateResponseSchema.safeParse(PAUSED).success).toBe(
+      true,
+    );
+    expect(
+      conversationStateResponseSchema.safeParse({
+        contract_version: "1",
+        agent_paused: false,
+        agent_paused_at: null,
+      }).success,
+    ).toBe(true);
+  });
+
+  it("FR-CONV-06: rechaza un campo de más, una marca sin hora o una hora sin marca, y otra versión", () => {
+    for (const invalid of [
+      { ...PAUSED, status: "open" },
+      { ...PAUSED, client_phone: "+5491155550001" },
+      { ...PAUSED, agent_paused_at: null },
+      { ...PAUSED, agent_paused: false },
+      { ...PAUSED, agent_paused: "true" },
+      { ...PAUSED, agent_paused_at: "2026-10-07T11:31:07.123-03:00" },
+      { ...PAUSED, contract_version: "2" },
+      { contract_version: "1", agent_paused: false },
+    ]) {
+      expect(
+        conversationStateResponseSchema.safeParse(invalid).success,
+        JSON.stringify(invalid),
+      ).toBe(false);
+    }
+  });
+
+  it("FR-CONV-06: el mapeo lleva solo los campos del contrato, con la hora en UTC y milisegundos", () => {
+    const paused = toContractConversationState({
+      ok: true,
+      agentPausedAt: new Date("2026-10-07T11:31:07.123-03:00"),
+    });
+    expect(paused).toStrictEqual(PAUSED);
+    expect(
+      toContractConversationState({ ok: true, agentPausedAt: null }),
+    ).toStrictEqual({
+      contract_version: "1",
+      agent_paused: false,
+      agent_paused_at: null,
+    });
+  });
+});
+
 describe("modo de prueba de la lectura (D-7)", () => {
   it("está apagado por defecto, con false, y no lo encienden las variables de ingestión", () => {
     for (const env of [
@@ -338,9 +394,11 @@ describe("fixtures del contrato (D-8)", () => {
           ? knowledgeListResponseSchema
           : data.request.path.startsWith("/api/read/v1/messages")
             ? messageListResponseSchema
-            : "items" in body
-              ? productListResponseSchema
-              : productResponseSchema;
+            : data.request.path.startsWith("/api/read/v1/conversation-state")
+              ? conversationStateResponseSchema
+              : "items" in body
+                ? productListResponseSchema
+                : productResponseSchema;
     const parsed = schema.safeParse(body);
     expect(parsed.success, parsed.error?.message).toBe(true);
   });

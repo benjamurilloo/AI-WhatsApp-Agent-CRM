@@ -1,4 +1,5 @@
 import type {
+  AgentPauseAction,
   ConversationChannel,
   ConversationListField,
   ConversationStatus,
@@ -108,6 +109,44 @@ export function statusChangeErrorMessage(
       return CONVERSATION_NOT_FOUND_MESSAGE;
     case "VALIDATION_ERROR":
       return "Elegí un estado válido.";
+    default:
+      return unexpectedErrorMessage(requestId);
+  }
+}
+
+// Pausa del agente (brief-16.3, D-4 y D-5). La marca es texto: el color acompaña.
+export const AGENT_PAUSED_LABEL = "Agente pausado";
+export const AGENT_ACTIVE_TEXT = "Activo";
+export const CLOSED_NOT_PAUSABLE_TEXT =
+  "Una conversación cerrada no se pausa: el agente no recibe mensajes en ella.";
+export const AGENT_PAUSE_HINT =
+  "Mientras está pausado, el agente no contesta en esta conversación. Una conversación nueva del cliente empieza con el agente activo.";
+
+export function agentPausedSinceText(since: string): string {
+  return `Pausado desde el ${since}`;
+}
+
+export function agentPauseChangedMessage(action: AgentPauseAction): string {
+  return action === "pause" ? "Agente pausado." : "Agente reanudado.";
+}
+
+export function agentPauseUnchangedMessage(action: AgentPauseAction): string {
+  return action === "pause"
+    ? "El agente ya estaba pausado."
+    : "El agente ya estaba activo.";
+}
+
+export function agentPauseErrorMessage(
+  code: Exclude<ErrorCode, "UNAUTHENTICATED">,
+  requestId: string,
+): string {
+  switch (code) {
+    case "FORBIDDEN":
+      return FORBIDDEN_ACTION_MESSAGE;
+    case "NOT_FOUND":
+      return CONVERSATION_NOT_FOUND_MESSAGE;
+    case "BUSINESS_RULE_VIOLATION":
+      return CLOSED_NOT_PAUSABLE_TEXT;
     default:
       return unexpectedErrorMessage(requestId);
   }

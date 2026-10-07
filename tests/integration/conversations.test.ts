@@ -211,6 +211,8 @@ describe("listConversations", () => {
       status: "closed",
       startedAt: new Date("2026-09-01T12:00:00Z"),
       lastMessageAt: new Date("2026-09-02T12:00:00Z"),
+      // Sin pausa del agente (brief-16.3).
+      agentPausedAt: null,
       messageCount: 2,
     });
     expect(result.conversations[0]!.client).toBeNull();
@@ -426,6 +428,7 @@ describe("getConversation", () => {
           status: "pending",
           startedAt: new Date("2026-09-01T12:00:00Z"),
           lastMessageAt: new Date("2026-09-01T12:00:00Z"),
+          agentPausedAt: null,
         },
         timezone: TZ,
       });

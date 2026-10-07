@@ -41,6 +41,8 @@ export const auditAction = pgEnum("audit_action", [
   "price_change",
   // Etiqueta puesta o quitada en un cliente, en su historial (brief-16.1, D-7).
   "tag_change",
+  // Agente pausado o reanudado en una conversación (brief-16.3, D-6).
+  "agent_pause_change",
 ]);
 
 export const auditLogs = pgTable(

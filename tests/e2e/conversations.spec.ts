@@ -765,3 +765,133 @@ test("caso 13: brief-15.2 con 10 filas por página, el estado y el orden se cons
   await expect(page.getByLabel("Estado")).toHaveValue("abierta");
   await expect(page.getByLabel("Ordenar por")).toHaveValue("inicio");
 });
+
+test("caso 14: brief-16.3 un admin pausa y reanuda al agente con el teclado; la lista marca la fila", async ({
+  page,
+}) => {
+  const conversationId = await insertConversation({
+    status: "pending",
+    messages: [{ direction: "inbound", sentAt: ago(0, 1), body: "hola" }],
+  });
+
+  await login(page, ADMIN);
+  await page.goto(`/conversaciones/${conversationId}`);
+  const agent = page.getByRole("region", { name: "Agente" });
+  await expect(agent).toContainText("el agente no contesta");
+  const pause = page.getByRole("button", { name: "Pausar al agente" });
+  await pause.focus();
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByText("Agente pausado.", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Conversación" }),
+  ).toContainText(/Agente pausado\s*Pausado desde el \d{2}\/\d{2} \d{2}:\d{2}/);
+  // El estado no cambia (invariante 1).
+  await expect(page.getByText("WhatsApp · Estado: Pendiente")).toBeVisible();
+  await expectAccessible(page, "agente pausado");
+
+  await page.goto("/conversaciones");
+  await expect(conversationsTable(page)).toContainText("Agente pausado");
+  await expectAccessible(page, "lista con una pausada");
+  await page.setViewportSize({ width: 375, height: 800 });
+  const cards = page.getByRole("list", {
+    name: "Conversaciones de la organización",
+  });
+  await expect(cards).toContainText("Agente pausado");
+  const scrollWidth = await page.evaluate(
+    () => document.documentElement.scrollWidth,
+  );
+  expect(scrollWidth).toBeLessThanOrEqual(375);
+  await expectAccessible(page, "lista con una pausada en móvil");
+
+  await page.goto(`/conversaciones/${conversationId}`);
+  await expectAccessible(page, "detalle pausado en móvil");
+  const resume = page.getByRole("button", { name: "Reanudar al agente" });
+  await resume.focus();
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByText("Agente reanudado.", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Pausar al agente" }),
+  ).toBeVisible();
+
+  const audit = await db.execute<{
+    action: string;
+    actor_user_id: string;
+    diff: unknown;
+  }>(
+    sql`select action, actor_user_id, diff from audit_logs
+        where entity_type = 'conversation' and entity_id = ${conversationId}
+        order by created_at, id`,
+  );
+  expect(audit.rows).toEqual([
+    {
+      action: "agent_pause_change",
+      actor_user_id: ADMIN_SEED.id,
+      diff: { before: { agentPaused: false }, after: { agentPaused: true } },
+    },
+    {
+      action: "agent_pause_change",
+      actor_user_id: ADMIN_SEED.id,
+      diff: { before: { agentPaused: true }, after: { agentPaused: false } },
+    },
+  ]);
+  const row = await db.execute<{ status: string; paused: boolean }>(
+    sql`select status, agent_paused_at is not null as paused from conversations where id = ${conversationId}`,
+  );
+  expect(row.rows[0]).toEqual({ status: "pending", paused: false });
+});
+
+test("caso 15: brief-16.3 un viewer ve la marca sin el botón, una cerrada no se pausa, y el servidor rechaza a quien dejó de ser admin", async ({
+  page,
+}) => {
+  const conversationId = await insertConversation({
+    messages: [{ direction: "inbound", sentAt: ago(1), body: "hola" }],
+  });
+  const closedId = await insertConversation({
+    status: "closed",
+    messages: [{ direction: "inbound", sentAt: ago(2), body: "chau" }],
+  });
+  await db.execute(
+    sql`update conversations set agent_paused_at = now() where id = ${conversationId}`,
+  );
+
+  await login(page, VIEWER);
+  await page.goto(`/conversaciones/${conversationId}`);
+  await expect(
+    page.getByRole("region", { name: "Conversación" }),
+  ).toContainText("Agente pausado");
+  await expect(page.getByRole("region", { name: "Agente" })).toBeHidden();
+  expect(await page.content()).not.toContain("Reanudar al agente");
+  await expectAccessible(page, "pausada como viewer");
+  await page.context().clearCookies();
+
+  await login(page, ADMIN);
+  await page.goto(`/conversaciones/${closedId}`);
+  await expect(page.getByRole("region", { name: "Agente" })).toContainText(
+    "Una conversación cerrada no se pausa",
+  );
+  await expect(
+    page.getByRole("button", { name: "Pausar al agente" }),
+  ).toBeHidden();
+
+  // Un admin abre la pantalla y pierde el rol antes de reanudar: solo el servidor puede rechazarlo.
+  await page.goto(`/conversaciones/${conversationId}`);
+  await db.execute(
+    sql`update organization_members set role = 'viewer' where user_id = ${ADMIN_SEED.id}`,
+  );
+  await page.getByRole("button", { name: "Reanudar al agente" }).click();
+  const message = page.getByText("No tenés permiso para esta acción.");
+  await expect(message).toBeVisible();
+  await expect(message).toBeFocused();
+  const row = await db.execute<{ paused: boolean }>(
+    sql`select agent_paused_at is not null as paused from conversations where id = ${conversationId}`,
+  );
+  expect(row.rows[0]!.paused).toBe(true);
+  const audit = await db.execute(
+    sql`select 1 from audit_logs where action = 'agent_pause_change'`,
+  );
+  expect(audit.rows).toEqual([]);
+});

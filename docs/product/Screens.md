@@ -150,7 +150,7 @@ Agregada en la 11.1 ([brief-11.1](../decisions/brief-11.1-catalogo-comercial.md)
 
 - **Objetivo**: explorar conversaciones.
 - **Usuario autorizado**: `admin` y `viewer`.
-- **Información mostrada**: cliente (o "sin cliente"), canal, estado, inicio, último mensaje y cantidad de mensajes.
+- **Información mostrada**: cliente (o "sin cliente"), canal, estado, inicio, último mensaje y cantidad de mensajes. *Desde la 16.3*, la marca «Agente pausado» junto al estado, si un admin pausó al agente en esa conversación.
 - **Acciones**: abrir el detalle.
 - **Filtros**: período (por `last_message_at`), estado, canal y cliente.
 - **Paginación**: 25 por página, del último mensaje más reciente al más antiguo.
@@ -158,15 +158,15 @@ Agregada en la 11.1 ([brief-11.1](../decisions/brief-11.1-catalogo-comercial.md)
 - **Vacío**: "no hay conversaciones". En el MVP solo existen las que cargan los seeds o los tests de ingestión.
 - **Errores**: generales.
 - **Responsive**: tarjetas en móvil.
-- **Accesibilidad**: el estado se muestra con texto.
+- **Accesibilidad**: el estado se muestra con texto, y la marca de pausa también: el color y el ícono acompañan.
 - **No mostrar**: vista previa del contenido de los mensajes (subfase 1.3, D-2). La consulta de la lista no trae el cuerpo del último mensaje, así que la restricción es del modelo de consulta y no solo de la vista.
 
 ## 9. Detalle de conversación y timeline
 
 - **Objetivo**: leer una conversación en orden cronológico.
-- **Usuario autorizado**: lectura para `admin` y `viewer`; cambio de estado solo para `admin`.
-- **Información mostrada**: cliente, canal, estado actual y mensajes del más antiguo al más reciente, con dirección y hora.
-- **Acciones**: cargar mensajes anteriores y cambiar el estado (`open`, `pending`, `closed`). El cambio queda auditado.
+- **Usuario autorizado**: lectura para `admin` y `viewer`; cambio de estado y pausa del agente solo para `admin`.
+- **Información mostrada**: cliente, canal, estado actual y mensajes del más antiguo al más reciente, con dirección y hora. *Desde la 16.3*, el agente: «Activo» o «Agente pausado», con la fecha y la hora desde la que está pausado.
+- **Acciones**: cargar mensajes anteriores y cambiar el estado (`open`, `pending`, `closed`). El cambio queda auditado. *Desde la 16.3*, «Pausar al agente» en una conversación `open` o `pending` y «Reanudar al agente» en cualquiera, auditados; una cerrada sin pausa dice que no se pausa. La sección explica que, mientras está pausado, el agente no contesta, y que una conversación nueva del cliente empieza con el agente activo ([brief-16.3](../decisions/brief-16.3-pausar-y-reanudar-al-agente.md)).
 - **Filtros**: no aplican.
 - **Paginación**: incremental, de a 50 mensajes, empezando por los más recientes.
 - **Carga**: indicador al cargar mensajes anteriores sin perder la posición de lectura.

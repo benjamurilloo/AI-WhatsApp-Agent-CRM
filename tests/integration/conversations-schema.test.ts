@@ -131,18 +131,21 @@ describe("conversations: esquema", () => {
       client_id: string | null;
       external_ref: string | null;
       last_message_at: string | null;
+      agent_paused_at: string | null;
       timestamps_now: boolean;
     }>(
       sql`insert into conversations (organization_id, channel, started_at)
           values (${s.orgA}, 'whatsapp', now())
-          returning status, client_id, external_ref, last_message_at,
+          returning status, client_id, external_ref, last_message_at, agent_paused_at,
                     created_at = now() and updated_at = now() as timestamps_now`,
     );
+    // Sin pausa: el agente está activo (brief-16.3, D-1).
     expect(result.rows[0]).toEqual({
       status: "open",
       client_id: null,
       external_ref: null,
       last_message_at: null,
+      agent_paused_at: null,
       timestamps_now: true,
     });
   });
@@ -279,10 +282,14 @@ describe("conversations: aislamiento y borrado", () => {
       await tx.execute(
         sql`update conversations set status = 'closed' where id = ${id}`,
       );
-      const read = await tx.execute<{ status: string }>(
-        sql`select status from conversations where id = ${id}`,
+      // La pausa del agente (brief-16.3) usa el mismo UPDATE de tabla, sin grant nuevo.
+      await tx.execute(
+        sql`update conversations set agent_paused_at = now() where id = ${id}`,
       );
-      expect(read.rows[0]?.status).toBe("closed");
+      const read = await tx.execute<{ status: string; paused: boolean }>(
+        sql`select status, agent_paused_at is not null as paused from conversations where id = ${id}`,
+      );
+      expect(read.rows[0]).toEqual({ status: "closed", paused: true });
       await tx.execute(sql`delete from conversations where id = ${id}`);
     });
   });

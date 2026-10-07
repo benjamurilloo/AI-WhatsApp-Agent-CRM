@@ -18,6 +18,9 @@ import { PageNotice } from "@/app/_components/page-notice";
 import { SectionCard } from "@/app/_components/section-card";
 import { formatShortDateTime } from "@/app/_format/date-time";
 import {
+  AGENT_ACTIVE_TEXT,
+  AGENT_PAUSE_HINT,
+  agentPausedSinceText,
   CHANNEL_LABEL,
   CONVERSATION_NOT_FOUND_MESSAGE,
   FORBIDDEN_PAGE_MESSAGE,
@@ -25,7 +28,9 @@ import {
   NO_MESSAGES_MESSAGE,
   STATUS_LABEL,
 } from "../messages";
+import { AgentPausedBadge } from "../conversation-table";
 import { StatusBadge } from "../status-badge";
+import { AgentPauseForm } from "./agent-pause-form";
 import { StatusForm } from "./status-form";
 import { Timeline } from "./timeline";
 import { toTimelineItems } from "./timeline-items";
@@ -39,7 +44,8 @@ const TITLE = "Conversación";
 // Pantalla 9 (wireframe 09): cabecera sin teléfono, timeline con los 50 mensajes más recientes y
 // cambio de estado solo para admin (brief-6.4). Un viewer no recibe el formulario. Presentación
 // de la 15.4: los mensajes como burbujas y, al costado, los datos de la conversación y el cambio
-// de estado. Sin campo para escribir ni tildes de leído (brief-15.4, D-7).
+// de estado. Sin campo para escribir ni tildes de leído (brief-15.4, D-7). Desde la 16.3, la marca
+// de pausa del agente para todos, y pausar o reanudar solo para admin (D-4).
 export default async function ConversationPage({
   params,
 }: {
@@ -144,6 +150,24 @@ export default async function ConversationPage({
                   value: <StatusBadge status={conversation.status} />,
                 },
                 {
+                  label: "Agente",
+                  value: conversation.agentPausedAt ? (
+                    <span className="flex flex-wrap items-center gap-2">
+                      <AgentPausedBadge />
+                      <span>
+                        {agentPausedSinceText(
+                          formatShortDateTime(
+                            conversation.agentPausedAt,
+                            timeZone,
+                          ),
+                        )}
+                      </span>
+                    </span>
+                  ) : (
+                    AGENT_ACTIVE_TEXT
+                  ),
+                },
+                {
                   label: "Canal",
                   value: CHANNEL_LABEL[conversation.channel],
                 },
@@ -160,6 +184,17 @@ export default async function ConversationPage({
               ]}
             />
           </SectionCard>
+
+          {isAdmin ? (
+            <SectionCard id="agente-titulo" title="Agente" icon="power">
+              <p className="mb-3 text-sm text-muted">{AGENT_PAUSE_HINT}</p>
+              <AgentPauseForm
+                conversationId={conversation.id}
+                paused={conversation.agentPausedAt !== null}
+                canPause={conversation.status !== "closed"}
+              />
+            </SectionCard>
+          ) : null}
 
           {isAdmin ? (
             <SectionCard

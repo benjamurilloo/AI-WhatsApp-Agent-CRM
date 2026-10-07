@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import {
+  changeAgentPause,
   changeConversationStatus,
   listConversationMessages,
 } from "@/modules/conversations";
@@ -9,6 +10,9 @@ import { requireSession } from "@/app/_auth/session";
 import { logEvent, newRequestId } from "@/shared/log";
 import { toTimelineItems } from "./[conversationId]/timeline-items";
 import {
+  agentPauseChangedMessage,
+  agentPauseErrorMessage,
+  agentPauseUnchangedMessage,
   CONVERSATION_NOT_FOUND_MESSAGE,
   FORBIDDEN_ACTION_MESSAGE,
   loadMessagesErrorMessage,
@@ -72,6 +76,64 @@ export async function changeConversationStatusAction(
       message: result.changed
         ? statusChangedMessage(chosen)
         : statusUnchangedMessage(chosen),
+    };
+  } catch (error) {
+    log("INTERNAL", error);
+    return {
+      status: "error",
+      requestId,
+      message: unexpectedErrorMessage(requestId),
+    };
+  }
+}
+
+// Pausar o reanudar al agente desde la pantalla 9 (brief-16.3, D-4). La acción viene del botón; el
+// rol, la organización y el estado se verifican en conversations.
+export async function changeAgentPauseAction(
+  _previous: StatusChangeState,
+  formData: FormData,
+): Promise<StatusChangeState> {
+  const requestId = newRequestId();
+  const started = performance.now();
+  const route = "conversaciones.pausar_agente";
+  const conversationId = String(formData.get("conversationId") ?? "");
+  const action = String(formData.get("action") ?? "");
+  const context = await requireSession();
+  const log = (code: Parameters<typeof logEvent>[0]["code"], error?: unknown) =>
+    logEvent({
+      level: code === "OK" ? "info" : error ? "error" : "warn",
+      requestId,
+      route,
+      code,
+      userId: context.userId,
+      organizationId: context.organizationId,
+      durationMs: performance.now() - started,
+      error,
+    });
+
+  try {
+    const result = await changeAgentPause(context, { conversationId, action });
+    // Como el cambio de estado: ante un rechazo se revalida para mostrar la marca real, salvo
+    // FORBIDDEN.
+    const refresh = result.ok ? result.changed : result.code !== "FORBIDDEN";
+    if (refresh) revalidatePath(`/conversaciones/${conversationId}`);
+    if (!result.ok) {
+      log(result.code);
+      return {
+        status: "error",
+        requestId,
+        message: agentPauseErrorMessage(result.code, requestId),
+      };
+    }
+    log("OK");
+    if (result.changed) revalidatePath("/conversaciones");
+    // La acción ya se validó en el servicio.
+    const chosen = action as Parameters<typeof agentPauseChangedMessage>[0];
+    return {
+      status: "done",
+      message: result.changed
+        ? agentPauseChangedMessage(chosen)
+        : agentPauseUnchangedMessage(chosen),
     };
   } catch (error) {
     log("INTERNAL", error);

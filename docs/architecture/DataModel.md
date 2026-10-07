@@ -287,7 +287,7 @@ Insert-only. Nunca se actualiza ni se borra: `crm_app` solo tiene `SELECT` e `IN
 
 ### `conversations`
 
-**Implementada en la 6.1** ([brief-6.1](../decisions/brief-6.1-migraciones-de-conversaciones.md)), migraciones `drizzle/0011_*` y `drizzle/0012_*`. Módulo dueño: `conversations`. Escribible por `crm_app`; su estado cambia en la 6.3 (el `admin`) y, desde la 12.2, por la derivación de servicio (`conversation.escalated`, solo de `open` a `pending`), y ninguna pantalla la borra.
+**Implementada en la 6.1** ([brief-6.1](../decisions/brief-6.1-migraciones-de-conversaciones.md)), migraciones `drizzle/0011_*` y `drizzle/0012_*`. Módulo dueño: `conversations`. Escribible por `crm_app`; su estado cambia en la 6.3 (el `admin`) y, desde la 12.2, por la derivación de servicio (`conversation.escalated`, solo de `open` a `pending`), y ninguna pantalla la borra. *Desde la 16.3* ([brief-16.3](../decisions/brief-16.3-pausar-y-reanudar-al-agente.md)), el `admin` también pausa y reanuda al agente (`agent_paused_at`), y esa escritura nunca toca `status`.
 
 | Columna | Tipo | Notas |
 |---|---|---|
@@ -299,6 +299,7 @@ Insert-only. Nunca se actualiza ni se borra: `crm_app` solo tiene `SELECT` e `IN
 | `status` | `conversation_status` enum(`open`,`pending`,`closed`) not null default `'open'` | *Desde el 2026-09-25* ([brief-12.2](../decisions/brief-12.2-conversacion-vigente-y-derivacion.md), D-4): `pending` significa **«espera a una persona»**. Es el estado al que deriva `conversation.escalated`, el equivalente de la «Escalada a humano» del emisor. Una conversación `open` o `pending`, con `external_ref` y cuyo tramo queda a como mucho 24 horas del mensaje nuevo, a cada lado, es candidata a vigente del cliente, y entre varias gana la más cercana al mensaje (D-3, ventana simétrica desde la revisión independiente, R-2); una `closed` nunca lo es |
 | `started_at` | timestamptz not null | |
 | `last_message_at` | timestamptz null | `CHECK (last_message_at IS NULL OR last_message_at >= started_at)`, constraint `conversations_last_message_after_start` (brief-6.1, D-2) |
+| `agent_paused_at` | timestamptz null | *Desde la 0028* ([brief-16.3](../decisions/brief-16.3-pausar-y-reanudar-al-agente.md), D-1 y D-2): desde cuándo un `admin` pausó al agente en esta conversación; nula, el agente está activo. **Independiente de `status`**: la derivación y el cambio de estado no la tocan, y pausar no cambia el estado. Se pausa una `open` o `pending` y se reanuda en cualquier estado (D-5); cerrar una pausada no la limpia. Una conversación nueva del mismo cliente nace con el agente activo. La lee el agente con `GET /api/read/v1/conversation-state` ([read-v1](../contracts/read-v1.md)). Sin índice: se lee por la clave única de `external_ref` |
 | `created_at`, `updated_at` | timestamptz not null | |
 | — | `UNIQUE(organization_id, channel, external_ref) WHERE external_ref IS NOT NULL` | índice `conversations_organization_channel_external_ref_unique`; idempotencia de ingestión (segunda defensa) |
 | — | `UNIQUE(organization_id, id)` | `conversations_organization_id_id_unique`, destino de la FK compuesta de `messages` |
@@ -452,7 +453,7 @@ Justificación de necesidad real: requisitos FR-AUD-01 y FR-AUD-02 sobre product
 | `actor_credential_id` | uuid, nulable; FK compuesta `(organization_id, actor_credential_id)` → `ingestion_credentials (organization_id, id)` | actor de servicio, desde la 0022 (brief-12.1, D-3) |
 | `entity_type` | enum(`product`,`client`,`inventory`,`conversation`,`organization_member`,`knowledge_entry`,`client_tag`) not null | `knowledge_entry` desde la 0018 (brief-11.2); `client_tag` desde la 0026 (brief-16.1) |
 | `entity_id` | uuid not null | |
-| `action` | enum(`create`,`update`,`deactivate`,`reactivate`,`stock_adjustment`,`status_change`,`role_change`,`price_change`,`tag_change`) not null | `price_change` desde la 0017 (brief-11.1, D-7); `tag_change` desde la 0026 (brief-16.1, D-7) |
+| `action` | enum(`create`,`update`,`deactivate`,`reactivate`,`stock_adjustment`,`status_change`,`role_change`,`price_change`,`tag_change`,`agent_pause_change`) not null | `price_change` desde la 0017 (brief-11.1, D-7); `tag_change` desde la 0026 (brief-16.1, D-7); `agent_pause_change` desde la 0028 (brief-16.3, D-6) |
 | `diff` | jsonb not null | antes/después relevante |
 | `created_at` | timestamptz not null | |
 
@@ -506,6 +507,12 @@ Productor `client`, acción `tag_change`, desde la 16.1 ([brief-16.1](../decisio
 - poner una que ya tiene o quitar una que no tiene no escribe auditoría;
 - *desde la 16.2*, el actor es el usuario de la ficha o la credencial de ingestión que mandó el evento (`actor_credential_id`); el diff tiene la misma forma;
 - el vaciado de la 13.4 vacía estas entradas con el resto de la auditoría del cliente.
+
+Productor `conversation`, acción `agent_pause_change`, desde la 16.3 ([brief-16.3](../decisions/brief-16.3-pausar-y-reanudar-al-agente.md), D-6). `entity_id` es el id de la conversación y el actor, siempre un usuario `admin`:
+
+- pausar: `{ before: { agentPaused: false }, after: { agentPaused: true } }`; reanudar, el inverso. Sin la hora: es la de `created_at`;
+- pausar una ya pausada o reanudar una activa no escribe auditoría;
+- el diff no tiene datos de una persona, así que el vaciado de la 13.4 no lo alcanza.
 
 Productor `client_tag`, desde la 16.1 (D-7). `entity_id` es el id de la etiqueta:
 

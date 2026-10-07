@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  changeAgentPause,
   CONVERSATIONS_PAGE_SIZE,
   conversationPageBounds,
   decodeMessageCursor,
@@ -178,6 +179,43 @@ describe("cursor del timeline (D-2)", () => {
       "a".repeat(201),
     ]) {
       expect(decodeMessageCursor(text)).toBeNull();
+    }
+  });
+});
+
+// Los rechazos que no llegan a la base (brief-16.3, AC-3): la base, en
+// tests/integration/conversation-agent-pause.test.ts.
+describe("changeAgentPause (FR-CONV-06)", () => {
+  const context = {
+    userId: "5eed0000-0000-4000-8000-000000000001",
+    organizationId: "5eed0000-0000-4000-8000-000000000002",
+    role: "admin" as const,
+    mustChangePassword: false,
+    sessionExpiresAt: new Date("2026-10-08T00:00:00Z"),
+  };
+  const conversationId = "5eed0000-0000-4000-8000-000000000003";
+
+  it("un viewer o una contraseña pendiente dan FORBIDDEN antes de validar", async () => {
+    for (const denied of [
+      { ...context, role: "viewer" as const },
+      { ...context, mustChangePassword: true },
+    ]) {
+      for (const action of ["pause", "resume", "otra"]) {
+        expect(
+          await changeAgentPause(denied, { conversationId, action }),
+        ).toEqual({ ok: false, code: "FORBIDDEN" });
+      }
+    }
+  });
+
+  it("rechaza un id inválido y una acción desconocida", async () => {
+    expect(
+      await changeAgentPause(context, { conversationId: "x", action: "pause" }),
+    ).toEqual({ ok: false, code: "VALIDATION_ERROR" });
+    for (const action of ["", "Pause", "true", "stop"]) {
+      expect(
+        await changeAgentPause(context, { conversationId, action }),
+      ).toEqual({ ok: false, code: "VALIDATION_ERROR", fields: ["action"] });
     }
   });
 });
