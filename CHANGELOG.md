@@ -2,6 +2,26 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-07 — 16.1 cerrada: etiquetas de clientes, manuales
+
+Primera subfase de la Fase 16 ([brief-16.1](docs/decisions/brief-16.1-etiquetas-de-clientes.md)), en dos etapas. Commit `b5544d6` (16.1.1, CI 37553649605, `success`, leída por `headSha`). Desplegada en producción el 2026-10-07 (16.1.2), con las migraciones `0026` y `0027`.
+
+**Certifica**:
+- **El catálogo de etiquetas por organización** (pantalla 13, `/clientes/etiquetas`): crear, renombrar, cambiar el color entre seis fijos, desactivar con confirmación y reactivar, con el nombre único sin distinguir mayúsculas y hasta 50 activas. Con el catálogo vacío, «Crear las sugeridas» crea «Interesado», «Quiere señar», «Reclamo» y «No interesado». Ninguna se borra ni dispara nada: «Quiere señar» no es un pago.
+- **Las etiquetas en la ficha y en la lista**: un admin las pone y las quita (hasta 10 por cliente), cada cambio queda en el historial del cliente (`tag_change`); cualquier usuario las ve y filtra la lista por una etiqueta activa. Una desactivada queda en el cliente, marcada, y no se ofrece.
+- **La base**: dos tablas con claves compuestas por organización; `crm_app` sin `DELETE` en el catálogo ni `UPDATE` en las asignaciones; asignar espera a una desactivación en curso.
+- **Los datos de un cliente**: la exportación incluye sus etiquetas, y el vaciado y el borrado las quitan ([runbook](docs/runbooks/datos-de-un-cliente.md)).
+- **De paso**: el historial de auditoría que se desplaza en un teléfono ahora se recorre con el teclado, en las fichas de clientes, productos e información.
+- **Revisión independiente** (D-12): 8 hallazgos (1 medio, 7 bajos), todos verificados y resueltos antes del commit.
+- **En producción**: `crm.vixoraai.app` corre `b5544d6`, con 28 migraciones; las 17 tablas existentes con los mismos recuentos antes y después, y las dos nuevas vacías. El usuario recorrió el catálogo, la ficha y el filtro y aprobó el cierre. Versión anterior: `0cbe314`.
+
+**No certifica**:
+- Que el agente lea o ponga etiquetas: es la 16.2.
+- Otros navegadores que Chromium.
+- Las tareas de Notion: la sesión del cierre no tuvo el conector; la 16.1 queda por pasar a «Completado».
+
+**Nivel**: validado localmente y en CI, validado en integración (`producer-consumer`) y verificado en producción por el usuario (`isolated-runtime`). No es «preparado para producción».
+
 ## 2026-10-06 — Fase 15 cerrada (Identidad visual y presentación)
 
 Cierra por decisión del usuario, que es el gate de salida de la fase ([Roadmap](docs/planning/Roadmap.md), §Fase 15). El usuario confirmó el cierre el 2026-10-06, después de mirar la 15.5 en producción.

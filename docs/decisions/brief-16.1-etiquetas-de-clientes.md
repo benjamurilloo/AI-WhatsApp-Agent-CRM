@@ -13,7 +13,7 @@ generated_at: 2026-10-06
 - **Nivel de validación alcanzable**: **validado localmente y en CI**, **validado en integración** para las pantallas, y **desplegado en producción** con la revisión del usuario. No es «preparado para producción» en el sentido del vocabulario del proyecto: ninguna subfase de la Fase 16 lo reclama.
 - **Orden**: primera subfase de la Fase 16 ([Roadmap](../planning/Roadmap.md) §Fase 16), abierta el 2026-10-06. La 16.2 (etiquetas puestas por el agente) depende de esta: usa el mismo catálogo.
 - **No abre ni cierra gate.** La revisión independiente no es obligatoria; se recomienda (D-12).
-- **Estado de este documento**: **aprobado el 2026-10-06** por el usuario, con las recomendaciones de D-1 a D-13.
+- **Estado de este documento**: **aprobado el 2026-10-06** por el usuario, con las recomendaciones de D-1 a D-13 y la precisión de D-4 del 2026-10-07; **cerrado el 2026-10-07** (§Cierre).
 
 ## Objetivo
 
@@ -141,6 +141,8 @@ Cada una trae una recomendación. Se pueden aprobar en bloque o cambiar cualquie
 - (b) Color libre con selector. No se puede garantizar el contraste en los dos temas.
 - (c) Sin color en la 16.1. Es lo más simple, pero las cuatro sugeridas se distinguen peor de un vistazo, que es su uso principal.
 
+*Precisión aprobada por el usuario el 2026-10-07*, a partir de una duda de la revisión independiente: cinco de los seis colores reutilizan tokens del tema (`surface-muted`, `primary-soft`, `success-soft`, `warning-soft` y `danger-soft`), que ya pasan el contraste en los dos temas; solo el azul tiene tokens propios (`--tag-blue-soft`). Si un día cambia la paleta del tema, cambian también las etiquetas.
+
 ### D-5 — Quién etiqueta
 
 Es la decisión de producto más importante del brief.
@@ -256,3 +258,44 @@ Parar y reportar, sin seguir, si:
 - `drizzle-kit generate` produce cambios en tablas existentes, además de los dos enums.
 
 Y siempre **antes de**: el commit de la 16.1.1, el push, cada paso sobre producción (las migraciones y el despliegue), los cambios de estado en Notion y el cierre. Cada uno necesita autorización explícita en su turno.
+
+## Cierre de la subfase 16.1, 2026-10-07
+
+### 16.1.1 — Local
+
+- **Commit**: `b5544d6` (CI 37553649605, `success`, leída por `headSha`; incluye el end-to-end), autorizado por el usuario. 53 archivos; fuera, `.claude/settings.json` y `scripts/migrar.ts`, que solo difería en los finales de línea.
+- **Batería local**: formato, lint, tipos y build limpios; Vitest 1.781 casos, con la única falla de la guarda de superficie expuesta mientras `etiquetas/actions.ts` no estaba en el índice (con el archivo en el índice, las 16 guardas dan 485 de 485); Playwright 125 de 125 sobre `next start`.
+- **Mutaciones**, todas en rojo y restauradas: M1, sin las claves compuestas de la `0026` (falla AC-2); M2, `DELETE` sobre `client_tags` en la `0027` (fallan 5 casos); M3, el vaciado sin borrar las asignaciones (falla el caso 19 de `client-data`); M4, la asignación sin `FOR SHARE` (falla la carrera con la desactivación); M5, la `0026` sin el índice del filtro (falla el caso del catálogo).
+- **Revisión independiente (D-12, AC-16)**, de solo lectura, por un agente que no participó: 8 hallazgos (1 medio, 7 bajos) y 3 dudas, todos verificados contra el código:
+  - 1 (medio), faltaban el teclado y los 375 px de la ficha: caso end-to-end 6. Destapó `scrollable-region-focusable` en el historial de auditoría compartido ([audit-card.tsx](../../src/app/_components/audit-card.tsx), de la 15.4), corregido con foco y nombre;
+  - 2, paginación y orden del filtro sin probar: casos nuevos;
+  - 3, el índice y los enums no se comprobaban contra el catálogo: caso nuevo;
+  - 4, asignar mientras otro admin desactiva dejaba la etiqueta puesta: la asignación lee la etiqueta con `FOR SHARE`, con su test de concurrencia;
+  - 5, el nombre del caso 3 decía «seis colores»: corregido;
+  - 6, la CSP de la pantalla 13 no se probaba: sumada a `security-headers.spec.ts`;
+  - 7, recuentos desactualizados en `SecurityModel.md`, `TestingStrategy.md` y `recorrer-pantallas.ts`: corregidos;
+  - 8, la ampliación de la lista de archivos no estaba registrada: §Archivos autorizados;
+  - dudas: D-4 (precisión aprobada arriba), `scripts/migrar.ts` (solo finales de línea, confirmado con `git diff --ignore-cr-at-eol`) y el límite de 50 en FR-CLI-09 (pasado a FR-CLI-08).
+- **Archivos fuera de la lista**, autorizados por el usuario: los de §Archivos autorizados, más `audit-card.tsx`, `security-headers.spec.ts` (más allá del `TRUNCATE`), `scripts/recorrer-pantallas.ts` y `docs/development/TestingStrategy.md`.
+
+### 16.1.2 — Producción
+
+- **Despliegue de `b5544d6`**, autorizado por el usuario y corrido por el asistente en modo manual, después de que el clasificador de permisos lo bloqueara en modo automático. Pasos 1 a 3 de [deploy/production/README.md](../../deploy/production/README.md) §Desplegar: la CI del SHA en `success`; anotado `0cbe314` en el registro de despliegues; dependencias (12:38:55 UTC), migraciones (12:39:18, «Migraciones aplicadas»), build (12:39:21), reinicio (12:40:48) y HEAD igual al SHA pedido (12:40:49).
+- **AC-17**, recuentos de `crm_production` en una transacción de solo lectura (`sudo -u postgres psql`), todas las tablas de `public` en orden alfabético:
+
+  ```
+  2026-10-07T01:07:01Z 26 migraciones
+  audit_logs=23 clients=1 conversations=2 ingestion_credentials=7 ingestion_events=55 ingestion_rate_windows=3 inventories=4 inventory_movements=4 knowledge_entries=3 login_attempts=0 messages=37 organization_members=2 organizations=2 product_prices=6 products=5 sessions=2 users=2
+  2026-10-07T12:41:04Z 28 migraciones
+  audit_logs=23 client_tag_assignments=0 client_tags=0 clients=1 conversations=2 ingestion_credentials=7 ingestion_events=55 ingestion_rate_windows=3 inventories=4 inventory_movements=4 knowledge_entries=3 login_attempts=0 messages=37 organization_members=2 organizations=2 product_prices=6 products=5 sessions=2 users=2
+  ```
+
+  Las 17 tablas existentes, iguales; las dos nuevas, vacías. `crm_app` tiene `INSERT, SELECT, UPDATE` sobre `client_tags` y `DELETE, INSERT, SELECT` sobre `client_tag_assignments` (D-6); `tag_change` y `client_tag` existen en sus enums; 5 índices en las dos tablas. El servicio, `active` con `NRestarts=0`; `/login`, `200`; `/clientes/etiquetas` sin sesión, `307` a `/login`. Para volver atrás, `0cbe314`: las dos migraciones solo agregan.
+- **AC-18**: el usuario recorrió en producción el catálogo, la ficha y el filtro, los dio por correctos y aprobó el cierre el 2026-10-07.
+
+### Resultado
+
+- **Criterios**: AC-1 a AC-18 cumplidos.
+- **Revisión**: independiente (D-12) para la 16.1.1; el resto, autoevaluación declarada.
+- **Nivel**: validado localmente y en CI, validado en integración para las pantallas (`producer-consumer`) y verificado en producción por el usuario (`isolated-runtime`). No es «preparado para producción».
+- **Notion**: la sesión del cierre no tuvo el conector de Notion. Pasar la tarea 16.1 (`3f1702be6f4e8135830ddd1c5d574187`) a «Completado» queda para la sesión siguiente.

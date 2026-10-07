@@ -320,6 +320,8 @@ Reglas comunes a las cuatro fases:
 
 ## Fase 16 — Herramientas de operación
 
+*Abierta el 2026-10-06 por decisión del usuario, con su proyecto en Notion. Subfases, en el orden aprobado ese día: **16.1 — Etiquetas de clientes, manuales** ([brief-16.1](../decisions/brief-16.1-etiquetas-de-clientes.md)), **cerrada el 2026-10-07** y desplegada en producción con las migraciones `0026` y `0027`; **16.2 — Etiquetas puestas por el agente**, sobre el catálogo de la 16.1; **16.3 — Pausar y reanudar al agente**; **16.4 — Notas de la conversación**, que no depende del agente; y **16.5 — ADR: responder desde el CRM**, solo el ADR. La 16.2 y la 16.3 piden trabajo coordinado con el repositorio del agente ([ADR 0014](../decisions/0014-el-agente-de-whatsapp-como-consumidor-del-crm.md)).*
+
 *Decidido el 2026-10-06, al cerrar la Fase 15: el usuario sigue con esta fase, que se abre en la sesión siguiente con su proyecto en Notion y el brief de su primera subfase.*
 
 *Planificada el 2026-10-05, sin abrir. Se abre con la decisión del usuario, con su proyecto en Notion y el brief de su primera subfase. El orden de abajo es el de la prioridad que dio el usuario, no un compromiso.*
