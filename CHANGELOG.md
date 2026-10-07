@@ -2,6 +2,24 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-07 — 16.3 cerrada: pausar y reanudar al agente
+
+Tercera subfase de la Fase 16 ([brief-16.3](docs/decisions/brief-16.3-pausar-y-reanudar-al-agente.md)), en tres etapas. Commit `259d23f` (16.3.1, CI 37679269082, `success`, leída por `headSha`). Desplegada en producción el 2026-10-07 con la migración `0028` (16.3.2) y validada con el agente el mismo día (16.3.3).
+
+**Certifica**:
+- **La marca por conversación**: `conversations.agent_paused_at`, puesta y quitada solo por un `admin` desde la pantalla 9, en una transacción con su auditoría `agent_pause_change`. No se pausa una cerrada; reanudar se puede en cualquier estado. La derivación no la toca, y un mensaje del agente en una pausada se registra igual (D-7). Las pantallas 7, 8 y 9 la muestran.
+- **`GET /api/read/v1/conversation-state`**: `agent_paused` y `agent_paused_at`, con alcance `context`. Es una ruta nueva y ninguna respuesta existente cambia.
+- **Revisión independiente** (D-10): R-1 a R-4, verificados antes del commit; R-1 corregido.
+- **En producción**: `crm.vixoraai.app` corre `259d23f`, con 29 migraciones. Las tablas tienen los mismos recuentos antes y después, y la ruta nueva responde `401` sin token. Versión anterior: `9549364`.
+- **Con el agente** (16.3.3), en la organización de demostración: un turno activo, la pausa, un turno pausado sin ninguna salida del agente, la reanudación y otro turno activo, conciliados contra el log, `messages`, `ingestion_events` y `audit_logs`. La conciliación del agente coincide y confirma el `agent_paused` leído en cada turno.
+
+**No certifica**:
+- Que la pausa sea estricta: si la lectura falla, el agente contesta igual, y su mensaje de emergencia sale antes de la lectura. Lo decidió el agente y queda en `read-v1.md`.
+- Una lectura fallida con la conversación pausada: no se provocó.
+- Una persona contestando desde la app de WhatsApp durante la pausa: esas respuestas no llegan al CRM (16.5).
+
+**Nivel**: validado localmente y en CI, verificado en producción (`isolated-runtime`) y **validado en integración** (`producer-consumer`) con el agente como consumidor real. No es «preparado para producción».
+
 ## 2026-10-07 — 16.2 cerrada: etiquetas puestas por el agente
 
 Segunda subfase de la Fase 16 ([brief-16.2](docs/decisions/brief-16.2-etiquetas-puestas-por-el-agente.md)), en tres etapas. Commit `9549364` (16.2.1, CI 37634311710, `success`, leída por `headSha`). Desplegada en producción el 2026-10-07 sin migraciones (16.2.2) y validada con el agente el mismo día (16.2.3).

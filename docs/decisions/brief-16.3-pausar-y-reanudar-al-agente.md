@@ -15,7 +15,7 @@ generated_at: 2026-10-07
   - `producer-consumer` para el agente como consumidor real.
 - **Nivel de validación alcanzable**: validado localmente y en CI, desplegado en producción y validado en integración con el agente. No es «preparado para producción».
 - **Orden**: tercera subfase de la Fase 16 ([Roadmap](../planning/Roadmap.md) §Fase 16), después de la 16.2.
-- **Estado**: aprobado el 2026-10-07 con las recomendaciones de D-1 a D-11.
+- **Estado**: aprobado el 2026-10-07 con las recomendaciones de D-1 a D-11; precisión de D-4 aprobada el mismo día; **cerrado el 2026-10-07** (§Cierre).
 
 ## Objetivo
 
@@ -284,3 +284,66 @@ La hizo un agente que no participó del trabajo, con acceso de solo lectura. Fij
   1. Pausar una cerrada que ya estaba pausada devuelve `changed: false`, no un rechazo. **Confirmado**: no escribe ni audita. Ahora lo fija un test.
   2. La pantalla 7 reutiliza `ConversationTable` y también muestra la marca. **Confirmado**: no expone datos. Screens §7 no está en la lista de esta subfase; se registra en el cierre.
   3. read-v1 sigue diciendo que `context` es «para el historial», pero la sección de la ruta nueva lo aclara. Se ajusta en el cierre.
+
+## Resultados 16.3.2 (AC-11)
+
+Desplegado en producción el 2026-10-07, con autorización del usuario en el turno, siguiendo «Desplegar un cambio» de `deploy/production/README.md`.
+
+1. **CI del SHA exacto**: `259d23f7ccb9e162915cbcafe10f208d240f19bd`, `"conclusion":"success"`.
+2. **Lo que estaba desplegado**, anotado en `/var/lib/crm-production/despliegues`: `95493648f82b22a62fa69f5ee96abe956a881218`. Es el SHA para volver atrás.
+3. **Código, dependencias, migración, build y reinicio**: la última línea dio `desplegado: 259d23f7ccb9e162915cbcafe10f208d240f19bd`, y el servicio quedó `active`.
+4. **Recuentos de `crm_production`**, en una transacción de solo lectura, antes y después: las 19 tablas no cambian. Solo cambia `migraciones`, de 28 a 29.
+5. **La migración `0028`**, también en solo lectura:
+   - `conversations.agent_paused_at` existe, `timestamp with time zone`, nullable;
+   - hay 0 conversaciones pausadas, como corresponde a una columna nueva;
+   - `audit_action` tiene el valor `agent_pause_change`.
+6. **La ruta nueva**: `GET /api/read/v1/conversation-state` responde `401` sin token, con parámetros y sin ellos. `/login` responde `200`.
+
+Nivel: `isolated-runtime` para el despliegue. Pausar desde la pantalla 9 en producción no se ejecutó: no lo pide AC-11, y la integración con el agente es la 16.3.3.
+
+## Resultados 16.3.3 (AC-12)
+
+Ventana del 2026-10-07 en la organización de demostración de producción, con el teléfono del usuario como único cliente y el guion del agente. El agente lee `conversation-state` en producción desde alrededor de las 21:00 UTC. Antes, a las 20:55:26 UTC, hizo una lectura de prueba (`200`, `agent_paused: false`), que está en el log con su correlación. La conciliación es del lado del CRM: log estructurado, `messages`, `ingestion_events` y `audit_logs`, todo en solo lectura. Horas en UTC.
+
+| Paso | Turno | Qué pasó |
+|---|---|---|
+| 1, activa | `7987` | `client.resolved` y `conversation.resolved` a las 21:07:47 y 21:07:48; `conversation-state` `OK`; `messages` `OK`; respuesta del agente registrada a las 21:08:07 |
+| 2, pausa | — | `conversaciones.pausar_agente` `OK` a las 21:08:20; `agent_pause_change` con `agentPaused: true`, autor el usuario, sobre la misma conversación del paso 1 |
+| 3, pausada | `8022` | `client.resolved` y `conversation.resolved` a las 21:09:58 y 21:09:59, con el entrante registrado; `conversation-state` `OK`; **nada más**: ni `messages`, ni salida del agente, ni otro evento |
+| 4, reanudación | — | `conversaciones.pausar_agente` `OK` a las 21:11:10; `agent_pause_change` con `agentPaused: false` |
+| 5, activa | `8038` | `client.resolved` y `conversation.resolved` a las 21:14:00 y 21:14:01; `conversation-state` `OK`; `messages` `OK`; respuesta del agente registrada a las 21:14:12 |
+
+- **La conversación** estaba `pending` desde antes de la ventana, y la pausa funcionó igual: la marca no depende del estado (D-1).
+- **Recuentos**: `messages` pasó de 53 a 58 (3 entrantes y 2 respuestas del agente) e `ingestion_events`, de 90 a 98, todos `processed`. Las otras dos conversaciones de la organización no cambiaron.
+- **El usuario confirmó** desde su teléfono que el agente no contestó en el paso 3.
+- **La conciliación del agente coincide en los tres turnos.** Su registro guarda el valor leído: `agent_paused: true` en `8022`, con `agent_paused_at` 21:08:20.883, y `false` en `7987` y `8038`. La auditoría de la pausa tiene `created_at` 21:08:20.884, de la misma transacción. Sin lecturas fallidas, sin mensajes de emergencia y sin carrera.
+
+Nivel: `producer-consumer` en producción, con el agente como consumidor real de la ruta, sobre una conversación. La ruta queda **validada en integración**. Sus fixtures siguen con forma asumida hasta que se agregue una captura.
+
+**Límites del lado del agente**, informados por el agente en su respuesta al pedido y aceptados para esta subfase:
+- **La pausa es de mejor esfuerzo.** Si la lectura falla, por timeout, `5xx`, `429` o `404`, el agente contesta igual.
+- **El mensaje de emergencia** del agente sale antes de la lectura y no respeta la pausa.
+- **La carrera de D-7**: entre la lectura y el envío pasan de 3 a 12 segundos.
+- **El límite de lectura.** Con dos lecturas por turno, 120 pedidos por minuto por credencial dan unos 60 turnos por minuto.
+
+## Cierre
+
+**Cerrada el 2026-10-07**, con la aprobación del usuario.
+
+| Criterio | Estado |
+|---|---|
+| AC-1 a AC-9 | cumplidos en la 16.3.1 (§Resultados 16.3.1) |
+| AC-10 | revisión independiente: R-1 a R-4, verificados; R-1 corregido, R-3 resuelto con la precisión de D-4 |
+| AC-11 | cumplido en la 16.3.2 |
+| AC-12 | cumplido en la ventana 16.3.3, con la conciliación del agente coincidente |
+
+- **Nivel**: validado localmente y en CI; desplegado en producción con la migración `0028` (`isolated-runtime`); **validado en integración** (`producer-consumer`) con el agente como consumidor real de `conversation-state`, en una conversación de la organización de demostración. No es «preparado para producción».
+- **Precisión aprobada por el usuario el 2026-10-07**: D-4, «Pausado desde el DD/MM HH:MM» en la tarjeta «Conversación», visible también para el viewer.
+- **Decisión del usuario durante la subfase**: `tests/integration/conversations.test.ts`, fuera de la lista original, con dos expectativas que suman `agentPausedAt: null`.
+- **Pendientes de R-4, resueltos en el cierre**: la marca en la pantalla 7 queda en Screens §7, y `read-v1.md` §Transporte dice que `context` también lee la marca.
+- **Límites del lado del agente** (§Resultados 16.3.3): la pausa es de mejor esfuerzo, el mensaje de emergencia no la respeta, la carrera de D-7, y unos 60 turnos por minuto por credencial con dos lecturas por turno. Quedan también en `read-v1.md`.
+- **No certifica**:
+  - una lectura fallida con la conversación pausada, que no se provocó;
+  - una persona contestando desde la app de WhatsApp durante la pausa: el número de prueba de Meta no lo permite, y esas respuestas no llegan al CRM (16.5);
+  - una captura de la respuesta como fixture: los tres siguen con forma asumida.
+- **Autoevaluación declarada** para la 16.3.2, la 16.3.3 y este cierre. La revisión independiente cubrió la 16.3.1.

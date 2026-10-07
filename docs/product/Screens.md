@@ -145,6 +145,7 @@ Agregada en la 11.1 ([brief-11.1](../decisions/brief-11.1-catalogo-comercial.md)
 - **Accesibilidad**: estándar.
 - **No mostrar**: la auditoría a `viewer`. El campo de notas incluye un aviso para no registrar datos sensibles innecesarios.
 - **Etiquetas** *(16.1, FR-CLI-09 y 10)*: una tarjeta «Etiquetas» con los chips, para los dos roles; una inactiva lleva «(inactiva)» y borde punteado. Un `admin` agrega desde un selector con las activas que el cliente no tiene y quita con un botón por chip («Quitar Reclamo»). Son formularios con Server Actions, como el resto de la ficha. La auditoría muestra «Etiqueta agregada: Reclamo» y «Etiqueta quitada: Reclamo».
+- **Agente pausado** *(16.3, FR-CONV-06)*: las conversaciones del cliente usan la misma tabla que la pantalla 8, así que también muestran la marca «Agente pausado» junto al estado. Solo se ve; pausar y reanudar se hace desde la pantalla 9.
 
 ## 8. Lista de conversaciones
 
