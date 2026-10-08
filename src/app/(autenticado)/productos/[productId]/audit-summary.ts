@@ -1,7 +1,7 @@
 import type { ProductAuditEntry, ProductCondition } from "@/modules/catalog";
 import { formatMoney } from "@/shared/money";
 import { formatQuantity } from "@/shared/quantity";
-import { CONDITION_LABEL } from "../messages";
+import { CONDITION_LABEL, formatMeasure } from "../messages";
 
 // Traduce un registro de auditoría a texto legible para la pantalla 4 (wireframe 04):
 // solo los campos relevantes, sin IDs internos ni nombres de columnas.
@@ -24,11 +24,38 @@ const FIELD_LABEL: Record<string, string> = {
   brand: "Marca",
   category: "Categoría",
   condition: "Condición",
+  // Campos de operación (brief-17.2, AC-4).
+  barcode: "Código de barras",
+  weightKg: "Peso",
+  lengthCm: "Largo",
+  widthCm: "Ancho",
+  heightCm: "Alto",
+  location: "Ubicación",
+  shelf: "Estante",
   isActive: "Activo",
   quantityOnHand: "Stock",
 };
 
 const QUANTITY_FIELDS = new Set(["reorderPoint", "quantityOnHand"]);
+
+// Peso en kg y dimensiones en cm, con su unidad (brief-17.2, D-5).
+const MEASURE_UNIT: Record<string, string> = {
+  weightKg: "kg",
+  lengthCm: "cm",
+  widthCm: "cm",
+  heightCm: "cm",
+};
+
+// Los campos de la 17.2 que un alta sin ellos no menciona: siete «vacío» no dicen nada.
+const OPTIONAL_ON_CREATE = new Set([
+  "barcode",
+  "weightKg",
+  "lengthCm",
+  "widthCm",
+  "heightCm",
+  "location",
+  "shelf",
+]);
 
 function show(field: string, value: string | number | boolean | null): string {
   if (value === null || value === "") return "vacío";
@@ -36,6 +63,9 @@ function show(field: string, value: string | number | boolean | null): string {
   const text = String(value);
   if (field === "condition" && Object.hasOwn(CONDITION_LABEL, text)) {
     return CONDITION_LABEL[text as ProductCondition];
+  }
+  if (Object.hasOwn(MEASURE_UNIT, field)) {
+    return `${formatMeasure(text)} ${MEASURE_UNIT[field]}`;
   }
   return QUANTITY_FIELDS.has(field) ? formatQuantity(text) : text;
 }
@@ -64,6 +94,10 @@ export function describeAuditDiff(entry: ProductAuditEntry): string {
       ? "—"
       : Object.entries(after)
           .filter(([field]) => Object.hasOwn(FIELD_LABEL, field))
+          .filter(
+            ([field, value]) =>
+              !(OPTIONAL_ON_CREATE.has(field) && value === null),
+          )
           .map(
             ([field, value]) => `${FIELD_LABEL[field]}: ${show(field, value)}`,
           )

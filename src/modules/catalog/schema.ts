@@ -27,8 +27,21 @@ export const productCondition = pgEnum("product_condition", [
   "refurbished",
 ]);
 
+// Campos de operación (brief-17.2, D-3, D-5 y D-6): los largos de los textos y las escalas de los
+// números. La base los exige con CHECK; el servicio, con los mismos valores.
+export const PRODUCT_FIELD_LIMITS = {
+  barcode: 64,
+  location: 60,
+  shelf: 30,
+} as const;
+
+// numeric(10, 3) para el peso en kg y numeric(8, 1) para las dimensiones en cm: dígitos enteros
+// y decimales que admite cada uno.
+export const WEIGHT_SCALE = { integerDigits: 7, decimals: 3 } as const;
+export const DIMENSION_SCALE = { integerDigits: 7, decimals: 1 } as const;
+
 // docs/architecture/DataModel.md, tabla products (brief-4.1; marca, categoría, condición y
-// búsqueda, brief-11.1).
+// búsqueda, brief-11.1; campos de operación, brief-17.2).
 export const products = pgTable(
   "products",
   {
@@ -49,6 +62,18 @@ export const products = pgTable(
     brand: text("brand"),
     category: text("category"),
     condition: productCondition("condition").notNull().default("new"),
+    // Campos de operación (brief-17.2), todos opcionales. El código de barras se guarda como se
+    // escribió y es único por organización sin distinguir mayúsculas, como el SKU (D-3). Peso en
+    // kg y dimensiones en cm, con unidad fija (D-5); las tres dimensiones van juntas o ninguna.
+    barcode: text("barcode"),
+    weightKg: numeric("weight_kg", { precision: 10, scale: 3 }),
+    lengthCm: numeric("length_cm", { precision: 8, scale: 1 }),
+    widthCm: numeric("width_cm", { precision: 8, scale: 1 }),
+    heightCm: numeric("height_cm", { precision: 8, scale: 1 }),
+    // Con un solo depósito, la ubicación es del producto; con varios, sería del saldo de cada
+    // depósito y estas columnas se migran (D-6).
+    location: text("location"),
+    shelf: text("shelf"),
     // La escribe PostgreSQL; ningún insert ni update la envía.
     search: tsvector("search")
       .notNull()
@@ -84,6 +109,31 @@ export const products = pgTable(
     check(
       "products_reorder_point_non_negative",
       sql`${table.reorderPoint} >= 0`,
+    ),
+    // Único por organización sin distinguir mayúsculas, solo entre los que tienen código
+    // (brief-17.2, D-3). Sirve también la búsqueda exacta de la lista (D-4, D-12).
+    uniqueIndex("products_organization_barcode_lower_unique")
+      .on(table.organizationId, sql`lower(${table.barcode})`)
+      .where(sql`${table.barcode} is not null`),
+    check(
+      "products_barcode_format",
+      sql`${table.barcode} ~ ${sql.raw(`'^\\S{1,${PRODUCT_FIELD_LIMITS.barcode}}$'`)}`,
+    ),
+    check("products_weight_kg_positive", sql`${table.weightKg} > 0`),
+    check("products_length_cm_positive", sql`${table.lengthCm} > 0`),
+    check("products_width_cm_positive", sql`${table.widthCm} > 0`),
+    check("products_height_cm_positive", sql`${table.heightCm} > 0`),
+    check(
+      "products_dimensions_together",
+      sql`(${table.lengthCm} is null and ${table.widthCm} is null and ${table.heightCm} is null) or (${table.lengthCm} is not null and ${table.widthCm} is not null and ${table.heightCm} is not null)`,
+    ),
+    check(
+      "products_location_length",
+      sql`char_length(${table.location}) between 1 and ${sql.raw(String(PRODUCT_FIELD_LIMITS.location))}`,
+    ),
+    check(
+      "products_shelf_length",
+      sql`char_length(${table.shelf}) between 1 and ${sql.raw(String(PRODUCT_FIELD_LIMITS.shelf))}`,
     ),
   ],
 );

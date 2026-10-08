@@ -1,4 +1,8 @@
-import type { ProductCondition, ProductField } from "@/modules/catalog";
+import type {
+  ProductCondition,
+  ProductConflictField,
+  ProductField,
+} from "@/modules/catalog";
 import type { ErrorCode } from "@/shared/errors";
 import type {
   StockAdjustmentField,
@@ -14,6 +18,8 @@ export const FORBIDDEN_ACTION_MESSAGE =
   "No tenés permiso para hacer esta acción.";
 export const PRODUCT_NOT_FOUND_MESSAGE = "Este producto no existe.";
 export const SKU_TAKEN_MESSAGE = "Ya existe un producto con ese SKU.";
+export const BARCODE_TAKEN_MESSAGE =
+  "Ya existe un producto con ese código de barras.";
 export const NO_PRODUCTS_MESSAGE = "Todavía no hay productos.";
 export const NO_PRODUCT_RESULTS_MESSAGE =
   "Ningún producto coincide con estos filtros.";
@@ -48,6 +54,20 @@ export const BRAND_TOO_LONG_MESSAGE =
 export const CATEGORY_TOO_LONG_MESSAGE =
   "La categoría no puede superar los 100 caracteres.";
 export const CONDITION_REQUIRED_MESSAGE = "Elegí la condición del producto.";
+// Campos de operación (brief-17.2).
+export const BARCODE_MESSAGE =
+  "Ingresá un código de barras de hasta 64 caracteres, sin espacios.";
+export const WEIGHT_MESSAGE =
+  "Ingresá el peso en kg, mayor a 0 y con hasta tres decimales, por ejemplo 1,5.";
+const DIMENSIONS_RULE =
+  "mayor a 0 y con un decimal como máximo. Largo, ancho y alto van juntos.";
+export const LENGTH_MESSAGE = `Ingresá el largo en cm, ${DIMENSIONS_RULE}`;
+export const WIDTH_MESSAGE = `Ingresá el ancho en cm, ${DIMENSIONS_RULE}`;
+export const HEIGHT_MESSAGE = `Ingresá el alto en cm, ${DIMENSIONS_RULE}`;
+export const LOCATION_TOO_LONG_MESSAGE =
+  "La ubicación no puede superar los 60 caracteres.";
+export const SHELF_TOO_LONG_MESSAGE =
+  "El estante no puede superar los 30 caracteres.";
 
 const PRODUCT_FIELD_MESSAGES: Record<ProductField, string> = {
   sku: SKU_REQUIRED_MESSAGE,
@@ -58,10 +78,18 @@ const PRODUCT_FIELD_MESSAGES: Record<ProductField, string> = {
   brand: BRAND_TOO_LONG_MESSAGE,
   category: CATEGORY_TOO_LONG_MESSAGE,
   condition: CONDITION_REQUIRED_MESSAGE,
+  barcode: BARCODE_MESSAGE,
+  weightKg: WEIGHT_MESSAGE,
+  lengthCm: LENGTH_MESSAGE,
+  widthCm: WIDTH_MESSAGE,
+  heightCm: HEIGHT_MESSAGE,
+  location: LOCATION_TOO_LONG_MESSAGE,
+  shelf: SHELF_TOO_LONG_MESSAGE,
 };
 
 const PRODUCT_FIELD_ORDER: ProductField[] = [
   "sku",
+  "barcode",
   "name",
   "brand",
   "category",
@@ -69,6 +97,12 @@ const PRODUCT_FIELD_ORDER: ProductField[] = [
   "description",
   "unit",
   "reorderPoint",
+  "weightKg",
+  "lengthCm",
+  "widthCm",
+  "heightCm",
+  "location",
+  "shelf",
 ];
 
 // Primer campo inválido en el orden del formulario, con su mensaje.
@@ -82,16 +116,26 @@ export function productFieldError(fields: ProductField[]): {
   return { field, message: PRODUCT_FIELD_MESSAGES[field] };
 }
 
-export type ProductFormValues = {
-  sku: string;
-  name: string;
-  description: string;
-  unit: string;
-  reorderPoint: string;
-  brand: string;
-  category: string;
-  condition: string;
-};
+// El SKU o el código de barras repetido (brief-17.2, D-3), en su campo.
+export function productConflictError(field: ProductConflictField): {
+  field: ProductConflictField;
+  message: string;
+} {
+  return {
+    field,
+    message: field === "barcode" ? BARCODE_TAKEN_MESSAGE : SKU_TAKEN_MESSAGE,
+  };
+}
+
+export type ProductFormValues = Record<ProductField, string>;
+
+// Peso y dimensiones para mostrar y para editar (brief-17.2, D-5): "1.500" se lee "1,5" y "10.0",
+// "10". Sin ceros finales y con coma decimal, como formatQuantity, para cualquier escala.
+export function formatMeasure(value: string): string {
+  const [integer, fraction = ""] = value.split(".");
+  const trimmed = fraction.replace(/0+$/, "");
+  return trimmed ? `${integer},${trimmed}` : integer!;
+}
 
 // Condición comercial (brief-11.1, D-3), como se lee en pantalla.
 export const CONDITION_LABEL: Record<ProductCondition, string> = {

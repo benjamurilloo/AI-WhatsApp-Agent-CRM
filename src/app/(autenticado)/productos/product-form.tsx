@@ -13,7 +13,7 @@ import {
 import { SectionCard } from "@/app/_components/section-card";
 import { SuggestInput } from "@/app/_components/suggest-input";
 import { createProductAction, updateProductAction } from "./actions";
-import type { ProductSuggestions } from "@/modules/catalog";
+import type { ProductFormSuggestions } from "@/modules/catalog";
 import {
   CONDITION_LABEL,
   type ProductFormState,
@@ -24,7 +24,9 @@ import {
 // en la pantalla 5. El botón queda deshabilitado mientras responde el servidor (brief-4.4, D-4).
 // Marca y categoría son texto libre con sugerencias de los valores que ya existen, y la condición
 // es una lista cerrada (brief-11.1, D-2 y D-3). Desde la 15.4, los campos van en dos tarjetas;
-// el precio y el stock inicial se cargan después, desde el detalle (brief-15.4, D-4).
+// el precio y el stock inicial se cargan después, desde el detalle (brief-15.4, D-4). Desde la
+// 17.2, el código de barras va debajo del SKU, y peso, dimensiones, ubicación y estante en dos
+// tarjetas propias (brief-17.2, D-11).
 
 const initialState: ProductFormState = { status: "idle" };
 
@@ -37,9 +39,20 @@ const EMPTY: ProductFormValues = {
   brand: "",
   category: "",
   condition: "new",
+  barcode: "",
+  weightKg: "",
+  lengthCm: "",
+  widthCm: "",
+  heightCm: "",
+  location: "",
+  shelf: "",
 };
 
-const NO_SUGGESTIONS: ProductSuggestions = { brands: [], categories: [] };
+const NO_SUGGESTIONS: ProductFormSuggestions = {
+  brands: [],
+  categories: [],
+  locations: [],
+};
 
 type FieldSpec = {
   name: keyof ProductFormValues;
@@ -47,16 +60,18 @@ type FieldSpec = {
   required: boolean;
   hint?: string;
   // Lista de sugerencias del campo, si tiene.
-  list?: keyof ProductSuggestions;
+  list?: keyof ProductFormSuggestions;
   // Lista cerrada: se muestra como select.
   options?: Record<string, string>;
   // Texto largo: se muestra como textarea, a todo el ancho.
   long?: boolean;
   placeholder?: string;
+  // Número con decimales: teclado numérico en el teléfono.
+  decimal?: boolean;
 };
 
 // El orden es el del formulario y el del foco al primer error: tiene que coincidir con
-// PRODUCT_FIELD_ORDER de messages.ts. Las dos tarjetas lo respetan.
+// PRODUCT_FIELD_ORDER de messages.ts. Las cuatro tarjetas lo respetan.
 
 const BASIC_FIELDS: FieldSpec[] = [
   {
@@ -65,6 +80,13 @@ const BASIC_FIELDS: FieldSpec[] = [
     required: true,
     hint: "Sin espacios.",
     placeholder: "Ej. DEMO-AUD-001",
+  },
+  {
+    name: "barcode",
+    label: "Código de barras",
+    required: false,
+    hint: "Sin espacios. No puede repetirse en otro producto.",
+    placeholder: "Ej. 7790001000017",
   },
   {
     name: "name",
@@ -100,6 +122,29 @@ const STOCK_FIELDS: FieldSpec[] = [
   },
 ];
 
+const LOGISTICS_FIELDS: FieldSpec[] = [
+  { name: "weightKg", label: "Peso (kg)", required: false, decimal: true },
+  { name: "lengthCm", label: "Largo (cm)", required: false, decimal: true },
+  { name: "widthCm", label: "Ancho (cm)", required: false, decimal: true },
+  { name: "heightCm", label: "Alto (cm)", required: false, decimal: true },
+];
+
+const LOCATION_FIELDS: FieldSpec[] = [
+  {
+    name: "location",
+    label: "Ubicación",
+    required: false,
+    list: "locations",
+    placeholder: "Ej. Depósito",
+  },
+  {
+    name: "shelf",
+    label: "Estante",
+    required: false,
+    placeholder: "Ej. A-3",
+  },
+];
+
 export function ProductForm({
   mode,
   productId,
@@ -109,7 +154,7 @@ export function ProductForm({
   mode: "crear" | "editar";
   productId?: string;
   values?: ProductFormValues;
-  suggestions?: ProductSuggestions;
+  suggestions?: ProductFormSuggestions;
 }) {
   const [state, formAction, pending] = useActionState(
     mode === "crear" ? createProductAction : updateProductAction,
@@ -192,6 +237,7 @@ export function ProductForm({
             required={field.required}
             defaultValue={shown[field.name]}
             placeholder={field.placeholder}
+            inputMode={field.decimal ? "decimal" : undefined}
             aria-invalid={invalid ? true : undefined}
             aria-describedby={describedBy}
             className={inputClass}
@@ -243,6 +289,28 @@ export function ProductForm({
             desde su detalle.
           </p>
         ) : null}
+      </SectionCard>
+
+      <SectionCard
+        id="form-logistica-titulo"
+        title="Logística"
+        icon="truck"
+        description="Para preparar envíos. Largo, ancho y alto van juntos."
+      >
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {LOGISTICS_FIELDS.map(renderField)}
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        id="form-ubicacion-titulo"
+        title="Ubicación"
+        icon="mapPin"
+        description="Dónde está el producto."
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          {LOCATION_FIELDS.map(renderField)}
+        </div>
       </SectionCard>
 
       <div aria-live="polite" aria-atomic="true">

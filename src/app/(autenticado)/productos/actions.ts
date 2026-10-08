@@ -18,8 +18,8 @@ import { logEvent, newRequestId } from "@/shared/log";
 import {
   adjustmentRejectionMessage,
   productChangeMessage,
+  productConflictError,
   productFieldError,
-  SKU_TAKEN_MESSAGE,
   unexpectedErrorMessage,
   type AdjustmentState,
   type ProductChangeState,
@@ -41,6 +41,13 @@ function productValues(formData: FormData): ProductFormValues {
     brand: String(formData.get("brand") ?? ""),
     category: String(formData.get("category") ?? ""),
     condition: String(formData.get("condition") ?? ""),
+    barcode: String(formData.get("barcode") ?? ""),
+    weightKg: String(formData.get("weightKg") ?? ""),
+    lengthCm: String(formData.get("lengthCm") ?? ""),
+    widthCm: String(formData.get("widthCm") ?? ""),
+    heightCm: String(formData.get("heightCm") ?? ""),
+    location: String(formData.get("location") ?? ""),
+    shelf: String(formData.get("shelf") ?? ""),
   };
 }
 
@@ -88,15 +95,20 @@ export async function createProductAction(
           ...productFieldError(result.fields),
         };
       }
+      if (result.code === "CONFLICT") {
+        return {
+          status: "error",
+          requestId,
+          values,
+          ...productConflictError(result.field),
+        };
+      }
       return {
         status: "error",
         requestId,
         values,
-        field: result.code === "CONFLICT" ? "sku" : null,
-        message:
-          result.code === "CONFLICT"
-            ? SKU_TAKEN_MESSAGE
-            : productChangeMessage(result.code, requestId),
+        field: null,
+        message: productChangeMessage(result.code, requestId),
       };
     }
     logDone(started, requestId, route, "OK", context);
@@ -140,15 +152,20 @@ export async function updateProductAction(
           ...productFieldError(result.fields),
         };
       }
+      if (result.code === "CONFLICT") {
+        return {
+          status: "error",
+          requestId,
+          values,
+          ...productConflictError(result.field),
+        };
+      }
       return {
         status: "error",
         requestId,
         values,
-        field: result.code === "CONFLICT" ? "sku" : null,
-        message:
-          result.code === "CONFLICT"
-            ? SKU_TAKEN_MESSAGE
-            : productChangeMessage(result.code, requestId),
+        field: null,
+        message: productChangeMessage(result.code, requestId),
       };
     }
     logDone(started, requestId, route, "OK", context);

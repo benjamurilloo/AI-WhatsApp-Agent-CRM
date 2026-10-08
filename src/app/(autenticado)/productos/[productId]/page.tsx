@@ -35,6 +35,7 @@ import type { SearchParams } from "../filters";
 import {
   CONDITION_LABEL,
   FORBIDDEN_PAGE_MESSAGE,
+  formatMeasure,
   noticeMessage,
   PRODUCT_NOT_FOUND_MESSAGE,
 } from "../messages";
@@ -51,6 +52,10 @@ export const metadata: Metadata = {
 const TITLE = "Productos";
 const LAST_MOVEMENTS = 3;
 
+function measureOrEmpty(value: string | null): string {
+  return value === null ? "" : formatMeasure(value);
+}
+
 function page(value: string | string[] | undefined): number {
   const raw = Array.isArray(value) ? value[0] : value;
   return raw && /^[1-9][0-9]{0,5}$/.test(raw) ? Number(raw) : 1;
@@ -59,7 +64,8 @@ function page(value: string | string[] | undefined): number {
 // Pantalla 4 (wireframe 04): datos, precio, stock, últimos movimientos y, solo para admin,
 // edición, desactivación con confirmación e historial de auditoría paginado (FR-AUD-02). El
 // precio vigente enlaza a la pantalla de precios (brief-11.1, FR-PROD-12). Presentación de la
-// 15.4: tarjetas por sección y la barra de subpantallas (brief-15.4, D-1 y D-3).
+// 15.4: tarjetas por sección y la barra de subpantallas (brief-15.4, D-1 y D-3). Desde la 17.2, el
+// código de barras y las tarjetas «Logística» y «Ubicación» (brief-17.2, D-11).
 export default async function ProductPage({
   params,
   searchParams,
@@ -112,7 +118,8 @@ export default async function ProductPage({
   const actorLabel = audit?.ok
     ? await auditActorLabels(context.organizationId, audit.entries)
     : null;
-  // Las sugerencias de marca y categoría solo hacen falta si se edita (brief-11.1, D-2).
+  // Las sugerencias de marca, categoría y ubicación solo hacen falta si se edita (brief-11.1,
+  // D-2; brief-17.2, D-6).
   const suggestions = editing ? await listProductSuggestions(context) : null;
 
   return (
@@ -196,6 +203,13 @@ export default async function ProductPage({
               brand: product.brand ?? "",
               category: product.category ?? "",
               condition: product.condition,
+              barcode: product.barcode ?? "",
+              weightKg: measureOrEmpty(product.weightKg),
+              lengthCm: measureOrEmpty(product.lengthCm),
+              widthCm: measureOrEmpty(product.widthCm),
+              heightCm: measureOrEmpty(product.heightCm),
+              location: product.location ?? "",
+              shelf: product.shelf ?? "",
             }}
             suggestions={suggestions?.ok ? suggestions : undefined}
           />
@@ -214,6 +228,13 @@ export default async function ProductPage({
                   label: "SKU",
                   icon: "hash",
                   value: <span className="font-mono">{product.sku}</span>,
+                },
+                {
+                  label: "Código de barras",
+                  icon: "hash",
+                  value: product.barcode ? (
+                    <span className="font-mono">{product.barcode}</span>
+                  ) : null,
                 },
                 { label: "Nombre", icon: "package", value: product.name },
                 { label: "Marca", icon: "tag", value: product.brand },
@@ -234,7 +255,50 @@ export default async function ProductPage({
             />
           </SectionCard>
 
-          <div className="flex min-w-0 flex-col gap-6">
+          <div className="flex min-w-0 flex-col gap-6 lg:col-span-2">
+            <SectionCard id="logistica-titulo" title="Logística" icon="truck">
+              <DetailList
+                items={[
+                  {
+                    label: "Peso",
+                    value: product.weightKg ? (
+                      <span className="tabular-nums">
+                        {formatMeasure(product.weightKg)} kg
+                      </span>
+                    ) : null,
+                  },
+                  {
+                    label: "Dimensiones (largo × ancho × alto)",
+                    value:
+                      product.lengthCm &&
+                      product.widthCm &&
+                      product.heightCm ? (
+                        <span className="tabular-nums">
+                          {formatMeasure(product.lengthCm)} ×{" "}
+                          {formatMeasure(product.widthCm)} ×{" "}
+                          {formatMeasure(product.heightCm)} cm
+                        </span>
+                      ) : null,
+                  },
+                ]}
+              />
+            </SectionCard>
+
+            <SectionCard id="ubicacion-titulo" title="Ubicación" icon="mapPin">
+              <DetailList
+                items={[
+                  {
+                    label: "Ubicación",
+                    icon: "mapPin",
+                    value: product.location,
+                  },
+                  { label: "Estante", icon: "layers", value: product.shelf },
+                ]}
+              />
+            </SectionCard>
+          </div>
+
+          <div className="flex min-w-0 flex-col gap-6 lg:col-start-3 lg:row-start-1 lg:row-span-2">
             <SectionCard id="precio-titulo" title="Precio" icon="tag">
               <p className="text-sm font-semibold text-muted">
                 Precio de venta

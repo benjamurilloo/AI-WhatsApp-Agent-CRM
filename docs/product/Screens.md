@@ -58,7 +58,7 @@
 - **Usuario autorizado**: `admin` y `viewer`.
 - **Información mostrada**: SKU, nombre, marca, categoría, precio vigente o «Sin precio», stock disponible, unidad, estado de stock (disponible, bajo stock, sin stock) y si está activo. Marca, categoría y precio desde la 11.1.
 - **Acciones**: buscar y abrir el detalle. Solo `admin` puede crear producto.
-- **Filtros**: texto, estado de stock y activos/inactivos (por defecto, solo activos). Desde la 11.1 el texto busca por palabras sueltas sobre nombre, marca y categoría, o por SKU exacto (FR-PROD-11); antes era prefijo de nombre o SKU.
+- **Filtros**: texto, estado de stock y activos/inactivos (por defecto, solo activos). Desde la 11.1 el texto busca por palabras sueltas sobre nombre, marca y categoría, o por SKU exacto (FR-PROD-11); antes era prefijo de nombre o SKU. *Desde la 17.2*, también por código de barras exacto (FR-PROD-15): un lector de códigos lo escribe y manda Enter.
 - **Paginación**: 25 por página, ordenado por nombre.
 - **Carga**: skeleton de la tabla.
 - **Vacío**: distingue "no hay productos" de "sin resultados".
@@ -71,13 +71,13 @@
 
 - **Objetivo**: consultar y mantener los datos de un producto.
 - **Usuario autorizado**: lectura para `admin` y `viewer`; edición y desactivación solo para `admin`.
-- **Información mostrada**: datos del producto —con marca, categoría, condición y precio vigente desde la 11.1, y el enlace a la pantalla 5b—, stock actual, estado, punto de reposición y los últimos movimientos (enlace a la pantalla 5). El historial de auditoría solo lo ve `admin`. El formulario sugiere las marcas y categorías que ya existen en la organización.
+- **Información mostrada**: datos del producto —con marca, categoría, condición y precio vigente desde la 11.1, y el enlace a la pantalla 5b—, stock actual, estado, punto de reposición y los últimos movimientos (enlace a la pantalla 5). El historial de auditoría solo lo ve `admin`. El formulario sugiere las marcas y categorías que ya existen en la organización. *Desde la 17.2* ([brief-17.2](../decisions/brief-17.2-campos-de-productos.md), D-11): el código de barras debajo del SKU, y las tarjetas «Logística» (peso en kg y dimensiones en cm, «largo × ancho × alto») y «Ubicación» (ubicación, con sugerencias de las ya cargadas, y estante), en el formulario y en el detalle; las ve también un `viewer` (FR-PROD-14).
 - **Acciones**: editar, y desactivar o reactivar con confirmación explícita.
 - **Filtros**: no aplican.
 - **Paginación**: el historial de auditoría pagina de a 25.
 - **Carga**: skeleton del formulario.
 - **Vacío**: no aplica.
-- **Errores**: validación en línea, `CONFLICT` si el SKU está duplicado y `NOT_FOUND` si el producto no existe.
+- **Errores**: validación en línea, `CONFLICT` si el SKU está duplicado y `NOT_FOUND` si el producto no existe. *Desde la 17.2*, `CONFLICT` también si el código de barras está duplicado, en su campo; una o dos dimensiones sin la tercera marcan las que faltan.
 - **Responsive**: el formulario pasa a una columna.
 - **Accesibilidad**: los errores se asocian a cada campo con `aria-describedby`.
 - **No mostrar**: la auditoría a `viewer`.

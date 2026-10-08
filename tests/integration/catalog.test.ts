@@ -5,7 +5,9 @@ import { hashPassword, login } from "@/modules/auth";
 import {
   createProduct,
   deactivateProduct,
+  getProduct,
   listProductFilterOptions,
+  listProductSuggestions,
   reactivateProduct,
   suggestProducts,
   setProductPrice,
@@ -20,7 +22,8 @@ import { resetDatabase } from "./reset-database";
 
 // Servicio de catálogo contra PostgreSQL real (brief-4.2): escrituras auditadas, CONFLICT por SKU,
 // autorización, aislamiento entre organizaciones, y lista y detalle con saldo y estado de stock.
-// Marca, categoría y condición (FR-PROD-10) y búsqueda por palabras (FR-PROD-11), brief-11.1.
+// Marca, categoría y condición (FR-PROD-10) y búsqueda por palabras (FR-PROD-11), brief-11.1. Campos
+// de operación (FR-PROD-14) y búsqueda por código de barras (FR-PROD-15), brief-17.2.
 
 const PASSWORD = "contraseña-correcta-larga";
 let storedHash: string;
@@ -75,6 +78,17 @@ async function seed() {
   };
 }
 
+// Los campos de la 17.2 vacíos: el producto de antes de la subfase.
+const NO_OPERATION_VALUES = {
+  barcode: null,
+  weightKg: null,
+  lengthCm: null,
+  widthCm: null,
+  heightCm: null,
+  location: null,
+  shelf: null,
+};
+
 const coffee: ProductInput = {
   sku: "CAF-250",
   name: "Café molido 250 g",
@@ -84,6 +98,7 @@ const coffee: ProductInput = {
   brand: null,
   category: null,
   condition: "new",
+  ...NO_OPERATION_VALUES,
 };
 
 async function create(context: AuthContext, input: ProductInput = coffee) {
@@ -198,6 +213,7 @@ describe("createProduct", () => {
             brand: null,
             category: null,
             condition: "new",
+            ...NO_OPERATION_VALUES,
             isActive: true,
           },
         },
@@ -229,6 +245,7 @@ describe("createProduct", () => {
       expect(await createProduct(s.adminA, { ...coffee, sku })).toEqual({
         ok: false,
         code: "CONFLICT",
+        field: "sku",
       });
     }
     expect(await count("products")).toBe(1);
@@ -243,7 +260,7 @@ describe("createProduct", () => {
     ]);
     expect(results.filter((r) => r.ok)).toHaveLength(1);
     expect(results.filter((r) => !r.ok)).toEqual([
-      { ok: false, code: "CONFLICT" },
+      { ok: false, code: "CONFLICT", field: "sku" },
     ]);
     expect(await count("products")).toBe(1);
     expect(await count("audit_logs")).toBe(1);
@@ -380,7 +397,7 @@ describe("updateProduct", () => {
 
     expect(
       await updateProduct(s.adminA, second, { ...coffee, sku: "caf-250" }),
-    ).toEqual({ ok: false, code: "CONFLICT" });
+    ).toEqual({ ok: false, code: "CONFLICT", field: "sku" });
     expect(await productRow(second)).toMatchObject({ sku: "YER-500" });
     expect(await count("audit_logs")).toBe(2);
 
@@ -886,6 +903,395 @@ describe("listProductStock", () => {
   it("una contraseña pendiente recibe FORBIDDEN", async () => {
     const s = await seedList();
     expect(await listProductStock(s.pendingA, listDefaults)).toEqual({
+      ok: false,
+      code: "FORBIDDEN",
+    });
+  });
+});
+
+// brief-17.2: los campos de operación del producto (FR-PROD-14) y la búsqueda por código de
+// barras en la lista (FR-PROD-15), contra PostgreSQL real.
+describe("campos de operación (brief-17.2)", () => {
+  const operation = {
+    barcode: "7790001000017",
+    weightKg: "0,25",
+    lengthCm: "10",
+    widthCm: "8",
+    heightCm: "12,5",
+    location: "Depósito",
+    shelf: "A-3",
+  };
+
+  async function operationRow(productId: string) {
+    const result = await getDb().execute(
+      sql`select barcode, weight_kg, length_cm, width_cm, height_cm, location, shelf
+          from products where id = ${productId}`,
+    );
+    return result.rows[0];
+  }
+
+  async function pgCode(promise: Promise<unknown>) {
+    try {
+      await promise;
+    } catch (error) {
+      const e = error as { code?: string; cause?: { code?: string } };
+      return e.cause?.code ?? e.code;
+    }
+    return "sin error";
+  }
+
+  it("AC-1: la 0032 agrega las siete columnas nulables, sus CHECK y un solo índice nuevo", async () => {
+    const columns = await getDb().execute<{
+      column_name: string;
+      data_type: string;
+      numeric_precision: number | null;
+      numeric_scale: number | null;
+      is_nullable: string;
+      column_default: string | null;
+    }>(
+      sql`select column_name, data_type, numeric_precision, numeric_scale, is_nullable,
+                 column_default
+          from information_schema.columns
+          where table_schema = 'public' and table_name = 'products'
+            and column_name in ('barcode', 'weight_kg', 'length_cm', 'width_cm', 'height_cm',
+                                'location', 'shelf')
+          order by column_name`,
+    );
+    expect(columns.rows).toEqual(
+      [
+        ["barcode", "text", null, null],
+        ["height_cm", "numeric", 8, 1],
+        ["length_cm", "numeric", 8, 1],
+        ["location", "text", null, null],
+        ["shelf", "text", null, null],
+        ["weight_kg", "numeric", 10, 3],
+        ["width_cm", "numeric", 8, 1],
+      ].map(([column_name, data_type, numeric_precision, numeric_scale]) => ({
+        column_name,
+        data_type,
+        numeric_precision,
+        numeric_scale,
+        is_nullable: "YES",
+        column_default: null,
+      })),
+    );
+
+    const checks = await getDb().execute<{ conname: string }>(
+      sql`select conname from pg_constraint
+          where conrelid = 'public.products'::regclass and contype = 'c'
+          order by conname`,
+    );
+    expect(checks.rows.map((row) => row.conname)).toEqual([
+      "products_barcode_format",
+      "products_dimensions_together",
+      "products_height_cm_positive",
+      "products_length_cm_positive",
+      "products_location_length",
+      "products_reorder_point_non_negative",
+      "products_shelf_length",
+      "products_weight_kg_positive",
+      "products_width_cm_positive",
+    ]);
+
+    // D-12: el único índice nuevo es el del código de barras, parcial y sin distinguir mayúsculas.
+    const indexes = await getDb().execute<{
+      indexname: string;
+      indexdef: string;
+    }>(
+      sql`select indexname, indexdef from pg_indexes
+          where schemaname = 'public' and tablename = 'products'
+          order by indexname`,
+    );
+    expect(indexes.rows.map((row) => row.indexname)).toEqual([
+      "products_organization_barcode_lower_unique",
+      "products_organization_id_id_unique",
+      "products_organization_sku_lower_unique",
+      "products_pkey",
+      "products_search_idx",
+    ]);
+    expect(
+      indexes.rows.find(
+        (row) => row.indexname === "products_organization_barcode_lower_unique",
+      )?.indexdef,
+    ).toBe(
+      "CREATE UNIQUE INDEX products_organization_barcode_lower_unique ON public.products USING btree (organization_id, lower(barcode)) WHERE (barcode IS NOT NULL)",
+    );
+  });
+
+  it("FR-PROD-14: un admin da de alta y edita cada campo, normalizado, y getProduct los devuelve", async () => {
+    const s = await seed();
+    const productId = await create(s.adminA, { ...coffee, ...operation });
+    expect(await operationRow(productId)).toEqual({
+      barcode: "7790001000017",
+      weight_kg: "0.250",
+      length_cm: "10.0",
+      width_cm: "8.0",
+      height_cm: "12.5",
+      location: "Depósito",
+      shelf: "A-3",
+    });
+    const found = await getProduct(s.viewerA, productId);
+    expect(found.ok && found.product).toMatchObject({
+      barcode: "7790001000017",
+      weightKg: "0.250",
+      lengthCm: "10.0",
+      widthCm: "8.0",
+      heightCm: "12.5",
+      location: "Depósito",
+      shelf: "A-3",
+    });
+
+    // Vaciar todos los deja en nulo a propósito.
+    expect(
+      await updateProduct(s.adminA, productId, {
+        ...coffee,
+        ...NO_OPERATION_VALUES,
+      }),
+    ).toEqual({ ok: true, changed: true });
+    expect(await operationRow(productId)).toEqual({
+      barcode: null,
+      weight_kg: null,
+      length_cm: null,
+      width_cm: null,
+      height_cm: null,
+      location: null,
+      shelf: null,
+    });
+  });
+
+  it("FR-PROD-14: los valores inválidos dan VALIDATION_ERROR en su campo; un viewer, FORBIDDEN", async () => {
+    const s = await seed();
+    const productId = await create(s.adminA);
+    for (const [override, field] of [
+      [{ barcode: "779 0001" }, "barcode"],
+      [{ weightKg: "0" }, "weightKg"],
+      [{ lengthCm: "10", widthCm: "10" }, "heightCm"],
+      [{ location: "L".repeat(61) }, "location"],
+    ] as const) {
+      expect(
+        await updateProduct(s.adminA, productId, { ...coffee, ...override }),
+      ).toEqual({ ok: false, code: "VALIDATION_ERROR", fields: [field] });
+    }
+    expect(
+      await createProduct(s.viewerA, { ...coffee, sku: "OTRO", ...operation }),
+    ).toEqual({ ok: false, code: "FORBIDDEN" });
+    expect(
+      await updateProduct(s.viewerA, productId, { ...coffee, ...operation }),
+    ).toEqual({ ok: false, code: "FORBIDDEN" });
+    expect(await operationRow(productId)).toMatchObject({ barcode: null });
+    expect(await count("audit_logs")).toBe(1);
+  });
+
+  // Invariante 2: la unicidad la da la base, no solo el servicio.
+  it("FR-PROD-14: un código de barras repetido da CONFLICT en su campo, también con otras mayúsculas", async () => {
+    const s = await seed();
+    const first = await create(s.adminA, { ...coffee, barcode: "ABC-123" });
+    expect(
+      await createProduct(s.adminA, {
+        ...coffee,
+        sku: "YER-500",
+        barcode: "abc-123",
+      }),
+    ).toEqual({ ok: false, code: "CONFLICT", field: "barcode" });
+
+    const second = await create(s.adminA, { ...coffee, sku: "YER-500" });
+    expect(
+      await updateProduct(s.adminA, second, {
+        ...coffee,
+        sku: "YER-500",
+        barcode: "ABC-123",
+      }),
+    ).toEqual({ ok: false, code: "CONFLICT", field: "barcode" });
+    expect(await operationRow(second)).toMatchObject({ barcode: null });
+    // El propio producto puede cambiar las mayúsculas de su código.
+    expect(
+      await updateProduct(s.adminA, first, { ...coffee, barcode: "abc-123" }),
+    ).toEqual({ ok: true, changed: true });
+    // Otra organización lo acepta, y muchos productos sin código conviven.
+    await create(s.adminB, { ...coffee, barcode: "ABC-123" });
+    await create(s.adminA, { ...coffee, sku: "TE-1" });
+    expect(await count("products")).toBe(4);
+    // Un SKU repetido sigue señalando el SKU.
+    expect(
+      await createProduct(s.adminA, { ...coffee, barcode: "nuevo" }),
+    ).toEqual({ ok: false, code: "CONFLICT", field: "sku" });
+
+    // Por SQL directo, sin pasar por el servicio.
+    expect(
+      await pgCode(
+        getDb().execute(
+          sql`insert into products (organization_id, sku, name, barcode)
+              values (${s.orgA}, 'SQL-1', 'Directo', 'Abc-123')`,
+        ),
+      ),
+    ).toBe("23505");
+  });
+
+  it("FR-PROD-14: dos altas simultáneas con el mismo código: exactamente una se crea", async () => {
+    const s = await seed();
+    const results = await Promise.all([
+      createProduct(s.adminA, { ...coffee, barcode: "779" }),
+      createProduct(s.adminA, { ...coffee, sku: "YER-500", barcode: "779" }),
+    ]);
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(results.filter((r) => !r.ok)).toEqual([
+      { ok: false, code: "CONFLICT", field: "barcode" },
+    ]);
+    expect(await count("products")).toBe(1);
+  });
+
+  // Invariante 5 y los CHECK de forma, por SQL directo.
+  it("los CHECK de la base rechazan formas inválidas aunque no pasen por el servicio", async () => {
+    const s = await seed();
+    for (const assignment of [
+      sql`barcode = 'con espacio'`,
+      sql`barcode = ''`,
+      sql`weight_kg = 0`,
+      sql`length_cm = -1, width_cm = 1, height_cm = 1`,
+      sql`length_cm = 1`,
+      sql`length_cm = 1, width_cm = 1`,
+      sql`location = ''`,
+      sql`shelf = ${"E".repeat(31)}`,
+    ]) {
+      const productId = await insertProduct(s.orgA, {
+        sku: randomUUID(),
+        name: "Prueba",
+      });
+      expect(
+        await pgCode(
+          getDb().execute(
+            sql`update products set ${assignment} where id = ${productId}`,
+          ),
+        ),
+      ).toBe("23514");
+    }
+    const productId = await insertProduct(s.orgA, { sku: "OK-1", name: "Ok" });
+    await getDb().execute(
+      sql`update products set length_cm = 1, width_cm = 2, height_cm = 3 where id = ${productId}`,
+    );
+  });
+
+  it("AC-4: cada cambio audita solo los campos que cambiaron; repetir no escribe", async () => {
+    const s = await seed();
+    const productId = await create(s.adminA, { ...coffee, ...operation });
+    expect(
+      await updateProduct(s.adminA, productId, {
+        ...coffee,
+        ...operation,
+        weightKg: "0,5",
+        shelf: "",
+      }),
+    ).toEqual({ ok: true, changed: true });
+    const rows = await auditRows();
+    expect(rows[0]).toMatchObject({
+      action: "create",
+      diff: {
+        after: {
+          barcode: "7790001000017",
+          weightKg: "0.250",
+          lengthCm: "10.0",
+          location: "Depósito",
+        },
+      },
+    });
+    expect(rows[1]).toMatchObject({
+      action: "update",
+      diff: {
+        before: { weightKg: "0.250", shelf: "A-3" },
+        after: { weightKg: "0.500", shelf: null },
+      },
+    });
+    expect(
+      Object.keys((rows[1]!.diff as { after: object }).after).sort(),
+    ).toEqual(["shelf", "weightKg"]);
+    // «0,50» es el mismo peso: no hay cambio real.
+    expect(
+      await updateProduct(s.adminA, productId, {
+        ...coffee,
+        ...operation,
+        weightKg: "0,50",
+        shelf: null,
+      }),
+    ).toEqual({ ok: true, changed: false });
+    expect(await count("audit_logs")).toBe(2);
+  });
+
+  it("FR-PROD-15: la lista encuentra por código de barras exacto, con los filtros y solo de la organización", async () => {
+    const s = await seed();
+    await insertProduct(s.orgA, {
+      sku: "CAF-250",
+      name: "Café molido 250 g",
+      brand: "Nescafé",
+      category: "Bebidas",
+    });
+    await insertProduct(s.orgA, { sku: "YER-500", name: "Yerba 500 g" });
+    await getDb().execute(
+      sql`update products set barcode = 'Ean-7790001' where sku = 'CAF-250' and organization_id = ${s.orgA}`,
+    );
+    const otherId = await insertProduct(s.orgB, {
+      sku: "OTR-1",
+      name: "Café de otra organización",
+    });
+    await getDb().execute(
+      sql`update products set barcode = 'OTRO-779' where id = ${otherId}`,
+    );
+    const names = async (filters: Record<string, unknown>) => {
+      const result = await listProductStock(s.viewerA, {
+        ...listDefaults,
+        ...filters,
+      } as Parameters<typeof listProductStock>[1]);
+      if (!result.ok) throw new Error(result.code);
+      return result.products.map((product) => product.name);
+    };
+    expect(await names({ text: "ean-7790001" })).toEqual(["Café molido 250 g"]);
+    expect(await names({ text: " EAN-7790001 " })).toEqual([
+      "Café molido 250 g",
+    ]);
+    // Exacto: ni prefijo ni parte.
+    expect(await names({ text: "Ean-779" })).toEqual([]);
+    // Con la marca y la actividad.
+    expect(await names({ text: "Ean-7790001", brand: "Nescafé" })).toEqual([
+      "Café molido 250 g",
+    ]);
+    expect(await names({ text: "Ean-7790001", brand: "Otra" })).toEqual([]);
+    expect(await names({ text: "Ean-7790001", category: "Bebidas" })).toEqual([
+      "Café molido 250 g",
+    ]);
+    expect(await names({ text: "Ean-7790001", category: "Almacén" })).toEqual(
+      [],
+    );
+    await getDb().execute(
+      sql`update products set is_active = false where sku = 'CAF-250' and organization_id = ${s.orgA}`,
+    );
+    expect(await names({ text: "Ean-7790001" })).toEqual([]);
+    expect(await names({ text: "Ean-7790001", activity: "all" })).toEqual([
+      "Café molido 250 g",
+    ]);
+    // El código de otra organización no encuentra nada.
+    expect(await names({ text: "OTRO-779", activity: "all" })).toEqual([]);
+  });
+
+  // D-4: las sugerencias comparten la búsqueda del agente, que no busca por código de barras.
+  it("FR-PROD-15: las sugerencias no buscan por código de barras (D-4)", async () => {
+    const s = await seed();
+    await create(s.adminA, { ...coffee, barcode: "7790001000017" });
+    const result = await suggestProducts(s.viewerA, "7790001000017");
+    expect(result).toEqual({ ok: true, products: [] });
+  });
+
+  it("D-6: las sugerencias de ubicación son de la organización y solo para un admin", async () => {
+    const s = await seed();
+    await create(s.adminA, { ...coffee, location: "Local" });
+    await create(s.adminA, { ...coffee, sku: "YER-500", location: "Depósito" });
+    await create(s.adminA, { ...coffee, sku: "TE-1", location: "Local" });
+    await create(s.adminB, { ...coffee, location: "Ajena" });
+    expect(await listProductSuggestions(s.adminA)).toEqual({
+      ok: true,
+      brands: [],
+      categories: [],
+      locations: ["Depósito", "Local"],
+    });
+    expect(await listProductSuggestions(s.viewerA)).toEqual({
       ok: false,
       code: "FORBIDDEN",
     });

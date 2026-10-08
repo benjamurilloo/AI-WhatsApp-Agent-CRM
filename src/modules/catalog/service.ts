@@ -26,11 +26,17 @@ import {
   type Quantity,
 } from "@/shared/quantity";
 import * as repository from "./repository";
-import { productCondition } from "./schema";
+import {
+  DIMENSION_SCALE,
+  PRODUCT_FIELD_LIMITS,
+  productCondition,
+  WEIGHT_SCALE,
+} from "./schema";
 
 // Casos de uso de productos (brief-4.2): FR-PROD-01 a 03, con auditoría en la misma
 // transacción (FR-AUD-01), y el estado de stock de FR-PROD-05. Marca, categoría y condición
 // (FR-PROD-10), la búsqueda por palabras (FR-PROD-11) y el precio (FR-PROD-12 y 13), brief-11.1.
+// Los campos de operación y la búsqueda por código de barras (FR-PROD-14 y 15), brief-17.2.
 
 export type Product = repository.ProductRow;
 export type ProductActivityFilter = repository.ActivityFilter;
@@ -62,6 +68,14 @@ export type ProductInput = {
   brand: string | null;
   category: string | null;
   condition: string;
+  // Desde la 17.2, con la misma regla: obligatorios en el tipo, vacío se guarda como nulo.
+  barcode: string | null;
+  weightKg: string | null;
+  lengthCm: string | null;
+  widthCm: string | null;
+  heightCm: string | null;
+  location: string | null;
+  shelf: string | null;
 };
 
 // Texto opcional recortado: vacío se guarda como nulo.
@@ -74,24 +88,73 @@ function optionalText(max: number) {
     .transform((value) => (value ? value : null));
 }
 
-// Límites de brief-4.2, D-4, y de brief-11.1, D-2. Los textos se recortan antes de validar.
-const productInputSchema = z.object({
-  sku: z.string().trim().min(1).max(64).regex(/^\S+$/),
-  name: z.string().trim().min(1).max(200),
-  description: optionalText(2000),
-  unit: z.string().trim().min(1).max(32),
-  reorderPoint: z.string().transform((value, ctx) => {
-    const quantity = parseQuantityInput(value);
-    if (quantity === null) {
-      ctx.addIssue({ code: "custom", message: "cantidad inválida" });
-      return z.NEVER;
+// Número opcional mayor a 0, con coma o punto, con los dígitos que admite su columna (brief-17.2,
+// D-5). Vacío se guarda como nulo; el resto, con la escala de la base ("1.500", "10.0").
+function optionalPositiveDecimal(scale: {
+  integerDigits: number;
+  decimals: number;
+}) {
+  const pattern = new RegExp(
+    `^(\\d{1,${scale.integerDigits}})(?:[.,](\\d{1,${scale.decimals}}))?$`,
+  );
+  return z
+    .string()
+    .nullish()
+    .transform((value, ctx) => {
+      const trimmed = value?.trim() ?? "";
+      if (trimmed === "") return null;
+      const match = pattern.exec(trimmed);
+      const integer = match ? BigInt(match[1]!) : 0n;
+      const fraction = (match?.[2] ?? "").padEnd(scale.decimals, "0");
+      if (!match || (integer === 0n && BigInt(fraction) === 0n)) {
+        ctx.addIssue({ code: "custom", message: "número inválido" });
+        return z.NEVER;
+      }
+      return `${integer}.${fraction}`;
+    });
+}
+
+const DIMENSION_FIELDS = ["lengthCm", "widthCm", "heightCm"] as const;
+
+// Límites de brief-4.2, D-4, de brief-11.1, D-2, y de brief-17.2, D-3 a D-6. Los textos se
+// recortan antes de validar.
+const productInputSchema = z
+  .object({
+    sku: z.string().trim().min(1).max(64).regex(/^\S+$/),
+    name: z.string().trim().min(1).max(200),
+    description: optionalText(2000),
+    unit: z.string().trim().min(1).max(32),
+    reorderPoint: z.string().transform((value, ctx) => {
+      const quantity = parseQuantityInput(value);
+      if (quantity === null) {
+        ctx.addIssue({ code: "custom", message: "cantidad inválida" });
+        return z.NEVER;
+      }
+      return quantityToDatabase(quantity);
+    }),
+    brand: optionalText(100),
+    category: optionalText(100),
+    condition: z.enum(productCondition.enumValues),
+    barcode: optionalText(PRODUCT_FIELD_LIMITS.barcode).refine(
+      (value) => value === null || /^\S+$/.test(value),
+    ),
+    weightKg: optionalPositiveDecimal(WEIGHT_SCALE),
+    lengthCm: optionalPositiveDecimal(DIMENSION_SCALE),
+    widthCm: optionalPositiveDecimal(DIMENSION_SCALE),
+    heightCm: optionalPositiveDecimal(DIMENSION_SCALE),
+    location: optionalText(PRODUCT_FIELD_LIMITS.location),
+    shelf: optionalText(PRODUCT_FIELD_LIMITS.shelf),
+  })
+  // Las tres dimensiones van juntas o ninguna (D-5): se marcan las que faltan.
+  .superRefine((values, ctx) => {
+    const missing = DIMENSION_FIELDS.filter((field) => values[field] === null);
+    if (missing.length === 0 || missing.length === DIMENSION_FIELDS.length) {
+      return;
     }
-    return quantityToDatabase(quantity);
-  }),
-  brand: optionalText(100),
-  category: optionalText(100),
-  condition: z.enum(productCondition.enumValues),
-});
+    for (const field of missing) {
+      ctx.addIssue({ code: "custom", path: [field], message: "falta" });
+    }
+  });
 
 const PRODUCT_FIELDS: ProductField[] = [
   "sku",
@@ -102,6 +165,13 @@ const PRODUCT_FIELDS: ProductField[] = [
   "brand",
   "category",
   "condition",
+  "barcode",
+  "weightKg",
+  "lengthCm",
+  "widthCm",
+  "heightCm",
+  "location",
+  "shelf",
 ];
 
 export function validateProductInput(
@@ -173,19 +243,24 @@ export async function searchProducts(
   return { ok: true, products };
 }
 
-// Marcas y categorías ya usadas en la organización, para el formulario (brief-11.1, D-2).
+// Marcas y categorías ya usadas en la organización, para el formulario (brief-11.1, D-2), y desde
+// la 17.2 las ubicaciones (D-6).
 export type ProductSuggestions = { brands: string[]; categories: string[] };
+export type ProductFormSuggestions = ProductSuggestions & {
+  locations: string[];
+};
 
 export async function listProductSuggestions(
   context: AuthContext,
-): Promise<({ ok: true } & ProductSuggestions) | Failure<"FORBIDDEN">> {
+): Promise<({ ok: true } & ProductFormSuggestions) | Failure<"FORBIDDEN">> {
   const authorized = authorize(context, { role: "admin" });
   if (!authorized.ok) return authorized;
-  const [brands, categories] = await Promise.all([
+  const [brands, categories, locations] = await Promise.all([
     repository.findDistinctValues(context.organizationId, "brand"),
     repository.findDistinctValues(context.organizationId, "category"),
+    repository.findDistinctValues(context.organizationId, "location"),
   ]);
-  return { ok: true, brands, categories };
+  return { ok: true, brands, categories, locations };
 }
 
 // Las mismas listas, para los filtros del listado (brief-15.2, D-4): admin y viewer, que ya ven
@@ -303,9 +378,33 @@ export async function listProductAudit(
 
 // Escrituras: solo admin.
 
+// El campo repetido: el SKU o, desde la 17.2, el código de barras (D-3).
+export type ProductConflictField = "sku" | "barcode";
+export type ProductConflict = Failure<
+  "CONFLICT",
+  { field: ProductConflictField }
+>;
+
+function productConflict(
+  violation: repository.ProductUniqueViolation,
+): ProductConflict {
+  return {
+    ok: false,
+    code: "CONFLICT",
+    field: violation === "barcode_taken" ? "barcode" : "sku",
+  };
+}
+
+function isUniqueViolation(
+  value: unknown,
+): value is repository.ProductUniqueViolation {
+  return value === "sku_taken" || value === "barcode_taken";
+}
+
 export type CreateProductResult =
   | { ok: true; productId: string }
-  | Failure<"FORBIDDEN" | "CONFLICT">
+  | Failure<"FORBIDDEN">
+  | ProductConflict
   | Failure<"VALIDATION_ERROR", { fields: ProductField[] }>;
 
 export async function createProduct(
@@ -325,7 +424,7 @@ export async function createProduct(
         context.organizationId,
         values,
       );
-      if (productId === "sku_taken") return failure("CONFLICT");
+      if (isUniqueViolation(productId)) return productConflict(productId);
       await recordAudit(tx, {
         organizationId: context.organizationId,
         actorUserId: context.userId,
@@ -343,7 +442,8 @@ export async function createProduct(
 export type UpdateProductResult =
   | { ok: true; changed: boolean }
   // VALIDATION_ERROR sin fields: id inválido (brief-4.4, D-6). Con fields: el formulario.
-  | Failure<"FORBIDDEN" | "NOT_FOUND" | "CONFLICT" | "VALIDATION_ERROR">
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+  | ProductConflict
   | Failure<"VALIDATION_ERROR", { fields: ProductField[] }>;
 
 export async function updateProduct(
@@ -388,7 +488,7 @@ export async function updateProduct(
         productId,
         after,
       );
-      if (updated === "sku_taken") return failure("CONFLICT");
+      if (isUniqueViolation(updated)) return productConflict(updated);
       await recordAudit(tx, {
         organizationId: context.organizationId,
         actorUserId: context.userId,

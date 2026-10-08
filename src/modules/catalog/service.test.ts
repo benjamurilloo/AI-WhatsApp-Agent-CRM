@@ -26,6 +26,17 @@ describe("deriveStockStatus (FR-PROD-05)", () => {
   });
 });
 
+// Los campos de la 17.2 vacíos: el producto de antes de la subfase.
+const NO_OPERATION_VALUES = {
+  barcode: null,
+  weightKg: null,
+  lengthCm: null,
+  widthCm: null,
+  heightCm: null,
+  location: null,
+  shelf: null,
+};
+
 const valid = {
   sku: "CAF-250",
   name: "Café molido 250 g",
@@ -35,6 +46,7 @@ const valid = {
   brand: "Cafetal",
   category: "Almacén",
   condition: "new",
+  ...NO_OPERATION_VALUES,
 };
 
 describe("validateProductInput (brief-4.2, D-4)", () => {
@@ -49,6 +61,7 @@ describe("validateProductInput (brief-4.2, D-4)", () => {
         brand: "  Cafetal ",
         category: " Almacén  ",
         condition: "refurbished",
+        ...NO_OPERATION_VALUES,
       }),
     ).toEqual({
       ok: true,
@@ -61,6 +74,7 @@ describe("validateProductInput (brief-4.2, D-4)", () => {
         brand: "Cafetal",
         category: "Almacén",
         condition: "refurbished",
+        ...NO_OPERATION_VALUES,
       },
     });
   });
@@ -96,6 +110,13 @@ describe("validateProductInput (brief-4.2, D-4)", () => {
         brand: "B".repeat(100),
         category: "C".repeat(100),
         condition: "new",
+        barcode: "7".repeat(64),
+        weightKg: "9999999,999",
+        lengthCm: "9999999,9",
+        widthCm: "9999999,9",
+        heightCm: "9999999,9",
+        location: "L".repeat(60),
+        shelf: "E".repeat(30),
       }).ok,
     ).toBe(true);
   });
@@ -111,6 +132,13 @@ describe("validateProductInput (brief-4.2, D-4)", () => {
         brand: "B".repeat(101),
         category: "C".repeat(101),
         condition: "usado",
+        barcode: "779 0001",
+        weightKg: "0",
+        lengthCm: "-1",
+        widthCm: "1,25",
+        heightCm: "abc",
+        location: "L".repeat(61),
+        shelf: "E".repeat(31),
       }),
     ).toEqual({
       ok: false,
@@ -124,6 +152,13 @@ describe("validateProductInput (brief-4.2, D-4)", () => {
         "brand",
         "category",
         "condition",
+        "barcode",
+        "weightKg",
+        "lengthCm",
+        "widthCm",
+        "heightCm",
+        "location",
+        "shelf",
       ],
     });
   });
@@ -147,5 +182,100 @@ describe("validateProductInput (brief-4.2, D-4)", () => {
         fields: [field],
       });
     }
+  });
+});
+
+// FR-PROD-14 (brief-17.2): los campos de operación, opcionales y con la escala de la base.
+describe("validateProductInput: campos de operación (brief-17.2)", () => {
+  it("FR-PROD-14: recorta y normaliza a la escala de la base, con coma o punto", () => {
+    const result = validateProductInput({
+      ...valid,
+      barcode: "  7790001000017 ",
+      weightKg: " 1,5 ",
+      lengthCm: "30",
+      widthCm: "20.5",
+      heightCm: "007,0",
+      location: "  Depósito ",
+      shelf: " A-3 ",
+    });
+    expect(result.ok && result).toMatchObject({
+      values: {
+        barcode: "7790001000017",
+        weightKg: "1.500",
+        lengthCm: "30.0",
+        widthCm: "20.5",
+        heightCm: "7.0",
+        location: "Depósito",
+        shelf: "A-3",
+      },
+    });
+  });
+
+  it("FR-PROD-14: vacíos o solo con espacios se guardan como null", () => {
+    for (const value of ["", "   ", null]) {
+      const result = validateProductInput({
+        ...valid,
+        barcode: value,
+        weightKg: value,
+        lengthCm: value,
+        widthCm: value,
+        heightCm: value,
+        location: value,
+        shelf: value,
+      });
+      expect(result.ok && result.values).toMatchObject(NO_OPERATION_VALUES);
+    }
+  });
+
+  it("FR-PROD-14: rechaza cada valor fuera de la forma, en su campo", () => {
+    const dimensions = { lengthCm: "10", widthCm: "10", heightCm: "10" };
+    for (const [override, field] of [
+      [{ barcode: "779 0001" }, "barcode"],
+      [{ barcode: "7".repeat(65) }, "barcode"],
+      [{ weightKg: "0" }, "weightKg"],
+      [{ weightKg: "0,000" }, "weightKg"],
+      [{ weightKg: "-1" }, "weightKg"],
+      [{ weightKg: "1,2345" }, "weightKg"],
+      [{ weightKg: "10000000" }, "weightKg"],
+      [{ weightKg: "1e3" }, "weightKg"],
+      [{ weightKg: "1.000,5" }, "weightKg"],
+      [{ ...dimensions, lengthCm: "0" }, "lengthCm"],
+      [{ ...dimensions, widthCm: "1,25" }, "widthCm"],
+      [{ ...dimensions, heightCm: "10000000" }, "heightCm"],
+      [{ location: "L".repeat(61) }, "location"],
+      [{ shelf: "E".repeat(31) }, "shelf"],
+    ] as const) {
+      expect(validateProductInput({ ...valid, ...override })).toEqual({
+        ok: false,
+        code: "VALIDATION_ERROR",
+        fields: [field],
+      });
+    }
+  });
+
+  it("FR-PROD-14: largo, ancho y alto van juntos; marca los que faltan (D-5)", () => {
+    expect(
+      validateProductInput({
+        ...valid,
+        lengthCm: "10",
+        widthCm: "",
+        heightCm: null,
+      }),
+    ).toEqual({
+      ok: false,
+      code: "VALIDATION_ERROR",
+      fields: ["widthCm", "heightCm"],
+    });
+    expect(
+      validateProductInput({ ...valid, lengthCm: "10", widthCm: "5" }),
+    ).toEqual({ ok: false, code: "VALIDATION_ERROR", fields: ["heightCm"] });
+    expect(
+      validateProductInput({
+        ...valid,
+        lengthCm: "10",
+        widthCm: "5",
+        heightCm: "2",
+      }).ok,
+    ).toBe(true);
   });
 });

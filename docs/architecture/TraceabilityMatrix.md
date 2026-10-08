@@ -33,6 +33,8 @@
 
 *Desde la 17.1*, la pantalla 6 suma FR-CLI-14 (los filtros por tipo, provincia y segmento sobre `clients`, sin índice: medido con 10 000 clientes en `crm.test.ts`) y la pantalla 7 suma FR-CLI-12 y 13 (las columnas nuevas de `clients`, leídas por la PK).
 
+*Desde la 17.2*, la pantalla 3 suma FR-PROD-15 (el código de barras exacto, por el índice único parcial `products (organization_id, lower(barcode)) WHERE barcode IS NOT NULL`) y la pantalla 4 suma FR-PROD-14 (las columnas nuevas de `products`, leídas por la PK).
+
 Marco común (pantallas 2 a 12): `organizations.name`, `users.name`, `organization_members.role`, resueltos con el `UNIQUE(user_id)` de la membresía en cada request.
 
 ## 2. Por requisito funcional
@@ -57,6 +59,8 @@ Cada FR tiene al menos una pantalla, endpoint o invariante con test que lo satis
 | FR-PROD-11 | Buscador de la pantalla 3 (11.1); `catalog.test.ts`, con el caso de `EXPLAIN` sobre `products_search_idx`, y `products.spec.ts` caso 14 | pantalla e invariante con test |
 | FR-PROD-12 | Pantalla 5b, y precio vigente en las pantallas 3 y 4 (11.1); `product-prices.test.ts`, con la concurrencia desde una tercera conexión, `money.test.ts` y `products.spec.ts` casos 15 y 16 | pantalla e invariante con test |
 | FR-PROD-13 | Sin vía de modificación: privilegios de `crm_app` y trigger en `product_prices` (`product-prices.test.ts`), guarda `price-writes.test.ts`, y `products.spec.ts` caso 17 | invariante con test |
+| FR-PROD-14 | Formulario de las pantallas 3 y 4, y detalle de la pantalla 4 (17.2); `catalog.test.ts` (alta y edición normalizadas y auditadas, cada campo inválido, el `CONFLICT` del código de barras con la concurrencia y por SQL directo, los `CHECK` de la base), `service.test.ts`, `audit-summary.test.ts`, `read-api.test.ts` caso 6b (el agente no los ve) y `product-fields.spec.ts` casos 1, 2 y 4 | pantalla e invariante con test |
+| FR-PROD-15 | Buscador de la pantalla 3 (17.2); `catalog.test.ts` (exacto, sin distinguir mayúsculas, con los filtros, solo de la organización; las sugerencias no lo usan) y `product-fields.spec.ts` caso 3 | pantalla e invariante con test |
 | FR-INFO-01 | Pantalla 12 (11.2); `knowledge.test.ts` (escrituras de `admin`, auditoría, `CONFLICT` por título, sin `DELETE` para `crm_app`) y `knowledge.spec.ts` casos 1 a 4 | pantalla e invariante con test |
 | FR-INFO-02 | Pantalla 11 (11.2); `knowledge.test.ts`, con el caso de `EXPLAIN` sobre `knowledge_entries_search_idx` y el orden por relevancia, y `knowledge.spec.ts` caso 5 | pantalla e invariante con test |
 | FR-INFO-03 | Pantallas 11 y 12 (11.2); `knowledge.test.ts`, con organizaciones en UTC+14 y UTC−11 y su corrida de mutación, y `knowledge.spec.ts` caso 5 | pantalla e invariante con test |
@@ -109,6 +113,7 @@ Cada índice tiene al menos una consulta real que lo usa.
 | `clients` | `UNIQUE(organization_id, phone_e164) WHERE phone_e164 IS NOT NULL` | búsqueda exacta por teléfono completo normalizado; `CONFLICT` por duplicado, también con un cliente inactivo (brief-5.1, D-3) | pantallas 6 y 7 |
 | `clients` | `(organization_id, lower(display_name) text_pattern_ops)` | búsqueda por prefijo de nombre sin distinguir mayúsculas (brief-5.1, D-2) | pantalla 6 |
 | `products` | `UNIQUE(organization_id, lower(sku))` | búsqueda exacta por SKU sin distinguir mayúsculas; `CONFLICT` por duplicado (brief-4.1, D-6) | pantallas 3 y 4 |
+| `products` | `UNIQUE(organization_id, lower(barcode)) WHERE barcode IS NOT NULL` | búsqueda exacta por código de barras sin distinguir mayúsculas; `CONFLICT` por duplicado (brief-17.2, D-3 y D-4) | pantallas 3 y 4 |
 | `products` | `UNIQUE(organization_id, id)` | destino de las claves foráneas compuestas de `inventories` e `inventory_movements`; ninguna consulta lo usa (brief-4.1, D-3) | — |
 | `products` | `(organization_id, lower(name) text_pattern_ops)` | búsqueda por prefijo de nombre sin distinguir mayúsculas (brief-4.2, D-3) | pantalla 3 |
 | `inventories` | `UNIQUE(product_id)` | saldo del producto y bloqueo de fila del ajuste | pantallas 3, 4 y 5 |

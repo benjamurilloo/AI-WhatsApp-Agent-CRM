@@ -2,10 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   adjustmentFieldError,
   adjustmentRejectionMessage,
+  BARCODE_TAKEN_MESSAGE,
+  formatMeasure,
+  HEIGHT_MESSAGE,
   FORBIDDEN_ACTION_MESSAGE,
   INACTIVE_PRODUCT_NOTICE,
   noticeMessage,
   productChangeMessage,
+  productConflictError,
   productFieldError,
   PRODUCT_NOT_FOUND_MESSAGE,
   SKU_TAKEN_MESSAGE,
@@ -139,5 +143,39 @@ describe("noticeMessage", () => {
     );
     expect(noticeMessage("inventado")).toBeNull();
     expect(noticeMessage(undefined)).toBeNull();
+  });
+});
+
+// brief-17.2: los campos de operación en el orden del formulario, el CONFLICT en su campo y las
+// medidas como se leen.
+describe("campos de operación (brief-17.2)", () => {
+  it("el código de barras va después del SKU; las dimensiones, después del stock", () => {
+    expect(productFieldError(["name", "barcode"]).field).toBe("barcode");
+    expect(productFieldError(["shelf", "heightCm", "reorderPoint"]).field).toBe(
+      "reorderPoint",
+    );
+    expect(productFieldError(["shelf", "heightCm"])).toEqual({
+      field: "heightCm",
+      message: HEIGHT_MESSAGE,
+    });
+  });
+
+  it("FR-PROD-14: el CONFLICT señala el campo repetido con su mensaje", () => {
+    expect(productConflictError("barcode")).toEqual({
+      field: "barcode",
+      message: BARCODE_TAKEN_MESSAGE,
+    });
+    expect(productConflictError("sku")).toEqual({
+      field: "sku",
+      message: SKU_TAKEN_MESSAGE,
+    });
+  });
+
+  it("formatMeasure quita los ceros finales y usa coma decimal, en cualquier escala", () => {
+    expect(formatMeasure("1.500")).toBe("1,5");
+    expect(formatMeasure("10.0")).toBe("10");
+    expect(formatMeasure("20.5")).toBe("20,5");
+    expect(formatMeasure("0.005")).toBe("0,005");
+    expect(formatMeasure("9999999.999")).toBe("9999999,999");
   });
 });

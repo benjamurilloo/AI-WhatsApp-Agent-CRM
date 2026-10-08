@@ -547,6 +547,9 @@ test("caso 12: el alta se completa solo con teclado", async ({ page }) => {
   }
   await expect(sku).toBeFocused();
   await page.keyboard.type("TEC-001");
+  // Desde la 17.2, el código de barras va debajo del SKU (brief-17.2, D-11).
+  await page.keyboard.press("Tab");
+  await expect(page.getByLabel("Código de barras")).toBeFocused();
   await page.keyboard.press("Tab");
   await page.keyboard.type("Producto de teclado");
   await page.keyboard.press("Tab");
@@ -563,6 +566,19 @@ test("caso 12: el alta se completa solo con teclado", async ({ page }) => {
   await page.keyboard.type("unidad");
   await page.keyboard.press("Tab");
   await page.keyboard.type("3");
+  // Desde la 17.2, las tarjetas «Logística» y «Ubicación», en el orden visual (D-11).
+  // «Ubicación» también nombra su tarjeta: se busca el campo por su rol.
+  for (const field of [
+    page.getByLabel("Peso (kg)"),
+    page.getByLabel("Largo (cm)"),
+    page.getByLabel("Ancho (cm)"),
+    page.getByLabel("Alto (cm)"),
+    page.getByRole("combobox", { name: "Ubicación" }),
+    page.getByLabel("Estante"),
+  ]) {
+    await page.keyboard.press("Tab");
+    await expect(field).toBeFocused();
+  }
   await page.keyboard.press("Tab");
   await expect(page.getByRole("link", { name: "Cancelar" })).toBeFocused();
   await page.keyboard.press("Tab");

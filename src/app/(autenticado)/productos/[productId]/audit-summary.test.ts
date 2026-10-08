@@ -161,4 +161,51 @@ describe("describeAuditDiff", () => {
       ),
     ).toBe("Nombre: Café → Yerba");
   });
+
+  // brief-17.2, AC-4: los campos de operación con su etiqueta y su unidad; un alta no menciona
+  // los que quedaron vacíos.
+  it("FR-PROD-14: una edición de los campos de operación se lee con etiquetas y unidades", () => {
+    expect(
+      describeAuditDiff(
+        entry({
+          diff: {
+            before: {
+              barcode: null,
+              weightKg: "1.500",
+              lengthCm: null,
+              location: "Local",
+            },
+            after: {
+              barcode: "7790001000017",
+              weightKg: "2.000",
+              lengthCm: "30.5",
+              location: null,
+            },
+          },
+        }),
+      ),
+    ).toBe(
+      "Código de barras: vacío → 7790001000017 · Peso: 1,5 kg → 2 kg · Largo: vacío → 30,5 cm · Ubicación: Local → vacío",
+    );
+  });
+
+  it("FR-PROD-14: un alta muestra los campos de operación cargados y omite los vacíos", () => {
+    expect(
+      describeAuditDiff(
+        entry({
+          action: "create",
+          diff: {
+            before: null,
+            after: {
+              sku: "CAF-250",
+              barcode: null,
+              weightKg: "0.250",
+              shelf: null,
+              isActive: true,
+            },
+          },
+        }),
+      ),
+    ).toBe("SKU: CAF-250 · Peso: 0,25 kg · Activo: sí");
+  });
 });

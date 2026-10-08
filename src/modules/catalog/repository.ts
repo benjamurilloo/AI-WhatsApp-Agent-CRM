@@ -26,19 +26,22 @@ type Executor = Db | DbTransaction;
 
 export type ProductCondition = (typeof productCondition.enumValues)[number];
 
-export type ProductRow = {
-  id: string;
-  sku: string;
-  name: string;
-  description: string | null;
-  unit: string;
-  reorderPoint: string;
-  brand: string | null;
-  category: string | null;
-  condition: ProductCondition;
-  isActive: boolean;
-  createdAt: Date;
-  updatedAt: Date;
+export type ProductRow = { id: string } & ProductValues & {
+    isActive: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+  };
+
+// Campos de operación (brief-17.2): texto o nulo; los números, con la escala de la base
+// ("1.500" kg, "10.0" cm).
+export type ProductOperationValues = {
+  barcode: string | null;
+  weightKg: string | null;
+  lengthCm: string | null;
+  widthCm: string | null;
+  heightCm: string | null;
+  location: string | null;
+  shelf: string | null;
 };
 
 // Campos editables, con reorderPoint ya normalizado a la escala de la base.
@@ -51,7 +54,7 @@ export type ProductValues = {
   brand: string | null;
   category: string | null;
   condition: ProductCondition;
-};
+} & ProductOperationValues;
 
 const productColumns = {
   id: products.id,
@@ -63,6 +66,13 @@ const productColumns = {
   brand: products.brand,
   category: products.category,
   condition: products.condition,
+  barcode: products.barcode,
+  weightKg: products.weightKg,
+  lengthCm: products.lengthCm,
+  widthCm: products.widthCm,
+  heightCm: products.heightCm,
+  location: products.location,
+  shelf: products.shelf,
   isActive: products.isActive,
   createdAt: products.createdAt,
   updatedAt: products.updatedAt,
@@ -151,6 +161,9 @@ export function findProducts(
       or(
         productSearchCondition(filters.text),
         sql`lower(${products.sku}) = lower(${filters.text})`,
+        // Solo la lista: la búsqueda del agente y las sugerencias no buscan por código de barras
+        // (brief-17.2, D-4). La misma expresión que el índice único parcial.
+        sql`lower(${products.barcode}) = lower(${filters.text})`,
       )!,
     );
   }
@@ -190,11 +203,16 @@ export function findActiveProductsRanked(
 // porque es una ayuda y no un listado.
 export const SUGGESTIONS_LIMIT = 200;
 
+// Desde la 17.2, también las ubicaciones (D-6).
 export async function findDistinctValues(
   organizationId: string,
-  column: "brand" | "category",
+  column: "brand" | "category" | "location",
 ): Promise<string[]> {
-  const target = column === "brand" ? products.brand : products.category;
+  const target = {
+    brand: products.brand,
+    category: products.category,
+    location: products.location,
+  }[column];
   const rows = await getDb()
     .selectDistinct({ value: target })
     .from(products)
@@ -204,29 +222,39 @@ export async function findDistinctValues(
   return rows.map((row) => row.value!);
 }
 
+// Un SKU o un código de barras que ya tiene otro producto de la organización (brief-17.2, D-3).
+export type ProductUniqueViolation = "sku_taken" | "barcode_taken";
+
+const UNIQUE_CONSTRAINTS: Record<string, ProductUniqueViolation> = {
+  products_organization_sku_lower_unique: "sku_taken",
+  products_organization_barcode_lower_unique: "barcode_taken",
+};
+
 // drizzle-orm envuelve el error de pg; el código y la constraint quedan en la causa.
-function isSkuUniqueViolation(error: unknown): boolean {
+function uniqueViolation(error: unknown): ProductUniqueViolation | null {
   const e = error as {
     code?: string;
     constraint?: string;
     cause?: { code?: string; constraint?: string };
   } | null;
   const source = e?.cause ?? e;
-  return (
-    source?.code === "23505" &&
-    source.constraint === "products_organization_sku_lower_unique"
-  );
+  if (source?.code !== "23505" || !source.constraint) return null;
+  return Object.hasOwn(UNIQUE_CONSTRAINTS, source.constraint)
+    ? UNIQUE_CONSTRAINTS[source.constraint]!
+    : null;
 }
 
-// Corre en un savepoint: un SKU repetido deshace solo esta escritura y la transacción sigue usable.
+// Corre en un savepoint: un SKU o un código repetido deshace solo esta escritura y la transacción
+// sigue usable.
 async function inSavepoint<T>(
   tx: DbTransaction,
   work: (savepoint: DbTransaction) => Promise<T>,
-): Promise<T | "sku_taken"> {
+): Promise<T | ProductUniqueViolation> {
   try {
     return await tx.transaction(work);
   } catch (error) {
-    if (isSkuUniqueViolation(error)) return "sku_taken";
+    const violation = uniqueViolation(error);
+    if (violation) return violation;
     throw error;
   }
 }
@@ -235,7 +263,7 @@ export function insertProduct(
   tx: DbTransaction,
   organizationId: string,
   values: ProductValues,
-): Promise<string | "sku_taken"> {
+): Promise<string | ProductUniqueViolation> {
   return inSavepoint(tx, async (savepoint) => {
     const rows = await savepoint
       .insert(products)
@@ -259,7 +287,7 @@ export function updateProductValues(
   organizationId: string,
   productId: string,
   values: Partial<ProductValues>,
-): Promise<void | "sku_taken"> {
+): Promise<void | ProductUniqueViolation> {
   return inSavepoint(tx, async (savepoint) => {
     const rows = await savepoint
       .update(products)

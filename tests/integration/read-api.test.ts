@@ -474,6 +474,41 @@ describe("API de lectura: productos", { timeout: TEST_TIMEOUT }, () => {
       await valid(response, productListResponseSchema);
     }
   });
+
+  // brief-17.2, D-10 (invariante 1): los campos de operación no llegan al agente, y su búsqueda no
+  // encuentra por código de barras. La respuesta con los campos cargados es la misma que sin ellos.
+  it("6b. brief-17.2 D-10: los campos de operación no cambian la búsqueda ni el detalle", async () => {
+    const before = await valid(
+      await search("?q=AUR-01", readerA.token),
+      productListResponseSchema,
+    );
+    const detailBefore = await valid(
+      await detail(auriculares, readerA.token),
+      productResponseSchema,
+    );
+    await getDb().execute(
+      sql`update products set barcode = ${"7790001000017"}, weight_kg = 0.25, length_cm = 10,
+            width_cm = 8, height_cm = 12.5, location = ${"Depósito"}, shelf = ${"A-3"}
+          where id = ${auriculares}`,
+    );
+    expect(
+      await valid(
+        await search("?q=AUR-01", readerA.token),
+        productListResponseSchema,
+      ),
+    ).toStrictEqual(before);
+    expect(
+      await valid(
+        await detail(auriculares, readerA.token),
+        productResponseSchema,
+      ),
+    ).toStrictEqual(detailBefore);
+    const byBarcode = await valid(
+      await search("?q=7790001000017", readerA.token),
+      productListResponseSchema,
+    );
+    expect(byBarcode.items).toEqual([]);
+  });
 });
 
 describe("API de lectura: el borde", { timeout: TEST_TIMEOUT }, () => {

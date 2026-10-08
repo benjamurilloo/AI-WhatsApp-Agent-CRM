@@ -225,6 +225,13 @@
       "when": 1791489980926,
       "tag": "0031_client_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1791498679269,
+      "tag": "0032_product_fields",
+      "breakpoints": true
     }
   ]
 }

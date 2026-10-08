@@ -70,6 +70,17 @@ async function seed() {
   };
 }
 
+// Los campos de la 17.2 vacíos: el producto de antes de la subfase.
+const NO_OPERATION_VALUES = {
+  barcode: null,
+  weightKg: null,
+  lengthCm: null,
+  widthCm: null,
+  heightCm: null,
+  location: null,
+  shelf: null,
+};
+
 const coffee: ProductInput = {
   sku: "CAF-250",
   name: "Café molido 250 g",
@@ -79,6 +90,7 @@ const coffee: ProductInput = {
   brand: null,
   category: null,
   condition: "new",
+  ...NO_OPERATION_VALUES,
 };
 
 async function create(context: AuthContext, input: ProductInput = coffee) {
