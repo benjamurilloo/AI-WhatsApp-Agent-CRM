@@ -2,6 +2,26 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-08 — 17.2 cerrada: campos de productos
+
+Segunda subfase de la Fase 17 ([brief-17.2](docs/decisions/brief-17.2-campos-de-productos.md)), en dos etapas. Commit `a7838f1` (17.2.1, CI 37859458500, `success`, leída por `headSha`). Desplegada en producción el 2026-10-08 con la migración `0032` (17.2.2), y recorrida por el usuario el mismo día.
+
+**Certifica**:
+- **Siete campos opcionales del producto** (FR-PROD-14): código de barras, peso en kg, largo, ancho y alto en cm (los tres juntos o ninguno), ubicación y estante, con sus `CHECK` en la base y su validación en el servicio. Los carga un `admin` y los ve también un `viewer`. Cada cambio queda en la auditoría y en el historial de la ficha, en castellano.
+- **El código de barras es único por organización** sin distinguir mayúsculas, con un índice único parcial; el repetido da `CONFLICT` en su campo, también con SQL directo.
+- **Búsqueda por código de barras exacto en la lista** (FR-PROD-15), combinada con los filtros; la ubicación sugiere las ya cargadas.
+- **El agente no cambia**: `read-v1` no expone los campos y su búsqueda no encuentra por código de barras; un test lo exige.
+- **Revisión independiente** de la 17.2.1: 7 hallazgos, resueltos o registrados antes del commit. Mutaciones M1 a M4, cada una en rojo.
+- **En producción**: `crm.vixoraai.app` corre `a7838f1`. Las 20 tablas, iguales antes y después; 33 migraciones; las columnas nuevas, nulas. Versión anterior: `726a88d`.
+
+**No certifica**:
+- Que el agente lea los campos nuevos o busque por código de barras.
+- El dígito verificador del código de barras, ni la ubicación por depósito.
+- «Visible en catálogo» y las marcas y categorías administradas: siguen como candidatas.
+- Las ubicaciones más allá de las 200 primeras en las sugerencias.
+
+**Nivel**: validado localmente y en CI, validado en integración para las pantallas y desplegado en producción con el recorrido del usuario (`isolated-runtime`). No es «preparado para producción».
+
 ## 2026-10-08 — 17.1 cerrada: campos de clientes
 
 Primera subfase de la Fase 17 ([brief-17.1](docs/decisions/brief-17.1-campos-de-clientes.md)), en dos etapas. Commit `726a88d` (17.1.1, CI 37848046092, `success`, leída por `headSha`). Desplegada en producción el 2026-10-08 con la migración `0031` (17.1.2), y recorrida por el usuario el mismo día.

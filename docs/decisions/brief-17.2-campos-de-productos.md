@@ -13,7 +13,7 @@ generated_at: 2026-10-08
 - **Nivel de validación alcanzable**: **validado localmente y en CI**, **validado en integración** para las pantallas, y **desplegado en producción** con la revisión del usuario. No es «preparado para producción».
 - **Orden**: segunda subfase de la Fase 17 ([Roadmap](../planning/Roadmap.md) §Fase 17), después de la 17.1, cerrada el 2026-10-08.
 - **No abre ni cierra gate.** La revisión independiente no es obligatoria; se recomienda (D-13).
-- **Estado de este documento**: **aprobado el 2026-10-08** por el usuario, con las recomendaciones de D-1 a D-13.
+- **Estado de este documento**: **aprobado el 2026-10-08** por el usuario, con las recomendaciones de D-1 a D-13; **cerrado el 2026-10-08** (§Cierre).
 
 ## Objetivo
 
@@ -273,3 +273,33 @@ Dudas: la 1 es P-2 y la 2 es P-3, para el usuario. La 3 (un posible hueco en la 
 - Vitest: 1.929 de 1.929 (unitarios, guardas e integración), antes de las correcciones de la revisión; `catalog.test.ts` repetido después, 42 de 42.
 - Playwright: 141 de 142 en dos tandas (65 de 66 y 76 de 76). La falla fue el caso 9 de `clients.spec.ts`, por el límite de 30 s, en una tanda que tardó 9,8 minutos contra 4,6 en la 17.1; ese archivo no cambia en la 17.2. Después de las correcciones, con el build nuevo, `product-fields.spec.ts`, `products.spec.ts` y `clients.spec.ts` dieron 45 de 45.
 - Mutaciones, todas en rojo y revertidas: M1, el índice único sin `lower` (fallan AC-1 y el `CONFLICT` con otras mayúsculas); M2, sin el `CHECK` de las tres dimensiones (fallan AC-1 y los `CHECK` por SQL directo); M3, el código de barras en `findActiveProductsRanked` (fallan el caso 6b de `read-api`, el 2 y el de las sugerencias); M4, la búsqueda de la lista sin el filtro de organización (fallan seis casos, entre ellos FR-PROD-15).
+
+### CI de la 17.2.1 (AC-9, parte de la CI)
+
+- Commit y push autorizados por el usuario: `a7838f1`. La corrida 37859458500 de ese `headSha` terminó en `success`.
+
+## Despliegue de la 17.2.2, 2026-10-08
+
+- **Despliegue de `a7838f1`**, autorizado por el usuario y corrido por el asistente. Pasos 1 a 3 de [deploy/production/README.md](../../deploy/production/README.md) §Desplegar: la CI del SHA en `success` (corrida 37859458500); anotado `726a88d` en el registro de despliegues; dependencias (23:38:46 UTC), migraciones (23:39:11, «Migraciones aplicadas»), build (23:39:12), reinicio (23:40:01) y HEAD igual al SHA pedido (23:40:01).
+- **Condición de detención del código de barras**: antes de migrar, la columna no existía, así que ningún producto podía chocar con el índice; después, los cinco productos tienen las siete columnas en nulo.
+- **AC-12**, recuentos de `crm_production` en una transacción de solo lectura (`sudo -u postgres psql`), todas las tablas de `public` en orden alfabético:
+
+  ```
+  2026-10-08T23:38:34Z 32 migraciones
+  audit_logs=45 client_tag_assignments=2 client_tags=5 clients=2 conversation_notes=1 conversations=3 ingestion_credentials=7 ingestion_events=122 ingestion_rate_windows=3 inventories=4 inventory_movements=4 knowledge_entries=3 login_attempts=1 messages=70 organization_members=2 organizations=2 product_prices=6 products=5 sessions=3 users=2
+  2026-10-08T23:40:16Z 33 migraciones
+  audit_logs=45 client_tag_assignments=2 client_tags=5 clients=2 conversation_notes=1 conversations=3 ingestion_credentials=7 ingestion_events=122 ingestion_rate_windows=3 inventories=4 inventory_movements=4 knowledge_entries=3 login_attempts=1 messages=70 organization_members=2 organizations=2 product_prices=6 products=5 sessions=3 users=2
+  ```
+
+  Las 20 tablas, iguales. Las siete columnas nuevas de `products` existen, nulables y con sus tipos (`numeric(10,3)` el peso, `numeric(8,1)` las dimensiones); los cinco productos las tienen en nulo. Los ocho `CHECK` de la 17.2 están en `products`, y el índice `products_organization_barcode_lower_unique` es `(organization_id, lower(barcode)) WHERE (barcode IS NOT NULL)`; `products` tiene 5 índices, los cuatro anteriores y ese. El servicio, `active` con `NRestarts=0`; `/login`, `200`; `/productos` sin sesión, `307` a `/login`. Para volver atrás, `726a88d`: la migración solo agrega columnas nulables, un índice y `CHECK`.
+- **AC-13**: el usuario recorrió en producción el alta y la edición con los campos nuevos, la ficha y la búsqueda por código de barras, los dio por correctos y aprobó el cierre el 2026-10-08. La duda 3 de la revisión, el hueco en la ficha en pantalla ancha, no apareció en el recorrido.
+
+## Cierre de la subfase 17.2, 2026-10-08
+
+- **AC-1 a AC-13 cumplidos.** AC-9 en local (§Batería local) y en la CI de `a7838f1`; AC-11 con la revisión independiente de la 17.2.1; AC-12 y AC-13 en producción.
+- **Revisión**: independiente para la 17.2.1 (D-13), con sus 7 hallazgos resueltos o registrados; el despliegue y este cierre son autoevaluación declarada.
+- **Decisiones del usuario**: el brief con D-1 a D-13; `src/modules/inventory/service.test.ts` fuera de la lista; P-1 a P-4; el commit y el push de `a7838f1`; el despliegue; el cierre.
+- **Nivel**: validado localmente y en CI, **validado en integración** para las pantallas (end-to-end sobre `next start`) y desplegado en producción, recorrido por el usuario (`isolated-runtime`). No es «preparado para producción».
+- **No certifica**: que el agente lea los campos nuevos o encuentre un producto por su código de barras (no cambia ningún contrato, D-10); el dígito verificador del código de barras (admite códigos internos); las ubicaciones más allá de las 200 primeras en las sugerencias; la ubicación por depósito, que llega con varios depósitos (D-6).
+- **Quedan en el Roadmap como candidatas** (D-7 y D-8): «visible en catálogo», con su pregunta frente a `is_active` y a lo que lee el agente, y las marcas y categorías como listas administradas, junto con el segmento de la 17.1. Entran con un negocio real (13.5.2-b) y su decisión.
+- **Pendiente heredado**: `TraceabilityMatrix.md` §3 estaba atrasada antes de la 17.2 (le falta `products_search_idx` y conserva el índice de prefijo de nombre que borró la `0016`), registrado por la revisión; la intermitencia de tiempo del caso 9 de `clients.spec.ts` en una tanda local lenta.
