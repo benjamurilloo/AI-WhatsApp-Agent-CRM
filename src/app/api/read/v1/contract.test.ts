@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { isReadCredentialAllowed, readReadApiConfig } from "./config";
 import {
   contractAmount,
+  contractQuantity,
   conversationStateResponseSchema,
   errorResponseSchema,
   historyMessageSchema,
@@ -18,8 +19,10 @@ import {
   productListResponseSchema,
   productResponseSchema,
   productSchema,
+  productStockResponseSchema,
   toContractConversationState,
   toContractHistoryMessage,
+  toContractProductStock,
 } from "./contract";
 
 // Partes puras de la API de lectura v1 (brief-11.3): parámetros, montos, validador y modo de
@@ -329,6 +332,80 @@ describe("marca de pausa (FR-CONV-06, brief-16.3)", () => {
   });
 });
 
+describe("cantidad disponible (FR-API-09, brief-16.6)", () => {
+  const STOCK = {
+    contract_version: "1",
+    product_id: "0b6f3c2e-5a4d-4e8f-9c1b-2a3d4e5f6a7b",
+    quantity_available: "12",
+    unit: "unidad",
+    stock_status: "disponible",
+  };
+
+  it("FR-API-09: corta los ceros de la derecha de numeric(14, 3)", () => {
+    const cases: [string, string][] = [
+      ["12.000", "12"],
+      ["12.500", "12.5"],
+      ["12.050", "12.05"],
+      ["0.001", "0.001"],
+      ["0.000", "0"],
+      ["100.000", "100"],
+      ["99999999999.999", "99999999999.999"],
+    ];
+    for (const [stored, expected] of cases) {
+      expect(contractQuantity(stored), stored).toBe(expected);
+    }
+    for (const invalid of ["12", "12.5", "-1.000", "1e3", ""]) {
+      expect(() => contractQuantity(invalid), invalid).toThrow();
+    }
+  });
+
+  it("FR-API-09: acepta la forma canónica y rechaza un campo de más, un número de JSON y ceros de más", () => {
+    for (const quantity of ["0", "12", "2.5", "0.001", "100.05"]) {
+      expect(
+        productStockResponseSchema.safeParse({
+          ...STOCK,
+          quantity_available: quantity,
+        }).success,
+        quantity,
+      ).toBe(true);
+    }
+    for (const invalid of [
+      { ...STOCK, reorder_point: "5" },
+      { ...STOCK, quantity_available: 12 },
+      { ...STOCK, quantity_available: "12.0" },
+      { ...STOCK, quantity_available: "12.500" },
+      { ...STOCK, quantity_available: "012" },
+      { ...STOCK, quantity_available: "-1" },
+      { ...STOCK, quantity_available: "1.2345" },
+      { ...STOCK, quantity_available: null },
+      { ...STOCK, unit: "" },
+      { ...STOCK, stock_status: "agotado" },
+      { ...STOCK, contract_version: "2" },
+    ]) {
+      expect(
+        productStockResponseSchema.safeParse(invalid).success,
+        JSON.stringify(invalid),
+      ).toBe(false);
+    }
+  });
+
+  it("FR-API-09: el mapeo lleva solo los campos del contrato", () => {
+    const mapped = toContractProductStock({
+      productId: STOCK.product_id,
+      unit: "kg",
+      quantityOnHand: "2.500",
+      stockStatus: "bajo_stock",
+    });
+    expect(mapped).toStrictEqual({
+      ...STOCK,
+      quantity_available: "2.5",
+      unit: "kg",
+      stock_status: "bajo_stock",
+    });
+    expect(productStockResponseSchema.safeParse(mapped).success).toBe(true);
+  });
+});
+
 describe("modo de prueba de la lectura (D-7)", () => {
   it("está apagado por defecto, con false, y no lo encienden las variables de ingestión", () => {
     for (const env of [
@@ -396,9 +473,11 @@ describe("fixtures del contrato (D-8)", () => {
             ? messageListResponseSchema
             : data.request.path.startsWith("/api/read/v1/conversation-state")
               ? conversationStateResponseSchema
-              : "items" in body
-                ? productListResponseSchema
-                : productResponseSchema;
+              : data.request.path.endsWith("/stock")
+                ? productStockResponseSchema
+                : "items" in body
+                  ? productListResponseSchema
+                  : productResponseSchema;
     const parsed = schema.safeParse(body);
     expect(parsed.success, parsed.error?.message).toBe(true);
   });

@@ -1,9 +1,11 @@
 // Interfaz pública del módulo inventory (brief-4.2: saldos y estado de stock; brief-4.3.1: ajuste;
-// brief-4.3.3: historial de movimientos; brief-11.3: lecturas de servicio).
+// brief-4.3.3: historial de movimientos; brief-11.3: lecturas de servicio; brief-16.6: la cantidad
+// de un producto para la API de lectura).
 export {
   adjustStock,
   getCatalogProductForService,
   getProductStock,
+  getProductStockForService,
   listProductStock,
   listStockMovements,
   MOVEMENTS_PAGE_SIZE,
@@ -21,6 +23,7 @@ export {
   type ProductStock,
   type ProductStockPage,
   type ServiceCatalogProduct,
+  type ServiceProductStock,
   type StockAdjustmentField,
   type StockAdjustmentInput,
   type StockAdjustmentResult,

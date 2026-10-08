@@ -234,7 +234,8 @@ export async function getProductStock(
 
 // Lecturas de servicio de la API (brief-11.3, D-3): catalog aporta los activos con su precio, y
 // acá se suma el estado de stock, como en la pantalla 3. **Sin la cantidad**: el agente recibe el
-// estado, no el saldo (D-4). La organización sale de la credencial que autenticó la API.
+// estado, no el saldo (D-4). La organización sale de la credencial que autenticó la API. Desde la
+// 16.6 el saldo sale solo por getProductStockForService, en su propia ruta.
 export type ServiceCatalogProduct = ServiceProduct & {
   stockStatus: StockStatus;
 };
@@ -269,6 +270,33 @@ export async function getCatalogProductForService(
   if (!product) return null;
   const [withStatus] = await withStockStatus(organizationId, [product]);
   return withStatus ?? null;
+}
+
+// La cantidad disponible de un producto activo, para la API de lectura (brief-16.6, D-1 y D-3;
+// FR-API-09). Es la única lectura de servicio que expone el saldo. El estado se deriva de esa
+// misma cantidad, así que nunca contradice el número. Sin fila de inventario, el saldo es 0 (D-7
+// de la 4.3). Un producto inactivo, de otra organización o inexistente da null, sin distinguir.
+export type ServiceProductStock = {
+  productId: string;
+  unit: string;
+  quantityOnHand: string;
+  stockStatus: StockStatus;
+};
+
+export async function getProductStockForService(
+  organizationId: string,
+  productId: string,
+): Promise<ServiceProductStock | null> {
+  const product = await getActiveProductForService(organizationId, productId);
+  if (!product) return null;
+  const balances = await repository.findBalances(organizationId, [product.id]);
+  const stock = withStock(product, balances);
+  return {
+    productId: product.id,
+    unit: product.unit,
+    quantityOnHand: stock.quantityOnHand,
+    stockStatus: stock.stockStatus,
+  };
 }
 
 // Ajuste manual de stock (brief-4.3.1): movimiento, saldo y auditoría en una sola transacción

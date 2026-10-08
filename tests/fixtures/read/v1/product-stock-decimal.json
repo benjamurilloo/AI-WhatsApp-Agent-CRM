@@ -1,0 +1,20 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: ningún consumidor real leyó esta respuesta (brief-16.6, D-3 y H-1).",
+  "description": "Un producto que se vende por kilo: la cantidad es un decimal en texto, sin ceros de más, y el estado sale de esa misma cantidad.",
+  "request": {
+    "method": "GET",
+    "path": "/api/read/v1/products/5c7d9e1f-2a3b-4c5d-8e6f-7a8b9c0d1e2f/stock",
+    "headers": { "authorization": "Bearer crm_read_<token>" }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "contract_version": "1",
+      "product_id": "5c7d9e1f-2a3b-4c5d-8e6f-7a8b9c0d1e2f",
+      "quantity_available": "2.5",
+      "unit": "kg",
+      "stock_status": "bajo_stock"
+    }
+  }
+}

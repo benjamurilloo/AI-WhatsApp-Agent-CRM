@@ -7,7 +7,10 @@ import {
   type HistoryMessage,
 } from "@/modules/conversations";
 import { isOpaqueReference } from "@/modules/ingestion";
-import type { ServiceCatalogProduct } from "@/modules/inventory";
+import type {
+  ServiceCatalogProduct,
+  ServiceProductStock,
+} from "@/modules/inventory";
 import type { KnowledgeEntry } from "@/modules/knowledge";
 import { ERROR_CODES } from "@/shared/errors";
 import { currencyDecimals } from "@/shared/money";
@@ -177,6 +180,17 @@ export const conversationStateResponseSchema = z
     path: ["agent_paused_at"],
   });
 
+// Cantidad disponible de un producto (brief-16.6, D-3; FR-API-09). Decimal en texto, nunca number
+// de JSON, en forma canónica: sin ceros de más a la derecha y hasta tres decimales («12», «2.5»,
+// «0»). La unidad y el estado salen de la misma lectura. Nunca el punto de reposición.
+export const productStockResponseSchema = z.strictObject({
+  contract_version: z.literal(READ_CONTRACT_VERSION),
+  product_id: z.uuid(),
+  quantity_available: z.string().regex(/^(0|[1-9][0-9]*)(\.[0-9]{0,2}[1-9])?$/),
+  unit: z.string().min(1),
+  stock_status: z.enum(["disponible", "bajo_stock", "sin_stock"]),
+});
+
 export const errorResponseSchema = z.strictObject({
   code: z.enum(ERROR_CODES),
   request_id: z.uuid(),
@@ -190,6 +204,7 @@ export type ContractClientTag = z.infer<typeof clientTagSchema>;
 export type ContractConversationState = z.infer<
   typeof conversationStateResponseSchema
 >;
+export type ContractProductStock = z.infer<typeof productStockResponseSchema>;
 
 // La base guarda numeric(14, 2) («300000.00»). El contrato lo escribe con los decimales de la
 // moneda: «300000» en CLP, «1234.50» en ARS. La escritura ya rechaza decimales que la moneda no
@@ -265,5 +280,26 @@ export function toContractConversationState(
     contract_version: READ_CONTRACT_VERSION,
     agent_paused: state.agentPausedAt !== null,
     agent_paused_at: state.agentPausedAt?.toISOString() ?? null,
+  };
+}
+
+// La base guarda numeric(14, 3) («12.500»). El contrato corta los ceros de la derecha y el punto
+// que queda solo: «12.500» es «12.5», y «12.000» es «12».
+export function contractQuantity(quantity: string): string {
+  if (!/^[0-9]+\.[0-9]{3}$/.test(quantity)) {
+    throw new Error("cantidad fuera de numeric(14, 3)");
+  }
+  return quantity.replace(/0+$/, "").replace(/\.$/, "");
+}
+
+export function toContractProductStock(
+  stock: ServiceProductStock,
+): ContractProductStock {
+  return {
+    contract_version: READ_CONTRACT_VERSION,
+    product_id: stock.productId,
+    quantity_available: contractQuantity(stock.quantityOnHand),
+    unit: stock.unit,
+    stock_status: stock.stockStatus,
   };
 }

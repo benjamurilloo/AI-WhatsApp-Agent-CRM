@@ -1,0 +1,17 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: ningún consumidor real leyó esta respuesta (brief-16.6, D-4).",
+  "description": "Un producto inactivo, de otra organización o inexistente: el mismo 404, sin distinguir los casos.",
+  "request": {
+    "method": "GET",
+    "path": "/api/read/v1/products/9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d/stock",
+    "headers": { "authorization": "Bearer crm_read_<token>" }
+  },
+  "response": {
+    "status": 404,
+    "body": {
+      "code": "NOT_FOUND",
+      "request_id": "3e5a7c9b-1d2f-4e6a-8b0c-2d4f6a8c0e1b"
+    }
+  }
+}
