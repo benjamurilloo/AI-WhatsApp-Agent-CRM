@@ -343,6 +343,8 @@ Reglas comunes a las cuatro fases:
 
 ## Fase 17 — Datos ampliados de clientes y catálogo
 
+*Decidido el 2026-10-08, al cerrar la Fase 16: el usuario sigue con esta fase, que se abre en la sesión siguiente con su proyecto en Notion, el orden de sus subfases y el brief de la primera. La 13.5.2-b conserva su prioridad: si el negocio real se confirma, esta fase se pausa.*
+
 *Planificada el 2026-10-05, sin abrir, con los bocetos de las pantallas internas que trajo el usuario. Se abre con su decisión, su proyecto en Notion y el brief de su primera subfase.*
 
 - **Objetivo**: los campos que los bocetos de la Fase 15 dibujan y el CRM no tiene, para que clientes y productos tengan la información que piden la operación y, después, el ERP.
