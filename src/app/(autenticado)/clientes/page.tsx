@@ -1,7 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { searchClientsByLastInteraction } from "@/modules/conversations";
-import { listActiveClientTags, type ClientTag } from "@/modules/crm";
+import {
+  listActiveClientTags,
+  listClientFilterOptions,
+  PROVINCES,
+  type ClientTag,
+} from "@/modules/crm";
 import { requireSession } from "@/app/_auth/session";
 import {
   activeBadgeClass,
@@ -34,6 +39,8 @@ import {
   clientFiltersHref,
   DEFAULT_FILTERS,
   hasActiveFilters,
+  KIND_LABEL,
+  kindParam,
   parseClientFilters,
   SORT_CAPTION,
   SORT_LABEL,
@@ -59,7 +66,7 @@ const TITLE = "Clientes";
 // tarjetas en móvil; la versión oculta no entra al árbol de accesibilidad. Orden por última
 // interacción, compuesto por conversations (brief-6.4). El teléfono llega de crm ya enmascarado
 // para viewer. Desde la brief-15.1, con el aspecto de los bocetos: avatar, lápiz para el admin y
-// paginación numerada.
+// paginación numerada. Desde la 17.1, los filtros por tipo, provincia y segmento (D-9).
 export default async function ClientsPage({
   searchParams,
 }: {
@@ -71,9 +78,18 @@ export default async function ClientsPage({
   const tags = activeTags.ok ? activeTags.tags : [];
   // Una etiqueta ajena, inexistente o inactiva se ignora, también en la URL y en el formulario
   // (brief-16.1, D-8 y D-9).
+  // El tipo, la provincia y el segmento, como la etiqueta: solo los que tiene algún cliente de la
+  // organización; cualquier otro valor de la URL se ignora (brief-17.1, D-9).
+  const options = await listClientFilterOptions(context);
+  const provinces = options.ok ? options.provinces : [];
+  const segments = options.ok ? options.segments : [];
+  const kinds = options.ok ? options.kinds : [];
   const filters = {
     ...parsed,
     tagId: tags.some((tag) => tag.id === parsed.tagId) ? parsed.tagId : null,
+    province: provinces.find((code) => code === parsed.province) ?? null,
+    segment: segments.includes(parsed.segment ?? "") ? parsed.segment : null,
+    kind: kinds.find((kind) => kind === parsed.kind) ?? null,
   };
   const result = await searchClientsByLastInteraction(context, filters);
   if (!result.ok) {
@@ -156,6 +172,66 @@ export default async function ClientsPage({
               {tags.map((tag) => (
                 <option key={tag.id} value={tag.id}>
                   {tag.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+        {kinds.length > 0 ? (
+          <div className="flex flex-col gap-1">
+            <label htmlFor="tipo" className={labelClass}>
+              Tipo
+            </label>
+            <select
+              id="tipo"
+              name="tipo"
+              defaultValue={filters.kind ? kindParam(filters.kind) : ""}
+              className={selectClass}
+            >
+              <option value="">Todos</option>
+              {kinds.map((kind) => (
+                <option key={kind} value={kindParam(kind)}>
+                  {KIND_LABEL[kind]}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+        {provinces.length > 0 ? (
+          <div className="flex flex-col gap-1">
+            <label htmlFor="provincia" className={labelClass}>
+              Provincia
+            </label>
+            <select
+              id="provincia"
+              name="provincia"
+              defaultValue={filters.province ?? ""}
+              className={selectClass}
+            >
+              <option value="">Todas</option>
+              {provinces.map((code) => (
+                <option key={code} value={code}>
+                  {PROVINCES[code]}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+        {segments.length > 0 ? (
+          <div className="flex flex-col gap-1">
+            <label htmlFor="segmento" className={labelClass}>
+              Segmento
+            </label>
+            <select
+              id="segmento"
+              name="segmento"
+              defaultValue={filters.segment ?? ""}
+              className={selectClass}
+            >
+              <option value="">Todos</option>
+              {segments.map((segment) => (
+                <option key={segment} value={segment}>
+                  {segment}
                 </option>
               ))}
             </select>

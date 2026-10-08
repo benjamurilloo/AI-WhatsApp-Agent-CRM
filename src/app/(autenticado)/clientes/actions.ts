@@ -30,14 +30,27 @@ import {
 
 // Server Actions de las pantallas 6 y 7 (brief-5.3). Next.js compara Origin con Host; la sesión,
 // el rol y la organización se verifican en crm. El log lleva actor, organización, código y
-// duración, nunca el nombre, el teléfono ni las notas del cliente (SecurityModel).
+// duración, nunca el nombre, el teléfono, las notas ni ningún otro dato del cliente (SecurityModel).
+
+const FORM_FIELDS: (keyof ClientFormValues)[] = [
+  "displayName",
+  "phone",
+  "notes",
+  "email",
+  "kind",
+  "companyName",
+  "jobTitle",
+  "addressLine",
+  "city",
+  "province",
+  "postalCode",
+  "segment",
+];
 
 function clientValues(formData: FormData): ClientFormValues {
-  return {
-    displayName: String(formData.get("displayName") ?? ""),
-    phone: String(formData.get("phone") ?? ""),
-    notes: String(formData.get("notes") ?? ""),
-  };
+  return Object.fromEntries(
+    FORM_FIELDS.map((field) => [field, String(formData.get(field) ?? "")]),
+  ) as ClientFormValues;
 }
 
 function logDone(

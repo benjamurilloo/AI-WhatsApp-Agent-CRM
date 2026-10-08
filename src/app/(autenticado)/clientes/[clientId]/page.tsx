@@ -7,6 +7,9 @@ import {
   getClient,
   listActiveClientTags,
   listClientAudit,
+  listClientFilterOptions,
+  PROVINCES,
+  type Client,
 } from "@/modules/crm";
 import { getOrganizationTimezone } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
@@ -32,9 +35,10 @@ import {
   STATUS_PARAM,
 } from "@/app/(autenticado)/conversaciones/filters";
 import { ClientForm } from "../client-form";
-import type { SearchParams } from "../filters";
+import { KIND_LABEL, type SearchParams } from "../filters";
 import {
   CLIENT_NOT_FOUND_MESSAGE,
+  CONTACT_HIDDEN_MESSAGE,
   FORBIDDEN_PAGE_MESSAGE,
   noticeMessage,
 } from "../messages";
@@ -59,7 +63,76 @@ const TITLE = "Clientes";
 // Pantalla 7 (wireframe 07): datos y, solo para admin, edición, desactivación con confirmación e
 // historial de auditoría paginado (FR-AUD-02). La última interacción y las conversaciones cargan
 // por separado, con sus propios parámetros de URL (brief-6.4, D-4). Presentación de la 15.4:
-// tarjetas, avatar y estadísticas con lo que la página ya carga (brief-15.4, D-6).
+// tarjetas, avatar y estadísticas con lo que la página ya carga (brief-15.4, D-6). Desde la 17.1,
+// los campos ampliados en cuatro tarjetas; a un viewer, crm no le entrega el email, la calle ni el
+// código postal, y la tarjeta lo dice (brief-17.1, D-8 y D-11).
+
+// Lo que crm no entregó al rol se dice; lo que está vacío queda en «—», como en el resto del detalle.
+function contactValue(
+  client: Client,
+  field: "email" | "addressLine" | "postalCode",
+) {
+  if (client.contact === null) {
+    return <span className="text-muted">{CONTACT_HIDDEN_MESSAGE}</span>;
+  }
+  return client.contact[field];
+}
+
+function ClientExtraCards({ client }: { client: Client }) {
+  return (
+    <div className="grid items-start gap-6 md:grid-cols-2">
+      <SectionCard id="contacto-titulo" title="Contacto" icon="mail">
+        <DetailList
+          items={[
+            {
+              label: "Email",
+              icon: "mail",
+              value: contactValue(client, "email"),
+            },
+          ]}
+        />
+      </SectionCard>
+      <SectionCard id="empresa-titulo" title="Empresa" icon="building">
+        <DetailList
+          items={[
+            {
+              label: "Tipo",
+              value: client.kind ? KIND_LABEL[client.kind] : null,
+            },
+            { label: "Empresa", value: client.companyName },
+            { label: "Cargo", value: client.jobTitle },
+          ]}
+        />
+      </SectionCard>
+      <SectionCard id="direccion-titulo" title="Dirección" icon="mapPin">
+        <DetailList
+          items={[
+            {
+              label: "Calle y número",
+              value: contactValue(client, "addressLine"),
+            },
+            { label: "Ciudad", value: client.city },
+            {
+              label: "Provincia",
+              value: client.province ? PROVINCES[client.province] : null,
+            },
+            {
+              label: "Código postal",
+              value: contactValue(client, "postalCode"),
+            },
+          ]}
+        />
+      </SectionCard>
+      <SectionCard
+        id="clasificacion-titulo"
+        title="Clasificación"
+        icon="layers"
+      >
+        <DetailList items={[{ label: "Segmento", value: client.segment }]} />
+      </SectionCard>
+    </div>
+  );
+}
 export default async function ClientPage({
   params,
   searchParams,
@@ -113,6 +186,8 @@ export default async function ClientPage({
     ? await listClientAudit(context, client.id, sections.auditPage)
     : null;
   const timeZone = audit?.ok ? await getOrganizationTimezone(context) : null;
+  // Los segmentos ya cargados, para sugerir en la edición (brief-17.1, D-5).
+  const segments = editing ? await listClientFilterOptions(context) : null;
   const actorLabel = audit?.ok
     ? await auditActorLabels(context.organizationId, audit.entries)
     : null;
@@ -188,7 +263,7 @@ export default async function ClientPage({
         </SectionCard>
       ) : null}
 
-      {editing && client.phone?.kind !== "masked" ? (
+      {editing && client.phone?.kind !== "masked" && client.contact !== null ? (
         <div className="mt-6">
           <ClientForm
             mode="editar"
@@ -197,49 +272,67 @@ export default async function ClientPage({
               displayName: client.displayName,
               phone: client.phone?.e164 ?? "",
               notes: client.notes ?? "",
+              email: client.contact?.email ?? "",
+              kind: client.kind ?? "",
+              companyName: client.companyName ?? "",
+              jobTitle: client.jobTitle ?? "",
+              addressLine: client.contact?.addressLine ?? "",
+              city: client.city ?? "",
+              province: client.province ?? "",
+              postalCode: client.contact?.postalCode ?? "",
+              segment: client.segment ?? "",
+            }}
+            options={{
+              provinces: Object.entries(PROVINCES),
+              segments: segments?.ok ? segments.segments : [],
             }}
           />
         </div>
       ) : (
         <div className="mt-6 grid items-start gap-6 lg:grid-cols-3">
-          <SectionCard
-            id="datos-titulo"
-            title="Información principal"
-            icon="user"
-            className="lg:col-span-2"
-          >
-            <DetailList
-              items={[
-                { label: "Nombre", icon: "user", value: client.displayName },
-                {
-                  label: "Teléfono",
-                  icon: "phone",
-                  value: (
-                    <PhoneText phone={client.phone} emptyText="Sin teléfono" />
-                  ),
-                },
-                {
-                  label: "Última interacción",
-                  icon: "clock",
-                  value: (
-                    <Suspense fallback="Cargando…">
-                      <LastInteraction activity={activity} />
-                    </Suspense>
-                  ),
-                },
-                {
-                  label: "Notas",
-                  icon: "fileText",
-                  value: (
-                    <span className="text-muted">
-                      {client.notes ?? "Sin notas"}
-                    </span>
-                  ),
-                  multiline: true,
-                },
-              ]}
-            />
-          </SectionCard>
+          <div className="flex flex-col gap-6 lg:col-span-2">
+            <SectionCard
+              id="datos-titulo"
+              title="Información principal"
+              icon="user"
+            >
+              <DetailList
+                items={[
+                  { label: "Nombre", icon: "user", value: client.displayName },
+                  {
+                    label: "Teléfono",
+                    icon: "phone",
+                    value: (
+                      <PhoneText
+                        phone={client.phone}
+                        emptyText="Sin teléfono"
+                      />
+                    ),
+                  },
+                  {
+                    label: "Última interacción",
+                    icon: "clock",
+                    value: (
+                      <Suspense fallback="Cargando…">
+                        <LastInteraction activity={activity} />
+                      </Suspense>
+                    ),
+                  },
+                  {
+                    label: "Notas",
+                    icon: "fileText",
+                    value: (
+                      <span className="text-muted">
+                        {client.notes ?? "Sin notas"}
+                      </span>
+                    ),
+                    multiline: true,
+                  },
+                ]}
+              />
+            </SectionCard>
+            <ClientExtraCards client={client} />
+          </div>
 
           <div className="flex flex-col gap-6">
             <SectionCard

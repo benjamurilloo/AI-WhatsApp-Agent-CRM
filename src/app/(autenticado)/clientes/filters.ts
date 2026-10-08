@@ -2,12 +2,17 @@ import type {
   ClientInteractionFilters,
   ClientSort,
 } from "@/modules/conversations";
-import type { ClientActivityFilter, ClientListFilters } from "@/modules/crm";
+import type {
+  ClientActivityFilter,
+  ClientKind,
+  ClientListFilters,
+} from "@/modules/crm";
 import { DEFAULT_PAGE_SIZE, parsePageSize } from "@/app/_components/pagination";
 
 // Búsqueda, actividad y página de la pantalla 6 en la URL (brief-5.3): ?q=&actividad=&pagina=,
 // más el orden y las filas por página de la brief-15.2: ?orden=&filas=, y la etiqueta de la
-// brief-16.1: ?etiqueta=<id>. Un valor desconocido se reemplaza por el de defecto, nunca da error.
+// brief-16.1: ?etiqueta=<id>, y el tipo, la provincia y el segmento de la brief-17.1 (D-9):
+// ?tipo=&provincia=&segmento=. Un valor desconocido se reemplaza por el de defecto, nunca da error.
 
 export type ClientFilters = Required<ClientInteractionFilters>;
 
@@ -52,7 +57,28 @@ export const DEFAULT_FILTERS: ClientFilters = {
   sort: "last_interaction",
   pageSize: DEFAULT_PAGE_SIZE,
   tagId: null,
+  kind: null,
+  province: null,
+  segment: null,
 };
+
+// Tipos de cliente en la URL (brief-17.1, D-3).
+export const KIND_PARAM: Record<string, ClientKind> = {
+  persona: "person",
+  empresa: "company",
+};
+
+export const KIND_LABEL: Record<ClientKind, string> = {
+  person: "Persona",
+  company: "Empresa",
+};
+
+export const kindParam = (kind: ClientKind) =>
+  Object.keys(KIND_PARAM).find((key) => KIND_PARAM[key] === kind)!;
+
+// Solo la forma de un código ISO 3166-2 de Argentina: si es una provincia lo decide crm.
+const PROVINCE = /^AR-[A-Z]$/;
+const MAX_SEGMENT_LENGTH = 60;
 
 // Solo la forma de un id: si la etiqueta existe, es de la organización y está activa lo decide crm,
 // que ignora cualquier otra (brief-16.1, D-9).
@@ -69,6 +95,9 @@ export function parseClientFilters(params: SearchParams): ClientFilters {
   const page = single(params.pagina);
   const sort = single(params.orden);
   const tag = single(params.etiqueta);
+  const kind = single(params.tipo);
+  const province = single(params.provincia)?.toUpperCase();
+  const segment = single(params.segmento)?.trim();
   return {
     text,
     activity:
@@ -82,6 +111,9 @@ export function parseClientFilters(params: SearchParams): ClientFilters {
       DEFAULT_FILTERS.sort,
     pageSize: parsePageSize(params.filas),
     tagId: tag && TAG_ID.test(tag) ? tag.toLowerCase() : null,
+    kind: (kind && Object.hasOwn(KIND_PARAM, kind) && KIND_PARAM[kind]) || null,
+    province: province && PROVINCE.test(province) ? province : null,
+    segment: segment && segment.length <= MAX_SEGMENT_LENGTH ? segment : null,
   };
 }
 
@@ -105,6 +137,9 @@ export function clientFiltersHref(filters: ClientInteractionFilters): string {
     query.set("filas", String(filters.pageSize));
   }
   if (filters.tagId) query.set("etiqueta", filters.tagId);
+  if (filters.kind) query.set("tipo", kindParam(filters.kind));
+  if (filters.province) query.set("provincia", filters.province);
+  if (filters.segment) query.set("segmento", filters.segment);
   if (filters.page > 1) query.set("pagina", String(filters.page));
   const text = query.toString();
   return text ? `/clientes?${text}` : "/clientes";
@@ -114,6 +149,9 @@ export function hasActiveFilters(filters: ClientListFilters): boolean {
   return (
     filters.text !== DEFAULT_FILTERS.text ||
     filters.activity !== DEFAULT_FILTERS.activity ||
-    Boolean(filters.tagId)
+    Boolean(filters.tagId) ||
+    Boolean(filters.kind) ||
+    Boolean(filters.province) ||
+    Boolean(filters.segment)
   );
 }

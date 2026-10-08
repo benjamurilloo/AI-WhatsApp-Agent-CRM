@@ -19,21 +19,40 @@ import {
   phoneForRole,
   type ClientPhone,
 } from "./phone";
+import { isProvinceCode, PROVINCE_CODES, type ProvinceCode } from "./provinces";
 import * as repository from "./repository";
+import {
+  CLIENT_FIELD_LIMITS,
+  CLIENT_KINDS,
+  POSTAL_CODE_PATTERN,
+  type ClientKind,
+} from "./schema";
 import { DEFAULT_TAG_COLOR, isTagColor, type TagColor } from "./tag-colors";
 
 // Casos de uso de clientes (brief-5.2): FR-CLI-01, 02, 03 y 05, con auditoría en la misma
 // transacción (FR-AUD-01) y el teléfono enmascarado para viewer (FR-CLI-06). Desde la 16.1, sus
-// etiquetas: FR-CLI-08 a 10.
+// etiquetas: FR-CLI-08 a 10. Desde la 17.1, los campos ampliados: FR-CLI-12 a 14.
 
 export type ClientActivityFilter = repository.ActivityFilter;
 
 // Una etiqueta tal como la muestra un cliente: activa o no (brief-16.1, D-8).
 export type ClientTag = repository.ClientTagRow;
 
-// El teléfono sale de crm ya resuelto para el rol: un viewer nunca recibe el número (D-2).
-export type Client = Omit<repository.ClientRow, "phoneE164"> & {
+// Los datos de contacto que un viewer no recibe, como el teléfono completo (brief-17.1, D-8).
+export type ClientContact = {
+  email: string | null;
+  addressLine: string | null;
+  postalCode: string | null;
+};
+
+// El teléfono sale de crm ya resuelto para el rol: un viewer nunca recibe el número (D-2). Desde la
+// 17.1, tampoco el email, la calle ni el código postal: `contact` es null para un viewer.
+export type Client = Omit<
+  repository.ClientRow,
+  "phoneE164" | "email" | "addressLine" | "postalCode"
+> & {
   phone: ClientPhone;
+  contact: ClientContact | null;
   tags: ClientTag[];
 };
 
@@ -42,23 +61,78 @@ function toClient(
   context: AuthContext,
   tags: Map<string, ClientTag[]>,
 ): Client {
-  const { phoneE164, ...rest } = row;
+  const { phoneE164, email, addressLine, postalCode, ...rest } = row;
   return {
     ...rest,
     phone: phoneForRole(phoneE164, context.role),
+    contact:
+      context.role === "admin" ? { email, addressLine, postalCode } : null,
     tags: tags.get(row.id) ?? [],
   };
 }
 
-export type ClientField = "displayName" | "phone" | "notes";
+export type ClientField =
+  | "displayName"
+  | "phone"
+  | "notes"
+  | "email"
+  | "kind"
+  | "companyName"
+  | "jobTitle"
+  | "addressLine"
+  | "city"
+  | "province"
+  | "postalCode"
+  | "segment";
 
+// Los campos de la 17.1 son opcionales también en la entrada: omitidos, quedan vacíos.
 export type ClientInput = {
   displayName: string;
   phone?: string | null;
   notes?: string | null;
+  email?: string | null;
+  kind?: string | null;
+  companyName?: string | null;
+  jobTitle?: string | null;
+  addressLine?: string | null;
+  city?: string | null;
+  province?: string | null;
+  postalCode?: string | null;
+  segment?: string | null;
 };
 
+// Texto opcional: se recorta, y vacío es nulo.
+function optionalText(max: number) {
+  return z
+    .string()
+    .trim()
+    .max(max)
+    .nullish()
+    .transform((value) => (value ? value : null));
+}
+
+// Un valor de una lista cerrada, o vacío.
+function optionalChoice<T extends string>(
+  isChoice: (value: string) => value is T,
+) {
+  return z
+    .string()
+    .nullish()
+    .transform((value, ctx): T | null => {
+      if (value == null || value === "") return null;
+      if (!isChoice(value)) {
+        ctx.addIssue({ code: "custom", message: "valor fuera de la lista" });
+        return z.NEVER;
+      }
+      return value;
+    });
+}
+
+const isClientKind = (value: string): value is ClientKind =>
+  (CLIENT_KINDS as readonly string[]).includes(value);
+
 // Límites de brief-5.2, D-5. Los textos se recortan antes de validar; el teléfono, según D-1.
+// Los campos de la 17.1 siguen D-6: el email en minúsculas, el código postal en mayúsculas.
 const clientInputSchema = z
   .object({
     displayName: z.string().trim().min(1).max(200),
@@ -73,24 +147,77 @@ const clientInputSchema = z
         }
         return parsed.phone;
       }),
-    notes: z
+    notes: optionalText(1000),
+    email: z
       .string()
       .trim()
-      .max(1000)
+      .toLowerCase()
       .nullish()
-      .transform((value) => (value ? value : null)),
+      .transform((value, ctx) => {
+        if (!value) return null;
+        if (
+          value.length > CLIENT_FIELD_LIMITS.email ||
+          !z.email().safeParse(value).success
+        ) {
+          ctx.addIssue({ code: "custom", message: "email inválido" });
+          return z.NEVER;
+        }
+        return value;
+      }),
+    kind: optionalChoice(isClientKind),
+    companyName: optionalText(CLIENT_FIELD_LIMITS.companyName),
+    jobTitle: optionalText(CLIENT_FIELD_LIMITS.jobTitle),
+    addressLine: optionalText(CLIENT_FIELD_LIMITS.addressLine),
+    city: optionalText(CLIENT_FIELD_LIMITS.city),
+    province: optionalChoice(isProvinceCode),
+    postalCode: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .nullish()
+      .transform((value, ctx) => {
+        if (!value) return null;
+        if (!new RegExp(POSTAL_CODE_PATTERN).test(value)) {
+          ctx.addIssue({ code: "custom", message: "código postal inválido" });
+          return z.NEVER;
+        }
+        return value;
+      }),
+    segment: optionalText(CLIENT_FIELD_LIMITS.segment),
   })
-  .transform(({ displayName, phone, notes }): repository.ClientValues => ({
+  .transform(({ displayName, phone, ...rest }): repository.ClientValues => ({
     displayName,
     phoneE164: phone,
-    notes,
+    ...rest,
   }));
 
-const CLIENT_FIELDS: ClientField[] = ["displayName", "phone", "notes"];
+const CLIENT_FIELDS: ClientField[] = [
+  "displayName",
+  "phone",
+  "notes",
+  "email",
+  "kind",
+  "companyName",
+  "jobTitle",
+  "addressLine",
+  "city",
+  "province",
+  "postalCode",
+  "segment",
+];
 const VALUE_FIELDS: (keyof repository.ClientValues)[] = [
   "displayName",
   "phoneE164",
   "notes",
+  "email",
+  "kind",
+  "companyName",
+  "jobTitle",
+  "addressLine",
+  "city",
+  "province",
+  "postalCode",
+  "segment",
 ];
 
 export function validateClientInput(
@@ -148,6 +275,11 @@ export type ClientListFilters = {
   // Solo los clientes con esta etiqueta (FR-CLI-10). Un id inválido, ajeno o de una etiqueta
   // inactiva se ignora, como los demás filtros inválidos (brief-16.1, D-8 y D-9).
   tagId?: string | null;
+  // Tipo, provincia y segmento (FR-CLI-14, brief-17.1, D-9). Un tipo o una provincia fuera de la
+  // lista se ignoran; el segmento filtra por el valor exacto, como la marca de un producto.
+  kind?: ClientKind | null;
+  province?: string | null;
+  segment?: string | null;
 };
 
 // El id de etiqueta del filtro, si es de una etiqueta activa de la organización; si no, null.
@@ -158,6 +290,50 @@ async function resolveTagFilter(
   if (!tagId || !tagIdSchema.safeParse(tagId).success) return null;
   const tag = await repository.findTag(context.organizationId, tagId);
   return tag?.isActive ? tag.id : null;
+}
+
+async function resolveAttributeFilters(
+  context: AuthContext,
+  filters: Omit<ClientListFilters, "page">,
+): Promise<repository.ClientAttributeFilters> {
+  const segment = filters.segment?.trim();
+  return {
+    tagId: await resolveTagFilter(context, filters.tagId),
+    kind: filters.kind && isClientKind(filters.kind) ? filters.kind : null,
+    province:
+      filters.province && isProvinceCode(filters.province)
+        ? filters.province
+        : null,
+    segment:
+      segment && segment.length <= CLIENT_FIELD_LIMITS.segment ? segment : null,
+  };
+}
+
+// Los valores con que se filtra la lista y se sugiere el segmento (brief-17.1, D-5 y D-9): los que
+// ya tiene algún cliente de la organización. Admin y viewer, que ven el segmento y la provincia.
+export type ClientFilterOptions = {
+  segments: string[];
+  provinces: ProvinceCode[];
+  kinds: ClientKind[];
+};
+
+export async function listClientFilterOptions(
+  context: AuthContext,
+): Promise<({ ok: true } & ClientFilterOptions) | Failure<"FORBIDDEN">> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  const [segments, provinces, kinds] = await Promise.all([
+    repository.findDistinctClientValues(context.organizationId, "segment"),
+    repository.findDistinctClientValues(context.organizationId, "province"),
+    repository.findDistinctClientValues(context.organizationId, "kind"),
+  ]);
+  return {
+    ok: true,
+    segments,
+    // En el orden de la lista, el mismo del formulario, y no en el de los códigos.
+    provinces: PROVINCE_CODES.filter((code) => provinces.includes(code)),
+    kinds: CLIENT_KINDS.filter((kind) => kinds.includes(kind)),
+  };
 }
 
 export type ClientPage = {
@@ -192,12 +368,12 @@ export async function searchClients(
   const authorized = authorize(context);
   if (!authorized.ok) return authorized;
   const search = interpretSearch(filters.text);
-  const tagId = await resolveTagFilter(context, filters.tagId);
+  const attributes = await resolveAttributeFilters(context, filters);
   const total = await repository.countClients(
     context.organizationId,
     search,
     filters.activity,
-    tagId,
+    attributes,
   );
   const { page, pageCount, offset } = clientPageBounds(total, filters.page);
   const rows =
@@ -209,7 +385,7 @@ export async function searchClients(
           filters.activity,
           CLIENTS_PAGE_SIZE,
           offset,
-          tagId,
+          attributes,
         );
   const tags = await repository.findTagsByClient(
     context.organizationId,
@@ -277,7 +453,7 @@ export async function listClientOrderKeys(
     context.organizationId,
     interpretSearch(filters.text),
     filters.activity,
-    await resolveTagFilter(context, filters.tagId),
+    await resolveAttributeFilters(context, filters),
   );
   return { ok: true, clientIds };
 }

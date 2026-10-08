@@ -1,4 +1,13 @@
-import { and, asc, count, eq, inArray, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  eq,
+  inArray,
+  isNotNull,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { getDb, type Db, type DbTransaction } from "@/shared/db";
 import {
   clients,
@@ -6,11 +15,26 @@ import {
   clientTags,
   searchNormalized,
 } from "./schema";
+import type { ProvinceCode } from "./provinces";
+import type { ClientKind } from "./schema";
 import type { TagColor } from "./tag-colors";
 
 // Acceso a clients. Toda consulta filtra por organization_id en SQL (brief-5.2).
 
 type Executor = Db | DbTransaction;
+
+// Los campos de la 17.1 (brief-17.1, D-2), todos opcionales.
+export type ClientExtraValues = {
+  email: string | null;
+  kind: ClientKind | null;
+  companyName: string | null;
+  jobTitle: string | null;
+  addressLine: string | null;
+  city: string | null;
+  province: ProvinceCode | null;
+  postalCode: string | null;
+  segment: string | null;
+};
 
 export type ClientRow = {
   id: string;
@@ -20,20 +44,30 @@ export type ClientRow = {
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
-};
+} & ClientExtraValues;
 
 // Campos editables, con el teléfono ya normalizado a E.164.
 export type ClientValues = {
   displayName: string;
   phoneE164: string | null;
   notes: string | null;
-};
+} & ClientExtraValues;
 
 const clientColumns = {
   id: clients.id,
   displayName: clients.displayName,
   phoneE164: clients.phoneE164,
   notes: clients.notes,
+  email: clients.email,
+  kind: clients.kind,
+  companyName: clients.companyName,
+  jobTitle: clients.jobTitle,
+  addressLine: clients.addressLine,
+  city: clients.city,
+  // El CHECK clients_province solo admite los códigos de la lista.
+  province: sql<ProvinceCode | null>`${clients.province}`,
+  postalCode: clients.postalCode,
+  segment: clients.segment,
   isActive: clients.isActive,
   createdAt: clients.createdAt,
   updatedAt: clients.updatedAt,
@@ -76,16 +110,34 @@ function likePrefix(text: string): string {
   return `${text.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 }
 
+// Filtros de la lista más allá del texto y la actividad, ya validados por el servicio: la etiqueta
+// (brief-16.1) y el tipo, la provincia y el segmento (brief-17.1, D-9). Nulo es «sin filtro».
+export type ClientAttributeFilters = {
+  tagId?: string | null;
+  kind?: ClientKind | null;
+  province?: ProvinceCode | null;
+  segment?: string | null;
+};
+
 function searchConditions(
   organizationId: string,
   search: ClientSearch,
   activity: ActivityFilter,
-  tagId: string | null = null,
+  {
+    tagId = null,
+    kind = null,
+    province = null,
+    segment = null,
+  }: ClientAttributeFilters = {},
 ): SQL {
   const conditions: SQL[] = [eq(clients.organizationId, organizationId)];
   if (activity !== "all") {
     conditions.push(eq(clients.isActive, activity === "active"));
   }
+  if (kind !== null) conditions.push(eq(clients.kind, kind));
+  if (province !== null) conditions.push(eq(clients.province, province));
+  // El segmento exacto, como la marca y la categoría de productos (brief-15.2, D-4).
+  if (segment !== null) conditions.push(eq(clients.segment, segment));
   // Solo los clientes que tienen la etiqueta (brief-16.1, FR-CLI-10). El servicio ya comprobó
   // que es una etiqueta activa de la organización.
   // Con alias explícitos, como en findTagsWithClientCounts: Drizzle no califica las columnas.
@@ -113,12 +165,12 @@ export async function countClients(
   organizationId: string,
   search: ClientSearch,
   activity: ActivityFilter,
-  tagId: string | null = null,
+  attributes: ClientAttributeFilters = {},
 ): Promise<number> {
   const rows = await getDb()
     .select({ total: count() })
     .from(clients)
-    .where(searchConditions(organizationId, search, activity, tagId));
+    .where(searchConditions(organizationId, search, activity, attributes));
   return rows[0]?.total ?? 0;
 }
 
@@ -129,12 +181,12 @@ export function findClients(
   activity: ActivityFilter,
   limit: number,
   offset: number,
-  tagId: string | null = null,
+  attributes: ClientAttributeFilters = {},
 ): Promise<ClientRow[]> {
   return getDb()
     .select(clientColumns)
     .from(clients)
-    .where(searchConditions(organizationId, search, activity, tagId))
+    .where(searchConditions(organizationId, search, activity, attributes))
     .orderBy(sql`lower(${clients.displayName})`, asc(clients.id))
     .limit(limit)
     .offset(offset);
@@ -142,19 +194,44 @@ export function findClients(
 
 // Todos los ids que cumplen los filtros, en el orden de nombre de findClients. Para que otro
 // módulo componga el orden por última interacción sin JOIN (brief-6.3, D-1). El filtro por
-// etiqueta se resuelve acá, así que conversations no conoce las etiquetas (brief-16.1).
+// etiqueta se resuelve acá, así que conversations no conoce las etiquetas (brief-16.1); lo mismo
+// el tipo, la provincia y el segmento (brief-17.1, D-9).
 export async function findClientIdsByName(
   organizationId: string,
   search: ClientSearch,
   activity: ActivityFilter,
-  tagId: string | null = null,
+  attributes: ClientAttributeFilters = {},
 ): Promise<string[]> {
   const rows = await getDb()
     .select({ id: clients.id })
     .from(clients)
-    .where(searchConditions(organizationId, search, activity, tagId))
+    .where(searchConditions(organizationId, search, activity, attributes))
     .orderBy(sql`lower(${clients.displayName})`, asc(clients.id));
   return rows.map((row) => row.id);
+}
+
+// Los segmentos, las provincias y los tipos que tiene algún cliente de la organización, para los filtros de
+// la lista y las sugerencias del formulario (brief-17.1, D-5 y D-9). Con tope, como las marcas y
+// las categorías de productos.
+export const CLIENT_OPTIONS_LIMIT = 200;
+
+export async function findDistinctClientValues(
+  organizationId: string,
+  column: "segment" | "province" | "kind",
+): Promise<string[]> {
+  const target =
+    column === "segment"
+      ? clients.segment
+      : column === "province"
+        ? clients.province
+        : clients.kind;
+  const rows = await getDb()
+    .selectDistinct({ value: target })
+    .from(clients)
+    .where(and(eq(clients.organizationId, organizationId), isNotNull(target)))
+    .orderBy(target)
+    .limit(CLIENT_OPTIONS_LIMIT);
+  return rows.map((row) => row.value!);
 }
 
 export function findClientsByIds(

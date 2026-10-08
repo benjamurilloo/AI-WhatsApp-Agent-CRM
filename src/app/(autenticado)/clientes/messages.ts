@@ -31,13 +31,59 @@ export const NOTES_TOO_LONG_MESSAGE =
 export const PHONE_HINT = "Formato internacional, por ejemplo +5491155551234.";
 export const NOTES_HINT = "No registres datos sensibles innecesarios.";
 
+// Campos ampliados (brief-17.1). Los límites van escritos, como los de las etiquetas:
+// messages.test.ts comprueba que coincidan con CLIENT_FIELD_LIMITS.
+export const EMAIL_FORMAT_MESSAGE =
+  "Ingresá un email válido de hasta 254 caracteres, por ejemplo nombre@dominio.com.";
+export const KIND_MESSAGE = "Elegí persona o empresa.";
+export const COMPANY_TOO_LONG_MESSAGE =
+  "La empresa no puede superar los 120 caracteres.";
+export const JOB_TITLE_TOO_LONG_MESSAGE =
+  "El cargo no puede superar los 120 caracteres.";
+export const ADDRESS_TOO_LONG_MESSAGE =
+  "La calle y el número no pueden superar los 200 caracteres.";
+export const CITY_TOO_LONG_MESSAGE =
+  "La ciudad no puede superar los 120 caracteres.";
+export const PROVINCE_MESSAGE = "Elegí una provincia de la lista.";
+export const POSTAL_CODE_FORMAT_MESSAGE =
+  "Ingresá un código postal de hasta 10 letras y números, por ejemplo 1425 o C1425ABC.";
+export const SEGMENT_TOO_LONG_MESSAGE =
+  "El segmento no puede superar los 60 caracteres.";
+export const SEGMENT_HINT =
+  "Una clasificación comercial, por ejemplo Mayorista o Minorista.";
+// Lo que ve un viewer en lugar del email, la calle y el código postal (D-8).
+export const CONTACT_HIDDEN_MESSAGE = "Solo visible para administradores.";
+
 const CLIENT_FIELD_MESSAGES: Record<ClientField, string> = {
   displayName: NAME_REQUIRED_MESSAGE,
   phone: PHONE_FORMAT_MESSAGE,
   notes: NOTES_TOO_LONG_MESSAGE,
+  email: EMAIL_FORMAT_MESSAGE,
+  kind: KIND_MESSAGE,
+  companyName: COMPANY_TOO_LONG_MESSAGE,
+  jobTitle: JOB_TITLE_TOO_LONG_MESSAGE,
+  addressLine: ADDRESS_TOO_LONG_MESSAGE,
+  city: CITY_TOO_LONG_MESSAGE,
+  province: PROVINCE_MESSAGE,
+  postalCode: POSTAL_CODE_FORMAT_MESSAGE,
+  segment: SEGMENT_TOO_LONG_MESSAGE,
 };
 
-const CLIENT_FIELD_ORDER: ClientField[] = ["displayName", "phone", "notes"];
+// El orden del formulario (D-11).
+const CLIENT_FIELD_ORDER: ClientField[] = [
+  "displayName",
+  "phone",
+  "notes",
+  "email",
+  "kind",
+  "companyName",
+  "jobTitle",
+  "addressLine",
+  "city",
+  "province",
+  "postalCode",
+  "segment",
+];
 
 // Primer campo inválido en el orden del formulario, con su mensaje.
 export function clientFieldError(fields: ClientField[]): {
@@ -50,11 +96,7 @@ export function clientFieldError(fields: ClientField[]): {
   return { field, message: CLIENT_FIELD_MESSAGES[field] };
 }
 
-export type ClientFormValues = {
-  displayName: string;
-  phone: string;
-  notes: string;
-};
+export type ClientFormValues = Record<ClientField, string>;
 
 export type ClientFormState =
   | { status: "idle" }

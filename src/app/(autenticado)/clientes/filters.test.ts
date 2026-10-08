@@ -25,6 +25,9 @@ describe("parseClientFilters", () => {
       sort: "last_interaction",
       pageSize: 25,
       tagId: null,
+      kind: null,
+      province: null,
+      segment: null,
     });
     expect(parseClientFilters({ actividad: "inactivos" }).activity).toBe(
       "inactive",
@@ -94,10 +97,13 @@ describe("clientFiltersHref", () => {
       sort: "name_asc",
       pageSize: 10,
       tagId: "3f1702be-6f4e-8135-830d-dd1c5d574187",
+      kind: "company",
+      province: "AR-S",
+      segment: "Mayorista norte",
     } as const;
     const href = clientFiltersHref(filters);
     expect(href).toBe(
-      "/clientes?q=Ana+P%C3%A9rez&actividad=todos&orden=nombre&filas=10&etiqueta=3f1702be-6f4e-8135-830d-dd1c5d574187&pagina=4",
+      "/clientes?q=Ana+P%C3%A9rez&actividad=todos&orden=nombre&filas=10&etiqueta=3f1702be-6f4e-8135-830d-dd1c5d574187&tipo=empresa&provincia=AR-S&segmento=Mayorista+norte&pagina=4",
     );
     const params = Object.fromEntries(new URL(href, "http://x").searchParams);
     expect(parseClientFilters(params)).toEqual(filters);
@@ -117,5 +123,39 @@ describe("hasActiveFilters", () => {
         tagId: "3f1702be-6f4e-8135-830d-dd1c5d574187",
       }),
     ).toBe(true);
+  });
+});
+
+describe("tipo, provincia y segmento (brief-17.1, D-9)", () => {
+  it("FR-CLI-14: lee el tipo, la provincia y el segmento de la URL", () => {
+    expect(
+      parseClientFilters({
+        tipo: "persona",
+        provincia: "ar-x",
+        segmento: "  Minorista ",
+      }),
+    ).toMatchObject({ kind: "person", province: "AR-X", segment: "Minorista" });
+  });
+
+  it("un valor desconocido no filtra", () => {
+    for (const tipo of ["", "consumidor-final", "person", "toString"]) {
+      expect(parseClientFilters({ tipo }).kind).toBeNull();
+    }
+    for (const provincia of ["", "Córdoba", "AR-", "AR-XX"]) {
+      expect(parseClientFilters({ provincia }).province).toBeNull();
+    }
+    for (const segmento of ["", "   ", "x".repeat(61)]) {
+      expect(parseClientFilters({ segmento }).segment).toBeNull();
+    }
+  });
+
+  it("cuentan como filtros activos", () => {
+    expect(hasActiveFilters({ ...DEFAULT_FILTERS, kind: "person" })).toBe(true);
+    expect(hasActiveFilters({ ...DEFAULT_FILTERS, province: "AR-C" })).toBe(
+      true,
+    );
+    expect(hasActiveFilters({ ...DEFAULT_FILTERS, segment: "Mayorista" })).toBe(
+      true,
+    );
   });
 });

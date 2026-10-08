@@ -761,3 +761,105 @@ describe("notas de la conversación (brief-16.4, D-5, AC-5)", () => {
     expect(await columnsContaining(NOTE)).toEqual([]);
   });
 });
+
+// Los campos ampliados de la ficha (brief-17.1, D-12, AC-7). Un valor de prueba por cada columna
+// nulable de `clients`, distinguible en el barrido de columnsContaining.
+const EXTRA_FIELDS: Record<string, string> = {
+  email: "ana.kumquat@example.com",
+  kind: "company",
+  company_name: "Kumquats del Litoral",
+  job_title: "Encargada de compras",
+  address_line: "Calle Pomelo 1234",
+  city: "Villa Kumquat",
+  province: "AR-W",
+  postal_code: "W3400ABC",
+  segment: "Mayorista kumquat",
+};
+
+// Las columnas nulables de clients, leídas del catálogo de la base y no de una lista escrita a mano.
+async function nullableClientColumns(): Promise<string[]> {
+  const result = await getDb().execute<{ column_name: string }>(
+    sql`select column_name from information_schema.columns
+        where table_schema = 'public' and table_name = 'clients' and is_nullable = 'YES'
+        order by column_name`,
+  );
+  return result.rows.map((row) => row.column_name);
+}
+
+async function fillExtraFields(clientId: string) {
+  const assignments = Object.entries(EXTRA_FIELDS).map(
+    ([column, value]) => sql`${sql.identifier(column)} = ${value}`,
+  );
+  await getDb().execute(
+    sql`update clients set ${sql.join(assignments, sql`, `)}
+        where organization_id = ${organizationId} and id = ${clientId}`,
+  );
+}
+
+describe("campos ampliados del cliente (brief-17.1, D-12, AC-7)", () => {
+  it("27. FR-CLI-12: la exportación incluye los campos ampliados", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    await fillExtraFields(clientId);
+
+    const data = await exportClientData(getDb(), organizationId, clientId);
+
+    expect(data.client).toMatchObject(EXTRA_FIELDS);
+  });
+
+  it("28. el vaciado deja sin valor los campos ampliados, y no los de otro cliente", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    await insertConversationWithMessage(clientId, BODY);
+    await fillExtraFields(clientId);
+    const other = await insertClient("Otra Persona", "+5491155552222", "x");
+    await getDb().execute(
+      sql`update clients set email = 'otra@example.com', city = 'Otra Ciudad'
+          where organization_id = ${organizationId} and id = ${other}`,
+    );
+
+    await eraseClientData(getDb(), organizationId, clientId);
+
+    for (const value of Object.values(EXTRA_FIELDS)) {
+      // El código de provincia y el tipo son valores cortos que otras columnas pueden contener por
+      // casualidad: se comprueban sobre la fila, abajo.
+      if (value === "AR-W" || value === "company") continue;
+      expect(await columnsContaining(value), value).toEqual([]);
+    }
+    const erased = await getDb().execute<Record<string, string | null>>(
+      sql`select * from clients where organization_id = ${organizationId} and id = ${clientId}`,
+    );
+    for (const column of Object.keys(EXTRA_FIELDS)) {
+      expect(erased.rows[0]![column], column).toBeNull();
+    }
+    const kept = await getDb().execute<{ email: string; city: string }>(
+      sql`select email, city from clients where organization_id = ${organizationId} and id = ${other}`,
+    );
+    expect(kept.rows[0]).toEqual({
+      email: "otra@example.com",
+      city: "Otra Ciudad",
+    });
+  });
+
+  // La defensa contra la próxima columna (invariante 3): toda columna nulable de clients tiene que
+  // tener acá su valor de prueba y quedar nula después del vaciado. Una columna nueva que no se sume
+  // al vaciado y a esta lista hace fallar el primer expect.
+  it("29. toda columna nulable de clients queda nula después del vaciado", async () => {
+    const tested = ["notes", "phone_e164", ...Object.keys(EXTRA_FIELDS)].sort();
+    expect(
+      await nullableClientColumns(),
+      "una columna nulable nueva de clients tiene que sumarse al vaciado de scripts/client-data-delete.ts y a EXTRA_FIELDS",
+    ).toEqual(tested);
+
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    await insertConversationWithMessage(clientId, BODY);
+    await fillExtraFields(clientId);
+
+    await eraseClientData(getDb(), organizationId, clientId);
+
+    const row = await getDb().execute<Record<string, unknown>>(
+      sql`select * from clients where organization_id = ${organizationId} and id = ${clientId}`,
+    );
+    for (const column of await nullableClientColumns()) {
+      expect(row.rows[0]![column], column).toBeNull();
+    }
+  });
+});

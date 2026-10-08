@@ -18,7 +18,11 @@ import {
   tagFieldError,
   tagNoticeMessage,
 } from "./messages";
-import { MAX_ACTIVE_TAGS, MAX_TAGS_PER_CLIENT } from "@/modules/crm";
+import {
+  CLIENT_FIELD_LIMITS,
+  MAX_ACTIVE_TAGS,
+  MAX_TAGS_PER_CLIENT,
+} from "@/modules/crm";
 
 describe("clientFieldError", () => {
   it("elige el primer campo inválido en el orden del formulario", () => {
@@ -119,5 +123,26 @@ describe("etiquetas (brief-16.1)", () => {
     expect(tagNoticeMessage("desactivada")).toContain("la conservan");
     expect(tagNoticeMessage("toString")).toBeNull();
     expect(tagNoticeMessage(undefined)).toBeNull();
+  });
+});
+
+describe("campos ampliados (brief-17.1)", () => {
+  it("D-6: cada mensaje de largo dice el mismo límite que crm, y el orden sigue el formulario", () => {
+    const limits: [Parameters<typeof clientFieldError>[0][number], number][] = [
+      ["email", CLIENT_FIELD_LIMITS.email],
+      ["companyName", CLIENT_FIELD_LIMITS.companyName],
+      ["jobTitle", CLIENT_FIELD_LIMITS.jobTitle],
+      ["addressLine", CLIENT_FIELD_LIMITS.addressLine],
+      ["city", CLIENT_FIELD_LIMITS.city],
+      ["postalCode", CLIENT_FIELD_LIMITS.postalCode],
+      ["segment", CLIENT_FIELD_LIMITS.segment],
+    ];
+    for (const [field, limit] of limits) {
+      expect(clientFieldError([field]).message, field).toContain(`${limit} `);
+    }
+    expect(clientFieldError(["segment", "email", "province"]).field).toBe(
+      "email",
+    );
+    expect(clientFieldError(["segment", "notes"]).field).toBe("notes");
   });
 });

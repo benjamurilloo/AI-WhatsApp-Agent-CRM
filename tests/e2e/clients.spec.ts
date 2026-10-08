@@ -536,6 +536,12 @@ test("caso 11: el alta se completa solo con teclado", async ({ page }) => {
   await page.keyboard.type("+5491155557777");
   await page.keyboard.press("Tab");
   await page.keyboard.type("Sin datos sensibles");
+  // Desde la 17.1, las cuatro tarjetas opcionales van antes de los botones: nueve campos que se
+  // pasan sin completar (brief-17.1, D-11).
+  await page.keyboard.press("Tab");
+  await expect(page.getByLabel("Email")).toBeFocused();
+  for (let i = 0; i < 8; i++) await page.keyboard.press("Tab");
+  await expect(page.getByLabel("Segmento")).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(page.getByRole("link", { name: "Cancelar" })).toBeFocused();
   await page.keyboard.press("Tab");

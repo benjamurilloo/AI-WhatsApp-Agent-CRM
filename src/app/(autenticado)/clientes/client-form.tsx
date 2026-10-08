@@ -12,10 +12,13 @@ import {
 } from "@/app/_components/form-styles";
 import type { IconName } from "@/app/_components/icons";
 import { SectionCard } from "@/app/_components/section-card";
+import { SuggestInput } from "@/app/_components/suggest-input";
 import { createClientAction, updateClientAction } from "./actions";
+import { KIND_LABEL } from "./filters";
 import {
   NOTES_HINT,
   PHONE_HINT,
+  SEGMENT_HINT,
   type ClientFormState,
   type ClientFormValues,
 } from "./messages";
@@ -23,11 +26,25 @@ import {
 // Formulario de alta y de edición (wireframe 07). Solo lo recibe un admin, así que el teléfono
 // completo que precarga nunca llega a un viewer. El botón queda deshabilitado mientras responde.
 // Desde la 15.4, los campos van en dos tarjetas, en el mismo orden (brief-15.4). El teléfono sigue
-// siendo un solo campo (D-5).
+// siendo un solo campo (D-5). Desde la 17.1, cuatro tarjetas más, todas opcionales (brief-17.1, D-11):
+// el tipo y la provincia son listas cerradas, y el segmento sugiere los ya cargados.
 
 const initialState: ClientFormState = { status: "idle" };
 
-const EMPTY: ClientFormValues = { displayName: "", phone: "", notes: "" };
+const EMPTY: ClientFormValues = {
+  displayName: "",
+  phone: "",
+  notes: "",
+  email: "",
+  kind: "",
+  companyName: "",
+  jobTitle: "",
+  addressLine: "",
+  city: "",
+  province: "",
+  postalCode: "",
+  segment: "",
+};
 
 type FieldSpec = {
   name: keyof ClientFormValues;
@@ -35,8 +52,14 @@ type FieldSpec = {
   required: boolean;
   hint?: string;
   multiline?: boolean;
-  type?: "text" | "tel";
+  type?: "text" | "tel" | "email";
   placeholder?: string;
+  // Lista cerrada: un selector con «Sin dato» primero.
+  choices?: "kind" | "province";
+  // Sugerencias de los valores ya cargados (brief-15.2, D-5). SuggestInput no recibe maxLength:
+  // el largo del segmento lo valida el servidor.
+  suggest?: boolean;
+  maxLength?: number;
 };
 
 const FIELDS: FieldSpec[] = [
@@ -62,6 +85,64 @@ const FIELDS: FieldSpec[] = [
     multiline: true,
     placeholder: "Agregá información relevante sobre el cliente…",
   },
+  {
+    name: "email",
+    label: "Email",
+    required: false,
+    type: "email",
+    placeholder: "Ej. juan@ejemplo.com",
+    maxLength: 254,
+  },
+  { name: "kind", label: "Tipo", required: false, choices: "kind" },
+  {
+    name: "companyName",
+    label: "Empresa",
+    required: false,
+    placeholder: "Ej. Ferretería Norte",
+    maxLength: 120,
+  },
+  {
+    name: "jobTitle",
+    label: "Cargo",
+    required: false,
+    placeholder: "Ej. Encargado de compras",
+    maxLength: 120,
+  },
+  {
+    name: "addressLine",
+    label: "Calle y número",
+    required: false,
+    placeholder: "Ej. Av. Corrientes 1234, piso 2",
+    maxLength: 200,
+  },
+  {
+    name: "city",
+    label: "Ciudad",
+    required: false,
+    placeholder: "Ej. Rosario",
+    maxLength: 120,
+  },
+  {
+    name: "province",
+    label: "Provincia",
+    required: false,
+    choices: "province",
+  },
+  {
+    name: "postalCode",
+    label: "Código postal",
+    required: false,
+    placeholder: "Ej. C1425ABC",
+    maxLength: 10,
+  },
+  {
+    name: "segment",
+    label: "Segmento",
+    required: false,
+    hint: SEGMENT_HINT,
+    suggest: true,
+    placeholder: "Ej. Mayorista",
+  },
 ];
 
 // Las tarjetas del formulario, con sus campos en el orden de FIELDS.
@@ -83,17 +164,54 @@ const GROUPS: {
     icon: "fileText",
     fields: ["notes"],
   },
+  {
+    id: "form-contacto-titulo",
+    title: "Contacto",
+    icon: "mail",
+    fields: ["email"],
+  },
+  {
+    id: "form-empresa-titulo",
+    title: "Empresa",
+    icon: "building",
+    fields: ["kind", "companyName", "jobTitle"],
+  },
+  {
+    id: "form-direccion-titulo",
+    title: "Dirección",
+    icon: "mapPin",
+    fields: ["addressLine", "city", "province", "postalCode"],
+  },
+  {
+    id: "form-clasificacion-titulo",
+    title: "Clasificación",
+    icon: "layers",
+    fields: ["segment"],
+  },
 ];
+
+// Las listas del formulario. Las provincias y los segmentos llegan de la página, que los lee de crm
+// en el servidor: este componente no importa valores de crm.
+export type ClientFormOptions = {
+  provinces: [code: string, name: string][];
+  segments: string[];
+};
 
 export function ClientForm({
   mode,
   clientId,
   values = EMPTY,
+  options,
 }: {
   mode: "crear" | "editar";
   clientId?: string;
   values?: ClientFormValues;
+  options: ClientFormOptions;
 }) {
+  const choices = {
+    kind: Object.entries(KIND_LABEL),
+    province: options.provinces,
+  };
   const [state, formAction, pending] = useActionState(
     mode === "crear" ? createClientAction : updateClientAction,
     initialState,
@@ -154,10 +272,39 @@ export function ClientForm({
                     </label>
                     {field.multiline ? (
                       <textarea {...common} rows={4} />
+                    ) : field.choices ? (
+                      <select
+                        id={common.id}
+                        name={common.name}
+                        defaultValue={common.defaultValue}
+                        aria-invalid={common["aria-invalid"]}
+                        aria-describedby={common["aria-describedby"]}
+                        className={inputClass}
+                      >
+                        <option value="">Sin dato</option>
+                        {choices[field.choices].map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : field.suggest ? (
+                      <SuggestInput
+                        id={common.id}
+                        name={common.name}
+                        required={common.required}
+                        defaultValue={common.defaultValue}
+                        placeholder={common.placeholder}
+                        aria-invalid={common["aria-invalid"]}
+                        aria-describedby={common["aria-describedby"]}
+                        className={inputClass}
+                        options={options.segments}
+                      />
                     ) : (
                       <input
                         {...common}
                         type={field.type ?? "text"}
+                        maxLength={field.maxLength}
                         autoComplete="off"
                       />
                     )}

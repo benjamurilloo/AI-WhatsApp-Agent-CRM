@@ -11,7 +11,9 @@ import { getDb, type Db } from "@/shared/db";
  *
  * **Borrar es vaciar el contenido y conservar la forma** (brief-13.4, D-2). Con --vaciar, en una
  * sola transacción:
- *   - la ficha pierde nombre, teléfono y notas;
+ *   - la ficha pierde nombre, teléfono y notas, y desde la 17.1 todos los campos ampliados: email,
+ *     tipo, empresa, cargo, dirección y segmento (brief-17.1, D-12). Un test de client-data exige
+ *     que toda columna nulable de `clients` quede nula: una columna nueva tiene que sumarse acá;
  *   - sus conversaciones pierden la referencia externa;
  *   - sus mensajes pierden el texto y la referencia externa;
  *   - las notas de sus conversaciones pierden el texto: son texto libre y pueden nombrar a la
@@ -19,7 +21,7 @@ import { getDb, type Db } from "@/shared/db";
  *   - sus entradas de auditoría pierden los valores;
  *   - sus etiquetas se quitan: «Reclamo» o «Quiere señar» son datos sobre esa persona
  *     (brief-16.1, D-10). Con --borrar se van con la ficha, por la clave con ON DELETE CASCADE.
- * Quedan fechas, direcciones, tipos y estados, que es lo que cuentan las métricas: las de los
+ * Quedan fechas, estados y, de los mensajes, la dirección y el tipo, que es lo que cuentan las métricas: las de los
  * períodos pasados no cambian (brief-13.4, H-3).
  *
  * `messages`, `conversation_notes` y `audit_logs` son de solo inserción. Su trigger deja pasar un único UPDATE, que es
@@ -177,6 +179,15 @@ export async function eraseClientData(
           set display_name = ${minimizedName(clientId)},
               phone_e164 = null,
               notes = null,
+              email = null,
+              kind = null,
+              company_name = null,
+              job_title = null,
+              address_line = null,
+              city = null,
+              province = null,
+              postal_code = null,
+              segment = null,
               updated_at = now()
           where organization_id = ${organizationId} and id = ${clientId}`,
     );

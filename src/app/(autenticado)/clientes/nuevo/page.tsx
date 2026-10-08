@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
+import { listClientFilterOptions, PROVINCES } from "@/modules/crm";
 import { authorize } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
 import { BackLink, DetailHeader } from "@/app/_components/detail-header";
 import { PageNotice } from "@/app/_components/page-notice";
-import { ClientForm } from "../client-form";
+import { ClientForm, type ClientFormOptions } from "../client-form";
 import { FORBIDDEN_PAGE_MESSAGE } from "../messages";
 
 export const metadata: Metadata = {
@@ -20,6 +21,12 @@ export default async function NewClientPage() {
     return <PageNotice title={TITLE} message={FORBIDDEN_PAGE_MESSAGE} />;
   }
 
+  const found = await listClientFilterOptions(context);
+  const options: ClientFormOptions = {
+    provinces: Object.entries(PROVINCES),
+    segments: found.ok ? found.segments : [],
+  };
+
   return (
     <main className="mx-auto max-w-4xl px-4 py-8 lg:px-8">
       <BackLink href="/clientes" label="Volver a clientes" />
@@ -28,7 +35,7 @@ export default async function NewClientPage() {
         subtitle="Registrá un nuevo cliente en el sistema."
       />
       <div className="mt-6">
-        <ClientForm mode="crear" />
+        <ClientForm mode="crear" options={options} />
       </div>
     </main>
   );

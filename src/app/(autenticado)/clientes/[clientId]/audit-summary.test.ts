@@ -173,3 +173,45 @@ describe("entrada vaciada (brief-13.4, D-3; ADR 0015)", () => {
     }
   });
 });
+
+describe("campos ampliados en el historial (brief-17.1, AC-3)", () => {
+  it("nombra cada campo en castellano, y el tipo y la provincia por su nombre", () => {
+    expect(
+      describeAuditDiff(
+        entry("update", {
+          before: { segment: null, province: "AR-S", kind: null, email: null },
+          after: {
+            segment: "Mayorista",
+            province: "AR-X",
+            kind: "company",
+            email: "ana@example.com",
+          },
+        }),
+      ),
+    ).toBe(
+      "Email: vacío → ana@example.com · Tipo: vacío → Empresa · Provincia: Santa Fe → Córdoba · Segmento: vacío → Mayorista",
+    );
+    expect(
+      describeAuditDiff(
+        entry("update", {
+          before: {
+            companyName: "A",
+            jobTitle: null,
+            addressLine: "Calle 1",
+            city: "Rosario",
+            postalCode: "2000",
+          },
+          after: {
+            companyName: null,
+            jobTitle: "Compras",
+            addressLine: "Calle 2",
+            city: "Funes",
+            postalCode: "S2132",
+          },
+        }),
+      ),
+    ).toBe(
+      "Empresa: A → vacío · Cargo: vacío → Compras · Calle y número: Calle 1 → Calle 2 · Ciudad: Rosario → Funes · Código postal: 2000 → S2132",
+    );
+  });
+});

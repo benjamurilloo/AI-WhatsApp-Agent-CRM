@@ -128,6 +128,7 @@ Agregada en la 11.1 ([brief-11.1](../decisions/brief-11.1-catalogo-comercial.md)
 - **Responsive**: tarjetas en móvil.
 - **Accesibilidad**: el teléfono enmascarado tiene un texto accesible que lo indica.
 - **Etiquetas** *(16.1, FR-CLI-10)*: hasta tres chips por fila y «+N» con las demás; un filtro «Etiqueta» con las activas, en la URL (`etiqueta=<id>`), combinable con la búsqueda, la actividad y el orden. Una etiqueta ajena, inexistente o inactiva en la URL se ignora. Un botón «Etiquetas» lleva al catálogo (pantalla 13).
+- **Tipo, provincia y segmento** *(17.1, FR-CLI-14)*: tres selectores más, en la URL (`tipo=persona|empresa`, `provincia=<código>`, `segmento=<texto>`), combinables con los demás filtros. Cada selector aparece y ofrece valores solo si algún cliente de la organización los tiene; cualquier otro valor en la URL se ignora. Sin columnas nuevas en la tabla.
 - **No mostrar**: el teléfono completo a un `viewer`, en la lista ni en ninguna otra vista. El enmascarado se aplica en el servidor: la respuesta que recibe un `viewer` no contiene el número completo. La búsqueda por teléfono completo funciona igual para ambos roles, porque el filtro se resuelve en la consulta y no depende de lo que se renderice.
 
 ## 7. Detalle y edición de cliente
@@ -145,6 +146,7 @@ Agregada en la 11.1 ([brief-11.1](../decisions/brief-11.1-catalogo-comercial.md)
 - **Accesibilidad**: estándar.
 - **No mostrar**: la auditoría a `viewer`. El campo de notas incluye un aviso para no registrar datos sensibles innecesarios.
 - **Etiquetas** *(16.1, FR-CLI-09 y 10)*: una tarjeta «Etiquetas» con los chips, para los dos roles; una inactiva lleva «(inactiva)» y borde punteado. Un `admin` agrega desde un selector con las activas que el cliente no tiene y quita con un botón por chip («Quitar Reclamo»). Son formularios con Server Actions, como el resto de la ficha. La auditoría muestra «Etiqueta agregada: Reclamo» y «Etiqueta quitada: Reclamo».
+- **Campos ampliados** *(17.1, FR-CLI-12 y 13)*: cuatro tarjetas debajo de «Información principal»: «Contacto» (email), «Empresa» (tipo, empresa y cargo), «Dirección» (calle y número, ciudad, provincia y código postal) y «Clasificación» (segmento), con «—» en lo vacío. A un `viewer`, el email, la calle y el código postal no le llegan del servidor, y la tarjeta dice «Solo visible para administradores.». El formulario de alta y edición suma las mismas cuatro tarjetas, todas opcionales; el tipo y la provincia son selectores con «Sin dato», y el segmento sugiere los ya cargados.
 - **Agente pausado** *(16.3, FR-CONV-06)*: las conversaciones del cliente usan la misma tabla que la pantalla 8, así que también muestran la marca «Agente pausado» junto al estado. Solo se ve; pausar y reanudar se hace desde la pantalla 9.
 
 ## 8. Lista de conversaciones

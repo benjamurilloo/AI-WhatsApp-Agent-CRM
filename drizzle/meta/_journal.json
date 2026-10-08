@@ -218,6 +218,13 @@
       "when": 1791411290636,
       "tag": "0030_conversation_notes_privileges",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1791489980926,
+      "tag": "0031_client_fields",
+      "breakpoints": true
     }
   ]
 }

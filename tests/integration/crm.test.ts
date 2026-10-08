@@ -1,12 +1,15 @@
 import { randomUUID } from "node:crypto";
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { hashPassword, login } from "@/modules/auth";
 import {
   createClient,
   deactivateClient,
   getClient,
+  getClientsByIds,
   listClientAudit,
+  listClientFilterOptions,
+  listClientOrderKeys,
   reactivateClient,
   searchClients,
   suggestClients,
@@ -14,6 +17,7 @@ import {
   type ClientInput,
   type ClientListFilters,
 } from "@/modules/crm";
+import { searchClientsByLastInteraction } from "@/modules/conversations";
 import { getAuthContext, type AuthContext } from "@/modules/organizations";
 import { getDb } from "@/shared/db";
 import { resetDatabase } from "./reset-database";
@@ -75,6 +79,19 @@ async function seed() {
 }
 
 const PHONE = "+5491155551234";
+
+// Los campos de la 17.1 sin valor, como los registra un alta que no los carga.
+const NO_EXTRA_FIELDS = {
+  email: null,
+  kind: null,
+  companyName: null,
+  jobTitle: null,
+  addressLine: null,
+  city: null,
+  province: null,
+  postalCode: null,
+  segment: null,
+};
 
 const ana: ClientInput = {
   displayName: "Ana Pérez",
@@ -175,6 +192,8 @@ describe("createClient", () => {
             displayName: "Ana Pérez",
             phoneE164: PHONE,
             notes: "Prefiere contacto por la tarde",
+            // Desde la 17.1, el alta registra también los campos ampliados (brief-17.1, AC-3).
+            ...NO_EXTRA_FIELDS,
             isActive: true,
           },
         },
@@ -434,6 +453,14 @@ describe("getClient", () => {
         displayName: "Ana Pérez",
         phone: { kind: "full", e164: PHONE },
         notes: "Prefiere contacto por la tarde",
+        // Desde la 17.1 (brief-17.1, D-8): los datos de contacto, solo para un admin.
+        contact: { email: null, addressLine: null, postalCode: null },
+        kind: null,
+        companyName: null,
+        jobTitle: null,
+        city: null,
+        province: null,
+        segment: null,
         isActive: true,
         createdAt: expect.any(Date),
         updatedAt: expect.any(Date),
@@ -789,5 +816,411 @@ describe("listClientAudit (FR-AUD-02)", () => {
       ok: false,
       code: "VALIDATION_ERROR",
     });
+  });
+});
+
+// Campos ampliados del cliente (brief-17.1): FR-CLI-12 a 14, D-2 a D-10.
+describe("campos ampliados (brief-17.1)", () => {
+  const full: ClientInput = {
+    ...ana,
+    email: "  Ana.Perez@Example.COM ",
+    kind: "company",
+    companyName: " Kumquats SRL ",
+    jobTitle: "Compras",
+    addressLine: "Av. Siempreviva 742",
+    city: "Rosario",
+    province: "AR-S",
+    postalCode: " s2000abc ",
+    segment: " Mayorista ",
+  };
+
+  async function extraRow(clientId: string) {
+    const result = await getDb().execute(
+      sql`select email, kind, company_name, job_title, address_line, city, province,
+                 postal_code, segment
+          from clients where id = ${clientId}`,
+    );
+    return result.rows[0];
+  }
+
+  it("AC-1: la 0031 agrega nueve columnas nulables con sus CHECK, sin índices nuevos", async () => {
+    const columns = await getDb().execute<{
+      column_name: string;
+      is_nullable: string;
+      udt_name: string;
+      column_default: string | null;
+    }>(
+      sql`select column_name, is_nullable, udt_name, column_default
+          from information_schema.columns
+          where table_schema = 'public' and table_name = 'clients'
+            and column_name in ('email', 'kind', 'company_name', 'job_title', 'address_line',
+                                'city', 'province', 'postal_code', 'segment')
+          order by column_name`,
+    );
+    expect(columns.rows).toEqual(
+      [
+        "address_line",
+        "city",
+        "company_name",
+        "email",
+        "job_title",
+        "kind",
+        "postal_code",
+        "province",
+        "segment",
+      ].map((name) => ({
+        column_name: name,
+        is_nullable: "YES",
+        udt_name: name === "kind" ? "client_kind" : "text",
+        column_default: null,
+      })),
+    );
+    const kinds = await getDb().execute<{ value: string }>(
+      sql`select unnest(enum_range(null::client_kind))::text as value`,
+    );
+    expect(kinds.rows.map((row) => row.value)).toEqual(["person", "company"]);
+    const checks = await getDb().execute<{ conname: string }>(
+      sql`select conname from pg_constraint
+          where conrelid = 'clients'::regclass and contype = 'c' order by conname`,
+    );
+    expect(checks.rows.map((row) => row.conname)).toEqual([
+      "clients_address_line_length",
+      "clients_city_length",
+      "clients_company_name_length",
+      "clients_email_format",
+      "clients_job_title_length",
+      "clients_phone_e164_format",
+      "clients_postal_code_format",
+      "clients_province",
+      "clients_segment_length",
+    ]);
+    // D-10: ningún índice nuevo en clients.
+    const indexes = await getDb().execute<{ indexname: string }>(
+      sql`select indexname from pg_indexes where tablename = 'clients' order by indexname`,
+    );
+    expect(indexes.rows.map((row) => row.indexname)).toEqual([
+      "clients_organization_display_name_unaccent_idx",
+      "clients_organization_id_id_unique",
+      "clients_organization_phone_unique",
+      "clients_pkey",
+    ]);
+  });
+
+  it("FR-CLI-12: un admin da de alta con los campos nuevos, normalizados y auditados", async () => {
+    const s = await seed();
+    const clientId = await create(s.adminA, full);
+
+    expect(await extraRow(clientId)).toEqual({
+      email: "ana.perez@example.com",
+      kind: "company",
+      company_name: "Kumquats SRL",
+      job_title: "Compras",
+      address_line: "Av. Siempreviva 742",
+      city: "Rosario",
+      province: "AR-S",
+      postal_code: "S2000ABC",
+      segment: "Mayorista",
+    });
+    const [entry] = await auditRows();
+    expect(entry!.diff).toMatchObject({
+      before: null,
+      after: {
+        email: "ana.perez@example.com",
+        kind: "company",
+        province: "AR-S",
+        postalCode: "S2000ABC",
+        segment: "Mayorista",
+      },
+    });
+  });
+
+  it("AC-3: editar audita solo los campos nuevos que cambiaron, y vaciar uno lo deja nulo", async () => {
+    const s = await seed();
+    const clientId = await create(s.adminA, full);
+
+    expect(
+      await updateClient(s.adminA, clientId, {
+        ...full,
+        city: "Santa Fe",
+        segment: "",
+      }),
+    ).toEqual({ ok: true, changed: true });
+
+    const rows = await auditRows();
+    expect(rows).toHaveLength(2);
+    expect(rows[1]!.diff).toEqual({
+      before: { city: "Rosario", segment: "Mayorista" },
+      after: { city: "Santa Fe", segment: null },
+    });
+    expect(await extraRow(clientId)).toMatchObject({
+      city: "Santa Fe",
+      segment: null,
+    });
+    // Sin diferencias, nada.
+    expect(
+      await updateClient(s.adminA, clientId, {
+        ...full,
+        city: "Santa Fe",
+        segment: null,
+      }),
+    ).toEqual({ ok: true, changed: false });
+  });
+
+  it.each<[keyof ClientInput, string]>([
+    ["email", "no-es-un-email"],
+    ["email", `${"a".repeat(250)}@x.com`],
+    ["kind", "final_consumer"],
+    ["companyName", "x".repeat(121)],
+    ["jobTitle", "x".repeat(121)],
+    ["addressLine", "x".repeat(201)],
+    ["city", "x".repeat(121)],
+    ["province", "Córdoba"],
+    ["province", "AR-I"],
+    ["postalCode", "14-25"],
+    ["postalCode", "12345678901"],
+    ["segment", "x".repeat(61)],
+  ])(
+    "AC-2: %s inválido (%s) da VALIDATION_ERROR en su campo sin escribir",
+    async (field, value) => {
+      const s = await seed();
+      expect(
+        await createClient(s.adminA, { displayName: "Bruno", [field]: value }),
+      ).toEqual({ ok: false, code: "VALIDATION_ERROR", fields: [field] });
+      expect(await count("clients")).toBe(0);
+    },
+  );
+
+  it("AC-2: en el límite, cada texto se acepta; un viewer recibe FORBIDDEN", async () => {
+    const s = await seed();
+    const clientId = await create(s.adminA, {
+      displayName: "Bruno",
+      email: `${"a".repeat(248)}@x.com`,
+      companyName: "x".repeat(120),
+      jobTitle: "x".repeat(120),
+      addressLine: "x".repeat(200),
+      city: "x".repeat(120),
+      postalCode: "1234567890",
+      segment: "x".repeat(60),
+    });
+    expect(await extraRow(clientId)).toMatchObject({
+      postal_code: "1234567890",
+    });
+    expect(await updateClient(s.viewerA, clientId, full)).toEqual({
+      ok: false,
+      code: "FORBIDDEN",
+    });
+  });
+
+  it("D-6: la base rechaza lo que el servicio no deja pasar, también con SQL directo", async () => {
+    const s = await seed();
+    const clientId = await insertClient(s.orgA, "Bruno");
+    const reject = async (assignment: SQL, code: string) => {
+      await expect(
+        getDb().execute(
+          sql`update clients set ${assignment} where id = ${clientId}`,
+        ),
+      ).rejects.toMatchObject({ cause: { code } });
+    };
+    await reject(sql`email = 'Ana@example.com'`, "23514");
+    await reject(sql`email = 'sin-arroba'`, "23514");
+    await reject(sql`email = ${`${"a".repeat(250)}@x.com`}`, "23514");
+    await reject(sql`company_name = ''`, "23514");
+    await reject(sql`job_title = ${"x".repeat(121)}`, "23514");
+    await reject(sql`address_line = ${"x".repeat(201)}`, "23514");
+    await reject(sql`city = ''`, "23514");
+    await reject(sql`province = 'AR-I'`, "23514");
+    await reject(sql`postal_code = 's2000abc'`, "23514");
+    await reject(sql`postal_code = ' 1425'`, "23514");
+    await reject(sql`segment = ${"x".repeat(61)}`, "23514");
+    await reject(sql`kind = 'final_consumer'`, "22P02");
+  });
+
+  it("FR-CLI-13: un viewer no recibe el email, la calle ni el código postal; sí lo demás", async () => {
+    const s = await seed();
+    const clientId = await create(s.adminA, full);
+    const HIDDEN = ["ana.perez@example.com", "Siempreviva", "S2000ABC"];
+
+    const detail = await getClient(s.viewerA, clientId);
+    const list = await searchClients(s.viewerA, listDefaults);
+    const byIds = await getClientsByIds(s.viewerA, [clientId]);
+    for (const response of [detail, list, byIds]) {
+      const json = JSON.stringify(response);
+      for (const value of HIDDEN) expect(json).not.toContain(value);
+      expect(json).toContain('"contact":null');
+      expect(json).toContain("Kumquats SRL");
+      expect(json).toContain('"province":"AR-S"');
+    }
+
+    expect(await getClient(s.adminA, clientId)).toMatchObject({
+      ok: true,
+      client: {
+        contact: {
+          email: "ana.perez@example.com",
+          addressLine: "Av. Siempreviva 742",
+          postalCode: "S2000ABC",
+        },
+      },
+    });
+  });
+
+  async function insertWith(
+    organizationId: string,
+    displayName: string,
+    values: {
+      kind?: string;
+      province?: string;
+      segment?: string;
+      active?: boolean;
+    },
+  ) {
+    const result = await getDb().execute<{ id: string }>(
+      sql`insert into clients (organization_id, display_name, kind, province, segment, is_active)
+          values (${organizationId}, ${displayName}, ${values.kind ?? null}::client_kind,
+                  ${values.province ?? null}, ${values.segment ?? null}, ${values.active ?? true})
+          returning id`,
+    );
+    return result.rows[0]!.id;
+  }
+
+  it("FR-CLI-14: filtra por tipo, provincia y segmento, combinados entre sí y con los demás filtros", async () => {
+    const s = await seed();
+    const company = { kind: "company", province: "AR-S", segment: "Mayorista" };
+    await insertWith(s.orgA, "Ana", {
+      kind: "person",
+      province: "AR-S",
+      segment: "Minorista",
+    });
+    await insertWith(s.orgA, "Bruno", company);
+    await insertWith(s.orgA, "Carla", { ...company, province: "AR-X" });
+    await insertWith(s.orgA, "Dario", { ...company, active: false });
+    await insertWith(s.orgA, "Elena", {});
+    // Otra organización con los mismos valores: nunca aparece.
+    await insertWith(s.orgB, "Bruno B", company);
+
+    expect(await listNames(s.adminA, { kind: "company" })).toEqual([
+      "Bruno",
+      "Carla",
+    ]);
+    expect(await listNames(s.adminA, { province: "AR-S" })).toEqual([
+      "Ana",
+      "Bruno",
+    ]);
+    expect(await listNames(s.viewerA, { segment: "Mayorista" })).toEqual([
+      "Bruno",
+      "Carla",
+    ]);
+    expect(
+      await listNames(s.adminA, {
+        kind: "company",
+        province: "AR-S",
+        segment: "Mayorista",
+      }),
+    ).toEqual(["Bruno"]);
+    expect(
+      await listNames(s.adminA, {
+        kind: "company",
+        province: "AR-S",
+        activity: "all",
+      }),
+    ).toEqual(["Bruno", "Dario"]);
+    expect(await listNames(s.adminA, { kind: "company", text: "car" })).toEqual(
+      ["Carla"],
+    );
+    // Un tipo o una provincia fuera de la lista se ignoran; el segmento es exacto.
+    expect(
+      await listNames(s.adminA, {
+        kind: "final_consumer" as never,
+        province: "AR-I",
+      }),
+    ).toEqual(["Ana", "Bruno", "Carla", "Elena"]);
+    expect(await listNames(s.adminA, { segment: "mayorista" })).toEqual([]);
+
+    // El conteo y las claves que componen la lista por última interacción siguen al filtro.
+    const page = await searchClients(s.adminA, {
+      ...listDefaults,
+      province: "AR-S",
+    });
+    expect(page.ok && page.total).toBe(2);
+    const keys = await listClientOrderKeys(s.adminA, {
+      text: "",
+      activity: "active",
+      segment: "Mayorista",
+    });
+    expect(keys.ok && keys.clientIds).toHaveLength(2);
+  });
+
+  it("FR-CLI-14: el filtro se combina con la etiqueta", async () => {
+    const s = await seed();
+    const bruno = await insertWith(s.orgA, "Bruno", { kind: "company" });
+    await insertWith(s.orgA, "Carla", { kind: "company" });
+    const tag = await getDb().execute<{ id: string }>(
+      sql`insert into client_tags (organization_id, name) values (${s.orgA}, 'Reclamo') returning id`,
+    );
+    const tagId = tag.rows[0]!.id;
+    await getDb().execute(
+      sql`insert into client_tag_assignments (organization_id, client_id, tag_id)
+          values (${s.orgA}, ${bruno}, ${tagId})`,
+    );
+    expect(await listNames(s.adminA, { kind: "company", tagId })).toEqual([
+      "Bruno",
+    ]);
+  });
+
+  it("D-5 y AC-6: las opciones de filtro y las sugerencias son solo de la organización", async () => {
+    const s = await seed();
+    await insertWith(s.orgA, "Ana", { province: "AR-X", segment: "Minorista" });
+    await insertWith(s.orgA, "Bruno", {
+      province: "AR-C",
+      segment: "Mayorista",
+      kind: "company",
+    });
+    await insertWith(s.orgA, "Carla", { segment: "Mayorista" });
+    await insertWith(s.orgB, "Otro", {
+      province: "AR-T",
+      segment: "Ajeno",
+      kind: "person",
+    });
+
+    expect(await listClientFilterOptions(s.viewerA)).toEqual({
+      ok: true,
+      segments: ["Mayorista", "Minorista"],
+      provinces: ["AR-C", "AR-X"],
+      kinds: ["company"],
+    });
+    expect(await listClientFilterOptions(s.pendingA)).toEqual({
+      ok: false,
+      code: "FORBIDDEN",
+    });
+  });
+
+  // D-10: sin índices nuevos. Con 10 000 clientes en la organización, la lista entera de la
+  // pantalla 6 con los tres filtros (los ids de crm, la última interacción de conversations y la
+  // página de clientes) queda lejos del umbral de la 13.2 (754 ms por consulta). Los clientes se
+  // generan acá: el seed de volumen no tiene clientes con estos campos.
+  it("D-10: con 10 000 clientes, los filtros responden por debajo del umbral de la 13.2", async () => {
+    const s = await seed();
+    await getDb().execute(
+      sql`insert into clients (organization_id, display_name, kind, province, segment)
+          select ${s.orgA}, 'Cliente ' || n,
+                 (array['person', 'company'])[1 + n % 2]::client_kind,
+                 (array['AR-C', 'AR-B', 'AR-X', 'AR-S'])[1 + n % 4],
+                 (array['Mayorista', 'Minorista', 'Distribuidor'])[1 + n % 3]
+          from generate_series(1, 10000) as n`,
+    );
+    const started = performance.now();
+    const page = await searchClientsByLastInteraction(s.adminA, {
+      text: "",
+      activity: "active",
+      page: 1,
+      kind: "company",
+      province: "AR-S",
+      segment: "Mayorista",
+    });
+    const elapsed = performance.now() - started;
+    expect(page.ok && page.total).toBeGreaterThan(0);
+    console.log(
+      `D-10: lista filtrada con 10 000 clientes en ${elapsed.toFixed(1)} ms`,
+    );
+    expect(elapsed).toBeLessThan(754);
   });
 });

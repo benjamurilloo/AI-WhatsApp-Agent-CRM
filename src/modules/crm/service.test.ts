@@ -51,6 +51,19 @@ describe("validateTagInput (brief-16.1, D-2 y D-4)", () => {
   });
 });
 
+// Los campos de la 17.1 sin valor (brief-17.1).
+const NO_EXTRA_VALUES = {
+  email: null,
+  kind: null,
+  companyName: null,
+  jobTitle: null,
+  addressLine: null,
+  city: null,
+  province: null,
+  postalCode: null,
+  segment: null,
+};
+
 describe("validateClientInput (brief-5.2, D-5)", () => {
   it("recorta textos, normaliza el teléfono y guarda vacíos como null", () => {
     expect(
@@ -65,11 +78,17 @@ describe("validateClientInput (brief-5.2, D-5)", () => {
         displayName: "Ana Pérez",
         phoneE164: "+5491155551234",
         notes: null,
+        ...NO_EXTRA_VALUES,
       },
     });
     expect(validateClientInput({ displayName: "Ana" })).toEqual({
       ok: true,
-      values: { displayName: "Ana", phoneE164: null, notes: null },
+      values: {
+        displayName: "Ana",
+        phoneE164: null,
+        notes: null,
+        ...NO_EXTRA_VALUES,
+      },
     });
   });
 

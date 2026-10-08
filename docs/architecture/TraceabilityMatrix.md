@@ -31,6 +31,8 @@
 
 *Desde la 16.1*, la pantalla 6 suma FR-CLI-10 y las tablas `client_tags` y `client_tag_assignments` (chips por fila y filtro, con `client_tag_assignments (organization_id, tag_id)` para el `EXISTS`), y la pantalla 7 suma FR-CLI-09 y 10 (la PK `(client_id, tag_id)` para las etiquetas del cliente).
 
+*Desde la 17.1*, la pantalla 6 suma FR-CLI-14 (los filtros por tipo, provincia y segmento sobre `clients`, sin índice: medido con 10 000 clientes en `crm.test.ts`) y la pantalla 7 suma FR-CLI-12 y 13 (las columnas nuevas de `clients`, leídas por la PK).
+
 Marco común (pantallas 2 a 12): `organizations.name`, `users.name`, `organization_members.role`, resueltos con el `UNIQUE(user_id)` de la membresía en cada request.
 
 ## 2. Por requisito funcional
@@ -62,13 +64,16 @@ Cada FR tiene al menos una pantalla, endpoint o invariante con test que lo satis
 | FR-CLI-02 | Pantalla 7 | pantalla |
 | FR-CLI-03 | Pantalla 6 | pantalla |
 | FR-CLI-04 | Pantallas 6 y 7, implementadas en la 6.4 sobre `conversations` (brief-6.3, D-1) | pantalla |
-| FR-CLI-05 | Pantallas 6 y 7. **Minimización revisada en la 8.4**: `clients` almacena `display_name`, `phone_e164` (opcional) y `notes`, y ningún otro campo personal; lo que ve un `viewer` lo acota el enmascarado de FR-CLI-06 desde el servidor | pantalla y revisión contra el esquema |
+| FR-CLI-05 | Pantallas 6 y 7. **Minimización revisada en la 8.4**: `clients` almacena `display_name`, `phone_e164` (opcional) y `notes`, y ningún otro campo personal; lo que ve un `viewer` lo acota el enmascarado de FR-CLI-06 desde el servidor. *Enmendado en la 17.1*: suma los campos de FR-CLI-12, cada uno con su motivo (brief-17.1, D-2) | pantalla y revisión contra el esquema |
 | FR-CLI-06 | Pantallas 6 y 7, enmascarado en el servidor | pantalla |
 | FR-CLI-07 | `UNIQUE(organization_id, phone_e164)`; test de unicidad | invariante con test |
 | FR-CLI-08 | Pantalla 13 (16.1); `client-tags.test.ts` (catálogo, `CONFLICT`, sugeridas, límite, sin `DELETE` para `crm_app` con su corrida de mutación) y `client-tags.spec.ts` caso 1 | pantalla e invariante con test |
 | FR-CLI-09 | Pantalla 7 (16.1); `client-tags.test.ts` (`tag_change` en el historial del cliente, idempotencia, límite por cliente, claves compuestas con su corrida de mutación), `client-data.test.ts` casos 17 a 20 (exportación, borrado y vaciado, con su corrida de mutación) y `client-tags.spec.ts` casos 2 y 4 | pantalla e invariante con test |
 | FR-CLI-10 | Pantallas 6 y 7 (16.1); `client-tags.test.ts` (filtro en `searchClients` y en la lista por última interacción, etiquetas ajenas o inactivas ignoradas), `filters.test.ts` y `client-tags.spec.ts` casos 3 a 5 | pantalla e invariante con test |
 | FR-CLI-11 | Contrato de ingestión v2 (`client.tag_added` y `client.tag_removed`) y lectura v1 (`/api/read/v1/client-tags`), 16.2; `contract-v2.test.ts` (vectores y validación), `client-tags-ingestion.test.ts` (reglas, reenvíos, actor, concurrencia con la ficha y aislamiento), `read-api.test.ts` (catálogo) y `analytics-ingestion.test.ts` (fuera de la métrica 12) | contrato con validador, fixtures de forma asumida y test; validado en integración con el agente en la ventana 16.2.3 |
+| FR-CLI-12 | Pantalla 7 y formulario de alta (17.1); `crm.test.ts` (alta y edición normalizadas y auditadas, cada campo inválido, los límites, los `CHECK` de la base con SQL directo), `client-data.test.ts` casos 27 a 29 (exportación y vaciado, toda columna nulable), `audit-summary.test.ts` y `client-fields.spec.ts` casos 1, 2 y 5 | pantalla e invariante con test |
+| FR-CLI-13 | Pantallas 6 y 7, en el servidor (17.1); `crm.test.ts` (la respuesta a un `viewer` en la ficha, la lista y `getClientsByIds` no contiene el email, la calle ni el código postal) y `client-fields.spec.ts` caso 3 (ni el documento ni la lista que recibe el navegador) | pantalla e invariante con test |
+| FR-CLI-14 | Pantalla 6 (17.1); `crm.test.ts` (los tres filtros combinados, con la etiqueta, el conteo, las claves de la lista compuesta, las opciones por organización y el tiempo con 10 000 clientes), `filters.test.ts` y `client-fields.spec.ts` caso 4 | pantalla e invariante con test |
 | FR-CONV-01 | Pantalla 8, implementada en la 6.4; `conversations.spec.ts` verifica que ni el HTML ni las respuestas de RSC traen cuerpos | pantalla e invariante con test |
 | FR-CONV-02 | Pantalla 9, implementada en la 6.4; el cuerpo escapado se verifica en `conversations.spec.ts` | pantalla e invariante con test |
 | FR-CONV-03 | Pantalla 8 (filtro) y pantalla 9 (cambio, auditado), implementadas en la 6.4. Desde la 12.2, la derivación por servicio a `pending` (FR-API-06), auditada con la credencial | pantalla |

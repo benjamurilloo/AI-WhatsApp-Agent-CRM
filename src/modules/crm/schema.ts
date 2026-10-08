@@ -4,6 +4,7 @@ import {
   check,
   foreignKey,
   index,
+  pgEnum,
   pgTable,
   primaryKey,
   text,
@@ -13,7 +14,29 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { organizations } from "@/modules/organizations/schema";
+import { PROVINCE_CODES } from "./provinces";
 import { DEFAULT_TAG_COLOR, TAG_COLORS } from "./tag-colors";
+
+// Tipo de cliente (brief-17.1, D-3). «Consumidor final» no es un tipo sino una condición frente al
+// IVA, que llega con el comprobante de la Fase 20 en su propio campo. Nulo es «sin dato».
+export const CLIENT_KINDS = ["person", "company"] as const;
+export type ClientKind = (typeof CLIENT_KINDS)[number];
+export const clientKind = pgEnum("client_kind", CLIENT_KINDS);
+
+// Límites de los campos de la 17.1 (D-6). Los mismos valores van en los CHECK de la tabla.
+export const CLIENT_FIELD_LIMITS = {
+  email: 254,
+  companyName: 120,
+  jobTitle: 120,
+  addressLine: 200,
+  city: 120,
+  postalCode: 10,
+  segment: 60,
+} as const;
+
+// Código postal argentino, viejo o CPA (1425, C1425ABC): letras y números en mayúsculas, con
+// espacios internos, recortado. El servicio lo lleva a esta forma antes de guardar.
+export const POSTAL_CODE_PATTERN = "^[A-Z0-9][A-Z0-9 ]{0,9}$";
 
 // Normalización de texto para buscar por prefijo sin distinguir mayúsculas ni acentos
 // (brief-9.0.2, D-1 y D-2). `immutable_unaccent` la define la migración 0015.
@@ -38,6 +61,19 @@ export const clients = pgTable(
     // Único identificador de negocio del cliente (ADR 0007); opcional.
     phoneE164: text("phone_e164"),
     notes: text("notes"),
+    // Desde la 17.1 (brief-17.1, D-2): todos opcionales, cargados solo por un admin. Ninguno es
+    // identificador ni único: el único identificador sigue siendo el teléfono (ADR 0007). Email,
+    // calle y código postal no llegan a un viewer (D-8). El vaciado de un cliente los lleva a nulo
+    // (D-12), y un test exige que toda columna nulable de esta tabla quede nula al vaciar.
+    email: text("email"),
+    kind: clientKind("kind"),
+    companyName: text("company_name"),
+    jobTitle: text("job_title"),
+    addressLine: text("address_line"),
+    city: text("city"),
+    province: text("province"),
+    postalCode: text("postal_code"),
+    segment: text("segment"),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -48,6 +84,41 @@ export const clients = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
+    // Forma y largo de los campos de la 17.1 (D-6), también contra SQL escrito a mano. Sin unicidad.
+    check(
+      "clients_email_format",
+      sql`${table.email} = lower(${table.email}) and char_length(${table.email}) <= ${sql.raw(String(CLIENT_FIELD_LIMITS.email))} and position('@' in ${table.email}) > 1`,
+    ),
+    check(
+      "clients_company_name_length",
+      sql`char_length(${table.companyName}) between 1 and ${sql.raw(String(CLIENT_FIELD_LIMITS.companyName))}`,
+    ),
+    check(
+      "clients_job_title_length",
+      sql`char_length(${table.jobTitle}) between 1 and ${sql.raw(String(CLIENT_FIELD_LIMITS.jobTitle))}`,
+    ),
+    check(
+      "clients_address_line_length",
+      sql`char_length(${table.addressLine}) between 1 and ${sql.raw(String(CLIENT_FIELD_LIMITS.addressLine))}`,
+    ),
+    check(
+      "clients_city_length",
+      sql`char_length(${table.city}) between 1 and ${sql.raw(String(CLIENT_FIELD_LIMITS.city))}`,
+    ),
+    check(
+      "clients_province",
+      sql.raw(
+        `province in (${PROVINCE_CODES.map((code) => `'${code}'`).join(", ")})`,
+      ),
+    ),
+    check(
+      "clients_postal_code_format",
+      sql`${table.postalCode} ~ ${sql.raw(`'${POSTAL_CODE_PATTERN}'`)}`,
+    ),
+    check(
+      "clients_segment_length",
+      sql`char_length(${table.segment}) between 1 and ${sql.raw(String(CLIENT_FIELD_LIMITS.segment))}`,
+    ),
     // Alcanza también a los inactivos: un número pertenece a un solo cliente (D-3).
     uniqueIndex("clients_organization_phone_unique")
       .on(table.organizationId, table.phoneE164)

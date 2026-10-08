@@ -1,6 +1,6 @@
 # Runbook: exportar o eliminar los datos de un cliente
 
-**Estado: validado localmente y en CI.** No ejecutado todavía contra un entorno con datos reales. *Actualizado el 2026-10-01 por la 13.4*: borrar pasó de minimizar la ficha a vaciar el contenido de todo lo del cliente. *Actualizado el 2026-10-07 por la 16.4*: el informe, la exportación y el vaciado incluyen las notas de sus conversaciones.
+**Estado: validado localmente y en CI.** No ejecutado todavía contra un entorno con datos reales. *Actualizado el 2026-10-01 por la 13.4*: borrar pasó de minimizar la ficha a vaciar el contenido de todo lo del cliente. *Actualizado el 2026-10-07 por la 16.4*: el informe, la exportación y el vaciado incluyen las notas de sus conversaciones. *Actualizado el 2026-10-08 por la 17.1*: la ficha tiene campos ampliados, y la exportación y el vaciado los alcanzan; esa parte está validada localmente y pasa a la CI con su commit.
 
 Atiende un pedido de acceso o de borrado de los datos de una persona, que
 [NonFunctionalRequirements](../product/NonFunctionalRequirements.md) §Privacidad exige que exista
@@ -35,7 +35,7 @@ Incluye los seis orígenes que guardan datos de la persona:
 
 | Origen | Qué lleva |
 |---|---|
-| `clients` | nombre, teléfono en E.164 y notas |
+| `clients` | nombre, teléfono en E.164 y notas; *desde la 17.1*, email, tipo, empresa, cargo, dirección (calle, ciudad, provincia y código postal) y segmento ([brief-17.1](../decisions/brief-17.1-campos-de-clientes.md), D-12) |
 | `conversations` | sus conversaciones, con estado y fechas |
 | `messages` | sus mensajes, **con el cuerpo** |
 | `conversation_notes` | *desde la 16.4*: las notas internas de sus conversaciones, con el texto, la fecha y el id del usuario del CRM que la escribió ([brief-16.4](../decisions/brief-16.4-notas-de-la-conversacion.md), D-5) |
@@ -53,7 +53,7 @@ versionado, y se entrega por un canal acordado con quien lo pidió. Borralo cuan
 
 ## Eliminar
 
-**Borrar es vaciar el contenido y conservar la forma** ([brief-13.4](../decisions/brief-13.4-retencion-y-borrado.md), D-2, decidido por el usuario el 2026-10-01). Se borra todo lo que el CRM puede atribuirle a la persona, con una excepción: las conversaciones sin cliente (§Lo que el vaciado no alcanza). Quedan fechas, direcciones, tipos y estados, que es lo que cuentan las métricas. Así las métricas de los períodos pasados no cambian.
+**Borrar es vaciar el contenido y conservar la forma** ([brief-13.4](../decisions/brief-13.4-retencion-y-borrado.md), D-2, decidido por el usuario el 2026-10-01). Se borra todo lo que el CRM puede atribuirle a la persona, con una excepción: las conversaciones sin cliente (§Lo que el vaciado no alcanza). Quedan fechas, estados y, de los mensajes, la dirección y el tipo, que es lo que cuentan las métricas. Así las métricas de los períodos pasados no cambian.
 
 ### Con qué rol
 
@@ -87,7 +87,7 @@ En una sola transacción:
 
 | Dónde | Qué se vacía | Qué queda |
 |---|---|---|
-| `clients` | nombre, teléfono y notas | la ficha, con el nombre `Cliente eliminado <primeros 8 del id>` |
+| `clients` | nombre, teléfono y notas, y desde la 17.1 **todos** los campos ampliados, también el tipo, la provincia y el segmento | la ficha, con el nombre `Cliente eliminado <primeros 8 del id>` |
 | `conversations` | la referencia externa | fechas y estado |
 | `messages` | el texto y la referencia externa | fecha, dirección, tipo y autor |
 | `conversation_notes` (desde la 16.4) | el texto de las notas de sus conversaciones: son texto libre y pueden nombrar a la persona | la nota, con su fecha y el usuario del CRM que la escribió |
