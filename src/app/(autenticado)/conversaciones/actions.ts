@@ -2,9 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import {
+  addConversationNote,
   changeAgentPause,
   changeConversationStatus,
   listConversationMessages,
+  listConversationNotes,
 } from "@/modules/conversations";
 import { requireSession } from "@/app/_auth/session";
 import { logEvent, newRequestId } from "@/shared/log";
@@ -16,11 +18,17 @@ import {
   CONVERSATION_NOT_FOUND_MESSAGE,
   FORBIDDEN_ACTION_MESSAGE,
   loadMessagesErrorMessage,
+  loadNotesErrorMessage,
+  NOTE_ADDED_MESSAGE,
+  noteErrorMessage,
   statusChangedMessage,
   statusChangeErrorMessage,
   statusUnchangedMessage,
+  toNoteItems,
   unexpectedErrorMessage,
+  type NoteFormState,
   type OlderMessagesResult,
+  type OlderNotesResult,
   type StatusChangeState,
 } from "./messages";
 
@@ -142,6 +150,107 @@ export async function changeAgentPauseAction(
       requestId,
       message: unexpectedErrorMessage(requestId),
     };
+  }
+}
+
+// Agregar una nota desde la pantalla 9 (brief-16.4, D-6). El rol y la organización se verifican en
+// conversations. El log lleva el código, nunca el texto de la nota (invariante 2).
+export async function addConversationNoteAction(
+  _previous: NoteFormState,
+  formData: FormData,
+): Promise<NoteFormState> {
+  const requestId = newRequestId();
+  const started = performance.now();
+  const route = "conversaciones.agregar_nota";
+  const conversationId = String(formData.get("conversationId") ?? "");
+  const body = String(formData.get("body") ?? "");
+  const context = await requireSession();
+  const log = (code: Parameters<typeof logEvent>[0]["code"], error?: unknown) =>
+    logEvent({
+      level: code === "OK" ? "info" : error ? "error" : "warn",
+      requestId,
+      route,
+      code,
+      userId: context.userId,
+      organizationId: context.organizationId,
+      durationMs: performance.now() - started,
+      error,
+    });
+
+  try {
+    const result = await addConversationNote(context, { conversationId, body });
+    if (!result.ok) {
+      log(result.code);
+      const fields: readonly string[] = "fields" in result ? result.fields : [];
+      return {
+        status: "error",
+        requestId,
+        message: noteErrorMessage(result.code, requestId, fields),
+        body,
+        invalidBody: fields.includes("body"),
+      };
+    }
+    log("OK");
+    revalidatePath(`/conversaciones/${conversationId}`);
+    return { status: "done", message: NOTE_ADDED_MESSAGE };
+  } catch (error) {
+    log("INTERNAL", error);
+    return {
+      status: "error",
+      requestId,
+      message: unexpectedErrorMessage(requestId),
+      body,
+      invalidBody: false,
+    };
+  }
+}
+
+// Lectura de las 25 notas anteriores a un cursor (brief-16.4, D-3), como los mensajes anteriores.
+export async function loadOlderNotesAction(
+  conversationId: string,
+  before: string,
+): Promise<OlderNotesResult> {
+  const requestId = newRequestId();
+  const started = performance.now();
+  const context = await requireSession();
+
+  try {
+    if (typeof before !== "string" || before.trim() === "") {
+      return { ok: false, message: loadNotesErrorMessage(requestId) };
+    }
+    const result = await listConversationNotes(
+      context,
+      String(conversationId),
+      { before },
+    );
+    if (!result.ok) {
+      return {
+        ok: false,
+        message:
+          result.code === "FORBIDDEN"
+            ? FORBIDDEN_ACTION_MESSAGE
+            : result.code === "NOT_FOUND"
+              ? CONVERSATION_NOT_FOUND_MESSAGE
+              : loadNotesErrorMessage(requestId),
+      };
+    }
+    return {
+      ok: true,
+      items: toNoteItems(result.notes, result.timezone),
+      before: result.before,
+    };
+  } catch (error) {
+    logEvent({
+      level: "error",
+      requestId,
+      route: "conversaciones.notas_anteriores",
+      code: "INTERNAL",
+      userId: context.userId,
+      organizationId: context.organizationId,
+      durationMs: performance.now() - started,
+      error,
+    });
+    return { ok: false, message: loadNotesErrorMessage(requestId) };
   }
 }
 

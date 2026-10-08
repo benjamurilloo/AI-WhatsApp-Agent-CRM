@@ -1,6 +1,14 @@
 // Interfaz pública del módulo conversations (brief-6.3; conversación vigente para ingestion,
-// brief-12.2; historial para la API de lectura, brief-12.4; pausa del agente, brief-16.3).
+// brief-12.2; historial para la API de lectura, brief-12.4; pausa del agente, brief-16.3; notas,
+// brief-16.4).
 export {
+  addConversationNote,
+  type AddConversationNoteResult,
+  type ConversationNote,
+  type ConversationNotesResult,
+  listConversationNotes,
+  NOTE_MAX_LENGTH,
+  NOTES_PAGE_SIZE,
   AGENT_PAUSE_ACTIONS,
   type AgentPauseAction,
   type AgentPauseStateResult,

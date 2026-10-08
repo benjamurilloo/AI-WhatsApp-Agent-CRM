@@ -4,6 +4,8 @@ import {
   CONVERSATION_STATUSES,
   getConversation,
   listConversationMessages,
+  listConversationNotes,
+  NOTE_MAX_LENGTH,
 } from "@/modules/conversations";
 import { requireSession } from "@/app/_auth/session";
 import { Avatar } from "@/app/_components/avatar";
@@ -27,10 +29,12 @@ import {
   NO_CLIENT_TEXT,
   NO_MESSAGES_MESSAGE,
   STATUS_LABEL,
+  toNoteItems,
 } from "../messages";
 import { AgentPausedBadge } from "../conversation-table";
 import { StatusBadge } from "../status-badge";
 import { AgentPauseForm } from "./agent-pause-form";
+import { ConversationNotes } from "./conversation-notes-form";
 import { StatusForm } from "./status-form";
 import { Timeline } from "./timeline";
 import { toTimelineItems } from "./timeline-items";
@@ -45,7 +49,8 @@ const TITLE = "Conversación";
 // cambio de estado solo para admin (brief-6.4). Un viewer no recibe el formulario. Presentación
 // de la 15.4: los mensajes como burbujas y, al costado, los datos de la conversación y el cambio
 // de estado. Sin campo para escribir ni tildes de leído (brief-15.4, D-7). Desde la 16.3, la marca
-// de pausa del agente para todos, y pausar o reanudar solo para admin (D-4).
+// de pausa del agente para todos, y pausar o reanudar solo para admin (D-4). Desde la 16.4, las
+// notas internas para todos, y agregarlas solo para admin (brief-16.4, D-6).
 export default async function ConversationPage({
   params,
 }: {
@@ -54,12 +59,19 @@ export default async function ConversationPage({
   const context = await requireSession();
   const { conversationId } = await params;
 
-  const [found, timeline] = await Promise.all([
+  const [found, timeline, notes] = await Promise.all([
     getConversation(context, conversationId),
     listConversationMessages(context, conversationId, { before: "" }),
+    listConversationNotes(context, conversationId, { before: "" }),
   ]);
-  if (!found.ok || !timeline.ok) {
-    const code = !found.ok ? found.code : !timeline.ok ? timeline.code : null;
+  if (!found.ok || !timeline.ok || !notes.ok) {
+    const code = !found.ok
+      ? found.code
+      : !timeline.ok
+        ? timeline.code
+        : !notes.ok
+          ? notes.code
+          : null;
     if (code === "FORBIDDEN") {
       return <PageNotice title={TITLE} message={FORBIDDEN_PAGE_MESSAGE} />;
     }
@@ -182,6 +194,16 @@ export default async function ConversationPage({
                     : null,
                 },
               ]}
+            />
+          </SectionCard>
+
+          <SectionCard id="notas-titulo" title="Notas" icon="fileText">
+            <ConversationNotes
+              conversationId={conversation.id}
+              initialItems={toNoteItems(notes.notes, timeZone)}
+              initialBefore={notes.before}
+              canAdd={isAdmin}
+              maxLength={NOTE_MAX_LENGTH}
             />
           </SectionCard>
 

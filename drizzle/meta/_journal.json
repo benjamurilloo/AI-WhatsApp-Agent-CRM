@@ -204,6 +204,20 @@
       "when": 1791400970789,
       "tag": "0028_agent_pause",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1791411275757,
+      "tag": "0029_conversation_notes",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1791411290636,
+      "tag": "0030_conversation_notes_privileges",
+      "breakpoints": true
     }
   ]
 }

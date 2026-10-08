@@ -22,7 +22,7 @@ test.beforeAll(() => {
 
 test.afterAll(async () => {
   await db.execute(
-    sql`truncate table messages, conversations, client_tag_assignments, clients, knowledge_entries,
+    sql`truncate table conversation_notes, messages, conversations, client_tag_assignments, clients, knowledge_entries,
         inventory_movements, inventories, product_prices, products`,
   );
   await db.$client.end();
@@ -33,7 +33,7 @@ test.beforeEach(async () => {
   // inserción: TRUNCATE es la vía documentada (ADR 0013), y vacía en la misma sentencia lo que las
   // referencia (6.1).
   await db.execute(
-    sql`truncate table audit_logs, ingestion_events, messages, conversations, client_tag_assignments, clients,
+    sql`truncate table audit_logs, ingestion_events, conversation_notes, messages, conversations, client_tag_assignments, clients,
         knowledge_entries, inventory_movements, inventories, product_prices, products`,
   );
   await db.execute(sql`delete from login_attempts`);

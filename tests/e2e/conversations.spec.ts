@@ -29,7 +29,7 @@ test.beforeAll(() => {
 // Los demás specs borran organizaciones: no pueden quedar filas que lo impidan (brief-6.1).
 test.afterAll(async () => {
   await db.execute(
-    sql`truncate table messages, conversations, client_tag_assignments, clients`,
+    sql`truncate table conversation_notes, messages, conversations, client_tag_assignments, clients`,
   );
   await db.$client.end();
 });
@@ -37,7 +37,7 @@ test.afterAll(async () => {
 // audit_logs y messages son de solo inserción: TRUNCATE es la vía documentada para vaciarlas (ADR 0013).
 test.beforeEach(async () => {
   await db.execute(
-    sql`truncate table audit_logs, messages, conversations, client_tag_assignments, clients`,
+    sql`truncate table audit_logs, conversation_notes, messages, conversations, client_tag_assignments, clients`,
   );
   await db.execute(sql`delete from login_attempts`);
   await db.execute(sql`delete from sessions`);
@@ -892,6 +892,150 @@ test("caso 15: brief-16.3 un viewer ve la marca sin el botón, una cerrada no se
   expect(row.rows[0]!.paused).toBe(true);
   const audit = await db.execute(
     sql`select 1 from audit_logs where action = 'agent_pause_change'`,
+  );
+  expect(audit.rows).toEqual([]);
+});
+
+const notesList = (page: Page) => page.getByRole("list", { name: "Notas" });
+
+test("caso 16: brief-16.4 un admin agrega una nota con el teclado, en una cerrada; el texto no va a la auditoría", async ({
+  page,
+}) => {
+  const conversationId = await insertConversation({
+    status: "closed",
+    messages: [{ direction: "inbound", sentAt: ago(0, 2), body: "hola" }],
+  });
+
+  await login(page, ADMIN);
+  await page.goto(`/conversaciones/${conversationId}`);
+  const notes = page.getByRole("region", { name: "Notas" });
+  await expect(notes).toContainText("Sin notas.");
+  await expectAccessible(page, "sin notas");
+
+  // Solo espacios: el navegador lo deja pasar y el servidor lo rechaza, con el foco en el campo.
+  const field = page.getByLabel("Nueva nota");
+  await field.fill("   ");
+  await page.getByRole("button", { name: "Agregar nota" }).click();
+  await expect(
+    notes.getByText("Escribí la nota, de hasta 1000 caracteres."),
+  ).toBeVisible();
+  await expect(field).toBeFocused();
+  await expect(field).toHaveAttribute("aria-invalid", "true");
+  await expectAccessible(page, "nota rechazada");
+
+  await field.fill(`Llamó al fijo: ${MARKUP_BODY}\nRetira el viernes`);
+  await page.getByRole("button", { name: "Agregar nota" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(
+    notes.getByText("Nota agregada.", { exact: true }),
+  ).toBeVisible();
+  await expect(field).toHaveValue("");
+  const item = notesList(page).getByRole("listitem");
+  await expect(item).toHaveCount(1);
+  await expect(item).toContainText(ADMIN_SEED.name);
+  await expect(item).toContainText(/\d{2}\/\d{2} \d{2}:\d{2}/);
+  // El texto se muestra escapado, sin HTML ni enlaces.
+  await expect(item).toContainText(MARKUP_BODY);
+  await expect(item.locator("b, a")).toHaveCount(0);
+  await expect(notes).not.toContainText("Sin notas.");
+  await expectAccessible(page, "con una nota");
+
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.reload();
+  await expect(item).toHaveCount(1);
+  const scrollWidth = await page.evaluate(
+    () => document.documentElement.scrollWidth,
+  );
+  expect(scrollWidth).toBeLessThanOrEqual(375);
+  await expectAccessible(page, "notas en móvil");
+
+  const stored = await db.execute<{ id: string; body_text: string }>(
+    sql`select id, body_text from conversation_notes where conversation_id = ${conversationId}`,
+  );
+  expect(stored.rows).toHaveLength(1);
+  const audit = await db.execute<{
+    action: string;
+    actor_user_id: string;
+    diff: unknown;
+  }>(
+    sql`select action, actor_user_id, diff from audit_logs
+        where entity_type = 'conversation' and entity_id = ${conversationId}`,
+  );
+  expect(audit.rows).toEqual([
+    {
+      action: "note_added",
+      actor_user_id: ADMIN_SEED.id,
+      diff: {
+        before: { noteId: null },
+        after: { noteId: stored.rows[0]!.id },
+      },
+    },
+  ]);
+  // El estado no cambia: la conversación sigue cerrada.
+  await expect(page.getByText("WhatsApp · Estado: Cerrada")).toBeVisible();
+});
+
+test("caso 17: brief-16.4 un viewer lee las notas sin el formulario, ve las anteriores, y el servidor rechaza a quien dejó de ser admin", async ({
+  page,
+}) => {
+  const conversationId = await insertConversation({
+    messages: [{ direction: "inbound", sentAt: ago(1), body: "hola" }],
+  });
+  // 27 notas: 25 en la primera página y 2 detrás de «Ver anteriores».
+  for (let index = 1; index <= 27; index++) {
+    await db.execute(
+      sql`insert into conversation_notes (organization_id, conversation_id, actor_user_id, body_text, created_at)
+          values (${SEED_ORGANIZATION_ID}, ${conversationId}, ${ADMIN_SEED.id}, ${`Nota ${index}`},
+                  ${new Date(Date.now() - (30 - index) * 60 * 1000).toISOString()})`,
+    );
+  }
+
+  await login(page, VIEWER);
+  await page.goto(`/conversaciones/${conversationId}`);
+  const notes = page.getByRole("region", { name: "Notas" });
+  await expect(notesList(page).getByRole("listitem")).toHaveCount(25);
+  await expect(notesList(page).getByRole("listitem").first()).toContainText(
+    "Nota 27",
+  );
+  await expect(notes.getByLabel("Nueva nota")).toBeHidden();
+  expect(await page.content()).not.toContain("Agregar nota");
+  await expectAccessible(page, "notas como viewer");
+
+  const older = page.getByRole("button", { name: "Ver anteriores" });
+  await older.focus();
+  await page.keyboard.press("Enter");
+  await expect(notesList(page).getByRole("listitem")).toHaveCount(27);
+  await expect(notesList(page).getByRole("listitem").last()).toContainText(
+    "Nota 1",
+  );
+  await expect(older).toBeHidden();
+  await expect(notesList(page)).toBeFocused();
+  await expectAccessible(page, "todas las notas como viewer");
+  await page.context().clearCookies();
+
+  // Un admin abre la pantalla y pierde el rol antes de agregar: solo el servidor puede rechazarlo.
+  await login(page, ADMIN);
+  await page.goto(`/conversaciones/${conversationId}`);
+  await db.execute(
+    sql`update organization_members set role = 'viewer' where user_id = ${ADMIN_SEED.id}`,
+  );
+  await page.getByLabel("Nueva nota").fill("No debería quedar");
+  await page.getByRole("button", { name: "Agregar nota" }).click();
+  await expect(
+    notes.getByText("No tenés permiso para esta acción."),
+  ).toBeVisible();
+  await expect(page.getByLabel("Nueva nota")).toHaveValue("No debería quedar");
+  // El rechazo no es por el texto: el campo no se marca inválido.
+  await expect(page.getByLabel("Nueva nota")).not.toHaveAttribute(
+    "aria-invalid",
+    "true",
+  );
+  const count = await db.execute<{ count: number }>(
+    sql`select count(*)::int as count from conversation_notes where conversation_id = ${conversationId}`,
+  );
+  expect(count.rows[0]!.count).toBe(27);
+  const audit = await db.execute(
+    sql`select 1 from audit_logs where action = 'note_added'`,
   );
   expect(audit.rows).toEqual([]);
 });

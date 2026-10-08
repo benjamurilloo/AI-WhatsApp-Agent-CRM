@@ -8,10 +8,11 @@ import { getDb, type Db } from "@/shared/db";
  *
  *   npx tsx scripts/client-data-export.ts --org <organization_id> --client <client_id> --out <archivo.json>
  *
- * Cinco orígenes, que son todos los que guardan datos de la persona:
+ * Seis orígenes, que son todos los que guardan datos de la persona:
  * su ficha, sus conversaciones, sus mensajes con el cuerpo, las entradas de auditoría sobre
- * ella, que incluyen valores anteriores de teléfono y notas, y desde la 16.1 sus etiquetas
- * actuales, con la fecha en que se pusieron (brief-16.1, D-10). Su historial sale con la auditoría.
+ * ella, que incluyen valores anteriores de teléfono y notas, desde la 16.1 sus etiquetas
+ * actuales, con la fecha en que se pusieron (brief-16.1, D-10), y desde la 16.4 las notas de sus
+ * conversaciones, que son texto libre (brief-16.4, D-5). Su historial sale con la auditoría.
  *
  * `ingestion_events` queda fuera a propósito: guarda `source`, una referencia opaca del emisor,
  * el hash del payload y fechas. No tiene datos personales (brief-8.2, hallazgo 9). Se dice acá
@@ -30,6 +31,7 @@ export type ClientExport = {
   client: Record<string, unknown> | null;
   conversations: Record<string, unknown>[];
   messages: Record<string, unknown>[];
+  conversation_notes: Record<string, unknown>[];
   audit_logs: Record<string, unknown>[];
   client_tags: Record<string, unknown>[];
 };
@@ -60,6 +62,15 @@ export async function exportClientData(
         order by m.sent_at, m.id`,
   );
 
+  // Las notas, como los mensajes, se piden por la conversación. Del autor sale solo su id.
+  const notes = await db.execute<Record<string, unknown>>(
+    sql`select n.* from conversation_notes n
+        join conversations c
+          on c.organization_id = n.organization_id and c.id = n.conversation_id
+        where n.organization_id = ${organizationId} and c.client_id = ${clientId}
+        order by n.created_at, n.id`,
+  );
+
   const auditLogs = await db.execute<Record<string, unknown>>(
     sql`select * from audit_logs
         where organization_id = ${organizationId}
@@ -86,6 +97,7 @@ export async function exportClientData(
     client: client.rows[0] ?? null,
     conversations: conversations.rows,
     messages: messages.rows,
+    conversation_notes: notes.rows,
     audit_logs: auditLogs.rows,
     client_tags: tags.rows,
   };
@@ -115,7 +127,8 @@ async function main() {
   // Nunca se imprime el contenido: solo el recuento y el destino.
   console.log(
     `Export escrito en ${out}: ${data.conversations.length} conversaciones, ` +
-      `${data.messages.length} mensajes, ${data.audit_logs.length} entradas de auditoría, ` +
+      `${data.messages.length} mensajes, ${data.conversation_notes.length} notas, ` +
+      `${data.audit_logs.length} entradas de auditoría, ` +
       `${data.client_tags.length} etiquetas.`,
   );
   console.log(

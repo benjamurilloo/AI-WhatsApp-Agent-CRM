@@ -14,13 +14,15 @@ import { getDb, type Db } from "@/shared/db";
  *   - la ficha pierde nombre, teléfono y notas;
  *   - sus conversaciones pierden la referencia externa;
  *   - sus mensajes pierden el texto y la referencia externa;
+ *   - las notas de sus conversaciones pierden el texto: son texto libre y pueden nombrar a la
+ *     persona (brief-16.4, D-5);
  *   - sus entradas de auditoría pierden los valores;
  *   - sus etiquetas se quitan: «Reclamo» o «Quiere señar» son datos sobre esa persona
  *     (brief-16.1, D-10). Con --borrar se van con la ficha, por la clave con ON DELETE CASCADE.
  * Quedan fechas, direcciones, tipos y estados, que es lo que cuentan las métricas: las de los
  * períodos pasados no cambian (brief-13.4, H-3).
  *
- * `messages` y `audit_logs` son de solo inserción. Su trigger deja pasar un único UPDATE, que es
+ * `messages`, `conversation_notes` y `audit_logs` son de solo inserción. Su trigger deja pasar un único UPDATE, que es
  * este vaciado, y `crm_app` no tiene UPDATE sobre ellas (ADR 0015). **Se corre con el rol dueño**.
  * Con el de la aplicación, la base lo rechaza y no se escribe nada.
  *
@@ -33,6 +35,8 @@ export type ClientDataReport = {
   exists: boolean;
   conversations: number;
   messages: number;
+  // Notas de sus conversaciones (brief-16.4, D-5).
+  notes: number;
   auditEntries: number;
   // Etiquetas puestas en el cliente (brief-16.1, D-10).
   tags: number;
@@ -49,6 +53,7 @@ export async function reportClientData(
     exists: boolean;
     conversations: number;
     messages: number;
+    notes: number;
     audit_entries: number;
     tags: number;
   }>(
@@ -61,6 +66,10 @@ export async function reportClientData(
              join conversations c
                on c.organization_id = m.organization_id and c.id = m.conversation_id
            where m.organization_id = ${organizationId} and c.client_id = ${clientId}) as messages,
+          (select count(*)::int from conversation_notes n
+             join conversations c
+               on c.organization_id = n.organization_id and c.id = n.conversation_id
+           where n.organization_id = ${organizationId} and c.client_id = ${clientId}) as notes,
           (select count(*)::int from audit_logs
            where organization_id = ${organizationId}
              and entity_type = 'client' and entity_id = ${clientId}) as audit_entries,
@@ -72,6 +81,7 @@ export async function reportClientData(
     exists: row.exists,
     conversations: row.conversations,
     messages: row.messages,
+    notes: row.notes,
     auditEntries: row.audit_entries,
     tags: row.tags,
     deletable: row.exists && row.conversations === 0,
@@ -92,6 +102,7 @@ export type ErasureResult = {
   client: boolean;
   conversations: number;
   messages: number;
+  notes: number;
   auditEntries: number;
   tags: number;
 };
@@ -142,6 +153,15 @@ export async function eraseClientData(
             and m.organization_id = ${organizationId} and c.client_id = ${clientId}
             and (m.body_text is not null or m.external_ref is not null)`,
     );
+    // Las notas, después de bloquear las conversaciones: una nota que se confirma mientras corre
+    // el vaciado retiene su conversación por la clave foránea, así que este UPDATE la ve.
+    const notes = await tx.execute(
+      sql`update conversation_notes n set body_text = null
+          from conversations c
+          where c.organization_id = n.organization_id and c.id = n.conversation_id
+            and n.organization_id = ${organizationId} and c.client_id = ${clientId}
+            and n.body_text is not null`,
+    );
     const conversations = await tx.execute(
       sql`update conversations set external_ref = null, updated_at = now()
           where organization_id = ${organizationId} and client_id = ${clientId}
@@ -164,6 +184,7 @@ export async function eraseClientData(
       client: (client.rowCount ?? 0) > 0,
       conversations: conversations.rowCount ?? 0,
       messages: messages.rowCount ?? 0,
+      notes: notes.rowCount ?? 0,
       auditEntries,
       tags: tags.rowCount ?? 0,
     };
@@ -198,6 +219,11 @@ export function describeRetained(report: ClientDataReport): string[] {
       `${report.messages} mensajes en 'messages', sin texto ni referencia externa: quedan la fecha, la dirección, el tipo y el autor, que cuentan las métricas.`,
     );
   }
+  if (report.notes > 0) {
+    retained.push(
+      `${report.notes} notas en 'conversation_notes', sin texto: quedan la fecha y el usuario del CRM que la escribió.`,
+    );
+  }
   if (report.conversations > 0) {
     retained.push(
       `${report.conversations} conversaciones en 'conversations', sin referencia externa: quedan sus fechas y su estado.`,
@@ -220,7 +246,7 @@ export const RETAINED_OUTSIDE = [
 
 // En la base, pero fuera del alcance del vaciado (revisión independiente de la 13.4, R-1).
 export const NOT_REACHED = [
-  "Las conversaciones sin cliente: las crea la ingestión v1, o un mensaje de un teléfono que todavía no era cliente, y nada las enlaza después. Sus mensajes conservan el texto. El CRM no guarda el teléfono de una conversación sin cliente, así que no puede atribuirla a esta persona.",
+  "Las conversaciones sin cliente: las crea la ingestión v1, o un mensaje de un teléfono que todavía no era cliente, y nada las enlaza después. Sus mensajes y sus notas conservan el texto. El CRM no guarda el teléfono de una conversación sin cliente, así que no puede atribuirla a esta persona.",
 ];
 
 const usage =
@@ -231,7 +257,8 @@ function option(args: string[], name: string): string | undefined {
   return index >= 0 ? args[index + 1] : undefined;
 }
 
-// 42501: el rol de la aplicación no tiene UPDATE sobre messages ni audit_logs (ADR 0015).
+// 42501: el rol de la aplicación no tiene UPDATE sobre messages, conversation_notes ni audit_logs
+// (ADR 0015).
 function explainRole(error: unknown): never {
   const code =
     (error as { cause?: { code?: string }; code?: string }).cause?.code ??
@@ -272,7 +299,7 @@ async function main() {
 
   console.log(
     `Cliente ${clientId}: ${report.conversations} conversaciones, ${report.messages} mensajes, ` +
-      `${report.auditEntries} entradas de auditoría, ${report.tags} etiquetas.`,
+      `${report.notes} notas, ${report.auditEntries} entradas de auditoría, ${report.tags} etiquetas.`,
   );
 
   const vaciar = args.includes("--vaciar");
@@ -308,8 +335,8 @@ async function main() {
     explainRole,
   );
   console.log(
-    `Vaciado: la ficha, ${result.conversations} conversaciones, ${result.messages} mensajes y ` +
-      `${result.auditEntries} entradas de auditoría; ${result.tags} etiquetas quitadas.`,
+    `Vaciado: la ficha, ${result.conversations} conversaciones, ${result.messages} mensajes, ` +
+      `${result.notes} notas y ${result.auditEntries} entradas de auditoría; ${result.tags} etiquetas quitadas.`,
   );
   console.log("Queda, sin nada que identifique a la persona:");
   printRetained(report);

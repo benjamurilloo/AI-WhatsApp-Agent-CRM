@@ -165,9 +165,9 @@ Agregada en la 11.1 ([brief-11.1](../decisions/brief-11.1-catalogo-comercial.md)
 ## 9. Detalle de conversación y timeline
 
 - **Objetivo**: leer una conversación en orden cronológico.
-- **Usuario autorizado**: lectura para `admin` y `viewer`; cambio de estado y pausa del agente solo para `admin`.
-- **Información mostrada**: cliente, canal, estado actual y mensajes del más antiguo al más reciente, con dirección y hora. *Desde la 16.3*, el agente: «Activo» o «Agente pausado», con la fecha y la hora desde la que está pausado.
-- **Acciones**: cargar mensajes anteriores y cambiar el estado (`open`, `pending`, `closed`). El cambio queda auditado. *Desde la 16.3*, «Pausar al agente» en una conversación `open` o `pending` y «Reanudar al agente» en cualquiera, auditados; una cerrada sin pausa dice que no se pausa. La sección explica que, mientras está pausado, el agente no contesta, y que una conversación nueva del cliente empieza con el agente activo ([brief-16.3](../decisions/brief-16.3-pausar-y-reanudar-al-agente.md)).
+- **Usuario autorizado**: lectura para `admin` y `viewer`; cambio de estado, pausa del agente y, desde la 16.4, agregar notas solo para `admin`.
+- **Información mostrada**: cliente, canal, estado actual y mensajes del más antiguo al más reciente, con dirección y hora. *Desde la 16.3*, el agente: «Activo» o «Agente pausado», con la fecha y la hora desde la que está pausado. *Desde la 16.4* ([brief-16.4](../decisions/brief-16.4-notas-de-la-conversacion.md), D-6; FR-CONV-07), la tarjeta «Notas»: cada nota con su autor, su fecha y hora en la zona de la organización y su texto, de la más reciente a la más vieja, de a 25 con «Ver anteriores». Vacía, dice «Sin notas.». Una nota vaciada con los datos del cliente dice que se vació.
+- **Acciones**: cargar mensajes anteriores y cambiar el estado (`open`, `pending`, `closed`). El cambio queda auditado. *Desde la 16.3*, «Pausar al agente» en una conversación `open` o `pending` y «Reanudar al agente» en cualquiera, auditados; una cerrada sin pausa dice que no se pausa. La sección explica que, mientras está pausado, el agente no contesta, y que una conversación nueva del cliente empieza con el agente activo ([brief-16.3](../decisions/brief-16.3-pausar-y-reanudar-al-agente.md)). *Desde la 16.4*, «Agregar nota» en cualquier estado, auditada; el resultado se anuncia con `aria-live` y un rechazo deja el foco en el campo, con lo escrito. La ayuda dice que las notas solo las ve el equipo y que no se editan ni se borran. Las pantallas 7 y 8 no muestran notas.
 - **Filtros**: no aplican.
 - **Paginación**: incremental, de a 50 mensajes, empezando por los más recientes.
 - **Carga**: indicador al cargar mensajes anteriores sin perder la posición de lectura.
@@ -175,7 +175,7 @@ Agregada en la 11.1 ([brief-11.1](../decisions/brief-11.1-catalogo-comercial.md)
 - **Errores**: `NOT_FOUND`.
 - **Responsive**: burbujas a ancho completo en móvil.
 - **Accesibilidad**: la dirección se indica con texto ("Cliente" o "Negocio") y no solo con la alineación o el color. El timeline es una lista semántica.
-- **No mostrar**: el cuerpo del mensaje se renderiza siempre como texto plano escapado, sin HTML ni enlaces automáticos.
+- **No mostrar**: el cuerpo del mensaje y, desde la 16.4, el texto de las notas se renderizan siempre como texto plano escapado, sin HTML ni enlaces automáticos.
 
 ## 10. Usuarios y roles
 

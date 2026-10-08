@@ -27,7 +27,7 @@ test.afterAll(async () => {
 
 test.beforeEach(async () => {
   await db.execute(
-    sql`truncate table audit_logs, ingestion_events, messages, conversations, client_tag_assignments, clients`,
+    sql`truncate table audit_logs, ingestion_events, conversation_notes, messages, conversations, client_tag_assignments, clients`,
   );
   await db.execute(sql`delete from login_attempts`);
   await db.execute(sql`delete from sessions`);

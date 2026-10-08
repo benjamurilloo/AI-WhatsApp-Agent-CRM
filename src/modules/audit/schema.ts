@@ -43,6 +43,8 @@ export const auditAction = pgEnum("audit_action", [
   "tag_change",
   // Agente pausado o reanudado en una conversación (brief-16.3, D-6).
   "agent_pause_change",
+  // Nota agregada en una conversación, sin el texto (brief-16.4, D-4).
+  "note_added",
 ]);
 
 export const auditLogs = pgTable(

@@ -1,6 +1,6 @@
 # Runbook: exportar o eliminar los datos de un cliente
 
-**Estado: validado localmente y en CI.** No ejecutado todavía contra un entorno con datos reales. *Actualizado el 2026-10-01 por la 13.4*: borrar pasó de minimizar la ficha a vaciar el contenido de todo lo del cliente.
+**Estado: validado localmente y en CI.** No ejecutado todavía contra un entorno con datos reales. *Actualizado el 2026-10-01 por la 13.4*: borrar pasó de minimizar la ficha a vaciar el contenido de todo lo del cliente. *Actualizado el 2026-10-07 por la 16.4*: el informe, la exportación y el vaciado incluyen las notas de sus conversaciones.
 
 Atiende un pedido de acceso o de borrado de los datos de una persona, que
 [NonFunctionalRequirements](../product/NonFunctionalRequirements.md) §Privacidad exige que exista
@@ -22,7 +22,7 @@ previsto que la haya en el MVP.
    npx tsx scripts/client-data-delete.ts --org <organization_id> --client <client_id>
    ```
 
-   Dice cuántas conversaciones, mensajes y entradas de auditoría tiene, si la ficha se puede
+   Dice cuántas conversaciones, mensajes, notas de conversación, entradas de auditoría y etiquetas tiene, si la ficha se puede
    borrar, y qué quedaría después.
 
 ## Exportar
@@ -31,13 +31,14 @@ previsto que la haya en el MVP.
 npx tsx scripts/client-data-export.ts --org <organization_id> --client <client_id> --out <archivo.json>
 ```
 
-Incluye los cinco orígenes que guardan datos de la persona:
+Incluye los seis orígenes que guardan datos de la persona:
 
 | Origen | Qué lleva |
 |---|---|
 | `clients` | nombre, teléfono en E.164 y notas |
 | `conversations` | sus conversaciones, con estado y fechas |
 | `messages` | sus mensajes, **con el cuerpo** |
+| `conversation_notes` | *desde la 16.4*: las notas internas de sus conversaciones, con el texto, la fecha y el id del usuario del CRM que la escribió ([brief-16.4](../decisions/brief-16.4-notas-de-la-conversacion.md), D-5) |
 | `audit_logs` | los cambios sobre su ficha, **con los valores anteriores** de teléfono y notas, y desde la 16.1 las etiquetas que se le pusieron y quitaron |
 | `client_tag_assignments` | *desde la 16.1*: sus etiquetas actuales, con su nombre, color, estado y fecha (campo `client_tags`; [brief-16.1](../decisions/brief-16.1-etiquetas-de-clientes.md), D-10) |
 
@@ -56,7 +57,7 @@ versionado, y se entrega por un canal acordado con quien lo pidió. Borralo cuan
 
 ### Con qué rol
 
-**Con el rol dueño**, el de `migrate.env` en producción. `messages` y `audit_logs` son de solo inserción: su trigger deja pasar un único `UPDATE`, que es este vaciado, y el rol de la aplicación no tiene `UPDATE` sobre ellas ([ADR 0015](../decisions/0015-vaciado-de-una-sola-direccion-en-tablas-de-solo-insercion.md)). Con el rol de la aplicación, la base lo rechaza por permisos y no se escribe nada. En el droplet de producción:
+**Con el rol dueño**, el de `migrate.env` en producción. `messages`, `conversation_notes` y `audit_logs` son de solo inserción: su trigger deja pasar un único `UPDATE`, que es este vaciado, y el rol de la aplicación no tiene `UPDATE` sobre ellas ([ADR 0015](../decisions/0015-vaciado-de-una-sola-direccion-en-tablas-de-solo-insercion.md)). Con el rol de la aplicación, la base lo rechaza por permisos y no se escribe nada. En el droplet de producción:
 
 ```
 sudo bash -c '. /etc/crm-production/migrate.env && export DATABASE_URL && cd /srv/crm-production && exec runuser -u crm -- npx tsx scripts/client-data-delete.ts --org <organization_id> --client <client_id>'
@@ -89,10 +90,13 @@ En una sola transacción:
 | `clients` | nombre, teléfono y notas | la ficha, con el nombre `Cliente eliminado <primeros 8 del id>` |
 | `conversations` | la referencia externa | fechas y estado |
 | `messages` | el texto y la referencia externa | fecha, dirección, tipo y autor |
+| `conversation_notes` (desde la 16.4) | el texto de las notas de sus conversaciones: son texto libre y pueden nombrar a la persona | la nota, con su fecha y el usuario del CRM que la escribió |
 | `audit_logs` (entradas del cliente) | los valores anteriores y nuevos, también los nombres de las etiquetas | que hubo un cambio, de qué tipo y cuándo |
 | `client_tag_assignments` (desde la 16.1) | **se borran**: «Reclamo» o «Quiere señar» son datos sobre la persona (D-10) | nada; el catálogo de etiquetas no es de la persona y queda |
 
-Un segundo vaciado no cambia nada ni falla. Con la ingestión encendida, el vaciado espera a los mensajes de esa persona que se están guardando en ese momento, y los alcanza (revisión independiente de la 13.4, R-2).
+Un segundo vaciado no cambia nada ni falla. Con la ingestión encendida, el vaciado espera a los mensajes de esa persona que se están guardando en ese momento, y los alcanza (revisión independiente de la 13.4, R-2). Lo mismo con una nota que un usuario del CRM está guardando en ese momento (revisión de la 16.4, R-1).
+
+**Una nota escrita después del vaciado conserva su texto** (desde la 16.4). El vaciado no impide que un admin escriba notas nuevas en esas conversaciones. Si la nota vuelve a nombrar a la persona, se repite el vaciado: alcanza las notas nuevas y no cambia lo ya vaciado.
 
 **Si la persona vuelve a escribir**, el vaciado no lo impide, pero la ficha ya no tiene teléfono:
 
@@ -101,7 +105,7 @@ Un segundo vaciado no cambia nada ni falla. Con la ingestión encendida, el vaci
 
 ### Lo que el vaciado no alcanza
 
-**Las conversaciones sin cliente.** Las crea la ingestión v1, o un mensaje de un teléfono que todavía no era cliente, y nada las enlaza después a una ficha. Sus mensajes conservan el texto. El CRM no guarda el teléfono de una conversación sin cliente, así que no tiene cómo atribuirla a quien pide el borrado. En el flujo normal de v2 no aparecen: `conversation.resolved` exige el cliente. El script lo dice en su salida, y quien atienda el pedido tiene que decirlo así (revisión independiente de la 13.4, R-1; decidido por el usuario el 2026-10-01).
+**Las conversaciones sin cliente.** Las crea la ingestión v1, o un mensaje de un teléfono que todavía no era cliente, y nada las enlaza después a una ficha. Sus mensajes y, desde la 16.4, sus notas conservan el texto. El CRM no guarda el teléfono de una conversación sin cliente, así que no tiene cómo atribuirla a quien pide el borrado. En el flujo normal de v2 no aparecen: `conversation.resolved` exige el cliente. El script lo dice en su salida, y quien atienda el pedido tiene que decirlo así (revisión independiente de la 13.4, R-1; decidido por el usuario el 2026-10-01).
 
 ### Lo que queda fuera de la base
 
@@ -126,4 +130,4 @@ Registrá la ejecución fuera de la base, en el ticket o el canal donde se pidi�
 
 ### Lo que no se hace
 
-No desactives un trigger para borrar a mano. Es la defensa que el ADR 0013 levantó: hacerlo en producción deja la tabla sin garantía y sin rastro. **Esta regla es de procedimiento, no de permisos**: el rol dueño, el mismo con el que se corre el vaciado, puede desactivar el trigger de sus tablas (`ALTER TABLE … DISABLE TRIGGER`); no hace falta un superusuario (revisión independiente de la 13.4, R-10). El único cambio que admiten `messages` y `audit_logs` es el de este script.
+No desactives un trigger para borrar a mano. Es la defensa que el ADR 0013 levantó: hacerlo en producción deja la tabla sin garantía y sin rastro. **Esta regla es de procedimiento, no de permisos**: el rol dueño, el mismo con el que se corre el vaciado, puede desactivar el trigger de sus tablas (`ALTER TABLE … DISABLE TRIGGER`); no hace falta un superusuario (revisión independiente de la 13.4, R-10). El único cambio que admiten `messages`, `conversation_notes` y `audit_logs` es el de este script.

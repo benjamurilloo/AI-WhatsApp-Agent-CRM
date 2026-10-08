@@ -132,6 +132,23 @@ async function tagClient(clientId: string, name: string): Promise<string> {
   return tag.rows[0]!.id;
 }
 
+// Una nota de un usuario del CRM en la conversación, por SQL (brief-16.4, D-5).
+async function noteOn(
+  conversationId: string,
+  body: string,
+  orgId = organizationId,
+) {
+  const user = await getDb().execute<{ id: string }>(
+    sql`insert into users (email, password_hash, name, must_change_password)
+        values (${`nota-${crypto.randomUUID()}@example.com`}, 'x', 'Vendedora', false)
+        returning id`,
+  );
+  await getDb().execute(
+    sql`insert into conversation_notes (organization_id, conversation_id, actor_user_id, body_text)
+        values (${orgId}, ${conversationId}, ${user.rows[0]!.id}, ${body})`,
+  );
+}
+
 async function assignmentCount(clientId: string): Promise<number> {
   const result = await getDb().execute<{ count: number }>(
     sql`select count(*)::int as count from client_tag_assignments
@@ -263,6 +280,7 @@ describe("cliente con conversaciones: se vacía, no se borra (brief-13.4, D-2)",
       client: true,
       conversations: 1,
       messages: 2,
+      notes: 0,
       auditEntries: 1,
       tags: 0,
     });
@@ -355,6 +373,7 @@ describe("cliente con conversaciones: se vacía, no se borra (brief-13.4, D-2)",
       client: true,
       conversations: 0,
       messages: 0,
+      notes: 0,
       auditEntries: 0,
       tags: 0,
     });
@@ -596,5 +615,149 @@ describe("etiquetas del cliente (brief-16.1, D-10, AC-9)", () => {
     expect(await deleteClientRow(getDb(), organizationId, clientId)).toBe(true);
 
     expect(await assignmentCount(clientId)).toBe(0);
+  });
+});
+
+describe("notas de la conversación (brief-16.4, D-5, AC-5)", () => {
+  const NOTE = "Ana pidió que la llamen al fijo";
+
+  it("21. FR-CONV-07: la exportación incluye las notas de sus conversaciones y no las de otro cliente", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    const conversation = await insertConversationWithMessage(clientId, BODY);
+    await noteOn(conversation, NOTE);
+    const other = await insertClient("Otra Persona", "+5491155552222", "x");
+    await noteOn(
+      await insertConversationWithMessage(other, "Ajeno"),
+      "Nota ajena",
+    );
+
+    const data = await exportClientData(getDb(), organizationId, clientId);
+
+    expect(data.conversation_notes.map((note) => note.body_text)).toEqual([
+      NOTE,
+    ]);
+    expect(data.conversation_notes[0]).toMatchObject({
+      conversation_id: conversation,
+    });
+  });
+
+  it("22. el informe cuenta sus notas y dice qué queda de ellas", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    const conversation = await insertConversationWithMessage(clientId, BODY);
+    await noteOn(conversation, NOTE);
+    await noteOn(conversation, "Otra nota");
+
+    const report = await reportClientData(getDb(), organizationId, clientId);
+    expect(report.notes).toBe(2);
+    expect(describeRetained(report).join(" ")).toContain("conversation_notes");
+  });
+
+  it("23. el vaciado deja sin texto sus notas, y no las de otro cliente ni las de otra organización", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    await noteOn(await insertConversationWithMessage(clientId, BODY), NOTE);
+    const other = await insertClient("Otra Persona", "+5491155552222", "x");
+    await noteOn(
+      await insertConversationWithMessage(other, "Ajeno"),
+      "Nota de otro cliente",
+    );
+    const foreign = await getDb().execute<{ id: string }>(
+      sql`insert into organizations (name) values ('Otro Negocio') returning id`,
+    );
+    const foreignOrg = foreign.rows[0]!.id;
+    const foreignConversation = await getDb().execute<{ id: string }>(
+      sql`insert into conversations (organization_id, channel, status, started_at)
+          values (${foreignOrg}, 'whatsapp', 'open', '2026-09-01T12:00:00Z')
+          returning id`,
+    );
+    await noteOn(
+      foreignConversation.rows[0]!.id,
+      "Nota de otra organización",
+      foreignOrg,
+    );
+
+    // Control: antes del vaciado, el barrido la encuentra.
+    expect(await columnsContaining(NOTE)).toEqual([
+      "conversation_notes.body_text",
+    ]);
+
+    const result = await eraseClientData(getDb(), organizationId, clientId);
+
+    expect(result.notes).toBe(1);
+    expect(await columnsContaining(NOTE)).toEqual([]);
+    // La nota de otra organización no discrimina el filtro por organización del UPDATE: la clave
+    // foránea compuesta ya impide que una conversación de este cliente tenga notas de otra
+    // organización (revisión de la 16.4, R-3). Queda como control de que el vaciado no la toca.
+    for (const kept of ["Nota de otro cliente", "Nota de otra organización"]) {
+      expect(await columnsContaining(kept), kept).toEqual([
+        "conversation_notes.body_text",
+      ]);
+    }
+    // La nota queda, sin texto.
+    expect(
+      (await reportClientData(getDb(), organizationId, clientId)).notes,
+    ).toBe(1);
+    expect(
+      (await eraseClientData(getDb(), organizationId, clientId)).notes,
+    ).toBe(0);
+  });
+
+  it("24. la nota de una conversación sin cliente no la alcanza, y el script lo declara", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    const orphan = await getDb().execute<{ id: string }>(
+      sql`insert into conversations (organization_id, client_id, channel, status, started_at)
+          values (${organizationId}, null, 'whatsapp', 'open', '2026-09-01T12:00:00Z')
+          returning id`,
+    );
+    await noteOn(orphan.rows[0]!.id, "Ana escribió desde otro número");
+
+    await eraseClientData(getDb(), organizationId, clientId);
+
+    expect(await columnsContaining("Ana escribió desde otro número")).toEqual([
+      "conversation_notes.body_text",
+    ]);
+    expect(NOT_REACHED.join(" ")).toContain("sus notas conservan el texto");
+  });
+
+  // Como addConversationNote: la clave foránea retiene la conversación con un bloqueo compartido,
+  // y el vaciado, que la bloquea para actualizar, espera a que la nota se confirme (revisión de la
+  // 16.4, R-1).
+  it("25. la nota que se confirma durante el vaciado también queda sin texto", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    const conversationId = await insertConversationWithMessage(clientId, BODY);
+    const user = await getDb().execute<{ id: string }>(
+      sql`insert into users (email, password_hash, name, must_change_password)
+          values ('nota-tarde@example.com', 'x', 'Vendedora', false)
+          returning id`,
+    );
+    const commit = await holdIngestion(async (tx) => {
+      await tx.execute(
+        sql`insert into conversation_notes (organization_id, conversation_id, actor_user_id, body_text)
+            values (${organizationId}, ${conversationId}, ${user.rows[0]!.id}, ${LATE})`,
+      );
+    });
+
+    const erasure = eraseClientData(getDb(), organizationId, clientId);
+    await waitForLockWaiters(1);
+    await commit();
+
+    expect(await erasure).toMatchObject({ notes: 1 });
+    expect(await columnsContaining(LATE)).toEqual([]);
+  });
+
+  // El otro orden: una nota que llega después del vaciado conserva su texto hasta que se repite el
+  // vaciado, como un mensaje que llega después (runbook de datos de un cliente).
+  it("26. la nota escrita después del vaciado conserva el texto, y un vaciado repetido la alcanza", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    const conversationId = await insertConversationWithMessage(clientId, BODY);
+    await eraseClientData(getDb(), organizationId, clientId);
+    await noteOn(conversationId, NOTE);
+
+    expect(await columnsContaining(NOTE)).toEqual([
+      "conversation_notes.body_text",
+    ]);
+    expect(
+      (await eraseClientData(getDb(), organizationId, clientId)).notes,
+    ).toBe(1);
+    expect(await columnsContaining(NOTE)).toEqual([]);
   });
 });

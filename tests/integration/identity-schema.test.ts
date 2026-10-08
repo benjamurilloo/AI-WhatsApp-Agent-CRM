@@ -62,6 +62,7 @@ describe("base de test", () => {
       "client_tag_assignments",
       "client_tags",
       "clients",
+      "conversation_notes",
       "conversations",
       "ingestion_credentials",
       "ingestion_events",

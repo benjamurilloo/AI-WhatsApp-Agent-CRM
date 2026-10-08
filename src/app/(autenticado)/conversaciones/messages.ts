@@ -2,11 +2,13 @@ import type {
   AgentPauseAction,
   ConversationChannel,
   ConversationListField,
+  ConversationNote,
   ConversationStatus,
   MessageDirection,
   MessageKind,
   MessageSender,
 } from "@/modules/conversations";
+import { formatShortDateTime } from "@/app/_format/date-time";
 import type { ErrorCode } from "@/shared/errors";
 
 // Textos de las pantallas 8 y 9 (wireframes 08 y 09) y de la sección de conversaciones de la 7,
@@ -151,6 +153,78 @@ export function agentPauseErrorMessage(
       return unexpectedErrorMessage(requestId);
   }
 }
+
+// Notas de la conversación (brief-16.4, D-6). Internas: no las ve el cliente ni el agente.
+export const NO_NOTES_MESSAGE = "Sin notas.";
+export const ERASED_NOTE_TEXT = "(nota vaciada con los datos del cliente)";
+export const FORMER_MEMBER_TEXT = "Usuario que ya no es miembro";
+export const NOTES_HINT =
+  "Solo las ve el equipo: no le llegan al cliente ni al agente. Una nota no se edita ni se borra.";
+export const NOTE_BODY_ERROR_MESSAGE =
+  "Escribí la nota, de hasta 1000 caracteres.";
+export const NOTE_ADDED_MESSAGE = "Nota agregada.";
+
+export function loadNotesErrorMessage(requestId: string): string {
+  return `No pudimos cargar las notas anteriores. Código: ${requestId}`;
+}
+
+export function noteErrorMessage(
+  code: Exclude<ErrorCode, "UNAUTHENTICATED">,
+  requestId: string,
+  fields: readonly string[] = [],
+): string {
+  switch (code) {
+    case "FORBIDDEN":
+      return FORBIDDEN_ACTION_MESSAGE;
+    case "NOT_FOUND":
+      return CONVERSATION_NOT_FOUND_MESSAGE;
+    case "VALIDATION_ERROR":
+      // Sin fields, el id de la conversación era inválido: no hay texto que corregir.
+      return fields.includes("body")
+        ? NOTE_BODY_ERROR_MESSAGE
+        : CONVERSATION_NOT_FOUND_MESSAGE;
+    default:
+      return unexpectedErrorMessage(requestId);
+  }
+}
+
+// Estado del formulario de notas. Tras un rechazo se conserva lo escrito (body); el campo se
+// marca inválido solo si el rechazo fue por el texto (invalidBody).
+export type NoteFormState =
+  | { status: "idle" }
+  | { status: "done"; message: string }
+  | {
+      status: "error";
+      requestId: string;
+      message: string;
+      body: string;
+      invalidBody: boolean;
+    };
+
+// Una nota ya formateada en el servidor, con la zona de la organización, como TimelineItem.
+export type NoteItem = {
+  id: string;
+  author: string;
+  when: string;
+  body: string | null;
+};
+
+// Las notas del servicio a lo que muestra la tarjeta. El texto viaja tal cual: lo escapa React.
+export function toNoteItems(
+  notes: ConversationNote[],
+  timeZone: string,
+): NoteItem[] {
+  return notes.map((note) => ({
+    id: note.id,
+    author: note.author.name || FORMER_MEMBER_TEXT,
+    when: formatShortDateTime(note.createdAt, timeZone),
+    body: note.body,
+  }));
+}
+
+export type OlderNotesResult =
+  | { ok: true; items: NoteItem[]; before: string | null }
+  | { ok: false; message: string };
 
 // Estado de la acción de cambio de estado; el mensaje se anuncia con aria-live.
 export type StatusChangeState =

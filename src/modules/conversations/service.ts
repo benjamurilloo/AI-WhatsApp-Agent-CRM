@@ -12,6 +12,7 @@ import {
 } from "@/modules/crm";
 import {
   authorize,
+  getMemberSummaries,
   getOrganizationTimezone,
   type AuthContext,
 } from "@/modules/organizations";
@@ -558,6 +559,128 @@ export async function changeAgentPause(
         },
       });
       return { ok: true, changed: true };
+    },
+  );
+}
+
+export const NOTES_PAGE_SIZE = 25;
+export const NOTE_MAX_LENGTH = 1000;
+
+export type ConversationNote = {
+  id: string;
+  // name vacío: el autor ya no es miembro de la organización.
+  author: { id: string; name: string };
+  // Tal cual se guardó; null si se vació con los datos del cliente (brief-16.4, D-5).
+  body: string | null;
+  createdAt: Date;
+};
+
+export type ConversationNotesResult =
+  | {
+      ok: true;
+      // De la más reciente a la más vieja (D-3).
+      notes: ConversationNote[];
+      // Cursor para cargar las anteriores, o null si no hay más.
+      before: string | null;
+      timezone: string;
+    }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">;
+
+// Notas de la conversación de a 25, de la más reciente a la más vieja (brief-16.4, D-3; FR-CONV-07),
+// para admin y viewer. El cursor tiene la misma forma que el del timeline.
+export async function listConversationNotes(
+  context: AuthContext,
+  conversationId: string,
+  options: { before: string },
+): Promise<ConversationNotesResult> {
+  const found = await findReadable(context, conversationId);
+  if (!found.ok) return found;
+  const text = options.before.trim();
+  const cursor = text === "" ? null : decodeMessageCursor(text);
+  if (text !== "" && cursor === null) return failure("VALIDATION_ERROR");
+  const rows = await repository.findNotesBefore(
+    context.organizationId,
+    found.row.id,
+    cursor === null ? null : { createdAt: cursor.sentAt, id: cursor.id },
+    NOTES_PAGE_SIZE + 1,
+  );
+  const page = rows.slice(0, NOTES_PAGE_SIZE);
+  const oldest = page.at(-1);
+  // Autores sin JOIN con users, por la interfaz de organizations (9.0.1).
+  const authors = new Map(
+    (
+      await getMemberSummaries(context.organizationId, [
+        ...new Set(page.map((row) => row.actorUserId)),
+      ])
+    ).map((user) => [user.id, user.name]),
+  );
+  return {
+    ok: true,
+    notes: page.map(({ id, actorUserId, body, createdAt }) => ({
+      id,
+      author: { id: actorUserId, name: authors.get(actorUserId) ?? "" },
+      body,
+      createdAt,
+    })),
+    before:
+      rows.length > NOTES_PAGE_SIZE && oldest
+        ? encodeMessageCursor({ sentAt: oldest.createdAtExact, id: oldest.id })
+        : null,
+    timezone: await getOrganizationTimezone(context),
+  };
+}
+
+export type AddConversationNoteResult =
+  | { ok: true; noteId: string }
+  // VALIDATION_ERROR sin fields: id inválido. Con fields: el texto.
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+  | Failure<"VALIDATION_ERROR", { fields: ["body"] }>;
+
+const noteBodySchema = z.string().trim().min(1).max(NOTE_MAX_LENGTH);
+
+// Agregar una nota (brief-16.4; FR-CONV-07). Solo admin, en cualquier estado (D-2 y D-3), y
+// auditada en la misma transacción como note_added, con el id y sin el texto (D-4): el texto vive
+// solo en conversation_notes, que el vaciado alcanza. La clave foránea toma un bloqueo compartido
+// sobre la conversación, así que un vaciado en curso espera a esta transacción y ve la nota.
+export async function addConversationNote(
+  context: AuthContext,
+  input: { conversationId: string; body: string },
+): Promise<AddConversationNoteResult> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  if (!idSchema.safeParse(input.conversationId).success) {
+    return failure("VALIDATION_ERROR");
+  }
+  const body = noteBodySchema.safeParse(input.body);
+  if (!body.success) {
+    return { ok: false, code: "VALIDATION_ERROR", fields: ["body"] };
+  }
+
+  return repository.withTransaction(
+    async (tx): Promise<AddConversationNoteResult> => {
+      const current = await repository.findConversation(
+        context.organizationId,
+        input.conversationId,
+        tx,
+      );
+      if (!current) return failure("NOT_FOUND");
+
+      const noteId = await repository.insertNote(tx, {
+        organizationId: context.organizationId,
+        conversationId: current.id,
+        actorUserId: context.userId,
+        bodyText: body.data,
+      });
+      await recordAudit(tx, {
+        organizationId: context.organizationId,
+        actorUserId: context.userId,
+        entityType: "conversation",
+        entityId: current.id,
+        action: "note_added",
+        // before no es null: recordAudit lo reserva para create, como en tag_change.
+        diff: { before: { noteId: null }, after: { noteId } },
+      });
+      return { ok: true, noteId };
     },
   );
 }

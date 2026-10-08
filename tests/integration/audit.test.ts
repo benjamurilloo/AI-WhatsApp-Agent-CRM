@@ -123,6 +123,8 @@ function asAppRole<T>(fn: (tx: DbTransaction) => Promise<T>): Promise<T> {
 // El resto de las tablas es escribible: SELECT, INSERT, UPDATE y DELETE.
 const INSERT_ONLY_TABLES = [
   "audit_logs",
+  // Notas de una conversación (brief-16.4, D-1).
+  "conversation_notes",
   "inventory_movements",
   "messages",
   "product_prices",

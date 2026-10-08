@@ -465,6 +465,179 @@ describe("messages: solo inserción (D-3)", () => {
   });
 });
 
+// Notas de la conversación (brief-16.4, D-1; FR-CONV-07): solo inserción, con el vaciado del texto
+// como único UPDATE (ADR 0015).
+async function createUser(executor: Db | DbTransaction, email: string) {
+  const result = await executor.execute<{ id: string }>(
+    sql`insert into users (email, password_hash, name)
+        values (${email}, 'hash', 'Persona') returning id`,
+  );
+  return result.rows[0]!.id;
+}
+
+async function createNote(
+  executor: Db | DbTransaction,
+  organizationId: string,
+  conversationId: string,
+  userId: string,
+  body: string | null = "Llamó por teléfono",
+) {
+  const result = await executor.execute<{ id: string }>(
+    sql`insert into conversation_notes (organization_id, conversation_id, actor_user_id, body_text)
+        values (${organizationId}, ${conversationId}, ${userId}, ${body})
+        returning id`,
+  );
+  return result.rows[0]!.id;
+}
+
+async function noteRow(id: string) {
+  const result = await getDb().execute<Record<string, unknown>>(
+    sql`select * from conversation_notes where id = ${id}`,
+  );
+  return result.rows[0];
+}
+
+describe("conversation_notes: esquema (brief-16.4)", () => {
+  it("aplica los defaults y rechaza la conversación de otra organización", async () => {
+    const s = await seed();
+    const user = await createUser(getDb(), "a@example.com");
+    const c = await createConversation(getDb(), s.orgA);
+    const id = await createNote(getDb(), s.orgA, c, user);
+    expect(await noteRow(id)).toMatchObject({
+      organization_id: s.orgA,
+      conversation_id: c,
+      actor_user_id: user,
+      body_text: "Llamó por teléfono",
+    });
+    expect(
+      await rejection(
+        sql`insert into conversation_notes (organization_id, conversation_id, actor_user_id, body_text)
+            values (${s.orgB}, ${c}, ${user}, 'Ajena')`,
+      ),
+    ).toEqual({
+      code: "23503",
+      constraint: "conversation_notes_conversation_fk",
+    });
+  });
+
+  it("rechaza un texto vacío, sin recortar o de más de 1000 caracteres (D-3)", async () => {
+    const s = await seed();
+    const user = await createUser(getDb(), "a@example.com");
+    const c = await createConversation(getDb(), s.orgA);
+    for (const body of ["", " nota", "nota ", "n".repeat(1001)]) {
+      expect(await pgError(createNote(getDb(), s.orgA, c, user, body))).toEqual(
+        { code: "23514", constraint: "conversation_notes_body_text_valid" },
+      );
+    }
+    await createNote(getDb(), s.orgA, c, user, "n".repeat(1000));
+  });
+
+  it("no deja borrar una conversación con notas", async () => {
+    const s = await seed();
+    const user = await createUser(getDb(), "a@example.com");
+    const c = await createConversation(getDb(), s.orgA);
+    await createNote(getDb(), s.orgA, c, user);
+    expect(
+      await rejection(sql`delete from conversations where id = ${c}`),
+    ).toEqual({
+      code: "23001",
+      constraint: "conversation_notes_conversation_fk",
+    });
+  });
+});
+
+describe("conversation_notes: solo inserción (D-1, AC-4)", () => {
+  it("crm_app lee e inserta, pero no puede actualizar ni borrar, ni siquiera vaciar: 42501", async () => {
+    const s = await seed();
+    const user = await createUser(getDb(), "a@example.com");
+    const c = await createConversation(getDb(), s.orgA);
+    const id = await asAppRole(async (tx) => {
+      const inserted = await createNote(tx, s.orgA, c, user);
+      const read = await tx.execute(
+        sql`select id from conversation_notes where id = ${inserted}`,
+      );
+      expect(read.rows).toHaveLength(1);
+      return inserted;
+    });
+    for (const query of [
+      sql`update conversation_notes set body_text = 'otro' where id = ${id}`,
+      sql`update conversation_notes set body_text = null where id = ${id}`,
+      sql`delete from conversation_notes where id = ${id}`,
+    ]) {
+      expect((await pgError(asAppRole((tx) => tx.execute(query)))).code).toBe(
+        "42501",
+      );
+    }
+  });
+
+  it("el trigger rechaza todo UPDATE y DELETE del dueño salvo el vaciado: P0001", async () => {
+    const s = await seed();
+    const user = await createUser(getDb(), "a@example.com");
+    const other = await createUser(getDb(), "b@example.com");
+    const c = await createConversation(getDb(), s.orgA);
+    const c2 = await createConversation(getDb(), s.orgA);
+    const id = await createNote(getDb(), s.orgA, c, user);
+    for (const query of [
+      sql`update conversation_notes set body_text = 'otro' where id = ${id}`,
+      sql`update conversation_notes set actor_user_id = ${other} where id = ${id}`,
+      sql`update conversation_notes set conversation_id = ${c2} where id = ${id}`,
+      sql`update conversation_notes set created_at = now() - interval '1 day' where id = ${id}`,
+      // Vaciar y además cambiar otra columna tampoco es el vaciado.
+      sql`update conversation_notes set body_text = null, actor_user_id = ${other} where id = ${id}`,
+      sql`delete from conversation_notes where id = ${id}`,
+    ]) {
+      expect((await rejection(query)).code).toBe("P0001");
+    }
+    expect((await noteRow(id))?.body_text).toBe("Llamó por teléfono");
+  });
+
+  it("el vaciado deja la fila igual sin el texto, se puede repetir y no se deshace", async () => {
+    const s = await seed();
+    const user = await createUser(getDb(), "a@example.com");
+    const c = await createConversation(getDb(), s.orgA);
+    const id = await createNote(getDb(), s.orgA, c, user);
+    const before = await noteRow(id);
+    await getDb().execute(
+      sql`update conversation_notes set body_text = null where id = ${id}`,
+    );
+    expect(await noteRow(id)).toEqual({ ...before, body_text: null });
+    await getDb().execute(
+      sql`update conversation_notes set body_text = null where id = ${id}`,
+    );
+    expect(
+      (
+        await rejection(
+          sql`update conversation_notes set body_text = 'de vuelta' where id = ${id}`,
+        )
+      ).code,
+    ).toBe("P0001");
+    expect(await noteRow(id)).toEqual({ ...before, body_text: null });
+  });
+
+  it("sin el trigger, el rol dueño podría cambiar y borrar notas", async () => {
+    const s = await seed();
+    const user = await createUser(getDb(), "a@example.com");
+    const c = await createConversation(getDb(), s.orgA);
+    const id = await createNote(getDb(), s.orgA, c, user);
+    await expect(
+      getDb().transaction(async (tx) => {
+        await tx.execute(
+          sql`drop trigger conversation_notes_insert_only on conversation_notes`,
+        );
+        await tx.execute(
+          sql`update conversation_notes set body_text = 'otro' where id = ${id}`,
+        );
+        const removed = await tx.execute(
+          sql`delete from conversation_notes where id = ${id} returning id`,
+        );
+        expect(removed.rows).toHaveLength(1);
+        throw new IntentionalRollback();
+      }),
+    ).rejects.toBeInstanceOf(IntentionalRollback);
+    expect((await noteRow(id))?.body_text).toBe("Llamó por teléfono");
+  });
+});
+
 describe("ingestion_events: esquema", () => {
   it("aplica los defaults", async () => {
     const s = await seed();

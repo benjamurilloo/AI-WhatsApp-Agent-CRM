@@ -11,6 +11,7 @@ import {
 import { getDb, type Db, type DbTransaction } from "@/shared/db";
 import {
   conversationChannel,
+  conversationNotes,
   conversationStatus,
   conversations,
   messageDirection,
@@ -20,8 +21,9 @@ import {
 } from "./schema";
 
 // Acceso a conversations y messages (brief-6.3). Toda consulta filtra por organization_id en SQL.
-// Solo lectura, salvo el estado de la conversación, la pausa del agente (brief-16.3) y las
-// inserciones de la ingestión (brief-6.5.2): messages es de solo inserción (brief-6.1, D-3).
+// Solo lectura, salvo el estado de la conversación, la pausa del agente (brief-16.3), las notas
+// (brief-16.4) y las inserciones de la ingestión (brief-6.5.2): messages y conversation_notes son
+// de solo inserción (brief-6.1, D-3; brief-16.4, D-1).
 
 type Executor = Db | DbTransaction;
 
@@ -290,6 +292,67 @@ export function findMessagesBefore(
     )
     .orderBy(sql`${messages.sentAt} desc`, sql`${messages.id} desc`)
     .limit(limit);
+}
+
+export type NoteRow = {
+  id: string;
+  actorUserId: string;
+  // Nulo: el texto se vació con los datos del cliente (brief-16.4, D-5).
+  body: string | null;
+  createdAt: Date;
+  // created_at con microsegundos, en UTC, para el cursor, como sent_at en los mensajes.
+  createdAtExact: string;
+};
+
+export type NoteCursor = { createdAt: string; id: string };
+
+// Notas anteriores al cursor (created_at, id), de la más reciente a la más vieja (brief-16.4, D-3).
+export function findNotesBefore(
+  organizationId: string,
+  conversationId: string,
+  before: NoteCursor | null,
+  limit: number,
+): Promise<NoteRow[]> {
+  return getDb()
+    .select({
+      id: conversationNotes.id,
+      actorUserId: conversationNotes.actorUserId,
+      body: conversationNotes.bodyText,
+      createdAt: conversationNotes.createdAt,
+      createdAtExact: sql<string>`to_char(${conversationNotes.createdAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
+    })
+    .from(conversationNotes)
+    .where(
+      and(
+        eq(conversationNotes.organizationId, organizationId),
+        eq(conversationNotes.conversationId, conversationId),
+        before === null
+          ? undefined
+          : sql`(${conversationNotes.createdAt}, ${conversationNotes.id}) < (${before.createdAt}::timestamptz, ${before.id}::uuid)`,
+      ),
+    )
+    .orderBy(
+      sql`${conversationNotes.createdAt} desc`,
+      sql`${conversationNotes.id} desc`,
+    )
+    .limit(limit);
+}
+
+// conversation_notes es de solo inserción (brief-16.4, D-1): no hay update ni delete.
+export async function insertNote(
+  tx: DbTransaction,
+  values: {
+    organizationId: string;
+    conversationId: string;
+    actorUserId: string;
+    bodyText: string;
+  },
+): Promise<string> {
+  const rows = await tx
+    .insert(conversationNotes)
+    .values(values)
+    .returning({ id: conversationNotes.id });
+  return rows[0]!.id;
 }
 
 // Marca de pausa de la conversación de la organización con esa referencia del emisor, sin

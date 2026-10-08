@@ -11,6 +11,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { users } from "@/modules/auth/schema";
 import { clients } from "@/modules/crm/schema";
 import { organizations } from "@/modules/organizations/schema";
 
@@ -159,6 +160,47 @@ export const messages = pgTable(
     check(
       "messages_sent_by_only_outbound",
       sql`${table.direction} = 'outbound' OR ${table.sentBy} IS NULL`,
+    ),
+  ],
+);
+
+// Notas internas de una conversación (brief-16.4, D-1). Solo inserción, como messages: crm_app no
+// tiene UPDATE ni DELETE y un trigger rechaza ambos, salvo el vaciado del texto (ADR 0015). El
+// texto vive solo acá: la auditoría guarda el id de la nota, nunca el texto (D-4).
+export const conversationNotes = pgTable(
+  "conversation_notes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    conversationId: uuid("conversation_id").notNull(),
+    actorUserId: uuid("actor_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    // Nulo solo después del vaciado de los datos del cliente (D-5).
+    bodyText: text("body_text"),
+    // Hora del INSERT, no del inicio de la transacción, como inventory_movements.
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(sql`clock_timestamp()`),
+  },
+  (table) => [
+    foreignKey({
+      name: "conversation_notes_conversation_fk",
+      columns: [table.organizationId, table.conversationId],
+      foreignColumns: [conversations.organizationId, conversations.id],
+    }).onDelete("restrict"),
+    // Pantalla 9: de la más reciente a la más vieja (D-3).
+    index("conversation_notes_conversation_created_idx").on(
+      table.organizationId,
+      table.conversationId,
+      table.createdAt.desc(),
+    ),
+    // Una nota no se corrige: el texto llega recortado y entre 1 y 1000 caracteres (D-3).
+    check(
+      "conversation_notes_body_text_valid",
+      sql`${table.bodyText} IS NULL OR (${table.bodyText} = btrim(${table.bodyText}) AND char_length(${table.bodyText}) BETWEEN 1 AND 1000)`,
     ),
   ],
 );

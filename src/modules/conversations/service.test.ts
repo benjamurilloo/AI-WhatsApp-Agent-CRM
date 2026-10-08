@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  addConversationNote,
   changeAgentPause,
   CONVERSATIONS_PAGE_SIZE,
   conversationPageBounds,
@@ -216,6 +217,49 @@ describe("changeAgentPause (FR-CONV-06)", () => {
       expect(
         await changeAgentPause(context, { conversationId, action }),
       ).toEqual({ ok: false, code: "VALIDATION_ERROR", fields: ["action"] });
+    }
+  });
+});
+
+// Los rechazos de una nota que no llegan a la base (brief-16.4, AC-1 y AC-3): la base, en
+// tests/integration/conversation-notes.test.ts.
+describe("addConversationNote (FR-CONV-07)", () => {
+  const context = {
+    userId: "5eed0000-0000-4000-8000-000000000001",
+    organizationId: "5eed0000-0000-4000-8000-000000000002",
+    role: "admin" as const,
+    mustChangePassword: false,
+    sessionExpiresAt: new Date("2026-10-08T00:00:00Z"),
+  };
+  const conversationId = "5eed0000-0000-4000-8000-000000000003";
+
+  it("un viewer o una contraseña pendiente dan FORBIDDEN antes de validar", async () => {
+    for (const denied of [
+      { ...context, role: "viewer" as const },
+      { ...context, mustChangePassword: true },
+    ]) {
+      for (const body of ["Nota", ""]) {
+        expect(
+          await addConversationNote(denied, { conversationId, body }),
+        ).toEqual({ ok: false, code: "FORBIDDEN" });
+      }
+    }
+  });
+
+  it("rechaza un id inválido, un texto vacío y uno de más de 1000 caracteres", async () => {
+    expect(
+      await addConversationNote(context, { conversationId: "x", body: "Nota" }),
+    ).toEqual({ ok: false, code: "VALIDATION_ERROR" });
+    // Con espacios alrededor, 1001 caracteres siguen siendo demasiados después de recortar.
+    for (const body of [
+      "",
+      "  \n\t ",
+      "n".repeat(1001),
+      ` ${"n".repeat(1001)} `,
+    ]) {
+      expect(
+        await addConversationNote(context, { conversationId, body }),
+      ).toEqual({ ok: false, code: "VALIDATION_ERROR", fields: ["body"] });
     }
   });
 });

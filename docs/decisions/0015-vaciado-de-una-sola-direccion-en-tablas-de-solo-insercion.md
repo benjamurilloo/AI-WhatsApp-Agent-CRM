@@ -1,6 +1,6 @@
 # 0015 — Vaciado de una sola dirección en las tablas de solo inserción
 
-- Estado: aceptada por el usuario el 2026-10-01 (brief-13.4, D-3 y AC-1). **Enmienda al [ADR 0013](0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md)** en `messages` y `audit_logs`; no cambia `inventory_movements` ni `ingestion_events`.
+- Estado: aceptada por el usuario el 2026-10-01 (brief-13.4, D-3 y AC-1). **Enmienda al [ADR 0013](0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md)** en `messages` y `audit_logs`; no cambia `inventory_movements` ni `ingestion_events`. **Enmendada el 2026-10-07** ([brief-16.4](brief-16.4-notas-de-la-conversacion.md), H-1): suma `conversation_notes` (§Enmienda del 2026-10-07).
 - Fecha: 2026-10-01
 
 ## Contexto
@@ -32,3 +32,15 @@ El usuario decidió el 2026-10-01 que borrar es **vaciar el contenido y conserva
   - el dueño puede vaciar, que es justamente el propósito. Un vaciado no queda registrado en la base, porque auditarlo volvería a escribir lo que se borra; se registra fuera, en el ticket del pedido;
   - las del ADR 0013 siguen: el dueño puede `TRUNCATE` y puede desactivar el trigger, igual que un superusuario. *Corregido el 2026-10-01* (revisión independiente de la 13.4, R-10): decía «un superusuario puede desactivar el trigger»; el dueño de la tabla también puede, comprobado en PostgreSQL local. Pesa más que antes, porque el vaciado se corre con ese rol: el runbook lo prohíbe por procedimiento;
   - lo vaciado sigue en las copias de seguridad hasta que vencen, a unos 30 días mientras el backup diario funcione (precisado por la revisión independiente de la 13.4, R-8: decía «a los 30 días como mucho»), y una restauración lo trae de vuelta. El runbook de restauración manda volver a aplicar los vaciados posteriores a la copia (brief-13.4, D-5).
+
+## Enmienda del 2026-10-07: `conversation_notes`
+
+Aprobada por el usuario con el [brief-16.4](brief-16.4-notas-de-la-conversacion.md) (H-1, D-1 y D-5). Solo suma la tabla nueva; los puntos 1 a 5 no cambian.
+
+- **Contexto**: la 16.4 trae notas internas por conversación, de texto libre, que pueden nombrar a la persona. Si su texto entrara en el `diff` de una auditoría de conversación, el vaciado no lo alcanzaría, porque el punto 2 deja intactas esas entradas.
+- **Decisión**:
+  - `conversation_notes` es de solo inserción con el mismo diseño que `messages`. `crm_app` solo tiene `SELECT` e `INSERT`. El trigger `conversation_notes_insert_only` (`drizzle/0030`) deja pasar un único `UPDATE`: el que lleva `body_text` a nulo con el resto de la fila idéntico, comparado contra la fila entera.
+  - El texto de la nota vive solo en esa tabla: la auditoría `note_added` guarda el id, no el texto. Así el punto 2 sigue siendo cierto: las entradas de conversaciones no guardan datos de una persona.
+  - El vaciado de un cliente lleva a nulo el texto de las notas de todas sus conversaciones, en la misma transacción que sus mensajes. Las de una conversación sin cliente no se alcanzan, como sus mensajes.
+  - El invariante del punto 4 se extiende: una nota nunca cambia de texto, solo puede perderlo.
+- **Consecuencias**: `conversation_notes` entra en la lista de solo inserción de `audit.test.ts`, y las limitaciones aceptadas valen igual para ella.
