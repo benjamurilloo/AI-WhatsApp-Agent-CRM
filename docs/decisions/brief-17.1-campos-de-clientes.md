@@ -13,7 +13,7 @@ generated_at: 2026-10-08
 - **Nivel de validación alcanzable**: **validado localmente y en CI**, **validado en integración** para las pantallas, y **desplegado en producción** con la revisión del usuario. No es «preparado para producción»: ninguna subfase de la Fase 17 lo reclama.
 - **Orden**: primera subfase de la Fase 17 ([Roadmap](../planning/Roadmap.md) §Fase 17), abierta el 2026-10-08 con el orden 17.1 a 17.4 aprobado por el usuario.
 - **No abre ni cierra gate.** La revisión independiente no es obligatoria; se recomienda (D-13).
-- **Estado de este documento**: **aprobado el 2026-10-08** por el usuario, con las recomendaciones de D-1 a D-14.
+- **Estado de este documento**: **aprobado el 2026-10-08** por el usuario, con las recomendaciones de D-1 a D-14; **cerrado el 2026-10-08** (§Cierre).
 
 ## Objetivo
 
@@ -258,7 +258,7 @@ Parar y reportar, sin seguir, si:
 
 Y siempre **antes de**: el commit de la 17.1.1, el push, cada paso sobre producción (la migración y el despliegue), los cambios de estado en Notion y el cierre. Cada uno necesita autorización explícita en su turno.
 
-## Implementación de la 17.1.1, 2026-10-08 (sin commit)
+## Implementación de la 17.1.1, 2026-10-08 (commit `726a88d`)
 
 ### Archivos fuera de lo previsto y aserciones existentes que cambiaron
 
@@ -305,3 +305,31 @@ Dudas: la 1 es P-3 y la 2 es P-1, las dos para el usuario; la 3 (el alta por la 
 - Vitest: 1.909 de 1.909 (unitarios, guardas e integración). Una corrida anterior perdió el proceso de `conversations.test.ts` (código 0xC0000409, sin relación con el cambio); ese archivo solo dio 32 de 32, y la suite repetida, completa.
 - Playwright: 138 de 138, en dos tandas de siete specs (66 y 72). Dos corridas de una sola tanda se cortaron porque el servidor de prueba se apagó sin error con menos de 500 MB libres en la máquina (HANDOFF §7, memoria local); una tercera, con el servidor vivo, dio 135 de 138, y las tres fallas venían del cambio y están corregidas (P-2 y el caso 11 de `clients.spec.ts`).
 - Mutaciones, todas en rojo y revertidas: M1, el contacto sin resolver para el rol (falla FR-CLI-13); M2, el vaciado sin `email` (fallan los casos 28 y 29 de `client-data`); M3, una columna nulable nueva en `clients` sin vaciar (falla el caso 29); M4, los filtros sin el de organización (falla FR-CLI-14).
+
+### CI de la 17.1.1 (AC-10, parte de la CI)
+
+- Commit y push autorizados por el usuario: `726a88d`. La corrida 37848046092 de ese `headSha` terminó en `success`, con todos los pasos, incluido el end-to-end.
+
+## Despliegue de la 17.1.2, 2026-10-08
+
+- **Despliegue de `726a88d`**, autorizado por el usuario y corrido por el asistente. Pasos 1 a 3 de [deploy/production/README.md](../../deploy/production/README.md) §Desplegar: la CI del SHA en `success` (corrida 37848046092); anotado `40253d6` en el registro de despliegues; dependencias (22:01:18 UTC), migraciones (22:01:42, «Migraciones aplicadas»), build (22:01:43), reinicio (22:02:47) y HEAD igual al SHA pedido (22:02:47).
+- **AC-13**, recuentos de `crm_production` en una transacción de solo lectura (`sudo -u postgres psql`), todas las tablas de `public` en orden alfabético:
+
+  ```
+  2026-10-08T22:00:58Z 31 migraciones
+  audit_logs=42 client_tag_assignments=2 client_tags=5 clients=1 conversation_notes=1 conversations=3 ingestion_credentials=7 ingestion_events=122 ingestion_rate_windows=3 inventories=4 inventory_movements=4 knowledge_entries=3 login_attempts=1 messages=70 organization_members=2 organizations=2 product_prices=6 products=5 sessions=3 users=2
+  2026-10-08T22:03:08Z 32 migraciones
+  audit_logs=42 client_tag_assignments=2 client_tags=5 clients=1 conversation_notes=1 conversations=3 ingestion_credentials=7 ingestion_events=122 ingestion_rate_windows=3 inventories=4 inventory_movements=4 knowledge_entries=3 login_attempts=1 messages=70 organization_members=2 organizations=2 product_prices=6 products=5 sessions=3 users=2
+  ```
+
+  Las 20 tablas, iguales. Las nueve columnas nuevas de `clients` existen y son nulables; el único cliente las tiene todas en nulo. `client_kind` existe con `person,company`; los ocho `CHECK` de D-4 y D-6 están en `clients`; la `0031` no tiene `CREATE INDEX`, y `clients` tiene 4 índices después del despliegue (no se contaron antes). El servicio, `active` con `NRestarts=0`; `/login`, `200`; `/clientes` sin sesión, `307` a `/login`. Para volver atrás, `40253d6`: la migración solo agrega columnas nulables, un enum y `CHECK`.
+- **AC-14**: el usuario recorrió en producción el alta y la edición con los campos nuevos, la ficha y los filtros, los dio por correctos y aprobó el cierre el 2026-10-08.
+
+## Cierre de la subfase 17.1, 2026-10-08
+
+- **AC-1 a AC-14 cumplidos.** AC-10 en local (§Batería local) y en la CI de `726a88d`; AC-12 con la revisión independiente de la 17.1.1; AC-13 y AC-14 en producción.
+- **Revisión**: independiente para la 17.1.1 (D-13), con sus 10 hallazgos resueltos o registrados; el despliegue y este cierre son autoevaluación declarada.
+- **Decisiones del usuario**: el brief con D-1 a D-14; P-1 y P-3; `SecurityModel.md` fuera de la lista; el commit y el push de `726a88d`; el despliegue; el cierre.
+- **Nivel**: validado localmente y en CI, **validado en integración** para las pantallas (end-to-end sobre `next start`) y desplegado en producción, recorrido por el usuario (`isolated-runtime`). No es «preparado para producción».
+- **No certifica**: que el agente lea o escriba los campos nuevos (no cambia ningún contrato); el documento y el CUIT/CUIL, que van a la Fase 20; los segmentos más allá de los 200 primeros en las opciones; la medición de D-10 en la máquina de producción, que es local (66,8 ms con 10 000 clientes).
+- **Pendiente heredado**: la CI de `075ccb6` quedó en `failure` por la intermitencia del caso 8 de `products.spec.ts`; el commit siguiente, `726a88d`, pasó completo.

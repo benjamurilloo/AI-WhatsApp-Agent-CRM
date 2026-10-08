@@ -343,6 +343,8 @@ Reglas comunes a las cuatro fases:
 
 ## Fase 17 — Datos ampliados de clientes y catálogo
 
+*Abierta el 2026-10-08 por decisión del usuario, con su proyecto en Notion. Subfases, en el orden aprobado ese día: **17.1 — Campos de clientes** ([brief-17.1](../decisions/brief-17.1-campos-de-clientes.md)), **cerrada el 2026-10-08**: desplegada en producción con la migración `0031` y recorrida por el usuario; documento y CUIT/CUIL quedan para la Fase 20; **17.2 — Campos de productos**; **17.3 — ADR de las imágenes**, solo el ADR; y **17.4 — Información del negocio estructurada**, que cambia `read-v1` y entra solo con su decisión.*
+
 *Decidido el 2026-10-08, al cerrar la Fase 16: el usuario sigue con esta fase, que se abre en la sesión siguiente con su proyecto en Notion, el orden de sus subfases y el brief de la primera. La 13.5.2-b conserva su prioridad: si el negocio real se confirma, esta fase se pausa.*
 
 *Planificada el 2026-10-05, sin abrir, con los bocetos de las pantallas internas que trajo el usuario. Se abre con su decisión, su proyecto en Notion y el brief de su primera subfase.*

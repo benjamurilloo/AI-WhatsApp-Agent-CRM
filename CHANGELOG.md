@@ -2,6 +2,26 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-08 — 17.1 cerrada: campos de clientes
+
+Primera subfase de la Fase 17 ([brief-17.1](docs/decisions/brief-17.1-campos-de-clientes.md)), en dos etapas. Commit `726a88d` (17.1.1, CI 37848046092, `success`, leída por `headSha`). Desplegada en producción el 2026-10-08 con la migración `0031` (17.1.2), y recorrida por el usuario el mismo día.
+
+**Certifica**:
+- **Nueve campos opcionales del cliente**: email, tipo (persona o empresa), empresa, cargo, calle, ciudad, provincia (los 24 códigos ISO de Argentina), código postal y segmento, con sus `CHECK` en la base y su validación en el servicio (FR-CLI-12). Cada cambio queda en la auditoría y en el historial de la ficha.
+- **El email, la calle y el código postal no llegan a un `viewer`** (FR-CLI-13), como el teléfono: la ficha dice «Solo visible para administradores».
+- **Filtros de la lista** por tipo, provincia y segmento, combinados entre sí y con los existentes (FR-CLI-14); las opciones son solo de la organización.
+- **Los datos de un cliente** (13.4): la exportación los incluye y el vaciado los deja en nulo; un test exige que toda columna nulable de `clients` quede vacía.
+- **Revisión independiente** de la 17.1.1: 10 hallazgos, resueltos o registrados antes del commit. Mutaciones M1 a M4, cada una en rojo.
+- **En producción**: `crm.vixoraai.app` corre `726a88d`. Las 20 tablas, iguales antes y después; 32 migraciones; las columnas nuevas, nulas. Versión anterior: `40253d6`.
+
+**No certifica**:
+- Que el agente lea o escriba estos campos: ningún contrato cambia.
+- El documento y el CUIT/CUIL, que van a la Fase 20.
+- Los segmentos más allá de los 200 primeros en las opciones del filtro.
+- La medición de la lista con filtros en la máquina de producción: la de 66,8 ms con 10 000 clientes es local.
+
+**Nivel**: validado localmente y en CI, validado en integración para las pantallas y desplegado en producción con el recorrido del usuario (`isolated-runtime`). No es «preparado para producción».
+
 ## 2026-10-08 — Fase 16 cerrada (Herramientas de operación)
 
 Cierra por decisión del usuario, que es el gate de salida de la fase ([Roadmap](docs/planning/Roadmap.md), §Fase 16). El usuario aprobó el cierre el 2026-10-08, junto con el de la 16.6 (brief-16.6, D-8).
