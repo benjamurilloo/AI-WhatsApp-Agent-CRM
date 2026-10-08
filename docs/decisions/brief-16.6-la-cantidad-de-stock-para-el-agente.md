@@ -15,7 +15,7 @@ generated_at: 2026-10-08
   - `producer-consumer` para el agente como consumidor real.
 - **Nivel de validación alcanzable**: validado localmente y en CI, desplegado en producción y validado en integración con el agente. No es «preparado para producción».
 - **Orden**: sexta y última subfase de la Fase 16 ([Roadmap](../planning/Roadmap.md) §Fase 16). Con ella el usuario cierra la fase (decisión del 2026-10-08).
-- **Estado**: **aprobado por el usuario el 2026-10-08**, con las recomendaciones de D-1 a D-8 y las dos precisiones de H-1, del mismo día, y la precisión de D-3 (R-1). La tarea 16.6 está en «En proceso» en Notion desde entonces.
+- **Estado**: **aprobado por el usuario el 2026-10-08**, con las recomendaciones de D-1 a D-8 y las dos precisiones de H-1, del mismo día, y la precisión de D-3 (R-1). La tarea 16.6 estuvo en «En proceso» en Notion desde entonces. **Cerrado el 2026-10-08**, junto con la Fase 16 (§Cierre).
 
 ## Objetivo
 
@@ -181,7 +181,7 @@ También hay que pedir autorización explícita en su turno **antes de**:
 
 ## Resultados 16.6.1
 
-**Nivel alcanzado**: validado localmente (`deterministic`), sin commit hasta la autorización del usuario. No desplegado ni validado en integración.
+**Nivel alcanzado**: validado localmente (`deterministic`). Commit `40253d6`, con autorización del usuario del 2026-10-08; CI 37804285565, `success`, leída por `headSha`, con los end-to-end completos.
 
 - **Implementado**:
   - `GET /api/read/v1/products/{product_id}/stock`, en `src/app/api/read/v1/products/[productId]/stock/`, con alcance `read`;
@@ -218,3 +218,75 @@ La hizo un agente que no participó del trabajo, con acceso de solo lectura, el 
   **Confirmado y corregido**: las dos primeras quedan tachadas, con la corrección fechada y su evidencia; la tercera, con la cuenta actual.
 
 Las correcciones son autoevaluación: el revisor no las vio.
+
+## Resultados 16.6.2 (AC-9)
+
+Desplegado en producción el 2026-10-08, con autorización del usuario en el turno, siguiendo «Desplegar un cambio» de `deploy/production/README.md`.
+
+1. **CI del SHA exacto**: `40253d6be06e1c5abc6f6b0bd204d735f3339657`, `"conclusion":"success"`.
+2. **Lo que estaba desplegado**, anotado en `/var/lib/crm-production/despliegues`: `975034fb5802575e972c699381f07aab8b00cb76`. Es el SHA para volver atrás; la 16.6 no tiene migraciones.
+3. **Código, dependencias, migración, build y reinicio**: `db:migrate` no aplicó ninguna, la última línea dio `desplegado: 40253d6be06e1c5abc6f6b0bd204d735f3339657`, y el servicio quedó `active`.
+4. **Recuentos de `crm_production`**, en una transacción de solo lectura, antes y después: las 20 tablas y las 31 migraciones, iguales.
+5. **Desde afuera**: `GET /api/read/v1/products/{id}/stock` sin token responde `401`, igual que `GET /api/read/v1/products`; `/login` y `/api/health`, `200`.
+
+Nivel: `isolated-runtime` para el despliegue. La ruta con la credencial del agente es la 16.6.3.
+
+## Resultados 16.6.3 (AC-10)
+
+El pedido al agente (D-6) se le pasó con autorización del usuario. El agente conectó la ruta en su flujo y contestó la política con el número (D-1), que queda en `read-v1.md` como la del consumidor. La conciliación es del lado del CRM, en solo lectura: el log estructurado, `messages`, `ingestion_events`, `inventories` e `inventory_movements`. Horas en UTC.
+
+**La lectura de prueba**, a las 18:25:45, antes de la ventana. El agente buscó `q=aurora` y leyó la cantidad del Celular Aurora X3 64 GB. Los dos `X-Request-Id` que informó están en el log del CRM, con `code: OK`, emisor `agente-demo`, la organización de demostración y la ruta fija. La pidió como texto, y el cuerpo que llegó fue, byte por byte:
+
+```json
+{"contract_version":"1","product_id":"293164d9-b293-4f28-a62b-b2c5b76ac7a0","quantity_available":"1","unit":"unidad","stock_status":"bajo_stock"}
+```
+
+Coincide con la base: 1 unidad y punto de reposición 2. Es `tests/fixtures/read/v1/captured-product-stock.json`, `"shape": "captured"`; el archivo lo guarda con sangría.
+
+**La ventana**, de 19:06 a 19:36, en la organización de demostración de producción, con el teléfono del usuario como único cliente y el guion del agente. El stock de los tres productos se leyó antes de empezar y no hubo ningún movimiento de inventario en el día.
+
+| Paso | Pregunta del cliente | El agente informó | El CRM registró | Coincide |
+|---|---|---|---|---|
+| 1 | 3 celulares Aurora X5 | lectura `cb20dde1…`, `"8"`, `disponible`; contestó que hay 8 | búsqueda y `/stock` `OK` a las 19:09:10.353 | sí |
+| 2 | 2 celulares Aurora X3 | lectura `90740c8e…`, `"1"`, `bajo_stock`; contestó que queda 1 y si le sirve | búsqueda y `/stock` `OK` a las 19:10:15.038 | sí |
+| 3 | si quedan cargadores Voltio | sin lectura: la búsqueda trajo `sin_stock`; contestó que no hay | búsqueda `OK` a las 19:11:03, ninguna lectura de `/stock` | sí |
+| 4 | cuántos quedan del Aurora X5 | lectura `b9d60f1b…`, `"8"`; contestó que tiene 8 | búsqueda y `/stock` `OK` a las 19:12:01.672 | sí |
+| 5 | cuánto sale el Aurora X3 | ninguna lectura; dio el precio sin el stock | ninguna búsqueda ni lectura en ese turno | sí |
+
+- En la ventana hubo exactamente **3 lecturas de `/stock`**, las del agente, todas `OK` y del emisor `agente-demo`. Ninguna ruta dio `4xx` ni `5xx`. Las horas del CRM van unos 0,3 s detrás de las del agente: el log se escribe al responder.
+- En `messages`: 5 entrantes y 5 salientes del agente; en `ingestion_events`: 20 eventos, todos `processed`.
+- **El paso 3 no ejercitó el `"0"`** de un producto sin fila de inventario: el agente contestó con el estado de la búsqueda. Ese caso queda validado localmente (caso 2 de integración).
+- **El catálogo de demostración no tiene ningún producto con otra unidad**: la cantidad decimal queda probada solo localmente y en la suite del agente.
+
+**Hallazgo del agente: la correlación lleva el `wamid`.** El `X-Correlation-Id` de sus lecturas en producción empieza con el id del mensaje de Meta, que codifica el teléfono del cliente. Contradice `read-v1.md` §Transporte («No debe llevar datos personales»). Verificado del lado del CRM, contando sin imprimir ningún valor:
+
+- **En la base, nada**: ninguna `external_ref` de `ingestion_events`, `conversations` ni `messages` contiene `wamid`. La regla de la 13.4 para el emisor se cumple.
+- **En el journal, 25 líneas** desde el 2026-10-03: 20 de búsqueda de productos, 2 de información del negocio y 3 de la ruta nueva, las de la ventana. La cuarta lectura de la ruta, la de prueba, no salió de un mensaje de Meta: su correlación fue `agent-probe-3.45`. El único cliente de producción es el teléfono del usuario. El journal guarda 30 días ([brief-13.4](brief-13.4-retencion-y-borrado.md), D-6): esas líneas vencen solas hacia el 2026-11-03.
+
+**Decisión del usuario del 2026-10-08**, con la recomendación: se corrige en el origen, como H-4 de la 13.4, en una subfase del agente; el CRM lo registra en Risks y en `read-v1.md`, y no vacía el journal. Rechazar del lado del CRM una correlación con forma de `wamid` sería un cambio de contrato, en una subfase propia.
+
+Nivel: **validado en integración** (`producer-consumer`), en producción, con el agente como consumidor real de la ruta, sobre el catálogo de demostración.
+
+## Cierre
+
+**Cerrada el 2026-10-08**, con la aprobación del usuario, junto con la Fase 16 (D-8).
+
+| Criterio | Estado |
+|---|---|
+| AC-1 a AC-7 | cumplidos en la 16.6.1 (§Resultados 16.6.1); la batería local, con el end-to-end degradado por la máquina, y limpia en la CI de `40253d6` |
+| AC-8 | revisión independiente: R-1 a R-8, verificados; R-1 resuelto con la precisión de D-3 |
+| AC-9 | cumplido en la 16.6.2 |
+| AC-10 | cumplido en la 16.6.3, con la conciliación del agente coincidente en los cinco pasos |
+| AC-11 | el usuario aprobó el cierre de la 16.6 y de la Fase 16 el 2026-10-08 |
+
+- **Nivel**: validado localmente y en CI; desplegado en producción sin migraciones (`isolated-runtime`); **validado en integración** (`producer-consumer`) con el agente. No es «preparado para producción».
+- **Decisiones del usuario durante la subfase**: H-1 (decimal en texto, sin tope, sin `null`), la precisión de D-3 (R-1), y la correlación con el `wamid` corregida en el origen.
+- **En Notion**: la tarea pendiente del CI («la instalación de Chromium de Playwright corta la corrida por el límite de 15 minutos») pasó del proyecto de la Fase 16 al proyecto raíz, en «Esperando», por decisión del usuario, antes de cerrar la fase.
+- **Archivos fuera de la condición literal del alcance** (revisión independiente del cierre, R-9): la fila nueva de Risks no es la N-1, que no figura ahí; la respalda la decisión del usuario sobre la correlación (§Resultados 16.6.3).
+- **Contradicción registrada, sin corregir** (revisión independiente del cierre, R-2): `docs/runbooks/datos-de-un-cliente.md`, fuera de la lista de archivos, dice que el journal no guarda el teléfono. Desde el 2026-10-03 no es cierto para la correlación del agente, hasta su corrección y el vencimiento de esas líneas. Risks lo dice en la fila de la correlación y en «Lo que el borrado no alcanza».
+- **No certifica**:
+  - el `"0"` de un producto sin movimientos ni una cantidad decimal, leídos por el agente: validados solo localmente;
+  - una lectura fallida (`404`, `429`, `5xx`), que no se provocó: el agente dice que contesta con el estado de la búsqueda;
+  - los bytes de las lecturas de la ventana: n8n las guarda parseadas. La de prueba sí son los bytes.
+- **Revisión independiente del cierre**, de solo lectura, el 2026-10-08: 12 hallazgos, ninguno bloqueante (2 medios, 6 bajos, 4 notas), verificados contra los archivos. Corregidos: R-1 (la fila de Risks estaba en la tabla de tres columnas), R-3, R-4, R-5, R-6, R-7, R-12 y R-9 (anotado arriba). R-2 queda registrado arriba. R-8: la verificación de la corrección es una tarea en Notion. R-10 y R-11 son anteriores a este cierre y no se tocaron.
+- **Autoevaluación declarada** para la 16.6.2, la 16.6.3 y las correcciones de este cierre. La revisión independiente cubrió la 16.6.1 y los documentos del cierre.

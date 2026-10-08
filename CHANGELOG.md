@@ -2,6 +2,52 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-08 — Fase 16 cerrada (Herramientas de operación)
+
+Cierra por decisión del usuario, que es el gate de salida de la fase ([Roadmap](docs/planning/Roadmap.md), §Fase 16). El usuario aprobó el cierre el 2026-10-08, junto con el de la 16.6 (brief-16.6, D-8).
+
+**Certifica:**
+- **Las seis subfases cerradas**, cada una con su entrada abajo:
+  - 16.1, etiquetas de clientes, manuales;
+  - 16.2, etiquetas puestas por el agente;
+  - 16.3, pausar y reanudar al agente;
+  - 16.4, notas de la conversación;
+  - 16.5, el ADR 0017, responder desde el CRM, aceptado con la implementación pospuesta;
+  - 16.6, la cantidad de stock para el agente.
+
+  Todas las que cambiaron código o un contrato llevaron revisión independiente antes del commit. Las etapas de despliegue, las ventanas con el agente y los cierres son autoevaluación declarada.
+- **Con el agente**: tres rutas nuevas de la lectura v1 (`client-tags`, `conversation-state` y `products/{product_id}/stock`) y dos tipos de evento nuevos de la ingestión v2 (`client.tag_added` y `client.tag_removed`), todos cambios compatibles. La 16.2, la 16.3 y la 16.6 están **validadas en integración** en producción, en la organización de demostración.
+- **Producción** corre `40253d6`, con 31 migraciones. Las versiones anteriores de la fase, de la más nueva a la más vieja, están en el registro de despliegues del servidor: `975034f`, `259d23f`, `9549364` y `b5544d6`; antes de la fase, `0cbe314`.
+
+**Nivel**: el de cada subfase. No certifica «preparado para producción»: ese gate es de la Fase 13, y la 13.5.2-b sigue pendiente.
+
+**No certifica:**
+- La bandeja de salida del ADR 0017 ni el registro de lo que se contesta desde la app de WhatsApp: pospuestos por decisión del usuario.
+- Lo que los bocetos dibujan y no existe: acciones rápidas, buscador global y notificaciones.
+- Ninguna conversación con un cliente real: las ventanas usaron el teléfono del usuario en la organización de demostración.
+
+En Notion, la tarea pendiente del CI (la instalación de Chromium de Playwright y el límite de 15 minutos) pasó al proyecto raíz, en «Esperando», antes de cerrar la fase.
+
+## 2026-10-08 — 16.6 cerrada: la cantidad de stock para el agente
+
+Sexta subfase de la Fase 16 ([brief-16.6](docs/decisions/brief-16.6-la-cantidad-de-stock-para-el-agente.md)), en tres etapas. Commit `40253d6` (16.6.1, CI 37804285565, `success`, leída por `headSha`). Desplegada en producción el 2026-10-08 sin migraciones (16.6.2), y validada con el agente el mismo día (16.6.3).
+
+**Certifica**:
+- **La ruta nueva** `GET /api/read/v1/products/{product_id}/stock`, con alcance `read`: la cantidad disponible de un producto activo como decimal en texto, en forma canónica, sin tope y nunca `null`, con su unidad y el estado derivado de esa misma cantidad. Un producto inactivo, ajeno o inexistente da el mismo `404`. Es un cambio compatible dentro de v1: las rutas de productos siguen sin la cantidad.
+- **Revisión independiente** (D-7): R-1 a R-8, verificados antes del commit; R-1 resuelto con la precisión de D-3 aprobada por el usuario.
+- **Mutaciones**: sin el filtro por organización, sin el filtro de activos y con la cantidad como número de JSON, cada una en rojo.
+- **En producción**: `crm.vixoraai.app` corre `40253d6`. Las 20 tablas y las 31 migraciones, iguales antes y después; la ruta responde `401` sin token. Versión anterior: `975034f`.
+- **Con el agente** (AC-10): una lectura de prueba, cuyo cuerpo crudo está transcrito en el brief y validado como el fixture `captured-product-stock.json`, y una ventana de cinco pasos en la organización de demostración. Las tres lecturas de la ruta coinciden con el log del CRM, y en los dos pasos sin lectura no hubo ninguna.
+- **La política del agente con el número** (D-1) queda en `read-v1.md`, como la del consumidor.
+
+**No certifica**:
+- El `"0"` de un producto sin movimientos ni una cantidad decimal, leídos por el agente: validados solo localmente.
+- Una lectura fallida del agente, que no se provocó.
+- **La correlación del agente lleva el `wamid`**, que codifica el teléfono: 25 líneas del journal desde el 2026-10-03, ninguna fila de la base. Se corrige en el origen, por decisión del usuario; queda en Risks.
+- La causa de las caídas de proceso de la batería local, que se repitieron en esta máquina; la corrida limpia es la de la CI.
+
+**Nivel**: validado localmente y en CI, verificado en producción (`isolated-runtime`) y **validado en integración** (`producer-consumer`) con el agente. No es «preparado para producción».
+
 ## 2026-10-08 — 16.5 cerrada: ADR 0017, responder desde el CRM
 
 Quinta subfase de la Fase 16 ([brief-16.5](docs/decisions/brief-16.5-adr-responder-desde-el-crm.md)), solo de diseño. Brief y ADR propuesto en `a5767a7` (CI 37791971029, `success`, leída por `headSha`). Sin despliegue.

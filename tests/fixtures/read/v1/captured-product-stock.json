@@ -1,0 +1,20 @@
+{
+  "shape": "captured",
+  "note": "Capturada del consumidor real: la lectura de prueba del agente contra producción, en la organización de demostración, el 2026-10-08 (brief-16.6, 16.6.3, AC-10). El agente la pidió como texto, sin que n8n la parseara, y mandó el cuerpo de una línea tal como llegó; está transcrito en el brief, §Resultados 16.6.3. Este archivo lo guarda con sangría, así que no necesariamente los mismos bytes: sirve para validar el esquema. Sin encabezados.",
+  "description": "La cantidad del Celular Aurora X3 64 GB del catálogo de demostración: 1 unidad, debajo del punto de reposición de 2, así que bajo_stock.",
+  "request": {
+    "method": "GET",
+    "path": "/api/read/v1/products/293164d9-b293-4f28-a62b-b2c5b76ac7a0/stock"
+  },
+  "received_at": "2026-10-08T18:25:45.783Z",
+  "response": {
+    "status": 200,
+    "body": {
+      "contract_version": "1",
+      "product_id": "293164d9-b293-4f28-a62b-b2c5b76ac7a0",
+      "quantity_available": "1",
+      "unit": "unidad",
+      "stock_status": "bajo_stock"
+    }
+  }
+}
