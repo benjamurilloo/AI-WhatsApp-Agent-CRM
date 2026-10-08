@@ -14,7 +14,7 @@ generated_at: 2026-10-07
   - `isolated-runtime` para el despliegue y el recorrido del usuario en producción.
 - **Nivel de validación alcanzable**: validado localmente y en CI, y desplegado en producción. No hay consumidor externo: no aplica «validado en integración» con el agente. No es «preparado para producción».
 - **Orden**: cuarta subfase de la Fase 16 ([Roadmap](../planning/Roadmap.md) §Fase 16), después de la 16.3. No depende del agente.
-- **Estado**: **aprobado por el usuario el 2026-10-07**, con las recomendaciones de D-1 a D-10 y la enmienda del ADR 0015. El mismo día, durante la implementación, aprobó la precisión de D-4 y la ampliación del alcance a seis specs end-to-end; el 2026-10-08, la de `identity-schema.test.ts` (§Cambios aprobados durante la implementación).
+- **Estado**: **aprobado por el usuario el 2026-10-07**, con las recomendaciones de D-1 a D-10 y la enmienda del ADR 0015. El mismo día, durante la implementación, aprobó la precisión de D-4 y la ampliación del alcance a seis specs end-to-end; el 2026-10-08, la de `identity-schema.test.ts` (§Cambios aprobados durante la implementación). **Cerrado el 2026-10-08** (§Cierre).
 
 ## Objetivo
 
@@ -262,3 +262,32 @@ La hizo un agente que no participó del trabajo, con acceso de solo lectura, ant
 - **R-8**, nota: el `maxLength` del navegador cuenta unidades UTF-16, y el `CHECK` cuenta caracteres. **Confirmado, sin cambio**: el navegador puede rechazar antes, nunca dejar pasar de más, y el servidor valida igual.
 - **R-9**, nota: `.claude/settings.json`, sin seguimiento, no entra en el commit. **Confirmado**.
 - **Fuera de la lista**, para el cierre: `NonFunctionalRequirements.md` y SecurityModel §Auditoría no nombran todavía `conversation_notes` entre las tablas de solo inserción. La omisión ya existía antes de esta subfase.
+
+## Resultados 16.4.2 (AC-11)
+
+Desplegado en producción el 2026-10-08, con autorización del usuario en el turno, siguiendo «Desplegar un cambio» de `deploy/production/README.md`. Cada comando contra el servidor lo aprobó el usuario antes de que corriera.
+
+1. **CI del SHA exacto**: `975034fb5802575e972c699381f07aab8b00cb76`, `"conclusion":"success"`.
+2. **Lo que estaba desplegado**, anotado en `/var/lib/crm-production/despliegues`: `259d23f7ccb9e162915cbcafe10f208d240f19bd`. Es el SHA para volver atrás.
+3. **Código, dependencias, migraciones, build y reinicio**: la última línea dio `desplegado: 975034fb5802575e972c699381f07aab8b00cb76`, y el servicio quedó `active`.
+4. **Recuentos de `crm_production`**, en una transacción de solo lectura, a las 13:36:50 y a las 13:38:45 UTC: las 19 tablas de antes no cambian. Aparece `conversation_notes` con 0 filas, y `migraciones` pasa de 29 a 31.
+5. **Las migraciones `0029` y `0030`**, también en solo lectura:
+   - el trigger `conversation_notes_insert_only` existe y está habilitado (`O`);
+   - `crm_app` tiene solo `INSERT` y `SELECT` sobre `conversation_notes`;
+   - `audit_action` tiene el valor `note_added`.
+6. **`/login`** responde `200`.
+
+7. **La nota del usuario**, el 2026-10-08: agregó una nota como admin en la pantalla 9 de producción y confirmó que la ve. Del lado de la base, en solo lectura y solo con recuentos: 1 nota, con texto; 1 `note_added` en `audit_logs`; y 0 entradas de auditoría que contengan el texto de la nota.
+
+Nivel: `authenticated-end-to-end` en producción, sobre una nota: el usuario recorrió la pantalla con su sesión, y la base confirma la nota y su auditoría sin el texto.
+
+## Cierre
+
+Cerrada el 2026-10-08 por el usuario, después de recorrerla en producción.
+
+- **Criterios**: AC-1 a AC-11 cumplidos. AC-7 queda, para el log estructurado, verificado por lectura y no por un test.
+- **Nivel**: validado localmente y en CI, verificado en producción (`isolated-runtime`) y recorrido por el usuario (`authenticated-end-to-end`) sobre una nota. No es «preparado para producción».
+- **Decisiones del usuario**: el brief con D-1 a D-10 y la enmienda del ADR 0015; la precisión de D-4; los seis specs end-to-end e `identity-schema.test.ts` fuera de la lista; el commit y el push; el despliegue con la `0029` y la `0030`, con una regla de permisos para `ssh crm-production` y cada comando aprobado a mano; Notion; y el cierre.
+- **Revisión**: independiente para la 16.4.1, antes de las correcciones. Las correcciones y el resto de la subfase, autoevaluación declarada.
+- **Corregido en el cierre**: `NonFunctionalRequirements.md` y SecurityModel §Auditoría nombran ahora las notas, una omisión anterior a la subfase que encontró la revisión.
+- **Notion**: la tarea 16.4 en «Completado».

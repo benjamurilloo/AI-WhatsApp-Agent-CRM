@@ -2,6 +2,24 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-08 — 16.4 cerrada: notas de la conversación
+
+Cuarta subfase de la Fase 16 ([brief-16.4](docs/decisions/brief-16.4-notas-de-la-conversacion.md)), en dos etapas. Commit `975034f` (16.4.1, CI 37783217435, `success`, leída por `headSha`). Desplegada en producción el 2026-10-08 con las migraciones `0029` y `0030` (16.4.2), y recorrida por el usuario el mismo día.
+
+**Certifica**:
+- **Las notas internas**: `conversation_notes`, de solo inserción, escritas solo por un `admin` desde la pantalla 9, en cualquier estado de la conversación, y leídas por los dos roles de a 25. Cada nota deja un `note_added` con el id de la nota y sin el texto; si la auditoría falla, la nota no queda.
+- **El vaciado de un cliente** deja sin texto las notas de sus conversaciones, en la misma transacción que sus mensajes, incluida una nota que se confirma mientras corre. El informe las cuenta y la exportación las trae. La enmienda del ADR 0015 suma la tabla.
+- **Revisión independiente** (D-9): R-1 a R-9, verificados antes del commit; R-1, R-2, R-4 y R-7 corregidos. Las correcciones son autoevaluación.
+- **En producción**: `crm.vixoraai.app` corre `975034f`, con 31 migraciones. Las 19 tablas que había tienen los mismos recuentos antes y después, y `conversation_notes` aparece con 0. El trigger está habilitado y `crm_app` tiene solo `INSERT` y `SELECT` sobre la tabla. Versión anterior: `259d23f`.
+- **El recorrido del usuario**: agregó una nota como admin y la vio. La base tiene 1 nota y 1 `note_added`, y ninguna entrada de auditoría contiene el texto.
+
+**No certifica**:
+- Que el texto no llegue al log estructurado por una prueba: se verificó leyendo el código.
+- El vaciado de una nota escrita después del vaciado: conserva su texto hasta repetirlo, como un mensaje que llega después. Está declarado en el runbook.
+- La causa de dos caídas de proceso en la batería local, un worker de Vitest y el servidor de `next start`, que no se repitieron.
+
+**Nivel**: validado localmente y en CI, verificado en producción (`isolated-runtime`) y recorrido por el usuario con su sesión (`authenticated-end-to-end`) sobre una nota. No es «preparado para producción».
+
 ## 2026-10-07 — 16.3 cerrada: pausar y reanudar al agente
 
 Tercera subfase de la Fase 16 ([brief-16.3](docs/decisions/brief-16.3-pausar-y-reanudar-al-agente.md)), en tres etapas. Commit `259d23f` (16.3.1, CI 37679269082, `success`, leída por `headSha`). Desplegada en producción el 2026-10-07 con la migración `0028` (16.3.2) y validada con el agente el mismo día (16.3.3).
