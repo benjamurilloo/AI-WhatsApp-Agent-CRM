@@ -29,6 +29,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [0014](0014-el-agente-de-whatsapp-como-consumidor-del-crm.md) | El agente de WhatsApp como consumidor del CRM (reemplaza parcialmente al 0003) | aceptada; punto 7 reemplazado por 0016 |
 | [0015](0015-vaciado-de-una-sola-direccion-en-tablas-de-solo-insercion.md) | Vaciado de una sola dirección en las tablas de solo inserción (enmienda al 0013) | aceptada; enmendada el 2026-10-07 por la 16.4, que suma `conversation_notes` |
 | [0016](0016-el-crm-se-amplia-hacia-un-erp-por-fases.md) | El CRM se amplía hacia un ERP, por fases (reemplaza el punto 7 del 0014) | aceptada |
+| [0017](0017-responder-desde-el-crm.md) | Responder desde el CRM: una bandeja de salida que el agente toma, y el registro de lo que se contesta desde la app | aceptada el 2026-10-08, con la implementación pospuesta |
 
 ## Briefs
 
@@ -108,6 +109,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-16.2](brief-16.2-etiquetas-puestas-por-el-agente.md) | 16.2 — Etiquetas puestas por el agente | aprobado el 2026-10-07 con las recomendaciones de D-1 a D-13, y las precisiones de D-7 y de la precedencia del mismo día; cerrado el 2026-10-07 |
 | [brief-16.3](brief-16.3-pausar-y-reanudar-al-agente.md) | 16.3 — Pausar y reanudar al agente | aprobado el 2026-10-07 con las recomendaciones de D-1 a D-11, y la precisión de D-4 del mismo día; cerrado el 2026-10-07 |
 | [brief-16.4](brief-16.4-notas-de-la-conversacion.md) | 16.4 — Notas de la conversación | aprobado el 2026-10-07 con las recomendaciones de D-1 a D-10 y la enmienda del ADR 0015, y la precisión de D-4 del mismo día; cerrado el 2026-10-08 |
+| [brief-16.5](brief-16.5-adr-responder-desde-el-crm.md) | 16.5 — ADR: responder desde el CRM | aprobado el 2026-10-08 con las recomendaciones de D-1 a D-9; cerrado el 2026-10-08 con el ADR 0017 aceptado |
 | [evidencia-9.1](evidencia-9.1-staging.md) | 9.1 — Salidas crudas de la verificación en staging | captura del 2026-09-22 |
 | [evidencia-9.2](evidencia-9.2-backups.md) | 9.2 — Backup y restauración verificados en staging | captura del 2026-09-22 |
 | [evidencia-9.3](evidencia-9.3-volumen.md) | 9.3 — Volumen, planes y tiempos medidos en staging | captura del 2026-09-23 |

@@ -2,6 +2,23 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-08 — 16.5 cerrada: ADR 0017, responder desde el CRM
+
+Quinta subfase de la Fase 16 ([brief-16.5](docs/decisions/brief-16.5-adr-responder-desde-el-crm.md)), solo de diseño. Brief y ADR propuesto en `a5767a7` (CI 37791971029, `success`, leída por `headSha`). Sin despliegue.
+
+**Certifica**:
+- **El [ADR 0017](docs/decisions/0017-responder-desde-el-crm.md), aceptado** por el usuario el 2026-10-08 con la implementación pospuesta. Escribir desde el CRM es una bandeja de salida: el CRM guarda la respuesta pendiente, el agente la lista por la lectura, sin efectos, y la toma, confirma o rechaza por la ingestión v2, con tipos de evento nuevos. A lo sumo una vez. El registro de lo que se contesta desde la app lo haría el agente, con el número en coexistencia.
+- **Respeta los puntos 1 y 5 del ADR 0014**, que suma una nota fechada, y Scope §Sigue fuera: el CRM no llama al agente ni envía mensajes.
+- **Revisión independiente** del ADR propuesto: R-1 a R-10 verificados; R-1 y R-3 decididos por el usuario.
+- **La respuesta del agente**: puede consultar la bandeja cada minuto y tomar, confirmar y rechazar por la ingestión. Su número de prueba no puede estar en coexistencia.
+
+**No certifica**:
+- Nada implementado: ni la bandeja ni el registro desde la app.
+- Que la coexistencia funcione con un número real, ni que Argentina esté habilitada: es documentación de Meta y de terceros, sin probar.
+- Las formas de los errores de Meta que el agente distinguiría, salvo `131030`.
+
+**Nivel**: diseñado.
+
 ## 2026-10-08 — 16.4 cerrada: notas de la conversación
 
 Cuarta subfase de la Fase 16 ([brief-16.4](docs/decisions/brief-16.4-notas-de-la-conversacion.md)), en dos etapas. Commit `975034f` (16.4.1, CI 37783217435, `success`, leída por `headSha`). Desplegada en producción el 2026-10-08 con las migraciones `0029` y `0030` (16.4.2), y recorrida por el usuario el mismo día.

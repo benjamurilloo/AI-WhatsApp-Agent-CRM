@@ -12,7 +12,7 @@ generated_at: 2026-10-08
 - **Nivel de evidencia objetivo**: ninguno de ejecución. Lo que se afirme de Meta o del agente se declara con su fuente y su nivel: «documentado por terceros», «confirmado por el agente» o «pendiente».
 - **Nivel de validación alcanzable**: diseñado.
 - **Orden**: quinta subfase de la Fase 16 ([Roadmap](../planning/Roadmap.md) §Fase 16), después de la 16.4. Elegida por el usuario el 2026-10-08.
-- **Estado**: **aprobado por el usuario el 2026-10-08**, con las recomendaciones de D-1 a D-9. La tarea 16.5 está en «En proceso» en Notion desde ese día.
+- **Estado**: **aprobado por el usuario el 2026-10-08**, con las recomendaciones de D-1 a D-9. La tarea 16.5 estuvo en «En proceso» en Notion desde ese día. **Cerrado el 2026-10-08** (§Cierre).
 
 ## Objetivo
 
@@ -186,3 +186,28 @@ La hizo un agente que no participó del trabajo, con acceso de solo lectura, el 
 - **R-10**, nota: la cita de IntegrationBoundaries omitía su condición, «si algún día lo hiciera». **Confirmado y corregido.** `.claude/settings.json` no entra en ningún commit.
 
 Las correcciones son autoevaluación: el revisor no las vio.
+
+### La respuesta del agente (D-6)
+
+Pedido entregado el 2026-10-08 por el usuario, en su Escritorio; respuesta del agente del mismo día. Lo que contestó está en el ADR, §Lo que confirmó el agente:
+
+- **P-1**: el número de producción es el número de prueba de Meta, que no puede estar en coexistencia. Con un número real, la da de alta un Solution Partner o un Tech Provider, y el agente no es ninguno de los dos.
+- **P-2**: los ecos los documenta Meta; sin probar, porque depende de P-1.
+- **P-3**: puede consultar la bandeja una vez por minuto.
+- **P-4**: puede tomar, confirmar y rechazar, si la toma responde en el momento y una toma repetida se distingue de un error. Propone una lista de motivos de rechazo.
+
+Ninguna respuesta contradice una premisa del ADR (condición de detención): P-1 la deja sin aplicar, como el ADR preveía.
+
+### La decisión del usuario (AC-7)
+
+El 2026-10-08 el usuario **aceptó el ADR 0017 y pospuso su implementación**: la bandeja se abre como subfase con un negocio real atendido, y el registro desde la app espera a que el número real esté en coexistencia. Las enmiendas de D-7 están escritas: la nota en el ADR 0014, IntegrationBoundaries, una fila en Risks y el Roadmap (AC-6).
+
+## Cierre
+
+Cerrada el 2026-10-08 por el usuario.
+
+- **Criterios**: AC-1 a AC-7 cumplidos.
+- **Nivel**: diseñado. No hay código ni ejecución.
+- **Decisiones del usuario**: el brief con D-1 a D-9; R-1, la toma por la ingestión; R-3, a lo sumo una vez; el pedido al agente; aceptar el ADR y posponer su implementación; y el cierre.
+- **Revisión**: independiente para el ADR propuesto. Las correcciones y la actualización con la respuesta del agente, autoevaluación declarada.
+- **Notion**: la tarea 16.5 en «Completado».
