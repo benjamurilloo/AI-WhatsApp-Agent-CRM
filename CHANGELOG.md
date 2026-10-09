@@ -2,6 +2,24 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-09 — 17.5 cerrada: imágenes de producto
+
+Quinta subfase de la Fase 17 ([brief-17.5](docs/decisions/brief-17.5-imagenes-de-producto.md), [ADR 0018](docs/decisions/0018-imagenes-de-producto.md)), en dos etapas. Commits `e4f9db0` (17.5.1; CI 37953122201 en `failure` por la guarda de IPs) y `45e7b70` (la corrección; CI 37966056630, `success`, leída por `headSha`). Desplegada en producción el 2026-10-09 con la migración `0034` (17.5.2), y recorrida por el usuario el mismo día.
+
+**Certifica**:
+- **Una imagen principal por producto** (FR-PROD-16 a 18), guardada en PostgreSQL (`product_images`, sin `UPDATE` para `crm_app`) como JPEG de 1600 px y miniatura de 400, sin metadatos, girada y aplanada sobre blanco. JPEG, PNG o WebP reconocidos por el contenido; sin SVG, GIF ni animadas (también APNG), hasta 5 MB y 40 MP. Enmienda el ADR 0018: JPEG en lugar de WebP, porque el agente lo necesita.
+- **La subida** por `PUT /productos/{id}/imagen` valida sesión, `Origin`, rol, cupo (20 en 10 minutos) y tamaño antes de leer el cuerpo, y procesa de a una por vez; nginx admite 6 MB solo en esa ruta. Se sirve privada, con `?v=` del hash e inmutable. Quitar es una Server Action. Cada cambio queda en la auditoría sin bytes.
+- **El aviso de tamaño de la base**: `crm-db-size` corre después de cada backup y avisa a Healthchecks.io si la base pasa de 1 GB; con el umbral bajado a propósito, la alerta llegó al usuario. El simulacro de restauración compara cada imagen con su hash.
+- **Revisión independiente** de la 17.5.1: H-1 a H-9, resueltos o declarados antes del commit. Mutaciones M1 a M8, cada una en rojo.
+- **En producción**: `crm.vixoraai.app` corre `45e7b70`. Las 22 tablas existentes, iguales antes y después; `product_images`, vacía; 35 migraciones. Versión anterior: `2e983ac`.
+
+**No certifica**:
+- El simulacro de restauración entero con imágenes: el primero con la tabla en el backup es el del 2026-11-01.
+- Que el agente lea las imágenes: subfase posterior, sin número, con su contrato.
+- Más de una imagen por producto, ni el rendimiento con cientos de imágenes.
+
+**Nivel**: validado localmente y en CI, validado en integración para la pantalla y desplegado en producción con el recorrido del usuario y la alerta provocada (`isolated-runtime`). No es «preparado para producción».
+
 ## 2026-10-09 — 17.4 cerrada: horario de atención estructurado
 
 Cuarta subfase de la Fase 17 ([brief-17.4](docs/decisions/brief-17.4-informacion-del-negocio-estructurada.md)), en dos etapas. Commit `2e983ac` (17.4.1, CI 37931370268, `success` en el segundo intento, leída por `headSha`). Desplegada en producción el 2026-10-09 con la migración `0033` (17.4.2), y recorrida por el usuario el mismo día.
