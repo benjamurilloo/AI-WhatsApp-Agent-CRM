@@ -6,6 +6,9 @@ import {
   formatMeasure,
   HEIGHT_MESSAGE,
   FORBIDDEN_ACTION_MESSAGE,
+  IMAGE_TOO_LARGE_MESSAGE,
+  imageUploadMessage,
+  type ImageUploadError,
   INACTIVE_PRODUCT_NOTICE,
   noticeMessage,
   productChangeMessage,
@@ -177,5 +180,39 @@ describe("campos de operación (brief-17.2)", () => {
     expect(formatMeasure("20.5")).toBe("20,5");
     expect(formatMeasure("0.005")).toBe("0,005");
     expect(formatMeasure("9999999.999")).toBe("9999999,999");
+  });
+});
+
+describe("imageUploadMessage (brief-17.5, D-7)", () => {
+  it("traduce cada respuesta de la subida, sin dejar ninguna en blanco", () => {
+    const errors: ImageUploadError[] = [
+      "unauthenticated",
+      "forbidden",
+      "not_found",
+      "rate_limited",
+      "busy",
+      "length_required",
+      "too_large",
+      "empty",
+      "unsupported_format",
+      "too_many_pixels",
+      "animated",
+      "unreadable",
+      "internal",
+    ];
+    for (const error of errors) {
+      expect(imageUploadMessage(error), error).toMatch(/\S/);
+    }
+    expect(imageUploadMessage("forbidden")).toBe(FORBIDDEN_ACTION_MESSAGE);
+    expect(imageUploadMessage("not_found")).toBe(PRODUCT_NOT_FOUND_MESSAGE);
+    expect(imageUploadMessage("too_large")).toBe(IMAGE_TOO_LARGE_MESSAGE);
+    expect(imageUploadMessage("unsupported_format")).toContain(
+      "JPEG, PNG o WebP",
+    );
+  });
+
+  it("los avisos de la ficha cubren subir y quitar la imagen", () => {
+    expect(noticeMessage("imagen-subida")).toBe("Imagen guardada.");
+    expect(noticeMessage("imagen-quitada")).toBe("Imagen quitada.");
   });
 });

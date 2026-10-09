@@ -2,6 +2,7 @@
 
 - Estado: **aceptada** (decisión del usuario del 2026-10-08, después de la revisión independiente; subfase 17.3, [brief-17.3](brief-17.3-adr-de-las-imagenes.md)). **El agente contestó el mismo día** (§Lo que contestó el agente): usaría la ruta del punto 7, y la necesita en JPEG. La implementación del CRM es la 17.5, después de la 17.4; la ruta del agente, una subfase posterior.
 - Fecha: 2026-10-08
+- *Enmendado el 2026-10-09 por el [brief-17.5](brief-17.5-imagenes-de-producto.md), D-1, como este ADR delegaba*: **la versión guardada es JPEG**, no WebP, y la ruta que sirve responde `image/jpeg` (puntos 4 y 5). Así la ruta posterior del agente entrega lo guardado, sin convertir en cada pedido. Una imagen con transparencia se aplana sobre blanco.
 - Nivel: **diseñado**. No hay código ni ejecución.
 
 ## Contexto
@@ -55,7 +56,7 @@ Por qué en la base, y no en el disco ni en un bucket:
 
 ### 5. Se sirven desde el mismo origen
 
-Una ruta del CRM devuelve la imagen o su miniatura. Exige sesión, comprueba que la imagen sea de la organización de quien la pide, responde con su tipo fijo (`image/webp`) y `X-Content-Type-Options: nosniff`, y se cachea por el hash del contenido con `Cache-Control: private`, nunca `public`, así que reemplazar la imagen cambia la dirección. Límite: la copia queda en la caché del navegador después de cerrar la sesión. **La CSP no cambia**: sigue `img-src 'self'`.
+Una ruta del CRM devuelve la imagen o su miniatura. Exige sesión, comprueba que la imagen sea de la organización de quien la pide, responde con su tipo fijo (`image/webp`; `image/jpeg` desde la enmienda del 2026-10-09) y `X-Content-Type-Options: nosniff`, y se cachea por el hash del contenido con `Cache-Control: private`, nunca `public`, así que reemplazar la imagen cambia la dirección. Límite: la copia queda en la caché del navegador después de cerrar la sesión. **La CSP no cambia**: sigue `img-src 'self'`.
 
 ### 6. Quién sube y quién ve
 

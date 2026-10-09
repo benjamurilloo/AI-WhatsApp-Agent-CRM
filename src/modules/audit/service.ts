@@ -4,7 +4,9 @@ import {
   countAuditLogs,
   findAuditLogs,
   insertAuditLog,
+  countRecentUserChanges as countRecentUserChangeRows,
   type AuditLogQuery,
+  type RecentUserChangesQuery,
 } from "./repository";
 import { auditAction, auditEntityType } from "./schema";
 
@@ -204,4 +206,12 @@ export async function listEntityAuditLogs(
     page,
     pageCount,
   };
+}
+
+// El límite de tasa de quien escribe (brief-17.5, D-5). Como la lectura del historial, no
+// autoriza: quien llama ya verificó el rol y la organización.
+export function countRecentUserChanges(
+  query: RecentUserChangesQuery,
+): Promise<{ total: number; oldestLeavesInSeconds: number }> {
+  return countRecentUserChangeRows(query);
 }

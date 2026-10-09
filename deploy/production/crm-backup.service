@@ -8,6 +8,8 @@ Requires=postgresql.service
 # (brief-13.3, D-3): OnSuccess= es una lista, y cada linea agrega una unidad.
 OnSuccess=crm-backup-offsite.service
 OnSuccess=crm-heartbeat@backup.service
+# El aviso de tamano de la base, una vez por dia despues del backup (brief-17.5, D-9).
+OnSuccess=crm-db-size.service
 
 [Service]
 Type=oneshot

@@ -1075,15 +1075,17 @@ describe("producción: cada trabajo programado manda su aviso de vida", () => {
     expect(trabajosSinAviso(PROD_ARCHIVOS)).toEqual([]);
   });
 
-  it("recorre los tres trabajos: el backup, la copia externa y el ejercicio", () => {
+  it("recorre los cuatro trabajos: el backup, la copia externa, el tamaño de la base y el ejercicio", () => {
     // El control del anterior: si el recorrido no siguiera los OnSuccess=, la copia
-    // externa, que no tiene timer, quedaría fuera y el caso de arriba pasaría igual.
+    // externa y el tamaño de la base, que no tienen timer, quedarían fuera y el caso de
+    // arriba pasaría igual. El tamaño de la base se sumó en la 17.5 (D-9).
     const avisos = [...PROD_ARCHIVOS.values()]
       .flatMap((texto) => valores(parsearUnidad(texto), "Unit", "OnSuccess"))
       .filter((s) => AVISO.test(s))
       .sort();
     expect(avisos).toEqual([
       "crm-heartbeat@backup.service",
+      "crm-heartbeat@db-size.service",
       "crm-heartbeat@offsite.service",
       "crm-heartbeat@restore-check.service",
     ]);

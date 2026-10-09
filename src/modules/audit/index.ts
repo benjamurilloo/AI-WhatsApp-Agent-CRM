@@ -2,6 +2,7 @@
 export {
   AUDIT_PAGE_SIZE,
   auditUserIds,
+  countRecentUserChanges,
   InvalidAuditEntryError,
   listEntityAuditLogs,
   nameAuditActors,

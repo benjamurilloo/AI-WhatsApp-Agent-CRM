@@ -24,7 +24,9 @@
 #
 # LIMITES DECLARADOS, para no confundir lo que esto comprueba con lo que no:
 #
-#   - **No compara ni un solo valor de columna.** Compara que esten las mismas tablas y
+#   - **No compara ni un solo valor de columna, salvo uno**: desde la 17.5, cada imagen de
+#     producto contra el sha256 que guardo al subirse (product_images.image; la miniatura no
+#     tiene hash y no se comprueba). Del resto compara que esten las mismas tablas y
 #     que tengan la misma cantidad de filas. Un dump con las filas correctas en cantidad
 #     pero con contenido alterado pasa este ejercicio. Detectar eso exigiria comparar
 #     sumas por tabla, y no esta hecho. Lo que si acota el riesgo es el `sha256` del
@@ -205,6 +207,20 @@ if [[ $duenos != "$esperado" ]]; then
 fi
 
 echo "OK: las tablas restauradas siguen siendo de $duenos"
+
+# --- El contenido de las imagenes (brief-17.5, D-10) ---------------------------
+#
+# Los recuentos no miran ningun valor. Una imagen de producto guarda al subirse el hash de
+# su propio contenido, asi que cada una se compara contra el suyo, en la base restaurada:
+# no contra el origen, que cambia con el trafico. Una imagen corrupta en el dump falla aca.
+# La consulta es la misma que corre tests/integration/product-images.test.ts.
+CONSULTA_IMAGENES="select count(*) from public.product_images where encode(sha256(image), 'hex') <> sha256"
+alteradas=$(psql --dbname="$DESTINO" --tuples-only --no-align --command="$CONSULTA_IMAGENES")
+if [[ $alteradas != "0" ]]; then
+  echo "FALLA: $alteradas imagenes de producto no coinciden con su hash en lo restaurado." >&2
+  exit 1
+fi
+echo "OK: cada imagen de producto coincide con su hash"
 
 # --- El borrado ----------------------------------------------------------------
 #

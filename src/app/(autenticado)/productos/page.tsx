@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getCurrentPrices, listProductFilterOptions } from "@/modules/catalog";
+import {
+  getCurrentPrices,
+  getProductImageVersions,
+  listProductFilterOptions,
+} from "@/modules/catalog";
 import { listProductStock } from "@/modules/inventory";
 import { requireSession } from "@/app/_auth/session";
 import {
@@ -43,6 +47,7 @@ import {
   NO_PRODUCT_RESULTS_MESSAGE,
   NO_PRODUCTS_MESSAGE,
 } from "./messages";
+import { ProductThumbnail } from "./product-image-view";
 import { StockStatusBadge } from "./stock-status";
 
 export const metadata: Metadata = {
@@ -75,11 +80,13 @@ export default async function ProductsPage({
     return <PageNotice title={TITLE} message={FORBIDDEN_PAGE_MESSAGE} />;
   }
 
-  // Solo los precios de la página que se muestra.
-  const found = await getCurrentPrices(
-    context,
-    result.products.map((product) => product.id),
-  );
+  // Solo los precios y las miniaturas de la página que se muestra (brief-17.5, D-7).
+  const pageIds = result.products.map((product) => product.id);
+  const [found, imageVersions] = await Promise.all([
+    getCurrentPrices(context, pageIds),
+    getProductImageVersions(context, pageIds),
+  ]);
+  const thumbnails = imageVersions.ok ? imageVersions.versions : new Map();
   const prices = found.ok ? found.prices : new Map();
   const priceText = (productId: string) => {
     const price = prices.get(productId);
@@ -314,13 +321,19 @@ export default async function ProductsPage({
                       {product.sku}
                     </td>
                     <td className={`${cellClass} font-semibold`}>
-                      <Link
-                        id={`producto-${product.id}`}
-                        href={`/productos/${product.id}`}
-                        className={linkClass}
-                      >
-                        {product.name}
-                      </Link>
+                      <span className="flex items-center gap-2.5">
+                        <ProductThumbnail
+                          productId={product.id}
+                          version={thumbnails.get(product.id)}
+                        />
+                        <Link
+                          id={`producto-${product.id}`}
+                          href={`/productos/${product.id}`}
+                          className={linkClass}
+                        >
+                          {product.name}
+                        </Link>
+                      </span>
                     </td>
                     <td className={cellClass}>{product.brand ?? "—"}</td>
                     <td className={cellClass}>{product.category ?? "—"}</td>
@@ -369,15 +382,24 @@ export default async function ProductsPage({
           >
             {result.products.map((product) => (
               <li key={product.id} className={`${cardClass} p-4`}>
-                <p className="font-semibold">
-                  <Link href={`/productos/${product.id}`} className={linkClass}>
-                    {product.name}
-                  </Link>
-                  {product.isActive ? null : (
-                    <span className="ml-2 text-sm font-normal text-muted">
-                      · Inactivo
-                    </span>
-                  )}
+                <p className="flex items-center gap-2.5 font-semibold">
+                  <ProductThumbnail
+                    productId={product.id}
+                    version={thumbnails.get(product.id)}
+                  />
+                  <span>
+                    <Link
+                      href={`/productos/${product.id}`}
+                      className={linkClass}
+                    >
+                      {product.name}
+                    </Link>
+                    {product.isActive ? null : (
+                      <span className="ml-2 text-sm font-normal text-muted">
+                        · Inactivo
+                      </span>
+                    )}
+                  </span>
                 </p>
                 {product.brand || product.category ? (
                   <p className="mt-1 text-sm text-muted">

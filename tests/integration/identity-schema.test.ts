@@ -76,6 +76,7 @@ describe("base de test", () => {
       "messages",
       "organization_members",
       "organizations",
+      "product_images",
       "product_prices",
       "products",
       "sessions",

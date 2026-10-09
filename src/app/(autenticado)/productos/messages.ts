@@ -275,6 +275,8 @@ const NOTICES: Record<string, string> = {
   desactivado: "Producto desactivado.",
   reactivado: "Producto reactivado.",
   ajustado: "Ajuste registrado.",
+  "imagen-subida": "Imagen guardada.",
+  "imagen-quitada": "Imagen quitada.",
 };
 
 export function noticeMessage(
@@ -282,4 +284,57 @@ export function noticeMessage(
 ): string | null {
   const key = Array.isArray(value) ? value[0] : value;
   return key && Object.hasOwn(NOTICES, key) ? NOTICES[key]! : null;
+}
+
+// Imagen de producto (brief-17.5, D-7). La subida va por fetch a un Route Handler, que responde un
+// código; la pantalla lo traduce acá.
+export const IMAGE_RULES_MESSAGE =
+  "JPEG, PNG o WebP, hasta 5 MB. Se guarda reducida a 1600 px y sin los datos de la cámara ni la ubicación.";
+export const IMAGE_PEOPLE_NOTICE =
+  "La imagen es del producto: no subas fotos en las que se vean personas.";
+export const IMAGE_TOO_LARGE_MESSAGE = "La imagen pesa más de 5 MB.";
+
+export type ImageUploadError =
+  | "unauthenticated"
+  | "forbidden"
+  | "not_found"
+  | "rate_limited"
+  | "busy"
+  | "length_required"
+  | "too_large"
+  | "empty"
+  | "unsupported_format"
+  | "too_many_pixels"
+  | "animated"
+  | "unreadable"
+  | "internal";
+
+export function imageUploadMessage(error: ImageUploadError): string {
+  switch (error) {
+    case "unauthenticated":
+      return "Tu sesión venció. Volvé a ingresar y probá de nuevo.";
+    case "forbidden":
+      return FORBIDDEN_ACTION_MESSAGE;
+    case "not_found":
+      return PRODUCT_NOT_FOUND_MESSAGE;
+    case "rate_limited":
+      return "Subiste muchas imágenes seguidas. Probá de nuevo en unos minutos.";
+    case "busy":
+      return "Se está procesando otra imagen. Probá de nuevo en unos segundos.";
+    case "too_large":
+      return IMAGE_TOO_LARGE_MESSAGE;
+    case "empty":
+      return "El archivo está vacío.";
+    case "unsupported_format":
+      return "El archivo no es una imagen JPEG, PNG o WebP.";
+    case "too_many_pixels":
+      return "La imagen tiene demasiados píxeles: hasta 40 megapíxeles.";
+    case "animated":
+      return "Las imágenes animadas no se aceptan. Subí una imagen fija.";
+    case "length_required":
+    case "unreadable":
+      return "No se pudo leer la imagen. Probá con otro archivo.";
+    case "internal":
+      return "No se pudo guardar la imagen. Probá de nuevo.";
+  }
 }

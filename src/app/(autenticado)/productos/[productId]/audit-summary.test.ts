@@ -68,6 +68,22 @@ describe("describeAuditDiff", () => {
     ).toBe("Punto de reposición: 5 → 10 · Nombre: Café → Café molido");
   });
 
+  it("FR-PROD-16: subir, reemplazar y quitar la imagen se leen con el hash corto y el tamaño", () => {
+    const image = (before: string | null, after: string | null) =>
+      describeAuditDiff(
+        entry({ diff: { before: { image: before }, after: { image: after } } }),
+      );
+    expect(image(null, "a1b2c3d4, 182 KB")).toBe(
+      "Imagen: sin imagen → a1b2c3d4, 182 KB",
+    );
+    expect(image("a1b2c3d4, 182 KB", "9f8e7d6c, 95 KB")).toBe(
+      "Imagen: a1b2c3d4, 182 KB → 9f8e7d6c, 95 KB",
+    );
+    expect(image("9f8e7d6c, 95 KB", null)).toBe(
+      "Imagen: 9f8e7d6c, 95 KB → sin imagen",
+    );
+  });
+
   it("una desactivación se lee como sí o no", () => {
     expect(
       describeAuditDiff(

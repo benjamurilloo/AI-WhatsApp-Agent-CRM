@@ -23,7 +23,7 @@ test.beforeAll(() => {
 test.afterAll(async () => {
   await db.execute(
     sql`truncate table conversation_notes, messages, conversations, client_tag_assignments, clients, knowledge_entries,
-        inventory_movements, inventories, product_prices, products`,
+        inventory_movements, inventories, product_images, product_prices, products`,
   );
   await db.$client.end();
 });
@@ -34,7 +34,7 @@ test.beforeEach(async () => {
   // referencia (6.1).
   await db.execute(
     sql`truncate table audit_logs, ingestion_events, conversation_notes, messages, conversations, client_tag_assignments, clients,
-        knowledge_entries, inventory_movements, inventories, product_prices, products`,
+        knowledge_entries, inventory_movements, inventories, product_images, product_prices, products`,
   );
   await db.execute(sql`delete from login_attempts`);
   await db.execute(sql`delete from sessions`);

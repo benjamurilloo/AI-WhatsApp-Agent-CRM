@@ -243,13 +243,13 @@ Los pasos van encadenados con `&&`: si falla la escritura de un archivo, la cont
 
 El rol con login de la aplicación, `crm_app_login`, se crea como dice el paso 6 del aprovisionamiento. **Diseñado, no ejecutado**: AC-18 restauró en un contenedor y no levantó la aplicación.
 
-**5. La comprobación servidor contra repositorio cubre los catorce archivos** de la tabla del README de producción, no los seis de staging. Entre ellos van los dos de la copia externa, los dos del aviso de vida (13.3) y la retención del journal (13.4). *Corregido el 2026-10-01*: decía once, la cuenta de la 13.1, y el bucle no cubría los archivos del aviso de vida.
+**5. La comprobación servidor contra repositorio cubre los dieciséis archivos** de la tabla del README de producción, no los seis de staging. Entre ellos van los dos de la copia externa, los dos del aviso de vida (13.3), la retención del journal (13.4) y los dos del aviso de tamaño de la base (17.5). *Corregido el 2026-10-09*: decía catorce, la cuenta anterior a la 17.5. *Corregido el 2026-10-01*: decía once, la cuenta de la 13.1, y el bucle no cubría los archivos del aviso de vida.
 
 ```
-for f in crm-backup.sh crm-backup-offsite.sh crm-restore-check.sh crm-heartbeat.sh; do
+for f in crm-backup.sh crm-backup-offsite.sh crm-restore-check.sh crm-heartbeat.sh crm-db-size.sh; do
   ssh crm-production "sudo cat /usr/local/bin/$f" | diff - "deploy/production/$f" && echo "$f OK"
 done
-for f in crm-production.service crm-backup.service crm-backup-offsite.service crm-backup.timer crm-restore-check.service crm-restore-check.timer crm-heartbeat@.service; do
+for f in crm-production.service crm-backup.service crm-backup-offsite.service crm-backup.timer crm-restore-check.service crm-restore-check.timer crm-heartbeat@.service crm-db-size.service; do
   ssh crm-production "sudo cat /etc/systemd/system/$f" | diff - "deploy/production/$f" && echo "$f OK"
 done
 ssh crm-production "sudo cat /etc/nginx/sites-available/crm-production" | diff - deploy/production/nginx-crm-production.conf && echo "nginx OK"
@@ -274,5 +274,5 @@ Un vaciado aplicado dos veces no cambia nada ni falla, así que ante la duda se 
 - **Restaurar al volumen real.** Staging tiene datos sintéticos y pocos. El tiempo de restauración que sale acá no predice el de una base con volumen; esa medición es de la [9.3](../planning/Roadmap.md).
 - **Restaurar en un servicio gestionado.** Podría exigir superusuario para `createdb` o para los `GRANT`. Está sin verificar y condiciona la elección de hosting de producción.
 - **La copia fuera del droplet de staging.** Es manual (D-1, opción b): si la máquina de destino no está encendida, ese día no hay copia externa. En producción es automática y cifrada (brief-13.1, D-8; sección «Producción»).
-- **Que el contenido de los datos sea el correcto.** El ejercicio compara qué tablas hay y cuántas filas tienen. **No compara ni un solo valor de columna**, ni índices, ni restricciones, ni triggers — el `messages_insert_only` no se ejercita. Un dump con la cantidad de filas correcta y el contenido alterado pasaría. Lo que acota ese riesgo es el `sha256`: si el archivo es el que el backup escribió, su contenido es el que era.
+- **Que el contenido de los datos sea el correcto.** El ejercicio compara qué tablas hay y cuántas filas tienen. **No compara ni un solo valor de columna**, salvo uno desde la 17.5: cada imagen de producto contra el hash que guardó al subirse (la miniatura no tiene hash y no se comprueba). Tampoco compara índices, ni restricciones, ni triggers — el `messages_insert_only` no se ejercita. Un dump con la cantidad de filas correcta y el contenido alterado pasaría. Lo que acota ese riesgo es el `sha256`: si el archivo es el que el backup escribió, su contenido es el que era.
 - **Que alguien sepa hacer esto bajo presión.** Un ejercicio en calma no es un simulacro. Y hay una variante peor, medida acá: **un runbook ejecutado por quien lo escribió no está ejecutado.** El paso 2 de la recuperación real no se podía correr —faltaba `sudo`— y el simulacro no lo detectó porque lo corrí yo, poniendo el `sudo` por costumbre en vez de leer el texto publicado. Lo encontró una revisión que leyó el texto sin saber la respuesta.

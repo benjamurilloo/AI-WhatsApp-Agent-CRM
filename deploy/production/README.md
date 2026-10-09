@@ -39,9 +39,11 @@ Cada una es una decisión del brief, o su consecuencia directa.
 | `postgresql-crm-production.conf` | `/etc/postgresql/18/main/conf.d/crm-production.conf` |
 | `crm-heartbeat.sh` | `/usr/local/bin/crm-heartbeat.sh`, `0755` |
 | `crm-heartbeat@.service` | `/etc/systemd/system/crm-heartbeat@.service` |
+| `crm-db-size.sh` | `/usr/local/bin/crm-db-size.sh`, `0755` (desde la 17.5) |
+| `crm-db-size.service` | `/etc/systemd/system/crm-db-size.service` (desde la 17.5) |
 | `journald-crm-production.conf` | `/etc/systemd/journald.conf.d/crm-production.conf`, `0644` |
 
-El número de archivos se cuenta, no se hereda: `ls deploy/production/ | grep -v README | wc -l` tiene que dar lo mismo que las filas de esta tabla (**14**, desde la 13.4; eran 13 desde la 13.3 y 11 antes).
+El número de archivos se cuenta, no se hereda: `ls deploy/production/ | grep -v README | wc -l` tiene que dar lo mismo que las filas de esta tabla (**16**, desde la 17.5; eran 14 desde la 13.4, 13 desde la 13.3 y 11 antes).
 
 ## Lo que NO está acá, a propósito
 
@@ -254,7 +256,7 @@ La 13.1.2 ejecutó una vuelta atrás completa el 2026-09-29 (AC-21): de `938423d
 
 Los mismos cinco pasos de staging, con `crm-production` en lugar de `crm-staging` y `crm.vixoraai.app` en lugar de `staging.vixoraai.app`, más dos pasos propios de producción:
 
-1. **La configuración desplegada es la versionada** (O-9). Se hace el `diff` de los **catorce** archivos de la tabla, como en staging, con el bucle del [runbook de restauración](../../docs/runbooks/restaurar-la-base.md) §Producción, punto 5. Eran once hasta la 13.3 y trece hasta la 13.4.
+1. **La configuración desplegada es la versionada** (O-9). Se hace el `diff` de los **dieciséis** archivos de la tabla, como en staging, con el bucle del [runbook de restauración](../../docs/runbooks/restaurar-la-base.md) §Producción, punto 5. Eran once hasta la 13.3, trece hasta la 13.4 y catorce hasta la 17.5.
 2. **Un solo salto de proxy**, medido por consecuencia (AC-14). Se comparan hashes y **nunca se versiona ni la IP ni su hash**.
 3. **HSTS** presente sobre HTTPS y ausente sobre HTTP.
 4. **La aplicación escucha solo en loopback.**
@@ -270,6 +272,7 @@ Desde la 13.3 ([brief-13.3](../../docs/decisions/brief-13.3-disponibilidad-y-obs
 | --- | --- | --- |
 | La aplicación y la base, desde afuera | Un chequeo de Uptime de DigitalOcean consulta `https://crm.vixoraai.app/api/health` desde cuatro regiones. `/api/health` consulta la base y responde `503` si no llega. Alertas: caída (2 min de espera), latencia de más de 2000 ms durante 5 min, y certificado a 14 días de vencer. Llegan por email | D-1 y D-2 |
 | El backup diario, la copia externa y el ejercicio mensual de restauración | Cada uno, al terminar bien, dispara `crm-heartbeat@<trabajo>.service`, que manda un aviso de vida a Healthchecks.io. Si el aviso no llega a tiempo, alerta por email y Telegram. Backup y copia: `15 3 * * *` UTC con 1 h de gracia; ejercicio: `30 4 1 * *` UTC con 2 h | D-3 |
+| El tamaño de la base | `crm-db-size.service`, que dispara el backup al terminar bien, consulta `pg_database_size` y manda el aviso de vida `db-size` **solo mientras la base esté bajo 1 GB**. Pasado el umbral, el aviso no llega y Healthchecks.io alerta por los mismos canales. Si el backup falla, este trabajo no corre: alertan los dos | brief-17.5, D-9 |
 | El disco y la memoria del droplet | Alertas de recursos de DigitalOcean sobre las métricas de `do-agent`: disco por encima del 80 % durante 5 min y memoria por encima del 90 % durante 10 min. Llegan por email | D-4 |
 
 **Cuánto tarda cada alerta**, medido el 2026-09-30 con fallas provocadas ([evidencia de la 13.3](../../docs/decisions/evidencia-13.3-disponibilidad.md)). Cada número salió de una o dos mediciones: es un orden de magnitud, no una garantía.
@@ -321,6 +324,49 @@ ssh crm-production 'for t in backup offsite restore-check; do sudo systemctl sta
 ```
 
 Cada uno tiene que decir `success` y, entre sus tres últimas líneas, `Aviso de '<trabajo>' enviado.` Las otras dos son de systemd («Deactivated successfully» y «Finished»). Además, el servicio externo tiene que mostrar el aviso recibido. Un error dice el código de salida de `curl`, nunca la URL.
+
+### El aviso de tamaño de la base (17.5)
+
+Desde la 17.5 ([brief-17.5](../../docs/decisions/brief-17.5-imagenes-de-producto.md), D-9). **El usuario** crea en Healthchecks.io un chequeo diario con 1 h de gracia, como el del backup, y el operador agrega su URL a `heartbeat.env` con el mismo cuidado de arriba:
+
+```
+HEARTBEAT_URL_DB_SIZE=<la URL del aviso del tamaño de la base>
+```
+
+Las unidades, con el código ya desplegado:
+
+```
+ssh crm-production 'set -euo pipefail
+cd /srv/crm-production/deploy/production
+sudo install -m 0755 -o root -g root crm-db-size.sh /usr/local/bin/crm-db-size.sh
+sudo install -m 0755 -o root -g root crm-heartbeat.sh /usr/local/bin/crm-heartbeat.sh
+sudo install -m 0755 -o root -g root crm-restore-check.sh /usr/local/bin/crm-restore-check.sh
+for f in crm-db-size.service crm-backup.service; do
+  sudo install -m 0644 -o root -g root "$f" "/etc/systemd/system/$f"
+done
+sudo systemctl daemon-reload
+sudo systemd-analyze verify /etc/systemd/system/crm-db-size.service /etc/systemd/system/crm-backup.service
+sudo systemctl start crm-db-size.service
+systemctl show -p Result --value crm-db-size.service
+sudo journalctl -u crm-db-size.service -u crm-heartbeat@db-size.service -n 6 -o cat --no-pager'
+```
+
+Tiene que decir `success`, `OK: la base ocupa … MB, bajo el umbral de 1024 MB.` y `Aviso de 'db-size' enviado.`
+
+**Provocar la alerta** (AC-14 de la 17.5). El umbral se baja con un archivo que la unidad lee si existe; el chequeo, con un período corto mientras dura la prueba, para no esperar un día:
+
+```
+ssh crm-production 'echo CRM_DB_SIZE_THRESHOLD_BYTES=1 | sudo tee /etc/crm-production/db-size.env > /dev/null
+sudo systemctl start crm-db-size.service || true
+systemctl show -p Result --value crm-db-size.service
+sudo journalctl -u crm-db-size.service -n 3 -o cat --no-pager'
+```
+
+Tiene que decir `exit-code` y `FALLA: la base ocupa … por encima del umbral`, sin aviso de vida; al vencer el período, Healthchecks.io alerta. Después se **borra el archivo**, se vuelve a correr la unidad, que manda su aviso, y se restaura el período del chequeo:
+
+```
+ssh crm-production 'sudo rm /etc/crm-production/db-size.env && sudo systemctl start crm-db-size.service && systemctl show -p Result --value crm-db-size.service'
+```
 
 ## Retención del journal
 

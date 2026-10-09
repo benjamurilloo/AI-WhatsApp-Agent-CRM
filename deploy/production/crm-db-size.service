@@ -1,0 +1,27 @@
+[Unit]
+Description=Aviso de tamano de la base de produccion (brief-17.5, D-9)
+Documentation=file:///srv/crm-production/deploy/production/README.md
+# Termina bien solo con la base bajo el umbral, y solo entonces manda su aviso de vida.
+# Pasado el umbral, el aviso no llega y la alerta suena por ausencia, como con el backup
+# (brief-13.3, D-3). Lo dispara el OnSuccess= de crm-backup.service.
+OnSuccess=crm-heartbeat@db-size.service
+
+[Service]
+Type=oneshot
+# Como `postgres`, por peer auth y sin ningun secreto, como el ejercicio de restauracion.
+User=postgres
+Group=postgres
+# Opcional: el umbral bajado a proposito para provocar la alerta (crm-db-size.sh).
+EnvironmentFile=-/etc/crm-production/db-size.env
+ExecStart=/usr/local/bin/crm-db-size.sh
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+# Solo lee: habla con la base por el socket y no escribe nada.
+IPAddressAllow=localhost
+IPAddressDeny=any

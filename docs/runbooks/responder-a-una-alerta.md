@@ -10,6 +10,7 @@ Qué hacer cuando llega una alerta de `crm.vixoraai.app` ([brief-13.3](../decisi
 | --- | --- |
 | El CRM no responde o `/api/health` da `503` | **provocado** el 2026-09-30: la aplicación detenida (AC-8) y la base detenida con la aplicación arriba (AC-9). Las alertas de caída y de recuperación llegaron las dos veces |
 | Un aviso de vida no llegó | **provocado** el 2026-09-30 con un chequeo de prueba que recibió un ping y no más (AC-10): la alerta llegó por email y Telegram. El diagnóstico de abajo no se ejecutó, porque ningún trabajo real falló |
+| La base pasó de 1 GB | **configurada en la 17.5**; se provoca al desplegarla, con el umbral bajado ([README de producción](../../deploy/production/README.md) §El aviso de tamaño de la base) |
 | Disco o memoria | La de disco, **provocada** el 2026-09-30 con el umbral bajado a 5 % (AC-11). La de memoria, **configurada y no provocada** |
 | El certificado vence pronto | **configurada y no provocada**: alerta de Uptime a 14 días del vencimiento |
 | `/api/health` lento | **configurada y no provocada**: alerta de Uptime con más de 2000 ms durante 5 minutos |
@@ -102,6 +103,20 @@ sudo journalctl -u "crm-heartbeat@*" -n 10 --no-pager'
 - **El backup diario**: el mismo día. El dump anterior sigue ahí, pero cada día sin backup es un día de datos que no se podrían recuperar.
 - **La copia externa**: el mismo día. Sin ella, perder el droplet es perder los datos.
 - **El ejercicio de restauración**: **es el más grave de los tres**, aunque sea mensual. Si falla, el último backup puede no servir. Leer el journal entero antes de volver a correrlo: `sudo journalctl -u crm-restore-check.service --since today --no-pager`. Si dejó una base de restauración viva, `sudo -u postgres psql -l` la muestra, y el [runbook de restauración](restaurar-la-base.md), §Ejercicio mensual, dice cómo borrarla.
+
+## La base pasó de 1 GB
+
+Es un aviso de vida que no llegó, el de `db-size`, y no una caída: el CRM sigue funcionando. Desde la 17.5 ([brief-17.5](../decisions/brief-17.5-imagenes-de-producto.md), D-9), `crm-db-size.service` corre cada día después del backup y solo manda su aviso mientras la base esté bajo 1 GB.
+
+```
+ssh crm-production 'sudo journalctl -u crm-db-size.service -n 5 --no-pager; df -h / | tail -1'
+```
+
+| Lo que se ve | Qué pasó | Qué hacer |
+| --- | --- | --- |
+| `FALLA: la base ocupa … por encima del umbral` | **La base pasó el umbral del [ADR 0018](../decisions/0018-imagenes-de-producto.md), punto 3** | No es urgente mientras el disco tenga lugar: el disco carga cerca de 16 veces la base. Se abre la decisión del almacenamiento con un ADR que enmiende ese punto. Si además suena la de disco, ir a [Disco](#disco-por-encima-del-80-) |
+| No corrió hoy | El backup no terminó bien, así que no lo disparó | Es la otra alerta, la del backup: [Un aviso de vida no llegó](#un-aviso-de-vida-no-llegó) |
+| Existe `/etc/crm-production/db-size.env` | Quedó el umbral bajado de una prueba | Borrarlo y correr `sudo systemctl start crm-db-size.service` |
 
 ## Disco por encima del 80 %
 

@@ -120,6 +120,10 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
   "src/app/(autenticado)/productos/actions.ts#adjustStockAction": {
     requirement: "sesion",
   },
+  // Quitar la imagen principal (brief-17.5, D-2): solo admin, lo exige catalog.
+  "src/app/(autenticado)/productos/actions.ts#removeProductImageAction": {
+    requirement: "sesion",
+  },
   // Lectura de sugerencias del buscador (brief-15.2, D-6).
   "src/app/(autenticado)/productos/actions.ts#suggestProductsAction": {
     requirement: "sesion",
@@ -197,6 +201,15 @@ const HANDLERS: Readonly<Record<string, Entry>> = {
   "src/app/api/read/v1/business-hours/route.ts": {
     requirement: "sin-sesion",
     why: "horario de atención de la API de lectura (brief-17.4, D-6): autentica con una credencial de alcance read, apagada salvo READ_API_ENABLED, una sesión válida no la autentica, y no devuelve personas ni la entrada de texto",
+  },
+  // Los primeros Route Handlers con sesión (brief-17.5, D-2 y D-6): validan la sesión contra la
+  // base en el handler. La subida (PUT) exige además el rol admin, que lo exige catalog, y el
+  // Origin del CRM, todo antes de leer el cuerpo; servir la imagen admite admin y viewer.
+  "src/app/(autenticado)/productos/[productId]/imagen/route.ts": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/productos/[productId]/imagen/miniatura/route.ts": {
+    requirement: "sesion",
   },
   "src/app/api/read/v1/conversation-state/route.ts": {
     requirement: "sin-sesion",

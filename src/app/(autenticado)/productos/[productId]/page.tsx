@@ -3,6 +3,7 @@ import Link from "next/link";
 import { AUDIT_PAGE_SIZE } from "@/modules/audit";
 import {
   getCurrentPrices,
+  getProductImageVersions,
   listProductAudit,
   listProductSuggestions,
 } from "@/modules/catalog";
@@ -39,10 +40,12 @@ import {
   noticeMessage,
   PRODUCT_NOT_FOUND_MESSAGE,
 } from "../messages";
+import { ProductImage } from "../product-image-view";
 import { ProductForm } from "../product-form";
 import { StockStatusBadge } from "../stock-status";
 import { auditActionLabel, describeAuditDiff } from "./audit-summary";
 import { DeactivateConfirm, ReactivateForm } from "./product-actions";
+import { ProductImageUpload, RemoveImageConfirm } from "./product-image";
 import { ProductSubNav } from "./product-sub-nav";
 
 export const metadata: Metadata = {
@@ -65,7 +68,8 @@ function page(value: string | string[] | undefined): number {
 // edición, desactivación con confirmación e historial de auditoría paginado (FR-AUD-02). El
 // precio vigente enlaza a la pantalla de precios (brief-11.1, FR-PROD-12). Presentación de la
 // 15.4: tarjetas por sección y la barra de subpantallas (brief-15.4, D-1 y D-3). Desde la 17.2, el
-// código de barras y las tarjetas «Logística» y «Ubicación» (brief-17.2, D-11).
+// código de barras y las tarjetas «Logística» y «Ubicación» (brief-17.2, D-11). Desde la 17.5, la
+// tarjeta «Imagen», con la subida, el reemplazo y la baja para un admin (brief-17.5, D-7).
 export default async function ProductPage({
   params,
   searchParams,
@@ -100,6 +104,10 @@ export default async function ProductPage({
 
   const prices = await getCurrentPrices(context, [product.id]);
   const price = prices.ok ? prices.prices.get(product.id) : undefined;
+  const images = await getProductImageVersions(context, [product.id]);
+  const image = images.ok ? images.versions.get(product.id) : undefined;
+  const confirmingImage =
+    isAdmin && query.confirmar === "quitar-imagen" && image !== undefined;
 
   const timeZone = await getOrganizationTimezone(context);
   const history = await listStockMovements(context, product.id, {
@@ -299,6 +307,34 @@ export default async function ProductPage({
           </div>
 
           <div className="flex min-w-0 flex-col gap-6 lg:col-start-3 lg:row-start-1 lg:row-span-2">
+            <SectionCard id="imagen-titulo" title="Imagen" icon="package">
+              <ProductImage
+                productId={product.id}
+                name={product.name}
+                version={image}
+              />
+              {isAdmin ? (
+                <>
+                  <ProductImageUpload
+                    productId={product.id}
+                    hasImage={image !== undefined}
+                  />
+                  {confirmingImage ? (
+                    <RemoveImageConfirm productId={product.id} />
+                  ) : image ? (
+                    <p className="mt-3">
+                      <Link
+                        href={`/productos/${product.id}?confirmar=quitar-imagen`}
+                        className={dangerOutlineLinkClass}
+                      >
+                        Quitar imagen
+                      </Link>
+                    </p>
+                  ) : null}
+                </>
+              ) : null}
+            </SectionCard>
+
             <SectionCard id="precio-titulo" title="Precio" icon="tag">
               <p className="text-sm font-semibold text-muted">
                 Precio de venta

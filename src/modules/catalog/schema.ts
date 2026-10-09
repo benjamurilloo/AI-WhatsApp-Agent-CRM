@@ -2,11 +2,13 @@ import { sql, type SQL } from "drizzle-orm";
 import {
   boolean,
   check,
+  customType,
   foreignKey,
   index,
   numeric,
   pgEnum,
   pgTable,
+  smallint,
   text,
   timestamp,
   unique,
@@ -187,6 +189,83 @@ export const productPrices = pgTable(
     check(
       "product_prices_currency_format",
       sql`${table.currency} ~ '^[A-Z]{3}$'`,
+    ),
+  ],
+);
+
+// Imagen de producto (ADR 0018; brief-17.5, D-1, D-3 y D-4). Solo se guarda la versión procesada,
+// en JPEG, y su miniatura. Los límites de la base están por encima de lo que produce el
+// procesamiento: son una red, no la validación.
+export const PRODUCT_IMAGE_LIMITS = {
+  uploadBytes: 5 * 1024 * 1024,
+  inputPixels: 40_000_000,
+  imageSide: 1600,
+  thumbnailSide: 400,
+  storedImageBytes: 2 * 1024 * 1024,
+  storedThumbnailBytes: 200 * 1024,
+} as const;
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType() {
+    return "bytea";
+  },
+});
+
+// docs/architecture/DataModel.md, tabla product_images (brief-17.5, D-3). Una fila por imagen,
+// con su orden; mientras haya una sola imagen por producto, position es 0 y la galería cambia el
+// CHECK, no los datos. crm_app no tiene UPDATE: reemplazar es borrar e insertar. Listar o buscar
+// productos no lee esta tabla.
+export const productImages = pgTable(
+  "product_images",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    productId: uuid("product_id").notNull(),
+    position: smallint("position").notNull().default(0),
+    image: bytea("image").notNull(),
+    thumbnail: bytea("thumbnail").notNull(),
+    // SHA-256 del JPEG guardado, en hexadecimal: la versión en la dirección de la imagen y la
+    // comprobación del ejercicio de restauración (D-10).
+    sha256: text("sha256").notNull(),
+    width: smallint("width").notNull(),
+    height: smallint("height").notNull(),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    // Una imagen no puede apuntar al producto de otra organización, como los precios.
+    foreignKey({
+      name: "product_images_product_fk",
+      columns: [table.organizationId, table.productId],
+      foreignColumns: [products.organizationId, products.id],
+    }).onDelete("restrict"),
+    uniqueIndex("product_images_product_position_unique").on(
+      table.organizationId,
+      table.productId,
+      table.position,
+    ),
+    check("product_images_single_position", sql`${table.position} = 0`),
+    check(
+      "product_images_image_size",
+      sql`octet_length(${table.image}) between 1 and ${sql.raw(String(PRODUCT_IMAGE_LIMITS.storedImageBytes))}`,
+    ),
+    check(
+      "product_images_thumbnail_size",
+      sql`octet_length(${table.thumbnail}) between 1 and ${sql.raw(String(PRODUCT_IMAGE_LIMITS.storedThumbnailBytes))}`,
+    ),
+    check(
+      "product_images_sha256_format",
+      sql`${table.sha256} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "product_images_dimensions",
+      sql`${table.width} between 1 and ${sql.raw(String(PRODUCT_IMAGE_LIMITS.imageSide))} and ${table.height} between 1 and ${sql.raw(String(PRODUCT_IMAGE_LIMITS.imageSide))}`,
     ),
   ],
 );

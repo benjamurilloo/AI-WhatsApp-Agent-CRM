@@ -30,6 +30,9 @@ Agregados en la Fase 11, catálogo comercial ([brief-11.1](../decisions/brief-11
 - **FR-PROD-13**: No existe ninguna vía en la aplicación para modificar ni borrar un precio ya fijado. Un precio nuevo se agrega y el anterior queda en el historial.
 - **FR-PROD-14**: Un admin puede registrar, todos opcionales, el código de barras, el peso (kg), el largo, el ancho y el alto (cm), la ubicación y el estante de un producto, con el cambio auditado. El código de barras es único en la organización sin distinguir mayúsculas; largo, ancho y alto van juntos o ninguno. Cualquier usuario los ve en el detalle (brief-17.2).
 - **FR-PROD-15**: Cualquier usuario encuentra un producto en la lista buscando su código de barras exacto, sin distinguir mayúsculas (brief-17.2, D-4).
+- **FR-PROD-16**: Un admin puede subir, reemplazar y quitar la imagen principal de un producto: JPEG, PNG o WebP de hasta 5 MB y 40 megapíxeles, nunca SVG ni una animada, reconocida por su contenido. Se guarda solo la versión procesada, en JPEG, de a lo sumo 1600 px y sin metadatos. Cada cambio queda auditado con el hash corto y el tamaño, nunca con los bytes (brief-17.5, D-1, D-4 y D-8).
+- **FR-PROD-17**: Cualquier usuario ve la imagen en el detalle del producto y su miniatura en la lista, solo de los productos de su organización (brief-17.5, D-6 y D-7).
+- **FR-PROD-18**: La subida comprueba la sesión, el rol, el origen, el producto y el tamaño declarado antes de leer el archivo; procesa una imagen a la vez y admite hasta 20 subidas por usuario cada 10 minutos (brief-17.5, D-2, D-4 y D-5).
 
 ## Clientes
 

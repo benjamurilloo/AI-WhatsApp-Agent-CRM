@@ -32,6 +32,8 @@ const FIELD_LABEL: Record<string, string> = {
   heightCm: "Alto",
   location: "Ubicación",
   shelf: "Estante",
+  // La imagen principal, con el hash corto y el tamaño, nunca los bytes (brief-17.5, D-8).
+  image: "Imagen",
   isActive: "Activo",
   quantityOnHand: "Stock",
 };
@@ -58,6 +60,7 @@ const OPTIONAL_ON_CREATE = new Set([
 ]);
 
 function show(field: string, value: string | number | boolean | null): string {
+  if (field === "image" && value === null) return "sin imagen";
   if (value === null || value === "") return "vacío";
   if (typeof value === "boolean") return value ? "sí" : "no";
   const text = String(value);

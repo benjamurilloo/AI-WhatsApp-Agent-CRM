@@ -9,11 +9,31 @@ export async function readBodyWithLimit(
   request: Request,
   maxBytes: number,
 ): Promise<ReadBodyResult> {
+  const read = await readBytesWithLimit(request, maxBytes);
+  if (!read.ok) return read;
+  try {
+    return {
+      ok: true,
+      text: new TextDecoder("utf-8", { fatal: true }).decode(read.bytes),
+    };
+  } catch {
+    return { ok: false, reason: "invalid_utf8" };
+  }
+}
+
+// Los bytes, con el mismo límite: el cuerpo de un archivo (brief-17.5, D-2).
+export type ReadBytesResult =
+  { ok: true; bytes: Uint8Array } | { ok: false; reason: "too_large" };
+
+export async function readBytesWithLimit(
+  request: Request,
+  maxBytes: number,
+): Promise<ReadBytesResult> {
   const declared = request.headers.get("content-length");
   if (declared !== null && Number(declared) > maxBytes) {
     return { ok: false, reason: "too_large" };
   }
-  if (request.body === null) return { ok: true, text: "" };
+  if (request.body === null) return { ok: true, bytes: new Uint8Array(0) };
 
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -35,14 +55,7 @@ export async function readBodyWithLimit(
     bytes.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  try {
-    return {
-      ok: true,
-      text: new TextDecoder("utf-8", { fatal: true }).decode(bytes),
-    };
-  } catch {
-    return { ok: false, reason: "invalid_utf8" };
-  }
+  return { ok: true, bytes };
 }
 
 // "application/json", con o sin parámetros como "; charset=utf-8".

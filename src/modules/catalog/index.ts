@@ -48,3 +48,20 @@ export {
   type StockStatus,
   type UpdateProductResult,
 } from "./service";
+// Imagen principal de producto (brief-17.5).
+export {
+  checkProductImageUpload,
+  getProductImageFile,
+  getProductImageVersions,
+  IMAGE_UPLOAD_MAX_BYTES,
+  IMAGE_UPLOAD_RATE,
+  removeProductImage,
+  uploadProductImage,
+  type ImageUploadCheck,
+  type ImageUploadRejection,
+  type ImageUploadThrottled,
+  type ProductImageVariant,
+  type ProductImageVersion,
+  type RemoveProductImageResult,
+  type UploadProductImageResult,
+} from "./image-service";

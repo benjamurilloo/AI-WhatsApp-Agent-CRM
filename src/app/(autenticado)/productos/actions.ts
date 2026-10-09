@@ -6,6 +6,7 @@ import {
   createProduct,
   deactivateProduct,
   reactivateProduct,
+  removeProductImage,
   suggestProducts,
   updateProduct,
   type ProductActiveResult,
@@ -251,6 +252,20 @@ export async function reactivateProductAction(
     "reactivado",
     formData,
     reactivateProduct,
+  );
+}
+
+// Quitar la imagen principal (brief-17.5, D-2 y D-7): una Server Action, como el resto de las
+// escrituras de la ficha, porque no lleva cuerpo grande. La subida es un Route Handler.
+export async function removeProductImageAction(
+  _previous: ProductChangeState,
+  formData: FormData,
+): Promise<ProductChangeState> {
+  return runProductChange(
+    "productos.imagen.quitar",
+    "imagen-quitada",
+    formData,
+    removeProductImage,
   );
 }
 

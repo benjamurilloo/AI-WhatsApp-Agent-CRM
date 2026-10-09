@@ -34,7 +34,7 @@
 
 *Desde la 17.1*, la pantalla 6 suma FR-CLI-14 (los filtros por tipo, provincia y segmento sobre `clients`, sin índice: medido con 10 000 clientes en `crm.test.ts`) y la pantalla 7 suma FR-CLI-12 y 13 (las columnas nuevas de `clients`, leídas por la PK).
 
-*Desde la 17.2*, la pantalla 3 suma FR-PROD-15 (el código de barras exacto, por el índice único parcial `products (organization_id, lower(barcode)) WHERE barcode IS NOT NULL`) y la pantalla 4 suma FR-PROD-14 (las columnas nuevas de `products`, leídas por la PK).
+*Desde la 17.5*, las pantallas 3 y 4 suman FR-PROD-16 a 18: la tabla `product_images`, leída por `(organization_id, product_id, position)`, y las rutas de la imagen. *Desde la 17.2*, la pantalla 3 suma FR-PROD-15 (el código de barras exacto, por el índice único parcial `products (organization_id, lower(barcode)) WHERE barcode IS NOT NULL`) y la pantalla 4 suma FR-PROD-14 (las columnas nuevas de `products`, leídas por la PK).
 
 Marco común (pantallas 2 a 12): `organizations.name`, `users.name`, `organization_members.role`, resueltos con el `UNIQUE(user_id)` de la membresía en cada request.
 
@@ -62,6 +62,9 @@ Cada FR tiene al menos una pantalla, endpoint o invariante con test que lo satis
 | FR-PROD-13 | Sin vía de modificación: privilegios de `crm_app` y trigger en `product_prices` (`product-prices.test.ts`), guarda `price-writes.test.ts`, y `products.spec.ts` caso 17 | invariante con test |
 | FR-PROD-14 | Formulario de las pantallas 3 y 4, y detalle de la pantalla 4 (17.2); `catalog.test.ts` (alta y edición normalizadas y auditadas, cada campo inválido, el `CONFLICT` del código de barras con la concurrencia y por SQL directo, los `CHECK` de la base), `service.test.ts`, `audit-summary.test.ts`, `read-api.test.ts` caso 6b (el agente no los ve) y `product-fields.spec.ts` casos 1, 2 y 4 | pantalla e invariante con test |
 | FR-PROD-15 | Buscador de la pantalla 3 (17.2); `catalog.test.ts` (exacto, sin distinguir mayúsculas, con los filtros, solo de la organización; las sugerencias no lo usan) y `product-fields.spec.ts` caso 3 | pantalla e invariante con test |
+| FR-PROD-16 | Tarjeta «Imagen» de la pantalla 4 y `PUT /productos/{id}/imagen` (17.5); `image-processing.test.ts` (formato por contenido, sin metadatos, orientación, transparencia, píxeles, animadas), `product-images.test.ts` (esquema y privilegios, subida, reemplazo y baja, auditoría sin bytes), `audit-summary.test.ts` y `product-images.spec.ts` casos 1 y 2 | pantalla e invariante con test |
+| FR-PROD-17 | Pantallas 3 y 4, `GET /productos/{id}/imagen` y su miniatura (17.5); `product-images.test.ts` (tipo, `ETag`, caché privada, `nosniff`, el mismo `404` para lo ajeno) y `product-images.spec.ts` caso 3 | pantalla e invariante con test |
+| FR-PROD-18 | La subida (17.5); `product-images.test.ts` (sin leer el cuerpo en cada rechazo previo, `Content-Length` que miente, el turno único y el límite de tasa), `origin.test.ts` y `read-body.test.ts` | invariante con test |
 | FR-INFO-01 | Pantalla 12 (11.2); `knowledge.test.ts` (escrituras de `admin`, auditoría, `CONFLICT` por título, sin `DELETE` para `crm_app`) y `knowledge.spec.ts` casos 1 a 4 | pantalla e invariante con test |
 | FR-INFO-02 | Pantalla 11 (11.2); `knowledge.test.ts`, con el caso de `EXPLAIN` sobre `knowledge_entries_search_idx` y el orden por relevancia, y `knowledge.spec.ts` caso 5 | pantalla e invariante con test |
 | FR-INFO-04 | Pantalla 12b (17.4); `business-hours.test.ts` (la semana y los días especiales, los `CHECK` por SQL directo, `CONFLICT` por fecha, la auditoría de solo los días que cambiaron, sin `DELETE` en el semanal ni `UPDATE` en los especiales) y `business-hours.spec.ts` casos 1 a 3 | pantalla e invariante con test |

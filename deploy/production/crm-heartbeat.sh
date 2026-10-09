@@ -32,8 +32,10 @@ case $trabajo in
   backup) variable=HEARTBEAT_URL_BACKUP ;;
   offsite) variable=HEARTBEAT_URL_OFFSITE ;;
   restore-check) variable=HEARTBEAT_URL_RESTORE_CHECK ;;
+  # La base bajo el umbral de 1 GB (brief-17.5, D-9).
+  db-size) variable=HEARTBEAT_URL_DB_SIZE ;;
   *)
-    echo "Trabajo desconocido: '${trabajo}'. Validos: backup, offsite, restore-check." >&2
+    echo "Trabajo desconocido: '${trabajo}'. Validos: backup, offsite, restore-check, db-size." >&2
     exit 1
     ;;
 esac
