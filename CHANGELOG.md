@@ -2,6 +2,24 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-09 — 17.4 cerrada: horario de atención estructurado
+
+Cuarta subfase de la Fase 17 ([brief-17.4](docs/decisions/brief-17.4-informacion-del-negocio-estructurada.md)), en dos etapas. Commit `2e983ac` (17.4.1, CI 37931370268, `success` en el segundo intento, leída por `headSha`). Desplegada en producción el 2026-10-09 con la migración `0033` (17.4.2), y recorrida por el usuario el mismo día.
+
+**Certifica**:
+- **El horario semanal** (FR-INFO-04 a 06): hasta dos tramos por día o cerrado, con sus `CHECK` en la base, y **los días especiales** por fecha, que reemplazan el semanal de ese día. Lo carga un `admin` en `/informacion/horario` y lo ve un `viewer`. Cada cambio queda en la auditoría, en castellano.
+- **El cálculo de «abierto ahora» y del próximo cambio lo hace PostgreSQL** en la zona de la organización: la misma hora UTC da resultados distintos en dos zonas.
+- **La ruta `GET /api/read/v1/business-hours`** (FR-API-10), nueva dentro de v1, con `days` (R-1 del agente) y `configured: false` sin horario, validada por un contrato estricto y aislada por organización. Mutaciones M1 a M9, cada una en rojo.
+- **Revisión independiente** de la 17.4.1: 7 hallazgos, aceptados y resueltos antes del commit.
+- **En producción**: `crm.vixoraai.app` corre `2e983ac`. Las 20 tablas existentes, iguales antes y después; las dos nuevas, vacías; 34 migraciones. Versión anterior: `a7838f1`.
+
+**No certifica**:
+- Que el agente lea la ruta: la ventana (AC-14) espera a que la conecte.
+- La ruta bajo escrituras concurrentes, sin test (verificada por lectura).
+- Un horario que cruza la medianoche, ni las zonas y costos de envío y las condiciones (Fases 19 y 21).
+
+**Nivel**: validado localmente y en CI, validado en integración para la pantalla y desplegado en producción con el recorrido del usuario (`isolated-runtime`). La ruta, sin consumidor todavía. No es «preparado para producción».
+
 ## 2026-10-08 — 17.3 cerrada: ADR 0018, imágenes de producto
 
 Tercera subfase de la Fase 17 ([brief-17.3](docs/decisions/brief-17.3-adr-de-las-imagenes.md)), solo el ADR. El usuario aceptó el [ADR 0018](docs/decisions/0018-imagenes-de-producto.md) el 2026-10-08.

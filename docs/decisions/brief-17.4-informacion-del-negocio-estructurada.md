@@ -13,7 +13,7 @@ generated_at: 2026-10-09
 - **Nivel de validación alcanzable**: **validado localmente y en CI**, **validado en integración** para las pantallas, y **desplegado en producción** con la revisión del usuario. Validado en integración con el agente solo si conecta la ruta en una ventana (D-9). No es «preparado para producción».
 - **Orden**: cuarta subfase de la Fase 17 ([Roadmap](../planning/Roadmap.md) §Fase 17), después de la 17.3, cerrada el 2026-10-08. El Roadmap la marca como **la candidata de menor prioridad, que cambia `read-v1` y entra solo con su decisión**: el usuario decidió hacerla el 2026-10-08.
 - **No abre ni cierra gate.** Cambia un contrato con el agente: la revisión independiente se recomienda (D-11).
-- **Estado de este documento**: **aprobado el 2026-10-09** por el usuario, con las recomendaciones de D-1 a D-11. La tarea 17.4 está en «En proceso» en Notion desde ese día.
+- **Estado de este documento**: **aprobado el 2026-10-09** por el usuario, con las recomendaciones de D-1 a D-11; **cerrado el 2026-10-09** (§Cierre). La tarea 17.4 está en «Completado» en Notion desde ese día.
 
 ## Objetivo
 
@@ -249,6 +249,35 @@ Hecha el 2026-10-09 por un agente que no participó del trabajo, con acceso de s
 
 En local, el 2026-10-09, después de resolver la revisión: formato, lint y typecheck limpios; 634 unitarios, 485 de guardas y 860 de integración (51 archivos) en verde; el build de producción; y los end-to-end en dos tandas, 71 y 77, en verde. En la primera corrida de la integración, un test de `analytics-distributions.test.ts` quedó esperando 24 minutos y falló; solo pasó, y la corrida completa siguiente también. No se repitió y no toca código de la 17.4.
 
-### Lo que falta
+### Commit y CI
 
-- La CI del commit de la 17.4.1 (AC-9). El usuario autorizó el commit y el push el 2026-10-09.
+- Commit `2e983ac`, con push a `main` el 2026-10-09, autorizados por el usuario ese día.
+- **CI, run 37931370268, leída por `headSha` `2e983ac` (AC-9)**: el primer intento lo canceló el límite de 15 minutos del job durante los end-to-end, con todos los pasos anteriores en verde: instalar Chromium tardó 218 s, contra 26 s en la corrida anterior. El segundo intento, sin cambios, pasó entero (`success`): integración en 104 s, Chromium en 21 s y end-to-end en 326 s.
+- **Riesgo anotado, sin cambio**: una corrida normal dura unos 13 minutos, con poco margen bajo los 15 del job. Subir el límite toca `.github/workflows/ci.yml`, fuera de la lista de este brief.
+
+## Despliegue de la 17.4.2, 2026-10-09
+
+- **Despliegue de `2e983ac`**, autorizado por el usuario y corrido por el asistente. Pasos 1 a 3 de [deploy/production/README.md](../../deploy/production/README.md) §Desplegar: la CI del SHA en `success` (corrida 37931370268, intento 2); anotado `a7838f1` en el registro de despliegues; dependencias (13:07:36 UTC), migraciones (13:07:59, «Migraciones aplicadas»), build (13:08:00), reinicio y HEAD igual al SHA pedido (13:09:35).
+- **AC-12**, recuentos de `crm_production` en una transacción de solo lectura (`sudo -u postgres psql`), todas las tablas de `public` en orden alfabético:
+
+  ```
+  2026-10-09T13:07:25Z 33 migraciones
+  audit_logs=46 client_tag_assignments=2 client_tags=5 clients=2 conversation_notes=1 conversations=3 ingestion_credentials=7 ingestion_events=133 ingestion_rate_windows=3 inventories=4 inventory_movements=4 knowledge_entries=3 login_attempts=0 messages=76 organization_members=2 organizations=2 product_prices=6 products=5 sessions=3 users=2
+  2026-10-09T13:09:57Z 34 migraciones
+  audit_logs=46 business_hour_exceptions=0 business_hours=0 client_tag_assignments=2 client_tags=5 clients=2 conversation_notes=1 conversations=3 ingestion_credentials=7 ingestion_events=133 ingestion_rate_windows=3 inventories=4 inventory_movements=4 knowledge_entries=3 login_attempts=0 messages=76 organization_members=2 organizations=2 product_prices=6 products=5 sessions=3 users=2
+  ```
+
+  Las 20 tablas existentes, iguales. Las dos nuevas existen y están vacías: cada una con 9 columnas, 2 índices, 7 `CHECK` y 1 clave foránea. `crm_app` tiene `SELECT, INSERT, UPDATE` sobre `business_hours` y `SELECT, INSERT, DELETE` sobre `business_hour_exceptions` (D-3). El servicio, `active` con `NRestarts=0`; el único aviso del journal es el de systemd al reiniciar («Failed to kill control group … ignoring»), no de la aplicación. `/login`, `200`; `/informacion/horario` sin sesión, `307` a `/login`; `GET /api/read/v1/business-hours` sin token, `401`, encendida como las demás rutas de lectura. Para volver atrás, `a7838f1`: la migración solo crea dos tablas nuevas, que el código anterior no usa.
+
+- **AC-13**: el usuario recorrió en producción la pantalla de horario, la dio por correcta y aprobó el cierre el 2026-10-09.
+
+## Cierre de la subfase 17.4, 2026-10-09
+
+- **AC-1 a AC-13 cumplidos.** AC-9 en local (§Batería completa) y en la CI de `2e983ac`; AC-11 con la revisión independiente de la 17.4.1; AC-12 y AC-13 en producción.
+- **AC-14 no aplica todavía**: depende de que el agente conecte la ruta, y no la conectó. Queda como la tarea «17.4.3 — Ventana del horario con el agente», `3f4702be6f4e817fa69df06e8e76979d`, en «Esperando» en Notion, con autorización en su turno.
+- **Revisión**: independiente para la 17.4.1 (D-11), con sus 7 hallazgos aceptados y resueltos; el despliegue y este cierre son autoevaluación declarada.
+- **Decisiones del usuario**: el brief con D-1 a D-11; `src/modules/audit/schema.ts` fuera de la lista; P-1 a P-6, R-1, R-2 y P-7; el commit y el push de `2e983ac`; el despliegue; el cierre.
+- **Nivel**: validado localmente y en CI, **validado en integración** para la pantalla (end-to-end sobre `next start`) y desplegado en producción, recorrido por el usuario (`isolated-runtime`). La ruta está validada localmente, con fixtures de forma asumida: **no está validada en integración con el agente**, que todavía no la llama. No es «preparado para producción».
+- **No certifica**: que el agente lea la ruta ni cómo responde con ella; la ruta bajo escrituras concurrentes (H-6, verificada por lectura, sin test); un negocio que cierra después de la medianoche (carga 23:59, R-2); las zonas y costos de envío y las condiciones, que quedan para las Fases 19 y 21 (D-10).
+- **Riesgo heredado**: la CI dura unos 13 minutos contra un límite de 15 por job; el primer intento de `2e983ac` se cortó por la instalación de Chromium. Ya había una tarea en el proyecto raíz, `3f2702be6f4e8104b521cf12b377fe34`.
+- **Pendiente heredado**: `TraceabilityMatrix.md` §3 atrasada; el paso 7 de la verificación de `deploy/production/README.md` pide recuentos en cero y producción tiene datos desde la 13.5.
