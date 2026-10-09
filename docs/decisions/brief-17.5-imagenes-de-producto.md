@@ -261,3 +261,7 @@ Hecha el 2026-10-09 por un agente que no participó del trabajo, con acceso de s
 - **H-8 (observación)**: `withImageSlot` no tiene tope para el trabajo; si `sharp` nunca resolviera, toda subida recibiría `503` hasta reiniciar el proceso. **Declarado**: improbable, y el reinicio del servicio lo resuelve.
 - **H-9 (observación)**: la `location` de nginx distingue mayúsculas (la pantalla genera el id en minúsculas); el `304` exige el `ETag` exacto; el índice de la auditoría no sirve a la consulta del límite, irrelevante con el volumen actual; el orden del código es sesión, `Origin` y rol, y D-2 enumera sesión, rol y `Origin`, sin cambiar ninguna garantía. **Sin cambios.**
 - **Nota**: `.claude/settings.json` está sin seguimiento y no entra al commit, como siempre.
+
+### CI del commit
+
+- **`e4f9db0`, run `37953122201`: rojo** en «Guardas del repositorio». `deployment-hostnames` leyó como dirección IPv6 la cadena del submuestreo de croma que `image-processing.ts` pasaba a `sharp`. En local había pasado porque esa guarda solo mira archivos versionados y el archivo todavía no lo estaba: la batería local de una subfase con archivos nuevos se corre con ellos al menos agregados al índice. **Corregido** quitando la opción, que es el valor por defecto de `sharp` 0.35.5 (`dist/constructor.cjs:339`); la salida es idéntica byte a byte, medido. Sin tocar la guarda. Guardas 485 y unitarios 649 en verde con el archivo versionado.

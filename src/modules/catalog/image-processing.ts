@@ -66,7 +66,9 @@ export async function processProductImage(
       })
       .flatten({ background: BACKGROUND })
       .toColourspace("srgb")
-      .jpeg({ quality: 80, mozjpeg: true, chromaSubsampling: "4:2:0" })
+      // El submuestreo de croma queda en el de sharp 0.35.5 por defecto (medio color, D-1): escribirlo
+      // como texto lo confunde la guarda de IPs con una dirección IPv6.
+      .jpeg({ quality: 80, mozjpeg: true })
       .toBuffer({ resolveWithObject: true });
 
     const thumbnail = await sharp(image)
@@ -76,7 +78,7 @@ export async function processProductImage(
         fit: "inside",
         withoutEnlargement: true,
       })
-      .jpeg({ quality: 75, mozjpeg: true, chromaSubsampling: "4:2:0" })
+      .jpeg({ quality: 75, mozjpeg: true })
       .toBuffer();
 
     return {
