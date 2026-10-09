@@ -570,6 +570,10 @@ Productor `client_tag`, desde la 16.1 (D-7). `entity_id` es el id de la etiqueta
 - `deactivate` y `reactivate`: `{ isActive }`;
 - una operación que no cambia nada no escribe auditoría.
 
+## Diseñado, sin tabla todavía: imágenes de producto
+
+*Desde el 2026-10-08*, el [ADR 0018](../decisions/0018-imagenes-de-producto.md) decide que las imágenes de producto viven en **una tabla propia en PostgreSQL**, en `bytea`, separada de `products` para que listar productos no lea los bytes: una fila por imagen, con su producto, su organización por clave compuesta, un orden y su miniatura en la misma fila. Se guarda solo la versión procesada (lado mayor de 1600 px, sin metadatos; WebP o JPEG, lo decide la 17.5, porque la ruta del agente entrega JPEG). La primera implementación ofrece una imagen por producto. **La tabla no existe**: la crea la 17.5 con su brief y su migración. La foto de perfil del cliente queda fuera.
+
 ## Explícitamente fuera de este modelo
 
 `sales`, `sale_details`, `purchases`, `purchase_details`, `suppliers`, `payments`, `cash_accounts`, cualquier tabla de contabilidad. Ninguna se crea vacía "para después".

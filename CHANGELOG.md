@@ -2,6 +2,24 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-08 — 17.3 cerrada: ADR 0018, imágenes de producto
+
+Tercera subfase de la Fase 17 ([brief-17.3](docs/decisions/brief-17.3-adr-de-las-imagenes.md)), solo el ADR. El usuario aceptó el [ADR 0018](docs/decisions/0018-imagenes-de-producto.md) el 2026-10-08.
+
+**Certifica**:
+- **Una decisión escrita sobre las imágenes de producto**: una principal por producto, en una tabla propia de PostgreSQL, así que el backup cifrado, la copia externa, el ejercicio de restauración y el borrado las cubren sin cambios. JPEG, PNG o WebP de hasta 5 MB, nunca SVG, procesadas en el servidor sin metadatos y servidas desde el mismo origen; la CSP no cambia.
+- **El umbral para reconsiderar el almacenamiento**: 1 GB de base, unos 16 GB de disco con las copias del backup, con un aviso automático que agrega la 17.5.
+- **La foto de perfil del cliente, descartada** hasta un pedido real.
+- **La respuesta del agente**: usaría una ruta de lectura de la imagen, solo cuando el cliente pide la foto, y la necesita en JPEG, porque Meta no acepta WebP como imagen (verificado por el agente). La ruta queda para una subfase posterior a la 17.5.
+- **Revisión independiente** del ADR propuesto: 17 hallazgos, ninguno bloqueante, verificados y resueltos.
+
+**No certifica**:
+- Nada de código: no hay tabla, ruta ni dependencia. Es la 17.5.
+- Lo que la referencia de Meta dice del formato: lo verificó el agente, no el CRM.
+- Las estimaciones de tamaño (200 KB por imagen, 16 veces la base en el disco): no se midieron.
+
+**Nivel**: diseñado.
+
 ## 2026-10-08 — 17.2 cerrada: campos de productos
 
 Segunda subfase de la Fase 17 ([brief-17.2](docs/decisions/brief-17.2-campos-de-productos.md)), en dos etapas. Commit `a7838f1` (17.2.1, CI 37859458500, `success`, leída por `headSha`). Desplegada en producción el 2026-10-08 con la migración `0032` (17.2.2), y recorrida por el usuario el mismo día.

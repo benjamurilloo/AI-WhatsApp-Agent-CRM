@@ -30,6 +30,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [0015](0015-vaciado-de-una-sola-direccion-en-tablas-de-solo-insercion.md) | Vaciado de una sola dirección en las tablas de solo inserción (enmienda al 0013) | aceptada; enmendada el 2026-10-07 por la 16.4, que suma `conversation_notes` |
 | [0016](0016-el-crm-se-amplia-hacia-un-erp-por-fases.md) | El CRM se amplía hacia un ERP, por fases (reemplaza el punto 7 del 0014) | aceptada |
 | [0017](0017-responder-desde-el-crm.md) | Responder desde el CRM: una bandeja de salida que el agente toma, y el registro de lo que se contesta desde la app | aceptada el 2026-10-08, con la implementación pospuesta |
+| [0018](0018-imagenes-de-producto.md) | Imágenes de producto: una principal, guardada en PostgreSQL y procesada en el servidor; sin foto de perfil del cliente | aceptada el 2026-10-08; implementación en la 17.5 y la ruta del agente, confirmada por él, en una subfase posterior |
 
 ## Briefs
 
@@ -113,6 +114,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-16.6](brief-16.6-la-cantidad-de-stock-para-el-agente.md) | 16.6 — La cantidad de stock para el agente | aprobado el 2026-10-08 con las recomendaciones de D-1 a D-8, las precisiones de H-1 y la de D-3; cerrado el 2026-10-08, con la Fase 16 |
 | [brief-17.1](brief-17.1-campos-de-clientes.md) | 17.1 — Campos de clientes | aprobado el 2026-10-08 con las recomendaciones de D-1 a D-14, y las precisiones P-1 y P-3 del mismo día; cerrado el 2026-10-08 |
 | [brief-17.2](brief-17.2-campos-de-productos.md) | 17.2 — Campos de productos | aprobado el 2026-10-08 con las recomendaciones de D-1 a D-13, y las precisiones P-1 a P-4 del mismo día; cerrado el 2026-10-08 |
+| [brief-17.3](brief-17.3-adr-de-las-imagenes.md) | 17.3 — ADR de las imágenes | aprobado el 2026-10-08 con las recomendaciones de D-1 a D-12, y el umbral de 1 GB del mismo día; cerrado el 2026-10-08 con el ADR 0018 aceptado |
 | [evidencia-9.1](evidencia-9.1-staging.md) | 9.1 — Salidas crudas de la verificación en staging | captura del 2026-09-22 |
 | [evidencia-9.2](evidencia-9.2-backups.md) | 9.2 — Backup y restauración verificados en staging | captura del 2026-09-22 |
 | [evidencia-9.3](evidencia-9.3-volumen.md) | 9.3 — Volumen, planes y tiempos medidos en staging | captura del 2026-09-23 |

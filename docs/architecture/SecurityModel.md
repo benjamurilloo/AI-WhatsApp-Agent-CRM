@@ -48,6 +48,8 @@ La tabla del 2026-09-24, sin cambios:
 
 La guarda verifica que la superficie no crezca sin que alguien la declare. **No** verifica que la exigencia declarada se cumpla: eso se revisó leyendo cada punto de entrada, porque la autorización se delega entre módulos o vive en un helper del mismo archivo, y ningún patrón de texto lo distingue sin mentir.
 
+*Prevista desde el 2026-10-08*, sin código: el [ADR 0018](../decisions/0018-imagenes-de-producto.md) suma, en la 17.5, una subida de imágenes de producto y una ruta que las sirve. **Ninguna existe todavía**, y la guarda de la superficie las cuenta cuando lleguen. Los controles decididos: solo JPEG, PNG y WebP reconocidos por su contenido, nunca SVG; hasta 5 MB y un tope de píxeles; procesamiento en el servidor que quita los metadatos; la imagen se sirve desde el mismo origen con sesión y organización, con su tipo fijo, `nosniff` y `Cache-Control: private`. **La CSP no cambia.** La 17.5 elige entre una Server Action, con el límite de cuerpo global de Next, y un Route Handler con la verificación explícita de `Origin`, y trata la concurrencia, un límite de tasa y las imágenes animadas.
+
 ## Autenticación
 
 - Sesiones server-side (no JWT en localStorage), propias y sin librería ([ADR 0012](../decisions/0012-mecanismo-de-sesion.md)):
@@ -221,6 +223,8 @@ Implementada en la 6.5.3 ([brief-6.5.3](../decisions/brief-6.5.3-autenticacion-d
   **Nivel**: el mecanismo, sobre una base de pocas filas. El tiempo de restauración con volumen sigue sin medirse en producción.
 
   El dueño de la base restaurada está en el [runbook](../runbooks/restaurar-la-base.md), §Producción (O-3).
+
+*Desde el 2026-10-08* ([ADR 0018](../decisions/0018-imagenes-de-producto.md), punto 3): las imágenes de producto se guardan en la base, así que el backup cifrado, la copia externa y el ejercicio de restauración las cubren sin cambios. El ejercicio compara recuentos, no contenido; la 17.5 decide si suma una comparación de hashes.
 
 ## Retención de datos
 
