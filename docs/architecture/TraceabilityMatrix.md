@@ -27,6 +27,7 @@
 | 10 Usuarios y roles | FR-ORG-01, 02; FR-AUD-01 | `users`, `organization_members`, `audit_logs` | `organization_members (organization_id)`; `users UNIQUE(email)` |
 | 11 Información del negocio | FR-INFO-02, 03 | `knowledge_entries`, `organizations` (zona) | `knowledge_entries_search_idx`, GIN sobre la columna generada `search` (11.2, con `EXPLAIN` en `knowledge.test.ts`); el filtro de estado va sin índice (ver abajo) |
 | 12 Detalle de una entrada | FR-INFO-01, 03; FR-AUD-01, 02 | `knowledge_entries`, `audit_logs`, `users` | PK de `knowledge_entries` (bloqueo `FOR UPDATE` al editar); `knowledge_entries UNIQUE(organization_id, lower(title))` (`CONFLICT`); `audit_logs (organization_id, entity_type, entity_id, created_at desc)` |
+| 12b Horario de atención | FR-INFO-04, 05; FR-AUD-01, 02 | `business_hours`, `business_hour_exceptions`, `knowledge_entries` (el aviso de D-5), `organizations` (zona), `audit_logs`, `users` | `business_hours UNIQUE(organization_id, weekday)` (`ON CONFLICT` al guardar la semana); `business_hour_exceptions UNIQUE(organization_id, date)` (`CONFLICT`); `audit_logs (organization_id, entity_type, entity_id, created_at desc)` |
 | 13 Etiquetas de clientes | FR-CLI-08; FR-AUD-01 | `client_tags`, `client_tag_assignments`, `clients`, `audit_logs` | `client_tags UNIQUE(organization_id, lower(name))` (`CONFLICT`); PK de `client_tags` (bloqueo `FOR UPDATE` al editar); la cantidad de clientes por etiqueta, con `client_tag_assignments (organization_id, tag_id)` (16.1, sin plan medido) |
 
 *Desde la 16.1*, la pantalla 6 suma FR-CLI-10 y las tablas `client_tags` y `client_tag_assignments` (chips por fila y filtro, con `client_tag_assignments (organization_id, tag_id)` para el `EXISTS`), y la pantalla 7 suma FR-CLI-09 y 10 (la PK `(client_id, tag_id)` para las etiquetas del cliente).
@@ -63,6 +64,9 @@ Cada FR tiene al menos una pantalla, endpoint o invariante con test que lo satis
 | FR-PROD-15 | Buscador de la pantalla 3 (17.2); `catalog.test.ts` (exacto, sin distinguir mayúsculas, con los filtros, solo de la organización; las sugerencias no lo usan) y `product-fields.spec.ts` caso 3 | pantalla e invariante con test |
 | FR-INFO-01 | Pantalla 12 (11.2); `knowledge.test.ts` (escrituras de `admin`, auditoría, `CONFLICT` por título, sin `DELETE` para `crm_app`) y `knowledge.spec.ts` casos 1 a 4 | pantalla e invariante con test |
 | FR-INFO-02 | Pantalla 11 (11.2); `knowledge.test.ts`, con el caso de `EXPLAIN` sobre `knowledge_entries_search_idx` y el orden por relevancia, y `knowledge.spec.ts` caso 5 | pantalla e invariante con test |
+| FR-INFO-04 | Pantalla 12b (17.4); `business-hours.test.ts` (la semana y los días especiales, los `CHECK` por SQL directo, `CONFLICT` por fecha, la auditoría de solo los días que cambiaron, sin `DELETE` en el semanal ni `UPDATE` en los especiales) y `business-hours.spec.ts` casos 1 a 3 | pantalla e invariante con test |
+| FR-INFO-05 | Pantalla 12b (17.4); `business-hours.test.ts` y `business-hours.spec.ts` caso 4 (un `viewer` sin controles ni historial, también forzando la URL, y a 375 px) | pantalla e invariante con test |
+| FR-INFO-06 | `business-hours.test.ts` «si está abierto ahora»: casos calculados a mano en Buenos Aires y Tokio, días especiales y semana cerrada, con su corrida de mutación (la zona del servidor) | invariante con test |
 | FR-INFO-03 | Pantallas 11 y 12 (11.2); `knowledge.test.ts`, con organizaciones en UTC+14 y UTC−11 y su corrida de mutación, y `knowledge.spec.ts` caso 5 | pantalla e invariante con test |
 | FR-CLI-01 | Pantalla 6 (acción crear) y formulario de la pantalla 7 en modo alta | pantalla |
 | FR-CLI-02 | Pantalla 7 | pantalla |
@@ -94,10 +98,11 @@ Cada FR tiene al menos una pantalla, endpoint o invariante con test que lo satis
 | FR-API-07 | El contrato de ingestión v2 (12.3.1), en `POST /api/ingestion/v2/events`; el tipo y el autor se ven en la pantalla 9. `contract-v2.test.ts`, `ingestion-v2.test.ts`, `ingestion-v2-http.test.ts`, `messages.test.ts` y `conversations.spec.ts` caso 11 | endpoint, pantalla e invariante con test |
 | FR-API-08 | Sin pantalla: el historial de la API de lectura (12.4), en `GET /api/read/v1/messages`, con el alcance `context`. `read-api-messages.test.ts` casos 1 a 13, `contract.test.ts` (parámetros, validador y fixtures), `credentials.test.ts` (prefijo `crm_ctx_`) y `read-api.spec.ts` (cabeceras y apagada por defecto) | endpoint e invariante con test |
 | FR-API-09 | Sin pantalla: la cantidad disponible de un producto (16.6), en `GET /api/read/v1/products/{product_id}/stock`, con el alcance `read`. `read-api-product-stock.test.ts` casos 1 a 8, `contract.test.ts` (forma canónica, validador y fixtures), `exposed-surface.test.ts` y `read-api.spec.ts` (cabeceras) | endpoint e invariante con test |
+| FR-API-10 | Sin pantalla: el horario de atención (17.4), en `GET /api/read/v1/business-hours`, con el alcance `read`. `read-api.test.ts` «horario de atención» (la forma contra casos calculados a mano, `configured: false`, Tokio, `now()` de PostgreSQL, alcance, log y API apagada, con su corrida de mutación: el filtro por organización, el día especial en `days`, el día de `exceptions` y `open_now` sin horario), `contract.test.ts` (validador, mapeo y fixtures), `exposed-surface.test.ts` y `read-api.spec.ts` (cabeceras) | endpoint e invariante con test |
 | FR-MET-01 | Pantalla 2, implementada en la 7.4: las doce tarjetas del catálogo | pantalla |
 | FR-MET-02 | Pantalla 2 (período en la URL y zona horaria de la organización en el encabezado) | pantalla |
 | FR-MET-03 | Pantalla 2 sin valores editables; cálculo por consulta en cada carga ([ADR 0005](../decisions/0005-metricas-desde-datos-transaccionales.md)) | pantalla e invariante |
-| FR-AUD-01 | Escritura de `audit_logs` en la misma transacción que cada cambio (pantallas 4, 5, 5b, 7, 9, 10 y 12) | invariante |
+| FR-AUD-01 | Escritura de `audit_logs` en la misma transacción que cada cambio (pantallas 4, 5, 5b, 7, 9, 10, 12 y, desde la 17.4, 12b) | invariante |
 | FR-AUD-02 | Pantalla 4, implementada en la 4.4: `catalog` autoriza y compone, `audit` consulta ediciones y ajustes en una sola lista paginada (brief-4.4, D-1). Pantalla 7: Fase 5 | pantalla e invariante con test |
 | FR-AUD-03 | `audit_logs` con exactamente un actor y la credencial por clave foránea compuesta (12.1.1); `audit.test.ts` bloque «actor de servicio», `crm.test.ts`, `actor.test.ts` y `clients.spec.ts` caso 16 (el autor «Servicio · emisor» en la pantalla 7); desde la 12.2, `conversation-escalation.test.ts` (la derivación auditada con la credencial) | pantalla e invariante con test |
 
@@ -130,6 +135,8 @@ Cada índice tiene al menos una consulta real que lo usa.
 | `ingestion_events` | `(organization_id, received_at)` | eventos recibidos en el intervalo | métrica 12 |
 | `knowledge_entries` | `UNIQUE(organization_id, lower(title))` | `CONFLICT` por título repetido, también frente a las inactivas (brief-11.2, D-5) | pantalla 12 |
 | `knowledge_entries` | `knowledge_entries_search_idx`, GIN sobre `search` | búsqueda por palabras de título, categoría y contenido (brief-11.2, D-6) | pantalla 11 |
+| `business_hours` | `UNIQUE(organization_id, weekday)` | una fila por día; el destino del `ON CONFLICT` que guarda la semana (brief-17.4, D-3) | pantalla 12b |
+| `business_hour_exceptions` | `UNIQUE(organization_id, date)` | `CONFLICT` por fecha repetida; la búsqueda del día especial de cada fecha (brief-17.4, D-3) | pantalla 12b |
 | `client_tags` | `UNIQUE(organization_id, lower(name))` | `CONFLICT` por nombre repetido, también frente a las inactivas (brief-16.1, D-2) | pantalla 13 |
 | `client_tags` | `UNIQUE(organization_id, id)` | destino de la clave compuesta de `client_tag_assignments`; ninguna consulta lo usa (brief-16.1, invariante 1) | — |
 | `client_tag_assignments` | PK `(client_id, tag_id)` | etiquetas de los clientes de una página o de una ficha; asignación idempotente | pantallas 6 y 7 |

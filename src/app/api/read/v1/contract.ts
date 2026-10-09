@@ -11,7 +11,10 @@ import type {
   ServiceCatalogProduct,
   ServiceProductStock,
 } from "@/modules/inventory";
-import type { KnowledgeEntry } from "@/modules/knowledge";
+import type {
+  BusinessHoursForService,
+  KnowledgeEntry,
+} from "@/modules/knowledge";
 import { ERROR_CODES } from "@/shared/errors";
 import { currencyDecimals } from "@/shared/money";
 
@@ -191,6 +194,67 @@ export const productStockResponseSchema = z.strictObject({
   stock_status: z.enum(["disponible", "bajo_stock", "sin_stock"]),
 });
 
+// Horario de atención (brief-17.4, D-6 con R-1; FR-API-10). Horas en HH:MM de la zona de la
+// organización, de 00:00 a 23:59; la apertura es inclusiva y el cierre no. weekday: 1 es lunes y 7
+// es domingo. Un día con slots vacío está cerrado. Con configured en false, open_now es false,
+// next_change es null y weekly, days y exceptions vienen vacíos: el agente usa el texto.
+const clockTime = z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/);
+const weekdayNumber = z.number().int().min(1).max(7);
+
+const hoursSlotSchema = z
+  .strictObject({ opens: clockTime, closes: clockTime })
+  .refine((slot) => slot.opens < slot.closes, { path: ["closes"] });
+const hoursSlotsSchema = z.array(hoursSlotSchema).max(2);
+
+export const businessHoursResponseSchema = z
+  .strictObject({
+    contract_version: z.literal(READ_CONTRACT_VERSION),
+    configured: z.boolean(),
+    timezone: z.string().min(1),
+    now_local: z.strictObject({
+      date: z.iso.date(),
+      time: clockTime,
+      weekday: weekdayNumber,
+    }),
+    open_now: z.boolean(),
+    next_change: z
+      .strictObject({
+        kind: z.enum(["opens", "closes"]),
+        date: z.iso.date(),
+        time: clockTime,
+      })
+      .nullable(),
+    weekly: z.array(
+      z.strictObject({ weekday: weekdayNumber, slots: hoursSlotsSchema }),
+    ),
+    days: z.array(
+      z.strictObject({
+        date: z.iso.date(),
+        weekday: weekdayNumber,
+        slots: hoursSlotsSchema,
+        reason: nullableText,
+      }),
+    ),
+    exceptions: z.array(
+      z.strictObject({
+        date: z.iso.date(),
+        slots: hoursSlotsSchema,
+        reason: nullableText,
+      }),
+    ),
+  })
+  .refine(
+    (hours) =>
+      hours.configured
+        ? hours.weekly.length === 7 && hours.days.length === 7
+        : !hours.open_now &&
+          hours.next_change === null &&
+          hours.weekly.length === 0 &&
+          hours.days.length === 0 &&
+          hours.exceptions.length === 0,
+    { path: ["configured"] },
+  );
+
 export const errorResponseSchema = z.strictObject({
   code: z.enum(ERROR_CODES),
   request_id: z.uuid(),
@@ -205,6 +269,7 @@ export type ContractConversationState = z.infer<
   typeof conversationStateResponseSchema
 >;
 export type ContractProductStock = z.infer<typeof productStockResponseSchema>;
+export type ContractBusinessHours = z.infer<typeof businessHoursResponseSchema>;
 
 // La base guarda numeric(14, 2) («300000.00»). El contrato lo escribe con los decimales de la
 // moneda: «300000» en CLP, «1234.50» en ARS. La escritura ya rechaza decimales que la moneda no
@@ -301,5 +366,43 @@ export function toContractProductStock(
     quantity_available: contractQuantity(stock.quantityOnHand),
     unit: stock.unit,
     stock_status: stock.stockStatus,
+  };
+}
+
+// Sin horario cargado, solo la hora del negocio: el resto vacío, para que el agente no afirme nada
+// (D-6). Ni los ids de los días especiales ni la entrada de texto de D-5.
+export function toContractBusinessHours(
+  hours: BusinessHoursForService,
+): ContractBusinessHours {
+  const { status } = hours;
+  return {
+    contract_version: READ_CONTRACT_VERSION,
+    configured: hours.configured,
+    timezone: hours.timezone,
+    now_local: {
+      date: status.localDate,
+      time: status.localTime,
+      weekday: status.weekday,
+    },
+    open_now: hours.configured && status.openNow,
+    next_change: hours.configured ? status.nextChange : null,
+    weekly: hours.configured
+      ? hours.week.map((day) => ({ weekday: day.weekday, slots: day.slots }))
+      : [],
+    days: hours.configured
+      ? hours.days.map((day) => ({
+          date: day.date,
+          weekday: day.weekday,
+          slots: day.slots,
+          reason: day.reason,
+        }))
+      : [],
+    exceptions: hours.configured
+      ? hours.exceptions.map((exception) => ({
+          date: exception.date,
+          slots: exception.slots,
+          reason: exception.reason,
+        }))
+      : [],
   };
 }

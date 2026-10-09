@@ -1,15 +1,15 @@
 # Modelo de Datos
 
-**Estado: diseñado; `organizations`, `users` y `organization_members` implementadas y validadas localmente desde la 3.1** ([brief-3.1](../decisions/brief-3.1-migraciones-de-identidad.md)), **`sessions` y `login_attempts` desde la 3.3** ([brief-3.3](../decisions/brief-3.3-autenticacion.md)), **`audit_logs` desde la 3.6** ([brief-3.6](../decisions/brief-3.6-modulo-de-auditoria.md)), **`products`, `inventories` e `inventory_movements` desde la 4.1** ([brief-4.1](../decisions/brief-4.1-migraciones-de-catalogo-e-inventario.md)), con sus servicios desde la 4.2 y la 4.3, **y `clients` desde la 5.1** ([brief-5.1](../decisions/brief-5.1-migracion-de-clientes.md)), con su servicio desde la 5.2 ([brief-5.2](../decisions/brief-5.2-servicio-de-clientes.md)), **y `conversations`, `messages` e `ingestion_events` desde la 6.1** ([brief-6.1](../decisions/brief-6.1-migraciones-de-conversaciones.md)), solo con su esquema, **e `ingestion_credentials` e `ingestion_rate_windows` desde la 6.5.3** ([brief-6.5.3](../decisions/brief-6.5.3-autenticacion-de-servicio-y-rate-limit.md)), **`product_prices` desde la 11.1** ([brief-11.1](../decisions/brief-11.1-catalogo-comercial.md)) **`knowledge_entries` desde la 11.2** ([brief-11.2](../decisions/brief-11.2-informacion-del-negocio.md)) **`client_tags` y `client_tag_assignments` desde la 16.1** ([brief-16.1](../decisions/brief-16.1-etiquetas-de-clientes.md)) **y `conversation_notes` desde la 16.4** ([brief-16.4](../decisions/brief-16.4-notas-de-la-conversacion.md)). **Los campos ampliados de `clients` llegan en la 17.1** ([brief-17.1](../decisions/brief-17.1-campos-de-clientes.md)) **y los campos de operación de `products`, en la 17.2** ([brief-17.2](../decisions/brief-17.2-campos-de-productos.md)). Las migraciones están en `drizzle/`. Todas las tablas del modelo tienen migración.
+**Estado: diseñado; `organizations`, `users` y `organization_members` implementadas y validadas localmente desde la 3.1** ([brief-3.1](../decisions/brief-3.1-migraciones-de-identidad.md)), **`sessions` y `login_attempts` desde la 3.3** ([brief-3.3](../decisions/brief-3.3-autenticacion.md)), **`audit_logs` desde la 3.6** ([brief-3.6](../decisions/brief-3.6-modulo-de-auditoria.md)), **`products`, `inventories` e `inventory_movements` desde la 4.1** ([brief-4.1](../decisions/brief-4.1-migraciones-de-catalogo-e-inventario.md)), con sus servicios desde la 4.2 y la 4.3, **y `clients` desde la 5.1** ([brief-5.1](../decisions/brief-5.1-migracion-de-clientes.md)), con su servicio desde la 5.2 ([brief-5.2](../decisions/brief-5.2-servicio-de-clientes.md)), **y `conversations`, `messages` e `ingestion_events` desde la 6.1** ([brief-6.1](../decisions/brief-6.1-migraciones-de-conversaciones.md)), solo con su esquema, **e `ingestion_credentials` e `ingestion_rate_windows` desde la 6.5.3** ([brief-6.5.3](../decisions/brief-6.5.3-autenticacion-de-servicio-y-rate-limit.md)), **`product_prices` desde la 11.1** ([brief-11.1](../decisions/brief-11.1-catalogo-comercial.md)) **`knowledge_entries` desde la 11.2** ([brief-11.2](../decisions/brief-11.2-informacion-del-negocio.md)) **`client_tags` y `client_tag_assignments` desde la 16.1** ([brief-16.1](../decisions/brief-16.1-etiquetas-de-clientes.md)) **y `conversation_notes` desde la 16.4** ([brief-16.4](../decisions/brief-16.4-notas-de-la-conversacion.md)). **Los campos ampliados de `clients` llegan en la 17.1** ([brief-17.1](../decisions/brief-17.1-campos-de-clientes.md)) **y los campos de operación de `products`, en la 17.2** ([brief-17.2](../decisions/brief-17.2-campos-de-productos.md)). **`business_hours` y `business_hour_exceptions` llegan en la 17.4** ([brief-17.4](../decisions/brief-17.4-informacion-del-negocio-estructurada.md)). Las migraciones están en `drizzle/`. Todas las tablas del modelo tienen migración.
 
 Convenciones fijadas en la 3.1, que siguen las tablas futuras salvo justificación:
 
 - Los enums son tipos `ENUM` de PostgreSQL (`pgEnum`), p. ej. `member_role`. Agregar un valor es un `ALTER TYPE ... ADD VALUE` aditivo (D-2).
 - `id` usa `gen_random_uuid()` como default de base (D-6).
 - `updated_at` lo mantiene la aplicación con `$onUpdate` de Drizzle. **Limitación**: un `UPDATE` escrito en SQL crudo no lo actualiza (D-3).
-- Los esquemas viven en el módulo dueño: `users` en `src/modules/auth/schema.ts`; `organizations` y `organization_members` en `src/modules/organizations/schema.ts`; `audit_logs` en `src/modules/audit/schema.ts`; `products` y `product_prices` en `src/modules/catalog/schema.ts`; `inventories` e `inventory_movements` en `src/modules/inventory/schema.ts`; `clients` y, desde la 16.1, `client_tags` y `client_tag_assignments` en `src/modules/crm/schema.ts`; `conversations`, `messages` y, desde la 16.4, `conversation_notes` en `src/modules/conversations/schema.ts`; `ingestion_events`, `ingestion_credentials` e `ingestion_rate_windows` en `src/modules/ingestion/schema.ts`; `knowledge_entries` en `src/modules/knowledge/schema.ts`.
+- Los esquemas viven en el módulo dueño: `users` en `src/modules/auth/schema.ts`; `organizations` y `organization_members` en `src/modules/organizations/schema.ts`; `audit_logs` en `src/modules/audit/schema.ts`; `products` y `product_prices` en `src/modules/catalog/schema.ts`; `inventories` e `inventory_movements` en `src/modules/inventory/schema.ts`; `clients` y, desde la 16.1, `client_tags` y `client_tag_assignments` en `src/modules/crm/schema.ts`; `conversations`, `messages` y, desde la 16.4, `conversation_notes` en `src/modules/conversations/schema.ts`; `ingestion_events`, `ingestion_credentials` e `ingestion_rate_windows` en `src/modules/ingestion/schema.ts`; `knowledge_entries` y, desde la 17.4, `business_hours` y `business_hour_exceptions` en `src/modules/knowledge/schema.ts`.
 - Las cantidades son `numeric(14, 3)`: hasta 99 999 999 999,999 con tres decimales, y comparaciones exactas (brief-4.1, D-4). Drizzle devuelve `numeric` como `string`: los servicios comparan y suman en SQL o con una representación decimal exacta, nunca con `number` de JavaScript. La representación exacta es `src/shared/quantity/`: `bigint` en milésimas, con parseo de entrada con coma o punto (brief-4.2, D-2).
-- Privilegios ([ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md), 3.6): cada migración que crea una tabla otorga sus privilegios al rol de aplicación `crm_app`. Una tabla de solo inserción recibe solo `SELECT` e `INSERT`, más un trigger que rechaza `UPDATE` y `DELETE`. `ingestion_events` recibe además `UPDATE`, sin `DELETE`, con un trigger que protege su identidad (brief-6.1, D-3). `knowledge_entries` también recibe `SELECT`, `INSERT` y `UPDATE` sin `DELETE`, pero sin trigger: es editable, y lo que se protege es que ninguna vía la borre (brief-11.2, D-4). Desde la 16.1, `client_tags` recibe lo mismo, sin `DELETE`, y `client_tag_assignments` recibe `SELECT`, `INSERT` y `DELETE`, **sin `UPDATE`**: una asignación se pone y se quita, nunca se modifica (brief-16.1, D-6). Los roles, privilegios y triggers van en migraciones a medida, porque Drizzle no los expresa en `schema.ts`.
+- Privilegios ([ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md), 3.6): cada migración que crea una tabla otorga sus privilegios al rol de aplicación `crm_app`. Una tabla de solo inserción recibe solo `SELECT` e `INSERT`, más un trigger que rechaza `UPDATE` y `DELETE`. `ingestion_events` recibe además `UPDATE`, sin `DELETE`, con un trigger que protege su identidad (brief-6.1, D-3). `knowledge_entries` también recibe `SELECT`, `INSERT` y `UPDATE` sin `DELETE`, pero sin trigger: es editable, y lo que se protege es que ninguna vía la borre (brief-11.2, D-4). Desde la 16.1, `client_tags` recibe lo mismo, sin `DELETE`, y `client_tag_assignments` recibe `SELECT`, `INSERT` y `DELETE`, **sin `UPDATE`**: una asignación se pone y se quita, nunca se modifica (brief-16.1, D-6). Desde la 17.4, `business_hours` recibe `SELECT`, `INSERT` y `UPDATE`, sin `DELETE`, y `business_hour_exceptions`, `SELECT`, `INSERT` y `DELETE`, sin `UPDATE` (brief-17.4, P-1 y P-2). Los roles, privilegios y triggers van en migraciones a medida, porque Drizzle no los expresa en `schema.ts`; *desde la 17.4*, los `GRANT` de una tabla sin trigger pueden ir al final de la migración generada que la crea, como en la `0033`.
 
 ## Reglas de diseño aplicadas a todas las tablas
 
@@ -46,6 +46,8 @@ erDiagram
     USERS ||--o{ PRODUCT_PRICES : sets
     ORGANIZATIONS ||--o{ INVENTORY_MOVEMENTS : scopes
     ORGANIZATIONS ||--o{ KNOWLEDGE_ENTRIES : publishes
+    ORGANIZATIONS ||--o{ BUSINESS_HOURS : opens
+    ORGANIZATIONS ||--o{ BUSINESS_HOUR_EXCEPTIONS : overrides
     ORGANIZATIONS ||--o{ CONVERSATIONS : owns
     CLIENTS ||--o{ CONVERSATIONS : participates
     CONVERSATIONS ||--o{ MESSAGES : contains
@@ -482,6 +484,40 @@ Editable, con borrado lógico según la regla 8: `crm_app` tiene `SELECT`, `INSE
 
 Índices: el único sobre `(organization_id, lower(title))`; **`knowledge_entries_search_idx`**, GIN sobre `search`, con los mismos límites que `products_search_idx`: no lleva `organization_id`, depende del vacuum para su lista pendiente y encuentra por prefijo desde el comienzo de cada palabra. La consulta sale de `searchQuery` en `src/shared/search`, compartida con `catalog` (D-6). Un test con `EXPLAIN` exige el índice. Con texto, el orden es por `ts_rank` y después por título e id; sin texto, por categoría, título e id. El filtro de estado **no** tiene índice: una organización tiene decenas o cientos de entradas, no miles.
 
+### `business_hours`
+
+**Implementada en la 17.4** ([brief-17.4](../decisions/brief-17.4-informacion-del-negocio-estructurada.md)), migración `drizzle/0033_*`, con sus privilegios. Módulo dueño: `knowledge`.
+
+El horario de atención semanal de una organización: **una fila por día de la semana**, del 1 (lunes) al 7 (domingo), como `isodow` de PostgreSQL. Cada día tiene hasta dos tramos; sin el primero, está cerrado. Las horas son de la zona de la organización. La semana se guarda entera, con un `INSERT … ON CONFLICT DO UPDATE` de las siete filas: `crm_app` tiene `SELECT`, `INSERT` y `UPDATE`, **sin `DELETE`**. Una organización sin filas no cargó un horario. El historial es la auditoría, con el tipo de entidad `business_hours` y el id de la organización.
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | uuid PK | |
+| `organization_id` | uuid FK → organizations, not null | `ON DELETE RESTRICT` |
+| `weekday` | smallint not null | `CHECK` de 1 a 7. Único por organización: `business_hours_organization_weekday_unique` |
+| `opens_1`, `closes_1` | time null | el primer tramo |
+| `opens_2`, `closes_2` | time null | el segundo tramo, el del horario cortado |
+| `created_at`, `updated_at` | timestamptz not null | |
+
+**Los tramos** (`CHECK`, iguales en las dos tablas): cada uno completo o vacío (`slot_1_complete`, `slot_2_complete`); la apertura antes del cierre (`slot_1_order`, `slot_2_order`); el segundo solo con el primero y **después** de su cierre, sin tocarlo (`slot_2_after_1`); minutos enteros (`whole_minutes`). El servicio, además, limita las horas a 00:00–23:59: ningún tramo cruza la medianoche.
+
+### `business_hour_exceptions`
+
+**Implementada en la 17.4**, en la misma migración. Módulo dueño: `knowledge`.
+
+Un **día especial**: una fecha de calendario de la organización, cerrada (sin tramos) o con sus propios tramos, que reemplaza al horario semanal de esa fecha. Se agrega o se quita; no se edita: `crm_app` tiene `SELECT`, `INSERT` y `DELETE`, **sin `UPDATE`**, como `client_tag_assignments`. Quitarlo borra la fila, y el cambio queda en la auditoría del horario, con la fecha, los tramos y el motivo. Un día especial pasado no se muestra ni se borra.
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | uuid PK | |
+| `organization_id` | uuid FK → organizations, not null | `ON DELETE RESTRICT` |
+| `date` | date not null | única por organización: `business_hour_exceptions_organization_date_unique`. Una repetida es `CONFLICT`. El servicio rechaza una anterior al día de hoy de la organización |
+| `opens_1` … `closes_2` | time null | los mismos tramos y `CHECK` que `business_hours` |
+| `reason` | text null | `CHECK` de 1 a 100 caracteres. «Feriado», «Inventario» |
+| `created_at` | timestamptz not null | |
+
+**Si está abierto** (FR-INFO-06). Lo calcula una sola consulta en `knowledge/hours-repository.ts`: la hora local sale de `now()` en la zona de `organizations.timezone`; cada uno de los próximos 9 días usa su día especial o, si no tiene, el semanal de su día de la semana; los tramos son intervalos `[apertura, cierre)` de timestamp local. El próximo cambio es, abierto, el primer cierre que no empalma con otra apertura y, cerrado, la primera apertura, dentro de los 7 días. Índices: solo los dos únicos; una organización tiene siete filas y unas pocas excepciones.
+
 ### `audit_logs`
 
 **Implementada en la 3.6** ([brief-3.6](../decisions/brief-3.6-modulo-de-auditoria.md)). Módulo dueño: `audit`. Solo inserción según la regla 10.
@@ -494,7 +530,7 @@ Justificación de necesidad real: requisitos FR-AUD-01 y FR-AUD-02 sobre product
 | `organization_id` | uuid FK → organizations, not null | |
 | `actor_user_id` | uuid FK → users, nulable desde la 0022 | ~~not null~~ (brief-12.1, D-3) |
 | `actor_credential_id` | uuid, nulable; FK compuesta `(organization_id, actor_credential_id)` → `ingestion_credentials (organization_id, id)` | actor de servicio, desde la 0022 (brief-12.1, D-3) |
-| `entity_type` | enum(`product`,`client`,`inventory`,`conversation`,`organization_member`,`knowledge_entry`,`client_tag`) not null | `knowledge_entry` desde la 0018 (brief-11.2); `client_tag` desde la 0026 (brief-16.1) |
+| `entity_type` | enum(`product`,`client`,`inventory`,`conversation`,`organization_member`,`knowledge_entry`,`client_tag`,`business_hours`) not null | `knowledge_entry` desde la 0018 (brief-11.2); `client_tag` desde la 0026 (brief-16.1); `business_hours` desde la 0033 (brief-17.4): el horario de una organización, con su id como `entity_id` |
 | `entity_id` | uuid not null | |
 | `action` | enum(`create`,`update`,`deactivate`,`reactivate`,`stock_adjustment`,`status_change`,`role_change`,`price_change`,`tag_change`,`agent_pause_change`,`note_added`) not null | `price_change` desde la 0017 (brief-11.1, D-7); `tag_change` desde la 0026 (brief-16.1, D-7); `agent_pause_change` desde la 0028 (brief-16.3, D-6); `note_added` desde la 0029 (brief-16.4, D-4) |
 | `diff` | jsonb not null | antes/después relevante |

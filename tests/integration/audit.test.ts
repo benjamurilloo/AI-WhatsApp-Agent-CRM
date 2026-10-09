@@ -130,16 +130,17 @@ const INSERT_ONLY_TABLES = [
   "product_prices",
 ];
 // Se actualizan pero no se borran (brief-6.1, D-3; credenciales, brief-6.5.3, D-1; información
-// del negocio, brief-11.2, D-4).
+// del negocio, brief-11.2, D-4; el horario semanal, brief-17.4, P-1).
 const NO_DELETE_TABLES = [
+  "business_hours",
   "client_tags",
   "ingestion_credentials",
   "ingestion_events",
   "knowledge_entries",
 ];
 // Se insertan y se borran, pero no se actualizan: una asignación se pone y se quita (brief-16.1,
-// D-6).
-const NO_UPDATE_TABLES = ["client_tag_assignments"];
+// D-6), y un día especial se agrega y se quita (brief-17.4, P-2).
+const NO_UPDATE_TABLES = ["business_hour_exceptions", "client_tag_assignments"];
 
 async function tablesWithWrongPrivileges(executor: Db | DbTransaction) {
   const result = await executor.execute<{

@@ -25,6 +25,8 @@ const ROUTES = [
   "/api/read/v1/conversation-state?conversation_ref=conv-propuesta-0001",
   // La cantidad disponible de un producto (brief-16.6).
   "/api/read/v1/products/0b6f3c2e-5a4d-4e8f-9c1b-2a3d4e5f6a7b/stock",
+  // El horario de atención (brief-17.4).
+  "/api/read/v1/business-hours",
 ];
 
 for (const route of ROUTES) {

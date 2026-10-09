@@ -9,6 +9,7 @@ import {
   inputClass,
   labelClass,
   linkClass,
+  secondaryLinkClass,
   selectClass,
   tableCellClass,
   tableHeadCellClass,
@@ -74,6 +75,14 @@ export default async function KnowledgePage({
             : null
         }
       />
+
+      {/* El horario estructurado (brief-17.4, D-4), en el lugar de la pestaña «Horarios». */}
+      <p className="mt-4">
+        <Link href="/informacion/horario" className={secondaryLinkClass}>
+          <Icon name="clock" className="size-4" />
+          Horario de atención
+        </Link>
+      </p>
 
       <form
         key={knowledgeFiltersHref(filters)}

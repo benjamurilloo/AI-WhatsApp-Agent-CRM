@@ -6,6 +6,7 @@
 - **Ampliado en la 16.2** ([brief-16.2](../decisions/brief-16.2-etiquetas-puestas-por-el-agente.md), D-7) con el catálogo de etiquetas de clientes, `GET /api/read/v1/client-tags`, con alcance `read`. Es una ruta nueva, un cambio compatible dentro de v1: ninguna respuesta existente cambia. **Validado localmente**, y **validado en integración** con el agente, que lo leyó con su credencial `read` de producción en la ventana 16.2.3 (2026-10-07).
 - **Ampliado en la 16.3** ([brief-16.3](../decisions/brief-16.3-pausar-y-reanudar-al-agente.md), D-3) con la marca de pausa del agente en una conversación, `GET /api/read/v1/conversation-state`, con alcance `context`. Es una ruta nueva, un cambio compatible dentro de v1: ninguna respuesta existente cambia. **Validado localmente**, y **validado en integración** en producción con el agente, que la leyó con su credencial `context` en la ventana 16.3.3 (2026-10-07): un turno con la conversación pausada y dos activos. Sus fixtures siguen con forma asumida.
 - **Ampliado en la 16.6** ([brief-16.6](../decisions/brief-16.6-la-cantidad-de-stock-para-el-agente.md), D-2) con la cantidad disponible de un producto, `GET /api/read/v1/products/{product_id}/stock`, con alcance `read`. Es una ruta nueva, un cambio compatible dentro de v1: las rutas de productos siguen sin la cantidad. **Validado localmente**, y **validado en integración** en producción con el agente, que la leyó con su credencial `read` en la ventana 16.6.3 (2026-10-08): tres lecturas conciliadas. Una lectura de prueba del agente es el fixture `captured-product-stock.json`, `"shape": "captured"`; los otros tres siguen con forma asumida.
+- **Ampliado en la 17.4** ([brief-17.4](../decisions/brief-17.4-informacion-del-negocio-estructurada.md), D-6 con R-1) con el horario de atención, `GET /api/read/v1/business-hours`, con alcance `read`. Es una ruta nueva, un cambio compatible dentro de v1: `knowledge` sigue igual. Su forma la acordó el agente en su respuesta al pedido 17.4 (2026-10-09), que sumó `days`. **Validado localmente**; **no validado en integración** todavía: sus fixtures tienen forma asumida.
 - *Nota del 2026-10-08, 17.2* ([brief-17.2](../decisions/brief-17.2-campos-de-productos.md), D-10): los campos de operación del producto (código de barras, peso, dimensiones, ubicación y estante) **no** se exponen, y la búsqueda no encuentra por código de barras. Ninguna respuesta cambia: lo fija `read-api.test.ts`, caso 6b. Exponerlos es una ruta nueva o una v2 (§Versionado), con coordinación con el agente.
 - **Validado localmente y en CI**, con requests sintéticos, contra PostgreSQL real.
 - ~~**No validado en integración**: ningún consumidor lo usa todavía.~~ (*corregido el 2026-10-08*, revisión independiente del cierre de la 16.6: validado en integración en staging desde la 12.5.2 y en producción desde la 13.5.2-a; ver las viñetas de arriba y de abajo.) Sus fixtures tienen **forma asumida, no verificada**. Productos e información del negocio se validan con el agente en la 12.3, detrás del modo de prueba. El historial, en la 12.5: no se despliega a staging antes (brief-12.4, D-9). *Corregido el 2026-09-27* ([brief-12.5](../decisions/brief-12.5-turno-completo-en-staging.md), H-1, aprobado por el usuario): **la 12.3 no validó la lectura**, porque su corrida con el agente fue solo de ingestión. Las tres rutas se validan con el agente como consumidor en la 12.5.
@@ -257,6 +258,54 @@ Si un `admin` del CRM **pausó al agente** en una conversación de la organizaci
 
 Fixtures, con forma asumida: `conversation-state-paused.json`, `conversation-state-active.json` y `conversation-state-not-found.json`.
 
+### `GET /api/read/v1/business-hours`
+
+El **horario de atención** de la organización de la credencial y si el negocio está **abierto ahora** (FR-API-10). Desde la 17.4. Alcance `read`, el mismo de la información del negocio. Sin parámetros.
+
+```json
+{
+  "contract_version": "1",
+  "configured": true,
+  "timezone": "America/Argentina/Buenos_Aires",
+  "now_local": { "date": "2026-10-12", "time": "10:15", "weekday": 1 },
+  "open_now": true,
+  "next_change": { "kind": "closes", "date": "2026-10-12", "time": "13:00" },
+  "weekly": [
+    { "weekday": 1, "slots": [{ "opens": "09:00", "closes": "13:00" }, { "opens": "16:00", "closes": "20:00" }] }
+  ],
+  "days": [
+    { "date": "2026-10-12", "weekday": 1, "slots": [{ "opens": "09:00", "closes": "13:00" }, { "opens": "16:00", "closes": "20:00" }], "reason": null },
+    { "date": "2026-10-14", "weekday": 3, "slots": [], "reason": "Feriado" }
+  ],
+  "exceptions": [
+    { "date": "2026-10-14", "slots": [], "reason": "Feriado" }
+  ]
+}
+```
+
+(El ejemplo recorta `weekly` y `days`, que traen siempre 7 elementos.)
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `configured` | boolean | `false` si la organización no cargó un horario |
+| `timezone` | string | la zona de la organización, en la que están todas las fechas y horas |
+| `now_local` | objeto | la fecha, la hora (`HH:MM`) y el día de la semana **del negocio** en este momento |
+| `open_now` | boolean | si está abierto ahora, con el día especial de hoy aplicado |
+| `next_change` | objeto o `null` | la próxima apertura (`opens`) si está cerrado, o el próximo cierre (`closes`) si está abierto, dentro de los próximos 7 días; `null` si no cambia en ese plazo |
+| `weekly` | lista | el horario semanal, de lunes a domingo |
+| `days` | lista | hoy y los 6 días siguientes, cada uno con su horario efectivo: **el día especial ya aplicado**. `reason` es el motivo del día especial, o `null` |
+| `exceptions` | lista | los días especiales de hoy y los próximos 30 días, en orden de fecha |
+
+- **Las reglas**: `weekday` va de 1, lunes, a 7, domingo. Las horas van de `00:00` a `23:59`, y cada día tiene cero, uno o dos tramos; sin tramos, está cerrado. **La apertura es inclusiva y el cierre no**: a las 13:00 de un tramo que cierra a las 13:00 está cerrado. Un cierre a las `23:59` es literal, así que el último minuto del día queda cerrado. Ningún tramo cruza la medianoche.
+- **Quién calcula la hora**: PostgreSQL, en la zona de la organización, en el momento del pedido. Toda la respuesta sale de una sola lectura de la base, con una única instantánea: `now_local`, `open_now`, `next_change`, `days` y `exceptions` usan el mismo instante y los mismos datos, aunque un admin cambie el horario en el medio. Las horas son las del reloj del local: ante un cambio de horario de verano, un tramo sigue siendo de 09:00 a 13:00 en la hora local.
+- **Sin horario cargado** (`configured: false`): `open_now` es `false`, `next_change` es `null` y `weekly`, `days` y `exceptions` vienen vacíos, aunque haya un día especial cargado. `timezone` y `now_local` vienen igual. Responde `200`, no `404`.
+- **Lo que el horario no sabe**: los feriados que el negocio no cargó; un horario que cruza la medianoche; y que «abierto» es el horario declarado, no que alguien vaya a contestar. Qué se le dice al cliente lo decide el consumidor.
+- **Qué hace el agente, informado por el agente en su respuesta al pedido 17.4** y no fijado por este contrato: la lee solo cuando el cliente pregunta por el horario. Si falla, si no responde o si `configured` es `false`, vuelve al texto de `knowledge` y no afirma que el negocio esté abierto o cerrado. Sigue leyendo ese texto como complemento y, si los dos se contradicen en un horario, usa esta ruta.
+- **Presupuesto**: comparte con las demás rutas `read` los 120 pedidos por minuto de la credencial.
+- **No trae**: los ids de los días especiales, quién los cargó, la auditoría ni la entrada de texto sobre horarios. Agregar cualquiera de esos campos es un cambio de v2 (§Versionado).
+
+Fixtures, con forma asumida: `business-hours-open.json` y `business-hours-not-configured.json`.
+
 ## Errores
 
 El cuerpo de error tiene `code`, `request_id` y, en `VALIDATION_ERROR`, `fields`: los parámetros inválidos (`q`, `limit`, `product_id`, `conversation_ref` o `correlation_id`). Ningún error repite el texto buscado ni la referencia.
@@ -281,7 +330,7 @@ El cuerpo de error tiene `code`, `request_id` y, en `VALIDATION_ERROR`, `fields`
 
 ## Log
 
-Cada respuesta de la API encendida, incluidos los rechazos y el `500`, queda en el log estructurado con `request_id`, la ruta **fija** (`/api/read/v1/products`, `/api/read/v1/products/{product_id}`, `/api/read/v1/knowledge`, `/api/read/v1/messages`, desde la 16.2 `/api/read/v1/client-tags`, desde la 16.3 `/api/read/v1/conversation-state` o, desde la 16.6, `/api/read/v1/products/{product_id}/stock`, nunca la URL), el código, la duración y, cuando se conocen, la organización, el `source` y el `correlation_id` (R-1 de la [evaluación 10.1](../decisions/evaluacion-10.1-mvp.md), piezas 1 y 2). **Nunca** el token, el texto buscado, el `limit`, un id buscado, la referencia de una conversación ni el texto de un mensaje: el texto viene de lo que escribió un cliente, y la referencia la genera el consumidor, así que el CRM no puede comprobar que no traiga un teléfono.
+Cada respuesta de la API encendida, incluidos los rechazos y el `500`, queda en el log estructurado con `request_id`, la ruta **fija** (`/api/read/v1/products`, `/api/read/v1/products/{product_id}`, `/api/read/v1/knowledge`, `/api/read/v1/messages`, desde la 16.2 `/api/read/v1/client-tags`, desde la 16.3 `/api/read/v1/conversation-state` , desde la 16.6 `/api/read/v1/products/{product_id}/stock` o, desde la 17.4, `/api/read/v1/business-hours`, nunca la URL), el código, la duración y, cuando se conocen, la organización, el `source` y el `correlation_id` (R-1 de la [evaluación 10.1](../decisions/evaluacion-10.1-mvp.md), piezas 1 y 2). **Nunca** el token, el texto buscado, el `limit`, un id buscado, la referencia de una conversación ni el texto de un mensaje: el texto viene de lo que escribió un cliente, y la referencia la genera el consumidor, así que el CRM no puede comprobar que no traiga un teléfono.
 
 ## Versionado
 
@@ -296,11 +345,12 @@ Cada respuesta de la API encendida, incluidos los rechazos y el `500`, queda en 
   - en `tests/integration/read-api.test.ts`, contra PostgreSQL real: toda respuesta de éxito pasa el validador; el borde completo (modo de prueba, credencial, alcance, allowlist, límite, sesión que no autentica, encabezados, correlación); el aislamiento entre organizaciones; los productos inactivos; la vigencia de la información, con la zona de la organización; los caracteres de búsqueda; el NUL, que nunca llega a PostgreSQL; el log sin secretos y el `500`;
   - en el mismo archivo, el plan de las tres consultas de la API, capturadas tal como las ejecuta la lectura: la búsqueda de productos usa el índice GIN y el del SKU, el precio vigente usa el índice del historial y la búsqueda de información usa su GIN;
   - en `tests/integration/ingestion-http.test.ts`, caso 14: una credencial de lectura no escribe;
-  - en `tests/e2e/read-api.spec.ts`, sobre `next start`: las cabeceras de `proxy.ts` en las tres rutas (cuatro desde la 12.4; siete desde la 16.6, contando las de la 16.2, la 16.3 y la 16.6) y la API apagada por defecto;
+  - en `tests/e2e/read-api.spec.ts`, sobre `next start`: las cabeceras de `proxy.ts` en las tres rutas (cuatro desde la 12.4; siete desde la 16.6, contando las de la 16.2, la 16.3 y la 16.6; ocho desde la 17.4) y la API apagada por defecto;
   - en `scripts/medir-caminos.ts`: las lecturas de las tres rutas contra el volumen de desarrollo (10 000 productos), sin el borde. Ese volumen no tiene precios ni entradas de información ([brief-11.3](../decisions/brief-11.3-api-de-lectura.md), §Resultados de la 11.3.2);
   - **el historial, desde la 12.4**, en `tests/integration/read-api-messages.test.ts`: los últimos N y nunca los primeros; el orden por `sent_at` con desempate estable; los mensajes sin tipo ni autor; el mismo `404` para una conversación ajena o inexistente; el alcance `context` en las dos direcciones; el borde, el log sin la referencia ni el texto y el `500`; y el plan de la consulta, que usa `messages_conversation_sent_idx` y corta con `LIMIT` en SQL. `read-api.spec.ts` suma la ruta a las cabeceras de `proxy.ts`. No se desplegó en staging en la 12.4 (D-9): llegó con la 12.5.1.
   - **el catálogo de etiquetas, desde la 16.2**, en `tests/integration/read-api.test.ts`: las activas de la organización por nombre, sin datos de clientes, el catálogo vacío, el alcance `read` (`401` sin token, `403` con `ingest` o `context`) y la API apagada. La mutación sin el filtro por organización lo hace fallar;
   - **la marca de pausa, desde la 16.3**, en `tests/integration/read-api-conversation-state.test.ts`: la marca y su hora con el validador estricto; la independencia del estado; el mismo `404` para una conversación ajena o inexistente; el alcance `context` (`401` sin token, `403` con `read` o `ingest`); el borde; el log sin la referencia; la sesión que no autentica; y que no escribe. La mutación sin el filtro por organización lo hace fallar. `read-api.spec.ts` suma la ruta a las cabeceras de `proxy.ts`;
+  - **el horario de atención, desde la 17.4**, en `tests/integration/read-api.test.ts`: la forma completa contra un caso calculado a mano, en la apertura del lunes, con un día de cierre y uno de horario especial aplicados en `days` y los días especiales de 30 días; el sábado justo en el cierre; `configured: false` sin afirmar nada aunque haya un día especial abierto hoy; el mismo instante en Tokio; `now()` de PostgreSQL sin instante fijo; el alcance `read` (`401` sin token, `403` con `ingest` o `context`); el log con la ruta fija y la correlación; y la API apagada. Las mutaciones sin el filtro por organización del semanal y de los días especiales, en el cálculo y en la lista, con `days` sin el día especial, con los días especiales contados desde otro día y con `open_now` sin cargar el horario lo hacen fallar. `contract.test.ts` fija el validador estricto y el mapeo. `read-api.spec.ts` suma la ruta a las cabeceras de `proxy.ts`;
   - **la cantidad disponible, desde la 16.6**, en `tests/integration/read-api-product-stock.test.ts`: la cantidad en forma canónica con el validador estricto, con decimales, cero sin fila de inventario y el estado en cada valor; el mismo `404` para un producto inactivo, ajeno o inexistente; el alcance `read` (`401` sin token, `403` con `context` o `ingest`); el límite compartido con la búsqueda de productos; el log sin el id; la sesión que no autentica; que no escribe; y que las rutas de productos siguen sin la cantidad. `contract.test.ts` fija la forma canónica y rechaza un número de JSON. `read-api.spec.ts` suma la ruta a las cabeceras de `proxy.ts`;
 - **Validado en staging** (`isolated-runtime`, 12.5.1, 2026-09-27): `scripts/probar-api-lectura.ts` recorrió las tres rutas a través del borde real, con credenciales `read` y `context`, y dio 0 fallas.
 - **Validado en integración, en staging** (`producer-consumer`, 12.5.2, 2026-09-28): el agente como consumidor real. Se validaron la compatibilidad y la autenticación con su tráfico, de 1 a 3 lecturas por turno, sin ningún `429` ([Risks](../planning/Risks.md), pregunta 5). *Hasta la 12.5, esta línea decía «sin validar hasta la 12.5»; actualizada por la revisión independiente de la 12.5 (R-2).*

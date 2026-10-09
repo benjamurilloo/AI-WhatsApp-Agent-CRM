@@ -94,6 +94,17 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
   "src/app/(autenticado)/informacion/actions.ts#reactivateKnowledgeAction": {
     requirement: "sesion",
   },
+  // Horario de atención (brief-17.4, D-4): escribe solo un admin, lo exige knowledge.
+  "src/app/(autenticado)/informacion/horario/actions.ts#saveWeekAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/informacion/horario/actions.ts#addExceptionAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/informacion/horario/actions.ts#removeExceptionAction":
+    {
+      requirement: "sesion",
+    },
   "src/app/(autenticado)/productos/actions.ts#createProductAction": {
     requirement: "sesion",
   },
@@ -182,6 +193,10 @@ const HANDLERS: Readonly<Record<string, Entry>> = {
   "src/app/api/read/v1/client-tags/route.ts": {
     requirement: "sin-sesion",
     why: "catálogo de etiquetas de la API de lectura (brief-16.2, D-7): autentica con una credencial de alcance read, apagada salvo READ_API_ENABLED, una sesión válida no la autentica, y no devuelve datos de clientes",
+  },
+  "src/app/api/read/v1/business-hours/route.ts": {
+    requirement: "sin-sesion",
+    why: "horario de atención de la API de lectura (brief-17.4, D-6): autentica con una credencial de alcance read, apagada salvo READ_API_ENABLED, una sesión válida no la autentica, y no devuelve personas ni la entrada de texto",
   },
   "src/app/api/read/v1/conversation-state/route.ts": {
     requirement: "sin-sesion",

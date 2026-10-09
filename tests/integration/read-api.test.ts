@@ -11,12 +11,14 @@ import {
 } from "vitest";
 import type { z } from "zod";
 import {
+  businessHoursResponseSchema,
   clientTagListResponseSchema,
   errorResponseSchema,
   knowledgeListResponseSchema,
   productListResponseSchema,
   productResponseSchema,
 } from "@/app/api/read/v1/contract";
+import { handleBusinessHours } from "@/app/api/read/v1/business-hours/handler";
 import { handleClientTagList } from "@/app/api/read/v1/client-tags/handler";
 import { handleKnowledgeList } from "@/app/api/read/v1/knowledge/handler";
 import {
@@ -1150,6 +1152,250 @@ describe(
     it("FR-CLI-11: con la API apagada responde 404 sin cuerpo", async () => {
       process.env.READ_API_ENABLED = "false";
       const response = await clientTags(readerA.token);
+      expect(response.status).toBe(404);
+      expect(await response.text()).toBe("");
+    });
+  },
+);
+
+describe(
+  "API de lectura: horario de atención (brief-17.4, D-6; FR-API-10)",
+  { timeout: TEST_TIMEOUT },
+  () => {
+    // Lunes 12/10/2026 a las 09:00 en Buenos Aires (UTC-3): justo en la apertura.
+    const MONDAY_OPENING = new Date("2026-10-12T12:00:00.000Z");
+    const SPLIT = [
+      { opens: "09:00", closes: "13:00" },
+      { opens: "16:00", closes: "20:00" },
+    ];
+    const MORNING = [{ opens: "09:00", closes: "13:00" }];
+
+    function businessHours(
+      token: string | null,
+      at: Date | null = MONDAY_OPENING,
+      headers: Record<string, string> = {},
+    ) {
+      return handleBusinessHours(
+        request("/business-hours", token, headers),
+        NOW,
+        at,
+      );
+    }
+
+    // Lunes a viernes cortado, sábado a la mañana, domingo cerrado.
+    async function week(organizationId: string) {
+      for (const weekday of [1, 2, 3, 4, 5, 6, 7]) {
+        const [opens1, closes1, opens2, closes2] =
+          weekday <= 5
+            ? ["09:00", "13:00", "16:00", "20:00"]
+            : weekday === 6
+              ? ["09:00", "13:00", null, null]
+              : [null, null, null, null];
+        await getDb().execute(
+          sql`insert into business_hours
+                (organization_id, weekday, opens_1, closes_1, opens_2, closes_2)
+              values (${organizationId}, ${weekday}, ${opens1}, ${closes1},
+                      ${opens2}, ${closes2})`,
+        );
+      }
+    }
+
+    async function exception(
+      organizationId: string,
+      date: string,
+      slot: [string, string] | null,
+      reason: string | null,
+    ) {
+      await getDb().execute(
+        sql`insert into business_hour_exceptions
+              (organization_id, date, opens_1, closes_1, reason)
+            values (${organizationId}, ${date}::date, ${slot?.[0] ?? null},
+                    ${slot?.[1] ?? null}, ${reason})`,
+      );
+    }
+
+    it("FR-API-10: abierto en la apertura, el cierre siguiente, los 7 días con el día especial aplicado, el semanal y los días especiales de 30 días", async () => {
+      await week(orgA);
+      await exception(orgA, "2026-10-11", null, "Ayer");
+      await exception(orgA, "2026-10-14", null, "Feriado");
+      await exception(orgA, "2026-10-15", ["10:00", "12:00"], null);
+      await exception(orgA, "2026-11-11", null, "A 30 días");
+      await exception(orgA, "2026-11-12", null, "A 31 días");
+
+      const body = await valid(
+        await businessHours(readerA.token),
+        businessHoursResponseSchema,
+      );
+      expect(body).toEqual({
+        contract_version: "1",
+        configured: true,
+        timezone: "America/Argentina/Buenos_Aires",
+        now_local: { date: "2026-10-12", time: "09:00", weekday: 1 },
+        open_now: true,
+        next_change: { kind: "closes", date: "2026-10-12", time: "13:00" },
+        weekly: [
+          { weekday: 1, slots: SPLIT },
+          { weekday: 2, slots: SPLIT },
+          { weekday: 3, slots: SPLIT },
+          { weekday: 4, slots: SPLIT },
+          { weekday: 5, slots: SPLIT },
+          { weekday: 6, slots: MORNING },
+          { weekday: 7, slots: [] },
+        ],
+        days: [
+          { date: "2026-10-12", weekday: 1, slots: SPLIT, reason: null },
+          { date: "2026-10-13", weekday: 2, slots: SPLIT, reason: null },
+          { date: "2026-10-14", weekday: 3, slots: [], reason: "Feriado" },
+          {
+            date: "2026-10-15",
+            weekday: 4,
+            slots: [{ opens: "10:00", closes: "12:00" }],
+            reason: null,
+          },
+          { date: "2026-10-16", weekday: 5, slots: SPLIT, reason: null },
+          { date: "2026-10-17", weekday: 6, slots: MORNING, reason: null },
+          { date: "2026-10-18", weekday: 7, slots: [], reason: null },
+        ],
+        exceptions: [
+          { date: "2026-10-14", slots: [], reason: "Feriado" },
+          {
+            date: "2026-10-15",
+            slots: [{ opens: "10:00", closes: "12:00" }],
+            reason: null,
+          },
+          { date: "2026-11-11", slots: [], reason: "A 30 días" },
+        ],
+      });
+    });
+
+    it("FR-API-10: el sábado después del cierre, cerrado hasta el lunes, y days arranca el sábado", async () => {
+      await week(orgA);
+      // Sábado 17/10 a las 13:00: el tramo cierra a las 13:00 y el cierre no es inclusivo.
+      const body = await valid(
+        await businessHours(readerA.token, new Date("2026-10-17T16:00:00Z")),
+        businessHoursResponseSchema,
+      );
+      expect(body).toMatchObject({
+        now_local: { date: "2026-10-17", time: "13:00", weekday: 6 },
+        open_now: false,
+        next_change: { kind: "opens", date: "2026-10-19", time: "09:00" },
+      });
+      expect(body.days.map((day) => [day.date, day.weekday])).toEqual([
+        ["2026-10-17", 6],
+        ["2026-10-18", 7],
+        ["2026-10-19", 1],
+        ["2026-10-20", 2],
+        ["2026-10-21", 3],
+        ["2026-10-22", 4],
+        ["2026-10-23", 5],
+      ]);
+    });
+
+    it("FR-API-10: sin horario, configured false con la hora del negocio y nada más, aunque haya un día especial; cada organización ve el suyo (invariante 4)", async () => {
+      await week(orgA);
+      // Un día especial abierto hoy: sin el semanal, igual no afirma que esté abierto.
+      await exception(orgB, "2026-10-12", ["08:00", "12:00"], "De B");
+      const tokyo = await createOrganization("Organización T", "Asia/Tokyo");
+      const readerT = await credential(tokyo, "read");
+      allow(readerA, readerB, ingestA, readerT);
+
+      const fromB = await valid(
+        await businessHours(readerB.token),
+        businessHoursResponseSchema,
+      );
+      expect(fromB).toEqual({
+        contract_version: "1",
+        configured: false,
+        timezone: "America/Argentina/Buenos_Aires",
+        now_local: { date: "2026-10-12", time: "09:00", weekday: 1 },
+        open_now: false,
+        next_change: null,
+        weekly: [],
+        days: [],
+        exceptions: [],
+      });
+
+      // El mismo instante en Tokio son las 21:00 del lunes.
+      await week(tokyo);
+      const fromT = await valid(
+        await businessHours(readerT.token),
+        businessHoursResponseSchema,
+      );
+      expect(fromT).toMatchObject({
+        configured: true,
+        timezone: "Asia/Tokyo",
+        now_local: { date: "2026-10-12", time: "21:00", weekday: 1 },
+        open_now: false,
+        next_change: { kind: "opens", date: "2026-10-13", time: "09:00" },
+      });
+      // El día especial de B es el mismo lunes: Tokio no lo ve ni en days ni en exceptions
+      // (revisión independiente de la 17.4.1, H-1).
+      expect(fromT.days[0]).toEqual({
+        date: "2026-10-12",
+        weekday: 1,
+        slots: SPLIT,
+        reason: null,
+      });
+      expect(fromT.exceptions).toEqual([]);
+      expect(JSON.stringify([fromB, fromT])).not.toContain("De B");
+    });
+
+    it("FR-API-10: sin el instante fijo, calcula con now() de PostgreSQL en la zona de la organización", async () => {
+      await week(orgA);
+      const body = await valid(
+        await businessHours(readerA.token, null),
+        businessHoursResponseSchema,
+      );
+      expect(body.now_local.date).toBe(
+        await dayIn("America/Argentina/Buenos_Aires"),
+      );
+      expect(body.days[0]!.date).toBe(body.now_local.date);
+    });
+
+    it("FR-API-10: exige alcance read: 401 sin token y 403 con ingest o context; la ruta del log es fija", async () => {
+      const lines: string[] = [];
+      const capture = (...args: unknown[]) => void lines.push(args.join(" "));
+      const spies: MockInstance[] = [
+        vi.spyOn(console, "log").mockImplementation(capture),
+        vi.spyOn(console, "warn").mockImplementation(capture),
+      ];
+      expect((await rejected(await businessHours(null), 401)).code).toBe(
+        "UNAUTHENTICATED",
+      );
+      expect(
+        (await rejected(await businessHours(ingestA.token), 403)).code,
+      ).toBe("FORBIDDEN");
+      const created = await createIngestionCredential(orgA, SOURCE, "context");
+      if (!created.ok) throw new Error("credencial inválida");
+      allow(readerA, readerB, ingestA, {
+        id: created.credentialId,
+        token: created.token,
+      });
+      expect(
+        (await rejected(await businessHours(created.token), 403)).code,
+      ).toBe("FORBIDDEN");
+      await valid(
+        await businessHours(readerA.token, MONDAY_OPENING, {
+          "x-correlation-id": "turno-0042:r1:i2",
+        }),
+        businessHoursResponseSchema,
+      );
+      for (const spy of spies) spy.mockRestore();
+      expect(
+        lines
+          .map((line) => JSON.parse(line))
+          .map((e) => [e.route, e.code, e.correlation_id ?? null]),
+      ).toEqual([
+        ["/api/read/v1/business-hours", "UNAUTHENTICATED", null],
+        ["/api/read/v1/business-hours", "FORBIDDEN", null],
+        ["/api/read/v1/business-hours", "FORBIDDEN", null],
+        ["/api/read/v1/business-hours", "OK", "turno-0042:r1:i2"],
+      ]);
+    });
+
+    it("FR-API-10: con la API apagada responde 404 sin cuerpo", async () => {
+      process.env.READ_API_ENABLED = "false";
+      const response = await businessHours(readerA.token);
       expect(response.status).toBe(404);
       expect(await response.text()).toBe("");
     });

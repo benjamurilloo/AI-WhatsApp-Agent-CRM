@@ -1,0 +1,30 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: ningún consumidor real leyó esta respuesta (brief-17.4, D-6).",
+  "description": "Una organización que no cargó el horario: el agente usa el texto de la información del negocio.",
+  "request": {
+    "method": "GET",
+    "path": "/api/read/v1/business-hours",
+    "headers": {
+      "authorization": "Bearer crm_read_<token>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "contract_version": "1",
+      "configured": false,
+      "timezone": "America/Argentina/Buenos_Aires",
+      "now_local": {
+        "date": "2026-10-12",
+        "time": "10:15",
+        "weekday": 1
+      },
+      "open_now": false,
+      "next_change": null,
+      "weekly": [],
+      "days": [],
+      "exceptions": []
+    }
+  }
+}

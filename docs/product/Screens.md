@@ -229,6 +229,23 @@ Agregada en la 11.2 ([brief-11.2](../decisions/brief-11.2-informacion-del-negoci
 - **Accesibilidad**: estándar. Los campos de fecha son nativos y se recorren con el teclado por segmento.
 - **No mostrar**: formularios ni auditoría a `viewer`, tampoco forzando la URL.
 
+## 12b. Horario de atención
+
+Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negocio-estructurada.md), D-4; FR-INFO-04 y FR-INFO-05). Ruta `/informacion/horario` (`?editar=1` para editar la semana), con un enlace «Horario de atención» en la pantalla 11. Ocupa el lugar de la pestaña «Horarios» de los bocetos.
+
+- **Objetivo**: ver y mantener el horario de atención estructurado, que el CRM usa para calcular si el negocio está abierto.
+- **Usuario autorizado**: ver, `admin` y `viewer`; editar la semana, agregar y quitar días especiales y el historial, solo `admin`.
+- **Información mostrada**: la zona horaria de la organización; los siete días con sus tramos («09:00 a 13:00 y 16:00 a 20:00», o «Cerrado»); los días especiales de hoy en adelante, con el día de la semana, sus tramos o «Cerrado», y el motivo; si hay una entrada de texto vigente de la categoría «Horarios», un aviso con su enlace (D-5). Para `admin`, el historial paginado, con cada día que cambió en castellano.
+- **Acciones**: editar la semana entera, con dos tramos por día y un día vacío como cerrado; agregar un día especial (fecha, motivo y tramos, vacío como cerrado); quitar uno, sin confirmación.
+- **Filtros**: no aplican.
+- **Paginación**: la del historial, 25 por página.
+- **Carga**: el botón queda deshabilitado hasta que responde el servidor.
+- **Vacío**: «Todavía no hay un horario cargado»; «No hay días especiales próximos».
+- **Errores**: un día inválido se marca con su mensaje, el foco va al primero y lo escrito se conserva; una fecha pasada o repetida, en el campo de la fecha.
+- **Responsive**: los cuatro campos de cada día en dos columnas en móvil y en una fila desde `lg`.
+- **Accesibilidad**: estándar. Cada día es un grupo con su nombre; los campos de hora son nativos.
+- **No mostrar**: formularios, el botón «Quitar» ni el historial a `viewer`, tampoco forzando la URL.
+
 ## 13. Etiquetas de clientes
 
 *Agregada en la 16.1* ([brief-16.1](../decisions/brief-16.1-etiquetas-de-clientes.md), D-9), sin wireframe, como la 5b. La numeración sigue a la 12 de la 11.2.

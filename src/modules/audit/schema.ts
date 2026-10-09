@@ -27,6 +27,8 @@ export const auditEntityType = pgEnum("audit_entity_type", [
   "knowledge_entry",
   // Etiqueta del catálogo de clientes (brief-16.1, D-7).
   "client_tag",
+  // Horario de atención de la organización; el id es el de la organización (brief-17.4, D-4).
+  "business_hours",
 ]);
 
 export const auditAction = pgEnum("audit_action", [

@@ -168,6 +168,28 @@ export async function findCategories(
   return rows.map((row) => row.value);
 }
 
+// Una entrada vigente de alguna de esas categorías, sin distinguir mayúsculas: la pantalla del
+// horario avisa que hay un texto de horarios además del horario estructurado (brief-17.4, D-5).
+export async function findCurrentEntryInCategories(
+  organizationId: string,
+  timezone: string,
+  categories: string[],
+): Promise<{ id: string; title: string } | undefined> {
+  const rows = await getDb()
+    .select({ id: knowledgeEntries.id, title: knowledgeEntries.title })
+    .from(knowledgeEntries)
+    .where(
+      and(
+        eq(knowledgeEntries.organizationId, organizationId),
+        sql`lower(${knowledgeEntries.category}) in ${categories}`,
+        sql`${statusExpression(timezone)} = 'current'`,
+      ),
+    )
+    .orderBy(asc(knowledgeEntries.title), asc(knowledgeEntries.id))
+    .limit(1);
+  return rows[0];
+}
+
 // drizzle-orm envuelve el error de pg; el código y la constraint quedan en la causa.
 function isTitleUniqueViolation(error: unknown): boolean {
   const e = error as {

@@ -3,6 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { isReadCredentialAllowed, readReadApiConfig } from "./config";
 import {
+  businessHoursResponseSchema,
   contractAmount,
   contractQuantity,
   conversationStateResponseSchema,
@@ -20,6 +21,7 @@ import {
   productResponseSchema,
   productSchema,
   productStockResponseSchema,
+  toContractBusinessHours,
   toContractConversationState,
   toContractHistoryMessage,
   toContractProductStock,
@@ -406,6 +408,128 @@ describe("cantidad disponible (FR-API-09, brief-16.6)", () => {
   });
 });
 
+describe("horario de atención (FR-API-10, brief-17.4)", () => {
+  const SPLIT = [
+    { opens: "09:00", closes: "13:00" },
+    { opens: "16:00", closes: "20:00" },
+  ];
+  const HOURS = {
+    contract_version: "1",
+    configured: true,
+    timezone: "America/Argentina/Buenos_Aires",
+    now_local: { date: "2026-10-12", time: "09:00", weekday: 1 },
+    open_now: true,
+    next_change: { kind: "closes", date: "2026-10-12", time: "13:00" },
+    weekly: [1, 2, 3, 4, 5, 6, 7].map((weekday) => ({
+      weekday,
+      slots: weekday <= 5 ? SPLIT : [],
+    })),
+    days: [12, 13, 14, 15, 16, 17, 18].map((day, index) => ({
+      date: `2026-10-${day}`,
+      weekday: index + 1,
+      slots: day === 14 || index >= 5 ? [] : SPLIT,
+      reason: day === 14 ? "Feriado" : null,
+    })),
+    exceptions: [{ date: "2026-10-14", slots: [], reason: "Feriado" }],
+  };
+  const NOT_CONFIGURED = {
+    ...HOURS,
+    configured: false,
+    open_now: false,
+    next_change: null,
+    weekly: [],
+    days: [],
+    exceptions: [],
+  };
+
+  it("FR-API-10: acepta un horario cargado y uno sin cargar", () => {
+    for (const valid of [HOURS, NOT_CONFIGURED]) {
+      const parsed = businessHoursResponseSchema.safeParse(valid);
+      expect(parsed.success, parsed.error?.message).toBe(true);
+    }
+  });
+
+  it("FR-API-10: rechaza un campo de más, horas fuera de HH:MM, un tramo invertido o tres, y un sin cargar que afirma algo", () => {
+    const day = HOURS.days[0]!;
+    for (const invalid of [
+      { ...HOURS, hours_entry: "Lunes a viernes" },
+      { ...HOURS, now_local: { ...HOURS.now_local, time: "24:00" } },
+      { ...HOURS, now_local: { ...HOURS.now_local, time: "9:00" } },
+      { ...HOURS, now_local: { ...HOURS.now_local, weekday: 0 } },
+      { ...HOURS, next_change: { ...HOURS.next_change, kind: "abre" } },
+      {
+        ...HOURS,
+        days: [
+          { ...day, slots: [{ opens: "13:00", closes: "09:00" }] },
+          ...HOURS.days.slice(1),
+        ],
+      },
+      {
+        ...HOURS,
+        days: [
+          { ...day, slots: [...SPLIT, { opens: "21:00", closes: "22:00" }] },
+          ...HOURS.days.slice(1),
+        ],
+      },
+      {
+        ...HOURS,
+        days: [{ ...day, id: "x" }, ...HOURS.days.slice(1)],
+      },
+      { ...HOURS, weekly: HOURS.weekly.slice(1) },
+      { ...HOURS, days: HOURS.days.slice(1) },
+      {
+        ...HOURS,
+        exceptions: [{ id: "x", date: "2026-10-14", slots: [], reason: null }],
+      },
+      { ...NOT_CONFIGURED, open_now: true },
+      { ...NOT_CONFIGURED, next_change: HOURS.next_change },
+      { ...NOT_CONFIGURED, days: HOURS.days },
+      { ...HOURS, contract_version: "2" },
+    ]) {
+      expect(
+        businessHoursResponseSchema.safeParse(invalid).success,
+        JSON.stringify(invalid).slice(0, 120),
+      ).toBe(false);
+    }
+  });
+
+  it("FR-API-10: el mapeo lleva solo los campos del contrato y, sin horario, no afirma nada", () => {
+    const service = {
+      configured: true,
+      timezone: HOURS.timezone,
+      status: {
+        localDate: "2026-10-12",
+        localTime: "09:00",
+        weekday: 1,
+        openNow: true,
+        nextChange: {
+          kind: "closes" as const,
+          date: "2026-10-12",
+          time: "13:00",
+        },
+        days: [],
+      },
+      week: HOURS.weekly.map((row) => ({
+        weekday: row.weekday as 1,
+        slots: row.slots,
+      })),
+      exceptions: [
+        {
+          id: "0b6f3c2e-5a4d-4e8f-9c1b-2a3d4e5f6a7b",
+          date: "2026-10-14",
+          slots: [],
+          reason: "Feriado",
+        },
+      ],
+      days: HOURS.days.map((row) => ({ ...row, weekday: row.weekday as 1 })),
+    };
+    expect(toContractBusinessHours(service)).toStrictEqual(HOURS);
+    expect(
+      toContractBusinessHours({ ...service, configured: false }),
+    ).toStrictEqual(NOT_CONFIGURED);
+  });
+});
+
 describe("modo de prueba de la lectura (D-7)", () => {
   it("está apagado por defecto, con false, y no lo encienden las variables de ingestión", () => {
     for (const env of [
@@ -467,17 +591,19 @@ describe("fixtures del contrato (D-8)", () => {
     const schema =
       status !== 200
         ? errorResponseSchema
-        : data.request.path.startsWith("/api/read/v1/knowledge")
-          ? knowledgeListResponseSchema
-          : data.request.path.startsWith("/api/read/v1/messages")
-            ? messageListResponseSchema
-            : data.request.path.startsWith("/api/read/v1/conversation-state")
-              ? conversationStateResponseSchema
-              : data.request.path.endsWith("/stock")
-                ? productStockResponseSchema
-                : "items" in body
-                  ? productListResponseSchema
-                  : productResponseSchema;
+        : data.request.path.startsWith("/api/read/v1/business-hours")
+          ? businessHoursResponseSchema
+          : data.request.path.startsWith("/api/read/v1/knowledge")
+            ? knowledgeListResponseSchema
+            : data.request.path.startsWith("/api/read/v1/messages")
+              ? messageListResponseSchema
+              : data.request.path.startsWith("/api/read/v1/conversation-state")
+                ? conversationStateResponseSchema
+                : data.request.path.endsWith("/stock")
+                  ? productStockResponseSchema
+                  : "items" in body
+                    ? productListResponseSchema
+                    : productResponseSchema;
     const parsed = schema.safeParse(body);
     expect(parsed.success, parsed.error?.message).toBe(true);
   });

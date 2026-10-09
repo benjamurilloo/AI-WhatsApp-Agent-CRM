@@ -1,0 +1,203 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: ningún consumidor real leyó esta respuesta (brief-17.4, D-6).",
+  "description": "Lunes 12/10 a las 10:15 en Buenos Aires: abierto hasta las 13:00, con un feriado el miércoles.",
+  "request": {
+    "method": "GET",
+    "path": "/api/read/v1/business-hours",
+    "headers": {
+      "authorization": "Bearer crm_read_<token>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "contract_version": "1",
+      "configured": true,
+      "timezone": "America/Argentina/Buenos_Aires",
+      "now_local": {
+        "date": "2026-10-12",
+        "time": "10:15",
+        "weekday": 1
+      },
+      "open_now": true,
+      "next_change": {
+        "kind": "closes",
+        "date": "2026-10-12",
+        "time": "13:00"
+      },
+      "weekly": [
+        {
+          "weekday": 1,
+          "slots": [
+            {
+              "opens": "09:00",
+              "closes": "13:00"
+            },
+            {
+              "opens": "16:00",
+              "closes": "20:00"
+            }
+          ]
+        },
+        {
+          "weekday": 2,
+          "slots": [
+            {
+              "opens": "09:00",
+              "closes": "13:00"
+            },
+            {
+              "opens": "16:00",
+              "closes": "20:00"
+            }
+          ]
+        },
+        {
+          "weekday": 3,
+          "slots": [
+            {
+              "opens": "09:00",
+              "closes": "13:00"
+            },
+            {
+              "opens": "16:00",
+              "closes": "20:00"
+            }
+          ]
+        },
+        {
+          "weekday": 4,
+          "slots": [
+            {
+              "opens": "09:00",
+              "closes": "13:00"
+            },
+            {
+              "opens": "16:00",
+              "closes": "20:00"
+            }
+          ]
+        },
+        {
+          "weekday": 5,
+          "slots": [
+            {
+              "opens": "09:00",
+              "closes": "13:00"
+            },
+            {
+              "opens": "16:00",
+              "closes": "20:00"
+            }
+          ]
+        },
+        {
+          "weekday": 6,
+          "slots": [
+            {
+              "opens": "09:00",
+              "closes": "13:00"
+            }
+          ]
+        },
+        {
+          "weekday": 7,
+          "slots": []
+        }
+      ],
+      "days": [
+        {
+          "date": "2026-10-12",
+          "weekday": 1,
+          "slots": [
+            {
+              "opens": "09:00",
+              "closes": "13:00"
+            },
+            {
+              "opens": "16:00",
+              "closes": "20:00"
+            }
+          ],
+          "reason": null
+        },
+        {
+          "date": "2026-10-13",
+          "weekday": 2,
+          "slots": [
+            {
+              "opens": "09:00",
+              "closes": "13:00"
+            },
+            {
+              "opens": "16:00",
+              "closes": "20:00"
+            }
+          ],
+          "reason": null
+        },
+        {
+          "date": "2026-10-14",
+          "weekday": 3,
+          "slots": [],
+          "reason": "Feriado"
+        },
+        {
+          "date": "2026-10-15",
+          "weekday": 4,
+          "slots": [
+            {
+              "opens": "09:00",
+              "closes": "13:00"
+            },
+            {
+              "opens": "16:00",
+              "closes": "20:00"
+            }
+          ],
+          "reason": null
+        },
+        {
+          "date": "2026-10-16",
+          "weekday": 5,
+          "slots": [
+            {
+              "opens": "09:00",
+              "closes": "13:00"
+            },
+            {
+              "opens": "16:00",
+              "closes": "20:00"
+            }
+          ],
+          "reason": null
+        },
+        {
+          "date": "2026-10-17",
+          "weekday": 6,
+          "slots": [
+            {
+              "opens": "09:00",
+              "closes": "13:00"
+            }
+          ],
+          "reason": null
+        },
+        {
+          "date": "2026-10-18",
+          "weekday": 7,
+          "slots": [],
+          "reason": null
+        }
+      ],
+      "exceptions": [
+        {
+          "date": "2026-10-14",
+          "slots": [],
+          "reason": "Feriado"
+        }
+      ]
+    }
+  }
+}

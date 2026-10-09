@@ -59,6 +59,8 @@ describe("base de test", () => {
     );
     expect(result.rows.map((row) => row.tablename)).toEqual([
       "audit_logs",
+      "business_hour_exceptions",
+      "business_hours",
       "client_tag_assignments",
       "client_tags",
       "clients",
