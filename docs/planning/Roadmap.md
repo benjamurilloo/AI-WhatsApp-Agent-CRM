@@ -364,6 +364,8 @@ Reglas comunes a las cuatro fases:
 
 ## Fases 18 a 22 — El ERP
 
+*Decidido el 2026-10-10, al cerrar la Fase 17: **el usuario abre la Fase 18 — Bases del ERP en la sesión siguiente**, por decisión explícita registrada con esta fecha, con la Fase 13 todavía abierta ([ADR 0016](../decisions/0016-el-crm-se-amplia-hacia-un-erp-por-fases.md), punto 3). Se abre con su proyecto en Notion, el orden de sus subfases y el brief de la primera; leer [DataModel](../architecture/DataModel.md) antes. La 13.5.2-b conserva su prioridad: si el negocio real se confirma, esta fase se pausa.*
+
 *Diseñadas a grandes rasgos el 2026-10-05, en el orden que aprobó el usuario. **Las habilita el [ADR 0016](../decisions/0016-el-crm-se-amplia-hacia-un-erp-por-fases.md)**, aceptado el 2026-10-05, que amplía el alcance y enmienda la prohibición de `CLAUDE.md`. Cada una se detalla al abrirse, con el negocio real delante; lo de abajo es el perímetro, no el diseño.*
 
 - **Fase 18 — Bases del ERP**: el costo del producto con historial (de solo inserción, como el precio) y el margen derivado; la numeración de comprobantes por organización; la moneda y los impuestos (IVA) como datos de los comprobantes. Lo que comparten las fases siguientes.
