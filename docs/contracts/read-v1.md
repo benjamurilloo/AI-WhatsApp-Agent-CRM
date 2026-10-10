@@ -67,7 +67,7 @@ Un producto activo por su id (FR-API-01).
 | `brand` | string | sí | |
 | `category` | string | sí | |
 | `condition` | string | no | `new` o `refurbished` |
-| `price` | objeto | sí | el precio vigente; `null` si nunca se fijó uno |
+| `price` | objeto | sí | el precio vigente; `null` si nunca se fijó uno. *Precisado el 2026-10-10* ([ADR 0019](../decisions/0019-bases-de-los-comprobantes.md), punto 4): es el **precio final al consumidor, con los impuestos incluidos si corresponden**. La forma no cambia y no es un cambio de v2 (§Versionado): la semántica no estaba escrita y ningún precio cargado cambia |
 | `price.amount` | string | no | decimal en texto con los decimales de la moneda: `"1234.50"` en ARS, `"300000"` en CLP. **Nunca un número de JSON** |
 | `price.currency` | string | no | ISO 4217, como `ARS` |
 | `stock_status` | string | no | `disponible`, `bajo_stock` o `sin_stock`. **Sin la cantidad** |

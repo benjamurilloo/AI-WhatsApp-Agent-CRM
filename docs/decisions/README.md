@@ -31,6 +31,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [0016](0016-el-crm-se-amplia-hacia-un-erp-por-fases.md) | El CRM se amplía hacia un ERP, por fases (reemplaza el punto 7 del 0014) | aceptada |
 | [0017](0017-responder-desde-el-crm.md) | Responder desde el CRM: una bandeja de salida que el agente toma, y el registro de lo que se contesta desde la app | aceptada el 2026-10-08, con la implementación pospuesta |
 | [0018](0018-imagenes-de-producto.md) | Imágenes de producto: una principal, guardada en PostgreSQL y procesada en el servidor; sin foto de perfil del cliente | aceptada el 2026-10-08; implementación en la 17.5 y la ruta del agente, confirmada por él, en una subfase posterior |
+| [0019](0019-bases-de-los-comprobantes.md) | Las bases de los comprobantes: numeración sin huecos por organización y tipo, una moneda por comprobante, el precio como final al consumidor y la base del margen; sin tablas | aceptada el 2026-10-10; las tablas, con la fase que las use (la primera, `product_costs` en la 18.2) |
 
 ## Briefs
 
@@ -117,6 +118,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-17.3](brief-17.3-adr-de-las-imagenes.md) | 17.3 — ADR de las imágenes | aprobado el 2026-10-08 con las recomendaciones de D-1 a D-12, y el umbral de 1 GB del mismo día; cerrado el 2026-10-08 con el ADR 0018 aceptado |
 | [brief-17.4](brief-17.4-informacion-del-negocio-estructurada.md) | 17.4 — Información del negocio estructurada | aprobado el 2026-10-09 con las recomendaciones de D-1 a D-11, las precisiones P-1 a P-7 y los pedidos R-1 y R-2 del agente; cerrado el 2026-10-09, con la ventana 17.4.3 hecha y cerrada el 2026-10-10 |
 | [brief-17.5](brief-17.5-imagenes-de-producto.md) | 17.5 — Imágenes de producto | aprobado el 2026-10-09 con las recomendaciones de D-1 a D-13 y las precisiones P-1 a P-6; cerrado el 2026-10-09 |
+| [brief-18.1](brief-18.1-adr-bases-de-los-comprobantes.md) | 18.1 — ADR de las bases de los comprobantes | aprobado el 2026-10-10 con las recomendaciones de D-1 a D-10; cerrado el 2026-10-10 con el ADR 0019 aceptado, con las correcciones R-1 y R-2 de la revisión independiente a D-4 y D-5 |
 | [evidencia-9.1](evidencia-9.1-staging.md) | 9.1 — Salidas crudas de la verificación en staging | captura del 2026-09-22 |
 | [evidencia-9.2](evidencia-9.2-backups.md) | 9.2 — Backup y restauración verificados en staging | captura del 2026-09-22 |
 | [evidencia-9.3](evidencia-9.3-volumen.md) | 9.3 — Volumen, planes y tiempos medidos en staging | captura del 2026-09-23 |

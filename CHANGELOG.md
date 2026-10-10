@@ -2,6 +2,37 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-10 — 18.1: el ADR de las bases de los comprobantes
+
+**Apertura de la Fase 18.** La Fase 18, Bases del ERP, se abrió el 2026-10-10 por decisión del usuario, con la Fase 13 todavía abierta ([ADR 0016](docs/decisions/0016-el-crm-se-amplia-hacia-un-erp-por-fases.md), punto 3).
+- Tiene dos subfases: la 18.1, este ADR, y la 18.2, el costo y el margen.
+- La numeración y los impuestos entran como decisiones y no como tablas, también por decisión del usuario: no tienen un consumidor en la fase ([Roadmap](docs/planning/Roadmap.md), enmendado).
+
+**Cierre de la subfase.** Cierra el 2026-10-10 con el [ADR 0019](docs/decisions/0019-bases-de-los-comprobantes.md) aceptado por el usuario ([brief-18.1](docs/decisions/brief-18.1-adr-bases-de-los-comprobantes.md)).
+
+**Certifica:**
+- **El ADR 0019, aceptado.** Fija:
+  - la numeración correlativa sin huecos por organización y tipo, con un contador bloqueado `FOR UPDATE` y `UNIQUE`;
+  - una moneda por comprobante, sin tipos de cambio;
+  - **el precio de `product_prices` como precio final al consumidor**, con impuestos incluidos si corresponden;
+  - que el comprobante guarda los montos de cuando se emitió, redondeados por línea a los decimales de la moneda;
+  - los comprobantes como internos, con la leyenda «Documento no válido como factura»;
+  - la base del margen para la 18.2: el costo con el IVA incluido, y el porcentaje sobre el precio;
+  - qué tabla crea cada fase. **La 18.1 no crea ninguna.**
+- **Revisión independiente**: veredicto R1, con 9 hallazgos (2 bloqueantes), todos verificados y resueltos antes de la aceptación. **Los dos bloqueantes venían del brief aprobado**:
+  - la base del costo daba un margen inflado para un responsable inscripto;
+  - el redondeo a centésimos no servía para las monedas sin decimales.
+
+  El usuario aceptó sus correcciones con el ADR.
+- **Enmiendas** fechadas, conservando el texto anterior: Roadmap §Fase 18, DataModel (regla 14, §`product_prices` y §Explícitamente fuera), FR-PROD-12 y `read-v1` §Productos, este último **sin cambio de versión**.
+
+**Nivel**: diseñado. No hay código, migraciones ni despliegue.
+
+**No certifica:**
+- Cómo presenta el agente el precio: el CRM no lo ve. El aviso al agente sobre la semántica del precio quedó para más adelante, por decisión del usuario.
+- Ninguna afirmación fiscal más allá de su nivel declarado en el ADR. En particular, la exhibición del precio sin impuestos de la Ley 27.743 y el alcance de su leyenda sobre un documento interno quedan **pendientes**, para la 13.5.2-b.
+- Que el margen sea exacto para un responsable inscripto: el monto incluye el IVA, y el porcentaje solo es exacto con alícuotas iguales (ADR 0019, punto 5).
+
 ## 2026-10-10 — Fase 17 cerrada (Datos ampliados de clientes y catálogo)
 
 Cierra por decisión del usuario, que es el gate de salida de la fase ([Roadmap](docs/planning/Roadmap.md), §Fase 17). El usuario aprobó el cierre el 2026-10-10, junto con el de la 17.4.3, y dejó fuera de la fase la ruta de la imagen para el agente.

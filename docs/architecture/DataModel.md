@@ -26,7 +26,7 @@ Convenciones fijadas en la 3.1, que siguen las tablas futuras salvo justificaci�
 11. Todo ajuste de stock ocurre dentro de una transacción de base de datos que actualiza `inventories` e inserta en `inventory_movements` atómicamente.
 12. `inventories.quantity_on_hand >= 0` por `CHECK` constraint — no se permiten cantidades negativas en el MVP (ver ADR correspondiente si el negocio decide lo contrario explícitamente).
 13. El modelo de `conversations`/`messages` incluye `channel` como enum extensible desde el día uno, aunque el MVP solo usa `whatsapp`, para no rediseñar el dominio al agregar un segundo canal.
-14. Ningún modelo de ventas, compras, proveedores o pagos existe en este schema.
+14. Ningún modelo de ventas, compras, proveedores o pagos existe en este schema. *Precisado el 2026-10-10 por el [ADR 0019](../decisions/0019-bases-de-los-comprobantes.md)*: sigue siendo cierto. El ADR fija el diseño de la numeración, la moneda y el IVA de los comprobantes **sin crear ninguna tabla**; cada una la crea la fase que la usa (punto 7 del ADR). La primera es `product_costs`, en la 18.2.
 
 ## Diagrama entidad-relación
 
@@ -258,6 +258,8 @@ El SKU **no** se normaliza: su índice único define la identidad del producto y
 **Implementada en la 11.1** ([brief-11.1](../decisions/brief-11.1-catalogo-comercial.md), D-5, migración `drizzle/0017_*`). Módulo dueño: `catalog`.
 
 Precio de venta de un producto, con historial. Es un atributo del catálogo, no una transacción: no hay ventas, descuentos, listas por cliente, impuestos ni costo (regla 14). **El precio vigente es la última fila del producto** (`created_at desc, id desc`); un producto sin filas no tiene precio. No hay fecha de vigencia futura ni forma de retirar un precio sin fijar otro: para dejar de vender, el producto se desactiva.
+
+*Precisado el 2026-10-10 por el [ADR 0019](../decisions/0019-bases-de-los-comprobantes.md), punto 4*: `amount` es el **precio final al consumidor, con los impuestos incluidos si corresponden**. Hasta esa fecha la semántica no estaba escrita. La columna no cambia. Un comprobante futuro copia este monto al emitirse y nunca lo recalcula.
 
 Insert-only según la regla 10: `crm_app` solo tiene `SELECT` e `INSERT`, y el trigger `product_prices_insert_only` rechaza `UPDATE` y `DELETE` para cualquier rol con SQLSTATE `P0001`. En la aplicación, la única escritura es `insertProductPrice` de `src/modules/catalog/repository.ts`, y `tests/guards/price-writes.test.ts` falla ante cualquier otra en `src/` (FR-PROD-13).
 
@@ -640,6 +642,12 @@ Productor `client_tag`, desde la 16.1 (D-7). `entity_id` es el id de la etiqueta
 ## Explícitamente fuera de este modelo
 
 `sales`, `sale_details`, `purchases`, `purchase_details`, `suppliers`, `payments`, `cash_accounts`, cualquier tabla de contabilidad. Ninguna se crea vacía "para después".
+
+*Nota del 2026-10-10 ([ADR 0019](../decisions/0019-bases-de-los-comprobantes.md))*: las tablas del ERP entran con la fase que las usa ([ADR 0016](../decisions/0016-el-crm-se-amplia-hacia-un-erp-por-fases.md)). El ADR 0019 fija su diseño común, sin tablas:
+- un contador de numeración por `(organization_id, tipo)`, bloqueado `FOR UPDATE` y creado con `ON CONFLICT DO NOTHING` en la primera emisión, sin huecos, con `UNIQUE (organization_id, tipo, número)`;
+- una moneda por comprobante, sin tipos de cambio;
+- en cada línea, los montos y el IVA de cuando se emitió, redondeados a los decimales de la moneda;
+- la condición frente al IVA y la alícuota del producto, con la primera fase que las use.
 
 ## Preguntas abiertas sobre el modelo
 
