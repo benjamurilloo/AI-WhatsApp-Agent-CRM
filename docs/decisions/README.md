@@ -115,7 +115,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-17.1](brief-17.1-campos-de-clientes.md) | 17.1 — Campos de clientes | aprobado el 2026-10-08 con las recomendaciones de D-1 a D-14, y las precisiones P-1 y P-3 del mismo día; cerrado el 2026-10-08 |
 | [brief-17.2](brief-17.2-campos-de-productos.md) | 17.2 — Campos de productos | aprobado el 2026-10-08 con las recomendaciones de D-1 a D-13, y las precisiones P-1 a P-4 del mismo día; cerrado el 2026-10-08 |
 | [brief-17.3](brief-17.3-adr-de-las-imagenes.md) | 17.3 — ADR de las imágenes | aprobado el 2026-10-08 con las recomendaciones de D-1 a D-12, y el umbral de 1 GB del mismo día; cerrado el 2026-10-08 con el ADR 0018 aceptado |
-| [brief-17.4](brief-17.4-informacion-del-negocio-estructurada.md) | 17.4 — Información del negocio estructurada | aprobado el 2026-10-09 con las recomendaciones de D-1 a D-11, las precisiones P-1 a P-7 y los pedidos R-1 y R-2 del agente; cerrado el 2026-10-09 |
+| [brief-17.4](brief-17.4-informacion-del-negocio-estructurada.md) | 17.4 — Información del negocio estructurada | aprobado el 2026-10-09 con las recomendaciones de D-1 a D-11, las precisiones P-1 a P-7 y los pedidos R-1 y R-2 del agente; cerrado el 2026-10-09, con la ventana 17.4.3 hecha y cerrada el 2026-10-10 |
 | [brief-17.5](brief-17.5-imagenes-de-producto.md) | 17.5 — Imágenes de producto | aprobado el 2026-10-09 con las recomendaciones de D-1 a D-13 y las precisiones P-1 a P-6; cerrado el 2026-10-09 |
 | [evidencia-9.1](evidencia-9.1-staging.md) | 9.1 — Salidas crudas de la verificación en staging | captura del 2026-09-22 |
 | [evidencia-9.2](evidencia-9.2-backups.md) | 9.2 — Backup y restauración verificados en staging | captura del 2026-09-22 |

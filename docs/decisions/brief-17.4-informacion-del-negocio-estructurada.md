@@ -281,3 +281,27 @@ En local, el 2026-10-09, después de resolver la revisión: formato, lint y type
 - **No certifica**: que el agente lea la ruta ni cómo responde con ella; la ruta bajo escrituras concurrentes (H-6, verificada por lectura, sin test); un negocio que cierra después de la medianoche (carga 23:59, R-2); las zonas y costos de envío y las condiciones, que quedan para las Fases 19 y 21 (D-10).
 - **Riesgo heredado**: la CI dura unos 13 minutos contra un límite de 15 por job; el primer intento de `2e983ac` se cortó por la instalación de Chromium. Ya había una tarea en el proyecto raíz, `3f2702be6f4e8104b521cf12b377fe34`.
 - **Pendiente heredado**: `TraceabilityMatrix.md` §3 atrasada; el paso 7 de la verificación de `deploy/production/README.md` pide recuentos en cero y producción tiene datos desde la 13.5.
+
+## Ventana 17.4.3 con el agente, 2026-10-10
+
+- **Cómo se destrabó**: la confirmación de R-1 y R-2 y el aviso de la ruta publicada no se le habían mandado al agente después del cierre del 2026-10-09; el agente esperaba «el contrato publicado» para abrir su subfase. Salió el 2026-10-09 (`Confirmacion-17.4-CRM-al-Agente.md`, en el Escritorio del usuario). El agente publicó su herramienta el 2026-10-10 (su subfase 3.47; `Aviso-3.47-Ventana-17.4.md`) después de una sonda que el CRM ve en su log: 12:48:24 UTC, `OK`, `agente-demo`, correlación `agent-probe-3.47`.
+- **Preparación, en solo lectura**: el horario de «Demostración Vixora» coincide con el guion del agente (lunes a viernes 09:00–13:00 y 16:00–20:00, sábado 10:00–16:00, domingo cerrado, el lunes 12 cerrado por el Día de la Raza); la entrada de texto «Horarios de atención» está desactivada, así que el texto ya no repite los horarios.
+- **La ventana, autorizada por el usuario**: el usuario mandó tres preguntas desde su teléfono al número de prueba de Meta, el sábado 10 entre las 13:35 y las 13:38 UTC. El CRM leyó su log y los mensajes de la demostración, sin escribir nada:
+
+  | Paso | Lectura | Correlación | Lo que contestó el agente | Campo |
+  | --- | --- | --- | --- | --- |
+  | 1, «¿están abiertos?» | 13:36:08, `OK`, 27 ms | `12292:r1:i1` | «sí, estamos abiertos y cerramos a las 16:00» (eran las 10:36 en el negocio) | `open_now`, `next_change` |
+  | 2, «¿abren el lunes?» | 13:36:55, `OK`, 18 ms | `12325:r1:i1` | «el lunes no abrimos por el Día de la Raza» | `days` |
+  | 3, «¿cuál es el horario de atención?» | 13:37:52, `OK`, 18 ms | `12358:r1:i1` | «de lunes a viernes de 9 a 13 y de 16 a 20, los sábados de 10 a 16 y los domingos estamos cerrados» | `weekly` |
+
+  Una lectura de la ruta por pregunta, todas en la primera ronda, como anunció el agente; ningún `429` ni otro código en la ventana. Las tres respuestas coinciden con lo que la ruta devolvía en ese momento.
+
+- **AC-14 cumplido.** La ruta queda **validada en integración en producción** (`producer-consumer`) con el agente, en la organización de demostración y con un solo remitente, el usuario.
+- **No certifica**: un turno que el router mande a ventas, que no lee el horario (límite declarado por el agente); el comportamiento con la lectura fallida en producción (el agente lo probó en su piloto).
+- **Conciliación del agente** (`Conciliacion-3.47-Ventana-17.4.md`, 2026-10-10): sus tres `X-Request-Id` (`6c7bb629-…`, `288f4d89-…`, `7922fe1f-…`) están en el log del CRM con la misma hora, la ruta fija, `OK` y la misma correlación; 0 `RATE_LIMITED` entre las 13:30 y las 13:40 UTC. **Conciliación 3 de 3.** Lo que leyó el agente (`open_now: true` y cierre a las 16:00; el lunes 12 sin tramos por el Día de la Raza; `weekly`) es lo que contestó. Su subagente `info_agent` 1.2.0 pidió la herramienta en la primera llamada y no consultó la base de conocimiento.
+- **Fixture `captured`: no se agrega.** n8n guarda el cuerpo ya parseado, y el cuerpo crudo de la sonda quedó del lado del agente; los fixtures de la ruta siguen con forma asumida (`read-v1.md`).
+
+## Cierre de la 17.4.3 y de la Fase 17, 2026-10-10
+
+- **La 17.4.3 cerrada** con AC-14 cumplido, por decisión del usuario del 2026-10-10. Autoevaluación declarada: la ventana no abre ni cierra un gate propio; la revisión independiente de la 17.4 fue la de la 17.4.1.
+- **La ruta de la imagen para el agente** (ADR 0018, punto 7) **queda fuera de la Fase 17**, por decisión del usuario del mismo día: candidata en el Roadmap, con su contrato a diseñar con el agente.

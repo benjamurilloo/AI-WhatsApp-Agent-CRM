@@ -2,6 +2,40 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-10 — Fase 17 cerrada (Datos ampliados de clientes y catálogo)
+
+Cierra por decisión del usuario, que es el gate de salida de la fase ([Roadmap](docs/planning/Roadmap.md), §Fase 17). El usuario aprobó el cierre el 2026-10-10, junto con el de la 17.4.3, y dejó fuera de la fase la ruta de la imagen para el agente.
+
+**Certifica:**
+- **Las cinco subfases cerradas**, cada una con su entrada abajo:
+  - 17.1, campos de clientes;
+  - 17.2, campos de productos;
+  - 17.3, el ADR 0018 de las imágenes de producto;
+  - 17.4, el horario de atención estructurado, con su ventana con el agente (17.4.3);
+  - 17.5, las imágenes de producto.
+
+  Todas las que cambiaron código o un contrato llevaron revisión independiente antes del commit. Los despliegues, la ventana con el agente y los cierres son autoevaluación declarada.
+- **Con el agente**: una ruta nueva de la lectura v1, `business-hours`, **validada en integración** en producción, en la organización de demostración.
+- **Producción** corre `45e7b70`, con 35 migraciones (`0031` a `0034` en la fase). Las versiones anteriores de la fase, de la más nueva a la más vieja: `2e983ac`, `a7838f1` y `726a88d`; antes de la fase, `40253d6`.
+
+**Nivel**: el de cada subfase. No certifica «preparado para producción»: ese gate es de la Fase 13, y la 13.5.2-b sigue pendiente.
+
+**No certifica:**
+- La ruta de lectura de la imagen para el agente (ADR 0018, punto 7): candidata fuera de la fase, con su contrato a diseñar con él.
+- El simulacro de restauración con imágenes: el primero es el del 2026-11-01 (tarea en Notion).
+- Lo que quedó como candidata: documento y CUIT/CUIL (Fase 20), «visible en catálogo», las listas administradas, zonas y costos de envío y condiciones (Fases 19 y 21), y la foto de perfil del cliente.
+- Ninguna conversación con un cliente real: la ventana usó el teléfono del usuario en la organización de demostración.
+
+## 2026-10-10 — 17.4.3: la ventana del horario con el agente
+
+Ventana de la 17.4 ([brief-17.4](docs/decisions/brief-17.4-informacion-del-negocio-estructurada.md), §Ventana 17.4.3). Había quedado colgada: la confirmación de los pedidos del agente y el aviso de la ruta publicada no se le mandaron al cerrar la 17.4; salieron el 2026-10-09, y el agente publicó su herramienta el 2026-10-10.
+
+**Certifica**:
+- **AC-14**: tres preguntas de horario desde el teléfono del usuario a la organización de demostración, cada una con una lectura de `GET /api/read/v1/business-hours` en `200`, y respuestas del agente que coinciden con `open_now` y `next_change`, con `days` (el feriado del lunes) y con `weekly`. Conciliación 3 de 3 por `X-Request-Id` y correlación, sin ningún `429`.
+- **La ruta queda validada en integración en producción** (`producer-consumer`).
+
+**No certifica**: un fixture `captured` (el cuerpo crudo quedó del lado del agente); un turno que el router manda a ventas, que no lee el horario; la lectura fallida en producción.
+
 ## 2026-10-09 — 17.5 cerrada: imágenes de producto
 
 Quinta subfase de la Fase 17 ([brief-17.5](docs/decisions/brief-17.5-imagenes-de-producto.md), [ADR 0018](docs/decisions/0018-imagenes-de-producto.md)), en dos etapas. Commits `e4f9db0` (17.5.1; CI 37953122201 en `failure` por la guarda de IPs) y `45e7b70` (la corrección; CI 37966056630, `success`, leída por `headSha`). Desplegada en producción el 2026-10-09 con la migración `0034` (17.5.2), y recorrida por el usuario el mismo día.
