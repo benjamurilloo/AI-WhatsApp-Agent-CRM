@@ -13,7 +13,7 @@ generated_at: 2026-10-10
 - **Nivel de validación alcanzable**: **validado localmente y en CI**, **validado en integración** para la pantalla y, con D-10, **desplegado en producción** con la revisión del usuario. No es «preparado para producción».
 - **Orden**: segunda y última subfase de la Fase 18 ([Roadmap](../planning/Roadmap.md) §Fase 18), después de la 18.1, cerrada el 2026-10-10. Implementa el punto 5 y la primera fila del punto 7 del [ADR 0019](0019-bases-de-los-comprobantes.md).
 - **No abre ni cierra gate.** Crea una tabla y el primer dato del CRM que un `viewer` **no** puede leer. Por eso se recomienda la revisión independiente (D-9).
-- **Estado de este documento**: **aprobado el 2026-10-10** por el usuario, con las recomendaciones de D-1 a D-10. La tarea 18.2, `3f5702be6f4e811f8820db49471f1c3a`, está en «En proceso» en Notion desde ese día.
+- **Estado de este documento**: **aprobado el 2026-10-10** por el usuario, con las recomendaciones de D-1 a D-10. La tarea 18.2, `3f5702be6f4e811f8820db49471f1c3a`, estuvo en «En proceso» en Notion desde ese día. **Cerrado el 2026-10-10** (§Cierre, al final).
 
 ## Objetivo
 
@@ -221,9 +221,9 @@ Implementado el 2026-10-10. **Esta sección es autoevaluación**: la escribió q
   - en verde, como se esperaba: una lectura;
   - restaurado, 22 de 22.
 - **AC-8**: cumplido. `read-api.test.ts`, caso 6c. Con un costo cargado, la búsqueda y el detalle son idénticos a los de antes, y el cuerpo crudo no contiene el monto ni «cost». **Mutación**: la lectura de servicio leyó `findCurrentCosts` en lugar de `findCurrentPrices`, que es una fuga con el nombre del precio; el caso se puso en rojo, y al restaurar volvió a verde.
-- **AC-9**: ver §Batería, al final del brief.
+- **AC-9**: ver §Batería, al final del brief. *Cerrado con la CI de `0c2f322`: §Cierre.*
 - **AC-10**: cumplido. DataModel (la tabla, el diagrama, el enum y las reglas 8, 10 y 14), FR-PROD-19 a 21, Screens (la pantalla 5c), TraceabilityMatrix y EngineeringStandards. No se reescribió ninguna decisión anterior.
-- **AC-11**: pendiente. El despliegue se autoriza aparte (D-10).
+- **AC-11**: pendiente. El despliegue se autoriza aparte (D-10). *Cumplido el 2026-10-10: §Cierre.*
 
 ### Alcance real
 
@@ -262,3 +262,41 @@ Corrida desde Git Bash con las correcciones de la revisión independiente:
   Se atribuye a la máquina, no al cambio: los fallos no se repitieron, fueron siempre por tiempo y no tocaron nada de esta subfase. Queda como observación, sin investigar.
 
 La CI del SHA del cierre es la que cierra AC-9.
+
+## Cierre de la subfase 18.2, 2026-10-10
+
+- **AC-1 a AC-11 cumplidos.**
+  - **AC-1 a AC-10**: en local y en la CI de `0c2f322`, run 38073281349, `success`, leída por `headSha`, en 10 min 25 s. En esa CI pasó también `exposed-surface`, ya con `costos/actions.ts` en git; en local, antes del commit, dio 27 de 27 con el archivo en el índice.
+  - **AC-11**: en producción.
+- **El despliegue**, según [deploy/production/README.md](../../deploy/production/README.md) §Desplegar un cambio:
+  - se anotó `45e7b70` en el registro de despliegues, y es la versión para volver atrás;
+  - el checkout de `0c2f322`, `npm ci`, la migración, el build y el reinicio terminaron sin errores, con HEAD igual al SHA pedido;
+  - migraciones de 35 a 36;
+  - `product_costs` existe vacía, con `SELECT, INSERT` exactos para `crm_app`, el trigger `product_costs_insert_only` y `cost_change` en el enum;
+  - los recuentos de `products` (5), `product_prices` (6), `audit_logs` (57), `organizations` (2), `clients` (2) y `messages` (84) quedaron iguales;
+  - el servicio está activo, sin avisos en el journal desde el reinicio, y `/login` responde `200`.
+- **La lectura del agente** sigue respondiendo `401` sin token desde afuera, y entre `45e7b70` y `0c2f322` no cambió nada en `src/app/api` ni en `deploy/`. **No se probó con token**: el token no pasa por la conversación. Lo que la respalda es el caso 6c de `read-api.test.ts` (AC-8), en local y en CI.
+- **El recorrido del usuario**: en la organización del operador, como `admin`, fijó dos costos a un producto con precio y vio el margen, el recargo y el historial. Lo dio por correcto el 2026-10-10. Después, producción tenía 2 filas en `product_costs` y 2 eventos `cost_change` (`audit_logs` pasó de 57 a 59), con productos y precios sin cambios.
+- **Revisión**: la independiente de D-9, con B-1, B-2 y N-1 a N-3 corregidos y N-4 conservado con su motivo. La batería, el despliegue y este cierre son autoevaluación declarada.
+- **Decisiones del usuario**:
+  - el brief, con las recomendaciones de D-1 a D-10;
+  - sin seed de costos;
+  - el `TRUNCATE` de las tres specs end-to-end fuera de la lista;
+  - `exposed-surface` y SecurityModel fuera de la lista;
+  - el commit y el push de `0c2f322`, el despliegue, este cierre y el de la Fase 18.
+- **Nivel**:
+  - validado localmente y en CI;
+  - **validado en integración** para la pantalla, con end-to-end sobre `next start`, y para `read-v1`;
+  - desplegado en producción y recorrido por el usuario (`isolated-runtime`).
+
+  No es «preparado para producción».
+- **No certifica**:
+  - que el margen sea exacto para un responsable inscripto: el monto incluye el IVA, y el porcentaje solo es exacto con alícuotas iguales (ADR 0019, punto 5). La condición del negocio real frente al IVA es una pregunta de la 13.5.2-b;
+  - que un `viewer` no vea el costo **en producción**: se probó en el end-to-end (caso 25), no en el recorrido;
+  - la lectura del agente con su token (arriba);
+  - los fallos por tiempo de `ingestion` y `crm` en la integración local: observados, sin investigar.
+- **Permiso de la sesión**: para el despliegue, el usuario agregó a su configuración local una regla que permite `ssh crm-production` sin pedir confirmación, después de que el clasificador del modo automático rechazara el primer acceso. Esa regla no está versionada. **Una regla de permiso no es una autorización**: cada despliegue se sigue autorizando en su turno.
+- **Pendiente heredado**:
+  - `TraceabilityMatrix.md` §3, atrasada;
+  - el paso 7 de la verificación de `deploy/production/README.md` pide recuentos en cero, y producción tiene datos desde la 13.5;
+  - el simulacro de restauración del 2026-11-01.

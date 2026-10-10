@@ -2,6 +2,64 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-10 — Fase 18 cerrada (Bases del ERP)
+
+Cierra por decisión del usuario, que aprobó el cierre el 2026-10-10 junto con el de la 18.2. El Roadmap no le fijaba un gate de salida propio.
+
+**Certifica:**
+- **Las dos subfases cerradas**, cada una con su entrada abajo:
+  - 18.1, el ADR 0019 de las bases de los comprobantes, sin tablas;
+  - 18.2, el costo del producto con historial y el margen, desplegada en producción.
+
+  Las dos llevaron revisión independiente antes del cierre. El despliegue y los cierres son autoevaluación declarada.
+- **Producción** corre `0c2f322`, con 36 migraciones (`0035` en la fase). La versión anterior es `45e7b70`.
+- **La numeración, la moneda y los impuestos** quedan como decisiones del ADR 0019, **sin tablas**: las crea la fase del primer comprobante que las use.
+
+**Nivel**: el de cada subfase. No certifica «preparado para producción»: ese gate es de la Fase 13, y la 13.5.2-b sigue pendiente, ahora con dos preguntas más (la condición del negocio frente al IVA y la Ley 27.743).
+
+**No certifica:**
+- Ningún comprobante, pedido ni venta: son de las Fases 19 y 20, que se abren solo con su decisión.
+- Que el margen sea exacto para un responsable inscripto (ADR 0019, punto 5).
+
+## 2026-10-10 — 18.2: el costo del producto con historial y el margen
+
+Cierra el 2026-10-10 con la aprobación del usuario, después de su recorrido en producción ([brief-18.2](docs/decisions/brief-18.2-costo-y-margen.md), §Cierre).
+
+**Certifica:**
+- **`product_costs`**, de solo inserción como `product_prices` ([ADR 0013](docs/decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md)): la migración `0035`, con `SELECT, INSERT` para `crm_app`, un trigger que rechaza cambios y borrados, y el evento de auditoría `cost_change`.
+- **Solo `admin`** fija el costo, ve su historial y ve el margen:
+  - una tarjeta «Costo y margen» en la ficha del producto;
+  - una página propia, `/productos/[id]/costos`.
+
+  Un `viewer` no ve nada de esto: ni la tarjeta, ni el enlace, ni el monto, y la página y el servicio lo rechazan. Es el primer dato del CRM que un `viewer` no puede leer.
+- **El margen**, según el ADR 0019, punto 5:
+  - el precio final contra el costo, los dos con IVA;
+  - el porcentaje sobre el precio y el recargo sobre el costo, en décimas, redondeados con el medio hacia afuera del cero;
+  - la base del cálculo escrita debajo;
+  - sin margen si falta el precio, si falta el costo o si las monedas difieren.
+- **El agente no lee el costo**: `read-v1` no cambia, y el caso 6c de `read-api` lo prueba con un costo cargado, con su mutación.
+- **La guarda `cost-writes`**: solo una función del servicio escribe la tabla. Las mutaciones se hicieron una por forma.
+- **Revisión independiente**: dos bloqueantes, los dos corregidos antes del commit:
+  - `setCostAction` no estaba declarada en `exposed-surface`, que daba un falso verde con el archivo sin versionar;
+  - una cuarta spec end-to-end vaciaba `products` sin `product_costs`.
+
+  También corrigió tres observaciones y conservó, con su motivo, el texto de los motivos sin margen.
+- **Batería**: 659 unitarios, 507 guardas, 897 de integración y 154 end-to-end en local. La CI de `0c2f322` dio `success` en 10 min 25 s.
+- **Producción** corre `0c2f322`, con la `0035` aplicada y los recuentos anteriores sin cambios. El usuario fijó dos costos como `admin` y vio el margen y el historial.
+
+**Nivel**:
+- validado localmente y en CI;
+- **validado en integración** para la pantalla y para `read-v1`;
+- desplegado en producción y recorrido por el usuario.
+
+No es «preparado para producción».
+
+**No certifica:**
+- Que el margen sea exacto para un responsable inscripto: el porcentaje solo es exacto con alícuotas iguales.
+- Que un `viewer` no vea el costo en producción: se probó en el end-to-end, no en el recorrido.
+- La lectura del agente con su token: se comprobó el `401` sin token y que la ruta no cambió.
+- Los fallos por tiempo de `ingestion` y `crm` en la integración local, que no se repitieron: observados, sin investigar.
+
 ## 2026-10-10 — 18.1: el ADR de las bases de los comprobantes
 
 **Apertura de la Fase 18.** La Fase 18, Bases del ERP, se abrió el 2026-10-10 por decisión del usuario, con la Fase 13 todavía abierta ([ADR 0016](docs/decisions/0016-el-crm-se-amplia-hacia-un-erp-por-fases.md), punto 3).

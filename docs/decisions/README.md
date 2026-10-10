@@ -119,6 +119,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-17.4](brief-17.4-informacion-del-negocio-estructurada.md) | 17.4 — Información del negocio estructurada | aprobado el 2026-10-09 con las recomendaciones de D-1 a D-11, las precisiones P-1 a P-7 y los pedidos R-1 y R-2 del agente; cerrado el 2026-10-09, con la ventana 17.4.3 hecha y cerrada el 2026-10-10 |
 | [brief-17.5](brief-17.5-imagenes-de-producto.md) | 17.5 — Imágenes de producto | aprobado el 2026-10-09 con las recomendaciones de D-1 a D-13 y las precisiones P-1 a P-6; cerrado el 2026-10-09 |
 | [brief-18.1](brief-18.1-adr-bases-de-los-comprobantes.md) | 18.1 — ADR de las bases de los comprobantes | aprobado el 2026-10-10 con las recomendaciones de D-1 a D-10; cerrado el 2026-10-10 con el ADR 0019 aceptado, con las correcciones R-1 y R-2 de la revisión independiente a D-4 y D-5 |
+| [brief-18.2](brief-18.2-costo-y-margen.md) | 18.2 — El costo del producto con historial y el margen derivado | aprobado el 2026-10-10 con las recomendaciones de D-1 a D-10; cerrado el 2026-10-10, desplegado en producción con la migración `0035` |
 | [evidencia-9.1](evidencia-9.1-staging.md) | 9.1 — Salidas crudas de la verificación en staging | captura del 2026-09-22 |
 | [evidencia-9.2](evidencia-9.2-backups.md) | 9.2 — Backup y restauración verificados en staging | captura del 2026-09-22 |
 | [evidencia-9.3](evidencia-9.3-volumen.md) | 9.3 — Volumen, planes y tiempos medidos en staging | captura del 2026-09-23 |
