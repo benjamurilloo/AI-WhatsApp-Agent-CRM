@@ -511,6 +511,38 @@ describe("API de lectura: productos", { timeout: TEST_TIMEOUT }, () => {
     );
     expect(byBarcode.items).toEqual([]);
   });
+
+  // brief-18.2, AC-8 y D-7: el agente no lee el costo. Ninguna ruta de servicio lee product_costs,
+  // y la guarda cost-writes solo mira escrituras: este caso es lo que lo fija.
+  it("6c. brief-18.2 D-7: el costo no cambia la búsqueda ni el detalle", async () => {
+    const before = await valid(
+      await search("?q=AUR-01", readerA.token),
+      productListResponseSchema,
+    );
+    const detailBefore = await valid(
+      await detail(auriculares, readerA.token),
+      productResponseSchema,
+    );
+    await getDb().execute(
+      sql`insert into product_costs (organization_id, product_id, amount, currency, created_by)
+          values (${orgA}, ${auriculares}, ${"12345.67"}, ${"USD"}, ${await memberOf(orgA)})`,
+    );
+    const searchResponse = await search("?q=AUR-01", readerA.token);
+    const searchText = await searchResponse.clone().text();
+    expect(
+      await valid(searchResponse, productListResponseSchema),
+    ).toStrictEqual(before);
+    const detailResponse = await detail(auriculares, readerA.token);
+    const detailText = await detailResponse.clone().text();
+    expect(await valid(detailResponse, productResponseSchema)).toStrictEqual(
+      detailBefore,
+    );
+    // Ni con otro nombre: el monto no aparece en el cuerpo crudo.
+    for (const body of [searchText, detailText]) {
+      expect(body).not.toContain("12345.67");
+      expect(body).not.toMatch(/cost/i);
+    }
+  });
 });
 
 describe("API de lectura: el borde", { timeout: TEST_TIMEOUT }, () => {

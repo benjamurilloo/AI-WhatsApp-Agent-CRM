@@ -127,6 +127,8 @@ const INSERT_ONLY_TABLES = [
   "conversation_notes",
   "inventory_movements",
   "messages",
+  // Costo de un producto (brief-18.2).
+  "product_costs",
   "product_prices",
 ];
 // Se actualizan pero no se borran (brief-6.1, D-3; credenciales, brief-6.5.3, D-1; información

@@ -25,6 +25,7 @@ import {
   quantityToDatabase,
   type Quantity,
 } from "@/shared/quantity";
+import { computeMargin, type Margin } from "./margin";
 import * as repository from "./repository";
 import {
   DIMENSION_SCALE,
@@ -37,6 +38,7 @@ import {
 // transacción (FR-AUD-01), y el estado de stock de FR-PROD-05. Marca, categoría y condición
 // (FR-PROD-10), la búsqueda por palabras (FR-PROD-11) y el precio (FR-PROD-12 y 13), brief-11.1.
 // Los campos de operación y la búsqueda por código de barras (FR-PROD-14 y 15), brief-17.2.
+// El costo y el margen (FR-PROD-19 a 21), brief-18.2: solo admin.
 
 export type Product = repository.ProductRow;
 export type ProductActivityFilter = repository.ActivityFilter;
@@ -874,5 +876,229 @@ export async function setProductPrice(
       },
     });
     return { ok: true, changed: true, price: toPrice(price) };
+  });
+}
+
+// Costo y margen (brief-18.2; ADR 0019, punto 5). product_costs es de solo inserción, como el
+// precio: un costo nuevo se agrega y el anterior queda en el historial. **Solo admin lee y escribe**
+// (D-1): es el primer dato de un producto que un viewer no ve, así que cada función exige el rol
+// antes de tocar la base. Ninguna lectura de servicio lee el costo: el agente no lo ve (D-7).
+
+export type ProductCost = ProductPrice;
+
+const toCost: (row: repository.CostRow) => ProductCost = toPrice;
+
+export type CostInput = {
+  amount: string;
+  currency: string;
+  // Id del costo vigente que vio quien fija el costo, o vacío si no había (D-5).
+  expectedCostId: string;
+};
+
+export type CostValues = {
+  amount: string;
+  currency: string;
+  expectedCostId: string | null;
+};
+
+// Las reglas del precio, sin excepciones (D-5): la misma validación, con el id esperado del costo.
+export function validateCostInput(
+  input: CostInput,
+):
+  | { ok: true; values: CostValues }
+  | PriceValidationFailure
+  | Failure<"VALIDATION_ERROR"> {
+  const validated = validatePriceInput({
+    amount: input.amount,
+    currency: input.currency,
+    expectedPriceId: input.expectedCostId,
+  });
+  if (!validated.ok) return validated;
+  const { amount, currency, expectedPriceId } = validated.values;
+  return {
+    ok: true,
+    values: { amount, currency, expectedCostId: expectedPriceId },
+  };
+}
+
+// El costo vigente, el precio vigente y el margen entre los dos, para la tarjeta del resumen y la
+// página de costos (D-3), con el producto, que la página necesita para su encabezado.
+export type ProductCostSummaryResult =
+  | {
+      ok: true;
+      product: Product;
+      cost: ProductCost | null;
+      price: ProductPrice | null;
+      margin: Margin;
+    }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">;
+
+export async function getProductCostSummary(
+  context: AuthContext,
+  productId: string,
+): Promise<ProductCostSummaryResult> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  const found = await getProduct(context, productId);
+  if (!found.ok) return found;
+  const { organizationId } = context;
+  const id = found.product.id;
+  const [costs, prices] = await Promise.all([
+    repository.findCurrentCosts(organizationId, [id]),
+    repository.findCurrentPrices(organizationId, [id]),
+  ]);
+  const cost = costs.get(id);
+  const price = prices.get(id);
+  return {
+    ok: true,
+    product: found.product,
+    cost: cost ? toCost(cost) : null,
+    price: price ? toPrice(price) : null,
+    margin: computeMargin(price ?? null, cost ?? null),
+  };
+}
+
+export const COSTS_PAGE_SIZE = PRICES_PAGE_SIZE;
+
+export type ProductCostEntry = ProductPriceEntry;
+
+export type ProductCostHistoryResult =
+  | {
+      ok: true;
+      entries: ProductCostEntry[];
+      total: number;
+      page: number;
+      pageCount: number;
+    }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">;
+
+// Historial completo, paginado en SQL, solo para admin. La página se acota como la del precio.
+export async function listProductCosts(
+  context: AuthContext,
+  productId: string,
+  requestedPage: number,
+): Promise<ProductCostHistoryResult> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  const found = await getProduct(context, productId);
+  if (!found.ok) return found;
+  const { organizationId } = context;
+  const id = found.product.id;
+
+  const total = await repository.countCosts(organizationId, id);
+  const pageCount = Math.max(1, Math.ceil(total / COSTS_PAGE_SIZE));
+  const page = Math.min(Math.max(1, Math.trunc(requestedPage) || 1), pageCount);
+  const rows =
+    total === 0
+      ? []
+      : await repository.findCosts(
+          organizationId,
+          id,
+          COSTS_PAGE_SIZE,
+          (page - 1) * COSTS_PAGE_SIZE,
+        );
+  const authors = new Map(
+    (
+      await getMemberSummaries(organizationId, [
+        ...new Set(rows.map((row) => row.createdBy)),
+      ])
+    ).map((user) => [user.id, user.name]),
+  );
+  return {
+    ok: true,
+    entries: rows.map((row) => ({
+      ...toCost(row),
+      author: { id: row.createdBy, name: authors.get(row.createdBy) ?? "" },
+    })),
+    total,
+    page,
+    pageCount,
+  };
+}
+
+// changed en false: ya era el costo vigente; no se escribe ni se audita. cost es el vigente después
+// de la operación.
+export type SetCostResult =
+  | { ok: true; changed: boolean; cost: ProductCost }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+  | PriceValidationFailure
+  | Failure<"CONFLICT", { currentCost: ProductCost | null }>
+  | Failure<"BUSINESS_RULE_VIOLATION", { rule: "inactive_product" }>;
+
+// Solo admin (FR-PROD-19). El producto se bloquea con FOR UPDATE, como al fijar el precio: dos
+// admins que fijan el costo a la vez se ordenan, y el segundo recibe CONFLICT.
+export async function setProductCost(
+  context: AuthContext,
+  productId: string,
+  input: CostInput,
+): Promise<SetCostResult> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  if (!productIdSchema.safeParse(productId).success) {
+    return failure("VALIDATION_ERROR");
+  }
+  const validated = validateCostInput(input);
+  if (!validated.ok) return validated;
+  const { values } = validated;
+  const { organizationId, userId } = context;
+
+  return repository.withTransaction(async (tx): Promise<SetCostResult> => {
+    const product = await repository.findProduct(
+      organizationId,
+      productId,
+      tx,
+      { forUpdate: true },
+    );
+    if (!product) return failure("NOT_FOUND");
+    if (!product.isActive) {
+      return {
+        ok: false,
+        code: "BUSINESS_RULE_VIOLATION",
+        rule: "inactive_product",
+      };
+    }
+
+    const id = product.id;
+    const current = (
+      await repository.findCurrentCosts(organizationId, [id], tx)
+    ).get(id);
+    if ((current?.id ?? null) !== values.expectedCostId) {
+      return {
+        ok: false,
+        code: "CONFLICT",
+        currentCost: current ? toCost(current) : null,
+      };
+    }
+    if (
+      current &&
+      current.amount === values.amount &&
+      current.currency === values.currency
+    ) {
+      return { ok: true, changed: false, cost: toCost(current) };
+    }
+
+    const cost = await repository.insertProductCost(tx, {
+      organizationId,
+      productId: id,
+      amount: values.amount,
+      currency: values.currency,
+      createdBy: userId,
+    });
+    // El primer costo no tiene anterior: sus campos van en null, como el primer precio.
+    await recordAudit(tx, {
+      organizationId,
+      actorUserId: userId,
+      entityType: "product",
+      entityId: id,
+      action: "cost_change",
+      diff: {
+        before: {
+          amount: current?.amount ?? null,
+          currency: current?.currency ?? null,
+        },
+        after: { amount: cost.amount, currency: cost.currency },
+      },
+    });
+    return { ok: true, changed: true, cost: toCost(cost) };
   });
 }

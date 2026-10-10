@@ -47,6 +47,8 @@ export const auditAction = pgEnum("audit_action", [
   "agent_pause_change",
   // Nota agregada en una conversación, sin el texto (brief-16.4, D-4).
   "note_added",
+  // Cambio del costo de un producto (brief-18.2).
+  "cost_change",
 ]);
 
 export const auditLogs = pgTable(

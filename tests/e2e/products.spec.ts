@@ -27,11 +27,11 @@ test.afterAll(async () => {
   await db.$client.end();
 });
 
-// inventory_movements, product_prices y audit_logs son de solo inserción: TRUNCATE es la vía
-// documentada para vaciarlas (ADR 0013).
+// inventory_movements, product_prices, product_costs y audit_logs son de solo inserción: TRUNCATE es
+// la vía documentada para vaciarlas (ADR 0013).
 test.beforeEach(async () => {
   await db.execute(
-    sql`truncate table audit_logs, inventory_movements, inventories, product_images, product_prices, products`,
+    sql`truncate table audit_logs, inventory_movements, inventories, product_images, product_costs, product_prices, products`,
   );
   await db.execute(sql`delete from login_attempts`);
   await db.execute(sql`delete from sessions`);
@@ -1241,4 +1241,135 @@ test("caso 23: brief-15.2 una lista nueva de sugerencias reinicia la opción mar
   await search.press("Enter");
   await expect(page).toHaveURL(/\/productos\?q=NOT-ZEN&/);
   expect(errors).toEqual([]);
+});
+
+async function costs(productId: string) {
+  const result = await db.execute<{ amount: string; currency: string }>(
+    sql`select amount, currency from product_costs
+        where product_id = ${productId} order by created_at, id`,
+  );
+  return result.rows;
+}
+
+// brief-18.2, AC-5 y AC-6: el admin fija el costo desde la página de costos, ve el margen y el
+// recargo con su base en el resumen y en esa página, y el cambio queda en la auditoría.
+test("caso 24: brief-18.2 el admin fija el costo y ve el margen con su base", async ({
+  page,
+}) => {
+  const productId = await insertProduct("CAF-250", "Café molido 250 g");
+  await login(page, ADMIN);
+  await page.goto(`/productos/${productId}`);
+  const card = page.getByRole("region", { name: "Costo y margen" });
+  await expect(card).toContainText("Sin costo");
+  await expect(card).toContainText("Sin margen: el producto no tiene precio.");
+  await expect(card).toContainText("los dos con impuestos incluidos");
+  await card.getByRole("link", { name: "Ver historial y fijar costo" }).click();
+  await expect(page).toHaveURL(new RegExp(`/productos/${productId}/costos$`));
+  await expect(
+    page.getByText("Este producto todavía no tiene costo."),
+  ).toBeVisible();
+  await expectAccessible(page, "costos sin costo");
+
+  await page.getByLabel("Moneda *").selectOption("ARS");
+  await page.getByLabel("Monto *").fill("0");
+  await page.getByRole("button", { name: "Confirmar costo" }).click();
+  await expect(page.getByLabel("Monto *")).toBeFocused();
+  await expect(
+    page.getByText("El costo tiene que ser mayor que cero."),
+  ).toBeVisible();
+  expect(await costs(productId)).toEqual([]);
+
+  await page.getByLabel("Monto *").fill("60,5");
+  await expect(page.getByText(/^Costo nuevo: \$\s60,50$/)).toBeVisible();
+  await page.getByRole("button", { name: "Confirmar costo" }).click();
+  await expect(page.getByText("Costo fijado.")).toBeVisible();
+  expect(await costs(productId)).toEqual([
+    { amount: "60.50", currency: "ARS" },
+  ]);
+  const margin = page.getByRole("region", { name: "Costo y margen" });
+  await expect(margin).toContainText(
+    "Sin margen: el producto no tiene precio.",
+  );
+
+  // Con precio en la misma moneda, el ejemplo del ADR 0019: 50 % del precio y 100 % de recargo.
+  await page.goto(`/productos/${productId}/precios`);
+  await page.getByLabel("Moneda *").selectOption("ARS");
+  await page.getByLabel("Monto *").fill("121");
+  await page.getByRole("button", { name: "Confirmar precio" }).click();
+  await expect(page.getByText("Precio fijado.")).toBeVisible();
+  await page
+    .getByRole("navigation", { name: "Secciones del producto" })
+    .getByRole("link", { name: "Costos y margen" })
+    .click();
+  await expect(margin).toContainText(/\$\s60,50 · 50,0 % del precio/);
+  await expect(margin).toContainText("100,0 % sobre el costo");
+  await expectAccessible(page, "costos con margen");
+
+  // Un costo mayor que el precio: margen negativo, con su aviso.
+  await page.getByLabel("Monto *").fill("150");
+  await page.getByRole("button", { name: "Confirmar costo" }).click();
+  await expect(page.getByText("Costo fijado.")).toBeVisible();
+  await expect(margin).toContainText(/−\$\s29,00 · −24,0 % del precio/);
+  await expect(margin).toContainText("El costo supera el precio.");
+  const history = page.getByRole("table", {
+    name: "Historial de costos de Café molido 250 g",
+  });
+  await expect(history.getByRole("row")).toHaveCount(1 + 2);
+  await expect(history.getByRole("row").nth(1)).toContainText("vigente");
+  await expect(history).toContainText(ADMIN_NAME);
+
+  // Otra moneda: sin margen, y la pantalla dice por qué.
+  await page.getByLabel("Moneda *").selectOption("USD");
+  await page.getByLabel("Monto *").fill("40");
+  await page.getByRole("button", { name: "Confirmar costo" }).click();
+  await expect(page.getByText("Costo fijado.")).toBeVisible();
+  await expect(margin).toContainText(
+    "Sin margen: el precio y el costo están en monedas distintas.",
+  );
+
+  await page.goto(`/productos/${productId}`);
+  await expect(card).toContainText("US$ 40,00");
+  const audit = page.getByRole("region", { name: "Historial de auditoría" });
+  await expect(audit).toContainText("Costo: sin costo → $ 60,50");
+  await expect(audit).toContainText("Costo: $ 150,00 → US$ 40,00");
+  // La lista no muestra el costo (D-4).
+  await page.goto("/productos");
+  await expect(productsTable(page)).not.toContainText("US$ 40,00");
+});
+
+// brief-18.2, D-1 y AC-5: un viewer no ve el costo ni el margen por ninguna pantalla.
+test("caso 25: brief-18.2 un viewer no ve el costo, el margen ni su página", async ({
+  page,
+}) => {
+  const productId = await insertProduct("CAF-250", "Café molido 250 g");
+  const admin = await db.execute<{ id: string }>(
+    sql`select id from users where email = ${ADMIN}`,
+  );
+  await db.execute(
+    sql`insert into product_costs (organization_id, product_id, amount, currency, created_by)
+        values (${SEED_ORGANIZATION_ID}, ${productId}, 987.65, 'ARS', ${admin.rows[0]!.id})`,
+  );
+
+  await login(page, VIEWER);
+  await page.goto(`/productos/${productId}`);
+  await expect(page.getByRole("region", { name: "Precio" })).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Costo y margen" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: /Costos y margen|fijar costo|costos/ }),
+  ).toHaveCount(0);
+  await expect(page.locator("body")).not.toContainText("987,65");
+
+  for (const path of ["precios", "movimientos"]) {
+    await page.goto(`/productos/${productId}/${path}`);
+    await expect(
+      page.getByRole("link", { name: "Costos y margen" }),
+    ).toHaveCount(0);
+  }
+
+  await page.goto(`/productos/${productId}/costos`);
+  await expect(page.getByText(FORBIDDEN_PAGE)).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("987,65");
+  await expectAccessible(page, "costos para viewer");
 });

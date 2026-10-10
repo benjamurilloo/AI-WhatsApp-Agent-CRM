@@ -13,14 +13,16 @@ import { getDb, type Db, type DbTransaction } from "@/shared/db";
 import { searchQuery } from "@/shared/search";
 import {
   productCondition,
+  productCosts,
   productPrices,
   products,
   productSearchCondition,
 } from "./schema";
 
-// Acceso a products y product_prices. Toda consulta filtra por organization_id en SQL (brief-4.2).
-// La única escritura de product_prices es insertProductPrice, que vigila
-// tests/guards/price-writes.test.ts (brief-11.1, AC-10).
+// Acceso a products, product_prices y product_costs. Toda consulta filtra por organization_id en
+// SQL (brief-4.2). La única escritura de product_prices es insertProductPrice, que vigila
+// tests/guards/price-writes.test.ts (brief-11.1, AC-10), y la de product_costs, insertProductCost,
+// que vigila tests/guards/cost-writes.test.ts (brief-18.2, AC-7).
 
 type Executor = Db | DbTransaction;
 
@@ -422,5 +424,92 @@ export async function insertProductPrice(
     .insert(productPrices)
     .values(price)
     .returning(priceColumns);
+  return rows[0]!;
+}
+
+// Costos (brief-18.2): la forma de los precios, sobre product_costs. Las lecturas no miran el rol:
+// solo las llama el servicio, después de exigir admin (D-1).
+
+export type CostRow = PriceRow;
+
+const costColumns = {
+  id: productCosts.id,
+  productId: productCosts.productId,
+  amount: productCosts.amount,
+  currency: productCosts.currency,
+  createdBy: productCosts.createdBy,
+  createdAt: productCosts.createdAt,
+};
+
+// El costo vigente de cada producto: su última fila, como findCurrentPrices.
+export async function findCurrentCosts(
+  organizationId: string,
+  productIds: string[],
+  executor: Executor = getDb(),
+): Promise<Map<string, CostRow>> {
+  if (productIds.length === 0) return new Map();
+  const rows = await executor
+    .selectDistinctOn([productCosts.productId], costColumns)
+    .from(productCosts)
+    .where(
+      and(
+        eq(productCosts.organizationId, organizationId),
+        inArray(productCosts.productId, productIds),
+      ),
+    )
+    .orderBy(
+      productCosts.productId,
+      desc(productCosts.createdAt),
+      desc(productCosts.id),
+    );
+  return new Map(rows.map((row) => [row.productId, row]));
+}
+
+function costHistoryCondition(organizationId: string, productId: string) {
+  return and(
+    eq(productCosts.organizationId, organizationId),
+    eq(productCosts.productId, productId),
+  );
+}
+
+export async function countCosts(
+  organizationId: string,
+  productId: string,
+): Promise<number> {
+  const rows = await getDb()
+    .select({ total: count() })
+    .from(productCosts)
+    .where(costHistoryCondition(organizationId, productId));
+  return rows[0]!.total;
+}
+
+// Historial, del más reciente al más antiguo: el primero es el vigente.
+export function findCosts(
+  organizationId: string,
+  productId: string,
+  limit: number,
+  offset: number,
+): Promise<CostRow[]> {
+  return getDb()
+    .select(costColumns)
+    .from(productCosts)
+    .where(costHistoryCondition(organizationId, productId))
+    .orderBy(desc(productCosts.createdAt), desc(productCosts.id))
+    .limit(limit)
+    .offset(offset);
+}
+
+export type NewCost = NewPrice;
+
+// Única escritura de product_costs (FR-PROD-20): un costo se agrega, nunca se modifica ni se
+// borra. Exige la transacción que ya bloqueó el producto (brief-18.2, D-5).
+export async function insertProductCost(
+  tx: DbTransaction,
+  cost: NewCost,
+): Promise<CostRow> {
+  const rows = await tx
+    .insert(productCosts)
+    .values(cost)
+    .returning(costColumns);
   return rows[0]!;
 }

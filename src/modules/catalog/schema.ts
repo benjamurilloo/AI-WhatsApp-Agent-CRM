@@ -193,6 +193,46 @@ export const productPrices = pgTable(
   ],
 );
 
+// Costo de un producto, con historial (ADR 0019, punto 5; brief-18.2). La forma de product_prices:
+// de solo inserción, el vigente es la última fila. El monto es lo que el negocio paga por una
+// unidad, con el IVA incluido, lo recupere o no. Solo lo leen los admin; el agente no.
+export const productCosts = pgTable(
+  "product_costs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    productId: uuid("product_id").notNull(),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    // Libre respecto de la del precio: con monedas distintas no hay margen (D-5).
+    currency: text("currency").notNull(),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(sql`clock_timestamp()`),
+  },
+  (table) => [
+    foreignKey({
+      name: "product_costs_product_fk",
+      columns: [table.organizationId, table.productId],
+      foreignColumns: [products.organizationId, products.id],
+    }).onDelete("restrict"),
+    index("product_costs_product_history_idx").on(
+      table.organizationId,
+      table.productId,
+      table.createdAt.desc(),
+    ),
+    check("product_costs_amount_positive", sql`${table.amount} > 0`),
+    check(
+      "product_costs_currency_format",
+      sql`${table.currency} ~ '^[A-Z]{3}$'`,
+    ),
+  ],
+);
+
 // Imagen de producto (ADR 0018; brief-17.5, D-1, D-3 y D-4). Solo se guarda la versión procesada,
 // en JPEG, y su miniatura. Los límites de la base están por encima de lo que produce el
 // procesamiento: son una red, no la validación.

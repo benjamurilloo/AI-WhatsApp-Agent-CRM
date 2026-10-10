@@ -130,6 +130,9 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
   },
   "src/app/(autenticado)/productos/[productId]/precios/actions.ts#setPriceAction":
     { requirement: "sesion" },
+  // Fijar el costo de un producto, solo admin en el caso de uso (brief-18.2).
+  "src/app/(autenticado)/productos/[productId]/costos/actions.ts#setCostAction":
+    { requirement: "sesion" },
   "src/app/(autenticado)/usuarios/actions.ts#createMemberAction": {
     requirement: "sesion",
   },

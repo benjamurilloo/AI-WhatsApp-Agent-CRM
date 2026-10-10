@@ -13,6 +13,8 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   reactivate: "Reactivación",
   stock_adjustment: "Ajuste de stock",
   price_change: "Cambio de precio",
+  // Solo la ve un admin, como toda la auditoría (brief-18.2, D-1).
+  cost_change: "Cambio de costo",
 };
 
 const FIELD_LABEL: Record<string, string> = {
@@ -74,12 +76,16 @@ function show(field: string, value: string | number | boolean | null): string {
 }
 
 // Un precio es monto y moneda juntos (brief-11.1, D-7): «Precio: sin precio → CLP 300.000».
-function showPrice(fields: Record<string, unknown> | null): string {
+// Un costo, igual (brief-18.2): «Costo: sin costo → $ 60,50».
+function showMoney(
+  fields: Record<string, unknown> | null,
+  missing: string,
+): string {
   const amount = fields?.amount;
   const currency = fields?.currency;
   return typeof amount === "string" && typeof currency === "string"
     ? formatMoney(amount, currency)
-    : "sin precio";
+    : missing;
 }
 
 export function auditActionLabel(entry: ProductAuditEntry): string {
@@ -90,7 +96,10 @@ export function auditActionLabel(entry: ProductAuditEntry): string {
 export function describeAuditDiff(entry: ProductAuditEntry): string {
   const { before, after } = entry.diff;
   if (entry.action === "price_change") {
-    return `Precio: ${showPrice(before)} → ${showPrice(after)}`;
+    return `Precio: ${showMoney(before, "sin precio")} → ${showMoney(after, "sin precio")}`;
+  }
+  if (entry.action === "cost_change") {
+    return `Costo: ${showMoney(before, "sin costo")} → ${showMoney(after, "sin costo")}`;
   }
   if (before === null) {
     return after === null

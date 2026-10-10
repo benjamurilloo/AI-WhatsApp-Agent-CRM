@@ -36,6 +36,9 @@ describe("auditActionLabel", () => {
     expect(auditActionLabel(entry({ action: "price_change" }))).toBe(
       "Cambio de precio",
     );
+    expect(auditActionLabel(entry({ action: "cost_change" }))).toBe(
+      "Cambio de costo",
+    );
   });
 });
 
@@ -163,6 +166,33 @@ describe("describeAuditDiff", () => {
         }),
       ),
     ).toBe(`Precio: US$${nbsp}1.234,50 → US$${nbsp}1.300,00`);
+  });
+
+  // brief-18.2, AC-6: el costo se lee como el precio, y el primero no tiene anterior.
+  it("FR-PROD-19: un cambio de costo muestra el costo antes y después, formateado", () => {
+    const nbsp = " ";
+    expect(
+      describeAuditDiff(
+        entry({
+          action: "cost_change",
+          diff: {
+            before: { amount: null, currency: null },
+            after: { amount: "210000.00", currency: "CLP" },
+          },
+        }),
+      ),
+    ).toBe(`Costo: sin costo → CLP${nbsp}210.000`);
+    expect(
+      describeAuditDiff(
+        entry({
+          action: "cost_change",
+          diff: {
+            before: { amount: "60.50", currency: "USD" },
+            after: { amount: "61.00", currency: "USD" },
+          },
+        }),
+      ),
+    ).toBe(`Costo: US$${nbsp}60,50 → US$${nbsp}61,00`);
   });
 
   it("ignora claves que no son campos conocidos", () => {

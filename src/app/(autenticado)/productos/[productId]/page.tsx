@@ -3,6 +3,7 @@ import Link from "next/link";
 import { AUDIT_PAGE_SIZE } from "@/modules/audit";
 import {
   getCurrentPrices,
+  getProductCostSummary,
   getProductImageVersions,
   listProductAudit,
   listProductSuggestions,
@@ -44,6 +45,7 @@ import { ProductImage } from "../product-image-view";
 import { ProductForm } from "../product-form";
 import { StockStatusBadge } from "../stock-status";
 import { auditActionLabel, describeAuditDiff } from "./audit-summary";
+import { CostSummary } from "./costos/cost-summary";
 import { DeactivateConfirm, ReactivateForm } from "./product-actions";
 import { ProductImageUpload, RemoveImageConfirm } from "./product-image";
 import { ProductSubNav } from "./product-sub-nav";
@@ -69,7 +71,8 @@ function page(value: string | string[] | undefined): number {
 // precio vigente enlaza a la pantalla de precios (brief-11.1, FR-PROD-12). Presentación de la
 // 15.4: tarjetas por sección y la barra de subpantallas (brief-15.4, D-1 y D-3). Desde la 17.2, el
 // código de barras y las tarjetas «Logística» y «Ubicación» (brief-17.2, D-11). Desde la 17.5, la
-// tarjeta «Imagen», con la subida, el reemplazo y la baja para un admin (brief-17.5, D-7).
+// tarjeta «Imagen», con la subida, el reemplazo y la baja para un admin (brief-17.5, D-7). Desde la
+// 18.2, la tarjeta «Costo y margen», solo para un admin (brief-18.2, D-1 y D-3).
 export default async function ProductPage({
   params,
   searchParams,
@@ -119,6 +122,11 @@ export default async function ProductPage({
   const movements = history.ok
     ? history.movements.slice(0, LAST_MOVEMENTS)
     : [];
+  // El costo y el margen, como la auditoría, solo se piden para un admin: el servidor no los
+  // entrega a un viewer (brief-18.2, D-1).
+  const costSummary = isAdmin
+    ? await getProductCostSummary(context, product.id)
+    : null;
   // La auditoría solo se pide para un admin: el servidor no la entrega a un viewer.
   const audit = isAdmin
     ? await listProductAudit(context, product.id, page(query.auditoria))
@@ -362,6 +370,31 @@ export default async function ProductPage({
                 </Link>
               </p>
             </SectionCard>
+
+            {costSummary?.ok ? (
+              <SectionCard
+                id="costo-margen-titulo"
+                title="Costo y margen"
+                icon="pieChart"
+              >
+                <CostSummary
+                  cost={costSummary.cost}
+                  price={costSummary.price}
+                  margin={costSummary.margin}
+                />
+                <p className="mt-4">
+                  <Link
+                    href={`/productos/${product.id}/costos`}
+                    className={`${linkClass} inline-flex items-center gap-1.5 text-sm`}
+                  >
+                    <Icon name="creditCard" className="size-4" />
+                    {product.isActive
+                      ? "Ver historial y fijar costo"
+                      : "Ver historial de costos"}
+                  </Link>
+                </p>
+              </SectionCard>
+            ) : null}
 
             <SectionCard id="stock-titulo" title="Stock" icon="layers">
               <DetailList
