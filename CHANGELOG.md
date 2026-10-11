@@ -2,6 +2,33 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-11 — 19.2: el pedido
+
+Cierra el 2026-10-11 con la aprobación del usuario, después de su recorrido en producción ([brief-19.2](docs/decisions/brief-19.2-el-pedido.md), §Cierre).
+
+**Certifica:**
+- **Las tablas del pedido** (migración `0036`):
+  - `document_counters`, el contador del [ADR 0019](docs/decisions/0019-bases-de-los-comprobantes.md) en el módulo `numbering`: solo avanza de a uno, sin borrado;
+  - `orders`, sin `DELETE`, con un trigger que deja cambiar solo el estado y sus fechas, y solo por las transiciones del [ADR 0020](docs/decisions/0020-el-pedido.md);
+  - `order_lines`, de solo inserción;
+  - el `entity_type` `order` de la auditoría, y las guardas `order-writes` y `counter-writes`, con seis mutaciones.
+- **Solo `admin`** crea un pedido pendiente y lo cancela:
+  - número `P-000123` desde el alta, por organización, sin huecos por un alta revertida;
+  - cliente activo y productos activos con precio, en una moneda; los montos se copian y el total se redondea según el ADR 0019;
+  - si el precio cambió mientras se cargaba, el alta se rechaza y lo dice;
+  - el orden de bloqueo del ADR 0020, con el cliente primero (precisión fechada del punto 6).
+- **Los dos roles** ven la lista, con filtros y búsqueda por número, el detalle y la tarjeta de pedidos en la ficha del cliente; el `viewer`, sin el contacto del cliente, y la historia solo `admin`. El alta funciona también sin JavaScript.
+- **Datos de un cliente**: los pedidos se exportan, y un cliente con pedidos no se borra: se vacía, y el vaciado ahora lo desactiva.
+- **La revisión independiente** encontró 3 hallazgos medios y 4 bajos, ninguno bloqueante; todos se verificaron y se corrigieron o los decidió el usuario.
+- **Producción** corre `ef75da3`, con 37 migraciones; la versión anterior es `0c2f322`. El usuario creó y canceló `P-000001` en la organización de demostración.
+
+**Nivel**: validado localmente y en CI (run 38172319305); validado en integración para las pantallas; desplegado en producción y recorrido por el usuario. No es «preparado para producción».
+
+**No certifica:**
+- Nada del stock: lo reservado, confirmar y entregar son de la 19.3.
+- La lectura del agente con su token: `read-v1` e `ingestion-v2` no cambiaron.
+- Las intermitencias del end-to-end local, observadas sin causa encontrada (brief, §Resultados).
+
 ## 2026-10-11 — 19.1: el ADR 0020 del pedido
 
 Cierra el 2026-10-11 con la aceptación del ADR por el usuario ([brief-19.1](docs/decisions/brief-19.1-adr-del-pedido.md), §Cierre). Es la primera subfase de la Fase 19 — Pedidos, abierta ese día con la Fase 13 abierta ([ADR 0016](docs/decisions/0016-el-crm-se-amplia-hacia-un-erp-por-fases.md), punto 3).

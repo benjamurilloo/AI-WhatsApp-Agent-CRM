@@ -32,7 +32,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [0017](0017-responder-desde-el-crm.md) | Responder desde el CRM: una bandeja de salida que el agente toma, y el registro de lo que se contesta desde la app | aceptada el 2026-10-08, con la implementación pospuesta |
 | [0018](0018-imagenes-de-producto.md) | Imágenes de producto: una principal, guardada en PostgreSQL y procesada en el servidor; sin foto de perfil del cliente | aceptada el 2026-10-08; implementación en la 17.5 y la ruta del agente, confirmada por él, en una subfase posterior |
 | [0019](0019-bases-de-los-comprobantes.md) | Las bases de los comprobantes: numeración sin huecos por organización y tipo, una moneda por comprobante, el precio como final al consumidor y la base del margen; sin tablas | aceptada el 2026-10-10; las tablas, con la fase que las use (la primera, `product_costs` en la 18.2) |
-| [0020](0020-el-pedido.md) | El pedido: un compromiso con estado y no un comprobante emitido, numerado desde el alta por el módulo `numbering`; confirmar reserva, entregar descuenta con un movimiento y cancelar libera; el agente solo deja pendientes | aceptada el 2026-10-11, con las correcciones de la revisión independiente; las tablas, en la 19.2 y la 19.3 |
+| [0020](0020-el-pedido.md) | El pedido: un compromiso con estado y no un comprobante emitido, numerado desde el alta por el módulo `numbering`; confirmar reserva, entregar descuenta con un movimiento y cancelar libera; el agente solo deja pendientes | aceptada el 2026-10-11, con las correcciones de la revisión independiente; precisada el 2026-10-11 en la 19.2 (punto 6, el cliente en el orden de bloqueo); las tablas del pedido, en la 19.2, y lo reservado, en la 19.3 |
 
 ## Briefs
 
@@ -122,6 +122,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-18.1](brief-18.1-adr-bases-de-los-comprobantes.md) | 18.1 — ADR de las bases de los comprobantes | aprobado el 2026-10-10 con las recomendaciones de D-1 a D-10; cerrado el 2026-10-10 con el ADR 0019 aceptado, con las correcciones R-1 y R-2 de la revisión independiente a D-4 y D-5 |
 | [brief-18.2](brief-18.2-costo-y-margen.md) | 18.2 — El costo del producto con historial y el margen derivado | aprobado el 2026-10-10 con las recomendaciones de D-1 a D-10; cerrado el 2026-10-10, desplegado en producción con la migración `0035` |
 | [brief-19.1](brief-19.1-adr-del-pedido.md) | 19.1 — ADR del pedido | aprobado el 2026-10-11 con las recomendaciones de D-1 a D-12; cerrado el 2026-10-11 con el ADR 0020 aceptado, con las correcciones de la revisión independiente (R-5, R-7 y R-9 cambian o suman decisiones) |
+| [brief-19.2](brief-19.2-el-pedido.md) | 19.2 — El pedido | aprobado el 2026-10-11 con las recomendaciones de D-1 a D-14 y dos ampliaciones de archivos; cerrado el 2026-10-11, desplegado en producción con la migración `0036` |
 | [evidencia-9.1](evidencia-9.1-staging.md) | 9.1 — Salidas crudas de la verificación en staging | captura del 2026-09-22 |
 | [evidencia-9.2](evidencia-9.2-backups.md) | 9.2 — Backup y restauración verificados en staging | captura del 2026-09-22 |
 | [evidencia-9.3](evidencia-9.3-volumen.md) | 9.3 — Volumen, planes y tiempos medidos en staging | captura del 2026-09-23 |

@@ -103,6 +103,8 @@ Un mismo orden en todas las operaciones evita que dos de ellas se traben entre s
 
 Un ajuste manual bloquea un producto y después su saldo: es el mismo orden con un solo producto. El alta no bloquea saldos, porque un pendiente no toca el stock.
 
+*Precisado el 2026-10-11 en la 19.2* ([brief-19.2](brief-19.2-el-pedido.md), H-2 y D-3): el orden de arriba no nombraba al cliente. **El alta bloquea primero la ficha del cliente en modo compartido**, antes de los productos, para esperar a una desactivación en curso (que la bloquea `FOR UPDATE`). Ningún otro camino bloquea productos y después un cliente, así que no se forma un ciclo. Las transiciones no bloquean al cliente: cancelar nunca depende de él.
+
 ### 7. Lo que ven las pantallas y el agente
 
 - **Las pantallas del CRM**, desde la 19.3, muestran el saldo físico, lo reservado y lo disponible. **El estado de stock** (`disponible`, `bajo_stock`, `sin_stock`) **y el orden por stock** de la lista **pasan a usar lo disponible**: es lo que se puede ofrecer. `deriveStockStatus` no cambia: cambia la cantidad que recibe.

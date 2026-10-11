@@ -16,7 +16,7 @@ generated_at: 2026-10-11
 - **Nivel de validación alcanzable**: **validado localmente y en CI**, **validado en integración** para las pantallas y, con D-14, **desplegado en producción** con el recorrido del usuario. No es «preparado para producción».
 - **Orden**: segunda subfase de la Fase 19 — Pedidos ([Roadmap](../planning/Roadmap.md) §Fase 19), después de la 19.1, cerrada el 2026-10-11. Implementa las filas «19.2» del punto 11 del [ADR 0020](0020-el-pedido.md).
 - **No abre ni cierra gate.** Crea tres tablas, dos módulos y la primera tabla con una lista de columnas y transiciones permitidas. Por eso se recomienda la revisión independiente (D-13).
-- **Estado de este documento**: **aprobado el 2026-10-11** por el usuario, con las recomendaciones de D-1 a D-14. La tarea 19.2 (`3f6702be6f4e813390b6f25fcb2cef76`) está en «En proceso» en Notion desde ese día.
+- **Estado de este documento**: **aprobado el 2026-10-11** por el usuario, con las recomendaciones de D-1 a D-14. La tarea 19.2 (`3f6702be6f4e813390b6f25fcb2cef76`) está en «En proceso» en Notion desde ese día. **Cerrado el 2026-10-11**, desplegado en producción con la migración `0036` (§Cierre).
 
 ## Objetivo
 
@@ -257,9 +257,9 @@ Todos los tocados están en la lista autorizada, más la ampliación de `catalog
 | AC-10 | cumplido | `client-data.test.ts`, casos 30 a 33, y el runbook |
 | AC-11 | cumplido | las dos guardas, con seis mutaciones sobre el código real (abajo); `exposed-surface` con las cuatro acciones |
 | AC-12 | cumplido | `read-api` e `ingestion-v2` pasan sin cambios; `inventory` no está en el diff |
-| AC-13 | local cumplido; CI pendiente | la batería local, abajo; la CI, con el commit |
+| AC-13 | cumplido | la batería local, abajo; la CI de `ef75da3`, run 38172319305, `success` (§Cierre) |
 | AC-14 | cumplido | DataModel, Overview, FunctionalRequirements (FR-ORD-01 a 07), Screens (14 a 16), TraceabilityMatrix, SecurityModel (83 puntos de entrada), EngineeringStandards (19 guardas) y el runbook |
-| AC-15 | pendiente | el despliegue, con su autorización |
+| AC-15 | cumplido, con una precisión | el despliegue y el recorrido del usuario (§Cierre), en la organización de demostración |
 
 **Mutaciones de las guardas nuevas** (EngineeringStandards), cada una agregada al código real, corrida y revertida:
 
@@ -288,3 +288,39 @@ Un agente de solo lectura que no participó del trabajo revisó la entrega contr
 - **R-7 (bajo)**: el seed del punto 9 no se entregó. **Decisión del usuario**: sin seed de pedidos (§Resultados).
 
 Las notas N-1 a N-8 no son defectos: la superficie cierra en 83, no hay `JOIN` nuevo entre módulos en `src/`, no hay un orden de bloqueo que se cruce, el dinero no pasa por `number`, y un `viewer` no recibe el teléfono completo ni el email. N-6 suma un límite a los ya declarados de las guardas de escritura: no ven `MERGE INTO`.
+
+## Cierre de la subfase 19.2, 2026-10-11
+
+- **AC-1 a AC-15 cumplidos.**
+  - **AC-1 a AC-14**: en local y en la CI de `ef75da3`, run 38172319305, `success`, leída por `headSha`, en 11 min 58 s.
+  - **AC-15**: en producción, con la precisión de abajo.
+- **El despliegue**, según [deploy/production/README.md](../../deploy/production/README.md) §Desplegar un cambio:
+  - se anotó `0c2f322` en el registro de despliegues, y es la versión para volver atrás;
+  - el checkout de `ef75da3`, `npm ci`, la migración, el build y el reinicio terminaron sin errores, con HEAD igual al SHA pedido;
+  - migraciones de 36 a 37;
+  - `orders`, `order_lines` y `document_counters` existen vacías, con `SELECT, INSERT, UPDATE` para `crm_app` en `orders` y `document_counters` y `SELECT, INSERT` en `order_lines`, sus tres triggers y `order` en el enum de la auditoría;
+  - los recuentos de `products` (5), `product_prices` (6), `audit_logs` (61), `organizations` (2), `clients` (2) y `messages` (84) quedaron iguales;
+  - el servicio está activo, sin avisos en el journal desde el reinicio, y `/login` responde `200`.
+- **La lectura del agente** sigue respondiendo `401` sin token desde afuera. **No se probó con token**: el token no pasa por la conversación. La respaldan `read-api` e `ingestion-v2` sin cambios (AC-12), en local y en CI.
+- **El recorrido del usuario**: como `admin`, creó el pedido `P-000001` con dos líneas y lo canceló siguiendo la lista, el detalle y la cancelación, y dijo el 2026-10-11 que «se ve todo bien». Después, producción tenía 1 pedido cancelado con 2 líneas y sin `confirmed_at`, el contador en 1, un evento `create` y uno `status_change` (`audit_logs` pasó de 61 a 63), con productos, precios, clientes y mensajes sin cambios.
+- **Precisión de AC-15**: pedía la organización del operador, «Vixora», que no tiene clientes ni productos. Se recorrió en «Demostración Vixora», donde trabaja el usuario, con sus datos existentes, por su decisión. El pedido queda cancelado para siempre: un pedido no se borra. El agente no lee pedidos.
+- **Revisión**: la independiente de D-13 (R-1 a R-7, arriba). La batería, el despliegue y este cierre son autoevaluación declarada.
+- **Decisiones del usuario**:
+  - el brief, con las recomendaciones de D-1 a D-14;
+  - `getProductsByIds` en `catalog`;
+  - el tope de tabulaciones de cuatro specs, y R-2 y R-3 dentro del alcance;
+  - sin seed de pedidos;
+  - el recorrido en la demostración;
+  - el commit y el push de `ef75da3`, el despliegue y este cierre.
+- **Nivel**:
+  - validado localmente y en CI;
+  - **validado en integración** para las pantallas, con end-to-end sobre `next start`;
+  - desplegado en producción y recorrido por el usuario (`isolated-runtime`).
+
+  No es «preparado para producción».
+- **No certifica**:
+  - nada del stock: lo reservado, confirmar y entregar son de la 19.3;
+  - la lectura del agente con su token (arriba);
+  - que un `viewer` no vea el contacto del cliente **en producción**: se probó en integración y en el end-to-end, no en el recorrido;
+  - las intermitencias del end-to-end local de §Resultados: observadas, sin causa encontrada.
+- **Precisión del ADR 0020**, punto 6, escrita con fecha: el alta bloquea primero al cliente (D-3).
