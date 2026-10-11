@@ -2,6 +2,7 @@
 
 - Estado: aceptada (resuelta por el usuario en la subfase 1.3, 2026-09-11)
 - Fecha: 2026-09-11
+- *Nota del 2026-10-11*: el [ADR 0020](0020-el-pedido.md) modela el compromiso de entrega como este ADR lo previó, con el pedido y una reserva (`quantity_reserved`, con `CHECK (quantity_reserved <= quantity_on_hand)`), y rechaza el ajuste negativo que dejaría el saldo por debajo de lo reservado. No cambia este ADR: lo aplica a una cantidad más.
 
 ## Contexto
 

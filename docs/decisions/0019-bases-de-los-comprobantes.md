@@ -3,6 +3,7 @@
 - Estado: **aceptada** (decisión del usuario del 2026-10-10, después de la revisión independiente y con sus correcciones, entre ellas las de R-1 y R-2 a las recomendaciones D-4 y D-5 del brief; subfase 18.1, [brief-18.1](brief-18.1-adr-bases-de-los-comprobantes.md)). Avisarle al agente que el precio quedó fijado como final queda para más adelante, por decisión del usuario.
 - Fecha: 2026-10-10
 - Nivel: **diseñado**. No hay código, tablas ni ejecución.
+- *Nota del 2026-10-11*: el [ADR 0020](0020-el-pedido.md) usa el contador del punto 2 para el pedido, con el tipo `order`, en un módulo propio (`numbering`), y aplica los puntos 3 y 4 leyendo «emitir» como «crear el pedido». Decide que el pedido no es un comprobante emitido. No cambia este ADR.
 
 ## Contexto
 

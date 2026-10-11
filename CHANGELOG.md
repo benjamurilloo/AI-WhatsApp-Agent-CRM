@@ -2,6 +2,27 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-11 — 19.1: el ADR 0020 del pedido
+
+Cierra el 2026-10-11 con la aceptación del ADR por el usuario ([brief-19.1](docs/decisions/brief-19.1-adr-del-pedido.md), §Cierre). Es la primera subfase de la Fase 19 — Pedidos, abierta ese día con la Fase 13 abierta ([ADR 0016](docs/decisions/0016-el-crm-se-amplia-hacia-un-erp-por-fases.md), punto 3).
+
+**Certifica:**
+- **El [ADR 0020](docs/decisions/0020-el-pedido.md), aceptado**:
+  - el pedido es un compromiso con estado, no un comprobante emitido: la cabecera cambia solo su estado y sus fechas, sin borrado, y las líneas son de solo inserción;
+  - lleva número `P-000123` desde el alta, del contador del ADR 0019 en un módulo propio, `numbering`;
+  - confirmar reserva, cancelar libera y entregar descuenta el stock con un movimiento `order_delivery`; lo reservado es una columna de `inventories` con su `CHECK`, y un ajuste negativo no puede dejar el saldo por debajo;
+  - solo `admin` opera pedidos; el agente, desde la 19.4 y solo si lo usaría, deja pendientes;
+  - un cliente con pedidos se vacía, no se borra.
+- **La revisión independiente** encontró 1 defecto bloqueante (el ADR contradecía DataModel sin enmendarlo) y 9 medios; todos se verificaron contra el código y se corrigieron antes de la aceptación. Tres correcciones cambiaron o sumaron decisiones del brief, y el usuario las aceptó.
+- **Las enmiendas**, con fecha y conservando el texto anterior: Roadmap §Fases 19 y 20, DataModel (regla 11, §`inventories` y la nota de las tablas que vienen), los ADR 0008 y 0019 y el README de decisiones.
+
+**Nivel**: diseñado.
+
+**No certifica:**
+- Ninguna tabla, migración ni código: las crean la 19.2 y la 19.3.
+- Ningún cambio en `read-v1` ni en `ingestion-v2`, ni un aviso al agente.
+- Que el agente vaya a dejar pedidos: depende de su confirmación en la 19.4.
+
 ## 2026-10-10 — Fase 18 cerrada (Bases del ERP)
 
 Cierra por decisión del usuario, que aprobó el cierre el 2026-10-10 junto con el de la 18.2. El Roadmap no le fijaba un gate de salida propio.

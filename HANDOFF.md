@@ -2,9 +2,9 @@
 schema: project-state.v1
 project: ai-whatsapp-agent-crm
 generated_at: 2026-10-11
-git_ref: main — el último ref con corrida leída en verde es **`35df95d`** (run 38075447582, `success`, leída por `headSha` el 2026-10-10, en 13 min 36 s, cerca del límite de 15), el cierre de la 18.2 y la Fase 18; la implementación, `0c2f322`, tuvo la suya (run 38073281349). Después viene el commit que prepara la apertura de la Fase 19, solo de documentación: **al retomar, leer su corrida por `headSha`**. **Producción corre `0c2f322`** (18.2), con 36 migraciones (`0000` a `0035`); para volver atrás, `45e7b70`. `confirmado`
-active_phase: **Ninguna fase en curso.** La Fase 18 — Bases del ERP **se cerró el 2026-10-10** por decisión del usuario, con la 18.1 (ADR 0019) y la 18.2 (costo y margen) cerradas. **La Fase 13 — Producción sigue abierta**, con la 13.5.2-b esperando un negocio real y su prioridad intacta. La Fase 19 — Pedidos se abre solo con decisión del usuario. `confirmado`
-active_task: **Ninguna subfase en curso.** Siguiente: abrir la Fase 19 — Pedidos, que el usuario decidió el 2026-10-11 abrir en la sesión siguiente (§3, paso 0). `confirmado`
+git_ref: main — el último ref con corrida leída en verde es **`4eeb56a`** (run 38148868050, `success`, leída por `headSha` el 2026-10-11), que preparó la apertura de la Fase 19; antes, `35df95d` (run 38075447582). Después viene el commit del cierre de la 19.1, solo de documentación: **al retomar, leer su corrida por `headSha`**. **Producción corre `0c2f322`** (18.2), con 36 migraciones (`0000` a `0035`); para volver atrás, `45e7b70`. `confirmado`
+active_phase: **Fase 19 — Pedidos, abierta el 2026-10-11** por decisión del usuario, con la Fase 13 abierta (ADR 0016, punto 3). La 19.1 está cerrada; la 19.2, la 19.3 y la 19.4 esperan. **La Fase 13 — Producción sigue abierta**, con la 13.5.2-b esperando un negocio real y su prioridad intacta: si aparece, la Fase 19 se pausa. `confirmado`
+active_task: **Ninguna subfase en curso.** Siguiente: el brief de la **19.2 — El pedido** (§3, paso 0). `confirmado`
 confidence: confirmado
 ---
 
@@ -21,8 +21,9 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 ## 1. Identificación
 
 - **Proyecto**: AI WhatsApp Agent CRM. Independiente del agente de WhatsApp en código, infraestructura y base de datos, y sin dependencia de Airtable. **El agente es un consumidor del CRM** ([ADR 0014](docs/decisions/0014-el-agente-de-whatsapp-como-consumidor-del-crm.md)): lo llama por contratos versionados; el CRM nunca lo llama a él. `confirmado`
-- **Fases cerradas**: 0 a 12 y 15 a 18. **La Fase 13 — Producción sigue abierta** (13.1 a 13.4 cerradas; la 13.5 en curso, con la 13.5.2-a cerrada y la 13.5.2-b esperando un negocio real). La Fase 14 (migración por CSV) está planificada sin abrir. `confirmado`
+- **Fases cerradas**: 0 a 12 y 15 a 18. **La Fase 19 — Pedidos está abierta** (19.1 cerrada). **La Fase 13 — Producción sigue abierta** (13.1 a 13.4 cerradas; la 13.5 en curso, con la 13.5.2-a cerrada y la 13.5.2-b esperando un negocio real). La Fase 14 (migración por CSV) está planificada sin abrir. `confirmado`
 - **Notion**: proyecto raíz `3d8702be6f4e81659e43c3d8bd9a6e1c`. Data sources: Proyectos `9bf702be-6f4e-82b8-b26e-078fcbbc5e8e`, Tareas `d2a702be-6f4e-83f2-a416-872448834823`. `confirmado`
+  - **Fase 19**: el proyecto `3f6702be6f4e81bfbe75cb861acd5b97` y su tarea espejo `3f6702be6f4e8143bea0cda288c09028`; la 19.1 `3f6702be6f4e816ea547f449df0e1ab2` en **«Completado»** desde el 2026-10-11; la 19.2 `3f6702be6f4e813390b6f25fcb2cef76`, la 19.3 `3f6702be6f4e811bacafc4d413b55023` y la 19.4 `3f6702be6f4e81da9df4d463d518b18b` en «Esperando».
   - **Fase 18**: el proyecto `3f5702be6f4e81238f55fce0fa7f729b`, su tarea espejo `3f5702be6f4e81718218f304746b2cbe`, la 18.1 `3f5702be6f4e81b2ae25f1a279d8793c` y la 18.2 `3f5702be6f4e811f8820db49471f1c3a`, en **«Completado»** desde el 2026-10-10 (releídos ese día).
   - **Fase 13**: el proyecto `3ea702be6f4e81dbbb2fed42d19b2af0` en «En progreso»; la 13.5 `3ea702be6f4e81239869d3d392118975` en «En proceso» (`historico`: releída el 2026-10-01).
   - **Tareas sueltas en el proyecto raíz, en «Esperando»** (las dos primeras releídas el 2026-10-10): el simulacro de restauración con imágenes del 2026-11-01 `3f4702be6f4e81518fd7f1b1c975a9a6`; la candidata «Ruta de lectura de la imagen de producto para el agente» `3f5702be6f4e81a3b480ece139cfe4ad`; el CI de Chromium contra el límite de 15 minutos `3f2702be6f4e8104b521cf12b377fe34`; y verificar que la correlación del agente ya no lleve el `wamid` `3f3702be6f4e8152a380f87497a40bf3`.
@@ -31,27 +32,18 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 
 ## 2. Último punto aprobado
 
-- **18.2 — El costo del producto con historial y el margen**, cerrada el 2026-10-10 ([brief-18.2](docs/decisions/brief-18.2-costo-y-margen.md) §Cierre). `product_costs` de solo inserción (migración `0035`); solo `admin` fija el costo y ve el margen y el recargo, con la base escrita; el `viewer` y el agente no ven nada (`read-v1` sin cambios, caso 6c). Revisión independiente con dos bloqueantes corregidos antes del commit. Desplegada en producción y recorrida por el usuario, que fijó dos costos. `confirmado`
-- **Fase 18 cerrada** el 2026-10-10 por decisión del usuario, con la 18.1 (el [ADR 0019](docs/decisions/0019-bases-de-los-comprobantes.md), sin tablas) y la 18.2. Detalle en [CHANGELOG](CHANGELOG.md). `confirmado`
-- **Decisiones del usuario vigentes del 2026-10-10**: la numeración y los impuestos son decisiones sin tablas hasta la fase que las use; **el aviso al agente** sobre la semántica del precio (final al consumidor) **queda para más adelante**; sin seed de costos. `confirmado`
+- **19.1 — ADR del pedido**, cerrada el 2026-10-11 ([brief-19.1](docs/decisions/brief-19.1-adr-del-pedido.md) §Cierre). El usuario aceptó el [ADR 0020](docs/decisions/0020-el-pedido.md) con las correcciones de la revisión independiente (1 bloqueante y 9 medios, verificados y corregidos), incluidas las tres que cambian o suman decisiones: sin «acuerdo escrito» con el agente (R-5), el módulo `numbering` (R-7) y el cambio de criterio del borrado de un cliente (R-9). Enmiendas escritas: Roadmap §Fases 19 y 20, DataModel (regla 11, §`inventories` en vigor desde la 19.3 y la nota de las tablas que vienen), ADR 0008, ADR 0019 y README de decisiones. Nivel: diseñado. `confirmado`
+- **Orden de la fase**, aprobado el 2026-10-11: 19.1 ADR → 19.2 el pedido → 19.3 reserva y ciclo → 19.4 el pedido del agente, solo si el agente lo usaría. `confirmado`
+- **Decisiones del usuario del 2026-10-10 que siguen**: el aviso al agente sobre la semántica del precio queda para más adelante; sin seed de costos. `confirmado`
 
 ## 3. Próximo paso
 
-0. **Abrir la Fase 19 — Pedidos.** **El usuario lo decidió el 2026-10-11**, con la Fase 13 abierta: queda registrado con fecha en el [Roadmap](docs/planning/Roadmap.md) §Fases 18 a 22, y eso satisface el gate del ADR 0016, punto 3. La 13.5.2-b conserva su prioridad: si aparece un negocio real, la Fase 19 se pausa. `confirmado`. Al abrirla:
-   - **Notion**: el proyecto con la plantilla «Nuevo Proyecto» (`template_id`), padre el raíz, con su tarea espejo, y cada subfase pendiente en «Esperando». Se relee y se verifica (CLAUDE.md §Convenciones de Notion). **Al cierre de la Fase 18 se desconectó el conector de Notion**: comprobarlo antes de empezar.
-   - **El orden de las subfases y el brief de la primera**, con su aprobación antes de tocar código. Antes, leer [DataModel](docs/architecture/DataModel.md).
-   - **Lo que ya está fijado**, según el Roadmap y los ADRs:
-     - el pedido de un cliente, con sus líneas, su total y sus estados (pendiente, confirmado, entregado y cancelado);
-     - la reserva de stock, que nunca lo deja negativo ([ADR 0008](docs/decisions/0008-stock-nunca-negativo.md));
-     - del [ADR 0019](docs/decisions/0019-bases-de-los-comprobantes.md): una moneda por comprobante, el precio de `product_prices` como precio final al consumidor y los montos guardados al emitir, con redondeo por línea a los decimales de la moneda;
-     - las convenciones de §5: dinero en `bigint` en centésimos, clave foránea compuesta y aislamiento por organización.
-   - **Lo que la Fase 19 tiene que decidir**:
-     - **si el pedido lleva número**. En ese caso crea el contador del ADR 0019, punto 2: por organización y tipo, sin huecos, con `FOR UPDATE`.
-     - **si un pedido numerado es un comprobante emitido**. El pedido tiene estados que cambian, y una tabla con estado mutable no es de solo inserción (ADR 0013). Es la pregunta que el ADR 0019 deja abierta, §Lo que no decide.
-     - **cuándo se reserva el stock y cuándo se libera**: al confirmar, al entregar y al cancelar, frente a los movimientos de inventario de solo inserción.
-     - **si el agente puede dejar un pedido pendiente** para que lo confirme una persona. Si puede, es un contrato nuevo con el agente, diseñado con él: **el aviso al consumidor es un paso del cierre** (§7).
-     - quién crea, confirma y cancela un pedido, `admin` o `viewer`, y qué ve cada uno.
-   - **La revisión independiente**: recomendada en cada subfase que cree tablas o cambie un contrato.
+0. **Preparar el brief de la 19.2 — El pedido** y pedir su aprobación antes de tocar código; pasar la tarea a «En proceso» con esa aprobación. Leer antes [DataModel](docs/architecture/DataModel.md) y el [ADR 0020](docs/decisions/0020-el-pedido.md), puntos 2, 3, 6, 8, 10 y 11. Lo que la 19.2 crea, según el ADR:
+   - los módulos `orders` y `numbering`; `orders` (sin `DELETE`, trigger con lista de columnas permitidas y transiciones), `order_lines` (de solo inserción) y `document_counters` con la guarda `counter-writes`; el `entity_type` `order`;
+   - el alta (número `P-000123`, montos copiados, cliente activo, producto activo con precio en la moneda del pedido), la lista, el detalle y la cancelación de un pendiente; solo `admin` escribe, el `viewer` ve sin contacto;
+   - los pedidos en la exportación de los datos de un cliente, y **el cambio de criterio**: un cliente con pedidos va al vaciado aunque no tenga conversaciones (runbook y `scripts/client-data-delete.ts`, con su test);
+   - **no toca el stock**: lo reservado y la entrega son de la 19.3;
+   - crea tablas y migración: **revisión independiente recomendada** antes del commit; la migración en una base real, solo con autorización.
 
    Las demás candidatas siguen esperando su decisión: la Fase 14 (migración por CSV) y la ruta de la imagen para el agente. `pendiente`
 1. **El 2026-11-01**: leer el simulacro de restauración programado, el primero con `product_images` en el backup: `success`, la consulta de hashes de imágenes en 0 y su aviso de vida. Cierra la parte de restauración de AC-8 de la 17.5 (tarea `3f4702be6f4e81518fd7f1b1c975a9a6`). `pendiente`
@@ -77,7 +69,7 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 | Modelo de datos y métricas | [architecture/DataModel.md](docs/architecture/DataModel.md), [analytics/MetricsCatalog.md](docs/analytics/MetricsCatalog.md) |
 | Seguridad y superficie expuesta | [architecture/SecurityModel.md](docs/architecture/SecurityModel.md), `tests/guards/exposed-surface.test.ts` |
 | Contratos con el agente | [contracts/read-v1.md](docs/contracts/read-v1.md) (productos, información, historial, etiquetas, estado de la conversación, stock y horario; todas las rutas nuevas desde la 16.2 validadas en integración en producción), [contracts/ingestion-v2.md](docs/contracts/ingestion-v2.md) (v1 congelada desde la 12.3), [architecture/IntegrationBoundaries.md](docs/architecture/IntegrationBoundaries.md) |
-| Decisiones | [docs/decisions/](docs/decisions/README.md): ADRs 0001 a 0019 (el 0019, bases de los comprobantes, aceptado el 2026-10-10 sin tablas; el 0017, responder desde el CRM, aceptado con la implementación pospuesta; el 0018, imágenes de producto, con su enmienda a JPEG) y un brief por subfase |
+| Decisiones | [docs/decisions/](docs/decisions/README.md): ADRs 0001 a 0020 (el 0020, el pedido, aceptado el 2026-10-11, sin tablas todavía; el 0019, bases de los comprobantes, aceptado el 2026-10-10 sin tablas; el 0017, responder desde el CRM, aceptado con la implementación pospuesta; el 0018, imágenes de producto, con su enmienda a JPEG) y un brief por subfase |
 | Plan | [planning/Roadmap.md](docs/planning/Roadmap.md), [planning/Risks.md](docs/planning/Risks.md) |
 | Requisitos y pantallas | [product/FunctionalRequirements.md](docs/product/FunctionalRequirements.md), [product/Screens.md](docs/product/Screens.md), [architecture/TraceabilityMatrix.md](docs/architecture/TraceabilityMatrix.md) (§3 atrasada) |
 | Estándares, stack y entornos | [development/EngineeringStandards.md](docs/development/EngineeringStandards.md), [development/Environments.md](docs/development/Environments.md) |
@@ -110,4 +102,4 @@ Ninguno: `.claude/settings.json` es el único archivo sin seguimiento y nunca en
 
 ## 9. Autorizaciones vigentes
 
-**Ninguna.** Las de la Fase 18 (los briefs, el ADR, los commits, los pushes, el despliegue de la 18.2, los cierres y Notion) quedaron consumidas al ejecutarse. **La decisión de abrir la Fase 19 está tomada (2026-10-11)**, y crear su proyecto en Notion es parte de esa apertura. Abrir cualquier otra fase, aprobar un brief, pasar tareas de Notion de estado, instalar dependencias, ejecutar migraciones, tocar staging o producción y cualquier operación Git futura necesitan autorización explícita en el turno. `confirmado`
+**Ninguna.** Las de la 19.1 (el brief, la aceptación del ADR, el commit y el push del cierre, Notion) quedan consumidas al ejecutarse. Aprobar el brief de la 19.2, pasar tareas de Notion de estado, instalar dependencias, ejecutar migraciones, tocar staging o producción, avisar al agente y cualquier operación Git futura necesitan autorización explícita en el turno. `confirmado`
