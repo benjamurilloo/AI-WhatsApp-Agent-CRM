@@ -20,6 +20,7 @@ import {
   type AuthContext,
 } from "@/modules/organizations";
 import { optionalCalendarDate } from "@/shared/calendar";
+import type { DbTransaction } from "@/shared/db";
 import { failure, type Failure } from "@/shared/errors";
 import {
   MAX_QUANTITY,
@@ -34,20 +35,47 @@ import { inventoryMovementType } from "./schema";
 // Productos con saldo y estado de stock (brief-4.2, D-1): catalog aporta los productos y deriva
 // el estado; inventory aporta el saldo y compone en memoria, sin JOIN entre módulos.
 
-const ZERO_BALANCE = "0.000";
+const ZERO_BALANCE: repository.Balance = { onHand: "0.000", reserved: "0.000" };
 
+// Desde la 19.3 (ADR 0020, punto 7; brief-19.3, D-10) hay dos derivaciones del estado de stock:
+// las pantallas usan lo disponible (saldo físico menos lo reservado), y las lecturas de servicio
+// del agente siguen con el saldo físico, porque read-v1 no cambia.
 export type ProductStock = Product & {
   quantityOnHand: string;
+  quantityReserved: string;
+  quantityAvailable: string;
   stockStatus: StockStatus;
 };
 
-export function withStock(
+// Pantallas: el estado y el orden por stock usan lo disponible.
+export function withAvailableStock(
   product: Product,
-  balances: Map<string, string>,
+  balances: Map<string, repository.Balance>,
 ): ProductStock {
-  const quantityOnHand = balances.get(product.id) ?? ZERO_BALANCE;
+  const balance = balances.get(product.id) ?? ZERO_BALANCE;
+  const available =
+    quantityFromDatabase(balance.onHand) -
+    quantityFromDatabase(balance.reserved);
   return {
     ...product,
+    quantityOnHand: balance.onHand,
+    quantityReserved: balance.reserved,
+    quantityAvailable: quantityToDatabase(available),
+    stockStatus: deriveStockStatus(
+      available,
+      quantityFromDatabase(product.reorderPoint),
+    ),
+  };
+}
+
+// Lecturas de servicio: el saldo físico, como antes de la 19.3. No mirar lo reservado acá es lo
+// que mantiene read-v1 sin cambios; lo fijan read-api.test.ts y read-api-product-stock.test.ts.
+function withPhysicalStock(
+  product: Pick<Product, "id" | "reorderPoint">,
+  balances: Map<string, repository.Balance>,
+): { quantityOnHand: string; stockStatus: StockStatus } {
+  const quantityOnHand = (balances.get(product.id) ?? ZERO_BALANCE).onHand;
+  return {
     quantityOnHand,
     stockStatus: deriveStockStatus(
       quantityFromDatabase(quantityOnHand),
@@ -112,9 +140,10 @@ const byName = (a: ProductStock, b: ProductStock) =>
 const bySku = (a: ProductStock, b: ProductStock) =>
   collator.compare(a.sku, b.sku) || a.id.localeCompare(b.id);
 
+// Por lo disponible desde la 19.3 (ADR 0020, punto 7).
 const byStock = (a: ProductStock, b: ProductStock) => {
-  const left = quantityFromDatabase(a.quantityOnHand);
-  const right = quantityFromDatabase(b.quantityOnHand);
+  const left = quantityFromDatabase(a.quantityAvailable);
+  const right = quantityFromDatabase(b.quantityAvailable);
   return left === right ? 0 : left < right ? -1 : 1;
 };
 
@@ -163,7 +192,7 @@ type SortPrice = { amount: string; currency: string };
 // (id → monto y moneda) solo hace falta para ordenar por precio.
 export function composeProductStockPage(
   products: Product[],
-  balances: Map<string, string>,
+  balances: Map<string, repository.Balance>,
   filters: Pick<
     ProductListFilters,
     "stockStatus" | "page" | "sort" | "pageSize"
@@ -172,7 +201,7 @@ export function composeProductStockPage(
 ): ProductStockPage {
   const pageSize = productPageSize(filters.pageSize);
   const matching = products
-    .map((product) => withStock(product, balances))
+    .map((product) => withAvailableStock(product, balances))
     .filter(
       (product) =>
         filters.stockStatus === "all" ||
@@ -229,7 +258,7 @@ export async function getProductStock(
   const balances = await repository.findBalances(context.organizationId, [
     found.product.id,
   ]);
-  return { ok: true, product: withStock(found.product, balances) };
+  return { ok: true, product: withAvailableStock(found.product, balances) };
 }
 
 // Lecturas de servicio de la API (brief-11.3, D-3): catalog aporta los activos con su precio, y
@@ -250,7 +279,7 @@ async function withStockStatus(
   );
   return products.map((product) => ({
     ...product,
-    stockStatus: withStock(product, balances).stockStatus,
+    stockStatus: withPhysicalStock(product, balances).stockStatus,
   }));
 }
 
@@ -290,7 +319,7 @@ export async function getProductStockForService(
   const product = await getActiveProductForService(organizationId, productId);
   if (!product) return null;
   const balances = await repository.findBalances(organizationId, [product.id]);
-  const stock = withStock(product, balances);
+  const stock = withPhysicalStock(product, balances);
   return {
     productId: product.id,
     unit: product.unit,
@@ -303,6 +332,14 @@ export async function getProductStockForService(
 // (FR-PROD-06 a 08). Las cantidades se calculan en milésimas, nunca con number.
 
 export type StockMovementType = repository.StockMovementType;
+
+// El ajuste manual acepta solo sus dos tipos: order_delivery lo escribe la entrega de un pedido
+// (ADR 0020, punto 4).
+const ADJUSTMENT_TYPES = [
+  "adjustment_positive",
+  "adjustment_negative",
+] as const;
+export type StockAdjustmentType = (typeof ADJUSTMENT_TYPES)[number];
 
 // Datos de un formulario: todo llega como texto y se valida aquí (D-5).
 export type StockAdjustmentInput = {
@@ -323,7 +360,7 @@ const STOCK_ADJUSTMENT_FIELDS: StockAdjustmentField[] = [
 ];
 
 export type StockAdjustmentValues = {
-  type: StockMovementType;
+  type: StockAdjustmentType;
   quantity: Quantity;
   expectedQuantityOnHand: Quantity;
   reason: string;
@@ -341,7 +378,7 @@ function quantityAtLeast(min: Quantity) {
 }
 
 const stockAdjustmentSchema = z.object({
-  type: z.enum(inventoryMovementType.enumValues),
+  type: z.enum(ADJUSTMENT_TYPES),
   quantity: quantityAtLeast(1n),
   expectedQuantityOnHand: quantityAtLeast(0n),
   reason: z.string().trim().min(1).max(500),
@@ -362,17 +399,20 @@ export function validateStockAdjustmentInput(
   };
 }
 
-export type BalanceRule = "negative_stock" | "stock_limit";
+export type BalanceRule = "negative_stock" | "below_reserved" | "stock_limit";
 
-// Saldo resultante: nunca negativo (ADR 0008) ni mayor que el máximo de numeric(14, 3).
+// Saldo resultante: nunca negativo (ADR 0008), nunca por debajo de lo reservado (ADR 0020,
+// punto 5) ni mayor que el máximo de numeric(14, 3).
 export function computeBalanceAfter(
   current: Quantity,
-  type: StockMovementType,
+  type: StockAdjustmentType,
   quantity: Quantity,
+  reserved: Quantity = 0n,
 ): { ok: true; balanceAfter: Quantity } | { ok: false; rule: BalanceRule } {
   const balanceAfter =
     type === "adjustment_positive" ? current + quantity : current - quantity;
   if (balanceAfter < 0n) return { ok: false, rule: "negative_stock" };
+  if (balanceAfter < reserved) return { ok: false, rule: "below_reserved" };
   if (balanceAfter > MAX_QUANTITY) return { ok: false, rule: "stock_limit" };
   return { ok: true, balanceAfter };
 }
@@ -390,6 +430,8 @@ export type StockAdjustmentResult =
       {
         rule: BalanceRule;
         currentQuantityOnHand: string;
+        // Desde la 19.3: lo reservado bajo el mismo bloqueo, para explicar below_reserved.
+        currentQuantityReserved: string;
         requestedQuantity: string;
       }
     >;
@@ -442,9 +484,13 @@ export async function adjustStock(
         });
       }
 
-      const current = quantityFromDatabase(
-        await repository.lockBalance(tx, organizationId, productId),
+      const balance = await repository.lockBalance(
+        tx,
+        organizationId,
+        productId,
       );
+      const current = quantityFromDatabase(balance.onHand);
+      const reserved = quantityFromDatabase(balance.reserved);
       if (current !== values.expectedQuantityOnHand) {
         throw new AdjustmentRejected({
           ok: false,
@@ -457,6 +503,7 @@ export async function adjustStock(
         current,
         values.type,
         values.quantity,
+        reserved,
       );
       if (!computed.ok) {
         throw new AdjustmentRejected({
@@ -464,6 +511,7 @@ export async function adjustStock(
           code: "BUSINESS_RULE_VIOLATION",
           rule: computed.rule,
           currentQuantityOnHand: quantityToDatabase(current),
+          currentQuantityReserved: quantityToDatabase(reserved),
           requestedQuantity: quantityToDatabase(values.quantity),
         });
       }
@@ -638,4 +686,163 @@ export async function listStockMovements(
     timezone: query.timezone,
     productHasMovements,
   };
+}
+
+// El stock de un pedido (ADR 0020, punto 4; brief-19.3, D-2): orders abre la transacción, ya
+// bloqueó la cabecera y los productos, y la pasa por tipo. Cada función bloquea los saldos
+// ordenados por producto, sin depender del orden de quien llama. inventory no conoce los pedidos:
+// recibe líneas y, para la entrega, el motivo ya escrito.
+
+export type StockLine = { productId: string; quantity: string };
+
+export type StockShortage = {
+  productId: string;
+  requested: string;
+  available: string;
+};
+
+type LockedLine = {
+  productId: string;
+  quantity: Quantity;
+  onHand: Quantity;
+  reserved: Quantity;
+};
+
+async function lockLines(
+  tx: DbTransaction,
+  organizationId: string,
+  lines: StockLine[],
+): Promise<LockedLine[]> {
+  const sorted = [...lines].sort((a, b) =>
+    a.productId < b.productId ? -1 : a.productId > b.productId ? 1 : 0,
+  );
+  const locked: LockedLine[] = [];
+  for (const [index, line] of sorted.entries()) {
+    // Un producto repetido es un defecto de quien llama: en un pedido lo impide el UNIQUE.
+    if (index > 0 && sorted[index - 1]!.productId === line.productId) {
+      throw new Error(`producto repetido en las líneas: ${line.productId}`);
+    }
+    const balance = await repository.lockBalance(
+      tx,
+      organizationId,
+      line.productId,
+    );
+    locked.push({
+      productId: line.productId,
+      quantity: quantityFromDatabase(line.quantity),
+      onHand: quantityFromDatabase(balance.onHand),
+      reserved: quantityFromDatabase(balance.reserved),
+    });
+  }
+  return locked;
+}
+
+// Reserva todas las líneas o ninguna. Si alguna pide más que lo disponible, no escribe nada y
+// devuelve las que no alcanzan; quien llama revierte la transacción (la fila en 0 que pudo crear
+// lockBalance se va con ella).
+export async function reserveStock(
+  tx: DbTransaction,
+  organizationId: string,
+  lines: StockLine[],
+): Promise<{ ok: true } | { ok: false; shortages: StockShortage[] }> {
+  const locked = await lockLines(tx, organizationId, lines);
+  const shortages = locked
+    .filter((line) => line.onHand - line.reserved < line.quantity)
+    .map((line) => ({
+      productId: line.productId,
+      requested: quantityToDatabase(line.quantity),
+      available: quantityToDatabase(line.onHand - line.reserved),
+    }));
+  if (shortages.length > 0) return { ok: false, shortages };
+  for (const line of locked) {
+    await repository.setReserved(
+      tx,
+      organizationId,
+      line.productId,
+      quantityToDatabase(line.reserved + line.quantity),
+    );
+  }
+  return { ok: true };
+}
+
+// Libera lo reservado de un pedido confirmado que se cancela. Nunca se rechaza por el producto:
+// lo reservado tiene que poder liberarse siempre (ADR 0020, punto 4). Si no alcanzara, es un
+// defecto, y el CHECK de la base es la última defensa.
+export async function releaseStock(
+  tx: DbTransaction,
+  organizationId: string,
+  lines: StockLine[],
+): Promise<void> {
+  const locked = await lockLines(tx, organizationId, lines);
+  for (const line of locked) {
+    if (line.reserved < line.quantity) {
+      throw new Error(`reservado insuficiente para liberar: ${line.productId}`);
+    }
+    await repository.setReserved(
+      tx,
+      organizationId,
+      line.productId,
+      quantityToDatabase(line.reserved - line.quantity),
+    );
+  }
+}
+
+// La salida física de un pedido entregado: un movimiento order_delivery por línea, y el saldo y
+// lo reservado bajan juntos. Lo entregado ya estaba reservado, así que nunca deja el saldo por
+// debajo de lo reservado ni negativo.
+export async function deliverStock(
+  tx: DbTransaction,
+  delivery: {
+    organizationId: string;
+    lines: StockLine[];
+    reason: string;
+    createdBy: string;
+  },
+): Promise<void> {
+  const locked = await lockLines(tx, delivery.organizationId, delivery.lines);
+  for (const line of locked) {
+    if (line.reserved < line.quantity || line.onHand < line.quantity) {
+      throw new Error(
+        `reservado insuficiente para entregar: ${line.productId}`,
+      );
+    }
+    await repository.applyDelivery(tx, {
+      organizationId: delivery.organizationId,
+      productId: line.productId,
+      quantity: quantityToDatabase(line.quantity),
+      balanceAfter: quantityToDatabase(line.onHand - line.quantity),
+      reservedAfter: quantityToDatabase(line.reserved - line.quantity),
+      reason: delivery.reason,
+      createdBy: delivery.createdBy,
+    });
+  }
+}
+
+// Lo disponible de varios productos, para el detalle de un pedido pendiente (brief-19.3, D-9).
+// Los dos roles: un viewer ya ve el stock en productos. Sin fila, 0.
+export async function getAvailableStock(
+  context: AuthContext,
+  productIds: string[],
+): Promise<
+  { ok: true; available: Map<string, string> } | Failure<"FORBIDDEN">
+> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  const balances = await repository.findBalances(
+    context.organizationId,
+    productIds,
+  );
+  const available = new Map(
+    productIds.map((id) => {
+      const balance = balances.get(id) ?? ZERO_BALANCE;
+      return [
+        id,
+        quantityToDatabase(
+          quantityFromDatabase(balance.onHand) -
+            quantityFromDatabase(balance.reserved),
+        ),
+      ];
+    }),
+  );
+  return { ok: true, available };
 }

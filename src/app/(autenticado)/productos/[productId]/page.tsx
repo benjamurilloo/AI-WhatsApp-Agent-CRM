@@ -407,6 +407,26 @@ export default async function ProductPage({
                       </span>
                     ),
                   },
+                  // Desde la 19.3 (brief-19.3, D-7): lo reservado por pedidos confirmados y lo
+                  // disponible, que es lo que decide el estado.
+                  {
+                    label: "Reservado",
+                    value: (
+                      <span className="tabular-nums">
+                        {formatQuantity(product.quantityReserved)}{" "}
+                        {product.unit}
+                      </span>
+                    ),
+                  },
+                  {
+                    label: "Disponible",
+                    value: (
+                      <span className="tabular-nums">
+                        {formatQuantity(product.quantityAvailable)}{" "}
+                        {product.unit}
+                      </span>
+                    ),
+                  },
                   {
                     label: "Punto de reposición",
                     value: (

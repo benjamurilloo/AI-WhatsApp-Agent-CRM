@@ -6,8 +6,9 @@ import {
   inventoryMovementType,
 } from "./schema";
 
-// Acceso a inventories e inventory_movements: lectura de saldos (brief-4.2, D-1) y la única
-// escritura del saldo (brief-4.3.1, D-6), que vigila tests/guards/stock-writes.test.ts.
+// Acceso a inventories e inventory_movements: lectura de saldos (brief-4.2, D-1) y las únicas
+// escrituras del saldo (brief-4.3.1, D-6; desde la 19.3, lo reservado y la entrega del ADR 0020),
+// que vigila tests/guards/stock-writes.test.ts.
 
 export type StockMovementType =
   (typeof inventoryMovementType.enumValues)[number];
@@ -18,16 +19,20 @@ export function withTransaction<T>(
   return getDb().transaction(work);
 }
 
+// El saldo físico y lo reservado de un producto, en la escala de la base ("6.000").
+export type Balance = { onHand: string; reserved: string };
+
 // Saldo por producto de la organización. Un producto sin fila no aparece: su saldo es 0 (brief-4.1, D-7).
 export async function findBalances(
   organizationId: string,
   productIds: string[],
-): Promise<Map<string, string>> {
+): Promise<Map<string, Balance>> {
   if (productIds.length === 0) return new Map();
   const rows = await getDb()
     .select({
       productId: inventories.productId,
-      quantityOnHand: inventories.quantityOnHand,
+      onHand: inventories.quantityOnHand,
+      reserved: inventories.quantityReserved,
     })
     .from(inventories)
     .where(
@@ -36,7 +41,12 @@ export async function findBalances(
         inArray(inventories.productId, productIds),
       ),
     );
-  return new Map(rows.map((row) => [row.productId, row.quantityOnHand]));
+  return new Map(
+    rows.map((row) => [
+      row.productId,
+      { onHand: row.onHand, reserved: row.reserved },
+    ]),
+  );
 }
 
 // Historial de movimientos (brief-4.3.3). Filtros ya validados; fechas YYYY-MM-DD.
@@ -129,18 +139,21 @@ export async function hasMovements(
 }
 
 // Crea la fila en 0 si falta, sin tocar un saldo existente, y la bloquea con FOR UPDATE
-// (brief-4.1, D-7). Devuelve el saldo bajo el bloqueo.
+// (brief-4.1, D-7). Devuelve el saldo y lo reservado bajo el bloqueo (desde la 19.3).
 export async function lockBalance(
   tx: DbTransaction,
   organizationId: string,
   productId: string,
-): Promise<string> {
+): Promise<Balance> {
   await tx
     .insert(inventories)
     .values({ organizationId, productId })
     .onConflictDoNothing({ target: inventories.productId });
   const rows = await tx
-    .select({ quantityOnHand: inventories.quantityOnHand })
+    .select({
+      onHand: inventories.quantityOnHand,
+      reserved: inventories.quantityReserved,
+    })
     .from(inventories)
     .where(
       and(
@@ -149,7 +162,7 @@ export async function lockBalance(
       ),
     )
     .for("update");
-  return rows[0]!.quantityOnHand;
+  return rows[0]!;
 }
 
 export type StockChange = {
@@ -176,6 +189,65 @@ export async function applyStockChange(
       and(
         eq(inventories.organizationId, change.organizationId),
         eq(inventories.productId, change.productId),
+      ),
+    );
+}
+
+// Lo reservado de un producto, sin movimiento (ADR 0020, punto 4): reservar y liberar no
+// cambian el saldo físico. Exige la transacción que ya bloqueó la fila con lockBalance.
+export async function setReserved(
+  tx: DbTransaction,
+  organizationId: string,
+  productId: string,
+  reserved: string,
+): Promise<void> {
+  await tx
+    .update(inventories)
+    .set({ quantityReserved: reserved })
+    .where(
+      and(
+        eq(inventories.organizationId, organizationId),
+        eq(inventories.productId, productId),
+      ),
+    );
+}
+
+export type Delivery = {
+  organizationId: string;
+  productId: string;
+  quantity: string;
+  balanceAfter: string;
+  reservedAfter: string;
+  reason: string;
+  createdBy: string;
+};
+
+// La entrega de una línea de un pedido (ADR 0020, punto 4): el movimiento order_delivery y,
+// después, el saldo y lo reservado en una sola sentencia. En dos, el caso válido en que todo el
+// saldo está reservado violaría el CHECK entre una y otra.
+export async function applyDelivery(
+  tx: DbTransaction,
+  delivery: Delivery,
+): Promise<void> {
+  await tx.insert(inventoryMovements).values({
+    organizationId: delivery.organizationId,
+    productId: delivery.productId,
+    type: "order_delivery",
+    quantity: delivery.quantity,
+    balanceAfter: delivery.balanceAfter,
+    reason: delivery.reason,
+    createdBy: delivery.createdBy,
+  });
+  await tx
+    .update(inventories)
+    .set({
+      quantityOnHand: delivery.balanceAfter,
+      quantityReserved: delivery.reservedAfter,
+    })
+    .where(
+      and(
+        eq(inventories.organizationId, delivery.organizationId),
+        eq(inventories.productId, delivery.productId),
       ),
     );
 }

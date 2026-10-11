@@ -42,6 +42,9 @@ function product(overrides: Partial<Product> = {}): Product {
   };
 }
 
+// Un saldo sin nada reservado, como antes de la 19.3.
+const onHand = (value: string) => ({ onHand: value, reserved: "0.000" });
+
 describe("composeProductStockPage", () => {
   it("un producto sin saldo registrado tiene 0 y está sin stock", () => {
     const p = product();
@@ -51,8 +54,46 @@ describe("composeProductStockPage", () => {
     });
     expect(result.products[0]).toMatchObject({
       quantityOnHand: "0.000",
+      quantityReserved: "0.000",
+      quantityAvailable: "0.000",
       stockStatus: "sin_stock",
     });
+  });
+
+  it("brief-19.3 D-7: el estado, el filtro y el orden usan lo disponible, no el saldo físico", () => {
+    // Punto de pedido 10 (product()): 15 físicos con 6 reservados quedan en bajo stock.
+    const reserved = product({ name: "A" });
+    const all = product({ name: "B" });
+    const free = product({ name: "C" });
+    const balances = new Map([
+      [reserved.id, { onHand: "15.000", reserved: "6.000" }],
+      [all.id, { onHand: "4.000", reserved: "4.000" }],
+      [free.id, onHand("12.000")],
+    ]);
+    const page = composeProductStockPage([reserved, all, free], balances, {
+      stockStatus: "all",
+      page: 1,
+      sort: "stock_asc",
+    });
+    expect(
+      page.products.map((p) => [
+        p.name,
+        p.quantityOnHand,
+        p.quantityReserved,
+        p.quantityAvailable,
+        p.stockStatus,
+      ]),
+    ).toEqual([
+      ["B", "4.000", "4.000", "0.000", "sin_stock"],
+      ["A", "15.000", "6.000", "9.000", "bajo_stock"],
+      ["C", "12.000", "0.000", "12.000", "disponible"],
+    ]);
+    expect(
+      composeProductStockPage([reserved, all, free], balances, {
+        stockStatus: "sin_stock",
+        page: 1,
+      }).products.map((p) => p.name),
+    ).toEqual(["B"]);
   });
 
   it("deriva el estado con el saldo y filtra por él", () => {
@@ -60,9 +101,9 @@ describe("composeProductStockPage", () => {
     const low = product({ name: "B" });
     const empty = product({ name: "C" });
     const balances = new Map([
-      [available.id, "10.001"],
-      [low.id, "10.000"],
-      [empty.id, "0.000"],
+      [available.id, onHand("10.001")],
+      [low.id, onHand("10.000")],
+      [empty.id, onHand("0.000")],
     ]);
     const all = [available, low, empty];
     const statusOf = (stockStatus: "disponible" | "bajo_stock" | "sin_stock") =>
@@ -93,9 +134,9 @@ describe("composeProductStockPage", () => {
     const b = product({ name: "B", sku: "A-1" });
     const c = product({ name: "C", sku: "M-1" });
     const balances = new Map([
-      [a.id, "5.000"],
-      [b.id, "12.000"],
-      [c.id, "5.000"],
+      [a.id, onHand("5.000")],
+      [b.id, onHand("12.000")],
+      [c.id, onHand("5.000")],
     ]);
     const names = (sort: ProductSort) =>
       composeProductStockPage([c, a, b], balances, {
@@ -194,6 +235,19 @@ describe("composeProductStockPage", () => {
 });
 
 describe("computeBalanceAfter", () => {
+  it("brief-19.3: rechaza un ajuste negativo que deja el saldo por debajo de lo reservado", () => {
+    expect(
+      computeBalanceAfter(10000n, "adjustment_negative", 3000n, 8000n),
+    ).toEqual({ ok: false, rule: "below_reserved" });
+    expect(
+      computeBalanceAfter(10000n, "adjustment_negative", 2000n, 8000n),
+    ).toEqual({ ok: true, balanceAfter: 8000n });
+    // Negativo tiene prioridad: el saldo no puede bajar de cero, haya o no reservas.
+    expect(
+      computeBalanceAfter(1000n, "adjustment_negative", 2000n, 500n),
+    ).toEqual({ ok: false, rule: "negative_stock" });
+  });
+
   it("un ajuste negativo que deja el saldo exacto en 0 se acepta", () => {
     expect(computeBalanceAfter(6000n, "adjustment_negative", 6000n)).toEqual({
       ok: true,
@@ -254,6 +308,12 @@ describe("validateStockAdjustmentInput", () => {
         reason: "a".repeat(500),
       }).ok,
     ).toBe(true);
+  });
+
+  it("brief-19.3 AC-5: order_delivery no es un tipo de ajuste", () => {
+    expect(
+      validateStockAdjustmentInput({ ...valid, type: "order_delivery" }),
+    ).toEqual({ ok: false, code: "VALIDATION_ERROR", fields: ["type"] });
   });
 
   it("devuelve cada campo inválido en orden", () => {

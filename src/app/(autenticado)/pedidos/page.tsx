@@ -116,6 +116,8 @@ export default async function OrdersPage({
           >
             <option value="todos">Todos</option>
             <option value="pendientes">Pendientes</option>
+            <option value="confirmados">Confirmados</option>
+            <option value="entregados">Entregados</option>
             <option value="cancelados">Cancelados</option>
           </select>
         </div>

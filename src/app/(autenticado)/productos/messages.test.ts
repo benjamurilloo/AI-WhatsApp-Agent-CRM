@@ -45,6 +45,7 @@ describe("adjustmentRejectionMessage", () => {
       code: "BUSINESS_RULE_VIOLATION",
       rule: "negative_stock",
       currentQuantityOnHand: "6.000",
+      currentQuantityReserved: "0.000",
       requestedQuantity: "9.500",
     };
     const result = adjustmentRejectionMessage(rejection, REQUEST_ID);
@@ -61,12 +62,33 @@ describe("adjustmentRejectionMessage", () => {
         code: "BUSINESS_RULE_VIOLATION",
         rule: "stock_limit",
         currentQuantityOnHand: "99999999999.999",
+        currentQuantityReserved: "0.000",
         requestedQuantity: "1.000",
       },
       REQUEST_ID,
     );
     expect(result.message).toContain("supera el máximo");
     expect(result.message).toContain("99999999999,999");
+  });
+
+  it("por debajo de lo reservado explica saldo, reservado y cantidad, y qué hacer (19.3)", () => {
+    const result = adjustmentRejectionMessage(
+      {
+        ok: false,
+        code: "BUSINESS_RULE_VIOLATION",
+        rule: "below_reserved",
+        currentQuantityOnHand: "10.000",
+        currentQuantityReserved: "8.000",
+        requestedQuantity: "3.000",
+      },
+      REQUEST_ID,
+    );
+    expect(result.field).toBe("quantity");
+    expect(result.message).toContain("por debajo de lo reservado");
+    expect(result.message).toContain("Saldo actual: 10");
+    expect(result.message).toContain("reservado: 8");
+    expect(result.message).toContain("cantidad solicitada: 3");
+    expect(result.message).toContain("primero cancelá el pedido");
   });
 
   it("un producto desactivado no señala ningún campo", () => {

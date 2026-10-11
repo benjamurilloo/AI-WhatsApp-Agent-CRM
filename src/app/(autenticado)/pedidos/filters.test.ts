@@ -32,6 +32,17 @@ describe("filtros de la lista de pedidos", () => {
     );
   });
 
+  it("brief-19.3: confirmados y entregados van y vuelven por la URL", () => {
+    for (const [param, status] of [
+      ["confirmados", "confirmed"],
+      ["entregados", "delivered"],
+    ] as const) {
+      const filters = parseOrderFilters({ estado: param });
+      expect(filters.status).toBe(status);
+      expect(orderFiltersHref(filters)).toBe(`/pedidos?estado=${param}`);
+    }
+  });
+
   it("un valor que no se entiende vuelve al de por omisión", () => {
     expect(
       parseOrderFilters({ estado: "raro", pagina: "0", numero: ["7", "8"] }),

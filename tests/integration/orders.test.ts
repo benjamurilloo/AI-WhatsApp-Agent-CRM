@@ -813,7 +813,9 @@ describe("cancelOrder (AC-6)", () => {
   );
 
   it(
-    "un pedido confirmado no se cancela en la 19.2",
+    // Hasta la 19.2, un confirmado no se cancelaba; desde la 19.3 sí (orders-cycle.test.ts), y lo
+    // que no se cancela es un entregado.
+    "un pedido entregado no se cancela",
     async () => {
       const s = await seed();
       const created = await createOrder(s.adminA, twoLines(s));
@@ -821,11 +823,14 @@ describe("cancelOrder (AC-6)", () => {
       await getDb().execute(
         sql`update orders set status = 'confirmed', confirmed_at = now()`,
       );
+      await getDb().execute(
+        sql`update orders set status = 'delivered', delivered_at = now()`,
+      );
       expect(await cancelOrder(s.adminA, created.order.id)).toEqual({
         ok: false,
         code: "BUSINESS_RULE_VIOLATION",
         rule: "invalid_transition",
-        status: "confirmed",
+        status: "delivered",
       });
     },
     TEST_TIMEOUT,

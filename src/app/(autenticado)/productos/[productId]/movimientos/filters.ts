@@ -7,13 +7,15 @@ import { calendarDayIn, shiftDays } from "@/app/_format/date-time";
 
 export type SearchParams = Record<string, string | string[] | undefined>;
 
-export type MovementTypeKey = "todos" | "positivo" | "negativo";
+// entrega, desde la 19.3: la salida de un pedido entregado (brief-19.3, D-7).
+export type MovementTypeKey = "todos" | "positivo" | "negativo" | "entrega";
 export type PeriodKey = "todo" | "7d" | "30d" | "90d" | "personalizado";
 
 const TYPE_PARAM: Record<MovementTypeKey, string> = {
   todos: "all",
   positivo: "adjustment_positive",
   negativo: "adjustment_negative",
+  entrega: "order_delivery",
 };
 
 // Días que abarca cada atajo, incluido hoy.
@@ -73,7 +75,7 @@ export function parseMovementView(params: SearchParams): MovementView {
   return {
     type: keyOf(
       single(params.tipo),
-      ["todos", "positivo", "negativo"] as const,
+      ["todos", "positivo", "negativo", "entrega"] as const,
       DEFAULT_VIEW.type,
     ),
     period,

@@ -1,0 +1,3 @@
+ALTER TYPE "public"."inventory_movement_type" ADD VALUE 'order_delivery';--> statement-breakpoint
+ALTER TABLE "inventories" ADD COLUMN "quantity_reserved" numeric(14, 3) DEFAULT '0' NOT NULL;--> statement-breakpoint
+ALTER TABLE "inventories" ADD CONSTRAINT "inventories_quantity_reserved_within_on_hand" CHECK ("inventories"."quantity_reserved" >= 0 AND "inventories"."quantity_reserved" <= "inventories"."quantity_on_hand");

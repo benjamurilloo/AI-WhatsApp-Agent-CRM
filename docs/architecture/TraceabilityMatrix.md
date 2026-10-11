@@ -56,10 +56,10 @@ Cada FR tiene al menos una pantalla, endpoint o invariante con test que lo satis
 | FR-PROD-02 | Pantalla 4 | pantalla |
 | FR-PROD-03 | Pantalla 4 (desactivar); filtro "solo activos" de la pantalla 3; rechazo de ajuste en la pantalla 5 | pantalla |
 | FR-PROD-04 | Pantalla 3 | pantalla |
-| FR-PROD-05 | Pantallas 3 y 4; test unitario de la derivación | pantalla e invariante |
+| FR-PROD-05 | Pantallas 3 y 4; test unitario de la derivación. *Desde la 19.3*: la derivación con lo disponible (`service.test.ts`), `read-api.test.ts` 6d y `read-api-product-stock.test.ts` 8b con el saldo físico para el agente | pantalla e invariante |
 | FR-PROD-06 | Pantalla 5 | pantalla |
 | FR-PROD-07 | Sin vía de escritura directa; test de que `balance_after` coincide con el saldo | invariante con test |
-| FR-PROD-08 | Pantalla 5; test de rechazo sin movimiento ([ADR 0008](../decisions/0008-stock-nunca-negativo.md)) | pantalla e invariante |
+| FR-PROD-08 | Pantalla 5; test de rechazo sin movimiento ([ADR 0008](../decisions/0008-stock-nunca-negativo.md)). *Desde la 19.3*: `below_reserved` en `orders-cycle.test.ts` y `orders.spec.ts` caso 6 | pantalla e invariante |
 | FR-PROD-09 | Pantallas 4 y 5, implementadas en la 4.4; historial paginado con filtros de tipo y período, ordenado por la hora del `INSERT` (brief-4.3.3, D-1) | pantalla e invariante con test |
 | FR-PROD-10 | Formulario de las pantallas 3 y 4, y detalle de la pantalla 4 (11.1); `catalog.test.ts` y `products.spec.ts` casos 1 y 14 | pantalla con test |
 | FR-PROD-11 | Buscador de la pantalla 3 (11.1); `catalog.test.ts`, con el caso de `EXPLAIN` sobre `products_search_idx`, y `products.spec.ts` caso 14 | pantalla e invariante con test |
@@ -117,6 +117,9 @@ Cada FR tiene al menos una pantalla, endpoint o invariante con test que lo satis
 | FR-ORD-05 | Pantallas 14 y 16 (19.2); `orders.test.ts` (lista, filtros, búsqueda por número, página, detalle por rol, historia solo de admin) y `orders.spec.ts` casos 1 y 4 | pantalla e invariante con test |
 | FR-ORD-06 | Pantalla 7, tarjeta «Pedidos» (19.2); `orders.spec.ts` casos 1 y 4 | pantalla |
 | FR-ORD-07 | `client-data.test.ts` casos 30 a 33 (exportación, informe, borrado rechazado por la base, vaciado que deja los pedidos y desactiva la ficha) y el runbook de datos de un cliente | invariante con test y procedimiento |
+| FR-ORD-08 | Pantalla 16 (19.3); `orders-cycle.test.ts` (reserva, `insufficient_stock` sin escribir, `inactive_product`, idempotencia, concurrencia y conciliación) y `orders.spec.ts` casos 5 y 6 | pantalla e invariante con test |
+| FR-ORD-09 | Pantalla 16 (19.3); `orders-cycle.test.ts` (entrega con todo reservado, movimientos `order_delivery`, cancelar un confirmado, producto desactivado) y `orders.spec.ts` casos 5 y 6 | pantalla e invariante con test |
+| FR-ORD-10 | Pantalla 16 (19.3); `orders-cycle.test.ts` (lo disponible de un pendiente) y `orders.spec.ts` casos 5 y 6 | pantalla |
 | FR-MET-01 | Pantalla 2, implementada en la 7.4: las doce tarjetas del catálogo | pantalla |
 | FR-MET-02 | Pantalla 2 (período en la URL y zona horaria de la organización en el encabezado) | pantalla |
 | FR-MET-03 | Pantalla 2 sin valores editables; cálculo por consulta en cada carga ([ADR 0005](../decisions/0005-metricas-desde-datos-transaccionales.md)) | pantalla e invariante |

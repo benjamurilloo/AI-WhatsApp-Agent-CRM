@@ -166,7 +166,7 @@
 
 ### Guardas
 
-- Tests en `tests/guards/` que vigilan reglas del proyecto, no comportamiento: referencias prohibidas por `CLAUDE.md`, frontera entre módulos y, desde la 4.3.1, que `inventories` e `inventory_movements` solo se escriban desde `lockBalance` y `applyStockChange` (`stock-writes.test.ts`, FR-PROD-07). Esta última lee `src/` como texto: no detecta una tabla que llega por un alias ni SQL escrito fuera del repositorio.
+- Tests en `tests/guards/` que vigilan reglas del proyecto, no comportamiento: referencias prohibidas por `CLAUDE.md`, frontera entre módulos y, desde la 4.3.1, que `inventories` e `inventory_movements` solo se escriban desde `lockBalance` y `applyStockChange` (`stock-writes.test.ts`, FR-PROD-07). *Corregido el 2026-10-11 en la 19.3* ([brief-19.3](../decisions/brief-19.3-reserva-y-ciclo.md), revisión independiente, R-8): desde entonces también desde `setReserved` y `applyDelivery`, la reserva y la entrega de un pedido, y la guarda fija quién las llama. Esta última lee `src/` como texto: no detecta una tabla que llega por un alias ni SQL escrito fuera del repositorio.
 - Sin base de datos ni red. Corren en local con `npm run test:guards` y en cada ejecución de CI.
 - Cada guarda incluye casos que demuestran que falla ante lo que prohíbe. Una guarda que nunca se vio fallar no protege nada.
 

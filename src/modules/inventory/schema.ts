@@ -29,6 +29,11 @@ export const inventories = pgTable(
     quantityOnHand: numeric("quantity_on_hand", { precision: 14, scale: 3 })
       .notNull()
       .default("0"),
+    // Lo comprometido por pedidos confirmados (ADR 0020, punto 4; brief-19.3). Se escribe sin
+    // movimiento: su traza es la auditoría del pedido. Lo disponible es on_hand − reserved.
+    quantityReserved: numeric("quantity_reserved", { precision: 14, scale: 3 })
+      .notNull()
+      .default("0"),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow()
@@ -45,13 +50,20 @@ export const inventories = pgTable(
       "inventories_quantity_on_hand_non_negative",
       sql`${table.quantityOnHand} >= 0`,
     ),
+    // Lo reservado nunca es negativo ni supera al saldo físico (ADR 0020, punto 4).
+    check(
+      "inventories_quantity_reserved_within_on_hand",
+      sql`${table.quantityReserved} >= 0 AND ${table.quantityReserved} <= ${table.quantityOnHand}`,
+    ),
   ],
 );
 
-// Solo los tipos con productor en el MVP (subfase 1.2, D-11).
+// Solo los tipos con productor (subfase 1.2, D-11). order_delivery, desde la 19.3: la salida
+// física de un pedido entregado (ADR 0020, punto 4).
 export const inventoryMovementType = pgEnum("inventory_movement_type", [
   "adjustment_positive",
   "adjustment_negative",
+  "order_delivery",
 ]);
 
 // Solo inserción: el rol crm_app no tiene UPDATE ni DELETE y un trigger rechaza ambos (ADR 0013).

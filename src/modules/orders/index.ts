@@ -1,8 +1,11 @@
-// Interfaz pública del módulo orders: el pedido de un cliente (brief-19.2; ADR 0020).
+// Interfaz pública del módulo orders: el pedido de un cliente (brief-19.2; ADR 0020) y, desde la
+// 19.3, sus transiciones.
 export {
   cancelOrder,
+  confirmOrder,
   CLIENT_ORDERS_LIMIT,
   createOrder,
+  deliverOrder,
   formatOrderNumber,
   getOrder,
   listOrderAudit,
@@ -21,12 +24,14 @@ export {
   type OrderLine,
   type OrderLineField,
   type OrderLineInput,
+  type OrderLineRef,
   type OrderLineRule,
   type OrderLineRuleIssue,
   type OrderListFilters,
   type OrderPage,
   type OrderStatus,
   type OrderStatusFilter,
+  type OrderTransitionResult,
   type OrderSummary,
   type OrderValidationFailure,
 } from "./service";

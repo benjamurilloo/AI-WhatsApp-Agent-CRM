@@ -543,6 +543,36 @@ describe("API de lectura: productos", { timeout: TEST_TIMEOUT }, () => {
       expect(body).not.toMatch(/cost/i);
     }
   });
+
+  it("6d. brief-19.3 D-10: lo reservado no cambia el estado de stock de la búsqueda ni del detalle", async () => {
+    const before = await valid(
+      await search("?q=AUR-01", readerA.token),
+      productListResponseSchema,
+    );
+    const detailBefore = await valid(
+      await detail(auriculares, readerA.token),
+      productResponseSchema,
+    );
+    expect(detailBefore.product.stock_status).toBe("disponible");
+    // Todo el saldo reservado: con lo disponible sería sin_stock. read-v1 sigue con el físico
+    // (ADR 0020, punto 7).
+    await getDb().execute(
+      sql`update inventories set quantity_reserved = quantity_on_hand
+          where product_id = ${auriculares}`,
+    );
+    expect(
+      await valid(
+        await search("?q=AUR-01", readerA.token),
+        productListResponseSchema,
+      ),
+    ).toStrictEqual(before);
+    expect(
+      await valid(
+        await detail(auriculares, readerA.token),
+        productResponseSchema,
+      ),
+    ).toStrictEqual(detailBefore);
+  });
 });
 
 describe("API de lectura: el borde", { timeout: TEST_TIMEOUT }, () => {

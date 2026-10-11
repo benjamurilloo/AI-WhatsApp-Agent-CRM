@@ -56,6 +56,8 @@ const TITLE = "Movimientos";
 const TYPE_LABEL: Record<string, string> = {
   adjustment_positive: "Ajuste positivo",
   adjustment_negative: "Ajuste negativo",
+  // Desde la 19.3: la entrega de un pedido; el motivo lleva su número (ADR 0020, punto 4).
+  order_delivery: "Entrega de pedido",
 };
 
 // Pantalla 5 (wireframe 05): ajuste para admin e historial para admin y viewer, con filtros
@@ -127,6 +129,17 @@ export default async function MovementsPage({
             <span className="font-semibold text-foreground tabular-nums">
               {formatQuantity(product.quantityOnHand)} {product.unit}
             </span>
+            {/* Lo reservado y lo disponible, desde la 19.3 (brief-19.3, D-7). */}
+            <span className="block">
+              Reservado:{" "}
+              <span className="font-semibold text-foreground tabular-nums">
+                {formatQuantity(product.quantityReserved)}
+              </span>{" "}
+              · Disponible:{" "}
+              <span className="font-semibold text-foreground tabular-nums">
+                {formatQuantity(product.quantityAvailable)}
+              </span>
+            </span>
           </p>
         }
       />
@@ -148,6 +161,7 @@ export default async function MovementsPage({
             <AdjustForm
               productId={product.id}
               quantityOnHand={product.quantityOnHand}
+              quantityReserved={product.quantityReserved}
               unit={product.unit}
             />
           </SectionCard>
@@ -181,6 +195,7 @@ export default async function MovementsPage({
               <option value="todos">Todos</option>
               <option value="positivo">Ajuste positivo</option>
               <option value="negativo">Ajuste negativo</option>
+              <option value="entrega">Entrega de pedido</option>
             </select>
           </div>
           <div className="flex flex-col gap-1">

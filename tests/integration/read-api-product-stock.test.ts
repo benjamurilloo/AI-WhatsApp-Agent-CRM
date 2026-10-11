@@ -420,6 +420,25 @@ describe(
       }
     });
 
+    it("8b. brief-19.3 D-10: con stock reservado, la cantidad y el estado siguen siendo los del saldo físico", async () => {
+      const reservado = await product(orgA, {
+        sku: "RES-01",
+        reorderPoint: "5",
+        quantity: "10.000",
+      });
+      // Con lo disponible serían 2 y bajo_stock; read-v1 no cambia (ADR 0020, punto 7).
+      await getDb().execute(
+        sql`update inventories set quantity_reserved = 8 where product_id = ${reservado}`,
+      );
+      expect(await valid(await stock(reservado, readerA.token))).toStrictEqual({
+        contract_version: "1",
+        product_id: reservado,
+        quantity_available: "10",
+        unit: "unidad",
+        stock_status: "disponible",
+      });
+    });
+
     it("8. FR-API-09, invariante 1: las rutas de productos siguen sin la cantidad", async () => {
       const detail = await handleProductDetail(
         request(`/products/${auriculares}`, readerA.token),

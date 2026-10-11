@@ -113,6 +113,13 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
   "src/app/(autenticado)/pedidos/actions.ts#cancelOrderAction": {
     requirement: "sesion",
   },
+  // Confirmar y entregar (brief-19.3): solo admin, lo exige orders, como cancelar.
+  "src/app/(autenticado)/pedidos/actions.ts#confirmOrderAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/pedidos/actions.ts#deliverOrderAction": {
+    requirement: "sesion",
+  },
   "src/app/(autenticado)/pedidos/actions.ts#searchOrderProductsAction": {
     requirement: "sesion",
   },

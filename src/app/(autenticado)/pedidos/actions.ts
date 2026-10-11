@@ -8,17 +8,28 @@ import {
   suggestProducts,
 } from "@/modules/catalog";
 import { suggestClients } from "@/modules/crm";
-import { cancelOrder, createOrder, type OrderInput } from "@/modules/orders";
+import {
+  cancelOrder,
+  confirmOrder,
+  createOrder,
+  deliverOrder,
+  getOrder,
+  type OrderInput,
+  type OrderTransitionResult,
+} from "@/modules/orders";
 import type { AuthContext } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
 import { logEvent, newRequestId } from "@/shared/log";
 import {
   orderRejection,
+  TRANSITION_NOTICE,
+  transitionRejection,
   unexpectedErrorMessage,
-  type CancelState,
   type OrderFormLine,
   type OrderFormState,
   type OrderFormValues,
+  type OrderTransitionName,
+  type TransitionState,
 } from "./messages";
 
 // Server Actions de las pantallas de pedidos (brief-19.2). La sesión se verifica acá; el rol y la
@@ -190,44 +201,87 @@ export async function createOrderAction(
   redirect(destination);
 }
 
-export async function cancelOrderAction(
-  _previous: CancelState,
+// Las transiciones del detalle (brief-19.2 la cancelación; brief-19.3 confirmar y entregar). Un
+// rechazo nombra cada línea con el nombre de hoy del producto, leído con getOrder.
+
+const TRANSITIONS: Record<
+  OrderTransitionName,
+  (context: AuthContext, orderId: string) => Promise<OrderTransitionResult>
+> = {
+  confirm: confirmOrder,
+  deliver: deliverOrder,
+  cancel: cancelOrder,
+};
+
+const ROUTES: Record<OrderTransitionName, string> = {
+  confirm: "pedidos.confirmar",
+  deliver: "pedidos.entregar",
+  cancel: "pedidos.cancelar",
+};
+
+async function runTransition(
+  transition: OrderTransitionName,
   formData: FormData,
-): Promise<CancelState> {
+): Promise<TransitionState> {
   const context = await requireSession();
-  const { requestId, log } = logger("pedidos.cancelar", context);
+  const { requestId, log } = logger(ROUTES[transition], context);
   const orderId = String(formData.get("orderId") ?? "");
 
   let destination: string;
   try {
-    const result = await cancelOrder(context, orderId);
+    const result = await TRANSITIONS[transition](context, orderId);
     if (!result.ok) {
       log(result.code);
+      const names = new Map<string, string>();
+      if (result.code === "BUSINESS_RULE_VIOLATION") {
+        const found = await getOrder(context, orderId);
+        for (const line of found.ok ? found.order.lines : []) {
+          if (line.product) names.set(line.productId, line.product.name);
+        }
+      }
       revalidatePath(`/pedidos/${orderId}`);
       return {
         status: "error",
         requestId,
-        message:
-          result.code === "FORBIDDEN"
-            ? "No tenés permiso para cancelar pedidos."
-            : result.code === "BUSINESS_RULE_VIOLATION"
-              ? "Este pedido ya no está pendiente: no se puede cancelar desde acá."
-              : "Este pedido no existe.",
+        ...transitionRejection(transition, result, names),
       };
     }
     log("OK");
     revalidatePath("/pedidos");
-    destination = `/pedidos/${orderId}?aviso=cancelado`;
+    revalidatePath("/productos");
+    destination = `/pedidos/${orderId}?aviso=${TRANSITION_NOTICE[transition]}`;
   } catch (error) {
     log("INTERNAL", error);
     return {
       status: "error",
       requestId,
       message: unexpectedErrorMessage(requestId),
+      details: [],
     };
   }
 
   redirect(destination);
+}
+
+export async function confirmOrderAction(
+  _previous: TransitionState,
+  formData: FormData,
+): Promise<TransitionState> {
+  return runTransition("confirm", formData);
+}
+
+export async function deliverOrderAction(
+  _previous: TransitionState,
+  formData: FormData,
+): Promise<TransitionState> {
+  return runTransition("deliver", formData);
+}
+
+export async function cancelOrderAction(
+  _previous: TransitionState,
+  formData: FormData,
+): Promise<TransitionState> {
+  return runTransition("cancel", formData);
 }
 
 // Sugerencias de los buscadores del alta (brief-19.2, D-7): lecturas, sin mutar ni revalidar. El

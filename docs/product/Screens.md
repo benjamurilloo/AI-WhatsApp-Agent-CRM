@@ -65,6 +65,7 @@
 - **Errores**: generales.
 - **Responsive**: tarjetas en móvil con nombre, marca y categoría, precio, stock y estado; desde la 17.5, con la miniatura.
 - **Accesibilidad**: el estado se muestra con texto e ícono además del color. «Bajo stock» usa el token de advertencia desde la 11.1 (O-17).
+- *Desde la 19.3* ([brief-19.3](../decisions/brief-19.3-reserva-y-ciclo.md), D-7; FR-PROD-05 enmendado): la columna de stock muestra **lo disponible** y, si hay algo reservado, «N reservado» debajo; el estado, su filtro y el orden por stock usan lo disponible. En móvil, «N unidad disponible · M reservado».
 - **No mostrar**: nada sensible específico.
 
 ## 4. Detalle y edición de producto
@@ -82,6 +83,8 @@
 - **Accesibilidad**: los errores se asocian a cada campo con `aria-describedby`.
 - **No mostrar**: la auditoría a `viewer`. *Desde la 18.2*, tampoco el costo, el margen ni el enlace a la pantalla 5c.
 
+*Desde la 19.3* ([brief-19.3](../decisions/brief-19.3-reserva-y-ciclo.md), D-7), la tarjeta «Stock» de la ficha suma «Reservado» y «Disponible»; el estado usa lo disponible.
+
 ## 5. Ajuste de inventario e historial de movimientos
 
 - **Objetivo**: corregir stock con trazabilidad y consultar el historial.
@@ -96,6 +99,8 @@
 - **Responsive**: el formulario se muestra arriba y el historial en tarjetas.
 - **Accesibilidad**: el saldo resultante se anuncia con `aria-live`.
 - **No mostrar**: nada sensible específico. No existe ninguna acción para editar ni borrar un movimiento.
+
+*Desde la 19.3* ([brief-19.3](../decisions/brief-19.3-reserva-y-ciclo.md), D-7): la cabecera muestra también lo reservado y lo disponible; el historial etiqueta las entregas de pedidos («Entrega de pedido», con el número del pedido en el motivo) y las filtra con `?tipo=entrega`; el ajuste avisa antes de enviar si el saldo quedaría por debajo de lo reservado, y el servidor lo rechaza con `below_reserved` y un mensaje con el saldo, lo reservado, la cantidad y qué hacer (cancelar primero el pedido que no se puede cumplir).
 
 ## 5b. Precios de un producto
 
@@ -282,7 +287,7 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 - **Objetivo**: encontrar un pedido.
 - **Usuario autorizado**: `admin` y `viewer`; el botón «+ Nuevo pedido», solo `admin`.
 - **Información mostrada**: número, fecha, cliente, cantidad de líneas, total y estado (con ícono y texto).
-- **Filtros**: estado (todos, pendientes, cancelados; confirmado y entregado llegan con la 19.3) y búsqueda por número (`P-000123`, `000123` o `123`). Desde la ficha de un cliente llega filtrada por él, con un enlace para ver los de todos.
+- **Filtros**: estado (todos, pendientes, cancelados; confirmados y entregados desde la 19.3) y búsqueda por número (`P-000123`, `000123` o `123`). Desde la ficha de un cliente llega filtrada por él, con un enlace para ver los de todos.
 - **Paginación**: 25 por página, del más reciente al más viejo.
 - **Vacío**: «Todavía no hay pedidos.»; con filtros, «Ningún pedido coincide con estos filtros.»
 - **Responsive**: tabla en escritorio y tarjetas en móvil.
@@ -308,4 +313,6 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 - **Usuario autorizado**: `admin` y `viewer`; «Cancelar pedido» y la historia, solo `admin`.
 - **Información mostrada**: número, estado y total; las líneas con el producto (su nombre de hoy, con el aviso de que los precios son los del alta), la cantidad, el precio unitario y el total; el cliente, con el teléfono enmascarado y sin email para un `viewer`; las fechas de cada estado. Para `admin`, la historia: el alta con su número, sus líneas y su total, y cada cambio de estado.
 - **Acciones**: cancelar un pendiente, con confirmación.
+
+*Desde la 19.3* ([brief-19.3](../decisions/brief-19.3-reserva-y-ciclo.md), D-8 y D-9; FR-ORD-08 a 10): para `admin`, «Confirmar pedido» y «Cancelar pedido» en un pendiente, y «Marcar entregado» y «Cancelar pedido» en un confirmado; nada en un entregado o un cancelado. Cada uno con una confirmación que dice qué pasa con el stock. Un pendiente suma la columna «Disponible» por línea, para los dos roles, con «No alcanza» en las que no alcanzan. Un rechazo por falta de stock o por un producto desactivado se anuncia con `role="alert"` y nombra cada línea. La lista (pantalla 14) filtra también por confirmados y entregados.
 - **No mostrar**: editar ni borrar el pedido o sus líneas; costo ni margen.

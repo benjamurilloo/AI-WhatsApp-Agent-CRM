@@ -121,11 +121,15 @@ export async function findOrder(
   return rows[0];
 }
 
-// La fecha que pone cada estado de destino. La 19.2 solo cancela un pendiente; la 19.3 suma
-// confirmed y delivered.
+// La fecha que pone cada estado de destino (ADR 0020, punto 4). La 19.2 solo cancelaba; la 19.3
+// suma confirmed y delivered.
 const STATUS_STAMPS = {
+  confirmed: { confirmedAt: sql`now()` },
+  delivered: { deliveredAt: sql`now()` },
   cancelled: { cancelledAt: sql`now()` },
 } as const;
+
+export type TargetStatus = keyof typeof STATUS_STAMPS;
 
 // La única escritura de la cabecera después del alta: el estado y la fecha de ese estado. Exige
 // la transacción que ya bloqueó la fila.
@@ -133,7 +137,7 @@ export async function updateOrderStatus(
   tx: DbTransaction,
   organizationId: string,
   orderId: string,
-  status: keyof typeof STATUS_STAMPS,
+  status: TargetStatus,
 ): Promise<void> {
   await tx
     .update(orders)
@@ -143,11 +147,13 @@ export async function updateOrderStatus(
     );
 }
 
+// Con tx, dentro de la transacción de una transición (brief-19.3).
 export async function findOrderLines(
   organizationId: string,
   orderId: string,
+  tx?: DbTransaction,
 ): Promise<OrderLineRow[]> {
-  return getDb()
+  return (tx ?? getDb())
     .select(lineColumns)
     .from(orderLines)
     .where(

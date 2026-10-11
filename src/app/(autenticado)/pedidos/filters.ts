@@ -19,7 +19,7 @@ export const DEFAULT_ORDER_FILTERS: OrderFilters = {
   page: 1,
 };
 
-// Los estados en la URL, en español. Confirmado y entregado aparecen con la 19.3.
+// Los estados en la URL, en español. Confirmado y entregado se ofrecen desde la 19.3.
 export const STATUS_PARAM: Record<string, OrderStatusFilter> = {
   todos: "all",
   pendientes: "pending",

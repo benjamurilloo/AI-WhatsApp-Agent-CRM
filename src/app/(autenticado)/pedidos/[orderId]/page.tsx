@@ -23,9 +23,10 @@ import { PageNotice } from "@/app/_components/page-notice";
 import { SectionCard } from "@/app/_components/section-card";
 import { formatShortDateTime } from "@/app/_format/date-time";
 import { formatMoney } from "@/shared/money";
-import { formatQuantity } from "@/shared/quantity";
+import { formatQuantity, quantityFromDatabase } from "@/shared/quantity";
 import type { SearchParams } from "../filters";
 import {
+  AVAILABLE_NOTE,
   CURRENT_PRODUCT_NAME_NOTE,
   FORBIDDEN_PAGE_MESSAGE,
   ORDER_NOT_FOUND_MESSAGE,
@@ -35,7 +36,7 @@ import {
 } from "../messages";
 import { OrderStatusBadge } from "../status-badge";
 import { auditActionLabel, describeAuditDiff } from "./audit-summary";
-import { CancelOrderForm } from "./cancel-form";
+import { OrderTransitionForm } from "./transition-form";
 
 export const metadata: Metadata = {
   title: "Pedido — AI WhatsApp Agent CRM",
@@ -50,7 +51,8 @@ function page(value: string | string[] | undefined): number {
 
 // Pantalla 16: el detalle de un pedido (brief-19.2; ADR 0020, puntos 3 y 8). Cabecera, cliente,
 // líneas y total, para admin y viewer; el viewer ve el cliente sin teléfono ni contacto, que crm
-// ya entrega resueltos para su rol. Cancelar un pendiente y la historia, solo admin (D-12).
+// ya entrega resueltos para su rol. Las transiciones y la historia, solo admin (D-12; desde la
+// 19.3, confirmar y entregar, D-8). En un pendiente, lo disponible por línea (brief-19.3, D-9).
 // Ningún costo ni margen.
 export default async function OrderPage({
   params,
@@ -86,6 +88,10 @@ export default async function OrderPage({
     : null;
   const notice = orderNoticeMessage(query.aviso);
   const client = order.client;
+  const showAvailable = order.status === "pending";
+  const short = (line: (typeof order.lines)[number]) =>
+    line.available !== null &&
+    quantityFromDatabase(line.available) < quantityFromDatabase(line.quantity);
 
   const dates = [
     { label: "Creado", icon: "calendar" as const, value: order.createdAt },
@@ -145,6 +151,14 @@ export default async function OrderPage({
                   >
                     Cantidad
                   </th>
+                  {showAvailable ? (
+                    <th
+                      scope="col"
+                      className={`${tableHeadCellClass} text-right`}
+                    >
+                      Disponible
+                    </th>
+                  ) : null}
                   <th
                     scope="col"
                     className={`${tableHeadCellClass} text-right`}
@@ -187,6 +201,20 @@ export default async function OrderPage({
                         <span className="text-muted"> {line.product.unit}</span>
                       ) : null}
                     </td>
+                    {showAvailable ? (
+                      <td
+                        className={`${tableCellClass} text-right whitespace-nowrap tabular-nums`}
+                      >
+                        {line.available !== null
+                          ? formatQuantity(line.available)
+                          : "—"}
+                        {short(line) ? (
+                          <span className="block text-xs font-semibold text-danger">
+                            No alcanza
+                          </span>
+                        ) : null}
+                      </td>
+                    ) : null}
                     <td
                       className={`${tableCellClass} text-right whitespace-nowrap tabular-nums`}
                     >
@@ -204,7 +232,7 @@ export default async function OrderPage({
                 <tr>
                   <th
                     scope="row"
-                    colSpan={3}
+                    colSpan={showAvailable ? 4 : 3}
                     className={`${tableCellClass} text-right font-semibold`}
                   >
                     Total del pedido
@@ -219,6 +247,9 @@ export default async function OrderPage({
             </table>
           </div>
           <p className="mt-4 text-sm text-muted">{CURRENT_PRODUCT_NAME_NOTE}</p>
+          {showAvailable ? (
+            <p className="mt-2 text-sm text-muted">{AVAILABLE_NOTE}</p>
+          ) : null}
         </SectionCard>
 
         <div className="flex flex-col gap-6">
@@ -265,11 +296,21 @@ export default async function OrderPage({
 
           <SectionCard id="estado-titulo" title="Estado" icon="clock">
             <DetailList items={dates} />
-            {isAdmin && order.status === "pending" ? (
-              <div className="mt-5">
-                <CancelOrderForm
+            {isAdmin &&
+            (order.status === "pending" || order.status === "confirmed") ? (
+              <div className="mt-5 flex flex-col gap-4">
+                <OrderTransitionForm
                   orderId={order.id}
                   displayNumber={order.displayNumber}
+                  transition={
+                    order.status === "pending" ? "confirm" : "deliver"
+                  }
+                />
+                <OrderTransitionForm
+                  orderId={order.id}
+                  displayNumber={order.displayNumber}
+                  transition="cancel"
+                  releasesStock={order.status === "confirmed"}
                 />
               </div>
             ) : null}

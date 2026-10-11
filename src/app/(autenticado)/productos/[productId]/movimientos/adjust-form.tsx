@@ -15,19 +15,24 @@ import type { AdjustmentState } from "../../messages";
 
 // Formulario de ajuste (wireframe 05). El saldo esperado viaja en el formulario: si cambió,
 // el servidor responde CONFLICT y acá se muestra el saldo nuevo para confirmar otra vez
-// (brief-4.3.1, D-2; brief-4.4, D-4). El saldo resultante se anuncia con aria-live.
+// (brief-4.3.1, D-2; brief-4.4, D-4). El saldo resultante se anuncia con aria-live. Desde la 19.3,
+// avisa si quedaría por debajo de lo reservado (brief-19.3, D-7); no bloquea el envío, porque lo
+// reservado puede cambiar y el que decide es el servidor (below_reserved).
 
 const initialState: AdjustmentState = { status: "idle" };
 
 function preview(
   balance: string,
+  reservedText: string,
   type: "adjustment_positive" | "adjustment_negative",
   quantity: string,
-): { text: string; negative: boolean } {
+): { text: string; negative: boolean; belowReserved: boolean } {
   const current = parseQuantityInput(formatQuantity(balance).replace(",", "."));
+  const reserved =
+    parseQuantityInput(formatQuantity(reservedText).replace(",", ".")) ?? 0n;
   const amount = parseQuantityInput(quantity.trim());
   if (current === null || amount === null) {
-    return { text: "", negative: false };
+    return { text: "", negative: false, belowReserved: false };
   }
   const after =
     type === "adjustment_positive" ? current + amount : current - amount;
@@ -36,6 +41,7 @@ function preview(
   return {
     text: `${formatQuantity(balance)} ${sign} ${format(amount)} = ${shown}`,
     negative: after < 0n,
+    belowReserved: after >= 0n && after < reserved,
   };
 }
 
@@ -52,10 +58,12 @@ function format(value: bigint): string {
 export function AdjustForm({
   productId,
   quantityOnHand,
+  quantityReserved,
   unit,
 }: {
   productId: string;
   quantityOnHand: string;
+  quantityReserved: string;
   unit: string;
 }) {
   const [state, formAction, pending] = useActionState(
@@ -77,7 +85,7 @@ export function AdjustForm({
       ? state.quantityOnHand
       : quantityOnHand;
   const failed = state.status === "error";
-  const result = preview(balance, type, quantity);
+  const result = preview(balance, quantityReserved, type, quantity);
 
   useEffect(() => {
     if (state.status !== "error") return;
@@ -175,6 +183,9 @@ export function AdjustForm({
           <>
             Saldo resultante: {result.text} {unit}
             {result.negative ? " ✕ No permitido" : ""}
+            {result.belowReserved
+              ? ` ⚠ Por debajo de lo reservado (${formatQuantity(quantityReserved)}): primero hay que cancelar un pedido.`
+              : ""}
           </>
         ) : (
           <>

@@ -30,7 +30,7 @@ import { SuggestInput } from "@/app/_components/suggest-input";
 import { suggestProductsAction } from "./actions";
 import { Pagination, shownRangeText } from "@/app/_components/pagination";
 import { formatMoney } from "@/shared/money";
-import { formatQuantity } from "@/shared/quantity";
+import { formatQuantity, quantityFromDatabase } from "@/shared/quantity";
 import {
   DEFAULT_FILTERS,
   hasActiveFilters,
@@ -59,6 +59,10 @@ const TITLE = "Productos";
 // Diez columnas: la tabla usa menos relleno horizontal para entrar sin desplazarse (brief-15.1).
 const cellClass = tableCellClass.replace("px-4", "px-2.5");
 const headCellClass = tableHeadCellClass.replace("px-4", "px-2.5");
+
+// Lo reservado por pedidos confirmados se muestra solo si hay algo (brief-19.3, D-7).
+const hasReserved = (product: { quantityReserved: string }) =>
+  quantityFromDatabase(product.quantityReserved) > 0n;
 
 // Pantalla 3 (wireframe 03): búsqueda, filtros y página en la URL. Tabla en escritorio y
 // tarjetas en móvil; la versión oculta no entra al árbol de accesibilidad. La búsqueda es por
@@ -293,8 +297,9 @@ export default async function ProductsPage({
                   <th scope="col" className={`${headCellClass} text-right`}>
                     Precio
                   </th>
+                  {/* Lo disponible desde la 19.3 (ADR 0020, punto 7; brief-19.3, D-7). */}
                   <th scope="col" className={`${headCellClass} text-right`}>
-                    Stock
+                    Disponible
                   </th>
                   <th scope="col" className={headCellClass}>
                     Unidad
@@ -343,7 +348,12 @@ export default async function ProductsPage({
                       {priceText(product.id)}
                     </td>
                     <td className={`${cellClass} text-right tabular-nums`}>
-                      {formatQuantity(product.quantityOnHand)}
+                      {formatQuantity(product.quantityAvailable)}
+                      {hasReserved(product) ? (
+                        <span className="block text-xs whitespace-nowrap text-muted">
+                          {formatQuantity(product.quantityReserved)} reservado
+                        </span>
+                      ) : null}
                     </td>
                     <td className={`${cellClass} text-muted`}>
                       {product.unit}
@@ -415,7 +425,14 @@ export default async function ProductsPage({
                 </p>
                 <div className="mt-2 flex items-center justify-between gap-3">
                   <p className="text-sm tabular-nums">
-                    {formatQuantity(product.quantityOnHand)} {product.unit}
+                    {formatQuantity(product.quantityAvailable)} {product.unit}{" "}
+                    disponible
+                    {hasReserved(product) ? (
+                      <span className="text-muted">
+                        {" "}
+                        · {formatQuantity(product.quantityReserved)} reservado
+                      </span>
+                    ) : null}
                   </p>
                   <StockStatusBadge status={product.stockStatus} />
                 </div>

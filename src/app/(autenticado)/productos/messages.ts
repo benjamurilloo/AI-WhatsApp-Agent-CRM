@@ -232,6 +232,19 @@ export function adjustmentRejectionMessage(
       if (rejection.rule === "inactive_product") {
         return { field: null, message: INACTIVE_PRODUCT_NOTICE };
       }
+      // Desde la 19.3, below_reserved (ADR 0020, punto 5): primero se cancela un pedido.
+      if (rejection.rule === "below_reserved") {
+        return {
+          field: "quantity",
+          message: `El ajuste dejaría el stock por debajo de lo reservado por pedidos confirmados. Saldo actual: ${formatQuantity(
+            rejection.currentQuantityOnHand,
+          )}, reservado: ${formatQuantity(
+            rejection.currentQuantityReserved,
+          )}, cantidad solicitada: ${formatQuantity(
+            rejection.requestedQuantity,
+          )}. Para corregir un faltante, primero cancelá el pedido que no se puede cumplir. No se registró ningún movimiento.`,
+        };
+      }
       return {
         field: "quantity",
         message:

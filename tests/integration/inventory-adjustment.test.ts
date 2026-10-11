@@ -240,6 +240,7 @@ describe("adjustStock: rechazos sin efectos", () => {
       code: "BUSINESS_RULE_VIOLATION",
       rule: "negative_stock",
       currentQuantityOnHand: "6.000",
+      currentQuantityReserved: "0.000",
       requestedQuantity: "6.001",
     });
     expect(await snapshot()).toEqual(before);
@@ -254,6 +255,7 @@ describe("adjustStock: rechazos sin efectos", () => {
       code: "BUSINESS_RULE_VIOLATION",
       rule: "negative_stock",
       currentQuantityOnHand: "0.000",
+      currentQuantityReserved: "0.000",
       requestedQuantity: "1.000",
     });
     expect(await count("inventories")).toBe(0);
@@ -299,6 +301,7 @@ describe("adjustStock: rechazos sin efectos", () => {
       code: "BUSINESS_RULE_VIOLATION",
       rule: "stock_limit",
       currentQuantityOnHand: MAX,
+      currentQuantityReserved: "0.000",
       requestedQuantity: "0.001",
     });
     expect(await snapshot()).toEqual(before);

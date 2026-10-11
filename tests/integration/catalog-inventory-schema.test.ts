@@ -343,6 +343,76 @@ describe("inventories", () => {
     ).toBe("23514");
   });
 
+  it("brief-19.3 AC-1: lo reservado arranca en 0 y nunca es negativo ni supera al saldo", async () => {
+    const { orgA, productId } = await seedProduct();
+    const inserted = await getDb().execute<{ reserved: string }>(
+      sql`insert into inventories (organization_id, product_id, quantity_on_hand)
+          values (${orgA}, ${productId}, 5) returning quantity_reserved as reserved`,
+    );
+    expect(inserted.rows[0]!.reserved).toBe("0.000");
+    for (const [query, code] of [
+      [
+        sql`update inventories set quantity_reserved = -0.001 where product_id = ${productId}`,
+        "23514",
+      ],
+      [
+        sql`update inventories set quantity_reserved = 5.001 where product_id = ${productId}`,
+        "23514",
+      ],
+      [
+        sql`update inventories set quantity_reserved = null where product_id = ${productId}`,
+        "23502",
+      ],
+    ] as const) {
+      expect(await codeOf(query)).toBe(code);
+    }
+    await run(
+      sql`update inventories set quantity_reserved = 5 where product_id = ${productId}`,
+    );
+    // Todo reservado vale; bajar el saldo por debajo de lo reservado, no.
+    const error = await pgError(
+      run(
+        sql`update inventories set quantity_on_hand = 4.999 where product_id = ${productId}`,
+      ),
+    );
+    expect(error).toEqual({
+      code: "23514",
+      message: expect.stringContaining(
+        "inventories_quantity_reserved_within_on_hand",
+      ),
+    });
+    // Saldo y reservado juntos, en una sentencia, como la entrega.
+    await run(
+      sql`update inventories set quantity_on_hand = 0, quantity_reserved = 0
+          where product_id = ${productId}`,
+    );
+  });
+
+  it("brief-19.3 AC-1: el CHECK de lo reservado vale también para crm_app", async () => {
+    const { orgA, productId } = await seedProduct();
+    await insertInventory(getDb(), orgA, productId, "2");
+    // Desde la revisión independiente (R-5), los tres casos con crm_app: mayor que el saldo,
+    // negativo, y el saldo que baja por debajo de lo reservado.
+    for (const query of [
+      sql`update inventories set quantity_reserved = 3 where product_id = ${productId}`,
+      sql`update inventories set quantity_reserved = -1 where product_id = ${productId}`,
+    ]) {
+      const error = await pgError(asAppRole((tx) => tx.execute(query)));
+      expect(error.code).toBe("23514");
+    }
+    await run(
+      sql`update inventories set quantity_reserved = 2 where product_id = ${productId}`,
+    );
+    const below = await pgError(
+      asAppRole((tx) =>
+        tx.execute(
+          sql`update inventories set quantity_on_hand = 1 where product_id = ${productId}`,
+        ),
+      ),
+    );
+    expect(below.code).toBe("23514");
+  });
+
   it("rechaza el producto de otra organización (D-3)", async () => {
     const { orgB, productId } = await seedProduct();
     expect(
@@ -457,6 +527,18 @@ describe("inventory_movements: esquema", () => {
     expect(await codeOf(movementQuery({ ...movement, type: "inbound" }))).toBe(
       "22P02",
     );
+  });
+
+  it("brief-19.3 AC-1: acepta order_delivery, la entrega de un pedido", async () => {
+    const { movement } = await seedProduct();
+    expect(
+      await insertMovement(getDb(), {
+        ...movement,
+        type: "order_delivery",
+        balanceAfter: "0",
+        reason: "Entrega del pedido P-000001",
+      }),
+    ).toMatch(uuidPattern);
   });
 
   it("rechaza el producto de otra organización (D-3)", async () => {

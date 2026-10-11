@@ -93,6 +93,11 @@ describe("toHistoryFilters", () => {
     expect(
       toHistoryFilters({ ...DEFAULT_VIEW, type: "negativo" }, "UTC", now).type,
     ).toBe("adjustment_negative");
+    // brief-19.3, D-7: las entregas de pedidos.
+    expect(
+      toHistoryFilters({ ...DEFAULT_VIEW, type: "entrega" }, "UTC", now).type,
+    ).toBe("order_delivery");
+    expect(parseMovementView({ tipo: "entrega" }).type).toBe("entrega");
   });
 });
 

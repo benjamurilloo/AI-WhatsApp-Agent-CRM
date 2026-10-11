@@ -16,6 +16,13 @@ import {
   lockClientForOrder,
   type Client,
 } from "@/modules/crm";
+import {
+  deliverStock,
+  getAvailableStock,
+  releaseStock,
+  reserveStock,
+  type StockLine,
+} from "@/modules/inventory";
 import { formatDocumentNumber, nextDocumentNumber } from "@/modules/numbering";
 import {
   authorize,
@@ -38,10 +45,10 @@ import { computeLineTotal, sumOrderTotal } from "./line-total";
 import * as repository from "./repository";
 import { MAX_ORDER_LINES, orderStatus } from "./schema";
 
-// Casos de uso del pedido (ADR 0020; brief-19.2): el alta de un pendiente, su cancelación, la lista
-// y el detalle. orders es dueño de la regla: abre la transacción y se la pasa a crm (el cliente),
-// catalog (los productos y su precio), numbering (el número) y audit. El stock no se toca: la
-// reserva y la entrega son de la 19.3.
+// Casos de uso del pedido (ADR 0020; brief-19.2): el alta de un pendiente, la lista y el detalle;
+// desde la 19.3, sus transiciones (confirmar, entregar y cancelar). orders es dueño de la regla:
+// abre la transacción y se la pasa a crm (el cliente), catalog (los productos y su precio),
+// numbering (el número), inventory (la reserva y la entrega) y audit.
 
 export type OrderStatus = repository.OrderStatus;
 export const ORDER_STATUSES = orderStatus.enumValues;
@@ -375,56 +382,190 @@ export async function createOrder(
   });
 }
 
-// Cancelar un pendiente (ADR 0020, punto 4). Cancelar nunca depende del cliente ni de los
-// productos: no los lee. La 19.3 suma cancelar un confirmado, que libera lo reservado.
+// Las transiciones (ADR 0020, punto 4; brief-19.3): solo admin. Orden de bloqueo del punto 6: la
+// cabecera FOR UPDATE; si la transición toca stock, los productos en modo compartido por id
+// (catalog) y después sus saldos en el mismo orden (inventory). Cancelar un pendiente no toca el
+// stock, así que no lee productos ni saldos. Ninguna transición bloquea ni lee al cliente.
 
-export type CancelOrderResult =
+export type OrderTransition = "confirm" | "deliver" | "cancel";
+
+// Origen permitido y estado de destino de cada transición.
+const TRANSITIONS: Record<
+  OrderTransition,
+  { from: OrderStatus[]; to: repository.TargetStatus }
+> = {
+  confirm: { from: ["pending"], to: "confirmed" },
+  deliver: { from: ["confirmed"], to: "delivered" },
+  cancel: { from: ["pending", "confirmed"], to: "cancelled" },
+};
+
+export type OrderLineRef = { position: number; productId: string };
+
+export type OrderTransitionResult =
   | { ok: true; changed: boolean }
   | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
   | Failure<
       "BUSINESS_RULE_VIOLATION",
       { rule: "invalid_transition"; status: OrderStatus }
+    >
+  | Failure<
+      "BUSINESS_RULE_VIOLATION",
+      { rule: "inactive_product"; lines: OrderLineRef[] }
+    >
+  | Failure<
+      "BUSINESS_RULE_VIOLATION",
+      {
+        rule: "insufficient_stock";
+        lines: (OrderLineRef & { requested: string; available: string })[];
+      }
     >;
 
-export async function cancelOrder(
+export type CancelOrderResult = OrderTransitionResult;
+
+type TransitionRejection = Exclude<OrderTransitionResult, { ok: true }>;
+
+// Un rechazo después de bloquear saldos se lanza para revertir la transacción entera: lockBalance
+// pudo crear filas en 0 (brief-19.3, AC-3: un rechazo no escribe nada).
+class TransitionRejected extends Error {
+  constructor(readonly result: TransitionRejection) {
+    super(result.code);
+    this.name = "TransitionRejected";
+  }
+}
+
+async function transitionOrder(
   context: AuthContext,
   orderId: string,
-): Promise<CancelOrderResult> {
+  transition: OrderTransition,
+): Promise<OrderTransitionResult> {
   const authorized = authorize(context, { role: "admin" });
   if (!authorized.ok) return authorized;
   if (!idSchema.safeParse(orderId).success) return failure("VALIDATION_ERROR");
   const { organizationId, userId } = context;
+  const { from, to } = TRANSITIONS[transition];
 
-  return repository.withTransaction(async (tx): Promise<CancelOrderResult> => {
-    const order = await repository.findOrder(organizationId, orderId, tx, {
-      forUpdate: true,
-    });
-    if (!order) return failure("NOT_FOUND");
-    if (order.status === "cancelled") return { ok: true, changed: false };
-    if (order.status !== "pending") {
-      return {
-        ok: false,
-        code: "BUSINESS_RULE_VIOLATION",
-        rule: "invalid_transition",
-        status: order.status,
-      };
-    }
-    await repository.updateOrderStatus(
-      tx,
-      organizationId,
-      order.id,
-      "cancelled",
+  try {
+    return await repository.withTransaction(
+      async (tx): Promise<OrderTransitionResult> => {
+        const order = await repository.findOrder(organizationId, orderId, tx, {
+          forUpdate: true,
+        });
+        if (!order) return failure("NOT_FOUND");
+        // Repetir una transición no escribe ni audita (brief-19.3, D-4).
+        if (order.status === to) return { ok: true, changed: false };
+        if (!from.includes(order.status)) {
+          return {
+            ok: false,
+            code: "BUSINESS_RULE_VIOLATION",
+            rule: "invalid_transition",
+            status: order.status,
+          };
+        }
+
+        if (order.status === "confirmed" || to === "confirmed") {
+          const lines = await repository.findOrderLines(
+            organizationId,
+            order.id,
+            tx,
+          );
+          const stockLines: StockLine[] = lines.map((line) => ({
+            productId: line.productId,
+            quantity: line.quantity,
+          }));
+          const positions = new Map(
+            lines.map((line) => [line.productId, line.position]),
+          );
+          const products = await lockProductsForOrder(
+            tx,
+            organizationId,
+            lines.map((line) => line.productId),
+          );
+
+          if (to === "confirmed") {
+            // Solo confirmar mira si el producto está activo: cancelar y entregar tienen que poder
+            // liberar siempre (ADR 0020, punto 4).
+            const inactive = lines.filter(
+              (line) => products.get(line.productId)?.isActive !== true,
+            );
+            if (inactive.length > 0) {
+              return {
+                ok: false,
+                code: "BUSINESS_RULE_VIOLATION",
+                rule: "inactive_product",
+                lines: inactive.map((line) => ({
+                  position: line.position,
+                  productId: line.productId,
+                })),
+              };
+            }
+            const reserved = await reserveStock(tx, organizationId, stockLines);
+            if (!reserved.ok) {
+              throw new TransitionRejected({
+                ok: false,
+                code: "BUSINESS_RULE_VIOLATION",
+                rule: "insufficient_stock",
+                lines: reserved.shortages
+                  .map((shortage) => ({
+                    position: positions.get(shortage.productId)!,
+                    productId: shortage.productId,
+                    requested: shortage.requested,
+                    available: shortage.available,
+                  }))
+                  .sort((a, b) => a.position - b.position),
+              });
+            }
+          } else if (to === "delivered") {
+            await deliverStock(tx, {
+              organizationId,
+              lines: stockLines,
+              reason: `Entrega del pedido ${formatOrderNumber(order.number)}`,
+              createdBy: userId,
+            });
+          } else {
+            await releaseStock(tx, organizationId, stockLines);
+          }
+        }
+
+        await repository.updateOrderStatus(tx, organizationId, order.id, to);
+        await recordAudit(tx, {
+          organizationId,
+          actorUserId: userId,
+          entityType: "order",
+          entityId: order.id,
+          action: "status_change",
+          diff: { before: { status: order.status }, after: { status: to } },
+        });
+        return { ok: true, changed: true };
+      },
     );
-    await recordAudit(tx, {
-      organizationId,
-      actorUserId: userId,
-      entityType: "order",
-      entityId: order.id,
-      action: "status_change",
-      diff: { before: { status: "pending" }, after: { status: "cancelled" } },
-    });
-    return { ok: true, changed: true };
-  });
+  } catch (error) {
+    if (error instanceof TransitionRejected) return error.result;
+    throw error;
+  }
+}
+
+// Confirmar reserva el stock de cada línea, o nada si alguna no alcanza.
+export function confirmOrder(
+  context: AuthContext,
+  orderId: string,
+): Promise<OrderTransitionResult> {
+  return transitionOrder(context, orderId, "confirm");
+}
+
+// Entregar descuenta el stock con un movimiento por línea y libera lo reservado.
+export function deliverOrder(
+  context: AuthContext,
+  orderId: string,
+): Promise<OrderTransitionResult> {
+  return transitionOrder(context, orderId, "deliver");
+}
+
+// Cancelar un pendiente no toca el stock; cancelar un confirmado libera lo reservado.
+export function cancelOrder(
+  context: AuthContext,
+  orderId: string,
+): Promise<OrderTransitionResult> {
+  return transitionOrder(context, orderId, "cancel");
 }
 
 // Lecturas: admin y viewer (ADR 0020, punto 8). Los nombres de los clientes y de los productos se
@@ -573,6 +714,8 @@ export type OrderLine = {
   unitPrice: string;
   currency: string;
   lineTotal: string;
+  // Lo disponible hoy, solo en un pendiente (brief-19.3, D-9); null en los demás estados.
+  available: string | null;
 };
 
 export type OrderDetail = {
@@ -608,12 +751,13 @@ export async function getOrder(
     context.organizationId,
     order.id,
   );
-  const [clients, products] = await Promise.all([
+  const productIds = lines.map((line) => line.productId);
+  const [clients, products, available] = await Promise.all([
     getClientsByIds(context, [order.clientId]),
-    getProductsByIds(
-      context,
-      lines.map((line) => line.productId),
-    ),
+    getProductsByIds(context, productIds),
+    order.status === "pending"
+      ? getAvailableStock(context, productIds)
+      : Promise.resolve(null),
   ]);
   const productsById = new Map(
     products.ok
@@ -652,6 +796,9 @@ export async function getOrder(
           unitPrice: line.unitPrice,
           currency: line.currency,
           lineTotal: line.lineTotal,
+          available: available?.ok
+            ? (available.available.get(line.productId) ?? null)
+            : null,
         };
       }),
     },

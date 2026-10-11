@@ -3,7 +3,9 @@ import type {
   OrderLineField,
   OrderLineRule,
   OrderStatus,
+  OrderTransitionResult,
 } from "@/modules/orders";
+import { formatQuantity } from "@/shared/quantity";
 
 // Textos de las pantallas de pedidos (brief-19.2; Screens.md §14 a §16).
 
@@ -16,6 +18,9 @@ export const NO_CLIENT_ORDERS_MESSAGE = "Este cliente no tiene pedidos.";
 // El pedido no copia el nombre del producto (brief-19.2, H-4): se dice en la pantalla.
 export const CURRENT_PRODUCT_NAME_NOTE =
   "Los productos se muestran con su nombre de hoy. Los precios y los totales son los del día en que se creó el pedido.";
+// Lo disponible de un pendiente es el de hoy (brief-19.3, D-9): puede cambiar antes de confirmar.
+export const AVAILABLE_NOTE =
+  "«Disponible» es el stock de hoy menos lo reservado por otros pedidos confirmados. Confirmar reserva lo de cada línea.";
 export const UNKNOWN_PRODUCT_TEXT = "Producto no disponible";
 export const UNKNOWN_CLIENT_TEXT = "Cliente no disponible";
 
@@ -179,19 +184,83 @@ export function orderRejection(
   }
 }
 
-// Detalle: la cancelación.
+// Detalle: las transiciones (brief-19.2; desde la 19.3, confirmar y entregar).
 
-export type CancelState =
-  { status: "idle" } | { status: "error"; requestId: string; message: string };
+export type TransitionState =
+  | { status: "idle" }
+  | { status: "error"; requestId: string; message: string; details: string[] };
+export type CancelState = TransitionState;
+
+export type OrderTransitionName = "confirm" | "deliver" | "cancel";
 
 export const CANCELLED_NOTICE = "Pedido cancelado.";
 export const CREATED_NOTICE = "Pedido creado.";
+export const CONFIRMED_NOTICE = "Pedido confirmado: el stock quedó reservado.";
+export const DELIVERED_NOTICE =
+  "Pedido entregado: el stock se descontó con un movimiento por línea.";
+
+const NOTICES: Record<string, string> = {
+  creado: CREATED_NOTICE,
+  cancelado: CANCELLED_NOTICE,
+  confirmado: CONFIRMED_NOTICE,
+  entregado: DELIVERED_NOTICE,
+};
+
+// El aviso de la URL después de cada transición.
+export const TRANSITION_NOTICE: Record<OrderTransitionName, string> = {
+  confirm: "confirmado",
+  deliver: "entregado",
+  cancel: "cancelado",
+};
 
 export function orderNoticeMessage(
   value: string | string[] | undefined,
 ): string | null {
   const raw = Array.isArray(value) ? value[0] : value;
-  if (raw === "creado") return CREATED_NOTICE;
-  if (raw === "cancelado") return CANCELLED_NOTICE;
-  return null;
+  return raw ? (NOTICES[raw] ?? null) : null;
+}
+
+const FORBIDDEN_TRANSITION: Record<OrderTransitionName, string> = {
+  confirm: "No tenés permiso para confirmar pedidos.",
+  deliver: "No tenés permiso para entregar pedidos.",
+  cancel: "No tenés permiso para cancelar pedidos.",
+};
+
+// El rechazo de una transición (brief-19.3, D-5): el motivo y, por línea, lo que falta. names da
+// el nombre de hoy de cada producto; si no está, la línea se nombra por su número.
+export function transitionRejection(
+  transition: OrderTransitionName,
+  result: Exclude<OrderTransitionResult, { ok: true }>,
+  names: Map<string, string>,
+): { message: string; details: string[] } {
+  const label = (line: { position: number; productId: string }) =>
+    names.get(line.productId) ?? `Línea ${line.position}`;
+  if (result.code === "FORBIDDEN") {
+    return { message: FORBIDDEN_TRANSITION[transition], details: [] };
+  }
+  if (result.code !== "BUSINESS_RULE_VIOLATION") {
+    return { message: ORDER_NOT_FOUND_MESSAGE, details: [] };
+  }
+  switch (result.rule) {
+    case "insufficient_stock":
+      return {
+        message:
+          "No hay stock disponible para confirmar el pedido. No se reservó nada.",
+        details: result.lines.map(
+          (line) =>
+            `${label(line)}: pide ${formatQuantity(line.requested)}, hay ${formatQuantity(line.available)} disponible.`,
+        ),
+      };
+    case "inactive_product":
+      return {
+        message:
+          "El pedido tiene productos desactivados: reactivalos o cancelá el pedido. No se reservó nada.",
+        details: result.lines.map((line) => `${label(line)}: desactivado.`),
+      };
+    case "invalid_transition":
+      return {
+        message: `El pedido ya está ${STATUS_LABEL[result.status].toLowerCase()}: este cambio ya no se puede hacer. Recargá la página.`,
+        details: [],
+      };
+  }
 }

@@ -8,7 +8,8 @@ import { E2E_PASSWORD } from "./global-setup";
 
 // Pantallas 14 a 16 de punta a punta (brief-19.2, AC-9): Chromium, next start, Server Actions,
 // orders, crm, catalog, numbering, audit y PostgreSQL real, sin mocks. Los clientes, los productos
-// y sus precios los crea cada caso.
+// y sus precios los crea cada caso. Desde la 19.3 (AC-8), el ciclo: confirmar, entregar y cancelar
+// un confirmado, con lo reservado en las pantallas de productos.
 
 const [ADMIN_SEED, VIEWER_SEED] = SEED_USERS;
 const ADMIN = ADMIN_SEED.email;
@@ -101,6 +102,45 @@ async function insertProduct(sku: string, name: string, price: string) {
   const productId = product.rows[0]!.id;
   await setPrice(productId, price);
   return productId;
+}
+
+// Saldo directo por SQL, sin movimiento: estas pantallas no lo concilian.
+function setStock(productId: string, quantity: string) {
+  return db.execute(
+    sql`insert into inventories (organization_id, product_id, quantity_on_hand)
+        values (${SEED_ORGANIZATION_ID}, ${productId}, ${quantity})`,
+  );
+}
+
+// Un pedido pendiente por SQL, como lo deja el alta, con sus líneas [producto, cantidad].
+async function insertOrder(
+  number: number,
+  clientId: string,
+  lines: [productId: string, quantity: string][],
+) {
+  const order = await db.execute<{ id: string }>(
+    sql`insert into orders (organization_id, number, client_id, currency, total, created_by)
+        values (${SEED_ORGANIZATION_ID}, ${number}, ${clientId}, 'ARS', '100.00', ${ADMIN_SEED.id})
+        returning id`,
+  );
+  const orderId = order.rows[0]!.id;
+  for (const [index, [productId, quantity]] of lines.entries()) {
+    await db.execute(
+      sql`insert into order_lines (organization_id, order_id, product_id, position, quantity,
+                                   unit_price, currency, line_total)
+          values (${SEED_ORGANIZATION_ID}, ${orderId}, ${productId}, ${index + 1}, ${quantity},
+                  '10.00', 'ARS', '100.00')`,
+    );
+  }
+  return orderId;
+}
+
+async function balance(productId: string) {
+  const result = await db.execute<{ on_hand: string; reserved: string }>(
+    sql`select quantity_on_hand as on_hand, quantity_reserved as reserved
+        from inventories where product_id = ${productId}`,
+  );
+  return result.rows[0];
 }
 
 const line = (page: Page, position: number) =>
@@ -296,8 +336,26 @@ test("un viewer ve la lista y el detalle sin contacto ni botones, y no entra al 
   await expect(
     page.getByRole("button", { name: "Cancelar pedido" }),
   ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Confirmar pedido" }),
+  ).toHaveCount(0);
   await expect(page.getByRole("table", { name: /Historia/ })).toHaveCount(0);
   await expectAccessible(page, "detalle del viewer");
+
+  // brief-19.3 (revisión independiente, R-7): en un confirmado, tampoco «Marcar entregado».
+  const confirmedOrder = await insertOrder(8, clientId, [[coffee, "1"]]);
+  await db.execute(
+    sql`update orders set status = 'confirmed', confirmed_at = now() where id = ${confirmedOrder}`,
+  );
+  await page.goto(`/pedidos/${confirmedOrder}`);
+  await expect(
+    page.getByRole("heading", { name: "Pedido P-000008" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: /Marcar entregado|Cancelar pedido|Confirmar pedido/,
+    }),
+  ).toHaveCount(0);
 
   await page.goto("/pedidos/nuevo");
   await expect(page.getByText(FORBIDDEN_PAGE)).toBeVisible();
@@ -308,6 +366,147 @@ test("un viewer ve la lista y el detalle sin contacto ni botones, y no entra al 
   await expect(card.getByRole("link", { name: "+ Nuevo pedido" })).toHaveCount(
     0,
   );
+});
+
+test("brief-19.3: un admin confirma con el teclado, ve lo reservado en el producto, entrega y ve la entrega en el historial", async ({
+  page,
+}) => {
+  const clientId = await insertClient("Lucía Gómez");
+  const coffee = await insertProduct("CAF-250", "Café molido", "10");
+  await setStock(coffee, "10");
+  const orderId = await insertOrder(7, clientId, [[coffee, "3"]]);
+  await login(page, ADMIN);
+
+  await page.goto(`/pedidos/${orderId}`);
+  const lines = page.getByRole("table", { name: /Líneas del pedido/ });
+  await expect(
+    lines.getByRole("columnheader", { name: "Disponible" }),
+  ).toBeVisible();
+  await expect(lines).toContainText("10");
+  await expectAccessible(page, "pendiente con lo disponible");
+
+  // Con el teclado (revisión independiente, R-6): Enter en el botón lleva el foco a «Sí, …», y
+  // «No, volver» lo devuelve al botón.
+  const start = page.getByRole("button", { name: "Confirmar pedido" });
+  const yes = page.getByRole("button", { name: "Sí, confirmar el pedido" });
+  await start.focus();
+  await page.keyboard.press("Enter");
+  await expect(yes).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "No, volver" })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(start).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(yes).toBeFocused();
+  await expect(
+    page.getByText(/¿Confirmar el pedido P-000007\? Reserva el stock/),
+  ).toBeVisible();
+  await expectAccessible(page, "confirmación de confirmar");
+  await expect(yes).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\?aviso=confirmado$/);
+  await expect(
+    page.getByText("Pedido confirmado: el stock quedó reservado."),
+  ).toBeVisible();
+  expect(await balance(coffee)).toEqual({
+    on_hand: "10.000",
+    reserved: "3.000",
+  });
+  await expect(
+    page.getByRole("columnheader", { name: "Disponible" }),
+  ).toHaveCount(0);
+  await expectAccessible(page, "detalle confirmado");
+
+  await page.goto(`/productos/${coffee}`);
+  const stock = page.getByRole("region", { name: "Stock" });
+  await expect(stock).toContainText("Reservado");
+  await expect(stock).toContainText("3 unidad");
+  await expect(stock).toContainText("Disponible");
+  await expect(stock).toContainText("7 unidad");
+  await page.goto("/productos");
+  await expect(page.getByRole("main")).toContainText("3 reservado");
+  await expectAccessible(page, "lista con lo reservado");
+
+  await page.goto(`/pedidos/${orderId}`);
+  await page.getByRole("button", { name: "Marcar entregado" }).click();
+  await page.getByRole("button", { name: "Sí, marcar entregado" }).click();
+  await expect(page).toHaveURL(/\?aviso=entregado$/);
+  expect(await balance(coffee)).toEqual({
+    on_hand: "7.000",
+    reserved: "0.000",
+  });
+  await expect(
+    page.getByRole("button", { name: /Cancelar pedido|Marcar entregado/ }),
+  ).toHaveCount(0);
+  const history = page.getByRole("table", { name: /Historia del pedido/ });
+  await expect(history).toContainText("Pendiente → Confirmado");
+  await expect(history).toContainText("Confirmado → Entregado");
+
+  await page.goto(`/productos/${coffee}/movimientos?tipo=entrega`);
+  const movements = page.getByRole("main");
+  await expect(movements).toContainText("Entrega de pedido");
+  await expect(movements).toContainText("Entrega del pedido P-000007");
+  await expectAccessible(page, "historial con la entrega");
+});
+
+test("brief-19.3: sin stock no confirma y dice qué falta; un ajuste no baja de lo reservado; cancelar un confirmado libera", async ({
+  page,
+}) => {
+  const clientId = await insertClient("Martín Ruiz");
+  const coffee = await insertProduct("CAF-250", "Café molido", "10");
+  const tea = await insertProduct("TE-100", "Té verde", "10");
+  await setStock(coffee, "2");
+  await setStock(tea, "10");
+  const short = await insertOrder(1, clientId, [[coffee, "3"]]);
+  const enough = await insertOrder(2, clientId, [[tea, "8"]]);
+  await login(page, ADMIN);
+
+  await page.goto(`/pedidos/${short}`);
+  await expect(page.getByText("No alcanza")).toBeVisible();
+  await page.getByRole("button", { name: "Confirmar pedido" }).click();
+  await page.getByRole("button", { name: "Sí, confirmar el pedido" }).click();
+  const alert = page.getByRole("main").getByRole("alert");
+  await expect(alert).toContainText(
+    "No hay stock disponible para confirmar el pedido.",
+  );
+  await expect(alert).toContainText("Café molido: pide 3, hay 2 disponible.");
+  expect(await balance(coffee)).toEqual({
+    on_hand: "2.000",
+    reserved: "0.000",
+  });
+  await expectAccessible(page, "confirmación rechazada");
+
+  await page.goto(`/pedidos/${enough}`);
+  await page.getByRole("button", { name: "Confirmar pedido" }).click();
+  await page.getByRole("button", { name: "Sí, confirmar el pedido" }).click();
+  await expect(page).toHaveURL(/\?aviso=confirmado$/);
+
+  await page.goto(`/productos/${tea}/movimientos`);
+  await expect(page.getByText(/Reservado: 8 · Disponible: 2/)).toBeVisible();
+  await page.getByLabel("Negativo (−)").check();
+  await page.getByLabel("Cantidad *").fill("3");
+  await page.getByLabel("Motivo *").fill("Rotura");
+  await expect(
+    page.getByText(/Por debajo de lo reservado \(8\)/),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Confirmar ajuste" }).click();
+  await expect(
+    page.getByText(/por debajo de lo reservado por pedidos confirmados/),
+  ).toBeVisible();
+  expect(await balance(tea)).toEqual({ on_hand: "10.000", reserved: "8.000" });
+  await expectAccessible(page, "ajuste por debajo de lo reservado");
+
+  await page.goto(`/pedidos/${enough}`);
+  await page.getByRole("button", { name: "Cancelar pedido" }).click();
+  await expect(page.getByText(/Libera el stock reservado/)).toBeVisible();
+  await page.getByRole("button", { name: "Sí, cancelar el pedido" }).click();
+  await expect(page).toHaveURL(/\?aviso=cancelado$/);
+  expect(await balance(tea)).toEqual({ on_hand: "10.000", reserved: "0.000" });
+  await page.goto(`/productos/${tea}`);
+  const stock = page.getByRole("region", { name: "Stock" });
+  await expect(stock).toContainText("Reservado");
+  await expect(stock).toContainText("0 unidad");
+  await expect(stock).toContainText("10 unidad");
 });
 
 // Sin JavaScript, los buscadores son campos de texto: el cliente se reconoce por su nombre exacto
