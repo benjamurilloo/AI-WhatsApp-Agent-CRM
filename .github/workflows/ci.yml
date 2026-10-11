@@ -17,7 +17,9 @@ jobs:
   ci:
     name: Lint, tipos, guardas, tests y build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 15 hasta el 2026-10-11: el primer intento de 50da0be se cortó a los 15 min 12 s
+    # con todos los pasos en verde (brief-19.3, §Cierre). Decisión del usuario.
+    timeout-minutes: 25
 
     services:
       postgres:
