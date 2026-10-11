@@ -1,10 +1,10 @@
 ---
 schema: project-state.v1
 project: ai-whatsapp-agent-crm
-generated_at: 2026-10-10
-git_ref: main — el último ref con corrida leída en verde es **`0c2f322`** (run 38073281349, `success`, leída por `headSha` el 2026-10-10, en 10 min 25 s), la implementación de la 18.2. Después viene el commit de cierre de la 18.2 y la Fase 18, solo de documentación: **al retomar, leer su corrida por `headSha`**. **Producción corre `0c2f322`** (18.2), con 36 migraciones (`0000` a `0035`); para volver atrás, `45e7b70`. `confirmado`
+generated_at: 2026-10-11
+git_ref: main — el último ref con corrida leída en verde es **`35df95d`** (run 38075447582, `success`, leída por `headSha` el 2026-10-10, en 13 min 36 s, cerca del límite de 15), el cierre de la 18.2 y la Fase 18; la implementación, `0c2f322`, tuvo la suya (run 38073281349). Después viene el commit que prepara la apertura de la Fase 19, solo de documentación: **al retomar, leer su corrida por `headSha`**. **Producción corre `0c2f322`** (18.2), con 36 migraciones (`0000` a `0035`); para volver atrás, `45e7b70`. `confirmado`
 active_phase: **Ninguna fase en curso.** La Fase 18 — Bases del ERP **se cerró el 2026-10-10** por decisión del usuario, con la 18.1 (ADR 0019) y la 18.2 (costo y margen) cerradas. **La Fase 13 — Producción sigue abierta**, con la 13.5.2-b esperando un negocio real y su prioridad intacta. La Fase 19 — Pedidos se abre solo con decisión del usuario. `confirmado`
-active_task: **Ninguna subfase en curso.** Siguiente: que el usuario decida qué se abre (§3, paso 0). `confirmado`
+active_task: **Ninguna subfase en curso.** Siguiente: abrir la Fase 19 — Pedidos, que el usuario decidió el 2026-10-11 abrir en la sesión siguiente (§3, paso 0). `confirmado`
 confidence: confirmado
 ---
 
@@ -37,7 +37,23 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 
 ## 3. Próximo paso
 
-0. **Que el usuario decida qué se abre.** Las candidatas, según el [Roadmap](docs/planning/Roadmap.md): la **Fase 19 — Pedidos** (gate: decisión del usuario registrada con fecha, ADR 0016, punto 3, mientras la Fase 13 siga abierta), la **13.5.2-b** si aparece un negocio real (tiene prioridad y pausa el ERP), la **Fase 14** (migración por CSV) o la candidata de la ruta de la imagen para el agente. Ninguna se abre sin su decisión, su proyecto en Notion y su brief aprobado. `pendiente`
+0. **Abrir la Fase 19 — Pedidos.** **El usuario lo decidió el 2026-10-11**, con la Fase 13 abierta: queda registrado con fecha en el [Roadmap](docs/planning/Roadmap.md) §Fases 18 a 22, y eso satisface el gate del ADR 0016, punto 3. La 13.5.2-b conserva su prioridad: si aparece un negocio real, la Fase 19 se pausa. `confirmado`. Al abrirla:
+   - **Notion**: el proyecto con la plantilla «Nuevo Proyecto» (`template_id`), padre el raíz, con su tarea espejo, y cada subfase pendiente en «Esperando». Se relee y se verifica (CLAUDE.md §Convenciones de Notion). **Al cierre de la Fase 18 se desconectó el conector de Notion**: comprobarlo antes de empezar.
+   - **El orden de las subfases y el brief de la primera**, con su aprobación antes de tocar código. Antes, leer [DataModel](docs/architecture/DataModel.md).
+   - **Lo que ya está fijado**, según el Roadmap y los ADRs:
+     - el pedido de un cliente, con sus líneas, su total y sus estados (pendiente, confirmado, entregado y cancelado);
+     - la reserva de stock, que nunca lo deja negativo ([ADR 0008](docs/decisions/0008-stock-nunca-negativo.md));
+     - del [ADR 0019](docs/decisions/0019-bases-de-los-comprobantes.md): una moneda por comprobante, el precio de `product_prices` como precio final al consumidor y los montos guardados al emitir, con redondeo por línea a los decimales de la moneda;
+     - las convenciones de §5: dinero en `bigint` en centésimos, clave foránea compuesta y aislamiento por organización.
+   - **Lo que la Fase 19 tiene que decidir**:
+     - **si el pedido lleva número**. En ese caso crea el contador del ADR 0019, punto 2: por organización y tipo, sin huecos, con `FOR UPDATE`.
+     - **si un pedido numerado es un comprobante emitido**. El pedido tiene estados que cambian, y una tabla con estado mutable no es de solo inserción (ADR 0013). Es la pregunta que el ADR 0019 deja abierta, §Lo que no decide.
+     - **cuándo se reserva el stock y cuándo se libera**: al confirmar, al entregar y al cancelar, frente a los movimientos de inventario de solo inserción.
+     - **si el agente puede dejar un pedido pendiente** para que lo confirme una persona. Si puede, es un contrato nuevo con el agente, diseñado con él: **el aviso al consumidor es un paso del cierre** (§7).
+     - quién crea, confirma y cancela un pedido, `admin` o `viewer`, y qué ve cada uno.
+   - **La revisión independiente**: recomendada en cada subfase que cree tablas o cambie un contrato.
+
+   Las demás candidatas siguen esperando su decisión: la Fase 14 (migración por CSV) y la ruta de la imagen para el agente. `pendiente`
 1. **El 2026-11-01**: leer el simulacro de restauración programado, el primero con `product_images` en el backup: `success`, la consulta de hashes de imágenes en 0 y su aviso de vida. Cierra la parte de restauración de AC-8 de la 17.5 (tarea `3f4702be6f4e81518fd7f1b1c975a9a6`). `pendiente`
 2. **Después del 2026-10-30**: comprobar que la primera entrada del journal de producción tenga como mucho 31 días (13.4). `pendiente`
 3. **Antes de la 13.5.2-b**: contar en el journal, sin imprimir valores, las líneas con `"correlation_id":"wamid` posteriores a la corrección del agente; tienen que ser 0. Desde su subfase 3.46 el agente manda `<ejecución>:r<ronda>:i<pedido>`, y la ventana 17.4.3 lo mostró así (`12292:r1:i1`). Tarea `3f3702be6f4e8152a380f87497a40bf3`. `pendiente`
@@ -94,4 +110,4 @@ Ninguno: `.claude/settings.json` es el único archivo sin seguimiento y nunca en
 
 ## 9. Autorizaciones vigentes
 
-**Ninguna.** Las de la Fase 18 (los briefs, el ADR, los commits, los pushes, el despliegue de la 18.2, los cierres y Notion) quedaron consumidas al ejecutarse. Abrir una fase, aprobar un brief, pasar tareas de Notion de estado, instalar dependencias, ejecutar migraciones, tocar staging o producción y cualquier operación Git futura necesitan autorización explícita en el turno. `confirmado`
+**Ninguna.** Las de la Fase 18 (los briefs, el ADR, los commits, los pushes, el despliegue de la 18.2, los cierres y Notion) quedaron consumidas al ejecutarse. **La decisión de abrir la Fase 19 está tomada (2026-10-11)**, y crear su proyecto en Notion es parte de esa apertura. Abrir cualquier otra fase, aprobar un brief, pasar tareas de Notion de estado, instalar dependencias, ejecutar migraciones, tocar staging o producción y cualquier operación Git futura necesitan autorización explícita en el turno. `confirmado`
