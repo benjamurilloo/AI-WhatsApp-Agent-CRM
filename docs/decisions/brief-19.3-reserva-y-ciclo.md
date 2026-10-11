@@ -16,7 +16,7 @@ generated_at: 2026-10-11
 - **Nivel de validación alcanzable**: **validado localmente y en CI**, **validado en integración** para las pantallas y, con D-15, **desplegado en producción** con el recorrido del usuario. No es «preparado para producción».
 - **Orden**: tercera subfase de la Fase 19 — Pedidos ([Roadmap](../planning/Roadmap.md) §Fase 19), después de la 19.2, cerrada el 2026-10-11. Implementa la fila «19.3» del punto 11 del [ADR 0020](0020-el-pedido.md).
 - **No abre ni cierra gate.** Es la primera vez que algo distinto de un ajuste manual cambia el stock, y la primera escritura de `inventories` sin movimiento. Por eso se recomienda la revisión independiente (D-14).
-- **Estado de este documento**: **aprobado el 2026-10-11** por el usuario, con las recomendaciones de D-1 a D-15. La tarea 19.3 (`3f6702be6f4e811bacafc4d413b55023`) está en «En proceso» en Notion desde ese día.
+- **Estado de este documento**: **aprobado el 2026-10-11** por el usuario, con las recomendaciones de D-1 a D-15. La tarea 19.3 (`3f6702be6f4e811bacafc4d413b55023`) está en «En proceso» en Notion desde ese día. **Cerrado el 2026-10-11**, desplegado en producción con la migración `0037` (§Cierre).
 
 ## Objetivo
 
@@ -246,9 +246,9 @@ No se tocaron `catalog`, `crm`, `numbering`, `audit`, `src/shared/`, `src/app/ap
 | AC-8 | cumplido | `orders.spec.ts` casos 5 y 6, y el 4 con el viewer en un confirmado; axe en claro y oscuro, y desde R-6 el foco recorrido con el teclado |
 | AC-9 | cumplido | `stock-writes` con sus casos y las mutaciones de abajo; `exposed-surface` con las dos acciones |
 | AC-10 | cumplido | `read-api` e `ingestion-v2` pasan; los únicos cambios son 6d y 8b |
-| AC-11 | local cumplido; CI pendiente | la batería local, abajo; la CI, con el commit |
+| AC-11 | cumplido | la batería local, abajo; la CI de `50da0be`, run 38180732747, intento 2, `success` (§Cierre) |
 | AC-12 | cumplido | DataModel, Overview, FunctionalRequirements (FR-PROD-05 y 08 enmendados, FR-ORD-08 a 10), Screens, TraceabilityMatrix, SecurityModel (85) y EngineeringStandards |
-| AC-13 | pendiente | el despliegue, con su autorización |
+| AC-13 | cumplido | el despliegue, el recorrido del usuario y la conciliación en producción (§Cierre) |
 
 **Mutaciones** (EngineeringStandards), cada una sobre el código real, corrida y revertida:
 
@@ -290,3 +290,43 @@ Las notas N-1 a N-8 no son defectos:
 - `inventory` no importa `orders`;
 - N-4: el aviso del ajuste usa lo reservado que se cargó con la página. Es solo orientativo: decide el servidor;
 - N-7: el `quantity_available` que lee el agente es el saldo físico. Es el límite que acepta el ADR 0020, punto 7.
+
+## Cierre de la subfase 19.3, 2026-10-11
+
+- **AC-1 a AC-13 cumplidos.**
+  - **AC-1 a AC-12**: en local y en la CI de `50da0be`, run 38180732747, leída por `headSha`.
+  - **La CI necesitó dos intentos.** El primero quedó `cancelled` a los 15 min 12 s: el job llegó a su `timeout-minutes: 15` con todos los pasos en verde, incluido el end-to-end, 161 casos en 9,5 min. El segundo, sin cambiar código, dio `success` en 10 min 13 s. El tiempo de la CI está cerca del tope; subirlo es una decisión pendiente del usuario, fuera de esta subfase.
+  - **AC-13**: en producción, abajo.
+- **El despliegue**, según [deploy/production/README.md](../../deploy/production/README.md) §Desplegar un cambio:
+  - se anotó `ef75da3` en el registro de despliegues, y es la versión para volver atrás;
+  - el checkout de `50da0be`, `npm ci`, la migración, el build y el reinicio terminaron sin errores, con HEAD igual al SHA pedido;
+  - migraciones de 37 a 38;
+  - `inventories.quantity_reserved` existe como `numeric`, no nula, con 0 por omisión, con el `CHECK` `inventories_quantity_reserved_within_on_hand`, y `order_delivery` está en el enum de los movimientos;
+  - los recuentos de `organizations` (2), `orders` (1), `inventories` (4), `inventory_movements` (4), `products` (5) y `clients` (2) quedaron iguales, con el saldo total en 44 y lo reservado en 0;
+  - el servicio está activo, sin avisos en el journal, y desde afuera `/login` responde `200` y `GET /api/read/v1/products`, `401` sin token.
+- **El recorrido del usuario**, como `admin` en «Demostración Vixora», sobre los «Auriculares inalámbricos Guada» (15 unidades):
+  - creó y confirmó `P-000002`, y vio lo reservado en el producto;
+  - creó, confirmó y entregó `P-000003`: un movimiento `order_delivery` de 1 con el motivo «Entrega del pedido P-000003»;
+  - repuso la unidad con un ajuste positivo, «Reposición del recorrido de la 19.3», y el producto volvió a 15;
+  - **canceló `P-000002` después**: al revisar la base, seguía confirmado con 1 reservado, sin ninguna cancelación en la auditoría, y el usuario dijo que se había olvidado ese paso. Cancelado, lo reservado volvió a 0.
+
+  Al terminar, producción tenía 3 pedidos (`P-000001` y `P-000002` cancelados, `P-000003` entregado), 6 movimientos, el saldo total en 44 y lo reservado en 0, con dos `create`, cuatro `status_change` y un `stock_adjustment` nuevos en la auditoría y el journal sin avisos.
+- **La conciliación en producción**, en una transacción de solo lectura: el saldo contra la suma de los movimientos y lo reservado contra las líneas de los pedidos confirmados, **0 diferencias en los 4 saldos**.
+- **La lectura del agente** sigue respondiendo `401` sin token. **No se probó con token**: el token no pasa por la conversación. La respaldan `read-api` e `ingestion-v2` (AC-6 y AC-10), en local y en CI. Durante el recorrido, entre la entrega y la reposición, el agente pudo leer una unidad menos de los Auriculares (H-6).
+- **Revisión**: la independiente de D-14 (R-1 a R-9, arriba). La batería, el despliegue y este cierre son autoevaluación declarada.
+- **Decisiones del usuario**:
+  - el brief, con las recomendaciones de D-1 a D-15;
+  - corregir `docs/development/TestingStrategy.md` (R-8);
+  - el commit y el push de `50da0be`, el despliegue y este cierre.
+- **Nivel**:
+  - validado localmente y en CI;
+  - **validado en integración** para las pantallas, con end-to-end sobre `next start`, y para lo que lee el agente;
+  - desplegado en producción y recorrido por el usuario (`isolated-runtime`).
+
+  No es «preparado para producción».
+- **No certifica**:
+  - que el agente vea lo disponible: lee el saldo físico, el límite que acepta el ADR 0020, punto 7; se decide en la 19.4 o al cerrar la fase;
+  - la lectura del agente con su token (arriba);
+  - que un `viewer` no vea los botones **en producción**: se probó en integración y en el end-to-end, no en el recorrido;
+  - un rechazo por stock insuficiente o por `below_reserved` en producción: se probó en integración y en el end-to-end, no en el recorrido;
+  - los dos casos de integración no identificados de una corrida intermedia (§Resultados).

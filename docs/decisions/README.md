@@ -123,6 +123,7 @@ Esta carpeta responde "¿por qué el sistema quedó así?". Sigue la convención
 | [brief-18.2](brief-18.2-costo-y-margen.md) | 18.2 — El costo del producto con historial y el margen derivado | aprobado el 2026-10-10 con las recomendaciones de D-1 a D-10; cerrado el 2026-10-10, desplegado en producción con la migración `0035` |
 | [brief-19.1](brief-19.1-adr-del-pedido.md) | 19.1 — ADR del pedido | aprobado el 2026-10-11 con las recomendaciones de D-1 a D-12; cerrado el 2026-10-11 con el ADR 0020 aceptado, con las correcciones de la revisión independiente (R-5, R-7 y R-9 cambian o suman decisiones) |
 | [brief-19.2](brief-19.2-el-pedido.md) | 19.2 — El pedido | aprobado el 2026-10-11 con las recomendaciones de D-1 a D-14 y dos ampliaciones de archivos; cerrado el 2026-10-11, desplegado en producción con la migración `0036` |
+| [brief-19.3](brief-19.3-reserva-y-ciclo.md) | 19.3 — Reserva y ciclo | aprobado el 2026-10-11 con las recomendaciones de D-1 a D-15 y una ampliación de archivos (`TestingStrategy.md`); cerrado el 2026-10-11, desplegado en producción con la migración `0037` |
 | [evidencia-9.1](evidencia-9.1-staging.md) | 9.1 — Salidas crudas de la verificación en staging | captura del 2026-09-22 |
 | [evidencia-9.2](evidencia-9.2-backups.md) | 9.2 — Backup y restauración verificados en staging | captura del 2026-09-22 |
 | [evidencia-9.3](evidencia-9.3-volumen.md) | 9.3 — Volumen, planes y tiempos medidos en staging | captura del 2026-09-23 |

@@ -2,6 +2,32 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-11 — 19.3: reserva y ciclo
+
+Cierra el 2026-10-11 con la aprobación del usuario, después de su recorrido en producción ([brief-19.3](docs/decisions/brief-19.3-reserva-y-ciclo.md), §Cierre).
+
+**Certifica:**
+- **Lo reservado** (migración `0037`): `inventories.quantity_reserved`, con un `CHECK` que lo deja entre 0 y el saldo físico, y el tipo de movimiento `order_delivery`. Lo disponible es el saldo menos lo reservado ([ADR 0020](docs/decisions/0020-el-pedido.md), punto 4).
+- **El ciclo del pedido**, solo `admin`:
+  - confirmar reserva todo o nada, y si no alcanza dice qué líneas y cuánto hay disponible;
+  - entregar descuenta el saldo y lo reservado con un movimiento por línea, en una sola sentencia;
+  - cancelar un confirmado libera lo reservado; cancelar y entregar funcionan con un producto inactivo;
+  - el orden de bloqueo del ADR 0020, sin trabas en cinco escenarios concurrentes.
+- **El ajuste manual** no puede dejar el saldo por debajo de lo reservado (`below_reserved`), ni usar `order_delivery`.
+- **Las pantallas**: lo reservado y lo disponible en la lista, el detalle y los movimientos del producto; lo disponible por línea en un pedido pendiente; los botones por estado, con el foco manejado con el teclado (corrige también la cancelación de la 19.2).
+- **Lo que lee el agente no cambia**: `read-v1` sigue entregando el saldo físico.
+- **La guarda `stock-writes`** autoriza las dos escrituras nuevas del repositorio y, desde la revisión independiente, fija quién las llama; detecta las seis mutaciones probadas, y `read-api` la de lo que lee el agente.
+- **La revisión independiente** encontró 4 hallazgos medios y 5 bajos, ninguno bloqueante; todos se verificaron y se corrigieron, uno con una ampliación de archivos que autorizó el usuario.
+- **Producción** corre `50da0be`, con 38 migraciones; la versión anterior es `ef75da3`. El usuario confirmó, entregó y canceló pedidos en la organización de demostración y repuso la unidad entregada; lo reservado quedó en 0 y la conciliación, en cero diferencias.
+
+**Nivel**: validado localmente y en CI (run 38180732747, intento 2); validado en integración para las pantallas y para lo que lee el agente; desplegado en producción y recorrido por el usuario. No es «preparado para producción».
+
+**No certifica:**
+- Que el agente vea lo disponible: lee el saldo físico (ADR 0020, punto 7), y se decide en la 19.4 o al cerrar la fase.
+- La lectura del agente con su token.
+- Los rechazos por stock insuficiente o `below_reserved` en producción, probados solo en integración y end-to-end.
+- Que la CI entre holgada en su tope de 15 minutos: el primer intento de este commit se cortó por tiempo con todo en verde.
+
 ## 2026-10-11 — 19.2: el pedido
 
 Cierra el 2026-10-11 con la aprobación del usuario, después de su recorrido en producción ([brief-19.2](docs/decisions/brief-19.2-el-pedido.md), §Cierre).
