@@ -13,6 +13,9 @@ import { getDb, type Db } from "@/shared/db";
  * ella, que incluyen valores anteriores de teléfono y notas, desde la 16.1 sus etiquetas
  * actuales, con la fecha en que se pusieron (brief-16.1, D-10), y desde la 16.4 las notas de sus
  * conversaciones, que son texto libre (brief-16.4, D-5). Su historial sale con la auditoría.
+ * Desde la 19.2, también sus pedidos, con sus líneas (ADR 0020, punto 10): número, estado, fechas,
+ * productos, cantidades, precios y totales. Los pedidos no guardan texto de la persona, pero son
+ * suyos. El nombre del producto va con la línea, el de hoy, para que el archivo se entienda solo.
  *
  * `ingestion_events` queda fuera a propósito: guarda `source`, una referencia opaca del emisor,
  * el hash del payload y fechas. No tiene datos personales (brief-8.2, hallazgo 9). Se dice acá
@@ -34,6 +37,8 @@ export type ClientExport = {
   conversation_notes: Record<string, unknown>[];
   audit_logs: Record<string, unknown>[];
   client_tags: Record<string, unknown>[];
+  orders: Record<string, unknown>[];
+  order_lines: Record<string, unknown>[];
 };
 
 export async function exportClientData(
@@ -86,6 +91,25 @@ export async function exportClientData(
         order by lower(t.name), t.id`,
   );
 
+  const orders = await db.execute<Record<string, unknown>>(
+    sql`select id, number, 'P-' || lpad(number::text, greatest(6, length(number::text)), '0') as display_number, status, currency,
+               total, created_at, confirmed_at, delivered_at, cancelled_at
+        from orders
+        where organization_id = ${organizationId} and client_id = ${clientId}
+        order by number`,
+  );
+
+  // Las líneas, por el pedido, con el nombre y el SKU de hoy del producto.
+  const orderLines = await db.execute<Record<string, unknown>>(
+    sql`select l.order_id, o.number as order_number, l.position, l.product_id, p.sku, p.name,
+               l.quantity, l.unit_price, l.currency, l.line_total
+        from order_lines l
+        join orders o on o.organization_id = l.organization_id and o.id = l.order_id
+        join products p on p.organization_id = l.organization_id and p.id = l.product_id
+        where l.organization_id = ${organizationId} and o.client_id = ${clientId}
+        order by o.number, l.position`,
+  );
+
   return {
     exported_at: now.toISOString(),
     organization_id: organizationId,
@@ -100,6 +124,8 @@ export async function exportClientData(
     conversation_notes: notes.rows,
     audit_logs: auditLogs.rows,
     client_tags: tags.rows,
+    orders: orders.rows,
+    order_lines: orderLines.rows,
   };
 }
 
@@ -129,7 +155,7 @@ async function main() {
     `Export escrito en ${out}: ${data.conversations.length} conversaciones, ` +
       `${data.messages.length} mensajes, ${data.conversation_notes.length} notas, ` +
       `${data.audit_logs.length} entradas de auditoría, ` +
-      `${data.client_tags.length} etiquetas.`,
+      `${data.client_tags.length} etiquetas, ${data.orders.length} pedidos.`,
   );
   console.log(
     "Contiene datos personales: no lo versiones ni lo compartas por un canal abierto.",

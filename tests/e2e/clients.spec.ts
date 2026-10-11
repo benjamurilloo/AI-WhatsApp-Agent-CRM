@@ -38,10 +38,10 @@ test.beforeAll(() => {
 // TRUNCATE de clients exige vaciar en la misma sentencia las tablas que la referencian (brief-6.1).
 test.afterAll(async () => {
   await db.execute(
-    sql`truncate table conversation_notes, messages, conversations, client_tag_assignments, clients`,
+    sql`truncate table order_lines, orders, conversation_notes, messages, conversations, client_tag_assignments, clients`,
   );
   // La credencial del caso 16 queda referenciada por su fila de auditoría (RESTRICT, brief-12.1).
-  await db.execute(sql`truncate table audit_logs`);
+  await db.execute(sql`truncate table order_lines, orders, audit_logs`);
   await db.execute(
     sql`delete from ingestion_credentials where source = ${SERVICE_SOURCE}`,
   );
@@ -51,7 +51,7 @@ test.afterAll(async () => {
 // audit_logs y messages son de solo inserción: TRUNCATE es la vía documentada para vaciarlas (ADR 0013).
 test.beforeEach(async () => {
   await db.execute(
-    sql`truncate table audit_logs, conversation_notes, messages, conversations, client_tag_assignments, clients`,
+    sql`truncate table order_lines, orders, audit_logs, conversation_notes, messages, conversations, client_tag_assignments, clients`,
   );
   await db.execute(sql`delete from login_attempts`);
   await db.execute(sql`delete from sessions`);
@@ -524,7 +524,7 @@ test("caso 11: el alta se completa solo con teclado", async ({ page }) => {
   await page.goto("/clientes/nuevo");
 
   const name = page.getByLabel("Nombre *");
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 16; i++) {
     if (await name.evaluate((element) => element === document.activeElement)) {
       break;
     }

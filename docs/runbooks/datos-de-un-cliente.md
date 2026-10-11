@@ -22,7 +22,7 @@ previsto que la haya en el MVP.
    npx tsx scripts/client-data-delete.ts --org <organization_id> --client <client_id>
    ```
 
-   Dice cuántas conversaciones, mensajes, notas de conversación, entradas de auditoría y etiquetas tiene, si la ficha se puede
+   Dice cuántas conversaciones, mensajes, notas de conversación, entradas de auditoría, etiquetas y, desde la 19.2, pedidos tiene, si la ficha se puede
    borrar, y qué quedaría después.
 
 ## Exportar
@@ -31,7 +31,7 @@ previsto que la haya en el MVP.
 npx tsx scripts/client-data-export.ts --org <organization_id> --client <client_id> --out <archivo.json>
 ```
 
-Incluye los seis orígenes que guardan datos de la persona:
+Incluye los seis orígenes que guardan datos de la persona y, desde la 19.2, sus pedidos:
 
 | Origen | Qué lleva |
 |---|---|
@@ -41,6 +41,7 @@ Incluye los seis orígenes que guardan datos de la persona:
 | `conversation_notes` | *desde la 16.4*: las notas internas de sus conversaciones, con el texto, la fecha y el id del usuario del CRM que la escribió ([brief-16.4](../decisions/brief-16.4-notas-de-la-conversacion.md), D-5) |
 | `audit_logs` | los cambios sobre su ficha, **con los valores anteriores** de teléfono y notas, y desde la 16.1 las etiquetas que se le pusieron y quitaron |
 | `client_tag_assignments` | *desde la 16.1*: sus etiquetas actuales, con su nombre, color, estado y fecha (campo `client_tags`; [brief-16.1](../decisions/brief-16.1-etiquetas-de-clientes.md), D-10) |
+| `orders` y `order_lines` | *desde la 19.2*: sus pedidos, con número, estado, fechas, moneda y total, y sus líneas, con el producto (su SKU y su nombre de hoy), la cantidad, el precio y el total (campos `orders` y `order_lines`; [ADR 0020](../decisions/0020-el-pedido.md), punto 10). No tienen texto de la persona, pero son suyos |
 
 **No incluye `ingestion_events`**, y es a propósito: esa tabla guarda el emisor, una referencia
 opaca suya, el hash del payload y fechas. El propio archivo lo dice en su campo `excluded`, para
@@ -65,7 +66,9 @@ sudo bash -c '. /etc/crm-production/migrate.env && export DATABASE_URL && cd /sr
 
 Esa línea corre el informe. Para vaciar o borrar se le agrega `--vaciar` o `--borrar`.
 
-### Caso A — el cliente no tiene conversaciones
+### Caso A — el cliente no tiene conversaciones ni pedidos
+
+*Desde la 19.2* ([brief-19.2](../decisions/brief-19.2-el-pedido.md), D-9; ADR 0020, punto 10): decía «el cliente no tiene conversaciones». Un pedido apunta a la ficha con `ON DELETE RESTRICT`, así que un cliente con pedidos va al caso B aunque no tenga conversaciones; el informe y `--borrar` lo dicen.
 
 La ficha se borra de verdad, y sus entradas de auditoría se vacían en la misma transacción:
 
@@ -75,9 +78,9 @@ npx tsx scripts/client-data-delete.ts --org <organization_id> --client <client_i
 
 Queda en `audit_logs` que hubo cambios sobre una ficha, de qué tipo y cuándo, sin los valores. Sus etiquetas se van con la ficha, por la clave en cascada de `client_tag_assignments` (16.1, D-10); el informe previo dice cuántas tiene.
 
-### Caso B — el cliente tiene conversaciones
+### Caso B — el cliente tiene conversaciones o pedidos
 
-La ficha no se puede borrar: `messages` → `conversations` → `clients` son `ON DELETE RESTRICT`, y los mensajes no se borran. Se vacía:
+La ficha no se puede borrar: `messages` → `conversations` → `clients` son `ON DELETE RESTRICT`, y los mensajes no se borran; desde la 19.2, también `orders` → `clients`, y un pedido nunca se borra. Se vacía:
 
 ```
 npx tsx scripts/client-data-delete.ts --org <organization_id> --client <client_id> --vaciar
@@ -87,12 +90,13 @@ En una sola transacción:
 
 | Dónde | Qué se vacía | Qué queda |
 |---|---|---|
-| `clients` | nombre, teléfono y notas, y desde la 17.1 **todos** los campos ampliados, también el tipo, la provincia y el segmento | la ficha, con el nombre `Cliente eliminado <primeros 8 del id>` |
+| `clients` | nombre, teléfono y notas, y desde la 17.1 **todos** los campos ampliados, también el tipo, la provincia y el segmento | la ficha, con el nombre `Cliente eliminado <primeros 8 del id>` y, desde la 19.2, **desactivada**: sin nombre ni teléfono no hay a quién cargarle un pedido, y el alta rechaza a un cliente inactivo (D-9). Reactivarla a mano sigue siendo posible |
 | `conversations` | la referencia externa | fechas y estado |
 | `messages` | el texto y la referencia externa | fecha, dirección, tipo y autor |
 | `conversation_notes` (desde la 16.4) | el texto de las notas de sus conversaciones: son texto libre y pueden nombrar a la persona | la nota, con su fecha y el usuario del CRM que la escribió |
 | `audit_logs` (entradas del cliente) | los valores anteriores y nuevos, también los nombres de las etiquetas | que hubo un cambio, de qué tipo y cuándo |
 | `client_tag_assignments` (desde la 16.1) | **se borran**: «Reclamo» o «Quiere señar» son datos sobre la persona (D-10) | nada; el catálogo de etiquetas no es de la persona y queda |
+| `orders`, `order_lines` y su auditoría (desde la 19.2) | **nada**: no guardan texto de la persona, solo ids, cantidades, montos, estados y fechas, y la auditoría del pedido tampoco (brief-19.2, D-11) | los pedidos completos, con el cliente ya vaciado |
 
 Un segundo vaciado no cambia nada ni falla. Con la ingestión encendida, el vaciado espera a los mensajes de esa persona que se están guardando en ese momento, y los alcanza (revisión independiente de la 13.4, R-2). Lo mismo con una nota que un usuario del CRM está guardando en ese momento (revisión de la 16.4, R-1).
 

@@ -105,6 +105,20 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
     {
       requirement: "sesion",
     },
+  // Pedidos (brief-19.2): crear y cancelar son solo de admin, lo exige orders; los buscadores del
+  // alta son lecturas para los dos roles, como las sugerencias de productos y clientes.
+  "src/app/(autenticado)/pedidos/actions.ts#createOrderAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/pedidos/actions.ts#cancelOrderAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/pedidos/actions.ts#searchOrderProductsAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/pedidos/actions.ts#searchOrderClientsAction": {
+    requirement: "sesion",
+  },
   "src/app/(autenticado)/productos/actions.ts#createProductAction": {
     requirement: "sesion",
   },

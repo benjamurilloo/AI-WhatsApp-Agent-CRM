@@ -106,6 +106,27 @@ const cases = [
     code: 'import { users } from "@/modules/auth/schema"; export const w = users;',
     forbidden: false,
   },
+  // orders y numbering son módulos de dominio desde la 19.2 (revisión independiente, R-2).
+  {
+    file: "src/modules/orders/service.ts",
+    code: 'import { revalidatePath } from "next/cache"; export const o1 = revalidatePath;',
+    forbidden: true,
+  },
+  {
+    file: "src/modules/orders/presentacion.ts",
+    code: 'import { STATUS_LABEL } from "@/app/(autenticado)/pedidos/messages"; export const o2 = STATUS_LABEL;',
+    forbidden: true,
+  },
+  {
+    file: "src/modules/numbering/service.ts",
+    code: 'import { NextResponse } from "next/server"; export const n1 = NextResponse;',
+    forbidden: true,
+  },
+  {
+    file: "src/modules/orders/schema.ts",
+    code: 'import { clients } from "@/modules/crm/schema"; export const o3 = clients;',
+    forbidden: false,
+  },
   // knowledge es módulo de dominio desde la 11.2 (AC-7); estos casos dejan esa mutación como
   // guarda permanente (N-3 de su revisión independiente, resuelta en la 11.3.2).
   {

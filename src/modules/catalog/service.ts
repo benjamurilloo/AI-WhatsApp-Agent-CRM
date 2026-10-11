@@ -221,6 +221,27 @@ export async function getProduct(
   return { ok: true, product };
 }
 
+// Varios productos por id, activos o no, para componer en memoria las líneas de un pedido sin JOIN
+// (brief-19.2, ampliación del 2026-10-11). Un id de otra organización no vuelve.
+export async function getProductsByIds(
+  context: AuthContext,
+  productIds: string[],
+): Promise<
+  { ok: true; products: Product[] } | Failure<"FORBIDDEN" | "VALIDATION_ERROR">
+> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  const unique = [...new Set(productIds)];
+  if (!unique.every((id) => productIdSchema.safeParse(id).success)) {
+    return failure("VALIDATION_ERROR");
+  }
+  const products = await repository.findProductsByIds(
+    context.organizationId,
+    unique,
+  );
+  return { ok: true, products };
+}
+
 // Productos que cumplen texto, actividad, marca y categoría, sin orden ni página: los compone
 // inventory (D-1). Marca y categoría vacías no filtran (brief-15.2, D-4).
 export type ProductSearchFilters = {
@@ -320,6 +341,45 @@ export async function lockProductForStockChange(
   );
   if (!product) return "not_found";
   return product.isActive ? "active" : "inactive";
+}
+
+// Los productos de un pedido, para orders (brief-19.2; ADR 0020, puntos 3 y 6): los bloquea en modo
+// compartido, ordenados por id, y lee su precio vigente en la misma transacción, así que un cambio
+// de precio simultáneo no se cruza con el alta. orders ya autorizó; un id que no es de la
+// organización no vuelve.
+export type OrderProduct = {
+  id: string;
+  isActive: boolean;
+  price: ProductPrice | null;
+};
+
+export async function lockProductsForOrder(
+  tx: DbTransaction,
+  organizationId: string,
+  productIds: string[],
+): Promise<Map<string, OrderProduct>> {
+  const ids = [...new Set(productIds)].filter(
+    (id) => productIdSchema.safeParse(id).success,
+  );
+  const locked = await repository.lockProductsShared(tx, organizationId, ids);
+  const prices = await repository.findCurrentPrices(
+    organizationId,
+    locked.map((product) => product.id),
+    tx,
+  );
+  return new Map(
+    locked.map((product) => {
+      const price = prices.get(product.id);
+      return [
+        product.id,
+        {
+          id: product.id,
+          isActive: product.isActive,
+          price: price ? toPrice(price) : null,
+        },
+      ];
+    }),
+  );
 }
 
 // Historial de auditoría del producto (FR-AUD-02, brief-4.4, D-1 y su ajuste 1). audit no

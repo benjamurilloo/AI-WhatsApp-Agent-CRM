@@ -29,6 +29,8 @@ export const auditEntityType = pgEnum("audit_entity_type", [
   "client_tag",
   // Horario de atención de la organización; el id es el de la organización (brief-17.4, D-4).
   "business_hours",
+  // Pedido de un cliente (brief-19.2; ADR 0020, punto 3).
+  "order",
 ]);
 
 export const auditAction = pgEnum("audit_action", [

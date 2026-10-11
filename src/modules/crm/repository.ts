@@ -97,6 +97,24 @@ export async function findClient(
   return rows[0];
 }
 
+// FOR SHARE, para el alta de un pedido (brief-19.2, D-3): espera a una desactivación en curso, que
+// bloquea FOR UPDATE, y lee el estado ya confirmado.
+export async function lockClientShared(
+  tx: DbTransaction,
+  organizationId: string,
+  clientId: string,
+): Promise<{ id: string; isActive: boolean } | undefined> {
+  const rows = await tx
+    .select({ id: clients.id, isActive: clients.isActive })
+    .from(clients)
+    .where(
+      and(eq(clients.organizationId, organizationId), eq(clients.id, clientId)),
+    )
+    .limit(1)
+    .for("share");
+  return rows[0];
+}
+
 export type ActivityFilter = "active" | "inactive" | "all";
 
 // Teléfono exacto o prefijo de nombre, nunca los dos: lo decide el servicio (brief-5.2, D-3).

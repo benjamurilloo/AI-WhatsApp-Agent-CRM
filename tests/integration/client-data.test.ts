@@ -863,3 +863,134 @@ describe("campos ampliados del cliente (brief-17.1, D-12, AC-7)", () => {
     }
   });
 });
+
+// Un pedido pendiente del cliente con una línea, por SQL (brief-19.2), y su alta en la auditoría
+// con la forma de D-11: ids, montos y estado, sin datos de la persona.
+async function orderFor(clientId: string, number: number): Promise<string> {
+  const user = await getDb().execute<{ id: string }>(
+    sql`insert into users (email, password_hash, name, must_change_password)
+        values (${`pedido-${crypto.randomUUID()}@example.com`}, 'x', 'Vendedora', false)
+        returning id`,
+  );
+  const product = await getDb().execute<{ id: string }>(
+    sql`insert into products (organization_id, sku, name)
+        values (${organizationId}, ${`SKU-${number}`}, 'Café molido') returning id`,
+  );
+  const order = await getDb().execute<{ id: string }>(
+    sql`insert into orders (organization_id, number, client_id, currency, total, created_by)
+        values (${organizationId}, ${number}, ${clientId}, 'ARS', '2469.00', ${user.rows[0]!.id})
+        returning id`,
+  );
+  const orderId = order.rows[0]!.id;
+  await getDb().execute(
+    sql`insert into order_lines (organization_id, order_id, product_id, position, quantity,
+                                 unit_price, currency, line_total)
+        values (${organizationId}, ${orderId}, ${product.rows[0]!.id}, 1, '2', '1234.50', 'ARS',
+                '2469.00')`,
+  );
+  await getDb().execute(
+    sql`insert into audit_logs
+          (organization_id, actor_user_id, entity_type, entity_id, action, diff)
+        values (${organizationId}, ${user.rows[0]!.id}, 'order', ${orderId}, 'create',
+          ${sql.raw(`'${JSON.stringify({ before: null, after: { number, status: "pending", client_id: clientId, currency: "ARS", total: "2469.00", lines: 1 } })}'::jsonb`)})`,
+  );
+  return orderId;
+}
+
+describe("los pedidos del cliente (brief-19.2, D-9 y AC-10; ADR 0020, punto 10)", () => {
+  it("30. la exportación incluye sus pedidos con sus líneas, y no los de otro cliente", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    const other = await insertClient("Otra persona", "+5491155552222", null);
+    await orderFor(clientId, 1);
+    await orderFor(other, 2);
+
+    const data = await exportClientData(getDb(), organizationId, clientId);
+    expect(data.orders).toEqual([
+      expect.objectContaining({
+        number: "1",
+        display_number: "P-000001",
+        status: "pending",
+        currency: "ARS",
+        total: "2469.00",
+      }),
+    ]);
+    expect(data.order_lines).toEqual([
+      expect.objectContaining({
+        order_number: "1",
+        position: 1,
+        sku: "SKU-1",
+        name: "Café molido",
+        quantity: "2.000",
+        unit_price: "1234.50",
+        line_total: "2469.00",
+      }),
+    ]);
+  });
+
+  it("31. un cliente con pedidos y sin conversaciones no es borrable, y el informe los cuenta", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    await orderFor(clientId, 1);
+
+    const report = await reportClientData(getDb(), organizationId, clientId);
+    expect(report).toMatchObject({
+      exists: true,
+      conversations: 0,
+      orders: 1,
+      deletable: false,
+    });
+    expect(describeRetained(report).join(" ")).toContain(
+      "1 pedidos en 'orders'",
+    );
+  });
+
+  it("32. borrar la ficha de un cliente con pedidos lo rechaza la base, sin vaciar nada", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    await orderFor(clientId, 1);
+    await insertAuditEntry(clientId);
+
+    await expect(
+      deleteClientRow(getDb(), organizationId, clientId),
+    ).rejects.toThrow();
+    expect(await clientRow(clientId)).toMatchObject({ display_name: NAME });
+    expect(await columnsContaining(PHONE)).toEqual([
+      "audit_logs.diff",
+      "clients.phone_e164",
+    ]);
+  });
+
+  // Revisión independiente de la 19.2, R-5: lpad truncaba el número a seis dígitos.
+  it("34. la exportación muestra el número completo pasado el millón", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    await orderFor(clientId, 1234567);
+    const data = await exportClientData(getDb(), organizationId, clientId);
+    expect(data.orders.map((order) => order.display_number)).toEqual([
+      "P-1234567",
+    ]);
+  });
+
+  it("33. el vaciado deja los pedidos intactos, desactiva la ficha y no deja datos de la persona", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    const orderId = await orderFor(clientId, 1);
+    const before = await getDb().execute(
+      sql`select o.*, a.diff from orders o
+          join audit_logs a on a.entity_type = 'order' and a.entity_id = o.id
+          where o.id = ${orderId}`,
+    );
+
+    await eraseClientData(getDb(), organizationId, clientId);
+
+    const after = await getDb().execute(
+      sql`select o.*, a.diff from orders o
+          join audit_logs a on a.entity_type = 'order' and a.entity_id = o.id
+          where o.id = ${orderId}`,
+    );
+    expect(after.rows).toEqual(before.rows);
+    const active = await getDb().execute<{ is_active: boolean }>(
+      sql`select is_active from clients where id = ${clientId}`,
+    );
+    expect(active.rows[0]!.is_active).toBe(false);
+    for (const value of [NAME, PHONE, NOTES]) {
+      expect(await columnsContaining(value), value).toEqual([]);
+    }
+  });
+});

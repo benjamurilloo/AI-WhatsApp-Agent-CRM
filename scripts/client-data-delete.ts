@@ -7,7 +7,7 @@ import { getDb, type Db } from "@/shared/db";
  *
  *   npx tsx scripts/client-data-delete.ts --org <id> --client <id>            (informe, no escribe)
  *   npx tsx scripts/client-data-delete.ts --org <id> --client <id> --vaciar   (vacía su contenido)
- *   npx tsx scripts/client-data-delete.ts --org <id> --client <id> --borrar   (sin conversaciones)
+ *   npx tsx scripts/client-data-delete.ts --org <id> --client <id> --borrar   (sin conversaciones ni pedidos)
  *
  * **Borrar es vaciar el contenido y conservar la forma** (brief-13.4, D-2). Con --vaciar, en una
  * sola transacción:
@@ -20,7 +20,13 @@ import { getDb, type Db } from "@/shared/db";
  *     persona (brief-16.4, D-5);
  *   - sus entradas de auditoría pierden los valores;
  *   - sus etiquetas se quitan: «Reclamo» o «Quiere señar» son datos sobre esa persona
- *     (brief-16.1, D-10). Con --borrar se van con la ficha, por la clave con ON DELETE CASCADE.
+ *     (brief-16.1, D-10). Con --borrar se van con la ficha, por la clave con ON DELETE CASCADE;
+ *   - desde la 19.2, la ficha queda desactivada: sin nombre ni teléfono no hay a quién cargarle un
+ *     pedido, y el alta rechaza a un cliente inactivo (brief-19.2, D-9).
+ * Los pedidos no se tocan: no guardan texto de la persona, solo ids, cantidades, montos, estados y
+ * fechas, y su auditoría tampoco (ADR 0020, punto 10; brief-19.2, D-11). Un cliente con pedidos no
+ * se borra: la clave del pedido lo impide (RESTRICT), así que va al vaciado aunque no tenga
+ * conversaciones.
  * Quedan fechas, estados y, de los mensajes, la dirección y el tipo, que es lo que cuentan las métricas: las de los
  * períodos pasados no cambian (brief-13.4, H-3).
  *
@@ -42,7 +48,10 @@ export type ClientDataReport = {
   auditEntries: number;
   // Etiquetas puestas en el cliente (brief-16.1, D-10).
   tags: number;
-  // Un cliente sin conversaciones sí se puede borrar del todo (brief-8.2, hallazgo 7).
+  // Sus pedidos (brief-19.2; ADR 0020, punto 10).
+  orders: number;
+  // Un cliente sin conversaciones ni pedidos sí se puede borrar del todo (brief-8.2, hallazgo 7;
+  // brief-19.2).
   deletable: boolean;
 };
 
@@ -58,6 +67,7 @@ export async function reportClientData(
     notes: number;
     audit_entries: number;
     tags: number;
+    orders: number;
   }>(
     sql`select
           exists (select 1 from clients
@@ -76,7 +86,9 @@ export async function reportClientData(
            where organization_id = ${organizationId}
              and entity_type = 'client' and entity_id = ${clientId}) as audit_entries,
           (select count(*)::int from client_tag_assignments
-           where organization_id = ${organizationId} and client_id = ${clientId}) as tags`,
+           where organization_id = ${organizationId} and client_id = ${clientId}) as tags,
+          (select count(*)::int from orders
+           where organization_id = ${organizationId} and client_id = ${clientId}) as orders`,
   );
   const row = counts.rows[0]!;
   return {
@@ -86,7 +98,8 @@ export async function reportClientData(
     notes: row.notes,
     auditEntries: row.audit_entries,
     tags: row.tags,
-    deletable: row.exists && row.conversations === 0,
+    orders: row.orders,
+    deletable: row.exists && row.conversations === 0 && row.orders === 0,
   };
 }
 
@@ -188,6 +201,7 @@ export async function eraseClientData(
               province = null,
               postal_code = null,
               segment = null,
+              is_active = false,
               updated_at = now()
           where organization_id = ${organizationId} and id = ${clientId}`,
     );
@@ -203,8 +217,8 @@ export async function eraseClientData(
 }
 
 /**
- * Borra la ficha y vacía su auditoría, en una transacción. Solo funciona sin conversaciones: si
- * no, PostgreSQL rechaza el borrado (RESTRICT). Con auditoría, necesita el rol dueño. Sus
+ * Borra la ficha y vacía su auditoría, en una transacción. Solo funciona sin conversaciones ni
+ * pedidos: si no, PostgreSQL rechaza el borrado (RESTRICT). Con auditoría, necesita el rol dueño. Sus
  * etiquetas se van con la ficha (ON DELETE CASCADE, brief-16.1, D-10).
  */
 export async function deleteClientRow(
@@ -238,6 +252,11 @@ export function describeRetained(report: ClientDataReport): string[] {
   if (report.conversations > 0) {
     retained.push(
       `${report.conversations} conversaciones en 'conversations', sin referencia externa: quedan sus fechas y su estado.`,
+    );
+  }
+  if (report.orders > 0) {
+    retained.push(
+      `${report.orders} pedidos en 'orders', con sus líneas y su historia: quedan el número, las fechas, el estado, los productos, las cantidades y los montos, sin ningún texto de la persona.`,
     );
   }
   if (report.auditEntries > 0) {
@@ -310,7 +329,7 @@ async function main() {
 
   console.log(
     `Cliente ${clientId}: ${report.conversations} conversaciones, ${report.messages} mensajes, ` +
-      `${report.notes} notas, ${report.auditEntries} entradas de auditoría, ${report.tags} etiquetas.`,
+      `${report.notes} notas, ${report.auditEntries} entradas de auditoría, ${report.tags} etiquetas, ${report.orders} pedidos.`,
   );
 
   const vaciar = args.includes("--vaciar");
@@ -321,8 +340,8 @@ async function main() {
     // Sin una opción explícita no escribe nada: primero se ve qué va a pasar.
     console.log(
       report.deletable
-        ? "Sin conversaciones: con --borrar se borra la ficha y se vacía su auditoría."
-        : "Con conversaciones: la ficha no se puede borrar. Con --vaciar se vacía su contenido y el de todo lo suyo.",
+        ? "Sin conversaciones ni pedidos: con --borrar se borra la ficha y se vacía su auditoría."
+        : "Con conversaciones o pedidos: la ficha no se puede borrar. Con --vaciar se vacía su contenido y el de todo lo suyo, y la ficha queda desactivada.",
     );
     console.log("Después del vaciado quedaría:");
     printRetained(report);
@@ -333,7 +352,7 @@ async function main() {
   if (borrar) {
     if (!report.deletable) {
       throw new Error(
-        "Este cliente tiene conversaciones: la ficha no se puede borrar. Usá --vaciar.",
+        "Este cliente tiene conversaciones o pedidos: la ficha no se puede borrar. Usá --vaciar.",
       );
     }
     await deleteClientRow(db, organizationId, clientId).catch(explainRole);
@@ -346,7 +365,7 @@ async function main() {
     explainRole,
   );
   console.log(
-    `Vaciado: la ficha, ${result.conversations} conversaciones, ${result.messages} mensajes, ` +
+    `Vaciado y desactivada: la ficha, ${result.conversations} conversaciones, ${result.messages} mensajes, ` +
       `${result.notes} notas y ${result.auditEntries} entradas de auditoría; ${result.tags} etiquetas quitadas.`,
   );
   console.log("Queda, sin nada que identifique a la persona:");

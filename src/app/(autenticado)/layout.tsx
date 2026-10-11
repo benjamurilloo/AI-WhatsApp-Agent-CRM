@@ -25,6 +25,8 @@ export default async function AuthenticatedLayout({
     { href: "/", label: "Dashboard", icon: "dashboard" },
     { href: "/productos", label: "Productos", icon: "package" },
     { href: "/clientes", label: "Clientes", icon: "users" },
+    // Pedidos, para los dos roles (brief-19.2).
+    { href: "/pedidos", label: "Pedidos", icon: "list" },
     { href: "/conversaciones", label: "Conversaciones", icon: "messageCircle" },
     { href: "/informacion", label: "Información", icon: "info" },
     ...(context.role === "admin"

@@ -82,6 +82,9 @@ export default defineConfig([
       "src/modules/conversations/**/*.{ts,tsx}",
       "src/modules/inventory/**/*.{ts,tsx}",
       "src/modules/knowledge/**/*.{ts,tsx}",
+      // Desde la 19.2 (revisión independiente, R-2).
+      "src/modules/orders/**/*.{ts,tsx}",
+      "src/modules/numbering/**/*.{ts,tsx}",
     ],
     rules: restrict(moduleInternals, leaveModuleRelative, httpAndPresentation),
   },

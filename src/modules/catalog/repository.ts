@@ -128,6 +128,45 @@ export async function lockProductShared(
   return rows[0];
 }
 
+export async function findProductsByIds(
+  organizationId: string,
+  productIds: string[],
+): Promise<ProductRow[]> {
+  if (productIds.length === 0) return [];
+  return getDb()
+    .select(productColumns)
+    .from(products)
+    .where(
+      and(
+        eq(products.organizationId, organizationId),
+        inArray(products.id, productIds),
+      ),
+    );
+}
+
+// Los productos de un pedido, en modo compartido y ordenados por id (ADR 0020, punto 6; brief-19.2,
+// D-3): el ORDER BY va antes del bloqueo, así que las filas se bloquean en ese orden y dos altas
+// con los mismos productos no se traban. Un cambio de precio o una desactivación, que toman
+// FOR UPDATE, esperan a que el alta termine.
+export async function lockProductsShared(
+  tx: DbTransaction,
+  organizationId: string,
+  productIds: string[],
+): Promise<{ id: string; isActive: boolean }[]> {
+  if (productIds.length === 0) return [];
+  return tx
+    .select({ id: products.id, isActive: products.isActive })
+    .from(products)
+    .where(
+      and(
+        eq(products.organizationId, organizationId),
+        inArray(products.id, productIds),
+      ),
+    )
+    .orderBy(products.id)
+    .for("share");
+}
+
 export type ActivityFilter = "active" | "inactive" | "all";
 
 // Palabras sueltas sobre nombre, marca y categoría, o SKU exacto, sin distinguir mayúsculas ni

@@ -127,6 +127,8 @@ const INSERT_ONLY_TABLES = [
   "conversation_notes",
   "inventory_movements",
   "messages",
+  // Líneas de un pedido (brief-19.2).
+  "order_lines",
   // Costo de un producto (brief-18.2).
   "product_costs",
   "product_prices",
@@ -136,9 +138,12 @@ const INSERT_ONLY_TABLES = [
 const NO_DELETE_TABLES = [
   "business_hours",
   "client_tags",
+  // El contador de numeración y la cabecera del pedido (brief-19.2, D-2; ADR 0020, punto 3).
+  "document_counters",
   "ingestion_credentials",
   "ingestion_events",
   "knowledge_entries",
+  "orders",
 ];
 // Se insertan y se borran, pero no se actualizan: una asignación se pone y se quita (brief-16.1,
 // D-6), un día especial se agrega y se quita (brief-17.4, P-2), y una imagen de producto se sube y

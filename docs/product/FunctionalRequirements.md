@@ -65,6 +65,18 @@ Agregados en la Fase 11, catálogo comercial ([brief-11.1](../decisions/brief-11
 - **FR-CONV-06**: Un admin pausa al agente en una conversación `open` o `pending`, para atenderla una persona, y lo reanuda en cualquier estado. Cada cambio queda auditado. La marca es independiente del estado, la ven todos los usuarios en las pantallas 8 y 9, y el agente la lee en cada turno por la API de lectura (`GET /api/read/v1/conversation-state`, alcance `context`); con la conversación pausada, no contesta. Una conversación nueva del cliente nace con el agente activo. *Desde la 16.3* ([brief-16.3](../decisions/brief-16.3-pausar-y-reanudar-al-agente.md)).
 - **FR-CONV-07**: Un admin agrega notas internas a una conversación, en cualquier estado: texto plano de hasta 1000 caracteres, con su autor y su fecha. Las notas no se editan ni se borran, y cada una queda auditada sin su texto. Los dos roles las leen en la pantalla 9, de la más reciente a la más vieja. No las ve el cliente ni el agente. El vaciado de los datos de un cliente borra el texto de las notas de sus conversaciones, y su exportación las incluye. *Desde la 16.4* ([brief-16.4](../decisions/brief-16.4-notas-de-la-conversacion.md)).
 
+## Pedidos
+
+*Agregada en la 19.2* ([brief-19.2](../decisions/brief-19.2-el-pedido.md), [ADR 0020](../decisions/0020-el-pedido.md)). Pedidos de clientes de la Fase 19; lo del stock (confirmar, entregar, la reserva) llega en la 19.3.
+
+- **FR-ORD-01**: Un admin crea un pedido pendiente para un cliente activo, con entre 1 y 50 líneas de productos activos con precio vigente, cada producto una sola vez. El pedido lleva un número correlativo y sin huecos por organización, que se muestra como `P-000123`, se asigna al crearlo y nunca se reutiliza. Crear un pedido no toca el stock.
+- **FR-ORD-02**: Cada línea guarda el precio vigente del producto al crear el pedido, su moneda y su total, redondeado a los decimales de la moneda con el medio hacia afuera del cero; el total del pedido es la suma de sus líneas. Un pedido tiene una sola moneda, la de su primera línea, y se rechaza la línea con el precio en otra moneda, la que no tiene precio, la de un producto inactivo, la que da un total en cero y la que no cabe en el monto máximo. Los montos no cambian aunque después cambie el precio.
+- **FR-ORD-03**: Si el precio de un producto cambió entre que el admin lo vio y el envío, el pedido no se crea y la pantalla muestra el precio nuevo para confirmarlo.
+- **FR-ORD-04**: Un admin cancela un pedido pendiente. Un pedido nunca se borra, sus líneas nunca cambian, y un pedido cancelado conserva su número. Para cambiar un pedido, se cancela y se crea otro.
+- **FR-ORD-05**: Cualquier usuario ve la lista de pedidos, paginada, con filtro por estado y por cliente y búsqueda por número, y el detalle de cada uno. Un viewer no recibe el teléfono completo ni los datos de contacto del cliente (FR-CLI-06 y FR-CLI-13). Ningún pedido muestra costo ni margen.
+- **FR-ORD-06**: La ficha de un cliente muestra sus últimos pedidos, y desde ella un admin empieza un pedido con el cliente ya elegido.
+- **FR-ORD-07**: Un cliente con pedidos no se borra: se vacía. El vaciado deja los pedidos intactos, porque no guardan texto de la persona, y desactiva la ficha. La exportación de los datos de un cliente incluye sus pedidos.
+
 ## Información del negocio
 
 Desde la subfase 11.2 ([brief-11.2](../decisions/brief-11.2-informacion-del-negocio.md)). Es lo que el agente de WhatsApp va a leer por el contrato de la 11.3.
@@ -105,6 +117,7 @@ Agregada el 2026-09-24 por la 11.3 ([brief-11.3](../decisions/brief-11.3-api-de-
   - todo cambio de estado de una conversación;
   - todo cambio de rol o de estado de un miembro de la organización;
   - toda creación, edición, desactivación o reactivación de una entrada de información del negocio (agregado el 2026-09-24 por la 11.2, FR-INFO-01);
-  - todo cambio del horario de atención: la semana, con solo los días que cambiaron, y cada día especial agregado o quitado (agregado el 2026-10-09 por la 17.4, FR-INFO-04).
+  - todo cambio del horario de atención: la semana, con solo los días que cambiaron, y cada día especial agregado o quitado (agregado el 2026-10-09 por la 17.4, FR-INFO-04);
+  - el alta de un pedido y cada cambio de su estado, sin datos del cliente (agregado el 2026-10-11 por la 19.2, FR-ORD-01 y FR-ORD-04). Un admin consulta la historia de un pedido en la pantalla 16.
 - **FR-AUD-02**: Un admin puede consultar el historial de auditoría de una entidad específica (producto, cliente), en las pantallas 4 y 7 (subfase 1.2, D-8). Desde la 11.2, también el de una entrada de información del negocio, en la pantalla 12.
 - **FR-AUD-03** (agregado el 2026-09-25 por la 12.1, D-3 y D-4): un cambio hecho por un servicio autenticado queda auditado con la **credencial de servicio** como actor, no con un usuario humano. Cada registro tiene exactamente un actor, y la credencial es de la misma organización. En el historial, ese autor se muestra como «Servicio · &lt;emisor&gt;».

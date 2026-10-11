@@ -45,6 +45,7 @@ import {
 import { PhoneText } from "../phone-text";
 import { auditActionLabel, describeAuditDiff } from "./audit-summary";
 import { DeactivateConfirm, ReactivateForm } from "./client-actions";
+import { ClientOrders } from "./client-orders";
 import { ClientTags } from "./client-tags";
 import {
   ClientConversations,
@@ -185,7 +186,8 @@ export default async function ClientPage({
   const audit = isAdmin
     ? await listClientAudit(context, client.id, sections.auditPage)
     : null;
-  const timeZone = audit?.ok ? await getOrganizationTimezone(context) : null;
+  // La zona, para la auditoría y para las fechas de los pedidos (brief-19.2, D-8).
+  const timeZone = await getOrganizationTimezone(context);
   // Los segmentos ya cargados, para sugerir en la edición (brief-17.1, D-5).
   const segments = editing ? await listClientFilterOptions(context) : null;
   const actorLabel = audit?.ok
@@ -351,6 +353,15 @@ export default async function ClientPage({
                 tags={client.tags}
                 activeTags={activeTags?.ok ? activeTags.tags : []}
                 canEdit={isAdmin}
+              />
+            </SectionCard>
+
+            <SectionCard id="pedidos-titulo" title="Pedidos" icon="list">
+              <ClientOrders
+                context={context}
+                clientId={client.id}
+                clientActive={client.isActive}
+                timeZone={timeZone}
               />
             </SectionCard>
           </div>

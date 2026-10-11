@@ -28,6 +28,7 @@ export {
   listClientAudit,
   listClientOrderKeys,
   lockClientByPhone,
+  lockClientForOrder,
   reactivateClient,
   searchClients,
   updateClient,

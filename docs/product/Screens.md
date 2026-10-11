@@ -274,3 +274,38 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 - **Errores**: nombre repetido sin distinguir mayúsculas, también frente a una inactiva; nombre vacío o de más de 40; el límite de 50 activas.
 - **Responsive**: tabla en escritorio y tarjetas en móvil, sin scroll horizontal a 375 px.
 - **Accesibilidad**: el color nunca es el único dato; los seis colores pasan el contraste de axe en claro y en oscuro; «Editar», «Desactivar» y «Reactivar» llevan el nombre de la etiqueta en su texto accesible.
+
+## 14. Lista de pedidos
+
+*Agregada en la 19.2* ([brief-19.2](../decisions/brief-19.2-el-pedido.md), D-10; FR-ORD-05), sin wireframe. Ruta `/pedidos`, con su ítem «Pedidos» en el panel lateral para los dos roles.
+
+- **Objetivo**: encontrar un pedido.
+- **Usuario autorizado**: `admin` y `viewer`; el botón «+ Nuevo pedido», solo `admin`.
+- **Información mostrada**: número, fecha, cliente, cantidad de líneas, total y estado (con ícono y texto).
+- **Filtros**: estado (todos, pendientes, cancelados; confirmado y entregado llegan con la 19.3) y búsqueda por número (`P-000123`, `000123` o `123`). Desde la ficha de un cliente llega filtrada por él, con un enlace para ver los de todos.
+- **Paginación**: 25 por página, del más reciente al más viejo.
+- **Vacío**: «Todavía no hay pedidos.»; con filtros, «Ningún pedido coincide con estos filtros.»
+- **Responsive**: tabla en escritorio y tarjetas en móvil.
+- **No mostrar**: costo ni margen.
+
+## 15. Nuevo pedido
+
+*Agregada en la 19.2* (D-5 a D-7; FR-ORD-01 a FR-ORD-03). Ruta `/pedidos/nuevo`; desde la ficha de un cliente, `/pedidos/nuevo?cliente=<id>` con el cliente ya elegido.
+
+- **Objetivo**: cargar un pedido pendiente.
+- **Usuario autorizado**: solo `admin`. Un `viewer` recibe «No tenés permiso para ver esta página.»
+- **Información mostrada**: el buscador de clientes; cinco líneas de inicio, cada una con el buscador de productos, la cantidad, el precio vigente y el subtotal estimado; el total estimado, con el aviso de que el total que vale es el que calcula el sistema.
+- **Acciones**: agregar y quitar líneas, hasta 50; las vacías no se envían. Crear el pedido.
+- **Errores**: el cliente o cada línea con su motivo (sin precio, otra moneda, inactivo, repetido, total en cero, monto demasiado grande); un precio que cambió se muestra con el nuevo, y el pedido no se crea hasta confirmarlo.
+- **Sin JavaScript**: los buscadores son campos de texto; el cliente se reconoce por su nombre exacto y el producto por su SKU exacto.
+- **Accesibilidad**: los buscadores son combobox de ARIA 1.2, como los de la 15.2, y se eligen con las flechas y Enter; cada línea es un grupo con su número.
+
+## 16. Detalle de un pedido
+
+*Agregada en la 19.2* (D-12; FR-ORD-04 y FR-ORD-05). Ruta `/pedidos/[id]`.
+
+- **Objetivo**: ver un pedido y cancelarlo mientras está pendiente.
+- **Usuario autorizado**: `admin` y `viewer`; «Cancelar pedido» y la historia, solo `admin`.
+- **Información mostrada**: número, estado y total; las líneas con el producto (su nombre de hoy, con el aviso de que los precios son los del alta), la cantidad, el precio unitario y el total; el cliente, con el teléfono enmascarado y sin email para un `viewer`; las fechas de cada estado. Para `admin`, la historia: el alta con su número, sus líneas y su total, y cada cambio de estado.
+- **Acciones**: cancelar un pendiente, con confirmación.
+- **No mostrar**: editar ni borrar el pedido o sus líneas; costo ni margen.

@@ -456,7 +456,7 @@ test("caso 11: el alta se completa solo con teclado", async ({ page }) => {
 
   // Desde el inicio del documento, atravesando el marco común hasta el primer campo.
   const name = page.getByLabel("Nombre");
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 16; i++) {
     if (await name.evaluate((element) => element === document.activeElement)) {
       break;
     }

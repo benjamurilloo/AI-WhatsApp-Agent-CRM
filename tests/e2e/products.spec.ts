@@ -31,7 +31,7 @@ test.afterAll(async () => {
 // la vía documentada para vaciarlas (ADR 0013).
 test.beforeEach(async () => {
   await db.execute(
-    sql`truncate table audit_logs, inventory_movements, inventories, product_images, product_costs, product_prices, products`,
+    sql`truncate table order_lines, orders, audit_logs, inventory_movements, inventories, product_images, product_costs, product_prices, products`,
   );
   await db.execute(sql`delete from login_attempts`);
   await db.execute(sql`delete from sessions`);
@@ -539,7 +539,7 @@ test("caso 12: el alta se completa solo con teclado", async ({ page }) => {
   await page.goto("/productos/nuevo");
 
   const sku = page.getByLabel("SKU");
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 16; i++) {
     if (await sku.evaluate((element) => element === document.activeElement)) {
       break;
     }

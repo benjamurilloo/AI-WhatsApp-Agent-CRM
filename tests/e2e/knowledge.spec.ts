@@ -493,7 +493,7 @@ test("caso 8: FR-INFO-01 el alta se completa solo con teclado", async ({
   await page.goto("/informacion/nueva");
 
   const title = page.getByLabel("Título");
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 16; i++) {
     if (await title.evaluate((element) => element === document.activeElement)) {
       break;
     }

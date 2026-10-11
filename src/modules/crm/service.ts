@@ -1203,6 +1203,23 @@ export function findClientIdByPhone(
   return repository.findClientIdByPhoneE164(tx, organizationId, phoneE164);
 }
 
+// El cliente de un pedido nuevo, para orders (brief-19.2, D-3; ADR 0020, punto 3): se bloquea en
+// modo compartido antes que los productos, en la transacción del alta. orders ya autorizó.
+export async function lockClientForOrder(
+  tx: DbTransaction,
+  organizationId: string,
+  clientId: string,
+): Promise<"active" | "inactive" | "not_found"> {
+  if (!clientIdSchema.safeParse(clientId).success) return "not_found";
+  const client = await repository.lockClientShared(
+    tx,
+    organizationId,
+    clientId,
+  );
+  if (!client) return "not_found";
+  return client.isActive ? "active" : "inactive";
+}
+
 // Como findClientIdByPhone, pero bloquea al cliente hasta el final de la transacción recibida.
 // conversations la usa para que dos mensajes simultáneos del mismo cliente no abran dos
 // conversaciones (brief-12.2, D-8), como lockProductForStockChange en catalog.
