@@ -1,0 +1,26 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: no proviene de ningún emisor real (brief-19.4). La 19.4.3 la contrasta con lo que mande el agente.",
+  "description": "Una línea con precio (brief-19.4, D-1): el precio lo copia el CRM, así que es un campo desconocido.",
+  "received_at": "2026-09-16T15:00:00.000Z",
+  "payload": {
+    "contract_version": "2",
+    "event_type": "order.placed",
+    "event_id": "evt-v2-pedido-0004",
+    "occurred_at": "2026-09-16T12:00:16-03:00",
+    "client": {
+      "phone": "+5491155550001"
+    },
+    "lines": [
+      {
+        "product_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+        "quantity": "2",
+        "unit_price": "1500.00"
+      }
+    ]
+  },
+  "expected": {
+    "ok": false,
+    "fields": ["lines"]
+  }
+}

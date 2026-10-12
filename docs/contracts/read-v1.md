@@ -100,6 +100,8 @@ Lo que un producto **no** trae: la cantidad en stock, el punto de reposición, e
 
 ### `GET /api/read/v1/products/{product_id}/stock`
 
+*Nota del 2026-10-11, 19.4* ([brief-19.4](../decisions/brief-19.4-el-pedido-del-agente.md), D-12): desde la 19.3 existe lo reservado por los pedidos confirmados, y esta ruta **sigue entregando el saldo físico**, como el `stock_status` de las rutas de productos. Lo disponible (el físico menos lo reservado) está en la [lectura v2](read-v2.md), que convive con esta hasta que el agente migre. Nada de esta ruta cambia.
+
 La **cantidad disponible** de un producto activo de la organización de la credencial, con su unidad y su estado de stock (FR-API-09). Desde la 16.6. Alcance `read`, el mismo de los productos.
 
 - **Respuesta `200`**: `{ "contract_version": "1", "product_id": "…", "quantity_available": "12", "unit": "unidad", "stock_status": "disponible" }`.

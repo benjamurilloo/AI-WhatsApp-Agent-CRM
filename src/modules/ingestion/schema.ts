@@ -51,6 +51,12 @@ export const ingestionEvents = pgTable(
       table.source,
       table.externalRef,
     ),
+    // Destino de la clave foránea compuesta del pedido que creó un evento: un pedido no puede
+    // apuntar al evento de otra organización (brief-19.4, D-4).
+    unique("ingestion_events_organization_id_id_unique").on(
+      table.organizationId,
+      table.id,
+    ),
     // Métrica 12.
     index("ingestion_events_organization_received_idx").on(
       table.organizationId,

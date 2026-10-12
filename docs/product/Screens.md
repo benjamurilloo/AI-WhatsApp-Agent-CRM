@@ -286,7 +286,7 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 
 - **Objetivo**: encontrar un pedido.
 - **Usuario autorizado**: `admin` y `viewer`; el botón «+ Nuevo pedido», solo `admin`.
-- **Información mostrada**: número, fecha, cliente, cantidad de líneas, total y estado (con ícono y texto).
+- **Información mostrada**: número, fecha, cliente, cantidad de líneas, total y estado (con ícono y texto). *Desde la 19.4* ([brief-19.4](../decisions/brief-19.4-el-pedido-del-agente.md), D-11; FR-ORD-11), el origen: «Agente» si lo dejó el agente y «Equipo» si se cargó en la app; en móvil, «Agente» al final de la tarjeta.
 - **Filtros**: estado (todos, pendientes, cancelados; confirmados y entregados desde la 19.3) y búsqueda por número (`P-000123`, `000123` o `123`). Desde la ficha de un cliente llega filtrada por él, con un enlace para ver los de todos.
 - **Paginación**: 25 por página, del más reciente al más viejo.
 - **Vacío**: «Todavía no hay pedidos.»; con filtros, «Ningún pedido coincide con estos filtros.»
@@ -315,4 +315,5 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 - **Acciones**: cancelar un pendiente, con confirmación.
 
 *Desde la 19.3* ([brief-19.3](../decisions/brief-19.3-reserva-y-ciclo.md), D-8 y D-9; FR-ORD-08 a 10): para `admin`, «Confirmar pedido» y «Cancelar pedido» en un pendiente, y «Marcar entregado» y «Cancelar pedido» en un confirmado; nada en un entregado o un cancelado. Cada uno con una confirmación que dice qué pasa con el stock. Un pendiente suma la columna «Disponible» por línea, para los dos roles, con «No alcanza» en las que no alcanzan. Un rechazo por falta de stock o por un producto desactivado se anuncia con `role="alert"` y nombra cada línea. La lista (pantalla 14) filtra también por confirmados y entregados.
+*Desde la 19.4* (D-11; FR-ORD-11): la tarjeta «Estado» muestra el origen, «Agente · <emisor>» con el `source` de la credencial o «Equipo», y la historia muestra a la credencial como «Servicio · <emisor>». Un pedido del agente se confirma, entrega y cancela igual que cualquier otro.
 - **No mostrar**: editar ni borrar el pedido o sus líneas; costo ni margen.

@@ -494,3 +494,87 @@ describe(
     });
   },
 );
+
+describe(
+  "endpoint de ingestión v2: el pedido del agente (brief-19.4)",
+  { timeout: TEST_TIMEOUT },
+  () => {
+    const placed = () => fixture("v2", "valid-order-placed");
+
+    // Los dos productos del vector, con precio en ARS, en la organización A.
+    async function catalog() {
+      const user = await getDb().execute<{ id: string }>(
+        sql`insert into users (email, password_hash, name)
+            values ('precios@example.com', 'x', 'Admin') returning id`,
+      );
+      for (const [index, line] of placed().lines.entries()) {
+        await getDb().execute(
+          sql`insert into products (id, organization_id, sku, name)
+              values (${line.product_id}, ${orgA}, ${`P-${index}`}, 'Producto')`,
+        );
+        await getDb().execute(
+          sql`insert into product_prices (organization_id, product_id, amount, currency, created_by)
+              values (${orgA}, ${line.product_id}, 100, 'ARS', ${user.rows[0]!.id})`,
+        );
+      }
+    }
+
+    it("D-6: responde 200 con el número, y el mismo número en el reenvío", async () => {
+      await send(emitter.token, clientEvent());
+      await catalog();
+
+      const accepted = await send(emitter.token, placed(), {
+        "x-correlation-id": "turno-pedido",
+      });
+      expect(accepted.status).toBe(200);
+      expect(accepted.headers.get("x-correlation-id")).toBe("turno-pedido");
+      expect(await accepted.json()).toStrictEqual({
+        contract_version: "2",
+        event_id: "evt-v2-pedido-0001",
+        result: "accepted",
+        order: { number: "P-000001" },
+      });
+
+      const again = await send(emitter.token, placed());
+      expect(again.status).toBe(200);
+      expect(await again.json()).toStrictEqual({
+        contract_version: "2",
+        event_id: "evt-v2-pedido-0001",
+        result: "duplicate",
+        order: { number: "P-000001" },
+      });
+    });
+
+    it("D-6: una regla responde 422 con rule; la forma, 400 con lines; v1 rechaza el tipo", async () => {
+      await catalog();
+      const missing = await send(emitter.token, placed());
+      expect(missing.status).toBe(422);
+      expect(await missing.json()).toStrictEqual({
+        code: "BUSINESS_RULE_VIOLATION",
+        request_id: expect.any(String),
+        rule: "client_not_found",
+      });
+
+      const repeated = await send(
+        emitter.token,
+        fixture("v2", "invalid-order-repeated-product"),
+      );
+      expect(repeated.status).toBe(400);
+      expect(await repeated.json()).toMatchObject({
+        code: "VALIDATION_ERROR",
+        fields: ["lines"],
+      });
+
+      const v1 = await sendV1(emitter.token, {
+        ...placed(),
+        contract_version: "1",
+        event_id: "evt-v1-pedido",
+      });
+      expect(v1.status).toBe(400);
+      expect(await v1.json()).toMatchObject({
+        code: "VALIDATION_ERROR",
+        fields: expect.arrayContaining(["event_type"]),
+      });
+    });
+  },
+);

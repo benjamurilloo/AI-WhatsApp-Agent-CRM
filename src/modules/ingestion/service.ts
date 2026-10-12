@@ -12,6 +12,10 @@ import {
   resolveClientByPhone,
   type ResolvedClient,
 } from "@/modules/crm";
+import {
+  findOrderPlacedByIngestion,
+  placeOrderFromIngestion,
+} from "@/modules/orders";
 import type { DbTransaction } from "@/shared/db";
 import type { Failure } from "@/shared/errors";
 import {
@@ -36,6 +40,7 @@ import {
   type IngestionEventV2,
   type IngestionFieldV2,
   type MessageRecordedEventV2,
+  type OrderPlacedEventV2,
 } from "./contract-v2";
 import * as repository from "./repository";
 
@@ -48,7 +53,8 @@ import * as repository from "./repository";
 // credencial como actor. Desde la 12.2 (D-1), conversation.resolved registra un mensaje entrante
 // en la conversación vigente del cliente o en una nueva, y conversation.escalated (D-6) deriva una
 // conversación a una persona, auditada con la credencial. Desde la 16.2, client.tag_added y
-// client.tag_removed ponen y quitan una etiqueta del catálogo, solo en v2.
+// client.tag_removed ponen y quitan una etiqueta del catálogo, solo en v2. Desde la 19.4,
+// order.placed deja un pedido pendiente en orders, también solo en v2.
 
 // Desde la 12.3 (D-1), el contrato v2 entra por recordIngestionEventV2 con el mismo ledger y la
 // misma proyección. Lo único que cambia según la versión es el CONFLICT: v2 dice por qué (D-7).
@@ -100,8 +106,21 @@ export type ClientTagAccepted = {
   eventType: ClientTagEventV2["event_type"];
 };
 
+// order.placed (brief-19.4, D-6): siempre 200, con el número del pedido. order es null solo en un
+// reenvío cuyo evento no tiene pedido, que no debería pasar.
+export type OrderPlacedAccepted = {
+  ok: true;
+  result: "accepted" | "duplicate";
+  eventId: string;
+  order: { number: number; displayNumber: string } | null;
+};
+
 export type IngestionAccepted =
-  MessageAccepted | ClientAccepted | ConversationAccepted | ClientTagAccepted;
+  | MessageAccepted
+  | ClientAccepted
+  | ConversationAccepted
+  | ClientTagAccepted
+  | OrderPlacedAccepted;
 
 // Reglas de negocio de los tipos nuevos (brief-12.2, C-2): responden 422 y quedan como failed con
 // la regla en error_code, para que un reenvío responda la misma (decisión del usuario del
@@ -113,6 +132,12 @@ export const INGESTION_RULES = [
   // Desde la 16.2 (D-6), de client.tag_added y client.tag_removed.
   "tag_not_found",
   "client_tag_limit",
+  // Desde la 19.4 (D-6), de order.placed, que también usa client_not_found.
+  "client_inactive",
+  "product_not_found",
+  "product_without_price",
+  "currency_mismatch",
+  "amount_out_of_range",
 ] as const;
 export type IngestionRule = (typeof INGESTION_RULES)[number];
 
@@ -188,9 +213,24 @@ async function duplicate(
   tx: DbTransaction,
   context: IngestionContext,
   event: IngestionEvent,
+  storedId: string,
 ): Promise<IngestionAccepted> {
   if (event.event_type === "message.recorded") {
     return messageAccepted(event, "duplicate");
+  }
+  if (event.event_type === "order.placed") {
+    // El mismo número que la primera vez, por el vínculo del pedido con su evento, sin escribir
+    // (brief-19.4, D-6).
+    return {
+      ok: true,
+      result: "duplicate",
+      eventId: event.event_id,
+      order: await findOrderPlacedByIngestion(
+        tx,
+        context.organizationId,
+        storedId,
+      ),
+    };
   }
   if (isClientTagEvent(event)) {
     // Sin leer ni escribir: la respuesta no lleva datos del cliente (brief-16.2, D-5).
@@ -405,6 +445,40 @@ async function projectClientTag(
   return clientTagAccepted(event, "accepted");
 }
 
+// El pedido pendiente del agente (brief-19.4): orders busca y bloquea al cliente por teléfono, aplica
+// las reglas del alta y audita con la credencial. Un rechazo queda failed con la regla (D-6) y no
+// escribe nada en orders.
+async function projectOrderPlaced(
+  tx: DbTransaction,
+  context: IngestionContext,
+  reserved: string,
+  event: OrderPlacedEventV2,
+): Promise<RecordIngestionEventResult> {
+  if (!context.credentialId) {
+    throw new Error("order.placed sin credencial para auditar");
+  }
+  const placed = await placeOrderFromIngestion(tx, {
+    organizationId: context.organizationId,
+    credentialId: context.credentialId,
+    ingestionEventId: reserved,
+    phoneE164: event.client.phone,
+    lines: event.lines.map((line) => ({
+      productId: line.product_id,
+      quantity: line.quantity,
+    })),
+  });
+  if (!placed.ok) return rejectByRule(tx, context, reserved, placed.rule);
+  await repository.finishEvent(tx, context.organizationId, reserved, {
+    status: "processed",
+  });
+  return {
+    ok: true,
+    result: "accepted",
+    eventId: event.event_id,
+    order: placed.order,
+  };
+}
+
 async function projectClient(
   tx: DbTransaction,
   context: IngestionContext,
@@ -495,7 +569,7 @@ async function recordEvent(
         }
         const outcome = existingEventOutcome(stored, payloadHash);
         if (outcome.kind === "duplicate") {
-          return duplicate(tx, context, event);
+          return duplicate(tx, context, event, stored.id);
         }
         if (outcome.kind === "failed" && outcome.errorCode === "CONFLICT") {
           return { ok: false, code: "CONFLICT", recorded: true };
@@ -546,6 +620,9 @@ async function recordEvent(
       }
       if (isClientTagEvent(event)) {
         return projectClientTag(tx, context, reserved, event);
+      }
+      if (event.event_type === "order.placed") {
+        return projectOrderPlaced(tx, context, reserved, event);
       }
       return projectClient(tx, context, reserved, event);
     },

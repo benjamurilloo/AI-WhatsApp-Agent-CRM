@@ -10,11 +10,13 @@
 
 - *Desde la 16.2* ([brief-16.2](../decisions/brief-16.2-etiquetas-puestas-por-el-agente.md)): **dos tipos nuevos, solo en v2**, para poner y quitar una etiqueta del catálogo en un cliente (§Etiquetas). **Diseñados, implementados y validados localmente** con requests sintéticos, y desplegados en producción el 2026-10-07 (16.2.2). **Validados en integración** con el agente como emisor real en la organización de demostración de producción (16.2.3, `producer-consumer`, 2026-10-07): 8 eventos conciliados contra `ingestion_events`, las asignaciones y la auditoría, para poner, quitar, `accepted` sin escritura y `tag_not_found`. `client_not_found` y `client_tag_limit` no ocurrieron: quedan validadas localmente. Los `client.tag_removed` los mandó un llamador de prueba del agente, no un turno.
 
+- *Desde la 19.4* ([brief-19.4](../decisions/brief-19.4-el-pedido-del-agente.md)): **un tipo nuevo, solo en v2**, para dejar un pedido pendiente (§Pedidos). **Diseñado, implementado y validado localmente** con requests sintéticos (19.4.1). **No** está desplegado ni validado con el agente: eso es la 19.4.2 y la 19.4.3.
+
 *Hasta la 12.5 este párrafo decía que el emisor seguía sin cablear a su pipeline; actualizado por la revisión independiente de la 12.5 (R-2).* En `tests/fixtures/ingestion/v2/` conviven los fixtures de **forma asumida** (`"shape": "assumed"`, los vectores del contrato) y **seis capturas del agente** (`"shape": "captured"`), que guardan el cuerpo tal como llegó a staging. Este contrato no deriva de la forma de eventos de ningún sistema existente.
 
 ## Qué cambia respecto de v1
 
-v2 es la misma superficie de escritura que [v1](ingestion-v1.md), en otra ruta, con los mismos cuatro eventos. *Desde la 16.2* suma dos que v1 no tiene: `client.tag_added` y `client.tag_removed` (§Etiquetas). **v1 sigue funcionando igual**, congelada. Todo lo que este documento no menciona rige como en v1: referencias opacas, fechas, texto, tamaño, identidad, idempotencia, algoritmo del hash, reglas de negocio (`422`), vigencia de la conversación y proyección.
+v2 es la misma superficie de escritura que [v1](ingestion-v1.md), en otra ruta, con los mismos cuatro eventos. *Desde la 16.2* suma dos que v1 no tiene: `client.tag_added` y `client.tag_removed` (§Etiquetas). *Desde la 19.4*, un tercero: `order.placed` (§Pedidos). **v1 sigue funcionando igual**, congelada. Todo lo que este documento no menciona rige como en v1: referencias opacas, fechas, texto, tamaño, identidad, idempotencia, algoritmo del hash, reglas de negocio (`422`), vigencia de la conversación y proyección.
 
 | | v1 | v2 |
 |---|---|---|
@@ -26,6 +28,7 @@ v2 es la misma superficie de escritura que [v1](ingestion-v1.md), en otra ruta, 
 | `CONFLICT` | sin motivo | con `reason`, también al reenviar |
 | Correlación | no existe | `X-Correlation-Id`, validado antes del límite de tasa |
 | Etiquetas del cliente (16.2) | no existen: un `client.tag_added` da `400` en `event_type` | `client.tag_added` y `client.tag_removed` |
+| Pedido pendiente (19.4) | no existe: un `order.placed` da `400` en `event_type` | `order.placed` |
 
 ## Transporte
 
@@ -219,9 +222,79 @@ Lo que hace el emisor ante un `422` es lo de la guía: no reenvía el mismo `eve
 
 `payload_hash`: `c2f240f686edbefd11e66c132ea51af6e0fd66e9f3c3c32ba135ff5ac03b7ef2`. Los dos hashes se calcularon sobre este texto, escrito a mano, con `sha256sum`.
 
+## Pedidos (desde la 19.4)
+
+[brief-19.4](../decisions/brief-19.4-el-pedido-del-agente.md), D-1 a D-13; [ADR 0020](../decisions/0020-el-pedido.md), punto 9. Un tipo que **solo existe en v2**: v1 está congelada y lo rechaza como cualquier `event_type` desconocido. Agregarlo es un cambio compatible dentro de v2 (§Versionado).
+
+**Qué hace**: deja un pedido **pendiente** a nombre del cliente, con el número `P-000123` de la organización, **la credencial como actor** y el evento que lo creó guardado en el pedido. **El emisor nunca lo confirma, lo entrega ni lo cancela**, y nunca registra un cobro: eso lo hace una persona desde la app. Cuándo mandarlo lo decide el emisor; el agente informó que lo manda en el turno siguiente al «sí» del cliente a un resumen cerrado.
+
+| Campo | Tipo | Nulable | Reglas |
+|---|---|---|---|
+| `event_type` | string | no | `"order.placed"` |
+| `client.phone` | string | no | E.164, como en las etiquetas. Es el único campo de `client` |
+| `lines` | arreglo | no | de **1 a 10** líneas, sin repetir un producto. Un producto repetido es un defecto del emisor, que suma las cantidades en una línea, y da `400` (D-3) |
+| `lines[].product_id` | string | no | el id del CRM del producto, un uuid, leído de la [lectura](read-v1.md). En minúsculas, como lo devuelve la lectura |
+| `lines[].quantity` | string | no | un decimal **en texto**, nunca un número de JSON: mayor que cero, con punto y hasta tres decimales, sin ceros a la izquierda y hasta `99999999999.999`, como `quantity_available` de la lectura |
+
+**El `product_id` va en minúsculas, tal como lo devuelve la lectura** (revisión independiente de la 19.4.1, R-5). El validador acepta un uuid en mayúsculas y el producto es el mismo, pero el contenido no: el mismo `event_id` con otra capitalización da `409 event_payload_mismatch`, como en las etiquetas.
+
+**Sin precios**: el CRM copia el precio vigente de cada producto al crear el pedido, y nunca lo recalcula. Un campo de más en una línea, como un precio, da `400` con `lines`. Todo `400` dentro de las líneas nombra el campo `lines`, sin la posición. `event_id` y `occurred_at` siguen las reglas de los demás tipos. **El cliente tiene que existir**: el evento nunca lo crea; para eso está `client.resolved`, y vale el mismo orden que en las etiquetas (§Etiquetas).
+
+**No mira el stock** (D-8): un pendiente no reserva nada, así que se acepta aunque no alcance. Lo frena, si corresponde, la confirmación de la persona. «Anotado» no es «reservado».
+
+**Un pendiente igual a otro se acepta** (D-9): dos eventos con las mismas líneas, con dos `event_id` distintos, crean dos pedidos. Una persona los ve en la lista con su origen y cancela uno.
+
+**Respuesta** (D-6): siempre `200`, con el número y nada más del pedido:
+
+```json
+{ "contract_version": "2", "event_id": "evt-v2-pedido-0001", "result": "accepted", "order": { "number": "P-000001" } }
+```
+
+- `accepted`: el pedido quedó creado.
+- `duplicate`: el reenvío idéntico, **con el mismo número**, sin escribir. `order` sería `null` solo si el evento procesado no tuviera pedido, lo que no pasa: el pedido y el estado del evento se escriben en la misma transacción.
+
+**Reglas de negocio** (D-6): `422 BUSINESS_RULE_VIOLATION`, **terminales**, con **una sola** regla en `rule` y en `error_code`; un reenvío responde la misma, aunque ya se cumpla. Un rechazo no crea el pedido ni consume un número.
+
+| `rule` | Cuándo |
+|---|---|
+| `client_not_found` | el teléfono no es de ningún cliente de la organización |
+| `client_inactive` | el cliente está desactivado |
+| `product_not_found` | un producto no existe, es de otra organización o está inactivo, **sin distinguir**, como el `404` de la lectura |
+| `product_without_price` | un producto no tiene precio vigente |
+| `currency_mismatch` | los precios de las líneas están en monedas distintas: un pedido tiene una sola, la de su primera línea |
+| `amount_out_of_range` | el total de una línea redondea a cero, o una línea o el total no caben en `numeric(14, 2)` |
+
+**Precedencia**: primero el cliente; después las líneas en su orden, y dentro de cada línea las reglas en el orden de la tabla. Se responde la primera que falla.
+
+**Qué hace el emisor ante un `422`** (D-10): lo de la guía (no reenvía el mismo `event_id`) y, como el cliente ya escuchó que su pedido quedó anotado, **deriva la conversación** con `conversation.escalated`, para que una persona lo vea en la app. El CRM no guarda el contenido rechazado.
+
+**No cuenta en la métrica 12** (D-13): no es un mensaje ([MetricsCatalog](../analytics/MetricsCatalog.md) §12).
+
+**`order.placed`**:
+
+```json
+{
+  "contract_version": "2",
+  "event_type": "order.placed",
+  "event_id": "evt-v2-pedido-0001",
+  "occurred_at": "2026-09-16T12:00:16-03:00",
+  "client": { "phone": "+5491155550001" },
+  "lines": [
+    { "product_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7", "quantity": "2" },
+    { "product_id": "9b2f4d1a-6c3e-4f8a-b5d7-2e1c0a9f8b6d", "quantity": "1.5" }
+  ]
+}
+```
+
+```text
+{"client":{"phone":"+5491155550001"},"contract_version":"2","event_id":"evt-v2-pedido-0001","event_type":"order.placed","lines":[{"product_id":"7c9e6679-7425-40de-944b-e07fc1f90ae7","quantity":"2"},{"product_id":"9b2f4d1a-6c3e-4f8a-b5d7-2e1c0a9f8b6d","quantity":"1.5"}],"occurred_at":"2026-09-16T15:00:16.000Z"}
+```
+
+`payload_hash`: `9c312d278d0e5a3fb0d212270a8940fe75cae1e169b7bf3b6059d753e5f49fab`, calculado sobre este texto, escrito a mano, con `sha256sum`. Las líneas conservan el orden en que llegan: otro orden es otro contenido.
+
 ## Respuestas
 
-- **Éxito y reenvío**: las formas y los códigos de v1 para cada evento, con `"contract_version": "2"`. `message.recorded` responde `201` al aceptar y `200` al reenvío; los otros tres, y desde la 16.2 los dos de etiquetas, siempre `200`.
+- **Éxito y reenvío**: las formas y los códigos de v1 para cada evento, con `"contract_version": "2"`. `message.recorded` responde `201` al aceptar y `200` al reenvío; los otros tres, desde la 16.2 los dos de etiquetas y desde la 19.4 el pedido, siempre `200`.
 - **Errores**: la tabla de v1, con dos diferencias: el campo `correlation_id` en `VALIDATION_ERROR` y el `reason` del `409`.
 
 ### `CONFLICT` con motivo (brief-12.3, D-7)
@@ -256,7 +329,7 @@ El cuerpo del `409` es `{ "code": "CONFLICT", "request_id", "reason" }`.
 | `409` con `event_payload_mismatch` | el emisor armó dos contenidos con el mismo `event_id` | **alerta**: es un defecto del emisor, y el segundo contenido no se guardó |
 | `400 VALIDATION_ERROR` | el evento o la correlación son inválidos | no reenvía el mismo: corrige y manda uno nuevo |
 | `401`, `403` o `404` | credencial, alcance, allowlist o endpoint apagado | no reenvía hasta corregir la configuración: **retiene** el evento, avisa y lo reenvía igual cuando la configuración se corrige. **Nunca lo descarta** |
-| `422 BUSINESS_RULE_VIOLATION` | una regla de negocio, con `rule`; es **terminal** | no reenvía el mismo `event_id`: corrige la causa y manda un evento nuevo |
+| `422 BUSINESS_RULE_VIOLATION` | una regla de negocio, con `rule`; es **terminal** | no reenvía el mismo `event_id`: corrige la causa y manda un evento nuevo. *Desde la 19.4*, ante un `422` de `order.placed`, además deriva la conversación (§Pedidos) |
 
 *Aclarado el 2026-09-27 por la 12.5* ([brief-12.5](../decisions/brief-12.5-turno-completo-en-staging.md), a partir del hallazgo H-5 del emisor, con la aprobación del usuario). La fila de `401`, `403` y `404` decía solo «no reenvía hasta corregir la configuración». Se leyó como «el evento se descarta», y con esa lectura, **apagar la ingestión para mantenimiento hace perder mensajes**. No es lo que quería decir:
 
@@ -288,4 +361,5 @@ Las reglas de v1: agregar un `event_type` o un canal que el modelo admita es com
 - **Validado en staging** (12.3.2): el borde real con requests sintéticos, en [evidencia-12.3](../decisions/evidencia-12.3-ingestion-v2.md).
 - **Validado en integración** (12.3.3, O-35): la autenticación y el validador con el tráfico del agente, cruzados con el log, las filas, el `payload_hash` y el dashboard, en la misma evidencia.
 - **Etiquetas, desde la 16.2** (`deterministic`): `contract-v2.test.ts` con los dos vectores y la validación; `client-tags-ingestion.test.ts`, contra PostgreSQL real, con las tres reglas, los reenvíos, el actor, la concurrencia con la ficha y el aislamiento; `analytics-ingestion.test.ts`, fuera de la métrica 12. Fixtures de forma asumida. **Validado en integración** con el agente como emisor real, en la ventana 16.2.3 de la organización de demostración de producción ([brief-16.2](../decisions/brief-16.2-etiquetas-puestas-por-el-agente.md), §Resultados 16.2.3).
+- **Pedido del agente, desde la 19.4** (`deterministic`): `contract-v2.test.ts` con el vector y cada `400` de las líneas; `orders-agent.test.ts`, contra PostgreSQL real, con la proyección, el reenvío con el mismo número, cada regla con su precedencia, la concurrencia con la desactivación y el cambio de precio, y el aislamiento; `ingestion-v2-http.test.ts` con las respuestas; `analytics-ingestion.test.ts`, fuera de la métrica 12. Fixtures de forma asumida. **Sin validar con el agente** (19.4.3).
 - **Sin validar**: un turno que haya recorrido la cadena real del agente, la referencia que el CRM devuelve distinta de la propuesta, y los dos `409` con el emisor real.

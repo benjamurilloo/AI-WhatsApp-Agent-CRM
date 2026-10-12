@@ -1,11 +1,12 @@
-// Interfaz pública del módulo orders: el pedido de un cliente (brief-19.2; ADR 0020) y, desde la
-// 19.3, sus transiciones.
+// Interfaz pública del módulo orders: el pedido de un cliente (brief-19.2; ADR 0020), desde la
+// 19.3 sus transiciones y, desde la 19.4, el pendiente que deja el agente por ingestion.
 export {
   cancelOrder,
   confirmOrder,
   CLIENT_ORDERS_LIMIT,
   createOrder,
   deliverOrder,
+  findOrderPlacedByIngestion,
   formatOrderNumber,
   getOrder,
   listOrderAudit,
@@ -15,6 +16,9 @@ export {
   ORDER_STATUSES,
   ORDERS_PAGE_SIZE,
   parseOrderNumberSearch,
+  placeOrderFromIngestion,
+  type AgentOrderLineInput,
+  type AgentOrderRule,
   type CancelOrderResult,
   type CreateOrderResult,
   type OrderAuditEntry,
@@ -34,4 +38,5 @@ export {
   type OrderTransitionResult,
   type OrderSummary,
   type OrderValidationFailure,
+  type PlaceAgentOrderResult,
 } from "./service";

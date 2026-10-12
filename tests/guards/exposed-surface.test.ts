@@ -210,6 +210,20 @@ const HANDLERS: Readonly<Record<string, Entry>> = {
     requirement: "sin-sesion",
     why: "cantidad disponible de la API de lectura (brief-16.6, D-2 y D-5): autentica con una credencial de alcance read, apagada salvo READ_API_ENABLED, una sesión válida no la autentica, y no devuelve el punto de reposición ni los movimientos",
   },
+  // La lectura v2 de productos (brief-19.4, D-12): el mismo borde que v1, con el estado de lo
+  // disponible.
+  "src/app/api/read/v2/products/route.ts": {
+    requirement: "sin-sesion",
+    why: "API de lectura v2 (brief-19.4, D-12): el borde de v1, con una credencial de alcance read, apagada salvo READ_API_ENABLED, y una sesión válida no la autentica",
+  },
+  "src/app/api/read/v2/products/[productId]/route.ts": {
+    requirement: "sin-sesion",
+    why: "API de lectura v2 (brief-19.4, D-12): el borde de v1, con una credencial de alcance read, apagada salvo READ_API_ENABLED, y una sesión válida no la autentica",
+  },
+  "src/app/api/read/v2/products/[productId]/stock/route.ts": {
+    requirement: "sin-sesion",
+    why: "stock de la API de lectura v2 (brief-19.4, D-12): el borde de v1, con una credencial de alcance read; devuelve el físico, lo reservado y lo disponible, sin el punto de reposición ni los movimientos",
+  },
   "src/app/api/read/v1/knowledge/route.ts": {
     requirement: "sin-sesion",
     why: "API de lectura (brief-11.3): autentica con una credencial de alcance read, apagada salvo READ_API_ENABLED, y una sesión válida no la autentica",

@@ -115,6 +115,26 @@ export async function lockClientShared(
   return rows[0];
 }
 
+// Lo mismo por teléfono, para el pedido del agente (brief-19.4, D-7): el mismo modo compartido.
+export async function lockClientSharedByPhoneE164(
+  tx: DbTransaction,
+  organizationId: string,
+  phoneE164: string,
+): Promise<{ id: string; isActive: boolean } | undefined> {
+  const rows = await tx
+    .select({ id: clients.id, isActive: clients.isActive })
+    .from(clients)
+    .where(
+      and(
+        eq(clients.organizationId, organizationId),
+        eq(clients.phoneE164, phoneE164),
+      ),
+    )
+    .limit(1)
+    .for("share");
+  return rows[0];
+}
+
 export type ActivityFilter = "active" | "inactive" | "all";
 
 // Teléfono exacto o prefijo de nombre, nunca los dos: lo decide el servicio (brief-5.2, D-3).

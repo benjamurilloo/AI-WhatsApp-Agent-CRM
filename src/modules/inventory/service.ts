@@ -39,7 +39,8 @@ const ZERO_BALANCE: repository.Balance = { onHand: "0.000", reserved: "0.000" };
 
 // Desde la 19.3 (ADR 0020, punto 7; brief-19.3, D-10) hay dos derivaciones del estado de stock:
 // las pantallas usan lo disponible (saldo físico menos lo reservado), y las lecturas de servicio
-// del agente siguen con el saldo físico, porque read-v1 no cambia.
+// del agente siguen con el saldo físico, porque read-v1 no cambia. Desde la 19.4 (brief-19.4,
+// D-12), la lectura v2 del agente usa lo disponible, como las pantallas.
 export type ProductStock = Product & {
   quantityOnHand: string;
   quantityReserved: string;
@@ -79,6 +80,32 @@ function withPhysicalStock(
     quantityOnHand,
     stockStatus: deriveStockStatus(
       quantityFromDatabase(quantityOnHand),
+      quantityFromDatabase(product.reorderPoint),
+    ),
+  };
+}
+
+// Lecturas de servicio de la v2 (brief-19.4, D-12): el saldo físico, lo reservado y lo
+// disponible, con el estado derivado de lo disponible.
+function withServiceAvailableStock(
+  product: Pick<Product, "id" | "reorderPoint">,
+  balances: Map<string, repository.Balance>,
+): {
+  quantityOnHand: string;
+  quantityReserved: string;
+  quantityAvailable: string;
+  stockStatus: StockStatus;
+} {
+  const balance = balances.get(product.id) ?? ZERO_BALANCE;
+  const available =
+    quantityFromDatabase(balance.onHand) -
+    quantityFromDatabase(balance.reserved);
+  return {
+    quantityOnHand: balance.onHand,
+    quantityReserved: balance.reserved,
+    quantityAvailable: quantityToDatabase(available),
+    stockStatus: deriveStockStatus(
+      available,
       quantityFromDatabase(product.reorderPoint),
     ),
   };
@@ -269,9 +296,13 @@ export type ServiceCatalogProduct = ServiceProduct & {
   stockStatus: StockStatus;
 };
 
+// La base del estado: el saldo físico para la v1 y lo disponible para la v2 (brief-19.4, D-12).
+type ServiceStockBasis = "physical" | "available";
+
 async function withStockStatus(
   organizationId: string,
   products: ServiceProduct[],
+  basis: ServiceStockBasis,
 ): Promise<ServiceCatalogProduct[]> {
   const balances = await repository.findBalances(
     organizationId,
@@ -279,7 +310,10 @@ async function withStockStatus(
   );
   return products.map((product) => ({
     ...product,
-    stockStatus: withPhysicalStock(product, balances).stockStatus,
+    stockStatus:
+      basis === "available"
+        ? withServiceAvailableStock(product, balances).stockStatus
+        : withPhysicalStock(product, balances).stockStatus,
   }));
 }
 
@@ -288,7 +322,7 @@ export async function searchCatalogForService(
   query: { text: string; limit: number },
 ): Promise<ServiceCatalogProduct[]> {
   const products = await searchActiveProductsForService(organizationId, query);
-  return withStockStatus(organizationId, products);
+  return withStockStatus(organizationId, products, "physical");
 }
 
 export async function getCatalogProductForService(
@@ -297,7 +331,34 @@ export async function getCatalogProductForService(
 ): Promise<ServiceCatalogProduct | null> {
   const product = await getActiveProductForService(organizationId, productId);
   if (!product) return null;
-  const [withStatus] = await withStockStatus(organizationId, [product]);
+  const [withStatus] = await withStockStatus(
+    organizationId,
+    [product],
+    "physical",
+  );
+  return withStatus ?? null;
+}
+
+// Las mismas dos, para la v2: el estado sale de lo disponible (brief-19.4, D-12).
+export async function searchCatalogAvailableForService(
+  organizationId: string,
+  query: { text: string; limit: number },
+): Promise<ServiceCatalogProduct[]> {
+  const products = await searchActiveProductsForService(organizationId, query);
+  return withStockStatus(organizationId, products, "available");
+}
+
+export async function getCatalogProductAvailableForService(
+  organizationId: string,
+  productId: string,
+): Promise<ServiceCatalogProduct | null> {
+  const product = await getActiveProductForService(organizationId, productId);
+  if (!product) return null;
+  const [withStatus] = await withStockStatus(
+    organizationId,
+    [product],
+    "available",
+  );
   return withStatus ?? null;
 }
 
@@ -325,6 +386,31 @@ export async function getProductStockForService(
     unit: product.unit,
     quantityOnHand: stock.quantityOnHand,
     stockStatus: stock.stockStatus,
+  };
+}
+
+// El saldo de un producto activo para la v2 (brief-19.4, D-12): el físico, lo reservado y lo
+// disponible, con el estado de lo disponible. Como getProductStockForService, null sin distinguir.
+export type ServiceProductBalance = {
+  productId: string;
+  unit: string;
+  quantityOnHand: string;
+  quantityReserved: string;
+  quantityAvailable: string;
+  stockStatus: StockStatus;
+};
+
+export async function getProductBalanceForService(
+  organizationId: string,
+  productId: string,
+): Promise<ServiceProductBalance | null> {
+  const product = await getActiveProductForService(organizationId, productId);
+  if (!product) return null;
+  const balances = await repository.findBalances(organizationId, [product.id]);
+  return {
+    productId: product.id,
+    unit: product.unit,
+    ...withServiceAvailableStock(product, balances),
   };
 }
 

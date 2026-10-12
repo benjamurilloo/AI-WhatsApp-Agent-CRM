@@ -13,6 +13,7 @@ import {
   INGESTION_FIELDS_V2,
   ingestionPayloadHashV2,
   isPhoneAsName,
+  MAX_AGENT_ORDER_LINES,
   MESSAGE_KINDS_V2,
   MESSAGE_SENDERS_V2,
   parseIngestionEventV2,
@@ -105,6 +106,24 @@ function tagPayload(
   };
 }
 
+const COFFEE_ID = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+const TEA_ID = "9b2f4d1a-6c3e-4f8a-b5d7-2e1c0a9f8b6d";
+
+// El pedido pendiente del agente (brief-19.4, D-1 a D-3).
+function orderPayload(): Payload {
+  return {
+    contract_version: "2",
+    event_type: "order.placed",
+    event_id: "evt-v2-pedido-0001",
+    occurred_at: "2026-09-16T12:00:16-03:00",
+    client: { phone: "+5491155550001" },
+    lines: [
+      { product_id: COFFEE_ID, quantity: "2" },
+      { product_id: TEA_ID, quantity: "1.5" },
+    ],
+  };
+}
+
 function parse(value: unknown, receivedAt = RECEIVED_AT) {
   return parseIngestionEventV2(JSON.stringify(value), receivedAt);
 }
@@ -158,6 +177,13 @@ const VECTORS = [
     canonical:
       '{"client":{"phone":"+5491155550001"},"contract_version":"2","event_id":"evt-v2-etiqueta-0002","event_type":"client.tag_removed","occurred_at":"2026-09-16T15:00:14.000Z","tag":{"id":"5f0c9a8e-3b1d-4c2a-9e7f-1a2b3c4d5e6f"}}',
     hash: "c2f240f686edbefd11e66c132ea51af6e0fd66e9f3c3c32ba135ff5ac03b7ef2",
+  },
+  {
+    name: "order.placed",
+    payload: orderPayload,
+    canonical:
+      '{"client":{"phone":"+5491155550001"},"contract_version":"2","event_id":"evt-v2-pedido-0001","event_type":"order.placed","lines":[{"product_id":"7c9e6679-7425-40de-944b-e07fc1f90ae7","quantity":"2"},{"product_id":"9b2f4d1a-6c3e-4f8a-b5d7-2e1c0a9f8b6d","quantity":"1.5"}],"occurred_at":"2026-09-16T15:00:16.000Z"}',
+    hash: "9c312d278d0e5a3fb0d212270a8940fe75cae1e169b7bf3b6059d753e5f49fab",
   },
 ];
 
@@ -307,8 +333,8 @@ describe("el teléfono como nombre (D-8)", () => {
 });
 
 describe("reglas heredadas de v1", () => {
-  it("FR-API-07: nombra los campos de v1 más kind y sent_by, y la etiqueta (brief-16.2)", () => {
-    const added = ["message.kind", "message.sent_by", "tag", "tag.id"];
+  it("FR-API-07: nombra los campos de v1 más kind y sent_by, la etiqueta (brief-16.2) y las líneas (brief-19.4)", () => {
+    const added = ["message.kind", "message.sent_by", "tag", "tag.id", "lines"];
     expect(
       INGESTION_FIELDS_V2.filter((field) => !added.includes(field)),
     ).toEqual([...INGESTION_FIELDS]);
@@ -444,6 +470,94 @@ describe("FR-CLI-11: poner y quitar una etiqueta (brief-16.2)", () => {
   it("D-8: los tipos nuevos solo existen en v2; v1 los rechaza como tipo desconocido", () => {
     const v1 = parseIngestionEventV1(
       JSON.stringify({ ...tagPayload(), contract_version: "1" }),
+      RECEIVED_AT,
+    );
+    expect(v1.ok).toBe(false);
+    if (!v1.ok) expect(v1.fields).toContain("event_type");
+  });
+});
+
+describe("brief-19.4: el pedido del agente", () => {
+  const line = (quantity: unknown, product_id: unknown = COFFEE_ID) => ({
+    ...orderPayload(),
+    lines: [{ product_id, quantity }],
+  });
+
+  it("D-2: de 1 a 10 líneas, cada una con un uuid y una cantidad en texto", () => {
+    expect(fieldsOf({ ...orderPayload(), lines: [] })).toEqual(["lines"]);
+    const many = Array.from({ length: MAX_AGENT_ORDER_LINES + 1 }, (_, i) => ({
+      product_id: `7c9e6679-7425-40de-944b-${String(i).padStart(12, "0")}`,
+      quantity: "1",
+    }));
+    expect(fieldsOf({ ...orderPayload(), lines: many })).toEqual(["lines"]);
+    expect(
+      parse({ ...orderPayload(), lines: many.slice(0, MAX_AGENT_ORDER_LINES) })
+        .ok,
+    ).toBe(true);
+    expect(fieldsOf(line("1", "café"))).toEqual(["lines"]);
+    expect(fieldsOf({ ...orderPayload(), lines: undefined })).toEqual([
+      "lines",
+    ]);
+  });
+
+  it("D-2: la cantidad es un decimal en texto, mayor que cero, con hasta tres decimales", () => {
+    for (const valid of ["1", "2.5", "0.001", "99999999999.999", "10"]) {
+      expect(parse(line(valid)).ok).toBe(true);
+    }
+    for (const invalid of [
+      2,
+      "0",
+      "0.000",
+      "-1",
+      "1.2345",
+      "1,5",
+      "01",
+      "1e3",
+      " 1",
+      "100000000000",
+      "",
+    ]) {
+      expect(fieldsOf(line(invalid))).toEqual(["lines"]);
+    }
+  });
+
+  it("D-3: un producto repetido da 400, también con otra capitalización", () => {
+    expect(
+      fieldsOf({
+        ...orderPayload(),
+        lines: [
+          { product_id: COFFEE_ID, quantity: "1" },
+          { product_id: COFFEE_ID.toUpperCase(), quantity: "2" },
+        ],
+      }),
+    ).toEqual(["lines"]);
+  });
+
+  it("D-1 y D-6: sin precios ni campos de más; el cliente solo por teléfono", () => {
+    expect(
+      fieldsOf({
+        ...orderPayload(),
+        lines: [{ product_id: COFFEE_ID, quantity: "1", unit_price: "10" }],
+      }),
+    ).toEqual(["lines"]);
+    expect(
+      fieldsOf({
+        ...orderPayload(),
+        client: { phone: "+5491155550001", display_name: "Ana" },
+      }),
+    ).toEqual(["client"]);
+    expect(fieldsOf({ ...orderPayload(), client: undefined })).toEqual([
+      "client",
+    ]);
+    expect(fieldsOf({ ...orderPayload(), message: {} })).toEqual(["event"]);
+    expect(
+      fieldsOf({ ...orderPayload(), occurred_at: "2026-09-16T15:05:01.000Z" }),
+    ).toEqual(["occurred_at"]);
+  });
+
+  it("solo existe en v2: v1 lo rechaza como tipo desconocido", () => {
+    const v1 = parseIngestionEventV1(
+      JSON.stringify({ ...orderPayload(), contract_version: "1" }),
       RECEIVED_AT,
     );
     expect(v1.ok).toBe(false);

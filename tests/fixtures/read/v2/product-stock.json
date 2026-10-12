@@ -1,0 +1,24 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: ningún consumidor real leyó esta respuesta (brief-19.4, D-12). La 19.4.3 la contrasta con lo que lea el agente.",
+  "description": "El stock del mismo producto: el físico, lo reservado por pedidos confirmados y lo disponible, con el estado de lo disponible.",
+  "request": {
+    "method": "GET",
+    "path": "/api/read/v2/products/0b6f3c2e-5a4d-4e8f-9c1b-2a3d4e5f6a7b/stock",
+    "headers": {
+      "authorization": "Bearer crm_read_<token>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "contract_version": "2",
+      "product_id": "0b6f3c2e-5a4d-4e8f-9c1b-2a3d4e5f6a7b",
+      "quantity_on_hand": "10",
+      "quantity_reserved": "8",
+      "quantity_available": "2",
+      "unit": "unidad",
+      "stock_status": "bajo_stock"
+    }
+  }
+}

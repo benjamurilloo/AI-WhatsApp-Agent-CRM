@@ -117,6 +117,19 @@ function acceptedResponse(
       { status: 200, headers },
     );
   }
+  if ("order" in accepted) {
+    // El pedido del agente, solo en v2 (brief-19.4, D-6): siempre 200, con el número y nada más.
+    // v1 nunca llega acá.
+    return Response.json(
+      {
+        contract_version: edge.contractVersion,
+        event_id: accepted.eventId,
+        result: accepted.result,
+        order: accepted.order && { number: accepted.order.displayNumber },
+      },
+      { status: 200, headers },
+    );
+  }
   if ("conversation" in accepted) {
     // Siempre 200, con la referencia de la conversación y sin el id interno ni el teléfono
     // (brief-12.2, D-5).

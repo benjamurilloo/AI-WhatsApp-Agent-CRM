@@ -16,7 +16,8 @@ import {
 // Contrato de ingestión v2: docs/contracts/ingestion-v2.md (brief-12.3). Los cuatro tipos de
 // evento de v1, con el tipo original del mensaje (kind, D-2) y el autor de una salida (sent_by,
 // D-3). Las referencias, las fechas, el texto y el hash siguen las reglas de v1, que no cambia. Desde
-// la 16.2, dos tipos que solo existen en v2: poner y quitar una etiqueta en un cliente.
+// la 16.2, dos tipos que solo existen en v2: poner y quitar una etiqueta en un cliente. Desde la
+// 19.4, un tercero: el pedido pendiente que deja el agente.
 
 export const INGESTION_CONTRACT_VERSION_V2 = "2";
 
@@ -32,7 +33,7 @@ export const MESSAGE_KINDS_V2 = [
 export const MESSAGE_SENDERS_V2 = ["agent", "person"] as const;
 
 // Campos que puede nombrar un VALIDATION_ERROR de v2, en orden fijo: los de v1 más kind y sent_by,
-// y desde la 16.2 la etiqueta.
+// desde la 16.2 la etiqueta y desde la 19.4 las líneas del pedido, que se nombran juntas.
 export const INGESTION_FIELDS_V2 = [
   "body",
   "event",
@@ -56,6 +57,7 @@ export const INGESTION_FIELDS_V2 = [
   "client.display_name",
   "tag",
   "tag.id",
+  "lines",
 ] as const;
 
 export type IngestionFieldV2 = (typeof INGESTION_FIELDS_V2)[number];
@@ -147,6 +149,38 @@ const clientTagSchema = z.strictObject({
   }),
 });
 
+// El pedido pendiente del agente (brief-19.4, D-1 a D-3): el cliente por teléfono, que tiene que
+// existir, y de 1 a 10 líneas con el id del producto, leído de la lectura, y la cantidad en texto,
+// como quantity_available: mayor que cero, con hasta tres decimales y dentro de numeric(14, 3). Sin
+// precios: los copia el CRM. Un producto repetido es un defecto del emisor y da 400 (D-3).
+export const ORDER_PLACED_EVENT_TYPE_V2 = "order.placed";
+export const MAX_AGENT_ORDER_LINES = 10;
+
+const QUANTITY_TEXT = /^(?:0|[1-9]\d{0,10})(?:\.\d{1,3})?$/;
+const quantityText = z
+  .string()
+  .regex(QUANTITY_TEXT)
+  .refine((value) => /[1-9]/.test(value));
+
+const orderPlacedSchema = z.strictObject({
+  contract_version: z.literal(INGESTION_CONTRACT_VERSION_V2),
+  event_type: z.literal(ORDER_PLACED_EVENT_TYPE_V2),
+  event_id: externalRef,
+  occurred_at: timestamp,
+  client: z.strictObject({
+    phone: z.string().regex(E164),
+  }),
+  lines: z
+    .array(
+      z.strictObject({
+        product_id: z.uuid(),
+        quantity: quantityText,
+      }),
+    )
+    .min(1)
+    .max(MAX_AGENT_ORDER_LINES),
+});
+
 export type MessageRecordedEventV2 = z.infer<typeof messageRecordedSchema>;
 export type ClientResolvedEventV2 = z.infer<typeof clientResolvedSchema>;
 export type ConversationResolvedEventV2 = z.infer<
@@ -156,12 +190,14 @@ export type ConversationEscalatedEventV2 = z.infer<
   typeof conversationEscalatedSchema
 >;
 export type ClientTagEventV2 = z.infer<typeof clientTagSchema>;
+export type OrderPlacedEventV2 = z.infer<typeof orderPlacedSchema>;
 export type IngestionEventV2 =
   | MessageRecordedEventV2
   | ClientResolvedEventV2
   | ConversationResolvedEventV2
   | ConversationEscalatedEventV2
-  | ClientTagEventV2;
+  | ClientTagEventV2
+  | OrderPlacedEventV2;
 
 export type ParseIngestionEventV2Result =
   | { ok: true; event: IngestionEventV2 }
@@ -202,9 +238,14 @@ export function parseIngestionEventV2(
     return invalid(["body"]);
   }
 
+  // Un problema dentro de las líneas se informa como lines, sin la posición (brief-19.4, D-2).
   const fieldsOf = (issues: z.core.$ZodIssue[]) =>
     issues.map((issue) =>
-      issue.path.length === 0 ? "event" : issue.path.join("."),
+      issue.path.length === 0
+        ? "event"
+        : issue.path[0] === "lines"
+          ? "lines"
+          : issue.path.join("."),
     );
   const latest = receivedAt.getTime() + MAX_CLOCK_SKEW_MS;
   const late = (value: string) => Date.parse(value) > latest;
@@ -237,6 +278,22 @@ export function parseIngestionEventV2(
       occurred_at: toUtc(parsed.data.occurred_at),
     };
     if (late(event.occurred_at)) return invalid(["occurred_at"]);
+    return { ok: true, event };
+  }
+
+  if (eventType === ORDER_PLACED_EVENT_TYPE_V2) {
+    const parsed = orderPlacedSchema.safeParse(json);
+    if (!parsed.success) return invalid(fieldsOf(parsed.error.issues));
+    const event: OrderPlacedEventV2 = {
+      ...parsed.data,
+      occurred_at: toUtc(parsed.data.occurred_at),
+    };
+    const rejected = new Set<string>();
+    if (late(event.occurred_at)) rejected.add("occurred_at");
+    // El uuid se compara sin mayúsculas: es el mismo producto (D-3).
+    const products = event.lines.map((line) => line.product_id.toLowerCase());
+    if (new Set(products).size !== products.length) rejected.add("lines");
+    if (rejected.size > 0) return invalid(rejected);
     return { ok: true, event };
   }
 

@@ -16,6 +16,10 @@ import {
 import { users } from "@/modules/auth/schema";
 import { products } from "@/modules/catalog/schema";
 import { clients } from "@/modules/crm/schema";
+import {
+  ingestionCredentials,
+  ingestionEvents,
+} from "@/modules/ingestion/schema";
 import { organizations } from "@/modules/organizations/schema";
 
 // docs/architecture/DataModel.md, tablas orders y order_lines (ADR 0020; brief-19.2).
@@ -55,9 +59,13 @@ export const orders = pgTable(
     confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
     deliveredAt: timestamp("delivered_at", { withTimezone: true }),
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
-    createdBy: uuid("created_by")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+    // Quién lo creó: exactamente uno, un usuario o, desde la 19.4, la credencial del agente
+    // (ADR 0020, punto 9; brief-19.4, D-4). Con la credencial va el evento de ingestión que lo creó.
+    createdBy: uuid("created_by").references(() => users.id, {
+      onDelete: "restrict",
+    }),
+    createdByCredentialId: uuid("created_by_credential_id"),
+    ingestionEventId: uuid("ingestion_event_id"),
     // Hora del INSERT: el orden de la lista es el orden en que se crearon, como en
     // product_prices.
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -80,6 +88,30 @@ export const orders = pgTable(
     ),
     // Un pedido no puede apuntar al cliente de otra organización, y un cliente con pedidos no se
     // borra: se vacía (ADR 0020, punto 10).
+    // Las dos, compuestas con la organización: con la columna nula, MATCH SIMPLE no las comprueba.
+    foreignKey({
+      name: "orders_created_by_credential_fk",
+      columns: [table.organizationId, table.createdByCredentialId],
+      foreignColumns: [
+        ingestionCredentials.organizationId,
+        ingestionCredentials.id,
+      ],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "orders_ingestion_event_fk",
+      columns: [table.organizationId, table.ingestionEventId],
+      foreignColumns: [ingestionEvents.organizationId, ingestionEvents.id],
+    }).onDelete("restrict"),
+    // Un evento crea a lo sumo un pedido: el reenvío responde el mismo número (D-6).
+    unique("orders_ingestion_event_unique").on(table.ingestionEventId),
+    check(
+      "orders_one_creator",
+      sql`num_nonnulls(${table.createdBy}, ${table.createdByCredentialId}) = 1`,
+    ),
+    check(
+      "orders_event_iff_credential",
+      sql`(${table.ingestionEventId} is null) = (${table.createdByCredentialId} is null)`,
+    ),
     foreignKey({
       name: "orders_client_fk",
       columns: [table.organizationId, table.clientId],

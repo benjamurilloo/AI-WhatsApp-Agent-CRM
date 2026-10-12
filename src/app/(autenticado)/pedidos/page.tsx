@@ -28,9 +28,11 @@ import {
   type SearchParams,
 } from "./filters";
 import {
+  AGENT_ORIGIN_LABEL,
   FORBIDDEN_PAGE_MESSAGE,
   NO_ORDER_RESULTS_MESSAGE,
   NO_ORDERS_MESSAGE,
+  orderOriginLabel,
   UNKNOWN_CLIENT_TEXT,
 } from "./messages";
 import { OrderStatusBadge } from "./status-badge";
@@ -191,6 +193,9 @@ export default async function OrdersPage({
                     Total
                   </th>
                   <th scope="col" className={tableHeadCellClass}>
+                    Origen
+                  </th>
+                  <th scope="col" className={tableHeadCellClass}>
                     Estado
                   </th>
                 </tr>
@@ -218,6 +223,9 @@ export default async function OrdersPage({
                       className={`${tableCellClass} text-right whitespace-nowrap tabular-nums`}
                     >
                       {formatMoney(order.total, order.currency)}
+                    </td>
+                    <td className={tableCellClass}>
+                      {orderOriginLabel(order.createdByCredentialId)}
                     </td>
                     <td className={tableCellClass}>
                       <OrderStatusBadge status={order.status} />
@@ -253,6 +261,9 @@ export default async function OrdersPage({
                   <span className="tabular-nums">
                     {formatMoney(order.total, order.currency)}
                   </span>
+                  {order.createdByCredentialId !== null
+                    ? ` · ${AGENT_ORIGIN_LABEL}`
+                    : null}
                 </p>
               </li>
             ))}

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AUDIT_PAGE_SIZE } from "@/modules/audit";
+import { getCredentialSources } from "@/modules/ingestion";
 import { getOrder, listOrderAudit } from "@/modules/orders";
 import { getOrganizationTimezone } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
@@ -31,6 +32,7 @@ import {
   FORBIDDEN_PAGE_MESSAGE,
   ORDER_NOT_FOUND_MESSAGE,
   orderNoticeMessage,
+  orderOriginLabel,
   UNKNOWN_CLIENT_TEXT,
   UNKNOWN_PRODUCT_TEXT,
 } from "../messages";
@@ -86,6 +88,15 @@ export default async function OrderPage({
   const actorLabel = audit?.ok
     ? await auditActorLabels(context.organizationId, audit.entries)
     : null;
+  // El emisor de la credencial del agente, como en la historia (brief-19.4, D-11).
+  const origin = orderOriginLabel(
+    order.createdByCredentialId,
+    order.createdByCredentialId === null
+      ? new Map()
+      : await getCredentialSources(context.organizationId, [
+          order.createdByCredentialId,
+        ]),
+  );
   const notice = orderNoticeMessage(query.aviso);
   const client = order.client;
   const showAvailable = order.status === "pending";
@@ -295,7 +306,12 @@ export default async function OrderPage({
           </SectionCard>
 
           <SectionCard id="estado-titulo" title="Estado" icon="clock">
-            <DetailList items={dates} />
+            <DetailList
+              items={[
+                { label: "Origen", icon: "user", value: origin },
+                ...dates,
+              ]}
+            />
             {isAdmin &&
             (order.status === "pending" || order.status === "confirmed") ? (
               <div className="mt-5 flex flex-col gap-4">

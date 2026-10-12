@@ -21,7 +21,9 @@ export type OrderRow = {
   confirmedAt: Date | null;
   deliveredAt: Date | null;
   cancelledAt: Date | null;
-  createdBy: string;
+  // Exactamente uno de los dos (brief-19.4, D-4): un usuario, o la credencial del agente.
+  createdBy: string | null;
+  createdByCredentialId: string | null;
   createdAt: Date;
 };
 
@@ -36,6 +38,7 @@ const orderColumns = {
   deliveredAt: orders.deliveredAt,
   cancelledAt: orders.cancelledAt,
   createdBy: orders.createdBy,
+  createdByCredentialId: orders.createdByCredentialId,
   createdAt: orders.createdAt,
 };
 
@@ -66,14 +69,18 @@ export function withTransaction<T>(
   return getDb().transaction(work);
 }
 
+// El autor: un usuario, o la credencial con el evento de ingestión que lo creó (brief-19.4, D-4).
+export type OrderCreator =
+  | { createdBy: string }
+  | { createdByCredentialId: string; ingestionEventId: string };
+
 export type NewOrder = {
   organizationId: string;
   number: number;
   clientId: string;
   currency: string;
   total: string;
-  createdBy: string;
-};
+} & OrderCreator;
 
 export async function insertOrder(
   tx: DbTransaction,
@@ -81,6 +88,25 @@ export async function insertOrder(
 ): Promise<OrderRow> {
   const rows = await tx.insert(orders).values(order).returning(orderColumns);
   return rows[0]!;
+}
+
+// El número del pedido que creó un evento de ingestión, para responder un reenvío (brief-19.4, D-6).
+export async function findOrderNumberByIngestionEvent(
+  tx: DbTransaction,
+  organizationId: string,
+  ingestionEventId: string,
+): Promise<number | undefined> {
+  const rows = await tx
+    .select({ number: orders.number })
+    .from(orders)
+    .where(
+      and(
+        eq(orders.organizationId, organizationId),
+        eq(orders.ingestionEventId, ingestionEventId),
+      ),
+    )
+    .limit(1);
+  return rows[0]?.number;
 }
 
 export type NewOrderLine = {

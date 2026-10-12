@@ -595,3 +595,226 @@ describe("el trigger de document_counters (brief-19.2, D-2; AC-1)", () => {
     ).toBe("P0001");
   });
 });
+
+// El pedido del agente (brief-19.4, D-4; migración 0038): exactamente un autor, la credencial con
+// el evento que lo creó, un pedido por evento, todo en la misma organización y fijo después.
+describe("el autor de servicio y el evento de ingestión (brief-19.4, AC-1)", () => {
+  async function serviceOf(organizationId: string, ref: string) {
+    const credential = await getDb().execute<{ id: string }>(
+      sql`insert into ingestion_credentials (organization_id, source, scope, token_hash)
+          values (${organizationId}, 'agente', 'ingest', gen_random_uuid()::text) returning id`,
+    );
+    const event = await getDb().execute<{ id: string }>(
+      sql`insert into ingestion_events (organization_id, source, external_ref, event_type, payload_hash)
+          values (${organizationId}, 'agente', ${ref}, 'order.placed', 'hash') returning id`,
+    );
+    return { credentialId: credential.rows[0]!.id, eventId: event.rows[0]!.id };
+  }
+
+  function insertCreated(
+    executor: Executor,
+    values: {
+      organizationId: string;
+      clientId: string;
+      number: number;
+      createdBy: string | null;
+      credentialId: string | null;
+      eventId: string | null;
+    },
+  ) {
+    return executor.execute(
+      sql`insert into orders (organization_id, number, client_id, currency, total, created_by,
+                              created_by_credential_id, ingestion_event_id)
+          values (${values.organizationId}, ${values.number}, ${values.clientId}, 'ARS', 100,
+                  ${values.createdBy}, ${values.credentialId}, ${values.eventId})`,
+    );
+  }
+
+  it("un pedido del agente lleva la credencial y su evento, sin usuario, también como crm_app", async () => {
+    const s = await seed();
+    const a = await serviceOf(s.orgA, "evt-1");
+    const b = await serviceOf(s.orgA, "evt-2");
+    await insertCreated(getDb(), {
+      organizationId: s.orgA,
+      clientId: s.clientA,
+      number: 2,
+      createdBy: null,
+      credentialId: a.credentialId,
+      eventId: a.eventId,
+    });
+    await asAppRole((tx) =>
+      insertCreated(tx, {
+        organizationId: s.orgA,
+        clientId: s.clientA,
+        number: 3,
+        createdBy: null,
+        credentialId: b.credentialId,
+        eventId: b.eventId,
+      }),
+    );
+    const rows = await getDb().execute<{ count: number }>(
+      sql`select count(*)::int as count from orders where created_by is null`,
+    );
+    expect(rows.rows[0]!.count).toBe(2);
+  });
+
+  it("CHECK: exactamente un autor, y el evento si y solo si el autor es la credencial", async () => {
+    const s = await seed();
+    const a = await serviceOf(s.orgA, "evt-1");
+    const cases = [
+      // Los dos autores.
+      { createdBy: s.userId, credentialId: a.credentialId, eventId: a.eventId },
+      // Ninguno.
+      { createdBy: null, credentialId: null, eventId: null },
+      // La credencial sin su evento.
+      { createdBy: null, credentialId: a.credentialId, eventId: null },
+      // Un usuario con un evento.
+      { createdBy: s.userId, credentialId: null, eventId: a.eventId },
+    ];
+    for (const [index, values] of cases.entries()) {
+      for (const executor of ["owner", "app"] as const) {
+        const insert = (tx: Executor) =>
+          insertCreated(tx, {
+            organizationId: s.orgA,
+            clientId: s.clientA,
+            number: 10 + index,
+            ...values,
+          });
+        const error = await pgError(
+          executor === "owner" ? insert(getDb()) : asAppRole(insert),
+        );
+        expect(error.code).toBe("23514");
+      }
+    }
+  });
+
+  it("un evento crea a lo sumo un pedido, y la credencial y el evento son de la misma organización", async () => {
+    const s = await seed();
+    const a = await serviceOf(s.orgA, "evt-1");
+    const b = await serviceOf(s.orgB, "evt-1");
+    const base = {
+      organizationId: s.orgA,
+      clientId: s.clientA,
+      createdBy: null,
+    };
+    await insertCreated(getDb(), {
+      ...base,
+      number: 2,
+      credentialId: a.credentialId,
+      eventId: a.eventId,
+    });
+    expect(
+      (
+        await pgError(
+          insertCreated(getDb(), {
+            ...base,
+            number: 3,
+            credentialId: a.credentialId,
+            eventId: a.eventId,
+          }),
+        )
+      ).code,
+    ).toBe("23505");
+    expect(
+      (
+        await pgError(
+          insertCreated(getDb(), {
+            ...base,
+            number: 4,
+            credentialId: b.credentialId,
+            eventId: (await serviceOf(s.orgA, "evt-libre")).eventId,
+          }),
+        )
+      ).code,
+    ).toBe("23503");
+    // Revisión independiente, R-3: el UNIQUE y la clave compuesta, también con crm_app.
+    expect(
+      (
+        await pgError(
+          asAppRole((tx) =>
+            insertCreated(tx, {
+              ...base,
+              number: 6,
+              credentialId: a.credentialId,
+              eventId: a.eventId,
+            }),
+          ),
+        )
+      ).code,
+    ).toBe("23505");
+    const appForeign = await serviceOf(s.orgA, "evt-app");
+    expect(
+      (
+        await pgError(
+          asAppRole((tx) =>
+            insertCreated(tx, {
+              ...base,
+              number: 7,
+              credentialId: b.credentialId,
+              eventId: appForeign.eventId,
+            }),
+          ),
+        )
+      ).code,
+    ).toBe("23503");
+    const otherEvent = await serviceOf(s.orgA, "evt-2");
+    expect(
+      (
+        await pgError(
+          insertCreated(getDb(), {
+            ...base,
+            number: 5,
+            credentialId: otherEvent.credentialId,
+            eventId: b.eventId,
+          }),
+        )
+      ).code,
+    ).toBe("23503");
+  });
+
+  it("el trigger no deja cambiar el autor ni el evento: P0001", async () => {
+    const s = await seed();
+    const a = await serviceOf(s.orgA, "evt-1");
+    const other = await serviceOf(s.orgA, "evt-2");
+    await insertCreated(getDb(), {
+      organizationId: s.orgA,
+      clientId: s.clientA,
+      number: 2,
+      createdBy: null,
+      credentialId: a.credentialId,
+      eventId: a.eventId,
+    });
+    const agentOrder = await getDb().execute<{ id: string }>(
+      sql`select id from orders where organization_id = ${s.orgA} and number = 2`,
+    );
+    const orderId = agentOrder.rows[0]!.id;
+    for (const set of [
+      sql`created_by_credential_id = ${other.credentialId}::uuid`,
+      sql`ingestion_event_id = ${other.eventId}::uuid`,
+      sql`created_by_credential_id = ${other.credentialId}::uuid, ingestion_event_id = ${other.eventId}::uuid`,
+    ]) {
+      expect((await pgError(update(orderId, set))).code).toBe("P0001");
+      // Revisión independiente, R-3: también con crm_app.
+      expect(
+        (
+          await pgError(
+            asAppRole((tx) =>
+              tx.execute(sql`update orders set ${set} where id = ${orderId}`),
+            ),
+          )
+        ).code,
+      ).toBe("P0001");
+    }
+    // Y un pedido de la app no pasa a ser del agente.
+    expect(
+      (
+        await pgError(
+          update(
+            s.orderA,
+            sql`created_by = null, created_by_credential_id = ${other.credentialId}::uuid, ingestion_event_id = ${other.eventId}::uuid`,
+          ),
+        )
+      ).code,
+    ).toBe("P0001");
+  });
+});

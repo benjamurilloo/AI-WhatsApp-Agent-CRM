@@ -24,6 +24,21 @@ export const AVAILABLE_NOTE =
 export const UNKNOWN_PRODUCT_TEXT = "Producto no disponible";
 export const UNKNOWN_CLIENT_TEXT = "Cliente no disponible";
 
+// El origen de un pedido (brief-19.4, D-11): el agente, por su credencial, o una persona del equipo
+// desde la app. El emisor de la credencial lo compone la página, como en la historia
+// (_audit/actor.ts); la lista muestra solo «Agente».
+export const AGENT_ORIGIN_LABEL = "Agente";
+export const TEAM_ORIGIN_LABEL = "Equipo";
+
+export function orderOriginLabel(
+  createdByCredentialId: string | null,
+  sources: ReadonlyMap<string, string> = new Map(),
+): string {
+  if (createdByCredentialId === null) return TEAM_ORIGIN_LABEL;
+  const source = sources.get(createdByCredentialId);
+  return source ? `${AGENT_ORIGIN_LABEL} · ${source}` : AGENT_ORIGIN_LABEL;
+}
+
 export const STATUS_LABEL: Record<OrderStatus, string> = {
   pending: "Pendiente",
   confirmed: "Confirmado",

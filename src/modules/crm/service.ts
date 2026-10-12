@@ -1220,6 +1220,27 @@ export async function lockClientForOrder(
   return client.isActive ? "active" : "inactive";
 }
 
+// El cliente del pedido que deja el agente (brief-19.4, D-7): como lockClientForOrder, pero por el
+// teléfono del evento, ya en E.164 canónico. orders recibe la transacción de ingestion.
+export async function lockClientForOrderByPhone(
+  tx: DbTransaction,
+  organizationId: string,
+  phoneE164: string,
+): Promise<
+  { status: "active" | "inactive"; clientId: string } | { status: "not_found" }
+> {
+  const client = await repository.lockClientSharedByPhoneE164(
+    tx,
+    organizationId,
+    phoneE164,
+  );
+  if (!client) return { status: "not_found" };
+  return {
+    status: client.isActive ? "active" : "inactive",
+    clientId: client.id,
+  };
+}
+
 // Como findClientIdByPhone, pero bloquea al cliente hasta el final de la transacción recibida.
 // conversations la usa para que dos mensajes simultáneos del mismo cliente no abran dos
 // conversaciones (brief-12.2, D-8), como lockProductForStockChange en catalog.

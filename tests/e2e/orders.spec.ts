@@ -9,7 +9,8 @@ import { E2E_PASSWORD } from "./global-setup";
 // Pantallas 14 a 16 de punta a punta (brief-19.2, AC-9): Chromium, next start, Server Actions,
 // orders, crm, catalog, numbering, audit y PostgreSQL real, sin mocks. Los clientes, los productos
 // y sus precios los crea cada caso. Desde la 19.3 (AC-8), el ciclo: confirmar, entregar y cancelar
-// un confirmado, con lo reservado en las pantallas de productos.
+// un confirmado, con lo reservado en las pantallas de productos. Desde la 19.4 (AC-8), el origen de
+// un pedido que dejó el agente.
 
 const [ADMIN_SEED, VIEWER_SEED] = SEED_USERS;
 const ADMIN = ADMIN_SEED.email;
@@ -17,6 +18,8 @@ const VIEWER = VIEWER_SEED.email;
 const FORBIDDEN_PAGE = "No tenés permiso para ver esta página.";
 const PHONE = "+5491155553333";
 const EMAIL = "lucia@example.com";
+// El emisor de los pedidos del agente de esta spec (brief-19.4); su credencial se borra en cada caso.
+const AGENT_SOURCE = "agente-pedidos-e2e";
 
 let db: Db;
 
@@ -36,6 +39,9 @@ test.beforeEach(async () => {
     sql`truncate table order_lines, orders, document_counters, audit_logs, inventory_movements,
           inventories, product_images, product_costs, product_prices, products, conversation_notes,
           messages, conversations, client_tag_assignments, clients`,
+  );
+  await db.execute(
+    sql`delete from ingestion_credentials where source = ${AGENT_SOURCE}`,
   );
   await db.execute(sql`delete from login_attempts`);
   await db.execute(sql`delete from sessions`);
@@ -132,6 +138,51 @@ async function insertOrder(
                   '10.00', 'ARS', '100.00')`,
     );
   }
+  return orderId;
+}
+
+// Un pedido que dejó el agente (brief-19.4, D-4), por SQL: la credencial, el evento que lo creó, el
+// pedido sin usuario y su auditoría create con la credencial como actor.
+async function insertAgentOrder(
+  number: number,
+  clientId: string,
+  lines: [productId: string, quantity: string][],
+) {
+  const credential = await db.execute<{ id: string }>(
+    sql`insert into ingestion_credentials (organization_id, source, scope, token_hash)
+        values (${SEED_ORGANIZATION_ID}, ${AGENT_SOURCE}, 'ingest', gen_random_uuid()::text)
+        returning id`,
+  );
+  const credentialId = credential.rows[0]!.id;
+  const event = await db.execute<{ id: string }>(
+    sql`insert into ingestion_events (organization_id, source, external_ref, event_type,
+                                      payload_hash, status, processed_at)
+        values (${SEED_ORGANIZATION_ID}, ${AGENT_SOURCE}, gen_random_uuid()::text, 'order.placed',
+                'hash', 'processed', now())
+        returning id`,
+  );
+  const order = await db.execute<{ id: string }>(
+    sql`insert into orders (organization_id, number, client_id, currency, total,
+                            created_by_credential_id, ingestion_event_id)
+        values (${SEED_ORGANIZATION_ID}, ${number}, ${clientId}, 'ARS', '100.00', ${credentialId},
+                ${event.rows[0]!.id})
+        returning id`,
+  );
+  const orderId = order.rows[0]!.id;
+  for (const [index, [productId, quantity]] of lines.entries()) {
+    await db.execute(
+      sql`insert into order_lines (organization_id, order_id, product_id, position, quantity,
+                                   unit_price, currency, line_total)
+          values (${SEED_ORGANIZATION_ID}, ${orderId}, ${productId}, ${index + 1}, ${quantity},
+                  '10.00', 'ARS', '100.00')`,
+    );
+  }
+  await db.execute(
+    sql`insert into audit_logs (organization_id, actor_credential_id, entity_type, entity_id,
+                                action, diff)
+        values (${SEED_ORGANIZATION_ID}, ${credentialId}, 'order', ${orderId}, 'create',
+                ${JSON.stringify({ before: null, after: { number, status: "pending" } })}::jsonb)`,
+  );
   return orderId;
 }
 
@@ -507,6 +558,47 @@ test("brief-19.3: sin stock no confirma y dice qué falta; un ajuste no baja de 
   await expect(stock).toContainText("Reservado");
   await expect(stock).toContainText("0 unidad");
   await expect(stock).toContainText("10 unidad");
+});
+
+test("brief-19.4: un pedido del agente muestra su origen en la lista y el detalle, y un admin lo confirma", async ({
+  page,
+}) => {
+  const clientId = await insertClient("Lucía Gómez");
+  const coffee = await insertProduct("CAF-250", "Café molido", "10");
+  await setStock(coffee, "10");
+  await insertOrder(8, clientId, [[coffee, "1"]]);
+  const agentOrder = await insertAgentOrder(9, clientId, [[coffee, "2"]]);
+  await login(page, ADMIN);
+
+  await page.goto("/pedidos");
+  const table = page.getByRole("table", { name: "Pedidos de la organización" });
+  await expect(
+    table.getByRole("columnheader", { name: "Origen" }),
+  ).toBeVisible();
+  await expect(table.getByRole("row", { name: /P-000009/ })).toContainText(
+    "Agente",
+  );
+  await expect(table.getByRole("row", { name: /P-000008/ })).toContainText(
+    "Equipo",
+  );
+  await expectAccessible(page, "lista con el origen");
+
+  await page.goto(`/pedidos/${agentOrder}`);
+  const state = page.getByRole("region", { name: "Estado" });
+  await expect(state).toContainText("Origen");
+  await expect(state).toContainText(`Agente · ${AGENT_SOURCE}`);
+  const history = page.getByRole("table", { name: /Historia del pedido/ });
+  await expect(history).toContainText(`Servicio · ${AGENT_SOURCE}`);
+  await expectAccessible(page, "detalle de un pedido del agente");
+
+  await page.getByRole("button", { name: "Confirmar pedido" }).click();
+  await page.getByRole("button", { name: "Sí, confirmar el pedido" }).click();
+  await expect(page).toHaveURL(/\?aviso=confirmado$/);
+  expect(await balance(coffee)).toEqual({
+    on_hand: "10.000",
+    reserved: "2.000",
+  });
+  await expect(state).toContainText(`Agente · ${AGENT_SOURCE}`);
 });
 
 // Sin JavaScript, los buscadores son campos de texto: el cliente se reconoce por su nombre exacto

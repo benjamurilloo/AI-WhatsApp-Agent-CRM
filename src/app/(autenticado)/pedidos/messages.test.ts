@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { orderNoticeMessage, transitionRejection } from "./messages";
+import {
+  orderNoticeMessage,
+  orderOriginLabel,
+  transitionRejection,
+} from "./messages";
 
-// Los textos de las transiciones del pedido (brief-19.3, D-5 y D-8).
+// Los textos de las transiciones del pedido (brief-19.3, D-5 y D-8) y, desde la 19.4, su origen.
 
 const COFFEE = "c0ffee00-0000-4000-8000-000000000001";
 const TEA = "c0ffee00-0000-4000-8000-000000000002";
@@ -88,5 +92,16 @@ describe("orderNoticeMessage", () => {
     expect(orderNoticeMessage("entregado")).toContain("movimiento");
     expect(orderNoticeMessage("cancelado")).toBe("Pedido cancelado.");
     expect(orderNoticeMessage("otro")).toBeNull();
+  });
+});
+
+describe("orderOriginLabel (brief-19.4, D-11)", () => {
+  it("un pedido de la app es del equipo; uno del agente lleva el emisor si se conoce", () => {
+    expect(orderOriginLabel(null)).toBe("Equipo");
+    expect(orderOriginLabel(TEA)).toBe("Agente");
+    expect(orderOriginLabel(TEA, new Map([[TEA, "agente-demo"]]))).toBe(
+      "Agente · agente-demo",
+    );
+    expect(orderOriginLabel(TEA, new Map([[COFFEE, "otro"]]))).toBe("Agente");
   });
 });

@@ -1,0 +1,29 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: no proviene de ningún emisor real (brief-19.4). La 19.4.3 la contrasta con lo que mande el agente.",
+  "description": "Un pedido pendiente del agente con dos líneas (vector del contrato).",
+  "received_at": "2026-09-16T15:00:00.000Z",
+  "payload": {
+    "contract_version": "2",
+    "event_type": "order.placed",
+    "event_id": "evt-v2-pedido-0001",
+    "occurred_at": "2026-09-16T12:00:16-03:00",
+    "client": {
+      "phone": "+5491155550001"
+    },
+    "lines": [
+      {
+        "product_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+        "quantity": "2"
+      },
+      {
+        "product_id": "9b2f4d1a-6c3e-4f8a-b5d7-2e1c0a9f8b6d",
+        "quantity": "1.5"
+      }
+    ]
+  },
+  "expected": {
+    "ok": true,
+    "payload_hash": "9c312d278d0e5a3fb0d212270a8940fe75cae1e169b7bf3b6059d753e5f49fab"
+  }
+}

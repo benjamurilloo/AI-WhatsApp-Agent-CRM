@@ -14,6 +14,7 @@ import {
 import {
   getClientsByIds,
   lockClientForOrder,
+  lockClientForOrderByPhone,
   type Client,
 } from "@/modules/crm";
 import {
@@ -29,6 +30,7 @@ import {
   getMemberSummaries,
   type AuthContext,
 } from "@/modules/organizations";
+import type { DbTransaction } from "@/shared/db";
 import { failure, type Failure } from "@/shared/errors";
 import {
   currencyDecimals,
@@ -48,7 +50,8 @@ import { MAX_ORDER_LINES, orderStatus } from "./schema";
 // Casos de uso del pedido (ADR 0020; brief-19.2): el alta de un pendiente, la lista y el detalle;
 // desde la 19.3, sus transiciones (confirmar, entregar y cancelar). orders es dueño de la regla:
 // abre la transacción y se la pasa a crm (el cliente), catalog (los productos y su precio),
-// numbering (el número), inventory (la reserva y la entrega) y audit.
+// numbering (el número), inventory (la reserva y la entrega) y audit. Desde la 19.4, el pendiente
+// que deja el agente llega con la transacción de ingestion (placeOrderFromIngestion).
 
 export type OrderStatus = repository.OrderStatus;
 export const ORDER_STATUSES = orderStatus.enumValues;
@@ -325,61 +328,223 @@ export async function createOrder(
       };
     }
 
-    const number = await nextDocumentNumber(tx, organizationId, "order");
-    const order = await repository.insertOrder(tx, {
+    const order = await writeOrder(tx, {
       organizationId,
-      number,
       clientId,
+      creator: { createdBy: userId },
       currency,
-      total: moneyToDatabase(orderTotal),
-      createdBy: userId,
+      lines: priced.map((line, index) => ({ ...line, total: totals[index]! })),
+      total: orderTotal,
     });
-    const newLines = priced.map((line, index) => ({
-      productId: line.productId,
-      position: line.position,
-      quantity: quantityToDatabase(line.quantity),
-      unitPrice: line.price.amount,
-      currency,
-      lineTotal: moneyToDatabase(totals[index]!),
-    }));
-    await repository.insertOrderLines(tx, organizationId, order.id, newLines);
-    // Solo ids, cantidades, montos y estado: ningún dato del cliente (brief-19.2, D-11). audit
-    // admite valores planos, así que cada línea va con sus claves numeradas.
-    await recordAudit(tx, {
-      organizationId,
-      actorUserId: userId,
-      entityType: "order",
-      entityId: order.id,
-      action: "create",
-      diff: {
-        before: null,
-        after: {
-          number: order.number,
-          status: order.status,
-          client_id: clientId,
-          currency,
-          total: order.total,
-          lines: newLines.length,
-          ...Object.fromEntries(
-            newLines.flatMap((line) => [
-              [`line_${line.position}_product_id`, line.productId],
-              [`line_${line.position}_quantity`, line.quantity],
-              [`line_${line.position}_unit_price`, line.unitPrice],
-              [`line_${line.position}_total`, line.lineTotal],
-            ]),
-          ),
-        },
-      },
-    });
-    return {
-      ok: true,
-      order: {
-        id: order.id,
+    return { ok: true, order };
+  });
+}
+
+type WritableLine = {
+  position: number;
+  productId: string;
+  quantity: Quantity;
+  price: ProductPrice;
+  total: Money;
+};
+
+// La escritura del alta, común a la app y al agente (brief-19.4, D-7): el número al final, para
+// retener el contador lo menos posible (ADR 0020, punto 6), la cabecera, las líneas y la auditoría,
+// con el autor como actor. Se llama con todas las reglas ya cumplidas: un rechazo nunca llega acá.
+async function writeOrder(
+  tx: DbTransaction,
+  input: {
+    organizationId: string;
+    clientId: string;
+    creator: repository.OrderCreator;
+    currency: string;
+    lines: WritableLine[];
+    total: Money;
+  },
+): Promise<{ id: string; number: number; displayNumber: string }> {
+  const { organizationId, clientId, creator, currency } = input;
+  const number = await nextDocumentNumber(tx, organizationId, "order");
+  const order = await repository.insertOrder(tx, {
+    organizationId,
+    number,
+    clientId,
+    currency,
+    total: moneyToDatabase(input.total),
+    ...creator,
+  });
+  const newLines = input.lines.map((line) => ({
+    productId: line.productId,
+    position: line.position,
+    quantity: quantityToDatabase(line.quantity),
+    unitPrice: line.price.amount,
+    currency,
+    lineTotal: moneyToDatabase(line.total),
+  }));
+  await repository.insertOrderLines(tx, organizationId, order.id, newLines);
+  // Solo ids, cantidades, montos y estado: ningún dato del cliente (brief-19.2, D-11). audit
+  // admite valores planos, así que cada línea va con sus claves numeradas.
+  await recordAudit(tx, {
+    organizationId,
+    ...("createdBy" in creator
+      ? { actorUserId: creator.createdBy }
+      : { actorCredentialId: creator.createdByCredentialId }),
+    entityType: "order",
+    entityId: order.id,
+    action: "create",
+    diff: {
+      before: null,
+      after: {
         number: order.number,
-        displayNumber: formatOrderNumber(order.number),
+        status: order.status,
+        client_id: clientId,
+        currency,
+        total: order.total,
+        lines: newLines.length,
+        ...Object.fromEntries(
+          newLines.flatMap((line) => [
+            [`line_${line.position}_product_id`, line.productId],
+            [`line_${line.position}_quantity`, line.quantity],
+            [`line_${line.position}_unit_price`, line.unitPrice],
+            [`line_${line.position}_total`, line.lineTotal],
+          ]),
+        ),
       },
+    },
+  });
+  return {
+    id: order.id,
+    number: order.number,
+    displayNumber: formatOrderNumber(order.number),
+  };
+}
+
+// El pendiente que deja el agente (ADR 0020, punto 9; brief-19.4). La transacción y el ledger son de
+// ingestion, que ya validó el evento: el teléfono en E.164 canónico, de 1 a 10 líneas con un uuid
+// cada una, sin productos repetidos, y cantidades mayores que cero (D-1 a D-3). La credencial es el
+// actor. Las reglas son las del alta de la app, sin el precio esperado (el agente no manda precios),
+// con una sola respuesta en el orden de D-6: primero el cliente y después las líneas en su orden.
+// Ninguna regla escribe, así que un rechazo no consume un número. No mira el stock (D-8).
+
+export type AgentOrderRule =
+  | "client_not_found"
+  | "client_inactive"
+  | "product_not_found"
+  | "product_without_price"
+  | "currency_mismatch"
+  | "amount_out_of_range";
+
+export type AgentOrderLineInput = { productId: string; quantity: string };
+
+export type PlaceAgentOrderResult =
+  | { ok: true; order: { number: number; displayNumber: string } }
+  | { ok: false; rule: AgentOrderRule };
+
+export async function placeOrderFromIngestion(
+  tx: DbTransaction,
+  input: {
+    organizationId: string;
+    credentialId: string;
+    ingestionEventId: string;
+    phoneE164: string;
+    lines: AgentOrderLineInput[];
+  },
+): Promise<PlaceAgentOrderResult> {
+  const { organizationId } = input;
+  const lines = input.lines.map((line, index) => {
+    const quantity = parseQuantityInput(line.quantity);
+    if (quantity === null || quantity === 0n) {
+      throw new Error("Una cantidad que el contrato no debía aceptar.");
+    }
+    return {
+      position: index + 1,
+      productId: line.productId.toLowerCase(),
+      quantity,
     };
   });
+  const reject = (rule: AgentOrderRule): PlaceAgentOrderResult => ({
+    ok: false,
+    rule,
+  });
+
+  // El mismo orden de bloqueo que el alta de la app: el cliente, los productos por id y, al
+  // final, el contador.
+  const client = await lockClientForOrderByPhone(
+    tx,
+    organizationId,
+    input.phoneE164,
+  );
+  if (client.status === "not_found") return reject("client_not_found");
+  if (client.status === "inactive") return reject("client_inactive");
+
+  const products = await lockProductsForOrder(
+    tx,
+    organizationId,
+    lines.map((line) => line.productId),
+  );
+  // Una moneda por pedido, la de la primera línea (ADR 0019, punto 3). Si la primera falla, se
+  // responde su regla antes de mirar la moneda de las demás.
+  let currency: string | null = null;
+  let decimals = 0;
+  const writable: WritableLine[] = [];
+  for (const line of lines) {
+    const product = products.get(line.productId);
+    // Inexistente, de otra organización o inactivo, sin distinguir, como la lectura (D-6).
+    if (!product || !product.isActive) return reject("product_not_found");
+    if (!product.price) return reject("product_without_price");
+    if (currency === null) {
+      currency = product.price.currency;
+      const found = currencyDecimals(currency);
+      if (!found.ok) {
+        throw new Error("Un precio guardado en una moneda que no se acepta.");
+      }
+      decimals = found.decimals;
+    }
+    if (product.price.currency !== currency) {
+      return reject("currency_mismatch");
+    }
+    const total = computeLineTotal(
+      moneyFromDatabase(product.price.amount),
+      line.quantity,
+      decimals,
+    );
+    if (!total.ok) return reject("amount_out_of_range");
+    writable.push({ ...line, price: product.price, total: total.total });
+  }
+  const orderTotal = sumOrderTotal(writable.map((line) => line.total));
+  if (orderTotal === null) return reject("amount_out_of_range");
+
+  const order = await writeOrder(tx, {
+    organizationId,
+    clientId: client.clientId,
+    creator: {
+      createdByCredentialId: input.credentialId,
+      ingestionEventId: input.ingestionEventId,
+    },
+    currency: currency!,
+    lines: writable,
+    total: orderTotal,
+  });
+  return {
+    ok: true,
+    order: { number: order.number, displayNumber: order.displayNumber },
+  };
+}
+
+// El pedido que creó un evento, para responder su reenvío sin escribir (D-6). Null si el evento no
+// creó ninguno, que no debería pasar con un evento procesado.
+export async function findOrderPlacedByIngestion(
+  tx: DbTransaction,
+  organizationId: string,
+  ingestionEventId: string,
+): Promise<{ number: number; displayNumber: string } | null> {
+  const number = await repository.findOrderNumberByIngestionEvent(
+    tx,
+    organizationId,
+    ingestionEventId,
+  );
+  return number === undefined
+    ? null
+    : { number, displayNumber: formatOrderNumber(number) };
 }
 
 // Las transiciones (ADR 0020, punto 4; brief-19.3): solo admin. Orden de bloqueo del punto 6: la
@@ -583,6 +748,8 @@ export type OrderSummary = {
   total: string;
   currency: string;
   status: OrderStatus;
+  // La credencial del agente que lo dejó, o null si lo creó un usuario (brief-19.4, D-11).
+  createdByCredentialId: string | null;
   createdAt: Date;
 };
 
@@ -626,6 +793,7 @@ async function summarize(
     total: row.total,
     currency: row.currency,
     status: row.status,
+    createdByCredentialId: row.createdByCredentialId,
     createdAt: row.createdAt,
   }));
 }
@@ -731,6 +899,8 @@ export type OrderDetail = {
   confirmedAt: Date | null;
   deliveredAt: Date | null;
   cancelledAt: Date | null;
+  // Como en OrderSummary (brief-19.4, D-11).
+  createdByCredentialId: string | null;
   createdAt: Date;
   lines: OrderLine[];
 };
@@ -778,6 +948,7 @@ export async function getOrder(
       confirmedAt: order.confirmedAt,
       deliveredAt: order.deliveredAt,
       cancelledAt: order.cancelledAt,
+      createdByCredentialId: order.createdByCredentialId,
       createdAt: order.createdAt,
       lines: lines.map((line) => {
         const product = productsById.get(line.productId);
