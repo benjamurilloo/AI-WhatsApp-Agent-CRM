@@ -296,3 +296,21 @@ Un agente de solo lectura que no participó del trabajo revisó la entrega contr
 - **R-8 (bajo, verificado)**: el ADR 0020, §Consecuencias, dice «Ningún módulo existente depende de `orders`», y desde la 19.4 `ingestion` depende. Overview ya lo corrige con fecha; el ADR no, porque este brief prohibía tocar su texto más allá del punto 7. **Corregido** con autorización del usuario (2026-10-11): una nota fechada en §Consecuencias, verificada por búsqueda de imports (`ingestion/service.ts` importa `@/modules/orders`; `orders` importa de `ingestion` solo en `schema.ts`).
 
 Las notas N-1 a N-8 no son defectos. N-1 se incorporó al contrato: `duplicate` con `order: null` solo si el evento no tuviera pedido, que no pasa. Las demás: la `0038` no es puramente aditiva (declarado en H-1); el Roadmap sigue en futuro hasta el cierre; el e2e arma el pedido del agente por SQL; «Equipo» está declarado; la consulta de `crm` es lo mínimo que la función necesita; `order-writes` verificado.
+
+## Despliegue de la 19.4.2 — 2026-10-12
+
+Autorizado por el usuario el 2026-10-12. Según [deploy/production/README.md](../../deploy/production/README.md) §Desplegar un cambio (autoevaluación):
+
+- **La CI del SHA exacto**: `9c8bc54b312d276597cd3bcf9136c3c4f5d28111`, `success`, leída por `headSha`. Se despliega el SHA de la 19.4.1, no el commit posterior de documentación.
+- **Volver atrás**: se anotó `50da0be` en el registro de despliegues. Ese código no conoce al autor de servicio, pero mientras no haya pedidos del agente, los `CHECK` de la `0038` los cumple: sus pedidos llevan siempre usuario.
+- **El despliegue**: checkout, `npm ci`, la migración, el build y el reinicio terminaron sin errores, con HEAD igual al SHA pedido.
+- **AC-14 cumplido**:
+  - migraciones de 38 a 39;
+  - `orders.created_by` nulable, `created_by_credential_id` e `ingestion_event_id`, los `CHECK` `orders_one_creator` y `orders_event_iff_credential`, y el `UNIQUE` `ingestion_events_organization_id_id_unique` existen;
+  - los recuentos quedaron iguales: `organizations` (2), `clients` (2), `products` (5), `orders` (3, los tres con usuario), `order_lines` (4), `inventories` (4), `inventory_movements` (6), `ingestion_events` (146) y `audit_logs` (70), con el saldo total en 44 y lo reservado en 0;
+  - el servicio está activo, sin avisos en el journal;
+  - desde afuera: `/login` responde `200`, las tres rutas v2 y `GET /api/read/v1/products` responden `401` sin token. **No se probó con token**: el token no pasa por la conversación; lo prueba la 19.4.3.
+
+## La ventana de la 19.4.3 — abierta el 2026-10-12
+
+El usuario autorizó el 2026-10-12 el aviso del despliegue y abrir la ventana en el mismo aviso: `Aviso-19.4.2-CRM-al-Agente.md`, en el Escritorio. El agente hace primero una lectura de control de las tres rutas v2. Si da `200` con la forma del contrato, promueve sus cinco tools, incluida la que deja pedidos, solo en Demostración Vixora. Se pidieron un pedido aceptado, su reenvío `duplicate`, un `422` con su `conversation.escalated` y las capturas de cada evento y lectura, sin el token.
