@@ -4,6 +4,10 @@
 - Fecha: 2026-10-10
 - Nivel: **diseñado**. No hay código, tablas ni ejecución.
 - *Nota del 2026-10-11*: el [ADR 0020](0020-el-pedido.md) usa el contador del punto 2 para el pedido, con el tipo `order`, en un módulo propio (`numbering`), y aplica los puntos 3 y 4 leyendo «emitir» como «crear el pedido». Decide que el pedido no es un comprobante emitido. No cambia este ADR.
+- *Nota del 2026-10-12*: el [ADR 0021](0021-la-venta.md), la venta, es el primer comprobante emitido de este ADR. Remite a él en tres puntos, sin cambiar su texto:
+  - **punto 3**: la venta de un pedido copia los montos del pedido y no el precio vigente al emitirse, una relectura como la del ADR 0020;
+  - **punto 7**: la Fase 20 no discrimina el IVA, así que deja de ser «la primera fase que discrimine el IVA (la 20)». La condición de la organización y las alícuotas esperan a la 13.5.2-b;
+  - **§Lo que este ADR no decide**: los montos de la anulación son positivos y el efecto lo da el tipo del comprobante.
 
 ## Contexto
 

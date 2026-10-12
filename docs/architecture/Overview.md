@@ -137,3 +137,10 @@ Implementación ([brief-3.4](../decisions/brief-3.4-autorizacion-y-errores.md)):
 ## Evolución hacia ERP
 
 El núcleo (`organizations`, `catalog`/`inventory`, `crm`) está diseñado para que un futuro módulo de `sales` pueda referenciar `clients` y `products` existentes sin modificar su forma actual — agregando sus propias tablas (`sales`, `sale_details`, etc.) y sus propias claves foráneas hacia las tablas existentes, sin alterar el dominio de catálogo, inventario o clientes. Ese trabajo es explícitamente una fase futura no planificada en detalle todavía (ver [planning/Roadmap.md](../planning/Roadmap.md), fases futuras de ERP).
+
+*Enmendado el 2026-10-12 por el [ADR 0021](../decisions/0021-la-venta.md); el texto anterior se conserva arriba*: `sales` llega con la Fase 20 y **sí suma algo a dominios existentes**, sin cambiar la forma de sus tablas:
+- a `inventory`, dos tipos de movimiento (`sale` y `sale_void`) y dos funciones que reciben su transacción;
+- a `orders`, una función de su interfaz que bloquea un pedido entregado para la venta;
+- a `numbering`, dos tipos de documento.
+
+Sus tablas son `sales`, `sale_lines` y `sale_voids`. **Ningún módulo depende de `sales`**, y la venta en el detalle del pedido la compone la página. La 20.2 suma `sales` a la tabla de módulos y actualiza la fila de `orders`, que deja de tener a `ingestion` como único módulo que depende de él.

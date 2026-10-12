@@ -26,7 +26,7 @@ Convenciones fijadas en la 3.1, que siguen las tablas futuras salvo justificaci�
 11. Todo ajuste de stock ocurre dentro de una transacción de base de datos que actualiza `inventories` e inserta en `inventory_movements` atómicamente. *Enmendada el 2026-10-11 por el [ADR 0020](../decisions/0020-el-pedido.md), en vigor desde la 19.3*: **el saldo físico (`quantity_on_hand`) no cambia nunca sin su movimiento**, sea un ajuste o la entrega de un pedido. Lo reservado (`quantity_reserved`) se escribe sin movimiento, al confirmar, cancelar o entregar un pedido, en la misma transacción que la transición del pedido y su auditoría.
 12. `inventories.quantity_on_hand >= 0` por `CHECK` constraint — no se permiten cantidades negativas en el MVP (ver ADR correspondiente si el negocio decide lo contrario explícitamente).
 13. El modelo de `conversations`/`messages` incluye `channel` como enum extensible desde el día uno, aunque el MVP solo usa `whatsapp`, para no rediseñar el dominio al agregar un segundo canal.
-14. Ningún modelo de ventas, compras, proveedores o pagos existe en este schema. *Precisado el 2026-10-10 por el [ADR 0019](../decisions/0019-bases-de-los-comprobantes.md)*: sigue siendo cierto. El ADR fija el diseño de la numeración, la moneda y el IVA de los comprobantes **sin crear ninguna tabla**; cada una la crea la fase que la usa (punto 7 del ADR). La primera es `product_costs`, en la 18.2. *Implementada el 2026-10-10* ([brief-18.2](../decisions/brief-18.2-costo-y-margen.md)): es un atributo del catálogo, como el precio, y no un modelo de compras.
+14. Ningún modelo de ventas, compras, proveedores o pagos existe en este schema. *Precisado el 2026-10-10 por el [ADR 0019](../decisions/0019-bases-de-los-comprobantes.md)*: sigue siendo cierto. El ADR fija el diseño de la numeración, la moneda y el IVA de los comprobantes **sin crear ninguna tabla**; cada una la crea la fase que la usa (punto 7 del ADR). La primera es `product_costs`, en la 18.2. *Implementada el 2026-10-10* ([brief-18.2](../decisions/brief-18.2-costo-y-margen.md)): es un atributo del catálogo, como el precio, y no un modelo de compras. *Enmendado el 2026-10-12 por el [ADR 0021](../decisions/0021-la-venta.md); el texto anterior se conserva arriba*: **deja de ser cierto para las ventas desde la 20.2**, que crea `sales` y `sale_lines`; la 20.4 crea `sale_voids`. Compras, proveedores y pagos siguen sin modelo.
 
 ## Diagrama entidad-relación
 
@@ -150,7 +150,7 @@ Limpieza: en cada intento se borran los registros vencidos **de todas las claves
 | `phone_e164` | text null | E.164 canónico: `CHECK (phone_e164 ~ '^\+[1-9][0-9]{1,14}$')`, constraint `clients_phone_e164_format` (brief-5.1, D-1). Valida la forma, no que el número exista. El servicio de `crm` normaliza la entrada antes de guardar y de buscar: exige `+` y quita espacios, guiones, puntos y paréntesis; sin `+` la rechaza, sin adivinar el país (brief-5.2, D-1) |
 | `notes` | text null | |
 | `email` | text null | *17.1*. Recortado y en minúsculas, hasta 254 caracteres: `CHECK clients_email_format` (en minúsculas, largo y una `@` que no es la primera letra). **Sin unicidad**: dos clientes pueden compartirlo, y no identifica a nadie (ADR 0007). No llega a un `viewer` |
-| `kind` | `client_kind` enum(`person`,`company`) null | *17.1*, D-3. «Persona» o «Empresa»; nulo es «sin dato». «Consumidor final» no es un tipo: es una condición frente al IVA, que llega con el comprobante de la Fase 20 |
+| `kind` | `client_kind` enum(`person`,`company`) null | *17.1*, D-3. «Persona» o «Empresa»; nulo es «sin dato». «Consumidor final» no es un tipo: es una condición frente al IVA, que llega con el comprobante de la Fase 20. *Enmendado el 2026-10-12 por el [ADR 0021](../decisions/0021-la-venta.md), punto 11*: la Fase 20 no discrimina el IVA; la condición llega con la subfase que lo discrimine |
 | `company_name` | text null | *17.1*. De 1 a 120 caracteres, recortado: `CHECK clients_company_name_length` |
 | `job_title` | text null | *17.1*. De 1 a 120: `clients_job_title_length` |
 | `address_line` | text null | *17.1*. Calle y número, de 1 a 200: `clients_address_line_length`. No llega a un `viewer` |
@@ -166,7 +166,7 @@ Limpieza: en cada intento se borran los registros vencidos **de todas las claves
 
 `display_name` vacío lo rechaza el servicio de la 5.2, que también recorta espacios: es editable y se corrige (mismo criterio que la 4.1, D-5).
 
-**Campos ampliados (17.1)** ([brief-17.1](../decisions/brief-17.1-campos-de-clientes.md)). Los nueve son opcionales y los carga solo un `admin` desde el formulario; el agente no los lee ni los escribe (ningún contrato cambia). Cada uno entra con su motivo, escrito en el brief (D-2). **Documento y CUIT/CUIL no están**: los usa el comprobante de la Fase 20, y entran ahí con la condición frente al IVA, lo que deja intactos el ADR 0007 y FR-CLI-05 (C-1).
+**Campos ampliados (17.1)** ([brief-17.1](../decisions/brief-17.1-campos-de-clientes.md)). Los nueve son opcionales y los carga solo un `admin` desde el formulario; el agente no los lee ni los escribe (ningún contrato cambia). Cada uno entra con su motivo, escrito en el brief (D-2). **Documento y CUIT/CUIL no están**: los usa el comprobante de la Fase 20, y entran ahí con la condición frente al IVA, lo que deja intactos el ADR 0007 y FR-CLI-05 (C-1). *Enmendado el 2026-10-12 por el [ADR 0021](../decisions/0021-la-venta.md), punto 11; el texto anterior se conserva*: la 20.1 los posterga. El comprobante interno de la Fase 20 no discrimina el IVA y no los necesita; entran con la subfase que discrimine el IVA o con el ADR de la factura de ARCA, con una enmienda del ADR 0007 y su lugar en el vaciado.
 
 - **Lo que no llega a un `viewer`** (D-8, FR-CLI-13): el email, la calle y el código postal, como el teléfono completo. `crm` los devuelve en `contact`, que es `null` para un `viewer`.
 - **Filtros de la lista** (D-9, FR-CLI-14): tipo, provincia y segmento, resueltos en `crm` dentro de `findClientIdsByName` y `countClients`, como la etiqueta. El segmento filtra por el valor exacto. Los selectores de la lista ofrecen solo los tipos, las provincias y los segmentos que tiene algún cliente de la organización, activo o no, y la página ignora cualquier otro valor de la URL, como una etiqueta ajena. **Límite**: la lista de valores se corta en 200, en orden alfabético, como las marcas de productos; un segmento más allá del puesto 200 no se ofrece ni se puede filtrar. El segmento distingue mayúsculas. **Sin índices** (D-10, regla 6): en local, con 10 000 clientes generados en una organización, la lista entera de la pantalla 6 con los tres filtros (`searchClientsByLastInteraction`) se mide en `crm.test.ts`, caso D-10, contra el umbral de 754 ms de la 13.2. Se revisa si el volumen real lo pide.
@@ -328,6 +328,12 @@ Desde la 4.3.1 ([brief-4.3.1](../decisions/brief-4.3.1-transaccion-de-ajuste-de-
 - las escrituras de estas tablas son `lockBalance`, `applyStockChange` y esas tres funciones, y `stock-writes` se extiende a ellas.
 
 *Implementado el 2026-10-11 en la 19.3* ([brief-19.3](../decisions/brief-19.3-reserva-y-ciclo.md)), con la migración `0037`. Las tres funciones del servicio son `reserveStock`, `releaseStock` y `deliverStock`, que reciben la transacción de `orders` y bloquean los saldos ordenados por producto; escriben por dos funciones del repositorio, `setReserved` (solo lo reservado) y `applyDelivery` (el movimiento `order_delivery` y después saldo y reservado en una sentencia), que son las que autoriza `stock-writes`. La guarda no distingue columnas: que el saldo físico cambie solo con su movimiento lo fija `orders-cycle.test.ts`, con la conciliación de D-11.
+
+*Enmendado el 2026-10-12 por el [ADR 0021](../decisions/0021-la-venta.md), puntos 5 y 6; el texto anterior se conserva arriba*: la lista de quién cambia `quantity_on_hand` suma dos funciones de `inventory`, que reciben la transacción de `sales`:
+- **desde la 20.3**, la venta sin pedido, que descuenta con un movimiento del tipo nuevo `sale` y comprueba **lo disponible**, no el saldo;
+- **desde la 20.4**, la reposición de la anulación de una venta sin pedido, con un movimiento del tipo nuevo `sale_void`.
+
+Las dos cambian el saldo físico **siempre con su movimiento** y no tocan lo reservado. `stock-writes` se extiende a ellas, y el ajuste manual sigue aceptando solo sus dos tipos. La regla que se conserva: el saldo físico nunca cambia sin su movimiento, y lo reservado lo cambian solo la reserva, la liberación y la entrega.
 
 | Columna | Tipo | Notas |
 |---|---|---|
@@ -577,7 +583,7 @@ El contador de la numeración sin huecos: una fila por organización y tipo de d
 | Columna | Tipo | Notas |
 |---|---|---|
 | `organization_id` | uuid FK → organizations, not null | `ON DELETE RESTRICT`; PK compuesta con `kind` |
-| `kind` | enum `document_kind` (`order`) not null | la Fase 20 suma el tipo de la venta |
+| `kind` | enum `document_kind` (`order`) not null | la Fase 20 suma el tipo de la venta. *Enmendado el 2026-10-12 por el [ADR 0021](../decisions/0021-la-venta.md), punto 7*: suma dos, `sale` (20.2, prefijo `V`) y `sale_void` (20.4, la anulación, prefijo `A`) |
 | `last_number` | bigint not null | el último número entregado; `CHECK (>= 0)` |
 | `updated_at` | timestamptz not null | |
 
@@ -742,6 +748,13 @@ Productor `client_tag`, desde la 16.1 (D-7). `entity_id` es el id de la etiqueta
 - la condición frente al IVA y la alícuota del producto, con la primera fase que las use.
 
 *Nota del 2026-10-11 ([ADR 0020](../decisions/0020-el-pedido.md))*: el pedido no es un comprobante emitido sino un compromiso con estado. *Implementada en parte el 2026-10-11 por la 19.2*: `orders`, `order_lines` y `document_counters` existen (arriba); lo de la 19.3 sigue sin existir. *Implementada entera el 2026-10-11 por la 19.3* ([brief-19.3](../decisions/brief-19.3-reserva-y-ciclo.md)): `inventories.quantity_reserved` y `order_delivery` también existen. Texto original: sus tablas **no existen todavía**: la 19.2 crea `orders` (sin `DELETE`, con un trigger que solo deja cambiar el estado y sus fechas), `order_lines` (de solo inserción) y `document_counters` del módulo nuevo `numbering`, el contador del ADR 0019; la 19.3 suma `inventories.quantity_reserved` y el tipo de movimiento `order_delivery`. Cada una entra con su brief y su migración.
+
+*Nota del 2026-10-12 ([ADR 0021](../decisions/0021-la-venta.md))*: la venta es un comprobante emitido, de solo inserción. Sus tablas **no existen todavía**:
+- `sales` y `sale_lines` las crea la 20.2;
+- `order_id` y el cliente pasan a nulables en la 20.3, con la venta sin pedido;
+- `sale_voids` y `replaces_sale_id` llegan con la 20.4.
+
+`sale_details` no va a existir: las líneas son `sale_lines`. La nota del ADR 0019 de arriba («en cada línea, los montos y el IVA de cuando se emitió») vale **sin IVA** mientras ninguna fase lo discrimine: la Fase 20 no lo hace (ADR 0021, punto 11).
 
 ## Preguntas abiertas sobre el modelo
 

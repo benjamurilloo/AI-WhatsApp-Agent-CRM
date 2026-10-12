@@ -2,6 +2,41 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-12 — 20.1: el ADR 0021 de la venta
+
+Cierra el 2026-10-12 con la aceptación del ADR por el usuario ([brief-20.1](docs/decisions/brief-20.1-adr-de-la-venta.md), §Cierre). Es la primera subfase de la Fase 20 — Ventas, abierta ese día con la Fase 13 abierta ([ADR 0016](docs/decisions/0016-el-crm-se-amplia-hacia-un-erp-por-fases.md), punto 3).
+
+**Certifica:**
+- **El [ADR 0021](docs/decisions/0021-la-venta.md), aceptado**:
+  - **Qué es la venta**: el comprobante emitido del ADR 0019, de solo inserción y sin estados, con número `V-000123` del módulo `numbering`.
+  - **La venta de un pedido**: se emite solo desde un pedido entregado, copia sus montos y no toca el stock. Un pedido tiene a lo sumo una venta vigente, y lo garantizan el bloqueo del pedido y una cadena de reemplazos en la base.
+  - **La venta sin pedido**: el cliente es opcional. Descuenta con un movimiento `sale` y comprueba **lo disponible**, así que nunca se lleva unidades reservadas.
+  - **La anulación**: un comprobante propio (`A-000045`), por la venta entera, con montos positivos y un motivo de una lista cerrada. Repone el stock solo si la venta no tenía pedido.
+  - **El comprobante entregable**: una página imprimible con la leyenda «Documento no válido como factura», sin dependencias nuevas.
+  - **IVA y datos fiscales**: no se discrimina el IVA, y documento y CUIT/CUIL quedan para la subfase que lo haga. El ADR 0007 no cambia.
+  - **Roles y agente**: solo `admin` emite y anula, y el agente no emite ni lee ventas.
+  - **Datos de un cliente**: un cliente con ventas se vacía, no se borra.
+- **La revisión independiente** dio R1, con 3 defectos bloqueantes:
+  - el ADR contradecía DataModel en cuatro puntos sin enmendarlo;
+  - el motivo libre de la anulación quedaba fuera del alcance del vaciado;
+  - faltaban alternativas descartadas.
+
+  Había además 5 hallazgos medios y 4 bajos. Los doce se verificaron contra la fuente y se corrigieron antes de la aceptación. R-2 cambió el motivo de la anulación a una lista cerrada, por decisión del usuario.
+- **Las enmiendas**, con fecha y conservando el texto anterior:
+  - el Roadmap, §Fases 17 y 20;
+  - DataModel: la regla 14, §`clients`, §`inventories`, §`document_counters` y la nota de las tablas que vienen;
+  - Overview, §Evolución hacia ERP;
+  - FR-CLI-05;
+  - las notas de los ADR 0019 y 0020;
+  - el README de decisiones.
+
+**Nivel**: diseñado.
+
+**No certifica:**
+- Ninguna tabla, migración ni código: los crean la 20.2, la 20.3 y la 20.4.
+- Ningún cambio en un contrato con el agente, ni un aviso al agente.
+- Que un comprobante interno entregado a un consumidor final quede fuera de la Ley 27.743: sigue pendiente para la 13.5.2-b.
+
 ## 2026-10-12 — 19.4: el pedido del agente, y la Fase 19 — Pedidos
 
 Cierra el 2026-10-12 con la aprobación del usuario, junto con la Fase 19, después de la ventana con el agente en producción ([brief-19.4](docs/decisions/brief-19.4-el-pedido-del-agente.md), §Cierre).

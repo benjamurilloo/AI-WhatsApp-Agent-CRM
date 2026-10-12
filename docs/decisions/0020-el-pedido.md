@@ -3,6 +3,11 @@
 - Estado: **aceptada** (decisión del usuario del 2026-10-11, después de la revisión independiente y con sus correcciones, entre ellas R-5, R-7 y R-9, que cambian o suman decisiones del brief; subfase 19.1, [brief-19.1](brief-19.1-adr-del-pedido.md), aprobado el 2026-10-11 con las recomendaciones de D-1 a D-12).
 - Fecha: 2026-10-11
 - Nivel: **diseñado**. No hay código, tablas ni ejecución.
+- *Nota del 2026-10-12*: el [ADR 0021](0021-la-venta.md), la venta, completa lo que este dejó a la Fase 20, sin cambiar su texto:
+  - **punto 4**: la venta se emite solo desde un pedido `delivered`, a lo sumo una vigente por pedido, y no toca el stock;
+  - **punto 4, las escrituras de `inventories`**: «las únicas escrituras … son `lockBalance`, `applyStockChange` y esas tres» suma dos funciones de la Fase 20, la venta sin pedido y la reposición de su anulación, siempre con su movimiento;
+  - **punto 2**: la Fase 20 suma dos valores a `document_kind`, `sale` y `sale_void`, no uno;
+  - **§Consecuencias**: `sales` dependerá de `orders`, que expone una función que bloquea un pedido para la venta. `ingestion` deja de ser la única dependencia hacia `orders`, y `orders` sigue sin depender de quien lo usa.
 
 ## Contexto
 
