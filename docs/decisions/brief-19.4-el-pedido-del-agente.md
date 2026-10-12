@@ -68,7 +68,7 @@ Releído o verificado en el código, en los contratos y en la respuesta del agen
 2. **El evento `order.placed`** en ingestión v2 (D-1 a D-6), su proyección en `orders` dentro de la transacción de `ingestion` (D-7), fuera de la métrica 12 (D-13).
 3. **La lectura v2 de productos** (D-12): tres rutas, con lo disponible.
 4. **Las pantallas** (D-11): el origen del pedido en la lista y el detalle.
-5. **Documentación**: `ingestion-v2.md` (§Pedidos y la guía del emisor), un `read-v2.md` nuevo, una nota en `read-v1.md`, DataModel, Overview, SecurityModel (88 puntos de entrada), TraceabilityMatrix, FunctionalRequirements, Screens, MetricsCatalog §12, IntegrationBoundaries, EngineeringStandards y la precisión fechada del ADR 0020, punto 7.
+5. **Documentación**: `ingestion-v2.md` (§Pedidos y la guía del emisor), un `read-v2.md` nuevo, una nota en `read-v1.md`, DataModel, Overview, SecurityModel (88 puntos de entrada), TraceabilityMatrix, FunctionalRequirements, Screens, MetricsCatalog §12, IntegrationBoundaries, EngineeringStandards y la precisión fechada del ADR 0020, punto 7. *Ampliación autorizada por el usuario el 2026-10-11* (R-8): también una nota fechada en §Consecuencias del ADR 0020, sobre la dependencia de `ingestion` hacia `orders`.
 6. **La confirmación del contrato al agente** antes de la ventana, y el aviso al cerrar (D-15).
 
 ## Alcance excluido
@@ -265,9 +265,9 @@ Todos los tocados están en la lista autorizada, con la ampliación de arriba. `
 | AC-8 | cumplido | `orders.spec.ts` caso 7: «Origen» en la lista con «Agente» y «Equipo», «Agente · emisor» en el detalle, la credencial en la historia y la confirmación de un pedido del agente; axe en claro y oscuro. `pedidos/messages.test.ts`, el texto |
 | AC-9 | cumplido | `analytics-ingestion.test.ts`, un caso nuevo con los totales calculados a mano |
 | AC-10 | cumplido en parte | `exposed-surface` con las tres rutas (88); `order-writes` sin cambios, porque no hay escrituras nuevas. **`module-boundary` no cumple lo que pide el criterio**: no lleva dependencias permitidas, así que no vigila `ingestion → orders` (R-2). El invariante se cumple hoy, verificado por búsqueda de imports, sin una guarda que lo fije |
-| AC-11 | local cumplido; CI pendiente | la batería, abajo; la CI, con el commit |
+| AC-11 | cumplido | la batería, abajo; la CI del commit `9c8bc54b312d276597cd3bcf9136c3c4f5d28111`, leída por su hash completo: `success` (run 38193892481, unos 12 minutos) |
 | AC-12 | cumplido | los contratos (`ingestion-v2.md` §Pedidos, `read-v2.md` nuevo, la nota de `read-v1.md`), DataModel, Overview, SecurityModel (88), TraceabilityMatrix (FR-ORD-11 y FR-API-11), FunctionalRequirements, Screens, MetricsCatalog §12, IntegrationBoundaries, EngineeringStandards y la precisión fechada del ADR 0020, punto 7 |
-| AC-13 | pendiente | la confirmación del contrato al agente, con su autorización |
+| AC-13 | cumplido | `Confirmacion-19.4-CRM-al-Agente.md` en el Escritorio del usuario, autorizada el 2026-10-11: los dos contratos, los fixtures, D-8, D-9 y las tres diferencias de H-6 |
 
 **Mutaciones** sobre el código real, cada una corrida y revertida:
 
@@ -287,12 +287,12 @@ Todos los tocados están en la lista autorizada, con la ampliación de arriba. `
 Un agente de solo lectura que no participó del trabajo revisó la entrega contra este brief, el ADR 0020, los contratos y las reglas vigentes, sin ejecutar nada. **Veredicto**: 2 hallazgos medios y 6 bajos, ninguno bloqueante. Cada uno se verificó contra el código antes de aceptarlo:
 
 - **R-1 (medio, verificado)**: el caso «dos líneas que caben y un total que no» usaba una segunda línea que **ya no cabía sola** (1500 × 99 999 999 999), así que la rama del total del pedido nunca corría, y la autoevaluación decía que sí. **Corregido**: dos líneas de 599 999 999 999,99 y 600 000 000 000, y una mutación que quita la rama ahora falla.
-- **R-2 (medio, verificado)**: AC-10 pide que `module-boundary` vigile `ingestion → orders`, y la guarda no tiene dependencias permitidas. **No corregido**: AC-10 queda «cumplido en parte». Sumar una guarda de dependencias entre módulos es una decisión del usuario.
+- **R-2 (medio, verificado)**: AC-10 pide que `module-boundary` vigile `ingestion → orders`, y la guarda no tiene dependencias permitidas. **No corregido**: AC-10 queda «cumplido en parte». **Decisión del usuario (2026-10-11)**: una guarda de dependencias entre módulos se hace en una subfase posterior, que se registra en Notion al cerrar la 19.4; mientras tanto, la dependencia se verificó por búsqueda de imports.
 - **R-3 (bajo, verificado)**: el trigger, el `UNIQUE` y las claves nuevas se probaban solo con el dueño. **Corregido**: también con `crm_app`.
 - **R-4 (bajo, verificado)**: faltaba una credencial `read` fuera de la allowlist en la v2. **Corregido**, en las tres rutas.
 - **R-5 (bajo, verificado)**: §Pedidos decía «en minúsculas» sin la asimetría que sí documentan las etiquetas. **Corregido** en `ingestion-v2.md`.
 - **R-6 (bajo, verificado)**: faltaban dos precedencias: el cliente desactivado antes que un producto, y la moneda antes que el monto en la misma línea. **Agregadas**.
 - **R-7 (bajo, verificado)**: un comentario de `orders.spec.ts` quedó separado de su bloque. **Corregido**.
-- **R-8 (bajo, verificado)**: el ADR 0020, §Consecuencias, dice «Ningún módulo existente depende de `orders`», y desde la 19.4 `ingestion` depende. Overview ya lo corrige con fecha; el ADR no, porque este brief prohíbe tocar su texto más allá del punto 7. **Queda para la decisión del usuario.**
+- **R-8 (bajo, verificado)**: el ADR 0020, §Consecuencias, dice «Ningún módulo existente depende de `orders`», y desde la 19.4 `ingestion` depende. Overview ya lo corrige con fecha; el ADR no, porque este brief prohibía tocar su texto más allá del punto 7. **Corregido** con autorización del usuario (2026-10-11): una nota fechada en §Consecuencias, verificada por búsqueda de imports (`ingestion/service.ts` importa `@/modules/orders`; `orders` importa de `ingestion` solo en `schema.ts`).
 
 Las notas N-1 a N-8 no son defectos. N-1 se incorporó al contrato: `duplicate` con `order: null` solo si el evento no tuviera pedido, que no pasa. Las demás: la `0038` no es puramente aditiva (declarado en H-1); el Roadmap sigue en futuro hasta el cierre; el e2e arma el pedido del agente por SQL; «Equipo» está declarado; la consulta de `crm` es lo mínimo que la función necesita; `order-writes` verificado.

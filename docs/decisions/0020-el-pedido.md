@@ -182,6 +182,7 @@ Un ajuste manual bloquea un producto y después su saldo: es el mismo orden con 
   - **agente (9)**: la 19.4 suma un actor de servicio a la cabecera;
   - **datos de un cliente (10)**: el runbook y el script de borrado cambian de criterio en la 19.2.
 - **La 19.2** crea las tablas del punto 11 y el módulo `orders`, que depende de `crm`, `catalog`, `inventory`, `numbering`, `organizations`, `audit` y, solo en `schema.ts` por la clave del autor, `auth`. Desde la 19.4 suma `ingestion` en `schema.ts`, por el actor de servicio, como `audit`. Ningún módulo existente depende de `orders`.
+  *Precisado el 2026-10-11 en la 19.4* ([brief-19.4](brief-19.4-el-pedido-del-agente.md), revisión independiente, R-8): desde la 19.4, **`ingestion` depende de `orders`**, solo por su `index.ts`, para dejar el pedido del agente en la misma transacción que el evento. Es la única dependencia hacia `orders`, y `orders` no depende de `ingestion` fuera de `schema.ts`. Hoy no la fija ninguna guarda (R-2).
 - **La 19.4** cambia un contrato con el agente y lleva revisión independiente obligatoria.
 - **Riesgo**: una organización con muchos pedidos simultáneos se serializa en la fila del contador y en los saldos de los productos más pedidos. Es aceptable mientras el volumen sea el de un negocio chico, como en el ADR 0019.
 
