@@ -1,0 +1,23 @@
+{
+  "shape": "captured",
+  "note": "Capturada del emisor real: la instancia de n8n del agente, contra producción, en la organización de demostración, el 2026-10-12 (brief-19.4, ventana 19.4.3, paso 3b; Conciliacion-3.49-Ventana-19.4.3.md). El agente mandó el teléfono tapado (+54…448); se reemplazó por el del rango sintético, que es lo único cambiado del cuerpo. n8n guarda los cuerpos ya parseados: valida la forma, no los bytes.",
+  "description": "Un pedido de 2 fundas con el producto desactivado entre el resumen y el «sí»: la forma es válida y la regla lo rechaza con 422 product_not_found, sin consumir un número. Después el agente mandó su conversation.escalated.",
+  "received_at": "2026-10-12T17:26:53.207Z",
+  "correlation_id": "16100",
+  "staging_status": 422,
+  "body": "{\"contract_version\":\"2\",\"event_type\":\"order.placed\",\"event_id\":\"wa-ord-k1-2178578add65ff1102f6496c23c02163649a813b0d17e05cbdd79a4f42dc916f\",\"occurred_at\":\"2026-10-12T17:26:18.000Z\",\"client\":{\"phone\":\"+5491155550001\"},\"lines\":[{\"product_id\":\"ac3e7692-280e-4cb0-b667-d492a250b4e5\",\"quantity\":\"2\"}]}",
+  "responses": [
+    {
+      "status": 422,
+      "body": {
+        "code": "BUSINESS_RULE_VIOLATION",
+        "request_id": "6f06be5c-8c2d-44dd-9501-8f8075fe878a",
+        "rule": "product_not_found"
+      }
+    }
+  ],
+  "expected": {
+    "ok": true,
+    "payload_hash": "1aefdeedfe0becef59d65f0ace5ce4464950bca152312cd6255bf9ea11d1ad03"
+  }
+}

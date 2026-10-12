@@ -389,12 +389,14 @@ describe("fixtures del contrato v2 (forma asumida y capturas del emisor)", () =>
       .map((file) => JSON.parse(readFileSync(path.join(dir, file), "utf8")))
       .filter((fixture) => fixture.expected.ok)
       .map((fixture) => JSON.parse(fixture.body));
+    // Desde la 19.4.3, también el pedido del agente (brief-19.4, AC-15).
     expect(new Set(events.map((event) => event.event_type))).toEqual(
       new Set([
         "client.resolved",
         "conversation.resolved",
         "message.recorded",
         "conversation.escalated",
+        "order.placed",
       ]),
     );
     expect(
@@ -422,7 +424,10 @@ describe("fixtures del contrato v2 (forma asumida y capturas del emisor)", () =>
         (isCaptured && !file.startsWith("captured-invalid-")),
     );
     if (isCaptured) {
-      expect(result.ok).toBe(fixture.staging_status < 300);
+      // Un 422 es una regla de negocio sobre una forma válida (brief-19.4, D-6).
+      expect(result.ok).toBe(
+        fixture.staging_status < 300 || fixture.staging_status === 422,
+      );
       // Ni un prefijo de token en todo el archivo, y solo teléfonos del rango sintético (D-9).
       expect(readFileSync(path.join(dir, file), "utf8")).not.toMatch(
         /crm_[a-z]+_/,

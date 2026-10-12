@@ -1,0 +1,22 @@
+{
+  "shape": "captured",
+  "note": "Capturada del consumidor real: la lectura de control del agente contra producción, en la organización de demostración, el 2026-10-12 (brief-19.4, ventana 19.4.3, paso 1; Conciliacion-3.48-Ventana-19.4.3.md, X-Request-Id eef17fec-8dd5-447d-95e7-fe252a93bc35). El agente mandó el cuerpo de una línea tal como llegó; este archivo lo guarda con sangría, así que valida el esquema, no los bytes. Sin encabezados.",
+  "description": "El stock v2 del Celular Aurora X3 64 GB sin reservas: 1 físico, 0 reservado y 1 disponible, bajo_stock, igual que la v1 del mismo producto.",
+  "request": {
+    "method": "GET",
+    "path": "/api/read/v2/products/293164d9-b293-4f28-a62b-b2c5b76ac7a0/stock"
+  },
+  "received_at": "2026-10-12T12:27:32.598Z",
+  "response": {
+    "status": 200,
+    "body": {
+      "contract_version": "2",
+      "product_id": "293164d9-b293-4f28-a62b-b2c5b76ac7a0",
+      "quantity_on_hand": "1",
+      "quantity_reserved": "0",
+      "quantity_available": "1",
+      "unit": "unidad",
+      "stock_status": "bajo_stock"
+    }
+  }
+}

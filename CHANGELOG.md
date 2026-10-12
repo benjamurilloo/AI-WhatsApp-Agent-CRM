@@ -2,6 +2,38 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-12 — 19.4: el pedido del agente, y la Fase 19 — Pedidos
+
+Cierra el 2026-10-12 con la aprobación del usuario, junto con la Fase 19, después de la ventana con el agente en producción ([brief-19.4](docs/decisions/brief-19.4-el-pedido-del-agente.md), §Cierre).
+
+**Certifica:**
+- **El pedido del agente** (migración `0038`):
+  - el evento `order.placed` del [contrato de ingestión v2](docs/contracts/ingestion-v2.md) deja un pedido **pendiente**, con su número, los precios vigentes copiados y la credencial como autor, vinculado al evento que lo creó;
+  - un reenvío devuelve el mismo número, y un rechazo no consume ninguno;
+  - seis reglas de rechazo (`422`), con su orden de precedencia;
+  - el agente nunca confirma, entrega ni cancela;
+  - en la base: `orders.created_by` es nulable, con un `CHECK` de exactamente un autor, el vínculo único al evento y claves compuestas hacia la credencial y el evento;
+  - el pedido del agente no cuenta en la métrica 12.
+- **La [lectura v2](docs/contracts/read-v2.md)**: las tres rutas de productos con el estado de stock de lo disponible; la del stock trae el físico, lo reservado y lo disponible. La v1 no cambia y convive con la v2.
+- **Las pantallas**: «Origen» en la lista de pedidos («Agente» o «Equipo») y en el detalle, con la credencial.
+- **La revisión independiente** encontró 2 hallazgos medios y 6 bajos, ninguno bloqueante. Se verificaron todos: seis se corrigieron, R-8 con una nota fechada en el ADR 0020 y R-2 quedó para una subfase posterior.
+- **Producción** corre `9c8bc54`, con 39 migraciones; la versión anterior es `50da0be`.
+- **La ventana con el agente** (2026-10-12), en la organización de demostración, conciliada contra la base y el journal:
+  - la lectura v2 de control y tres turnos reales;
+  - `P-000004`, aceptado, y su reenvío `duplicate` con el mismo número;
+  - un `422 product_not_found` sin consumir un número, y su derivación.
+
+  Las respuestas reales quedaron como capturas, con el teléfono reemplazado por uno sintético.
+- **La Fase 19 — Pedidos** cierra con sus cuatro subfases. La decisión del ADR 0020, punto 7, queda tomada: el agente lee lo disponible por la v2.
+
+**Nivel**: validado localmente y en CI (run 38193892481); validado en integración con el agente como emisor y consumidor real, en producción, en la organización de demostración; desplegado. No es «preparado para producción».
+
+**No certifica:**
+- **Lo disponible con reservas en producción**: el agente leyó la v2 sin nada reservado.
+- `client_inactive`, `currency_mismatch`, `amount_out_of_range` y un pedido de más de una línea con el emisor real: los cubren los tests de integración.
+- Que el pedido lleve el precio que leyó el cliente: el agente guarda su propuesta 30 minutos, y el CRM copia el precio vigente al crear el pedido.
+- Una guarda que fije que solo `ingestion` depende de `orders` (R-2).
+
 ## 2026-10-11 — 19.3: reserva y ciclo
 
 Cierra el 2026-10-11 con la aprobación del usuario, después de su recorrido en producción ([brief-19.3](docs/decisions/brief-19.3-reserva-y-ciclo.md), §Cierre).

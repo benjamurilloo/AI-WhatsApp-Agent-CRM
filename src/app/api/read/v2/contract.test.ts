@@ -78,8 +78,12 @@ describe("fixtures del contrato v2", () => {
 
   it.each(files)("%s declara su forma y pasa el validador", (file) => {
     const data = JSON.parse(readFileSync(path.join(dir, file), "utf8"));
-    expect(data.shape).toBe("assumed");
-    expect(data.note).toMatch(/forma asumida/i);
+    // Las capturas del consumidor real, desde la 19.4.3 (brief-19.4, AC-15).
+    const isCaptured = file.startsWith("captured-");
+    expect(data.shape).toBe(isCaptured ? "captured" : "assumed");
+    expect(data.note).toMatch(
+      isCaptured ? /capturada del consumidor real/i : /forma asumida/i,
+    );
     const { body } = data.response;
     const schema = data.request.path.endsWith("/stock")
       ? productStockResponseSchemaV2

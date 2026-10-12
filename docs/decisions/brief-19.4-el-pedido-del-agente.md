@@ -16,7 +16,7 @@ generated_at: 2026-10-11
 - **Nivel de validación alcanzable**: **validado localmente y en CI** (19.4.1), **desplegado en producción** (19.4.2) y **validado en integración con el agente** en la organización de demostración (19.4.3). No es «preparado para producción».
 - **Orden**: cuarta y última subfase de la Fase 19 — Pedidos ([Roadmap](../planning/Roadmap.md) §Fase 19), después de la 19.3, cerrada el 2026-10-11. Implementa las filas «19.4» del punto 11 del [ADR 0020](0020-el-pedido.md). Se hace porque **el agente confirmó el 2026-10-11 que la usaría** (`Respuesta-19.4-Agente-al-CRM.md`, en el Escritorio del usuario).
 - **No abre ni cierra gate**, pero **cambia dos contratos con el agente**: la revisión independiente es **obligatoria** (ADR 0020, §Consecuencias).
-- **Estado de este documento**: **aprobado el 2026-10-11** por el usuario, con las recomendaciones de D-1 a D-15. La tarea 19.4 (`3f6702be6f4e81da9df4d463d518b18b`) está en «En proceso» en Notion desde ese día.
+- **Estado de este documento**: **aprobado el 2026-10-11** por el usuario, con las recomendaciones de D-1 a D-15. La tarea 19.4 (`3f6702be6f4e81da9df4d463d518b18b`) está en «En proceso» en Notion desde ese día. **Cerrado el 2026-10-12**, junto con la Fase 19 (§Cierre).
 
 ## Objetivo
 
@@ -314,3 +314,72 @@ Autorizado por el usuario el 2026-10-12. Según [deploy/production/README.md](..
 ## La ventana de la 19.4.3 — abierta el 2026-10-12
 
 El usuario autorizó el 2026-10-12 el aviso del despliegue y abrir la ventana en el mismo aviso: `Aviso-19.4.2-CRM-al-Agente.md`, en el Escritorio. El agente hace primero una lectura de control de las tres rutas v2. Si da `200` con la forma del contrato, promueve sus cinco tools, incluida la que deja pedidos, solo en Demostración Vixora. Se pidieron un pedido aceptado, su reenvío `duplicate`, un `422` con su `conversation.escalated` y las capturas de cada evento y lectura, sin el token.
+
+### La conciliación de la lectura v2 — 2026-10-12
+
+El agente informó su parte en `Conciliacion-3.48-Ventana-19.4.3.md` (Escritorio del usuario). Se concilió contra producción, en solo lectura (autoevaluación):
+
+- **Las nueve lecturas informadas están en el journal**, cada una con su `X-Request-Id`, la misma ruta, `code: OK`, la organización Demostración Vixora, la fuente `agente-demo` y la misma correlación:
+  - el control a las 12:27 UTC: la búsqueda, el detalle y el stock v2, y el stock v1 para comparar;
+  - tres turnos reales del usuario por WhatsApp, entre las 12:55 y las 12:57: dos búsquedas y un stock v2 (Celular Aurora X3 64 GB), una búsqueda v2 (Aurora X5) y `knowledge` v1.
+- **Hay una más que el agente no informó**: una búsqueda v2 a las 12:25:29, con la correlación del control, `OK`. Las otras siete lecturas de esa franja son las v1 de contexto de cada turno.
+- **El stock leído coincide con la base**: el Aurora X3 tiene 1 físico y 0 reservado, y la v2 dio `"1"`, `"0"`, `"1"` y `bajo_stock`, igual que la v1. **Lo disponible con reservas no se vio en producción**: no hay nada reservado.
+- **Sin avisos** en el journal desde las 12:20. Siguen 3 pedidos, y no llegó ningún `order.placed` ni `conversation.escalated` hoy.
+- **El agente no mandó `order.placed`**: es su subfase 3.49, sin brief ni código todavía. Los pasos 2 a 4 de la ventana no se hicieron. **AC-15 queda cumplido solo para la lectura v2.**
+- **Su pregunta sobre el `422`** encontró una ambigüedad del contrato: «la regla en `rule` y en `error_code`» se lee como dos campos de la respuesta, y `error_code` es la columna de `ingestion_events`. El cuerpo es `{ code, request_id, rule }`, y así lo tomó el agente. Se aclaró con fecha en `ingestion-v2.md`, en §Etiquetas y en §Pedidos. La confirmación al agente repetía la frase.
+
+### La conciliación del pedido — 2026-10-12
+
+El agente avisó que estaba listo en `Aviso-3.49-Ventana-19.4.3.md`, y su conciliación está en `Conciliacion-3.49-Ventana-19.4.3.md` (los dos en el Escritorio del usuario). Se concilió contra producción, en solo lectura (autoevaluación):
+
+- **Antes de la ventana**: 3 pedidos, 195 eventos y 73 registros de auditoría, sin nada reservado. Un primer intento del agente, parado de su lado, dejó dos `conversation.escalated` procesados (15:14 y 15:19 UTC) y ningún `order.placed`.
+- **El pedido (paso 2b)**: el `order.placed` `…92b6baa2e468` quedó `processed` a las 17:24:27 y creó **`P-000004`**:
+  - `pending`, en ARS, sin usuario y con la credencial `ingest` de `agente-demo` como autor, vinculado a su evento;
+  - una línea: el Celular Aurora X5 128 GB, cantidad 1, con el precio vigente copiado (450 000,00), y total 450 000,00;
+  - en la auditoría, un `create` de `order` con la credencial como actor;
+  - el contador de pedidos de la organización, en 4.
+- **El reenvío (paso 2c)**: a las 17:32:31, `OK` en el journal con la correlación del pedido. **No hay un evento ni un pedido nuevos**: sigue un solo `order.placed` con esa referencia. El agente recibió `duplicate` con `P-000004`.
+- **El rechazo (paso 3b)**: la Funda se desactivó a las 17:26:14 y se reactivó a las 17:30:12, con su `deactivate` y su `reactivate` en la auditoría. El `order.placed` `…9a4f42dc916f` quedó `failed` con `error_code = product_not_found`, y el journal registra el `422` con el `request_id` que informó el agente. **No consumió un número**: el contador sigue en 4. Su `conversation.escalated` quedó `processed` a las 17:26:54.
+- **El segundo «sí» (paso 4)**: ningún pedido. Hubo una derivación común que el aviso no anunciaba (`…5b5b5f24a1f3`, `processed`), por un control nuevo del agente. Es un límite del agente, que lo corrige de su lado sin cambiar el contrato.
+- **Después**: 4 pedidos, 5 líneas, 222 eventos y 76 registros de auditoría, con lo reservado en 0. Los dos productos están activos. La conversación de prueba quedó `pending`. El journal no tiene avisos del sistema; su única línea `warn` es el `422`.
+- **Un límite aceptado**: el agente no vuelve a leer los productos en el «sí», y guarda su propuesta 30 minutos. Un producto desactivado en el medio lo frena el `422`, como en el paso 3. **Un precio cambiado en el medio no**: el CRM copia el vigente, que puede no ser el que leyó el cliente. Lo resuelve la persona que confirma el pendiente.
+- **AC-15**: cumplido en lectura v2, pedido aceptado, `duplicate`, `422` y derivación, con la conciliación cerrada. **Faltan**: cancelar `P-000004` desde la app y las capturas como fixtures `"shape": "captured"`.
+
+## Cierre de la subfase 19.4 y de la Fase 19, 2026-10-12
+
+Cierra el 2026-10-12 con la aprobación del usuario («cierre completo»), después de la ventana con el agente en producción.
+
+- **AC-1 a AC-15 cumplidos**, con dos salvedades:
+  - **AC-10, en parte**: `module-boundary` no vigila `ingestion → orders` (R-2). Por decisión del usuario, una guarda de dependencias entre módulos va en una subfase posterior, con su tarea en Notion. La dependencia se verificó por búsqueda de imports.
+  - **AC-15, sin el aviso de cierre de D-15**: el usuario decidió no mandarlo, porque el agente ya cerró su subfase. Lo que el aviso iba a llevar, que el `422` es `{ code, request_id, rule }`, el agente ya lo había tomado así.
+- **Las capturas** (AC-15), con su test ajustado para aceptarlas:
+  - `tests/fixtures/ingestion/v2/captured-order-placed.json`: el pedido aceptado, con sus respuestas `accepted` y `duplicate`;
+  - `tests/fixtures/ingestion/v2/captured-order-placed-rejected.json`: el `422 product_not_found`. Un `422` es una regla sobre una forma válida, así que la captura valida;
+  - `tests/fixtures/read/v2/captured-product-stock.json`: el stock v2 de la lectura de control.
+
+  El agente mandó el teléfono tapado; **se reemplazó por uno del rango sintético**, lo único cambiado de los cuerpos, como dicen sus notas. n8n guarda los cuerpos ya parseados: las capturas validan la forma, no los bytes.
+- **La limpieza**: `P-000004` cancelado desde la app y la Funda reactivada.
+- **Revisión**: la independiente de la 19.4.1 (R-1 a R-8, arriba). La batería, el despliegue, las dos conciliaciones y este cierre son autoevaluación declarada.
+- **Decisiones del usuario**:
+  - el brief, con las recomendaciones, y la ampliación a `src/app/api/ingestion/v1/events/handler.ts`;
+  - R-2 a una subfase posterior y la nota fechada de R-8 en el ADR 0020;
+  - la confirmación del contrato y el aviso que abrió la ventana en el mismo paso;
+  - esperar la 3.49 del agente para los pasos 2 a 4;
+  - las capturas con el teléfono reemplazado, el cierre completo con la Fase 19 y sin aviso de cierre;
+  - el commit y el push de `9c8bc54` y de los registros, el despliegue y este cierre.
+- **Nivel**:
+  - validado localmente y en CI;
+  - **validado en integración** con el agente como emisor y consumidor real, en la organización de demostración de producción: la lectura v2, un pedido aceptado, su reenvío, un rechazo y su derivación;
+  - desplegado en producción.
+
+  No es «preparado para producción».
+- **No certifica**:
+  - **lo disponible con reservas en producción**: el agente leyó la v2 sin nada reservado;
+  - con el emisor real, `client_inactive`, `currency_mismatch`, `amount_out_of_range` ni un pedido de más de una línea: lo cubren los tests de integración;
+  - que el precio del pedido sea el que leyó el cliente: el agente guarda la propuesta 30 minutos, y el CRM copia el precio vigente al crear el pedido;
+  - que un segundo «sí» no derive la conversación: es un límite del agente, que lo corrige de su lado;
+  - una guarda que fije la dependencia `ingestion → orders` (R-2).
+
+### La Fase 19
+
+**La Fase 19 — Pedidos cierra con sus cuatro subfases** (19.1 a 19.4): el ADR 0020; el pedido con su número, sus líneas y su cancelación; la reserva, la entrega y lo disponible; y el pedido del agente con la lectura v2. **La decisión del ADR 0020, punto 7, quedó tomada en la 19.4**: el agente lee lo disponible por la v2, y la v1 sigue con el saldo físico hasta que el agente la deje.

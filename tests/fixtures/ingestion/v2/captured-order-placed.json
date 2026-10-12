@@ -1,0 +1,37 @@
+{
+  "shape": "captured",
+  "note": "Capturada del emisor real: la instancia de n8n del agente, contra producción, en la organización de demostración, el 2026-10-12 (brief-19.4, ventana 19.4.3, paso 2b; Conciliacion-3.49-Ventana-19.4.3.md). El agente mandó el teléfono tapado (+54…448); se reemplazó por el del rango sintético, que es lo único cambiado del cuerpo. n8n guarda los cuerpos ya parseados: valida la forma, no los bytes.",
+  "description": "El pedido del agente después del «sí» del cliente: un Celular Aurora X5 128 GB. Creó P-000004 (200 accepted); su reenvío con el mismo event_id (paso 2c) volvió duplicate con el mismo número.",
+  "received_at": "2026-10-12T17:24:27.199Z",
+  "correlation_id": "15996",
+  "staging_status": 200,
+  "body": "{\"contract_version\":\"2\",\"event_type\":\"order.placed\",\"event_id\":\"wa-ord-k1-9787e7e6ea88386315434e9dc026dbc0bed22403cc70d4dcf6ab92b6baa2e468\",\"occurred_at\":\"2026-10-12T17:23:52.000Z\",\"client\":{\"phone\":\"+5491155550001\"},\"lines\":[{\"product_id\":\"0890d9cd-3435-4cec-806c-0f86be695393\",\"quantity\":\"1\"}]}",
+  "responses": [
+    {
+      "status": 200,
+      "body": {
+        "contract_version": "2",
+        "event_id": "wa-ord-k1-9787e7e6ea88386315434e9dc026dbc0bed22403cc70d4dcf6ab92b6baa2e468",
+        "result": "accepted",
+        "order": {
+          "number": "P-000004"
+        }
+      }
+    },
+    {
+      "status": 200,
+      "body": {
+        "contract_version": "2",
+        "event_id": "wa-ord-k1-9787e7e6ea88386315434e9dc026dbc0bed22403cc70d4dcf6ab92b6baa2e468",
+        "result": "duplicate",
+        "order": {
+          "number": "P-000004"
+        }
+      }
+    }
+  ],
+  "expected": {
+    "ok": true,
+    "payload_hash": "0b44a9774e6ede82ded8a3e9426087de84344644002b3bb2ff8d9effb945e14e"
+  }
+}

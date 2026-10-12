@@ -2,7 +2,8 @@
 
 **Estado**:
 - **Diseñado e implementado** en la 19.4.1 ([brief-19.4](../decisions/brief-19.4-el-pedido-del-agente.md), D-12), a pedido del agente (respuesta al pedido 19.4 del 2026-10-11).
-- **Validado localmente** con requests sintéticos (`deterministic`). **No** está validado en integración con el agente: eso es la 19.4.3.
+- **Validado localmente** con requests sintéticos (`deterministic`).
+- **Validado en integración** con el agente como consumidor real, en producción, en la organización de demostración, el 2026-10-12 (19.4.3): la búsqueda, el detalle y el stock, conciliados por `X-Request-Id` contra el journal. **Lo disponible con reservas no se vio en producción**: no había nada reservado.
 
 ## Qué cambia respecto de v1
 
@@ -69,4 +70,5 @@ Las reglas de v1: agregar, quitar o renombrar campos, o cambiar reglas, códigos
   - `src/app/api/read/v2/contract.test.ts`: el mapeo de las tres cantidades y los fixtures de `tests/fixtures/read/v2/` (búsqueda, detalle y stock), de forma asumida;
   - `tests/integration/read-api-v2.test.ts`, contra PostgreSQL real: los tres números y el estado con reservas, decimales, todo reservado y sin fila; la búsqueda y el detalle con la forma de v1 y el estado de lo disponible, frente a la v1 con el físico para el mismo producto; el 404 sin distinguir y el 400; el alcance; el borde, con el límite compartido entre v1 y v2; y el log con las rutas fijas;
   - `tests/guards/exposed-surface.test.ts` declara las tres rutas.
-- **Sin validar**: el agente leyéndola (19.4.3).
+- **Validado en integración** (19.4.3, [brief-19.4](../decisions/brief-19.4-el-pedido-del-agente.md), §La conciliación de la lectura v2): la lectura de control del agente y tres turnos reales, con `tests/fixtures/read/v2/captured-product-stock.json` como captura.
+- **Sin validar en producción**: un stock con reservas. Lo cubren `read-api-v2.test.ts` y los fixtures de forma asumida.
