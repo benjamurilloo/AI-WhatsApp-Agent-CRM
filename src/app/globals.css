@@ -190,3 +190,28 @@
 body {
   @apply bg-background font-sans text-foreground antialiased;
 }
+
+/*
+ * Impresión (brief-20.2, D-5; ADR 0021, punto 8): el comprobante de una venta se imprime o se
+ * guarda como PDF desde el navegador. En papel, siempre en claro y sin fondo, también con el tema
+ * oscuro: estas reglas van al final para ganarle, con la misma especificidad, a las del tema. Qué
+ * se oculta lo dice cada pantalla con print:hidden.
+ */
+@media print {
+  :root,
+  :root:not([data-theme="light"]),
+  :root[data-theme="dark"] {
+    color-scheme: light;
+    --background: #ffffff;
+    --surface: #ffffff;
+    --surface-muted: #ffffff;
+    --foreground: #000000;
+    --muted: #3f3b52;
+    --border: #c9c4dc;
+    --primary: #000000;
+  }
+
+  body {
+    background: #ffffff;
+  }
+}

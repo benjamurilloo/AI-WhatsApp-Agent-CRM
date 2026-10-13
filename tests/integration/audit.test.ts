@@ -132,6 +132,9 @@ const INSERT_ONLY_TABLES = [
   // Costo de un producto (brief-18.2).
   "product_costs",
   "product_prices",
+  // La venta y sus líneas (brief-20.2; ADR 0021, punto 2).
+  "sale_lines",
+  "sales",
 ];
 // Se actualizan pero no se borran (brief-6.1, D-3; credenciales, brief-6.5.3, D-1; información
 // del negocio, brief-11.2, D-4; el horario semanal, brief-17.4, P-1).

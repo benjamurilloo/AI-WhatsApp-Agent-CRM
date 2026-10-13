@@ -31,6 +31,8 @@ export const auditEntityType = pgEnum("audit_entity_type", [
   "business_hours",
   // Pedido de un cliente (brief-19.2; ADR 0020, punto 3).
   "order",
+  // Venta de un pedido entregado (brief-20.2; ADR 0021, punto 2).
+  "sale",
 ]);
 
 export const auditAction = pgEnum("audit_action", [

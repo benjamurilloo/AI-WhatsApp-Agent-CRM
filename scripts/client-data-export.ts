@@ -39,6 +39,9 @@ export type ClientExport = {
   client_tags: Record<string, unknown>[];
   orders: Record<string, unknown>[];
   order_lines: Record<string, unknown>[];
+  // Desde la 20.2 (ADR 0021, punto 12).
+  sales: Record<string, unknown>[];
+  sale_lines: Record<string, unknown>[];
 };
 
 export async function exportClientData(
@@ -110,6 +113,32 @@ export async function exportClientData(
         order by o.number, l.position`,
   );
 
+  // Las ventas del cliente (ADR 0021, punto 12): número, fecha, pedido, moneda y total. Si está
+  // anulada se suma con la 20.4, que crea la anulación. El JOIN con orders es interno porque en la
+  // 20.2 toda venta tiene pedido: la 20.3, que vuelve nulable order_id, tiene que pasarlo a LEFT
+  // JOIN para no perder las ventas sin pedido (revisión independiente de la 20.2, R-8).
+  const sales = await db.execute<Record<string, unknown>>(
+    sql`select s.id, s.number, 'V-' || lpad(s.number::text, greatest(6, length(s.number::text)), '0') as display_number,
+               s.created_at, s.order_id,
+               'P-' || lpad(o.number::text, greatest(6, length(o.number::text)), '0') as order_display_number,
+               s.currency, s.total
+        from sales s
+        join orders o on o.organization_id = s.organization_id and o.id = s.order_id
+        where s.organization_id = ${organizationId} and s.client_id = ${clientId}
+        order by s.number`,
+  );
+
+  // Las líneas, por la venta, con el nombre y el SKU de hoy del producto.
+  const saleLines = await db.execute<Record<string, unknown>>(
+    sql`select l.sale_id, s.number as sale_number, l.position, l.product_id, p.sku, p.name,
+               l.quantity, l.unit_price, l.currency, l.line_total
+        from sale_lines l
+        join sales s on s.organization_id = l.organization_id and s.id = l.sale_id
+        join products p on p.organization_id = l.organization_id and p.id = l.product_id
+        where l.organization_id = ${organizationId} and s.client_id = ${clientId}
+        order by s.number, l.position`,
+  );
+
   return {
     exported_at: now.toISOString(),
     organization_id: organizationId,
@@ -126,6 +155,8 @@ export async function exportClientData(
     client_tags: tags.rows,
     orders: orders.rows,
     order_lines: orderLines.rows,
+    sales: sales.rows,
+    sale_lines: saleLines.rows,
   };
 }
 
@@ -155,7 +186,8 @@ async function main() {
     `Export escrito en ${out}: ${data.conversations.length} conversaciones, ` +
       `${data.messages.length} mensajes, ${data.conversation_notes.length} notas, ` +
       `${data.audit_logs.length} entradas de auditoría, ` +
-      `${data.client_tags.length} etiquetas, ${data.orders.length} pedidos.`,
+      `${data.client_tags.length} etiquetas, ${data.orders.length} pedidos, ` +
+      `${data.sales.length} ventas.`,
   );
   console.log(
     "Contiene datos personales: no lo versiones ni lo compartas por un canal abierto.",

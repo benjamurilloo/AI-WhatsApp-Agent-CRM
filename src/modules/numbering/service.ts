@@ -16,9 +16,9 @@ export function nextDocumentNumber(
   return repository.takeNextNumber(tx, organizationId, kind);
 }
 
-// El número como se muestra: el prefijo del tipo y seis dígitos, P-000123 (ADR 0019, punto 2).
-// Pasado el millón, el número se muestra con todos sus dígitos.
-const PREFIXES: Record<DocumentKind, string> = { order: "P" };
+// El número como se muestra: el prefijo del tipo y seis dígitos, P-000123 o V-000123 (ADR 0019,
+// punto 2; ADR 0021, punto 7). Pasado el millón, el número se muestra con todos sus dígitos.
+const PREFIXES: Record<DocumentKind, string> = { order: "P", sale: "V" };
 
 export function formatDocumentNumber(
   kind: DocumentKind,

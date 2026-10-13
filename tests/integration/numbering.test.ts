@@ -74,10 +74,28 @@ describe("nextDocumentNumber (AC-2)", () => {
   });
 });
 
+describe("la serie de la venta (brief-20.2, AC-2)", () => {
+  it("la venta tiene su serie, independiente de la del pedido", async () => {
+    const org = await createOrganization("Negocio A");
+    expect(await take(org)).toBe(1);
+    expect(await take(org)).toBe(2);
+    const sale = () =>
+      getDb().transaction((tx) => nextDocumentNumber(tx, org, "sale"));
+    expect(await sale()).toBe(1);
+    expect(await take(org)).toBe(3);
+    expect(await sale()).toBe(2);
+  });
+});
+
 describe("formatDocumentNumber", () => {
   it("el prefijo del pedido y seis dígitos; pasado el millón, todos los dígitos", () => {
     expect(formatDocumentNumber("order", 1)).toBe("P-000001");
     expect(formatDocumentNumber("order", 123)).toBe("P-000123");
     expect(formatDocumentNumber("order", 1_234_567)).toBe("P-1234567");
+  });
+
+  it("el prefijo de la venta es V (brief-20.2)", () => {
+    expect(formatDocumentNumber("sale", 45)).toBe("V-000045");
+    expect(formatDocumentNumber("sale", 1_234_567)).toBe("V-1234567");
   });
 });

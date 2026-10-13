@@ -14,8 +14,9 @@ import { organizations } from "@/modules/organizations/schema";
 // brief-19.2). Un contador por organización y tipo de documento numerado, sin huecos: la fila se
 // crea en el primer número y se incrementa en la misma transacción que crea el documento.
 
-// Tipos numerados. Hoy, solo el pedido; la Fase 20 suma el suyo con un ALTER TYPE aditivo.
-export const documentKind = pgEnum("document_kind", ["order"]);
+// Tipos numerados: el pedido y, desde la 20.2, la venta (ADR 0021, punto 7), con ALTER TYPE
+// aditivos. La anulación (sale_void) llega con la 20.4.
+export const documentKind = pgEnum("document_kind", ["order", "sale"]);
 
 export const documentCounters = pgTable(
   "document_counters",

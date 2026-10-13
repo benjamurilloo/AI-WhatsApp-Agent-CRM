@@ -85,6 +85,8 @@ export default defineConfig([
       // Desde la 19.2 (revisión independiente, R-2).
       "src/modules/orders/**/*.{ts,tsx}",
       "src/modules/numbering/**/*.{ts,tsx}",
+      // Desde la 20.2 (ADR 0021, punto 13).
+      "src/modules/sales/**/*.{ts,tsx}",
     ],
     rules: restrict(moduleInternals, leaveModuleRelative, httpAndPresentation),
   },

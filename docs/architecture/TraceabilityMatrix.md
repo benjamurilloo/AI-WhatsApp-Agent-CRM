@@ -35,6 +35,14 @@
 
 *Desde la 19.2*, la pantalla 7 suma FR-ORD-06: la tarjeta «Pedidos», con `orders_client_idx`.
 
+*Desde la 20.2* ([brief-20.2](../decisions/brief-20.2-la-venta-de-un-pedido.md)), las pantallas de ventas:
+
+| Pantalla | Requisitos | Tablas | Índices |
+|---|---|---|---|
+| 16 Detalle de un pedido, tarjeta «Venta» | FR-VEN-01, 02, 04 | `sales` por `getSaleForOrder`; la emisión, `sales`, `sale_lines`, `orders`, `order_lines`, `document_counters`, `audit_logs` | `sales_organization_order_unique (organization_id, order_id)`; PK de `orders` (bloqueo `FOR UPDATE`); PK de `document_counters` |
+| 17 Lista de ventas | FR-VEN-04 | `sales`, `sale_lines` (cantidad de líneas), `clients` por `getClientsByIds` | `sales_list_idx (organization_id, created_at desc, id desc)`; `sales_client_idx (organization_id, client_id, created_at desc)`; `sales UNIQUE(organization_id, number)`; `sale_lines UNIQUE(sale_id, product_id)` (20.2, sin plan medido) |
+| 18 Detalle de una venta | FR-VEN-04, 05; FR-AUD-01, 02 | `sales`, `sale_lines`, `orders` por `getOrder`, `clients`, `products`, `organizations`, `audit_logs`, `users` | `sale_lines UNIQUE(sale_id, position)`; `audit_logs (organization_id, entity_type, entity_id, created_at desc)` |
+
 *Desde la 16.1*, la pantalla 6 suma FR-CLI-10 y las tablas `client_tags` y `client_tag_assignments` (chips por fila y filtro, con `client_tag_assignments (organization_id, tag_id)` para el `EXISTS`), y la pantalla 7 suma FR-CLI-09 y 10 (la PK `(client_id, tag_id)` para las etiquetas del cliente).
 
 *Desde la 17.1*, la pantalla 6 suma FR-CLI-14 (los filtros por tipo, provincia y segmento sobre `clients`, sin índice: medido con 10 000 clientes en `crm.test.ts`) y la pantalla 7 suma FR-CLI-12 y 13 (las columnas nuevas de `clients`, leídas por la PK).
@@ -122,6 +130,12 @@ Cada FR tiene al menos una pantalla, endpoint o invariante con test que lo satis
 | FR-ORD-09 | Pantalla 16 (19.3); `orders-cycle.test.ts` (entrega con todo reservado, movimientos `order_delivery`, cancelar un confirmado, producto desactivado) y `orders.spec.ts` casos 5 y 6 | pantalla e invariante con test |
 | FR-ORD-10 | Pantalla 16 (19.3); `orders-cycle.test.ts` (lo disponible de un pendiente) y `orders.spec.ts` casos 5 y 6 | pantalla |
 | FR-ORD-11 | Pantallas 14 y 16 (19.4), el origen; sin pantalla, el evento `order.placed` de ingestión v2. `orders-agent.test.ts` (proyección, reenvío, reglas y precedencia, concurrencia, aislamiento), `orders-schema.test.ts` (autor de servicio), `contract-v2.test.ts`, `ingestion-v2-http.test.ts` y `orders.spec.ts` caso 7 | pantalla e invariante con test |
+| FR-VEN-01 | Pantalla 16, tarjeta «Venta» (20.2); `sales.test.ts` (copia del pedido, sin stock ni cambio del pedido, cliente y productos desactivados, cada rechazo sin escribir ni numerar), `sales-schema.test.ts`, la guarda `sale-writes` y `sales.spec.ts` caso 1 | pantalla e invariante con test |
+| FR-VEN-02 | `sales.test.ts` (serie `V` por organización e independiente de la `P`, `already_sold`, dos emisiones simultáneas y con la cabecera bloqueada), `numbering.test.ts` (la serie de la venta), `sales-schema.test.ts` (índice único por pedido) y `sales.spec.ts` caso 2 | pantalla e invariante con test |
+| FR-VEN-03 | `sales-schema.test.ts` (privilegios de `crm_app` y trigger de solo inserción) y la guarda `sale-writes` | invariante con test |
+| FR-VEN-04 | Pantallas 16, 17 y 18 (20.2); `sales.test.ts` (lista, filtros, número en cuatro formas, período, detalle por rol, la venta de un pedido, historia solo de admin) y `sales.spec.ts` casos 1, 4 y 5 | pantalla e invariante con test |
+| FR-VEN-05 | Pantalla 18 (20.2); `sales.spec.ts` caso 3 (con `emulateMedia({ media: "print" })`, en claro y en oscuro) | pantalla |
+| FR-VEN-06 | `client-data.test.ts` casos 35 a 37 (exportación, informe y vaciado que deja las ventas) y el runbook de datos de un cliente | invariante con test |
 | FR-MET-01 | Pantalla 2, implementada en la 7.4: las doce tarjetas del catálogo | pantalla |
 | FR-MET-02 | Pantalla 2 (período en la URL y zona horaria de la organización en el encabezado) | pantalla |
 | FR-MET-03 | Pantalla 2 sin valores editables; cálculo por consulta en cada carga ([ADR 0005](../decisions/0005-metricas-desde-datos-transaccionales.md)) | pantalla e invariante |

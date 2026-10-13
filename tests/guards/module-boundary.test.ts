@@ -127,6 +127,27 @@ const cases = [
     code: 'import { clients } from "@/modules/crm/schema"; export const o3 = clients;',
     forbidden: false,
   },
+  // sales es módulo de dominio desde la 20.2 (ADR 0021, punto 13).
+  {
+    file: "src/modules/sales/service.ts",
+    code: 'import { redirect } from "next/navigation"; export const s1 = redirect;',
+    forbidden: true,
+  },
+  {
+    file: "src/modules/sales/presentacion.ts",
+    code: 'import { NOT_AN_INVOICE_LEGEND } from "@/app/(autenticado)/ventas/messages"; export const s2 = NOT_AN_INVOICE_LEGEND;',
+    forbidden: true,
+  },
+  {
+    file: "src/modules/sales/relativa.ts",
+    code: 'import { s3 } from "../orders/repository"; export const s4 = s3;',
+    forbidden: true,
+  },
+  {
+    file: "src/modules/sales/schema.ts",
+    code: 'import { orders } from "@/modules/orders/schema"; export const s5 = orders;',
+    forbidden: false,
+  },
   // knowledge es módulo de dominio desde la 11.2 (AC-7); estos casos dejan esa mutación como
   // guarda permanente (N-3 de su revisión independiente, resuelta en la 11.3.2).
   {

@@ -4,6 +4,7 @@ import { AUDIT_PAGE_SIZE } from "@/modules/audit";
 import { getCredentialSources } from "@/modules/ingestion";
 import { getOrder, listOrderAudit } from "@/modules/orders";
 import { getOrganizationTimezone } from "@/modules/organizations";
+import { getSaleForOrder } from "@/modules/sales";
 import { requireSession } from "@/app/_auth/session";
 import { auditActorLabels } from "@/app/(autenticado)/_audit/actor";
 import { PhoneText } from "@/app/(autenticado)/clientes/phone-text";
@@ -14,7 +15,9 @@ import {
   HeaderIcon,
 } from "@/app/_components/detail-header";
 import { DetailList } from "@/app/_components/detail-list";
+import { Icon } from "@/app/_components/icons";
 import {
+  inlineButtonClass,
   linkClass,
   noticeClass,
   tableCellClass,
@@ -38,6 +41,7 @@ import {
 } from "../messages";
 import { OrderStatusBadge } from "../status-badge";
 import { auditActionLabel, describeAuditDiff } from "./audit-summary";
+import { IssueSaleConfirm } from "./issue-sale";
 import { OrderTransitionForm } from "./transition-form";
 
 export const metadata: Metadata = {
@@ -55,7 +59,8 @@ function page(value: string | string[] | undefined): number {
 // líneas y total, para admin y viewer; el viewer ve el cliente sin teléfono ni contacto, que crm
 // ya entrega resueltos para su rol. Las transiciones y la historia, solo admin (D-12; desde la
 // 19.3, confirmar y entregar, D-8). En un pendiente, lo disponible por línea (brief-19.3, D-9).
-// Ningún costo ni margen.
+// En un entregado, su venta o, para admin, «Emitir venta» con el paso ?confirmar=venta
+// (brief-20.2, D-4). Ningún costo ni margen.
 export default async function OrderPage({
   params,
   searchParams,
@@ -97,6 +102,19 @@ export default async function OrderPage({
           order.createdByCredentialId,
         ]),
   );
+  // La venta del pedido la compone la página (ADR 0021, punto 9): orders no lee sales. Solo un
+  // entregado puede tenerla (brief-20.2).
+  const saleFound =
+    order.status === "delivered"
+      ? await getSaleForOrder(context, order.id)
+      : null;
+  const sale = saleFound?.ok ? saleFound.sale : null;
+  const issuingSale =
+    isAdmin &&
+    order.status === "delivered" &&
+    saleFound?.ok === true &&
+    sale === null &&
+    query.confirmar === "venta";
   const notice = orderNoticeMessage(query.aviso);
   const client = order.client;
   const showAvailable = order.status === "pending";
@@ -331,6 +349,40 @@ export default async function OrderPage({
               </div>
             ) : null}
           </SectionCard>
+
+          {order.status === "delivered" ? (
+            <SectionCard id="venta-titulo" title="Venta" icon="receipt">
+              {sale ? (
+                <p>
+                  <Link href={`/ventas/${sale.id}`} className={linkClass}>
+                    Venta {sale.displayNumber}
+                  </Link>
+                </p>
+              ) : (
+                <p className="text-sm text-muted">
+                  Este pedido todavía no tiene su venta.
+                </p>
+              )}
+              {isAdmin && !sale ? (
+                <div className="mt-4">
+                  {issuingSale ? (
+                    <IssueSaleConfirm
+                      orderId={order.id}
+                      displayNumber={order.displayNumber}
+                    />
+                  ) : (
+                    <Link
+                      href={`/pedidos/${order.id}?confirmar=venta`}
+                      className={inlineButtonClass}
+                    >
+                      <Icon name="receipt" className="size-4" />
+                      Emitir venta
+                    </Link>
+                  )}
+                </div>
+              ) : null}
+            </SectionCard>
+          ) : null}
         </div>
       </div>
 

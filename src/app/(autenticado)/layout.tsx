@@ -27,6 +27,8 @@ export default async function AuthenticatedLayout({
     { href: "/clientes", label: "Clientes", icon: "users" },
     // Pedidos, para los dos roles (brief-19.2).
     { href: "/pedidos", label: "Pedidos", icon: "list" },
+    // Ventas, para los dos roles (brief-20.2).
+    { href: "/ventas", label: "Ventas", icon: "receipt" },
     { href: "/conversaciones", label: "Conversaciones", icon: "messageCircle" },
     { href: "/informacion", label: "Información", icon: "info" },
     ...(context.role === "admin"
@@ -35,9 +37,12 @@ export default async function AuthenticatedLayout({
   ];
 
   return (
-    <div className="min-h-dvh lg:grid lg:grid-cols-[16rem_minmax(0,1fr)]">
+    // Al imprimir, sin grilla: con el panel oculto, el contenido quedaría en su columna de 16rem
+    // (brief-20.2, revisión independiente, R-1).
+    <div className="min-h-dvh lg:grid lg:grid-cols-[16rem_minmax(0,1fr)] print:block">
       {/* La columna lleva el fondo de punta a punta; el panel queda fijo arriba al desplazarse. */}
-      <div className="border-b border-border bg-sidebar lg:border-r lg:border-b-0">
+      {/* La navegación y la barra no se imprimen (brief-20.2, D-5). */}
+      <div className="border-b border-border bg-sidebar lg:border-r lg:border-b-0 print:hidden">
         <div className="px-4 py-3 lg:sticky lg:top-0 lg:max-h-dvh lg:overflow-y-auto lg:px-4 lg:py-6">
           <CollapsiblePanel brand={<Brand />}>
             <AppNav links={links} />
@@ -45,7 +50,7 @@ export default async function AuthenticatedLayout({
         </div>
       </div>
       <div className="min-w-0">
-        <header className="border-b border-border bg-surface">
+        <header className="border-b border-border bg-surface print:hidden">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-3 px-4 py-3 lg:px-8">
             <p className="flex min-w-0 items-center gap-2 text-sm font-semibold text-foreground">
               <Icon name="building" className="size-4 text-muted" />

@@ -21,7 +21,7 @@ test.beforeAll(() => {
   db = createDb(e2eDatabaseUrl(process.env.DATABASE_URL ?? ""));
 });
 
-const TABLES = sql`truncate table order_lines, orders, audit_logs, inventory_movements, inventories, product_images, product_costs, product_prices, products`;
+const TABLES = sql`truncate table sale_lines, sales, order_lines, orders, audit_logs, inventory_movements, inventories, product_images, product_costs, product_prices, products`;
 
 test.afterAll(async () => {
   await db.execute(TABLES);

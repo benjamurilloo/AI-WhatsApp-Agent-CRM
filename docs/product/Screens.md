@@ -316,4 +316,29 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 
 *Desde la 19.3* ([brief-19.3](../decisions/brief-19.3-reserva-y-ciclo.md), D-8 y D-9; FR-ORD-08 a 10): para `admin`, «Confirmar pedido» y «Cancelar pedido» en un pendiente, y «Marcar entregado» y «Cancelar pedido» en un confirmado; nada en un entregado o un cancelado. Cada uno con una confirmación que dice qué pasa con el stock. Un pendiente suma la columna «Disponible» por línea, para los dos roles, con «No alcanza» en las que no alcanzan. Un rechazo por falta de stock o por un producto desactivado se anuncia con `role="alert"` y nombra cada línea. La lista (pantalla 14) filtra también por confirmados y entregados.
 *Desde la 19.4* (D-11; FR-ORD-11): la tarjeta «Estado» muestra el origen, «Agente · <emisor>» con el `source` de la credencial o «Equipo», y la historia muestra a la credencial como «Servicio · <emisor>». Un pedido del agente se confirma, entrega y cancela igual que cualquier otro.
+*Desde la 20.2* ([brief-20.2](../decisions/brief-20.2-la-venta-de-un-pedido.md), D-4; FR-VEN-01, 02 y 04): un pedido entregado suma la tarjeta «Venta», para los dos roles, con el enlace a su venta o «Este pedido todavía no tiene su venta.». Para `admin`, sin venta, «Emitir venta» lleva al paso `?confirmar=venta`, que funciona sin JavaScript: la pregunta recibe el foco, dice que la venta copia el pedido y no mueve el stock, y ofrece «No, volver» y «Sí, emitir la venta». Emitir lleva al detalle de la venta. Si el pedido ya tenía venta, el mensaje se anuncia con `role="alert"` y la enlaza.
 - **No mostrar**: editar ni borrar el pedido o sus líneas; costo ni margen.
+
+## 17. Lista de ventas
+
+*Agregada en la 20.2* ([brief-20.2](../decisions/brief-20.2-la-venta-de-un-pedido.md), D-6; FR-VEN-04), sin wireframe. Ruta `/ventas`, con su ítem «Ventas» en el panel lateral para los dos roles.
+
+- **Objetivo**: encontrar una venta.
+- **Usuario autorizado**: `admin` y `viewer`. No hay «+ Nueva venta»: en la 20.2 una venta se emite desde un pedido entregado.
+- **Información mostrada**: número, fecha, cliente, un enlace «Ver pedido», cantidad de líneas y total. El número del pedido no está en la lista: `sales` no lee `orders` para listar.
+- **Filtros**: búsqueda por número (`V-000123`, `000123` o `123`) y período con «Desde» y «Hasta», días de la zona de la organización. Desde el detalle de una venta llega filtrada por su cliente, con un enlace para ver las de todos. Un período inválido o invertido se anuncia con `role="alert"`.
+- **Paginación**: 25 por página, de la más reciente a la más vieja.
+- **Vacío**: «Todavía no hay ventas. Una venta se emite desde un pedido entregado.»; con filtros, «Ninguna venta coincide con estos filtros.»
+- **Responsive**: tabla en escritorio y tarjetas en móvil.
+- **No mostrar**: costo ni margen.
+
+## 18. Detalle de una venta y su comprobante
+
+*Agregada en la 20.2* (D-5 y D-9; FR-VEN-04 y 05). Ruta `/ventas/[id]`.
+
+- **Objetivo**: ver una venta e imprimir su comprobante o guardarlo como PDF.
+- **Usuario autorizado**: `admin` y `viewer`; la historia, solo `admin`.
+- **Información mostrada**: el comprobante, con el nombre de la organización, el número, la fecha y hora de emisión, el nombre del cliente, el número del pedido con su enlace, las líneas (el nombre de hoy del producto, con el aviso de que los precios son los del pedido), el total y la leyenda «Documento no válido como factura»; al lado, el cliente con el teléfono enmascarado y sin email para un `viewer`, y «Ver las ventas de este cliente». Para `admin`, la historia: la emisión con su número, sus líneas y su total.
+- **Acciones**: «Imprimir o guardar PDF» abre el diálogo del navegador.
+- **Al imprimir**: queda solo el comprobante, en claro también con el tema oscuro. Se ocultan el panel lateral, la barra superior, los botones, el aviso, la tarjeta del cliente con su contacto y la historia (D-9: el comprobante nunca lleva el contacto).
+- **No mostrar**: editar, borrar ni anular la venta (la anulación es de la 20.4); costo ni margen.

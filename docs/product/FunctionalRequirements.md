@@ -81,6 +81,17 @@ Agregados en la Fase 11, catálogo comercial ([brief-11.1](../decisions/brief-11
 - **FR-ORD-10** (19.3): El detalle de un pedido pendiente muestra lo disponible de cada línea y marca las que no alcanzan.
 - **FR-ORD-11** (19.4, [brief-19.4](../decisions/brief-19.4-el-pedido-del-agente.md)): Un sistema externo con una credencial de ingestión de una organización deja un pedido pendiente para un cliente de esa organización, con el evento `order.placed` del [contrato de ingestión v2](../contracts/ingestion-v2.md): productos y cantidades, sin precios. Se aplican las reglas del alta, con una sola regla de rechazo; el pedido queda con la credencial como autor y nunca lo confirma, entrega ni cancela el sistema externo. La lista y el detalle muestran su origen.
 
+## Ventas
+
+*Agregada en la 20.2* ([brief-20.2](../decisions/brief-20.2-la-venta-de-un-pedido.md), [ADR 0021](../decisions/0021-la-venta.md)). La venta sin pedido llega con la 20.3 y la anulación, con la 20.4.
+
+- **FR-VEN-01**: Un admin emite la venta de un pedido entregado. La venta copia el cliente, la moneda, las líneas y el total del pedido, sin volver a cotizar, y no exige que el cliente ni los productos sigan activos. No mueve el stock, que bajó al entregar, ni cambia el pedido. Un pedido pendiente, confirmado o cancelado no tiene venta.
+- **FR-VEN-02**: La venta lleva un número correlativo y sin huecos por organización, independiente del de los pedidos, que se muestra como `V-000123` y se asigna al emitirla. Un pedido tiene a lo sumo una venta: una segunda emisión se rechaza y enlaza la que ya existe.
+- **FR-VEN-03**: Una venta emitida nunca se edita ni se borra.
+- **FR-VEN-04**: Cualquier usuario ve la lista de ventas, paginada, con búsqueda por número y filtro por fecha (días de la zona de la organización) y por cliente, y el detalle de cada una. El detalle de un pedido entregado muestra su venta. Un viewer no recibe el teléfono completo ni los datos de contacto del cliente (FR-CLI-06 y FR-CLI-13). Ninguna venta muestra costo ni margen.
+- **FR-VEN-05**: El detalle de una venta es su comprobante: se imprime o se guarda como PDF desde el navegador, con el nombre de la organización, el número, la fecha, el nombre del cliente, el pedido, las líneas, el total y la leyenda «Documento no válido como factura». Al imprimir queda solo el comprobante, sin el contacto del cliente. No discrimina el IVA.
+- **FR-VEN-06**: Un cliente con ventas no se borra: se vacía, y el vaciado deja las ventas intactas, porque no guardan texto de la persona. La exportación de los datos de un cliente incluye sus ventas.
+
 ## Información del negocio
 
 Desde la subfase 11.2 ([brief-11.2](../decisions/brief-11.2-informacion-del-negocio.md)). Es lo que el agente de WhatsApp va a leer por el contrato de la 11.3.
@@ -124,5 +135,6 @@ Agregada el 2026-09-24 por la 11.3 ([brief-11.3](../decisions/brief-11.3-api-de-
   - toda creación, edición, desactivación o reactivación de una entrada de información del negocio (agregado el 2026-09-24 por la 11.2, FR-INFO-01);
   - todo cambio del horario de atención: la semana, con solo los días que cambiaron, y cada día especial agregado o quitado (agregado el 2026-10-09 por la 17.4, FR-INFO-04);
   - el alta de un pedido y cada cambio de su estado, sin datos del cliente (agregado el 2026-10-11 por la 19.2, FR-ORD-01 y FR-ORD-04). Un admin consulta la historia de un pedido en la pantalla 16.
+  - la emisión de una venta, sin datos del cliente (agregado el 2026-10-13 por la 20.2, FR-VEN-01). Un admin consulta la historia de una venta en la pantalla 18.
 - **FR-AUD-02**: Un admin puede consultar el historial de auditoría de una entidad específica (producto, cliente), en las pantallas 4 y 7 (subfase 1.2, D-8). Desde la 11.2, también el de una entrada de información del negocio, en la pantalla 12.
 - **FR-AUD-03** (agregado el 2026-09-25 por la 12.1, D-3 y D-4): un cambio hecho por un servicio autenticado queda auditado con la **credencial de servicio** como actor, no con un usuario humano. Cada registro tiene exactamente un actor, y la credencial es de la misma organización. En el historial, ese autor se muestra como «Servicio · &lt;emisor&gt;».

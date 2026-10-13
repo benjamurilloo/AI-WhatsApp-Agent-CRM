@@ -83,6 +83,8 @@ describe("base de test", () => {
       "product_images",
       "product_prices",
       "products",
+      "sale_lines",
+      "sales",
       "sessions",
       "users",
     ]);

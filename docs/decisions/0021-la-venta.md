@@ -158,6 +158,8 @@ Lo que acota la decisión, verificado el 2026-10-12 contra `main` (`89dc3ef`):
 
   Ningún camino bloquea un contador y después otra fila, ni saldos antes que productos. Las transiciones del pedido bloquean la cabecera, los productos y los saldos en ese orden, así que no se forma un ciclo con la venta.
 
+  *Precisado el 2026-10-13 por decisión del usuario, en la 20.2* ([brief-20.2](brief-20.2-la-venta-de-un-pedido.md), revisión independiente, R-7); la tabla de arriba se conserva: los `INSERT` de la venta y de sus líneas toman `FOR KEY SHARE` sobre el cliente y los productos por sus claves foráneas, así que la venta de un pedido los tomaba **después** del contador, contra la regla de este punto. Desde la 20.2, la venta de un pedido bloquea **la cabecera del pedido `FOR UPDATE`, el cliente en modo compartido, los productos en modo compartido por `product_id` y, al final, el contador de `sale`**. Así una emisión que espera, por ejemplo, la ficha que bloquea un vaciado no retiene el contador de la organización. No se forma un ciclo: ningún camino bloquea el cliente o un producto y después la cabecera de un pedido. La 20.3 y la 20.4 aplican la misma regla a sus caminos.
+
 ### 8. El comprobante entregable
 
 - **Emitir es guardar el comprobante y mostrar una página imprimible** del detalle de la venta y de la anulación, con estilos `@media print` y **sin dependencias nuevas**. El usuario la imprime o la guarda como PDF desde el navegador.

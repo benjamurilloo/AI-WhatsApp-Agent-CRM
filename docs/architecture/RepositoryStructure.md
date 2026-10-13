@@ -93,6 +93,7 @@ Los nombres de los archivos de configuración son los convencionales de cada her
 | `knowledge` | `src/modules/knowledge/` | Fase 11 (11.2) |
 | `numbering` | `src/modules/numbering/` | Fase 19 (19.2) |
 | `orders` | `src/modules/orders/` | Fase 19 (19.2) |
+| `sales` | `src/modules/sales/` | Fase 20 (20.2) |
 
 No hay otros módulos. Uno nuevo requiere primero cambiar la tabla de [Overview.md](Overview.md).
 
@@ -136,7 +137,7 @@ Se hace cumplir con la regla `no-restricted-imports` de ESLint, incluida en ESLi
 | Cualquier archivo | `@/modules/<modulo>` (su `index.ts`) y `@/shared/...` | `@/modules/<modulo>/<archivo interno>` y rutas relativas que salgan del propio módulo (`../`) |
 | `src/modules/*/schema.ts` | Además, `@/modules/<dueño>/schema` para declarar claves foráneas | Cualquier otro archivo interno ajeno |
 | `src/modules/analytics/**` | Además, `@/modules/*/schema` para lecturas de solo lectura entre dominios, **salvo `@/modules/auth/schema`** | `repository.ts` y `service.ts` internos de otros módulos, y `@/modules/auth/schema`: `users` se lee por `organizations.getMemberSummaries` |
-| `catalog`, `crm`, `conversations`, `inventory`, `knowledge` (desde la 11.2), `orders` y `numbering` (desde la 19.2), `analytics` | — | `next`, `next/*` y `@/app/*`: el dominio no conoce HTTP ni presentación |
+| `catalog`, `crm`, `conversations`, `inventory`, `knowledge` (desde la 11.2), `orders` y `numbering` (desde la 19.2), `sales` (desde la 20.2), `analytics` | — | `next`, `next/*` y `@/app/*`: el dominio no conoce HTTP ni presentación |
 | `src/shared/**` | — | `@/modules/*` |
 
 - La 2.3 escribe la regla en `eslint.config.mjs`.

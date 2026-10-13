@@ -126,6 +126,10 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
   "src/app/(autenticado)/pedidos/actions.ts#searchOrderClientsAction": {
     requirement: "sesion",
   },
+  // Ventas (brief-20.2, D-4): emitir es solo de admin, lo exige sales.
+  "src/app/(autenticado)/ventas/actions.ts#issueSaleAction": {
+    requirement: "sesion",
+  },
   "src/app/(autenticado)/productos/actions.ts#createProductAction": {
     requirement: "sesion",
   },

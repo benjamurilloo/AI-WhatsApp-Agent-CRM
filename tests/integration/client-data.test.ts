@@ -994,3 +994,100 @@ describe("los pedidos del cliente (brief-19.2, D-9 y AC-10; ADR 0020, punto 10)"
     }
   });
 });
+
+// La venta de un pedido del cliente, por SQL (brief-20.2): copia la cabecera y las líneas del
+// pedido, y su emisión en la auditoría con la forma de D-7, sin datos de la persona.
+async function saleFor(orderId: string, number: number): Promise<string> {
+  const sale = await getDb().execute<{ id: string }>(
+    sql`insert into sales (organization_id, number, order_id, client_id, currency, total, created_by)
+        select organization_id, ${number}, id, client_id, currency, total, created_by
+        from orders where id = ${orderId}
+        returning id`,
+  );
+  const saleId = sale.rows[0]!.id;
+  await getDb().execute(
+    sql`insert into sale_lines (organization_id, sale_id, product_id, position, quantity,
+                                unit_price, currency, line_total)
+        select organization_id, ${saleId}::uuid, product_id, position, quantity, unit_price, currency,
+               line_total
+        from order_lines where order_id = ${orderId}`,
+  );
+  await getDb().execute(
+    sql`insert into audit_logs
+          (organization_id, actor_user_id, entity_type, entity_id, action, diff)
+        select organization_id, created_by, 'sale', ${saleId}, 'create',
+          jsonb_build_object('before', null, 'after', jsonb_build_object(
+            'number', ${number}::int, 'order_id', id, 'client_id', client_id,
+            'currency', currency, 'total', total::text, 'lines', 1))
+        from orders where id = ${orderId}`,
+  );
+  return saleId;
+}
+
+describe("las ventas del cliente (brief-20.2, AC-8; ADR 0021, punto 12)", () => {
+  it("35. la exportación incluye sus ventas con sus líneas, y no las de otro cliente", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    const other = await insertClient("Otra persona", "+5491155552222", null);
+    await saleFor(await orderFor(clientId, 1), 1);
+    await saleFor(await orderFor(other, 2), 2);
+
+    const data = await exportClientData(getDb(), organizationId, clientId);
+    expect(data.sales).toEqual([
+      expect.objectContaining({
+        number: "1",
+        display_number: "V-000001",
+        order_display_number: "P-000001",
+        currency: "ARS",
+        total: "2469.00",
+      }),
+    ]);
+    expect(data.sale_lines).toEqual([
+      expect.objectContaining({
+        sale_number: "1",
+        position: 1,
+        sku: "SKU-1",
+        name: "Café molido",
+        quantity: "2.000",
+        unit_price: "1234.50",
+        line_total: "2469.00",
+      }),
+    ]);
+  });
+
+  it("36. el informe cuenta las ventas, y un cliente con ventas no es borrable", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    await saleFor(await orderFor(clientId, 1), 1);
+
+    const report = await reportClientData(getDb(), organizationId, clientId);
+    expect(report).toMatchObject({
+      exists: true,
+      conversations: 0,
+      orders: 1,
+      sales: 1,
+      deletable: false,
+    });
+    expect(describeRetained(report).join(" ")).toContain("1 ventas en 'sales'");
+  });
+
+  it("37. el vaciado deja las ventas intactas y no deja datos de la persona", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    const saleId = await saleFor(await orderFor(clientId, 1), 1);
+    const read = () =>
+      getDb().execute(
+        sql`select s.*, a.diff,
+                   (select json_agg(l order by l.position) from sale_lines l
+                    where l.sale_id = s.id) as lines
+            from sales s
+            join audit_logs a on a.entity_type = 'sale' and a.entity_id = s.id
+            where s.id = ${saleId}`,
+      );
+    const before = await read();
+
+    await eraseClientData(getDb(), organizationId, clientId);
+
+    expect((await read()).rows).toEqual(before.rows);
+    for (const value of [NAME, PHONE, NOTES]) {
+      expect(await columnsContaining(value), value).toEqual([]);
+    }
+  });
+});

@@ -709,6 +709,57 @@ async function transitionOrder(
   }
 }
 
+// El pedido para su venta (brief-20.2; ADR 0021, punto 3). sales le pasa su transacción; orders
+// bloquea la cabecera FOR UPDATE, como una transición, y devuelve el pedido con sus líneas en su
+// orden. Es una lectura con bloqueo: no escribe nada ni cambia el estado, y no autoriza, porque la
+// emisión ya lo hizo. Dos emisiones del mismo pedido se serializan en esta fila. Null si el pedido
+// no existe en la organización.
+
+export type OrderForSale = {
+  id: string;
+  number: number;
+  status: OrderStatus;
+  clientId: string;
+  currency: string;
+  total: string;
+  lines: {
+    position: number;
+    productId: string;
+    quantity: string;
+    unitPrice: string;
+    currency: string;
+    lineTotal: string;
+  }[];
+};
+
+export async function lockOrderForSale(
+  tx: DbTransaction,
+  organizationId: string,
+  orderId: string,
+): Promise<OrderForSale | null> {
+  const order = await repository.findOrder(organizationId, orderId, tx, {
+    forUpdate: true,
+  });
+  if (!order) return null;
+  const lines = await repository.findOrderLines(organizationId, order.id, tx);
+  return {
+    id: order.id,
+    number: order.number,
+    status: order.status,
+    clientId: order.clientId,
+    currency: order.currency,
+    total: order.total,
+    lines: lines.map((line) => ({
+      position: line.position,
+      productId: line.productId,
+      quantity: line.quantity,
+      unitPrice: line.unitPrice,
+      currency: line.currency,
+      lineTotal: line.lineTotal,
+    })),
+  };
+}
+
 // Confirmar reserva el stock de cada línea, o nada si alguna no alcanza.
 export function confirmOrder(
   context: AuthContext,
