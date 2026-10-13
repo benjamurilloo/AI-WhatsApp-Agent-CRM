@@ -16,7 +16,7 @@ generated_at: 2026-10-12
 - **Nivel de validación alcanzable**: **validado localmente y en CI**, **validado en integración** para las pantallas y, con D-12, **desplegado en producción** con el recorrido del usuario. No es «preparado para producción».
 - **Orden**: segunda subfase de la Fase 20 — Ventas ([Roadmap](../planning/Roadmap.md) §Fase 20), después de la 20.1, cerrada el 2026-10-12. Implementa la fila «20.2» del punto 13 del [ADR 0021](0021-la-venta.md).
 - **No abre ni cierra gate.** Crea el primer comprobante del CRM, dos tablas de solo inserción y un módulo nuevo que depende de `orders`. Por eso se recomienda la revisión independiente (D-11).
-- **Estado de este documento**: **aprobado el 2026-10-13** por el usuario, con las recomendaciones de D-1 a D-12. La tarea 20.2 (`3f7702be6f4e8197b004dc9ea04a48da`) está en «En proceso» en Notion desde ese día.
+- **Estado de este documento**: **aprobado el 2026-10-13** por el usuario, con las recomendaciones de D-1 a D-12. **Cerrado el 2026-10-13** (§Cierre). La tarea 20.2 (`3f7702be6f4e8197b004dc9ea04a48da`) pasó a «Completado» ese día.
 
 ## Objetivo
 
@@ -238,9 +238,9 @@ Todos los tocados están en la lista autorizada, con la ampliación de `layout.t
 | AC-9 | cumplido | `sale-writes` con cuatro mutaciones sobre el código real (abajo); `exposed-surface` con `issueSaleAction`; `module-boundary` con cuatro casos de `sales` |
 | AC-10 | cumplido | `@/modules/sales` solo se importa desde `src/app/`; `orders` suma solo `lockOrderForSale`, que lee; `inventory`, `catalog` y `crm` no están en el diff |
 | AC-11 | cumplido | `read-api`, `read-api-v2` e `ingestion-v2` pasan sin cambios en la batería |
-| AC-12 | cumplido en local; falta la CI | la batería, abajo |
+| AC-12 | cumplido | la batería, abajo, y la CI de `ceb5692` (§Cierre) |
 | AC-13 | cumplido | DataModel, Overview, RepositoryStructure, FunctionalRequirements (FR-VEN-01 a 06 y FR-AUD), Screens (16 a 18), TraceabilityMatrix, SecurityModel (91 puntos de entrada), EngineeringStandards (20 guardas, 32 casos de frontera) y el runbook |
-| AC-14 | pendiente | el despliegue, si se autoriza (D-12) |
+| AC-14 | cumplido | el despliegue de `ceb5692` y el recorrido del usuario, conciliado contra la base (§Cierre) |
 
 **Mutaciones de `sale-writes`**, cada una agregada al código real, corrida y revertida: `tx.update(sales)` en `sales/service.ts` (falla 1 caso), `delete from sale_lines` en `orders/repository.ts` (1), `tx.insert(saleLines)` en una función nueva del repositorio (2) e `insert into ${sales}` en `ventas/actions.ts` (1); sin mutación, 18 en verde. **Y la del rescate del 23505**: sin él, el caso nuevo de `sales.test.ts` falla.
 
@@ -264,3 +264,36 @@ Un agente de solo lectura que no participó del trabajo revisó la entrega contr
 - **R-6 (bajo, decisión del usuario)**: `print:hidden` en la barra superior y, desde R-1, `print:block` en la grilla quedan fuera del paréntesis «la navegación» con que el brief autorizaba `layout.tsx`. **El usuario aprobó la ampliación el 2026-10-13.**
 - **R-7 (bajo, por inferencia, verificado por lectura; decisión del usuario)**: después de tomar el contador, los `INSERT` toman `FOR KEY SHARE` sobre `clients` (la cabecera) y `products` (las líneas) por sus claves foráneas, y el ADR 0021, punto 7, dice que ningún camino bloquea un contador y después otra fila. No forma un ciclo: ningún camino tiene esas filas `FOR UPDATE` mientras espera el contador `sale`. Pero un vaciado en curso, que bloquea la ficha `FOR UPDATE`, puede dejar a una emisión esperando con el contador tomado y frenar las demás emisiones de la organización mientras dura. El alta del pedido tiene el mismo patrón con `users`, el autor. **Decisión del usuario del 2026-10-13: bloquear antes.** La emisión bloquea el cliente y los productos en modo compartido entre la cabecera y el contador, con `lockClientForOrder` y `lockProductsForOrder`, que ya usa el alta del pedido, y el ADR 0021, punto 7, lleva una precisión fechada. Un caso nuevo de `sales.test.ts` retiene la ficha del cliente y comprueba que la emisión de otro cliente sigue de largo; sin el bloqueo del cliente, falla. El autor (`users`) se sigue tomando después del contador, como en el alta del pedido: ningún camino lo bloquea `FOR UPDATE` durante una emisión.
 - **R-8 (bajo, para la 20.3)**: la exportación une `sales` con `orders` por un `JOIN` interno, que perdería las ventas sin pedido cuando `order_id` sea nulable. **Anotado** en el código para la 20.3.
+
+## Cierre de la subfase 20.2, 2026-10-13
+
+Cierra el 2026-10-13 con la aprobación del usuario, después de su recorrido en producción («Ya lo revisé y está perfecto»).
+
+- **AC-1 a AC-14 cumplidos.**
+- **La batería final**, después de R-7 (Git Bash): formato, lint y typecheck en verde; 708 unitarios, 581 guardas e integración 1043 de 1044. El que falló es otra vez «D-9: el aviso de tamaño» de `product-images.test.ts`, por tiempo bajo la carga de la suite; corrido solo, pasa.
+- **Commit, CI y despliegue**: `ceb5692`, CI 38393803291 `success` leída por `headSha`. Desplegado en producción el 2026-10-13 según [deploy/production/README.md](../../deploy/production/README.md) §Desplegar, con `9c8bc54` anotado como la versión para volver atrás. La migración `0039` quedó aplicada (40 en `drizzle.__drizzle_migrations`), el servicio `active`, `/api/health` en `200` y `/ventas` en `307` al login.
+- **El recorrido del usuario (AC-14)**, en «Demostración Vixora» y con los productos de Tecnex cargados por el navegador en esta subfase: el pedido `P-000005`, entregado, y su venta `V-000001`, abierta desde «Ventas» e impresa. **Conciliado contra la base**, en una transacción de solo lectura y sin datos de la persona:
+  - una venta, de la demo, de un pedido `delivered`, con el cliente y el total del pedido (2.300.000,00 ARS);
+  - una línea, igual en producto, cantidad, precio y total a la del pedido, y la suma de las líneas igual al total;
+  - el contador de `sale` en 1;
+  - una auditoría `create` de `sale`, sin el teléfono ni el nombre en el `diff`;
+  - los saldos sin nada reservado.
+- **Revisión**: la independiente (R-1 a R-8, arriba). La batería, el despliegue, la conciliación y este cierre son autoevaluación declarada.
+- **Decisiones del usuario**:
+  - el brief, con las recomendaciones de D-1 a D-12;
+  - R-6, la ampliación de `layout.tsx`;
+  - R-7, bloquear antes, con la precisión fechada del ADR 0021, punto 7;
+  - el commit y el push, el despliegue después de la CI y este cierre.
+- **Nivel**:
+  - validado localmente y en CI;
+  - **validado en integración** para las pantallas (end-to-end sobre `next start`);
+  - desplegado en producción y recorrido por el usuario en la organización de demostración.
+
+  No es «preparado para producción».
+- **No certifica**:
+  - la venta sin pedido ni la anulación: son la 20.3 y la 20.4;
+  - que el comprobante interno entregado a un consumidor final quede fuera de la Ley 27.743: sigue pendiente para la 13.5.2-b;
+  - la impresión en otros navegadores que el del usuario y Chromium de Playwright;
+  - en producción, el rechazo `already_sold` ni `order_not_delivered`: los cubren los tests de integración y el end-to-end;
+  - que el autor (`users`) se bloquee antes del contador: se toma después, como en el alta del pedido (R-7).
+- **Para la 20.3**: R-8, el `JOIN` interno de la exportación, anotado en el código.

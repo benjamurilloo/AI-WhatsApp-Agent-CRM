@@ -2,6 +2,30 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-13 — 20.2: la venta de un pedido entregado
+
+Cierra el 2026-10-13 con la aprobación del usuario, después de su recorrido en producción ([brief-20.2](docs/decisions/brief-20.2-la-venta-de-un-pedido.md), §Cierre).
+
+**Certifica:**
+- **La venta de un pedido** (migración `0039`, módulo `sales`):
+  - `sales` y `sale_lines`, de solo inserción: `crm_app` solo tiene `SELECT` e `INSERT`, y el trigger `sales_reject_change` rechaza cambios con `P0001`; claves foráneas compuestas con `RESTRICT` y una venta por pedido por índice único;
+  - la serie `V` de `numbering` y el `entity_type` `sale` de la auditoría, con la acción `create` y sin datos de la persona;
+  - la emisión, solo de `admin` y solo desde un pedido entregado, copia la cabecera y las líneas y no toca el stock; rechaza `order_not_delivered` y `already_sold`, también cuando choca con el índice, sin consumir número;
+  - el orden de bloqueo: la cabecera del pedido `FOR UPDATE`, el cliente y los productos en modo compartido y al final el contador (ADR 0021, punto 7, precisado el 2026-10-13 por R-7).
+- **Las pantallas**: «Ventas» con filtros por número, cliente y período; el comprobante imprimible, sin navegación ni contacto y con la paleta clara al imprimir; la emisión desde el detalle del pedido, con su confirmación. El `viewer` ve el teléfono enmascarado y no emite.
+- **Los datos de un cliente**: la exportación lleva sus ventas, y un cliente con ventas no se borra.
+- **Las guardas**: `sale-writes` con cuatro mutaciones detectadas; `exposed-surface` con `issueSaleAction`; `module-boundary` con `sales`.
+- **La revisión independiente**: 1 hallazgo medio (R-1, el ancho del comprobante impreso) y 7 bajos, verificados. Seis corregidos, R-6 y R-7 decididos por el usuario y R-8 anotado para la 20.3.
+- **En producción**: `ceb5692` desplegado después de la CI 38393803291 en `success`. El usuario emitió e imprimió `V-000001` del pedido `P-000005` en la demo, conciliado contra la base: cabecera, línea, total, contador y auditoría.
+
+**Nivel**: validado localmente y en CI, validado en integración para las pantallas, desplegado en producción y recorrido por el usuario. No es «preparado para producción».
+
+**No certifica:**
+- La venta sin pedido ni la anulación: son la 20.3 y la 20.4.
+- Que un comprobante interno entregado a un consumidor final quede fuera de la Ley 27.743: sigue pendiente para la 13.5.2-b.
+- Los rechazos de la emisión en producción: los cubren los tests.
+- Que el autor se bloquee antes del contador (R-7).
+
 ## 2026-10-12 — 20.1: el ADR 0021 de la venta
 
 Cierra el 2026-10-12 con la aceptación del ADR por el usuario ([brief-20.1](docs/decisions/brief-20.1-adr-de-la-venta.md), §Cierre). Es la primera subfase de la Fase 20 — Ventas, abierta ese día con la Fase 13 abierta ([ADR 0016](docs/decisions/0016-el-crm-se-amplia-hacia-un-erp-por-fases.md), punto 3).
