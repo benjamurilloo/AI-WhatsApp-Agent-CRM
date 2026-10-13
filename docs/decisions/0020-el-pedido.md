@@ -3,6 +3,7 @@
 - Estado: **aceptada** (decisión del usuario del 2026-10-11, después de la revisión independiente y con sus correcciones, entre ellas R-5, R-7 y R-9, que cambian o suman decisiones del brief; subfase 19.1, [brief-19.1](brief-19.1-adr-del-pedido.md), aprobado el 2026-10-11 con las recomendaciones de D-1 a D-12).
 - Fecha: 2026-10-11
 - Nivel: **diseñado**. No hay código, tablas ni ejecución.
+- *Nota del 2026-10-13*: el [ADR 0022](0022-cobros-y-caja.md) suma la seña, un cobro contra un pedido `pending` o `confirmed`, sin cambiar el texto de este ADR. Desde la 21.4, `cash` también depende de `orders`, para leer y bloquear la cabecera en su transacción. La precisión de la 19.4 («Es la única dependencia hacia `orders`») ya había dejado de ser cierta con `sales`, y deja de serlo también con `cash`. `orders` sigue sin depender de ninguno de los dos.
 - *Nota del 2026-10-12*: el [ADR 0021](0021-la-venta.md), la venta, completa lo que este dejó a la Fase 20, sin cambiar su texto:
   - **punto 4**: la venta se emite solo desde un pedido `delivered`, a lo sumo una vigente por pedido, y no toca el stock;
   - **punto 4, las escrituras de `inventories`**: «las únicas escrituras … son `lockBalance`, `applyStockChange` y esas tres» suma dos funciones de la Fase 20, la venta sin pedido y la reposición de su anulación, siempre con su movimiento;

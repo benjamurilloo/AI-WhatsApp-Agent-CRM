@@ -8,6 +8,9 @@
   - **punto 3**: la venta de un pedido copia los montos del pedido y no el precio vigente al emitirse, una relectura como la del ADR 0020;
   - **punto 7**: la Fase 20 no discrimina el IVA, así que deja de ser «la primera fase que discrimine el IVA (la 20)». La condición de la organización y las alícuotas esperan a la 13.5.2-b;
   - **§Lo que este ADR no decide**: los montos de la anulación son positivos y el efecto lo da el tipo del comprobante.
+- *Nota del 2026-10-13*: el [ADR 0022](0022-cobros-y-caja.md), cobros, caja y cuenta corriente, remite a este en dos puntos, sin cambiar su texto:
+  - **punto 2**: las escrituras de dinero toman primero un bloqueo por organización (`pg_advisory_xact_lock`), y el contador sigue al final;
+  - **punto 3**: la caja guarda el efectivo por moneda, porque la organización no tiene una moneda por defecto y una venta puede estar en cualquiera.
 
 ## Contexto
 

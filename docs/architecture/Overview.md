@@ -145,3 +145,8 @@ El núcleo (`organizations`, `catalog`/`inventory`, `crm`) está diseñado para 
 - a `numbering`, dos tipos de documento.
 
 Sus tablas son `sales`, `sale_lines` y `sale_voids`. **Ningún módulo depende de `sales`**, y la venta en el detalle del pedido la compone la página. La 20.2 suma `sales` a la tabla de módulos y actualiza la fila de `orders`, que deja de tener a `ingestion` como único módulo que depende de él. *Hecho el 2026-10-13 en la 20.2*: la tabla de arriba tiene la fila de `sales`, y la de `orders` lo nombra. *Y entero el 2026-10-13 en la 20.4* ([brief-20.4](../decisions/brief-20.4-la-anulacion.md)): los dos tipos de movimiento (`sale` en la 20.3 y `sale_void` en la 20.4), las dos funciones (`sellStock` y `restoreSaleStock`), los dos tipos de documento (`sale` y `sale_void`) y las tres tablas existen. `orders` no suma nada en la 20.4: la anulación de una venta de pedido usa `lockOrderForSale`, de la 20.2.
+
+*Enmendado el 2026-10-13 por el [ADR 0022](../decisions/0022-cobros-y-caja.md)*: **`cash`** es el módulo de la Fase 21: medios de pago, cobros, anulaciones, devoluciones, sesiones de caja y la cuenta corriente derivada. **Es el primer módulo que depende de `sales`**, desde la 21.3, y depende también de `orders` desde la 21.4. **Ni `sales`, ni `orders`, ni `crm` dependen de `cash`**: lo cobrado en el detalle de una venta o de un pedido y el saldo en la ficha del cliente los compone la página. Cada subfase actualiza el Overview con su código:
+- la 21.2 suma la fila de `cash` a la tabla de módulos, a la lista de módulos de dominio y a la fila de `audit`;
+- la 21.3 actualiza la fila de `sales`;
+- la 21.4, la de `orders`.

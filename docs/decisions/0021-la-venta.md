@@ -3,6 +3,9 @@
 - Estado: **aceptada** (decisión del usuario del 2026-10-12, después de la revisión independiente y con sus correcciones, entre ellas la de R-2, que cambia el motivo de la anulación de D-7 a una lista cerrada; subfase 20.1, [brief-20.1](brief-20.1-adr-de-la-venta.md), aprobado el 2026-10-12 con las recomendaciones de D-1 a D-15).
 - Fecha: 2026-10-12
 - Nivel: **diseñado**. No hay código, tablas ni ejecución.
+- *Nota del 2026-10-13*: el [ADR 0022](0022-cobros-y-caja.md), cobros, caja y cuenta corriente, remite a este en dos puntos, sin cambiar su texto:
+  - **punto 9**, «Ningún módulo depende de `sales`»: desde la 21.3, **`cash` depende de `sales`**, para leer las ventas, su total, su moneda, si están anuladas y su cadena, sin bloquearlas. `sales` no suma ninguna dependencia, y lo cobrado en el detalle de la venta lo compone la página;
+  - **§Alternativas, el cobro antes de entregar**: lo resuelve la seña, un cobro contra el pedido (ADR 0022, punto 5). Anular una venta no mira los cobros: lo cobrado pasa a la cuenta del cliente o queda a devolver (punto 6).
 
 ## Contexto
 

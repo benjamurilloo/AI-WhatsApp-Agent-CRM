@@ -26,7 +26,7 @@ Convenciones fijadas en la 3.1, que siguen las tablas futuras salvo justificaci�
 11. Todo ajuste de stock ocurre dentro de una transacción de base de datos que actualiza `inventories` e inserta en `inventory_movements` atómicamente. *Enmendada el 2026-10-11 por el [ADR 0020](../decisions/0020-el-pedido.md), en vigor desde la 19.3*: **el saldo físico (`quantity_on_hand`) no cambia nunca sin su movimiento**, sea un ajuste o la entrega de un pedido. Lo reservado (`quantity_reserved`) se escribe sin movimiento, al confirmar, cancelar o entregar un pedido, en la misma transacción que la transición del pedido y su auditoría.
 12. `inventories.quantity_on_hand >= 0` por `CHECK` constraint — no se permiten cantidades negativas en el MVP (ver ADR correspondiente si el negocio decide lo contrario explícitamente).
 13. El modelo de `conversations`/`messages` incluye `channel` como enum extensible desde el día uno, aunque el MVP solo usa `whatsapp`, para no rediseñar el dominio al agregar un segundo canal.
-14. Ningún modelo de ventas, compras, proveedores o pagos existe en este schema. *Precisado el 2026-10-10 por el [ADR 0019](../decisions/0019-bases-de-los-comprobantes.md)*: sigue siendo cierto. El ADR fija el diseño de la numeración, la moneda y el IVA de los comprobantes **sin crear ninguna tabla**; cada una la crea la fase que la usa (punto 7 del ADR). La primera es `product_costs`, en la 18.2. *Implementada el 2026-10-10* ([brief-18.2](../decisions/brief-18.2-costo-y-margen.md)): es un atributo del catálogo, como el precio, y no un modelo de compras. *Enmendado el 2026-10-12 por el [ADR 0021](../decisions/0021-la-venta.md); el texto anterior se conserva arriba*: **deja de ser cierto para las ventas desde la 20.2**, que crea `sales` y `sale_lines`; la 20.4 crea `sale_voids`. Compras, proveedores y pagos siguen sin modelo. *Implementada en la 20.2 el 2026-10-13* ([brief-20.2](../decisions/brief-20.2-la-venta-de-un-pedido.md)): `sales` y `sale_lines` existen (abajo).
+14. Ningún modelo de ventas, compras, proveedores o pagos existe en este schema. *Precisado el 2026-10-10 por el [ADR 0019](../decisions/0019-bases-de-los-comprobantes.md)*: sigue siendo cierto. El ADR fija el diseño de la numeración, la moneda y el IVA de los comprobantes **sin crear ninguna tabla**; cada una la crea la fase que la usa (punto 7 del ADR). La primera es `product_costs`, en la 18.2. *Implementada el 2026-10-10* ([brief-18.2](../decisions/brief-18.2-costo-y-margen.md)): es un atributo del catálogo, como el precio, y no un modelo de compras. *Enmendado el 2026-10-12 por el [ADR 0021](../decisions/0021-la-venta.md); el texto anterior se conserva arriba*: **deja de ser cierto para las ventas desde la 20.2**, que crea `sales` y `sale_lines`; la 20.4 crea `sale_voids`. Compras, proveedores y pagos siguen sin modelo. *Implementada en la 20.2 el 2026-10-13* ([brief-20.2](../decisions/brief-20.2-la-venta-de-un-pedido.md)): `sales` y `sale_lines` existen (abajo). *Enmendado el 2026-10-13 por el [ADR 0022](../decisions/0022-cobros-y-caja.md); el texto anterior se conserva arriba*: **deja de ser cierto para los cobros y la caja**. La 21.2 crea `payment_methods`, `cash_sessions`, `cash_session_closings` y `cash_movements`; la 21.3, `receipts`; la 21.5, `receipt_voids`, `refunds` y `refund_voids`. La cuenta corriente no tiene tabla: se deriva (ADR 0022, punto 9). **Los pagos a proveedores siguen sin modelo**, y ninguna tabla de cobros se llama `payments`.
 
 ## Diagrama entidad-relación
 
@@ -178,7 +178,7 @@ Limpieza: en cada intento se borran los registros vencidos **de todas las claves
 
 **Implementada en la 16.1** ([brief-16.1](../decisions/brief-16.1-etiquetas-de-clientes.md)), migraciones `drizzle/0026_*` (tabla) y `drizzle/0027_*` (privilegios). Módulo dueño: `crm`.
 
-El catálogo de etiquetas de clientes de una organización: «Interesado», «Quiere señar», «Reclamo», «No interesado» y las que defina. **«Quiere señar» es una etiqueta, nunca un pago** (regla 14): ninguna etiqueta dispara nada. Editable, con borrado lógico según la regla 8: `crm_app` tiene `SELECT`, `INSERT` y `UPDATE`, **sin `DELETE`** (D-8). El historial de cambios es la auditoría, con el tipo de entidad `client_tag`.
+El catálogo de etiquetas de clientes de una organización: «Interesado», «Quiere señar», «Reclamo», «No interesado» y las que defina. **«Quiere señar» es una etiqueta, nunca un pago** (regla 14; *desde el 2026-10-13*, [ADR 0022](../decisions/0022-cobros-y-caja.md), punto 5: la seña es un cobro contra un pedido que registra una persona, y ninguna etiqueta lo crea ni lo sugiere): ninguna etiqueta dispara nada. Editable, con borrado lógico según la regla 8: `crm_app` tiene `SELECT`, `INSERT` y `UPDATE`, **sin `DELETE`** (D-8). El historial de cambios es la auditoría, con el tipo de entidad `client_tag`.
 
 | Columna | Tipo | Notas |
 |---|---|---|
@@ -524,7 +524,7 @@ Contador del límite de tasa por credencial, en ventanas fijas de un minuto. **I
 
 **Implementada en la 11.2** ([brief-11.2](../decisions/brief-11.2-informacion-del-negocio.md)), migraciones `drizzle/0018_*` (tabla) y `drizzle/0019_*` (privilegios). Módulo dueño: `knowledge`.
 
-Información del negocio: horarios, ubicación, medios de pago, envíos, garantía y todo lo que un vendedor responde a diario. Es texto que describe al negocio, no un modelo de sus operaciones: «aceptamos transferencia» es una entrada, no una tabla de medios de pago (regla 14). La forma sale del modelo del CRM, no de las tablas del sistema que hoy usa el agente ([ADR 0014](../decisions/0014-el-agente-de-whatsapp-como-consumidor-del-crm.md)).
+Información del negocio: horarios, ubicación, medios de pago, envíos, garantía y todo lo que un vendedor responde a diario. Es texto que describe al negocio, no un modelo de sus operaciones: «aceptamos transferencia» es una entrada, no una tabla de medios de pago (regla 14). *Precisado el 2026-10-13 por el [ADR 0022](../decisions/0022-cobros-y-caja.md), punto 10*: desde la 21.2 existe `payment_methods`, la lista de con qué se registró un cobro, que **no reemplaza** esta entrada. El agente sigue leyendo los medios de pago como texto, y `read-v1` no cambia. La forma sale del modelo del CRM, no de las tablas del sistema que hoy usa el agente ([ADR 0014](../decisions/0014-el-agente-de-whatsapp-como-consumidor-del-crm.md)).
 
 Editable, con borrado lógico según la regla 8: `crm_app` tiene `SELECT`, `INSERT` y `UPDATE`, **sin `DELETE`** (D-4). El historial de cambios es la auditoría, con el tipo de entidad `knowledge_entry`.
 
@@ -587,7 +587,7 @@ El contador de la numeración sin huecos: una fila por organización y tipo de d
 | Columna | Tipo | Notas |
 |---|---|---|
 | `organization_id` | uuid FK → organizations, not null | `ON DELETE RESTRICT`; PK compuesta con `kind` |
-| `kind` | enum `document_kind` (`order`, `sale`, `sale_void`) not null | *Desde la 20.2*, `sale` (prefijo `V`); *desde la 20.4*, `sale_void` (prefijo `A`). Texto anterior: la Fase 20 suma el tipo de la venta. *Enmendado el 2026-10-12 por el [ADR 0021](../decisions/0021-la-venta.md), punto 7*: suma dos, `sale` (20.2, prefijo `V`) y `sale_void` (20.4, la anulación, prefijo `A`) |
+| `kind` | enum `document_kind` (`order`, `sale`, `sale_void`) not null | *Enmendado el 2026-10-13 por el [ADR 0022](../decisions/0022-cobros-y-caja.md), punto 11*: la Fase 21 suma cinco tipos, `cash_session` (21.2, `C`), `receipt` (21.3, `R`), `receipt_void` (21.5, `AR`), `refund` (21.5, `D`) y `refund_void` (21.5, `AD`). Lo anterior: *Desde la 20.2*, `sale` (prefijo `V`); *desde la 20.4*, `sale_void` (prefijo `A`). Texto anterior: la Fase 20 suma el tipo de la venta. *Enmendado el 2026-10-12 por el [ADR 0021](../decisions/0021-la-venta.md), punto 7*: suma dos, `sale` (20.2, prefijo `V`) y `sale_void` (20.4, la anulación, prefijo `A`) |
 | `last_number` | bigint not null | el último número entregado; `CHECK (>= 0)` |
 | `updated_at` | timestamptz not null | |
 
@@ -837,6 +837,13 @@ Productor `client_tag`, desde la 16.1 (D-7). `entity_id` es el id de la etiqueta
 - `sale_voids` y `replaces_sale_id` llegan con la 20.4.
 
 `sale_details` no va a existir: las líneas son `sale_lines`. La nota del ADR 0019 de arriba («en cada línea, los montos y el IVA de cuando se emitió») vale **sin IVA** mientras ninguna fase lo discrimine: la Fase 20 no lo hace (ADR 0021, punto 11).
+
+*Nota del 2026-10-13 ([ADR 0022](../decisions/0022-cobros-y-caja.md))*: los cobros y la caja son comprobantes de solo inserción. Sus tablas **no existen todavía**:
+- la 21.2 crea `payment_methods`, `cash_sessions`, `cash_session_closings` y `cash_movements`;
+- la 21.3 crea `receipts` con el destino venta; la 21.4 le suma el destino pedido, y la 21.6, el destino cuenta;
+- la 21.5 crea `receipt_voids`, `refunds` y `refund_voids`.
+
+`payments` no va a existir con ese nombre para los cobros: queda para los pagos a proveedores. `cash_accounts` no va a existir: la caja son sesiones por moneda. La cuenta corriente no tiene tabla.
 
 ## Preguntas abiertas sobre el modelo
 

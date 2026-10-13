@@ -53,13 +53,13 @@ Agregado el 2026-09-23 por el [ADR 0014](../decisions/0014-el-agente-de-whatsapp
 
 Agregado el 2026-10-05 por el [ADR 0016](../decisions/0016-el-crm-se-amplia-hacia-un-erp-por-fases.md). Las fases y su orden están en el [Roadmap](../planning/Roadmap.md) (Fases 18 a 22); acá solo el perímetro.
 
-**Entra**, una fase por vez y cada una con su brief: las bases (costo del producto con historial, numeración de comprobantes, moneda e impuestos), los pedidos, las ventas con comprobantes internos, la caja y los cobros, y las compras con sus proveedores.
+**Entra**, una fase por vez y cada una con su brief: las bases (costo del producto con historial, numeración de comprobantes, moneda e impuestos), los pedidos, las ventas con comprobantes internos, la caja y los cobros, y las compras con sus proveedores. *Agregado el 2026-10-13*: la cuenta corriente de clientes, en la Fase 21, por decisión del usuario ([ADR 0022](../decisions/0022-cobros-y-caja.md), punto 9).
 
 **Sigue fuera**:
 
 - Cualquier tabla o módulo del ERP antes de que se abra la fase que lo incluye.
 - La factura electrónica de ARCA, hasta su propio ADR.
 - Que el agente registre cobros, pagos o movimientos de caja.
-- La contabilidad general, la cuenta corriente, las listas de precios y los depósitos múltiples, hasta que el uso los pida y se decidan.
+- La contabilidad general, ~~la cuenta corriente,~~ las listas de precios y los depósitos múltiples, hasta que el uso los pida y se decidan. *Enmendado el 2026-10-13*: la cuenta corriente entra en la Fase 21 (arriba).
 
 **Cuándo empieza**: la Fase 18 se abre con la Fase 13 cerrada, o antes solo por decisión explícita del usuario registrada con fecha (ADR 0016, punto 3).

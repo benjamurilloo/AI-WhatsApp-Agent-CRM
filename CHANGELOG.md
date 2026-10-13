@@ -2,6 +2,44 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-13 — 21.1: el ADR 0022 de cobros, caja y cuenta corriente
+
+Cierra el 2026-10-13 con la aceptación del ADR por el usuario ([brief-21.1](docs/decisions/brief-21.1-adr-de-cobros-y-caja.md), §Cierre). Es la primera subfase de la Fase 21 — Caja y cobros, abierta ese día con la Fase 13 abierta ([ADR 0016](docs/decisions/0016-el-crm-se-amplia-hacia-un-erp-por-fases.md), punto 3). **El usuario sumó la cuenta corriente de clientes a la fase** al aprobar el brief. Hasta ese día no tenía fase.
+
+**Certifica:**
+- **El [ADR 0022](docs/decisions/0022-cobros-y-caja.md), aceptado**:
+  - **El cobro**: un comprobante de solo inserción (`R-000123`) contra un solo destino: una venta, un pedido (la seña) o la cuenta de un cliente. Admite cobros parciales y en varios medios, y un cobro contra un comprobante nunca supera lo que le falta cobrar.
+  - **La seña**: queda retenida para su pedido. Cuenta para la venta vigente de la cadena del pedido, y si el pedido se cancela pasa a la cuenta del cliente.
+  - **Lo cobrado de una venta anulada o de un pedido cancelado**: anular y cancelar no miran los cobros. Lo cobrado pasa a la cuenta del cliente o queda a devolver.
+  - **Anulaciones y devoluciones**: la anulación de un cobro (`AR`), la devolución de plata (`D`) y la anulación de una devolución (`AD`). Nunca queda devuelto más de lo cobrado.
+  - **La caja**: una de efectivo por organización, por sesiones (`C`) encadenadas en la base y **por moneda**. Su arqueo compara lo contado con lo esperado, y ninguna salida deja lo esperado en negativo.
+  - **La cuenta corriente**: derivada, sin tabla de saldos. El cobro a cuenta se imputa de la venta más vieja a la más nueva, lo que sobra es saldo a favor, y no hay límite de crédito que bloquee.
+  - **Los medios de pago**: una lista por organización, sin Mercado Pago en la inicial. No reemplaza el texto que lee el agente.
+  - **La serialización**: un `pg_advisory_xact_lock` por organización, porque `crm_app` no puede bloquear una venta en ningún modo (verificado en la documentación de PostgreSQL 18), en `READ COMMITTED`.
+  - **El módulo `cash`** depende de `sales` y de `orders`, y ninguno de los dos depende de él. El agente no registra ni lee nada de esto.
+  - **El orden de la fase**: 21.2 medios de pago y caja → 21.3 cobro de una venta → 21.4 seña → 21.5 anulación y devolución → 21.6 cuenta corriente.
+- **La revisión independiente** dio R1, con 3 bloqueantes:
+  - la caja sin moneda;
+  - un cobro ya devuelto que, al anularse, dejaba el remanente en negativo;
+  - un cobro en efectivo de una sesión cerrada sin corrección posible.
+
+  Había además 6 hallazgos medios y 6 bajos. Los quince se verificaron contra la fuente y se corrigieron antes de la aceptación. R-1, R-2, R-3 y R-7 cambiaron o sumaron decisiones.
+- **Las enmiendas**, con fecha y conservando el texto anterior:
+  - DataModel: la regla 14, §`client_tags`, §`knowledge_entries`, §`document_counters` y la nota de las tablas que vienen;
+  - Overview, §Evolución hacia ERP;
+  - Scope;
+  - el Roadmap, §Fases 17 y 21 y «Sin fase todavía»;
+  - las notas de los ADR 0016, 0019, 0020 y 0021;
+  - el README de decisiones.
+
+**Nivel**: diseñado.
+
+**No certifica:**
+- Ninguna tabla, migración ni código: los crean las subfases 21.2 a 21.6.
+- Ningún cambio en un contrato con el agente, ni un aviso al agente.
+- Que la serialización y la regla de imputación funcionen: son diseño hasta sus tests, en la 21.2 y la 21.3.
+- Que un comprobante interno entregado a un consumidor final quede fuera de la Ley 27.743: sigue pendiente para la 13.5.2-b.
+
 ## 2026-10-13 — 20.4: la anulación, y cierre de la Fase 20
 
 Cierra el 2026-10-13 con la aprobación del usuario, después de su recorrido en producción ([brief-20.4](docs/decisions/brief-20.4-la-anulacion.md), §Cierre). Con ella se cierra la **Fase 20 — Ventas**: la venta de un pedido entregado (20.2), la venta sin pedido (20.3) y la anulación (20.4), sobre el [ADR 0021](docs/decisions/0021-la-venta.md) (20.1).
