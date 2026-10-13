@@ -2,6 +2,31 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-13 — 20.4: la anulación, y cierre de la Fase 20
+
+Cierra el 2026-10-13 con la aprobación del usuario, después de su recorrido en producción ([brief-20.4](docs/decisions/brief-20.4-la-anulacion.md), §Cierre). Con ella se cierra la **Fase 20 — Ventas**: la venta de un pedido entregado (20.2), la venta sin pedido (20.3) y la anulación (20.4), sobre el [ADR 0021](docs/decisions/0021-la-venta.md) (20.1).
+
+**Certifica:**
+- **La anulación** (migración `0041`):
+  - `sale_voids` de solo inserción (`crm_app` con `INSERT` y `SELECT`, trigger), con la serie `A`, `UNIQUE (sale_id)`, montos positivos que un trigger obliga a copiar de la venta y el motivo de una lista cerrada (`sale_void_reason`);
+  - `voidSale`, solo de `admin`: una venta sin pedido repone con un movimiento `sale_void` por línea (`restoreSaleStock` de `inventory`), aun con el producto inactivo, y rechaza `stock_limit`; una venta de pedido no toca el stock y libera el pedido;
+  - la cadena `replaces_sale_id`: el índice único parcial, `sales_replaces_sale_unique`, un `CHECK` y el trigger `sales_replacement_chain`, que solo deja reemplazar una venta anulada del mismo pedido; la nueva emisión lee la última venta del pedido;
+  - el orden de bloqueo del ADR 0021, punto 7, con una segunda comprobación con los bloqueos tomados y el rescate de `sale_voids_sale_unique` como `already_voided`; ningún rechazo escribe ni consume número;
+  - la auditoría `void` sobre la venta, con el número y el motivo (el `before` con campos nulos, desvío de D-9 aprobado).
+- **Las pantallas**: «Anular la venta» con su confirmación y el motivo, el comprobante imprimible de la anulación, «Anulada» y el filtro por estado en la lista, la búsqueda por número `A`, la cadena en el detalle, «Anulación de venta» con «+» en el historial de movimientos y el texto del buscador del pedido.
+- **Los datos de un cliente**: las anulaciones en la exportación y en el borrado.
+- **Las guardas**: `sale-writes` y `stock-writes` con las escrituras nuevas y sus casos de fallo; `exposed-surface` con `voidSaleAction`.
+- **La revisión independiente**: 1 hallazgo alto (R-1, el signo de la reposición en el historial), 2 medios y 6 bajos, verificados; ocho corregidos y R-4 aprobado por el usuario. 14 mutaciones detectadas.
+- **En producción**: `b95c9f4` desplegado después de la CI 38456467096 en `success`. El usuario anuló `V-000003` (`A-000001`, con reposición) y `V-000001` (`A-000002`, sin tocar el stock), volvió a emitir `V-000004` desde `P-000005`, imprimió y filtró. Conciliado contra la base: montos copiados, un movimiento con su saldo, ninguno para la venta de pedido, la cadena, la auditoría y los contadores.
+
+**Nivel**: validado localmente y en CI, validado en integración para las pantallas, desplegado en producción y recorrido por el usuario. No es «preparado para producción».
+
+**No certifica:**
+- Que volver a `315f990` sea limpio: no conoce las anulaciones y mostraría como vigentes dos ventas anuladas.
+- En producción, los rechazos y la concurrencia: los cubren los tests.
+- Que el comprobante interno o su anulación, entregados a un consumidor final, queden fuera de la Ley 27.743: sigue pendiente para la 13.5.2-b.
+- R-4 y R-9 de la 20.3, que quedan declaradas.
+
 ## 2026-10-13 — 20.3: la venta sin pedido
 
 Cierra el 2026-10-13 con la aprobación del usuario, después de su recorrido en producción ([brief-20.3](docs/decisions/brief-20.3-la-venta-sin-pedido.md), §Cierre).

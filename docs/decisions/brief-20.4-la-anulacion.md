@@ -16,7 +16,7 @@ generated_at: 2026-10-13
 - **Nivel de validación alcanzable**: **validado localmente y en CI**, **validado en integración** para las pantallas y, con D-13, **desplegado en producción** con el recorrido del usuario. No es «preparado para producción».
 - **Orden**: cuarta y última subfase de la Fase 20 — Ventas ([Roadmap](../planning/Roadmap.md) §Fase 20), después de la 20.3, cerrada el 2026-10-13. Implementa la fila «20.4» del punto 13 del [ADR 0021](0021-la-venta.md). **Al cerrarla se cierra la Fase 20** (D-14).
 - **No abre ni cierra gate.** Suma el segundo comprobante de solo inserción, la segunda escritura de stock desde `sales` y una cadena de reemplazos que la base defiende con un trigger. Por eso se recomienda la revisión independiente (D-12).
-- **Estado de este documento**: **aprobado por el usuario el 2026-10-13**, con todas las recomendaciones, de D-1 a D-14. La tarea 20.4 (`3f7702be6f4e817ea2c6d270d7a9f2b3`) sigue en «Esperando» en Notion hasta que se autorice pasarla a «En proceso».
+- **Estado de este documento**: **aprobado por el usuario el 2026-10-13**, con todas las recomendaciones, de D-1 a D-14. **Cerrado el 2026-10-13** junto con la Fase 20 (§Cierre). La tarea 20.4 (`3f7702be6f4e817ea2c6d270d7a9f2b3`) pasó a «En proceso» con la autorización del usuario y a «Completado» al cierre.
 
 ## Objetivo
 
@@ -314,3 +314,35 @@ Un agente que no participó del trabajo, de solo lectura, contra este brief, el 
 - **R-9 (bajo, por inferencia)**: la anulación no revalidaba `/productos`, y la reposición cambia el stock. **Corregido**: revalida el pedido en una venta de pedido y los productos en una venta sin pedido.
 
 La revisión confirmó además el orden de bloqueo contra el ADR 0021, punto 7, la serialización en los dos caminos, los rescates por nombre de restricción, que la cadena es lineal y `findLastSaleByOrder` devuelve una sola fila, la reposición, que ningún rechazo escribe, que un `viewer` no anula, que no entran datos personales, los recuentos de SecurityModel y de las guardas, y la confirmación sin JavaScript.
+
+## Cierre de la subfase 20.4 y de la Fase 20, 2026-10-13
+
+Cierra el 2026-10-13 con la aprobación del usuario, después de su recorrido en producción («Ya revisé todo y está perfecto»), que autorizó el cierre completo. Con la 20.4 se cierra la Fase 20 — Ventas (D-14).
+
+- **AC-1 a AC-14 cumplidos.** La deuda de la 20.3 que tomó D-11: el texto del buscador del pedido («Nombre, SKU o código de barras») y el test del estado de stock y de `read-v2` después de una venta y de su anulación, que cierra el AC-5 en parte de la 20.3.
+- **Commit, CI y despliegue**: `b95c9f4`, CI 38456467096 `success`, leída por el SHA completo. Desplegado en producción el 2026-10-13 según [deploy/production/README.md](../../deploy/production/README.md) §Desplegar, con `315f990` anotado como la versión para volver atrás. La migración `0041` quedó aplicada (42 en `drizzle.__drizzle_migrations`): `sale_voids` de `crm_owner`, con `INSERT` y `SELECT` para `crm_app`; los triggers `sale_voids_insert_only`, `sale_voids_copy_sale` y `sales_replacement_chain`; los índices `sale_voids_sale_unique`, `sales_organization_order_first_unique` (parcial), `sales_replaces_sale_unique` y `sales_order_idx`; y el enum del motivo con sus cuatro valores. El servicio `active` y `/api/health` en `200` desde el servidor y desde afuera. Este cambio no toca `deploy/`, así que no se rehízo el `diff` de la configuración.
+- **El recorrido del usuario (AC-14)**, en «Demostración Vixora»: anuló `V-000003` y `V-000001`, volvió a emitir desde `P-000005`, imprimió una anulación y filtró por «Anuladas». **Conciliado contra la base**, en una transacción de solo lectura y sin datos de la persona:
+  - `A-000001` anula `V-000003` (sin pedido), motivo `data_entry_error`, y `A-000002` anula `V-000001` (de `P-000005`), motivo `other`; en las dos, la moneda y el total son los de la venta;
+  - la reposición de `V-000003`: un movimiento `sale_void` de 1 por su única línea, con el motivo `Anulación A-000001 de la venta V-000003`, el saldo de 0 a 1 y el stock del producto igual a ese saldo;
+  - la anulación de `V-000001` no movió el stock: ningún movimiento menciona `V-000001`, `V-000004` ni `A-000002`;
+  - `V-000004`, de `P-000005`, con `replaces_sale_id` en `V-000001`, vigente;
+  - dos auditorías `void` de `sale` con el número y el motivo, y el `before` con los campos nulos (el desvío de D-9 aprobado en R-4); cuatro `create`;
+  - los contadores `sale` en 4 y `sale_void` en 2, iguales a los últimos números.
+
+  La impresión y el filtro no dejan rastro en la base: de esos dos, la evidencia es la confirmación del usuario.
+- **Revisión**: la independiente (R-1 a R-9, arriba). La batería, el despliegue, la conciliación y este cierre son autoevaluación declarada.
+- **Decisiones del usuario**:
+  - el brief, con las recomendaciones de D-1 a D-14;
+  - los dos desvíos de R-4: el `before` de la auditoría con campos nulos y el `orderId` en el resultado de la anulación;
+  - la tarea en «En proceso», el commit y el push, el despliegue después de la CI y este cierre, con el de la Fase 20.
+- **Nivel**:
+  - validado localmente y en CI;
+  - **validado en integración** para las pantallas (end-to-end sobre `next start`);
+  - desplegado en producción y recorrido por el usuario en la organización de demostración.
+
+  No es «preparado para producción».
+- **No certifica**:
+  - que volver a `315f990` sea limpio: ese código no conoce las anulaciones, mostraría `V-000001` y `V-000003` como vigentes y, con dos ventas de `P-000005`, leería cualquiera (D-13). Se resuelve volviendo a desplegar la 20.4;
+  - en producción, los rechazos de AC-4 y la concurrencia de AC-5: los cubren los tests;
+  - que el comprobante interno o su anulación, entregados a un consumidor final, queden fuera de la Ley 27.743: sigue pendiente para la 13.5.2-b.
+- **Deuda que queda declarada**: R-4 de la 20.3 (`stock-writes` fija el archivo que llama, no la función) y R-9 de la 20.3 (la lectura del formulario duplicada entre `ventas/actions.ts` y `pedidos/actions.ts`), por D-11.
