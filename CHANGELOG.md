@@ -2,6 +2,32 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-13 — 20.3: la venta sin pedido
+
+Cierra el 2026-10-13 con la aprobación del usuario, después de su recorrido en producción ([brief-20.3](docs/decisions/brief-20.3-la-venta-sin-pedido.md), §Cierre).
+
+**Certifica:**
+- **La venta sin pedido** (migración `0040`):
+  - `sale` en `inventory_movement_type`; `sales.order_id` y `sales.client_id` nulables, con `sales_order_has_client`: una venta de un pedido siempre lleva cliente;
+  - `issueSale`, solo de `admin`, con el cliente opcional («Consumidor final»), las mismas reglas de línea que el pedido y los mismos rechazos, sin escribir ni consumir número;
+  - `sellStock` de `inventory`: un movimiento `sale` por línea con el motivo `Venta V-000123`, contra lo disponible (`on_hand − reserved`), sin tocar lo reservado, todo o nada;
+  - el orden de bloqueo del ADR 0021, punto 7: el cliente y los productos en modo compartido, los saldos `FOR UPDATE` y el contador al final. El motivo de `sellStock` es una función que se llama después de comprobar el stock, para que el contador quede último (desvío fechado de D-3, verificado por la revisión).
+- **Las reglas de línea compartidas** en `src/shared/lines/` (validación, duplicados, precio que cambió, total máximo), que `orders` usa sin cambiar ninguna aserción de sus tests.
+- **Las pantallas**: «+ Nueva venta» para `admin`, el buscador que también encuentra por código de barras (D-5, solo en las pantallas; el agente no), el rechazo por stock con lo disponible y lo cargado conservado, y «Venta» en el historial de movimientos del producto.
+- **Los datos de un cliente**: la exportación une las ventas con `LEFT JOIN` y no pierde las que no tienen pedido (R-8 de la 20.2).
+- **Las guardas**: `stock-writes` con `applySale`, `sellStock` y ocho casos de fallo nuevos; `exposed-surface` con `createSaleAction`; `module-boundary` con `src/shared/lines`.
+- **La revisión independiente**: 1 hallazgo alto (R-1, un test fuera de la lista que usaba `sale` como tipo desconocido) y 8 bajos, verificados. Cinco corregidos, cuatro declarados.
+- **En producción**: `315f990` desplegado después de la CI 38427868045 en `success`. El usuario vendió sin cliente (`V-000002`) y con cliente (`V-000003`) e intentó vender más de lo disponible, en la demo. Conciliado contra la base: líneas, totales, un movimiento por línea con saldos que cierran, nada reservado, auditoría y el contador sin número consumido por el rechazo.
+
+**Nivel**: validado localmente y en CI, validado en integración para las pantallas, desplegado en producción y recorrido por el usuario. No es «preparado para producción».
+
+**No certifica:**
+- La anulación ni la reposición del stock: son la 20.4.
+- El estado de stock ni `read-v2` después de una venta: no hay test (AC-5 en parte).
+- Que `stock-writes` vea una llamada a `sellStock` desde otra función del mismo archivo (R-4).
+- Que el comprobante interno entregado a un consumidor final quede fuera de la Ley 27.743: sigue pendiente para la 13.5.2-b.
+- Que volver a `ceb5692` sea limpio: no lee bien una venta sin pedido o sin cliente.
+
 ## 2026-10-13 — 20.2: la venta de un pedido entregado
 
 Cierra el 2026-10-13 con la aprobación del usuario, después de su recorrido en producción ([brief-20.2](docs/decisions/brief-20.2-la-venta-de-un-pedido.md), §Cierre).

@@ -16,7 +16,7 @@ generated_at: 2026-10-13
 - **Nivel de validación alcanzable**: **validado localmente y en CI**, **validado en integración** para las pantallas y, con D-12, **desplegado en producción** con el recorrido del usuario. No es «preparado para producción».
 - **Orden**: tercera subfase de la Fase 20 — Ventas ([Roadmap](../planning/Roadmap.md) §Fase 20), después de la 20.2, cerrada el 2026-10-13. Implementa la fila «20.3» del punto 13 del [ADR 0021](0021-la-venta.md).
 - **No abre ni cierra gate.** Es la primera salida de stock que no viene de un pedido y la primera escritura de `inventory` desde `sales`. Por eso se recomienda la revisión independiente (D-11).
-- **Estado de este documento**: **aprobado por el usuario el 2026-10-13**, con todas las recomendaciones: D-1(a), D-2, D-3, D-4, D-5(a), D-6 a D-12. La tarea 20.3 (`3f7702be6f4e8100866cf66f074f3ee3`) sigue en «Esperando» en Notion hasta que se autorice pasarla a «En proceso».
+- **Estado de este documento**: **aprobado por el usuario el 2026-10-13**, con todas las recomendaciones: D-1(a), D-2, D-3, D-4, D-5(a), D-6 a D-12. **Cerrado el 2026-10-13** (§Cierre). La tarea 20.3 (`3f7702be6f4e8100866cf66f074f3ee3`) pasó a «En proceso» ese día y a «Completado» con el cierre.
 
 ## Objetivo
 
@@ -255,9 +255,9 @@ Implementado el 2026-10-13. **Esta sección es autoevaluación**: la escribió q
 | AC-9 | cumplido | `stock-writes` con ocho casos de fallo nuevos y sus mutaciones; `exposed-surface` con `createSaleAction`; `module-boundary` con tres casos |
 | AC-10 | cumplido | `inventory` y `orders` no importan `sales`; `src/shared/lines` solo importa `zod`, `money` y `quantity`; `ingestion` no está en el diff |
 | AC-11 | cumplido | `read-api`, `read-api-v2` e `ingestion-v2` pasan sin cambios; `read-api.test.ts`, caso 6b, sigue fijando que el agente no busca por código de barras |
-| AC-12 | cumplido en local | la batería, abajo. La CI queda para el SHA del commit |
+| AC-12 | cumplido | la batería, abajo, y la CI de `315f990` (§Cierre) |
 | AC-13 | cumplido | DataModel, Overview, RepositoryStructure, FunctionalRequirements (FR-VEN-07 y 08, FR-PROD-15), Screens (5, 17, 18 y la 19 nueva), TraceabilityMatrix, SecurityModel (93 puntos de entrada), EngineeringStandards y el runbook |
-| AC-14 | pendiente | el despliegue, si se autoriza (D-12) |
+| AC-14 | cumplido | el despliegue de `315f990` y el recorrido del usuario, conciliado contra la base (§Cierre) |
 
 **Mutaciones**, cada una agregada al código real, corrida y revertida:
 - lo disponible sin restar lo reservado en `sellStock`: falla «vende justo lo disponible…»;
@@ -288,3 +288,35 @@ Un agente que no participó del trabajo, de solo lectura, contra este brief, el 
 - **R-9**: la duplicación de `ventas/actions.ts`, verificada y justificada. Queda como deuda: un helper sin `"use server"` compartido por las dos rutas.
 
 La revisión confirmó además que D-5 estaba bien detenido, que `createOrder` y `placeOrderFromIngestion` responden como antes según sus tests, que ningún rechazo escribe y que ninguna lectura falla con `order_id` o `client_id` nulos.
+
+## Cierre de la subfase 20.3, 2026-10-13
+
+Cierra el 2026-10-13 con la aprobación del usuario, después de su recorrido en producción («Listo, funciona perfecto»).
+
+- **AC-1 a AC-14 cumplidos**, con AC-5 en parte: no hay test del estado de stock ni de `read-v2` después de un movimiento `sale` (R-5).
+- **Commit, CI y despliegue**: `315f990`, CI 38427868045 `success` leída por el SHA completo. Desplegado en producción el 2026-10-13 según [deploy/production/README.md](../../deploy/production/README.md) §Desplegar, con `ceb5692` anotado como la versión para volver atrás. La migración `0040` quedó aplicada (41 en `drizzle.__drizzle_migrations`): `sale` en `inventory_movement_type`, `order_id` y `client_id` nulables en `sales` y `sales_order_has_client` presente. El servicio `active` y `/api/health` en `200`.
+- **El recorrido del usuario (AC-14)**, en «Demostración Vixora» con los productos de Tecnex: una venta sin cliente, una con cliente y un intento por más de lo disponible. **Conciliado contra la base**, en una transacción de solo lectura y sin datos de la persona:
+  - `V-000002`, sin pedido y sin cliente, con dos líneas, y `V-000003`, sin pedido y con cliente, con una; en las dos, la suma de las líneas es igual al total (960.000,00 y 450.000,00 ARS);
+  - un movimiento `sale` por línea, con el motivo `Venta V-00000X` y la cantidad de la línea; en cada uno, el saldo anterior menos la cantidad da el `balance_after` (2→1, 6→5 y 1→0);
+  - el stock de cada producto vendido igual a su último `balance_after`, nada reservado, y el stock de la demo de 70 a 67;
+  - una auditoría `create` de `sale` por venta;
+  - el rechazo no escribió: 3 movimientos `sale` en total, ninguna `V-000004`, y el contador de `sale` en 3, igual al último número.
+- **Revisión**: la independiente (R-1 a R-9, arriba). La batería, el despliegue, la conciliación y este cierre son autoevaluación declarada.
+- **Decisiones del usuario**:
+  - el brief, con las recomendaciones de D-1 a D-12;
+  - los cuatro archivos fuera de la lista: `catalog/service.ts` (D-5), `inventory-history.test.ts` (R-1), `RepositoryStructure.md` y `estimate.test.ts` (R-6);
+  - el commit y el push, el despliegue después de la CI, la tarea en «En proceso» y este cierre.
+- **Nivel**:
+  - validado localmente y en CI;
+  - **validado en integración** para las pantallas (end-to-end sobre `next start`);
+  - desplegado en producción y recorrido por el usuario en la organización de demostración.
+
+  No es «preparado para producción».
+- **No certifica**:
+  - la anulación ni la reposición del stock: son la 20.4;
+  - el estado de stock ni la lectura `read-v2` después de una venta, que no se tocaron (AC-5 en parte);
+  - que `stock-writes` vea una llamada a `sellStock` desde otra función del mismo archivo (R-4);
+  - que el comprobante interno entregado a un consumidor final quede fuera de la Ley 27.743: sigue pendiente para la 13.5.2-b;
+  - en producción, los rechazos de D-9 distintos del de stock: los cubren los tests;
+  - que volver a `ceb5692` sea limpio: esa versión no lee bien una venta sin pedido o sin cliente, y producción ya tiene dos.
+- **Deuda anotada**: R-9, la lectura del formulario duplicada en `ventas/actions.ts` y `pedidos/actions.ts`; el texto «Nombre o SKU» del buscador del pedido, que también encuentra por código de barras desde D-5.
