@@ -316,6 +316,14 @@ describe("validateStockAdjustmentInput", () => {
     ).toEqual({ ok: false, code: "VALIDATION_ERROR", fields: ["type"] });
   });
 
+  it("brief-20.3 AC-5: sale no es un tipo de ajuste", () => {
+    expect(validateStockAdjustmentInput({ ...valid, type: "sale" })).toEqual({
+      ok: false,
+      code: "VALIDATION_ERROR",
+      fields: ["type"],
+    });
+  });
+
   it("devuelve cada campo inválido en orden", () => {
     expect(
       validateStockAdjustmentInput({
@@ -378,8 +386,16 @@ describe("validateMovementHistoryFilters", () => {
     });
   });
 
+  // brief-20.3, H-2: el historial filtra las ventas sin pedido.
+  it("acepta sale, la salida de una venta sin pedido", () => {
+    expect(validateMovementHistoryFilters({ ...all, type: "sale" })).toEqual({
+      ok: true,
+      values: { type: "sale", from: null, to: null },
+    });
+  });
+
   it.each([
-    [["type"], { type: "sale" }],
+    [["type"], { type: "purchase" }],
     [["type"], { type: "" }],
     [["from"], { from: "2025-02-29" }],
     [["from"], { from: "2026-9-1" }],

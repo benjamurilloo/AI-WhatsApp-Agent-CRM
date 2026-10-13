@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { sql } from "drizzle-orm";
 import { createDb, type Db } from "@/shared/db";
 import { SEED_ORGANIZATION_ID, SEED_USERS, seedBasic } from "../../seeds/basic";
@@ -8,7 +8,8 @@ import { E2E_PASSWORD } from "./global-setup";
 
 // Pantallas 16 a 18 de punta a punta (brief-20.2, AC-7): Chromium, next start, Server Actions,
 // sales, orders, numbering, audit y PostgreSQL real, sin mocks. La venta se emite desde el detalle
-// de un pedido entregado; el detalle de la venta es su comprobante imprimible.
+// de un pedido entregado; el detalle de la venta es su comprobante imprimible. Desde la 20.3, la
+// pantalla 19: la venta sin pedido de /ventas/nueva, que descuenta el stock (brief-20.3, AC-7).
 
 const [ADMIN_SEED, VIEWER_SEED] = SEED_USERS;
 const ADMIN = ADMIN_SEED.email;
@@ -348,4 +349,166 @@ test("la lista busca por número, filtra por fecha y avisa de un período invál
     page.getByRole("alert").filter({ hasText: "Revisá las fechas" }),
   ).toBeVisible();
   await expectAccessible(page, "período inválido");
+});
+
+// La venta sin pedido (brief-20.3, AC-7). Un producto con precio y saldo por SQL: estas pantallas
+// no concilian el saldo con sus movimientos.
+async function insertStockedProduct(
+  sku: string,
+  name: string,
+  price: string,
+  onHand: string,
+) {
+  const productId = await insertProduct(sku, name);
+  await db.execute(
+    sql`insert into product_prices (organization_id, product_id, amount, currency, created_by)
+        values (${SEED_ORGANIZATION_ID}, ${productId}, ${price}, 'ARS', ${ADMIN_SEED.id})`,
+  );
+  await db.execute(
+    sql`insert into inventories (organization_id, product_id, quantity_on_hand)
+        values (${SEED_ORGANIZATION_ID}, ${productId}, ${onHand})`,
+  );
+  return productId;
+}
+
+async function onHand(productId: string) {
+  const result = await db.execute<{ on_hand: string }>(
+    sql`select quantity_on_hand as on_hand from inventories where product_id = ${productId}`,
+  );
+  return result.rows[0]!.on_hand;
+}
+
+const line = (page: Page, position: number) =>
+  page.getByRole("group", { name: `Línea ${position}`, exact: true });
+
+// Elige la primera opción de un buscador con el teclado, como en orders.spec.ts.
+async function pick(scope: Locator | Page, label: string, text: string) {
+  const field = scope.getByLabel(label, { exact: true });
+  await field.fill(text);
+  await expect(scope.getByRole("option").first()).toBeVisible();
+  await field.press("ArrowDown");
+  await field.press("Enter");
+}
+
+test("brief-20.3: un admin emite una venta sin cliente con el teclado, la imprime, la encuentra y la ve en el historial del producto", async ({
+  page,
+}) => {
+  const coffee = await insertStockedProduct(
+    "CAF-250",
+    "Café molido",
+    "1234.50",
+    "10",
+  );
+  await login(page, ADMIN);
+
+  await page.goto("/ventas");
+  await page.getByRole("link", { name: "+ Nueva venta" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Nueva venta" }),
+  ).toBeVisible();
+  await expectAccessible(page, "venta vacía");
+
+  await pick(line(page, 1), "Producto", "Café");
+  await expect(line(page, 1).getByLabel("Producto")).toHaveValue(
+    "Café molido (CAF-250)",
+  );
+  await line(page, 1).getByLabel("Cantidad").fill("3");
+  await expect(line(page, 1)).toContainText("Subtotal estimado: $ 3.703,50");
+  // «Subtotal estimado» también contiene «total estimado»: el párrafo del total es el que empieza así.
+  await expect(
+    page.locator("p", { hasText: /^Total estimado:/ }),
+  ).toContainText("$ 3.703,50");
+  await expectAccessible(page, "venta con una línea");
+  await page.getByRole("button", { name: "Emitir venta" }).focus();
+  await page.keyboard.press("Enter");
+
+  await expect(page).toHaveURL(/\/ventas\/[0-9a-f-]{36}\?aviso=emitida$/);
+  await expect(page.getByText("Venta emitida.")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Venta V-000001" }),
+  ).toBeVisible();
+  const receipt = page.locator("[data-comprobante]");
+  await expect(receipt).toContainText("Consumidor final");
+  await expect(receipt).not.toContainText("Pedido");
+  await expect(receipt).toContainText("3.703,50");
+  await expectAccessible(page, "detalle de una venta sin pedido");
+  expect(await onHand(coffee)).toBe("7.000");
+
+  await page.emulateMedia({ media: "print" });
+  await expect(receipt).toBeVisible();
+  await expect(receipt).toContainText("Consumidor final");
+  await expect(page.getByRole("button", { name: "Imprimir" })).toBeHidden();
+  await page.emulateMedia({ media: null });
+
+  await page.goto("/ventas");
+  const table = page.getByRole("table", { name: "Ventas de la organización" });
+  await expect(table).toContainText("V-000001");
+  await expect(table).toContainText("Consumidor final");
+  await expect(table).toContainText("Sin pedido");
+  await expectAccessible(page, "lista con una venta sin pedido");
+
+  await page.goto(`/productos/${coffee}/movimientos?tipo=venta`);
+  const movements = page.getByRole("main");
+  await expect(movements).toContainText("Venta V-000001");
+  await expect(page.getByLabel("Tipo")).toHaveValue("venta");
+  await expectAccessible(page, "historial con la venta");
+});
+
+test("brief-20.3: más que lo disponible se rechaza con lo disponible, conserva lo cargado y no mueve nada", async ({
+  page,
+}) => {
+  await insertClient("Lucía Gómez");
+  const coffee = await insertStockedProduct(
+    "CAF-250",
+    "Café molido",
+    "1000",
+    "2",
+  );
+  await login(page, ADMIN);
+
+  await page.goto("/ventas/nueva");
+  await pick(page, "Cliente (opcional)", "Luc");
+  await pick(line(page, 1), "Producto", "Café");
+  await line(page, 1).getByLabel("Cantidad").fill("2,5");
+  await page.getByRole("button", { name: "Emitir venta" }).click();
+
+  await expect(
+    page.getByRole("alert").filter({ hasText: "No alcanza el stock" }),
+  ).toContainText("No alcanza el stock disponible de las líneas marcadas.");
+  await expect(line(page, 1)).toContainText("Disponible: 2. Pediste 2,5.");
+  await expect(page.getByLabel("Cliente (opcional)")).toHaveValue(
+    "Lucía Gómez",
+  );
+  await expect(line(page, 1).getByLabel("Producto")).toHaveValue(
+    "Café molido (CAF-250)",
+  );
+  await expect(line(page, 1).getByLabel("Cantidad")).toHaveValue("2,5");
+  await expectAccessible(page, "venta rechazada por stock");
+  expect(await counts()).toEqual({ sales: 0, movements: 0 });
+  expect(await onHand(coffee)).toBe("2.000");
+
+  // Con lo disponible, se emite a nombre del cliente.
+  await line(page, 1).getByLabel("Cantidad").fill("2");
+  await page.getByRole("button", { name: "Emitir venta" }).click();
+  await expect(page).toHaveURL(/\?aviso=emitida$/);
+  await expect(page.locator("[data-comprobante]")).toContainText("Lucía Gómez");
+  expect(await onHand(coffee)).toBe("0.000");
+});
+
+test("brief-20.3: un viewer no ve «Nueva venta» ni puede entrar a la pantalla", async ({
+  page,
+}) => {
+  await login(page, VIEWER);
+  await page.goto("/ventas");
+  await expect(page.getByRole("heading", { name: "Ventas" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "+ Nueva venta" })).toHaveCount(
+    0,
+  );
+  await page.goto("/ventas/nueva");
+  await expect(
+    page.getByText("No tenés permiso para ver esta página."),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Emitir venta" })).toHaveCount(
+    0,
+  );
 });

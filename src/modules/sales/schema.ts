@@ -23,9 +23,10 @@ import { organizations } from "@/modules/organizations/schema";
 //
 // La venta es un comprobante emitido (ADR 0019; ADR 0021, punto 2): las dos tablas son de solo
 // inserción (ADR 0013, regla 10 de DataModel), con SELECT e INSERT para crm_app y un trigger de la
-// 0039 que rechaza UPDATE y DELETE. No tiene estados. En la 20.2 toda venta viene de un pedido
-// entregado y copia de él el cliente, la moneda, las líneas y el total (brief-20.2, D-1): la 20.3
-// vuelve nulables order_id y client_id, y la 20.4 suma la anulación.
+// 0039 que rechaza UPDATE y DELETE. No tiene estados. La venta de un pedido entregado copia de él
+// el cliente, la moneda, las líneas y el total (brief-20.2, D-1). Desde la 20.3, la venta sin
+// pedido (order_id nulo) se arma con líneas y puede no tener cliente (brief-20.3, D-2). La 20.4
+// suma la anulación.
 
 export const sales = pgTable(
   "sales",
@@ -36,10 +37,11 @@ export const sales = pgTable(
       .references(() => organizations.id, { onDelete: "restrict" }),
     // Del contador de numbering, por organización; se muestra como V-000123 (ADR 0021, punto 7).
     number: bigint("number", { mode: "number" }).notNull(),
-    // El pedido entregado del que sale (ADR 0021, punto 3).
-    orderId: uuid("order_id").notNull(),
-    // El cliente del pedido, copiado al emitir.
-    clientId: uuid("client_id").notNull(),
+    // El pedido entregado del que sale (ADR 0021, punto 3); nulo en una venta sin pedido.
+    orderId: uuid("order_id"),
+    // El cliente del pedido, copiado al emitir, o el que eligió quien vende; nulo en una venta sin
+    // pedido y sin cliente («Consumidor final»).
+    clientId: uuid("client_id"),
     currency: text("currency").notNull(),
     // El total del pedido, copiado al emitir: la venta no vuelve a cotizar.
     total: numeric("total", { precision: 14, scale: 2 }).notNull(),
@@ -62,8 +64,9 @@ export const sales = pgTable(
       table.organizationId,
       table.id,
     ),
-    // Un pedido tiene a lo sumo una venta (ADR 0021, punto 3). La 20.4 lo reemplaza por el índice
-    // parcial WHERE replaces_sale_id IS NULL, con la cadena de reemplazos.
+    // Un pedido tiene a lo sumo una venta (ADR 0021, punto 3). Los nulos no chocan, así que no
+    // alcanza a las ventas sin pedido. La 20.4 lo reemplaza por el índice parcial WHERE
+    // replaces_sale_id IS NULL, con la cadena de reemplazos.
     uniqueIndex("sales_organization_order_unique").on(
       table.organizationId,
       table.orderId,
@@ -92,6 +95,11 @@ export const sales = pgTable(
       table.createdAt.desc(),
     ),
     check("sales_number_positive", sql`${table.number} > 0`),
+    // Toda venta de un pedido tiene cliente (brief-20.3, D-2, H-5).
+    check(
+      "sales_order_has_client",
+      sql`${table.orderId} IS NULL OR ${table.clientId} IS NOT NULL`,
+    ),
     check("sales_total_positive", sql`${table.total} > 0`),
     check("sales_currency_format", sql`${table.currency} ~ '^[A-Z]{3}$'`),
   ],

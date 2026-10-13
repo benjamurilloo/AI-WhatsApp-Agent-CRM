@@ -148,6 +148,23 @@ const cases = [
     code: 'import { orders } from "@/modules/orders/schema"; export const s5 = orders;',
     forbidden: false,
   },
+  // Desde la 20.3, sales descuenta el stock por la interfaz de inventory, nunca por su repositorio
+  // (brief-20.3, AC-9); y las reglas de línea de src/shared/lines no importan módulos (AC-10).
+  {
+    file: "src/modules/sales/service.ts",
+    code: 'import { sellStock } from "@/modules/inventory"; export const s6 = sellStock;',
+    forbidden: false,
+  },
+  {
+    file: "src/modules/sales/service.ts",
+    code: 'import { applySale } from "@/modules/inventory/repository"; export const s7 = applySale;',
+    forbidden: true,
+  },
+  {
+    file: "src/shared/lines/rules.ts",
+    code: 'import { lockProductsForOrder } from "@/modules/catalog"; export const l1 = lockProductsForOrder;',
+    forbidden: true,
+  },
   // knowledge es módulo de dominio desde la 11.2 (AC-7); estos casos dejan esa mutación como
   // guarda permanente (N-3 de su revisión independiente, resuelta en la 11.3.2).
   {

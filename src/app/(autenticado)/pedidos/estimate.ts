@@ -1,3 +1,4 @@
+import { roundLineTotal } from "@/shared/lines";
 import {
   currencyDecimals,
   moneyFromDatabase,
@@ -5,12 +6,10 @@ import {
 } from "@/shared/money";
 import { parseQuantityInput } from "@/shared/quantity";
 
-// El subtotal estimado de una línea en el formulario del alta (brief-19.2, D-7). Es solo lo que se
-// muestra mientras se carga: el total que vale lo calcula orders al crear el pedido, con el precio
-// leído en la transacción. La regla es la misma (ADR 0019, punto 4: precio por cantidad, redondeado
-// a los decimales de la moneda con el medio hacia afuera del cero), copiada porque el formulario
-// corre en el navegador y orders no se puede importar ahí; el test fija los mismos casos que
-// src/modules/orders/line-total.test.ts.
+// El subtotal estimado de una línea en el formulario del alta (brief-19.2, D-7) y, desde la 20.3,
+// en el de la venta sin pedido. Es solo lo que se muestra mientras se carga: el total que vale lo
+// calcula el servicio al escribir, con el precio leído en la transacción. Desde la 20.3 usa el
+// redondeo de src/shared/lines, el mismo del servicio, en lugar de una copia (brief-20.3, D-1).
 
 // Devuelve el subtotal con la escala de la base («3703.50»), o null si todavía no se puede calcular
 // o si da cero.
@@ -22,14 +21,11 @@ export function estimateLineTotal(
   const decimals = currencyDecimals(currency);
   const quantity = parseQuantityInput(quantityText);
   if (!decimals.ok || quantity === null || quantity === 0n) return null;
-  const price = moneyFromDatabase(unitPrice);
-  const step = 10n ** BigInt(2 - decimals.decimals);
-  const divisor = 1000n * step;
-  const product = price * quantity;
-  const quotient = product / divisor;
-  const rounded =
-    (product % divisor) * 2n >= divisor ? quotient + 1n : quotient;
-  const total = rounded * step;
+  const total = roundLineTotal(
+    moneyFromDatabase(unitPrice),
+    quantity,
+    decimals.decimals,
+  );
   return total === 0n ? null : moneyToDatabase(total);
 }
 

@@ -100,7 +100,7 @@
 - **Accesibilidad**: el saldo resultante se anuncia con `aria-live`.
 - **No mostrar**: nada sensible específico. No existe ninguna acción para editar ni borrar un movimiento.
 
-*Desde la 19.3* ([brief-19.3](../decisions/brief-19.3-reserva-y-ciclo.md), D-7): la cabecera muestra también lo reservado y lo disponible; el historial etiqueta las entregas de pedidos («Entrega de pedido», con el número del pedido en el motivo) y las filtra con `?tipo=entrega`; el ajuste avisa antes de enviar si el saldo quedaría por debajo de lo reservado, y el servidor lo rechaza con `below_reserved` y un mensaje con el saldo, lo reservado, la cantidad y qué hacer (cancelar primero el pedido que no se puede cumplir).
+*Desde la 19.3* ([brief-19.3](../decisions/brief-19.3-reserva-y-ciclo.md), D-7): la cabecera muestra también lo reservado y lo disponible; el historial etiqueta las entregas de pedidos («Entrega de pedido», con el número del pedido en el motivo) y las filtra con `?tipo=entrega`; *desde la 20.3* ([brief-20.3](../decisions/brief-20.3-la-venta-sin-pedido.md), H-2), también las ventas sin pedido («Venta», con el número de la venta en el motivo), con `?tipo=venta`; el ajuste avisa antes de enviar si el saldo quedaría por debajo de lo reservado, y el servidor lo rechaza con `below_reserved` y un mensaje con el saldo, lo reservado, la cantidad y qué hacer (cancelar primero el pedido que no se puede cumplir).
 
 ## 5b. Precios de un producto
 
@@ -324,11 +324,12 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 *Agregada en la 20.2* ([brief-20.2](../decisions/brief-20.2-la-venta-de-un-pedido.md), D-6; FR-VEN-04), sin wireframe. Ruta `/ventas`, con su ítem «Ventas» en el panel lateral para los dos roles.
 
 - **Objetivo**: encontrar una venta.
-- **Usuario autorizado**: `admin` y `viewer`. No hay «+ Nueva venta»: en la 20.2 una venta se emite desde un pedido entregado.
+- **Usuario autorizado**: `admin` y `viewer`. No hay «+ Nueva venta»: en la 20.2 una venta se emite desde un pedido entregado. *Desde la 20.3* (D-6): `admin` ve «+ Nueva venta», que lleva a la pantalla 19.
 - **Información mostrada**: número, fecha, cliente, un enlace «Ver pedido», cantidad de líneas y total. El número del pedido no está en la lista: `sales` no lee `orders` para listar.
 - **Filtros**: búsqueda por número (`V-000123`, `000123` o `123`) y período con «Desde» y «Hasta», días de la zona de la organización. Desde el detalle de una venta llega filtrada por su cliente, con un enlace para ver las de todos. Un período inválido o invertido se anuncia con `role="alert"`.
 - **Paginación**: 25 por página, de la más reciente a la más vieja.
-- **Vacío**: «Todavía no hay ventas. Una venta se emite desde un pedido entregado.»; con filtros, «Ninguna venta coincide con estos filtros.»
+- **Vacío**: «Todavía no hay ventas. Una venta se emite desde un pedido entregado.»; con filtros, «Ninguna venta coincide con estos filtros.» *Desde la 20.3*: «Todavía no hay ventas. Una venta se emite desde un pedido entregado o con «Nueva venta».»
+- *Desde la 20.3* (D-7): una venta sin cliente dice «Consumidor final», y una sin pedido dice «Sin pedido» en lugar del enlace.
 - **Responsive**: tabla en escritorio y tarjetas en móvil.
 - **No mostrar**: costo ni margen.
 
@@ -341,4 +342,19 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 - **Información mostrada**: el comprobante, con el nombre de la organización, el número, la fecha y hora de emisión, el nombre del cliente, el número del pedido con su enlace, las líneas (el nombre de hoy del producto, con el aviso de que los precios son los del pedido), el total y la leyenda «Documento no válido como factura»; al lado, el cliente con el teléfono enmascarado y sin email para un `viewer`, y «Ver las ventas de este cliente». Para `admin`, la historia: la emisión con su número, sus líneas y su total.
 - **Acciones**: «Imprimir o guardar PDF» abre el diálogo del navegador.
 - **Al imprimir**: queda solo el comprobante, en claro también con el tema oscuro. Se ocultan el panel lateral, la barra superior, los botones, el aviso, la tarjeta del cliente con su contacto y la historia (D-9: el comprobante nunca lleva el contacto).
+- *Desde la 20.3* (D-7): una venta sin cliente muestra «Consumidor final» en el comprobante y en la tarjeta del cliente, sin «Ver las ventas de este cliente»; una sin pedido no muestra la línea del pedido, y el aviso dice que los precios son los vigentes al emitir.
 - **No mostrar**: editar, borrar ni anular la venta (la anulación es de la 20.4); costo ni margen.
+
+## 19. Nueva venta
+
+*Agregada en la 20.3* ([brief-20.3](../decisions/brief-20.3-la-venta-sin-pedido.md), D-6 y D-9; FR-VEN-07), sin wireframe. Ruta `/ventas/nueva`, desde «+ Nueva venta» de la pantalla 17.
+
+- **Objetivo**: emitir una venta sin pedido, la de mostrador.
+- **Usuario autorizado**: solo `admin`. Un `viewer` recibe «No tenés permiso para ver esta página.»
+- **Información mostrada**: el formulario de la pantalla 15, con el cliente opcional («Vacío, la venta es a «Consumidor final».»), las líneas con el buscador de productos, la cantidad, el precio vigente y el subtotal estimado, y el total estimado, con el aviso de que el total que vale es el que calcula el sistema y de que al emitir se descuenta el stock.
+- **Acciones**: agregar y quitar líneas, hasta 50; las vacías no se envían. «Emitir venta» lleva al detalle de la venta con «Venta emitida.».
+- **Buscador de productos**: por nombre, SKU o código de barras exacto (D-5); un lector USB escribe el código como un teclado.
+- **Errores**: los de la pantalla 15, y lo disponible de cada línea que no alcanza («Disponible: 2. Pediste 2,5.»); no se emite nada y lo cargado se conserva. No muestra lo disponible antes de emitir (D-6).
+- **Sin JavaScript**: como la pantalla 15; un cliente escrito que no se reconoce se rechaza, no se toma como «Consumidor final».
+- **Accesibilidad**: como la pantalla 15; el rechazo se anuncia con `role="alert"` y recibe el foco.
+- **No mostrar**: costo ni margen.

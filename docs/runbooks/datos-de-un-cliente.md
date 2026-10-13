@@ -42,7 +42,7 @@ Incluye los seis orígenes que guardan datos de la persona y, desde la 19.2, sus
 | `audit_logs` | los cambios sobre su ficha, **con los valores anteriores** de teléfono y notas, y desde la 16.1 las etiquetas que se le pusieron y quitaron |
 | `client_tag_assignments` | *desde la 16.1*: sus etiquetas actuales, con su nombre, color, estado y fecha (campo `client_tags`; [brief-16.1](../decisions/brief-16.1-etiquetas-de-clientes.md), D-10) |
 | `orders` y `order_lines` | *desde la 19.2*: sus pedidos, con número, estado, fechas, moneda y total, y sus líneas, con el producto (su SKU y su nombre de hoy), la cantidad, el precio y el total (campos `orders` y `order_lines`; [ADR 0020](../decisions/0020-el-pedido.md), punto 10). No tienen texto de la persona, pero son suyos |
-| `sales` y `sale_lines` | *desde la 20.2*: sus ventas, con número, fecha, el número del pedido, moneda y total, y sus líneas, con el producto (su SKU y su nombre de hoy), la cantidad, el precio y el total (campos `sales` y `sale_lines`; [ADR 0021](../decisions/0021-la-venta.md), punto 12). Si está anulada se suma con la 20.4 |
+| `sales` y `sale_lines` | *desde la 20.2*: sus ventas, con número, fecha, el número del pedido, moneda y total, y sus líneas, con el producto (su SKU y su nombre de hoy), la cantidad, el precio y el total (campos `sales` y `sale_lines`; [ADR 0021](../decisions/0021-la-venta.md), punto 12). Si está anulada se suma con la 20.4. *Desde la 20.3*, también sus ventas sin pedido, con el pedido en `null` ([brief-20.3](../decisions/brief-20.3-la-venta-sin-pedido.md), H-9); una venta sin cliente no es de ningún cliente y no aparece |
 
 **No incluye `ingestion_events`**, y es a propósito: esa tabla guarda el emisor, una referencia
 opaca suya, el hash del payload y fechas. El propio archivo lo dice en su campo `excluded`, para
@@ -69,7 +69,7 @@ Esa línea corre el informe. Para vaciar o borrar se le agrega `--vaciar` o `--b
 
 ### Caso A — el cliente no tiene conversaciones ni pedidos
 
-*Desde la 20.2* ([brief-20.2](../decisions/brief-20.2-la-venta-de-un-pedido.md), H-1): ni ventas. Una venta apunta a la ficha con `ON DELETE RESTRICT`. En la 20.2 toda venta tiene un pedido, así que no cambia qué clientes caen acá; con la venta sin pedido de la 20.3, sí.
+*Desde la 20.2* ([brief-20.2](../decisions/brief-20.2-la-venta-de-un-pedido.md), H-1): ni ventas. Una venta apunta a la ficha con `ON DELETE RESTRICT`. En la 20.2 toda venta tiene un pedido, así que no cambia qué clientes caen acá; con la venta sin pedido de la 20.3, sí. *Desde la 20.3*: un cliente con una venta sin pedido tampoco se borra, aunque no tenga pedidos; una venta sin cliente no cuenta para ninguno.
 
 *Desde la 19.2* ([brief-19.2](../decisions/brief-19.2-el-pedido.md), D-9; ADR 0020, punto 10): decía «el cliente no tiene conversaciones». Un pedido apunta a la ficha con `ON DELETE RESTRICT`, así que un cliente con pedidos va al caso B aunque no tenga conversaciones; el informe y `--borrar` lo dicen.
 

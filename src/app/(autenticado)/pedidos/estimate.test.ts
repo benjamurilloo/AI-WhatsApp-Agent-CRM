@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { estimateLineTotal, sumEstimates } from "./estimate";
 
-// Los casos de src/modules/orders/line-total.test.ts: la estimación del formulario tiene que dar
-// lo mismo que el total que calcula orders (brief-19.2, D-7).
+// Los casos de src/shared/lines/line-total.test.ts (hasta la 20.3, en orders): la estimación del
+// formulario tiene que dar lo mismo que el total que calcula el servicio (brief-19.2, D-7).
 describe("estimateLineTotal", () => {
   it("precio por cantidad, con el redondeo del ADR 0019 en una moneda con dos decimales", () => {
     expect(estimateLineTotal("1234.50", "ARS", "3")).toBe("3703.50");

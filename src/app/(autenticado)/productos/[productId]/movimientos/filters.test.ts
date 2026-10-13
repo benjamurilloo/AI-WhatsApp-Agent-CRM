@@ -21,7 +21,7 @@ describe("parseMovementView", () => {
       type: "negativo",
       period: "30d",
     });
-    expect(parseMovementView({ tipo: "venta", periodo: "siempre" })).toEqual(
+    expect(parseMovementView({ tipo: "otro", periodo: "siempre" })).toEqual(
       DEFAULT_VIEW,
     );
     expect(parseMovementView({ pagina: "0" }).page).toBe(1);
@@ -98,6 +98,11 @@ describe("toHistoryFilters", () => {
       toHistoryFilters({ ...DEFAULT_VIEW, type: "entrega" }, "UTC", now).type,
     ).toBe("order_delivery");
     expect(parseMovementView({ tipo: "entrega" }).type).toBe("entrega");
+    // brief-20.3, H-2: las ventas sin pedido.
+    expect(
+      toHistoryFilters({ ...DEFAULT_VIEW, type: "venta" }, "UTC", now).type,
+    ).toBe("sale");
+    expect(parseMovementView({ tipo: "venta" }).type).toBe("venta");
   });
 });
 

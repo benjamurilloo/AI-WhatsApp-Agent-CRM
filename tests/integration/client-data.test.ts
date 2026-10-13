@@ -1091,3 +1091,94 @@ describe("las ventas del cliente (brief-20.2, AC-8; ADR 0021, punto 12)", () => 
     }
   });
 });
+
+// La venta sin pedido, por SQL (brief-20.3): con o sin cliente, una línea de un producto nuevo.
+async function counterSaleFor(
+  clientId: string | null,
+  number: number,
+): Promise<string> {
+  const user = await getDb().execute<{ id: string }>(
+    sql`insert into users (email, password_hash, name, must_change_password)
+        values (${`venta-${crypto.randomUUID()}@example.com`}, 'x', 'Vendedora', false)
+        returning id`,
+  );
+  const product = await getDb().execute<{ id: string }>(
+    sql`insert into products (organization_id, sku, name)
+        values (${organizationId}, ${`MOSTRADOR-${number}`}, 'Yerba') returning id`,
+  );
+  const sale = await getDb().execute<{ id: string }>(
+    sql`insert into sales (organization_id, number, order_id, client_id, currency, total, created_by)
+        values (${organizationId}, ${number}, null, ${clientId}, 'ARS', '900.00', ${user.rows[0]!.id})
+        returning id`,
+  );
+  const saleId = sale.rows[0]!.id;
+  await getDb().execute(
+    sql`insert into sale_lines (organization_id, sale_id, product_id, position, quantity,
+                                unit_price, currency, line_total)
+        values (${organizationId}, ${saleId}, ${product.rows[0]!.id}, 1, '3', '300.00', 'ARS',
+                '900.00')`,
+  );
+  return saleId;
+}
+
+describe("las ventas sin pedido del cliente (brief-20.3, AC-8; H-9)", () => {
+  it("38. la exportación incluye su venta sin pedido con sus líneas, y no una sin cliente", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    await saleFor(await orderFor(clientId, 1), 1);
+    await counterSaleFor(clientId, 2);
+    await counterSaleFor(null, 3);
+
+    const data = await exportClientData(getDb(), organizationId, clientId);
+    expect(data.sales).toEqual([
+      expect.objectContaining({
+        number: "1",
+        order_display_number: "P-000001",
+      }),
+      expect.objectContaining({
+        number: "2",
+        display_number: "V-000002",
+        order_id: null,
+        order_display_number: null,
+        currency: "ARS",
+        total: "900.00",
+      }),
+    ]);
+    expect(data.sale_lines).toEqual([
+      expect.objectContaining({ sale_number: "1", sku: "SKU-1" }),
+      expect.objectContaining({
+        sale_number: "2",
+        position: 1,
+        sku: "MOSTRADOR-2",
+        name: "Yerba",
+        quantity: "3.000",
+        unit_price: "300.00",
+        line_total: "900.00",
+      }),
+    ]);
+  });
+
+  it("39. el informe cuenta la venta sin pedido, y el cliente no es borrable", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    await counterSaleFor(clientId, 1);
+    await counterSaleFor(null, 2);
+
+    const report = await reportClientData(getDb(), organizationId, clientId);
+    expect(report).toMatchObject({
+      exists: true,
+      orders: 0,
+      sales: 1,
+      deletable: false,
+    });
+  });
+
+  it("40. una venta sin cliente no aparece en ningún cliente", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    await counterSaleFor(null, 1);
+
+    const data = await exportClientData(getDb(), organizationId, clientId);
+    expect(data.sales).toEqual([]);
+    expect(data.sale_lines).toEqual([]);
+    const report = await reportClientData(getDb(), organizationId, clientId);
+    expect(report).toMatchObject({ sales: 0 });
+  });
+});

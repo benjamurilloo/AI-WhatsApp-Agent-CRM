@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MAX_AMOUNT } from "@/shared/money";
-import { computeLineTotal, sumOrderTotal } from "./line-total";
+import { computeLineTotal, sumLineTotals } from "./line-total";
 
 // brief-19.2, AC-4: el total de línea con el redondeo del ADR 0019, punto 4.
 describe("computeLineTotal", () => {
@@ -77,13 +77,13 @@ describe("computeLineTotal", () => {
   });
 });
 
-describe("sumOrderTotal", () => {
+describe("sumLineTotals", () => {
   it("suma los totales de las líneas", () => {
-    expect(sumOrderTotal([370_350n, 3n, 123_400n])).toBe(493_753n);
+    expect(sumLineTotals([370_350n, 3n, 123_400n])).toBe(493_753n);
   });
 
   it("devuelve null si la suma no cabe en numeric(14, 2)", () => {
-    expect(sumOrderTotal([MAX_AMOUNT, 0n])).toBe(MAX_AMOUNT);
-    expect(sumOrderTotal([MAX_AMOUNT, 1n])).toBeNull();
+    expect(sumLineTotals([MAX_AMOUNT, 0n])).toBe(MAX_AMOUNT);
+    expect(sumLineTotals([MAX_AMOUNT, 1n])).toBeNull();
   });
 });

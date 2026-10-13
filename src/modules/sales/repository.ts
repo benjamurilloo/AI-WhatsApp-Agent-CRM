@@ -8,11 +8,12 @@ import { saleLines, sales } from "./schema";
 
 type Executor = Db | DbTransaction;
 
+// Desde la 20.3, sin pedido o sin cliente en una venta sin pedido (brief-20.3, D-2).
 export type SaleRow = {
   id: string;
   number: number;
-  orderId: string;
-  clientId: string;
+  orderId: string | null;
+  clientId: string | null;
   currency: string;
   // Con la escala de la base ("1234.50").
   total: string;
@@ -59,8 +60,8 @@ export function withTransaction<T>(
 export type NewSale = {
   organizationId: string;
   number: number;
-  orderId: string;
-  clientId: string;
+  orderId: string | null;
+  clientId: string | null;
   currency: string;
   total: string;
   createdBy: string;
@@ -85,7 +86,8 @@ export async function insertSaleLines(
     .values(lines.map((line) => ({ ...line, organizationId, saleId })));
 }
 
-// El índice único de un pedido por venta (ADR 0021, punto 3). drizzle-orm envuelve el error de pg;
+// El índice único de un pedido por venta (ADR 0021, punto 3). Una venta sin pedido no pasa por él:
+// su order_id es nulo, y los nulos no chocan (brief-20.3, H-4). drizzle-orm envuelve el error de pg;
 // el código y la constraint quedan en la causa.
 export function isOrderAlreadySold(error: unknown): boolean {
   const e = error as {

@@ -1,21 +1,29 @@
-// Interfaz pública del módulo sales: la venta de un pedido entregado (brief-20.2; ADR 0021).
+// Interfaz pública del módulo sales: la venta de un pedido entregado (brief-20.2; ADR 0021) y,
+// desde la 20.3, la venta sin pedido (issueSale).
 // Ningún módulo depende de sales: la usan solo las pantallas.
 export {
   formatSaleNumber,
   getSale,
   getSaleForOrder,
+  issueSale,
   issueSaleFromOrder,
   listSaleAudit,
   listSales,
   parseSaleNumberSearch,
   SALES_PAGE_SIZE,
   type IssueSaleResult,
+  type IssueSaleWithoutOrderResult,
   type SaleAuditEntry,
   type SaleAuditResult,
   type SaleDetail,
+  type SaleInput,
   type SaleLine,
+  type SaleLineField,
+  type SaleLineRuleIssue,
   type SaleListField,
   type SaleListFilters,
   type SalePage,
+  type SaleShortage,
   type SaleSummary,
+  type SaleValidationFailure,
 } from "./service";

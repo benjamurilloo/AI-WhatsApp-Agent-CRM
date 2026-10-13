@@ -202,8 +202,9 @@ export function findProducts(
       or(
         productSearchCondition(filters.text),
         sql`lower(${products.sku}) = lower(${filters.text})`,
-        // Solo la lista: la búsqueda del agente y las sugerencias no buscan por código de barras
-        // (brief-17.2, D-4). La misma expresión que el índice único parcial.
+        // La lista y, desde la 20.3, las sugerencias del buscador (brief-20.3, D-5); la búsqueda del
+        // agente no busca por código de barras (brief-17.2, D-4). La misma expresión que el índice
+        // único parcial.
         sql`lower(${products.barcode}) = lower(${filters.text})`,
       )!,
     );
@@ -217,13 +218,19 @@ export function findProducts(
 // Búsqueda de la API de lectura (brief-11.3, D-4): solo activos, con la misma coincidencia que
 // findProducts, pero ordenada y cortada en SQL. Primero el SKU exacto, que es la señal más fuerte;
 // después la relevancia, con desempate por nombre y por id. Un texto sin palabras deja la
-// consulta en NULL, y `coalesce` evita que ese NULL ordene primero.
+// consulta en NULL, y `coalesce` evita que ese NULL ordene primero. Desde la 20.3, con
+// `barcode: true` encuentra también el código de barras exacto, que ordena con el SKU exacto: lo
+// pasan solo las sugerencias del buscador (brief-20.3, D-5). La API de lectura no lo pasa, así que
+// read-v1 y read-v2 no cambian.
 export function findActiveProductsRanked(
   organizationId: string,
   text: string,
   limit: number,
+  options: { barcode?: boolean } = {},
 ): Promise<ProductRow[]> {
-  const skuMatch = sql`lower(${products.sku}) = lower(${text})`;
+  const skuMatch = options.barcode
+    ? sql`(lower(${products.sku}) = lower(${text}) or lower(${products.barcode}) = lower(${text}))`
+    : sql`lower(${products.sku}) = lower(${text})`;
   const rank = sql`coalesce(ts_rank(${products.search}, ${searchQuery(text)}), 0)`;
   return getDb()
     .select(productColumns)

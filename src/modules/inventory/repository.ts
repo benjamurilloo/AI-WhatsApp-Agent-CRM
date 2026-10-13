@@ -7,8 +7,8 @@ import {
 } from "./schema";
 
 // Acceso a inventories e inventory_movements: lectura de saldos (brief-4.2, D-1) y las únicas
-// escrituras del saldo (brief-4.3.1, D-6; desde la 19.3, lo reservado y la entrega del ADR 0020),
-// que vigila tests/guards/stock-writes.test.ts.
+// escrituras del saldo (brief-4.3.1, D-6; desde la 19.3, lo reservado y la entrega del ADR 0020;
+// desde la 20.3, la venta sin pedido del ADR 0021), que vigila tests/guards/stock-writes.test.ts.
 
 export type StockMovementType =
   (typeof inventoryMovementType.enumValues)[number];
@@ -248,6 +248,40 @@ export async function applyDelivery(
       and(
         eq(inventories.organizationId, delivery.organizationId),
         eq(inventories.productId, delivery.productId),
+      ),
+    );
+}
+
+export type Sale = {
+  organizationId: string;
+  productId: string;
+  quantity: string;
+  balanceAfter: string;
+  reason: string;
+  createdBy: string;
+};
+
+// La salida de una línea de una venta sin pedido (ADR 0021, punto 5): el movimiento sale y el
+// saldo físico nuevo. No toca lo reservado: quien llama ya comprobó lo disponible con el saldo
+// bloqueado, así que el saldo nuevo nunca queda por debajo de lo reservado; el CHECK es la última
+// defensa (brief-20.3, D-3).
+export async function applySale(tx: DbTransaction, sale: Sale): Promise<void> {
+  await tx.insert(inventoryMovements).values({
+    organizationId: sale.organizationId,
+    productId: sale.productId,
+    type: "sale",
+    quantity: sale.quantity,
+    balanceAfter: sale.balanceAfter,
+    reason: sale.reason,
+    createdBy: sale.createdBy,
+  });
+  await tx
+    .update(inventories)
+    .set({ quantityOnHand: sale.balanceAfter })
+    .where(
+      and(
+        eq(inventories.organizationId, sale.organizationId),
+        eq(inventories.productId, sale.productId),
       ),
     );
 }

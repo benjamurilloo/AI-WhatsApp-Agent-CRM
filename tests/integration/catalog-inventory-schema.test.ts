@@ -541,6 +541,18 @@ describe("inventory_movements: esquema", () => {
     ).toMatch(uuidPattern);
   });
 
+  it("brief-20.3 AC-1: acepta sale, la salida de una venta sin pedido", async () => {
+    const { movement } = await seedProduct();
+    expect(
+      await insertMovement(getDb(), {
+        ...movement,
+        type: "sale",
+        balanceAfter: "0",
+        reason: "Venta V-000001",
+      }),
+    ).toMatch(uuidPattern);
+  });
+
   it("rechaza el producto de otra organización (D-3)", async () => {
     const { orgB, movement } = await seedProduct();
     expect(

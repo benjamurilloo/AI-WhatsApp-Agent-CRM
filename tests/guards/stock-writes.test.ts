@@ -20,12 +20,15 @@ const REPOSITORY = "src/modules/inventory/repository.ts";
 // lockBalance crea la fila en 0 sin tocar un saldo existente; applyStockChange cambia
 // quantity_on_hand de un ajuste, siempre junto con su movimiento. Desde la 19.3 (ADR 0020, punto
 // 4): setReserved cambia solo lo reservado, sin movimiento (reservar y liberar), y applyDelivery
-// inserta el movimiento de la entrega y baja saldo y reservado en una sentencia.
+// inserta el movimiento de la entrega y baja saldo y reservado en una sentencia. Desde la 20.3
+// (ADR 0021, punto 5; brief-20.3, D-3): applySale inserta el movimiento sale y baja el saldo
+// físico, sin tocar lo reservado.
 const AUTHORIZED = new Map([
   ["lockBalance", ["insert inventories"]],
   ["applyStockChange", ["insert inventory_movements", "update inventories"]],
   ["setReserved", ["update inventories"]],
   ["applyDelivery", ["insert inventory_movements", "update inventories"]],
+  ["applySale", ["insert inventory_movements", "update inventories"]],
 ]);
 
 const TABLES = new Map([
@@ -186,6 +189,22 @@ describe("detección de escrituras del saldo", () => {
       file: "src/modules/inventory/service.ts",
       code: "await tx.execute(sql`insert into inventory_movements (type) values ('order_delivery')`);",
     },
+    // brief-20.3, D-3: la salida de la venta, con lo suyo y nada más.
+    {
+      name: "applySale borrando el saldo",
+      file: REPOSITORY,
+      code: "export async function applySale(tx) {\n  await tx.delete(inventories);\n}",
+    },
+    {
+      name: "applySale borrando movimientos",
+      file: REPOSITORY,
+      code: "export async function applySale(tx) {\n  await tx.execute(sql`delete from inventory_movements`);\n}",
+    },
+    {
+      name: "una venta que escribe el movimiento desde sales",
+      file: "src/modules/sales/repository.ts",
+      code: "export async function insertSaleMovement(tx) {\n  await tx.insert(inventoryMovements).values({ type: 'sale' });\n}",
+    },
   ])("detecta: $name", ({ file, code }) => {
     expect(findViolations(file, code)).not.toEqual([]);
   });
@@ -251,6 +270,8 @@ describe("repositorio", () => {
       "setReserved: update inventories",
       "applyDelivery: insert inventory_movements",
       "applyDelivery: update inventories",
+      "applySale: insert inventory_movements",
+      "applySale: update inventories",
     ]);
   });
 });
@@ -261,19 +282,27 @@ describe("repositorio", () => {
 // una transición del pedido: setReserved y applyDelivery se llaman solo desde reserveStock,
 // releaseStock y deliverStock del servicio de inventory, y esas tres, fuera de inventory, solo desde
 // el servicio de orders. Ve llamadas por nombre (también con espacio de nombres); no ve un alias ni
-// una referencia guardada en una variable.
+// una referencia guardada en una variable. Desde la 20.3 (brief-20.3, D-3): applySale se llama
+// solo desde sellStock, y sellStock, fuera de inventory, solo desde el servicio de sales. No ve
+// (revisión independiente de la 20.3, R-4): sellStock llamada desde otra función del servicio de
+// inventory, como adjustStock, ni desde otra función de sales/service.ts, como issueSaleFromOrder,
+// porque fija el archivo y no la función; ni el tipo que recibe applyStockChange, que hoy limita
+// la validación del ajuste.
 
 const SERVICE = "src/modules/inventory/service.ts";
 const ORDERS_SERVICE = "src/modules/orders/service.ts";
+const SALES_SERVICE = "src/modules/sales/service.ts";
 const ORDER_STOCK = ["reserveStock", "releaseStock", "deliverStock"];
+const SALE_STOCK = ["sellStock"];
 
 const CALLERS = new Map([
   ["setReserved", { file: SERVICE, from: ["reserveStock", "releaseStock"] }],
   ["applyDelivery", { file: SERVICE, from: ["deliverStock"] }],
+  ["applySale", { file: SERVICE, from: ["sellStock"] }],
 ]);
 
 const CALL_PATTERN =
-  /(?<!function\s)\b(?:\w+\.)?(setReserved|applyDelivery|reserveStock|releaseStock|deliverStock)\s*\(/g;
+  /(?<!function\s)\b(?:\w+\.)?(setReserved|applyDelivery|applySale|reserveStock|releaseStock|deliverStock|sellStock)\s*\(/g;
 
 function findCallViolations(file: string, code: string): string[] {
   const functions = [...code.matchAll(FUNCTION_PATTERN)].map((match) => ({
@@ -294,13 +323,19 @@ function findCallViolations(file: string, code: string): string[] {
         ? []
         : [`${file}:${line} ${callee} desde ${fn ?? "fuera de una función"}`];
     }
-    // reserveStock, releaseStock y deliverStock.
-    if (file === SERVICE || file === ORDERS_SERVICE) return [];
-    return ORDER_STOCK.includes(callee) ? [`${file}:${line} ${callee}`] : [];
+    if (file === SERVICE) return [];
+    // reserveStock, releaseStock y deliverStock, desde orders; sellStock, desde sales.
+    if (ORDER_STOCK.includes(callee)) {
+      return file === ORDERS_SERVICE ? [] : [`${file}:${line} ${callee}`];
+    }
+    if (SALE_STOCK.includes(callee)) {
+      return file === SALES_SERVICE ? [] : [`${file}:${line} ${callee}`];
+    }
+    return [];
   });
 }
 
-describe("llamadores de lo reservado y de la entrega", () => {
+describe("llamadores de lo reservado, de la entrega y de la venta", () => {
   it.each([
     {
       name: "el ajuste llamando a setReserved",
@@ -327,6 +362,32 @@ describe("llamadores de lo reservado y de la entrega", () => {
       file: "src/app/(autenticado)/pedidos/actions.ts",
       code: "export async function deliverAction() {\n  await inventory.deliverStock(tx, d);\n}",
     },
+    // brief-20.3, D-3.
+    {
+      name: "el ajuste llamando a applySale",
+      file: SERVICE,
+      code: "export async function adjustStock(tx) {\n  await repository.applySale(tx, s);\n}",
+    },
+    {
+      name: "applySale desde sales",
+      file: SALES_SERVICE,
+      code: "export async function issueSale(tx) {\n  await applySale(tx, s);\n}",
+    },
+    {
+      name: "sellStock desde orders",
+      file: ORDERS_SERVICE,
+      code: "async function transitionOrder(tx) {\n  await sellStock(tx, s);\n}",
+    },
+    {
+      name: "sellStock desde una Server Action",
+      file: "src/app/(autenticado)/ventas/actions.ts",
+      code: "export async function createSaleAction() {\n  await inventory.sellStock(tx, s);\n}",
+    },
+    {
+      name: "deliverStock desde sales",
+      file: SALES_SERVICE,
+      code: "export async function issueSale(tx) {\n  await deliverStock(tx, d);\n}",
+    },
   ])("detecta: $name", ({ file, code }) => {
     expect(findCallViolations(file, code)).not.toEqual([]);
   });
@@ -348,6 +409,16 @@ describe("llamadores de lo reservado y de la entrega", () => {
       code: "async function transitionOrder(tx) {\n  await reserveStock(tx, o, l);\n  await deliverStock(tx, d);\n  await releaseStock(tx, o, l);\n}",
     },
     {
+      name: "sellStock vendiendo",
+      file: SERVICE,
+      code: "export async function sellStock(tx) {\n  await repository.applySale(tx, s);\n}",
+    },
+    {
+      name: "sales llamando a sellStock",
+      file: SALES_SERVICE,
+      code: "export async function issueSale() {\n  await sellStock(tx, s);\n}",
+    },
+    {
       name: "la definición de la función no es una llamada",
       file: "src/modules/catalog/service.ts",
       code: "export async function setReserved(tx) {\n  return 1;\n}",
@@ -356,7 +427,7 @@ describe("llamadores de lo reservado y de la entrega", () => {
     expect(findCallViolations(file, code)).toEqual([]);
   });
 
-  it("en src/, lo reservado y la entrega se llaman solo desde donde se autoriza", () => {
+  it("en src/, lo reservado, la entrega y la venta se llaman solo desde donde se autoriza", () => {
     const files = readdirSync("src", { recursive: true, encoding: "utf8" })
       .map((file) => join("src", file).replaceAll("\\", "/"))
       .filter((file) => /\.tsx?$/.test(file));

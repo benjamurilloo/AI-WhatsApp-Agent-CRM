@@ -856,6 +856,15 @@ describe("el ajuste frente a lo reservado (AC-5)", () => {
           reason: "Entrega a mano",
         }),
       ).toEqual({ ok: false, code: "VALIDATION_ERROR", fields: ["type"] });
+      // Ni sale, la salida de una venta sin pedido (brief-20.3, AC-5).
+      expect(
+        await adjustStock(s.adminA, s.coffee, {
+          type: "sale",
+          quantity: "1",
+          expectedQuantityOnHand: "0",
+          reason: "Venta a mano",
+        }),
+      ).toEqual({ ok: false, code: "VALIDATION_ERROR", fields: ["type"] });
       expect(await count("inventory_movements")).toBe(0);
     },
     TEST_TIMEOUT,

@@ -6,7 +6,9 @@ import { resetDatabase } from "./reset-database";
 // Esquema de las ventas contra PostgreSQL real (brief-20.2, AC-1): claves compuestas, CHECK, el
 // índice único de un pedido por venta, los privilegios de crm_app y el trigger de solo inserción,
 // probados con SQL directo y con el rol dueño, que es el que no frenan los privilegios. Que el
-// pedido esté entregado lo comprueba el servicio (brief-20.2, D-2), no la base.
+// pedido esté entregado lo comprueba el servicio (brief-20.2, D-2), no la base. Desde la 20.3
+// (brief-20.3, AC-1): la venta sin pedido, con order_id y client_id nulables y el CHECK que exige
+// cliente a la venta de un pedido.
 
 async function createOrganization(name: string) {
   const result = await getDb().execute<{ id: string }>(
@@ -59,8 +61,8 @@ function insertSaleRow(
   executor: Executor,
   values: {
     organizationId: string;
-    orderId: string;
-    clientId: string;
+    orderId: string | null;
+    clientId: string | null;
     createdBy: string;
     number?: number;
     total?: string;
@@ -277,7 +279,7 @@ describe("sales y sale_lines: claves, CHECK e índices (AC-1)", () => {
     ).toMatchObject({ code: "23503", constraint: "sales_client_fk" });
   });
 
-  it("order_id y client_id son obligatorios en la 20.2", async () => {
+  it("desde la 20.3, order_id y client_id son nulables; created_by sigue obligatorio", async () => {
     const result = await getDb().execute<{
       column_name: string;
       is_nullable: string;
@@ -287,10 +289,58 @@ describe("sales y sale_lines: claves, CHECK e índices (AC-1)", () => {
           order by column_name`,
     );
     expect(result.rows).toEqual([
-      { column_name: "client_id", is_nullable: "NO" },
+      { column_name: "client_id", is_nullable: "YES" },
       { column_name: "created_by", is_nullable: "NO" },
-      { column_name: "order_id", is_nullable: "NO" },
+      { column_name: "order_id", is_nullable: "YES" },
     ]);
+  });
+
+  it("una venta de un pedido tiene cliente; una sin pedido puede no tenerlo (brief-20.3, D-2)", async () => {
+    const s = await seed();
+    expect(
+      await pgError(
+        insertSaleRow(getDb(), {
+          organizationId: s.orgA,
+          orderId: s.orderA2,
+          clientId: null,
+          createdBy: s.userId,
+          number: 2,
+        }),
+      ),
+    ).toMatchObject({ code: "23514", constraint: "sales_order_has_client" });
+    // Sin pedido y sin cliente, y sin pedido con cliente.
+    await insertSaleRow(getDb(), {
+      organizationId: s.orgA,
+      orderId: null,
+      clientId: null,
+      createdBy: s.userId,
+      number: 2,
+    });
+    await insertSaleRow(getDb(), {
+      organizationId: s.orgA,
+      orderId: null,
+      clientId: s.clientA,
+      createdBy: s.userId,
+      number: 3,
+    });
+    // Dos ventas sin pedido no chocan en el índice único del pedido: los nulos no son iguales.
+    const counted = await getDb().execute<{ total: number }>(
+      sql`select count(*)::int as total from sales
+          where organization_id = ${s.orgA} and order_id is null`,
+    );
+    expect(counted.rows[0]!.total).toBe(2);
+    // La clave compuesta del cliente sigue rechazando otra organización sin pedido.
+    expect(
+      await pgError(
+        insertSaleRow(getDb(), {
+          organizationId: s.orgA,
+          orderId: null,
+          clientId: s.clientB,
+          createdBy: s.userId,
+          number: 4,
+        }),
+      ),
+    ).toMatchObject({ code: "23503", constraint: "sales_client_fk" });
   });
 
   it("un pedido, un cliente o un producto con ventas no se borran: RESTRICT", async () => {

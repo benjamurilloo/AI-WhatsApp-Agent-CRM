@@ -286,7 +286,11 @@ describe("listStockMovements: filtros", () => {
       await idsFor(s.adminA, productId, { type: "adjustment_negative" }),
     ).toEqual([negative]);
     expect(
-      await listStockMovements(s.adminA, productId, filters({ type: "sale" })),
+      await listStockMovements(
+        s.adminA,
+        productId,
+        filters({ type: "purchase" }),
+      ),
     ).toEqual({ ok: false, code: "VALIDATION_ERROR", fields: ["type"] });
   });
 

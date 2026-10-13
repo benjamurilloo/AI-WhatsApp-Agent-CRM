@@ -420,7 +420,7 @@ export async function getProductBalanceForService(
 export type StockMovementType = repository.StockMovementType;
 
 // El ajuste manual acepta solo sus dos tipos: order_delivery lo escribe la entrega de un pedido
-// (ADR 0020, punto 4).
+// (ADR 0020, punto 4), y sale, la venta sin pedido (ADR 0021, punto 5).
 const ADJUSTMENT_TYPES = [
   "adjustment_positive",
   "adjustment_negative",
@@ -902,6 +902,48 @@ export async function deliverStock(
       createdBy: delivery.createdBy,
     });
   }
+}
+
+// La salida de una venta sin pedido (ADR 0021, punto 5; brief-20.3, D-3): sales abre la
+// transacción, ya bloqueó el cliente y los productos, y la pasa por tipo. Bloquea los saldos
+// ordenados por producto y comprueba lo disponible (saldo menos reservado) de cada línea. Si alguna
+// no alcanza, no escribe nada y devuelve las que no alcanzan; quien llama revierte la transacción
+// (la fila en 0 que pudo crear lockBalance se va con ella). Si todas alcanzan, pide el motivo y
+// escribe un movimiento sale por línea con el saldo nuevo, sin tocar lo reservado.
+//
+// El motivo lleva el número de la venta, y el contador va después de los saldos (ADR 0021, punto
+// 7): por eso llega como una función, que se llama una sola vez, después de comprobar y antes de
+// escribir. Ahí quien vende toma su número. inventory no conoce las ventas.
+export async function sellStock(
+  tx: DbTransaction,
+  sale: {
+    organizationId: string;
+    lines: StockLine[];
+    reason: () => Promise<string>;
+    createdBy: string;
+  },
+): Promise<{ ok: true } | { ok: false; shortages: StockShortage[] }> {
+  const locked = await lockLines(tx, sale.organizationId, sale.lines);
+  const shortages = locked
+    .filter((line) => line.onHand - line.reserved < line.quantity)
+    .map((line) => ({
+      productId: line.productId,
+      requested: quantityToDatabase(line.quantity),
+      available: quantityToDatabase(line.onHand - line.reserved),
+    }));
+  if (shortages.length > 0) return { ok: false, shortages };
+  const reason = await sale.reason();
+  for (const line of locked) {
+    await repository.applySale(tx, {
+      organizationId: sale.organizationId,
+      productId: line.productId,
+      quantity: quantityToDatabase(line.quantity),
+      balanceAfter: quantityToDatabase(line.onHand - line.quantity),
+      reason,
+      createdBy: sale.createdBy,
+    });
+  }
+  return { ok: true };
 }
 
 // Lo disponible de varios productos, para el detalle de un pedido pendiente (brief-19.3, D-9).

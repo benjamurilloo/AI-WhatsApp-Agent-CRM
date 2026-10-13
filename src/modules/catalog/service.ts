@@ -302,7 +302,9 @@ export async function listProductFilterOptions(
 
 // Sugerencias del buscador de productos (brief-15.2, D-6): la regla de la búsqueda del listado
 // (palabras sobre nombre, marca y categoría, o SKU exacto), solo activos, primero el SKU exacto y
-// después por relevancia. Desde SUGGEST_MIN_LENGTH caracteres; con menos, ninguna.
+// después por relevancia. Desde SUGGEST_MIN_LENGTH caracteres; con menos, ninguna. Desde la 20.3,
+// también el código de barras exacto, que ordena primero como el SKU: un lector USB lo escribe como
+// un teclado (brief-20.3, D-5; precisa el brief-17.2, D-4).
 export const SUGGEST_LIMIT = 8;
 export const SUGGEST_MIN_LENGTH = 2;
 
@@ -320,6 +322,7 @@ export async function suggestProducts(
     context.organizationId,
     trimmed,
     SUGGEST_LIMIT,
+    { barcode: true },
   );
   return {
     ok: true,

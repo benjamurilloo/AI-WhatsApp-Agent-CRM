@@ -33,6 +33,18 @@ import {
 import type { DbTransaction } from "@/shared/db";
 import { failure, type Failure } from "@/shared/errors";
 import {
+  computeLineTotal,
+  duplicateLines,
+  evaluateLines,
+  parseLines,
+  sumLineTotals,
+  type LineField,
+  type LineInput,
+  type LineRule,
+  type LineRuleIssue,
+  type ParsedLine,
+} from "@/shared/lines";
+import {
   currencyDecimals,
   moneyFromDatabase,
   moneyToDatabase,
@@ -43,7 +55,6 @@ import {
   quantityToDatabase,
   type Quantity,
 } from "@/shared/quantity";
-import { computeLineTotal, sumOrderTotal } from "./line-total";
 import * as repository from "./repository";
 import { MAX_ORDER_LINES, orderStatus } from "./schema";
 
@@ -75,17 +86,14 @@ export function parseOrderNumberSearch(text: string): number | null {
 
 // Alta (ADR 0020, punto 3). Todo llega como texto desde el formulario y se valida acá.
 
-export type OrderLineInput = {
-  productId: string;
-  quantity: string;
-  // Id del precio vigente que vio quien carga el pedido, o vacío si el producto no tenía precio.
-  // Si cambió, la respuesta es CONFLICT y no se crea nada (brief-19.2, D-5).
-  expectedPriceId: string;
-};
+// Desde la 20.3, la línea y sus reglas viven en src/shared/lines, compartidas con la venta sin
+// pedido (brief-20.3, D-1). Si el precio que vio quien carga cambió, la respuesta es CONFLICT y no
+// se crea nada (brief-19.2, D-5).
+export type OrderLineInput = LineInput;
 
 export type OrderInput = { clientId: string; lines: OrderLineInput[] };
 
-export type OrderLineField = "product" | "quantity" | "expectedPrice";
+export type OrderLineField = LineField;
 
 export type OrderValidationFailure = Failure<
   "VALIDATION_ERROR",
@@ -95,19 +103,9 @@ export type OrderValidationFailure = Failure<
   }
 >;
 
-export type OrderLineRule =
-  | "inactive_product"
-  | "no_price"
-  | "currency_mismatch"
-  | "duplicate_product"
-  | "zero_total"
-  | "amount_too_large";
+export type OrderLineRule = LineRule;
 
-export type OrderLineRuleIssue = {
-  position: number;
-  productId: string;
-  rule: OrderLineRule;
-};
+export type OrderLineRuleIssue = LineRuleIssue;
 
 export type CreateOrderResult =
   | { ok: true; order: { id: string; number: number; displayNumber: string } }
@@ -135,13 +133,6 @@ export type CreateOrderResult =
       }
     >;
 
-type ParsedLine = {
-  position: number;
-  productId: string;
-  quantity: Quantity;
-  expectedPriceId: string | null;
-};
-
 function validateOrderInput(
   input: OrderInput,
 ):
@@ -157,53 +148,9 @@ function validateOrderInput(
   });
   const clientId = input.clientId.trim().toLowerCase();
   if (!idSchema.safeParse(clientId).success) return invalid("client");
-  if (input.lines.length === 0) return invalid("no_lines");
-  if (input.lines.length > MAX_ORDER_LINES) return invalid("too_many_lines");
-
-  const issues: OrderValidationFailure["lines"] = [];
-  const lines: ParsedLine[] = [];
-  input.lines.forEach((line, index) => {
-    const position = index + 1;
-    // Los ids, en minúsculas: PostgreSQL los iguala, pero los productos bloqueados se buscan en un
-    // Map por texto (revisión independiente de la 11.1, M-3).
-    const productId = line.productId.trim().toLowerCase();
-    const expected = line.expectedPriceId.trim().toLowerCase();
-    const quantity = parseQuantityInput(line.quantity);
-    if (!idSchema.safeParse(productId).success) {
-      issues.push({ position, field: "product" });
-    } else if (quantity === null || quantity === 0n) {
-      issues.push({ position, field: "quantity" });
-    } else if (expected !== "" && !idSchema.safeParse(expected).success) {
-      issues.push({ position, field: "expectedPrice" });
-    } else {
-      lines.push({
-        position,
-        productId,
-        quantity,
-        expectedPriceId: expected === "" ? null : expected,
-      });
-    }
-  });
-  if (issues.length > 0) return invalid("lines", issues);
-  return { ok: true, clientId, lines };
-}
-
-// Un producto va en una sola línea (ADR 0020, punto 3): se rechaza cada repetición, no la primera.
-function duplicateLines(lines: ParsedLine[]): OrderLineRuleIssue[] {
-  const seen = new Set<string>();
-  return lines.flatMap((line) => {
-    if (seen.has(line.productId)) {
-      return [
-        {
-          position: line.position,
-          productId: line.productId,
-          rule: "duplicate_product" as const,
-        },
-      ];
-    }
-    seen.add(line.productId);
-    return [];
-  });
+  const parsed = parseLines(input.lines, MAX_ORDER_LINES);
+  if (!parsed.ok) return invalid(parsed.reason, parsed.lines);
+  return { ok: true, clientId, lines: parsed.lines };
 }
 
 function lineRules(lines: OrderLineRuleIssue[]): CreateOrderResult {
@@ -248,93 +195,37 @@ export async function createOrder(
       organizationId,
       lines.map((line) => line.productId),
     );
-    const missing = lines.filter((line) => !products.has(line.productId));
-    if (missing.length > 0) {
-      return {
-        ok: false,
-        code: "NOT_FOUND",
-        target: "products",
-        lines: missing.map(({ position, productId }) => ({
-          position,
-          productId,
-        })),
-      };
-    }
-
-    const unusable = lines.flatMap((line): OrderLineRuleIssue[] => {
-      const product = products.get(line.productId)!;
-      const { position, productId } = line;
-      if (!product.isActive) {
-        return [{ position, productId, rule: "inactive_product" }];
+    const evaluated = evaluateLines(lines, products);
+    if (!evaluated.ok) {
+      switch (evaluated.reason) {
+        case "missing_products":
+          return {
+            ok: false,
+            code: "NOT_FOUND",
+            target: "products",
+            lines: evaluated.lines,
+          };
+        case "line_rules":
+          return lineRules(evaluated.lines);
+        // El precio que vio quien carga el pedido tiene que seguir vigente (D-5).
+        case "price_changed":
+          return { ok: false, code: "CONFLICT", prices: evaluated.lines };
+        case "total_too_large":
+          return {
+            ok: false,
+            code: "BUSINESS_RULE_VIOLATION",
+            rule: "total_too_large",
+          };
       }
-      if (!product.price) return [{ position, productId, rule: "no_price" }];
-      return [];
-    });
-    if (unusable.length > 0) return lineRules(unusable);
-
-    // El precio que vio quien carga el pedido tiene que seguir vigente (D-5).
-    const changed = lines.filter(
-      (line) =>
-        products.get(line.productId)!.price!.id !== line.expectedPriceId,
-    );
-    if (changed.length > 0) {
-      return {
-        ok: false,
-        code: "CONFLICT",
-        prices: changed.map(({ position, productId }) => ({
-          position,
-          productId,
-          price: products.get(productId)!.price,
-        })),
-      };
-    }
-
-    // Una moneda por pedido, la de la primera línea (ADR 0019, punto 3).
-    const priced = lines.map((line) => ({
-      ...line,
-      price: products.get(line.productId)!.price!,
-    }));
-    const currency = priced[0]!.price.currency;
-    const decimals = currencyDecimals(currency);
-    if (!decimals.ok) {
-      throw new Error("Un precio guardado en una moneda que no se acepta.");
-    }
-    const amountIssues: OrderLineRuleIssue[] = [];
-    const totals: Money[] = [];
-    for (const line of priced) {
-      const { position, productId } = line;
-      if (line.price.currency !== currency) {
-        amountIssues.push({ position, productId, rule: "currency_mismatch" });
-        continue;
-      }
-      const total = computeLineTotal(
-        moneyFromDatabase(line.price.amount),
-        line.quantity,
-        decimals.decimals,
-      );
-      if (!total.ok) {
-        amountIssues.push({ position, productId, rule: total.reason });
-        continue;
-      }
-      totals.push(total.total);
-    }
-    if (amountIssues.length > 0) return lineRules(amountIssues);
-    const orderTotal = sumOrderTotal(totals);
-    if (orderTotal === null) {
-      return {
-        ok: false,
-        code: "BUSINESS_RULE_VIOLATION",
-        rule: "total_too_large",
-      };
     }
 
     const order = await writeOrder(tx, {
       organizationId,
       clientId,
       creator: { createdBy: userId },
-      currency,
-      lines: priced.map((line, index) => ({ ...line, total: totals[index]! })),
-      total: orderTotal,
+      currency: evaluated.currency,
+      lines: evaluated.lines,
+      total: evaluated.total,
     });
     return { ok: true, order };
   });
@@ -510,7 +401,7 @@ export async function placeOrderFromIngestion(
     if (!total.ok) return reject("amount_out_of_range");
     writable.push({ ...line, price: product.price, total: total.total });
   }
-  const orderTotal = sumOrderTotal(writable.map((line) => line.total));
+  const orderTotal = sumLineTotals(writable.map((line) => line.total));
   if (orderTotal === null) return reject("amount_out_of_range");
 
   const order = await writeOrder(tx, {

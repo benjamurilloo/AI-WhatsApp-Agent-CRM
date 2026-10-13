@@ -858,6 +858,42 @@ describe("listProductStock", () => {
     });
   });
 
+  // brief-20.3, D-5: el código de barras exacto, sin distinguir mayúsculas, como lo escribe un
+  // lector USB. La búsqueda del agente no lo usa: lo fija read-api.test.ts, caso 6b.
+  it("brief-20.3 D-5: las sugerencias encuentran por código de barras exacto, primero", async () => {
+    const s = await seedList();
+    const productId = await insertProduct(s.orgA, {
+      sku: "MAT-1",
+      name: "Mate de calabaza",
+    });
+    await getDb().execute(
+      sql`update products set barcode = ${"ABC7790001"} where id = ${productId}`,
+    );
+    const inactive = await insertProduct(s.orgA, {
+      sku: "MAT-2",
+      name: "Mate viejo",
+      isActive: false,
+    });
+    await getDb().execute(
+      sql`update products set barcode = ${"ABC7790002"} where id = ${inactive}`,
+    );
+    const other = await insertProduct(s.orgB, {
+      sku: "MAT-1",
+      name: "Mate ajeno",
+    });
+    await getDb().execute(
+      sql`update products set barcode = ${"ABC7790001"} where id = ${other}`,
+    );
+    const suggested = async (text: string) => {
+      const result = await suggestProducts(s.viewerA, text);
+      if (!result.ok) throw new Error(result.code);
+      return result.products.map((product) => product.id);
+    };
+    expect(await suggested("abc7790001")).toEqual([productId]);
+    expect(await suggested("ABC779000")).toEqual([]);
+    expect(await suggested("ABC7790002")).toEqual([]);
+  });
+
   it("brief-15.2 D-4: las opciones de los filtros son de la organización y las ve un viewer", async () => {
     const s = await seedList();
     await insertProduct(s.orgB, {
@@ -1271,12 +1307,17 @@ describe("campos de operación (brief-17.2)", () => {
     expect(await names({ text: "OTRO-779", activity: "all" })).toEqual([]);
   });
 
-  // D-4: las sugerencias comparten la búsqueda del agente, que no busca por código de barras.
-  it("FR-PROD-15: las sugerencias no buscan por código de barras (D-4)", async () => {
+  // D-4 decía que las sugerencias no buscaban por código de barras, porque comparten la búsqueda
+  // del agente. Precisado el 2026-10-13 por la 20.3 (brief-20.3, D-5): las sugerencias sí lo
+  // encuentran, con una opción que la búsqueda del agente no pasa (read-api.test.ts, caso 6b).
+  it("FR-PROD-15: desde la 20.3, las sugerencias encuentran por código de barras (brief-20.3, D-5)", async () => {
     const s = await seed();
     await create(s.adminA, { ...coffee, barcode: "7790001000017" });
     const result = await suggestProducts(s.viewerA, "7790001000017");
-    expect(result).toEqual({ ok: true, products: [] });
+    expect(result).toEqual({
+      ok: true,
+      products: [expect.objectContaining({ sku: coffee.sku })],
+    });
   });
 
   it("D-6: las sugerencias de ubicación son de la organización y solo para un admin", async () => {

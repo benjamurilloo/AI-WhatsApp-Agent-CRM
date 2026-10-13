@@ -58,6 +58,8 @@ const TYPE_LABEL: Record<string, string> = {
   adjustment_negative: "Ajuste negativo",
   // Desde la 19.3: la entrega de un pedido; el motivo lleva su número (ADR 0020, punto 4).
   order_delivery: "Entrega de pedido",
+  // Desde la 20.3: la venta sin pedido; el motivo lleva su número (ADR 0021, punto 5).
+  sale: "Venta",
 };
 
 // Pantalla 5 (wireframe 05): ajuste para admin e historial para admin y viewer, con filtros
@@ -196,6 +198,7 @@ export default async function MovementsPage({
               <option value="positivo">Ajuste positivo</option>
               <option value="negativo">Ajuste negativo</option>
               <option value="entrega">Entrega de pedido</option>
+              <option value="venta">Venta</option>
             </select>
           </div>
           <div className="flex flex-col gap-1">

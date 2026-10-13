@@ -31,6 +31,8 @@ import { formatMoney } from "@/shared/money";
 import { formatQuantity } from "@/shared/quantity";
 import { saleFiltersHref, type SearchParams } from "../filters";
 import {
+  CONSUMER_TEXT,
+  COUNTER_SALE_PRICES_NOTE,
   CURRENT_PRODUCT_NAME_NOTE,
   FORBIDDEN_PAGE_MESSAGE,
   NOT_AN_INVOICE_LEGEND,
@@ -88,9 +90,9 @@ export default async function SalePage({
   const [timeZone, frame, order] = await Promise.all([
     getOrganizationTimezone(context),
     getAppFrame(context),
-    getOrder(context, sale.orderId),
+    sale.orderId === null ? null : getOrder(context, sale.orderId),
   ]);
-  const orderNumber = order.ok ? order.order.displayNumber : null;
+  const orderNumber = order?.ok ? order.order.displayNumber : null;
   const audit = isAdmin
     ? await listSaleAudit(context, sale.id, page(query.historial))
     : null;
@@ -99,7 +101,11 @@ export default async function SalePage({
     : null;
   const notice = saleNoticeMessage(query.aviso);
   const client = sale.client;
-  const clientName = client?.displayName ?? UNKNOWN_CLIENT_TEXT;
+  // Sin cliente, «Consumidor final» (brief-20.3, D-7).
+  const clientName =
+    sale.clientId === null
+      ? CONSUMER_TEXT
+      : (client?.displayName ?? UNKNOWN_CLIENT_TEXT);
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 lg:px-8 print:max-w-none print:p-0">
@@ -150,17 +156,19 @@ export default async function SalePage({
               <dt className="text-muted">Cliente</dt>
               <dd className="font-semibold">{clientName}</dd>
             </div>
-            <div>
-              <dt className="text-muted">Pedido</dt>
-              <dd className="font-mono">
-                <Link
-                  href={`/pedidos/${sale.orderId}`}
-                  className={`${linkClass} print:no-underline`}
-                >
-                  {orderNumber ?? "Ver pedido"}
-                </Link>
-              </dd>
-            </div>
+            {sale.orderId !== null ? (
+              <div>
+                <dt className="text-muted">Pedido</dt>
+                <dd className="font-mono">
+                  <Link
+                    href={`/pedidos/${sale.orderId}`}
+                    className={`${linkClass} print:no-underline`}
+                  >
+                    {orderNumber ?? "Ver pedido"}
+                  </Link>
+                </dd>
+              </div>
+            ) : null}
           </dl>
 
           <div
@@ -257,7 +265,9 @@ export default async function SalePage({
             {NOT_AN_INVOICE_LEGEND}
           </p>
           <p className="mt-4 text-sm text-muted print:hidden">
-            {CURRENT_PRODUCT_NAME_NOTE}
+            {sale.orderId === null
+              ? COUNTER_SALE_PRICES_NOTE
+              : CURRENT_PRODUCT_NAME_NOTE}
           </p>
         </article>
 
@@ -273,7 +283,7 @@ export default async function SalePage({
                       {client.displayName}
                     </Link>
                   ) : (
-                    UNKNOWN_CLIENT_TEXT
+                    clientName
                   ),
                 },
                 ...(client
@@ -301,20 +311,22 @@ export default async function SalePage({
                   : []),
               ]}
             />
-            <p className="mt-4 text-sm">
-              <Link
-                href={saleFiltersHref({
-                  number: "",
-                  from: "",
-                  to: "",
-                  clientId: sale.clientId,
-                  page: 1,
-                })}
-                className={linkClass}
-              >
-                Ver las ventas de este cliente
-              </Link>
-            </p>
+            {sale.clientId !== null ? (
+              <p className="mt-4 text-sm">
+                <Link
+                  href={saleFiltersHref({
+                    number: "",
+                    from: "",
+                    to: "",
+                    clientId: sale.clientId,
+                    page: 1,
+                  })}
+                  className={linkClass}
+                >
+                  Ver las ventas de este cliente
+                </Link>
+              </p>
+            ) : null}
           </SectionCard>
         </div>
       </div>

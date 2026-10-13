@@ -27,8 +27,10 @@ import {
   type SearchParams,
 } from "./filters";
 import {
+  CONSUMER_TEXT,
   FORBIDDEN_PAGE_MESSAGE,
   INVALID_PERIOD_MESSAGE,
+  NO_ORDER_TEXT,
   NO_SALE_RESULTS_MESSAGE,
   NO_SALES_MESSAGE,
   UNKNOWN_CLIENT_TEXT,
@@ -42,7 +44,9 @@ const TITLE = "Ventas";
 
 // Pantalla 17: la lista de ventas (brief-20.2, D-6), para admin y viewer. Filtros y página en la
 // URL; tabla en escritorio y tarjetas en móvil. Desde el detalle de una venta llega filtrada por su
-// cliente. El número del pedido no se lee de orders: la columna enlaza al pedido.
+// cliente. El número del pedido no se lee de orders: la columna enlaza al pedido. Desde la 20.3, una
+// venta sin cliente dice «Consumidor final» y una sin pedido no enlaza ninguno (brief-20.3, D-7), y
+// admin ve «Nueva venta».
 export default async function SalesPage({
   searchParams,
 }: {
@@ -70,13 +74,24 @@ export default async function SalesPage({
     : undefined;
 
   const filtered = hasActiveSaleFilters(filters);
-  const clientText = (name: string | null) => name ?? UNKNOWN_CLIENT_TEXT;
+  const clientText = (sale: {
+    clientId: string | null;
+    clientName: string | null;
+  }) =>
+    sale.clientId === null
+      ? CONSUMER_TEXT
+      : (sale.clientName ?? UNKNOWN_CLIENT_TEXT);
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8">
       <PageHeader
         title={TITLE}
-        subtitle="Las ventas emitidas desde los pedidos entregados, con su número y su total."
+        subtitle="Las ventas emitidas, de un pedido entregado o de mostrador, con su número y su total."
+        action={
+          context.role === "admin"
+            ? { href: "/ventas/nueva", label: "+ Nueva venta" }
+            : null
+        }
       />
 
       <form
@@ -212,17 +227,19 @@ export default async function SalesPage({
                     <td className={`${tableCellClass} whitespace-nowrap`}>
                       {formatShortDateTime(sale.createdAt, timeZone)}
                     </td>
+                    <td className={tableCellClass}>{clientText(sale)}</td>
                     <td className={tableCellClass}>
-                      {clientText(sale.clientName)}
-                    </td>
-                    <td className={tableCellClass}>
-                      <Link
-                        href={`/pedidos/${sale.orderId}`}
-                        className={linkClass}
-                        aria-label={`Ver el pedido de la venta ${sale.displayNumber}`}
-                      >
-                        Ver pedido
-                      </Link>
+                      {sale.orderId === null ? (
+                        <span className="text-muted">{NO_ORDER_TEXT}</span>
+                      ) : (
+                        <Link
+                          href={`/pedidos/${sale.orderId}`}
+                          className={linkClass}
+                          aria-label={`Ver el pedido de la venta ${sale.displayNumber}`}
+                        >
+                          Ver pedido
+                        </Link>
+                      )}
                     </td>
                     <td className={`${tableCellClass} text-right tabular-nums`}>
                       {sale.lineCount}
@@ -252,9 +269,7 @@ export default async function SalesPage({
                     {sale.displayNumber}
                   </Link>
                 </p>
-                <p className="mt-1 font-semibold">
-                  {clientText(sale.clientName)}
-                </p>
+                <p className="mt-1 font-semibold">{clientText(sale)}</p>
                 <p className="mt-1 text-sm text-muted">
                   {formatShortDateTime(sale.createdAt, timeZone)} ·{" "}
                   {sale.lineCount} {sale.lineCount === 1 ? "línea" : "líneas"} ·{" "}

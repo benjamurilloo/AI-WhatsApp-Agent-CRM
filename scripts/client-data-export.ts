@@ -114,16 +114,16 @@ export async function exportClientData(
   );
 
   // Las ventas del cliente (ADR 0021, punto 12): número, fecha, pedido, moneda y total. Si está
-  // anulada se suma con la 20.4, que crea la anulación. El JOIN con orders es interno porque en la
-  // 20.2 toda venta tiene pedido: la 20.3, que vuelve nulable order_id, tiene que pasarlo a LEFT
-  // JOIN para no perder las ventas sin pedido (revisión independiente de la 20.2, R-8).
+  // anulada se suma con la 20.4, que crea la anulación. LEFT JOIN con orders desde la 20.3, que
+  // vuelve nulable order_id: una venta sin pedido del cliente sale con el pedido en null
+  // (revisión independiente de la 20.2, R-8; brief-20.3, H-9).
   const sales = await db.execute<Record<string, unknown>>(
     sql`select s.id, s.number, 'V-' || lpad(s.number::text, greatest(6, length(s.number::text)), '0') as display_number,
                s.created_at, s.order_id,
                'P-' || lpad(o.number::text, greatest(6, length(o.number::text)), '0') as order_display_number,
                s.currency, s.total
         from sales s
-        join orders o on o.organization_id = s.organization_id and o.id = s.order_id
+        left join orders o on o.organization_id = s.organization_id and o.id = s.order_id
         where s.organization_id = ${organizationId} and s.client_id = ${clientId}
         order by s.number`,
   );
