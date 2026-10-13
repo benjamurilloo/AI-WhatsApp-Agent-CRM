@@ -3,6 +3,8 @@ import type {
   IssueSaleWithoutOrderResult,
   SaleLineField,
   SaleLineRuleIssue,
+  SaleVoidReason,
+  VoidSaleResult,
 } from "@/modules/sales";
 import { formatQuantity } from "@/shared/quantity";
 import {
@@ -12,7 +14,7 @@ import {
 } from "../pedidos/messages";
 
 // Textos de las pantallas de ventas (brief-20.2; Screens.md §16 a §18; desde la 20.3, la venta sin
-// pedido y la pantalla 19).
+// pedido y la pantalla 19; desde la 20.4, la anulación y la pantalla 20).
 
 export const FORBIDDEN_PAGE_MESSAGE = "No tenés permiso para ver esta página.";
 export const SALE_NOT_FOUND_MESSAGE = "Esta venta no existe.";
@@ -38,6 +40,7 @@ export const COUNTER_SALE_PRICES_NOTE =
 
 export const SALE_NOTICE: Record<string, string> = {
   emitida: "Venta emitida.",
+  anulada: "Venta anulada.",
 };
 
 export function saleNoticeMessage(
@@ -236,6 +239,65 @@ export function saleRejection(
           result.prices.map((line) => [line.position, "El precio cambió."]),
         ),
         clientError: null,
+      };
+  }
+}
+
+// La anulación (brief-20.4, D-2, D-6 y D-7).
+
+export const VOIDED_BADGE_TEXT = "Anulada";
+
+export const VOID_REASON_LABEL: Record<SaleVoidReason, string> = {
+  data_entry_error: "Error de carga",
+  not_completed: "Operación no concretada",
+  wrong_client: "Cliente equivocado",
+  other: "Otro",
+};
+
+// Lo que pasa con el stock, dicho antes de confirmar (D-7).
+export const VOID_RESTOCK_NOTE =
+  "Se repone el stock de cada línea, con un movimiento «Anulación de venta».";
+export const VOID_ORDER_NOTE =
+  "El stock no cambia: el pedido sigue entregado y se puede emitir otra venta.";
+
+export type VoidSaleState =
+  | { status: "idle" }
+  | {
+      status: "error";
+      requestId: string;
+      message: string;
+      // La anulación que ya tiene la venta, para enlazarla.
+      existing: { displayNumber: string } | null;
+    };
+
+export function voidUnexpectedErrorMessage(requestId: string): string {
+  return `No pudimos anular la venta. Código: ${requestId}`;
+}
+
+export function voidSaleRejection(
+  result: Exclude<VoidSaleResult, { ok: true }>,
+): { message: string; existing: { displayNumber: string } | null } {
+  switch (result.code) {
+    case "FORBIDDEN":
+      return {
+        message: "Solo un administrador puede anular una venta.",
+        existing: null,
+      };
+    case "NOT_FOUND":
+      return { message: "Esta venta no existe.", existing: null };
+    case "VALIDATION_ERROR":
+      return { message: "Elegí el motivo de la anulación.", existing: null };
+    case "BUSINESS_RULE_VIOLATION":
+      if (result.rule === "already_voided") {
+        return {
+          message: `Esta venta ya está anulada, por ${result.saleVoid.displayNumber}.`,
+          existing: { displayNumber: result.saleVoid.displayNumber },
+        };
+      }
+      return {
+        message:
+          "No se puede reponer el stock: el saldo de algún producto superaría el máximo. No se anuló nada.",
+        existing: null,
       };
   }
 }

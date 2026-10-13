@@ -5,6 +5,7 @@ import {
   foreignKey,
   index,
   numeric,
+  pgEnum,
   pgTable,
   smallint,
   text,
@@ -25,8 +26,9 @@ import { organizations } from "@/modules/organizations/schema";
 // inserción (ADR 0013, regla 10 de DataModel), con SELECT e INSERT para crm_app y un trigger de la
 // 0039 que rechaza UPDATE y DELETE. No tiene estados. La venta de un pedido entregado copia de él
 // el cliente, la moneda, las líneas y el total (brief-20.2, D-1). Desde la 20.3, la venta sin
-// pedido (order_id nulo) se arma con líneas y puede no tener cliente (brief-20.3, D-2). La 20.4
-// suma la anulación.
+// pedido (order_id nulo) se arma con líneas y puede no tener cliente (brief-20.3, D-2). Desde la
+// 20.4, la anulación (sale_voids) y la cadena de reemplazos de las ventas de un pedido (brief-20.4,
+// D-1 y D-3).
 
 export const sales = pgTable(
   "sales",
@@ -45,6 +47,9 @@ export const sales = pgTable(
     currency: text("currency").notNull(),
     // El total del pedido, copiado al emitir: la venta no vuelve a cotizar.
     total: numeric("total", { precision: 14, scale: 2 }).notNull(),
+    // La venta anulada del mismo pedido a la que reemplaza (ADR 0021, punto 3; brief-20.4, D-3).
+    // Nula en la primera venta de un pedido y en toda venta sin pedido.
+    replacesSaleId: uuid("replaces_sale_id"),
     // Siempre un usuario: el agente no emite (ADR 0021, punto 10).
     createdBy: uuid("created_by")
       .notNull()
@@ -64,13 +69,23 @@ export const sales = pgTable(
       table.organizationId,
       table.id,
     ),
-    // Un pedido tiene a lo sumo una venta (ADR 0021, punto 3). Los nulos no chocan, así que no
-    // alcanza a las ventas sin pedido. La 20.4 lo reemplaza por el índice parcial WHERE
-    // replaces_sale_id IS NULL, con la cadena de reemplazos.
-    uniqueIndex("sales_organization_order_unique").on(
-      table.organizationId,
-      table.orderId,
-    ),
+    // Un pedido tiene a lo sumo una venta vigente (ADR 0021, punto 3). Desde la 20.4 es una cadena:
+    // una sola primera venta por pedido (el índice parcial, que reemplaza al de la 0039), cada venta
+    // reemplazada una sola vez, y el trigger de la 0041 exige que la reemplazada esté anulada y sea
+    // del mismo pedido (brief-20.4, D-3). Los nulos no chocan, así que no alcanza a las ventas sin
+    // pedido.
+    uniqueIndex("sales_organization_order_first_unique")
+      .on(table.organizationId, table.orderId)
+      .where(sql`${table.replacesSaleId} IS NULL`),
+    unique("sales_replaces_sale_unique").on(table.replacesSaleId),
+    // Las ventas de un pedido, con o sin reemplazo: el índice parcial no cubre la búsqueda de la
+    // última de la cadena (revisión independiente de la 20.4, R-6).
+    index("sales_order_idx").on(table.organizationId, table.orderId),
+    foreignKey({
+      name: "sales_replaces_sale_fk",
+      columns: [table.organizationId, table.replacesSaleId],
+      foreignColumns: [table.organizationId, table.id],
+    }).onDelete("restrict"),
     // Una venta no puede apuntar al pedido ni al cliente de otra organización, y ninguno de los
     // dos se borra mientras tenga ventas (ADR 0021, puntos 3 y 12).
     foreignKey({
@@ -99,6 +114,11 @@ export const sales = pgTable(
     check(
       "sales_order_has_client",
       sql`${table.orderId} IS NULL OR ${table.clientId} IS NOT NULL`,
+    ),
+    // Solo una venta de pedido reemplaza a otra (ADR 0021, punto 7).
+    check(
+      "sales_replaces_needs_order",
+      sql`${table.replacesSaleId} IS NULL OR ${table.orderId} IS NOT NULL`,
     ),
     check("sales_total_positive", sql`${table.total} > 0`),
     check("sales_currency_format", sql`${table.currency} ~ '^[A-Z]{3}$'`),
@@ -140,5 +160,58 @@ export const saleLines = pgTable(
     check("sale_lines_unit_price_positive", sql`${table.unitPrice} > 0`),
     check("sale_lines_line_total_positive", sql`${table.lineTotal} > 0`),
     check("sale_lines_currency_format", sql`${table.currency} ~ '^[A-Z]{3}$'`),
+  ],
+);
+
+// El motivo de una anulación, de una lista cerrada y sin texto libre (ADR 0021, punto 6; brief-20.4,
+// D-2): una lista no guarda nada de la persona, así que el vaciado no tiene que alcanzarla. Un valor
+// nuevo se suma con un ALTER TYPE aditivo.
+export const saleVoidReason = pgEnum("sale_void_reason", [
+  "data_entry_error",
+  "not_completed",
+  "wrong_client",
+  "other",
+]);
+
+// La anulación (ADR 0021, puntos 6 y 7; brief-20.4, D-1): otro comprobante, de solo inserción como
+// la venta, con su propia serie (A-000045). Anula la venta entera: copia su moneda y su total, en
+// positivo, y no tiene líneas propias. El cliente y el pedido los lee de su venta. El trigger de la
+// 0041 exige que la moneda y el total sean los de la venta.
+export const saleVoids = pgTable(
+  "sale_voids",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    // Del contador de numbering con el tipo sale_void; se muestra como A-000045.
+    number: bigint("number", { mode: "number" }).notNull(),
+    saleId: uuid("sale_id").notNull(),
+    currency: text("currency").notNull(),
+    total: numeric("total", { precision: 14, scale: 2 }).notNull(),
+    reason: saleVoidReason("reason").notNull(),
+    // Siempre un usuario: el agente no anula (ADR 0021, punto 10).
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(sql`clock_timestamp()`),
+  },
+  (table) => [
+    unique("sale_voids_organization_number_unique").on(
+      table.organizationId,
+      table.number,
+    ),
+    // Una venta se anula a lo sumo una vez (ADR 0021, punto 6).
+    unique("sale_voids_sale_unique").on(table.saleId),
+    foreignKey({
+      name: "sale_voids_sale_fk",
+      columns: [table.organizationId, table.saleId],
+      foreignColumns: [sales.organizationId, sales.id],
+    }).onDelete("restrict"),
+    check("sale_voids_number_positive", sql`${table.number} > 0`),
+    check("sale_voids_total_positive", sql`${table.total} > 0`),
+    check("sale_voids_currency_format", sql`${table.currency} ~ '^[A-Z]{3}$'`),
   ],
 );

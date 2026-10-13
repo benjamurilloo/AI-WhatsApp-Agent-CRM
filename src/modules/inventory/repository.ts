@@ -285,3 +285,30 @@ export async function applySale(tx: DbTransaction, sale: Sale): Promise<void> {
       ),
     );
 }
+
+// La reposición de una línea de la anulación de una venta sin pedido (ADR 0021, punto 6; brief-20.4,
+// D-5): el movimiento sale_void y el saldo físico nuevo. No toca lo reservado. Exige la transacción
+// que ya bloqueó la fila con lockBalance.
+export async function applySaleVoid(
+  tx: DbTransaction,
+  restore: Sale,
+): Promise<void> {
+  await tx.insert(inventoryMovements).values({
+    organizationId: restore.organizationId,
+    productId: restore.productId,
+    type: "sale_void",
+    quantity: restore.quantity,
+    balanceAfter: restore.balanceAfter,
+    reason: restore.reason,
+    createdBy: restore.createdBy,
+  });
+  await tx
+    .update(inventories)
+    .set({ quantityOnHand: restore.balanceAfter })
+    .where(
+      and(
+        eq(inventories.organizationId, restore.organizationId),
+        eq(inventories.productId, restore.productId),
+      ),
+    );
+}

@@ -60,12 +60,14 @@ export const inventories = pgTable(
 
 // Solo los tipos con productor (subfase 1.2, D-11). order_delivery, desde la 19.3: la salida
 // física de un pedido entregado (ADR 0020, punto 4). sale, desde la 20.3: la salida de una venta
-// sin pedido (ADR 0021, punto 5).
+// sin pedido (ADR 0021, punto 5). sale_void, desde la 20.4: la reposición de la anulación de una
+// venta sin pedido (ADR 0021, punto 6).
 export const inventoryMovementType = pgEnum("inventory_movement_type", [
   "adjustment_positive",
   "adjustment_negative",
   "order_delivery",
   "sale",
+  "sale_void",
 ]);
 
 // Solo inserción: el rol crm_app no tiene UPDATE ni DELETE y un trigger rechaza ambos (ADR 0013).

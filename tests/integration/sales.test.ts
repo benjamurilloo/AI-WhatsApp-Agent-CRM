@@ -1,7 +1,13 @@
 import { sql, type SQL } from "drizzle-orm";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { hashPassword, login } from "@/modules/auth";
-import { adjustStock, getAvailableStock } from "@/modules/inventory";
+import {
+  adjustStock,
+  getAvailableStock,
+  getCatalogProductAvailableForService,
+  getProductBalanceForService,
+  getProductStock,
+} from "@/modules/inventory";
 import {
   cancelOrder,
   confirmOrder,
@@ -18,6 +24,8 @@ import {
   listSaleAudit,
   listSales,
   parseSaleNumberSearch,
+  parseSaleVoidNumberSearch,
+  voidSale,
   type SaleInput,
   type SaleListFilters,
 } from "@/modules/sales";
@@ -27,7 +35,7 @@ import { resetDatabase } from "./reset-database";
 // La venta de un pedido entregado contra PostgreSQL real (brief-20.2): la numeración (AC-2), la
 // emisión (AC-3), la concurrencia (AC-4), las lecturas (AC-5) y la auditoría (AC-6). Los helpers
 // son los de orders-cycle.test.ts. Desde la 20.3, la venta sin pedido (brief-20.3, AC-3 a AC-6),
-// al final del archivo.
+// al final del archivo. Desde la 20.4, la anulación (brief-20.4, AC-2 a AC-6), después.
 
 const PASSWORD = "contraseña-correcta-larga";
 const TEST_TIMEOUT = 30000;
@@ -263,6 +271,7 @@ async function waitForLockWaiters(expected: number, timeoutMs = 5000) {
 const NO_FILTERS: SaleListFilters = {
   clientId: null,
   number: "",
+  status: "all",
   from: "",
   to: "",
   page: 1,
@@ -1473,6 +1482,658 @@ describe("la venta sin pedido: más rechazos de D-9 (brief-20.3, AC-3)", () => {
         rule: "total_too_large",
       });
       expect(await snapshot()).toEqual(before);
+    },
+    TEST_TIMEOUT,
+  );
+});
+
+// La anulación (brief-20.4, AC-2 a AC-6 y D-11).
+
+async function counterSale(s: Seed, lines: [string, string][], clientId = "") {
+  const result = await issueSale(s.adminA, saleInput(s, lines, clientId));
+  if (!result.ok) throw new Error(`venta rechazada: ${result.code}`);
+  return result.sale;
+}
+
+async function voidSnapshot() {
+  const result = await getDb().execute<{
+    voids: number;
+    void_counter: number | null;
+    void_movements: number;
+    void_audit: number;
+    sales: number;
+    sale_counter: number | null;
+  }>(
+    sql`select
+          (select count(*)::int from sale_voids) as voids,
+          (select max(last_number)::int from document_counters where kind = 'sale_void') as void_counter,
+          (select count(*)::int from inventory_movements where type = 'sale_void') as void_movements,
+          (select count(*)::int from audit_logs where entity_type = 'sale' and action = 'void') as void_audit,
+          (select count(*)::int from sales) as sales,
+          (select max(last_number)::int from document_counters where kind = 'sale') as sale_counter`,
+  );
+  return result.rows[0]!;
+}
+
+async function voidMovements() {
+  const result = await getDb().execute<Record<string, unknown>>(
+    sql`select product_id, quantity, balance_after, reason, created_by
+        from inventory_movements where type = 'sale_void' order by created_at, product_id`,
+  );
+  return result.rows;
+}
+
+describe("la anulación de una venta sin pedido (brief-20.4, AC-2)", () => {
+  it(
+    "repone cada línea con un movimiento sale_void, copia la moneda y el total, y no toca lo reservado",
+    async () => {
+      const s = await seed();
+      // Cinco televisores reservados por un pedido confirmado: la anulación no los toca.
+      const reserved = await order(s, [[s.tv, "5"]]);
+      expect((await confirmOrder(s.adminA, reserved)).ok).toBe(true);
+      const sale = await counterSale(
+        s,
+        [
+          [s.tv, "2"],
+          [s.fridge, "3"],
+        ],
+        s.clientA,
+      );
+      expect(await balance(s.tv)).toEqual({
+        on_hand: "18.000",
+        reserved: "5.000",
+      });
+
+      const voided = await voidSale(s.adminA, sale.id, "not_completed");
+      expect(voided).toEqual({
+        ok: true,
+        saleVoid: {
+          id: expect.any(String),
+          number: 1,
+          displayNumber: "A-000001",
+        },
+        orderId: null,
+      });
+      expect(await balance(s.tv)).toEqual({
+        on_hand: "20.000",
+        reserved: "5.000",
+      });
+      expect(await balance(s.fridge)).toEqual({
+        on_hand: "20.000",
+        reserved: "0.000",
+      });
+      const reason = "Anulación A-000001 de la venta V-000001";
+      expect(await voidMovements()).toEqual(
+        [
+          {
+            product_id: s.tv,
+            quantity: "2.000",
+            balance_after: "20.000",
+            reason,
+            created_by: s.adminAId,
+          },
+          {
+            product_id: s.fridge,
+            quantity: "3.000",
+            balance_after: "20.000",
+            reason,
+            created_by: s.adminAId,
+          },
+        ].sort((a, b) => (a.product_id < b.product_id ? -1 : 1)),
+      );
+      const row = await getDb().execute<Record<string, unknown>>(
+        sql`select number::int as number, sale_id, currency, total, reason, created_by
+            from sale_voids`,
+      );
+      expect(row.rows).toEqual([
+        {
+          number: 1,
+          sale_id: sale.id,
+          currency: "ARS",
+          total: "3270000.00",
+          reason: "not_completed",
+          created_by: s.adminAId,
+        },
+      ]);
+      // La auditoría, sobre la venta: el número y el motivo, y nada más (D-9).
+      const audit = await getDb().execute<{
+        entity_id: string;
+        diff: unknown;
+      }>(
+        sql`select entity_id, diff from audit_logs
+            where entity_type = 'sale' and action = 'void'`,
+      );
+      expect(audit.rows).toEqual([
+        {
+          entity_id: sale.id,
+          diff: {
+            before: { void_number: null, reason: null },
+            after: { void_number: 1, reason: "not_completed" },
+          },
+        },
+      ]);
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "repone también un producto desactivado: lo que salió tiene que poder volver",
+    async () => {
+      const s = await seed();
+      const sale = await counterSale(s, [[s.tv, "4"]]);
+      await getDb().execute(
+        sql`update products set is_active = false where id = ${s.tv}`,
+      );
+      expect((await voidSale(s.adminA, sale.id, "data_entry_error")).ok).toBe(
+        true,
+      );
+      expect(await balance(s.tv)).toEqual({
+        on_hand: "20.000",
+        reserved: "0.000",
+      });
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "si el saldo repuesto no cabe, responde stock_limit sin escribir ni numerar",
+    async () => {
+      const s = await seed();
+      const sale = await counterSale(s, [[s.tv, "2"]]);
+      // Un saldo cerca del máximo de numeric(14, 3), puesto con el rol dueño.
+      await getDb().execute(
+        sql`update inventories set quantity_on_hand = 99999999999.000
+            where product_id = ${s.tv}`,
+      );
+      const before = await voidSnapshot();
+      expect(await voidSale(s.adminA, sale.id, "other")).toEqual({
+        ok: false,
+        code: "BUSINESS_RULE_VIOLATION",
+        rule: "stock_limit",
+        productIds: [s.tv],
+      });
+      expect(await voidSnapshot()).toEqual(before);
+      expect(before.void_counter).toBeNull();
+      expect(await balance(s.tv)).toEqual({
+        on_hand: "99999999999.000",
+        reserved: "0.000",
+      });
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "el estado de stock y lo disponible de la v2 reflejan la venta y su anulación (D-11)",
+    async () => {
+      const s = await seed();
+      const sale = await counterSale(s, [[s.tv, "20"]]);
+      const product = await getProductStock(s.adminA, s.tv);
+      expect(product.ok && product.product).toMatchObject({
+        quantityOnHand: "0.000",
+        quantityAvailable: "0.000",
+        stockStatus: "sin_stock",
+      });
+      expect(
+        await getCatalogProductAvailableForService(s.orgA, s.tv),
+      ).toMatchObject({ stockStatus: "sin_stock" });
+      expect(await getProductBalanceForService(s.orgA, s.tv)).toMatchObject({
+        quantityOnHand: "0.000",
+        quantityAvailable: "0.000",
+        stockStatus: "sin_stock",
+      });
+
+      expect((await voidSale(s.adminA, sale.id, "not_completed")).ok).toBe(
+        true,
+      );
+      const restored = await getProductStock(s.adminA, s.tv);
+      expect(restored.ok && restored.product).toMatchObject({
+        quantityOnHand: "20.000",
+        quantityAvailable: "20.000",
+        stockStatus: "disponible",
+      });
+      expect(
+        await getCatalogProductAvailableForService(s.orgA, s.tv),
+      ).toMatchObject({ stockStatus: "disponible" });
+      expect(await getProductBalanceForService(s.orgA, s.tv)).toMatchObject({
+        quantityAvailable: "20.000",
+        stockStatus: "disponible",
+      });
+    },
+    TEST_TIMEOUT,
+  );
+});
+
+describe("la anulación de una venta de pedido y la nueva emisión (brief-20.4, AC-3)", () => {
+  it(
+    "no mueve el stock ni el pedido, lo deja libre y la nueva venta reemplaza a la anulada",
+    async () => {
+      const s = await seed();
+      const orderId = await delivered(s, [[s.tv, "2"]]);
+      const first = await issue(s, orderId);
+      const orderBefore = await orderRow(orderId);
+      const balancesBefore = (await snapshot()).balances;
+
+      const voided = await voidSale(s.adminA, first.id, "wrong_client");
+      expect(voided).toMatchObject({
+        ok: true,
+        saleVoid: { displayNumber: "A-000001" },
+        orderId,
+      });
+      expect((await snapshot()).balances).toBe(balancesBefore);
+      expect(await voidMovements()).toEqual([]);
+      expect(await orderRow(orderId)).toEqual(orderBefore);
+      expect(await getSaleForOrder(s.adminA, orderId)).toEqual({
+        ok: true,
+        sale: null,
+      });
+
+      const second = await issueSaleFromOrder(s.adminA, orderId);
+      expect(second).toMatchObject({
+        ok: true,
+        sale: { displayNumber: "V-000002" },
+      });
+      if (!second.ok) throw new Error("emisión rechazada");
+      const replaced = await getDb().execute<{ replaces_sale_id: string }>(
+        sql`select replaces_sale_id from sales where id = ${second.sale.id}`,
+      );
+      expect(replaced.rows[0]!.replaces_sale_id).toBe(first.id);
+      expect(await getSaleForOrder(s.adminA, orderId)).toEqual({
+        ok: true,
+        sale: { id: second.sale.id, displayNumber: "V-000002" },
+      });
+      // La nueva vuelve a copiar el pedido: la venta no cotiza.
+      const detail = await getSale(s.adminA, second.sale.id);
+      expect(detail.ok && detail.sale).toMatchObject({
+        total: "900000.00",
+        replaces: { id: first.id, displayNumber: "V-000001" },
+        replacedBy: null,
+        saleVoid: null,
+      });
+      const old = await getSale(s.viewerA, first.id);
+      expect(old.ok && old.sale).toMatchObject({
+        replacedBy: { id: second.sale.id, displayNumber: "V-000002" },
+        saleVoid: { displayNumber: "A-000001", reason: "wrong_client" },
+      });
+      // La auditoría de un reemplazo suma la venta reemplazada (D-9).
+      const audit = await getDb().execute<{ diff: { after: unknown } }>(
+        sql`select diff from audit_logs
+            where entity_type = 'sale' and action = 'create' and entity_id = ${second.sale.id}`,
+      );
+      expect(audit.rows[0]!.diff.after).toMatchObject({
+        replaces_sale_id: first.id,
+      });
+
+      // Una tercera emisión encuentra la vigente.
+      expect(await issueSaleFromOrder(s.adminA, orderId)).toMatchObject({
+        ok: false,
+        code: "BUSINESS_RULE_VIOLATION",
+        rule: "already_sold",
+        sale: { id: second.sale.id, displayNumber: "V-000002" },
+      });
+    },
+    TEST_TIMEOUT,
+  );
+});
+
+describe("la anulación: rechazos (brief-20.4, AC-4)", () => {
+  it(
+    "viewer, id, motivo, otra organización y una venta ya anulada, sin escribir ni numerar",
+    async () => {
+      const s = await seed();
+      const sale = await counterSale(s, [[s.tv, "1"]]);
+      const before = await voidSnapshot();
+      expect(await voidSale(s.viewerA, sale.id, "other")).toMatchObject({
+        ok: false,
+        code: "FORBIDDEN",
+      });
+      expect(await voidSale(s.adminA, "no-es-un-id", "other")).toMatchObject({
+        ok: false,
+        code: "VALIDATION_ERROR",
+      });
+      expect(
+        await voidSale(s.adminA, sale.id, "arrepentimiento"),
+      ).toMatchObject({ ok: false, code: "VALIDATION_ERROR" });
+      expect(await voidSale(s.adminB, sale.id, "other")).toMatchObject({
+        ok: false,
+        code: "NOT_FOUND",
+      });
+      expect(await voidSnapshot()).toEqual(before);
+
+      expect((await voidSale(s.adminA, sale.id, "other")).ok).toBe(true);
+      const after = await voidSnapshot();
+      expect(await voidSale(s.adminA, sale.id, "data_entry_error")).toEqual({
+        ok: false,
+        code: "BUSINESS_RULE_VIOLATION",
+        rule: "already_voided",
+        saleVoid: {
+          id: expect.any(String),
+          number: 1,
+          displayNumber: "A-000001",
+        },
+      });
+      expect(await voidSnapshot()).toEqual(after);
+      expect(after).toMatchObject({ voids: 1, void_movements: 1 });
+    },
+    TEST_TIMEOUT,
+  );
+});
+
+describe("la anulación: concurrencia (brief-20.4, AC-5)", () => {
+  it(
+    "dos anulaciones de la misma venta sin pedido, serializadas en los saldos: una anula y la otra no",
+    async () => {
+      const s = await seed();
+      const sale = await counterSale(s, [[s.tv, "3"]]);
+      const release = await hold(
+        sql`select 1 from inventories where product_id = ${s.tv} for update`,
+      );
+      const first = voidSale(s.adminA, sale.id, "other");
+      const second = voidSale(s.adminA, sale.id, "data_entry_error");
+      await waitForLockWaiters(2);
+      await release();
+      const results = await Promise.all([first, second]);
+      expect(results.filter((result) => result.ok)).toHaveLength(1);
+      expect(results.filter((result) => !result.ok)).toMatchObject([
+        {
+          ok: false,
+          code: "BUSINESS_RULE_VIOLATION",
+          rule: "already_voided",
+          saleVoid: { displayNumber: "A-000001" },
+        },
+      ]);
+      // El stock se repuso una sola vez, y el contador no saltó.
+      expect(await balance(s.tv)).toEqual({
+        on_hand: "20.000",
+        reserved: "0.000",
+      });
+      expect(await voidSnapshot()).toMatchObject({
+        voids: 1,
+        void_counter: 1,
+        void_movements: 1,
+        void_audit: 1,
+      });
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "dos anulaciones de la misma venta de pedido, serializadas en la cabecera",
+    async () => {
+      const s = await seed();
+      const orderId = await delivered(s, [[s.tv, "1"]]);
+      const sale = await issue(s, orderId);
+      const release = await hold(
+        sql`select 1 from orders where id = ${orderId} for update`,
+      );
+      const first = voidSale(s.adminA, sale.id, "other");
+      const second = voidSale(s.adminA, sale.id, "wrong_client");
+      await waitForLockWaiters(2);
+      await release();
+      const results = await Promise.all([first, second]);
+      expect(results.filter((result) => result.ok)).toHaveLength(1);
+      expect(results.filter((result) => !result.ok)).toMatchObject([
+        {
+          code: "BUSINESS_RULE_VIOLATION",
+          rule: "already_voided",
+          saleVoid: { displayNumber: "A-000001" },
+        },
+      ]);
+      // La venta de un pedido no mueve el stock (revisión independiente de la 20.4, R-2).
+      expect(await voidMovements()).toEqual([]);
+      expect(await voidSnapshot()).toMatchObject({
+        voids: 1,
+        void_counter: 1,
+        void_audit: 1,
+      });
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "una anulación y una nueva emisión del mismo pedido se serializan: nunca dos ventas vigentes",
+    async () => {
+      const s = await seed();
+      const orderId = await delivered(s, [[s.tv, "1"]]);
+      const sale = await issue(s, orderId);
+      const release = await hold(
+        sql`select 1 from orders where id = ${orderId} for update`,
+      );
+      const voiding = voidSale(s.adminA, sale.id, "data_entry_error");
+      const issuing = issueSaleFromOrder(s.adminA, orderId);
+      await waitForLockWaiters(2);
+      await release();
+      const [voided, issued] = await Promise.all([voiding, issuing]);
+      expect(voided.ok).toBe(true);
+      // Si la emisión entra primero, ve la venta vigente; si entra después, la reemplaza.
+      if (issued.ok) {
+        expect(issued.sale.displayNumber).toBe("V-000002");
+      } else {
+        expect(issued).toMatchObject({ rule: "already_sold" });
+      }
+      const current = await getDb().execute<{ count: number }>(
+        sql`select count(*)::int as count from sales s
+            where s.order_id = ${orderId}
+              and not exists (select 1 from sale_voids v where v.sale_id = s.id)`,
+      );
+      expect(current.rows[0]!.count).toBe(issued.ok ? 1 : 0);
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "si sale_voids_sale_unique se dispara, la respuesta es already_voided y nada queda escrito",
+    async () => {
+      const s = await seed();
+      // Una primera anulación crea la fila del contador de sale_void, para poder retenerla.
+      await voidSale(
+        s.adminA,
+        (await counterSale(s, [[s.fridge, "1"]])).id,
+        "other",
+      );
+      const sale = await counterSale(s, [[s.tv, "2"]]);
+      // Con el contador retenido, la anulación ya bloqueó los saldos, volvió a mirar que no hubiera
+      // anulación y espera el número. Mientras tanto aparece una anulación de la venta por un
+      // camino que no pasa por los saldos, y la nuestra choca con el UNIQUE al insertar.
+      const release = await hold(
+        sql`select 1 from document_counters where kind = 'sale_void' for update`,
+      );
+      const voiding = voidSale(s.adminA, sale.id, "data_entry_error");
+      await waitForLockWaiters(1);
+      await getDb().execute(
+        sql`insert into sale_voids (organization_id, number, sale_id, currency, total, reason,
+                                    created_by)
+            select organization_id, 99, id, currency, total, 'other', created_by
+            from sales where id = ${sale.id}`,
+      );
+      await release();
+      expect(await voiding).toMatchObject({
+        ok: false,
+        code: "BUSINESS_RULE_VIOLATION",
+        rule: "already_voided",
+        saleVoid: { number: 99, displayNumber: "A-000099" },
+      });
+      // La reposición se revirtió con la transacción, y el contador sigue en 1.
+      expect(await balance(s.tv)).toEqual({
+        on_hand: "18.000",
+        reserved: "0.000",
+      });
+      expect(await voidSnapshot()).toMatchObject({
+        void_counter: 1,
+        void_movements: 1,
+      });
+    },
+    TEST_TIMEOUT,
+  );
+});
+
+// La segunda comprobación, con los bloqueos ya tomados (brief-20.4, D-4; revisión independiente,
+// R-2). Sin ella el resultado final sería el mismo, por el rescate del 23505; lo que cambia es que la
+// anulación tomaría el contador antes de chocar. Por eso el contador se retiene desde una tercera
+// conexión: con la comprobación, la anulación responde sin tocarlo; sin ella, queda esperándolo.
+async function settlesWithin<T>(promise: Promise<T>, ms: number) {
+  return Promise.race([
+    promise,
+    new Promise<"sigue esperando">((resolve) =>
+      setTimeout(() => resolve("sigue esperando"), ms),
+    ),
+  ]);
+}
+
+async function insertVoidBehindTheBack(saleId: string, number: number) {
+  await getDb().execute(
+    sql`insert into sale_voids (organization_id, number, sale_id, currency, total, reason,
+                                created_by)
+        select organization_id, ${number}, id, currency, total, 'other', created_by
+        from sales where id = ${saleId}`,
+  );
+}
+
+describe("la anulación: la segunda comprobación no toma el contador (brief-20.4, AC-5)", () => {
+  it(
+    "venta sin pedido: anulada mientras esperaba los saldos, responde already_voided sin esperar el contador",
+    async () => {
+      const s = await seed();
+      // Una primera anulación crea la fila del contador de sale_void, para poder retenerla.
+      await voidSale(
+        s.adminA,
+        (await counterSale(s, [[s.fridge, "1"]])).id,
+        "other",
+      );
+      const sale = await counterSale(s, [[s.tv, "2"]]);
+      const releaseBalance = await hold(
+        sql`select 1 from inventories where product_id = ${s.tv} for update`,
+      );
+      const voiding = voidSale(s.adminA, sale.id, "data_entry_error");
+      await waitForLockWaiters(1);
+      await insertVoidBehindTheBack(sale.id, 99);
+      const releaseCounter = await hold(
+        sql`select 1 from document_counters where kind = 'sale_void' for update`,
+      );
+      await releaseBalance();
+      const settled = await settlesWithin(voiding, 3000);
+      await releaseCounter();
+      expect(settled).toMatchObject({
+        ok: false,
+        rule: "already_voided",
+        saleVoid: { displayNumber: "A-000099" },
+      });
+      expect(await balance(s.tv)).toEqual({
+        on_hand: "18.000",
+        reserved: "0.000",
+      });
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "venta de pedido: anulada mientras esperaba la cabecera, responde already_voided sin esperar el contador",
+    async () => {
+      const s = await seed();
+      await voidSale(
+        s.adminA,
+        (await counterSale(s, [[s.fridge, "1"]])).id,
+        "other",
+      );
+      const orderId = await delivered(s, [[s.tv, "1"]]);
+      const sale = await issue(s, orderId);
+      const releaseOrder = await hold(
+        sql`select 1 from orders where id = ${orderId} for update`,
+      );
+      const voiding = voidSale(s.adminA, sale.id, "data_entry_error");
+      await waitForLockWaiters(1);
+      await insertVoidBehindTheBack(sale.id, 99);
+      const releaseCounter = await hold(
+        sql`select 1 from document_counters where kind = 'sale_void' for update`,
+      );
+      await releaseOrder();
+      const settled = await settlesWithin(voiding, 3000);
+      await releaseCounter();
+      expect(settled).toMatchObject({
+        ok: false,
+        rule: "already_voided",
+        saleVoid: { displayNumber: "A-000099" },
+      });
+    },
+    TEST_TIMEOUT,
+  );
+});
+
+describe("la anulación: lecturas (brief-20.4, AC-6)", () => {
+  it("el número de una anulación se reconoce con su prefijo", () => {
+    for (const text of ["A-000045", "a000045", "A45", " a-45 "]) {
+      expect(parseSaleVoidNumberSearch(text)).toBe(45);
+    }
+    for (const text of ["000045", "V-000045", "A-", "A-0"]) {
+      expect(parseSaleVoidNumberSearch(text)).toBeNull();
+    }
+  });
+
+  it(
+    "la lista marca las anuladas, filtra por estado y encuentra la venta por el número de su anulación",
+    async () => {
+      const s = await seed();
+      const kept = await counterSale(s, [[s.tv, "1"]]);
+      const voided = await counterSale(s, [[s.fridge, "1"]], s.clientA);
+      expect((await voidSale(s.adminA, voided.id, "wrong_client")).ok).toBe(
+        true,
+      );
+
+      for (const context of [s.adminA, s.viewerA]) {
+        const all = await listSales(context, NO_FILTERS);
+        expect(
+          all.ok &&
+            all.sales.map((sale) => [
+              sale.displayNumber,
+              sale.voidDisplayNumber,
+            ]),
+        ).toEqual([
+          ["V-000002", "A-000001"],
+          ["V-000001", null],
+        ]);
+        const onlyVoided = await listSales(context, {
+          ...NO_FILTERS,
+          status: "voided",
+        });
+        expect(
+          onlyVoided.ok && onlyVoided.sales.map((sale) => sale.id),
+        ).toEqual([voided.id]);
+        const current = await listSales(context, {
+          ...NO_FILTERS,
+          status: "current",
+        });
+        expect(current.ok && current.sales.map((sale) => sale.id)).toEqual([
+          kept.id,
+        ]);
+        const byVoid = await listSales(context, {
+          ...NO_FILTERS,
+          number: "A-000001",
+        });
+        expect(byVoid.ok && byVoid.sales.map((sale) => sale.id)).toEqual([
+          voided.id,
+        ]);
+        // Sin prefijo, el número es el de una venta.
+        const bySale = await listSales(context, { ...NO_FILTERS, number: "1" });
+        expect(bySale.ok && bySale.sales.map((sale) => sale.id)).toEqual([
+          kept.id,
+        ]);
+      }
+
+      // Un viewer ve la anulación y el motivo, sin el contacto del cliente.
+      const detail = await getSale(s.viewerA, voided.id);
+      expect(detail.ok && detail.sale).toMatchObject({
+        saleVoid: {
+          displayNumber: "A-000001",
+          reason: "wrong_client",
+          currency: "ARS",
+          total: "790000.00",
+        },
+      });
+      expect(detail.ok && detail.sale.client?.contact).toBeNull();
+      const audit = await listSaleAudit(s.adminA, voided.id, 1);
+      expect(audit.ok && audit.entries.map((entry) => entry.action)).toEqual([
+        "void",
+        "create",
+      ]);
     },
     TEST_TIMEOUT,
   );

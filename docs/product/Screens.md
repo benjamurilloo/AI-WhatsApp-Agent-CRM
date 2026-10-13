@@ -100,7 +100,7 @@
 - **Accesibilidad**: el saldo resultante se anuncia con `aria-live`.
 - **No mostrar**: nada sensible específico. No existe ninguna acción para editar ni borrar un movimiento.
 
-*Desde la 19.3* ([brief-19.3](../decisions/brief-19.3-reserva-y-ciclo.md), D-7): la cabecera muestra también lo reservado y lo disponible; el historial etiqueta las entregas de pedidos («Entrega de pedido», con el número del pedido en el motivo) y las filtra con `?tipo=entrega`; *desde la 20.3* ([brief-20.3](../decisions/brief-20.3-la-venta-sin-pedido.md), H-2), también las ventas sin pedido («Venta», con el número de la venta en el motivo), con `?tipo=venta`; el ajuste avisa antes de enviar si el saldo quedaría por debajo de lo reservado, y el servidor lo rechaza con `below_reserved` y un mensaje con el saldo, lo reservado, la cantidad y qué hacer (cancelar primero el pedido que no se puede cumplir).
+*Desde la 19.3* ([brief-19.3](../decisions/brief-19.3-reserva-y-ciclo.md), D-7): la cabecera muestra también lo reservado y lo disponible; el historial etiqueta las entregas de pedidos («Entrega de pedido», con el número del pedido en el motivo) y las filtra con `?tipo=entrega`; *desde la 20.3* ([brief-20.3](../decisions/brief-20.3-la-venta-sin-pedido.md), H-2), también las ventas sin pedido («Venta», con el número de la venta en el motivo), con `?tipo=venta`, y desde la 20.4 ([brief-20.4](../decisions/brief-20.4-la-anulacion.md), D-7) las reposiciones de una anulación («Anulación de venta», con los dos números en el motivo), con `?tipo=anulacion`; el ajuste avisa antes de enviar si el saldo quedaría por debajo de lo reservado, y el servidor lo rechaza con `below_reserved` y un mensaje con el saldo, lo reservado, la cantidad y qué hacer (cancelar primero el pedido que no se puede cumplir).
 
 ## 5b. Precios de un producto
 
@@ -330,6 +330,7 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 - **Paginación**: 25 por página, de la más reciente a la más vieja.
 - **Vacío**: «Todavía no hay ventas. Una venta se emite desde un pedido entregado.»; con filtros, «Ninguna venta coincide con estos filtros.» *Desde la 20.3*: «Todavía no hay ventas. Una venta se emite desde un pedido entregado o con «Nueva venta».»
 - *Desde la 20.3* (D-7): una venta sin cliente dice «Consumidor final», y una sin pedido dice «Sin pedido» en lugar del enlace.
+- *Desde la 20.4* ([brief-20.4](../decisions/brief-20.4-la-anulacion.md), D-8): una venta anulada lleva la marca «Anulada» junto al número; el filtro «Estado» elige «Todas», «Vigentes» o «Anuladas» (`?estado=vigente|anulada`); la búsqueda por número acepta también el de una anulación (`A-000045`, con su prefijo) y trae la venta que anula.
 - **Responsive**: tabla en escritorio y tarjetas en móvil.
 - **No mostrar**: costo ni margen.
 
@@ -343,7 +344,12 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 - **Acciones**: «Imprimir o guardar PDF» abre el diálogo del navegador.
 - **Al imprimir**: queda solo el comprobante, en claro también con el tema oscuro. Se ocultan el panel lateral, la barra superior, los botones, el aviso, la tarjeta del cliente con su contacto y la historia (D-9: el comprobante nunca lleva el contacto).
 - *Desde la 20.3* (D-7): una venta sin cliente muestra «Consumidor final» en el comprobante y en la tarjeta del cliente, sin «Ver las ventas de este cliente»; una sin pedido no muestra la línea del pedido, y el aviso dice que los precios son los vigentes al emitir.
-- **No mostrar**: editar, borrar ni anular la venta (la anulación es de la 20.4); costo ni margen.
+- **No mostrar**: editar, borrar ni anular la venta (la anulación es de la 20.4); costo ni margen. *Precisado el 2026-10-13 en la 20.4* (brief-20.4, H-2 y D-7): editar y borrar siguen sin existir; anular sí:
+  - la tarjeta «Anulación» dice si la venta está vigente o por cuál anulación y motivo se anuló, con «Ver el comprobante de la anulación»;
+  - `admin` ve «Anular venta» en una venta vigente, que abre una confirmación en la misma página (`?confirmar=anular`) con el motivo como grupo de opciones obligatorio y lo que pasa con el stock («Se repone el stock de cada línea» o «El stock no cambia: el pedido sigue entregado y se puede emitir otra venta»); al anular vuelve con «Venta anulada.». Funciona sin JavaScript, y la pregunta recibe el foco;
+  - una venta anulada lo dice arriba («Anulada por A-000045 el {fecha}: {motivo}.») y en el comprobante, que se sigue imprimiendo con la marca;
+  - el comprobante dice «Reemplaza a V-…» o «Reemplazada por V-…» en la cadena de las ventas de un pedido;
+  - la historia muestra la anulación con su número y su motivo.
 
 ## 19. Nueva venta
 
@@ -357,4 +363,16 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 - **Errores**: los de la pantalla 15, y lo disponible de cada línea que no alcanza («Disponible: 2. Pediste 2,5.»); no se emite nada y lo cargado se conserva. No muestra lo disponible antes de emitir (D-6).
 - **Sin JavaScript**: como la pantalla 15; un cliente escrito que no se reconoce se rechaza, no se toma como «Consumidor final».
 - **Accesibilidad**: como la pantalla 15; el rechazo se anuncia con `role="alert"` y recibe el foco.
+- **No mostrar**: costo ni margen.
+
+## 20. Comprobante de una anulación
+
+*Agregada en la 20.4* ([brief-20.4](../decisions/brief-20.4-la-anulacion.md), D-7; FR-VEN-10), sin wireframe. Ruta `/ventas/[id]/anulacion`, desde el detalle de una venta anulada: una venta tiene a lo sumo una anulación.
+
+- **Objetivo**: ver la anulación e imprimirla o guardarla como PDF.
+- **Usuario autorizado**: `admin` y `viewer`.
+- **Información mostrada**: el nombre de la organización, «Anulación A-000045», la fecha, la venta anulada con su número y fecha, el motivo, el cliente o «Consumidor final», el pedido si hay, las líneas y el «Total anulado», y la leyenda «Documento no válido como factura». Nunca el contacto del cliente.
+- **Acciones**: «Imprimir o guardar PDF»; volver a la venta.
+- **Al imprimir**: queda solo el comprobante, como en la pantalla 18.
+- **Vacío**: una venta vigente muestra «Esta venta no está anulada.», con el enlace para volver a ella.
 - **No mostrar**: costo ni margen.

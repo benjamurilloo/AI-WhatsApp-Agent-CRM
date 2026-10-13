@@ -6,7 +6,8 @@ import { describe, expect, it } from "vitest";
 // desde las funciones autorizadas de src/modules/sales/repository.ts, y nada las actualiza ni las
 // borra. Es la tercera defensa, después de los privilegios de crm_app y del trigger de la migración
 // 0039: crm_app tiene INSERT en las dos, así que la base no rechaza una venta escrita fuera de
-// sales, sin el pedido bloqueado, sin número y sin auditoría.
+// sales, sin el pedido bloqueado, sin número y sin auditoría. Desde la 20.4 (brief-20.4), también
+// sale_voids, la anulación, que solo escribe insertSaleVoid y que el trigger de la 0041 defiende.
 //
 // Ve: Drizzle (.insert/.update/.delete con la tabla, también por un espacio de nombres), y SQL
 // literal con INSERT INTO, UPDATE, DELETE FROM o TRUNCATE sobre el nombre de la tabla (con o sin
@@ -17,24 +18,28 @@ import { describe, expect, it } from "vitest";
 
 const REPOSITORY = "src/modules/sales/repository.ts";
 
-// La emisión inserta la cabecera y sus líneas. Nada más escribe: la venta no cambia nunca.
+// La emisión inserta la cabecera y sus líneas, y la anulación, su comprobante. Nada más escribe: ni
+// la venta ni la anulación cambian nunca.
 const AUTHORIZED = new Map([
   ["insertSale", ["insert sales"]],
   ["insertSaleLines", ["insert sale_lines"]],
+  ["insertSaleVoid", ["insert sale_voids"]],
 ]);
 
 const TABLES = new Map([
   ["sales", "sales"],
   ["salelines", "sale_lines"],
   ["sale_lines", "sale_lines"],
+  ["salevoids", "sale_voids"],
+  ["sale_voids", "sale_voids"],
 ]);
 
 // La tabla en SQL: su nombre, con o sin esquema y comillas, o el objeto de Drizzle interpolado.
 // El nombre queda en el grupo 2 o en el 3.
-const SQL_TABLE = String.raw`(?:"?public"?\s*\.\s*)?"?(sales|sale_lines)"?\b|\$\{\s*(?:\w+\.)?(sales|saleLines)\s*\}`;
+const SQL_TABLE = String.raw`(?:"?public"?\s*\.\s*)?"?(sales|sale_lines|sale_voids)"?\b|\$\{\s*(?:\w+\.)?(sales|saleLines|saleVoids)\s*\}`;
 
 const WRITE_PATTERNS = [
-  /\.(insert|update|delete)\(\s*(?:\w+\.)?(sales|saleLines)\s*\)/g,
+  /\.(insert|update|delete)\(\s*(?:\w+\.)?(sales|saleLines|saleVoids)\s*\)/g,
   new RegExp(
     String.raw`\b(insert\s+into|update|delete\s+from|truncate(?:\s+table)?)(?:\s+only)?\s+(?:${SQL_TABLE})`,
     "gi",
@@ -143,6 +148,27 @@ describe("detección de escrituras de ventas", () => {
       file: "src/app/accion.ts",
       code: "await db.execute(sql`truncate table only sales`);",
     },
+    // Desde la 20.4 (brief-20.4, AC-9): la anulación.
+    {
+      name: "la anulación insertada fuera de su función",
+      file: REPOSITORY,
+      code: "export async function insertSale(tx) {\n  await tx.insert(saleVoids).values(v);\n}",
+    },
+    {
+      name: "update de una anulación desde su función",
+      file: REPOSITORY,
+      code: "export async function insertSaleVoid(tx) {\n  await tx.update(saleVoids).set({ reason: 'other' });\n}",
+    },
+    {
+      name: "delete de anulaciones por SQL literal en sales",
+      file: "src/modules/sales/service.ts",
+      code: "await tx.execute(sql`delete from sale_voids where sale_id = ${id}`);",
+    },
+    {
+      name: "una anulación insertada desde inventory",
+      file: "src/modules/inventory/repository.ts",
+      code: 'await tx.execute(sql`insert into "sale_voids" (number) values (1)`);',
+    },
   ])("detecta: $name", ({ file, code }) => {
     expect(findViolations(file, code)).not.toEqual([]);
   });
@@ -155,6 +181,10 @@ describe("detección de escrituras de ventas", () => {
     {
       name: "una lectura con una subconsulta de las líneas",
       code: 'export function findSales() {\n  return db.select({ n: sql`(select count(*) from sale_lines l where l.sale_id = "sales"."id")` }).from(sales);\n}',
+    },
+    {
+      name: "una lectura con una subconsulta de las anulaciones",
+      code: 'export function findSales() {\n  return db.select({ n: sql`(select v.number from sale_voids v where v.sale_id = "sales"."id")` }).from(sales);\n}',
     },
     {
       name: "la escritura de otra tabla de nombre parecido",
@@ -188,6 +218,7 @@ describe("repositorio", () => {
     expect(writes).toEqual([
       "insertSale: insert sales",
       "insertSaleLines: insert sale_lines",
+      "insertSaleVoid: insert sale_voids",
     ]);
   });
 });

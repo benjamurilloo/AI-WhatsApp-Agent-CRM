@@ -324,6 +324,12 @@ describe("validateStockAdjustmentInput", () => {
     });
   });
 
+  it("brief-20.4 D-5: sale_void no es un tipo de ajuste", () => {
+    expect(
+      validateStockAdjustmentInput({ ...valid, type: "sale_void" }),
+    ).toEqual({ ok: false, code: "VALIDATION_ERROR", fields: ["type"] });
+  });
+
   it("devuelve cada campo inválido en orden", () => {
     expect(
       validateStockAdjustmentInput({
@@ -391,6 +397,16 @@ describe("validateMovementHistoryFilters", () => {
     expect(validateMovementHistoryFilters({ ...all, type: "sale" })).toEqual({
       ok: true,
       values: { type: "sale", from: null, to: null },
+    });
+  });
+
+  // brief-20.4, D-7: el historial filtra las reposiciones de las anulaciones.
+  it("acepta sale_void, la reposición de una anulación", () => {
+    expect(
+      validateMovementHistoryFilters({ ...all, type: "sale_void" }),
+    ).toEqual({
+      ok: true,
+      values: { type: "sale_void", from: null, to: null },
     });
   });
 

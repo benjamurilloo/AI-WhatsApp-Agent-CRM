@@ -43,6 +43,25 @@ describe("historia de una venta", () => {
     expect(describeAuditDiff(issued)).toBe("Venta · 3 líneas");
   });
 
+  it("la anulación dice su número y el motivo de la lista (brief-20.4, D-9)", () => {
+    const voided = entry("void", {
+      before: { void_number: null, reason: null },
+      after: { void_number: 45, reason: "wrong_client" },
+    });
+    expect(auditActionLabel(voided)).toBe("Anulación");
+    expect(describeAuditDiff(voided)).toBe(
+      "Anulación A-000045: Cliente equivocado",
+    );
+  });
+
+  it("un motivo fuera de la lista no se muestra", () => {
+    const voided = entry("void", {
+      before: { void_number: null, reason: null },
+      after: { void_number: 3, reason: "inventado" },
+    });
+    expect(describeAuditDiff(voided)).toBe("Anulación A-000003");
+  });
+
   it("una acción desconocida no inventa texto", () => {
     const other = entry("update", { before: null, after: null });
     expect(auditActionLabel(other)).toBe("update");

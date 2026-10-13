@@ -1,8 +1,9 @@
 // Interfaz pública del módulo sales: la venta de un pedido entregado (brief-20.2; ADR 0021) y,
-// desde la 20.3, la venta sin pedido (issueSale).
+// desde la 20.3, la venta sin pedido (issueSale); desde la 20.4, la anulación (voidSale).
 // Ningún módulo depende de sales: la usan solo las pantallas.
 export {
   formatSaleNumber,
+  formatSaleVoidNumber,
   getSale,
   getSaleForOrder,
   issueSale,
@@ -10,7 +11,10 @@ export {
   listSaleAudit,
   listSales,
   parseSaleNumberSearch,
+  parseSaleVoidNumberSearch,
+  SALE_VOID_REASONS,
   SALES_PAGE_SIZE,
+  voidSale,
   type IssueSaleResult,
   type IssueSaleWithoutOrderResult,
   type SaleAuditEntry,
@@ -24,6 +28,9 @@ export {
   type SaleListFilters,
   type SalePage,
   type SaleShortage,
+  type SaleStatusFilter,
   type SaleSummary,
   type SaleValidationFailure,
+  type SaleVoidReason,
+  type VoidSaleResult,
 } from "./service";

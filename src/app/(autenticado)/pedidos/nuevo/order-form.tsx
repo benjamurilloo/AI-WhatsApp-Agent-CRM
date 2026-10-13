@@ -186,7 +186,7 @@ function OrderFields({
                   id={`producto-${row.key}`}
                   name="productText"
                   value={row.productText}
-                  placeholder="Nombre o SKU"
+                  placeholder="Nombre, SKU o código de barras"
                   className={inputClass}
                   invalid={Boolean(error)}
                   describedBy={error ? errorId : undefined}

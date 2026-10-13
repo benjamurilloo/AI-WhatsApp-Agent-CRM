@@ -60,7 +60,13 @@ const TYPE_LABEL: Record<string, string> = {
   order_delivery: "Entrega de pedido",
   // Desde la 20.3: la venta sin pedido; el motivo lleva su número (ADR 0021, punto 5).
   sale: "Venta",
+  // Desde la 20.4: la reposición de la anulación de una venta sin pedido (ADR 0021, punto 6).
+  sale_void: "Anulación de venta",
 };
+
+// Los tipos que suman al saldo: el ajuste positivo y, desde la 20.4, la reposición de una
+// anulación (revisión independiente de la 20.4, R-1). El efecto lo da el tipo (ADR 0021, punto 6).
+const INCOMING = new Set(["adjustment_positive", "sale_void"]);
 
 // Pantalla 5 (wireframe 05): ajuste para admin e historial para admin y viewer, con filtros
 // y página en la URL. Las fechas se muestran en la zona de la organización (brief-4.4, D-3).
@@ -199,6 +205,7 @@ export default async function MovementsPage({
               <option value="negativo">Ajuste negativo</option>
               <option value="entrega">Entrega de pedido</option>
               <option value="venta">Venta</option>
+              <option value="anulacion">Anulación de venta</option>
             </select>
           </div>
           <div className="flex flex-col gap-1">
@@ -300,7 +307,7 @@ export default async function MovementsPage({
                       <td
                         className={`${tableCellClass} text-right tabular-nums`}
                       >
-                        {movement.type === "adjustment_positive" ? "+" : "−"}{" "}
+                        {INCOMING.has(movement.type) ? "+" : "−"}{" "}
                         {formatQuantity(movement.quantity)}
                       </td>
                       <td
@@ -333,7 +340,7 @@ export default async function MovementsPage({
                   </p>
                   <p className="mt-1 font-semibold tabular-nums">
                     {TYPE_LABEL[movement.type]}{" "}
-                    {movement.type === "adjustment_positive" ? "+" : "−"}{" "}
+                    {INCOMING.has(movement.type) ? "+" : "−"}{" "}
                     {formatQuantity(movement.quantity)}
                   </p>
                   <p className="mt-1 text-sm">

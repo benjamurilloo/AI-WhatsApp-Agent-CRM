@@ -8,7 +8,8 @@ import { resetDatabase } from "./reset-database";
 // probados con SQL directo y con el rol dueño, que es el que no frenan los privilegios. Que el
 // pedido esté entregado lo comprueba el servicio (brief-20.2, D-2), no la base. Desde la 20.3
 // (brief-20.3, AC-1): la venta sin pedido, con order_id y client_id nulables y el CHECK que exige
-// cliente a la venta de un pedido.
+// cliente a la venta de un pedido. Desde la 20.4 (brief-20.4, AC-1): sale_voids, con su copia de la
+// venta y su trigger de solo inserción, y la cadena de reemplazos de las ventas de un pedido.
 
 async function createOrganization(name: string) {
   const result = await getDb().execute<{ id: string }>(
@@ -67,13 +68,36 @@ function insertSaleRow(
     number?: number;
     total?: string;
     currency?: string;
+    replacesSaleId?: string | null;
   },
 ) {
   return executor.execute(
-    sql`insert into sales (organization_id, number, order_id, client_id, currency, total, created_by)
+    sql`insert into sales (organization_id, number, order_id, client_id, currency, total, created_by,
+                           replaces_sale_id)
         values (${values.organizationId}, ${values.number ?? 1}, ${values.orderId},
                 ${values.clientId}, ${values.currency ?? "ARS"}, ${values.total ?? "100"},
-                ${values.createdBy})`,
+                ${values.createdBy}, ${values.replacesSaleId ?? null})`,
+  );
+}
+
+function insertVoidRow(
+  executor: Executor,
+  values: {
+    organizationId: string;
+    saleId: string;
+    createdBy: string;
+    number?: number;
+    total?: string;
+    currency?: string;
+    reason?: string;
+  },
+) {
+  return executor.execute(
+    sql`insert into sale_voids (organization_id, number, sale_id, currency, total, reason,
+                                created_by)
+        values (${values.organizationId}, ${values.number ?? 1}, ${values.saleId},
+                ${values.currency ?? "ARS"}, ${values.total ?? "100"},
+                ${values.reason ?? "data_entry_error"}, ${values.createdBy})`,
   );
 }
 
@@ -235,7 +259,7 @@ describe("sales y sale_lines: claves, CHECK e índices (AC-1)", () => {
     });
   });
 
-  it("un pedido tiene a lo sumo una venta", async () => {
+  it("un pedido tiene una sola primera venta: el índice parcial (brief-20.4, D-3)", async () => {
     const s = await seed();
     expect(
       await pgError(
@@ -249,7 +273,7 @@ describe("sales y sale_lines: claves, CHECK e índices (AC-1)", () => {
       ),
     ).toMatchObject({
       code: "23505",
-      constraint: "sales_organization_order_unique",
+      constraint: "sales_organization_order_first_unique",
     });
   });
 
@@ -480,8 +504,9 @@ describe("sales y sale_lines: claves, CHECK e índices (AC-1)", () => {
     }>(
       sql`select indexname, indexdef from pg_indexes
           where tablename = 'sales'
-            and indexname in ('sales_list_idx', 'sales_client_idx', 'sales_organization_order_unique')
-          order by indexname`,
+            and indexname in ('sales_list_idx', 'sales_client_idx',
+                              'sales_organization_order_first_unique', 'sales_order_idx')
+          order by indexname collate "C"`,
     );
     expect(result.rows.map((row) => row.indexdef)).toEqual([
       expect.stringContaining(
@@ -490,7 +515,11 @@ describe("sales y sale_lines: claves, CHECK e índices (AC-1)", () => {
       expect.stringContaining(
         "(organization_id, created_at DESC NULLS LAST, id DESC NULLS LAST)",
       ),
-      expect.stringMatching(/UNIQUE INDEX .*\(organization_id, order_id\)$/),
+      // La búsqueda de la última venta de un pedido (revisión independiente de la 20.4, R-6).
+      expect.stringMatching(/^CREATE INDEX .*\(organization_id, order_id\)$/),
+      expect.stringMatching(
+        /UNIQUE INDEX .*\(organization_id, order_id\) WHERE \(replaces_sale_id IS NULL\)$/,
+      ),
     ]);
   });
 
@@ -501,21 +530,270 @@ describe("sales y sale_lines: claves, CHECK e índices (AC-1)", () => {
     );
     expect(result.rows[0]).toEqual({ audit: true, kind: true });
   });
+
+  it("desde la 20.4: sale_void, void y la lista cerrada del motivo (brief-20.4, D-2)", async () => {
+    const result = await getDb().execute<{
+      kind: boolean;
+      movement: boolean;
+      action: boolean;
+      reasons: string;
+    }>(
+      sql`select 'sale_void' = any(enum_range(null::document_kind)::text[]) as kind,
+                 'sale_void' = any(enum_range(null::inventory_movement_type)::text[]) as movement,
+                 'void' = any(enum_range(null::audit_action)::text[]) as action,
+                 array_to_string(enum_range(null::sale_void_reason)::text[], ',') as reasons`,
+    );
+    expect(result.rows[0]).toEqual({
+      kind: true,
+      movement: true,
+      action: true,
+      reasons: "data_entry_error,not_completed,wrong_client,other",
+    });
+  });
+});
+
+describe("sale_voids: claves, CHECK y la copia de la venta (brief-20.4, AC-1)", () => {
+  it("una venta se anula una sola vez, y el número es único por organización y positivo", async () => {
+    const s = await seed();
+    await insertVoidRow(getDb(), {
+      organizationId: s.orgA,
+      saleId: s.saleA,
+      createdBy: s.userId,
+    });
+    expect(
+      await pgError(
+        insertVoidRow(getDb(), {
+          organizationId: s.orgA,
+          saleId: s.saleA,
+          createdBy: s.userId,
+          number: 2,
+        }),
+      ),
+    ).toMatchObject({ code: "23505", constraint: "sale_voids_sale_unique" });
+    await insertSaleRow(getDb(), {
+      organizationId: s.orgA,
+      orderId: null,
+      clientId: null,
+      createdBy: s.userId,
+      number: 2,
+    });
+    const other = await getDb().execute<{ id: string }>(
+      sql`select id from sales where organization_id = ${s.orgA} and number = 2`,
+    );
+    expect(
+      await pgError(
+        insertVoidRow(getDb(), {
+          organizationId: s.orgA,
+          saleId: other.rows[0]!.id,
+          createdBy: s.userId,
+          number: 1,
+        }),
+      ),
+    ).toMatchObject({
+      code: "23505",
+      constraint: "sale_voids_organization_number_unique",
+    });
+    expect(
+      (
+        await pgError(
+          insertVoidRow(getDb(), {
+            organizationId: s.orgA,
+            saleId: other.rows[0]!.id,
+            createdBy: s.userId,
+            number: 0,
+          }),
+        )
+      ).constraint,
+    ).toBe("sale_voids_number_positive");
+  });
+
+  it("la anulación copia la moneda y el total de su venta: el trigger rechaza otros (D-1)", async () => {
+    const s = await seed();
+    for (const values of [{ total: "99" }, { currency: "USD" }]) {
+      expect(
+        (
+          await pgError(
+            insertVoidRow(getDb(), {
+              organizationId: s.orgA,
+              saleId: s.saleA,
+              createdBy: s.userId,
+              ...values,
+            }),
+          )
+        ).code,
+      ).toBe("P0001");
+    }
+  });
+
+  it("una anulación no apunta a la venta de otra organización, y el motivo es de la lista", async () => {
+    const s = await seed();
+    expect(
+      await pgError(
+        insertVoidRow(getDb(), {
+          organizationId: s.orgB,
+          saleId: s.saleA,
+          createdBy: s.userId,
+        }),
+      ),
+    ).toMatchObject({ code: "23503", constraint: "sale_voids_sale_fk" });
+    expect(
+      (
+        await pgError(
+          insertVoidRow(getDb(), {
+            organizationId: s.orgA,
+            saleId: s.saleA,
+            createdBy: s.userId,
+            reason: "me arrepentí",
+          }),
+        )
+      ).code,
+    ).toBe("22P02");
+  });
+});
+
+describe("la cadena de reemplazos (ADR 0021, punto 3; brief-20.4, D-3)", () => {
+  async function replacement(
+    s: Awaited<ReturnType<typeof seed>>,
+    values: { orderId: string | null; replacesSaleId: string; number: number },
+  ) {
+    return insertSaleRow(getDb(), {
+      organizationId: s.orgA,
+      orderId: values.orderId,
+      clientId: s.clientA,
+      createdBy: s.userId,
+      number: values.number,
+      replacesSaleId: values.replacesSaleId,
+    });
+  }
+
+  it("una venta vigente no se reemplaza: P0001", async () => {
+    const s = await seed();
+    expect(
+      (
+        await pgError(
+          replacement(s, {
+            orderId: s.orderA,
+            replacesSaleId: s.saleA,
+            number: 2,
+          }),
+        )
+      ).code,
+    ).toBe("P0001");
+  });
+
+  it("anulada, se reemplaza una sola vez y solo desde el mismo pedido", async () => {
+    const s = await seed();
+    await insertVoidRow(getDb(), {
+      organizationId: s.orgA,
+      saleId: s.saleA,
+      createdBy: s.userId,
+    });
+    // Otro pedido: lo rechaza el trigger.
+    expect(
+      (
+        await pgError(
+          replacement(s, {
+            orderId: s.orderA2,
+            replacesSaleId: s.saleA,
+            number: 2,
+          }),
+        )
+      ).code,
+    ).toBe("P0001");
+    // Sin pedido: el trigger lo rechaza con IS DISTINCT FROM.
+    expect(
+      (
+        await pgError(
+          replacement(s, { orderId: null, replacesSaleId: s.saleA, number: 2 }),
+        )
+      ).code,
+    ).toBe("P0001");
+    await replacement(s, {
+      orderId: s.orderA,
+      replacesSaleId: s.saleA,
+      number: 2,
+    });
+    expect(
+      await pgError(
+        replacement(s, {
+          orderId: s.orderA,
+          replacesSaleId: s.saleA,
+          number: 3,
+        }),
+      ),
+    ).toMatchObject({
+      code: "23505",
+      constraint: "sales_replaces_sale_unique",
+    });
+  });
+
+  it("la venta reemplazada tiene que existir en la organización", async () => {
+    const s = await seed();
+    await insertSaleRow(getDb(), {
+      organizationId: s.orgB,
+      orderId: s.orderB,
+      clientId: s.clientB,
+      createdBy: s.userId,
+    });
+    const saleB = await getDb().execute<{ id: string }>(
+      sql`select id from sales where organization_id = ${s.orgB}`,
+    );
+    expect(
+      (
+        await pgError(
+          replacement(s, {
+            orderId: s.orderA,
+            replacesSaleId: saleB.rows[0]!.id,
+            number: 2,
+          }),
+        )
+      ).code,
+    ).toBe("P0001");
+  });
+
+  it("sin el trigger, la base sigue exigiendo un pedido para reemplazar: el CHECK", async () => {
+    const s = await seed();
+    const error = await pgError(
+      getDb().transaction(async (tx) => {
+        await tx.execute(sql`set local session_replication_role = replica`);
+        await insertSaleRow(tx, {
+          organizationId: s.orgA,
+          orderId: null,
+          clientId: s.clientA,
+          createdBy: s.userId,
+          number: 2,
+          replacesSaleId: s.saleA,
+        });
+      }),
+    );
+    expect(error).toMatchObject({
+      code: "23514",
+      constraint: "sales_replaces_needs_order",
+    });
+  });
 });
 
 describe("privilegios de crm_app (AC-1)", () => {
-  it("sales y sale_lines solo SELECT e INSERT", async () => {
+  it("sales, sale_lines y sale_voids solo SELECT e INSERT", async () => {
     expect(await privileges("sales")).toEqual(["INSERT", "SELECT"]);
     expect(await privileges("sale_lines")).toEqual(["INSERT", "SELECT"]);
+    expect(await privileges("sale_voids")).toEqual(["INSERT", "SELECT"]);
   });
 
-  it("crm_app no puede cambiar ni borrar una venta ni una línea: 42501", async () => {
-    await seed();
+  it("crm_app no puede cambiar ni borrar una venta, una línea ni una anulación: 42501", async () => {
+    const s = await seed();
+    await insertVoidRow(getDb(), {
+      organizationId: s.orgA,
+      saleId: s.saleA,
+      createdBy: s.userId,
+    });
     for (const statement of [
       sql`update sales set total = 1`,
       sql`delete from sales`,
       sql`update sale_lines set quantity = 2`,
       sql`delete from sale_lines`,
+      sql`update sale_voids set reason = 'other'`,
+      sql`delete from sale_voids`,
     ]) {
       expect(
         (await pgError(asAppRole((tx) => tx.execute(statement)))).code,
@@ -542,14 +820,21 @@ describe("privilegios de crm_app (AC-1)", () => {
 });
 
 describe("el trigger de solo inserción (ADR 0021, punto 2; AC-1)", () => {
-  it("rechaza cambiar o borrar una venta o una línea para cualquier rol: P0001", async () => {
-    await seed();
+  it("rechaza cambiar o borrar una venta, una línea o una anulación para cualquier rol: P0001", async () => {
+    const s = await seed();
+    await insertVoidRow(getDb(), {
+      organizationId: s.orgA,
+      saleId: s.saleA,
+      createdBy: s.userId,
+    });
     for (const statement of [
       sql`update sales set total = 1`,
       sql`update sales set order_id = order_id`,
       sql`delete from sales`,
       sql`update sale_lines set quantity = 2`,
       sql`delete from sale_lines`,
+      sql`update sale_voids set reason = 'other'`,
+      sql`delete from sale_voids`,
     ]) {
       expect((await pgError(getDb().execute(statement))).code).toBe("P0001");
     }

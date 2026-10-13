@@ -52,6 +52,9 @@ export type ClientDataReport = {
   orders: number;
   // Sus ventas (brief-20.2; ADR 0021, punto 12).
   sales: number;
+  // Las anulaciones de sus ventas (brief-20.4, D-10). Cuelgan de la venta, así que no cambian si
+  // se puede borrar: una venta ya lo impide.
+  saleVoids: number;
   // Un cliente sin conversaciones, pedidos ni ventas sí se puede borrar del todo (brief-8.2,
   // hallazgo 7; brief-19.2; brief-20.2). En la 20.2 toda venta tiene un pedido, así que las ventas
   // no cambian el resultado hasta la venta sin pedido de la 20.3 (brief-20.2, H-1).
@@ -72,6 +75,7 @@ export async function reportClientData(
     tags: number;
     orders: number;
     sales: number;
+    sale_voids: number;
   }>(
     sql`select
           exists (select 1 from clients
@@ -94,7 +98,10 @@ export async function reportClientData(
           (select count(*)::int from orders
            where organization_id = ${organizationId} and client_id = ${clientId}) as orders,
           (select count(*)::int from sales
-           where organization_id = ${organizationId} and client_id = ${clientId}) as sales`,
+           where organization_id = ${organizationId} and client_id = ${clientId}) as sales,
+          (select count(*)::int from sale_voids v
+             join sales s on s.organization_id = v.organization_id and s.id = v.sale_id
+           where v.organization_id = ${organizationId} and s.client_id = ${clientId}) as sale_voids`,
   );
   const row = counts.rows[0]!;
   return {
@@ -106,6 +113,7 @@ export async function reportClientData(
     tags: row.tags,
     orders: row.orders,
     sales: row.sales,
+    saleVoids: row.sale_voids,
     deletable:
       row.exists &&
       row.conversations === 0 &&
@@ -275,6 +283,11 @@ export function describeRetained(report: ClientDataReport): string[] {
       `${report.sales} ventas en 'sales', con sus líneas y su historia: quedan el número, la fecha, el pedido, los productos, las cantidades y los montos, sin ningún texto de la persona.`,
     );
   }
+  if (report.saleVoids > 0) {
+    retained.push(
+      `${report.saleVoids} anulaciones en 'sale_voids': quedan el número, la fecha, la venta, el total y el motivo de la lista, sin ningún texto de la persona.`,
+    );
+  }
   if (report.auditEntries > 0) {
     retained.push(
       `${report.auditEntries} entradas en 'audit_logs', sin valores: queda que hubo un cambio, de qué tipo y cuándo.`,
@@ -345,7 +358,7 @@ async function main() {
 
   console.log(
     `Cliente ${clientId}: ${report.conversations} conversaciones, ${report.messages} mensajes, ` +
-      `${report.notes} notas, ${report.auditEntries} entradas de auditoría, ${report.tags} etiquetas, ${report.orders} pedidos, ${report.sales} ventas.`,
+      `${report.notes} notas, ${report.auditEntries} entradas de auditoría, ${report.tags} etiquetas, ${report.orders} pedidos, ${report.sales} ventas, ${report.saleVoids} anulaciones.`,
   );
 
   const vaciar = args.includes("--vaciar");

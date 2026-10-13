@@ -8,9 +8,10 @@ import { calendarDayIn, shiftDays } from "@/app/_format/date-time";
 export type SearchParams = Record<string, string | string[] | undefined>;
 
 // entrega, desde la 19.3: la salida de un pedido entregado (brief-19.3, D-7). venta, desde la
-// 20.3: la salida de una venta sin pedido (brief-20.3, H-2).
+// 20.3: la salida de una venta sin pedido (brief-20.3, H-2). anulacion, desde la 20.4: la
+// reposición de su anulación (brief-20.4, D-7).
 export type MovementTypeKey =
-  "todos" | "positivo" | "negativo" | "entrega" | "venta";
+  "todos" | "positivo" | "negativo" | "entrega" | "venta" | "anulacion";
 export type PeriodKey = "todo" | "7d" | "30d" | "90d" | "personalizado";
 
 const TYPE_PARAM: Record<MovementTypeKey, string> = {
@@ -19,6 +20,7 @@ const TYPE_PARAM: Record<MovementTypeKey, string> = {
   negativo: "adjustment_negative",
   entrega: "order_delivery",
   venta: "sale",
+  anulacion: "sale_void",
 };
 
 // Días que abarca cada atajo, incluido hoy.
@@ -78,7 +80,14 @@ export function parseMovementView(params: SearchParams): MovementView {
   return {
     type: keyOf(
       single(params.tipo),
-      ["todos", "positivo", "negativo", "entrega", "venta"] as const,
+      [
+        "todos",
+        "positivo",
+        "negativo",
+        "entrega",
+        "venta",
+        "anulacion",
+      ] as const,
       DEFAULT_VIEW.type,
     ),
     period,

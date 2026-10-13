@@ -16,7 +16,11 @@ import {
   lockClientForOrder,
   type Client,
 } from "@/modules/crm";
-import { sellStock, type StockShortage } from "@/modules/inventory";
+import {
+  restoreSaleStock,
+  sellStock,
+  type StockShortage,
+} from "@/modules/inventory";
 import { formatDocumentNumber, nextDocumentNumber } from "@/modules/numbering";
 import {
   lockOrderForSale,
@@ -49,7 +53,9 @@ import * as repository from "./repository";
 // bloqueado), numbering (el número) y audit. La venta de un pedido copia sus montos y no toca el
 // stock ni el estado del pedido (ADR 0021, punto 3). Desde la 20.3, la venta sin pedido (ADR 0021,
 // punto 4; brief-20.3): se arma con líneas, con las reglas de src/shared/lines, y descuenta el
-// stock con la transacción que le pasa a inventory. Ningún módulo depende de sales.
+// stock con la transacción que le pasa a inventory. Desde la 20.4, la anulación (ADR 0021, punto 6;
+// brief-20.4): otro comprobante, que repone el stock de una venta sin pedido y deja libre el pedido
+// de una venta de pedido. Ningún módulo depende de sales.
 
 export const SALES_PAGE_SIZE = 25;
 
@@ -59,12 +65,26 @@ export function formatSaleNumber(value: number): string {
   return formatDocumentNumber("sale", value);
 }
 
+export function formatSaleVoidNumber(value: number): string {
+  return formatDocumentNumber("sale_void", value);
+}
+
+function searchNumber(digits: string): number | null {
+  const value = Number(digits);
+  return Number.isSafeInteger(value) && value > 0 ? value : null;
+}
+
 // El número como lo escribe quien busca: «V-000123», «v000123», «000123» o «123».
 export function parseSaleNumberSearch(text: string): number | null {
   const match = /^(?:v-?)?0*(\d{1,15})$/i.exec(text.trim());
-  if (!match) return null;
-  const value = Number(match[1]);
-  return Number.isSafeInteger(value) && value > 0 ? value : null;
+  return match ? searchNumber(match[1]!) : null;
+}
+
+// El número de una anulación lleva siempre su prefijo: «A-000045» o «a45» (brief-20.4, D-8). Sin
+// prefijo, el número es el de una venta.
+export function parseSaleVoidNumberSearch(text: string): number | null {
+  const match = /^a-?0*(\d{1,15})$/i.exec(text.trim());
+  return match ? searchNumber(match[1]!) : null;
 }
 
 // Emisión (ADR 0021, puntos 3 y 7; brief-20.2, D-4). Solo admin.
@@ -123,12 +143,15 @@ export async function issueSaleFromOrder(
           };
         }
         // Con el pedido bloqueado, una emisión simultánea espera acá y ve la venta ya confirmada.
-        const existing = await repository.findSaleByOrder(
+        // Desde la 20.4, la última venta de la cadena: si está vigente, el pedido ya está vendido; si
+        // está anulada, la nueva la reemplaza (brief-20.4, D-3).
+        const last = await repository.findLastSaleByOrder(
           organizationId,
           order.id,
           tx,
         );
-        if (existing) return soldResult(existing);
+        if (last && last.voidNumber === null) return soldResult(last);
+        const replacesSaleId = last?.id ?? null;
 
         // El cliente y los productos en modo compartido, antes del contador (revisión independiente
         // de la 20.2, R-7; precisión fechada del ADR 0021, punto 7): los INSERT toman FOR KEY SHARE
@@ -150,6 +173,7 @@ export async function issueSaleFromOrder(
           clientId: order.clientId,
           currency: order.currency,
           total: order.total,
+          replacesSaleId,
           createdBy: userId,
         });
         await repository.insertSaleLines(
@@ -173,6 +197,10 @@ export async function issueSaleFromOrder(
               number: sale.number,
               order_id: order.id,
               client_id: order.clientId,
+              // Solo en un reemplazo: la primera venta conserva el diff de la 20.2 (brief-20.4, D-9).
+              ...(replacesSaleId === null
+                ? {}
+                : { replaces_sale_id: replacesSaleId }),
               currency: sale.currency,
               total: sale.total,
               lines: order.lines.length,
@@ -198,11 +226,14 @@ export async function issueSaleFromOrder(
       },
     );
   } catch (error) {
-    // El bloqueo del pedido serializa las emisiones; si el índice único igual se dispara, es la
-    // misma regla, no un error (brief-20.2, D-4).
+    // El bloqueo del pedido serializa las emisiones; si el índice parcial o el único del reemplazo
+    // igual se disparan, es la misma regla, no un error (brief-20.2, D-4; brief-20.4, D-3).
     if (!repository.isOrderAlreadySold(error)) throw error;
-    const existing = await repository.findSaleByOrder(organizationId, orderId);
-    if (!existing) throw error;
+    const existing = await repository.findLastSaleByOrder(
+      organizationId,
+      orderId.toLowerCase(),
+    );
+    if (!existing || existing.voidNumber !== null) throw error;
     return soldResult(existing);
   }
 }
@@ -404,6 +435,7 @@ export async function issueSale(
           clientId,
           currency: evaluated.currency,
           total: moneyToDatabase(evaluated.total),
+          replacesSaleId: null,
           createdBy: userId,
         });
         await repository.insertSaleLines(
@@ -472,6 +504,186 @@ export async function issueSale(
   }
 }
 
+// La anulación (ADR 0021, puntos 6 y 7; brief-20.4, D-4 a D-6). Solo admin. Anula la venta entera
+// con otro comprobante, con un motivo de la lista cerrada.
+
+export type SaleVoidReason = repository.SaleVoidReason;
+
+export const SALE_VOID_REASONS = repository.SALE_VOID_REASONS;
+
+type VoidReference = { id: string; number: number; displayNumber: string };
+
+export type VoidSaleResult =
+  // El pedido de la venta, si tiene: su detalle vuelve a ofrecer la emisión.
+  | { ok: true; saleVoid: VoidReference; orderId: string | null }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+  | Failure<
+      "BUSINESS_RULE_VIOLATION",
+      { rule: "already_voided"; saleVoid: VoidReference }
+    >
+  | Failure<
+      "BUSINESS_RULE_VIOLATION",
+      { rule: "stock_limit"; productIds: string[] }
+    >;
+
+const reasonSchema = z.enum(repository.SALE_VOID_REASONS);
+
+function voidReference(row: repository.SaleVoidRow): VoidReference {
+  return {
+    id: row.id,
+    number: row.number,
+    displayNumber: formatSaleVoidNumber(row.number),
+  };
+}
+
+function voidedResult(row: repository.SaleVoidRow): VoidSaleResult {
+  return {
+    ok: false,
+    code: "BUSINESS_RULE_VIOLATION",
+    rule: "already_voided",
+    saleVoid: voidReference(row),
+  };
+}
+
+// Los rechazos que llegan con los saldos bloqueados se lanzan, para revertir la transacción y con
+// ella la fila en 0 que pudo crear el bloqueo (convención de la 19.3). Se traducen fuera.
+class AlreadyVoided extends Error {
+  constructor(readonly row: repository.SaleVoidRow) {
+    super("already_voided");
+  }
+}
+
+class StockLimit extends Error {
+  constructor(readonly productIds: string[]) {
+    super("stock_limit");
+  }
+}
+
+export async function voidSale(
+  context: AuthContext,
+  saleId: string,
+  reason: string,
+): Promise<VoidSaleResult> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  if (!idSchema.safeParse(saleId).success) return failure("VALIDATION_ERROR");
+  const parsedReason = reasonSchema.safeParse(reason);
+  if (!parsedReason.success) return failure("VALIDATION_ERROR");
+  const { organizationId, userId } = context;
+
+  // La venta se lee sin bloqueo: es inmutable, y su pedido no cambia (brief-20.4, H-7). Una venta ya
+  // anulada se rechaza antes de bloquear nada.
+  const sale = await repository.findSale(organizationId, saleId.toLowerCase());
+  if (!sale) return failure("NOT_FOUND");
+  const previous = await repository.findVoidBySale(organizationId, sale.id);
+  if (previous) return voidedResult(previous);
+  const lines = await repository.findSaleLines(organizationId, sale.id);
+
+  try {
+    return await repository.withTransaction(
+      async (tx): Promise<VoidSaleResult> => {
+        let number: number | null = null;
+        if (sale.orderId !== null) {
+          // La venta de un pedido (ADR 0021, punto 7): la cabecera del pedido FOR UPDATE y al final
+          // el contador. Dos anulaciones de la venta, o una anulación y otra emisión del mismo
+          // pedido, se serializan en esa fila. No toca el stock: el pedido sigue entregado.
+          await lockOrderForSale(tx, organizationId, sale.orderId);
+          const again = await repository.findVoidBySale(
+            organizationId,
+            sale.id,
+            tx,
+          );
+          if (again) return voidedResult(again);
+          number = await nextDocumentNumber(tx, organizationId, "sale_void");
+        } else {
+          // La venta sin pedido (ADR 0021, punto 7): los productos en modo compartido, por id, sin
+          // mirar si están activos; sus saldos FOR UPDATE, dentro de restoreSaleStock; y al final el
+          // contador, que se toma al armar el motivo. Dos anulaciones de la misma venta se
+          // serializan en los saldos: la venta no se puede bloquear (H-7). Por eso el motivo vuelve
+          // a mirar, ya con los saldos tomados, que nadie la haya anulado (D-4).
+          await lockProductsForOrder(
+            tx,
+            organizationId,
+            lines.map((line) => line.productId),
+          );
+          const restored = await restoreSaleStock(tx, {
+            organizationId,
+            lines: lines.map((line) => ({
+              productId: line.productId,
+              quantity: line.quantity,
+            })),
+            reason: async () => {
+              const again = await repository.findVoidBySale(
+                organizationId,
+                sale.id,
+                tx,
+              );
+              if (again) throw new AlreadyVoided(again);
+              number = await nextDocumentNumber(
+                tx,
+                organizationId,
+                "sale_void",
+              );
+              return `Anulación ${formatSaleVoidNumber(number)} de la venta ${formatSaleNumber(sale.number)}`;
+            },
+            createdBy: userId,
+          });
+          if (!restored.ok) throw new StockLimit(restored.productIds);
+        }
+        if (number === null) throw new Error("La anulación no tomó su número.");
+
+        // Las claves foráneas de la anulación toman la venta y el autor después del contador. Ningún
+        // camino bloquea una venta FOR UPDATE (crm_app no tiene UPDATE en sales), y el autor se toma
+        // como en el alta del pedido y la venta (brief-20.4, H-6).
+        const saleVoid = await repository.insertSaleVoid(tx, {
+          organizationId,
+          number,
+          saleId: sale.id,
+          currency: sale.currency,
+          total: sale.total,
+          reason: parsedReason.data,
+          createdBy: userId,
+        });
+        // Sobre la venta, con el número de la anulación y el motivo de la lista, y nada más
+        // (ADR 0021, punto 6; brief-20.4, D-9). before no es null: recordAudit lo reserva para
+        // create, como en note_added y tag_change.
+        await recordAudit(tx, {
+          organizationId,
+          actorUserId: userId,
+          entityType: "sale",
+          entityId: sale.id,
+          action: "void",
+          diff: {
+            before: { void_number: null, reason: null },
+            after: { void_number: saleVoid.number, reason: saleVoid.reason },
+          },
+        });
+        return {
+          ok: true,
+          saleVoid: voidReference(saleVoid),
+          orderId: sale.orderId,
+        };
+      },
+    );
+  } catch (error) {
+    if (error instanceof AlreadyVoided) return voidedResult(error.row);
+    if (error instanceof StockLimit) {
+      return {
+        ok: false,
+        code: "BUSINESS_RULE_VIOLATION",
+        rule: "stock_limit",
+        productIds: error.productIds,
+      };
+    }
+    // La base es la última defensa: dos anulaciones que igual chocan en sale_voids_sale_unique son
+    // la misma regla, no un error (brief-20.4, D-4).
+    if (!repository.isSaleAlreadyVoided(error)) throw error;
+    const existing = await repository.findVoidBySale(organizationId, sale.id);
+    if (!existing) throw error;
+    return voidedResult(existing);
+  }
+}
+
 // Lecturas: admin y viewer (ADR 0021, punto 10). Los nombres se componen en memoria por las
 // interfaces de crm y catalog, sin JOIN; el contacto del cliente sale de crm ya resuelto para el
 // rol. Ninguna venta muestra costo ni margen.
@@ -491,12 +703,18 @@ export type SaleSummary = {
   total: string;
   currency: string;
   createdAt: Date;
+  // El número de su anulación, A-000045; null si está vigente (brief-20.4, D-8).
+  voidDisplayNumber: string | null;
 };
+
+export type SaleStatusFilter = "all" | "current" | "voided";
 
 export type SaleListFilters = {
   clientId: string | null;
-  // Lo que escribió quien busca; vacío no filtra.
+  // Lo que escribió quien busca; vacío no filtra. Con el prefijo A, el número de una anulación.
   number: string;
+  // Desde la 20.4 (brief-20.4, D-8).
+  status: SaleStatusFilter;
   // YYYY-MM-DD o vacío.
   from: string;
   to: string;
@@ -551,14 +769,21 @@ export async function listSales(
     return { ok: true, sales: [], ...EMPTY_PAGE };
   }
   const numberText = filters.number.trim();
-  const number = numberText === "" ? null : parseSaleNumberSearch(numberText);
-  if (numberText !== "" && number === null) {
+  const voidNumber =
+    numberText === "" ? null : parseSaleVoidNumberSearch(numberText);
+  const number =
+    numberText === "" || voidNumber !== null
+      ? null
+      : parseSaleNumberSearch(numberText);
+  if (numberText !== "" && number === null && voidNumber === null) {
     return { ok: true, sales: [], ...EMPTY_PAGE };
   }
   const query: repository.SaleListQuery = {
     organizationId: context.organizationId,
     clientId,
     number,
+    voidNumber,
+    status: filters.status,
     from: period.data.from,
     to: period.data.to,
     timezone: await getOrganizationTimezone(context),
@@ -598,6 +823,8 @@ export async function listSales(
       total: row.total,
       currency: row.currency,
       createdAt: row.createdAt,
+      voidDisplayNumber:
+        row.voidNumber === null ? null : formatSaleVoidNumber(row.voidNumber),
     })),
     total,
     page,
@@ -630,6 +857,18 @@ export type SaleDetail = {
   total: string;
   createdAt: Date;
   lines: SaleLine[];
+  // Desde la 20.4 (brief-20.4, D-7): su anulación, si la tiene, y la cadena de las ventas de su
+  // pedido: la anulada a la que reemplaza y la que la reemplazó.
+  saleVoid:
+    | (VoidReference & {
+        reason: SaleVoidReason;
+        currency: string;
+        total: string;
+        createdAt: Date;
+      })
+    | null;
+  replaces: { id: string; displayNumber: string } | null;
+  replacedBy: { id: string; displayNumber: string } | null;
 };
 
 export async function getSale(
@@ -645,13 +884,22 @@ export async function getSale(
   const sale = await repository.findSale(context.organizationId, saleId);
   if (!sale) return failure("NOT_FOUND");
   const lines = await repository.findSaleLines(context.organizationId, sale.id);
-  const [clients, products] = await Promise.all([
-    getClientsByIds(context, sale.clientId === null ? [] : [sale.clientId]),
-    getProductsByIds(
-      context,
-      lines.map((line) => line.productId),
-    ),
-  ]);
+  const [clients, products, saleVoid, replaces, replacedBy] = await Promise.all(
+    [
+      getClientsByIds(context, sale.clientId === null ? [] : [sale.clientId]),
+      getProductsByIds(
+        context,
+        lines.map((line) => line.productId),
+      ),
+      repository.findVoidBySale(context.organizationId, sale.id),
+      sale.replacesSaleId === null
+        ? undefined
+        : repository.findSale(context.organizationId, sale.replacesSaleId),
+      repository.findSaleReplacing(context.organizationId, sale.id),
+    ],
+  );
+  const chainLink = (row: repository.SaleRow | undefined) =>
+    row ? { id: row.id, displayNumber: formatSaleNumber(row.number) } : null;
   const productsById = new Map(
     products.ok
       ? products.products.map((product) => [product.id, product])
@@ -683,11 +931,24 @@ export async function getSale(
           lineTotal: line.lineTotal,
         };
       }),
+      saleVoid: saleVoid
+        ? {
+            ...voidReference(saleVoid),
+            reason: saleVoid.reason,
+            currency: saleVoid.currency,
+            total: saleVoid.total,
+            createdAt: saleVoid.createdAt,
+          }
+        : null,
+      replaces: chainLink(replaces),
+      replacedBy: chainLink(replacedBy),
     },
   };
 }
 
-// La venta de un pedido, para su detalle (ADR 0021, punto 9): la compone la página, nunca orders.
+// La venta vigente de un pedido, para su detalle (ADR 0021, punto 9): la compone la página, nunca
+// orders. Desde la 20.4, si la última está anulada no hay venta vigente, y el pedido vuelve a
+// ofrecer la emisión (brief-20.4, D-3).
 export async function getSaleForOrder(
   context: AuthContext,
   orderId: string,
@@ -698,15 +959,16 @@ export async function getSaleForOrder(
   const authorized = authorize(context);
   if (!authorized.ok) return authorized;
   if (!idSchema.safeParse(orderId).success) return failure("VALIDATION_ERROR");
-  const sale = await repository.findSaleByOrder(
+  const sale = await repository.findLastSaleByOrder(
     context.organizationId,
     orderId.toLowerCase(),
   );
   return {
     ok: true,
-    sale: sale
-      ? { id: sale.id, displayNumber: formatSaleNumber(sale.number) }
-      : null,
+    sale:
+      sale && sale.voidNumber === null
+        ? { id: sale.id, displayNumber: formatSaleNumber(sale.number) }
+        : null,
   };
 }
 

@@ -5,21 +5,30 @@ import { redirect } from "next/navigation";
 import { getCurrentPrices, searchProducts } from "@/modules/catalog";
 import { suggestClients } from "@/modules/crm";
 import type { AuthContext } from "@/modules/organizations";
-import { issueSale, issueSaleFromOrder, type SaleInput } from "@/modules/sales";
+import {
+  issueSale,
+  issueSaleFromOrder,
+  voidSale,
+  type SaleInput,
+} from "@/modules/sales";
 import { requireSession } from "@/app/_auth/session";
 import { logEvent, newRequestId } from "@/shared/log";
 import {
   issueSaleRejection,
   saleRejection,
   unexpectedErrorMessage,
+  voidSaleRejection,
+  voidUnexpectedErrorMessage,
   type IssueSaleState,
   type SaleFormLine,
   type SaleFormState,
   type SaleFormValues,
+  type VoidSaleState,
 } from "./messages";
 
 // Server Actions de la venta: emitirla desde el detalle de un pedido entregado (brief-20.2, D-4) y,
-// desde la 20.3, la venta sin pedido de /ventas/nueva (brief-20.3, D-6). La sesión se verifica acá;
+// desde la 20.3, la venta sin pedido de /ventas/nueva (brief-20.3, D-6); desde la 20.4, anularla
+// desde su detalle (brief-20.4, D-7). La sesión se verifica acá;
 // el rol y la organización, en sales. El log lleva actor, organización y duración, nunca el
 // cliente, los productos ni los montos.
 
@@ -65,6 +74,57 @@ export async function issueSaleAction(
       status: "error",
       requestId,
       message: unexpectedErrorMessage(requestId),
+      existing: null,
+    };
+  }
+
+  redirect(destination);
+}
+
+// La anulación desde el detalle de la venta (brief-20.4, D-6 y D-7). El log no lleva el motivo:
+// alcanza con el resultado.
+export async function voidSaleAction(
+  _previous: VoidSaleState,
+  formData: FormData,
+): Promise<VoidSaleState> {
+  const context = await requireSession();
+  const requestId = newRequestId();
+  const started = performance.now();
+  const log = (code: LogCode, error?: unknown) =>
+    logEvent({
+      level: code === "OK" ? "info" : error ? "error" : "warn",
+      requestId,
+      route: "ventas.anular",
+      code,
+      userId: context.userId,
+      organizationId: context.organizationId,
+      durationMs: performance.now() - started,
+      error,
+    });
+  const saleId = String(formData.get("saleId") ?? "").slice(0, 64);
+  const reason = String(formData.get("reason") ?? "").slice(0, 64);
+
+  let destination: string;
+  try {
+    const result = await voidSale(context, saleId, reason);
+    if (!result.ok) {
+      log(result.code);
+      // Sin revalidar, como la emisión: el mensaje vive en la confirmación.
+      return { status: "error", requestId, ...voidSaleRejection(result) };
+    }
+    log("OK");
+    revalidatePath("/ventas");
+    revalidatePath(`/ventas/${saleId}`);
+    // La venta de un pedido deja libre el pedido; la sin pedido repone el stock (R-9 de la 20.4).
+    if (result.orderId) revalidatePath(`/pedidos/${result.orderId}`);
+    else revalidatePath("/productos");
+    destination = `/ventas/${saleId}?aviso=anulada`;
+  } catch (error) {
+    log("INTERNAL", error);
+    return {
+      status: "error",
+      requestId,
+      message: voidUnexpectedErrorMessage(requestId),
       existing: null,
     };
   }

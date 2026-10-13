@@ -10,6 +10,7 @@ import { E2E_PASSWORD } from "./global-setup";
 // sales, orders, numbering, audit y PostgreSQL real, sin mocks. La venta se emite desde el detalle
 // de un pedido entregado; el detalle de la venta es su comprobante imprimible. Desde la 20.3, la
 // pantalla 19: la venta sin pedido de /ventas/nueva, que descuenta el stock (brief-20.3, AC-7).
+// Desde la 20.4, la anulación y la pantalla 20, su comprobante (brief-20.4, AC-7).
 
 const [ADMIN_SEED, VIEWER_SEED] = SEED_USERS;
 const ADMIN = ADMIN_SEED.email;
@@ -33,7 +34,7 @@ test.afterAll(async () => {
 // contador se vacía para que cada caso empiece en V-000001.
 test.beforeEach(async () => {
   await db.execute(
-    sql`truncate table sale_lines, sales, order_lines, orders, document_counters, audit_logs,
+    sql`truncate table sale_voids, sale_lines, sales, order_lines, orders, document_counters, audit_logs,
           inventory_movements, inventories, product_images, product_costs, product_prices,
           products, conversation_notes, messages, conversations, client_tag_assignments, clients`,
   );
@@ -511,4 +512,227 @@ test("brief-20.3: un viewer no ve «Nueva venta» ni puede entrar a la pantalla"
   await expect(page.getByRole("button", { name: "Emitir venta" })).toHaveCount(
     0,
   );
+});
+
+// La anulación (brief-20.4, AC-7). Una venta sin pedido por SQL, con su línea: la anulación repone
+// sobre el saldo que hay, sin conciliar con los movimientos.
+async function insertCounterSale(
+  productId: string,
+  quantity: string,
+  unitPrice: string,
+  total: string,
+) {
+  const sale = await db.execute<{ id: string }>(
+    sql`insert into sales (organization_id, number, order_id, client_id, currency, total,
+                           created_by)
+        values (${SEED_ORGANIZATION_ID}, 1, null, null, 'ARS', ${total}, ${ADMIN_SEED.id})
+        returning id`,
+  );
+  const saleId = sale.rows[0]!.id;
+  await db.execute(
+    sql`insert into sale_lines (organization_id, sale_id, product_id, position, quantity,
+                                unit_price, currency, line_total)
+        values (${SEED_ORGANIZATION_ID}, ${saleId}, ${productId}, 1, ${quantity},
+                ${unitPrice}, 'ARS', ${total})`,
+  );
+  return saleId;
+}
+
+test("brief-20.4: un admin anula una venta sin pedido con el teclado, repone el stock e imprime la anulación", async ({
+  page,
+}) => {
+  const coffee = await insertStockedProduct(
+    "CAF-250",
+    "Café molido",
+    "1234.50",
+    "7",
+  );
+  const saleId = await insertCounterSale(coffee, "3", "1234.50", "3703.50");
+  await login(page, ADMIN);
+
+  await page.goto(`/ventas/${saleId}`);
+  await expect(page.getByRole("region", { name: "Anulación" })).toContainText(
+    "Esta venta está vigente.",
+  );
+  await page.getByRole("link", { name: "Anular venta" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\?confirmar=anular$/);
+  const question = page.getByText("¿Anular la venta V-000001?");
+  await expect(question).toBeFocused();
+  await expect(
+    page.getByText(/Se repone el stock de cada línea/),
+  ).toBeVisible();
+  await expectAccessible(page, "confirmación de la anulación");
+  // El primer motivo recibe el foco; la flecha elige el siguiente.
+  await page.keyboard.press("Tab");
+  await expect(
+    page.getByRole("radio", { name: "Error de carga" }),
+  ).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(
+    page.getByRole("radio", { name: "Operación no concretada" }),
+  ).toBeChecked();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("link", { name: "No, volver" })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(
+    page.getByRole("button", { name: "Sí, anular la venta" }),
+  ).toBeFocused();
+  await page.keyboard.press("Enter");
+
+  await expect(page).toHaveURL(/\/ventas\/[0-9a-f-]{36}\?aviso=anulada$/);
+  await expect(page.getByText("Venta anulada.")).toBeVisible();
+  await expect(page.getByText(/^Anulada por A-000001 el /)).toBeVisible();
+  await expect(page.getByText(/Operación no concretada\.$/)).toBeVisible();
+  await expect(page.getByRole("link", { name: "Anular venta" })).toHaveCount(0);
+  await expect(
+    page.getByRole("table", { name: "Historia de la venta V-000001" }),
+  ).toContainText("Anulación A-000001: Operación no concretada");
+  await expectAccessible(page, "venta anulada");
+  expect(await onHand(coffee)).toBe("10.000");
+
+  await page
+    .getByRole("link", { name: "Ver el comprobante de la anulación" })
+    .click();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Anulación A-000001" }),
+  ).toBeVisible();
+  const receipt = page.locator("[data-comprobante]");
+  await expect(receipt).toContainText("V-000001");
+  await expect(receipt).toContainText("Operación no concretada");
+  await expect(receipt).toContainText("Consumidor final");
+  await expect(receipt).toContainText("3.703,50");
+  await expect(receipt).toContainText(LEGEND);
+  await expectAccessible(page, "comprobante de la anulación");
+  await page.emulateMedia({ media: "print" });
+  await expect(receipt).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Imprimir o guardar PDF" }),
+  ).toBeHidden();
+  await page.emulateMedia({ media: null });
+});
+
+// La lista y el historial de una venta anulada desde la pantalla, sin el teclado ni axe de la
+// confirmación: separado del recorrido de arriba para que ninguno se acerque al límite de 30 s por
+// caso. La venta es un fixture SQL; la anulación y su movimiento, no (revisión independiente, R-3).
+test("brief-20.4: la lista filtra las anuladas y la encuentra por el número de la anulación; el historial muestra la reposición", async ({
+  page,
+}) => {
+  const coffee = await insertStockedProduct(
+    "CAF-250",
+    "Café molido",
+    "1234.50",
+    "10",
+  );
+  const saleId = await insertCounterSale(coffee, "3", "1234.50", "3703.50");
+  await db.execute(
+    sql`update inventories set quantity_on_hand = '7' where product_id = ${coffee}`,
+  );
+  await login(page, ADMIN);
+  await page.goto(`/ventas/${saleId}?confirmar=anular`);
+  await page.getByRole("radio", { name: "Operación no concretada" }).check();
+  await page.getByRole("button", { name: "Sí, anular la venta" }).click();
+  await expect(page).toHaveURL(/\?aviso=anulada$/);
+
+  await page.goto("/ventas");
+  await page.getByLabel("Estado").selectOption("anulada");
+  await page.getByRole("button", { name: "Aplicar filtros" }).click();
+  await expect(page).toHaveURL(/estado=anulada/);
+  const table = page.getByRole("table", { name: "Ventas de la organización" });
+  await expect(table).toContainText("V-000001");
+  await expect(table).toContainText("Anulada");
+  await expectAccessible(page, "lista de anuladas");
+  await page.goto("/ventas?numero=A-000001");
+  await expect(table).toContainText("V-000001");
+
+  await page.goto(`/productos/${coffee}/movimientos?tipo=anulacion`);
+  // La fila de la reposición: el tipo, el signo de lo que suma (R-1), el saldo y el motivo.
+  const row = page
+    .getByRole("table", { name: "Movimientos de Café molido" })
+    .getByRole("row")
+    .filter({ hasText: "Anulación A-000001 de la venta V-000001" });
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText("Anulación de venta");
+  await expect(row).toContainText("+ 3");
+  await expect(row).toContainText("10");
+  await expect(page.getByLabel("Tipo")).toHaveValue("anulacion");
+  await expectAccessible(page, "historial con la anulación");
+});
+
+test("brief-20.4: anular la venta de un pedido no mueve el stock y deja emitir otra, que la reemplaza", async ({
+  page,
+}) => {
+  const clientId = await insertClient("Lucía Gómez");
+  const tv = await insertProduct("TV-43", 'Smart TV 43"');
+  const orderId = await insertDeliveredOrder(3, clientId, tv);
+  await login(page, ADMIN);
+  await page.goto(`/pedidos/${orderId}?confirmar=venta`);
+  await page.getByRole("button", { name: "Sí, emitir la venta" }).click();
+  await expect(page).toHaveURL(/\?aviso=emitida$/);
+  const firstUrl = page.url().replace(/\?.*$/, "");
+
+  await page.goto(`${firstUrl}?confirmar=anular`);
+  await expect(page.getByText(/El stock no cambia/)).toBeVisible();
+  await page.getByRole("radio", { name: "Error de carga" }).check();
+  await page.getByRole("button", { name: "Sí, anular la venta" }).click();
+  await expect(page).toHaveURL(/\?aviso=anulada$/);
+  expect(await counts()).toEqual({ sales: 1, movements: 0 });
+
+  await page.goto(`/pedidos/${orderId}`);
+  await expect(page.getByRole("region", { name: "Venta" })).toContainText(
+    "Este pedido todavía no tiene su venta.",
+  );
+  await page.getByRole("link", { name: "Emitir venta" }).click();
+  await page.getByRole("button", { name: "Sí, emitir la venta" }).click();
+  await expect(page).toHaveURL(/\?aviso=emitida$/);
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Venta V-000002" }),
+  ).toBeVisible();
+  const receipt = page.locator("[data-comprobante]");
+  await expect(receipt).toContainText("Reemplaza a");
+  await expect(receipt.getByRole("link", { name: "V-000001" })).toBeVisible();
+  await expectAccessible(page, "venta que reemplaza a otra");
+
+  await page.goto(firstUrl);
+  await expect(page.locator("[data-comprobante]")).toContainText(
+    "Reemplazada por",
+  );
+  expect(await counts()).toEqual({ sales: 2, movements: 0 });
+});
+
+test("brief-20.4: un viewer ve la anulación y no puede anular", async ({
+  page,
+}) => {
+  const coffee = await insertStockedProduct(
+    "CAF-250",
+    "Café molido",
+    "1000",
+    "5",
+  );
+  const kept = await insertCounterSale(coffee, "1", "1000", "1000.00");
+  await login(page, VIEWER);
+
+  await page.goto(`/ventas/${kept}?confirmar=anular`);
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Venta V-000001" }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Anular venta" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Sí, anular la venta" }),
+  ).toHaveCount(0);
+
+  await db.execute(
+    sql`insert into sale_voids (organization_id, number, sale_id, currency, total, reason,
+                                created_by)
+        values (${SEED_ORGANIZATION_ID}, 1, ${kept}, 'ARS', '1000.00', 'wrong_client',
+                ${ADMIN_SEED.id})`,
+  );
+  await page.goto(`/ventas/${kept}`);
+  await expect(page.getByText(/^Anulada por A-000001 el /)).toBeVisible();
+  await expect(page.getByText(/Cliente equivocado\.$/)).toBeVisible();
+  await expectAccessible(page, "venta anulada, viewer");
+  await page.goto(`/ventas/${kept}/anulacion`);
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Anulación A-000001" }),
+  ).toBeVisible();
 });

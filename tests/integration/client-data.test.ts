@@ -1182,3 +1182,75 @@ describe("las ventas sin pedido del cliente (brief-20.3, AC-8; H-9)", () => {
     expect(report).toMatchObject({ sales: 0 });
   });
 });
+
+// La anulación de una venta, por SQL (brief-20.4): copia la moneda y el total de la venta, con un
+// motivo de la lista.
+async function voidFor(saleId: string, number: number): Promise<void> {
+  await getDb().execute(
+    sql`insert into sale_voids (organization_id, number, sale_id, currency, total, reason,
+                                created_by)
+        select organization_id, ${number}, id, currency, total, 'wrong_client', created_by
+        from sales where id = ${saleId}`,
+  );
+}
+
+describe("las anulaciones de las ventas del cliente (brief-20.4, AC-8; D-10)", () => {
+  it("41. la exportación dice qué venta está anulada e incluye su anulación, y no la de otro cliente", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    const other = await insertClient("Otra persona", "+5491155552222", null);
+    await voidFor(await counterSaleFor(clientId, 1), 1);
+    await counterSaleFor(clientId, 2);
+    await voidFor(await counterSaleFor(other, 3), 2);
+
+    const data = await exportClientData(getDb(), organizationId, clientId);
+    expect(data.sales).toEqual([
+      expect.objectContaining({
+        number: "1",
+        voided: true,
+        void_display_number: "A-000001",
+      }),
+      expect.objectContaining({
+        number: "2",
+        voided: false,
+        void_display_number: null,
+      }),
+    ]);
+    expect(data.sale_voids).toEqual([
+      expect.objectContaining({
+        number: "1",
+        display_number: "A-000001",
+        sale_number: "1",
+        currency: "ARS",
+        total: "900.00",
+        reason: "wrong_client",
+      }),
+    ]);
+  });
+
+  it("42. el informe cuenta las anulaciones y dice que quedan", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    await voidFor(await counterSaleFor(clientId, 1), 1);
+
+    const report = await reportClientData(getDb(), organizationId, clientId);
+    expect(report).toMatchObject({ sales: 1, saleVoids: 1, deletable: false });
+    expect(describeRetained(report).join(" ")).toContain(
+      "1 anulaciones en 'sale_voids'",
+    );
+  });
+
+  it("43. el vaciado deja la anulación intacta y no deja datos de la persona", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    const saleId = await counterSaleFor(clientId, 1);
+    await voidFor(saleId, 1);
+    const read = () =>
+      getDb().execute(sql`select * from sale_voids where sale_id = ${saleId}`);
+    const before = await read();
+
+    await eraseClientData(getDb(), organizationId, clientId);
+
+    expect((await read()).rows).toEqual(before.rows);
+    for (const value of [NAME, PHONE, NOTES]) {
+      expect(await columnsContaining(value), value).toEqual([]);
+    }
+  });
+});

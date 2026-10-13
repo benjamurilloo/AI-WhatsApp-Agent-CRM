@@ -134,6 +134,10 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
   "src/app/(autenticado)/ventas/actions.ts#createSaleAction": {
     requirement: "sesion",
   },
+  // La anulación (brief-20.4, D-6): solo admin, lo exige sales.
+  "src/app/(autenticado)/ventas/actions.ts#voidSaleAction": {
+    requirement: "sesion",
+  },
   "src/app/(autenticado)/productos/actions.ts#createProductAction": {
     requirement: "sesion",
   },

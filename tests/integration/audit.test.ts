@@ -134,6 +134,8 @@ const INSERT_ONLY_TABLES = [
   "product_prices",
   // La venta y sus líneas (brief-20.2; ADR 0021, punto 2).
   "sale_lines",
+  // La anulación de una venta (brief-20.4; ADR 0021, punto 6).
+  "sale_voids",
   "sales",
 ];
 // Se actualizan pero no se borran (brief-6.1, D-3; credenciales, brief-6.5.3, D-1; información

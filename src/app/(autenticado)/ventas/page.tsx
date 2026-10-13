@@ -7,10 +7,12 @@ import { requireSession } from "@/app/_auth/session";
 import {
   cardClass,
   formMessageClass,
+  inactiveBadgeClass,
   inlineButtonClass,
   inputClass,
   labelClass,
   linkClass,
+  selectClass,
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
@@ -24,6 +26,7 @@ import {
   hasActiveSaleFilters,
   parseSaleFilters,
   saleFiltersHref,
+  statusParam,
   type SearchParams,
 } from "./filters";
 import {
@@ -34,6 +37,7 @@ import {
   NO_SALE_RESULTS_MESSAGE,
   NO_SALES_MESSAGE,
   UNKNOWN_CLIENT_TEXT,
+  VOIDED_BADGE_TEXT,
 } from "./messages";
 
 export const metadata: Metadata = {
@@ -46,7 +50,8 @@ const TITLE = "Ventas";
 // URL; tabla en escritorio y tarjetas en móvil. Desde el detalle de una venta llega filtrada por su
 // cliente. El número del pedido no se lee de orders: la columna enlaza al pedido. Desde la 20.3, una
 // venta sin cliente dice «Consumidor final» y una sin pedido no enlaza ninguno (brief-20.3, D-7), y
-// admin ve «Nueva venta».
+// admin ve «Nueva venta». Desde la 20.4 (brief-20.4, D-8): la marca «Anulada», el filtro por estado
+// y la búsqueda por el número de una anulación, que trae la venta que anula.
 export default async function SalesPage({
   searchParams,
 }: {
@@ -57,6 +62,7 @@ export default async function SalesPage({
   const result = await listSales(context, {
     clientId: filters.clientId || null,
     number: filters.number,
+    status: filters.status,
     from: filters.from,
     to: filters.to,
     page: filters.page,
@@ -110,7 +116,7 @@ export default async function SalesPage({
               name="numero"
               type="search"
               defaultValue={filters.number}
-              placeholder="V-000123"
+              placeholder="V-000123 o A-000045"
               autoComplete="off"
               className={`${inputClass} w-48 pl-9`}
             />
@@ -142,6 +148,21 @@ export default async function SalesPage({
             aria-invalid={invalidPeriod || undefined}
             className={inputClass}
           />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label htmlFor="estado" className={labelClass}>
+            Estado
+          </label>
+          <select
+            id="estado"
+            name="estado"
+            defaultValue={statusParam(filters.status)}
+            className={selectClass}
+          >
+            <option value="todas">Todas</option>
+            <option value="vigente">Vigentes</option>
+            <option value="anulada">Anuladas</option>
+          </select>
         </div>
         {filters.clientId ? (
           <input type="hidden" name="cliente" value={filters.clientId} />
@@ -223,6 +244,14 @@ export default async function SalesPage({
                       <Link href={`/ventas/${sale.id}`} className={linkClass}>
                         {sale.displayNumber}
                       </Link>
+                      {sale.voidDisplayNumber ? (
+                        <span
+                          className={`${inactiveBadgeClass} ml-2 font-sans`}
+                          title={`Anulada por ${sale.voidDisplayNumber}`}
+                        >
+                          {VOIDED_BADGE_TEXT}
+                        </span>
+                      ) : null}
                     </td>
                     <td className={`${tableCellClass} whitespace-nowrap`}>
                       {formatShortDateTime(sale.createdAt, timeZone)}
@@ -268,6 +297,11 @@ export default async function SalesPage({
                   >
                     {sale.displayNumber}
                   </Link>
+                  {sale.voidDisplayNumber ? (
+                    <span className={`${inactiveBadgeClass} ml-2`}>
+                      {VOIDED_BADGE_TEXT}
+                    </span>
+                  ) : null}
                 </p>
                 <p className="mt-1 font-semibold">{clientText(sale)}</p>
                 <p className="mt-1 text-sm text-muted">

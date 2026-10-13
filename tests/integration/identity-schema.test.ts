@@ -84,6 +84,7 @@ describe("base de test", () => {
       "product_prices",
       "products",
       "sale_lines",
+      "sale_voids",
       "sales",
       "sessions",
       "users",

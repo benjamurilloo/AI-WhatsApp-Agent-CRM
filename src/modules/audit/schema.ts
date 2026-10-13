@@ -53,6 +53,8 @@ export const auditAction = pgEnum("audit_action", [
   "note_added",
   // Cambio del costo de un producto (brief-18.2).
   "cost_change",
+  // Anulación de una venta, sobre la venta, con el número y el motivo (brief-20.4, D-9).
+  "void",
 ]);
 
 export const auditLogs = pgTable(

@@ -39,7 +39,7 @@ test.beforeAll(() => {
 // Los demás specs vacían conversaciones y clientes; los eventos y la credencial se quitan acá.
 test.afterAll(async () => {
   await db.execute(
-    sql`truncate table sale_lines, sales, order_lines, orders, ingestion_rate_windows, ingestion_events, conversation_notes, messages, conversations, client_tag_assignments, clients`,
+    sql`truncate table sale_voids, sale_lines, sales, order_lines, orders, ingestion_rate_windows, ingestion_events, conversation_notes, messages, conversations, client_tag_assignments, clients`,
   );
   await db.execute(
     sql`delete from ingestion_credentials where id = ${E2E_INGESTION_CREDENTIAL_ID}`,
@@ -49,7 +49,7 @@ test.afterAll(async () => {
 
 test.beforeEach(async () => {
   await db.execute(
-    sql`truncate table sale_lines, sales, order_lines, orders, audit_logs, ingestion_rate_windows, ingestion_events, conversation_notes, messages, conversations, client_tag_assignments, clients`,
+    sql`truncate table sale_voids, sale_lines, sales, order_lines, orders, audit_logs, ingestion_rate_windows, ingestion_events, conversation_notes, messages, conversations, client_tag_assignments, clients`,
   );
   await db.execute(sql`delete from login_attempts`);
   await db.execute(sql`delete from sessions`);

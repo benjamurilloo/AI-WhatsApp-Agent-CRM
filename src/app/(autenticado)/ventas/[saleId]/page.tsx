@@ -16,11 +16,14 @@ import {
 import { DetailList } from "@/app/_components/detail-list";
 import {
   cardClass,
+  dangerOutlineLinkClass,
+  inactiveBadgeClass,
   linkClass,
   noticeClass,
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
+import { Icon } from "@/app/_components/icons";
 import { PageNotice } from "@/app/_components/page-notice";
 import { SectionCard } from "@/app/_components/section-card";
 import {
@@ -40,9 +43,12 @@ import {
   saleNoticeMessage,
   UNKNOWN_CLIENT_TEXT,
   UNKNOWN_PRODUCT_TEXT,
+  VOID_REASON_LABEL,
+  VOIDED_BADGE_TEXT,
 } from "../messages";
 import { auditActionLabel, describeAuditDiff } from "./audit-summary";
 import { PrintButton } from "./print-button";
+import { VoidSaleConfirm } from "./void-sale";
 
 export const metadata: Metadata = {
   title: "Venta — AI WhatsApp Agent CRM",
@@ -60,6 +66,9 @@ function page(value: string | string[] | undefined): number {
 // cliente, el pedido, las líneas, el total y la leyenda; al imprimir queda solo él (print:hidden y
 // las reglas @media print de globals.css). El contacto del cliente se ve en pantalla solo si crm lo
 // entrega para el rol, y nunca se imprime (D-9). La historia, solo admin. Ningún costo ni margen.
+// Desde la 20.4 (brief-20.4, D-7): una venta anulada lo dice arriba y en el comprobante, que se
+// sigue imprimiendo con la marca; admin anula una vigente en el paso ?confirmar=anular; y la cadena
+// de las ventas de un pedido enlaza la venta reemplazada y la que la reemplazó.
 export default async function SalePage({
   params,
   searchParams,
@@ -100,6 +109,8 @@ export default async function SalePage({
     ? await auditActorLabels(context.organizationId, audit.entries)
     : null;
   const notice = saleNoticeMessage(query.aviso);
+  const saleVoid = sale.saleVoid;
+  const voiding = isAdmin && saleVoid === null && query.confirmar === "anular";
   const client = sale.client;
   // Sin cliente, «Consumidor final» (brief-20.3, D-7).
   const clientName =
@@ -115,11 +126,16 @@ export default async function SalePage({
           title={`Venta ${sale.displayNumber}`}
           leading={<HeaderIcon name="receipt" />}
           subtitle={
-            <p>
-              Total:{" "}
-              <span className="font-semibold text-foreground tabular-nums">
-                {formatMoney(sale.total, sale.currency)}
+            <p className="flex flex-wrap items-center gap-2">
+              <span>
+                Total:{" "}
+                <span className="font-semibold text-foreground tabular-nums">
+                  {formatMoney(sale.total, sale.currency)}
+                </span>
               </span>
+              {saleVoid ? (
+                <span className={inactiveBadgeClass}>{VOIDED_BADGE_TEXT}</span>
+              ) : null}
             </p>
           }
           actions={<PrintButton />}
@@ -128,6 +144,19 @@ export default async function SalePage({
         <div role="status" className="mt-4 empty:hidden">
           {notice ? <p className={noticeClass}>{notice}</p> : null}
         </div>
+        {saleVoid ? (
+          <p className="mt-4 rounded-md border border-border bg-surface-muted px-3 py-2 text-sm">
+            Anulada por{" "}
+            <Link
+              href={`/ventas/${sale.id}/anulacion`}
+              className={`${linkClass} font-mono`}
+            >
+              {saleVoid.displayNumber}
+            </Link>{" "}
+            el {formatShortDateTime(saleVoid.createdAt, timeZone)}:{" "}
+            {VOID_REASON_LABEL[saleVoid.reason]}.
+          </p>
+        ) : null}
       </div>
 
       <div className="mt-6 grid items-start gap-6 lg:grid-cols-3 print:mt-0 print:block">
@@ -145,6 +174,12 @@ export default async function SalePage({
               <h2 id="comprobante-titulo" className="text-lg font-semibold">
                 Venta <span className="font-mono">{sale.displayNumber}</span>
               </h2>
+              {saleVoid ? (
+                <p className="font-semibold uppercase">
+                  {VOIDED_BADGE_TEXT} por{" "}
+                  <span className="font-mono">{saleVoid.displayNumber}</span>
+                </p>
+              ) : null}
               <p className="text-sm">
                 {formatFullDateTime(sale.createdAt, timeZone)}
               </p>
@@ -165,6 +200,32 @@ export default async function SalePage({
                     className={`${linkClass} print:no-underline`}
                   >
                     {orderNumber ?? "Ver pedido"}
+                  </Link>
+                </dd>
+              </div>
+            ) : null}
+            {sale.replaces ? (
+              <div>
+                <dt className="text-muted">Reemplaza a</dt>
+                <dd className="font-mono">
+                  <Link
+                    href={`/ventas/${sale.replaces.id}`}
+                    className={`${linkClass} print:no-underline`}
+                  >
+                    {sale.replaces.displayNumber}
+                  </Link>
+                </dd>
+              </div>
+            ) : null}
+            {sale.replacedBy ? (
+              <div>
+                <dt className="text-muted">Reemplazada por</dt>
+                <dd className="font-mono">
+                  <Link
+                    href={`/ventas/${sale.replacedBy.id}`}
+                    className={`${linkClass} print:no-underline`}
+                  >
+                    {sale.replacedBy.displayNumber}
                   </Link>
                 </dd>
               </div>
@@ -319,6 +380,7 @@ export default async function SalePage({
                     from: "",
                     to: "",
                     clientId: sale.clientId,
+                    status: "all",
                     page: 1,
                   })}
                   className={linkClass}
@@ -326,6 +388,47 @@ export default async function SalePage({
                   Ver las ventas de este cliente
                 </Link>
               </p>
+            ) : null}
+          </SectionCard>
+
+          <SectionCard id="anulacion-titulo" title="Anulación" icon="close">
+            {saleVoid ? (
+              <>
+                <p className="text-sm">
+                  Anulación{" "}
+                  <span className="font-mono">{saleVoid.displayNumber}</span> ·{" "}
+                  {VOID_REASON_LABEL[saleVoid.reason]}
+                </p>
+                <p className="mt-4 text-sm">
+                  <Link
+                    href={`/ventas/${sale.id}/anulacion`}
+                    className={linkClass}
+                  >
+                    Ver el comprobante de la anulación
+                  </Link>
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-muted">Esta venta está vigente.</p>
+            )}
+            {isAdmin && saleVoid === null ? (
+              <div className="mt-4">
+                {voiding ? (
+                  <VoidSaleConfirm
+                    saleId={sale.id}
+                    displayNumber={sale.displayNumber}
+                    hasOrder={sale.orderId !== null}
+                  />
+                ) : (
+                  <Link
+                    href={`/ventas/${sale.id}?confirmar=anular`}
+                    className={dangerOutlineLinkClass}
+                  >
+                    <Icon name="close" className="size-4" />
+                    Anular venta
+                  </Link>
+                )}
+              </div>
             ) : null}
           </SectionCard>
         </div>

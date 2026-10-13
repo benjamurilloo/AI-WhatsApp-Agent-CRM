@@ -420,7 +420,8 @@ export async function getProductBalanceForService(
 export type StockMovementType = repository.StockMovementType;
 
 // El ajuste manual acepta solo sus dos tipos: order_delivery lo escribe la entrega de un pedido
-// (ADR 0020, punto 4), y sale, la venta sin pedido (ADR 0021, punto 5).
+// (ADR 0020, punto 4); sale, la venta sin pedido (ADR 0021, punto 5), y sale_void, la reposición de
+// su anulación (ADR 0021, punto 6).
 const ADJUSTMENT_TYPES = [
   "adjustment_positive",
   "adjustment_negative",
@@ -941,6 +942,61 @@ export async function sellStock(
       balanceAfter: quantityToDatabase(line.onHand - line.quantity),
       reason,
       createdBy: sale.createdBy,
+    });
+  }
+  return { ok: true };
+}
+
+// La reposición de la anulación de una venta sin pedido (ADR 0021, punto 6; brief-20.4, D-5): sales
+// abre la transacción, ya bloqueó los productos y la pasa por tipo. Bloquea los saldos ordenados por
+// producto y suma a cada uno la cantidad que esa venta descontó. No mira si el producto está activo:
+// lo que salió tiene que poder volver. Si algún saldo nuevo no cabe en numeric(14, 3), no escribe
+// nada y devuelve los productos (stock_limit); quien llama revierte la transacción. Si todos caben,
+// pide el motivo y escribe un movimiento sale_void por línea con el saldo nuevo, sin tocar lo
+// reservado: sumar al saldo nunca lo deja por debajo.
+//
+// El motivo es una función, como en sellStock: lleva el número de la anulación, y el contador va
+// después de los saldos (ADR 0021, punto 7). Se llama una sola vez, después de comprobar y antes de
+// escribir. inventory no conoce las ventas.
+export async function restoreSaleStock(
+  tx: DbTransaction,
+  restore: {
+    organizationId: string;
+    lines: StockLine[];
+    reason: () => Promise<string>;
+    createdBy: string;
+  },
+): Promise<{ ok: true } | { ok: false; productIds: string[] }> {
+  const locked = await lockLines(tx, restore.organizationId, restore.lines);
+  const balances = locked.map((line) => ({
+    line,
+    after: computeBalanceAfter(
+      line.onHand,
+      "adjustment_positive",
+      line.quantity,
+      line.reserved,
+    ),
+  }));
+  const restored = balances.flatMap(({ line, after }) =>
+    after.ok ? [{ line, balanceAfter: after.balanceAfter }] : [],
+  );
+  if (restored.length < balances.length) {
+    return {
+      ok: false,
+      productIds: balances
+        .filter(({ after }) => !after.ok)
+        .map(({ line }) => line.productId),
+    };
+  }
+  const reason = await restore.reason();
+  for (const { line, balanceAfter } of restored) {
+    await repository.applySaleVoid(tx, {
+      organizationId: restore.organizationId,
+      productId: line.productId,
+      quantity: quantityToDatabase(line.quantity),
+      balanceAfter: quantityToDatabase(balanceAfter),
+      reason,
+      createdBy: restore.createdBy,
     });
   }
   return { ok: true };

@@ -553,6 +553,18 @@ describe("inventory_movements: esquema", () => {
     ).toMatch(uuidPattern);
   });
 
+  it("brief-20.4 AC-1: acepta sale_void, la reposición de la anulación de una venta", async () => {
+    const { movement } = await seedProduct();
+    expect(
+      await insertMovement(getDb(), {
+        ...movement,
+        type: "sale_void",
+        balanceAfter: "1",
+        reason: "Anulación A-000001 de la venta V-000001",
+      }),
+    ).toMatch(uuidPattern);
+  });
+
   it("rechaza el producto de otra organización (D-3)", async () => {
     const { orgB, movement } = await seedProduct();
     expect(

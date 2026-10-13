@@ -98,4 +98,9 @@ describe("formatDocumentNumber", () => {
     expect(formatDocumentNumber("sale", 45)).toBe("V-000045");
     expect(formatDocumentNumber("sale", 1_234_567)).toBe("V-1234567");
   });
+
+  it("el prefijo de la anulación es A (brief-20.4)", () => {
+    expect(formatDocumentNumber("sale_void", 45)).toBe("A-000045");
+    expect(formatDocumentNumber("sale_void", 1_234_567)).toBe("A-1234567");
+  });
 });

@@ -865,6 +865,15 @@ describe("el ajuste frente a lo reservado (AC-5)", () => {
           reason: "Venta a mano",
         }),
       ).toEqual({ ok: false, code: "VALIDATION_ERROR", fields: ["type"] });
+      // Ni sale_void, la reposición de una anulación (brief-20.4, D-5).
+      expect(
+        await adjustStock(s.adminA, s.coffee, {
+          type: "sale_void",
+          quantity: "1",
+          expectedQuantityOnHand: "0",
+          reason: "Anulación a mano",
+        }),
+      ).toEqual({ ok: false, code: "VALIDATION_ERROR", fields: ["type"] });
       expect(await count("inventory_movements")).toBe(0);
     },
     TEST_TIMEOUT,

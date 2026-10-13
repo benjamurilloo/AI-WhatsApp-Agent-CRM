@@ -103,6 +103,11 @@ describe("toHistoryFilters", () => {
       toHistoryFilters({ ...DEFAULT_VIEW, type: "venta" }, "UTC", now).type,
     ).toBe("sale");
     expect(parseMovementView({ tipo: "venta" }).type).toBe("venta");
+    // brief-20.4, D-7: la reposición de la anulación de una venta.
+    expect(
+      toHistoryFilters({ ...DEFAULT_VIEW, type: "anulacion" }, "UTC", now).type,
+    ).toBe("sale_void");
+    expect(parseMovementView({ tipo: "anulacion" }).type).toBe("anulacion");
   });
 });
 
