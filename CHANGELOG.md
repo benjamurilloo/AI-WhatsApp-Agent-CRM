@@ -2,6 +2,30 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-14 — 21.2: los medios de pago y la caja
+
+Cierra el 2026-10-14 con la aprobación del usuario, después de su recorrido en producción y del ajuste que pidió en él ([brief-21.2](docs/decisions/brief-21.2-los-medios-de-pago-y-la-caja.md), §Cierre). Es la primera subfase de la Fase 21 con tablas, sobre el [ADR 0022](docs/decisions/0022-cobros-y-caja.md).
+
+**Certifica:**
+- **Los medios de pago** (migración `0042`): `payment_methods` por organización, con el nombre único sin distinguir mayúsculas, `is_cash` fijo por trigger, hasta 20 activos y la lista inicial de cuatro con un botón (efectivo, transferencia, tarjeta de débito y de crédito). Alta, renombre, desactivación y reactivación, solo de `admin`, con su auditoría.
+- **La caja de efectivo**, por sesiones y por moneda, de solo inserción:
+  - `cash_sessions` con la serie `C`, encadenadas en la base: `UNIQUE (previous_session_id)`, el índice parcial de la primera, una clave compuesta y el trigger `cash_sessions_chain`;
+  - el inicial, el cierre con lo contado y lo esperado de cada moneda, y los aportes y retiros con un motivo de una lista cerrada; una sesión cerrada no admite filas nuevas (trigger);
+  - lo esperado es el inicial más los aportes menos los retiros, y ningún retiro lo deja en negativo;
+  - el bloqueo por organización primero y el contador último, en las siete escrituras; los rescates, por el nombre de la restricción; ningún rechazo escribe, numera ni audita.
+- **Las pantallas**: «Caja» con la sesión abierta y lo esperado por moneda, abrir con lo contado del último cierre propuesto, el aporte o retiro, el cierre en dos pasos con su arqueo imprimible y `expected_changed` si lo esperado cambió mientras se confirmaba, la lista de sesiones con la búsqueda por número, el detalle con su historia y los medios de pago. Funcionan sin JavaScript. **Tras el recorrido**, la moneda se elige de la lista del sistema y cada monto muestra cómo se lee, con los separadores de miles.
+- **Las guardas**: `cash-writes` (nueva), `module-boundary` con `cash` y `exposed-surface` con las ocho acciones.
+- **La revisión independiente**: 3 hallazgos medios y 8 bajos, verificados, corregidos o registrados. El usuario aprobó cuatro desvíos: sin `no_open_session`, la auditoría con claves planas, la vista previa del cierre con `expected_changed` e `identity-schema.test.ts` fuera de la lista. 18 mutaciones detectadas.
+- **En producción**: `847dbbb` (CI 38550720694) y el ajuste `3cda4f8` (CI 38557652169), los dos en `success`. El usuario recorrió la caja en «Demostración Vixora»: `C-000001` con un aporte, un retiro y un cierre con diferencia. Conciliado contra la base: lo esperado guardado coincide con el que se recalcula, y la auditoría y el contador también.
+
+**Nivel**: validado localmente y en CI, validado en integración para las pantallas, desplegado en producción y recorrido por el usuario. No es «preparado para producción».
+
+**No certifica:**
+- Ningún cobro: la caja solo tiene el inicial, los aportes y los retiros. Los cobros en efectivo entran en la 21.3.
+- En producción, los rechazos y la concurrencia: los cubren los tests.
+- El recuento de migraciones de producción, que no se leyó (el rol de la aplicación no ve ese esquema).
+- Qué paquete no corrió sus scripts de instalación en el segundo despliegue (aviso de npm); el build y el servicio, en verde.
+
 ## 2026-10-13 — 21.1: el ADR 0022 de cobros, caja y cuenta corriente
 
 Cierra el 2026-10-13 con la aceptación del ADR por el usuario ([brief-21.1](docs/decisions/brief-21.1-adr-de-cobros-y-caja.md), §Cierre). Es la primera subfase de la Fase 21 — Caja y cobros, abierta ese día con la Fase 13 abierta ([ADR 0016](docs/decisions/0016-el-crm-se-amplia-hacia-un-erp-por-fases.md), punto 3). **El usuario sumó la cuenta corriente de clientes a la fase** al aprobar el brief. Hasta ese día no tenía fase.

@@ -397,7 +397,7 @@ Reglas comunes a las cuatro fases:
       - la cuenta corriente se deriva, sin tabla de saldos;
       - todo va bajo un bloqueo por organización, en el módulo `cash`.
     - ~~21.2 — Medios de pago y el cobro de una venta. 21.3 — La seña. 21.4 — La anulación del cobro. 21.5 — La caja.~~ *Reordenado el 2026-10-13 por el ADR 0022, punto 15*: un cobro en efectivo exige una caja abierta, así que la caja va primero:
-    - **21.2 — Los medios de pago y la caja**: el módulo `cash`, la apertura, el cierre con su arqueo, y los aportes y retiros.
+    - **21.2 — Los medios de pago y la caja**: el módulo `cash`, la apertura, el cierre con su arqueo, y los aportes y retiros. **Cerrada el 2026-10-14** ([brief-21.2](../decisions/brief-21.2-los-medios-de-pago-y-la-caja.md) §Cierre): migración `0042`, desplegada (`3cda4f8`) y recorrida por el usuario.
     - **21.3 — El cobro de una venta**, con la regla de imputación entera.
     - **21.4 — La seña**: el cobro contra un pedido.
     - **21.5 — La anulación y la devolución**, y la anulación de la devolución.

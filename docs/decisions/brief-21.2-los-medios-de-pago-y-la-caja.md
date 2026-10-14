@@ -16,7 +16,7 @@ generated_at: 2026-10-13
 - **Nivel de validación alcanzable**: **validado localmente y en CI**, **validado en integración** para las pantallas y, con D-12, **desplegado en producción** con el recorrido del usuario. No es «preparado para producción».
 - **Orden**: segunda subfase de la Fase 21 — Caja y cobros ([Roadmap](../planning/Roadmap.md) §Fase 21), después de la 21.1, cerrada el 2026-10-13. Implementa la fila «21.2» del punto 15 del [ADR 0022](0022-cobros-y-caja.md). La caja va antes que los cobros porque un cobro en efectivo la exige.
 - **No abre ni cierra gate.** Crea el primer módulo de dinero, seis tablas, de las cuales cinco son de solo inserción, una cadena de sesiones que la base defiende con un trigger, y el bloqueo de cobros que van a usar todas las subfases siguientes. Por eso se recomienda la revisión independiente (D-11).
-- **Estado de este documento**: **aprobado por el usuario el 2026-10-13**, con todas las recomendaciones, de D-1 a D-12. La tarea 21.2 (`3f8702be6f4e8144a3d5f83a9f3844ca`) sigue en «Esperando» hasta que el usuario autorice pasarla a «En proceso».
+- **Estado de este documento**: **aprobado por el usuario el 2026-10-13**, con todas las recomendaciones, de D-1 a D-12. **Cerrado el 2026-10-14** (§Cierre). La tarea 21.2 (`3f8702be6f4e8144a3d5f83a9f3844ca`) pasó a «En proceso» con la autorización del usuario y a «Completado» al cierre.
 
 ## Objetivo
 
@@ -625,3 +625,44 @@ La revisión confirmó además:
 - lo que ve y no ve la guarda;
 - las fronteras entre módulos;
 - que los archivos están en la lista autorizada, salvo `identity-schema.test.ts`, registrado arriba.
+
+## Cierre de la subfase 21.2, 2026-10-14
+
+Cierra el 2026-10-14 con la aprobación del usuario, después de su recorrido en producción y del ajuste que pidió en él («Listo, ahora sí. Continuá nomás con el cierre»).
+
+- **AC-1 a AC-13 cumplidos.** AC-11 con la batería registrada arriba; AC-13 con el despliegue y el recorrido de abajo.
+- **Commits, CI y despliegues**:
+  - `847dbbb`, la implementación: CI 38550720694 `success`, leída por el SHA completo. Desplegado el 2026-10-14 según [deploy/production/README.md](../../deploy/production/README.md) §Desplegar, con `b95c9f4` anotado como la versión para volver atrás. La migración `0042` respondió «Migraciones aplicadas», y sus seis tablas tienen las filas del recorrido (abajo). El recuento de `drizzle.__drizzle_migrations` no se leyó: el rol de la aplicación no ve ese esquema, y el modo automático no dejó consultar con el de migraciones.
+  - `3cda4f8`, el ajuste del recorrido: CI 38557652169 `success`. Desplegado el 2026-10-14, con `847dbbb` anotado. Sin migración.
+  - Después de cada uno, el servicio `active` y `/login` en `200` desde afuera.
+- **El ajuste del recorrido** (el usuario, en «Demostración Vixora»):
+  - la moneda de la apertura, el cierre y el aporte o retiro se elige de la lista del sistema, como en precios, en lugar de un campo de texto con sugerencias;
+  - debajo de cada monto se muestra cómo se lee, con los separadores de miles («Se lee: $ 100.000,00»), y nada si es ambiguo, como «100.000» en pesos. Se eligió mostrar la lectura y no formatear el campo mientras se escribe: lo que se envía y su validación no cambian, y es lo que ya hace la pantalla de precios;
+  - `money-fields.tsx` es un archivo nuevo en `caja/`, con su test unitario; el end-to-end de la caja comprueba la lectura. Screens §22 a §24, actualizadas.
+- **El recorrido del usuario (AC-13)**: la lista inicial de medios de pago, un renombre, una desactivación y una reactivación; la apertura de `C-000001`, un aporte, un retiro, el cierre con una diferencia, el arqueo y la propuesta siguiente. **Conciliado contra la base**, en una transacción de solo lectura con el rol de la aplicación y sin datos de la persona:
+  - los cuatro medios de la lista inicial, activos, con `is_cash` solo en «Efectivo»;
+  - `C-000001` cerrada y sin anterior, con el inicial de ARS 10.000,00, un aporte `owner_contribution` de 50.000,00 y un retiro `owner_withdrawal` de 5.000,00;
+  - el cierre de ARS con lo contado en 50.000,00 y lo esperado en 55.000,00, igual al que se recalcula desde el inicial y los movimientos; la diferencia, −5.000,00;
+  - la auditoría: `create` y `close` de la sesión, y `create` (4), `update`, `deactivate` y `reactivate` de los medios;
+  - el contador `cash_session` en 1, igual al último número.
+
+  La impresión del arqueo no deja rastro en la base: su evidencia es la confirmación del usuario.
+- **Revisión**: la independiente (R-1 a R-11, arriba). La batería, los despliegues, la conciliación y este cierre son autoevaluación declarada.
+- **Decisiones del usuario**:
+  - el brief, con las recomendaciones de D-1 a D-12;
+  - **los cuatro desvíos de arriba, aprobados el 2026-10-14**: `no_open_session` no existe (R-1), la auditoría con claves planas (R-4), `previewCashClosing` con `expected_changed` (R-5) e `identity-schema.test.ts` fuera de la lista autorizada;
+  - el ajuste del recorrido;
+  - la tarea en «En proceso», los dos commits con su push, los dos despliegues después de la CI y este cierre.
+- **Nivel**:
+  - validado localmente y en CI;
+  - **validado en integración** para las pantallas (end-to-end sobre `next start`);
+  - desplegado en producción y recorrido por el usuario en la organización de demostración.
+
+  No es «preparado para producción».
+- **No certifica**:
+  - que volver a `b95c9f4` sea limpio en la interfaz: ese código no conoce la caja, y las tablas de la `0042` quedan sin pantalla. No las lee nada más, así que no rompe otra cosa;
+  - en producción, los rechazos de AC-4 y la concurrencia de AC-5: los cubren los tests;
+  - que el arqueo, que es interno, quede fuera de cualquier exigencia fiscal: no se entrega a nadie.
+- **Queda anotado**:
+  - en el `npm ci` del segundo despliegue, npm avisó que no corrió los scripts de instalación de algún paquete (`npm install-scripts ls`). El build compiló y el servicio levantó; falta ver qué paquete es y si importa;
+  - la batería local se corrió con el servidor del end-to-end caído a mitad de la corrida; los archivos afectados, vueltos a correr en verde (arriba).
