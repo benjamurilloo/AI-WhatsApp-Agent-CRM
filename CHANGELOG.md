@@ -2,6 +2,28 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-14 — 21.3: el cobro de una venta
+
+Cierra el 2026-10-14, después del recorrido del usuario en producción ([brief-21.3](docs/decisions/brief-21.3-el-cobro-de-una-venta.md), §Cierre). Es el primer cobro del CRM, sobre el [ADR 0022](docs/decisions/0022-cobros-y-caja.md).
+
+**Certifica:**
+- **El cobro** (migración `0043`): `receipts` de solo inserción, con la serie `R` y contra una venta. Copia la moneda y el cliente de la venta. Un cobro en efectivo va en la sesión abierta y uno que no es en efectivo, en ninguna (trigger). Una sesión cerrada no admite cobros. Un cliente con cobros no se borra.
+- **La regla de imputación**, entera y como función pura (`imputation.ts`): los cobros directos hasta el total de cada venta; el remanente (lo cobrado de ventas anuladas, señas canceladas y cobros a cuenta, menos las devoluciones) de la venta más vieja a la más nueva; el resto, saldo a favor. Siete propiedades con 500 casos cada una.
+- **El cobro de una venta**, solo de `admin`: el bloqueo de cobros primero, la ficha del cliente en modo compartido, la venta releída, lo que falta con la regla y el contador al final. Ningún rechazo escribe, numera ni audita. Desde la revisión, un cobro en efectivo que pasaría el máximo de lo esperado se rechaza, como el aporte.
+- **La caja**: lo esperado suma los cobros en efectivo, y el cierre los exige contados.
+- **Las pantallas**: «Cobros» en el detalle de la venta, con lo cobrado y lo que falta; «Cobrar»; el recibo imprimible; la lista de cobros en «Caja», con la búsqueda por número; los cobros en la sesión. Funcionan sin JavaScript.
+- **Los datos de un cliente**: la exportación trae sus cobros y el informe del borrado los cuenta; runbook actualizado.
+- **La revisión independiente**: sin bloqueantes; R-1 a R-6, verificados, corregidos o registrados. El usuario aprobó tres desvíos: el escenario de AC-5 con un remanente que cambia pasa a la 21.4–21.6, el rechazo `limit` del efectivo y las tablas de `sales` y `crm` en `cash/schema.ts`. 16 mutaciones detectadas.
+- **En producción**: `0543ef6` (CI 38583961530, en `success` en su segundo intento; el primero lo cortó el límite de 25 minutos con un runner lento). El usuario recorrió el cobro en «Demostración Vixora»: `V-000002` cobrada en efectivo y por transferencia, un cobro de más rechazado, una parte de `V-000004` y `C-000002` cerrada con los cobros. Conciliado contra la base: lo cobrado, lo que falta, lo esperado, el contador y la auditoría.
+
+**Nivel**: validado localmente y en CI, validado en integración para las pantallas, desplegado en producción y recorrido por el usuario. No es «preparado para producción».
+
+**No certifica:**
+- La seña, el cobro a cuenta, la devolución ni la anulación de un cobro: son la 21.4 en adelante. Con ellos, el escenario de AC-5 con un remanente que cambia.
+- En producción, los rechazos y la concurrencia: los cubren los tests.
+- Que volver a `3cda4f8` sea seguro con una sesión abierta que tenga cobros.
+- Que el recibo cumpla una exigencia fiscal: es un comprobante interno.
+
 ## 2026-10-14 — 21.2: los medios de pago y la caja
 
 Cierra el 2026-10-14 con la aprobación del usuario, después de su recorrido en producción y del ajuste que pidió en él ([brief-21.2](docs/decisions/brief-21.2-los-medios-de-pago-y-la-caja.md), §Cierre). Es la primera subfase de la Fase 21 con tablas, sobre el [ADR 0022](docs/decisions/0022-cobros-y-caja.md).

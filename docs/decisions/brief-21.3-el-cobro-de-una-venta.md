@@ -16,7 +16,7 @@ generated_at: 2026-10-14
 - **Nivel de validación alcanzable**: **validado localmente y en CI**, **validado en integración** para las pantallas y, con D-12, **desplegado en producción** con el recorrido del usuario. No es «preparado para producción».
 - **Orden**: tercera subfase de la Fase 21 — Caja y cobros ([Roadmap](../planning/Roadmap.md) §Fase 21), después de la 21.2, cerrada el 2026-10-14. Implementa la fila «21.3» del punto 15 del [ADR 0022](0022-cobros-y-caja.md).
 - **No abre ni cierra gate.** Pero crea el primer comprobante de dinero, la regla de imputación que van a usar la 21.4 a la 21.6, y **la primera dependencia de un módulo hacia `sales`**. Por eso se recomienda la revisión independiente (D-11).
-- **Estado de este documento**: **aprobado el 2026-10-14**, con las recomendaciones de D-1 a D-12 tal como están escritas. La tarea 21.3 (`3f8702be6f4e814d824ae1c87cb0b95c`) sigue en «Esperando» hasta que el usuario autorice pasarla a «En proceso».
+- **Estado de este documento**: **aprobado el 2026-10-14**, con las recomendaciones de D-1 a D-12 tal como están escritas. **Cerrado el 2026-10-14** (§Cierre). La tarea 21.3 (`3f8702be6f4e814d824ae1c87cb0b95c`) pasó a «En proceso» con la autorización del usuario y pasa a «Completado» al cierre, con su autorización.
 
 ## Objetivo
 
@@ -535,4 +535,44 @@ Un agente que no participó del trabajo, con acceso de solo lectura, revisó con
 | R-5. El Overview no decía que `cash/schema.ts` importa `sales` y `crm` | nota | corregido en el Overview; desvío de AC-9 |
 | R-6. Un cliente desactivado se cobra igual, sin que el código lo diga | nota | comentario en `createSaleReceipt` |
 
-El revisor no otorga autorizaciones. El usuario aprobó los tres desvíos y autorizó el commit, el push y Notion el 2026-10-14; el despliegue (D-12) sigue pendiente de su decisión.
+El revisor no otorga autorizaciones. El usuario aprobó los tres desvíos y autorizó el commit, el push y Notion el 2026-10-14; el despliegue (D-12), aparte, ese mismo día.
+
+## Cierre de la subfase 21.3, 2026-10-14
+
+Cierra el 2026-10-14, después del recorrido del usuario en producción («Ya lo revisé, está perfecto»).
+
+- **AC-1 a AC-14 cumplidos**, con los tres desvíos aprobados. AC-12 con la batería de arriba y la CI; AC-14 con el despliegue y el recorrido de abajo.
+- **Commit, CI y despliegue**:
+  - `0543ef6`, la implementación. **El primer intento de la CI 38583961530 quedó `cancelled`**: corrió todos sus pasos de 3 a 4 veces más lento que la corrida anterior, por ejemplo el lint de 10 a 37 s y el build de 36 a 130 s, y el `timeout-minutes: 25` lo cortó en los end-to-end. Ningún test falló, y la integración completa pasó en ese intento. El segundo intento, sin cambios, terminó en `success` en 18 minutos, leído por el SHA completo.
+  - Desplegado el 2026-10-14 según [deploy/production/README.md](../../deploy/production/README.md) §Desplegar, con `3cda4f8` anotado como la versión para volver atrás. La última línea comparó HEAD con el SHA pedido.
+  - Después, el servicio `active`, `receipts` vacía y sin sesiones abiertas, y `/caja/cobros` redirigiendo a `/login` desde afuera.
+- **El recorrido del usuario (AC-14)**, en «Demostración Vixora»: los siete pasos de D-12. **Conciliado contra la base** con el rol de la aplicación, solo con lecturas y sin datos de la persona:
+  - tres cobros en ARS, todos con la moneda de su venta y con el cliente copiado de ella:
+    - `R-000001`: 500.000,00 de `V-000002`, en efectivo, en `C-000002`;
+    - `R-000002`: 460.000,00 de `V-000002`, por transferencia bancaria, sin sesión;
+    - `R-000003`: 2.000.000,00 de `V-000004`, en efectivo, en `C-000002`;
+  - `V-000002`, sin cliente: total 960.000,00, cobrado entero, le falta 0. `V-000004`: total 2.300.000,00, le faltan 300.000,00. Es lo que da la regla: las ventas anuladas de la organización, `V-000001` y `V-000003`, no tienen cobros, así que no hay remanente;
+  - `C-000002` cerrada: el inicial de 50.000,00 más los dos cobros en efectivo, 2.500.000,00, dan 2.550.000,00. Es lo esperado que guardó el cierre, y lo contado es igual. `C-000001` sigue en los 55.000,00 que se recalculan;
+  - el contador `receipt` en 3, igual a la cantidad de cobros: el cobro de más que se rechazó no consumió número;
+  - la auditoría: tres `create` de `receipt`, con claves planas, `session_number` solo en los de efectivo y sin datos de la persona.
+
+  La impresión del recibo y la búsqueda en «Cobros» no dejan rastro en la base: su evidencia es la confirmación del usuario.
+- **Revisión**: la independiente (R-1 a R-6, arriba). La batería, el despliegue, la conciliación y este cierre son autoevaluación declarada.
+- **Decisiones del usuario**:
+  - el brief, con las recomendaciones de D-1 a D-12;
+  - **los tres desvíos, aprobados el 2026-10-14**: el escenario de AC-5 pasa a la 21.4–21.6 (R-2), el rechazo `limit` del efectivo (R-3) y las tablas de `sales` y `crm` en `cash/schema.ts` (R-5);
+  - la tarea en «En proceso», el commit con su push, el despliegue después de la CI y una regla de permiso local para leer producción por `ssh`, que conviene quitar al cerrar.
+- **Nivel**:
+  - validado localmente y en CI;
+  - **validado en integración** para las pantallas (end-to-end sobre `next start`);
+  - desplegado en producción y recorrido por el usuario en la organización de demostración.
+
+  No es «preparado para producción».
+- **No certifica**:
+  - que volver a `3cda4f8` sea seguro con una sesión de caja abierta que tenga cobros: ese código no suma los cobros a lo esperado. Antes hay que cerrar la sesión con el código nuevo;
+  - en producción, los rechazos de AC-4 y la concurrencia de AC-5: los cubren los tests;
+  - el escenario de AC-5 con un remanente que cambia, que pasa a la 21.4–21.6;
+  - que el recibo cumpla una exigencia fiscal: es un comprobante interno.
+- **Queda anotado**:
+  - **la CI está cerca de su límite**: la corrida que pasó tardó 18 de los 25 minutos, y un runner lento la corta. Sin una corrida en `success` no se despliega. Conviene decidir si se sube `timeout-minutes`, que está fuera de esta subfase;
+  - en la batería local, dos procesos de vitest cayeron con `0xC0000409` y un caso de seeds pasó los 30 s. Vueltos a correr, en verde, y en la CI pasaron.
