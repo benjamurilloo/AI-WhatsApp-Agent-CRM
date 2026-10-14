@@ -16,7 +16,8 @@ import {
 
 // Los totales por moneda y los movimientos de una sesión (brief-21.2, D-10), para la caja abierta y
 // para el arqueo de una cerrada. Cada moneda va en su fila: nunca se suman entre sí. Desde la 21.3,
-// los cobros en efectivo: su columna en los totales y su lista (brief-21.3, D-5).
+// los cobros en efectivo: su columna en los totales y su lista (brief-21.3, D-5). Desde la 21.4, la
+// lista dice el destino de cada cobro, la venta o el pedido de una seña, como /caja/cobros.
 
 const numberCell = `${tableCellClass} text-right whitespace-nowrap tabular-nums`;
 const numberHead = `${tableHeadCellClass} text-right`;
@@ -204,7 +205,7 @@ export function SessionReceiptsTable({
               Hora
             </th>
             <th scope="col" className={tableHeadCellClass}>
-              Venta
+              Destino
             </th>
             <th scope="col" className={numberHead}>
               Monto
@@ -225,14 +226,27 @@ export function SessionReceiptsTable({
               <td className={`${tableCellClass} whitespace-nowrap`}>
                 {formatShortDateTime(row.createdAt, timeZone)}
               </td>
-              <td className={`${tableCellClass} font-mono`}>
+              <td className={`${tableCellClass} whitespace-nowrap`}>
                 {row.sale ? (
-                  <Link
-                    href={`/ventas/${row.sale.id}`}
-                    className={`${linkClass} print:no-underline`}
-                  >
-                    {row.sale.displayNumber}
-                  </Link>
+                  <>
+                    Venta{" "}
+                    <Link
+                      href={`/ventas/${row.sale.id}`}
+                      className={`${linkClass} font-mono print:no-underline`}
+                    >
+                      {row.sale.displayNumber}
+                    </Link>
+                  </>
+                ) : row.order ? (
+                  <>
+                    Pedido{" "}
+                    <Link
+                      href={`/pedidos/${row.order.id}`}
+                      className={`${linkClass} font-mono print:no-underline`}
+                    >
+                      {row.order.displayNumber}
+                    </Link>
+                  </>
                 ) : (
                   "—"
                 )}

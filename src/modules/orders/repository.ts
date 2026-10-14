@@ -191,6 +191,25 @@ export async function findOrderLines(
     .orderBy(asc(orderLines.position));
 }
 
+// Los pedidos de un cliente, de todos los estados, para la cuenta que arma cash (brief-21.4, D-2).
+// Con la transacción de cash y sin bloquear.
+export function findClientOrders(
+  tx: DbTransaction,
+  organizationId: string,
+  clientId: string,
+): Promise<OrderRow[]> {
+  return tx
+    .select(orderColumns)
+    .from(orders)
+    .where(
+      and(
+        eq(orders.organizationId, organizationId),
+        eq(orders.clientId, clientId),
+      ),
+    )
+    .orderBy(asc(orders.createdAt), asc(orders.number));
+}
+
 export type OrderListQuery = {
   organizationId: string;
   statuses: OrderStatus[] | null;

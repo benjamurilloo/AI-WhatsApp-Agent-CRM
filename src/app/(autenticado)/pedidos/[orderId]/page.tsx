@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AUDIT_PAGE_SIZE } from "@/modules/audit";
+import { getOrderReceipts } from "@/modules/cash";
 import { getCredentialSources } from "@/modules/ingestion";
 import { getOrder, listOrderAudit } from "@/modules/orders";
 import { getOrganizationTimezone } from "@/modules/organizations";
@@ -42,6 +43,7 @@ import {
 import { OrderStatusBadge } from "../status-badge";
 import { auditActionLabel, describeAuditDiff } from "./audit-summary";
 import { IssueSaleConfirm } from "./issue-sale";
+import { OrderReceiptsSection } from "./senar/order-receipts-section";
 import { OrderTransitionForm } from "./transition-form";
 
 export const metadata: Metadata = {
@@ -60,7 +62,8 @@ function page(value: string | string[] | undefined): number {
 // ya entrega resueltos para su rol. Las transiciones y la historia, solo admin (D-12; desde la
 // 19.3, confirmar y entregar, D-8). En un pendiente, lo disponible por línea (brief-19.3, D-9).
 // En un entregado, su venta o, para admin, «Emitir venta» con el paso ?confirmar=venta
-// (brief-20.2, D-4). Ningún costo ni margen.
+// (brief-20.2, D-4). Ningún costo ni margen. Desde la 21.4, la sección «Señas», compuesta con cash,
+// y al volver de una seña, el aviso con su recibo (brief-21.4, D-8).
 export default async function OrderPage({
   params,
   searchParams,
@@ -109,6 +112,13 @@ export default async function OrderPage({
       ? await getSaleForOrder(context, order.id)
       : null;
   const sale = saleFound?.ok ? saleFound.sale : null;
+  // Las señas las compone la página con cash: orders no depende de cash (brief-21.4, D-8).
+  const receipts = await getOrderReceipts(context, order.id);
+  const depositParam = Array.isArray(query.sena) ? query.sena[0] : query.sena;
+  const newDeposit =
+    receipts.ok && depositParam
+      ? receipts.order.receipts.find((row) => row.id === depositParam)
+      : undefined;
   const issuingSale =
     isAdmin &&
     order.status === "delivered" &&
@@ -150,6 +160,18 @@ export default async function OrderPage({
 
       <div role="status" className="mt-4 empty:hidden">
         {notice ? <p className={noticeClass}>{notice}</p> : null}
+        {newDeposit ? (
+          <p className={noticeClass}>
+            Se registró la seña{" "}
+            <Link
+              href={`/cobros/${newDeposit.id}`}
+              className={`${linkClass} font-mono`}
+            >
+              {newDeposit.displayNumber}
+            </Link>
+            .
+          </p>
+        ) : null}
       </div>
 
       <div className="mt-6 grid items-start gap-6 lg:grid-cols-3">
@@ -382,6 +404,16 @@ export default async function OrderPage({
                 </div>
               ) : null}
             </SectionCard>
+          ) : null}
+
+          {receipts.ok ? (
+            <OrderReceiptsSection
+              orderId={order.id}
+              displayNumber={order.displayNumber}
+              receipts={receipts.order}
+              canDeposit={isAdmin}
+              timeZone={timeZone}
+            />
           ) : null}
         </div>
       </div>

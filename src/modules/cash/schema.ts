@@ -17,6 +17,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { users } from "@/modules/auth/schema";
 import { clients } from "@/modules/crm/schema";
+import { orders } from "@/modules/orders/schema";
 import { organizations } from "@/modules/organizations/schema";
 import { sales } from "@/modules/sales/schema";
 
@@ -285,8 +286,9 @@ export const cashMovements = pgTable(
 );
 
 // El destino de un cobro (ADR 0022, punto 2; brief-21.3, D-1). Nace con la venta; la 21.4 le suma
-// el pedido y la 21.6, la cuenta, con ALTER TYPE aditivos, y reescriben receipts_target_check.
-export const receiptTarget = pgEnum("receipt_target", ["sale"]);
+// el pedido, la seña (brief-21.4, D-1), y la 21.6, la cuenta, con ALTER TYPE aditivos, y reescriben
+// receipts_target_check.
+export const receiptTarget = pgEnum("receipt_target", ["sale", "order"]);
 
 // El cobro, como recibo (ADR 0022, puntos 2 a 4; brief-21.3, D-1). Es un comprobante emitido, de
 // solo inserción como la caja: SELECT e INSERT para crm_app y cash_reject_change() de la 0042. No
@@ -306,12 +308,14 @@ export const receipts = pgTable(
     number: bigint("number", { mode: "number" }).notNull(),
     target: receiptTarget("target").notNull(),
     saleId: uuid("sale_id"),
-    // El cliente de la venta, copiado; nulo solo en el cobro de una venta sin cliente.
+    // El pedido de una seña (brief-21.4, D-1).
+    orderId: uuid("order_id"),
+    // El cliente de la venta o del pedido, copiado; nulo solo en el cobro de una venta sin cliente.
     clientId: uuid("client_id"),
     paymentMethodId: uuid("payment_method_id").notNull(),
     // La sesión de caja, solo si el medio es efectivo.
     sessionId: uuid("session_id"),
-    // La de la venta, copiada (punto 2).
+    // La de la venta o la del pedido, copiada (punto 2).
     currency: text("currency").notNull(),
     amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
     // Siempre un usuario: el agente no cobra (ADR 0022, punto 12).
@@ -340,6 +344,11 @@ export const receipts = pgTable(
       foreignColumns: [sales.organizationId, sales.id],
     }).onDelete("restrict"),
     foreignKey({
+      name: "receipts_order_fk",
+      columns: [table.organizationId, table.orderId],
+      foreignColumns: [orders.organizationId, orders.id],
+    }).onDelete("restrict"),
+    foreignKey({
       name: "receipts_client_fk",
       columns: [table.organizationId, table.clientId],
       foreignColumns: [clients.organizationId, clients.id],
@@ -354,14 +363,19 @@ export const receipts = pgTable(
       columns: [table.organizationId, table.sessionId],
       foreignColumns: [cashSessions.organizationId, cashSessions.id],
     }).onDelete("restrict"),
-    // Los cobros de una venta, los de un cliente para la imputación y los de una sesión.
+    // Los cobros de una venta, las señas de un pedido, los de un cliente para la imputación y los
+    // de una sesión.
     index("receipts_sale_idx").on(table.organizationId, table.saleId),
+    index("receipts_order_idx").on(table.organizationId, table.orderId),
     index("receipts_client_idx").on(table.organizationId, table.clientId),
     index("receipts_session_idx").on(table.organizationId, table.sessionId),
-    // Un solo destino, con su clave (punto 2). La 21.4 y la 21.6 lo reescriben con los suyos.
+    // Un solo destino, con su clave y sin la del otro (punto 2). La 21.6 lo reescribe con la cuenta.
+    // Compara target::text: el migrador aplica todas las migraciones pendientes en una transacción,
+    // y PostgreSQL no deja usar en ella el valor que la 0044 suma al enum (brief-21.4, H-2).
     check(
       "receipts_target_check",
-      sql`${table.target} = 'sale' AND ${table.saleId} IS NOT NULL`,
+      sql`(${table.target}::text = 'sale' AND ${table.saleId} IS NOT NULL AND ${table.orderId} IS NULL)
+        OR (${table.target}::text = 'order' AND ${table.orderId} IS NOT NULL AND ${table.saleId} IS NULL)`,
     ),
     check("receipts_number_positive", sql`${table.number} > 0`),
     check("receipts_amount_positive", sql`${table.amount} > 0`),

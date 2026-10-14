@@ -19,7 +19,9 @@ jobs:
     runs-on: ubuntu-latest
     # 15 hasta el 2026-10-11: el primer intento de 50da0be se cortó a los 15 min 12 s
     # con todos los pasos en verde (brief-19.3, §Cierre). Decisión del usuario.
-    timeout-minutes: 25
+    # 25 hasta el 2026-10-14: la corrida de 0543ef6 tardó 18 min, y su primer intento lo cortó
+    # un runner lento (brief-21.4, H-10 y D-12). Decisión del usuario.
+    timeout-minutes: 35
 
     services:
       postgres:

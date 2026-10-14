@@ -1,7 +1,7 @@
 // Interfaz pública del módulo sales: la venta de un pedido entregado (brief-20.2; ADR 0021) y,
 // desde la 20.3, la venta sin pedido (issueSale); desde la 20.4, la anulación (voidSale).
-// Desde la 21.3, cash la lee: getSaleForReceipt y listClientSalesForAccount (brief-21.3, D-4). sales
-// no depende de cash.
+// Desde la 21.3, cash la lee: getSaleForReceipt y listClientSalesForAccount (brief-21.3, D-4), con
+// el pedido de cada venta desde la 21.4 (brief-21.4, D-3). sales no depende de cash.
 export {
   formatSaleNumber,
   formatSaleVoidNumber,

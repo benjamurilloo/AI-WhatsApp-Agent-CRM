@@ -18,6 +18,7 @@ import { getDb, type Db } from "@/shared/db";
  * suyos. El nombre del producto va con la línea, el de hoy, para que el archivo se entienda solo.
  * Desde la 21.3, sus cobros (ADR 0022, punto 14; brief-21.3, D-9): los comprobantes, no el saldo,
  * que se deriva de ellos con la regla de cash y calcularlo acá sería una segunda implementación.
+ * Desde la 21.4, las señas entre los cobros, con su pedido (brief-21.4, D-9).
  *
  * `ingestion_events` queda fuera a propósito: guarda `source`, una referencia opaca del emisor,
  * el hash del payload y fechas. No tiene datos personales (brief-8.2, hallazgo 9). Se dice acá
@@ -162,12 +163,15 @@ export async function exportClientData(
 
   // Sus cobros (ADR 0022, punto 14; brief-21.3, D-9): número, fecha, venta, medio, moneda y monto.
   // Llegan al cliente por el client_id que copian de la venta, y no guardan texto de la persona.
+  // Desde la 21.4, las señas, con el número de su pedido en lugar de la venta (brief-21.4, D-9).
   const receipts = await db.execute<Record<string, unknown>>(
     sql`select r.id, r.number, 'R-' || lpad(r.number::text, greatest(6, length(r.number::text)), '0') as display_number,
-               r.created_at, r.sale_id, s.number as sale_number,
+               r.created_at, r.target, r.sale_id, s.number as sale_number,
+               r.order_id, o.number as order_number,
                m.name as payment_method, r.currency, r.amount
         from receipts r
         left join sales s on s.organization_id = r.organization_id and s.id = r.sale_id
+        left join orders o on o.organization_id = r.organization_id and o.id = r.order_id
         join payment_methods m on m.organization_id = r.organization_id and m.id = r.payment_method_id
         where r.organization_id = ${organizationId} and r.client_id = ${clientId}
         order by r.number`,

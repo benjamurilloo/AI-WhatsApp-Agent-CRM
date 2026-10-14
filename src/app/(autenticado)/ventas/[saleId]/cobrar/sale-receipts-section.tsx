@@ -14,6 +14,8 @@ import { formatMoney } from "@/shared/money";
 // La sección «Cobros» del detalle de una venta (brief-21.3, D-8; ADR 0022, punto 6): la compone la
 // página con cash, nunca sales. Lo cobrado, lo imputado desde la cuenta del cliente y lo que falta,
 // o «Cobrada»; en una venta anulada, a dónde fue lo cobrado. La lista de cobros enlaza cada recibo.
+// Desde la 21.4, lo cobrado incluye la seña del pedido de la venta vigente, con su número, y la lista
+// marca cada seña con su pedido (brief-21.4, D-5 y D-8).
 
 const numberCell = `${tableCellClass} text-right whitespace-nowrap tabular-nums`;
 
@@ -36,6 +38,12 @@ export function SaleReceiptsSection({
     ["Total", money(receipts.total)],
     ["Cobrado", money(receipts.collected)],
   ];
+  if (receipts.order && receipts.deposited !== "0.00") {
+    rows.push([
+      `Incluye la seña del pedido ${receipts.order.displayNumber}`,
+      money(receipts.deposited),
+    ]);
+  }
   if (receipts.hasClient && receipts.imputed !== "0.00") {
     rows.push([
       "Imputado desde la cuenta del cliente",
@@ -110,6 +118,17 @@ export function SaleReceiptsSection({
                     <span className="block text-xs text-muted">
                       {formatShortDateTime(row.createdAt, timeZone)}
                     </span>
+                    {row.order ? (
+                      <span className="block text-xs text-muted">
+                        Seña del pedido{" "}
+                        <Link
+                          href={`/pedidos/${row.order.id}`}
+                          className={`${linkClass} font-mono`}
+                        >
+                          {row.order.displayNumber}
+                        </Link>
+                      </span>
+                    ) : null}
                   </td>
                   <td className={tableCellClass}>{row.paymentMethodName}</td>
                   <td className={numberCell}>

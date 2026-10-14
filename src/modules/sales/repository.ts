@@ -350,11 +350,13 @@ export function findSales(
 
 // Lecturas para cash (ADR 0022, punto 13; brief-21.3, D-4): la venta que se cobra y las ventas de un
 // cliente para la imputación. Reciben la transacción de cash y no bloquean: una venta no se puede
-// bloquear (ADR 0022, punto 4). Anulada es que tenga su anulación.
+// bloquear (ADR 0022, punto 4). Anulada es que tenga su anulación. Desde la 21.4, con su pedido
+// (brief-21.4, D-3).
 export type SaleForReceiptRow = {
   id: string;
   number: number;
   clientId: string | null;
+  orderId: string | null;
   currency: string;
   total: string;
   createdAt: Date;
@@ -365,6 +367,7 @@ const saleForReceiptColumns = {
   id: sales.id,
   number: sales.number,
   clientId: sales.clientId,
+  orderId: sales.orderId,
   currency: sales.currency,
   total: sales.total,
   createdAt: sales.createdAt,

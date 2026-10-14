@@ -29,7 +29,8 @@ const NOT_AN_INVOICE_LEGEND = "Documento no válido como factura";
 // Pantalla 29 (brief-21.3, D-8; ADR 0022, punto 11): el recibo de un cobro, imprimible como la venta.
 // Lleva la organización, el número y la fecha, el cliente o «Consumidor final», la venta, el medio,
 // el monto y la leyenda. Está fuera de /ventas porque la 21.4 y la 21.6 suman otros destinos. Para
-// los dos roles; el contacto del cliente no va en el recibo.
+// los dos roles; el contacto del cliente no va en el recibo. Desde la 21.4, el destino de una seña es
+// su pedido (brief-21.4, D-8).
 export default async function ReceiptPage({
   params,
 }: {
@@ -58,9 +59,12 @@ export default async function ReceiptPage({
     receipt.clientId === null
       ? CONSUMER_TEXT
       : (receipt.client?.displayName ?? UNKNOWN_CLIENT_TEXT);
+  // El destino: la venta de un cobro o el pedido de una seña (brief-21.4, D-8).
   const back = receipt.sale
     ? { href: `/ventas/${receipt.sale.id}`, label: "Volver a la venta" }
-    : { href: "/caja/cobros", label: "Volver a los cobros" };
+    : receipt.order
+      ? { href: `/pedidos/${receipt.order.id}`, label: "Volver al pedido" }
+      : { href: "/caja/cobros", label: "Volver a los cobros" };
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-8 lg:px-8 print:max-w-none print:p-0">
@@ -107,7 +111,9 @@ export default async function ReceiptPage({
             <dd className="font-semibold">{clientName}</dd>
           </div>
           <div>
-            <dt className="text-muted">Por la venta</dt>
+            <dt className="text-muted">
+              {receipt.order ? "Seña del pedido" : "Por la venta"}
+            </dt>
             <dd className="font-mono">
               {receipt.sale ? (
                 <Link
@@ -115,6 +121,13 @@ export default async function ReceiptPage({
                   className={`${linkClass} print:no-underline`}
                 >
                   {receipt.sale.displayNumber}
+                </Link>
+              ) : receipt.order ? (
+                <Link
+                  href={`/pedidos/${receipt.order.id}`}
+                  className={`${linkClass} print:no-underline`}
+                >
+                  {receipt.order.displayNumber}
                 </Link>
               ) : (
                 "—"

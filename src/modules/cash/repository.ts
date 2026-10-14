@@ -488,7 +488,8 @@ export async function findMovements(
     .orderBy(asc(cashMovements.createdAt), asc(cashMovements.id));
 }
 
-// Cobros (ADR 0022, puntos 2 y 3; brief-21.3, D-1 a D-3 y D-8).
+// Cobros (ADR 0022, puntos 2 y 3; brief-21.3, D-1 a D-3 y D-8) y, desde la 21.4, las señas
+// (brief-21.4, D-1 y D-4).
 
 export type ReceiptTarget = (typeof receiptTarget.enumValues)[number];
 
@@ -497,6 +498,7 @@ export type ReceiptRow = {
   number: number;
   target: ReceiptTarget;
   saleId: string | null;
+  orderId: string | null;
   clientId: string | null;
   paymentMethodId: string;
   sessionId: string | null;
@@ -512,6 +514,7 @@ const receiptColumns = {
   number: receipts.number,
   target: receipts.target,
   saleId: receipts.saleId,
+  orderId: receipts.orderId,
   clientId: receipts.clientId,
   paymentMethodId: receipts.paymentMethodId,
   sessionId: receipts.sessionId,
@@ -521,11 +524,12 @@ const receiptColumns = {
   createdAt: receipts.createdAt,
 };
 
+// El destino y su clave: receipts_target_check rechaza cualquier otra combinación.
 export type NewReceipt = {
   organizationId: string;
   number: number;
-  target: ReceiptTarget;
-  saleId: string;
+  destination:
+    { target: "sale"; saleId: string } | { target: "order"; orderId: string };
   clientId: string | null;
   paymentMethodId: string;
   sessionId: string | null;
@@ -538,9 +542,15 @@ export async function insertReceipt(
   tx: DbTransaction,
   receipt: NewReceipt,
 ): Promise<ReceiptRow> {
+  const { destination, ...rest } = receipt;
   const rows = await tx
     .insert(receipts)
-    .values(receipt)
+    .values({
+      ...rest,
+      target: destination.target,
+      saleId: destination.target === "sale" ? destination.saleId : null,
+      orderId: destination.target === "order" ? destination.orderId : null,
+    })
     .returning(receiptColumns);
   return rows[0]!;
 }
@@ -579,6 +589,24 @@ export function findSaleReceipts(
       and(
         eq(receipts.organizationId, organizationId),
         eq(receipts.saleId, saleId),
+      ),
+    )
+    .orderBy(...receiptOrder);
+}
+
+// Las señas de un pedido (brief-21.4, D-5).
+export function findOrderReceipts(
+  organizationId: string,
+  orderId: string,
+  executor: Executor = getDb(),
+): Promise<ReceiptRow[]> {
+  return executor
+    .select(receiptColumns)
+    .from(receipts)
+    .where(
+      and(
+        eq(receipts.organizationId, organizationId),
+        eq(receipts.orderId, orderId),
       ),
     )
     .orderBy(...receiptOrder);

@@ -1024,8 +1024,9 @@ export async function listSaleAudit(
 
 // Lecturas para cash (ADR 0022, punto 13; brief-21.3, D-4): sin AuthContext, porque las llama cash
 // con la transacción del cobro, después del bloqueo de cobros y ya autorizado. No bloquean: una venta
-// no se puede bloquear (ADR 0022, punto 4). Un id que no es uuid no encuentra nada. El pedido de la
-// venta y su cadena los suma la 21.4, que los necesita para la seña.
+// no se puede bloquear (ADR 0022, punto 4). Un id que no es uuid no encuentra nada. Desde la 21.4,
+// con el pedido de la venta (brief-21.4, D-3): la venta vigente de un pedido es la no anulada con
+// ese pedido (ADR 0021, punto 3), y con ella cash aplica la seña.
 
 export type SaleForReceipt = {
   id: string;
@@ -1033,6 +1034,8 @@ export type SaleForReceipt = {
   displayNumber: string;
   // Null en una venta sin cliente.
   clientId: string | null;
+  // Null en una venta sin pedido.
+  orderId: string | null;
   currency: string;
   // Con la escala de la base ("1234.50").
   total: string;

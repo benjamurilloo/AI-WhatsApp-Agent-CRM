@@ -7,7 +7,9 @@ import { resetDatabase } from "./reset-database";
 // destino, el efectivo y su sesión, la sesión cerrada, las claves compuestas, los CHECK y el cliente
 // con cobros, probados con SQL directo y con el rol dueño, que es el que no frenan los privilegios.
 // Que el cliente, la moneda y el tope sean los de la venta lo asegura el servicio (H-4), y lo prueba
-// receipts.test.ts.
+// receipts.test.ts. Desde la 21.4, el destino pedido, la seña (brief-21.4, AC-1): su CHECK, su clave
+// compuesta, el pedido con señas y los triggers de la 0043 sobre una seña; el servicio, en
+// order-receipts.test.ts.
 
 type Executor = { execute: (query: SQL) => Promise<unknown> };
 
@@ -49,6 +51,19 @@ const insertSale = (
         returning id`,
   );
 
+const insertOrder = (
+  organizationId: string,
+  userId: string,
+  number: number,
+  clientId: string,
+) =>
+  returningId(
+    getDb(),
+    sql`insert into orders (organization_id, number, client_id, currency, total, created_by)
+        values (${organizationId}, ${number}, ${clientId}, 'ARS', '1000', ${userId})
+        returning id`,
+  );
+
 const insertMethod = (organizationId: string, name: string, isCash: boolean) =>
   returningId(
     getDb(),
@@ -73,6 +88,7 @@ type ReceiptValues = {
   organizationId: string;
   number: number;
   saleId: string | null;
+  orderId?: string | null;
   clientId: string | null;
   paymentMethodId: string;
   sessionId: string | null;
@@ -84,10 +100,10 @@ type ReceiptValues = {
 
 function insertReceipt(executor: Executor, values: ReceiptValues) {
   return executor.execute(
-    sql`insert into receipts (organization_id, number, target, sale_id, client_id,
+    sql`insert into receipts (organization_id, number, target, sale_id, order_id, client_id,
                               payment_method_id, session_id, currency, amount, created_by)
         values (${values.organizationId}, ${values.number}, ${values.target ?? "sale"},
-                ${values.saleId}, ${values.clientId}, ${values.paymentMethodId},
+                ${values.saleId}, ${values.orderId ?? null}, ${values.clientId}, ${values.paymentMethodId},
                 ${values.sessionId}, ${values.currency ?? "ARS"}, ${values.amount ?? "100"},
                 ${values.userId})
         returning id`,
@@ -123,8 +139,8 @@ function asAppRole<T>(fn: (tx: DbTransaction) => Promise<T>): Promise<T> {
   });
 }
 
-// A con un cliente, una venta con cliente y otra sin, efectivo y transferencia, una sesión cerrada
-// y la siguiente abierta; B con lo mismo, para las claves compuestas.
+// A con un cliente, una venta con cliente y otra sin, un pedido, efectivo y transferencia, una sesión
+// cerrada y la siguiente abierta; B con lo mismo, para las claves compuestas.
 async function seed() {
   const orgA = await createOrganization("Negocio A");
   const orgB = await createOrganization("Negocio B");
@@ -134,6 +150,8 @@ async function seed() {
   const saleA = await insertSale(orgA, userId, 1, clientA);
   const counterSaleA = await insertSale(orgA, userId, 2, null);
   const saleB = await insertSale(orgB, userId, 1, clientB);
+  const orderA = await insertOrder(orgA, userId, 1, clientA);
+  const orderB = await insertOrder(orgB, userId, 1, clientB);
   const cashA = await insertMethod(orgA, "Efectivo", true);
   const transferA = await insertMethod(orgA, "Transferencia", false);
   const cashB = await insertMethod(orgB, "Efectivo", true);
@@ -153,6 +171,8 @@ async function seed() {
     saleA,
     counterSaleA,
     saleB,
+    orderA,
+    orderB,
     cashA,
     transferA,
     cashB,
@@ -199,10 +219,10 @@ describe("los valores nuevos de los enums (AC-1)", () => {
     return result.rows.map((row) => row.value);
   }
 
-  it("suma el recibo a los documentos y a la auditoría, y el destino nace con la venta", async () => {
+  it("suma el recibo a los documentos y a la auditoría; el destino nace con la venta y suma el pedido", async () => {
     expect(await enumValues("document_kind")).toContain("receipt");
     expect(await enumValues("audit_entity_type")).toContain("receipt");
-    expect(await enumValues("receipt_target")).toEqual(["sale"]);
+    expect(await enumValues("receipt_target")).toEqual(["sale", "order"]);
   });
 });
 
@@ -261,12 +281,48 @@ describe("el destino (AC-1; ADR 0022, punto 2)", () => {
     });
   });
 
-  it("el destino solo puede ser una venta", async () => {
+  it("el destino solo puede ser una venta o un pedido", async () => {
     const s = await seed();
     expect(
-      (await pgError(insertReceipt(getDb(), receiptOf(s, { target: "order" }))))
-        .code,
+      (
+        await pgError(
+          insertReceipt(getDb(), receiptOf(s, { target: "account" })),
+        )
+      ).code,
     ).toBe("22P02");
+  });
+
+  // brief-21.4, D-1: un solo destino, con su clave y sin la del otro.
+  it.each([
+    [
+      "una seña sin pedido",
+      () => ({ target: "order", saleId: null, orderId: null }),
+    ],
+    [
+      "una seña con venta y pedido",
+      (s: Seed) => ({ target: "order", saleId: s.saleA, orderId: s.orderA }),
+    ],
+    [
+      "un cobro de venta con pedido",
+      (s: Seed) => ({ target: "sale", saleId: s.saleA, orderId: s.orderA }),
+    ],
+  ])("%s se rechaza", async (_, values) => {
+    const s = await seed();
+    const error = await pgError(
+      insertReceipt(getDb(), receiptOf(s, values(s))),
+    );
+    expect(error).toMatchObject({
+      code: "23514",
+      constraint: "receipts_target_check",
+    });
+  });
+
+  it("una seña con su pedido y sin venta se acepta", async () => {
+    const s = await seed();
+    await insertReceipt(
+      getDb(),
+      receiptOf(s, { target: "order", saleId: null, orderId: s.orderA }),
+    );
   });
 
   it("un cobro de una venta sin cliente lleva el cliente nulo", async () => {
@@ -309,6 +365,42 @@ describe("el efectivo y su sesión (AC-1; brief-21.3, H-3 y H-4)", () => {
     expect(error.message).toContain("está cerrada");
   });
 
+  it("los triggers de la 0043 valen igual para una seña (brief-21.4, D-1)", async () => {
+    const s = await seed();
+    const sena = (values: Partial<ReceiptValues>) =>
+      receiptOf(s, {
+        target: "order",
+        saleId: null,
+        orderId: s.orderA,
+        ...values,
+      });
+    expect(
+      (
+        await pgError(
+          insertReceipt(getDb(), sena({ paymentMethodId: s.cashA })),
+        )
+      ).message,
+    ).toContain("necesita una sesión de caja");
+    expect(
+      (
+        await pgError(
+          insertReceipt(
+            getDb(),
+            sena({ paymentMethodId: s.cashA, sessionId: s.closed }),
+          ),
+        )
+      ).message,
+    ).toContain("está cerrada");
+    await insertReceipt(
+      getDb(),
+      sena({ paymentMethodId: s.cashA, sessionId: s.open }),
+    );
+    expect(
+      (await pgError(getDb().execute(sql`update receipts set amount = 1`)))
+        .message,
+    ).toContain("solo inserción: UPDATE");
+  });
+
   it("en efectivo en la sesión abierta, y en transferencia sin sesión, se aceptan", async () => {
     const s = await seed();
     await insertReceipt(
@@ -322,6 +414,11 @@ describe("el efectivo y su sesión (AC-1; brief-21.3, H-3 y H-4)", () => {
 describe("las claves compuestas (AC-1)", () => {
   it.each([
     ["la venta", "receipts_sale_fk", (s: Seed) => ({ saleId: s.saleB })],
+    [
+      "el pedido",
+      "receipts_order_fk",
+      (s: Seed) => ({ target: "order", saleId: null, orderId: s.orderB }),
+    ],
     [
       "el cliente",
       "receipts_client_fk",
@@ -343,6 +440,26 @@ describe("las claves compuestas (AC-1)", () => {
       insertReceipt(getDb(), receiptOf(s, values(s))),
     );
     expect(error).toMatchObject({ code: "23503", constraint });
+  });
+
+  // orders_guard rechaza cualquier DELETE de un pedido antes de la clave: se apaga dentro de una
+  // transacción que se deshace, para ver que la clave también lo impide (brief-21.4, AC-1).
+  it("un pedido con señas no se borra, aun sin el trigger de orders", async () => {
+    const s = await seed();
+    await insertReceipt(
+      getDb(),
+      receiptOf(s, { target: "order", saleId: null, orderId: s.orderA }),
+    );
+    const error = await pgError(
+      getDb().transaction(async (tx) => {
+        await tx.execute(sql`alter table orders disable trigger orders_guard`);
+        await tx.execute(sql`delete from orders where id = ${s.orderA}`);
+      }),
+    );
+    expect(error).toMatchObject({
+      code: "23001",
+      constraint: "receipts_order_fk",
+    });
   });
 
   it("un cliente con cobros no se borra; uno sin cobros sí", async () => {

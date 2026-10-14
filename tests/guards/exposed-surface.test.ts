@@ -170,6 +170,11 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
     {
       requirement: "sesion",
     },
+  // La seña de un pedido (brief-21.4, D-4): solo admin, lo exige cash.
+  "src/app/(autenticado)/pedidos/[orderId]/senar/actions.ts#createOrderReceiptAction":
+    {
+      requirement: "sesion",
+    },
   "src/app/(autenticado)/productos/actions.ts#createProductAction": {
     requirement: "sesion",
   },

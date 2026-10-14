@@ -14,6 +14,7 @@ import {
   RECEIPT_SALE_NOT_FOUND_MESSAGE,
   RECEIPT_SALE_VOIDED_MESSAGE,
 } from "./messages";
+import { createSaleReceiptAction } from "./actions";
 import { ReceiptForm } from "./receipt-form";
 
 export const metadata: Metadata = {
@@ -94,7 +95,10 @@ export default async function SaleReceiptPage({
           </p>
         ) : (
           <ReceiptForm
-            saleId={sale.id}
+            action={createSaleReceiptAction}
+            target={{ field: "saleId", id: sale.id }}
+            cancelHref={back.href}
+            submitLabel="Registrar cobro"
             currency={sale.currency}
             outstanding={form.outstandingInput}
             paymentMethods={form.paymentMethods}

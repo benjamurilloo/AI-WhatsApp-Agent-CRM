@@ -1292,6 +1292,36 @@ describe("los cobros de las ventas del cliente (brief-21.3, AC-11; D-9)", () => 
     ]);
   });
 
+  // brief-21.4, AC-11 y D-9: la seña sale entre los cobros, con el número de su pedido.
+  it("44 b. la exportación trae cada seña con su pedido", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    const orderId = await orderFor(clientId, 7);
+    const method = await getDb().execute<{ id: string }>(
+      sql`insert into payment_methods (organization_id, name, is_cash)
+          values (${organizationId}, 'Transferencia', false) returning id`,
+    );
+    await getDb().execute(
+      sql`insert into receipts (organization_id, number, target, order_id, client_id,
+                                payment_method_id, currency, amount, created_by)
+          select organization_id, 1, 'order', id, client_id, ${method.rows[0]!.id},
+                 currency, '300.00', created_by
+          from orders where id = ${orderId}`,
+    );
+
+    const data = await exportClientData(getDb(), organizationId, clientId);
+    expect(data.receipts).toEqual([
+      expect.objectContaining({
+        display_number: "R-000001",
+        target: "order",
+        sale_id: null,
+        sale_number: null,
+        order_id: orderId,
+        order_number: "7",
+        amount: "300.00",
+      }),
+    ]);
+  });
+
   it("45. el informe cuenta los cobros, dice que quedan, y el cliente no es borrable", async () => {
     const clientId = await insertClient(NAME, PHONE, NOTES);
     await receiptFor(await counterSaleFor(clientId, 1), 1);

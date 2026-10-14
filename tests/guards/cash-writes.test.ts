@@ -12,8 +12,9 @@ import { describe, expect, it } from "vitest";
 //
 // Además fija qué caso de uso llama a cada escritura de la caja: el inicial solo se escribe al
 // abrir, el cierre por moneda solo al cerrar (brief-21.2, D-1), y el cobro solo desde
-// createSaleReceipt, que copia de la venta el cliente y la moneda (brief-21.3, D-3). Eso no lo puede
-// defender la base.
+// createSaleReceipt, que copia de la venta el cliente y la moneda (brief-21.3, D-3), y desde la 21.4
+// desde createOrderReceipt, la seña, que los copia del pedido (brief-21.4, D-4 y AC-8). Los
+// ayudantes que comparten no escriben. Eso no lo puede defender la base.
 //
 // Ve y no ve lo mismo que sale-writes.
 
@@ -39,7 +40,7 @@ const CALLERS = new Map([
   ["insertClosingAmounts", ["closeCashSession"]],
   ["insertClosing", ["closeCashSession"]],
   ["insertMovement", ["recordCashMovement"]],
-  ["insertReceipt", ["createSaleReceipt"]],
+  ["insertReceipt", ["createSaleReceipt", "createOrderReceipt"]],
 ]);
 
 const TABLES = new Map([
@@ -276,6 +277,10 @@ describe("detección de escrituras de la caja", () => {
     {
       name: "un cobro escrito desde un caso de uso nuevo",
       code: "export async function createAccountReceipt(c) {\n  await repository.insertReceipt(tx, v);\n}",
+    },
+    {
+      name: "un cobro escrito desde un ayudante que comparten el cobro y la seña",
+      code: "export async function readPayment(c) {\n  await repository.insertReceipt(tx, v);\n}",
     },
     {
       name: "una sesión creada desde un caso de uso nuevo",

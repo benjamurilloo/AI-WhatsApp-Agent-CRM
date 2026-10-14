@@ -1,6 +1,8 @@
 // Interfaz pública del módulo orders: el pedido de un cliente (brief-19.2; ADR 0020), desde la
 // 19.3 sus transiciones y, desde la 19.4, el pendiente que deja el agente por ingestion. Desde la
-// 20.2, el pedido bloqueado para su venta (lockOrderForSale), que usa sales.
+// 20.2, el pedido bloqueado para su venta (lockOrderForSale), que usa sales. Desde la 21.4, el pedido
+// para su seña (lockOrderForReceipt, getOrderForReceipt y listClientOrdersForAccount), que usa cash
+// (brief-21.4, D-2). orders no depende de cash.
 export {
   cancelOrder,
   confirmOrder,
@@ -10,9 +12,12 @@ export {
   findOrderPlacedByIngestion,
   formatOrderNumber,
   getOrder,
+  getOrderForReceipt,
+  listClientOrdersForAccount,
   listOrderAudit,
   listOrders,
   listRecentClientOrders,
+  lockOrderForReceipt,
   lockOrderForSale,
   MAX_ORDER_LINES,
   ORDER_STATUSES,
@@ -26,6 +31,7 @@ export {
   type OrderAuditEntry,
   type OrderAuditResult,
   type OrderDetail,
+  type OrderForReceipt,
   type OrderForSale,
   type OrderInput,
   type OrderLine,

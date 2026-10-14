@@ -317,6 +317,7 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 *Desde la 19.3* ([brief-19.3](../decisions/brief-19.3-reserva-y-ciclo.md), D-8 y D-9; FR-ORD-08 a 10): para `admin`, «Confirmar pedido» y «Cancelar pedido» en un pendiente, y «Marcar entregado» y «Cancelar pedido» en un confirmado; nada en un entregado o un cancelado. Cada uno con una confirmación que dice qué pasa con el stock. Un pendiente suma la columna «Disponible» por línea, para los dos roles, con «No alcanza» en las que no alcanzan. Un rechazo por falta de stock o por un producto desactivado se anuncia con `role="alert"` y nombra cada línea. La lista (pantalla 14) filtra también por confirmados y entregados.
 *Desde la 19.4* (D-11; FR-ORD-11): la tarjeta «Estado» muestra el origen, «Agente · <emisor>» con el `source` de la credencial o «Equipo», y la historia muestra a la credencial como «Servicio · <emisor>». Un pedido del agente se confirma, entrega y cancela igual que cualquier otro.
 *Desde la 20.2* ([brief-20.2](../decisions/brief-20.2-la-venta-de-un-pedido.md), D-4; FR-VEN-01, 02 y 04): un pedido entregado suma la tarjeta «Venta», para los dos roles, con el enlace a su venta o «Este pedido todavía no tiene su venta.». Para `admin`, sin venta, «Emitir venta» lleva al paso `?confirmar=venta`, que funciona sin JavaScript: la pregunta recibe el foco, dice que la venta copia el pedido y no mueve el stock, y ofrece «No, volver» y «Sí, emitir la venta». Emitir lleva al detalle de la venta. Si el pedido ya tenía venta, el mensaje se anuncia con `role="alert"` y la enlaza.
+*Desde la 21.4* ([brief-21.4](../decisions/brief-21.4-la-sena.md), D-8; FR-CAJ-13 y 15): la tarjeta «Señas», compuesta con `cash`, para los dos roles: lo señado y, mientras la seña está retenida, lo que le falta; qué pasó con la seña («queda retenida para este pedido hasta que se emita su venta», «cuenta para la venta V-…» con su enlace, o «lo señado pasó a la cuenta del cliente como saldo a favor»); y la lista de señas con el recibo enlazado, su fecha, el medio y el monto. Para `admin`, «Registrar seña» mientras el pedido esté pendiente o confirmado y le falte algo. Al volver de una seña, el aviso «Se registró la seña R-000123.» enlaza el recibo.
 - **No mostrar**: editar ni borrar el pedido o sus líneas; costo ni margen.
 
 ## 17. Lista de ventas
@@ -350,7 +351,7 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
   - una venta anulada lo dice arriba («Anulada por A-000045 el {fecha}: {motivo}.») y en el comprobante, que se sigue imprimiendo con la marca;
   - el comprobante dice «Reemplaza a V-…» o «Reemplazada por V-…» en la cadena de las ventas de un pedido;
   - la historia muestra la anulación con su número y su motivo.
-- *Desde la 21.3* ([brief-21.3](../decisions/brief-21.3-el-cobro-de-una-venta.md), D-8; FR-CAJ-09 a 11): la tarjeta «Cobros», compuesta con `cash`: el total, lo cobrado, lo imputado desde la cuenta del cliente si lo hay, y lo que falta o «Cobrada»; la lista de cobros con el recibo enlazado, su fecha, el medio y el monto; y para `admin`, «Registrar cobro» mientras falte algo en una venta vigente. En una venta anulada, en lugar de lo que falta: «Lo cobrado (…) pasó a la cuenta del cliente como saldo a favor.» o, sin cliente, «A devolver: …». Al volver de un cobro, el aviso «Se registró el cobro R-000123.» enlaza el recibo. La tarjeta no se imprime.
+- *Desde la 21.3* ([brief-21.3](../decisions/brief-21.3-el-cobro-de-una-venta.md), D-8; FR-CAJ-09 a 11): la tarjeta «Cobros», compuesta con `cash`: el total, lo cobrado, lo imputado desde la cuenta del cliente si lo hay, y lo que falta o «Cobrada»; la lista de cobros con el recibo enlazado, su fecha, el medio y el monto; y para `admin`, «Registrar cobro» mientras falte algo en una venta vigente. En una venta anulada, en lugar de lo que falta: «Lo cobrado (…) pasó a la cuenta del cliente como saldo a favor.» o, sin cliente, «A devolver: …». Al volver de un cobro, el aviso «Se registró el cobro R-000123.» enlaza el recibo. La tarjeta no se imprime. *Desde la 21.4* ([brief-21.4](../decisions/brief-21.4-la-sena.md), D-8): en la venta vigente de un pedido señado, lo cobrado incluye la seña, con la fila «Incluye la seña del pedido P-…», y la lista marca cada seña con «Seña del pedido P-…».
 
 ## 19. Nueva venta
 
@@ -387,7 +388,7 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 - **Información mostrada**: abierta, el número de la sesión, quién la abrió y cuándo, por moneda el inicial, los aportes, los retiros y lo esperado, y los movimientos con hora, tipo, motivo, monto y autor. Cerrada, «La caja está cerrada.» y el enlace a la última sesión.
 - **Acciones** (`admin`): «Registrar aporte», «Registrar retiro» y «Cerrar caja» con la caja abierta; «Abrir caja» con la caja cerrada.
 - **Vacío**: «Todavía no se abrió nunca.»
-- *Desde la 21.3* ([brief-21.3](../decisions/brief-21.3-el-cobro-de-una-venta.md), D-5 y D-8): por moneda, la columna «Cobros», que suma a lo esperado; la tarjeta «Cobros en efectivo», con el recibo enlazado, la hora, la venta y el monto; y en la barra, «Cobros» (pantalla 30).
+- *Desde la 21.3* ([brief-21.3](../decisions/brief-21.3-el-cobro-de-una-venta.md), D-5 y D-8): por moneda, la columna «Cobros», que suma a lo esperado; la tarjeta «Cobros en efectivo», con el recibo enlazado, la hora, la venta y el monto; y en la barra, «Cobros» (pantalla 30). *Desde la 21.4* ([brief-21.4](../decisions/brief-21.4-la-sena.md)): la columna de esa tarjeta pasa de «Venta» a «Destino», con la venta o el pedido de una seña.
 
 ## 22. Abrir caja
 
@@ -431,7 +432,7 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 - **Información mostrada**: el nombre de la organización, «Arqueo de caja C-000045» (o «Caja abierta»), la apertura y el cierre con su fecha y autor, por moneda el inicial, los aportes, los retiros, lo esperado, lo contado y la diferencia, los movimientos y la leyenda «Documento no válido como factura». Debajo, la historia de la sesión: la apertura y el cierre.
 - **Acciones**: «Imprimir o guardar PDF», con la sesión cerrada.
 - **Al imprimir**: queda solo el arqueo, sin navegación, botones ni historia.
-- *Desde la 21.3* ([brief-21.3](../decisions/brief-21.3-el-cobro-de-una-venta.md), D-5): la columna «Cobros» por moneda y los cobros en efectivo de la sesión, con su recibo y su venta, también en el arqueo impreso.
+- *Desde la 21.3* ([brief-21.3](../decisions/brief-21.3-el-cobro-de-una-venta.md), D-5): la columna «Cobros» por moneda y los cobros en efectivo de la sesión, con su recibo y su venta, también en el arqueo impreso. *Desde la 21.4* ([brief-21.4](../decisions/brief-21.4-la-sena.md)): con su destino, la venta o el pedido de una seña.
 
 ## 27. Medios de pago
 
@@ -456,7 +457,7 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 
 *Agregada en la 21.3* ([brief-21.3](../decisions/brief-21.3-el-cobro-de-una-venta.md), D-8; [ADR 0022](../decisions/0022-cobros-y-caja.md), punto 11; FR-CAJ-11). Ruta `/cobros/[id]`, para los dos roles. Está fuera de `/ventas` porque la 21.4 y la 21.6 suman otros destinos.
 
-- **Información mostrada**: el comprobante, con el nombre de la organización, «Recibo R-000123» y la fecha y hora, «Recibimos de» el cliente o «Consumidor final», la venta enlazada, el medio, el monto y la leyenda «Documento no válido como factura». En pantalla, la sesión de caja si fue en efectivo y quién lo registró.
+- **Información mostrada**: el comprobante, con el nombre de la organización, «Recibo R-000123» y la fecha y hora, «Recibimos de» el cliente o «Consumidor final», la venta enlazada, el medio, el monto y la leyenda «Documento no válido como factura». *Desde la 21.4* (D-8): el recibo de una seña dice «Seña del pedido» con el pedido enlazado, y vuelve al pedido. En pantalla, la sesión de caja si fue en efectivo y quién lo registró.
 - **Acciones**: «Imprimir o guardar PDF».
 - **Al imprimir**: queda solo el recibo, sin el contacto del cliente para ningún rol.
 
@@ -464,6 +465,16 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 
 *Agregada en la 21.3* ([brief-21.3](../decisions/brief-21.3-el-cobro-de-una-venta.md), D-8; FR-CAJ-11). Ruta `/caja/cobros`, «Cobros» en la barra de la caja, para los dos roles.
 
-- **Información mostrada**: los cobros, del más nuevo al más viejo, paginados de a 25, con el recibo enlazado, la fecha, la venta, el cliente o «Consumidor final», el medio y el monto.
+- **Información mostrada**: los cobros, del más nuevo al más viejo, paginados de a 25, con el recibo enlazado, la fecha, la venta, el cliente o «Consumidor final», el medio y el monto. *Desde la 21.4* (D-8): la columna «Venta» pasa a «Destino», con «Venta V-…» o «Pedido P-…».
 - **Búsqueda**: por número, `R-000123` o `123`.
 - **Vacío**: «Todavía no se registró ningún cobro.»; sin resultados, «Ningún cobro coincide con ese número.»
+
+## 31. Registrar seña
+
+*Agregada en la 21.4* ([brief-21.4](../decisions/brief-21.4-la-sena.md), D-4 y D-8; FR-CAJ-13). Ruta `/pedidos/[id]/senar`, solo `admin`; se llega desde «Registrar seña» del detalle del pedido.
+
+- **Información mostrada**: «Registrar seña de P-000123» y lo que le falta; el mismo formulario de la pantalla 28: el medio de pago con los activos y el aviso de la caja, y el monto en la moneda del pedido, propuesto en lo que le falta, con cómo se lee.
+- **Un solo paso**: «Registrar seña» guarda; el tope lo vuelve a calcular `cash` con los bloqueos tomados. Al guardar vuelve al detalle del pedido con el aviso y el enlace al recibo.
+- **Rechazos**, con lo escrito conservado y el foco en el mensaje: una seña de más («La seña supera lo que le falta al pedido: $ …»); un pedido que se entregó o se canceló mientras tanto; y los del cobro (efectivo con la caja cerrada, con «Abrir caja»; un medio desactivado o que ya no existe; un monto inválido o en cero).
+- **Sin formulario**: un pedido entregado («lo que falta se cobra en su venta»), uno cancelado, uno cubierto por sus señas o una organización sin medios activos lo dicen y enlazan a dónde seguir. Un `viewer` recibe «Solo un administrador puede registrar señas.»
+- **Sin JavaScript**: funciona igual.

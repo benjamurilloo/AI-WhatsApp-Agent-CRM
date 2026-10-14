@@ -13,6 +13,13 @@ import {
 } from "@/modules/crm";
 import { formatDocumentNumber, nextDocumentNumber } from "@/modules/numbering";
 import {
+  getOrderForReceipt,
+  listClientOrdersForAccount,
+  lockOrderForReceipt,
+  type OrderForReceipt,
+  type OrderStatus,
+} from "@/modules/orders";
+import {
   authorize,
   getMemberSummaries,
   type AuthContext,
@@ -37,6 +44,7 @@ import {
   outstandingOf,
   standaloneSale,
   type AccountReceipt,
+  type CurrencyAccount,
 } from "./imputation";
 import * as repository from "./repository";
 import {
@@ -47,15 +55,17 @@ import {
 } from "./totals";
 
 // Casos de uso de los medios de pago y de la caja del efectivo (ADR 0022, puntos 4, 8, 10 y 12;
-// brief-21.2) y, desde la 21.3, del cobro de una venta (brief-21.3). cash es dueño de la regla: abre
-// la transacción, toma primero el bloqueo de cobros de la organización y se la pasa a sales (la
-// venta, para leer), a crm (el cliente en modo compartido), a numbering y a audit. Desde la 21.3
-// depende de sales y de crm, sin bloquear ninguna venta; ningún módulo depende de cash.
+// brief-21.2), desde la 21.3, del cobro de una venta (brief-21.3) y, desde la 21.4, de la seña
+// (brief-21.4). cash es dueño de la regla: abre la transacción, toma primero el bloqueo de cobros de
+// la organización y se la pasa a orders (la cabecera del pedido, bloqueada, y los pedidos del
+// cliente, para leer), a sales (la venta, para leer), a crm (el cliente en modo compartido), a
+// numbering y a audit. Depende de sales y de crm desde la 21.3 y de orders desde la 21.4, sin
+// bloquear ninguna venta; ningún módulo depende de cash.
 //
-// El orden de cada escritura (brief-21.2, D-7; brief-21.3, D-3): el bloqueo, el cliente si lo hay,
-// las lecturas que deciden, el contador, los INSERT o el UPDATE y la auditoría. Las claves foráneas
-// del autor toman FOR KEY SHARE sobre users al insertar, como en todas las tablas con autor
-// (brief-20.4, H-6): no hace falta un bloqueo nuevo. El pedido del orden del ADR llega con la 21.4.
+// El orden de cada escritura (brief-21.2, D-7; brief-21.3, D-3; brief-21.4, D-4): el bloqueo, el
+// pedido si lo hay, el cliente si lo hay, las lecturas que deciden, el contador, los INSERT o el
+// UPDATE y la auditoría. Las claves foráneas del autor toman FOR KEY SHARE sobre users al insertar,
+// como en todas las tablas con autor (brief-20.4, H-6): no hace falta un bloqueo nuevo.
 
 const idSchema = z.uuid();
 
@@ -1277,7 +1287,8 @@ export async function listCashSessionAudit(
   };
 }
 
-// El cobro de una venta (ADR 0022, puntos 2 a 4, 6 y 9; brief-21.3, D-2 a D-10).
+// El cobro de una venta (ADR 0022, puntos 2 a 4, 6 y 9; brief-21.3, D-2 a D-10) y, desde la 21.4,
+// la seña: el cobro contra un pedido (punto 5; brief-21.4, D-4 a D-10).
 
 export type ReceiptRef = { id: string; number: number; displayNumber: string };
 
@@ -1301,28 +1312,107 @@ export function parseReceiptNumberSearch(text: string): number | null {
   return Number.isSafeInteger(value) && value > 0 ? value : null;
 }
 
-function toAccountReceipt(row: repository.ReceiptRow): AccountReceipt {
-  if (row.target !== "sale" || row.saleId === null) {
-    throw new Error(`cobro ${row.id} sin la venta de su destino`);
+// Una seña lleva el estado de su pedido y la venta vigente de su cadena. Con eso imputeAccount decide
+// si queda retenida, si cuenta para la venta o si pasa al remanente (brief-21.4, H-1).
+function toAccountReceipt(
+  row: repository.ReceiptRow,
+  ordersById: Map<string, OrderForReceipt>,
+  currentSaleOf: Map<string, SaleForReceipt>,
+): AccountReceipt {
+  const amount = moneyFromDatabase(row.amount);
+  if (row.target === "sale" && row.saleId !== null) {
+    return {
+      target: "sale",
+      saleId: row.saleId,
+      currency: row.currency,
+      amount,
+    };
   }
-  return {
-    target: "sale",
-    saleId: row.saleId,
-    currency: row.currency,
-    amount: moneyFromDatabase(row.amount),
-  };
+  if (row.target === "order" && row.orderId !== null) {
+    const order = ordersById.get(row.orderId);
+    if (!order) {
+      throw new Error(
+        `la seña ${row.id} es de un pedido que no es de su cliente`,
+      );
+    }
+    return {
+      target: "order",
+      orderId: order.id,
+      currency: row.currency,
+      amount,
+      currentSaleId: currentSaleOf.get(order.id)?.id ?? null,
+      cancelled: order.status === "cancelled",
+    };
+  }
+  throw new Error(`cobro ${row.id} sin la clave de su destino`);
 }
 
 const sumAmounts = (rows: repository.ReceiptRow[]): Money =>
   rows.reduce((sum, row) => sum + moneyFromDatabase(row.amount), 0n);
 
+// La cuenta de un cliente (brief-21.4, D-5): sus ventas por sales, sus pedidos por orders y sus
+// cobros, con la regla de imputación. La venta vigente de un pedido es la no anulada con ese pedido
+// (D-3; ADR 0021, punto 3). Una sola función la arma para el cobro, la seña y las lecturas, para que
+// no puedan contradecirse. Lee con la transacción que recibe: en un cobro, con el bloqueo de cobros
+// tomado.
+type ClientAccount = {
+  receipts: repository.ReceiptRow[];
+  ordersById: Map<string, OrderForReceipt>;
+  // La venta vigente de cada pedido que la tiene.
+  currentSaleOf: Map<string, SaleForReceipt>;
+  accounts: CurrencyAccount[];
+};
+
+async function clientAccount(
+  tx: DbTransaction,
+  organizationId: string,
+  clientId: string,
+): Promise<ClientAccount> {
+  // Una tras otra: las tres van por la conexión de la transacción.
+  const sales = await listClientSalesForAccount(tx, organizationId, clientId);
+  const orders = await listClientOrdersForAccount(tx, organizationId, clientId);
+  const receipts = await repository.findClientReceipts(
+    organizationId,
+    clientId,
+    tx,
+  );
+  const ordersById = new Map(orders.map((order) => [order.id, order]));
+  const currentSaleOf = new Map<string, SaleForReceipt>();
+  for (const sale of sales) {
+    if (sale.orderId === null || sale.voided) continue;
+    if (currentSaleOf.has(sale.orderId)) {
+      throw new Error(`el pedido ${sale.orderId} tiene dos ventas vigentes`);
+    }
+    currentSaleOf.set(sale.orderId, sale);
+  }
+  const accounts = imputeAccount({
+    sales: sales.map((row) => ({
+      id: row.id,
+      number: row.number,
+      currency: row.currency,
+      total: moneyFromDatabase(row.total),
+      issuedAt: row.createdAt,
+      voided: row.voided,
+    })),
+    receipts: receipts.map((row) =>
+      toAccountReceipt(row, ordersById, currentSaleOf),
+    ),
+    // Las devoluciones llegan con la 21.5 (brief-21.3, H-6).
+    refunds: [],
+  });
+  return { receipts, ordersById, currentSaleOf, accounts };
+}
+
 // Dónde está una venta respecto de sus cobros, con la regla de imputación (D-2). Con cliente, lo que
 // falta sale de la cuenta entera del cliente; sin cliente, de su total menos sus cobros (punto 3).
 // Una venta anulada no debe nada: lo cobrado pasa a la cuenta del cliente o queda a devolver
-// (punto 6). Lee con la transacción que recibe: en el cobro, con el bloqueo de cobros tomado.
+// (punto 6), y la seña de su pedido vuelve a quedar retenida (punto 5). Lee con la transacción que
+// recibe: en el cobro, con el bloqueo de cobros tomado.
 type SaleStanding = {
   receipts: repository.ReceiptRow[];
-  // Lo cobrado contra esta venta.
+  // Las señas de su pedido, si es su venta vigente (brief-21.4, D-5).
+  deposits: repository.ReceiptRow[];
+  // Lo cobrado contra esta venta, con las señas de su pedido.
   collected: Money;
   // Lo que recibió del remanente de la cuenta del cliente (paso 3 del punto 9).
   imputed: Money;
@@ -1342,16 +1432,17 @@ async function saleStanding(
     sale.id,
     tx,
   );
-  const collected = sumAmounts(receipts);
+  const direct = sumAmounts(receipts);
   if (sale.clientId === null) {
     const standing = standaloneSale({
       total: moneyFromDatabase(sale.total),
-      collected,
+      collected: direct,
       voided: sale.voided,
     });
     return {
       receipts,
-      collected,
+      deposits: [],
+      collected: direct,
       imputed: 0n,
       outstanding: standing.outstanding,
       toAccount: 0n,
@@ -1361,44 +1452,28 @@ async function saleStanding(
   if (sale.voided) {
     return {
       receipts,
-      collected,
+      deposits: [],
+      collected: direct,
       imputed: 0n,
       outstanding: 0n,
-      toAccount: collected,
+      toAccount: direct,
       toRefund: 0n,
     };
   }
-  // Una tras otra: las dos van por la conexión de la transacción.
-  const sales = await listClientSalesForAccount(
-    tx,
-    organizationId,
-    sale.clientId,
-  );
-  const clientReceipts = await repository.findClientReceipts(
-    organizationId,
-    sale.clientId,
-    tx,
-  );
-  const accounts = imputeAccount({
-    sales: sales.map((row) => ({
-      id: row.id,
-      number: row.number,
-      currency: row.currency,
-      total: moneyFromDatabase(row.total),
-      issuedAt: row.createdAt,
-      voided: row.voided,
-    })),
-    receipts: clientReceipts.map(toAccountReceipt),
-    // Las devoluciones llegan con la 21.5 (H-6).
-    refunds: [],
-  });
-  const row = outstandingOf(accounts, sale.id);
+  const account = await clientAccount(tx, organizationId, sale.clientId);
+  const row = outstandingOf(account.accounts, sale.id);
   if (!row) {
     throw new Error(`la venta ${sale.id} no está en la cuenta de su cliente`);
   }
+  // Una venta vigente con pedido es la vigente de ese pedido: sus señas cuentan para ella.
+  const deposits =
+    sale.orderId === null
+      ? []
+      : account.receipts.filter((receipt) => receipt.orderId === sale.orderId);
   return {
     receipts,
-    collected,
+    deposits,
+    collected: direct + sumAmounts(deposits),
     imputed: row.imputed,
     outstanding: row.outstanding,
     toAccount: 0n,
@@ -1406,48 +1481,78 @@ async function saleStanding(
   };
 }
 
+// Dónde está un pedido respecto de sus señas (brief-21.4, D-5 y H-5). Lo que le falta es su total
+// menos sus señas: el remanente se reparte entre ventas, no entre pedidos (punto 9). La situación de
+// las señas sale de la misma cuenta que usa la imputación: retenidas mientras el pedido no tiene
+// venta vigente y no está cancelado, aplicadas a su venta vigente, o en la cuenta del cliente si se
+// canceló (punto 5).
+type OrderSituation = "none" | "retained" | "applied" | "to_account";
+
+type OrderStanding = {
+  deposits: repository.ReceiptRow[];
+  deposited: Money;
+  outstanding: Money;
+  situation: OrderSituation;
+  currentSale: SaleForReceipt | null;
+};
+
+async function orderStanding(
+  tx: DbTransaction,
+  organizationId: string,
+  order: OrderForReceipt,
+): Promise<OrderStanding> {
+  const account = await clientAccount(tx, organizationId, order.clientId);
+  const deposits = account.receipts.filter(
+    (receipt) => receipt.orderId === order.id,
+  );
+  const deposited = sumAmounts(deposits);
+  const outstanding = moneyFromDatabase(order.total) - deposited;
+  const currentSale = account.currentSaleOf.get(order.id) ?? null;
+  return {
+    deposits,
+    deposited,
+    outstanding: outstanding > 0n ? outstanding : 0n,
+    situation:
+      deposits.length === 0
+        ? "none"
+        : order.status === "cancelled"
+          ? "to_account"
+          : currentSale !== null
+            ? "applied"
+            : "retained",
+    currentSale,
+  };
+}
+
+// Lo que comparten el cobro de una venta y la seña (brief-21.4, D-4): los campos, el medio, el
+// monto en la moneda del destino, la sesión si es efectivo, el tope de lo esperado y la auditoría.
+// Cada caso de uso escribe su fila: la guarda cash-writes fija los dos llamadores de insertReceipt.
+
 export type ReceiptField = "paymentMethod" | "amount";
 
-export type CreateSaleReceiptResult =
-  | { ok: true; receipt: ReceiptRef }
-  | Failure<"FORBIDDEN" | "VALIDATION_ERROR">
-  | Failure<"NOT_FOUND", { entity: "sale" | "payment_method" }>
-  | Failure<
-      "VALIDATION_ERROR",
-      {
-        fields: ReceiptField[];
-        amount?: CashAmountRejection | "required" | "limit";
-      }
-    >
-  | Failure<"BUSINESS_RULE_VIOLATION", { rule: "sale_voided" }>
-  | Failure<"BUSINESS_RULE_VIOLATION", { rule: "payment_method_inactive" }>
-  | Failure<"BUSINESS_RULE_VIOLATION", { rule: "no_open_session" }>
-  | Failure<
-      "BUSINESS_RULE_VIOLATION",
-      { rule: "exceeds_outstanding"; currency: string; outstanding: string }
-    >;
-
-// El cobro (D-3), solo de admin, en READ COMMITTED:
-//
-// 1. el bloqueo de cobros de la organización;
-// 2. la venta, por sales; si tiene cliente, su ficha en modo compartido por crm, y la venta otra vez,
-//    porque pudo anularse mientras se esperaba al cliente;
-// 3. la comprobación: la venta vigente, el monto en su moneda, el medio activo, la sesión abierta si
-//    es efectivo y que el monto no supere lo que falta, con la regla de imputación;
-// 4. al final, el contador, el cobro y la auditoría.
-//
-// La sesión no viaja en el formulario: el cobro es plata que entra ahora y va a la sesión abierta
-// cuando se registra (D-3). Una venta anulada después de leerla, ya con el contador, queda con su
-// cobro, y su monto pasa a la cuenta o a devolver (ADR 0022, punto 4; D-10).
-export async function createSaleReceipt(
-  context: AuthContext,
-  input: { saleId: string; paymentMethodId: string; amount: string },
-): Promise<CreateSaleReceiptResult> {
-  const authorized = authorize(context, { role: "admin" });
-  if (!authorized.ok) return authorized;
-  if (!idSchema.safeParse(input.saleId).success) {
-    return failure("VALIDATION_ERROR");
+type ReceiptFieldsFailure = Failure<
+  "VALIDATION_ERROR",
+  {
+    fields: ReceiptField[];
+    amount?: CashAmountRejection | "required" | "limit";
   }
+>;
+
+type PaymentFailure =
+  | ReceiptFieldsFailure
+  | Failure<"NOT_FOUND", { entity: "payment_method" }>
+  | Failure<"BUSINESS_RULE_VIOLATION", { rule: "payment_method_inactive" }>
+  | Failure<"BUSINESS_RULE_VIOLATION", { rule: "no_open_session" }>;
+
+type ExceedsOutstanding = Failure<
+  "BUSINESS_RULE_VIOLATION",
+  { rule: "exceeds_outstanding"; currency: string; outstanding: string }
+>;
+
+function readReceiptFields(input: {
+  paymentMethodId: string;
+  amount: string;
+}): { ok: true; methodId: string; amountText: string } | ReceiptFieldsFailure {
   const fields: ReceiptField[] = [];
   const methodId = input.paymentMethodId.trim().toLowerCase();
   if (!idSchema.safeParse(methodId).success) fields.push("paymentMethod");
@@ -1461,6 +1566,150 @@ export async function createSaleReceipt(
       ...(amountText === "" ? { amount: "required" as const } : {}),
     };
   }
+  return { ok: true, methodId, amountText };
+}
+
+type ReceiptPayment = {
+  amount: Money;
+  method: PaymentMethod;
+  session: { id: string; number: number } | null;
+};
+
+// La sesión no viaja en el formulario: el cobro es plata que entra ahora y va a la sesión abierta
+// cuando se registra (brief-21.3, D-3).
+async function readPayment(
+  tx: DbTransaction,
+  organizationId: string,
+  fields: { methodId: string; amountText: string },
+  currency: string,
+): Promise<{ ok: true; payment: ReceiptPayment } | PaymentFailure> {
+  const parsed = parseCashAmount(fields.amountText, currency, {
+    allowZero: false,
+  });
+  if (!parsed.ok) {
+    return {
+      ok: false,
+      code: "VALIDATION_ERROR",
+      fields: ["amount"],
+      amount: parsed.reason,
+    };
+  }
+  const method = await repository.findPaymentMethod(
+    organizationId,
+    fields.methodId,
+    tx,
+  );
+  if (!method) {
+    return { ok: false, code: "NOT_FOUND", entity: "payment_method" };
+  }
+  if (!method.isActive) return ruleFailure("payment_method_inactive");
+  let session: ReceiptPayment["session"] = null;
+  if (method.isCash) {
+    const last = await repository.findLastSession(organizationId, tx);
+    if (!last || last.closedAt !== null) {
+      return ruleFailure("no_open_session");
+    }
+    session = { id: last.id, number: last.number };
+  }
+  return { ok: true, payment: { amount: parsed.amount, method, session } };
+}
+
+function exceedsOutstanding(
+  currency: string,
+  outstanding: Money,
+): ExceedsOutstanding {
+  return {
+    ok: false,
+    code: "BUSINESS_RULE_VIOLATION",
+    rule: "exceeds_outstanding",
+    currency,
+    outstanding: moneyToDatabase(outstanding),
+  };
+}
+
+// Como el aporte: lo esperado de la sesión tiene que seguir cabiendo en numeric(14, 2), o la sesión
+// no se podría cerrar (revisión de la 21.3, R-3).
+async function exceedsCashLimit(
+  tx: DbTransaction,
+  organizationId: string,
+  payment: ReceiptPayment,
+  currency: string,
+): Promise<ReceiptFieldsFailure | null> {
+  if (payment.session === null) return null;
+  const totals = await readTotals(tx, organizationId, payment.session.id);
+  const expected =
+    totals.find((row) => row.currency === currency)?.expected ?? 0n;
+  if (expected + payment.amount <= MAX_AMOUNT) return null;
+  return {
+    ok: false,
+    code: "VALIDATION_ERROR",
+    fields: ["amount"],
+    amount: "limit",
+  };
+}
+
+// Claves planas, sin datos de una persona (brief-21.3, D-7; brief-21.4, D-7): el destino va por su
+// número, sale_number o order_number.
+async function auditReceipt(
+  tx: DbTransaction,
+  context: { organizationId: string; userId: string },
+  receipt: repository.ReceiptRow,
+  payment: ReceiptPayment,
+  destination: { sale_number: number } | { order_number: number },
+) {
+  await recordAudit(tx, {
+    organizationId: context.organizationId,
+    actorUserId: context.userId,
+    entityType: "receipt",
+    entityId: receipt.id,
+    action: "create",
+    diff: {
+      before: null,
+      after: {
+        number: receipt.number,
+        ...destination,
+        payment_method: payment.method.name,
+        currency: receipt.currency,
+        amount: receipt.amount,
+        ...(payment.session === null
+          ? {}
+          : { session_number: payment.session.number }),
+      },
+    },
+  });
+}
+
+export type CreateSaleReceiptResult =
+  | { ok: true; receipt: ReceiptRef }
+  | Failure<"FORBIDDEN" | "VALIDATION_ERROR">
+  | Failure<"NOT_FOUND", { entity: "sale" }>
+  | PaymentFailure
+  | Failure<"BUSINESS_RULE_VIOLATION", { rule: "sale_voided" }>
+  | ExceedsOutstanding;
+
+// El cobro (D-3), solo de admin, en READ COMMITTED:
+//
+// 1. el bloqueo de cobros de la organización;
+// 2. la venta, por sales; si tiene cliente, su ficha en modo compartido por crm, y la venta otra vez,
+//    porque pudo anularse mientras se esperaba al cliente;
+// 3. la comprobación: la venta vigente, el monto en su moneda, el medio activo, la sesión abierta si
+//    es efectivo y que el monto no supere lo que falta, con la regla de imputación, que desde la 21.4
+//    descuenta la seña de su pedido;
+// 4. al final, el contador, el cobro y la auditoría.
+//
+// Una venta anulada después de leerla, ya con el contador, queda con su cobro, y su monto pasa a la
+// cuenta o a devolver (ADR 0022, punto 4; D-10). La venta no se bloquea: tampoco su pedido.
+export async function createSaleReceipt(
+  context: AuthContext,
+  input: { saleId: string; paymentMethodId: string; amount: string },
+): Promise<CreateSaleReceiptResult> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  if (!idSchema.safeParse(input.saleId).success) {
+    return failure("VALIDATION_ERROR");
+  }
+  const fields = readReceiptFields(input);
+  if (!fields.ok) return fields;
   const { organizationId, userId } = context;
 
   return repository.withTransaction(
@@ -1480,108 +1729,161 @@ export async function createSaleReceipt(
       }
       if (sale.voided) return ruleFailure("sale_voided");
 
-      const parsed = parseCashAmount(amountText, sale.currency, {
-        allowZero: false,
-      });
-      if (!parsed.ok) {
-        return {
-          ok: false,
-          code: "VALIDATION_ERROR",
-          fields: ["amount"],
-          amount: parsed.reason,
-        };
-      }
-      const method = await repository.findPaymentMethod(
-        organizationId,
-        methodId,
-        tx,
-      );
-      if (!method) {
-        return { ok: false, code: "NOT_FOUND", entity: "payment_method" };
-      }
-      if (!method.isActive) return ruleFailure("payment_method_inactive");
-      let sessionId: string | null = null;
-      let sessionNumber: number | null = null;
-      if (method.isCash) {
-        const last = await repository.findLastSession(organizationId, tx);
-        if (!last || last.closedAt !== null) {
-          return ruleFailure("no_open_session");
-        }
-        sessionId = last.id;
-        sessionNumber = last.number;
-      }
+      const read = await readPayment(tx, organizationId, fields, sale.currency);
+      if (!read.ok) return read;
+      const { payment } = read;
       const standing = await saleStanding(tx, organizationId, sale);
-      if (parsed.amount > standing.outstanding) {
-        return {
-          ok: false,
-          code: "BUSINESS_RULE_VIOLATION",
-          rule: "exceeds_outstanding",
-          currency: sale.currency,
-          outstanding: moneyToDatabase(standing.outstanding),
-        };
+      if (payment.amount > standing.outstanding) {
+        return exceedsOutstanding(sale.currency, standing.outstanding);
       }
-      // Como el aporte: lo esperado de la sesión tiene que seguir cabiendo en numeric(14, 2), o la
-      // sesión no se podría cerrar.
-      if (sessionId !== null) {
-        const totals = await readTotals(tx, organizationId, sessionId);
-        const expected =
-          totals.find((row) => row.currency === sale.currency)?.expected ?? 0n;
-        if (expected + parsed.amount > MAX_AMOUNT) {
-          return {
-            ok: false,
-            code: "VALIDATION_ERROR",
-            fields: ["amount"],
-            amount: "limit",
-          };
-        }
-      }
+      const limit = await exceedsCashLimit(
+        tx,
+        organizationId,
+        payment,
+        sale.currency,
+      );
+      if (limit) return limit;
 
       const number = await nextDocumentNumber(tx, organizationId, "receipt");
       const receipt = await repository.insertReceipt(tx, {
         organizationId,
         number,
-        target: "sale",
-        saleId: sale.id,
+        destination: { target: "sale", saleId: sale.id },
         // La copia del cliente y de la moneda de la venta (punto 2).
         clientId: sale.clientId,
-        paymentMethodId: method.id,
-        sessionId,
+        paymentMethodId: payment.method.id,
+        sessionId: payment.session?.id ?? null,
         currency: sale.currency,
-        amount: moneyToDatabase(parsed.amount),
+        amount: moneyToDatabase(payment.amount),
         createdBy: userId,
       });
-      // Claves planas, sin datos de una persona (D-7).
-      await recordAudit(tx, {
-        organizationId,
-        actorUserId: userId,
-        entityType: "receipt",
-        entityId: receipt.id,
-        action: "create",
-        diff: {
-          before: null,
-          after: {
-            number: receipt.number,
-            sale_number: sale.number,
-            payment_method: method.name,
-            currency: receipt.currency,
-            amount: receipt.amount,
-            ...(sessionNumber === null
-              ? {}
-              : { session_number: sessionNumber }),
-          },
-        },
+      await auditReceipt(tx, { organizationId, userId }, receipt, payment, {
+        sale_number: sale.number,
       });
       return { ok: true, receipt: receiptRef(receipt) };
     },
   );
 }
 
-// Lecturas de los cobros: admin y viewer (ADR 0022, punto 12). La venta se lee por sales, el cliente
-// por crm, ya resuelto para el rol, y el medio y la sesión acá.
+// Un pedido admite señas mientras no se entregó ni se canceló (ADR 0022, punto 5).
+const OPEN_ORDER_STATUSES: readonly OrderStatus[] = ["pending", "confirmed"];
+
+export type CreateOrderReceiptResult =
+  | { ok: true; receipt: ReceiptRef }
+  | Failure<"FORBIDDEN" | "VALIDATION_ERROR">
+  | Failure<"NOT_FOUND", { entity: "order" }>
+  | PaymentFailure
+  | Failure<
+      "BUSINESS_RULE_VIOLATION",
+      { rule: "order_not_open"; status: OrderStatus }
+    >
+  | ExceedsOutstanding;
+
+// La seña (brief-21.4, D-4), solo de admin, en READ COMMITTED, con el orden del ADR 0022, punto 4:
+//
+// 1. el bloqueo de cobros de la organización;
+// 2. la cabecera del pedido FOR UPDATE, por orders: una seña y una transición del mismo pedido se
+//    serializan en esa fila, así que una seña nunca cae en un pedido que se canceló o se entregó
+//    mientras tanto (H-6);
+// 3. su cliente en modo compartido, por crm. Todo pedido tiene cliente;
+// 4. la comprobación: el pedido pending o confirmed, el medio, el monto en la moneda del pedido, la
+//    sesión abierta si es efectivo, y que no supere lo que le falta: su total menos sus señas (H-5);
+// 5. al final, el contador, la seña y la auditoría.
+//
+// La seña copia la moneda y el cliente del pedido (punto 2). Es un R como cualquier cobro.
+export async function createOrderReceipt(
+  context: AuthContext,
+  input: { orderId: string; paymentMethodId: string; amount: string },
+): Promise<CreateOrderReceiptResult> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  if (!idSchema.safeParse(input.orderId).success) {
+    return failure("VALIDATION_ERROR");
+  }
+  const fields = readReceiptFields(input);
+  if (!fields.ok) return fields;
+  const { organizationId, userId } = context;
+
+  return repository.withTransaction(
+    async (tx): Promise<CreateOrderReceiptResult> => {
+      await repository.lockCash(tx, organizationId);
+      const order = await lockOrderForReceipt(
+        tx,
+        organizationId,
+        input.orderId,
+      );
+      if (!order) return { ok: false, code: "NOT_FOUND", entity: "order" };
+      // Como en el cobro: el INSERT no espera la ficha por su clave foránea con los bloqueos tomados.
+      // Lo que devuelve no se mira: el pedido de un cliente desactivado sigue abierto.
+      await lockClientForOrder(tx, organizationId, order.clientId);
+      if (!OPEN_ORDER_STATUSES.includes(order.status)) {
+        return {
+          ok: false,
+          code: "BUSINESS_RULE_VIOLATION",
+          rule: "order_not_open",
+          status: order.status,
+        };
+      }
+
+      const read = await readPayment(
+        tx,
+        organizationId,
+        fields,
+        order.currency,
+      );
+      if (!read.ok) return read;
+      const { payment } = read;
+      const deposits = await repository.findOrderReceipts(
+        organizationId,
+        order.id,
+        tx,
+      );
+      const outstanding = moneyFromDatabase(order.total) - sumAmounts(deposits);
+      if (payment.amount > outstanding) {
+        return exceedsOutstanding(
+          order.currency,
+          outstanding > 0n ? outstanding : 0n,
+        );
+      }
+      const limit = await exceedsCashLimit(
+        tx,
+        organizationId,
+        payment,
+        order.currency,
+      );
+      if (limit) return limit;
+
+      const number = await nextDocumentNumber(tx, organizationId, "receipt");
+      const receipt = await repository.insertReceipt(tx, {
+        organizationId,
+        number,
+        destination: { target: "order", orderId: order.id },
+        // La copia del cliente y de la moneda del pedido (punto 2).
+        clientId: order.clientId,
+        paymentMethodId: payment.method.id,
+        sessionId: payment.session?.id ?? null,
+        currency: order.currency,
+        amount: moneyToDatabase(payment.amount),
+        createdBy: userId,
+      });
+      await auditReceipt(tx, { organizationId, userId }, receipt, payment, {
+        order_number: order.number,
+      });
+      return { ok: true, receipt: receiptRef(receipt) };
+    },
+  );
+}
+
+// Lecturas de los cobros: admin y viewer (ADR 0022, punto 12). La venta se lee por sales, el pedido
+// por orders, el cliente por crm, ya resuelto para el rol, y el medio y la sesión acá.
+
+type DocumentRef = { id: string; displayNumber: string };
 
 export type ReceiptListItem = ReceiptRef & {
   createdAt: Date;
-  sale: { id: string; displayNumber: string } | null;
+  // El destino: la venta de un cobro o el pedido de una seña (brief-21.4, D-8).
+  sale: DocumentRef | null;
+  order: DocumentRef | null;
   paymentMethodName: string;
   isCash: boolean;
   currency: string;
@@ -1597,22 +1899,35 @@ async function methodsById(organizationId: string) {
   );
 }
 
-// Las ventas de unos cobros, por sales: una lectura por venta, con la transacción que piden sus
-// lecturas (D-4). Una página tiene a lo sumo CASH_RECEIPTS_PAGE_SIZE cobros.
-async function salesById(
+// Las ventas y los pedidos de unos cobros, por sales y por orders: una lectura por documento, con la
+// transacción que piden sus lecturas (brief-21.3, D-4). Una página tiene a lo sumo
+// CASH_RECEIPTS_PAGE_SIZE cobros.
+async function destinationsOf(
   organizationId: string,
-  saleIds: (string | null)[],
-): Promise<Map<string, SaleForReceipt>> {
-  const ids = [...new Set(saleIds.filter((id): id is string => id !== null))];
-  if (ids.length === 0) return new Map();
-  return repository.withTransaction(async (tx) => {
-    const found = new Map<string, SaleForReceipt>();
-    for (const id of ids) {
+  rows: repository.ReceiptRow[],
+): Promise<{
+  sales: Map<string, DocumentRef>;
+  orders: Map<string, DocumentRef>;
+}> {
+  const unique = (ids: (string | null)[]) => [
+    ...new Set(ids.filter((id): id is string => id !== null)),
+  ];
+  const saleIds = unique(rows.map((row) => row.saleId));
+  const orderIds = unique(rows.map((row) => row.orderId));
+  const sales = new Map<string, DocumentRef>();
+  const orders = new Map<string, DocumentRef>();
+  if (saleIds.length === 0 && orderIds.length === 0) return { sales, orders };
+  await repository.withTransaction(async (tx) => {
+    for (const id of saleIds) {
       const sale = await getSaleForReceipt(tx, organizationId, id);
-      if (sale) found.set(id, sale);
+      if (sale) sales.set(id, { id, displayNumber: sale.displayNumber });
     }
-    return found;
+    for (const id of orderIds) {
+      const order = await getOrderForReceipt(tx, organizationId, id);
+      if (order) orders.set(id, { id, displayNumber: order.displayNumber });
+    }
   });
+  return { sales, orders };
 }
 
 async function receiptListItems(
@@ -1620,20 +1935,23 @@ async function receiptListItems(
   rows: repository.ReceiptRow[],
 ): Promise<ReceiptListItem[]> {
   if (rows.length === 0) return [];
-  const [methods, sales] = await Promise.all([
+  const [methods, destinations] = await Promise.all([
     methodsById(organizationId),
-    salesById(
-      organizationId,
-      rows.map((row) => row.saleId),
-    ),
+    destinationsOf(organizationId, rows),
   ]);
   return rows.map((row) => {
     const method = methods.get(row.paymentMethodId);
-    const sale = row.saleId === null ? undefined : sales.get(row.saleId);
     return {
       ...receiptRef(row),
       createdAt: row.createdAt,
-      sale: sale ? { id: sale.id, displayNumber: sale.displayNumber } : null,
+      sale:
+        row.saleId === null
+          ? null
+          : (destinations.sales.get(row.saleId) ?? null),
+      order:
+        row.orderId === null
+          ? null
+          : (destinations.orders.get(row.orderId) ?? null),
       paymentMethodName: method?.name ?? "",
       isCash: method?.isCash ?? false,
       currency: row.currency,
@@ -1645,8 +1963,12 @@ async function receiptListItems(
 export type SaleReceipts = {
   currency: string;
   total: string;
-  // Lo cobrado contra esta venta y, con cliente, lo imputado desde su cuenta.
+  // Lo cobrado contra esta venta, con la seña de su pedido, y, con cliente, lo imputado desde su
+  // cuenta.
   collected: string;
+  // La seña de su pedido, incluida en lo cobrado (brief-21.4, D-5).
+  deposited: string;
+  order: DocumentRef | null;
   imputed: string;
   outstanding: string;
   // Lo que se muestra en lugar de lo que falta (D-8).
@@ -1655,6 +1977,7 @@ export type SaleReceipts = {
   // De una venta anulada: con cliente, lo que pasó a su cuenta; sin cliente, lo que queda a devolver.
   toAccount: string;
   toRefund: string;
+  // Sus cobros y las señas de su pedido, por número.
   receipts: ReceiptListItem[];
 };
 
@@ -1662,7 +1985,12 @@ async function readSaleStanding(organizationId: string, saleId: string) {
   return repository.withTransaction(async (tx) => {
     const sale = await getSaleForReceipt(tx, organizationId, saleId);
     if (!sale) return null;
-    return { sale, standing: await saleStanding(tx, organizationId, sale) };
+    const standing = await saleStanding(tx, organizationId, sale);
+    const order =
+      standing.deposits.length > 0 && sale.orderId !== null
+        ? await getOrderForReceipt(tx, organizationId, sale.orderId)
+        : null;
+    return { sale, standing, order };
   });
 }
 
@@ -1679,13 +2007,17 @@ export async function getSaleReceipts(
   if (!idSchema.safeParse(saleId).success) return failure("VALIDATION_ERROR");
   const found = await readSaleStanding(context.organizationId, saleId);
   if (!found) return failure("NOT_FOUND");
-  const { sale, standing } = found;
+  const { sale, standing, order } = found;
   return {
     ok: true,
     sale: {
       currency: sale.currency,
       total: sale.total,
       collected: moneyToDatabase(standing.collected),
+      deposited: moneyToDatabase(sumAmounts(standing.deposits)),
+      order: order
+        ? { id: order.id, displayNumber: order.displayNumber }
+        : null,
       imputed: moneyToDatabase(standing.imputed),
       outstanding: moneyToDatabase(standing.outstanding),
       status: sale.voided
@@ -1698,7 +2030,9 @@ export async function getSaleReceipts(
       toRefund: moneyToDatabase(standing.toRefund),
       receipts: await receiptListItems(
         context.organizationId,
-        standing.receipts,
+        [...standing.receipts, ...standing.deposits].sort(
+          (a, b) => a.number - b.number,
+        ),
       ),
     },
   };
@@ -1747,6 +2081,118 @@ export async function getSaleReceiptForm(
       found.sale.currency,
     ),
     voided: found.sale.voided,
+    paymentMethods: methods.filter((method) => method.isActive),
+    openSession: last && last.closedAt === null ? sessionRef(last) : null,
+  };
+}
+
+export type OrderReceipts = {
+  currency: string;
+  total: string;
+  deposited: string;
+  // Lo que le falta: su total menos sus señas (brief-21.4, H-5).
+  outstanding: string;
+  // Qué pasó con lo señado (D-5): ninguna seña, retenida, aplicada a su venta vigente o en la cuenta
+  // del cliente.
+  situation: OrderSituation;
+  sale: DocumentRef | null;
+  // Admite señas: pending o confirmed, y le falta algo.
+  open: boolean;
+  receipts: ReceiptListItem[];
+};
+
+async function readOrderStanding(organizationId: string, orderId: string) {
+  return repository.withTransaction(async (tx) => {
+    const order = await getOrderForReceipt(tx, organizationId, orderId);
+    if (!order) return null;
+    return { order, standing: await orderStanding(tx, organizationId, order) };
+  });
+}
+
+// Lo señado de un pedido, para su detalle (brief-21.4, D-5 y D-8): lo compone la página, nunca
+// orders.
+export async function getOrderReceipts(
+  context: AuthContext,
+  orderId: string,
+): Promise<
+  | { ok: true; order: OrderReceipts }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  if (!idSchema.safeParse(orderId).success) return failure("VALIDATION_ERROR");
+  const found = await readOrderStanding(context.organizationId, orderId);
+  if (!found) return failure("NOT_FOUND");
+  const { order, standing } = found;
+  return {
+    ok: true,
+    order: {
+      currency: order.currency,
+      total: order.total,
+      deposited: moneyToDatabase(standing.deposited),
+      outstanding: moneyToDatabase(standing.outstanding),
+      situation: standing.situation,
+      sale:
+        standing.situation === "applied" && standing.currentSale
+          ? {
+              id: standing.currentSale.id,
+              displayNumber: standing.currentSale.displayNumber,
+            }
+          : null,
+      open:
+        OPEN_ORDER_STATUSES.includes(order.status) && standing.outstanding > 0n,
+      receipts: await receiptListItems(
+        context.organizationId,
+        standing.deposits,
+      ),
+    },
+  };
+}
+
+export type OrderReceiptForm = {
+  ok: true;
+  order: {
+    id: string;
+    displayNumber: string;
+    currency: string;
+    status: OrderStatus;
+  };
+  outstanding: string;
+  // Como en el cobro: lo que falta como se escribe en el campo.
+  outstandingInput: string;
+  paymentMethods: PaymentMethod[];
+  openSession: SessionRef | null;
+};
+
+// Lo que necesita el formulario de la seña (brief-21.4, D-8). Lo que decide lo vuelve a leer la seña
+// con los bloqueos tomados.
+export async function getOrderReceiptForm(
+  context: AuthContext,
+  orderId: string,
+): Promise<
+  OrderReceiptForm | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  if (!idSchema.safeParse(orderId).success) return failure("VALIDATION_ERROR");
+  const { organizationId } = context;
+  const found = await readOrderStanding(organizationId, orderId);
+  if (!found) return failure("NOT_FOUND");
+  const [methods, last] = await Promise.all([
+    repository.findPaymentMethods(organizationId),
+    repository.findLastSession(organizationId),
+  ]);
+  const outstanding = moneyToDatabase(found.standing.outstanding);
+  return {
+    ok: true,
+    order: {
+      id: found.order.id,
+      displayNumber: found.order.displayNumber,
+      currency: found.order.currency,
+      status: found.order.status,
+    },
+    outstanding,
+    outstandingInput: amountForInput(outstanding, found.order.currency),
     paymentMethods: methods.filter((method) => method.isActive),
     openSession: last && last.closedAt === null ? sessionRef(last) : null,
   };

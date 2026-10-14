@@ -46,7 +46,8 @@ function hrefFor(number: string, page: number): string {
 
 // Pantalla 30 (brief-21.3, D-8): los cobros, del más nuevo al más viejo, con su venta, su cliente,
 // su medio y su monto; búsqueda por número («R-000123» o «123», ADR 0022, punto 11). Para los dos
-// roles, sin el contacto del cliente.
+// roles, sin el contacto del cliente. Desde la 21.4, la columna «Destino»: la venta de un cobro o el
+// pedido de una seña (brief-21.4, D-8).
 export default async function ReceiptsPage({
   searchParams,
 }: {
@@ -123,7 +124,7 @@ export default async function ReceiptsPage({
                     Fecha
                   </th>
                   <th scope="col" className={tableHeadCellClass}>
-                    Venta
+                    Destino
                   </th>
                   <th scope="col" className={tableHeadCellClass}>
                     Cliente
@@ -153,14 +154,27 @@ export default async function ReceiptsPage({
                     <td className={`${tableCellClass} whitespace-nowrap`}>
                       {formatShortDateTime(receipt.createdAt, timeZone)}
                     </td>
-                    <td className={`${tableCellClass} font-mono`}>
+                    <td className={`${tableCellClass} whitespace-nowrap`}>
                       {receipt.sale ? (
-                        <Link
-                          href={`/ventas/${receipt.sale.id}`}
-                          className={linkClass}
-                        >
-                          {receipt.sale.displayNumber}
-                        </Link>
+                        <>
+                          Venta{" "}
+                          <Link
+                            href={`/ventas/${receipt.sale.id}`}
+                            className={`${linkClass} font-mono`}
+                          >
+                            {receipt.sale.displayNumber}
+                          </Link>
+                        </>
+                      ) : receipt.order ? (
+                        <>
+                          Pedido{" "}
+                          <Link
+                            href={`/pedidos/${receipt.order.id}`}
+                            className={`${linkClass} font-mono`}
+                          >
+                            {receipt.order.displayNumber}
+                          </Link>
+                        </>
                       ) : (
                         "—"
                       )}

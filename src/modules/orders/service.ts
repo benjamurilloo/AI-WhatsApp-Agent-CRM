@@ -651,6 +651,83 @@ export async function lockOrderForSale(
   };
 }
 
+// El pedido para su seña (brief-21.4, D-2; ADR 0022, puntos 4, 5 y 13). Lo usa cash con su
+// transacción, después del bloqueo de cobros y ya autorizado, por eso no recibe AuthContext. Es la
+// función hermana de lockOrderForSale, sin las líneas, que la seña no usa (brief-21.4, H-3):
+// lockOrderForReceipt bloquea la cabecera FOR UPDATE, como una transición, así que una seña y una
+// transición del mismo pedido se serializan en esta fila (H-6); getOrderForReceipt y
+// listClientOrdersForAccount leen sin bloquear, para las lecturas y la cuenta del cliente. Ninguna
+// escribe. Un id que no es uuid no encuentra nada.
+
+export type OrderForReceipt = {
+  id: string;
+  number: number;
+  displayNumber: string;
+  status: OrderStatus;
+  clientId: string;
+  currency: string;
+  // Con la escala de la base ("1234.50").
+  total: string;
+  createdAt: Date;
+};
+
+function orderForReceipt(row: repository.OrderRow): OrderForReceipt {
+  return {
+    id: row.id,
+    number: row.number,
+    displayNumber: formatOrderNumber(row.number),
+    status: row.status,
+    clientId: row.clientId,
+    currency: row.currency,
+    total: row.total,
+    createdAt: row.createdAt,
+  };
+}
+
+export async function lockOrderForReceipt(
+  tx: DbTransaction,
+  organizationId: string,
+  orderId: string,
+): Promise<OrderForReceipt | null> {
+  if (!idSchema.safeParse(orderId).success) return null;
+  const row = await repository.findOrder(
+    organizationId,
+    orderId.toLowerCase(),
+    tx,
+    { forUpdate: true },
+  );
+  return row ? orderForReceipt(row) : null;
+}
+
+export async function getOrderForReceipt(
+  tx: DbTransaction,
+  organizationId: string,
+  orderId: string,
+): Promise<OrderForReceipt | null> {
+  if (!idSchema.safeParse(orderId).success) return null;
+  const row = await repository.findOrder(
+    organizationId,
+    orderId.toLowerCase(),
+    tx,
+  );
+  return row ? orderForReceipt(row) : null;
+}
+
+// Todos los pedidos del cliente, de todos los estados, del más viejo al más nuevo.
+export async function listClientOrdersForAccount(
+  tx: DbTransaction,
+  organizationId: string,
+  clientId: string,
+): Promise<OrderForReceipt[]> {
+  if (!idSchema.safeParse(clientId).success) return [];
+  const rows = await repository.findClientOrders(
+    tx,
+    organizationId,
+    clientId.toLowerCase(),
+  );
+  return rows.map(orderForReceipt);
+}
+
 // Confirmar reserva el stock de cada línea, o nada si alguna no alcanza.
 export function confirmOrder(
   context: AuthContext,

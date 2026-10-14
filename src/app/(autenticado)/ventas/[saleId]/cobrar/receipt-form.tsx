@@ -14,33 +14,40 @@ import {
   secondaryLinkClass,
 } from "@/app/_components/form-styles";
 import { AmountReading } from "@/app/(autenticado)/caja/money-fields";
-import { createSaleReceiptAction } from "./actions";
 import type { ReceiptFormState, ReceiptFormValues } from "./messages";
 
-// El cobro de una venta (brief-21.3, D-3 y D-8): el medio, como grupo de opciones con los activos, y
-// el monto, propuesto en lo que falta, con su lectura («Se lee: …») como en la caja. Un solo paso:
-// el tope lo vuelve a calcular cash con el bloqueo tomado. Funciona sin JavaScript.
+// El cobro de una venta (brief-21.3, D-3 y D-8) y, desde la 21.4, la seña de un pedido (brief-21.4,
+// D-8): el medio, como grupo de opciones con los activos, y el monto, propuesto en lo que falta, con
+// su lectura («Se lee: …») como en la caja. Un solo paso: el tope lo vuelve a calcular cash con el
+// bloqueo tomado. Funciona sin JavaScript. El destino viaja en un campo oculto, y la acción es la
+// del cobro o la de la seña.
 
 const initialState: ReceiptFormState = { status: "idle" };
 
 export function ReceiptForm({
-  saleId,
+  action,
+  target,
+  cancelHref,
+  submitLabel,
   currency,
   outstanding,
   paymentMethods,
   hasOpenSession,
 }: {
-  saleId: string;
+  action: (
+    previous: ReceiptFormState,
+    formData: FormData,
+  ) => Promise<ReceiptFormState>;
+  target: { field: "saleId" | "orderId"; id: string };
+  cancelHref: string;
+  submitLabel: string;
   currency: string;
   // Lo que falta, como se escribe en el campo.
   outstanding: string;
   paymentMethods: PaymentMethod[];
   hasOpenSession: boolean;
 }) {
-  const [state, formAction, pending] = useActionState(
-    createSaleReceiptAction,
-    initialState,
-  );
+  const [state, formAction, pending] = useActionState(action, initialState);
   const errorRef = useRef<HTMLParagraphElement>(null);
   const failed = state.status === "error";
   const values: ReceiptFormValues = failed
@@ -64,7 +71,7 @@ export function ReceiptForm({
       action={formAction}
       className="flex flex-col gap-4"
     >
-      <input type="hidden" name="saleId" value={saleId} />
+      <input type="hidden" name={target.field} value={target.id} />
       <div aria-live="polite" aria-atomic="true">
         {failed ? (
           <p
@@ -127,11 +134,11 @@ export function ReceiptForm({
       />
 
       <div className="flex flex-wrap justify-end gap-3">
-        <Link href={`/ventas/${saleId}`} className={secondaryLinkClass}>
+        <Link href={cancelHref} className={secondaryLinkClass}>
           Cancelar
         </Link>
         <button type="submit" disabled={pending} className={inlineButtonClass}>
-          {pending ? "Registrando…" : "Registrar cobro"}
+          {pending ? "Registrando…" : submitLabel}
         </button>
       </div>
     </form>

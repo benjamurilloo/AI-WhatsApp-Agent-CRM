@@ -1,11 +1,12 @@
 // Interfaz pública del módulo cash (ADR 0022; brief-21.2): los medios de pago y la caja del
-// efectivo por sesiones; desde la 21.3, el cobro de una venta (brief-21.3). Ningún módulo depende de
-// cash: la usan solo las pantallas.
+// efectivo por sesiones; desde la 21.3, el cobro de una venta (brief-21.3), y desde la 21.4, la seña
+// (brief-21.4). Ningún módulo depende de cash: la usan solo las pantallas.
 export {
   CASH_MOVEMENT_REASONS,
   CASH_RECEIPTS_PAGE_SIZE,
   CASH_SESSIONS_PAGE_SIZE,
   closeCashSession,
+  createOrderReceipt,
   createSaleReceipt,
   createInitialPaymentMethods,
   createPaymentMethod,
@@ -15,6 +16,8 @@ export {
   getCashSession,
   getCashState,
   getOpeningProposal,
+  getOrderReceiptForm,
+  getOrderReceipts,
   getReceipt,
   getSaleReceiptForm,
   getSaleReceipts,
@@ -46,9 +49,12 @@ export {
   type CashSessionSummary,
   type CashState,
   type CloseCashSessionResult,
+  type CreateOrderReceiptResult,
   type CreatePaymentMethodResult,
   type CreateSaleReceiptResult,
   type OpenCashSessionResult,
+  type OrderReceiptForm,
+  type OrderReceipts,
   type PaymentMethod,
   type PaymentMethodActiveResult,
   type PreviewCashClosingResult,
