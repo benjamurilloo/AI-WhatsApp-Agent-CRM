@@ -1,11 +1,11 @@
 import { SubNav } from "@/app/_components/sub-nav";
 
-// Las tres pantallas de la caja (brief-21.2, D-10): el estado de hoy, las sesiones y los medios de
-// pago.
+// Las pantallas de la caja (brief-21.2, D-10): el estado de hoy, las sesiones, los medios de pago
+// y, desde la 21.3, los cobros (brief-21.3, D-8).
 export function CashSubNav({
   current,
 }: {
-  current: "caja" | "sesiones" | "medios";
+  current: "caja" | "sesiones" | "cobros" | "medios";
 }) {
   return (
     <SubNav
@@ -22,6 +22,12 @@ export function CashSubNav({
           label: "Sesiones",
           icon: "history",
           current: current === "sesiones",
+        },
+        {
+          href: "/caja/cobros",
+          label: "Cobros",
+          icon: "receipt",
+          current: current === "cobros",
         },
         {
           href: "/caja/medios-de-pago",

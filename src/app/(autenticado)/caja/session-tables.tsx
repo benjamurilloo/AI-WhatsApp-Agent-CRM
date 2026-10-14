@@ -1,5 +1,7 @@
+import Link from "next/link";
 import type { CashSessionDetail } from "@/modules/cash";
 import {
+  linkClass,
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
@@ -13,7 +15,8 @@ import {
 } from "./messages";
 
 // Los totales por moneda y los movimientos de una sesión (brief-21.2, D-10), para la caja abierta y
-// para el arqueo de una cerrada. Cada moneda va en su fila: nunca se suman entre sí.
+// para el arqueo de una cerrada. Cada moneda va en su fila: nunca se suman entre sí. Desde la 21.3,
+// los cobros en efectivo: su columna en los totales y su lista (brief-21.3, D-5).
 
 const numberCell = `${tableCellClass} text-right whitespace-nowrap tabular-nums`;
 const numberHead = `${tableHeadCellClass} text-right`;
@@ -44,6 +47,9 @@ export function CurrencyTotalsTable({
               Inicial
             </th>
             <th scope="col" className={numberHead}>
+              Cobros
+            </th>
+            <th scope="col" className={numberHead}>
               Aportes
             </th>
             <th scope="col" className={numberHead}>
@@ -72,6 +78,9 @@ export function CurrencyTotalsTable({
               </th>
               <td className={numberCell}>
                 {formatMoney(row.initial, row.currency)}
+              </td>
+              <td className={numberCell}>
+                {formatMoney(row.receipts, row.currency)}
               </td>
               <td className={numberCell}>
                 {formatMoney(row.contributions, row.currency)}
@@ -156,6 +165,80 @@ export function MovementsTable({
               </td>
               <td className={tableCellClass}>
                 {row.createdByName ?? UNKNOWN_MEMBER_TEXT}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export function SessionReceiptsTable({
+  session,
+  timeZone,
+}: {
+  session: CashSessionDetail;
+  timeZone: string;
+}) {
+  if (session.receipts.length === 0) {
+    return <p className="text-sm text-muted">Sin cobros en efectivo.</p>;
+  }
+  return (
+    <div
+      className="-mx-5 overflow-x-auto sm:-mx-6 print:mx-0 print:overflow-visible"
+      tabIndex={0}
+      role="region"
+      aria-label={`Cobros en efectivo de la sesión ${session.displayNumber}`}
+    >
+      <table className="w-full border-collapse text-left text-sm">
+        <caption className="sr-only">
+          Cobros en efectivo de la sesión {session.displayNumber}
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col" className={tableHeadCellClass}>
+              Recibo
+            </th>
+            <th scope="col" className={tableHeadCellClass}>
+              Hora
+            </th>
+            <th scope="col" className={tableHeadCellClass}>
+              Venta
+            </th>
+            <th scope="col" className={numberHead}>
+              Monto
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {session.receipts.map((row) => (
+            <tr key={row.id}>
+              <td className={tableCellClass}>
+                <Link
+                  href={`/cobros/${row.id}`}
+                  className={`${linkClass} font-mono print:no-underline`}
+                >
+                  {row.displayNumber}
+                </Link>
+              </td>
+              <td className={`${tableCellClass} whitespace-nowrap`}>
+                {formatShortDateTime(row.createdAt, timeZone)}
+              </td>
+              <td className={`${tableCellClass} font-mono`}>
+                {row.sale ? (
+                  <Link
+                    href={`/ventas/${row.sale.id}`}
+                    className={`${linkClass} print:no-underline`}
+                  >
+                    {row.sale.displayNumber}
+                  </Link>
+                ) : (
+                  "—"
+                )}
+              </td>
+              <td className={numberCell}>
+                {formatMoney(row.amount, row.currency)}
               </td>
             </tr>
           ))}

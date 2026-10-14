@@ -16,6 +16,8 @@ import { getDb, type Db } from "@/shared/db";
  * Desde la 19.2, también sus pedidos, con sus líneas (ADR 0020, punto 10): número, estado, fechas,
  * productos, cantidades, precios y totales. Los pedidos no guardan texto de la persona, pero son
  * suyos. El nombre del producto va con la línea, el de hoy, para que el archivo se entienda solo.
+ * Desde la 21.3, sus cobros (ADR 0022, punto 14; brief-21.3, D-9): los comprobantes, no el saldo,
+ * que se deriva de ellos con la regla de cash y calcularlo acá sería una segunda implementación.
  *
  * `ingestion_events` queda fuera a propósito: guarda `source`, una referencia opaca del emisor,
  * el hash del payload y fechas. No tiene datos personales (brief-8.2, hallazgo 9). Se dice acá
@@ -44,6 +46,8 @@ export type ClientExport = {
   sale_lines: Record<string, unknown>[];
   // Desde la 20.4 (ADR 0021, punto 12; brief-20.4, D-10).
   sale_voids: Record<string, unknown>[];
+  // Desde la 21.3 (ADR 0022, punto 14; brief-21.3, D-9).
+  receipts: Record<string, unknown>[];
 };
 
 export async function exportClientData(
@@ -156,6 +160,19 @@ export async function exportClientData(
         order by v.number`,
   );
 
+  // Sus cobros (ADR 0022, punto 14; brief-21.3, D-9): número, fecha, venta, medio, moneda y monto.
+  // Llegan al cliente por el client_id que copian de la venta, y no guardan texto de la persona.
+  const receipts = await db.execute<Record<string, unknown>>(
+    sql`select r.id, r.number, 'R-' || lpad(r.number::text, greatest(6, length(r.number::text)), '0') as display_number,
+               r.created_at, r.sale_id, s.number as sale_number,
+               m.name as payment_method, r.currency, r.amount
+        from receipts r
+        left join sales s on s.organization_id = r.organization_id and s.id = r.sale_id
+        join payment_methods m on m.organization_id = r.organization_id and m.id = r.payment_method_id
+        where r.organization_id = ${organizationId} and r.client_id = ${clientId}
+        order by r.number`,
+  );
+
   return {
     exported_at: now.toISOString(),
     organization_id: organizationId,
@@ -175,6 +192,7 @@ export async function exportClientData(
     sales: sales.rows,
     sale_lines: saleLines.rows,
     sale_voids: saleVoids.rows,
+    receipts: receipts.rows,
   };
 }
 
@@ -205,7 +223,8 @@ async function main() {
       `${data.messages.length} mensajes, ${data.conversation_notes.length} notas, ` +
       `${data.audit_logs.length} entradas de auditoría, ` +
       `${data.client_tags.length} etiquetas, ${data.orders.length} pedidos, ` +
-      `${data.sales.length} ventas, ${data.sale_voids.length} anulaciones.`,
+      `${data.sales.length} ventas, ${data.sale_voids.length} anulaciones, ` +
+      `${data.receipts.length} cobros.`,
   );
   console.log(
     "Contiene datos personales: no lo versiones ni lo compartas por un canal abierto.",

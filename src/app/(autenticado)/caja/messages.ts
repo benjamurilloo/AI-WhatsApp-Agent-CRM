@@ -103,7 +103,8 @@ export type CurrencyRowsState =
       rowErrors: Record<number, string>;
     };
 
-const ROW_PROBLEM_TEXT: Record<CashRowIssue["problem"], string> = {
+// También los usa el formulario del cobro (brief-21.3, D-8).
+export const ROW_PROBLEM_TEXT: Record<CashRowIssue["problem"], string> = {
   required: "Completá este campo.",
   duplicate: "Esta moneda ya está en otra fila.",
   currency: "Elegí una moneda de la lista, con su código de tres letras.",

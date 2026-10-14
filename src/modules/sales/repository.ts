@@ -347,3 +347,59 @@ export function findSales(
     .limit(limit)
     .offset(offset);
 }
+
+// Lecturas para cash (ADR 0022, punto 13; brief-21.3, D-4): la venta que se cobra y las ventas de un
+// cliente para la imputación. Reciben la transacción de cash y no bloquean: una venta no se puede
+// bloquear (ADR 0022, punto 4). Anulada es que tenga su anulación.
+export type SaleForReceiptRow = {
+  id: string;
+  number: number;
+  clientId: string | null;
+  currency: string;
+  total: string;
+  createdAt: Date;
+  voided: boolean;
+};
+
+const saleForReceiptColumns = {
+  id: sales.id,
+  number: sales.number,
+  clientId: sales.clientId,
+  currency: sales.currency,
+  total: sales.total,
+  createdAt: sales.createdAt,
+  voided: sql<boolean>`exists (
+    select 1 from sale_voids v
+    where v.organization_id = "sales"."organization_id" and v.sale_id = "sales"."id")`,
+};
+
+export async function findSaleForReceipt(
+  tx: DbTransaction,
+  organizationId: string,
+  saleId: string,
+): Promise<SaleForReceiptRow | undefined> {
+  const rows = await tx
+    .select(saleForReceiptColumns)
+    .from(sales)
+    .where(and(eq(sales.organizationId, organizationId), eq(sales.id, saleId)))
+    .limit(1);
+  return rows[0];
+}
+
+// Todas, anuladas incluidas, de la más vieja a la más nueva por emisión y número (ADR 0022, punto 9).
+export function findClientSalesForAccount(
+  tx: DbTransaction,
+  organizationId: string,
+  clientId: string,
+): Promise<SaleForReceiptRow[]> {
+  return tx
+    .select(saleForReceiptColumns)
+    .from(sales)
+    .where(
+      and(
+        eq(sales.organizationId, organizationId),
+        eq(sales.clientId, clientId),
+      ),
+    )
+    .orderBy(asc(sales.createdAt), asc(sales.number));
+}

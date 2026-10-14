@@ -450,6 +450,7 @@ describe("la apertura, los movimientos y el cierre (AC-3; ADR 0022, punto 8)", (
       {
         currency: "ARS",
         initial: "10000.50",
+        receipts: "0.00",
         contributions: "0.00",
         withdrawals: "0.00",
         expected: "10000.50",
@@ -459,6 +460,7 @@ describe("la apertura, los movimientos y el cierre (AC-3; ADR 0022, punto 8)", (
       {
         currency: "USD",
         initial: "0.00",
+        receipts: "0.00",
         contributions: "0.00",
         withdrawals: "0.00",
         expected: "0.00",

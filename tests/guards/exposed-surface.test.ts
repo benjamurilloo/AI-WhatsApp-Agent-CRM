@@ -165,6 +165,11 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
   "src/app/(autenticado)/caja/actions.ts#reactivatePaymentMethodAction": {
     requirement: "sesion",
   },
+  // El cobro de una venta (brief-21.3, D-3): solo admin, lo exige cash.
+  "src/app/(autenticado)/ventas/[saleId]/cobrar/actions.ts#createSaleReceiptAction":
+    {
+      requirement: "sesion",
+    },
   "src/app/(autenticado)/productos/actions.ts#createProductAction": {
     requirement: "sesion",
   },

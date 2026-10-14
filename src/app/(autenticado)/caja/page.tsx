@@ -23,7 +23,11 @@ import {
   noticeMessage,
   UNKNOWN_MEMBER_TEXT,
 } from "./messages";
-import { CurrencyTotalsTable, MovementsTable } from "./session-tables";
+import {
+  CurrencyTotalsTable,
+  MovementsTable,
+  SessionReceiptsTable,
+} from "./session-tables";
 
 export const metadata: Metadata = {
   title: "Caja — AI WhatsApp Agent CRM",
@@ -35,7 +39,8 @@ type SearchParams = Record<string, string | string[] | undefined>;
 
 // Pantalla 21 (brief-21.2, D-10): el estado de la caja del efectivo. Abierta, su sesión con lo
 // esperado por moneda y sus movimientos; admin registra aportes y retiros y la cierra. Cerrada, el
-// enlace a la última sesión y, para admin, «Abrir caja». Un viewer ve lo mismo sin acciones.
+// enlace a la última sesión y, para admin, «Abrir caja». Un viewer ve lo mismo sin acciones. Desde
+// la 21.3, los cobros en efectivo de la sesión, que suman a lo esperado (brief-21.3, D-5).
 export default async function CashPage({
   searchParams,
 }: {
@@ -96,6 +101,15 @@ export default async function CashPage({
                 </Link>
               </div>
             ) : null}
+          </SectionCard>
+
+          <SectionCard
+            id="cobros-titulo"
+            title="Cobros en efectivo"
+            icon="receipt"
+            className="mt-6"
+          >
+            <SessionReceiptsTable session={open} timeZone={timeZone} />
           </SectionCard>
 
           <SectionCard

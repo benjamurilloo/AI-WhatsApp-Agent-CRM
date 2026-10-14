@@ -34,6 +34,7 @@ import {
   type AuthContext,
 } from "@/modules/organizations";
 import { optionalCalendarDate } from "@/shared/calendar";
+import type { DbTransaction } from "@/shared/db";
 import { failure, type Failure } from "@/shared/errors";
 import {
   duplicateLines,
@@ -55,7 +56,8 @@ import * as repository from "./repository";
 // punto 4; brief-20.3): se arma con líneas, con las reglas de src/shared/lines, y descuenta el
 // stock con la transacción que le pasa a inventory. Desde la 20.4, la anulación (ADR 0021, punto 6;
 // brief-20.4): otro comprobante, que repone el stock de una venta sin pedido y deja libre el pedido
-// de una venta de pedido. Ningún módulo depende de sales.
+// de una venta de pedido. Desde la 21.3, cash depende de sales para leer: la venta que cobra y las
+// ventas de un cliente (ADR 0022, punto 13; brief-21.3, D-4). sales no depende de cash.
 
 export const SALES_PAGE_SIZE = 25;
 
@@ -1018,4 +1020,56 @@ export async function listSaleAudit(
     page: found.page,
     pageCount: found.pageCount,
   };
+}
+
+// Lecturas para cash (ADR 0022, punto 13; brief-21.3, D-4): sin AuthContext, porque las llama cash
+// con la transacción del cobro, después del bloqueo de cobros y ya autorizado. No bloquean: una venta
+// no se puede bloquear (ADR 0022, punto 4). Un id que no es uuid no encuentra nada. El pedido de la
+// venta y su cadena los suma la 21.4, que los necesita para la seña.
+
+export type SaleForReceipt = {
+  id: string;
+  number: number;
+  displayNumber: string;
+  // Null en una venta sin cliente.
+  clientId: string | null;
+  currency: string;
+  // Con la escala de la base ("1234.50").
+  total: string;
+  // La fecha de emisión: el orden de la imputación (ADR 0022, punto 9).
+  createdAt: Date;
+  voided: boolean;
+};
+
+function saleForReceipt(row: repository.SaleForReceiptRow): SaleForReceipt {
+  return { ...row, displayNumber: formatSaleNumber(row.number) };
+}
+
+export async function getSaleForReceipt(
+  tx: DbTransaction,
+  organizationId: string,
+  saleId: string,
+): Promise<SaleForReceipt | null> {
+  if (!idSchema.safeParse(saleId).success) return null;
+  const row = await repository.findSaleForReceipt(
+    tx,
+    organizationId,
+    saleId.toLowerCase(),
+  );
+  return row ? saleForReceipt(row) : null;
+}
+
+// Las ventas de un cliente, anuladas incluidas, de la más vieja a la más nueva.
+export async function listClientSalesForAccount(
+  tx: DbTransaction,
+  organizationId: string,
+  clientId: string,
+): Promise<SaleForReceipt[]> {
+  if (!idSchema.safeParse(clientId).success) return [];
+  const rows = await repository.findClientSalesForAccount(
+    tx,
+    organizationId,
+    clientId.toLowerCase(),
+  );
+  return rows.map(saleForReceipt);
 }

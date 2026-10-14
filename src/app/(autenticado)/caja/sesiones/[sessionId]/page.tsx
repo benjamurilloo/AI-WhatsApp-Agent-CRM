@@ -22,7 +22,11 @@ import {
   UNKNOWN_MEMBER_TEXT,
 } from "../../messages";
 import { PrintButton } from "../../print-button";
-import { CurrencyTotalsTable, MovementsTable } from "../../session-tables";
+import {
+  CurrencyTotalsTable,
+  MovementsTable,
+  SessionReceiptsTable,
+} from "../../session-tables";
 import { auditActionLabel, describeAuditDiff } from "./audit-summary";
 
 export const metadata: Metadata = {
@@ -41,7 +45,8 @@ function page(value: string | string[] | undefined): number {
 // Pantalla 26 (brief-21.2, D-10): el detalle de una sesión, que cerrada es su arqueo imprimible: la
 // organización, el número, la apertura y el cierre con su autor, por moneda el inicial, los aportes,
 // los retiros, lo esperado, lo contado y la diferencia, los movimientos y la leyenda. Al imprimir
-// queda solo el arqueo. La historia, para los dos roles (AC-6), sin imprimirse.
+// queda solo el arqueo. La historia, para los dos roles (AC-6), sin imprimirse. Desde la 21.3, los
+// cobros en efectivo por moneda y en su lista, también impresos (brief-21.3, D-5).
 export default async function CashSessionPage({
   params,
   searchParams,
@@ -131,6 +136,11 @@ export default async function CashSessionPage({
         <h3 className="mt-6 font-semibold">Por moneda</h3>
         <div className="mt-2">
           <CurrencyTotalsTable session={session} />
+        </div>
+
+        <h3 className="mt-6 font-semibold">Cobros en efectivo</h3>
+        <div className="mt-2">
+          <SessionReceiptsTable session={session} timeZone={timeZone} />
         </div>
 
         <h3 className="mt-6 font-semibold">Aportes y retiros</h3>

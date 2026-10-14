@@ -9,12 +9,15 @@ import {
   cashSessionOpeningAmounts,
   cashSessions,
   paymentMethods,
+  receipts,
+  receiptTarget,
 } from "./schema";
 
-// Acceso a los medios de pago y a la caja (ADR 0022, puntos 8 y 10; brief-21.2). Toda consulta
-// filtra por organization_id en SQL. Las únicas escrituras son las funciones insert* y
-// updatePaymentMethod*, y nada borra: lo vigila tests/guards/cash-writes.test.ts. Los privilegios de
-// crm_app y los triggers de la 0042 son las otras defensas.
+// Acceso a los medios de pago, a la caja y, desde la 21.3, a los cobros (ADR 0022, puntos 2, 8 y 10;
+// brief-21.2; brief-21.3). Toda consulta filtra por organization_id en SQL. Las únicas escrituras son
+// las funciones insert* y updatePaymentMethod*, y nada borra: lo vigila
+// tests/guards/cash-writes.test.ts. Los privilegios de crm_app y los triggers de la 0042 y la 0043
+// son las otras defensas.
 
 type Executor = Db | DbTransaction;
 
@@ -483,4 +486,172 @@ export async function findMovements(
       ),
     )
     .orderBy(asc(cashMovements.createdAt), asc(cashMovements.id));
+}
+
+// Cobros (ADR 0022, puntos 2 y 3; brief-21.3, D-1 a D-3 y D-8).
+
+export type ReceiptTarget = (typeof receiptTarget.enumValues)[number];
+
+export type ReceiptRow = {
+  id: string;
+  number: number;
+  target: ReceiptTarget;
+  saleId: string | null;
+  clientId: string | null;
+  paymentMethodId: string;
+  sessionId: string | null;
+  currency: string;
+  // Con la escala de la base ("1234.50").
+  amount: string;
+  createdBy: string;
+  createdAt: Date;
+};
+
+const receiptColumns = {
+  id: receipts.id,
+  number: receipts.number,
+  target: receipts.target,
+  saleId: receipts.saleId,
+  clientId: receipts.clientId,
+  paymentMethodId: receipts.paymentMethodId,
+  sessionId: receipts.sessionId,
+  currency: receipts.currency,
+  amount: receipts.amount,
+  createdBy: receipts.createdBy,
+  createdAt: receipts.createdAt,
+};
+
+export type NewReceipt = {
+  organizationId: string;
+  number: number;
+  target: ReceiptTarget;
+  saleId: string;
+  clientId: string | null;
+  paymentMethodId: string;
+  sessionId: string | null;
+  currency: string;
+  amount: string;
+  createdBy: string;
+};
+
+export async function insertReceipt(
+  tx: DbTransaction,
+  receipt: NewReceipt,
+): Promise<ReceiptRow> {
+  const rows = await tx
+    .insert(receipts)
+    .values(receipt)
+    .returning(receiptColumns);
+  return rows[0]!;
+}
+
+// Por orden de alta: el número sube con cada cobro.
+const receiptOrder = [asc(receipts.number)];
+
+// Los cobros de un cliente, para la imputación (ADR 0022, punto 9). Con tx, dentro del cobro, con el
+// bloqueo de cobros tomado.
+export function findClientReceipts(
+  organizationId: string,
+  clientId: string,
+  executor: Executor = getDb(),
+): Promise<ReceiptRow[]> {
+  return executor
+    .select(receiptColumns)
+    .from(receipts)
+    .where(
+      and(
+        eq(receipts.organizationId, organizationId),
+        eq(receipts.clientId, clientId),
+      ),
+    )
+    .orderBy(...receiptOrder);
+}
+
+export function findSaleReceipts(
+  organizationId: string,
+  saleId: string,
+  executor: Executor = getDb(),
+): Promise<ReceiptRow[]> {
+  return executor
+    .select(receiptColumns)
+    .from(receipts)
+    .where(
+      and(
+        eq(receipts.organizationId, organizationId),
+        eq(receipts.saleId, saleId),
+      ),
+    )
+    .orderBy(...receiptOrder);
+}
+
+// Los cobros en efectivo de una sesión: los únicos con sesión.
+export function findSessionReceipts(
+  organizationId: string,
+  sessionId: string,
+  executor: Executor = getDb(),
+): Promise<ReceiptRow[]> {
+  return executor
+    .select(receiptColumns)
+    .from(receipts)
+    .where(
+      and(
+        eq(receipts.organizationId, organizationId),
+        eq(receipts.sessionId, sessionId),
+      ),
+    )
+    .orderBy(...receiptOrder);
+}
+
+export async function findReceipt(
+  organizationId: string,
+  receiptId: string,
+): Promise<ReceiptRow | undefined> {
+  const rows = await getDb()
+    .select(receiptColumns)
+    .from(receipts)
+    .where(
+      and(
+        eq(receipts.organizationId, organizationId),
+        eq(receipts.id, receiptId),
+      ),
+    )
+    .limit(1);
+  return rows[0];
+}
+
+export async function countReceipts(
+  organizationId: string,
+  number: number | null,
+): Promise<number> {
+  const rows = await getDb()
+    .select({ total: count() })
+    .from(receipts)
+    .where(
+      and(
+        eq(receipts.organizationId, organizationId),
+        number !== null ? eq(receipts.number, number) : undefined,
+      ),
+    );
+  return rows[0]!.total;
+}
+
+// Del más nuevo al más viejo (brief-21.3, D-8).
+export function findReceipts(
+  organizationId: string,
+  number: number | null,
+  limit: number,
+  offset: number,
+): Promise<ReceiptRow[]> {
+  return getDb()
+    .select(receiptColumns)
+    .from(receipts)
+    .where(
+      and(
+        eq(receipts.organizationId, organizationId),
+        number !== null ? eq(receipts.number, number) : undefined,
+      ),
+    )
+    .orderBy(desc(receipts.number))
+    .limit(limit)
+    .offset(offset);
 }

@@ -36,6 +36,8 @@ export const auditEntityType = pgEnum("audit_entity_type", [
   // Sesión de caja y medio de pago (brief-21.2, D-9; ADR 0022, punto 11).
   "cash_session",
   "payment_method",
+  // El cobro, como recibo (brief-21.3, D-7; ADR 0022, punto 2).
+  "receipt",
 ]);
 
 export const auditAction = pgEnum("audit_action", [

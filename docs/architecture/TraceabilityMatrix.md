@@ -59,6 +59,15 @@
 | 25 Sesiones de caja (21.2) | FR-CAJ-06 | `cash_sessions`, `cash_session_closings`, `cash_session_closing_amounts`, `users` | `cash_sessions_organization_number_unique` (orden y búsqueda por número) |
 | 26 Sesión y arqueo (21.2) | FR-CAJ-06 y 07 | las de la pantalla 21, `organizations`, `audit_logs` | las de la pantalla 21; `audit_logs (organization_id, entity_type, entity_id, created_at desc)` |
 | 27 Medios de pago (21.2) | FR-CAJ-01 | `payment_methods`, `audit_logs` | `payment_methods_organization_name_lower_unique` |
+| FR-CAJ-09 | Pantallas 18 y 28 (21.3); `receipts.test.ts` (la numeración, la copia de la moneda y del cliente, los cobros parciales, el tope, el efectivo en la sesión, los rechazos de D-6 y la serialización), `receipts-schema.test.ts` (el destino, el efectivo y su sesión, la sesión cerrada) y `receipts.spec.ts` | pantalla e invariante con test |
+| FR-CAJ-10 | Pantalla 18 (21.3); `imputation.test.ts` (los ejemplos del punto 9 del ADR 0022 y siete propiedades sobre 500 casos de semilla fija), `receipts.test.ts` (lo cobrado de una venta anulada, a la cuenta o a devolver, y la venta anulada durante un cobro) | pantalla e invariante con test |
+| FR-CAJ-11 | Pantallas 18, 21, 26, 29 y 30 (21.3); `receipts.test.ts` (las lecturas para los dos roles, la búsqueda y otra organización) y `receipts.spec.ts` (el recibo, la lista, la caja con cobros y el `viewer`) | pantalla e invariante con test |
+| FR-CAJ-12 | `receipts-schema.test.ts` (solo inserción para cualquier rol, el cliente con cobros), `receipts.test.ts` (la auditoría), `client-data.test.ts` (casos 44 a 46), `audit.test.ts` y la guarda `cash-writes` | invariante con test |
+| 28 Registrar cobro (21.3) | FR-CAJ-09 | `sales` y `sale_voids` por `getSaleForReceipt` y `listClientSalesForAccount`, `receipts`, `payment_methods`, `cash_sessions`, `cash_session_closings`, `clients` (`FOR SHARE`), `document_counters`, `audit_logs` | `sales` PK; `sales_client_idx`; `receipts_sale_idx`, `receipts_client_idx` |
+| 29 Recibo (21.3) | FR-CAJ-11 | `receipts`, `payment_methods`, `sales` por `getSaleForReceipt`, `clients` por `getClientsByIds`, `cash_sessions`, `organizations`, `users` | `receipts` PK |
+| 30 Cobros (21.3) | FR-CAJ-11 | `receipts`, `payment_methods`, `sales` por `getSaleForReceipt` (una lectura por venta de la página), `clients` por `getClientsByIds` | `receipts_organization_number_unique` (orden y búsqueda por número) |
+
+*Desde la 21.3* ([brief-21.3](../decisions/brief-21.3-el-cobro-de-una-venta.md)): la pantalla 18 suma FR-CAJ-09 a 11, con la sección «Cobros» compuesta con `cash`, y las pantallas 21 y 26 suman los cobros en efectivo de la sesión (`receipts_session_idx`).
 
 *Desde la 16.1*, la pantalla 6 suma FR-CLI-10 y las tablas `client_tags` y `client_tag_assignments` (chips por fila y filtro, con `client_tag_assignments (organization_id, tag_id)` para el `EXISTS`), y la pantalla 7 suma FR-CLI-09 y 10 (la PK `(client_id, tag_id)` para las etiquetas del cliente).
 

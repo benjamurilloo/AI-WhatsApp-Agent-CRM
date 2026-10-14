@@ -91,6 +91,8 @@ describe("base de test", () => {
       "product_images",
       "product_prices",
       "products",
+      // Los cobros (brief-21.3).
+      "receipts",
       "sale_lines",
       "sale_voids",
       "sales",

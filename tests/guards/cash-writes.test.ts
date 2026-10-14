@@ -2,16 +2,18 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-// Guarda de la caja y los medios de pago (brief-21.2, AC-8; ADR 0022, puntos 8 y 10): en src/, las
-// seis tablas de cash solo se escriben desde las funciones autorizadas de
-// src/modules/cash/repository.ts; las cinco de la caja solo se insertan, y payment_methods solo se
-// inserta y se actualiza, sin borrarse. Es la tercera defensa, después de los privilegios de
-// crm_app y de los triggers de la 0042: crm_app tiene INSERT en todas, así que la base no rechaza
-// una sesión, un movimiento o un cierre escritos fuera de cash, sin el bloqueo de cobros, sin
-// número o sin auditoría.
+// Guarda de la caja, los medios de pago y, desde la 21.3, los cobros (brief-21.2, AC-8; brief-21.3,
+// AC-8; ADR 0022, puntos 2, 8 y 10): en src/, las siete tablas de cash solo se escriben desde las
+// funciones autorizadas de src/modules/cash/repository.ts; las cinco de la caja y receipts solo se
+// insertan, y payment_methods solo se inserta y se actualiza, sin borrarse. Es la tercera defensa,
+// después de los privilegios de crm_app y de los triggers de la 0042 y la 0043: crm_app tiene INSERT
+// en todas, así que la base no rechaza una sesión, un movimiento, un cierre o un cobro escritos
+// fuera de cash, sin el bloqueo de cobros, sin número o sin auditoría.
 //
 // Además fija qué caso de uso llama a cada escritura de la caja: el inicial solo se escribe al
-// abrir, y el cierre por moneda solo al cerrar (brief-21.2, D-1). Eso no lo puede defender la base.
+// abrir, el cierre por moneda solo al cerrar (brief-21.2, D-1), y el cobro solo desde
+// createSaleReceipt, que copia de la venta el cliente y la moneda (brief-21.3, D-3). Eso no lo puede
+// defender la base.
 //
 // Ve y no ve lo mismo que sale-writes.
 
@@ -27,6 +29,7 @@ const AUTHORIZED = new Map([
   ["insertClosingAmounts", ["insert cash_session_closing_amounts"]],
   ["insertClosing", ["insert cash_session_closings"]],
   ["insertMovement", ["insert cash_movements"]],
+  ["insertReceipt", ["insert receipts"]],
 ]);
 
 // Qué caso de uso del servicio llama a cada escritura de la caja.
@@ -36,6 +39,7 @@ const CALLERS = new Map([
   ["insertClosingAmounts", ["closeCashSession"]],
   ["insertClosing", ["closeCashSession"]],
   ["insertMovement", ["recordCashMovement"]],
+  ["insertReceipt", ["createSaleReceipt"]],
 ]);
 
 const TABLES = new Map([
@@ -51,12 +55,13 @@ const TABLES = new Map([
   ["cash_session_closing_amounts", "cash_session_closing_amounts"],
   ["cashmovements", "cash_movements"],
   ["cash_movements", "cash_movements"],
+  ["receipts", "receipts"],
 ]);
 
 const SQL_NAMES =
-  "payment_methods|cash_sessions|cash_session_opening_amounts|cash_session_closings|cash_session_closing_amounts|cash_movements";
+  "payment_methods|cash_sessions|cash_session_opening_amounts|cash_session_closings|cash_session_closing_amounts|cash_movements|receipts";
 const DRIZZLE_NAMES =
-  "paymentMethods|cashSessions|cashSessionOpeningAmounts|cashSessionClosings|cashSessionClosingAmounts|cashMovements";
+  "paymentMethods|cashSessions|cashSessionOpeningAmounts|cashSessionClosings|cashSessionClosingAmounts|cashMovements|receipts";
 
 // La tabla en SQL: su nombre, con o sin esquema y comillas, o el objeto de Drizzle interpolado.
 // El nombre queda en el grupo 2 o en el 3.
@@ -210,6 +215,26 @@ describe("detección de escrituras de la caja", () => {
       code: "await tx.insert(cashSchema.cashMovements).values(v);",
     },
     {
+      name: "un cobro insertado fuera de su función",
+      file: REPOSITORY,
+      code: "export async function seedReceipt(tx) {\n  await tx.insert(receipts).values(v);\n}",
+    },
+    {
+      name: "un cobro actualizado, aun desde su función",
+      file: REPOSITORY,
+      code: "export async function insertReceipt(tx) {\n  await tx\n    .update(receipts)\n    .set({ amount: 1 });\n}",
+    },
+    {
+      name: "un cobro borrado con SQL literal en ventas",
+      file: "src/modules/sales/repository.ts",
+      code: "await tx.execute(sql`DELETE FROM receipts WHERE sale_id = ${id}`);",
+    },
+    {
+      name: "un cobro insertado con SQL literal y esquema en la aplicación",
+      file: "src/app/accion.ts",
+      code: 'await db.execute(sql`insert into "public"."receipts" (amount) values (1)`);',
+    },
+    {
       name: "TRUNCATE TABLE ONLY",
       file: "src/app/accion.ts",
       code: "await db.execute(sql`truncate table only cash_session_opening_amounts`);",
@@ -229,7 +254,7 @@ describe("detección de escrituras de la caja", () => {
     },
     {
       name: "la escritura de otra tabla de nombre parecido",
-      code: "export async function touch() {\n  await db.execute(sql`update cash_sessions_archive set x = 1`);\n  await db.execute(sql`delete from payment_methods_old`);\n}",
+      code: "export async function touch() {\n  await db.execute(sql`update cash_sessions_archive set x = 1`);\n  await db.execute(sql`delete from payment_methods_old`);\n  await db.execute(sql`insert into receipts_draft (x) values (1)`);\n}",
     },
   ])("permite: $name", ({ code }) => {
     expect(findViolations(REPOSITORY, code)).toEqual([]);
@@ -243,6 +268,14 @@ describe("detección de escrituras de la caja", () => {
     {
       name: "el cierre escrito desde un movimiento",
       code: "export async function recordCashMovement(c) {\n  await repository.insertClosing(tx, v);\n}",
+    },
+    {
+      name: "un cobro escrito desde un movimiento",
+      code: "export async function recordCashMovement(c) {\n  await repository.insertReceipt(tx, v);\n}",
+    },
+    {
+      name: "un cobro escrito desde un caso de uso nuevo",
+      code: "export async function createAccountReceipt(c) {\n  await repository.insertReceipt(tx, v);\n}",
     },
     {
       name: "una sesión creada desde un caso de uso nuevo",
@@ -282,6 +315,7 @@ describe("repositorio", () => {
       "insertClosingAmounts: insert cash_session_closing_amounts",
       "insertClosing: insert cash_session_closings",
       "insertMovement: insert cash_movements",
+      "insertReceipt: insert receipts",
     ]);
   });
 

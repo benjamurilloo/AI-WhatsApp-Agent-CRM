@@ -108,4 +108,9 @@ describe("formatDocumentNumber", () => {
     expect(formatDocumentNumber("cash_session", 45)).toBe("C-000045");
     expect(formatDocumentNumber("cash_session", 1_234_567)).toBe("C-1234567");
   });
+
+  it("el prefijo del cobro es R (brief-21.3)", () => {
+    expect(formatDocumentNumber("receipt", 123)).toBe("R-000123");
+    expect(formatDocumentNumber("receipt", 1_234_567)).toBe("R-1234567");
+  });
 });

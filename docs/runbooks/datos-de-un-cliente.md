@@ -1,6 +1,6 @@
 # Runbook: exportar o eliminar los datos de un cliente
 
-**Estado: validado localmente y en CI.** No ejecutado todavía contra un entorno con datos reales. *Actualizado el 2026-10-01 por la 13.4*: borrar pasó de minimizar la ficha a vaciar el contenido de todo lo del cliente. *Actualizado el 2026-10-07 por la 16.4*: el informe, la exportación y el vaciado incluyen las notas de sus conversaciones. *Actualizado el 2026-10-08 por la 17.1*: la ficha tiene campos ampliados, y la exportación y el vaciado los alcanzan; esa parte está validada localmente y pasa a la CI con su commit.
+**Estado: validado localmente y en CI.** No ejecutado todavía contra un entorno con datos reales. *Actualizado el 2026-10-01 por la 13.4*: borrar pasó de minimizar la ficha a vaciar el contenido de todo lo del cliente. *Actualizado el 2026-10-07 por la 16.4*: el informe, la exportación y el vaciado incluyen las notas de sus conversaciones. *Actualizado el 2026-10-08 por la 17.1*: la ficha tiene campos ampliados, y la exportación y el vaciado los alcanzan; esa parte está validada localmente y pasa a la CI con su commit. *Actualizado el 2026-10-14 por la 21.3*: la exportación trae sus cobros, el informe los cuenta y un cliente con cobros no se borra; validado localmente.
 
 Atiende un pedido de acceso o de borrado de los datos de una persona, que
 [NonFunctionalRequirements](../product/NonFunctionalRequirements.md) §Privacidad exige que exista
@@ -22,7 +22,7 @@ previsto que la haya en el MVP.
    npx tsx scripts/client-data-delete.ts --org <organization_id> --client <client_id>
    ```
 
-   Dice cuántas conversaciones, mensajes, notas de conversación, entradas de auditoría, etiquetas, desde la 19.2 pedidos y desde la 20.2 ventas tiene, si la ficha se puede
+   Dice cuántas conversaciones, mensajes, notas de conversación, entradas de auditoría, etiquetas, desde la 19.2 pedidos, desde la 20.2 ventas y desde la 21.3 cobros tiene, si la ficha se puede
    borrar, y qué quedaría después.
 
 ## Exportar
@@ -31,7 +31,7 @@ previsto que la haya en el MVP.
 npx tsx scripts/client-data-export.ts --org <organization_id> --client <client_id> --out <archivo.json>
 ```
 
-Incluye los seis orígenes que guardan datos de la persona y, desde la 19.2, sus pedidos; desde la 20.2, también sus ventas:
+Incluye los seis orígenes que guardan datos de la persona y, desde la 19.2, sus pedidos; desde la 20.2, también sus ventas; desde la 21.3, sus cobros:
 
 | Origen | Qué lleva |
 |---|---|
@@ -43,6 +43,7 @@ Incluye los seis orígenes que guardan datos de la persona y, desde la 19.2, sus
 | `client_tag_assignments` | *desde la 16.1*: sus etiquetas actuales, con su nombre, color, estado y fecha (campo `client_tags`; [brief-16.1](../decisions/brief-16.1-etiquetas-de-clientes.md), D-10) |
 | `orders` y `order_lines` | *desde la 19.2*: sus pedidos, con número, estado, fechas, moneda y total, y sus líneas, con el producto (su SKU y su nombre de hoy), la cantidad, el precio y el total (campos `orders` y `order_lines`; [ADR 0020](../decisions/0020-el-pedido.md), punto 10). No tienen texto de la persona, pero son suyos |
 | `sales` y `sale_lines` | *desde la 20.2*: sus ventas, con número, fecha, el número del pedido, moneda y total, y sus líneas, con el producto (su SKU y su nombre de hoy), la cantidad, el precio y el total (campos `sales` y `sale_lines`; [ADR 0021](../decisions/0021-la-venta.md), punto 12). Si está anulada se suma con la 20.4. *Desde la 20.4* ([brief-20.4](../decisions/brief-20.4-la-anulacion.md), D-10): cada venta dice si está anulada (`voided`) y por cuál anulación (`void_display_number`), y la lista `sale_voids` trae cada anulación de sus ventas, con el número, la fecha, la venta, la moneda, el total y el motivo de la lista. El informe de `client-data-delete.ts` las cuenta y dice que quedan: no guardan texto de la persona, y el vaciado no las toca. *Desde la 20.3*, también sus ventas sin pedido, con el pedido en `null` ([brief-20.3](../decisions/brief-20.3-la-venta-sin-pedido.md), H-9); una venta sin cliente no es de ningún cliente y no aparece |
+| `receipts` | *desde la 21.3* ([brief-21.3](../decisions/brief-21.3-el-cobro-de-una-venta.md), D-9; [ADR 0022](../decisions/0022-cobros-y-caja.md), punto 14): sus cobros, con el número (`display_number`, `R-000123`), la fecha, la venta y su número, el medio, la moneda y el monto (campo `receipts`). Llegan al cliente por el `client_id` que el cobro copia de la venta; el cobro de una venta sin cliente no aparece. No guardan texto de la persona |
 
 **No incluye `ingestion_events`**, y es a propósito: esa tabla guarda el emisor, una referencia
 opaca suya, el hash del payload y fechas. El propio archivo lo dice en su campo `excluded`, para
@@ -69,7 +70,7 @@ Esa línea corre el informe. Para vaciar o borrar se le agrega `--vaciar` o `--b
 
 ### Caso A — el cliente no tiene conversaciones ni pedidos
 
-*Desde la 20.2* ([brief-20.2](../decisions/brief-20.2-la-venta-de-un-pedido.md), H-1): ni ventas. Una venta apunta a la ficha con `ON DELETE RESTRICT`. En la 20.2 toda venta tiene un pedido, así que no cambia qué clientes caen acá; con la venta sin pedido de la 20.3, sí. *Desde la 20.3*: un cliente con una venta sin pedido tampoco se borra, aunque no tenga pedidos; una venta sin cliente no cuenta para ninguno.
+*Desde la 20.2* ([brief-20.2](../decisions/brief-20.2-la-venta-de-un-pedido.md), H-1): ni ventas. Una venta apunta a la ficha con `ON DELETE RESTRICT`. En la 20.2 toda venta tiene un pedido, así que no cambia qué clientes caen acá; con la venta sin pedido de la 20.3, sí. *Desde la 20.3*: un cliente con una venta sin pedido tampoco se borra, aunque no tenga pedidos; una venta sin cliente no cuenta para ninguno. *Desde la 21.3* ([brief-21.3](../decisions/brief-21.3-el-cobro-de-una-venta.md), D-9): ni cobros. Un cobro apunta a la ficha con `receipts_client_fk`, `ON DELETE RESTRICT`. Todo cobro es de una venta, y su cliente ya la frena, así que no cambia qué clientes caen acá; el informe igual los cuenta y `--borrar` exige cero.
 
 *Desde la 19.2* ([brief-19.2](../decisions/brief-19.2-el-pedido.md), D-9; ADR 0020, punto 10): decía «el cliente no tiene conversaciones». Un pedido apunta a la ficha con `ON DELETE RESTRICT`, así que un cliente con pedidos va al caso B aunque no tenga conversaciones; el informe y `--borrar` lo dicen.
 
@@ -83,7 +84,7 @@ Queda en `audit_logs` que hubo cambios sobre una ficha, de qué tipo y cuándo, 
 
 ### Caso B — el cliente tiene conversaciones o pedidos
 
-La ficha no se puede borrar: `messages` → `conversations` → `clients` son `ON DELETE RESTRICT`, y los mensajes no se borran; desde la 19.2, también `orders` → `clients`, y un pedido nunca se borra; desde la 20.2, también `sales` → `clients`, y una venta nunca se borra. Se vacía:
+La ficha no se puede borrar: `messages` → `conversations` → `clients` son `ON DELETE RESTRICT`, y los mensajes no se borran; desde la 19.2, también `orders` → `clients`, y un pedido nunca se borra; desde la 20.2, también `sales` → `clients`, y una venta nunca se borra; desde la 21.3, también `receipts` → `clients`, y un cobro nunca se borra. Se vacía:
 
 ```
 npx tsx scripts/client-data-delete.ts --org <organization_id> --client <client_id> --vaciar
@@ -101,6 +102,7 @@ En una sola transacción:
 | `client_tag_assignments` (desde la 16.1) | **se borran**: «Reclamo» o «Quiere señar» son datos sobre la persona (D-10) | nada; el catálogo de etiquetas no es de la persona y queda |
 | `orders`, `order_lines` y su auditoría (desde la 19.2) | **nada**: no guardan texto de la persona, solo ids, cantidades, montos, estados y fechas, y la auditoría del pedido tampoco (brief-19.2, D-11) | los pedidos completos, con el cliente ya vaciado |
 | `sales`, `sale_lines` y su auditoría (desde la 20.2) | **nada**: no guardan texto de la persona, solo ids, cantidades, montos y fechas, y la auditoría de la venta tampoco (brief-20.2, D-7) | las ventas completas, con el cliente ya vaciado |
+| `receipts` y su auditoría (desde la 21.3) | **nada**: no guardan texto de la persona, solo el número, la venta, el medio, la moneda, el monto y la fecha, y la auditoría del cobro tampoco (brief-21.3, D-7) | los cobros completos, con el cliente ya vaciado |
 
 Un segundo vaciado no cambia nada ni falla. Con la ingestión encendida, el vaciado espera a los mensajes de esa persona que se están guardando en ese momento, y los alcanza (revisión independiente de la 13.4, R-2). Lo mismo con una nota que un usuario del CRM está guardando en ese momento (revisión de la 16.4, R-1).
 

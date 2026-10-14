@@ -6,6 +6,11 @@ import {
   recordAudit,
   type NamedAuditLogEntry,
 } from "@/modules/audit";
+import {
+  getClientsByIds,
+  lockClientForOrder,
+  type Client,
+} from "@/modules/crm";
 import { formatDocumentNumber, nextDocumentNumber } from "@/modules/numbering";
 import {
   authorize,
@@ -21,7 +26,18 @@ import {
   moneyToDatabase,
   type Money,
 } from "@/shared/money";
+import {
+  getSaleForReceipt,
+  listClientSalesForAccount,
+  type SaleForReceipt,
+} from "@/modules/sales";
 import type { DbTransaction } from "@/shared/db";
+import {
+  imputeAccount,
+  outstandingOf,
+  standaloneSale,
+  type AccountReceipt,
+} from "./imputation";
 import * as repository from "./repository";
 import {
   computeCashTotals,
@@ -31,14 +47,15 @@ import {
 } from "./totals";
 
 // Casos de uso de los medios de pago y de la caja del efectivo (ADR 0022, puntos 4, 8, 10 y 12;
-// brief-21.2). cash es dueño de la regla: abre la transacción, toma primero el bloqueo de cobros de
-// la organización y se la pasa a numbering (el número de la sesión) y a audit. En la 21.2 no
-// depende de sales, orders ni crm, y ningún módulo depende de cash.
+// brief-21.2) y, desde la 21.3, del cobro de una venta (brief-21.3). cash es dueño de la regla: abre
+// la transacción, toma primero el bloqueo de cobros de la organización y se la pasa a sales (la
+// venta, para leer), a crm (el cliente en modo compartido), a numbering y a audit. Desde la 21.3
+// depende de sales y de crm, sin bloquear ninguna venta; ningún módulo depende de cash.
 //
-// El orden de cada escritura (D-7): el bloqueo, las lecturas que deciden, el contador (solo en la
-// apertura), los INSERT o el UPDATE y la auditoría. Las claves foráneas del autor toman FOR KEY
-// SHARE sobre users al insertar, como en todas las tablas con autor (brief-20.4, H-6): no hace
-// falta un bloqueo nuevo. El pedido y el cliente del orden del ADR llegan con la 21.3 y la 21.4.
+// El orden de cada escritura (brief-21.2, D-7; brief-21.3, D-3): el bloqueo, el cliente si lo hay,
+// las lecturas que deciden, el contador, los INSERT o el UPDATE y la auditoría. Las claves foráneas
+// del autor toman FOR KEY SHARE sobre users al insertar, como en todas las tablas con autor
+// (brief-20.4, H-6): no hace falta un bloqueo nuevo. El pedido del orden del ADR llega con la 21.4.
 
 const idSchema = z.uuid();
 
@@ -405,11 +422,12 @@ async function readTotals(
   organizationId: string,
   sessionId: string,
 ): Promise<CashTotals[]> {
-  const [opening, movements] = await Promise.all([
+  const [opening, receipts, movements] = await Promise.all([
     repository.findOpeningAmounts(organizationId, [sessionId], tx),
+    repository.findSessionReceipts(organizationId, sessionId, tx),
     repository.findMovements(organizationId, sessionId, tx),
   ]);
-  return computeCashTotals({ opening, movements });
+  return computeCashTotals({ opening, receipts, movements });
 }
 
 type CashRowsFailure = Failure<
@@ -417,7 +435,8 @@ type CashRowsFailure = Failure<
   {
     reason: "no_rows" | "too_many_rows" | "rows" | "missing";
     issues: CashRowIssue[];
-    // Las monedas con inicial o movimientos que el cierre no contó (D-4).
+    // Las monedas con inicial, cobros en efectivo o movimientos que el cierre no contó (D-4;
+    // brief-21.3, D-5).
     missing: string[];
   }
 >;
@@ -673,8 +692,8 @@ export async function recordCashMovement(
   );
 }
 
-// Lo contado contra lo esperado de cada moneda (D-4): falta cada moneda con inicial o movimientos
-// que no se contó; una moneda que apareció al contar va con lo esperado en cero.
+// Lo contado contra lo esperado de cada moneda (D-4): falta cada moneda con inicial, cobros en
+// efectivo o movimientos que no se contó; una moneda que apareció al contar va con lo esperado en cero.
 function planClosing(
   totals: CashTotals[],
   counted: Map<string, Money>,
@@ -772,12 +791,13 @@ export async function previewCashClosing(
       session: sessionRef(session),
     };
   }
-  const [opening, movements] = await Promise.all([
+  const [opening, receipts, movements] = await Promise.all([
     repository.findOpeningAmounts(organizationId, [session.id]),
+    repository.findSessionReceipts(organizationId, session.id),
     repository.findMovements(organizationId, session.id),
   ]);
   const plan = planClosing(
-    computeCashTotals({ opening, movements }),
+    computeCashTotals({ opening, receipts, movements }),
     read.counted,
   );
   if (!plan.ok) return rowsFailure("missing", [], plan.missing);
@@ -912,6 +932,8 @@ export type CashCurrencyTotals = {
   currency: string;
   // Con la escala de la base ("1234.50"), como los demás montos.
   initial: string;
+  // Los cobros en efectivo, desde la 21.3 (brief-21.3, D-5).
+  receipts: string;
   contributions: string;
   withdrawals: string;
   expected: string;
@@ -938,6 +960,8 @@ export type CashSessionDetail = SessionRef & {
   closedAt: Date | null;
   currencies: CashCurrencyTotals[];
   movements: CashMovementView[];
+  // Los cobros en efectivo de la sesión, con su número (brief-21.3, D-5).
+  receipts: ReceiptListItem[];
 };
 
 function difference(counted: Money, expected: Money) {
@@ -971,14 +995,15 @@ async function sessionDetail(
   organizationId: string,
   session: repository.SessionRow,
 ): Promise<CashSessionDetail> {
-  const [opening, movements, closing] = await Promise.all([
+  const [opening, receipts, movements, closing] = await Promise.all([
     repository.findOpeningAmounts(organizationId, [session.id]),
+    repository.findSessionReceipts(organizationId, session.id),
     repository.findMovements(organizationId, session.id),
     session.closedAt === null
       ? Promise.resolve([])
       : repository.findClosingAmounts(organizationId, [session.id]),
   ]);
-  const totals = computeCashTotals({ opening, movements });
+  const totals = computeCashTotals({ opening, receipts, movements });
   const closingOf = new Map(closing.map((row) => [row.currency, row]));
   // Una moneda que apareció al contar no tiene inicial ni movimientos: su fila sale del cierre.
   for (const row of closing) {
@@ -986,6 +1011,7 @@ async function sessionDetail(
       totals.push({
         currency: row.currency,
         initial: 0n,
+        receipts: 0n,
         contributions: 0n,
         withdrawals: 0n,
         expected: 0n,
@@ -1017,6 +1043,7 @@ async function sessionDetail(
       return {
         currency: row.currency,
         initial: moneyToDatabase(row.initial),
+        receipts: moneyToDatabase(row.receipts),
         contributions: moneyToDatabase(row.contributions),
         withdrawals: moneyToDatabase(row.withdrawals),
         expected: moneyToDatabase(expected),
@@ -1035,6 +1062,7 @@ async function sessionDetail(
       createdByName: names.get(row.createdBy) ?? null,
       createdAt: row.createdAt,
     })),
+    receipts: await receiptListItems(organizationId, receipts),
   };
 }
 
@@ -1246,5 +1274,600 @@ export async function listCashSessionAudit(
     total: found.total,
     page: found.page,
     pageCount: found.pageCount,
+  };
+}
+
+// El cobro de una venta (ADR 0022, puntos 2 a 4, 6 y 9; brief-21.3, D-2 a D-10).
+
+export type ReceiptRef = { id: string; number: number; displayNumber: string };
+
+export function formatReceiptNumber(value: number): string {
+  return formatDocumentNumber("receipt", value);
+}
+
+function receiptRef(row: { id: string; number: number }): ReceiptRef {
+  return {
+    id: row.id,
+    number: row.number,
+    displayNumber: formatReceiptNumber(row.number),
+  };
+}
+
+// El número como lo escribe quien busca: «R-000123», «r123», «000123» o «123» (ADR 0022, punto 11).
+export function parseReceiptNumberSearch(text: string): number | null {
+  const match = /^(?:r-?)?0*(\d{1,15})$/i.exec(text.trim());
+  if (!match) return null;
+  const value = Number(match[1]!);
+  return Number.isSafeInteger(value) && value > 0 ? value : null;
+}
+
+function toAccountReceipt(row: repository.ReceiptRow): AccountReceipt {
+  if (row.target !== "sale" || row.saleId === null) {
+    throw new Error(`cobro ${row.id} sin la venta de su destino`);
+  }
+  return {
+    target: "sale",
+    saleId: row.saleId,
+    currency: row.currency,
+    amount: moneyFromDatabase(row.amount),
+  };
+}
+
+const sumAmounts = (rows: repository.ReceiptRow[]): Money =>
+  rows.reduce((sum, row) => sum + moneyFromDatabase(row.amount), 0n);
+
+// Dónde está una venta respecto de sus cobros, con la regla de imputación (D-2). Con cliente, lo que
+// falta sale de la cuenta entera del cliente; sin cliente, de su total menos sus cobros (punto 3).
+// Una venta anulada no debe nada: lo cobrado pasa a la cuenta del cliente o queda a devolver
+// (punto 6). Lee con la transacción que recibe: en el cobro, con el bloqueo de cobros tomado.
+type SaleStanding = {
+  receipts: repository.ReceiptRow[];
+  // Lo cobrado contra esta venta.
+  collected: Money;
+  // Lo que recibió del remanente de la cuenta del cliente (paso 3 del punto 9).
+  imputed: Money;
+  outstanding: Money;
+  // De una venta anulada: con cliente, lo que pasó a su cuenta; sin cliente, lo que queda a devolver.
+  toAccount: Money;
+  toRefund: Money;
+};
+
+async function saleStanding(
+  tx: DbTransaction,
+  organizationId: string,
+  sale: SaleForReceipt,
+): Promise<SaleStanding> {
+  const receipts = await repository.findSaleReceipts(
+    organizationId,
+    sale.id,
+    tx,
+  );
+  const collected = sumAmounts(receipts);
+  if (sale.clientId === null) {
+    const standing = standaloneSale({
+      total: moneyFromDatabase(sale.total),
+      collected,
+      voided: sale.voided,
+    });
+    return {
+      receipts,
+      collected,
+      imputed: 0n,
+      outstanding: standing.outstanding,
+      toAccount: 0n,
+      toRefund: standing.toRefund,
+    };
+  }
+  if (sale.voided) {
+    return {
+      receipts,
+      collected,
+      imputed: 0n,
+      outstanding: 0n,
+      toAccount: collected,
+      toRefund: 0n,
+    };
+  }
+  // Una tras otra: las dos van por la conexión de la transacción.
+  const sales = await listClientSalesForAccount(
+    tx,
+    organizationId,
+    sale.clientId,
+  );
+  const clientReceipts = await repository.findClientReceipts(
+    organizationId,
+    sale.clientId,
+    tx,
+  );
+  const accounts = imputeAccount({
+    sales: sales.map((row) => ({
+      id: row.id,
+      number: row.number,
+      currency: row.currency,
+      total: moneyFromDatabase(row.total),
+      issuedAt: row.createdAt,
+      voided: row.voided,
+    })),
+    receipts: clientReceipts.map(toAccountReceipt),
+    // Las devoluciones llegan con la 21.5 (H-6).
+    refunds: [],
+  });
+  const row = outstandingOf(accounts, sale.id);
+  if (!row) {
+    throw new Error(`la venta ${sale.id} no está en la cuenta de su cliente`);
+  }
+  return {
+    receipts,
+    collected,
+    imputed: row.imputed,
+    outstanding: row.outstanding,
+    toAccount: 0n,
+    toRefund: 0n,
+  };
+}
+
+export type ReceiptField = "paymentMethod" | "amount";
+
+export type CreateSaleReceiptResult =
+  | { ok: true; receipt: ReceiptRef }
+  | Failure<"FORBIDDEN" | "VALIDATION_ERROR">
+  | Failure<"NOT_FOUND", { entity: "sale" | "payment_method" }>
+  | Failure<
+      "VALIDATION_ERROR",
+      {
+        fields: ReceiptField[];
+        amount?: CashAmountRejection | "required" | "limit";
+      }
+    >
+  | Failure<"BUSINESS_RULE_VIOLATION", { rule: "sale_voided" }>
+  | Failure<"BUSINESS_RULE_VIOLATION", { rule: "payment_method_inactive" }>
+  | Failure<"BUSINESS_RULE_VIOLATION", { rule: "no_open_session" }>
+  | Failure<
+      "BUSINESS_RULE_VIOLATION",
+      { rule: "exceeds_outstanding"; currency: string; outstanding: string }
+    >;
+
+// El cobro (D-3), solo de admin, en READ COMMITTED:
+//
+// 1. el bloqueo de cobros de la organización;
+// 2. la venta, por sales; si tiene cliente, su ficha en modo compartido por crm, y la venta otra vez,
+//    porque pudo anularse mientras se esperaba al cliente;
+// 3. la comprobación: la venta vigente, el monto en su moneda, el medio activo, la sesión abierta si
+//    es efectivo y que el monto no supere lo que falta, con la regla de imputación;
+// 4. al final, el contador, el cobro y la auditoría.
+//
+// La sesión no viaja en el formulario: el cobro es plata que entra ahora y va a la sesión abierta
+// cuando se registra (D-3). Una venta anulada después de leerla, ya con el contador, queda con su
+// cobro, y su monto pasa a la cuenta o a devolver (ADR 0022, punto 4; D-10).
+export async function createSaleReceipt(
+  context: AuthContext,
+  input: { saleId: string; paymentMethodId: string; amount: string },
+): Promise<CreateSaleReceiptResult> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  if (!idSchema.safeParse(input.saleId).success) {
+    return failure("VALIDATION_ERROR");
+  }
+  const fields: ReceiptField[] = [];
+  const methodId = input.paymentMethodId.trim().toLowerCase();
+  if (!idSchema.safeParse(methodId).success) fields.push("paymentMethod");
+  const amountText = input.amount.trim();
+  if (amountText === "") fields.push("amount");
+  if (fields.length > 0) {
+    return {
+      ok: false,
+      code: "VALIDATION_ERROR",
+      fields,
+      ...(amountText === "" ? { amount: "required" as const } : {}),
+    };
+  }
+  const { organizationId, userId } = context;
+
+  return repository.withTransaction(
+    async (tx): Promise<CreateSaleReceiptResult> => {
+      await repository.lockCash(tx, organizationId);
+      let sale = await getSaleForReceipt(tx, organizationId, input.saleId);
+      if (!sale) return { ok: false, code: "NOT_FOUND", entity: "sale" };
+      if (sale.clientId !== null) {
+        // ADR 0022, punto 4, paso 3: sin esto, el INSERT esperaría la ficha por su clave foránea
+        // detrás de una edición del cliente, con el bloqueo de cobros tomado (H-1). Lo que devuelve
+        // no se mira: la venta de un cliente desactivado se cobra igual, porque la venta sigue
+        // vigente y le falta plata (revisión de la 21.3, R-6).
+        await lockClientForOrder(tx, organizationId, sale.clientId);
+        sale = await getSaleForReceipt(tx, organizationId, sale.id);
+        if (!sale)
+          throw new Error("la venta desapareció con el bloqueo tomado");
+      }
+      if (sale.voided) return ruleFailure("sale_voided");
+
+      const parsed = parseCashAmount(amountText, sale.currency, {
+        allowZero: false,
+      });
+      if (!parsed.ok) {
+        return {
+          ok: false,
+          code: "VALIDATION_ERROR",
+          fields: ["amount"],
+          amount: parsed.reason,
+        };
+      }
+      const method = await repository.findPaymentMethod(
+        organizationId,
+        methodId,
+        tx,
+      );
+      if (!method) {
+        return { ok: false, code: "NOT_FOUND", entity: "payment_method" };
+      }
+      if (!method.isActive) return ruleFailure("payment_method_inactive");
+      let sessionId: string | null = null;
+      let sessionNumber: number | null = null;
+      if (method.isCash) {
+        const last = await repository.findLastSession(organizationId, tx);
+        if (!last || last.closedAt !== null) {
+          return ruleFailure("no_open_session");
+        }
+        sessionId = last.id;
+        sessionNumber = last.number;
+      }
+      const standing = await saleStanding(tx, organizationId, sale);
+      if (parsed.amount > standing.outstanding) {
+        return {
+          ok: false,
+          code: "BUSINESS_RULE_VIOLATION",
+          rule: "exceeds_outstanding",
+          currency: sale.currency,
+          outstanding: moneyToDatabase(standing.outstanding),
+        };
+      }
+      // Como el aporte: lo esperado de la sesión tiene que seguir cabiendo en numeric(14, 2), o la
+      // sesión no se podría cerrar.
+      if (sessionId !== null) {
+        const totals = await readTotals(tx, organizationId, sessionId);
+        const expected =
+          totals.find((row) => row.currency === sale.currency)?.expected ?? 0n;
+        if (expected + parsed.amount > MAX_AMOUNT) {
+          return {
+            ok: false,
+            code: "VALIDATION_ERROR",
+            fields: ["amount"],
+            amount: "limit",
+          };
+        }
+      }
+
+      const number = await nextDocumentNumber(tx, organizationId, "receipt");
+      const receipt = await repository.insertReceipt(tx, {
+        organizationId,
+        number,
+        target: "sale",
+        saleId: sale.id,
+        // La copia del cliente y de la moneda de la venta (punto 2).
+        clientId: sale.clientId,
+        paymentMethodId: method.id,
+        sessionId,
+        currency: sale.currency,
+        amount: moneyToDatabase(parsed.amount),
+        createdBy: userId,
+      });
+      // Claves planas, sin datos de una persona (D-7).
+      await recordAudit(tx, {
+        organizationId,
+        actorUserId: userId,
+        entityType: "receipt",
+        entityId: receipt.id,
+        action: "create",
+        diff: {
+          before: null,
+          after: {
+            number: receipt.number,
+            sale_number: sale.number,
+            payment_method: method.name,
+            currency: receipt.currency,
+            amount: receipt.amount,
+            ...(sessionNumber === null
+              ? {}
+              : { session_number: sessionNumber }),
+          },
+        },
+      });
+      return { ok: true, receipt: receiptRef(receipt) };
+    },
+  );
+}
+
+// Lecturas de los cobros: admin y viewer (ADR 0022, punto 12). La venta se lee por sales, el cliente
+// por crm, ya resuelto para el rol, y el medio y la sesión acá.
+
+export type ReceiptListItem = ReceiptRef & {
+  createdAt: Date;
+  sale: { id: string; displayNumber: string } | null;
+  paymentMethodName: string;
+  isCash: boolean;
+  currency: string;
+  amount: string;
+};
+
+async function methodsById(organizationId: string) {
+  return new Map(
+    (await repository.findPaymentMethods(organizationId)).map((method) => [
+      method.id,
+      method,
+    ]),
+  );
+}
+
+// Las ventas de unos cobros, por sales: una lectura por venta, con la transacción que piden sus
+// lecturas (D-4). Una página tiene a lo sumo CASH_RECEIPTS_PAGE_SIZE cobros.
+async function salesById(
+  organizationId: string,
+  saleIds: (string | null)[],
+): Promise<Map<string, SaleForReceipt>> {
+  const ids = [...new Set(saleIds.filter((id): id is string => id !== null))];
+  if (ids.length === 0) return new Map();
+  return repository.withTransaction(async (tx) => {
+    const found = new Map<string, SaleForReceipt>();
+    for (const id of ids) {
+      const sale = await getSaleForReceipt(tx, organizationId, id);
+      if (sale) found.set(id, sale);
+    }
+    return found;
+  });
+}
+
+async function receiptListItems(
+  organizationId: string,
+  rows: repository.ReceiptRow[],
+): Promise<ReceiptListItem[]> {
+  if (rows.length === 0) return [];
+  const [methods, sales] = await Promise.all([
+    methodsById(organizationId),
+    salesById(
+      organizationId,
+      rows.map((row) => row.saleId),
+    ),
+  ]);
+  return rows.map((row) => {
+    const method = methods.get(row.paymentMethodId);
+    const sale = row.saleId === null ? undefined : sales.get(row.saleId);
+    return {
+      ...receiptRef(row),
+      createdAt: row.createdAt,
+      sale: sale ? { id: sale.id, displayNumber: sale.displayNumber } : null,
+      paymentMethodName: method?.name ?? "",
+      isCash: method?.isCash ?? false,
+      currency: row.currency,
+      amount: row.amount,
+    };
+  });
+}
+
+export type SaleReceipts = {
+  currency: string;
+  total: string;
+  // Lo cobrado contra esta venta y, con cliente, lo imputado desde su cuenta.
+  collected: string;
+  imputed: string;
+  outstanding: string;
+  // Lo que se muestra en lugar de lo que falta (D-8).
+  status: "pending" | "collected" | "voided";
+  hasClient: boolean;
+  // De una venta anulada: con cliente, lo que pasó a su cuenta; sin cliente, lo que queda a devolver.
+  toAccount: string;
+  toRefund: string;
+  receipts: ReceiptListItem[];
+};
+
+async function readSaleStanding(organizationId: string, saleId: string) {
+  return repository.withTransaction(async (tx) => {
+    const sale = await getSaleForReceipt(tx, organizationId, saleId);
+    if (!sale) return null;
+    return { sale, standing: await saleStanding(tx, organizationId, sale) };
+  });
+}
+
+// Lo cobrado de una venta, para su detalle (D-8): lo compone la página, nunca sales.
+export async function getSaleReceipts(
+  context: AuthContext,
+  saleId: string,
+): Promise<
+  | { ok: true; sale: SaleReceipts }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  if (!idSchema.safeParse(saleId).success) return failure("VALIDATION_ERROR");
+  const found = await readSaleStanding(context.organizationId, saleId);
+  if (!found) return failure("NOT_FOUND");
+  const { sale, standing } = found;
+  return {
+    ok: true,
+    sale: {
+      currency: sale.currency,
+      total: sale.total,
+      collected: moneyToDatabase(standing.collected),
+      imputed: moneyToDatabase(standing.imputed),
+      outstanding: moneyToDatabase(standing.outstanding),
+      status: sale.voided
+        ? "voided"
+        : standing.outstanding === 0n
+          ? "collected"
+          : "pending",
+      hasClient: sale.clientId !== null,
+      toAccount: moneyToDatabase(standing.toAccount),
+      toRefund: moneyToDatabase(standing.toRefund),
+      receipts: await receiptListItems(
+        context.organizationId,
+        standing.receipts,
+      ),
+    },
+  };
+}
+
+export type SaleReceiptForm = {
+  ok: true;
+  sale: { id: string; displayNumber: string; currency: string };
+  outstanding: string;
+  // Lo que falta como se escribe en el campo, para que el cobro acepte lo que propone: sin decimales
+  // en una moneda que no los tiene, como la apertura (revisión independiente de la 21.2, R-2).
+  outstandingInput: string;
+  voided: boolean;
+  paymentMethods: PaymentMethod[];
+  openSession: SessionRef | null;
+};
+
+// Lo que necesita el formulario del cobro (D-8): la venta, lo que falta, los medios activos y si hay
+// una sesión abierta. Lo que decide lo vuelve a leer el cobro con el bloqueo tomado.
+export async function getSaleReceiptForm(
+  context: AuthContext,
+  saleId: string,
+): Promise<
+  SaleReceiptForm | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  if (!idSchema.safeParse(saleId).success) return failure("VALIDATION_ERROR");
+  const { organizationId } = context;
+  const found = await readSaleStanding(organizationId, saleId);
+  if (!found) return failure("NOT_FOUND");
+  const [methods, last] = await Promise.all([
+    repository.findPaymentMethods(organizationId),
+    repository.findLastSession(organizationId),
+  ]);
+  return {
+    ok: true,
+    sale: {
+      id: found.sale.id,
+      displayNumber: found.sale.displayNumber,
+      currency: found.sale.currency,
+    },
+    outstanding: moneyToDatabase(found.standing.outstanding),
+    outstandingInput: amountForInput(
+      moneyToDatabase(found.standing.outstanding),
+      found.sale.currency,
+    ),
+    voided: found.sale.voided,
+    paymentMethods: methods.filter((method) => method.isActive),
+    openSession: last && last.closedAt === null ? sessionRef(last) : null,
+  };
+}
+
+export type ReceiptDetail = ReceiptListItem & {
+  // El cliente como lo entrega crm para el rol; null en una venta sin cliente («Consumidor final»).
+  client: Client | null;
+  clientId: string | null;
+  session: SessionRef | null;
+  createdByName: string | null;
+};
+
+export async function getReceipt(
+  context: AuthContext,
+  receiptId: string,
+): Promise<
+  | { ok: true; receipt: ReceiptDetail }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  if (!idSchema.safeParse(receiptId).success) {
+    return failure("VALIDATION_ERROR");
+  }
+  const { organizationId } = context;
+  const row = await repository.findReceipt(
+    organizationId,
+    receiptId.toLowerCase(),
+  );
+  if (!row) return failure("NOT_FOUND");
+  const [items, clients, session, names] = await Promise.all([
+    receiptListItems(organizationId, [row]),
+    getClientsByIds(context, row.clientId === null ? [] : [row.clientId]),
+    row.sessionId === null
+      ? undefined
+      : repository.findSession(organizationId, row.sessionId),
+    memberNames(organizationId, [row.createdBy]),
+  ]);
+  return {
+    ok: true,
+    receipt: {
+      ...items[0]!,
+      client: clients.ok ? (clients.clients[0] ?? null) : null,
+      clientId: row.clientId,
+      session: session ? sessionRef(session) : null,
+      createdByName: names.get(row.createdBy) ?? null,
+    },
+  };
+}
+
+export const CASH_RECEIPTS_PAGE_SIZE = 25;
+
+export type ReceiptSummary = ReceiptListItem & {
+  // Null en una venta sin cliente («Consumidor final»).
+  client: { id: string; displayName: string | null } | null;
+};
+
+export type ReceiptPage = {
+  ok: true;
+  receipts: ReceiptSummary[];
+  total: number;
+  page: number;
+  pageCount: number;
+};
+
+// La lista de cobros, del más nuevo al más viejo, con la búsqueda por número (D-8).
+export async function listReceipts(
+  context: AuthContext,
+  filters: { number: string; page: number },
+): Promise<ReceiptPage | Failure<"FORBIDDEN">> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  const text = filters.number.trim();
+  const number = text === "" ? null : parseReceiptNumberSearch(text);
+  // Un número que no puede existir no trae cobros: la lista queda vacía.
+  if (text !== "" && number === null) {
+    return { ok: true, receipts: [], total: 0, page: 1, pageCount: 1 };
+  }
+  const { organizationId } = context;
+  const total = await repository.countReceipts(organizationId, number);
+  const pageCount = Math.max(1, Math.ceil(total / CASH_RECEIPTS_PAGE_SIZE));
+  const page = Math.min(Math.max(1, Math.trunc(filters.page) || 1), pageCount);
+  const rows =
+    total === 0
+      ? []
+      : await repository.findReceipts(
+          organizationId,
+          number,
+          CASH_RECEIPTS_PAGE_SIZE,
+          (page - 1) * CASH_RECEIPTS_PAGE_SIZE,
+        );
+  const clientIds = [
+    ...new Set(
+      rows.map((row) => row.clientId).filter((id): id is string => id !== null),
+    ),
+  ];
+  const [items, clients] = await Promise.all([
+    receiptListItems(organizationId, rows),
+    getClientsByIds(context, clientIds),
+  ]);
+  const clientsById = new Map(
+    clients.ok ? clients.clients.map((client) => [client.id, client]) : [],
+  );
+  return {
+    ok: true,
+    receipts: items.map((item, index) => {
+      const clientId = rows[index]!.clientId;
+      return {
+        ...item,
+        client:
+          clientId === null
+            ? null
+            : {
+                id: clientId,
+                displayName: clientsById.get(clientId)?.displayName ?? null,
+              },
+      };
+    }),
+    total,
+    page,
+    pageCount,
   };
 }

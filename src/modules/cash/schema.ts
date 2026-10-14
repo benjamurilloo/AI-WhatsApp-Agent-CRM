@@ -16,7 +16,9 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { users } from "@/modules/auth/schema";
+import { clients } from "@/modules/crm/schema";
 import { organizations } from "@/modules/organizations/schema";
+import { sales } from "@/modules/sales/schema";
 
 // docs/architecture/DataModel.md, tablas payment_methods, cash_sessions,
 // cash_session_opening_amounts, cash_session_closings, cash_session_closing_amounts y
@@ -279,5 +281,90 @@ export const cashMovements = pgTable(
       sql`(${table.kind} = 'contribution' AND ${table.reason} IN ('change_fund', 'owner_contribution', 'correction', 'other'))
         OR (${table.kind} = 'withdrawal' AND ${table.reason} IN ('bank_deposit', 'owner_withdrawal', 'correction', 'other'))`,
     ),
+  ],
+);
+
+// El destino de un cobro (ADR 0022, punto 2; brief-21.3, D-1). Nace con la venta; la 21.4 le suma
+// el pedido y la 21.6, la cuenta, con ALTER TYPE aditivos, y reescriben receipts_target_check.
+export const receiptTarget = pgEnum("receipt_target", ["sale"]);
+
+// El cobro, como recibo (ADR 0022, puntos 2 a 4; brief-21.3, D-1). Es un comprobante emitido, de
+// solo inserción como la caja: SELECT e INSERT para crm_app y cash_reject_change() de la 0042. No
+// tiene estados ni texto libre. Copia el cliente y la moneda de su destino: lo asegura el servicio,
+// que lee la venta por la interfaz de sales con el bloqueo de cobros tomado, no un trigger, que
+// cruzaría módulos en la base (punto 2). Si el medio es efectivo, queda en la sesión de caja abierta:
+// lo exige el trigger receipts_cash_session de la 0043, y cash_reject_closed_session() rechaza una
+// sesión con cierre (brief-21.3, H-3 y H-4).
+export const receipts = pgTable(
+  "receipts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    // Del contador de numbering con el tipo receipt; se muestra como R-000123.
+    number: bigint("number", { mode: "number" }).notNull(),
+    target: receiptTarget("target").notNull(),
+    saleId: uuid("sale_id"),
+    // El cliente de la venta, copiado; nulo solo en el cobro de una venta sin cliente.
+    clientId: uuid("client_id"),
+    paymentMethodId: uuid("payment_method_id").notNull(),
+    // La sesión de caja, solo si el medio es efectivo.
+    sessionId: uuid("session_id"),
+    // La de la venta, copiada (punto 2).
+    currency: text("currency").notNull(),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    // Siempre un usuario: el agente no cobra (ADR 0022, punto 12).
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(sql`clock_timestamp()`),
+  },
+  (table) => [
+    unique("receipts_organization_number_unique").on(
+      table.organizationId,
+      table.number,
+    ),
+    // Destino de las claves compuestas de las anulaciones de la 21.5.
+    unique("receipts_organization_id_id_unique").on(
+      table.organizationId,
+      table.id,
+    ),
+    // Ninguna fila apunta a otra organización, y nada de lo que apunta se borra mientras tenga
+    // cobros: la de clients es la que impide borrar un cliente con cobros (punto 14).
+    foreignKey({
+      name: "receipts_sale_fk",
+      columns: [table.organizationId, table.saleId],
+      foreignColumns: [sales.organizationId, sales.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "receipts_client_fk",
+      columns: [table.organizationId, table.clientId],
+      foreignColumns: [clients.organizationId, clients.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "receipts_payment_method_fk",
+      columns: [table.organizationId, table.paymentMethodId],
+      foreignColumns: [paymentMethods.organizationId, paymentMethods.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "receipts_session_fk",
+      columns: [table.organizationId, table.sessionId],
+      foreignColumns: [cashSessions.organizationId, cashSessions.id],
+    }).onDelete("restrict"),
+    // Los cobros de una venta, los de un cliente para la imputación y los de una sesión.
+    index("receipts_sale_idx").on(table.organizationId, table.saleId),
+    index("receipts_client_idx").on(table.organizationId, table.clientId),
+    index("receipts_session_idx").on(table.organizationId, table.sessionId),
+    // Un solo destino, con su clave (punto 2). La 21.4 y la 21.6 lo reescriben con los suyos.
+    check(
+      "receipts_target_check",
+      sql`${table.target} = 'sale' AND ${table.saleId} IS NOT NULL`,
+    ),
+    check("receipts_number_positive", sql`${table.number} > 0`),
+    check("receipts_amount_positive", sql`${table.amount} > 0`),
+    check("receipts_currency_format", sql`${table.currency} ~ '^[A-Z]{3}$'`),
   ],
 );

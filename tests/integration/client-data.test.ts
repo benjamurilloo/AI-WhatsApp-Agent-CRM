@@ -1254,3 +1254,68 @@ describe("las anulaciones de las ventas del cliente (brief-20.4, AC-8; D-10)", (
     }
   });
 });
+
+// Un cobro de una venta, por SQL (brief-21.3): copia el cliente y la moneda de la venta, en
+// transferencia, sin sesión de caja.
+async function receiptFor(saleId: string, number: number): Promise<void> {
+  const method = await getDb().execute<{ id: string }>(
+    sql`insert into payment_methods (organization_id, name, is_cash)
+        values (${organizationId}, ${`Transferencia ${number}`}, false) returning id`,
+  );
+  await getDb().execute(
+    sql`insert into receipts (organization_id, number, target, sale_id, client_id,
+                              payment_method_id, currency, amount, created_by)
+        select organization_id, ${number}, 'sale', id, client_id, ${method.rows[0]!.id},
+               currency, '400.00', created_by
+        from sales where id = ${saleId}`,
+  );
+}
+
+describe("los cobros de las ventas del cliente (brief-21.3, AC-11; D-9)", () => {
+  it("44. la exportación incluye sus cobros, y no los de otro cliente ni los de una venta sin cliente", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    const other = await insertClient("Otra persona", "+5491155552222", null);
+    await receiptFor(await counterSaleFor(clientId, 1), 1);
+    await receiptFor(await counterSaleFor(other, 2), 2);
+    await receiptFor(await counterSaleFor(null, 3), 3);
+
+    const data = await exportClientData(getDb(), organizationId, clientId);
+    expect(data.receipts).toEqual([
+      expect.objectContaining({
+        number: "1",
+        display_number: "R-000001",
+        sale_number: "1",
+        payment_method: "Transferencia 1",
+        currency: "ARS",
+        amount: "400.00",
+      }),
+    ]);
+  });
+
+  it("45. el informe cuenta los cobros, dice que quedan, y el cliente no es borrable", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    await receiptFor(await counterSaleFor(clientId, 1), 1);
+
+    const report = await reportClientData(getDb(), organizationId, clientId);
+    expect(report).toMatchObject({ sales: 1, receipts: 1, deletable: false });
+    expect(describeRetained(report).join(" ")).toContain(
+      "1 cobros en 'receipts'",
+    );
+  });
+
+  it("46. el vaciado deja el cobro intacto y no deja datos de la persona", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    const saleId = await counterSaleFor(clientId, 1);
+    await receiptFor(saleId, 1);
+    const read = () =>
+      getDb().execute(sql`select * from receipts where sale_id = ${saleId}`);
+    const before = await read();
+
+    await eraseClientData(getDb(), organizationId, clientId);
+
+    expect((await read()).rows).toEqual(before.rows);
+    for (const value of [NAME, PHONE, NOTES]) {
+      expect(await columnsContaining(value), value).toEqual([]);
+    }
+  });
+});

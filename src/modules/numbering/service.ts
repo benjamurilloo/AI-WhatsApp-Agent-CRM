@@ -16,15 +16,17 @@ export function nextDocumentNumber(
   return repository.takeNextNumber(tx, organizationId, kind);
 }
 
-// El número como se muestra: el prefijo del tipo y seis dígitos, P-000123, V-000123, A-000045 o
-// C-000045 (ADR 0019, punto 2; ADR 0021, puntos 6 y 7; ADR 0022, punto 11). Pasado el millón, el número se muestra con todos sus
-// dígitos.
+// El número como se muestra: el prefijo del tipo y seis dígitos, P-000123, V-000123, A-000045,
+// C-000045 o R-000123 (ADR 0019, punto 2; ADR 0021, puntos 6 y 7; ADR 0022, punto 11). Pasado el
+// millón, el número se muestra con todos sus dígitos.
 const PREFIXES: Record<DocumentKind, string> = {
   order: "P",
   sale: "V",
   sale_void: "A",
   // La sesión de caja (ADR 0022, punto 11; brief-21.2).
   cash_session: "C",
+  // El cobro, como recibo (ADR 0022, punto 11; brief-21.3).
+  receipt: "R",
 };
 
 export function formatDocumentNumber(

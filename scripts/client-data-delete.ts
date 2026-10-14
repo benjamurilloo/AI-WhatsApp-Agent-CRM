@@ -55,6 +55,10 @@ export type ClientDataReport = {
   // Las anulaciones de sus ventas (brief-20.4, D-10). Cuelgan de la venta, así que no cambian si
   // se puede borrar: una venta ya lo impide.
   saleVoids: number;
+  // Sus cobros (ADR 0022, punto 14; brief-21.3, D-9), por el client_id que copian de la venta. Un
+  // cobro siempre es de una venta del cliente, así que en la práctica no cambian si se puede borrar,
+  // pero la clave receipts_client_fk lo impide igual, y el criterio la cuenta.
+  receipts: number;
   // Un cliente sin conversaciones, pedidos ni ventas sí se puede borrar del todo (brief-8.2,
   // hallazgo 7; brief-19.2; brief-20.2). En la 20.2 toda venta tiene un pedido, así que las ventas
   // no cambian el resultado hasta la venta sin pedido de la 20.3 (brief-20.2, H-1).
@@ -76,6 +80,7 @@ export async function reportClientData(
     orders: number;
     sales: number;
     sale_voids: number;
+    receipts: number;
   }>(
     sql`select
           exists (select 1 from clients
@@ -101,7 +106,9 @@ export async function reportClientData(
            where organization_id = ${organizationId} and client_id = ${clientId}) as sales,
           (select count(*)::int from sale_voids v
              join sales s on s.organization_id = v.organization_id and s.id = v.sale_id
-           where v.organization_id = ${organizationId} and s.client_id = ${clientId}) as sale_voids`,
+           where v.organization_id = ${organizationId} and s.client_id = ${clientId}) as sale_voids,
+          (select count(*)::int from receipts
+           where organization_id = ${organizationId} and client_id = ${clientId}) as receipts`,
   );
   const row = counts.rows[0]!;
   return {
@@ -114,11 +121,13 @@ export async function reportClientData(
     orders: row.orders,
     sales: row.sales,
     saleVoids: row.sale_voids,
+    receipts: row.receipts,
     deletable:
       row.exists &&
       row.conversations === 0 &&
       row.orders === 0 &&
-      row.sales === 0,
+      row.sales === 0 &&
+      row.receipts === 0,
   };
 }
 
@@ -288,6 +297,11 @@ export function describeRetained(report: ClientDataReport): string[] {
       `${report.saleVoids} anulaciones en 'sale_voids': quedan el número, la fecha, la venta, el total y el motivo de la lista, sin ningún texto de la persona.`,
     );
   }
+  if (report.receipts > 0) {
+    retained.push(
+      `${report.receipts} cobros en 'receipts': quedan el número, la fecha, la venta, el medio, la moneda y el monto, sin ningún texto de la persona.`,
+    );
+  }
   if (report.auditEntries > 0) {
     retained.push(
       `${report.auditEntries} entradas en 'audit_logs', sin valores: queda que hubo un cambio, de qué tipo y cuándo.`,
@@ -358,7 +372,7 @@ async function main() {
 
   console.log(
     `Cliente ${clientId}: ${report.conversations} conversaciones, ${report.messages} mensajes, ` +
-      `${report.notes} notas, ${report.auditEntries} entradas de auditoría, ${report.tags} etiquetas, ${report.orders} pedidos, ${report.sales} ventas, ${report.saleVoids} anulaciones.`,
+      `${report.notes} notas, ${report.auditEntries} entradas de auditoría, ${report.tags} etiquetas, ${report.orders} pedidos, ${report.sales} ventas, ${report.saleVoids} anulaciones, ${report.receipts} cobros.`,
   );
 
   const vaciar = args.includes("--vaciar");

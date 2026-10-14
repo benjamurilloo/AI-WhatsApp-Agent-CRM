@@ -36,7 +36,7 @@ test.afterAll(async () => {
 // que cada caso empiece en P-000001.
 test.beforeEach(async () => {
   await db.execute(
-    sql`truncate table sale_voids, sale_lines, sales, order_lines, orders, document_counters, audit_logs, inventory_movements,
+    sql`truncate table receipts, sale_voids, sale_lines, sales, order_lines, orders, document_counters, audit_logs, inventory_movements,
           inventories, product_images, product_costs, product_prices, products, conversation_notes,
           messages, conversations, client_tag_assignments, clients`,
   );

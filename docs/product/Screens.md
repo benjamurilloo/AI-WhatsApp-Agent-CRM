@@ -350,6 +350,7 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
   - una venta anulada lo dice arriba («Anulada por A-000045 el {fecha}: {motivo}.») y en el comprobante, que se sigue imprimiendo con la marca;
   - el comprobante dice «Reemplaza a V-…» o «Reemplazada por V-…» en la cadena de las ventas de un pedido;
   - la historia muestra la anulación con su número y su motivo.
+- *Desde la 21.3* ([brief-21.3](../decisions/brief-21.3-el-cobro-de-una-venta.md), D-8; FR-CAJ-09 a 11): la tarjeta «Cobros», compuesta con `cash`: el total, lo cobrado, lo imputado desde la cuenta del cliente si lo hay, y lo que falta o «Cobrada»; la lista de cobros con el recibo enlazado, su fecha, el medio y el monto; y para `admin`, «Registrar cobro» mientras falte algo en una venta vigente. En una venta anulada, en lugar de lo que falta: «Lo cobrado (…) pasó a la cuenta del cliente como saldo a favor.» o, sin cliente, «A devolver: …». Al volver de un cobro, el aviso «Se registró el cobro R-000123.» enlaza el recibo. La tarjeta no se imprime.
 
 ## 19. Nueva venta
 
@@ -386,6 +387,7 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 - **Información mostrada**: abierta, el número de la sesión, quién la abrió y cuándo, por moneda el inicial, los aportes, los retiros y lo esperado, y los movimientos con hora, tipo, motivo, monto y autor. Cerrada, «La caja está cerrada.» y el enlace a la última sesión.
 - **Acciones** (`admin`): «Registrar aporte», «Registrar retiro» y «Cerrar caja» con la caja abierta; «Abrir caja» con la caja cerrada.
 - **Vacío**: «Todavía no se abrió nunca.»
+- *Desde la 21.3* ([brief-21.3](../decisions/brief-21.3-el-cobro-de-una-venta.md), D-5 y D-8): por moneda, la columna «Cobros», que suma a lo esperado; la tarjeta «Cobros en efectivo», con el recibo enlazado, la hora, la venta y el monto; y en la barra, «Cobros» (pantalla 30).
 
 ## 22. Abrir caja
 
@@ -429,6 +431,7 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 - **Información mostrada**: el nombre de la organización, «Arqueo de caja C-000045» (o «Caja abierta»), la apertura y el cierre con su fecha y autor, por moneda el inicial, los aportes, los retiros, lo esperado, lo contado y la diferencia, los movimientos y la leyenda «Documento no válido como factura». Debajo, la historia de la sesión: la apertura y el cierre.
 - **Acciones**: «Imprimir o guardar PDF», con la sesión cerrada.
 - **Al imprimir**: queda solo el arqueo, sin navegación, botones ni historia.
+- *Desde la 21.3* ([brief-21.3](../decisions/brief-21.3-el-cobro-de-una-venta.md), D-5): la columna «Cobros» por moneda y los cobros en efectivo de la sesión, con su recibo y su venta, también en el arqueo impreso.
 
 ## 27. Medios de pago
 
@@ -438,3 +441,29 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 - **Acciones** (`admin`): «Nuevo medio de pago», con el nombre y «¿Es efectivo?»; «Renombrar» (`?editar=<id>`); «Desactivar», con confirmación (`?confirmar=<id>`); «Reactivar»; y, con la lista vacía, «Crear la lista inicial».
 - **Vacío**: «Todavía no hay medios de pago. Un administrador puede crear la lista inicial.»
 - **No mostrar**: la información del negocio que lee el agente: es otra cosa.
+
+## 28. Registrar cobro
+
+*Agregada en la 21.3* ([brief-21.3](../decisions/brief-21.3-el-cobro-de-una-venta.md), D-3 y D-8; FR-CAJ-09). Ruta `/ventas/[id]/cobrar`, solo `admin`; se llega desde «Registrar cobro» del detalle de la venta.
+
+- **Información mostrada**: «Registrar cobro de V-000123» y lo que falta; el medio de pago como grupo de opciones obligatorio con los activos («Efectivo (entra a la caja)»), con un aviso de si la caja está abierta; y el monto en la moneda de la venta, propuesto en lo que falta (sin decimales en una moneda que no los tiene), con cómo se lee («Se lee: $ 100.000,00»), como en la caja.
+- **Un solo paso**: «Registrar cobro» guarda; el tope lo vuelve a calcular `cash` con el bloqueo tomado. Al guardar vuelve al detalle de la venta con el aviso y el enlace al recibo.
+- **Rechazos**, con lo escrito conservado y el foco en el mensaje: un cobro de más («El cobro supera lo que falta: $ …»); un cobro en efectivo con la caja cerrada, con el enlace «Abrir caja»; un medio desactivado o que ya no existe; un monto inválido o en cero; y una venta anulada mientras tanto.
+- **Sin formulario**: una venta anulada, una ya cobrada o una organización sin medios activos lo dicen y enlazan a dónde seguir. Un `viewer` recibe «Solo un administrador puede registrar cobros.»
+- **Sin JavaScript**: funciona igual.
+
+## 29. Recibo
+
+*Agregada en la 21.3* ([brief-21.3](../decisions/brief-21.3-el-cobro-de-una-venta.md), D-8; [ADR 0022](../decisions/0022-cobros-y-caja.md), punto 11; FR-CAJ-11). Ruta `/cobros/[id]`, para los dos roles. Está fuera de `/ventas` porque la 21.4 y la 21.6 suman otros destinos.
+
+- **Información mostrada**: el comprobante, con el nombre de la organización, «Recibo R-000123» y la fecha y hora, «Recibimos de» el cliente o «Consumidor final», la venta enlazada, el medio, el monto y la leyenda «Documento no válido como factura». En pantalla, la sesión de caja si fue en efectivo y quién lo registró.
+- **Acciones**: «Imprimir o guardar PDF».
+- **Al imprimir**: queda solo el recibo, sin el contacto del cliente para ningún rol.
+
+## 30. Cobros
+
+*Agregada en la 21.3* ([brief-21.3](../decisions/brief-21.3-el-cobro-de-una-venta.md), D-8; FR-CAJ-11). Ruta `/caja/cobros`, «Cobros» en la barra de la caja, para los dos roles.
+
+- **Información mostrada**: los cobros, del más nuevo al más viejo, paginados de a 25, con el recibo enlazado, la fecha, la venta, el cliente o «Consumidor final», el medio y el monto.
+- **Búsqueda**: por número, `R-000123` o `123`.
+- **Vacío**: «Todavía no se registró ningún cobro.»; sin resultados, «Ningún cobro coincide con ese número.»

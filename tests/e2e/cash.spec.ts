@@ -31,7 +31,7 @@ test.afterAll(async () => {
 // que cada caso empiece en C-000001.
 test.beforeEach(async () => {
   await db.execute(
-    sql`truncate table cash_movements, cash_session_closing_amounts, cash_session_closings,
+    sql`truncate table receipts, cash_movements, cash_session_closing_amounts, cash_session_closings,
           cash_session_opening_amounts, cash_sessions, payment_methods, document_counters,
           audit_logs`,
   );
@@ -106,6 +106,28 @@ test("un admin crea la lista inicial de medios de pago, abre la caja con el tecl
   await expect(
     page.getByRole("heading", { name: "Caja abierta · C-000001" }),
   ).toBeVisible();
+});
+
+// La sesión abierta con su inicial, por SQL: el caso de arriba la abre en la pantalla. Partido en
+// dos en la 21.3, cuando el caso entero llegó a 25 s y una vez pasó el límite de 30 s por caso
+// (lección de la 20.4).
+async function insertSessionWithInitial() {
+  const session = await db.execute<{ id: string }>(
+    sql`insert into cash_sessions (organization_id, number, opened_by)
+        values (${SEED_ORGANIZATION_ID}, 1, ${ADMIN_SEED.id}) returning id`,
+  );
+  await db.execute(
+    sql`insert into cash_session_opening_amounts (organization_id, session_id, currency, amount)
+        values (${SEED_ORGANIZATION_ID}, ${session.rows[0]!.id}, 'ARS', '10000.00')`,
+  );
+}
+
+test("un admin registra un aporte y un retiro con el teclado, y ve el rechazo de un retiro mayor que lo esperado", async ({
+  page,
+}) => {
+  await insertSessionWithInitial();
+  await login(page, ADMIN);
+  await page.goto("/caja");
 
   // Un aporte: la moneda se propone porque la sesión tiene una sola.
   await page.getByRole("link", { name: "Registrar aporte" }).click();

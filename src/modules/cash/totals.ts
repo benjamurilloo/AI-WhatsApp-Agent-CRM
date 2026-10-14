@@ -13,15 +13,19 @@ import {
 export type CashTotals = {
   currency: string;
   initial: Money;
+  // Los cobros en efectivo de la sesión, desde la 21.3 (brief-21.3, D-5).
+  receipts: Money;
   contributions: Money;
   withdrawals: Money;
-  // esperado = inicial + cobros en efectivo − devoluciones en efectivo + aportes − retiros. En la
-  // 21.2 no hay cobros ni devoluciones: la 21.3 y la 21.5 suman sus términos acá.
+  // esperado = inicial + cobros en efectivo − devoluciones en efectivo + aportes − retiros. Las
+  // devoluciones llegan con la 21.5 y suman su término acá.
   expected: Money;
 };
 
 export type TotalsInput = {
   opening: { currency: string; amount: string }[];
+  // Los cobros en efectivo de la sesión: solo esos tienen sesión (trigger receipts_cash_session).
+  receipts: { currency: string; amount: string }[];
   movements: {
     kind: "contribution" | "withdrawal";
     currency: string;
@@ -29,8 +33,8 @@ export type TotalsInput = {
   }[];
 };
 
-// Por moneda, en orden alfabético. Una moneda nunca se suma con otra. Cada moneda con inicial o con
-// movimientos tiene su fila; sin inicial, el inicial es cero.
+// Por moneda, en orden alfabético. Una moneda nunca se suma con otra. Cada moneda con inicial,
+// cobros o movimientos tiene su fila; sin inicial, el inicial es cero.
 export function computeCashTotals(input: TotalsInput): CashTotals[] {
   const byCurrency = new Map<string, CashTotals>();
   const totalsOf = (currency: string): CashTotals => {
@@ -39,6 +43,7 @@ export function computeCashTotals(input: TotalsInput): CashTotals[] {
       totals = {
         currency,
         initial: 0n,
+        receipts: 0n,
         contributions: 0n,
         withdrawals: 0n,
         expected: 0n,
@@ -50,6 +55,9 @@ export function computeCashTotals(input: TotalsInput): CashTotals[] {
   for (const row of input.opening) {
     totalsOf(row.currency).initial += moneyFromDatabase(row.amount);
   }
+  for (const row of input.receipts) {
+    totalsOf(row.currency).receipts += moneyFromDatabase(row.amount);
+  }
   for (const row of input.movements) {
     const totals = totalsOf(row.currency);
     const amount = moneyFromDatabase(row.amount);
@@ -58,7 +66,10 @@ export function computeCashTotals(input: TotalsInput): CashTotals[] {
   }
   for (const totals of byCurrency.values()) {
     totals.expected =
-      totals.initial + totals.contributions - totals.withdrawals;
+      totals.initial +
+      totals.receipts +
+      totals.contributions -
+      totals.withdrawals;
   }
   return [...byCurrency.values()].sort((a, b) =>
     a.currency < b.currency ? -1 : a.currency > b.currency ? 1 : 0,

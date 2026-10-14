@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AUDIT_PAGE_SIZE } from "@/modules/audit";
+import { getSaleReceipts } from "@/modules/cash";
 import { getOrder } from "@/modules/orders";
 import { getAppFrame, getOrganizationTimezone } from "@/modules/organizations";
 import { getSale, listSaleAudit } from "@/modules/sales";
@@ -47,6 +48,7 @@ import {
   VOIDED_BADGE_TEXT,
 } from "../messages";
 import { auditActionLabel, describeAuditDiff } from "./audit-summary";
+import { SaleReceiptsSection } from "./cobrar/sale-receipts-section";
 import { PrintButton } from "./print-button";
 import { VoidSaleConfirm } from "./void-sale";
 
@@ -68,7 +70,9 @@ function page(value: string | string[] | undefined): number {
 // entrega para el rol, y nunca se imprime (D-9). La historia, solo admin. Ningún costo ni margen.
 // Desde la 20.4 (brief-20.4, D-7): una venta anulada lo dice arriba y en el comprobante, que se
 // sigue imprimiendo con la marca; admin anula una vigente en el paso ?confirmar=anular; y la cadena
-// de las ventas de un pedido enlaza la venta reemplazada y la que la reemplazó.
+// de las ventas de un pedido enlaza la venta reemplazada y la que la reemplazó. Desde la 21.3
+// (brief-21.3, D-8), la sección «Cobros», compuesta con cash: lo cobrado, lo que falta y los
+// recibos, y para admin «Registrar cobro»; al volver del cobro, el aviso enlaza el recibo.
 export default async function SalePage({
   params,
   searchParams,
@@ -96,10 +100,11 @@ export default async function SalePage({
   const isAdmin = context.role === "admin";
   // El pedido y la organización los compone la página, por la interfaz de cada módulo
   // (ADR 0021, punto 9).
-  const [timeZone, frame, order] = await Promise.all([
+  const [timeZone, frame, order, receipts] = await Promise.all([
     getOrganizationTimezone(context),
     getAppFrame(context),
     sale.orderId === null ? null : getOrder(context, sale.orderId),
+    getSaleReceipts(context, sale.id),
   ]);
   const orderNumber = order?.ok ? order.order.displayNumber : null;
   const audit = isAdmin
@@ -109,6 +114,14 @@ export default async function SalePage({
     ? await auditActorLabels(context.organizationId, audit.entries)
     : null;
   const notice = saleNoticeMessage(query.aviso);
+  // El cobro recién registrado, entre los de la venta (brief-21.3, D-8).
+  const receiptParam = Array.isArray(query.cobro)
+    ? query.cobro[0]
+    : query.cobro;
+  const newReceipt =
+    receipts.ok && receiptParam
+      ? receipts.sale.receipts.find((row) => row.id === receiptParam)
+      : undefined;
   const saleVoid = sale.saleVoid;
   const voiding = isAdmin && saleVoid === null && query.confirmar === "anular";
   const client = sale.client;
@@ -143,6 +156,18 @@ export default async function SalePage({
 
         <div role="status" className="mt-4 empty:hidden">
           {notice ? <p className={noticeClass}>{notice}</p> : null}
+          {newReceipt ? (
+            <p className={noticeClass}>
+              Se registró el cobro{" "}
+              <Link
+                href={`/cobros/${newReceipt.id}`}
+                className={`${linkClass} font-mono`}
+              >
+                {newReceipt.displayNumber}
+              </Link>
+              .
+            </p>
+          ) : null}
         </div>
         {saleVoid ? (
           <p className="mt-4 rounded-md border border-border bg-surface-muted px-3 py-2 text-sm">
@@ -390,6 +415,16 @@ export default async function SalePage({
               </p>
             ) : null}
           </SectionCard>
+
+          {receipts.ok ? (
+            <SaleReceiptsSection
+              saleId={sale.id}
+              displayNumber={sale.displayNumber}
+              receipts={receipts.sale}
+              canCollect={isAdmin}
+              timeZone={timeZone}
+            />
+          ) : null}
 
           <SectionCard id="anulacion-titulo" title="Anulación" icon="close">
             {saleVoid ? (
