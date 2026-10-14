@@ -391,7 +391,7 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 
 *Agregada en la 21.2* (D-3 y D-10; FR-CAJ-02). Ruta `/caja/abrir`, solo `admin`.
 
-- **Información mostrada**: filas de moneda y efectivo inicial, con lo contado en el último cierre propuesto, y filas vacías hasta diez. La moneda es un campo de texto con la lista de las aceptadas.
+- **Información mostrada**: filas de moneda y efectivo inicial, con lo contado en el último cierre propuesto, y filas vacías hasta diez. La moneda se elige de la lista del sistema, como en precios, y debajo de cada monto se muestra cómo se lee, con los separadores de miles («Se lee: $ 100.000,00») *(ajuste del recorrido de la 21.2, 2026-10-14: era un campo de texto con la lista de las aceptadas)*.
 - **Validación**: al menos una moneda, sin repetir; el monto puede ser cero. Cada fila inválida dice por qué.
 - **Acciones**: «Abrir caja»; «Cancelar».
 - **Sin JavaScript**: funciona igual; las filas vacías no se envían.
@@ -401,7 +401,7 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 
 *Agregada en la 21.2* (D-5 y D-10; FR-CAJ-03). Ruta `/caja/movimiento?tipo=aporte|retiro`, solo `admin`.
 
-- **Información mostrada**: la sesión, la moneda (propuesta si la sesión tiene una sola), el monto y el motivo como grupo de opciones obligatorio, con la lista del tipo.
+- **Información mostrada**: la sesión, la moneda, de la lista del sistema (propuesta si la sesión tiene una sola), el monto con cómo se lee, y el motivo como grupo de opciones obligatorio, con la lista del tipo.
 - **Rechazos**: un retiro que dejaría lo esperado negativo dice lo esperado de esa moneda y conserva lo escrito.
 - **Con la caja cerrada**: lo dice y enlaza «Abrila». Si la sesión del formulario se cerró mientras tanto, el envío lo dice («La sesión C-000045 ya está cerrada.») y el movimiento no cae en la sesión siguiente.
 
@@ -409,7 +409,7 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 
 *Agregada en la 21.2* (D-4 y D-10; FR-CAJ-05). Ruta `/caja/cerrar`, solo `admin`.
 
-- **Paso 1**: lo contado de cada moneda que lo exige, con lo esperado al lado (no es un arqueo a ciegas), y filas vacías para otra moneda. «Revisar el cierre».
+- **Paso 1**: lo contado de cada moneda que lo exige, con lo esperado al lado (no es un arqueo a ciegas), y filas vacías para otra moneda, elegida de la lista del sistema; debajo de cada monto, cómo se lee (ajuste del recorrido de la 21.2). «Revisar el cierre».
 - **Paso 2**: «¿Cerrar la sesión C-000045 con este arqueo?», con la tabla de lo esperado, lo contado y la diferencia de cada moneda («Sobrante de», «Faltante de» o «Sin diferencia»). «Sí, cerrar la caja» o «Corregir lo contado», que vuelve al paso 1 con lo escrito. El foco va a la pregunta. Si lo esperado cambió desde que se mostró, porque alguien registró un movimiento, no cierra: vuelve a mostrar la diferencia con «Lo esperado cambió mientras confirmabas: hubo un movimiento nuevo. Revisá la diferencia otra vez.»
 - **Al cerrar**: lleva al arqueo de la sesión (pantalla 26) con «Caja cerrada. Este es su arqueo.»
 - **Sin JavaScript**: los dos pasos funcionan igual.

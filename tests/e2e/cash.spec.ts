@@ -95,8 +95,10 @@ test("un admin crea la lista inicial de medios de pago, abre la caja con el tecl
   // La apertura, con el teclado.
   await page.goto("/caja");
   await page.getByRole("link", { name: "Abrir caja" }).click();
-  await page.getByLabel("Moneda 1").fill("ARS");
+  await page.getByLabel("Moneda 1").selectOption("ARS");
   await page.getByLabel("Efectivo inicial 1").fill("10000");
+  // El monto se lee con los separadores de miles (recorrido de la 21.2).
+  await expect(page.getByText(/Se lee: \$\s10\.000,00/)).toBeVisible();
   await expectAccessible(page, "apertura");
   await page.getByLabel("Efectivo inicial 1").press("Enter");
   await expect(page).toHaveURL(/\/caja\?aviso=abierta$/);
@@ -123,6 +125,7 @@ test("un admin crea la lista inicial de medios de pago, abre la caja con el tecl
     page.getByText(/No alcanza: lo esperado en ARS es/),
   ).toBeFocused();
   await expect(page.getByLabel("Monto *")).toHaveValue("20000");
+  await expect(page.getByText(/Se lee: \$\s20\.000,00/)).toBeVisible();
   await expectAccessible(page, "retiro rechazado");
   await page.getByLabel("Monto *").fill("3000");
   await page.getByLabel("Depósito en el banco").check();
@@ -275,7 +278,7 @@ test.describe("sin JavaScript", () => {
   test("un admin abre la caja y la cierra en dos pasos", async ({ page }) => {
     await login(page, ADMIN);
     await page.goto("/caja/abrir");
-    await page.getByLabel("Moneda 1").fill("ARS");
+    await page.getByLabel("Moneda 1").selectOption("ARS");
     await page.getByLabel("Efectivo inicial 1").fill("0");
     await page.getByRole("button", { name: "Abrir caja" }).click();
     await expect(page).toHaveURL(/\/caja\?aviso=abierta$/);
