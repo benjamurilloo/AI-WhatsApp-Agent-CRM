@@ -61,6 +61,12 @@ describe("base de test", () => {
       "audit_logs",
       "business_hour_exceptions",
       "business_hours",
+      // La caja del efectivo (brief-21.2).
+      "cash_movements",
+      "cash_session_closing_amounts",
+      "cash_session_closings",
+      "cash_session_opening_amounts",
+      "cash_sessions",
       "client_tag_assignments",
       "client_tags",
       "clients",
@@ -79,6 +85,8 @@ describe("base de test", () => {
       "orders",
       "organization_members",
       "organizations",
+      // Los medios de pago (brief-21.2).
+      "payment_methods",
       "product_costs",
       "product_images",
       "product_prices",

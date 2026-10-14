@@ -165,6 +165,37 @@ const cases = [
     code: 'import { lockProductsForOrder } from "@/modules/catalog"; export const l1 = lockProductsForOrder;',
     forbidden: true,
   },
+  // cash es módulo de dominio desde la 21.2 (ADR 0022, punto 15; brief-21.2, AC-8).
+  {
+    file: "src/modules/cash/service.ts",
+    code: 'import { revalidatePath } from "next/cache"; export const c1 = revalidatePath;',
+    forbidden: true,
+  },
+  {
+    file: "src/modules/cash/presentacion.ts",
+    code: 'import { REASON_LABEL } from "@/app/(autenticado)/caja/messages"; export const c2 = REASON_LABEL;',
+    forbidden: true,
+  },
+  {
+    file: "src/modules/cash/relativa.ts",
+    code: 'import { c3 } from "../numbering/repository"; export const c4 = c3;',
+    forbidden: true,
+  },
+  {
+    file: "src/modules/cash/service.ts",
+    code: 'import { takeNextNumber } from "@/modules/numbering/repository"; export const c5 = takeNextNumber;',
+    forbidden: true,
+  },
+  {
+    file: "src/modules/cash/schema.ts",
+    code: 'import { users } from "@/modules/auth/schema"; export const c6 = users;',
+    forbidden: false,
+  },
+  {
+    file: "src/modules/cash/service.ts",
+    code: 'import { nextDocumentNumber } from "@/modules/numbering"; export const c7 = nextDocumentNumber;',
+    forbidden: false,
+  },
   // knowledge es módulo de dominio desde la 11.2 (AC-7); estos casos dejan esa mutación como
   // guarda permanente (N-3 de su revisión independiente, resuelta en la 11.3.2).
   {

@@ -295,6 +295,13 @@
       "when": 1791917827287,
       "tag": "0041_sale_voids",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1791928597723,
+      "tag": "0042_cash",
+      "breakpoints": true
     }
   ]
 }

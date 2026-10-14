@@ -138,6 +138,33 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
   "src/app/(autenticado)/ventas/actions.ts#voidSaleAction": {
     requirement: "sesion",
   },
+  // La caja (brief-21.2, D-8): abrir, registrar un aporte o un retiro y cerrar (con su vista
+  // previa) son solo de admin, lo exige cash.
+  "src/app/(autenticado)/caja/actions.ts#openCashSessionAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/caja/actions.ts#recordCashMovementAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/caja/actions.ts#closeCashSessionAction": {
+    requirement: "sesion",
+  },
+  // Los medios de pago (brief-21.2, D-6): solo admin, lo exige cash.
+  "src/app/(autenticado)/caja/actions.ts#createPaymentMethodAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/caja/actions.ts#renamePaymentMethodAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/caja/actions.ts#createInitialPaymentMethodsAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/caja/actions.ts#deactivatePaymentMethodAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/caja/actions.ts#reactivatePaymentMethodAction": {
+    requirement: "sesion",
+  },
   "src/app/(autenticado)/productos/actions.ts#createProductAction": {
     requirement: "sesion",
   },

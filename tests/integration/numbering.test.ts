@@ -103,4 +103,9 @@ describe("formatDocumentNumber", () => {
     expect(formatDocumentNumber("sale_void", 45)).toBe("A-000045");
     expect(formatDocumentNumber("sale_void", 1_234_567)).toBe("A-1234567");
   });
+
+  it("el prefijo de la sesión de caja es C (brief-21.2)", () => {
+    expect(formatDocumentNumber("cash_session", 45)).toBe("C-000045");
+    expect(formatDocumentNumber("cash_session", 1_234_567)).toBe("C-1234567");
+  });
 });

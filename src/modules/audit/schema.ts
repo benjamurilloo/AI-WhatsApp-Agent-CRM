@@ -33,6 +33,9 @@ export const auditEntityType = pgEnum("audit_entity_type", [
   "order",
   // Venta de un pedido entregado (brief-20.2; ADR 0021, punto 2).
   "sale",
+  // Sesión de caja y medio de pago (brief-21.2, D-9; ADR 0022, punto 11).
+  "cash_session",
+  "payment_method",
 ]);
 
 export const auditAction = pgEnum("audit_action", [
@@ -55,6 +58,8 @@ export const auditAction = pgEnum("audit_action", [
   "cost_change",
   // Anulación de una venta, sobre la venta, con el número y el motivo (brief-20.4, D-9).
   "void",
+  // Cierre de una sesión de caja, con lo contado y lo esperado por moneda (brief-21.2, D-9).
+  "close",
 ]);
 
 export const auditLogs = pgTable(

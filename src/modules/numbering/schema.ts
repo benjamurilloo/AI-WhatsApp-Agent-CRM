@@ -15,11 +15,13 @@ import { organizations } from "@/modules/organizations/schema";
 // crea en el primer número y se incrementa en la misma transacción que crea el documento.
 
 // Tipos numerados: el pedido y, desde la 20.2, la venta (ADR 0021, punto 7), con ALTER TYPE
-// aditivos; desde la 20.4, la anulación (sale_void, brief-20.4).
+// aditivos; desde la 20.4, la anulación (sale_void, brief-20.4); desde la 21.2, la sesión de caja
+// (cash_session, ADR 0022, punto 11; brief-21.2).
 export const documentKind = pgEnum("document_kind", [
   "order",
   "sale",
   "sale_void",
+  "cash_session",
 ]);
 
 export const documentCounters = pgTable(

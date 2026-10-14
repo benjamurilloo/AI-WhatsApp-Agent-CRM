@@ -123,6 +123,13 @@ function asAppRole<T>(fn: (tx: DbTransaction) => Promise<T>): Promise<T> {
 // El resto de las tablas es escribible: SELECT, INSERT, UPDATE y DELETE.
 const INSERT_ONLY_TABLES = [
   "audit_logs",
+  // La caja del efectivo: sus sesiones, sus filas por moneda, sus cierres y sus movimientos
+  // (brief-21.2, D-1; ADR 0022, punto 8).
+  "cash_movements",
+  "cash_session_closing_amounts",
+  "cash_session_closings",
+  "cash_session_opening_amounts",
+  "cash_sessions",
   // Notas de una conversación (brief-16.4, D-1).
   "conversation_notes",
   "inventory_movements",
@@ -149,6 +156,8 @@ const NO_DELETE_TABLES = [
   "ingestion_events",
   "knowledge_entries",
   "orders",
+  // Los medios de pago, con borrado lógico (brief-21.2, D-6; ADR 0022, punto 10).
+  "payment_methods",
 ];
 // Se insertan y se borran, pero no se actualizan: una asignación se pone y se quita (brief-16.1,
 // D-6), un día especial se agrega y se quita (brief-17.4, P-2), y una imagen de producto se sube y

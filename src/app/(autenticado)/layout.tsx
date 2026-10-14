@@ -29,6 +29,8 @@ export default async function AuthenticatedLayout({
     { href: "/pedidos", label: "Pedidos", icon: "list" },
     // Ventas, para los dos roles (brief-20.2).
     { href: "/ventas", label: "Ventas", icon: "receipt" },
+    // La caja del efectivo y los medios de pago, para los dos roles (brief-21.2, D-10).
+    { href: "/caja", label: "Caja", icon: "banknote" },
     { href: "/conversaciones", label: "Conversaciones", icon: "messageCircle" },
     { href: "/informacion", label: "Información", icon: "info" },
     ...(context.role === "admin"

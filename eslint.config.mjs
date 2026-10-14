@@ -87,6 +87,8 @@ export default defineConfig([
       "src/modules/numbering/**/*.{ts,tsx}",
       // Desde la 20.2 (ADR 0021, punto 13).
       "src/modules/sales/**/*.{ts,tsx}",
+      // Desde la 21.2 (ADR 0022, punto 15).
+      "src/modules/cash/**/*.{ts,tsx}",
     ],
     rules: restrict(moduleInternals, leaveModuleRelative, httpAndPresentation),
   },

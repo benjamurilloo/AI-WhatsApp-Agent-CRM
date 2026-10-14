@@ -376,3 +376,65 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 - **Al imprimir**: queda solo el comprobante, como en la pantalla 18.
 - **Vacío**: una venta vigente muestra «Esta venta no está anulada.», con el enlace para volver a ella.
 - **No mostrar**: costo ni margen.
+
+## 21. Caja
+
+*Agregada en la 21.2* ([brief-21.2](../decisions/brief-21.2-los-medios-de-pago-y-la-caja.md), D-10; FR-CAJ-02 a 06), sin wireframe. Ruta `/caja`, «Caja» en la navegación, entre «Ventas» y «Conversaciones». Una barra lleva a «Caja de hoy», «Sesiones» y «Medios de pago».
+
+- **Objetivo**: ver el efectivo de la sesión abierta y operarla.
+- **Usuario autorizado**: `admin` y `viewer`; las acciones, solo `admin`.
+- **Información mostrada**: abierta, el número de la sesión, quién la abrió y cuándo, por moneda el inicial, los aportes, los retiros y lo esperado, y los movimientos con hora, tipo, motivo, monto y autor. Cerrada, «La caja está cerrada.» y el enlace a la última sesión.
+- **Acciones** (`admin`): «Registrar aporte», «Registrar retiro» y «Cerrar caja» con la caja abierta; «Abrir caja» con la caja cerrada.
+- **Vacío**: «Todavía no se abrió nunca.»
+
+## 22. Abrir caja
+
+*Agregada en la 21.2* (D-3 y D-10; FR-CAJ-02). Ruta `/caja/abrir`, solo `admin`.
+
+- **Información mostrada**: filas de moneda y efectivo inicial, con lo contado en el último cierre propuesto, y filas vacías hasta diez. La moneda es un campo de texto con la lista de las aceptadas.
+- **Validación**: al menos una moneda, sin repetir; el monto puede ser cero. Cada fila inválida dice por qué.
+- **Acciones**: «Abrir caja»; «Cancelar».
+- **Sin JavaScript**: funciona igual; las filas vacías no se envían.
+- **Con la caja abierta**: lo dice y enlaza la sesión. Un `viewer` recibe «Solo un administrador puede operar la caja.»
+
+## 23. Registrar aporte o retiro
+
+*Agregada en la 21.2* (D-5 y D-10; FR-CAJ-03). Ruta `/caja/movimiento?tipo=aporte|retiro`, solo `admin`.
+
+- **Información mostrada**: la sesión, la moneda (propuesta si la sesión tiene una sola), el monto y el motivo como grupo de opciones obligatorio, con la lista del tipo.
+- **Rechazos**: un retiro que dejaría lo esperado negativo dice lo esperado de esa moneda y conserva lo escrito.
+- **Con la caja cerrada**: lo dice y enlaza «Abrila». Si la sesión del formulario se cerró mientras tanto, el envío lo dice («La sesión C-000045 ya está cerrada.») y el movimiento no cae en la sesión siguiente.
+
+## 24. Cerrar caja
+
+*Agregada en la 21.2* (D-4 y D-10; FR-CAJ-05). Ruta `/caja/cerrar`, solo `admin`.
+
+- **Paso 1**: lo contado de cada moneda que lo exige, con lo esperado al lado (no es un arqueo a ciegas), y filas vacías para otra moneda. «Revisar el cierre».
+- **Paso 2**: «¿Cerrar la sesión C-000045 con este arqueo?», con la tabla de lo esperado, lo contado y la diferencia de cada moneda («Sobrante de», «Faltante de» o «Sin diferencia»). «Sí, cerrar la caja» o «Corregir lo contado», que vuelve al paso 1 con lo escrito. El foco va a la pregunta. Si lo esperado cambió desde que se mostró, porque alguien registró un movimiento, no cierra: vuelve a mostrar la diferencia con «Lo esperado cambió mientras confirmabas: hubo un movimiento nuevo. Revisá la diferencia otra vez.»
+- **Al cerrar**: lleva al arqueo de la sesión (pantalla 26) con «Caja cerrada. Este es su arqueo.»
+- **Sin JavaScript**: los dos pasos funcionan igual.
+
+## 25. Sesiones de caja
+
+*Agregada en la 21.2* (D-10; FR-CAJ-06). Ruta `/caja/sesiones`, para los dos roles.
+
+- **Información mostrada**: las sesiones, de la más nueva a la más vieja, paginadas de a 25, con el número, la apertura y su autor, el cierre y su autor o «Abierta», y la diferencia de cada moneda.
+- **Búsqueda**: por número, `C-000045` o `45`.
+- **Vacío**: «Todavía no se abrió la caja.»; sin resultados, «Ninguna sesión coincide con ese número.»
+
+## 26. Sesión de caja y su arqueo
+
+*Agregada en la 21.2* (D-10; FR-CAJ-06 y 07). Ruta `/caja/sesiones/[id]`, para los dos roles.
+
+- **Información mostrada**: el nombre de la organización, «Arqueo de caja C-000045» (o «Caja abierta»), la apertura y el cierre con su fecha y autor, por moneda el inicial, los aportes, los retiros, lo esperado, lo contado y la diferencia, los movimientos y la leyenda «Documento no válido como factura». Debajo, la historia de la sesión: la apertura y el cierre.
+- **Acciones**: «Imprimir o guardar PDF», con la sesión cerrada.
+- **Al imprimir**: queda solo el arqueo, sin navegación, botones ni historia.
+
+## 27. Medios de pago
+
+*Agregada en la 21.2* (D-6 y D-10; FR-CAJ-01). Ruta `/caja/medios-de-pago`, para los dos roles; las acciones, solo `admin`.
+
+- **Información mostrada**: cada medio con su nombre, si entra a la caja del efectivo y su estado.
+- **Acciones** (`admin`): «Nuevo medio de pago», con el nombre y «¿Es efectivo?»; «Renombrar» (`?editar=<id>`); «Desactivar», con confirmación (`?confirmar=<id>`); «Reactivar»; y, con la lista vacía, «Crear la lista inicial».
+- **Vacío**: «Todavía no hay medios de pago. Un administrador puede crear la lista inicial.»
+- **No mostrar**: la información del negocio que lee el agente: es otra cosa.
