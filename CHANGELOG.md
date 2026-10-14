@@ -2,6 +2,53 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-14 — 21.4: la seña
+
+Cierra el 2026-10-14, después del recorrido del usuario en producción ([brief-21.4](docs/decisions/brief-21.4-la-sena.md), §Cierre). Es el cobro contra un pedido, sobre el [ADR 0022](docs/decisions/0022-cobros-y-caja.md), y la primera vez que `cash` depende de `orders`.
+
+**Certifica:**
+- **La seña** (migración `0044`):
+  - `receipts` suma el destino `order`, con su clave compuesta y su índice;
+  - el `CHECK` exige exactamente una venta o un pedido según el destino, y compara `target::text` porque el migrador aplica todas las migraciones en una sola transacción;
+  - un pedido con señas no se borra.
+- **El caso de uso**, solo de `admin`:
+  - sobre un pedido pendiente o confirmado, en este orden: el bloqueo de cobros, la cabecera del pedido `FOR UPDATE` por `orders`, el cliente en modo compartido, la comprobación y el contador al final;
+  - nunca por más de lo que le falta al pedido;
+  - copia la moneda y el cliente del pedido;
+  - en efectivo, va a la sesión abierta;
+  - ningún rechazo escribe, numera ni audita.
+- **La seña en la cuenta del cliente**, con la regla de la 21.3 sin cambios:
+  - retenida mientras el pedido no se vende;
+  - aplicada a la venta vigente del pedido, también si se anuló y se volvió a emitir;
+  - retenida otra vez si la venta se anula sin reemplazo;
+  - al remanente si el pedido se cancela, hacia la venta vigente más vieja del cliente.
+- **Las pantallas**:
+  - «Registrar seña»;
+  - «Señas» en el detalle del pedido, con lo señado, lo que falta y la situación;
+  - «Incluye la seña del pedido» en la venta;
+  - el recibo con su pedido;
+  - la columna «Destino» en la lista de cobros y en los cobros en efectivo de la caja.
+
+  Funcionan sin JavaScript.
+- **Los datos de un cliente**: la exportación trae cada seña con su pedido, y el runbook está actualizado.
+- **La CI**, con `timeout-minutes` en 35 (D-12).
+- **La revisión independiente**:
+  - sin bloqueantes; R-1 a R-7, verificados, corregidos o registrados;
+  - el usuario aprobó cuatro desvíos: los dos llamadores de `insertReceipt`, la caja abierta por SQL en el end-to-end, el formulario del cobro reusado y «Destino» en la caja;
+  - 12 mutaciones detectadas, cada una por su regla salvo N6, que la detecta un invariante del código.
+- **En producción**:
+  - `44dcdb1`, con la CI 38632388142 en `success` en 18 minutos;
+  - el usuario recorrió la seña en «Demostración Vixora»: `P-000006` señado en efectivo, entregado y vendido en `V-000005`, que quedó cobrada; `P-000007` señado por transferencia y cancelado, con lo que a `V-000004` le faltan 240.000 en lugar de 300.000; y `C-000003` cerrada con la seña en lo esperado;
+  - conciliado contra la base: las señas, lo que falta, lo esperado, los contadores y la auditoría.
+
+**Nivel**: validado localmente y en CI, validado en integración para las pantallas, desplegado en producción y recorrido por el usuario. No es «preparado para producción».
+
+**No certifica:**
+- Que volver a `0543ef6` sea limpio: hay señas cargadas, y ese código no las conoce.
+- En producción, los rechazos ni la concurrencia: los cubren los tests.
+- El saldo del cliente, ni el escenario de AC-5 con un remanente que cambia: son de la 21.6.
+- Que el recibo de una seña cumpla una exigencia fiscal: es un comprobante interno.
+
 ## 2026-10-14 — 21.3: el cobro de una venta
 
 Cierra el 2026-10-14, después del recorrido del usuario en producción ([brief-21.3](docs/decisions/brief-21.3-el-cobro-de-una-venta.md), §Cierre). Es el primer cobro del CRM, sobre el [ADR 0022](docs/decisions/0022-cobros-y-caja.md).

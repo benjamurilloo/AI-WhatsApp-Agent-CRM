@@ -16,7 +16,7 @@ generated_at: 2026-10-14
 - **Nivel de validación alcanzable**: **validado localmente y en CI**, **validado en integración** para las pantallas y, con D-14, **desplegado en producción** con el recorrido del usuario. No es «preparado para producción».
 - **Orden**: cuarta subfase de la Fase 21 — Caja y cobros ([Roadmap](../planning/Roadmap.md) §Fase 21), después de la 21.3, cerrada el 2026-10-14. Implementa la fila «21.4» del punto 15 del [ADR 0022](0022-cobros-y-caja.md).
 - **No abre ni cierra gate.** Pero crea **la primera dependencia de un módulo hacia `orders` para bloquear**, y la primera migración que suma un valor de enum y lo usa en la misma transacción (H-2). Por eso se recomienda la revisión independiente (D-13).
-- **Estado de este documento**: **aprobado** por el usuario el 2026-10-14, con las recomendaciones de D-1 a D-14 (entre ellas D-11, el escenario de AC-5 diferido pasa a la 21.6, y D-12, el tope de la CI a 35 minutos). La tarea 21.4 (`3f8702be6f4e81d0923cc66d8fdd3033`) sigue en «Esperando» hasta que el usuario autorice pasarla a «En proceso».
+- **Estado de este documento**: **aprobado** por el usuario el 2026-10-14, con las recomendaciones de D-1 a D-14 (entre ellas D-11, el escenario de AC-5 diferido pasa a la 21.6, y D-12, el tope de la CI a 35 minutos). La tarea 21.4 (`3f8702be6f4e81d0923cc66d8fdd3033`) pasó a «En proceso» el 2026-10-14, con la autorización del usuario. **Cerrada el 2026-10-14** (§Cierre).
 
 ## Objetivo
 
@@ -489,3 +489,54 @@ Un agente que no participó del trabajo revisó la entrega contra este brief y c
 | R-7. `.claude/settings.json` está sin versionar en el árbol | nota | No entra en el commit |
 
 El revisor también señaló la contradicción interna de D-4: está registrada arriba, y el usuario aprobó el desvío. El revisor no otorga autorizaciones.
+
+## Cierre de la subfase 21.4, 2026-10-14
+
+Cierra el 2026-10-14, después del recorrido del usuario en producción («listo, todo esta perfecto») y del cierre de la caja que completó el paso 7.
+
+- **AC-1 a AC-14 cumplidos**, con los cuatro desvíos aprobados. AC-12 se cumple con la batería de arriba y la CI. AC-14, con el despliegue y el recorrido de abajo.
+- **Commit, CI y despliegue**:
+  - `44dcdb1`, la implementación. La CI 38632388142 terminó en `success` en 18 minutos al primer intento, ya con el tope de 35 (D-12), y se leyó por el SHA completo.
+  - Desplegado el 2026-10-14 según [deploy/production/README.md](../../deploy/production/README.md) §Desplegar, con `0543ef6` anotado como la versión para volver atrás. La migración `0044` se aplicó, y la última línea comparó HEAD con el SHA pedido.
+  - Después del despliegue:
+    - el servicio, `active`;
+    - `/login`, con `200`;
+    - 45 migraciones aplicadas;
+    - `receipt_target` con `{sale,order}`;
+    - los 3 cobros de la 21.3, sin cambios.
+- **El recorrido del usuario (AC-14)**, en «Demostración Vixora»: los siete pasos de D-14. **Conciliado contra la base**, solo con lecturas y sin datos de la persona:
+  - tres cobros nuevos en ARS, cada uno con la moneda y el cliente de su destino:
+    - `R-000004`: 150.000,00 de seña de `P-000006`, en efectivo, en `C-000003`;
+    - `R-000005`: 360.000,00 de `V-000005`, con tarjeta de crédito, sin sesión;
+    - `R-000006`: 60.000,00 de seña de `P-000007`, por transferencia bancaria, sin sesión;
+  - **`P-000006` entregado y `V-000005` emitida desde él**:
+    - total 510.000,00: la seña más el cobro la cubren entera, así que le falta 0;
+    - la seña cuenta para esa venta, y no se cuenta dos veces.
+  - **`P-000007` cancelado**, del cliente de `V-000004`:
+    - su seña pasó al remanente, y a `V-000004` le faltan 240.000,00, antes 300.000,00. Es lo que da la regla;
+    - las ventas anuladas de la organización, `V-000001` y `V-000003`, no tienen cobros, así que no suman al remanente.
+  - **`C-000003` cerrada**: el inicial de 2.550.000,00 más la seña en efectivo dan 2.700.000,00, sin movimientos. Es lo esperado que guardó el cierre, y lo contado es igual;
+  - **los contadores**: `receipt` en 6, `order` en 7, `sale` en 5 y `cash_session` en 3. La seña de más y la seña sobre un pedido entregado, que se rechazaron, no consumieron número;
+  - **la auditoría**: tres `create` de `receipt` con claves planas. Las señas llevan `order_number` y el cobro `sale_number`; solo la de efectivo lleva `session_number`, y ninguno tiene datos de la persona.
+
+  Las dos señas rechazadas y lo que se vio en pantalla no dejan rastro en la base: la evidencia es la confirmación del usuario.
+- **Revisión**: la independiente (R-1 a R-7, arriba). La batería, el despliegue, la conciliación y este cierre son autoevaluación declarada.
+- **Decisiones del usuario**:
+  - el brief, con las recomendaciones de D-1 a D-14;
+  - **los cuatro desvíos, aprobados el 2026-10-14**: los dos llamadores de `insertReceipt` (D-4), la caja abierta por SQL en el end-to-end (R-3), el formulario del cobro reusado (R-4) y `caja/session-tables.tsx` con «Destino» (R-2);
+  - la tarea en «En proceso», el commit con su push, el despliegue después de la CI y las reglas de permiso locales para `ssh crm-production` y `gh run list`.
+- **Nivel**:
+  - validado localmente y en CI;
+  - **validado en integración** para las pantallas (end-to-end sobre `next start`);
+  - desplegado en producción y recorrido por el usuario en la organización de demostración.
+
+  No es «preparado para producción».
+- **No certifica**:
+  - **que volver a `0543ef6` sea limpio**: hay señas cargadas, y ese código no las conoce. Lo que le falta a `V-000004` se vería sin los 60.000,00 de `P-000007`, y lo cobrado de `V-000005`, sin la seña (D-14);
+  - en producción, los rechazos de AC-4 y la concurrencia de AC-5, que cubren los tests;
+  - el saldo del cliente, que no tiene pantalla hasta la 21.6;
+  - el escenario de AC-5 con un remanente que cambia: pasó a la 21.6 (D-11);
+  - que el recibo de una seña cumpla una exigencia fiscal: es un comprobante interno.
+- **Queda anotado**:
+  - en la batería local, un proceso de vitest cayó con `0xC0000409` y dos end-to-end de la 21.3 pasaron los 30 s en la corrida completa. Repetidos, en verde, y en la CI pasaron;
+  - la regla `Bash(ssh crm-production:*)` habilita cualquier comando en producción, no solo lecturas. Conviene quitarla de `.claude/settings.local.json` si no se va a desplegar pronto.
