@@ -1,4 +1,13 @@
-import { and, asc, count, desc, eq, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  isNotNull,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { getDb, type Db, type DbTransaction } from "@/shared/db";
 import { saleLines, saleVoidReason, saleVoids, sales } from "./schema";
 
@@ -361,6 +370,9 @@ export type SaleForReceiptRow = {
   total: string;
   createdAt: Date;
   voided: boolean;
+  // El número y la fecha de su anulación, para el estado de cuenta (brief-21.6, D-6 y H-7).
+  voidNumber: number | null;
+  voidedAt: Date | null;
 };
 
 const saleForReceiptColumns = {
@@ -371,10 +383,17 @@ const saleForReceiptColumns = {
   currency: sales.currency,
   total: sales.total,
   createdAt: sales.createdAt,
-  voided: sql<boolean>`exists (
-    select 1 from sale_voids v
-    where v.organization_id = "sales"."organization_id" and v.sale_id = "sales"."id")`,
+  // Con un LEFT JOIN a su anulación, que es a lo sumo una (sale_voids_sale_unique): tres
+  // subconsultas por fila costaban el doble en la lista de deudores (brief-21.6, AC-7).
+  voided: sql<boolean>`${saleVoids.id} is not null`,
+  voidNumber: saleVoids.number,
+  voidedAt: saleVoids.createdAt,
 };
+
+const saleVoidJoin = and(
+  eq(saleVoids.organizationId, sales.organizationId),
+  eq(saleVoids.saleId, sales.id),
+);
 
 export async function findSaleForReceipt(
   tx: DbTransaction,
@@ -384,6 +403,7 @@ export async function findSaleForReceipt(
   const rows = await tx
     .select(saleForReceiptColumns)
     .from(sales)
+    .leftJoin(saleVoids, saleVoidJoin)
     .where(and(eq(sales.organizationId, organizationId), eq(sales.id, saleId)))
     .limit(1);
   return rows[0];
@@ -398,11 +418,28 @@ export function findClientSalesForAccount(
   return tx
     .select(saleForReceiptColumns)
     .from(sales)
+    .leftJoin(saleVoids, saleVoidJoin)
     .where(
       and(
         eq(sales.organizationId, organizationId),
         eq(sales.clientId, clientId),
       ),
+    )
+    .orderBy(asc(sales.createdAt), asc(sales.number));
+}
+
+// Las ventas con cliente de toda la organización, para la lista de deudores (brief-21.6, D-6): una
+// consulta, que cash agrupa en memoria por cliente. Mismo orden que las de un cliente.
+export function findSalesForAccounts(
+  tx: DbTransaction,
+  organizationId: string,
+): Promise<SaleForReceiptRow[]> {
+  return tx
+    .select(saleForReceiptColumns)
+    .from(sales)
+    .leftJoin(saleVoids, saleVoidJoin)
+    .where(
+      and(eq(sales.organizationId, organizationId), isNotNull(sales.clientId)),
     )
     .orderBy(asc(sales.createdAt), asc(sales.number));
 }

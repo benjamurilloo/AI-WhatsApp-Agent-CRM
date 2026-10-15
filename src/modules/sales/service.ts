@@ -1042,10 +1042,23 @@ export type SaleForReceipt = {
   // La fecha de emisión: el orden de la imputación (ADR 0022, punto 9).
   createdAt: Date;
   voided: boolean;
+  // Su anulación, para el estado de cuenta (brief-21.6, D-6 y H-7).
+  voidRef: { displayNumber: string; createdAt: Date } | null;
 };
 
 function saleForReceipt(row: repository.SaleForReceiptRow): SaleForReceipt {
-  return { ...row, displayNumber: formatSaleNumber(row.number) };
+  const { voidNumber, voidedAt, ...rest } = row;
+  return {
+    ...rest,
+    displayNumber: formatSaleNumber(row.number),
+    voidRef:
+      voidNumber !== null && voidedAt !== null
+        ? {
+            displayNumber: formatSaleVoidNumber(voidNumber),
+            createdAt: voidedAt,
+          }
+        : null,
+  };
 }
 
 export async function getSaleForReceipt(
@@ -1074,5 +1087,15 @@ export async function listClientSalesForAccount(
     organizationId,
     clientId.toLowerCase(),
   );
+  return rows.map(saleForReceipt);
+}
+
+// Las ventas con cliente de toda la organización, anuladas incluidas, para la lista de deudores
+// (brief-21.6, D-6). cash las agrupa por cliente: sin JOIN entre módulos (Overview).
+export async function listSalesForAccounts(
+  tx: DbTransaction,
+  organizationId: string,
+): Promise<SaleForReceipt[]> {
+  const rows = await repository.findSalesForAccounts(tx, organizationId);
   return rows.map(saleForReceipt);
 }

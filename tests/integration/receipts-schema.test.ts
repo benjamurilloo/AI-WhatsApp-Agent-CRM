@@ -219,10 +219,14 @@ describe("los valores nuevos de los enums (AC-1)", () => {
     return result.rows.map((row) => row.value);
   }
 
-  it("suma el recibo a los documentos y a la auditoría; el destino nace con la venta y suma el pedido", async () => {
+  it("suma el recibo a los documentos y a la auditoría; el destino nace con la venta y suma el pedido y la cuenta", async () => {
     expect(await enumValues("document_kind")).toContain("receipt");
     expect(await enumValues("audit_entity_type")).toContain("receipt");
-    expect(await enumValues("receipt_target")).toEqual(["sale", "order"]);
+    expect(await enumValues("receipt_target")).toEqual([
+      "sale",
+      "order",
+      "account",
+    ]);
   });
 });
 
@@ -281,15 +285,48 @@ describe("el destino (AC-1; ADR 0022, punto 2)", () => {
     });
   });
 
-  it("el destino solo puede ser una venta o un pedido", async () => {
+  it("el destino solo puede ser una venta, un pedido o la cuenta", async () => {
     const s = await seed();
     expect(
       (
         await pgError(
-          insertReceipt(getDb(), receiptOf(s, { target: "account" })),
+          insertReceipt(getDb(), receiptOf(s, { target: "client" })),
         )
       ).code,
     ).toBe("22P02");
+  });
+
+  // brief-21.6, D-1: el cobro a cuenta, con el cliente y sin venta ni pedido.
+  it("un cobro a cuenta con su cliente, sin venta ni pedido, se acepta", async () => {
+    const s = await seed();
+    await insertReceipt(
+      getDb(),
+      receiptOf(s, { target: "account", saleId: null, orderId: null }),
+    );
+  });
+
+  it.each([
+    [
+      "un cobro a cuenta sin cliente",
+      () => ({ target: "account", saleId: null, clientId: null }),
+    ],
+    [
+      "un cobro a cuenta con venta",
+      (s: Seed) => ({ target: "account", saleId: s.saleA }),
+    ],
+    [
+      "un cobro a cuenta con pedido",
+      (s: Seed) => ({ target: "account", saleId: null, orderId: s.orderA }),
+    ],
+  ])("%s se rechaza", async (_, values) => {
+    const s = await seed();
+    const error = await pgError(
+      insertReceipt(getDb(), receiptOf(s, values(s))),
+    );
+    expect(error).toMatchObject({
+      code: "23514",
+      constraint: "receipts_target_check",
+    });
   });
 
   // brief-21.4, D-1: un solo destino, con su clave y sin la del otro.

@@ -1322,6 +1322,41 @@ describe("los cobros de las ventas del cliente (brief-21.3, AC-11; D-9)", () => 
     ]);
   });
 
+  // brief-21.6, AC-12 y D-12: el cobro a cuenta sale entre los cobros, sin venta ni pedido, y el
+  // script no cambia.
+  it("44 c. la exportación trae el cobro a cuenta, sin venta ni pedido", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    const method = await getDb().execute<{ id: string }>(
+      sql`insert into payment_methods (organization_id, name, is_cash)
+          values (${organizationId}, 'Transferencia', false) returning id`,
+    );
+    const user = await getDb().execute<{ id: string }>(
+      sql`insert into users (email, password_hash, name)
+          values ('cuenta@example.com', 'hash', 'Ana') returning id`,
+    );
+    await getDb().execute(
+      sql`insert into receipts (organization_id, number, target, client_id,
+                                payment_method_id, currency, amount, created_by)
+          values (${organizationId}, 1, 'account', ${clientId}, ${method.rows[0]!.id},
+                  'ARS', '250.00', ${user.rows[0]!.id})`,
+    );
+
+    const data = await exportClientData(getDb(), organizationId, clientId);
+    expect(data.receipts).toEqual([
+      expect.objectContaining({
+        display_number: "R-000001",
+        target: "account",
+        sale_id: null,
+        sale_number: null,
+        order_id: null,
+        order_number: null,
+        amount: "250.00",
+      }),
+    ]);
+    const report = await reportClientData(getDb(), organizationId, clientId);
+    expect(report).toMatchObject({ receipts: 1, deletable: false });
+  });
+
   it("45. el informe cuenta los cobros, dice que quedan, y el cliente no es borrable", async () => {
     const clientId = await insertClient(NAME, PHONE, NOTES);
     await receiptFor(await counterSaleFor(clientId, 1), 1);

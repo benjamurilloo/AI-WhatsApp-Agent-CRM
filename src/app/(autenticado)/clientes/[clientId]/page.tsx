@@ -45,6 +45,7 @@ import {
 import { PhoneText } from "../phone-text";
 import { auditActionLabel, describeAuditDiff } from "./audit-summary";
 import { DeactivateConfirm, ReactivateForm } from "./client-actions";
+import { ClientAccount } from "./client-account";
 import { ClientOrders } from "./client-orders";
 import { ClientTags } from "./client-tags";
 import {
@@ -354,6 +355,15 @@ export default async function ClientPage({
                 activeTags={activeTags?.ok ? activeTags.tags : []}
                 canEdit={isAdmin}
               />
+            </SectionCard>
+
+            {/* La cuenta corriente, compuesta con cash (brief-21.6, D-7). */}
+            <SectionCard
+              id="cuenta-titulo"
+              title="Cuenta corriente"
+              icon="banknote"
+            >
+              <ClientAccount context={context} clientId={client.id} />
             </SectionCard>
 
             <SectionCard id="pedidos-titulo" title="Pedidos" icon="list">

@@ -12,6 +12,7 @@ import { Icon } from "@/app/_components/icons";
 import { SectionCard } from "@/app/_components/section-card";
 import { formatShortDateTime } from "@/app/_format/date-time";
 import { formatMoney } from "@/shared/money";
+import { TO_ACCOUNT_RULE_TEXT } from "@/app/(autenticado)/clientes/[clientId]/cuenta/messages";
 
 // La sección «Cobros» del detalle de una venta (brief-21.3, D-8; ADR 0022, punto 6): la compone la
 // página con cash, nunca sales. Lo cobrado, lo imputado desde la cuenta del cliente y lo que falta,
@@ -19,7 +20,10 @@ import { formatMoney } from "@/shared/money";
 // Desde la 21.4, lo cobrado incluye la seña del pedido de la venta vigente, con su número, y la lista
 // marca cada seña con su pedido (brief-21.4, D-5 y D-8). Desde la 21.5 (brief-21.5, D-9): los cobros
 // anulados, marcados y fuera de lo cobrado; en una venta anulada, lo devuelto y lo que queda a
-// devolver, con «Devolver» para admin, o el enlace a devolver el saldo a favor de la cuenta.
+// devolver, con «Devolver» para admin, o el enlace a devolver el saldo a favor de la cuenta. Desde la
+// 21.6 (brief-21.6, D-7 y D-8): con cliente, lo que debe o tiene a favor su cuenta en la moneda de la
+// venta, con el enlace al estado de cuenta, y en una venta anulada, que lo cobrado pasó a la cuenta
+// sin afirmar un saldo a favor que puede no existir.
 
 const numberCell = `${tableCellClass} text-right whitespace-nowrap tabular-nums`;
 
@@ -78,10 +82,29 @@ export function SaleReceiptsSection({
       {voided && receipts.collected !== "0.00" ? (
         <p className="mt-3 text-sm">
           {receipts.hasClient
-            ? `Lo cobrado (${money(receipts.toAccount)}) pasó a la cuenta del cliente como saldo a favor.`
+            ? `Lo cobrado (${money(receipts.toAccount)}) pasó a la cuenta del cliente. ${TO_ACCOUNT_RULE_TEXT}`
             : receipts.refunded === "0.00"
               ? `A devolver: ${money(receipts.toRefund)}.`
               : `Devuelto: ${money(receipts.refunded)}. A devolver: ${money(receipts.toRefund)}.`}
+        </p>
+      ) : null}
+      {receipts.hasClient && receipts.clientId !== null ? (
+        <p className="mt-3 text-sm">
+          Cuenta del cliente:{" "}
+          <span className="font-semibold tabular-nums">
+            {receipts.clientOwed !== "0.00"
+              ? `debe ${money(receipts.clientOwed)}`
+              : receipts.clientInFavor !== "0.00"
+                ? `tiene ${money(receipts.clientInFavor)} a favor`
+                : "al día"}
+          </span>
+          .{" "}
+          <Link
+            href={`/clientes/${receipts.clientId}/cuenta`}
+            className={linkClass}
+          >
+            Ver estado de cuenta
+          </Link>
         </p>
       ) : null}
       {canCollect &&

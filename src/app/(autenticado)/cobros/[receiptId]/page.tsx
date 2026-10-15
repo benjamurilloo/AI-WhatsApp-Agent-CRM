@@ -44,7 +44,9 @@ const NOT_AN_INVOICE_LEGEND = "Documento no válido como factura";
 // el monto y la leyenda. Está fuera de /ventas porque la 21.4 y la 21.6 suman otros destinos. Para
 // los dos roles; el contacto del cliente no va en el recibo. Desde la 21.4, el destino de una seña es
 // su pedido (brief-21.4, D-8). Desde la 21.5, un cobro anulado lleva el sello con su anulación, y un
-// admin lo anula desde acá (brief-21.5, D-9).
+// admin lo anula desde acá (brief-21.5, D-9). Desde la 21.6, el destino de un cobro a cuenta es la
+// cuenta del cliente, enlazada a su estado de cuenta, sin decir a qué venta se aplicó (brief-21.6, D-9
+// y H-5).
 export default async function ReceiptPage({
   params,
   searchParams,
@@ -76,12 +78,18 @@ export default async function ReceiptPage({
     receipt.clientId === null
       ? CONSUMER_TEXT
       : (receipt.client?.displayName ?? UNKNOWN_CLIENT_TEXT);
-  // El destino: la venta de un cobro o el pedido de una seña (brief-21.4, D-8).
+  // El destino: la venta de un cobro, el pedido de una seña (brief-21.4, D-8) o la cuenta del
+  // cliente de un cobro a cuenta (brief-21.6, D-9), que no dice a qué venta se aplicó (H-5).
   const back = receipt.sale
     ? { href: `/ventas/${receipt.sale.id}`, label: "Volver a la venta" }
     : receipt.order
       ? { href: `/pedidos/${receipt.order.id}`, label: "Volver al pedido" }
-      : { href: "/caja/cobros", label: "Volver a los cobros" };
+      : receipt.account
+        ? {
+            href: `/clientes/${receipt.account.clientId}/cuenta`,
+            label: "Volver al estado de cuenta",
+          }
+        : { href: "/caja/cobros", label: "Volver a los cobros" };
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-8 lg:px-8 print:max-w-none print:p-0">
@@ -161,9 +169,13 @@ export default async function ReceiptPage({
           </div>
           <div>
             <dt className="text-muted">
-              {receipt.order ? "Seña del pedido" : "Por la venta"}
+              {receipt.order
+                ? "Seña del pedido"
+                : receipt.account
+                  ? "Destino"
+                  : "Por la venta"}
             </dt>
-            <dd className="font-mono">
+            <dd className={receipt.account ? undefined : "font-mono"}>
               {receipt.sale ? (
                 <Link
                   href={`/ventas/${receipt.sale.id}`}
@@ -177,6 +189,13 @@ export default async function ReceiptPage({
                   className={`${linkClass} print:no-underline`}
                 >
                   {receipt.order.displayNumber}
+                </Link>
+              ) : receipt.account ? (
+                <Link
+                  href={`/clientes/${receipt.account.clientId}/cuenta`}
+                  className={`${linkClass} print:no-underline`}
+                >
+                  Cuenta del cliente
                 </Link>
               ) : (
                 "—"

@@ -71,6 +71,7 @@ import {
   resolveIngestedConversation,
   searchClientsByLastInteraction,
 } from "@/modules/conversations";
+import { listDebtors } from "@/modules/cash";
 import { searchClients, suggestClients } from "@/modules/crm";
 import {
   getCatalogProductForService,
@@ -589,6 +590,24 @@ async function main(): Promise<void> {
       ),
     ]);
   }
+  // La lista de deudores de la 21.6 (brief-21.6, D-6 y AC-7): lee todas las cuentas de la
+  // organización en cuatro consultas, las agrupa por cliente y pasa cada una por imputeAccount, así
+  // que la primera página y la última cuestan lo mismo. Se miden las dos, y el filtro por moneda.
+  // La página no trae pageCount: se calcula como la pantalla.
+  const deudores = (currency: string | null) => async (page: number) => {
+    const resultado = await listDebtors(context, { currency, page });
+    if (!resultado.ok) return resultado;
+    const { debtors } = resultado;
+    return {
+      ...debtors,
+      pageCount: Math.max(1, Math.ceil(debtors.total / debtors.pageSize)),
+    };
+  };
+  listados.push(
+    ["cash.listDebtors (21.6)", () => deudores(null)(1)],
+    ["cash.listDebtors (21.6, última página)", ultimaPagina(deudores(null))],
+    ["cash.listDebtors (21.6, ARS)", () => deudores("ARS")(1)],
+  );
   if (productoId) {
     listados.push([
       `inventory.listStockMovements (producto con ${movimientos})`,

@@ -2,7 +2,8 @@
 // 19.3 sus transiciones y, desde la 19.4, el pendiente que deja el agente por ingestion. Desde la
 // 20.2, el pedido bloqueado para su venta (lockOrderForSale), que usa sales. Desde la 21.4, el pedido
 // para su seña (lockOrderForReceipt, getOrderForReceipt y listClientOrdersForAccount), que usa cash
-// (brief-21.4, D-2). orders no depende de cash.
+// (brief-21.4, D-2), y desde la 21.6, getOrdersForAccountsByIds, para la lista de deudores
+// (brief-21.6, D-6). orders no depende de cash.
 export {
   cancelOrder,
   confirmOrder,
@@ -14,6 +15,7 @@ export {
   getOrder,
   getOrderForReceipt,
   listClientOrdersForAccount,
+  getOrdersForAccountsByIds,
   listOrderAudit,
   listOrders,
   listRecentClientOrders,

@@ -534,6 +534,56 @@ describe(`las propiedades (${CASES} casos de semilla fija cada una)`, () => {
     });
   });
 
+  // brief-21.6, H-2 y D-11: el escenario literal de AC-5 de la 21.3, dos cobros de ventas distintas
+  // del mismo cliente en cola en que el segundo ve lo imputado por el primero, no se puede dar. Un
+  // cobro de una venta, hasta lo que le falta, no cambia lo imputado ni lo que falta de ninguna otra
+  // venta, ni lo que queda a favor: solo baja lo que le falta a la suya. Lo que mueve el remanente
+  // es el cobro a cuenta, que no es de una venta.
+  it("un cobro de una venta, hasta lo que le falta, no cambia ninguna otra venta ni lo que queda a favor", () => {
+    let withRemainder = 0;
+    forAll((input, r) => {
+      for (const account of imputeAccount(input)) {
+        const pending = account.sales.filter((row) => row.outstanding > 0n);
+        if (pending.length === 0) continue;
+        const target = r.pick(pending);
+        const amount = BigInt(r.int(1, Number(target.outstanding)));
+        const [after] = imputeAccount({
+          ...input,
+          receipts: [
+            ...input.receipts,
+            toSale(target.saleId, amount, account.currency),
+          ],
+        }).filter((row) => row.currency === account.currency);
+        if (account.sales.some((row) => row.imputed > 0n)) withRemainder++;
+        expect(after!.inFavor).toBe(account.inFavor);
+        for (const row of after!.sales) {
+          const before = account.sales.find((s) => s.saleId === row.saleId)!;
+          expect(row.imputed).toBe(before.imputed);
+          expect(row.outstanding).toBe(
+            row.saleId === target.saleId
+              ? before.outstanding - amount
+              : before.outstanding,
+          );
+        }
+      }
+    });
+    // Sin remanente repartido, la propiedad sería trivial.
+    expect(withRemainder).toBeGreaterThan(50);
+  });
+
+  it("el cobro a cuenta sí mueve lo que falta de otra venta: es el escenario que sí se da (D-11)", () => {
+    const sales = [sale("vieja", 1, 1000n, 1), sale("nueva", 2, 1000n, 2)];
+    const [before] = imputeAccount({ sales, ...empty });
+    const [after] = imputeAccount({
+      sales,
+      receipts: [{ target: "account", currency: "ARS", amount: 1000n }],
+      refunds: [],
+    });
+    expect(before!.sales[0]!.outstanding).toBe(1000n);
+    expect(after!.sales[0]!.outstanding).toBe(0n);
+    expect(after!.sales[1]!.outstanding).toBe(1000n);
+  });
+
   it("el generador cubre los casos que importan", () => {
     let withImputed = 0;
     let withFavor = 0;

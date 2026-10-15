@@ -48,7 +48,8 @@ function hrefFor(number: string, page: number): string {
 // Pantalla 30 (brief-21.3, D-8): los cobros, del más nuevo al más viejo, con su venta, su cliente,
 // su medio y su monto; búsqueda por número («R-000123» o «123», ADR 0022, punto 11). Para los dos
 // roles, sin el contacto del cliente. Desde la 21.4, la columna «Destino»: la venta de un cobro o el
-// pedido de una seña (brief-21.4, D-8). Desde la 21.5, la marca «Anulado» (brief-21.5, D-9).
+// pedido de una seña (brief-21.4, D-8). Desde la 21.5, la marca «Anulado» (brief-21.5, D-9). Desde la
+// 21.6, «A cuenta», con el enlace al estado de cuenta (brief-21.6, D-9).
 export default async function ReceiptsPage({
   searchParams,
 }: {
@@ -184,6 +185,13 @@ export default async function ReceiptsPage({
                             {receipt.order.displayNumber}
                           </Link>
                         </>
+                      ) : receipt.account ? (
+                        <Link
+                          href={`/clientes/${receipt.account.clientId}/cuenta`}
+                          className={linkClass}
+                        >
+                          A cuenta
+                        </Link>
                       ) : (
                         "—"
                       )}

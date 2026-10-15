@@ -1,7 +1,9 @@
 // Interfaz pública del módulo cash (ADR 0022; brief-21.2): los medios de pago y la caja del
 // efectivo por sesiones; desde la 21.3, el cobro de una venta (brief-21.3), y desde la 21.4, la seña
 // (brief-21.4), y desde la 21.5, la anulación de un cobro, la devolución y su anulación
-// (brief-21.5). Ningún módulo depende de cash: la usan solo las pantallas.
+// (brief-21.5), y desde la 21.6, la cuenta corriente: el cobro a cuenta, el estado de cuenta, el
+// resumen y la lista de deudores (brief-21.6). Ningún módulo depende de cash: la usan solo las
+// pantallas.
 export {
   CASH_MOVEMENT_REASONS,
   CASH_RECEIPTS_PAGE_SIZE,
@@ -97,4 +99,24 @@ export {
   type VoidReceiptResult,
   type VoidRefundResult,
   type VoidView,
+  createAccountReceipt,
+  DEBTORS_PAGE_SIZE,
+  getAccountReceiptForm,
+  getClientAccountSummary,
+  getClientStatement,
+  listDebtors,
+  previewAccountReceipt,
+  STATEMENT_DOCUMENTS_LIMIT,
+  type AccountCurrencySummary,
+  type AccountReceiptField,
+  type AccountReceiptForm,
+  type AccountReceiptInput,
+  type AccountReceiptPreview,
+  type ClientStatement,
+  type CreateAccountReceiptResult,
+  type DebtorPage,
+  type DebtorRow,
+  type StatementCurrency,
+  type StatementDocument,
+  type StatementSale,
 } from "./service";

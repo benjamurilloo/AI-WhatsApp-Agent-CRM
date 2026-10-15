@@ -190,6 +190,11 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
   "src/app/(autenticado)/devoluciones/actions.ts#voidRefundAction": {
     requirement: "sesion",
   },
+  // brief-21.6, D-5: la vista previa y el cobro a cuenta; cash exige admin en los dos.
+  "src/app/(autenticado)/clientes/[clientId]/cobrar/actions.ts#accountReceiptAction":
+    {
+      requirement: "sesion",
+    },
   "src/app/(autenticado)/productos/actions.ts#createProductAction": {
     requirement: "sesion",
   },

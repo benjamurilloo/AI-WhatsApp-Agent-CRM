@@ -728,6 +728,39 @@ export async function listClientOrdersForAccount(
   return rows.map(orderForReceipt);
 }
 
+// Los pedidos de unos ids, de cualquier cliente, para la lista de deudores (brief-21.6, D-6). cash
+// pasa solo los pedidos con señas; de a 1000, para no acercarse al tope de parámetros de una sentencia.
+// Un id que no es uuid no encuentra nada.
+const ORDERS_FOR_ACCOUNTS_CHUNK = 1000;
+
+export async function getOrdersForAccountsByIds(
+  tx: DbTransaction,
+  organizationId: string,
+  ids: string[],
+): Promise<OrderForReceipt[]> {
+  const valid = [
+    ...new Set(
+      ids
+        .filter((id) => idSchema.safeParse(id).success)
+        .map((id) => id.toLowerCase()),
+    ),
+  ];
+  const found: OrderForReceipt[] = [];
+  for (
+    let start = 0;
+    start < valid.length;
+    start += ORDERS_FOR_ACCOUNTS_CHUNK
+  ) {
+    const rows = await repository.findOrdersByIds(
+      tx,
+      organizationId,
+      valid.slice(start, start + ORDERS_FOR_ACCOUNTS_CHUNK),
+    );
+    found.push(...rows.map(orderForReceipt));
+  }
+  return found;
+}
+
 // Confirmar reserva el stock de cada línea, o nada si alguna no alcanza.
 export function confirmOrder(
   context: AuthContext,

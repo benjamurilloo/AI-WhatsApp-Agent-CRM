@@ -30,7 +30,8 @@ import {
 // lista dice el destino de cada cobro, la venta o el pedido de una seña, como /caja/cobros. Desde la
 // 21.5 (brief-21.5, D-6 y D-9): los cobros y las devoluciones en efectivo de los totales van sin lo
 // anulado mientras la sesión estaba abierta; las listas marcan lo anulado, y una sesión cerrada lista
-// las anulaciones posteriores a su cierre, que explican su diferencia.
+// las anulaciones posteriores a su cierre, que explican su diferencia. Desde la 21.6, el destino de un
+// cobro a cuenta es «A cuenta» (brief-21.6, D-9).
 
 // Lo que entró o salió, sin lo anulado en la sesión.
 function net(amount: string, voided: string): string {
@@ -285,6 +286,13 @@ export function SessionReceiptsTable({
                       {row.order.displayNumber}
                     </Link>
                   </>
+                ) : row.account ? (
+                  <Link
+                    href={`/clientes/${row.account.clientId}/cuenta`}
+                    className={`${linkClass} print:no-underline`}
+                  >
+                    A cuenta
+                  </Link>
                 ) : (
                   "—"
                 )}

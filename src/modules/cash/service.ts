@@ -15,6 +15,7 @@ import {
 import { formatDocumentNumber, nextDocumentNumber } from "@/modules/numbering";
 import {
   getOrderForReceipt,
+  getOrdersForAccountsByIds,
   listClientOrdersForAccount,
   lockOrderForReceipt,
   type OrderForReceipt,
@@ -37,6 +38,7 @@ import {
 import {
   getSaleForReceipt,
   listClientSalesForAccount,
+  listSalesForAccounts,
   type SaleForReceipt,
 } from "@/modules/sales";
 import type { DbTransaction } from "@/shared/db";
@@ -1405,7 +1407,7 @@ export function parseReceiptNumberSearch(text: string): number | null {
 // Una seña lleva el estado de su pedido y la venta vigente de su cadena. Con eso imputeAccount decide
 // si queda retenida, si cuenta para la venta o si pasa al remanente (brief-21.4, H-1).
 function toAccountReceipt(
-  row: repository.ReceiptRow,
+  row: LedgerReceipt,
   ordersById: Map<string, OrderForReceipt>,
   currentSaleOf: Map<string, SaleForReceipt>,
 ): AccountReceipt {
@@ -1417,6 +1419,10 @@ function toAccountReceipt(
       currency: row.currency,
       amount,
     };
+  }
+  // El cobro a cuenta no elige una venta: va al remanente (punto 9; brief-21.6, H-1).
+  if (row.target === "account") {
+    return { target: "account", currency: row.currency, amount };
   }
   if (row.target === "order" && row.orderId !== null) {
     const order = ordersById.get(row.orderId);
@@ -1458,9 +1464,11 @@ const sumAmounts = (
 //
 // Desde la 21.5 (brief-21.5, D-8), sin los cobros anulados y con las devoluciones vigentes de la
 // cuenta. Los cobros y las devoluciones vuelven todos, anulados incluidos, para mostrarlos.
-type ClientLedger = {
+type ClientLedger<R extends LedgerReceipt = repository.ReceiptRow> = {
+  // Sus ventas, anuladas incluidas (brief-21.6, D-4).
+  sales: SaleForReceipt[];
   // Todos, anulados incluidos.
-  receipts: repository.ReceiptRow[];
+  receipts: R[];
   refunds: repository.RefundRow[];
   ordersById: Map<string, OrderForReceipt>;
   // La venta vigente de cada pedido que la tiene.
@@ -1490,7 +1498,33 @@ async function clientLedger(
     clientId,
     tx,
   );
-  const ordersById = new Map(orders.map((order) => [order.id, order]));
+  return ledgerFrom(
+    sales,
+    new Map(orders.map((order) => [order.id, order])),
+    receipts,
+    refunds,
+    options,
+  );
+}
+
+// La cuenta de un cliente a partir de lo leído: la arma clientLedger con las lecturas de un cliente
+// y la lista de deudores con las de toda la organización, agrupadas (brief-21.6, D-6). Una sola
+// función, para que no puedan contradecirse.
+//
+// Es genérica en los cobros: la lista de deudores le pasa solo los vigentes, con lo que mira la regla
+// (repository.findAccountsReceipts), y la cuenta de un cliente, las filas enteras.
+type LedgerReceipt = Pick<
+  repository.ReceiptRow,
+  "id" | "target" | "saleId" | "orderId" | "currency" | "amount" | "voided"
+>;
+
+function ledgerFrom<R extends LedgerReceipt>(
+  sales: SaleForReceipt[],
+  ordersById: Map<string, OrderForReceipt>,
+  receipts: R[],
+  refunds: repository.RefundRow[],
+  options: { withoutReceiptId?: string } = {},
+): ClientLedger<R> {
   const currentSaleOf = new Map<string, SaleForReceipt>();
   for (const sale of sales) {
     if (sale.orderId === null || sale.voided) continue;
@@ -1517,7 +1551,7 @@ async function clientLedger(
       amount: moneyFromDatabase(row.amount),
     })),
   };
-  return { receipts, refunds, ordersById, currentSaleOf, input };
+  return { sales, receipts, refunds, ordersById, currentSaleOf, input };
 }
 
 async function clientAccount(
@@ -1825,7 +1859,8 @@ async function auditReceipt(
   context: { organizationId: string; userId: string },
   receipt: repository.ReceiptRow,
   payment: ReceiptPayment,
-  destination: { sale_number: number } | { order_number: number },
+  destination:
+    { sale_number: number } | { order_number: number } | { target: "account" },
 ) {
   await recordAudit(tx, {
     organizationId: context.organizationId,
@@ -2576,6 +2611,8 @@ export type ReceiptListItem = ReceiptRef & {
   // El destino: la venta de un cobro o el pedido de una seña (brief-21.4, D-8).
   sale: DocumentRef | null;
   order: DocumentRef | null;
+  // El cliente de un cobro a cuenta (brief-21.6, D-9).
+  account: { clientId: string } | null;
   paymentMethodName: string;
   isCash: boolean;
   currency: string;
@@ -2663,6 +2700,10 @@ async function receiptListItems(
         row.orderId === null
           ? null
           : (destinations.orders.get(row.orderId) ?? null),
+      account:
+        row.target === "account" && row.clientId !== null
+          ? { clientId: row.clientId }
+          : null,
       paymentMethodName: method?.name ?? "",
       isCash: method?.isCash ?? false,
       currency: row.currency,
@@ -2698,6 +2739,9 @@ export type SaleReceipts = {
   // ofrecer la devolución desde la cuenta.
   clientId: string | null;
   clientInFavor: string;
+  // Con cliente, lo que debe su cuenta en la moneda de la venta (brief-21.6, D-7): solo se muestra, no
+  // bloquea nada (ADR 0022, punto 9, sin límite de crédito).
+  clientOwed: string;
 };
 
 async function readSaleStanding(organizationId: string, saleId: string) {
@@ -2709,14 +2753,20 @@ async function readSaleStanding(organizationId: string, saleId: string) {
       standing.deposits.length > 0 && sale.orderId !== null
         ? await getOrderForReceipt(tx, organizationId, sale.orderId)
         : null;
-    const clientInFavor =
-      sale.voided && sale.clientId !== null
-        ? inFavorOf(
-            (await clientAccount(tx, organizationId, sale.clientId)).accounts,
-            sale.currency,
-          )
-        : 0n;
-    return { sale, standing, order, clientInFavor };
+    const accounts =
+      sale.clientId !== null
+        ? (await clientAccount(tx, organizationId, sale.clientId)).accounts
+        : [];
+    const inCurrency = accounts.find((row) => row.currency === sale.currency);
+    return {
+      sale,
+      standing,
+      order,
+      clientInFavor: inFavorOf(accounts, sale.currency),
+      clientOwed: inCurrency
+        ? inCurrency.sales.reduce((sum, row) => sum + row.outstanding, 0n)
+        : 0n,
+    };
   });
 }
 
@@ -2733,12 +2783,13 @@ export async function getSaleReceipts(
   if (!idSchema.safeParse(saleId).success) return failure("VALIDATION_ERROR");
   const found = await readSaleStanding(context.organizationId, saleId);
   if (!found) return failure("NOT_FOUND");
-  const { sale, standing, order, clientInFavor } = found;
+  const { sale, standing, order, clientInFavor, clientOwed } = found;
   return {
     ok: true,
     sale: {
       clientId: sale.clientId,
       clientInFavor: moneyToDatabase(clientInFavor),
+      clientOwed: moneyToDatabase(clientOwed),
       refunded: moneyToDatabase(sumAmounts(standing.refunds)),
       refunds: await refundListItems(context.organizationId, standing.refunds),
       currency: sale.currency,
@@ -3345,5 +3396,753 @@ export async function getSaleRefundForm(
     toRefund: refundable(found.sale.currency, found.standing.toRefund),
     paymentMethods: methods.filter((method) => method.isActive),
     openSession: last && last.closedAt === null ? sessionRef(last) : null,
+  };
+}
+
+// La cuenta corriente (ADR 0022, punto 9; brief-21.6): el cobro a cuenta, su vista previa, el estado
+// de cuenta, el resumen para la ficha y la venta, y la lista de deudores. Todo sale de imputeAccount,
+// alimentada por ledgerFrom: ninguna lectura reparte el remanente por su cuenta.
+
+// Lo que debe y lo que tiene a favor un cliente en una moneda. Lo que debe es la suma de lo que falta
+// de sus ventas, y es cero si tiene algo a favor (paso 4: solo sobra si todas están cubiertas).
+export type AccountCurrencySummary = {
+  currency: string;
+  owed: string;
+  inFavor: string;
+  // Las señas de pedidos sin venta vigente que no están cancelados: no cuentan (punto 5).
+  retained: string;
+  salesWithBalance: number;
+  // La emisión de la venta con saldo más vieja.
+  oldestOutstandingAt: Date | null;
+};
+
+function summarize(account: CurrencyAccount): AccountCurrencySummary {
+  const withBalance = account.sales.filter((sale) => sale.outstanding > 0n);
+  return {
+    currency: account.currency,
+    owed: moneyToDatabase(
+      withBalance.reduce((sum, sale) => sum + sale.outstanding, 0n),
+    ),
+    inFavor: moneyToDatabase(account.inFavor),
+    retained: moneyToDatabase(account.retained),
+    salesWithBalance: withBalance.length,
+    oldestOutstandingAt: withBalance[0]?.issuedAt ?? null,
+  };
+}
+
+// Una moneda sin nada que mostrar (todo cobrado, nada a favor ni retenido) no se lista.
+function hasSomething(summary: AccountCurrencySummary): boolean {
+  return (
+    summary.owed !== "0.00" ||
+    summary.inFavor !== "0.00" ||
+    summary.retained !== "0.00"
+  );
+}
+
+type ClientName = { id: string; displayName: string | null };
+
+async function clientName(
+  context: AuthContext,
+  clientId: string,
+): Promise<ClientName | null> {
+  const clients = await getClientsByIds(context, [clientId]);
+  const client = clients.ok ? clients.clients[0] : undefined;
+  return client ? { id: client.id, displayName: client.displayName } : null;
+}
+
+// El resumen de la cuenta, para la ficha del cliente y el detalle de la venta (D-7): lo compone la
+// página, nunca crm ni sales.
+export async function getClientAccountSummary(
+  context: AuthContext,
+  clientId: string,
+): Promise<
+  | { ok: true; currencies: AccountCurrencySummary[] }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  if (!idSchema.safeParse(clientId).success) return failure("VALIDATION_ERROR");
+  const id = clientId.toLowerCase();
+  if (!(await clientName(context, id))) return failure("NOT_FOUND");
+  const account = await repository.withTransaction((tx) =>
+    clientAccount(tx, context.organizationId, id),
+  );
+  return {
+    ok: true,
+    currencies: account.accounts.map(summarize).filter(hasSomething),
+  };
+}
+
+// El estado de cuenta (D-4): el resumen y la imputación de hoy por moneda, y los comprobantes del
+// cliente, de la más nueva a la más vieja, sin saldo corrido.
+export type StatementSale = {
+  id: string;
+  displayNumber: string;
+  issuedAt: Date;
+  total: string;
+  // Sus cobros directos y las señas de su pedido, hasta su total (paso 1).
+  direct: string;
+  // Lo que recibió del remanente (paso 3).
+  imputed: string;
+  outstanding: string;
+};
+
+export type StatementCurrency = AccountCurrencySummary & {
+  debit: string;
+  credit: string;
+  // debit − credit, sin signo: src/shared/money no guarda montos negativos (ADR 0022, punto 7). El
+  // lado dice si es deuda o saldo a favor.
+  balance: { side: "debt" | "favor" | "zero"; amount: string };
+  sales: StatementSale[];
+};
+
+export type StatementDocument = {
+  kind:
+    | "sale"
+    | "sale_void"
+    | "receipt"
+    | "receipt_void"
+    | "refund"
+    | "refund_void";
+  // El documento que se abre: la venta para una venta y su anulación, el recibo para un cobro y su
+  // anulación, la devolución para una devolución y su anulación.
+  id: string;
+  displayNumber: string;
+  createdAt: Date;
+  currency: string;
+  amount: string;
+  // De un cobro: su destino (D-4).
+  destination:
+    | { target: "sale" | "order"; ref: DocumentRef | null }
+    | { target: "account" }
+    | null;
+  // Una venta, un cobro o una devolución anulados.
+  voided: boolean;
+};
+
+export type ClientStatement = {
+  client: ClientName;
+  generatedAt: Date;
+  currencies: StatementCurrency[];
+  documents: StatementDocument[];
+  // Si hay más comprobantes que STATEMENT_DOCUMENTS_LIMIT: se muestran los más nuevos.
+  truncated: boolean;
+};
+
+export const STATEMENT_DOCUMENTS_LIMIT = 500;
+
+function statementDocuments(ledger: ClientLedger): StatementDocument[] {
+  const salesById = new Map(ledger.sales.map((sale) => [sale.id, sale]));
+  const documents: StatementDocument[] = [];
+  for (const sale of ledger.sales) {
+    documents.push({
+      kind: "sale",
+      id: sale.id,
+      displayNumber: sale.displayNumber,
+      createdAt: sale.createdAt,
+      currency: sale.currency,
+      amount: sale.total,
+      destination: null,
+      voided: sale.voided,
+    });
+    if (sale.voidRef) {
+      documents.push({
+        kind: "sale_void",
+        id: sale.id,
+        displayNumber: sale.voidRef.displayNumber,
+        createdAt: sale.voidRef.createdAt,
+        currency: sale.currency,
+        amount: sale.total,
+        destination: null,
+        voided: false,
+      });
+    }
+  }
+  for (const receipt of ledger.receipts) {
+    const sale = receipt.saleId ? salesById.get(receipt.saleId) : undefined;
+    const order = receipt.orderId
+      ? ledger.ordersById.get(receipt.orderId)
+      : undefined;
+    documents.push({
+      kind: "receipt",
+      id: receipt.id,
+      displayNumber: formatReceiptNumber(receipt.number),
+      createdAt: receipt.createdAt,
+      currency: receipt.currency,
+      amount: receipt.amount,
+      destination:
+        receipt.target === "account"
+          ? { target: "account" }
+          : {
+              target: receipt.target,
+              ref:
+                receipt.target === "sale"
+                  ? sale
+                    ? { id: sale.id, displayNumber: sale.displayNumber }
+                    : null
+                  : order
+                    ? { id: order.id, displayNumber: order.displayNumber }
+                    : null,
+            },
+      voided: receipt.voided !== null,
+    });
+    if (receipt.voided) {
+      documents.push({
+        kind: "receipt_void",
+        id: receipt.id,
+        displayNumber: formatDocumentNumber(
+          "receipt_void",
+          receipt.voided.number,
+        ),
+        createdAt: receipt.voided.createdAt,
+        currency: receipt.currency,
+        amount: receipt.amount,
+        destination: null,
+        voided: false,
+      });
+    }
+  }
+  for (const refund of ledger.refunds) {
+    documents.push({
+      kind: "refund",
+      id: refund.id,
+      displayNumber: formatRefundNumber(refund.number),
+      createdAt: refund.createdAt,
+      currency: refund.currency,
+      amount: refund.amount,
+      destination: null,
+      voided: refund.voided !== null,
+    });
+    if (refund.voided) {
+      documents.push({
+        kind: "refund_void",
+        id: refund.id,
+        displayNumber: formatDocumentNumber(
+          "refund_void",
+          refund.voided.number,
+        ),
+        createdAt: refund.voided.createdAt,
+        currency: refund.currency,
+        amount: refund.amount,
+        destination: null,
+        voided: false,
+      });
+    }
+  }
+  return documents.sort(
+    (a, b) =>
+      b.createdAt.getTime() - a.createdAt.getTime() ||
+      b.displayNumber.localeCompare(a.displayNumber),
+  );
+}
+
+function statementCurrency(
+  account: CurrencyAccount,
+  sales: Map<string, SaleForReceipt>,
+): StatementCurrency {
+  return {
+    ...summarize(account),
+    debit: moneyToDatabase(account.debit),
+    credit: moneyToDatabase(account.credit),
+    balance: {
+      side:
+        account.balance > 0n ? "debt" : account.balance < 0n ? "favor" : "zero",
+      amount: moneyToDatabase(
+        account.balance < 0n ? -account.balance : account.balance,
+      ),
+    },
+    sales: account.sales.map((row) => ({
+      id: row.saleId,
+      displayNumber: sales.get(row.saleId)?.displayNumber ?? "",
+      issuedAt: row.issuedAt,
+      total: moneyToDatabase(row.total),
+      direct: moneyToDatabase(row.direct),
+      imputed: moneyToDatabase(row.imputed),
+      outstanding: moneyToDatabase(row.outstanding),
+    })),
+  };
+}
+
+export async function getClientStatement(
+  context: AuthContext,
+  clientId: string,
+): Promise<
+  | { ok: true; statement: ClientStatement }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  if (!idSchema.safeParse(clientId).success) return failure("VALIDATION_ERROR");
+  const id = clientId.toLowerCase();
+  const client = await clientName(context, id);
+  if (!client) return failure("NOT_FOUND");
+  const account = await repository.withTransaction((tx) =>
+    clientAccount(tx, context.organizationId, id),
+  );
+  const sales = new Map(account.sales.map((sale) => [sale.id, sale]));
+  const documents = statementDocuments(account);
+  return {
+    ok: true,
+    statement: {
+      client,
+      generatedAt: new Date(),
+      currencies: account.accounts.map((row) => statementCurrency(row, sales)),
+      documents: documents.slice(0, STATEMENT_DOCUMENTS_LIMIT),
+      truncated: documents.length > STATEMENT_DOCUMENTS_LIMIT,
+    },
+  };
+}
+
+// El cobro a cuenta (ADR 0022, puntos 2, 3 y 9; brief-21.6, D-2 y D-3).
+
+export type AccountReceiptField = ReceiptField | "currency";
+
+type AccountReceiptFieldsFailure = Failure<
+  "VALIDATION_ERROR",
+  {
+    fields: AccountReceiptField[];
+    amount?: CashAmountRejection | "required" | "limit";
+  }
+>;
+
+export type AccountReceiptInput = {
+  clientId: string;
+  currency: string;
+  paymentMethodId: string;
+  amount: string;
+};
+
+type AccountReceiptCheckFailure =
+  | Failure<"FORBIDDEN">
+  | Failure<"VALIDATION_ERROR">
+  | AccountReceiptFieldsFailure
+  | Failure<"NOT_FOUND", { entity: "client" }>
+  | PaymentFailure;
+
+export type CreateAccountReceiptResult =
+  { ok: true; receipt: ReceiptRef } | AccountReceiptCheckFailure;
+
+// A qué ventas va un monto nuevo del remanente, y cuánto queda a favor, según la regla: la cuenta sin
+// el cobro y con él, y la diferencia de lo que falta de cada venta (D-5).
+export type AccountReceiptPreview = {
+  currency: string;
+  amount: string;
+  applications: { saleId: string; displayNumber: string; amount: string }[];
+  toFavor: string;
+};
+
+function previewOf(
+  ledger: ClientLedger,
+  currency: string,
+  amount: Money,
+): AccountReceiptPreview {
+  const find = (accounts: CurrencyAccount[]) =>
+    accounts.find((row) => row.currency === currency);
+  const before = find(imputeAccount(ledger.input));
+  const after = find(
+    imputeAccount({
+      ...ledger.input,
+      receipts: [
+        ...ledger.input.receipts,
+        { target: "account", currency, amount },
+      ],
+    }),
+  )!;
+  const sales = new Map(ledger.sales.map((sale) => [sale.id, sale]));
+  const outstandingBefore = new Map(
+    (before?.sales ?? []).map((row) => [row.saleId, row.outstanding]),
+  );
+  return {
+    currency,
+    amount: moneyToDatabase(amount),
+    applications: after.sales
+      .map((row) => ({
+        saleId: row.saleId,
+        displayNumber: sales.get(row.saleId)?.displayNumber ?? "",
+        applied: (outstandingBefore.get(row.saleId) ?? 0n) - row.outstanding,
+      }))
+      .filter((row) => row.applied > 0n)
+      .map(({ applied, ...row }) => ({
+        ...row,
+        amount: moneyToDatabase(applied),
+      })),
+    toFavor: moneyToDatabase(after.inFavor - (before?.inFavor ?? 0n)),
+  };
+}
+
+type AccountReceiptRead = {
+  ok: true;
+  clientId: string;
+  currency: string;
+  fields: { methodId: string; amountText: string };
+};
+
+function readAccountReceiptInput(
+  input: AccountReceiptInput,
+):
+  | AccountReceiptRead
+  | Failure<"VALIDATION_ERROR">
+  | AccountReceiptFieldsFailure {
+  if (!idSchema.safeParse(input.clientId).success) {
+    return failure("VALIDATION_ERROR");
+  }
+  const currency = input.currency.trim().toUpperCase();
+  const currencyOk = acceptedCurrencies().includes(currency);
+  const fields = readReceiptFields(input);
+  if (!fields.ok || !currencyOk) {
+    const issues: AccountReceiptField[] = fields.ok ? [] : [...fields.fields];
+    if (!currencyOk) issues.push("currency");
+    return {
+      ok: false,
+      code: "VALIDATION_ERROR",
+      fields: issues,
+      ...(!fields.ok && fields.amount ? { amount: fields.amount } : {}),
+    };
+  }
+  return {
+    ok: true,
+    clientId: input.clientId.toLowerCase(),
+    currency,
+    fields,
+  };
+}
+
+// La comprobación, compartida por el cobro y su vista previa: el cliente, el medio activo, el monto
+// en la moneda elegida, la sesión abierta si es efectivo y el tope de lo esperado. Sin tope contra lo
+// que debe: lo que excede queda a favor (D-2). En el cobro corre con los bloqueos tomados.
+async function checkAccountReceipt(
+  tx: DbTransaction,
+  organizationId: string,
+  read: AccountReceiptRead,
+  clientStatus: "active" | "inactive" | "not_found",
+): Promise<
+  | { ok: true; payment: ReceiptPayment }
+  | Failure<"NOT_FOUND", { entity: "client" }>
+  | PaymentFailure
+> {
+  // Un cliente desactivado se cobra: su deuda no se cancela al desactivarlo (D-3).
+  if (clientStatus === "not_found") {
+    return { ok: false, code: "NOT_FOUND", entity: "client" };
+  }
+  const paid = await readPayment(
+    tx,
+    organizationId,
+    read.fields,
+    read.currency,
+  );
+  if (!paid.ok) return paid;
+  const limit = await exceedsCashLimit(
+    tx,
+    organizationId,
+    paid.payment,
+    read.currency,
+  );
+  if (limit) return limit;
+  return paid;
+}
+
+// La vista previa del cobro a cuenta (D-5): la misma comprobación, sin bloqueos y sin escribir. El
+// cobro vuelve a leer todo con el bloqueo tomado.
+export async function previewAccountReceipt(
+  context: AuthContext,
+  input: AccountReceiptInput,
+): Promise<
+  { ok: true; preview: AccountReceiptPreview } | AccountReceiptCheckFailure
+> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  const read = readAccountReceiptInput(input);
+  if (!read.ok) return read;
+  const { organizationId } = context;
+  const client = await clientName(context, read.clientId);
+  return repository.withTransaction(
+    async (
+      tx,
+    ): Promise<
+      { ok: true; preview: AccountReceiptPreview } | AccountReceiptCheckFailure
+    > => {
+      const checked = await checkAccountReceipt(
+        tx,
+        organizationId,
+        read,
+        client ? "active" : "not_found",
+      );
+      if (!checked.ok) return checked;
+      const ledger = await clientLedger(tx, organizationId, read.clientId);
+      return {
+        ok: true,
+        preview: previewOf(ledger, read.currency, checked.payment.amount),
+      };
+    },
+  );
+}
+
+// El cobro a cuenta (D-2), solo de admin, en READ COMMITTED, con el orden del ADR 0022, punto 4:
+//
+// 1. el bloqueo de cobros de la organización;
+// 2. el cliente en modo compartido por crm: el INSERT toma su ficha por la clave foránea. Basta el
+//    modo compartido: el cobro a cuenta no tiene tope que otra escritura achique (H-4), y la
+//    devolución desde la cuenta, que toma la ficha en modo exclusivo, ya espera el bloqueo de cobros;
+// 3. la comprobación de checkAccountReceipt;
+// 4. al final, el contador, el cobro sin venta ni pedido y la auditoría.
+//
+// No elige una venta: se imputa con la regla en cada lectura (punto 9; H-5).
+export async function createAccountReceipt(
+  context: AuthContext,
+  input: AccountReceiptInput,
+): Promise<CreateAccountReceiptResult> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  const read = readAccountReceiptInput(input);
+  if (!read.ok) return read;
+  const { organizationId, userId } = context;
+
+  return repository.withTransaction(
+    async (tx): Promise<CreateAccountReceiptResult> => {
+      await repository.lockCash(tx, organizationId);
+      const client = await lockClientForOrder(
+        tx,
+        organizationId,
+        read.clientId,
+      );
+      const checked = await checkAccountReceipt(
+        tx,
+        organizationId,
+        read,
+        client,
+      );
+      if (!checked.ok) return checked;
+      const { payment } = checked;
+
+      const number = await nextDocumentNumber(tx, organizationId, "receipt");
+      const receipt = await repository.insertReceipt(tx, {
+        organizationId,
+        number,
+        destination: { target: "account" },
+        clientId: read.clientId,
+        paymentMethodId: payment.method.id,
+        sessionId: payment.session?.id ?? null,
+        currency: read.currency,
+        amount: moneyToDatabase(payment.amount),
+        createdBy: userId,
+      });
+      await auditReceipt(tx, { organizationId, userId }, receipt, payment, {
+        target: "account",
+      });
+      return { ok: true, receipt: receiptRef(receipt) };
+    },
+  );
+}
+
+// Lo que necesita el formulario del cobro a cuenta (D-5): lo que debe por moneda, con sus ventas con
+// saldo, la moneda y el monto propuestos, los medios activos y si hay una sesión abierta.
+export type AccountReceiptForm = {
+  ok: true;
+  client: ClientName;
+  currencies: StatementCurrency[];
+  // La de la venta con saldo más vieja, por lo que debe en ella; si no debe nada, la de su venta más
+  // reciente, sin monto; si no tiene ventas, ninguna (D-3).
+  proposed: RefundableAmount | null;
+  paymentMethods: PaymentMethod[];
+  openSession: SessionRef | null;
+};
+
+export async function getAccountReceiptForm(
+  context: AuthContext,
+  clientId: string,
+): Promise<
+  AccountReceiptForm | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  if (!idSchema.safeParse(clientId).success) return failure("VALIDATION_ERROR");
+  const id = clientId.toLowerCase();
+  const client = await clientName(context, id);
+  if (!client) return failure("NOT_FOUND");
+  const { organizationId } = context;
+  const account = await repository.withTransaction((tx) =>
+    clientAccount(tx, organizationId, id),
+  );
+  const [methods, last] = await Promise.all([
+    repository.findPaymentMethods(organizationId),
+    repository.findLastSession(organizationId),
+  ]);
+  const sales = new Map(account.sales.map((sale) => [sale.id, sale]));
+  const currencies = account.accounts.map((row) =>
+    statementCurrency(row, sales),
+  );
+  const oldest = currencies
+    .filter((row) => row.oldestOutstandingAt !== null)
+    .sort(
+      (a, b) =>
+        a.oldestOutstandingAt!.getTime() - b.oldestOutstandingAt!.getTime(),
+    )[0];
+  const latest = account.sales.at(-1);
+  return {
+    ok: true,
+    client,
+    currencies,
+    proposed: oldest
+      ? refundable(oldest.currency, moneyFromDatabase(oldest.owed))
+      : latest
+        ? { currency: latest.currency, amount: "0.00", amountInput: "" }
+        : null,
+    paymentMethods: methods.filter((method) => method.isActive),
+    openSession: last && last.closedAt === null ? sessionRef(last) : null,
+  };
+}
+
+// La lista de deudores (D-6): una fila por cliente y moneda con saldo deudor. Se lee en cuatro
+// consultas por organización, sin JOIN entre módulos (Overview): las ventas con cliente por sales,
+// los pedidos con señas por orders, y los cobros con cliente y las devoluciones desde la cuenta. Se
+// agrupa por cliente y cada cuenta pasa por imputeAccount. Los nombres, solo los de la página que se
+// muestra. Medida en la 21.6 antes de aceptarla (AC-7).
+export type DebtorRow = {
+  clientId: string;
+  displayName: string | null;
+  currency: string;
+  owed: string;
+  oldestOutstandingAt: Date;
+  salesWithBalance: number;
+};
+
+export type DebtorPage = {
+  rows: DebtorRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  // Las monedas con algún deudor, para el filtro.
+  currencies: string[];
+};
+
+export const DEBTORS_PAGE_SIZE = 25;
+
+function groupBy<T>(
+  rows: T[],
+  key: (row: T) => string | null,
+): Map<string, T[]> {
+  const groups = new Map<string, T[]>();
+  for (const row of rows) {
+    const id = key(row);
+    if (id === null) continue;
+    const group = groups.get(id);
+    if (group) group.push(row);
+    else groups.set(id, [row]);
+  }
+  return groups;
+}
+
+type Debt = Omit<DebtorRow, "displayName"> & { owedAmount: Money };
+
+async function readDebts(organizationId: string): Promise<Debt[]> {
+  const { sales, receipts, refunds, orders } = await repository.withSnapshot(
+    async (tx) => {
+      // Una tras otra, en la misma instantánea: van por la conexión de la transacción.
+      const sales = await listSalesForAccounts(tx, organizationId);
+      const receipts = await repository.findAccountsReceipts(
+        organizationId,
+        tx,
+      );
+      const refunds = await repository.findAccountsRefunds(organizationId, tx);
+      const orderIds = [
+        ...new Set(
+          receipts
+            .map((row) => row.orderId)
+            .filter((id): id is string => id !== null),
+        ),
+      ];
+      const orders =
+        orderIds.length === 0
+          ? []
+          : await getOrdersForAccountsByIds(tx, organizationId, orderIds);
+      return { sales, receipts, refunds, orders };
+    },
+  );
+  const ordersById = new Map(orders.map((order) => [order.id, order]));
+  const receiptsOf = groupBy(receipts, (row) => row.clientId);
+  const refundsOf = groupBy(refunds, (row) => row.clientId);
+  const debts: Debt[] = [];
+  // Sin ventas no hay deuda: solo los clientes con alguna.
+  for (const [clientId, clientSales] of groupBy(sales, (row) => row.clientId)) {
+    const ledger = ledgerFrom(
+      clientSales,
+      ordersById,
+      receiptsOf.get(clientId) ?? [],
+      refundsOf.get(clientId) ?? [],
+    );
+    for (const account of imputeAccount(ledger.input)) {
+      const summary = summarize(account);
+      if (summary.salesWithBalance === 0) continue;
+      debts.push({
+        clientId,
+        currency: summary.currency,
+        owed: summary.owed,
+        owedAmount: moneyFromDatabase(summary.owed),
+        oldestOutstandingAt: summary.oldestOutstandingAt!,
+        salesWithBalance: summary.salesWithBalance,
+      });
+    }
+  }
+  return debts;
+}
+
+function byDebt(a: Debt, b: Debt): number {
+  if (a.currency !== b.currency) return a.currency < b.currency ? -1 : 1;
+  if (a.owedAmount !== b.owedAmount)
+    return a.owedAmount > b.owedAmount ? -1 : 1;
+  return a.clientId < b.clientId ? -1 : a.clientId > b.clientId ? 1 : 0;
+}
+
+export async function listDebtors(
+  context: AuthContext,
+  query: { currency: string | null; page: number },
+): Promise<
+  { ok: true; debtors: DebtorPage } | Failure<"FORBIDDEN" | "VALIDATION_ERROR">
+> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  if (
+    (query.currency !== null && !/^[A-Z]{3}$/.test(query.currency)) ||
+    !Number.isSafeInteger(query.page) ||
+    query.page < 1
+  ) {
+    return failure("VALIDATION_ERROR");
+  }
+  const debts = await readDebts(context.organizationId);
+  const currencies = [...new Set(debts.map((row) => row.currency))].sort();
+  // Por moneda, y dentro de cada una, de la deuda mayor a la menor.
+  const filtered = debts
+    .filter((row) => query.currency === null || row.currency === query.currency)
+    .sort(byDebt);
+  const start = (query.page - 1) * DEBTORS_PAGE_SIZE;
+  const page = filtered.slice(start, start + DEBTORS_PAGE_SIZE);
+  const names = new Map<string, string | null>();
+  if (page.length > 0) {
+    const clients = await getClientsByIds(
+      context,
+      page.map((row) => row.clientId),
+    );
+    if (clients.ok) {
+      for (const client of clients.clients) {
+        names.set(client.id, client.displayName);
+      }
+    }
+  }
+  return {
+    ok: true,
+    debtors: {
+      rows: page.map((row) => ({
+        clientId: row.clientId,
+        displayName: names.get(row.clientId) ?? null,
+        currency: row.currency,
+        owed: row.owed,
+        oldestOutstandingAt: row.oldestOutstandingAt,
+        salesWithBalance: row.salesWithBalance,
+      })),
+      total: filtered.length,
+      page: query.page,
+      pageSize: DEBTORS_PAGE_SIZE,
+      currencies,
+    },
   };
 }

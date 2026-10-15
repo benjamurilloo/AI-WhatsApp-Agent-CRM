@@ -20,6 +20,10 @@ import { describe, expect, it } from "vitest";
 // solo desde voidReceipt, refunds solo desde createRefund y refund_voids solo desde voidRefund. Cada
 // uno toma el bloqueo de cobros y comprueba lo devuelto o lo esperado antes de escribir.
 //
+// Desde la 21.6 (brief-21.6, AC-9 y H-9), el cobro a cuenta: receipts también desde
+// createAccountReceipt, que copia el cliente de la cuenta y no lleva venta ni pedido. Un cuarto caso
+// de uso sigue rechazado.
+//
 // Ve y no ve lo mismo que sale-writes.
 
 const REPOSITORY = "src/modules/cash/repository.ts";
@@ -47,7 +51,10 @@ const CALLERS = new Map([
   ["insertClosingAmounts", ["closeCashSession"]],
   ["insertClosing", ["closeCashSession"]],
   ["insertMovement", ["recordCashMovement"]],
-  ["insertReceipt", ["createSaleReceipt", "createOrderReceipt"]],
+  [
+    "insertReceipt",
+    ["createSaleReceipt", "createOrderReceipt", "createAccountReceipt"],
+  ],
   ["insertReceiptVoid", ["voidReceipt"]],
   ["insertRefund", ["createRefund"]],
   ["insertRefundVoid", ["voidRefund"]],
@@ -311,7 +318,7 @@ describe("detección de escrituras de la caja", () => {
     },
     {
       name: "un cobro escrito desde un caso de uso nuevo",
-      code: "export async function createAccountReceipt(c) {\n  await repository.insertReceipt(tx, v);\n}",
+      code: "export async function createAdvanceReceipt(c) {\n  await repository.insertReceipt(tx, v);\n}",
     },
     {
       name: "un cobro escrito desde un ayudante que comparten el cobro y la seña",

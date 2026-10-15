@@ -210,6 +210,22 @@ export function findClientOrders(
     .orderBy(asc(orders.createdAt), asc(orders.number));
 }
 
+// Los pedidos de unos ids, para la lista de deudores de cash (brief-21.6, D-6): solo los que tienen
+// señas. Con la transacción de cash y sin bloquear.
+export function findOrdersByIds(
+  tx: DbTransaction,
+  organizationId: string,
+  ids: string[],
+): Promise<OrderRow[]> {
+  return tx
+    .select(orderColumns)
+    .from(orders)
+    .where(
+      and(eq(orders.organizationId, organizationId), inArray(orders.id, ids)),
+    )
+    .orderBy(asc(orders.createdAt), asc(orders.number));
+}
+
 export type OrderListQuery = {
   organizationId: string;
   statuses: OrderStatus[] | null;

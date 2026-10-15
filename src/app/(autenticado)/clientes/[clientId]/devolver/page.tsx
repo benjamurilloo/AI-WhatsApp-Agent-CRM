@@ -25,7 +25,8 @@ const TITLE = "Devolver saldo a favor";
 // Pantalla 35: la devolución desde la cuenta de un cliente (brief-21.5, D-9; ADR 0022, punto 7),
 // solo admin. Muestra solo lo que está a favor por moneda, que es lo único que se devuelve (H-2):
 // el estado de cuenta es de la 21.6 (H-10). Se llega desde la venta anulada y el pedido cancelado,
-// donde se ve que algo pasó a la cuenta. La ficha del cliente no cambia.
+// donde se ve que algo pasó a la cuenta. Desde la 21.6 (brief-21.6, D-7), también desde la ficha, y
+// enlaza el estado de cuenta.
 export default async function ClientRefundPage({
   params,
 }: {
@@ -84,7 +85,10 @@ export default async function ClientRefundPage({
         <p className="mb-4 text-sm text-muted">
           Lo que está a favor es lo cobrado que no se imputa a ninguna venta con
           saldo: lo de ventas anuladas, señas de pedidos cancelados y
-          excedentes. Lo que cubre una venta con saldo no se devuelve.
+          excedentes. Lo que cubre una venta con saldo no se devuelve.{" "}
+          <Link href={`/clientes/${clientId}/cuenta`} className={linkClass}>
+            Ver estado de cuenta
+          </Link>
         </p>
         {blocked ? (
           <p>

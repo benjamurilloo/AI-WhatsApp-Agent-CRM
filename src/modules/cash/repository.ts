@@ -1,4 +1,13 @@
-import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  sql,
+} from "drizzle-orm";
 import { getDb, type Db, type DbTransaction } from "@/shared/db";
 import {
   cashMovementKind,
@@ -31,6 +40,19 @@ export function withTransaction<T>(
   work: (tx: DbTransaction) => Promise<T>,
 ): Promise<T> {
   return getDb().transaction(work);
+}
+
+// Una lectura de solo lectura con una única instantánea de la base, como la del horario: las
+// lecturas de toda la organización de la lista de deudores ven los mismos datos aunque se cobre o se
+// venda en el medio (revisión independiente de la 21.6, B-1). Las escrituras siguen en READ
+// COMMITTED, detrás del bloqueo de cobros (ADR 0022, punto 4).
+export function withSnapshot<T>(
+  work: (tx: DbTransaction) => Promise<T>,
+): Promise<T> {
+  return getDb().transaction(work, {
+    isolationLevel: "repeatable read",
+    accessMode: "read only",
+  });
 }
 
 // El bloqueo de cobros de la organización (ADR 0022, punto 4; brief-21.2, D-7), el mismo patrón del
@@ -561,12 +583,15 @@ const receiptVoidJoin = and(
   eq(receiptVoids.receiptId, receipts.id),
 );
 
-// El destino y su clave: receipts_target_check rechaza cualquier otra combinación.
+// El destino y su clave: receipts_target_check rechaza cualquier otra combinación. El cobro a cuenta
+// no lleva más clave que el cliente (brief-21.6, D-1).
 export type NewReceipt = {
   organizationId: string;
   number: number;
   destination:
-    { target: "sale"; saleId: string } | { target: "order"; orderId: string };
+    | { target: "sale"; saleId: string }
+    | { target: "order"; orderId: string }
+    | { target: "account" };
   clientId: string | null;
   paymentMethodId: string;
   sessionId: string | null;
@@ -613,6 +638,42 @@ export function findClientReceipts(
       ),
     )
     .orderBy(...receiptOrder);
+}
+
+// Los cobros vigentes de todos los clientes de la organización, para la lista de deudores
+// (brief-21.6, D-6): una consulta, agrupada en memoria por cliente, con solo lo que mira la regla.
+// Traer las filas enteras con su anulación costaba más del doble con 21.000 cobros (AC-7). El cobro
+// de una venta sin cliente no es de ninguna cuenta.
+export type AccountsReceiptRow = Pick<
+  ReceiptRow,
+  "id" | "target" | "saleId" | "orderId" | "clientId" | "currency" | "amount"
+> & { voided: null };
+
+export async function findAccountsReceipts(
+  organizationId: string,
+  executor: Executor = getDb(),
+): Promise<AccountsReceiptRow[]> {
+  const rows = await executor
+    .select({
+      id: receipts.id,
+      target: receipts.target,
+      saleId: receipts.saleId,
+      orderId: receipts.orderId,
+      clientId: receipts.clientId,
+      currency: receipts.currency,
+      amount: receipts.amount,
+    })
+    .from(receipts)
+    .where(
+      and(
+        eq(receipts.organizationId, organizationId),
+        isNotNull(receipts.clientId),
+        sql`not exists (select 1 from ${receiptVoids}
+          where ${receiptVoids.organizationId} = ${receipts.organizationId}
+            and ${receiptVoids.receiptId} = ${receipts.id})`,
+      ),
+    );
+  return rows.map((row) => ({ ...row, voided: null }));
 }
 
 export function findSaleReceipts(
@@ -882,6 +943,21 @@ export function findClientRefunds(
       and(
         eq(refunds.organizationId, organizationId),
         eq(refunds.clientId, clientId),
+      ),
+    )
+    .orderBy(asc(refunds.number));
+}
+
+// Las devoluciones desde la cuenta de todos los clientes, para la lista de deudores (brief-21.6, D-6).
+export function findAccountsRefunds(
+  organizationId: string,
+  executor: Executor = getDb(),
+): Promise<RefundRow[]> {
+  return selectRefunds(executor)
+    .where(
+      and(
+        eq(refunds.organizationId, organizationId),
+        isNotNull(refunds.clientId),
       ),
     )
     .orderBy(asc(refunds.number));

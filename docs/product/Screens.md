@@ -514,7 +514,7 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 
 *Agregada en la 21.5* ([brief-21.5](../decisions/brief-21.5-la-anulacion-y-la-devolucion.md), D-7 y D-9; FR-CAJ-18). Dos rutas, solo `admin`, con el mismo formulario:
 
-- **Desde la cuenta**, `/clientes/[id]/devolver`: «Devolver saldo a favor de {cliente}» y lo que está a favor por moneda, sin el estado de cuenta (que es de la 21.6). Se llega desde «Devolver saldo a favor» de la venta anulada con cliente o del pedido cancelado. La ficha del cliente no cambia.
+- **Desde la cuenta**, `/clientes/[id]/devolver`: «Devolver saldo a favor de {cliente}» y lo que está a favor por moneda, sin el estado de cuenta (que es de la 21.6). Se llega desde «Devolver saldo a favor» de la venta anulada con cliente o del pedido cancelado. La ficha del cliente no cambia. *Desde la 21.6* ([brief-21.6](../decisions/brief-21.6-la-cuenta-corriente.md), D-7): también desde la tarjeta «Cuenta corriente» de la ficha, y enlaza el estado de cuenta (pantalla 37).
 - **Desde una venta sin cliente anulada**, `/ventas/[id]/devolver`: «Devolver lo cobrado de V-000123» y lo que queda a devolver. Se llega desde «Devolver» del detalle de la venta.
 - **El formulario**: la moneda, si hay más de una con algo a devolver; el medio de pago con los activos, con «(sale de la caja)» en el efectivo y el aviso de la caja; y el monto, propuesto en lo disponible, con cómo se lee. «Registrar devolución» guarda y lleva al comprobante.
 - **Rechazos**, con lo escrito conservado y el foco en el mensaje: una devolución de más («La devolución supera lo disponible: $ …»); el efectivo que no alcanza en la caja; efectivo con la caja cerrada, con «Abrir caja»; un medio desactivado o que ya no existe; un monto inválido o en cero.
@@ -524,3 +524,32 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 ## 36. Anular devolución
 
 *Agregada en la 21.5* ([brief-21.5](../decisions/brief-21.5-la-anulacion-y-la-devolucion.md), D-7 y D-9; FR-CAJ-19). Ruta `/devoluciones/[id]/anular`, solo `admin`, con la confirmación de la pantalla 32: el motivo de su lista, y qué pasa con la caja (vuelve a lo esperado con su sesión abierta; con la cerrada, el arqueo no cambia). Vuelve al comprobante con «Devolución anulada.».
+
+## 37. Estado de cuenta
+
+*Agregada en la 21.6* ([brief-21.6](../decisions/brief-21.6-la-cuenta-corriente.md), D-4; ADR 0022, puntos 9 y 11; FR-CAJ-22). Ruta `/clientes/[id]/cuenta`, para los dos roles. Se llega desde la tarjeta «Cuenta corriente» de la ficha, la lista de deudores, la venta, el pedido y la devolución desde la cuenta.
+
+- **Información mostrada**: un comprobante imprimible con el nombre de la organización, la leyenda «Documento no válido como factura», el cliente y la fecha y hora de la lectura. Por moneda: debe (ventas vigentes), haber (cobros menos devoluciones), saldo («Debe $ …» o «A favor $ …»), las señas retenidas aparte, y la tabla de las ventas vigentes de la más vieja a la más nueva con el total, lo cobrado directo, lo recibido «De la cuenta» y lo que falta, o «Cobrada»; debajo, lo que queda a favor. Después, los comprobantes del cliente, del más nuevo al más viejo (ventas, anulaciones de ventas, cobros con su destino —por la venta, seña del pedido o a cuenta—, anulaciones de cobros, devoluciones y sus anulaciones), con lo anulado marcado. Sin saldo corrido. Arriba y al pie: «Según la cuenta de hoy: anular un cobro, una venta o una devolución cambia a qué venta se aplica cada peso.»
+- **Más de 500 comprobantes**: se muestran los 500 más recientes, con el aviso; el resumen y la imputación cuentan todos.
+- **Acciones**: «Imprimir o guardar PDF»; para `admin`, «Cobrar a cuenta» (pantalla 38). Al volver de un cobro, «Cobro a cuenta registrado. R-000123».
+- **Al imprimir**: queda solo el comprobante, sin el contacto del cliente para ningún rol.
+
+## 38. Cobrar a cuenta
+
+*Agregada en la 21.6* ([brief-21.6](../decisions/brief-21.6-la-cuenta-corriente.md), D-2, D-3 y D-5; FR-CAJ-21). Ruta `/clientes/[id]/cobrar`, solo `admin`.
+
+- **Información mostrada**: «Cobrar a cuenta a {cliente}» con lo que debe por moneda, y por cada moneda con deuda, sus ventas con saldo de la más vieja a la más nueva, con lo que falta. La aclaración: el cobro no elige una venta, se aplica de la más vieja a la más nueva y lo que sobra queda a favor.
+- **El formulario, en dos pasos**: la moneda (código de tres letras, propuesta en la de la venta con saldo más vieja), el medio de pago con los activos y el aviso de la caja, y el monto, propuesto en lo que debe en esa moneda, con cómo se lee. «Ver cómo se aplica» muestra la vista previa con el foco en ella: «A la venta V-000001: $ …» por cada venta que recibe, y «Queda a favor del cliente: $ …». «Registrar cobro» guarda y lleva al estado de cuenta; «Cambiar los datos» vuelve al formulario.
+- **Rechazos**, con lo escrito conservado y el foco en el mensaje: una moneda que no es un código válido; efectivo con la caja cerrada, con «Abrir caja»; un medio desactivado o que ya no existe; un monto inválido o en cero; el tope de lo esperado de la caja. No hay rechazo por exceso.
+- **Sin formulario**: sin medios activos, lo dice y enlaza a los medios de pago. Un `viewer` recibe «Solo un administrador puede registrar cobros.»
+- **Sin JavaScript**: funciona igual.
+
+## 39. Deudores
+
+*Agregada en la 21.6* ([brief-21.6](../decisions/brief-21.6-la-cuenta-corriente.md), D-6; FR-CAJ-23). Ruta `/caja/deudores`, «Deudores» en la barra de la caja, para los dos roles.
+
+- **Información mostrada**: una fila por cliente y moneda con saldo deudor, de la deuda mayor a la menor dentro de cada moneda, con el cliente enlazado a su estado de cuenta, la moneda, lo que debe, «Desde» (la fecha de su venta con saldo más vieja) y cuántas ventas tiene con saldo. Paginada de a 25.
+- **Filtro**: por moneda, si hay más de una.
+- **Vacío**: «Ningún cliente debe nada.»; con el filtro, «Nadie debe en USD.»
+
+*La ficha del cliente* (pantalla 7), *desde la 21.6* (D-7; FR-CAJ-24), suma la tarjeta «Cuenta corriente»: por moneda, «Debe», «A favor» o «Al día» con el monto y las señas retenidas; el enlace «Estado de cuenta» y, para `admin`, «Cobrar a cuenta» y, si hay algo a favor, «Devolver saldo a favor». *El detalle de la venta* suma, con cliente, «Cuenta del cliente: debe $ …» o «tiene $ … a favor», con «Ver estado de cuenta». *El pedido cancelado y la venta anulada con cliente* dicen que lo cobrado «pasó a la cuenta del cliente. Se aplica primero a sus ventas con saldo, y lo que sobra queda a favor.»; el pedido suma lo que está a favor hoy y «Ver estado de cuenta» (D-8). *El recibo, la lista de cobros y la sesión de caja* muestran el destino de un cobro a cuenta: «Cuenta del cliente» o «A cuenta» (D-9).
