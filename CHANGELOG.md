@@ -2,6 +2,34 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-15 — 21.6: la cuenta corriente, y la Fase 21 — Caja y cobros
+
+Cierra el 2026-10-15, después del recorrido del usuario en producción ([brief-21.6](docs/decisions/brief-21.6-la-cuenta-corriente.md), §Cierre). Con ella **cierra la Fase 21**: las seis subfases del punto 15 del [ADR 0022](docs/decisions/0022-cobros-y-caja.md) están entregadas, desplegadas y recorridas.
+
+**Certifica:**
+- **El cobro a cuenta** (migración `0046`): un `receipts` de la serie `R` con destino `account`, con cliente y sin venta ni pedido; la base lo exige en `receipts_target_check`. Sin tope: se imputa a las ventas con saldo de la más vieja a la más nueva, y lo que sobra queda a favor. Solo de `admin`, con el bloqueo de cobros primero, la ficha del cliente en modo compartido y el contador al final, y con una vista previa de la regla antes de registrar.
+- **Una sola regla para leer la cuenta**: el estado de cuenta imprimible, la tarjeta de la ficha, el saldo en la venta y en el pedido, la vista previa y la lista de deudores pasan todos por `imputeAccount`, que no cambió.
+- **La lista de deudores** (`/caja/deudores`), para los dos roles y sin el contacto del cliente: una fila por cliente y moneda, de la deuda mayor a la menor, con filtro por moneda. `sales` y `orders` suman una lectura por organización, sin escrituras ni bloqueos; se compone en memoria y lee en una única instantánea.
+- **Los textos del pedido cancelado y de la venta anulada** dicen la regla y lo que el cliente tiene hoy, en lugar de afirmar un saldo a favor (hallazgo del recorrido de la 21.5).
+- **El escenario literal de AC-5** con dos cobros de ventas distintas, diferido desde la 21.3, **queda cerrado como inalcanzable**: una propiedad de 500 casos fija que un cobro de una venta no cambia ninguna otra. El escenario alcanzable, con el cobro a cuenta, está probado en los dos órdenes.
+- **La revisión independiente**: un hallazgo alto (el estado de cuenta se caía con un saldo en cero) y dos medios, verificados y corregidos con tests; dos decisiones del usuario. 10 de 11 mutaciones detectadas, cada una por su regla.
+- **En producción**:
+  - `55aeb1a`, con la CI 38770197195 en `success` en 20 minutos;
+  - el usuario cobró a cuenta los 150.000 que debía un cliente de «Demostración Vixora» (`R-000010`, por transferencia);
+  - conciliado contra la base: el cliente quedó al día según la regla, y cuadran el contador y la auditoría.
+
+**Nivel**: validado localmente y en CI, validado en integración para las pantallas, desplegado en producción y recorrido por el usuario. No es «preparado para producción».
+
+**No certifica:**
+- **Que la lista de deudores cumpla 400 ms con 5× del volumen esperado**: da entre 390 y 620 ms. El usuario aceptó el límite medido, que el Overview registra con la condición de revisarlo si un negocio se acerca a 20.000 ventas con cliente.
+- **Que volver a `52353a9` sea limpio**: hay un cobro a cuenta cargado.
+- **Que la base rechace un cobro a cuenta con venta**, demostrado con una mutación: M7 no se corrió, porque el clasificador de permisos bloqueó editar la migración. El caso existe sin mutación.
+- **Que las colas con la devolución y con el cierre dependan del bloqueo de cobros**: no tienen una mutación propia que las tumbe por su regla.
+- **El end-to-end completo en una sola corrida local con los últimos cambios**: dio 188 de 195, por timeouts de specs ajenas; las cuatro specs afectadas, otra vez, y los dos que quedaron, solos, pasaron. La CI pasó entera.
+- **Que el estado de cuenta cumpla una exigencia fiscal**: es un documento interno.
+
+**La Fase 21**, de la 21.1 a la 21.6: el [ADR 0022](docs/decisions/0022-cobros-y-caja.md); los medios de pago y la caja por sesiones con su arqueo; el cobro de una venta con la regla de imputación; la seña; la anulación de un cobro, la devolución y su anulación; y la cuenta corriente. Seis migraciones (`0042` a `0046`, y el ADR sin tablas), todas en producción y recorridas por el usuario.
+
 ## 2026-10-15 — 21.5: la anulación y la devolución
 
 Cierra el 2026-10-15, después del recorrido del usuario en producción ([brief-21.5](docs/decisions/brief-21.5-la-anulacion-y-la-devolucion.md), §Cierre). Es la primera salida de dinero del sistema, sobre el [ADR 0022](docs/decisions/0022-cobros-y-caja.md).

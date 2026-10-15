@@ -435,3 +435,29 @@ Un agente que no participó del trabajo, con acceso de solo lectura, revisó con
 
 El revisor no pudo ver diffs ni correr nada. **Se completó acá**: el `LEFT JOIN` no duplica filas porque `sale_voids_sale_unique` admite una anulación por venta, y las tres lecturas devuelven las mismas columnas; las mutaciones y la batería son las de §Resultados, más las corridas de los casos nuevos.
 
+## Cierre de la subfase 21.6, 2026-10-15
+
+Cierra el 2026-10-15, después del recorrido del usuario en producción («Ya controlé todo; está perfecto») y de la conciliación contra la base.
+
+- **AC-1 a AC-15 cumplidos**, con estas salvedades aprobadas o declaradas:
+  - AC-7 no cumple con 5× y lo aceptó el usuario, con el límite en el Overview;
+  - en AC-5, las colas con la devolución y con el cierre no tienen una mutación propia que las tumbe por su regla;
+  - M7 no se corrió.
+
+  AC-13 se cumple con la batería de arriba y la CI; AC-15, con el despliegue y el recorrido de abajo.
+- **Commit, CI y despliegue**:
+  - `55aeb1a`, la implementación, con los cambios de la revisión. La CI 38770197195 terminó en `success` en 20 minutos al primer intento, y se leyó por el SHA completo.
+  - Desplegado el 2026-10-15 según [deploy/production/README.md](../../deploy/production/README.md) §Desplegar, con `52353a9` anotado como la versión para volver atrás. La migración `0046` se aplicó, y la última línea comparó HEAD con el SHA pedido.
+  - Después del despliegue: el servicio, `active`; 47 migraciones aplicadas; `receipt_target` con `{sale,order,account}`; `receipts_target_check` con el destino `account`; `/login` en `127.0.0.1:3000`, con `200`.
+  - **El clasificador de permisos frenó el paso 3 del despliegue** la primera vez, porque el comando empezaba con `SHA=…` y la regla de `ssh` no coincidía. El usuario, informado, pidió correrlo con el SHA escrito adentro, con el mismo contenido.
+  - **Una lectura mal hecha, corregida**: el primer `curl` expandió el puerto en la máquina local y dio `404` contra el proxy. Repetido contra `127.0.0.1:3000`, dio `200`.
+- **El recorrido del usuario (AC-15)**, en «Demostración Vixora»: un cobro a cuenta de 150.000 por transferencia a Benja Murillo, que debía eso. **Conciliado contra la base**, solo con lecturas:
+  - **`R-000010`**: destino `account`, con cliente y sin venta ni pedido, 150.000 ARS por «Transferencia bancaria». No es efectivo, así que no tiene sesión de caja y lo esperado no cambia. No está anulado.
+  - **La cuenta, con la regla**: la venta vigente `V-000004` es de 2.300.000, con 2.000.000 cobrados directo (`R-000003`; `R-000007` está anulado). Al remanente van las señas de `P-000007` (60.000, `R-000006`) y `P-000008` (90.000, `R-000008`), los dos cancelados, y `R-000010`. El remanente suma 300.000 y cubre lo que le faltaba a `V-000004`. **El cliente queda al día**: no debe nada ni tiene saldo a favor, y no tiene devoluciones.
+  - El contador `receipt` en 10, igual al número más alto y a la cantidad de cobros de la organización. La auditoría: un `create` de `R-000010`.
+- **El ADR 0022 lleva una nota fechada** en §Riesgos, por decisión del usuario al cerrar: la decisión sobre la lista de deudores volvió con la medición, y se aceptó el límite medido.
+- **Revisión**: la independiente (arriba). La batería, el despliegue, la conciliación y este cierre son autoevaluación declarada.
+- **Autorizaciones usadas**, cada una en su turno: optimizar y aceptar el límite de AC-7; las decisiones de B-1 y B-2; el commit con su push y el paso a «En proceso»; el despliegue; el cierre con su commit y los pasos a «Completado».
+- **Nivel**: validado localmente y en CI, validado en integración para las pantallas, desplegado en producción y recorrido por el usuario en la organización de demostración. No es «preparado para producción».
+- **Volver a `52353a9` ya no es limpio**: hay un cobro a cuenta cargado, y ese código no conoce el destino `account`.
+- **Seguridad operativa**: la regla `Bash(ssh crm-production:*)` de `.claude/settings.local.json` habilita cualquier comando en producción, no solo lecturas. Conviene quitarla ahora que la fase cierra.

@@ -379,6 +379,8 @@ El orden queda como lo fija D-9 del brief: **la caja va antes que los cobros**, 
 **Riesgos**:
 
 - **La lectura de la cuenta crece con las ventas del cliente** (punto 9). Es aceptable para un negocio chico; la lista de deudores se mide en la 21.6, y si no alcanza, la decisión vuelve con la medición.
+
+  *Precisado el 2026-10-15 en la 21.6, sin cambiar el texto de arriba* ([brief-21.6](brief-21.6-la-cuenta-corriente.md), D-6 y AC-7, decisión del usuario): la decisión volvió con la medición. Con el volumen esperado la lista cumplía 400 ms; con 5×, no (930 a 1.110 ms). El usuario eligió optimizar las lecturas sin cambiar la regla ni el diseño y aceptar el límite medido: 170 a 200 ms con 1× y 390 a 620 ms con 5×. El límite está en el [Overview](../architecture/Overview.md), con la condición de revisarlo si un negocio se acerca a 20.000 ventas con cliente.
 - **Los cobros de una organización se serializan** (punto 4), como la numeración.
 - **Un cobro en efectivo cargado en el destino equivocado, con su sesión ya cerrada**: se anula (punto 7), pero el cobro correcto en efectivo entra en la sesión abierta, y el arqueo de esa sesión da una diferencia por ese monto, porque la plata se contó en la sesión anterior. Se corrige con un retiro de la sesión abierta, con su motivo. Es un límite aceptado, y la alternativa (escribir en una sesión cerrada) rompe el punto 8.
 - **Sin conciliación**, lo cobrado por transferencia o tarjeta es lo que registró una persona, no lo que acreditó el banco. El comprobante es interno (ADR 0016, punto 6).
