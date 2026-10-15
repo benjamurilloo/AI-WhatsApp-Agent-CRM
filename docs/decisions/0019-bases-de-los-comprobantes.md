@@ -11,6 +11,9 @@
 - *Nota del 2026-10-13*: el [ADR 0022](0022-cobros-y-caja.md), cobros, caja y cuenta corriente, remite a este en dos puntos, sin cambiar su texto:
   - **punto 2**: las escrituras de dinero toman primero un bloqueo por organización (`pg_advisory_xact_lock`), y el contador sigue al final;
   - **punto 3**: la caja guarda el efectivo por moneda, porque la organización no tiene una moneda por defecto y una venta puede estar en cualquiera.
+- *Nota del 2026-10-15*: el [ADR 0023](0023-compras-y-proveedores.md), compras y proveedores, remite a este en dos puntos, sin cambiar su texto:
+  - **punto 3**: en una orden de compra y en una recepción sin orden, **la moneda la elige la persona** antes de cargar las líneas, porque sus montos son lo que cobra el proveedor y no salen del precio de venta. Es la elección que este punto deja a la fase que crea el comprobante;
+  - **punto 5**: la recepción fija como costo el último costo recibido, con el IVA incluido, en la moneda de la recepción. Si difiere de la del precio, no hay margen, como dice este punto.
 
 ## Contexto
 

@@ -2,6 +2,33 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-15 — 22.1: el ADR 0023 de compras y proveedores
+
+Cierra el 2026-10-15 con la aceptación del ADR por el usuario ([brief-22.1](docs/decisions/brief-22.1-adr-de-compras-y-proveedores.md), §Cierre). Es la primera subfase de la Fase 22 — Compras y proveedores, abierta ese día con la Fase 13 abierta ([ADR 0016](docs/decisions/0016-el-crm-se-amplia-hacia-un-erp-por-fases.md), punto 3). **El usuario metió en la fase los pagos a proveedores y la cuenta corriente con ellos** al aprobar el brief.
+
+**Certifica:**
+- **El [ADR 0023](docs/decisions/0023-compras-y-proveedores.md), aceptado**:
+  - **El proveedor**: una ficha propia, separada de los clientes, con nombre único y teléfono, email y CUIT opcionales. Un proveedor desactivado no recibe órdenes ni recepciones, pero sí pagos.
+  - **La orden de compra** (`OC`): opcional, un compromiso con estado (`open`, `closed`, `cancelled`), con recepción parcial; lo recibido se deriva.
+  - **La recepción** (`RC`, nunca `R`, que es del cobro): un comprobante de solo inserción, con orden o sin ella, que suma stock con el movimiento nuevo `goods_receipt` y **fija el último costo recibido**, con el IVA incluido, en su moneda. Sin costo promedio: no se puede calcular con los datos que hay.
+  - **La anulación de la recepción** (`ARC`): entera, comprueba lo disponible y no deja el stock negativo ni por debajo de lo reservado; no restaura el costo.
+  - **Los pagos a proveedores** (`PP`, anulación `APP`): viven en `cash`, contra una recepción o a cuenta; el efectivo sale de la sesión abierta, y lo esperado suma sus dos términos.
+  - **La cuenta corriente con proveedores**: derivada con la misma regla que la de clientes (`imputeAccount`, sin cambios).
+  - **El módulo `purchasing`** depende de `catalog`, `inventory`, `numbering`, `organizations` y `audit`; `cash` depende de él, y él no depende de `cash`.
+  - **Roles**: solo `admin` ve compras. **Límite aceptado por el usuario**: un `viewer` puede inferir un costo desde el arqueo de la caja.
+  - **El agente** no lee ni registra nada de esto, y ningún contrato cambia.
+  - **El orden de la fase**: 22.2 proveedores → 22.3 orden de compra → 22.4 recepción → 22.5 anulación de la recepción → 22.6 pagos y cuenta del proveedor.
+- **La revisión independiente** dio R1, con 2 bloqueantes:
+  - el arqueo le deja inferir un costo a un `viewer` (aceptado como límite por el usuario);
+  - la anulación de una recepción bloqueaba saldos sin bloquear antes los productos, contra el ADR 0021, punto 7.
+
+  Había además 3 hallazgos medios y 5 bajos. Los diez se verificaron contra la fuente y se corrigieron antes de la aceptación. R-3 cambió una decisión del brief.
+- **Las enmiendas**, con fecha y conservando el texto anterior: DataModel, FunctionalRequirements, Overview, Scope, Roadmap, las notas de los ADR 0016, 0019 y 0022, el runbook de datos de un cliente y el README de decisiones.
+
+**No certifica:**
+- Ningún código, tabla ni migración: el nivel es **diseñado**.
+- Que el diseño sirva a un negocio real: no hay uno (13.5.2-b).
+
 ## 2026-10-15 — 21.6: la cuenta corriente, y la Fase 21 — Caja y cobros
 
 Cierra el 2026-10-15, después del recorrido del usuario en producción ([brief-21.6](docs/decisions/brief-21.6-la-cuenta-corriente.md), §Cierre). Con ella **cierra la Fase 21**: las seis subfases del punto 15 del [ADR 0022](docs/decisions/0022-cobros-y-caja.md) están entregadas, desplegadas y recorridas.

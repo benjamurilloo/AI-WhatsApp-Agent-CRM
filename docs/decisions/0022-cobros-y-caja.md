@@ -3,6 +3,12 @@
 - Estado: **aceptada** (decisión del usuario del 2026-10-13), con las correcciones de la revisión independiente del 2026-10-13 (R1: 3 bloqueantes, 6 medios y 6 bajos, verificados uno por uno; los tres bloqueantes cambian el diseño: la caja por moneda, la anulación de un cobro en efectivo con la sesión cerrada y la regla que impide dejar devuelto más de lo cobrado, y R-7 suma la anulación de la devolución). Subfase 21.1, [brief-21.1](brief-21.1-adr-de-cobros-y-caja.md), aprobado el 2026-10-13 con las recomendaciones de D-1 a D-14, sin Mercado Pago en la lista inicial de medios y con la cuenta corriente agregada como D-15, confirmada por el usuario ese día.
 - Fecha: 2026-10-13
 - Nivel: **diseñado**. No hay código, tablas ni ejecución.
+- *Nota del 2026-10-15*: el [ADR 0023](0023-compras-y-proveedores.md), compras y proveedores, suma a `cash` los pagos a proveedores desde la 22.6, sin cambiar el texto de este ADR:
+  - **punto 4**: escriben dinero también el pago a un proveedor y su anulación, con el bloqueo de cobros primero, **el proveedor en modo compartido en el lugar del cliente** y el contador al final;
+  - **punto 8**: lo esperado suma «− pagos a proveedores en efectivo + pagos a proveedores anulados en la sesión», y un pago en efectivo no deja lo esperado por debajo de cero;
+  - **punto 11**: los pagos se llaman `supplier_payments` y `supplier_payment_voids`, con los prefijos `PP` y `APP`; ninguna tabla se llama `payments`;
+  - **punto 12**: la cuenta de un proveedor y los pagos son solo de `admin`. Un `viewer` ve el arqueo con el total de los pagos en efectivo, y puede inferir de ahí un costo: es un límite aceptado por el usuario (ADR 0023, punto 12);
+  - **punto 13**: `cash` depende de `purchasing`, y `purchasing` no depende de `cash`. La cuenta del proveedor usa `imputeAccount` sin cambiar la regla.
 
 ## Contexto
 

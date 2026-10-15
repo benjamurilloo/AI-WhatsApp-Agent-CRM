@@ -3,6 +3,7 @@
 - Estado: **aceptada** (decisión del usuario del 2026-10-05, con la recomendación del punto 3). **Reemplaza el punto 7 del [ADR 0014](0014-el-agente-de-whatsapp-como-consumidor-del-crm.md)** y las exclusiones del ERP en [Scope.md](../product/Scope.md).
 - Fecha: 2026-10-05
 - *Nota del 2026-10-13*: **la cuenta corriente de clientes**, que el punto 1 deja «sin fase hasta que el uso los pida», **entra en la Fase 21** por decisión del usuario de ese día, al aprobar el [brief-21.1](brief-21.1-adr-de-cobros-y-caja.md). La diseña el [ADR 0022](0022-cobros-y-caja.md), punto 9. El texto de este ADR no cambia. El punto 5 sigue igual, y el ADR 0022 lo aplica: el agente no registra ni lee cobros, caja ni cuentas corrientes.
+- *Nota del 2026-10-15*: **la cuenta corriente con proveedores** entra en la Fase 22, con los pagos a proveedores, por decisión del usuario de ese día al aprobar el [brief-22.1](brief-22.1-adr-de-compras-y-proveedores.md). La diseña el [ADR 0023](0023-compras-y-proveedores.md), puntos 8 y 9. El texto de este ADR no cambia. El módulo del punto 4 es `purchasing`, y los pagos viven en `cash`. El punto 5 sigue igual: el agente no registra ni lee compras, proveedores, costos ni pagos. Los gastos que no son compras siguen sin fase.
 
 ## Contexto
 

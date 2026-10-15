@@ -406,7 +406,20 @@ Reglas comunes a las cuatro fases:
     **Fase 21 cerrada el 2026-10-15** por decisión del usuario, que aprobó el cierre junto con el de la 21.6 ([CHANGELOG](../../CHANGELOG.md)). Las seis subfases del ADR 0022, punto 15, están entregadas. La 13.5.2-b conserva su prioridad, y la fase siguiente se abre solo con la decisión del usuario.
 - *Decidido el 2026-10-15, después de cerrar la Fase 21: **el usuario abre la Fase 22 — Compras y proveedores en la sesión siguiente**, por decisión explícita registrada con esta fecha, con la Fase 13 todavía abierta ([ADR 0016](../decisions/0016-el-crm-se-amplia-hacia-un-erp-por-fases.md), punto 3). Se abre con su proyecto en Notion, el orden de sus subfases y el brief de la primera; leer [DataModel](../architecture/DataModel.md) antes. La 13.5.2-b conserva su prioridad: si el negocio real se confirma, esta fase se pausa.*
 - **Fase 22 — Compras y proveedores**: proveedores, órdenes de compra y recepción, que suma stock y actualiza el costo.
-- **Sin fase todavía**: cuenta corriente de clientes, listas de precios, varios depósitos, reportes de rentabilidad y contabilidad general. Entran cuando el uso los pida, con su decisión. *Enmendado el 2026-10-13*: la cuenta corriente de clientes pasa a la **Fase 21**, por decisión del usuario (arriba); las demás siguen sin fase.
+  - *Abierta el 2026-10-15 por decisión explícita del usuario, con la Fase 13 todavía abierta ([ADR 0016](../decisions/0016-el-crm-se-amplia-hacia-un-erp-por-fases.md), punto 3)*, con su proyecto en Notion y el orden de subfases que aprobó ese día. De la 22.2 a la 22.6 son provisionales: el orden se ajusta al cerrar la 22.1 si el ADR lo pide.
+    - **22.1 — ADR de compras y proveedores** ([brief-22.1](../decisions/brief-22.1-adr-de-compras-y-proveedores.md)): solo el ADR, sin tablas. **Cerrada el 2026-10-15** con el [ADR 0023](../decisions/0023-compras-y-proveedores.md) aceptado:
+      - el proveedor es una ficha propia, separada de los clientes;
+      - la orden de compra es opcional, con estado y recepción parcial;
+      - la recepción es un comprobante de solo inserción que suma stock y fija el último costo recibido; su anulación comprueba lo disponible y no restaura el costo;
+      - los pagos a proveedores y la cuenta corriente con ellos entran en la fase y viven en `cash`, que depende del módulo nuevo `purchasing`.
+
+      El orden de las subfases siguientes no cambia.
+    - **22.2 — Los proveedores**.
+    - **22.3 — La orden de compra**.
+    - **22.4 — La recepción**, que suma stock y actualiza el costo.
+    - **22.5 — La anulación de la recepción**.
+    - **22.6 — Los pagos a proveedores y la cuenta corriente con proveedores**. ~~Solo si el ADR los mete en la fase.~~ *Precisado el 2026-10-15*: el ADR 0023 los mete (puntos 8 y 9).
+- **Sin fase todavía**: cuenta corriente de clientes, listas de precios, varios depósitos, reportes de rentabilidad y contabilidad general. Entran cuando el uso los pida, con su decisión. *Enmendado el 2026-10-13*: la cuenta corriente de clientes pasa a la **Fase 21**, por decisión del usuario (arriba); las demás siguen sin fase. *Enmendado el 2026-10-15 por el [ADR 0023](../decisions/0023-compras-y-proveedores.md)*: la cuenta corriente con proveedores entra en la **Fase 22**; suman a esta lista los gastos que no son compras de mercadería, la devolución de mercadería al proveedor, el costo promedio y la valuación del inventario.
 - **Gate de entrada de la Fase 18**: la Fase 13 cerrada, o una decisión explícita del usuario registrada con fecha (ADR 0016, punto 3).
 
 ---

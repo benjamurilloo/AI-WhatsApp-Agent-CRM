@@ -61,5 +61,6 @@ Agregado el 2026-10-05 por el [ADR 0016](../decisions/0016-el-crm-se-amplia-haci
 - La factura electrónica de ARCA, hasta su propio ADR.
 - Que el agente registre cobros, pagos o movimientos de caja.
 - La contabilidad general, ~~la cuenta corriente,~~ las listas de precios y los depósitos múltiples, hasta que el uso los pida y se decidan. *Enmendado el 2026-10-13*: la cuenta corriente entra en la Fase 21 (arriba).
+- *Agregado el 2026-10-15 por el [ADR 0023](../decisions/0023-compras-y-proveedores.md)*: los gastos que no son compras de mercadería (alquiler, servicios, sueldos), la devolución de mercadería al proveedor y sus notas de crédito, el costo promedio y la valuación del inventario. Los pagos a proveedores y la cuenta corriente con ellos **entran** en la Fase 22.
 
 **Cuándo empieza**: la Fase 18 se abre con la Fase 13 cerrada, o antes solo por decisión explícita del usuario registrada con fecha (ADR 0016, punto 3).

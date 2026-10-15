@@ -10,6 +10,11 @@ aunque sea manual en el MVP. Nace de la subfase 8.2
 Lo corre un operador con acceso a la base, no la aplicación: no hay pantalla para esto y no está
 previsto que la haya en el MVP.
 
+*Nota del 2026-10-15 ([ADR 0023](../decisions/0023-compras-y-proveedores.md), punto 14)*: este
+runbook **no cubre a los proveedores**, que desde la Fase 22 pueden ser personas físicas. El ADR
+deja diseñado el vaciado de la ficha de un proveedor, incluida la extensión del trigger de
+`audit_logs`, y se construye cuando un caso lo pida.
+
 ## Antes de tocar nada
 
 1. **Identificá el cliente**: necesitás su `organization_id` y su `client_id`. Los dos salen de la
