@@ -2,6 +2,35 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-15 — 21.5: la anulación y la devolución
+
+Cierra el 2026-10-15, después del recorrido del usuario en producción ([brief-21.5](docs/decisions/brief-21.5-la-anulacion-y-la-devolucion.md), §Cierre). Es la primera salida de dinero del sistema, sobre el [ADR 0022](docs/decisions/0022-cobros-y-caja.md).
+
+**Certifica:**
+- **Tres comprobantes nuevos** (migración `0045`), de solo inserción y con a lo sumo una anulación por comprobante:
+  - `receipt_voids` (`AR`), la anulación de un cobro, con su motivo de lista;
+  - `refunds` (`D`), la devolución, desde la cuenta de un cliente o desde una venta sin cliente anulada, con un `CHECK` del destino;
+  - `refund_voids` (`AD`), la anulación de una devolución.
+- **La sesión de una anulación** es la del original si sigue abierta, y ninguna si ya cerró: la base lo exige en `*_check_copy()`. Lo esperado de la caja es el inicial, más los cobros y las devoluciones anuladas en la sesión, menos los cobros anulados en la sesión y las devoluciones, más los aportes y menos los retiros. Una sesión cerrada no cambia y lista sus anulaciones posteriores.
+- **Nunca queda devuelto más de lo cobrado**: anular un cobro arma la cuenta sin él y comprueba que el remanente no quede por debajo de lo devuelto (D-5, la lectura del remanente, con su nota fechada en el ADR 0022). Desde la cuenta se devuelve hasta lo que está a favor, y desde una venta sin cliente, hasta lo cobrado menos lo devuelto.
+- **Los casos de uso**, solo de `admin`, con el bloqueo de cobros primero, la comprobación con el bloqueo tomado y el contador al final. **La devolución desde la cuenta toma la ficha del cliente en modo exclusivo** (`lockClientForRefund` en `crm`), para que una venta emitida en paralelo no deje devolver lo que tenía que absorber: lo encontró la revisión independiente, y el usuario aprobó el desvío.
+- **Las pantallas** 32 a 36 (anular un cobro, la devolución, la lista de devoluciones, registrar una devolución, anular una devolución), lo anulado marcado en los cobros, las devoluciones en la venta y en la caja, y la pestaña «Devoluciones». Funcionan sin JavaScript.
+- **Los datos de un cliente**: la exportación trae las tres, y un cliente con devoluciones no se borra.
+- **La revisión independiente**: un hallazgo medio, verificado y corregido; dos bajos y tres menores, corregidos o declarados. 22 mutaciones detectadas, cada una por su regla.
+- **En producción**:
+  - `52353a9`, con la CI 38730874799 en `success` en 19 minutos;
+  - el usuario recorrió los siete pasos de D-15 en «Demostración Vixora»: `AR-000001` con la sesión abierta, `AR-000002` de `C-000002` cerrada, `V-000002` anulada con `D-000001`, `AD-000001` y `D-000002`, `D-000003` desde la cuenta, y `C-000004` cerrada;
+  - conciliado contra la base: lo esperado de las cuatro sesiones igual a la fórmula recalculada, el arqueo de `C-000002` sin cambios, los contadores y la auditoría.
+
+**Nivel**: validado localmente y en CI, validado en integración para las pantallas, desplegado en producción y recorrido por el usuario. No es «preparado para producción».
+
+**No certifica:**
+- Que volver a `44dcdb1` sea limpio: hay anulaciones y devoluciones cargadas, y ese código no las conoce.
+- En producción, los rechazos ni la concurrencia: los cubren los tests.
+- El end-to-end completo en una sola corrida local: tres veces se cayó el servidor de prueba a mitad de camino, probablemente por memoria. Pasó en dos mitades (104 y 87) y entero en la CI.
+- El texto del pedido cancelado, que llama «saldo a favor» a lo que termina pagando una venta: hallazgo del recorrido, pasa a la 21.6.
+- Que el comprobante de una devolución cumpla una exigencia fiscal: es un comprobante interno.
+
 ## 2026-10-14 — 21.4: la seña
 
 Cierra el 2026-10-14, después del recorrido del usuario en producción ([brief-21.4](docs/decisions/brief-21.4-la-sena.md), §Cierre). Es el cobro contra un pedido, sobre el [ADR 0022](docs/decisions/0022-cobros-y-caja.md), y la primera vez que `cash` depende de `orders`.

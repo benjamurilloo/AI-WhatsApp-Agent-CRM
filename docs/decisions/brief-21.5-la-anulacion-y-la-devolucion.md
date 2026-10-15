@@ -16,7 +16,7 @@ generated_at: 2026-10-14
 - **Nivel de validación alcanzable**: **validado localmente y en CI**, **validado en integración** para las pantallas y, con D-15, **desplegado en producción** con el recorrido del usuario. No es «preparado para producción».
 - **Orden**: quinta subfase de la Fase 21 — Caja y cobros ([Roadmap](../planning/Roadmap.md) §Fase 21), después de la 21.4, cerrada el 2026-10-14. Implementa la fila «21.5» del punto 15 del [ADR 0022](0022-cobros-y-caja.md).
 - **No abre ni cierra gate.** Pero es **la primera salida de dinero** del sistema y la primera escritura que **puede achicar el remanente** de una cuenta (H-3), y toca el arqueo de sesiones ya cerradas. Por eso se recomienda la revisión independiente (D-14).
-- **Estado de este documento**: **aprobado** por el usuario el 2026-10-14, con las recomendaciones de D-1 a D-15 (entre ellas D-5, la lectura del remanente con su nota fechada en el ADR 0022, y D-12, la variante de AC-5 que la 21.5 produce). La tarea 21.5 (`3f8702be6f4e81fa8839d28020eb58c3`) sigue en «Esperando» hasta que el usuario autorice pasarla.
+- **Estado de este documento**: **aprobado** por el usuario el 2026-10-14, con las recomendaciones de D-1 a D-15 (entre ellas D-5, la lectura del remanente con su nota fechada en el ADR 0022, y D-12, la variante de AC-5 que la 21.5 produce). La tarea 21.5 (`3f8702be6f4e81fa8839d28020eb58c3`) pasó a «En proceso» el 2026-10-15 con autorización del usuario. **Cerrado el 2026-10-15** (§Cierre, abajo).
 
 ## Objetivo
 
@@ -499,3 +499,28 @@ Un agente que no participó del trabajo, con acceso de solo lectura, revisó con
 | El trigger reusado dice «cobro» en una devolución | menor | **Confirmado** | Declarado, sin cambiar la `0043` |
 
 El revisor no pudo ver diffs ni la lista completa de archivos tocados. **Se completó acá**: todo lo tocado está en la lista autorizada, salvo `crm` (el desvío aprobado), HANDOFF y Roadmap (a pedido del usuario); el diff de `imputation.ts` toca solo `standaloneSale` y comentarios.
+
+## Cierre de la subfase 21.5, 2026-10-15
+
+Cierra el 2026-10-15, después del recorrido del usuario en producción («listo, ahora si ya controle todo») y de la conciliación contra la base.
+
+- **AC-1 a AC-16 cumplidos**, con el desvío aprobado (el bloqueo exclusivo de la ficha en `crm`, con su precisión fechada en el ADR 0022). AC-14 se cumple con la batería de arriba y la CI; AC-16, con el despliegue y el recorrido de abajo.
+- **Commit, CI y despliegue**:
+  - `52353a9`, la implementación. La CI 38730874799 terminó en `success` en 19 minutos al primer intento, con la suite completa, y se leyó por el SHA completo. Confirma que las caídas del end-to-end local eran del entorno.
+  - Desplegado el 2026-10-15 según [deploy/production/README.md](../../deploy/production/README.md) §Desplegar, con `44dcdb1` anotado como la versión para volver atrás. La migración `0045` se aplicó, y la última línea comparó HEAD con el SHA pedido.
+  - Después del despliegue: el servicio, `active`; `/login` en `127.0.0.1:3000`, con `200`; 46 migraciones aplicadas; `refund_target` con `{account,sale}`; las tres tablas nuevas vacías y los 6 cobros anteriores sin cambios.
+  - **Una lectura mal hecha, corregida**: el primer `curl` leyó `PORT` de `app.env`, que el usuario del `ssh` no puede leer y que no define el puerto, y dio `404` contra el proxy. El servicio escucha en `127.0.0.1:3000`.
+- **El recorrido del usuario (AC-16)**, en «Demostración Vixora»: los siete pasos de D-15. **Conciliado contra la base**, solo con lecturas y sin datos de la persona:
+  - **`C-000004`**: inicial 2.700.000 (lo contado de `C-000003`); cobros en efectivo 1.030.000, cobros anulados en la sesión 940.000, devoluciones en efectivo 1.620.000 y devoluciones anuladas en la sesión 1.160.000. **La fórmula de D-6, recalculada, da 2.330.000, igual a lo esperado guardado**, y lo contado fue 2.330.000. Las sesiones 1 a 3 también coinciden con la fórmula.
+  - **Paso 2**: `AR-000001` anula `R-000007` (240.000, efectivo) con la sesión 4 abierta, y queda en esa sesión.
+  - **Paso 3**: `AR-000002` anula `R-000001` (500.000) de `C-000002`, cerrada: **sin sesión**, y el arqueo guardado de `C-000002` sigue en 2.550.000.
+  - **Paso 4**: `A-000003` anula `V-000002`, sin cliente; `D-000001` devuelve 460.000 en efectivo, `AD-000001` la anula y `D-000002` vuelve a devolver 460.000. Cobrado vigente y devuelto vigente, 460.000: no queda nada a devolver.
+  - **Paso 5**: `D-000003` devuelve 700.000 desde la cuenta de un cliente, la seña `R-000009` de `P-000009`, cancelado.
+  - **Paso 6**: `D-000003` (12:36:24), `AD-000002` (12:36:39) y `AR-000003` (12:37:37): el cobro que sostenía la devolución se anuló recién después de anularla, como pide D-5. Los rechazos que vio el usuario no dejan rastro en la base, por diseño.
+  - Los contadores: `receipt_void` 3, `refund` 3 y `refund_void` 2, sin huecos. La auditoría: 3 anulaciones de cobros, 3 devoluciones y 2 anulaciones de devoluciones.
+- **Hallazgo del recorrido, para la 21.6** (decisión del usuario): en el paso 5, el usuario canceló `P-000008`, señado con 90.000 por el cliente de `V-000004`, y no encontró saldo a favor. **La regla está bien**: el remanente (60.000 de `P-000007` y 90.000 de `P-000008`) se imputó a `V-000004`, a la que le faltaban 300.000 después de `AR-000001`. **El texto del pedido no**: `order-receipts-section.tsx` dice «lo señado pasó a la cuenta del cliente como saldo a favor» cada vez que la situación es `to_account`, aunque el remanente termine pagando una venta. Es de la 21.4, y la 21.5 no lo vio. Entra en la 21.6, que muestra el saldo y a dónde se aplicó.
+- **Revisión**: la independiente (arriba). La batería, el despliegue, la conciliación y este cierre son autoevaluación declarada.
+- **Autorizaciones usadas**, cada una en su turno: el desvío de `crm`; el commit con su push, el paso a «En proceso» y el despliegue; el cierre con su commit y el paso a «Completado».
+- **Nivel**: validado localmente y en CI, validado en integración para las pantallas, desplegado en producción y recorrido por el usuario en la organización de demostración. No es «preparado para producción».
+- **Volver a `44dcdb1` ya no es limpio**: hay tres anulaciones de cobros y tres devoluciones cargadas, y ese código no las conoce.
+- **Seguridad operativa**: la regla `Bash(ssh crm-production:*)` de `.claude/settings.local.json` habilita cualquier comando en producción, no solo lecturas. Conviene quitarla si no se va a desplegar pronto.
