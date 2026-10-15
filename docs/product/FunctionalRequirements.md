@@ -125,6 +125,15 @@ Agregados en la Fase 11, catálogo comercial ([brief-11.1](../decisions/brief-11
 - **FR-CAJ-23**: Cualquier usuario ve la lista de deudores en la caja: una fila por cliente y moneda con saldo deudor, de la deuda mayor a la menor, con la fecha de su venta con saldo más vieja y cuántas ventas tiene con saldo, filtrable por moneda. Cada fila lleva al estado de cuenta.
 - **FR-CAJ-24**: La ficha del cliente muestra su cuenta corriente (lo que debe o tiene a favor por moneda y las señas retenidas), y el detalle de una venta con cliente, lo que debe o tiene a favor su cuenta en la moneda de la venta. Solo se muestra: no bloquea ninguna venta. El pedido cancelado y la venta anulada con cliente dicen que lo cobrado pasó a la cuenta y que se aplica primero a las ventas con saldo, sin afirmar un saldo a favor que puede no existir.
 
+## Compras
+
+*Agregada en la 22.2* ([brief-22.2](../decisions/brief-22.2-los-proveedores.md), [ADR 0023](../decisions/0023-compras-y-proveedores.md)). La orden de compra, la recepción, su anulación y los pagos a proveedores llegan con la 22.3 a la 22.6. **Solo un admin ve y opera las compras**: un viewer no ve la sección, y el agente no lee nada de ella (ADR 0023, punto 12).
+
+- **FR-COMP-01**: Un admin da de alta un proveedor con su nombre y, si los tiene, su teléfono, su email y su CUIT. El nombre es obligatorio, de hasta 120 caracteres y único en la organización sin distinguir mayúsculas, también frente a los desactivados. El teléfono va en formato internacional, como el del cliente; el email, con la regla del email del cliente; el CUIT, con sus once dígitos y el dígito verificador, con o sin guiones, y único en la organización si se carga. Un proveedor no es un cliente aunque comparta el teléfono, y no guarda notas ni texto libre.
+- **FR-COMP-02**: Un admin edita los datos de un proveedor y los opcionales se pueden vaciar; lo desactiva con una confirmación y lo reactiva. Ninguno se borra. Un nombre o un CUIT repetido se rechaza y la pantalla dice que, si el otro está desactivado, se lo reactive.
+- **FR-COMP-03**: Un admin ve la lista de proveedores en orden alfabético, de a 25, con el filtro de activos, inactivos o todos, y busca por parte del nombre sin distinguir mayúsculas ni acentos, o por el CUIT con o sin guiones. Ve la ficha de cada uno con su historia.
+- **FR-COMP-04**: El alta, la edición, la desactivación y la reactivación de un proveedor se auditan con los datos que cambiaron. Un cambio que no cambia nada no se audita.
+
 ## Información del negocio
 
 Desde la subfase 11.2 ([brief-11.2](../decisions/brief-11.2-informacion-del-negocio.md)). Es lo que el agente de WhatsApp va a leer por el contrato de la 11.3.

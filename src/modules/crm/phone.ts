@@ -1,28 +1,9 @@
 import type { MemberRole } from "@/modules/organizations";
 
 // Teléfono del cliente (brief-5.2): normalización de la entrada (D-1) y enmascarado por rol (D-2).
-
-// Misma forma que el CHECK clients_phone_e164_format (brief-5.1, D-1).
-const E164 = /^\+[1-9][0-9]{1,14}$/;
-const SEPARATORS = /[\s\-.()]/g;
-
-// Solo formato internacional: se quitan separadores y el resultado tiene que ser E.164.
-// Sin "+" no se adivina el país: un número mal completado sería otro cliente (D-1).
-export function normalizePhone(text: string): string | null {
-  const trimmed = text.trim();
-  if (!trimmed.startsWith("+")) return null;
-  const compact = trimmed.replace(SEPARATORS, "");
-  return E164.test(compact) ? compact : null;
-}
-
-// Entrada de formulario: vacía es "sin teléfono"; cualquier otra cosa tiene que normalizar.
-export function parsePhoneInput(
-  value: string | null | undefined,
-): { ok: true; phone: string | null } | { ok: false } {
-  if (value == null || value.trim() === "") return { ok: true, phone: null };
-  const phone = normalizePhone(value);
-  return phone === null ? { ok: false } : { ok: true, phone };
-}
+// Desde la 22.2, la normalización vive en src/shared/phone, porque el proveedor valida el mismo dato
+// (brief-22.2, D-3); se reexporta para que el resto de crm la siga importando de acá.
+export { normalizePhone, parsePhoneInput } from "@/shared/phone";
 
 export type ClientPhone =
   | { kind: "full"; e164: string }

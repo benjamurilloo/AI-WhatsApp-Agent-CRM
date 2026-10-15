@@ -196,6 +196,37 @@ const cases = [
     code: 'import { nextDocumentNumber } from "@/modules/numbering"; export const c7 = nextDocumentNumber;',
     forbidden: false,
   },
+  // purchasing es módulo de dominio desde la 22.2 (ADR 0023, punto 11; brief-22.2, AC-9).
+  {
+    file: "src/modules/purchasing/service.ts",
+    code: 'import { revalidatePath } from "next/cache"; export const p1 = revalidatePath;',
+    forbidden: true,
+  },
+  {
+    file: "src/modules/purchasing/presentacion.ts",
+    code: 'import { NAME_MESSAGE } from "@/app/(autenticado)/compras/proveedores/messages"; export const p2 = NAME_MESSAGE;',
+    forbidden: true,
+  },
+  {
+    file: "src/modules/purchasing/relativa.ts",
+    code: 'import { p3 } from "../crm/phone"; export const p4 = p3;',
+    forbidden: true,
+  },
+  {
+    file: "src/modules/purchasing/service.ts",
+    code: 'import { normalizePhone } from "@/modules/crm/phone"; export const p5 = normalizePhone;',
+    forbidden: true,
+  },
+  {
+    file: "src/modules/purchasing/service.ts",
+    code: 'import { parsePhoneInput } from "@/shared/phone"; export const p6 = parsePhoneInput;',
+    forbidden: false,
+  },
+  {
+    file: "src/modules/purchasing/schema.ts",
+    code: 'import { organizations } from "@/modules/organizations/schema"; export const p7 = organizations;',
+    forbidden: false,
+  },
   // knowledge es módulo de dominio desde la 11.2 (AC-7); estos casos dejan esa mutación como
   // guarda permanente (N-3 de su revisión independiente, resuelta en la 11.3.2).
   {

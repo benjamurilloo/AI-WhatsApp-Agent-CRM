@@ -553,3 +553,27 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 - **Vacío**: «Ningún cliente debe nada.»; con el filtro, «Nadie debe en USD.»
 
 *La ficha del cliente* (pantalla 7), *desde la 21.6* (D-7; FR-CAJ-24), suma la tarjeta «Cuenta corriente»: por moneda, «Debe», «A favor» o «Al día» con el monto y las señas retenidas; el enlace «Estado de cuenta» y, para `admin`, «Cobrar a cuenta» y, si hay algo a favor, «Devolver saldo a favor». *El detalle de la venta* suma, con cliente, «Cuenta del cliente: debe $ …» o «tiene $ … a favor», con «Ver estado de cuenta». *El pedido cancelado y la venta anulada con cliente* dicen que lo cobrado «pasó a la cuenta del cliente. Se aplica primero a sus ventas con saldo, y lo que sobra queda a favor.»; el pedido suma lo que está a favor hoy y «Ver estado de cuenta» (D-8). *El recibo, la lista de cobros y la sesión de caja* muestran el destino de un cobro a cuenta: «Cuenta del cliente» o «A cuenta» (D-9).
+
+## 40. Proveedores
+
+*Agregada en la 22.2* ([brief-22.2](../decisions/brief-22.2-los-proveedores.md), D-9 y D-10; FR-COMP-03). Ruta `/compras/proveedores`, «Compras» en la navegación, **solo para `admin`**, con el ícono `truck`. `/compras` lleva acá hasta que la 22.3 sume las órdenes.
+
+- **Información mostrada**: una tabla con el nombre enlazado a la ficha, el teléfono, el email, el CUIT con sus guiones y si está activo, y el lápiz de editar. En un teléfono, tarjetas con el nombre, el teléfono y el CUIT. Orden alfabético, paginada de a 25. «+ Nuevo proveedor» arriba.
+- **Filtros**: «Buscar», por parte del nombre sin distinguir mayúsculas ni acentos, o por CUIT con o sin guiones; «Estado»: «Solo activos» (por defecto), «Solo inactivos» o «Todos». En la URL: `?q=&estado=&pagina=`.
+- **Vacío**: «Todavía no hay proveedores.» con «Crear el primero»; con filtros, «Ningún proveedor coincide con esta búsqueda.» con «Limpiar filtros».
+- **Un `viewer`**: no ve «Compras» en la navegación, y por la URL recibe «No tenés permiso para ver esta página.», sin datos. Lo mismo en las pantallas 41 y 42.
+
+## 41. Nuevo proveedor y editar proveedor
+
+*Agregada en la 22.2* (D-9; FR-COMP-01 y FR-COMP-02). Rutas `/compras/proveedores/nuevo` y `/compras/proveedores/[id]/editar`.
+
+- **Campos**: «Nombre *», «Teléfono» (formato internacional, con su ayuda), «Email» y «CUIT» (con o sin guiones, con su ayuda). En la edición, el CUIT se precarga con sus guiones.
+- **Rechazos**, con lo escrito conservado y el foco en el campo: el nombre vacío o largo, el teléfono que no está en formato internacional, el email inválido, el CUIT con otra cantidad de dígitos o con el dígito verificador que no cierra; y «Ya existe un proveedor con ese nombre» o «con ese CUIT», con la indicación de reactivarlo si está desactivado.
+- **Sin JavaScript**: funciona igual.
+
+## 42. Proveedor
+
+*Agregada en la 22.2* (D-9; FR-COMP-02 y FR-COMP-04). Ruta `/compras/proveedores/[id]`.
+
+- **Información mostrada**: el nombre con «Activo» o «Inactivo», y la tarjeta «Datos» con el nombre, el teléfono, el email y el CUIT, o «Sin teléfono», «Sin email» y «Sin CUIT». Debajo, el historial de auditoría paginado: «Alta», «Edición», «Desactivación» y «Reactivación», con el cambio de cada campo.
+- **Acciones**: «Editar»; «Desactivar», con la confirmación «¿Desactivar "{nombre}"?» en un segundo paso de la URL; con el proveedor inactivo, la tarjeta «Estado» con «Reactivar».

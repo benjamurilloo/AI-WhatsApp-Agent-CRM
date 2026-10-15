@@ -195,6 +195,21 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
     {
       requirement: "sesion",
     },
+  // Los proveedores (brief-22.2, D-5): solo admin, lo exige purchasing.
+  "src/app/(autenticado)/compras/proveedores/actions.ts#createSupplierAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/compras/proveedores/actions.ts#updateSupplierAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/compras/proveedores/actions.ts#deactivateSupplierAction":
+    {
+      requirement: "sesion",
+    },
+  "src/app/(autenticado)/compras/proveedores/actions.ts#reactivateSupplierAction":
+    {
+      requirement: "sesion",
+    },
   "src/app/(autenticado)/productos/actions.ts#createProductAction": {
     requirement: "sesion",
   },

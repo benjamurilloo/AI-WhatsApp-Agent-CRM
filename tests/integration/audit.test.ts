@@ -164,6 +164,8 @@ const NO_DELETE_TABLES = [
   "orders",
   // Los medios de pago, con borrado lógico (brief-21.2, D-6; ADR 0022, punto 10).
   "payment_methods",
+  // Los proveedores, con borrado lógico (brief-22.2, D-1; ADR 0023, punto 2).
+  "suppliers",
 ];
 // Se insertan y se borran, pero no se actualizan: una asignación se pone y se quita (brief-16.1,
 // D-6), un día especial se agrega y se quita (brief-17.4, P-2), y una imagen de producto se sube y

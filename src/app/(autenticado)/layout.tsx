@@ -31,6 +31,11 @@ export default async function AuthenticatedLayout({
     { href: "/ventas", label: "Ventas", icon: "receipt" },
     // La caja del efectivo y los medios de pago, para los dos roles (brief-21.2, D-10).
     { href: "/caja", label: "Caja", icon: "banknote" },
+    // Compras, solo para admin, como Usuarios (brief-22.2, D-9; ADR 0023, punto 12). /compras lleva
+    // a los proveedores, y el enlace queda marcado en todas sus pantallas.
+    ...(context.role === "admin"
+      ? [{ href: "/compras", label: "Compras", icon: "truck" as const }]
+      : []),
     { href: "/conversaciones", label: "Conversaciones", icon: "messageCircle" },
     { href: "/informacion", label: "Información", icon: "info" },
     ...(context.role === "admin"

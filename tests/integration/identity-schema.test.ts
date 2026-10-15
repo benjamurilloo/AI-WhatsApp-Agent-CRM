@@ -101,6 +101,8 @@ describe("base de test", () => {
       "sale_voids",
       "sales",
       "sessions",
+      // Los proveedores (brief-22.2).
+      "suppliers",
       "users",
     ]);
   });

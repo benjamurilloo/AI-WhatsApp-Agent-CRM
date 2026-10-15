@@ -6,6 +6,7 @@ import * as crmRepository from "@/modules/crm/repository";
 import * as ingestionRepository from "@/modules/ingestion/repository";
 import { getMemberSummaries } from "@/modules/organizations";
 import * as organizationsRepository from "@/modules/organizations/repository";
+import * as purchasingRepository from "@/modules/purchasing/repository";
 import { getDb } from "@/shared/db";
 import { resetDatabase } from "./reset-database";
 
@@ -289,5 +290,85 @@ describe("la lectura de usuarios de H-1 no cruza organizaciones", () => {
   it("getMemberSummaries sí devuelve al usuario de su propia organización", async () => {
     const summaries = await getMemberSummaries(fixture.orgB, [fixture.userB]);
     expect(summaries.map((user) => user.id)).toEqual([fixture.userB]);
+  });
+});
+
+// Las escrituras por id del proveedor (brief-22.2, D-6 y AC-6), con el mismo ayudante: el
+// servicio lee la fila filtrada por organización antes de escribir, así que el filtro del `where`
+// solo se prueba llamando al repositorio con una organización que no es la dueña.
+describe("las escrituras del proveedor no alcanzan a otra organización", () => {
+  async function supplierOfB(): Promise<string> {
+    const result = await getDb().execute<{ id: string }>(
+      sql`insert into suppliers (organization_id, name)
+          values (${fixture.orgB}, 'Proveedor de B') returning id`,
+    );
+    return result.rows[0]!.id;
+  }
+
+  async function supplierRow(id: string) {
+    const result = await getDb().execute<{ name: string; is_active: boolean }>(
+      sql`select name, is_active from suppliers where id = ${id}`,
+    );
+    return result.rows[0]!;
+  }
+
+  it("updateSupplierValues", async () => {
+    const supplierB = await supplierOfB();
+    const error = await attempt((tx) =>
+      purchasingRepository.updateSupplierValues(tx, fixture.orgA, supplierB, {
+        name: "Renombrado por A",
+      }),
+    );
+    expect((await supplierRow(supplierB)).name).toBe("Proveedor de B");
+    expect((error as Error | undefined)?.message).toContain(
+      "no existe en esta organización",
+    );
+  });
+
+  it("updateSupplierActive", async () => {
+    const supplierB = await supplierOfB();
+    const error = await attempt((tx) =>
+      purchasingRepository.updateSupplierActive(
+        tx,
+        fixture.orgA,
+        supplierB,
+        false,
+      ),
+    );
+    expect((await supplierRow(supplierB)).is_active).toBe(true);
+    expect((error as Error | undefined)?.message).toContain(
+      "no existe en esta organización",
+    );
+  });
+
+  // AC-6 pide también la lista (revisión independiente, R-8).
+  it("la lista no ve los proveedores de otra organización", async () => {
+    await supplierOfB();
+    const search = { kind: "name", text: "proveedor" } as const;
+    expect(
+      await purchasingRepository.countSuppliers(fixture.orgA, "all", search),
+    ).toBe(0);
+    expect(
+      await purchasingRepository.findSuppliers(
+        fixture.orgA,
+        "all",
+        { kind: "none" },
+        25,
+        0,
+      ),
+    ).toEqual([]);
+    expect(
+      await purchasingRepository.countSuppliers(fixture.orgB, "all", search),
+    ).toBe(1);
+  });
+
+  it("findSupplier no ve el proveedor de otra organización", async () => {
+    const supplierB = await supplierOfB();
+    expect(
+      await purchasingRepository.findSupplier(fixture.orgA, supplierB),
+    ).toBeUndefined();
+    expect(
+      await purchasingRepository.findSupplier(fixture.orgB, supplierB),
+    ).toMatchObject({ name: "Proveedor de B" });
   });
 });
