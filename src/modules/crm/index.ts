@@ -30,6 +30,7 @@ export {
   lockClientByPhone,
   lockClientForOrder,
   lockClientForOrderByPhone,
+  lockClientForRefund,
   reactivateClient,
   searchClients,
   updateClient,

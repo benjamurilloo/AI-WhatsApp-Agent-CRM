@@ -25,7 +25,9 @@ import { PrintButton } from "../../print-button";
 import {
   CurrencyTotalsTable,
   MovementsTable,
+  LateVoidsTable,
   SessionReceiptsTable,
+  SessionRefundsTable,
 } from "../../session-tables";
 import { auditActionLabel, describeAuditDiff } from "./audit-summary";
 
@@ -143,10 +145,30 @@ export default async function CashSessionPage({
           <SessionReceiptsTable session={session} timeZone={timeZone} />
         </div>
 
+        <h3 className="mt-6 font-semibold">Devoluciones en efectivo</h3>
+        <div className="mt-2">
+          <SessionRefundsTable session={session} timeZone={timeZone} />
+        </div>
+
         <h3 className="mt-6 font-semibold">Aportes y retiros</h3>
         <div className="mt-2">
           <MovementsTable session={session} timeZone={timeZone} />
         </div>
+
+        {session.lateVoids.length > 0 ? (
+          <>
+            <h3 className="mt-6 font-semibold">
+              Anulaciones posteriores al cierre
+            </h3>
+            <p className="mt-1 text-sm text-muted">
+              Se registraron después de cerrar: el arqueo de arriba no cambia, y
+              estas anulaciones explican su diferencia.
+            </p>
+            <div className="mt-2">
+              <LateVoidsTable session={session} timeZone={timeZone} />
+            </div>
+          </>
+        ) : null}
 
         <p className="mt-6 text-center text-sm font-semibold uppercase">
           {NOT_AN_INVOICE_LEGEND}

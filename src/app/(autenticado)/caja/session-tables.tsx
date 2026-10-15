@@ -1,12 +1,22 @@
 import Link from "next/link";
 import type { CashSessionDetail } from "@/modules/cash";
 import {
+  inactiveBadgeClass,
   linkClass,
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
 import { formatShortDateTime } from "@/app/_format/date-time";
-import { formatMoney } from "@/shared/money";
+import {
+  formatMoney,
+  moneyFromDatabase,
+  moneyToDatabase,
+} from "@/shared/money";
+import {
+  RECEIPT_VOID_REASON_LABEL,
+  REFUND_VOID_REASON_LABEL,
+  voidReasonText,
+} from "@/app/(autenticado)/devoluciones/messages";
 import {
   differenceText,
   KIND_LABEL,
@@ -17,7 +27,26 @@ import {
 // Los totales por moneda y los movimientos de una sesión (brief-21.2, D-10), para la caja abierta y
 // para el arqueo de una cerrada. Cada moneda va en su fila: nunca se suman entre sí. Desde la 21.3,
 // los cobros en efectivo: su columna en los totales y su lista (brief-21.3, D-5). Desde la 21.4, la
-// lista dice el destino de cada cobro, la venta o el pedido de una seña, como /caja/cobros.
+// lista dice el destino de cada cobro, la venta o el pedido de una seña, como /caja/cobros. Desde la
+// 21.5 (brief-21.5, D-6 y D-9): los cobros y las devoluciones en efectivo de los totales van sin lo
+// anulado mientras la sesión estaba abierta; las listas marcan lo anulado, y una sesión cerrada lista
+// las anulaciones posteriores a su cierre, que explican su diferencia.
+
+// Lo que entró o salió, sin lo anulado en la sesión.
+function net(amount: string, voided: string): string {
+  return moneyToDatabase(moneyFromDatabase(amount) - moneyFromDatabase(voided));
+}
+
+function VoidedBadge({ displayNumber }: { displayNumber: string }) {
+  return (
+    <span
+      className={`${inactiveBadgeClass} ml-2 font-sans`}
+      title={`Anulado por ${displayNumber}`}
+    >
+      Anulado
+    </span>
+  );
+}
 
 const numberCell = `${tableCellClass} text-right whitespace-nowrap tabular-nums`;
 const numberHead = `${tableHeadCellClass} text-right`;
@@ -51,6 +80,9 @@ export function CurrencyTotalsTable({
               Cobros
             </th>
             <th scope="col" className={numberHead}>
+              Devoluciones
+            </th>
+            <th scope="col" className={numberHead}>
               Aportes
             </th>
             <th scope="col" className={numberHead}>
@@ -81,7 +113,10 @@ export function CurrencyTotalsTable({
                 {formatMoney(row.initial, row.currency)}
               </td>
               <td className={numberCell}>
-                {formatMoney(row.receipts, row.currency)}
+                {formatMoney(net(row.receipts, row.receiptVoids), row.currency)}
+              </td>
+              <td className={numberCell}>
+                {formatMoney(net(row.refunds, row.refundVoids), row.currency)}
               </td>
               <td className={numberCell}>
                 {formatMoney(row.contributions, row.currency)}
@@ -222,6 +257,9 @@ export function SessionReceiptsTable({
                 >
                   {row.displayNumber}
                 </Link>
+                {row.voided ? (
+                  <VoidedBadge displayNumber={row.voided.displayNumber} />
+                ) : null}
               </td>
               <td className={`${tableCellClass} whitespace-nowrap`}>
                 {formatShortDateTime(row.createdAt, timeZone)}
@@ -252,6 +290,170 @@ export function SessionReceiptsTable({
                 )}
               </td>
               <td className={numberCell}>
+                {formatMoney(row.amount, row.currency)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export function SessionRefundsTable({
+  session,
+  timeZone,
+}: {
+  session: CashSessionDetail;
+  timeZone: string;
+}) {
+  if (session.refunds.length === 0) {
+    return <p className="text-sm text-muted">Sin devoluciones en efectivo.</p>;
+  }
+  return (
+    <div
+      className="-mx-5 overflow-x-auto sm:-mx-6 print:mx-0 print:overflow-visible"
+      tabIndex={0}
+      role="region"
+      aria-label={`Devoluciones en efectivo de la sesión ${session.displayNumber}`}
+    >
+      <table className="w-full border-collapse text-left text-sm">
+        <caption className="sr-only">
+          Devoluciones en efectivo de la sesión {session.displayNumber}
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col" className={tableHeadCellClass}>
+              Devolución
+            </th>
+            <th scope="col" className={tableHeadCellClass}>
+              Hora
+            </th>
+            <th scope="col" className={tableHeadCellClass}>
+              Desde
+            </th>
+            <th scope="col" className={numberHead}>
+              Monto
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {session.refunds.map((row) => (
+            <tr key={row.id}>
+              <td className={`${tableCellClass} whitespace-nowrap`}>
+                <Link
+                  href={`/devoluciones/${row.id}`}
+                  className={`${linkClass} font-mono print:no-underline`}
+                >
+                  {row.displayNumber}
+                </Link>
+                {row.voided ? (
+                  <VoidedBadge displayNumber={row.voided.displayNumber} />
+                ) : null}
+              </td>
+              <td className={`${tableCellClass} whitespace-nowrap`}>
+                {formatShortDateTime(row.createdAt, timeZone)}
+              </td>
+              <td className={`${tableCellClass} whitespace-nowrap`}>
+                {row.sale ? (
+                  <>
+                    Venta{" "}
+                    <Link
+                      href={`/ventas/${row.sale.id}`}
+                      className={`${linkClass} font-mono print:no-underline`}
+                    >
+                      {row.sale.displayNumber}
+                    </Link>
+                  </>
+                ) : (
+                  "Saldo a favor"
+                )}
+              </td>
+              <td className={numberCell}>
+                {formatMoney(row.amount, row.currency)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// Las anulaciones posteriores al cierre (ADR 0022, punto 7; brief-21.5, D-6): el arqueo guardado no
+// cambia, y estas explican su diferencia. Solo en una sesión cerrada.
+export function LateVoidsTable({
+  session,
+  timeZone,
+}: {
+  session: CashSessionDetail;
+  timeZone: string;
+}) {
+  if (session.lateVoids.length === 0) return null;
+  return (
+    <div
+      className="-mx-5 overflow-x-auto sm:-mx-6 print:mx-0 print:overflow-visible"
+      tabIndex={0}
+      role="region"
+      aria-label={`Anulaciones posteriores al cierre de la sesión ${session.displayNumber}`}
+    >
+      <table className="w-full border-collapse text-left text-sm">
+        <caption className="sr-only">
+          Anulaciones posteriores al cierre de la sesión {session.displayNumber}
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col" className={tableHeadCellClass}>
+              Anulación
+            </th>
+            <th scope="col" className={tableHeadCellClass}>
+              Fecha
+            </th>
+            <th scope="col" className={tableHeadCellClass}>
+              Anula
+            </th>
+            <th scope="col" className={tableHeadCellClass}>
+              Motivo
+            </th>
+            <th scope="col" className={numberHead}>
+              Efecto en esta caja
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {session.lateVoids.map((row) => (
+            <tr key={row.displayNumber}>
+              <td className={`${tableCellClass} font-mono whitespace-nowrap`}>
+                {row.displayNumber}
+              </td>
+              <td className={`${tableCellClass} whitespace-nowrap`}>
+                {formatShortDateTime(row.createdAt, timeZone)}
+              </td>
+              <td className={`${tableCellClass} whitespace-nowrap`}>
+                {row.kind === "receipt" ? "Recibo" : "Devolución"}{" "}
+                <Link
+                  href={
+                    row.kind === "receipt"
+                      ? `/cobros/${row.source.id}`
+                      : `/devoluciones/${row.source.id}`
+                  }
+                  className={`${linkClass} font-mono print:no-underline`}
+                >
+                  {row.source.displayNumber}
+                </Link>
+              </td>
+              <td className={tableCellClass}>
+                {voidReasonText(
+                  row.kind === "receipt"
+                    ? RECEIPT_VOID_REASON_LABEL
+                    : REFUND_VOID_REASON_LABEL,
+                  row.reason,
+                )}
+              </td>
+              <td className={numberCell}>
+                {/* Un cobro anulado no entró: lo contado tuvo eso de más. Una devolución anulada no
+                    salió: lo contado tuvo eso de menos. */}
+                {row.kind === "receipt" ? "− " : "+ "}
                 {formatMoney(row.amount, row.currency)}
               </td>
             </tr>

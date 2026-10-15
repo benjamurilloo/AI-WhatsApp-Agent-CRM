@@ -86,7 +86,8 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
    - la guarda de dependencias entre módulos (R-2 de la 19.4, tarea `3f7702be6f4e81119e1ccf0577cb750e`), que **la Fase 21 hace más necesaria**: ni `sales`, ni `orders`, ni `crm` pueden depender de `cash`, y hoy nada lo vigila (ADR 0022, §Consecuencias);
    - la lectura de los pedidos del cliente que pidió el agente;
    - estructurar los medios de pago que lee el agente (ADR 0022, punto 10);
-   - la deuda declarada de la 20.3: R-4 y R-9.
+   - la deuda declarada de la 20.3: R-4 y R-9;
+   - **tres pedidos del usuario del 2026-10-14**, anotados en el Roadmap §«Fases futuras, sin planificar en detalle»: el refinamiento visual (espaciado, tipografía, colores y diseño), las métricas por sección con pestañas en el dashboard (ventas, productos, clientes) y un módulo de Meta Ads (anuncios y campañas), que necesita un ADR antes del brief.
 
    La 13.5.2-b conserva su prioridad: si aparece un negocio real, la Fase 21 se pausa. La CI tiene `timeout-minutes: 35` desde la 21.4 (D-12); la de `44dcdb1` tardó 18. La causa de fondo, Chromium lento, sigue en la tarea `3f2702be6f4e8104b521cf12b377fe34`.
    `pendiente`

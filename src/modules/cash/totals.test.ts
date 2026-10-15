@@ -4,7 +4,14 @@ import { computeCashTotals, parseCashAmount } from "./totals";
 describe("computeCashTotals (ADR 0022, punto 8; brief-21.2, D-4)", () => {
   it("sin nada no hay monedas", () => {
     expect(
-      computeCashTotals({ opening: [], receipts: [], movements: [] }),
+      computeCashTotals({
+        opening: [],
+        receipts: [],
+        receiptVoids: [],
+        refunds: [],
+        refundVoids: [],
+        movements: [],
+      }),
     ).toEqual([]);
   });
 
@@ -15,6 +22,9 @@ describe("computeCashTotals (ADR 0022, punto 8; brief-21.2, D-4)", () => {
         { currency: "ARS", amount: "10000.00" },
       ],
       receipts: [],
+      receiptVoids: [],
+      refunds: [],
+      refundVoids: [],
       movements: [
         { kind: "contribution", currency: "ARS", amount: "2500.50" },
         { kind: "withdrawal", currency: "ARS", amount: "3000.00" },
@@ -27,6 +37,9 @@ describe("computeCashTotals (ADR 0022, punto 8; brief-21.2, D-4)", () => {
         currency: "ARS",
         initial: 1_000_000n,
         receipts: 0n,
+        receiptVoids: 0n,
+        refunds: 0n,
+        refundVoids: 0n,
         contributions: 250_100n,
         withdrawals: 300_000n,
         expected: 950_100n,
@@ -35,6 +48,9 @@ describe("computeCashTotals (ADR 0022, punto 8; brief-21.2, D-4)", () => {
         currency: "USD",
         initial: 5_000n,
         receipts: 0n,
+        receiptVoids: 0n,
+        refunds: 0n,
+        refundVoids: 0n,
         contributions: 0n,
         withdrawals: 2_000n,
         expected: 3_000n,
@@ -47,6 +63,9 @@ describe("computeCashTotals (ADR 0022, punto 8; brief-21.2, D-4)", () => {
       computeCashTotals({
         opening: [{ currency: "ARS", amount: "0.00" }],
         receipts: [],
+        receiptVoids: [],
+        refunds: [],
+        refundVoids: [],
         movements: [{ kind: "contribution", currency: "EUR", amount: "10.00" }],
       }),
     ).toEqual([
@@ -54,6 +73,9 @@ describe("computeCashTotals (ADR 0022, punto 8; brief-21.2, D-4)", () => {
         currency: "ARS",
         initial: 0n,
         receipts: 0n,
+        receiptVoids: 0n,
+        refunds: 0n,
+        refundVoids: 0n,
         contributions: 0n,
         withdrawals: 0n,
         expected: 0n,
@@ -62,6 +84,9 @@ describe("computeCashTotals (ADR 0022, punto 8; brief-21.2, D-4)", () => {
         currency: "EUR",
         initial: 0n,
         receipts: 0n,
+        receiptVoids: 0n,
+        refunds: 0n,
+        refundVoids: 0n,
         contributions: 1_000n,
         withdrawals: 0n,
         expected: 1_000n,
@@ -77,6 +102,9 @@ describe("computeCashTotals (ADR 0022, punto 8; brief-21.2, D-4)", () => {
         { currency: "ARS", amount: "1.00" },
       ],
       receipts: [],
+      receiptVoids: [],
+      refunds: [],
+      refundVoids: [],
       movements: [],
     });
     expect(totals.map((row) => row.currency)).toEqual(["ARS", "EUR", "USD"]);
@@ -91,6 +119,9 @@ describe("computeCashTotals (ADR 0022, punto 8; brief-21.2, D-4)", () => {
           { currency: "ARS", amount: "50.50" },
           { currency: "USD", amount: "20.00" },
         ],
+        receiptVoids: [],
+        refunds: [],
+        refundVoids: [],
         movements: [{ kind: "withdrawal", currency: "ARS", amount: "300.00" }],
       }),
     ).toEqual([
@@ -98,6 +129,9 @@ describe("computeCashTotals (ADR 0022, punto 8; brief-21.2, D-4)", () => {
         currency: "ARS",
         initial: 10_000n,
         receipts: 30_050n,
+        receiptVoids: 0n,
+        refunds: 0n,
+        refundVoids: 0n,
         contributions: 0n,
         withdrawals: 30_000n,
         expected: 10_050n,
@@ -106,11 +140,63 @@ describe("computeCashTotals (ADR 0022, punto 8; brief-21.2, D-4)", () => {
         currency: "USD",
         initial: 0n,
         receipts: 2_000n,
+        receiptVoids: 0n,
+        refunds: 0n,
+        refundVoids: 0n,
         contributions: 0n,
         withdrawals: 0n,
         expected: 2_000n,
       },
     ]);
+  });
+});
+
+describe("computeCashTotals con las anulaciones y las devoluciones (ADR 0022, puntos 7 y 8; brief-21.5, D-6)", () => {
+  it("esperado = inicial + cobros − anulados en la sesión − devoluciones + devoluciones anuladas en la sesión + aportes − retiros", () => {
+    expect(
+      computeCashTotals({
+        opening: [{ currency: "ARS", amount: "100.00" }],
+        receipts: [
+          { currency: "ARS", amount: "250.00" },
+          { currency: "ARS", amount: "40.00" },
+        ],
+        receiptVoids: [{ currency: "ARS", amount: "40.00" }],
+        refunds: [
+          { currency: "ARS", amount: "30.00" },
+          { currency: "ARS", amount: "5.00" },
+        ],
+        refundVoids: [{ currency: "ARS", amount: "5.00" }],
+        movements: [
+          { kind: "contribution", currency: "ARS", amount: "10.00" },
+          { kind: "withdrawal", currency: "ARS", amount: "20.00" },
+        ],
+      }),
+    ).toEqual([
+      {
+        currency: "ARS",
+        initial: 10_000n,
+        receipts: 29_000n,
+        receiptVoids: 4_000n,
+        refunds: 3_500n,
+        refundVoids: 500n,
+        contributions: 1_000n,
+        withdrawals: 2_000n,
+        expected: 31_000n,
+      },
+    ]);
+  });
+
+  it("una moneda solo con devoluciones tiene su fila, para que el cierre la cuente", () => {
+    expect(
+      computeCashTotals({
+        opening: [],
+        receipts: [{ currency: "USD", amount: "10.00" }],
+        receiptVoids: [],
+        refunds: [{ currency: "USD", amount: "4.00" }],
+        refundVoids: [],
+        movements: [],
+      }).map((row) => [row.currency, row.expected]),
+    ).toEqual([["USD", 600n]]);
   });
 });
 

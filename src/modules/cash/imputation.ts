@@ -6,7 +6,7 @@ import type { Money } from "@/shared/money";
 // las ventas del cliente y sus cobros contra ventas, y los cobros contra pedidos, a cuenta y las
 // devoluciones llegan vacíos hasta la 21.4 a la 21.6 (H-6).
 //
-// Recibe solo lo vigente: los cobros y las devoluciones anulados (21.5) no se pasan. Las ventas van
+// Recibe solo lo vigente: los cobros y las devoluciones anulados no se pasan (brief-21.5, D-8). Las ventas van
 // todas, anuladas incluidas, porque lo cobrado contra una venta anulada pasa al remanente (punto 6).
 //
 // Cada moneda se calcula aparte: una moneda nunca se suma con otra (ADR 0019, punto 3).
@@ -209,17 +209,25 @@ export function outstandingOf(
 
 // La venta sin cliente no tiene cuenta y no pasa por la regla (ADR 0022, punto 3): lo que falta es
 // su total menos sus cobros. Si está anulada, lo cobrado queda a devolver (punto 6), y solo una
-// devolución de la 21.5 lo salda.
+// devolución lo salda: lo que queda a devolver es lo cobrado menos lo devuelto (brief-21.5, H-1).
+// Recibe solo lo vigente, como imputeAccount. Lo devuelto nunca supera lo cobrado: lo aseguran la
+// devolución y la anulación del cobro (D-5).
 export function standaloneSale(input: {
   total: Money;
   collected: Money;
+  refunded: Money;
   voided: boolean;
 }): { collected: Money; outstanding: Money; toRefund: Money } {
+  if (input.refunded > input.collected) {
+    throw new InconsistentAccount(
+      "lo devuelto de una venta sin cliente supera lo cobrado",
+    );
+  }
   if (input.voided) {
     return {
       collected: input.collected,
       outstanding: 0n,
-      toRefund: input.collected,
+      toRefund: input.collected - input.refunded,
     };
   }
   const outstanding = input.total - input.collected;

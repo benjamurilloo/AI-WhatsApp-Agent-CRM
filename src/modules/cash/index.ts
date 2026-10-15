@@ -1,6 +1,7 @@
 // Interfaz pública del módulo cash (ADR 0022; brief-21.2): los medios de pago y la caja del
 // efectivo por sesiones; desde la 21.3, el cobro de una venta (brief-21.3), y desde la 21.4, la seña
-// (brief-21.4). Ningún módulo depende de cash: la usan solo las pantallas.
+// (brief-21.4), y desde la 21.5, la anulación de un cobro, la devolución y su anulación
+// (brief-21.5). Ningún módulo depende de cash: la usan solo las pantallas.
 export {
   CASH_MOVEMENT_REASONS,
   CASH_RECEIPTS_PAGE_SIZE,
@@ -68,4 +69,32 @@ export {
   type RenamePaymentMethodResult,
   type SaleReceiptForm,
   type SaleReceipts,
+  CASH_REFUNDS_PAGE_SIZE,
+  createRefund,
+  formatRefundNumber,
+  getClientRefundForm,
+  getRefund,
+  getSaleRefundForm,
+  listRefunds,
+  parseRefundNumberSearch,
+  RECEIPT_VOID_REASONS,
+  REFUND_VOID_REASONS,
+  voidReceipt,
+  voidRefund,
+  type ClientRefundForm,
+  type CreateRefundResult,
+  type DocumentNumberRef,
+  type LateVoidView,
+  type ReceiptVoidReason,
+  type RefundableAmount,
+  type RefundDetail,
+  type RefundField,
+  type RefundListItem,
+  type RefundPage,
+  type RefundSummary,
+  type RefundVoidReason,
+  type SaleRefundForm,
+  type VoidReceiptResult,
+  type VoidRefundResult,
+  type VoidView,
 } from "./service";

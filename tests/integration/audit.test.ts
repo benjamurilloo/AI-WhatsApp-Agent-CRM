@@ -139,8 +139,12 @@ const INSERT_ONLY_TABLES = [
   // Costo de un producto (brief-18.2).
   "product_costs",
   "product_prices",
-  // El cobro (brief-21.3, D-1; ADR 0022, punto 2).
+  // El cobro (brief-21.3, D-1; ADR 0022, punto 2), su anulación, la devolución y la anulación de la
+  // devolución (brief-21.5, D-1 a D-3; ADR 0022, punto 7).
+  "receipt_voids",
   "receipts",
+  "refund_voids",
+  "refunds",
   // La venta y sus líneas (brief-20.2; ADR 0021, punto 2).
   "sale_lines",
   // La anulación de una venta (brief-20.4; ADR 0021, punto 6).

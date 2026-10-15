@@ -1241,6 +1241,23 @@ export async function lockClientForOrderByPhone(
   };
 }
 
+// El cliente de una devolución desde su cuenta, para cash (brief-21.5, D-11 precisado): en modo
+// exclusivo, para que una venta emitida en paralelo, que lo toma en modo compartido, espere o sea
+// esperada, y lo que está a favor no se lea antes de que la venta lo absorba. cash ya autorizó.
+export async function lockClientForRefund(
+  tx: DbTransaction,
+  organizationId: string,
+  clientId: string,
+): Promise<"found" | "not_found"> {
+  if (!clientIdSchema.safeParse(clientId).success) return "not_found";
+  const client = await repository.lockClientExclusive(
+    tx,
+    organizationId,
+    clientId,
+  );
+  return client ? "found" : "not_found";
+}
+
 // Como findClientIdByPhone, pero bloquea al cliente hasta el final de la transacción recibida.
 // conversations la usa para que dos mensajes simultáneos del mismo cliente no abran dos
 // conversaciones (brief-12.2, D-8), como lockProductForStockChange en catalog.

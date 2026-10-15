@@ -5,6 +5,7 @@ import { getOrganizationTimezone } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
 import {
   cardClass,
+  inactiveBadgeClass,
   inputClass,
   labelClass,
   linkClass,
@@ -47,7 +48,7 @@ function hrefFor(number: string, page: number): string {
 // Pantalla 30 (brief-21.3, D-8): los cobros, del más nuevo al más viejo, con su venta, su cliente,
 // su medio y su monto; búsqueda por número («R-000123» o «123», ADR 0022, punto 11). Para los dos
 // roles, sin el contacto del cliente. Desde la 21.4, la columna «Destino»: la venta de un cobro o el
-// pedido de una seña (brief-21.4, D-8).
+// pedido de una seña (brief-21.4, D-8). Desde la 21.5, la marca «Anulado» (brief-21.5, D-9).
 export default async function ReceiptsPage({
   searchParams,
 }: {
@@ -150,6 +151,14 @@ export default async function ReceiptsPage({
                       >
                         {receipt.displayNumber}
                       </Link>
+                      {receipt.voided ? (
+                        <span
+                          className={`${inactiveBadgeClass} ml-2 font-sans`}
+                          title={`Anulado por ${receipt.voided.displayNumber}`}
+                        >
+                          Anulado
+                        </span>
+                      ) : null}
                     </td>
                     <td className={`${tableCellClass} whitespace-nowrap`}>
                       {formatShortDateTime(receipt.createdAt, timeZone)}

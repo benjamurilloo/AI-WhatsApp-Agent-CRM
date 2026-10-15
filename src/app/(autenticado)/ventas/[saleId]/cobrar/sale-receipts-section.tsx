@@ -1,8 +1,10 @@
 import Link from "next/link";
 import type { SaleReceipts } from "@/modules/cash";
 import {
+  inactiveBadgeClass,
   linkClass,
   primaryLinkClass,
+  secondaryLinkClass,
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
@@ -15,7 +17,9 @@ import { formatMoney } from "@/shared/money";
 // página con cash, nunca sales. Lo cobrado, lo imputado desde la cuenta del cliente y lo que falta,
 // o «Cobrada»; en una venta anulada, a dónde fue lo cobrado. La lista de cobros enlaza cada recibo.
 // Desde la 21.4, lo cobrado incluye la seña del pedido de la venta vigente, con su número, y la lista
-// marca cada seña con su pedido (brief-21.4, D-5 y D-8).
+// marca cada seña con su pedido (brief-21.4, D-5 y D-8). Desde la 21.5 (brief-21.5, D-9): los cobros
+// anulados, marcados y fuera de lo cobrado; en una venta anulada, lo devuelto y lo que queda a
+// devolver, con «Devolver» para admin, o el enlace a devolver el saldo a favor de la cuenta.
 
 const numberCell = `${tableCellClass} text-right whitespace-nowrap tabular-nums`;
 
@@ -75,7 +79,38 @@ export function SaleReceiptsSection({
         <p className="mt-3 text-sm">
           {receipts.hasClient
             ? `Lo cobrado (${money(receipts.toAccount)}) pasó a la cuenta del cliente como saldo a favor.`
-            : `A devolver: ${money(receipts.toRefund)}.`}
+            : receipts.refunded === "0.00"
+              ? `A devolver: ${money(receipts.toRefund)}.`
+              : `Devuelto: ${money(receipts.refunded)}. A devolver: ${money(receipts.toRefund)}.`}
+        </p>
+      ) : null}
+      {canCollect &&
+      voided &&
+      receipts.hasClient &&
+      receipts.clientId !== null &&
+      receipts.clientInFavor !== "0.00" ? (
+        <p className="mt-3">
+          <Link
+            href={`/clientes/${receipts.clientId}/devolver`}
+            className={secondaryLinkClass}
+          >
+            <Icon name="undo" className="size-4" />
+            Devolver saldo a favor
+          </Link>
+        </p>
+      ) : null}
+      {canCollect &&
+      voided &&
+      !receipts.hasClient &&
+      receipts.toRefund !== "0.00" ? (
+        <p className="mt-3">
+          <Link
+            href={`/ventas/${saleId}/devolver`}
+            className={secondaryLinkClass}
+          >
+            <Icon name="undo" className="size-4" />
+            Devolver
+          </Link>
         </p>
       ) : null}
 
@@ -115,6 +150,14 @@ export function SaleReceiptsSection({
                     >
                       {row.displayNumber}
                     </Link>
+                    {row.voided ? (
+                      <span
+                        className={`${inactiveBadgeClass} ml-2 font-sans`}
+                        title={`Anulado por ${row.voided.displayNumber}`}
+                      >
+                        Anulado
+                      </span>
+                    ) : null}
                     <span className="block text-xs text-muted">
                       {formatShortDateTime(row.createdAt, timeZone)}
                     </span>
@@ -140,6 +183,63 @@ export function SaleReceiptsSection({
           </table>
         </div>
       )}
+
+      {receipts.refunds.length > 0 ? (
+        <div
+          className="-mx-5 mt-4 overflow-x-auto sm:-mx-6"
+          tabIndex={0}
+          role="region"
+          aria-label={`Devoluciones de la venta ${displayNumber}`}
+        >
+          <table className="w-full border-collapse text-left text-sm">
+            <caption className="sr-only">
+              Devoluciones de la venta {displayNumber}
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col" className={tableHeadCellClass}>
+                  Devolución
+                </th>
+                <th scope="col" className={tableHeadCellClass}>
+                  Medio
+                </th>
+                <th scope="col" className={`${tableHeadCellClass} text-right`}>
+                  Monto
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {receipts.refunds.map((row) => (
+                <tr key={row.id}>
+                  <td className={tableCellClass}>
+                    <Link
+                      href={`/devoluciones/${row.id}`}
+                      className={`${linkClass} font-mono`}
+                    >
+                      {row.displayNumber}
+                    </Link>
+                    {row.voided ? (
+                      <span
+                        className={`${inactiveBadgeClass} ml-2 font-sans`}
+                        title={`Anulada por ${row.voided.displayNumber}`}
+                      >
+                        Anulada
+                      </span>
+                    ) : null}
+                    <span className="block text-xs text-muted">
+                      {formatShortDateTime(row.createdAt, timeZone)}
+                    </span>
+                  </td>
+                  <td className={tableCellClass}>{row.paymentMethodName}</td>
+                  <td className={numberCell}>
+                    {formatMoney(row.amount, row.currency)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
 
       {canCollect && receipts.status === "pending" ? (
         <p className="mt-4">

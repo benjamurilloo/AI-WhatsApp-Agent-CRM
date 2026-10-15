@@ -16,6 +16,10 @@ import { describe, expect, it } from "vitest";
 // desde createOrderReceipt, la seña, que los copia del pedido (brief-21.4, D-4 y AC-8). Los
 // ayudantes que comparten no escriben. Eso no lo puede defender la base.
 //
+// Desde la 21.5 (brief-21.5, AC-10), las tres tablas de la anulación y la devolución: receipt_voids
+// solo desde voidReceipt, refunds solo desde createRefund y refund_voids solo desde voidRefund. Cada
+// uno toma el bloqueo de cobros y comprueba lo devuelto o lo esperado antes de escribir.
+//
 // Ve y no ve lo mismo que sale-writes.
 
 const REPOSITORY = "src/modules/cash/repository.ts";
@@ -31,6 +35,9 @@ const AUTHORIZED = new Map([
   ["insertClosing", ["insert cash_session_closings"]],
   ["insertMovement", ["insert cash_movements"]],
   ["insertReceipt", ["insert receipts"]],
+  ["insertReceiptVoid", ["insert receipt_voids"]],
+  ["insertRefund", ["insert refunds"]],
+  ["insertRefundVoid", ["insert refund_voids"]],
 ]);
 
 // Qué caso de uso del servicio llama a cada escritura de la caja.
@@ -41,6 +48,9 @@ const CALLERS = new Map([
   ["insertClosing", ["closeCashSession"]],
   ["insertMovement", ["recordCashMovement"]],
   ["insertReceipt", ["createSaleReceipt", "createOrderReceipt"]],
+  ["insertReceiptVoid", ["voidReceipt"]],
+  ["insertRefund", ["createRefund"]],
+  ["insertRefundVoid", ["voidRefund"]],
 ]);
 
 const TABLES = new Map([
@@ -57,12 +67,17 @@ const TABLES = new Map([
   ["cashmovements", "cash_movements"],
   ["cash_movements", "cash_movements"],
   ["receipts", "receipts"],
+  ["receiptvoids", "receipt_voids"],
+  ["receipt_voids", "receipt_voids"],
+  ["refunds", "refunds"],
+  ["refundvoids", "refund_voids"],
+  ["refund_voids", "refund_voids"],
 ]);
 
 const SQL_NAMES =
-  "payment_methods|cash_sessions|cash_session_opening_amounts|cash_session_closings|cash_session_closing_amounts|cash_movements|receipts";
+  "payment_methods|cash_sessions|cash_session_opening_amounts|cash_session_closings|cash_session_closing_amounts|cash_movements|receipts|receipt_voids|refunds|refund_voids";
 const DRIZZLE_NAMES =
-  "paymentMethods|cashSessions|cashSessionOpeningAmounts|cashSessionClosings|cashSessionClosingAmounts|cashMovements|receipts";
+  "paymentMethods|cashSessions|cashSessionOpeningAmounts|cashSessionClosings|cashSessionClosingAmounts|cashMovements|receipts|receiptVoids|refunds|refundVoids";
 
 // La tabla en SQL: su nombre, con o sin esquema y comillas, o el objeto de Drizzle interpolado.
 // El nombre queda en el grupo 2 o en el 3.
@@ -236,6 +251,26 @@ describe("detección de escrituras de la caja", () => {
       code: 'await db.execute(sql`insert into "public"."receipts" (amount) values (1)`);',
     },
     {
+      name: "una anulación de cobro insertada fuera de su función",
+      file: REPOSITORY,
+      code: "export async function seedVoid(tx) {\n  await tx.insert(receiptVoids).values(v);\n}",
+    },
+    {
+      name: "una devolución insertada desde la función de su anulación",
+      file: REPOSITORY,
+      code: "export async function insertRefundVoid(tx) {\n  await tx.insert(refunds).values(v);\n}",
+    },
+    {
+      name: "una anulación de devolución borrada con SQL literal en la aplicación",
+      file: "src/app/accion.ts",
+      code: "await db.execute(sql`delete from refund_voids`);",
+    },
+    {
+      name: "una devolución actualizada, aun desde su función",
+      file: REPOSITORY,
+      code: "export async function insertRefund(tx) {\n  await tx.update(refunds).set({ amount: 1 });\n}",
+    },
+    {
       name: "TRUNCATE TABLE ONLY",
       file: "src/app/accion.ts",
       code: "await db.execute(sql`truncate table only cash_session_opening_amounts`);",
@@ -283,6 +318,18 @@ describe("detección de escrituras de la caja", () => {
       code: "export async function readPayment(c) {\n  await repository.insertReceipt(tx, v);\n}",
     },
     {
+      name: "una anulación de cobro escrita desde la devolución",
+      code: "export async function createRefund(c) {\n  await repository.insertReceiptVoid(tx, v);\n}",
+    },
+    {
+      name: "una devolución escrita desde la anulación de un cobro",
+      code: "export async function voidReceipt(c) {\n  await repository.insertRefund(tx, v);\n}",
+    },
+    {
+      name: "una anulación de devolución escrita desde un ayudante",
+      code: "export async function impactedSession(c) {\n  await repository.insertRefundVoid(tx, v);\n}",
+    },
+    {
       name: "una sesión creada desde un caso de uso nuevo",
       code: "export async function reopenCashSession(c) {\n  await repository.insertCashSession(tx, v);\n}",
     },
@@ -321,6 +368,9 @@ describe("repositorio", () => {
       "insertClosing: insert cash_session_closings",
       "insertMovement: insert cash_movements",
       "insertReceipt: insert receipts",
+      "insertReceiptVoid: insert receipt_voids",
+      "insertRefund: insert refunds",
+      "insertRefundVoid: insert refund_voids",
     ]);
   });
 

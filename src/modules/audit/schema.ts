@@ -38,6 +38,9 @@ export const auditEntityType = pgEnum("audit_entity_type", [
   "payment_method",
   // El cobro, como recibo (brief-21.3, D-7; ADR 0022, punto 2).
   "receipt",
+  // La devolución y su anulación (brief-21.5, D-13; ADR 0022, punto 7). La anulación de un cobro es
+  // receipt con la acción void, como la de la venta.
+  "refund",
 ]);
 
 export const auditAction = pgEnum("audit_action", [

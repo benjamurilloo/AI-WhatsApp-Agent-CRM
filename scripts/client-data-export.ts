@@ -49,6 +49,10 @@ export type ClientExport = {
   sale_voids: Record<string, unknown>[];
   // Desde la 21.3 (ADR 0022, punto 14; brief-21.3, D-9).
   receipts: Record<string, unknown>[];
+  // Desde la 21.5 (ADR 0022, punto 14; brief-21.5, D-10): los comprobantes, no el saldo.
+  receipt_voids: Record<string, unknown>[];
+  refunds: Record<string, unknown>[];
+  refund_voids: Record<string, unknown>[];
 };
 
 export async function exportClientData(
@@ -177,6 +181,38 @@ export async function exportClientData(
         order by r.number`,
   );
 
+  // Desde la 21.5 (ADR 0022, punto 14; brief-21.5, D-10): las anulaciones de sus cobros, sus
+  // devoluciones y las anulaciones de sus devoluciones. Los comprobantes, no el saldo: calcularlo
+  // acá sería una segunda implementación de la regla de imputación (R-14 de la 21.1). Las
+  // anulaciones llegan al cliente por su cobro o su devolución; la devolución, por el client_id de la
+  // cuenta. Ninguna guarda texto de la persona: el motivo es de una lista.
+  const receiptVoids = await db.execute<Record<string, unknown>>(
+    sql`select v.id, v.number, 'AR-' || lpad(v.number::text, greatest(6, length(v.number::text)), '0') as display_number,
+               v.created_at, v.receipt_id, r.number as receipt_number,
+               v.currency, v.amount, v.reason
+        from receipt_voids v
+        join receipts r on r.organization_id = v.organization_id and r.id = v.receipt_id
+        where v.organization_id = ${organizationId} and r.client_id = ${clientId}
+        order by v.number`,
+  );
+  const refunds = await db.execute<Record<string, unknown>>(
+    sql`select d.id, d.number, 'D-' || lpad(d.number::text, greatest(6, length(d.number::text)), '0') as display_number,
+               d.created_at, d.target, m.name as payment_method, d.currency, d.amount
+        from refunds d
+        join payment_methods m on m.organization_id = d.organization_id and m.id = d.payment_method_id
+        where d.organization_id = ${organizationId} and d.client_id = ${clientId}
+        order by d.number`,
+  );
+  const refundVoids = await db.execute<Record<string, unknown>>(
+    sql`select v.id, v.number, 'AD-' || lpad(v.number::text, greatest(6, length(v.number::text)), '0') as display_number,
+               v.created_at, v.refund_id, d.number as refund_number,
+               v.currency, v.amount, v.reason
+        from refund_voids v
+        join refunds d on d.organization_id = v.organization_id and d.id = v.refund_id
+        where v.organization_id = ${organizationId} and d.client_id = ${clientId}
+        order by v.number`,
+  );
+
   return {
     exported_at: now.toISOString(),
     organization_id: organizationId,
@@ -197,6 +233,9 @@ export async function exportClientData(
     sale_lines: saleLines.rows,
     sale_voids: saleVoids.rows,
     receipts: receipts.rows,
+    receipt_voids: receiptVoids.rows,
+    refunds: refunds.rows,
+    refund_voids: refundVoids.rows,
   };
 }
 
@@ -228,7 +267,8 @@ async function main() {
       `${data.audit_logs.length} entradas de auditoría, ` +
       `${data.client_tags.length} etiquetas, ${data.orders.length} pedidos, ` +
       `${data.sales.length} ventas, ${data.sale_voids.length} anulaciones, ` +
-      `${data.receipts.length} cobros.`,
+      `${data.receipts.length} cobros, ${data.receipt_voids.length} anulaciones de cobros, ` +
+      `${data.refunds.length} devoluciones, ${data.refund_voids.length} anulaciones de devoluciones.`,
   );
   console.log(
     "Contiene datos personales: no lo versiones ni lo compartas por un canal abierto.",

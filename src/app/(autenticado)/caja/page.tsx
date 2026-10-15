@@ -27,6 +27,7 @@ import {
   CurrencyTotalsTable,
   MovementsTable,
   SessionReceiptsTable,
+  SessionRefundsTable,
 } from "./session-tables";
 
 export const metadata: Metadata = {
@@ -110,6 +111,15 @@ export default async function CashPage({
             className="mt-6"
           >
             <SessionReceiptsTable session={open} timeZone={timeZone} />
+          </SectionCard>
+
+          <SectionCard
+            id="devoluciones-titulo"
+            title="Devoluciones en efectivo"
+            icon="undo"
+            className="mt-6"
+          >
+            <SessionRefundsTable session={open} timeZone={timeZone} />
           </SectionCard>
 
           <SectionCard

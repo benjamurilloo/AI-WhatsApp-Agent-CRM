@@ -91,8 +91,12 @@ describe("base de test", () => {
       "product_images",
       "product_prices",
       "products",
-      // Los cobros (brief-21.3).
+      // Los cobros (brief-21.3) y la anulación de un cobro (brief-21.5).
+      "receipt_voids",
       "receipts",
+      // La devolución y su anulación (brief-21.5).
+      "refund_voids",
+      "refunds",
       "sale_lines",
       "sale_voids",
       "sales",

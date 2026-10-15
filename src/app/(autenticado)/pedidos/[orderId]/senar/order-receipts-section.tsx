@@ -1,8 +1,10 @@
 import Link from "next/link";
 import type { OrderReceipts } from "@/modules/cash";
 import {
+  inactiveBadgeClass,
   linkClass,
   primaryLinkClass,
+  secondaryLinkClass,
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
@@ -14,7 +16,9 @@ import { formatMoney } from "@/shared/money";
 // La sección «Señas» del detalle de un pedido (brief-21.4, D-5 y D-8; ADR 0022, punto 5): la compone
 // la página con cash, nunca orders. Lo señado, lo que le falta y qué pasó con lo señado: retenido
 // para el pedido, aplicado a su venta, o en la cuenta del cliente si se canceló. La lista enlaza
-// cada recibo, y admin registra una seña mientras el pedido esté abierto y le falte algo.
+// cada recibo, y admin registra una seña mientras el pedido esté abierto y le falte algo. Desde la
+// 21.5 (brief-21.5, D-9): las señas anuladas, marcadas y fuera de lo señado; con el pedido cancelado y
+// saldo a favor en la cuenta, el enlace para devolverlo.
 
 const numberCell = `${tableCellClass} text-right whitespace-nowrap tabular-nums`;
 
@@ -68,6 +72,19 @@ export function OrderReceiptsSection({
           saldo a favor.
         </p>
       ) : null}
+      {canDeposit &&
+      receipts.situation === "to_account" &&
+      receipts.clientInFavor !== "0.00" ? (
+        <p className="mt-3">
+          <Link
+            href={`/clientes/${receipts.clientId}/devolver`}
+            className={secondaryLinkClass}
+          >
+            <Icon name="undo" className="size-4" />
+            Devolver saldo a favor
+          </Link>
+        </p>
+      ) : null}
 
       {receipts.receipts.length === 0 ? (
         <p className="mt-4 text-sm text-muted">Sin señas.</p>
@@ -105,6 +122,14 @@ export function OrderReceiptsSection({
                     >
                       {row.displayNumber}
                     </Link>
+                    {row.voided ? (
+                      <span
+                        className={`${inactiveBadgeClass} ml-2 font-sans`}
+                        title={`Anulado por ${row.voided.displayNumber}`}
+                      >
+                        Anulado
+                      </span>
+                    ) : null}
                     <span className="block text-xs text-muted">
                       {formatShortDateTime(row.createdAt, timeZone)}
                     </span>

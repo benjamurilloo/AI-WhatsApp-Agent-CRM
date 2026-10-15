@@ -135,6 +135,25 @@ export async function lockClientSharedByPhoneE164(
   return rows[0];
 }
 
+// FOR NO KEY UPDATE, para la devolución desde la cuenta (brief-21.5, D-11 precisado): choca con el
+// modo compartido de la emisión de una venta, que achica lo que está a favor, y no con las claves
+// foráneas que apuntan al cliente.
+export async function lockClientExclusive(
+  tx: DbTransaction,
+  organizationId: string,
+  clientId: string,
+): Promise<{ id: string } | undefined> {
+  const rows = await tx
+    .select({ id: clients.id })
+    .from(clients)
+    .where(
+      and(eq(clients.organizationId, organizationId), eq(clients.id, clientId)),
+    )
+    .limit(1)
+    .for("no key update");
+  return rows[0];
+}
+
 export type ActivityFilter = "active" | "inactive" | "all";
 
 // Teléfono exacto o prefijo de nombre, nunca los dos: lo decide el servicio (brief-5.2, D-3).

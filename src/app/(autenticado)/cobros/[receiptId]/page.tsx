@@ -8,10 +8,23 @@ import {
   DetailHeader,
   HeaderIcon,
 } from "@/app/_components/detail-header";
-import { cardClass, linkClass } from "@/app/_components/form-styles";
+import {
+  cardClass,
+  dangerOutlineLinkClass,
+  linkClass,
+  noticeClass,
+} from "@/app/_components/form-styles";
 import { PageNotice } from "@/app/_components/page-notice";
-import { formatFullDateTime } from "@/app/_format/date-time";
+import {
+  formatFullDateTime,
+  formatShortDateTime,
+} from "@/app/_format/date-time";
 import { formatMoney } from "@/shared/money";
+import {
+  RECEIPT_VOID_NOTICE,
+  RECEIPT_VOID_REASON_LABEL,
+  voidReasonText,
+} from "@/app/(autenticado)/devoluciones/messages";
 import { PrintButton } from "./print-button";
 
 export const metadata: Metadata = {
@@ -30,14 +43,18 @@ const NOT_AN_INVOICE_LEGEND = "Documento no válido como factura";
 // Lleva la organización, el número y la fecha, el cliente o «Consumidor final», la venta, el medio,
 // el monto y la leyenda. Está fuera de /ventas porque la 21.4 y la 21.6 suman otros destinos. Para
 // los dos roles; el contacto del cliente no va en el recibo. Desde la 21.4, el destino de una seña es
-// su pedido (brief-21.4, D-8).
+// su pedido (brief-21.4, D-8). Desde la 21.5, un cobro anulado lleva el sello con su anulación, y un
+// admin lo anula desde acá (brief-21.5, D-9).
 export default async function ReceiptPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ receiptId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const context = await requireSession();
   const { receiptId } = await params;
+  const query = await searchParams;
   const found = await getReceipt(context, receiptId);
   if (!found.ok) {
     return (
@@ -81,8 +98,35 @@ export default async function ReceiptPage({
               en {receipt.paymentMethodName}
             </p>
           }
-          actions={<PrintButton />}
+          actions={
+            <>
+              {context.role === "admin" && !receipt.voided ? (
+                <Link
+                  href={`/cobros/${receipt.id}/anular`}
+                  className={dangerOutlineLinkClass}
+                >
+                  Anular cobro
+                </Link>
+              ) : null}
+              <PrintButton />
+            </>
+          }
         />
+        <div role="status" className="mt-4 empty:hidden">
+          {query.anulado && receipt.voided ? (
+            <p className={noticeClass}>{RECEIPT_VOID_NOTICE}</p>
+          ) : null}
+        </div>
+        {receipt.voided ? (
+          <p className="mt-4 rounded-md border border-border bg-surface-muted px-3 py-2 text-sm">
+            Anulado por{" "}
+            <span className="font-mono">{receipt.voided.displayNumber}</span> el{" "}
+            {formatShortDateTime(receipt.voided.createdAt, timeZone)}:{" "}
+            {voidReasonText(RECEIPT_VOID_REASON_LABEL, receipt.voided.reason)}.
+            Anuló {receipt.voidedByName ?? "un usuario no disponible"}. Ya no
+            cuenta en lo cobrado.
+          </p>
+        ) : null}
       </div>
 
       <article
@@ -99,6 +143,11 @@ export default async function ReceiptPage({
             <h2 id="recibo-titulo" className="text-lg font-semibold">
               Recibo <span className="font-mono">{receipt.displayNumber}</span>
             </h2>
+            {receipt.voided ? (
+              <p className="text-sm font-semibold uppercase">
+                Anulado por {receipt.voided.displayNumber}
+              </p>
+            ) : null}
             <p className="text-sm">
               {formatFullDateTime(receipt.createdAt, timeZone)}
             </p>

@@ -11,6 +11,12 @@ import {
   paymentMethods,
   receipts,
   receiptTarget,
+  receiptVoidReason,
+  receiptVoids,
+  refundTarget,
+  refundVoidReason,
+  refundVoids,
+  refunds,
 } from "./schema";
 
 // Acceso a los medios de pago, a la caja y, desde la 21.3, a los cobros (ADR 0022, puntos 2, 8 y 10;
@@ -507,9 +513,32 @@ export type ReceiptRow = {
   amount: string;
   createdBy: string;
   createdAt: Date;
+  // Su anulación, si la tiene (brief-21.5, D-8): las lecturas la muestran y no la cuentan.
+  voided: VoidRef | null;
 };
 
-const receiptColumns = {
+export type ReceiptVoidReason = (typeof receiptVoidReason.enumValues)[number];
+
+export type VoidRef = {
+  id: string;
+  number: number;
+  reason: string;
+  // La sesión en la que impactó: la del cobro si estaba abierta (D-1).
+  sessionId: string | null;
+  createdBy: string;
+  createdAt: Date;
+};
+
+const receiptVoidColumns = {
+  id: receiptVoids.id,
+  number: receiptVoids.number,
+  reason: receiptVoids.reason,
+  sessionId: receiptVoids.sessionId,
+  createdBy: receiptVoids.createdBy,
+  createdAt: receiptVoids.createdAt,
+};
+
+const receiptBaseColumns = {
   id: receipts.id,
   number: receipts.number,
   target: receipts.target,
@@ -523,6 +552,14 @@ const receiptColumns = {
   createdBy: receipts.createdBy,
   createdAt: receipts.createdAt,
 };
+
+const receiptColumns = { ...receiptBaseColumns, voided: receiptVoidColumns };
+
+// Cada lectura de cobros trae su anulación: un cobro tiene a lo sumo una (receipt_voids_receipt_unique).
+const receiptVoidJoin = and(
+  eq(receiptVoids.organizationId, receipts.organizationId),
+  eq(receiptVoids.receiptId, receipts.id),
+);
 
 // El destino y su clave: receipts_target_check rechaza cualquier otra combinación.
 export type NewReceipt = {
@@ -551,8 +588,8 @@ export async function insertReceipt(
       saleId: destination.target === "sale" ? destination.saleId : null,
       orderId: destination.target === "order" ? destination.orderId : null,
     })
-    .returning(receiptColumns);
-  return rows[0]!;
+    .returning(receiptBaseColumns);
+  return { ...rows[0]!, voided: null };
 }
 
 // Por orden de alta: el número sube con cada cobro.
@@ -568,6 +605,7 @@ export function findClientReceipts(
   return executor
     .select(receiptColumns)
     .from(receipts)
+    .leftJoin(receiptVoids, receiptVoidJoin)
     .where(
       and(
         eq(receipts.organizationId, organizationId),
@@ -585,6 +623,7 @@ export function findSaleReceipts(
   return executor
     .select(receiptColumns)
     .from(receipts)
+    .leftJoin(receiptVoids, receiptVoidJoin)
     .where(
       and(
         eq(receipts.organizationId, organizationId),
@@ -603,6 +642,7 @@ export function findOrderReceipts(
   return executor
     .select(receiptColumns)
     .from(receipts)
+    .leftJoin(receiptVoids, receiptVoidJoin)
     .where(
       and(
         eq(receipts.organizationId, organizationId),
@@ -621,6 +661,7 @@ export function findSessionReceipts(
   return executor
     .select(receiptColumns)
     .from(receipts)
+    .leftJoin(receiptVoids, receiptVoidJoin)
     .where(
       and(
         eq(receipts.organizationId, organizationId),
@@ -633,10 +674,12 @@ export function findSessionReceipts(
 export async function findReceipt(
   organizationId: string,
   receiptId: string,
+  executor: Executor = getDb(),
 ): Promise<ReceiptRow | undefined> {
-  const rows = await getDb()
+  const rows = await executor
     .select(receiptColumns)
     .from(receipts)
+    .leftJoin(receiptVoids, receiptVoidJoin)
     .where(
       and(
         eq(receipts.organizationId, organizationId),
@@ -673,6 +716,7 @@ export function findReceipts(
   return getDb()
     .select(receiptColumns)
     .from(receipts)
+    .leftJoin(receiptVoids, receiptVoidJoin)
     .where(
       and(
         eq(receipts.organizationId, organizationId),
@@ -682,4 +726,341 @@ export function findReceipts(
     .orderBy(desc(receipts.number))
     .limit(limit)
     .offset(offset);
+}
+
+// La anulación de un cobro, la devolución y su anulación (ADR 0022, punto 7; brief-21.5, D-1 a D-3).
+
+export type NewVoid = {
+  organizationId: string;
+  number: number;
+  // El cobro o la devolución que anula.
+  sourceId: string;
+  currency: string;
+  amount: string;
+  reason: string;
+  // La sesión abierta del original en efectivo, o ninguna: receipt_voids_check_copy() y
+  // refund_voids_check_copy() rechazan cualquier otra (D-1).
+  sessionId: string | null;
+  createdBy: string;
+};
+
+export async function insertReceiptVoid(
+  tx: DbTransaction,
+  row: NewVoid,
+): Promise<{ id: string; number: number }> {
+  const rows = await tx
+    .insert(receiptVoids)
+    .values({
+      organizationId: row.organizationId,
+      number: row.number,
+      receiptId: row.sourceId,
+      currency: row.currency,
+      amount: row.amount,
+      reason: row.reason as ReceiptVoidReason,
+      sessionId: row.sessionId,
+      createdBy: row.createdBy,
+    })
+    .returning({ id: receiptVoids.id, number: receiptVoids.number });
+  return rows[0]!;
+}
+
+export type RefundTarget = (typeof refundTarget.enumValues)[number];
+export type RefundVoidReason = (typeof refundVoidReason.enumValues)[number];
+
+export type RefundRow = {
+  id: string;
+  number: number;
+  target: RefundTarget;
+  clientId: string | null;
+  saleId: string | null;
+  paymentMethodId: string;
+  sessionId: string | null;
+  currency: string;
+  amount: string;
+  createdBy: string;
+  createdAt: Date;
+  voided: VoidRef | null;
+};
+
+const refundBaseColumns = {
+  id: refunds.id,
+  number: refunds.number,
+  target: refunds.target,
+  clientId: refunds.clientId,
+  saleId: refunds.saleId,
+  paymentMethodId: refunds.paymentMethodId,
+  sessionId: refunds.sessionId,
+  currency: refunds.currency,
+  amount: refunds.amount,
+  createdBy: refunds.createdBy,
+  createdAt: refunds.createdAt,
+};
+
+const refundColumns = {
+  ...refundBaseColumns,
+  voided: {
+    id: refundVoids.id,
+    number: refundVoids.number,
+    reason: refundVoids.reason,
+    sessionId: refundVoids.sessionId,
+    createdBy: refundVoids.createdBy,
+    createdAt: refundVoids.createdAt,
+  },
+};
+
+const refundVoidJoin = and(
+  eq(refundVoids.organizationId, refunds.organizationId),
+  eq(refundVoids.refundId, refunds.id),
+);
+
+// El destino y su clave: refunds_target_check rechaza cualquier otra combinación (D-2).
+export type NewRefund = {
+  organizationId: string;
+  number: number;
+  destination:
+    | { target: "account"; clientId: string }
+    | { target: "sale"; saleId: string };
+  paymentMethodId: string;
+  sessionId: string | null;
+  currency: string;
+  amount: string;
+  createdBy: string;
+};
+
+export async function insertRefund(
+  tx: DbTransaction,
+  refund: NewRefund,
+): Promise<RefundRow> {
+  const { destination, ...rest } = refund;
+  const rows = await tx
+    .insert(refunds)
+    .values({
+      ...rest,
+      target: destination.target,
+      clientId: destination.target === "account" ? destination.clientId : null,
+      saleId: destination.target === "sale" ? destination.saleId : null,
+    })
+    .returning(refundBaseColumns);
+  return { ...rows[0]!, voided: null };
+}
+
+export async function insertRefundVoid(
+  tx: DbTransaction,
+  row: NewVoid,
+): Promise<{ id: string; number: number }> {
+  const rows = await tx
+    .insert(refundVoids)
+    .values({
+      organizationId: row.organizationId,
+      number: row.number,
+      refundId: row.sourceId,
+      currency: row.currency,
+      amount: row.amount,
+      reason: row.reason as RefundVoidReason,
+      sessionId: row.sessionId,
+      createdBy: row.createdBy,
+    })
+    .returning({ id: refundVoids.id, number: refundVoids.number });
+  return rows[0]!;
+}
+
+function selectRefunds(executor: Executor) {
+  return executor
+    .select(refundColumns)
+    .from(refunds)
+    .leftJoin(refundVoids, refundVoidJoin);
+}
+
+// Las devoluciones de la cuenta de un cliente, para la imputación (ADR 0022, punto 9).
+export function findClientRefunds(
+  organizationId: string,
+  clientId: string,
+  executor: Executor = getDb(),
+): Promise<RefundRow[]> {
+  return selectRefunds(executor)
+    .where(
+      and(
+        eq(refunds.organizationId, organizationId),
+        eq(refunds.clientId, clientId),
+      ),
+    )
+    .orderBy(asc(refunds.number));
+}
+
+// Las devoluciones de una venta sin cliente anulada (punto 6).
+export function findSaleRefunds(
+  organizationId: string,
+  saleId: string,
+  executor: Executor = getDb(),
+): Promise<RefundRow[]> {
+  return selectRefunds(executor)
+    .where(
+      and(
+        eq(refunds.organizationId, organizationId),
+        eq(refunds.saleId, saleId),
+      ),
+    )
+    .orderBy(asc(refunds.number));
+}
+
+// Las devoluciones en efectivo de una sesión: las únicas con sesión.
+export function findSessionRefunds(
+  organizationId: string,
+  sessionId: string,
+  executor: Executor = getDb(),
+): Promise<RefundRow[]> {
+  return selectRefunds(executor)
+    .where(
+      and(
+        eq(refunds.organizationId, organizationId),
+        eq(refunds.sessionId, sessionId),
+      ),
+    )
+    .orderBy(asc(refunds.number));
+}
+
+export async function findRefund(
+  organizationId: string,
+  refundId: string,
+  executor: Executor = getDb(),
+): Promise<RefundRow | undefined> {
+  const rows = await selectRefunds(executor)
+    .where(
+      and(eq(refunds.organizationId, organizationId), eq(refunds.id, refundId)),
+    )
+    .limit(1);
+  return rows[0];
+}
+
+export async function countRefunds(
+  organizationId: string,
+  number: number | null,
+): Promise<number> {
+  const rows = await getDb()
+    .select({ total: count() })
+    .from(refunds)
+    .where(
+      and(
+        eq(refunds.organizationId, organizationId),
+        number !== null ? eq(refunds.number, number) : undefined,
+      ),
+    );
+  return rows[0]!.total;
+}
+
+// Del más nuevo al más viejo, como los cobros.
+export function findRefunds(
+  organizationId: string,
+  number: number | null,
+  limit: number,
+  offset: number,
+): Promise<RefundRow[]> {
+  return selectRefunds(getDb())
+    .where(
+      and(
+        eq(refunds.organizationId, organizationId),
+        number !== null ? eq(refunds.number, number) : undefined,
+      ),
+    )
+    .orderBy(desc(refunds.number))
+    .limit(limit)
+    .offset(offset);
+}
+
+// Lo anulado mientras la sesión estaba abierta (D-6): las anulaciones que impactaron en ella. Lo
+// anulado después del cierre tiene la sesión nula y no aparece acá.
+export function findSessionReceiptVoids(
+  organizationId: string,
+  sessionId: string,
+  executor: Executor = getDb(),
+): Promise<CurrencyAmountRow[]> {
+  return executor
+    .select({ currency: receiptVoids.currency, amount: receiptVoids.amount })
+    .from(receiptVoids)
+    .where(
+      and(
+        eq(receiptVoids.organizationId, organizationId),
+        eq(receiptVoids.sessionId, sessionId),
+      ),
+    );
+}
+
+export function findSessionRefundVoids(
+  organizationId: string,
+  sessionId: string,
+  executor: Executor = getDb(),
+): Promise<CurrencyAmountRow[]> {
+  return executor
+    .select({ currency: refundVoids.currency, amount: refundVoids.amount })
+    .from(refundVoids)
+    .where(
+      and(
+        eq(refundVoids.organizationId, organizationId),
+        eq(refundVoids.sessionId, sessionId),
+      ),
+    );
+}
+
+// Las anulaciones posteriores al cierre de una sesión (ADR 0022, punto 7; D-6): las de sus cobros y
+// sus devoluciones en efectivo que no impactaron en ella. Explican su diferencia; el arqueo guardado
+// no cambia.
+export type LateVoidRow = {
+  kind: "receipt" | "refund";
+  number: number;
+  sourceId: string;
+  sourceNumber: number;
+  currency: string;
+  amount: string;
+  reason: string;
+  createdAt: Date;
+};
+
+export async function findLateVoids(
+  organizationId: string,
+  sessionId: string,
+): Promise<LateVoidRow[]> {
+  const [receiptRows, refundRows] = await Promise.all([
+    getDb()
+      .select({
+        number: receiptVoids.number,
+        sourceId: receipts.id,
+        sourceNumber: receipts.number,
+        currency: receiptVoids.currency,
+        amount: receiptVoids.amount,
+        reason: receiptVoids.reason,
+        createdAt: receiptVoids.createdAt,
+      })
+      .from(receiptVoids)
+      .innerJoin(receipts, receiptVoidJoin)
+      .where(
+        and(
+          eq(receipts.organizationId, organizationId),
+          eq(receipts.sessionId, sessionId),
+          sql`${receiptVoids.sessionId} is null`,
+        ),
+      ),
+    getDb()
+      .select({
+        number: refundVoids.number,
+        sourceId: refunds.id,
+        sourceNumber: refunds.number,
+        currency: refundVoids.currency,
+        amount: refundVoids.amount,
+        reason: refundVoids.reason,
+        createdAt: refundVoids.createdAt,
+      })
+      .from(refundVoids)
+      .innerJoin(refunds, refundVoidJoin)
+      .where(
+        and(
+          eq(refunds.organizationId, organizationId),
+          eq(refunds.sessionId, sessionId),
+          sql`${refundVoids.sessionId} is null`,
+        ),
+      ),
+  ]);
+  return [
+    ...receiptRows.map((row) => ({ kind: "receipt" as const, ...row })),
+    ...refundRows.map((row) => ({ kind: "refund" as const, ...row })),
+  ].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 }

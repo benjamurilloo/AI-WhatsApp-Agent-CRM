@@ -1349,3 +1349,117 @@ describe("los cobros de las ventas del cliente (brief-21.3, AC-11; D-9)", () => 
     }
   });
 });
+
+// La anulación de un cobro, una devolución desde la cuenta y su anulación, por SQL (brief-21.5): en
+// transferencia, sin sesión de caja. Devuelve los ids.
+async function refundTrailFor(clientId: string, base: number) {
+  const saleId = await counterSaleFor(clientId, base);
+  await receiptFor(saleId, base);
+  const receipt = await getDb().execute<{
+    id: string;
+    payment_method_id: string;
+  }>(
+    sql`select id, payment_method_id from receipts
+        where organization_id = ${organizationId} and number = ${base}`,
+  );
+  const { id: receiptId, payment_method_id: methodId } = receipt.rows[0]!;
+  await getDb().execute(
+    sql`insert into receipt_voids (organization_id, number, receipt_id, currency, amount, reason,
+                                   created_by)
+        select organization_id, ${base}, id, currency, amount, 'wrong_amount', created_by
+        from receipts where id = ${receiptId}`,
+  );
+  const refund = await getDb().execute<{ id: string }>(
+    sql`insert into refunds (organization_id, number, target, client_id, payment_method_id,
+                             currency, amount, created_by)
+        select organization_id, ${base}, 'account', client_id, ${methodId}, currency, '150.00',
+               created_by
+        from receipts where id = ${receiptId}
+        returning id`,
+  );
+  const refundId = refund.rows[0]!.id;
+  await getDb().execute(
+    sql`insert into refund_voids (organization_id, number, refund_id, currency, amount, reason,
+                                  created_by)
+        select organization_id, ${base}, id, currency, amount, 'not_paid', created_by
+        from refunds where id = ${refundId}`,
+  );
+  return { saleId, receiptId, refundId };
+}
+
+describe("las anulaciones y las devoluciones del cliente (brief-21.5, AC-13; D-10)", () => {
+  it("47. la exportación trae sus tres comprobantes, y no los de otro cliente", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    const other = await insertClient("Otra persona", "+5491155552222", null);
+    const { receiptId, refundId } = await refundTrailFor(clientId, 1);
+    await refundTrailFor(other, 2);
+
+    const data = await exportClientData(getDb(), organizationId, clientId);
+    expect(data.receipt_voids).toEqual([
+      expect.objectContaining({
+        display_number: "AR-000001",
+        receipt_id: receiptId,
+        receipt_number: "1",
+        amount: "400.00",
+        reason: "wrong_amount",
+      }),
+    ]);
+    expect(data.refunds).toEqual([
+      expect.objectContaining({
+        display_number: "D-000001",
+        target: "account",
+        payment_method: "Transferencia 1",
+        currency: "ARS",
+        amount: "150.00",
+      }),
+    ]);
+    expect(data.refund_voids).toEqual([
+      expect.objectContaining({
+        display_number: "AD-000001",
+        refund_id: refundId,
+        refund_number: "1",
+        reason: "not_paid",
+      }),
+    ]);
+  });
+
+  it("48. el informe las cuenta, dice que quedan, y el cliente con devoluciones no es borrable", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    await refundTrailFor(clientId, 1);
+
+    const report = await reportClientData(getDb(), organizationId, clientId);
+    expect(report).toMatchObject({
+      receipts: 1,
+      receiptVoids: 1,
+      refunds: 1,
+      refundVoids: 1,
+      deletable: false,
+    });
+    const retained = describeRetained(report).join(" ");
+    expect(retained).toContain("1 anulaciones de cobros en 'receipt_voids'");
+    expect(retained).toContain("1 devoluciones en 'refunds'");
+    expect(retained).toContain(
+      "1 anulaciones de devoluciones en 'refund_voids'",
+    );
+  });
+
+  it("49. el vaciado las deja intactas y no deja datos de la persona", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    await refundTrailFor(clientId, 1);
+    const read = () =>
+      getDb().execute(
+        sql`select
+              (select json_agg(v order by v.id) from receipt_voids v) as receipt_voids,
+              (select json_agg(d order by d.id) from refunds d) as refunds,
+              (select json_agg(v order by v.id) from refund_voids v) as refund_voids`,
+      );
+    const before = await read();
+
+    await eraseClientData(getDb(), organizationId, clientId);
+
+    expect((await read()).rows).toEqual(before.rows);
+    for (const value of [NAME, PHONE, NOTES]) {
+      expect(await columnsContaining(value), value).toEqual([]);
+    }
+  });
+});

@@ -113,4 +113,11 @@ describe("formatDocumentNumber", () => {
     expect(formatDocumentNumber("receipt", 123)).toBe("R-000123");
     expect(formatDocumentNumber("receipt", 1_234_567)).toBe("R-1234567");
   });
+
+  it("los prefijos de la anulación de un cobro, la devolución y su anulación son AR, D y AD (brief-21.5)", () => {
+    expect(formatDocumentNumber("receipt_void", 12)).toBe("AR-000012");
+    expect(formatDocumentNumber("refund", 7)).toBe("D-000007");
+    expect(formatDocumentNumber("refund_void", 2)).toBe("AD-000002");
+    expect(formatDocumentNumber("refund", 1_234_567)).toBe("D-1234567");
+  });
 });

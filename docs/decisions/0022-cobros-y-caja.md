@@ -111,6 +111,8 @@ Ninguna venta se puede bloquear (§Contexto, PostgreSQL), y la imputación del p
 4. la comprobación: el destino, lo que falta cobrar, la sesión abierta y el medio activo;
 5. al final, el contador del tipo de comprobante (ADR 0019, punto 2).
 
+*Precisado el 2026-10-14 en la 21.5, sin cambiar el texto de arriba* ([brief-21.5](brief-21.5-la-anulacion-y-la-devolucion.md), D-11 precisado tras la revisión independiente, aprobado por el usuario): **la devolución desde la cuenta toma la ficha en modo exclusivo** (`FOR NO KEY UPDATE`, con `lockClientForRefund` de `crm`), no compartido. Su tope es lo que está a favor, y emitir una venta, que toma la ficha en modo compartido sin el bloqueo de cobros, lo achica: con el modo compartido las dos no se esperaban y la devolución podía llevarse lo que la venta nueva tenía que absorber. El paso sigue antes de la comprobación y del contador, y `FOR NO KEY UPDATE` no choca con las claves foráneas que apuntan al cliente.
+
 **El aislamiento**: las transacciones corren en `READ COMMITTED`, el nivel por defecto, que es el que usa hoy el CRM. **Toda lectura que decide se hace después de tomar el bloqueo de cobros**: en `READ COMMITTED` cada sentencia ve lo confirmado hasta ese momento. Con `REPEATABLE READ`, la foto se tomaría antes de esperar el bloqueo y la serialización no valdría (revisión independiente, R-15).
 
 **Por qué no hay ciclos**: `sales` y `orders` nunca toman el bloqueo de cobros. Los caminos que toman el pedido y el cliente lo hacen en el mismo orden que `sales`: primero el pedido y después el cliente.
@@ -152,6 +154,8 @@ Son operaciones distintas, cada una con su comprobante de solo inserción y su s
   - **en una venta sin cliente**, sus cobros vigentes sin ese cobro no pueden quedar por debajo de sus devoluciones vigentes.
 
   Si la plata ya se devolvió, primero se anula la devolución, si fue un error, o se acepta que lo devuelto queda como está.
+
+  *Precisado el 2026-10-14 en la 21.5, sin cambiar el texto de arriba* ([brief-21.5](brief-21.5-la-anulacion-y-la-devolucion.md), H-3 y D-5, aprobado por el usuario): «el haber sin ese cobro» se lee como **el remanente** del paréntesis, no como el haber del saldo. El haber incluye los cobros directos de las ventas vigentes, y con esa lectura se aceptaría anular un cobro que estaba en el remanente aunque lo ya devuelto dejara de caber, y la regla de imputación quedaría inconsistente. La comprobación arma la cuenta sin ese cobro y verifica que el remanente de su moneda no quede por debajo de lo devuelto.
 - **Un cobro en efectivo se anula también con su sesión cerrada** (revisión independiente, R-3; reemplaza la regla de este punto que lo prohibía):
   - **con la sesión abierta**, el cobro anulado deja de contar en lo esperado de esa sesión;
   - **con la sesión cerrada**, el arqueo guardado no cambia: es historia. Esa sesión muestra la anulación posterior como explicación de su diferencia, y la sesión abierta no se toca, porque esa plata nunca entró a la caja de hoy.

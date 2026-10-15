@@ -318,6 +318,7 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 *Desde la 19.4* (D-11; FR-ORD-11): la tarjeta «Estado» muestra el origen, «Agente · <emisor>» con el `source` de la credencial o «Equipo», y la historia muestra a la credencial como «Servicio · <emisor>». Un pedido del agente se confirma, entrega y cancela igual que cualquier otro.
 *Desde la 20.2* ([brief-20.2](../decisions/brief-20.2-la-venta-de-un-pedido.md), D-4; FR-VEN-01, 02 y 04): un pedido entregado suma la tarjeta «Venta», para los dos roles, con el enlace a su venta o «Este pedido todavía no tiene su venta.». Para `admin`, sin venta, «Emitir venta» lleva al paso `?confirmar=venta`, que funciona sin JavaScript: la pregunta recibe el foco, dice que la venta copia el pedido y no mueve el stock, y ofrece «No, volver» y «Sí, emitir la venta». Emitir lleva al detalle de la venta. Si el pedido ya tenía venta, el mensaje se anuncia con `role="alert"` y la enlaza.
 *Desde la 21.4* ([brief-21.4](../decisions/brief-21.4-la-sena.md), D-8; FR-CAJ-13 y 15): la tarjeta «Señas», compuesta con `cash`, para los dos roles: lo señado y, mientras la seña está retenida, lo que le falta; qué pasó con la seña («queda retenida para este pedido hasta que se emita su venta», «cuenta para la venta V-…» con su enlace, o «lo señado pasó a la cuenta del cliente como saldo a favor»); y la lista de señas con el recibo enlazado, su fecha, el medio y el monto. Para `admin`, «Registrar seña» mientras el pedido esté pendiente o confirmado y le falte algo. Al volver de una seña, el aviso «Se registró la seña R-000123.» enlaza el recibo.
+*Desde la 21.5* ([brief-21.5](../decisions/brief-21.5-la-anulacion-y-la-devolucion.md), D-9; FR-CAJ-16 y 18): una seña anulada lleva la marca «Anulado» y no cuenta en lo señado. Con el pedido cancelado y saldo a favor en la cuenta del cliente, `admin` ve «Devolver saldo a favor» (pantalla 35).
 - **No mostrar**: editar ni borrar el pedido o sus líneas; costo ni margen.
 
 ## 17. Lista de ventas
@@ -352,6 +353,7 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
   - el comprobante dice «Reemplaza a V-…» o «Reemplazada por V-…» en la cadena de las ventas de un pedido;
   - la historia muestra la anulación con su número y su motivo.
 - *Desde la 21.3* ([brief-21.3](../decisions/brief-21.3-el-cobro-de-una-venta.md), D-8; FR-CAJ-09 a 11): la tarjeta «Cobros», compuesta con `cash`: el total, lo cobrado, lo imputado desde la cuenta del cliente si lo hay, y lo que falta o «Cobrada»; la lista de cobros con el recibo enlazado, su fecha, el medio y el monto; y para `admin`, «Registrar cobro» mientras falte algo en una venta vigente. En una venta anulada, en lugar de lo que falta: «Lo cobrado (…) pasó a la cuenta del cliente como saldo a favor.» o, sin cliente, «A devolver: …». Al volver de un cobro, el aviso «Se registró el cobro R-000123.» enlaza el recibo. La tarjeta no se imprime. *Desde la 21.4* ([brief-21.4](../decisions/brief-21.4-la-sena.md), D-8): en la venta vigente de un pedido señado, lo cobrado incluye la seña, con la fila «Incluye la seña del pedido P-…», y la lista marca cada seña con «Seña del pedido P-…».
+- *Desde la 21.5* ([brief-21.5](../decisions/brief-21.5-la-anulacion-y-la-devolucion.md), D-9; FR-CAJ-16, 18 y 19): un cobro anulado lleva la marca «Anulado» y no cuenta en lo cobrado. En una venta sin cliente anulada, «Devuelto: … A devolver: …», la lista de sus devoluciones con la marca de las anuladas, y para `admin` «Devolver» mientras quede algo (pantalla 35). En una venta anulada con cliente, si su cuenta tiene saldo a favor, `admin` ve «Devolver saldo a favor».
 
 ## 19. Nueva venta
 
@@ -388,7 +390,7 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 - **Información mostrada**: abierta, el número de la sesión, quién la abrió y cuándo, por moneda el inicial, los aportes, los retiros y lo esperado, y los movimientos con hora, tipo, motivo, monto y autor. Cerrada, «La caja está cerrada.» y el enlace a la última sesión.
 - **Acciones** (`admin`): «Registrar aporte», «Registrar retiro» y «Cerrar caja» con la caja abierta; «Abrir caja» con la caja cerrada.
 - **Vacío**: «Todavía no se abrió nunca.»
-- *Desde la 21.3* ([brief-21.3](../decisions/brief-21.3-el-cobro-de-una-venta.md), D-5 y D-8): por moneda, la columna «Cobros», que suma a lo esperado; la tarjeta «Cobros en efectivo», con el recibo enlazado, la hora, la venta y el monto; y en la barra, «Cobros» (pantalla 30). *Desde la 21.4* ([brief-21.4](../decisions/brief-21.4-la-sena.md)): la columna de esa tarjeta pasa de «Venta» a «Destino», con la venta o el pedido de una seña.
+- *Desde la 21.3* ([brief-21.3](../decisions/brief-21.3-el-cobro-de-una-venta.md), D-5 y D-8): por moneda, la columna «Cobros», que suma a lo esperado; la tarjeta «Cobros en efectivo», con el recibo enlazado, la hora, la venta y el monto; y en la barra, «Cobros» (pantalla 30). *Desde la 21.4* ([brief-21.4](../decisions/brief-21.4-la-sena.md)): la columna de esa tarjeta pasa de «Venta» a «Destino», con la venta o el pedido de una seña. *Desde la 21.5* ([brief-21.5](../decisions/brief-21.5-la-anulacion-y-la-devolucion.md), D-6 y D-9): por moneda, «Cobros» y «Devoluciones» van sin lo anulado mientras la sesión estaba abierta; los cobros anulados llevan la marca «Anulado»; la tarjeta «Devoluciones en efectivo», con el comprobante enlazado, la hora, de dónde sale y el monto; y en la barra, «Devoluciones» (pantalla 34).
 
 ## 22. Abrir caja
 
@@ -432,7 +434,7 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 - **Información mostrada**: el nombre de la organización, «Arqueo de caja C-000045» (o «Caja abierta»), la apertura y el cierre con su fecha y autor, por moneda el inicial, los aportes, los retiros, lo esperado, lo contado y la diferencia, los movimientos y la leyenda «Documento no válido como factura». Debajo, la historia de la sesión: la apertura y el cierre.
 - **Acciones**: «Imprimir o guardar PDF», con la sesión cerrada.
 - **Al imprimir**: queda solo el arqueo, sin navegación, botones ni historia.
-- *Desde la 21.3* ([brief-21.3](../decisions/brief-21.3-el-cobro-de-una-venta.md), D-5): la columna «Cobros» por moneda y los cobros en efectivo de la sesión, con su recibo y su venta, también en el arqueo impreso. *Desde la 21.4* ([brief-21.4](../decisions/brief-21.4-la-sena.md)): con su destino, la venta o el pedido de una seña.
+- *Desde la 21.3* ([brief-21.3](../decisions/brief-21.3-el-cobro-de-una-venta.md), D-5): la columna «Cobros» por moneda y los cobros en efectivo de la sesión, con su recibo y su venta, también en el arqueo impreso. *Desde la 21.4* ([brief-21.4](../decisions/brief-21.4-la-sena.md)): con su destino, la venta o el pedido de una seña. *Desde la 21.5* ([brief-21.5](../decisions/brief-21.5-la-anulacion-y-la-devolucion.md), D-6; FR-CAJ-17 y 19): la columna «Devoluciones», las devoluciones en efectivo de la sesión y la marca «Anulado». Una sesión cerrada con anulaciones posteriores a su cierre las lista en «Anulaciones posteriores al cierre», con la anulación, la fecha, el comprobante que anula, el motivo y su efecto en esa caja: el arqueo guardado no cambia, y estas explican su diferencia.
 
 ## 27. Medios de pago
 
@@ -460,12 +462,13 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 - **Información mostrada**: el comprobante, con el nombre de la organización, «Recibo R-000123» y la fecha y hora, «Recibimos de» el cliente o «Consumidor final», la venta enlazada, el medio, el monto y la leyenda «Documento no válido como factura». *Desde la 21.4* (D-8): el recibo de una seña dice «Seña del pedido» con el pedido enlazado, y vuelve al pedido. En pantalla, la sesión de caja si fue en efectivo y quién lo registró.
 - **Acciones**: «Imprimir o guardar PDF».
 - **Al imprimir**: queda solo el recibo, sin el contacto del cliente para ningún rol.
+- *Desde la 21.5* ([brief-21.5](../decisions/brief-21.5-la-anulacion-y-la-devolucion.md), D-9; FR-CAJ-16): para `admin`, «Anular cobro» en un cobro sin anular (pantalla 32). Uno anulado dice arriba «Anulado por AR-000012 el {fecha}: {motivo}. Anuló {quién}. Ya no cuenta en lo cobrado.», y el recibo, que se sigue imprimiendo, lleva «Anulado por AR-…». Al volver de una anulación, el aviso «Cobro anulado.».
 
 ## 30. Cobros
 
 *Agregada en la 21.3* ([brief-21.3](../decisions/brief-21.3-el-cobro-de-una-venta.md), D-8; FR-CAJ-11). Ruta `/caja/cobros`, «Cobros» en la barra de la caja, para los dos roles.
 
-- **Información mostrada**: los cobros, del más nuevo al más viejo, paginados de a 25, con el recibo enlazado, la fecha, la venta, el cliente o «Consumidor final», el medio y el monto. *Desde la 21.4* (D-8): la columna «Venta» pasa a «Destino», con «Venta V-…» o «Pedido P-…».
+- **Información mostrada**: los cobros, del más nuevo al más viejo, paginados de a 25, con el recibo enlazado, la fecha, la venta, el cliente o «Consumidor final», el medio y el monto. *Desde la 21.4* (D-8): la columna «Venta» pasa a «Destino», con «Venta V-…» o «Pedido P-…». *Desde la 21.5* (D-9): los anulados llevan la marca «Anulado».
 - **Búsqueda**: por número, `R-000123` o `123`.
 - **Vacío**: «Todavía no se registró ningún cobro.»; sin resultados, «Ningún cobro coincide con ese número.»
 
@@ -478,3 +481,46 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 - **Rechazos**, con lo escrito conservado y el foco en el mensaje: una seña de más («La seña supera lo que le falta al pedido: $ …»); un pedido que se entregó o se canceló mientras tanto; y los del cobro (efectivo con la caja cerrada, con «Abrir caja»; un medio desactivado o que ya no existe; un monto inválido o en cero).
 - **Sin formulario**: un pedido entregado («lo que falta se cobra en su venta»), uno cancelado, uno cubierto por sus señas o una organización sin medios activos lo dicen y enlazan a dónde seguir. Un `viewer` recibe «Solo un administrador puede registrar señas.»
 - **Sin JavaScript**: funciona igual.
+
+## 32. Anular cobro
+
+*Agregada en la 21.5* ([brief-21.5](../decisions/brief-21.5-la-anulacion-y-la-devolucion.md), D-4 y D-9; FR-CAJ-16 y 17). Ruta `/cobros/[id]/anular`, solo `admin`; se llega desde «Anular cobro» del recibo.
+
+- **Información mostrada**: «Anular el recibo R-000123», el monto, el medio y el destino; la pregunta, que recibe el foco, y qué pasa: la anulación es otro comprobante y anula el cobro entero; si no es efectivo, no mueve la caja; si es efectivo con su sesión abierta, sale de lo esperado; con su sesión cerrada, el arqueo no cambia y la sesión la muestra, y la caja abierta no se toca. Una anulación no se deshace; después se registra el cobro correcto.
+- **El motivo**: un grupo de opciones obligatorio, de la lista cerrada.
+- **Acciones**: «No, volver» y «Sí, anular el cobro». Vuelve al recibo con «Cobro anulado.».
+- **Rechazos**, con `role="alert"`: ya anulado (con el número de su anulación); «No se puede anular: ya se devolvieron … y sin este cobro quedaría devuelto más de lo cobrado. Si la devolución fue un error, anulala primero.»; y el efectivo que no alcanza en la caja.
+- **Sin formulario**: un cobro ya anulado lo dice. Un `viewer` recibe «Solo un administrador puede anular cobros.»
+- **Sin JavaScript**: funciona igual.
+
+## 33. Devolución
+
+*Agregada en la 21.5* ([brief-21.5](../decisions/brief-21.5-la-anulacion-y-la-devolucion.md), D-9; ADR 0022, punto 11; FR-CAJ-18). Ruta `/devoluciones/[id]`, para los dos roles.
+
+- **Información mostrada**: el comprobante, con el nombre de la organización, «Devolución D-000007» y la fecha y hora, «Devolvimos a» el cliente o «Consumidor final», «Desde» («El saldo a favor de su cuenta» o la venta enlazada), el medio, el monto y la leyenda «Documento no válido como factura». En pantalla, la sesión de caja si fue en efectivo y quién la registró. Al volver de registrarla, «Devolución registrada.».
+- **Acciones**: «Imprimir o guardar PDF»; para `admin`, «Anular devolución» en una sin anular (pantalla 36).
+- **Anulada**: lo dice arriba («Anulada por AD-000002 el {fecha}: {motivo}. Lo devuelto vuelve a estar a favor o a devolver.») y en el comprobante.
+- **Al imprimir**: queda solo el comprobante, sin el contacto del cliente para ningún rol.
+
+## 34. Devoluciones
+
+*Agregada en la 21.5* ([brief-21.5](../decisions/brief-21.5-la-anulacion-y-la-devolucion.md), D-9; FR-CAJ-18). Ruta `/caja/devoluciones`, «Devoluciones» en la barra de la caja, para los dos roles.
+
+- **Información mostrada**: las devoluciones, de la más nueva a la más vieja, paginadas de a 25, con el comprobante enlazado y la marca «Anulada», la fecha, de dónde salen («Saldo a favor» o «Venta V-…»), el cliente o «Consumidor final», el medio y el monto.
+- **Búsqueda**: por número, `D-000007` o `7`.
+- **Vacío**: «Todavía no hay devoluciones.»; sin resultados, «Ninguna devolución coincide con ese número.»
+
+## 35. Registrar devolución
+
+*Agregada en la 21.5* ([brief-21.5](../decisions/brief-21.5-la-anulacion-y-la-devolucion.md), D-7 y D-9; FR-CAJ-18). Dos rutas, solo `admin`, con el mismo formulario:
+
+- **Desde la cuenta**, `/clientes/[id]/devolver`: «Devolver saldo a favor de {cliente}» y lo que está a favor por moneda, sin el estado de cuenta (que es de la 21.6). Se llega desde «Devolver saldo a favor» de la venta anulada con cliente o del pedido cancelado. La ficha del cliente no cambia.
+- **Desde una venta sin cliente anulada**, `/ventas/[id]/devolver`: «Devolver lo cobrado de V-000123» y lo que queda a devolver. Se llega desde «Devolver» del detalle de la venta.
+- **El formulario**: la moneda, si hay más de una con algo a devolver; el medio de pago con los activos, con «(sale de la caja)» en el efectivo y el aviso de la caja; y el monto, propuesto en lo disponible, con cómo se lee. «Registrar devolución» guarda y lleva al comprobante.
+- **Rechazos**, con lo escrito conservado y el foco en el mensaje: una devolución de más («La devolución supera lo disponible: $ …»); el efectivo que no alcanza en la caja; efectivo con la caja cerrada, con «Abrir caja»; un medio desactivado o que ya no existe; un monto inválido o en cero.
+- **Sin formulario**: sin saldo a favor, una venta con cliente o vigente, nada a devolver, o sin medios activos, lo dice y enlaza a dónde seguir. Un `viewer` recibe «Solo un administrador puede registrar o anular devoluciones.»
+- **Sin JavaScript**: funciona igual.
+
+## 36. Anular devolución
+
+*Agregada en la 21.5* ([brief-21.5](../decisions/brief-21.5-la-anulacion-y-la-devolucion.md), D-7 y D-9; FR-CAJ-19). Ruta `/devoluciones/[id]/anular`, solo `admin`, con la confirmación de la pantalla 32: el motivo de su lista, y qué pasa con la caja (vuelve a lo esperado con su sesión abierta; con la cerrada, el arqueo no cambia). Vuelve al comprobante con «Devolución anulada.».

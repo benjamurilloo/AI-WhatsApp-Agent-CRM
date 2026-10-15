@@ -382,3 +382,206 @@ export const receipts = pgTable(
     check("receipts_currency_format", sql`${table.currency} ~ '^[A-Z]{3}$'`),
   ],
 );
+
+// El motivo de la anulación de un cobro, de una lista cerrada y sin texto libre (ADR 0022, punto 7;
+// brief-21.5, D-3).
+export const receiptVoidReason = pgEnum("receipt_void_reason", [
+  "not_received",
+  "wrong_method",
+  "wrong_amount",
+  "wrong_target",
+  "other",
+]);
+
+// La anulación de un cobro (ADR 0022, punto 7; brief-21.5, D-1): un comprobante emitido, de solo
+// inserción, a lo sumo uno por cobro. Copia la moneda y el monto del cobro, y la sesión en la que
+// impacta: la del cobro si esa sesión no tiene cierre, y ninguna si lo tiene o si el cobro no fue en
+// efectivo (H-5). Lo defiende receipt_voids_check_copy() de la 0045. Sin cliente: llega a él por su
+// cobro, como sale_voids llega por su venta.
+export const receiptVoids = pgTable(
+  "receipt_voids",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    // Del contador de numbering con el tipo receipt_void; se muestra como AR-000012.
+    number: bigint("number", { mode: "number" }).notNull(),
+    receiptId: uuid("receipt_id").notNull(),
+    currency: text("currency").notNull(),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    reason: receiptVoidReason("reason").notNull(),
+    // La sesión abierta del cobro en efectivo anulado: lo esperado de esa sesión deja de contarlo.
+    sessionId: uuid("session_id"),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(sql`clock_timestamp()`),
+  },
+  (table) => [
+    unique("receipt_voids_organization_number_unique").on(
+      table.organizationId,
+      table.number,
+    ),
+    unique("receipt_voids_receipt_unique").on(table.receiptId),
+    foreignKey({
+      name: "receipt_voids_receipt_fk",
+      columns: [table.organizationId, table.receiptId],
+      foreignColumns: [receipts.organizationId, receipts.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "receipt_voids_session_fk",
+      columns: [table.organizationId, table.sessionId],
+      foreignColumns: [cashSessions.organizationId, cashSessions.id],
+    }).onDelete("restrict"),
+    index("receipt_voids_session_idx").on(
+      table.organizationId,
+      table.sessionId,
+    ),
+    check("receipt_voids_number_positive", sql`${table.number} > 0`),
+    check("receipt_voids_amount_positive", sql`${table.amount} > 0`),
+    check(
+      "receipt_voids_currency_format",
+      sql`${table.currency} ~ '^[A-Z]{3}$'`,
+    ),
+  ],
+);
+
+// De dónde sale una devolución (ADR 0022, punto 7; brief-21.5, D-2): el saldo a favor de la cuenta
+// de un cliente, o lo que queda a devolver de una venta sin cliente anulada.
+export const refundTarget = pgEnum("refund_target", ["account", "sale"]);
+
+// La devolución (ADR 0022, punto 7; brief-21.5, D-2): la plata que salió hacia el cliente. De solo
+// inserción, sin motivo ni texto libre. Si es en efectivo, sale de la sesión de caja abierta: lo
+// exigen receipts_check_cash_session() y cash_reject_closed_session(), reutilizados (H-6). Que el
+// monto no supere lo disponible lo asegura el servicio con el bloqueo de cobros tomado.
+export const refunds = pgTable(
+  "refunds",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    // Del contador de numbering con el tipo refund; se muestra como D-000007.
+    number: bigint("number", { mode: "number" }).notNull(),
+    target: refundTarget("target").notNull(),
+    // El cliente de la cuenta; nulo en la devolución de una venta, que no tiene cliente.
+    clientId: uuid("client_id"),
+    saleId: uuid("sale_id"),
+    paymentMethodId: uuid("payment_method_id").notNull(),
+    sessionId: uuid("session_id"),
+    currency: text("currency").notNull(),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(sql`clock_timestamp()`),
+  },
+  (table) => [
+    unique("refunds_organization_number_unique").on(
+      table.organizationId,
+      table.number,
+    ),
+    // Destino de la clave compuesta de su anulación.
+    unique("refunds_organization_id_id_unique").on(
+      table.organizationId,
+      table.id,
+    ),
+    // La de clients impide borrar un cliente con devoluciones (punto 14; D-10).
+    foreignKey({
+      name: "refunds_client_fk",
+      columns: [table.organizationId, table.clientId],
+      foreignColumns: [clients.organizationId, clients.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "refunds_sale_fk",
+      columns: [table.organizationId, table.saleId],
+      foreignColumns: [sales.organizationId, sales.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "refunds_payment_method_fk",
+      columns: [table.organizationId, table.paymentMethodId],
+      foreignColumns: [paymentMethods.organizationId, paymentMethods.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "refunds_session_fk",
+      columns: [table.organizationId, table.sessionId],
+      foreignColumns: [cashSessions.organizationId, cashSessions.id],
+    }).onDelete("restrict"),
+    index("refunds_client_idx").on(table.organizationId, table.clientId),
+    index("refunds_sale_idx").on(table.organizationId, table.saleId),
+    index("refunds_session_idx").on(table.organizationId, table.sessionId),
+    // Con la cuenta, el cliente y ninguna venta; con la venta, ningún cliente (D-2). El enum es
+    // nuevo en la 0045, así que el CHECK puede usar sus literales (H-7).
+    check(
+      "refunds_target_check",
+      sql`(${table.target} = 'account' AND ${table.clientId} IS NOT NULL AND ${table.saleId} IS NULL)
+        OR (${table.target} = 'sale' AND ${table.saleId} IS NOT NULL AND ${table.clientId} IS NULL)`,
+    ),
+    check("refunds_number_positive", sql`${table.number} > 0`),
+    check("refunds_amount_positive", sql`${table.amount} > 0`),
+    check("refunds_currency_format", sql`${table.currency} ~ '^[A-Z]{3}$'`),
+  ],
+);
+
+// El motivo de la anulación de una devolución (brief-21.5, D-3).
+export const refundVoidReason = pgEnum("refund_void_reason", [
+  "not_paid",
+  "wrong_method",
+  "wrong_amount",
+  "wrong_client",
+  "other",
+]);
+
+// La anulación de una devolución (ADR 0022, punto 7; brief-21.5, D-3), con las reglas de la del
+// cobro: entera, a lo sumo una vez, los montos y la sesión copiados (refund_voids_check_copy()).
+export const refundVoids = pgTable(
+  "refund_voids",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    // Del contador de numbering con el tipo refund_void; se muestra como AD-000002.
+    number: bigint("number", { mode: "number" }).notNull(),
+    refundId: uuid("refund_id").notNull(),
+    currency: text("currency").notNull(),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    reason: refundVoidReason("reason").notNull(),
+    sessionId: uuid("session_id"),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(sql`clock_timestamp()`),
+  },
+  (table) => [
+    unique("refund_voids_organization_number_unique").on(
+      table.organizationId,
+      table.number,
+    ),
+    unique("refund_voids_refund_unique").on(table.refundId),
+    foreignKey({
+      name: "refund_voids_refund_fk",
+      columns: [table.organizationId, table.refundId],
+      foreignColumns: [refunds.organizationId, refunds.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "refund_voids_session_fk",
+      columns: [table.organizationId, table.sessionId],
+      foreignColumns: [cashSessions.organizationId, cashSessions.id],
+    }).onDelete("restrict"),
+    index("refund_voids_session_idx").on(table.organizationId, table.sessionId),
+    check("refund_voids_number_positive", sql`${table.number} > 0`),
+    check("refund_voids_amount_positive", sql`${table.amount} > 0`),
+    check(
+      "refund_voids_currency_format",
+      sql`${table.currency} ~ '^[A-Z]{3}$'`,
+    ),
+  ],
+);

@@ -9,6 +9,7 @@ import {
 import {
   getClientsByIds,
   lockClientForOrder,
+  lockClientForRefund,
   type Client,
 } from "@/modules/crm";
 import { formatDocumentNumber, nextDocumentNumber } from "@/modules/numbering";
@@ -43,6 +44,7 @@ import {
   imputeAccount,
   outstandingOf,
   standaloneSale,
+  type AccountInput,
   type AccountReceipt,
   type CurrencyAccount,
 } from "./imputation";
@@ -52,11 +54,13 @@ import {
   parseCashAmount,
   type CashAmountRejection,
   type CashTotals,
+  type TotalsInput,
 } from "./totals";
 
 // Casos de uso de los medios de pago y de la caja del efectivo (ADR 0022, puntos 4, 8, 10 y 12;
 // brief-21.2), desde la 21.3, del cobro de una venta (brief-21.3) y, desde la 21.4, de la seña
-// (brief-21.4). cash es dueño de la regla: abre la transacción, toma primero el bloqueo de cobros de
+// (brief-21.4), y desde la 21.5, de la anulación de un cobro, la devolución y su anulación
+// (brief-21.5). cash es dueño de la regla: abre la transacción, toma primero el bloqueo de cobros de
 // la organización y se la pasa a orders (la cabecera del pedido, bloqueada, y los pedidos del
 // cliente, para leer), a sales (la venta, para leer), a crm (el cliente en modo compartido), a
 // numbering y a audit. Depende de sales y de crm desde la 21.3 y de orders desde la 21.4, sin
@@ -427,17 +431,64 @@ function parseCurrencyRows(
   return issues.length > 0 ? { ok: false, issues } : { ok: true, amounts };
 }
 
+// Los términos de lo esperado de una sesión (D-4; brief-21.3, D-5; brief-21.5, D-6): todos sus
+// cobros y sus devoluciones en efectivo, y lo anulado mientras estaba abierta, que es lo que impactó
+// en ella (D-1). Una sola función los lee para la caja, la confirmación y el cierre.
+async function readTotalsInput(
+  organizationId: string,
+  sessionId: string,
+  executor?: DbTransaction,
+) {
+  // Una tras otra: dentro de una transacción van todas por su conexión, y pg no admite consultas
+  // superpuestas en una misma conexión. Son seis lecturas chicas por sesión.
+  const opening = await repository.findOpeningAmounts(
+    organizationId,
+    [sessionId],
+    executor,
+  );
+  const receipts = await repository.findSessionReceipts(
+    organizationId,
+    sessionId,
+    executor,
+  );
+  const receiptVoids = await repository.findSessionReceiptVoids(
+    organizationId,
+    sessionId,
+    executor,
+  );
+  const refunds = await repository.findSessionRefunds(
+    organizationId,
+    sessionId,
+    executor,
+  );
+  const refundVoids = await repository.findSessionRefundVoids(
+    organizationId,
+    sessionId,
+    executor,
+  );
+  const movements = await repository.findMovements(
+    organizationId,
+    sessionId,
+    executor,
+  );
+  return {
+    opening,
+    receipts,
+    receiptVoids,
+    refunds,
+    refundVoids,
+    movements,
+  } satisfies TotalsInput;
+}
+
 async function readTotals(
   tx: DbTransaction,
   organizationId: string,
   sessionId: string,
 ): Promise<CashTotals[]> {
-  const [opening, receipts, movements] = await Promise.all([
-    repository.findOpeningAmounts(organizationId, [sessionId], tx),
-    repository.findSessionReceipts(organizationId, sessionId, tx),
-    repository.findMovements(organizationId, sessionId, tx),
-  ]);
-  return computeCashTotals({ opening, receipts, movements });
+  return computeCashTotals(
+    await readTotalsInput(organizationId, sessionId, tx),
+  );
 }
 
 type CashRowsFailure = Failure<
@@ -801,13 +852,8 @@ export async function previewCashClosing(
       session: sessionRef(session),
     };
   }
-  const [opening, receipts, movements] = await Promise.all([
-    repository.findOpeningAmounts(organizationId, [session.id]),
-    repository.findSessionReceipts(organizationId, session.id),
-    repository.findMovements(organizationId, session.id),
-  ]);
   const plan = planClosing(
-    computeCashTotals({ opening, receipts, movements }),
+    computeCashTotals(await readTotalsInput(organizationId, session.id)),
     read.counted,
   );
   if (!plan.ok) return rowsFailure("missing", [], plan.missing);
@@ -944,6 +990,10 @@ export type CashCurrencyTotals = {
   initial: string;
   // Los cobros en efectivo, desde la 21.3 (brief-21.3, D-5).
   receipts: string;
+  // Desde la 21.5 (brief-21.5, D-6): lo anulado con la sesión abierta y las devoluciones en efectivo.
+  receiptVoids: string;
+  refunds: string;
+  refundVoids: string;
   contributions: string;
   withdrawals: string;
   expected: string;
@@ -970,8 +1020,24 @@ export type CashSessionDetail = SessionRef & {
   closedAt: Date | null;
   currencies: CashCurrencyTotals[];
   movements: CashMovementView[];
-  // Los cobros en efectivo de la sesión, con su número (brief-21.3, D-5).
+  // Los cobros en efectivo de la sesión, con su número (brief-21.3, D-5), y desde la 21.5 sus
+  // devoluciones en efectivo; los anulados, marcados (brief-21.5, D-6 y D-9).
   receipts: ReceiptListItem[];
+  refunds: RefundListItem[];
+  // Las anulaciones posteriores al cierre de sus cobros y devoluciones: explican su diferencia, y el
+  // arqueo guardado no cambia (ADR 0022, punto 7).
+  lateVoids: LateVoidView[];
+};
+
+export type LateVoidView = {
+  kind: "receipt" | "refund";
+  // AR-… o AD-…
+  displayNumber: string;
+  source: DocumentRef;
+  currency: string;
+  amount: string;
+  reason: string;
+  createdAt: Date;
 };
 
 function difference(counted: Money, expected: Money) {
@@ -1005,15 +1071,17 @@ async function sessionDetail(
   organizationId: string,
   session: repository.SessionRow,
 ): Promise<CashSessionDetail> {
-  const [opening, receipts, movements, closing] = await Promise.all([
-    repository.findOpeningAmounts(organizationId, [session.id]),
-    repository.findSessionReceipts(organizationId, session.id),
-    repository.findMovements(organizationId, session.id),
+  const [input, closing, lateVoids] = await Promise.all([
+    readTotalsInput(organizationId, session.id),
     session.closedAt === null
       ? Promise.resolve([])
       : repository.findClosingAmounts(organizationId, [session.id]),
+    session.closedAt === null
+      ? Promise.resolve([])
+      : repository.findLateVoids(organizationId, session.id),
   ]);
-  const totals = computeCashTotals({ opening, receipts, movements });
+  const { receipts, refunds, movements } = input;
+  const totals = computeCashTotals(input);
   const closingOf = new Map(closing.map((row) => [row.currency, row]));
   // Una moneda que apareció al contar no tiene inicial ni movimientos: su fila sale del cierre.
   for (const row of closing) {
@@ -1022,6 +1090,9 @@ async function sessionDetail(
         currency: row.currency,
         initial: 0n,
         receipts: 0n,
+        receiptVoids: 0n,
+        refunds: 0n,
+        refundVoids: 0n,
         contributions: 0n,
         withdrawals: 0n,
         expected: 0n,
@@ -1054,6 +1125,9 @@ async function sessionDetail(
         currency: row.currency,
         initial: moneyToDatabase(row.initial),
         receipts: moneyToDatabase(row.receipts),
+        receiptVoids: moneyToDatabase(row.receiptVoids),
+        refunds: moneyToDatabase(row.refunds),
+        refundVoids: moneyToDatabase(row.refundVoids),
         contributions: moneyToDatabase(row.contributions),
         withdrawals: moneyToDatabase(row.withdrawals),
         expected: moneyToDatabase(expected),
@@ -1073,6 +1147,22 @@ async function sessionDetail(
       createdAt: row.createdAt,
     })),
     receipts: await receiptListItems(organizationId, receipts),
+    refunds: await refundListItems(organizationId, refunds),
+    lateVoids: lateVoids.map((row) => ({
+      kind: row.kind,
+      displayNumber: formatDocumentNumber(
+        row.kind === "receipt" ? "receipt_void" : "refund_void",
+        row.number,
+      ),
+      source: {
+        id: row.sourceId,
+        displayNumber: formatDocumentNumber(row.kind, row.sourceNumber),
+      },
+      currency: row.currency,
+      amount: row.amount,
+      reason: row.reason,
+      createdAt: row.createdAt,
+    })),
   };
 }
 
@@ -1347,31 +1437,55 @@ function toAccountReceipt(
   throw new Error(`cobro ${row.id} sin la clave de su destino`);
 }
 
-const sumAmounts = (rows: repository.ReceiptRow[]): Money =>
-  rows.reduce((sum, row) => sum + moneyFromDatabase(row.amount), 0n);
+// Lo vigente de unos cobros o unas devoluciones: lo anulado se muestra y no cuenta (brief-21.5, D-8).
+function current<T extends { voided: repository.VoidRef | null }>(
+  rows: T[],
+): T[] {
+  return rows.filter((row) => row.voided === null);
+}
+
+// La suma de lo vigente.
+const sumAmounts = (
+  rows: { amount: string; voided: repository.VoidRef | null }[],
+): Money =>
+  current(rows).reduce((sum, row) => sum + moneyFromDatabase(row.amount), 0n);
 
 // La cuenta de un cliente (brief-21.4, D-5): sus ventas por sales, sus pedidos por orders y sus
 // cobros, con la regla de imputación. La venta vigente de un pedido es la no anulada con ese pedido
 // (D-3; ADR 0021, punto 3). Una sola función la arma para el cobro, la seña y las lecturas, para que
 // no puedan contradecirse. Lee con la transacción que recibe: en un cobro, con el bloqueo de cobros
 // tomado.
-type ClientAccount = {
+//
+// Desde la 21.5 (brief-21.5, D-8), sin los cobros anulados y con las devoluciones vigentes de la
+// cuenta. Los cobros y las devoluciones vuelven todos, anulados incluidos, para mostrarlos.
+type ClientLedger = {
+  // Todos, anulados incluidos.
   receipts: repository.ReceiptRow[];
+  refunds: repository.RefundRow[];
   ordersById: Map<string, OrderForReceipt>;
   // La venta vigente de cada pedido que la tiene.
   currentSaleOf: Map<string, SaleForReceipt>;
-  accounts: CurrencyAccount[];
+  // La entrada de la regla, sin lo anulado.
+  input: AccountInput;
 };
 
-async function clientAccount(
+type ClientAccount = ClientLedger & { accounts: CurrencyAccount[] };
+
+async function clientLedger(
   tx: DbTransaction,
   organizationId: string,
   clientId: string,
-): Promise<ClientAccount> {
-  // Una tras otra: las tres van por la conexión de la transacción.
+  options: { withoutReceiptId?: string } = {},
+): Promise<ClientLedger> {
+  // Una tras otra: las cuatro van por la conexión de la transacción.
   const sales = await listClientSalesForAccount(tx, organizationId, clientId);
   const orders = await listClientOrdersForAccount(tx, organizationId, clientId);
   const receipts = await repository.findClientReceipts(
+    organizationId,
+    clientId,
+    tx,
+  );
+  const refunds = await repository.findClientRefunds(
     organizationId,
     clientId,
     tx,
@@ -1385,7 +1499,7 @@ async function clientAccount(
     }
     currentSaleOf.set(sale.orderId, sale);
   }
-  const accounts = imputeAccount({
+  const input: AccountInput = {
     sales: sales.map((row) => ({
       id: row.id,
       number: row.number,
@@ -1394,13 +1508,47 @@ async function clientAccount(
       issuedAt: row.createdAt,
       voided: row.voided,
     })),
-    receipts: receipts.map((row) =>
-      toAccountReceipt(row, ordersById, currentSaleOf),
-    ),
-    // Las devoluciones llegan con la 21.5 (brief-21.3, H-6).
-    refunds: [],
-  });
-  return { receipts, ordersById, currentSaleOf, accounts };
+    // Sin los anulados (D-8), y sin el que se está por anular, para la comprobación de D-5.
+    receipts: current(receipts)
+      .filter((row) => row.id !== options.withoutReceiptId)
+      .map((row) => toAccountReceipt(row, ordersById, currentSaleOf)),
+    refunds: current(refunds).map((row) => ({
+      currency: row.currency,
+      amount: moneyFromDatabase(row.amount),
+    })),
+  };
+  return { receipts, refunds, ordersById, currentSaleOf, input };
+}
+
+async function clientAccount(
+  tx: DbTransaction,
+  organizationId: string,
+  clientId: string,
+): Promise<ClientAccount> {
+  const ledger = await clientLedger(tx, organizationId, clientId);
+  return { ...ledger, accounts: imputeAccount(ledger.input) };
+}
+
+// El remanente de una moneda antes de las devoluciones (ADR 0022, punto 9, paso 2), con la misma
+// regla y sin reescribirla: sin devoluciones, imputeAccount reparte el remanente entero entre lo
+// imputado a las ventas (paso 3) y lo que sobra a favor (paso 4). Nunca lanza por las devoluciones,
+// porque no se las pasa.
+function remainderBeforeRefunds(input: AccountInput, currency: string): Money {
+  const account = imputeAccount({ ...input, refunds: [] }).find(
+    (row) => row.currency === currency,
+  );
+  if (!account) return 0n;
+  return account.sales.reduce(
+    (sum, sale) => sum + sale.imputed,
+    account.inFavor,
+  );
+}
+
+// Lo devuelto de una moneda, vigente.
+function refundedIn(input: AccountInput, currency: string): Money {
+  return input.refunds
+    .filter((row) => row.currency === currency)
+    .reduce((sum, row) => sum + row.amount, 0n);
 }
 
 // Dónde está una venta respecto de sus cobros, con la regla de imputación (D-2). Con cliente, lo que
@@ -1420,6 +1568,8 @@ type SaleStanding = {
   // De una venta anulada: con cliente, lo que pasó a su cuenta; sin cliente, lo que queda a devolver.
   toAccount: Money;
   toRefund: Money;
+  // Las devoluciones de una venta sin cliente anulada, anuladas incluidas (brief-21.5, D-9).
+  refunds: repository.RefundRow[];
 };
 
 async function saleStanding(
@@ -1432,11 +1582,18 @@ async function saleStanding(
     sale.id,
     tx,
   );
+  // Sin los cobros anulados (brief-21.5, D-8).
   const direct = sumAmounts(receipts);
   if (sale.clientId === null) {
+    const refunds = await repository.findSaleRefunds(
+      organizationId,
+      sale.id,
+      tx,
+    );
     const standing = standaloneSale({
       total: moneyFromDatabase(sale.total),
       collected: direct,
+      refunded: sumAmounts(refunds),
       voided: sale.voided,
     });
     return {
@@ -1447,6 +1604,7 @@ async function saleStanding(
       outstanding: standing.outstanding,
       toAccount: 0n,
       toRefund: standing.toRefund,
+      refunds,
     };
   }
   if (sale.voided) {
@@ -1458,6 +1616,7 @@ async function saleStanding(
       outstanding: 0n,
       toAccount: direct,
       toRefund: 0n,
+      refunds: [],
     };
   }
   const account = await clientAccount(tx, organizationId, sale.clientId);
@@ -1478,7 +1637,14 @@ async function saleStanding(
     outstanding: row.outstanding,
     toAccount: 0n,
     toRefund: 0n,
+    refunds: [],
   };
+}
+
+// Lo que está a favor de una cuenta en una moneda (punto 9, paso 4): lo único que se devuelve desde
+// la cuenta (brief-21.5, H-2).
+function inFavorOf(accounts: CurrencyAccount[], currency: string): Money {
+  return accounts.find((row) => row.currency === currency)?.inFavor ?? 0n;
 }
 
 // Dónde está un pedido respecto de sus señas (brief-21.4, D-5 y H-5). Lo que le falta es su total
@@ -1489,11 +1655,14 @@ async function saleStanding(
 type OrderSituation = "none" | "retained" | "applied" | "to_account";
 
 type OrderStanding = {
+  // Anuladas incluidas, para mostrarlas; lo señado y la situación, sin ellas (brief-21.5, D-8).
   deposits: repository.ReceiptRow[];
   deposited: Money;
   outstanding: Money;
   situation: OrderSituation;
   currentSale: SaleForReceipt | null;
+  // Lo que está a favor de la cuenta del cliente en la moneda del pedido (brief-21.5, D-9).
+  clientInFavor: Money;
 };
 
 async function orderStanding(
@@ -1512,8 +1681,9 @@ async function orderStanding(
     deposits,
     deposited,
     outstanding: outstanding > 0n ? outstanding : 0n,
+    clientInFavor: inFavorOf(account.accounts, order.currency),
     situation:
-      deposits.length === 0
+      current(deposits).length === 0
         ? "none"
         : order.status === "cancelled"
           ? "to_account"
@@ -1874,6 +2044,528 @@ export async function createOrderReceipt(
   );
 }
 
+// La anulación de un cobro, la devolución y su anulación (ADR 0022, punto 7; brief-21.5, D-4 a D-13).
+// Cada una con su comprobante y su serie: AR, D y AD. El efecto lo da el tipo del comprobante, y
+// ningún monto es negativo.
+
+export const RECEIPT_VOID_REASONS: readonly repository.ReceiptVoidReason[] = [
+  "not_received",
+  "wrong_method",
+  "wrong_amount",
+  "wrong_target",
+  "other",
+];
+
+export const REFUND_VOID_REASONS: readonly repository.RefundVoidReason[] = [
+  "not_paid",
+  "wrong_method",
+  "wrong_amount",
+  "wrong_client",
+  "other",
+];
+
+export type ReceiptVoidReason = repository.ReceiptVoidReason;
+export type RefundVoidReason = repository.RefundVoidReason;
+
+export type DocumentNumberRef = {
+  id: string;
+  number: number;
+  displayNumber: string;
+};
+
+function documentRef(
+  kind: "receipt_void" | "refund" | "refund_void",
+  row: { id: string; number: number },
+): DocumentNumberRef {
+  return {
+    id: row.id,
+    number: row.number,
+    displayNumber: formatDocumentNumber(kind, row.number),
+  };
+}
+
+type AlreadyVoided = Failure<
+  "BUSINESS_RULE_VIOLATION",
+  { rule: "already_voided"; void: DocumentNumberRef }
+>;
+
+type InsufficientCash = Failure<
+  "BUSINESS_RULE_VIOLATION",
+  { rule: "insufficient_cash"; currency: string; expected: string }
+>;
+
+type RefundsExceedReceipts = Failure<
+  "BUSINESS_RULE_VIOLATION",
+  { rule: "refunds_exceed_receipts"; currency: string; refunded: string }
+>;
+
+type VoidFieldsFailure = Failure<
+  "VALIDATION_ERROR",
+  { fields: "reason"[]; amount?: "limit" }
+>;
+
+// La sesión en la que impacta una anulación (D-1): la del original en efectivo si sigue abierta, o
+// ninguna. Con la sesión cerrada, el arqueo guardado no cambia y la sesión abierta no se toca, porque
+// esa plata no entró ni salió de la caja de hoy (ADR 0022, punto 7). Se lee con el bloqueo de cobros
+// tomado: un cierre no se cruza. receipt_voids_check_copy() y refund_voids_check_copy() lo defienden.
+async function impactedSession(
+  tx: DbTransaction,
+  organizationId: string,
+  sessionId: string | null,
+): Promise<repository.SessionRow | null> {
+  if (sessionId === null) return null;
+  const session = await repository.findSession(organizationId, sessionId, tx);
+  if (!session || session.closedAt !== null) return null;
+  return session;
+}
+
+async function expectedIn(
+  tx: DbTransaction,
+  organizationId: string,
+  sessionId: string,
+  currency: string,
+): Promise<Money> {
+  const totals = await readTotals(tx, organizationId, sessionId);
+  return totals.find((row) => row.currency === currency)?.expected ?? 0n;
+}
+
+function insufficientCash(currency: string, expected: Money): InsufficientCash {
+  return {
+    ok: false,
+    code: "BUSINESS_RULE_VIOLATION",
+    rule: "insufficient_cash",
+    currency,
+    expected: moneyToDatabase(expected),
+  };
+}
+
+// «Nunca queda devuelto más de lo cobrado» (ADR 0022, punto 7; brief-21.5, D-5), con el bloqueo de
+// cobros tomado. Es la lectura del remanente, no la del haber (H-3):
+// - con cliente, la cuenta sin ese cobro no deja el remanente de su moneda por debajo de lo devuelto;
+//   el remanente sale de imputeAccount, sin reescribir la regla;
+// - sin cliente, los cobros vigentes de la venta sin ese cobro no quedan por debajo de lo devuelto.
+async function refundsExceedReceipts(
+  tx: DbTransaction,
+  organizationId: string,
+  receipt: repository.ReceiptRow,
+): Promise<RefundsExceedReceipts | null> {
+  let received: Money;
+  let refunded: Money;
+  if (receipt.clientId !== null) {
+    const ledger = await clientLedger(tx, organizationId, receipt.clientId, {
+      withoutReceiptId: receipt.id,
+    });
+    refunded = refundedIn(ledger.input, receipt.currency);
+    received = remainderBeforeRefunds(ledger.input, receipt.currency);
+  } else {
+    if (receipt.saleId === null) {
+      throw new Error(`el cobro ${receipt.id} no tiene cliente ni venta`);
+    }
+    const receipts = await repository.findSaleReceipts(
+      organizationId,
+      receipt.saleId,
+      tx,
+    );
+    const refunds = await repository.findSaleRefunds(
+      organizationId,
+      receipt.saleId,
+      tx,
+    );
+    refunded = sumAmounts(refunds);
+    received = sumAmounts(receipts.filter((row) => row.id !== receipt.id));
+  }
+  if (received >= refunded) return null;
+  return {
+    ok: false,
+    code: "BUSINESS_RULE_VIOLATION",
+    rule: "refunds_exceed_receipts",
+    currency: receipt.currency,
+    refunded: moneyToDatabase(refunded),
+  };
+}
+
+export type VoidReceiptResult =
+  | { ok: true; receipt: ReceiptRef; receiptVoid: DocumentNumberRef }
+  | Failure<"FORBIDDEN">
+  | Failure<"VALIDATION_ERROR">
+  | VoidFieldsFailure
+  | Failure<"NOT_FOUND", { entity: "receipt" }>
+  | AlreadyVoided
+  | RefundsExceedReceipts
+  | InsufficientCash;
+
+// La anulación de un cobro (D-4), solo de admin, en READ COMMITTED:
+//
+// 1. el bloqueo de cobros de la organización;
+// 2. el cobro y su anulación, si la tiene, leídos con el bloqueo tomado;
+// 3. la comprobación: no anulado; que no deje devuelto más de lo cobrado (D-5); y si fue en efectivo
+//    con su sesión abierta, que lo esperado de su moneda no quede por debajo de cero (punto 8);
+// 4. al final, el contador, la anulación y la auditoría.
+//
+// No bloquea el pedido, la venta ni el cliente: la anulación no referencia a ninguno, y lo que se
+// cruza sin el bloqueo de cobros (anular una venta, cancelar un pedido, emitir una venta) no achica
+// el remanente (H-4): emitir una venta solo le imputa lo que hay.
+export async function voidReceipt(
+  context: AuthContext,
+  input: { receiptId: string; reason: string },
+): Promise<VoidReceiptResult> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  if (!idSchema.safeParse(input.receiptId).success) {
+    return failure("VALIDATION_ERROR");
+  }
+  if (!(RECEIPT_VOID_REASONS as readonly string[]).includes(input.reason)) {
+    return { ok: false, code: "VALIDATION_ERROR", fields: ["reason"] };
+  }
+  const { organizationId, userId } = context;
+
+  return repository.withTransaction(async (tx): Promise<VoidReceiptResult> => {
+    await repository.lockCash(tx, organizationId);
+    const receipt = await repository.findReceipt(
+      organizationId,
+      input.receiptId.toLowerCase(),
+      tx,
+    );
+    if (!receipt) return { ok: false, code: "NOT_FOUND", entity: "receipt" };
+    if (receipt.voided) {
+      return {
+        ok: false,
+        code: "BUSINESS_RULE_VIOLATION",
+        rule: "already_voided",
+        void: documentRef("receipt_void", receipt.voided),
+      };
+    }
+    const exceeds = await refundsExceedReceipts(tx, organizationId, receipt);
+    if (exceeds) return exceeds;
+    const session = await impactedSession(
+      tx,
+      organizationId,
+      receipt.sessionId,
+    );
+    const amount = moneyFromDatabase(receipt.amount);
+    if (session) {
+      const expected = await expectedIn(
+        tx,
+        organizationId,
+        session.id,
+        receipt.currency,
+      );
+      if (expected - amount < 0n) {
+        return insufficientCash(receipt.currency, expected);
+      }
+    }
+
+    const number = await nextDocumentNumber(tx, organizationId, "receipt_void");
+    const row = await repository.insertReceiptVoid(tx, {
+      organizationId,
+      number,
+      sourceId: receipt.id,
+      // La copia del cobro (D-1).
+      currency: receipt.currency,
+      amount: receipt.amount,
+      reason: input.reason,
+      sessionId: session?.id ?? null,
+      createdBy: userId,
+    });
+    // Sobre el cobro, como la anulación de la venta (D-13): el número de la anulación, el motivo y,
+    // si impactó en la caja, la sesión. Sin datos de la persona.
+    await recordAudit(tx, {
+      organizationId,
+      actorUserId: userId,
+      entityType: "receipt",
+      entityId: receipt.id,
+      action: "void",
+      diff: {
+        // before lleva los mismos campos que after (recordAudit).
+        before: {
+          void_number: null,
+          reason: null,
+          ...(session ? { session_number: null } : {}),
+        },
+        after: {
+          void_number: row.number,
+          reason: input.reason,
+          ...(session ? { session_number: session.number } : {}),
+        },
+      },
+    });
+    return {
+      ok: true,
+      receipt: receiptRef(receipt),
+      receiptVoid: documentRef("receipt_void", row),
+    };
+  });
+}
+
+export type RefundField = ReceiptField | "currency" | "target";
+
+type RefundFieldsFailure = Failure<
+  "VALIDATION_ERROR",
+  {
+    fields: RefundField[];
+    amount?: CashAmountRejection | "required" | "limit";
+  }
+>;
+
+type ExceedsRefundable = Failure<
+  "BUSINESS_RULE_VIOLATION",
+  { rule: "exceeds_refundable"; currency: string; available: string }
+>;
+
+export type CreateRefundResult =
+  | { ok: true; refund: DocumentNumberRef }
+  | Failure<"FORBIDDEN">
+  | Failure<"VALIDATION_ERROR">
+  | RefundFieldsFailure
+  | Failure<"NOT_FOUND", { entity: "client" | "sale" }>
+  | PaymentFailure
+  | Failure<"BUSINESS_RULE_VIOLATION", { rule: "sale_not_refundable" }>
+  | ExceedsRefundable
+  | InsufficientCash;
+
+const refundTargetSchema = z.enum(["account", "sale"]);
+
+// La devolución (D-7), solo de admin, en READ COMMITTED, con el orden del ADR 0022, punto 4:
+//
+// 1. el bloqueo de cobros de la organización;
+// 2. con la cuenta, el cliente en modo exclusivo por crm, para que una venta emitida en paralelo,
+//    que lo toma en modo compartido y achica lo que está a favor, espere o sea esperada (D-11
+//    precisado tras la revisión independiente); con la venta, la venta por sales, sin bloquearla;
+// 3. la comprobación: una venta sin cliente y anulada; el medio activo y la sesión abierta si es
+//    efectivo; que no supere lo disponible (con la cuenta, lo que está a favor, H-2; con la venta, lo
+//    que queda a devolver); y en efectivo, que lo esperado alcance (punto 8);
+// 4. al final, el contador, la devolución y la auditoría.
+//
+// Lo demás que se cruza sin el bloqueo de cobros (anular una venta, cancelar un pedido) solo agranda
+// lo disponible (H-4): lo devuelto sigue cabiendo.
+export async function createRefund(
+  context: AuthContext,
+  input: {
+    target: string;
+    clientId?: string;
+    saleId?: string;
+    currency?: string;
+    paymentMethodId: string;
+    amount: string;
+  },
+): Promise<CreateRefundResult> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  const target = refundTargetSchema.safeParse(input.target);
+  if (!target.success) {
+    return { ok: false, code: "VALIDATION_ERROR", fields: ["target"] };
+  }
+  const targetId = target.data === "account" ? input.clientId : input.saleId;
+  if (!targetId || !idSchema.safeParse(targetId).success) {
+    return failure("VALIDATION_ERROR");
+  }
+  const currencyText = (input.currency ?? "").trim().toUpperCase();
+  const currencyOk =
+    target.data === "sale" || acceptedCurrencies().includes(currencyText);
+  const fields = readReceiptFields(input);
+  if (!fields.ok || !currencyOk) {
+    const issues: RefundField[] = fields.ok ? [] : [...fields.fields];
+    if (!currencyOk) issues.push("currency");
+    return {
+      ok: false,
+      code: "VALIDATION_ERROR",
+      fields: issues,
+      ...(!fields.ok && fields.amount ? { amount: fields.amount } : {}),
+    };
+  }
+  const { organizationId, userId } = context;
+  const id = targetId.toLowerCase();
+
+  return repository.withTransaction(async (tx): Promise<CreateRefundResult> => {
+    await repository.lockCash(tx, organizationId);
+    let currency: string;
+    let available: Money;
+    let destination: repository.NewRefund["destination"];
+    let saleNumber: number | null = null;
+    if (target.data === "account") {
+      const client = await lockClientForRefund(tx, organizationId, id);
+      if (client === "not_found") {
+        return { ok: false, code: "NOT_FOUND", entity: "client" };
+      }
+      currency = currencyText;
+      destination = { target: "account", clientId: id };
+      const account = await clientAccount(tx, organizationId, id);
+      available = inFavorOf(account.accounts, currency);
+    } else {
+      const sale = await getSaleForReceipt(tx, organizationId, id);
+      if (!sale) return { ok: false, code: "NOT_FOUND", entity: "sale" };
+      // Con cliente, lo cobrado pasó a su cuenta y se devuelve desde ahí; vigente, no hay nada a
+      // devolver (punto 6).
+      if (sale.clientId !== null || !sale.voided) {
+        return ruleFailure("sale_not_refundable");
+      }
+      currency = sale.currency;
+      destination = { target: "sale", saleId: sale.id };
+      saleNumber = sale.number;
+      available = (await saleStanding(tx, organizationId, sale)).toRefund;
+    }
+
+    const read = await readPayment(tx, organizationId, fields, currency);
+    if (!read.ok) return read;
+    const { payment } = read;
+    if (payment.amount > available) {
+      return {
+        ok: false,
+        code: "BUSINESS_RULE_VIOLATION",
+        rule: "exceeds_refundable",
+        currency,
+        available: moneyToDatabase(available),
+      };
+    }
+    if (payment.session !== null) {
+      const expected = await expectedIn(
+        tx,
+        organizationId,
+        payment.session.id,
+        currency,
+      );
+      if (expected - payment.amount < 0n) {
+        return insufficientCash(currency, expected);
+      }
+    }
+
+    const number = await nextDocumentNumber(tx, organizationId, "refund");
+    const refund = await repository.insertRefund(tx, {
+      organizationId,
+      number,
+      destination,
+      paymentMethodId: payment.method.id,
+      sessionId: payment.session?.id ?? null,
+      currency,
+      amount: moneyToDatabase(payment.amount),
+      createdBy: userId,
+    });
+    // Claves planas, sin datos de la persona (D-13): el destino va por su tipo y, si es una venta,
+    // por su número.
+    await recordAudit(tx, {
+      organizationId,
+      actorUserId: userId,
+      entityType: "refund",
+      entityId: refund.id,
+      action: "create",
+      diff: {
+        before: null,
+        after: {
+          number: refund.number,
+          target: destination.target,
+          ...(saleNumber === null ? {} : { sale_number: saleNumber }),
+          payment_method: payment.method.name,
+          currency: refund.currency,
+          amount: refund.amount,
+          ...(payment.session === null
+            ? {}
+            : { session_number: payment.session.number }),
+        },
+      },
+    });
+    return { ok: true, refund: documentRef("refund", refund) };
+  });
+}
+
+export type VoidRefundResult =
+  | { ok: true; refund: DocumentNumberRef; refundVoid: DocumentNumberRef }
+  | Failure<"FORBIDDEN">
+  | Failure<"VALIDATION_ERROR">
+  | VoidFieldsFailure
+  | Failure<"NOT_FOUND", { entity: "refund" }>
+  | AlreadyVoided;
+
+// La anulación de una devolución (D-7), como la de un cobro y sin la comprobación de lo devuelto:
+// anularla solo agranda lo que está a favor o a devolver. Con su sesión abierta, la devolución en
+// efectivo deja de restar en lo esperado, que tiene que seguir cabiendo en numeric(14, 2), como un
+// aporte.
+export async function voidRefund(
+  context: AuthContext,
+  input: { refundId: string; reason: string },
+): Promise<VoidRefundResult> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  if (!idSchema.safeParse(input.refundId).success) {
+    return failure("VALIDATION_ERROR");
+  }
+  if (!(REFUND_VOID_REASONS as readonly string[]).includes(input.reason)) {
+    return { ok: false, code: "VALIDATION_ERROR", fields: ["reason"] };
+  }
+  const { organizationId, userId } = context;
+
+  return repository.withTransaction(async (tx): Promise<VoidRefundResult> => {
+    await repository.lockCash(tx, organizationId);
+    const refund = await repository.findRefund(
+      organizationId,
+      input.refundId.toLowerCase(),
+      tx,
+    );
+    if (!refund) return { ok: false, code: "NOT_FOUND", entity: "refund" };
+    if (refund.voided) {
+      return {
+        ok: false,
+        code: "BUSINESS_RULE_VIOLATION",
+        rule: "already_voided",
+        void: documentRef("refund_void", refund.voided),
+      };
+    }
+    const session = await impactedSession(tx, organizationId, refund.sessionId);
+    if (session) {
+      const expected = await expectedIn(
+        tx,
+        organizationId,
+        session.id,
+        refund.currency,
+      );
+      if (expected + moneyFromDatabase(refund.amount) > MAX_AMOUNT) {
+        return {
+          ok: false,
+          code: "VALIDATION_ERROR",
+          fields: [],
+          amount: "limit",
+        };
+      }
+    }
+
+    const number = await nextDocumentNumber(tx, organizationId, "refund_void");
+    const row = await repository.insertRefundVoid(tx, {
+      organizationId,
+      number,
+      sourceId: refund.id,
+      currency: refund.currency,
+      amount: refund.amount,
+      reason: input.reason,
+      sessionId: session?.id ?? null,
+      createdBy: userId,
+    });
+    await recordAudit(tx, {
+      organizationId,
+      actorUserId: userId,
+      entityType: "refund",
+      entityId: refund.id,
+      action: "void",
+      diff: {
+        // before lleva los mismos campos que after (recordAudit).
+        before: {
+          void_number: null,
+          reason: null,
+          ...(session ? { session_number: null } : {}),
+        },
+        after: {
+          void_number: row.number,
+          reason: input.reason,
+          ...(session ? { session_number: session.number } : {}),
+        },
+      },
+    });
+    return {
+      ok: true,
+      refund: documentRef("refund", refund),
+      refundVoid: documentRef("refund_void", row),
+    };
+  });
+}
+
 // Lecturas de los cobros: admin y viewer (ADR 0022, punto 12). La venta se lee por sales, el pedido
 // por orders, el cliente por crm, ya resuelto para el rol, y el medio y la sesión acá.
 
@@ -1888,7 +2580,26 @@ export type ReceiptListItem = ReceiptRef & {
   isCash: boolean;
   currency: string;
   amount: string;
+  // Su anulación (brief-21.5, D-9): se muestra y no cuenta.
+  voided: VoidView | null;
 };
+
+export type VoidView = DocumentNumberRef & {
+  reason: string;
+  createdAt: Date;
+};
+
+function voidView(
+  kind: "receipt_void" | "refund_void",
+  row: repository.VoidRef | null,
+): VoidView | null {
+  if (row === null) return null;
+  return {
+    ...documentRef(kind, row),
+    reason: row.reason,
+    createdAt: row.createdAt,
+  };
+}
 
 async function methodsById(organizationId: string) {
   return new Map(
@@ -1956,6 +2667,7 @@ async function receiptListItems(
       isCash: method?.isCash ?? false,
       currency: row.currency,
       amount: row.amount,
+      voided: voidView("receipt_void", row.voided),
     };
   });
 }
@@ -1977,8 +2689,15 @@ export type SaleReceipts = {
   // De una venta anulada: con cliente, lo que pasó a su cuenta; sin cliente, lo que queda a devolver.
   toAccount: string;
   toRefund: string;
-  // Sus cobros y las señas de su pedido, por número.
+  // Sus cobros y las señas de su pedido, por número; los anulados, marcados (brief-21.5, D-9).
   receipts: ReceiptListItem[];
+  // De una venta sin cliente anulada: lo devuelto y sus devoluciones (brief-21.5, D-9).
+  refunded: string;
+  refunds: RefundListItem[];
+  // De una venta anulada con cliente: lo que está a favor de su cuenta en la moneda de la venta, para
+  // ofrecer la devolución desde la cuenta.
+  clientId: string | null;
+  clientInFavor: string;
 };
 
 async function readSaleStanding(organizationId: string, saleId: string) {
@@ -1990,7 +2709,14 @@ async function readSaleStanding(organizationId: string, saleId: string) {
       standing.deposits.length > 0 && sale.orderId !== null
         ? await getOrderForReceipt(tx, organizationId, sale.orderId)
         : null;
-    return { sale, standing, order };
+    const clientInFavor =
+      sale.voided && sale.clientId !== null
+        ? inFavorOf(
+            (await clientAccount(tx, organizationId, sale.clientId)).accounts,
+            sale.currency,
+          )
+        : 0n;
+    return { sale, standing, order, clientInFavor };
   });
 }
 
@@ -2007,10 +2733,14 @@ export async function getSaleReceipts(
   if (!idSchema.safeParse(saleId).success) return failure("VALIDATION_ERROR");
   const found = await readSaleStanding(context.organizationId, saleId);
   if (!found) return failure("NOT_FOUND");
-  const { sale, standing, order } = found;
+  const { sale, standing, order, clientInFavor } = found;
   return {
     ok: true,
     sale: {
+      clientId: sale.clientId,
+      clientInFavor: moneyToDatabase(clientInFavor),
+      refunded: moneyToDatabase(sumAmounts(standing.refunds)),
+      refunds: await refundListItems(context.organizationId, standing.refunds),
       currency: sale.currency,
       total: sale.total,
       collected: moneyToDatabase(standing.collected),
@@ -2099,6 +2829,9 @@ export type OrderReceipts = {
   // Admite señas: pending o confirmed, y le falta algo.
   open: boolean;
   receipts: ReceiptListItem[];
+  // Lo que está a favor de la cuenta del cliente en la moneda del pedido (brief-21.5, D-9).
+  clientId: string;
+  clientInFavor: string;
 };
 
 async function readOrderStanding(organizationId: string, orderId: string) {
@@ -2141,6 +2874,8 @@ export async function getOrderReceipts(
           : null,
       open:
         OPEN_ORDER_STATUSES.includes(order.status) && standing.outstanding > 0n,
+      clientId: order.clientId,
+      clientInFavor: moneyToDatabase(standing.clientInFavor),
       receipts: await receiptListItems(
         context.organizationId,
         standing.deposits,
@@ -2203,7 +2938,10 @@ export type ReceiptDetail = ReceiptListItem & {
   client: Client | null;
   clientId: string | null;
   session: SessionRef | null;
+  // Si su sesión sigue abierta: anularlo sale de lo esperado de esa sesión (brief-21.5, D-9).
+  sessionOpen: boolean;
   createdByName: string | null;
+  voidedByName: string | null;
 };
 
 export async function getReceipt(
@@ -2230,7 +2968,7 @@ export async function getReceipt(
     row.sessionId === null
       ? undefined
       : repository.findSession(organizationId, row.sessionId),
-    memberNames(organizationId, [row.createdBy]),
+    memberNames(organizationId, [row.createdBy, row.voided?.createdBy ?? null]),
   ]);
   return {
     ok: true,
@@ -2239,7 +2977,11 @@ export async function getReceipt(
       client: clients.ok ? (clients.clients[0] ?? null) : null,
       clientId: row.clientId,
       session: session ? sessionRef(session) : null,
+      sessionOpen: session ? session.closedAt === null : false,
       createdByName: names.get(row.createdBy) ?? null,
+      voidedByName: row.voided
+        ? (names.get(row.voided.createdBy) ?? null)
+        : null,
     },
   };
 }
@@ -2315,5 +3057,293 @@ export async function listReceipts(
     total,
     page,
     pageCount,
+  };
+}
+
+// Lecturas de las devoluciones: admin y viewer (ADR 0022, punto 12; brief-21.5, D-9). La venta se lee
+// por sales y el cliente por crm, ya resuelto para el rol.
+
+export function formatRefundNumber(value: number): string {
+  return formatDocumentNumber("refund", value);
+}
+
+// El número como lo escribe quien busca: «D-000007», «d7», «000007» o «7».
+export function parseRefundNumberSearch(text: string): number | null {
+  const match = /^(?:d-?)?0*(\d{1,15})$/i.exec(text.trim());
+  if (!match) return null;
+  const value = Number(match[1]!);
+  return Number.isSafeInteger(value) && value > 0 ? value : null;
+}
+
+export type RefundListItem = DocumentNumberRef & {
+  createdAt: Date;
+  // El destino: la cuenta del cliente o la venta sin cliente.
+  target: repository.RefundTarget;
+  sale: DocumentRef | null;
+  clientId: string | null;
+  paymentMethodName: string;
+  isCash: boolean;
+  currency: string;
+  amount: string;
+  voided: VoidView | null;
+};
+
+async function refundListItems(
+  organizationId: string,
+  rows: repository.RefundRow[],
+): Promise<RefundListItem[]> {
+  if (rows.length === 0) return [];
+  const saleIds = [
+    ...new Set(
+      rows.map((row) => row.saleId).filter((id): id is string => id !== null),
+    ),
+  ];
+  const sales = new Map<string, DocumentRef>();
+  if (saleIds.length > 0) {
+    await repository.withTransaction(async (tx) => {
+      for (const id of saleIds) {
+        const sale = await getSaleForReceipt(tx, organizationId, id);
+        if (sale) sales.set(id, { id, displayNumber: sale.displayNumber });
+      }
+    });
+  }
+  const methods = await methodsById(organizationId);
+  return rows.map((row) => {
+    const method = methods.get(row.paymentMethodId);
+    return {
+      ...documentRef("refund", row),
+      createdAt: row.createdAt,
+      target: row.target,
+      sale: row.saleId === null ? null : (sales.get(row.saleId) ?? null),
+      clientId: row.clientId,
+      paymentMethodName: method?.name ?? "",
+      isCash: method?.isCash ?? false,
+      currency: row.currency,
+      amount: row.amount,
+      voided: voidView("refund_void", row.voided),
+    };
+  });
+}
+
+export type RefundDetail = RefundListItem & {
+  // El cliente de la cuenta como lo entrega crm para el rol; null en una venta sin cliente
+  // («Consumidor final»).
+  client: Client | null;
+  session: SessionRef | null;
+  sessionOpen: boolean;
+  createdByName: string | null;
+  voidedByName: string | null;
+};
+
+export async function getRefund(
+  context: AuthContext,
+  refundId: string,
+): Promise<
+  | { ok: true; refund: RefundDetail }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  if (!idSchema.safeParse(refundId).success) {
+    return failure("VALIDATION_ERROR");
+  }
+  const { organizationId } = context;
+  const row = await repository.findRefund(
+    organizationId,
+    refundId.toLowerCase(),
+  );
+  if (!row) return failure("NOT_FOUND");
+  const [items, clients, session, names] = await Promise.all([
+    refundListItems(organizationId, [row]),
+    getClientsByIds(context, row.clientId === null ? [] : [row.clientId]),
+    row.sessionId === null
+      ? undefined
+      : repository.findSession(organizationId, row.sessionId),
+    memberNames(organizationId, [row.createdBy, row.voided?.createdBy ?? null]),
+  ]);
+  return {
+    ok: true,
+    refund: {
+      ...items[0]!,
+      client: clients.ok ? (clients.clients[0] ?? null) : null,
+      session: session ? sessionRef(session) : null,
+      sessionOpen: session ? session.closedAt === null : false,
+      createdByName: names.get(row.createdBy) ?? null,
+      voidedByName: row.voided
+        ? (names.get(row.voided.createdBy) ?? null)
+        : null,
+    },
+  };
+}
+
+export const CASH_REFUNDS_PAGE_SIZE = 25;
+
+export type RefundSummary = RefundListItem & {
+  client: { id: string; displayName: string | null } | null;
+};
+
+export type RefundPage = {
+  ok: true;
+  refunds: RefundSummary[];
+  total: number;
+  page: number;
+  pageCount: number;
+};
+
+// La lista de devoluciones, de la más nueva a la más vieja, con la búsqueda por número, como la de
+// los cobros (D-9).
+export async function listRefunds(
+  context: AuthContext,
+  filters: { number: string; page: number },
+): Promise<RefundPage | Failure<"FORBIDDEN">> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  const text = filters.number.trim();
+  const number = text === "" ? null : parseRefundNumberSearch(text);
+  if (text !== "" && number === null) {
+    return { ok: true, refunds: [], total: 0, page: 1, pageCount: 1 };
+  }
+  const { organizationId } = context;
+  const total = await repository.countRefunds(organizationId, number);
+  const pageCount = Math.max(1, Math.ceil(total / CASH_REFUNDS_PAGE_SIZE));
+  const page = Math.min(Math.max(1, Math.trunc(filters.page) || 1), pageCount);
+  const rows =
+    total === 0
+      ? []
+      : await repository.findRefunds(
+          organizationId,
+          number,
+          CASH_REFUNDS_PAGE_SIZE,
+          (page - 1) * CASH_REFUNDS_PAGE_SIZE,
+        );
+  const clientIds = [
+    ...new Set(
+      rows.map((row) => row.clientId).filter((id): id is string => id !== null),
+    ),
+  ];
+  const [items, clients] = await Promise.all([
+    refundListItems(organizationId, rows),
+    getClientsByIds(context, clientIds),
+  ]);
+  const clientsById = new Map(
+    clients.ok ? clients.clients.map((client) => [client.id, client]) : [],
+  );
+  return {
+    ok: true,
+    refunds: items.map((item) => ({
+      ...item,
+      client:
+        item.clientId === null
+          ? null
+          : {
+              id: item.clientId,
+              displayName: clientsById.get(item.clientId)?.displayName ?? null,
+            },
+    })),
+    total,
+    page,
+    pageCount,
+  };
+}
+
+export type RefundableAmount = {
+  currency: string;
+  amount: string;
+  // Como se escribe en el campo, para que la devolución acepte lo que propone.
+  amountInput: string;
+};
+
+export type ClientRefundForm = {
+  ok: true;
+  client: { id: string; displayName: string | null };
+  // Lo que está a favor por moneda (H-2), sin el estado de cuenta, que es de la 21.6 (H-10).
+  inFavor: RefundableAmount[];
+  paymentMethods: PaymentMethod[];
+  openSession: SessionRef | null;
+};
+
+function refundable(currency: string, amount: Money): RefundableAmount {
+  const text = moneyToDatabase(amount);
+  return {
+    currency,
+    amount: text,
+    amountInput: amountForInput(text, currency),
+  };
+}
+
+// Lo que necesita la devolución desde la cuenta (D-9). Lo que decide lo vuelve a leer la devolución
+// con el bloqueo tomado.
+export async function getClientRefundForm(
+  context: AuthContext,
+  clientId: string,
+): Promise<
+  ClientRefundForm | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  if (!idSchema.safeParse(clientId).success) {
+    return failure("VALIDATION_ERROR");
+  }
+  const id = clientId.toLowerCase();
+  const { organizationId } = context;
+  const clients = await getClientsByIds(context, [id]);
+  const client = clients.ok ? clients.clients[0] : undefined;
+  if (!client) return failure("NOT_FOUND");
+  const account = await repository.withTransaction((tx) =>
+    clientAccount(tx, organizationId, id),
+  );
+  const [methods, last] = await Promise.all([
+    repository.findPaymentMethods(organizationId),
+    repository.findLastSession(organizationId),
+  ]);
+  return {
+    ok: true,
+    client: { id: client.id, displayName: client.displayName },
+    inFavor: account.accounts
+      .filter((row) => row.inFavor > 0n)
+      .map((row) => refundable(row.currency, row.inFavor)),
+    paymentMethods: methods.filter((method) => method.isActive),
+    openSession: last && last.closedAt === null ? sessionRef(last) : null,
+  };
+}
+
+export type SaleRefundForm = {
+  ok: true;
+  sale: { id: string; displayNumber: string; currency: string };
+  // Una venta sin cliente y anulada; si no, no se devuelve desde ella.
+  refundable: boolean;
+  toRefund: RefundableAmount;
+  paymentMethods: PaymentMethod[];
+  openSession: SessionRef | null;
+};
+
+// Lo que necesita la devolución de una venta sin cliente anulada (D-9).
+export async function getSaleRefundForm(
+  context: AuthContext,
+  saleId: string,
+): Promise<
+  SaleRefundForm | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  if (!idSchema.safeParse(saleId).success) return failure("VALIDATION_ERROR");
+  const { organizationId } = context;
+  const found = await readSaleStanding(organizationId, saleId);
+  if (!found) return failure("NOT_FOUND");
+  const [methods, last] = await Promise.all([
+    repository.findPaymentMethods(organizationId),
+    repository.findLastSession(organizationId),
+  ]);
+  return {
+    ok: true,
+    sale: {
+      id: found.sale.id,
+      displayNumber: found.sale.displayNumber,
+      currency: found.sale.currency,
+    },
+    refundable: found.sale.clientId === null && found.sale.voided,
+    toRefund: refundable(found.sale.currency, found.standing.toRefund),
+    paymentMethods: methods.filter((method) => method.isActive),
+    openSession: last && last.closedAt === null ? sessionRef(last) : null,
   };
 }

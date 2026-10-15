@@ -175,6 +175,21 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
     {
       requirement: "sesion",
     },
+  // La anulación de un cobro, la devolución y su anulación (brief-21.5, D-4 y D-7): solo admin, lo
+  // exige cash.
+  "src/app/(autenticado)/cobros/[receiptId]/anular/actions.ts#voidReceiptAction":
+    {
+      requirement: "sesion",
+    },
+  "src/app/(autenticado)/devoluciones/actions.ts#createAccountRefundAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/devoluciones/actions.ts#createSaleRefundAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/devoluciones/actions.ts#voidRefundAction": {
+    requirement: "sesion",
+  },
   "src/app/(autenticado)/productos/actions.ts#createProductAction": {
     requirement: "sesion",
   },

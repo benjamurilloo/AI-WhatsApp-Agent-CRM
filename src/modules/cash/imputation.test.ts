@@ -221,7 +221,12 @@ describe("los ejemplos del punto 9", () => {
 describe("la venta sin cliente (ADR 0022, puntos 3 y 6)", () => {
   it("lo que falta es su total menos sus cobros", () => {
     expect(
-      standaloneSale({ total: 1000n, collected: 300n, voided: false }),
+      standaloneSale({
+        total: 1000n,
+        collected: 300n,
+        refunded: 0n,
+        voided: false,
+      }),
     ).toEqual({
       collected: 300n,
       outstanding: 700n,
@@ -231,12 +236,39 @@ describe("la venta sin cliente (ADR 0022, puntos 3 y 6)", () => {
 
   it("anulada, lo cobrado queda a devolver", () => {
     expect(
-      standaloneSale({ total: 1000n, collected: 300n, voided: true }),
+      standaloneSale({
+        total: 1000n,
+        collected: 300n,
+        refunded: 0n,
+        voided: true,
+      }),
     ).toEqual({
       collected: 300n,
       outstanding: 0n,
       toRefund: 300n,
     });
+  });
+
+  it("anulada, lo que queda a devolver es lo cobrado menos lo devuelto (brief-21.5, H-1)", () => {
+    expect(
+      standaloneSale({
+        total: 1000n,
+        collected: 300n,
+        refunded: 120n,
+        voided: true,
+      }),
+    ).toEqual({ collected: 300n, outstanding: 0n, toRefund: 180n });
+  });
+
+  it("lo devuelto nunca supera lo cobrado: si lo hiciera, es un defecto (brief-21.5, D-5)", () => {
+    expect(() =>
+      standaloneSale({
+        total: 1000n,
+        collected: 300n,
+        refunded: 301n,
+        voided: true,
+      }),
+    ).toThrow();
   });
 });
 
