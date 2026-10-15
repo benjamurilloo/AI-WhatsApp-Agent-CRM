@@ -4,7 +4,7 @@ project: ai-whatsapp-agent-crm
 generated_at: 2026-10-15
 git_ref: main — el último ref con corrida leída en verde es **`55aeb1a`** (run 38770197195, `success` al primer intento en 20 min, leída por el SHA completo el 2026-10-15), la implementación de la 21.6. Después viene el commit del cierre de la 21.6 y de la Fase 21, solo documentación: **al retomar, leer su corrida por `headSha`**. **Producción corre `55aeb1a`** (21.6), con la migración `0046` aplicada; para volver atrás, `52353a9`, **que no es limpio con un cobro a cuenta cargado**: ese código no conoce el destino `account`, y hay uno (`R-000010`). `confirmado`
 active_phase: **Ninguna fase de ERP abierta.** **La Fase 21 — Caja y cobros cerró el 2026-10-15** con la 21.6, por decisión del usuario: de la 21.1 a la 21.6, desplegadas y recorridas. **La Fase 13 — Producción sigue abierta**, con la 13.5.2-b esperando un negocio real y su prioridad intacta. `confirmado`
-active_task: **Ninguna subfase en curso.** Siguiente: **el usuario decide qué abrir** (§3, paso 0). `confirmado`
+active_task: **Ninguna subfase en curso.** Siguiente: **abrir la Fase 22 — Compras y proveedores**, por decisión del usuario del 2026-10-15 (§3, paso 0). `confirmado`
 confidence: confirmado
 ---
 
@@ -74,7 +74,28 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 
 ## 3. Próximo paso
 
-0. **El usuario decide qué abrir.** La Fase 21 cerró; la siguiente del Roadmap es la **Fase 22 — Compras y proveedores**, y se abre solo con su decisión (ADR 0016, punto 3), con la Fase 13 todavía abierta. **Lo que la Fase 21 deja**:
+0. **Abrir la Fase 22 — Compras y proveedores.** *Decidido por el usuario el 2026-10-15*, después de cerrar la Fase 21, con la Fase 13 todavía abierta ([ADR 0016](docs/decisions/0016-el-crm-se-amplia-hacia-un-erp-por-fases.md), punto 3; registrado en el [Roadmap](docs/planning/Roadmap.md) §Fase 22). El Roadmap la describe en una línea: «proveedores, órdenes de compra y recepción, que suma stock y actualiza el costo».
+
+   **Al abrir, en este orden** (como la 20 y la 21):
+   1. Notion: el proyecto de la fase con la plantilla «Nuevo Proyecto» (`template_id`), hijo del raíz, con sus cuatro bases inline; la tarea espejo en el raíz; cada subfase en «Esperando» y la primera en «En proceso»; releer todo. Actualizar el «Estado» del proyecto raíz, que tiene texto propio.
+   2. Proponer el orden de las subfases. **Recomendado: la 22.1 solo el ADR de compras y proveedores, sin tablas**, como la 19.1, la 20.1 y la 21.1.
+   3. Releer en la fuente DataModel (regla 14: compras, proveedores y pagos siguen sin modelo), el ADR 0016, el 0019 y el 0022, y escribir el brief de la 22.1.
+
+   **Lo que ya está fijado**:
+   - **ADR 0016**: todo lo que mueve dinero o stock es de solo inserción y se anula con otro comprobante; el dinero es `numeric` con moneda; aislamiento por organización, auditoría y autorización en el servidor; un módulo propio (el ADR lo ejemplifica como `purchasing`) y nadie depende de él; el agente nunca registra un pago.
+   - **ADR 0019**: numeración sin huecos por tipo en `document_counters`; una moneda por comprobante y sin tipos de cambio (el costo puede estar en otra moneda que el precio); **el costo es lo que el negocio paga por unidad, con el IVA incluido** (punto 5), y su historial es `product_costs` de `catalog` (18.2), de solo inserción.
+   - **ADR 0008**: el stock nunca queda negativo. Una entrada por compra es un tipo de movimiento nuevo de `inventory`, escrito por el servicio de `inventory` con la transacción del módulo dueño, y la guarda `stock-writes` fija quién lo llama (desde la 19.3).
+   - **ADR 0022**: los pagos a proveedores y los gastos quedaron fuera de la caja («Fase 22 o sin fase»), y el nombre `payments` quedó reservado para ellos (DataModel). Un retiro de efectivo de la sesión ya existe, con su motivo de lista cerrada.
+
+   **Lo que el ADR de la 22.1 tiene que decidir** (preguntas, no respuestas):
+   - si los **pagos a proveedores** entran en la fase o quedan sin fase, y, si entran, cómo toca la caja un pago en efectivo;
+   - **cómo actualiza el costo una recepción**: el último costo o un promedio, en qué moneda, y qué pasa si la compra está en otra moneda que el costo vigente;
+   - si una **orden de compra** es un documento con estados (como el pedido) y la **recepción** otro comprobante, y si se admite la recepción parcial;
+   - la **anulación** de una recepción, que saca stock y no puede dejarlo negativo;
+   - si hay **cuenta corriente con proveedores** (lo que se les debe), derivada como la de clientes o fuera de la fase;
+   - el **IVA de la compra**: sigue la pregunta de la 13.5.2-b sobre la condición del negocio (responsable inscripto o monotributista).
+
+   **Lo que la Fase 21 deja**:
    - el límite medido de la lista de deudores (Overview): revisarlo si un negocio se acerca a 20.000 ventas con cliente;
    - volver atrás desde `55aeb1a` no es limpio: hay cobros, señas, anulaciones, devoluciones y un cobro a cuenta cargados;
    - los patrones: una lectura de toda la organización compuesta en memoria va en una única instantánea (`withSnapshot`); una propiedad fija que un escenario es inalcanzable cuando el álgebra lo dice; y un saldo en cero se muestra con el formato de la base (`"0.00"`), nunca `"0"`.
