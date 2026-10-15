@@ -16,7 +16,7 @@ generated_at: 2026-10-15
 - **Nivel de validación alcanzable**: **validado localmente y en CI**, **validado en integración** para las pantallas y, con D-12, **desplegado en producción** con el recorrido del usuario. No es «preparado para producción».
 - **Orden**: segunda subfase de la Fase 22 — Compras y proveedores ([Roadmap](../planning/Roadmap.md) §Fase 22), después de la 22.1, cerrada el 2026-10-15. Implementa la fila «22.2» del punto 15 del [ADR 0023](0023-compras-y-proveedores.md). Va primero porque la orden de compra, la recepción y el pago nombran al proveedor por su clave.
 - **No abre ni cierra gate.** Crea el módulo `purchasing` con una tabla editable, sin dinero, sin stock y sin numeración. Mueve la validación del teléfono de `crm` a `src/shared/` (D-3). Se recomienda igual la revisión independiente (D-11), por ser el primer código del módulo y por ese movimiento.
-- **Estado de este documento**: **aprobado por el usuario el 2026-10-15**, con todas las recomendaciones, de D-1 a D-12. La tarea 22.2 (`3fa702be6f4e8123b500cf63664877b4`) sigue en «Esperando» hasta que el usuario autorice pasarla a «En proceso».
+- **Estado de este documento**: **aprobado por el usuario el 2026-10-15**, con todas las recomendaciones, de D-1 a D-12. La tarea 22.2 (`3fa702be6f4e8123b500cf63664877b4`) pasó a «En proceso» el 2026-10-15 con autorización del usuario. **Cerrado el 2026-10-15** (§Cierre, abajo).
 
 ## Objetivo
 
@@ -467,3 +467,23 @@ Cada hallazgo se verificó contra el código o el documento antes de aceptarlo. 
 - N-6: la frontera.
 
 **Fuera del alcance, anterior a esta subfase**: RepositoryStructure dice que `module-boundary` aplica la configuración «a los 20 casos de esta tabla», y hoy son 47.
+
+## Cierre de la subfase 22.2, 2026-10-15
+
+Cierra el 2026-10-15, después del recorrido del usuario en producción («Listo, esta todo perfecto») y de la conciliación contra la base.
+
+- **AC-1 a AC-14 cumplidos**, con el desvío aprobado (`suppliers` en `identity-schema.test.ts` y en la lista de `audit.test.ts`). AC-12 se cumple con la batería de arriba y la CI; AC-14, con el despliegue y el recorrido de abajo.
+- **Commit, CI y despliegue**:
+  - `317750d`, la implementación. La CI 38807899061 terminó en `success` en 20 minutos al primer intento, con la suite completa, y se leyó por el SHA completo. Cubre la integración entera, que en local no se volvió a correr completa después de las correcciones de la revisión.
+  - Desplegado el 2026-10-15 según [deploy/production/README.md](../../deploy/production/README.md) §Desplegar, con `55aeb1a` anotado como la versión para volver atrás. La migración `0047` se aplicó, y la última línea comparó HEAD con el SHA pedido.
+  - **El clasificador de permisos del modo automático frenó el paso 3** como despliegue a producción, aunque la regla de `ssh` estaba en la configuración local: la regla no lo destraba. El usuario pasó al modo manual para ese paso y volvió al automático después.
+  - Después del despliegue: el servicio, `active`; `/login` en `127.0.0.1:3000`, con `200`; 48 migraciones aplicadas; `suppliers` vacía, con `SELECT`, `INSERT` y `UPDATE` para `crm_app` y sus cuatro índices; `supplier` en `audit_entity_type`.
+- **El recorrido del usuario (AC-14)**, en «Demostración Vixora». **Conciliado contra la base**, solo con lecturas:
+  - un proveedor, «Importaciones Sur», activo, con teléfono, email y CUIT; ninguna otra organización tiene proveedores;
+  - la auditoría: un alta con los cinco campos, una edición que guardó solo el que cambió (`cuit`), una desactivación y una reactivación, todas del proveedor y de su organización, ninguna suelta;
+  - los rechazos (el nombre y el CUIT repetidos, el dígito verificador mal) no dejan filas, por diseño. Que un `viewer` no vea «Compras» no se lee en la base: lo cubren el recorrido y el end-to-end.
+- **Hallazgo del recorrido, mejora posible** (fuera de este brief): el usuario probó `20-12345679-2`, cuyo verificador es 4, y el mensaje es el mismo que el de una cantidad de dígitos equivocada. Separarlo en dos («El dígito verificador no corresponde a este CUIT») ayudaría. Sin decisión del usuario todavía.
+- **Revisión**: la independiente (arriba). La batería, el despliegue, la conciliación y este cierre son autoevaluación declarada.
+- **Autorizaciones usadas**, cada una en su turno: el desvío de los dos tests de esquema; el commit con su push; el despliegue y el paso a «En proceso»; el cierre con su commit y el paso a «Completado».
+- **Nivel**: validado localmente y en CI, validado en integración para las pantallas, desplegado en producción y recorrido por el usuario en la organización de demostración. No es «preparado para producción».
+- **Volver a `55aeb1a`**: el código no conoce `suppliers` ni el valor `supplier` del enum, pero ninguna otra tabla los referencia todavía. La tabla y el valor quedarían sin uso; las pantallas de compras desaparecen.

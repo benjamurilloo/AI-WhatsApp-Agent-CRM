@@ -2,6 +2,31 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-15 — 22.2: los proveedores
+
+Cierra el 2026-10-15, después del recorrido del usuario en producción ([brief-22.2](docs/decisions/brief-22.2-los-proveedores.md), §Cierre). Es la primera subfase con código de la Fase 22, sobre el [ADR 0023](docs/decisions/0023-compras-y-proveedores.md), y crea el módulo `purchasing`.
+
+**Certifica:**
+- **La tabla `suppliers`** (migración `0047`): nombre obligatorio y único por organización sin distinguir mayúsculas; teléfono E.164, email y CUIT opcionales, el CUIT de 11 dígitos, único por organización cuando está cargado; `crm_app` con `SELECT`, `INSERT` y `UPDATE`, sin `DELETE`; el `entity_type` `supplier`.
+- **El CUIT** se valida con su dígito verificador y se muestra con guiones; la búsqueda con 11 dígitos es exacta por CUIT, y si no, por parte del nombre sin acentos ni mayúsculas.
+- **El módulo `purchasing`**, que importa solo `organizations`, `audit` y `src/shared`; nadie lo importa. Alta, edición, desactivación y reactivación, solo de `admin`, con la fila bloqueada `FOR UPDATE` en la edición y el cambio de estado, el `23505` rescatado por el nombre de la restricción, y la auditoría por proveedor.
+- **El teléfono** pasa a `src/shared/phone`, sin cambio de conducta; `crm` lo reexporta.
+- **Pantallas 40 a 42** bajo «Compras», solo para `admin`; el agente no lee nada de esto.
+- Revisión independiente R1: 8 hallazgos bajos, verificados y corregidos. 8 mutaciones detectadas, más la de R-8.
+- **Despliegue y recorrido**:
+  - `317750d`, con la CI 38807899061 en `success` en 20 minutos;
+  - el usuario dio de alta, editó, desactivó, reactivó y buscó un proveedor en «Demostración Vixora», y vio los rechazos;
+  - conciliado contra la base: un proveedor y cuatro auditorías, de alta, edición, desactivación y reactivación.
+
+**Nivel**: validado localmente y en CI, validado en integración para las pantallas, desplegado en producción y recorrido por el usuario. No es «preparado para producción».
+
+**No certifica:**
+- En producción, los rechazos ni la concurrencia: los cubren los tests.
+- La integración completa en local después de las correcciones de la revisión: corrió en la CI.
+- La edición, la desactivación y la reactivación con el teclado, ni sin JavaScript (N-3 de la revisión): el end-to-end las prueba con clic, y sin JavaScript solo el alta.
+- Que el CUIT corresponda a un contribuyente real: se comprueba la forma, no se consulta AFIP.
+- Un mensaje propio para el dígito verificador equivocado: hallazgo del recorrido, sin decisión.
+
 ## 2026-10-15 — 22.1: el ADR 0023 de compras y proveedores
 
 Cierra el 2026-10-15 con la aceptación del ADR por el usuario ([brief-22.1](docs/decisions/brief-22.1-adr-de-compras-y-proveedores.md), §Cierre). Es la primera subfase de la Fase 22 — Compras y proveedores, abierta ese día con la Fase 13 abierta ([ADR 0016](docs/decisions/0016-el-crm-se-amplia-hacia-un-erp-por-fases.md), punto 3). **El usuario metió en la fase los pagos a proveedores y la cuenta corriente con ellos** al aprobar el brief.

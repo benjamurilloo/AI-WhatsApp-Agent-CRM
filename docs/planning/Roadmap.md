@@ -414,7 +414,7 @@ Reglas comunes a las cuatro fases:
       - los pagos a proveedores y la cuenta corriente con ellos entran en la fase y viven en `cash`, que depende del módulo nuevo `purchasing`.
 
       El orden de las subfases siguientes no cambia.
-    - **22.2 — Los proveedores**.
+    - **22.2 — Los proveedores**. **Cerrada el 2026-10-15** ([brief-22.2](../decisions/brief-22.2-los-proveedores.md) §Cierre): el módulo `purchasing` y la migración `0047`, desplegada (`317750d`) y recorrida por el usuario.
     - **22.3 — La orden de compra**.
     - **22.4 — La recepción**, que suma stock y actualiza el costo.
     - **22.5 — La anulación de la recepción**.
