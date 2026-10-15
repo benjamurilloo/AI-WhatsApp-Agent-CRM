@@ -25,7 +25,7 @@ Cierra el 2026-10-15, después del recorrido del usuario en producción ([brief-
 - La integración completa en local después de las correcciones de la revisión: corrió en la CI.
 - La edición, la desactivación y la reactivación con el teclado, ni sin JavaScript (N-3 de la revisión): el end-to-end las prueba con clic, y sin JavaScript solo el alta.
 - Que el CUIT corresponda a un contribuyente real: se comprueba la forma, no se consulta AFIP.
-- Un mensaje propio para el dígito verificador equivocado: hallazgo del recorrido, sin decisión.
+- Un mensaje propio para el dígito verificador equivocado: hallazgo del recorrido; el usuario decidió el 2026-10-15 que entra en la 22.3.
 
 ## 2026-10-15 — 22.1: el ADR 0023 de compras y proveedores
 

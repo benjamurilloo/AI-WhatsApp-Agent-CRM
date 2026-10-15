@@ -415,7 +415,7 @@ Reglas comunes a las cuatro fases:
 
       El orden de las subfases siguientes no cambia.
     - **22.2 — Los proveedores**. **Cerrada el 2026-10-15** ([brief-22.2](../decisions/brief-22.2-los-proveedores.md) §Cierre): el módulo `purchasing` y la migración `0047`, desplegada (`317750d`) y recorrida por el usuario.
-    - **22.3 — La orden de compra**.
+    - **22.3 — La orden de compra**. *Agregado el 2026-10-15 por decisión del usuario*: suma un mensaje propio para el CUIT de un proveedor con el dígito verificador equivocado (hallazgo del recorrido de la 22.2).
     - **22.4 — La recepción**, que suma stock y actualiza el costo.
     - **22.5 — La anulación de la recepción**.
     - **22.6 — Los pagos a proveedores y la cuenta corriente con proveedores**. ~~Solo si el ADR los mete en la fase.~~ *Precisado el 2026-10-15*: el ADR 0023 los mete (puntos 8 y 9).
