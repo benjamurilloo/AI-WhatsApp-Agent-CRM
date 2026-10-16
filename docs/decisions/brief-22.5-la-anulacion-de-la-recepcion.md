@@ -342,9 +342,9 @@ Implementado el 2026-10-16. **Esta sección es autoevaluación**: la escribió q
 | AC-9 | cumplido | `stock-writes` fija `applyGoodsReceiptVoid`, llamada solo desde `removeReceivedStock`, y que `receiveStock` y `removeReceivedStock` solo se llaman desde `purchasing`, con 6 casos que detecta y 2 que permite, vista en rojo antes de extenderla; `exposed-surface` declara `voidGoodsReceiptAction`, vista en rojo antes |
 | AC-10 | cumplido | `purchasing` importa `audit`, `catalog`, `inventory`, `numbering`, `organizations`, `src/shared` y los esquemas de `auth`, `catalog` y `organizations` que ya usaba; ningún módulo importa `purchasing`; de los módulos existentes, solo `inventory` y `numbering` están en el diff, dentro de lo autorizado |
 | AC-11 | cumplido | `read-api`, `read-api-v2` e `ingestion-v2` pasan en la integración completa sin cambios; `goods-receipt-voids.test.ts` lee el stock por `getProductBalanceForService` y devuelve el saldo después de la anulación |
-| AC-12 | cumplido en local; la CI, pendiente del commit | la batería local, abajo: todo pasa, con el end-to-end en dos mitades por la caída del servidor de prueba y la falla por carga de `organization-bootstrap`, que pasa sola. La CI del SHA del cierre se lee después del push |
+| AC-12 | cumplido | la batería local, abajo: todo pasa, con el end-to-end en dos mitades por la caída del servidor de prueba y la falla por carga de `organization-bootstrap`, que pasa sola. La CI 38958472171 de `49db51c` terminó en `success` en 16 minutos al primer intento, con la suite completa, y se leyó por el SHA completo |
 | AC-13 | cumplido | DataModel (`goods_receipt_voids`), Overview, FunctionalRequirements (`FR-COMP-16` y `17`, y la precisión de `FR-COMP-14`), Screens (la 49, y la 5, la 42, la 45, la 46 y la 48), TraceabilityMatrix y SecurityModel (154 puntos de entrada) |
-| AC-14 | pendiente | si se autoriza el despliegue (D-13) |
+| AC-14 | cumplido | desplegado el 2026-10-16 y recorrido por el usuario; conciliado contra la base (§Cierre) |
 
 ### Mutaciones
 
@@ -385,3 +385,23 @@ Un agente de solo lectura que no participó del trabajo revisó la entrega contr
 - **N-3 (nota), aceptado sin cambio**: M1 cae porque `waitForLockWaiters` agota su tiempo, no por una aserción sobre el resultado. Además, un `return` en lugar del `AlreadyVoided` del paso 4 no se vería, porque ese rechazo no escribe nada que la foto pueda mostrar.
 - **N-4 (nota), resuelto con esta sección**: DataModel remitía a §Resultados, que todavía no existía.
 - **N-5 (nota), verificado**: el revisor no pudo correr `git diff`. Con `git status` completo, todos los archivos del cambio están en la lista autorizada, y `docs/ui-redesign/` y `.claude/settings.json` quedan fuera.
+
+## Cierre de la subfase 22.5, 2026-10-16
+
+Cierra el 2026-10-16, después del recorrido del usuario en producción («ya lo revise, esta todo perfecto») y de la conciliación contra la base.
+
+- **AC-1 a AC-14 cumplidos**, con los desvíos de texto de D-9 declarados en §Resultados.
+- **Commit, CI y despliegue**:
+  - `49db51c`, la implementación. La CI 38958472171 terminó en `success` en 16 minutos al primer intento, con la suite completa, y se leyó por el SHA completo.
+  - Desplegado el 2026-10-16 según [deploy/production/README.md](../../deploy/production/README.md) §Desplegar, con `12209c8` anotado como la versión para volver atrás. La migración `0050` se aplicó, y la última línea comparó HEAD con el SHA pedido. El paso 3 corrió con el usuario en modo manual, como en la 22.2, la 22.3 y la 22.4.
+  - Después del despliegue: el servicio, `active`; `/login` en `127.0.0.1:3000`, con `200`; 51 migraciones aplicadas; `goods_receipt_voids` con `SELECT` e `INSERT` para `crm_app` y su trigger `goods_receipt_voids_guard` sobre `INSERT`, `UPDATE` y `DELETE`; `goods_receipt_void` en `inventory_movement_type` y `document_kind`; los cuatro motivos; los dos únicos; la tabla vacía.
+- **La conciliación del recorrido**, solo con lecturas, en Demostración Vixora:
+  - dos anulaciones con «Error de carga»: `ARC-000001` de `RC-000003`, sin orden, y `ARC-000002` de `RC-000004`, con orden; cada una con la moneda y el total de su recepción;
+  - cada línea sacó exactamente lo que sumó (2 y 1), con un movimiento `goods_receipt_void` cuyo motivo nombra la anulación y la recepción, sin el proveedor;
+  - los 12 saldos de la base cuadran con la suma de sus movimientos con signo, y ninguno queda negativo ni por debajo de lo reservado. El producto anulado tiene 3, que es su historia: `2 −1 −1 +1 +1 +1 +2 +2 −2 +1 −1 +4 −6`;
+  - ningún costo escrito por una anulación: el único costo posterior a la primera es un cambio a mano, con su auditoría `cost_change` del producto, entre la segunda anulación y `RC-000005`;
+  - la orden 3: la anulación de `RC-000004` la dejó en cero recibido sin cambiar su estado; después `RC-000005` recibió las 4 unidades y la cerró sola, su único cambio de estado. Pedido 4, recibido vigente 4;
+  - el rechazo por stock (paso 3, después del ajuste negativo «Test» de 6) y la segunda anulación de una anulada (paso 4) no escribieron nada: hay dos anulaciones, dos auditorías `void` de `goods_receipt` y el contador de `goods_receipt_void` en 2, igual al mayor número.
+- **Volver a `12209c8` ya no es limpio**: hay anulaciones, que ese código mostraría como recepciones vigentes (D-13).
+- **Revisión independiente**: ninguno crítico ni mayor; los dos menores, corregidos; las cinco notas, en §Resultados.
+- **Pendiente para después**: nada de esta subfase. La siguiente es la 22.6, los pagos a proveedores y la cuenta corriente con proveedores (puntos 8 y 9 del ADR 0023), con su brief.

@@ -2,6 +2,29 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-16 — 22.5: la anulación de la recepción
+
+Cierra el 2026-10-16, después del recorrido del usuario en producción ([brief-22.5](docs/decisions/brief-22.5-la-anulacion-de-la-recepcion.md), §Cierre). Es la primera salida de stock que escribe `purchasing`, sobre el [ADR 0023](docs/decisions/0023-compras-y-proveedores.md).
+
+**Certifica:**
+- **La tabla `goods_receipt_voids`** (migración `0050`): de solo inserción, con un trigger que además exige la moneda y el total de la recepción, y `crm_app` sin `UPDATE` ni `DELETE`; una anulación por recepción y su número `ARC` único por organización; la clave compuesta a la recepción de la misma organización. El motivo, una lista cerrada de cuatro. `goods_receipt_void` en `document_kind` y en `inventory_movement_type`.
+- **La anulación**, solo de `admin`, entera: la cabecera de la orden `FOR UPDATE`, los productos en modo compartido, **la salida de stock en `inventory` solo si alcanza lo disponible** (`removeReceivedStock`, un movimiento por línea cuyo motivo nombra la anulación y la recepción, y no el proveedor), el contador al armar el motivo, la fila y la auditoría. **No cambia ningún costo ni el estado de la orden.** Un rechazo no escribe, no audita, no mueve stock ni consume número; la doble anulación responde «ya anulada» por tres defensas.
+- **La orden**: una recepción anulada no cuenta como recibida, ni para cancelar ni para cerrar a mano; una orden cerrada sigue cerrada.
+- **Pantalla 49** (el comprobante imprimible), la confirmación con lo que sale del stock, la marca «Anulada» y el filtro de estado en las listas, la búsqueda por `ARC` y «Anulación de recepción» en los movimientos del producto.
+- **Las guardas**: `stock-writes` fija la escritura nueva y que solo `purchasing` llama a `removeReceivedStock`; `exposed-surface`, la acción nueva.
+- Revisión independiente: ninguno crítico ni mayor, dos menores de documentación y cinco notas. 13 mutaciones: 11 detectadas y dos que sobreviven por diseño, cubiertas juntas por la decimotercera.
+- **Despliegue y recorrido**:
+  - `49db51c`, con la CI 38958472171 en `success` en 16 minutos al primer intento;
+  - el usuario anuló una recepción sin orden y otra con orden, vio los rechazos por stock y por «ya anulada», y entró con un `viewer`, en «Demostración Vixora»;
+  - conciliado contra la base: `ARC-000001` y `ARC-000002`, cada línea sacó lo que sumó, los 12 saldos cuadran con sus movimientos, ningún costo escrito por una anulación, y el contador en 2.
+
+**Nivel**: validado localmente y en CI, validado en integración para las pantallas, desplegado en producción y recorrido por el usuario. No es «preparado para producción».
+
+**No certifica:**
+- En producción, la concurrencia: la cubren los tests.
+- Los pagos a proveedores: son la 22.6.
+- El end-to-end completo en verde en una sola corrida local: el servidor de prueba se cayó en el caso 174 y el resto se corrió aparte; la CI corrió la suite entera.
+
 ## 2026-10-16 — 22.4: la recepción
 
 Cierra el 2026-10-16, después del recorrido del usuario en producción ([brief-22.4](docs/decisions/brief-22.4-la-recepcion.md), §Cierre). Es la primera escritura de `purchasing` en el stock y el costo, sobre el [ADR 0023](docs/decisions/0023-compras-y-proveedores.md).
