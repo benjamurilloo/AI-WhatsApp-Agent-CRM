@@ -4,7 +4,7 @@ project: ai-whatsapp-agent-crm
 generated_at: 2026-10-16
 git_ref: main — el último ref con corrida leída en verde es **`1225040`** (run 38839565148, `success` al primer intento en 21 min, leída por el SHA completo el 2026-10-16), la implementación de la 22.3; la de `d1de516`, el brief de la 22.3, también (38820220670). Después viene el commit del cierre de la 22.3, solo documentación: **al retomar, leer su corrida por `headSha`**. **Producción corre `1225040`** (22.3), con la migración `0048` aplicada; para volver atrás, `317750d`: ese código no conoce las órdenes, y hay una cargada (`OC-000001`, anulada), que quedaría sin pantalla (brief-22.3, §Cierre). `confirmado`
 active_phase: **Fase 22 — Compras y proveedores**, abierta el 2026-10-15 por decisión del usuario. **La 22.1 y la 22.2 cerraron ese día y la 22.3 el 2026-10-16**: el ADR 0023 aceptado, los proveedores y la orden de compra, desplegados y recorridos. La Fase 21 cerró el 2026-10-15. **La Fase 13 — Producción sigue abierta**, con la 13.5.2-b esperando un negocio real y su prioridad intacta. `confirmado`
-active_task: **Ninguna subfase en curso.** Siguiente: **el brief de la 22.4 — La recepción** (§3, paso 0). `confirmado`
+active_task: **22.4 — La recepción**, con el [brief-22.4](docs/decisions/brief-22.4-la-recepcion.md) aprobado por el usuario el 2026-10-16 con las recomendaciones de D-1 a D-16. Siguiente: implementarla. `confirmado`
 confidence: confirmado
 ---
 
