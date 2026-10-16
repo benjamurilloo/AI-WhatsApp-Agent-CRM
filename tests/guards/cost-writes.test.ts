@@ -2,12 +2,12 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-// Guarda de FR-PROD-20 (brief-18.2, AC-7), copia de price-writes con la tabla de costos: en src/,
-// product_costs solo se escribe desde insertProductCost de src/modules/catalog/repository.ts, y
-// nunca con update ni delete. Es la tercera defensa, después de los privilegios de crm_app y del
-// trigger de la migración 0035, y la única frente a un INSERT: crm_app lo tiene, así que la base
-// no rechaza un costo escrito fuera de insertProductCost, sin bloqueo, sin CONFLICT y sin
-// auditoría.
+// Guarda de FR-PROD-20 (brief-18.2, AC-7; desde la 22.4, también sus llamadores, al pie), copia de
+// price-writes con la tabla de costos: en src/, product_costs solo se escribe desde
+// insertProductCost de src/modules/catalog/repository.ts, y nunca con update ni delete. Es la
+// tercera defensa, después de los privilegios de crm_app y del trigger de la migración 0035, y la
+// única frente a un INSERT: crm_app lo tiene, así que la base no rechaza un costo escrito fuera de
+// insertProductCost, sin bloqueo, sin CONFLICT y sin auditoría.
 //
 // Ve: Drizzle (.insert/.update/.delete con la tabla, también por un espacio de nombres), y SQL
 // literal con INSERT INTO, UPDATE, DELETE FROM o TRUNCATE sobre el nombre de la tabla (con o sin
@@ -201,5 +201,133 @@ describe("repositorio", () => {
       ({ operation, fn }) => `${fn}: ${operation}`,
     );
     expect(writes).toEqual(["insertProductCost: insert product_costs"]);
+  });
+});
+
+// Quién llama a la escritura del costo (brief-22.4, D-4). La guarda de arriba autoriza la función del
+// repositorio, pero no ve quién la llama. Desde la 22.4 hay dos llamadores: setProductCost, la ficha
+// del producto, que bloquea el producto y compara con el costo que vio quien edita; y
+// recordReceivedCosts, el costo de una recepción, que no compara porque purchasing ya bloqueó los
+// productos y los saldos (H-2). insertProductCost se llama solo desde esas dos funciones del
+// servicio de catalog, y recordReceivedCosts, fuera de catalog, solo desde src/modules/purchasing/.
+// Ve llamadas por nombre (también con espacio de nombres); no ve un alias ni una referencia guardada
+// en una variable, y fija la carpeta de purchasing, no la función.
+
+const SERVICE = "src/modules/catalog/service.ts";
+const PURCHASING = "src/modules/purchasing/";
+
+const CALL_PATTERN =
+  /(?<!function\s)\b(?:\w+\.)?(insertProductCost|recordReceivedCosts)\s*\(/g;
+
+function findCallViolations(file: string, code: string): string[] {
+  const functions = [...code.matchAll(FUNCTION_PATTERN)].map((match) => ({
+    name: match[1]!,
+    start: match.index,
+    end: match.index + match[0].length,
+  }));
+  return [...code.matchAll(CALL_PATTERN)].flatMap((match) => {
+    const callee = match[1]!;
+    const fn =
+      functions.find((f) => match.index >= f.start && match.index < f.end)
+        ?.name ?? null;
+    const line = code.slice(0, match.index).split("\n").length;
+    if (file === REPOSITORY) return [];
+    if (callee === "insertProductCost") {
+      return file === SERVICE &&
+        fn !== null &&
+        ["setProductCost", "recordReceivedCosts"].includes(fn)
+        ? []
+        : [`${file}:${line} ${callee} desde ${fn ?? "fuera de una función"}`];
+    }
+    if (file === SERVICE || file.startsWith(PURCHASING)) return [];
+    return [`${file}:${line} ${callee}`];
+  });
+}
+
+describe("llamadores de la escritura del costo", () => {
+  it.each([
+    {
+      name: "otra función del servicio llamando a insertProductCost",
+      file: SERVICE,
+      code: "export async function setProductPrice(tx) {\n  await repository.insertProductCost(tx, c);\n}",
+    },
+    {
+      name: "insertProductCost desde purchasing",
+      file: "src/modules/purchasing/goods-receipts.ts",
+      code: "export async function createGoodsReceipt(tx) {\n  await insertProductCost(tx, c);\n}",
+    },
+    {
+      name: "insertProductCost fuera de una función",
+      file: SERVICE,
+      code: "const add = (tx) => repository.insertProductCost(tx, c);",
+    },
+    {
+      name: "recordReceivedCosts desde sales",
+      file: "src/modules/sales/service.ts",
+      code: "export async function issueSale(tx) {\n  await recordReceivedCosts(tx, r);\n}",
+    },
+    {
+      name: "recordReceivedCosts desde una Server Action",
+      file: "src/app/(autenticado)/productos/[productId]/costos/actions.ts",
+      code: "export async function setCostAction() {\n  await catalog.recordReceivedCosts(tx, r);\n}",
+    },
+  ])("detecta: $name", ({ file, code }) => {
+    expect(findCallViolations(file, code)).not.toEqual([]);
+  });
+
+  it.each([
+    {
+      name: "setProductCost escribiendo",
+      file: SERVICE,
+      code: "export async function setProductCost(tx) {\n  await repository.insertProductCost(tx, c);\n}",
+    },
+    {
+      name: "recordReceivedCosts escribiendo",
+      file: SERVICE,
+      code: "export async function recordReceivedCosts(tx) {\n  await repository.insertProductCost(tx, c);\n}",
+    },
+    {
+      name: "purchasing llamando a recordReceivedCosts",
+      file: "src/modules/purchasing/goods-receipts.ts",
+      code: "export async function createGoodsReceipt() {\n  await recordReceivedCosts(tx, r);\n}",
+    },
+    {
+      name: "la definición de la función no es una llamada",
+      file: "src/modules/sales/service.ts",
+      code: "export async function recordReceivedCosts(tx) {\n  return 1;\n}",
+    },
+  ])("permite: $name", ({ file, code }) => {
+    expect(findCallViolations(file, code)).toEqual([]);
+  });
+
+  it("en src/, la escritura del costo se llama solo desde donde se autoriza", () => {
+    const files = readdirSync("src", { recursive: true, encoding: "utf8" })
+      .map((file) => join("src", file).replaceAll("\\", "/"))
+      .filter((file) => /\.tsx?$/.test(file));
+    const violations = files.flatMap((file) =>
+      findCallViolations(file, readFileSync(file, "utf8")),
+    );
+    expect(
+      violations,
+      `Llamadas no autorizadas:\n${violations.join("\n")}`,
+    ).toEqual([]);
+  });
+
+  // Si alguno de los dos llamadores dejara de llamar, la guarda seguiría en verde sin probar nada.
+  it("el servicio de catalog tiene exactamente las dos llamadas autorizadas", () => {
+    const code = readFileSync(SERVICE, "utf8");
+    const functions = [...code.matchAll(FUNCTION_PATTERN)].map((match) => ({
+      name: match[1]!,
+      start: match.index,
+      end: match.index + match[0].length,
+    }));
+    const callers = [...code.matchAll(CALL_PATTERN)]
+      .filter((match) => match[1] === "insertProductCost")
+      .map(
+        (match) =>
+          functions.find((f) => match.index >= f.start && match.index < f.end)
+            ?.name,
+      );
+    expect(callers).toEqual(["setProductCost", "recordReceivedCosts"]);
   });
 });

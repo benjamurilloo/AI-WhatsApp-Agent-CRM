@@ -6,16 +6,26 @@ import { formatMoney } from "@/shared/money";
 import { STATUS_LABEL } from "../messages";
 
 // La historia de una orden de compra en texto (brief-22.3, D-9): «Alta», con su número, sus líneas
-// y su total, y «Cancelación», con el cambio de estado. Sin ids internos ni datos del proveedor.
+// y su total, y cada cambio de estado. Sin ids internos ni datos del proveedor.
 
-const ACTION_LABEL: Record<string, string> = {
-  create: "Alta",
-  status_change: "Cancelación",
-};
-
-// En la 22.3 el único cambio de estado es la cancelación; el cierre llega con la 22.4 (D-3).
+// Desde la 22.4 (brief-22.4, D-6), el cambio de estado se rotula por el estado nuevo: «Cancelación»,
+// «Cierre por la recepción RC-000123» o «Cierre a mano» (R-6 de la 22.3).
 export function auditActionLabel(entry: PurchaseOrderAuditEntry): string {
-  return ACTION_LABEL[entry.action] ?? entry.action;
+  if (entry.action === "create") return "Alta";
+  if (entry.action !== "status_change") return entry.action;
+  const after = entry.diff.after;
+  if (after?.status === "cancelled") return "Cancelación";
+  if (after?.status === "closed") {
+    if (
+      after.closed_by === "goods_receipt" &&
+      typeof after.goods_receipt_number === "string"
+    ) {
+      return `Cierre por la recepción ${after.goods_receipt_number}`;
+    }
+    if (after.closed_by === "manual") return "Cierre a mano";
+    return "Cierre";
+  }
+  return "Cambio de estado";
 }
 
 function statusText(value: unknown): string {

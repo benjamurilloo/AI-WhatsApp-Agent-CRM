@@ -12,7 +12,8 @@ import { E2E_PASSWORD } from "./global-setup";
 // repetido; la ve en la lista, la filtra y la busca; ve el detalle imprimible con la leyenda; la
 // cancela con la confirmación y ve su historia; la ve en la ficha del proveedor. Sin JavaScript, el
 // alta también funciona. Un viewer no ve «Compras» y recibe el aviso. El mensaje nuevo del CUIT lo
-// prueba suppliers.spec.ts.
+// prueba suppliers.spec.ts. Desde la 22.4 (brief-22.4, AC-9): el cierre a mano de una orden con
+// recepciones y la cancelación rechazada; la recepción la prueba goods-receipts.spec.ts.
 
 const [ADMIN_SEED, VIEWER_SEED] = SEED_USERS;
 const ADMIN = ADMIN_SEED.email;
@@ -35,7 +36,7 @@ test.afterAll(async () => {
 // cada caso empiece en OC-000001.
 test.beforeEach(async () => {
   await db.execute(
-    sql`truncate table purchase_order_lines, purchase_orders, suppliers, document_counters,
+    sql`truncate table goods_receipt_lines, goods_receipts, purchase_order_lines, purchase_orders, suppliers, document_counters,
           audit_logs, refund_voids, refunds, receipt_voids, receipts, sale_voids, sale_lines,
           sales, order_lines, orders, inventory_movements, inventories, product_images,
           product_costs, product_prices, products`,
@@ -385,6 +386,117 @@ test("un viewer no ve Compras y las páginas de órdenes muestran el permiso sin
     await expect(page.getByText("Importaciones Sur")).toHaveCount(0);
   }
   await expectAccessible(page, "permiso de viewer");
+});
+
+// Una recepción por SQL de la primera línea de una orden, como la deja el alta (brief-22.4).
+async function insertReceipt(
+  number: number,
+  orderId: string,
+  supplierId: string,
+): Promise<void> {
+  const receipt = await db.execute<{ id: string }>(
+    sql`insert into goods_receipts (organization_id, number, supplier_id, purchase_order_id,
+                                    currency, total, created_by)
+        values (${SEED_ORGANIZATION_ID}, ${number}, ${supplierId}, ${orderId}, 'ARS',
+                '100.00', ${ADMIN_SEED.id})
+        returning id`,
+  );
+  await db.execute(
+    sql`insert into goods_receipt_lines (organization_id, goods_receipt_id,
+                                         purchase_order_line_id, product_id, position,
+                                         quantity, unit_cost, line_total)
+        select ${SEED_ORGANIZATION_ID}, ${receipt.rows[0]!.id}, id, product_id, 1, 1,
+               '100.00', '100.00'
+        from purchase_order_lines where purchase_order_id = ${orderId} and position = 1`,
+  );
+}
+
+// brief-22.4, D-9 y D-11: una orden con recepciones y faltante se cierra a mano y no se cancela.
+test("un admin cierra con faltante una orden con recepciones, que no se cancela", async ({
+  page,
+}) => {
+  const supplierId = await insertSupplier("Importaciones Sur");
+  const coffee = await insertProduct("CAF-250", "Café molido");
+  const tea = await insertProduct("TE-100", "Té verde");
+  const orderId = await insertOrder(1, supplierId, coffee);
+  await db.execute(
+    sql`insert into purchase_order_lines (organization_id, purchase_order_id, product_id,
+                                          position, quantity, unit_cost, line_total)
+        values (${SEED_ORGANIZATION_ID}, ${orderId}, ${tea}, 2, 3, '10.00', '30.00')`,
+  );
+  await insertReceipt(1, orderId, supplierId);
+  await login(page, ADMIN);
+
+  await page.goto(`/compras/ordenes/${orderId}`);
+  const lines = page.getByRole("table", {
+    name: "Líneas de la orden de compra OC-000001",
+  });
+  await expect(
+    lines.getByRole("columnheader", { name: "Recibido" }),
+  ).toBeVisible();
+  await expect(
+    lines.getByRole("columnheader", { name: "Falta" }),
+  ).toBeVisible();
+  const receipts = page.getByRole("region", { name: "Recepciones" });
+  await expect(receipts.getByRole("link", { name: "RC-000001" })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Cancelar la orden" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "Registrar recepción" }),
+  ).toHaveAttribute("href", `/compras/recepciones/nueva?orden=${orderId}`);
+  await expectAccessible(page, "detalle con recepciones");
+
+  await page.getByRole("link", { name: "Cerrar con faltante" }).click();
+  await expect(page).toHaveURL(/\?confirmar=cerrar$/);
+  await expect(
+    page.getByText("¿Cerrar la orden de compra OC-000001 con faltante?"),
+  ).toBeFocused();
+  await expectAccessible(page, "confirmación del cierre");
+  await page.getByRole("button", { name: "Sí, cerrar con faltante" }).click();
+  await expect(page).toHaveURL(/\?aviso=cerrada$/);
+  await expect(
+    page.getByText("Orden de compra cerrada con faltante."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Registrar recepción" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "Cerrar con faltante" }),
+  ).toHaveCount(0);
+  const history = page.getByRole("table", {
+    name: "Historia de la orden de compra OC-000001",
+  });
+  await expect(history).toContainText("Cierre a mano");
+  await expect(history).toContainText("Abierta → Cerrada");
+  await expectAccessible(page, "detalle cerrada con faltante");
+});
+
+// brief-22.4, D-9: la confirmación de la cancelación estaba abierta cuando llegó una recepción.
+test("la cancelación de una orden que recibió mercadería mientras se confirmaba se rechaza", async ({
+  page,
+}) => {
+  const supplierId = await insertSupplier("Importaciones Sur");
+  const coffee = await insertProduct("CAF-250", "Café molido");
+  const orderId = await insertOrder(1, supplierId, coffee);
+  await login(page, ADMIN);
+
+  await page.goto(`/compras/ordenes/${orderId}?confirmar=cancelar`);
+  await expect(
+    page.getByText("¿Cancelar la orden de compra OC-000001?"),
+  ).toBeFocused();
+  await insertReceipt(1, orderId, supplierId);
+  await page.getByRole("button", { name: "Sí, cancelar la orden" }).click();
+  await expect(
+    page.getByText(
+      "La orden ya recibió mercadería: no se puede cancelar. Cerrala con faltante.",
+    ),
+  ).toBeFocused();
+  const status = await db.execute<{ status: string }>(
+    sql`select status from purchase_orders where id = ${orderId}`,
+  );
+  expect(status.rows[0]!.status).toBe("open");
+  await expectAccessible(page, "cancelación rechazada");
 });
 
 // Sin JavaScript (AC-8): el alta es un formulario común; el proveedor se reconoce por su nombre

@@ -5,6 +5,7 @@ import { getOrganizationTimezone } from "@/modules/organizations";
 import {
   formatCuit,
   getSupplier,
+  listRecentSupplierGoodsReceipts,
   listRecentSupplierPurchaseOrders,
   listSupplierAudit,
 } from "@/modules/purchasing";
@@ -32,6 +33,11 @@ import {
 } from "../../ordenes/filters";
 import { NO_SUPPLIER_PURCHASE_ORDERS_MESSAGE } from "../../ordenes/messages";
 import { PurchaseOrderStatusBadge } from "../../ordenes/status-badge";
+import {
+  DEFAULT_GOODS_RECEIPT_FILTERS,
+  goodsReceiptFiltersHref,
+} from "../../recepciones/filters";
+import { NO_SUPPLIER_GOODS_RECEIPTS_MESSAGE } from "../../recepciones/messages";
 import {
   FORBIDDEN_PAGE_MESSAGE,
   noticeMessage,
@@ -97,6 +103,8 @@ export default async function SupplierPage({
   const timeZone = await getOrganizationTimezone(context);
   // Sus últimas órdenes de compra (brief-22.3, D-10).
   const orders = await listRecentSupplierPurchaseOrders(context, supplier.id);
+  // Y sus últimas recepciones (brief-22.4, D-11).
+  const receipts = await listRecentSupplierGoodsReceipts(context, supplier.id);
   const actorLabel = audit.ok
     ? await auditActorLabels(context.organizationId, audit.entries)
     : null;
@@ -254,6 +262,61 @@ export default async function SupplierPage({
                 className={linkClass}
               >
                 Nueva orden de compra
+              </Link>
+            ) : null}
+          </p>
+        </SectionCard>
+      ) : null}
+
+      {receipts.ok ? (
+        <SectionCard
+          id="recepciones-titulo"
+          title="Recepciones"
+          icon="package"
+          className="mt-6"
+        >
+          {receipts.receipts.length === 0 ? (
+            <p className="text-sm text-muted">
+              {NO_SUPPLIER_GOODS_RECEIPTS_MESSAGE}
+            </p>
+          ) : (
+            <ul className="flex flex-col divide-y divide-border">
+              {receipts.receipts.map((receipt) => (
+                <li
+                  key={receipt.id}
+                  className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
+                >
+                  <Link
+                    href={`/compras/recepciones/${receipt.id}`}
+                    className={`${linkClass} font-mono`}
+                  >
+                    {receipt.displayNumber}
+                  </Link>
+                  <span className="text-muted">
+                    {formatShortDateTime(receipt.createdAt, timeZone)}
+                  </span>
+                  <span className="text-muted">
+                    {receipt.purchaseOrderDisplayNumber ?? "Sin orden"}
+                  </span>
+                  <span className="tabular-nums">
+                    {formatMoney(receipt.total, receipt.currency)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+            {receipts.total > 0 ? (
+              <Link
+                href={goodsReceiptFiltersHref({
+                  ...DEFAULT_GOODS_RECEIPT_FILTERS,
+                  supplierId: supplier.id,
+                })}
+                className={linkClass}
+              >
+                Ver las {receipts.total}{" "}
+                {receipts.total === 1 ? "recepción" : "recepciones"} de este
+                proveedor
               </Link>
             ) : null}
           </p>

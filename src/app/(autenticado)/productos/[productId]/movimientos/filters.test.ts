@@ -3,6 +3,7 @@ import {
   DEFAULT_VIEW,
   hasActiveMovementFilters,
   movementFiltersHref,
+  movementSign,
   parseMovementView,
   toHistoryFilters,
 } from "./filters";
@@ -108,6 +109,21 @@ describe("toHistoryFilters", () => {
       toHistoryFilters({ ...DEFAULT_VIEW, type: "anulacion" }, "UTC", now).type,
     ).toBe("sale_void");
     expect(parseMovementView({ tipo: "anulacion" }).type).toBe("anulacion");
+    // brief-22.4, D-14: las entradas de las recepciones.
+    expect(
+      toHistoryFilters({ ...DEFAULT_VIEW, type: "recepcion" }, "UTC", now).type,
+    ).toBe("goods_receipt");
+    expect(parseMovementView({ tipo: "recepcion" }).type).toBe("recepcion");
+  });
+
+  // brief-22.4, D-14: la recepción suma, como el ajuste positivo y la anulación de una venta.
+  it("el signo de cada tipo de movimiento", () => {
+    for (const type of ["adjustment_positive", "sale_void", "goods_receipt"]) {
+      expect(movementSign(type)).toBe("+");
+    }
+    for (const type of ["adjustment_negative", "order_delivery", "sale"]) {
+      expect(movementSign(type)).toBe("−");
+    }
   });
 });
 

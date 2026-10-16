@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   cancelRejectionMessage,
+  closeRejectionMessage,
   purchaseOrderNoticeMessage,
   purchaseOrderRejection,
 } from "./messages";
@@ -117,6 +118,39 @@ describe("la cancelación y los avisos", () => {
     );
     expect(cancelRejectionMessage({ ok: false, code: "NOT_FOUND" })).toBe(
       "Esta orden de compra no existe.",
+    );
+  });
+
+  // brief-22.4, D-9.
+  it("una orden con recepciones no se cancela, y una sin recepciones no se cierra a mano", () => {
+    expect(
+      cancelRejectionMessage({
+        ok: false,
+        code: "BUSINESS_RULE_VIOLATION",
+        rule: "has_receipts",
+      }),
+    ).toBe(
+      "La orden ya recibió mercadería: no se puede cancelar. Cerrala con faltante.",
+    );
+    expect(
+      closeRejectionMessage({
+        ok: false,
+        code: "BUSINESS_RULE_VIOLATION",
+        rule: "no_receipts",
+      }),
+    ).toBe(
+      "La orden todavía no recibió mercadería: si no va a llegar, cancelala.",
+    );
+    expect(
+      closeRejectionMessage({
+        ok: false,
+        code: "BUSINESS_RULE_VIOLATION",
+        rule: "not_open",
+        status: "closed",
+      }),
+    ).toBe("La orden ya está cerrada: no se puede cerrar. Recargá la página.");
+    expect(purchaseOrderNoticeMessage("cerrada")).toBe(
+      "Orden de compra cerrada con faltante.",
     );
   });
 

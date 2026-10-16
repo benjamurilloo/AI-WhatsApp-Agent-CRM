@@ -312,3 +312,30 @@ export async function applySaleVoid(
       ),
     );
 }
+
+// La entrada de una línea de una recepción de mercadería (ADR 0023, punto 4; brief-22.4, D-3): el
+// movimiento goods_receipt y el saldo físico nuevo. No toca lo reservado. Exige la transacción que ya
+// bloqueó la fila con lockBalance.
+export async function applyGoodsReceipt(
+  tx: DbTransaction,
+  receipt: Sale,
+): Promise<void> {
+  await tx.insert(inventoryMovements).values({
+    organizationId: receipt.organizationId,
+    productId: receipt.productId,
+    type: "goods_receipt",
+    quantity: receipt.quantity,
+    balanceAfter: receipt.balanceAfter,
+    reason: receipt.reason,
+    createdBy: receipt.createdBy,
+  });
+  await tx
+    .update(inventories)
+    .set({ quantityOnHand: receipt.balanceAfter })
+    .where(
+      and(
+        eq(inventories.organizationId, receipt.organizationId),
+        eq(inventories.productId, receipt.productId),
+      ),
+    );
+}

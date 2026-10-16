@@ -9,9 +9,16 @@ export type SearchParams = Record<string, string | string[] | undefined>;
 
 // entrega, desde la 19.3: la salida de un pedido entregado (brief-19.3, D-7). venta, desde la
 // 20.3: la salida de una venta sin pedido (brief-20.3, H-2). anulacion, desde la 20.4: la
-// reposición de su anulación (brief-20.4, D-7).
+// reposición de su anulación (brief-20.4, D-7). recepcion, desde la 22.4: la entrada de una
+// recepción de mercadería (brief-22.4, D-14).
 export type MovementTypeKey =
-  "todos" | "positivo" | "negativo" | "entrega" | "venta" | "anulacion";
+  | "todos"
+  | "positivo"
+  | "negativo"
+  | "entrega"
+  | "venta"
+  | "anulacion"
+  | "recepcion";
 export type PeriodKey = "todo" | "7d" | "30d" | "90d" | "personalizado";
 
 const TYPE_PARAM: Record<MovementTypeKey, string> = {
@@ -21,7 +28,17 @@ const TYPE_PARAM: Record<MovementTypeKey, string> = {
   entrega: "order_delivery",
   venta: "sale",
   anulacion: "sale_void",
+  recepcion: "goods_receipt",
 };
+
+// Los tipos que suman al saldo: el ajuste positivo, desde la 20.4 la reposición de una anulación
+// (revisión independiente de la 20.4, R-1) y, desde la 22.4, la recepción (brief-22.4, D-14). El
+// efecto lo da el tipo (ADR 0021, punto 6). Los demás restan.
+const INCOMING = new Set(["adjustment_positive", "sale_void", "goods_receipt"]);
+
+export function movementSign(type: string): "+" | "−" {
+  return INCOMING.has(type) ? "+" : "−";
+}
 
 // Días que abarca cada atajo, incluido hoy.
 const PERIOD_DAYS: Record<"7d" | "30d" | "90d", number> = {
@@ -87,6 +104,7 @@ export function parseMovementView(params: SearchParams): MovementView {
         "entrega",
         "venta",
         "anulacion",
+        "recepcion",
       ] as const,
       DEFAULT_VIEW.type,
     ),

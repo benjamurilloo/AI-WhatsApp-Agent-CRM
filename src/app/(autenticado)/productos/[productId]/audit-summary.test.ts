@@ -195,6 +195,27 @@ describe("describeAuditDiff", () => {
     ).toBe(`Costo: US$${nbsp}60,50 → US$${nbsp}61,00`);
   });
 
+  // brief-22.4, D-5: el costo de una recepción dice su origen.
+  it("FR-PROD-19: el costo de una recepción dice de qué recepción viene", () => {
+    const origin = {
+      source: "goods_receipt",
+      goods_receipt_number: "RC-000123",
+    };
+    expect(
+      describeAuditDiff(
+        entry({
+          action: "cost_change",
+          diff: {
+            before: { amount: "1000.00", currency: "ARS", ...origin },
+            after: { amount: "1200.00", currency: "ARS", ...origin },
+          },
+        }),
+      ),
+    ).toMatch(
+      /^Costo: \$\s1\.000,00 → \$\s1\.200,00 · por la recepción RC-000123$/,
+    );
+  });
+
   it("ignora claves que no son campos conocidos", () => {
     expect(
       describeAuditDiff(

@@ -132,6 +132,9 @@ const INSERT_ONLY_TABLES = [
   "cash_sessions",
   // Notas de una conversación (brief-16.4, D-1).
   "conversation_notes",
+  // La recepción y sus líneas (brief-22.4, D-2; ADR 0023, punto 4).
+  "goods_receipt_lines",
+  "goods_receipts",
   "inventory_movements",
   "messages",
   // Líneas de un pedido (brief-19.2).

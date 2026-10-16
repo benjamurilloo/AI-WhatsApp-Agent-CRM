@@ -20,6 +20,9 @@ import {
   dangerOutlineLinkClass,
   linkClass,
   noticeClass,
+  primaryLinkClass,
+  secondaryLinkClass,
+  sectionTitleClass,
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
@@ -35,6 +38,7 @@ import type { SearchParams } from "../filters";
 import {
   CURRENT_DATA_NOTE,
   FORBIDDEN_PAGE_MESSAGE,
+  NO_ORDER_RECEIPTS_MESSAGE,
   NOT_AN_INVOICE_LEGEND,
   PURCHASE_ORDER_NOT_FOUND_MESSAGE,
   purchaseOrderNoticeMessage,
@@ -44,6 +48,7 @@ import {
 import { PurchaseOrderStatusBadge } from "../status-badge";
 import { auditActionLabel, describeAuditDiff } from "./audit-summary";
 import { CancelPurchaseOrderConfirm } from "./cancel-confirm";
+import { ClosePurchaseOrderConfirm } from "./close-confirm";
 import { PrintButton } from "./print-button";
 
 export const metadata: Metadata = {
@@ -62,6 +67,10 @@ function page(value: string | string[] | undefined): number {
 // organización, el número, la fecha, el proveedor con sus datos de hoy, las líneas, el total y la
 // leyenda. Al imprimir queda solo la orden (print:hidden y las reglas @media print de globals.css).
 // Una abierta se cancela en el paso ?confirmar=cancelar. La historia, al pie. Solo admin.
+//
+// Desde la 22.4 (brief-22.4, D-11): por línea, lo recibido y lo que falta, que no se imprimen; sus
+// recepciones; «Registrar recepción» y «Cerrar con faltante» (?confirmar=cerrar) en una abierta con
+// faltante, y «Cancelar la orden» solo sin recepciones (D-9).
 export default async function PurchaseOrderPage({
   params,
   searchParams,
@@ -97,7 +106,15 @@ export default async function PurchaseOrderPage({
     : null;
   const notice = purchaseOrderNoticeMessage(query.aviso);
   const isOpen = order.status === "open";
+  const hasReceipts = order.receipts.length > 0;
+  const hasPending = order.lines.some((line) => line.pending !== "0.000");
+  const canCancel = isOpen && !hasReceipts;
+  const canClose = isOpen && hasReceipts && hasPending;
+  // La confirmación sigue a la vista mientras la orden esté abierta, aunque ya no corresponda: si
+  // una recepción llegó mientras se confirmaba, el rechazo de purchasing se muestra en ella. Los
+  // enlaces que la abren, en cambio, solo aparecen cuando la acción corresponde.
   const confirming = isOpen && query.confirmar === "cancelar";
+  const confirmingClose = isOpen && query.confirmar === "cerrar";
   const supplier = order.supplier;
 
   return (
@@ -119,7 +136,24 @@ export default async function PurchaseOrderPage({
           actions={
             <>
               <PrintButton />
-              {isOpen && !confirming ? (
+              {isOpen && hasPending ? (
+                <Link
+                  href={`/compras/recepciones/nueva?orden=${order.id}`}
+                  className={primaryLinkClass}
+                >
+                  <Icon name="plus" className="size-4" />
+                  Registrar recepción
+                </Link>
+              ) : null}
+              {canClose && !confirmingClose ? (
+                <Link
+                  href={`${href}?confirmar=cerrar`}
+                  className={secondaryLinkClass}
+                >
+                  Cerrar con faltante
+                </Link>
+              ) : null}
+              {canCancel && !confirming ? (
                 <Link
                   href={`${href}?confirmar=cancelar`}
                   className={dangerOutlineLinkClass}
@@ -143,6 +177,21 @@ export default async function PurchaseOrderPage({
               displayNumber={order.displayNumber}
             />
           </div>
+        ) : null}
+
+        {confirmingClose ? (
+          <div className="mt-6">
+            <ClosePurchaseOrderConfirm
+              orderId={order.id}
+              displayNumber={order.displayNumber}
+            />
+          </div>
+        ) : null}
+
+        {order.closedAt ? (
+          <p className="mt-4 rounded-md border border-border bg-surface-muted px-3 py-2 text-sm">
+            Cerrada el {formatShortDateTime(order.closedAt, timeZone)}.
+          </p>
         ) : null}
 
         {order.cancelledAt ? (
@@ -169,6 +218,9 @@ export default async function PurchaseOrderPage({
             </h2>
             {order.status === "cancelled" ? (
               <p className="font-semibold uppercase">Cancelada</p>
+            ) : null}
+            {order.status === "closed" ? (
+              <p className="font-semibold uppercase">Cerrada</p>
             ) : null}
             <p className="text-sm">
               {formatFullDateTime(order.createdAt, timeZone)}
@@ -240,6 +292,18 @@ export default async function PurchaseOrderPage({
                 <th scope="col" className={`${tableHeadCellClass} text-right`}>
                   Total
                 </th>
+                <th
+                  scope="col"
+                  className={`${tableHeadCellClass} text-right print:hidden`}
+                >
+                  Recibido
+                </th>
+                <th
+                  scope="col"
+                  className={`${tableHeadCellClass} text-right print:hidden`}
+                >
+                  Falta
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -275,6 +339,16 @@ export default async function PurchaseOrderPage({
                   >
                     {formatMoney(line.lineTotal, order.currency)}
                   </td>
+                  <td
+                    className={`${tableCellClass} text-right whitespace-nowrap tabular-nums print:hidden`}
+                  >
+                    {formatQuantity(line.received)}
+                  </td>
+                  <td
+                    className={`${tableCellClass} text-right whitespace-nowrap tabular-nums print:hidden`}
+                  >
+                    {formatQuantity(line.pending)}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -292,6 +366,7 @@ export default async function PurchaseOrderPage({
                 >
                   {formatMoney(order.total, order.currency)}
                 </td>
+                <td colSpan={2} className={`${tableCellClass} print:hidden`} />
               </tr>
             </tfoot>
           </table>
@@ -304,6 +379,40 @@ export default async function PurchaseOrderPage({
           {CURRENT_DATA_NOTE}
         </p>
       </article>
+
+      <section
+        aria-labelledby="recepciones-titulo"
+        className={`mt-6 ${cardClass} p-5 sm:p-6 print:hidden`}
+      >
+        <h2 id="recepciones-titulo" className={sectionTitleClass}>
+          Recepciones
+        </h2>
+        {order.receipts.length === 0 ? (
+          <p className="mt-2 text-sm text-muted">{NO_ORDER_RECEIPTS_MESSAGE}</p>
+        ) : (
+          <ul className="mt-3 divide-y divide-border text-sm">
+            {order.receipts.map((receipt) => (
+              <li
+                key={receipt.id}
+                className="flex flex-wrap items-center justify-between gap-2 py-2"
+              >
+                <Link
+                  href={`/compras/recepciones/${receipt.id}`}
+                  className={`${linkClass} font-mono`}
+                >
+                  {receipt.displayNumber}
+                </Link>
+                <span className="text-muted">
+                  {formatShortDateTime(receipt.createdAt, timeZone)}
+                </span>
+                <span className="tabular-nums">
+                  {formatMoney(receipt.total, receipt.currency)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       {audit.ok ? (
         <div className="print:hidden">

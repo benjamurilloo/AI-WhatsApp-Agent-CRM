@@ -127,4 +127,9 @@ describe("formatDocumentNumber", () => {
       "OC-1234567",
     );
   });
+
+  it("el prefijo de la recepción es RC (brief-22.4)", () => {
+    expect(formatDocumentNumber("goods_receipt", 3)).toBe("RC-000003");
+    expect(formatDocumentNumber("goods_receipt", 1_234_567)).toBe("RC-1234567");
+  });
 });

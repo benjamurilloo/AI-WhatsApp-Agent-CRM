@@ -15,7 +15,12 @@ import {
 } from "@/modules/organizations";
 import { failure, type Failure } from "@/shared/errors";
 import { currencyDecimals, moneyToDatabase } from "@/shared/money";
-import { quantityToDatabase } from "@/shared/quantity";
+import { quantityFromDatabase, quantityToDatabase } from "@/shared/quantity";
+import * as receiptRepository from "./goods-receipt-repository";
+import {
+  listOrderGoodsReceipts,
+  type GoodsReceiptSummary,
+} from "./goods-receipts";
 import {
   evaluatePurchaseOrderLines,
   parsePurchaseOrderLines,
@@ -30,12 +35,13 @@ import { MAX_PURCHASE_ORDER_LINES, purchaseOrderStatus } from "./schema";
 // Casos de uso de la orden de compra (ADR 0023, puntos 3, 10, 12 y 14; brief-22.3). Solo un admin
 // la lee y la escribe (punto 12): sus montos muestran el costo. purchasing es dueño de la regla:
 // abre la transacción y se la pasa a catalog (los productos), numbering (el número) y audit. La
-// orden no toca el stock ni el costo: eso lo hace la recepción, en la 22.4.
+// orden no toca el stock ni el costo: eso lo hace la recepción (goods-receipts.ts, brief-22.4).
 //
 // La serialización (D-7): el alta lee el proveedor FOR SHARE, bloquea los productos en modo
-// compartido ordenados por id, comprueba y toma el contador al final; la cancelación bloquea la
-// cabecera FOR UPDATE y decide con lo leído. El cierre a mano y la comprobación de recepciones al
-// cancelar llegan con la 22.4 (D-3).
+// compartido ordenados por id, comprueba y toma el contador al final; la cancelación y, desde la
+// 22.4, el cierre a mano bloquean la cabecera FOR UPDATE y cuentan las recepciones después
+// (brief-22.4, D-8 y D-9): una recepción de la misma orden también toma la cabecera, así que la que
+// llega segunda ve a la otra.
 
 export type PurchaseOrderStatus = orderRepository.PurchaseOrderStatus;
 export const PURCHASE_ORDER_STATUSES = purchaseOrderStatus.enumValues;
@@ -275,7 +281,8 @@ export async function createPurchaseOrder(
 
 // La cancelación (D-7 y D-8): la cabecera FOR UPDATE, el estado leído y el UPDATE. Una orden que ya
 // no está abierta responde not_open, sin escribir ni auditar: de dos cancelaciones simultáneas, la
-// segunda espera a la primera y ve cancelled (AC-5).
+// segunda espera a la primera y ve cancelled (AC-5). Desde la 22.4 (brief-22.4, D-9): una orden con
+// alguna recepción no se cancela (has_receipts), y se cierra a mano.
 
 export type CancelPurchaseOrderResult =
   | { ok: true }
@@ -283,7 +290,8 @@ export type CancelPurchaseOrderResult =
   | Failure<
       "BUSINESS_RULE_VIOLATION",
       { rule: "not_open"; status: PurchaseOrderStatus }
-    >;
+    >
+  | Failure<"BUSINESS_RULE_VIOLATION", { rule: "has_receipts" }>;
 
 export async function cancelPurchaseOrder(
   context: AuthContext,
@@ -314,6 +322,18 @@ export async function cancelPurchaseOrder(
           status: order.status,
         };
       }
+      const receipts = await receiptRepository.countOrderGoodsReceipts(
+        organizationId,
+        id,
+        tx,
+      );
+      if (receipts > 0) {
+        return {
+          ok: false,
+          code: "BUSINESS_RULE_VIOLATION",
+          rule: "has_receipts",
+        };
+      }
       await orderRepository.cancelPurchaseOrderRow(tx, organizationId, id);
       await recordAudit(tx, {
         organizationId,
@@ -322,6 +342,78 @@ export async function cancelPurchaseOrder(
         entityId: id,
         action: "status_change",
         diff: { before: { status: "open" }, after: { status: "cancelled" } },
+      });
+      return { ok: true };
+    },
+  );
+}
+
+// El cierre a mano, «cerrar con faltante» (brief-22.4, D-9): la cabecera FOR UPDATE, el estado y
+// las recepciones leídos después, y el UPDATE. Solo una orden abierta con alguna recepción: sin
+// recepciones se cancela (no_receipts).
+
+export type ClosePurchaseOrderResult =
+  | { ok: true }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+  | Failure<
+      "BUSINESS_RULE_VIOLATION",
+      { rule: "not_open"; status: PurchaseOrderStatus }
+    >
+  | Failure<"BUSINESS_RULE_VIOLATION", { rule: "no_receipts" }>;
+
+export async function closePurchaseOrder(
+  context: AuthContext,
+  purchaseOrderId: string,
+): Promise<ClosePurchaseOrderResult> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  if (!idSchema.safeParse(purchaseOrderId).success) {
+    return failure("VALIDATION_ERROR");
+  }
+  const id = purchaseOrderId.toLowerCase();
+  const { organizationId, userId } = context;
+
+  return supplierRepository.withTransaction(
+    async (tx): Promise<ClosePurchaseOrderResult> => {
+      const order = await orderRepository.findPurchaseOrder(
+        organizationId,
+        id,
+        tx,
+        { forUpdate: true },
+      );
+      if (!order) return failure("NOT_FOUND");
+      if (order.status !== "open") {
+        return {
+          ok: false,
+          code: "BUSINESS_RULE_VIOLATION",
+          rule: "not_open",
+          status: order.status,
+        };
+      }
+      const receipts = await receiptRepository.countOrderGoodsReceipts(
+        organizationId,
+        id,
+        tx,
+      );
+      if (receipts === 0) {
+        return {
+          ok: false,
+          code: "BUSINESS_RULE_VIOLATION",
+          rule: "no_receipts",
+        };
+      }
+      await orderRepository.closePurchaseOrderRow(tx, organizationId, id);
+      // closed_by a los dos lados: audit exige las mismas claves antes y después (brief-22.4, D-6).
+      await recordAudit(tx, {
+        organizationId,
+        actorUserId: userId,
+        entityType: "purchase_order",
+        entityId: id,
+        action: "status_change",
+        diff: {
+          before: { status: "open", closed_by: "manual" },
+          after: { status: "closed", closed_by: "manual" },
+        },
       });
       return { ok: true };
     },
@@ -462,6 +554,10 @@ export type PurchaseOrderLine = {
   quantity: string;
   unitCost: string;
   lineTotal: string;
+  // Desde la 22.4 (brief-22.4, D-11): la línea de la orden, lo recibido y lo que falta.
+  id: string;
+  received: string;
+  pending: string;
 };
 
 export type PurchaseOrderDetail = {
@@ -486,6 +582,8 @@ export type PurchaseOrderDetail = {
   cancelledAt: Date | null;
   createdAt: Date;
   lines: PurchaseOrderLine[];
+  // Sus recepciones, de la más reciente a la más vieja (brief-22.4, D-11).
+  receipts: GoodsReceiptSummary[];
 };
 
 export async function getPurchaseOrder(
@@ -506,9 +604,11 @@ export async function getPurchaseOrder(
     purchaseOrderId.toLowerCase(),
   );
   if (!order) return failure("NOT_FOUND");
-  const [lines, supplier] = await Promise.all([
+  const [lines, supplier, received, receipts] = await Promise.all([
     orderRepository.findPurchaseOrderLines(organizationId, order.id),
     supplierRepository.findSupplier(organizationId, order.supplierId),
+    receiptRepository.sumReceivedByOrderLine(organizationId, order.id),
+    listOrderGoodsReceipts(organizationId, order.id),
   ]);
   const products = await getProductsByIds(
     context,
@@ -542,9 +642,17 @@ export async function getPurchaseOrder(
       closedAt: order.closedAt,
       cancelledAt: order.cancelledAt,
       createdAt: order.createdAt,
+      receipts,
       lines: lines.map((line) => {
         const product = productsById.get(line.productId);
+        const receivedQuantity = quantityFromDatabase(
+          received.get(line.id) ?? "0.000",
+        );
+        const pending = quantityFromDatabase(line.quantity) - receivedQuantity;
         return {
+          id: line.id,
+          received: quantityToDatabase(receivedQuantity),
+          pending: quantityToDatabase(pending > 0n ? pending : 0n),
           position: line.position,
           productId: line.productId,
           product: product
@@ -564,7 +672,7 @@ export async function getPurchaseOrder(
   };
 }
 
-// La historia de la orden (D-9): «Alta» y «Cancelación».
+// La historia de la orden (D-9): «Alta» y «Cancelación» y, desde la 22.4, los dos cierres.
 
 export type PurchaseOrderAuditEntry = NamedAuditLogEntry;
 

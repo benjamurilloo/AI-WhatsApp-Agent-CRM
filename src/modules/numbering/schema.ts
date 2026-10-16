@@ -18,7 +18,8 @@ import { organizations } from "@/modules/organizations/schema";
 // aditivos; desde la 20.4, la anulación (sale_void, brief-20.4); desde la 21.2, la sesión de caja
 // (cash_session, ADR 0022, punto 11; brief-21.2); desde la 21.3, el cobro (receipt, brief-21.3);
 // desde la 21.5, la anulación de un cobro, la devolución y su anulación (brief-21.5); desde la 22.3,
-// la orden de compra (purchase_order, ADR 0023, punto 3; brief-22.3).
+// la orden de compra (purchase_order, ADR 0023, punto 3; brief-22.3); desde la 22.4, la recepción
+// (goods_receipt, ADR 0023, punto 4; brief-22.4).
 export const documentKind = pgEnum("document_kind", [
   "order",
   "sale",
@@ -29,6 +30,7 @@ export const documentKind = pgEnum("document_kind", [
   "refund",
   "refund_void",
   "purchase_order",
+  "goods_receipt",
 ]);
 
 export const documentCounters = pgTable(

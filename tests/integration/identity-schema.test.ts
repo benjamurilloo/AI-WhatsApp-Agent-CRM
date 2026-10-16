@@ -73,6 +73,9 @@ describe("base de test", () => {
       "conversation_notes",
       "conversations",
       "document_counters",
+      // La recepción y sus líneas (brief-22.4).
+      "goods_receipt_lines",
+      "goods_receipts",
       "ingestion_credentials",
       "ingestion_events",
       "ingestion_rate_windows",

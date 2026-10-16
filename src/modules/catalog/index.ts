@@ -51,17 +51,20 @@ export {
   type StockStatus,
   type UpdateProductResult,
 } from "./service";
-// Costo y margen, solo para admin (brief-18.2).
+// Costo y margen, solo para admin (brief-18.2). Desde la 22.4, el costo de una recepción, para
+// purchasing (brief-22.4, D-4).
 export {
   COSTS_PAGE_SIZE,
   getProductCostSummary,
   listProductCosts,
+  recordReceivedCosts,
   setProductCost,
   type CostInput,
   type ProductCost,
   type ProductCostEntry,
   type ProductCostHistoryResult,
   type ProductCostSummaryResult,
+  type ReceivedCost,
   type SetCostResult,
 } from "./service";
 export {

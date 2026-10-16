@@ -91,7 +91,7 @@
 - **Usuario autorizado**: el historial lo ven `admin` y `viewer`; el ajuste solo `admin`.
 - **Información mostrada**: stock actual y movimientos (fecha, tipo, cantidad, saldo resultante, motivo y autor).
 - **Acciones**: registrar un ajuste positivo o negativo con cantidad mayor a 0 y motivo obligatorio. Antes de confirmar se ve el saldo resultante.
-- **Filtros**: tipo de movimiento (ajuste positivo o negativo, los únicos del MVP) y período.
+- **Filtros**: tipo de movimiento (ajuste positivo o negativo, los únicos del MVP) y período. *Desde la 22.4* ([brief-22.4](../decisions/brief-22.4-la-recepcion.md), D-14): también «Recepción» (`?tipo=recepcion`), la entrada de una recepción de mercadería, que suma («+») y lleva en el motivo su número, sin el proveedor ni el costo; la ven `admin` y `viewer`.
 - **Paginación**: 25 por página, del más reciente al más antiguo.
 - **Carga**: el botón queda deshabilitado hasta que responde el servidor.
 - **Vacío**: "este producto no tiene movimientos".
@@ -577,11 +577,12 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 
 - **Información mostrada**: el nombre con «Activo» o «Inactivo», y la tarjeta «Datos» con el nombre, el teléfono, el email y el CUIT, o «Sin teléfono», «Sin email» y «Sin CUIT». Debajo, el historial de auditoría paginado: «Alta», «Edición», «Desactivación» y «Reactivación», con el cambio de cada campo.
 - **Acciones**: «Editar»; «Desactivar», con la confirmación «¿Desactivar "{nombre}"?» en un segundo paso de la URL; con el proveedor inactivo, la tarjeta «Estado» con «Reactivar».
+- *Desde la 22.4* ([brief-22.4](../decisions/brief-22.4-la-recepcion.md), D-11): la tarjeta «Recepciones», con sus cinco últimas (número, fecha, orden o «Sin orden» y total) y «Ver las {n} recepciones de este proveedor», que lleva a la pantalla 46 filtrada por él; sin recepciones, «Este proveedor no tiene recepciones.».
 - *Desde la 22.3* ([brief-22.3](../decisions/brief-22.3-la-orden-de-compra.md), D-10): la tarjeta «Órdenes de compra», con sus cinco últimas (número, fecha, total y estado), «Ver las {n} órdenes de este proveedor», que lleva a la pantalla 43 filtrada por él, y, si está activo, «Nueva orden de compra», que lleva a la 44 con el proveedor ya elegido; sin órdenes, «Este proveedor no tiene órdenes de compra.».
 
 ## 43. Órdenes de compra
 
-*Agregada en la 22.3* ([brief-22.3](../decisions/brief-22.3-la-orden-de-compra.md), D-10 y D-11; FR-COMP-07). Ruta `/compras/ordenes`, **solo para `admin`**. Desde la 22.3, «Compras» lleva acá, y las pantallas de Compras tienen dos pestañas: «Órdenes de compra» y «Proveedores».
+*Agregada en la 22.3* ([brief-22.3](../decisions/brief-22.3-la-orden-de-compra.md), D-10 y D-11; FR-COMP-07). Ruta `/compras/ordenes`, **solo para `admin`**. Desde la 22.3, «Compras» lleva acá, y las pantallas de Compras tienen dos pestañas: «Órdenes de compra» y «Proveedores». *Desde la 22.4*, tres: «Órdenes de compra», «Recepciones» y «Proveedores».
 
 - **Información mostrada**: una tabla con el número enlazado al detalle, la fecha, el proveedor (que filtra la lista por él), la cantidad de líneas, el total en su moneda y el estado, con ícono y texto («Abierta», «Cerrada» o «Cancelada»). En un teléfono, tarjetas. La más nueva primero, paginada de a 25. «+ Nueva orden de compra» arriba.
 - **Filtros**: «Número» (`OC-000123`, `oc123` o `123`) y «Estado»: «Todas» (por defecto), «Abiertas», «Cerradas» o «Canceladas»; el proveedor llega por la URL, con «Órdenes de {proveedor}.» y «Ver las de todos los proveedores». En la URL: `?numero=&estado=&proveedor=&pagina=`.
@@ -603,3 +604,31 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 - **Información mostrada**: el número con su estado y el total; la orden con la organización, «Documento no válido como factura», el número, la fecha, el proveedor con su CUIT, su teléfono y su email de hoy, la moneda, las líneas (producto con su SKU, cantidad, costo unitario y total) y el total. Debajo, la historia: «Alta» y «Cancelación».
 - **Acciones**: «Imprimir o guardar PDF»; en una abierta, «Cancelar la orden», con la confirmación «¿Cancelar la orden de compra {número}?» en un segundo paso de la URL (`?confirmar=cancelar`). Una cancelada lo dice, con su fecha.
 - **Al imprimir** queda solo la orden, en claro, sin la navegación, los botones ni la historia.
+- *Desde la 22.4* ([brief-22.4](../decisions/brief-22.4-la-recepcion.md), D-9 y D-11; FR-COMP-14): por línea, «Recibido» y «Falta», que no se imprimen; la tarjeta «Recepciones», con cada una (número enlazado, fecha y total) o «Esta orden todavía no recibió mercadería.». En una abierta con faltante, «Registrar recepción», que lleva a la pantalla 47 con la orden; con alguna recepción, «Cerrar con faltante», con la confirmación «¿Cerrar la orden de compra {número} con faltante?» (`?confirmar=cerrar`), y «Cancelar la orden» ya no aparece. Si una recepción llega mientras se confirma la cancelación, el envío lo dice («La orden ya recibió mercadería: no se puede cancelar. Cerrala con faltante.»). Una cerrada lo dice, con su fecha. La historia rotula el cambio de estado por el estado nuevo: «Cancelación», «Cierre por la recepción RC-000123» o «Cierre a mano».
+
+## 46. Recepciones
+
+*Agregada en la 22.4* ([brief-22.4](../decisions/brief-22.4-la-recepcion.md), D-11 y D-12; FR-COMP-13). Ruta `/compras/recepciones`, **solo para `admin`**.
+
+- **Información mostrada**: una tabla con el número enlazado al detalle, la fecha, el proveedor (que filtra la lista por él), la orden enlazada o «Sin orden», la cantidad de líneas y el total en su moneda. En un teléfono, tarjetas. La más nueva primero, paginada de a 25. «+ Nueva recepción» arriba.
+- **Filtros**: «Número» (`RC-000123`, `rc123` o `123`); el proveedor llega por la URL, con «Recepciones de {proveedor}.» y «Ver las de todos los proveedores». En la URL: `?numero=&proveedor=&pagina=`.
+- **Vacío**: «Todavía no hay recepciones.» con «Registrar la primera»; con filtros, «Ninguna recepción coincide con estos filtros.» con «Limpiar filtros».
+- **Un `viewer`**: «No tenés permiso para ver esta página.», sin datos. Lo mismo en las pantallas 47 y 48.
+
+## 47. Nueva recepción
+
+*Agregada en la 22.4* (D-7, D-11 y D-13; FR-COMP-10 a FR-COMP-12). Ruta `/compras/recepciones/nueva`; desde el detalle de una orden abierta, `?orden=<id>`.
+
+- **Con orden**: la orden, el proveedor y la moneda, fijos; una fila por cada línea con faltante, con el producto, «Falta recibir {cantidad}» y los campos «Cantidad» y «Costo unitario», que arrancan en lo que falta y en el costo esperado. Una fila en 0 no se recibe. Una orden que no existe o que ya no está abierta lo dice y no muestra el formulario.
+- **Sin orden**: «Proveedor», con el buscador de los activos; «Moneda», de la lista, sin una elegida; y las líneas con «Producto» (el buscador del pedido), «Cantidad» y «Costo unitario». Arranca con cinco líneas, hasta 50; las vacías no se envían.
+- **En los dos**: «Remito o factura del proveedor», opcional; cada línea muestra su total estimado y, si el producto se vende en otra moneda, «Este producto se vende en {moneda}: con este costo queda sin margen.». El pie dice que registrarla suma el stock y deja el costo recibido como vigente.
+- **Rechazos**, con lo escrito conservado: el proveedor, la moneda y la referencia en su campo; por línea, la cantidad o el costo que no se leen, el producto repetido o desactivado, el total de la línea en cero o demasiado grande, «Falta recibir {cantidad}: no se puede recibir más que eso con esta orden.» y el stock que pasaría el máximo; la orden que ya no está abierta.
+- **Sin JavaScript**: funciona con el nombre exacto del proveedor y el SKU exacto del producto; con orden, las filas ya vienen armadas.
+
+## 48. Recepción
+
+*Agregada en la 22.4* (D-6 y D-11; FR-COMP-13). Ruta `/compras/recepciones/[id]`. Es también **la página imprimible**, con el molde del detalle de la orden.
+
+- **Información mostrada**: el número y el total; el comprobante con la organización, «Documento no válido como factura», el número, la fecha, el proveedor con su CUIT de hoy, la orden enlazada o «Sin orden», el remito o la factura del proveedor si se cargó, la moneda, las líneas (producto enlazado con su SKU, cantidad, costo unitario y total) y el total. Debajo, la historia: «Alta», con la orden, las líneas y el total. Tras registrarla, el aviso lo dice, y si cerró la orden, también.
+- **Acciones**: «Imprimir o guardar PDF». No se edita; la anulación llega con la 22.5.
+- **Al imprimir** queda solo el comprobante, sin la navegación, los botones ni la historia.

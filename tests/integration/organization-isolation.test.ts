@@ -6,7 +6,13 @@ import * as crmRepository from "@/modules/crm/repository";
 import * as ingestionRepository from "@/modules/ingestion/repository";
 import { getMemberSummaries, type AuthContext } from "@/modules/organizations";
 import * as organizationsRepository from "@/modules/organizations/repository";
-import { createPurchaseOrder } from "@/modules/purchasing";
+import {
+  closePurchaseOrder,
+  createGoodsReceipt,
+  createPurchaseOrder,
+  getGoodsReceipt,
+} from "@/modules/purchasing";
+import * as goodsReceiptRepository from "@/modules/purchasing/goods-receipt-repository";
 import * as purchaseOrderRepository from "@/modules/purchasing/purchase-order-repository";
 import * as purchasingRepository from "@/modules/purchasing/repository";
 import { getDb } from "@/shared/db";
@@ -504,5 +510,175 @@ describe("la orden de compra no alcanza a otra organización", () => {
           where organization_id = ${fixture.orgA}`,
     );
     expect(orders.rows[0]!.total).toBe(0);
+  });
+});
+
+// La recepción (brief-22.4, D-8 y AC-7), con los mismos ayudantes. Las lecturas por id y la lista
+// se prueban en el repositorio y en el servicio con una organización que no es la dueña; el alta,
+// el cierre a mano y el detalle, por el servicio con un admin de A.
+describe("la recepción no alcanza a otra organización", () => {
+  async function receiptOfB() {
+    const supplier = await getDb().execute<{ id: string }>(
+      sql`insert into suppliers (organization_id, name)
+          values (${fixture.orgB}, 'Proveedor de B') returning id`,
+    );
+    const supplierId = supplier.rows[0]!.id;
+    const order = await getDb().execute<{ id: string }>(
+      sql`insert into purchase_orders (organization_id, number, supplier_id, currency, total,
+                                       created_by)
+          values (${fixture.orgB}, 1, ${supplierId}, 'ARS', 100, ${fixture.userB})
+          returning id`,
+    );
+    const orderId = order.rows[0]!.id;
+    const orderLine = await getDb().execute<{ id: string }>(
+      sql`insert into purchase_order_lines (organization_id, purchase_order_id, product_id,
+                                            position, quantity, unit_cost, line_total)
+          values (${fixture.orgB}, ${orderId}, ${fixture.productB}, 1, 2, 100, 200)
+          returning id`,
+    );
+    const receipt = await getDb().execute<{ id: string }>(
+      sql`insert into goods_receipts (organization_id, number, supplier_id, purchase_order_id,
+                                      currency, total, created_by)
+          values (${fixture.orgB}, 1, ${supplierId}, ${orderId}, 'ARS', 100, ${fixture.userB})
+          returning id`,
+    );
+    const receiptId = receipt.rows[0]!.id;
+    await getDb().execute(
+      sql`insert into goods_receipt_lines (organization_id, goods_receipt_id,
+                                           purchase_order_line_id, product_id, position,
+                                           quantity, unit_cost, line_total)
+          values (${fixture.orgB}, ${receiptId}, ${orderLine.rows[0]!.id}, ${fixture.productB},
+                  1, 1, 100, 100)`,
+    );
+    return {
+      supplierId,
+      orderId,
+      orderLineId: orderLine.rows[0]!.id,
+      receiptId,
+    };
+  }
+
+  async function adminOfA(): Promise<AuthContext> {
+    const user = await getDb().execute<{ id: string }>(
+      sql`insert into users (email, password_hash, name)
+          values ('admin-a@example.com', 'hash-irrelevante', 'Admin de A') returning id`,
+    );
+    await getDb().execute(
+      sql`insert into organization_members (organization_id, user_id, role)
+          values (${fixture.orgA}, ${user.rows[0]!.id}, 'admin')`,
+    );
+    return {
+      userId: user.rows[0]!.id,
+      organizationId: fixture.orgA,
+      role: "admin",
+      mustChangePassword: false,
+      sessionExpiresAt: new Date(Date.now() + 3_600_000),
+    };
+  }
+
+  it("las lecturas por id y lo recibido no ven la recepción de otra organización", async () => {
+    const { orderId, receiptId } = await receiptOfB();
+    expect(
+      await goodsReceiptRepository.findGoodsReceipt(fixture.orgA, receiptId),
+    ).toBeUndefined();
+    expect(
+      await goodsReceiptRepository.findGoodsReceiptLines(
+        fixture.orgA,
+        receiptId,
+      ),
+    ).toEqual([]);
+    expect(
+      await goodsReceiptRepository.sumReceivedByOrderLine(
+        fixture.orgA,
+        orderId,
+      ),
+    ).toEqual(new Map());
+    expect(
+      await goodsReceiptRepository.countOrderGoodsReceipts(
+        fixture.orgA,
+        orderId,
+      ),
+    ).toBe(0);
+    expect(
+      await goodsReceiptRepository.findGoodsReceipt(fixture.orgB, receiptId),
+    ).toMatchObject({ id: receiptId });
+    expect(await getGoodsReceipt(await adminOfA(), receiptId)).toEqual({
+      ok: false,
+      code: "NOT_FOUND",
+    });
+  });
+
+  it("la lista no ve las recepciones de otra organización, ni filtrando por su proveedor o su orden", async () => {
+    const { supplierId, orderId } = await receiptOfB();
+    for (const query of [
+      { supplierId: null, purchaseOrderId: null, number: null },
+      { supplierId, purchaseOrderId: null, number: null },
+      { supplierId: null, purchaseOrderId: orderId, number: null },
+      { supplierId: null, purchaseOrderId: null, number: 1 },
+    ]) {
+      const ofA = { organizationId: fixture.orgA, ...query };
+      expect(await goodsReceiptRepository.countGoodsReceipts(ofA)).toBe(0);
+      expect(
+        await goodsReceiptRepository.findGoodsReceipts(ofA, 25, 0),
+      ).toEqual([]);
+    }
+  });
+
+  it("el alta con un proveedor, una orden, una línea o un producto de otra organización responde NOT_FOUND, y el cierre a mano también", async () => {
+    const { supplierId, orderId, orderLineId } = await receiptOfB();
+    const admin = await adminOfA();
+    const supplierA = await getDb().execute<{ id: string }>(
+      sql`insert into suppliers (organization_id, name)
+          values (${fixture.orgA}, 'Proveedor de A') returning id`,
+    );
+    const free = (supplier: string) => ({
+      purchaseOrderId: null,
+      supplierId: supplier,
+      currency: "ARS",
+      supplierReference: "",
+      lines: [{ productId: fixture.productB, quantity: "1", unitCost: "1" }],
+    });
+    expect(await createGoodsReceipt(admin, free(supplierId))).toEqual({
+      ok: false,
+      code: "NOT_FOUND",
+      target: "supplier",
+    });
+    expect(
+      await createGoodsReceipt(admin, free(supplierA.rows[0]!.id)),
+    ).toEqual({
+      ok: false,
+      code: "NOT_FOUND",
+      target: "products",
+      lines: [{ position: 1, productId: fixture.productB }],
+    });
+    expect(
+      await createGoodsReceipt(admin, {
+        purchaseOrderId: orderId,
+        supplierId: "",
+        currency: "",
+        supplierReference: "",
+        lines: [
+          {
+            purchaseOrderLineId: orderLineId,
+            productId: "",
+            quantity: "1",
+            unitCost: "1",
+          },
+        ],
+      }),
+    ).toEqual({ ok: false, code: "NOT_FOUND", target: "purchase_order" });
+    expect(await closePurchaseOrder(admin, orderId)).toEqual({
+      ok: false,
+      code: "NOT_FOUND",
+    });
+    const written = await getDb().execute<{ total: number }>(
+      sql`select count(*)::int as total from goods_receipts
+          where organization_id = ${fixture.orgA}`,
+    );
+    expect(written.rows[0]!.total).toBe(0);
+    const order = await getDb().execute<{ status: string }>(
+      sql`select status from purchase_orders where id = ${orderId}`,
+    );
+    expect(order.rows[0]!.status).toBe("open");
   });
 });

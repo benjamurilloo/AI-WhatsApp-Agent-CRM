@@ -99,7 +99,12 @@ export function describeAuditDiff(entry: ProductAuditEntry): string {
     return `Precio: ${showMoney(before, "sin precio")} → ${showMoney(after, "sin precio")}`;
   }
   if (entry.action === "cost_change") {
-    return `Costo: ${showMoney(before, "sin costo")} → ${showMoney(after, "sin costo")}`;
+    const change = `Costo: ${showMoney(before, "sin costo")} → ${showMoney(after, "sin costo")}`;
+    // Desde la 22.4, el costo de una recepción lleva su origen (brief-22.4, D-5 y D-6).
+    return after?.source === "goods_receipt" &&
+      typeof after.goods_receipt_number === "string"
+      ? `${change} · por la recepción ${after.goods_receipt_number}`
+      : change;
   }
   if (before === null) {
     return after === null

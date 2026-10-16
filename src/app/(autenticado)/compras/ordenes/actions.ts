@@ -2,10 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { searchProducts, suggestProducts } from "@/modules/catalog";
+import { suggestProducts } from "@/modules/catalog";
 import type { AuthContext } from "@/modules/organizations";
 import {
   cancelPurchaseOrder,
+  closePurchaseOrder,
   createPurchaseOrder,
   formatCuit,
   listSuppliers,
@@ -13,8 +14,10 @@ import {
 } from "@/modules/purchasing";
 import { requireSession } from "@/app/_auth/session";
 import { logEvent, newRequestId } from "@/shared/log";
+import { resolveProductText, resolveSupplierText } from "../resolve-typed";
 import {
   cancelRejectionMessage,
+  closeRejectionMessage,
   purchaseOrderRejection,
   unexpectedErrorMessage,
   type CancelState,
@@ -85,47 +88,20 @@ function readForm(formData: FormData): PurchaseOrderFormValues {
   };
 }
 
-// Sin JavaScript, el buscador es un campo de texto, como en el pedido (brief-19.2, D-7): el
-// proveedor se reconoce por su nombre exacto entre los activos, y el producto por su SKU exacto.
+// Sin JavaScript, el proveedor y los productos llegan como texto (resolve-typed.ts).
 async function resolveTypedValues(
   context: AuthContext,
   values: PurchaseOrderFormValues,
 ): Promise<PurchaseOrderFormValues> {
-  let { supplierId } = values;
-  if (!supplierId && values.supplierText) {
-    const found = await listSuppliers(context, {
-      text: values.supplierText,
-      status: "active",
-      page: 1,
-    });
-    const exact = found.ok
-      ? found.suppliers.filter(
-          (supplier) =>
-            supplier.name.toLowerCase() === values.supplierText.toLowerCase(),
-        )
-      : [];
-    if (exact.length === 1) supplierId = exact[0]!.id;
-  }
+  const supplierId =
+    !values.supplierId && values.supplierText
+      ? await resolveSupplierText(context, values.supplierText)
+      : values.supplierId;
   const lines = await Promise.all(
     values.lines.map(async (line) => {
       if (line.productId || !line.productText) return line;
-      const found = await searchProducts(context, {
-        text: line.productText,
-        activity: "active",
-      });
-      const exact = found.ok
-        ? found.products.filter(
-            (product) =>
-              product.sku.toLowerCase() === line.productText.toLowerCase(),
-          )
-        : [];
-      if (exact.length !== 1) return line;
-      const product = exact[0]!;
-      return {
-        ...line,
-        productId: product.id,
-        productText: `${product.name} (${product.sku})`,
-      };
+      const found = await resolveProductText(context, line.productText);
+      return found ? { ...line, ...found } : line;
     }),
   );
   return { ...values, supplierId, lines };
@@ -204,6 +180,42 @@ export async function cancelPurchaseOrderAction(
     log("OK");
     revalidatePath(LIST_PATH);
     destination = `${LIST_PATH}/${orderId}?aviso=cancelada`;
+  } catch (error) {
+    log("INTERNAL", error);
+    return {
+      status: "error",
+      requestId,
+      message: unexpectedErrorMessage(requestId),
+    };
+  }
+
+  redirect(destination);
+}
+
+// El cierre a mano, con faltante (brief-22.4, D-9).
+export async function closePurchaseOrderAction(
+  _previous: CancelState,
+  formData: FormData,
+): Promise<CancelState> {
+  const context = await requireSession();
+  const { requestId, log } = logger("compras.ordenes.cerrar", context);
+  const orderId = String(formData.get("orderId") ?? "");
+
+  let destination: string;
+  try {
+    const result = await closePurchaseOrder(context, orderId);
+    if (!result.ok) {
+      log(result.code);
+      revalidatePath(`${LIST_PATH}/${orderId}`);
+      return {
+        status: "error",
+        requestId,
+        message: closeRejectionMessage(result),
+      };
+    }
+    log("OK");
+    revalidatePath(LIST_PATH);
+    destination = `${LIST_PATH}/${orderId}?aviso=cerrada`;
   } catch (error) {
     log("INTERNAL", error);
     return {

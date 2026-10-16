@@ -565,6 +565,18 @@ describe("inventory_movements: esquema", () => {
     ).toMatch(uuidPattern);
   });
 
+  it("brief-22.4 AC-1: acepta goods_receipt, la entrada de una recepción", async () => {
+    const { movement } = await seedProduct();
+    expect(
+      await insertMovement(getDb(), {
+        ...movement,
+        type: "goods_receipt",
+        balanceAfter: "1",
+        reason: "Recepción RC-000001",
+      }),
+    ).toMatch(uuidPattern);
+  });
+
   it("rechaza el producto de otra organización (D-3)", async () => {
     const { orgB, movement } = await seedProduct();
     expect(

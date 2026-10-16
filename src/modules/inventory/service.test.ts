@@ -330,6 +330,12 @@ describe("validateStockAdjustmentInput", () => {
     ).toEqual({ ok: false, code: "VALIDATION_ERROR", fields: ["type"] });
   });
 
+  it("brief-22.4 D-3: goods_receipt no es un tipo de ajuste", () => {
+    expect(
+      validateStockAdjustmentInput({ ...valid, type: "goods_receipt" }),
+    ).toEqual({ ok: false, code: "VALIDATION_ERROR", fields: ["type"] });
+  });
+
   it("devuelve cada campo inválido en orden", () => {
     expect(
       validateStockAdjustmentInput({
@@ -407,6 +413,16 @@ describe("validateMovementHistoryFilters", () => {
     ).toEqual({
       ok: true,
       values: { type: "sale_void", from: null, to: null },
+    });
+  });
+
+  // brief-22.4, D-14: el historial filtra las entradas de las recepciones.
+  it("acepta goods_receipt, la entrada de una recepción", () => {
+    expect(
+      validateMovementHistoryFilters({ ...all, type: "goods_receipt" }),
+    ).toEqual({
+      ok: true,
+      values: { type: "goods_receipt", from: null, to: null },
     });
   });
 

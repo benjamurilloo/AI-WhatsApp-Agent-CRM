@@ -46,6 +46,8 @@ export const auditEntityType = pgEnum("audit_entity_type", [
   // La orden de compra (brief-22.3, D-9; ADR 0023, punto 3): el alta y la cancelación; el cierre,
   // desde la 22.4.
   "purchase_order",
+  // La recepción (brief-22.4, D-6; ADR 0023, punto 4): el alta.
+  "goods_receipt",
 ]);
 
 export const auditAction = pgEnum("audit_action", [

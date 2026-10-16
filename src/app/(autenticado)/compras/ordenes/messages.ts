@@ -1,5 +1,6 @@
 import type {
   CancelPurchaseOrderResult,
+  ClosePurchaseOrderResult,
   CreatePurchaseOrderResult,
   PurchaseOrderLineField,
   PurchaseOrderLineIssue,
@@ -19,6 +20,8 @@ export const NO_PURCHASE_ORDER_RESULTS_MESSAGE =
   "Ninguna orden de compra coincide con estos filtros.";
 export const NO_SUPPLIER_PURCHASE_ORDERS_MESSAGE =
   "Este proveedor no tiene órdenes de compra.";
+export const NO_ORDER_RECEIPTS_MESSAGE =
+  "Esta orden todavía no recibió mercadería.";
 // La leyenda de la página imprimible (ADR 0023, punto 13; H-9), como la de la venta.
 export const NOT_AN_INVOICE_LEGEND = "Documento no válido como factura";
 // La orden no copia el nombre del producto ni los datos del proveedor (punto 14).
@@ -232,7 +235,7 @@ export function purchaseOrderRejection(
   }
 }
 
-// El detalle: la cancelación.
+// El detalle: la cancelación y, desde la 22.4, el cierre a mano (brief-22.4, D-9).
 
 export type CancelState =
   { status: "idle" } | { status: "error"; requestId: string; message: string };
@@ -244,7 +247,26 @@ export function cancelRejectionMessage(
     case "FORBIDDEN":
       return "No tenés permiso para cancelar órdenes de compra.";
     case "BUSINESS_RULE_VIOLATION":
+      if (result.rule === "has_receipts") {
+        return "La orden ya recibió mercadería: no se puede cancelar. Cerrala con faltante.";
+      }
       return `La orden ya está ${STATUS_LABEL[result.status].toLowerCase()}: no se puede cancelar. Recargá la página.`;
+    default:
+      return PURCHASE_ORDER_NOT_FOUND_MESSAGE;
+  }
+}
+
+export function closeRejectionMessage(
+  result: Exclude<ClosePurchaseOrderResult, { ok: true }>,
+): string {
+  switch (result.code) {
+    case "FORBIDDEN":
+      return "No tenés permiso para cerrar órdenes de compra.";
+    case "BUSINESS_RULE_VIOLATION":
+      if (result.rule === "no_receipts") {
+        return "La orden todavía no recibió mercadería: si no va a llegar, cancelala.";
+      }
+      return `La orden ya está ${STATUS_LABEL[result.status].toLowerCase()}: no se puede cerrar. Recargá la página.`;
     default:
       return PURCHASE_ORDER_NOT_FOUND_MESSAGE;
   }
@@ -254,6 +276,7 @@ export function cancelRejectionMessage(
 const NOTICES: Record<string, string> = {
   creada: "Orden de compra creada.",
   cancelada: "Orden de compra cancelada.",
+  cerrada: "Orden de compra cerrada con faltante.",
 };
 
 export function purchaseOrderNoticeMessage(

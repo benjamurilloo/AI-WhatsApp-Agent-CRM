@@ -373,3 +373,74 @@ Y siempre **antes** de cada una de estas acciones, que necesita autorización ex
 - pasar tareas de estado en Notion;
 - ejecutar migraciones contra una base que no sea la local o la de la CI;
 - desplegar.
+
+## Resultados — 2026-10-16 (autoevaluación)
+
+Implementado el 2026-10-16. **Esta sección es autoevaluación**: la escribió quien implementó. La revisión independiente de D-15 va aparte, abajo.
+
+### Lo que la implementación encontró que el brief no decía
+
+**Desvío de H-7, sin cambiar una decisión:** la `0049` **no** agrega a `purchase_order_lines` el `UNIQUE (organization_id, id)` suelto. Ninguna clave lo usa: la de la línea de la recepción apunta a `(organization_id, id, product_id)`, el único compuesto de D-1, que ya lo implica. Sumarlo sería un índice sin uso. DataModel lo dice.
+
+**Un defecto que encontró el end-to-end, corregido:** en el detalle de la orden, si una recepción llegaba mientras se confirmaba la cancelación, el rechazo `has_receipts` desaparecía. La revalidación volvía a pintar la página, y con una recepción la confirmación ya no se mostraba. Ahora la confirmación se muestra siempre que la orden esté abierta y la URL la pida, y el rechazo queda a la vista.
+
+**Una mutación que sobrevivió, corregida:** «el cierre automático que no mira todas las líneas» pasaba el caso de la recepción parcial, porque esa primera recepción incluía el café con faltante y la versión mutada tampoco cerraba la orden. Ahora la primera recepción completa solo el té, sin tocar el café: la versión mutada cierra la orden y el caso cae.
+
+**Precisiones que no cambian una decisión:**
+
+- **El código de la recepción vive en dos archivos nuevos del módulo**, `goods-receipts.ts` (los casos de uso) y `goods-receipt-repository.ts`. El cierre a mano y la cancelación siguen en `purchase-orders.ts`, que escribe el estado por una sola función, `setPurchaseOrderStatus`.
+- **La validación corre antes de la transacción**, con la orden y sus líneas leídas sin bloqueo, porque las líneas no cambian. Dentro de la transacción corren el orden de D-8 y todas las reglas que dependen del estado: la orden abierta, el proveedor activo, los productos activos, lo que falta y el máximo del stock.
+- **Lo recibido se cuenta dentro de la transacción**, después del `FOR UPDATE` de la cabecera. Dos recepciones de la misma orden se ven entre sí.
+- **El cierre a mano y la cancelación con recepciones se prueban en `goods-receipts.test.ts`**, no en `purchase-orders.test.ts`, que quedó sin cambios. Necesitan recepciones, y ahí están sus ayudas.
+- **El buscador de proveedor y de producto escritos a mano**, para el caso sin JavaScript, se movió a `compras/resolve-typed.ts`. Lo usan la orden y la recepción.
+- **`movementSign` pasó a `movimientos/filters.ts`**, con su test, para probar que `goods_receipt` suma (D-14).
+- **Los archivos nuevos entraron al índice con `git add -N`**, porque `exposed-surface` lee `git ls-files`.
+
+### Criterios
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| AC-1 | cumplido | `goods-receipts-schema.test.ts`, 23 casos: los privilegios y el 42501 de `crm_app`, cada `CHECK` (también la referencia), los únicos, las claves compuestas con otro proveedor, otra moneda u otro producto que la orden, el 23001 al borrar un proveedor o un producto con recepciones, y los dos triggers; en `purchase-orders-schema.test.ts`, los dos únicos nuevos |
+| AC-2 | cumplido | `goods-receipts.test.ts`: el movimiento con su motivo, el saldo creado en 0, lo reservado intacto, y `stock_limit` sin escribir ni consumir número, también con un producto sin saldo (R-1); `stock-writes.test.ts` |
+| AC-3 | cumplido | `goods-receipts.test.ts`: el costo con su origen y su auditoría, y sin escritura cuando el costo es el mismo; `cost-writes.test.ts` |
+| AC-4 | cumplido | `goods-receipts.test.ts`, 6 de sus 17 casos: con orden y sin orden, la parcial y la que cierra la orden con su auditoría, una sin orden del mismo proveedor y la misma moneda que no cuenta para la orden, el cierre a mano y la cancelación, la lista con su filtro, la búsqueda y la página, y el detalle de la orden con lo recibido y lo que falta |
+| AC-5 | cumplido | `goods-receipts.test.ts`: los cinco escenarios. Mutaciones abajo |
+| AC-6 | cumplido | `goods-receipts.test.ts`: cada respuesta de D-10 sin escribir, auditar, mover stock, cambiar costos ni consumir número (la foto incluye `document_counters`, `inventories` y `product_costs`); `FORBIDDEN` para un `viewer` en cada lectura y escritura |
+| AC-7 | cumplido | `organization-isolation.test.ts`, 3 casos: la lectura por id, el detalle y la lista, y la recepción con el proveedor, la orden o el producto de otra organización |
+| AC-8 | cumplido | con 2.000 recepciones en local, la lista en la página 40, filtrada por un proveedor y buscada por número, de 8,6 a 15,2 ms; el detalle de una orden de 50 líneas con 100 recepciones, 48,3 ms. El umbral es de 754 ms |
+| AC-9 | cumplido | `goods-receipts.spec.ts`, 4 casos, y 2 casos nuevos en `purchase-orders.spec.ts` (el cierre a mano y la cancelación rechazada), con axe en claro y en oscuro, también en la vista de impresión |
+| AC-10 | cumplido | `stock-writes` fija `applyGoodsReceipt` y que `receiveStock` solo se llama desde `purchasing`; `cost-writes` fija que `insertProductCost` solo se llama desde `setProductCost` y `recordReceivedCosts`, y que `recordReceivedCosts` solo se llama desde `purchasing`; cada uno con su caso en rojo. `exposed-surface` declara las 3 acciones nuevas |
+| AC-11 | cumplido | `purchasing` importa `catalog`, `inventory`, `numbering`, `organizations`, `audit`, `src/shared` y los esquemas que ya usaba; ningún módulo importa `purchasing`; de los módulos existentes, solo `inventory`, `catalog`, `numbering` y `audit` están en el diff, dentro de lo autorizado |
+| AC-12 | cumplido | `read-api`, `read-api-v2` e `ingestion-v2` pasan en la integración completa sin cambios |
+| AC-13 | cumplido en local; la CI, pendiente | con R-1 corregido: formato, lint, typecheck, build, 839 unitarios, 679 guardas y 1.440 de integración pasan. El end-to-end completo dio 208 de 209. La falla es `clients.spec.ts` caso 9, de clientes, que esta subfase no toca: corrido solo falla 2 de 3 veces, y **sobre `b84ade8` también falla** (1 de 3, con el build de webpack en un worktree aparte), así que la inestabilidad es anterior. Una primera corrida se cortó porque el servidor de prueba se cayó en el caso 10 (198 `ERR_CONNECTION_REFUSED`) y no cuenta. La CI del SHA, pendiente |
+| AC-14 | cumplido | DataModel, Overview, FunctionalRequirements (`FR-COMP-10` a `15` y la precisión de `FR-PROD-19`), Screens (46 a 48, y la 5, la 42, la 43 y la 45), TraceabilityMatrix y SecurityModel (152 puntos de entrada) |
+| AC-15 | pendiente | depende de D-16 |
+
+### Mutaciones
+
+Corridas una por una con un script que aplica el cambio, verifica que aparezca una sola vez, corre el caso que debería atraparlo y restaura el archivo. Al terminar, el diff es idéntico al de antes.
+
+- **M1**, la recepción sin el `FOR UPDATE` de la cabecera de la orden: detectada por «dos recepciones de la misma orden».
+- **M2**, sin comprobar lo que falta recibir: detectada por el caso de las reglas de negocio.
+- **M3**, sin el `FOR SHARE` del proveedor: detectada por «una desactivación del proveedor en curso».
+- **M4**, sin comprobar que el proveedor esté activo: detectada por el caso de las reglas de negocio.
+- **M5**, el costo leído antes de la entrada de stock: detectada por «dos recepciones del mismo producto con costos distintos».
+- **M6**, el contador antes de los bloqueos: detectada por «una recepción que espera a su proveedor no frena el número de otra».
+- **M7**, el cierre automático que no mira todas las líneas: **sobrevivió en la primera corrida**. Después de corregir el caso de la recepción parcial (arriba), la detecta.
+- **M8**, la cancelación sin comprobar recepciones: detectada por el caso del cierre a mano y la cancelación.
+- **M9**, el cierre a mano sin exigir recepciones: detectada por el mismo caso.
+- **M10**, `findGoodsReceipt` sin `organization_id`: detectada por `organization-isolation.test.ts`.
+- **M11**, un `viewer` que lee la lista: detectada por el caso de `FORBIDDEN`.
+- **M12**, el `stock_limit` devuelto dentro de la transacción en vez de lanzado (R-1, abajo): detectada por el caso de las reglas de negocio, con el producto sin saldo.
+- **Las mutaciones de los triggers y de las claves compuestas** las prueba `goods-receipts-schema.test.ts` contra la base, con el rol dueño.
+
+## Revisión independiente — 2026-10-16
+
+Un agente de solo lectura que no participó del trabajo revisó la entrega contra este brief, el ADR 0023 y las reglas vigentes (D-15). No ejecutó nada. Encontró **6 hallazgos: uno mayor, dos menores y tres notas**. Cada uno se verificó contra el código antes de aceptarlo.
+
+- **R-1 (mayor), aceptado, verificado y corregido**: el rechazo `stock_limit` hacía `return` dentro de la transacción, y eso la confirmaba con la fila en 0 que el bloqueo de saldos crea para un producto sin saldo. Era una escritura en un rechazo, contra D-10 y la invariante 8. El caso de las reglas de negocio no lo veía, porque sus dos productos ya tenían saldo. **Se probó primero en rojo**: con un producto sin saldo sumado al caso, la foto mostró la fila `0.000` confirmada. Ahora el rechazo se lanza dentro de la transacción y se traduce fuera, como en `voidSale` (convención de la 19.3), y el caso pasa.
+- **R-2 (menor), corregido**: el caso «una recepción de otra moneda sin orden» usaba la misma moneda que la orden. Prueba algo válido, que una recepción sin orden del mismo proveedor y la misma moneda no cuenta para la orden, y ahora se llama así.
+- **R-3 (menor), corregido**: el §Resultados atribuía a AC-4 los 17 casos del archivo; son 6 de ellos.
+- **R-4 (nota), corregido el comentario**: las recepciones del detalle de la orden se piden con un tope de 1.000, y el comentario decía «todas». Ahora dice el tope. Lo recibido por línea se suma aparte y no depende de él.
+- **R-5 (nota), ya documentado**: el buscador de productos del alta no exige `admin`. Devuelve el nombre, el SKU y la moneda del precio, que un `viewer` ya ve en productos; SecurityModel lo dice.
+- **R-6 (nota), ya declarado**: el desvío de H-7, arriba.

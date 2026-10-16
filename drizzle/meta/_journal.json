@@ -344,6 +344,13 @@
       "when": 1792105080069,
       "tag": "0048_purchase_orders",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1792154080014,
+      "tag": "0049_goods_receipts",
+      "breakpoints": true
     }
   ]
 }

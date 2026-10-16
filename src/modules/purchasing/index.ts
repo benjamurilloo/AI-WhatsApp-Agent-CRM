@@ -1,6 +1,7 @@
 // Interfaz pública del módulo purchasing (ADR 0023): los proveedores (brief-22.2) y, desde la 22.3,
-// la orden de compra (brief-22.3). La recepción y su anulación llegan con la 22.4 y la 22.5. Ningún
-// módulo depende de purchasing: la usan solo las pantallas. cash lo hará desde la 22.6 (punto 11).
+// la orden de compra (brief-22.3) y, desde la 22.4, la recepción (brief-22.4). Su anulación llega con
+// la 22.5. Ningún módulo depende de purchasing: la usan solo las pantallas. cash lo hará desde la
+// 22.6 (punto 11).
 export { formatCuit, type CuitRejection } from "./cuit";
 export { SUPPLIER_FIELD_LIMITS } from "./schema";
 export {
@@ -31,6 +32,7 @@ export {
 } from "./service";
 export {
   cancelPurchaseOrder,
+  closePurchaseOrder,
   createPurchaseOrder,
   formatPurchaseOrderNumber,
   getPurchaseOrder,
@@ -43,6 +45,7 @@ export {
   PURCHASE_ORDERS_PAGE_SIZE,
   SUPPLIER_PURCHASE_ORDERS_LIMIT,
   type CancelPurchaseOrderResult,
+  type ClosePurchaseOrderResult,
   type CreatePurchaseOrderResult,
   type PurchaseOrderAuditEntry,
   type PurchaseOrderAuditResult,
@@ -61,3 +64,29 @@ export {
   type PurchaseOrderSummary,
   type PurchaseOrderValidationFailure,
 } from "./purchase-orders";
+export {
+  createGoodsReceipt,
+  formatGoodsReceiptNumber,
+  getGoodsReceipt,
+  GOODS_RECEIPTS_PAGE_SIZE,
+  listGoodsReceiptAudit,
+  listGoodsReceipts,
+  listRecentSupplierGoodsReceipts,
+  MAX_GOODS_RECEIPT_LINES,
+  normalizeSupplierReference,
+  parseGoodsReceiptNumberSearch,
+  SUPPLIER_GOODS_RECEIPTS_LIMIT,
+  SUPPLIER_REFERENCE_MAX_LENGTH,
+  type CreateGoodsReceiptResult,
+  type GoodsReceiptAuditEntry,
+  type GoodsReceiptAuditResult,
+  type GoodsReceiptDetail,
+  type GoodsReceiptInput,
+  type GoodsReceiptLine,
+  type GoodsReceiptLineInput,
+  type GoodsReceiptLineRuleIssue,
+  type GoodsReceiptListFilters,
+  type GoodsReceiptPage,
+  type GoodsReceiptSummary,
+  type GoodsReceiptValidationFailure,
+} from "./goods-receipts";

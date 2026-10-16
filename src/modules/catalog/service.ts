@@ -1165,3 +1165,80 @@ export async function setProductCost(
     return { ok: true, changed: true, cost: toCost(cost) };
   });
 }
+
+// El costo de una recepción de mercadería (ADR 0023, punto 5; brief-22.4, D-4): el último recibido
+// queda como costo vigente. purchasing abre la transacción, ya autorizó, bloqueó los productos en
+// modo compartido y comprobó que están activos, y la llama después de la entrada de stock, con los
+// saldos tomados. Por eso no bloquea ni compara con lo que alguien vio, como setProductCost.
+//
+// El costo vigente se lee acá, en esa transacción, y no antes (H-2): dos recepciones del mismo
+// producto las ordena el bloqueo del saldo, y con READ COMMITTED esta lectura ve el costo que dejó
+// la que confirmó primero. Leído antes, la segunda compararía contra un costo viejo y podría no
+// escribir el suyo.
+//
+// Si el monto o la moneda difieren del vigente, una fila nueva por insertProductCost y su
+// cost_change; si son iguales, nada. El origen va en la auditoría con las mismas claves a los dos
+// lados (D-6), porque product_costs no lo guarda (D-5). Devuelve los productos cuyo costo cambió.
+export type ReceivedCost = {
+  productId: string;
+  // En la escala de la base ("1234.50").
+  amount: string;
+  currency: string;
+};
+
+export async function recordReceivedCosts(
+  tx: DbTransaction,
+  receipt: {
+    organizationId: string;
+    createdBy: string;
+    // Como se muestra: RC-000123.
+    goodsReceiptNumber: string;
+    lines: ReceivedCost[];
+  },
+): Promise<{ changedProductIds: string[] }> {
+  const { organizationId, createdBy, goodsReceiptNumber } = receipt;
+  const current = await repository.findCurrentCosts(
+    organizationId,
+    receipt.lines.map((line) => line.productId),
+    tx,
+  );
+  const origin = {
+    source: "goods_receipt",
+    goods_receipt_number: goodsReceiptNumber,
+  };
+  const changedProductIds: string[] = [];
+  for (const line of receipt.lines) {
+    const before = current.get(line.productId);
+    if (
+      before &&
+      before.amount === line.amount &&
+      before.currency === line.currency
+    ) {
+      continue;
+    }
+    const cost = await repository.insertProductCost(tx, {
+      organizationId,
+      productId: line.productId,
+      amount: line.amount,
+      currency: line.currency,
+      createdBy,
+    });
+    await recordAudit(tx, {
+      organizationId,
+      actorUserId: createdBy,
+      entityType: "product",
+      entityId: line.productId,
+      action: "cost_change",
+      diff: {
+        before: {
+          amount: before?.amount ?? null,
+          currency: before?.currency ?? null,
+          ...origin,
+        },
+        after: { amount: cost.amount, currency: cost.currency, ...origin },
+      },
+    });
+    changedProductIds.push(line.productId);
+  }
+  return { changedProductIds };
+}

@@ -410,6 +410,32 @@ describe("las claves (AC-1; D-1)", () => {
     });
   });
 
+  // brief-22.4, D-1 y H-7: los destinos de las claves compuestas de la recepción.
+  it("los únicos que usa la recepción: la orden con su proveedor y su moneda, y la línea con su producto", async () => {
+    const result = await getDb().execute<{ name: string; columns: string }>(
+      sql`select c.conname as name,
+                 string_agg(a.attname, ',' order by k.ordinality) as columns
+          from pg_constraint c
+          cross join lateral unnest(c.conkey) with ordinality as k(attnum, ordinality)
+          join pg_attribute a on a.attrelid = c.conrelid and a.attnum = k.attnum
+          where c.contype = 'u'
+            and c.conname in ('purchase_orders_organization_id_supplier_currency_unique',
+                              'purchase_order_lines_organization_id_product_unique')
+          group by c.conname
+          order by c.conname`,
+    );
+    expect(result.rows).toEqual([
+      {
+        name: "purchase_order_lines_organization_id_product_unique",
+        columns: "organization_id,id,product_id",
+      },
+      {
+        name: "purchase_orders_organization_id_supplier_currency_unique",
+        columns: "organization_id,id,supplier_id,currency",
+      },
+    ]);
+  });
+
   // ON DELETE RESTRICT responde restrict_violation, 23001.
   it("un proveedor con órdenes no se borra", async () => {
     const s = await seed();

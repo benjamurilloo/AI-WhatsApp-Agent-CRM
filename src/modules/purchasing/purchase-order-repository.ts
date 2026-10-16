@@ -8,8 +8,8 @@ import {
 
 // Acceso a purchase_orders y purchase_order_lines (ADR 0023, punto 3; brief-22.3). Toda consulta
 // filtra por organization_id en SQL, también las escrituras por id (D-7). Las únicas escrituras son
-// insertPurchaseOrder, insertPurchaseOrderLines y cancelPurchaseOrderRow, y ninguna borra. El
-// trigger de la 0048 es la segunda defensa.
+// insertPurchaseOrder, insertPurchaseOrderLines, cancelPurchaseOrderRow y, desde la 22.4,
+// closePurchaseOrderRow, y ninguna borra. El trigger de la 0048 es la segunda defensa.
 
 type Executor = Db | DbTransaction;
 
@@ -44,6 +44,8 @@ const orderColumns = {
 };
 
 export type PurchaseOrderLineRow = {
+  // Desde la 22.4: la recepción nombra la línea que recibe (brief-22.4, D-1).
+  id: string;
   productId: string;
   position: number;
   // numeric(14, 3) y numeric(14, 2), como texto con la escala de la base.
@@ -53,6 +55,7 @@ export type PurchaseOrderLineRow = {
 };
 
 const lineColumns = {
+  id: purchaseOrderLines.id,
   productId: purchaseOrderLines.productId,
   position: purchaseOrderLines.position,
   quantity: purchaseOrderLines.quantity,
@@ -122,20 +125,43 @@ export async function findPurchaseOrder(
   return rows[0];
 }
 
-// La única escritura de la cabecera después del alta, en la 22.3: la cancelación, con su fecha.
-// Exige la transacción que ya bloqueó la fila. El cierre llega con la 22.4 (D-3).
+// Las escrituras de la cabecera después del alta: la cancelación y, desde la 22.4, el cierre, cada
+// una con su fecha. Exigen la transacción que ya bloqueó la fila FOR UPDATE.
 export async function cancelPurchaseOrderRow(
   tx: DbTransaction,
   organizationId: string,
   purchaseOrderId: string,
 ): Promise<void> {
+  await setPurchaseOrderStatus(tx, organizationId, purchaseOrderId, {
+    status: "cancelled",
+    cancelledAt: sql`now()`,
+  });
+}
+
+// El cierre, automático con la recepción que completa la orden o a mano con faltante (brief-22.4,
+// D-9).
+export async function closePurchaseOrderRow(
+  tx: DbTransaction,
+  organizationId: string,
+  purchaseOrderId: string,
+): Promise<void> {
+  await setPurchaseOrderStatus(tx, organizationId, purchaseOrderId, {
+    status: "closed",
+    closedAt: sql`now()`,
+  });
+}
+
+async function setPurchaseOrderStatus(
+  tx: DbTransaction,
+  organizationId: string,
+  purchaseOrderId: string,
+  change:
+    | { status: "cancelled"; cancelledAt: SQL }
+    | { status: "closed"; closedAt: SQL },
+): Promise<void> {
   const rows = await tx
     .update(purchaseOrders)
-    .set({
-      status: "cancelled",
-      cancelledAt: sql`now()`,
-      updatedAt: sql`now()`,
-    })
+    .set({ ...change, updatedAt: sql`now()` })
     .where(
       and(
         eq(purchaseOrders.organizationId, organizationId),
@@ -146,7 +172,7 @@ export async function cancelPurchaseOrderRow(
   // El llamador ya leyó la fila con FOR UPDATE en esta transacción: cero filas es un defecto.
   if (rows.length === 0) {
     throw new Error(
-      "cancelPurchaseOrderRow: la orden no existe en esta organización",
+      `${change.status}: la orden no existe en esta organización`,
     );
   }
 }
@@ -154,8 +180,9 @@ export async function cancelPurchaseOrderRow(
 export async function findPurchaseOrderLines(
   organizationId: string,
   purchaseOrderId: string,
+  executor: Executor = getDb(),
 ): Promise<PurchaseOrderLineRow[]> {
-  return getDb()
+  return executor
     .select(lineColumns)
     .from(purchaseOrderLines)
     .where(

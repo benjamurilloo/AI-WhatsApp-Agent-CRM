@@ -420,8 +420,8 @@ export async function getProductBalanceForService(
 export type StockMovementType = repository.StockMovementType;
 
 // El ajuste manual acepta solo sus dos tipos: order_delivery lo escribe la entrega de un pedido
-// (ADR 0020, punto 4); sale, la venta sin pedido (ADR 0021, punto 5), y sale_void, la reposición de
-// su anulación (ADR 0021, punto 6).
+// (ADR 0020, punto 4); sale, la venta sin pedido (ADR 0021, punto 5); sale_void, la reposición de
+// su anulación (ADR 0021, punto 6), y goods_receipt, la recepción de mercadería (ADR 0023, punto 4).
 const ADJUSTMENT_TYPES = [
   "adjustment_positive",
   "adjustment_negative",
@@ -997,6 +997,62 @@ export async function restoreSaleStock(
       balanceAfter: quantityToDatabase(balanceAfter),
       reason,
       createdBy: restore.createdBy,
+    });
+  }
+  return { ok: true };
+}
+
+// La entrada de una recepción de mercadería (ADR 0023, punto 4; brief-22.4, D-3), con la conducta de
+// restoreSaleStock: purchasing abre la transacción, ya bloqueó el proveedor, la orden y los
+// productos, y la pasa por tipo. Bloquea los saldos ordenados por producto, creando la fila en 0 si
+// falta, y suma a cada uno la cantidad recibida. No mira si el producto está activo: lo comprobó
+// purchasing con los productos bloqueados. Si algún saldo nuevo no cabe en numeric(14, 3), no
+// escribe nada y devuelve los productos (stock_limit); quien llama revierte la transacción. Si todos
+// caben, pide el motivo y escribe un movimiento goods_receipt por línea con el saldo nuevo, sin
+// tocar lo reservado.
+//
+// El motivo es una función, como en sellStock: lleva el número de la recepción, y el contador va
+// después de los saldos (ADR 0023, punto 10). Se llama una sola vez, después de comprobar y antes de
+// escribir. inventory no conoce las recepciones ni los proveedores: el motivo no los nombra.
+export async function receiveStock(
+  tx: DbTransaction,
+  receipt: {
+    organizationId: string;
+    lines: StockLine[];
+    reason: () => Promise<string>;
+    createdBy: string;
+  },
+): Promise<{ ok: true } | { ok: false; productIds: string[] }> {
+  const locked = await lockLines(tx, receipt.organizationId, receipt.lines);
+  const balances = locked.map((line) => ({
+    line,
+    after: computeBalanceAfter(
+      line.onHand,
+      "adjustment_positive",
+      line.quantity,
+      line.reserved,
+    ),
+  }));
+  const received = balances.flatMap(({ line, after }) =>
+    after.ok ? [{ line, balanceAfter: after.balanceAfter }] : [],
+  );
+  if (received.length < balances.length) {
+    return {
+      ok: false,
+      productIds: balances
+        .filter(({ after }) => !after.ok)
+        .map(({ line }) => line.productId),
+    };
+  }
+  const reason = await receipt.reason();
+  for (const { line, balanceAfter } of received) {
+    await repository.applyGoodsReceipt(tx, {
+      organizationId: receipt.organizationId,
+      productId: line.productId,
+      quantity: quantityToDatabase(line.quantity),
+      balanceAfter: quantityToDatabase(balanceAfter),
+      reason,
+      createdBy: receipt.createdBy,
     });
   }
   return { ok: true };

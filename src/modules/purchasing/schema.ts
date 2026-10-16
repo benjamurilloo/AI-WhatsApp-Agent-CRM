@@ -20,7 +20,8 @@ import { products } from "@/modules/catalog/schema";
 import { organizations } from "@/modules/organizations/schema";
 
 // docs/architecture/DataModel.md, tabla suppliers (ADR 0023, punto 2; brief-22.2, D-1) y, desde la
-// 22.3, purchase_orders y purchase_order_lines (ADR 0023, punto 3; brief-22.3, D-1).
+// 22.3, purchase_orders y purchase_order_lines (ADR 0023, punto 3; brief-22.3, D-1), y desde la 22.4,
+// goods_receipts y goods_receipt_lines (ADR 0023, punto 4; brief-22.4, D-1).
 
 // Límites de la ficha (D-1 y D-4). Los mismos valores van en los CHECK de la tabla.
 export const SUPPLIER_FIELD_LIMITS = {
@@ -148,6 +149,14 @@ export const purchaseOrders = pgTable(
       table.organizationId,
       table.id,
     ),
+    // Destino de la clave de la recepción con orden (brief-22.4, D-1): la base exige que la
+    // recepción sea del proveedor y de la moneda de su orden.
+    unique("purchase_orders_organization_id_supplier_currency_unique").on(
+      table.organizationId,
+      table.id,
+      table.supplierId,
+      table.currency,
+    ),
     // Una orden no puede apuntar al proveedor de otra organización, y un proveedor con órdenes no
     // se borra.
     foreignKey({
@@ -223,6 +232,13 @@ export const purchaseOrderLines = pgTable(
       table.purchaseOrderId,
       table.position,
     ),
+    // Destino de la clave de la línea recibida (brief-22.4, D-1 y H-7): la base exige que sea del
+    // mismo producto que la línea pedida.
+    unique("purchase_order_lines_organization_id_product_unique").on(
+      table.organizationId,
+      table.id,
+      table.productId,
+    ),
     check(
       "purchase_order_lines_position_range",
       sql`${table.position} between 1 and ${sql.raw(String(MAX_PURCHASE_ORDER_LINES))}`,
@@ -234,6 +250,179 @@ export const purchaseOrderLines = pgTable(
     ),
     check(
       "purchase_order_lines_line_total_positive",
+      sql`${table.lineTotal} > 0`,
+    ),
+  ],
+);
+
+// Líneas por recepción como máximo, como la orden (brief-22.4, D-7). La base lo exige con el CHECK
+// de position.
+export const MAX_GOODS_RECEIPT_LINES = 50;
+
+// La referencia del proveedor: su remito o su factura, opcional (brief-22.4, D-13). El mismo patrón
+// va en el CHECK de la tabla.
+export const SUPPLIER_REFERENCE_MAX_LENGTH = 40;
+export const SUPPLIER_REFERENCE_PATTERN = "^[A-Za-z0-9 /-]+$";
+
+// La recepción: un comprobante emitido, de solo inserción y sin estados (ADR 0023, punto 4;
+// brief-22.4, D-1). Registra qué entró, de qué proveedor y a qué costo. Va contra una orden abierta
+// de ese proveedor o sin orden. crm_app tiene SELECT e INSERT, y el trigger de la 0049 rechaza
+// UPDATE y DELETE (D-2). No copia datos del proveedor: lo nombra por su clave (punto 14).
+export const goodsReceipts = pgTable(
+  "goods_receipts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    // Del contador de numbering, por organización; se muestra como RC-000123 (punto 4).
+    number: bigint("number", { mode: "number" }).notNull(),
+    supplierId: uuid("supplier_id").notNull(),
+    // Null en la recepción sin orden.
+    purchaseOrderId: uuid("purchase_order_id"),
+    // Con orden, la de la orden; sin orden, la que eligió quien la registró.
+    currency: text("currency").notNull(),
+    // La suma de los totales de las líneas, redondeados uno por uno.
+    total: numeric("total", { precision: 14, scale: 2 }).notNull(),
+    // El número del remito o de la factura del proveedor, si se cargó (D-13).
+    supplierReference: text("supplier_reference"),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    // La fecha de emisión: la hora del INSERT, como en las demás tablas de comprobantes.
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(sql`clock_timestamp()`),
+  },
+  (table) => [
+    unique("goods_receipts_organization_number_unique").on(
+      table.organizationId,
+      table.number,
+    ),
+    // Destino de la clave compuesta de las líneas y, desde la 22.5, de la anulación.
+    unique("goods_receipts_organization_id_id_unique").on(
+      table.organizationId,
+      table.id,
+    ),
+    foreignKey({
+      name: "goods_receipts_supplier_fk",
+      columns: [table.organizationId, table.supplierId],
+      foreignColumns: [suppliers.organizationId, suppliers.id],
+    }).onDelete("restrict"),
+    // Con orden, la recepción es del proveedor y de la moneda de su orden (D-1). Sin orden, la clave
+    // no se mira (MATCH SIMPLE, con purchase_order_id nulo).
+    foreignKey({
+      name: "goods_receipts_order_fk",
+      columns: [
+        table.organizationId,
+        table.purchaseOrderId,
+        table.supplierId,
+        table.currency,
+      ],
+      foreignColumns: [
+        purchaseOrders.organizationId,
+        purchaseOrders.id,
+        purchaseOrders.supplierId,
+        purchaseOrders.currency,
+      ],
+    }).onDelete("restrict"),
+    // La lista, de la más reciente a la más vieja (D-12).
+    index("goods_receipts_list_idx").on(
+      table.organizationId,
+      table.createdAt.desc(),
+      table.id.desc(),
+    ),
+    // Las recepciones de un proveedor: la sección de su ficha y el filtro de la lista.
+    index("goods_receipts_supplier_idx").on(
+      table.organizationId,
+      table.supplierId,
+      table.createdAt.desc(),
+    ),
+    // Las recepciones de una orden: su detalle, el cierre y la cancelación.
+    index("goods_receipts_order_idx")
+      .on(table.organizationId, table.purchaseOrderId)
+      .where(sql`${table.purchaseOrderId} IS NOT NULL`),
+    check("goods_receipts_number_positive", sql`${table.number} > 0`),
+    check("goods_receipts_total_positive", sql`${table.total} > 0`),
+    check(
+      "goods_receipts_currency_format",
+      sql`${table.currency} ~ '^[A-Z]{3}$'`,
+    ),
+    check(
+      "goods_receipts_supplier_reference_format",
+      sql`char_length(${table.supplierReference}) between 1 and ${sql.raw(String(SUPPLIER_REFERENCE_MAX_LENGTH))}
+        and ${table.supplierReference} ~ ${sql.raw(`'${SUPPLIER_REFERENCE_PATTERN}'`)}
+        and ${table.supplierReference} = btrim(${table.supplierReference})`,
+    ),
+  ],
+);
+
+// Las líneas de la recepción, de solo inserción (D-1 y D-2). Sin moneda: va en la cabecera.
+export const goodsReceiptLines = pgTable(
+  "goods_receipt_lines",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    goodsReceiptId: uuid("goods_receipt_id").notNull(),
+    // La línea de la orden que recibe; null en la recepción sin orden.
+    purchaseOrderLineId: uuid("purchase_order_line_id"),
+    productId: uuid("product_id").notNull(),
+    // El orden en que se cargaron, de 1 en adelante.
+    position: smallint("position").notNull(),
+    quantity: numeric("quantity", { precision: 14, scale: 3 }).notNull(),
+    // El costo unitario que cobró el proveedor, con el IVA incluido (punto 4).
+    unitCost: numeric("unit_cost", { precision: 14, scale: 2 }).notNull(),
+    // Costo unitario por cantidad, redondeado a los decimales de la moneda (ADR 0019, punto 4).
+    lineTotal: numeric("line_total", { precision: 14, scale: 2 }).notNull(),
+  },
+  (table) => [
+    foreignKey({
+      name: "goods_receipt_lines_receipt_fk",
+      columns: [table.organizationId, table.goodsReceiptId],
+      foreignColumns: [goodsReceipts.organizationId, goodsReceipts.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "goods_receipt_lines_product_fk",
+      columns: [table.organizationId, table.productId],
+      foreignColumns: [products.organizationId, products.id],
+    }).onDelete("restrict"),
+    // La línea recibida es del mismo producto que la pedida (D-1). Sin orden, no se mira.
+    foreignKey({
+      name: "goods_receipt_lines_order_line_fk",
+      columns: [
+        table.organizationId,
+        table.purchaseOrderLineId,
+        table.productId,
+      ],
+      foreignColumns: [
+        purchaseOrderLines.organizationId,
+        purchaseOrderLines.id,
+        purchaseOrderLines.productId,
+      ],
+    }).onDelete("restrict"),
+    // Lo recibido de cada línea de una orden.
+    index("goods_receipt_lines_order_line_idx")
+      .on(table.organizationId, table.purchaseOrderLineId)
+      .where(sql`${table.purchaseOrderLineId} IS NOT NULL`),
+    // Un producto va en una sola línea de la recepción. Sirve también la lectura de sus líneas.
+    unique("goods_receipt_lines_receipt_product_unique").on(
+      table.goodsReceiptId,
+      table.productId,
+    ),
+    unique("goods_receipt_lines_receipt_position_unique").on(
+      table.goodsReceiptId,
+      table.position,
+    ),
+    check(
+      "goods_receipt_lines_position_range",
+      sql`${table.position} between 1 and ${sql.raw(String(MAX_GOODS_RECEIPT_LINES))}`,
+    ),
+    check("goods_receipt_lines_quantity_positive", sql`${table.quantity} > 0`),
+    check("goods_receipt_lines_unit_cost_positive", sql`${table.unitCost} > 0`),
+    check(
+      "goods_receipt_lines_line_total_positive",
       sql`${table.lineTotal} > 0`,
     ),
   ],

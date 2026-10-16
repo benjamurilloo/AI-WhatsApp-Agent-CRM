@@ -229,6 +229,21 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
     {
       requirement: "sesion",
     },
+  // El cierre a mano de la orden (brief-22.4, D-9): solo admin, lo exige purchasing.
+  "src/app/(autenticado)/compras/ordenes/actions.ts#closePurchaseOrderAction": {
+    requirement: "sesion",
+  },
+  // La recepción (brief-22.4, D-10): el alta es solo de admin, lo exige purchasing. El buscador de
+  // productos sugiere lo mismo que el del pedido, más la moneda del precio vigente, que un viewer ya
+  // ve en productos; nunca el costo.
+  "src/app/(autenticado)/compras/recepciones/actions.ts#createGoodsReceiptAction":
+    {
+      requirement: "sesion",
+    },
+  "src/app/(autenticado)/compras/recepciones/actions.ts#searchGoodsReceiptProductsAction":
+    {
+      requirement: "sesion",
+    },
   "src/app/(autenticado)/productos/actions.ts#createProductAction": {
     requirement: "sesion",
   },
