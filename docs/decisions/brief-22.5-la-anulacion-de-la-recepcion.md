@@ -304,3 +304,84 @@ Y siempre **antes** de cada una de estas acciones, que necesita autorización ex
 - pasar tareas de estado en Notion;
 - ejecutar migraciones contra una base que no sea la local o la de la CI;
 - desplegar.
+
+## Resultados — 2026-10-16 (autoevaluación)
+
+Implementado el 2026-10-16. **Esta sección es autoevaluación**: la escribió quien implementó. La revisión independiente va aparte, abajo.
+
+### Lo que la implementación encontró que el brief no decía
+
+**Desvíos de texto de D-9, sin cambiar una decisión** (N-1 de la revisión):
+
+- la página de la anulación de una recepción sin anular dice «Esta recepción no está anulada.», y no «no encontrada»: la recepción existe;
+- la historia dice «Anulación ARC-000001: {motivo}», con dos puntos y no con «·», como el resto de los resúmenes de auditoría del módulo;
+- los botones de la confirmación siguen el molde de la anulación de la venta: «No, volver» y «Sí, anular la recepción».
+
+**Precisiones que no cambian una decisión:**
+
+- **La anulación vive en un archivo nuevo del módulo**, `goods-receipt-voids.ts`. El repositorio de la recepción suma su inserción, su lectura por recepción y el rescate del `UNIQUE` (`isGoodsReceiptAlreadyVoided`), con su test unitario.
+- **«Vigente» es un `NOT EXISTS` sobre `goods_receipt_voids`**, en un solo fragmento que usan lo recibido por línea (`sumReceivedByOrderLine`) y el recuento de recepciones de la orden (`countOrderGoodsReceipts`), del que dependen `has_receipts` y `no_receipts`.
+- **Todo rechazo posterior a los bloqueos se lanza** dentro de la transacción (`AlreadyVoided`, `InsufficientStock`) y se traduce fuera, como en `voidSale` y en R-1 de la 22.4. Ante una falta, la segunda mirada de «ya anulada» va antes de lanzar (H-3).
+- **Los `CHECK` de la tabla se prueban con una recepción inexistente**: con una real, el trigger de la copia de moneda y total los adelanta y el caso no discriminaría el `CHECK`.
+- **`status` y `voidNumber` del filtro de la lista son opcionales**, con «todas» por defecto, para no cambiar los casos de la 22.4.
+- **Los 15 `TRUNCATE` de 13 specs end-to-end** empiezan ahora por `goods_receipt_voids`, porque su trigger impide borrar la recepción antes.
+- **Los archivos nuevos entraron al índice con `git add -N`**, porque `exposed-surface` lee `git ls-files`.
+
+### Criterios
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| AC-1 | cumplido | `goods-receipt-voids-schema.test.ts`, 13 casos con el rol dueño: los privilegios y el 42501 de `crm_app` en `UPDATE` y `DELETE`, cada `CHECK`, los dos únicos, la clave compuesta con una recepción de otra organización, y el trigger contra `UPDATE`, `DELETE` y una moneda o un total distintos de los de la recepción |
+| AC-2 | cumplido | `goods-receipt-voids.test.ts`: la salida con su movimiento y su motivo, lo reservado intacto, y las faltas por el saldo, por lo reservado y con un producto sin fila de saldo, sin escribir ni pedir el motivo; `service.test.ts` de `inventory`: el ajuste rechaza `goods_receipt_void` y el filtro de la historia lo acepta |
+| AC-3 | cumplido | `goods-receipt-voids.test.ts`: con orden y sin orden, la anulación con `ARC`, los movimientos, la auditoría `void`, el costo y el estado de la orden sin cambio; lo recibido sin la anulada, volver a recibir, la cancelación permitida y el cierre a mano rechazado; la orden cerrada que sigue cerrada; el filtro por estado y la búsqueda por `ARC` |
+| AC-4 | cumplido | `goods-receipt-voids.test.ts`, los cinco escenarios; el de la venta, en los dos órdenes de llegada. Mutaciones abajo |
+| AC-5 | cumplido | `goods-receipt-voids.test.ts`: cada respuesta de D-6 sin escribir, auditar, mover stock ni consumir número, con una línea que no alcanza por lo reservado y otra sin fila de saldo; `FORBIDDEN` para un `viewer` |
+| AC-6 | cumplido | `organization-isolation.test.ts`: la anulación, su lectura y la lista con una recepción de otra organización |
+| AC-7 | cumplido | en local, con 2.000 recepciones y 500 anuladas: la lista en la página 40, sola, filtrada por estado o por proveedor, de 11,2 a 14,7 ms; buscada por `ARC`, 7,8 ms. El detalle de una orden de 50 líneas con 100 recepciones, 30 de ellas anuladas: 24,8 ms. El umbral es de 754 ms |
+| AC-8 | cumplido | `goods-receipt-voids.spec.ts`, 7 casos sobre `next start`: un `admin` anula con el teclado una recepción sin orden y ve la marca y el aviso del costo; el comprobante, su vista de impresión y el movimiento en el producto; la anulación de una recepción con orden, con lo recibido en cero, la cancelación y sin el cierre a mano; el rechazo por falta de stock; la lista con la marca, el filtro por estado y la búsqueda por `ARC`; un `viewer` con el movimiento sin costo ni proveedor y el aviso en la anulación; y la anulación sin JavaScript. axe sin violaciones en claro y en oscuro, también en la vista de impresión |
+| AC-9 | cumplido | `stock-writes` fija `applyGoodsReceiptVoid`, llamada solo desde `removeReceivedStock`, y que `receiveStock` y `removeReceivedStock` solo se llaman desde `purchasing`, con 6 casos que detecta y 2 que permite, vista en rojo antes de extenderla; `exposed-surface` declara `voidGoodsReceiptAction`, vista en rojo antes |
+| AC-10 | cumplido | `purchasing` importa `audit`, `catalog`, `inventory`, `numbering`, `organizations`, `src/shared` y los esquemas de `auth`, `catalog` y `organizations` que ya usaba; ningún módulo importa `purchasing`; de los módulos existentes, solo `inventory` y `numbering` están en el diff, dentro de lo autorizado |
+| AC-11 | cumplido | `read-api`, `read-api-v2` e `ingestion-v2` pasan en la integración completa sin cambios; `goods-receipt-voids.test.ts` lee el stock por `getProductBalanceForService` y devuelve el saldo después de la anulación |
+| AC-12 | cumplido en local; la CI, pendiente del commit | la batería local, abajo: todo pasa, con el end-to-end en dos mitades por la caída del servidor de prueba y la falla por carga de `organization-bootstrap`, que pasa sola. La CI del SHA del cierre se lee después del push |
+| AC-13 | cumplido | DataModel (`goods_receipt_voids`), Overview, FunctionalRequirements (`FR-COMP-16` y `17`, y la precisión de `FR-COMP-14`), Screens (la 49, y la 5, la 42, la 45, la 46 y la 48), TraceabilityMatrix y SecurityModel (154 puntos de entrada) |
+| AC-14 | pendiente | si se autoriza el despliegue (D-13) |
+
+### Mutaciones
+
+Corridas una por una con un script que aplica el cambio, verifica que aparezca una sola vez, corre el caso que debería atraparlo y restaura el archivo. Al terminar, el hash del diff es idéntico al de antes.
+
+- **M1**, la anulación sin el `FOR UPDATE` de la cabecera de la orden: detectada por «la cancelación que espera la cabecera». Cae porque la cancelación ya no espera: `waitForLockWaiters` agota su tiempo (N-3, abajo).
+- **M2**, sin la segunda mirada de «ya anulada» ante una falta (H-3): detectada por «dos anulaciones de la misma recepción sin orden», que responde `insufficient_stock` en vez de `already_voided`.
+- **M3**, sin comprobar lo disponible: detectada por «la anulación contra una venta» con la venta primero. **Sobrevivió en la primera corrida**, porque el caso solo probaba la anulación primero, y entonces la que comprueba es la venta. Con el caso en los dos órdenes, la base rechaza el saldo negativo con un error, no con `insufficient_stock`, y cae.
+- **M4**, comprobar el saldo y no lo disponible: detectada por el rechazo con una línea que no alcanza por lo reservado.
+- **M5**, el contador antes de los bloqueos: detectada por «una anulación que espera sus saldos no frena el número de otra».
+- **M6**, el rechazo por stock devuelto con `return` dentro de la transacción: detectada por el rechazo con un producto sin fila de saldo, cuya fila en 0 quedaba confirmada.
+- **M7**, lo recibido contando también las anuladas: detectada por «con orden: lo recibido deja de contarla».
+- **M8**, `has_receipts` y `no_receipts` contando también las anuladas: detectada por el caso de la cancelación.
+- **M9**, la lectura de la anulación por recepción sin `organization_id`: detectada por `organization-isolation.test.ts`.
+- **M10**, un `viewer` que anula: detectada por el caso de `FORBIDDEN`.
+- **M11**, sin rescatar el `UNIQUE` como «ya anulada», sola: **sobrevive, por diseño**. Es la última defensa: la mirada del motivo, antes del contador, frena primero la segunda anulación. La cubren el test unitario de `isGoodsReceiptAlreadyVoided` y M13.
+- **M12**, sin la mirada del motivo: **sobrevive, como control**. Sin esa mirada, el `UNIQUE` frena la segunda anulación y su rescate responde `already_voided`.
+- **M13**, sin la mirada del motivo ni el rescate del `UNIQUE`: detectada por «dos anulaciones de la misma recepción sin orden, con stock de sobra», que recibe un error en vez de `already_voided`.
+- **La clave compuesta y el trigger** los prueba `goods-receipt-voids-schema.test.ts` contra la base, con el rol dueño.
+
+### La batería local
+
+Desde Git Bash, sin nada en paralelo:
+
+- formato, lint, typecheck y build pasan;
+- 847 unitarios y 687 guardas pasan;
+- integración, 1.475 de 1.476. Falló `organization-bootstrap.test.ts` («todos los seeds rechazan la base productiva») por timeout, a los 30,1 s con la suite entera. Corrido solo pasa, 6 de 6, en 19 s. Esta subfase no toca ni el test ni los seeds, y la 21.6 registró la misma falla por carga;
+- end-to-end, en dos mitades. La corrida completa pasó los primeros 173 casos, entre ellos los 7 de `goods-receipt-voids.spec.ts`, y los 2 de `chromium-sin-ingestion`. En el caso 174, el segundo de `receipts.spec.ts`, el servidor de prueba se cayó sin dejar error: ese caso agotó su tiempo y los 40 que siguieron fallaron con `ERR_CONNECTION_REFUSED`. Es la misma caída que registró la 22.4, y esa corrida no cuenta para ellos. Las seis specs que quedaron (`receipts`, `refunds`, `sales`, `security-headers`, `suppliers` y `users`), corridas solas: 42 de 42. Entre las dos, los 216 casos.
+
+## Revisión independiente — 2026-10-16
+
+Un agente de solo lectura que no participó del trabajo revisó la entrega contra este brief, el ADR 0023 y las reglas vigentes. No ejecutó nada. Encontró **7 hallazgos: ninguno crítico ni mayor, dos menores y cinco notas**. Cada uno se verificó contra el código o los documentos antes de aceptarlo.
+
+- **M-1 (menor), corregido**: `FR-COMP-14` decía que una orden «con recepciones» no se cancela, y `FR-COMP-17` que se cancela si todas sus recepciones se anularon. `FR-COMP-14` lleva ahora una nota, «Precisado el 2026-10-16 en la 22.5», que remite al punto 3 del ADR 0023: cuentan las recepciones vigentes. No se reescribe el requisito.
+- **M-2 (menor), corregido**: Overview y Screens decían todavía que la anulación «llega con la 22.5». Las dos frases llevan «*Llegó el 2026-10-16*».
+- **N-1 (nota), declarado**: los desvíos de texto de D-9, arriba.
+- **N-2 (nota), aceptado sin cambio**: ningún caso discrimina la mirada de «ya anulada» del paso 1, después del `FOR UPDATE` de la cabecera, con orden. Sin ella, la segunda anulación sigue frenada por la mirada del paso 4, la del motivo o el `UNIQUE`: es defensa en profundidad, como M11 y M12.
+- **N-3 (nota), aceptado sin cambio**: M1 cae porque `waitForLockWaiters` agota su tiempo, no por una aserción sobre el resultado. Además, un `return` en lugar del `AlreadyVoided` del paso 4 no se vería, porque ese rechazo no escribe nada que la foto pueda mostrar.
+- **N-4 (nota), resuelto con esta sección**: DataModel remitía a §Resultados, que todavía no existía.
+- **N-5 (nota), verificado**: el revisor no pudo correr `git diff`. Con `git status` completo, todos los archivos del cambio están en la lista autorizada, y `docs/ui-redesign/` y `.claude/settings.json` quedan fuera.

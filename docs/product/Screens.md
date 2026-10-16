@@ -91,7 +91,7 @@
 - **Usuario autorizado**: el historial lo ven `admin` y `viewer`; el ajuste solo `admin`.
 - **Información mostrada**: stock actual y movimientos (fecha, tipo, cantidad, saldo resultante, motivo y autor).
 - **Acciones**: registrar un ajuste positivo o negativo con cantidad mayor a 0 y motivo obligatorio. Antes de confirmar se ve el saldo resultante.
-- **Filtros**: tipo de movimiento (ajuste positivo o negativo, los únicos del MVP) y período. *Desde la 22.4* ([brief-22.4](../decisions/brief-22.4-la-recepcion.md), D-14): también «Recepción» (`?tipo=recepcion`), la entrada de una recepción de mercadería, que suma («+») y lleva en el motivo su número, sin el proveedor ni el costo; la ven `admin` y `viewer`.
+- **Filtros**: tipo de movimiento (ajuste positivo o negativo, los únicos del MVP) y período. *Desde la 22.4* ([brief-22.4](../decisions/brief-22.4-la-recepcion.md), D-14): también «Recepción» (`?tipo=recepcion`), la entrada de una recepción de mercadería, que suma («+») y lleva en el motivo su número, sin el proveedor ni el costo; la ven `admin` y `viewer`. *Desde la 22.5* ([brief-22.5](../decisions/brief-22.5-la-anulacion-de-la-recepcion.md), D-9): también «Anulación de recepción» (`?tipo=anulacion-recepcion`), la salida de la anulación de una recepción, que resta («−») y lleva en el motivo los números de la anulación y de la recepción, sin el proveedor ni el costo.
 - **Paginación**: 25 por página, del más reciente al más antiguo.
 - **Carga**: el botón queda deshabilitado hasta que responde el servidor.
 - **Vacío**: "este producto no tiene movimientos".
@@ -577,7 +577,7 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 
 - **Información mostrada**: el nombre con «Activo» o «Inactivo», y la tarjeta «Datos» con el nombre, el teléfono, el email y el CUIT, o «Sin teléfono», «Sin email» y «Sin CUIT». Debajo, el historial de auditoría paginado: «Alta», «Edición», «Desactivación» y «Reactivación», con el cambio de cada campo.
 - **Acciones**: «Editar»; «Desactivar», con la confirmación «¿Desactivar "{nombre}"?» en un segundo paso de la URL; con el proveedor inactivo, la tarjeta «Estado» con «Reactivar».
-- *Desde la 22.4* ([brief-22.4](../decisions/brief-22.4-la-recepcion.md), D-11): la tarjeta «Recepciones», con sus cinco últimas (número, fecha, orden o «Sin orden» y total) y «Ver las {n} recepciones de este proveedor», que lleva a la pantalla 46 filtrada por él; sin recepciones, «Este proveedor no tiene recepciones.».
+- *Desde la 22.4* ([brief-22.4](../decisions/brief-22.4-la-recepcion.md), D-11): la tarjeta «Recepciones», con sus cinco últimas (número, fecha, orden o «Sin orden» y total) y «Ver las {n} recepciones de este proveedor», que lleva a la pantalla 46 filtrada por él; sin recepciones, «Este proveedor no tiene recepciones.». *Desde la 22.5* ([brief-22.5](../decisions/brief-22.5-la-anulacion-de-la-recepcion.md), D-9): la marca «Anulada» en las anuladas.
 - *Desde la 22.3* ([brief-22.3](../decisions/brief-22.3-la-orden-de-compra.md), D-10): la tarjeta «Órdenes de compra», con sus cinco últimas (número, fecha, total y estado), «Ver las {n} órdenes de este proveedor», que lleva a la pantalla 43 filtrada por él, y, si está activo, «Nueva orden de compra», que lleva a la 44 con el proveedor ya elegido; sin órdenes, «Este proveedor no tiene órdenes de compra.».
 
 ## 43. Órdenes de compra
@@ -605,6 +605,7 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 - **Acciones**: «Imprimir o guardar PDF»; en una abierta, «Cancelar la orden», con la confirmación «¿Cancelar la orden de compra {número}?» en un segundo paso de la URL (`?confirmar=cancelar`). Una cancelada lo dice, con su fecha.
 - **Al imprimir** queda solo la orden, en claro, sin la navegación, los botones ni la historia.
 - *Desde la 22.4* ([brief-22.4](../decisions/brief-22.4-la-recepcion.md), D-9 y D-11; FR-COMP-14): por línea, «Recibido» y «Falta», que no se imprimen; la tarjeta «Recepciones», con cada una (número enlazado, fecha y total) o «Esta orden todavía no recibió mercadería.». En una abierta con faltante, «Registrar recepción», que lleva a la pantalla 47 con la orden; con alguna recepción, «Cerrar con faltante», con la confirmación «¿Cerrar la orden de compra {número} con faltante?» (`?confirmar=cerrar`), y «Cancelar la orden» ya no aparece. Si una recepción llega mientras se confirma la cancelación, el envío lo dice («La orden ya recibió mercadería: no se puede cancelar. Cerrala con faltante.»). Una cerrada lo dice, con su fecha. La historia rotula el cambio de estado por el estado nuevo: «Cancelación», «Cierre por la recepción RC-000123» o «Cierre a mano».
+- *Desde la 22.5* ([brief-22.5](../decisions/brief-22.5-la-anulacion-de-la-recepcion.md), D-8 y D-9; FR-COMP-17): la tarjeta «Recepciones» lista también las anuladas, con la marca «Anulada»; «Recibido» y «Falta» cuentan solo las vigentes. Una abierta cuyas recepciones se anularon todas vuelve a ofrecer «Cancelar la orden» y ya no «Cerrar con faltante». Una cerrada sigue cerrada, con «Falta» mayor que cero y ninguna acción.
 
 ## 46. Recepciones
 
@@ -612,6 +613,7 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 
 - **Información mostrada**: una tabla con el número enlazado al detalle, la fecha, el proveedor (que filtra la lista por él), la orden enlazada o «Sin orden», la cantidad de líneas y el total en su moneda. En un teléfono, tarjetas. La más nueva primero, paginada de a 25. «+ Nueva recepción» arriba.
 - **Filtros**: «Número» (`RC-000123`, `rc123` o `123`); el proveedor llega por la URL, con «Recepciones de {proveedor}.» y «Ver las de todos los proveedores». En la URL: `?numero=&proveedor=&pagina=`.
+- *Desde la 22.5* ([brief-22.5](../decisions/brief-22.5-la-anulacion-de-la-recepcion.md), D-9; FR-COMP-17): la marca «Anulada» junto al número de cada anulada; el filtro «Estado»: «Todas» (por defecto), «Vigentes» o «Anuladas» (`?estado=vigente` o `anulada`); y «Número» acepta también el de la anulación, siempre con su prefijo (`ARC-000001` o `arc1`), y encuentra la recepción que anula.
 - **Vacío**: «Todavía no hay recepciones.» con «Registrar la primera»; con filtros, «Ninguna recepción coincide con estos filtros.» con «Limpiar filtros».
 - **Un `viewer`**: «No tenés permiso para ver esta página.», sin datos. Lo mismo en las pantallas 47 y 48.
 
@@ -630,5 +632,16 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 *Agregada en la 22.4* (D-6 y D-11; FR-COMP-13). Ruta `/compras/recepciones/[id]`. Es también **la página imprimible**, con el molde del detalle de la orden.
 
 - **Información mostrada**: el número y el total; el comprobante con la organización, «Documento no válido como factura», el número, la fecha, el proveedor con su CUIT de hoy, la orden enlazada o «Sin orden», el remito o la factura del proveedor si se cargó, la moneda, las líneas (producto enlazado con su SKU, cantidad, costo unitario y total) y el total. Debajo, la historia: «Alta», con la orden, las líneas y el total. Tras registrarla, el aviso lo dice, y si cerró la orden, también.
-- **Acciones**: «Imprimir o guardar PDF». No se edita; la anulación llega con la 22.5.
+- **Acciones**: «Imprimir o guardar PDF». No se edita; la anulación llega con la 22.5. *Llegó el 2026-10-16*.
+- *Desde la 22.5* ([brief-22.5](../decisions/brief-22.5-la-anulacion-de-la-recepcion.md), D-9; FR-COMP-16): la tarjeta «Anulación». En una vigente dice «Esta recepción está vigente.» y ofrece «Anular la recepción», con la confirmación «¿Anular la recepción {número}?» en un segundo paso de la URL (`?confirmar=anular`): el motivo, de la lista; lo que sale del stock por producto, con lo disponible hoy; «Anular no restaura el costo: si hace falta, corregilo en la ficha del producto.»; con orden, que la orden deja de contarla; «No, volver» y «Sí, anular la recepción». Funciona sin JavaScript. Si no alcanza el stock, dice qué productos no alcanzan, con lo que hay que sacar y lo disponible, y sugiere el ajuste; si otra persona la anuló, lo dice y enlaza la anulación. Una anulada dice «Anulada por ARC-000001 el {fecha}: {motivo}.», enlaza el comprobante, y su comprobante impreso lleva «Anulada por ARC-000001». La historia suma «Anulación ARC-000001: {motivo}».
 - **Al imprimir** queda solo el comprobante, sin la navegación, los botones ni la historia.
+
+## 49. Anulación de recepción
+
+*Agregada en la 22.5* ([brief-22.5](../decisions/brief-22.5-la-anulacion-de-la-recepcion.md), D-9; FR-COMP-16). Ruta `/compras/recepciones/[id]/anulacion`, **solo para `admin`**. Es **la página imprimible** de la anulación, con el molde de la anulación de la venta.
+
+- **Información mostrada**: «Anulación ARC-000001» y la recepción que anula; el comprobante con la organización, «Documento no válido como factura», el número y la fecha de la anulación, la recepción anulada (enlazada) con su fecha, el motivo, el proveedor con su CUIT de hoy, la orden o «Sin orden», el remito o la factura del proveedor si se cargó, las líneas de la recepción (producto con su SKU, cantidad, costo unitario y total) y «Total anulado». Debajo, que anular no restaura el costo.
+- **Acciones**: «Imprimir o guardar PDF». No se edita ni se deshace.
+- **Una recepción sin anular**: «Esta recepción no está anulada.», con «Volver a la recepción».
+- **Al imprimir** queda solo el comprobante.
+- **Un `viewer`**: «No tenés permiso para ver esta página.», sin datos.

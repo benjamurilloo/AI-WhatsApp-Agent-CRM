@@ -3,6 +3,8 @@ import {
   currencyWarning,
   goodsReceiptNoticeMessage,
   goodsReceiptRejection,
+  shortageText,
+  voidGoodsReceiptRejection,
 } from "./messages";
 
 // Los textos de la recepción (brief-22.4, D-7, D-10 y D-11): cada rechazo en su lugar, la
@@ -150,7 +152,60 @@ describe("los avisos", () => {
     expect(goodsReceiptNoticeMessage(["orden-cerrada"])).toMatch(
       /la orden quedó completa y se cerró\.$/,
     );
+    expect(goodsReceiptNoticeMessage("anulada")).toBe(
+      "Recepción anulada: el stock ya bajó. El costo de los productos no cambió.",
+    );
     expect(goodsReceiptNoticeMessage("toString")).toBeNull();
     expect(goodsReceiptNoticeMessage(undefined)).toBeNull();
+  });
+});
+
+// brief-22.5, D-6 y D-9.
+describe("los rechazos de la anulación", () => {
+  it("ya anulada enlaza su anulación", () => {
+    expect(
+      voidGoodsReceiptRejection({
+        ok: false,
+        code: "BUSINESS_RULE_VIOLATION",
+        rule: "already_voided",
+        receiptVoid: { id: P, number: 1, displayNumber: "ARC-000001" },
+      }),
+    ).toEqual({
+      message: "Esta recepción ya está anulada, por ARC-000001.",
+      existing: { displayNumber: "ARC-000001" },
+      shortages: [],
+    });
+  });
+
+  it("la falta de stock lleva cada producto, con lo que hay que sacar y lo disponible", () => {
+    const shortages = [
+      { productId: P, requested: "2.000", available: "0.500" },
+      { productId: Q, requested: "1.000", available: "0.000" },
+    ];
+    const rejection = voidGoodsReceiptRejection({
+      ok: false,
+      code: "BUSINESS_RULE_VIOLATION",
+      rule: "insufficient_stock",
+      shortages,
+    });
+    expect(rejection.shortages).toEqual(shortages);
+    expect(rejection.existing).toBeNull();
+    expect(rejection.message).toMatch(/ajuste/);
+    expect(shortageText(shortages[0]!)).toBe(
+      "Hay que sacar 2 y hay disponible 0,5.",
+    );
+  });
+
+  it("el rol, el motivo y la recepción que no existe", () => {
+    expect(
+      voidGoodsReceiptRejection({ ok: false, code: "FORBIDDEN" }).message,
+    ).toBe("Solo un administrador puede anular una recepción.");
+    expect(
+      voidGoodsReceiptRejection({ ok: false, code: "VALIDATION_ERROR" })
+        .message,
+    ).toBe("Elegí el motivo de la anulación.");
+    expect(
+      voidGoodsReceiptRejection({ ok: false, code: "NOT_FOUND" }).message,
+    ).toBe("Esta recepción no existe.");
   });
 });

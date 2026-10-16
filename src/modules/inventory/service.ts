@@ -421,7 +421,8 @@ export type StockMovementType = repository.StockMovementType;
 
 // El ajuste manual acepta solo sus dos tipos: order_delivery lo escribe la entrega de un pedido
 // (ADR 0020, punto 4); sale, la venta sin pedido (ADR 0021, punto 5); sale_void, la reposición de
-// su anulación (ADR 0021, punto 6), y goods_receipt, la recepción de mercadería (ADR 0023, punto 4).
+// su anulación (ADR 0021, punto 6); goods_receipt, la recepción de mercadería (ADR 0023, punto 4), y
+// goods_receipt_void, la anulación de la recepción (ADR 0023, punto 6).
 const ADJUSTMENT_TYPES = [
   "adjustment_positive",
   "adjustment_negative",
@@ -1053,6 +1054,50 @@ export async function receiveStock(
       balanceAfter: quantityToDatabase(balanceAfter),
       reason,
       createdBy: receipt.createdBy,
+    });
+  }
+  return { ok: true };
+}
+
+// La salida de la anulación de una recepción de mercadería (ADR 0023, punto 6; brief-22.5, D-3), con
+// la conducta de sellStock: purchasing abre la transacción, ya bloqueó la orden y los productos, y la
+// pasa por tipo. Bloquea los saldos ordenados por producto y comprueba lo disponible (saldo menos
+// reservado) de cada línea. Si alguna no alcanza, no escribe nada, no pide el motivo y devuelve las
+// que no alcanzan; quien llama revierte la transacción (la fila en 0 que pudo crear lockBalance se va
+// con ella). Si todas alcanzan, pide el motivo y escribe un movimiento goods_receipt_void por línea
+// con el saldo nuevo, sin tocar lo reservado. No mira si el producto está activo: lo que entró tiene
+// que poder salir.
+//
+// El motivo es una función, como en sellStock: lleva el número de la anulación, y el contador va
+// después de los saldos (ADR 0023, punto 10). Se llama una sola vez, después de comprobar y antes de
+// escribir. inventory no conoce las recepciones ni los proveedores: el motivo no los nombra.
+export async function removeReceivedStock(
+  tx: DbTransaction,
+  removal: {
+    organizationId: string;
+    lines: StockLine[];
+    reason: () => Promise<string>;
+    createdBy: string;
+  },
+): Promise<{ ok: true } | { ok: false; shortages: StockShortage[] }> {
+  const locked = await lockLines(tx, removal.organizationId, removal.lines);
+  const shortages = locked
+    .filter((line) => line.onHand - line.reserved < line.quantity)
+    .map((line) => ({
+      productId: line.productId,
+      requested: quantityToDatabase(line.quantity),
+      available: quantityToDatabase(line.onHand - line.reserved),
+    }));
+  if (shortages.length > 0) return { ok: false, shortages };
+  const reason = await removal.reason();
+  for (const line of locked) {
+    await repository.applyGoodsReceiptVoid(tx, {
+      organizationId: removal.organizationId,
+      productId: line.productId,
+      quantity: quantityToDatabase(line.quantity),
+      balanceAfter: quantityToDatabase(line.onHand - line.quantity),
+      reason,
+      createdBy: removal.createdBy,
     });
   }
   return { ok: true };

@@ -351,6 +351,13 @@
       "when": 1792154080014,
       "tag": "0049_goods_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1792175025817,
+      "tag": "0050_goods_receipt_voids",
+      "breakpoints": true
     }
   ]
 }

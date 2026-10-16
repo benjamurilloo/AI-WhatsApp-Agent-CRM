@@ -132,4 +132,12 @@ describe("formatDocumentNumber", () => {
     expect(formatDocumentNumber("goods_receipt", 3)).toBe("RC-000003");
     expect(formatDocumentNumber("goods_receipt", 1_234_567)).toBe("RC-1234567");
   });
+
+  // El primer prefijo de tres letras: su largo no cambia la regla (ADR 0023, punto 13).
+  it("el prefijo de la anulación de una recepción es ARC (brief-22.5, H-8)", () => {
+    expect(formatDocumentNumber("goods_receipt_void", 1)).toBe("ARC-000001");
+    expect(formatDocumentNumber("goods_receipt_void", 1_234_567)).toBe(
+      "ARC-1234567",
+    );
+  });
 });

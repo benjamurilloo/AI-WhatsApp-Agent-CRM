@@ -21,7 +21,8 @@ import { organizations } from "@/modules/organizations/schema";
 
 // docs/architecture/DataModel.md, tabla suppliers (ADR 0023, punto 2; brief-22.2, D-1) y, desde la
 // 22.3, purchase_orders y purchase_order_lines (ADR 0023, punto 3; brief-22.3, D-1), y desde la 22.4,
-// goods_receipts y goods_receipt_lines (ADR 0023, punto 4; brief-22.4, D-1).
+// goods_receipts y goods_receipt_lines (ADR 0023, punto 4; brief-22.4, D-1), y desde la 22.5,
+// goods_receipt_voids (ADR 0023, punto 6; brief-22.5, D-1).
 
 // Límites de la ficha (D-1 y D-4). Los mismos valores van en los CHECK de la tabla.
 export const SUPPLIER_FIELD_LIMITS = {
@@ -424,6 +425,62 @@ export const goodsReceiptLines = pgTable(
     check(
       "goods_receipt_lines_line_total_positive",
       sql`${table.lineTotal} > 0`,
+    ),
+  ],
+);
+
+// El motivo de la anulación de una recepción, de una lista cerrada y sin texto libre (ADR 0023,
+// punto 6; brief-22.5, D-2). Un valor nuevo se suma con un ALTER TYPE aditivo.
+export const goodsReceiptVoidReason = pgEnum("goods_receipt_void_reason", [
+  "data_entry_error",
+  "duplicate",
+  "returned_to_supplier",
+  "other",
+]);
+
+// La anulación de una recepción (ADR 0023, punto 6; brief-22.5, D-1): otro comprobante, de solo
+// inserción, con su propia serie (ARC-000001). Anula la recepción entera: copia su moneda y su total,
+// en positivo, y no tiene líneas propias; las cantidades se leen de la recepción y cada movimiento
+// las guarda. No copia al proveedor: apunta solo a la recepción. El trigger de la 0050 rechaza UPDATE
+// y DELETE, y exige que la moneda y el total sean los de la recepción.
+export const goodsReceiptVoids = pgTable(
+  "goods_receipt_voids",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    // Del contador de numbering con el tipo goods_receipt_void; se muestra como ARC-000001.
+    number: bigint("number", { mode: "number" }).notNull(),
+    goodsReceiptId: uuid("goods_receipt_id").notNull(),
+    currency: text("currency").notNull(),
+    total: numeric("total", { precision: 14, scale: 2 }).notNull(),
+    reason: goodsReceiptVoidReason("reason").notNull(),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(sql`clock_timestamp()`),
+  },
+  (table) => [
+    unique("goods_receipt_voids_organization_number_unique").on(
+      table.organizationId,
+      table.number,
+    ),
+    // Una recepción se anula a lo sumo una vez (punto 6). Sirve también el NOT EXISTS de lo vigente
+    // (D-8 y D-10).
+    unique("goods_receipt_voids_goods_receipt_unique").on(table.goodsReceiptId),
+    foreignKey({
+      name: "goods_receipt_voids_receipt_fk",
+      columns: [table.organizationId, table.goodsReceiptId],
+      foreignColumns: [goodsReceipts.organizationId, goodsReceipts.id],
+    }).onDelete("restrict"),
+    check("goods_receipt_voids_number_positive", sql`${table.number} > 0`),
+    check("goods_receipt_voids_total_positive", sql`${table.total} > 0`),
+    check(
+      "goods_receipt_voids_currency_format",
+      sql`${table.currency} ~ '^[A-Z]{3}$'`,
     ),
   ],
 );

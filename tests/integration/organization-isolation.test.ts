@@ -11,6 +11,8 @@ import {
   createGoodsReceipt,
   createPurchaseOrder,
   getGoodsReceipt,
+  listGoodsReceipts,
+  voidGoodsReceipt,
 } from "@/modules/purchasing";
 import * as goodsReceiptRepository from "@/modules/purchasing/goods-receipt-repository";
 import * as purchaseOrderRepository from "@/modules/purchasing/purchase-order-repository";
@@ -680,5 +682,67 @@ describe("la recepción no alcanza a otra organización", () => {
       sql`select status from purchase_orders where id = ${orderId}`,
     );
     expect(order.rows[0]!.status).toBe("open");
+  });
+
+  // La anulación (brief-22.5, AC-6): su lectura por recepción, la operación y la lista, con una
+  // organización que no es la dueña.
+  it("la anulación, su lectura y la lista no alcanzan la recepción de otra organización", async () => {
+    const { orderId, receiptId } = await receiptOfB();
+    await getDb().execute(
+      sql`insert into goods_receipt_voids (organization_id, number, goods_receipt_id, currency,
+                                           total, reason, created_by)
+          values (${fixture.orgB}, 1, ${receiptId}, 'ARS', 100, 'other', ${fixture.userB})`,
+    );
+    expect(
+      await goodsReceiptRepository.findVoidByGoodsReceipt(
+        fixture.orgA,
+        receiptId,
+      ),
+    ).toBeUndefined();
+    expect(
+      await goodsReceiptRepository.findVoidByGoodsReceipt(
+        fixture.orgB,
+        receiptId,
+      ),
+    ).toMatchObject({ number: 1 });
+    for (const query of [
+      { voidNumber: 1, status: "all" as const },
+      { voidNumber: null, status: "voided" as const },
+      { voidNumber: null, status: "current" as const },
+    ]) {
+      const ofA = {
+        organizationId: fixture.orgA,
+        supplierId: null,
+        purchaseOrderId: null,
+        number: null,
+        ...query,
+      };
+      expect(await goodsReceiptRepository.countGoodsReceipts(ofA)).toBe(0);
+      expect(
+        await goodsReceiptRepository.findGoodsReceipts(ofA, 25, 0),
+      ).toEqual([]);
+    }
+    expect(
+      await goodsReceiptRepository.countOrderGoodsReceipts(
+        fixture.orgB,
+        orderId,
+      ),
+    ).toBe(0);
+
+    const admin = await adminOfA();
+    expect(await voidGoodsReceipt(admin, receiptId, "other")).toEqual({
+      ok: false,
+      code: "NOT_FOUND",
+    });
+    const list = await listGoodsReceipts(admin, {
+      supplierId: null,
+      number: "ARC-000001",
+      page: 1,
+    });
+    expect(list.ok && list.total).toBe(0);
+    const written = await getDb().execute<{ total: number }>(
+      sql`select count(*)::int as total from goods_receipt_voids`,
+    );
+    expect(written.rows[0]!.total).toBe(1);
   });
 });

@@ -114,6 +114,17 @@ describe("toHistoryFilters", () => {
       toHistoryFilters({ ...DEFAULT_VIEW, type: "recepcion" }, "UTC", now).type,
     ).toBe("goods_receipt");
     expect(parseMovementView({ tipo: "recepcion" }).type).toBe("recepcion");
+    // brief-22.5, D-9: las salidas de las anulaciones de recepciones.
+    expect(
+      toHistoryFilters(
+        { ...DEFAULT_VIEW, type: "anulacion-recepcion" },
+        "UTC",
+        now,
+      ).type,
+    ).toBe("goods_receipt_void");
+    expect(parseMovementView({ tipo: "anulacion-recepcion" }).type).toBe(
+      "anulacion-recepcion",
+    );
   });
 
   // brief-22.4, D-14: la recepción suma, como el ajuste positivo y la anulación de una venta.
@@ -121,7 +132,13 @@ describe("toHistoryFilters", () => {
     for (const type of ["adjustment_positive", "sale_void", "goods_receipt"]) {
       expect(movementSign(type)).toBe("+");
     }
-    for (const type of ["adjustment_negative", "order_delivery", "sale"]) {
+    // brief-22.5, H-6: la anulación de una recepción resta.
+    for (const type of [
+      "adjustment_negative",
+      "order_delivery",
+      "sale",
+      "goods_receipt_void",
+    ]) {
       expect(movementSign(type)).toBe("−");
     }
   });

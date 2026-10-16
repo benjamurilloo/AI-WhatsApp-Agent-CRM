@@ -51,4 +51,22 @@ describe("la historia de una recepción", () => {
       /^Recepción RC-000001 · sin orden · 1 línea · total US\$\s10,00$/,
     );
   });
+
+  // brief-22.5, D-7.
+  it("la anulación dice su número y su motivo", () => {
+    const voided = {
+      ...entry({ void_number: 1, reason: "returned_to_supplier" }),
+      action: "void",
+    } as GoodsReceiptAuditEntry;
+    expect(auditActionLabel(voided)).toBe("Anulación");
+    expect(describeAuditDiff(voided)).toBe(
+      "Anulación ARC-000001: Mercadería devuelta al proveedor",
+    );
+    expect(
+      describeAuditDiff({
+        ...voided,
+        diff: { before: null, after: { void_number: 2, reason: "x" } },
+      } as GoodsReceiptAuditEntry),
+    ).toBe("Anulación ARC-000002");
+  });
 });

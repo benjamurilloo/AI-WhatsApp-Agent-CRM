@@ -66,6 +66,9 @@ const TYPE_LABEL: Record<string, string> = {
   // Desde la 22.4: la entrada de una recepción de mercadería; el motivo lleva su número y no nombra
   // al proveedor (ADR 0023, puntos 4 y 12; brief-22.4, D-14).
   goods_receipt: "Recepción",
+  // Desde la 22.5: la salida de la anulación de una recepción; el motivo nombra la anulación y la
+  // recepción, no el proveedor (ADR 0023, punto 6; brief-22.5, D-9).
+  goods_receipt_void: "Anulación de recepción",
 };
 
 // Pantalla 5 (wireframe 05): ajuste para admin e historial para admin y viewer, con filtros
@@ -207,6 +210,9 @@ export default async function MovementsPage({
               <option value="venta">Venta</option>
               <option value="anulacion">Anulación de venta</option>
               <option value="recepcion">Recepción</option>
+              <option value="anulacion-recepcion">
+                Anulación de recepción
+              </option>
             </select>
           </div>
           <div className="flex flex-col gap-1">

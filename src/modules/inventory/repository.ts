@@ -339,3 +339,30 @@ export async function applyGoodsReceipt(
       ),
     );
 }
+
+// La salida de una línea de la anulación de una recepción (ADR 0023, punto 6; brief-22.5, D-3): el
+// movimiento goods_receipt_void y el saldo físico nuevo. No toca lo reservado: quien llama ya comprobó
+// lo disponible con el saldo bloqueado, como en applySale; el CHECK es la última defensa.
+export async function applyGoodsReceiptVoid(
+  tx: DbTransaction,
+  removal: Sale,
+): Promise<void> {
+  await tx.insert(inventoryMovements).values({
+    organizationId: removal.organizationId,
+    productId: removal.productId,
+    type: "goods_receipt_void",
+    quantity: removal.quantity,
+    balanceAfter: removal.balanceAfter,
+    reason: removal.reason,
+    createdBy: removal.createdBy,
+  });
+  await tx
+    .update(inventories)
+    .set({ quantityOnHand: removal.balanceAfter })
+    .where(
+      and(
+        eq(inventories.organizationId, removal.organizationId),
+        eq(inventories.productId, removal.productId),
+      ),
+    );
+}

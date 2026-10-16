@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AUDIT_PAGE_SIZE } from "@/modules/audit";
+import { getAvailableStock } from "@/modules/inventory";
 import { getAppFrame, getOrganizationTimezone } from "@/modules/organizations";
 import {
   formatCuit,
@@ -17,12 +18,15 @@ import {
 } from "@/app/_components/detail-header";
 import {
   cardClass,
+  dangerOutlineLinkClass,
   linkClass,
   noticeClass,
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
+import { Icon } from "@/app/_components/icons";
 import { PageNotice } from "@/app/_components/page-notice";
+import { SectionCard } from "@/app/_components/section-card";
 import {
   formatFullDateTime,
   formatShortDateTime,
@@ -41,8 +45,11 @@ import {
   CURRENT_DATA_NOTE,
   GOODS_RECEIPT_NOT_FOUND_MESSAGE,
   goodsReceiptNoticeMessage,
+  VOID_REASON_LABEL,
+  VOIDED_BADGE_TEXT,
 } from "../messages";
 import { auditActionLabel, describeAuditDiff } from "./audit-summary";
+import { VoidGoodsReceiptConfirm } from "./void-confirm";
 
 export const metadata: Metadata = {
   title: "Recepción — AI WhatsApp Agent CRM",
@@ -58,7 +65,9 @@ function page(value: string | string[] | undefined): number {
 // El detalle de una recepción, que es también su página imprimible (brief-22.4, D-11; ADR 0023,
 // punto 13), con el molde del detalle de la orden de compra: la organización, el número, la fecha,
 // el proveedor con sus datos de hoy, la orden, la referencia del proveedor, las líneas, el total y
-// la leyenda. Al imprimir queda solo el comprobante. La historia, al pie. Solo admin.
+// la leyenda. Al imprimir queda solo el comprobante. La historia, al pie. Solo admin. Desde la 22.5
+// (brief-22.5, D-9): una anulada lo dice, enlaza su anulación y se imprime con la marca; una vigente se
+// anula en el paso ?confirmar=anular, que muestra lo que sale del stock con lo disponible hoy.
 export default async function GoodsReceiptPage({
   params,
   searchParams,
@@ -94,6 +103,15 @@ export default async function GoodsReceiptPage({
     : null;
   const notice = goodsReceiptNoticeMessage(query.aviso);
   const supplier = receipt.supplier;
+  const receiptVoid = receipt.receiptVoid;
+  const voiding = receiptVoid === null && query.confirmar === "anular";
+  // Lo disponible hoy de cada producto, solo para la confirmación.
+  const available = voiding
+    ? await getAvailableStock(
+        context,
+        receipt.lines.map((line) => line.productId),
+      )
+    : null;
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 lg:px-8 print:max-w-none print:p-0">
@@ -116,6 +134,19 @@ export default async function GoodsReceiptPage({
         <div role="status" className="mt-4 empty:hidden">
           {notice ? <p className={noticeClass}>{notice}</p> : null}
         </div>
+        {receiptVoid ? (
+          <p className="mt-4 rounded-md border border-border bg-surface-muted px-3 py-2 text-sm">
+            Anulada por{" "}
+            <Link
+              href={`${href}/anulacion`}
+              className={`${linkClass} font-mono`}
+            >
+              {receiptVoid.displayNumber}
+            </Link>{" "}
+            el {formatShortDateTime(receiptVoid.createdAt, timeZone)}:{" "}
+            {VOID_REASON_LABEL[receiptVoid.reason]}.
+          </p>
+        ) : null}
       </div>
 
       <article
@@ -133,6 +164,12 @@ export default async function GoodsReceiptPage({
               Recepción{" "}
               <span className="font-mono">{receipt.displayNumber}</span>
             </h2>
+            {receiptVoid ? (
+              <p className="font-semibold uppercase">
+                {VOIDED_BADGE_TEXT} por{" "}
+                <span className="font-mono">{receiptVoid.displayNumber}</span>
+              </p>
+            ) : null}
             <p className="text-sm">
               {formatFullDateTime(receipt.createdAt, timeZone)}
             </p>
@@ -281,6 +318,56 @@ export default async function GoodsReceiptPage({
           {CURRENT_DATA_NOTE}
         </p>
       </article>
+
+      <div className="mt-6 print:hidden">
+        <SectionCard id="anulacion-titulo" title="Anulación" icon="close">
+          {receiptVoid ? (
+            <>
+              <p className="text-sm">
+                Anulación{" "}
+                <span className="font-mono">{receiptVoid.displayNumber}</span> ·{" "}
+                {VOID_REASON_LABEL[receiptVoid.reason]}
+              </p>
+              <p className="mt-4 text-sm">
+                <Link href={`${href}/anulacion`} className={linkClass}>
+                  Ver el comprobante de la anulación
+                </Link>
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-muted">Esta recepción está vigente.</p>
+          )}
+          {receiptVoid === null ? (
+            <div className="mt-4">
+              {voiding ? (
+                <VoidGoodsReceiptConfirm
+                  receiptId={receipt.id}
+                  displayNumber={receipt.displayNumber}
+                  hasOrder={receipt.purchaseOrder !== null}
+                  lines={receipt.lines.map((line) => ({
+                    productId: line.productId,
+                    name: line.product?.name ?? UNKNOWN_PRODUCT_TEXT,
+                    unit: line.product?.unit ?? "",
+                    quantity: line.quantity,
+                    available:
+                      (available?.ok
+                        ? available.available.get(line.productId)
+                        : undefined) ?? "0.000",
+                  }))}
+                />
+              ) : (
+                <Link
+                  href={`${href}?confirmar=anular`}
+                  className={dangerOutlineLinkClass}
+                >
+                  <Icon name="close" className="size-4" />
+                  Anular la recepción
+                </Link>
+              )}
+            </div>
+          ) : null}
+        </SectionCard>
+      </div>
 
       {audit.ok ? (
         <div className="print:hidden">

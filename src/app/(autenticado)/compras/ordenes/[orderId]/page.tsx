@@ -18,6 +18,7 @@ import {
 import {
   cardClass,
   dangerOutlineLinkClass,
+  inactiveBadgeClass,
   linkClass,
   noticeClass,
   primaryLinkClass,
@@ -45,6 +46,7 @@ import {
   UNKNOWN_PRODUCT_TEXT,
   UNKNOWN_SUPPLIER_TEXT,
 } from "../messages";
+import { VOIDED_BADGE_TEXT } from "../../recepciones/messages";
 import { PurchaseOrderStatusBadge } from "../status-badge";
 import { auditActionLabel, describeAuditDiff } from "./audit-summary";
 import { CancelPurchaseOrderConfirm } from "./cancel-confirm";
@@ -106,7 +108,11 @@ export default async function PurchaseOrderPage({
     : null;
   const notice = purchaseOrderNoticeMessage(query.aviso);
   const isOpen = order.status === "open";
-  const hasReceipts = order.receipts.length > 0;
+  // Cuentan las recepciones vigentes (brief-22.5, D-8): una orden cuyas recepciones se anularon todas
+  // se cancela, y no se cierra a mano. purchasing lo exige igual con la cabecera bloqueada.
+  const hasReceipts = order.receipts.some(
+    (receipt) => receipt.voidDisplayNumber === null,
+  );
   const hasPending = order.lines.some((line) => line.pending !== "0.000");
   const canCancel = isOpen && !hasReceipts;
   const canClose = isOpen && hasReceipts && hasPending;
@@ -396,12 +402,22 @@ export default async function PurchaseOrderPage({
                 key={receipt.id}
                 className="flex flex-wrap items-center justify-between gap-2 py-2"
               >
-                <Link
-                  href={`/compras/recepciones/${receipt.id}`}
-                  className={`${linkClass} font-mono`}
-                >
-                  {receipt.displayNumber}
-                </Link>
+                <span className="flex items-center gap-2">
+                  <Link
+                    href={`/compras/recepciones/${receipt.id}`}
+                    className={`${linkClass} font-mono`}
+                  >
+                    {receipt.displayNumber}
+                  </Link>
+                  {receipt.voidDisplayNumber ? (
+                    <span
+                      className={inactiveBadgeClass}
+                      title={`Anulada por ${receipt.voidDisplayNumber}`}
+                    >
+                      {VOIDED_BADGE_TEXT}
+                    </span>
+                  ) : null}
+                </span>
                 <span className="text-muted">
                   {formatShortDateTime(receipt.createdAt, timeZone)}
                 </span>

@@ -65,12 +65,27 @@ export function formatGoodsReceiptNumber(value: number): string {
   return formatDocumentNumber("goods_receipt", value);
 }
 
-// El número como lo escribe quien busca: «RC-000123», «rc000123», «000123» o «123» (D-12).
-export function parseGoodsReceiptNumberSearch(text: string): number | null {
-  const match = /^(?:rc-?)?0*(\d{1,15})$/i.exec(text.trim());
+// La anulación de una recepción (brief-22.5, D-1): ARC-000001.
+export function formatGoodsReceiptVoidNumber(value: number): string {
+  return formatDocumentNumber("goods_receipt_void", value);
+}
+
+function searchNumber(pattern: RegExp, text: string): number | null {
+  const match = pattern.exec(text.trim());
   if (!match) return null;
   const value = Number(match[1]);
   return Number.isSafeInteger(value) && value > 0 ? value : null;
+}
+
+// El número como lo escribe quien busca: «RC-000123», «rc000123», «000123» o «123» (D-12).
+export function parseGoodsReceiptNumberSearch(text: string): number | null {
+  return searchNumber(/^(?:rc-?)?0*(\d{1,15})$/i, text);
+}
+
+// El número de una anulación, siempre con su prefijo: «ARC-000001» o «arc1» (brief-22.5, H-8). Sin
+// prefijo, el número es el de la recepción.
+export function parseGoodsReceiptVoidNumberSearch(text: string): number | null {
+  return searchNumber(/^arc-?0*(\d{1,15})$/i, text);
 }
 
 // La referencia del proveedor (D-13): opcional; se recorta, y vacía se guarda nula.
@@ -596,12 +611,21 @@ export type GoodsReceiptSummary = {
   total: string;
   currency: string;
   createdAt: Date;
+  // El número de su anulación, ARC-000001; null si está vigente (brief-22.5, D-9).
+  voidDisplayNumber: string | null;
 };
+
+// Todas, las vigentes o las anuladas (brief-22.5, D-9).
+export const GOODS_RECEIPT_STATUSES = ["all", "current", "voided"] as const;
+export type GoodsReceiptStatusFilter = (typeof GOODS_RECEIPT_STATUSES)[number];
 
 export type GoodsReceiptListFilters = {
   supplierId: string | null;
-  // Lo que escribió quien busca; vacío no filtra.
+  // Lo que escribió quien busca; vacío no filtra. Acepta el número de la recepción o el de su
+  // anulación.
   number: string;
+  // Sin estado, todas.
+  status?: GoodsReceiptStatusFilter;
   page: number;
 };
 
@@ -631,6 +655,10 @@ function summarize(
     total: row.total,
     currency: row.currency,
     createdAt: row.createdAt,
+    voidDisplayNumber:
+      row.voidNumber === null
+        ? null
+        : formatGoodsReceiptVoidNumber(row.voidNumber),
   };
 }
 
@@ -648,9 +676,13 @@ export async function listGoodsReceipts(
     return { ok: true, ...EMPTY_PAGE, receipts: [] };
   }
   const numberText = filters.number.trim();
+  const voidNumber =
+    numberText === "" ? null : parseGoodsReceiptVoidNumberSearch(numberText);
   const number =
-    numberText === "" ? null : parseGoodsReceiptNumberSearch(numberText);
-  if (numberText !== "" && number === null) {
+    numberText === "" || voidNumber !== null
+      ? null
+      : parseGoodsReceiptNumberSearch(numberText);
+  if (numberText !== "" && number === null && voidNumber === null) {
     return { ok: true, ...EMPTY_PAGE, receipts: [] };
   }
   const query: receiptRepository.GoodsReceiptListQuery = {
@@ -658,6 +690,11 @@ export async function listGoodsReceipts(
     supplierId,
     purchaseOrderId: null,
     number,
+    voidNumber,
+    status:
+      filters.status && GOODS_RECEIPT_STATUSES.includes(filters.status)
+        ? filters.status
+        : "all",
   };
   const total = await receiptRepository.countGoodsReceipts(query);
   const pageCount = Math.max(1, Math.ceil(total / GOODS_RECEIPTS_PAGE_SIZE));
@@ -691,6 +728,8 @@ export async function listRecentSupplierGoodsReceipts(
     supplierId: supplierId.toLowerCase(),
     purchaseOrderId: null,
     number: null,
+    voidNumber: null,
+    status: "all",
   };
   const total = await receiptRepository.countGoodsReceipts(query);
   const rows =
@@ -715,6 +754,8 @@ export async function listOrderGoodsReceipts(
     supplierId: null,
     purchaseOrderId,
     number: null,
+    voidNumber: null,
+    status: "all",
   };
   const rows = await receiptRepository.findGoodsReceipts(query, 1000, 0);
   return rows.map(summarize);
@@ -749,6 +790,13 @@ export type GoodsReceiptDetail = {
   supplierReference: string | null;
   createdAt: Date;
   lines: GoodsReceiptLine[];
+  // Su anulación, si la tiene (brief-22.5, D-9).
+  receiptVoid: {
+    id: string;
+    displayNumber: string;
+    reason: receiptRepository.GoodsReceiptVoidReason;
+    createdAt: Date;
+  } | null;
 };
 
 export async function getGoodsReceipt(
@@ -769,7 +817,7 @@ export async function getGoodsReceipt(
     goodsReceiptId.toLowerCase(),
   );
   if (!receipt) return failure("NOT_FOUND");
-  const [lines, supplier, order] = await Promise.all([
+  const [lines, supplier, order, receiptVoid] = await Promise.all([
     receiptRepository.findGoodsReceiptLines(organizationId, receipt.id),
     supplierRepository.findSupplier(organizationId, receipt.supplierId),
     receipt.purchaseOrderId
@@ -778,6 +826,7 @@ export async function getGoodsReceipt(
           receipt.purchaseOrderId,
         )
       : Promise.resolve(undefined),
+    receiptRepository.findVoidByGoodsReceipt(organizationId, receipt.id),
   ]);
   const products = await getProductsByIds(
     context,
@@ -827,11 +876,19 @@ export async function getGoodsReceipt(
           lineTotal: line.lineTotal,
         };
       }),
+      receiptVoid: receiptVoid
+        ? {
+            id: receiptVoid.id,
+            displayNumber: formatGoodsReceiptVoidNumber(receiptVoid.number),
+            reason: receiptVoid.reason,
+            createdAt: receiptVoid.createdAt,
+          }
+        : null,
     },
   };
 }
 
-// La historia de la recepción: su alta. La anulación llega con la 22.5.
+// La historia de la recepción: su alta y, desde la 22.5, su anulación (brief-22.5, D-7).
 
 export type GoodsReceiptAuditEntry = NamedAuditLogEntry;
 

@@ -1,6 +1,9 @@
 import type {
   CreateGoodsReceiptResult,
   GoodsReceiptLineRuleIssue,
+  GoodsReceiptVoidReason,
+  GoodsReceiptVoidShortage,
+  VoidGoodsReceiptResult,
 } from "@/modules/purchasing";
 import { formatQuantity } from "@/shared/quantity";
 import {
@@ -258,6 +261,8 @@ const NOTICES: Record<string, string> = {
   creada: "Recepción registrada: el stock y el costo ya están actualizados.",
   "orden-cerrada":
     "Recepción registrada: el stock y el costo ya están actualizados. Con ella la orden quedó completa y se cerró.",
+  anulada:
+    "Recepción anulada: el stock ya bajó. El costo de los productos no cambió.",
 };
 
 export function goodsReceiptNoticeMessage(
@@ -265,4 +270,78 @@ export function goodsReceiptNoticeMessage(
 ): string | null {
   const key = Array.isArray(value) ? value[0] : value;
   return key && Object.hasOwn(NOTICES, key) ? NOTICES[key]! : null;
+}
+
+// La anulación (brief-22.5, D-2, D-6 y D-9).
+
+export const VOIDED_BADGE_TEXT = "Anulada";
+
+export const VOID_REASON_LABEL: Record<GoodsReceiptVoidReason, string> = {
+  data_entry_error: "Error de carga",
+  duplicate: "Cargada dos veces",
+  returned_to_supplier: "Mercadería devuelta al proveedor",
+  other: "Otro",
+};
+
+// Lo que pasa con el stock y con el costo, dicho antes de confirmar (D-9; ADR 0023, punto 6).
+export const VOID_STOCK_NOTE =
+  "Sale del stock lo que la recepción sumó, con un movimiento «Anulación de recepción» por producto, solo si alcanza lo disponible.";
+export const VOID_COST_NOTE =
+  "Anular no restaura el costo: si hace falta, corregilo en la ficha del producto.";
+export const VOID_ORDER_NOTE =
+  "La orden deja de contar esta recepción como recibida. Si la orden ya está cerrada, sigue cerrada.";
+
+export type VoidGoodsReceiptState =
+  | { status: "idle" }
+  | {
+      status: "error";
+      requestId: string;
+      message: string;
+      // La anulación que ya tiene la recepción, para enlazarla.
+      existing: { displayNumber: string } | null;
+      // Los productos que no alcanzan, con lo que hay que sacar y lo disponible.
+      shortages: GoodsReceiptVoidShortage[];
+    };
+
+export function voidUnexpectedErrorMessage(requestId: string): string {
+  return `No pudimos anular la recepción. Código: ${requestId}`;
+}
+
+export function voidGoodsReceiptRejection(
+  result: Exclude<VoidGoodsReceiptResult, { ok: true }>,
+): Omit<
+  Extract<VoidGoodsReceiptState, { status: "error" }>,
+  "status" | "requestId"
+> {
+  const none = { existing: null, shortages: [] };
+  switch (result.code) {
+    case "FORBIDDEN":
+      return {
+        ...none,
+        message: "Solo un administrador puede anular una recepción.",
+      };
+    case "NOT_FOUND":
+      return { ...none, message: GOODS_RECEIPT_NOT_FOUND_MESSAGE };
+    case "VALIDATION_ERROR":
+      return { ...none, message: "Elegí el motivo de la anulación." };
+    case "BUSINESS_RULE_VIOLATION":
+      if (result.rule === "already_voided") {
+        return {
+          ...none,
+          message: `Esta recepción ya está anulada, por ${result.receiptVoid.displayNumber}.`,
+          existing: { displayNumber: result.receiptVoid.displayNumber },
+        };
+      }
+      return {
+        ...none,
+        message:
+          "No alcanza el stock disponible para sacar lo que la recepción sumó: parte ya se vendió o está reservada. Corregilo con un ajuste en el producto, o no la anules.",
+        shortages: result.shortages,
+      };
+  }
+}
+
+// Una falta, en texto: lo que hay que sacar y lo disponible hoy.
+export function shortageText(shortage: GoodsReceiptVoidShortage): string {
+  return `Hay que sacar ${formatQuantity(shortage.requested)} y hay disponible ${formatQuantity(shortage.available)}.`;
 }

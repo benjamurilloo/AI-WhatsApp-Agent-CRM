@@ -244,6 +244,11 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
     {
       requirement: "sesion",
     },
+  // La anulación de la recepción (brief-22.5, D-9): solo admin, lo exige purchasing.
+  "src/app/(autenticado)/compras/recepciones/actions.ts#voidGoodsReceiptAction":
+    {
+      requirement: "sesion",
+    },
   "src/app/(autenticado)/productos/actions.ts#createProductAction": {
     requirement: "sesion",
   },

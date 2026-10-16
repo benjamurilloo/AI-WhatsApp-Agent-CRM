@@ -37,7 +37,10 @@ import {
   DEFAULT_GOODS_RECEIPT_FILTERS,
   goodsReceiptFiltersHref,
 } from "../../recepciones/filters";
-import { NO_SUPPLIER_GOODS_RECEIPTS_MESSAGE } from "../../recepciones/messages";
+import {
+  NO_SUPPLIER_GOODS_RECEIPTS_MESSAGE,
+  VOIDED_BADGE_TEXT,
+} from "../../recepciones/messages";
 import {
   FORBIDDEN_PAGE_MESSAGE,
   noticeMessage,
@@ -286,12 +289,22 @@ export default async function SupplierPage({
                   key={receipt.id}
                   className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
                 >
-                  <Link
-                    href={`/compras/recepciones/${receipt.id}`}
-                    className={`${linkClass} font-mono`}
-                  >
-                    {receipt.displayNumber}
-                  </Link>
+                  <span className="flex items-center gap-2">
+                    <Link
+                      href={`/compras/recepciones/${receipt.id}`}
+                      className={`${linkClass} font-mono`}
+                    >
+                      {receipt.displayNumber}
+                    </Link>
+                    {receipt.voidDisplayNumber ? (
+                      <span
+                        className={inactiveBadgeClass}
+                        title={`Anulada por ${receipt.voidDisplayNumber}`}
+                      >
+                        {VOIDED_BADGE_TEXT}
+                      </span>
+                    ) : null}
+                  </span>
                   <span className="text-muted">
                     {formatShortDateTime(receipt.createdAt, timeZone)}
                   </span>

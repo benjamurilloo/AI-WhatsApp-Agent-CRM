@@ -6,6 +6,7 @@ import { getCurrentPrices, suggestProducts } from "@/modules/catalog";
 import type { AuthContext } from "@/modules/organizations";
 import {
   createGoodsReceipt,
+  voidGoodsReceipt,
   type GoodsReceiptInput,
 } from "@/modules/purchasing";
 import { requireSession } from "@/app/_auth/session";
@@ -18,9 +19,13 @@ import {
   type GoodsReceiptFormLine,
   type GoodsReceiptFormState,
   type GoodsReceiptFormValues,
+  voidGoodsReceiptRejection,
+  voidUnexpectedErrorMessage,
+  type VoidGoodsReceiptState,
 } from "./messages";
 
-// Server Actions de las recepciones (brief-22.4, D-10 y D-11). Next.js compara Origin con Host; la
+// Server Actions de las recepciones (brief-22.4, D-10 y D-11; desde la 22.5, la anulación, brief-22.5,
+// D-9). Next.js compara Origin con Host; la
 // sesión se verifica acá y el rol y la organización, en purchasing, que solo deja a un admin. El log
 // lleva actor, organización, código y duración, nunca el proveedor, los productos ni los montos
 // (SecurityModel; ADR 0023, punto 14).
@@ -226,4 +231,48 @@ export async function searchGoodsReceiptProductsAction(
     log("INTERNAL", error);
     return [];
   }
+}
+
+// La anulación (brief-22.5, D-9). Sin revalidar ante un rechazo, como la de la venta: el mensaje
+// vive en la confirmación. Al anular, la lista, la recepción, su orden y los productos cambian.
+export async function voidGoodsReceiptAction(
+  _previous: VoidGoodsReceiptState,
+  formData: FormData,
+): Promise<VoidGoodsReceiptState> {
+  const context = await requireSession();
+  const { requestId, log } = logger("compras.recepciones.anular", context);
+  const receiptId = String(formData.get("receiptId") ?? "").slice(0, 64);
+  const reason = String(formData.get("reason") ?? "").slice(0, 64);
+
+  let destination: string;
+  try {
+    const result = await voidGoodsReceipt(context, receiptId, reason);
+    if (!result.ok) {
+      log(result.code);
+      return {
+        status: "error",
+        requestId,
+        ...voidGoodsReceiptRejection(result),
+      };
+    }
+    log("OK");
+    revalidatePath(LIST_PATH);
+    revalidatePath(`${LIST_PATH}/${receiptId}`);
+    if (result.purchaseOrderId) {
+      revalidatePath(`/compras/ordenes/${result.purchaseOrderId}`);
+    }
+    revalidatePath("/productos");
+    destination = `${LIST_PATH}/${receiptId}?aviso=anulada`;
+  } catch (error) {
+    log("INTERNAL", error);
+    return {
+      status: "error",
+      requestId,
+      message: voidUnexpectedErrorMessage(requestId),
+      existing: null,
+      shortages: [],
+    };
+  }
+
+  redirect(destination);
 }

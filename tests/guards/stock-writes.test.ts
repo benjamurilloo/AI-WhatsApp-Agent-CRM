@@ -25,7 +25,9 @@ const REPOSITORY = "src/modules/inventory/repository.ts";
 // físico, sin tocar lo reservado. Desde la 20.4 (ADR 0021, punto 6; brief-20.4, D-5): applySaleVoid
 // inserta el movimiento sale_void y sube el saldo físico, sin tocar lo reservado. Desde la 22.4 (ADR
 // 0023, punto 4; brief-22.4, D-3): applyGoodsReceipt inserta el movimiento goods_receipt y sube el
-// saldo físico, sin tocar lo reservado.
+// saldo físico, sin tocar lo reservado. Desde la 22.5 (ADR 0023, punto 6; brief-22.5, D-3):
+// applyGoodsReceiptVoid inserta el movimiento goods_receipt_void y baja el saldo físico, sin tocar lo
+// reservado.
 const AUTHORIZED = new Map([
   ["lockBalance", ["insert inventories"]],
   ["applyStockChange", ["insert inventory_movements", "update inventories"]],
@@ -34,6 +36,10 @@ const AUTHORIZED = new Map([
   ["applySale", ["insert inventory_movements", "update inventories"]],
   ["applySaleVoid", ["insert inventory_movements", "update inventories"]],
   ["applyGoodsReceipt", ["insert inventory_movements", "update inventories"]],
+  [
+    "applyGoodsReceiptVoid",
+    ["insert inventory_movements", "update inventories"],
+  ],
 ]);
 
 const TABLES = new Map([
@@ -292,6 +298,8 @@ describe("repositorio", () => {
       "applySaleVoid: update inventories",
       "applyGoodsReceipt: insert inventory_movements",
       "applyGoodsReceipt: update inventories",
+      "applyGoodsReceiptVoid: insert inventory_movements",
+      "applyGoodsReceiptVoid: update inventories",
     ]);
   });
 });
@@ -311,7 +319,9 @@ describe("repositorio", () => {
 // restoreSaleStock, y restoreSaleStock, fuera de inventory, solo desde el servicio de sales. Con el
 // mismo límite: fija el archivo de sales, no la función. Desde la 22.4 (brief-22.4, D-3):
 // applyGoodsReceipt se llama solo desde receiveStock, y receiveStock, fuera de inventory, solo desde
-// src/modules/purchasing/, con el mismo límite: fija la carpeta, no la función.
+// src/modules/purchasing/, con el mismo límite: fija la carpeta, no la función. Desde la 22.5
+// (brief-22.5, D-3): applyGoodsReceiptVoid se llama solo desde removeReceivedStock, y
+// removeReceivedStock, fuera de inventory, solo desde src/modules/purchasing/, con el mismo límite.
 
 const SERVICE = "src/modules/inventory/service.ts";
 const ORDERS_SERVICE = "src/modules/orders/service.ts";
@@ -326,10 +336,12 @@ const CALLERS = new Map([
   ["applySale", { file: SERVICE, from: ["sellStock"] }],
   ["applySaleVoid", { file: SERVICE, from: ["restoreSaleStock"] }],
   ["applyGoodsReceipt", { file: SERVICE, from: ["receiveStock"] }],
+  ["applyGoodsReceiptVoid", { file: SERVICE, from: ["removeReceivedStock"] }],
 ]);
+const PURCHASING_STOCK = ["receiveStock", "removeReceivedStock"];
 
 const CALL_PATTERN =
-  /(?<!function\s)\b(?:\w+\.)?(setReserved|applyDelivery|applySale|applySaleVoid|applyGoodsReceipt|reserveStock|releaseStock|deliverStock|sellStock|restoreSaleStock|receiveStock)\s*\(/g;
+  /(?<!function\s)\b(?:\w+\.)?(setReserved|applyDelivery|applySale|applySaleVoid|applyGoodsReceipt|applyGoodsReceiptVoid|reserveStock|releaseStock|deliverStock|sellStock|restoreSaleStock|receiveStock|removeReceivedStock)\s*\(/g;
 
 function findCallViolations(file: string, code: string): string[] {
   const functions = [...code.matchAll(FUNCTION_PATTERN)].map((match) => ({
@@ -359,7 +371,7 @@ function findCallViolations(file: string, code: string): string[] {
     if (SALE_STOCK.includes(callee)) {
       return file === SALES_SERVICE ? [] : [`${file}:${line} ${callee}`];
     }
-    if (callee === "receiveStock") {
+    if (PURCHASING_STOCK.includes(callee)) {
       return file.startsWith(PURCHASING) ? [] : [`${file}:${line} ${callee}`];
     }
     return [];
@@ -476,6 +488,37 @@ describe("llamadores de lo reservado, de la entrega y de la venta", () => {
       file: "src/modules/catalog/service.ts",
       code: "export async function recordReceivedCosts(tx) {\n  await receiveStock(tx, s);\n}",
     },
+    // brief-22.5, D-3.
+    {
+      name: "el ajuste llamando a applyGoodsReceiptVoid",
+      file: SERVICE,
+      code: "export async function adjustStock(tx) {\n  await repository.applyGoodsReceiptVoid(tx, s);\n}",
+    },
+    {
+      name: "sellStock llamando a applyGoodsReceiptVoid",
+      file: SERVICE,
+      code: "export async function sellStock(tx) {\n  await repository.applyGoodsReceiptVoid(tx, s);\n}",
+    },
+    {
+      name: "removeReceivedStock llamando a applySale",
+      file: SERVICE,
+      code: "export async function removeReceivedStock(tx) {\n  await repository.applySale(tx, s);\n}",
+    },
+    {
+      name: "applyGoodsReceiptVoid desde purchasing",
+      file: "src/modules/purchasing/goods-receipt-voids.ts",
+      code: "export async function voidGoodsReceipt(tx) {\n  await applyGoodsReceiptVoid(tx, s);\n}",
+    },
+    {
+      name: "removeReceivedStock desde sales",
+      file: SALES_SERVICE,
+      code: "export async function voidSale(tx) {\n  await removeReceivedStock(tx, s);\n}",
+    },
+    {
+      name: "removeReceivedStock desde una Server Action",
+      file: "src/app/(autenticado)/compras/recepciones/actions.ts",
+      code: "export async function voidGoodsReceiptAction() {\n  await inventory.removeReceivedStock(tx, s);\n}",
+    },
   ])("detecta: $name", ({ file, code }) => {
     expect(findCallViolations(file, code)).not.toEqual([]);
   });
@@ -525,6 +568,16 @@ describe("llamadores de lo reservado, de la entrega y de la venta", () => {
       name: "purchasing llamando a receiveStock",
       file: "src/modules/purchasing/goods-receipts.ts",
       code: "export async function createGoodsReceipt() {\n  await receiveStock(tx, s);\n}",
+    },
+    {
+      name: "removeReceivedStock sacando",
+      file: SERVICE,
+      code: "export async function removeReceivedStock(tx) {\n  await repository.applyGoodsReceiptVoid(tx, s);\n}",
+    },
+    {
+      name: "purchasing llamando a removeReceivedStock",
+      file: "src/modules/purchasing/goods-receipt-voids.ts",
+      code: "export async function voidGoodsReceipt() {\n  await removeReceivedStock(tx, s);\n}",
     },
     {
       name: "la definición de la función no es una llamada",

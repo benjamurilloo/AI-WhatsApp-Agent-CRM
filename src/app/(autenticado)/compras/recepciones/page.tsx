@@ -9,10 +9,12 @@ import {
 import { requireSession } from "@/app/_auth/session";
 import {
   cardClass,
+  inactiveBadgeClass,
   inlineButtonClass,
   inputClass,
   labelClass,
   linkClass,
+  selectClass,
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
@@ -31,11 +33,13 @@ import {
   goodsReceiptFiltersHref,
   hasActiveGoodsReceiptFilters,
   parseGoodsReceiptFilters,
+  statusParam,
   type SearchParams,
 } from "./filters";
 import {
   NO_GOODS_RECEIPT_RESULTS_MESSAGE,
   NO_GOODS_RECEIPTS_MESSAGE,
+  VOIDED_BADGE_TEXT,
 } from "./messages";
 
 export const metadata: Metadata = {
@@ -47,7 +51,8 @@ const TITLE = "Recepciones";
 // La lista de recepciones (brief-22.4, D-11 y D-12): la más nueva primero, el filtro de proveedor y
 // la búsqueda por número, en la URL. El proveedor de cada fila filtra la lista por él, y la ficha
 // del proveedor llega ya filtrada. Tabla en escritorio y tarjetas en móvil, como las órdenes. Solo
-// admin: a un viewer, purchasing le responde FORBIDDEN y la página lo dice.
+// admin: a un viewer, purchasing le responde FORBIDDEN y la página lo dice. Desde la 22.5 (brief-22.5,
+// D-9): la marca «Anulada», el filtro por estado y la búsqueda por el número de la anulación.
 export default async function GoodsReceiptsPage({
   searchParams,
 }: {
@@ -58,6 +63,7 @@ export default async function GoodsReceiptsPage({
   const result = await listGoodsReceipts(context, {
     supplierId: filters.supplierId || null,
     number: filters.number,
+    status: filters.status,
     page: filters.page,
   });
   if (!result.ok) {
@@ -102,12 +108,27 @@ export default async function GoodsReceiptsPage({
               name="numero"
               type="search"
               defaultValue={filters.number}
-              placeholder="RC-000123"
+              placeholder="RC-000123 o ARC-000001"
               autoComplete="off"
               className={`${inputClass} w-48 pl-9`}
             />
             <SearchIcon />
           </div>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label htmlFor="estado" className={labelClass}>
+            Estado
+          </label>
+          <select
+            id="estado"
+            name="estado"
+            defaultValue={statusParam(filters.status)}
+            className={selectClass}
+          >
+            <option value="todas">Todas</option>
+            <option value="vigente">Vigentes</option>
+            <option value="anulada">Anuladas</option>
+          </select>
         </div>
         {filters.supplierId ? (
           <input type="hidden" name="proveedor" value={filters.supplierId} />
@@ -201,6 +222,14 @@ export default async function GoodsReceiptsPage({
                       >
                         {receipt.displayNumber}
                       </Link>
+                      {receipt.voidDisplayNumber ? (
+                        <span
+                          className={`${inactiveBadgeClass} ml-2 font-sans`}
+                          title={`Anulada por ${receipt.voidDisplayNumber}`}
+                        >
+                          {VOIDED_BADGE_TEXT}
+                        </span>
+                      ) : null}
                     </td>
                     <td className={`${tableCellClass} whitespace-nowrap`}>
                       {formatShortDateTime(receipt.createdAt, timeZone)}
@@ -257,6 +286,11 @@ export default async function GoodsReceiptsPage({
                   >
                     {receipt.displayNumber}
                   </Link>
+                  {receipt.voidDisplayNumber ? (
+                    <span className={inactiveBadgeClass}>
+                      {VOIDED_BADGE_TEXT}
+                    </span>
+                  ) : null}
                   <span className="text-sm text-muted">
                     {receipt.purchaseOrderDisplayNumber ?? "Sin orden"}
                   </span>

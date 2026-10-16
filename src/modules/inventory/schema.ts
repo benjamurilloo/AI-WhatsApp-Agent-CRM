@@ -62,7 +62,8 @@ export const inventories = pgTable(
 // física de un pedido entregado (ADR 0020, punto 4). sale, desde la 20.3: la salida de una venta
 // sin pedido (ADR 0021, punto 5). sale_void, desde la 20.4: la reposición de la anulación de una
 // venta sin pedido (ADR 0021, punto 6). goods_receipt, desde la 22.4: la entrada de una recepción
-// de mercadería (ADR 0023, punto 4; brief-22.4, D-3).
+// de mercadería (ADR 0023, punto 4; brief-22.4, D-3). goods_receipt_void, desde la 22.5: la salida de
+// la anulación de una recepción (ADR 0023, punto 6; brief-22.5, D-3).
 export const inventoryMovementType = pgEnum("inventory_movement_type", [
   "adjustment_positive",
   "adjustment_negative",
@@ -70,6 +71,7 @@ export const inventoryMovementType = pgEnum("inventory_movement_type", [
   "sale",
   "sale_void",
   "goods_receipt",
+  "goods_receipt_void",
 ]);
 
 // Solo inserción: el rol crm_app no tiene UPDATE ni DELETE y un trigger rechaza ambos (ADR 0013).

@@ -34,7 +34,7 @@ test.afterAll(async () => {
 // contador se vacía para que cada caso empiece en V-000001.
 test.beforeEach(async () => {
   await db.execute(
-    sql`truncate table goods_receipt_lines, goods_receipts, purchase_order_lines, purchase_orders, refund_voids, refunds, receipt_voids, receipts, sale_voids, sale_lines, sales, order_lines, orders, document_counters, audit_logs,
+    sql`truncate table goods_receipt_voids, goods_receipt_lines, goods_receipts, purchase_order_lines, purchase_orders, refund_voids, refunds, receipt_voids, receipts, sale_voids, sale_lines, sales, order_lines, orders, document_counters, audit_logs,
           inventory_movements, inventories, product_images, product_costs, product_prices,
           products, conversation_notes, messages, conversations, client_tag_assignments, clients`,
   );

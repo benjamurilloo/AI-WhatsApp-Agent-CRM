@@ -282,7 +282,8 @@ export async function createPurchaseOrder(
 // La cancelación (D-7 y D-8): la cabecera FOR UPDATE, el estado leído y el UPDATE. Una orden que ya
 // no está abierta responde not_open, sin escribir ni auditar: de dos cancelaciones simultáneas, la
 // segunda espera a la primera y ve cancelled (AC-5). Desde la 22.4 (brief-22.4, D-9): una orden con
-// alguna recepción no se cancela (has_receipts), y se cierra a mano.
+// alguna recepción no se cancela (has_receipts), y se cierra a mano. Desde la 22.5 (brief-22.5, D-8),
+// cuentan solo las recepciones vigentes: una orden cuyas recepciones se anularon todas se cancela.
 
 export type CancelPurchaseOrderResult =
   | { ok: true }
@@ -349,8 +350,8 @@ export async function cancelPurchaseOrder(
 }
 
 // El cierre a mano, «cerrar con faltante» (brief-22.4, D-9): la cabecera FOR UPDATE, el estado y
-// las recepciones leídos después, y el UPDATE. Solo una orden abierta con alguna recepción: sin
-// recepciones se cancela (no_receipts).
+// las recepciones leídos después, y el UPDATE. Solo una orden abierta con alguna recepción vigente
+// (brief-22.5, D-8): sin ninguna se cancela (no_receipts).
 
 export type ClosePurchaseOrderResult =
   | { ok: true }
@@ -582,7 +583,8 @@ export type PurchaseOrderDetail = {
   cancelledAt: Date | null;
   createdAt: Date;
   lines: PurchaseOrderLine[];
-  // Sus recepciones, de la más reciente a la más vieja (brief-22.4, D-11).
+  // Sus recepciones, de la más reciente a la más vieja (brief-22.4, D-11), también las anuladas, con
+  // su marca (brief-22.5, D-8).
   receipts: GoodsReceiptSummary[];
 };
 

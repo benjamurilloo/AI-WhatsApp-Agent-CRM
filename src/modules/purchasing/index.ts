@@ -1,6 +1,6 @@
 // Interfaz pública del módulo purchasing (ADR 0023): los proveedores (brief-22.2) y, desde la 22.3,
-// la orden de compra (brief-22.3) y, desde la 22.4, la recepción (brief-22.4). Su anulación llega con
-// la 22.5. Ningún módulo depende de purchasing: la usan solo las pantallas. cash lo hará desde la
+// la orden de compra (brief-22.3), desde la 22.4, la recepción (brief-22.4) y, desde la 22.5, su
+// anulación (brief-22.5). Ningún módulo depende de purchasing: la usan solo las pantallas. cash lo hará desde la
 // 22.6 (punto 11).
 export { formatCuit, type CuitRejection } from "./cuit";
 export { SUPPLIER_FIELD_LIMITS } from "./schema";
@@ -67,7 +67,9 @@ export {
 export {
   createGoodsReceipt,
   formatGoodsReceiptNumber,
+  formatGoodsReceiptVoidNumber,
   getGoodsReceipt,
+  GOODS_RECEIPT_STATUSES,
   GOODS_RECEIPTS_PAGE_SIZE,
   listGoodsReceiptAudit,
   listGoodsReceipts,
@@ -75,6 +77,7 @@ export {
   MAX_GOODS_RECEIPT_LINES,
   normalizeSupplierReference,
   parseGoodsReceiptNumberSearch,
+  parseGoodsReceiptVoidNumberSearch,
   SUPPLIER_GOODS_RECEIPTS_LIMIT,
   SUPPLIER_REFERENCE_MAX_LENGTH,
   type CreateGoodsReceiptResult,
@@ -87,6 +90,14 @@ export {
   type GoodsReceiptLineRuleIssue,
   type GoodsReceiptListFilters,
   type GoodsReceiptPage,
+  type GoodsReceiptStatusFilter,
   type GoodsReceiptSummary,
   type GoodsReceiptValidationFailure,
 } from "./goods-receipts";
+export {
+  GOODS_RECEIPT_VOID_REASONS,
+  voidGoodsReceipt,
+  type GoodsReceiptVoidReason,
+  type GoodsReceiptVoidShortage,
+  type VoidGoodsReceiptResult,
+} from "./goods-receipt-voids";
