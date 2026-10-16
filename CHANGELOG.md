@@ -2,6 +2,29 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-16 — 22.4: la recepción
+
+Cierra el 2026-10-16, después del recorrido del usuario en producción ([brief-22.4](docs/decisions/brief-22.4-la-recepcion.md), §Cierre). Es la primera escritura de `purchasing` en el stock y el costo, sobre el [ADR 0023](docs/decisions/0023-compras-y-proveedores.md).
+
+**Certifica:**
+- **Las tablas `goods_receipts` y `goods_receipt_lines`** (migración `0049`): de solo inserción, con trigger y `crm_app` sin `UPDATE` ni `DELETE`; de 1 a 50 líneas sin productos repetidos; la referencia del proveedor opcional, de hasta 40 caracteres. **Claves compuestas** atan una recepción con orden al proveedor y la moneda de su orden, y cada línea al producto de su línea de la orden. `goods_receipt` en `document_kind` (`RC`), en el `entity_type` y en `inventory_movement_type`.
+- **La recepción**, solo de `admin`, con orden o sin ella: la cabecera de la orden `FOR UPDATE`, el proveedor y los productos en modo compartido, lo que falta recibir contado bajo el bloqueo, la entrada de stock en `inventory` (`receiveStock`, un movimiento por línea cuyo motivo nombra la recepción y no el proveedor), el contador al armar el motivo, y después el costo: **el costo vigente de cada producto pasa a ser el recibido**, con `recordReceivedCosts` de `catalog`, que lo lee después del bloqueo del saldo y solo escribe si difiere. Un rechazo no escribe, no audita, no mueve stock, no cambia costos ni consume número.
+- **La orden**: se cierra sola cuando todo quedó recibido; se cierra a mano «con faltante» solo con alguna recepción; y no se cancela con recepciones. Su detalle muestra lo recibido y lo que falta por línea, y sus recepciones.
+- **Pantallas 46 a 48** (la lista, la nueva recepción con y sin JavaScript, y el detalle imprimible), la tarjeta en la ficha del proveedor, «Recepción» en el historial de movimientos del producto y el origen del costo en su historia.
+- **Las guardas**: `stock-writes` y `cost-writes` fijan las escrituras nuevas y quién las llama; `exposed-surface`, las tres acciones nuevas. `purchasing` suma `inventory`; nadie importa `purchasing`.
+- Revisión independiente: un hallazgo mayor (R-1: un `stock_limit` confirmaba la fila de saldo en 0 que crea el bloqueo; probado en rojo y corregido), dos menores y tres notas. 12 mutaciones detectadas, una de ellas después de corregir el caso que la dejaba pasar.
+- **Despliegue y recorrido**:
+  - `12209c8`, con la CI 38928641142 en `success` en 22 minutos al primer intento;
+  - el usuario recibió una orden en dos recepciones, la segunda la cerró, y registró una recepción sin orden, en «Demostración Vixora»;
+  - conciliado contra la base: `RC-000001` a `RC-000003`, cinco movimientos que cuadran con los saldos, el costo vigente igual al último recibido con una sola escritura de costo, `OC-000002` cerrada por `RC-000002`, y el contador en 3.
+
+**Nivel**: validado localmente y en CI, validado en integración para las pantallas, desplegado en producción y recorrido por el usuario. No es «preparado para producción».
+
+**No certifica:**
+- En producción, los rechazos ni la concurrencia: los cubren los tests.
+- La anulación de la recepción: es la 22.5.
+- El end-to-end completo en verde en una sola corrida local: dio 208 de 209, con `clients.spec.ts` caso 9, intermitente desde la 19.4 y también en `b84ade8`; la CI corrió la suite entera.
+
 ## 2026-10-16 — 22.3: la orden de compra
 
 Cierra el 2026-10-16, después del recorrido del usuario en producción ([brief-22.3](docs/decisions/brief-22.3-la-orden-de-compra.md), §Cierre). Es el primer comprobante numerado de `purchasing`, sobre el [ADR 0023](docs/decisions/0023-compras-y-proveedores.md).

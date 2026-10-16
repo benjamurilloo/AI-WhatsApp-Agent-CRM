@@ -412,9 +412,9 @@ Implementado el 2026-10-16. **Esta sección es autoevaluación**: la escribió q
 | AC-10 | cumplido | `stock-writes` fija `applyGoodsReceipt` y que `receiveStock` solo se llama desde `purchasing`; `cost-writes` fija que `insertProductCost` solo se llama desde `setProductCost` y `recordReceivedCosts`, y que `recordReceivedCosts` solo se llama desde `purchasing`; cada uno con su caso en rojo. `exposed-surface` declara las 3 acciones nuevas |
 | AC-11 | cumplido | `purchasing` importa `catalog`, `inventory`, `numbering`, `organizations`, `audit`, `src/shared` y los esquemas que ya usaba; ningún módulo importa `purchasing`; de los módulos existentes, solo `inventory`, `catalog`, `numbering` y `audit` están en el diff, dentro de lo autorizado |
 | AC-12 | cumplido | `read-api`, `read-api-v2` e `ingestion-v2` pasan en la integración completa sin cambios |
-| AC-13 | cumplido en local; la CI, pendiente | con R-1 corregido: formato, lint, typecheck, build, 839 unitarios, 679 guardas y 1.440 de integración pasan. El end-to-end completo dio 208 de 209. La falla es `clients.spec.ts` caso 9, de clientes, que esta subfase no toca: corrido solo falla 2 de 3 veces, y **sobre `b84ade8` también falla** (1 de 3, con el build de webpack en un worktree aparte), así que la inestabilidad es anterior. Una primera corrida se cortó porque el servidor de prueba se cayó en el caso 10 (198 `ERR_CONNECTION_REFUSED`) y no cuenta. La CI del SHA, pendiente |
+| AC-13 | cumplido | con R-1 corregido: formato, lint, typecheck, build, 839 unitarios, 679 guardas y 1.440 de integración pasan. El end-to-end completo dio 208 de 209. La falla es `clients.spec.ts` caso 9, de clientes, que esta subfase no toca: corrido solo falla 2 de 3 veces, y **sobre `b84ade8` también falla** (1 de 3, con el build de webpack en un worktree aparte), así que la inestabilidad es anterior (el HANDOFF ya la registraba desde la 19.4). Una primera corrida se cortó porque el servidor de prueba se cayó en el caso 10 (198 `ERR_CONNECTION_REFUSED`) y no cuenta. La CI 38928641142 de `12209c8` terminó en `success` en 22 minutos al primer intento, con la suite completa |
 | AC-14 | cumplido | DataModel, Overview, FunctionalRequirements (`FR-COMP-10` a `15` y la precisión de `FR-PROD-19`), Screens (46 a 48, y la 5, la 42, la 43 y la 45), TraceabilityMatrix y SecurityModel (152 puntos de entrada) |
-| AC-15 | pendiente | depende de D-16 |
+| AC-15 | cumplido | desplegado el 2026-10-16 y recorrido por el usuario; conciliado contra la base (§Cierre) |
 
 ### Mutaciones
 
@@ -444,3 +444,21 @@ Un agente de solo lectura que no participó del trabajo revisó la entrega contr
 - **R-4 (nota), corregido el comentario**: las recepciones del detalle de la orden se piden con un tope de 1.000, y el comentario decía «todas». Ahora dice el tope. Lo recibido por línea se suma aparte y no depende de él.
 - **R-5 (nota), ya documentado**: el buscador de productos del alta no exige `admin`. Devuelve el nombre, el SKU y la moneda del precio, que un `viewer` ya ve en productos; SecurityModel lo dice.
 - **R-6 (nota), ya declarado**: el desvío de H-7, arriba.
+
+## Cierre de la subfase 22.4, 2026-10-16
+
+Cierra el 2026-10-16, después del recorrido del usuario en producción («Listo, esta todo bien») y de la conciliación contra la base.
+
+- **AC-1 a AC-15 cumplidos**, con el desvío de H-7 declarado (sin el `UNIQUE (organization_id, id)` suelto de las líneas de la orden, que ninguna clave usa).
+- **Commit, CI y despliegue**:
+  - `12209c8`, la implementación. La CI 38928641142 terminó en `success` en 22 minutos al primer intento, con la suite completa, y se leyó por el SHA completo.
+  - Desplegado el 2026-10-16 según [deploy/production/README.md](../../deploy/production/README.md) §Desplegar, con `1225040` anotado como la versión para volver atrás. La migración `0049` se aplicó, y la última línea comparó HEAD con el SHA pedido. El paso 3 corrió con el usuario en modo manual: el modo automático lo frena, como en la 22.2 y la 22.3.
+  - Después del despliegue: el servicio, `active`; `/login` en `127.0.0.1:3000`, con `200`; 50 migraciones aplicadas; `goods_receipts` y `goods_receipt_lines` con `SELECT` e `INSERT` para `crm_app` y sus triggers `*_insert_only` sobre `UPDATE` y `DELETE`; `goods_receipt` en `audit_entity_type`, `document_kind` e `inventory_movement_type`; los dos únicos nuevos; las dos tablas vacías.
+- **El recorrido del usuario (AC-15)**, en «Demostración Vixora». **Conciliado contra la base**, solo con lecturas:
+  - tres recepciones de «Importaciones Sur» (activo), en ARS: `RC-000001` y `RC-000002`, de `OC-000002`, con dos líneas cada una, la segunda con referencia; `RC-000003` sin orden, una línea y referencia. Cada `line_total` es su cantidad por su costo y cada total, la suma de sus líneas;
+  - cinco movimientos `goods_receipt`, uno por línea, con su cantidad y el motivo `Recepción RC-…`, sin el proveedor; ningún saldo difiere de la suma de sus movimientos;
+  - el costo vigente de cada producto recibido es el de su última recepción. Solo una línea traía un costo distinto del vigente (370.000 → 600.000), con su `cost_change` de origen `goods_receipt`; las otras cuatro llegaron con el vigente y no escribieron;
+  - `OC-000002` quedó `closed` por `RC-000002`, con su auditoría (`closed_by: goods_receipt`); `OC-000001`, de la 22.3, sigue anulada;
+  - el contador de `goods_receipt` en 3; tres auditorías de alta de recepción, ninguna suelta; ninguna otra organización tiene recepciones.
+- **Nivel**: validado localmente y en CI, validado en integración para las pantallas, desplegado en producción y recorrido por el usuario. No es «preparado para producción».
+- **Revisión**: la independiente (arriba). La batería, el despliegue, la conciliación y este cierre son autoevaluación declarada.
