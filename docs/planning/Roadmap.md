@@ -415,7 +415,7 @@ Reglas comunes a las cuatro fases:
 
       El orden de las subfases siguientes no cambia.
     - **22.2 — Los proveedores**. **Cerrada el 2026-10-15** ([brief-22.2](../decisions/brief-22.2-los-proveedores.md) §Cierre): el módulo `purchasing` y la migración `0047`, desplegada (`317750d`) y recorrida por el usuario.
-    - **22.3 — La orden de compra**. *Agregado el 2026-10-15 por decisión del usuario*: suma un mensaje propio para el CUIT de un proveedor con el dígito verificador equivocado (hallazgo del recorrido de la 22.2). *Precisado el 2026-10-15 por decisión del usuario* ([brief-22.3](../decisions/brief-22.3-la-orden-de-compra.md), D-3): el cierre a mano de la orden pasa a la 22.4.
+    - **22.3 — La orden de compra**. *Agregado el 2026-10-15 por decisión del usuario*: suma un mensaje propio para el CUIT de un proveedor con el dígito verificador equivocado (hallazgo del recorrido de la 22.2). *Precisado el 2026-10-15 por decisión del usuario* ([brief-22.3](../decisions/brief-22.3-la-orden-de-compra.md), D-3): el cierre a mano de la orden pasa a la 22.4. **Cerrada el 2026-10-16** ([brief-22.3](../decisions/brief-22.3-la-orden-de-compra.md) §Cierre): `purchase_orders` y `purchase_order_lines` con la migración `0048`, desplegada (`1225040`) y recorrida por el usuario.
     - **22.4 — La recepción**, que suma stock y actualiza el costo. *Desde el 2026-10-15* (brief-22.3, D-3): también el cierre a mano de la orden, «cerrada con faltante», y la comprobación de recepciones vigentes al cancelarla.
     - **22.5 — La anulación de la recepción**.
     - **22.6 — Los pagos a proveedores y la cuenta corriente con proveedores**. ~~Solo si el ADR los mete en la fase.~~ *Precisado el 2026-10-15*: el ADR 0023 los mete (puntos 8 y 9).

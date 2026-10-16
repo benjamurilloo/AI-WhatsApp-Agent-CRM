@@ -16,7 +16,7 @@ generated_at: 2026-10-15
 - **Nivel de validación alcanzable**: **validado localmente y en CI**, **validado en integración** para las pantallas y, con D-14, **desplegado en producción** con el recorrido del usuario. No es «preparado para producción».
 - **Orden**: tercera subfase de la Fase 22 — Compras y proveedores ([Roadmap](../planning/Roadmap.md) §Fase 22), después de la 22.2, cerrada el 2026-10-15. Implementa la fila «22.3» del punto 15 del [ADR 0023](0023-compras-y-proveedores.md), y suma el mensaje del CUIT que el usuario mandó a esta subfase el 2026-10-15.
 - **No abre ni cierra gate.** Es el primer comprobante numerado de `purchasing`, con montos, estados y la primera dependencia del módulo hacia `catalog`, `numbering` y `auth`. No toca el stock ni el costo. Se recomienda la revisión independiente (D-13).
-- **Estado de este documento**: **aprobado** por el usuario el 2026-10-15, con las recomendaciones de D-1 a D-14, incluida D-3 (el cierre a mano pasa a la 22.4). La tarea 22.3 es `3fa702be6f4e81c68ed6d92b6102c2a8` en Notion.
+- **Estado de este documento**: **aprobado** por el usuario el 2026-10-15, con las recomendaciones de D-1 a D-14, incluida D-3 (el cierre a mano pasa a la 22.4). **Cerrado** el 2026-10-16 (§Cierre). La tarea 22.3 es `3fa702be6f4e81c68ed6d92b6102c2a8` en Notion.
 
 ## Objetivo
 
@@ -459,9 +459,9 @@ Implementado el 2026-10-15. **Esta sección es autoevaluación**: la escribió q
 | AC-10 | cumplido | `purchasing` importa `catalog`, `numbering`, `organizations`, `audit`, `src/shared` y los esquemas de `auth`, `catalog` y `organizations`; ningún módulo importa `purchasing`; de los módulos existentes, solo `numbering` y `audit` están en el diff |
 | AC-11 | cumplido | `read-api`, `read-api-v2` e `ingestion-v2` pasan en la integración completa |
 | AC-12 | cumplido | `cuit.test.ts` (las dos razones, con la propiedad del dígito cambiado), `suppliers.test.ts` y `messages.test.ts` |
-| AC-13 | cumplido en local; falta la CI del SHA | formato, lint, typecheck, build, 821 unitarios, 660 guardas y 1.394 de integración pasan. El end-to-end completo, con los cuatro specs de R-1 corregidos, dio 202 de 203: la falla es `sales.spec.ts:136`, que se pasó de los 30 s con la máquina cargada, como en la corrida anterior, sin `0A000`; corrido solo, `sales.spec.ts` pasa entero, 12 de 12 |
+| AC-13 | cumplido | formato, lint, typecheck, build, 821 unitarios, 660 guardas y 1.394 de integración pasan. El end-to-end completo, con los cuatro specs de R-1 corregidos, dio 202 de 203: la falla es `sales.spec.ts:136`, que se pasó de los 30 s con la máquina cargada, como en la corrida anterior, sin `0A000`; corrido solo, `sales.spec.ts` pasa entero, 12 de 12. La CI 38839565148 de `1225040` terminó en `success` en 21 minutos al primer intento |
 | AC-14 | cumplido | DataModel, Overview, FunctionalRequirements (`FR-COMP-05` a `09`), Screens (43 a 45 y la 40 a 42), TraceabilityMatrix, SecurityModel (146 puntos de entrada), la nota del ADR 0023 y el Roadmap |
-| AC-15 | pendiente | depende de D-14, con autorización aparte |
+| AC-15 | cumplido | desplegado el 2026-10-16 y recorrido por el usuario; conciliado contra la base (§Cierre) |
 
 ### Mutaciones
 
@@ -488,3 +488,20 @@ Un agente de solo lectura que no participó del trabajo revisó la entrega contr
 - **R-4 (nota), documentado**: el buscador de productos del alta responde a cualquier sesión con el nombre y el SKU de los productos activos, como los buscadores que ya existían. No expone órdenes, precios ni costos; SecurityModel lo dice ahora.
 - **R-5 (menor), corregido**: la desactivación de un producto contra el alta no tenía mutación (ahora M9, arriba), y el comentario del caso de las dos cancelaciones decía que sin el `FOR UPDATE` habría dos auditorías. En realidad la segunda cancelación choca con el trigger («una fecha de estado no cambia»): el caso falla igual, pero por la segunda defensa. El comentario lo dice así.
 - **R-6 (nota), corregido en parte**: las tarjetas de la lista en un teléfono no enlazaban al proveedor, como sí lo hacía la tabla, y el Overview no decía que `schema.ts` importa el esquema de `catalog`. Los dos se corrigieron. Que la historia rotule todo `status_change` como «Cancelación» es correcto en la 22.3; lo cambia la 22.4, con el cierre.
+
+## Cierre de la subfase 22.3, 2026-10-16
+
+Cierra el 2026-10-16, después del recorrido del usuario en producción («Listo, esta todo perfecto») y de la conciliación contra la base.
+
+- **AC-1 a AC-15 cumplidos**, con el desvío aprobado (los once end-to-end que vacían `products` o `suppliers`, siete al implementar y cuatro con R-1, y el destino de «Compras» en `suppliers.spec.ts`).
+- **Commit, CI y despliegue**:
+  - `1225040`, la implementación. La CI 38839565148 terminó en `success` en 21 minutos al primer intento, con la suite completa, y se leyó por el SHA completo.
+  - Desplegado el 2026-10-16 según [deploy/production/README.md](../../deploy/production/README.md) §Desplegar, con `317750d` anotado como la versión para volver atrás. La migración `0048` se aplicó, y la última línea comparó HEAD con el SHA pedido. El paso 3 corrió con el usuario en modo manual, que lo aprobó: el modo automático lo frena, como en la 22.2.
+  - Después del despliegue: el servicio, `active`; `/login` en `127.0.0.1:3000`, con `200`; 49 migraciones aplicadas; `purchase_orders` con `SELECT`, `INSERT` y `UPDATE` para `crm_app` y `purchase_order_lines` con `SELECT` e `INSERT`; los triggers `purchase_orders_guard` y `purchase_order_lines_insert_only`; los índices y las restricciones únicas; `purchase_order` en `audit_entity_type` y en `document_kind`; las dos tablas vacías.
+- **El recorrido del usuario (AC-15)**, en «Demostración Vixora». **Conciliado contra la base**, solo con lecturas:
+  - una orden, `OC-000001`, de «Importaciones Sur» (activo), en ARS, con dos líneas: 3 × 370.000 y 5 × 600.000; cada `line_total` es su cantidad por su costo, y el total, 4.110.000, es la suma de las líneas; las líneas son de la misma organización y de productos activos;
+  - la orden está `cancelled`, con la fecha de anulación posterior al alta y sin fecha de cierre;
+  - el contador de `purchase_order` en 1; ninguna otra organización tiene órdenes;
+  - la auditoría: un alta y un cambio de estado de la orden, con su organización y su usuario, ninguna suelta.
+- **Nivel**: validado localmente y en CI, validado en integración para las pantallas, desplegado en producción y recorrido por el usuario. No es «preparado para producción».
+- **Revisión**: la independiente (arriba). La batería, el despliegue, la conciliación y este cierre son autoevaluación declarada.

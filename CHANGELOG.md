@@ -2,6 +2,29 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-16 — 22.3: la orden de compra
+
+Cierra el 2026-10-16, después del recorrido del usuario en producción ([brief-22.3](docs/decisions/brief-22.3-la-orden-de-compra.md), §Cierre). Es el primer comprobante numerado de `purchasing`, sobre el [ADR 0023](docs/decisions/0023-compras-y-proveedores.md).
+
+**Certifica:**
+- **Las tablas `purchase_orders` y `purchase_order_lines`** (migración `0048`): la orden nace `open` y solo pasa a `closed` o a `cancelled`, con un trigger que fija las columnas que cambian; las líneas son de solo inserción, de 1 a 50 por orden, sin productos repetidos; `crm_app` sin `DELETE`; el tipo `purchase_order` en `document_kind` (prefijo `OC`) y en el `entity_type`.
+- **El alta y la anulación**, solo de `admin`: el alta bloquea el proveedor y los productos en modo compartido, comprueba que estén activos, redondea cada línea con los decimales de la moneda y toma el número al final; la anulación bloquea la orden `FOR UPDATE` y solo anula una abierta. Cada una con su auditoría.
+- **La lista, el detalle y la página imprimible** (pantallas 43 a 45), y la tarjeta de órdenes en la ficha del proveedor. «Compras» abre en las órdenes.
+- **El mensaje propio del CUIT** con el dígito verificador equivocado, distinto del de la cantidad de dígitos (hallazgo del recorrido de la 22.2).
+- **El módulo `purchasing`** importa `catalog`, `numbering`, `organizations`, `audit` y `src/shared`; nadie lo importa. No toca el stock ni el costo.
+- Revisión independiente: un hallazgo mayor (R-1: cuatro end-to-end más vaciaban `products` sin las tablas nuevas), tres menores y dos notas, verificados y corregidos. 9 mutaciones detectadas.
+- **Despliegue y recorrido**:
+  - `1225040`, con la CI 38839565148 en `success` en 21 minutos al primer intento;
+  - el usuario creó, vio, imprimió y anuló una orden en «Demostración Vixora»;
+  - conciliado contra la base: `OC-000001`, anulada, con dos líneas cuyo total coincide, y dos auditorías, de alta y de cambio de estado.
+
+**Nivel**: validado localmente y en CI, validado en integración para las pantallas, desplegado en producción y recorrido por el usuario. No es «preparado para producción».
+
+**No certifica:**
+- En producción, los rechazos ni la concurrencia: los cubren los tests.
+- El cierre a mano de la orden ni la recepción: pasan a la 22.4 (D-3).
+- El end-to-end completo en verde en una sola corrida local: dio 202 de 203, con un caso de `sales.spec.ts` pasado de tiempo con la máquina cargada, que pasa solo; la CI corrió la suite entera.
+
 ## 2026-10-15 — 22.2: los proveedores
 
 Cierra el 2026-10-15, después del recorrido del usuario en producción ([brief-22.2](docs/decisions/brief-22.2-los-proveedores.md), §Cierre). Es la primera subfase con código de la Fase 22, sobre el [ADR 0023](docs/decisions/0023-compras-y-proveedores.md), y crea el módulo `purchasing`.
