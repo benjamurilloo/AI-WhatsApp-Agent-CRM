@@ -4,6 +4,14 @@ import * as catalogRepository from "@/modules/catalog/repository";
 import * as conversationsRepository from "@/modules/conversations/repository";
 import * as crmRepository from "@/modules/crm/repository";
 import * as ingestionRepository from "@/modules/ingestion/repository";
+import {
+  createSupplierPayment,
+  getGoodsReceiptPayments,
+  getSupplierPayment,
+  listSupplierPayments,
+  voidSupplierPayment,
+} from "@/modules/cash";
+import * as supplierPaymentRepository from "@/modules/cash/supplier-payment-repository";
 import { getMemberSummaries, type AuthContext } from "@/modules/organizations";
 import * as organizationsRepository from "@/modules/organizations/repository";
 import {
@@ -744,5 +752,194 @@ describe("la recepción no alcanza a otra organización", () => {
       sql`select count(*)::int as total from goods_receipt_voids`,
     );
     expect(written.rows[0]!.total).toBe(1);
+  });
+});
+
+// Los pagos a proveedores (brief-22.6, AC-7): las lecturas por id y por proveedor, la lista y la
+// anulación, con una organización que no es la dueña; y las lecturas de purchasing que cash usa.
+describe("los pagos a proveedores no alcanzan a otra organización", () => {
+  async function paymentOfB() {
+    const supplier = await getDb().execute<{ id: string }>(
+      sql`insert into suppliers (organization_id, name)
+          values (${fixture.orgB}, 'Proveedor de B') returning id`,
+    );
+    const supplierId = supplier.rows[0]!.id;
+    const receipt = await getDb().execute<{ id: string }>(
+      sql`insert into goods_receipts (organization_id, number, supplier_id, currency, total,
+                                      created_by)
+          values (${fixture.orgB}, 1, ${supplierId}, 'ARS', 100, ${fixture.userB})
+          returning id`,
+    );
+    const receiptId = receipt.rows[0]!.id;
+    const method = await getDb().execute<{ id: string }>(
+      sql`insert into payment_methods (organization_id, name, is_cash)
+          values (${fixture.orgB}, 'Efectivo', true) returning id`,
+    );
+    const session = await getDb().execute<{ id: string }>(
+      sql`insert into cash_sessions (organization_id, number, opened_by)
+          values (${fixture.orgB}, 1, ${fixture.userB}) returning id`,
+    );
+    const sessionId = session.rows[0]!.id;
+    const payment = await getDb().execute<{ id: string }>(
+      sql`insert into supplier_payments (organization_id, number, target, goods_receipt_id,
+                                         supplier_id, payment_method_id, session_id, currency,
+                                         amount, created_by)
+          values (${fixture.orgB}, 1, 'goods_receipt', ${receiptId}, ${supplierId},
+                  ${method.rows[0]!.id}, ${sessionId}, 'ARS', 40, ${fixture.userB})
+          returning id`,
+    );
+    const paymentId = payment.rows[0]!.id;
+    await getDb().execute(
+      sql`insert into supplier_payment_voids (organization_id, number, supplier_payment_id,
+                                              currency, amount, reason, session_id, created_by)
+          values (${fixture.orgB}, 1, ${paymentId}, 'ARS', 40, 'other', ${sessionId},
+                  ${fixture.userB})`,
+    );
+    return { supplierId, receiptId, sessionId, paymentId };
+  }
+
+  async function adminOfA(): Promise<AuthContext> {
+    const user = await getDb().execute<{ id: string }>(
+      sql`insert into users (email, password_hash, name)
+          values ('admin-a@example.com', 'hash-irrelevante', 'Admin de A') returning id`,
+    );
+    await getDb().execute(
+      sql`insert into organization_members (organization_id, user_id, role)
+          values (${fixture.orgA}, ${user.rows[0]!.id}, 'admin')`,
+    );
+    return {
+      userId: user.rows[0]!.id,
+      organizationId: fixture.orgA,
+      role: "admin",
+      mustChangePassword: false,
+      sessionExpiresAt: new Date(Date.now() + 3_600_000),
+    };
+  }
+
+  it("las lecturas de cash por id, por proveedor, por recepción y por sesión", async () => {
+    const { supplierId, receiptId, sessionId, paymentId } = await paymentOfB();
+    const a = fixture.orgA;
+    expect(
+      await supplierPaymentRepository.findSupplierPayment(a, paymentId),
+    ).toBeUndefined();
+    expect(
+      await supplierPaymentRepository.findSupplierPayments(a, supplierId),
+    ).toEqual([]);
+    expect(
+      await supplierPaymentRepository.findGoodsReceiptPayments(a, receiptId),
+    ).toEqual([]);
+    expect(
+      await supplierPaymentRepository.findSessionSupplierPayments(a, sessionId),
+    ).toEqual([]);
+    expect(
+      await supplierPaymentRepository.findSessionSupplierPaymentVoids(
+        a,
+        sessionId,
+      ),
+    ).toEqual([]);
+    expect(
+      await supplierPaymentRepository.findLateSupplierPaymentVoids(
+        a,
+        sessionId,
+      ),
+    ).toEqual([]);
+    for (const query of [
+      { status: "all" as const, supplierId: null, number: null },
+      { status: "voided" as const, supplierId, number: null },
+      {
+        status: "all" as const,
+        supplierId: null,
+        number: { kind: "void" as const, value: 1 },
+      },
+    ]) {
+      const ofA = { organizationId: a, ...query };
+      expect(await supplierPaymentRepository.countSupplierPayments(ofA)).toBe(
+        0,
+      );
+      expect(
+        await supplierPaymentRepository.findSupplierPaymentsPage(ofA, 25, 0),
+      ).toEqual([]);
+    }
+    // La organización dueña sí los ve: el filtro es el que los esconde.
+    expect(
+      await supplierPaymentRepository.findSupplierPayment(
+        fixture.orgB,
+        paymentId,
+      ),
+    ).toMatchObject({ number: 1 });
+  });
+
+  it("las lecturas de purchasing que cash usa", async () => {
+    const { supplierId, receiptId } = await paymentOfB();
+    const a = fixture.orgA;
+    await getDb().transaction(async (tx) => {
+      expect(
+        await goodsReceiptRepository.findGoodsReceiptForAccount(
+          tx,
+          a,
+          receiptId,
+        ),
+      ).toBeUndefined();
+      expect(
+        await goodsReceiptRepository.findSupplierGoodsReceiptsForAccount(
+          tx,
+          a,
+          supplierId,
+        ),
+      ).toEqual([]);
+      expect(
+        await purchasingRepository.findSupplier(a, supplierId, tx, {
+          forShare: true,
+        }),
+      ).toBeUndefined();
+    });
+    expect(
+      await purchasingRepository.findSupplierNames(a, [supplierId]),
+    ).toEqual([]);
+  });
+
+  it("el pago, la anulación y las lecturas del servicio responden NOT_FOUND o vacío", async () => {
+    const { supplierId, receiptId, paymentId } = await paymentOfB();
+    const admin = await adminOfA();
+    expect(
+      await createSupplierPayment(admin, {
+        target: "goods_receipt",
+        goodsReceiptId: receiptId,
+        paymentMethodId: crypto.randomUUID(),
+        amount: "1",
+      }),
+    ).toEqual({ ok: false, code: "NOT_FOUND", entity: "goods_receipt" });
+    expect(
+      await createSupplierPayment(admin, {
+        target: "account",
+        supplierId,
+        currency: "ARS",
+        paymentMethodId: crypto.randomUUID(),
+        amount: "1",
+      }),
+    ).toEqual({ ok: false, code: "NOT_FOUND", entity: "supplier" });
+    expect(
+      await voidSupplierPayment(admin, { paymentId, reason: "other" }),
+    ).toEqual({ ok: false, code: "NOT_FOUND", entity: "supplier_payment" });
+    expect(await getSupplierPayment(admin, paymentId)).toEqual({
+      ok: false,
+      code: "NOT_FOUND",
+    });
+    expect(await getGoodsReceiptPayments(admin, receiptId)).toEqual({
+      ok: false,
+      code: "NOT_FOUND",
+    });
+    const list = await listSupplierPayments(admin, {
+      status: "all",
+      supplierId,
+      search: "PP-000001",
+      page: 1,
+    });
+    expect(list.ok && list.payments.total).toBe(0);
+    const written = await getDb().execute<{ payments: number; voids: number }>(
+      sql`select (select count(*)::int from supplier_payments) as payments,
+                 (select count(*)::int from supplier_payment_voids) as voids`,
+    );
+    expect(written.rows[0]).toEqual({ payments: 1, voids: 1 });
   });
 });

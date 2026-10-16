@@ -1,11 +1,12 @@
 import { SubNav } from "@/app/_components/sub-nav";
 
 // Las pantallas de Compras (brief-22.3, D-10): las órdenes de compra, desde la 22.4 las recepciones
-// (brief-22.4, D-11) y los proveedores, como la navegación interna de la caja.
+// (brief-22.4, D-11), desde la 22.6 los pagos (brief-22.6, D-13) y los proveedores, como la
+// navegación interna de la caja.
 export function PurchasingSubNav({
   current,
 }: {
-  current: "ordenes" | "recepciones" | "proveedores";
+  current: "ordenes" | "recepciones" | "pagos" | "proveedores";
 }) {
   return (
     <SubNav
@@ -22,6 +23,12 @@ export function PurchasingSubNav({
           label: "Recepciones",
           icon: "package",
           current: current === "recepciones",
+        },
+        {
+          href: "/compras/pagos",
+          label: "Pagos",
+          icon: "banknote",
+          current: current === "pagos",
         },
         {
           href: "/compras/proveedores",

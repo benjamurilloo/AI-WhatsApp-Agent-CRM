@@ -66,7 +66,8 @@ function single(value: string | string[] | undefined): string | undefined {
 // La ficha del proveedor (brief-22.2, D-9): sus datos, «Editar», «Desactivar» con confirmación o
 // «Reactivar», y su historia paginada. Solo admin: purchasing rechaza a un viewer también al leer.
 // Desde la 22.3, sus últimas cinco órdenes de compra, el enlace a la lista filtrada por él y, si
-// está activo, «Nueva orden de compra» con el proveedor ya elegido (brief-22.3, D-10).
+// está activo, «Nueva orden de compra» con el proveedor ya elegido (brief-22.3, D-10). Desde la 22.6,
+// «Pago a cuenta» y sus pagos (brief-22.6, D-13).
 export default async function SupplierPage({
   params,
   searchParams,
@@ -335,6 +336,27 @@ export default async function SupplierPage({
           </p>
         </SectionCard>
       ) : null}
+
+      {/* Desde la 22.6 (brief-22.6, D-13): el pago a cuenta, también a un proveedor desactivado (ADR
+          0023, punto 2), y sus pagos en la lista. El resumen de su cuenta llega con la 22.7. */}
+      <SectionCard
+        id="pagos-titulo"
+        title="Pagos"
+        icon="banknote"
+        className="mt-6"
+      >
+        <p className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+          <Link href={`${href}/pagar`} className={linkClass}>
+            Pago a cuenta
+          </Link>
+          <Link
+            href={`/compras/pagos?proveedor=${supplier.id}`}
+            className={linkClass}
+          >
+            Ver los pagos de este proveedor
+          </Link>
+        </p>
+      </SectionCard>
 
       {audit.ok && timeZone ? (
         <>

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AUDIT_PAGE_SIZE } from "@/modules/audit";
+import { getGoodsReceiptPayments } from "@/modules/cash";
 import { getAvailableStock } from "@/modules/inventory";
 import { getAppFrame, getOrganizationTimezone } from "@/modules/organizations";
 import {
@@ -34,6 +35,7 @@ import {
 import { formatMoney } from "@/shared/money";
 import { formatQuantity } from "@/shared/quantity";
 import { PrintButton } from "../../ordenes/[orderId]/print-button";
+import { ReceiptPaymentsSection } from "../../pagos/receipt-payments-section";
 import {
   FORBIDDEN_PAGE_MESSAGE,
   NOT_AN_INVOICE_LEGEND,
@@ -67,7 +69,8 @@ function page(value: string | string[] | undefined): number {
 // el proveedor con sus datos de hoy, la orden, la referencia del proveedor, las líneas, el total y
 // la leyenda. Al imprimir queda solo el comprobante. La historia, al pie. Solo admin. Desde la 22.5
 // (brief-22.5, D-9): una anulada lo dice, enlaza su anulación y se imprime con la marca; una vigente se
-// anula en el paso ?confirmar=anular, que muestra lo que sale del stock con lo disponible hoy.
+// anula en el paso ?confirmar=anular, que muestra lo que sale del stock con lo disponible hoy. Desde la
+// 22.6 (brief-22.6, D-13), lo pagado y lo que falta, compuesto con cash.
 export default async function GoodsReceiptPage({
   params,
   searchParams,
@@ -93,10 +96,11 @@ export default async function GoodsReceiptPage({
   }
   const receipt = found.receipt;
   const href = `/compras/recepciones/${receipt.id}`;
-  const [timeZone, frame, audit] = await Promise.all([
+  const [timeZone, frame, audit, payments] = await Promise.all([
     getOrganizationTimezone(context),
     getAppFrame(context),
     listGoodsReceiptAudit(context, receipt.id, page(query.historial)),
+    getGoodsReceiptPayments(context, receipt.id),
   ]);
   const actorLabel = audit.ok
     ? await auditActorLabels(context.organizationId, audit.entries)
@@ -319,6 +323,17 @@ export default async function GoodsReceiptPage({
         </p>
       </article>
 
+      {payments.ok ? (
+        <div className="mt-6 print:hidden">
+          <ReceiptPaymentsSection
+            receiptId={receipt.id}
+            supplierId={supplier?.id ?? null}
+            standing={payments.standing}
+            timeZone={timeZone}
+          />
+        </div>
+      ) : null}
+
       <div className="mt-6 print:hidden">
         <SectionCard id="anulacion-titulo" title="Anulación" icon="close">
           {receiptVoid ? (
@@ -344,6 +359,11 @@ export default async function GoodsReceiptPage({
                   receiptId={receipt.id}
                   displayNumber={receipt.displayNumber}
                   hasOrder={receipt.purchaseOrder !== null}
+                  paidNote={
+                    payments.ok && payments.standing.paid !== "0.00"
+                      ? `Lo pagado contra esta recepción, ${formatMoney(payments.standing.paid, receipt.currency)}, pasa a la cuenta del proveedor: se imputa a sus otras recepciones o queda a favor del negocio.`
+                      : null
+                  }
                   lines={receipt.lines.map((line) => ({
                     productId: line.productId,
                     name: line.product?.name ?? UNKNOWN_PRODUCT_TEXT,

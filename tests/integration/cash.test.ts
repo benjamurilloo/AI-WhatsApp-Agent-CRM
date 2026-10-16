@@ -455,6 +455,9 @@ describe("la apertura, los movimientos y el cierre (AC-3; ADR 0022, punto 8)", (
         receiptVoids: "0.00",
         refunds: "0.00",
         refundVoids: "0.00",
+        // Desde la 22.6 (brief-22.6, D-9).
+        supplierPayments: "0.00",
+        supplierPaymentVoids: "0.00",
         contributions: "0.00",
         withdrawals: "0.00",
         expected: "10000.50",
@@ -469,6 +472,9 @@ describe("la apertura, los movimientos y el cierre (AC-3; ADR 0022, punto 8)", (
         receiptVoids: "0.00",
         refunds: "0.00",
         refundVoids: "0.00",
+        // Desde la 22.6 (brief-22.6, D-9).
+        supplierPayments: "0.00",
+        supplierPaymentVoids: "0.00",
         contributions: "0.00",
         withdrawals: "0.00",
         expected: "0.00",

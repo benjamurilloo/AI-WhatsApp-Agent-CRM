@@ -140,4 +140,12 @@ describe("formatDocumentNumber", () => {
       "ARC-1234567",
     );
   });
+
+  it("el pago a un proveedor es PP y su anulación APP (brief-22.6; ADR 0023, punto 13)", () => {
+    expect(formatDocumentNumber("supplier_payment", 2)).toBe("PP-000002");
+    expect(formatDocumentNumber("supplier_payment_void", 1)).toBe("APP-000001");
+    expect(formatDocumentNumber("supplier_payment_void", 1_234_567)).toBe(
+      "APP-1234567",
+    );
+  });
 });

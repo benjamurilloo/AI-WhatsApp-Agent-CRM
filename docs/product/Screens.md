@@ -391,6 +391,7 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 - **Acciones** (`admin`): «Registrar aporte», «Registrar retiro» y «Cerrar caja» con la caja abierta; «Abrir caja» con la caja cerrada.
 - **Vacío**: «Todavía no se abrió nunca.»
 - *Desde la 21.3* ([brief-21.3](../decisions/brief-21.3-el-cobro-de-una-venta.md), D-5 y D-8): por moneda, la columna «Cobros», que suma a lo esperado; la tarjeta «Cobros en efectivo», con el recibo enlazado, la hora, la venta y el monto; y en la barra, «Cobros» (pantalla 30). *Desde la 21.4* ([brief-21.4](../decisions/brief-21.4-la-sena.md)): la columna de esa tarjeta pasa de «Venta» a «Destino», con la venta o el pedido de una seña. *Desde la 21.5* ([brief-21.5](../decisions/brief-21.5-la-anulacion-y-la-devolucion.md), D-6 y D-9): por moneda, «Cobros» y «Devoluciones» van sin lo anulado mientras la sesión estaba abierta; los cobros anulados llevan la marca «Anulado»; la tarjeta «Devoluciones en efectivo», con el comprobante enlazado, la hora, de dónde sale y el monto; y en la barra, «Devoluciones» (pantalla 34).
+- *Desde la 22.6* ([brief-22.6](../decisions/brief-22.6-los-pagos-a-proveedores.md), D-9; FR-CAJ-04 a FR-CAJ-06): la columna «Pagos a proveedores» en los totales por moneda, sin lo anulado en la sesión, cuando la sesión tuvo alguno, para los dos roles. Solo para un `admin`, «Pagos a proveedores en efectivo» con su lista (número enlazado, fecha, proveedor, destino, medio y monto). Un `viewer` no ve la lista ni los nombres.
 
 ## 22. Abrir caja
 
@@ -435,6 +436,7 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 - **Acciones**: «Imprimir o guardar PDF», con la sesión cerrada.
 - **Al imprimir**: queda solo el arqueo, sin navegación, botones ni historia.
 - *Desde la 21.3* ([brief-21.3](../decisions/brief-21.3-el-cobro-de-una-venta.md), D-5): la columna «Cobros» por moneda y los cobros en efectivo de la sesión, con su recibo y su venta, también en el arqueo impreso. *Desde la 21.4* ([brief-21.4](../decisions/brief-21.4-la-sena.md)): con su destino, la venta o el pedido de una seña. *Desde la 21.5* ([brief-21.5](../decisions/brief-21.5-la-anulacion-y-la-devolucion.md), D-6; FR-CAJ-17 y 19): la columna «Devoluciones», las devoluciones en efectivo de la sesión y la marca «Anulado». Una sesión cerrada con anulaciones posteriores a su cierre las lista en «Anulaciones posteriores al cierre», con la anulación, la fecha, el comprobante que anula, el motivo y su efecto en esa caja: el arqueo guardado no cambia, y estas explican su diferencia.
+- *Desde la 22.6* ([brief-22.6](../decisions/brief-22.6-los-pagos-a-proveedores.md), D-9; FR-CAJ-04 a FR-CAJ-06): la columna «Pagos a proveedores» en los totales por moneda, sin lo anulado en la sesión, cuando la sesión tuvo alguno, para los dos roles. Solo para un `admin`, «Pagos a proveedores en efectivo» con su lista (número enlazado, fecha, proveedor, destino, medio y monto) y, en una cerrada, los pagos anulados después del cierre, con su efecto «+» en esa caja. Un `viewer` no ve la lista ni los nombres.
 
 ## 27. Medios de pago
 
@@ -579,6 +581,7 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 - **Acciones**: «Editar»; «Desactivar», con la confirmación «¿Desactivar "{nombre}"?» en un segundo paso de la URL; con el proveedor inactivo, la tarjeta «Estado» con «Reactivar».
 - *Desde la 22.4* ([brief-22.4](../decisions/brief-22.4-la-recepcion.md), D-11): la tarjeta «Recepciones», con sus cinco últimas (número, fecha, orden o «Sin orden» y total) y «Ver las {n} recepciones de este proveedor», que lleva a la pantalla 46 filtrada por él; sin recepciones, «Este proveedor no tiene recepciones.». *Desde la 22.5* ([brief-22.5](../decisions/brief-22.5-la-anulacion-de-la-recepcion.md), D-9): la marca «Anulada» en las anuladas.
 - *Desde la 22.3* ([brief-22.3](../decisions/brief-22.3-la-orden-de-compra.md), D-10): la tarjeta «Órdenes de compra», con sus cinco últimas (número, fecha, total y estado), «Ver las {n} órdenes de este proveedor», que lleva a la pantalla 43 filtrada por él, y, si está activo, «Nueva orden de compra», que lleva a la 44 con el proveedor ya elegido; sin órdenes, «Este proveedor no tiene órdenes de compra.».
+- *Desde la 22.6* ([brief-22.6](../decisions/brief-22.6-los-pagos-a-proveedores.md), D-13; FR-COMP-19): la tarjeta «Pagos», con «Pago a cuenta» (también para un proveedor desactivado) y «Ver los pagos de este proveedor». El resumen de su cuenta llega con la 22.7.
 
 ## 43. Órdenes de compra
 
@@ -634,6 +637,7 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 - **Información mostrada**: el número y el total; el comprobante con la organización, «Documento no válido como factura», el número, la fecha, el proveedor con su CUIT de hoy, la orden enlazada o «Sin orden», el remito o la factura del proveedor si se cargó, la moneda, las líneas (producto enlazado con su SKU, cantidad, costo unitario y total) y el total. Debajo, la historia: «Alta», con la orden, las líneas y el total. Tras registrarla, el aviso lo dice, y si cerró la orden, también.
 - **Acciones**: «Imprimir o guardar PDF». No se edita; la anulación llega con la 22.5. *Llegó el 2026-10-16*.
 - *Desde la 22.5* ([brief-22.5](../decisions/brief-22.5-la-anulacion-de-la-recepcion.md), D-9; FR-COMP-16): la tarjeta «Anulación». En una vigente dice «Esta recepción está vigente.» y ofrece «Anular la recepción», con la confirmación «¿Anular la recepción {número}?» en un segundo paso de la URL (`?confirmar=anular`): el motivo, de la lista; lo que sale del stock por producto, con lo disponible hoy; «Anular no restaura el costo: si hace falta, corregilo en la ficha del producto.»; con orden, que la orden deja de contarla; «No, volver» y «Sí, anular la recepción». Funciona sin JavaScript. Si no alcanza el stock, dice qué productos no alcanzan, con lo que hay que sacar y lo disponible, y sugiere el ajuste; si otra persona la anuló, lo dice y enlaza la anulación. Una anulada dice «Anulada por ARC-000001 el {fecha}: {motivo}.», enlaza el comprobante, y su comprobante impreso lleva «Anulada por ARC-000001». La historia suma «Anulación ARC-000001: {motivo}».
+- *Desde la 22.6* ([brief-22.6](../decisions/brief-22.6-los-pagos-a-proveedores.md), D-13; FR-COMP-18): la tarjeta «Pagos», sin imprimirse: «Pagado», «Imputado desde la cuenta» y «Falta pagar», o, en una anulada, «Pasó a la cuenta del proveedor»; sus pagos con la marca «Anulado»; «Registrar un pago» si falta algo, y «Pago a cuenta del proveedor». La confirmación de «Anular la recepción» suma, si tiene pagos, que lo pagado pasa a la cuenta del proveedor (ADR 0023, punto 6).
 - **Al imprimir** queda solo el comprobante, sin la navegación, los botones ni la historia.
 
 ## 49. Anulación de recepción
@@ -645,3 +649,51 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 - **Una recepción sin anular**: «Esta recepción no está anulada.», con «Volver a la recepción».
 - **Al imprimir** queda solo el comprobante.
 - **Un `viewer`**: «No tenés permiso para ver esta página.», sin datos.
+
+## 50. Pagar recepción
+
+*Agregada en la 22.6* ([brief-22.6](../decisions/brief-22.6-los-pagos-a-proveedores.md), D-13; FR-COMP-18 y FR-COMP-20). Ruta `/compras/recepciones/[id]/pagar`, **solo para `admin`**, con el molde del cobro de una venta.
+
+- **Información mostrada**: «Pagar la recepción RC-000001» y «Falta pagar $ …»; el proveedor, el total de la recepción, lo pagado y lo imputado desde la cuenta.
+- **Campos**: el medio de pago, como grupo de opciones con los activos (el efectivo dice «sale de la caja»), y el monto, propuesto en lo que falta, con su lectura. La moneda es la de la recepción.
+- **Acciones**: «Registrar pago» lleva al comprobante con «Pago registrado.»; «Cancelar» vuelve a la recepción.
+- **Rechazos**: el monto que supera lo que falta, con lo que falta; en efectivo, la caja cerrada (con «Abrir caja») o lo esperado que no alcanza, con lo esperado; el medio desactivado. El foco va al mensaje.
+- **Una recepción anulada o ya pagada**, o sin medios activos: lo dice, sin formulario.
+- Funciona sin JavaScript.
+- **Un `viewer`**: «Solo un administrador puede ver y registrar pagos a proveedores.».
+
+## 51. Pago a cuenta
+
+*Agregada en la 22.6* ([brief-22.6](../decisions/brief-22.6-los-pagos-a-proveedores.md), D-13; FR-COMP-19). Ruta `/compras/proveedores/[id]/pagar`, **solo para `admin`**.
+
+- **Información mostrada**: «Pago a cuenta de …»; por moneda, «Se le debe», «A favor del negocio» y las recepciones con saldo, de la misma cuenta que usa el tope del pago; el aviso de que el pago no tiene tope y lo que exceda queda a favor.
+- **Campos**: la moneda, propuesta en la de la recepción con saldo más vieja; el medio; el monto, propuesto en lo que se debe en esa moneda.
+- **Acciones y rechazos**: los de la pantalla 50, sin el de lo que falta.
+- **Un `viewer`**: el mismo aviso.
+
+## 52. Pagos a proveedores
+
+*Agregada en la 22.6* ([brief-22.6](../decisions/brief-22.6-los-pagos-a-proveedores.md), D-13; FR-COMP-22). Ruta `/compras/pagos`, en el submenú de «Compras», **solo para `admin`**.
+
+- **Información mostrada**: el más nuevo primero; el número con la marca «Anulado», la fecha, el proveedor enlazado, el destino (la recepción enlazada o «A cuenta»), el medio y el monto. Paginada.
+- **Filtros**, en la URL: el número (`PP-000123` o `APP-000001`, que encuentra su pago) y el estado (todos, vigentes o anulados); el proveedor, desde su ficha (`?proveedor=`), con «Ver los de todos los proveedores».
+- **Vacía**: dice cómo se registra un pago.
+- **Un `viewer`**: el aviso.
+
+## 53. Pago a proveedor
+
+*Agregada en la 22.6* ([brief-22.6](../decisions/brief-22.6-los-pagos-a-proveedores.md), D-13; FR-COMP-20 y FR-COMP-21). Ruta `/compras/pagos/[id]`, **solo para `admin`**. Es **la página imprimible** del pago.
+
+- **Información mostrada**: «Pago PP-000001» y el monto; el comprobante con la organización, «Documento no válido como factura», el número, la fecha, el proveedor con su CUIT de hoy, el destino, el medio, la sesión de caja si fue en efectivo, quién lo registró y el monto. Uno anulado lo dice arriba y en el comprobante: «Anulado por APP-000001».
+- **La tarjeta «Anulación»**: en uno vigente, «Anular el pago» lleva a `?confirmar=anular`: «¿Anular el pago PP-000001?», qué pasa con la caja («La plata vuelve a lo esperado de la sesión abierta C-000001.», «La sesión C-000001 ya cerró: la caja no cambia.» o «El pago no fue en efectivo: la caja no cambia.»), el motivo de la lista, «No, volver» y «Sí, anular el pago». En uno anulado, el número y el motivo, y «Ver el comprobante de la anulación». Funciona sin JavaScript.
+- **Al imprimir** queda solo el comprobante.
+- **Un `viewer`**: el aviso.
+
+## 54. Anulación de pago
+
+*Agregada en la 22.6* ([brief-22.6](../decisions/brief-22.6-los-pagos-a-proveedores.md), D-13; FR-COMP-21). Ruta `/compras/pagos/[id]/anulacion`, **solo para `admin`**, imprimible.
+
+- **Información mostrada**: «Anulación APP-000001» y el pago que anula; el comprobante con la organización, la leyenda, el número y la fecha de la anulación, el pago enlazado con su fecha, el proveedor, el destino del pago, el medio, el motivo, la caja («Volvió a la sesión C-000001» o «No cambió ninguna sesión»), quién la registró y el monto.
+- **Un pago sin anular**: «Este pago no está anulado.», con «Volver al pago».
+- **Al imprimir** queda solo el comprobante.
+- **Un `viewer`**: el aviso.

@@ -157,6 +157,9 @@ const INSERT_ONLY_TABLES = [
   // La anulación de una venta (brief-20.4; ADR 0021, punto 6).
   "sale_voids",
   "sales",
+  // El pago a un proveedor y su anulación (brief-22.6, D-2 y D-3; ADR 0023, punto 8).
+  "supplier_payment_voids",
+  "supplier_payments",
 ];
 // Se actualizan pero no se borran (brief-6.1, D-3; credenciales, brief-6.5.3, D-1; información
 // del negocio, brief-11.2, D-4; el horario semanal, brief-17.4, P-1).

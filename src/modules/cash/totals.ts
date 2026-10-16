@@ -20,10 +20,15 @@ export type CashTotals = {
   receiptVoids: Money;
   refunds: Money;
   refundVoids: Money;
+  // Desde la 22.6 (ADR 0023, punto 8; brief-22.6, D-9): los pagos a proveedores en efectivo de la
+  // sesión y los anulados mientras estaba abierta.
+  supplierPayments: Money;
+  supplierPaymentVoids: Money;
   contributions: Money;
   withdrawals: Money;
   // esperado = inicial + cobros en efectivo − cobros anulados en la sesión − devoluciones en
-  // efectivo + devoluciones anuladas en la sesión + aportes − retiros (ADR 0022, puntos 7 y 8).
+  // efectivo + devoluciones anuladas en la sesión + aportes − retiros − pagos a proveedores en
+  // efectivo + pagos a proveedores anulados en la sesión (ADR 0022, puntos 7 y 8; ADR 0023, punto 8).
   expected: Money;
 };
 
@@ -37,6 +42,10 @@ export type TotalsInput = {
   // Las devoluciones en efectivo de la sesión: solo esas tienen sesión (trigger refunds_cash_session).
   refunds: { currency: string; amount: string }[];
   refundVoids: { currency: string; amount: string }[];
+  // Los pagos a proveedores en efectivo de la sesión (trigger supplier_payments_cash_session) y las
+  // anulaciones de pagos que impactaron en ella (brief-22.6, D-9).
+  supplierPayments: { currency: string; amount: string }[];
+  supplierPaymentVoids: { currency: string; amount: string }[];
   movements: {
     kind: "contribution" | "withdrawal";
     currency: string;
@@ -45,7 +54,7 @@ export type TotalsInput = {
 };
 
 // Por moneda, en orden alfabético. Una moneda nunca se suma con otra. Cada moneda con inicial,
-// cobros, devoluciones o movimientos tiene su fila; sin inicial, el inicial es cero.
+// cobros, devoluciones, pagos a proveedores o movimientos tiene su fila; sin inicial, el inicial es cero.
 export function computeCashTotals(input: TotalsInput): CashTotals[] {
   const byCurrency = new Map<string, CashTotals>();
   const totalsOf = (currency: string): CashTotals => {
@@ -58,6 +67,8 @@ export function computeCashTotals(input: TotalsInput): CashTotals[] {
         receiptVoids: 0n,
         refunds: 0n,
         refundVoids: 0n,
+        supplierPayments: 0n,
+        supplierPaymentVoids: 0n,
         contributions: 0n,
         withdrawals: 0n,
         expected: 0n,
@@ -81,6 +92,14 @@ export function computeCashTotals(input: TotalsInput): CashTotals[] {
   for (const row of input.refundVoids) {
     totalsOf(row.currency).refundVoids += moneyFromDatabase(row.amount);
   }
+  for (const row of input.supplierPayments) {
+    totalsOf(row.currency).supplierPayments += moneyFromDatabase(row.amount);
+  }
+  for (const row of input.supplierPaymentVoids) {
+    totalsOf(row.currency).supplierPaymentVoids += moneyFromDatabase(
+      row.amount,
+    );
+  }
   for (const row of input.movements) {
     const totals = totalsOf(row.currency);
     const amount = moneyFromDatabase(row.amount);
@@ -95,7 +114,9 @@ export function computeCashTotals(input: TotalsInput): CashTotals[] {
       totals.refunds +
       totals.refundVoids +
       totals.contributions -
-      totals.withdrawals;
+      totals.withdrawals -
+      totals.supplierPayments +
+      totals.supplierPaymentVoids;
   }
   return [...byCurrency.values()].sort((a, b) =>
     a.currency < b.currency ? -1 : a.currency > b.currency ? 1 : 0,

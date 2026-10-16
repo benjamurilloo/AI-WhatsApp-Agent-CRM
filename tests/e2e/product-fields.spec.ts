@@ -23,7 +23,7 @@ test.beforeAll(() => {
 
 test.afterAll(async () => {
   await db.execute(
-    sql`truncate table goods_receipt_voids, goods_receipt_lines, goods_receipts, purchase_order_lines, purchase_orders, refund_voids, refunds, receipt_voids, receipts, sale_voids, sale_lines, sales, order_lines, orders, audit_logs, inventory_movements, inventories, product_images, product_costs, product_prices, products`,
+    sql`truncate table supplier_payment_voids, supplier_payments, goods_receipt_voids, goods_receipt_lines, goods_receipts, purchase_order_lines, purchase_orders, refund_voids, refunds, receipt_voids, receipts, sale_voids, sale_lines, sales, order_lines, orders, audit_logs, inventory_movements, inventories, product_images, product_costs, product_prices, products`,
   );
   await db.$client.end();
 });
@@ -31,7 +31,7 @@ test.afterAll(async () => {
 // Las tablas de solo inserción se vacían con TRUNCATE, la vía documentada (ADR 0013).
 test.beforeEach(async () => {
   await db.execute(
-    sql`truncate table goods_receipt_voids, goods_receipt_lines, goods_receipts, purchase_order_lines, purchase_orders, refund_voids, refunds, receipt_voids, receipts, sale_voids, sale_lines, sales, order_lines, orders, audit_logs, inventory_movements, inventories, product_images, product_costs, product_prices, products`,
+    sql`truncate table supplier_payment_voids, supplier_payments, goods_receipt_voids, goods_receipt_lines, goods_receipts, purchase_order_lines, purchase_orders, refund_voids, refunds, receipt_voids, receipts, sale_voids, sale_lines, sales, order_lines, orders, audit_logs, inventory_movements, inventories, product_images, product_costs, product_prices, products`,
   );
   await db.execute(sql`delete from login_attempts`);
   await db.execute(sql`delete from sessions`);

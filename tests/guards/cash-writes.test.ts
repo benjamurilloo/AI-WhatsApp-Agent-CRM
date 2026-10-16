@@ -24,10 +24,16 @@ import { describe, expect, it } from "vitest";
 // createAccountReceipt, que copia el cliente de la cuenta y no lleva venta ni pedido. Un cuarto caso
 // de uso sigue rechazado.
 //
+// Desde la 22.6 (brief-22.6, D-12 y AC-10), los pagos a proveedores, en dos archivos propios de cash:
+// supplier_payments solo desde insertSupplierPayment, que llama solo createSupplierPayment, y
+// supplier_payment_voids solo desde insertSupplierPaymentVoid, que llama solo voidSupplierPayment.
+//
 // Ve y no ve lo mismo que sale-writes.
 
 const REPOSITORY = "src/modules/cash/repository.ts";
 const SERVICE = "src/modules/cash/service.ts";
+const PAYMENT_REPOSITORY = "src/modules/cash/supplier-payment-repository.ts";
+const PAYMENT_SERVICE = "src/modules/cash/supplier-payments.ts";
 
 const AUTHORIZED = new Map([
   ["insertPaymentMethod", ["insert payment_methods"]],
@@ -42,7 +48,16 @@ const AUTHORIZED = new Map([
   ["insertReceiptVoid", ["insert receipt_voids"]],
   ["insertRefund", ["insert refunds"]],
   ["insertRefundVoid", ["insert refund_voids"]],
+  ["insertSupplierPayment", ["insert supplier_payments"]],
+  ["insertSupplierPaymentVoid", ["insert supplier_payment_voids"]],
 ]);
+
+// El archivo de cada escritura: las de los pagos a proveedores viven en su repositorio (D-12).
+const FILE_OF = new Map([
+  ["insertSupplierPayment", PAYMENT_REPOSITORY],
+  ["insertSupplierPaymentVoid", PAYMENT_REPOSITORY],
+]);
+const fileOf = (fn: string) => FILE_OF.get(fn) ?? REPOSITORY;
 
 // Qué caso de uso del servicio llama a cada escritura de la caja.
 const CALLERS = new Map([
@@ -58,6 +73,8 @@ const CALLERS = new Map([
   ["insertReceiptVoid", ["voidReceipt"]],
   ["insertRefund", ["createRefund"]],
   ["insertRefundVoid", ["voidRefund"]],
+  ["insertSupplierPayment", ["createSupplierPayment"]],
+  ["insertSupplierPaymentVoid", ["voidSupplierPayment"]],
 ]);
 
 const TABLES = new Map([
@@ -79,12 +96,16 @@ const TABLES = new Map([
   ["refunds", "refunds"],
   ["refundvoids", "refund_voids"],
   ["refund_voids", "refund_voids"],
+  ["supplierpayments", "supplier_payments"],
+  ["supplier_payments", "supplier_payments"],
+  ["supplierpaymentvoids", "supplier_payment_voids"],
+  ["supplier_payment_voids", "supplier_payment_voids"],
 ]);
 
 const SQL_NAMES =
-  "payment_methods|cash_sessions|cash_session_opening_amounts|cash_session_closings|cash_session_closing_amounts|cash_movements|receipts|receipt_voids|refunds|refund_voids";
+  "payment_methods|cash_sessions|cash_session_opening_amounts|cash_session_closings|cash_session_closing_amounts|cash_movements|receipts|receipt_voids|refunds|refund_voids|supplier_payments|supplier_payment_voids";
 const DRIZZLE_NAMES =
-  "paymentMethods|cashSessions|cashSessionOpeningAmounts|cashSessionClosings|cashSessionClosingAmounts|cashMovements|receipts|receiptVoids|refunds|refundVoids";
+  "paymentMethods|cashSessions|cashSessionOpeningAmounts|cashSessionClosings|cashSessionClosingAmounts|cashMovements|receipts|receiptVoids|refunds|refundVoids|supplierPayments|supplierPaymentVoids";
 
 // La tabla en SQL: su nombre, con o sin esquema y comillas, o el objeto de Drizzle interpolado.
 // El nombre queda en el grupo 2 o en el 3.
@@ -132,8 +153,8 @@ function findViolations(file: string, code: string): string[] {
     .filter(
       ({ operation, fn }) =>
         !(
-          file === REPOSITORY &&
           fn !== null &&
+          file === fileOf(fn) &&
           AUTHORIZED.get(fn)?.includes(operation)
         ),
     )
@@ -145,7 +166,12 @@ function findCalls(code: string): { write: string; fn: string | null }[] {
   const functions = functionsOf(code);
   const writes = [...CALLERS.keys()].join("|");
   return [
-    ...code.matchAll(new RegExp(String.raw`\brepository\.(${writes})\(`, "g")),
+    ...code.matchAll(
+      new RegExp(
+        String.raw`\b(?:repository|paymentRepository)\.(${writes})\(`,
+        "g",
+      ),
+    ),
   ].map((match) => ({
     write: match[1]!,
     fn:
@@ -278,6 +304,26 @@ describe("detección de escrituras de la caja", () => {
       code: "export async function insertRefund(tx) {\n  await tx.update(refunds).set({ amount: 1 });\n}",
     },
     {
+      name: "un pago a un proveedor insertado fuera de su función",
+      file: PAYMENT_REPOSITORY,
+      code: "export async function seedPayment(tx) {\n  await tx.insert(supplierPayments).values(v);\n}",
+    },
+    {
+      name: "un pago a un proveedor actualizado, aun desde su función",
+      file: PAYMENT_REPOSITORY,
+      code: "export async function insertSupplierPayment(tx) {\n  await tx.update(supplierPayments).set({ amount: 1 });\n}",
+    },
+    {
+      name: "la escritura del pago en el repositorio de los cobros",
+      file: REPOSITORY,
+      code: "export async function insertSupplierPayment(tx) {\n  await tx.insert(supplierPayments).values(v);\n}",
+    },
+    {
+      name: "una anulación de pago borrada con SQL literal en compras",
+      file: "src/modules/purchasing/repository.ts",
+      code: "await tx.execute(sql`delete from supplier_payment_voids`);",
+    },
+    {
       name: "TRUNCATE TABLE ONLY",
       file: "src/app/accion.ts",
       code: "await db.execute(sql`truncate table only cash_session_opening_amounts`);",
@@ -337,6 +383,14 @@ describe("detección de escrituras de la caja", () => {
       code: "export async function impactedSession(c) {\n  await repository.insertRefundVoid(tx, v);\n}",
     },
     {
+      name: "un pago a un proveedor escrito desde su anulación",
+      code: "export async function voidSupplierPayment(c) {\n  await paymentRepository.insertSupplierPayment(tx, v);\n}",
+    },
+    {
+      name: "una anulación de pago escrita desde un caso de uso nuevo",
+      code: "export async function reversePayment(c) {\n  await paymentRepository.insertSupplierPaymentVoid(tx, v);\n}",
+    },
+    {
       name: "una sesión creada desde un caso de uso nuevo",
       code: "export async function reopenCashSession(c) {\n  await repository.insertCashSession(tx, v);\n}",
     },
@@ -379,22 +433,35 @@ describe("repositorio", () => {
       "insertRefund: insert refunds",
       "insertRefundVoid: insert refund_voids",
     ]);
+    const payments = findCashWrites(
+      readFileSync(PAYMENT_REPOSITORY, "utf8"),
+    ).map(({ operation, fn }) => `${fn}: ${operation}`);
+    expect(payments).toEqual([
+      "insertSupplierPayment: insert supplier_payments",
+      "insertSupplierPaymentVoid: insert supplier_payment_voids",
+    ]);
   });
 
   it("cada escritura de la caja la llama solo su caso de uso", () => {
-    const code = readFileSync(SERVICE, "utf8");
-    expect(findCallerViolations(code)).toEqual([]);
-    // Y cada una se llama: si una deja de llamarse, la guarda se queda sin objeto.
-    expect(new Set(findCalls(code).map(({ write }) => write))).toEqual(
-      new Set(CALLERS.keys()),
+    const codes = [SERVICE, PAYMENT_SERVICE].map((file) =>
+      readFileSync(file, "utf8"),
     );
+    for (const code of codes) expect(findCallerViolations(code)).toEqual([]);
+    // Y cada una se llama: si una deja de llamarse, la guarda se queda sin objeto.
+    expect(
+      new Set(
+        codes.flatMap((code) => findCalls(code).map(({ write }) => write)),
+      ),
+    ).toEqual(new Set(CALLERS.keys()));
   });
 
   it("fuera de cash nadie importa su repositorio", () => {
     const outside = files.filter(
       (file) =>
         !file.startsWith("src/modules/cash/") &&
-        /modules\/cash\/repository/.test(readFileSync(file, "utf8")),
+        /modules\/cash\/(?:supplier-payment-)?repository/.test(
+          readFileSync(file, "utf8"),
+        ),
     );
     expect(outside).toEqual([]);
   });

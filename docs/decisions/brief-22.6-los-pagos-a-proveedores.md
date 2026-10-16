@@ -581,3 +581,90 @@ Y siempre **antes** de cada una de estas acciones, que necesita autorización ex
   - las métricas de compras;
   - el vaciado de un proveedor;
   - la guarda general de dependencias entre módulos.
+
+## Resultados — 2026-10-16 (autoevaluación)
+
+Implementado el 2026-10-16. **Esta sección es autoevaluación**: la escribió quien implementó. La revisión independiente va aparte, abajo.
+
+### Lo que la implementación encontró que el brief no decía
+
+**Tres desvíos de lo autorizado**, más la salvedad de AC-8, **aceptados por el usuario el 2026-10-16** («acepto los desvios»). El primero es una condición de detención y no se detuvo a tiempo; los otros dos los encontró la revisión independiente (R3 y R4):
+
+- se modificaron `src/app/(autenticado)/caja/page.tsx` (la pantalla 21, la caja abierta) y `caja/session-tables.tsx` (las tablas que comparten la 21 y la 26). La lista autoriza solo `caja/sesiones/` y `caja/cerrar/`, pero D-13 y el punto 6 del alcance piden «los términos en la caja», y la pantalla 21 muestra lo esperado de la sesión abierta con las mismas tablas. El cambio es solo la columna «Pagos a proveedores», la lista de pagos en efectivo para un `admin` y los nombres de los proveedores por `getSupplierNames`. `caja/cerrar/` no cambió, porque solo muestra lo esperado.
+- **`purchasing` suma una cuarta lectura que D-5 no enumera**: `getSupplierNames` (`payment-reads.ts`, con `findSupplierNames` en `repository.ts`), solo de `admin` y filtrada por organización, para los nombres de los proveedores en la lista de pagos de la caja. La llaman las páginas de la caja, no `cash`.
+- **El arqueo muestra una columna neta y no los dos términos de D-9**: «Pagos a proveedores» es lo pagado menos lo anulado en la sesión, y aparece solo si la sesión tuvo alguno. Sigue el molde de «Cobros» y «Devoluciones», que la tabla ya mostraba netas de sus anulaciones desde la 21.5. Lo esperado sí suma los dos términos por separado (`totals.ts`). FR-CAJ-06 y Screens describen lo que hace el código.
+
+**Precisiones que no cambian una decisión:**
+
+- **El servicio vive en archivos nuevos de `cash`**: `supplier-payments.ts`, `supplier-payment-repository.ts` y `supplier-payment-views.ts`. `service.ts` exporta, solo dentro del módulo, lo que comparte con los cobros: el bloqueo, lo esperado, `readPayment`, `impactedSession` y los tipos de rechazo.
+- **Los rechazos dentro de la transacción se devuelven**, como en los cobros, antes del contador: ninguno escribe, audita ni consume número (AC-6).
+- **El rescate del `UNIQUE` de la anulación** (`supplier_payment_voids_supplier_payment_unique`) se hace fuera de la transacción, con `isSupplierPaymentAlreadyVoided`.
+- **`ON DELETE RESTRICT` responde 23001, no 23503**: el test del esquema espera ese código.
+- **Los 15 specs end-to-end de H-9** suman `supplier_payment_voids, supplier_payments` a su `truncate`.
+- **`cash.test.ts`** suma los dos términos en cero a la foto de la apertura, dentro de lo autorizado.
+- **El test de rendimiento lleva el contador de a uno** hasta el último número sembrado, porque `document_counters_guard_change` no deja nacer un contador en otro número que 0 ni sumar más de 1.
+- **Los archivos nuevos entraron al índice con `git add -N`**, porque `exposed-surface` lee `git ls-files`.
+
+### Criterios
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| AC-1 | cumplido | `supplier-payments-schema.test.ts`, 24 casos con el rol dueño: los privilegios, cada `CHECK` con el destino en sus cuatro combinaciones, los únicos, cada clave compuesta con una fila de otra organización (las de la sesión, en las dos tablas, se sumaron por R1), y los triggers: sin `UPDATE` ni `DELETE`, la sesión si y solo si el medio es efectivo, la sesión cerrada, y la copia de moneda, monto y sesión en la anulación (`supplier_payment_voids_check_copy()`) |
+| AC-2 | cumplido | `supplier-accounts.test.ts`, 5 casos en dos monedas: lo que falta de cada recepción, el remanente de la más vieja a la más nueva, lo pagado contra una anulada que pasa al remanente, el pago anulado que no cuenta y la moneda propuesta. `imputation.test.ts` pasa sin cambios |
+| AC-3 | cumplido | `supplier-payments.test.ts`: el pago contra una recepción y a cuenta, por transferencia y en efectivo, con `PP`, el proveedor y la moneda de la recepción aunque la entrada traiga otros, la sesión solo en efectivo y la auditoría; el proveedor desactivado; la anulación con `APP` y la sesión de D-8; la lista por estado, por proveedor y por los dos números |
+| AC-4 | cumplido | `totals.test.ts` (los dos términos y una moneda solo con pagos) y `supplier-payments.test.ts`: lo esperado más bajo, repuesto con la sesión abierta, sin tocar ninguna con la sesión cerrada; la vista previa y el cierre; y **un retiro, una devolución y la anulación de un cobro posteriores** a un pago en efectivo, que ven lo esperado descontado y responden `insufficient_cash`. Los dos últimos casos faltaban y se sumaron al escribir esta sección |
+| AC-5 | cumplido | `supplier-payments.test.ts`, los seis escenarios; el del pago contra la anulación de su recepción, en las dos ventanas (el proveedor tomado y el contador tomado). Mutaciones abajo |
+| AC-6 | cumplido | «cada rechazo no escribe, no audita ni consume número», con `payment_method_inactive` y el proveedor que no es uuid sumados por R2, y su par de la anulación; `FORBIDDEN` para un `viewer`; el detalle de la sesión para un `viewer`, con los totales y sin pagos ni anulaciones |
+| AC-7 | cumplido | `organization-isolation.test.ts`: el pago, la anulación, sus lecturas, la lista y la cuenta, con una recepción y un proveedor de otra organización como destino |
+| AC-8 | cumplido, con una salvedad | en local, con un proveedor de 2.000 recepciones (200 anuladas) y 3.000 pagos (300 anulados), 10.000 pagos en la organización y una sesión con 500 pagos en efectivo, 250 de ellos contra recepciones distintas: lo pagado de una recepción, 103,1 ms; su formulario, 93,3 ms; el formulario a cuenta, 132,8 ms; el pago a cuenta, 38,9 ms; el pago contra una recepción, 127,0 ms; la lista en sus seis variantes, de 7,7 a 18,3 ms; **el detalle de la sesión, 566,2 ms**. El umbral es de 754 ms. La primera medición, 34,3 ms, tenía solo pagos a cuenta en la sesión y no medía la lectura del número de cada recepción, que se hace una por una (R4 de la revisión). Bajarla pide una lectura en lote en `purchasing`, una función más que D-5 no autoriza: el usuario la aceptó así el 2026-10-16 |
+| AC-9 | cumplido | `supplier-payments.spec.ts`, 7 casos sobre `next start`: el pago en parte con el teclado y su comprobante impreso; el efectivo y el arqueo, con los dos rechazos; el pago a cuenta imputado; la anulación con los dos comprobantes; la lista filtrada y buscada; el `viewer`; y el pago sin JavaScript. axe sin violaciones en claro y en oscuro, también en impresión |
+| AC-10 | cumplido | `cash-writes` fija `insertSupplierPayment` e `insertSupplierPaymentVoid` y sus llamadores; `purchasing-dependencies.test.ts`, la guarda de D-5, con las dos reglas y un caso en rojo por regla; `exposed-surface` declara las dos acciones |
+| AC-11 | cumplido | `cash` importa de `purchasing` las tres funciones de D-5 y su esquema en `schema.ts`. Las pantallas de la caja importan además `getSupplierNames`, declarada arriba como desvío. `purchasing` no importa `cash` (M17). De los módulos existentes, solo `cash`, `purchasing`, `numbering` y `audit` están en el diff |
+| AC-12 | cumplido | `read-api`, `read-api-v2` e `ingestion-v2` pasan en la integración completa sin cambios |
+| AC-13 | pendiente | la batería local, abajo. Falta la CI del SHA del cierre, al hacer el commit |
+| AC-14 | cumplido | DataModel, Overview, FunctionalRequirements (FR-COMP-18 a 22, y FR-CAJ-04 a 06 implementados), Screens (50 a 54, y notas en 21, 26, 42 y 48), TraceabilityMatrix y SecurityModel (161 puntos de entrada). La nota del ADR 0023 y la línea de la 22.7 entraron con `68c60e5` |
+| AC-15 | pendiente | si se autoriza el despliegue |
+
+### Mutaciones
+
+Corridas una por una con un script que aplica el cambio, verifica que aparezca una sola vez, corre los casos que deberían atraparlo y restaura el archivo. Las 17 quedaron detectadas:
+
+- **M1**, el pago sin el bloqueo `cash:`: los dos pagos con lo justo entran.
+- **M2**, sin el `FOR SHARE` del proveedor, y **M3**, el contador antes de él: cae «la recepción se anula mientras el pago espera el proveedor» y, en M3, el `NOWAIT` sobre `document_counters`.
+- **M4**, sin el tope de lo que falta: «el tope es lo que falta según la cuenta entera».
+- **M5**, sin mirar si la recepción está anulada: tres casos, entre ellos los rechazos y la carrera con la anulación.
+- **M6**, sin la segunda lectura con el proveedor tomado: la carrera con la anulación.
+- **M7**, sin comprobar lo esperado en efectivo: los rechazos.
+- **M8** y **M9**, lo esperado sin cada término, por separado: 10 y 2 casos de integración, y 2 unitarios cada una.
+- **M10**, la anulación con la sesión aunque esté cerrada: la sesión cerrada y la anulación contra el cierre, con el cierre primero.
+- **M11**, la anulación sin el tope de `numeric(14, 2)`: su caso.
+- **M12**, el proveedor de la entrada: su caso (punto 8).
+- **M13**, la lectura por id sin `organization_id`: el aislamiento.
+- **M14**, un `viewer` que paga, y **M15**, un `viewer` que recibe la lista de una sesión: sus casos.
+- **M16**, la anulación sin el bloqueo `cash:`: las dos anulaciones y la anulación contra el cierre, en los dos órdenes.
+- **M17**, un import de `cash` en `purchasing`: la guarda de D-5.
+
+No se mutó una escritura sin `organization_id`: las inserciones toman la organización del contexto, y las claves compuestas de AC-1 rechazan una fila cruzada.
+
+### La batería local
+
+Desde Git Bash, sin nada en paralelo:
+
+- typecheck y build pasan; 859 unitarios y 706 guardas pasan;
+- el formato y el lint fallaron en la primera corrida por el bloque de rendimiento recién agregado y un import sin usar; corregidos, pasan;
+- integración, 1.522 de 1.524 en la primera corrida. Falló `cash.test.ts` («abre C-000001»), cuya foto de lo esperado no tenía los dos términos nuevos: corregido. Falló `organization-bootstrap.test.ts` por timeout a los 30,5 s con la suite entera, la misma falla por carga de la 21.6 y la 22.5. Después de corregir, `cash.test.ts`, `supplier-payments.test.ts` (con los dos casos nuevos de AC-4) y `organization-bootstrap.test.ts`, solos: 67 de 67;
+- end-to-end, 222 de 223 en una sola corrida. Falló el caso 10 de `clients.spec.ts` con `Connection terminated due to connection timeout` contra la base; corrido solo junto con `supplier-payments.spec.ts`, 25 de 25;
+- después de la revisión, `supplier-payments.test.ts` y `supplier-payments-schema.test.ts`, 52 de 52.
+
+## Revisión independiente — 2026-10-16
+
+Un agente de solo lectura que no participó del trabajo revisó la entrega contra este brief, los ADR 0022 y 0023 y las reglas vigentes. No ejecutó nada ni pudo leer el diff. Encontró **6 hallazgos: ninguno crítico ni mayor, cuatro menores y dos notas**, más tres notas de estado documental. Cada uno se verificó contra el código antes de aceptarlo.
+
+- **R1 (menor), corregido**: AC-1 decía «las claves compuestas con filas de otra organización», y ningún test probaba la sesión de otra organización. Se sumaron los dos casos; el de la anulación apaga la copia dentro de una transacción que se revierte, porque el trigger rechaza antes una sesión distinta de la del pago.
+- **R2 (menor), corregido**: AC-6 no probaba `payment_method_inactive` ni el proveedor que no es uuid. Se sumaron a la lista de rechazos, con la misma foto.
+- **R3 (menor), declarado**: `getSupplierNames` es una lectura de `purchasing` que D-5 no enumera y que §Resultados contaba como precisión. Pasó a los desvíos, arriba.
+- **R4 (menor), declarado y medido**: el arqueo muestra la columna neta en vez de los dos términos de D-9, sin declararlo. Pasó a los desvíos. La salvedad de la medición era cierta: con pagos contra recepciones en la sesión, el detalle tarda 566,2 ms (AC-8).
+- **N1 (nota), ya declarado**: el tercer archivo nuevo de `cash` y `caja/cerrar/` sin cambios.
+- **N2 (nota), aceptado sin cambio**: el trigger reutilizado `receipts_check_cash_session()` dice «cobro» también cuando rechaza un pago, porque es la función de la `0043` sin cambios. Las tres lecturas de D-5 salen sin `authorize` porque toman la transacción de quien llama, como `getSaleForReceipt`; hoy solo las usa `cash`, y la guarda de D-5 fija quién importa `purchasing`.
+- **Estado documental**: DataModel tenía dos líneas viejas. La de `payments` lleva ahora una precisión fechada, y la de la 22.5, su «Implementada». `HANDOFF.md` se actualiza al cerrar. La frase de FR-COMP sobre la 22.7 sigue siendo cierta.
+- **Lo inferido por el revisor, verificado**: el diff de `service.ts` en los cobros es solo agregar `export` a `expectedIn` y a `insufficientCash`, sin cambiar ningún caso de uso.

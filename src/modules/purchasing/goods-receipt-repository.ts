@@ -368,3 +368,62 @@ export function isGoodsReceiptAlreadyVoided(error: unknown): boolean {
     source.constraint === "goods_receipt_voids_goods_receipt_unique"
   );
 }
+
+// Lo que cash lee de una recepción para pagarla y para la cuenta del proveedor (ADR 0023, puntos 8,
+// 9 y 11; brief-22.6, D-5): con la transacción de cash, sin bloquear, porque una recepción es de solo
+// inserción y no se puede bloquear (punto 10). Anuladas incluidas, con su anulación.
+export type GoodsReceiptForAccountRow = {
+  id: string;
+  number: number;
+  supplierId: string;
+  currency: string;
+  total: string;
+  createdAt: Date;
+  voidNumber: number | null;
+};
+
+const accountColumns = {
+  id: goodsReceipts.id,
+  number: goodsReceipts.number,
+  supplierId: goodsReceipts.supplierId,
+  currency: goodsReceipts.currency,
+  total: goodsReceipts.total,
+  createdAt: goodsReceipts.createdAt,
+  voidNumber: voidNumberOf,
+};
+
+export async function findGoodsReceiptForAccount(
+  executor: Executor,
+  organizationId: string,
+  goodsReceiptId: string,
+): Promise<GoodsReceiptForAccountRow | undefined> {
+  const rows = await executor
+    .select(accountColumns)
+    .from(goodsReceipts)
+    .where(
+      and(
+        eq(goodsReceipts.organizationId, organizationId),
+        eq(goodsReceipts.id, goodsReceiptId),
+      ),
+    )
+    .limit(1);
+  return rows[0];
+}
+
+// De la más vieja a la más nueva, el orden de la imputación (ADR 0023, punto 9).
+export function findSupplierGoodsReceiptsForAccount(
+  executor: Executor,
+  organizationId: string,
+  supplierId: string,
+): Promise<GoodsReceiptForAccountRow[]> {
+  return executor
+    .select(accountColumns)
+    .from(goodsReceipts)
+    .where(
+      and(
+        eq(goodsReceipts.organizationId, organizationId),
+        eq(goodsReceipts.supplierId, supplierId),
+      ),
+    )
+    .orderBy(asc(goodsReceipts.createdAt), asc(goodsReceipts.number));
+}

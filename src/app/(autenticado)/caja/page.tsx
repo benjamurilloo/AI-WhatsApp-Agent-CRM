@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getCashState } from "@/modules/cash";
 import { getOrganizationTimezone } from "@/modules/organizations";
+import { getSupplierNames } from "@/modules/purchasing";
 import { requireSession } from "@/app/_auth/session";
 import {
   cardClass,
@@ -28,6 +29,7 @@ import {
   MovementsTable,
   SessionReceiptsTable,
   SessionRefundsTable,
+  SessionSupplierPaymentsTable,
 } from "./session-tables";
 
 export const metadata: Metadata = {
@@ -41,7 +43,9 @@ type SearchParams = Record<string, string | string[] | undefined>;
 // Pantalla 21 (brief-21.2, D-10): el estado de la caja del efectivo. Abierta, su sesión con lo
 // esperado por moneda y sus movimientos; admin registra aportes y retiros y la cierra. Cerrada, el
 // enlace a la última sesión y, para admin, «Abrir caja». Un viewer ve lo mismo sin acciones. Desde
-// la 21.3, los cobros en efectivo de la sesión, que suman a lo esperado (brief-21.3, D-5).
+// la 21.3, los cobros en efectivo de la sesión, que suman a lo esperado (brief-21.3, D-5). Desde la
+// 22.6, los pagos a proveedores en efectivo restan: su total lo ven los dos roles, y su lista solo un
+// admin (brief-22.6, D-9).
 export default async function CashPage({
   searchParams,
 }: {
@@ -57,6 +61,13 @@ export default async function CashPage({
   const timeZone = await getOrganizationTimezone(context);
   const notice = noticeMessage(CASH_NOTICE, query.aviso);
   const open = state.open;
+  // Los nombres de los proveedores, solo si cash dio la lista: a un viewer no se la da.
+  const supplierNames = open?.supplierPayments
+    ? await getSupplierNames(
+        context,
+        open.supplierPayments.items.map((row) => row.supplierId),
+      )
+    : null;
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 lg:px-8">
@@ -121,6 +132,23 @@ export default async function CashPage({
           >
             <SessionRefundsTable session={open} timeZone={timeZone} />
           </SectionCard>
+
+          {open.supplierPayments ? (
+            <SectionCard
+              id="pagos-proveedores-titulo"
+              title="Pagos a proveedores en efectivo"
+              icon="truck"
+              className="mt-6"
+            >
+              <SessionSupplierPaymentsTable
+                session={open}
+                timeZone={timeZone}
+                supplierNames={
+                  supplierNames?.ok ? supplierNames.names : new Map()
+                }
+              />
+            </SectionCard>
+          ) : null}
 
           <SectionCard
             id="movimientos-titulo"

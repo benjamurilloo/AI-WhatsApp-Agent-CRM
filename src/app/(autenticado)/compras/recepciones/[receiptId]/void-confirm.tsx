@@ -47,11 +47,15 @@ export function VoidGoodsReceiptConfirm({
   displayNumber,
   hasOrder,
   lines,
+  paidNote = null,
 }: {
   receiptId: string;
   displayNumber: string;
   hasOrder: boolean;
   lines: VoidConfirmLine[];
+  // Desde la 22.6 (brief-22.6, D-13; ADR 0023, punto 6): lo pagado contra ella pasa a la cuenta del
+  // proveedor. Lo compone la página con cash: purchasing no lo sabe.
+  paidNote?: string | null;
 }) {
   const [state, formAction, pending] = useActionState(
     voidGoodsReceiptAction,
@@ -84,6 +88,7 @@ export function VoidGoodsReceiptConfirm({
         Una anulación no se deshace.
       </p>
       <p className="text-sm font-semibold">{VOID_COST_NOTE}</p>
+      {paidNote ? <p className="text-sm">{paidNote}</p> : null}
       <div
         className="overflow-x-auto"
         tabIndex={0}

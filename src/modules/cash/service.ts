@@ -51,6 +51,14 @@ import {
   type CurrencyAccount,
 } from "./imputation";
 import * as repository from "./repository";
+import * as paymentRepository from "./supplier-payment-repository";
+import {
+  formatSupplierPaymentNumber,
+  formatSupplierPaymentVoidNumber,
+  supplierPaymentListItems,
+  type DocumentRef as PaymentDocumentRef,
+  type SupplierPaymentListItem,
+} from "./supplier-payment-views";
 import {
   computeCashTotals,
   parseCashAmount,
@@ -77,13 +85,13 @@ const idSchema = z.uuid();
 
 // Escrituras de admin, lecturas de los dos roles (ADR 0022, punto 12).
 
-type SessionRef = { id: string; number: number; displayNumber: string };
+export type SessionRef = { id: string; number: number; displayNumber: string };
 
 export function formatCashSessionNumber(value: number): string {
   return formatDocumentNumber("cash_session", value);
 }
 
-function sessionRef(row: { id: string; number: number }): SessionRef {
+export function sessionRef(row: { id: string; number: number }): SessionRef {
   return {
     id: row.id,
     number: row.number,
@@ -121,7 +129,7 @@ const nameSchema = z.string().trim().min(1).max(40);
 
 type PaymentMethodRule = "duplicate_name" | "limit_reached";
 
-function ruleFailure<R extends string>(
+export function ruleFailure<R extends string>(
   rule: R,
 ): Failure<"BUSINESS_RULE_VIOLATION", { rule: R }> {
   return { ok: false, code: "BUSINESS_RULE_VIOLATION", rule };
@@ -442,7 +450,7 @@ async function readTotalsInput(
   executor?: DbTransaction,
 ) {
   // Una tras otra: dentro de una transacción van todas por su conexión, y pg no admite consultas
-  // superpuestas en una misma conexión. Son seis lecturas chicas por sesión.
+  // superpuestas en una misma conexión. Son ocho lecturas chicas por sesión.
   const opening = await repository.findOpeningAmounts(
     organizationId,
     [sessionId],
@@ -468,6 +476,18 @@ async function readTotalsInput(
     sessionId,
     executor,
   );
+  // Desde la 22.6 (brief-22.6, D-9): los pagos a proveedores en efectivo y sus anulaciones.
+  const supplierPayments = await paymentRepository.findSessionSupplierPayments(
+    organizationId,
+    sessionId,
+    executor,
+  );
+  const supplierPaymentVoids =
+    await paymentRepository.findSessionSupplierPaymentVoids(
+      organizationId,
+      sessionId,
+      executor,
+    );
   const movements = await repository.findMovements(
     organizationId,
     sessionId,
@@ -479,11 +499,13 @@ async function readTotalsInput(
     receiptVoids,
     refunds,
     refundVoids,
+    supplierPayments,
+    supplierPaymentVoids,
     movements,
   } satisfies TotalsInput;
 }
 
-async function readTotals(
+export async function readTotals(
   tx: DbTransaction,
   organizationId: string,
   sessionId: string,
@@ -996,6 +1018,9 @@ export type CashCurrencyTotals = {
   receiptVoids: string;
   refunds: string;
   refundVoids: string;
+  // Desde la 22.6 (brief-22.6, D-9): los dos roles los ven (ADR 0023, punto 12).
+  supplierPayments: string;
+  supplierPaymentVoids: string;
   contributions: string;
   withdrawals: string;
   expected: string;
@@ -1029,6 +1054,24 @@ export type CashSessionDetail = SessionRef & {
   // Las anulaciones posteriores al cierre de sus cobros y devoluciones: explican su diferencia, y el
   // arqueo guardado no cambia (ADR 0022, punto 7).
   lateVoids: LateVoidView[];
+  // Desde la 22.6 (ADR 0023, punto 12; brief-22.6, D-9): los pagos a proveedores en efectivo de la
+  // sesión y las anulaciones posteriores a su cierre, solo para un admin. Para un viewer es null: ve
+  // los totales, no el detalle.
+  supplierPayments: SessionSupplierPayments | null;
+};
+
+export type LateSupplierPaymentVoidView = {
+  displayNumber: string;
+  source: PaymentDocumentRef;
+  currency: string;
+  amount: string;
+  reason: paymentRepository.SupplierPaymentVoidReason;
+  createdAt: Date;
+};
+
+export type SessionSupplierPayments = {
+  items: SupplierPaymentListItem[];
+  lateVoids: LateSupplierPaymentVoidView[];
 };
 
 export type LateVoidView = {
@@ -1055,7 +1098,7 @@ function difference(counted: Money, expected: Money) {
   };
 }
 
-async function memberNames(
+export async function memberNames(
   organizationId: string,
   userIds: (string | null)[],
 ): Promise<Map<string, string>> {
@@ -1070,18 +1113,27 @@ async function memberNames(
 }
 
 async function sessionDetail(
-  organizationId: string,
+  context: AuthContext,
   session: repository.SessionRow,
 ): Promise<CashSessionDetail> {
-  const [input, closing, lateVoids] = await Promise.all([
-    readTotalsInput(organizationId, session.id),
-    session.closedAt === null
-      ? Promise.resolve([])
-      : repository.findClosingAmounts(organizationId, [session.id]),
-    session.closedAt === null
-      ? Promise.resolve([])
-      : repository.findLateVoids(organizationId, session.id),
-  ]);
+  const { organizationId } = context;
+  const isAdmin = context.role === "admin";
+  const [input, closing, lateVoids, lateSupplierPaymentVoids] =
+    await Promise.all([
+      readTotalsInput(organizationId, session.id),
+      session.closedAt === null
+        ? Promise.resolve([])
+        : repository.findClosingAmounts(organizationId, [session.id]),
+      session.closedAt === null
+        ? Promise.resolve([])
+        : repository.findLateVoids(organizationId, session.id),
+      session.closedAt === null || !isAdmin
+        ? Promise.resolve([])
+        : paymentRepository.findLateSupplierPaymentVoids(
+            organizationId,
+            session.id,
+          ),
+    ]);
   const { receipts, refunds, movements } = input;
   const totals = computeCashTotals(input);
   const closingOf = new Map(closing.map((row) => [row.currency, row]));
@@ -1095,6 +1147,8 @@ async function sessionDetail(
         receiptVoids: 0n,
         refunds: 0n,
         refundVoids: 0n,
+        supplierPayments: 0n,
+        supplierPaymentVoids: 0n,
         contributions: 0n,
         withdrawals: 0n,
         expected: 0n,
@@ -1130,6 +1184,8 @@ async function sessionDetail(
         receiptVoids: moneyToDatabase(row.receiptVoids),
         refunds: moneyToDatabase(row.refunds),
         refundVoids: moneyToDatabase(row.refundVoids),
+        supplierPayments: moneyToDatabase(row.supplierPayments),
+        supplierPaymentVoids: moneyToDatabase(row.supplierPaymentVoids),
         contributions: moneyToDatabase(row.contributions),
         withdrawals: moneyToDatabase(row.withdrawals),
         expected: moneyToDatabase(expected),
@@ -1165,6 +1221,26 @@ async function sessionDetail(
       reason: row.reason,
       createdAt: row.createdAt,
     })),
+    // El servicio omite el detalle para un viewer, no solo la página (D-9).
+    supplierPayments: isAdmin
+      ? {
+          items: await supplierPaymentListItems(
+            organizationId,
+            input.supplierPayments,
+          ),
+          lateVoids: lateSupplierPaymentVoids.map((row) => ({
+            displayNumber: formatSupplierPaymentVoidNumber(row.number),
+            source: {
+              id: row.sourceId,
+              displayNumber: formatSupplierPaymentNumber(row.sourceNumber),
+            },
+            currency: row.currency,
+            amount: row.amount,
+            reason: row.reason,
+            createdAt: row.createdAt,
+          })),
+        }
+      : null,
   };
 }
 
@@ -1188,7 +1264,7 @@ export async function getCashState(
   }
   return {
     ok: true,
-    open: await sessionDetail(context.organizationId, last),
+    open: await sessionDetail(context, last),
     last: null,
   };
 }
@@ -1198,7 +1274,7 @@ export async function getCashState(
 // Un monto de la base como se escribe en el formulario: con los decimales de la moneda, para que
 // la apertura acepte lo que ella misma propone (revisión independiente, R-2). En una moneda sin
 // decimales, «7400.00» sería un separador rechazado.
-function amountForInput(value: string, currency: string): string {
+export function amountForInput(value: string, currency: string): string {
   const decimals = currencyDecimals(currency);
   if (decimals.ok && decimals.decimals === 0) return value.split(".")[0]!;
   return value;
@@ -1248,7 +1324,7 @@ export async function getCashSession(
   if (!session) return failure("NOT_FOUND");
   return {
     ok: true,
-    session: await sessionDetail(context.organizationId, session),
+    session: await sessionDetail(context, session),
   };
 }
 
@@ -1734,7 +1810,7 @@ async function orderStanding(
 
 export type ReceiptField = "paymentMethod" | "amount";
 
-type ReceiptFieldsFailure = Failure<
+export type ReceiptFieldsFailure = Failure<
   "VALIDATION_ERROR",
   {
     fields: ReceiptField[];
@@ -1742,7 +1818,7 @@ type ReceiptFieldsFailure = Failure<
   }
 >;
 
-type PaymentFailure =
+export type PaymentFailure =
   | ReceiptFieldsFailure
   | Failure<"NOT_FOUND", { entity: "payment_method" }>
   | Failure<"BUSINESS_RULE_VIOLATION", { rule: "payment_method_inactive" }>
@@ -1753,7 +1829,7 @@ type ExceedsOutstanding = Failure<
   { rule: "exceeds_outstanding"; currency: string; outstanding: string }
 >;
 
-function readReceiptFields(input: {
+export function readReceiptFields(input: {
   paymentMethodId: string;
   amount: string;
 }): { ok: true; methodId: string; amountText: string } | ReceiptFieldsFailure {
@@ -1773,7 +1849,7 @@ function readReceiptFields(input: {
   return { ok: true, methodId, amountText };
 }
 
-type ReceiptPayment = {
+export type ReceiptPayment = {
   amount: Money;
   method: PaymentMethod;
   session: { id: string; number: number } | null;
@@ -1781,7 +1857,7 @@ type ReceiptPayment = {
 
 // La sesión no viaja en el formulario: el cobro es plata que entra ahora y va a la sesión abierta
 // cuando se registra (brief-21.3, D-3).
-async function readPayment(
+export async function readPayment(
   tx: DbTransaction,
   organizationId: string,
   fields: { methodId: string; amountText: string },
@@ -1833,7 +1909,7 @@ function exceedsOutstanding(
 
 // Como el aporte: lo esperado de la sesión tiene que seguir cabiendo en numeric(14, 2), o la sesión
 // no se podría cerrar (revisión de la 21.3, R-3).
-async function exceedsCashLimit(
+export async function exceedsCashLimit(
   tx: DbTransaction,
   organizationId: string,
   payment: ReceiptPayment,
@@ -2119,12 +2195,12 @@ function documentRef(
   };
 }
 
-type AlreadyVoided = Failure<
+export type AlreadyVoided = Failure<
   "BUSINESS_RULE_VIOLATION",
   { rule: "already_voided"; void: DocumentNumberRef }
 >;
 
-type InsufficientCash = Failure<
+export type InsufficientCash = Failure<
   "BUSINESS_RULE_VIOLATION",
   { rule: "insufficient_cash"; currency: string; expected: string }
 >;
@@ -2134,7 +2210,7 @@ type RefundsExceedReceipts = Failure<
   { rule: "refunds_exceed_receipts"; currency: string; refunded: string }
 >;
 
-type VoidFieldsFailure = Failure<
+export type VoidFieldsFailure = Failure<
   "VALIDATION_ERROR",
   { fields: "reason"[]; amount?: "limit" }
 >;
@@ -2143,7 +2219,7 @@ type VoidFieldsFailure = Failure<
 // ninguna. Con la sesión cerrada, el arqueo guardado no cambia y la sesión abierta no se toca, porque
 // esa plata no entró ni salió de la caja de hoy (ADR 0022, punto 7). Se lee con el bloqueo de cobros
 // tomado: un cierre no se cruza. receipt_voids_check_copy() y refund_voids_check_copy() lo defienden.
-async function impactedSession(
+export async function impactedSession(
   tx: DbTransaction,
   organizationId: string,
   sessionId: string | null,
@@ -2154,7 +2230,7 @@ async function impactedSession(
   return session;
 }
 
-async function expectedIn(
+export async function expectedIn(
   tx: DbTransaction,
   organizationId: string,
   sessionId: string,
@@ -2164,7 +2240,10 @@ async function expectedIn(
   return totals.find((row) => row.currency === currency)?.expected ?? 0n;
 }
 
-function insufficientCash(currency: string, expected: Money): InsufficientCash {
+export function insufficientCash(
+  currency: string,
+  expected: Money,
+): InsufficientCash {
   return {
     ok: false,
     code: "BUSINESS_RULE_VIOLATION",
@@ -2638,7 +2717,7 @@ function voidView(
   };
 }
 
-async function methodsById(organizationId: string) {
+export async function methodsById(organizationId: string) {
   return new Map(
     (await repository.findPaymentMethods(organizationId)).map((method) => [
       method.id,

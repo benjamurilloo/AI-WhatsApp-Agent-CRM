@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { AUDIT_PAGE_SIZE } from "@/modules/audit";
 import { getCashSession, listCashSessionAudit } from "@/modules/cash";
 import { getAppFrame, getOrganizationTimezone } from "@/modules/organizations";
+import { getSupplierNames } from "@/modules/purchasing";
 import { requireSession } from "@/app/_auth/session";
 import { auditActorLabels } from "@/app/(autenticado)/_audit/actor";
 import { AuditCard } from "@/app/_components/audit-card";
@@ -25,9 +26,11 @@ import { PrintButton } from "../../print-button";
 import {
   CurrencyTotalsTable,
   MovementsTable,
+  LateSupplierPaymentVoidsTable,
   LateVoidsTable,
   SessionReceiptsTable,
   SessionRefundsTable,
+  SessionSupplierPaymentsTable,
 } from "../../session-tables";
 import { auditActionLabel, describeAuditDiff } from "./audit-summary";
 
@@ -48,7 +51,9 @@ function page(value: string | string[] | undefined): number {
 // organización, el número, la apertura y el cierre con su autor, por moneda el inicial, los aportes,
 // los retiros, lo esperado, lo contado y la diferencia, los movimientos y la leyenda. Al imprimir
 // queda solo el arqueo. La historia, para los dos roles (AC-6), sin imprimirse. Desde la 21.3, los
-// cobros en efectivo por moneda y en su lista, también impresos (brief-21.3, D-5).
+// cobros en efectivo por moneda y en su lista, también impresos (brief-21.3, D-5). Desde la 22.6, los
+// pagos a proveedores en efectivo: su total para los dos roles, y su lista y sus anulaciones posteriores
+// al cierre solo para un admin (brief-22.6, D-9).
 export default async function CashSessionPage({
   params,
   searchParams,
@@ -83,6 +88,15 @@ export default async function CashSessionPage({
     : null;
   const notice = noticeMessage(CASH_NOTICE, query.aviso);
   const closed = session.closedAt !== null;
+  const supplierNames = session.supplierPayments
+    ? await getSupplierNames(
+        context,
+        session.supplierPayments.items.map((row) => row.supplierId),
+      )
+    : null;
+  const lateCount =
+    session.lateVoids.length +
+    (session.supplierPayments?.lateVoids.length ?? 0);
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 lg:px-8 print:max-w-none print:p-0">
@@ -150,12 +164,29 @@ export default async function CashSessionPage({
           <SessionRefundsTable session={session} timeZone={timeZone} />
         </div>
 
+        {session.supplierPayments ? (
+          <>
+            <h3 className="mt-6 font-semibold">
+              Pagos a proveedores en efectivo
+            </h3>
+            <div className="mt-2">
+              <SessionSupplierPaymentsTable
+                session={session}
+                timeZone={timeZone}
+                supplierNames={
+                  supplierNames?.ok ? supplierNames.names : new Map()
+                }
+              />
+            </div>
+          </>
+        ) : null}
+
         <h3 className="mt-6 font-semibold">Aportes y retiros</h3>
         <div className="mt-2">
           <MovementsTable session={session} timeZone={timeZone} />
         </div>
 
-        {session.lateVoids.length > 0 ? (
+        {lateCount > 0 ? (
           <>
             <h3 className="mt-6 font-semibold">
               Anulaciones posteriores al cierre
@@ -166,6 +197,12 @@ export default async function CashSessionPage({
             </p>
             <div className="mt-2">
               <LateVoidsTable session={session} timeZone={timeZone} />
+            </div>
+            <div className="mt-2">
+              <LateSupplierPaymentVoidsTable
+                session={session}
+                timeZone={timeZone}
+              />
             </div>
           </>
         ) : null}

@@ -1,7 +1,8 @@
 // Interfaz pública del módulo purchasing (ADR 0023): los proveedores (brief-22.2) y, desde la 22.3,
 // la orden de compra (brief-22.3), desde la 22.4, la recepción (brief-22.4) y, desde la 22.5, su
-// anulación (brief-22.5). Ningún módulo depende de purchasing: la usan solo las pantallas. cash lo hará desde la
-// 22.6 (punto 11).
+// anulación (brief-22.5). Desde la 22.6 (punto 11; brief-22.6, D-5), cash depende de purchasing: lee y
+// bloquea al proveedor y lee las recepciones con lockSupplierForPayment, getGoodsReceiptForPayment y
+// listSupplierGoodsReceiptsForAccount. purchasing no depende de cash. Las pantallas usan el resto.
 export { formatCuit, type CuitRejection } from "./cuit";
 export { SUPPLIER_FIELD_LIMITS } from "./schema";
 export {
@@ -101,3 +102,11 @@ export {
   type GoodsReceiptVoidShortage,
   type VoidGoodsReceiptResult,
 } from "./goods-receipt-voids";
+export {
+  getGoodsReceiptForPayment,
+  getSupplierNames,
+  listSupplierGoodsReceiptsForAccount,
+  lockSupplierForPayment,
+  type GoodsReceiptForPayment,
+  type SupplierLockStatus,
+} from "./payment-reads";

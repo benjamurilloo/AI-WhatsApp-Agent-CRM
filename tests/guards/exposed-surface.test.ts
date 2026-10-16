@@ -249,6 +249,14 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
     {
       requirement: "sesion",
     },
+  // El pago a un proveedor y su anulación (brief-22.6, D-7, D-8 y D-13): solo admin, lo exige cash.
+  "src/app/(autenticado)/compras/pagos/actions.ts#createSupplierPaymentAction":
+    {
+      requirement: "sesion",
+    },
+  "src/app/(autenticado)/compras/pagos/actions.ts#voidSupplierPaymentAction": {
+    requirement: "sesion",
+  },
   "src/app/(autenticado)/productos/actions.ts#createProductAction": {
     requirement: "sesion",
   },

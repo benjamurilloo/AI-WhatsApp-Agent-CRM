@@ -19,6 +19,7 @@ import { users } from "@/modules/auth/schema";
 import { clients } from "@/modules/crm/schema";
 import { orders } from "@/modules/orders/schema";
 import { organizations } from "@/modules/organizations/schema";
+import { goodsReceipts, suppliers } from "@/modules/purchasing/schema";
 import { sales } from "@/modules/sales/schema";
 
 // docs/architecture/DataModel.md, tablas payment_methods, cash_sessions,
@@ -588,6 +589,168 @@ export const refundVoids = pgTable(
     check("refund_voids_amount_positive", sql`${table.amount} > 0`),
     check(
       "refund_voids_currency_format",
+      sql`${table.currency} ~ '^[A-Z]{3}$'`,
+    ),
+  ],
+);
+
+// El destino de un pago a un proveedor (ADR 0023, punto 8; brief-22.6, D-2): una recepción, o la
+// cuenta del proveedor, el pago a cuenta. Nace entero en la 0051, así que el CHECK usa sus literales.
+export const supplierPaymentTarget = pgEnum("supplier_payment_target", [
+  "goods_receipt",
+  "account",
+]);
+
+// El pago a un proveedor (ADR 0023, punto 8; brief-22.6, D-2), con la forma del cobro: un comprobante
+// emitido, de solo inserción (SELECT e INSERT para crm_app y cash_reject_change() de la 0042), sin
+// estados ni texto libre. Copia el proveedor de la recepción; que la copia sea la del destino lo
+// asegura el servicio, que lee la recepción por la interfaz de purchasing con el bloqueo de cobros
+// tomado (H-4). Si el medio es efectivo, sale de la sesión abierta: lo exigen
+// receipts_check_cash_session() y cash_reject_closed_session(), reutilizados.
+export const supplierPayments = pgTable(
+  "supplier_payments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    // Del contador de numbering con el tipo supplier_payment; se muestra como PP-000123.
+    number: bigint("number", { mode: "number" }).notNull(),
+    target: supplierPaymentTarget("target").notNull(),
+    // Nulo en un pago a cuenta.
+    goodsReceiptId: uuid("goods_receipt_id"),
+    // El de la recepción, copiado, o el de la cuenta: siempre presente.
+    supplierId: uuid("supplier_id").notNull(),
+    paymentMethodId: uuid("payment_method_id").notNull(),
+    // La sesión de caja, solo si el medio es efectivo.
+    sessionId: uuid("session_id"),
+    // La de la recepción, copiada, o la que se elige en un pago a cuenta.
+    currency: text("currency").notNull(),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    // Siempre un usuario: el agente no paga (ADR 0016, punto 5).
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(sql`clock_timestamp()`),
+  },
+  (table) => [
+    unique("supplier_payments_organization_number_unique").on(
+      table.organizationId,
+      table.number,
+    ),
+    // Destino de la clave compuesta de la anulación.
+    unique("supplier_payments_organization_id_id_unique").on(
+      table.organizationId,
+      table.id,
+    ),
+    foreignKey({
+      name: "supplier_payments_goods_receipt_fk",
+      columns: [table.organizationId, table.goodsReceiptId],
+      foreignColumns: [goodsReceipts.organizationId, goodsReceipts.id],
+    }).onDelete("restrict"),
+    // La que impide borrar un proveedor con pagos (ADR 0023, punto 14).
+    foreignKey({
+      name: "supplier_payments_supplier_fk",
+      columns: [table.organizationId, table.supplierId],
+      foreignColumns: [suppliers.organizationId, suppliers.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "supplier_payments_payment_method_fk",
+      columns: [table.organizationId, table.paymentMethodId],
+      foreignColumns: [paymentMethods.organizationId, paymentMethods.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "supplier_payments_session_fk",
+      columns: [table.organizationId, table.sessionId],
+      foreignColumns: [cashSessions.organizationId, cashSessions.id],
+    }).onDelete("restrict"),
+    // La cuenta del proveedor, los pagos de una recepción y los de una sesión.
+    index("supplier_payments_supplier_idx").on(
+      table.organizationId,
+      table.supplierId,
+    ),
+    index("supplier_payments_goods_receipt_idx").on(
+      table.organizationId,
+      table.goodsReceiptId,
+    ),
+    index("supplier_payments_session_idx").on(
+      table.organizationId,
+      table.sessionId,
+    ),
+    // Un solo destino, con su clave (punto 8).
+    check(
+      "supplier_payments_target_check",
+      sql`(${table.target} = 'goods_receipt' AND ${table.goodsReceiptId} IS NOT NULL)
+        OR (${table.target} = 'account' AND ${table.goodsReceiptId} IS NULL)`,
+    ),
+    check("supplier_payments_number_positive", sql`${table.number} > 0`),
+    check("supplier_payments_amount_positive", sql`${table.amount} > 0`),
+    check(
+      "supplier_payments_currency_format",
+      sql`${table.currency} ~ '^[A-Z]{3}$'`,
+    ),
+  ],
+);
+
+// El motivo de la anulación de un pago, de una lista cerrada y sin texto libre (brief-22.6, D-4).
+export const supplierPaymentVoidReason = pgEnum(
+  "supplier_payment_void_reason",
+  ["not_paid", "wrong_method", "wrong_amount", "wrong_target", "other"],
+);
+
+// La anulación de un pago (ADR 0023, punto 8; brief-22.6, D-3), con las reglas de la del cobro:
+// entera, a lo sumo una vez, la moneda, el monto y la sesión copiados. Lo defiende
+// supplier_payment_voids_check_copy() de la 0051. Sin proveedor: llega a él por su pago.
+export const supplierPaymentVoids = pgTable(
+  "supplier_payment_voids",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    // Del contador de numbering con el tipo supplier_payment_void; se muestra como APP-000001.
+    number: bigint("number", { mode: "number" }).notNull(),
+    supplierPaymentId: uuid("supplier_payment_id").notNull(),
+    currency: text("currency").notNull(),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    reason: supplierPaymentVoidReason("reason").notNull(),
+    // La sesión abierta del pago en efectivo anulado: lo esperado de esa sesión deja de restarlo.
+    sessionId: uuid("session_id"),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(sql`clock_timestamp()`),
+  },
+  (table) => [
+    unique("supplier_payment_voids_organization_number_unique").on(
+      table.organizationId,
+      table.number,
+    ),
+    unique("supplier_payment_voids_supplier_payment_unique").on(
+      table.supplierPaymentId,
+    ),
+    foreignKey({
+      name: "supplier_payment_voids_supplier_payment_fk",
+      columns: [table.organizationId, table.supplierPaymentId],
+      foreignColumns: [supplierPayments.organizationId, supplierPayments.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "supplier_payment_voids_session_fk",
+      columns: [table.organizationId, table.sessionId],
+      foreignColumns: [cashSessions.organizationId, cashSessions.id],
+    }).onDelete("restrict"),
+    index("supplier_payment_voids_session_idx").on(
+      table.organizationId,
+      table.sessionId,
+    ),
+    check("supplier_payment_voids_number_positive", sql`${table.number} > 0`),
+    check("supplier_payment_voids_amount_positive", sql`${table.amount} > 0`),
+    check(
+      "supplier_payment_voids_currency_format",
       sql`${table.currency} ~ '^[A-Z]{3}$'`,
     ),
   ],

@@ -1,4 +1,4 @@
-import { and, asc, count, eq, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { getDb, type Db, type DbTransaction } from "@/shared/db";
 import { suppliers } from "./schema";
 
@@ -230,4 +230,21 @@ export async function updateSupplierActive(
     )
     .returning({ id: suppliers.id });
   assertUpdatedOne(rows, "updateSupplierActive");
+}
+
+// Los nombres de unos proveedores, para las pantallas de los pagos (brief-22.6, D-13).
+export async function findSupplierNames(
+  organizationId: string,
+  supplierIds: string[],
+): Promise<{ id: string; name: string }[]> {
+  if (supplierIds.length === 0) return [];
+  return getDb()
+    .select({ id: suppliers.id, name: suppliers.name })
+    .from(suppliers)
+    .where(
+      and(
+        eq(suppliers.organizationId, organizationId),
+        inArray(suppliers.id, supplierIds),
+      ),
+    );
 }

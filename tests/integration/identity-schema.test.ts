@@ -108,6 +108,9 @@ describe("base de test", () => {
       "sale_voids",
       "sales",
       "sessions",
+      // Los pagos a proveedores y su anulación (brief-22.6).
+      "supplier_payment_voids",
+      "supplier_payments",
       // Los proveedores (brief-22.2).
       "suppliers",
       "users",

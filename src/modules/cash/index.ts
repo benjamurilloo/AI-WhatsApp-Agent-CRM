@@ -2,8 +2,9 @@
 // efectivo por sesiones; desde la 21.3, el cobro de una venta (brief-21.3), y desde la 21.4, la seña
 // (brief-21.4), y desde la 21.5, la anulación de un cobro, la devolución y su anulación
 // (brief-21.5), y desde la 21.6, la cuenta corriente: el cobro a cuenta, el estado de cuenta, el
-// resumen y la lista de deudores (brief-21.6). Ningún módulo depende de cash: la usan solo las
-// pantallas.
+// resumen y la lista de deudores (brief-21.6), y desde la 22.6, los pagos a proveedores y su anulación
+// (brief-22.6), con la cuenta del proveedor que usa su tope. Ningún módulo depende de cash: la usan
+// solo las pantallas. cash depende de purchasing desde la 22.6 (ADR 0023, punto 11).
 export {
   CASH_MOVEMENT_REASONS,
   CASH_RECEIPTS_PAGE_SIZE,
@@ -119,4 +120,36 @@ export {
   type StatementCurrency,
   type StatementDocument,
   type StatementSale,
+} from "./service";
+export {
+  createSupplierPayment,
+  formatSupplierPaymentNumber,
+  formatSupplierPaymentVoidNumber,
+  getGoodsReceiptPaymentForm,
+  getGoodsReceiptPayments,
+  getSupplierAccountPaymentForm,
+  getSupplierPayment,
+  listSupplierPayments,
+  parseSupplierPaymentNumberSearch,
+  SUPPLIER_PAYMENT_VOID_REASONS,
+  SUPPLIER_PAYMENTS_PAGE_SIZE,
+  voidSupplierPayment,
+  type CreateSupplierPaymentResult,
+  type GoodsReceiptPaymentForm,
+  type GoodsReceiptPayments,
+  type SupplierAccountPaymentForm,
+  type SupplierCurrencySummary,
+  type SupplierPaymentDetail,
+  type SupplierPaymentField,
+  type SupplierPaymentInput,
+  type SupplierPaymentListItem,
+  type SupplierPaymentPage,
+  type SupplierPaymentRef,
+  type SupplierPaymentStatusFilter,
+  type SupplierPaymentVoidReason,
+  type VoidSupplierPaymentResult,
+} from "./supplier-payments";
+export {
+  type LateSupplierPaymentVoidView,
+  type SessionSupplierPayments,
 } from "./service";

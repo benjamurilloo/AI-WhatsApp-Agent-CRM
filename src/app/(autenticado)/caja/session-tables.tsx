@@ -12,6 +12,8 @@ import {
   moneyFromDatabase,
   moneyToDatabase,
 } from "@/shared/money";
+import { PAYMENT_VOID_REASON_LABEL } from "@/app/(autenticado)/compras/pagos/messages";
+import { SupplierPaymentsTable } from "@/app/(autenticado)/compras/pagos/payments-table";
 import {
   RECEIPT_VOID_REASON_LABEL,
   REFUND_VOID_REASON_LABEL,
@@ -31,7 +33,9 @@ import {
 // 21.5 (brief-21.5, D-6 y D-9): los cobros y las devoluciones en efectivo de los totales van sin lo
 // anulado mientras la sesión estaba abierta; las listas marcan lo anulado, y una sesión cerrada lista
 // las anulaciones posteriores a su cierre, que explican su diferencia. Desde la 21.6, el destino de un
-// cobro a cuenta es «A cuenta» (brief-21.6, D-9).
+// cobro a cuenta es «A cuenta» (brief-21.6, D-9). Desde la 22.6 (brief-22.6, D-9; ADR 0023, punto 12): los
+// pagos a proveedores en efectivo, sin lo anulado en la sesión, en su columna para los dos roles; su
+// lista y sus anulaciones posteriores al cierre, solo para un admin: a un viewer cash no se las da.
 
 // Lo que entró o salió, sin lo anulado en la sesión.
 function net(amount: string, voided: string): string {
@@ -58,6 +62,11 @@ export function CurrencyTotalsTable({
   session: CashSessionDetail;
 }) {
   const closed = session.closedAt !== null;
+  // La columna de los pagos a proveedores, solo si la sesión tuvo alguno.
+  const withPayments = session.currencies.some(
+    (row) =>
+      row.supplierPayments !== "0.00" || row.supplierPaymentVoids !== "0.00",
+  );
   return (
     <div
       className="-mx-5 overflow-x-auto sm:-mx-6 print:mx-0 print:overflow-visible"
@@ -83,6 +92,11 @@ export function CurrencyTotalsTable({
             <th scope="col" className={numberHead}>
               Devoluciones
             </th>
+            {withPayments ? (
+              <th scope="col" className={numberHead}>
+                Pagos a proveedores
+              </th>
+            ) : null}
             <th scope="col" className={numberHead}>
               Aportes
             </th>
@@ -119,6 +133,14 @@ export function CurrencyTotalsTable({
               <td className={numberCell}>
                 {formatMoney(net(row.refunds, row.refundVoids), row.currency)}
               </td>
+              {withPayments ? (
+                <td className={numberCell}>
+                  {formatMoney(
+                    net(row.supplierPayments, row.supplierPaymentVoids),
+                    row.currency,
+                  )}
+                </td>
+              ) : null}
               <td className={numberCell}>
                 {formatMoney(row.contributions, row.currency)}
               </td>
@@ -469,5 +491,106 @@ export function LateVoidsTable({
         </tbody>
       </table>
     </div>
+  );
+}
+
+// Las anulaciones posteriores al cierre de los pagos a proveedores en efectivo de la sesión (brief-22.6,
+// D-9): solo las recibe un admin. Un pago anulado no salió: lo contado tuvo eso de más.
+export function LateSupplierPaymentVoidsTable({
+  session,
+  timeZone,
+}: {
+  session: CashSessionDetail;
+  timeZone: string;
+}) {
+  const rows = session.supplierPayments?.lateVoids ?? [];
+  if (rows.length === 0) return null;
+  return (
+    <div
+      className="-mx-5 overflow-x-auto sm:-mx-6 print:mx-0 print:overflow-visible"
+      tabIndex={0}
+      role="region"
+      aria-label={`Pagos a proveedores anulados después del cierre de la sesión ${session.displayNumber}`}
+    >
+      <table className="w-full border-collapse text-left text-sm">
+        <caption className="sr-only">
+          Pagos a proveedores anulados después del cierre de la sesión{" "}
+          {session.displayNumber}
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col" className={tableHeadCellClass}>
+              Anulación
+            </th>
+            <th scope="col" className={tableHeadCellClass}>
+              Fecha
+            </th>
+            <th scope="col" className={tableHeadCellClass}>
+              Anula
+            </th>
+            <th scope="col" className={tableHeadCellClass}>
+              Motivo
+            </th>
+            <th scope="col" className={numberHead}>
+              Efecto en esta caja
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.displayNumber}>
+              <td className={`${tableCellClass} font-mono whitespace-nowrap`}>
+                {row.displayNumber}
+              </td>
+              <td className={`${tableCellClass} whitespace-nowrap`}>
+                {formatShortDateTime(row.createdAt, timeZone)}
+              </td>
+              <td className={`${tableCellClass} whitespace-nowrap`}>
+                Pago{" "}
+                <Link
+                  href={`/compras/pagos/${row.source.id}`}
+                  className={`${linkClass} font-mono print:no-underline`}
+                >
+                  {row.source.displayNumber}
+                </Link>
+              </td>
+              <td className={tableCellClass}>
+                {PAYMENT_VOID_REASON_LABEL[row.reason]}
+              </td>
+              <td className={numberCell}>
+                + {formatMoney(row.amount, row.currency)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// Los pagos a proveedores en efectivo de la sesión (brief-22.6, D-9): solo un admin los recibe. El
+// nombre del proveedor lo compone la página con purchasing.
+export function SessionSupplierPaymentsTable({
+  session,
+  timeZone,
+  supplierNames,
+}: {
+  session: CashSessionDetail;
+  timeZone: string;
+  supplierNames: Map<string, string>;
+}) {
+  const items = session.supplierPayments?.items ?? [];
+  if (items.length === 0) {
+    return (
+      <p className="text-sm text-muted">Sin pagos a proveedores en efectivo.</p>
+    );
+  }
+  return (
+    <SupplierPaymentsTable
+      caption={`Pagos a proveedores en efectivo de la sesión ${session.displayNumber}`}
+      payments={items}
+      timeZone={timeZone}
+      supplierNames={supplierNames}
+    />
   );
 }
