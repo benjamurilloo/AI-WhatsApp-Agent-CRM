@@ -418,3 +418,73 @@ Y siempre **antes** de cada una de estas acciones, que necesita autorización ex
 - pasar tareas de estado en Notion;
 - ejecutar migraciones contra una base que no sea la local o la de la CI;
 - desplegar.
+
+## Resultados — 2026-10-15 (autoevaluación)
+
+Implementado el 2026-10-15. **Esta sección es autoevaluación**: la escribió quien implementó. La revisión independiente de D-13 va aparte, abajo.
+
+### Lo que la implementación encontró que el brief no decía
+
+**Desvío aprobado por el usuario el 2026-10-15** (condición de detención, informada antes de seguir):
+
+- **Siete end-to-end vaciaban `products` o `suppliers` con `TRUNCATE`.** PostgreSQL no vacía una tabla a la que apunta una clave foránea si la tabla que apunta no va en la misma sentencia (`0A000`, comprobado contra la base local de test), y `purchase_orders` y `purchase_order_lines` apuntan a las dos. A `orders`, `product-fields`, `product-images`, `products`, `sales`, `security-headers` y `suppliers.spec.ts` se les sumaron solo esas dos tablas en su `truncate`. Ninguno estaba en la lista autorizada, salvo `suppliers.spec.ts` para el mensaje del CUIT.
+- **`suppliers.spec.ts` esperaba que «Compras» llevara a los proveedores.** Con D-10 lleva a las órdenes; el caso ahora entra por la pestaña «Proveedores».
+- **El comentario del menú en `src/app/(autenticado)/layout.tsx`** decía que `/compras` lleva a los proveedores. Se corrigió el comentario, sin cambiar el código.
+
+**Precisiones que no cambian una decisión:**
+
+- **El código de la orden vive en dos archivos nuevos del módulo**, `purchase-orders.ts` (los casos de uso) y `purchase-order-repository.ts`, junto a `service.ts` y `repository.ts` de los proveedores. `index.ts` exporta los dos.
+- **`purchasing/schema.ts` importa también el esquema de `catalog`**, para la clave foránea de las líneas hacia `products`, como `orders/schema.ts`. La invariante 10 ya admite `catalog`.
+- **El bloqueo compartido del proveedor es una opción de `findSupplier`** (`forShare`), junto a `forUpdate`, y no una función aparte (D-7).
+- **Todas las reglas de D-4 corren dentro de la transacción**, después de bloquear el proveedor y los productos, en el orden de D-7. El pedido revisa los repetidos antes de abrirla; acá un producto repetido de un proveedor inactivo responde `inactive_supplier`.
+- **La razón del CUIT es opcional en la respuesta** (`cuitReason`): solo aparece cuando el CUIT está entre los campos inválidos, así las respuestas de los demás campos no cambian (D-12).
+- **El buscador de proveedores del alta** usa `listSuppliers` con los activos y devuelve los diez primeros; sin JavaScript, el proveedor se reconoce por su nombre exacto entre los activos.
+- **El proveedor de cada fila de la lista filtra la lista por él**: es la forma de llegar al filtro de proveedor desde la pantalla, además de la ficha (D-11).
+- **Se sumó un caso de serialización que el brief no nombraba**, «un alta que espera a su proveedor no frena el número del alta de otro». Sin él, la mutación del contador antes de los bloqueos no tenía quien la detectara.
+- **Los archivos nuevos entraron al índice con `git add -N`**, porque `exposed-surface` lee `git ls-files`.
+
+### Criterios
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| AC-1 | cumplido | `purchase-orders-schema.test.ts`, 27 casos: los privilegios y el 42501 de `crm_app`, los valores de los dos enums, cada `CHECK` (también las fechas atadas al estado, con el trigger apagado en la transacción), los índices únicos, las tres claves compuestas y el 23001 al borrar un proveedor con órdenes, el trigger de la orden (nace abierta, no se borra, otra columna, las transiciones prohibidas y la fecha puesta) y el de las líneas |
+| AC-2 | cumplido | `lines.test.ts`, 9 casos: de 1 a 50 líneas, cada campo con su razón, el costo con 0 y 2 decimales, y las reglas 2 a 5 en su orden con el redondeo por línea |
+| AC-3 | cumplido | `purchase-orders.test.ts`: el alta con la cabecera, las líneas, `OC-000001` y la auditoría exacta; la cancelación con su fecha y su auditoría; la historia; la lista con su orden, sus filtros, la búsqueda por número y la página; las cinco últimas de un proveedor; el detalle con los datos de hoy; y que el stock y el costo no cambian |
+| AC-4 | cumplido | `purchase-orders.test.ts`: `FORBIDDEN` en las seis funciones; cada `VALIDATION_ERROR`, `NOT_FOUND` y `BUSINESS_RULE_VIOLATION` de D-8 sin escribir, auditar ni consumir número (la foto incluye `document_counters`); `not_open` sin auditar |
+| AC-5 | cumplido | `purchase-orders.test.ts`: la desactivación del proveedor y la de un producto en curso, dos cancelaciones simultáneas con una sola auditoría, el contador al final y tres altas simultáneas con números 1, 2 y 3. Mutaciones abajo |
+| AC-6 | cumplido | `organization-isolation.test.ts`, 4 casos: `cancelPurchaseOrderRow`, `findPurchaseOrder` y `findPurchaseOrderLines`, la lista con cada filtro, y el alta con el proveedor o el producto de otra organización |
+| AC-7 | cumplido | con 2.000 órdenes en local, la lista entera en la página 40 en 14 a 56 ms; las canceladas, 9,5 a 17 ms; las abiertas, 8 ms; un proveedor con cien órdenes, 7,5 a 14 ms; un número, 4 a 12 ms. El umbral es de 754 ms |
+| AC-8 | cumplido | `purchase-orders.spec.ts`, 4 casos, uno sin JavaScript, con axe en claro y en oscuro, también en la vista de impresión; el mensaje del CUIT, en `suppliers.spec.ts` |
+| AC-9 | cumplido | `exposed-surface` declara las 4 acciones nuevas |
+| AC-10 | cumplido | `purchasing` importa `catalog`, `numbering`, `organizations`, `audit`, `src/shared` y los esquemas de `auth`, `catalog` y `organizations`; ningún módulo importa `purchasing`; de los módulos existentes, solo `numbering` y `audit` están en el diff |
+| AC-11 | cumplido | `read-api`, `read-api-v2` e `ingestion-v2` pasan en la integración completa |
+| AC-12 | cumplido | `cuit.test.ts` (las dos razones, con la propiedad del dígito cambiado), `suppliers.test.ts` y `messages.test.ts` |
+| AC-13 | cumplido en local; falta la CI del SHA | formato, lint, typecheck, build, 821 unitarios, 660 guardas y 1.394 de integración pasan. El end-to-end completo, con los cuatro specs de R-1 corregidos, dio 202 de 203: la falla es `sales.spec.ts:136`, que se pasó de los 30 s con la máquina cargada, como en la corrida anterior, sin `0A000`; corrido solo, `sales.spec.ts` pasa entero, 12 de 12 |
+| AC-14 | cumplido | DataModel, Overview, FunctionalRequirements (`FR-COMP-05` a `09`), Screens (43 a 45 y la 40 a 42), TraceabilityMatrix, SecurityModel (146 puntos de entrada), la nota del ADR 0023 y el Roadmap |
+| AC-15 | pendiente | depende de D-14, con autorización aparte |
+
+### Mutaciones
+
+Corridas una por una con un script que aplica el cambio, verifica que aparezca una sola vez, corre los tests que deberían atraparlo y restaura el archivo; al terminar, el código compila igual.
+
+- **M1**, el alta sin el `FOR SHARE` del proveedor: detectada por «una desactivación del proveedor en curso».
+- **M2**, el alta sin comprobar que el proveedor esté activo: 2 fallas.
+- **M3**, la cancelación sin `FOR UPDATE`: detectada por «dos cancelaciones simultáneas».
+- **M4**, la cancelación sin comprobar el estado: 2 fallas.
+- **M5**, el contador antes de los bloqueos: detectada por «un alta que espera a su proveedor no frena el número del alta de otro» y por las altas simultáneas.
+- **M6**, el redondeo de la línea con dos decimales fijos: detectada por el alta en `CLP` de la integración y por `lines.test.ts`.
+- **M7**, `cancelPurchaseOrderRow` y `findPurchaseOrder` sin `organization_id`: cada una detectada por `organization-isolation.test.ts`.
+- **M8**, un `viewer` que lee la lista: detectada por el caso de `FORBIDDEN`.
+- **M9**, los productos sin el bloqueo compartido (`lockProductsShared` de `catalog` sin `FOR SHARE`, solo durante la corrida): detectada por «una desactivación de un producto en curso». La sumó la revisión independiente (R-5); `catalog` quedó sin cambios.
+- **Las mutaciones del trigger** (una transición de más, una columna de más) las prueba `purchase-orders-schema.test.ts` contra la base.
+
+## Revisión independiente — 2026-10-15
+
+Un agente de solo lectura que no participó del trabajo revisó la entrega contra este brief, el ADR 0023 y las reglas vigentes (D-13). No ejecutó nada. Encontró **6 hallazgos: uno mayor, tres menores y dos notas**. Cada uno se verificó contra el código antes de aceptarlo.
+
+- **R-1 (mayor), aceptado y verificado**: otros cuatro end-to-end, `accounts`, `order-receipts`, `receipts` y `refunds`, vacían `products` sin las tablas de la orden. La búsqueda de la implementación miraba solo tres líneas después de cada `truncate`, y en esos cuatro `products` aparece más abajo. **Lo confirmó la batería completa**: sus 16 casos fallan con `0A000`. Son once specs, no siete, y los cuatro están fuera de la lista autorizada: el usuario autorizó sumarlos, se agregaron las dos tablas a su `truncate` y **la batería completa ya no da ningún `0A000`**.
+- **R-2 (menor), corregido**: el comentario del repositorio nombraba `updatePurchaseOrderStatus`, que no existe; la escritura es `cancelPurchaseOrderRow`.
+- **R-3 (menor), corregido**: DataModel no tenía `purchase_order` en las listas de valores de `document_kind` y de `entity_type`.
+- **R-4 (nota), documentado**: el buscador de productos del alta responde a cualquier sesión con el nombre y el SKU de los productos activos, como los buscadores que ya existían. No expone órdenes, precios ni costos; SecurityModel lo dice ahora.
+- **R-5 (menor), corregido**: la desactivación de un producto contra el alta no tenía mutación (ahora M9, arriba), y el comentario del caso de las dos cancelaciones decía que sin el `FOR UPDATE` habría dos auditorías. En realidad la segunda cancelación choca con el trigger («una fecha de estado no cambia»): el caso falla igual, pero por la segunda defensa. El comentario lo dice así.
+- **R-6 (nota), corregido en parte**: las tarjetas de la lista en un teléfono no enlazaban al proveedor, como sí lo hacía la tabla, y el Overview no decía que `schema.ts` importa el esquema de `catalog`. Los dos se corrigieron. Que la historia rotule todo `status_change` como «Cancelación» es correcto en la 22.3; lo cambia la 22.4, con el cierre.

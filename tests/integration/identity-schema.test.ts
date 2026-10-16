@@ -91,6 +91,9 @@ describe("base de test", () => {
       "product_images",
       "product_prices",
       "products",
+      // La orden de compra y sus líneas (brief-22.3).
+      "purchase_order_lines",
+      "purchase_orders",
       // Los cobros (brief-21.3) y la anulación de un cobro (brief-21.5).
       "receipt_voids",
       "receipts",

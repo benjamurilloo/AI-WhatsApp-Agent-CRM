@@ -17,8 +17,8 @@ export function nextDocumentNumber(
 }
 
 // El número como se muestra: el prefijo del tipo y seis dígitos, P-000123, V-000123, A-000045,
-// C-000045, R-000123, AR-000012, D-000007 o AD-000002 (ADR 0019, punto 2; ADR 0021, puntos 6 y 7; ADR 0022, punto 11). Pasado el
-// millón, el número se muestra con todos sus dígitos.
+// C-000045, R-000123, AR-000012, D-000007, AD-000002 u OC-000004 (ADR 0019, punto 2; ADR 0021, puntos 6 y 7; ADR 0022, punto 11;
+// ADR 0023, punto 3). Pasado el millón, el número se muestra con todos sus dígitos.
 const PREFIXES: Record<DocumentKind, string> = {
   order: "P",
   sale: "V",
@@ -31,6 +31,8 @@ const PREFIXES: Record<DocumentKind, string> = {
   receipt_void: "AR",
   refund: "D",
   refund_void: "AD",
+  // La orden de compra (ADR 0023, punto 3; brief-22.3, H-5).
+  purchase_order: "OC",
 };
 
 export function formatDocumentNumber(

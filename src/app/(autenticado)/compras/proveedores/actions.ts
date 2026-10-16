@@ -91,7 +91,7 @@ async function runSupplierForm(
           status: "error",
           requestId,
           values,
-          ...supplierFieldError(result.fields),
+          ...supplierFieldError(result.fields, result.cuitReason),
         };
       }
       if (result.code === "BUSINESS_RULE_VIOLATION") {

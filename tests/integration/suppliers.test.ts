@@ -396,29 +396,41 @@ describe("los rechazos (AC-4; D-7)", () => {
     const s = await seed();
     const id = await create(s.adminA, { name: "Norte" });
     const before = await snapshot();
-    const cases: [SupplierInput, string[]][] = [
-      [{ name: "   " }, ["name"]],
-      [{ name: "a".repeat(121) }, ["name"]],
-      [{ name: "Sur", phone: "011 5555-1234" }, ["phone"]],
-      [{ name: "Sur", email: "ventas" }, ["email"]],
-      [{ name: "Sur", email: `${"a".repeat(250)}@b.co` }, ["email"]],
-      [{ name: "Sur", cuit: "20-12345678-0" }, ["cuit"]],
-      [{ name: "Sur", cuit: "2012345678" }, ["cuit"]],
+    // Con el CUIT, la razón: la forma o el dígito verificador (brief-22.3, D-12).
+    const cases: [
+      SupplierInput,
+      string[],
+      { cuitReason?: "format" | "check_digit" },
+    ][] = [
+      [{ name: "   " }, ["name"], {}],
+      [{ name: "a".repeat(121) }, ["name"], {}],
+      [{ name: "Sur", phone: "011 5555-1234" }, ["phone"], {}],
+      [{ name: "Sur", email: "ventas" }, ["email"], {}],
+      [{ name: "Sur", email: `${"a".repeat(250)}@b.co` }, ["email"], {}],
+      [
+        { name: "Sur", cuit: "20-12345678-0" },
+        ["cuit"],
+        { cuitReason: "check_digit" },
+      ],
+      [{ name: "Sur", cuit: "2012345678" }, ["cuit"], { cuitReason: "format" }],
       [
         { name: "", phone: "x", email: "y", cuit: "z" },
         ["name", "phone", "email", "cuit"],
+        { cuitReason: "format" },
       ],
     ];
-    for (const [input, fields] of cases) {
+    for (const [input, fields, reason] of cases) {
       expect(await createSupplier(s.adminA, input)).toEqual({
         ok: false,
         code: "VALIDATION_ERROR",
         fields,
+        ...reason,
       });
       expect(await updateSupplier(s.adminA, id, input)).toEqual({
         ok: false,
         code: "VALIDATION_ERROR",
         fields,
+        ...reason,
       });
     }
     expect(await snapshot()).toEqual(before);

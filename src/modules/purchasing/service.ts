@@ -13,7 +13,7 @@ import {
 } from "@/modules/organizations";
 import { failure, type Failure } from "@/shared/errors";
 import { parsePhoneInput } from "@/shared/phone";
-import { cuitDigits, parseCuitInput } from "./cuit";
+import { cuitDigits, parseCuitInput, type CuitRejection } from "./cuit";
 import * as repository from "./repository";
 import { SUPPLIER_FIELD_LIMITS } from "./schema";
 
@@ -81,8 +81,9 @@ const supplierInputSchema = z.object({
     .nullish()
     .transform((value, ctx) => {
       const parsed = parseCuitInput(value);
+      // El mensaje del issue es la razón del rechazo (brief-22.3, D-12).
       if (!parsed.ok) {
-        ctx.addIssue({ code: "custom", message: "CUIT inválido" });
+        ctx.addIssue({ code: "custom", message: parsed.reason });
         return z.NEVER;
       }
       return parsed.cuit;
@@ -92,24 +93,34 @@ const supplierInputSchema = z.object({
 // El orden del formulario.
 const SUPPLIER_FIELDS: SupplierField[] = ["name", "phone", "email", "cuit"];
 
+// Con el CUIT entre los campos, cuitReason dice si falló la forma o el dígito verificador
+// (brief-22.3, D-12). Sin el CUIT, no está.
+export type SupplierValidationFailure = Failure<
+  "VALIDATION_ERROR",
+  { fields: SupplierField[]; cuitReason?: CuitRejection }
+>;
+
 export function validateSupplierInput(
   input: SupplierInput,
-):
-  | { ok: true; values: repository.SupplierValues }
-  | Failure<"VALIDATION_ERROR", { fields: SupplierField[] }> {
+): { ok: true; values: repository.SupplierValues } | SupplierValidationFailure {
   const parsed = supplierInputSchema.safeParse(input);
   if (parsed.success) return { ok: true, values: parsed.data };
   const fields = new Set<SupplierField>();
+  let cuitReason: CuitRejection | undefined;
   for (const issue of parsed.error.issues) {
     const field = issue.path[0];
     if (SUPPLIER_FIELDS.includes(field as SupplierField)) {
       fields.add(field as SupplierField);
+    }
+    if (field === "cuit") {
+      cuitReason = issue.message === "check_digit" ? "check_digit" : "format";
     }
   }
   return {
     ok: false,
     code: "VALIDATION_ERROR",
     fields: SUPPLIER_FIELDS.filter((field) => fields.has(field)),
+    ...(cuitReason ? { cuitReason } : {}),
   };
 }
 
@@ -251,7 +262,7 @@ export async function listSupplierAudit(
 export type CreateSupplierResult =
   | { ok: true; supplierId: string }
   | Failure<"FORBIDDEN">
-  | Failure<"VALIDATION_ERROR", { fields: SupplierField[] }>
+  | SupplierValidationFailure
   | Failure<"BUSINESS_RULE_VIOLATION", { rule: SupplierRule }>;
 
 export async function createSupplier(
@@ -291,7 +302,7 @@ export type UpdateSupplierResult =
   | { ok: true; changed: boolean }
   // VALIDATION_ERROR sin fields: el id no es un uuid. Con fields: el formulario.
   | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
-  | Failure<"VALIDATION_ERROR", { fields: SupplierField[] }>
+  | SupplierValidationFailure
   | Failure<"BUSINESS_RULE_VIOLATION", { rule: SupplierRule }>;
 
 const VALUE_FIELDS: (keyof repository.SupplierValues)[] = [

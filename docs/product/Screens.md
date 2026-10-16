@@ -556,7 +556,7 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 
 ## 40. Proveedores
 
-*Agregada en la 22.2* ([brief-22.2](../decisions/brief-22.2-los-proveedores.md), D-9 y D-10; FR-COMP-03). Ruta `/compras/proveedores`, «Compras» en la navegación, **solo para `admin`**, con el ícono `truck`. `/compras` lleva acá hasta que la 22.3 sume las órdenes.
+*Agregada en la 22.2* ([brief-22.2](../decisions/brief-22.2-los-proveedores.md), D-9 y D-10; FR-COMP-03). Ruta `/compras/proveedores`, «Compras» en la navegación, **solo para `admin`**, con el ícono `truck`. `/compras` lleva acá hasta que la 22.3 sume las órdenes. *Desde la 22.3*, `/compras` lleva a la pantalla 43, y esta es la pestaña «Proveedores».
 
 - **Información mostrada**: una tabla con el nombre enlazado a la ficha, el teléfono, el email, el CUIT con sus guiones y si está activo, y el lápiz de editar. En un teléfono, tarjetas con el nombre, el teléfono y el CUIT. Orden alfabético, paginada de a 25. «+ Nuevo proveedor» arriba.
 - **Filtros**: «Buscar», por parte del nombre sin distinguir mayúsculas ni acentos, o por CUIT con o sin guiones; «Estado»: «Solo activos» (por defecto), «Solo inactivos» o «Todos». En la URL: `?q=&estado=&pagina=`.
@@ -568,7 +568,7 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 *Agregada en la 22.2* (D-9; FR-COMP-01 y FR-COMP-02). Rutas `/compras/proveedores/nuevo` y `/compras/proveedores/[id]/editar`.
 
 - **Campos**: «Nombre *», «Teléfono» (formato internacional, con su ayuda), «Email» y «CUIT» (con o sin guiones, con su ayuda). En la edición, el CUIT se precarga con sus guiones.
-- **Rechazos**, con lo escrito conservado y el foco en el campo: el nombre vacío o largo, el teléfono que no está en formato internacional, el email inválido, el CUIT con otra cantidad de dígitos o con el dígito verificador que no cierra; y «Ya existe un proveedor con ese nombre» o «con ese CUIT», con la indicación de reactivarlo si está desactivado.
+- **Rechazos**, con lo escrito conservado y el foco en el campo: el nombre vacío o largo, el teléfono que no está en formato internacional, el email inválido, el CUIT con otra cantidad de dígitos o con el dígito verificador que no cierra (*desde la 22.3*, cada uno con su mensaje: «Ingresá un CUIT de 11 dígitos, con o sin guiones, por ejemplo 20-12345678-6.» y «El dígito verificador no corresponde a este CUIT. Revisá el último número.»; brief-22.3, D-12); y «Ya existe un proveedor con ese nombre» o «con ese CUIT», con la indicación de reactivarlo si está desactivado.
 - **Sin JavaScript**: funciona igual.
 
 ## 42. Proveedor
@@ -577,3 +577,29 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 
 - **Información mostrada**: el nombre con «Activo» o «Inactivo», y la tarjeta «Datos» con el nombre, el teléfono, el email y el CUIT, o «Sin teléfono», «Sin email» y «Sin CUIT». Debajo, el historial de auditoría paginado: «Alta», «Edición», «Desactivación» y «Reactivación», con el cambio de cada campo.
 - **Acciones**: «Editar»; «Desactivar», con la confirmación «¿Desactivar "{nombre}"?» en un segundo paso de la URL; con el proveedor inactivo, la tarjeta «Estado» con «Reactivar».
+- *Desde la 22.3* ([brief-22.3](../decisions/brief-22.3-la-orden-de-compra.md), D-10): la tarjeta «Órdenes de compra», con sus cinco últimas (número, fecha, total y estado), «Ver las {n} órdenes de este proveedor», que lleva a la pantalla 43 filtrada por él, y, si está activo, «Nueva orden de compra», que lleva a la 44 con el proveedor ya elegido; sin órdenes, «Este proveedor no tiene órdenes de compra.».
+
+## 43. Órdenes de compra
+
+*Agregada en la 22.3* ([brief-22.3](../decisions/brief-22.3-la-orden-de-compra.md), D-10 y D-11; FR-COMP-07). Ruta `/compras/ordenes`, **solo para `admin`**. Desde la 22.3, «Compras» lleva acá, y las pantallas de Compras tienen dos pestañas: «Órdenes de compra» y «Proveedores».
+
+- **Información mostrada**: una tabla con el número enlazado al detalle, la fecha, el proveedor (que filtra la lista por él), la cantidad de líneas, el total en su moneda y el estado, con ícono y texto («Abierta», «Cerrada» o «Cancelada»). En un teléfono, tarjetas. La más nueva primero, paginada de a 25. «+ Nueva orden de compra» arriba.
+- **Filtros**: «Número» (`OC-000123`, `oc123` o `123`) y «Estado»: «Todas» (por defecto), «Abiertas», «Cerradas» o «Canceladas»; el proveedor llega por la URL, con «Órdenes de {proveedor}.» y «Ver las de todos los proveedores». En la URL: `?numero=&estado=&proveedor=&pagina=`.
+- **Vacío**: «Todavía no hay órdenes de compra.» con «Crear la primera»; con filtros, «Ninguna orden de compra coincide con estos filtros.» con «Limpiar filtros».
+- **Un `viewer`**: «No tenés permiso para ver esta página.», sin datos. Lo mismo en las pantallas 44 y 45.
+
+## 44. Nueva orden de compra
+
+*Agregada en la 22.3* (D-4 a D-6 y D-10; FR-COMP-05). Ruta `/compras/ordenes/nueva`; desde la ficha del proveedor, `?proveedor=<id>`.
+
+- **Campos**: «Proveedor», con un buscador de los activos por nombre o CUIT; «Moneda», de la lista de monedas del sistema, **sin una elegida de antemano**; y las líneas, de a una por producto, con «Producto» (el buscador del pedido), «Cantidad» y «Costo unitario», que se escribe con el IVA incluido y **no se propone**. Cada línea muestra su total estimado y el pie, el de la orden; cambiar la moneda vuelve a leer los costos. Arranca con cinco líneas, hasta 50; las vacías no se envían.
+- **Rechazos**, con lo escrito conservado: el proveedor que no se eligió, que no existe o que está desactivado; la moneda sin elegir; por línea, el producto, la cantidad, el costo que no se lee (con los decimales de la moneda), el producto repetido o desactivado y el total de la línea que da cero o es demasiado grande; y el total de la orden demasiado grande.
+- **Sin JavaScript**: funciona con el nombre exacto del proveedor y el SKU exacto del producto.
+
+## 45. Orden de compra
+
+*Agregada en la 22.3* (D-9 y D-10; FR-COMP-06 y FR-COMP-08). Ruta `/compras/ordenes/[id]`. Es también **la página imprimible** que se le manda al proveedor, con el molde del detalle de la venta.
+
+- **Información mostrada**: el número con su estado y el total; la orden con la organización, «Documento no válido como factura», el número, la fecha, el proveedor con su CUIT, su teléfono y su email de hoy, la moneda, las líneas (producto con su SKU, cantidad, costo unitario y total) y el total. Debajo, la historia: «Alta» y «Cancelación».
+- **Acciones**: «Imprimir o guardar PDF»; en una abierta, «Cancelar la orden», con la confirmación «¿Cancelar la orden de compra {número}?» en un segundo paso de la URL (`?confirmar=cancelar`). Una cancelada lo dice, con su fecha.
+- **Al imprimir** queda solo la orden, en claro, sin la navegación, los botones ni la historia.

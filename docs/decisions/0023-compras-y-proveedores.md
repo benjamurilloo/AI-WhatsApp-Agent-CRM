@@ -266,6 +266,8 @@ Lo que acota la decisión, verificado el 2026-10-15 contra `main` (`6219989`):
 
 **El orden no cambia** respecto del que aprobó el usuario el 2026-10-15.
 
+*Precisado el 2026-10-15 por decisión del usuario, en la 22.3, sin cambiar la tabla de arriba* ([brief-22.3](brief-22.3-la-orden-de-compra.md), H-2 y D-3): **el cierre a mano pasa de la 22.3 a la 22.4**. El punto 3 solo lo admite con alguna recepción vigente, y la recepción recién existe en la 22.4: construido en la 22.3, habría rechazado siempre. Por lo mismo, **la cancelación de la 22.3 no comprueba recepciones**, porque no puede haber; la 22.4 suma esa comprobación, con la cabecera tomada `FOR UPDATE` (punto 10). El trigger de estados de la 22.3 ya admite `open → closed`, así que la 22.4 no lo cambia.
+
 ## Alternativas descartadas
 
 - **El proveedor como un cliente con una marca** (punto 2): mezcla dos listas con reglas distintas (el teléfono identifica al cliente, ADR 0007) y le mostraría los proveedores al agente.

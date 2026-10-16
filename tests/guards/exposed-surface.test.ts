@@ -210,6 +210,25 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
     {
       requirement: "sesion",
     },
+  // La orden de compra (brief-22.3, D-8): crear y cancelar son solo de admin, y los buscadores del
+  // alta también, porque purchasing exige admin en los proveedores; el de productos sugiere lo
+  // mismo que el del pedido.
+  "src/app/(autenticado)/compras/ordenes/actions.ts#createPurchaseOrderAction":
+    {
+      requirement: "sesion",
+    },
+  "src/app/(autenticado)/compras/ordenes/actions.ts#cancelPurchaseOrderAction":
+    {
+      requirement: "sesion",
+    },
+  "src/app/(autenticado)/compras/ordenes/actions.ts#searchPurchaseOrderProductsAction":
+    {
+      requirement: "sesion",
+    },
+  "src/app/(autenticado)/compras/ordenes/actions.ts#searchPurchaseOrderSuppliersAction":
+    {
+      requirement: "sesion",
+    },
   "src/app/(autenticado)/productos/actions.ts#createProductAction": {
     requirement: "sesion",
   },

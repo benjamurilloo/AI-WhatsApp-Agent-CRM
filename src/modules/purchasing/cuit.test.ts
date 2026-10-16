@@ -74,13 +74,18 @@ describe("el dígito verificador", () => {
     }
   });
 
-  it("propiedad: cambiar un solo dígito de un CUIT válido lo hace inválido", () => {
+  // Desde la 22.3, el rechazo dice que es el verificador (brief-22.3, D-12).
+  it("propiedad: cambiar un solo dígito de un CUIT válido lo hace inválido, por el verificador", () => {
     for (const cuit of validCuits(200)) {
       for (let index = 0; index < 11; index += 1) {
         for (let value = 0; value <= 9; value += 1) {
           if (String(value) === cuit[index]) continue;
           const changed = `${cuit.slice(0, index)}${value}${cuit.slice(index + 1)}`;
           expect(isValidCuit(changed), changed).toBe(false);
+          expect(parseCuitInput(formatCuit(changed)), changed).toEqual({
+            ok: false,
+            reason: "check_digit",
+          });
         }
       }
     }
@@ -104,8 +109,19 @@ describe("la entrada", () => {
       "CUIT 20-12345678-6",
       "２0123456786",
     ]) {
-      expect(parseCuitInput(text), text).toEqual({ ok: false });
+      expect(parseCuitInput(text), text).toEqual({
+        ok: false,
+        reason: "format",
+      });
     }
+  });
+
+  // El caso que vio el usuario en la 22.2: once dígitos bien escritos con el verificador mal.
+  it("once dígitos con el verificador que no cierra es check_digit", () => {
+    expect(parseCuitInput("20-12345679-2")).toEqual({
+      ok: false,
+      reason: "check_digit",
+    });
   });
 
   it("los once dígitos sin mirar el verificador, para buscar", () => {

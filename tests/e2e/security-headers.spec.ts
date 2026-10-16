@@ -22,7 +22,7 @@ test.beforeAll(() => {
 
 test.afterAll(async () => {
   await db.execute(
-    sql`truncate table refund_voids, refunds, receipt_voids, receipts, sale_voids, sale_lines, sales, order_lines, orders, conversation_notes, messages, conversations, client_tag_assignments, clients, knowledge_entries,
+    sql`truncate table purchase_order_lines, purchase_orders, refund_voids, refunds, receipt_voids, receipts, sale_voids, sale_lines, sales, order_lines, orders, conversation_notes, messages, conversations, client_tag_assignments, clients, knowledge_entries,
         inventory_movements, inventories, product_images, product_costs, product_prices, products`,
   );
   await db.$client.end();
@@ -33,7 +33,7 @@ test.beforeEach(async () => {
   // inserción: TRUNCATE es la vía documentada (ADR 0013), y vacía en la misma sentencia lo que las
   // referencia (6.1).
   await db.execute(
-    sql`truncate table refund_voids, refunds, receipt_voids, receipts, sale_voids, sale_lines, sales, order_lines, orders, audit_logs, ingestion_events, conversation_notes, messages, conversations, client_tag_assignments, clients,
+    sql`truncate table purchase_order_lines, purchase_orders, refund_voids, refunds, receipt_voids, receipts, sale_voids, sale_lines, sales, order_lines, orders, audit_logs, ingestion_events, conversation_notes, messages, conversations, client_tag_assignments, clients,
         knowledge_entries, inventory_movements, inventories, product_images, product_costs, product_prices, products`,
   );
   await db.execute(sql`delete from login_attempts`);

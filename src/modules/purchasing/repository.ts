@@ -44,12 +44,14 @@ export function withTransaction<T>(
 }
 
 // La edición, la desactivación y la reactivación leen con FOR UPDATE y deciden con lo leído
-// (ADR 0023, punto 10; D-6), como la del cliente.
+// (ADR 0023, punto 10; D-6), como la del cliente. Desde la 22.3, el alta de una orden de compra lo
+// lee FOR SHARE (brief-22.3, D-7; H-4): espera a una edición o desactivación en curso y relee el
+// estado ya confirmado. La clave foránea del INSERT no alcanza, porque no mira si está activo.
 export async function findSupplier(
   organizationId: string,
   supplierId: string,
   executor: Executor = getDb(),
-  options: { forUpdate?: boolean } = {},
+  options: { forUpdate?: boolean; forShare?: boolean } = {},
 ): Promise<SupplierRow | undefined> {
   const query = executor
     .select(supplierColumns)
@@ -60,7 +62,11 @@ export async function findSupplier(
         eq(suppliers.id, supplierId),
       ),
     );
-  const rows = options.forUpdate ? await query.for("update") : await query;
+  const rows = options.forUpdate
+    ? await query.for("update")
+    : options.forShare
+      ? await query.for("share")
+      : await query;
   return rows[0];
 }
 

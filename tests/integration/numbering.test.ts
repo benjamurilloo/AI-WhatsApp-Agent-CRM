@@ -120,4 +120,11 @@ describe("formatDocumentNumber", () => {
     expect(formatDocumentNumber("refund_void", 2)).toBe("AD-000002");
     expect(formatDocumentNumber("refund", 1_234_567)).toBe("D-1234567");
   });
+
+  it("el prefijo de la orden de compra es OC (brief-22.3, H-5)", () => {
+    expect(formatDocumentNumber("purchase_order", 4)).toBe("OC-000004");
+    expect(formatDocumentNumber("purchase_order", 1_234_567)).toBe(
+      "OC-1234567",
+    );
+  });
 });

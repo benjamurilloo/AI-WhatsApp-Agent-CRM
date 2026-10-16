@@ -5,6 +5,7 @@ import { getOrganizationTimezone } from "@/modules/organizations";
 import {
   formatCuit,
   getSupplier,
+  listRecentSupplierPurchaseOrders,
   listSupplierAudit,
 } from "@/modules/purchasing";
 import { requireSession } from "@/app/_auth/session";
@@ -16,6 +17,7 @@ import {
   activeBadgeClass,
   dangerOutlineLinkClass,
   inactiveBadgeClass,
+  linkClass,
   noticeClass,
   secondaryLinkClass,
 } from "@/app/_components/form-styles";
@@ -23,6 +25,13 @@ import { Icon } from "@/app/_components/icons";
 import { PageNotice } from "@/app/_components/page-notice";
 import { SectionCard } from "@/app/_components/section-card";
 import { formatShortDateTime } from "@/app/_format/date-time";
+import { formatMoney } from "@/shared/money";
+import {
+  DEFAULT_PURCHASE_ORDER_FILTERS,
+  purchaseOrderFiltersHref,
+} from "../../ordenes/filters";
+import { NO_SUPPLIER_PURCHASE_ORDERS_MESSAGE } from "../../ordenes/messages";
+import { PurchaseOrderStatusBadge } from "../../ordenes/status-badge";
 import {
   FORBIDDEN_PAGE_MESSAGE,
   noticeMessage,
@@ -47,6 +56,8 @@ function single(value: string | string[] | undefined): string | undefined {
 
 // La ficha del proveedor (brief-22.2, D-9): sus datos, «Editar», «Desactivar» con confirmación o
 // «Reactivar», y su historia paginada. Solo admin: purchasing rechaza a un viewer también al leer.
+// Desde la 22.3, sus últimas cinco órdenes de compra, el enlace a la lista filtrada por él y, si
+// está activo, «Nueva orden de compra» con el proveedor ya elegido (brief-22.3, D-10).
 export default async function SupplierPage({
   params,
   searchParams,
@@ -84,6 +95,8 @@ export default async function SupplierPage({
     Number.isSafeInteger(auditPage) && auditPage > 0 ? auditPage : 1,
   );
   const timeZone = await getOrganizationTimezone(context);
+  // Sus últimas órdenes de compra (brief-22.3, D-10).
+  const orders = await listRecentSupplierPurchaseOrders(context, supplier.id);
   const actorLabel = audit.ok
     ? await auditActorLabels(context.organizationId, audit.entries)
     : null;
@@ -186,6 +199,66 @@ export default async function SupplierPage({
           ]}
         />
       </SectionCard>
+
+      {orders.ok ? (
+        <SectionCard
+          id="ordenes-titulo"
+          title="Órdenes de compra"
+          icon="fileText"
+          className="mt-6"
+        >
+          {orders.orders.length === 0 ? (
+            <p className="text-sm text-muted">
+              {NO_SUPPLIER_PURCHASE_ORDERS_MESSAGE}
+            </p>
+          ) : (
+            <ul className="flex flex-col divide-y divide-border">
+              {orders.orders.map((order) => (
+                <li
+                  key={order.id}
+                  className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
+                >
+                  <Link
+                    href={`/compras/ordenes/${order.id}`}
+                    className={`${linkClass} font-mono`}
+                  >
+                    {order.displayNumber}
+                  </Link>
+                  <span className="text-muted">
+                    {formatShortDateTime(order.createdAt, timeZone)}
+                  </span>
+                  <span className="tabular-nums">
+                    {formatMoney(order.total, order.currency)}
+                  </span>
+                  <PurchaseOrderStatusBadge status={order.status} />
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+            {orders.total > 0 ? (
+              <Link
+                href={purchaseOrderFiltersHref({
+                  ...DEFAULT_PURCHASE_ORDER_FILTERS,
+                  supplierId: supplier.id,
+                })}
+                className={linkClass}
+              >
+                Ver las {orders.total}{" "}
+                {orders.total === 1 ? "orden" : "órdenes"} de este proveedor
+              </Link>
+            ) : null}
+            {supplier.isActive ? (
+              <Link
+                href={`/compras/ordenes/nueva?proveedor=${supplier.id}`}
+                className={linkClass}
+              >
+                Nueva orden de compra
+              </Link>
+            ) : null}
+          </p>
+        </SectionCard>
+      ) : null}
 
       {audit.ok && timeZone ? (
         <>

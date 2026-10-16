@@ -4,8 +4,10 @@ import * as catalogRepository from "@/modules/catalog/repository";
 import * as conversationsRepository from "@/modules/conversations/repository";
 import * as crmRepository from "@/modules/crm/repository";
 import * as ingestionRepository from "@/modules/ingestion/repository";
-import { getMemberSummaries } from "@/modules/organizations";
+import { getMemberSummaries, type AuthContext } from "@/modules/organizations";
 import * as organizationsRepository from "@/modules/organizations/repository";
+import { createPurchaseOrder } from "@/modules/purchasing";
+import * as purchaseOrderRepository from "@/modules/purchasing/purchase-order-repository";
 import * as purchasingRepository from "@/modules/purchasing/repository";
 import { getDb } from "@/shared/db";
 import { resetDatabase } from "./reset-database";
@@ -370,5 +372,137 @@ describe("las escrituras del proveedor no alcanzan a otra organización", () => 
     expect(
       await purchasingRepository.findSupplier(fixture.orgB, supplierB),
     ).toMatchObject({ name: "Proveedor de B" });
+  });
+});
+
+// La orden de compra (brief-22.3, D-7 y AC-6), con el mismo ayudante. La cancelación, el detalle y
+// la lista se prueban en el repositorio con una organización que no es la dueña; el alta con un
+// proveedor o un producto de otra organización, por el servicio, con un contexto de admin de A
+// armado a mano: el servicio solo mira la organización, el usuario y el rol.
+describe("la orden de compra no alcanza a otra organización", () => {
+  async function orderOfB(): Promise<{ orderId: string; supplierId: string }> {
+    const supplier = await getDb().execute<{ id: string }>(
+      sql`insert into suppliers (organization_id, name)
+          values (${fixture.orgB}, 'Proveedor de B') returning id`,
+    );
+    const supplierId = supplier.rows[0]!.id;
+    const order = await getDb().execute<{ id: string }>(
+      sql`insert into purchase_orders (organization_id, number, supplier_id, currency, total,
+                                       created_by)
+          values (${fixture.orgB}, 1, ${supplierId}, 'ARS', 100, ${fixture.userB})
+          returning id`,
+    );
+    const orderId = order.rows[0]!.id;
+    await getDb().execute(
+      sql`insert into purchase_order_lines (organization_id, purchase_order_id, product_id,
+                                            position, quantity, unit_cost, line_total)
+          values (${fixture.orgB}, ${orderId}, ${fixture.productB}, 1, 1, 100, 100)`,
+    );
+    return { orderId, supplierId };
+  }
+
+  async function adminOfA(): Promise<AuthContext> {
+    const user = await getDb().execute<{ id: string }>(
+      sql`insert into users (email, password_hash, name)
+          values ('admin-a@example.com', 'hash-irrelevante', 'Admin de A') returning id`,
+    );
+    await getDb().execute(
+      sql`insert into organization_members (organization_id, user_id, role)
+          values (${fixture.orgA}, ${user.rows[0]!.id}, 'admin')`,
+    );
+    return {
+      userId: user.rows[0]!.id,
+      organizationId: fixture.orgA,
+      role: "admin",
+      mustChangePassword: false,
+      sessionExpiresAt: new Date(Date.now() + 3_600_000),
+    };
+  }
+
+  it("cancelPurchaseOrderRow", async () => {
+    const { orderId } = await orderOfB();
+    const error = await attempt((tx) =>
+      purchaseOrderRepository.cancelPurchaseOrderRow(tx, fixture.orgA, orderId),
+    );
+    const after = await getDb().execute<{ status: string }>(
+      sql`select status from purchase_orders where id = ${orderId}`,
+    );
+    expect(after.rows[0]!.status).toBe("open");
+    expect((error as Error | undefined)?.message).toContain(
+      "no existe en esta organización",
+    );
+  });
+
+  it("findPurchaseOrder y findPurchaseOrderLines no ven la orden de otra organización", async () => {
+    const { orderId } = await orderOfB();
+    expect(
+      await purchaseOrderRepository.findPurchaseOrder(fixture.orgA, orderId),
+    ).toBeUndefined();
+    expect(
+      await purchaseOrderRepository.findPurchaseOrderLines(
+        fixture.orgA,
+        orderId,
+      ),
+    ).toEqual([]);
+    expect(
+      await purchaseOrderRepository.findPurchaseOrder(fixture.orgB, orderId),
+    ).toMatchObject({ id: orderId, status: "open" });
+  });
+
+  it("la lista no ve las órdenes de otra organización, ni filtrando por su proveedor", async () => {
+    const { supplierId } = await orderOfB();
+    for (const query of [
+      { status: null, supplierId: null, number: null },
+      { status: null, supplierId, number: null },
+      { status: null, supplierId: null, number: 1 },
+    ]) {
+      const ofA = { organizationId: fixture.orgA, ...query };
+      expect(await purchaseOrderRepository.countPurchaseOrders(ofA)).toBe(0);
+      expect(
+        await purchaseOrderRepository.findPurchaseOrders(ofA, 25, 0),
+      ).toEqual([]);
+    }
+    expect(
+      await purchaseOrderRepository.countPurchaseOrders({
+        organizationId: fixture.orgB,
+        status: null,
+        supplierId: null,
+        number: null,
+      }),
+    ).toBe(1);
+  });
+
+  it("el alta con un proveedor o un producto de otra organización responde NOT_FOUND", async () => {
+    const { supplierId } = await orderOfB();
+    const admin = await adminOfA();
+    const supplierA = await getDb().execute<{ id: string }>(
+      sql`insert into suppliers (organization_id, name)
+          values (${fixture.orgA}, 'Proveedor de A') returning id`,
+    );
+    const line = { productId: fixture.productB, quantity: "1", unitCost: "1" };
+    expect(
+      await createPurchaseOrder(admin, {
+        supplierId,
+        currency: "ARS",
+        lines: [line],
+      }),
+    ).toEqual({ ok: false, code: "NOT_FOUND", target: "supplier" });
+    expect(
+      await createPurchaseOrder(admin, {
+        supplierId: supplierA.rows[0]!.id,
+        currency: "ARS",
+        lines: [line],
+      }),
+    ).toEqual({
+      ok: false,
+      code: "NOT_FOUND",
+      target: "products",
+      lines: [{ position: 1, productId: fixture.productB }],
+    });
+    const orders = await getDb().execute<{ total: number }>(
+      sql`select count(*)::int as total from purchase_orders
+          where organization_id = ${fixture.orgA}`,
+    );
+    expect(orders.rows[0]!.total).toBe(0);
   });
 });

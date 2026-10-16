@@ -134,6 +134,14 @@ Agregados en la Fase 11, catálogo comercial ([brief-11.1](../decisions/brief-11
 - **FR-COMP-03**: Un admin ve la lista de proveedores en orden alfabético, de a 25, con el filtro de activos, inactivos o todos, y busca por parte del nombre sin distinguir mayúsculas ni acentos, o por el CUIT con o sin guiones. Ve la ficha de cada uno con su historia.
 - **FR-COMP-04**: El alta, la edición, la desactivación y la reactivación de un proveedor se auditan con los datos que cambiaron. Un cambio que no cambia nada no se audita.
 
+*Agregados en la 22.3* ([brief-22.3](../decisions/brief-22.3-la-orden-de-compra.md)). El cierre de una orden, a mano o con la recepción, llega con la 22.4 (D-3).
+
+- **FR-COMP-05**: Un admin crea una orden de compra para un proveedor activo, en la moneda que elige de las del sistema, con de 1 a 50 líneas: cada una con un producto activo, la cantidad y el costo unitario esperado con el IVA incluido, que escribe él y no se propone. Un producto va en una sola línea. El total de cada línea es el costo por la cantidad, redondeado a los decimales de la moneda, y no puede dar cero; el total de la orden es la suma de las líneas. La orden se numera `OC-000123` sin huecos, nace abierta y **no toca el stock ni el costo**.
+- **FR-COMP-06**: Un admin ve el detalle de una orden, con el proveedor y los productos con sus datos de hoy, y lo imprime o lo guarda como PDF para mandárselo al proveedor, con la leyenda «Documento no válido como factura». La orden no se edita.
+- **FR-COMP-07**: Un admin ve la lista de órdenes de compra, la más nueva primero, de a 25, con el filtro de estado y el de proveedor, y busca por número. La ficha del proveedor muestra sus cinco últimas órdenes y permite crear una con él ya elegido.
+- **FR-COMP-08**: Un admin cancela una orden abierta, con una confirmación; una cancelada no vuelve a abrirse. El alta y la cancelación se auditan, sin datos del proveedor.
+- **FR-COMP-09**: El CUIT de un proveedor que no se acepta dice por qué: otra cantidad de dígitos o una forma inválida, o el dígito verificador que no cierra, cada uno con su mensaje.
+
 ## Información del negocio
 
 Desde la subfase 11.2 ([brief-11.2](../decisions/brief-11.2-informacion-del-negocio.md)). Es lo que el agente de WhatsApp va a leer por el contrato de la 11.3.

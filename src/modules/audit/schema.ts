@@ -43,6 +43,9 @@ export const auditEntityType = pgEnum("audit_entity_type", [
   "refund",
   // El proveedor (brief-22.2, D-8; ADR 0023, punto 2): alta, edición, desactivación y reactivación.
   "supplier",
+  // La orden de compra (brief-22.3, D-9; ADR 0023, punto 3): el alta y la cancelación; el cierre,
+  // desde la 22.4.
+  "purchase_order",
 ]);
 
 export const auditAction = pgEnum("audit_action", [

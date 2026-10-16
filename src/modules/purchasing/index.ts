@@ -1,7 +1,7 @@
-// Interfaz pública del módulo purchasing (ADR 0023; brief-22.2): los proveedores. La orden de
-// compra, la recepción y su anulación llegan con la 22.3 a la 22.5. Ningún módulo depende de
-// purchasing en esta subfase: la usan solo las pantallas. cash lo hará desde la 22.6 (punto 11).
-export { formatCuit } from "./cuit";
+// Interfaz pública del módulo purchasing (ADR 0023): los proveedores (brief-22.2) y, desde la 22.3,
+// la orden de compra (brief-22.3). La recepción y su anulación llegan con la 22.4 y la 22.5. Ningún
+// módulo depende de purchasing: la usan solo las pantallas. cash lo hará desde la 22.6 (punto 11).
+export { formatCuit, type CuitRejection } from "./cuit";
 export { SUPPLIER_FIELD_LIMITS } from "./schema";
 export {
   createSupplier,
@@ -26,5 +26,38 @@ export {
   type SupplierListResult,
   type SupplierRule,
   type SupplierStatusFilter,
+  type SupplierValidationFailure,
   type UpdateSupplierResult,
 } from "./service";
+export {
+  cancelPurchaseOrder,
+  createPurchaseOrder,
+  formatPurchaseOrderNumber,
+  getPurchaseOrder,
+  listPurchaseOrderAudit,
+  listPurchaseOrders,
+  listRecentSupplierPurchaseOrders,
+  MAX_PURCHASE_ORDER_LINES,
+  parsePurchaseOrderNumberSearch,
+  PURCHASE_ORDER_STATUSES,
+  PURCHASE_ORDERS_PAGE_SIZE,
+  SUPPLIER_PURCHASE_ORDERS_LIMIT,
+  type CancelPurchaseOrderResult,
+  type CreatePurchaseOrderResult,
+  type PurchaseOrderAuditEntry,
+  type PurchaseOrderAuditResult,
+  type PurchaseOrderDetail,
+  type PurchaseOrderInput,
+  type PurchaseOrderLine,
+  type PurchaseOrderLineField,
+  type PurchaseOrderLineInput,
+  type PurchaseOrderLineIssue,
+  type PurchaseOrderLineRule,
+  type PurchaseOrderLineRuleIssue,
+  type PurchaseOrderListFilters,
+  type PurchaseOrderPage,
+  type PurchaseOrderStatus,
+  type PurchaseOrderStatusFilter,
+  type PurchaseOrderSummary,
+  type PurchaseOrderValidationFailure,
+} from "./purchase-orders";

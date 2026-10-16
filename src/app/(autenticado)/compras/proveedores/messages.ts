@@ -1,4 +1,8 @@
-import type { SupplierField, SupplierRule } from "@/modules/purchasing";
+import type {
+  CuitRejection,
+  SupplierField,
+  SupplierRule,
+} from "@/modules/purchasing";
 import type { ErrorCode } from "@/shared/errors";
 
 // Textos de las pantallas de proveedores (brief-22.2, D-7 y D-9), derivados de la taxonomía de
@@ -29,8 +33,11 @@ export const PHONE_FORMAT_MESSAGE =
   "Ingresá el teléfono en formato internacional, con + y código de país, por ejemplo +5491155551234.";
 export const EMAIL_FORMAT_MESSAGE =
   "Ingresá un email válido de hasta 254 caracteres, por ejemplo nombre@dominio.com.";
+// Dos mensajes para el CUIT (brief-22.3, D-12): la forma, y el dígito verificador que no cierra.
 export const CUIT_FORMAT_MESSAGE =
-  "Ingresá un CUIT de 11 dígitos con su dígito verificador, por ejemplo 20-12345678-6.";
+  "Ingresá un CUIT de 11 dígitos, con o sin guiones, por ejemplo 20-12345678-6.";
+export const CUIT_CHECK_DIGIT_MESSAGE =
+  "El dígito verificador no corresponde a este CUIT. Revisá el último número.";
 export const PHONE_HINT = "Formato internacional, por ejemplo +5491155551234.";
 export const CUIT_HINT =
   "Con o sin guiones. Se comprueba el dígito verificador.";
@@ -45,13 +52,19 @@ const FIELD_MESSAGES: Record<SupplierField, string> = {
 // El orden del formulario.
 const FIELD_ORDER: SupplierField[] = ["name", "phone", "email", "cuit"];
 
-// Primer campo inválido en el orden del formulario, con su mensaje.
-export function supplierFieldError(fields: SupplierField[]): {
+// Primer campo inválido en el orden del formulario, con su mensaje. El del CUIT depende de la razón.
+export function supplierFieldError(
+  fields: SupplierField[],
+  cuitReason?: CuitRejection,
+): {
   field: SupplierField;
   message: string;
 } {
   const field =
     FIELD_ORDER.find((candidate) => fields.includes(candidate)) ?? "name";
+  if (field === "cuit" && cuitReason === "check_digit") {
+    return { field, message: CUIT_CHECK_DIGIT_MESSAGE };
+  }
   return { field, message: FIELD_MESSAGES[field] };
 }
 

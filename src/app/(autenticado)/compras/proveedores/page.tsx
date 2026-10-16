@@ -26,6 +26,7 @@ import {
 } from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
 import { Pagination, shownRangeText } from "@/app/_components/pagination";
+import { PurchasingSubNav } from "../purchasing-sub-nav";
 import {
   hasActiveFilters,
   parseSupplierFilters,
@@ -48,6 +49,7 @@ const TITLE = "Proveedores";
 // La lista de proveedores (brief-22.2, D-9 y D-10): búsqueda por parte del nombre o por CUIT,
 // filtro de estado y página en la URL. Orden alfabético. Tabla en escritorio y tarjetas en móvil,
 // como clientes. Solo admin: a un viewer, purchasing le responde FORBIDDEN y la página lo dice.
+// Desde la 22.3, con la navegación interna de Compras (brief-22.3, D-10).
 export default async function SuppliersPage({
   searchParams,
 }: {
@@ -71,6 +73,7 @@ export default async function SuppliersPage({
           label: "+ Nuevo proveedor",
         }}
       />
+      <PurchasingSubNav current="proveedores" />
 
       <form
         key={supplierFiltersHref(filters)}

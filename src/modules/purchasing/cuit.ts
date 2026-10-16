@@ -30,15 +30,20 @@ export function isValidCuit(digits: string): boolean {
   return cuitCheckDigit(digits.slice(0, 10)) === Number(digits[10]);
 }
 
+// Por qué no se acepta un CUIT escrito (brief-22.3, D-12): format, si no son once dígitos con los
+// separadores admitidos; check_digit, si son once dígitos y el verificador no cierra.
+export type CuitRejection = "format" | "check_digit";
+
 // Entrada de formulario: vacía es «sin CUIT»; cualquier otra cosa tiene que ser un CUIT válido.
 export function parseCuitInput(
   value: string | null | undefined,
-): { ok: true; cuit: string | null } | { ok: false } {
+): { ok: true; cuit: string | null } | { ok: false; reason: CuitRejection } {
   if (value == null || value.trim() === "") return { ok: true, cuit: null };
   const digits = cuitDigits(value);
-  return digits !== null && isValidCuit(digits)
+  if (digits === null) return { ok: false, reason: "format" };
+  return isValidCuit(digits)
     ? { ok: true, cuit: digits }
-    : { ok: false };
+    : { ok: false, reason: "check_digit" };
 }
 
 // Como se muestra: `20-12345678-9`.

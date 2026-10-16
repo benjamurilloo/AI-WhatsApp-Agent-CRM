@@ -29,7 +29,9 @@ test.afterAll(async () => {
 // Los proveedores no se borran desde la aplicación (crm_app no tiene DELETE), y la auditoría es de
 // solo inserción: TRUNCATE es la vía documentada para vaciarlas (ADR 0013).
 test.beforeEach(async () => {
-  await db.execute(sql`truncate table suppliers, audit_logs`);
+  await db.execute(
+    sql`truncate table purchase_order_lines, purchase_orders, suppliers, audit_logs`,
+  );
   await db.execute(sql`delete from login_attempts`);
   await db.execute(sql`delete from sessions`);
   await seedBasic(db, E2E_PASSWORD);
@@ -82,7 +84,14 @@ test("un admin llega a Compras, da de alta un proveedor con el teclado y ve los 
 }) => {
   await login(page, ADMIN);
   const nav = page.getByRole("navigation", { name: "Principal" });
+  // Desde la 22.3, «Compras» lleva a las órdenes, y los proveedores son la otra pestaña
+  // (brief-22.3, D-10).
   await nav.getByRole("link", { name: "Compras" }).click();
+  await expect(page).toHaveURL("/compras/ordenes");
+  await page
+    .getByRole("navigation", { name: "Secciones de compras" })
+    .getByRole("link", { name: "Proveedores" })
+    .click();
   await expect(page).toHaveURL("/compras/proveedores");
   await expect(nav.getByRole("link", { name: "Compras" })).toHaveAttribute(
     "aria-current",
@@ -96,12 +105,13 @@ test("un admin llega a Compras, da de alta un proveedor con el teclado y ve los 
   await page.getByLabel("Nombre *").fill("Distribuidora Norte");
   await page.getByLabel("Teléfono").fill("+54 9 11 5555-1234");
   await page.getByLabel("Email").fill("Ventas@Norte.com");
-  // El dígito verificador no cierra: el servidor lo rechaza y conserva lo escrito.
+  // El dígito verificador no cierra: el servidor lo rechaza con su mensaje propio (brief-22.3, D-12)
+  // y conserva lo escrito.
   await page.getByLabel("CUIT").fill("20-12345678-0");
   await expectAccessible(page, "alta");
   await page.getByLabel("CUIT").press("Enter");
   await expect(
-    page.getByText(/Ingresá un CUIT de 11 dígitos con su dígito verificador/),
+    page.getByText(/El dígito verificador no corresponde a este CUIT/),
   ).toBeVisible();
   await expect(page.getByLabel("CUIT")).toBeFocused();
   await expect(page.getByLabel("Nombre *")).toHaveValue("Distribuidora Norte");
