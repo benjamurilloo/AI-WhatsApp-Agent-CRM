@@ -2,6 +2,48 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-17 — 22.7: la cuenta del proveedor, y la Fase 22 — Compras y proveedores
+
+Cierra el 2026-10-17, después del recorrido del usuario en producción ([brief-22.7](docs/decisions/brief-22.7-la-cuenta-del-proveedor.md), §Cierre). Con ella **cierra la Fase 22**: las subfases del punto 15 del [ADR 0023](docs/decisions/0023-compras-y-proveedores.md) están entregadas, desplegadas y recorridas, con la 22.6 dividida en dos por la nota fechada del 2026-10-16.
+
+**Certifica:**
+- **Solo lecturas, sin migración**: ninguna escritura, número ni auditoría nuevos.
+- **El estado de cuenta del proveedor** (pantalla 55), imprimible, con su CUIT y la leyenda «Documento no válido como factura». Muestra:
+  - por moneda, el debe, el haber y el saldo;
+  - las recepciones vigentes con lo pagado directo, lo recibido de la cuenta y lo que falta;
+  - los comprobantes, hasta 500, con el aviso cuando hay más. El resumen y la imputación siempre están enteros.
+- **La tarjeta «Cuenta» de la ficha** (pantalla 42): por moneda, lo que se le debe o lo que está a favor del negocio.
+- **La lista «A pagar»** (pantalla 56), en el submenú de Compras: una fila por proveedor y moneda, de la deuda mayor a la menor, con filtro por moneda y de a 25.
+- **Una sola regla**: todo sale de `supplierAccountInput` e `imputeAccount`, la misma cuenta que limita el pago. El estado de cuenta, la tarjeta, la lista y el formulario del pago a cuenta dan los mismos números.
+- **Una sola foto**: las seis lecturas sin bloqueo de la cuenta del proveedor leen con `withSnapshot`, también las tres de la 22.6. La guarda `purchasing-dependencies` lo fija por texto, junto con quién puede leer la cuenta.
+- **`purchasing` suma una lectura por organización** (`listGoodsReceiptsForAccounts`) y la fecha de la anulación en las tres que dan recepciones. Sigue sin importar `cash`.
+- **Medido**: la lista con 5× del volumen esperado (500 proveedores, 10.000 recepciones y 10.000 pagos), de 141 a 151 ms contra 400; con 1×, de 34 a 39. El estado de cuenta, el resumen y la lista con el proveedor grande de la 22.6, entre 34 y 79 ms contra 754.
+- **El ajuste del recorrido**: la moneda del pago a cuenta y la del cobro a cuenta de un cliente se eligen de la lista del sistema, como en la caja, y no de las sugerencias del navegador.
+- **La revisión independiente** no encontró nada crítico ni mayor: seis hallazgos menores y cinco notas, corregidos o declarados. Las ocho mutaciones que aplican se detectaron, cada una por su caso, y también las dos de la guarda.
+- **En producción**:
+  - `76ed37b` y `69d3cad`, sin migración, con las CI 39049343517 y 39052849807 en `success`;
+  - el usuario cargó una recepción de un proveedor nuevo, la vio en «A pagar», imprimió el estado de cuenta, pagó una parte a cuenta y entró con un `viewer`, en «Demostración Vixora»;
+  - conciliado contra la base: a «Distribuidora Norte» se le deben 400.000 ARS, y «Importaciones Sur» tiene 2.000.000 a favor del negocio, con el pago a cuenta que el usuario sumó.
+
+**Nivel**: validado localmente y en CI, validado en integración para las pantallas, desplegado en producción y recorrido por el usuario. No es «preparado para producción».
+
+**No certifica:**
+- **Que una lectura sin la foto falle con una escritura en el medio**: no hay un test de la carrera. Se verificó por lectura y lo fija la guarda (D-6).
+- **La marca «Desactivado» en la lista**: la lectura de nombres no trae ese dato. Un desactivado con deuda aparece sin la marca, por desvío aceptado.
+- **Las lecturas de un cliente en una sola foto**: tienen el mismo patrón y quedan para una tarea aparte en Notion.
+- **El end-to-end completo en verde en una sola corrida local**: dio 225 de 226. El caso 9 de `clients.spec.ts` cuelga en local esperando dos precargas de la navegación, ajenas a esta subfase, y falló igual el 2026-10-16. En la CI pasó. Por decisión del usuario, no tiene tarea.
+
+**La Fase 22**, de la 22.1 a la 22.7:
+- el [ADR 0023](docs/decisions/0023-compras-y-proveedores.md);
+- los proveedores;
+- la orden de compra;
+- la recepción, que suma stock y fija el costo;
+- su anulación;
+- los pagos a proveedores;
+- la cuenta del proveedor.
+
+Cinco migraciones (`0047` a `0051`; el ADR y la 22.7, sin tablas), todas en producción y recorridas por el usuario.
+
 ## 2026-10-17 — 22.6: los pagos a proveedores
 
 Cierra el 2026-10-17, después del recorrido del usuario en producción ([brief-22.6](docs/decisions/brief-22.6-los-pagos-a-proveedores.md), §Cierre). Son los primeros comprobantes de `cash` que dependen de `purchasing`, sobre el [ADR 0023](docs/decisions/0023-compras-y-proveedores.md), puntos 8 y 10.

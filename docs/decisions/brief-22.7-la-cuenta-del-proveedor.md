@@ -16,7 +16,7 @@ generated_at: 2026-10-17
 - **Nivel de validación alcanzable**: **validado localmente y en CI**, **validado en integración** para las pantallas y, con D-12, **desplegado en producción** con el recorrido del usuario. No es «preparado para producción».
 - **Orden**: séptima y **última** subfase de la Fase 22 — Compras y proveedores ([Roadmap](../planning/Roadmap.md) §Fase 22), después de la 22.6, cerrada el 2026-10-17. Implementa la fila «22.7» de la nota fechada del 2026-10-16 en el punto 15 del [ADR 0023](0023-compras-y-proveedores.md) ([brief-22.6](brief-22.6-los-pagos-a-proveedores.md), D-1). **Al cerrarla se cierra la fase** (D-13).
 - **No abre ni cierra gate.** Es solo lectura y sin migración. Pero suma una lectura de toda la organización a `purchasing`, cierra la fase, y la 21.6, su molde, no cumplió el umbral de su lista a la primera. Por eso se recomienda la revisión independiente (D-11).
-- **Estado de este documento**: **aprobado** por el usuario el 2026-10-17, con las recomendaciones de D-1 a D-13 (entre ellas D-6, una sola foto en las seis lecturas sin bloqueo de la cuenta del proveedor, con la tarea aparte para las de un cliente, y D-8, los umbrales fijados antes de medir). La tarea 22.7 (`3fb702be6f4e811f8230d2dadab11c13`) sigue en «Esperando» hasta que el usuario autorice el cambio.
+- **Estado de este documento**: **aprobado** por el usuario el 2026-10-17, con las recomendaciones de D-1 a D-13 (entre ellas D-6, una sola foto en las seis lecturas sin bloqueo de la cuenta del proveedor, con la tarea aparte para las de un cliente, y D-8, los umbrales fijados antes de medir). La tarea 22.7 (`3fb702be6f4e811f8230d2dadab11c13`) sigue en «Esperando» hasta que el usuario autorice el cambio. **Cerrado el 2026-10-17**, y con él la Fase 22 (§Cierre).
 
 ## Objetivo
 
@@ -473,3 +473,43 @@ Un agente de solo lectura que no participó del trabajo revisó la entrega contr
 - ninguna frase de estado desactualizada.
 
 El revisor no aprobó la entrega ni autorizó nada.
+
+## Cierre de la subfase 22.7 y de la Fase 22, 2026-10-17
+
+Cierra el 2026-10-17, después del recorrido del usuario en producción («Todo lo demás está perfecto» y, tras el ajuste, «listo, esta todo perfecto») y de la conciliación contra la base. **Con ella cierra la Fase 22** (D-13).
+
+- **AC-1 a AC-14 cumplidos**, con los desvíos aceptados por el usuario el 2026-10-17 (§Resultados) y la nota fechada en D-5 de la 22.6 (R2), que él autorizó.
+- **Commits, CI y despliegues**:
+  - `76ed37b`, la implementación. CI 39049343517 `success`, leída por el SHA completo. En ella pasó también el caso 9 de `clients.spec.ts`, que en local colgaba.
+  - Desplegado el 2026-10-17 según [deploy/production/README.md](../../deploy/production/README.md) §Desplegar, **sin migración**, con `5251770` anotado para volver atrás. El paso 3 corrió en modo manual. Después: el servicio `active`, `/login` con `200` y 52 migraciones aplicadas.
+  - **El ajuste del recorrido, `69d3cad`**: la moneda del pago a cuenta y del cobro a cuenta de un cliente, de la lista del sistema (§Resultados). CI 39052849807 `success`. Desplegado ese día del mismo modo, con `76ed37b` anotado para volver atrás, y con el mismo resultado después.
+- **El recorrido de D-12**, en Demostración Vixora:
+  - una recepción nueva, `RC-000007`, de un proveedor nuevo, «Distribuidora Norte» (500.000 ARS);
+  - la lista «A pagar» con su filtro, la tarjeta de la ficha, el estado de cuenta impreso;
+  - un pago a cuenta de 100.000 por transferencia (`PP-000005`), con la imputación en el estado de cuenta y lo que falta en la lista;
+  - «Importaciones Sur», fuera de la lista y con su saldo a favor;
+  - el `viewer` en las dos URLs.
+
+  El usuario sumó además otro pago a cuenta a «Importaciones Sur», `PP-000006`, de 1.000.000 por transferencia.
+- **Conciliado contra la base**, solo con lecturas:
+  - «Distribuidora Norte», ARS: debe 500.000 y haber 100.000, **se le deben 400.000**;
+  - «Importaciones Sur», ARS: debe 6.650.000 (cuatro recepciones vigentes, `RC` 1, 2, 5 y 6) y haber 8.650.000 (`PP-000002`, `PP-000004` y `PP-000006`), **2.000.000 a favor del negocio**. El 1.000.000 que se esperaba según H-8, más `PP-000006`;
+  - ninguna recepción tiene pagado de forma directa más que su total;
+  - dos recepciones anuladas y dos pagos anulados;
+  - los contadores: `goods_receipt` en 7, `supplier_payment` en 6 y `supplier_payment_void` en 2;
+  - solo una organización tiene proveedores.
+
+  Es lo mismo que da la regla: lo que se debe es la suma de lo que falta de las recepciones vigentes, y lo que está a favor, lo que sobra.
+- **Volver a `5251770` sigue siendo limpio**: la 22.7 no escribe ni tiene migración. **Volver a `76ed37b` también**: el ajuste solo cambia dos formularios.
+- **H-2, la imprecisión del HANDOFF del cierre de la 22.6**, se corrige en el HANDOFF de este cierre.
+- **La Fase 22**, de la 22.1 a la 22.7, contra el [ADR 0023](0023-compras-y-proveedores.md), punto 15, con su nota fechada del 2026-10-16:
+  - el ADR;
+  - los proveedores;
+  - la orden de compra;
+  - la recepción, que suma stock y fija el costo;
+  - su anulación;
+  - los pagos a proveedores con su anulación;
+  - la cuenta del proveedor.
+
+  Cinco migraciones (`0047` a `0051`; el ADR y la 22.7, sin tablas), todas en producción y recorridas por el usuario. Cada fila del punto 15 está entregada, con la 22.6 dividida en dos como dice la nota. **La fase no cierra con nada que el ADR no diga**, así que el ADR no suma nota (D-13).
+- **Nivel**: validado localmente y en CI, validado en integración para las pantallas, desplegado en producción y recorrido por el usuario. No es «preparado para producción»: ese gate sigue en la Fase 13, con la 13.5.2-b esperando un negocio real.
