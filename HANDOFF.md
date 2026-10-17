@@ -3,8 +3,8 @@ schema: project-state.v1
 project: ai-whatsapp-agent-crm
 generated_at: 2026-10-17
 git_ref: main — el último ref con corrida leída en verde es **`69d3cad`** (run 39052849807, `success`, leída por el SHA completo el 2026-10-17), el ajuste del recorrido de la 22.7; la de `76ed37b`, la implementación de la 22.7, también (39049343517), y la de `3441471`, su brief (39040667877). La de `8d07582`, el cierre de la 22.6, quedó `cancelled` porque la reemplazó `3441471`, que la contiene. Después viene el commit del cierre de la 22.7 y de la Fase 22, solo documentación: **al retomar, leer su corrida por `headSha`**. **Producción corre `69d3cad`**, con 52 migraciones; para volver atrás, `76ed37b` (solo cambian dos formularios) o `5251770` (la 22.7 no escribe ni tiene migración), las dos limpias. `confirmado`
-active_phase: **Ninguna fase de ERP abierta.** **La Fase 22 — Compras y proveedores cerró el 2026-10-17** con la 22.7, por decisión del usuario: el ADR 0023, los proveedores, la orden de compra, la recepción, su anulación, los pagos a proveedores y la cuenta del proveedor, desplegados y recorridos. La Fase 21 cerró el 2026-10-15. **La Fase 13 — Producción sigue abierta**, con la 13.5.2-b esperando un negocio real y su prioridad intacta. `confirmado`
-active_task: **Ninguna.** La fase siguiente la decide el usuario (§3). `confirmado`
+active_phase: **La Fase 23 — Sistema visual y marco, abierta el 2026-10-17** por decisión del usuario. Es la primera de las fases del rediseño (Roadmap §Fases 23 a 28, mockups en `docs/ui-redesign/`, orden aprobado 23 → 24 → 25 → 26). Su proyecto en Notion es `3fc702be6f4e81f19610c785fbadfef5`, con su tarea espejo. Ninguna fase de ERP abierta. **La Fase 22 — Compras y proveedores cerró el 2026-10-17** con la 22.7, por decisión del usuario: el ADR 0023, los proveedores, la orden de compra, la recepción, su anulación, los pagos a proveedores y la cuenta del proveedor, desplegados y recorridos. La Fase 21 cerró el 2026-10-15. **La Fase 13 — Producción sigue abierta**, con la 13.5.2-b esperando un negocio real y su prioridad intacta. `confirmado`
+active_task: **23.1 — Tokens y marco**, con el [brief](docs/decisions/brief-23.1-tokens-y-marco.md) aprobado el 2026-10-17 con las recomendaciones de D-1 a D-9 y sin implementar todavía. La 23.2 (estados compartidos) y la 23.3 (búsqueda global) esperan en Notion. `confirmado`
 confidence: confirmado
 ---
 
@@ -113,7 +113,9 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 
 ## 3. Próximo paso
 
-0. **La fase siguiente la decide el usuario.** La Fase 22 cerró el 2026-10-17, y ninguna fase de ERP queda abierta. La 13.5.2-b conserva su prioridad.
+0. *Actualizado el 2026-10-17*: **implementar la 23.1 según su brief aprobado.** El usuario eligió el rediseño (Fases 23 a 28 del Roadmap) a partir de los mockups de `docs/ui-redesign/`. Lo de abajo queda como contexto de la Fase 22. La 13.5.2-b conserva su prioridad.
+
+   ~~**La fase siguiente la decide el usuario.**~~ La Fase 22 cerró el 2026-10-17, y ninguna fase de ERP queda abierta.
 
    **Lo que la Fase 22 deja**:
    - en producción, «Importaciones Sur» tiene 2.000.000 ARS a favor del negocio, y a «Distribuidora Norte» se le deben 400.000; `C-000005` sigue abierta, con dos pagos en efectivo, uno anulado;

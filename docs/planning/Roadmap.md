@@ -425,6 +425,57 @@ Reglas comunes a las cuatro fases:
 - **Sin fase todavía**: cuenta corriente de clientes, listas de precios, varios depósitos, reportes de rentabilidad y contabilidad general. Entran cuando el uso los pida, con su decisión. *Enmendado el 2026-10-13*: la cuenta corriente de clientes pasa a la **Fase 21**, por decisión del usuario (arriba); las demás siguen sin fase. *Enmendado el 2026-10-15 por el [ADR 0023](../decisions/0023-compras-y-proveedores.md)*: la cuenta corriente con proveedores entra en la **Fase 22**; suman a esta lista los gastos que no son compras de mercadería, la devolución de mercadería al proveedor, el costo promedio y la valuación del inventario.
 - **Gate de entrada de la Fase 18**: la Fase 13 cerrada, o una decisión explícita del usuario registrada con fecha (ADR 0016, punto 3).
 
+## Fases 23 a 28 — El rediseño
+
+*Planificadas el 2026-10-17 por decisión del usuario, con la Fase 22 cerrada y ninguna fase de ERP abierta. Ese mismo día el usuario aprobó el plan y el orden recomendado: **23 → 24 → 25 → 26**. Las fases 27 y 28 se abren cuando el uso las pida. El plan se ajusta a medida que aparezcan funciones o mejoras nuevas, con su enmienda fechada. La 13.5.2-b conserva su prioridad: si se confirma un negocio real, la fase abierta se pausa.*
+
+- **Referencia visual**: los 44 mockups de [docs/ui-redesign/](../ui-redesign/manifest.md), generados por el usuario con otra herramienta y organizados en ocho lotes: sistema visual, marco, dashboard y un lote por módulo, en escritorio, en móvil y con sus estados. Igual que en la Fase 15, son bocetos: **una pieza no entra por estar dibujada**. Cada pieza se asigna a una fase, o se excluye con su motivo.
+- **Lo que el análisis del 2026-10-17 encontró**:
+  - **Lo que ya existe**: la paleta, Manrope, el modo oscuro y el panel de 256 px coinciden con los mockups desde la [Fase 15](#fase-15--identidad-visual-y-presentación).
+  - **Lo que pide más trabajo**:
+    - casi la mitad de lo dibujado se apoya en datos que ya existen y la UI no muestra (Fases 23 y 24);
+    - una parte necesita datos nuevos (Fases 25 a 28);
+    - otra parte contradice decisiones vigentes (abajo, «Fuera del rediseño»).
+  - **Dos piezas que no se reemplazan**:
+    - las métricas de WhatsApp del dashboard, que el mockup omite y pasan a su propia pestaña (Fase 25);
+    - la base de conocimiento que lee el agente, que el mockup de Información reemplaza por un perfil fiscal y que se conserva.
+- **Fase 23 — Sistema visual y marco**: lo que comparten todas las pantallas, sin datos nuevos ni contratos.
+  - **23.1 — Tokens y marco** ([brief-23.1](../decisions/brief-23.1-tokens-y-marco.md)): radios, botón secundario, menú en el orden de los mockups, usuario al pie del panel, migas y barra inferior en el teléfono.
+  - **23.2 — Estados compartidos**: carga con esqueleto, estado vacío con ícono y acción, error recuperable, aviso después de una acción y aviso de cambios sin guardar.
+  - **23.3 — Búsqueda global**, de solo lectura, sobre clientes, pedidos y productos, con los permisos de cada módulo.
+- **Fase 24 — Pantallas rediseñadas con lo que ya existe**: una subfase por módulo, cada una con su brief, sin tablas nuevas.
+  - **24.1 Conversaciones**: bandeja en tres paneles y notas en el hilo.
+  - **24.2 Clientes**: valor del cliente, ficha con pestañas y actividad unificada.
+  - **24.3 Productos**: costo, margen, valor de inventario, reservado y evolución del stock.
+  - **24.4 Pedidos y ventas**: cronología del pedido y pago derivado.
+  - **24.5 Proveedores y compras**: recibido y pendiente, y la recepción en el teléfono.
+  - **24.6 Caja**: movimientos unificados, por cobrar y por pagar, y el cierre en pasos.
+  - **24.7 Información y usuarios**: el horario rediseñado, la búsqueda de usuarios y la auditoría en la ficha.
+
+  El orden se fija al abrir la fase.
+- **Fase 25 — Métricas comerciales y dashboard con pestañas**: absorbe el pedido «métricas por sección» del 2026-10-14 (abajo).
+  - **Métricas nuevas**: ingresos, ventas, ticket promedio, la serie diaria, los productos destacados y el valor de inventario.
+  - **Bloques del dashboard**: «Requiere atención» (stock bajo y conversaciones sin respuesta) y la actividad reciente.
+  - **Analítica de ventas**: una pantalla propia.
+  - **Las métricas de WhatsApp** pasan a su propia pestaña.
+  - **Reglas**: cada métrica entra antes en [MetricsCatalog.md](../analytics/MetricsCatalog.md), con su test de fixture. El margen bruto exige guardar el costo al emitir la venta, una migración que decide su brief.
+- **Fase 26 — Trabajo en equipo**: el responsable de clientes, conversaciones y pedidos; las tareas y la próxima acción; las no leídas, la prioridad y el SLA; las vistas guardadas; el ciclo de vida del cliente; y las notas del cliente como línea de tiempo. **Empieza por un ADR**: es un dominio nuevo y toca el [DataModel](../architecture/DataModel.md).
+- **Fase 27 — Acciones masivas y exportación**: etiquetar, cambiar la categoría, actualizar el precio, archivar y cambiar el estado de varios registros a la vez, y exportar. Cada fila escribe con su auditoría. La importación por CSV con detección de duplicados sigue siendo la [Fase 14](#fase-14--migración-por-csv).
+- **Fase 28 — Administración y seguridad**:
+  - **Sin ADR**: el último acceso, las sesiones activas, la suspensión con motivo y el restablecimiento de la contraseña con una clave temporal.
+  - **Con su ADR**: los roles personalizados con matriz de permisos, la 2FA, las invitaciones por email (necesitan un servicio de envío) y el perfil fiscal del negocio con logo y documentos (necesita almacenamiento de archivos).
+- **Fuera del rediseño**: lo que contradice decisiones vigentes. Cada pieza entra solo con su propio ADR, nunca dentro de estas fases.
+  - el compositor y el envío de mensajes, con sus avisos de leído y enviado ([ADR 0017](../decisions/0017-responder-desde-el-crm.md), que espera un negocio real);
+  - Instagram y Messenger, y el estado de conexión de WhatsApp ([ADR 0014](../decisions/0014-el-agente-de-whatsapp-como-consumidor-del-crm.md));
+  - el borrado de clientes ([ADR 0015](../decisions/0015-vaciado-de-una-sola-direccion-en-tablas-de-solo-insercion.md));
+  - de la caja: varias cuentas, la conciliación bancaria, la proyección, los vencimientos y la reapertura ([ADR 0022](../decisions/0022-cobros-y-caja.md));
+  - de compras: la aprobación de órdenes, las fechas estimadas, el rendimiento del proveedor, el escaneo y las fotos ([ADR 0023](../decisions/0023-compras-y-proveedores.md));
+  - del pedido y la venta: el envío, la pasarela de pago, el reembolso al medio, los canales, los impuestos, los depósitos y las variantes (ADR 0016 a 0021);
+  - la campana de notificaciones ([Scope](../product/Scope.md)).
+- **Gate de entrada**: decisión del usuario del 2026-10-17 para la Fase 23. Cada fase siguiente se abre con su decisión, su proyecto en Notion y el brief de su primera subfase.
+- **Gate de salida**: decisión del usuario. Las Fases 23 a 25 no abren ni cierran un gate de producción, así que cada subfase se cierra con autoevaluación declarada, salvo que su brief diga otra cosa. Las que empiezan por un ADR (26 y 28) deciden en él si llevan revisión independiente. **La accesibilidad verificada con axe no puede retroceder.**
+- **Nivel de validación**: el de cada subfase. Las que se despliegan quedan **verificadas en producción**, sin certificar un nivel superior.
+
 ---
 
 ## Fases futuras, sin planificar en detalle
@@ -432,8 +483,8 @@ Reglas comunes a las cuatro fases:
 - ~~**Migración y cutover**: proyecto separado, posterior a la Fase 10 si la decisión es continuar ([ADR 0003](../decisions/0003-migracion-legado-proyecto-separado.md)). Incluye la carga desde el sistema legado y la integración con tráfico real detrás de un modo de prueba.~~ *Enmendado el 2026-09-23 ([ADR 0014](../decisions/0014-el-agente-de-whatsapp-como-consumidor-del-crm.md))*: la integración con tráfico real y la migración dejaron de ser un proyecto separado. Son las **Fases 11 a 14** de arriba.
 - **ERP** (ventas, compras, proveedores, pagos, caja, contabilidad): proyectos propios, sobre la base ya construida de `organizations`, `clients` y `products`. *Precisión del 2026-09-23*: **no empieza antes de que la integración esté en producción** (Fase 13), por decisión del usuario. Sin fases ni tablas hasta entonces. *Enmendado el 2026-10-05*: el ERP ya tiene fases planificadas, de la 18 a la 22 (arriba), que habilita el [ADR 0016](../decisions/0016-el-crm-se-amplia-hacia-un-erp-por-fases.md), aceptado el mismo día.
 - *Agregadas el 2026-10-14 a pedido del usuario, como recordatorio y sin fase ni orden*. Cada una necesita su brief y, si cambia una decisión o suma una integración, su ADR:
-  - **Refinamiento visual**: el espaciado (hay elementos muy separados), la tipografía, los colores y el diseño en general, como una mejora acotada sobre la [Fase 15](#fase-15--identidad-visual-y-presentación). La accesibilidad verificada con axe no puede retroceder.
-  - **Métricas por sección**: el dashboard, con pestañas, suma métricas de ventas, productos y clientes a las del agente. Cada métrica se define antes en [MetricsCatalog.md](../analytics/MetricsCatalog.md), con su test de fixture, como en la Fase 7. Las métricas de cobros y de caja, que el [ADR 0022](../decisions/0022-cobros-y-caja.md) dejó sin decidir, entran acá.
+  - **Refinamiento visual**: el espaciado (hay elementos muy separados), la tipografía, los colores y el diseño en general, como una mejora acotada sobre la [Fase 15](#fase-15--identidad-visual-y-presentación). La accesibilidad verificada con axe no puede retroceder. *Enmendado el 2026-10-17*: lo absorben las [Fases 23 y 24](#fases-23-a-28--el-rediseño).
+  - **Métricas por sección**: el dashboard, con pestañas, suma métricas de ventas, productos y clientes a las del agente. Cada métrica se define antes en [MetricsCatalog.md](../analytics/MetricsCatalog.md), con su test de fixture, como en la Fase 7. Las métricas de cobros y de caja, que el [ADR 0022](../decisions/0022-cobros-y-caja.md) dejó sin decidir, entran acá. *Enmendado el 2026-10-17*: lo absorbe la [Fase 25](#fases-23-a-28--el-rediseño).
   - **Meta Ads**: un módulo nuevo para gestionar anuncios y campañas desde el CRM. Es la primera integración saliente con un servicio externo de terceros, con sus credenciales: necesita un ADR antes del brief, que decida el alcance, el manejo de los secretos y si entra en el [Scope](../product/Scope.md).
 
 ## Camino crítico
@@ -500,4 +551,5 @@ Dentro de la Fase 11: 11.0 → (11.1 ∥ 11.2) → 11.3 → 11.4.
 - Toda librería nueva de la Fase 15, sea de íconos o de gráficos.
 - La apertura de la Fase 16 y qué candidatas entran *(agregado el 2026-10-05)*.
 - La apertura de la Fase 17, cada campo nuevo y el ADR de las imágenes *(agregado el 2026-10-05)*.
+- La apertura de cada fase del rediseño (23 a 28), qué piezas de los mockups entran y toda librería nueva *(agregado el 2026-10-17)*.
 - ~~La aceptación del ADR 0016 y su punto 3~~ (aceptado el 2026-10-05); la apertura de cada fase del ERP; la factura electrónica de ARCA, con su ADR *(agregado el 2026-10-05)*.
