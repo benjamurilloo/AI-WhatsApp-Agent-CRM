@@ -668,3 +668,21 @@ Un agente de solo lectura que no participó del trabajo revisó la entrega contr
 - **N2 (nota), aceptado sin cambio**: el trigger reutilizado `receipts_check_cash_session()` dice «cobro» también cuando rechaza un pago, porque es la función de la `0043` sin cambios. Las tres lecturas de D-5 salen sin `authorize` porque toman la transacción de quien llama, como `getSaleForReceipt`; hoy solo las usa `cash`, y la guarda de D-5 fija quién importa `purchasing`.
 - **Estado documental**: DataModel tenía dos líneas viejas. La de `payments` lleva ahora una precisión fechada, y la de la 22.5, su «Implementada». `HANDOFF.md` se actualiza al cerrar. La frase de FR-COMP sobre la 22.7 sigue siendo cierta.
 - **Lo inferido por el revisor, verificado**: el diff de `service.ts` en los cobros es solo agregar `export` a `expectedIn` y a `insufficientCash`, sin cambiar ningún caso de uso.
+
+## Cierre de la subfase 22.6, 2026-10-17
+
+Cierra el 2026-10-17, después del recorrido del usuario en producción («Listo, esta todo perfecto») y de la conciliación contra la base.
+
+- **AC-1 a AC-15 cumplidos**, con los tres desvíos y la salvedad de AC-8 aceptados por el usuario el 2026-10-16 (§Resultados).
+- **Commit, CI y despliegue**:
+  - `5251770`, la implementación. La CI 38982560939 terminó en `success` en 23 minutos al primer intento, con la suite completa, y se leyó por el SHA completo.
+  - Desplegado el 2026-10-17 según [deploy/production/README.md](../../deploy/production/README.md) §Desplegar, con `49db51c` anotado como la versión para volver atrás. La migración `0051` se aplicó, y la última línea comparó HEAD con el SHA pedido. Los pasos 2 y 3 corrieron con el usuario en modo manual.
+  - Después del despliegue: el servicio, `active`; `/login` en `127.0.0.1:3000`, con `200`; 52 migraciones aplicadas; `supplier_payments` y `supplier_payment_voids` con `SELECT` e `INSERT` para `crm_app` y sus seis triggers (`*_insert_only` sobre `UPDATE` y `DELETE`, `*_open_session`, `supplier_payments_cash_session` y `supplier_payment_voids_copy_payment`); `supplier_payment` y `supplier_payment_void` en `document_kind`, `supplier_payment` en `audit_entity_type` y los cinco motivos; las dos tablas vacías.
+- **La conciliación del recorrido**, solo con lecturas, en Demostración Vixora, con «Importaciones Sur»:
+  - `PP-000001` (transferencia), `PP-000002` y `PP-000003` (efectivo, en `C-000005`), de 600.000 cada uno contra `RC-000006` (1.200.000); `PP-000004`, a cuenta, 7.050.000 por transferencia;
+  - `APP-000001` anula `PP-000001` sin sesión, y `APP-000002` anula `PP-000003` en `C-000005`, que sigue abierta: lo esperado recuperó esos 600.000. Las dos con «El pago no se hizo» y con la moneda, el monto y la sesión de su pago;
+  - la cuenta: se le debe por las recepciones vigentes 1, 2, 5 y 6, 6.650.000; pagado vigente, 7.650.000 (600.000 directos contra `RC-000006` y 7.050.000 a cuenta). La regla imputa el pago a cuenta a `RC-000001`, `RC-000002`, `RC-000005` y a los 600.000 que le faltaban a `RC-000006`, y deja 1.000.000 a favor del negocio. Las anuladas `RC-000003` y `RC-000004` no tienen pagos;
+  - los contadores de `supplier_payment` en 4 y de `supplier_payment_void` en 2, iguales a los mayores números, y la auditoría con 4 `create` y 2 `void` de `supplier_payment`: los rechazos del recorrido no escribieron, no auditaron ni consumieron número.
+- **Volver a `49db51c` ya no es limpio**: hay pagos que ese código no conoce y que no restaría de lo esperado de `C-000005`.
+- **Revisión independiente**: ninguno crítico ni mayor; R1 y R2 corregidos con tests, R3 y R4 declarados y aceptados, y dos notas (§Resultados).
+- **Pendiente para después**: la 22.7, la cuenta del proveedor (D-1). La lectura en lote del número de las recepciones para el detalle de una sesión con muchos pagos (AC-8) queda sin tarea, aceptada así por el usuario.

@@ -2,6 +2,31 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-17 — 22.6: los pagos a proveedores
+
+Cierra el 2026-10-17, después del recorrido del usuario en producción ([brief-22.6](docs/decisions/brief-22.6-los-pagos-a-proveedores.md), §Cierre). Son los primeros comprobantes de `cash` que dependen de `purchasing`, sobre el [ADR 0023](docs/decisions/0023-compras-y-proveedores.md), puntos 8 y 10.
+
+**Certifica:**
+- **Las tablas `supplier_payments` y `supplier_payment_voids`** (migración `0051`), en `cash`: de solo inserción, con `crm_app` sin `UPDATE` ni `DELETE`; el destino (`goods_receipt` o `account`) con su `CHECK`; claves compuestas a la recepción, el proveedor, el medio y la sesión de la misma organización; la sesión exigida si y solo si el medio es efectivo, y abierta; la anulación, una por pago, copia su moneda, su monto y la sesión de D-8 (`supplier_payment_voids_check_copy()`). Los números `PP` y `APP` y el `entity_type` `supplier_payment`.
+- **El pago**, solo de `admin`, contra una recepción **hasta lo que falta según la cuenta entera del proveedor** (`imputeAccount` sin cambios), o a cuenta, sin tope. Con el orden del ADR 0022, punto 4: el bloqueo `cash:`, la recepción, el proveedor `FOR SHARE`, la recepción releída, las reglas, y después el contador, la fila y la auditoría. **No se paga una recepción anulada**; un proveedor desactivado sí. En efectivo sale de la sesión abierta y **nunca deja lo esperado negativo**. Un rechazo no escribe, no audita ni consume número.
+- **La anulación**, entera y con motivo de lista: la plata vuelve a lo esperado solo si la sesión del pago sigue abierta, con el tope de `numeric(14, 2)`; la doble anulación responde «ya anulado».
+- **La caja**: lo esperado resta los pagos en efectivo y suma sus anulaciones en la sesión, en el detalle, la vista previa y el cierre; un retiro, una devolución y la anulación de un cobro posteriores lo ven descontado. **Un `viewer` ve el total, no la lista.**
+- **Pantallas 50 a 54** (pagar una recepción, pago a cuenta, la lista, el comprobante y el de la anulación, imprimibles), la tarjeta de pagos en la recepción y en la ficha del proveedor, «Pagos» en el submenú, y la columna y la lista en la caja.
+- **Las guardas**: `cash-writes` fija las dos escrituras y sus llamadores; `purchasing-dependencies`, nueva, que `purchasing` no importa `cash` y qué importa `cash` de `purchasing`; `exposed-surface`, las dos acciones.
+- Revisión independiente: ninguno crítico ni mayor, cuatro menores (dos tests que faltaban, sumados; dos desvíos sin declarar, declarados) y dos notas. 17 mutaciones detectadas.
+- **Despliegue y recorrido**:
+  - `5251770`, con la CI 38982560939 en `success` en 23 minutos al primer intento;
+  - el usuario pagó `RC-000006` por transferencia y en efectivo, vio los rechazos, pagó a cuenta más de lo que se debía, anuló dos pagos y entró con un `viewer`, en «Demostración Vixora»;
+  - conciliado contra la base: cuatro pagos, dos anulaciones con su sesión, la cuenta imputada con 1.000.000 a favor del negocio, los contadores en 4 y 2 y la auditoría completa.
+
+**Nivel**: validado localmente y en CI, validado en integración para las pantallas, desplegado en producción y recorrido por el usuario. No es «preparado para producción».
+
+**No certifica:**
+- En producción, la concurrencia: la cubren los tests.
+- La cuenta del proveedor (estado de cuenta, resumen y lista de a quién se le debe): es la 22.7.
+- El detalle de una sesión con cientos de pagos en efectivo contra recepciones distintas: 566 ms con 250, bajo el umbral de 754, sin la lectura en lote (aceptado por el usuario).
+- El end-to-end completo en verde en una sola corrida local: 222 de 223, y el caso que perdió la conexión pasó solo; la CI corrió la suite entera.
+
 ## 2026-10-16 — 22.5: la anulación de la recepción
 
 Cierra el 2026-10-16, después del recorrido del usuario en producción ([brief-22.5](docs/decisions/brief-22.5-la-anulacion-de-la-recepcion.md), §Cierre). Es la primera salida de stock que escribe `purchasing`, sobre el [ADR 0023](docs/decisions/0023-compras-y-proveedores.md).
