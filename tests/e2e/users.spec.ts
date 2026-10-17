@@ -122,6 +122,8 @@ test("caso 1: un admin ve la lista con (vos), el marco común con su organizaci�
 
   const banner = page.getByRole("banner");
   await expect(banner.getByText(ORGANIZATION)).toBeVisible();
+  // El nombre, el rol y «Salir» están en el menú del usuario (brief-23.1, D-5).
+  await banner.getByRole("button", { name: "Menú del usuario" }).click();
   await expect(banner.getByText(`${ADMIN_NAME} (admin)`)).toBeVisible();
   await expect(banner.getByRole("button", { name: "Salir" })).toBeVisible();
 
@@ -454,9 +456,10 @@ test("caso 11: el alta se completa solo con teclado", async ({ page }) => {
   await login(page, ADMIN);
   await page.goto("/usuarios/nuevo");
 
-  // Desde el inicio del documento, atravesando el marco común hasta el primer campo.
+  // Desde el inicio del documento, atravesando el marco común hasta el primer campo. Desde la
+  // brief-23.1 el marco suma una parada: la sección de las migas, que acá es un enlace.
   const name = page.getByLabel("Nombre");
-  for (let i = 0; i < 16; i++) {
+  for (let i = 0; i < 20; i++) {
     if (await name.evaluate((element) => element === document.activeElement)) {
       break;
     }

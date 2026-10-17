@@ -538,8 +538,9 @@ test("caso 12: el alta se completa solo con teclado", async ({ page }) => {
   await login(page, ADMIN);
   await page.goto("/productos/nuevo");
 
+  // brief-23.1 el marco suma una parada: la sección de las migas, que acá es un enlace.
   const sku = page.getByLabel("SKU");
-  for (let i = 0; i < 16; i++) {
+  for (let i = 0; i < 20; i++) {
     if (await sku.evaluate((element) => element === document.activeElement)) {
       break;
     }

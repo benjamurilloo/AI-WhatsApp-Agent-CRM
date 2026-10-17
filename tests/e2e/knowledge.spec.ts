@@ -492,8 +492,9 @@ test("caso 8: FR-INFO-01 el alta se completa solo con teclado", async ({
   await login(page, ADMIN);
   await page.goto("/informacion/nueva");
 
+  // brief-23.1 el marco suma una parada: la sección de las migas, que acá es un enlace.
   const title = page.getByLabel("Título");
-  for (let i = 0; i < 16; i++) {
+  for (let i = 0; i < 20; i++) {
     if (await title.evaluate((element) => element === document.activeElement)) {
       break;
     }

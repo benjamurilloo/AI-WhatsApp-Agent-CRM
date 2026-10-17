@@ -6,8 +6,9 @@ import { SEED_ORGANIZATION_ID, SEED_USERS, seedBasic } from "../../seeds/basic";
 import { e2eDatabaseUrl } from "../integration/test-database";
 import { E2E_PASSWORD } from "./global-setup";
 
-// El marco común de la brief-15.1 (D-4 a D-6): panel lateral desde 1024 px y menú desplegable
-// debajo, con una sola navegación «Principal» en todos los tamaños.
+// El marco común de la brief-15.1 (D-4 a D-6), con el aspecto de los mockups desde la brief-23.1:
+// panel lateral desde 1024 px y barra inferior debajo, con una sola navegación «Principal» visible
+// en cada tamaño, y las migas y el menú del usuario en la barra superior.
 
 const [ADMIN_SEED] = SEED_USERS;
 const ADMIN = ADMIN_SEED.email;
@@ -63,7 +64,7 @@ async function expectAccessible(page: Page, state: string) {
   await page.emulateMedia({ colorScheme: null });
 }
 
-test("caso 1: a 1280 px el panel lateral navega entre las pantallas", async ({
+test("caso 1: a 1280 px el panel navega, las migas siguen la sección y el menú del usuario se abre", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -71,8 +72,30 @@ test("caso 1: a 1280 px el panel lateral navega entre las pantallas", async ({
 
   const nav = page.getByRole("navigation", { name: "Principal" });
   await expect(nav).toBeVisible();
-  // El botón del menú es solo para pantallas chicas.
-  await expect(page.getByRole("button", { name: "Menú" })).toBeHidden();
+  // La barra inferior es solo para pantallas chicas.
+  await expect(page.getByRole("button", { name: "Más" })).toBeHidden();
+
+  // El orden de los mockups (brief-23.1, D-4).
+  await expect(nav.getByRole("link")).toHaveText([
+    "Dashboard",
+    "Conversaciones",
+    "Clientes",
+    "Productos",
+    "Pedidos",
+    "Ventas",
+    "Caja",
+    "Compras",
+    "Información",
+    "Usuarios",
+  ]);
+
+  // Migas «‹organización› / ‹sección›» (D-6): en la portada, la sección es la página actual.
+  const crumbs = page.getByRole("navigation", { name: "Migas" });
+  await expect(crumbs).toContainText("Organización de ejemplo");
+  await expect(crumbs.getByText("Dashboard")).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
 
   await nav.getByRole("link", { name: "Productos" }).click();
   await expect(page).toHaveURL("/productos");
@@ -80,41 +103,109 @@ test("caso 1: a 1280 px el panel lateral navega entre las pantallas", async ({
     "aria-current",
     "page",
   );
-  // El panel queda a la izquierda del contenido.
+  await expect(crumbs.getByText("Productos")).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  // Más adentro de la sección, la sección es un enlace.
+  await page.goto("/productos/nuevo");
+  await crumbs.getByRole("link", { name: "Productos" }).click();
+  await expect(page).toHaveURL("/productos");
+
+  // El panel queda a la izquierda del contenido, con el usuario al pie.
   const panel = await nav.boundingBox();
   const title = await page.getByRole("heading", { level: 1 }).boundingBox();
   expect(panel && title).toBeTruthy();
   expect(panel!.x + panel!.width).toBeLessThanOrEqual(title!.x);
+  await expect(
+    page.getByText(ADMIN_SEED.name, { exact: true }).first(),
+  ).toBeVisible();
+
+  // El menú del usuario (D-5): se abre con el teclado, Escape lo cierra y devuelve el foco.
+  const userMenu = page.getByRole("button", { name: "Menú del usuario" });
+  const logout = page.getByRole("button", { name: "Salir" });
+  await expect(userMenu).toHaveAttribute("aria-expanded", "false");
+  await expect(logout).toBeHidden();
+  await userMenu.focus();
+  await page.keyboard.press("Enter");
+  await expect(userMenu).toHaveAttribute("aria-expanded", "true");
+  await expect(logout).toBeVisible();
+  await expectAccessible(page, "menú del usuario abierto a 1280 px");
+  await logout.focus();
+  await page.keyboard.press("Escape");
+  await expect(logout).toBeHidden();
+  await expect(userMenu).toBeFocused();
+
+  // Tocar fuera también lo cierra.
+  await userMenu.click();
+  await expect(logout).toBeVisible();
+  await page.getByRole("heading", { level: 1 }).click();
+  await expect(logout).toBeHidden();
   await expectAccessible(page, "marco a 1280 px");
 });
 
-test("caso 2: a 375 px el menú se abre, se cierra con Escape y devuelve el foco", async ({
+test("caso 2: a 375 px la barra inferior navega y «Más» se abre, se cierra con Escape y devuelve el foco", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 375, height: 800 });
   await login(page, ADMIN);
 
-  const menu = page.getByRole("button", { name: "Menú" });
   const nav = page.getByRole("navigation", { name: "Principal" });
-  await expect(menu).toHaveAttribute("aria-expanded", "false");
-  await expect(nav).toBeHidden();
-
-  await menu.click();
-  await expect(menu).toHaveAttribute("aria-expanded", "true");
+  const more = nav.getByRole("button", { name: "Más" });
   await expect(nav).toBeVisible();
-  await expectAccessible(page, "menú abierto a 375 px");
+  // Cinco destinos de al menos 44 px de alto (brief-23.1, D-7).
+  for (const name of ["Inicio", "Chats", "Clientes", "Ventas"]) {
+    const box = await nav.getByRole("link", { name }).boundingBox();
+    expect(box!.height, name).toBeGreaterThanOrEqual(44);
+  }
+  expect((await more.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await expect(nav.getByRole("link", { name: "Inicio" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
 
-  await nav.getByRole("link", { name: "Clientes" }).focus();
-  await page.keyboard.press("Escape");
-  await expect(nav).toBeHidden();
-  await expect(menu).toBeFocused();
-
-  // Navegar también lo cierra.
-  await menu.click();
   await nav.getByRole("link", { name: "Clientes" }).click();
   await expect(page).toHaveURL("/clientes");
-  await expect(nav).toBeHidden();
-  await expect(menu).toHaveAttribute("aria-expanded", "false");
+  await expect(nav.getByRole("link", { name: "Clientes" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+
+  // «Más» lleva el resto de las secciones del rol.
+  const extra = nav.locator("#navegacion-mas");
+  await expect(more).toHaveAttribute("aria-expanded", "false");
+  await expect(extra).toBeHidden();
+  await more.click();
+  await expect(more).toHaveAttribute("aria-expanded", "true");
+  await expect(extra.getByRole("link")).toHaveText([
+    "Productos",
+    "Pedidos",
+    "Caja",
+    "Compras",
+    "Información",
+    "Usuarios",
+  ]);
+  await expectAccessible(page, "«Más» abierto a 375 px");
+
+  await extra.getByRole("link", { name: "Caja" }).focus();
+  await page.keyboard.press("Escape");
+  await expect(extra).toBeHidden();
+  await expect(more).toBeFocused();
+
+  // Navegar también lo cierra.
+  await more.click();
+  await extra.getByRole("link", { name: "Productos" }).click();
+  await expect(page).toHaveURL("/productos");
+  await expect(more).toHaveAttribute("aria-expanded", "false");
+  await expect(extra).toBeHidden();
+
+  // El final de la página no queda tapado por la barra.
+  await page.evaluate(() =>
+    window.scrollTo(0, document.documentElement.scrollHeight),
+  );
+  const bar = await nav.boundingBox();
+  const lastInMain = await page.locator("main > *").last().boundingBox();
+  expect(lastInMain!.y + lastInMain!.height).toBeLessThanOrEqual(bar!.y);
 
   const overflow = await page.evaluate(
     () =>
@@ -122,6 +213,23 @@ test("caso 2: a 375 px el menú se abre, se cierra con Escape y devuelve el foco
       document.documentElement.clientWidth,
   );
   expect(overflow).toBeLessThanOrEqual(0);
+  await expectAccessible(page, "barra inferior a 375 px");
+});
+
+test("caso 2b: a 375 px, «Más» de un viewer no lista Compras ni Usuarios", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  await login(page, SEED_USERS[1].email);
+
+  const nav = page.getByRole("navigation", { name: "Principal" });
+  await nav.getByRole("button", { name: "Más" }).click();
+  await expect(nav.locator("#navegacion-mas").getByRole("link")).toHaveText([
+    "Productos",
+    "Pedidos",
+    "Caja",
+    "Información",
+  ]);
 });
 
 test("caso 3: brief-15.5 la marca muestra el símbolo de Vixora y la pestaña tiene su ícono", async ({
@@ -147,18 +255,31 @@ test("caso 3: brief-15.5 la marca muestra el símbolo de Vixora y la pestaña ti
   );
   await login(page, ADMIN);
 
-  // El símbolo es decorativo (alt vacío) y cargó; el nombre y el lema son texto.
-  const symbol = page.locator('img[src="/marca/vixora-simbolo-32.png"]');
+  // El símbolo es decorativo (alt vacío) y cargó; el nombre y el lema son texto. Desde la brief-23.1
+  // la marca está dos veces: en el panel y en la barra superior del teléfono, y en cada tamaño se
+  // ve una sola.
+  const symbol = page
+    .locator('img[src="/marca/vixora-simbolo-32.png"]')
+    .filter({ visible: true });
+  const name = page
+    .getByText("Vixora", { exact: true })
+    .filter({ visible: true });
+  const motto = page
+    .getByText("AI SOLUTIONS", { exact: true })
+    .filter({ visible: true });
+  await expect(symbol).toHaveCount(1);
   await expect(symbol).toHaveAttribute("alt", "");
   await expect
     .poll(() => symbol.evaluate((img: HTMLImageElement) => img.naturalWidth))
     .toBeGreaterThan(0);
-  await expect(page.getByText("Vixora", { exact: true })).toBeVisible();
-  await expect(page.getByText("AI SOLUTIONS", { exact: true })).toBeVisible();
+  await expect(name).toHaveCount(1);
+  await expect(motto).toHaveCount(1);
   await expectAccessible(page, "marca a 1280 px");
 
-  // En el celular, el símbolo y el nombre, sin el lema.
+  // En el celular, el símbolo y el nombre en la barra superior, sin el lema.
   await page.setViewportSize({ width: 375, height: 800 });
-  await expect(symbol).toBeVisible();
-  await expect(page.getByText("AI SOLUTIONS", { exact: true })).toBeHidden();
+  await expect(page.getByRole("banner").locator("img")).toBeVisible();
+  await expect(symbol).toHaveCount(1);
+  await expect(name).toHaveCount(1);
+  await expect(motto).toHaveCount(0);
 });

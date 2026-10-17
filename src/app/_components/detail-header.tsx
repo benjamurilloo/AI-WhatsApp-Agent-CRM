@@ -59,7 +59,7 @@ export function HeaderIcon({
   name: Parameters<typeof Icon>[0]["name"];
 }) {
   return (
-    <span className="grid size-14 shrink-0 place-items-center rounded-2xl bg-primary-soft text-primary sm:size-16">
+    <span className="grid size-14 shrink-0 place-items-center rounded-xl bg-primary-soft text-primary sm:size-16">
       <Icon name={name} className="size-7 sm:size-8" />
     </span>
   );

@@ -17,7 +17,7 @@ export function ThemeSelector({ current }: { current: Theme }) {
       <div
         role="group"
         aria-label="Tema"
-        className="inline-flex gap-0.5 rounded-lg border border-border bg-surface-muted p-0.5"
+        className="inline-flex gap-0.5 rounded-xl border border-border bg-surface-muted p-0.5"
       >
         {THEMES.map((theme) => {
           const pressed = theme === current;
@@ -30,7 +30,7 @@ export function ThemeSelector({ current }: { current: Theme }) {
               aria-pressed={pressed}
               aria-label={THEME_LABELS[theme]}
               title={THEME_LABELS[theme]}
-              className={`grid size-8 place-items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+              className={`grid size-8 place-items-center rounded-lg focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
                 pressed
                   ? "bg-surface text-primary shadow-sm"
                   : "text-muted hover:text-foreground"

@@ -194,7 +194,7 @@ export function SuggestInput({
         role="listbox"
         aria-label="Sugerencias"
         hidden={!expanded}
-        className="absolute inset-x-0 top-full z-20 mt-1 max-h-60 min-w-60 overflow-y-auto rounded-lg border border-border-strong bg-surface py-1 text-base text-foreground shadow-lg"
+        className="absolute inset-x-0 top-full z-20 mt-1 max-h-60 min-w-60 overflow-y-auto rounded-xl border border-border-strong bg-surface py-1 text-base text-foreground shadow-lg"
       >
         {expanded
           ? shown.map((item, index) => (

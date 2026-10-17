@@ -286,6 +286,8 @@ test("un viewer ve la lista y el detalle sin contacto ni historia, y no puede em
   await page.getByRole("button", { name: "Sí, emitir la venta" }).click();
   await expect(page).toHaveURL(/\?aviso=emitida$/);
   const saleUrl = page.url().replace(/\?.*$/, "");
+  // «Salir» está en el menú del usuario (brief-23.1, D-5).
+  await page.getByRole("button", { name: "Menú del usuario" }).click();
   await page.getByRole("button", { name: "Salir" }).click();
 
   await login(page, VIEWER);

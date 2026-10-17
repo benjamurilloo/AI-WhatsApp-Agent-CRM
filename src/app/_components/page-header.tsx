@@ -55,7 +55,7 @@ export function EditLink({
     <Link
       href={href}
       aria-describedby={describedBy}
-      className="grid size-9 place-items-center rounded-lg border border-border bg-surface text-foreground hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+      className="grid size-9 place-items-center rounded-xl border border-border bg-surface text-foreground hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
     >
       <Icon name="pencil" className="size-4" />
       <span className="sr-only">Editar</span>
