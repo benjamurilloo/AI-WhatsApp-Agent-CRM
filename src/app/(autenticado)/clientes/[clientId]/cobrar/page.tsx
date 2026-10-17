@@ -13,7 +13,7 @@ import {
 import { PageHeader } from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
 import { formatDate } from "@/app/_format/date-time";
-import { formatMoney } from "@/shared/money";
+import { acceptedCurrencies, formatMoney } from "@/shared/money";
 import { NO_ACTIVE_METHODS_MESSAGE } from "@/app/(autenticado)/ventas/[saleId]/cobrar/messages";
 import {
   CLIENT_NOT_FOUND_MESSAGE,
@@ -163,7 +163,7 @@ export default async function AccountReceiptPage({
                   : "",
               amount: form.proposed?.amountInput ?? "",
             }}
-            currencies={form.currencies.map((row) => row.currency)}
+            currencies={acceptedCurrencies()}
             paymentMethods={form.paymentMethods}
             hasOpenSession={form.openSession !== null}
           />

@@ -216,6 +216,12 @@ test("un admin abre el estado de cuenta desde la ficha, cobra a cuenta con la vi
   await page.getByRole("link", { name: "Cobrar a cuenta" }).click();
   await expect(page).toHaveURL(new RegExp(`/clientes/${clientId}/cobrar$`));
   await expect(page.getByLabel("Moneda *")).toHaveValue("ARS");
+  // La lista del sistema, con el nombre de cada moneda, no las sugerencias del navegador (22.7).
+  await expect(
+    page.getByRole("combobox", { name: /^Moneda/ }).getByRole("option", {
+      name: "USD — dólar estadounidense",
+    }),
+  ).toHaveCount(1);
   const amount = page.getByLabel("Monto *");
   await expect(amount).toHaveValue("5000.00");
   await expectAccessible(page, "formulario del cobro a cuenta");

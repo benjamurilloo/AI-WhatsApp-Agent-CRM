@@ -13,7 +13,10 @@ import {
   radioClass,
   secondaryLinkClass,
 } from "@/app/_components/form-styles";
-import { AmountReading } from "@/app/(autenticado)/caja/money-fields";
+import {
+  AmountReading,
+  CurrencySelect,
+} from "@/app/(autenticado)/caja/money-fields";
 import { createSupplierPaymentAction } from "./actions";
 import type { PaymentFormState, PaymentFormValues } from "./messages";
 
@@ -62,6 +65,9 @@ export function SupplierPaymentForm({
       };
   const invalid = (field: "paymentMethod" | "amount" | "currency") =>
     failed && state.fields.includes(field);
+  // La moneda elegida a cuenta, para la lectura del monto. Tras un rechazo, el selector vuelve a
+  // montarse con lo enviado, que es lo mismo que guarda este estado.
+  const [accountCurrency, setAccountCurrency] = useState(values.currency);
 
   useEffect(() => {
     if (state.status === "error") errorRef.current?.focus();
@@ -112,28 +118,17 @@ export function SupplierPaymentForm({
           <label htmlFor="pago-moneda" className={labelClass}>
             Moneda *
           </label>
-          <input
+          {/* La lista del sistema, como en la caja, y no las sugerencias del navegador (pedido del
+              usuario en el recorrido de la 22.7, 2026-10-17). */}
+          <CurrencySelect
             id="pago-moneda"
-            name="currency"
-            type="text"
             required
-            minLength={3}
-            maxLength={3}
-            autoComplete="off"
-            list="pago-monedas"
             defaultValue={values.currency}
-            aria-invalid={invalid("currency") ? true : undefined}
-            aria-describedby="pago-moneda-ayuda"
-            className={`${inputClass} font-mono uppercase`}
+            currencies={target.currencies}
+            invalid={invalid("currency")}
+            describedBy={invalid("currency") ? "pago-error" : undefined}
+            onChange={setAccountCurrency}
           />
-          <datalist id="pago-monedas">
-            {target.currencies.map((currency) => (
-              <option key={currency} value={currency} />
-            ))}
-          </datalist>
-          <p id="pago-moneda-ayuda" className="text-sm text-muted">
-            El código de tres letras, como ARS o USD.
-          </p>
         </div>
       ) : null}
 
@@ -173,7 +168,7 @@ export function SupplierPaymentForm({
 
       <AmountField
         currency={
-          target.kind === "goods_receipt" ? target.currency : values.currency
+          target.kind === "goods_receipt" ? target.currency : accountCurrency
         }
         defaultValue={values.amount}
         invalid={invalid("amount")}

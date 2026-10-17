@@ -298,6 +298,12 @@ test("un pago a cuenta mayor que la deuda: se imputa a la recepción más vieja 
   await expect(page.getByRole("combobox", { name: /^Moneda/ })).toHaveValue(
     "ARS",
   );
+  // La lista del sistema, con el nombre de cada moneda, no las sugerencias del navegador (22.7).
+  await expect(
+    page.getByRole("combobox", { name: /^Moneda/ }).getByRole("option", {
+      name: "USD — dólar estadounidense",
+    }),
+  ).toHaveCount(1);
   await expect(page.getByLabel(/^Monto/)).toHaveValue("100.00");
   await expectAccessible(page, "formulario del pago a cuenta");
   await page.getByRole("radio", { name: "Transferencia" }).check();

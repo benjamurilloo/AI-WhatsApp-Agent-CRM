@@ -340,6 +340,14 @@ Implementado el 2026-10-17. **Esta sección es autoevaluación**: la escribió q
 - **AC-8 y D-7 no dicen lo mismo** (R4). AC-8 pide ir «de la lista "A pagar" a la ficha», y D-7 enlaza cada fila con **el estado de cuenta**. El código sigue a D-7. El end-to-end va con el teclado de la lista al estado de cuenta y, de ahí, con «Volver al proveedor», a la ficha. Así cubre los dos caminos sin cambiar D-7.
 - **El brief de la 22.6, una nota fechada en D-5** (R2). D-3 decía que «el Overview y D-5 de la 22.6» quedan enumerando cuatro lecturas más `getSupplierNames`, con una precisión fechada, pero el brief de la 22.6 no estaba en la lista de archivos. **El usuario autorizó la nota el 2026-10-17**, y nada más en ese brief.
 
+- **La moneda del pago a cuenta**, pedido del usuario en el recorrido del 2026-10-17. El campo era texto con un `<datalist>`, y las sugerencias las dibujaba el navegador. Pasó a ser `CurrencySelect`, la lista del sistema que ya usa la caja («USD — dólar estadounidense»). La lectura del monto sigue ahora a la moneda elegida.
+  - Archivos: `compras/pagos/payment-form.tsx`, de la 22.6 y fuera de la lista, y una aserción en `supplier-payments.spec.ts`.
+  - **Por pedido del usuario, el mismo ajuste en el cobro a cuenta de un cliente** (pantalla de la 21.6):
+    - `clientes/[clientId]/cobrar/account-receipt-form.tsx` y su `page.tsx`, que ahora pasa `acceptedCurrencies()` en lugar de las monedas de la cuenta. Antes, un cliente sin movimientos no tenía ninguna moneda sugerida;
+    - una aserción en `accounts.spec.ts`;
+    - la línea de Screens que describía el campo.
+  - Los end-to-end de las dos cuentas y del pago pasan, 14 de 14, y las guardas, 711 de 711.
+
 **Inexactitudes del brief, sin efecto en el código:**
 
 - **`supplier-accounts.test.ts` no es nuevo** (R6): existe desde la 22.6 y la lista lo llama «nuevo». Está autorizado igual. H-9 decía que la lista se derivó con `grep`, y esa línea no se contrastó con el repositorio.

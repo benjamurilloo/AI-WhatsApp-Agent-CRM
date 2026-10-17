@@ -15,7 +15,10 @@ import {
   secondaryLinkClass,
 } from "@/app/_components/form-styles";
 import { formatMoney } from "@/shared/money";
-import { AmountReading } from "@/app/(autenticado)/caja/money-fields";
+import {
+  AmountReading,
+  CurrencySelect,
+} from "@/app/(autenticado)/caja/money-fields";
 import { accountReceiptAction } from "./actions";
 import type {
   AccountReceiptFormState,
@@ -38,7 +41,8 @@ export function AccountReceiptForm({
   clientId: string;
   cancelHref: string;
   defaults: AccountReceiptFormValues;
-  // Las monedas de la cuenta, para sugerirlas.
+  // Las monedas del sistema, para elegir una (desde el recorrido de la 22.7, 2026-10-17; antes eran
+  // las de la cuenta, como sugerencias del navegador).
   currencies: string[];
   paymentMethods: PaymentMethod[];
   hasOpenSession: boolean;
@@ -53,6 +57,9 @@ export function AccountReceiptForm({
     state.status === "idle" ? (state.values ?? defaults) : state.values;
   const invalid = (field: "paymentMethod" | "amount" | "currency") =>
     failed && state.fields.includes(field);
+  // La moneda elegida, para la lectura del monto. Tras un rechazo o la vista previa, el selector vuelve
+  // a montarse con lo enviado, que es lo mismo que guarda este estado.
+  const [currency, setCurrency] = useState(values.currency);
 
   useEffect(() => {
     if (state.status === "error") errorRef.current?.focus();
@@ -153,28 +160,15 @@ export function AccountReceiptForm({
         <label htmlFor="cobro-cuenta-moneda" className={labelClass}>
           Moneda *
         </label>
-        <input
+        <CurrencySelect
           id="cobro-cuenta-moneda"
-          name="currency"
-          type="text"
           required
-          minLength={3}
-          maxLength={3}
-          autoComplete="off"
-          list="cobro-cuenta-monedas"
           defaultValue={values.currency}
-          aria-invalid={invalid("currency") ? true : undefined}
-          aria-describedby="cobro-cuenta-moneda-ayuda"
-          className={`${inputClass} font-mono uppercase`}
+          currencies={currencies}
+          invalid={invalid("currency")}
+          describedBy={invalid("currency") ? "cobro-cuenta-error" : undefined}
+          onChange={setCurrency}
         />
-        <datalist id="cobro-cuenta-monedas">
-          {currencies.map((currency) => (
-            <option key={currency} value={currency} />
-          ))}
-        </datalist>
-        <p id="cobro-cuenta-moneda-ayuda" className="text-sm text-muted">
-          El código de tres letras, como ARS o USD.
-        </p>
       </div>
 
       <fieldset
@@ -214,7 +208,7 @@ export function AccountReceiptForm({
       </fieldset>
 
       <AmountField
-        currency={values.currency}
+        currency={currency}
         defaultValue={values.amount}
         invalid={invalid("amount")}
       />
