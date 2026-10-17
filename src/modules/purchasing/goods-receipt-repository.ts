@@ -371,7 +371,9 @@ export function isGoodsReceiptAlreadyVoided(error: unknown): boolean {
 
 // Lo que cash lee de una recepción para pagarla y para la cuenta del proveedor (ADR 0023, puntos 8,
 // 9 y 11; brief-22.6, D-5): con la transacción de cash, sin bloquear, porque una recepción es de solo
-// inserción y no se puede bloquear (punto 10). Anuladas incluidas, con su anulación.
+// inserción y no se puede bloquear (punto 10). Anuladas incluidas, con su anulación: el número y,
+// desde la 22.7, la fecha, para el estado de cuenta (brief-22.7, D-3), con un LEFT JOIN y no una
+// subconsulta por fila, porque la lista de toda la organización lee miles (brief-21.6, D-6).
 export type GoodsReceiptForAccountRow = {
   id: string;
   number: number;
@@ -380,6 +382,7 @@ export type GoodsReceiptForAccountRow = {
   total: string;
   createdAt: Date;
   voidNumber: number | null;
+  voidedAt: Date | null;
 };
 
 const accountColumns = {
@@ -389,17 +392,29 @@ const accountColumns = {
   currency: goodsReceipts.currency,
   total: goodsReceipts.total,
   createdAt: goodsReceipts.createdAt,
-  voidNumber: voidNumberOf,
+  voidNumber: goodsReceiptVoids.number,
+  voidedAt: goodsReceiptVoids.createdAt,
 };
+
+function selectForAccount(executor: Executor) {
+  return executor
+    .select(accountColumns)
+    .from(goodsReceipts)
+    .leftJoin(
+      goodsReceiptVoids,
+      and(
+        eq(goodsReceiptVoids.organizationId, goodsReceipts.organizationId),
+        eq(goodsReceiptVoids.goodsReceiptId, goodsReceipts.id),
+      ),
+    );
+}
 
 export async function findGoodsReceiptForAccount(
   executor: Executor,
   organizationId: string,
   goodsReceiptId: string,
 ): Promise<GoodsReceiptForAccountRow | undefined> {
-  const rows = await executor
-    .select(accountColumns)
-    .from(goodsReceipts)
+  const rows = await selectForAccount(executor)
     .where(
       and(
         eq(goodsReceipts.organizationId, organizationId),
@@ -416,9 +431,7 @@ export function findSupplierGoodsReceiptsForAccount(
   organizationId: string,
   supplierId: string,
 ): Promise<GoodsReceiptForAccountRow[]> {
-  return executor
-    .select(accountColumns)
-    .from(goodsReceipts)
+  return selectForAccount(executor)
     .where(
       and(
         eq(goodsReceipts.organizationId, organizationId),
@@ -426,4 +439,19 @@ export function findSupplierGoodsReceiptsForAccount(
       ),
     )
     .orderBy(asc(goodsReceipts.createdAt), asc(goodsReceipts.number));
+}
+
+// Las de toda la organización, para la lista de proveedores a los que se les debe (brief-22.7, D-3):
+// por proveedor y, dentro de cada uno, en el orden de la imputación.
+export function findGoodsReceiptsForAccounts(
+  executor: Executor,
+  organizationId: string,
+): Promise<GoodsReceiptForAccountRow[]> {
+  return selectForAccount(executor)
+    .where(eq(goodsReceipts.organizationId, organizationId))
+    .orderBy(
+      asc(goodsReceipts.supplierId),
+      asc(goodsReceipts.createdAt),
+      asc(goodsReceipts.number),
+    );
 }

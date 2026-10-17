@@ -326,3 +326,142 @@ Parar e informar antes de seguir si:
   - una sola foto en las lecturas de un cliente (D-6);
   - las métricas de compras;
   - la guarda general de dependencias entre módulos.
+
+## Resultados — 2026-10-17 (autoevaluación)
+
+Implementado el 2026-10-17. **Esta sección es autoevaluación**: la escribió quien implementó. La revisión independiente va aparte, abajo.
+
+### Lo que la implementación encontró que el brief no decía
+
+**Desvíos de lo autorizado**, **aceptados por el usuario el 2026-10-17** («acepto los desvios»):
+
+- **`tests/e2e/supplier-payments.spec.ts`, una línea (l. 285)**, que no está en la lista. El end-to-end de la 22.6 buscaba la región «Pagos» de la ficha del proveedor, que D-5 renombra «Cuenta». Fue el primer archivo fuera de la lista: el trabajo se detuvo y **el usuario autorizó esa línea y nada más** el 2026-10-17 (R7).
+- **La lista «A pagar» no marca al proveedor desactivado.** D-7 lo pedía «si `getSupplierNames` lo permite sin otra lectura», y no lo permite: devuelve el id y el nombre, sin `is_active`. Va sin marca, declarado en Screens §56 (R1). Un proveedor desactivado al que se le debe sigue en la lista: la lista no mira si está activo.
+- **AC-8 y D-7 no dicen lo mismo** (R4). AC-8 pide ir «de la lista "A pagar" a la ficha», y D-7 enlaza cada fila con **el estado de cuenta**. El código sigue a D-7. El end-to-end va con el teclado de la lista al estado de cuenta y, de ahí, con «Volver al proveedor», a la ficha. Así cubre los dos caminos sin cambiar D-7.
+- **El brief de la 22.6, una nota fechada en D-5** (R2). D-3 decía que «el Overview y D-5 de la 22.6» quedan enumerando cuatro lecturas más `getSupplierNames`, con una precisión fechada, pero el brief de la 22.6 no estaba en la lista de archivos. **El usuario autorizó la nota el 2026-10-17**, y nada más en ese brief.
+
+**Inexactitudes del brief, sin efecto en el código:**
+
+- **`supplier-accounts.test.ts` no es nuevo** (R6): existe desde la 22.6 y la lista lo llama «nuevo». Está autorizado igual. H-9 decía que la lista se derivó con `grep`, y esa línea no se contrastó con el repositorio.
+- **El HANDOFF del cierre de la 22.6 decía que la guarda «fija la lista de lo que `cash` importa»** (H-2). Se corrige en el HANDOFF al cerrar.
+
+**Precisiones que no cambian una decisión:**
+
+- **El servicio vive en un archivo nuevo**, `cash/supplier-accounts.ts`, como permitía la lista. Toma `STATEMENT_DOCUMENTS_LIMIT` de `service.ts` sin modificarlo.
+- **La anulación entra a las tres lecturas de `purchasing` con un `LEFT JOIN`** a `goods_receipt_voids` en `selectForAccount`. No duplica filas: el índice único sobre `goods_receipt_id` deja una anulación por recepción. Mientras se investigaba la medición contaminada (abajo), se probó una variante con subconsulta. Se retiró: con la base sola, el `LEFT JOIN` cumple.
+- **La guarda de D-10 fija dos cosas por texto, no una.** La primera, pedida por el brief: las seis lecturas llaman `withSnapshot(` y no `withTransaction(`. La segunda, sumada por R8: todo llamado a `supplierLedger(`, `listGoodsReceiptsForAccounts(` y `findAccountsSupplierPayments(` dentro de `src/modules/cash` está en una de esas seis o en `createSupplierPayment`. Una séptima lectura sin foto rompe la guarda.
+- **La tarjeta de la ficha muestra «No se pudo leer la cuenta de este proveedor.»** si el servicio falla, y no «No se le debe nada» (R11).
+- **SecurityModel**: 163 puntos de entrada (68 páginas, 79 Server Actions y 16 Route Handlers). Las dos páginas nuevas son solo de `admin`.
+- **La tarea de D-6** para las lecturas de un cliente se creó en Notion, en «Esperando», el 2026-10-17.
+
+### Criterios
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| AC-1 | cumplido | `supplier-accounts.test.ts`, «purchasing da las recepciones de toda la organización, con las anuladas y la fecha de su anulación»: la otra organización no aparece, las anuladas sí, en el orden de D-3, y `voidedAt` es la fecha de la anulación. `getGoodsReceiptForPayment` también la devuelve (sumado por R5); la tercera lectura la recibe por `supplierLedger`, en los casos del estado de cuenta. `purchasing` no importa `cash` (la guarda) |
+| AC-2 | cumplido | `supplier-accounts.test.ts`, el estado de cuenta: recepciones vigentes y anuladas, un pago contra una anulada, pagos a cuenta y de más, pagos anulados, dos monedas y saldo a favor, igual a `supplierLedger`; el número de la recepción de cada pago, del ledger; `NOT_FOUND`, `VALIDATION_ERROR` y `FORBIDDEN`. Más de 500 comprobantes, en el bloque de rendimiento de `supplier-payments.test.ts`: el aviso, **los 500 más nuevos** comparados con la base, y el total de las recepciones vigentes entero (sumado por R5) |
+| AC-3 | cumplido | `supplier-accounts.test.ts`: el resumen, el formulario del pago a cuenta de la 22.6, la fila de la lista y el estado de cuenta dan los mismos números para el mismo proveedor |
+| AC-4 | cumplido | `supplier-accounts.test.ts`: una fila por proveedor y moneda; el que tiene algo a favor o está en cero no aparece; el desactivado con deuda, sí; el filtro, el orden y la paginación; la otra organización no aparece; y **cada fila igual al resumen de su cuenta en todos los campos**: lo que se debe, la fecha más vieja y cuántas recepciones tienen saldo (la comparación completa, por R5). Lo que no se prueba se declara arriba: la marca «Desactivado» |
+| AC-5 | cumplido por lectura y por la guarda | las seis lecturas pasan por `withSnapshot` (`supplier-payments.ts` y `supplier-accounts.ts`), fijado por la regla 3 de `purchasing-dependencies`. **No hay un test de la carrera** (D-6) |
+| AC-6 | cumplido | abajo, §La medición: mediana de 141 a 151 ms con 5×, contra 400 ms |
+| AC-7 | cumplido | el bloque de rendimiento de `supplier-payments.test.ts`, con el proveedor de la 22.6 (2.000 recepciones y 3.000 pagos): el estado de cuenta, 46 ms; el resumen, 34 ms; la lista, 79 ms. El umbral es de 754 ms |
+| AC-8 | cumplido, con la diferencia de R4 declarada arriba | `supplier-accounts.spec.ts`, 3 casos sobre `next start`: con el teclado, de «A pagar» al estado de cuenta, de un comprobante a su página y del estado de cuenta a la ficha; el filtro por moneda; la vista de impresión; la tarjeta de la ficha y su enlace; el `viewer` en las dos URLs. axe sin violaciones en claro y en oscuro, también en impresión |
+| AC-9 | cumplido | `purchasing-dependencies.test.ts`, 18 casos, con la regla 3 y sus casos en rojo. La mutación que vuelve el estado de cuenta a `withTransaction` y la que suma una séptima lectura (`getSupplierDebt`) fuera de la lista **se detectan** |
+| AC-10 | cumplido | sin migración. `imputation.ts`, `service.ts`, `totals.ts`, `src/shared/` y `drizzle/` sin cambios. En `supplier-payments.ts` solo cambian las tres lecturas de D-6, de `withTransaction` a `withSnapshot`. `purchasing` suma solo lecturas |
+| AC-11 | cumplido | `read-api`, `read-api-v2` e `ingestion-v2` pasan sin cambios, en la integración completa |
+| AC-12 | cumplido en local, con dos fallas ajenas declaradas; pendiente la CI | la batería, abajo. Falta la CI del SHA del cierre, al hacer el commit |
+| AC-13 | cumplido | Overview (las filas de `cash` y `purchasing`, con la precisión fechada de H-2, y la lista con su medición), FunctionalRequirements (FR-COMP-23 a 25), Screens (42, y 55 y 56 nuevas), TraceabilityMatrix y SecurityModel (163). DataModel no cambia: no hay columnas nuevas. R10 corregido |
+| AC-14 | pendiente | si se autoriza el despliegue |
+
+### Mutaciones
+
+Corridas una por una con un script que aplica un reemplazo literal, verifica que el texto aparezca una sola vez, corre `supplier-accounts.test.ts` y restaura el archivo. Las ocho que aplican se detectaron, cada una por el caso que tiene que atraparla:
+
+- **M1**, la lista que no descarta la cuenta sin recepciones con saldo, y cuenta como deuda a un proveedor con algo a favor: caen el estado de cuenta y «una fila por proveedor y moneda con algo que pagar».
+- **M3**, `listGoodsReceiptsForAccounts` sin el filtro de organización: caen la lista y la lectura de `purchasing`.
+- **M3b**, sin las anuladas: caen el estado de cuenta y la lectura de `purchasing`.
+- **M4**, el estado de cuenta con una imputación de la más nueva a la más vieja: cae el estado de cuenta.
+- **M5**, el estado de cuenta que no cuenta lo pagado contra una recepción anulada: cae el estado de cuenta.
+- **M6**, el resumen que suma lo que está a favor como deuda: cae el estado de cuenta, que compara el resumen.
+- **M7**, `voidedAt` tomado de la recepción y no de su anulación: caen el estado de cuenta y la lectura de `purchasing`.
+- **M9**, el filtro por moneda que no filtra: cae la lista.
+
+Más las dos de la guarda, en AC-9.
+
+**Dos del brief no aplican tal como están escritas:**
+
+- **«la lista que no descarta los pagos anulados»** es un mutante equivalente. Si `findAccountsSupplierPayments` trae también los anulados, `supplierAccountInput` los descarta igual, porque filtra `voided === null`. El resultado no cambia, y ningún test puede verlo.
+- **«la lista que omite a un proveedor desactivado»** no tiene código que mutar. Ninguna lectura de la lista sabe si un proveedor está activo, así que no hay un filtro que sacar. El caso que lo fija existe: el desactivado con deuda aparece.
+
+### La medición (AC-6)
+
+Con `scripts/medir-caminos.ts`, que llama a `listSuppliersOwed`, el servicio real, contra la base de pruebas local (`_test`), nunca contra la de un entorno con datos. La base se sembró con un script fuera del repositorio, en dos organizaciones aparte, como en la 21.6:
+
+| Volumen | Proveedores | Recepciones | Pagos | Mediana | Máximo | Umbral |
+|---|---|---|---|---|---|---|
+| 1× | 100 | 2.000 | 2.000 | 34 a 39 ms | — | 400 ms |
+| 5× | 500 | 10.000 (1.000 anuladas) | 10.000 (1.000 anulados) | 141 a 151 ms | 174 ms | 400 ms |
+
+Las recepciones y los pagos se reparten en dos monedas. Se midieron tres caminos: la primera página sin filtro, la última página y el filtro por ARS.
+
+**Los planes con 5×**:
+
+- las recepciones, con un `Hash Left Join` a las anulaciones, cerca de 15 ms;
+- los pagos vigentes, cerca de 17 ms;
+- los nombres de la página, cerca de 0,1 ms.
+
+El resto del camino es la imputación en memoria. Cumple con margen, y **la subfase no se detiene**.
+
+**Una medición contaminada, descartada.** La primera integración completa, después de cambiar la lectura, dio 989 ms en el detalle de la sesión de la 22.6 contra 754, y un timeout en `organization-bootstrap`. Una corrida de tests anterior seguía en segundo plano sobre la misma base. Sin nada en paralelo:
+
+- el detalle de la sesión dio de 455 a 668 ms, cinco de cinco por debajo del umbral;
+- `organization-bootstrap`, solo, pasó 6 de 6.
+
+Es la regla de la batería: nada en paralelo.
+
+### La batería local
+
+Desde Git Bash, sin nada en paralelo:
+
+- integración, **1.542 de 1.543**. Falló `organization-bootstrap.test.ts` («todos los seeds rechazan la base productiva»), por timeout a los 30 s con la suite entera. Es la misma falla por carga de la 21.6, la 22.5 y la 22.6, y la 22.7 no toca ese código. Solo pasó 6 de 6;
+- formato, lint, typecheck y build pasan; 859 unitarios y 711 guardas pasan;
+- end-to-end, **225 de 226** en una sola corrida. `supplier-accounts.spec.ts` pasa entero, y también `supplier-payments.spec.ts` con su línea cambiada.
+
+**Falló el caso 9 (H-5) de `clients.spec.ts`**, por timeout, y falla también solo, tres de tres, incluso con 120 s. Es la misma falla, con el mismo mensaje, que tuvo el 2026-10-16, antes de que existiera el código de la 22.7.
+
+La traza muestra la causa: dos `response.text()` del test que no terminan nunca. Corresponden a dos prefetch RSC de la navegación, `/conversaciones` y `/informacion`, cuyas respuestas no terminan ni se marcan abortadas. Ninguna toca compras. El único archivo de navegación del diff es el submenú de Compras, que no aparece en Clientes.
+
+No se pudo correr el caso sobre `3441471` sin los cambios: Turbopack no compila con `node_modules` enlazado, y copiar o instalar las dependencias no está autorizado. **Es una inferencia por la traza, no una comparación.** `clients.spec.ts` no está en la lista de archivos, así que no se corrigió. El usuario decidió el 2026-10-17 dejarlo así, sin tarea aparte.
+
+## Revisión independiente — 2026-10-17
+
+Un agente de solo lectura que no participó del trabajo revisó la entrega contra este brief, los ADR 0022 y 0023 y las reglas vigentes. No ejecutó nada ni pudo leer el diff. Encontró **11 hallazgos: ninguno crítico ni mayor, seis menores y cinco notas**. Cada uno se verificó contra el código antes de aceptarlo.
+
+- **R1 (menor), declarado**: la lista no marca al proveedor desactivado, y ningún documento lo decía, aunque D-7 lo pedía. Se declaró en Screens §56 y en los desvíos, arriba.
+- **R2 (menor), corregido con autorización**: D-3 prometía una precisión en D-5 de la 22.6, y ese brief no estaba en la lista de archivos. El usuario autorizó la nota fechada; está en los desvíos, arriba.
+- **R3 (menor), corregido**: el comentario de `payment-reads.ts` decía que todas las lecturas corren con el bloqueo de cobros tomado. Ahora dice que corren con el bloqueo o en una sola foto de solo lectura.
+- **R4 (menor), declarado**: AC-8 y D-7 no dicen lo mismo. Se reforzó el end-to-end con la vuelta del estado de cuenta a la ficha con el teclado, y se declaró arriba.
+- **R5 (menor), corregido**: faltaban aserciones:
+  - con más de 500 comprobantes, que sean los 500 más nuevos y que el total esté entero;
+  - en la lista, cada fila igual al resumen en todos los campos, no solo en lo que se debe y lo que está a favor;
+  - `voidedAt` en `getGoodsReceiptForPayment`.
+
+  Las tres se sumaron.
+- **R6 (menor), declarado**: el brief llama «nuevo» a un test que ya existía.
+- **R7 (nota), declarado**: el desvío de `supplier-payments.spec.ts`. `.claude/settings.json` y `docs/ui-redesign/` siguen sin seguimiento y no entran en el commit.
+- **R8 (nota), corregido**: la regla 3 fijaba nombres de funciones y no quién llama `supplierLedger`. Se sumó el caso de los llamadores, y la mutación de una séptima lectura se detecta.
+- **R9 (nota), corregido**: no había registro de la medición. Está arriba, con 1×, 5× y los planes.
+- **R10 (nota), corregido**: el Overview atribuía `supplierLedger` también a la lista, y SecurityModel le daba `NOT_FOUND`. Las dos frases se corrigieron.
+- **R11 (nota), corregido**: si el servicio fallaba, la tarjeta decía «No se le debe nada.». Ahora dice que no pudo leer la cuenta.
+
+**Lo que el revisor verificó sin hallazgo**:
+
+- una sola regla, también en la lista;
+- la foto de solo lectura en las seis lecturas, y el pago y su anulación todavía detrás del bloqueo;
+- el aislamiento por organización;
+- el `viewer`, y que ninguna lectura escriba, audite ni numere;
+- las fronteras entre `cash` y `purchasing`, y H-5;
+- el ADR 0023;
+- ninguna frase de estado desactualizada.
+
+El revisor no aprobó la entrega ni autorizó nada.

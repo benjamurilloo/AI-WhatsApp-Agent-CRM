@@ -71,7 +71,7 @@ import {
   resolveIngestedConversation,
   searchClientsByLastInteraction,
 } from "@/modules/conversations";
-import { listDebtors } from "@/modules/cash";
+import { listDebtors, listSuppliersOwed } from "@/modules/cash";
 import { searchClients, suggestClients } from "@/modules/crm";
 import {
   getCatalogProductForService,
@@ -607,6 +607,27 @@ async function main(): Promise<void> {
     ["cash.listDebtors (21.6)", () => deudores(null)(1)],
     ["cash.listDebtors (21.6, última página)", ultimaPagina(deudores(null))],
     ["cash.listDebtors (21.6, ARS)", () => deudores("ARS")(1)],
+  );
+  // La lista de proveedores a los que se les debe de la 22.7 (brief-22.7, D-7, D-8 y AC-6): lee las
+  // recepciones de la organización por purchasing y los pagos vigentes, en una sola foto, y pasa la
+  // cuenta de cada proveedor por imputeAccount. Como la de deudores, la primera página y la última
+  // cuestan lo mismo.
+  const aPagar = (currency: string | null) => async (page: number) => {
+    const resultado = await listSuppliersOwed(context, { currency, page });
+    if (!resultado.ok) return resultado;
+    const { suppliers } = resultado;
+    return {
+      ...suppliers,
+      pageCount: Math.max(1, Math.ceil(suppliers.total / suppliers.pageSize)),
+    };
+  };
+  listados.push(
+    ["cash.listSuppliersOwed (22.7)", () => aPagar(null)(1)],
+    [
+      "cash.listSuppliersOwed (22.7, última página)",
+      ultimaPagina(aPagar(null)),
+    ],
+    ["cash.listSuppliersOwed (22.7, ARS)", () => aPagar("ARS")(1)],
   );
   if (productoId) {
     listados.push([

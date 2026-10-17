@@ -581,7 +581,7 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 - **Acciones**: «Editar»; «Desactivar», con la confirmación «¿Desactivar "{nombre}"?» en un segundo paso de la URL; con el proveedor inactivo, la tarjeta «Estado» con «Reactivar».
 - *Desde la 22.4* ([brief-22.4](../decisions/brief-22.4-la-recepcion.md), D-11): la tarjeta «Recepciones», con sus cinco últimas (número, fecha, orden o «Sin orden» y total) y «Ver las {n} recepciones de este proveedor», que lleva a la pantalla 46 filtrada por él; sin recepciones, «Este proveedor no tiene recepciones.». *Desde la 22.5* ([brief-22.5](../decisions/brief-22.5-la-anulacion-de-la-recepcion.md), D-9): la marca «Anulada» en las anuladas.
 - *Desde la 22.3* ([brief-22.3](../decisions/brief-22.3-la-orden-de-compra.md), D-10): la tarjeta «Órdenes de compra», con sus cinco últimas (número, fecha, total y estado), «Ver las {n} órdenes de este proveedor», que lleva a la pantalla 43 filtrada por él, y, si está activo, «Nueva orden de compra», que lleva a la 44 con el proveedor ya elegido; sin órdenes, «Este proveedor no tiene órdenes de compra.».
-- *Desde la 22.6* ([brief-22.6](../decisions/brief-22.6-los-pagos-a-proveedores.md), D-13; FR-COMP-19): la tarjeta «Pagos», con «Pago a cuenta» (también para un proveedor desactivado) y «Ver los pagos de este proveedor». El resumen de su cuenta llega con la 22.7.
+- *Desde la 22.6* ([brief-22.6](../decisions/brief-22.6-los-pagos-a-proveedores.md), D-13; FR-COMP-19): la tarjeta «Pagos», con «Pago a cuenta» (también para un proveedor desactivado) y «Ver los pagos de este proveedor». El resumen de su cuenta llega con la 22.7. *Desde la 22.7* ([brief-22.7](../decisions/brief-22.7-la-cuenta-del-proveedor.md), D-5; FR-COMP-24): la tarjeta se llama **«Cuenta»**: por moneda, «Se le debe ARS» o «A favor del negocio USD» con el monto, o «No se le debe nada.»; «Estado de cuenta», «Ver los pagos de este proveedor» y «Pago a cuenta».
 
 ## 43. Órdenes de compra
 
@@ -697,3 +697,22 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 - **Un pago sin anular**: «Este pago no está anulado.», con «Volver al pago».
 - **Al imprimir** queda solo el comprobante.
 - **Un `viewer`**: el aviso.
+
+## 55. Estado de cuenta del proveedor
+
+*Agregada en la 22.7* ([brief-22.7](../decisions/brief-22.7-la-cuenta-del-proveedor.md), D-4; FR-COMP-23). Ruta `/compras/proveedores/[id]/cuenta`, **solo para `admin`**, imprimible. Se llega desde la tarjeta «Cuenta» de la ficha, desde el pago a cuenta y desde la lista «A pagar».
+
+- **Información mostrada**: «Estado de cuenta de {proveedor}», con la aclaración «Según la cuenta de hoy: anular un pago o una recepción cambia a qué recepción se aplica cada peso.», «Pago a cuenta» e «Imprimir». El documento lleva la organización, la leyenda, el proveedor con su CUIT si lo tiene y la fecha y la hora de la lectura. Por moneda: «Debe (recepciones vigentes)», «Haber (pagos vigentes)» y «Saldo» («Se le debe $ X» o «A favor del negocio $ X»); la tabla de las recepciones vigentes con su número enlazado, la fecha, el total, «Pagado», «De la cuenta» y «Falta» (o «Pagada»), y lo que queda a favor. Debajo, «Comprobantes»: la fecha, el tipo con el número enlazado («Recepción», «Anulación de recepción», «Pago», «Anulación de pago»), la marca «Anulado», el destino de cada pago («Por la recepción RC-…» o «A cuenta») y el monto.
+- **Sin recepciones ni pagos**: «Este proveedor no tiene recepciones ni pagos.».
+- **Más de 500 comprobantes**: «Se muestran los 500 más recientes. El resumen y la imputación cuentan todos.».
+- **Al imprimir** queda solo el documento.
+- **Un `viewer`**: «Solo un administrador puede ver la cuenta de un proveedor.»; un proveedor de otra organización, «Este proveedor no existe.».
+
+## 56. A pagar
+
+*Agregada en la 22.7* ([brief-22.7](../decisions/brief-22.7-la-cuenta-del-proveedor.md), D-7; FR-COMP-25). Ruta `/compras/a-pagar`, **solo para `admin`**, con «A pagar» en el submenú de «Compras», después de «Pagos».
+
+- **Información mostrada**: una fila por proveedor y moneda con algo por pagar: el proveedor, enlazado a su estado de cuenta; la moneda; «Se le debe»; «Desde», la fecha de la recepción con saldo más vieja; y «Recepciones con saldo». Por moneda y de lo que se le debe más a lo que se le debe menos, de a 25. Un proveedor desactivado al que se le debe aparece **sin la marca «Desactivado»**: `getSupplierNames` no trae si está activo, y D-7 pedía la marca solo si salía sin otra lectura (brief-22.7, §Resultados).
+- **Filtro**: «Moneda», si hay más de una. En la URL: `?moneda=&pagina=`.
+- **Vacío**: «No se le debe nada a ningún proveedor.», o «… en {moneda}.» con el filtro.
+- **Un `viewer`**: el aviso de la pantalla 55.

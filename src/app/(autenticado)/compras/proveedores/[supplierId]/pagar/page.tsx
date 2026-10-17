@@ -151,6 +151,15 @@ export default async function SupplierAccountPaymentPage({
           </div>
         )}
         <p className="mb-4 text-sm text-muted">{IN_FAVOR_NOTE}</p>
+        {/* Desde la 22.7 (brief-22.7, D-5): el estado de cuenta, con la imputación de hoy. */}
+        <p className="mb-4 text-sm">
+          <Link
+            href={`/compras/proveedores/${supplier.supplier.id}/cuenta`}
+            className={linkClass}
+          >
+            Estado de cuenta
+          </Link>
+        </p>
         {form.paymentMethods.length === 0 ? (
           <p>
             {NO_ACTIVE_METHODS_MESSAGE}{" "}

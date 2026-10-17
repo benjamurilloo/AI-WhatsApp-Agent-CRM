@@ -25,6 +25,7 @@ import {
 import { Icon } from "@/app/_components/icons";
 import { PageNotice } from "@/app/_components/page-notice";
 import { SectionCard } from "@/app/_components/section-card";
+import { SupplierAccount } from "./supplier-account";
 import { formatShortDateTime } from "@/app/_format/date-time";
 import { formatMoney } from "@/shared/money";
 import {
@@ -67,7 +68,8 @@ function single(value: string | string[] | undefined): string | undefined {
 // «Reactivar», y su historia paginada. Solo admin: purchasing rechaza a un viewer también al leer.
 // Desde la 22.3, sus últimas cinco órdenes de compra, el enlace a la lista filtrada por él y, si
 // está activo, «Nueva orden de compra» con el proveedor ya elegido (brief-22.3, D-10). Desde la 22.6,
-// «Pago a cuenta» y sus pagos (brief-22.6, D-13).
+// «Pago a cuenta» y sus pagos (brief-22.6, D-13), y desde la 22.7, la tarjeta de su cuenta con el
+// estado de cuenta (brief-22.7, D-5).
 export default async function SupplierPage({
   params,
   searchParams,
@@ -338,24 +340,15 @@ export default async function SupplierPage({
       ) : null}
 
       {/* Desde la 22.6 (brief-22.6, D-13): el pago a cuenta, también a un proveedor desactivado (ADR
-          0023, punto 2), y sus pagos en la lista. El resumen de su cuenta llega con la 22.7. */}
+          0023, punto 2), y sus pagos en la lista. Desde la 22.7 (brief-22.7, D-5), la cuenta: lo que se
+          le debe o lo que está a favor del negocio, y el estado de cuenta. */}
       <SectionCard
-        id="pagos-titulo"
-        title="Pagos"
+        id="cuenta-titulo"
+        title="Cuenta"
         icon="banknote"
         className="mt-6"
       >
-        <p className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
-          <Link href={`${href}/pagar`} className={linkClass}>
-            Pago a cuenta
-          </Link>
-          <Link
-            href={`/compras/pagos?proveedor=${supplier.id}`}
-            className={linkClass}
-          >
-            Ver los pagos de este proveedor
-          </Link>
-        </p>
+        <SupplierAccount context={context} supplierId={supplier.id} />
       </SectionCard>
 
       {audit.ok && timeZone ? (

@@ -2,7 +2,9 @@
 // la orden de compra (brief-22.3), desde la 22.4, la recepción (brief-22.4) y, desde la 22.5, su
 // anulación (brief-22.5). Desde la 22.6 (punto 11; brief-22.6, D-5), cash depende de purchasing: lee y
 // bloquea al proveedor y lee las recepciones con lockSupplierForPayment, getGoodsReceiptForPayment y
-// listSupplierGoodsReceiptsForAccount. purchasing no depende de cash. Las pantallas usan el resto.
+// listSupplierGoodsReceiptsForAccount; desde la 22.7 (brief-22.7, D-3), las de toda la organización con
+// listGoodsReceiptsForAccounts, y los nombres con getSupplierNames. purchasing no depende de cash. Las
+// pantallas usan el resto.
 export { formatCuit, type CuitRejection } from "./cuit";
 export { SUPPLIER_FIELD_LIMITS } from "./schema";
 export {
@@ -105,6 +107,7 @@ export {
 export {
   getGoodsReceiptForPayment,
   getSupplierNames,
+  listGoodsReceiptsForAccounts,
   listSupplierGoodsReceiptsForAccount,
   lockSupplierForPayment,
   type GoodsReceiptForPayment,

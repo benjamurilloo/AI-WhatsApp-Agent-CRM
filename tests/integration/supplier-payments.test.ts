@@ -13,9 +13,12 @@ import {
   getGoodsReceiptPaymentForm,
   getGoodsReceiptPayments,
   getSupplierAccountPaymentForm,
+  getSupplierAccountSummary,
   getSupplierPayment,
+  getSupplierStatement,
   listPaymentMethods,
   listSupplierPayments,
+  listSuppliersOwed,
   openCashSession,
   previewCashClosing,
   recordCashMovement,
@@ -1388,6 +1391,54 @@ describe("el rendimiento (AC-8; D-14)", () => {
     const detail = await getCashSession(s.adminA, session.id);
     if (!detail.ok) throw new Error("sesión no encontrada");
     expect(detail.session.supplierPayments?.items).toHaveLength(500);
+    // Desde la 22.7 (brief-22.7, D-8 y AC-7): el estado de cuenta del proveedor, con más de 5.000
+    // comprobantes, de los que muestra 500, y el resumen de su ficha. La lista de toda la organización
+    // se mide con scripts/medir-caminos.ts; acá corre con este volumen, como control.
+    await measure("el estado de cuenta del proveedor", () =>
+      getSupplierStatement(s.adminA, s.supplierA),
+    );
+    await measure("el resumen de la cuenta en la ficha", () =>
+      getSupplierAccountSummary(s.adminA, s.supplierA),
+    );
+    await measure("la lista de proveedores a los que se les debe", () =>
+      listSuppliersOwed(s.adminA, { currency: null, page: 1 }),
+    );
+    const statement = await getSupplierStatement(s.adminA, s.supplierA);
+    if (!statement.ok) throw new Error("estado de cuenta rechazado");
+    expect(statement.statement.truncated).toBe(true);
+    expect(statement.statement.documents).toHaveLength(500);
+    // Los 500 más nuevos de todos sus comprobantes, y el resumen con todas las recepciones vigentes,
+    // no solo las de esos 500 (revisión independiente de la 22.7, R5).
+    const allDates = await getDb().execute<{ ms: string }>(
+      sql`select floor(extract(epoch from created_at) * 1000)::bigint::text as ms from goods_receipts where supplier_id = ${s.supplierA}
+          union all
+          select floor(extract(epoch from v.created_at) * 1000)::bigint::text as ms from goods_receipt_voids v
+            join goods_receipts r on r.id = v.goods_receipt_id where r.supplier_id = ${s.supplierA}
+          union all
+          select floor(extract(epoch from created_at) * 1000)::bigint::text as ms from supplier_payments where supplier_id = ${s.supplierA}
+          union all
+          select floor(extract(epoch from v.created_at) * 1000)::bigint::text as ms from supplier_payment_voids v
+            join supplier_payments p on p.id = v.supplier_payment_id
+           where p.supplier_id = ${s.supplierA}`,
+    );
+    const newest = allDates.rows
+      .map((row) => Number(row.ms))
+      .sort((a, b) => b - a);
+    expect(newest.length).toBeGreaterThan(5000);
+    expect(
+      statement.statement.documents.map((row) => row.createdAt.getTime()),
+    ).toEqual(newest.slice(0, 500));
+    const current = await getDb().execute<{ count: string }>(
+      sql`select count(*)::text as count from goods_receipts r
+          where r.supplier_id = ${s.supplierA}
+            and not exists (select 1 from goods_receipt_voids v where v.goods_receipt_id = r.id)`,
+    );
+    expect(
+      statement.statement.currencies.reduce(
+        (sum, account) => sum + account.receipts.length,
+        0,
+      ),
+    ).toBe(Number(current.rows[0]!.count));
     console.info(timings.join("\n"));
   }, 120000);
 });

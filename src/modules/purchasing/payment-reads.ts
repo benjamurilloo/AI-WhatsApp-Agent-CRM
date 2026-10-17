@@ -10,11 +10,13 @@ import {
 import * as supplierRepository from "./repository";
 
 // Lo que purchasing le da a cash para los pagos a proveedores (ADR 0023, puntos 8 a 11; brief-22.6,
-// D-5). cash depende de purchasing; purchasing no depende de cash y nunca toma el bloqueo de cobros.
+// D-5) y, desde la 22.7, para la cuenta del proveedor (brief-22.7, D-3). cash depende de purchasing;
+// purchasing no depende de cash y nunca toma el bloqueo de cobros.
 //
-// Las tres primeras reciben la transacción de cash y no pasan por authorize: las llama cash después
-// de su propio authorize(admin), con el bloqueo de cobros tomado, como getSaleForReceipt de sales.
-// Ninguna escribe. Un id que no es uuid no encuentra nada.
+// Las cuatro primeras reciben la transacción de cash y no pasan por authorize: las llama cash después
+// de su propio authorize(admin), como getSaleForReceipt de sales. Las llama en el pago, con el bloqueo
+// de cobros tomado, o, desde la 22.7, en una sola foto de solo lectura (brief-22.7, D-6). Ninguna
+// escribe. Un id que no es uuid no encuentra nada.
 
 const idSchema = z.uuid();
 
@@ -54,6 +56,8 @@ export type GoodsReceiptForPayment = {
   createdAt: Date;
   voided: boolean;
   voidDisplayNumber: string | null;
+  // La fecha de su anulación, para el estado de cuenta (brief-22.7, H-4).
+  voidedAt: Date | null;
 };
 
 function forPayment(
@@ -98,8 +102,21 @@ export async function listSupplierGoodsReceiptsForAccount(
   return rows.map(forPayment);
 }
 
-// Para las pantallas de los pagos, no para cash (brief-22.6, D-13): los nombres de unos proveedores,
-// que la página compone con los pagos. Solo admin.
+// Las recepciones de toda la organización, anuladas incluidas, por proveedor y de la más vieja a la
+// más nueva: la lista de proveedores a los que se les debe (brief-22.7, D-3 y D-7).
+export async function listGoodsReceiptsForAccounts(
+  tx: DbTransaction,
+  organizationId: string,
+): Promise<GoodsReceiptForPayment[]> {
+  const rows = await receiptRepository.findGoodsReceiptsForAccounts(
+    tx,
+    organizationId,
+  );
+  return rows.map(forPayment);
+}
+
+// Los nombres de unos proveedores, para las pantallas de los pagos (brief-22.6, D-13) y, desde la
+// 22.7, para la cuenta del proveedor, que la arma cash (brief-22.7, D-3). Solo admin.
 export async function getSupplierNames(
   context: AuthContext,
   supplierIds: string[],

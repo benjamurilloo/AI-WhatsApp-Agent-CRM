@@ -752,7 +752,9 @@ export async function getGoodsReceiptPayments(
     return failure("VALIDATION_ERROR");
   }
   const { organizationId } = context;
-  const result = await repository.withTransaction(async (tx) => {
+  // Una sola foto (brief-22.7, D-6): sin el bloqueo de cobros, un pago confirmado entre dos lecturas
+  // podría apuntar a una recepción que la primera no vio.
+  const result = await repository.withSnapshot(async (tx) => {
     const receipt = await getGoodsReceiptForPayment(
       tx,
       organizationId,
@@ -829,7 +831,9 @@ export async function getGoodsReceiptPaymentForm(
     return failure("VALIDATION_ERROR");
   }
   const { organizationId } = context;
-  const result = await repository.withTransaction(async (tx) => {
+  // Una sola foto (brief-22.7, D-6): sin el bloqueo de cobros, un pago confirmado entre dos lecturas
+  // podría apuntar a una recepción que la primera no vio.
+  const result = await repository.withSnapshot(async (tx) => {
     const receipt = await getGoodsReceiptForPayment(
       tx,
       organizationId,
@@ -912,7 +916,8 @@ export async function getSupplierAccountPaymentForm(
   }
   const { organizationId } = context;
   const id = supplierId.toLowerCase();
-  const ledger = await repository.withTransaction((tx) =>
+  // Una sola foto (brief-22.7, D-6).
+  const ledger = await repository.withSnapshot((tx) =>
     supplierLedger(tx, organizationId, id),
   );
   const currencies = ledger.accounts

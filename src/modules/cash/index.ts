@@ -153,3 +153,17 @@ export {
   type LateSupplierPaymentVoidView,
   type SessionSupplierPayments,
 } from "./service";
+// La cuenta del proveedor (brief-22.7): el estado de cuenta, el resumen de la ficha y la lista de
+// proveedores a los que se les debe, solo de admin.
+export {
+  getSupplierAccountSummary,
+  getSupplierStatement,
+  listSuppliersOwed,
+  SUPPLIERS_OWED_PAGE_SIZE,
+  type SupplierOwedRow,
+  type SuppliersOwedPage,
+  type SupplierStatement,
+  type SupplierStatementCurrency,
+  type SupplierStatementDocument,
+  type SupplierStatementReceipt,
+} from "./supplier-accounts";

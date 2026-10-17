@@ -1,4 +1,4 @@
-import { and, count, desc, eq, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, isNull, sql, type SQL } from "drizzle-orm";
 import { getDb, type Db, type DbTransaction } from "@/shared/db";
 import type { CurrencyAmountRow, VoidRef } from "./repository";
 import {
@@ -178,6 +178,22 @@ export function findSupplierPayments(
       ),
     )
     .orderBy(supplierPayments.number);
+}
+
+// Los pagos vigentes de toda la organización, para la lista de proveedores a los que se les debe
+// (brief-22.7, D-7): solo los que cuentan en la regla, por proveedor y por número.
+export function findAccountsSupplierPayments(
+  organizationId: string,
+  executor: Executor,
+): Promise<SupplierPaymentRow[]> {
+  return select(executor)
+    .where(
+      and(
+        eq(supplierPayments.organizationId, organizationId),
+        isNull(supplierPaymentVoids.id),
+      ),
+    )
+    .orderBy(asc(supplierPayments.supplierId), asc(supplierPayments.number));
 }
 
 export function findGoodsReceiptPayments(

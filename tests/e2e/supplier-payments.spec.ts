@@ -282,7 +282,7 @@ test("un pago a cuenta mayor que la deuda: se imputa a la recepción más vieja 
 
   await page.goto(`/compras/proveedores/${supplierId}`);
   await page
-    .getByRole("region", { name: "Pagos", exact: true })
+    .getByRole("region", { name: "Cuenta", exact: true })
     .getByRole("link", { name: "Pago a cuenta" })
     .click();
   await expect(

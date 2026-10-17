@@ -16,6 +16,12 @@ import { describe, expect, it } from "vitest";
 //
 // Lee el texto: import y export con from, el import de efecto y el import dinámico con un literal.
 // No ve un especificador armado en tiempo de ejecución.
+//
+// Desde la 22.7 (brief-22.7, D-6 y D-10), una tercera regla, por texto: las lecturas de la cuenta del
+// proveedor que no escriben leen en una sola foto, con withSnapshot y nunca con withTransaction. Sin el
+// bloqueo de cobros, un pago confirmado entre dos lecturas podría apuntar a una recepción que la
+// primera no vio, e imputeAccount lanzaría. No hay test de la carrera: depende de un intervalo entre
+// dos sentencias que un test no puede fijar sin un gancho en el código.
 
 const PURCHASING_ALLOWED = new Set([
   "catalog",
@@ -51,6 +57,80 @@ function purchasingViolations(file: string, code: string): string[] {
       return true;
     })
     .map((specifier) => `${file} importa ${specifier}`);
+}
+
+// Las lecturas de D-6, por archivo y por función. La lista de proveedores lee en readOwed.
+const SNAPSHOT_READS: Record<string, string[]> = {
+  "src/modules/cash/supplier-payments.ts": [
+    "getGoodsReceiptPayments",
+    "getGoodsReceiptPaymentForm",
+    "getSupplierAccountPaymentForm",
+  ],
+  "src/modules/cash/supplier-accounts.ts": [
+    "getSupplierAccountSummary",
+    "getSupplierStatement",
+    "readOwed",
+  ],
+};
+
+// El cuerpo de una función de primer nivel: desde su declaración hasta la llave que la cierra en la
+// columna cero.
+function functionBody(source: string, name: string): string | null {
+  // Una copia de trabajo de Windows puede tener CRLF.
+  const code = source.replaceAll("\r\n", "\n");
+  const start = code.search(new RegExp(`\\bfunction ${name}\\(`));
+  if (start < 0) return null;
+  const end = code.indexOf("\n}\n", start);
+  return code.slice(start, end < 0 ? undefined : end);
+}
+
+function snapshotViolations(
+  file: string,
+  code: string,
+  names: string[],
+): string[] {
+  return names.flatMap((name) => {
+    const body = functionBody(code, name);
+    if (body === null) return [`${file}: no está ${name}`];
+    if (/\bwithTransaction\(/.test(body) || !/\bwithSnapshot\(/.test(body)) {
+      return [`${file}: ${name} no lee en una sola foto`];
+    }
+    return [];
+  });
+}
+
+// Quién lee la cuenta del proveedor (revisión independiente de la 22.7, R8): toda llamada a
+// supplierLedger y a las dos lecturas de la organización está en una lectura de SNAPSHOT_READS o en
+// el pago, que la hace detrás del bloqueo de cobros. Una lectura nueva fuera de la lista no pasa.
+const LEDGER_READ =
+  /\b(?:supplierLedger|listGoodsReceiptsForAccounts|findAccountsSupplierPayments)\(/g;
+const LOCKED_LEDGER_CALLERS = new Set(["createSupplierPayment"]);
+const SNAPSHOT_NAMES = new Set(Object.values(SNAPSHOT_READS).flat());
+
+// La función de primer nivel que contiene una posición del código.
+function enclosingFunction(code: string, index: number): string | null {
+  const declarations = [
+    ...code
+      .slice(0, index)
+      .matchAll(/^(?:export )?(?:async )?function (\w+)\(/gm),
+  ];
+  return declarations.at(-1)?.[1] ?? null;
+}
+
+function ledgerCallerViolations(file: string, source: string): string[] {
+  const code = source.replaceAll("\r\n", "\n");
+  return [...code.matchAll(LEDGER_READ)]
+    .filter((match) => !/function\s+$/.test(code.slice(0, match.index)))
+    .flatMap((match) => {
+      const caller = enclosingFunction(code, match.index);
+      if (
+        caller !== null &&
+        (SNAPSHOT_NAMES.has(caller) || LOCKED_LEDGER_CALLERS.has(caller))
+      ) {
+        return [];
+      }
+      return [`${file}: ${caller ?? "?"} lee la cuenta del proveedor`];
+    });
 }
 
 function importerViolations(file: string, code: string): string[] {
@@ -133,7 +213,73 @@ describe("detección", () => {
   });
 });
 
+describe("regla 3, la detección", () => {
+  it("detecta una lectura que vuelve a withTransaction, y una que ya no está", () => {
+    const code = [
+      "export async function getSupplierStatement(context) {",
+      "  const ledger = await repository.withTransaction((tx) => read(tx));",
+      "}",
+      "",
+    ].join("\n");
+    expect(
+      snapshotViolations("x.ts", code, ["getSupplierStatement", "readOwed"]),
+    ).toEqual([
+      "x.ts: getSupplierStatement no lee en una sola foto",
+      "x.ts: no está readOwed",
+    ]);
+  });
+
+  it("permite withSnapshot", () => {
+    const code = [
+      "async function readOwed(organizationId) {",
+      "  const rows = await repository.withSnapshot(async (tx) => read(tx));",
+      "}",
+      "",
+    ].join("\n");
+    expect(snapshotViolations("x.ts", code, ["readOwed"])).toEqual([]);
+  });
+
+  it("detecta una lectura de la cuenta fuera de la lista, y permite el pago y las de la lista", () => {
+    const code = [
+      "export async function supplierLedger(tx, organizationId, supplierId) {",
+      "}",
+      "export async function getSupplierDebt(context, id) {",
+      "  const ledger = await supplierLedger(tx, context.organizationId, id);",
+      "}",
+      "export async function createSupplierPayment(context, input) {",
+      "  const ledger = await supplierLedger(tx, organizationId, supplierId);",
+      "}",
+      "async function readOwed(organizationId) {",
+      "  const receipts = await listGoodsReceiptsForAccounts(tx, organizationId);",
+      "}",
+      "",
+    ].join("\n");
+    expect(ledgerCallerViolations("x.ts", code)).toEqual([
+      "x.ts: getSupplierDebt lee la cuenta del proveedor",
+    ]);
+  });
+});
+
 describe("el código", () => {
+  it("las lecturas de la cuenta del proveedor leen en una sola foto (regla 3)", () => {
+    expect(
+      Object.entries(SNAPSHOT_READS).flatMap(([file, names]) =>
+        snapshotViolations(file, readFileSync(file, "utf8"), names),
+      ),
+    ).toEqual([]);
+  });
+
+  it("solo las lecturas de la lista y el pago leen la cuenta del proveedor (regla 3)", () => {
+    const cashFiles = readdirSync("src/modules/cash", { encoding: "utf8" })
+      .filter((file) => /\.ts$/.test(file) && !/\.test\.ts$/.test(file))
+      .map((file) => `src/modules/cash/${file}`);
+    expect(
+      cashFiles.flatMap((file) =>
+        ledgerCallerViolations(file, readFileSync(file, "utf8")),
+      ),
+    ).toEqual([]);
+  });
+
   const files = readdirSync("src", { recursive: true, encoding: "utf8" })
     .map((file) => join("src", file).replaceAll("\\", "/"))
     .filter((file) => /\.tsx?$/.test(file));

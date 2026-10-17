@@ -299,6 +299,14 @@ Un valor nuevo se suma con un `ALTER TYPE` aditivo.
 
   Es una guarda acotada a la dirección que esta fase fija, y no sustituye la tarea general.
 
+*Precisado el 2026-10-17 en la 22.7* ([brief-22.7](brief-22.7-la-cuenta-del-proveedor.md), H-2 y D-3; autorizado por el usuario por R2 de su revisión): **`cash` usa cuatro lecturas de `purchasing`, más `getSupplierNames`**.
+
+- La cuarta es `listGoodsReceiptsForAccounts(tx, organizationId)`, las recepciones de toda la organización, para la lista de proveedores a los que se les debe.
+- Las tres que dan recepciones traen también `voidedAt`, la fecha de la anulación.
+- `getSupplierNames` la llamaban solo las pantallas (§Resultados, desvíos) y desde la 22.7 la llama también `cash`.
+
+La guarda fija la dirección, no la lista de funciones. Desde la 22.7 fija además, por texto, que las lecturas de la cuenta del proveedor sin bloqueo leen en una sola foto.
+
 *Alternativa*: comprobarlo con `grep` en §Resultados, como de la 22.2 a la 22.5. Desde ahora hay una dependencia real, y un import de `cash` en `purchasing` cerraría un ciclo que nada detectaría.
 
 **D-6. La cuenta del proveedor (H-5, H-6).** **Recomendado**:
