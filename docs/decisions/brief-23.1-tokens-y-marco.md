@@ -7,7 +7,7 @@ generated_at: 2026-10-17
 
 # Brief: 23.1 — Tokens y marco
 
-**Estado: aprobado el 2026-10-17 por el usuario, con las recomendaciones de D-1 a D-9.** Eso fija:
+**Estado: aprobado el 2026-10-17 por el usuario, con las recomendaciones de D-1 a D-9. Cerrado el 2026-10-17 (§Cierre).** Eso fija:
 
 - las piezas según la tabla de D-1;
 - los radios de 12 px (D-2);
@@ -215,3 +215,34 @@ La 23.1 no abre ni cierra un gate y solo cambia la presentación.
 - **R-1**: el marco lo comparten todas las pantallas y casi todos los end-to-end. Se mitiga conservando los nombres accesibles («Principal», «Tema», las tres opciones del tema y «Salir») y listando cada paso que cambia (H-6).
 - **R-2**: la barra inferior fija puede tapar botones al final de los formularios largos. Se mitiga con el margen inferior y con un caso que lo comprueba (AC-5).
 - **R-3**: las migas de un solo nivel pueden parecer incompletas en las pantallas de detalle hasta la Fase 24. Es una limitación aceptada en D-6.
+
+## Cierre de la subfase 23.1, 2026-10-17
+
+Cierra el 2026-10-17, después del recorrido del usuario en producción («esta todo perfecto, continua»). Es autoevaluación declarada (D-9): ningún agente independiente revisó la entrega.
+
+- **AC-1 a AC-8 cumplidos.**
+- **Commits, CI y despliegue**:
+  - `2a45cb8`, la apertura de la fase: el Roadmap, este brief y los mockups de `docs/ui-redesign/`.
+  - `3873306`, la implementación. CI 39071541179 `success`, leída por el SHA completo.
+  - Desplegado el 2026-10-17 según [deploy/production/README.md](../../deploy/production/README.md) §Desplegar, **sin migración**, con `69d3cad` anotado para volver atrás. Después: el servicio `active`, sin advertencias en el journal, `/login` con `200` y `/` con `307`.
+- **Lo entregado**:
+  - los radios de 12 px en `form-styles.ts` y en los componentes compartidos (D-2);
+  - `outlineButtonClass`, con su test, sin aplicar todavía (D-3);
+  - el menú en el orden de D-4, con el activo marcado por la barra de 3 px, el texto `primary` y `aria-current`;
+  - el menú del usuario en la barra superior y el usuario al pie del panel (D-5), con `useDisclosure` en `disclosure.ts`: Escape, el toque afuera y la navegación lo cierran, y el foco vuelve al botón;
+  - las migas «‹organización› / ‹sección›» (D-6), que salen de `nav-links.ts`, con `/cobros` y `/devoluciones` dentro de la caja;
+  - la barra inferior debajo de 1024 px (D-7), con «Más» según el rol, destinos de 56 px de alto y el margen inferior del contenido. Antes de hidratar, la barra no aparece y el panel completo queda visible, como sin JavaScript.
+- **Los end-to-end que cambiaron**:
+  - `frame.spec.ts`: los casos 1 y 2 reescritos, el 2b nuevo (el «Más» de un `viewer`) y el 3 con la marca filtrada por visible, porque ahora está dos veces;
+  - `users.spec.ts`, `login.spec.ts` y `sales.spec.ts` abren el menú del usuario antes de «Salir»;
+  - los recorridos con teclado de `users`, `clients`, `knowledge` y `products` suben su tope de 16 a 20 tabulaciones, por la parada nueva de las migas.
+- **Batería**, sin nada en paralelo:
+  - formato, lint, typecheck, build, y 1.581 unitarios y guardas;
+  - end-to-end 220 de 227 en una corrida de 36,7 min. Tres fallas eran el tope de tabulaciones (corregido). Cuatro vencieron los 30 s sin una aserción en rojo y pasaron solas: los dos de `receipts.spec.ts`, uno de `sales.spec.ts` y el caso 9 de `clients.spec.ts`, que solo tarda de 18 a 22 s;
+  - la integración no corrió en local: la subfase no toca `src/modules/`. La cubrió la CI.
+- **Lo que no certifica**:
+  - **diez avisos con `rounded-md` escritos en las páginas** (los comprobantes de venta, cobro, devolución y pago, la orden, la recepción y su formulario, el horario y el alta de un usuario) siguen en 6 px, igual que el esqueleto de las conversaciones del cliente y las pestañas del gráfico del dashboard. El alcance 2 cubría `form-styles.ts` y los componentes compartidos; las páginas quedan para la Fase 24;
+  - las migas de un solo nivel en las pantallas de detalle (R-3, aceptado en D-6);
+  - una revisión independiente: no se pidió (D-9).
+- **Volver a `69d3cad` es limpio**: la subfase no tiene migración ni escribe datos.
+- **Nivel**: validado en integración (end-to-end sobre `next start` con axe en claro y oscuro, a 1280 y 375 px), desplegado en producción y recorrido por el usuario. No es «preparado para producción».

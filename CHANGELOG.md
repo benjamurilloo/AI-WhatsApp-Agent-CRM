@@ -2,6 +2,29 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-17 — 23.1: tokens y marco
+
+Cierra el 2026-10-17, después del recorrido del usuario en producción ([brief-23.1](docs/decisions/brief-23.1-tokens-y-marco.md), §Cierre). Es la primera subfase de la Fase 23 — Sistema visual y marco, y la primera del rediseño sobre los mockups de [docs/ui-redesign/](docs/ui-redesign/manifest.md). Autoevaluación declarada (D-9).
+
+**Certifica:**
+- **Solo presentación**: ningún dato, consulta, contrato, permiso ni migración cambió.
+- **Radios de 12 px** en los controles, botones, avisos y tarjetas de `form-styles.ts` y de los componentes compartidos.
+- **`outlineButtonClass`**, el botón con borde violeta, definido y con su test, para aplicarlo en la Fase 24.
+- **El menú en el orden de los mockups**, con el activo marcado por una barra de 3 px (6,21:1 en claro y 6,85:1 en oscuro contra el panel) y `aria-current`, y no por el fondo, que no llega a 3:1.
+- **El menú del usuario** en la barra superior, con nombre, rol y «Salir», que se abre con el teclado y cierra con Escape, con un toque afuera o al navegar; y el usuario al pie del panel.
+- **Las migas «‹organización› / ‹sección›»**, con la organización dentro del `banner`.
+- **La barra inferior debajo de 1024 px**: Inicio, Chats, Clientes, Ventas y «Más», con el resto de las secciones según el rol. Una sola navegación «Principal» visible en cada tamaño, y sin JavaScript el panel completo.
+- **axe sin violaciones** en el marco, en claro y en oscuro, a 1280 y a 375 px.
+- **En producción**: `3873306`, sin migración, con la CI 39071541179 en `success`, recorrido por el usuario.
+
+**Nivel**: validado en integración, desplegado en producción y recorrido por el usuario. No es «preparado para producción».
+
+**No certifica:**
+- **Diez avisos escritos en las páginas** siguen con 6 px de radio: quedan para la Fase 24, pantalla por pantalla.
+- **Las migas de más de un nivel**: las pantallas de detalle conservan su «Volver a …» hasta la Fase 24 (R-3).
+- **El end-to-end completo en una sola corrida local**: dio 220 de 227. Tres eran el tope de tabulaciones, corregido; cuatro vencieron por tiempo sin una aserción en rojo y pasaron solos. La CI pasó entera.
+- **Una revisión independiente**: no se pidió, porque la subfase no abre ni cierra un gate.
+
 ## 2026-10-17 — 22.7: la cuenta del proveedor, y la Fase 22 — Compras y proveedores
 
 Cierra el 2026-10-17, después del recorrido del usuario en producción ([brief-22.7](docs/decisions/brief-22.7-la-cuenta-del-proveedor.md), §Cierre). Con ella **cierra la Fase 22**: las subfases del punto 15 del [ADR 0023](docs/decisions/0023-compras-y-proveedores.md) están entregadas, desplegadas y recorridas, con la 22.6 dividida en dos por la nota fechada del 2026-10-16.

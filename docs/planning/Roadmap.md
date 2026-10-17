@@ -440,8 +440,8 @@ Reglas comunes a las cuatro fases:
     - las métricas de WhatsApp del dashboard, que el mockup omite y pasan a su propia pestaña (Fase 25);
     - la base de conocimiento que lee el agente, que el mockup de Información reemplaza por un perfil fiscal y que se conserva.
 - **Fase 23 — Sistema visual y marco**: lo que comparten todas las pantallas, sin datos nuevos ni contratos.
-  - **23.1 — Tokens y marco** ([brief-23.1](../decisions/brief-23.1-tokens-y-marco.md)): radios, botón secundario, menú en el orden de los mockups, usuario al pie del panel, migas y barra inferior en el teléfono.
-  - **23.2 — Estados compartidos**: carga con esqueleto, estado vacío con ícono y acción, error recuperable, aviso después de una acción y aviso de cambios sin guardar.
+  - **23.1 — Tokens y marco** ([brief-23.1](../decisions/brief-23.1-tokens-y-marco.md)): radios, botón secundario, menú en el orden de los mockups, usuario al pie del panel, migas y barra inferior en el teléfono. **Cerrada el 2026-10-17** ([brief-23.1](../decisions/brief-23.1-tokens-y-marco.md) §Cierre): sin migración, desplegada (`3873306`) y recorrida por el usuario.
+  - **23.2 — Estados compartidos** ([brief-23.2](../decisions/brief-23.2-estados-compartidos.md), aprobado el 2026-10-17): carga con esqueleto, estado vacío con ícono y acción, error recuperable, aviso después de una acción y aviso de cambios sin guardar.
   - **23.3 — Búsqueda global**, de solo lectura, sobre clientes, pedidos y productos, con los permisos de cada módulo.
 - **Fase 24 — Pantallas rediseñadas con lo que ya existe**: una subfase por módulo, cada una con su brief, sin tablas nuevas.
   - **24.1 Conversaciones**: bandeja en tres paneles y notas en el hilo.
