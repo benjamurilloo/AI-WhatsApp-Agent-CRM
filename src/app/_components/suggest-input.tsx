@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import {
+  Fragment,
   useEffect,
   useId,
   useRef,
@@ -11,6 +12,7 @@ import {
 } from "react";
 import {
   filterSuggestions,
+  groupSuggestions,
   looksLikePhone,
   REMOTE_DELAY_MS,
   REMOTE_MIN_LENGTH,
@@ -26,6 +28,10 @@ import {
 // campo; o una Server Action (`load`, D-6), que se pide desde REMOTE_MIN_LENGTH caracteres y
 // REMOTE_DELAY_MS después de la última tecla, descartando las respuestas viejas, y al elegir abre
 // el detalle. Con `load`, Enter sin una opción activa envía el formulario: busca como siempre.
+//
+// Las sugerencias del servidor pueden llegar agrupadas (brief-23.3, D-5): cada grupo es un
+// `role="group"` con su título como nombre, dentro del listbox, y cada opción dice además su tipo
+// en su nombre accesible, porque no todos los lectores anuncian el grupo. Sin grupos, la lista de siempre.
 //
 // El campo no es controlado: el formulario lo reinicia a defaultValue después de cada envío
 // (useActionState), como a los demás campos. El estado solo guarda el texto con que se filtra.
@@ -43,6 +49,8 @@ type InputProps = {
   // Un ícono posicionado sobre el campo, como la lupa de los buscadores: va dentro del contenedor
   // del campo y después de él, para que el campo no lo tape.
   children?: ReactNode;
+  // La altura y el ancho de la lista, si no sirven los de siempre.
+  listClassName?: string;
 };
 
 type Source =
@@ -54,7 +62,15 @@ type Source =
       skipPhones?: boolean;
     };
 
-type Item = { id: string; label: string; detail?: string; href?: string };
+type Item = {
+  id: string;
+  label: string;
+  detail?: string;
+  detailStyle?: "code" | "text";
+  href?: string;
+  group?: string;
+  spokenKind?: string;
+};
 
 export function SuggestInput({
   options,
@@ -62,6 +78,7 @@ export function SuggestInput({
   skipPhones = false,
   type = "text",
   children,
+  listClassName = "max-h-60 min-w-60",
   ...input
 }: InputProps & Source) {
   const router = useRouter();
@@ -162,6 +179,48 @@ export function SuggestInput({
     }
   }
 
+  function renderOption(item: Item, index: number) {
+    return (
+      <li
+        key={item.id}
+        id={optionId(index)}
+        role="option"
+        aria-selected={index === active}
+        // Con el tipo, el nombre se arma entero: un texto oculto dentro de la opción lo leería con un
+        // espacio de más («Ana Pérez , cliente»).
+        aria-label={
+          item.spokenKind
+            ? [item.label, item.spokenKind, item.detail]
+                .filter(Boolean)
+                .join(", ")
+            : undefined
+        }
+        // mousedown, no click: el campo no pierde el foco antes de elegir.
+        onMouseDown={(event) => {
+          event.preventDefault();
+          choose(item);
+        }}
+        className={`cursor-pointer px-3 py-2 ${index === active ? "bg-primary-soft text-on-primary-soft" : "hover:bg-surface-muted"}`}
+      >
+        {item.label}
+        {item.detail ? (
+          <>
+            {" "}
+            <span
+              className={
+                item.detailStyle === "text"
+                  ? "block text-sm text-muted"
+                  : "block font-mono text-xs whitespace-nowrap"
+              }
+            >
+              {item.detail}
+            </span>
+          </>
+        ) : null}
+      </li>
+    );
+  }
+
   return (
     <div className="relative">
       <input
@@ -194,33 +253,37 @@ export function SuggestInput({
         role="listbox"
         aria-label="Sugerencias"
         hidden={!expanded}
-        className="absolute inset-x-0 top-full z-20 mt-1 max-h-60 min-w-60 overflow-y-auto rounded-xl border border-border-strong bg-surface py-1 text-base text-foreground shadow-lg"
+        className={`absolute inset-x-0 top-full z-20 mt-1 ${listClassName} overflow-y-auto rounded-xl border border-border-strong bg-surface py-1 text-base text-foreground shadow-lg`}
       >
         {expanded
-          ? shown.map((item, index) => (
-              <li
-                key={item.id}
-                id={optionId(index)}
-                role="option"
-                aria-selected={index === active}
-                // mousedown, no click: el campo no pierde el foco antes de elegir.
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  choose(item);
-                }}
-                className={`cursor-pointer px-3 py-2 ${index === active ? "bg-primary-soft text-on-primary-soft" : "hover:bg-surface-muted"}`}
-              >
-                {item.label}
-                {item.detail ? (
-                  <>
-                    {" "}
-                    <span className="block font-mono text-xs whitespace-nowrap">
-                      {item.detail}
-                    </span>
-                  </>
-                ) : null}
-              </li>
-            ))
+          ? groupSuggestions(shown).map((group) =>
+              group.title === null ? (
+                <Fragment key="">
+                  {group.items.map(({ item, index }) =>
+                    renderOption(item, index),
+                  )}
+                </Fragment>
+              ) : (
+                <li
+                  key={group.title}
+                  role="group"
+                  aria-labelledby={`${listId}-grupo-${group.items[0]!.index}`}
+                  className="py-1"
+                >
+                  <span
+                    id={`${listId}-grupo-${group.items[0]!.index}`}
+                    className="block px-3 pt-1 pb-1 text-xs font-semibold tracking-wide text-muted uppercase"
+                  >
+                    {group.title}
+                  </span>
+                  <ul role="presentation">
+                    {group.items.map(({ item, index }) =>
+                      renderOption(item, index),
+                    )}
+                  </ul>
+                </li>
+              ),
+            )
           : null}
       </ul>
     </div>

@@ -189,15 +189,15 @@ test("un admin edita, desactiva, busca, reactiva y ve la historia", async ({
 
   // La búsqueda por parte del nombre y por CUIT.
   await page.goto("/compras/proveedores?estado=todos");
-  await page.getByLabel("Buscar").fill("norte srl");
-  await page.getByLabel("Buscar").press("Enter");
+  await page.getByLabel("Buscar", { exact: true }).fill("norte srl");
+  await page.getByLabel("Buscar", { exact: true }).press("Enter");
   await expect(table).toContainText("Distribuidora Norte SRL");
   await expect(table).not.toContainText("Bodega del Sur");
-  await page.getByLabel("Buscar").fill("20 12345678 6");
-  await page.getByLabel("Buscar").press("Enter");
+  await page.getByLabel("Buscar", { exact: true }).fill("20 12345678 6");
+  await page.getByLabel("Buscar", { exact: true }).press("Enter");
   await expect(table).toContainText("Distribuidora Norte SRL");
-  await page.getByLabel("Buscar").fill("Ferretería");
-  await page.getByLabel("Buscar").press("Enter");
+  await page.getByLabel("Buscar", { exact: true }).fill("Ferretería");
+  await page.getByLabel("Buscar", { exact: true }).press("Enter");
   await expect(
     page.getByText("Ningún proveedor coincide con esta búsqueda."),
   ).toBeVisible();

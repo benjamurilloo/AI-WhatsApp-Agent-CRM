@@ -44,6 +44,11 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
   "src/app/(autenticado)/clientes/actions.ts#suggestClientsAction": {
     requirement: "sesion",
   },
+  // La búsqueda global de la barra (brief-23.3, D-4): junta las lecturas públicas de seis módulos;
+  // cada uno autoriza el rol y la organización, y compras y proveedores no se piden para un viewer.
+  "src/app/(autenticado)/buscar/actions.ts#searchEverythingAction": {
+    requirement: "sesion",
+  },
   // Poner y quitar una etiqueta en la ficha (brief-16.1, D-5): solo admin, lo exige crm.
   "src/app/(autenticado)/clientes/actions.ts#assignClientTagAction": {
     requirement: "sesion",

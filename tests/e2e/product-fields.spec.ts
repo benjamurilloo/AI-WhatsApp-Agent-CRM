@@ -239,7 +239,7 @@ test("3. FR-PROD-15: la lista encuentra un producto por su código de barras, co
   await page.goto("/productos");
 
   // Un lector de códigos escribe el código y manda Enter.
-  const search = page.getByLabel("Buscar");
+  const search = page.getByLabel("Buscar", { exact: true });
   await search.fill("7790001000017");
   await search.press("Enter");
   await expect(page).toHaveURL(/q=7790001000017/);

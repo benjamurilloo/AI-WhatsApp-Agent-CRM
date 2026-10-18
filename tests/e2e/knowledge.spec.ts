@@ -403,7 +403,7 @@ test("caso 5: FR-INFO-02 y FR-INFO-03 la búsqueda y los cinco estados viven en 
 
   // Búsqueda desde el formulario: por una palabra del contenido, sin acento.
   await page.goto("/informacion");
-  await page.getByLabel("Buscar").fill("debito");
+  await page.getByLabel("Buscar", { exact: true }).fill("debito");
   await page.getByRole("button", { name: "Aplicar filtros" }).click();
   // Un formulario GET envía todos sus campos; la paginación y «Limpiar filtros» usan la URL
   // canónica (convención de la 4.4).

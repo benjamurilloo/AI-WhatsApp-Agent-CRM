@@ -31,8 +31,32 @@ export type RemoteSuggestion = {
   id: string;
   label: string;
   detail?: string;
+  // El detalle se muestra como código (un SKU), salvo que diga «text» (brief-23.3).
+  detailStyle?: "code" | "text";
   href: string;
+  // La búsqueda global agrupa por tipo (brief-23.3, D-5): el título del grupo y el tipo que dice
+  // cada opción, para el lector de pantalla que no anuncia el grupo.
+  group?: string;
+  spokenKind?: string;
 };
+
+// Las opciones en grupos consecutivos, en el orden en que llegan. Sin `group`, un solo grupo sin
+// título: la lista de siempre.
+export function groupSuggestions<T extends { group?: string }>(
+  items: readonly T[],
+): { title: string | null; items: { item: T; index: number }[] }[] {
+  const groups: {
+    title: string | null;
+    items: { item: T; index: number }[];
+  }[] = [];
+  items.forEach((item, index) => {
+    const title = item.group ?? null;
+    const last = groups.at(-1);
+    if (last && last.title === title) last.items.push({ item, index });
+    else groups.push({ title, items: [{ item, index }] });
+  });
+  return groups;
+}
 
 // Cuántos caracteres hacen falta para pedir sugerencias al servidor, y cuánto se espera después
 // de la última tecla.

@@ -241,7 +241,7 @@ test("caso 3: el teléfono de un cliente desactivado da el aviso en el campo y s
   expect(await clientCount()).toBe(1);
 
   await page.goto("/clientes");
-  await page.getByLabel("Buscar").fill("+54 9 11 6666-7788");
+  await page.getByLabel("Buscar", { exact: true }).fill("+54 9 11 6666-7788");
   await page.getByLabel("Actividad").selectOption("todos");
   await page.getByRole("button", { name: "Buscar" }).click();
   await expect(page).toHaveURL(
@@ -263,7 +263,7 @@ test("caso 4: busca por nombre y por teléfono, filtra y pagina desde la URL", a
   await expect(clientsTable(page).getByRole("row")).toHaveCount(3);
   await expect(clientsTable(page)).not.toContainText("Carla");
 
-  await page.getByLabel("Buscar").fill("ana");
+  await page.getByLabel("Buscar", { exact: true }).fill("ana");
   await page.getByRole("button", { name: "Buscar" }).click();
   await expect(page).toHaveURL(
     "/clientes?q=ana&actividad=activos&orden=interaccion",
@@ -811,7 +811,7 @@ test("caso 18: brief-15.2 el buscador sugiere nombres, nunca teléfonos, y elegi
   };
   page.on("response", onResponse);
 
-  const search = page.getByRole("combobox", { name: "Buscar" });
+  const search = page.getByRole("combobox", { name: "Buscar", exact: true });
   const list = page.getByRole("listbox", { name: "Sugerencias" });
 
   // Un carácter no pide nada.

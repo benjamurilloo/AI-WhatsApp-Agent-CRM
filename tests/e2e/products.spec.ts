@@ -406,7 +406,7 @@ test("caso 8: filtros y página de la lista viven en la URL", async ({
   ).toBeVisible();
 
   await page.goto("/productos");
-  await page.getByLabel("Buscar").fill("Producto 001");
+  await page.getByLabel("Buscar", { exact: true }).fill("Producto 001");
   await page.getByRole("button", { name: "Aplicar filtros" }).click();
   // Un formulario GET envía todos sus campos, también los que están en su valor por defecto.
   await expect(page).toHaveURL(
@@ -655,7 +655,7 @@ test("caso 14: FR-PROD-11 busca por marca y categoría; FR-PROD-10 un viewer ve 
   await expectAccessible(page, "lista con bajo stock");
 
   // Por marca, sin acentos y por prefijo.
-  await page.getByLabel("Buscar").fill("nesca");
+  await page.getByLabel("Buscar", { exact: true }).fill("nesca");
   await page.getByRole("button", { name: "Aplicar filtros" }).click();
   await expect(table.getByRole("row")).toHaveCount(1 + 1);
   await expect(table).toContainText("Café molido 250 g");
@@ -1158,7 +1158,7 @@ test("caso 22: brief-15.2 el buscador sugiere productos con la regla de la búsq
     }
   });
 
-  const search = page.getByRole("combobox", { name: "Buscar" });
+  const search = page.getByRole("combobox", { name: "Buscar", exact: true });
   const list = page.getByRole("listbox", { name: "Sugerencias" });
 
   // Por palabra de la marca: los dos activos, con su SKU; el inactivo, no.
@@ -1226,7 +1226,7 @@ test("caso 23: brief-15.2 una lista nueva de sugerencias reinicia la opción mar
     await route.continue();
   });
 
-  const search = page.getByRole("combobox", { name: "Buscar" });
+  const search = page.getByRole("combobox", { name: "Buscar", exact: true });
   const list = page.getByRole("listbox", { name: "Sugerencias" });
   await search.fill("arkon");
   await expect(list.getByRole("option")).toHaveCount(3);
