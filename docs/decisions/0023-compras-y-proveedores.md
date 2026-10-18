@@ -3,6 +3,7 @@
 - Estado: **aceptada** (decisión del usuario del 2026-10-15), con las correcciones de la revisión independiente del 2026-10-15 (R1: 2 bloqueantes, 3 medios y 5 bajos, verificados uno por uno; R-1 se acepta como límite por decisión del usuario, y R-3 cambia D-2 del brief: un proveedor desactivado recibe pagos). Subfase 22.1, [brief-22.1](brief-22.1-adr-de-compras-y-proveedores.md), aprobado por el usuario el 2026-10-15 con las recomendaciones de D-1 a D-15.
 - Fecha: 2026-10-15
 - Nivel: **diseñado**. No hay código, tablas ni ejecución.
+- *Nota del 2026-10-18 por el [ADR 0024](0024-rubros-y-capacidades.md), puntos 6, 8, 10 y 16*, sin cambiar el texto de este ADR: **punto 2**, un técnico tercerizado es un proveedor con la marca `is_technician`, y quien entrega un usado es un cliente, nunca un proveedor; **punto 5**, la recepción de un producto con unidades crea cada unidad con el costo de su línea y **no escribe `product_costs`**; **punto 11**, `service` también depende de `purchasing`, así que la regla «solo `cash` importa `purchasing`» de la guarda cambia con la 29.6; **punto 12**, un `viewer` ve las órdenes de servicio sin el técnico ni su costo, y sigue sin ver nada de compras.
 
 ## Contexto
 

@@ -2,6 +2,7 @@
 
 - Estado: aceptada (resuelta por el usuario en la subfase 1.3, 2026-09-11)
 - Fecha: 2026-09-11
+- *Nota del 2026-10-18 por el [ADR 0024](0024-rubros-y-capacidades.md), punto 14 (decisión del usuario U-5)*: el cliente puede guardar **el número de documento (DNI) como dato opcional**, en `clients.document_number`, **nunca como identificador**: no es único, no identifica al cliente y el agente no lo lee. Entra en la 29.7, se vacía con el cliente (ADR 0015) y no llega a un `viewer`. La identidad del cliente sigue siendo solo el teléfono. El texto de este ADR no cambia.
 
 ## Contexto
 

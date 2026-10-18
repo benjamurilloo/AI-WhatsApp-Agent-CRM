@@ -14,6 +14,7 @@
 - *Nota del 2026-10-15*: el [ADR 0023](0023-compras-y-proveedores.md), compras y proveedores, remite a este en dos puntos, sin cambiar su texto:
   - **punto 3**: en una orden de compra y en una recepción sin orden, **la moneda la elige la persona** antes de cargar las líneas, porque sus montos son lo que cobra el proveedor y no salen del precio de venta. Es la elección que este punto deja a la fase que crea el comprobante;
   - **punto 5**: la recepción fija como costo el último costo recibido, con el IVA incluido, en la moneda de la recepción. Si difiere de la del precio, no hay margen, como dice este punto.
+- *Nota del 2026-10-18 por el [ADR 0024](0024-rubros-y-capacidades.md), puntos 6 y 10*: el punto 3 se relee en dos casos, sin cambiar su texto. **Un producto con unidades** (IMEI) lleva sus unidades en una tabla hija de la línea, cada una con su precio: el propio de la unidad o, si no tiene, el vigente del producto, y el monto de la línea es su suma. **La venta de una reparación** tiene una sola línea con un producto de servicio, cuyo monto es el total aprobado de la orden de servicio. En los dos casos, una unidad o un monto en otra moneda que el comprobante se rechaza. El tipo de cambio y la moneda del cobro los decide el ADR 0025 (29.3), que supera en parte este punto.
 
 ## Contexto
 

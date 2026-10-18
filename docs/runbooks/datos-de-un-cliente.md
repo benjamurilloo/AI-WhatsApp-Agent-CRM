@@ -15,6 +15,13 @@ runbook **no cubre a los proveedores**, que desde la Fase 22 pueden ser personas
 deja diseñado el vaciado de la ficha de un proveedor, incluida la extensión del trigger de
 `audit_logs`, y se construye cuando un caso lo pida.
 
+*Nota del 2026-10-18 ([ADR 0024](../decisions/0024-rubros-y-capacidades.md), punto 14)*: la Fase 29
+suma datos del cliente que este runbook tiene que exportar y vaciar cuando existan: el DNI y el
+Instagram (`clients.document_number` e `instagram`, 29.7), las recepciones de usados (`trade_ins`,
+29.7), las órdenes de servicio de sus equipos con el IMEI (`service_orders`, 29.6) y sus turnos
+(`appointments`, 29.10). Sus claves al cliente son `RESTRICT`. Cada subfase amplía este runbook y
+su test cuando crea la tabla.
+
 ## Antes de tocar nada
 
 1. **Identificá el cliente**: necesitás su `organization_id` y su `client_id`. Los dos salen de la

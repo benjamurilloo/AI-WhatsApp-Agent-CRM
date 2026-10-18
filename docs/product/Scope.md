@@ -64,3 +64,21 @@ Agregado el 2026-10-05 por el [ADR 0016](../decisions/0016-el-crm-se-amplia-haci
 - *Agregado el 2026-10-15 por el [ADR 0023](../decisions/0023-compras-y-proveedores.md)*: los gastos que no son compras de mercadería (alquiler, servicios, sueldos), la devolución de mercadería al proveedor y sus notas de crédito, el costo promedio y la valuación del inventario. Los pagos a proveedores y la cuenta corriente con ellos **entran** en la Fase 22.
 
 **Cuándo empieza**: la Fase 18 se abre con la Fase 13 cerrada, o antes solo por decisión explícita del usuario registrada con fecha (ADR 0016, punto 3).
+
+## Rubros: capacidades y perfiles
+
+Agregado el 2026-10-18 por el [ADR 0024](../decisions/0024-rubros-y-capacidades.md). Las subfases están en el [Roadmap](../planning/Roadmap.md) §Fase 29; acá solo el perímetro.
+
+**Entra**, con la Fase 29: capacidades activables por organización y perfiles de rubro. El primero es la venta de iPhone: variantes, unidades con IMEI, usados con grado y batería, la recepción de usados con la permuta y la compra, la cotización orientativa de un usado, la lista de reparaciones y el servicio técnico tercerizado, la garantía derivada, los turnos para visitar el local y lo que el agente lee y pide de todo eso. El tipo de cambio entra con su propio ADR, el 0025.
+
+**Sigue fuera**:
+
+- un taller propio, con técnicos que usen el CRM;
+- la consulta automática del IMEI en una base externa;
+- el recargo de las cuotas, hasta que se sepa cómo lo calcula el negocio;
+- un segundo rubro, hasta que se decida;
+- que el CRM guarde especificaciones técnicas de los equipos: las contesta el agente con su propio conocimiento;
+- recordatorios o avisos de turnos, porque el CRM no envía mensajes;
+- que el agente registre recepciones de usados, órdenes de servicio, cobros o pagos.
+
+**Cuándo se construye**: desde la 29.2, con el negocio confirmado o por decisión explícita del usuario registrada con fecha.

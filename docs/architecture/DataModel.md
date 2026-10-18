@@ -172,6 +172,8 @@ Limpieza: en cada intento se borran los registros vencidos **de todas las claves
 - **Filtros de la lista** (D-9, FR-CLI-14): tipo, provincia y segmento, resueltos en `crm` dentro de `findClientIdsByName` y `countClients`, como la etiqueta. El segmento filtra por el valor exacto. Los selectores de la lista ofrecen solo los tipos, las provincias y los segmentos que tiene algún cliente de la organización, activo o no, y la página ignora cualquier otro valor de la URL, como una etiqueta ajena. **Límite**: la lista de valores se corta en 200, en orden alfabético, como las marcas de productos; un segmento más allá del puesto 200 no se ofrece ni se puede filtrar. El segmento distingue mayúsculas. **Sin índices** (D-10, regla 6): en local, con 10 000 clientes generados en una organización, la lista entera de la pantalla 6 con los tres filtros (`searchClientsByLastInteraction`) se mide en `crm.test.ts`, caso D-10, contra el umbral de 754 ms de la 13.2. Se revisa si el volumen real lo pide.
 - **Datos de un cliente** (D-12): la exportación los incluye; el vaciado los lleva **todos** a nulo, también el tipo, la provincia y el segmento, porque describen a la persona. `client-data.test.ts` lee las columnas nulables de `clients` desde `information_schema` y exige que cada una tenga su valor de prueba y quede nula después del vaciado: **una columna nueva que no se sume al vaciado hace fallar el test**.
 
+*Diseñado el 2026-10-18 por el [ADR 0024](../decisions/0024-rubros-y-capacidades.md), punto 14 (decisión del usuario U-5), sin columnas todavía*: la 29.7 suma `document_number` (el DNI, de 7 u 8 dígitos, opcional, **sin unicidad y nunca como identificador**: la identidad sigue siendo el teléfono, con una nota fechada en el [ADR 0007](../decisions/0007-identificador-de-cliente-solo-telefono.md)) e `instagram` (el usuario, opcional). Ninguna de las dos llega a un `viewer` ni al agente, y las dos entran en la exportación y el vaciado. El texto de arriba, que dejaba el documento para la factura, se conserva.
+
 `UNIQUE(organization_id, id)` (`clients_organization_id_id_unique`, migración `drizzle/0010_*`): destino de la clave foránea compuesta de `conversations`. Llegó en la 6.1 junto con su consumidor (brief-5.1, D-4), en una migración propia, porque Drizzle Kit lo emitía después de la clave que lo usa. Desde la 16.1 también es el destino de la de `client_tag_assignments`.
 
 ### `client_tags`
@@ -1230,6 +1232,16 @@ Productor `client_tag`, desde la 16.1 (D-7). `entity_id` es el id de la etiqueta
 - la 22.6, `supplier_payments` y `supplier_payment_voids`, en `cash`. *Implementadas en la 22.6 el 2026-10-16*, con la `0051` (arriba).
 
 `purchases`, `purchase_details` y `payments` no van a existir con esos nombres: el ADR 0023 los reemplaza, y `payments` se califica como `supplier_payments` para no confundirse con `payment_methods`. Ninguna tabla usa `receipt` sin calificar, que es el cobro. La cuenta corriente con proveedores no tiene tabla.
+
+*Diseñado el 2026-10-18 por el [ADR 0024](../decisions/0024-rubros-y-capacidades.md), Fase 29, **sin tablas todavía***: las capacidades por organización y el primer perfil de rubro, la venta de iPhone. Cada tabla la crea la subfase de su capacidad y ninguna existe antes:
+
+- la 29.2: `organization_capabilities` (en `organizations`), `product_models`, `attribute_definitions` con su tabla de opciones y `attribute_values` (en `catalog`), y `products.model_id`;
+- la 29.5: `products.tracking`, el valor `used` de `product_condition`, `stock_units` y `unit_grades` (en `inventory`), `inventory_movements.unit_id` y sus tipos nuevos, y `order_line_units`, `sale_line_units` y `goods_receipt_line_units`;
+- la 29.6: `products.is_service`, `suppliers.is_technician`, y `repair_types`, `repair_prices` y `service_orders` con sus líneas (en el módulo nuevo `service`);
+- la 29.7: `trade_ins` con su checklist, `trade_in_checklist_items` y `trade_in_margins` (en el módulo nuevo `tradeins`), `trade_in_payments` y su anulación (en `cash`), y `clients.document_number` e `instagram`;
+- la 29.10: `appointments` y `appointment_reasons` (en el módulo nuevo `appointments`).
+
+Los valores sueltos de cada perfil van en una fila por organización y capacidad, con columnas tipadas. Las tablas del tipo de cambio las decide el ADR 0025.
 
 ## Preguntas abiertas sobre el modelo
 

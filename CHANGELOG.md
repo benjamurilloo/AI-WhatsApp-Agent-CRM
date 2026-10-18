@@ -2,6 +2,21 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-18 — 29.1: ADR de rubros y capacidades
+
+Cierra el 2026-10-18 con el [ADR 0024](docs/decisions/0024-rubros-y-capacidades.md) aceptado por el usuario ([brief-29.1](docs/decisions/brief-29.1-adr-de-rubros-y-capacidades.md), §Cierre). Es la primera subfase de la Fase 29 — Rubros, abierta ese día después de la 23 y antes de la 24, para ofrecerle el CRM a un negocio de venta de iPhone que todavía no está confirmado.
+
+**Certifica:**
+- **Diseño, sin tablas**: un núcleo, capacidades activables por organización y perfiles de rubro como datos. El primero es la venta de iPhone: variantes, unidades con IMEI con los 15 caminos del stock, la permuta y la compra de usados, la cotización orientativa, la lista de reparaciones con el servicio técnico tercerizado, la garantía derivada y los turnos.
+- **Una revisión independiente** (R1, 24 hallazgos), verificada contra el código, y los 24 corregidos.
+- **Las notas fechadas** en los ADR 0007, 0019, 0020, 0021, 0022 y 0023, y las enmiendas de DataModel, FunctionalRequirements, Overview, Scope, Roadmap y el runbook de datos de un cliente.
+
+**No certifica:**
+- ningún código, tabla ni contrato: el nivel es **diseñado**;
+- una segunda revisión independiente de las correcciones, que son autoevaluación;
+- cómo opera el negocio: las respuestas son del usuario, no del negocio;
+- el tipo de cambio, el dólar como moneda principal y la lectura de infodolar, que son del ADR 0025.
+
 ## 2026-10-18 — 23.3: búsqueda global, y la Fase 23 — Sistema visual y marco
 
 Cierra el 2026-10-18, después del recorrido del usuario en producción ([brief-23.3](docs/decisions/brief-23.3-busqueda-global.md), §Cierre). Es la tercera y última subfase de la Fase 23, así que con ella **cierra la Fase 23**: tokens y marco, estados compartidos y búsqueda global, desplegados y recorridos. Autoevaluación declarada.

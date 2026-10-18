@@ -361,3 +361,45 @@ Pedir autorización explícita, en su turno, **antes de**:
 - cada commit y push;
 - lanzar la revisión independiente si el usuario cambia una decisión que afecta su alcance;
 - el cierre.
+
+## Resultados
+
+### El ADR
+
+`docs/decisions/0024-rubros-y-capacidades.md`, escrito el 2026-10-18 con las respuestas del usuario a los ocho supuestos (R-1 a R-8). Nivel: diseñado. Al escribirlo aparecieron cuatro hechos que el brief no tenía:
+
+- **H-10**: cobrar en pesos una venta en dólares supera también el ADR 0022, no solo el 0019;
+- **H-11**: leer infodolar sería la primera dependencia de un servicio externo;
+- **H-12**: los turnos, que el usuario pidió para el agente;
+- **H-13**: la cotización de un usado y la lista de reparaciones comparten un dato.
+
+### Revisión independiente (D-17, AC-9)
+
+La hizo el 2026-10-18 un agente que no participó del trabajo, con acceso de solo lectura. **Veredicto: R1**, con 24 hallazgos (7 bloqueantes, 10 medios y 7 bajos) y 7 notas. Los centrales se verificaron contra el código antes de aceptarlos:
+
+- la venta de un pedido no toca el stock (`sales/service.ts:586-591`);
+- los `UNIQUE` de producto por línea;
+- la prohibición de documento del ADR 0007;
+- `cash_movements` sin referencia;
+- `read-v1` con solo `new` y `refurbished`.
+
+Los 24 se corrigieron en el ADR (§Revisión, con la tabla). Dos los decidió el usuario, con la recomendación: R-6, el DNI como dato opcional y nunca como identificador; y R-8, el límite del `viewer` extendido a la permuta. **Las correcciones no tuvieron una segunda revisión independiente**: su verificación es autoevaluación, y el usuario aceptó el ADR sabiéndolo.
+
+**Desvío del brief**: D-15 cambia por el punto 17 del ADR. El tipo de cambio sube a la 29.3–29.4, las reparaciones van antes que la permuta, y suma la 29.10, los turnos.
+
+## Cierre
+
+- **2026-10-18**: el usuario **aceptó el ADR 0024** con las correcciones de la revisión y sus decisiones U-1 a U-6. AC-11 cumplido.
+- **Enmiendas escritas ese día, con fecha y conservando el texto anterior** (AC-10):
+  - notas en los ADR 0007, 0019, 0020, 0021, 0022 y 0023;
+  - DataModel: §`clients` y la nota de diseño de la Fase 29, sin tablas;
+  - FunctionalRequirements: FR-CLI-05 y FR-CAJ-11;
+  - Overview §Evolución hacia ERP;
+  - Scope: §Rubros;
+  - el Roadmap §Fase 29;
+  - el runbook de datos de un cliente;
+  - el README de decisiones, el CHANGELOG y el HANDOFF;
+  - en Notion, con la autorización del usuario, los nombres y el orden de las subfases y la 29.10 nueva.
+- **Nivel**: diseñado. No hay código, tablas, migraciones ni cambios en ningún contrato. El agente no recibe ningún aviso.
+- **Revisión**: la del ADR fue independiente. La verificación de las correcciones y de las enmiendas es autoevaluación.
+- **Siguiente**: el brief de la 29.2, capacidades y variantes, que se construye con el negocio confirmado o por decisión explícita del usuario con fecha (D-16). El ADR 0025 (29.3) es solo diseño y puede ir antes si el usuario lo decide.

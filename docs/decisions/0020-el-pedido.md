@@ -9,6 +9,7 @@
   - **punto 4, las escrituras de `inventories`**: «las únicas escrituras … son `lockBalance`, `applyStockChange` y esas tres» suma dos funciones de la Fase 20, la venta sin pedido y la reposición de su anulación, siempre con su movimiento;
   - **punto 2**: la Fase 20 suma dos valores a `document_kind`, `sale` y `sale_void`, no uno;
   - **§Consecuencias**: `sales` dependerá de `orders`, que expone una función que bloquea un pedido para la venta. `ingestion` deja de ser la única dependencia hacia `orders`, y `orders` sigue sin depender de quien lo usa.
+- *Nota del 2026-10-18 por el [ADR 0024](0024-rubros-y-capacidades.md), puntos 6 y 15*: el punto 3 sigue entero —un producto va en una sola línea—, y la línea de un producto con unidades lleva sus unidades en `order_line_units`. Confirmar reserva esas unidades, y entregar las saca del local (`deliverStock`). **Un pedido pendiente del agente no reserva la unidad que pide**: la primera confirmación la reserva y la segunda falla. Un pedido rechaza un producto de servicio. El texto de este ADR no cambia.
 
 ## Contexto
 

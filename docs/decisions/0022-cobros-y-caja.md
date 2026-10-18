@@ -9,6 +9,7 @@
   - **punto 11**: los pagos se llaman `supplier_payments` y `supplier_payment_voids`, con los prefijos `PP` y `APP`; ninguna tabla se llama `payments`;
   - **punto 12**: la cuenta de un proveedor y los pagos son solo de `admin`. Un `viewer` ve el arqueo con el total de los pagos en efectivo, y puede inferir de ahí un costo: es un límite aceptado por el usuario (ADR 0023, punto 12);
   - **punto 13**: `cash` depende de `purchasing`, y `purchasing` no depende de `cash`. La cuenta del proveedor usa `imputeAccount` sin cambiar la regla.
+- *Nota del 2026-10-18 por el [ADR 0024](0024-rubros-y-capacidades.md), puntos 8 y 14*: desde la 29.7, `cash` suma el medio de pago de sistema **«Permuta»**, que no es efectivo, cuyo cobro apunta a la recepción de un usado y nunca suma más que su valor; **`trade_in_payments`**, el pago de una compra de usados, con cualquier medio y anulable con otro comprobante; y **la anulación de la recepción de un usado**, que orquesta `cash` bajo su bloqueo. `cash` depende de `tradeins`, y no al revés. **Un `viewer` ve el monto de un cobro con «Permuta»**, que es el valor reconocido del usado: es un límite aceptado por el usuario (U-6), como el del arqueo. La moneda del cobro, que hoy es la de su destino, la revisa el ADR 0025. El texto de este ADR no cambia.
 
 ## Contexto
 

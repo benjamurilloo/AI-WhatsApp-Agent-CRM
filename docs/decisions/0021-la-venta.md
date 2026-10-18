@@ -6,6 +6,7 @@
 - *Nota del 2026-10-13*: el [ADR 0022](0022-cobros-y-caja.md), cobros, caja y cuenta corriente, remite a este en dos puntos, sin cambiar su texto:
   - **punto 9**, «Ningún módulo depende de `sales`»: desde la 21.3, **`cash` depende de `sales`**, para leer las ventas, su total, su moneda, si están anuladas y su cadena, sin bloquearlas. `sales` no suma ninguna dependencia, y lo cobrado en el detalle de la venta lo compone la página;
   - **§Alternativas, el cobro antes de entregar**: lo resuelve la seña, un cobro contra el pedido (ADR 0022, punto 5). Anular una venta no mira los cobros: lo cobrado pasa a la cuenta del cliente o queda a devolver (punto 6).
+- *Nota del 2026-10-18 por el [ADR 0024](0024-rubros-y-capacidades.md), puntos 6 y 10*: **la venta de un pedido entregado no toca sus unidades**, que ya salieron con la entrega, y su anulación tampoco, como pasa con el stock. La venta sin pedido de un producto con unidades las pasa a vendidas, y su anulación las repone. **La venta de una reparación** es una venta sin pedido que emite `service` llamando a `sales`, con un producto de servicio que no tiene saldo ni comprobación de lo disponible; `sales` no depende de `service`. El texto de este ADR no cambia.
 
 ## Contexto
 
