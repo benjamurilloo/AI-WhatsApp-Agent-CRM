@@ -2,6 +2,30 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-18 — 23.2: estados compartidos
+
+Cierra el 2026-10-18, después del recorrido del usuario en producción ([brief-23.2](docs/decisions/brief-23.2-estados-compartidos.md), §Cierre). Es la segunda subfase de la Fase 23 — Sistema visual y marco. Autoevaluación declarada.
+
+**Certifica:**
+- **Solo presentación**: ningún dato, consulta, contrato, permiso ni migración cambió.
+- **El estado vacío** en las 18 listas, con ícono, descripción y acciones según el rol. En una búsqueda sin resultados ofrece «Limpiar filtros».
+- **El aviso después de una acción**, con el tilde, en los 24 lugares.
+- **La carga**: una barra fina arriba al navegar o filtrar, con «Cargando…» para un lector de pantalla. Sin JavaScript nada cambia. `loading.tsx` se descartó porque, sin JavaScript, dejaba la pantalla en el esqueleto.
+- **El error y el 404** dentro del marco, en castellano, con «Reintentar», «Ir al inicio» y un código, sin el mensaje de la excepción. La pantalla de error se probó a mano con una excepción provocada.
+- **Los cambios sin guardar** en las fichas de cliente, producto, información, horario y proveedor:
+  - un enlace interno abre un diálogo del sistema, con «Seguir editando» y «Salir sin guardar»;
+  - recargar o cerrar la pestaña muestra el aviso del navegador.
+- **axe sin violaciones** en el vacío, el sin resultados, el aviso, el 404 y el diálogo, en claro y en oscuro.
+- **En producción**: `acdd402`, sin migración, con las CI 39083707647 y 39090775540 en `success`, recorrido por el usuario.
+
+**Nivel**: validado en integración, desplegado en producción y recorrido por el usuario. No es «preparado para producción».
+
+**No certifica:**
+- **El aviso al recargar o cerrar la pestaña**: sigue siendo el del navegador, porque no se puede reemplazar.
+- **AC-5 al pie de la letra**: el aviso no lleva `role="status"` propio, porque ya está dentro de una región que anuncia.
+- **El end-to-end completo en una sola corrida local**: dio 228 de 231, con tres intermitentes que pasaron al repetirlos. La CI pasó entera.
+- **Una revisión independiente**: no se pidió, porque la subfase no abre ni cierra un gate.
+
 ## 2026-10-17 — 23.1: tokens y marco
 
 Cierra el 2026-10-17, después del recorrido del usuario en producción ([brief-23.1](docs/decisions/brief-23.1-tokens-y-marco.md), §Cierre). Es la primera subfase de la Fase 23 — Sistema visual y marco, y la primera del rediseño sobre los mockups de [docs/ui-redesign/](docs/ui-redesign/manifest.md). Autoevaluación declarada (D-9).

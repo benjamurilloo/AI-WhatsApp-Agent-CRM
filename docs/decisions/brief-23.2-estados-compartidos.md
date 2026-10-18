@@ -7,7 +7,7 @@ generated_at: 2026-10-17
 
 # Brief: 23.2 — Estados compartidos
 
-**Estado: aprobado el 2026-10-17 por el usuario, con las recomendaciones de D-1 a D-8.** La tarea 23.2 (`3fc702be6f4e812fa2c5d3a5c18bc807`) pasa a «En proceso». La aprobación no autoriza ningún commit, ninguna dependencia nueva ni el despliegue: cada uno se autoriza aparte, en el turno en que ocurre.
+**Estado: aprobado el 2026-10-17 por el usuario, con las recomendaciones de D-1 a D-8. Cerrado el 2026-10-18 (§Cierre).** La tarea 23.2 (`3fc702be6f4e812fa2c5d3a5c18bc807`) pasa a «En proceso». La aprobación no autoriza ningún commit, ninguna dependencia nueva ni el despliegue: cada uno se autoriza aparte, en el turno en que ocurre.
 
 - **Nivel de evidencia objetivo**:
   - `deterministic`: los tests unitarios de los componentes nuevos, renderizados con `react-dom/server`;
@@ -193,3 +193,45 @@ Un hook `useUnsavedChanges(form)` en las cinco fichas de H-5 (alta y edición). 
 - **R-1**: `loading.tsx` envuelve cada página en un suspenso. Puede cambiar el orden en que llegan las partes y afectar a un end-to-end que lee el cuerpo, como el caso 9 de `clients.spec.ts`, que ya está cerca de su límite de tiempo. Se mitiga corriendo la suite completa sola y mirando ese caso.
 - **R-2**: el `confirm` de los cambios sin guardar es un diálogo del navegador: no se puede estilizar como el mockup. Un diálogo propio exige un foco atrapado y manejo de Escape, y no suma lo suficiente para esta subfase. *Nota del 2026-10-17*: el recorrido en producción mostró que sí sumaba; ver la nota de D-6. `<dialog>` con `showModal` atrapa el foco y maneja Esc de forma nativa.
 - **R-3**: el error y la carga quedan validados localmente, no en integración (D-4). Una regresión en `error.tsx` solo la vería el render unitario.
+
+## Cierre de la subfase 23.2, 2026-10-18
+
+Cierra el 2026-10-18, después del recorrido del usuario en producción («Listo, ahora si esta bien»). Es autoevaluación declarada: ningún agente independiente revisó la entrega, porque la subfase no abre ni cierra un gate.
+
+- **Dos decisiones del usuario durante la subfase**, con su nota fechada:
+  - **D-3**: `loading.tsx` se descartó en la implementación. Sin JavaScript, el contenido que llega por streaming quedaba oculto detrás del esqueleto. La reemplaza la barra de progreso de `navigation-progress.tsx`;
+  - **D-6 y R-2**: en el recorrido en producción, el `confirm` del navegador pasó a un diálogo del sistema (`unsaved-changes-dialog.tsx`).
+- **AC-1, AC-2, AC-4 y AC-6 a AC-9 cumplidos.**
+- **AC-3 cumplido**, con la pasada a mano del 2026-10-18:
+  - un `throw` temporal en `/productos` se probó sobre `next start`, sin commit, y se revirtió y reconstruyó después;
+  - mostró el error dentro del marco, con «Reintentar», «Ir al inicio» y el código `685634101`, sin el mensaje de la excepción en el HTML;
+  - «Reintentar» volvió a fallar, como corresponde, e «Ir al inicio» salió del error.
+- **AC-5 con un desvío declarado**: `ActionNotice` lleva el tilde, pero no un `role="status"` propio. Los 24 avisos ya están dentro de una región que anuncia, `role="status"` o `aria-live`, y un rol más las anidaría.
+- **D-2 con un matiz**: los textos son «Crear el primero» en el vacío y «Limpiar filtros» en el sin resultados, que no repite «Nuevo».
+- **Commits, CI y despliegues**:
+  - `c25dbc4`, este brief con el cierre de la 23.1. CI 39075405511 `success`;
+  - `0a0cc79`, la implementación. CI 39083707647 `success`, leída por el SHA completo. Desplegado el 2026-10-17 con `3873306` anotado para volver atrás;
+  - `acdd402`, el diálogo del sistema. CI 39090775540 `success`, leída por el SHA completo. Desplegado el 2026-10-18 con `0a0cc79` anotado;
+  - los dos despliegues siguieron [deploy/production/README.md](../../deploy/production/README.md) §Desplegar, **sin migración**. Después de cada uno, `/api/health` y `/login` con `200` y una dirección inexistente con `404` y la pantalla nueva. Después del segundo, el CSS publicado trae `--overlay` en claro y en oscuro.
+- **Lo entregado**:
+  - `EmptyState` en las 18 listas, con descripción y acciones según el rol (D-2);
+  - `ActionNotice` en los 24 avisos (D-5);
+  - `InlineSkeleton` en la ficha del cliente, y la barra de progreso en el marco, con «Cargando…» en una región `aria-live` sin rol (D-3). Con `role="status"`, la región vacía rompía los 13 end-to-end que buscan el aviso con `getByRole("status")`;
+  - `error.tsx` en `(autenticado)`, `global-error.tsx` y `not-found.tsx`, sobre `error-panel.tsx` (D-4);
+  - `useUnsavedChanges` y el diálogo del sistema en las fichas de cliente, producto, información, horario y proveedor (D-6), con un token nuevo, `--overlay`.
+- **Batería**, sin nada en paralelo:
+  - formato, lint, typecheck, build, 889 unitarios y 711 guardas;
+  - end-to-end completo sobre `0a0cc79`: 228 de 231. Las tres fallas fueron intermitentes, cada una pasó en una de dos repeticiones:
+    - el caso 9 de `clients.spec.ts`, el intermitente conocido;
+    - el caso 8 de `dashboard.spec.ts`;
+    - el caso 19.3 de `orders.spec.ts`, que se pasó de los 30 s sin un paso colgado;
+  - después del diálogo, los end-to-end de las cinco fichas y del marco: 90 de 90, con axe con el diálogo abierto;
+  - la integración no corrió en local: la subfase no toca `src/modules/`. La cubrió la CI.
+- **Lo que no certifica**:
+  - la barra de progreso no cubre el botón «Atrás» del navegador ni los envíos que guardan, que ya muestran su «Guardando…»;
+  - el aviso al recargar o cerrar la pestaña sigue siendo el del navegador: `beforeunload` no deja mostrar uno propio;
+  - no se comparó `orders` 19.3 contra `c25dbc4`, así que no se descarta del todo que la 23.2 lo haga más lento;
+  - los esqueletos con la forma de cada pantalla quedan para la Fase 24, sin `loading.tsx` mientras haya casos sin JavaScript;
+  - una revisión independiente: no se pidió.
+- **Volver a `0a0cc79` o a `3873306` es limpio**: la subfase no tiene migración ni escribe datos.
+- **Nivel**: validado en integración (end-to-end sobre `next start` con axe en claro y oscuro, a 1280 y 375 px), desplegado en producción y recorrido por el usuario. No es «preparado para producción».
