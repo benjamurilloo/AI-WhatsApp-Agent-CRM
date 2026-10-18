@@ -442,7 +442,7 @@ Reglas comunes a las cuatro fases:
 - **Fase 23 — Sistema visual y marco**: lo que comparten todas las pantallas, sin datos nuevos ni contratos.
   - **23.1 — Tokens y marco** ([brief-23.1](../decisions/brief-23.1-tokens-y-marco.md)): radios, botón secundario, menú en el orden de los mockups, usuario al pie del panel, migas y barra inferior en el teléfono. **Cerrada el 2026-10-17** ([brief-23.1](../decisions/brief-23.1-tokens-y-marco.md) §Cierre): sin migración, desplegada (`3873306`) y recorrida por el usuario.
   - **23.2 — Estados compartidos** ([brief-23.2](../decisions/brief-23.2-estados-compartidos.md), aprobado el 2026-10-17): carga con barra de progreso (el esqueleto de pantalla completa se descartó), estado vacío con ícono y acción, error recuperable, aviso después de una acción y diálogo de cambios sin guardar. **Cerrada el 2026-10-18** ([brief-23.2](../decisions/brief-23.2-estados-compartidos.md) §Cierre): sin migración, desplegada (`acdd402`) y recorrida por el usuario.
-  - **23.3 — Búsqueda global**, de solo lectura, sobre clientes, pedidos y productos, con los permisos de cada módulo.
+  - **23.3 — Búsqueda global** ([brief-23.3](../decisions/brief-23.3-busqueda-global.md), aprobado el 2026-10-18), de solo lectura, sobre clientes, pedidos, productos, ventas, órdenes de compra y proveedores, con los permisos de cada módulo.
 - **Fase 24 — Pantallas rediseñadas con lo que ya existe**: una subfase por módulo, cada una con su brief, sin tablas nuevas.
   - **24.1 Conversaciones**: bandeja en tres paneles y notas en el hilo.
   - **24.2 Clientes**: valor del cliente, ficha con pestañas y actividad unificada.
