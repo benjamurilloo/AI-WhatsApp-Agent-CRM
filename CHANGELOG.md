@@ -2,6 +2,30 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-18 — 23.3: búsqueda global, y la Fase 23 — Sistema visual y marco
+
+Cierra el 2026-10-18, después del recorrido del usuario en producción ([brief-23.3](docs/decisions/brief-23.3-busqueda-global.md), §Cierre). Es la tercera y última subfase de la Fase 23, así que con ella **cierra la Fase 23**: tokens y marco, estados compartidos y búsqueda global, desplegados y recorridos. Autoevaluación declarada.
+
+**Certifica:**
+- **Solo lectura, sin migración**: ningún cambio en `src/modules/`, en las consultas, en los índices, en los contratos ni en los permisos.
+- **El campo «Buscar en el sistema…» en la barra**, desde 1024 px. Desde 2 caracteres muestra hasta tres resultados por tipo, agrupados, en seis tipos: clientes, pedidos, productos, ventas, compras y proveedores. Cada opción lleva su tipo en el texto accesible y abre su ficha.
+- **Los números sin prefijo**: `123` encuentra el pedido, la venta y la orden de compra con ese número, cada uno en su grupo. Una venta también se encuentra por el `A-…` de su anulación.
+- **`/buscar`**: formulario GET que funciona sin JavaScript, con hasta 8 por tipo y «Ver todos en …» hacia la lista de cada módulo con la búsqueda puesta. Debajo de 1024 px se llega con la lupa de la barra.
+- **Los permisos de cada módulo**: un `viewer` no recibe compras ni proveedores, y ninguna respuesta lleva un teléfono, un email ni una dirección. Lo comprueba un end-to-end sobre los cuerpos que llegan al navegador, con un `admin` como control.
+- **Una lectura que falla no tumba las otras**: los demás grupos se muestran y el error queda en el log, sin el texto buscado.
+- **axe sin violaciones** con la lista abierta y en `/buscar`, en claro y en oscuro, a 1280 y 375 px.
+- **En producción**: `1bf9299`, sin migración, con la CI 39134432009 en `success`, recorrido por el usuario.
+
+**Nivel**: validado en integración, desplegado en producción y recorrido por el usuario. No es «preparado para producción».
+
+**No certifica:**
+- **La velocidad con datos reales** (R-1): son hasta diez consultas por pausa al escribir, y la de proveedores no tiene índice.
+- **Los clientes por cualquier palabra del nombre**: sigue siendo por el comienzo, como en la lista (R-2).
+- **Un lector de pantalla real**: el texto accesible se comprobó con Playwright y axe.
+- **La página declarada en la guarda de superficie expuesta** (AC-8): la guarda declara Server Actions y Route Handlers; la página entra en el recuento de `SecurityModel.md`.
+- **El end-to-end completo en una sola corrida local**: dio 227 de 237, con diez fallas por los nombres de campo que coincidían por substring. Se corrigieron, y los specs afectados volvieron a pasar, salvo el intermitente conocido de `clients`, que pasó solo. La CI pasó entera.
+- **Una revisión independiente**: no se pidió, porque la subfase no abre ni cierra un gate.
+
 ## 2026-10-18 — 23.2: estados compartidos
 
 Cierra el 2026-10-18, después del recorrido del usuario en producción ([brief-23.2](docs/decisions/brief-23.2-estados-compartidos.md), §Cierre). Es la segunda subfase de la Fase 23 — Sistema visual y marco. Autoevaluación declarada.

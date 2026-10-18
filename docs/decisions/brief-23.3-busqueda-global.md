@@ -7,7 +7,7 @@ generated_at: 2026-10-18
 
 # Brief: 23.3 — Búsqueda global
 
-**Estado: aprobado el 2026-10-18 por el usuario, con las recomendaciones de D-1 a D-7** (la (a) en D-1, D-2, D-3, D-4, D-6 y D-7, y la propuesta de D-5), y con la ampliación a ventas, compras y proveedores. La tarea 23.3 (`3fc702be6f4e815b9479da2de76f5896`) pasa a «En proceso». La aprobación no autoriza ningún commit, ninguna dependencia nueva ni el despliegue: cada uno se autoriza aparte, en el turno en que ocurre.
+**Estado: aprobado el 2026-10-18 por el usuario, con las recomendaciones de D-1 a D-7** (la (a) en D-1, D-2, D-3, D-4, D-6 y D-7, y la propuesta de D-5), y con la ampliación a ventas, compras y proveedores. La tarea 23.3 (`3fc702be6f4e815b9479da2de76f5896`) pasa a «En proceso». **Cerrado el 2026-10-18**, desplegado (`1bf9299`) y recorrido por el usuario (§Cierre). La aprobación no autoriza ningún commit, ninguna dependencia nueva ni el despliegue: cada uno se autoriza aparte, en el turno en que ocurre.
 
 - **Nivel de evidencia objetivo**:
   - `deterministic`: tests unitarios de la composición de resultados y del texto de cada opción;
@@ -170,3 +170,37 @@ La 23.1 dejó la barra superior con las migas, el selector de tema y el menú de
 - **R-1**: hasta seis lecturas por cada pausa al escribir, y algunas cuentan antes de leer (`listOrders`, `listSales`, `listPurchaseOrders` y `listSuppliers` paginan), así que son hasta diez consultas. Las de número no consultan si el texto no es un número válido, y la de proveedores recorre pocos registros sin índice (H-10). Se mitiga con la espera de 250 ms y los 2 caracteres mínimos que ya usa el combobox; si se nota lento, se mide antes de sumar índices, que serían otra subfase.
 - **R-2**: la búsqueda de clientes es por prefijo del nombre: «Pérez» no encuentra a «Ana Pérez». Es la regla de hoy (D-2, a) y el usuario la conoce de la lista; un cambio de regla es otra subfase, con su índice.
 - **R-3**: un lector de pantalla que no anuncia los grupos del `listbox`. Se mitiga con el tipo dentro del texto de cada opción (D-5).
+
+## Cierre de la subfase 23.3, 2026-10-18
+
+Cierra el 2026-10-18, después del recorrido del usuario en producción («esta todo perfeceto, continua»). Es autoevaluación declarada: ningún agente independiente revisó la entrega, porque la subfase no abre ni cierra un gate. Con ella cierra la Fase 23.
+
+- **AC-1 a AC-3, AC-5 a AC-7, AC-9 y AC-10 cumplidos.**
+- **AC-4 cumplido, con lo que mide el end-to-end declarado**:
+  - el caso del `viewer` junta solo los cuerpos de documento y de POST: con las precargas RSC, que a veces no terminan, se colgaba;
+  - comprueba que ningún cuerpo contiene un fragmento del teléfono, el proveedor ni `OC-000123`, y, como control, que un `admin` sí recibe el proveedor y la orden, y tampoco el teléfono;
+  - el email y la dirección no se comprueban por separado: ninguna opción ni ningún resultado muestra otra cosa que el nombre o el número (D-3).
+- **AC-8 con un desvío declarado**: la Server Action está declarada en `exposed-surface.test.ts`, pero la página no, porque esa guarda declara Server Actions y Route Handlers, no páginas. `/buscar` entra en el recuento de [SecurityModel.md](../architecture/SecurityModel.md): 165 puntos de entrada, 69 páginas, 80 Server Actions y 16 Route Handlers.
+- **Un intento de provocar la falla de AC-4, inconcluso**: con `kindsForRole` devolviendo los seis tipos para todos, la corrida solo se pasó de tiempo. Lo que protege es el `FORBIDDEN` de `listPurchaseOrders` y `listSuppliers`, que es la regla del módulo (D-2); `kindsForRole` solo evita las dos lecturas. El código se restauró antes del commit.
+- **Commits, CI y despliegue**:
+  - `5c1430b`, este brief aprobado. CI 39129654107 `success`;
+  - `1bf9299`, la implementación. CI 39134432009 `success`, leída por el SHA completo. Desplegado el 2026-10-18 con `acdd402` anotado para volver atrás, según [deploy/production/README.md](../../deploy/production/README.md) §Desplegar, **sin migración**;
+  - después del despliegue, `/login` con `200`, `/buscar` sin sesión redirige al login, el servicio activo y ningún error en el log en los 3 minutos siguientes.
+- **Lo entregado**:
+  - `src/app/(autenticado)/buscar/`: `groups.ts` (los tipos, `kindsForRole` y la composición), `search.ts` (una lectura pública de módulo por tipo, en paralelo con `Promise.allSettled`), `actions.ts` (`searchEverythingAction`) y `page.tsx` (`/buscar`, formulario GET);
+  - el campo «Buscar en el sistema…» en la barra desde 1024 px, y debajo un enlace con la lupa hacia `/buscar`;
+  - los grupos en `suggest-input.tsx`, con `groupSuggestions` en `suggest-filter.ts`. Cada opción lleva su tipo en el `aria-label`: como texto `sr-only`, Chrome lo leía «Ana Pérez , cliente»;
+  - los combobox que ya existían no cambiaron: sin `group`, el mismo marcado de antes.
+- **Cambios en otros end-to-end**: el campo nuevo se llama «Buscar en el sistema», y `getByLabel("Buscar")` y `getByRole("combobox", { name: "Buscar" })` buscan por substring. Diez casos de `clients`, `knowledge`, `product-fields`, `products` y `suppliers` encontraban dos campos; ahora buscan con `exact: true`. La lupa se llamaba primero «Buscar» y chocaba igual; quedó «Buscar en el sistema».
+- **Batería**, sin nada en paralelo:
+  - formato, lint, typecheck, build, 898 unitarios y 711 guardas;
+  - end-to-end completo: 227 de 237, con las diez fallas de los nombres por substring. Corregidas, los seis specs afectados dieron 68 de 69; el que faltó, el caso 9 de `clients.spec.ts`, el intermitente conocido, pasó 3 de 3 solo. `search.spec.ts` pasó 12 de 12 en dos repeticiones;
+  - un error de login aislado (la pantalla de error global) en una de las repeticiones, que no se repitió;
+  - la integración no corrió en local: la subfase no toca `src/modules/`. La cubrió la CI.
+- **Lo que no certifica**:
+  - la velocidad con datos reales (R-1): con la demostración no se nota; si se nota lento, se mide antes de sumar índices;
+  - los clientes por cualquier palabra del nombre (R-2), ni un atajo de teclado;
+  - un lector de pantalla real: el texto accesible se comprobó con Playwright y axe, no con NVDA ni VoiceOver;
+  - una revisión independiente: no se pidió.
+- **Volver a `acdd402` es limpio**: la subfase no tiene migración ni escribe datos.
+- **Nivel**: validado en integración (end-to-end sobre `next start` contra PostgreSQL real, con axe en claro y oscuro, a 1280 y 375 px), desplegado en producción y recorrido por el usuario. No es «preparado para producción».
