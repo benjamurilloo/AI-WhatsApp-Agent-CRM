@@ -281,3 +281,13 @@ Pedir autorización explícita, en su turno, **antes de**:
 - cualquier commit, push o despliegue;
 - ejecutar la migración en producción;
 - crear la organización demo, activar la capacidad o cargar el catálogo en producción.
+
+## Cierre
+
+- **2026-10-18**: implementada, revisada, desplegada y recorrida por el usuario, que dijo «anduvo todo perfecto». AC-1 a AC-9 cumplidos.
+- **Commit** `46e5338`, con la CI en `success` (run 39162662729, leída por el SHA completo). **Producción corre `46e5338`**, con 53 migraciones (la 0052 incluida); antes corría `1bf9299`, anotado para volver atrás. La 0052 es aditiva: el código anterior no lee sus tablas.
+- **En producción**, con los comandos del runbook corridos por el usuario en su terminal: la organización «iPhone Demo», la capacidad `variants` con el perfil `iphone` y el catálogo de ejemplo. Recuentos leídos después: 1 capacidad, 12 modelos, 3 atributos, 35 productos con modelo y 70 valores de atributo. **«Demostración Vixora» quedó intacta**: 0 capacidades, 0 modelos, 0 atributos y sus 13 productos sin modelo ni valores.
+- **Pruebas**, todas locales antes del commit: unitarios y guardas (729 guardas después del commit), integración contra PostgreSQL (83 archivos, 1564 tests) y end-to-end completo (241 pasaron; 4 fallaron por el navegador cerrado o el tiempo agotado en una corrida de 37 minutos, ninguno de la 29.2, y pasaron al correrlos solos).
+- **Nivel**: validado en integración (pantallas ↔ servicio ↔ base, con end-to-end) y desplegado en producción para una organización demo. No hay ningún negocio real usándolo.
+- **Revisión**: la R1 fue independiente. Las correcciones de sus 14 hallazgos son autoevaluación, sin una segunda revisión.
+- **Notion**: la 29.2 en «Completado».

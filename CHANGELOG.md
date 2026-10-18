@@ -2,6 +2,23 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-18 — 29.2: capacidades y variantes
+
+Cierra el 2026-10-18, desplegada en producción (`46e5338`) y recorrida por el usuario ([brief-29.2](docs/decisions/brief-29.2-capacidades-y-variantes.md), §Cierre). Es la primera subfase de la Fase 29 que construye; el usuario decidió hacerla sin el negocio confirmado, sobre una organización demo aparte.
+
+**Certifica:**
+- **Capacidades por organización** (`organization_capabilities`, de solo inserción), y la primera, `variants`: sin ella, las pantallas dan 404 y los servicios `NOT_FOUND`, y nada cambia para las demás organizaciones.
+- **Modelos, atributos y opciones** (migración 0052): `/modelos` y `/modelos/atributos` para crear, renombrar, ordenar, desactivar y reactivar; el modelo y los atributos en el formulario, la ficha y el historial del producto; la lista filtrada y agrupada por modelo; y la regla que rechaza una variante duplicada, con el modelo bloqueado.
+- **Los scripts del operador**: `org:capability` (con el perfil `iphone`: Capacidad, Color y Trae caja) y `demo:catalog` (12 modelos y 35 productos con precio en USD), que retoma una carga cortada.
+- **En producción**: «iPhone Demo» con la capacidad y el catálogo de ejemplo; «Demostración Vixora» sin capacidades ni modelos, comprobado con recuentos.
+- **Una revisión independiente** (R1, 14 hallazgos), verificada contra el código y resuelta; la agrupación y el orden se implementaron por decisión del usuario.
+
+**No certifica:**
+- ningún negocio real: el de iPhone sigue sin confirmar, y la demo no tiene clientes, ventas ni stock;
+- una segunda revisión independiente de las correcciones, que son autoevaluación;
+- que un atributo desactivado pueda volver a crearse con el mismo nombre: da `CONFLICT` (P-7);
+- ningún cambio en los contratos del agente: no leen modelos ni atributos.
+
 ## 2026-10-18 — 29.3: ADR del tipo de cambio
 
 Cierra el 2026-10-18 con el [ADR 0025](docs/decisions/0025-tipo-de-cambio.md) aceptado por el usuario ([brief-29.3](docs/decisions/brief-29.3-adr-del-tipo-de-cambio.md), §Cierre).
