@@ -2,6 +2,21 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-18 — 29.3: ADR del tipo de cambio
+
+Cierra el 2026-10-18 con el [ADR 0025](docs/decisions/0025-tipo-de-cambio.md) aceptado por el usuario ([brief-29.3](docs/decisions/brief-29.3-adr-del-tipo-de-cambio.md), §Cierre).
+
+**Certifica:**
+- **Diseño, sin tablas**: una moneda principal opcional por organización (USD para el negocio de iPhone); una cotización de solo inserción, de DolarAPI (blue, venta) más un ajuste de la organización que arranca en 10 pesos, o cargada a mano; el movimiento de dinero que guarda lo recibido y lo aplicado, sin cambiar las reglas de la imputación; la caja que cuenta por moneda y muestra un total de referencia en dólares; USDT como medio de pago en dólares; el lector de la cotización como proceso aparte, con un rol que solo ejecuta dos funciones.
+- **Una revisión independiente** (R1, 21 hallazgos), verificada contra el código: 20 corregidos y uno decidido por el usuario (la devolución usa la cotización vigente).
+- **Las notas fechadas** en los ADR 0016, 0019, 0022, 0023 y 0024, y las enmiendas de DataModel, Overview, FunctionalRequirements y el Roadmap.
+
+**No certifica:**
+- ningún código, tabla, servicio ni contrato: el nivel es **diseñado**;
+- una segunda revisión independiente de las correcciones, que son autoevaluación;
+- que los 10 pesos de ajuste aproximen el blue de Córdoba: el 2026-10-18 la diferencia fue de 16;
+- cómo opera el negocio: las respuestas son del usuario.
+
 ## 2026-10-18 — 29.1: ADR de rubros y capacidades
 
 Cierra el 2026-10-18 con el [ADR 0024](docs/decisions/0024-rubros-y-capacidades.md) aceptado por el usuario ([brief-29.1](docs/decisions/brief-29.1-adr-de-rubros-y-capacidades.md), §Cierre). Es la primera subfase de la Fase 29 — Rubros, abierta ese día después de la 23 y antes de la 24, para ofrecerle el CRM a un negocio de venta de iPhone que todavía no está confirmado.

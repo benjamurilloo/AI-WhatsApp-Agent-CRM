@@ -1243,6 +1243,8 @@ Productor `client_tag`, desde la 16.1 (D-7). `entity_id` es el id de la etiqueta
 
 Los valores sueltos de cada perfil van en una fila por organización y capacidad, con columnas tipadas. Las tablas del tipo de cambio las decide el ADR 0025.
 
+*Diseñado el 2026-10-18 por el [ADR 0025](../decisions/0025-tipo-de-cambio.md), **sin tablas todavía***: la 29.4 crea `organizations.main_currency` (opcional), y en el módulo nuevo `fx` `exchange_rate_settings` (una fila por organización: la otra moneda, la fuente `manual` o `dolarapi_blue`, el ajuste con signo y `last_confirmed_at`) y `exchange_rates` (de solo inserción: el par, `rate numeric(18, 6)` con `rate >= 1`, la fuente, y `source_rate`, `adjustment` y `source_observed_at` si es automática). Los movimientos de dinero suman `tendered_currency`, `tendered_amount`, `exchange_rate` y `exchange_rate_id`, opcionales: `receipts` y sus anulaciones en la 29.4, `refunds` y `supplier_payments` con las suyas en la 29.4.3, y `trade_in_payments` en la 29.7. `currency` y `amount` siguen siendo lo aplicado. La 29.4.2 crea el rol `crm_fx_reader`, que solo ejecuta dos funciones de `fx`.
+
 ## Preguntas abiertas sobre el modelo
 
 No queda ninguna.

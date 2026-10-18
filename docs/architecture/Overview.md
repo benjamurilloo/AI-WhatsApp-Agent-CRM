@@ -161,3 +161,5 @@ Sus tablas son `sales`, `sale_lines` y `sale_voids`. **Ningún módulo depende d
 - tres módulos nuevos, `service`, `tradeins` y `appointments`, que entran a la tabla de módulos y a la lista de dominio con la subfase que crea cada uno;
 - las variantes en `catalog` y las unidades con IMEI en `inventory`, del núcleo, detrás de su capacidad;
 - las dependencias `service → sales`, `service → purchasing`, `tradeins → service` y `cash → tradeins`, sin ciclos. **Ningún módulo del núcleo depende de uno de capacidad**, salvo `cash`, como ya depende de `purchasing`.
+
+*Enmendado el 2026-10-18 por el [ADR 0025](../decisions/0025-tipo-de-cambio.md)*: **`fx`**, módulo nuevo del núcleo desde la 29.4, guarda la configuración y las cotizaciones de cada organización. Depende de `organizations` y `audit`; `cash` depende de `fx`, y la API de lectura dependerá de él en la 29.8. `catalog` y `purchasing` no dependen de `fx`: la moneda principal es de `organizations`. Entra en la tabla de módulos y en la lista de dominio con la 29.4. **La aplicación web no sale a internet**; el lector de la cotización es un proceso aparte, con un rol de base que solo ejecuta dos funciones.

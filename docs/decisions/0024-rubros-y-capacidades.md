@@ -2,6 +2,7 @@
 
 - Estado: **aceptada** (decisión del usuario del 2026-10-18), con las correcciones de la revisión independiente del 2026-10-18 (R1: 7 bloqueantes, 10 medios y 7 bajos, verificados uno por uno contra el código; §Revisión). El usuario decidió R-6 (el DNI) y R-8 (la permuta que ve un `viewer`) con la recomendación de cada uno (U-5 y U-6). Las correcciones no tuvieron una segunda revisión independiente: su verificación es autoevaluación. Subfase 29.1, [brief-29.1](brief-29.1-adr-de-rubros-y-capacidades.md), aprobado por el usuario el 2026-10-18 con las recomendaciones de D-1 a D-17.
 - Fecha: 2026-10-18
+- *Nota del 2026-10-18 por el [ADR 0025](0025-tipo-de-cambio.md)*, sin cambiar el texto: en el **punto 8**, un cobro con «Permuta» solo se acepta contra una venta en la moneda del valor reconocido; en el **punto 15**, el agente da el precio también en pesos, con la cotización vigente, desde el contrato de la 29.8; en el **punto 17**, la 29.4 se divide en tres: 29.4 el tipo de cambio, 29.4.2 la lectura de la cotización y 29.4.3 devoluciones y pagos en otra moneda. La cotización sale de DolarAPI más un ajuste de la organización, no de infodolar.
 
 ## Contexto
 

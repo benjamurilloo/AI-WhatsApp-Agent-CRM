@@ -486,8 +486,10 @@ Reglas comunes a las cuatro fases:
 - **Subfases**: ~~29.2 capacidades y variantes → 29.3 unidades → 29.4–29.5 tipo de cambio → 29.6 permuta → 29.7 agente → 29.8 servicio técnico → 29.9 garantía, del brief-29.1, D-15.~~ *Reordenadas el 2026-10-18 por el [ADR 0024](../decisions/0024-rubros-y-capacidades.md), punto 17*: el tipo de cambio sube porque el negocio vende en dos monedas desde el primer día, las reparaciones van antes que la permuta porque la cotización las usa, y entran los turnos por decisión del usuario:
   - **29.1 — ADR de rubros y capacidades** ([brief-29.1](../decisions/brief-29.1-adr-de-rubros-y-capacidades.md)): **cerrada el 2026-10-18** con el [ADR 0024](../decisions/0024-rubros-y-capacidades.md) aceptado, después de la revisión independiente (R1, 24 hallazgos verificados y corregidos);
   - **29.2 — Capacidades y variantes**;
-  - **29.3 — ADR del tipo de cambio**: el 0025, sin tablas, que supera en parte el punto 3 del [ADR 0019](../decisions/0019-bases-de-los-comprobantes.md) y la moneda del cobro del [ADR 0022](../decisions/0022-cobros-y-caja.md). Decide el dólar como moneda principal y la lectura automática de infodolar, que pidió el usuario;
-  - **29.4 — El tipo de cambio**;
+  - **29.3 — ADR del tipo de cambio**: el 0025, sin tablas, que supera en parte el punto 3 del [ADR 0019](../decisions/0019-bases-de-los-comprobantes.md) y la moneda del cobro del [ADR 0022](../decisions/0022-cobros-y-caja.md). Decide el dólar como moneda principal y la lectura automática de infodolar, que pidió el usuario; **cerrada el 2026-10-18** con el [ADR 0025](../decisions/0025-tipo-de-cambio.md) aceptado, después de la revisión independiente (R1, 21 hallazgos). *Corregido ese día*: la cotización no sale de infodolar sino de **DolarAPI más un ajuste de la organización**, por decisión del usuario;
+  - **29.4 — El tipo de cambio**: la moneda principal, la cotización manual, y el cobro, la seña y el cobro a cuenta en otra moneda (ADR 0025, punto 13);
+  - **29.4.2 — La lectura de la cotización**: el lector de DolarAPI, aparte de la aplicación;
+  - **29.4.3 — Devoluciones y pagos en otra moneda**;
   - **29.5 — Las unidades**, con IMEI;
   - **29.6 — Las reparaciones y el servicio técnico**;
   - **29.7 — La recepción de usados y la permuta**;
