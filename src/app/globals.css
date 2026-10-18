@@ -14,6 +14,8 @@
   --surface-muted: #efecf9;
   --sidebar: #f1eefb;
   --foreground: #17142e;
+  /* Fondo detrás de un diálogo modal (brief-23.2, ajuste del recorrido). */
+  --overlay: rgb(23 20 46 / 0.55);
   --muted: #5a5573;
   --border: #e3dff0;
   --border-strong: #7d7799;
@@ -61,6 +63,7 @@
     --surface: #15142c;
     --surface-muted: #1e1c3b;
     --sidebar: #100f25;
+    --overlay: rgb(0 0 0 / 0.65);
     --foreground: #ebe9f7;
     --muted: #a9a5c6;
     --border: #2b2950;
@@ -104,6 +107,7 @@
   --surface: #15142c;
   --surface-muted: #1e1c3b;
   --sidebar: #100f25;
+  --overlay: rgb(0 0 0 / 0.65);
   --foreground: #ebe9f7;
   --muted: #a9a5c6;
   --border: #2b2950;
@@ -150,6 +154,7 @@
   --color-surface: var(--surface);
   --color-surface-muted: var(--surface-muted);
   --color-sidebar: var(--sidebar);
+  --color-overlay: var(--overlay);
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
   --color-border: var(--border);

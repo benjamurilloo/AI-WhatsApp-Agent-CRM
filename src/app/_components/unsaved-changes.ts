@@ -1,14 +1,12 @@
 "use client";
 
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 
 // Cambios sin guardar en las fichas largas (brief-23.2, D-6). Cubre recargar, cerrar la pestaña y
-// salir del sitio (`beforeunload`), y un clic en un enlace interno, que pregunta con `confirm`. El
-// botón «Atrás» del navegador no se cubre: el App Router no deja frenar esa navegación. Sin
-// JavaScript no hay aviso.
-
-export const UNSAVED_CHANGES_MESSAGE =
-  "Tenés cambios sin guardar. ¿Salir igual?";
+// salir del sitio (`beforeunload`), con el aviso del navegador, que no se puede reemplazar, y un
+// clic en un enlace interno, que pregunta con el diálogo del sistema (`unsaved-changes-dialog.tsx`;
+// ajuste del recorrido del 2026-10-17: antes era `confirm`). El botón «Atrás» del navegador no se
+// cubre: el App Router no deja frenar esa navegación. Sin JavaScript no hay aviso.
 
 // Los valores del formulario como texto comparable. Un archivo cuenta por su nombre y su tamaño.
 export function formSnapshot(
@@ -50,31 +48,44 @@ export function leavesPage(
   return url.pathname !== location.pathname || url.search !== location.search;
 }
 
-export function useUnsavedChanges(): RefObject<HTMLFormElement | null> {
+export type UnsavedChangesDialogProps = {
+  open: boolean;
+  onLeave: () => void;
+  onStay: () => void;
+};
+
+export function useUnsavedChanges(): {
+  formRef: RefObject<HTMLFormElement | null>;
+  dialog: UnsavedChangesDialogProps;
+} {
   const formRef = useRef<HTMLFormElement>(null);
+  const dirty = useRef(false);
+  // El enlace que se frenó, para repetir el clic si se elige salir: así navega el enlace de Next,
+  // con su barra de progreso.
+  const [pending, setPending] = useState<HTMLAnchorElement | null>(null);
 
   useEffect(() => {
     const form = formRef.current;
     if (form === null) return;
     const initial = formSnapshot(new FormData(form));
-    let dirty = false;
+    dirty.current = false;
 
     const update = () => {
-      dirty = formSnapshot(new FormData(form)) !== initial;
+      dirty.current = formSnapshot(new FormData(form)) !== initial;
     };
     // Al enviar deja de preguntar: la acción redirige al guardar. Si la rechaza, el próximo cambio
     // vuelve a comparar contra los valores iniciales.
     const submitted = () => {
-      dirty = false;
+      dirty.current = false;
     };
     const beforeUnload = (event: BeforeUnloadEvent) => {
-      if (!dirty) return;
+      if (!dirty.current) return;
       event.preventDefault();
       event.returnValue = "";
     };
     // En la fase de captura del documento, antes de que el enlace de Next navegue.
     const click = (event: MouseEvent) => {
-      if (!dirty || event.defaultPrevented) return;
+      if (!dirty.current || event.defaultPrevented) return;
       const target = event.target;
       if (!(target instanceof Element)) return;
       const anchor = target.closest("a[href]");
@@ -89,12 +100,9 @@ export function useUnsavedChanges(): RefObject<HTMLFormElement | null> {
         window.location,
       );
       if (!leaving) return;
-      if (window.confirm(UNSAVED_CHANGES_MESSAGE)) {
-        dirty = false;
-        return;
-      }
       event.preventDefault();
       event.stopPropagation();
+      setPending(anchor);
     };
 
     form.addEventListener("input", update);
@@ -114,5 +122,16 @@ export function useUnsavedChanges(): RefObject<HTMLFormElement | null> {
     };
   }, []);
 
-  return formRef;
+  return {
+    formRef,
+    dialog: {
+      open: pending !== null,
+      onLeave: () => {
+        dirty.current = false;
+        setPending(null);
+        pending?.click();
+      },
+      onStay: () => setPending(null),
+    },
+  };
 }

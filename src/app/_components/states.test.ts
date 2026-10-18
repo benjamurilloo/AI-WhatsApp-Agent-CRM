@@ -11,6 +11,13 @@ import {
   NotFoundPanel,
 } from "./error-panel";
 import { InlineSkeleton, LOADING_TEXT } from "./skeleton";
+import {
+  LEAVE_LABEL,
+  STAY_LABEL,
+  UNSAVED_CHANGES_MESSAGE,
+  UNSAVED_CHANGES_TITLE,
+  UnsavedChangesDialog,
+} from "./unsaved-changes-dialog";
 
 // brief-23.2: los estados compartidos, renderizados a texto (sin DOM; H-6). Fijan lo que un
 // lector de pantalla recibe y que el error nunca muestra el mensaje de la excepción.
@@ -117,5 +124,26 @@ describe("NotFoundPanel (D-4)", () => {
     const out = html(createElement(NotFoundPanel));
     expect(out).toContain(NOT_FOUND_TITLE);
     expect(out).toContain('href="/"');
+  });
+});
+
+describe("UnsavedChangesDialog (D-6, ajuste del recorrido)", () => {
+  it("nombra el diálogo por su título, y «Seguir editando» va primero y con el foco", () => {
+    const noop = () => {};
+    const out = html(
+      createElement(UnsavedChangesDialog, {
+        open: false,
+        onLeave: noop,
+        onStay: noop,
+      }),
+    );
+    const labelledBy = /<dialog[^>]*aria-labelledby="([^"]+)"/.exec(out)?.[1];
+    expect(labelledBy).toBeDefined();
+    expect(out).toMatch(
+      new RegExp(`<h2 id="${labelledBy}"[^>]*>${UNSAVED_CHANGES_TITLE}</h2>`),
+    );
+    expect(out).toContain(UNSAVED_CHANGES_MESSAGE);
+    expect(out.indexOf(STAY_LABEL)).toBeLessThan(out.indexOf(LEAVE_LABEL));
+    expect(out).not.toContain("<dialog open");
   });
 });

@@ -12,6 +12,7 @@ import {
   secondaryLinkClass,
 } from "@/app/_components/form-styles";
 import { useUnsavedChanges } from "@/app/_components/unsaved-changes";
+import { UnsavedChangesDialog } from "@/app/_components/unsaved-changes-dialog";
 import { saveWeekAction } from "./actions";
 import {
   dayErrorMessage,
@@ -41,7 +42,7 @@ export function WeekForm({ values }: { values: WeekFormValues }) {
     initialState,
   );
   const errorRef = useRef<HTMLParagraphElement>(null);
-  const formRef = useUnsavedChanges();
+  const { formRef, dialog } = useUnsavedChanges();
   const failed = state.status === "error";
   const shown = failed ? state.values : values;
 
@@ -123,6 +124,7 @@ export function WeekForm({ values }: { values: WeekFormValues }) {
           {pending ? "Guardando…" : "Guardar horario"}
         </button>
       </div>
+      <UnsavedChangesDialog {...dialog} />
     </form>
   );
 }

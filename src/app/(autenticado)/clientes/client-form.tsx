@@ -11,6 +11,7 @@ import {
   secondaryLinkClass,
 } from "@/app/_components/form-styles";
 import { useUnsavedChanges } from "@/app/_components/unsaved-changes";
+import { UnsavedChangesDialog } from "@/app/_components/unsaved-changes-dialog";
 import type { IconName } from "@/app/_components/icons";
 import { SectionCard } from "@/app/_components/section-card";
 import { SuggestInput } from "@/app/_components/suggest-input";
@@ -218,7 +219,7 @@ export function ClientForm({
     initialState,
   );
   const errorRef = useRef<HTMLParagraphElement>(null);
-  const formRef = useUnsavedChanges();
+  const { formRef, dialog } = useUnsavedChanges();
   const failed = state.status === "error";
   // Tras un rechazo, React reinicia el formulario a estos valores: lo escrito se conserva.
   const shown = failed ? state.values : values;
@@ -351,6 +352,7 @@ export function ClientForm({
               : "Guardar cambios"}
         </button>
       </div>
+      <UnsavedChangesDialog {...dialog} />
     </form>
   );
 }

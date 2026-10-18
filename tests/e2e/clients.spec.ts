@@ -931,13 +931,11 @@ test("brief-23.2: la ficha pregunta antes de salir con cambios sin guardar, y el
   const edit = `/clientes/${clientId}?editar=1`;
   const nav = page.getByRole("navigation", { name: "Principal" });
   const form = page.locator('form[data-unsaved-changes="watching"]');
-  const messages: string[] = [];
-  let accept = false;
-  page.on("dialog", async (dialog) => {
-    messages.push(dialog.message());
-    if (accept) await dialog.accept();
-    else await dialog.dismiss();
+  const dialog = page.getByRole("dialog", {
+    name: "Tenés cambios sin guardar",
   });
+  const stay = dialog.getByRole("button", { name: "Seguir editando" });
+  const leave = dialog.getByRole("button", { name: "Salir sin guardar" });
   await login(page, ADMIN);
 
   // Sin cambios, no pregunta.
@@ -945,26 +943,35 @@ test("brief-23.2: la ficha pregunta antes de salir con cambios sin guardar, y el
   await expect(form).toHaveCount(1);
   await nav.getByRole("link", { name: "Productos" }).click();
   await expect(page).toHaveURL("/productos");
-  expect(messages).toEqual([]);
 
-  // Con un cambio, pregunta; «Cancelar» del diálogo deja todo como estaba.
+  // Con un cambio, pregunta con el diálogo del sistema. El foco empieza en «Seguir editando».
   await page.goto(edit);
   await expect(form).toHaveCount(1);
   await page.getByLabel("Notas").fill("Algo nuevo");
   await nav.getByRole("link", { name: "Productos" }).click();
-  await expect.poll(() => messages.length).toBe(1);
-  expect(messages[0]).toBe("Tenés cambios sin guardar. ¿Salir igual?");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("Si salís ahora, se pierden.");
+  await expect(stay).toBeFocused();
+  await expectAccessible(page, "diálogo de cambios sin guardar");
+
+  // Esc y «Seguir editando» dejan todo como estaba.
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL(edit);
+  await nav.getByRole("link", { name: "Productos" }).click();
+  await expect(dialog).toBeVisible();
+  await stay.click();
+  await expect(dialog).toBeHidden();
   await expect(page).toHaveURL(edit);
   await expect(page.getByLabel("Notas")).toHaveValue("Algo nuevo");
 
-  // Aceptar sale, también desde el «Cancelar» del formulario.
-  accept = true;
+  // «Salir sin guardar» sale, también desde el «Cancelar» del formulario.
   await page.getByRole("link", { name: "Cancelar" }).click();
+  await expect(dialog).toBeVisible();
+  await leave.click();
   await expect(page).toHaveURL(`/clientes/${clientId}`);
-  expect(messages).toHaveLength(2);
 
   // Después de guardar, no pregunta. El aviso lleva el tilde, dentro de su región de estado.
-  accept = false;
   await page.goto(edit);
   await expect(form).toHaveCount(1);
   await page.getByLabel("Notas").fill("Guardada");
@@ -976,16 +983,14 @@ test("brief-23.2: la ficha pregunta antes de salir con cambios sin guardar, y el
   await expect(notice.locator('svg[aria-hidden="true"]')).toHaveCount(1);
   await nav.getByRole("link", { name: "Productos" }).click();
   await expect(page).toHaveURL("/productos");
-  expect(messages).toHaveLength(2);
 
-  // Cerrar la pestaña con un cambio pide confirmación del navegador.
+  // Cerrar la pestaña con un cambio pide confirmación del navegador: ese aviso no se puede reemplazar.
   await page.goto(edit);
   await expect(form).toHaveCount(1);
   await page.getByLabel("Notas").fill("Otra cosa");
-  page.removeAllListeners("dialog");
   const beforeUnload = page.waitForEvent("dialog");
   await page.close({ runBeforeUnload: true });
-  const dialog = await beforeUnload;
-  expect(dialog.type()).toBe("beforeunload");
-  await dialog.dismiss();
+  const unload = await beforeUnload;
+  expect(unload.type()).toBe("beforeunload");
+  await unload.dismiss();
 });

@@ -127,6 +127,8 @@ Un hook `useUnsavedChanges(form)` en las cinco fichas de H-5 (alta y edición). 
 
 *Recomendación: (a).* Sin JavaScript no hay aviso, como hoy.
 
+*Nota del 2026-10-17, ajuste del recorrido en producción (decisión del usuario)*: el `confirm` del navegador se reemplaza por **un diálogo del sistema** (`unsaved-changes-dialog.tsx`), un `<dialog>` modal con los tokens: título «Tenés cambios sin guardar», texto «Si salís ahora, se pierden.» y dos botones, «Seguir editando», con el foco inicial, y «Salir sin guardar». Esc equivale a seguir editando. Al salir, se repite el clic en el enlace frenado, así navega el enlace de Next con su barra de progreso. Recargar o cerrar la pestaña sigue con el aviso del navegador: `beforeunload` no deja mostrar uno propio. El fondo del diálogo usa un token nuevo, `--overlay`, porque la paleta de Tailwind está vaciada (`--color-*: initial`) y `bg-black` no existe.
+
 ### D-7 — Despliegue a producción
 
 - (a) como la 23.1: con la CI del SHA exacto en verde y la autorización del usuario, según el [README de producción](../../deploy/production/README.md), §Desplegar. Sin migraciones. Para volver atrás, `3873306`;
@@ -189,5 +191,5 @@ Un hook `useUnsavedChanges(form)` en las cinco fichas de H-5 (alta y edición). 
 ## Riesgos
 
 - **R-1**: `loading.tsx` envuelve cada página en un suspenso. Puede cambiar el orden en que llegan las partes y afectar a un end-to-end que lee el cuerpo, como el caso 9 de `clients.spec.ts`, que ya está cerca de su límite de tiempo. Se mitiga corriendo la suite completa sola y mirando ese caso.
-- **R-2**: el `confirm` de los cambios sin guardar es un diálogo del navegador: no se puede estilizar como el mockup. Un diálogo propio exige un foco atrapado y manejo de Escape, y no suma lo suficiente para esta subfase.
+- **R-2**: el `confirm` de los cambios sin guardar es un diálogo del navegador: no se puede estilizar como el mockup. Un diálogo propio exige un foco atrapado y manejo de Escape, y no suma lo suficiente para esta subfase. *Nota del 2026-10-17*: el recorrido en producción mostró que sí sumaba; ver la nota de D-6. `<dialog>` con `showModal` atrapa el foco y maneja Esc de forma nativa.
 - **R-3**: el error y la carga quedan validados localmente, no en integración (D-4). Una regresión en `error.tsx` solo la vería el render unitario.
