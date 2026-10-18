@@ -39,7 +39,7 @@ test.beforeEach(async () => {
           purchase_order_lines, purchase_orders, suppliers, document_counters, audit_logs,
           refund_voids, refunds, receipt_voids, receipts, sale_voids, sale_lines, sales,
           order_lines, orders, inventory_movements, inventories, product_images, product_costs,
-          product_prices, products`,
+          product_prices, attribute_values, products`,
   );
   await db.execute(sql`delete from login_attempts`);
   await db.execute(sql`delete from sessions`);

@@ -5,6 +5,7 @@ import {
   getActiveProductForService,
   getCurrentPrices,
   getProduct,
+  listModels,
   lockProductForStockChange,
   searchActiveProductsForService,
   searchProducts,
@@ -136,6 +137,11 @@ export type ProductListFilters = {
   // Marca y categoría exactas (brief-15.2, D-4); vacías no filtran.
   brand?: string;
   category?: string;
+  // Desde la 29.2, el modelo (brief-29.2, D-4); vacío no filtra.
+  modelId?: string;
+  // Desde la 29.2, agrupar por modelo (D-4): los productos de cada modelo juntos, en el orden de
+  // los modelos, y los que no tienen modelo al final. Sin la capacidad variants se ignora.
+  groupByModel?: boolean;
   sort?: ProductSort;
   // Filas por página (brief-15.2, D-2); fuera de 1 a 50, PRODUCTS_PAGE_SIZE.
   pageSize?: number;
@@ -225,8 +231,14 @@ export function composeProductStockPage(
     "stockStatus" | "page" | "sort" | "pageSize"
   >,
   prices: Map<string, SortPrice> = new Map(),
+  // El lugar de cada modelo, para agrupar (brief-29.2, D-4); sin él, no se agrupa.
+  modelOrder?: Map<string, number>,
 ): ProductStockPage {
   const pageSize = productPageSize(filters.pageSize);
+  const base = comparator(filters.sort ?? "name_asc", prices);
+  const rank = (product: ProductStock) =>
+    (product.modelId ? modelOrder?.get(product.modelId) : undefined) ??
+    Number.MAX_SAFE_INTEGER;
   const matching = products
     .map((product) => withAvailableStock(product, balances))
     .filter(
@@ -234,7 +246,7 @@ export function composeProductStockPage(
         filters.stockStatus === "all" ||
         product.stockStatus === filters.stockStatus,
     )
-    .sort(comparator(filters.sort ?? "name_asc", prices));
+    .sort(modelOrder ? (a, b) => rank(a) - rank(b) || base(a, b) : base);
 
   const pageCount = Math.max(1, Math.ceil(matching.length / pageSize));
   const page = Math.min(Math.max(1, Math.trunc(filters.page) || 1), pageCount);
@@ -266,9 +278,25 @@ export async function listProductStock(
       prices.set(id, { amount: price.amount, currency: price.currency });
     }
   }
+  // El orden de los modelos, solo para agrupar y solo con la capacidad (brief-29.2, D-4).
+  let modelOrder: Map<string, number> | undefined;
+  if (filters.groupByModel) {
+    const models = await listModels(context);
+    if (models.ok) {
+      modelOrder = new Map(
+        models.models.map((model, index) => [model.id, index]),
+      );
+    }
+  }
   return {
     ok: true,
-    ...composeProductStockPage(found.products, balances, filters, prices),
+    ...composeProductStockPage(
+      found.products,
+      balances,
+      filters,
+      prices,
+      modelOrder,
+    ),
   };
 }
 

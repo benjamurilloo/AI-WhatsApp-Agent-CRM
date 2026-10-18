@@ -23,7 +23,7 @@ test.beforeAll(() => {
 test.afterAll(async () => {
   await db.execute(
     sql`truncate table supplier_payment_voids, supplier_payments, goods_receipt_voids, goods_receipt_lines, goods_receipts, purchase_order_lines, purchase_orders, refund_voids, refunds, receipt_voids, receipts, sale_voids, sale_lines, sales, order_lines, orders, conversation_notes, messages, conversations, client_tag_assignments, clients, knowledge_entries,
-        inventory_movements, inventories, product_images, product_costs, product_prices, products`,
+        inventory_movements, inventories, product_images, product_costs, product_prices, attribute_values, products`,
   );
   await db.$client.end();
 });
@@ -34,7 +34,7 @@ test.beforeEach(async () => {
   // referencia (6.1).
   await db.execute(
     sql`truncate table supplier_payment_voids, supplier_payments, goods_receipt_voids, goods_receipt_lines, goods_receipts, purchase_order_lines, purchase_orders, refund_voids, refunds, receipt_voids, receipts, sale_voids, sale_lines, sales, order_lines, orders, audit_logs, ingestion_events, conversation_notes, messages, conversations, client_tag_assignments, clients,
-        knowledge_entries, inventory_movements, inventories, product_images, product_costs, product_prices, products`,
+        knowledge_entries, inventory_movements, inventories, product_images, product_costs, product_prices, attribute_values, products`,
   );
   await db.execute(sql`delete from login_attempts`);
   await db.execute(sql`delete from sessions`);

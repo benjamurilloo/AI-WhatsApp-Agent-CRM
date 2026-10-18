@@ -2,6 +2,7 @@ import type {
   ProductCondition,
   ProductConflictField,
   ProductField,
+  VariantField,
 } from "@/modules/catalog";
 import type { ErrorCode } from "@/shared/errors";
 import type {
@@ -127,7 +128,36 @@ export function productConflictError(field: ProductConflictField): {
   };
 }
 
+// El modelo y los atributos (brief-29.2, D-5): un modelo activo, y un valor válido en cada atributo;
+// los obligatorios, solo con modelo.
+export const MODEL_INVALID_MESSAGE =
+  "Elegí un modelo de la lista. Un modelo desactivado no se puede asignar.";
+export const ATTRIBUTE_INVALID_MESSAGE =
+  "Completá este dato con un valor válido. Es obligatorio en un producto con modelo.";
+
+export function variantDuplicateMessage(name: string): string {
+  return `Ya hay un producto activo de este modelo con la misma condición y la misma variante: «${name}».`;
+}
+
+// El primer campo inválido del modelo y los atributos: el modelo primero, después los atributos
+// en el orden del formulario, que es el del servicio.
+export function variantFieldError(fields: VariantField[]): {
+  field: VariantField;
+  message: string;
+} {
+  if (fields.includes("modelId")) {
+    return { field: "modelId", message: MODEL_INVALID_MESSAGE };
+  }
+  return { field: fields[0] ?? "modelId", message: ATTRIBUTE_INVALID_MESSAGE };
+}
+
 export type ProductFormValues = Record<ProductField, string>;
+
+// Lo que el formulario manda del modelo y los atributos, para volver a mostrarlo tras un error.
+export type VariantFormValues = {
+  modelId: string;
+  attributes: Record<string, string>;
+};
 
 // Peso y dimensiones para mostrar y para editar (brief-17.2, D-5): "1.500" se lee "1,5" y "10.0",
 // "10". Sin ceros finales y con coma decimal, como formatQuantity, para cualquier escala.
@@ -148,15 +178,21 @@ export type ProductFormState =
   | {
       status: "error";
       requestId: string;
-      field: ProductField | null;
+      field: ProductField | VariantField | null;
       message: string;
       values: ProductFormValues;
+      variant?: VariantFormValues;
     };
 
 // Desactivar y reactivar (pantalla 4).
 
 export type ProductChangeState =
   { status: "idle" } | { status: "error"; requestId: string; message: string };
+
+// Reactivar un producto que hoy sería un duplicado de variante (brief-29.2, D-6).
+export function reactivationDuplicateMessage(name: string): string {
+  return `No se puede reactivar: ya hay un producto activo de este modelo con la misma condición y la misma variante, «${name}». Desactivá ese o cambiá la variante de este.`;
+}
 
 export function productChangeMessage(
   code: Exclude<ErrorCode, "UNAUTHENTICATED">,

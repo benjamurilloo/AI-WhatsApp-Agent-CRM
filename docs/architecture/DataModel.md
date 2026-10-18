@@ -1,15 +1,15 @@
 # Modelo de Datos
 
-**Estado: diseñado; `organizations`, `users` y `organization_members` implementadas y validadas localmente desde la 3.1** ([brief-3.1](../decisions/brief-3.1-migraciones-de-identidad.md)), **`sessions` y `login_attempts` desde la 3.3** ([brief-3.3](../decisions/brief-3.3-autenticacion.md)), **`audit_logs` desde la 3.6** ([brief-3.6](../decisions/brief-3.6-modulo-de-auditoria.md)), **`products`, `inventories` e `inventory_movements` desde la 4.1** ([brief-4.1](../decisions/brief-4.1-migraciones-de-catalogo-e-inventario.md)), con sus servicios desde la 4.2 y la 4.3, **y `clients` desde la 5.1** ([brief-5.1](../decisions/brief-5.1-migracion-de-clientes.md)), con su servicio desde la 5.2 ([brief-5.2](../decisions/brief-5.2-servicio-de-clientes.md)), **y `conversations`, `messages` e `ingestion_events` desde la 6.1** ([brief-6.1](../decisions/brief-6.1-migraciones-de-conversaciones.md)), solo con su esquema, **e `ingestion_credentials` e `ingestion_rate_windows` desde la 6.5.3** ([brief-6.5.3](../decisions/brief-6.5.3-autenticacion-de-servicio-y-rate-limit.md)), **`product_prices` desde la 11.1** ([brief-11.1](../decisions/brief-11.1-catalogo-comercial.md)) **`knowledge_entries` desde la 11.2** ([brief-11.2](../decisions/brief-11.2-informacion-del-negocio.md)) **`client_tags` y `client_tag_assignments` desde la 16.1** ([brief-16.1](../decisions/brief-16.1-etiquetas-de-clientes.md)) **y `conversation_notes` desde la 16.4** ([brief-16.4](../decisions/brief-16.4-notas-de-la-conversacion.md)). **Los campos ampliados de `clients` llegan en la 17.1** ([brief-17.1](../decisions/brief-17.1-campos-de-clientes.md)) **y los campos de operación de `products`, en la 17.2** ([brief-17.2](../decisions/brief-17.2-campos-de-productos.md)). **`business_hours` y `business_hour_exceptions` llegan en la 17.4** ([brief-17.4](../decisions/brief-17.4-informacion-del-negocio-estructurada.md)) **y `product_images`, en la 17.5** ([brief-17.5](../decisions/brief-17.5-imagenes-de-producto.md)). **`product_costs` llega en la 18.2** ([brief-18.2](../decisions/brief-18.2-costo-y-margen.md)). **`orders`, `order_lines` y `document_counters` llegan en la 19.2** ([brief-19.2](../decisions/brief-19.2-el-pedido.md), [ADR 0020](../decisions/0020-el-pedido.md)), **e `inventories.quantity_reserved` y el tipo de movimiento `order_delivery`, en la 19.3** ([brief-19.3](../decisions/brief-19.3-reserva-y-ciclo.md)). **El autor de servicio de `orders` y el evento que creó un pedido llegan en la 19.4** ([brief-19.4](../decisions/brief-19.4-el-pedido-del-agente.md)). **`sales` y `sale_lines` llegan en la 20.2** ([brief-20.2](../decisions/brief-20.2-la-venta-de-un-pedido.md), [ADR 0021](../decisions/0021-la-venta.md)), **y la venta sin pedido, en la 20.3**: `sales.order_id` y `sales.client_id` nulables y el tipo de movimiento `sale` ([brief-20.3](../decisions/brief-20.3-la-venta-sin-pedido.md)), **y la anulación, en la 20.4**: `sale_voids`, `sales.replaces_sale_id` y el tipo de movimiento `sale_void` ([brief-20.4](../decisions/brief-20.4-la-anulacion.md)). **Los medios de pago y la caja del efectivo llegan en la 21.2**: `payment_methods`, `cash_sessions`, `cash_session_opening_amounts`, `cash_session_closings`, `cash_session_closing_amounts` y `cash_movements` ([brief-21.2](../decisions/brief-21.2-los-medios-de-pago-y-la-caja.md), [ADR 0022](../decisions/0022-cobros-y-caja.md)). **Los cobros de una venta llegan en la 21.3**: `receipts` ([brief-21.3](../decisions/brief-21.3-el-cobro-de-una-venta.md)), **y la seña, en la 21.4**: el destino pedido de `receipts` ([brief-21.4](../decisions/brief-21.4-la-sena.md)). **La anulación de un cobro, la devolución y su anulación llegan en la 21.5**: `receipt_voids`, `refunds` y `refund_voids` ([brief-21.5](../decisions/brief-21.5-la-anulacion-y-la-devolucion.md)). Las migraciones están en `drizzle/`. Todas las tablas del modelo tienen migración. **Los proveedores llegan en la 22.2**: `suppliers` ([brief-22.2](../decisions/brief-22.2-los-proveedores.md)). **La orden de compra llega en la 22.3**: `purchase_orders` y `purchase_order_lines` ([brief-22.3](../decisions/brief-22.3-la-orden-de-compra.md)). **La recepción llega en la 22.4**: `goods_receipts`, `goods_receipt_lines` y el tipo de movimiento `goods_receipt` ([brief-22.4](../decisions/brief-22.4-la-recepcion.md)). **Su anulación llega en la 22.5**: `goods_receipt_voids`, el motivo `goods_receipt_void_reason` y el tipo de movimiento `goods_receipt_void` ([brief-22.5](../decisions/brief-22.5-la-anulacion-de-la-recepcion.md)).
+**Estado: diseñado; `organizations`, `users` y `organization_members` implementadas y validadas localmente desde la 3.1** ([brief-3.1](../decisions/brief-3.1-migraciones-de-identidad.md)), **`sessions` y `login_attempts` desde la 3.3** ([brief-3.3](../decisions/brief-3.3-autenticacion.md)), **`audit_logs` desde la 3.6** ([brief-3.6](../decisions/brief-3.6-modulo-de-auditoria.md)), **`products`, `inventories` e `inventory_movements` desde la 4.1** ([brief-4.1](../decisions/brief-4.1-migraciones-de-catalogo-e-inventario.md)), con sus servicios desde la 4.2 y la 4.3, **y `clients` desde la 5.1** ([brief-5.1](../decisions/brief-5.1-migracion-de-clientes.md)), con su servicio desde la 5.2 ([brief-5.2](../decisions/brief-5.2-servicio-de-clientes.md)), **y `conversations`, `messages` e `ingestion_events` desde la 6.1** ([brief-6.1](../decisions/brief-6.1-migraciones-de-conversaciones.md)), solo con su esquema, **e `ingestion_credentials` e `ingestion_rate_windows` desde la 6.5.3** ([brief-6.5.3](../decisions/brief-6.5.3-autenticacion-de-servicio-y-rate-limit.md)), **`product_prices` desde la 11.1** ([brief-11.1](../decisions/brief-11.1-catalogo-comercial.md)) **`knowledge_entries` desde la 11.2** ([brief-11.2](../decisions/brief-11.2-informacion-del-negocio.md)) **`client_tags` y `client_tag_assignments` desde la 16.1** ([brief-16.1](../decisions/brief-16.1-etiquetas-de-clientes.md)) **y `conversation_notes` desde la 16.4** ([brief-16.4](../decisions/brief-16.4-notas-de-la-conversacion.md)). **Los campos ampliados de `clients` llegan en la 17.1** ([brief-17.1](../decisions/brief-17.1-campos-de-clientes.md)) **y los campos de operación de `products`, en la 17.2** ([brief-17.2](../decisions/brief-17.2-campos-de-productos.md)). **`business_hours` y `business_hour_exceptions` llegan en la 17.4** ([brief-17.4](../decisions/brief-17.4-informacion-del-negocio-estructurada.md)) **y `product_images`, en la 17.5** ([brief-17.5](../decisions/brief-17.5-imagenes-de-producto.md)). **`product_costs` llega en la 18.2** ([brief-18.2](../decisions/brief-18.2-costo-y-margen.md)). **`orders`, `order_lines` y `document_counters` llegan en la 19.2** ([brief-19.2](../decisions/brief-19.2-el-pedido.md), [ADR 0020](../decisions/0020-el-pedido.md)), **e `inventories.quantity_reserved` y el tipo de movimiento `order_delivery`, en la 19.3** ([brief-19.3](../decisions/brief-19.3-reserva-y-ciclo.md)). **El autor de servicio de `orders` y el evento que creó un pedido llegan en la 19.4** ([brief-19.4](../decisions/brief-19.4-el-pedido-del-agente.md)). **`sales` y `sale_lines` llegan en la 20.2** ([brief-20.2](../decisions/brief-20.2-la-venta-de-un-pedido.md), [ADR 0021](../decisions/0021-la-venta.md)), **y la venta sin pedido, en la 20.3**: `sales.order_id` y `sales.client_id` nulables y el tipo de movimiento `sale` ([brief-20.3](../decisions/brief-20.3-la-venta-sin-pedido.md)), **y la anulación, en la 20.4**: `sale_voids`, `sales.replaces_sale_id` y el tipo de movimiento `sale_void` ([brief-20.4](../decisions/brief-20.4-la-anulacion.md)). **Los medios de pago y la caja del efectivo llegan en la 21.2**: `payment_methods`, `cash_sessions`, `cash_session_opening_amounts`, `cash_session_closings`, `cash_session_closing_amounts` y `cash_movements` ([brief-21.2](../decisions/brief-21.2-los-medios-de-pago-y-la-caja.md), [ADR 0022](../decisions/0022-cobros-y-caja.md)). **Los cobros de una venta llegan en la 21.3**: `receipts` ([brief-21.3](../decisions/brief-21.3-el-cobro-de-una-venta.md)), **y la seña, en la 21.4**: el destino pedido de `receipts` ([brief-21.4](../decisions/brief-21.4-la-sena.md)). **La anulación de un cobro, la devolución y su anulación llegan en la 21.5**: `receipt_voids`, `refunds` y `refund_voids` ([brief-21.5](../decisions/brief-21.5-la-anulacion-y-la-devolucion.md)). Las migraciones están en `drizzle/`. Todas las tablas del modelo tienen migración. **Los proveedores llegan en la 22.2**: `suppliers` ([brief-22.2](../decisions/brief-22.2-los-proveedores.md)). **La orden de compra llega en la 22.3**: `purchase_orders` y `purchase_order_lines` ([brief-22.3](../decisions/brief-22.3-la-orden-de-compra.md)). **La recepción llega en la 22.4**: `goods_receipts`, `goods_receipt_lines` y el tipo de movimiento `goods_receipt` ([brief-22.4](../decisions/brief-22.4-la-recepcion.md)). **Su anulación llega en la 22.5**: `goods_receipt_voids`, el motivo `goods_receipt_void_reason` y el tipo de movimiento `goods_receipt_void` ([brief-22.5](../decisions/brief-22.5-la-anulacion-de-la-recepcion.md)). **Las capacidades y las variantes llegan en la 29.2**: `organization_capabilities`, `product_models`, `attribute_definitions`, `attribute_options`, `attribute_values` y `products.model_id` ([brief-29.2](../decisions/brief-29.2-capacidades-y-variantes.md), [ADR 0024](../decisions/0024-rubros-y-capacidades.md)).
 
 Convenciones fijadas en la 3.1, que siguen las tablas futuras salvo justificación:
 
 - Los enums son tipos `ENUM` de PostgreSQL (`pgEnum`), p. ej. `member_role`. Agregar un valor es un `ALTER TYPE ... ADD VALUE` aditivo (D-2).
 - `id` usa `gen_random_uuid()` como default de base (D-6).
 - `updated_at` lo mantiene la aplicación con `$onUpdate` de Drizzle. **Limitación**: un `UPDATE` escrito en SQL crudo no lo actualiza (D-3).
-- Los esquemas viven en el módulo dueño: `users` en `src/modules/auth/schema.ts`; `organizations` y `organization_members` en `src/modules/organizations/schema.ts`; `audit_logs` en `src/modules/audit/schema.ts`; `products`, `product_prices`, desde la 17.5 `product_images` y desde la 18.2 `product_costs` en `src/modules/catalog/schema.ts`; `inventories` e `inventory_movements` en `src/modules/inventory/schema.ts`; `clients` y, desde la 16.1, `client_tags` y `client_tag_assignments` en `src/modules/crm/schema.ts`; `conversations`, `messages` y, desde la 16.4, `conversation_notes` en `src/modules/conversations/schema.ts`; `ingestion_events`, `ingestion_credentials` e `ingestion_rate_windows` en `src/modules/ingestion/schema.ts`; `knowledge_entries` y, desde la 17.4, `business_hours` y `business_hour_exceptions` en `src/modules/knowledge/schema.ts`; desde la 19.2, `orders` y `order_lines` en `src/modules/orders/schema.ts` y `document_counters` en `src/modules/numbering/schema.ts`; desde la 20.2, `sales` y `sale_lines` en `src/modules/sales/schema.ts`; desde la 21.2, `payment_methods` y las cinco tablas de la caja en `src/modules/cash/schema.ts`; desde la 22.2, `suppliers` y, desde la 22.3, `purchase_orders` y `purchase_order_lines` en `src/modules/purchasing/schema.ts`.
+- Los esquemas viven en el módulo dueño: `users` en `src/modules/auth/schema.ts`; `organizations` y `organization_members` en `src/modules/organizations/schema.ts`; `audit_logs` en `src/modules/audit/schema.ts`; `products`, `product_prices`, desde la 17.5 `product_images` y desde la 18.2 `product_costs` en `src/modules/catalog/schema.ts`; `inventories` e `inventory_movements` en `src/modules/inventory/schema.ts`; `clients` y, desde la 16.1, `client_tags` y `client_tag_assignments` en `src/modules/crm/schema.ts`; `conversations`, `messages` y, desde la 16.4, `conversation_notes` en `src/modules/conversations/schema.ts`; `ingestion_events`, `ingestion_credentials` e `ingestion_rate_windows` en `src/modules/ingestion/schema.ts`; `knowledge_entries` y, desde la 17.4, `business_hours` y `business_hour_exceptions` en `src/modules/knowledge/schema.ts`; desde la 19.2, `orders` y `order_lines` en `src/modules/orders/schema.ts` y `document_counters` en `src/modules/numbering/schema.ts`; desde la 20.2, `sales` y `sale_lines` en `src/modules/sales/schema.ts`; desde la 21.2, `payment_methods` y las cinco tablas de la caja en `src/modules/cash/schema.ts`; desde la 22.2, `suppliers` y, desde la 22.3, `purchase_orders` y `purchase_order_lines` en `src/modules/purchasing/schema.ts`; desde la 29.2, `organization_capabilities` en `src/modules/organizations/schema.ts`, y `product_models`, `attribute_definitions`, `attribute_options` y `attribute_values` en `src/modules/catalog/schema.ts`.
 - Las cantidades son `numeric(14, 3)`: hasta 99 999 999 999,999 con tres decimales, y comparaciones exactas (brief-4.1, D-4). Drizzle devuelve `numeric` como `string`: los servicios comparan y suman en SQL o con una representación decimal exacta, nunca con `number` de JavaScript. La representación exacta es `src/shared/quantity/`: `bigint` en milésimas, con parseo de entrada con coma o punto (brief-4.2, D-2).
-- Privilegios ([ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md), 3.6): cada migración que crea una tabla otorga sus privilegios al rol de aplicación `crm_app`. Una tabla de solo inserción recibe solo `SELECT` e `INSERT`, más un trigger que rechaza `UPDATE` y `DELETE`. `ingestion_events` recibe además `UPDATE`, sin `DELETE`, con un trigger que protege su identidad (brief-6.1, D-3). `knowledge_entries` también recibe `SELECT`, `INSERT` y `UPDATE` sin `DELETE`, pero sin trigger: es editable, y lo que se protege es que ninguna vía la borre (brief-11.2, D-4). Desde la 16.1, `client_tags` recibe lo mismo, sin `DELETE`, y `client_tag_assignments` recibe `SELECT`, `INSERT` y `DELETE`, **sin `UPDATE`**: una asignación se pone y se quita, nunca se modifica (brief-16.1, D-6). Desde la 17.4, `business_hours` recibe `SELECT`, `INSERT` y `UPDATE`, sin `DELETE`, y `business_hour_exceptions`, `SELECT`, `INSERT` y `DELETE`, sin `UPDATE` (brief-17.4, P-1 y P-2). Desde la 17.5, `product_images` recibe `SELECT`, `INSERT` y `DELETE`, sin `UPDATE`: reemplazar una imagen es borrar e insertar (brief-17.5, D-3). Los roles, privilegios y triggers van en migraciones a medida, porque Drizzle no los expresa en `schema.ts`; *desde la 17.4*, los `GRANT` de una tabla sin trigger pueden ir al final de la migración generada que la crea, como en la `0033`. *Desde la 21.2*, `payment_methods` recibe `SELECT`, `INSERT` y `UPDATE`, sin `DELETE`, con un trigger que impide cambiar `is_cash` y la organización, y las cinco tablas de la caja reciben `SELECT` e `INSERT` (brief-21.2, D-1 y D-6). *Desde la 22.2*, `suppliers` recibe `SELECT`, `INSERT` y `UPDATE`, sin `DELETE` y sin trigger, con el `GRANT` al final de la `0047` (brief-22.2, D-1). *Desde la 22.3*, `purchase_orders` recibe `SELECT`, `INSERT` y `UPDATE`, sin `DELETE`, con su trigger de estados, y `purchase_order_lines`, `SELECT` e `INSERT`, con su trigger de solo inserción, en la `0048` (brief-22.3, D-2).
+- Privilegios ([ADR 0013](../decisions/0013-rol-de-aplicacion-y-tablas-de-solo-insercion.md), 3.6): cada migración que crea una tabla otorga sus privilegios al rol de aplicación `crm_app`. Una tabla de solo inserción recibe solo `SELECT` e `INSERT`, más un trigger que rechaza `UPDATE` y `DELETE`. `ingestion_events` recibe además `UPDATE`, sin `DELETE`, con un trigger que protege su identidad (brief-6.1, D-3). `knowledge_entries` también recibe `SELECT`, `INSERT` y `UPDATE` sin `DELETE`, pero sin trigger: es editable, y lo que se protege es que ninguna vía la borre (brief-11.2, D-4). Desde la 16.1, `client_tags` recibe lo mismo, sin `DELETE`, y `client_tag_assignments` recibe `SELECT`, `INSERT` y `DELETE`, **sin `UPDATE`**: una asignación se pone y se quita, nunca se modifica (brief-16.1, D-6). Desde la 17.4, `business_hours` recibe `SELECT`, `INSERT` y `UPDATE`, sin `DELETE`, y `business_hour_exceptions`, `SELECT`, `INSERT` y `DELETE`, sin `UPDATE` (brief-17.4, P-1 y P-2). Desde la 17.5, `product_images` recibe `SELECT`, `INSERT` y `DELETE`, sin `UPDATE`: reemplazar una imagen es borrar e insertar (brief-17.5, D-3). Los roles, privilegios y triggers van en migraciones a medida, porque Drizzle no los expresa en `schema.ts`; *desde la 17.4*, los `GRANT` de una tabla sin trigger pueden ir al final de la migración generada que la crea, como en la `0033`. *Desde la 21.2*, `payment_methods` recibe `SELECT`, `INSERT` y `UPDATE`, sin `DELETE`, con un trigger que impide cambiar `is_cash` y la organización, y las cinco tablas de la caja reciben `SELECT` e `INSERT` (brief-21.2, D-1 y D-6). *Desde la 22.2*, `suppliers` recibe `SELECT`, `INSERT` y `UPDATE`, sin `DELETE` y sin trigger, con el `GRANT` al final de la `0047` (brief-22.2, D-1). *Desde la 22.3*, `purchase_orders` recibe `SELECT`, `INSERT` y `UPDATE`, sin `DELETE`, con su trigger de estados, y `purchase_order_lines`, `SELECT` e `INSERT`, con su trigger de solo inserción, en la `0048` (brief-22.3, D-2). *Desde la 29.2*, `organization_capabilities` recibe `SELECT` e `INSERT`, sin trigger; `product_models`, `attribute_definitions` y `attribute_options`, `SELECT`, `INSERT` y `UPDATE`, sin `DELETE`; y `attribute_values`, los cuatro, porque los valores de un producto se reemplazan borrando e insertando. Todo al final de la `0052` (brief-29.2).
 
 ## Reglas de diseño aplicadas a todas las tablas
 
@@ -319,6 +319,108 @@ La imagen principal de un producto, en la base: el backup cifrado, la copia exte
 | `created_at` | timestamptz not null default `now()` | |
 
 La auditoría es del producto: subir, reemplazar y quitar se registran como `update` con el campo `image` y, como valor, el hash corto y el tamaño («a1b2c3d4, 182 KB»), **nunca los bytes** (D-8). Una imagen no es un dato de un cliente: la exportación y el vaciado de la 13.4 no cambian (ADR 0018, punto 8).
+
+### Capacidades y variantes (29.2)
+
+**Implementadas en la 29.2** ([brief-29.2](../decisions/brief-29.2-capacidades-y-variantes.md), migración `drizzle/0052_*`, con sus privilegios al final), según el [ADR 0024](../decisions/0024-rubros-y-capacidades.md), puntos 3 a 5 y 13. Cinco tablas nuevas y una columna de `products`. **Una organización sin la capacidad `variants` no las usa**: ni el menú, ni el formulario, ni la lista del producto cambian (invariante 1 del brief). Los contratos del agente (`read-v1`, `read-v2`) y la búsqueda global no las leen.
+
+#### `organization_capabilities`
+
+Módulo dueño: `organizations`. Qué capacidades tiene activadas una organización. **La activa quien opera el CRM con `npm run org:capability`**, nunca la pantalla, y no se desactiva: no hay comando, y desactivarla necesita su ADR (D-2).
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | uuid PK | |
+| `organization_id` | uuid FK → organizations, not null | `ON DELETE RESTRICT` |
+| `capability` | enum `capability` (`variants`) not null | Único `(organization_id, capability)`: activarla dos veces no hace nada (`ON CONFLICT DO NOTHING`) |
+| `activated_by` | uuid FK → users, not null | `ON DELETE RESTRICT`. Un `admin` activo de la organización, nombrado por correo en el script |
+| `activated_at` | timestamptz not null default `now()` | |
+
+`crm_app` tiene `SELECT` e `INSERT`, sin trigger. **Solo la leen y la escriben dos funciones de `organizations/repository.ts`**, `findCapabilities` e `insertCapability`; `hasCapability` y `getAppFrame` la exponen, y `tests/guards/capability-reads.test.ts` falla ante cualquier otro acceso en `src/` (invariante 4).
+
+#### `product_models`
+
+Módulo dueño: `catalog`. El modelo agrupa las variantes de un mismo equipo («iPhone 13»). Cada variante sigue siendo un producto (ADR 0024, punto 5).
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | uuid PK | |
+| `organization_id` | uuid FK → organizations, not null | `ON DELETE RESTRICT` |
+| `name` | text not null | `CHECK` de 1 a 120 caracteres. Único por organización sin distinguir mayúsculas: `product_models_organization_name_lower_unique`, también contra los inactivos |
+| `brand` | text null | `CHECK` de 1 a 100 caracteres |
+| `position` | smallint not null default 0 | `CHECK (>= 0)`. El alta lo pone al final; un `admin` lo sube o lo baja un lugar, y la lista se renumera de 0 en adelante con todas sus filas bloqueadas |
+| `is_active` | boolean not null default true | Un modelo desactivado no se ofrece en el formulario, y sus productos siguen |
+| `created_at`, `updated_at` | timestamptz not null | |
+| — | `UNIQUE(organization_id, id)` | destino de `products_model_fk` |
+
+`crm_app` tiene `SELECT`, `INSERT` y `UPDATE`, sin `DELETE`: un modelo se desactiva, no se borra (regla 8).
+
+**`products.model_id`**: uuid nulo, con la clave foránea compuesta `products_model_fk (organization_id, model_id)` → `product_models (organization_id, id)`, `ON DELETE RESTRICT`. Nulo es un producto sin modelo, como un accesorio (H-5). Índice parcial `products_model_idx (organization_id, model_id) WHERE model_id IS NOT NULL`, para el filtro de la lista y la ficha del modelo.
+
+#### `attribute_definitions`
+
+Módulo dueño: `catalog`. Los atributos que define cada organización. **Sin `jsonb`**: el valor va en una columna por tipo (ADR 0024, punto 4).
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | uuid PK | |
+| `organization_id` | uuid FK → organizations, not null | `ON DELETE RESTRICT` |
+| `entity` | enum `attribute_entity` (`product`) not null | Solo `product` en la 29.2 |
+| `key` | text not null | `^[a-z][a-z0-9_]{0,39}$`, derivada del nombre al crearla y fija después. Única `(organization_id, entity, key)` |
+| `name` | text not null | `CHECK` de 1 a 60 caracteres |
+| `type` | enum `attribute_type` (`text`, `number`, `boolean`, `option`) not null | No cambia: la pantalla no lo ofrece y el servicio no lo recibe |
+| `is_required` | boolean not null default false | **Se exige solo en un producto con modelo**: un accesorio no tiene color |
+| `is_variant` | boolean not null default false | `attribute_definitions_variant_rule`: un atributo de variante es `option`, obligatorio y de `product` (D-5) |
+| `position` | smallint not null default 0 | `CHECK (>= 0)` |
+| `is_active` | boolean not null default true | Desactivarla conserva los valores guardados y la saca del formulario y de la regla del duplicado |
+| `created_at`, `updated_at` | timestamptz not null | |
+| — | `UNIQUE(organization_id, id)` | destino de las claves compuestas de opciones y valores |
+
+`crm_app` tiene `SELECT`, `INSERT` y `UPDATE`, sin `DELETE`.
+
+#### `attribute_options`
+
+Módulo dueño: `catalog`. Las opciones de un atributo `option`.
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | uuid PK | |
+| `organization_id` | uuid FK → organizations, not null | `ON DELETE RESTRICT` |
+| `definition_id` | uuid not null | FK compuesta `attribute_options_definition_fk (organization_id, definition_id)` → `attribute_definitions`, `ON DELETE RESTRICT` |
+| `label` | text not null | `CHECK` de 1 a 60 caracteres. Única dentro de la definición sin distinguir mayúsculas: `attribute_options_definition_label_lower_unique` |
+| `position` | smallint not null default 0 | `CHECK (>= 0)` |
+| `is_active` | boolean not null default true | Una opción desactivada no se ofrece a un producto nuevo; el que ya la tiene la conserva |
+| `created_at` | timestamptz not null | |
+| — | `UNIQUE(organization_id, definition_id, id)` | destino de `attribute_values_option_fk`: el valor no puede apuntar a la opción de otra definición |
+
+`crm_app` tiene `SELECT`, `INSERT` y `UPDATE`, sin `DELETE`: una opción en uso no se borra.
+
+#### `attribute_values`
+
+Módulo dueño: `catalog`. El valor de un atributo en un producto.
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | uuid PK | |
+| `organization_id` | uuid FK → organizations, not null | `ON DELETE RESTRICT` |
+| `product_id` | uuid not null | FK compuesta `attribute_values_product_fk` → `products (organization_id, id)`, `ON DELETE RESTRICT` |
+| `definition_id` | uuid not null | FK compuesta `attribute_values_definition_fk` → `attribute_definitions (organization_id, id)`, `ON DELETE RESTRICT`. Único `(organization_id, product_id, definition_id)` |
+| `text_value` | text null | `CHECK` de 1 a 200 caracteres |
+| `number_value` | numeric(14, 3) null | Como las cantidades: la aplicación lo lee como texto |
+| `boolean_value` | boolean null | |
+| `option_id` | uuid null | FK compuesta `attribute_values_option_fk (organization_id, definition_id, option_id)` → `attribute_options` |
+
+`attribute_values_exactly_one`: `num_nonnulls(text_value, number_value, boolean_value, option_id) = 1`. **Que la columna con valor sea la del tipo de la definición lo valida el servicio**, no la base: un `CHECK` no puede leer otra tabla. Índice `attribute_values_definition_idx (organization_id, definition_id)`, para la regla del duplicado.
+
+`crm_app` tiene `SELECT`, `INSERT`, `UPDATE` y `DELETE`: guardar los atributos de un producto borra sus filas e inserta las nuevas, en la misma transacción que el producto y su auditoría. La única tabla nueva con `DELETE`.
+
+#### La regla del duplicado
+
+**Dos productos activos del mismo modelo, con la misma condición y la misma opción en todos los atributos de variante activos, son un duplicado** (ADR 0024, punto 5; D-6). La base no lo puede expresar con un índice, porque los valores están en filas separadas. **El servicio bloquea la fila del modelo `FOR UPDATE`** antes de buscar el duplicado, al crear, al editar y al reactivar; el orden de los bloqueos es producto y después modelo. **Una edición que no cambia la identidad de la variante** (el modelo, la condición, las opciones de variante y que esté activo) no vuelve a comprobarlo: desactivar un atributo de variante puede hacer coincidir a dos productos que ya existían, y eso no impide corregir el nombre de uno. Guardar sin cambios en los atributos no reescribe sus filas. Dos altas simultáneas de la misma variante: entra una sola (`tests/integration/variants.test.ts`).
+
+#### La plantilla del perfil
+
+`src/modules/organizations/profiles/iphone.ts` no es una tabla: son datos versionados (D-8). `org:capability --profile iphone` activa la capacidad y copia sus definiciones y opciones a la organización, en una transacción, con `applyAttributeTemplate` de `catalog`. **La copia es de la organización**: cambiar la plantilla no toca las que ya la copiaron.
 
 ### `inventories`
 
@@ -1185,6 +1287,13 @@ Productor `client_tag`, desde la 16.1 (D-7). `entity_id` es el id de la etiqueta
 - `update`: solo los campos que cambiaron, de `name` y `color`;
 - `deactivate` y `reactivate`: `{ isActive }`;
 - una operación que no cambia nada no escribe auditoría.
+
+Productores de la 29.2 ([brief-29.2](../decisions/brief-29.2-capacidades-y-variantes.md), H-2; `entity_type` `organization_capability`, `product_model` y `attribute_definition`, con `ALTER TYPE` en la `0052`). Todos los valores son planos, porque `recordAudit` no acepta objetos:
+
+- `organization_capability`: `create` con `{ capability, origen: "script" }`. El actor es el `admin` nombrado en `org:capability`; la copia del perfil, en la misma transacción, audita cada definición como un `create` de `attribute_definition`;
+- `product_model`: `create` con `{ name, brand, isActive: true }`, `update` con los campos que cambiaron, `update` con `{ position }` al subirlo o bajarlo (el lugar en la lista, desde 0), y `deactivate` y `reactivate` con `{ isActive }`;
+- `attribute_definition`: `create` con la clave, el nombre, el tipo, `isRequired`, `isVariant`, las opciones unidas en `opciones` («64 GB | 128 GB») e `isActive: true`; `update` con el nombre; las opciones se auditan **sobre su definición**, con la clave `opcion.<id>` (agregarla o renombrarla), `opcion.<id>.activa` (desactivarla o reactivarla) y `opcion.<id>.posicion` (subirla o bajarla); el orden de la definición, con `{ position }`; `deactivate` y `reactivate` con `{ isActive }`;
+- `product`: el `create` y el `update` del producto suman el modelo, como `modelo` con su nombre, y cada atributo, como `atributo.<clave>` con su valor legible («128 GB», «Sí», «1,5»), en la misma entrada que los demás campos. Un producto sin cambios en ellos no los lleva.
 
 ## Imágenes de producto: de diseñada a implementada
 

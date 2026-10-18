@@ -39,6 +39,24 @@ sudo bash -c 'read -r -p "Organización: " CREAR_ORG_NOMBRE; read -r -p "Nombre 
 
 Imprime el id de la organización, el del `admin` y la contraseña inicial **una sola vez**. La contraseña se le entrega al `admin` por un canal acordado, y la cambia en su primer ingreso. Se registra el id de la organización.
 
+## 1b. Un rubro con capacidades, si el negocio lo usa
+
+*Desde la 29.2* ([brief-29.2](../decisions/brief-29.2-capacidades-y-variantes.md), [ADR 0024](../decisions/0024-rubros-y-capacidades.md)). Solo para un negocio cuyo rubro tiene un perfil, como una tienda de iPhone. **Un negocio sin capacidades se salta este paso** y no cambia en nada.
+
+`org:capability` activa la capacidad y, con `--profile`, copia los atributos del perfil (para `iphone`: Capacidad, Color y Trae caja) **en la misma transacción**, auditada con el `admin` como autor. Activarla dos veces no hace nada y lo dice. **No se desactiva**: no hay comando. El correo del `admin` llega por el entorno:
+
+```
+sudo bash -c 'read -r -p "Id de la organización: " ORG_ID; read -r -p "Correo del admin: " CAPACIDAD_ADMIN_CORREO; export CAPACIDAD_ADMIN_CORREO; . /etc/crm-production/app.env && export DATABASE_URL && cd /srv/crm-production && exec runuser -u crm -- npm run --silent org:capability -- --organization "$ORG_ID" --profile iphone'
+```
+
+**Solo para una organización demo**, nunca para un negocio real: `demo:catalog` carga el catálogo de ejemplo de iPhone (12 modelos y 35 productos con capacidad, color y un precio de ejemplo en USD) por los servicios del catálogo, con sus reglas y su auditoría. Se niega si la organización no tiene la capacidad o si tiene productos o modelos que no son del catálogo de ejemplo. **Si se corta a mitad de camino**, cada modelo, producto y precio ya cargado queda, y nada se borra: se vuelve a correr el mismo comando, que retoma, saltea lo cargado y fija los precios que faltaron. No se corre dos veces a la vez:
+
+```
+sudo bash -c 'read -r -p "Id de la organización demo: " ORG_ID; read -r -p "Correo del admin: " CAPACIDAD_ADMIN_CORREO; export CAPACIDAD_ADMIN_CORREO; . /etc/crm-production/app.env && export DATABASE_URL && cd /srv/crm-production && exec runuser -u crm -- npm run --silent demo:catalog -- --organization "$ORG_ID"'
+```
+
+Los modelos y los atributos se ajustan después en **Modelos** y **Modelos → Atributos**, desde la UI.
+
 ## 2. La carga de los datos, por la UI
 
 El `admin` ingresa en `https://crm.vixoraai.app/login` y carga, desde las pantallas del CRM:

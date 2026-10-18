@@ -1039,6 +1039,8 @@ describe("campos de operación (brief-17.2)", () => {
           order by indexname`,
     );
     expect(indexes.rows.map((row) => row.indexname)).toEqual([
+      // El índice parcial del modelo (brief-29.2, D-2).
+      "products_model_idx",
       "products_organization_barcode_lower_unique",
       "products_organization_id_id_unique",
       "products_organization_sku_lower_unique",

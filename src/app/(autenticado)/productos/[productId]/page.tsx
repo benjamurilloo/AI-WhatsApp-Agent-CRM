@@ -5,6 +5,9 @@ import {
   getCurrentPrices,
   getProductCostSummary,
   getProductImageVersions,
+  getProductVariants,
+  getVariantFormOptions,
+  listAttributes,
   listProductAudit,
   listProductSuggestions,
 } from "@/modules/catalog";
@@ -72,7 +75,8 @@ function page(value: string | string[] | undefined): number {
 // 15.4: tarjetas por sección y la barra de subpantallas (brief-15.4, D-1 y D-3). Desde la 17.2, el
 // código de barras y las tarjetas «Logística» y «Ubicación» (brief-17.2, D-11). Desde la 17.5, la
 // tarjeta «Imagen», con la subida, el reemplazo y la baja para un admin (brief-17.5, D-7). Desde la
-// 18.2, la tarjeta «Costo y margen», solo para un admin (brief-18.2, D-1 y D-3).
+// 18.2, la tarjeta «Costo y margen», solo para un admin (brief-18.2, D-1 y D-3). Desde la 29.2, con la
+// capacidad variants, el modelo y los atributos en «Información básica» (brief-29.2, D-5).
 export default async function ProductPage({
   params,
   searchParams,
@@ -137,6 +141,22 @@ export default async function ProductPage({
   // Las sugerencias de marca, categoría y ubicación solo hacen falta si se edita (brief-11.1,
   // D-2; brief-17.2, D-6).
   const suggestions = editing ? await listProductSuggestions(context) : null;
+  // El modelo y los atributos: null sin la capacidad, y la ficha queda como antes.
+  const variants = await getProductVariants(context, [product]);
+  const variant = variants?.get(product.id);
+  const variantOptions =
+    editing && variant ? await getVariantFormOptions(context, variant) : null;
+  // Los nombres de los atributos, para leer la auditoría del producto (brief-29.2, H-2).
+  const attributes =
+    audit?.ok && variants ? await listAttributes(context) : null;
+  const attributeNames: Record<string, string> = attributes?.ok
+    ? Object.fromEntries(
+        attributes.definitions.map((definition) => [
+          definition.key,
+          definition.name,
+        ]),
+      )
+    : {};
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 lg:px-8">
@@ -228,6 +248,12 @@ export default async function ProductPage({
               shelf: product.shelf ?? "",
             }}
             suggestions={suggestions?.ok ? suggestions : undefined}
+            variantOptions={variantOptions}
+            variantValues={
+              variant
+                ? { modelId: variant.model?.id ?? "", attributes: variant.raw }
+                : undefined
+            }
           />
         </div>
       ) : (
@@ -260,6 +286,27 @@ export default async function ProductPage({
                   icon: "circleCheck",
                   value: CONDITION_LABEL[product.condition],
                 },
+                ...(variant
+                  ? [
+                      {
+                        label: "Modelo",
+                        icon: "layers" as const,
+                        value: variant.model ? (
+                          <Link
+                            href={`/modelos/${variant.model.id}`}
+                            className={linkClass}
+                          >
+                            {variant.model.name}
+                          </Link>
+                        ) : null,
+                      },
+                      ...variant.attributes.map((attribute) => ({
+                        label: attribute.name,
+                        icon: "tag" as const,
+                        value: attribute.value,
+                      })),
+                    ]
+                  : []),
                 { label: "Unidad", icon: "layers", value: product.unit },
                 {
                   label: "Descripción",
@@ -477,7 +524,7 @@ export default async function ProductPage({
             when: formatShortDateTime(entry.createdAt, timeZone),
             actor: actorLabel?.(entry.actor),
             action: auditActionLabel(entry),
-            change: describeAuditDiff(entry),
+            change: describeAuditDiff(entry, attributeNames),
           }))}
           page={audit.page}
           pageCount={audit.pageCount}

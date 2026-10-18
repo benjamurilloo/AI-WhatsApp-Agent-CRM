@@ -130,6 +130,8 @@ const INSERT_ONLY_TABLES = [
   "cash_session_closings",
   "cash_session_opening_amounts",
   "cash_sessions",
+  // La activación de una capacidad (brief-29.2, D-1; ADR 0024, punto 2).
+  "organization_capabilities",
   // Notas de una conversación (brief-16.4, D-1).
   "conversation_notes",
   // La recepción y sus líneas (brief-22.4, D-2; ADR 0023, punto 4), y su anulación (brief-22.5, D-1;
@@ -174,6 +176,10 @@ const NO_DELETE_TABLES = [
   "orders",
   // Los medios de pago, con borrado lógico (brief-21.2, D-6; ADR 0022, punto 10).
   "payment_methods",
+  // Los modelos, los atributos y sus opciones, con borrado lógico (brief-29.2, D-2 y D-3).
+  "attribute_definitions",
+  "attribute_options",
+  "product_models",
   // La cabecera de la orden de compra, que cambia de estado (brief-22.3, D-2; ADR 0023, punto 3).
   "purchase_orders",
   // Los proveedores, con borrado lógico (brief-22.2, D-1; ADR 0023, punto 2).

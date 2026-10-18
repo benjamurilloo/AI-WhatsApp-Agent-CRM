@@ -42,6 +42,53 @@ export const PRODUCT_FIELD_LIMITS = {
 export const WEIGHT_SCALE = { integerDigits: 7, decimals: 3 } as const;
 export const DIMENSION_SCALE = { integerDigits: 7, decimals: 1 } as const;
 
+// Modelos de producto, de la capacidad variants (ADR 0024, punto 5; brief-29.2, D-4): agrupan las
+// combinaciones de un mismo equipo («iPhone 13»), cada una un producto. Nombre único por
+// organización sin distinguir mayúsculas.
+export const MODEL_NAME_MAX_LENGTH = 120;
+export const MODEL_BRAND_MAX_LENGTH = 100;
+
+export const productModels = pgTable(
+  "product_models",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    name: text("name").notNull(),
+    brand: text("brand"),
+    position: smallint("position").notNull().default(0),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex("product_models_organization_name_lower_unique").on(
+      table.organizationId,
+      sql`lower(${table.name})`,
+    ),
+    // Destino de la clave compuesta de products.model_id.
+    unique("product_models_organization_id_id_unique").on(
+      table.organizationId,
+      table.id,
+    ),
+    check(
+      "product_models_name_length",
+      sql`char_length(${table.name}) between 1 and ${sql.raw(String(MODEL_NAME_MAX_LENGTH))}`,
+    ),
+    check(
+      "product_models_brand_length",
+      sql`char_length(${table.brand}) between 1 and ${sql.raw(String(MODEL_BRAND_MAX_LENGTH))}`,
+    ),
+    check("product_models_position_range", sql`${table.position} >= 0`),
+  ],
+);
+
 // docs/architecture/DataModel.md, tabla products (brief-4.1; marca, categoría, condición y
 // búsqueda, brief-11.1; campos de operación, brief-17.2).
 export const products = pgTable(
@@ -76,6 +123,9 @@ export const products = pgTable(
     // depósito y estas columnas se migran (D-6).
     location: text("location"),
     shelf: text("shelf"),
+    // Modelo, opcional (brief-29.2, D-4): solo con la capacidad variants, y un accesorio no lo
+    // tiene. La clave compuesta impide apuntar al modelo de otra organización.
+    modelId: uuid("model_id"),
     // La escribe PostgreSQL; ningún insert ni update la envía.
     search: tsvector("search")
       .notNull()
@@ -136,6 +186,186 @@ export const products = pgTable(
     check(
       "products_shelf_length",
       sql`char_length(${table.shelf}) between 1 and ${sql.raw(String(PRODUCT_FIELD_LIMITS.shelf))}`,
+    ),
+    foreignKey({
+      name: "products_model_fk",
+      columns: [table.organizationId, table.modelId],
+      foreignColumns: [productModels.organizationId, productModels.id],
+    }).onDelete("restrict"),
+    index("products_model_idx")
+      .on(table.organizationId, table.modelId)
+      .where(sql`${table.modelId} is not null`),
+  ],
+);
+
+// Atributos definidos por la organización (ADR 0024, punto 4; brief-29.2, D-5). La entidad nace
+// solo con product; unit entra con la 29.5. Una definición con valores no cambia de tipo ni de
+// entidad: se desactiva y se crea otra. Sin jsonb: cada valor va en la columna de su tipo.
+export const attributeEntity = pgEnum("attribute_entity", ["product"]);
+export const attributeType = pgEnum("attribute_type", [
+  "text",
+  "number",
+  "boolean",
+  "option",
+]);
+
+export const ATTRIBUTE_LIMITS = {
+  key: 40,
+  name: 60,
+  optionLabel: 60,
+  textValue: 200,
+} as const;
+
+export const attributeDefinitions = pgTable(
+  "attribute_definitions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    entity: attributeEntity("entity").notNull(),
+    key: text("key").notNull(),
+    name: text("name").notNull(),
+    type: attributeType("type").notNull(),
+    isRequired: boolean("is_required").notNull().default(false),
+    // De variante: distingue las combinaciones de un modelo. Es obligatorio y de opciones, para
+    // que el duplicado se pueda comparar (D-5).
+    isVariant: boolean("is_variant").notNull().default(false),
+    position: smallint("position").notNull().default(0),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    unique("attribute_definitions_organization_entity_key_unique").on(
+      table.organizationId,
+      table.entity,
+      table.key,
+    ),
+    unique("attribute_definitions_organization_id_id_unique").on(
+      table.organizationId,
+      table.id,
+    ),
+    check(
+      "attribute_definitions_key_format",
+      sql`${table.key} ~ ${sql.raw(`'^[a-z][a-z0-9_]{0,${ATTRIBUTE_LIMITS.key - 1}}$'`)}`,
+    ),
+    check(
+      "attribute_definitions_name_length",
+      sql`char_length(${table.name}) between 1 and ${sql.raw(String(ATTRIBUTE_LIMITS.name))}`,
+    ),
+    check(
+      "attribute_definitions_variant_rule",
+      sql`not ${table.isVariant} or (${table.type} = 'option' and ${table.isRequired} and ${table.entity} = 'product')`,
+    ),
+    check("attribute_definitions_position_range", sql`${table.position} >= 0`),
+  ],
+);
+
+export const attributeOptions = pgTable(
+  "attribute_options",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    definitionId: uuid("definition_id").notNull(),
+    label: text("label").notNull(),
+    position: smallint("position").notNull().default(0),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      name: "attribute_options_definition_fk",
+      columns: [table.organizationId, table.definitionId],
+      foreignColumns: [
+        attributeDefinitions.organizationId,
+        attributeDefinitions.id,
+      ],
+    }).onDelete("restrict"),
+    uniqueIndex("attribute_options_definition_label_lower_unique").on(
+      table.organizationId,
+      table.definitionId,
+      sql`lower(${table.label})`,
+    ),
+    // Destino de la clave de attribute_values: la opción tiene que ser de esa definición.
+    unique("attribute_options_organization_definition_id_unique").on(
+      table.organizationId,
+      table.definitionId,
+      table.id,
+    ),
+    check(
+      "attribute_options_label_length",
+      sql`char_length(${table.label}) between 1 and ${sql.raw(String(ATTRIBUTE_LIMITS.optionLabel))}`,
+    ),
+    check("attribute_options_position_range", sql`${table.position} >= 0`),
+  ],
+);
+
+// Un valor por producto y definición, en la columna de su tipo (ADR 0024, punto 4). Que la columna
+// sea la del tipo de la definición lo exige el servicio; la base exige que haya exactamente una.
+export const attributeValues = pgTable(
+  "attribute_values",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    productId: uuid("product_id").notNull(),
+    definitionId: uuid("definition_id").notNull(),
+    textValue: text("text_value"),
+    numberValue: numeric("number_value", { precision: 14, scale: 3 }),
+    booleanValue: boolean("boolean_value"),
+    optionId: uuid("option_id"),
+  },
+  (table) => [
+    foreignKey({
+      name: "attribute_values_product_fk",
+      columns: [table.organizationId, table.productId],
+      foreignColumns: [products.organizationId, products.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "attribute_values_definition_fk",
+      columns: [table.organizationId, table.definitionId],
+      foreignColumns: [
+        attributeDefinitions.organizationId,
+        attributeDefinitions.id,
+      ],
+    }).onDelete("restrict"),
+    // MATCH SIMPLE: sin opción, no se comprueba; con opción, tiene que ser de esta definición.
+    foreignKey({
+      name: "attribute_values_option_fk",
+      columns: [table.organizationId, table.definitionId, table.optionId],
+      foreignColumns: [
+        attributeOptions.organizationId,
+        attributeOptions.definitionId,
+        attributeOptions.id,
+      ],
+    }).onDelete("restrict"),
+    unique("attribute_values_product_definition_unique").on(
+      table.organizationId,
+      table.productId,
+      table.definitionId,
+    ),
+    index("attribute_values_definition_idx").on(
+      table.organizationId,
+      table.definitionId,
+    ),
+    check(
+      "attribute_values_exactly_one",
+      sql`num_nonnulls(${table.textValue}, ${table.numberValue}, ${table.booleanValue}, ${table.optionId}) = 1`,
+    ),
+    check(
+      "attribute_values_text_length",
+      sql`char_length(${table.textValue}) between 1 and ${sql.raw(String(ATTRIBUTE_LIMITS.textValue))}`,
     ),
   ],
 );

@@ -50,6 +50,12 @@ export const auditEntityType = pgEnum("audit_entity_type", [
   "goods_receipt",
   // El pago a un proveedor (brief-22.6, D-11; ADR 0023, punto 8): create al emitirlo y void al anularlo.
   "supplier_payment",
+  // Capacidades y variantes (brief-29.2, D-2, D-4 y D-5): la activación de una capacidad (el id es el
+  // de la fila de organization_capabilities), el modelo, y la definición de un atributo con sus
+  // opciones, que se auditan sobre la definición.
+  "organization_capability",
+  "product_model",
+  "attribute_definition",
 ]);
 
 export const auditAction = pgEnum("audit_action", [

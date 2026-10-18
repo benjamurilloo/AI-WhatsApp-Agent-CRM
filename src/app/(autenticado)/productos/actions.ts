@@ -9,7 +9,9 @@ import {
   removeProductImage,
   suggestProducts,
   updateProduct,
+  type CreateProductResult,
   type ProductActiveResult,
+  type UpdateProductResult,
 } from "@/modules/catalog";
 import { adjustStock } from "@/modules/inventory";
 import type { AuthContext } from "@/modules/organizations";
@@ -21,7 +23,11 @@ import {
   productChangeMessage,
   productConflictError,
   productFieldError,
+  reactivationDuplicateMessage,
   unexpectedErrorMessage,
+  variantDuplicateMessage,
+  variantFieldError,
+  type VariantFormValues,
   type AdjustmentState,
   type ProductChangeState,
   type ProductFormState,
@@ -49,6 +55,55 @@ function productValues(formData: FormData): ProductFormValues {
     heightCm: String(formData.get("heightCm") ?? ""),
     location: String(formData.get("location") ?? ""),
     shelf: String(formData.get("shelf") ?? ""),
+  };
+}
+
+// El modelo y los atributos (brief-29.2, D-5): el formulario los manda solo con la capacidad, con
+// el campo oculto variantEnabled. Sin él, el producto conserva su modelo y sus valores.
+function variantValues(formData: FormData): VariantFormValues | undefined {
+  if (formData.get("variantEnabled") !== "1") return undefined;
+  const attributes: Record<string, string> = {};
+  for (const [key, value] of formData.entries()) {
+    if (key.startsWith("atributo:") && typeof value === "string") {
+      attributes[key.slice("atributo:".length)] = value;
+    }
+  }
+  return { modelId: String(formData.get("modelId") ?? ""), attributes };
+}
+
+type ProductFailure = Exclude<
+  CreateProductResult | UpdateProductResult,
+  { ok: true }
+>;
+
+// El estado de error del formulario para un rechazo del servicio.
+function productFormError(
+  result: ProductFailure,
+  requestId: string,
+  values: ProductFormValues,
+  variant: VariantFormValues | undefined,
+): ProductFormState {
+  const base = { status: "error" as const, requestId, values, variant };
+  if (result.code === "VALIDATION_ERROR" && "fields" in result) {
+    if (result.fields.length === 0 && "variantFields" in result) {
+      return { ...base, ...variantFieldError(result.variantFields) };
+    }
+    return { ...base, ...productFieldError(result.fields) };
+  }
+  if (result.code === "CONFLICT") {
+    if (result.field === "variant") {
+      return {
+        ...base,
+        field: "modelId",
+        message: variantDuplicateMessage(result.duplicate.name),
+      };
+    }
+    return { ...base, ...productConflictError(result.field) };
+  }
+  return {
+    ...base,
+    field: null,
+    message: productChangeMessage(result.code, requestId),
   };
 }
 
@@ -80,37 +135,16 @@ export async function createProductAction(
   const route = "productos.crear";
   const started = performance.now();
   const values = productValues(formData);
+  const variant = variantValues(formData);
   // redirect lanza: la sesión se resuelve fuera del try.
   const context = await requireSession();
 
   let destination: string;
   try {
-    const result = await createProduct(context, values);
+    const result = await createProduct(context, { ...values, variant });
     if (!result.ok) {
       logDone(started, requestId, route, result.code, context);
-      if (result.code === "VALIDATION_ERROR" && "fields" in result) {
-        return {
-          status: "error",
-          requestId,
-          values,
-          ...productFieldError(result.fields),
-        };
-      }
-      if (result.code === "CONFLICT") {
-        return {
-          status: "error",
-          requestId,
-          values,
-          ...productConflictError(result.field),
-        };
-      }
-      return {
-        status: "error",
-        requestId,
-        values,
-        field: null,
-        message: productChangeMessage(result.code, requestId),
-      };
+      return productFormError(result, requestId, values, variant);
     }
     logDone(started, requestId, route, "OK", context);
     revalidatePath("/productos");
@@ -121,6 +155,7 @@ export async function createProductAction(
       status: "error",
       requestId,
       values,
+      variant,
       field: null,
       message: unexpectedErrorMessage(requestId),
     };
@@ -137,37 +172,19 @@ export async function updateProductAction(
   const route = "productos.editar";
   const started = performance.now();
   const values = productValues(formData);
+  const variant = variantValues(formData);
   const productId = String(formData.get("productId") ?? "");
   const context = await requireSession();
 
   let destination: string;
   try {
-    const result = await updateProduct(context, productId, values);
+    const result = await updateProduct(context, productId, {
+      ...values,
+      variant,
+    });
     if (!result.ok) {
       logDone(started, requestId, route, result.code, context);
-      if (result.code === "VALIDATION_ERROR" && "fields" in result) {
-        return {
-          status: "error",
-          requestId,
-          values,
-          ...productFieldError(result.fields),
-        };
-      }
-      if (result.code === "CONFLICT") {
-        return {
-          status: "error",
-          requestId,
-          values,
-          ...productConflictError(result.field),
-        };
-      }
-      return {
-        status: "error",
-        requestId,
-        values,
-        field: null,
-        message: productChangeMessage(result.code, requestId),
-      };
+      return productFormError(result, requestId, values, variant);
     }
     logDone(started, requestId, route, "OK", context);
     revalidatePath("/productos");
@@ -181,6 +198,7 @@ export async function updateProductAction(
       status: "error",
       requestId,
       values,
+      variant,
       field: null,
       message: unexpectedErrorMessage(requestId),
     };
@@ -211,7 +229,10 @@ async function runProductChange(
       return {
         status: "error",
         requestId,
-        message: productChangeMessage(result.code, requestId),
+        message:
+          result.code === "CONFLICT" && "duplicate" in result
+            ? reactivationDuplicateMessage(result.duplicate.name)
+            : productChangeMessage(result.code, requestId),
       };
     }
     logDone(started, requestId, route, "OK", context);

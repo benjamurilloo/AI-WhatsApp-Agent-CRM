@@ -7,6 +7,13 @@ import {
 } from "./filters";
 
 describe("parseProductFilters", () => {
+  it("brief-29.2: lee el modelo; un valor que no es un id no filtra", () => {
+    const id = "5eed0000-0000-4000-8210-000000000001";
+    expect(parseProductFilters({ modelo: id }).modelId).toBe(id);
+    expect(parseProductFilters({ modelo: "iphone" }).modelId).toBe("");
+    expect(hasActiveFilters(parseProductFilters({ modelo: id }))).toBe(true);
+  });
+
   it("sin parámetros deja los filtros por defecto: solo activos", () => {
     expect(parseProductFilters({})).toEqual(DEFAULT_FILTERS);
   });
@@ -25,6 +32,8 @@ describe("parseProductFilters", () => {
       activity: "all",
       brand: "",
       category: "",
+      modelId: "",
+      groupByModel: false,
       page: 3,
       sort: "name_asc",
       pageSize: 25,
@@ -95,13 +104,15 @@ describe("productFiltersHref", () => {
       activity: "inactive" as const,
       brand: "Arkon",
       category: "Notebooks & tablets",
+      modelId: "5eed0000-0000-4000-8210-000000000001",
+      groupByModel: true,
       page: 4,
       sort: "stock_asc" as const,
       pageSize: 50,
     };
     const href = productFiltersHref(filters);
     expect(href).toBe(
-      "/productos?q=caf%C3%A9+molido&estado=disponible&actividad=inactivos&categoria=Notebooks+%26+tablets&marca=Arkon&orden=stock-menor&filas=50&pagina=4",
+      "/productos?q=caf%C3%A9+molido&estado=disponible&actividad=inactivos&categoria=Notebooks+%26+tablets&marca=Arkon&modelo=5eed0000-0000-4000-8210-000000000001&agrupar=modelo&orden=stock-menor&filas=50&pagina=4",
     );
     const query = Object.fromEntries(
       new URL(href, "http://localhost").searchParams,
@@ -115,6 +126,13 @@ describe("hasActiveFilters", () => {
     expect(
       hasActiveFilters({ ...DEFAULT_FILTERS, sort: "price_asc", pageSize: 10 }),
     ).toBe(false);
+  });
+
+  it("brief-29.2: agrupar por modelo tampoco; un valor desconocido no agrupa", () => {
+    expect(hasActiveFilters({ ...DEFAULT_FILTERS, groupByModel: true })).toBe(
+      false,
+    );
+    expect(parseProductFilters({ agrupar: "marca" }).groupByModel).toBe(false);
   });
 
   it("la página no cuenta como filtro", () => {

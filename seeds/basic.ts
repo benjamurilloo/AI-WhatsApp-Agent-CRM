@@ -133,6 +133,12 @@ async function main(): Promise<void> {
     const { seedConversations } = await import("./conversations");
     await seedConversations(db);
     console.log("Conversaciones de ejemplo aplicadas.");
+    // La tienda de ejemplo con la capacidad variants (brief-29.2, D-11).
+    const { seedIphone, SEED_IPHONE_USERS } = await import("./demo-iphone");
+    await seedIphone(db, password);
+    console.log(
+      `Tienda de ejemplo (iPhone) aplicada: ${SEED_IPHONE_USERS.map((user) => user.email).join(", ")}.`,
+    );
   } finally {
     await db.$client.end();
   }

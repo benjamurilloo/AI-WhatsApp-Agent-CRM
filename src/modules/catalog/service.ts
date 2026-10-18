@@ -9,6 +9,7 @@ import {
 import {
   authorize,
   getMemberSummaries,
+  hasCapability,
   type AuthContext,
 } from "@/modules/organizations";
 import type { DbTransaction } from "@/shared/db";
@@ -27,6 +28,13 @@ import {
 } from "@/shared/quantity";
 import { computeMargin, type Margin } from "./margin";
 import * as repository from "./repository";
+import {
+  hasVariants,
+  prepareVariantWrite,
+  type VariantField,
+  type VariantInput,
+  type VariantRejection,
+} from "./variants";
 import {
   DIMENSION_SCALE,
   PRODUCT_FIELD_LIMITS,
@@ -78,6 +86,9 @@ export type ProductInput = {
   heightCm: string | null;
   location: string | null;
   shelf: string | null;
+  // Desde la 29.2, el modelo y los atributos (brief-29.2, D-5): solo con la capacidad variants. Sin
+  // este campo, el producto conserva su modelo y sus valores.
+  variant?: VariantInput;
 };
 
 // Texto opcional recortado: vacío se guarda como nulo.
@@ -249,6 +260,8 @@ export type ProductSearchFilters = {
   activity: ProductActivityFilter;
   brand?: string;
   category?: string;
+  // Desde la 29.2 (D-4): un id que no es un modelo de la organización no encuentra nada.
+  modelId?: string;
 };
 
 export async function searchProducts(
@@ -262,6 +275,13 @@ export async function searchProducts(
     activity: filters.activity,
     brand: filters.brand?.trim() || undefined,
     category: filters.category?.trim() || undefined,
+    // Sin la capacidad, el parámetro se ignora, como antes de la 29.2 (invariante 1).
+    modelId:
+      filters.modelId &&
+      productIdSchema.safeParse(filters.modelId).success &&
+      (await hasVariants(context))
+        ? filters.modelId
+        : undefined,
   });
   return { ok: true, products };
 }
@@ -466,11 +486,50 @@ function isUniqueViolation(
   return value === "sku_taken" || value === "barcode_taken";
 }
 
+// El modelo o un atributo inválidos, o el duplicado de variante (brief-29.2, D-5 y D-6).
+export type ProductVariantRejection =
+  | Failure<
+      "VALIDATION_ERROR",
+      { fields: ProductField[]; variantFields: VariantField[] }
+    >
+  | Failure<
+      "CONFLICT",
+      { field: "variant"; duplicate: { id: string; name: string } }
+    >;
+
+function variantFailure(rejection: VariantRejection): ProductVariantRejection {
+  return rejection.kind === "duplicate"
+    ? {
+        ok: false,
+        code: "CONFLICT",
+        field: "variant",
+        duplicate: rejection.product,
+      }
+    : {
+        ok: false,
+        code: "VALIDATION_ERROR",
+        fields: [],
+        variantFields: rejection.fields,
+      };
+}
+
+// Mandar el modelo y los atributos sin la capacidad es una sección que no existe (D-3).
+async function variantAllowed(
+  context: AuthContext,
+  input: ProductInput,
+): Promise<boolean> {
+  return (
+    input.variant === undefined ||
+    (await hasCapability(context.organizationId, "variants"))
+  );
+}
+
 export type CreateProductResult =
   | { ok: true; productId: string }
-  | Failure<"FORBIDDEN">
+  | Failure<"FORBIDDEN" | "NOT_FOUND">
   | ProductConflict
-  | Failure<"VALIDATION_ERROR", { fields: ProductField[] }>;
+  | Failure<"VALIDATION_ERROR", { fields: ProductField[] }>
+  | ProductVariantRejection;
 
 export async function createProduct(
   context: AuthContext,
@@ -478,25 +537,44 @@ export async function createProduct(
 ): Promise<CreateProductResult> {
   const authorized = authorize(context, { role: "admin" });
   if (!authorized.ok) return authorized;
+  if (!(await variantAllowed(context, input))) return failure("NOT_FOUND");
   const validated = validateProductInput(input);
   if (!validated.ok) return validated;
   const { values } = validated;
 
   return repository.withTransaction(
     async (tx): Promise<CreateProductResult> => {
+      // Primero el modelo, bloqueado, y el duplicado; después el producto (D-6). Nada se escribe
+      // antes de saber que el alta se acepta.
+      const variant = input.variant
+        ? await prepareVariantWrite(tx, context.organizationId, {
+            productId: null,
+            currentModelId: null,
+            currentCondition: null,
+            wasActive: false,
+            condition: values.condition,
+            isActive: true,
+            input: input.variant,
+          })
+        : null;
+      if (variant && !variant.ok) return variantFailure(variant.rejection);
       const productId = await repository.insertProduct(
         tx,
         context.organizationId,
         values,
       );
       if (isUniqueViolation(productId)) return productConflict(productId);
+      const written = variant ? await variant.commit(productId) : null;
       await recordAudit(tx, {
         organizationId: context.organizationId,
         actorUserId: context.userId,
         entityType: "product",
         entityId: productId,
         action: "create",
-        diff: { before: null, after: { ...values, isActive: true } },
+        diff: {
+          before: null,
+          after: { ...values, ...written?.after, isActive: true },
+        },
       });
       return { ok: true, productId };
     },
@@ -509,7 +587,8 @@ export type UpdateProductResult =
   // VALIDATION_ERROR sin fields: id inválido (brief-4.4, D-6). Con fields: el formulario.
   | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
   | ProductConflict
-  | Failure<"VALIDATION_ERROR", { fields: ProductField[] }>;
+  | Failure<"VALIDATION_ERROR", { fields: ProductField[] }>
+  | ProductVariantRejection;
 
 export async function updateProduct(
   context: AuthContext,
@@ -522,6 +601,7 @@ export async function updateProduct(
     // Un id de la URL no es un campo del formulario: va sin fields (brief-4.4, D-6).
     return failure("VALIDATION_ERROR");
   }
+  if (!(await variantAllowed(context, input))) return failure("NOT_FOUND");
   const validated = validateProductInput(input);
   if (!validated.ok) return validated;
   const { values } = validated;
@@ -536,24 +616,52 @@ export async function updateProduct(
       );
       if (!current) return failure("NOT_FOUND");
 
+      // Con modelo, el duplicado se vuelve a comprobar aunque solo cambie la condición (D-6). El
+      // producto ya está bloqueado; el modelo se bloquea después, siempre en ese orden.
+      const variant =
+        input.variant !== undefined || current.modelId !== null
+          ? await prepareVariantWrite(tx, context.organizationId, {
+              productId,
+              currentModelId: current.modelId,
+              currentCondition: current.condition,
+              wasActive: current.isActive,
+              condition: values.condition,
+              isActive: current.isActive,
+              input: input.variant,
+            })
+          : null;
+      if (variant && !variant.ok) return variantFailure(variant.rejection);
+
       const changedFields = PRODUCT_FIELDS.filter(
         (field) => current[field] !== values[field],
       );
-      if (changedFields.length === 0) return { ok: true, changed: false };
-
-      const before = Object.fromEntries(
+      const before: Record<string, string | null> = Object.fromEntries(
         changedFields.map((field) => [field, current[field]]),
       );
-      const after = Object.fromEntries(
+      const after: Record<string, string | null> = Object.fromEntries(
         changedFields.map((field) => [field, values[field]]),
       );
-      const updated = await repository.updateProductValues(
-        tx,
-        context.organizationId,
-        productId,
-        after,
-      );
-      if (isUniqueViolation(updated)) return productConflict(updated);
+      if (changedFields.length > 0) {
+        const updated = await repository.updateProductValues(
+          tx,
+          context.organizationId,
+          productId,
+          Object.fromEntries(
+            changedFields.map((field) => [field, values[field]]),
+          ),
+        );
+        if (isUniqueViolation(updated)) return productConflict(updated);
+      }
+      if (variant) {
+        const written = await variant.commit(productId);
+        for (const key of Object.keys(written.after)) {
+          if (written.before[key] !== written.after[key]) {
+            before[key] = written.before[key] ?? null;
+            after[key] = written.after[key] ?? null;
+          }
+        }
+      }
+      if (Object.keys(after).length === 0) return { ok: true, changed: false };
       await recordAudit(tx, {
         organizationId: context.organizationId,
         actorUserId: context.userId,
@@ -569,7 +677,12 @@ export async function updateProduct(
 
 export type ProductActiveResult =
   | { ok: true; changed: boolean }
-  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">;
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+  // Desde la 29.2: reactivar un producto que hoy sería un duplicado de variante (D-6).
+  | Failure<
+      "CONFLICT",
+      { field: "variant"; duplicate: { id: string; name: string } }
+    >;
 
 async function setProductActive(
   context: AuthContext,
@@ -592,6 +705,29 @@ async function setProductActive(
       );
       if (!current) return failure("NOT_FOUND");
       if (current.isActive === isActive) return { ok: true, changed: false };
+      if (isActive && current.modelId !== null) {
+        const variant = await prepareVariantWrite(tx, context.organizationId, {
+          productId,
+          currentModelId: current.modelId,
+          currentCondition: current.condition,
+          wasActive: false,
+          condition: current.condition,
+          isActive: true,
+          input: undefined,
+        });
+        if (!variant.ok) {
+          if (variant.rejection.kind === "duplicate") {
+            return {
+              ok: false,
+              code: "CONFLICT",
+              field: "variant",
+              duplicate: variant.rejection.product,
+            };
+          }
+          // Sin input, solo falla si el modelo del producto ya no existe: un defecto.
+          throw new Error("reactivación: el modelo del producto no existe");
+        }
+      }
 
       await repository.updateProductActive(
         tx,

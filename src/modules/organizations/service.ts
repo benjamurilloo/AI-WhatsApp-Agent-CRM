@@ -203,23 +203,121 @@ export async function listMembers(
   };
 }
 
-// Marco común de las páginas autenticadas (brief-3.7, D-7). Solo muestra datos.
+// Marco común de las páginas autenticadas (brief-3.7, D-7). Solo muestra datos. Desde la 29.2, con
+// las capacidades de la organización, para armar el menú (ADR 0024, punto 3).
 export type AppFrame = {
   organizationName: string;
   userName: string;
   role: MemberRole;
+  capabilities: Capability[];
 };
 
 export async function getAppFrame(context: AuthContext): Promise<AppFrame> {
-  const [organizationName, users] = await Promise.all([
+  const [organizationName, users, capabilities] = await Promise.all([
     repository.findOrganizationName(context.organizationId),
     getUserSummaries([context.userId]),
+    repository.findCapabilities(context.organizationId),
   ]);
   return {
     organizationName: organizationName ?? "",
     userName: users[0]?.name ?? "",
     role: context.role,
+    capabilities,
   };
+}
+
+// Capacidades activables (ADR 0024, punto 3; brief-29.2, D-2). hasCapability es la única lectura
+// para los demás módulos: cada página, acción y lectura de una capacidad la consulta en el
+// servidor, como la autorización por rol. El menú no alcanza, porque el layout no se vuelve a
+// ejecutar en cada navegación.
+export type Capability = repository.CapabilityName;
+
+export async function hasCapability(
+  organizationId: string,
+  capability: Capability,
+  tx?: DbTransaction,
+): Promise<boolean> {
+  const capabilities = await repository.findCapabilities(organizationId, tx);
+  return capabilities.includes(capability);
+}
+
+// El contexto de un admin para un script de operador (brief-29.2, D-9): el script de la demo carga el
+// catálogo por los mismos servicios que la pantalla, con sus reglas y su auditoría, a nombre de un
+// admin activo de la organización, nombrado por su correo. No hay sesión: el contexto no vence ni
+// pide cambiar la contraseña, porque lo arma el operador del servidor y no un navegador.
+export async function getAdminContextForScript(input: {
+  organizationId: string;
+  adminEmail: string;
+}): Promise<AuthContext | null> {
+  if (!memberIdSchema.safeParse(input.organizationId).success) return null;
+  const members = await repository.findMembers(input.organizationId);
+  const admins = members.filter((member) => member.role === "admin");
+  const users = await getUserSummaries(admins.map((member) => member.userId));
+  const email = input.adminEmail.trim().toLowerCase();
+  const actor = users.find(
+    (user) => user.isActive && user.email.toLowerCase() === email,
+  );
+  if (!actor) return null;
+  return Object.freeze({
+    userId: actor.id,
+    organizationId: input.organizationId,
+    role: "admin" as const,
+    mustChangePassword: false,
+    sessionExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
+  });
+}
+
+export type ActivateCapabilityResult =
+  | { ok: true; status: "activated" | "already_active"; actorUserId: string }
+  | Failure<"NOT_FOUND" | "FORBIDDEN">;
+
+// Activación de una capacidad (ADR 0024, punto 3): la llama solo el script de operador
+// scripts/activar-capacidad.ts, dentro de la transacción que también copia el perfil de rubro, así
+// que una falla en la copia revierte la activación. El autor es un admin activo de la organización,
+// nombrado por su correo (R-20), y la auditoría dice que vino del script. Activarla otra vez no
+// escribe ni audita. No hay desactivación: necesita un ADR.
+export async function activateCapability(
+  tx: DbTransaction,
+  input: { organizationId: string; capability: Capability; adminEmail: string },
+): Promise<ActivateCapabilityResult> {
+  if (!memberIdSchema.safeParse(input.organizationId).success) {
+    return failure("NOT_FOUND");
+  }
+  if (!(await repository.lockOrganization(tx, input.organizationId))) {
+    return failure("NOT_FOUND");
+  }
+  const members = await repository.findMembers(input.organizationId, tx);
+  const admins = members.filter((member) => member.role === "admin");
+  const users = await getUserSummaries(
+    admins.map((member) => member.userId),
+    tx,
+  );
+  const email = input.adminEmail.trim().toLowerCase();
+  const actor = users.find(
+    (user) => user.isActive && user.email.toLowerCase() === email,
+  );
+  if (!actor) return failure("FORBIDDEN");
+
+  const capabilityId = await repository.insertCapability(tx, {
+    organizationId: input.organizationId,
+    capability: input.capability,
+    activatedBy: actor.id,
+  });
+  if (!capabilityId) {
+    return { ok: true, status: "already_active", actorUserId: actor.id };
+  }
+  await recordAudit(tx, {
+    organizationId: input.organizationId,
+    actorUserId: actor.id,
+    entityType: "organization_capability",
+    entityId: capabilityId,
+    action: "create",
+    diff: {
+      before: null,
+      after: { capability: input.capability, origen: "script" },
+    },
+  });
+  return { ok: true, status: "activated", actorUserId: actor.id };
 }
 
 // Punto de entrada único de los resúmenes de usuario para los módulos de negocio

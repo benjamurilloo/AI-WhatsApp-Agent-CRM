@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Fragment } from "react";
 import {
   getCurrentPrices,
   getProductImageVersions,
+  getProductVariants,
+  listModels,
   listProductFilterOptions,
 } from "@/modules/catalog";
 import { listProductStock } from "@/modules/inventory";
@@ -15,6 +18,7 @@ import {
   inputClass,
   labelClass,
   linkClass,
+  radioClass,
   selectClass,
   tableCellClass,
   tableHeadCellClass,
@@ -69,14 +73,20 @@ const hasReserved = (product: { quantityReserved: string }) =>
 // tarjetas en móvil; la versión oculta no entra al árbol de accesibilidad. La búsqueda es por
 // palabras sobre nombre, marca y categoría, o por SKU exacto (brief-11.1, FR-PROD-11), y cada
 // producto muestra su precio vigente o «Sin precio» (FR-PROD-12). Desde la brief-15.1, con el
-// aspecto de los bocetos: lápiz para el admin y paginación numerada.
+// aspecto de los bocetos: lápiz para el admin y paginación numerada. Desde la 29.2, con la capacidad
+// variants, el filtro por modelo y, debajo del nombre, el modelo y la variante (brief-29.2, D-4).
 export default async function ProductsPage({
   searchParams,
 }: {
   searchParams: Promise<SearchParams>;
 }) {
   const context = await requireSession();
-  const filters = parseProductFilters(await searchParams);
+  const parsed = parseProductFilters(await searchParams);
+  const models = await listModels(context);
+  // Sin la capacidad, ?modelo= y ?agrupar= no hacen nada: la lista queda como antes de la 29.2.
+  const filters = models.ok
+    ? parsed
+    : { ...parsed, modelId: "", groupByModel: false };
   const [result, options] = await Promise.all([
     listProductStock(context, filters),
     listProductFilterOptions(context),
@@ -87,10 +97,38 @@ export default async function ProductsPage({
 
   // Solo los precios y las miniaturas de la página que se muestra (brief-17.5, D-7).
   const pageIds = result.products.map((product) => product.id);
-  const [found, imageVersions] = await Promise.all([
+  const [found, imageVersions, variants] = await Promise.all([
     getCurrentPrices(context, pageIds),
     getProductImageVersions(context, pageIds),
+    getProductVariants(context, result.products),
   ]);
+  // «iPhone 13 · 128 GB · Azul»: el modelo y los atributos de variante. Vacío sin la capacidad.
+  const variantText = (productId: string) => {
+    const view = variants?.get(productId);
+    if (!view) return "";
+    return [
+      view.model?.name,
+      ...view.attributes
+        .filter((attribute) => attribute.isVariant)
+        .map((attribute) => attribute.value),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  };
+  // Agrupada por modelo (brief-29.2, D-4): el servicio ordena por modelo, y la página pone el nombre
+  // del modelo antes de su primer producto, también al empezar cada página.
+  const modelNames = new Map(
+    models.ok ? models.models.map((model) => [model.id, model.name]) : [],
+  );
+  const groupHeading = (index: number): string | null => {
+    if (!filters.groupByModel) return null;
+    const modelId = result.products[index]!.modelId;
+    if (index > 0 && result.products[index - 1]!.modelId === modelId) {
+      return null;
+    }
+    return (modelId && modelNames.get(modelId)) || "Sin modelo";
+  };
+  const columnCount = context.role === "admin" ? 10 : 9;
   const thumbnails = imageVersions.ok ? imageVersions.versions : new Map();
   const prices = found.ok ? found.prices : new Map();
   const priceText = (productId: string) => {
@@ -226,6 +264,42 @@ export default async function ProductsPage({
             ))}
           </select>
         </div>
+        {models.ok ? (
+          <div className="flex flex-col gap-1">
+            <label htmlFor="modelo" className={labelClass}>
+              Modelo
+            </label>
+            <select
+              id="modelo"
+              name="modelo"
+              defaultValue={filters.modelId}
+              className={`${selectClass} max-w-48`}
+            >
+              <option value="">Todos</option>
+              {models.models.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+        {models.ok ? (
+          <label
+            htmlFor="agrupar"
+            className="flex items-center gap-2 py-2 text-sm"
+          >
+            <input
+              id="agrupar"
+              type="checkbox"
+              name="agrupar"
+              value="modelo"
+              defaultChecked={filters.groupByModel}
+              className={radioClass}
+            />
+            Agrupar por modelo
+          </label>
+        ) : null}
         <div className="flex flex-col gap-1">
           <label htmlFor="orden" className={labelClass}>
             Ordenar por
@@ -331,69 +405,89 @@ export default async function ProductsPage({
                 </tr>
               </thead>
               <tbody>
-                {result.products.map((product) => (
-                  <tr key={product.id}>
-                    <td
-                      className={`${cellClass} font-mono text-xs whitespace-nowrap`}
-                    >
-                      {product.sku}
-                    </td>
-                    <td className={`${cellClass} font-semibold`}>
-                      <span className="flex items-center gap-2.5">
-                        <ProductThumbnail
-                          productId={product.id}
-                          version={thumbnails.get(product.id)}
-                        />
-                        <Link
-                          id={`producto-${product.id}`}
-                          href={`/productos/${product.id}`}
-                          className={linkClass}
+                {result.products.map((product, index) => (
+                  <Fragment key={product.id}>
+                    {groupHeading(index) ? (
+                      <tr>
+                        <th
+                          scope="colgroup"
+                          colSpan={columnCount}
+                          className={`${headCellClass} bg-surface-muted`}
                         >
-                          {product.name}
-                        </Link>
-                      </span>
-                    </td>
-                    <td className={cellClass}>{product.brand ?? "—"}</td>
-                    <td className={cellClass}>{product.category ?? "—"}</td>
-                    <td
-                      className={`${cellClass} text-right whitespace-nowrap tabular-nums ${prices.has(product.id) ? "" : "text-muted"}`}
-                    >
-                      {priceText(product.id)}
-                    </td>
-                    <td className={`${cellClass} text-right tabular-nums`}>
-                      {formatQuantity(product.quantityAvailable)}
-                      {hasReserved(product) ? (
-                        <span className="block text-xs whitespace-nowrap text-muted">
-                          {formatQuantity(product.quantityReserved)} reservado
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className={`${cellClass} text-muted`}>
-                      {product.unit}
-                    </td>
-                    <td className={cellClass}>
-                      <StockStatusBadge status={product.stockStatus} />
-                    </td>
-                    <td className={cellClass}>
-                      <span
-                        className={
-                          product.isActive
-                            ? activeBadgeClass
-                            : inactiveBadgeClass
-                        }
-                      >
-                        {product.isActive ? "Sí" : "No"}
-                      </span>
-                    </td>
-                    {isAdmin ? (
-                      <td className={cellClass}>
-                        <EditLink
-                          href={`/productos/${product.id}?editar=1`}
-                          describedBy={`producto-${product.id}`}
-                        />
-                      </td>
+                          {groupHeading(index)}
+                        </th>
+                      </tr>
                     ) : null}
-                  </tr>
+                    <tr>
+                      <td
+                        className={`${cellClass} font-mono text-xs whitespace-nowrap`}
+                      >
+                        {product.sku}
+                      </td>
+                      <td className={`${cellClass} font-semibold`}>
+                        <span className="flex items-center gap-2.5">
+                          <ProductThumbnail
+                            productId={product.id}
+                            version={thumbnails.get(product.id)}
+                          />
+                          <span>
+                            <Link
+                              id={`producto-${product.id}`}
+                              href={`/productos/${product.id}`}
+                              className={linkClass}
+                            >
+                              {product.name}
+                            </Link>
+                            {variantText(product.id) ? (
+                              <span className="block text-xs font-normal text-muted">
+                                {variantText(product.id)}
+                              </span>
+                            ) : null}
+                          </span>
+                        </span>
+                      </td>
+                      <td className={cellClass}>{product.brand ?? "—"}</td>
+                      <td className={cellClass}>{product.category ?? "—"}</td>
+                      <td
+                        className={`${cellClass} text-right whitespace-nowrap tabular-nums ${prices.has(product.id) ? "" : "text-muted"}`}
+                      >
+                        {priceText(product.id)}
+                      </td>
+                      <td className={`${cellClass} text-right tabular-nums`}>
+                        {formatQuantity(product.quantityAvailable)}
+                        {hasReserved(product) ? (
+                          <span className="block text-xs whitespace-nowrap text-muted">
+                            {formatQuantity(product.quantityReserved)} reservado
+                          </span>
+                        ) : null}
+                      </td>
+                      <td className={`${cellClass} text-muted`}>
+                        {product.unit}
+                      </td>
+                      <td className={cellClass}>
+                        <StockStatusBadge status={product.stockStatus} />
+                      </td>
+                      <td className={cellClass}>
+                        <span
+                          className={
+                            product.isActive
+                              ? activeBadgeClass
+                              : inactiveBadgeClass
+                          }
+                        >
+                          {product.isActive ? "Sí" : "No"}
+                        </span>
+                      </td>
+                      {isAdmin ? (
+                        <td className={cellClass}>
+                          <EditLink
+                            href={`/productos/${product.id}?editar=1`}
+                            describedBy={`producto-${product.id}`}
+                          />
+                        </td>
+                      ) : null}
+                    </tr>
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -403,53 +497,65 @@ export default async function ProductsPage({
             aria-label="Productos de la organización"
             className="mt-6 flex flex-col gap-3 md:hidden"
           >
-            {result.products.map((product) => (
-              <li key={product.id} className={`${cardClass} p-4`}>
-                <p className="flex items-center gap-2.5 font-semibold">
-                  <ProductThumbnail
-                    productId={product.id}
-                    version={thumbnails.get(product.id)}
-                  />
-                  <span>
-                    <Link
-                      href={`/productos/${product.id}`}
-                      className={linkClass}
-                    >
-                      {product.name}
-                    </Link>
-                    {product.isActive ? null : (
-                      <span className="ml-2 text-sm font-normal text-muted">
-                        · Inactivo
-                      </span>
-                    )}
-                  </span>
-                </p>
-                {product.brand || product.category ? (
-                  <p className="mt-1 text-sm text-muted">
-                    {[product.brand, product.category]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </p>
+            {result.products.map((product, index) => (
+              <Fragment key={product.id}>
+                {groupHeading(index) ? (
+                  <li className="mt-2 text-sm font-semibold text-muted">
+                    {groupHeading(index)}
+                  </li>
                 ) : null}
-                <p
-                  className={`mt-1 text-sm tabular-nums ${prices.has(product.id) ? "" : "text-muted"}`}
-                >
-                  {priceText(product.id)}
-                </p>
-                <div className="mt-2 flex items-center justify-between gap-3">
-                  <p className="text-sm tabular-nums">
-                    {formatQuantity(product.quantityAvailable)} {product.unit}{" "}
-                    disponible
-                    {hasReserved(product) ? (
-                      <span className="text-muted">
-                        {" "}
-                        · {formatQuantity(product.quantityReserved)} reservado
-                      </span>
-                    ) : null}
+                <li className={`${cardClass} p-4`}>
+                  <p className="flex items-center gap-2.5 font-semibold">
+                    <ProductThumbnail
+                      productId={product.id}
+                      version={thumbnails.get(product.id)}
+                    />
+                    <span>
+                      <Link
+                        href={`/productos/${product.id}`}
+                        className={linkClass}
+                      >
+                        {product.name}
+                      </Link>
+                      {product.isActive ? null : (
+                        <span className="ml-2 text-sm font-normal text-muted">
+                          · Inactivo
+                        </span>
+                      )}
+                    </span>
                   </p>
-                  <StockStatusBadge status={product.stockStatus} />
-                </div>
-              </li>
+                  {variantText(product.id) ? (
+                    <p className="mt-1 text-sm text-muted">
+                      {variantText(product.id)}
+                    </p>
+                  ) : null}
+                  {product.brand || product.category ? (
+                    <p className="mt-1 text-sm text-muted">
+                      {[product.brand, product.category]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  ) : null}
+                  <p
+                    className={`mt-1 text-sm tabular-nums ${prices.has(product.id) ? "" : "text-muted"}`}
+                  >
+                    {priceText(product.id)}
+                  </p>
+                  <div className="mt-2 flex items-center justify-between gap-3">
+                    <p className="text-sm tabular-nums">
+                      {formatQuantity(product.quantityAvailable)} {product.unit}{" "}
+                      disponible
+                      {hasReserved(product) ? (
+                        <span className="text-muted">
+                          {" "}
+                          · {formatQuantity(product.quantityReserved)} reservado
+                        </span>
+                      ) : null}
+                    </p>
+                    <StockStatusBadge status={product.stockStatus} />
+                  </div>
+                </li>
+              </Fragment>
             ))}
           </ul>
         </>

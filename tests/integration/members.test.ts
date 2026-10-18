@@ -636,13 +636,15 @@ describe("autorización y aislamiento", () => {
     });
   });
 
-  it("getAppFrame devuelve organización, nombre y rol del usuario", async () => {
+  it("getAppFrame devuelve organización, nombre, rol y capacidades del usuario", async () => {
     await seedTwoOrganizations();
     const context = await contextFor("viewer-a@example.com");
+    // Sin capacidades activadas, la lista está vacía (brief-29.2, D-1).
     await expect(getAppFrame(context)).resolves.toEqual({
       organizationName: "Negocio A",
       userName: "Bruno",
       role: "viewer",
+      capabilities: [],
     });
   });
 });

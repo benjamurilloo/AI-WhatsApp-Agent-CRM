@@ -4,6 +4,7 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uuid,
 } from "drizzle-orm/pg-core";
 import { users } from "@/modules/auth/schema";
@@ -50,5 +51,35 @@ export const organizationMembers = pgTable(
   },
   (table) => [
     index("organization_members_organization_id_idx").on(table.organizationId),
+  ],
+);
+
+// Capacidades activables por organización (ADR 0024, punto 3; brief-29.2, D-2). Cada valor del
+// enum entra con la subfase que lo usa, con ALTER TYPE … ADD VALUE: la 29.2 lo crea solo con
+// variants. Una fila por capacidad activada; no se desactiva (hace falta un ADR). La lee una sola
+// función del repositorio, que vigila tests/guards/capability-reads.test.ts.
+export const capability = pgEnum("capability", ["variants"]);
+
+export const organizationCapabilities = pgTable(
+  "organization_capabilities",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    capability: capability("capability").notNull(),
+    // El admin de la organización que el script nombró como autor (ADR 0024, R-20).
+    activatedBy: uuid("activated_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    activatedAt: timestamp("activated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique("organization_capabilities_organization_capability_unique").on(
+      table.organizationId,
+      table.capability,
+    ),
   ],
 );

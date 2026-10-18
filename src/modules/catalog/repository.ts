@@ -28,7 +28,9 @@ type Executor = Db | DbTransaction;
 
 export type ProductCondition = (typeof productCondition.enumValues)[number];
 
+// modelId no es un campo del formulario general: lo escribe la capacidad variants (brief-29.2, D-4).
 export type ProductRow = { id: string } & ProductValues & {
+    modelId: string | null;
     isActive: boolean;
     createdAt: Date;
     updatedAt: Date;
@@ -75,6 +77,7 @@ const productColumns = {
   heightCm: products.heightCm,
   location: products.location,
   shelf: products.shelf,
+  modelId: products.modelId,
   isActive: products.isActive,
   createdAt: products.createdAt,
   updatedAt: products.updatedAt,
@@ -187,9 +190,12 @@ export function findProducts(
     activity: ActivityFilter;
     brand?: string;
     category?: string;
+    // Desde la 29.2, el modelo (D-4): solo lo manda una organización con la capacidad.
+    modelId?: string;
   },
 ): Promise<ProductRow[]> {
   const conditions: SQL[] = [eq(products.organizationId, organizationId)];
+  if (filters.modelId) conditions.push(eq(products.modelId, filters.modelId));
   if (filters.activity !== "all") {
     conditions.push(eq(products.isActive, filters.activity === "active"));
   }

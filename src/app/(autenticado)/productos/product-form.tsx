@@ -15,11 +15,15 @@ import { UnsavedChangesDialog } from "@/app/_components/unsaved-changes-dialog";
 import { SectionCard } from "@/app/_components/section-card";
 import { SuggestInput } from "@/app/_components/suggest-input";
 import { createProductAction, updateProductAction } from "./actions";
-import type { ProductFormSuggestions } from "@/modules/catalog";
+import type {
+  ProductFormSuggestions,
+  VariantFormOptions,
+} from "@/modules/catalog";
 import {
   CONDITION_LABEL,
   type ProductFormState,
   type ProductFormValues,
+  type VariantFormValues,
 } from "./messages";
 
 // Formulario de alta y de edición (wireframes 03 y 04). El stock no se edita acá: se ajusta
@@ -28,7 +32,8 @@ import {
 // es una lista cerrada (brief-11.1, D-2 y D-3). Desde la 15.4, los campos van en dos tarjetas;
 // el precio y el stock inicial se cargan después, desde el detalle (brief-15.4, D-4). Desde la
 // 17.2, el código de barras va debajo del SKU, y peso, dimensiones, ubicación y estante en dos
-// tarjetas propias (brief-17.2, D-11).
+// tarjetas propias (brief-17.2, D-11). Desde la 29.2, con la capacidad variants, la tarjeta «Modelo y
+// variante», debajo de la información básica (brief-29.2, D-5).
 
 const initialState: ProductFormState = { status: "idle" };
 
@@ -49,6 +54,8 @@ const EMPTY: ProductFormValues = {
   location: "",
   shelf: "",
 };
+
+const NO_VARIANT: VariantFormValues = { modelId: "", attributes: {} };
 
 const NO_SUGGESTIONS: ProductFormSuggestions = {
   brands: [],
@@ -152,11 +159,16 @@ export function ProductForm({
   productId,
   values = EMPTY,
   suggestions = NO_SUGGESTIONS,
+  variantOptions = null,
+  variantValues = NO_VARIANT,
 }: {
   mode: "crear" | "editar";
   productId?: string;
   values?: ProductFormValues;
   suggestions?: ProductFormSuggestions;
+  // null sin la capacidad: la tarjeta no se muestra y el formulario no manda el modelo.
+  variantOptions?: VariantFormOptions | null;
+  variantValues?: VariantFormValues;
 }) {
   const [state, formAction, pending] = useActionState(
     mode === "crear" ? createProductAction : updateProductAction,
@@ -166,6 +178,9 @@ export function ProductForm({
   const { formRef, dialog } = useUnsavedChanges();
   const failed = state.status === "error";
   const shown = failed ? state.values : values;
+  const shownVariant = failed
+    ? (state.variant ?? variantValues)
+    : variantValues;
 
   // El foco va al primer campo inválido, o al mensaje general (Screens.md, reglas comunes).
   useEffect(() => {
@@ -260,6 +275,54 @@ export function ProductForm({
     );
   }
 
+  // Un campo del modelo o de un atributo: el id del elemento es el nombre del campo, para que el foco
+  // llegue al primero inválido.
+  function renderVariantField(
+    name: string,
+    label: string,
+    required: boolean,
+    control: (props: {
+      id: string;
+      name: string;
+      required: boolean;
+      "aria-invalid": true | undefined;
+      "aria-describedby": string | undefined;
+      className: string;
+    }) => React.ReactNode,
+    hint?: string,
+  ) {
+    const invalid = failed && state.field === name;
+    const errorId = invalid ? `${name}-error` : undefined;
+    const hintId = hint ? `${name}-ayuda` : undefined;
+    return (
+      <div key={name} className="flex flex-col gap-1">
+        <label htmlFor={name} className={labelClass}>
+          {label}
+          {required ? " *" : ""}
+        </label>
+        {control({
+          id: name,
+          name,
+          required: false,
+          "aria-invalid": invalid ? true : undefined,
+          "aria-describedby":
+            [errorId, hintId].filter(Boolean).join(" ") || undefined,
+          className: inputClass,
+        })}
+        {hint ? (
+          <p id={hintId} className="text-sm text-muted">
+            {hint}
+          </p>
+        ) : null}
+        {invalid ? (
+          <p id={errorId} className={fieldErrorClass}>
+            {state.message}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <form action={formAction} className="flex flex-col gap-6" ref={formRef}>
       {productId ? (
@@ -276,6 +339,69 @@ export function ProductForm({
           {BASIC_FIELDS.map(renderField)}
         </div>
       </SectionCard>
+
+      {variantOptions ? (
+        <SectionCard
+          id="form-variante-titulo"
+          title="Modelo y variante"
+          icon="layers"
+          description="El modelo agrupa las variantes de un mismo equipo. Los datos con * son obligatorios en un producto con modelo."
+        >
+          <input type="hidden" name="variantEnabled" value="1" />
+          <div className="grid gap-4 sm:grid-cols-2">
+            {renderVariantField(
+              "modelId",
+              "Modelo",
+              false,
+              (props) => (
+                <select {...props} defaultValue={shownVariant.modelId}>
+                  <option value="">Sin modelo</option>
+                  {variantOptions.models.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.name}
+                    </option>
+                  ))}
+                </select>
+              ),
+              "Un accesorio puede no tener modelo.",
+            )}
+            {variantOptions.definitions.map((definition) => {
+              const name = `atributo:${definition.id}`;
+              const current = shownVariant.attributes[definition.id] ?? "";
+              return renderVariantField(
+                name,
+                definition.name,
+                definition.isRequired,
+                (props) =>
+                  definition.type === "option" ? (
+                    <select {...props} defaultValue={current}>
+                      <option value="">Sin elegir</option>
+                      {definition.options.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : definition.type === "boolean" ? (
+                    <select {...props} defaultValue={current}>
+                      <option value="">Sin dato</option>
+                      <option value="si">Sí</option>
+                      <option value="no">No</option>
+                    </select>
+                  ) : (
+                    <input
+                      {...props}
+                      defaultValue={current}
+                      inputMode={
+                        definition.type === "number" ? "decimal" : undefined
+                      }
+                    />
+                  ),
+              );
+            })}
+          </div>
+        </SectionCard>
+      ) : null}
 
       <SectionCard
         id="form-stock-titulo"

@@ -1,6 +1,11 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb, type Db, type DbTransaction } from "@/shared/db";
-import { organizationMembers, organizations } from "./schema";
+import {
+  capability,
+  organizationCapabilities,
+  organizationMembers,
+  organizations,
+} from "./schema";
 
 // Acceso a las tablas propias de organizations. Un recurso de una organización
 // siempre se busca filtrando por organization_id en SQL (brief-3.4).
@@ -179,4 +184,56 @@ export async function findMemberUserIds(
       ),
     );
   return rows.map((row) => row.userId);
+}
+
+// Capacidades (ADR 0024, punto 3; brief-29.2, D-2). findCapabilities es la única lectura de
+// organization_capabilities, y insertCapability la única escritura: las vigila
+// tests/guards/capability-reads.test.ts.
+export type CapabilityName = (typeof capability.enumValues)[number];
+
+export async function findCapabilities(
+  organizationId: string,
+  executor: Executor = getDb(),
+): Promise<CapabilityName[]> {
+  const rows = await executor
+    .select({ capability: organizationCapabilities.capability })
+    .from(organizationCapabilities)
+    .where(eq(organizationCapabilities.organizationId, organizationId));
+  return rows.map((row) => row.capability);
+}
+
+// ON CONFLICT DO NOTHING: activar una capacidad ya activa no escribe nada y devuelve undefined.
+export async function insertCapability(
+  tx: DbTransaction,
+  row: {
+    organizationId: string;
+    capability: CapabilityName;
+    activatedBy: string;
+  },
+): Promise<string | undefined> {
+  const rows = await tx
+    .insert(organizationCapabilities)
+    .values(row)
+    .onConflictDoNothing({
+      target: [
+        organizationCapabilities.organizationId,
+        organizationCapabilities.capability,
+      ],
+    })
+    .returning({ id: organizationCapabilities.id });
+  return rows[0]?.id;
+}
+
+// La fila de la organización, bloqueada: el script de capacidades la usa para saber que existe y
+// para serializar dos activaciones simultáneas.
+export async function lockOrganization(
+  tx: DbTransaction,
+  organizationId: string,
+): Promise<boolean> {
+  const rows = await tx
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(eq(organizations.id, organizationId))
+    .for("update");
+  return rows.length > 0;
 }

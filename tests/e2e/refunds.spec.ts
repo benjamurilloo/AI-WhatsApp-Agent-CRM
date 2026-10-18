@@ -36,7 +36,7 @@ test.beforeEach(async () => {
           cash_session_closing_amounts, cash_session_closings, cash_session_opening_amounts,
           cash_sessions, payment_methods, sale_voids, sale_lines, sales, order_lines, orders,
           document_counters, audit_logs, inventory_movements, inventories, product_images,
-          product_costs, product_prices, products, conversation_notes, messages, conversations,
+          product_costs, product_prices, attribute_values, products, conversation_notes, messages, conversations,
           client_tag_assignments, clients`,
   );
   await db.execute(sql`delete from login_attempts`);

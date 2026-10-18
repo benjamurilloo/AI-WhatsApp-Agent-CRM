@@ -58,6 +58,10 @@ describe("base de test", () => {
       sql`select tablename from pg_tables where schemaname = 'public' order by tablename`,
     );
     expect(result.rows.map((row) => row.tablename)).toEqual([
+      // Los atributos de un producto (brief-29.2, D-3).
+      "attribute_definitions",
+      "attribute_options",
+      "attribute_values",
       "audit_logs",
       "business_hour_exceptions",
       "business_hours",
@@ -87,12 +91,16 @@ describe("base de test", () => {
       "messages",
       "order_lines",
       "orders",
+      // Las capacidades de una organización (brief-29.2, D-1).
+      "organization_capabilities",
       "organization_members",
       "organizations",
       // Los medios de pago (brief-21.2).
       "payment_methods",
       "product_costs",
       "product_images",
+      // Los modelos (brief-29.2, D-2).
+      "product_models",
       "product_prices",
       "products",
       // La orden de compra y sus líneas (brief-22.3).

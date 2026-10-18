@@ -285,6 +285,42 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
   "src/app/(autenticado)/productos/actions.ts#suggestProductsAction": {
     requirement: "sesion",
   },
+  // Modelos y atributos de la capacidad variants (brief-29.2, D-4 y D-5): solo admin y solo con la
+  // capacidad, lo exige catalog; sin ella, NOT_FOUND.
+  "src/app/(autenticado)/modelos/actions.ts#createModelAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/modelos/actions.ts#updateModelAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/modelos/actions.ts#setModelActiveAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/modelos/actions.ts#createAttributeAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/modelos/actions.ts#updateAttributeAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/modelos/actions.ts#setAttributeActiveAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/modelos/actions.ts#addOptionAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/modelos/actions.ts#updateOptionAction": {
+    requirement: "sesion",
+  },
+  // El orden (revisión independiente de la 29.2, H-2).
+  "src/app/(autenticado)/modelos/actions.ts#moveModelAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/modelos/actions.ts#moveAttributeAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/modelos/actions.ts#moveOptionAction": {
+    requirement: "sesion",
+  },
   "src/app/(autenticado)/productos/[productId]/precios/actions.ts#setPriceAction":
     { requirement: "sesion" },
   // Fijar el costo de un producto, solo admin en el caso de uso (brief-18.2).

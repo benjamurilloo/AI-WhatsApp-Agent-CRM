@@ -8,7 +8,9 @@ import { DEFAULT_PAGE_SIZE, parsePageSize } from "@/app/_components/pagination";
 
 // Filtros y página de la pantalla 3 en la URL (brief-4.4): ?q=&estado=&actividad=&pagina=, más
 // la categoría, la marca, el orden y las filas por página de la brief-15.2:
-// ?categoria=&marca=&orden=&filas=. Categoría y marca vacías no filtran.
+// ?categoria=&marca=&orden=&filas=. Categoría y marca vacías no filtran. Desde la 29.2, ?modelo=<id>
+// con la capacidad variants (brief-29.2, D-4); un id que no es un uuid no filtra. ?agrupar=modelo
+// agrupa la lista por modelo; como el orden, no es un filtro.
 // Un valor desconocido se reemplaza por el de defecto, nunca da error.
 
 export type SearchParams = Record<string, string | string[] | undefined>;
@@ -63,10 +65,15 @@ export const DEFAULT_FILTERS: Required<ProductListFilters> = {
   activity: "active",
   brand: "",
   category: "",
+  modelId: "",
+  groupByModel: false,
   page: 1,
   sort: "name_asc",
   pageSize: DEFAULT_PAGE_SIZE,
 };
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function single(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
@@ -96,6 +103,10 @@ export function parseProductFilters(
       DEFAULT_FILTERS.activity,
     brand: facet(params.marca),
     category: facet(params.categoria),
+    modelId: UUID_PATTERN.test(single(params.modelo) ?? "")
+      ? single(params.modelo)!
+      : "",
+    groupByModel: single(params.agrupar) === "modelo",
     page: page && /^[1-9][0-9]{0,5}$/.test(page) ? Number(page) : 1,
     sort:
       (sort && Object.hasOwn(SORT_PARAM, sort) && SORT_PARAM[sort]) ||
@@ -121,6 +132,8 @@ export function productFiltersHref(filters: ProductListFilters): string {
   }
   if (filters.category) query.set("categoria", filters.category);
   if (filters.brand) query.set("marca", filters.brand);
+  if (filters.modelId) query.set("modelo", filters.modelId);
+  if (filters.groupByModel) query.set("agrupar", "modelo");
   if (filters.sort && filters.sort !== DEFAULT_FILTERS.sort) {
     query.set("orden", paramOf(SORT_PARAM, filters.sort));
   }
@@ -138,6 +151,7 @@ export function hasActiveFilters(filters: ProductListFilters): boolean {
     filters.stockStatus !== DEFAULT_FILTERS.stockStatus ||
     filters.activity !== DEFAULT_FILTERS.activity ||
     Boolean(filters.category) ||
-    Boolean(filters.brand)
+    Boolean(filters.brand) ||
+    Boolean(filters.modelId)
   );
 }

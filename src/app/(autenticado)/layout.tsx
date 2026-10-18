@@ -39,6 +39,11 @@ export default async function AuthenticatedLayout({
     { href: "/conversaciones", label: "Conversaciones", icon: "messageCircle" },
     { href: "/clientes", label: "Clientes", icon: "users" },
     { href: "/productos", label: "Productos", icon: "package" },
+    // Modelos y atributos, solo con la capacidad variants (ADR 0024, punto 3; brief-29.2, D-3). Cada
+    // página de /modelos vuelve a comprobar la capacidad: el menú no alcanza.
+    ...(frame.capabilities.includes("variants")
+      ? [{ href: "/modelos", label: "Modelos", icon: "layers" as const }]
+      : []),
     // Pedidos, para los dos roles (brief-19.2).
     { href: "/pedidos", label: "Pedidos", icon: "list" },
     // Ventas, para los dos roles (brief-20.2).

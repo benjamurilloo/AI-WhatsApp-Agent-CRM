@@ -35,6 +35,7 @@ function product(overrides: Partial<Product> = {}): Product {
     heightCm: null,
     location: null,
     shelf: null,
+    modelId: null,
     isActive: true,
     createdAt: new Date("2026-09-15T00:00:00Z"),
     updatedAt: new Date("2026-09-15T00:00:00Z"),

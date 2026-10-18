@@ -43,7 +43,7 @@ async function truncate() {
           document_counters, audit_logs, refund_voids, refunds, receipt_voids, receipts,
           sale_voids, sale_lines, sales, order_lines, orders, conversation_notes, messages,
           conversations, client_tag_assignments, clients, inventory_movements, inventories,
-          product_images, product_costs, product_prices, products`,
+          product_images, product_costs, product_prices, attribute_values, products`,
   );
 }
 

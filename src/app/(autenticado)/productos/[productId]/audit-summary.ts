@@ -61,6 +61,27 @@ const OPTIONAL_ON_CREATE = new Set([
   "shelf",
 ]);
 
+// El modelo y los atributos de la capacidad variants, auditados como valores planos (brief-29.2,
+// H-2): «modelo» y «atributo.<clave>», con el nombre vigente del atributo; sin él, la clave legible.
+function fieldLabel(
+  field: string,
+  attributeNames: Record<string, string>,
+): string | undefined {
+  if (Object.hasOwn(FIELD_LABEL, field)) return FIELD_LABEL[field];
+  if (field === "modelo") return "Modelo";
+  if (field.startsWith("atributo.")) {
+    const key = field.slice("atributo.".length);
+    if (Object.hasOwn(attributeNames, key)) return attributeNames[key];
+    const words = key.replaceAll("_", " ");
+    return words.charAt(0).toUpperCase() + words.slice(1);
+  }
+  return undefined;
+}
+
+function isVariantField(field: string): boolean {
+  return field === "modelo" || field.startsWith("atributo.");
+}
+
 function show(field: string, value: string | number | boolean | null): string {
   if (field === "image" && value === null) return "sin imagen";
   if (value === null || value === "") return "vacío";
@@ -93,7 +114,10 @@ export function auditActionLabel(entry: ProductAuditEntry): string {
 }
 
 // "Stock: 10 → 6"; en un alta, los valores iniciales.
-export function describeAuditDiff(entry: ProductAuditEntry): string {
+export function describeAuditDiff(
+  entry: ProductAuditEntry,
+  attributeNames: Record<string, string> = {},
+): string {
   const { before, after } = entry.diff;
   if (entry.action === "price_change") {
     return `Precio: ${showMoney(before, "sin precio")} → ${showMoney(after, "sin precio")}`;
@@ -110,22 +134,26 @@ export function describeAuditDiff(entry: ProductAuditEntry): string {
     return after === null
       ? "—"
       : Object.entries(after)
-          .filter(([field]) => Object.hasOwn(FIELD_LABEL, field))
+          .filter(([field]) => fieldLabel(field, attributeNames) !== undefined)
           .filter(
             ([field, value]) =>
-              !(OPTIONAL_ON_CREATE.has(field) && value === null),
+              !(
+                (OPTIONAL_ON_CREATE.has(field) || isVariantField(field)) &&
+                value === null
+              ),
           )
           .map(
-            ([field, value]) => `${FIELD_LABEL[field]}: ${show(field, value)}`,
+            ([field, value]) =>
+              `${fieldLabel(field, attributeNames)}: ${show(field, value)}`,
           )
           .join(" · ");
   }
   if (after === null) return "—";
   return Object.keys(before)
-    .filter((field) => Object.hasOwn(FIELD_LABEL, field))
+    .filter((field) => fieldLabel(field, attributeNames) !== undefined)
     .map(
       (field) =>
-        `${FIELD_LABEL[field]}: ${show(field, before[field]!)} → ${show(
+        `${fieldLabel(field, attributeNames)}: ${show(field, before[field]!)} → ${show(
           field,
           after[field]!,
         )}`,

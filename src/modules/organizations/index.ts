@@ -1,5 +1,6 @@
 // Interfaz pública del módulo organizations (brief-3.4; gestión de miembros, brief-3.7).
 export {
+  activateCapability,
   authorize,
   changeMemberRole,
   createMember,
@@ -7,17 +8,21 @@ export {
   deactivateMember,
   DEFAULT_ORGANIZATION_TIMEZONE,
   ORGANIZATION_NAME_MAX_LENGTH,
+  getAdminContextForScript,
   getAppFrame,
   getAuthContext,
   getMember,
   getMemberSummaries,
   getOrganizationTimezone,
   getOrganizationTimezoneForService,
+  hasCapability,
   listMembers,
   reactivateMember,
   MEMBERS_PAGE_SIZE,
+  type ActivateCapabilityResult,
   type AppFrame,
   type AuthContext,
+  type Capability,
   type CreateMemberField,
   type CreateMemberResult,
   type CreateOrganizationField,
@@ -31,3 +36,11 @@ export {
   type MemberStatusFilter,
   type MemberSummary,
 } from "./service";
+// Perfiles de rubro (ADR 0024, punto 13): plantillas versionadas que el script de capacidades
+// copia a la organización. Son datos, no código.
+export {
+  getProfile,
+  PROFILES,
+  type Profile,
+  type ProfileAttribute,
+} from "./profiles";
