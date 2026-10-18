@@ -472,11 +472,29 @@ Reglas comunes a las cuatro fases:
   - el borrado de clientes ([ADR 0015](../decisions/0015-vaciado-de-una-sola-direccion-en-tablas-de-solo-insercion.md));
   - de la caja: varias cuentas, la conciliación bancaria, la proyección, los vencimientos y la reapertura ([ADR 0022](../decisions/0022-cobros-y-caja.md));
   - de compras: la aprobación de órdenes, las fechas estimadas, el rendimiento del proveedor, el escaneo y las fotos ([ADR 0023](../decisions/0023-compras-y-proveedores.md));
-  - del pedido y la venta: el envío, la pasarela de pago, el reembolso al medio, los canales, los impuestos, los depósitos y las variantes (ADR 0016 a 0021);
+  - del pedido y la venta: el envío, la pasarela de pago, el reembolso al medio, los canales, los impuestos, los depósitos y las variantes (ADR 0016 a 0021). *Precisado el 2026-10-18*: las variantes pasan a la [Fase 29](#fase-29--rubros-núcleo-capacidades-y-perfiles), cuyo ADR 0024 es el «propio ADR» que pide esta lista;
   - la campana de notificaciones ([Scope](../product/Scope.md)).
 - **Gate de entrada**: decisión del usuario del 2026-10-17 para la Fase 23. Cada fase siguiente se abre con su decisión, su proyecto en Notion y el brief de su primera subfase.
 - **Gate de salida**: decisión del usuario. Las Fases 23 a 25 no abren ni cierran un gate de producción, así que cada subfase se cierra con autoevaluación declarada, salvo que su brief diga otra cosa. Las que empiezan por un ADR (26 y 28) deciden en él si llevan revisión independiente. **La accesibilidad verificada con axe no puede retroceder.**
 - **Nivel de validación**: el de cada subfase. Las que se despliegan quedan **verificadas en producción**, sin certificar un nivel superior.
+
+## Fase 29 — Rubros: núcleo, capacidades y perfiles
+
+*Abierta el 2026-10-18 por decisión del usuario, con su proyecto en Notion. Va **después de la Fase 23 y antes de la 24**, porque la 24.3 Productos tiene que dejar lugar para las unidades. Motivo: el usuario va a ofrecerle el CRM a un negocio de venta de iPhone, **sin confirmar**. La 13.5.2-b conserva su prioridad.*
+
+- **Objetivo**: que el CRM sirva a rubros distintos sin dejar de ser uno solo, con un núcleo, capacidades activables por organización y perfiles de rubro, que son datos. El primer rubro es la venta de iPhone: variantes, unidades con IMEI, usados con grado y batería, permuta, dos monedas, servicio técnico tercerizado y garantía.
+- **Subfases**, de la 29.2 en adelante **provisionales**: las fija el ADR 0024 ([brief-29.1](../decisions/brief-29.1-adr-de-rubros-y-capacidades.md), D-15):
+  - **29.1 — ADR de rubros y capacidades** ([brief-29.1](../decisions/brief-29.1-adr-de-rubros-y-capacidades.md), aprobado el 2026-10-18): el ADR 0024, sin tablas;
+  - **29.2 — Capacidades y variantes**;
+  - **29.3 — Las unidades**;
+  - **29.4 — ADR del tipo de cambio** (el 0025, que supera en parte el punto 3 del [ADR 0019](../decisions/0019-bases-de-los-comprobantes.md)) y **29.5 — El tipo de cambio**, que pueden ir antes de la 29.3 si el negocio vende en dos monedas desde el primer día;
+  - **29.6 — La recepción de usados y la permuta**;
+  - **29.7 — El agente del rubro**, con un contrato versionado nuevo;
+  - **29.8 — El servicio técnico**, tercerizado;
+  - **29.9 — La garantía**.
+- **Gate de entrada de la construcción**: la 29.1 se hace con el negocio sin confirmar. **Desde la 29.2**, con el negocio confirmado o por decisión explícita del usuario registrada con fecha (brief-29.1, D-16).
+- **Supuestos del negocio**: los responde el usuario, que conoce el rubro y al cliente, y se registran como su respuesta con fecha, no como confirmación del negocio.
+- **Gate de salida**: decisión del usuario. La 29.1 lleva revisión independiente antes de la aceptación del ADR (D-17).
 
 ---
 
