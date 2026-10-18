@@ -875,3 +875,117 @@ test("caso 18: brief-15.2 el buscador sugiere nombres, nunca teléfonos, y elegi
   ).toMatch(/\/login/);
   await anonymous.dispose();
 });
+
+test("brief-23.2: el vacío y la búsqueda sin resultados muestran su ícono, su texto y sus acciones según el rol", async ({
+  page,
+}) => {
+  // Un viewer ve el vacío sin la acción de crear.
+  await login(page, VIEWER);
+  await page.goto("/clientes");
+  await expect(page.getByText("Todavía no hay clientes.")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Crear el primero" }),
+  ).toHaveCount(0);
+  await page.context().clearCookies();
+
+  await login(page, ADMIN);
+  await page.goto("/clientes");
+  await expect(page.getByText("Todavía no hay clientes.")).toBeVisible();
+  await expect(
+    page.getByText(
+      "Cada cliente que cargues o que escriba por WhatsApp aparece acá, con su última interacción.",
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Crear el primero" }),
+  ).toHaveAttribute("href", "/clientes/nuevo");
+  await expectAccessible(page, "vacío");
+  await page.setViewportSize({ width: 375, height: 800 });
+  await expectAccessible(page, "vacío a 375 px");
+  await page.setViewportSize({ width: 1280, height: 800 });
+
+  await insertClient("Ana Pérez");
+  await page.goto("/clientes?q=Zzz");
+  await expect(
+    page.getByText("Ningún cliente coincide con esta búsqueda."),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Probá con otras palabras o quitá algún filtro."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Crear el primero" }),
+  ).toHaveCount(0);
+  // El del formulario de búsqueda y el del vacío.
+  const clear = page.getByRole("link", { name: "Limpiar filtros" });
+  await expect(clear).toHaveCount(2);
+  await expectAccessible(page, "sin resultados");
+  await clear.last().click();
+  await expect(page).toHaveURL("/clientes");
+  await expect(clientsTable(page)).toContainText("Ana Pérez");
+});
+
+test("brief-23.2: la ficha pregunta antes de salir con cambios sin guardar, y el aviso al guardar lleva el tilde", async ({
+  page,
+}) => {
+  const clientId = await insertClient("Ana Pérez");
+  const edit = `/clientes/${clientId}?editar=1`;
+  const nav = page.getByRole("navigation", { name: "Principal" });
+  const form = page.locator('form[data-unsaved-changes="watching"]');
+  const messages: string[] = [];
+  let accept = false;
+  page.on("dialog", async (dialog) => {
+    messages.push(dialog.message());
+    if (accept) await dialog.accept();
+    else await dialog.dismiss();
+  });
+  await login(page, ADMIN);
+
+  // Sin cambios, no pregunta.
+  await page.goto(edit);
+  await expect(form).toHaveCount(1);
+  await nav.getByRole("link", { name: "Productos" }).click();
+  await expect(page).toHaveURL("/productos");
+  expect(messages).toEqual([]);
+
+  // Con un cambio, pregunta; «Cancelar» del diálogo deja todo como estaba.
+  await page.goto(edit);
+  await expect(form).toHaveCount(1);
+  await page.getByLabel("Notas").fill("Algo nuevo");
+  await nav.getByRole("link", { name: "Productos" }).click();
+  await expect.poll(() => messages.length).toBe(1);
+  expect(messages[0]).toBe("Tenés cambios sin guardar. ¿Salir igual?");
+  await expect(page).toHaveURL(edit);
+  await expect(page.getByLabel("Notas")).toHaveValue("Algo nuevo");
+
+  // Aceptar sale, también desde el «Cancelar» del formulario.
+  accept = true;
+  await page.getByRole("link", { name: "Cancelar" }).click();
+  await expect(page).toHaveURL(`/clientes/${clientId}`);
+  expect(messages).toHaveLength(2);
+
+  // Después de guardar, no pregunta. El aviso lleva el tilde, dentro de su región de estado.
+  accept = false;
+  await page.goto(edit);
+  await expect(form).toHaveCount(1);
+  await page.getByLabel("Notas").fill("Guardada");
+  await page.getByRole("button", { name: "Guardar cambios" }).click();
+  const notice = page
+    .getByRole("status")
+    .filter({ hasText: "Cliente actualizado." });
+  await expect(notice).toBeVisible();
+  await expect(notice.locator('svg[aria-hidden="true"]')).toHaveCount(1);
+  await nav.getByRole("link", { name: "Productos" }).click();
+  await expect(page).toHaveURL("/productos");
+  expect(messages).toHaveLength(2);
+
+  // Cerrar la pestaña con un cambio pide confirmación del navegador.
+  await page.goto(edit);
+  await expect(form).toHaveCount(1);
+  await page.getByLabel("Notas").fill("Otra cosa");
+  page.removeAllListeners("dialog");
+  const beforeUnload = page.waitForEvent("dialog");
+  await page.close({ runBeforeUnload: true });
+  const dialog = await beforeUnload;
+  expect(dialog.type()).toBe("beforeunload");
+  await dialog.dismiss();
+});

@@ -12,6 +12,7 @@ import {
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
+import { EmptyState } from "@/app/_components/empty-state";
 import { PageHeader } from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
 import { Pagination, shownRangeText } from "@/app/_components/pagination";
@@ -118,13 +119,16 @@ export default async function SuppliersOwedPage({
       ) : null}
 
       {suppliers.total === 0 ? (
-        <div className={`mt-6 ${cardClass} p-6`}>
-          <p>
-            {currency
+        <EmptyState
+          icon="circleCheck"
+          title={
+            currency
               ? `No se le debe nada a ningún proveedor en ${currency}.`
-              : "No se le debe nada a ningún proveedor."}
-          </p>
-        </div>
+              : "No se le debe nada a ningún proveedor."
+          }
+          description="Acá aparecen los proveedores con recepciones que todavía falta pagar."
+          className="mt-6"
+        />
       ) : (
         <>
           <div

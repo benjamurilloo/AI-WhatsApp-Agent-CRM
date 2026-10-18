@@ -4,11 +4,11 @@ import { useActionState, useEffect, useRef } from "react";
 import {
   formMessageClass,
   inlineButtonClass,
-  noticeClass,
   secondaryButtonClass,
 } from "@/app/_components/form-styles";
 import { changeAgentPauseAction } from "../actions";
 import { CLOSED_NOT_PAUSABLE_TEXT, type StatusChangeState } from "../messages";
+import { ActionNotice } from "@/app/_components/action-notice";
 
 // Pausar o reanudar al agente en la pantalla 9, solo para admin (brief-16.3, D-4 y D-5). Un botón
 // según la marca actual; en una conversación cerrada sin pausa no se ofrece pausar. El resultado
@@ -63,7 +63,7 @@ export function AgentPauseForm({
       )}
       <div aria-live="polite" aria-atomic="true">
         {state.status === "done" ? (
-          <p className={noticeClass}>{state.message}</p>
+          <ActionNotice>{state.message}</ActionNotice>
         ) : state.status === "error" ? (
           <p ref={errorRef} tabIndex={-1} className={formMessageClass}>
             {state.message}

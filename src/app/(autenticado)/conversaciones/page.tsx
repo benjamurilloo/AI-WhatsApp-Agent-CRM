@@ -16,6 +16,7 @@ import {
   linkClass,
   selectClass,
 } from "@/app/_components/form-styles";
+import { EmptyState } from "@/app/_components/empty-state";
 import { Icon } from "@/app/_components/icons";
 import { PageHeader, SearchIcon } from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
@@ -353,20 +354,30 @@ export default async function ConversationsPage({
           </p>
         </div>
       ) : result.total === 0 ? (
-        <div className={`mt-8 ${cardClass} p-6`}>
-          <p>
-            {result.organizationHasConversations
+        <EmptyState
+          icon="messageCircle"
+          title={
+            result.organizationHasConversations
               ? NO_CONVERSATION_RESULTS_MESSAGE
-              : NO_CONVERSATIONS_MESSAGE}
-          </p>
-          {result.organizationHasConversations ? (
-            <p className="mt-3">
-              <Link href="/conversaciones" className={linkClass}>
-                Limpiar filtros
-              </Link>
-            </p>
-          ) : null}
-        </div>
+              : NO_CONVERSATIONS_MESSAGE
+          }
+          description={
+            result.organizationHasConversations
+              ? "Probá con otras palabras o quitá algún filtro."
+              : "Las conversaciones de WhatsApp que registra el agente aparecen acá."
+          }
+          actions={
+            result.organizationHasConversations
+              ? [
+                  {
+                    href: "/conversaciones",
+                    label: "Limpiar filtros",
+                    variant: "outline",
+                  },
+                ]
+              : []
+          }
+        />
       ) : (
         <>
           <ConversationTable

@@ -19,6 +19,7 @@ import {
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
+import { EmptyState } from "@/app/_components/empty-state";
 import { Icon } from "@/app/_components/icons";
 import {
   EditLink,
@@ -257,22 +258,34 @@ export default async function ProductsPage({
       </form>
 
       {result.total === 0 ? (
-        <div className={`mt-8 ${cardClass} p-6`}>
-          <p>{filtered ? NO_PRODUCT_RESULTS_MESSAGE : NO_PRODUCTS_MESSAGE}</p>
-          {filtered ? (
-            <p className="mt-3">
-              <Link href="/productos" className={linkClass}>
-                Limpiar filtros
-              </Link>
-            </p>
-          ) : isAdmin ? (
-            <p className="mt-3">
-              <Link href="/productos/nuevo" className={linkClass}>
-                Crear el primero
-              </Link>
-            </p>
-          ) : null}
-        </div>
+        <EmptyState
+          icon="package"
+          title={filtered ? NO_PRODUCT_RESULTS_MESSAGE : NO_PRODUCTS_MESSAGE}
+          description={
+            filtered
+              ? "Probá con otras palabras o quitá algún filtro."
+              : "Cada producto que cargues aparece acá, con su precio y su stock."
+          }
+          actions={
+            filtered
+              ? [
+                  {
+                    href: "/productos",
+                    label: "Limpiar filtros",
+                    variant: "outline",
+                  },
+                ]
+              : isAdmin
+                ? [
+                    {
+                      href: "/productos/nuevo",
+                      label: "Crear el primero",
+                      variant: "primary",
+                    },
+                  ]
+                : []
+          }
+        />
       ) : (
         <>
           <div className={`mt-8 hidden overflow-x-auto md:block ${cardClass}`}>

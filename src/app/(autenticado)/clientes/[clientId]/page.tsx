@@ -14,6 +14,8 @@ import {
 import { getOrganizationTimezone } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
 import { auditActorLabels } from "@/app/(autenticado)/_audit/actor";
+import { InlineSkeleton } from "@/app/_components/skeleton";
+import { ActionNotice } from "@/app/_components/action-notice";
 import { AuditCard } from "@/app/_components/audit-card";
 import { Avatar } from "@/app/_components/avatar";
 import { BackLink, DetailHeader } from "@/app/_components/detail-header";
@@ -22,7 +24,6 @@ import {
   activeBadgeClass,
   dangerOutlineLinkClass,
   inactiveBadgeClass,
-  noticeClass,
   secondaryLinkClass,
 } from "@/app/_components/form-styles";
 import { Icon } from "@/app/_components/icons";
@@ -215,7 +216,7 @@ export default async function ClientPage({
           </span>
         }
         subtitle={
-          <Suspense fallback="Cargando…">
+          <Suspense fallback={<InlineSkeleton />}>
             <span className="text-sm">
               Última interacción: <LastInteraction activity={activity} />
             </span>
@@ -246,7 +247,7 @@ export default async function ClientPage({
       />
 
       <div role="status" className="mt-4 empty:hidden">
-        {notice ? <p className={noticeClass}>{notice}</p> : null}
+        {notice ? <ActionNotice>{notice}</ActionNotice> : null}
       </div>
 
       {confirming ? (
@@ -316,7 +317,7 @@ export default async function ClientPage({
                     label: "Última interacción",
                     icon: "clock",
                     value: (
-                      <Suspense fallback="Cargando…">
+                      <Suspense fallback={<InlineSkeleton />}>
                         <LastInteraction activity={activity} />
                       </Suspense>
                     ),

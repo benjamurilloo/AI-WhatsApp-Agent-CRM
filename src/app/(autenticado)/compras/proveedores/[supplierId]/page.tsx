@@ -11,6 +11,7 @@ import {
 } from "@/modules/purchasing";
 import { requireSession } from "@/app/_auth/session";
 import { auditActorLabels } from "@/app/(autenticado)/_audit/actor";
+import { ActionNotice } from "@/app/_components/action-notice";
 import { AuditCard } from "@/app/_components/audit-card";
 import { BackLink, DetailHeader } from "@/app/_components/detail-header";
 import { DetailList } from "@/app/_components/detail-list";
@@ -19,7 +20,6 @@ import {
   dangerOutlineLinkClass,
   inactiveBadgeClass,
   linkClass,
-  noticeClass,
   secondaryLinkClass,
 } from "@/app/_components/form-styles";
 import { Icon } from "@/app/_components/icons";
@@ -155,7 +155,7 @@ export default async function SupplierPage({
       />
 
       <div role="status" className="mt-4 empty:hidden">
-        {notice ? <p className={noticeClass}>{notice}</p> : null}
+        {notice ? <ActionNotice>{notice}</ActionNotice> : null}
       </div>
 
       {confirming ? (

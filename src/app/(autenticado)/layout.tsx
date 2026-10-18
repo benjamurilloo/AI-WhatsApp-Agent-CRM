@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import { getAppFrame } from "@/modules/organizations";
 import { logoutAction } from "@/app/_auth/logout";
 import { requireSession } from "@/app/_auth/session";
@@ -10,6 +10,7 @@ import { secondaryButtonClass } from "@/app/_components/form-styles";
 import { Icon } from "@/app/_components/icons";
 import { BottomNav, SidebarColumn } from "@/app/_components/mobile-nav";
 import type { NavLink } from "@/app/_components/nav-links";
+import { NavigationProgress } from "@/app/_components/navigation-progress";
 import { ThemeSelector } from "@/app/_components/theme-selector";
 import { UserMenu } from "@/app/_components/user-menu";
 import { readTheme } from "@/app/_theme/read-theme";
@@ -113,6 +114,10 @@ export default async function AuthenticatedLayout({
         {children}
       </div>
       <BottomNav links={links} />
+      {/* La barra de carga (brief-23.2, D-3): useSearchParams pide su propio suspenso. */}
+      <Suspense fallback={null}>
+        <NavigationProgress />
+      </Suspense>
     </div>
   );
 }

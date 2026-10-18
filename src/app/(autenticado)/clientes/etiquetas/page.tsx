@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { listClientTags, SUGGESTED_TAGS } from "@/modules/crm";
 import { requireSession } from "@/app/_auth/session";
+import { EmptyState } from "@/app/_components/empty-state";
+import { ActionNotice } from "@/app/_components/action-notice";
 import { BackLink } from "@/app/_components/detail-header";
 import {
   activeBadgeClass,
@@ -9,7 +11,6 @@ import {
   dangerOutlineLinkClass,
   inactiveBadgeClass,
   linkClass,
-  noticeClass,
   secondaryLinkClass,
   tableCellClass,
   tableHeadCellClass,
@@ -80,7 +81,7 @@ export default async function TagCatalogPage({
       </div>
 
       <div role="status" className="mt-4 empty:hidden">
-        {notice ? <p className={noticeClass}>{notice}</p> : null}
+        {notice ? <ActionNotice>{notice}</ActionNotice> : null}
       </div>
 
       {isAdmin && tags.length === 0 ? (
@@ -137,9 +138,12 @@ export default async function TagCatalogPage({
       ) : null}
 
       {tags.length === 0 ? (
-        <div className={`mt-6 ${cardClass} p-6`}>
-          <p>{NO_TAG_CATALOG_MESSAGE}</p>
-        </div>
+        <EmptyState
+          icon="tag"
+          title={NO_TAG_CATALOG_MESSAGE}
+          description="Las etiquetas agrupan clientes para encontrarlos y filtrarlos."
+          className="mt-6"
+        />
       ) : (
         <>
           <div className={`mt-6 hidden overflow-hidden md:block ${cardClass}`}>

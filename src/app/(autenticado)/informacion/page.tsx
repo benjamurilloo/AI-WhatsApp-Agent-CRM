@@ -14,6 +14,7 @@ import {
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
+import { EmptyState } from "@/app/_components/empty-state";
 import { Icon } from "@/app/_components/icons";
 import {
   EditLink,
@@ -135,22 +136,34 @@ export default async function KnowledgePage({
       </form>
 
       {result.total === 0 ? (
-        <div className={`mt-8 ${cardClass} p-6`}>
-          <p>{filtered ? NO_ENTRY_RESULTS_MESSAGE : NO_ENTRIES_MESSAGE}</p>
-          {filtered ? (
-            <p className="mt-3">
-              <Link href="/informacion" className={linkClass}>
-                Limpiar filtros
-              </Link>
-            </p>
-          ) : isAdmin ? (
-            <p className="mt-3">
-              <Link href="/informacion/nueva" className={linkClass}>
-                Crear la primera
-              </Link>
-            </p>
-          ) : null}
-        </div>
+        <EmptyState
+          icon="info"
+          title={filtered ? NO_ENTRY_RESULTS_MESSAGE : NO_ENTRIES_MESSAGE}
+          description={
+            filtered
+              ? "Probá con otras palabras o quitá algún filtro."
+              : "Lo que cargues acá es lo que el agente lee para responder sobre el negocio."
+          }
+          actions={
+            filtered
+              ? [
+                  {
+                    href: "/informacion",
+                    label: "Limpiar filtros",
+                    variant: "outline",
+                  },
+                ]
+              : isAdmin
+                ? [
+                    {
+                      href: "/informacion/nueva",
+                      label: "Crear la primera",
+                      variant: "primary",
+                    },
+                  ]
+                : []
+          }
+        />
       ) : (
         <>
           <div className={`mt-8 hidden overflow-hidden md:block ${cardClass}`}>

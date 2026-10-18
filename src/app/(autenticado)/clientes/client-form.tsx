@@ -10,6 +10,7 @@ import {
   labelClass,
   secondaryLinkClass,
 } from "@/app/_components/form-styles";
+import { useUnsavedChanges } from "@/app/_components/unsaved-changes";
 import type { IconName } from "@/app/_components/icons";
 import { SectionCard } from "@/app/_components/section-card";
 import { SuggestInput } from "@/app/_components/suggest-input";
@@ -217,6 +218,7 @@ export function ClientForm({
     initialState,
   );
   const errorRef = useRef<HTMLParagraphElement>(null);
+  const formRef = useUnsavedChanges();
   const failed = state.status === "error";
   // Tras un rechazo, React reinicia el formulario a estos valores: lo escrito se conserva.
   const shown = failed ? state.values : values;
@@ -232,7 +234,7 @@ export function ClientForm({
   }, [state]);
 
   return (
-    <form action={formAction} className="flex flex-col gap-6">
+    <form action={formAction} className="flex flex-col gap-6" ref={formRef}>
       {clientId ? (
         <input type="hidden" name="clientId" value={clientId} />
       ) : null}

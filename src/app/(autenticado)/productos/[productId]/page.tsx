@@ -12,6 +12,7 @@ import { getProductStock, listStockMovements } from "@/modules/inventory";
 import { getOrganizationTimezone } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
 import { auditActorLabels } from "@/app/(autenticado)/_audit/actor";
+import { ActionNotice } from "@/app/_components/action-notice";
 import { AuditCard } from "@/app/_components/audit-card";
 import {
   BackLink,
@@ -24,7 +25,6 @@ import {
   dangerOutlineLinkClass,
   inactiveBadgeClass,
   linkClass,
-  noticeClass,
   secondaryLinkClass,
 } from "@/app/_components/form-styles";
 import { Icon } from "@/app/_components/icons";
@@ -183,7 +183,7 @@ export default async function ProductPage({
       />
 
       <div role="status" className="mt-4 empty:hidden">
-        {notice ? <p className={noticeClass}>{notice}</p> : null}
+        {notice ? <ActionNotice>{notice}</ActionNotice> : null}
       </div>
 
       {confirming ? (

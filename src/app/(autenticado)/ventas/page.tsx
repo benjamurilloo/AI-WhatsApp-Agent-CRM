@@ -16,6 +16,7 @@ import {
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
+import { EmptyState } from "@/app/_components/empty-state";
 import { Icon } from "@/app/_components/icons";
 import { PageHeader, SearchIcon } from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
@@ -199,9 +200,26 @@ export default async function SalesPage({
           <p>{INVALID_PERIOD_MESSAGE}</p>
         </div>
       ) : result.total === 0 ? (
-        <div className={`mt-8 ${cardClass} p-6`}>
-          <p>{filtered ? NO_SALE_RESULTS_MESSAGE : NO_SALES_MESSAGE}</p>
-        </div>
+        <EmptyState
+          icon="receipt"
+          title={filtered ? NO_SALE_RESULTS_MESSAGE : NO_SALES_MESSAGE}
+          description={
+            filtered
+              ? "Probá con otras palabras o quitá algún filtro."
+              : "Cada venta emitida, de un pedido o sin pedido, aparece acá con su número."
+          }
+          actions={
+            filtered
+              ? [
+                  {
+                    href: "/ventas",
+                    label: "Limpiar filtros",
+                    variant: "outline",
+                  },
+                ]
+              : []
+          }
+        />
       ) : (
         <>
           <div className={`mt-8 hidden overflow-x-auto md:block ${cardClass}`}>

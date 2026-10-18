@@ -5,13 +5,14 @@ import { getAppFrame, getOrganizationTimezone } from "@/modules/organizations";
 import { getSupplierNames } from "@/modules/purchasing";
 import { requireSession } from "@/app/_auth/session";
 import { auditActorLabels } from "@/app/(autenticado)/_audit/actor";
+import { ActionNotice } from "@/app/_components/action-notice";
 import { AuditCard } from "@/app/_components/audit-card";
 import {
   BackLink,
   DetailHeader,
   HeaderIcon,
 } from "@/app/_components/detail-header";
-import { cardClass, noticeClass } from "@/app/_components/form-styles";
+import { cardClass } from "@/app/_components/form-styles";
 import { PageNotice } from "@/app/_components/page-notice";
 import { formatFullDateTime } from "@/app/_format/date-time";
 import {
@@ -109,7 +110,7 @@ export default async function CashSessionPage({
           actions={closed ? <PrintButton /> : null}
         />
         <div role="status" className="mt-4 empty:hidden">
-          {notice ? <p className={noticeClass}>{notice}</p> : null}
+          {notice ? <ActionNotice>{notice}</ActionNotice> : null}
         </div>
       </div>
 

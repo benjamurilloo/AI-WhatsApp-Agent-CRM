@@ -8,10 +8,10 @@ import {
   cardClass,
   dangerOutlineLinkClass,
   linkClass,
-  noticeClass,
   primaryLinkClass,
   secondaryLinkClass,
 } from "@/app/_components/form-styles";
+import { ActionNotice } from "@/app/_components/action-notice";
 import { Icon } from "@/app/_components/icons";
 import { PageHeader } from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
@@ -78,7 +78,7 @@ export default async function CashPage({
       <CashSubNav current="caja" />
 
       <div role="status" className="mt-4 empty:hidden">
-        {notice ? <p className={noticeClass}>{notice}</p> : null}
+        {notice ? <ActionNotice>{notice}</ActionNotice> : null}
       </div>
 
       {open ? (

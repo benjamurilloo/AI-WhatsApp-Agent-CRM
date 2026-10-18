@@ -11,6 +11,7 @@ import {
   labelClass,
   secondaryLinkClass,
 } from "@/app/_components/form-styles";
+import { useUnsavedChanges } from "@/app/_components/unsaved-changes";
 import { saveWeekAction } from "./actions";
 import {
   dayErrorMessage,
@@ -40,6 +41,7 @@ export function WeekForm({ values }: { values: WeekFormValues }) {
     initialState,
   );
   const errorRef = useRef<HTMLParagraphElement>(null);
+  const formRef = useUnsavedChanges();
   const failed = state.status === "error";
   const shown = failed ? state.values : values;
 
@@ -54,7 +56,7 @@ export function WeekForm({ values }: { values: WeekFormValues }) {
   }, [state]);
 
   return (
-    <form action={formAction} className="flex flex-col gap-4">
+    <form action={formAction} className="flex flex-col gap-4" ref={formRef}>
       <p className="text-sm text-muted">
         Dejá un día vacío si está cerrado. El segundo tramo es para el horario
         cortado.

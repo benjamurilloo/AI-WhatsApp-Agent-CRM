@@ -5,11 +5,11 @@ import {
   formMessageClass,
   inlineButtonClass,
   labelClass,
-  noticeClass,
   selectClass,
 } from "@/app/_components/form-styles";
 import { changeConversationStatusAction } from "../actions";
 import type { StatusChangeState } from "../messages";
+import { ActionNotice } from "@/app/_components/action-notice";
 
 // Cambio de estado de la pantalla 9, solo para admin (wireframe 09). El resultado se anuncia con
 // aria-live; un error recibe el foco.
@@ -64,7 +64,7 @@ export function StatusForm({
       </div>
       <div aria-live="polite" aria-atomic="true">
         {state.status === "done" ? (
-          <p className={noticeClass}>{state.message}</p>
+          <ActionNotice>{state.message}</ActionNotice>
         ) : state.status === "error" ? (
           <p ref={errorRef} tabIndex={-1} className={formMessageClass}>
             {state.message}

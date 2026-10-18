@@ -11,12 +11,13 @@ import {
   cardClass,
   dangerOutlineLinkClass,
   inactiveBadgeClass,
-  noticeClass,
   roleBadgeClass,
   secondaryLinkClass,
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
+import { EmptyState } from "@/app/_components/empty-state";
+import { ActionNotice } from "@/app/_components/action-notice";
 import { Icon } from "@/app/_components/icons";
 import { PageHeader } from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
@@ -82,7 +83,7 @@ export default async function PaymentMethodsPage({
       <CashSubNav current="medios" />
 
       <div role="status" className="mt-4 empty:hidden">
-        {notice ? <p className={noticeClass}>{notice}</p> : null}
+        {notice ? <ActionNotice>{notice}</ActionNotice> : null}
       </div>
 
       {isAdmin && methods.length === 0 ? (
@@ -143,9 +144,12 @@ export default async function PaymentMethodsPage({
       ) : null}
 
       {methods.length === 0 ? (
-        <div className={`mt-6 ${cardClass} p-6`}>
-          <p>{NO_PAYMENT_METHODS_MESSAGE}</p>
-        </div>
+        <EmptyState
+          icon="creditCard"
+          title={NO_PAYMENT_METHODS_MESSAGE}
+          description="Los medios de pago son los que se eligen al cobrar y al pagar."
+          className="mt-6"
+        />
       ) : (
         <div
           className={`mt-6 overflow-x-auto ${cardClass}`}

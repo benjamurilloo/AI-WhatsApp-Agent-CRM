@@ -8,6 +8,7 @@ import { getSale, listSaleAudit } from "@/modules/sales";
 import { requireSession } from "@/app/_auth/session";
 import { auditActorLabels } from "@/app/(autenticado)/_audit/actor";
 import { PhoneText } from "@/app/(autenticado)/clientes/phone-text";
+import { ActionNotice } from "@/app/_components/action-notice";
 import { AuditCard } from "@/app/_components/audit-card";
 import {
   BackLink,
@@ -20,7 +21,6 @@ import {
   dangerOutlineLinkClass,
   inactiveBadgeClass,
   linkClass,
-  noticeClass,
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
@@ -155,9 +155,9 @@ export default async function SalePage({
         />
 
         <div role="status" className="mt-4 empty:hidden">
-          {notice ? <p className={noticeClass}>{notice}</p> : null}
+          {notice ? <ActionNotice>{notice}</ActionNotice> : null}
           {newReceipt ? (
-            <p className={noticeClass}>
+            <ActionNotice>
               Se registró el cobro{" "}
               <Link
                 href={`/cobros/${newReceipt.id}`}
@@ -166,7 +166,7 @@ export default async function SalePage({
                 {newReceipt.displayNumber}
               </Link>
               .
-            </p>
+            </ActionNotice>
           ) : null}
         </div>
         {saleVoid ? (

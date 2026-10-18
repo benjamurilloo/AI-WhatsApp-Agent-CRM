@@ -14,6 +14,7 @@ import {
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
+import { EmptyState } from "@/app/_components/empty-state";
 import { Icon } from "@/app/_components/icons";
 import { PageHeader, SearchIcon } from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
@@ -154,16 +155,34 @@ export default async function OrdersPage({
       ) : null}
 
       {result.total === 0 ? (
-        <div className={`mt-8 ${cardClass} p-6`}>
-          <p>{filtered ? NO_ORDER_RESULTS_MESSAGE : NO_ORDERS_MESSAGE}</p>
-          {!filtered && isAdmin ? (
-            <p className="mt-3">
-              <Link href="/pedidos/nuevo" className={linkClass}>
-                Crear el primero
-              </Link>
-            </p>
-          ) : null}
-        </div>
+        <EmptyState
+          icon="list"
+          title={filtered ? NO_ORDER_RESULTS_MESSAGE : NO_ORDERS_MESSAGE}
+          description={
+            filtered
+              ? "Probá con otras palabras o quitá algún filtro."
+              : "Los pedidos que cargues o que deje el agente aparecen acá, con su estado."
+          }
+          actions={
+            filtered
+              ? [
+                  {
+                    href: "/pedidos",
+                    label: "Limpiar filtros",
+                    variant: "outline",
+                  },
+                ]
+              : isAdmin
+                ? [
+                    {
+                      href: "/pedidos/nuevo",
+                      label: "Crear el primero",
+                      variant: "primary",
+                    },
+                  ]
+                : []
+          }
+        />
       ) : (
         <>
           <div className={`mt-8 hidden overflow-x-auto md:block ${cardClass}`}>

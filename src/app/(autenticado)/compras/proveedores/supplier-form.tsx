@@ -10,6 +10,7 @@ import {
   labelClass,
   secondaryLinkClass,
 } from "@/app/_components/form-styles";
+import { useUnsavedChanges } from "@/app/_components/unsaved-changes";
 import { SectionCard } from "@/app/_components/section-card";
 import { createSupplierAction, updateSupplierAction } from "./actions";
 import {
@@ -90,6 +91,7 @@ export function SupplierForm({
     initialState,
   );
   const errorRef = useRef<HTMLParagraphElement>(null);
+  const formRef = useUnsavedChanges();
   const failed = state.status === "error";
   // Tras un rechazo, React reinicia el formulario a estos valores: lo escrito se conserva.
   const shown = failed ? state.values : values;
@@ -109,7 +111,7 @@ export function SupplierForm({
     : "/compras/proveedores";
 
   return (
-    <form action={formAction} className="flex flex-col gap-6">
+    <form action={formAction} className="flex flex-col gap-6" ref={formRef}>
       {supplierId ? (
         <input type="hidden" name="supplierId" value={supplierId} />
       ) : null}

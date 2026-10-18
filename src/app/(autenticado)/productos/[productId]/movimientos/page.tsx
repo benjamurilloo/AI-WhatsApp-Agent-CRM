@@ -17,11 +17,11 @@ import {
   inlineButtonClass,
   labelClass,
   linkClass,
-  noticeClass,
   selectClass,
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
+import { ActionNotice } from "@/app/_components/action-notice";
 import { Icon } from "@/app/_components/icons";
 import { PageNotice } from "@/app/_components/page-notice";
 import { Pagination, shownRangeText } from "@/app/_components/pagination";
@@ -156,7 +156,7 @@ export default async function MovementsPage({
       />
 
       <div role="status" className="mt-4 empty:hidden">
-        {notice ? <p className={noticeClass}>{notice}</p> : null}
+        {notice ? <ActionNotice>{notice}</ActionNotice> : null}
       </div>
 
       <ProductSubNav productId={product.id} current="movimientos" />

@@ -13,6 +13,7 @@ import {
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
+import { EmptyState } from "@/app/_components/empty-state";
 import { PageHeader, SearchIcon } from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
 import { Pagination, shownRangeText } from "@/app/_components/pagination";
@@ -105,9 +106,27 @@ export default async function RefundsPage({
       </form>
 
       {result.total === 0 ? (
-        <div className={`mt-6 ${cardClass} p-6`}>
-          <p>{number ? NO_REFUND_RESULTS_MESSAGE : NO_REFUNDS_MESSAGE}</p>
-        </div>
+        <EmptyState
+          icon="undo"
+          title={number ? NO_REFUND_RESULTS_MESSAGE : NO_REFUNDS_MESSAGE}
+          description={
+            number
+              ? "Revisá el número: se busca completo, con su serie."
+              : "Las devoluciones se registran desde la cuenta de un cliente o desde una venta anulada."
+          }
+          actions={
+            number
+              ? [
+                  {
+                    href: "/caja/devoluciones",
+                    label: "Limpiar filtros",
+                    variant: "outline",
+                  },
+                ]
+              : []
+          }
+          className="mt-6"
+        />
       ) : (
         <>
           <div

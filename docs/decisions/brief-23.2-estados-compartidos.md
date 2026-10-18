@@ -90,6 +90,8 @@ Un componente `EmptyState`, con el ícono de la sección en un círculo `primary
 
 *Recomendación: (a).* El esqueleto genérico se reemplaza pantalla por pantalla en la Fase 24.
 
+*Nota del 2026-10-17, durante la implementación (decisión del usuario)*: **(a) se descarta.** Con `loading.tsx`, cada pantalla autenticada llega por streaming, y sin JavaScript el contenido queda oculto detrás del esqueleto: los dos primeros casos «sin JavaScript» de la suite completa vencieron, y sin el archivo pasan en 4,0 y 2,9 s. El usuario eligió **una barra de progreso** en su lugar (`navigation-progress.tsx`): desde el clic en un enlace interno o el envío de un filtro GET hasta que cambia la URL, una barra fina arriba y «Cargando…» en una región `aria-live="polite"` sin rol. Con `role="status"`, la región vacía, que está siempre en el marco, sumaba un segundo «status» a cada pantalla y rompía los 13 casos que buscan el aviso con `getByRole("status")`. Sin JavaScript no aparece y todo funciona como antes. El esqueleto en línea de la ficha del cliente se conserva. Los esqueletos con la forma de cada pantalla siguen en la Fase 24, sin `loading.tsx` mientras haya casos sin JavaScript.
+
 ### D-4 — El error y la página no encontrada
 
 - **`error.tsx` en `(autenticado)`**, dentro del marco:
@@ -143,7 +145,7 @@ Un hook `useUnsavedChanges(form)` en las cinco fichas de H-5 (alta y edición). 
 
 1. Registrar la resolución de D-1 a D-8.
 2. **`EmptyState`** según D-2 en `src/app/_components/`, aplicado en las 18 listas principales de H-3, con su test unitario.
-3. **Carga** según D-3: `loading.tsx` en `(autenticado)` y un componente `Skeleton` compartido; los dos «Cargando…» de la ficha del cliente.
+3. **Carga** según D-3: ~~`loading.tsx` en `(autenticado)` y un componente `Skeleton` compartido~~ la barra de progreso de la nota de D-3; los dos «Cargando…» de la ficha del cliente.
 4. **Error** según D-4: `error.tsx` en `(autenticado)`, `not-found.tsx` y `global-error.tsx` en la raíz, con sus tests unitarios.
 5. **`ActionNotice`** según D-5, en los 24 lugares de H-4.
 6. **`useUnsavedChanges`** según D-6, en las fichas de cliente, producto, información, horario y proveedor.
@@ -168,7 +170,7 @@ Un hook `useUnsavedChanges(form)` en las cinco fichas de H-5 (alta y edición). 
 ## Criterios de aceptación
 
 - **AC-1**: las 18 listas muestran el vacío y el sin resultados con el ícono, el título de hoy, una descripción y las acciones de D-2, según el rol.
-- **AC-2**: mientras una pantalla carga, se ve el esqueleto, y un lector de pantalla anuncia «Cargando…».
+- **AC-2**: mientras una pantalla carga, se ve el esqueleto, y un lector de pantalla anuncia «Cargando…». *Desde la nota de D-3*: se ve la barra de progreso, con el mismo anuncio, y sin JavaScript nada cambia.
 - **AC-3**: una excepción no prevista muestra el error dentro del marco, con «Reintentar», «Ir al inicio» y el código, sin el mensaje de la excepción. Lo prueba el render unitario y una pasada a mano.
 - **AC-4**: una URL inexistente muestra el 404 en castellano con «Ir al inicio».
 - **AC-5**: el aviso después de una acción lleva el tilde y `role="status"` en los 24 lugares.

@@ -17,6 +17,7 @@ import {
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
+import { EmptyState } from "@/app/_components/empty-state";
 import { Icon } from "@/app/_components/icons";
 import { PageHeader, SearchIcon } from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
@@ -158,20 +159,36 @@ export default async function PurchaseOrdersPage({
       ) : null}
 
       {result.total === 0 ? (
-        <div className={`mt-8 ${cardClass} p-6`}>
-          <p>
-            {filtered
+        <EmptyState
+          icon="fileText"
+          title={
+            filtered
               ? NO_PURCHASE_ORDER_RESULTS_MESSAGE
-              : NO_PURCHASE_ORDERS_MESSAGE}
-          </p>
-          {!filtered ? (
-            <p className="mt-3">
-              <Link href="/compras/ordenes/nueva" className={linkClass}>
-                Crear la primera
-              </Link>
-            </p>
-          ) : null}
-        </div>
+              : NO_PURCHASE_ORDERS_MESSAGE
+          }
+          description={
+            filtered
+              ? "Probá con otras palabras o quitá algún filtro."
+              : "Una orden de compra es opcional: sirve para saber qué se pidió y qué falta recibir."
+          }
+          actions={
+            filtered
+              ? [
+                  {
+                    href: "/compras/ordenes",
+                    label: "Limpiar filtros",
+                    variant: "outline",
+                  },
+                ]
+              : [
+                  {
+                    href: "/compras/ordenes/nueva",
+                    label: "Crear la primera",
+                    variant: "primary",
+                  },
+                ]
+          }
+        />
       ) : (
         <>
           <div className={`mt-8 hidden overflow-x-auto md:block ${cardClass}`}>

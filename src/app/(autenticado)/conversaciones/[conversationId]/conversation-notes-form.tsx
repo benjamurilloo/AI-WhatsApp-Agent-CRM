@@ -13,7 +13,6 @@ import {
   inlineButtonClass,
   inputClass,
   labelClass,
-  noticeClass,
   secondaryButtonClass,
 } from "@/app/_components/form-styles";
 import { addConversationNoteAction, loadOlderNotesAction } from "../actions";
@@ -24,6 +23,7 @@ import {
   type NoteFormState,
   type NoteItem,
 } from "../messages";
+import { ActionNotice } from "@/app/_components/action-notice";
 
 // Tarjeta «Notas» de la pantalla 9 (brief-16.4, D-6): la lista de la más reciente a la más vieja,
 // de a 25, para admin y viewer, y arriba el formulario, solo para admin. El texto se renderiza como
@@ -110,7 +110,7 @@ function NoteForm({
       </button>
       <div aria-live="polite" aria-atomic="true">
         {state.status === "done" ? (
-          <p className={noticeClass}>{state.message}</p>
+          <ActionNotice>{state.message}</ActionNotice>
         ) : state.status === "error" ? (
           <p id="nota-error" className={fieldErrorClass}>
             {state.message}

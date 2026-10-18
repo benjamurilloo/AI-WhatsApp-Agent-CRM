@@ -9,6 +9,7 @@ import { getSaleForOrder } from "@/modules/sales";
 import { requireSession } from "@/app/_auth/session";
 import { auditActorLabels } from "@/app/(autenticado)/_audit/actor";
 import { PhoneText } from "@/app/(autenticado)/clientes/phone-text";
+import { ActionNotice } from "@/app/_components/action-notice";
 import { AuditCard } from "@/app/_components/audit-card";
 import {
   BackLink,
@@ -20,7 +21,6 @@ import { Icon } from "@/app/_components/icons";
 import {
   inlineButtonClass,
   linkClass,
-  noticeClass,
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
@@ -159,9 +159,9 @@ export default async function OrderPage({
       />
 
       <div role="status" className="mt-4 empty:hidden">
-        {notice ? <p className={noticeClass}>{notice}</p> : null}
+        {notice ? <ActionNotice>{notice}</ActionNotice> : null}
         {newDeposit ? (
-          <p className={noticeClass}>
+          <ActionNotice>
             Se registró la seña{" "}
             <Link
               href={`/cobros/${newDeposit.id}`}
@@ -170,7 +170,7 @@ export default async function OrderPage({
               {newDeposit.displayNumber}
             </Link>
             .
-          </p>
+          </ActionNotice>
         ) : null}
       </div>
 

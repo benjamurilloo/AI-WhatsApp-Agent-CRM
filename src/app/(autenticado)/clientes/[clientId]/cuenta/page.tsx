@@ -12,11 +12,11 @@ import {
   cardClass,
   inactiveBadgeClass,
   linkClass,
-  noticeClass,
   primaryLinkClass,
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
+import { ActionNotice } from "@/app/_components/action-notice";
 import { PageNotice } from "@/app/_components/page-notice";
 import {
   formatDate,
@@ -111,7 +111,7 @@ export default async function ClientStatementPage({
         />
         <div role="status" className="mt-4 empty:hidden">
           {newReceipt ? (
-            <p className={noticeClass}>
+            <ActionNotice>
               {ACCOUNT_RECEIPT_NOTICE}{" "}
               <Link
                 href={`/cobros/${newReceipt.id}`}
@@ -119,7 +119,7 @@ export default async function ClientStatementPage({
               >
                 {newReceipt.displayNumber}
               </Link>
-            </p>
+            </ActionNotice>
           ) : null}
         </div>
       </div>

@@ -8,17 +8,14 @@ import {
 } from "@/modules/knowledge";
 import { requireSession } from "@/app/_auth/session";
 import { auditActorLabels } from "@/app/(autenticado)/_audit/actor";
+import { ActionNotice } from "@/app/_components/action-notice";
 import { AuditCard } from "@/app/_components/audit-card";
 import {
   BackLink,
   DetailHeader,
   HeaderIcon,
 } from "@/app/_components/detail-header";
-import {
-  linkClass,
-  noticeClass,
-  secondaryLinkClass,
-} from "@/app/_components/form-styles";
+import { linkClass, secondaryLinkClass } from "@/app/_components/form-styles";
 import { Icon } from "@/app/_components/icons";
 import { PageNotice } from "@/app/_components/page-notice";
 import { SectionCard } from "@/app/_components/section-card";
@@ -105,7 +102,7 @@ export default async function BusinessHoursPage({
       />
 
       <div role="status" className="mt-4 empty:hidden">
-        {notice ? <p className={noticeClass}>{notice}</p> : null}
+        {notice ? <ActionNotice>{notice}</ActionNotice> : null}
       </div>
 
       {result.hoursEntry ? (

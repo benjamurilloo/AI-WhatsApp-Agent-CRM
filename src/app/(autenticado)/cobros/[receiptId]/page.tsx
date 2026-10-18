@@ -12,8 +12,8 @@ import {
   cardClass,
   dangerOutlineLinkClass,
   linkClass,
-  noticeClass,
 } from "@/app/_components/form-styles";
+import { ActionNotice } from "@/app/_components/action-notice";
 import { PageNotice } from "@/app/_components/page-notice";
 import {
   formatFullDateTime,
@@ -122,7 +122,7 @@ export default async function ReceiptPage({
         />
         <div role="status" className="mt-4 empty:hidden">
           {query.anulado && receipt.voided ? (
-            <p className={noticeClass}>{RECEIPT_VOID_NOTICE}</p>
+            <ActionNotice>{RECEIPT_VOID_NOTICE}</ActionNotice>
           ) : null}
         </div>
         {receipt.voided ? (

@@ -15,6 +15,7 @@ import {
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
+import { EmptyState } from "@/app/_components/empty-state";
 import { Avatar } from "@/app/_components/avatar";
 import { Icon } from "@/app/_components/icons";
 import { PageHeader } from "@/app/_components/page-header";
@@ -113,14 +114,14 @@ export default async function UsersPage({
       </form>
 
       {result.total === 0 ? (
-        <div className={`mt-8 ${cardClass} p-6`}>
-          <p>{NO_RESULTS_MESSAGE}</p>
-          <p className="mt-3">
-            <Link href="/usuarios" className={linkClass}>
-              Limpiar filtros
-            </Link>
-          </p>
-        </div>
+        <EmptyState
+          icon="user"
+          title={NO_RESULTS_MESSAGE}
+          description={"Probá con otras palabras o quitá algún filtro."}
+          actions={[
+            { href: "/usuarios", label: "Limpiar filtros", variant: "outline" },
+          ]}
+        />
       ) : (
         <>
           <div className={`mt-8 hidden overflow-hidden md:block ${cardClass}`}>

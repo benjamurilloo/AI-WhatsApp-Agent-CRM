@@ -13,6 +13,7 @@ import {
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
+import { EmptyState } from "@/app/_components/empty-state";
 import { PageHeader, SearchIcon } from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
 import { Pagination, shownRangeText } from "@/app/_components/pagination";
@@ -104,9 +105,27 @@ export default async function ReceiptsPage({
       </form>
 
       {result.total === 0 ? (
-        <div className={`mt-6 ${cardClass} p-6`}>
-          <p>{number ? NO_RECEIPT_RESULTS_MESSAGE : NO_RECEIPTS_MESSAGE}</p>
-        </div>
+        <EmptyState
+          icon="receipt"
+          title={number ? NO_RECEIPT_RESULTS_MESSAGE : NO_RECEIPTS_MESSAGE}
+          description={
+            number
+              ? "Revisá el número: se busca completo, con su serie."
+              : "Los cobros se registran desde una venta, un pedido o la cuenta de un cliente."
+          }
+          actions={
+            number
+              ? [
+                  {
+                    href: "/caja/cobros",
+                    label: "Limpiar filtros",
+                    variant: "outline",
+                  },
+                ]
+              : []
+          }
+          className="mt-6"
+        />
       ) : (
         <>
           <div

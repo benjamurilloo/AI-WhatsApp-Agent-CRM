@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getMember } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
+import { ActionNotice } from "@/app/_components/action-notice";
 import { Avatar } from "@/app/_components/avatar";
 import { BackLink, DetailHeader } from "@/app/_components/detail-header";
 import { DetailList } from "@/app/_components/detail-list";
@@ -9,7 +10,6 @@ import {
   activeBadgeClass,
   dangerOutlineLinkClass,
   inactiveBadgeClass,
-  noticeClass,
 } from "@/app/_components/form-styles";
 import { Icon } from "@/app/_components/icons";
 import { PageNotice } from "@/app/_components/page-notice";
@@ -78,7 +78,7 @@ export default async function MemberPage({
       />
 
       <div role="status" className="mt-4 empty:hidden">
-        {notice ? <p className={noticeClass}>{notice}</p> : null}
+        {notice ? <ActionNotice>{notice}</ActionNotice> : null}
       </div>
 
       <SectionCard

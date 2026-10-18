@@ -13,8 +13,8 @@ import {
   cardClass,
   dangerOutlineLinkClass,
   linkClass,
-  noticeClass,
 } from "@/app/_components/form-styles";
+import { ActionNotice } from "@/app/_components/action-notice";
 import { Icon } from "@/app/_components/icons";
 import { PageNotice } from "@/app/_components/page-notice";
 import { SectionCard } from "@/app/_components/section-card";
@@ -104,7 +104,7 @@ export default async function SupplierPaymentPage({
           actions={<PrintButton />}
         />
         <div role="status" className="mt-4 empty:hidden">
-          {notice ? <p className={noticeClass}>{notice}</p> : null}
+          {notice ? <ActionNotice>{notice}</ActionNotice> : null}
         </div>
         {voided ? (
           <p className="mt-4 rounded-md border border-border bg-surface-muted px-3 py-2 text-sm">

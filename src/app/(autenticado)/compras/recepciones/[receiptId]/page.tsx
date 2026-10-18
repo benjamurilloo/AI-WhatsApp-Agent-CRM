@@ -11,6 +11,7 @@ import {
 } from "@/modules/purchasing";
 import { requireSession } from "@/app/_auth/session";
 import { auditActorLabels } from "@/app/(autenticado)/_audit/actor";
+import { ActionNotice } from "@/app/_components/action-notice";
 import { AuditCard } from "@/app/_components/audit-card";
 import {
   BackLink,
@@ -21,7 +22,6 @@ import {
   cardClass,
   dangerOutlineLinkClass,
   linkClass,
-  noticeClass,
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
@@ -136,7 +136,7 @@ export default async function GoodsReceiptPage({
         />
 
         <div role="status" className="mt-4 empty:hidden">
-          {notice ? <p className={noticeClass}>{notice}</p> : null}
+          {notice ? <ActionNotice>{notice}</ActionNotice> : null}
         </div>
         {receiptVoid ? (
           <p className="mt-4 rounded-md border border-border bg-surface-muted px-3 py-2 text-sm">

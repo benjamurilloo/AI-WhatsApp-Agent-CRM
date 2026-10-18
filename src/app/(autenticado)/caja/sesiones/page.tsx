@@ -12,6 +12,7 @@ import {
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
+import { EmptyState } from "@/app/_components/empty-state";
 import { PageHeader, SearchIcon } from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
 import { Pagination, shownRangeText } from "@/app/_components/pagination";
@@ -101,9 +102,27 @@ export default async function CashSessionsPage({
       </form>
 
       {result.total === 0 ? (
-        <div className={`mt-6 ${cardClass} p-6`}>
-          <p>{number ? NO_SESSION_RESULTS_MESSAGE : NO_SESSIONS_MESSAGE}</p>
-        </div>
+        <EmptyState
+          icon="banknote"
+          title={number ? NO_SESSION_RESULTS_MESSAGE : NO_SESSIONS_MESSAGE}
+          description={
+            number
+              ? "Revisá el número: se busca completo, con su serie."
+              : "Cada vez que se abre y se cierra la caja queda una sesión con su arqueo."
+          }
+          actions={
+            number
+              ? [
+                  {
+                    href: "/caja/sesiones",
+                    label: "Limpiar filtros",
+                    variant: "outline",
+                  },
+                ]
+              : []
+          }
+          className="mt-6"
+        />
       ) : (
         <>
           <div

@@ -10,6 +10,7 @@ import {
   labelClass,
   secondaryLinkClass,
 } from "@/app/_components/form-styles";
+import { useUnsavedChanges } from "@/app/_components/unsaved-changes";
 import type { IconName } from "@/app/_components/icons";
 import { SectionCard } from "@/app/_components/section-card";
 import { SuggestInput } from "@/app/_components/suggest-input";
@@ -128,6 +129,7 @@ export function KnowledgeForm({
     initialState,
   );
   const errorRef = useRef<HTMLParagraphElement>(null);
+  const formRef = useUnsavedChanges();
   const failed = state.status === "error";
   const shown = failed ? state.values : values;
 
@@ -142,7 +144,7 @@ export function KnowledgeForm({
   }, [state]);
 
   return (
-    <form action={formAction} className="flex flex-col gap-6">
+    <form action={formAction} className="flex flex-col gap-6" ref={formRef}>
       {entryId ? <input type="hidden" name="entryId" value={entryId} /> : null}
 
       {GROUPS.map((group) => (

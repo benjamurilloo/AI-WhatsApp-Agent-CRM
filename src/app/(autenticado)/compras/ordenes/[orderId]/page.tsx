@@ -9,6 +9,7 @@ import {
 } from "@/modules/purchasing";
 import { requireSession } from "@/app/_auth/session";
 import { auditActorLabels } from "@/app/(autenticado)/_audit/actor";
+import { ActionNotice } from "@/app/_components/action-notice";
 import { AuditCard } from "@/app/_components/audit-card";
 import {
   BackLink,
@@ -20,7 +21,6 @@ import {
   dangerOutlineLinkClass,
   inactiveBadgeClass,
   linkClass,
-  noticeClass,
   primaryLinkClass,
   secondaryLinkClass,
   sectionTitleClass,
@@ -173,7 +173,7 @@ export default async function PurchaseOrderPage({
         />
 
         <div role="status" className="mt-4 empty:hidden">
-          {notice ? <p className={noticeClass}>{notice}</p> : null}
+          {notice ? <ActionNotice>{notice}</ActionNotice> : null}
         </div>
 
         {confirming ? (

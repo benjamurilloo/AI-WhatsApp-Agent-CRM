@@ -12,6 +12,7 @@ import {
   linkClass,
   selectClass,
 } from "@/app/_components/form-styles";
+import { EmptyState } from "@/app/_components/empty-state";
 import { Icon } from "@/app/_components/icons";
 import { PageHeader, SearchIcon } from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
@@ -150,15 +151,26 @@ export default async function SupplierPaymentsPage({
       ) : null}
 
       {payments.total === 0 ? (
-        <div className={`mt-8 ${cardClass} p-6`}>
-          <p>{filtered ? NO_PAYMENT_RESULTS_MESSAGE : NO_PAYMENTS_MESSAGE}</p>
-          {!filtered ? (
-            <p className="mt-3 text-sm text-muted">
-              Un pago se registra desde una recepción, con «Registrar un pago»,
-              o desde la ficha de un proveedor, con «Pago a cuenta».
-            </p>
-          ) : null}
-        </div>
+        <EmptyState
+          icon="banknote"
+          title={filtered ? NO_PAYMENT_RESULTS_MESSAGE : NO_PAYMENTS_MESSAGE}
+          description={
+            filtered
+              ? "Probá con otras palabras o quitá algún filtro."
+              : "Un pago se registra desde una recepción, con «Registrar un pago», o desde la ficha de un proveedor, con «Pago a cuenta»."
+          }
+          actions={
+            filtered
+              ? [
+                  {
+                    href: "/compras/pagos",
+                    label: "Limpiar filtros",
+                    variant: "outline",
+                  },
+                ]
+              : []
+          }
+        />
       ) : (
         <>
           <div className={`mt-8 ${cardClass} p-5 sm:p-6`}>

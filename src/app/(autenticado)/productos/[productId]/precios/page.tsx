@@ -10,10 +10,10 @@ import {
 } from "@/app/_components/detail-header";
 import {
   cardClass,
-  noticeClass,
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
+import { ActionNotice } from "@/app/_components/action-notice";
 import { PageNotice } from "@/app/_components/page-notice";
 import { Pagination, shownRangeText } from "@/app/_components/pagination";
 import { SectionCard } from "@/app/_components/section-card";
@@ -112,7 +112,7 @@ export default async function PricesPage({
       />
 
       <div role="status" className="mt-4 empty:hidden">
-        {notice ? <p className={noticeClass}>{notice}</p> : null}
+        {notice ? <ActionNotice>{notice}</ActionNotice> : null}
       </div>
 
       <ProductSubNav productId={product.id} current="precios" />

@@ -12,6 +12,7 @@ import {
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
+import { EmptyState } from "@/app/_components/empty-state";
 import { PageHeader } from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
 import { Pagination, shownRangeText } from "@/app/_components/pagination";
@@ -112,13 +113,16 @@ export default async function DebtorsPage({
       ) : null}
 
       {debtors.total === 0 ? (
-        <div className={`mt-6 ${cardClass} p-6`}>
-          <p>
-            {currency
+        <EmptyState
+          icon="circleCheck"
+          title={
+            currency
               ? `Nadie debe en ${currency}.`
-              : "Ningún cliente debe nada."}
-          </p>
-        </div>
+              : "Ningún cliente debe nada."
+          }
+          description="Acá aparecen los clientes con ventas que todavía falta cobrar."
+          className="mt-6"
+        />
       ) : (
         <>
           <div

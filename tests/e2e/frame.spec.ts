@@ -283,3 +283,62 @@ test("caso 3: brief-15.5 la marca muestra el símbolo de Vixora y la pestaña ti
   await expect(name).toHaveCount(1);
   await expect(motto).toHaveCount(0);
 });
+
+test("brief-23.2: una dirección que no existe muestra el 404 en castellano con el camino al inicio", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await login(page, ADMIN);
+
+  const response = await page.goto("/no-existe");
+  expect(response?.status()).toBe(404);
+  await expect(page).toHaveTitle(/Página no encontrada/);
+  await expect(
+    page.getByRole("heading", {
+      level: 1,
+      name: "No encontramos esta página",
+    }),
+  ).toBeVisible();
+  await expectAccessible(page, "404");
+  await page.setViewportSize({ width: 375, height: 800 });
+  await expectAccessible(page, "404 a 375 px");
+
+  await page.getByRole("link", { name: "Ir al inicio" }).click();
+  await expect(page).toHaveURL("/");
+});
+
+test("brief-23.2: al navegar, la barra de carga anuncia «Cargando…» hasta que llega la pantalla", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await login(page, ADMIN);
+  await expect(
+    page.getByRole("button", { name: "Menú del usuario" }),
+  ).toBeVisible();
+  const loading = page
+    .locator('[aria-live="polite"]')
+    .filter({ hasText: "Cargando…" });
+  await expect(loading).toHaveCount(0);
+
+  // Se retiene la respuesta de la pantalla para ver el estado intermedio.
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(/\/productos\?_rsc=/, async (route) => {
+    await held;
+    await route.continue();
+  });
+  await page
+    .getByRole("navigation", { name: "Principal" })
+    .getByRole("link", { name: "Productos" })
+    .click();
+  await expect(loading).toHaveCount(1);
+  release();
+
+  await expect(page).toHaveURL("/productos");
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Productos" }),
+  ).toBeVisible();
+  await expect(loading).toHaveCount(0);
+});

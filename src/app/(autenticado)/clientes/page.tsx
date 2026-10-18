@@ -21,6 +21,7 @@ import {
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
+import { EmptyState } from "@/app/_components/empty-state";
 import { Avatar } from "@/app/_components/avatar";
 import { Icon } from "@/app/_components/icons";
 import {
@@ -269,22 +270,34 @@ export default async function ClientsPage({
       </form>
 
       {result.total === 0 ? (
-        <div className={`mt-8 ${cardClass} p-6`}>
-          <p>{filtered ? NO_CLIENT_RESULTS_MESSAGE : NO_CLIENTS_MESSAGE}</p>
-          {filtered ? (
-            <p className="mt-3">
-              <Link href="/clientes" className={linkClass}>
-                Limpiar filtros
-              </Link>
-            </p>
-          ) : isAdmin ? (
-            <p className="mt-3">
-              <Link href="/clientes/nuevo" className={linkClass}>
-                Crear el primero
-              </Link>
-            </p>
-          ) : null}
-        </div>
+        <EmptyState
+          icon="users"
+          title={filtered ? NO_CLIENT_RESULTS_MESSAGE : NO_CLIENTS_MESSAGE}
+          description={
+            filtered
+              ? "Probá con otras palabras o quitá algún filtro."
+              : "Cada cliente que cargues o que escriba por WhatsApp aparece acá, con su última interacción."
+          }
+          actions={
+            filtered
+              ? [
+                  {
+                    href: "/clientes",
+                    label: "Limpiar filtros",
+                    variant: "outline",
+                  },
+                ]
+              : isAdmin
+                ? [
+                    {
+                      href: "/clientes/nuevo",
+                      label: "Crear el primero",
+                      variant: "primary",
+                    },
+                  ]
+                : []
+          }
+        />
       ) : (
         <>
           <div className={`mt-8 hidden overflow-hidden md:block ${cardClass}`}>

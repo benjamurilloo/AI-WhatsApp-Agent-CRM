@@ -18,6 +18,7 @@ import {
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
+import { EmptyState } from "@/app/_components/empty-state";
 import { Icon } from "@/app/_components/icons";
 import {
   EditLink,
@@ -125,20 +126,32 @@ export default async function SuppliersPage({
       </form>
 
       {result.total === 0 ? (
-        <div className={`mt-8 ${cardClass} p-6`}>
-          <p>{filtered ? NO_SUPPLIER_RESULTS_MESSAGE : NO_SUPPLIERS_MESSAGE}</p>
-          <p className="mt-3">
-            {filtered ? (
-              <Link href="/compras/proveedores" className={linkClass}>
-                Limpiar filtros
-              </Link>
-            ) : (
-              <Link href="/compras/proveedores/nuevo" className={linkClass}>
-                Crear el primero
-              </Link>
-            )}
-          </p>
-        </div>
+        <EmptyState
+          icon="truck"
+          title={filtered ? NO_SUPPLIER_RESULTS_MESSAGE : NO_SUPPLIERS_MESSAGE}
+          description={
+            filtered
+              ? "Probá con otras palabras o quitá algún filtro."
+              : "Cada proveedor que cargues aparece acá, con sus órdenes, recepciones y pagos."
+          }
+          actions={
+            filtered
+              ? [
+                  {
+                    href: "/compras/proveedores",
+                    label: "Limpiar filtros",
+                    variant: "outline",
+                  },
+                ]
+              : [
+                  {
+                    href: "/compras/proveedores/nuevo",
+                    label: "Crear el primero",
+                    variant: "primary",
+                  },
+                ]
+          }
+        />
       ) : (
         <>
           <div className={`mt-8 hidden overflow-hidden md:block ${cardClass}`}>

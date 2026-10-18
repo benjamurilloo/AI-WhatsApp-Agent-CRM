@@ -10,6 +10,7 @@ import {
   labelClass,
   secondaryLinkClass,
 } from "@/app/_components/form-styles";
+import { useUnsavedChanges } from "@/app/_components/unsaved-changes";
 import { SectionCard } from "@/app/_components/section-card";
 import { SuggestInput } from "@/app/_components/suggest-input";
 import { createProductAction, updateProductAction } from "./actions";
@@ -161,6 +162,7 @@ export function ProductForm({
     initialState,
   );
   const errorRef = useRef<HTMLParagraphElement>(null);
+  const formRef = useUnsavedChanges();
   const failed = state.status === "error";
   const shown = failed ? state.values : values;
 
@@ -258,7 +260,7 @@ export function ProductForm({
   }
 
   return (
-    <form action={formAction} className="flex flex-col gap-6">
+    <form action={formAction} className="flex flex-col gap-6" ref={formRef}>
       {productId ? (
         <input type="hidden" name="productId" value={productId} />
       ) : null}
