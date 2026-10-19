@@ -13,7 +13,7 @@ generated_at: 2026-10-18
 - **Nivel de validación alcanzable**: validado localmente y en CI, validado en integración, y desplegado y recorrido por el usuario en la organización demo «iPhone Demo».
 - **Orden**: tercera subfase de construcción de la Fase 29, según el [ADR 0025](0025-tipo-de-cambio.md), punto 13, que divide el tipo de cambio en 29.4, 29.4.2 y 29.4.3. En Notion, la tarea `3fd702be6f4e81848227fe4d2fa7b0c1` está en «En proceso» desde el 2026-10-18.
 - **No abre ni cierra un gate.**
-- **Estado de este documento**: **aprobado el 2026-10-18** por el usuario, con las recomendaciones de D-1 a D-14.
+- **Estado de este documento**: **aprobado el 2026-10-18** por el usuario, con las recomendaciones de D-1 a D-14; **cerrado el 2026-10-19** (§Cierre).
 
 ## Decisión del usuario que abre la construcción
 
@@ -298,3 +298,16 @@ Pedir autorización explícita, en su turno, **antes de**:
 - cualquier commit, push o despliegue;
 - ejecutar la migración en producción;
 - fijar la moneda principal en producción.
+
+## Cierre
+
+- **2026-10-19**: implementada, revisada, desplegada y recorrida por el usuario, que dijo «salió todo perfecto». AC-1 a AC-9 cumplidos.
+- **Commits** `5943d30` (la implementación) y `c3e9af5` (tres archivos formateados con Prettier: la CI de `5943d30` falló solo en el paso de formato, run 39247117539). La CI de `c3e9af5` en `success` (run 39247610517, leída por el SHA completo). **Producción corre `c3e9af5`**, con 54 migraciones (la 0053 incluida); antes corría `46e5338`, anotado para volver atrás. La 0053 es aditiva: el código anterior no lee sus tablas ni sus columnas nuevas.
+- **En producción**, con el comando del runbook (§1c) corrido por el usuario en su terminal: «iPhone Demo» con USD como moneda principal y ARS como la otra. El usuario cargó la primera cotización y cobró en pesos. Recuentos leídos después: «iPhone Demo», USD, 1 configuración, 1 cotización y 2 cobros con lo recibido en otra moneda. **«Demostración Vixora» quedó intacta**: sin moneda principal, 0 configuraciones, 0 cotizaciones y 0 cobros en otra moneda.
+- **Pruebas**, todas locales antes del commit, además de la CI:
+  - unitarios y guardas: 1696;
+  - integración contra PostgreSQL: 84 archivos, 1580 tests. En cuatro corridas completas, cada una tuvo un solo problema y siempre en un test distinto, ninguno de la 29.4: los scripts de la 29.2, los seeds contra la base productiva (timeout), el rendimiento del detalle de una sesión con 500 pagos y una caída del worker de Vitest en `read-api-messages`. Los cuatro pasaron solos. El de rendimiento se midió también sin la 29.4, en un worktree de `64c7988`: 672, 894 y 456 ms contra un umbral de 754. Ya oscilaba alrededor del umbral;
+  - end-to-end completo: 250 de 251. Falló el caso 13 de `dashboard.spec.ts`, que no es de la 29.4 y pasó solo. `exchange.spec.ts`: 6 de 6.
+- **Nivel**: validado en integración (pantallas ↔ servicio ↔ base, con end-to-end) y desplegado en producción para una organización demo. No hay ningún negocio real usándolo.
+- **Revisión**: la R1 fue independiente (P-10). Las correcciones de sus hallazgos son autoevaluación, sin una segunda revisión.
+- **Notion**: la 29.4 en «Completado».

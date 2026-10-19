@@ -2,6 +2,27 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-19 — 29.4: el tipo de cambio
+
+Cierra el 2026-10-19, desplegada en producción (`c3e9af5`) y recorrida por el usuario ([brief-29.4](docs/decisions/brief-29.4-el-tipo-de-cambio.md), §Cierre). Construye la primera parte del [ADR 0025](docs/decisions/0025-tipo-de-cambio.md), sobre la organización demo «iPhone Demo», como la 29.2.
+
+**Certifica:**
+- **La moneda principal**, opcional y fijada una sola vez con el script `org:currency`, auditada, en la misma transacción que la otra moneda de la cotización. Sin ella, nada cambia.
+- **El módulo `fx`** (migración 0053): la configuración y las cotizaciones, de solo inserción, con **Caja → Cotización** para cargarla a mano, el historial, el aviso de una cotización de más de 24 horas hábiles y la confirmación de un cambio de más de un 10 %. Un `viewer` la ve y no la carga.
+- **Cobrar recibiendo la otra moneda** contra una venta, un pedido o la cuenta en la moneda principal: el cobro guarda lo aplicado y lo recibido con la cotización usada, vigente o acordada; la cuenta baja lo aplicado y la caja cuenta lo recibido, también al anular. Lo aplicado no supera lo que falta salvo un centavo de redondeo, que se ajusta. Sin vigente, o si cambió mientras se cargaba, se rechaza.
+- **Una sola conversión**, en `src/shared/money/`, con la cotización en millonésimos y sin `number`, probada con propiedades sobre 5.000 casos con semilla fija.
+- **Los totales de referencia** en la moneda principal en la caja, el cierre, la sesión, la ficha, el estado de cuenta y los deudores, sin guardarse.
+- **En producción**: «iPhone Demo» con USD y ARS, una cotización y dos cobros en pesos; «Demostración Vixora» intacta, comprobado con recuentos.
+- **Una revisión independiente** (R1, 9 hallazgos), verificada contra el código: seis corregidos y tres aceptados como límites (brief, P-10).
+
+**No certifica:**
+- ningún negocio real: el de iPhone sigue sin confirmar;
+- la lectura automática de DolarAPI ni el ajuste: son de la 29.4.2;
+- las devoluciones ni los pagos a proveedores en otra moneda: son de la 29.4.3;
+- una segunda revisión independiente de las correcciones, que son autoevaluación;
+- que la base impida fijar el par al revés o cambiar la moneda principal: lo impiden el runbook y el servicio (R1-4 y R1-5);
+- ningún cambio en los contratos del agente.
+
 ## 2026-10-18 — 29.2: capacidades y variantes
 
 Cierra el 2026-10-18, desplegada en producción (`46e5338`) y recorrida por el usuario ([brief-29.2](docs/decisions/brief-29.2-capacidades-y-variantes.md), §Cierre). Es la primera subfase de la Fase 29 que construye; el usuario decidió hacerla sin el negocio confirmado, sobre una organización demo aparte.
