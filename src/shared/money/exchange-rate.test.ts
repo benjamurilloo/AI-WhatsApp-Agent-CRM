@@ -41,7 +41,15 @@ describe("parseExchangeRateInput", () => {
   });
 
   it("rechaza lo que no es una cotización", () => {
-    for (const value of ["", "abc", "1565.5", "1,565.50", "15.65", "-1", "1,"]) {
+    for (const value of [
+      "",
+      "abc",
+      "1565.5",
+      "1,565.50",
+      "15.65",
+      "-1",
+      "1,",
+    ]) {
       expect(parseExchangeRateInput(value)).toEqual({
         ok: false,
         reason: "invalid",

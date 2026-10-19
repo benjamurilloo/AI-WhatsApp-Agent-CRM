@@ -176,7 +176,9 @@ const RATE_GROUPED = /^([1-9]\d{0,2}(?:\.\d{3})+)(?:,(\d+))?$/;
 
 export function parseExchangeRateInput(
   value: string,
-): { ok: true; rate: ExchangeRate } | { ok: false; reason: ExchangeRateRejection } {
+):
+  | { ok: true; rate: ExchangeRate }
+  | { ok: false; reason: ExchangeRateRejection } {
   const text = value.trim();
   const match = RATE_PLAIN.exec(text) ?? RATE_GROUPED.exec(text);
   if (!match) return { ok: false, reason: "invalid" };
@@ -205,8 +207,7 @@ export function formatExchangeRate(rate: ExchangeRate): string {
 export type ConversionDirection = "to_quote" | "to_base";
 
 export type ConversionResult =
-  | { ok: true; amount: Money }
-  | { ok: false; reason: "zero" | "too_large" };
+  { ok: true; amount: Money } | { ok: false; reason: "zero" | "too_large" };
 
 // La única conversión del CRM (ADR 0025, punto 3): el monto en centésimos, la cotización en
 // millonésimos, un solo redondeo a los decimales de la moneda de destino, con el medio hacia
@@ -233,8 +234,7 @@ export function convertMoney(input: {
   const step = 10n ** BigInt(2 - targetDecimals);
   const converted =
     direction === "to_quote"
-      ? divideRoundingHalfAwayFromZero(amount * rate, RATE_FACTOR * step) *
-        step
+      ? divideRoundingHalfAwayFromZero(amount * rate, RATE_FACTOR * step) * step
       : divideRoundingHalfAwayFromZero(amount * RATE_FACTOR, rate * step) *
         step;
   if (converted === 0n) return { ok: false, reason: "zero" };

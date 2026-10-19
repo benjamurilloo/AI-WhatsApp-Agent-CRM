@@ -79,8 +79,9 @@ export async function accountReceiptAction(
         log(result.code);
         // Si la vigente cambió mientras se cargaba, la página se vuelve a leer: el formulario muestra la
         // nueva equivalencia y manda su id (revisión independiente de la 29.4, R1-3).
-        if (isRateChange(result)) revalidatePath(`/clientes/${clientId}/cobrar`);
-          return {
+        if (isRateChange(result))
+          revalidatePath(`/clientes/${clientId}/cobrar`);
+        return {
           status: "error",
           requestId,
           values,
