@@ -4,6 +4,8 @@
 // No reutiliza src/shared/quantity: su parser lee «300.000» como 300, correcto para una cantidad
 // y un error de mil veces para un precio en una moneda sin decimales (brief-11.1, D-6).
 
+import { divideRoundingHalfAwayFromZero } from "./rounding";
+
 export type Money = bigint;
 
 const FACTOR = 100n;
@@ -121,4 +123,121 @@ export function formatMoney(amount: string, currency: string): string {
   return new Intl.NumberFormat("es-AR", { style: "currency", currency }).format(
     amount as `${number}`,
   );
+}
+
+export { divideRoundingHalfAwayFromZero };
+
+// --- La cotización (ADR 0025, punto 3; brief-29.4, D-5) ---
+//
+// Cuántas unidades de la otra moneda vale una de la principal (1 USD = 1.565 ARS), en
+// numeric(18, 6). En TypeScript, millonésimos como bigint, leídos y escritos como texto: nunca
+// number. El par va siempre en la dirección en la que la principal vale más, así que la cotización
+// es al menos 1 (ADR 0025, punto 3, R-M5).
+
+export type ExchangeRate = bigint;
+
+const RATE_FACTOR = 1_000_000n;
+
+export const MIN_EXCHANGE_RATE: ExchangeRate = RATE_FACTOR;
+
+// El mayor valor que admite numeric(18, 6): 999 999 999 999,999999.
+export const MAX_EXCHANGE_RATE: ExchangeRate = 999_999_999_999_999_999n;
+
+const RATE_DATABASE_PATTERN = /^(\d+)\.(\d{6})$/;
+
+export function exchangeRateFromDatabase(value: string): ExchangeRate {
+  const match = RATE_DATABASE_PATTERN.exec(value);
+  if (!match) {
+    throw new Error("Cotización con un formato distinto de numeric(18, 6).");
+  }
+  return BigInt(match[1]!) * RATE_FACTOR + BigInt(match[2]!);
+}
+
+export function exchangeRateToDatabase(value: ExchangeRate): string {
+  if (value < MIN_EXCHANGE_RATE) throw new Error("Cotización menor que 1.");
+  if (value > MAX_EXCHANGE_RATE) throw new Error("Cotización fuera de rango.");
+  const fraction = (value % RATE_FACTOR).toString().padStart(6, "0");
+  return `${value / RATE_FACTOR}.${fraction}`;
+}
+
+// Por qué no se acepta una cotización escrita:
+// - invalid: otra forma que la de abajo;
+// - decimals: más de seis decimales;
+// - too_large: más de doce dígitos enteros;
+// - below_one: menor que 1 (ADR 0025, punto 3).
+export type ExchangeRateRejection =
+  "invalid" | "decimals" | "too_large" | "below_one";
+
+// Una cotización se escribe como en Argentina: la coma separa los decimales y el punto, los miles
+// en grupos de tres. «1.565» es mil quinientos sesenta y cinco, nunca uno con quinientos sesenta y
+// cinco milésimos: con un punto decimal, una cotización de pesos se leería mil veces menor.
+const RATE_PLAIN = /^(\d+)(?:,(\d+))?$/;
+const RATE_GROUPED = /^([1-9]\d{0,2}(?:\.\d{3})+)(?:,(\d+))?$/;
+
+export function parseExchangeRateInput(
+  value: string,
+): { ok: true; rate: ExchangeRate } | { ok: false; reason: ExchangeRateRejection } {
+  const text = value.trim();
+  const match = RATE_PLAIN.exec(text) ?? RATE_GROUPED.exec(text);
+  if (!match) return { ok: false, reason: "invalid" };
+  const integer = match[1]!.replace(/\./g, "").replace(/^0+(?=\d)/, "");
+  const fraction = match[2] ?? "";
+  if (fraction.length > 6) return { ok: false, reason: "decimals" };
+  if (integer.length > MAX_INTEGER_DIGITS) {
+    return { ok: false, reason: "too_large" };
+  }
+  const rate = BigInt(integer) * RATE_FACTOR + BigInt(fraction.padEnd(6, "0"));
+  if (rate < MIN_EXCHANGE_RATE) return { ok: false, reason: "below_one" };
+  return { ok: true, rate };
+}
+
+// Para mostrar: «1.565,00», «1.565,125». Al menos dos decimales y a lo sumo seis, sin ceros de más.
+export function formatExchangeRate(rate: ExchangeRate): string {
+  const text = exchangeRateToDatabase(rate).replace(/0{1,4}$/, "");
+  return new Intl.NumberFormat("es-AR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 6,
+  }).format(text as `${number}`);
+}
+
+// Hacia dónde se convierte: de la principal a la otra (multiplicar) o de la otra a la principal
+// (dividir).
+export type ConversionDirection = "to_quote" | "to_base";
+
+export type ConversionResult =
+  | { ok: true; amount: Money }
+  | { ok: false; reason: "zero" | "too_large" };
+
+// La única conversión del CRM (ADR 0025, punto 3): el monto en centésimos, la cotización en
+// millonésimos, un solo redondeo a los decimales de la moneda de destino, con el medio hacia
+// afuera del cero. Rechaza el cero, porque un movimiento tiene monto positivo, y lo que no cabe en
+// numeric(14, 2), como computeLineTotal.
+export function convertMoney(input: {
+  amount: Money;
+  rate: ExchangeRate;
+  direction: ConversionDirection;
+  targetDecimals: number;
+}): ConversionResult {
+  const { amount, rate, direction, targetDecimals } = input;
+  if (amount <= 0n) throw new Error("Monto a convertir no positivo.");
+  if (rate < MIN_EXCHANGE_RATE) throw new Error("Cotización menor que 1.");
+  if (
+    !Number.isInteger(targetDecimals) ||
+    targetDecimals < 0 ||
+    targetDecimals > 2
+  ) {
+    throw new Error("Decimales de moneda fuera de rango.");
+  }
+  // Centésimos por cada unidad que la moneda de destino puede expresar: 1 con dos decimales, 100
+  // sin decimales.
+  const step = 10n ** BigInt(2 - targetDecimals);
+  const converted =
+    direction === "to_quote"
+      ? divideRoundingHalfAwayFromZero(amount * rate, RATE_FACTOR * step) *
+        step
+      : divideRoundingHalfAwayFromZero(amount * RATE_FACTOR, rate * step) *
+        step;
+  if (converted === 0n) return { ok: false, reason: "zero" };
+  if (converted > MAX_AMOUNT) return { ok: false, reason: "too_large" };
+  return { ok: true, amount: converted };
 }

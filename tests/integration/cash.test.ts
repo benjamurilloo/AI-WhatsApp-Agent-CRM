@@ -707,6 +707,8 @@ describe("la apertura, los movimientos y el cierre (AC-3; ADR 0022, punto 8)", (
     ).toEqual({
       ok: true,
       session,
+      // Sin moneda principal, sin total de referencia (brief-29.4, D-7).
+      reference: null,
       rows: [
         {
           currency: "ARS",

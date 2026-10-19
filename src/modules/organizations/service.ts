@@ -12,6 +12,7 @@ import {
 } from "@/modules/auth";
 import type { DbTransaction } from "@/shared/db";
 import { failure, type Failure } from "@/shared/errors";
+import { acceptedCurrencies } from "@/shared/money";
 import * as repository from "./repository";
 
 export type MemberRole = "admin" | "viewer";
@@ -286,16 +287,7 @@ export async function activateCapability(
   if (!(await repository.lockOrganization(tx, input.organizationId))) {
     return failure("NOT_FOUND");
   }
-  const members = await repository.findMembers(input.organizationId, tx);
-  const admins = members.filter((member) => member.role === "admin");
-  const users = await getUserSummaries(
-    admins.map((member) => member.userId),
-    tx,
-  );
-  const email = input.adminEmail.trim().toLowerCase();
-  const actor = users.find(
-    (user) => user.isActive && user.email.toLowerCase() === email,
-  );
+  const actor = await findScriptActor(tx, input);
   if (!actor) return failure("FORBIDDEN");
 
   const capabilityId = await repository.insertCapability(tx, {
@@ -318,6 +310,82 @@ export async function activateCapability(
     },
   });
   return { ok: true, status: "activated", actorUserId: actor.id };
+}
+
+// El admin activo de la organización que un script de operador nombra como autor, por su correo
+// (ADR 0024, R-20). Lo comparten la activación de una capacidad y la moneda principal.
+async function findScriptActor(
+  tx: DbTransaction,
+  input: { organizationId: string; adminEmail: string },
+): Promise<UserSummary | undefined> {
+  const members = await repository.findMembers(input.organizationId, tx);
+  const admins = members.filter((member) => member.role === "admin");
+  const users = await getUserSummaries(
+    admins.map((member) => member.userId),
+    tx,
+  );
+  const email = input.adminEmail.trim().toLowerCase();
+  return users.find(
+    (user) => user.isActive && user.email.toLowerCase() === email,
+  );
+}
+
+// La moneda principal (ADR 0025, punto 2; brief-29.4, D-2): null si la organización no tiene, y
+// entonces el CRM se comporta como siempre. Los demás módulos y las páginas la leen por acá, como la
+// zona horaria; catalog y purchasing, solo para proponerla en un formulario.
+export async function getMainCurrency(
+  organizationId: string,
+  tx?: DbTransaction,
+): Promise<string | null> {
+  return repository.findMainCurrency(organizationId, tx);
+}
+
+export type SetMainCurrencyResult =
+  | { ok: true; status: "set" | "already_set"; actorUserId: string }
+  | Failure<"NOT_FOUND" | "FORBIDDEN" | "VALIDATION_ERROR">
+  | Failure<"CONFLICT", { current: string }>;
+
+// Fija la moneda principal (ADR 0025, punto 2): la llama solo el script de operador
+// scripts/fijar-moneda.ts, dentro de la transacción que también crea la configuración de la
+// cotización en fx. Fijarla por primera vez se permite aunque la organización tenga datos, porque no
+// cambia ningún monto guardado; cambiarla, no (brief-29.4, D-2). Fijar la misma otra vez no escribe.
+export async function setMainCurrency(
+  tx: DbTransaction,
+  input: { organizationId: string; currency: string; adminEmail: string },
+): Promise<SetMainCurrencyResult> {
+  if (!memberIdSchema.safeParse(input.organizationId).success) {
+    return failure("NOT_FOUND");
+  }
+  if (!acceptedCurrencies().includes(input.currency)) {
+    return failure("VALIDATION_ERROR");
+  }
+  if (!(await repository.lockOrganization(tx, input.organizationId))) {
+    return failure("NOT_FOUND");
+  }
+  const actor = await findScriptActor(tx, input);
+  if (!actor) return failure("FORBIDDEN");
+
+  const current = await repository.findMainCurrency(input.organizationId, tx);
+  if (current === input.currency) {
+    return { ok: true, status: "already_set", actorUserId: actor.id };
+  }
+  if (current !== null) return { ok: false, code: "CONFLICT", current };
+
+  await repository.setMainCurrency(tx, input.organizationId, input.currency);
+  await recordAudit(tx, {
+    organizationId: input.organizationId,
+    actorUserId: actor.id,
+    entityType: "organization",
+    entityId: input.organizationId,
+    action: "update",
+    // Sin origen en el diff: una edición lleva los mismos campos antes y después (recordAudit), y la
+    // moneda principal no tiene otro camino que este script.
+    diff: {
+      before: { main_currency: null },
+      after: { main_currency: input.currency },
+    },
+  });
+  return { ok: true, status: "set", actorUserId: actor.id };
 }
 
 // Punto de entrada único de los resúmenes de usuario para los módulos de negocio

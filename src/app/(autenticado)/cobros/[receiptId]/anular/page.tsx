@@ -15,6 +15,7 @@ import {
 } from "@/app/(autenticado)/devoluciones/messages";
 import { voidReceiptAction } from "./actions";
 import { VoidForm } from "./void-form";
+import { tenderNote } from "@/app/(autenticado)/caja/exchange";
 
 export const metadata: Metadata = {
   title: "Anular cobro — AI WhatsApp Agent CRM",
@@ -59,7 +60,10 @@ export default async function VoidReceiptPage({
     );
   }
   const receipt = found.receipt;
-  const amount = formatMoney(receipt.amount, receipt.currency);
+  // Lo aplicado, y lo que entró si fue en otra moneda: la caja devuelve eso (brief-29.4, D-7).
+  const amount = receipt.tender
+    ? `${formatMoney(receipt.amount, receipt.currency)} (${tenderNote(receipt.tender).toLowerCase()})`
+    : formatMoney(receipt.amount, receipt.currency);
   const destination = receipt.sale
     ? `de la venta ${receipt.sale.displayNumber}`
     : receipt.order

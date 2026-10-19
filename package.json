@@ -27,6 +27,7 @@
     "ingestion:credential": "tsx scripts/ingestion-credential.ts",
     "org:create": "tsx scripts/crear-organizacion.ts",
     "org:capability": "tsx scripts/activar-capacidad.ts",
+    "org:currency": "tsx scripts/fijar-moneda.ts",
     "demo:catalog": "tsx scripts/cargar-catalogo-demo.ts"
   },
   "dependencies": {

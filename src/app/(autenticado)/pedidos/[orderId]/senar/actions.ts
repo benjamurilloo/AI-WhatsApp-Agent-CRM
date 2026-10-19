@@ -20,6 +20,11 @@ import {
 
 type LogCode = Parameters<typeof logEvent>[0]["code"];
 
+// El rechazo de un cobro porque la cotización vigente cambió mientras se cargaba (brief-29.4, P-4).
+function isRateChange(result: { code: string }): boolean {
+  return "rule" in result && result.rule === "exchange_rate_changed";
+}
+
 export async function createOrderReceiptAction(
   _previous: ReceiptFormState,
   formData: FormData,
@@ -44,13 +49,33 @@ export async function createOrderReceiptAction(
     amount: String(formData.get("amount") ?? "")
       .trim()
       .slice(0, 40),
+    // La moneda que entra y la cotización acordada (brief-29.4, D-6).
+    tenderedCurrency: String(formData.get("tenderedCurrency") ?? "").slice(
+      0,
+      8,
+    ),
+    exchangeRate: String(formData.get("exchangeRate") ?? "")
+      .trim()
+      .slice(0, 40),
   };
+  // La vigente que mostró el formulario: si cambió, el cobro se rechaza.
+  const exchangeRateId = String(formData.get("exchangeRateId") ?? "").slice(
+    0,
+    64,
+  );
 
   let receiptId: string;
   try {
-    const result = await createOrderReceipt(context, { orderId, ...values });
+    const result = await createOrderReceipt(context, {
+      orderId,
+      ...values,
+      exchangeRateId,
+    });
     if (!result.ok) {
       log(result.code);
+      // Si la vigente cambió mientras se cargaba, la página se vuelve a leer: el formulario muestra la
+      // nueva equivalencia y manda su id (revisión independiente de la 29.4, R1-3).
+      if (isRateChange(result)) revalidatePath(`/pedidos/${orderId}/senar`);
       return {
         status: "error",
         requestId,

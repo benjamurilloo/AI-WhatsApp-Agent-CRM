@@ -21,6 +21,7 @@ import { formatMoney } from "@/shared/money";
 import { UNNAMED_CLIENT_TEXT } from "@/app/(autenticado)/clientes/[clientId]/cuenta/messages";
 import { CashSubNav } from "../cash-sub-nav";
 import { FORBIDDEN_PAGE_MESSAGE } from "../messages";
+import { ReferenceTotal } from "../reference-total";
 
 export const metadata: Metadata = {
   title: "Deudores — AI WhatsApp Agent CRM",
@@ -111,6 +112,13 @@ export default async function DebtorsPage({
           </button>
         </form>
       ) : null}
+
+      <ReferenceTotal
+        reference={debtors.reference}
+        label={currency ? `Deben en ${currency}, en total` : "Deben en total"}
+        timeZone={timeZone}
+        className="mt-4"
+      />
 
       {debtors.total === 0 ? (
         <EmptyState

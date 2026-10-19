@@ -4,7 +4,10 @@ import {
   getProductCostSummary,
   listProductCosts,
 } from "@/modules/catalog";
-import { getOrganizationTimezone } from "@/modules/organizations";
+import {
+  getMainCurrency,
+  getOrganizationTimezone,
+} from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
 import {
   BackLink,
@@ -145,6 +148,7 @@ export default async function CostsPage({
             productId={product.id}
             current={summary.cost}
             currencies={currencyOptions()}
+            defaultCurrency={await getMainCurrency(context.organizationId)}
           />
         </SectionCard>
       ) : (

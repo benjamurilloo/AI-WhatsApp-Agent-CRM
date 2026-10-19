@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getOrderReceiptForm } from "@/modules/cash";
+import { getOrganizationTimezone } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
+import { receiptExchange } from "@/app/(autenticado)/caja/exchange";
 import { BackLink } from "@/app/_components/detail-header";
 import { cardClass, linkClass } from "@/app/_components/form-styles";
 import { PageHeader } from "@/app/_components/page-header";
@@ -25,14 +27,18 @@ const TITLE = "Registrar seña";
 
 // La seña de un pedido (brief-21.4, D-8), solo admin: el mismo formulario del cobro de una venta,
 // con el monto propuesto en lo que le falta al pedido. Un pedido entregado o cancelado, o ya
-// cubierto por sus señas, no ofrece el formulario. Al guardar vuelve al pedido con el aviso.
+// cubierto por sus señas, no ofrece el formulario. Al guardar vuelve al pedido con el aviso. Desde la
+// 29.4, ?moneda= elige la moneda que entra, como en el cobro (brief-29.4, D-6).
 export default async function OrderReceiptPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ orderId: string }>;
+  searchParams: Promise<{ moneda?: string | string[] }>;
 }) {
   const context = await requireSession();
   const { orderId } = await params;
+  const { moneda } = await searchParams;
   const back = { href: `/pedidos/${orderId}`, label: "Volver al pedido" };
   if (context.role !== "admin") {
     return (
@@ -58,6 +64,15 @@ export default async function OrderReceiptPage({
     );
   }
   const { order } = form;
+  const exchange = receiptExchange({
+    offer: form.exchange,
+    targetCurrency: order.currency,
+    outstanding: form.outstanding,
+    outstandingInput: form.outstandingInput,
+    chosen: typeof moneda === "string" ? moneda.toUpperCase() : undefined,
+    basePath: `/pedidos/${order.id}/senar`,
+    timezone: await getOrganizationTimezone(context),
+  });
   const open = order.status === "pending" || order.status === "confirmed";
   const blocked = !open
     ? orderNotOpenMessage(order.status)
@@ -104,6 +119,7 @@ export default async function OrderReceiptPage({
             outstanding={form.outstandingInput}
             paymentMethods={form.paymentMethods}
             hasOpenSession={form.openSession !== null}
+            exchange={exchange}
           />
         )}
       </div>

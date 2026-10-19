@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { getDb, type Db, type DbTransaction } from "@/shared/db";
 import {
   capability,
@@ -235,5 +235,37 @@ export async function lockOrganization(
     .from(organizations)
     .where(eq(organizations.id, organizationId))
     .for("update");
+  return rows.length > 0;
+}
+
+// La moneda principal (ADR 0025, punto 2; brief-29.4, D-2), o null si no tiene.
+export async function findMainCurrency(
+  organizationId: string,
+  executor: Executor = getDb(),
+): Promise<string | null> {
+  const rows = await executor
+    .select({ mainCurrency: organizations.mainCurrency })
+    .from(organizations)
+    .where(eq(organizations.id, organizationId))
+    .limit(1);
+  return rows[0]?.mainCurrency ?? null;
+}
+
+// Solo la fija si la organización no tenía: cambiarla no se permite (brief-29.4, D-2).
+export async function setMainCurrency(
+  tx: DbTransaction,
+  organizationId: string,
+  currency: string,
+): Promise<boolean> {
+  const rows = await tx
+    .update(organizations)
+    .set({ mainCurrency: currency })
+    .where(
+      and(
+        eq(organizations.id, organizationId),
+        isNull(organizations.mainCurrency),
+      ),
+    )
+    .returning({ id: organizations.id });
   return rows.length > 0;
 }

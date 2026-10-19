@@ -430,6 +430,7 @@ describe("las lecturas de la cuenta (AC-6)", () => {
             { saleId: b.id, displayNumber: "V-000002", amount: "2000.00" },
           ],
           toFavor: "500.00",
+          tender: null,
         },
       });
       const after = await getDb().execute<{ receipts: number }>(

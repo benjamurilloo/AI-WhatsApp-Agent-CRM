@@ -12,6 +12,11 @@ import {
   lockClientForRefund,
   type Client,
 } from "@/modules/crm";
+import {
+  getExchangeSetup,
+  referenceTotal,
+  type ExchangeSetup,
+} from "@/modules/fx";
 import { formatDocumentNumber, nextDocumentNumber } from "@/modules/numbering";
 import {
   getOrderForReceipt,
@@ -23,6 +28,7 @@ import {
 } from "@/modules/orders";
 import {
   authorize,
+  getMainCurrency,
   getMemberSummaries,
   type AuthContext,
 } from "@/modules/organizations";
@@ -32,6 +38,7 @@ import {
   currencyDecimals,
   MAX_AMOUNT,
   moneyFromDatabase,
+  exchangeRateToDatabase,
   moneyToDatabase,
   type Money,
 } from "@/shared/money";
@@ -52,6 +59,19 @@ import {
 } from "./imputation";
 import * as repository from "./repository";
 import * as paymentRepository from "./supplier-payment-repository";
+import {
+  accountReceiptCurrencies,
+  canConvert,
+  cashSideOf,
+  convertBetween,
+  fitToOutstanding,
+  readTender,
+  tenderColumns,
+  tenderedCurrencyOf,
+  type ReceiptTenderRead,
+  type TenderFailure,
+  type TenderInput,
+} from "./tender";
 import {
   formatSupplierPaymentNumber,
   formatSupplierPaymentVoidNumber,
@@ -82,6 +102,41 @@ import {
 // como en todas las tablas con autor (brief-20.4, H-6): no hace falta un bloqueo nuevo.
 
 const idSchema = z.uuid();
+
+// Un total de referencia en la moneda principal, para mostrar (ADR 0025, puntos 6 y 7; brief-29.4,
+// D-7 y D-8): con la cotización vigente, su valor y su fecha. No se guarda. Null sin moneda
+// principal, sin vigente, o si todo ya está en la principal.
+export type ReferenceView = {
+  currency: string;
+  total: string;
+  // La otra moneda de la cotización: 1 USD = ARS 1.565.
+  quoteCurrency: string;
+  rate: string;
+  rateRecordedAt: Date;
+  stale: boolean;
+  // Las monedas que no son la principal ni la otra: no se convierten.
+  unconverted: string[];
+};
+
+function referenceView(
+  setup: ExchangeSetup | null,
+  amounts: { currency: string; amount: Money }[],
+): ReferenceView | null {
+  const reference = referenceTotal(
+    setup,
+    amounts.filter((row) => row.amount > 0n),
+  );
+  if (!reference) return null;
+  return {
+    currency: reference.currency,
+    total: moneyToDatabase(reference.total),
+    quoteCurrency: setup!.quoteCurrency,
+    rate: exchangeRateToDatabase(reference.rate.rate),
+    rateRecordedAt: reference.rate.recordedAt,
+    stale: reference.rate.stale,
+    unconverted: reference.unconverted,
+  };
+}
 
 // Escrituras de admin, lecturas de los dos roles (ADR 0022, punto 12).
 
@@ -502,7 +557,18 @@ async function readTotalsInput(
     supplierPayments,
     supplierPaymentVoids,
     movements,
-  } satisfies TotalsInput;
+  };
+}
+
+// Los totales de una sesión: cada cobro cuenta lo que entró a la caja, que es lo recibido si fue en
+// otra moneda (ADR 0025, punto 6; brief-29.4, D-7). computeCashTotals no cambia.
+function totalsOf(
+  input: Awaited<ReturnType<typeof readTotalsInput>>,
+): CashTotals[] {
+  return computeCashTotals({
+    ...input,
+    receipts: input.receipts.map(cashSideOf),
+  } satisfies TotalsInput);
 }
 
 export async function readTotals(
@@ -510,9 +576,7 @@ export async function readTotals(
   organizationId: string,
   sessionId: string,
 ): Promise<CashTotals[]> {
-  return computeCashTotals(
-    await readTotalsInput(organizationId, sessionId, tx),
-  );
+  return totalsOf(await readTotalsInput(organizationId, sessionId, tx));
 }
 
 type CashRowsFailure = Failure<
@@ -844,7 +908,13 @@ export type CashClosingPreviewRow = {
 };
 
 export type PreviewCashClosingResult =
-  | { ok: true; session: SessionRef; rows: CashClosingPreviewRow[] }
+  | {
+      ok: true;
+      session: SessionRef;
+      rows: CashClosingPreviewRow[];
+      // Lo contado de todas las monedas en la principal (brief-29.4, D-7).
+      reference: ReferenceView | null;
+    }
   | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
   | CashRowsFailure
   | SessionStateFailure;
@@ -877,13 +947,21 @@ export async function previewCashClosing(
     };
   }
   const plan = planClosing(
-    computeCashTotals(await readTotalsInput(organizationId, session.id)),
+    totalsOf(await readTotalsInput(organizationId, session.id)),
     read.counted,
   );
   if (!plan.ok) return rowsFailure("missing", [], plan.missing);
+  const setup = await getExchangeSetup(organizationId);
   return {
     ok: true,
     session: sessionRef(session),
+    reference: referenceView(
+      setup,
+      plan.amounts.map((row) => ({
+        currency: row.currency,
+        amount: row.counted,
+      })),
+    ),
     rows: plan.amounts.map((row) => ({
       currency: row.currency,
       expected: moneyToDatabase(row.expected),
@@ -1058,6 +1136,8 @@ export type CashSessionDetail = SessionRef & {
   // sesión y las anulaciones posteriores a su cierre, solo para un admin. Para un viewer es null: ve
   // los totales, no el detalle.
   supplierPayments: SessionSupplierPayments | null;
+  // Lo esperado de todas las monedas en la principal (brief-29.4, D-7). El arqueo sigue por moneda.
+  reference: ReferenceView | null;
 };
 
 export type LateSupplierPaymentVoidView = {
@@ -1118,7 +1198,7 @@ async function sessionDetail(
 ): Promise<CashSessionDetail> {
   const { organizationId } = context;
   const isAdmin = context.role === "admin";
-  const [input, closing, lateVoids, lateSupplierPaymentVoids] =
+  const [input, closing, lateVoids, lateSupplierPaymentVoids, setup] =
     await Promise.all([
       readTotalsInput(organizationId, session.id),
       session.closedAt === null
@@ -1133,9 +1213,10 @@ async function sessionDetail(
             organizationId,
             session.id,
           ),
+      getExchangeSetup(organizationId),
     ]);
   const { receipts, refunds, movements } = input;
-  const totals = computeCashTotals(input);
+  const totals = totalsOf(input);
   const closingOf = new Map(closing.map((row) => [row.currency, row]));
   // Una moneda que apareció al contar no tiene inicial ni movimientos: su fila sale del cierre.
   for (const row of closing) {
@@ -1165,6 +1246,17 @@ async function sessionDetail(
   ]);
   return {
     ...sessionRef(session),
+    // Sobre el mismo esperado que muestra cada moneda: el del cierre en una sesión cerrada.
+    reference: referenceView(
+      setup,
+      totals.map((row) => {
+        const closed = closingOf.get(row.currency);
+        return {
+          currency: row.currency,
+          amount: closed ? moneyFromDatabase(closed.expected) : row.expected,
+        };
+      }),
+    ),
     openedByName: names.get(session.openedBy) ?? null,
     openedAt: session.openedAt,
     closedByName:
@@ -1289,7 +1381,15 @@ export async function getOpeningProposal(
   const authorized = authorize(context, { role: "admin" });
   if (!authorized.ok) return authorized;
   const last = await repository.findLastSession(context.organizationId);
-  if (!last) return { ok: true, open: null, proposal: [] };
+  // Sin cierre anterior, la moneda principal si la hay, sin monto (brief-29.4, D-9).
+  if (!last) {
+    const mainCurrency = await getMainCurrency(context.organizationId);
+    return {
+      ok: true,
+      open: null,
+      proposal: mainCurrency ? [{ currency: mainCurrency, amount: "" }] : [],
+    };
+  }
   if (last.closedAt === null) {
     return { ok: true, open: sessionRef(last), proposal: [] };
   }
@@ -1818,11 +1918,15 @@ export type ReceiptFieldsFailure = Failure<
   }
 >;
 
+// Las fallas de leer un pago: las de siempre, que comparten la devolución y el pago a un proveedor, y
+// desde la 29.4 las de recibir en otra moneda, solo en los cobros (brief-29.4, D-6).
 export type PaymentFailure =
   | ReceiptFieldsFailure
   | Failure<"NOT_FOUND", { entity: "payment_method" }>
   | Failure<"BUSINESS_RULE_VIOLATION", { rule: "payment_method_inactive" }>
   | Failure<"BUSINESS_RULE_VIOLATION", { rule: "no_open_session" }>;
+
+export type ReceiptPaymentFailure = PaymentFailure | TenderFailure;
 
 type ExceedsOutstanding = Failure<
   "BUSINESS_RULE_VIOLATION",
@@ -1850,29 +1954,60 @@ export function readReceiptFields(input: {
 }
 
 export type ReceiptPayment = {
+  // Lo aplicado, en la moneda del destino.
   amount: Money;
   method: PaymentMethod;
   session: { id: string; number: number } | null;
+  // Lo recibido en la otra moneda, si la hubo (brief-29.4, D-6).
+  tender: ReceiptTenderRead | null;
 };
 
 // La sesión no viaja en el formulario: el cobro es plata que entra ahora y va a la sesión abierta
-// cuando se registra (brief-21.3, D-3).
+// cuando se registra (brief-21.3, D-3). Desde la 29.4, el monto puede venir en la otra moneda de la
+// organización: se lee con sus decimales y lo aplicado se calcula con la cotización vigente, leída en
+// esta transacción, o con una acordada (brief-29.4, D-6, H-3).
 export async function readPayment(
   tx: DbTransaction,
   organizationId: string,
   fields: { methodId: string; amountText: string },
   currency: string,
-): Promise<{ ok: true; payment: ReceiptPayment } | PaymentFailure> {
-  const parsed = parseCashAmount(fields.amountText, currency, {
-    allowZero: false,
-  });
-  if (!parsed.ok) {
-    return {
-      ok: false,
-      code: "VALIDATION_ERROR",
-      fields: ["amount"],
-      amount: parsed.reason,
-    };
+): Promise<{ ok: true; payment: ReceiptPayment } | PaymentFailure>;
+export async function readPayment(
+  tx: DbTransaction,
+  organizationId: string,
+  fields: { methodId: string; amountText: string },
+  currency: string,
+  tenderInput: TenderInput,
+): Promise<{ ok: true; payment: ReceiptPayment } | ReceiptPaymentFailure>;
+export async function readPayment(
+  tx: DbTransaction,
+  organizationId: string,
+  fields: { methodId: string; amountText: string },
+  currency: string,
+  tenderInput?: TenderInput,
+): Promise<{ ok: true; payment: ReceiptPayment } | ReceiptPaymentFailure> {
+  let amount: Money;
+  let tender: ReceiptTenderRead | null = null;
+  if (tenderedCurrencyOf(tenderInput, currency) === currency) {
+    const parsed = parseCashAmount(fields.amountText, currency, {
+      allowZero: false,
+    });
+    if (!parsed.ok) {
+      return {
+        ok: false,
+        code: "VALIDATION_ERROR",
+        fields: ["amount"],
+        amount: parsed.reason,
+      };
+    }
+    amount = parsed.amount;
+  } else {
+    const setup = await getExchangeSetup(organizationId, tx);
+    const read = readTender(setup, tenderInput, fields.amountText, currency);
+    if (!read.ok) return read;
+    if (!("applied" in read)) throw new Error("otra moneda sin conversión");
+    amount = read.applied;
+    tender = read.tender;
   }
   const method = await repository.findPaymentMethod(
     organizationId,
@@ -1891,7 +2026,26 @@ export async function readPayment(
     }
     session = { id: last.id, number: last.number };
   }
-  return { ok: true, payment: { amount: parsed.amount, method, session } };
+  return { ok: true, payment: { amount, method, session, tender } };
+}
+
+// El tope de lo que falta con lo aplicado, y la tolerancia de un centavo de un cobro en otra moneda
+// (ADR 0025, punto 5, R-M4): si la cumple, el cobro aplica exactamente lo que falta.
+function fitPayment(
+  payment: ReceiptPayment,
+  outstanding: Money,
+  currency: string,
+): { ok: true; payment: ReceiptPayment } | ExceedsOutstanding {
+  const fit = fitToOutstanding(
+    payment.amount,
+    outstanding,
+    currency,
+    payment.tender !== null,
+  );
+  if (!fit.ok) {
+    return exceedsOutstanding(currency, outstanding > 0n ? outstanding : 0n);
+  }
+  return { ok: true, payment: { ...payment, amount: fit.applied } };
 }
 
 function exceedsOutstanding(
@@ -1916,10 +2070,13 @@ export async function exceedsCashLimit(
   currency: string,
 ): Promise<ReceiptFieldsFailure | null> {
   if (payment.session === null) return null;
+  // Lo que entra a la caja: lo recibido, si fue en otra moneda (brief-29.4, D-7, H-2).
+  const cashCurrency = payment.tender?.currency ?? currency;
+  const cashAmount = payment.tender?.amount ?? payment.amount;
   const totals = await readTotals(tx, organizationId, payment.session.id);
   const expected =
-    totals.find((row) => row.currency === currency)?.expected ?? 0n;
-  if (expected + payment.amount <= MAX_AMOUNT) return null;
+    totals.find((row) => row.currency === cashCurrency)?.expected ?? 0n;
+  if (expected + cashAmount <= MAX_AMOUNT) return null;
   return {
     ok: false,
     code: "VALIDATION_ERROR",
@@ -1952,6 +2109,14 @@ async function auditReceipt(
         payment_method: payment.method.name,
         currency: receipt.currency,
         amount: receipt.amount,
+        // Lo recibido en otra moneda y la cotización usada (brief-29.4, D-6).
+        ...(receipt.tenderedCurrency === null
+          ? {}
+          : {
+              tendered_currency: receipt.tenderedCurrency,
+              tendered_amount: receipt.tenderedAmount,
+              exchange_rate: receipt.exchangeRate,
+            }),
         ...(payment.session === null
           ? {}
           : { session_number: payment.session.number }),
@@ -1964,7 +2129,7 @@ export type CreateSaleReceiptResult =
   | { ok: true; receipt: ReceiptRef }
   | Failure<"FORBIDDEN" | "VALIDATION_ERROR">
   | Failure<"NOT_FOUND", { entity: "sale" }>
-  | PaymentFailure
+  | ReceiptPaymentFailure
   | Failure<"BUSINESS_RULE_VIOLATION", { rule: "sale_voided" }>
   | ExceedsOutstanding;
 
@@ -1982,7 +2147,11 @@ export type CreateSaleReceiptResult =
 // cuenta o a devolver (ADR 0022, punto 4; D-10). La venta no se bloquea: tampoco su pedido.
 export async function createSaleReceipt(
   context: AuthContext,
-  input: { saleId: string; paymentMethodId: string; amount: string },
+  input: {
+    saleId: string;
+    paymentMethodId: string;
+    amount: string;
+  } & TenderInput,
 ): Promise<CreateSaleReceiptResult> {
   const authorized = authorize(context, { role: "admin" });
   if (!authorized.ok) return authorized;
@@ -2010,13 +2179,22 @@ export async function createSaleReceipt(
       }
       if (sale.voided) return ruleFailure("sale_voided");
 
-      const read = await readPayment(tx, organizationId, fields, sale.currency);
+      const read = await readPayment(
+        tx,
+        organizationId,
+        fields,
+        sale.currency,
+        input,
+      );
       if (!read.ok) return read;
-      const { payment } = read;
       const standing = await saleStanding(tx, organizationId, sale);
-      if (payment.amount > standing.outstanding) {
-        return exceedsOutstanding(sale.currency, standing.outstanding);
-      }
+      const fitted = fitPayment(
+        read.payment,
+        standing.outstanding,
+        sale.currency,
+      );
+      if (!fitted.ok) return fitted;
+      const { payment } = fitted;
       const limit = await exceedsCashLimit(
         tx,
         organizationId,
@@ -2036,6 +2214,7 @@ export async function createSaleReceipt(
         sessionId: payment.session?.id ?? null,
         currency: sale.currency,
         amount: moneyToDatabase(payment.amount),
+        tender: tenderColumns(payment.tender),
         createdBy: userId,
       });
       await auditReceipt(tx, { organizationId, userId }, receipt, payment, {
@@ -2053,7 +2232,7 @@ export type CreateOrderReceiptResult =
   | { ok: true; receipt: ReceiptRef }
   | Failure<"FORBIDDEN" | "VALIDATION_ERROR">
   | Failure<"NOT_FOUND", { entity: "order" }>
-  | PaymentFailure
+  | ReceiptPaymentFailure
   | Failure<
       "BUSINESS_RULE_VIOLATION",
       { rule: "order_not_open"; status: OrderStatus }
@@ -2074,7 +2253,11 @@ export type CreateOrderReceiptResult =
 // La seña copia la moneda y el cliente del pedido (punto 2). Es un R como cualquier cobro.
 export async function createOrderReceipt(
   context: AuthContext,
-  input: { orderId: string; paymentMethodId: string; amount: string },
+  input: {
+    orderId: string;
+    paymentMethodId: string;
+    amount: string;
+  } & TenderInput,
 ): Promise<CreateOrderReceiptResult> {
   const authorized = authorize(context, { role: "admin" });
   if (!authorized.ok) return authorized;
@@ -2111,21 +2294,18 @@ export async function createOrderReceipt(
         organizationId,
         fields,
         order.currency,
+        input,
       );
       if (!read.ok) return read;
-      const { payment } = read;
       const deposits = await repository.findOrderReceipts(
         organizationId,
         order.id,
         tx,
       );
       const outstanding = moneyFromDatabase(order.total) - sumAmounts(deposits);
-      if (payment.amount > outstanding) {
-        return exceedsOutstanding(
-          order.currency,
-          outstanding > 0n ? outstanding : 0n,
-        );
-      }
+      const fitted = fitPayment(read.payment, outstanding, order.currency);
+      if (!fitted.ok) return fitted;
+      const { payment } = fitted;
       const limit = await exceedsCashLimit(
         tx,
         organizationId,
@@ -2145,6 +2325,7 @@ export async function createOrderReceipt(
         sessionId: payment.session?.id ?? null,
         currency: order.currency,
         amount: moneyToDatabase(payment.amount),
+        tender: tenderColumns(payment.tender),
         createdBy: userId,
       });
       await auditReceipt(tx, { organizationId, userId }, receipt, payment, {
@@ -2356,16 +2537,18 @@ export async function voidReceipt(
       organizationId,
       receipt.sessionId,
     );
-    const amount = moneyFromDatabase(receipt.amount);
+    // Sale de la caja lo que entró: lo recibido, si fue en otra moneda (brief-29.4, D-7).
+    const cash = cashSideOf(receipt);
+    const amount = moneyFromDatabase(cash.amount);
     if (session) {
       const expected = await expectedIn(
         tx,
         organizationId,
         session.id,
-        receipt.currency,
+        cash.currency,
       );
       if (expected - amount < 0n) {
-        return insufficientCash(receipt.currency, expected);
+        return insufficientCash(cash.currency, expected);
       }
     }
 
@@ -2374,9 +2557,18 @@ export async function voidReceipt(
       organizationId,
       number,
       sourceId: receipt.id,
-      // La copia del cobro (D-1).
+      // La copia del cobro (D-1), con lo recibido (brief-29.4, D-6).
       currency: receipt.currency,
       amount: receipt.amount,
+      tender:
+        receipt.tenderedCurrency === null
+          ? null
+          : {
+              currency: receipt.tenderedCurrency,
+              amount: receipt.tenderedAmount!,
+              exchangeRate: receipt.exchangeRate!,
+              exchangeRateId: receipt.exchangeRateId,
+            },
       reason: input.reason,
       sessionId: session?.id ?? null,
       createdBy: userId,
@@ -2694,8 +2886,17 @@ export type ReceiptListItem = ReceiptRef & {
   account: { clientId: string } | null;
   paymentMethodName: string;
   isCash: boolean;
+  // Lo aplicado, en la moneda del destino.
   currency: string;
   amount: string;
+  // Lo recibido en otra moneda, si la hubo (brief-29.4, D-6): lo que contó la caja, la cotización
+  // usada y si fue acordada para este cobro.
+  tender: {
+    currency: string;
+    amount: string;
+    exchangeRate: string;
+    negotiated: boolean;
+  } | null;
   // Su anulación (brief-21.5, D-9): se muestra y no cuenta.
   voided: VoidView | null;
 };
@@ -2787,6 +2988,15 @@ async function receiptListItems(
       isCash: method?.isCash ?? false,
       currency: row.currency,
       amount: row.amount,
+      tender:
+        row.tenderedCurrency === null
+          ? null
+          : {
+              currency: row.tenderedCurrency,
+              amount: row.tenderedAmount!,
+              exchangeRate: row.exchangeRate!,
+              negotiated: row.exchangeRateId === null,
+            },
       voided: voidView("receipt_void", row.voided),
     };
   });
@@ -2898,6 +3108,58 @@ export async function getSaleReceipts(
   };
 }
 
+// Recibir en la otra moneda de la organización (brief-29.4, D-6): cuál es, la cotización vigente y lo
+// que falta convertido con ella, como se escribe en el campo. Null sin moneda principal o si el
+// destino está en una moneda que no se convierte.
+export type ExchangeOffer = {
+  currency: string;
+  // La principal: de ella a la otra se multiplica, y de la otra a ella se divide.
+  mainCurrency: string;
+  rate: {
+    id: string;
+    value: string;
+    recordedAt: Date;
+    stale: boolean;
+  } | null;
+  outstanding: string | null;
+  outstandingInput: string | null;
+};
+
+function exchangeOffer(
+  setup: ExchangeSetup | null,
+  targetCurrency: string,
+  outstanding: Money,
+): ExchangeOffer | null {
+  if (!setup) return null;
+  const other =
+    targetCurrency === setup.mainCurrency
+      ? setup.quoteCurrency
+      : setup.mainCurrency;
+  if (!canConvert(setup, other, targetCurrency)) return null;
+  const current = setup.current;
+  // Lo que falta en la otra moneda: con cotización >= 1, convertirlo y volver da lo mismo, así que lo
+  // propuesto nunca cae en la tolerancia del redondeo (ADR 0025, punto 5).
+  const converted =
+    current && outstanding > 0n
+      ? convertBetween(setup, outstanding, targetCurrency, other, current.rate)
+      : null;
+  const amount = converted?.ok ? moneyToDatabase(converted.amount) : null;
+  return {
+    currency: other,
+    mainCurrency: setup.mainCurrency,
+    rate: current
+      ? {
+          id: current.id,
+          value: exchangeRateToDatabase(current.rate),
+          recordedAt: current.recordedAt,
+          stale: current.stale,
+        }
+      : null,
+    outstanding: amount,
+    outstandingInput: amount === null ? null : amountForInput(amount, other),
+  };
+}
+
 export type SaleReceiptForm = {
   ok: true;
   sale: { id: string; displayNumber: string; currency: string };
@@ -2908,6 +3170,7 @@ export type SaleReceiptForm = {
   voided: boolean;
   paymentMethods: PaymentMethod[];
   openSession: SessionRef | null;
+  exchange: ExchangeOffer | null;
 };
 
 // Lo que necesita el formulario del cobro (D-8): la venta, lo que falta, los medios activos y si hay
@@ -2924,12 +3187,18 @@ export async function getSaleReceiptForm(
   const { organizationId } = context;
   const found = await readSaleStanding(organizationId, saleId);
   if (!found) return failure("NOT_FOUND");
-  const [methods, last] = await Promise.all([
+  const [methods, last, setup] = await Promise.all([
     repository.findPaymentMethods(organizationId),
     repository.findLastSession(organizationId),
+    getExchangeSetup(organizationId),
   ]);
   return {
     ok: true,
+    exchange: exchangeOffer(
+      setup,
+      found.sale.currency,
+      found.standing.outstanding,
+    ),
     sale: {
       id: found.sale.id,
       displayNumber: found.sale.displayNumber,
@@ -3027,6 +3296,7 @@ export type OrderReceiptForm = {
   outstandingInput: string;
   paymentMethods: PaymentMethod[];
   openSession: SessionRef | null;
+  exchange: ExchangeOffer | null;
 };
 
 // Lo que necesita el formulario de la seña (brief-21.4, D-8). Lo que decide lo vuelve a leer la seña
@@ -3043,13 +3313,19 @@ export async function getOrderReceiptForm(
   const { organizationId } = context;
   const found = await readOrderStanding(organizationId, orderId);
   if (!found) return failure("NOT_FOUND");
-  const [methods, last] = await Promise.all([
+  const [methods, last, setup] = await Promise.all([
     repository.findPaymentMethods(organizationId),
     repository.findLastSession(organizationId),
+    getExchangeSetup(organizationId),
   ]);
   const outstanding = moneyToDatabase(found.standing.outstanding);
   return {
     ok: true,
+    exchange: exchangeOffer(
+      setup,
+      found.order.currency,
+      found.standing.outstanding,
+    ),
     order: {
       id: found.order.id,
       displayNumber: found.order.displayNumber,
@@ -3531,11 +3807,44 @@ async function clientName(
 
 // El resumen de la cuenta, para la ficha del cliente y el detalle de la venta (D-7): lo compone la
 // página, nunca crm ni sales.
+// Lo que debe y lo que tiene a favor, sumados en la moneda principal (brief-29.4, D-8): para mostrar,
+// sin guardar. La deuda sigue en la moneda de cada venta.
+export type AccountReferences = {
+  owed: ReferenceView | null;
+  inFavor: ReferenceView | null;
+};
+
+function accountReferences(
+  setup: ExchangeSetup | null,
+  currencies: { currency: string; owed: string; inFavor: string }[],
+): AccountReferences {
+  return {
+    owed: referenceView(
+      setup,
+      currencies.map((row) => ({
+        currency: row.currency,
+        amount: moneyFromDatabase(row.owed),
+      })),
+    ),
+    inFavor: referenceView(
+      setup,
+      currencies.map((row) => ({
+        currency: row.currency,
+        amount: moneyFromDatabase(row.inFavor),
+      })),
+    ),
+  };
+}
+
 export async function getClientAccountSummary(
   context: AuthContext,
   clientId: string,
 ): Promise<
-  | { ok: true; currencies: AccountCurrencySummary[] }
+  | {
+      ok: true;
+      currencies: AccountCurrencySummary[];
+      references: AccountReferences;
+    }
   | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
 > {
   const authorized = authorize(context);
@@ -3543,12 +3852,17 @@ export async function getClientAccountSummary(
   if (!idSchema.safeParse(clientId).success) return failure("VALIDATION_ERROR");
   const id = clientId.toLowerCase();
   if (!(await clientName(context, id))) return failure("NOT_FOUND");
-  const account = await repository.withTransaction((tx) =>
-    clientAccount(tx, context.organizationId, id),
-  );
+  const [account, setup] = await Promise.all([
+    repository.withTransaction((tx) =>
+      clientAccount(tx, context.organizationId, id),
+    ),
+    getExchangeSetup(context.organizationId),
+  ]);
+  const currencies = account.accounts.map(summarize).filter(hasSomething);
   return {
     ok: true,
-    currencies: account.accounts.map(summarize).filter(hasSomething),
+    currencies,
+    references: accountReferences(setup, currencies),
   };
 }
 
@@ -3603,6 +3917,8 @@ export type ClientStatement = {
   client: ClientName;
   generatedAt: Date;
   currencies: StatementCurrency[];
+  // En la moneda principal (brief-29.4, D-8).
+  references: AccountReferences;
   documents: StatementDocument[];
   // Si hay más comprobantes que STATEMENT_DOCUMENTS_LIMIT: se muestran los más nuevos.
   truncated: boolean;
@@ -3760,12 +4076,19 @@ export async function getClientStatement(
   );
   const sales = new Map(account.sales.map((sale) => [sale.id, sale]));
   const documents = statementDocuments(account);
+  const currencies = account.accounts.map((row) =>
+    statementCurrency(row, sales),
+  );
   return {
     ok: true,
     statement: {
       client,
       generatedAt: new Date(),
-      currencies: account.accounts.map((row) => statementCurrency(row, sales)),
+      references: accountReferences(
+        await getExchangeSetup(context.organizationId),
+        currencies,
+      ),
+      currencies,
       documents: documents.slice(0, STATEMENT_DOCUMENTS_LIMIT),
       truncated: documents.length > STATEMENT_DOCUMENTS_LIMIT,
     },
@@ -3784,19 +4107,21 @@ type AccountReceiptFieldsFailure = Failure<
   }
 >;
 
+// currency es la moneda aplicada; desde la 29.4, lo recibido puede venir en la otra moneda de la
+// organización (brief-29.4, D-6).
 export type AccountReceiptInput = {
   clientId: string;
   currency: string;
   paymentMethodId: string;
   amount: string;
-};
+} & TenderInput;
 
 type AccountReceiptCheckFailure =
   | Failure<"FORBIDDEN">
   | Failure<"VALIDATION_ERROR">
   | AccountReceiptFieldsFailure
   | Failure<"NOT_FOUND", { entity: "client" }>
-  | PaymentFailure;
+  | ReceiptPaymentFailure;
 
 export type CreateAccountReceiptResult =
   { ok: true; receipt: ReceiptRef } | AccountReceiptCheckFailure;
@@ -3808,6 +4133,8 @@ export type AccountReceiptPreview = {
   amount: string;
   applications: { saleId: string; displayNumber: string; amount: string }[];
   toFavor: string;
+  // Lo que entra, si es en la otra moneda (brief-29.4, D-6).
+  tender: { currency: string; amount: string; exchangeRate: string } | null;
 };
 
 function previewOf(
@@ -3846,6 +4173,7 @@ function previewOf(
         amount: moneyToDatabase(applied),
       })),
     toFavor: moneyToDatabase(after.inFavor - (before?.inFavor ?? 0n)),
+    tender: null,
   };
 }
 
@@ -3854,6 +4182,7 @@ type AccountReceiptRead = {
   clientId: string;
   currency: string;
   fields: { methodId: string; amountText: string };
+  tender: TenderInput;
 };
 
 function readAccountReceiptInput(
@@ -3883,6 +4212,11 @@ function readAccountReceiptInput(
     clientId: input.clientId.toLowerCase(),
     currency,
     fields,
+    tender: {
+      tenderedCurrency: input.tenderedCurrency,
+      exchangeRate: input.exchangeRate,
+      exchangeRateId: input.exchangeRateId,
+    },
   };
 }
 
@@ -3897,17 +4231,28 @@ async function checkAccountReceipt(
 ): Promise<
   | { ok: true; payment: ReceiptPayment }
   | Failure<"NOT_FOUND", { entity: "client" }>
-  | PaymentFailure
+  | AccountReceiptFieldsFailure
+  | ReceiptPaymentFailure
 > {
   // Un cliente desactivado se cobra: su deuda no se cancela al desactivarlo (D-3).
   if (clientStatus === "not_found") {
     return { ok: false, code: "NOT_FOUND", entity: "client" };
+  }
+  // Con moneda principal, la moneda aplicada es la principal, o una con saldo del cliente (brief-29.4,
+  // D-6, H-4). Sin moneda principal, cualquiera de las aceptadas, como siempre.
+  const setup = await getExchangeSetup(organizationId, tx);
+  if (setup) {
+    const { accounts } = await clientAccount(tx, organizationId, read.clientId);
+    if (!accountReceiptCurrencies(setup, accounts).includes(read.currency)) {
+      return { ok: false, code: "VALIDATION_ERROR", fields: ["currency"] };
+    }
   }
   const paid = await readPayment(
     tx,
     organizationId,
     read.fields,
     read.currency,
+    read.tender,
   );
   if (!paid.ok) return paid;
   const limit = await exceedsCashLimit(
@@ -3948,9 +4293,19 @@ export async function previewAccountReceipt(
       );
       if (!checked.ok) return checked;
       const ledger = await clientLedger(tx, organizationId, read.clientId);
+      const tender = tenderColumns(checked.payment.tender);
       return {
         ok: true,
-        preview: previewOf(ledger, read.currency, checked.payment.amount),
+        preview: {
+          ...previewOf(ledger, read.currency, checked.payment.amount),
+          tender: tender
+            ? {
+                currency: tender.currency,
+                amount: tender.amount,
+                exchangeRate: tender.exchangeRate,
+              }
+            : null,
+        },
       };
     },
   );
@@ -4003,6 +4358,7 @@ export async function createAccountReceipt(
         sessionId: payment.session?.id ?? null,
         currency: read.currency,
         amount: moneyToDatabase(payment.amount),
+        tender: tenderColumns(payment.tender),
         createdBy: userId,
       });
       await auditReceipt(tx, { organizationId, userId }, receipt, payment, {
@@ -4024,6 +4380,14 @@ export type AccountReceiptForm = {
   proposed: RefundableAmount | null;
   paymentMethods: PaymentMethod[];
   openSession: SessionRef | null;
+  // Con moneda principal (brief-29.4, D-6): las monedas en que se puede aplicar, la otra moneda en que
+  // se puede recibir y la cotización vigente. Null sin moneda principal: el formulario de siempre.
+  exchange: {
+    appliedCurrencies: string[];
+    mainCurrency: string;
+    quoteCurrency: string;
+    rate: ExchangeOffer["rate"];
+  } | null;
 };
 
 export async function getAccountReceiptForm(
@@ -4042,14 +4406,16 @@ export async function getAccountReceiptForm(
   const account = await repository.withTransaction((tx) =>
     clientAccount(tx, organizationId, id),
   );
-  const [methods, last] = await Promise.all([
+  const [methods, last, setup] = await Promise.all([
     repository.findPaymentMethods(organizationId),
     repository.findLastSession(organizationId),
+    getExchangeSetup(organizationId),
   ]);
   const sales = new Map(account.sales.map((sale) => [sale.id, sale]));
   const currencies = account.accounts.map((row) =>
     statementCurrency(row, sales),
   );
+  const current = setup?.current ?? null;
   const oldest = currencies
     .filter((row) => row.oldestOutstandingAt !== null)
     .sort(
@@ -4061,13 +4427,31 @@ export async function getAccountReceiptForm(
     ok: true,
     client,
     currencies,
+    // Sin deuda, con moneda principal se propone la principal (brief-29.4, D-9).
     proposed: oldest
       ? refundable(oldest.currency, moneyFromDatabase(oldest.owed))
-      : latest
-        ? { currency: latest.currency, amount: "0.00", amountInput: "" }
-        : null,
+      : setup
+        ? { currency: setup.mainCurrency, amount: "0.00", amountInput: "" }
+        : latest
+          ? { currency: latest.currency, amount: "0.00", amountInput: "" }
+          : null,
     paymentMethods: methods.filter((method) => method.isActive),
     openSession: last && last.closedAt === null ? sessionRef(last) : null,
+    exchange: setup
+      ? {
+          appliedCurrencies: accountReceiptCurrencies(setup, account.accounts),
+          mainCurrency: setup.mainCurrency,
+          quoteCurrency: setup.quoteCurrency,
+          rate: current
+            ? {
+                id: current.id,
+                value: exchangeRateToDatabase(current.rate),
+                recordedAt: current.recordedAt,
+                stale: current.stale,
+              }
+            : null,
+        }
+      : null,
   };
 }
 
@@ -4092,6 +4476,8 @@ export type DebtorPage = {
   pageSize: number;
   // Las monedas con algún deudor, para el filtro.
   currencies: string[];
+  // Lo que deben todos los de la lista, filtrada, en la moneda principal (brief-29.4, D-8).
+  reference: ReferenceView | null;
 };
 
 export const DEBTORS_PAGE_SIZE = 25;
@@ -4195,6 +4581,10 @@ export async function listDebtors(
     .sort(byDebt);
   const start = (query.page - 1) * DEBTORS_PAGE_SIZE;
   const page = filtered.slice(start, start + DEBTORS_PAGE_SIZE);
+  const reference = referenceView(
+    await getExchangeSetup(context.organizationId),
+    filtered.map((row) => ({ currency: row.currency, amount: row.owedAmount })),
+  );
   const names = new Map<string, string | null>();
   if (page.length > 0) {
     const clients = await getClientsByIds(
@@ -4222,6 +4612,7 @@ export async function listDebtors(
       page: query.page,
       pageSize: DEBTORS_PAGE_SIZE,
       currencies,
+      reference,
     },
   };
 }

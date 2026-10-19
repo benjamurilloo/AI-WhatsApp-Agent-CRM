@@ -21,6 +21,7 @@ import { formatShortDateTime } from "@/app/_format/date-time";
 import { formatMoney } from "@/shared/money";
 import { CashSubNav } from "../cash-sub-nav";
 import { FORBIDDEN_PAGE_MESSAGE } from "../messages";
+import { tenderNote } from "@/app/(autenticado)/caja/exchange";
 
 export const metadata: Metadata = {
   title: "Cobros — AI WhatsApp Agent CRM",
@@ -227,6 +228,11 @@ export default async function ReceiptsPage({
                       className={`${tableCellClass} text-right whitespace-nowrap tabular-nums`}
                     >
                       {formatMoney(receipt.amount, receipt.currency)}
+                      {receipt.tender ? (
+                        <span className="block text-xs font-normal text-muted">
+                          {tenderNote(receipt.tender)}
+                        </span>
+                      ) : null}
                     </td>
                   </tr>
                 ))}

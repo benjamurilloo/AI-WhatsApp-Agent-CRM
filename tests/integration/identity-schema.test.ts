@@ -77,6 +77,9 @@ describe("base de test", () => {
       "conversation_notes",
       "conversations",
       "document_counters",
+      // La cotización (brief-29.4, D-3).
+      "exchange_rate_settings",
+      "exchange_rates",
       // La recepción y sus líneas (brief-22.4), y su anulación (brief-22.5).
       "goods_receipt_lines",
       "goods_receipt_voids",

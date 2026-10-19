@@ -34,6 +34,7 @@ import {
   SessionSupplierPaymentsTable,
 } from "../../session-tables";
 import { auditActionLabel, describeAuditDiff } from "./audit-summary";
+import { ReferenceTotal } from "../../reference-total";
 
 export const metadata: Metadata = {
   title: "Sesión de caja — AI WhatsApp Agent CRM",
@@ -153,6 +154,11 @@ export default async function CashSessionPage({
         <h3 className="mt-6 font-semibold">Por moneda</h3>
         <div className="mt-2">
           <CurrencyTotalsTable session={session} />
+          <ReferenceTotal
+            reference={session.reference}
+            label="Lo esperado, en total"
+            timeZone={timeZone}
+          />
         </div>
 
         <h3 className="mt-6 font-semibold">Cobros en efectivo</h3>

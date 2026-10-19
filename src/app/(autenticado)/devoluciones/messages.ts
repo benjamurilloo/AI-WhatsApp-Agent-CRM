@@ -227,5 +227,11 @@ export function refundRejection(
   const shared = receiptRejection(
     result as Parameters<typeof receiptRejection>[0],
   );
-  return { ...shared, fields: shared.fields };
+  // Una devolución no recibe en otra moneda hasta la 29.4.3: solo quedan el medio y el monto.
+  return {
+    ...shared,
+    fields: shared.fields.flatMap((field): RefundField[] =>
+      field === "paymentMethod" || field === "amount" ? [field] : [],
+    ),
+  };
 }

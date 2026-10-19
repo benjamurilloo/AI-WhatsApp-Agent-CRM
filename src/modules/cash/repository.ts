@@ -533,6 +533,12 @@ export type ReceiptRow = {
   currency: string;
   // Con la escala de la base ("1234.50").
   amount: string;
+  // Lo recibido en otra moneda, si la hubo (ADR 0025, punto 5; brief-29.4, D-6): las cuatro nulas,
+  // o las tres primeras con valor. currency y amount siguen siendo lo aplicado.
+  tenderedCurrency: string | null;
+  tenderedAmount: string | null;
+  exchangeRate: string | null;
+  exchangeRateId: string | null;
   createdBy: string;
   createdAt: Date;
   // Su anulación, si la tiene (brief-21.5, D-8): las lecturas la muestran y no la cuentan.
@@ -571,6 +577,10 @@ const receiptBaseColumns = {
   sessionId: receipts.sessionId,
   currency: receipts.currency,
   amount: receipts.amount,
+  tenderedCurrency: receipts.tenderedCurrency,
+  tenderedAmount: receipts.tenderedAmount,
+  exchangeRate: receipts.exchangeRate,
+  exchangeRateId: receipts.exchangeRateId,
   createdBy: receipts.createdBy,
   createdAt: receipts.createdAt,
 };
@@ -597,18 +607,38 @@ export type NewReceipt = {
   sessionId: string | null;
   currency: string;
   amount: string;
+  // Lo recibido en otra moneda (brief-29.4, D-6), o null.
+  tender: ReceiptTender | null;
   createdBy: string;
 };
+
+// Lo que entró de verdad, en la otra moneda, con la cotización usada y su fila si fue la vigente.
+export type ReceiptTender = {
+  currency: string;
+  amount: string;
+  exchangeRate: string;
+  exchangeRateId: string | null;
+};
+
+function tenderColumns(tender: ReceiptTender | null) {
+  return {
+    tenderedCurrency: tender?.currency ?? null,
+    tenderedAmount: tender?.amount ?? null,
+    exchangeRate: tender?.exchangeRate ?? null,
+    exchangeRateId: tender?.exchangeRateId ?? null,
+  };
+}
 
 export async function insertReceipt(
   tx: DbTransaction,
   receipt: NewReceipt,
 ): Promise<ReceiptRow> {
-  const { destination, ...rest } = receipt;
+  const { destination, tender, ...rest } = receipt;
   const rows = await tx
     .insert(receipts)
     .values({
       ...rest,
+      ...tenderColumns(tender),
       target: destination.target,
       saleId: destination.target === "sale" ? destination.saleId : null,
       orderId: destination.target === "order" ? destination.orderId : null,
@@ -805,9 +835,13 @@ export type NewVoid = {
   createdBy: string;
 };
 
+// La anulación de un cobro copia además lo recibido (brief-29.4, D-6): lo compara
+// receipt_voids_check_copy() de la 0053.
+export type NewReceiptVoid = NewVoid & { tender: ReceiptTender | null };
+
 export async function insertReceiptVoid(
   tx: DbTransaction,
-  row: NewVoid,
+  row: NewReceiptVoid,
 ): Promise<{ id: string; number: number }> {
   const rows = await tx
     .insert(receiptVoids)
@@ -817,6 +851,7 @@ export async function insertReceiptVoid(
       receiptId: row.sourceId,
       currency: row.currency,
       amount: row.amount,
+      ...tenderColumns(row.tender),
       reason: row.reason as ReceiptVoidReason,
       sessionId: row.sessionId,
       createdBy: row.createdBy,
@@ -1044,14 +1079,18 @@ export function findRefunds(
 }
 
 // Lo anulado mientras la sesión estaba abierta (D-6): las anulaciones que impactaron en ella. Lo
-// anulado después del cierre tiene la sesión nula y no aparece acá.
+// anulado después del cierre tiene la sesión nula y no aparece acá. Desde la 29.4, en la moneda y el
+// monto que salen de la caja: lo recibido por el cobro, si entró en otra moneda (brief-29.4, D-7).
 export function findSessionReceiptVoids(
   organizationId: string,
   sessionId: string,
   executor: Executor = getDb(),
 ): Promise<CurrencyAmountRow[]> {
   return executor
-    .select({ currency: receiptVoids.currency, amount: receiptVoids.amount })
+    .select({
+      currency: sql<string>`coalesce(${receiptVoids.tenderedCurrency}, ${receiptVoids.currency})`,
+      amount: sql<string>`coalesce(${receiptVoids.tenderedAmount}, ${receiptVoids.amount})`,
+    })
     .from(receiptVoids)
     .where(
       and(
@@ -1079,7 +1118,7 @@ export function findSessionRefundVoids(
 
 // Las anulaciones posteriores al cierre de una sesión (ADR 0022, punto 7; D-6): las de sus cobros y
 // sus devoluciones en efectivo que no impactaron en ella. Explican su diferencia; el arqueo guardado
-// no cambia.
+// no cambia. La de un cobro, en lo que había entrado a la caja (brief-29.4, D-7).
 export type LateVoidRow = {
   kind: "receipt" | "refund";
   number: number;
@@ -1101,8 +1140,8 @@ export async function findLateVoids(
         number: receiptVoids.number,
         sourceId: receipts.id,
         sourceNumber: receipts.number,
-        currency: receiptVoids.currency,
-        amount: receiptVoids.amount,
+        currency: sql<string>`coalesce(${receiptVoids.tenderedCurrency}, ${receiptVoids.currency})`,
+        amount: sql<string>`coalesce(${receiptVoids.tenderedAmount}, ${receiptVoids.amount})`,
         reason: receiptVoids.reason,
         createdAt: receiptVoids.createdAt,
       })

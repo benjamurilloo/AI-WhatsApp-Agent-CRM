@@ -1,0 +1,378 @@
+import { z } from "zod";
+import { recordAudit } from "@/modules/audit";
+import {
+  authorize,
+  getMainCurrency,
+  getMemberSummaries,
+  getOrganizationTimezoneForService,
+  type AuthContext,
+} from "@/modules/organizations";
+import type { DbTransaction } from "@/shared/db";
+import { failure, type Failure } from "@/shared/errors";
+import {
+  acceptedCurrencies,
+  convertMoney,
+  currencyDecimals,
+  exchangeRateFromDatabase,
+  exchangeRateToDatabase,
+  formatExchangeRate,
+  parseExchangeRateInput,
+  type ExchangeRate,
+  type ExchangeRateRejection,
+  type Money,
+} from "@/shared/money";
+import * as repository from "./repository";
+import { isStale } from "./staleness";
+
+// El tipo de cambio (ADR 0025; brief-29.4). fx es dueño de la configuración de la cotización y de
+// las cotizaciones; la moneda principal es de organizations, y fx la lee por su interfaz. Sin moneda
+// principal o sin configuración, no hay cotización: getExchangeSetup devuelve null y el CRM se
+// comporta como siempre. En esta subfase la cotización es solo manual (D-3); la lectura automática
+// es la 29.4.2.
+
+export type ExchangeRateSource = repository.ExchangeRateSourceName;
+
+export type CurrentRate = {
+  id: string;
+  baseCurrency: string;
+  quoteCurrency: string;
+  rate: ExchangeRate;
+  source: ExchangeRateSource;
+  recordedBy: string;
+  recordedAt: Date;
+  // Más de 24 horas hábiles desde que se guardó (ADR 0025, punto 4, R-B3).
+  stale: boolean;
+};
+
+export type ExchangeSetup = {
+  mainCurrency: string;
+  quoteCurrency: string;
+  current: CurrentRate | null;
+};
+
+function toCurrentRate(
+  row: repository.RateRow,
+  now: Date,
+  timezone: string,
+): CurrentRate {
+  return {
+    id: row.id,
+    baseCurrency: row.baseCurrency,
+    quoteCurrency: row.quoteCurrency,
+    rate: exchangeRateFromDatabase(row.rate),
+    source: row.source,
+    recordedBy: row.recordedBy,
+    recordedAt: row.recordedAt,
+    stale: isStale(row.recordedAt, now, timezone),
+  };
+}
+
+// La moneda principal, la otra y la cotización vigente de una organización, o null si no tiene
+// moneda principal o configuración. La usa cash, que ya autorizó al usuario, dentro de su
+// transacción cuando registra un cobro.
+export async function getExchangeSetup(
+  organizationId: string,
+  tx?: DbTransaction,
+  now: Date = new Date(),
+): Promise<ExchangeSetup | null> {
+  const mainCurrency = await getMainCurrency(organizationId, tx);
+  if (!mainCurrency) return null;
+  const settings = await repository.findSettings(organizationId, tx);
+  if (!settings) return null;
+  const row = await repository.findCurrentRate(
+    organizationId,
+    mainCurrency,
+    settings.quoteCurrency,
+    tx,
+  );
+  const current = row
+    ? toCurrentRate(
+        row,
+        now,
+        await getOrganizationTimezoneForService(organizationId),
+      )
+    : null;
+  return { mainCurrency, quoteCurrency: settings.quoteCurrency, current };
+}
+
+export function decimalsOf(currency: string): number {
+  const found = currencyDecimals(currency);
+  if (!found.ok) throw new Error(`moneda sin decimales conocidos: ${currency}`);
+  return found.decimals;
+}
+
+// El total de referencia (ADR 0025, puntos 6 y 7; brief-29.4, D-7 y D-8): montos de varias monedas
+// sumados en la principal con la cotización vigente, para mostrar. No se guarda. Las monedas que no
+// son la principal ni la otra no se convierten: se informan aparte. Devuelve null sin cotización
+// vigente, o si todo ya está en la principal y no hay nada que convertir.
+export type ReferenceTotal = {
+  currency: string;
+  total: Money;
+  rate: CurrentRate;
+  unconverted: string[];
+};
+
+export function referenceTotal(
+  setup: ExchangeSetup | null,
+  amounts: { currency: string; amount: Money }[],
+): ReferenceTotal | null {
+  if (!setup?.current) return null;
+  const rate = setup.current;
+  const unconverted = new Set<string>();
+  let total = 0n;
+  let converted = false;
+  for (const { currency, amount } of amounts) {
+    if (amount < 0n)
+      throw new Error("monto negativo en un total de referencia");
+    if (amount === 0n) continue;
+    if (currency === setup.mainCurrency) {
+      total += amount;
+    } else if (currency === setup.quoteCurrency) {
+      const result = convertMoney({
+        amount,
+        rate: rate.rate,
+        direction: "to_base",
+        targetDecimals: decimalsOf(setup.mainCurrency),
+      });
+      if (result.ok) total += result.amount;
+      else if (result.reason === "too_large") unconverted.add(currency);
+      converted = true;
+    } else {
+      unconverted.add(currency);
+    }
+  }
+  if (!converted && unconverted.size === 0) return null;
+  return {
+    currency: setup.mainCurrency,
+    total,
+    rate,
+    unconverted: [...unconverted].sort(),
+  };
+}
+
+// --- La pantalla de la cotización (brief-29.4, D-4) ---
+
+export const EXCHANGE_RATE_PAGE_SIZE = 20;
+
+export type ExchangeRateHistoryRow = {
+  id: string;
+  rate: ExchangeRate;
+  source: ExchangeRateSource;
+  recordedAt: Date;
+  recordedByName: string;
+};
+
+export type ExchangeRatePage = {
+  mainCurrency: string;
+  quoteCurrency: string;
+  current: (CurrentRate & { recordedByName: string }) | null;
+  history: ExchangeRateHistoryRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
+const pageSchema = z.coerce.number().int().min(1).catch(1);
+
+// La vigente y el historial, para admin y viewer (ADR 0025, punto 11). Sin moneda principal, la
+// sección no existe: NOT_FOUND, como una capacidad ausente.
+export async function getExchangeRatePage(
+  context: AuthContext,
+  page: unknown = 1,
+): Promise<
+  { ok: true; value: ExchangeRatePage } | Failure<"FORBIDDEN" | "NOT_FOUND">
+> {
+  const signedIn = authorize(context, {});
+  if (!signedIn.ok) return signedIn;
+  const setup = await getExchangeSetup(context.organizationId);
+  if (!setup) return failure("NOT_FOUND");
+  const pageNumber = pageSchema.parse(page);
+  const { rows, total } = await repository.listRates(
+    context.organizationId,
+    setup.mainCurrency,
+    setup.quoteCurrency,
+    {
+      limit: EXCHANGE_RATE_PAGE_SIZE,
+      offset: (pageNumber - 1) * EXCHANGE_RATE_PAGE_SIZE,
+    },
+  );
+  const authorIds = [
+    ...new Set([
+      ...rows.map((row) => row.recordedBy),
+      ...(setup.current ? [setup.current.recordedBy] : []),
+    ]),
+  ];
+  const authors = await getMemberSummaries(context.organizationId, authorIds);
+  const nameOf = (userId: string) =>
+    authors.find((author) => author.id === userId)?.name ?? "";
+  return {
+    ok: true,
+    value: {
+      mainCurrency: setup.mainCurrency,
+      quoteCurrency: setup.quoteCurrency,
+      current: setup.current
+        ? { ...setup.current, recordedByName: nameOf(setup.current.recordedBy) }
+        : null,
+      history: rows.map((row) => ({
+        id: row.id,
+        rate: exchangeRateFromDatabase(row.rate),
+        source: row.source,
+        recordedAt: row.recordedAt,
+        recordedByName: nameOf(row.recordedBy),
+      })),
+      total,
+      page: pageNumber,
+      pageSize: EXCHANGE_RATE_PAGE_SIZE,
+    },
+  };
+}
+
+// Cuánto se puede mover una carga contra la vigente sin pedir una confirmación: un 10 %, el mismo
+// límite que frena a la lectura automática (ADR 0025, punto 4). Para la carga manual no bloquea: es
+// ella la que corrige (D-4).
+const LARGE_CHANGE_PERCENT = 10n;
+
+export function isLargeChange(previous: ExchangeRate, next: ExchangeRate) {
+  const difference = next > previous ? next - previous : previous - next;
+  return difference * 100n > previous * LARGE_CHANGE_PERCENT;
+}
+
+export type RecordExchangeRateResult =
+  | { ok: true; id: string }
+  | Failure<"FORBIDDEN" | "NOT_FOUND">
+  | Failure<"VALIDATION_ERROR", { reason: ExchangeRateRejection }>
+  | Failure<
+      "BUSINESS_RULE_VIOLATION",
+      { rule: "large_change"; current: string }
+    >;
+
+const recordInputSchema = z.object({
+  rate: z.string().max(40),
+  confirmLargeChange: z.boolean().default(false),
+});
+
+// La carga manual de un admin (ADR 0025, punto 4): pasa a ser la vigente, con auditoría.
+export async function recordExchangeRate(
+  context: AuthContext,
+  input: unknown,
+): Promise<RecordExchangeRateResult> {
+  const signedIn = authorize(context, {});
+  if (!signedIn.ok) return signedIn;
+  const setup = await getExchangeSetup(context.organizationId);
+  if (!setup) return failure("NOT_FOUND");
+  const allowed = authorize(context, { role: "admin" });
+  if (!allowed.ok) return allowed;
+
+  const parsed = recordInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, code: "VALIDATION_ERROR", reason: "invalid" };
+  }
+  const rate = parseExchangeRateInput(parsed.data.rate);
+  if (!rate.ok) {
+    return { ok: false, code: "VALIDATION_ERROR", reason: rate.reason };
+  }
+
+  return repository.withTransaction(async (tx) => {
+    const current = await repository.findCurrentRate(
+      context.organizationId,
+      setup.mainCurrency,
+      setup.quoteCurrency,
+      tx,
+    );
+    if (
+      current &&
+      !parsed.data.confirmLargeChange &&
+      isLargeChange(exchangeRateFromDatabase(current.rate), rate.rate)
+    ) {
+      return {
+        ok: false as const,
+        code: "BUSINESS_RULE_VIOLATION" as const,
+        rule: "large_change" as const,
+        current: formatExchangeRate(exchangeRateFromDatabase(current.rate)),
+      };
+    }
+    const row = await repository.insertRate(tx, {
+      organizationId: context.organizationId,
+      baseCurrency: setup.mainCurrency,
+      quoteCurrency: setup.quoteCurrency,
+      rate: exchangeRateToDatabase(rate.rate),
+      recordedBy: context.userId,
+    });
+    await recordAudit(tx, {
+      organizationId: context.organizationId,
+      actorUserId: context.userId,
+      entityType: "exchange_rate",
+      entityId: row.id,
+      action: "create",
+      diff: {
+        before: null,
+        after: {
+          base_currency: row.baseCurrency,
+          quote_currency: row.quoteCurrency,
+          rate: row.rate,
+          source: row.source,
+        },
+      },
+    });
+    return { ok: true as const, id: row.id };
+  });
+}
+
+// --- El script de la moneda principal (brief-29.4, D-2) ---
+
+export type CreateExchangeSettingsResult =
+  | { ok: true; status: "created" | "already_created" }
+  | Failure<"VALIDATION_ERROR">
+  | Failure<"BUSINESS_RULE_VIOLATION", { rule: "no_main_currency" }>
+  | Failure<"CONFLICT", { current: string }>;
+
+// La configuración de la cotización: la llama solo scripts/fijar-moneda.ts, en la transacción que
+// fija la moneda principal, con el admin que el script ya validó como autor. La otra moneda es una
+// de las aceptadas y distinta de la principal; la fuente, manual.
+export async function createExchangeSettings(
+  tx: DbTransaction,
+  input: { organizationId: string; quoteCurrency: string; actorUserId: string },
+): Promise<CreateExchangeSettingsResult> {
+  const mainCurrency = await getMainCurrency(input.organizationId, tx);
+  if (!mainCurrency) {
+    return {
+      ok: false,
+      code: "BUSINESS_RULE_VIOLATION",
+      rule: "no_main_currency",
+    };
+  }
+  if (
+    !acceptedCurrencies().includes(input.quoteCurrency) ||
+    input.quoteCurrency === mainCurrency
+  ) {
+    return failure("VALIDATION_ERROR");
+  }
+  const existing = await repository.findSettings(input.organizationId, tx);
+  if (existing) {
+    if (existing.quoteCurrency === input.quoteCurrency) {
+      return { ok: true, status: "already_created" };
+    }
+    return { ok: false, code: "CONFLICT", current: existing.quoteCurrency };
+  }
+  const id = await repository.insertSettings(tx, {
+    organizationId: input.organizationId,
+    quoteCurrency: input.quoteCurrency,
+  });
+  if (!id) throw new Error("configuración de la cotización creada a la vez");
+  await recordAudit(tx, {
+    organizationId: input.organizationId,
+    actorUserId: input.actorUserId,
+    entityType: "exchange_rate_setting",
+    entityId: id,
+    action: "create",
+    diff: {
+      before: null,
+      after: {
+        quote_currency: input.quoteCurrency,
+        source: "manual",
+        origen: "script",
+      },
+    },
+  });
+  return { ok: true, status: "created" };
+}

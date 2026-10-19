@@ -24,6 +24,11 @@ import {
 
 type LogCode = Parameters<typeof logEvent>[0]["code"];
 
+// El rechazo de un cobro porque la cotización vigente cambió mientras se cargaba (brief-29.4, P-4).
+function isRateChange(result: { code: string }): boolean {
+  return "rule" in result && result.rule === "exchange_rate_changed";
+}
+
 export async function accountReceiptAction(
   _previous: AccountReceiptFormState,
   formData: FormData,
@@ -54,6 +59,15 @@ export async function accountReceiptAction(
     amount: String(formData.get("amount") ?? "")
       .trim()
       .slice(0, 40),
+    // La moneda que entra, la cotización acordada y la vigente que se mostró (brief-29.4, D-6).
+    tenderedCurrency: String(formData.get("tenderedCurrency") ?? "")
+      .trim()
+      .toUpperCase()
+      .slice(0, 8),
+    exchangeRate: String(formData.get("exchangeRate") ?? "")
+      .trim()
+      .slice(0, 40),
+    exchangeRateId: String(formData.get("exchangeRateId") ?? "").slice(0, 64),
   };
   if (intent === "edit") return { status: "idle", values };
   const input = { clientId, ...values };
@@ -63,7 +77,10 @@ export async function accountReceiptAction(
       const result = await previewAccountReceipt(context, input);
       if (!result.ok) {
         log(result.code);
-        return {
+        // Si la vigente cambió mientras se cargaba, la página se vuelve a leer: el formulario muestra la
+        // nueva equivalencia y manda su id (revisión independiente de la 29.4, R1-3).
+        if (isRateChange(result)) revalidatePath(`/clientes/${clientId}/cobrar`);
+          return {
           status: "error",
           requestId,
           values,
@@ -101,6 +118,9 @@ export async function accountReceiptAction(
     const result = await createAccountReceipt(context, input);
     if (!result.ok) {
       log(result.code);
+      // Si la vigente cambió mientras se cargaba, la página se vuelve a leer: el formulario muestra la
+      // nueva equivalencia y manda su id (revisión independiente de la 29.4, R1-3).
+      if (isRateChange(result)) revalidatePath(`/clientes/${clientId}/cobrar`);
       return {
         status: "error",
         requestId,

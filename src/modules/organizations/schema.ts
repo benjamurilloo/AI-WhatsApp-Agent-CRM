@@ -1,4 +1,6 @@
+import { sql } from "drizzle-orm";
 import {
+  check,
   index,
   pgEnum,
   pgTable,
@@ -10,20 +12,33 @@ import {
 import { users } from "@/modules/auth/schema";
 
 // docs/architecture/DataModel.md, tablas organizations y organization_members (brief-3.1).
-export const organizations = pgTable("organizations", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  name: text("name").notNull(),
-  timezone: text("timezone")
-    .notNull()
-    .default("America/Argentina/Buenos_Aires"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow()
-    .$onUpdate(() => new Date()),
-});
+export const organizations = pgTable(
+  "organizations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    timezone: text("timezone")
+      .notNull()
+      .default("America/Argentina/Buenos_Aires"),
+    // La moneda principal (ADR 0025, punto 2; brief-29.4, D-2): opcional, y sin ella el CRM se
+    // comporta como siempre. La fija quien opera el CRM con org:currency, una sola vez; que sea de
+    // las monedas aceptadas lo valida el servicio, como en los precios.
+    mainCurrency: text("main_currency"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    check(
+      "organizations_main_currency_format",
+      sql`${table.mainCurrency} IS NULL OR ${table.mainCurrency} ~ '^[A-Z]{3}$'`,
+    ),
+  ],
+);
 
 // ENUM de PostgreSQL (brief-3.1, D-2).
 export const memberRole = pgEnum("member_role", ["admin", "viewer"]);

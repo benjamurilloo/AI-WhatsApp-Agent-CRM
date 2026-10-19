@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import { listProductPrices, PRICES_PAGE_SIZE } from "@/modules/catalog";
 import { getProductStock } from "@/modules/inventory";
-import { getOrganizationTimezone } from "@/modules/organizations";
+import {
+  getMainCurrency,
+  getOrganizationTimezone,
+} from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
 import {
   BackLink,
@@ -130,6 +133,7 @@ export default async function PricesPage({
               productId={product.id}
               current={history.current}
               currencies={currencyOptions()}
+              defaultCurrency={await getMainCurrency(context.organizationId)}
             />
           </SectionCard>
         ) : (

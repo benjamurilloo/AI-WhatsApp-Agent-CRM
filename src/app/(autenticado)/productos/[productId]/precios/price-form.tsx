@@ -42,10 +42,13 @@ export function PriceForm({
   productId,
   current,
   currencies,
+  defaultCurrency = null,
 }: {
   productId: string;
   current: ProductPrice | null;
   currencies: { code: string; label: string }[];
+  // La moneda principal, propuesta si no hay uno vigente (brief-29.4, D-9).
+  defaultCurrency?: string | null;
 }) {
   const [state, formAction, pending] = useActionState(
     setPriceAction,
@@ -61,7 +64,7 @@ export function PriceForm({
     state.status === "idle"
       ? {
           amount: "",
-          currency: current?.currency ?? "",
+          currency: current?.currency ?? defaultCurrency ?? "",
           expectedPriceId: current?.id ?? "",
         }
       : state.values;

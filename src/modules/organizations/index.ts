@@ -11,6 +11,7 @@ export {
   getAdminContextForScript,
   getAppFrame,
   getAuthContext,
+  getMainCurrency,
   getMember,
   getMemberSummaries,
   getOrganizationTimezone,
@@ -18,6 +19,7 @@ export {
   hasCapability,
   listMembers,
   reactivateMember,
+  setMainCurrency,
   MEMBERS_PAGE_SIZE,
   type ActivateCapabilityResult,
   type AppFrame,
@@ -35,6 +37,7 @@ export {
   type MemberRoleFilter,
   type MemberStatusFilter,
   type MemberSummary,
+  type SetMainCurrencyResult,
 } from "./service";
 // Perfiles de rubro (ADR 0024, punto 13): plantillas versionadas que el script de capacidades
 // copia a la organización. Son datos, no código.

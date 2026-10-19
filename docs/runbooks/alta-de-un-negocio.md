@@ -57,6 +57,18 @@ sudo bash -c 'read -r -p "Id de la organización demo: " ORG_ID; read -r -p "Cor
 
 Los modelos y los atributos se ajustan después en **Modelos** y **Modelos → Atributos**, desde la UI.
 
+## 1c. La moneda principal, si el negocio cobra en dos monedas
+
+*Desde la 29.4* ([brief-29.4](../decisions/brief-29.4-el-tipo-de-cambio.md), [ADR 0025](../decisions/0025-tipo-de-cambio.md)). Solo para un negocio que publica en una moneda y cobra también en otra, como una tienda de iPhone que vende en dólares y acepta pesos. **Un negocio de una sola moneda se salta este paso** y no cambia en nada.
+
+`org:currency` fija la moneda principal y la otra moneda de la cotización **en la misma transacción**, auditadas con el `admin` como autor. Se fija **una sola vez**: fijarla con datos se permite, cambiarla no, y no hay comando para quitarla. La moneda principal tiene que valer más que la otra (1 USD = 1.565 ARS), porque la cotización es al menos 1. El correo del `admin` llega por el entorno:
+
+```
+sudo bash -c 'read -r -p "Id de la organización: " ORG_ID; read -r -p "Correo del admin: " MONEDA_ADMIN_CORREO; export MONEDA_ADMIN_CORREO; . /etc/crm-production/app.env && export DATABASE_URL && cd /srv/crm-production && exec runuser -u crm -- npm run --silent org:currency -- --organization "$ORG_ID" --main USD --quote ARS'
+```
+
+**La primera cotización la carga un `admin`** en **Caja → Cotización**. Hasta la 29.4.2, la cotización es solo manual.
+
 ## 2. La carga de los datos, por la UI
 
 El `admin` ingresa en `https://crm.vixoraai.app/login` y carga, desde las pantallas del CRM:

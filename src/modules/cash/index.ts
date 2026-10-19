@@ -120,7 +120,13 @@ export {
   type StatementCurrency,
   type StatementDocument,
   type StatementSale,
+  type AccountReferences,
+  type ExchangeOffer,
+  type ReceiptPaymentFailure,
+  type ReferenceView,
 } from "./service";
+// Cobrar en otra moneda (brief-29.4, D-6).
+export type { TenderField, TenderInput } from "./tender";
 export {
   createSupplierPayment,
   formatSupplierPaymentNumber,

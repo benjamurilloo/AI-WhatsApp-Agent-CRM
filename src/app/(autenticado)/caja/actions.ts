@@ -33,6 +33,8 @@ import {
   type PaymentMethodFormState,
   type PaymentMethodFormValues,
 } from "./messages";
+import { getOrganizationTimezone } from "@/modules/organizations";
+import { referenceText } from "./exchange";
 
 // Server Actions de la caja y de los medios de pago (brief-21.2, D-10). La sesión se verifica acá;
 // el rol y la organización, en cash. El log lleva actor, organización, código y duración, nunca
@@ -191,11 +193,18 @@ export async function closeCashSessionAction(
       return { status: "error", requestId, rows, ...closeRejection(preview) };
     }
     log("OK");
+    const reference = preview.reference;
     return {
       status: "review",
       requestId,
       rows,
       preview: preview.rows,
+      reference: reference
+        ? {
+            ...referenceText(reference, await getOrganizationTimezone(context)),
+            stale: reference.stale,
+          }
+        : null,
       message,
     };
   };

@@ -26,6 +26,7 @@ import {
   voidReasonText,
 } from "@/app/(autenticado)/devoluciones/messages";
 import { PrintButton } from "./print-button";
+import { tenderNote } from "@/app/(autenticado)/caja/exchange";
 
 export const metadata: Metadata = {
   title: "Recibo — AI WhatsApp Agent CRM",
@@ -212,6 +213,12 @@ export default async function ReceiptPage({
               {formatMoney(receipt.amount, receipt.currency)}
             </dd>
           </div>
+          {receipt.tender ? (
+            <div>
+              <dt className="text-muted">Lo que entró</dt>
+              <dd className="tabular-nums">{tenderNote(receipt.tender)}</dd>
+            </div>
+          ) : null}
           {receipt.session ? (
             <div className="print:hidden">
               <dt className="text-muted">Sesión de caja</dt>

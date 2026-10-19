@@ -13,14 +13,25 @@ import {
   radioClass,
   secondaryLinkClass,
 } from "@/app/_components/form-styles";
+import type { ReceiptExchangeProps } from "@/app/(autenticado)/caja/exchange";
+import {
+  TenderCurrencyChoice,
+  TenderedAmountFields,
+} from "@/app/(autenticado)/caja/exchange-fields";
 import { AmountReading } from "@/app/(autenticado)/caja/money-fields";
-import type { ReceiptFormState, ReceiptFormValues } from "./messages";
+import type {
+  ReceiptFormField,
+  ReceiptFormState,
+  ReceiptFormValues,
+} from "./messages";
 
 // El cobro de una venta (brief-21.3, D-3 y D-8) y, desde la 21.4, la seña de un pedido (brief-21.4,
 // D-8): el medio, como grupo de opciones con los activos, y el monto, propuesto en lo que falta, con
 // su lectura («Se lee: …») como en la caja. Un solo paso: el tope lo vuelve a calcular cash con el
 // bloqueo tomado. Funciona sin JavaScript. El destino viaja en un campo oculto, y la acción es la
-// del cobro o la de la seña.
+// del cobro o la de la seña. Desde la 29.4, con moneda principal, se puede recibir en la otra moneda
+// de la organización (brief-29.4, D-6): la moneda que entra se elige con un enlace y el servidor
+// vuelve a armar el formulario con el monto propuesto en ella.
 
 const initialState: ReceiptFormState = { status: "idle" };
 
@@ -33,6 +44,7 @@ export function ReceiptForm({
   outstanding,
   paymentMethods,
   hasOpenSession,
+  exchange,
 }: {
   action: (
     previous: ReceiptFormState,
@@ -46,6 +58,7 @@ export function ReceiptForm({
   outstanding: string;
   paymentMethods: PaymentMethod[];
   hasOpenSession: boolean;
+  exchange: ReceiptExchangeProps | null;
 }) {
   const [state, formAction, pending] = useActionState(action, initialState);
   const errorRef = useRef<HTMLParagraphElement>(null);
@@ -56,10 +69,13 @@ export function ReceiptForm({
         // Con un solo medio activo, se propone ese.
         paymentMethodId:
           paymentMethods.length === 1 ? paymentMethods[0]!.id : "",
-        amount: outstanding,
+        amount: exchange ? exchange.proposed : outstanding,
+        tenderedCurrency: exchange?.tendered ?? currency,
+        exchangeRate: "",
       };
-  const invalid = (field: "paymentMethod" | "amount") =>
+  const invalid = (field: ReceiptFormField) =>
     failed && state.fields.includes(field);
+  const tendered = exchange?.tendered ?? currency;
 
   useEffect(() => {
     if (state.status === "error") errorRef.current?.focus();
@@ -67,7 +83,8 @@ export function ReceiptForm({
 
   return (
     <form
-      key={failed ? state.requestId : "nuevo"}
+      // Con otra moneda que entra, el formulario se vuelve a montar con su monto propuesto.
+      key={failed ? state.requestId : `nuevo-${tendered}`}
       action={formAction}
       className="flex flex-col gap-4"
     >
@@ -127,11 +144,25 @@ export function ReceiptForm({
         ) : null}
       </fieldset>
 
-      <AmountField
-        currency={currency}
-        defaultValue={values.amount}
-        invalid={invalid("amount")}
-      />
+      {exchange ? <TenderCurrencyChoice exchange={exchange} /> : null}
+
+      {exchange && tendered !== currency ? (
+        <TenderedAmountFields
+          exchange={exchange}
+          target={currency}
+          defaultAmount={values.amount}
+          defaultRate={values.exchangeRate}
+          invalidAmount={invalid("amount")}
+          invalidRate={invalid("exchangeRate")}
+          errorId="cobro-error"
+        />
+      ) : (
+        <AmountField
+          currency={currency}
+          defaultValue={values.amount}
+          invalid={invalid("amount")}
+        />
+      )}
 
       <div className="flex flex-wrap justify-end gap-3">
         <Link href={cancelHref} className={secondaryLinkClass}>

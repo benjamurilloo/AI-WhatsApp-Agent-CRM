@@ -56,6 +56,11 @@ export const auditEntityType = pgEnum("audit_entity_type", [
   "organization_capability",
   "product_model",
   "attribute_definition",
+  // El tipo de cambio (brief-29.4, D-10): la moneda principal de la organización (el id es el de la
+  // organización), la configuración de su cotización y cada cotización cargada.
+  "organization",
+  "exchange_rate_setting",
+  "exchange_rate",
 ]);
 
 export const auditAction = pgEnum("audit_action", [

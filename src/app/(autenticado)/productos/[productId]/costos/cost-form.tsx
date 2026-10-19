@@ -42,10 +42,13 @@ export function CostForm({
   productId,
   current,
   currencies,
+  defaultCurrency = null,
 }: {
   productId: string;
   current: ProductCost | null;
   currencies: { code: string; label: string }[];
+  // La moneda principal, propuesta si no hay uno vigente (brief-29.4, D-9).
+  defaultCurrency?: string | null;
 }) {
   const [state, formAction, pending] = useActionState(
     setCostAction,
@@ -61,7 +64,7 @@ export function CostForm({
     state.status === "idle"
       ? {
           amount: "",
-          currency: current?.currency ?? "",
+          currency: current?.currency ?? defaultCurrency ?? "",
           expectedCostId: current?.id ?? "",
         }
       : state.values;

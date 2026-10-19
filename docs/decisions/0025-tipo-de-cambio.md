@@ -5,6 +5,15 @@
 - Nivel: **diseñado**. No hay código, tablas ni ejecución.
 - **Supera en parte**: el [ADR 0019](0019-bases-de-los-comprobantes.md), punto 3; el [ADR 0022](0022-cobros-y-caja.md), en la moneda del cobro y de la devolución y en la moneda por defecto (punto 8); el [ADR 0023](0023-compras-y-proveedores.md), punto 8, en la moneda del pago; y el [ADR 0024](0024-rubros-y-capacidades.md), puntos 15 y 17. **Precisa** el [ADR 0016](0016-el-crm-se-amplia-hacia-un-erp-por-fases.md), punto 7.
 
+*Nota del 2026-10-18, al implementar la 29.4* ([brief-29.4](brief-29.4-el-tipo-de-cambio.md)), sin cambiar el texto de abajo:
+
+- **Punto 2, «cambiarla en una organización con datos no se permite»**: se lee como **cambiar** una moneda principal ya fijada. Fijarla **por primera vez** se permite aunque la organización tenga datos, porque no cambia ningún monto guardado: solo suma propuestas y totales de referencia (brief-29.4, D-2, decisión del usuario). La primera fue «iPhone Demo», que ya tenía precios en USD.
+- **Punto 3**: la 29.4 crea las dos tablas **solo con lo manual**. La fuente `dolarapi_blue`, el ajuste, `last_confirmed_at`, `source_rate`, `source_observed_at` y el `CHECK` de la suma los suma la 29.4.2, con una migración aditiva (D-3).
+- **Punto 5, R-M2**: un cobro a cuenta con moneda principal se aplica en la principal o en una moneda **en la que el cliente tenga saldo**, incluida una tercera (una venta vieja en euros), que sigue cobrándose en su moneda, como antes. Lo recibido solo se convierte entre la principal y la otra (brief-29.4, P-1).
+- **Punto 5, «la del destino y la otra moneda de la organización»**: se convierte solo cuando entra la otra moneda contra un destino en la principal. Un destino en la otra moneda (una venta en pesos) se cobra en su moneda: al revés, el redondeo de lo recibido se multiplica por la cotización y lo propuesto excedería lo que falta en más de un centavo (revisión independiente de la 29.4, R1-1). **Sin cotización vigente se rechaza aunque venga una acordada** (R1-2).
+- **Fases**: la fila de la 29.4 nombra «el cambio de fuente», que con lo de arriba pasa a la 29.4.2.
+- **Punto 5**: el formulario manda la cotización vigente que mostró, y si cambió mientras se cargaba el cobro, se rechaza: lo aplicado nunca sale de una cotización que el `admin` no vio (P-4).
+
 ## Contexto
 
 El primer negocio del rubro de la Fase 29 publica y cobra en dólares, y acepta pesos al dólar blue de Córdoba, precio de venta (ADR 0024, R-2). Combina medios y monedas en una misma venta: efectivo en USD o ARS, transferencia en ARS, tarjetas y USDT (R-3).

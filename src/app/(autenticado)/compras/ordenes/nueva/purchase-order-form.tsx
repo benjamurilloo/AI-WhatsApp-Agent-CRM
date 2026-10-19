@@ -52,10 +52,13 @@ export type CurrencyOption = { code: string; label: string };
 export function PurchaseOrderForm({
   initialSupplier,
   currencies,
+  defaultCurrency = null,
   maxLines,
 }: {
   initialSupplier: { id: string; name: string } | null;
   currencies: CurrencyOption[];
+  // La moneda principal, propuesta al empezar (brief-29.4, D-9).
+  defaultCurrency?: string | null;
   maxLines: number;
 }) {
   const [state, formAction, pending] = useActionState(
@@ -72,6 +75,7 @@ export function PurchaseOrderForm({
       pending={pending}
       initialSupplier={initialSupplier}
       currencies={currencies}
+      defaultCurrency={defaultCurrency}
       maxLines={maxLines}
     />
   );
@@ -83,6 +87,7 @@ function PurchaseOrderFields({
   pending,
   initialSupplier,
   currencies,
+  defaultCurrency,
   maxLines,
 }: {
   state: PurchaseOrderFormState;
@@ -90,6 +95,7 @@ function PurchaseOrderFields({
   pending: boolean;
   initialSupplier: { id: string; name: string } | null;
   currencies: CurrencyOption[];
+  defaultCurrency: string | null;
   maxLines: number;
 }) {
   const failed = state.status === "error" ? state : null;
@@ -97,7 +103,9 @@ function PurchaseOrderFields({
     id: failed ? failed.values.supplierId : (initialSupplier?.id ?? ""),
     text: failed ? failed.values.supplierText : (initialSupplier?.name ?? ""),
   });
-  const [currency, setCurrency] = useState(failed?.values.currency ?? "");
+  const [currency, setCurrency] = useState(
+    failed?.values.currency ?? defaultCurrency ?? "",
+  );
   const [rows, setRows] = useState<Row[]>(() => {
     const sent = failed ? failed.values.lines : [];
     const rows = sent.map((line, index) => ({ ...line, key: index }));

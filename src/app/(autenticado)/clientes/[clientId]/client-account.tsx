@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { getClientAccountSummary } from "@/modules/cash";
-import type { AuthContext } from "@/modules/organizations";
+import {
+  getOrganizationTimezone,
+  type AuthContext,
+} from "@/modules/organizations";
+import { ReferenceTotal } from "@/app/(autenticado)/caja/reference-total";
 import {
   linkClass,
   primaryLinkClass,
@@ -11,7 +15,8 @@ import { formatMoney } from "@/shared/money";
 // La cuenta corriente en la ficha del cliente (brief-21.6, D-7): por moneda, lo que debe o lo que
 // tiene a favor, y las señas retenidas; el estado de cuenta y, para admin, cobrar a cuenta y devolver
 // el saldo a favor. Sin movimientos: son del estado de cuenta. La compone la página con cash: crm no
-// depende de cash (ADR 0022, punto 13).
+// depende de cash (ADR 0022, punto 13). Desde la 29.4, con moneda principal, el total de referencia de
+// lo que debe y de lo que tiene a favor (brief-29.4, D-8).
 export async function ClientAccount({
   context,
   clientId,
@@ -19,8 +24,12 @@ export async function ClientAccount({
   context: AuthContext;
   clientId: string;
 }) {
-  const result = await getClientAccountSummary(context, clientId);
+  const [result, timeZone] = await Promise.all([
+    getClientAccountSummary(context, clientId),
+    getOrganizationTimezone(context),
+  ]);
   const currencies = result.ok ? result.currencies : [];
+  const references = result.ok ? result.references : null;
   const isAdmin = context.role === "admin";
   const hasFavor = currencies.some((row) => row.inFavor !== "0.00");
   return (
@@ -58,6 +67,18 @@ export async function ClientAccount({
           })}
         </dl>
       )}
+      <ReferenceTotal
+        reference={references?.owed ?? null}
+        label="Debe en total"
+        timeZone={timeZone}
+        className=""
+      />
+      <ReferenceTotal
+        reference={references?.inFavor ?? null}
+        label="A favor en total"
+        timeZone={timeZone}
+        className=""
+      />
       <div className="flex flex-wrap gap-3">
         <Link href={`/clientes/${clientId}/cuenta`} className={linkClass}>
           Estado de cuenta

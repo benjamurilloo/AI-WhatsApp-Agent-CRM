@@ -1,25 +1,16 @@
-import { MAX_AMOUNT, type Money } from "@/shared/money";
+import {
+  divideRoundingHalfAwayFromZero,
+  MAX_AMOUNT,
+  type Money,
+} from "@/shared/money";
 import type { Quantity } from "@/shared/quantity";
 
 // El total de una línea de un comprobante (ADR 0019, punto 4; ADR 0020, punto 3; brief-19.2,
 // AC-4): el precio unitario por la cantidad, redondeado a los decimales de la moneda con el medio
 // hacia afuera del cero. Todo en bigint: el precio en centésimos y la cantidad en milésimas, así
 // que el producto está en cienmilésimos y se divide una sola vez, con un solo redondeo. Vivía en
-// orders hasta la 20.3, que lo comparte con la venta y con el formulario (brief-20.3, D-1).
-
-// Cociente entero redondeado con el medio hacia afuera del cero. Los dos operandos son positivos
-// acá, pero la regla se escribe completa, como en el margen de catalog.
-function divideRoundingHalfAwayFromZero(
-  numerator: bigint,
-  denominator: bigint,
-): bigint {
-  if (denominator <= 0n) throw new Error("Divisor no positivo.");
-  const quotient = numerator / denominator;
-  const remainder = numerator % denominator;
-  const twice = (remainder < 0n ? -remainder : remainder) * 2n;
-  if (twice < denominator) return quotient;
-  return numerator < 0n ? quotient - 1n : quotient + 1n;
-}
+// orders hasta la 20.3, que lo comparte con la venta y con el formulario (brief-20.3, D-1). El
+// redondeo vive en src/shared/money desde la 29.4 (brief-29.4, D-5).
 
 // Solo el redondeo, sin los rechazos: lo usa la estimación del formulario, que muestra el número
 // mientras se carga (brief-19.2, D-7). unitPrice en centésimos, quantity en milésimas y decimals

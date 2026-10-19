@@ -320,7 +320,15 @@ export function SessionReceiptsTable({
                 )}
               </td>
               <td className={numberCell}>
-                {formatMoney(row.amount, row.currency)}
+                {/* En la caja, lo que entró: lo recibido si fue en otra moneda (brief-29.4, D-7). */}
+                {row.tender
+                  ? formatMoney(row.tender.amount, row.tender.currency)
+                  : formatMoney(row.amount, row.currency)}
+                {row.tender ? (
+                  <span className="block text-xs text-muted">
+                    Aplicado: {formatMoney(row.amount, row.currency)}
+                  </span>
+                ) : null}
               </td>
             </tr>
           ))}

@@ -1,0 +1,138 @@
+import type { ExchangeOffer, ReferenceView } from "@/modules/cash";
+import {
+  exchangeRateFromDatabase,
+  formatExchangeRate,
+  formatMoney,
+} from "@/shared/money";
+import { formatShortDateTime } from "@/app/_format/date-time";
+
+// Recibir en la otra moneda de la organización (ADR 0025, punto 5; brief-29.4, D-6), del lado del
+// servidor: cada página de un cobro arma con esto lo que necesita el formulario, ya formateado. La
+// moneda que entra se elige con un enlace (?moneda=ARS), para que el formulario siga funcionando sin
+// JavaScript: el servidor lo vuelve a armar con el monto propuesto en esa moneda.
+
+export const STALE_RATE_TEXT =
+  "Esta cotización tiene más de 24 horas hábiles. Revisala o escribí una acordada.";
+export const NO_RATE_TEXT =
+  "No hay una cotización cargada: sin ella no se cobra en la otra moneda. Cargala en Caja → Cotización.";
+
+export type ExchangeRateLabel = {
+  id: string;
+  // Con la escala de la base, para convertir en el navegador.
+  value: string;
+  // «1 USD = ARS 1.565,00»
+  label: string;
+  // «18/10/2026 15:30»
+  recordedLabel: string;
+  stale: boolean;
+};
+
+export type ReceiptExchangeProps = {
+  // La moneda que entra: la del destino o la otra.
+  tendered: string;
+  mainCurrency: string;
+  choices: { currency: string; href: string; selected: boolean }[];
+  rate: ExchangeRateLabel | null;
+  // Lo que falta en la moneda que entra, como se escribe en el campo.
+  proposed: string;
+  // «Faltan USD 100,00 = ARS 156.500,00», solo con la otra moneda y una vigente.
+  equivalence: string | null;
+};
+
+export function rateLabel(
+  rate: NonNullable<ExchangeOffer["rate"]>,
+  mainCurrency: string,
+  quoteCurrency: string,
+  timezone: string,
+): ExchangeRateLabel {
+  return {
+    id: rate.id,
+    value: rate.value,
+    label: `1 ${mainCurrency} = ${quoteCurrency} ${formatExchangeRate(
+      exchangeRateFromDatabase(rate.value),
+    )}`,
+    recordedLabel: formatShortDateTime(rate.recordedAt, timezone),
+    stale: rate.stale,
+  };
+}
+
+export function receiptExchange(input: {
+  offer: ExchangeOffer | null;
+  targetCurrency: string;
+  // Lo que falta en la moneda del destino: con la escala de la base y como se escribe.
+  outstanding: string;
+  outstandingInput: string;
+  // ?moneda= de la página.
+  chosen: string | undefined;
+  basePath: string;
+  timezone: string;
+}): ReceiptExchangeProps | null {
+  const { offer, targetCurrency } = input;
+  if (!offer) return null;
+  const other = offer.currency;
+  const tendered = input.chosen === other ? other : targetCurrency;
+  const quoteCurrency =
+    offer.mainCurrency === targetCurrency ? other : targetCurrency;
+  return {
+    tendered,
+    mainCurrency: offer.mainCurrency,
+    choices: [targetCurrency, other].map((currency) => ({
+      currency,
+      href:
+        currency === targetCurrency
+          ? input.basePath
+          : `${input.basePath}?moneda=${currency}`,
+      selected: currency === tendered,
+    })),
+    rate: offer.rate
+      ? rateLabel(offer.rate, offer.mainCurrency, quoteCurrency, input.timezone)
+      : null,
+    proposed:
+      tendered === targetCurrency
+        ? input.outstandingInput
+        : (offer.outstandingInput ?? ""),
+    equivalence:
+      tendered !== targetCurrency && offer.outstanding !== null
+        ? `Faltan ${formatMoney(input.outstanding, targetCurrency)} = ${formatMoney(
+            offer.outstanding,
+            other,
+          )}`
+        : null,
+  };
+}
+
+// Un total de referencia, para mostrar: «USD 1.234,50 de referencia, a 1 USD = ARS 1.565,00 del
+// 18/10/2026 15:30». Las monedas sin convertir se nombran aparte.
+export function referenceText(
+  reference: ReferenceView,
+  timezone: string,
+): { total: string; detail: string } {
+  const rate = formatExchangeRate(exchangeRateFromDatabase(reference.rate));
+  const parts = [
+    `a 1 ${reference.currency} = ${reference.quoteCurrency} ${rate}`,
+    `cotización del ${formatShortDateTime(reference.rateRecordedAt, timezone)}`,
+  ];
+  if (reference.unconverted.length > 0) {
+    parts.push(`sin convertir: ${reference.unconverted.join(", ")}`);
+  }
+  return {
+    total: formatMoney(reference.total, reference.currency),
+    detail: parts.join(", "),
+  };
+}
+
+// Lo que entró por un cobro en otra moneda, para mostrar junto a lo aplicado (brief-29.4, D-6):
+// «Entraron ARS 156.500,00 a 1.565,00», con «acordada» si la cotización fue solo para ese cobro.
+export function tenderNote(tender: {
+  currency: string;
+  amount: string;
+  exchangeRate: string;
+  negotiated: boolean;
+}): string {
+  const rate = formatExchangeRate(
+    exchangeRateFromDatabase(tender.exchangeRate),
+  );
+  return `Entraron ${formatMoney(tender.amount, tender.currency)} a ${rate}${
+    tender.negotiated ? " (acordada)" : ""
+  }`;
+}

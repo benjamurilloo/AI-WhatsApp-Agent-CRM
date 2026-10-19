@@ -1,6 +1,9 @@
-import type { CreateOrderReceiptResult, ReceiptField } from "@/modules/cash";
+import type { CreateOrderReceiptResult } from "@/modules/cash";
 import { formatMoney } from "@/shared/money";
-import { receiptRejection } from "@/app/(autenticado)/ventas/[saleId]/cobrar/messages";
+import {
+  receiptRejection,
+  type ReceiptFormField,
+} from "@/app/(autenticado)/ventas/[saleId]/cobrar/messages";
 
 // Textos de la seña (brief-21.4, D-6 y D-8). Los del medio, el monto y la caja son los del cobro de
 // una venta; acá van los del pedido.
@@ -23,8 +26,8 @@ export function depositUnexpectedErrorMessage(requestId: string): string {
 
 export function orderReceiptRejection(
   result: Exclude<CreateOrderReceiptResult, { ok: true }>,
-): { message: string; fields: ReceiptField[]; openCash: boolean } {
-  const plain = (message: string, fields: ReceiptField[] = []) => ({
+): { message: string; fields: ReceiptFormField[]; openCash: boolean } {
+  const plain = (message: string, fields: ReceiptFormField[] = []) => ({
     message,
     fields,
     openCash: false,

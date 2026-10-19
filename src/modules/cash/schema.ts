@@ -17,6 +17,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { users } from "@/modules/auth/schema";
 import { clients } from "@/modules/crm/schema";
+import { exchangeRates } from "@/modules/fx/schema";
 import { orders } from "@/modules/orders/schema";
 import { organizations } from "@/modules/organizations/schema";
 import { goodsReceipts, suppliers } from "@/modules/purchasing/schema";
@@ -324,6 +325,13 @@ export const receipts = pgTable(
     // La de la venta o la del pedido, copiada, o la que se elige en un cobro a cuenta (punto 2).
     currency: text("currency").notNull(),
     amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    // Lo recibido, si entró en otra moneda que el destino (ADR 0025, punto 5; brief-29.4, D-6):
+    // la moneda y el monto que entraron, la cotización usada, copiada, y su fila si fue la vigente. Las
+    // tres primeras van juntas o ninguna; currency y amount siguen siendo lo aplicado.
+    tenderedCurrency: text("tendered_currency"),
+    tenderedAmount: numeric("tendered_amount", { precision: 14, scale: 2 }),
+    exchangeRate: numeric("exchange_rate", { precision: 18, scale: 6 }),
+    exchangeRateId: uuid("exchange_rate_id"),
     // Siempre un usuario: el agente no cobra (ADR 0022, punto 12).
     createdBy: uuid("created_by")
       .notNull()
@@ -388,6 +396,38 @@ export const receipts = pgTable(
     check("receipts_number_positive", sql`${table.number} > 0`),
     check("receipts_amount_positive", sql`${table.amount} > 0`),
     check("receipts_currency_format", sql`${table.currency} ~ '^[A-Z]{3}$'`),
+    foreignKey({
+      name: "receipts_exchange_rate_fk",
+      columns: [table.organizationId, table.exchangeRateId],
+      foreignColumns: [exchangeRates.organizationId, exchangeRates.id],
+    }).onDelete("restrict"),
+    // Lo recibido: las tres juntas o ninguna, la fila de la cotización solo con ellas, otra moneda
+    // que la aplicada, un monto positivo y una cotización de al menos 1 (ADR 0025, punto 5, R-M1).
+    check(
+      "receipts_tendered_together",
+      sql`(${table.tenderedCurrency} IS NULL AND ${table.tenderedAmount} IS NULL AND ${table.exchangeRate} IS NULL)
+        OR (${table.tenderedCurrency} IS NOT NULL AND ${table.tenderedAmount} IS NOT NULL AND ${table.exchangeRate} IS NOT NULL)`,
+    ),
+    check(
+      "receipts_exchange_rate_id_tendered",
+      sql`${table.exchangeRateId} IS NULL OR ${table.tenderedCurrency} IS NOT NULL`,
+    ),
+    check(
+      "receipts_tendered_currency_distinct",
+      sql`${table.tenderedCurrency} IS NULL OR ${table.tenderedCurrency} <> ${table.currency}`,
+    ),
+    check(
+      "receipts_tendered_currency_format",
+      sql`${table.tenderedCurrency} IS NULL OR ${table.tenderedCurrency} ~ '^[A-Z]{3}$'`,
+    ),
+    check(
+      "receipts_tendered_amount_positive",
+      sql`${table.tenderedAmount} IS NULL OR ${table.tenderedAmount} > 0`,
+    ),
+    check(
+      "receipts_exchange_rate_minimum",
+      sql`${table.exchangeRate} IS NULL OR ${table.exchangeRate} >= 1`,
+    ),
   ],
 );
 
@@ -418,6 +458,12 @@ export const receiptVoids = pgTable(
     receiptId: uuid("receipt_id").notNull(),
     currency: text("currency").notNull(),
     amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    // Lo recibido por el cobro, copiado (ADR 0025, punto 5; brief-29.4, D-6): lo que la caja
+    // devuelve. Lo compara receipt_voids_check_copy() de la 0053, como la moneda y el monto.
+    tenderedCurrency: text("tendered_currency"),
+    tenderedAmount: numeric("tendered_amount", { precision: 14, scale: 2 }),
+    exchangeRate: numeric("exchange_rate", { precision: 18, scale: 6 }),
+    exchangeRateId: uuid("exchange_rate_id"),
     reason: receiptVoidReason("reason").notNull(),
     // La sesión abierta del cobro en efectivo anulado: lo esperado de esa sesión deja de contarlo.
     sessionId: uuid("session_id"),
@@ -453,6 +499,38 @@ export const receiptVoids = pgTable(
     check(
       "receipt_voids_currency_format",
       sql`${table.currency} ~ '^[A-Z]{3}$'`,
+    ),
+    foreignKey({
+      name: "receipt_voids_exchange_rate_fk",
+      columns: [table.organizationId, table.exchangeRateId],
+      foreignColumns: [exchangeRates.organizationId, exchangeRates.id],
+    }).onDelete("restrict"),
+    // Lo recibido: las tres juntas o ninguna, la fila de la cotización solo con ellas, otra moneda
+    // que la aplicada, un monto positivo y una cotización de al menos 1 (ADR 0025, punto 5, R-M1).
+    check(
+      "receipt_voids_tendered_together",
+      sql`(${table.tenderedCurrency} IS NULL AND ${table.tenderedAmount} IS NULL AND ${table.exchangeRate} IS NULL)
+        OR (${table.tenderedCurrency} IS NOT NULL AND ${table.tenderedAmount} IS NOT NULL AND ${table.exchangeRate} IS NOT NULL)`,
+    ),
+    check(
+      "receipt_voids_exchange_rate_id_tendered",
+      sql`${table.exchangeRateId} IS NULL OR ${table.tenderedCurrency} IS NOT NULL`,
+    ),
+    check(
+      "receipt_voids_tendered_currency_distinct",
+      sql`${table.tenderedCurrency} IS NULL OR ${table.tenderedCurrency} <> ${table.currency}`,
+    ),
+    check(
+      "receipt_voids_tendered_currency_format",
+      sql`${table.tenderedCurrency} IS NULL OR ${table.tenderedCurrency} ~ '^[A-Z]{3}$'`,
+    ),
+    check(
+      "receipt_voids_tendered_amount_positive",
+      sql`${table.tenderedAmount} IS NULL OR ${table.tenderedAmount} > 0`,
+    ),
+    check(
+      "receipt_voids_exchange_rate_minimum",
+      sql`${table.exchangeRate} IS NULL OR ${table.exchangeRate} >= 1`,
     ),
   ],
 );

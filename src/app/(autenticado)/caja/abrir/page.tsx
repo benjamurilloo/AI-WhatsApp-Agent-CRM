@@ -38,7 +38,9 @@ export default async function OpenCashPage() {
         <PageHeader
           title={TITLE}
           subtitle={
-            proposal.proposal.length > 0
+            // Sin cierre anterior, la moneda principal llega sin monto (brief-29.4, D-9; revisión
+            // independiente, R1-6): no hay nada contado que proponer.
+            proposal.proposal.some((row) => row.amount !== "")
               ? "Se propone lo que se contó al cerrar la última sesión. Corregilo si cambió."
               : "Contá el efectivo que hay en la caja antes de empezar."
           }

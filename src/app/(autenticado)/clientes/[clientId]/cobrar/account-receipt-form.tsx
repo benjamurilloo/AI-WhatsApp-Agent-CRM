@@ -14,7 +14,16 @@ import {
   secondaryButtonClass,
   secondaryLinkClass,
 } from "@/app/_components/form-styles";
-import { formatMoney } from "@/shared/money";
+import {
+  exchangeRateFromDatabase,
+  formatExchangeRate,
+  formatMoney,
+} from "@/shared/money";
+import {
+  NO_RATE_TEXT,
+  STALE_RATE_TEXT,
+  type ExchangeRateLabel,
+} from "@/app/(autenticado)/caja/exchange";
 import {
   AmountReading,
   CurrencySelect,
@@ -28,7 +37,16 @@ import type {
 // El cobro a cuenta (brief-21.6, D-5): la moneda, propuesta en la de la venta con saldo más vieja; el
 // medio, como grupo de opciones con los activos; y el monto, con su lectura como en la caja. Antes de
 // registrar, la vista previa de la regla: a qué ventas va y cuánto queda a favor. En la vista previa
-// los datos quedan fijos; «Cambiar los datos» vuelve a editarlos. Funciona sin JavaScript.
+// los datos quedan fijos; «Cambiar los datos» vuelve a editarlos. Funciona sin JavaScript. Desde la
+// 29.4, con moneda principal, la moneda es la aplicada (la principal o una con saldo), y lo que entra
+// puede venir en la otra moneda de la organización: la vista previa muestra lo aplicado (brief-29.4,
+// D-6).
+
+export type AccountExchangeProps = {
+  mainCurrency: string;
+  quoteCurrency: string;
+  rate: ExchangeRateLabel | null;
+};
 
 export function AccountReceiptForm({
   clientId,
@@ -37,6 +55,7 @@ export function AccountReceiptForm({
   currencies,
   paymentMethods,
   hasOpenSession,
+  exchange,
 }: {
   clientId: string;
   cancelHref: string;
@@ -46,6 +65,7 @@ export function AccountReceiptForm({
   currencies: string[];
   paymentMethods: PaymentMethod[];
   hasOpenSession: boolean;
+  exchange: AccountExchangeProps | null;
 }) {
   const [state, formAction, pending] = useActionState(accountReceiptAction, {
     status: "idle",
@@ -55,11 +75,18 @@ export function AccountReceiptForm({
   const failed = state.status === "error";
   const values: AccountReceiptFormValues =
     state.status === "idle" ? (state.values ?? defaults) : state.values;
-  const invalid = (field: "paymentMethod" | "amount" | "currency") =>
-    failed && state.fields.includes(field);
+  const invalid = (
+    field:
+      | "paymentMethod"
+      | "amount"
+      | "currency"
+      | "tenderedCurrency"
+      | "exchangeRate",
+  ) => failed && state.fields.includes(field);
   // La moneda elegida, para la lectura del monto. Tras un rechazo o la vista previa, el selector vuelve
   // a montarse con lo enviado, que es lo mismo que guarda este estado.
   const [currency, setCurrency] = useState(values.currency);
+  const [tendered, setTendered] = useState(values.tenderedCurrency);
 
   useEffect(() => {
     if (state.status === "error") errorRef.current?.focus();
@@ -79,6 +106,17 @@ export function AccountReceiptForm({
           value={values.paymentMethodId}
         />
         <input type="hidden" name="amount" value={values.amount} />
+        <input
+          type="hidden"
+          name="tenderedCurrency"
+          value={values.tenderedCurrency}
+        />
+        <input type="hidden" name="exchangeRate" value={values.exchangeRate} />
+        <input
+          type="hidden"
+          name="exchangeRateId"
+          value={values.exchangeRateId}
+        />
         <h2
           ref={previewRef}
           tabIndex={-1}
@@ -86,6 +124,16 @@ export function AccountReceiptForm({
         >
           Cómo se aplica {money(preview.amount)} en {state.paymentMethodName}
         </h2>
+        {preview.tender ? (
+          <p className="text-sm tabular-nums">
+            Entran {formatMoney(preview.tender.amount, preview.tender.currency)}{" "}
+            a{" "}
+            {formatExchangeRate(
+              exchangeRateFromDatabase(preview.tender.exchangeRate),
+            )}{" "}
+            por {exchange?.mainCurrency ?? ""}.
+          </p>
+        ) : null}
         <ul className="flex flex-col gap-1 text-sm">
           {preview.applications.map((row) => (
             <li key={row.saleId}>
@@ -171,6 +219,17 @@ export function AccountReceiptForm({
         />
       </div>
 
+      {exchange ? (
+        <TenderFields
+          exchange={exchange}
+          tendered={tendered}
+          onTenderedChange={setTendered}
+          defaultRate={values.exchangeRate}
+          invalidTendered={invalid("tenderedCurrency")}
+          invalidRate={invalid("exchangeRate")}
+        />
+      ) : null}
+
       <fieldset
         className="flex flex-col gap-2"
         aria-describedby={
@@ -208,7 +267,7 @@ export function AccountReceiptForm({
       </fieldset>
 
       <AmountField
-        currency={currency}
+        currency={tendered || currency}
         defaultValue={values.amount}
         invalid={invalid("amount")}
       />
@@ -231,7 +290,94 @@ export function AccountReceiptForm({
   );
 }
 
-// El monto, con su lectura en la moneda propuesta, como en el cobro de una venta.
+// La moneda que entra y la cotización (brief-29.4, D-6). Vacía es la misma que la moneda aplicada.
+// Lo aplicado lo muestra la vista previa, que lo calcula el servidor.
+function TenderFields({
+  exchange,
+  tendered,
+  onTenderedChange,
+  defaultRate,
+  invalidTendered,
+  invalidRate,
+}: {
+  exchange: AccountExchangeProps;
+  tendered: string;
+  onTenderedChange: (value: string) => void;
+  defaultRate: string;
+  invalidTendered: boolean;
+  invalidRate: boolean;
+}) {
+  const { rate } = exchange;
+  return (
+    <div className="flex flex-col gap-3">
+      {rate ? (
+        <input type="hidden" name="exchangeRateId" value={rate.id} />
+      ) : null}
+      <div className="flex max-w-xs flex-col gap-1">
+        <label htmlFor="cobro-cuenta-entra" className={labelClass}>
+          Moneda que entra
+        </label>
+        <select
+          id="cobro-cuenta-entra"
+          name="tenderedCurrency"
+          defaultValue={tendered}
+          onChange={(event) => onTenderedChange(event.target.value)}
+          aria-invalid={invalidTendered ? true : undefined}
+          aria-describedby={invalidTendered ? "cobro-cuenta-error" : undefined}
+          className={inputClass}
+        >
+          <option value="">La misma que la moneda</option>
+          {/* La otra moneda entra solo contra la principal (revisión independiente, R1-1). */}
+          <option value={exchange.quoteCurrency}>
+            {exchange.quoteCurrency}, aplicada en {exchange.mainCurrency}
+          </option>
+        </select>
+      </div>
+      <div className="flex flex-col gap-1 text-sm">
+        {rate ? (
+          <p>
+            Cotización vigente:{" "}
+            <span className="font-medium tabular-nums">{rate.label}</span>{" "}
+            <span className="text-muted">({rate.recordedLabel})</span>
+          </p>
+        ) : (
+          <p className="text-muted">{NO_RATE_TEXT}</p>
+        )}
+        {rate?.stale ? (
+          <p className="w-fit rounded-md bg-warning-soft px-2 py-1 text-on-warning-soft">
+            {STALE_RATE_TEXT}
+          </p>
+        ) : null}
+      </div>
+      <div className="flex max-w-xs flex-col gap-1">
+        <label htmlFor="cobro-cuenta-cotizacion" className={labelClass}>
+          Cotización acordada (opcional)
+        </label>
+        <input
+          id="cobro-cuenta-cotizacion"
+          name="exchangeRate"
+          type="text"
+          inputMode="decimal"
+          autoComplete="off"
+          defaultValue={defaultRate}
+          aria-invalid={invalidRate ? true : undefined}
+          aria-describedby={
+            invalidRate
+              ? "cobro-cuenta-cotizacion-ayuda cobro-cuenta-error"
+              : "cobro-cuenta-cotizacion-ayuda"
+          }
+          className={`${inputClass} tabular-nums`}
+        />
+        <p id="cobro-cuenta-cotizacion-ayuda" className="text-sm text-muted">
+          1 {exchange.mainCurrency} = {exchange.quoteCurrency}, con coma
+          decimal. Solo vale para este cobro: no cambia la vigente.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// El monto, con su lectura en la moneda que entra, como en el cobro de una venta.
 function AmountField({
   currency,
   defaultValue,

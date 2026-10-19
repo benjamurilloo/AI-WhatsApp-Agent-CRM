@@ -2,6 +2,7 @@ import type {
   AccountReceiptField,
   AccountReceiptPreview,
   CreateAccountReceiptResult,
+  TenderField,
 } from "@/modules/cash";
 import {
   receiptRejection,
@@ -22,11 +23,18 @@ export function unexpectedAccountReceiptMessage(requestId: string): string {
   return `No pudimos registrar el cobro. Código: ${requestId}`;
 }
 
+// Desde la 29.4, la moneda que entra, la cotización acordada y la vigente que se mostró (brief-29.4,
+// D-6): viajan también en la confirmación.
 export type AccountReceiptFormValues = {
   currency: string;
   paymentMethodId: string;
   amount: string;
+  tenderedCurrency: string;
+  exchangeRate: string;
+  exchangeRateId: string;
 };
+
+export type AccountReceiptFormField = AccountReceiptField | TenderField;
 
 // Dos pasos, sin JavaScript también: los datos, la vista previa de la regla y la confirmación.
 export type AccountReceiptFormState =
@@ -42,14 +50,14 @@ export type AccountReceiptFormState =
       requestId: string;
       values: AccountReceiptFormValues;
       message: string;
-      fields: AccountReceiptField[];
+      fields: AccountReceiptFormField[];
       openCash: boolean;
     };
 
 export function accountReceiptRejection(
   result: Exclude<CreateAccountReceiptResult, { ok: true }>,
-): { message: string; fields: AccountReceiptField[]; openCash: boolean } {
-  const plain = (message: string, fields: AccountReceiptField[] = []) => ({
+): { message: string; fields: AccountReceiptFormField[]; openCash: boolean } {
+  const plain = (message: string, fields: AccountReceiptFormField[] = []) => ({
     message,
     fields,
     openCash: false,
@@ -62,7 +70,7 @@ export function accountReceiptRejection(
   }
   if (result.code === "VALIDATION_ERROR") {
     if (!("fields" in result)) return plain(CLIENT_NOT_FOUND_MESSAGE);
-    const fields = result.fields as AccountReceiptField[];
+    const fields = result.fields as AccountReceiptFormField[];
     if (fields.includes("currency")) {
       const others = fields.filter((field) => field !== "currency");
       const rest =
@@ -74,10 +82,9 @@ export function accountReceiptRejection(
                 fields: others,
               } as Parameters<typeof receiptRejection>[0]).message
             }`;
-      return plain(
-        `Moneda: escribí un código de tres letras, como ARS o USD.${rest}`,
-        fields,
-      );
+      // Con moneda principal, la moneda aplicada es la principal o una con saldo del cliente
+      // (brief-29.4, D-6): la lista del formulario ya ofrece solo esas.
+      return plain(`Moneda: elegí una de la lista.${rest}`, fields);
     }
   }
   // El medio, el monto y la caja: los mismos rechazos y textos que el cobro de una venta.

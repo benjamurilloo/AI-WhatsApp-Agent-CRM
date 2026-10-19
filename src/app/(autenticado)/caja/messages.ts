@@ -12,6 +12,7 @@ import type {
   RenamePaymentMethodResult,
 } from "@/modules/cash";
 import { formatMoney } from "@/shared/money";
+import type { ReferenceLineText } from "./reference-total";
 
 // Textos de la caja y de los medios de pago (brief-21.2, D-8 y D-10; Screens.md §21 a §25).
 
@@ -349,6 +350,8 @@ export type CloseFormState =
       requestId: string;
       rows: CurrencyRow[];
       preview: CashClosingPreviewRow[];
+      // Lo contado de todas las monedas en la principal, ya formateado (brief-29.4, D-7).
+      reference: ReferenceLineText | null;
       // Si se volvió a revisar porque lo esperado cambió (R-5).
       message: string | null;
     }

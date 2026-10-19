@@ -38,6 +38,7 @@ import {
   UNNAMED_CLIENT_TEXT,
 } from "./messages";
 import { ACCOUNT_RECEIPT_NOTICE } from "../cobrar/messages";
+import { ReferenceTotal } from "@/app/(autenticado)/caja/reference-total";
 
 export const metadata: Metadata = {
   title: "Estado de cuenta — AI WhatsApp Agent CRM",
@@ -148,6 +149,18 @@ export default async function ClientStatementPage({
         {statement.currencies.length === 0 ? (
           <p className="mt-4 text-sm">{NO_MOVEMENTS_MESSAGE}</p>
         ) : null}
+        <ReferenceTotal
+          reference={statement.references.owed}
+          label="Debe en total"
+          timeZone={timeZone}
+          className="mt-4"
+        />
+        <ReferenceTotal
+          reference={statement.references.inFavor}
+          label="A favor en total"
+          timeZone={timeZone}
+          className="mt-2"
+        />
 
         {statement.currencies.map((account) => {
           const money = (value: string) => formatMoney(value, account.currency);

@@ -12,6 +12,7 @@ import { acceptedCurrencies } from "@/shared/money";
 import type { SearchParams } from "../filters";
 import { FORBIDDEN_PAGE_MESSAGE } from "../messages";
 import { PurchaseOrderForm } from "./purchase-order-form";
+import { getMainCurrency } from "@/modules/organizations";
 
 export const metadata: Metadata = {
   title: "Nueva orden de compra — AI WhatsApp Agent CRM",
@@ -83,6 +84,7 @@ export default async function NewPurchaseOrderPage({
         <PurchaseOrderForm
           initialSupplier={initialSupplier}
           currencies={currencyOptions()}
+          defaultCurrency={await getMainCurrency(context.organizationId)}
           maxLines={MAX_PURCHASE_ORDER_LINES}
         />
       </SectionCard>

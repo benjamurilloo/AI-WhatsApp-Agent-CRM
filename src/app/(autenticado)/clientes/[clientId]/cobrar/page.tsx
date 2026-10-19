@@ -14,6 +14,7 @@ import { PageHeader } from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
 import { formatDate } from "@/app/_format/date-time";
 import { acceptedCurrencies, formatMoney } from "@/shared/money";
+import { rateLabel } from "@/app/(autenticado)/caja/exchange";
 import { NO_ACTIVE_METHODS_MESSAGE } from "@/app/(autenticado)/ventas/[saleId]/cobrar/messages";
 import {
   CLIENT_NOT_FOUND_MESSAGE,
@@ -162,10 +163,35 @@ export default async function AccountReceiptPage({
                   ? form.paymentMethods[0]!.id
                   : "",
               amount: form.proposed?.amountInput ?? "",
+              tenderedCurrency: "",
+              exchangeRate: "",
+              exchangeRateId: "",
             }}
-            currencies={acceptedCurrencies()}
+            // Con moneda principal, solo la principal y las monedas con saldo del cliente (brief-29.4,
+            // D-6).
+            currencies={
+              form.exchange
+                ? form.exchange.appliedCurrencies
+                : acceptedCurrencies()
+            }
             paymentMethods={form.paymentMethods}
             hasOpenSession={form.openSession !== null}
+            exchange={
+              form.exchange
+                ? {
+                    mainCurrency: form.exchange.mainCurrency,
+                    quoteCurrency: form.exchange.quoteCurrency,
+                    rate: form.exchange.rate
+                      ? rateLabel(
+                          form.exchange.rate,
+                          form.exchange.mainCurrency,
+                          form.exchange.quoteCurrency,
+                          timeZone,
+                        )
+                      : null,
+                  }
+                : null
+            }
           />
         )}
       </div>

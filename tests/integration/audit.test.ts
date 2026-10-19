@@ -132,6 +132,10 @@ const INSERT_ONLY_TABLES = [
   "cash_sessions",
   // La activación de una capacidad (brief-29.2, D-1; ADR 0024, punto 2).
   "organization_capabilities",
+  // La cotización: su configuración, que en la 29.4 no se edita, y las cotizaciones (brief-29.4, D-3;
+  // ADR 0025, punto 3).
+  "exchange_rate_settings",
+  "exchange_rates",
   // Notas de una conversación (brief-16.4, D-1).
   "conversation_notes",
   // La recepción y sus líneas (brief-22.4, D-2; ADR 0023, punto 4), y su anulación (brief-22.5, D-1;

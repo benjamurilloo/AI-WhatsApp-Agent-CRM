@@ -31,6 +31,7 @@ import {
   SessionRefundsTable,
   SessionSupplierPaymentsTable,
 } from "./session-tables";
+import { ReferenceTotal } from "./reference-total";
 
 export const metadata: Metadata = {
   title: "Caja — AI WhatsApp Agent CRM",
@@ -91,6 +92,11 @@ export default async function CashPage({
             className="mt-6"
           >
             <CurrencyTotalsTable session={open} />
+            <ReferenceTotal
+              reference={open.reference}
+              label="Lo esperado, en total"
+              timeZone={timeZone}
+            />
             {isAdmin ? (
               <div className="mt-4 flex flex-wrap gap-3">
                 <Link

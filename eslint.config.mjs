@@ -91,6 +91,8 @@ export default defineConfig([
       "src/modules/cash/**/*.{ts,tsx}",
       // Desde la 22.2 (ADR 0023, punto 11).
       "src/modules/purchasing/**/*.{ts,tsx}",
+      // Desde la 29.4 (ADR 0025, punto 13, R-M8).
+      "src/modules/fx/**/*.{ts,tsx}",
     ],
     rules: restrict(moduleInternals, leaveModuleRelative, httpAndPresentation),
   },

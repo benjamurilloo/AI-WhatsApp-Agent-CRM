@@ -13,6 +13,7 @@ import { SectionCard } from "@/app/_components/section-card";
 import { formatShortDateTime } from "@/app/_format/date-time";
 import { formatMoney } from "@/shared/money";
 import { TO_ACCOUNT_RULE_TEXT } from "@/app/(autenticado)/clientes/[clientId]/cuenta/messages";
+import { tenderNote } from "@/app/(autenticado)/caja/exchange";
 
 // La sección «Señas» del detalle de un pedido (brief-21.4, D-5 y D-8; ADR 0022, punto 5): la compone
 // la página con cash, nunca orders. Lo señado, lo que le falta y qué pasó con lo señado: retenido
@@ -149,6 +150,11 @@ export function OrderReceiptsSection({
                   <td className={tableCellClass}>{row.paymentMethodName}</td>
                   <td className={numberCell}>
                     {formatMoney(row.amount, row.currency)}
+                    {row.tender ? (
+                      <span className="block text-xs text-muted">
+                        {tenderNote(row.tender)}
+                      </span>
+                    ) : null}
                   </td>
                 </tr>
               ))}

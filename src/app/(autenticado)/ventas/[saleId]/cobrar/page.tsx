@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getSaleReceiptForm } from "@/modules/cash";
+import { getOrganizationTimezone } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
+import { receiptExchange } from "@/app/(autenticado)/caja/exchange";
 import { BackLink } from "@/app/_components/detail-header";
 import { cardClass, linkClass } from "@/app/_components/form-styles";
 import { PageHeader } from "@/app/_components/page-header";
@@ -25,14 +27,18 @@ const TITLE = "Registrar cobro";
 
 // Pantalla 28 (brief-21.3, D-8): el cobro de una venta, solo admin. El medio, de los activos, y el
 // monto, propuesto en lo que falta. Una venta anulada o ya cobrada no ofrece el formulario. Al
-// guardar vuelve al detalle de la venta con el aviso y el enlace al recibo.
+// guardar vuelve al detalle de la venta con el aviso y el enlace al recibo. Desde la 29.4, con moneda
+// principal, ?moneda= elige la moneda que entra (brief-29.4, D-6).
 export default async function SaleReceiptPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ saleId: string }>;
+  searchParams: Promise<{ moneda?: string | string[] }>;
 }) {
   const context = await requireSession();
   const { saleId } = await params;
+  const { moneda } = await searchParams;
   const back = { href: `/ventas/${saleId}`, label: "Volver a la venta" };
   if (context.role !== "admin") {
     return (
@@ -58,6 +64,15 @@ export default async function SaleReceiptPage({
     );
   }
   const { sale } = form;
+  const exchange = receiptExchange({
+    offer: form.exchange,
+    targetCurrency: sale.currency,
+    outstanding: form.outstanding,
+    outstandingInput: form.outstandingInput,
+    chosen: typeof moneda === "string" ? moneda.toUpperCase() : undefined,
+    basePath: `/ventas/${sale.id}/cobrar`,
+    timezone: await getOrganizationTimezone(context),
+  });
   const blocked = form.voided
     ? RECEIPT_SALE_VOIDED_MESSAGE
     : form.outstanding === "0.00"
@@ -103,6 +118,7 @@ export default async function SaleReceiptPage({
             outstanding={form.outstandingInput}
             paymentMethods={form.paymentMethods}
             hasOpenSession={form.openSession !== null}
+            exchange={exchange}
           />
         )}
       </div>

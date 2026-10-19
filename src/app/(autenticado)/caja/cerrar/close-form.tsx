@@ -19,6 +19,7 @@ import {
   type CloseFormState,
   type CurrencyRow,
 } from "../messages";
+import { ReferenceLine } from "../reference-total";
 
 // El cierre (brief-21.2, D-4 y D-10), en dos pasos y sin JavaScript: lo contado de cada moneda, con
 // lo esperado al lado (no es un arqueo a ciegas), y una confirmación con la diferencia de cada una.
@@ -128,6 +129,13 @@ export function CloseForm({
             </tbody>
           </table>
         </div>
+        {state.reference ? (
+          <ReferenceLine
+            label="Lo contado, en total"
+            text={state.reference}
+            className=""
+          />
+        ) : null}
         <p className="text-sm">
           Una sesión cerrada no cambia: su arqueo queda guardado tal como está.
         </p>

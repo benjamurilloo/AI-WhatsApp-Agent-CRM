@@ -227,6 +227,37 @@ const cases = [
     code: 'import { organizations } from "@/modules/organizations/schema"; export const p7 = organizations;',
     forbidden: false,
   },
+  // fx es módulo de dominio desde la 29.4 (ADR 0025, punto 13, R-M8; brief-29.4, D-10).
+  {
+    file: "src/modules/fx/service.ts",
+    code: 'import { revalidatePath } from "next/cache"; export const f1 = revalidatePath;',
+    forbidden: true,
+  },
+  {
+    file: "src/modules/fx/presentacion.ts",
+    code: 'import { RATE_TITLE } from "@/app/(autenticado)/caja/cotizacion/messages"; export const f2 = RATE_TITLE;',
+    forbidden: true,
+  },
+  {
+    file: "src/modules/fx/relativa.ts",
+    code: 'import { f3 } from "../organizations/repository"; export const f4 = f3;',
+    forbidden: true,
+  },
+  {
+    file: "src/modules/fx/service.ts",
+    code: 'import { findMainCurrency } from "@/modules/organizations/repository"; export const f5 = findMainCurrency;',
+    forbidden: true,
+  },
+  {
+    file: "src/modules/fx/service.ts",
+    code: 'import { convertMoney } from "@/shared/money"; export const f6 = convertMoney;',
+    forbidden: false,
+  },
+  {
+    file: "src/modules/fx/schema.ts",
+    code: 'import { organizations } from "@/modules/organizations/schema"; export const f7 = organizations;',
+    forbidden: false,
+  },
   // knowledge es módulo de dominio desde la 11.2 (AC-7); estos casos dejan esa mutación como
   // guarda permanente (N-3 de su revisión independiente, resuelta en la 11.3.2).
   {
