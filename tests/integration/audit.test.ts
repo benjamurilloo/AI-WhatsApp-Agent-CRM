@@ -132,8 +132,9 @@ const INSERT_ONLY_TABLES = [
   "cash_sessions",
   // La activación de una capacidad (brief-29.2, D-1; ADR 0024, punto 2).
   "organization_capabilities",
-  // La cotización: su configuración, que en la 29.4 no se edita, y las cotizaciones (brief-29.4, D-3;
-  // ADR 0025, punto 3).
+  // La cotización: su configuración y las cotizaciones (brief-29.4, D-3; ADR 0025, punto 3). Desde la
+  // 29.4.2 la configuración tiene UPDATE solo en dos columnas, la fuente y el ajuste, así que a nivel
+  // de tabla sigue sin UPDATE; las columnas las prueba fx-reader.test.ts.
   "exchange_rate_settings",
   "exchange_rates",
   // Notas de una conversación (brief-16.4, D-1).

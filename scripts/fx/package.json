@@ -1,0 +1,4 @@
+{
+  "//": "El lector corre con Node quitando los tipos, como módulo ES (brief-29.4.2, D-6).",
+  "type": "module"
+}

@@ -21,16 +21,33 @@ import {
   type ExchangeRateRejection,
   type Money,
 } from "@/shared/money";
+import {
+  adjustmentFromDatabase,
+  adjustmentToDatabase,
+  parseAdjustmentInput,
+  type Adjustment,
+  type AdjustmentRejection,
+} from "./adjustment";
 import * as repository from "./repository";
 import { isStale } from "./staleness";
 
-// El tipo de cambio (ADR 0025; brief-29.4). fx es dueño de la configuración de la cotización y de
-// las cotizaciones; la moneda principal es de organizations, y fx la lee por su interfaz. Sin moneda
-// principal o sin configuración, no hay cotización: getExchangeSetup devuelve null y el CRM se
-// comporta como siempre. En esta subfase la cotización es solo manual (D-3); la lectura automática
-// es la 29.4.2.
+// El tipo de cambio (ADR 0025; brief-29.4 y brief-29.4.2). fx es dueño de la configuración de la
+// cotización y de las cotizaciones; la moneda principal es de organizations, y fx la lee por su
+// interfaz. Sin moneda principal o sin configuración, no hay cotización: getExchangeSetup devuelve
+// null y el CRM se comporta como siempre.
+//
+// La cotización es manual o automática. La automática la guarda el lector, crm-fx-reader, por las
+// funciones de la base de la 0054: este servicio no la escribe nunca (brief-29.4.2, D-3).
 
 export type ExchangeRateSource = repository.ExchangeRateSourceName;
+
+// Lo que guarda una cotización automática: lo que dio DolarAPI, el ajuste que se le sumó y la
+// fecha que da la fuente (ADR 0025, punto 3).
+export type RateReading = {
+  sourceRate: ExchangeRate;
+  adjustment: Adjustment;
+  observedAt: Date;
+};
 
 export type CurrentRate = {
   id: string;
@@ -38,23 +55,56 @@ export type CurrentRate = {
   quoteCurrency: string;
   rate: ExchangeRate;
   source: ExchangeRateSource;
-  recordedBy: string;
+  // Vacío en una automática.
+  recordedBy: string | null;
   recordedAt: Date;
-  // Más de 24 horas hábiles desde que se guardó (ADR 0025, punto 4, R-B3).
+  // Desde cuándo se mide la antigüedad: la última confirmación del lector en una automática, la
+  // carga en una manual (ADR 0025, punto 4, R-B3; brief-29.4.2, H-6).
+  asOf: Date;
+  reading: RateReading | null;
+  // Más de 24 horas hábiles desde asOf.
   stale: boolean;
 };
 
 export type ExchangeSetup = {
   mainCurrency: string;
   quoteCurrency: string;
+  source: ExchangeRateSource;
+  adjustment: Adjustment;
   current: CurrentRate | null;
 };
 
+function readingOf(row: repository.RateRow): RateReading | null {
+  if (row.sourceRate === null || row.adjustment === null) return null;
+  if (row.sourceObservedAt === null) return null;
+  return {
+    sourceRate: exchangeRateFromDatabase(row.sourceRate),
+    adjustment: adjustmentFromDatabase(row.adjustment),
+    observedAt: row.sourceObservedAt,
+  };
+}
+
+// La vigente es la última fila del par, así que una automática vigente es también la última
+// automática: last_confirmed_at es su última confirmación. Nunca antes de que se guardó.
+function asOfFor(
+  row: repository.RateRow,
+  settings: repository.SettingsRow,
+): Date {
+  if (row.source === "manual" || settings.lastConfirmedAt === null) {
+    return row.recordedAt;
+  }
+  return settings.lastConfirmedAt > row.recordedAt
+    ? settings.lastConfirmedAt
+    : row.recordedAt;
+}
+
 function toCurrentRate(
   row: repository.RateRow,
+  settings: repository.SettingsRow,
   now: Date,
   timezone: string,
 ): CurrentRate {
+  const asOf = asOfFor(row, settings);
   return {
     id: row.id,
     baseCurrency: row.baseCurrency,
@@ -63,8 +113,16 @@ function toCurrentRate(
     source: row.source,
     recordedBy: row.recordedBy,
     recordedAt: row.recordedAt,
-    stale: isStale(row.recordedAt, now, timezone),
+    asOf,
+    reading: readingOf(row),
+    stale: isStale(asOf, now, timezone),
   };
+}
+
+// La fuente automática es DolarAPI, blue, venta: pesos por dólar. Solo se ofrece con USD como
+// principal y ARS como la otra, las mismas condiciones de fx_reader_targets (0054).
+function automaticSourceAvailable(mainCurrency: string, quoteCurrency: string) {
+  return mainCurrency === "USD" && quoteCurrency === "ARS";
 }
 
 // La moneda principal, la otra y la cotización vigente de una organización, o null si no tiene
@@ -88,11 +146,18 @@ export async function getExchangeSetup(
   const current = row
     ? toCurrentRate(
         row,
+        settings,
         now,
         await getOrganizationTimezoneForService(organizationId),
       )
     : null;
-  return { mainCurrency, quoteCurrency: settings.quoteCurrency, current };
+  return {
+    mainCurrency,
+    quoteCurrency: settings.quoteCurrency,
+    source: settings.source,
+    adjustment: adjustmentFromDatabase(settings.adjustment),
+    current,
+  };
 }
 
 export function decimalsOf(currency: string): number {
@@ -159,12 +224,18 @@ export type ExchangeRateHistoryRow = {
   rate: ExchangeRate;
   source: ExchangeRateSource;
   recordedAt: Date;
+  // Vacío en una automática.
   recordedByName: string;
+  reading: RateReading | null;
 };
 
 export type ExchangeRatePage = {
   mainCurrency: string;
   quoteCurrency: string;
+  source: ExchangeRateSource;
+  adjustment: Adjustment;
+  // Si la organización puede elegir la fuente automática (USD y ARS).
+  automaticAvailable: boolean;
   current: (CurrentRate & { recordedByName: string }) | null;
   history: ExchangeRateHistoryRow[];
   total: number;
@@ -197,19 +268,26 @@ export async function getExchangeRatePage(
     },
   );
   const authorIds = [
-    ...new Set([
-      ...rows.map((row) => row.recordedBy),
-      ...(setup.current ? [setup.current.recordedBy] : []),
-    ]),
+    ...new Set(
+      [...rows.map((row) => row.recordedBy), setup.current?.recordedBy].filter(
+        (id): id is string => typeof id === "string",
+      ),
+    ),
   ];
   const authors = await getMemberSummaries(context.organizationId, authorIds);
-  const nameOf = (userId: string) =>
+  const nameOf = (userId: string | null) =>
     authors.find((author) => author.id === userId)?.name ?? "";
   return {
     ok: true,
     value: {
       mainCurrency: setup.mainCurrency,
       quoteCurrency: setup.quoteCurrency,
+      source: setup.source,
+      adjustment: setup.adjustment,
+      automaticAvailable: automaticSourceAvailable(
+        setup.mainCurrency,
+        setup.quoteCurrency,
+      ),
       current: setup.current
         ? { ...setup.current, recordedByName: nameOf(setup.current.recordedBy) }
         : null,
@@ -219,6 +297,7 @@ export async function getExchangeRatePage(
         source: row.source,
         recordedAt: row.recordedAt,
         recordedByName: nameOf(row.recordedBy),
+        reading: readingOf(row),
       })),
       total,
       page: pageNumber,
@@ -228,8 +307,9 @@ export async function getExchangeRatePage(
 }
 
 // Cuánto se puede mover una carga contra la vigente sin pedir una confirmación: un 10 %, el mismo
-// límite que frena a la lectura automática (ADR 0025, punto 4). Para la carga manual no bloquea: es
-// ella la que corrige (D-4).
+// límite que frena a la lectura automática, también contra la vigente (ADR 0025, punto 4;
+// brief-29.4.2, D-4). Para la carga manual no bloquea: es ella la que corrige (brief-29.4, D-4), y
+// después de un salto real es la que destraba al lector.
 const LARGE_CHANGE_PERCENT = 10n;
 
 export function isLargeChange(previous: ExchangeRate, next: ExchangeRate) {
@@ -315,6 +395,110 @@ export async function recordExchangeRate(
       },
     });
     return { ok: true as const, id: row.id };
+  });
+}
+
+// --- La fuente y el ajuste (ADR 0025, punto 4; brief-29.4.2, D-9) ---
+
+const exchangeRateSourceNames: readonly ExchangeRateSource[] = [
+  "manual",
+  "dolarapi_blue",
+];
+
+export type ExchangeSettingsField = "source" | "adjustment";
+
+export type UpdateExchangeSettingsResult =
+  // toAutomatic: pasó de manual a automática, así que la próxima lectura reemplaza a la vigente (D-5).
+  | { ok: true; changed: boolean; toAutomatic: boolean }
+  | Failure<"FORBIDDEN" | "NOT_FOUND">
+  | Failure<
+      "VALIDATION_ERROR",
+      { field: ExchangeSettingsField; reason: AdjustmentRejection }
+    >
+  | Failure<"BUSINESS_RULE_VIOLATION", { rule: "automatic_unavailable" }>;
+
+const settingsInputSchema = z.object({
+  source: z.string().max(40),
+  adjustment: z.string().max(40),
+});
+
+// Un admin cambia la fuente y el ajuste, con auditoría del antes y el después. Un cambio de ajuste
+// se aplica en la próxima lectura, no ahora: la cotización automática la guarda solo el lector.
+// Volver a la automática hace que la próxima lectura reemplace a la vigente (D-5), por el trigger
+// de la 0054.
+export async function updateExchangeSettings(
+  context: AuthContext,
+  input: unknown,
+): Promise<UpdateExchangeSettingsResult> {
+  const signedIn = authorize(context, {});
+  if (!signedIn.ok) return signedIn;
+  const setup = await getExchangeSetup(context.organizationId);
+  if (!setup) return failure("NOT_FOUND");
+  const allowed = authorize(context, { role: "admin" });
+  if (!allowed.ok) return allowed;
+
+  const parsed = settingsInputSchema.safeParse(input);
+  const source = exchangeRateSourceNames.find(
+    (name) => parsed.success && name === parsed.data.source,
+  );
+  if (!parsed.success || !source) {
+    return {
+      ok: false,
+      code: "VALIDATION_ERROR",
+      field: "source",
+      reason: "invalid",
+    };
+  }
+  const adjustment = parseAdjustmentInput(parsed.data.adjustment);
+  if (!adjustment.ok) {
+    return {
+      ok: false,
+      code: "VALIDATION_ERROR",
+      field: "adjustment",
+      reason: adjustment.reason,
+    };
+  }
+  if (
+    source === "dolarapi_blue" &&
+    !automaticSourceAvailable(setup.mainCurrency, setup.quoteCurrency)
+  ) {
+    return {
+      ok: false,
+      code: "BUSINESS_RULE_VIOLATION",
+      rule: "automatic_unavailable",
+    };
+  }
+
+  return repository.withTransaction(async (tx) => {
+    const before = await repository.findSettingsForUpdate(
+      tx,
+      context.organizationId,
+    );
+    if (!before) return failure("NOT_FOUND");
+    const nextAdjustment = adjustmentToDatabase(adjustment.adjustment);
+    if (before.source === source && before.adjustment === nextAdjustment) {
+      return { ok: true as const, changed: false, toAutomatic: false };
+    }
+    const after = await repository.updateSettings(tx, before.id, {
+      source,
+      adjustment: nextAdjustment,
+    });
+    await recordAudit(tx, {
+      organizationId: context.organizationId,
+      actorUserId: context.userId,
+      entityType: "exchange_rate_setting",
+      entityId: before.id,
+      action: "update",
+      diff: {
+        before: { source: before.source, adjustment: before.adjustment },
+        after: { source: after.source, adjustment: after.adjustment },
+      },
+    });
+    return {
+      ok: true as const,
+      changed: true,
+      toAutomatic: before.source === "manual" && after.source !== "manual",
+    };
   });
 }
 

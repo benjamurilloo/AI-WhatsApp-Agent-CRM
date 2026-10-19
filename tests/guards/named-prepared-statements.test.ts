@@ -34,7 +34,13 @@ import { describe, expect, it } from "vitest";
 // plan_cache_mode` en `drizzle/` cambiaría los planes sin tocar una línea de TypeScript.
 
 const RAICES = ["src", "scripts", "seeds"];
-const IMPORTA_PG = ["src/shared/db/client.ts", "scripts/migrar.ts"];
+// El lector de la cotización conecta con su propio rol y no puede usar src/ (brief-29.4.2, D-6): sus
+// dos consultas son texto fijo, sin nombre, en scripts/fx/lectura.ts.
+const IMPORTA_PG = [
+  "src/shared/db/client.ts",
+  "scripts/migrar.ts",
+  "scripts/fx/leer-cotizacion.ts",
+];
 const USA_POOL = ["src/shared/db/client.ts", "scripts/medir-caminos.ts"];
 const MIGRACIONES = "drizzle";
 

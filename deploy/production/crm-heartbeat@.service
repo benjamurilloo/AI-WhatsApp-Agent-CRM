@@ -1,10 +1,11 @@
 [Unit]
 Description=AI WhatsApp Agent CRM - aviso de vida de %i (brief-13.3, D-3)
 Documentation=file:///srv/crm-production/docs/runbooks/responder-a-una-alerta.md
-# Plantilla. La instancia es el trabajo: crm-heartbeat@backup, @offsite y @restore-check.
-# La disparan los OnSuccess= de crm-backup, crm-backup-offsite y crm-restore-check; no
-# tiene timer propio. Un aviso que sale sin que el trabajo haya terminado bien es peor
-# que ninguno: apaga la alerta que tendria que sonar.
+# Plantilla. La instancia es el trabajo: crm-heartbeat@backup, @offsite, @restore-check,
+# @db-size y @fx-reader.
+# La disparan los OnSuccess= de crm-backup, crm-backup-offsite, crm-restore-check,
+# crm-db-size y crm-fx-reader; no tiene timer propio. Un aviso que sale sin que el trabajo
+# haya terminado bien es peor que ninguno: apaga la alerta que tendria que sonar.
 
 [Service]
 Type=oneshot

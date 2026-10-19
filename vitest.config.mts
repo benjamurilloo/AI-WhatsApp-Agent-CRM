@@ -21,7 +21,8 @@ export default defineConfig({
         extends: true,
         test: {
           name: "unit",
-          include: ["src/**/*.test.ts"],
+          // scripts/fx/: la lógica del lector de la cotización, sin red ni base (brief-29.4.2, D-13).
+          include: ["src/**/*.test.ts", "scripts/fx/**/*.test.ts"],
           environment: "node",
         },
       },

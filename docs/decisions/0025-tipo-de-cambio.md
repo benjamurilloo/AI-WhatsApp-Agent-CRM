@@ -14,6 +14,16 @@
 - **Fases**: la fila de la 29.4 nombra «el cambio de fuente», que con lo de arriba pasa a la 29.4.2.
 - **Punto 5**: el formulario manda la cotización vigente que mostró, y si cambió mientras se cargaba el cobro, se rechaza: lo aplicado nunca sale de una cotización que el `admin` no vio (P-4).
 
+*Nota del 2026-10-19, al implementar la 29.4.2* ([brief-29.4.2](brief-29.4.2-la-lectura-de-la-cotizacion.md)), con las decisiones del usuario sobre D-4 y D-5, sin cambiar el texto de abajo:
+
+- **Punto 4, el límite del 10 %**: se mide **contra la vigente**, no contra la última automática. Medido contra la automática, después de un salto real el lector quedaba trabado para siempre, porque cada lectura se rechazaba contra la misma automática vieja y una carga manual no lo destrababa (H-2). «Cambió o no» se sigue midiendo contra la última automática, así que R-M12 no cambia: una carga manual no se pisa mientras la fuente no cambie de valor (D-4).
+- **Punto 4, volver a la fuente automática**: la primera lectura después de volver guarda siempre una fila. La última automática se busca desde el último cambio de fuente, `source_changed_at`, que mantiene un trigger. Sin eso, una manual quedaba vigente sin límite con la fuente en automática (H-3, D-5).
+- **Punto 9, la regla vive en la base**: la suma, la comparación, el límite y la escritura los hace `fx_record_reading`, en `numeric`, y el lector solo le pasa la venta como texto. Así, una credencial filtrada mueve la cotización a lo sumo un 10 % por llamada, en lugar de ponerle cualquier valor (D-3).
+- **Punto 9, la red**: además de las redes privadas, la unidad niega `169.254.0.0/16`, donde está el servicio de metadatos del droplet (H-7).
+- **Punto 3**: ningún `CHECK` nombra `'dolarapi_blue'`, porque la migración que agrega el valor corre en la misma transacción (H-1).
+- **Punto 9, `fx_reader_targets()`**: devuelve solo el id de cada organización, no la moneda, el ajuste ni la última automática. Esos datos los lee `fx_record_reading` dentro de su transacción, con la configuración bloqueada, así que el lector no necesita verlos (D-3; revisión independiente de la 29.4.2, B-3).
+- **Punto 9, el rol de la aplicación**: `crm_app` recibe `UPDATE` sobre la configuración **solo en la fuente y el ajuste**. `last_confirmed_at` lo escribe solo `fx_record_reading` (revisión independiente de la 29.4.2, B-1).
+
 ## Contexto
 
 El primer negocio del rubro de la Fase 29 publica y cobra en dólares, y acepta pesos al dólar blue de Córdoba, precio de venta (ADR 0024, R-2). Combina medios y monedas en una misma venta: efectivo en USD o ARS, transferencia en ARS, tarjetas y USDT (R-3).

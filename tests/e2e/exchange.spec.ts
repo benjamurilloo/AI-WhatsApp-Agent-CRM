@@ -231,6 +231,82 @@ test("un admin carga la cotización y un viewer la ve sin el formulario", async 
   ).toHaveCount(0);
 });
 
+// La fuente automática (brief-29.4.2, D-9 y D-13): el admin la elige con su ajuste, una lectura del
+// lector se ve con su fuente y su atribución, y un viewer ve la fuente sin el formulario. La lectura la
+// hace la función de la base que llama crm-fx-reader, con el valor que daría DolarAPI: el host real
+// no se llama.
+test("un admin elige la fuente automática con su ajuste y la lectura se ve con su fuente", async ({
+  page,
+}) => {
+  await login(page, ADMIN.email);
+  await page.goto("/caja/cotizacion");
+  await expect(
+    page.getByText("Fuente de la organización: Carga manual."),
+  ).toBeVisible();
+
+  // Un ajuste con tres decimales se rechaza y conserva lo escrito.
+  await page
+    .getByRole("radio", { name: "DolarAPI, dólar blue, venta, más el ajuste" })
+    .check();
+  await expect(
+    page.getByText(/la próxima lectura reemplaza a la vigente/),
+  ).toBeVisible();
+  await page.getByLabel("Ajuste en ARS *").fill("10,555");
+  await page.getByRole("button", { name: "Guardar fuente y ajuste" }).click();
+  await expect(
+    page.getByText("Ajuste: a lo sumo dos decimales."),
+  ).toBeVisible();
+  await expect(page.getByLabel("Ajuste en ARS *")).toHaveValue("10,555");
+
+  await page.getByLabel("Ajuste en ARS *").fill("10");
+  await page.getByRole("button", { name: "Guardar fuente y ajuste" }).click();
+  await expect(
+    page.getByText(/Fuente automática guardada: la próxima lectura reemplaza/),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      /con un ajuste de ARS 10,00\. Se lee a las 9, 12, 15, 18 y 21/,
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Fuente: DolarApi (dolarapi.com) + ajuste de la organización.",
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      /la próxima lectura que cambie de valor reemplaza a esta carga/,
+    ),
+  ).toBeVisible();
+
+  // Una lectura, como la guardaría el lector.
+  const reading = await db.execute<{ result: string }>(
+    sql`select fx_record_reading(${ORG}, '1555', now()) as result`,
+  );
+  expect(reading.rows[0]?.result).toBe("inserted");
+  await page.reload();
+  await expect(
+    page.getByText("1 USD = ARS 1.565,00", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      /Fuente: DolarAPI 1\.555,00 \+ ajuste 10,00\. Dato de DolarAPI del/,
+    ),
+  ).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Automática" })).toBeVisible();
+  await expectAccessible(page, "cotización automática");
+
+  await page.context().clearCookies();
+  await login(page, VIEWER.email);
+  await page.goto("/caja/cotizacion");
+  await expect(
+    page.getByText(/Fuente de la organización: DolarAPI, dólar blue, venta/),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Fuente y ajuste" }),
+  ).toHaveCount(0);
+});
+
 test("un admin cobra en pesos una venta en dólares, la caja suma pesos y la anulación los devuelve", async ({
   page,
 }) => {

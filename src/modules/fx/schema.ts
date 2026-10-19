@@ -13,16 +13,24 @@ import {
 import { users } from "@/modules/auth/schema";
 import { organizations } from "@/modules/organizations/schema";
 
-// docs/architecture/DataModel.md, tablas exchange_rate_settings y exchange_rates (ADR 0025, punto 3;
-// brief-29.4, D-3). Solo lo manual: la fuente dolarapi_blue, el ajuste, last_confirmed_at y las
-// columnas de una lectura automática los suma la 29.4.2 con una migración aditiva, para que no
-// quede una fuente que se puede elegir y no hace nada.
+// docs/architecture/DataModel.md, tablas exchange_rate_settings y exchange_rates (ADR 0025, punto 3).
+// La 29.4 las creó solo con lo manual (brief-29.4, D-3); la 29.4.2 suma la fuente dolarapi_blue, el
+// ajuste, las fechas de la lectura y las columnas de una cotización automática (brief-29.4.2, D-2).
+//
+// Ningún CHECK nombra 'dolarapi_blue': la migración que agrega el valor al enum corre en la misma
+// transacción, y PostgreSQL no deja usarlo ahí (brief-29.4.2, H-1). Se escriben contra 'manual'.
 
-// De dónde sale una cotización. Nace solo con la carga manual.
-export const exchangeRateSource = pgEnum("exchange_rate_source", ["manual"]);
+// De dónde sale una cotización: la carga de un admin o la lectura de DolarAPI, blue, venta, más el
+// ajuste de la organización (ADR 0025, punto 4).
+export const exchangeRateSource = pgEnum("exchange_rate_source", [
+  "manual",
+  "dolarapi_blue",
+]);
 
-// La cotización de una organización: contra qué moneda y de qué fuente. Una fila por organización
-// con moneda principal, creada por org:currency junto con ella.
+// La cotización de una organización: contra qué moneda, de qué fuente y con qué ajuste. Una fila por
+// organización con moneda principal, creada por org:currency junto con ella. El admin cambia la
+// fuente y el ajuste; el lector, last_confirmed_at. La organización y la otra moneda no cambian, y
+// la fila no se borra: lo asegura un trigger (0054).
 export const exchangeRateSettings = pgTable(
   "exchange_rate_settings",
   {
@@ -34,6 +42,19 @@ export const exchangeRateSettings = pgTable(
     // por la interfaz de organizations.
     quoteCurrency: text("quote_currency").notNull(),
     source: exchangeRateSource("source").notNull().default("manual"),
+    // Lo que se suma a la fuente automática, en la otra moneda. Puede ser cero o negativo, así que
+    // no es dinero de src/shared/money/ (ADR 0025, punto 3, R-M7).
+    adjustment: numeric("adjustment", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    // La última vez que la lectura automática guardó o confirmó un valor: la antigüedad de una
+    // cotización automática se mide desde acá (ADR 0025, punto 4, R-B3).
+    lastConfirmedAt: timestamp("last_confirmed_at", { withTimezone: true }),
+    // Cuándo cambió la fuente por última vez. La primera lectura después de volver a la automática
+    // guarda siempre una fila (brief-29.4.2, D-5). Lo mantiene el trigger, no el servicio.
+    sourceChangedAt: timestamp("source_changed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -65,10 +86,15 @@ export const exchangeRates = pgTable(
     // Cuántas unidades de la otra moneda vale una de la principal: 1 USD = 1565.000000 ARS.
     rate: numeric("rate", { precision: 18, scale: 6 }).notNull(),
     source: exchangeRateSource("source").notNull(),
-    // El admin que la cargó. La 29.4.2 lo vuelve opcional para la lectura automática.
-    recordedBy: uuid("recorded_by")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+    // El admin que la cargó. Una automática no tiene autor (brief-29.4.2, H-5).
+    recordedBy: uuid("recorded_by").references(() => users.id, {
+      onDelete: "restrict",
+    }),
+    // Solo en una automática: lo que dio la fuente, el ajuste que se le sumó y la fecha que da la
+    // fuente (ADR 0025, punto 3).
+    sourceRate: numeric("source_rate", { precision: 18, scale: 6 }),
+    adjustment: numeric("adjustment", { precision: 14, scale: 2 }),
+    sourceObservedAt: timestamp("source_observed_at", { withTimezone: true }),
     recordedAt: timestamp("recorded_at", { withTimezone: true })
       .notNull()
       .default(sql`clock_timestamp()`),
@@ -99,6 +125,26 @@ export const exchangeRates = pgTable(
     check(
       "exchange_rates_quote_currency_format",
       sql`${table.quoteCurrency} ~ '^[A-Z]{3}$'`,
+    ),
+    // Una manual tiene autor; una automática, no.
+    check(
+      "exchange_rates_author_by_source",
+      sql`(${table.source} = 'manual') = (${table.recordedBy} IS NOT NULL)`,
+    ),
+    // Una automática tiene las tres columnas de la fuente; una manual, ninguna.
+    check(
+      "exchange_rates_reading_by_source",
+      sql`(${table.source} = 'manual' AND ${table.sourceRate} IS NULL AND ${table.adjustment} IS NULL AND ${table.sourceObservedAt} IS NULL)
+        OR (${table.source} <> 'manual' AND ${table.sourceRate} IS NOT NULL AND ${table.adjustment} IS NOT NULL AND ${table.sourceObservedAt} IS NOT NULL)`,
+    ),
+    check(
+      "exchange_rates_source_rate_positive",
+      sql`${table.sourceRate} IS NULL OR ${table.sourceRate} > 0`,
+    ),
+    // La cotización automática es lo que dio la fuente más el ajuste (ADR 0025, punto 3).
+    check(
+      "exchange_rates_reading_sum",
+      sql`${table.sourceRate} IS NULL OR ${table.rate} = ${table.sourceRate} + ${table.adjustment}`,
     ),
   ],
 );

@@ -379,6 +379,13 @@
       "when": 1792363613189,
       "tag": "0053_tipo_de_cambio",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1792416029438,
+      "tag": "0054_lectura_de_la_cotizacion",
+      "breakpoints": true
     }
   ]
 }

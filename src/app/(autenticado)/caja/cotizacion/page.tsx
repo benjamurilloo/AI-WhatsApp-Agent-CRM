@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getExchangeRatePage } from "@/modules/fx";
+import {
+  formatAdjustment,
+  getExchangeRatePage,
+  type RateReading,
+} from "@/modules/fx";
 import { getOrganizationTimezone } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
 import { ActionNotice } from "@/app/_components/action-notice";
@@ -19,14 +23,19 @@ import { CashSubNav } from "../cash-sub-nav";
 import { STALE_RATE_TEXT } from "../exchange";
 import { noticeMessage } from "../messages";
 import {
-  MANUAL_SOURCE_TEXT,
+  ATTRIBUTION_TEXT,
+  AUTOMATIC_OVERWRITES_MANUAL_TEXT,
   NO_RATE_YET_MESSAGE,
   RATE_FORBIDDEN_MESSAGE,
   RATE_HELP,
   RATE_NOTICE,
   RATE_TITLE,
+  READING_SCHEDULE_TEXT,
+  SETTINGS_HELP,
+  sourceText,
 } from "./messages";
 import { RateForm } from "./rate-form";
+import { SettingsForm } from "./settings-form";
 
 export const metadata: Metadata = {
   title: "Cotización — AI WhatsApp Agent CRM",
@@ -34,9 +43,10 @@ export const metadata: Metadata = {
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
-// La cotización (ADR 0025, punto 4; brief-29.4, D-4): la vigente con su fuente, quién la cargó y
-// cuándo, el aviso de antigüedad, la carga manual para un admin y el historial. Un viewer la ve sin
-// el formulario. Sin moneda principal, la sección no existe: 404, como una capacidad ausente.
+// La cotización (ADR 0025, punto 4; brief-29.4, D-4; brief-29.4.2, D-9): la vigente con su fuente,
+// quién la cargó o qué dio DolarAPI, cuándo, el aviso de antigüedad, la fuente y el ajuste de la
+// organización, la carga manual y el cambio de fuente para un admin, y el historial. Un viewer la ve
+// sin los formularios. Sin moneda principal, la sección no existe: 404, como una capacidad ausente.
 export default async function ExchangeRatePage({
   searchParams,
 }: {
@@ -56,6 +66,10 @@ export default async function ExchangeRatePage({
   const pair = (rate: bigint) =>
     `1 ${page.mainCurrency} = ${page.quoteCurrency} ${formatExchangeRate(rate)}`;
   const pageCount = Math.max(1, Math.ceil(page.total / page.pageSize));
+  const automatic = page.source === "dolarapi_blue";
+  // «DolarAPI 1.555,00 + ajuste 10,00»
+  const readingText = (reading: RateReading) =>
+    `DolarAPI ${formatExchangeRate(reading.sourceRate)} + ajuste ${formatAdjustment(reading.adjustment)}`;
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 lg:px-8">
@@ -80,11 +94,23 @@ export default async function ExchangeRatePage({
             <p className="text-2xl font-semibold tabular-nums">
               {pair(page.current.rate)}
             </p>
-            <p className="text-sm text-muted">
-              Fuente: {MANUAL_SOURCE_TEXT}. Cargada por{" "}
-              {page.current.recordedByName || "un usuario"} el{" "}
-              {formatShortDateTime(page.current.recordedAt, timeZone)}.
-            </p>
+            {page.current.reading ? (
+              <p className="text-sm text-muted">
+                Fuente: {readingText(page.current.reading)}. Dato de DolarAPI
+                del{" "}
+                {formatShortDateTime(page.current.reading.observedAt, timeZone)}
+                ; guardada el{" "}
+                {formatShortDateTime(page.current.recordedAt, timeZone)} y
+                confirmada por última vez el{" "}
+                {formatShortDateTime(page.current.asOf, timeZone)}.
+              </p>
+            ) : (
+              <p className="text-sm text-muted">
+                Fuente: {sourceText("manual")}. Cargada por{" "}
+                {page.current.recordedByName || "un usuario"} el{" "}
+                {formatShortDateTime(page.current.recordedAt, timeZone)}.
+              </p>
+            )}
             {page.current.stale ? (
               <p className="w-fit rounded-md bg-warning-soft px-2 py-1 text-sm text-on-warning-soft">
                 {STALE_RATE_TEXT}
@@ -94,13 +120,44 @@ export default async function ExchangeRatePage({
         ) : (
           <p>{NO_RATE_YET_MESSAGE}</p>
         )}
+        <div className="mt-4 flex flex-col gap-1 border-t border-border pt-3 text-sm">
+          <p>
+            Fuente de la organización: {sourceText(page.source)}
+            {automatic
+              ? `, con un ajuste de ${page.quoteCurrency} ${formatAdjustment(page.adjustment)}. ${READING_SCHEDULE_TEXT}`
+              : "."}
+          </p>
+          {automatic || page.current?.reading ? (
+            <p className="text-muted">{ATTRIBUTION_TEXT}</p>
+          ) : null}
+        </div>
       </SectionCard>
+
+      {isAdmin && page.automaticAvailable ? (
+        <SectionCard
+          id="cotizacion-fuente-titulo"
+          title="Fuente y ajuste"
+          description={SETTINGS_HELP}
+          icon="pencil"
+          className="mt-6"
+        >
+          <SettingsForm
+            source={page.source}
+            adjustment={formatAdjustment(page.adjustment)}
+            quoteCurrency={page.quoteCurrency}
+          />
+        </SectionCard>
+      ) : null}
 
       {isAdmin ? (
         <SectionCard
           id="cotizacion-cargar-titulo"
           title="Cargar una cotización"
-          description={RATE_HELP}
+          description={
+            automatic
+              ? `${RATE_HELP} ${AUTOMATIC_OVERWRITES_MANUAL_TEXT}`
+              : RATE_HELP
+          }
           icon="plus"
           className="mt-6"
         >
@@ -157,9 +214,13 @@ export default async function ExchangeRatePage({
                       >
                         {pair(row.rate)}
                       </td>
-                      <td className={tableCellClass}>{MANUAL_SOURCE_TEXT}</td>
                       <td className={tableCellClass}>
-                        {row.recordedByName || "—"}
+                        {row.reading
+                          ? readingText(row.reading)
+                          : sourceText(row.source)}
+                      </td>
+                      <td className={tableCellClass}>
+                        {row.reading ? "Automática" : row.recordedByName || "—"}
                       </td>
                     </tr>
                   ))}

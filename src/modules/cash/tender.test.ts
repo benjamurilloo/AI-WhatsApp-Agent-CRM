@@ -19,6 +19,8 @@ function setup(rate: string | null = "1565.000000"): ExchangeSetup {
   return {
     mainCurrency: "USD",
     quoteCurrency: "ARS",
+    source: "manual",
+    adjustment: 0n,
     current:
       rate === null
         ? null
@@ -30,6 +32,8 @@ function setup(rate: string | null = "1565.000000"): ExchangeSetup {
             source: "manual",
             recordedBy: "00000000-0000-4000-8000-000000000002",
             recordedAt: new Date("2026-10-18T12:00:00Z"),
+            asOf: new Date("2026-10-18T12:00:00Z"),
+            reading: null,
             stale: false,
           },
   };

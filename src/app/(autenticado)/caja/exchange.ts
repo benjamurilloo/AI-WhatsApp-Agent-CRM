@@ -16,13 +16,20 @@ export const STALE_RATE_TEXT =
 export const NO_RATE_TEXT =
   "No hay una cotización cargada: sin ella no se cobra en la otra moneda. Cargala en Caja → Cotización.";
 
+// La fuente de una cotización, abreviada para las pantallas que la usan. La completa, con la
+// atribución, está en Caja → Cotización.
+export function rateSourceText(automatic: boolean): string {
+  return automatic ? "DolarAPI + ajuste" : "carga manual";
+}
+
 export type ExchangeRateLabel = {
   id: string;
   // Con la escala de la base, para convertir en el navegador.
   value: string;
   // «1 USD = ARS 1.565,00»
   label: string;
-  // «18/10/2026 15:30»
+  // «18/10/2026 15:30, carga manual» o «…, DolarAPI + ajuste»: su fecha y su fuente (ADR 0025,
+  // punto 4).
   recordedLabel: string;
   stale: boolean;
 };
@@ -51,7 +58,7 @@ export function rateLabel(
     label: `1 ${mainCurrency} = ${quoteCurrency} ${formatExchangeRate(
       exchangeRateFromDatabase(rate.value),
     )}`,
-    recordedLabel: formatShortDateTime(rate.recordedAt, timezone),
+    recordedLabel: `${formatShortDateTime(rate.recordedAt, timezone)}, ${rateSourceText(rate.automatic)}`,
     stale: rate.stale,
   };
 }
@@ -110,7 +117,7 @@ export function referenceText(
   const rate = formatExchangeRate(exchangeRateFromDatabase(reference.rate));
   const parts = [
     `a 1 ${reference.currency} = ${reference.quoteCurrency} ${rate}`,
-    `cotización del ${formatShortDateTime(reference.rateRecordedAt, timezone)}`,
+    `cotización del ${formatShortDateTime(reference.rateRecordedAt, timezone)}, ${rateSourceText(reference.rateAutomatic)}`,
   ];
   if (reference.unconverted.length > 0) {
     parts.push(`sin convertir: ${reference.unconverted.join(", ")}`);

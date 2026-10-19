@@ -1,0 +1,15 @@
+[Unit]
+Description=Dispara la lectura de la cotizacion cinco veces por dia (ADR 0025, punto 4; brief-29.4.2, D-7)
+
+[Timer]
+# En el horario del local, en la hora de Cordoba: cinco consultas por dia, dentro de lo que
+# sugiere DolarAPI, una cada 3 horas por serie (ADR 0025, punto 4, R-B4).
+OnCalendar=*-*-* 09,12,15,18,21:00:00 America/Argentina/Cordoba
+# Hasta 2 minutos despues de la hora, para no caer en el minuto redondo de toda la maquina.
+RandomizedDelaySec=120
+# Si el servidor estuvo apagado a esa hora, la lectura corre al arrancar.
+Persistent=true
+Unit=crm-fx-reader.service
+
+[Install]
+WantedBy=timers.target

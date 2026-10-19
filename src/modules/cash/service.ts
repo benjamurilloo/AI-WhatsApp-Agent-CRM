@@ -112,7 +112,10 @@ export type ReferenceView = {
   // La otra moneda de la cotización: 1 USD = ARS 1.565.
   quoteCurrency: string;
   rate: string;
+  // Desde cuándo vale: la última confirmación del lector en una automática, la carga en una manual
+  // (brief-29.4.2, H-6).
   rateRecordedAt: Date;
+  rateAutomatic: boolean;
   stale: boolean;
   // Las monedas que no son la principal ni la otra: no se convierten.
   unconverted: string[];
@@ -132,7 +135,8 @@ function referenceView(
     total: moneyToDatabase(reference.total),
     quoteCurrency: setup!.quoteCurrency,
     rate: exchangeRateToDatabase(reference.rate.rate),
-    rateRecordedAt: reference.rate.recordedAt,
+    rateRecordedAt: reference.rate.asOf,
+    rateAutomatic: reference.rate.source !== "manual",
     stale: reference.rate.stale,
     unconverted: reference.unconverted,
   };
@@ -3118,7 +3122,9 @@ export type ExchangeOffer = {
   rate: {
     id: string;
     value: string;
+    // Desde cuándo vale (brief-29.4.2, H-6).
     recordedAt: Date;
+    automatic: boolean;
     stale: boolean;
   } | null;
   outstanding: string | null;
@@ -3151,7 +3157,8 @@ function exchangeOffer(
       ? {
           id: current.id,
           value: exchangeRateToDatabase(current.rate),
-          recordedAt: current.recordedAt,
+          recordedAt: current.asOf,
+          automatic: current.source !== "manual",
           stale: current.stale,
         }
       : null,
@@ -4446,7 +4453,8 @@ export async function getAccountReceiptForm(
             ? {
                 id: current.id,
                 value: exchangeRateToDatabase(current.rate),
-                recordedAt: current.recordedAt,
+                recordedAt: current.asOf,
+                automatic: current.source !== "manual",
                 stale: current.stale,
               }
             : null,

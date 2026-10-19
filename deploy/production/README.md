@@ -42,8 +42,10 @@ Cada una es una decisión del brief, o su consecuencia directa.
 | `crm-db-size.sh` | `/usr/local/bin/crm-db-size.sh`, `0755` (desde la 17.5) |
 | `crm-db-size.service` | `/etc/systemd/system/crm-db-size.service` (desde la 17.5) |
 | `journald-crm-production.conf` | `/etc/systemd/journald.conf.d/crm-production.conf`, `0644` |
+| `crm-fx-reader.service` | `/etc/systemd/system/crm-fx-reader.service` (desde la 29.4.2) |
+| `crm-fx-reader.timer` | `/etc/systemd/system/crm-fx-reader.timer` (desde la 29.4.2) |
 
-El número de archivos se cuenta, no se hereda: `ls deploy/production/ | grep -v README | wc -l` tiene que dar lo mismo que las filas de esta tabla (**16**, desde la 17.5; eran 14 desde la 13.4, 13 desde la 13.3 y 11 antes).
+El número de archivos se cuenta, no se hereda: `ls deploy/production/ | grep -v README | wc -l` tiene que dar lo mismo que las filas de esta tabla (**18**, desde la 29.4.2; eran 16 desde la 17.5, 14 desde la 13.4, 13 desde la 13.3 y 11 antes).
 
 ## Lo que NO está acá, a propósito
 
@@ -57,7 +59,8 @@ Los secretos. Viven en `/etc/crm-production/`, con permisos `0600` de `root`, y 
 | `backup.pgpass` | La contraseña del rol dueño, para el backup |
 | `backup.age.pub` | La clave **pública** de `age`. La privada **nunca** entra al droplet: la guarda el operador fuera de él |
 | `rclone.conf` | La clave de acceso al bucket, con permiso **solo** sobre ese bucket. Un remoto `[spaces]` con `type = s3`, `provider = DigitalOcean`, `endpoint = nyc3.digitaloceanspaces.com`, `acl = private` y las dos claves. Lo escribe el operador en el servidor, con `nano`, y nunca pasa por una conversación con un asistente |
-| `heartbeat.env` | Desde la 13.3: `HEARTBEAT_URL_BACKUP`, `HEARTBEAT_URL_OFFSITE` y `HEARTBEAT_URL_RESTORE_CHECK`, las URLs de aviso de vida. **Son credenciales**: quien tenga una puede marcar un trabajo como vivo y apagar su alerta. Lo escribe el operador en el servidor, con `nano`, y nunca pasa por una conversación con un asistente. Una guarda (`tests/guards/heartbeat-urls.test.ts`) falla si una aparece en un archivo del repositorio |
+| `heartbeat.env` | Desde la 13.3: `HEARTBEAT_URL_BACKUP`, `HEARTBEAT_URL_OFFSITE` y `HEARTBEAT_URL_RESTORE_CHECK`, las URLs de aviso de vida. **Son credenciales**: quien tenga una puede marcar un trabajo como vivo y apagar su alerta. Lo escribe el operador en el servidor, con `nano`, y nunca pasa por una conversación con un asistente. Una guarda (`tests/guards/heartbeat-urls.test.ts`) falla si una aparece en un archivo del repositorio. Desde la 17.5 suma `HEARTBEAT_URL_DB_SIZE`, y desde la 29.4.2, `HEARTBEAT_URL_FX_READER` |
+| `fx-reader-db` | Desde la 29.4.2: **solo la contraseña** del rol `crm_fx_reader_login`, sin nombre de variable. La lee systemd como `root` y se la entrega al lector por `LoadCredential=`; el proceso no lee ningún otro archivo de esta carpeta |
 
 No hay `seed.env`: en producción no corre ningún seed, y los seeds rechazan la base `crm_production` (AC-5).
 
@@ -256,7 +259,7 @@ La 13.1.2 ejecutó una vuelta atrás completa el 2026-09-29 (AC-21): de `938423d
 
 Los mismos cinco pasos de staging, con `crm-production` en lugar de `crm-staging` y `crm.vixoraai.app` en lugar de `staging.vixoraai.app`, más dos pasos propios de producción:
 
-1. **La configuración desplegada es la versionada** (O-9). Se hace el `diff` de los **dieciséis** archivos de la tabla, como en staging, con el bucle del [runbook de restauración](../../docs/runbooks/restaurar-la-base.md) §Producción, punto 5. Eran once hasta la 13.3, trece hasta la 13.4 y catorce hasta la 17.5.
+1. **La configuración desplegada es la versionada** (O-9). Se hace el `diff` de los **dieciocho** archivos de la tabla, como en staging, con el bucle del [runbook de restauración](../../docs/runbooks/restaurar-la-base.md) §Producción, punto 5. Eran once hasta la 13.3, trece hasta la 13.4, catorce hasta la 17.5 y dieciséis hasta la 29.4.2.
 2. **Un solo salto de proxy**, medido por consecuencia (AC-14). Se comparan hashes y **nunca se versiona ni la IP ni su hash**.
 3. **HSTS** presente sobre HTTPS y ausente sobre HTTP.
 4. **La aplicación escucha solo en loopback.**
@@ -273,6 +276,7 @@ Desde la 13.3 ([brief-13.3](../../docs/decisions/brief-13.3-disponibilidad-y-obs
 | La aplicación y la base, desde afuera | Un chequeo de Uptime de DigitalOcean consulta `https://crm.vixoraai.app/api/health` desde cuatro regiones. `/api/health` consulta la base y responde `503` si no llega. Alertas: caída (2 min de espera), latencia de más de 2000 ms durante 5 min, y certificado a 14 días de vencer. Llegan por email | D-1 y D-2 |
 | El backup diario, la copia externa y el ejercicio mensual de restauración | Cada uno, al terminar bien, dispara `crm-heartbeat@<trabajo>.service`, que manda un aviso de vida a Healthchecks.io. Si el aviso no llega a tiempo, alerta por email y Telegram. Backup y copia: `15 3 * * *` UTC con 1 h de gracia; ejercicio: `30 4 1 * *` UTC con 2 h | D-3 |
 | El tamaño de la base | `crm-db-size.service`, que dispara el backup al terminar bien, consulta `pg_database_size` y manda el aviso de vida `db-size` **solo mientras la base esté bajo 1 GB**. Pasado el umbral, el aviso no llega y Healthchecks.io alerta por los mismos canales. Si el backup falla, este trabajo no corre: alertan los dos | brief-17.5, D-9 |
+| La lectura de la cotización | `crm-fx-reader.service`, que dispara su timer a las 9, 12, 15, 18 y 21, hora de Córdoba, manda el aviso de vida `fx-reader` **solo si terminó bien para todas las organizaciones con la fuente automática**. Si DolarAPI no responde, cambia su respuesta o una lectura se rechaza, el aviso no llega y Healthchecks.io alerta. El chequeo sigue el mismo horario, con 1 h de gracia | brief-29.4.2, D-8 |
 | El disco y la memoria del droplet | Alertas de recursos de DigitalOcean sobre las métricas de `do-agent`: disco por encima del 80 % durante 5 min y memoria por encima del 90 % durante 10 min. Llegan por email | D-4 |
 
 **Cuánto tarda cada alerta**, medido el 2026-09-30 con fallas provocadas ([evidencia de la 13.3](../../docs/decisions/evidencia-13.3-disponibilidad.md)). Cada número salió de una o dos mediciones: es un orden de magnitud, no una garantía.
@@ -367,6 +371,79 @@ Tiene que decir `exit-code` y `FALLA: la base ocupa … por encima del umbral`, 
 ```
 ssh crm-production 'sudo rm /etc/crm-production/db-size.env && sudo systemctl start crm-db-size.service && systemctl show -p Result --value crm-db-size.service'
 ```
+
+### La lectura de la cotización (29.4.2)
+
+Desde la 29.4.2 ([brief-29.4.2](../../docs/decisions/brief-29.4.2-la-lectura-de-la-cotizacion.md), D-12; [ADR 0025](../../docs/decisions/0025-tipo-de-cambio.md), punto 9). Es **el primer proceso del CRM con red y credencial de la base juntas**. Lo acotan:
+- el rol `crm_fx_reader`, que no tiene privilegios sobre ninguna tabla y solo ejecuta `fx_reader_targets()` y `fx_record_reading(…)`;
+- su contraseña, en un archivo propio que entrega systemd;
+- el código, que solo consulta `https://dolarapi.com/v1/dolares/blue`, y la guarda `tests/guards/fx-reader.test.ts`;
+- la unidad, que niega las redes privadas y la de metadatos del droplet.
+
+La red **no** puede fijar el host: DolarAPI está detrás de Cloudflare y sus IP cambian.
+
+**1. El rol sin login, antes de migrar.** Como `crm_app`: la `0054` lo crea solo si no existe, y el dueño no tiene `CREATEROLE`. Sin secretos:
+
+```
+ssh crm-production 'sudo -u postgres psql -v ON_ERROR_STOP=1 -c "CREATE ROLE crm_fx_reader NOLOGIN;"'
+```
+
+**2. El despliegue habitual** ([Desplegar un cambio](#desplegar-un-cambio)), que migra la `0054`.
+
+**3. El rol con login y su contraseña.** **Lo corre el usuario** en su terminal, después de `ssh crm-production`, porque genera una contraseña. Como en el paso 6 del aprovisionamiento: encadenado con `&&`, y la contraseña nunca en un argumento:
+
+```
+sudo bash -c 'umask 077 && PW=$(openssl rand -hex 32) && printf "%s\n" "$PW" > /etc/crm-production/fx-reader-db && printf "CREATE ROLE crm_fx_reader_login LOGIN PASSWORD '"'"'%s'"'"' IN ROLE crm_fx_reader;\n" "$PW" | sudo -u postgres psql -v ON_ERROR_STOP=1 -q && stat -c "%a %U %n" /etc/crm-production/fx-reader-db'
+```
+
+Tiene que decir `600 root /etc/crm-production/fx-reader-db`.
+
+**4. El aviso de vida.** El usuario crea en Healthchecks.io un chequeo con el horario `0 9,12,15,18,21 * * *`, la zona `America/Argentina/Cordoba` y 1 h de gracia. Después agrega su URL a `heartbeat.env`, con el cuidado de [Instalar el aviso de vida](#instalar-el-aviso-de-vida):
+
+```
+HEARTBEAT_URL_FX_READER=<la URL del aviso de la lectura de la cotización>
+```
+
+**5. Las unidades**, con el código ya desplegado:
+
+```
+ssh crm-production 'set -euo pipefail
+cd /srv/crm-production/deploy/production
+sudo install -m 0755 -o root -g root crm-heartbeat.sh /usr/local/bin/crm-heartbeat.sh
+for f in crm-fx-reader.service crm-fx-reader.timer crm-heartbeat@.service; do
+  sudo install -m 0644 -o root -g root "$f" "/etc/systemd/system/$f"
+done
+sudo systemctl daemon-reload
+sudo systemd-analyze verify /etc/systemd/system/crm-fx-reader.service /etc/systemd/system/crm-fx-reader.timer
+node --version
+sudo systemctl start crm-fx-reader.service
+systemctl show -p Result --value crm-fx-reader.service
+sudo journalctl -u crm-fx-reader.service -u crm-heartbeat@fx-reader.service -n 6 -o cat --no-pager'
+```
+
+Sin ninguna organización con la fuente automática, tiene que decir `success`, `Sin organizaciones con la fuente automática: no se consulta.` y `Aviso de 'fx-reader' enviado.` Esa corrida prueba que el usuario efímero lee el código, que `pg_hba` acepta al rol y que la contraseña llega, **sin salir a internet**. Recién entonces se enciende el timer:
+
+```
+ssh crm-production 'sudo systemctl enable --now crm-fx-reader.timer && systemctl list-timers --no-pager crm-fx-reader.timer'
+```
+
+**6. La primera lectura.** El `admin` de la organización elige la fuente automática y el ajuste en Caja → Cotización, y se corre el lector a mano con el mismo `systemctl start` de arriba. Tiene que decir `DolarAPI: venta …` y `<id>: inserted.`
+
+**Provocar la alerta** (brief-29.4.2, D-12, paso 7, AC-9):
+1. El `admin` pone un ajuste que mueva la cotización más de un 10 %.
+2. Se corre el lector a mano. El `|| true` deja ver el resultado aunque la corrida falle, como en la prueba del tamaño de la base:
+
+   ```
+   ssh crm-production 'sudo systemctl start crm-fx-reader.service || true
+   systemctl show -p Result --value crm-fx-reader.service
+   sudo journalctl -u crm-fx-reader.service -n 4 -o cat --no-pager'
+   ```
+
+   Tiene que decir `exit-code` y `FALLA: <id>: rejected_large_change.`, sin aviso.
+3. Al vencer el período, Healthchecks.io alerta.
+4. El `admin` vuelve el ajuste a su valor y se corre el lector otra vez, con el mismo comando: dice `success` y manda el aviso.
+
+**Volver atrás.** Primero `sudo systemctl disable --now crm-fx-reader.timer`. Después, el despliegue del SHA anterior. La `0054` es aditiva, y el código anterior lee `source` y `rate` de una cotización automática sin romperse, aunque muestre su fuente vacía en el historial.
 
 ## Retención del journal
 

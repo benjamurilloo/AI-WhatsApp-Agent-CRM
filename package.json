@@ -28,6 +28,7 @@
     "org:create": "tsx scripts/crear-organizacion.ts",
     "org:capability": "tsx scripts/activar-capacidad.ts",
     "org:currency": "tsx scripts/fijar-moneda.ts",
+    "fx:read": "node scripts/fx/leer-cotizacion.ts",
     "demo:catalog": "tsx scripts/cargar-catalogo-demo.ts"
   },
   "dependencies": {

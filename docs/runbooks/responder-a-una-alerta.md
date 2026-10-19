@@ -84,8 +84,8 @@ Si ni el `ssh` llega:
 Cada trabajo manda su aviso **después** de terminar bien. Que el aviso no llegue tiene tres causas posibles, y el diagnóstico las separa:
 
 ```
-ssh crm-production 'T=crm-backup   # o crm-backup-offsite, o crm-restore-check
-systemctl list-timers --all --no-pager | grep -E "crm-(backup|restore)"
+ssh crm-production 'T=crm-backup   # o crm-backup-offsite, crm-restore-check, crm-db-size o crm-fx-reader
+systemctl list-timers --all --no-pager | grep -E "crm-(backup|restore|fx)"
 systemctl status "$T.service" --no-pager -n 0
 sudo journalctl -u "$T.service" -n 40 --no-pager
 sudo journalctl -u "crm-heartbeat@*" -n 10 --no-pager'
@@ -117,6 +117,32 @@ ssh crm-production 'sudo journalctl -u crm-db-size.service -n 5 --no-pager; df -
 | `FALLA: la base ocupa … por encima del umbral` | **La base pasó el umbral del [ADR 0018](../decisions/0018-imagenes-de-producto.md), punto 3** | No es urgente mientras el disco tenga lugar: el disco carga cerca de 16 veces la base. Se abre la decisión del almacenamiento con un ADR que enmiende ese punto. Si además suena la de disco, ir a [Disco](#disco-por-encima-del-80-) |
 | No corrió hoy | El backup no terminó bien, así que no lo disparó | Es la otra alerta, la del backup: [Un aviso de vida no llegó](#un-aviso-de-vida-no-llegó) |
 | Existe `/etc/crm-production/db-size.env` | Quedó el umbral bajado de una prueba | Borrarlo y correr `sudo systemctl start crm-db-size.service` |
+
+## La lectura de la cotización falló
+
+Es el aviso de vida `fx-reader`, y no una caída: el CRM sigue cobrando con la cotización vigente, que no cambia. Desde la 29.4.2 ([brief-29.4.2](../decisions/brief-29.4.2-la-lectura-de-la-cotizacion.md), D-8), `crm-fx-reader.service` lee DolarAPI a las 9, 12, 15, 18 y 21, hora de Córdoba, y solo manda su aviso si terminó bien para todas las organizaciones con la fuente automática.
+
+```
+ssh crm-production 'systemctl list-timers --all --no-pager | grep crm-fx-reader; sudo journalctl -u crm-fx-reader.service -n 15 -o cat --no-pager'
+```
+
+El journal del lector nombra cada organización por su id, nunca por su nombre, y no tiene secretos.
+
+| Lo que se ve | Qué pasó | Qué hacer |
+| --- | --- | --- |
+| `FALLA: la consulta a DolarAPI no sirvió (network)` o `(http_status)` | DolarAPI no respondió | Nada urgente. La próxima corrida, en 3 horas, lo reintenta. Si sigue un día entero, el `admin` carga la cotización a mano y pasa la fuente a «Carga manual» en Caja → Cotización |
+| `FALLA: … (network)` sin que DolarAPI esté caído | Un timeout de 10 s o un cuerpo que no es UTF-8 también se informan como `network` | Igual que la fila de arriba: la próxima corrida lo reintenta |
+| `FALLA: … (schema)`, `(venta)`, `(not_json)` o `(too_large)` | **DolarAPI cambió su respuesta** | Es una condición de detención del brief: no se toca el lector sin una decisión. Mientras, el `admin` pasa a «Carga manual» |
+| `FALLA: <id>: rejected_large_change.` | El valor se movió más de un 10 % contra la vigente: un salto real o un dato malo de la fuente | El `admin` de esa organización compara con el valor de Córdoba. Si el salto es real, carga a mano un valor cercano: la próxima lectura queda dentro del 10 % y vuelve a guardar (D-4). Si el dato es malo, pasa a «Carga manual» hasta que la fuente se corrija |
+| `FALLA: <id>: rejected_below_one.` | El ajuste es tan negativo que la cotización da menos que 1 | El `admin` corrige el ajuste |
+| `FALLA: <id>: rejected_too_large.` | El ajuste es tan grande que la cotización no cabe en la base | El `admin` corrige el ajuste |
+| `FALLA: <id>: rejected_invalid.` | La función de la base rechazó la venta que le pasó el lector. El lector valida lo mismo antes, así que no debería pasar | Es un defecto del lector o de la función: no se toca sin una decisión. El `admin` pasa a «Carga manual» |
+| `FALLA: <id>: error de la base (…)` | La llamada a la función falló para esa organización | Leer el mensaje. Si se repite, el `admin` pasa a «Carga manual» y se diagnostica |
+| `FALLA: <id>: <otro resultado>.` | La función devolvió un resultado que el lector no conoce: el código del lector y la migración no coinciden | Comparar el SHA desplegado con las migraciones aplicadas |
+| `FALLA: el lector no terminó (…)` | No conectó con la base: la contraseña, `pg_hba` o la base caída | Si también suena `/api/health`, es la base: [El CRM no responde](#el-crm-no-responde-o-apihealth-da-503). Si no, revisar que `/etc/crm-production/fx-reader-db` exista, sea `0600` de `root` y coincida con el rol, **sin imprimirla** |
+| No corrió | El timer está apagado | `sudo systemctl enable --now crm-fx-reader.timer` |
+
+Correrlo a mano, después de corregir: `sudo systemctl start crm-fx-reader.service`. Si termina bien, manda el aviso.
 
 ## Disco por encima del 80 %
 

@@ -8,6 +8,8 @@ import { isLargeChange, referenceTotal, type ExchangeSetup } from "./service";
 const setup: ExchangeSetup = {
   mainCurrency: "USD",
   quoteCurrency: "ARS",
+  source: "manual",
+  adjustment: 0n,
   current: {
     id: "00000000-0000-4000-8000-000000000001",
     baseCurrency: "USD",
@@ -16,6 +18,8 @@ const setup: ExchangeSetup = {
     source: "manual",
     recordedBy: "00000000-0000-4000-8000-000000000002",
     recordedAt: new Date("2026-10-18T12:00:00Z"),
+    asOf: new Date("2026-10-18T12:00:00Z"),
+    reading: null,
     stale: false,
   },
 };

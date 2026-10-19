@@ -16,6 +16,14 @@ export {
   type ExchangeRateSource,
   type ExchangeSetup,
   type RecordExchangeRateResult,
+  type RateReading,
   type ReferenceTotal,
+  type UpdateExchangeSettingsResult,
+  updateExchangeSettings,
 } from "./service";
+export {
+  adjustmentToDatabase,
+  formatAdjustment,
+  type Adjustment,
+} from "./adjustment";
 export { STALE_AFTER_HOURS } from "./staleness";

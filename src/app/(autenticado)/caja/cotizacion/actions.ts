@@ -2,14 +2,18 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { recordExchangeRate } from "@/modules/fx";
+import { recordExchangeRate, updateExchangeSettings } from "@/modules/fx";
 import { requireSession } from "@/app/_auth/session";
 import { logEvent, newRequestId } from "@/shared/log";
 import {
   rateRejection,
+  settingsRejection,
   unexpectedRateMessage,
+  unexpectedSettingsMessage,
   type RateFormState,
   type RateFormValues,
+  type SettingsFormState,
+  type SettingsFormValues,
 } from "./messages";
 
 // Server Action de la carga manual de una cotización (ADR 0025, punto 4; brief-29.4, D-4). La sesión
@@ -74,4 +78,63 @@ export async function recordExchangeRateAction(
   revalidatePath("/caja/cotizacion");
   revalidatePath("/caja");
   redirect("/caja/cotizacion?aviso=cargada");
+}
+
+// Server Action de la fuente y el ajuste (ADR 0025, punto 4; brief-29.4.2, D-9). Como la carga: la
+// sesión acá, el rol y la organización en fx, y el log sin el ajuste.
+export async function updateExchangeSettingsAction(
+  _previous: SettingsFormState,
+  formData: FormData,
+): Promise<SettingsFormState> {
+  const context = await requireSession();
+  const requestId = newRequestId();
+  const started = performance.now();
+  const log = (code: LogCode, error?: unknown) =>
+    logEvent({
+      level: code === "OK" ? "info" : error ? "error" : "warn",
+      requestId,
+      route: "caja.cotizacion.fuente",
+      code,
+      userId: context.userId,
+      organizationId: context.organizationId,
+      durationMs: performance.now() - started,
+      error,
+    });
+  const values: SettingsFormValues = {
+    source: String(formData.get("source") ?? "").slice(0, 40),
+    adjustment: String(formData.get("adjustment") ?? "")
+      .trim()
+      .slice(0, 40),
+  };
+
+  let notice: string;
+  try {
+    const result = await updateExchangeSettings(context, values);
+    if (!result.ok) {
+      log(result.code);
+      return {
+        status: "error",
+        requestId,
+        values,
+        ...settingsRejection(result),
+      };
+    }
+    log("OK");
+    notice = result.toAutomatic
+      ? "automatica"
+      : result.changed
+        ? "fuente"
+        : "sin-cambios";
+  } catch (error) {
+    log("INTERNAL", error);
+    return {
+      status: "error",
+      requestId,
+      values,
+      message: unexpectedSettingsMessage(requestId),
+      field: null,
+    };
+  }
+  revalidatePath("/caja/cotizacion");
+  redirect(`/caja/cotizacion?aviso=${notice}`);
 }

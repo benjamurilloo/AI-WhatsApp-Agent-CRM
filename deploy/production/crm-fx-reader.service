@@ -1,0 +1,53 @@
+[Unit]
+Description=AI WhatsApp Agent CRM - lector de la cotizacion (ADR 0025, punto 9; brief-29.4.2, D-7)
+Documentation=file:///srv/crm-production/deploy/production/README.md
+# Lee el dolar blue de DolarAPI y lo pasa a la base, que suma el ajuste de cada organizacion y
+# decide si guarda (fx_record_reading, migracion 0054). Lo dispara crm-fx-reader.timer.
+#
+# Es el primer proceso del CRM con red y credencial de la base juntas, a sabiendas (ADR 0025,
+# punto 9). Lo acotan:
+#   - el rol crm_fx_reader, que no tiene privilegios sobre ninguna tabla y solo ejecuta dos
+#     funciones;
+#   - la contrasena, que entrega systemd (LoadCredential=) y que el proceso lee de un archivo
+#     propio, no del .pgpass del dueno;
+#   - el codigo, que solo consulta una URL fija de dolarapi.com, y una guarda que lo fija
+#     (tests/guards/fx-reader.test.ts). La red no puede fijar el host: DolarAPI esta detras de
+#     Cloudflare y sus IP cambian (brief-29.4.2, H-7).
+# El aviso de vida sale solo si la corrida termino bien: si DolarAPI no responde o una
+# organizacion queda rechazada, el lector sale con codigo distinto de cero y la alerta suena.
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+OnSuccess=crm-heartbeat@fx-reader.service
+
+[Service]
+Type=oneshot
+# Un usuario efimero: lee el codigo de /srv/crm-production, que es legible para todos, y no
+# escribe nada en disco.
+DynamicUser=true
+WorkingDirectory=/srv/crm-production
+# La conexion, sin secretos. La contrasena del rol con login la lee systemd como root antes de
+# soltar privilegios, desde un archivo 0600 de root, y la deja en $CREDENTIALS_DIRECTORY.
+Environment=PGHOST=localhost PGPORT=5432 PGDATABASE=crm_production PGUSER=crm_fx_reader_login
+LoadCredential=fx-reader-db:/etc/crm-production/fx-reader-db
+ExecStart=/usr/bin/node /srv/crm-production/scripts/fx/leer-cotizacion.ts
+# La consulta tiene un timeout de 10 s y cada llamada a la base, otro: un minuto sobra.
+TimeoutStartSec=60
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+# AF_UNIX: la resolucion de nombres de glibc puede hablar con systemd-resolved por un socket local
+# (nss-resolve). Un socket local no sale de la maquina (revision independiente de la 29.4.2).
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+# La base y el resolvedor de nombres, en loopback. Ninguna red privada ni de enlace local: entre
+# ellas, 169.254.169.254, el servicio de metadatos del droplet (brief-29.4.2, H-7). Lo publico
+# queda abierto, porque el host de DolarAPI no tiene IP fija.
+IPAddressAllow=localhost
+IPAddressDeny=10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16 100.64.0.0/10 fc00::/7 fe80::/10

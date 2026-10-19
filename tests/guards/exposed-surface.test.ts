@@ -159,6 +159,12 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
   "src/app/(autenticado)/caja/cotizacion/actions.ts#recordExchangeRateAction": {
     requirement: "sesion",
   },
+  // La fuente y el ajuste de la cotización (brief-29.4.2, D-9): solo admin y con moneda principal, lo
+  // exige fx.
+  "src/app/(autenticado)/caja/cotizacion/actions.ts#updateExchangeSettingsAction":
+    {
+      requirement: "sesion",
+    },
   // Los medios de pago (brief-21.2, D-6): solo admin, lo exige cash.
   "src/app/(autenticado)/caja/actions.ts#createPaymentMethodAction": {
     requirement: "sesion",

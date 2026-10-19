@@ -34,8 +34,10 @@ case $trabajo in
   restore-check) variable=HEARTBEAT_URL_RESTORE_CHECK ;;
   # La base bajo el umbral de 1 GB (brief-17.5, D-9).
   db-size) variable=HEARTBEAT_URL_DB_SIZE ;;
+  # La lectura de la cotizacion, cinco veces por dia (brief-29.4.2, D-8).
+  fx-reader) variable=HEARTBEAT_URL_FX_READER ;;
   *)
-    echo "Trabajo desconocido: '${trabajo}'. Validos: backup, offsite, restore-check, db-size." >&2
+    echo "Trabajo desconocido: '${trabajo}'. Validos: backup, offsite, restore-check, db-size, fx-reader." >&2
     exit 1
     ;;
 esac
