@@ -18,6 +18,7 @@ import {
 } from "@/app/_components/form-styles";
 import { AmountReading } from "./money-fields";
 import {
+  NO_RATE_OUTGOING_TEXT,
   NO_RATE_TEXT,
   STALE_RATE_TEXT,
   type ReceiptExchangeProps,
@@ -71,8 +72,13 @@ export function TenderCurrencyChoice({
   exchange: ReceiptExchangeProps;
 }) {
   return (
-    <nav aria-label="Moneda que entra" className="flex flex-col gap-1">
-      <span className={labelClass}>Moneda que entra</span>
+    <nav
+      aria-label={exchange.outgoing ? "Moneda que sale" : "Moneda que entra"}
+      className="flex flex-col gap-1"
+    >
+      <span className={labelClass}>
+        {exchange.outgoing ? "Moneda que sale" : "Moneda que entra"}
+      </span>
       <ul className="flex w-fit gap-0.5 rounded-lg border border-border bg-surface-muted p-0.5">
         {exchange.choices.map((choice) => (
           <li key={choice.currency}>
@@ -138,7 +144,9 @@ export function TenderedAmountFields({
             <span className="text-muted">({rate.recordedLabel})</span>
           </p>
         ) : (
-          <p className={fieldErrorClass}>{NO_RATE_TEXT}</p>
+          <p className={fieldErrorClass}>
+            {exchange.outgoing ? NO_RATE_OUTGOING_TEXT : NO_RATE_TEXT}
+          </p>
         )}
         {rate?.stale ? (
           <p className="w-fit rounded-md bg-warning-soft px-2 py-1 text-on-warning-soft">
@@ -152,7 +160,8 @@ export function TenderedAmountFields({
 
       <div className="flex max-w-xs flex-col gap-1">
         <label htmlFor="cobro-monto" className={labelClass}>
-          Monto en <span className="font-mono">{tendered}</span> *
+          {exchange.outgoing ? "Monto que sale en" : "Monto en"}{" "}
+          <span className="font-mono">{tendered}</span> *
         </label>
         <input
           id="cobro-monto"
@@ -184,7 +193,7 @@ export function TenderedAmountFields({
 
       <details open={defaultRate !== "" || invalidRate}>
         <summary className="cursor-pointer text-sm font-medium">
-          Cotización acordada para este cobro
+          Cotización acordada para {exchange.forThis}
         </summary>
         <div className="mt-2 flex max-w-xs flex-col gap-1">
           <label htmlFor="cobro-cotizacion" className={labelClass}>
@@ -208,8 +217,8 @@ export function TenderedAmountFields({
             className={`${inputClass} tabular-nums`}
           />
           <p id="cobro-cotizacion-ayuda" className="text-sm text-muted">
-            Con coma decimal, por ejemplo 1.565,50. Solo vale para este cobro:
-            no cambia la vigente.
+            Con coma decimal, por ejemplo 1.565,50. Solo vale para{" "}
+            {exchange.forThis}: no cambia la vigente.
           </p>
         </div>
       </details>

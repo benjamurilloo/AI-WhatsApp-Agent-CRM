@@ -63,14 +63,18 @@ import {
   accountReceiptCurrencies,
   canConvert,
   cashSideOf,
+  copiedTender,
   convertBetween,
   fitToOutstanding,
   readTender,
+  tenderAudit,
   tenderColumns,
   tenderedCurrencyOf,
+  tenderView,
   type ReceiptTenderRead,
   type TenderFailure,
   type TenderInput,
+  type TenderView,
 } from "./tender";
 import {
   formatSupplierPaymentNumber,
@@ -121,7 +125,8 @@ export type ReferenceView = {
   unconverted: string[];
 };
 
-function referenceView(
+// También la usan las cuentas de proveedores (brief-29.4.3, D-6), dentro de cash.
+export function referenceView(
   setup: ExchangeSetup | null,
   amounts: { currency: string; amount: Money }[],
 ): ReferenceView | null {
@@ -565,13 +570,17 @@ async function readTotalsInput(
 }
 
 // Los totales de una sesión: cada cobro cuenta lo que entró a la caja, que es lo recibido si fue en
-// otra moneda (ADR 0025, punto 6; brief-29.4, D-7). computeCashTotals no cambia.
+// otra moneda (ADR 0025, punto 6; brief-29.4, D-7), y desde la 29.4.3 cada devolución y cada pago, lo
+// que salió (brief-29.4.3, D-5). Las anulaciones ya llegan así desde el repositorio.
+// computeCashTotals no cambia.
 function totalsOf(
   input: Awaited<ReturnType<typeof readTotalsInput>>,
 ): CashTotals[] {
   return computeCashTotals({
     ...input,
     receipts: input.receipts.map(cashSideOf),
+    refunds: input.refunds.map(cashSideOf),
+    supplierPayments: input.supplierPayments.map(cashSideOf),
   } satisfies TotalsInput);
 }
 
@@ -2628,12 +2637,58 @@ export type CreateRefundResult =
   | Failure<"VALIDATION_ERROR">
   | RefundFieldsFailure
   | Failure<"NOT_FOUND", { entity: "client" | "sale" }>
-  | PaymentFailure
+  | ReceiptPaymentFailure
   | Failure<"BUSINESS_RULE_VIOLATION", { rule: "sale_not_refundable" }>
   | ExceedsRefundable
   | InsufficientCash;
 
 const refundTargetSchema = z.enum(["account", "sale"]);
+
+// Lo que sale de la caja por una devolución o un pago: lo que salió en otra moneda, si la hubo
+// (ADR 0025, punto 6; brief-29.4.3, D-3 y H-2). Ninguna salida deja lo esperado negativo en esa
+// moneda.
+export async function outgoingShortfall(
+  tx: DbTransaction,
+  organizationId: string,
+  payment: ReceiptPayment,
+  currency: string,
+): Promise<InsufficientCash | null> {
+  if (payment.session === null) return null;
+  const cashCurrency = payment.tender?.currency ?? currency;
+  const cashAmount = payment.tender?.amount ?? payment.amount;
+  const expected = await expectedIn(
+    tx,
+    organizationId,
+    payment.session.id,
+    cashCurrency,
+  );
+  return expected - cashAmount < 0n
+    ? insufficientCash(cashCurrency, expected)
+    : null;
+}
+
+// Lo que vuelve a la caja al anular una salida: lo que salió, en su moneda (brief-29.4.3, D-3). Lo
+// esperado tiene que seguir cabiendo en numeric(14, 2), como un aporte.
+export async function returnExceedsLimit(
+  tx: DbTransaction,
+  organizationId: string,
+  sessionId: string,
+  row: {
+    currency: string;
+    amount: string;
+    tenderedCurrency: string | null;
+    tenderedAmount: string | null;
+  },
+): Promise<boolean> {
+  const cash = cashSideOf(row);
+  const expected = await expectedIn(
+    tx,
+    organizationId,
+    sessionId,
+    cash.currency,
+  );
+  return expected + moneyFromDatabase(cash.amount) > MAX_AMOUNT;
+}
 
 // La devolución (D-7), solo de admin, en READ COMMITTED, con el orden del ADR 0022, punto 4:
 //
@@ -2657,7 +2712,7 @@ export async function createRefund(
     currency?: string;
     paymentMethodId: string;
     amount: string;
-  },
+  } & TenderInput,
 ): Promise<CreateRefundResult> {
   const authorized = authorize(context, { role: "admin" });
   if (!authorized.ok) return authorized;
@@ -2715,29 +2770,34 @@ export async function createRefund(
       available = (await saleStanding(tx, organizationId, sale)).toRefund;
     }
 
-    const read = await readPayment(tx, organizationId, fields, currency);
+    // Desde la 29.4.3, lo que sale puede ir en la otra moneda de la organización, contra un saldo en
+    // la principal, con la vigente o una acordada (ADR 0025, punto 5, R-M3; brief-29.4.3, D-3).
+    const read = await readPayment(tx, organizationId, fields, currency, input);
     if (!read.ok) return read;
-    const { payment } = read;
-    if (payment.amount > available) {
+    // El tope con lo aplicado, y la tolerancia de un centavo si salió en otra moneda (R-M4).
+    const fit = fitToOutstanding(
+      read.payment.amount,
+      available,
+      currency,
+      read.payment.tender !== null,
+    );
+    if (!fit.ok) {
       return {
         ok: false,
         code: "BUSINESS_RULE_VIOLATION",
         rule: "exceeds_refundable",
         currency,
-        available: moneyToDatabase(available),
+        available: moneyToDatabase(available > 0n ? available : 0n),
       };
     }
-    if (payment.session !== null) {
-      const expected = await expectedIn(
-        tx,
-        organizationId,
-        payment.session.id,
-        currency,
-      );
-      if (expected - payment.amount < 0n) {
-        return insufficientCash(currency, expected);
-      }
-    }
+    const payment = { ...read.payment, amount: fit.applied };
+    const short = await outgoingShortfall(
+      tx,
+      organizationId,
+      payment,
+      currency,
+    );
+    if (short) return short;
 
     const number = await nextDocumentNumber(tx, organizationId, "refund");
     const refund = await repository.insertRefund(tx, {
@@ -2748,6 +2808,7 @@ export async function createRefund(
       sessionId: payment.session?.id ?? null,
       currency,
       amount: moneyToDatabase(payment.amount),
+      tender: tenderColumns(payment.tender),
       createdBy: userId,
     });
     // Claves planas, sin datos de la persona (D-13): el destino va por su tipo y, si es una venta,
@@ -2767,6 +2828,8 @@ export async function createRefund(
           payment_method: payment.method.name,
           currency: refund.currency,
           amount: refund.amount,
+          // Lo que salió en otra moneda y la cotización usada (brief-29.4.3, D-3).
+          ...tenderAudit(refund),
           ...(payment.session === null
             ? {}
             : { session_number: payment.session.number }),
@@ -2820,21 +2883,17 @@ export async function voidRefund(
       };
     }
     const session = await impactedSession(tx, organizationId, refund.sessionId);
-    if (session) {
-      const expected = await expectedIn(
-        tx,
-        organizationId,
-        session.id,
-        refund.currency,
-      );
-      if (expected + moneyFromDatabase(refund.amount) > MAX_AMOUNT) {
-        return {
-          ok: false,
-          code: "VALIDATION_ERROR",
-          fields: [],
-          amount: "limit",
-        };
-      }
+    // Vuelve a la caja lo que salió, en su moneda (brief-29.4.3, D-3).
+    if (
+      session &&
+      (await returnExceedsLimit(tx, organizationId, session.id, refund))
+    ) {
+      return {
+        ok: false,
+        code: "VALIDATION_ERROR",
+        fields: [],
+        amount: "limit",
+      };
     }
 
     const number = await nextDocumentNumber(tx, organizationId, "refund_void");
@@ -2842,8 +2901,10 @@ export async function voidRefund(
       organizationId,
       number,
       sourceId: refund.id,
+      // La copia de la devolución, con lo que salió (brief-29.4.3, D-2).
       currency: refund.currency,
       amount: refund.amount,
+      tender: copiedTender(refund),
       reason: input.reason,
       sessionId: session?.id ?? null,
       createdBy: userId,
@@ -3131,7 +3192,7 @@ export type ExchangeOffer = {
   outstandingInput: string | null;
 };
 
-function exchangeOffer(
+export function exchangeOffer(
   setup: ExchangeSetup | null,
   targetCurrency: string,
   outstanding: Money,
@@ -3498,6 +3559,8 @@ export type RefundListItem = DocumentNumberRef & {
   isCash: boolean;
   currency: string;
   amount: string;
+  // Lo que salió en otra moneda (brief-29.4.3, D-7), o null.
+  tender: TenderView | null;
   voided: VoidView | null;
 };
 
@@ -3533,6 +3596,7 @@ async function refundListItems(
       isCash: method?.isCash ?? false,
       currency: row.currency,
       amount: row.amount,
+      tender: tenderView(row),
       voided: voidView("refund_void", row.voided),
     };
   });
@@ -3673,6 +3737,9 @@ export type ClientRefundForm = {
   inFavor: RefundableAmount[];
   paymentMethods: PaymentMethod[];
   openSession: SessionRef | null;
+  // Devolver en la otra moneda lo que está a favor en la principal (brief-29.4.3, D-7). null sin
+  // moneda principal o sin saldo a favor en ella.
+  exchange: ExchangeOffer | null;
 };
 
 function refundable(currency: string, amount: Money): RefundableAmount {
@@ -3705,10 +3772,14 @@ export async function getClientRefundForm(
   const account = await repository.withTransaction((tx) =>
     clientAccount(tx, organizationId, id),
   );
-  const [methods, last] = await Promise.all([
+  const [methods, last, setup] = await Promise.all([
     repository.findPaymentMethods(organizationId),
     repository.findLastSession(organizationId),
+    getExchangeSetup(organizationId),
   ]);
+  const inFavorMain = setup
+    ? inFavorOf(account.accounts, setup.mainCurrency)
+    : 0n;
   return {
     ok: true,
     client: { id: client.id, displayName: client.displayName },
@@ -3717,6 +3788,10 @@ export async function getClientRefundForm(
       .map((row) => refundable(row.currency, row.inFavor)),
     paymentMethods: methods.filter((method) => method.isActive),
     openSession: last && last.closedAt === null ? sessionRef(last) : null,
+    exchange:
+      setup && inFavorMain > 0n
+        ? exchangeOffer(setup, setup.mainCurrency, inFavorMain)
+        : null,
   };
 }
 
@@ -3728,6 +3803,8 @@ export type SaleRefundForm = {
   toRefund: RefundableAmount;
   paymentMethods: PaymentMethod[];
   openSession: SessionRef | null;
+  // Devolver en la otra moneda una venta en la principal (brief-29.4.3, D-7).
+  exchange: ExchangeOffer | null;
 };
 
 // Lo que necesita la devolución de una venta sin cliente anulada (D-9).
@@ -3743,9 +3820,10 @@ export async function getSaleRefundForm(
   const { organizationId } = context;
   const found = await readSaleStanding(organizationId, saleId);
   if (!found) return failure("NOT_FOUND");
-  const [methods, last] = await Promise.all([
+  const [methods, last, setup] = await Promise.all([
     repository.findPaymentMethods(organizationId),
     repository.findLastSession(organizationId),
+    getExchangeSetup(organizationId),
   ]);
   return {
     ok: true,
@@ -3758,6 +3836,11 @@ export async function getSaleRefundForm(
     toRefund: refundable(found.sale.currency, found.standing.toRefund),
     paymentMethods: methods.filter((method) => method.isActive),
     openSession: last && last.closedAt === null ? sessionRef(last) : null,
+    exchange: exchangeOffer(
+      setup,
+      found.sale.currency,
+      found.standing.toRefund,
+    ),
   };
 }
 
@@ -3821,7 +3904,7 @@ export type AccountReferences = {
   inFavor: ReferenceView | null;
 };
 
-function accountReferences(
+export function accountReferences(
   setup: ExchangeSetup | null,
   currencies: { currency: string; owed: string; inFavor: string }[],
 ): AccountReferences {

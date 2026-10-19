@@ -7,6 +7,7 @@ import { cardClass, linkClass } from "@/app/_components/form-styles";
 import { PageHeader } from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
 import { formatMoney } from "@/shared/money";
+import { tenderNote } from "@/app/(autenticado)/caja/exchange";
 import { VoidForm } from "@/app/(autenticado)/cobros/[receiptId]/anular/void-form";
 import { voidRefundAction } from "../../actions";
 import {
@@ -65,7 +66,10 @@ export default async function VoidRefundPage({
     );
   }
   const refund = found.refund;
-  const amount = formatMoney(refund.amount, refund.currency);
+  // Con lo que salió en otra moneda, que es lo que vuelve a la caja (brief-29.4.3, D-7).
+  const amount = refund.tender
+    ? `${formatMoney(refund.amount, refund.currency)} (${tenderNote(refund.tender, true).toLowerCase()})`
+    : formatMoney(refund.amount, refund.currency);
   const cash = !refund.isCash
     ? "No es efectivo: no mueve la caja."
     : refund.sessionOpen

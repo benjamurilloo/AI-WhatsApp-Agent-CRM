@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getClientRefundForm } from "@/modules/cash";
+import { getOrganizationTimezone } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
 import { BackLink } from "@/app/_components/detail-header";
 import { cardClass, linkClass } from "@/app/_components/form-styles";
@@ -15,6 +16,7 @@ import {
   REFUND_ADMIN_ONLY_MESSAGE,
 } from "@/app/(autenticado)/devoluciones/messages";
 import { RefundForm } from "@/app/(autenticado)/devoluciones/refund-form";
+import { receiptExchange } from "@/app/(autenticado)/caja/exchange";
 
 export const metadata: Metadata = {
   title: "Devolver saldo a favor — AI WhatsApp Agent CRM",
@@ -26,14 +28,18 @@ const TITLE = "Devolver saldo a favor";
 // solo admin. Muestra solo lo que está a favor por moneda, que es lo único que se devuelve (H-2):
 // el estado de cuenta es de la 21.6 (H-10). Se llega desde la venta anulada y el pedido cancelado,
 // donde se ve que algo pasó a la cuenta. Desde la 21.6 (brief-21.6, D-7), también desde la ficha, y
-// enlaza el estado de cuenta.
+// enlaza el estado de cuenta. Desde la 29.4.3, lo que está a favor en la moneda principal se devuelve
+// también en la otra (brief-29.4.3, D-7), con ?moneda= como el cobro.
 export default async function ClientRefundPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ clientId: string }>;
+  searchParams: Promise<{ moneda?: string | string[] }>;
 }) {
   const context = await requireSession();
   const { clientId } = await params;
+  const { moneda } = await searchParams;
   const back = { href: `/clientes/${clientId}`, label: "Volver al cliente" };
   if (context.role !== "admin") {
     return (
@@ -59,6 +65,22 @@ export default async function ClientRefundPage({
     );
   }
   const name = form.client.displayName ?? "Cliente sin nombre";
+  const inFavorMain = form.exchange
+    ? form.inFavor.find((row) => row.currency === form.exchange!.mainCurrency)
+    : undefined;
+  const exchange = inFavorMain
+    ? receiptExchange({
+        offer: form.exchange,
+        targetCurrency: inFavorMain.currency,
+        outstanding: inFavorMain.amount,
+        outstandingInput: inFavorMain.amountInput,
+        chosen: typeof moneda === "string" ? moneda.toUpperCase() : undefined,
+        basePath: `/clientes/${form.client.id}/devolver`,
+        timezone: await getOrganizationTimezone(context),
+        movement: "refund",
+        outstandingLabel: "A favor",
+      })
+    : null;
   const blocked =
     form.inFavor.length === 0
       ? NOTHING_IN_FAVOR_MESSAGE
@@ -111,6 +133,7 @@ export default async function ClientRefundPage({
             available={form.inFavor}
             paymentMethods={form.paymentMethods}
             hasOpenSession={form.openSession !== null}
+            exchange={exchange}
           />
         )}
       </div>

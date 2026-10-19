@@ -21,6 +21,12 @@ import {
 
 type LogCode = Parameters<typeof logEvent>[0]["code"];
 
+// El rechazo porque la cotización vigente cambió mientras se cargaba (brief-29.4.3, D-3): la página
+// se vuelve a leer, como en el cobro (revisión independiente de la 29.4, R1-3).
+function isRateChange(result: { code: string }): boolean {
+  return "rule" in result && result.rule === "exchange_rate_changed";
+}
+
 function logger(
   context: { userId: string; organizationId: string },
   route: string,
@@ -59,7 +65,19 @@ async function refund(
     amount: String(formData.get("amount") ?? "")
       .trim()
       .slice(0, 40),
+    // La moneda que sale y la cotización acordada (brief-29.4.3, D-7).
+    tenderedCurrency: String(formData.get("tenderedCurrency") ?? "").slice(
+      0,
+      8,
+    ),
+    exchangeRate: String(formData.get("exchangeRate") ?? "")
+      .trim()
+      .slice(0, 40),
   };
+  const exchangeRateId = String(formData.get("exchangeRateId") ?? "").slice(
+    0,
+    64,
+  );
 
   let refundId: string;
   try {
@@ -70,9 +88,19 @@ async function refund(
         : { saleId: targetId }),
       paymentMethodId: values.paymentMethodId,
       amount: values.amount,
+      tenderedCurrency: values.tenderedCurrency,
+      exchangeRate: values.exchangeRate,
+      exchangeRateId,
     });
     if (!result.ok) {
       log(result.code);
+      if (isRateChange(result)) {
+        revalidatePath(
+          target === "account"
+            ? `/clientes/${targetId}/devolver`
+            : `/ventas/${targetId}/devolver`,
+        );
+      }
       return { status: "error", requestId, values, ...refundRejection(result) };
     }
     log("OK");

@@ -29,6 +29,7 @@ import {
 import { formatMoney } from "@/shared/money";
 import { PrintButton } from "../../../ordenes/[orderId]/print-button";
 import { NOT_AN_INVOICE_LEGEND } from "../../../ordenes/messages";
+import { ReferenceTotal } from "@/app/(autenticado)/caja/reference-total";
 import {
   NO_SUPPLIER_MOVEMENTS_MESSAGE,
   SUPPLIER_ACCOUNT_ADMIN_ONLY_MESSAGE,
@@ -131,6 +132,19 @@ export default async function SupplierStatementPage({
         {statement.currencies.length === 0 ? (
           <p className="mt-4 text-sm">{NO_SUPPLIER_MOVEMENTS_MESSAGE}</p>
         ) : null}
+        {/* El total de referencia en la moneda principal (brief-29.4.3, D-6). */}
+        <ReferenceTotal
+          reference={statement.references.owed}
+          label="Se le debe en total"
+          timeZone={timeZone}
+          className="mt-4"
+        />
+        <ReferenceTotal
+          reference={statement.references.inFavor}
+          label="A favor del negocio en total"
+          timeZone={timeZone}
+          className="mt-2"
+        />
 
         {statement.currencies.map((account) => {
           const money = (value: string) => formatMoney(value, account.currency);

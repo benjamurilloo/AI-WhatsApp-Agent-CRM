@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { getExchangeSetup } from "@/modules/fx";
 import {
   getSupplierNames,
   listGoodsReceiptsForAccounts,
@@ -9,7 +10,13 @@ import { failure, type Failure } from "@/shared/errors";
 import { moneyFromDatabase, moneyToDatabase, type Money } from "@/shared/money";
 import { imputeAccount, type CurrencyAccount } from "./imputation";
 import * as repository from "./repository";
-import { STATEMENT_DOCUMENTS_LIMIT } from "./service";
+import {
+  accountReferences,
+  referenceView,
+  STATEMENT_DOCUMENTS_LIMIT,
+  type AccountReferences,
+  type ReferenceView,
+} from "./service";
 import * as paymentRepository from "./supplier-payment-repository";
 import {
   summarizeSupplierAccount,
@@ -52,12 +59,17 @@ function hasSomething(row: SupplierCurrencySummary): boolean {
 }
 
 // El resumen de la ficha del proveedor (D-5): por moneda, lo que se le debe y lo que está a favor del
-// negocio, sin las monedas en cero.
+// negocio, sin las monedas en cero. Desde la 29.4.3, con el total de referencia en la moneda principal,
+// con la vigente, sin guardarlo (ADR 0025, punto 7; brief-29.4.3, D-6).
 export async function getSupplierAccountSummary(
   context: AuthContext,
   supplierId: string,
 ): Promise<
-  | { ok: true; currencies: SupplierCurrencySummary[] }
+  | {
+      ok: true;
+      currencies: SupplierCurrencySummary[];
+      references: AccountReferences;
+    }
   | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
 > {
   const authorized = authorize(context, { role: "admin" });
@@ -70,11 +82,16 @@ export async function getSupplierAccountSummary(
   const ledger = await repository.withSnapshot((tx) =>
     supplierLedger(tx, context.organizationId, id),
   );
+  const currencies = ledger.accounts
+    .map(summarizeSupplierAccount)
+    .filter(hasSomething);
   return {
     ok: true,
-    currencies: ledger.accounts
-      .map(summarizeSupplierAccount)
-      .filter(hasSomething),
+    currencies,
+    references: accountReferences(
+      await getExchangeSetup(context.organizationId),
+      currencies,
+    ),
   };
 }
 
@@ -125,6 +142,8 @@ export type SupplierStatement = {
   supplier: SupplierName;
   generatedAt: Date;
   currencies: SupplierStatementCurrency[];
+  // El total de referencia de lo que se le debe y lo que está a favor (brief-29.4.3, D-6).
+  references: AccountReferences;
   documents: SupplierStatementDocument[];
   // Si hay más comprobantes que STATEMENT_DOCUMENTS_LIMIT: se muestran los más nuevos.
   truncated: boolean;
@@ -255,13 +274,18 @@ export async function getSupplierStatement(
     ledger.receipts.map((receipt) => [receipt.id, receipt]),
   );
   const documents = statementDocuments(ledger);
+  const currencies = ledger.accounts.map((row) =>
+    statementCurrency(row, receipts),
+  );
   return {
     ok: true,
     statement: {
       supplier,
       generatedAt: new Date(),
-      currencies: ledger.accounts.map((row) =>
-        statementCurrency(row, receipts),
+      currencies,
+      references: accountReferences(
+        await getExchangeSetup(context.organizationId),
+        currencies,
       ),
       documents: documents.slice(0, STATEMENT_DOCUMENTS_LIMIT),
       truncated: documents.length > STATEMENT_DOCUMENTS_LIMIT,
@@ -288,6 +312,9 @@ export type SuppliersOwedPage = {
   pageSize: number;
   // Las monedas con algún proveedor al que se le debe, para el filtro.
   currencies: string[];
+  // El total de referencia de la lista filtrada entera, no de la página (brief-29.4.3, D-6), como el
+  // de los deudores.
+  reference: ReferenceView | null;
 };
 
 type Owed = Omit<SupplierOwedRow, "name"> & { owedAmount: Money };
@@ -394,6 +421,13 @@ export async function listSuppliersOwed(
       page: query.page,
       pageSize: SUPPLIERS_OWED_PAGE_SIZE,
       currencies,
+      reference: referenceView(
+        await getExchangeSetup(context.organizationId),
+        filtered.map((row) => ({
+          currency: row.currency,
+          amount: row.owedAmount,
+        })),
+      ),
     },
   };
 }

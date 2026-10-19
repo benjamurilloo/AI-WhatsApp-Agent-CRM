@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   bigint,
   boolean,
   check,
@@ -537,6 +538,67 @@ export const receiptVoids = pgTable(
 
 // De dónde sale una devolución (ADR 0022, punto 7; brief-21.5, D-2): el saldo a favor de la cuenta
 // de un cliente, o lo que queda a devolver de una venta sin cliente anulada.
+// Lo que entró o salió en otra moneda que el destino (ADR 0025, punto 5): la moneda y el monto, la
+// cotización usada, copiada, y su fila si fue la vigente. Lo usan, desde la 29.4.3, la devolución, el
+// pago a un proveedor y sus anulaciones (brief-29.4.3, D-2); los cobros lo declaran en línea desde la
+// 29.4, con los mismos nombres.
+function tenderedColumns() {
+  return {
+    tenderedCurrency: text("tendered_currency"),
+    tenderedAmount: numeric("tendered_amount", { precision: 14, scale: 2 }),
+    exchangeRate: numeric("exchange_rate", { precision: 18, scale: 6 }),
+    exchangeRateId: uuid("exchange_rate_id"),
+  };
+}
+
+// Sus restricciones, las del cobro (ADR 0025, punto 5, R-M1): las tres juntas o ninguna, la fila de
+// la cotización solo con ellas, otra moneda que la aplicada, un monto positivo y una cotización de al
+// menos 1, y la clave compuesta contra la cotización de la misma organización.
+function tenderedConstraints(
+  prefix: string,
+  table: {
+    organizationId: AnyPgColumn;
+    currency: AnyPgColumn;
+    tenderedCurrency: AnyPgColumn;
+    tenderedAmount: AnyPgColumn;
+    exchangeRate: AnyPgColumn;
+    exchangeRateId: AnyPgColumn;
+  },
+) {
+  return [
+    foreignKey({
+      name: `${prefix}_exchange_rate_fk`,
+      columns: [table.organizationId, table.exchangeRateId],
+      foreignColumns: [exchangeRates.organizationId, exchangeRates.id],
+    }).onDelete("restrict"),
+    check(
+      `${prefix}_tendered_together`,
+      sql`(${table.tenderedCurrency} IS NULL AND ${table.tenderedAmount} IS NULL AND ${table.exchangeRate} IS NULL)
+        OR (${table.tenderedCurrency} IS NOT NULL AND ${table.tenderedAmount} IS NOT NULL AND ${table.exchangeRate} IS NOT NULL)`,
+    ),
+    check(
+      `${prefix}_exchange_rate_id_tendered`,
+      sql`${table.exchangeRateId} IS NULL OR ${table.tenderedCurrency} IS NOT NULL`,
+    ),
+    check(
+      `${prefix}_tendered_currency_distinct`,
+      sql`${table.tenderedCurrency} IS NULL OR ${table.tenderedCurrency} <> ${table.currency}`,
+    ),
+    check(
+      `${prefix}_tendered_currency_format`,
+      sql`${table.tenderedCurrency} IS NULL OR ${table.tenderedCurrency} ~ '^[A-Z]{3}$'`,
+    ),
+    check(
+      `${prefix}_tendered_amount_positive`,
+      sql`${table.tenderedAmount} IS NULL OR ${table.tenderedAmount} > 0`,
+    ),
+    check(
+      `${prefix}_exchange_rate_minimum`,
+      sql`${table.exchangeRate} IS NULL OR ${table.exchangeRate} >= 1`,
+    ),
+  ];
+}
+
 export const refundTarget = pgEnum("refund_target", ["account", "sale"]);
 
 // La devolución (ADR 0022, punto 7; brief-21.5, D-2): la plata que salió hacia el cliente. De solo
@@ -560,6 +622,8 @@ export const refunds = pgTable(
     sessionId: uuid("session_id"),
     currency: text("currency").notNull(),
     amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    // Lo que salió o volvió en otra moneda (brief-29.4.3, D-2).
+    ...tenderedColumns(),
     createdBy: uuid("created_by")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
@@ -610,6 +674,7 @@ export const refunds = pgTable(
     ),
     check("refunds_number_positive", sql`${table.number} > 0`),
     check("refunds_amount_positive", sql`${table.amount} > 0`),
+    ...tenderedConstraints("refunds", table),
     check("refunds_currency_format", sql`${table.currency} ~ '^[A-Z]{3}$'`),
   ],
 );
@@ -637,6 +702,8 @@ export const refundVoids = pgTable(
     refundId: uuid("refund_id").notNull(),
     currency: text("currency").notNull(),
     amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    // Lo que salió o volvió en otra moneda (brief-29.4.3, D-2).
+    ...tenderedColumns(),
     reason: refundVoidReason("reason").notNull(),
     sessionId: uuid("session_id"),
     createdBy: uuid("created_by")
@@ -663,6 +730,7 @@ export const refundVoids = pgTable(
       foreignColumns: [cashSessions.organizationId, cashSessions.id],
     }).onDelete("restrict"),
     index("refund_voids_session_idx").on(table.organizationId, table.sessionId),
+    ...tenderedConstraints("refund_voids", table),
     check("refund_voids_number_positive", sql`${table.number} > 0`),
     check("refund_voids_amount_positive", sql`${table.amount} > 0`),
     check(
@@ -705,6 +773,8 @@ export const supplierPayments = pgTable(
     // La de la recepción, copiada, o la que se elige en un pago a cuenta.
     currency: text("currency").notNull(),
     amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    // Lo que salió o volvió en otra moneda (brief-29.4.3, D-2).
+    ...tenderedColumns(),
     // Siempre un usuario: el agente no paga (ADR 0016, punto 5).
     createdBy: uuid("created_by")
       .notNull()
@@ -763,6 +833,7 @@ export const supplierPayments = pgTable(
       sql`(${table.target} = 'goods_receipt' AND ${table.goodsReceiptId} IS NOT NULL)
         OR (${table.target} = 'account' AND ${table.goodsReceiptId} IS NULL)`,
     ),
+    ...tenderedConstraints("supplier_payments", table),
     check("supplier_payments_number_positive", sql`${table.number} > 0`),
     check("supplier_payments_amount_positive", sql`${table.amount} > 0`),
     check(
@@ -793,6 +864,8 @@ export const supplierPaymentVoids = pgTable(
     supplierPaymentId: uuid("supplier_payment_id").notNull(),
     currency: text("currency").notNull(),
     amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    // Lo que salió o volvió en otra moneda (brief-29.4.3, D-2).
+    ...tenderedColumns(),
     reason: supplierPaymentVoidReason("reason").notNull(),
     // La sesión abierta del pago en efectivo anulado: lo esperado de esa sesión deja de restarlo.
     sessionId: uuid("session_id"),
@@ -825,6 +898,7 @@ export const supplierPaymentVoids = pgTable(
       table.organizationId,
       table.sessionId,
     ),
+    ...tenderedConstraints("supplier_payment_voids", table),
     check("supplier_payment_voids_number_positive", sql`${table.number} > 0`),
     check("supplier_payment_voids_amount_positive", sql`${table.amount} > 0`),
     check(

@@ -1,6 +1,11 @@
 import { and, asc, count, desc, eq, isNull, sql, type SQL } from "drizzle-orm";
 import { getDb, type Db, type DbTransaction } from "@/shared/db";
-import type { CurrencyAmountRow, VoidRef } from "./repository";
+import {
+  tenderValues,
+  type CurrencyAmountRow,
+  type ReceiptTender,
+  type VoidRef,
+} from "./repository";
 import {
   supplierPaymentTarget,
   supplierPaymentVoidReason,
@@ -32,6 +37,11 @@ export type SupplierPaymentRow = {
   currency: string;
   // Con la escala de la base ("1234.50").
   amount: string;
+  // Lo que salió o volvió en otra moneda, si la hubo (brief-29.4.3, D-2), como en el cobro.
+  tenderedCurrency: string | null;
+  tenderedAmount: string | null;
+  exchangeRate: string | null;
+  exchangeRateId: string | null;
   createdBy: string;
   createdAt: Date;
   // Su anulación, si la tiene: las lecturas la muestran y no la cuentan.
@@ -57,6 +67,10 @@ const baseColumns = {
   sessionId: supplierPayments.sessionId,
   currency: supplierPayments.currency,
   amount: supplierPayments.amount,
+  tenderedCurrency: supplierPayments.tenderedCurrency,
+  tenderedAmount: supplierPayments.tenderedAmount,
+  exchangeRate: supplierPayments.exchangeRate,
+  exchangeRateId: supplierPayments.exchangeRateId,
   createdBy: supplierPayments.createdBy,
   createdAt: supplierPayments.createdAt,
 };
@@ -87,6 +101,8 @@ export type NewSupplierPayment = {
   sessionId: string | null;
   currency: string;
   amount: string;
+  // Lo que salió en otra moneda (brief-29.4.3, D-4), o null.
+  tender: ReceiptTender | null;
   createdBy: string;
 };
 
@@ -94,11 +110,12 @@ export async function insertSupplierPayment(
   tx: DbTransaction,
   payment: NewSupplierPayment,
 ): Promise<SupplierPaymentRow> {
-  const { destination, ...rest } = payment;
+  const { destination, tender, ...rest } = payment;
   const rows = await tx
     .insert(supplierPayments)
     .values({
       ...rest,
+      ...tenderValues(tender),
       target: destination.target,
       goodsReceiptId:
         destination.target === "goods_receipt"
@@ -119,6 +136,9 @@ export type NewSupplierPaymentVoid = {
   // La sesión abierta del pago en efectivo, o ninguna: supplier_payment_voids_check_copy() rechaza
   // cualquier otra.
   sessionId: string | null;
+  // Lo que salió en otra moneda, copiado del pago: desde la 0055 también lo compara el trigger
+  // (brief-29.4.3, D-2).
+  tender: ReceiptTender | null;
   createdBy: string;
 };
 
@@ -126,10 +146,14 @@ export async function insertSupplierPaymentVoid(
   tx: DbTransaction,
   row: NewSupplierPaymentVoid,
 ): Promise<{ id: string; number: number }> {
-  const rows = await tx.insert(supplierPaymentVoids).values(row).returning({
-    id: supplierPaymentVoids.id,
-    number: supplierPaymentVoids.number,
-  });
+  const { tender, ...rest } = row;
+  const rows = await tx
+    .insert(supplierPaymentVoids)
+    .values({ ...rest, ...tenderValues(tender) })
+    .returning({
+      id: supplierPaymentVoids.id,
+      number: supplierPaymentVoids.number,
+    });
   return rows[0]!;
 }
 
@@ -235,8 +259,9 @@ export function findSessionSupplierPaymentVoids(
 ): Promise<CurrencyAmountRow[]> {
   return executor
     .select({
-      currency: supplierPaymentVoids.currency,
-      amount: supplierPaymentVoids.amount,
+      // Lo que vuelve a la caja: lo que salió, si fue en otra moneda (brief-29.4.3, D-5).
+      currency: sql<string>`coalesce(${supplierPaymentVoids.tenderedCurrency}, ${supplierPaymentVoids.currency})`,
+      amount: sql<string>`coalesce(${supplierPaymentVoids.tenderedAmount}, ${supplierPaymentVoids.amount})`,
     })
     .from(supplierPaymentVoids)
     .where(
@@ -268,8 +293,8 @@ export function findLateSupplierPaymentVoids(
       number: supplierPaymentVoids.number,
       sourceId: supplierPayments.id,
       sourceNumber: supplierPayments.number,
-      currency: supplierPaymentVoids.currency,
-      amount: supplierPaymentVoids.amount,
+      currency: sql<string>`coalesce(${supplierPaymentVoids.tenderedCurrency}, ${supplierPaymentVoids.currency})`,
+      amount: sql<string>`coalesce(${supplierPaymentVoids.tenderedAmount}, ${supplierPaymentVoids.amount})`,
       reason: supplierPaymentVoids.reason,
       createdAt: supplierPaymentVoids.createdAt,
     })

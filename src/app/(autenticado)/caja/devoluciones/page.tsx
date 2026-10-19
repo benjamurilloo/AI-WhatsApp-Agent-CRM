@@ -19,6 +19,7 @@ import { PageNotice } from "@/app/_components/page-notice";
 import { Pagination, shownRangeText } from "@/app/_components/pagination";
 import { formatShortDateTime } from "@/app/_format/date-time";
 import { formatMoney } from "@/shared/money";
+import { tenderNote } from "@/app/(autenticado)/caja/exchange";
 import {
   CONSUMER_TEXT,
   NO_REFUND_RESULTS_MESSAGE,
@@ -211,6 +212,11 @@ export default async function RefundsPage({
                       className={`${tableCellClass} text-right whitespace-nowrap tabular-nums`}
                     >
                       {formatMoney(refund.amount, refund.currency)}
+                      {refund.tender ? (
+                        <span className="block text-xs font-normal text-muted">
+                          {tenderNote(refund.tender, true)}
+                        </span>
+                      ) : null}
                     </td>
                   </tr>
                 ))}

@@ -17,14 +17,25 @@ import {
   AmountReading,
   CurrencySelect,
 } from "@/app/(autenticado)/caja/money-fields";
+import type { ReceiptExchangeProps } from "@/app/(autenticado)/caja/exchange";
+import {
+  TenderCurrencyChoice,
+  TenderedAmountFields,
+} from "@/app/(autenticado)/caja/exchange-fields";
 import { createSupplierPaymentAction } from "./actions";
-import type { PaymentFormState, PaymentFormValues } from "./messages";
+import type {
+  PaymentFormField,
+  PaymentFormState,
+  PaymentFormValues,
+} from "./messages";
 
 // El pago a un proveedor (brief-22.6, D-13), contra una recepción o a cuenta, con el molde del cobro:
 // el medio, como grupo de opciones con los activos, y el monto, propuesto en lo que falta, con su
 // lectura. Contra una recepción la moneda es la suya; a cuenta, se elige. Un solo paso: el tope lo
 // vuelve a calcular cash con el bloqueo tomado. Funciona sin JavaScript. El destino viaja en campos
-// ocultos.
+// ocultos. Desde la 29.4.3, con moneda principal, se paga también en la otra moneda (brief-29.4.3,
+// D-7): la moneda que sale se elige con un enlace, como en el cobro, y con la otra el pago se aplica
+// en la principal.
 
 const initialState: PaymentFormState = { status: "idle" };
 
@@ -39,6 +50,7 @@ export function SupplierPaymentForm({
   defaultAmount,
   paymentMethods,
   hasOpenSession,
+  exchange,
 }: {
   target: PaymentTarget;
   cancelHref: string;
@@ -47,6 +59,7 @@ export function SupplierPaymentForm({
   defaultAmount: string;
   paymentMethods: PaymentMethod[];
   hasOpenSession: boolean;
+  exchange: ReceiptExchangeProps | null;
 }) {
   const [state, formAction, pending] = useActionState(
     createSupplierPaymentAction,
@@ -54,16 +67,20 @@ export function SupplierPaymentForm({
   );
   const errorRef = useRef<HTMLParagraphElement>(null);
   const failed = state.status === "error";
+  const tenderedOther =
+    exchange !== null && exchange.tendered !== exchange.mainCurrency;
   const values: PaymentFormValues = failed
     ? state.values
     : {
         // Con un solo medio activo, se propone ese.
         paymentMethodId:
           paymentMethods.length === 1 ? paymentMethods[0]!.id : "",
-        amount: defaultAmount,
-        currency: defaultCurrency,
+        amount: tenderedOther ? exchange.proposed : defaultAmount,
+        currency: tenderedOther ? exchange.mainCurrency : defaultCurrency,
+        tenderedCurrency: exchange?.tendered ?? defaultCurrency,
+        exchangeRate: "",
       };
-  const invalid = (field: "paymentMethod" | "amount" | "currency") =>
+  const invalid = (field: PaymentFormField) =>
     failed && state.fields.includes(field);
   // La moneda elegida a cuenta, para la lectura del monto. Tras un rechazo, el selector vuelve a
   // montarse con lo enviado, que es lo mismo que guarda este estado.
@@ -75,7 +92,7 @@ export function SupplierPaymentForm({
 
   return (
     <form
-      key={failed ? state.requestId : "nuevo"}
+      key={failed ? state.requestId : `nuevo-${exchange?.tendered ?? ""}`}
       action={formAction}
       className="flex flex-col gap-4"
     >
@@ -113,7 +130,9 @@ export function SupplierPaymentForm({
         ) : null}
       </div>
 
-      {target.kind === "account" ? (
+      {target.kind === "account" && tenderedOther ? (
+        <input type="hidden" name="currency" value={exchange.mainCurrency} />
+      ) : target.kind === "account" ? (
         <div className="flex max-w-xs flex-col gap-1">
           <label htmlFor="pago-moneda" className={labelClass}>
             Moneda *
@@ -130,6 +149,15 @@ export function SupplierPaymentForm({
             onChange={setAccountCurrency}
           />
         </div>
+      ) : null}
+
+      {/* A cuenta, la moneda que sale solo se elige para un pago en la principal: con otra moneda
+          elegida arriba, sale esa (revisión R1-1 de la 29.4.3). */}
+      {exchange &&
+      (tenderedOther ||
+        target.kind === "goods_receipt" ||
+        accountCurrency === exchange.mainCurrency) ? (
+        <TenderCurrencyChoice exchange={exchange} />
       ) : null}
 
       <fieldset
@@ -166,13 +194,25 @@ export function SupplierPaymentForm({
         ) : null}
       </fieldset>
 
-      <AmountField
-        currency={
-          target.kind === "goods_receipt" ? target.currency : accountCurrency
-        }
-        defaultValue={values.amount}
-        invalid={invalid("amount")}
-      />
+      {tenderedOther ? (
+        <TenderedAmountFields
+          exchange={exchange}
+          target={exchange.mainCurrency}
+          defaultAmount={values.amount}
+          defaultRate={values.exchangeRate}
+          invalidAmount={invalid("amount")}
+          invalidRate={invalid("exchangeRate")}
+          errorId="pago-error"
+        />
+      ) : (
+        <AmountField
+          currency={
+            target.kind === "goods_receipt" ? target.currency : accountCurrency
+          }
+          defaultValue={values.amount}
+          invalid={invalid("amount")}
+        />
+      )}
 
       <div className="flex flex-wrap justify-end gap-3">
         <Link href={cancelHref} className={secondaryLinkClass}>

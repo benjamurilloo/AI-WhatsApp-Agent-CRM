@@ -2,10 +2,13 @@ import type {
   CreateSupplierPaymentResult,
   SupplierPaymentField,
   SupplierPaymentVoidReason,
+  TenderField,
   VoidSupplierPaymentResult,
 } from "@/modules/cash";
 import { formatMoney } from "@/shared/money";
 import { ROW_PROBLEM_TEXT } from "@/app/(autenticado)/caja/messages";
+import { NO_RATE_OUTGOING_TEXT } from "@/app/(autenticado)/caja/exchange";
+import { RATE_TEXT } from "@/app/(autenticado)/ventas/[saleId]/cobrar/messages";
 
 // Textos de los pagos a proveedores (brief-22.6, D-10 y D-13), derivados de la taxonomía de errores,
 // como los del cobro. Los del monto son los de la caja.
@@ -33,6 +36,8 @@ export const IN_FAVOR_NOTE =
 const AMOUNT_TEXT: Record<string, string> = {
   ...ROW_PROBLEM_TEXT,
   limit: "El monto es demasiado grande.",
+  conversion:
+    "con esta cotización no da un monto que se pueda aplicar. Revisalo o revisá la cotización.",
 };
 
 export const PAYMENT_VOID_REASON_LABEL: Record<
@@ -46,10 +51,15 @@ export const PAYMENT_VOID_REASON_LABEL: Record<
   other: "Otro",
 };
 
+// Desde la 29.4.3, también la moneda que sale y la cotización acordada (brief-29.4.3, D-7).
+export type PaymentFormField = SupplierPaymentField | TenderField;
+
 export type PaymentFormValues = {
   paymentMethodId: string;
   amount: string;
   currency: string;
+  tenderedCurrency: string;
+  exchangeRate: string;
 };
 
 export type PaymentFormState =
@@ -59,7 +69,7 @@ export type PaymentFormState =
       requestId: string;
       values: PaymentFormValues;
       message: string;
-      fields: SupplierPaymentField[];
+      fields: PaymentFormField[];
       // El rechazo de un pago en efectivo con la caja cerrada enlaza a «Abrir caja».
       openCash: boolean;
     };
@@ -70,8 +80,8 @@ export function unexpectedErrorMessage(requestId: string): string {
 
 export function paymentRejection(
   result: Exclude<CreateSupplierPaymentResult, { ok: true }>,
-): { message: string; fields: SupplierPaymentField[]; openCash: boolean } {
-  const plain = (message: string, fields: SupplierPaymentField[] = []) => ({
+): { message: string; fields: PaymentFormField[]; openCash: boolean } {
+  const plain = (message: string, fields: PaymentFormField[] = []) => ({
     message,
     fields,
     openCash: false,
@@ -95,13 +105,27 @@ export function paymentRejection(
     case "VALIDATION_ERROR": {
       if (!("fields" in result))
         return plain(PAYMENT_RECEIPT_NOT_FOUND_MESSAGE);
-      const fields: SupplierPaymentField[] = result.fields;
+      const fields: PaymentFormField[] = result.fields;
       const parts: string[] = [];
       if (fields.includes("paymentMethod")) {
         parts.push("Medio de pago: elegí uno de la lista.");
       }
       if (fields.includes("currency")) {
-        parts.push("Moneda: elegí una de la lista.");
+        // Con moneda principal, a cuenta se aplica en ella o en una moneda con saldo (brief-29.4.3,
+        // D-4; revisión R1-1).
+        parts.push(
+          "Moneda: elegí una de la lista. Con una moneda principal, a cuenta se paga en ella o en una moneda en la que se le deba al proveedor.",
+        );
+      }
+      if (fields.includes("tenderedCurrency")) {
+        parts.push(
+          "Moneda que sale: la otra moneda solo sale contra un monto en la moneda principal.",
+        );
+      }
+      if (fields.includes("exchangeRate")) {
+        const reason =
+          "exchangeRate" in result ? result.exchangeRate : undefined;
+        parts.push(`Cotización acordada: ${RATE_TEXT[reason ?? "invalid"]}`);
       }
       if (fields.includes("amount")) {
         const reason = "amount" in result ? result.amount : undefined;
@@ -113,6 +137,13 @@ export function paymentRejection(
       switch (result.rule) {
         case "goods_receipt_voided":
           return plain(PAYMENT_RECEIPT_VOIDED_MESSAGE);
+        case "no_exchange_rate":
+          return plain(NO_RATE_OUTGOING_TEXT, ["exchangeRate"]);
+        case "exchange_rate_changed":
+          return plain(
+            "La cotización cambió mientras cargabas el pago. Revisá la equivalencia y volvé a registrarlo.",
+            ["amount"],
+          );
         case "payment_method_inactive":
           return plain(
             "Ese medio de pago está desactivado. Elegí otro de la lista.",

@@ -13,6 +13,7 @@ import { cardClass, linkClass } from "@/app/_components/form-styles";
 import { PageNotice } from "@/app/_components/page-notice";
 import { formatFullDateTime } from "@/app/_format/date-time";
 import { formatMoney } from "@/shared/money";
+import { tenderNote } from "@/app/(autenticado)/caja/exchange";
 import { PrintButton } from "../../../ordenes/[orderId]/print-button";
 import {
   NOT_AN_INVOICE_LEGEND,
@@ -177,6 +178,14 @@ export default async function SupplierPaymentVoidPage({
               {formatMoney(payment.amount, payment.currency)}
             </dd>
           </div>
+          {payment.tender ? (
+            <div>
+              <dt className="text-muted">Lo que salió</dt>
+              <dd className="tabular-nums">
+                {tenderNote(payment.tender, true)}
+              </dd>
+            </div>
+          ) : null}
         </dl>
 
         <p className="mt-6 text-center text-sm font-semibold uppercase">

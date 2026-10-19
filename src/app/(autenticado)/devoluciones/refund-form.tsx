@@ -14,14 +14,25 @@ import {
   secondaryLinkClass,
 } from "@/app/_components/form-styles";
 import { formatMoney } from "@/shared/money";
+import type { ReceiptExchangeProps } from "@/app/(autenticado)/caja/exchange";
+import {
+  TenderCurrencyChoice,
+  TenderedAmountFields,
+} from "@/app/(autenticado)/caja/exchange-fields";
 import { AmountReading } from "@/app/(autenticado)/caja/money-fields";
-import type { RefundFormState, RefundFormValues } from "./messages";
+import type {
+  RefundFormField,
+  RefundFormState,
+  RefundFormValues,
+} from "./messages";
 
 // La devolución (brief-21.5, D-7 y D-9), desde la cuenta de un cliente o desde una venta sin cliente
 // anulada: la moneda (si hay más de una con algo a devolver), el medio, como grupo de opciones con
 // los activos, y el monto, propuesto en lo disponible, con su lectura como en la caja. Un solo paso:
 // el tope lo vuelve a calcular cash con el bloqueo tomado. Funciona sin JavaScript: sin él, el monto
-// propuesto es el de la primera moneda.
+// propuesto es el de la primera moneda. Desde la 29.4.3, con moneda principal, lo que está a favor en
+// ella se puede devolver en la otra moneda (brief-29.4.3, D-7): la moneda que sale se elige con un
+// enlace, como en el cobro, y con la otra el monto se aplica en la principal.
 
 const initialState: RefundFormState = { status: "idle" };
 
@@ -32,6 +43,7 @@ export function RefundForm({
   available,
   paymentMethods,
   hasOpenSession,
+  exchange,
 }: {
   action: (
     previous: RefundFormState,
@@ -43,21 +55,30 @@ export function RefundForm({
   available: RefundableAmount[];
   paymentMethods: PaymentMethod[];
   hasOpenSession: boolean;
+  exchange: ReceiptExchangeProps | null;
 }) {
   const [state, formAction, pending] = useActionState(action, initialState);
   const errorRef = useRef<HTMLParagraphElement>(null);
   const failed = state.status === "error";
-  const first = available[0]!;
+  // Con la otra moneda, se aplica en la principal: la única que se puede devolver así.
+  const tenderedOther =
+    exchange !== null && exchange.tendered !== exchange.mainCurrency;
+  const first = tenderedOther
+    ? (available.find((row) => row.currency === exchange.mainCurrency) ??
+      available[0]!)
+    : available[0]!;
   const values: RefundFormValues = failed
     ? state.values
     : {
         currency: first.currency,
         paymentMethodId:
           paymentMethods.length === 1 ? paymentMethods[0]!.id : "",
-        amount: first.amountInput,
+        amount: tenderedOther ? exchange.proposed : first.amountInput,
+        tenderedCurrency: exchange?.tendered ?? first.currency,
+        exchangeRate: "",
       };
   const [currency, setCurrency] = useState(values.currency);
-  const invalid = (field: "paymentMethod" | "amount" | "currency") =>
+  const invalid = (field: RefundFormField) =>
     failed && state.fields.includes(field);
 
   useEffect(() => {
@@ -66,7 +87,7 @@ export function RefundForm({
 
   return (
     <form
-      key={failed ? state.requestId : "nueva"}
+      key={failed ? state.requestId : `nueva-${exchange?.tendered ?? ""}`}
       action={formAction}
       className="flex flex-col gap-4"
     >
@@ -92,7 +113,9 @@ export function RefundForm({
         ) : null}
       </div>
 
-      {available.length > 1 ? (
+      {tenderedOther ? (
+        <input type="hidden" name="currency" value={exchange.mainCurrency} />
+      ) : available.length > 1 ? (
         <fieldset className="flex flex-col gap-2">
           <legend className={`${labelClass} mb-1`}>Moneda *</legend>
           {available.map((row) => (
@@ -120,6 +143,12 @@ export function RefundForm({
       ) : (
         <input type="hidden" name="currency" value={first.currency} />
       )}
+
+      {/* La moneda que sale solo se elige para lo que está a favor en la principal: con otra moneda
+          elegida arriba, sale esa (revisión R1-1 de la 29.4.3). */}
+      {exchange && (tenderedOther || currency === exchange.mainCurrency) ? (
+        <TenderCurrencyChoice exchange={exchange} />
+      ) : null}
 
       <fieldset
         className="flex flex-col gap-2"
@@ -158,17 +187,29 @@ export function RefundForm({
       </fieldset>
 
       {/* Al cambiar la moneda, el monto propuesto pasa a ser el disponible en esa moneda. */}
-      <AmountField
-        key={currency}
-        currency={currency}
-        defaultValue={
-          currency === values.currency
-            ? values.amount
-            : (available.find((row) => row.currency === currency)
-                ?.amountInput ?? "")
-        }
-        invalid={currency === values.currency && invalid("amount")}
-      />
+      {tenderedOther ? (
+        <TenderedAmountFields
+          exchange={exchange}
+          target={exchange.mainCurrency}
+          defaultAmount={values.amount}
+          defaultRate={values.exchangeRate}
+          invalidAmount={invalid("amount")}
+          invalidRate={invalid("exchangeRate")}
+          errorId="devolucion-error"
+        />
+      ) : (
+        <AmountField
+          key={currency}
+          currency={currency}
+          defaultValue={
+            currency === values.currency
+              ? values.amount
+              : (available.find((row) => row.currency === currency)
+                  ?.amountInput ?? "")
+          }
+          invalid={currency === values.currency && invalid("amount")}
+        />
+      )}
 
       <div className="flex flex-wrap justify-end gap-3">
         <Link href={cancelHref} className={secondaryLinkClass}>

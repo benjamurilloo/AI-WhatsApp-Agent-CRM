@@ -408,7 +408,15 @@ export function SessionRefundsTable({
                 )}
               </td>
               <td className={numberCell}>
-                {formatMoney(row.amount, row.currency)}
+                {/* En la caja, lo que salió: en la otra moneda si fue en ella (brief-29.4.3, D-5). */}
+                {row.tender
+                  ? formatMoney(row.tender.amount, row.tender.currency)
+                  : formatMoney(row.amount, row.currency)}
+                {row.tender ? (
+                  <span className="block text-xs text-muted">
+                    Aplicado: {formatMoney(row.amount, row.currency)}
+                  </span>
+                ) : null}
               </td>
             </tr>
           ))}
@@ -595,6 +603,7 @@ export function SessionSupplierPaymentsTable({
   }
   return (
     <SupplierPaymentsTable
+      cashSide
       caption={`Pagos a proveedores en efectivo de la sesión ${session.displayNumber}`}
       payments={items}
       timeZone={timeZone}

@@ -231,7 +231,8 @@ export function tenderColumns(
 }
 
 // Lo que entra o sale de la caja por un cobro: lo recibido si entró en otra moneda, y si no, lo
-// aplicado (ADR 0025, punto 6; brief-29.4, D-7).
+// aplicado (ADR 0025, punto 6; brief-29.4, D-7). Desde la 29.4.3, también por una devolución, un pago
+// a un proveedor y sus anulaciones: lo que salió o volvió (brief-29.4.3, D-5).
 export function cashSideOf(row: {
   currency: string;
   amount: string;
@@ -242,6 +243,55 @@ export function cashSideOf(row: {
     return { currency: row.tenderedCurrency, amount: row.tenderedAmount };
   }
   return { currency: row.currency, amount: row.amount };
+}
+
+type TenderedRow = {
+  tenderedCurrency: string | null;
+  tenderedAmount: string | null;
+  exchangeRate: string | null;
+  exchangeRateId: string | null;
+};
+
+// Lo que entró o salió de una fila, copiado tal cual para su anulación, sin cotización nueva (ADR
+// 0025, punto 5). Lo comparan los triggers de copia de la 0053 y la 0055.
+export function copiedTender(row: TenderedRow): ReceiptTender | null {
+  if (row.tenderedCurrency === null) return null;
+  return {
+    currency: row.tenderedCurrency,
+    amount: row.tenderedAmount!,
+    exchangeRate: row.exchangeRate!,
+    exchangeRateId: row.exchangeRateId,
+  };
+}
+
+// Cómo lo muestran las listas, los comprobantes y la caja: «salieron ARS 157.000,00 a 1.570,00»
+// (brief-29.4.3, D-7). La misma forma que ReceiptListItem.tender de la 29.4.
+export type TenderView = {
+  currency: string;
+  amount: string;
+  exchangeRate: string;
+  negotiated: boolean;
+};
+
+export function tenderView(row: TenderedRow): TenderView | null {
+  if (row.tenderedCurrency === null) return null;
+  return {
+    currency: row.tenderedCurrency,
+    amount: row.tenderedAmount!,
+    exchangeRate: row.exchangeRate!,
+    negotiated: row.exchangeRateId === null,
+  };
+}
+
+// Las claves de la auditoría del alta (brief-29.4, D-6; brief-29.4.3, D-3): vacías si no hubo otra
+// moneda.
+export function tenderAudit(row: TenderedRow): Record<string, string | null> {
+  if (row.tenderedCurrency === null) return {};
+  return {
+    tendered_currency: row.tenderedCurrency,
+    tendered_amount: row.tenderedAmount,
+    exchange_rate: row.exchangeRate,
+  };
 }
 
 // En qué monedas se aplica un cobro a cuenta de una organización con moneda principal (ADR 0025,

@@ -1,9 +1,13 @@
 import Link from "next/link";
 import { getSupplierAccountSummary } from "@/modules/cash";
-import type { AuthContext } from "@/modules/organizations";
+import {
+  getOrganizationTimezone,
+  type AuthContext,
+} from "@/modules/organizations";
 import { linkClass, primaryLinkClass } from "@/app/_components/form-styles";
 import { formatMoney } from "@/shared/money";
 import { ACCOUNT_UNAVAILABLE_TEXT, NOTHING_OWED_TEXT } from "./cuenta/messages";
+import { ReferenceTotal } from "@/app/(autenticado)/caja/reference-total";
 
 // La cuenta en la ficha del proveedor (brief-22.7, D-5): por moneda, lo que se le debe o lo que está
 // a favor del negocio, de la misma cuenta que limita el pago; el estado de cuenta, el pago a cuenta y
@@ -16,7 +20,10 @@ export async function SupplierAccount({
   context: AuthContext;
   supplierId: string;
 }) {
-  const result = await getSupplierAccountSummary(context, supplierId);
+  const [result, timeZone] = await Promise.all([
+    getSupplierAccountSummary(context, supplierId),
+    getOrganizationTimezone(context),
+  ]);
   const currencies = result.ok ? result.currencies : [];
   const href = `/compras/proveedores/${supplierId}`;
   return (
@@ -45,6 +52,20 @@ export async function SupplierAccount({
           ))}
         </dl>
       )}
+      {/* El total de referencia en la moneda principal (brief-29.4.3, D-6), como en la ficha del
+          cliente. */}
+      <ReferenceTotal
+        reference={result.ok ? result.references.owed : null}
+        label="Se le debe en total"
+        timeZone={timeZone}
+        className=""
+      />
+      <ReferenceTotal
+        reference={result.ok ? result.references.inFavor : null}
+        label="A favor del negocio en total"
+        timeZone={timeZone}
+        className=""
+      />
       <p className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
         <Link href={`${href}/cuenta`} className={linkClass}>
           Estado de cuenta

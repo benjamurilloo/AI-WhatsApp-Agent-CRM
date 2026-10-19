@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getGoodsReceiptPaymentForm } from "@/modules/cash";
+import { getOrganizationTimezone } from "@/modules/organizations";
 import { getSupplier } from "@/modules/purchasing";
 import { requireSession } from "@/app/_auth/session";
 import { BackLink } from "@/app/_components/detail-header";
@@ -17,6 +18,7 @@ import {
   PAYMENT_RECEIPT_VOIDED_MESSAGE,
 } from "../../../pagos/messages";
 import { SupplierPaymentForm } from "../../../pagos/payment-form";
+import { receiptExchange } from "@/app/(autenticado)/caja/exchange";
 
 export const metadata: Metadata = {
   title: "Pagar recepción — AI WhatsApp Agent CRM",
@@ -26,14 +28,19 @@ const TITLE = "Pagar recepción";
 
 // Pantalla 50 (brief-22.6, D-13): el pago de una recepción, solo admin. Lo que falta sale de la cuenta
 // entera del proveedor (H-6); el medio, de los activos, y el monto, propuesto en lo que falta. Una
-// recepción anulada o ya pagada no ofrece el formulario. Al guardar va al comprobante del pago.
+// recepción anulada o ya pagada no ofrece el formulario. Al guardar va al comprobante del pago. Desde
+// la 29.4.3, una recepción en la moneda principal se paga también en la otra (brief-29.4.3, D-7), con
+// ?moneda= como el cobro.
 export default async function GoodsReceiptPaymentPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ receiptId: string }>;
+  searchParams: Promise<{ moneda?: string | string[] }>;
 }) {
   const context = await requireSession();
   const { receiptId } = await params;
+  const { moneda } = await searchParams;
   const back = {
     href: `/compras/recepciones/${receiptId}`,
     label: "Volver a la recepción",
@@ -73,6 +80,16 @@ export default async function GoodsReceiptPaymentPage({
         ? NO_ACTIVE_METHODS_MESSAGE
         : null;
   const money = (value: string) => formatMoney(value, receipt.currency);
+  const exchange = receiptExchange({
+    offer: form.exchange,
+    targetCurrency: receipt.currency,
+    outstanding: form.outstanding,
+    outstandingInput: form.outstandingInput,
+    chosen: typeof moneda === "string" ? moneda.toUpperCase() : undefined,
+    basePath: `/compras/recepciones/${receipt.id}/pagar`,
+    timezone: await getOrganizationTimezone(context),
+    movement: "payment",
+  });
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-8 lg:px-8">
@@ -133,6 +150,7 @@ export default async function GoodsReceiptPaymentPage({
             defaultAmount={form.outstandingInput}
             paymentMethods={form.paymentMethods}
             hasOpenSession={form.openSession !== null}
+            exchange={exchange}
           />
         )}
       </div>

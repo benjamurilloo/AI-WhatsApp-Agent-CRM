@@ -2,6 +2,7 @@ import { formatDocumentNumber } from "@/modules/numbering";
 import { getGoodsReceiptForPayment } from "@/modules/purchasing";
 import * as repository from "./repository";
 import type * as paymentRepository from "./supplier-payment-repository";
+import { tenderView, type TenderView } from "./tender";
 
 // Cómo se muestran los pagos a proveedores (brief-22.6, D-13), compartido por sus pantallas y por el
 // detalle de la sesión de caja, que solo los muestra a un admin (D-9). El nombre del proveedor lo
@@ -35,6 +36,8 @@ export type SupplierPaymentListItem = DocumentRef & {
   isCash: boolean;
   currency: string;
   amount: string;
+  // Lo que salió en otra moneda (brief-29.4.3, D-7), o null.
+  tender: TenderView | null;
   // Su anulación: se muestra y no cuenta.
   voided: SupplierPaymentVoidView | null;
 };
@@ -104,6 +107,7 @@ export async function supplierPaymentListItems(
       isCash: method?.isCash ?? false,
       currency: row.currency,
       amount: row.amount,
+      tender: tenderView(row),
       voided: voidViewOf(row.voided),
     };
   });

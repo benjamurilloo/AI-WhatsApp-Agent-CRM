@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getSupplierAccountPaymentForm } from "@/modules/cash";
+import { getOrganizationTimezone } from "@/modules/organizations";
 import { getSupplier } from "@/modules/purchasing";
 import { requireSession } from "@/app/_auth/session";
 import { BackLink } from "@/app/_components/detail-header";
@@ -20,6 +21,7 @@ import {
   PAYMENT_SUPPLIER_NOT_FOUND_MESSAGE,
 } from "../../../pagos/messages";
 import { SupplierPaymentForm } from "../../../pagos/payment-form";
+import { receiptExchange } from "@/app/(autenticado)/caja/exchange";
 
 export const metadata: Metadata = {
   title: "Pago a cuenta — AI WhatsApp Agent CRM",
@@ -30,14 +32,19 @@ const TITLE = "Pago a cuenta";
 // Pantalla 51 (brief-22.6, D-13): el pago a cuenta de un proveedor, solo admin, también a uno
 // desactivado (ADR 0023, punto 2). Por moneda, lo que se le debe y lo que está a favor, de la misma
 // cuenta que usa el tope del pago (D-6). La moneda propuesta es la de su recepción con saldo más
-// vieja, con lo que se debe en ella. Sin tope: lo que exceda queda a favor del negocio.
+// vieja, con lo que se debe en ella. Sin tope: lo que exceda queda a favor del negocio. Desde la
+// 29.4.3, con moneda principal, las monedas aplicables son la principal y las que tienen saldo, y se
+// paga también en la otra moneda, aplicada en la principal (brief-29.4.3, D-4 y D-7).
 export default async function SupplierAccountPaymentPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ supplierId: string }>;
+  searchParams: Promise<{ moneda?: string | string[] }>;
 }) {
   const context = await requireSession();
   const { supplierId } = await params;
+  const { moneda } = await searchParams;
   const back = {
     href: `/compras/proveedores/${supplierId}`,
     label: "Volver al proveedor",
@@ -79,6 +86,28 @@ export default async function SupplierAccountPaymentPage({
     );
   }
   const { form } = found;
+  // Lo que se le debe en la principal, para la equivalencia en la otra moneda.
+  const owedMain = form.mainCurrency
+    ? form.currencies.find((row) => row.currency === form.mainCurrency)
+    : undefined;
+  const exchange = form.mainCurrency
+    ? receiptExchange({
+        offer: form.exchange,
+        targetCurrency: form.mainCurrency,
+        outstanding: owedMain?.owed ?? "0.00",
+        outstandingInput:
+          owedMain &&
+          owedMain.owed !== "0.00" &&
+          form.proposed?.currency === form.mainCurrency
+            ? form.proposed.amountInput
+            : "",
+        chosen: typeof moneda === "string" ? moneda.toUpperCase() : undefined,
+        basePath: `/compras/proveedores/${supplier.supplier.id}/pagar`,
+        timezone: await getOrganizationTimezone(context),
+        movement: "payment",
+        outstandingLabel: "Se le deben",
+      })
+    : null;
   const name = supplier.supplier.name;
 
   return (
@@ -172,13 +201,14 @@ export default async function SupplierAccountPaymentPage({
             target={{
               kind: "account",
               supplierId: supplier.supplier.id,
-              currencies: acceptedCurrencies(),
+              currencies: form.appliedCurrencies ?? acceptedCurrencies(),
             }}
             cancelHref={back.href}
-            defaultCurrency={form.proposed?.currency ?? ""}
+            defaultCurrency={form.proposed?.currency ?? form.mainCurrency ?? ""}
             defaultAmount={form.proposed?.amountInput ?? ""}
             paymentMethods={form.paymentMethods}
             hasOpenSession={form.openSession !== null}
+            exchange={exchange}
           />
         )}
       </div>

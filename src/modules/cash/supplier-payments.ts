@@ -7,12 +7,12 @@ import {
   lockSupplierForPayment,
   type GoodsReceiptForPayment,
 } from "@/modules/purchasing";
+import { getExchangeSetup } from "@/modules/fx";
 import { authorize, type AuthContext } from "@/modules/organizations";
 import type { DbTransaction } from "@/shared/db";
 import { failure, type Failure } from "@/shared/errors";
 import {
   acceptedCurrencies,
-  MAX_AMOUNT,
   moneyFromDatabase,
   moneyToDatabase,
   type Money,
@@ -26,21 +26,31 @@ import {
 import * as repository from "./repository";
 import {
   amountForInput,
-  expectedIn,
+  exchangeOffer,
   impactedSession,
-  insufficientCash,
   memberNames,
+  outgoingShortfall,
   readPayment,
   readReceiptFields,
+  returnExceedsLimit,
   ruleFailure,
   sessionRef,
+  type ExchangeOffer,
   type InsufficientCash,
-  type PaymentFailure,
   type PaymentMethod,
   type ReceiptField,
+  type ReceiptPaymentFailure,
   type SessionRef,
 } from "./service";
 import * as paymentRepository from "./supplier-payment-repository";
+import {
+  accountReceiptCurrencies,
+  copiedTender,
+  fitToOutstanding,
+  tenderAudit,
+  tenderColumns,
+  type TenderInput,
+} from "./tender";
 import {
   formatSupplierPaymentNumber,
   formatSupplierPaymentVoidNumber,
@@ -239,7 +249,7 @@ export type CreateSupplierPaymentResult =
   | Failure<"VALIDATION_ERROR">
   | SupplierPaymentFieldsFailure
   | Failure<"NOT_FOUND", { entity: "goods_receipt" | "supplier" }>
-  | PaymentFailure
+  | ReceiptPaymentFailure
   | Failure<"BUSINESS_RULE_VIOLATION", { rule: "goods_receipt_voided" }>
   | ExceedsOutstanding
   | InsufficientCash;
@@ -252,7 +262,7 @@ export type SupplierPaymentInput = {
   currency?: string;
   paymentMethodId: string;
   amount: string;
-};
+} & TenderInput;
 
 const targetSchema = z.enum(["goods_receipt", "account"]);
 
@@ -301,20 +311,6 @@ function readInput(
   return target.data === "goods_receipt"
     ? { ok: true, target: "goods_receipt", goodsReceiptId: id, fields }
     : { ok: true, target: "account", supplierId: id, currency, fields };
-}
-
-// Un pago en efectivo sale de la sesión abierta: lo esperado de su moneda no queda por debajo de cero
-// (ADR 0023, punto 8).
-async function cashShortfall(
-  tx: DbTransaction,
-  organizationId: string,
-  session: { id: string } | null,
-  currency: string,
-  amount: Money,
-): Promise<InsufficientCash | null> {
-  if (session === null) return null;
-  const expected = await expectedIn(tx, organizationId, session.id, currency);
-  return expected - amount < 0n ? insufficientCash(currency, expected) : null;
 }
 
 // El pago, solo de admin, en READ COMMITTED (D-7):
@@ -382,30 +378,66 @@ export async function createSupplierPayment(
         }
         supplierId = read.supplierId;
         currency = read.currency;
+        // Con moneda principal, la moneda aplicada a cuenta es la principal, o una en la que el
+        // proveedor tenga un saldo pendiente o a favor, como el cobro a cuenta (ADR 0025, punto 5,
+        // R-M2; brief-29.4.3, D-4, H-3). Sin moneda principal, cualquiera de las aceptadas, como siempre.
+        const setup = await getExchangeSetup(organizationId, tx);
+        if (setup) {
+          const { accounts } = await supplierLedger(
+            tx,
+            organizationId,
+            supplierId,
+          );
+          if (!accountReceiptCurrencies(setup, accounts).includes(currency)) {
+            return {
+              ok: false,
+              code: "VALIDATION_ERROR",
+              fields: ["currency"],
+            };
+          }
+        }
       }
 
-      const paid = await readPayment(tx, organizationId, read.fields, currency);
+      // Desde la 29.4.3, lo que sale puede ir en la otra moneda de la organización, contra un destino
+      // en la principal, con la vigente o una acordada (ADR 0025, punto 5; brief-29.4.3, D-4).
+      const paid = await readPayment(
+        tx,
+        organizationId,
+        read.fields,
+        currency,
+        input,
+      );
       if (!paid.ok) return paid;
-      const { payment } = paid;
+      let payment = paid.payment;
       if (receipt !== null) {
         const ledger = await supplierLedger(tx, organizationId, supplierId);
         const standing = receiptStanding(ledger, receipt);
-        if (payment.amount > standing.outstanding) {
+        // El tope con lo aplicado, y la tolerancia de un centavo si salió en otra moneda (R-M4).
+        const fit = fitToOutstanding(
+          payment.amount,
+          standing.outstanding,
+          currency,
+          payment.tender !== null,
+        );
+        if (!fit.ok) {
           return {
             ok: false,
             code: "BUSINESS_RULE_VIOLATION",
             rule: "exceeds_outstanding",
             currency,
-            outstanding: moneyToDatabase(standing.outstanding),
+            outstanding: moneyToDatabase(
+              standing.outstanding > 0n ? standing.outstanding : 0n,
+            ),
           };
         }
+        payment = { ...payment, amount: fit.applied };
       }
-      const short = await cashShortfall(
+      // Sale de la caja lo que salió: en la otra moneda, si fue en ella (brief-29.4.3, D-5).
+      const short = await outgoingShortfall(
         tx,
         organizationId,
-        payment.session,
+        payment,
         currency,
-        payment.amount,
       );
       if (short) return short;
 
@@ -427,6 +459,7 @@ export async function createSupplierPayment(
         sessionId: payment.session?.id ?? null,
         currency,
         amount: moneyToDatabase(payment.amount),
+        tender: tenderColumns(payment.tender),
         createdBy: userId,
       });
       // Claves planas, sin datos del proveedor (D-11).
@@ -446,6 +479,8 @@ export async function createSupplierPayment(
             payment_method: payment.method.name,
             currency: row.currency,
             amount: row.amount,
+            // Lo que salió en otra moneda y la cotización usada (brief-29.4.3, D-4).
+            ...tenderAudit(row),
             ...(payment.session === null
               ? {}
               : { session_number: payment.session.number }),
@@ -528,21 +563,17 @@ export async function voidSupplierPayment(
           organizationId,
           payment.sessionId,
         );
-        if (session) {
-          const expected = await expectedIn(
-            tx,
-            organizationId,
-            session.id,
-            payment.currency,
-          );
-          if (expected + moneyFromDatabase(payment.amount) > MAX_AMOUNT) {
-            return {
-              ok: false,
-              code: "VALIDATION_ERROR",
-              fields: ["amount"],
-              amount: "limit",
-            };
-          }
+        // Vuelve a la caja lo que salió, en su moneda (brief-29.4.3, D-4).
+        if (
+          session &&
+          (await returnExceedsLimit(tx, organizationId, session.id, payment))
+        ) {
+          return {
+            ok: false,
+            code: "VALIDATION_ERROR",
+            fields: ["amount"],
+            amount: "limit",
+          };
         }
 
         const number = await nextDocumentNumber(
@@ -554,9 +585,10 @@ export async function voidSupplierPayment(
           organizationId,
           number,
           supplierPaymentId: payment.id,
-          // La copia del pago (D-3).
+          // La copia del pago (D-3), con lo que salió (brief-29.4.3, D-2).
           currency: payment.currency,
           amount: payment.amount,
+          tender: copiedTender(payment),
           reason,
           sessionId: session?.id ?? null,
           createdBy: userId,
@@ -816,6 +848,8 @@ export type GoodsReceiptPaymentForm = FormBase & {
   outstanding: string;
   // Lo que falta, como se escribe en el campo: con los decimales de la moneda.
   outstandingInput: string;
+  // Pagar en la otra moneda una recepción en la principal (brief-29.4.3, D-7).
+  exchange: ExchangeOffer | null;
 };
 
 export async function getGoodsReceiptPaymentForm(
@@ -864,6 +898,11 @@ export async function getGoodsReceiptPaymentForm(
         moneyToDatabase(standing.outstanding),
         receipt.currency,
       ),
+      exchange: exchangeOffer(
+        await getExchangeSetup(organizationId),
+        receipt.currency,
+        standing.outstanding,
+      ),
     },
   };
 }
@@ -898,6 +937,12 @@ export type SupplierAccountPaymentForm = FormBase & {
   // La moneda de la recepción con saldo más vieja, con lo que se debe en ella; si no se le debe nada,
   // ninguna.
   proposed: { currency: string; amount: string; amountInput: string } | null;
+  // Con moneda principal, las monedas en las que se puede aplicar un pago a cuenta: la principal y
+  // las que tienen saldo (brief-29.4.3, D-4). null sin moneda principal: todas las aceptadas.
+  appliedCurrencies: string[] | null;
+  mainCurrency: string | null;
+  // Pagar en la otra moneda, aplicado en la principal, con lo que se debe en ella (D-7).
+  exchange: ExchangeOffer | null;
 };
 
 // El formulario del pago a cuenta. Un proveedor que no es de la organización no tiene recepciones ni
@@ -920,6 +965,12 @@ export async function getSupplierAccountPaymentForm(
   const ledger = await repository.withSnapshot((tx) =>
     supplierLedger(tx, organizationId, id),
   );
+  const setup = await getExchangeSetup(organizationId);
+  const owedMain = setup
+    ? (ledger.accounts
+        .find((row) => row.currency === setup.mainCurrency)
+        ?.sales.reduce((sum, row) => sum + row.outstanding, 0n) ?? 0n)
+    : 0n;
   const currencies = ledger.accounts
     .map(summarizeSupplierAccount)
     .filter((row) => row.owed !== "0.00" || row.inFavor !== "0.00");
@@ -941,6 +992,13 @@ export async function getSupplierAccountPaymentForm(
             amount: oldest.owed,
             amountInput: amountForInput(oldest.owed, oldest.currency),
           }
+        : null,
+      appliedCurrencies: setup
+        ? accountReceiptCurrencies(setup, ledger.accounts)
+        : null,
+      mainCurrency: setup?.mainCurrency ?? null,
+      exchange: setup
+        ? exchangeOffer(setup, setup.mainCurrency, owedMain)
         : null,
     },
   };

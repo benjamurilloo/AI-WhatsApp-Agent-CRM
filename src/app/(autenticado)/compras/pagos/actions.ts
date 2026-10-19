@@ -65,7 +65,20 @@ export async function createSupplierPaymentAction(
     currency: String(formData.get("currency") ?? "")
       .trim()
       .slice(0, 8),
+    // La moneda que sale y la cotización acordada (brief-29.4.3, D-7).
+    tenderedCurrency: String(formData.get("tenderedCurrency") ?? "").slice(
+      0,
+      8,
+    ),
+    exchangeRate: String(formData.get("exchangeRate") ?? "")
+      .trim()
+      .slice(0, 40),
   };
+  // La vigente que mostró el formulario: si cambió, el pago se rechaza.
+  const exchangeRateId = String(formData.get("exchangeRateId") ?? "").slice(
+    0,
+    64,
+  );
 
   let paymentId: string;
   try {
@@ -76,9 +89,21 @@ export async function createSupplierPaymentAction(
       currency: values.currency,
       paymentMethodId: values.paymentMethodId,
       amount: values.amount,
+      tenderedCurrency: values.tenderedCurrency,
+      exchangeRate: values.exchangeRate,
+      exchangeRateId,
     });
     if (!result.ok) {
       log(result.code);
+      // Si la vigente cambió mientras se cargaba, la página se vuelve a leer con la nueva equivalencia
+      // (revisión independiente de la 29.4, R1-3).
+      if ("rule" in result && result.rule === "exchange_rate_changed") {
+        revalidatePath(
+          target === "goods_receipt"
+            ? `/compras/recepciones/${goodsReceiptId}/pagar`
+            : `/compras/proveedores/${supplierId}/pagar`,
+        );
+      }
       return {
         status: "error",
         requestId,

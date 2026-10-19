@@ -4,10 +4,13 @@ import { exchangeRateFromDatabase } from "@/shared/money";
 import {
   accountReceiptCurrencies,
   cashSideOf,
+  copiedTender,
   fitToOutstanding,
   readTender,
+  tenderAudit,
   tenderColumns,
   tenderedCurrencyOf,
+  tenderView,
 } from "./tender";
 import type { CurrencyAccount } from "./imputation";
 
@@ -256,5 +259,55 @@ describe("las columnas y la caja", () => {
         tenderedAmount: null,
       }),
     ).toEqual({ currency: "USD", amount: "100.00" });
+  });
+});
+
+// Las salidas en otra moneda (brief-29.4.3, D-2, D-3 y D-7): la copia de la anulación, la auditoría y
+// la vista.
+describe("lo que salió, copiado y mostrado", () => {
+  const row = {
+    tenderedCurrency: "ARS",
+    tenderedAmount: "157000.00",
+    exchangeRate: "1570.000000",
+    exchangeRateId: RATE_ID,
+  };
+  const none = {
+    tenderedCurrency: null,
+    tenderedAmount: null,
+    exchangeRate: null,
+    exchangeRateId: null,
+  };
+
+  it("copiedTender copia las cuatro columnas tal cual, o nada", () => {
+    expect(copiedTender(row)).toEqual({
+      currency: "ARS",
+      amount: "157000.00",
+      exchangeRate: "1570.000000",
+      exchangeRateId: RATE_ID,
+    });
+    expect(copiedTender({ ...row, exchangeRateId: null })).toMatchObject({
+      exchangeRateId: null,
+    });
+    expect(copiedTender(none)).toBeNull();
+  });
+
+  it("tenderAudit suma las tres claves solo si hubo otra moneda", () => {
+    expect(tenderAudit(row)).toEqual({
+      tendered_currency: "ARS",
+      tendered_amount: "157000.00",
+      exchange_rate: "1570.000000",
+    });
+    expect(tenderAudit(none)).toEqual({});
+  });
+
+  it("tenderView marca la acordada por la fila vacía de la cotización", () => {
+    expect(tenderView(row)).toEqual({
+      currency: "ARS",
+      amount: "157000.00",
+      exchangeRate: "1570.000000",
+      negotiated: false,
+    });
+    expect(tenderView({ ...row, exchangeRateId: null })?.negotiated).toBe(true);
+    expect(tenderView(none)).toBeNull();
   });
 });

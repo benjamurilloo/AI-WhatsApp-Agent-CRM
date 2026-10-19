@@ -262,6 +262,11 @@ export function SaleReceiptsSection({
                   <td className={tableCellClass}>{row.paymentMethodName}</td>
                   <td className={numberCell}>
                     {formatMoney(row.amount, row.currency)}
+                    {row.tender ? (
+                      <span className="block text-xs text-muted">
+                        {tenderNote(row.tender, true)}
+                      </span>
+                    ) : null}
                   </td>
                 </tr>
               ))}

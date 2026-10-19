@@ -3,11 +3,13 @@ import type {
   ReceiptVoidReason,
   RefundField,
   RefundVoidReason,
+  TenderField,
   VoidReceiptResult,
   VoidRefundResult,
 } from "@/modules/cash";
 import { formatMoney } from "@/shared/money";
 import { receiptRejection } from "@/app/(autenticado)/ventas/[saleId]/cobrar/messages";
+import { outgoingExchangeRejection } from "@/app/(autenticado)/caja/outgoing-exchange-messages";
 
 // Textos de la anulación de un cobro, la devolución y su anulación (brief-21.5, D-3, D-9 y D-13).
 // Los del medio, el monto y la caja son los del cobro de una venta.
@@ -148,10 +150,15 @@ export function refundVoidRejection(
   }
 }
 
+// Desde la 29.4.3, también la moneda que sale y la cotización acordada (brief-29.4.3, D-7).
+export type RefundFormField = RefundField | TenderField;
+
 export type RefundFormValues = {
   currency: string;
   paymentMethodId: string;
   amount: string;
+  tenderedCurrency: string;
+  exchangeRate: string;
 };
 
 export type RefundFormState =
@@ -161,19 +168,25 @@ export type RefundFormState =
       requestId: string;
       values: RefundFormValues;
       message: string;
-      fields: RefundField[];
+      fields: RefundFormField[];
       openCash: boolean;
     };
 
 export function refundRejection(
   result: Exclude<CreateRefundResult, { ok: true }>,
-): { message: string; fields: RefundField[]; openCash: boolean } {
-  const plain = (message: string, fields: RefundField[] = []) => ({
+): { message: string; fields: RefundFormField[]; openCash: boolean } {
+  const plain = (message: string, fields: RefundFormField[] = []) => ({
     message,
     fields,
     openCash: false,
   });
   if (result.code === "FORBIDDEN") return plain(REFUND_ADMIN_ONLY_MESSAGE);
+  // Lo propio de devolver en la otra moneda (brief-29.4.3, D-7).
+  const exchange = outgoingExchangeRejection(result, {
+    name: "la devolución",
+    again: "volvé a registrarla",
+  });
+  if (exchange) return plain(exchange.message, exchange.fields);
   if (result.code === "NOT_FOUND" && "entity" in result) {
     if (result.entity === "client") return plain(CLIENT_NOT_FOUND_MESSAGE);
     if (result.entity === "sale") return plain(SALE_NOT_FOUND_MESSAGE);
@@ -227,10 +240,10 @@ export function refundRejection(
   const shared = receiptRejection(
     result as Parameters<typeof receiptRejection>[0],
   );
-  // Una devolución no recibe en otra moneda hasta la 29.4.3: solo quedan el medio y el monto.
+  // El medio y el monto; los de la otra moneda ya los resolvió outgoingExchangeRejection.
   return {
     ...shared,
-    fields: shared.fields.flatMap((field): RefundField[] =>
+    fields: shared.fields.flatMap((field): RefundFormField[] =>
       field === "paymentMethod" || field === "amount" ? [field] : [],
     ),
   };

@@ -21,6 +21,7 @@ import { formatMoney } from "@/shared/money";
 import { UNKNOWN_SUPPLIER_TEXT } from "../ordenes/messages";
 import { SUPPLIER_ACCOUNT_ADMIN_ONLY_MESSAGE } from "../proveedores/[supplierId]/cuenta/messages";
 import { PurchasingSubNav } from "../purchasing-sub-nav";
+import { ReferenceTotal } from "@/app/(autenticado)/caja/reference-total";
 
 export const metadata: Metadata = {
   title: "A pagar — AI WhatsApp Agent CRM",
@@ -117,6 +118,18 @@ export default async function SuppliersOwedPage({
           </button>
         </form>
       ) : null}
+
+      {/* El total de referencia en la moneda principal (brief-29.4.3, D-6), como el de los deudores. */}
+      <ReferenceTotal
+        reference={suppliers.reference}
+        label={
+          currency
+            ? `Se les debe en ${currency}, en total`
+            : "Se les debe en total"
+        }
+        timeZone={timeZone}
+        className="mt-4"
+      />
 
       {suppliers.total === 0 ? (
         <EmptyState

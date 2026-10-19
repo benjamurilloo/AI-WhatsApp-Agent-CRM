@@ -20,6 +20,7 @@ import {
   formatShortDateTime,
 } from "@/app/_format/date-time";
 import { formatMoney } from "@/shared/money";
+import { tenderNote } from "@/app/(autenticado)/caja/exchange";
 import { PrintButton } from "@/app/(autenticado)/cobros/[receiptId]/print-button";
 import {
   CONSUMER_TEXT,
@@ -131,6 +132,15 @@ export default async function RefundPage({
             {voidReasonText(REFUND_VOID_REASON_LABEL, refund.voided.reason)}.
             Anuló {refund.voidedByName ?? "un usuario no disponible"}. Lo
             devuelto vuelve a estar a favor o a devolver.
+            {/* Lo que salió en la otra moneda (brief-29.4.3, D-7; revisión R1-8). */}
+            {refund.tender ? (
+              <>
+                {" "}
+                Salieron{" "}
+                {formatMoney(refund.tender.amount, refund.tender.currency)}, que
+                vuelven a la caja si fue en efectivo.
+              </>
+            ) : null}
           </p>
         ) : null}
       </div>
@@ -194,6 +204,14 @@ export default async function RefundPage({
               {formatMoney(refund.amount, refund.currency)}
             </dd>
           </div>
+          {refund.tender ? (
+            <div>
+              <dt className="text-muted">Lo que salió</dt>
+              <dd className="tabular-nums">
+                {tenderNote(refund.tender, true)}
+              </dd>
+            </div>
+          ) : null}
           {refund.session ? (
             <div className="print:hidden">
               <dt className="text-muted">Sesión de caja</dt>

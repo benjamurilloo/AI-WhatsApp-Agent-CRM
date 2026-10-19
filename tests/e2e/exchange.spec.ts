@@ -31,7 +31,8 @@ const SEEDED_USER_IDS = [...SEED_USERS, ...SEED_IPHONE_USERS].map(
 async function reset(keep: boolean) {
   await db.execute(
     sql`truncate table supplier_payment_voids, supplier_payments, goods_receipt_voids,
-          goods_receipt_lines, goods_receipts, purchase_order_lines, purchase_orders, refund_voids,
+          goods_receipt_lines, goods_receipts, purchase_order_lines, purchase_orders, suppliers,
+          refund_voids,
           refunds, receipt_voids, receipts, exchange_rates, exchange_rate_settings, cash_movements,
           cash_session_closing_amounts, cash_session_closings, cash_session_opening_amounts,
           cash_sessions, payment_methods, sale_voids, sale_lines, sales, order_lines, orders,
@@ -172,7 +173,7 @@ async function insertSale(
   return saleId;
 }
 
-async function insertOpenSession() {
+async function insertOpenSession(pesos = "0.00") {
   const session = await db.execute<{ id: string }>(
     sql`insert into cash_sessions (organization_id, number, opened_by)
         values (${ORG}, 1, ${ADMIN.id}) returning id`,
@@ -180,7 +181,7 @@ async function insertOpenSession() {
   const sessionId = session.rows[0]!.id;
   await db.execute(
     sql`insert into cash_session_opening_amounts (organization_id, session_id, currency, amount)
-        values (${ORG}, ${sessionId}, 'ARS', '0.00'), (${ORG}, ${sessionId}, 'USD', '0.00')`,
+        values (${ORG}, ${sessionId}, 'ARS', ${pesos}), (${ORG}, ${sessionId}, 'USD', '0.00')`,
   );
   return sessionId;
 }
@@ -445,4 +446,176 @@ test("a 375 px la cotización y el cobro en pesos no desbordan", async ({
     expect(overflow, path).toBeLessThanOrEqual(0);
   }
   await expectAccessible(page, "cobro en pesos a 375 px");
+});
+
+// Desde la 29.4.3 (brief-29.4.3, D-10): las salidas en la otra moneda. Lo que está a favor de un
+// cliente, una recepción en dólares y su proveedor, por SQL, como el resto de la spec.
+
+// USD 100 a favor: un cobro a cuenta por transferencia, sin ventas.
+async function insertCredit(clientId: string, transferId: string) {
+  await db.execute(
+    sql`insert into receipts (organization_id, number, target, client_id, payment_method_id,
+                              currency, amount, created_by)
+        values (${ORG}, 1, 'account', ${clientId}, ${transferId}, 'USD', '100.00', ${ADMIN.id})`,
+  );
+}
+
+async function insertSupplierReceipt() {
+  const supplier = await db.execute<{ id: string }>(
+    sql`insert into suppliers (organization_id, name)
+        values (${ORG}, 'Importadora Norte') returning id`,
+  );
+  const supplierId = supplier.rows[0]!.id;
+  const product = await db.execute<{ id: string }>(
+    sql`insert into products (organization_id, sku, name)
+        values (${ORG}, 'FUNDA-1', 'Funda') returning id`,
+  );
+  const receipt = await db.execute<{ id: string }>(
+    sql`insert into goods_receipts (organization_id, number, supplier_id, currency, total,
+                                    created_by)
+        values (${ORG}, 1, ${supplierId}, 'USD', '100.00', ${ADMIN.id}) returning id`,
+  );
+  const receiptId = receipt.rows[0]!.id;
+  await db.execute(
+    sql`insert into goods_receipt_lines (organization_id, goods_receipt_id, product_id, position,
+                                         quantity, unit_cost, line_total)
+        values (${ORG}, ${receiptId}, ${product.rows[0]!.id}, 1, 1, '100.00', '100.00')`,
+  );
+  await db.execute(
+    sql`insert into inventories (organization_id, product_id, quantity_on_hand)
+        values (${ORG}, ${product.rows[0]!.id}, 1)`,
+  );
+  return { supplierId, receiptId };
+}
+
+test("un admin devuelve en pesos lo que está a favor en dólares, la caja resta pesos y un viewer lo ve", async ({
+  page,
+}) => {
+  await insertRate("1570");
+  const methods = await insertMethods();
+  const clientId = await insertClient();
+  await insertCredit(clientId, methods.get("Transferencia")!);
+  await insertOpenSession("200000.00");
+
+  await login(page, ADMIN.email);
+  await page.goto(`/clientes/${clientId}/devolver`);
+  const choice = page.getByRole("navigation", { name: "Moneda que sale" });
+  await choice.getByRole("link", { name: "ARS" }).click();
+  await expect(page).toHaveURL(/\?moneda=ARS$/);
+  await expect(
+    page.getByText(/A favor US\$\s100,00 = \$\s157\.000,00/),
+  ).toBeVisible();
+  await expect(page.getByLabel("Monto que sale en ARS *")).toHaveValue(
+    "157000.00",
+  );
+  await expect(page.getByText(/Se aplican: US\$\s100,00/)).toBeVisible();
+  await expect(
+    page.getByText("Cotización acordada para esta devolución"),
+  ).toBeVisible();
+  await expectAccessible(page, "devolución en pesos");
+
+  // En efectivo, de la caja: quedan ARS 43.000, US$ 27,39 a 1.570 (revisión R1-5).
+  await page.getByLabel(/Efectivo/).check();
+  await page.getByRole("button", { name: "Registrar devolución" }).click();
+  await expect(page).toHaveURL(/\/devoluciones\/.+\?registrada=1$/);
+  await expect(
+    page.getByText(/Salieron \$\s157\.000,00 a 1\.570,00/),
+  ).toBeVisible();
+  await page.goto("/caja");
+  await expect(
+    page.getByText(/Lo esperado, en total:\s*US\$\s27,39\s*de referencia/),
+  ).toBeVisible();
+
+  await page.context().clearCookies();
+  await login(page, VIEWER.email);
+  await page.goto("/caja/devoluciones");
+  await expect(
+    page.getByText(/Salieron \$\s157\.000,00 a 1\.570,00/),
+  ).toBeVisible();
+});
+
+test("un admin paga en pesos una recepción en dólares, la caja resta pesos y la anulación los devuelve", async ({
+  page,
+}) => {
+  await insertRate("1570");
+  await insertMethods();
+  const { supplierId, receiptId } = await insertSupplierReceipt();
+  await insertOpenSession("200000.00");
+  // Otra recepción, en pesos: sin algo que convertir no hay total de referencia (brief-29.4, P-8).
+  await db.execute(
+    sql`insert into goods_receipts (organization_id, number, supplier_id, currency, total,
+                                    created_by)
+        values (${ORG}, 2, ${supplierId}, 'ARS', '15700.00', ${ADMIN.id})`,
+  );
+
+  await login(page, ADMIN.email);
+  // La ficha del proveedor y «A pagar» suman lo que se le debe en la principal: USD 100 más ARS
+  // 15.700 a 1.570.
+  await page.goto(`/compras/proveedores/${supplierId}`);
+  await expect(
+    page.getByText(/Se le debe en total:\s*US\$\s110,00\s*de referencia/),
+  ).toBeVisible();
+  await page.goto("/compras/a-pagar");
+  await expect(
+    page.getByText(/Se les debe en total:\s*US\$\s110,00\s*de referencia/),
+  ).toBeVisible();
+
+  await page.goto(`/compras/recepciones/${receiptId}/pagar`);
+  await page
+    .getByRole("navigation", { name: "Moneda que sale" })
+    .getByRole("link", { name: "ARS" })
+    .click();
+  await expect(page).toHaveURL(/\?moneda=ARS$/);
+  await expect(
+    page.getByText(/Faltan US\$\s100,00 = \$\s157\.000,00/),
+  ).toBeVisible();
+  await expect(page.getByLabel("Monto que sale en ARS *")).toHaveValue(
+    "157000.00",
+  );
+  await expectAccessible(page, "pago en pesos");
+  await page.getByLabel(/Efectivo/).check();
+  await page.getByRole("button", { name: "Registrar pago" }).click();
+  await expect(page).toHaveURL(/\?aviso=creado$/);
+  await expect(
+    page.getByText(/Salieron \$\s157\.000,00 a 1\.570,00/),
+  ).toBeVisible();
+
+  await page.goto("/caja");
+  await expect(
+    page.getByText(/Lo esperado, en total:\s*US\$\s27,39\s*de referencia/),
+  ).toBeVisible();
+
+  await page.goto("/compras/pagos");
+  await page.getByRole("link", { name: "PP-000001" }).click();
+  await page.getByRole("link", { name: "Anular el pago" }).click();
+  await page.getByRole("radio", { name: "El pago no se hizo" }).check();
+  await page.getByRole("button", { name: "Sí, anular el pago" }).click();
+  await expect(page).toHaveURL(/\?aviso=anulado$/);
+  await page.goto("/caja");
+  await expect(
+    page.getByText(/Lo esperado, en total:\s*US\$\s127,39\s*de referencia/),
+  ).toBeVisible();
+});
+
+test("a 375 px la devolución y el pago en pesos no desbordan", async ({
+  page,
+}) => {
+  await insertRate("1570");
+  const methods = await insertMethods();
+  const clientId = await insertClient();
+  await insertCredit(clientId, methods.get("Transferencia")!);
+  const { receiptId } = await insertSupplierReceipt();
+  await page.setViewportSize({ width: 375, height: 800 });
+  await login(page, ADMIN.email);
+  for (const path of [
+    `/clientes/${clientId}/devolver?moneda=ARS`,
+    `/compras/recepciones/${receiptId}/pagar?moneda=ARS`,
+  ]) {
+    await page.goto(path);
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(overflow, path).toBeLessThanOrEqual(0);
+  }
+  await expectAccessible(page, "pago en pesos a 375 px");
 });

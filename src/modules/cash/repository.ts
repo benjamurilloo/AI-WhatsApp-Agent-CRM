@@ -620,7 +620,8 @@ export type ReceiptTender = {
   exchangeRateId: string | null;
 };
 
-function tenderColumns(tender: ReceiptTender | null) {
+// También las usan la devolución y el pago a un proveedor (brief-29.4.3, D-2).
+export function tenderValues(tender: ReceiptTender | null) {
   return {
     tenderedCurrency: tender?.currency ?? null,
     tenderedAmount: tender?.amount ?? null,
@@ -638,7 +639,7 @@ export async function insertReceipt(
     .insert(receipts)
     .values({
       ...rest,
-      ...tenderColumns(tender),
+      ...tenderValues(tender),
       target: destination.target,
       saleId: destination.target === "sale" ? destination.saleId : null,
       orderId: destination.target === "order" ? destination.orderId : null,
@@ -836,8 +837,10 @@ export type NewVoid = {
 };
 
 // La anulación de un cobro copia además lo recibido (brief-29.4, D-6): lo compara
-// receipt_voids_check_copy() de la 0053.
+// receipt_voids_check_copy() de la 0053. Desde la 29.4.3, la de una devolución copia lo que salió, y
+// lo compara refund_voids_check_copy() de la 0055 (brief-29.4.3, D-2).
 export type NewReceiptVoid = NewVoid & { tender: ReceiptTender | null };
+export type NewRefundVoid = NewReceiptVoid;
 
 export async function insertReceiptVoid(
   tx: DbTransaction,
@@ -851,7 +854,7 @@ export async function insertReceiptVoid(
       receiptId: row.sourceId,
       currency: row.currency,
       amount: row.amount,
-      ...tenderColumns(row.tender),
+      ...tenderValues(row.tender),
       reason: row.reason as ReceiptVoidReason,
       sessionId: row.sessionId,
       createdBy: row.createdBy,
@@ -873,6 +876,11 @@ export type RefundRow = {
   sessionId: string | null;
   currency: string;
   amount: string;
+  // Lo que salió o volvió en otra moneda, si la hubo (brief-29.4.3, D-2), como en el cobro.
+  tenderedCurrency: string | null;
+  tenderedAmount: string | null;
+  exchangeRate: string | null;
+  exchangeRateId: string | null;
   createdBy: string;
   createdAt: Date;
   voided: VoidRef | null;
@@ -888,6 +896,10 @@ const refundBaseColumns = {
   sessionId: refunds.sessionId,
   currency: refunds.currency,
   amount: refunds.amount,
+  tenderedCurrency: refunds.tenderedCurrency,
+  tenderedAmount: refunds.tenderedAmount,
+  exchangeRate: refunds.exchangeRate,
+  exchangeRateId: refunds.exchangeRateId,
   createdBy: refunds.createdBy,
   createdAt: refunds.createdAt,
 };
@@ -920,6 +932,8 @@ export type NewRefund = {
   sessionId: string | null;
   currency: string;
   amount: string;
+  // Lo que salió en otra moneda (brief-29.4.3, D-3), o null.
+  tender: ReceiptTender | null;
   createdBy: string;
 };
 
@@ -927,11 +941,12 @@ export async function insertRefund(
   tx: DbTransaction,
   refund: NewRefund,
 ): Promise<RefundRow> {
-  const { destination, ...rest } = refund;
+  const { destination, tender, ...rest } = refund;
   const rows = await tx
     .insert(refunds)
     .values({
       ...rest,
+      ...tenderValues(tender),
       target: destination.target,
       clientId: destination.target === "account" ? destination.clientId : null,
       saleId: destination.target === "sale" ? destination.saleId : null,
@@ -942,7 +957,7 @@ export async function insertRefund(
 
 export async function insertRefundVoid(
   tx: DbTransaction,
-  row: NewVoid,
+  row: NewRefundVoid,
 ): Promise<{ id: string; number: number }> {
   const rows = await tx
     .insert(refundVoids)
@@ -952,6 +967,7 @@ export async function insertRefundVoid(
       refundId: row.sourceId,
       currency: row.currency,
       amount: row.amount,
+      ...tenderValues(row.tender),
       reason: row.reason as RefundVoidReason,
       sessionId: row.sessionId,
       createdBy: row.createdBy,
@@ -1106,7 +1122,10 @@ export function findSessionRefundVoids(
   executor: Executor = getDb(),
 ): Promise<CurrencyAmountRow[]> {
   return executor
-    .select({ currency: refundVoids.currency, amount: refundVoids.amount })
+    .select({
+      currency: sql<string>`coalesce(${refundVoids.tenderedCurrency}, ${refundVoids.currency})`,
+      amount: sql<string>`coalesce(${refundVoids.tenderedAmount}, ${refundVoids.amount})`,
+    })
     .from(refundVoids)
     .where(
       and(
@@ -1118,7 +1137,8 @@ export function findSessionRefundVoids(
 
 // Las anulaciones posteriores al cierre de una sesión (ADR 0022, punto 7; D-6): las de sus cobros y
 // sus devoluciones en efectivo que no impactaron en ella. Explican su diferencia; el arqueo guardado
-// no cambia. La de un cobro, en lo que había entrado a la caja (brief-29.4, D-7).
+// no cambia. La de un cobro, en lo que había entrado a la caja (brief-29.4, D-7), y la de una
+// devolución, en lo que había salido (brief-29.4.3, D-5).
 export type LateVoidRow = {
   kind: "receipt" | "refund";
   number: number;
@@ -1159,8 +1179,8 @@ export async function findLateVoids(
         number: refundVoids.number,
         sourceId: refunds.id,
         sourceNumber: refunds.number,
-        currency: refundVoids.currency,
-        amount: refundVoids.amount,
+        currency: sql<string>`coalesce(${refundVoids.tenderedCurrency}, ${refundVoids.currency})`,
+        amount: sql<string>`coalesce(${refundVoids.tenderedAmount}, ${refundVoids.amount})`,
         reason: refundVoids.reason,
         createdAt: refundVoids.createdAt,
       })

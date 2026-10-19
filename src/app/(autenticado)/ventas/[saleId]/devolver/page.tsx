@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getSaleRefundForm } from "@/modules/cash";
+import { getOrganizationTimezone } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
 import { BackLink } from "@/app/_components/detail-header";
 import { cardClass, linkClass } from "@/app/_components/form-styles";
@@ -16,6 +17,7 @@ import {
   SALE_NOT_REFUNDABLE_MESSAGE,
 } from "@/app/(autenticado)/devoluciones/messages";
 import { RefundForm } from "@/app/(autenticado)/devoluciones/refund-form";
+import { receiptExchange } from "@/app/(autenticado)/caja/exchange";
 
 export const metadata: Metadata = {
   title: "Devolver — AI WhatsApp Agent CRM",
@@ -25,14 +27,18 @@ const TITLE = "Devolver";
 
 // Pantalla 35: la devolución de una venta sin cliente anulada (brief-21.5, D-9; ADR 0022, punto 6),
 // solo admin: lo cobrado queda a devolver sobre la venta, y solo una devolución lo salda. Con
-// cliente o vigente, no se devuelve desde acá.
+// cliente o vigente, no se devuelve desde acá. Desde la 29.4.3, una venta en la moneda principal se
+// devuelve también en la otra (brief-29.4.3, D-7), con ?moneda= como el cobro.
 export default async function SaleRefundPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ saleId: string }>;
+  searchParams: Promise<{ moneda?: string | string[] }>;
 }) {
   const context = await requireSession();
   const { saleId } = await params;
+  const { moneda } = await searchParams;
   const back = { href: `/ventas/${saleId}`, label: "Volver a la venta" };
   if (context.role !== "admin") {
     return (
@@ -58,6 +64,17 @@ export default async function SaleRefundPage({
     );
   }
   const { sale } = form;
+  const exchange = receiptExchange({
+    offer: form.exchange,
+    targetCurrency: sale.currency,
+    outstanding: form.toRefund.amount,
+    outstandingInput: form.toRefund.amountInput,
+    chosen: typeof moneda === "string" ? moneda.toUpperCase() : undefined,
+    basePath: `/ventas/${sale.id}/devolver`,
+    timezone: await getOrganizationTimezone(context),
+    movement: "refund",
+    outstandingLabel: "A devolver",
+  });
   const nothing = form.toRefund.amount === "0.00";
   const blocked = !form.refundable
     ? SALE_NOT_REFUNDABLE_MESSAGE
@@ -102,6 +119,7 @@ export default async function SaleRefundPage({
             available={[form.toRefund]}
             paymentMethods={form.paymentMethods}
             hasOpenSession={form.openSession !== null}
+            exchange={exchange}
           />
         )}
       </div>

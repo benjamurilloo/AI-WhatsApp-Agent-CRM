@@ -167,12 +167,15 @@ export async function exportClientData(
 
   // Sus cobros (ADR 0022, punto 14; brief-21.3, D-9): número, fecha, venta, medio, moneda y monto.
   // Llegan al cliente por el client_id que copian de la venta, y no guardan texto de la persona.
+  // Desde la 29.4.3, con lo que entró o salió en otra moneda y la cotización usada (brief-29.4.3, D-8):
+  // la 29.4 no lo había sumado a los cobros.
   // Desde la 21.4, las señas, con el número de su pedido en lugar de la venta (brief-21.4, D-9).
   const receipts = await db.execute<Record<string, unknown>>(
     sql`select r.id, r.number, 'R-' || lpad(r.number::text, greatest(6, length(r.number::text)), '0') as display_number,
                r.created_at, r.target, r.sale_id, s.number as sale_number,
                r.order_id, o.number as order_number,
-               m.name as payment_method, r.currency, r.amount
+               m.name as payment_method, r.currency, r.amount,
+               r.tendered_currency, r.tendered_amount, r.exchange_rate
         from receipts r
         left join sales s on s.organization_id = r.organization_id and s.id = r.sale_id
         left join orders o on o.organization_id = r.organization_id and o.id = r.order_id
@@ -189,7 +192,8 @@ export async function exportClientData(
   const receiptVoids = await db.execute<Record<string, unknown>>(
     sql`select v.id, v.number, 'AR-' || lpad(v.number::text, greatest(6, length(v.number::text)), '0') as display_number,
                v.created_at, v.receipt_id, r.number as receipt_number,
-               v.currency, v.amount, v.reason
+               v.currency, v.amount, v.tendered_currency, v.tendered_amount, v.exchange_rate,
+               v.reason
         from receipt_voids v
         join receipts r on r.organization_id = v.organization_id and r.id = v.receipt_id
         where v.organization_id = ${organizationId} and r.client_id = ${clientId}
@@ -197,7 +201,8 @@ export async function exportClientData(
   );
   const refunds = await db.execute<Record<string, unknown>>(
     sql`select d.id, d.number, 'D-' || lpad(d.number::text, greatest(6, length(d.number::text)), '0') as display_number,
-               d.created_at, d.target, m.name as payment_method, d.currency, d.amount
+               d.created_at, d.target, m.name as payment_method, d.currency, d.amount,
+               d.tendered_currency, d.tendered_amount, d.exchange_rate
         from refunds d
         join payment_methods m on m.organization_id = d.organization_id and m.id = d.payment_method_id
         where d.organization_id = ${organizationId} and d.client_id = ${clientId}
@@ -206,7 +211,8 @@ export async function exportClientData(
   const refundVoids = await db.execute<Record<string, unknown>>(
     sql`select v.id, v.number, 'AD-' || lpad(v.number::text, greatest(6, length(v.number::text)), '0') as display_number,
                v.created_at, v.refund_id, d.number as refund_number,
-               v.currency, v.amount, v.reason
+               v.currency, v.amount, v.tendered_currency, v.tendered_amount, v.exchange_rate,
+               v.reason
         from refund_voids v
         join refunds d on d.organization_id = v.organization_id and d.id = v.refund_id
         where v.organization_id = ${organizationId} and d.client_id = ${clientId}

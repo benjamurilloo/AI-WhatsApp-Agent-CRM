@@ -8,6 +8,7 @@ import {
 } from "@/app/_components/form-styles";
 import { formatShortDateTime } from "@/app/_format/date-time";
 import { formatMoney } from "@/shared/money";
+import { tenderNote } from "@/app/(autenticado)/caja/exchange";
 import { UNKNOWN_SUPPLIER_TEXT } from "../ordenes/messages";
 import { ACCOUNT_TARGET_TEXT, VOIDED_BADGE_TEXT } from "./messages";
 
@@ -22,11 +23,14 @@ export function SupplierPaymentsTable({
   payments,
   timeZone,
   supplierNames,
+  cashSide = false,
 }: {
   caption: string;
   payments: SupplierPaymentListItem[];
   timeZone: string;
   supplierNames?: Map<string, string>;
+  // En la caja, la cifra es lo que salió de ella (brief-29.4.3, D-5).
+  cashSide?: boolean;
 }) {
   return (
     <div
@@ -110,7 +114,16 @@ export function SupplierPaymentsTable({
               </td>
               <td className={tableCellClass}>{row.paymentMethodName}</td>
               <td className={numberCell}>
-                {formatMoney(row.amount, row.currency)}
+                {cashSide && row.tender
+                  ? formatMoney(row.tender.amount, row.tender.currency)
+                  : formatMoney(row.amount, row.currency)}
+                {row.tender ? (
+                  <span className="block text-xs text-muted">
+                    {cashSide
+                      ? `Aplicado: ${formatMoney(row.amount, row.currency)}`
+                      : tenderNote(row.tender, true)}
+                  </span>
+                ) : null}
               </td>
             </tr>
           ))}

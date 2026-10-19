@@ -15,6 +15,8 @@ export const STALE_RATE_TEXT =
   "Esta cotización tiene más de 24 horas hábiles. Revisala o escribí una acordada.";
 export const NO_RATE_TEXT =
   "No hay una cotización cargada: sin ella no se cobra en la otra moneda. Cargala en Caja → Cotización.";
+export const NO_RATE_OUTGOING_TEXT =
+  "No hay una cotización cargada: sin ella no sale plata en la otra moneda. Cargala en Caja → Cotización.";
 
 // La fuente de una cotización, abreviada para las pantallas que la usan. La completa, con la
 // atribución, está en Caja → Cotización.
@@ -34,9 +36,25 @@ export type ExchangeRateLabel = {
   stale: boolean;
 };
 
+// El movimiento: un cobro, donde la plata entra, o una devolución o un pago a un proveedor, donde sale
+// (brief-29.4.3, D-7). Cambian solo los textos.
+export type ExchangeMovement = "receipt" | "refund" | "payment";
+
+const MOVEMENT_TEXT: Record<
+  ExchangeMovement,
+  { outgoing: boolean; forThis: string }
+> = {
+  receipt: { outgoing: false, forThis: "este cobro" },
+  refund: { outgoing: true, forThis: "esta devolución" },
+  payment: { outgoing: true, forThis: "este pago" },
+};
+
 export type ReceiptExchangeProps = {
-  // La moneda que entra: la del destino o la otra.
+  // La moneda que entra o sale: la del destino o la otra.
   tendered: string;
+  // «Moneda que entra» o «Moneda que sale», y «para este cobro» o «para esta devolución».
+  outgoing: boolean;
+  forThis: string;
   mainCurrency: string;
   choices: { currency: string; href: string; selected: boolean }[];
   rate: ExchangeRateLabel | null;
@@ -73,6 +91,9 @@ export function receiptExchange(input: {
   chosen: string | undefined;
   basePath: string;
   timezone: string;
+  // Un cobro, si no se dice otra cosa, y cómo se nombra lo que falta: «Faltan», «A favor».
+  movement?: ExchangeMovement;
+  outstandingLabel?: string;
 }): ReceiptExchangeProps | null {
   const { offer, targetCurrency } = input;
   if (!offer) return null;
@@ -82,6 +103,7 @@ export function receiptExchange(input: {
     offer.mainCurrency === targetCurrency ? other : targetCurrency;
   return {
     tendered,
+    ...MOVEMENT_TEXT[input.movement ?? "receipt"],
     mainCurrency: offer.mainCurrency,
     choices: [targetCurrency, other].map((currency) => ({
       currency,
@@ -100,7 +122,7 @@ export function receiptExchange(input: {
         : (offer.outstandingInput ?? ""),
     equivalence:
       tendered !== targetCurrency && offer.outstanding !== null
-        ? `Faltan ${formatMoney(input.outstanding, targetCurrency)} = ${formatMoney(
+        ? `${input.outstandingLabel ?? "Faltan"} ${formatMoney(input.outstanding, targetCurrency)} = ${formatMoney(
             offer.outstanding,
             other,
           )}`
@@ -130,16 +152,20 @@ export function referenceText(
 
 // Lo que entró por un cobro en otra moneda, para mostrar junto a lo aplicado (brief-29.4, D-6):
 // «Entraron ARS 156.500,00 a 1.565,00», con «acordada» si la cotización fue solo para ese cobro.
-export function tenderNote(tender: {
-  currency: string;
-  amount: string;
-  exchangeRate: string;
-  negotiated: boolean;
-}): string {
+// Desde la 29.4.3, «Salieron …» en una devolución o un pago (brief-29.4.3, D-7).
+export function tenderNote(
+  tender: {
+    currency: string;
+    amount: string;
+    exchangeRate: string;
+    negotiated: boolean;
+  },
+  outgoing = false,
+): string {
   const rate = formatExchangeRate(
     exchangeRateFromDatabase(tender.exchangeRate),
   );
-  return `Entraron ${formatMoney(tender.amount, tender.currency)} a ${rate}${
+  return `${outgoing ? "Salieron" : "Entraron"} ${formatMoney(tender.amount, tender.currency)} a ${rate}${
     tender.negotiated ? " (acordada)" : ""
   }`;
 }

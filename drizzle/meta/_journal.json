@@ -386,6 +386,13 @@
       "when": 1792416029438,
       "tag": "0054_lectura_de_la_cotizacion",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1792436439512,
+      "tag": "0055_devoluciones_y_pagos_en_otra_moneda",
+      "breakpoints": true
     }
   ]
 }
