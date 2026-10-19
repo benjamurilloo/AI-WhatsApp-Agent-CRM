@@ -261,3 +261,26 @@ Registrados al implementar, antes de la revisión independiente.
   - **R1-7 (bajo), aceptado en parte.** La etiqueta de una salida es «Monto que sale en ARS». Los `id` siguen siendo `cobro-*`: no se ven y no cambian lo que lee un lector de pantalla, que usa la etiqueta.
   - **R1-8 (bajo), aceptado.** El sello de la anulación de una devolución nombra lo que salió: «Salieron $ 157.000,00, que vuelven a la caja si fue en efectivo».
   - **Estado documental**: la nota fechada del ADR 0023 (moneda del pago a cuenta) y la del ADR 0025 (que además corrige la referencia a `cashShortfall`, que ya no existe) se escriben al cierre, como prevé D-11. DataModel también se actualiza al cierre.
+
+## Cierre (2026-10-19)
+
+Cerrada el 2026-10-19 con la aprobación del usuario, después de su recorrido en producción.
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| AC-1 | cumplido | integración `exchange-outgoing.test.ts` (vigente, acordada, venta anulada, tolerancia); end-to-end de la devolución en pesos en efectivo con la caja; recorrido del usuario |
+| AC-2 | cumplido | integración (recepción, a cuenta con la regla de la moneda aplicada, vigente cambiada, acordada); end-to-end del pago en pesos; recorrido del usuario |
+| AC-3 | cumplido | integración (anulaciones, triggers de copia, anulaciones posteriores al cierre); end-to-end de la anulación del pago; recorrido del usuario (pago anulado) |
+| AC-4 | cumplido | integración: la devolución y el pago en pesos rechazados por `insufficient_cash` en ARS con dólares en la caja (R1-3) |
+| AC-5 | cumplido | integración y end-to-end de la ficha y «A pagar» (US$ 110,00 de referencia) |
+| AC-6 | cumplido | integración de la exportación |
+| AC-7 | cumplido | integración sin moneda principal (pago, pago a cuenta, devolución; R1-4) y las suites de siempre sin cambios |
+| AC-8 | cumplido | CI run 39322804355 en `success` sobre `93c2be13c4bf5d5a31fab9127a2f38e66d19f664`; en local, 1759 unitarias y guardas, la integración completa sin fallas y 33 end-to-end de las specs relacionadas |
+| AC-9 | cumplido | revisión independiente R1 antes del despliegue, cada hallazgo verificado (P-8) |
+| AC-10 | cumplido | desplegada (`93c2be1`, 56 migraciones); el usuario registró una devolución y un pago en pesos y anuló el pago en «iPhone Demo», y dijo «Esta todo perfecto»; recuentos: «Demostración Vixora» y «Vixora» con 0 devoluciones y 0 pagos en otra moneda |
+
+**Nivel alcanzado**: validado en integración (`producer-consumer`), desplegado y recorrido en producción sobre una organización demo. No hay negocio real.
+
+**Lo que queda**: la otra moneda en el pago de un usado (29.7). Las correcciones de la revisión no tuvieron una segunda revisión independiente: son autoevaluación.
+
+**Incidentes del trabajo**, sin efecto en producción: una corrida de un archivo de integración mientras corría la suite completa contra la misma base contaminó las dos (se repitió sola); un servidor de pruebas que quedó vivo ocupó el puerto 3100, y el end-to-end usó un build viejo hasta correr `npm run build` (Playwright sirve el último build con `next start`).

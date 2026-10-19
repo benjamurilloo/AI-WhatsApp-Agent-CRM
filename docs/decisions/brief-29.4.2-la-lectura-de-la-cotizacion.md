@@ -427,3 +427,22 @@ La hizo el 2026-10-19 un agente que no participó del trabajo, con acceso de sol
   - primera corrida: `DolarAPI: venta 1555, del 2026-10-19T16:57:00.000Z.` e `inserted.`, con salida 0. La fila quedó con `rate 1565.000000`, `source_rate 1555.000000` y `adjustment 10.00`;
   - segunda corrida: `confirmed.`, salida 0, sin una fila nueva.
 - `tsc`, ESLint y `prettier --check` sin errores.
+
+## Cierre
+
+- **2026-10-19**: implementada, revisada y desplegada. AC-1 a AC-10 cumplidos. AC-9 se completó con la alerta de Healthchecks.io y la vuelta del ajuste a 10 (punto 7 del despliegue).
+- **Commit** `1599324`, con la CI en `success` (run 39296775463, leída por el SHA completo). Esa corrida incluye `migration-0054.test.ts` dentro de la suite completa. **Producción corre `1599324`**, con 55 migraciones; antes corría `c3e9af5`, anotado para volver atrás. La `0054` es aditiva.
+- **Lo medido en el servidor** (H-8), antes de desplegar: Node v24.21.0; `pg_hba` acepta cualquier rol con `scram-sha-256` por `127.0.0.1` y `::1`; `dolarapi.com` responde 200.
+- **El despliegue** (D-12):
+  1. `crm_fx_reader` creado con el superusuario, sin login.
+  2. El despliegue habitual: la `0054` aplicada, la aplicación activa y `/login` en 200 desde adentro y desde afuera. En la base: el enum con `manual` y `dolarapi_blue`, las dos funciones `SECURITY DEFINER`, y `crm_fx_reader` puede ejecutar `fx_record_reading` y `crm_app` no.
+  3. El usuario creó `crm_fx_reader_login` y su contraseña en su terminal. El archivo quedó `600 root`.
+  4. El usuario creó el chequeo en Healthchecks.io y agregó su URL a `heartbeat.env`.
+  5. Las unidades instaladas, con `systemd-analyze verify` sin errores. La corrida sin organizaciones automáticas dio `success`, `Sin organizaciones con la fuente automática: no se consulta.` y `Aviso de 'fx-reader' enviado.` El timer quedó encendido.
+  6. El usuario pasó «iPhone Demo» a DolarAPI con ajuste 10. La corrida a mano: `DolarAPI: venta 1560, del 2026-10-19T17:57:00.000Z.` e `inserted.` La fila quedó con `rate 1570`, `source_rate 1560`, `adjustment 10` y la fuente `dolarapi_blue`. La vigente anterior era una manual de 1570: se guardó igual, como pide D-5.
+  7. El usuario puso el ajuste en 200 (1760, un 12 % más). La corrida a mano dio `exit-code` y `FALLA: <id>: rejected_large_change.`, sin aviso y sin una fila nueva. La corrida del timer de las 18 de Córdoba (21:00 UTC) volvió a rechazar, y **la alerta de Healthchecks.io le llegó al usuario** al vencer la gracia. El usuario volvió el ajuste a 10, y la corrida a mano de las 22:03 UTC dio `success`, `DolarAPI: venta 1560` y `confirmed.` (1560 + 10 = 1570, la vigente), con `Aviso de 'fx-reader' enviado.`
+  8. «Demostración Vixora» intacta: sin moneda principal, 0 configuraciones y 0 cotizaciones.
+- **Ningún secreto en los registros** (AC-10): la contraseña y la URL del aviso se buscaron en el servidor, en el journal del día y en `auth.log`, y aparecen 0 veces. Solo se leyeron los recuentos.
+- **Nivel**: validado en integración (pantallas ↔ servicio ↔ base, con end-to-end) y desplegado en producción para una organización demo, con lecturas reales de DolarAPI. No hay ningún negocio real usándolo.
+- **Revisión**: la R1 fue independiente (P-1). Las correcciones de sus hallazgos son autoevaluación, sin una segunda revisión.
+- **Notion**: la 29.4.2 en «Completado» el 2026-10-19.

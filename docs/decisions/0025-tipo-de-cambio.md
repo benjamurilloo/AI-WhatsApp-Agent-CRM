@@ -5,6 +5,13 @@
 - Nivel: **diseñado**. No hay código, tablas ni ejecución.
 - **Supera en parte**: el [ADR 0019](0019-bases-de-los-comprobantes.md), punto 3; el [ADR 0022](0022-cobros-y-caja.md), en la moneda del cobro y de la devolución y en la moneda por defecto (punto 8); el [ADR 0023](0023-compras-y-proveedores.md), punto 8, en la moneda del pago; y el [ADR 0024](0024-rubros-y-capacidades.md), puntos 15 y 17. **Precisa** el [ADR 0016](0016-el-crm-se-amplia-hacia-un-erp-por-fases.md), punto 7.
 
+*Nota del 2026-10-19, al cerrar la 29.4.3* ([brief-29.4.3](brief-29.4.3-devoluciones-y-pagos-en-otra-moneda.md)), sin cambiar el texto de abajo:
+
+- **Punto 5, la moneda de lo aplicado contra la cuenta**: en la devolución desde la cuenta, la otra moneda solo sale contra lo que está a favor **en la principal**; lo que está a favor en otra moneda sale en su moneda, como antes. En el pago a cuenta, la moneda aplicada es la principal o una en la que se le deba al proveedor (D-4), y la regla vive en `cash`, que lee `supplierLedger`: `purchasing` sigue sin depender de `fx`.
+- **Punto 5, el redondeo**: la tolerancia de un centavo vale solo para una salida convertida. Una devolución o un pago en la moneda del destino tienen el tope de siempre (P-2).
+- **Punto 6**: la referencia a `supplier-payments.ts:308-318` (`cashShortfall`) quedó vieja. El control de las salidas en efectivo es `outgoingShortfall`, y el de lo que vuelve al anular, `returnExceedsLimit`, los dos en `cash/service.ts` y medidos en la moneda que sale o vuelve (P-3).
+- **Punto 14 del ADR 0022, la exportación**: la de un cliente trae `tendered_currency`, `tendered_amount` y `exchange_rate` de sus cobros, devoluciones y sus anulaciones. Corrige la omisión de los cobros en la 29.4 (D-8).
+
 *Nota del 2026-10-18, al implementar la 29.4* ([brief-29.4](brief-29.4-el-tipo-de-cambio.md)), sin cambiar el texto de abajo:
 
 - **Punto 2, «cambiarla en una organización con datos no se permite»**: se lee como **cambiar** una moneda principal ya fijada. Fijarla **por primera vez** se permite aunque la organización tenga datos, porque no cambia ningún monto guardado: solo suma propuestas y totales de referencia (brief-29.4, D-2, decisión del usuario). La primera fue «iPhone Demo», que ya tenía precios en USD.

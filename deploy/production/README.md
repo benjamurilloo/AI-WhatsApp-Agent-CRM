@@ -398,7 +398,7 @@ sudo bash -c 'umask 077 && PW=$(openssl rand -hex 32) && printf "%s\n" "$PW" > /
 
 Tiene que decir `600 root /etc/crm-production/fx-reader-db`.
 
-**4. El aviso de vida.** El usuario crea en Healthchecks.io un chequeo con el horario `0 9,12,15,18,21 * * *`, la zona `America/Argentina/Cordoba` y 1 h de gracia. Después agrega su URL a `heartbeat.env`, con el cuidado de [Instalar el aviso de vida](#instalar-el-aviso-de-vida):
+**4. El aviso de vida.** El usuario crea en Healthchecks.io un chequeo con el horario `0 9,12,15,18,21 * * *`, la zona `America/Argentina/Cordoba` y 1 h de gracia. Después agrega su URL a `heartbeat.env`, con el cuidado de [Instalar el aviso de vida](#instalar-el-aviso-de-vida). Si sigue dentro del servidor por el paso 3, con `sudo nano /etc/crm-production/heartbeat.env`; desde su máquina, con el `ssh -t` de esa sección. En la 29.4.2, el `ssh` corrido dentro del servidor se conectó al propio servidor y falló:
 
 ```
 HEARTBEAT_URL_FX_READER=<la URL del aviso de la lectura de la cotización>

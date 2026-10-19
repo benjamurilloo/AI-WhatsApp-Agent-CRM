@@ -2,6 +2,46 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-19 — 29.4.3: devoluciones y pagos en otra moneda
+
+Cierra el 2026-10-19, desplegada en producción (`93c2be1`) y recorrida por el usuario ([brief-29.4.3](docs/decisions/brief-29.4.3-devoluciones-y-pagos-en-otra-moneda.md), §Cierre). Construye la regla del punto 5 del [ADR 0025](docs/decisions/0025-tipo-de-cambio.md) en las salidas de dinero, sobre «iPhone Demo».
+
+**Certifica:**
+- **Devolver en la otra moneda** lo que está a favor de un cliente, o a devolver de una venta sin cliente anulada, en la moneda principal, con la cotización vigente o una acordada: la cuenta baja lo aplicado y la caja resta lo que salió, también al anular.
+- **Pagar a un proveedor en la otra moneda** una recepción o a cuenta en la principal, igual. A cuenta, con moneda principal, la moneda aplicada es la principal o una en la que se le deba al proveedor.
+- **La migración 0055**, aditiva: lo que salió en `refunds`, `refund_voids`, `supplier_payments` y `supplier_payment_voids`, con los `CHECK` y la clave compuesta de los cobros, y los triggers de copia de las anulaciones reescritos para comparar esas columnas.
+- **La caja** cuenta lo que salió: una salida en efectivo nunca deja negativa la moneda en que sale, aunque haya otras, y lo que vuelve al anular se mide en esa moneda.
+- **Los totales de referencia** en la principal en la ficha del proveedor, su estado de cuenta y «A pagar».
+- **La exportación de los datos de un cliente** trae lo que entró y lo que salió en la otra moneda; corrige la omisión de los cobros en la 29.4.
+- **Sin moneda principal nada cambia**, probado.
+- **En producción**: una devolución y un pago en pesos en «iPhone Demo», con la anulación del pago, recorridos por el usuario; «Demostración Vixora» sin movimientos en otra moneda, comprobado con recuentos.
+- **Una revisión independiente** (R1, 8 hallazgos: 3 medios y 5 bajos), verificada contra el código y resuelta (brief, P-8).
+
+**No certifica:**
+- ningún negocio real: el de iPhone sigue sin confirmar;
+- el pago de un usado en otra moneda: es de la 29.7;
+- una segunda revisión independiente de las correcciones, que son autoevaluación;
+- ningún cambio en los contratos del agente.
+
+## 2026-10-19 — 29.4.2: la lectura de la cotización
+
+Cierra el 2026-10-19, desplegada en producción (`1599324`) ([brief-29.4.2](docs/decisions/brief-29.4.2-la-lectura-de-la-cotizacion.md), §Cierre). Construye el punto 9 del [ADR 0025](docs/decisions/0025-tipo-de-cambio.md) sobre «iPhone Demo».
+
+**Certifica:**
+- **El lector** (`scripts/fx/`), un proceso aparte de la aplicación, en `crm-fx-reader.timer`, cinco veces por día (9, 12, 15, 18 y 21 de Córdoba). Solo consulta `https://dolarapi.com/v1/dolares/blue`, toma `venta` del texto sin pasar por `number` y sale con error ante cualquier falla. La unidad usa un usuario efímero, niega las redes privadas y la de metadatos, y recibe la contraseña por `LoadCredential=`.
+- **La regla en la base** (migración 0054): dos funciones `SECURITY DEFINER` que solo ejecuta `crm_fx_reader`, un rol sin privilegios sobre ninguna tabla. Si la cotización no cambió, solo confirma; rechaza un cambio de más de un 10 % contra la vigente, un valor menor que 1 y uno inválido. Al volver a la fuente automática, la primera lectura reemplaza a la manual.
+- **La fuente y el ajuste** en Caja → Cotización, que elige el `admin` con auditoría; el `viewer` no puede. La antigüedad de una cotización automática se mide desde su última confirmación.
+- **El aviso de vida** `fx-reader` en Healthchecks.io, y el runbook de alertas con cada salida del lector.
+- **En producción**: el timer encendido, una lectura real guardada (1560 + 10 = 1570) y una rechazada por el 10 %, con **la alerta de Healthchecks.io recibida** y la vuelta a la normalidad con `confirmed.` y su aviso de vida; «Demostración Vixora» intacta; ningún secreto en el journal ni en `auth.log`.
+- **Una revisión independiente** (R1, 9 hallazgos: 1 medio y 8 bajos), verificada contra el código y resuelta.
+
+**No certifica:**
+- ningún negocio real: el de iPhone sigue sin confirmar;
+- que la red fije el host: DolarAPI está detrás de Cloudflare y lo acota el código, con su guarda;
+- las devoluciones ni los pagos a proveedores en otra moneda: son de la 29.4.3;
+- una segunda revisión independiente de las correcciones, que son autoevaluación;
+- ningún cambio en los contratos del agente.
+
 ## 2026-10-19 — 29.4: el tipo de cambio
 
 Cierra el 2026-10-19, desplegada en producción (`c3e9af5`) y recorrida por el usuario ([brief-29.4](docs/decisions/brief-29.4-el-tipo-de-cambio.md), §Cierre). Construye la primera parte del [ADR 0025](docs/decisions/0025-tipo-de-cambio.md), sobre la organización demo «iPhone Demo», como la 29.2.
