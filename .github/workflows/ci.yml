@@ -47,6 +47,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Un cambio de solo documentación (todo archivo cambiado termina en .md) corre el formato y
+      # las guardas, que también recorren los .md (la de URLs de aviso), y saltea lo demás: el
+      # end-to-end y la integración son 25 de los ~29 minutos de una corrida. Decisión del usuario
+      # del 2026-10-20, al agotarse los minutos de Actions del mes. Ante la duda (rama nueva,
+      # push forzado, base inalcanzable), corre todo.
+      - name: Alcance del cambio
+        id: alcance
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          codigo=true
+          if [ -n "$BASE" ] && [ "$BASE" != "0000000000000000000000000000000000000000" ] \
+            && git fetch --no-tags --depth=1 origin "$BASE"; then
+            cambiados="$(git diff --name-only "$BASE" HEAD)"
+            echo "$cambiados"
+            if [ -n "$cambiados" ] && ! echo "$cambiados" | grep -qv '\.md$'; then
+              codigo=false
+            fi
+          fi
+          echo "codigo=$codigo" >> "$GITHUB_OUTPUT"
+          echo "Corre todo: $codigo"
+
       - name: Node 24
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -63,21 +85,25 @@ jobs:
       # @esbuild-kit/esm-loader → esbuild están aceptados por escrito, con su
       # condición de salida, en docs/planning/Risks.md.
       - name: Auditoría de dependencias
+        if: steps.alcance.outputs.codigo == 'true'
         run: |
           npm audit --omit=dev --audit-level=high
           npm audit --audit-level=critical
 
       # Falla si un schema.ts cambió sin generar su migración (brief-3.1, D-4).
       - name: Migraciones al día con los esquemas
+        if: steps.alcance.outputs.codigo == 'true'
         run: |
           npm run db:generate
           git status --porcelain drizzle/
           test -z "$(git status --porcelain drizzle/)"
 
       - name: Lint
+        if: steps.alcance.outputs.codigo == 'true'
         run: npm run lint
 
       - name: Typecheck
+        if: steps.alcance.outputs.codigo == 'true'
         run: npm run typecheck
 
       - name: Formato
@@ -88,20 +114,25 @@ jobs:
         run: npm run test:guards
 
       - name: Tests unitarios
+        if: steps.alcance.outputs.codigo == 'true'
         run: npm run test:unit
 
       - name: Tests de integración (PostgreSQL 18)
+        if: steps.alcance.outputs.codigo == 'true'
         run: npm run test:integration
 
       - name: Build
+        if: steps.alcance.outputs.codigo == 'true'
         run: npm run build
 
       # End-to-end sobre next start y una base <nombre>_e2e (brief-3.5, D-8).
       - name: Instalar Chromium de Playwright
+        if: steps.alcance.outputs.codigo == 'true'
         run: npx playwright install --with-deps chromium
 
       - name: Tests end-to-end (Chromium)
         id: e2e
+        if: steps.alcance.outputs.codigo == 'true'
         run: npm run test:e2e
 
       # Las trazas que playwright.config.ts retiene al fallar (`retain-on-failure`) viven en
