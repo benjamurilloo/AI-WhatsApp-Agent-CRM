@@ -65,6 +65,11 @@ export const auditEntityType = pgEnum("audit_entity_type", [
   // grado o la batería) y el grado de la lista de la organización.
   "stock_unit",
   "unit_grade",
+  // Las reparaciones (brief-29.6, D-2 y D-4): el tipo de reparación de la lista, el precio de un tipo
+  // para un modelo (price_change y cost_change, sobre el precio) y la orden de servicio.
+  "repair_type",
+  "repair_price",
+  "service_order",
 ]);
 
 export const auditAction = pgEnum("audit_action", [

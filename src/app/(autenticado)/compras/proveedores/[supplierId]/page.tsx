@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AUDIT_PAGE_SIZE } from "@/modules/audit";
-import { getOrganizationTimezone } from "@/modules/organizations";
+import {
+  getOrganizationTimezone,
+  hasCapability,
+} from "@/modules/organizations";
 import {
   formatCuit,
   getSupplier,
@@ -20,6 +23,7 @@ import {
   dangerOutlineLinkClass,
   inactiveBadgeClass,
   linkClass,
+  roleBadgeClass,
   secondaryLinkClass,
 } from "@/app/_components/form-styles";
 import { Icon } from "@/app/_components/icons";
@@ -52,6 +56,7 @@ import { auditActionLabel, describeAuditDiff } from "./audit-summary";
 import {
   DeactivateSupplierConfirm,
   ReactivateSupplierForm,
+  TechnicianForm,
 } from "./supplier-actions";
 
 export const metadata: Metadata = {
@@ -114,6 +119,8 @@ export default async function SupplierPage({
   const actorLabel = audit.ok
     ? await auditActorLabels(context.organizationId, audit.entries)
     : null;
+  // La marca de técnico, solo con la capacidad repairs (brief-29.6, D-3).
+  const repairs = await hasCapability(context.organizationId, "repairs");
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 lg:px-8">
@@ -122,13 +129,18 @@ export default async function SupplierPage({
       <DetailHeader
         title={supplier.name}
         badges={
-          <span
-            className={
-              supplier.isActive ? activeBadgeClass : inactiveBadgeClass
-            }
-          >
-            {supplier.isActive ? "Activo" : "Inactivo"}
-          </span>
+          <>
+            <span
+              className={
+                supplier.isActive ? activeBadgeClass : inactiveBadgeClass
+              }
+            >
+              {supplier.isActive ? "Activo" : "Inactivo"}
+            </span>
+            {repairs && supplier.isTechnician ? (
+              <span className={roleBadgeClass}>Técnico</span>
+            ) : null}
+          </>
         }
         subtitle={
           supplier.isActive
@@ -213,6 +225,25 @@ export default async function SupplierPage({
           ]}
         />
       </SectionCard>
+
+      {repairs ? (
+        <SectionCard
+          id="tecnico-titulo"
+          title="Técnico"
+          icon="wrench"
+          className="mt-6"
+        >
+          <p className="mb-3 text-sm">
+            {supplier.isTechnician
+              ? "Recibe órdenes de servicio. Lo que cobra por cada reparación va a su cuenta."
+              : "Un técnico recibe órdenes de servicio, y lo que cobra por cada reparación va a su cuenta."}
+          </p>
+          <TechnicianForm
+            supplierId={supplier.id}
+            isTechnician={supplier.isTechnician}
+          />
+        </SectionCard>
+      ) : null}
 
       {orders.ok ? (
         <SectionCard

@@ -19,6 +19,7 @@ import {
   labelClass,
   linkClass,
   radioClass,
+  roleBadgeClass,
   selectClass,
   tableCellClass,
   tableHeadCellClass,
@@ -465,7 +466,11 @@ export default async function ProductsPage({
                         {product.unit}
                       </td>
                       <td className={cellClass}>
-                        <StockStatusBadge status={product.stockStatus} />
+                        {product.isService ? (
+                          <span className={roleBadgeClass}>Servicio</span>
+                        ) : (
+                          <StockStatusBadge status={product.stockStatus} />
+                        )}
                       </td>
                       <td className={cellClass}>
                         <span
@@ -552,7 +557,11 @@ export default async function ProductsPage({
                         </span>
                       ) : null}
                     </p>
-                    <StockStatusBadge status={product.stockStatus} />
+                    {product.isService ? (
+                      <span className={roleBadgeClass}>Servicio</span>
+                    ) : (
+                      <StockStatusBadge status={product.stockStatus} />
+                    )}
                   </div>
                 </li>
               </Fragment>

@@ -154,7 +154,7 @@ export default async function SupplierAccountPaymentPage({
                     scope="col"
                     className={`${tableHeadCellClass} text-right`}
                   >
-                    Recepciones con saldo
+                    Comprobantes con saldo
                   </th>
                 </tr>
               </thead>

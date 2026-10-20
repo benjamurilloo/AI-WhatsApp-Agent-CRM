@@ -120,6 +120,10 @@ export const products = pgTable(
     condition: productCondition("condition").notNull().default("new"),
     // Desde la 29.5 (D-3). No es un campo del formulario: lo escribe writeProductTracking.
     tracking: stockTracking("tracking").notNull().default("quantity"),
+    // El producto de servicio de las reparaciones (ADR 0024, punto 10; brief-29.6, D-5): uno por
+    // organización, lo crea org:capability y nunca tiene stock. Se vende solo por su orden de
+    // servicio. Lo fija el alta y no cambia (trigger de la 0058).
+    isService: boolean("is_service").notNull().default(false),
     // Campos de operación (brief-17.2), todos opcionales. El código de barras se guarda como se
     // escribió y es único por organización sin distinguir mayúsculas, como el SKU (D-3). Peso en
     // kg y dimensiones en cm, con unidad fija (D-5); las tres dimensiones van juntas o ninguna.
@@ -204,6 +208,15 @@ export const products = pgTable(
     index("products_model_idx")
       .on(table.organizationId, table.modelId)
       .where(sql`${table.modelId} is not null`),
+    // El producto de servicio se lleva por cantidad (brief-29.6, D-5): nunca tiene unidades.
+    check(
+      "products_service_quantity",
+      sql`not ${table.isService} or ${table.tracking} = 'quantity'`,
+    ),
+    // Uno por organización (D-5).
+    uniqueIndex("products_organization_service_unique")
+      .on(table.organizationId)
+      .where(sql`${table.isService}`),
   ],
 );
 

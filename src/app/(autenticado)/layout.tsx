@@ -49,6 +49,17 @@ export default async function AuthenticatedLayout({
     ...(frame.capabilities.includes("serialized_units")
       ? [{ href: "/grados", label: "Grados", icon: "tag" as const }]
       : []),
+    // Las reparaciones, para los dos roles y solo con la capacidad repairs (brief-29.6, D-10), con la
+    // misma regla: cada página vuelve a comprobarla.
+    ...(frame.capabilities.includes("repairs")
+      ? [
+          {
+            href: "/reparaciones",
+            label: "Reparaciones",
+            icon: "wrench" as const,
+          },
+        ]
+      : []),
     // Pedidos, para los dos roles (brief-19.2).
     { href: "/pedidos", label: "Pedidos", icon: "list" },
     // Ventas, para los dos roles (brief-20.2).

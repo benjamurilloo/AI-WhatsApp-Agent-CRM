@@ -23,7 +23,19 @@ export const SUPPLIER_DOCUMENT_KIND_LABEL: Record<
   goods_receipt_void: "Anulación de recepción",
   payment: "Pago",
   payment_void: "Anulación de pago",
+  // Desde la 29.6: lo que se le debe a un técnico por una reparación (brief-29.6, D-7).
+  service_order: "Reparación",
 };
+
+// A dónde lleva cada fila de lo que va al debe: una recepción o, desde la 29.6, una orden de servicio.
+export function debitDocumentHref(document: {
+  kind: "goods_receipt" | "service_order";
+  id: string;
+}): string {
+  return document.kind === "service_order"
+    ? `/reparaciones/${document.id}`
+    : `/compras/recepciones/${document.id}`;
+}
 
 // A dónde lleva cada comprobante de la lista.
 export function supplierDocumentHref(
@@ -38,6 +50,8 @@ export function supplierDocumentHref(
       return `/compras/pagos/${document.id}`;
     case "payment_void":
       return `/compras/pagos/${document.id}/anulacion`;
+    case "service_order":
+      return `/reparaciones/${document.id}`;
   }
 }
 

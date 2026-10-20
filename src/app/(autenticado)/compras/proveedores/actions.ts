@@ -7,6 +7,7 @@ import {
   createSupplier,
   deactivateSupplier,
   reactivateSupplier,
+  setSupplierTechnician,
   updateSupplier,
   type SupplierActiveResult,
   type UpdateSupplierResult,
@@ -220,6 +221,21 @@ export async function deactivateSupplierAction(
     "desactivado",
     formData,
     deactivateSupplier,
+  );
+}
+
+// La marca de técnico (brief-29.6, D-3): solo con la capacidad repairs, que exige purchasing.
+export async function setTechnicianAction(
+  _previous: SupplierChangeState,
+  formData: FormData,
+): Promise<SupplierChangeState> {
+  const isTechnician = String(formData.get("isTechnician") ?? "") === "1";
+  return runSupplierChange(
+    "compras.proveedores.tecnico",
+    isTechnician ? "tecnico-marcado" : "tecnico-desmarcado",
+    formData,
+    (context, supplierId) =>
+      setSupplierTechnician(context, supplierId, isTechnician),
   );
 }
 

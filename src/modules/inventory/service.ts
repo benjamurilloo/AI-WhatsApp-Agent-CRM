@@ -244,10 +244,12 @@ export function composeProductStockPage(
     Number.MAX_SAFE_INTEGER;
   const matching = products
     .map((product) => withAvailableStock(product, balances))
+    // El producto de servicio no tiene stock: sale en la lista, pero no en un filtro de estado de
+    // stock (brief-29.6, D-5).
     .filter(
       (product) =>
         filters.stockStatus === "all" ||
-        product.stockStatus === filters.stockStatus,
+        (!product.isService && product.stockStatus === filters.stockStatus),
     )
     .sort(modelOrder ? (a, b) => rank(a) - rank(b) || base(a, b) : base);
 
@@ -560,6 +562,8 @@ export type StockAdjustmentResult =
   // (brief-29.5, D-4).
   | Failure<"BUSINESS_RULE_VIOLATION", { rule: "inactive_product" }>
   | Failure<"BUSINESS_RULE_VIOLATION", { rule: "unit_tracked" }>
+  // Desde la 29.6: el producto de servicio no tiene stock (brief-29.6, D-5).
+  | Failure<"BUSINESS_RULE_VIOLATION", { rule: "service_product" }>
   | Failure<
       "BUSINESS_RULE_VIOLATION",
       {
@@ -623,6 +627,13 @@ export async function adjustStock(
           ok: false,
           code: "BUSINESS_RULE_VIOLATION",
           rule: "unit_tracked",
+        });
+      }
+      if (product.isService) {
+        throw new AdjustmentRejected({
+          ok: false,
+          code: "BUSINESS_RULE_VIOLATION",
+          rule: "service_product",
         });
       }
 

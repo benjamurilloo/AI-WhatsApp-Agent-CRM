@@ -12,7 +12,8 @@ import { describe, expect, it } from "vitest";
 // Dos reglas:
 // 1. src/modules/purchasing/ importa solo de catalog, inventory, numbering, organizations, audit,
 //    el esquema de auth, src/shared, sus propios archivos y paquetes;
-// 2. entre los módulos, solo cash importa purchasing. Las pantallas lo usan, y no cuentan.
+// 2. entre los módulos, solo cash importa purchasing. Las pantallas lo usan, y no cuentan. Desde la
+//    29.6 (brief-29.6, D-8), también service: el técnico de la orden es un proveedor.
 //
 // Lee el texto: import y export con from, el import de efecto y el import dinámico con un literal.
 // No ve un especificador armado en tiempo de ejecución.
@@ -102,9 +103,14 @@ function snapshotViolations(
 // Quién lee la cuenta del proveedor (revisión independiente de la 22.7, R8): toda llamada a
 // supplierLedger y a las dos lecturas de la organización está en una lectura de SNAPSHOT_READS o en
 // el pago, que la hace detrás del bloqueo de cobros. Una lectura nueva fuera de la lista no pasa.
+// Desde la 29.6 (brief-29.6, D-7; H-2), también las deudas de los técnicos, que lee cash de service.
 const LEDGER_READ =
-  /\b(?:supplierLedger|listGoodsReceiptsForAccounts|findAccountsSupplierPayments)\(/g;
-const LOCKED_LEDGER_CALLERS = new Set(["createSupplierPayment"]);
+  /\b(?:supplierLedger|listGoodsReceiptsForAccounts|findAccountsSupplierPayments|listTechnicianChargesForAccounts?)\(/g;
+// supplierLedger también lee, con la transacción que recibe, las deudas del técnico (brief-29.6, D-7).
+const LOCKED_LEDGER_CALLERS = new Set([
+  "createSupplierPayment",
+  "supplierLedger",
+]);
 const SNAPSHOT_NAMES = new Set(Object.values(SNAPSHOT_READS).flat());
 
 // La función de primer nivel que contiene una posición del código.
@@ -135,7 +141,14 @@ function ledgerCallerViolations(file: string, source: string): string[] {
 
 function importerViolations(file: string, code: string): string[] {
   const owner = /^src\/modules\/([^/]+)\//.exec(file)?.[1];
-  if (!owner || owner === "cash" || owner === "purchasing") return [];
+  if (
+    !owner ||
+    owner === "cash" ||
+    owner === "purchasing" ||
+    owner === "service"
+  ) {
+    return [];
+  }
   return specifiers(code)
     .filter((specifier) => moduleOf(specifier)?.name === "purchasing")
     .map((specifier) => `${file} importa ${specifier}`);
@@ -203,10 +216,13 @@ describe("detección", () => {
     ).not.toEqual([]);
   });
 
-  it("regla 2, permite cash y las pantallas", () => {
+  it("regla 2, permite cash, service y las pantallas", () => {
     const code =
       'import { getGoodsReceiptForPayment } from "@/modules/purchasing";';
     expect(importerViolations("src/modules/cash/service.ts", code)).toEqual([]);
+    expect(
+      importerViolations("src/modules/service/service-orders.ts", code),
+    ).toEqual([]);
     expect(
       importerViolations("src/app/(autenticado)/compras/page.tsx", code),
     ).toEqual([]);
@@ -296,7 +312,7 @@ describe("el código", () => {
     ).toEqual([]);
   });
 
-  it("entre los módulos, solo cash importa purchasing, y cash sí lo importa", () => {
+  it("entre los módulos, solo cash y service importan purchasing, y cash sí lo importa", () => {
     expect(
       files.flatMap((file) =>
         importerViolations(file, readFileSync(file, "utf8")),

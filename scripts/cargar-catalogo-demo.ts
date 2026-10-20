@@ -65,8 +65,13 @@ async function main() {
       "La organización no tiene la capacidad variants. Activala primero con org:capability --profile iphone.",
     );
   }
-  const existing = await searchProducts(context, { text: "", activity: "all" });
-  if (!existing.ok) throw new Error("No se pudieron leer los productos.");
+  const found = await searchProducts(context, { text: "", activity: "all" });
+  if (!found.ok) throw new Error("No se pudieron leer los productos.");
+  // El producto de servicio lo crea org:capability al activar repairs (brief-29.6, D-1): no es del
+  // catálogo de ejemplo ni ajeno, y la carga no lo toca.
+  const existing = {
+    products: found.products.filter((product) => !product.isService),
+  };
   const catalogSkus = new Set(
     DEMO_IPHONE_CATALOG.flatMap((model) =>
       model.variants.map((variant) => demoProduct(model, variant).sku),

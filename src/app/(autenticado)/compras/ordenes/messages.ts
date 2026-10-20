@@ -118,6 +118,8 @@ export function lineFieldMessage(
 export function lineRuleMessage(rule: PurchaseOrderLineRule): string {
   return {
     inactive_product: "El producto está desactivado.",
+    service_product:
+      "Es el producto de las reparaciones: no tiene stock, así que no se compra ni se recibe.",
     duplicate_product:
       "El producto ya está en otra línea: sumá la cantidad ahí.",
     zero_total: "El total de la línea da cero: subí la cantidad o el costo.",

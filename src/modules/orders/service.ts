@@ -512,8 +512,14 @@ export async function placeOrderFromIngestion(
     // Inexistente, de otra organización o inactivo, sin distinguir, como la lectura (D-6). Desde la
     // 29.5, también un producto por unidad, y sigue así en la 29.5.2: el agente no ve IMEI ni puede
     // elegir unidades, y su contrato no cambia; pedir por unidad desde el agente es de la 29.8
-    // (brief-29.5, D-1 y D-7; brief-29.5.2, D-1 y D-6).
-    if (!product || !product.isActive || product.tracking === "unit") {
+    // (brief-29.5, D-1 y D-7; brief-29.5.2, D-1 y D-6). Desde la 29.6, también el producto de servicio:
+    // el agente no lo ve, y una reparación se cobra por su orden (brief-29.6, D-5).
+    if (
+      !product ||
+      !product.isActive ||
+      product.tracking === "unit" ||
+      product.isService
+    ) {
       return reject("product_not_found");
     }
     if (!product.price) return reject("product_without_price");

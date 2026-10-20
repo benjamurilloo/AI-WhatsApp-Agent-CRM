@@ -116,6 +116,11 @@ const NOTICES: Record<string, string> = {
   editado: "Proveedor actualizado.",
   desactivado: "Proveedor desactivado.",
   reactivado: "Proveedor reactivado.",
+  // Desde la 29.6 (brief-29.6, D-3).
+  "tecnico-marcado":
+    "Proveedor marcado como técnico: ya se le pueden mandar órdenes de servicio.",
+  "tecnico-desmarcado":
+    "El proveedor ya no es técnico: no recibe órdenes nuevas. Las que tiene siguen en su cuenta.",
 };
 
 export function noticeMessage(

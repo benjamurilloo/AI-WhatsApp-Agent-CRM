@@ -105,6 +105,16 @@ export {
   type GoodsReceiptVoidShortage,
   type VoidGoodsReceiptResult,
 } from "./goods-receipt-voids";
+// Los técnicos de las reparaciones (brief-29.6, D-3): la marca, la lista de la orden de servicio y su
+// bloqueo, para service.
+export {
+  listTechnicians,
+  lockTechnicianForServiceOrder,
+  setSupplierTechnician,
+  type SetTechnicianResult,
+  type Technician,
+  type TechnicianLockStatus,
+} from "./technicians";
 export {
   getGoodsReceiptForPayment,
   getSupplierNames,

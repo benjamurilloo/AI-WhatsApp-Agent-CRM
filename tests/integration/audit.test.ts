@@ -172,6 +172,8 @@ const INSERT_ONLY_TABLES = [
   // El pago a un proveedor y su anulación (brief-22.6, D-2 y D-3; ADR 0023, punto 8).
   "supplier_payment_voids",
   "supplier_payments",
+  // Las líneas del presupuesto de una orden de servicio (brief-29.6, D-4).
+  "service_order_lines",
 ];
 // Se actualizan pero no se borran (brief-6.1, D-3; credenciales, brief-6.5.3, D-1; información
 // del negocio, brief-11.2, D-4; el horario semanal, brief-17.4, P-1).
@@ -198,6 +200,11 @@ const NO_DELETE_TABLES = [
   // D-2 y D-5).
   "stock_units",
   "unit_grades",
+  // La lista de reparaciones, cuyos tipos se desactivan, y la orden de servicio, que cambia de estado y
+  // se cancela (brief-29.6, D-2 y D-4).
+  "repair_prices",
+  "repair_types",
+  "service_orders",
 ];
 // Se insertan y se borran, pero no se actualizan: una asignación se pone y se quita (brief-16.1,
 // D-6), un día especial se agrega y se quita (brief-17.4, P-2), y una imagen de producto se sube y

@@ -31,6 +31,7 @@ import { PrintButton } from "../../../ordenes/[orderId]/print-button";
 import { NOT_AN_INVOICE_LEGEND } from "../../../ordenes/messages";
 import { ReferenceTotal } from "@/app/(autenticado)/caja/reference-total";
 import {
+  debitDocumentHref,
   NO_SUPPLIER_MOVEMENTS_MESSAGE,
   SUPPLIER_ACCOUNT_ADMIN_ONLY_MESSAGE,
   SUPPLIER_DOCUMENT_KIND_LABEL,
@@ -161,7 +162,7 @@ export default async function SupplierStatementPage({
                 En <span className="font-mono">{account.currency}</span>
               </h3>
               <dl className="mt-2 grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 text-sm sm:max-w-md">
-                <dt className="text-muted">Debe (recepciones vigentes)</dt>
+                <dt className="text-muted">Debe (comprobantes vigentes)</dt>
                 <dd className="text-right tabular-nums">
                   {money(account.debit)}
                 </dd>
@@ -188,13 +189,13 @@ export default async function SupplierStatementPage({
                 >
                   <table className="w-full border-collapse text-left text-sm">
                     <caption className="sr-only">
-                      Imputación de las recepciones vigentes en{" "}
+                      Imputación de los comprobantes vigentes en{" "}
                       {account.currency}, de la más vieja a la más nueva
                     </caption>
                     <thead>
                       <tr>
                         <th scope="col" className={tableHeadCellClass}>
-                          Recepción
+                          Comprobante
                         </th>
                         <th scope="col" className={tableHeadCellClass}>
                           Fecha
@@ -230,7 +231,7 @@ export default async function SupplierStatementPage({
                         <tr key={receipt.id}>
                           <td className={`${tableCellClass} whitespace-nowrap`}>
                             <Link
-                              href={`/compras/recepciones/${receipt.id}`}
+                              href={debitDocumentHref(receipt)}
                               className={`${linkClass} font-mono print:no-underline`}
                             >
                               {receipt.displayNumber}

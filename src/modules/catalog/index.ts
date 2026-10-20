@@ -25,6 +25,10 @@ export {
   searchProducts,
   setProductPrice,
   updateProduct,
+  // El producto de servicio de las reparaciones (brief-29.6, D-5 y D-6).
+  createServiceProduct,
+  findServiceProduct,
+  SERVICE_PRODUCT_SKU,
   // El seguimiento por unidad, para inventory (brief-29.5, D-3 y D-4).
   findProductTrackings,
   lockProductForTrackingChange,

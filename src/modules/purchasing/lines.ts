@@ -88,8 +88,14 @@ export function parsePurchaseOrderLines(
   return { ok: true, lines };
 }
 
+// service_product, desde la 29.6: el producto de servicio no se compra ni se recibe, porque nunca
+// tiene stock (brief-29.6, D-5).
 export type PurchaseOrderLineRule =
-  "duplicate_product" | "inactive_product" | "zero_total" | "amount_too_large";
+  | "duplicate_product"
+  | "inactive_product"
+  | "service_product"
+  | "zero_total"
+  | "amount_too_large";
 
 export type PurchaseOrderLineRuleIssue = {
   position: number;
@@ -115,7 +121,7 @@ export type PurchaseOrderLinesEvaluation =
 // cabe en numeric(14, 2). Cada regla informa todas sus líneas antes de pasar a la siguiente.
 export function evaluatePurchaseOrderLines(
   lines: ParsedPurchaseOrderLine[],
-  products: ReadonlyMap<string, { isActive: boolean }>,
+  products: ReadonlyMap<string, { isActive: boolean; isService?: boolean }>,
   decimals: number,
 ): PurchaseOrderLinesEvaluation {
   // duplicateLines espera la línea del pedido, con su precio esperado, que acá no existe.
@@ -162,6 +168,21 @@ export function evaluatePurchaseOrderLines(
         position,
         productId,
         rule: "inactive_product" as const,
+      })),
+    };
+  }
+
+  const services = lines.filter(
+    (line) => products.get(line.productId)!.isService === true,
+  );
+  if (services.length > 0) {
+    return {
+      ok: false,
+      reason: "line_rules",
+      lines: services.map(({ position, productId }) => ({
+        position,
+        productId,
+        rule: "service_product" as const,
       })),
     };
   }

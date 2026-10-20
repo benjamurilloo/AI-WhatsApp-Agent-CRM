@@ -451,94 +451,105 @@ export default async function ProductPage({
               </SectionCard>
             ) : null}
 
-            <SectionCard id="stock-titulo" title="Stock" icon="layers">
-              <DetailList
-                items={[
-                  // Desde la 29.5 (brief-29.5, D-6): un producto por unidad lo dice, y sus unidades
-                  // están en su propia pantalla.
-                  ...(product.tracking === "unit"
-                    ? [
-                        {
-                          label: "Se lleva",
-                          value: (
-                            <Link
-                              href={`/productos/${product.id}/unidades`}
-                              className={linkClass}
-                            >
-                              Por unidad, con IMEI
-                            </Link>
-                          ),
-                        },
-                      ]
-                    : []),
-                  {
-                    label: "Stock actual",
-                    value: (
-                      <span className="tabular-nums">
-                        {formatQuantity(product.quantityOnHand)} {product.unit}
-                      </span>
-                    ),
-                  },
-                  // Desde la 19.3 (brief-19.3, D-7): lo reservado por pedidos confirmados y lo
-                  // disponible, que es lo que decide el estado.
-                  {
-                    label: "Reservado",
-                    value: (
-                      <span className="tabular-nums">
-                        {formatQuantity(product.quantityReserved)}{" "}
-                        {product.unit}
-                      </span>
-                    ),
-                  },
-                  {
-                    label: "Disponible",
-                    value: (
-                      <span className="tabular-nums">
-                        {formatQuantity(product.quantityAvailable)}{" "}
-                        {product.unit}
-                      </span>
-                    ),
-                  },
-                  {
-                    label: "Punto de reposición",
-                    value: (
-                      <span className="tabular-nums">
-                        {formatQuantity(product.reorderPoint)}
-                      </span>
-                    ),
-                  },
-                ]}
-              />
-              <h3 className="mt-5 text-xs font-bold tracking-wider text-muted uppercase">
-                Últimos movimientos
-              </h3>
-              {movements.length === 0 ? (
-                <p className="mt-2 text-sm text-muted">
-                  Sin movimientos todavía.
+            {/* El producto de servicio no tiene stock (brief-29.6, D-5). */}
+            {product.isService ? (
+              <SectionCard id="stock-titulo" title="Stock" icon="layers">
+                <p className="text-sm">
+                  Es el producto de las reparaciones: no tiene stock, y se vende
+                  solo al entregar una orden de servicio.
                 </p>
-              ) : (
-                <ul className="mt-2 flex flex-col gap-2 text-sm">
-                  {movements.map((movement) => (
-                    <li key={movement.id} className="tabular-nums">
-                      {formatShortDateTime(movement.createdAt, timeZone)} ·{" "}
-                      {movementSign(movement.type)}
-                      {formatQuantity(movement.quantity)} · {movement.reason}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <p className="mt-4">
-                <Link
-                  href={`/productos/${product.id}/movimientos`}
-                  className={`${linkClass} inline-flex items-center gap-1.5 text-sm`}
-                >
-                  <Icon name="trendingUp" className="size-4" />
-                  {product.tracking === "unit"
-                    ? "Ver historial"
-                    : "Ver historial y ajustar"}
-                </Link>
-              </p>
-            </SectionCard>
+              </SectionCard>
+            ) : (
+              <SectionCard id="stock-titulo" title="Stock" icon="layers">
+                <DetailList
+                  items={[
+                    // Desde la 29.5 (brief-29.5, D-6): un producto por unidad lo dice, y sus unidades
+                    // están en su propia pantalla.
+                    ...(product.tracking === "unit"
+                      ? [
+                          {
+                            label: "Se lleva",
+                            value: (
+                              <Link
+                                href={`/productos/${product.id}/unidades`}
+                                className={linkClass}
+                              >
+                                Por unidad, con IMEI
+                              </Link>
+                            ),
+                          },
+                        ]
+                      : []),
+                    {
+                      label: "Stock actual",
+                      value: (
+                        <span className="tabular-nums">
+                          {formatQuantity(product.quantityOnHand)}{" "}
+                          {product.unit}
+                        </span>
+                      ),
+                    },
+                    // Desde la 19.3 (brief-19.3, D-7): lo reservado por pedidos confirmados y lo
+                    // disponible, que es lo que decide el estado.
+                    {
+                      label: "Reservado",
+                      value: (
+                        <span className="tabular-nums">
+                          {formatQuantity(product.quantityReserved)}{" "}
+                          {product.unit}
+                        </span>
+                      ),
+                    },
+                    {
+                      label: "Disponible",
+                      value: (
+                        <span className="tabular-nums">
+                          {formatQuantity(product.quantityAvailable)}{" "}
+                          {product.unit}
+                        </span>
+                      ),
+                    },
+                    {
+                      label: "Punto de reposición",
+                      value: (
+                        <span className="tabular-nums">
+                          {formatQuantity(product.reorderPoint)}
+                        </span>
+                      ),
+                    },
+                  ]}
+                />
+                <h3 className="mt-5 text-xs font-bold tracking-wider text-muted uppercase">
+                  Últimos movimientos
+                </h3>
+                {movements.length === 0 ? (
+                  <p className="mt-2 text-sm text-muted">
+                    Sin movimientos todavía.
+                  </p>
+                ) : (
+                  <ul className="mt-2 flex flex-col gap-2 text-sm">
+                    {movements.map((movement) => (
+                      <li key={movement.id} className="tabular-nums">
+                        {formatShortDateTime(movement.createdAt, timeZone)} ·{" "}
+                        {movementSign(movement.type)}
+                        {formatQuantity(movement.quantity)} · {movement.reason}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <p className="mt-4">
+                  <Link
+                    href={`/productos/${product.id}/movimientos`}
+                    className={`${linkClass} inline-flex items-center gap-1.5 text-sm`}
+                  >
+                    <Icon name="trendingUp" className="size-4" />
+                    {product.tracking === "unit"
+                      ? "Ver historial"
+                      : "Ver historial y ajustar"}
+                  </Link>
+                </p>
+              </SectionCard>
+            )}
           </div>
         </div>
       )}

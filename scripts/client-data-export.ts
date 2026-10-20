@@ -19,6 +19,9 @@ import { getDb, type Db } from "@/shared/db";
  * Desde la 21.3, sus cobros (ADR 0022, punto 14; brief-21.3, D-9): los comprobantes, no el saldo,
  * que se deriva de ellos con la regla de cash y calcularlo acá sería una segunda implementación.
  * Desde la 21.4, las señas entre los cobros, con su pedido (brief-21.4, D-9).
+ * Desde la 29.6, sus órdenes de servicio (brief-29.6, D-11): el modelo, el IMEI del equipo, lo que
+ * reportó, el estado, las fechas, lo que paga y el presupuesto por reparación, sin el técnico ni su
+ * costo, que no son datos de la persona.
  *
  * `ingestion_events` queda fuera a propósito: guarda `source`, una referencia opaca del emisor,
  * el hash del payload y fechas. No tiene datos personales (brief-8.2, hallazgo 9). Se dice acá
@@ -53,6 +56,9 @@ export type ClientExport = {
   receipt_voids: Record<string, unknown>[];
   refunds: Record<string, unknown>[];
   refund_voids: Record<string, unknown>[];
+  // Desde la 29.6 (brief-29.6, D-11).
+  service_orders: Record<string, unknown>[];
+  service_order_lines: Record<string, unknown>[];
 };
 
 export async function exportClientData(
@@ -219,6 +225,26 @@ export async function exportClientData(
         order by v.number`,
   );
 
+  // Las órdenes de servicio (brief-29.6, D-11), con el nombre de hoy del modelo y del tipo.
+  const serviceOrders = await db.execute<Record<string, unknown>>(
+    sql`select o.id, o.number, 'OS-' || lpad(o.number::text, greatest(6, length(o.number::text)), '0') as display_number,
+               o.created_at, o.status, m.name as model, o.device_serial, o.reported_issue,
+               o.customer_currency, o.customer_total, o.sent_at, o.quoted_at, o.approved_at,
+               o.rejected_at, o.repaired_at, o.delivered_at, o.cancelled_at, o.cancel_reason, o.sale_id
+        from service_orders o
+        join product_models m on m.organization_id = o.organization_id and m.id = o.model_id
+        where o.organization_id = ${organizationId} and o.client_id = ${clientId}
+        order by o.number`,
+  );
+  const serviceOrderLines = await db.execute<Record<string, unknown>>(
+    sql`select l.service_order_id, o.number as service_order_number, l.position, t.name as repair, l.price
+        from service_order_lines l
+        join service_orders o on o.organization_id = l.organization_id and o.id = l.service_order_id
+        join repair_types t on t.organization_id = l.organization_id and t.id = l.repair_type_id
+        where l.organization_id = ${organizationId} and o.client_id = ${clientId}
+        order by o.number, l.position`,
+  );
+
   return {
     exported_at: now.toISOString(),
     organization_id: organizationId,
@@ -242,6 +268,8 @@ export async function exportClientData(
     receipt_voids: receiptVoids.rows,
     refunds: refunds.rows,
     refund_voids: refundVoids.rows,
+    service_orders: serviceOrders.rows,
+    service_order_lines: serviceOrderLines.rows,
   };
 }
 

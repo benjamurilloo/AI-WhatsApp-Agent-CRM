@@ -283,6 +283,7 @@ describe("cliente con conversaciones: se vacía, no se borra (brief-13.4, D-2)",
       notes: 0,
       auditEntries: 1,
       tags: 0,
+      serviceOrders: 0,
     });
 
     for (const value of [
@@ -376,6 +377,7 @@ describe("cliente con conversaciones: se vacía, no se borra (brief-13.4, D-2)",
       notes: 0,
       auditEntries: 0,
       tags: 0,
+      serviceOrders: 0,
     });
   });
 
@@ -1496,5 +1498,55 @@ describe("las anulaciones y las devoluciones del cliente (brief-21.5, AC-13; D-1
     for (const value of [NAME, PHONE, NOTES]) {
       expect(await columnsContaining(value), value).toEqual([]);
     }
+  });
+});
+
+// Las órdenes de servicio (brief-29.6, D-11): el IMEI del equipo y lo que reportó el cliente son datos
+// suyos. El informe las cuenta, el export las trae y el vaciado los deja en null, y ninguna columna de
+// la base los guarda después.
+describe("las órdenes de servicio de un cliente (brief-29.6, D-11)", () => {
+  it("49. se exportan, se cuentan, impiden el borrado y el vaciado borra el IMEI y lo que reportó", async () => {
+    const clientId = await insertClient(NAME, PHONE, NOTES);
+    const SERIAL = "356938035643809";
+    const ISSUE = "Se cayó al agua y no enciende";
+    await getDb().execute(
+      sql`with u as (
+            insert into users (email, password_hash, name)
+            values ('tecnico-49@example.com', 'x', 'Persona') returning id
+          ), m as (
+            insert into product_models (organization_id, name)
+            values (${organizationId}, 'iPhone 49') returning id
+          )
+          insert into service_orders (organization_id, number, client_id, model_id, device_serial,
+                                      reported_issue, created_by)
+          select ${organizationId}, 1, ${clientId}, m.id, ${SERIAL}, ${ISSUE}, u.id from u, m`,
+    );
+
+    const report = await reportClientData(getDb(), organizationId, clientId);
+    expect(report).toMatchObject({ serviceOrders: 1, deletable: false });
+    expect(describeRetained(report).join(" ")).toContain(
+      "1 órdenes de servicio en 'service_orders'",
+    );
+    const exported = await exportClientData(getDb(), organizationId, clientId);
+    expect(exported.service_orders).toEqual([
+      expect.objectContaining({
+        display_number: "OS-000001",
+        model: "iPhone 49",
+        device_serial: SERIAL,
+        reported_issue: ISSUE,
+        status: "received",
+      }),
+    ]);
+
+    expect(
+      await eraseClientData(getDb(), organizationId, clientId),
+    ).toMatchObject({ client: true, serviceOrders: 1 });
+    expect(await columnsContaining(SERIAL)).toEqual([]);
+    expect(await columnsContaining(ISSUE)).toEqual([]);
+    const kept = await getDb().execute<{ status: string; number: string }>(
+      sql`select status::text as status, number::text as number from service_orders
+          where client_id = ${clientId}`,
+    );
+    expect(kept.rows).toEqual([{ status: "received", number: "1" }]);
   });
 });

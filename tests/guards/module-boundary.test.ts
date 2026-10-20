@@ -227,6 +227,22 @@ const cases = [
     code: 'import { organizations } from "@/modules/organizations/schema"; export const p7 = organizations;',
     forbidden: false,
   },
+  // service es módulo de dominio desde la 29.6 (ADR 0024, punto 16; brief-29.6, D-8).
+  {
+    file: "src/modules/service/service-orders.ts",
+    code: 'import { revalidatePath } from "next/cache"; export const s1 = revalidatePath;',
+    forbidden: true,
+  },
+  {
+    file: "src/modules/service/presentacion.ts",
+    code: 'import { STATUS_LABEL } from "@/app/(autenticado)/reparaciones/messages"; export const s2 = STATUS_LABEL;',
+    forbidden: true,
+  },
+  {
+    file: "src/modules/service/service-orders.ts",
+    code: 'import { issueServiceSale } from "@/modules/sales"; export const s3 = issueServiceSale;',
+    forbidden: false,
+  },
   // fx es módulo de dominio desde la 29.4 (ADR 0025, punto 13, R-M8; brief-29.4, D-10).
   {
     file: "src/modules/fx/service.ts",

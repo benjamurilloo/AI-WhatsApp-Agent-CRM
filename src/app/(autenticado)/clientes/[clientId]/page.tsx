@@ -48,6 +48,7 @@ import { auditActionLabel, describeAuditDiff } from "./audit-summary";
 import { DeactivateConfirm, ReactivateForm } from "./client-actions";
 import { ClientAccount } from "./client-account";
 import { ClientOrders } from "./client-orders";
+import { ClientServiceOrders } from "./client-service-orders";
 import { ClientTags } from "./client-tags";
 import {
   ClientConversations,
@@ -375,6 +376,14 @@ export default async function ClientPage({
                 timeZone={timeZone}
               />
             </SectionCard>
+
+            {/* Sus órdenes de servicio, con la capacidad repairs (brief-29.6, D-10). */}
+            <ClientServiceOrders
+              context={context}
+              clientId={client.id}
+              clientActive={client.isActive}
+              timeZone={timeZone}
+            />
           </div>
         </div>
       )}

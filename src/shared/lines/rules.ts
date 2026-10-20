@@ -160,6 +160,8 @@ export function parseLines(
 
 export type LineRule =
   | "inactive_product"
+  // Desde la 29.6 (brief-29.6, D-5): el producto de servicio se vende solo por su orden de servicio.
+  | "service_product"
   // Desde la 29.5.2 (brief-29.5.2, D-5): un producto por unidad sin IMEI, y un producto por cantidad
   // con IMEI. Reemplazan a unit_tracked de la 29.5, que rechazaba todo producto por unidad.
   | "units_required"
@@ -213,6 +215,8 @@ export type LineProduct<P extends LinePrice> = {
   isActive: boolean;
   // Desde la 29.5; sin él, por cantidad.
   tracking?: "quantity" | "unit";
+  // Desde la 29.6; sin él, no es de servicio.
+  isService?: boolean;
   price: P | null;
 };
 
@@ -280,6 +284,9 @@ export function evaluateLines<P extends LinePrice>(
     const { position, productId } = line;
     if (!product.isActive) {
       return [{ position, productId, rule: "inactive_product" }];
+    }
+    if (product.isService) {
+      return [{ position, productId, rule: "service_product" }];
     }
     const byUnit = product.tracking === "unit";
     if (byUnit && line.serials.length === 0) {

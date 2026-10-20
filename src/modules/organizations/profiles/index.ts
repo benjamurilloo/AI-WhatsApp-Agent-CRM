@@ -17,11 +17,16 @@ export type ProfileAttribute = {
 // Las capacidades que un perfil puede activar. No importa el tipo del servicio (la carpeta no sale
 // del módulo por una ruta relativa): si un valor de acá no existiera en el enum capability, el
 // script de activación, que se lo pasa a activateCapability, deja de compilar.
-export type ProfileCapability = "variants" | "serialized_units";
+export type ProfileCapability = "variants" | "serialized_units" | "repairs";
 
 // Los grados de las unidades que copia el perfil al activar serialized_units (brief-29.5, D-5). Los
 // escribe inventory, dueño de su tabla, como catalog los atributos.
 export type ProfileGrade = { name: string; description: string | null };
+
+// Los tipos de reparación de ejemplo que copia el perfil al activar repairs (brief-29.6, D-1), por
+// nombre y sin precios: los precios son por modelo, y los modelos son de cada negocio. Los escribe
+// service, dueño de su tabla.
+export type ProfileRepairType = { name: string };
 
 export type Profile = {
   name: string;
@@ -29,6 +34,7 @@ export type Profile = {
   capabilities: ProfileCapability[];
   attributes: ProfileAttribute[];
   grades: ProfileGrade[];
+  repairTypes: ProfileRepairType[];
 };
 
 export const PROFILES: readonly Profile[] = [IPHONE_PROFILE];

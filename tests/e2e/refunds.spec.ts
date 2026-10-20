@@ -32,7 +32,7 @@ test.afterAll(async () => {
 // (ADR 0013), y el contador se vacía para que cada caso empiece en AR-000001 y D-000001.
 test.beforeEach(async () => {
   await db.execute(
-    sql`truncate table supplier_payment_voids, supplier_payments, goods_receipt_voids, goods_receipt_line_units, goods_receipt_lines, goods_receipts, purchase_order_lines, purchase_orders, refund_voids, refunds, receipt_voids, receipts, cash_movements,
+    sql`truncate table service_order_lines, service_orders, supplier_payment_voids, supplier_payments, goods_receipt_voids, goods_receipt_line_units, goods_receipt_lines, goods_receipts, purchase_order_lines, purchase_orders, refund_voids, refunds, receipt_voids, receipts, cash_movements,
           cash_session_closing_amounts, cash_session_closings, cash_session_opening_amounts,
           cash_sessions, payment_methods, sale_voids, sale_line_units, sale_lines, sales, order_line_units, order_lines, orders,
           document_counters, audit_logs, inventory_movements, inventories, product_images,

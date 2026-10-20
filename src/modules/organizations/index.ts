@@ -47,4 +47,5 @@ export {
   type Profile,
   type ProfileAttribute,
   type ProfileGrade,
+  type ProfileRepairType,
 } from "./profiles";

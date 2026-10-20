@@ -52,6 +52,9 @@ export const suppliers = pgTable(
     // En minúsculas, como el del cliente (D-4). No es único.
     email: text("email"),
     cuit: text("cuit"),
+    // El técnico de las reparaciones (ADR 0023, punto 2; ADR 0024, punto 10; brief-29.6, D-3): la
+    // orden de servicio elige entre los activos con la marca. Puede haber varios.
+    isTechnician: boolean("is_technician").notNull().default(false),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

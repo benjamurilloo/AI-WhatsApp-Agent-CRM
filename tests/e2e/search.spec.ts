@@ -38,7 +38,7 @@ test.afterAll(async () => {
 // Las tablas de solo inserción y los contadores se vacían con TRUNCATE, la vía documentada (ADR 0013).
 async function truncate() {
   await db.execute(
-    sql`truncate table supplier_payment_voids, supplier_payments, goods_receipt_voids,
+    sql`truncate table service_order_lines, service_orders, supplier_payment_voids, supplier_payments, goods_receipt_voids,
           goods_receipt_line_units, goods_receipt_lines, goods_receipts, purchase_order_lines, purchase_orders, suppliers,
           document_counters, audit_logs, refund_voids, refunds, receipt_voids, receipts,
           sale_voids, sale_line_units, sale_lines, sales, order_line_units, order_lines, orders, conversation_notes, messages,

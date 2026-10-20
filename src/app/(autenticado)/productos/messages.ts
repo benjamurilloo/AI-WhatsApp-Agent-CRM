@@ -31,6 +31,8 @@ export const INACTIVE_PRODUCT_NOTICE =
   "Este producto está desactivado y no admite ajustes.";
 
 // Un producto por unidad (brief-29.5, D-4 y D-6): su stock se mueve cargando o dando de baja unidades.
+export const SERVICE_PRODUCT_ADJUSTMENT_MESSAGE =
+  "Este es el producto de las reparaciones: no tiene stock, y se vende solo al entregar una orden de servicio.";
 export const UNIT_TRACKED_ADJUSTMENT_MESSAGE =
   "Este producto se lleva por unidad: su stock se mueve cargando o dando de baja unidades, no con un ajuste de cantidad.";
 export const UNIT_CONDITION_LOCKED_MESSAGE =
@@ -278,6 +280,10 @@ export function adjustmentRejectionMessage(
       // Desde la 29.5 (brief-29.5, D-4).
       if (rejection.rule === "unit_tracked") {
         return { field: null, message: UNIT_TRACKED_ADJUSTMENT_MESSAGE };
+      }
+      // Desde la 29.6 (brief-29.6, D-5).
+      if (rejection.rule === "service_product") {
+        return { field: null, message: SERVICE_PRODUCT_ADJUSTMENT_MESSAGE };
       }
       // Desde la 19.3, below_reserved (ADR 0020, punto 5): primero se cancela un pedido.
       if (rejection.rule === "below_reserved") {

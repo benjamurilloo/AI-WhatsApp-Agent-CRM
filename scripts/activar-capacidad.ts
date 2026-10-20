@@ -1,5 +1,8 @@
 import { existsSync } from "node:fs";
-import { applyAttributeTemplate } from "@/modules/catalog";
+import {
+  applyAttributeTemplate,
+  createServiceProduct,
+} from "@/modules/catalog";
 import { applyGradeTemplate } from "@/modules/inventory";
 import {
   activateCapability,
@@ -7,6 +10,7 @@ import {
   PROFILES,
   type Capability,
 } from "@/modules/organizations";
+import { applyRepairTypeTemplate } from "@/modules/service";
 import { getDb } from "@/shared/db";
 
 // Activa una capacidad en una organización y, con --profile, copia el perfil de rubro (ADR 0024,
@@ -24,12 +28,20 @@ import { getDb } from "@/shared/db";
 // también los grados del perfil, con la misma regla (saltea los que la organización ya tiene). Una
 // organización que ya tenía variants activa la nueva con el mismo comando del perfil: variants queda
 // como estaba y los atributos que ya tiene se saltean.
+//
+// Desde la 29.6 (brief-29.6, D-1), repairs: con el perfil, si esta corrida la activa, copia los tipos de
+// reparación de ejemplo con la misma regla, y crea el producto de servicio de la organización, que no
+// se crea desde la pantalla. Sin el perfil, también lo crea: sin él no hay venta de una reparación.
 
 const usage =
   "Uso: npm run org:capability -- --organization <id> --admin-email <correo> (--profile <perfil> | --capability <capacidad>). Perfiles: " +
   PROFILES.map((profile) => profile.name).join(", ");
 
-const CAPABILITIES: readonly Capability[] = ["variants", "serialized_units"];
+const CAPABILITIES: readonly Capability[] = [
+  "variants",
+  "serialized_units",
+  "repairs",
+];
 
 function option(args: string[], name: string): string | undefined {
   const index = args.indexOf(name);
@@ -117,11 +129,33 @@ async function main() {
           `Perfil «${profile.label}»: grados creados: ${grades.created.join(", ") || "ninguno"}; ya existían: ${grades.skipped.join(", ") || "ninguno"}.`,
         );
       }
+      if (activatedNow.has("repairs") && profile.repairTypes.length > 0) {
+        const types = await applyRepairTypeTemplate(tx, {
+          organizationId,
+          actorUserId,
+          repairTypes: profile.repairTypes,
+        });
+        lines.push(
+          `Perfil «${profile.label}»: tipos de reparación creados: ${types.created.join(", ") || "ninguno"}; ya existían: ${types.skipped.join(", ") || "ninguno"}.`,
+        );
+      }
     } else if (activatedNow.has("serialized_units")) {
       // Sin perfil no hay plantilla de grados: se dice, para que nadie la dé por copiada (revisión
       // independiente de la 29.5, m-6).
       lines.push(
         "Sin --profile no se copiaron grados, y una corrida posterior con --profile tampoco los copia: se crean desde la pantalla Grados.",
+      );
+    }
+    // El producto de servicio, con o sin perfil, al activar repairs (D-1 y D-5): uno por organización.
+    if (activatedNow.has("repairs")) {
+      const service = await createServiceProduct(tx, {
+        organizationId,
+        actorUserId,
+      });
+      lines.push(
+        service.status === "created"
+          ? "Producto de servicio creado: Reparación."
+          : "El producto de servicio ya existía.",
       );
     }
     return lines;

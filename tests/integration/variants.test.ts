@@ -862,6 +862,11 @@ describe("los scripts de operador (AC-4, AC-5)", () => {
     const activation = activate();
     expect(activation).toContain("Capacidad activada: variants.");
     expect(activation).toContain("capacidad, color, trae_caja");
+    // Desde la 29.6 (brief-29.6, D-1): el perfil activa repairs, copia los tipos de reparación y crea
+    // el producto de servicio, que la carga de la demo no toca.
+    expect(activation).toContain("Capacidad activada: repairs.");
+    expect(activation).toContain("Cambio de batería");
+    expect(activation).toContain("Producto de servicio creado: Reparación.");
     // H-9 de la revisión: con la capacidad ya activa, el perfil no se vuelve a copiar.
     const again = activate();
     expect(again).toContain("ya estaba activa");
@@ -894,7 +899,8 @@ describe("los scripts de operador (AC-4, AC-5)", () => {
                  (select count(*)::int from attribute_values where organization_id = ${orgId}) as values`,
     );
     const row = counts.rows[0]!;
-    expect(row.products).toBe(35);
+    // Los 35 del catálogo y el producto de servicio, sin precio (brief-29.6, D-5).
+    expect(row.products).toBe(36);
     expect(row.prices).toBe(35);
     // El producto insertado a mano por este test no tiene atributos.
     expect(row.values).toBe(34 * 2);

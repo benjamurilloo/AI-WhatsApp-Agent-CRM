@@ -464,6 +464,8 @@ describe("el estado de cuenta del proveedor (brief-22.7, AC-2 y AC-3)", () => {
           balance: { side: "owed", amount: "70.00" },
           receipts: [
             {
+              // Desde la 29.6, qué es cada fila: una recepción o una orden de servicio (brief-29.6, D-7).
+              kind: "goods_receipt",
               id: docs.first.id,
               displayNumber: docs.first.displayNumber,
               issuedAt: expect.any(Date),
@@ -473,6 +475,8 @@ describe("el estado de cuenta del proveedor (brief-22.7, AC-2 y AC-3)", () => {
               outstanding: "0.00",
             },
             {
+              // Desde la 29.6, qué es cada fila: una recepción o una orden de servicio (brief-29.6, D-7).
+              kind: "goods_receipt",
               id: docs.third.id,
               displayNumber: docs.third.displayNumber,
               issuedAt: expect.any(Date),
@@ -494,6 +498,8 @@ describe("el estado de cuenta del proveedor (brief-22.7, AC-2 y AC-3)", () => {
           balance: { side: "favor", amount: "15.00" },
           receipts: [
             {
+              // Desde la 29.6, qué es cada fila: una recepción o una orden de servicio (brief-29.6, D-7).
+              kind: "goods_receipt",
               id: docs.dollars.id,
               displayNumber: docs.dollars.displayNumber,
               issuedAt: expect.any(Date),

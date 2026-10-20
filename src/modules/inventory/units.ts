@@ -66,7 +66,8 @@ export type ChangeTrackingResult =
   | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
   | Failure<
       "BUSINESS_RULE_VIOLATION",
-      { rule: "capability_required" | "has_movements" }
+      // service_product, desde la 29.6: el producto de servicio se lleva por cantidad (brief-29.6, D-5).
+      { rule: "capability_required" | "has_movements" | "service_product" }
     >;
 
 const trackingSchema = z.enum(STOCK_TRACKINGS);
@@ -99,6 +100,13 @@ export async function changeProductTracking(
       );
       if (!product) return failure("NOT_FOUND");
       if (product.tracking === parsed.data) return { ok: true, changed: false };
+      if (product.isService) {
+        return {
+          ok: false,
+          code: "BUSINESS_RULE_VIOLATION",
+          rule: "service_product",
+        };
+      }
       if (await repository.hasMovements(organizationId, productId, tx)) {
         return {
           ok: false,

@@ -8,6 +8,10 @@ import {
   type GoodsReceiptForPayment,
 } from "@/modules/purchasing";
 import { getExchangeSetup } from "@/modules/fx";
+import {
+  listTechnicianChargesForAccount,
+  type TechnicianCharge,
+} from "@/modules/service";
 import { authorize, type AuthContext } from "@/modules/organizations";
 import type { DbTransaction } from "@/shared/db";
 import { failure, type Failure } from "@/shared/errors";
@@ -124,6 +128,9 @@ export function parseSupplierPaymentNumberSearch(
 export type SupplierLedger = {
   // Sus recepciones, anuladas incluidas.
   receipts: GoodsReceiptForPayment[];
+  // Desde la 29.6, si es técnico: sus órdenes de servicio reparadas, que le deben su costo
+  // (brief-29.6, D-7).
+  charges: TechnicianCharge[];
   // Todos sus pagos, anulados incluidos.
   payments: paymentRepository.SupplierPaymentRow[];
   // La entrada de la regla, sin los pagos anulados.
@@ -131,19 +138,34 @@ export type SupplierLedger = {
   accounts: CurrencyAccount[];
 };
 
+// Desde la 29.6 (brief-29.6, D-7; decisión del usuario U-2), lo que se le debe a un técnico por cada
+// orden reparada también va como una venta, con su fecha de reparación, y nunca anulada: una orden
+// reparada no se cancela. El pago a cuenta la cancela con la misma regla, de la deuda más vieja a la
+// más nueva. No hay pago contra una orden: supplier_payments no cambia.
 export function supplierAccountInput(
   receipts: GoodsReceiptForPayment[],
   payments: paymentRepository.SupplierPaymentRow[],
+  charges: TechnicianCharge[] = [],
 ): AccountInput {
   return {
-    sales: receipts.map((receipt) => ({
-      id: receipt.id,
-      number: receipt.number,
-      currency: receipt.currency,
-      total: moneyFromDatabase(receipt.total),
-      issuedAt: receipt.createdAt,
-      voided: receipt.voided,
-    })),
+    sales: [
+      ...receipts.map((receipt) => ({
+        id: receipt.id,
+        number: receipt.number,
+        currency: receipt.currency,
+        total: moneyFromDatabase(receipt.total),
+        issuedAt: receipt.createdAt,
+        voided: receipt.voided,
+      })),
+      ...charges.map((charge) => ({
+        id: charge.id,
+        number: charge.number,
+        currency: charge.currency,
+        total: moneyFromDatabase(charge.total),
+        issuedAt: charge.repairedAt,
+        voided: false,
+      })),
+    ],
     receipts: payments
       .filter((payment) => payment.voided === null)
       .map((payment) => {
@@ -185,8 +207,13 @@ export async function supplierLedger(
     supplierId,
     tx,
   );
-  const input = supplierAccountInput(receipts, payments);
-  return { receipts, payments, input, accounts: imputeAccount(input) };
+  const charges = await listTechnicianChargesForAccount(
+    tx,
+    organizationId,
+    supplierId,
+  );
+  const input = supplierAccountInput(receipts, payments, charges);
+  return { receipts, charges, payments, input, accounts: imputeAccount(input) };
 }
 
 // Dónde está una recepción respecto de sus pagos (D-6). Vigente: lo pagado directo, lo imputado desde

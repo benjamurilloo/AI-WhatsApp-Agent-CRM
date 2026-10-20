@@ -210,6 +210,66 @@ describe("detección de escrituras de ventas", () => {
   });
 });
 
+// La venta de una reparación (brief-29.6, D-6 y D-8): issueServiceSale no autoriza nada y recibe la
+// transacción de quien la llama, así que tiene un solo llamador, la entrega de una orden de servicio.
+// sales no conoce service: la guarda mira quién la nombra, no a dónde importa sales.
+const SERVICE_SALE_CALLER = {
+  file: "src/modules/service/service-orders.ts",
+  fn: "deliverServiceOrder",
+};
+
+function serviceSaleCallViolations(file: string, code: string): string[] {
+  const functions = [...code.matchAll(FUNCTION_PATTERN)].map((match) => ({
+    name: match[1]!,
+    start: match.index,
+    end: match.index + match[0].length,
+  }));
+  return [...code.matchAll(/(?<!function\s)\bissueServiceSale\s*\(/g)].flatMap(
+    (match) => {
+      const fn =
+        functions.find((f) => match.index >= f.start && match.index < f.end)
+          ?.name ?? null;
+      return file === SERVICE_SALE_CALLER.file && fn === SERVICE_SALE_CALLER.fn
+        ? []
+        : [
+            `${file}:${code.slice(0, match.index).split("\n").length} issueServiceSale desde ${fn ?? "fuera de una función"}`,
+          ];
+    },
+  );
+}
+
+describe("el llamador de la venta de una reparación", () => {
+  it("detecta un llamador que no es la entrega", () => {
+    expect(
+      serviceSaleCallViolations(
+        "src/modules/service/service-orders.ts",
+        "export async function cancelServiceOrder(tx) {\n  await issueServiceSale(tx, input);\n}",
+      ),
+    ).not.toEqual([]);
+    expect(
+      serviceSaleCallViolations(
+        "src/app/(autenticado)/ventas/actions.ts",
+        "export async function sellAction() {\n  await issueServiceSale(tx, input);\n}",
+      ),
+    ).not.toEqual([]);
+  });
+
+  it("permite la entrega y la definición", () => {
+    expect(
+      serviceSaleCallViolations(
+        SERVICE_SALE_CALLER.file,
+        "export async function deliverServiceOrder(context) {\n  const sale = await issueServiceSale(tx, input);\n}",
+      ),
+    ).toEqual([]);
+    expect(
+      serviceSaleCallViolations(
+        "src/modules/sales/service.ts",
+        "export async function issueServiceSale(\n  tx,\n) {\n}",
+      ),
+    ).toEqual([]);
+  });
+});
+
 describe("repositorio", () => {
   const files = readdirSync("src", { recursive: true, encoding: "utf8" })
     .map((file) => join("src", file).replaceAll("\\", "/"))
@@ -224,6 +284,23 @@ describe("repositorio", () => {
       violations,
       `Escrituras no autorizadas:\n${violations.join("\n")}`,
     ).toEqual([]);
+  });
+
+  it("issueServiceSale tiene un solo llamador, y lo tiene", () => {
+    expect(
+      files.flatMap((file) =>
+        serviceSaleCallViolations(file, readFileSync(file, "utf8")),
+      ),
+    ).toEqual([]);
+    expect(
+      serviceSaleCallViolations(
+        SERVICE_SALE_CALLER.file,
+        readFileSync(SERVICE_SALE_CALLER.file, "utf8").replaceAll(
+          "deliverServiceOrder",
+          "otherName",
+        ),
+      ),
+    ).not.toEqual([]);
   });
 
   it("el repositorio tiene exactamente las escrituras autorizadas", () => {

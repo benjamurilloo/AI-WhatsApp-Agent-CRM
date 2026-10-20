@@ -93,6 +93,21 @@ function usesTemplateCopy(file: string, code: string): boolean {
   return !file.startsWith("src/modules/catalog/") && TEMPLATE_COPY.test(code);
 }
 
+// Desde la 29.6 (brief-29.6, D-1), lo que copia el perfil al activar repairs, con el mismo molde: la
+// copia de los tipos de reparación, que solo nombra service, y el alta del producto de servicio, que
+// solo nombra catalog. Ninguna autoriza nada: las llama el script de capacidades.
+const SCRIPT_ONLY_COPIES = [
+  { name: "applyRepairTypeTemplate", owner: "src/modules/service/" },
+  { name: "createServiceProduct", owner: "src/modules/catalog/" },
+];
+
+function scriptOnlyViolations(file: string, code: string): string[] {
+  return SCRIPT_ONLY_COPIES.filter(
+    ({ name, owner }) =>
+      !file.startsWith(owner) && new RegExp(`\\b${name}\\b`).test(code),
+  ).map(({ name }) => `${file} nombra ${name}`);
+}
+
 describe("detección de accesos a las capacidades", () => {
   it.each([
     {
@@ -176,6 +191,33 @@ describe("detección de accesos a las capacidades", () => {
     ).toBe(false);
   });
 
+  it("detecta la copia de los tipos de reparación y el alta del producto de servicio fuera de su módulo", () => {
+    expect(
+      scriptOnlyViolations(
+        "src/app/(autenticado)/reparaciones/actions.ts",
+        "await applyRepairTypeTemplate(tx, input);",
+      ),
+    ).not.toEqual([]);
+    expect(
+      scriptOnlyViolations(
+        "src/modules/service/service-orders.ts",
+        "await createServiceProduct(tx, input);",
+      ),
+    ).not.toEqual([]);
+    expect(
+      scriptOnlyViolations(
+        "src/modules/service/index.ts",
+        "export { applyRepairTypeTemplate } from './repair-list';",
+      ),
+    ).toEqual([]);
+    expect(
+      scriptOnlyViolations(
+        "src/modules/catalog/index.ts",
+        "export { createServiceProduct } from './service';",
+      ),
+    ).toEqual([]);
+  });
+
   it("detecta el contexto de script fuera de organizations", () => {
     expect(
       usesScriptContext(
@@ -224,6 +266,14 @@ describe("repositorio", () => {
       usesTemplateCopy(file, readFileSync(file, "utf8")),
     );
     expect(users).toEqual([]);
+  });
+
+  it("solo service nombra applyRepairTypeTemplate, y solo catalog createServiceProduct, dentro de src/", () => {
+    expect(
+      files.flatMap((file) =>
+        scriptOnlyViolations(file, readFileSync(file, "utf8")),
+      ),
+    ).toEqual([]);
   });
 
   it("solo organizations nombra getAdminContextForScript dentro de src/", () => {

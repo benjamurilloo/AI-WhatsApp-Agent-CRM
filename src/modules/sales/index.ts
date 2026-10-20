@@ -12,6 +12,9 @@ export {
   getUnitSales,
   issueSale,
   issueSaleFromOrder,
+  // La venta de una reparación, para service (brief-29.6, D-6).
+  issueServiceSale,
+  type ServiceSaleInput,
   listSaleAudit,
   listClientSalesForAccount,
   listSalesForAccounts,

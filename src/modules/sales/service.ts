@@ -610,6 +610,90 @@ export async function issueSale(
   }
 }
 
+// La venta de una reparación (ADR 0024, punto 10; brief-29.6, D-6; H-3 y H-4): una venta sin pedido de
+// una sola línea, el producto de servicio por cantidad 1 y el total aprobado como precio y monto, en
+// su moneda, con el cliente de la orden. No toca el stock: el producto de servicio no tiene. La llama
+// solo service, al entregar una orden reparada, con su transacción y la orden ya bloqueada; no
+// autoriza nada, porque service ya autorizó. sales no conoce service: la orden apunta a la venta, y
+// tests/guards/sale-writes.test.ts fija que nada fuera de service la llama.
+//
+// El orden de bloqueo (D-9): después de la orden que bloqueó service, el cliente en modo compartido y
+// el producto de servicio FOR SHARE, antes del contador, como issueSaleFromOrder. No mira si el
+// cliente ni el producto están activos: la reparación ya ocurrió.
+export type ServiceSaleInput = {
+  organizationId: string;
+  userId: string;
+  clientId: string;
+  productId: string;
+  currency: string;
+  // Con la escala de la base ("1234.50").
+  total: string;
+};
+
+export async function issueServiceSale(
+  tx: DbTransaction,
+  input: ServiceSaleInput,
+): Promise<{ id: string; number: number; displayNumber: string }> {
+  const { organizationId, userId, clientId, productId, currency, total } =
+    input;
+  await lockClientForOrder(tx, organizationId, clientId);
+  const products = await lockProductsForOrder(tx, organizationId, [productId]);
+  if (products.get(productId)?.isService !== true) {
+    throw new Error(
+      "La venta de una reparación lleva el producto de servicio.",
+    );
+  }
+  const number = await nextDocumentNumber(tx, organizationId, "sale");
+  const sale = await repository.insertSale(tx, {
+    organizationId,
+    number,
+    orderId: null,
+    clientId,
+    currency,
+    total,
+    replacesSaleId: null,
+    createdBy: userId,
+  });
+  const saleLines = [
+    {
+      productId,
+      position: 1,
+      // Cantidad 1, con la escala de la base.
+      quantity: "1.000",
+      unitPrice: total,
+      currency,
+      lineTotal: total,
+      unitIds: [],
+    },
+  ];
+  await repository.insertSaleLines(tx, organizationId, sale.id, saleLines);
+  // El mismo diff de la venta sin pedido (brief-20.3, D-8): sales no nombra la orden de servicio.
+  await recordAudit(tx, {
+    organizationId,
+    actorUserId: userId,
+    entityType: "sale",
+    entityId: sale.id,
+    action: "create",
+    diff: {
+      before: null,
+      after: {
+        number: sale.number,
+        order_id: null,
+        client_id: clientId,
+        currency: sale.currency,
+        total: sale.total,
+        lines: 1,
+        ...lineAuditEntries(saleLines),
+      },
+    },
+  });
+  return {
+    id: sale.id,
+    number: sale.number,
+    displayNumber: formatSaleNumber(sale.number),
+  };
+}
+
 // La anulación (ADR 0021, puntos 6 y 7; brief-20.4, D-4 a D-6). Solo admin. Anula la venta entera
 // con otro comprobante, con un motivo de la lista cerrada.
 
@@ -718,48 +802,62 @@ export async function voidSale(
           // contador, que se toma al armar el motivo. Dos anulaciones de la misma venta se
           // serializan en los saldos: la venta no se puede bloquear (H-7). Por eso el motivo vuelve
           // a mirar, ya con los saldos tomados, que nadie la haya anulado (D-4).
-          await lockProductsForOrder(
+          const locked = await lockProductsForOrder(
             tx,
             organizationId,
             lines.map((line) => line.productId),
           );
-          const restored = await restoreSaleStock(tx, {
-            organizationId,
-            lines: lines.map((line) => {
-              const unitIds = unitIdsByLine.get(line.id);
-              return {
-                productId: line.productId,
-                quantity: line.quantity,
-                ...(unitIds ? { unitIds } : {}),
-              };
-            }),
-            // Con unidades, la segunda anulación se serializa en ellas: mira antes de exigirlas
-            // vendidas (H-2). Sin unidades, en los saldos, y el motivo vuelve a mirar.
-            recheck: async () => {
-              const again = await repository.findVoidBySale(
-                organizationId,
-                sale.id,
-                tx,
-              );
-              if (again) throw new AlreadyVoided(again);
-            },
-            reason: async () => {
-              const again = await repository.findVoidBySale(
-                organizationId,
-                sale.id,
-                tx,
-              );
-              if (again) throw new AlreadyVoided(again);
-              number = await nextDocumentNumber(
-                tx,
-                organizationId,
-                "sale_void",
-              );
-              return `Anulación ${formatSaleVoidNumber(number)} de la venta ${formatSaleNumber(sale.number)}`;
-            },
-            createdBy: userId,
-          });
-          if (!restored.ok) throw new StockLimit(restored.productIds);
+          // Desde la 29.6, la venta de una reparación (brief-29.6, D-6): su único producto es el de
+          // servicio, que no tiene stock, así que no hay saldos que repongan ni que serialicen. Dos
+          // anulaciones se serializan en el contador, y la que llega segunda vuelve a mirar después
+          // de tomarlo, ya con la primera confirmada. La orden de servicio sigue entregada.
+          if (lines.every((line) => locked.get(line.productId)?.isService)) {
+            number = await nextDocumentNumber(tx, organizationId, "sale_void");
+            const again = await repository.findVoidBySale(
+              organizationId,
+              sale.id,
+              tx,
+            );
+            if (again) throw new AlreadyVoided(again);
+          } else {
+            const restored = await restoreSaleStock(tx, {
+              organizationId,
+              lines: lines.map((line) => {
+                const unitIds = unitIdsByLine.get(line.id);
+                return {
+                  productId: line.productId,
+                  quantity: line.quantity,
+                  ...(unitIds ? { unitIds } : {}),
+                };
+              }),
+              // Con unidades, la segunda anulación se serializa en ellas: mira antes de exigirlas
+              // vendidas (H-2). Sin unidades, en los saldos, y el motivo vuelve a mirar.
+              recheck: async () => {
+                const again = await repository.findVoidBySale(
+                  organizationId,
+                  sale.id,
+                  tx,
+                );
+                if (again) throw new AlreadyVoided(again);
+              },
+              reason: async () => {
+                const again = await repository.findVoidBySale(
+                  organizationId,
+                  sale.id,
+                  tx,
+                );
+                if (again) throw new AlreadyVoided(again);
+                number = await nextDocumentNumber(
+                  tx,
+                  organizationId,
+                  "sale_void",
+                );
+                return `Anulación ${formatSaleVoidNumber(number)} de la venta ${formatSaleNumber(sale.number)}`;
+              },
+              createdBy: userId,
+            });
+            if (!restored.ok) throw new StockLimit(restored.productIds);
+          }
         }
         if (number === null) throw new Error("La anulación no tomó su número.");
 

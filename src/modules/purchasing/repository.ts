@@ -13,6 +13,8 @@ export type SupplierRow = {
   phone: string | null;
   email: string | null;
   cuit: string | null;
+  // Desde la 29.6 (brief-29.6, D-3): no es un campo del formulario; lo cambia setSupplierTechnician.
+  isTechnician: boolean;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -32,6 +34,7 @@ const supplierColumns = {
   phone: suppliers.phone,
   email: suppliers.email,
   cuit: suppliers.cuit,
+  isTechnician: suppliers.isTechnician,
   isActive: suppliers.isActive,
   createdAt: suppliers.createdAt,
   updatedAt: suppliers.updatedAt,
@@ -230,6 +233,42 @@ export async function updateSupplierActive(
     )
     .returning({ id: suppliers.id });
   assertUpdatedOne(rows, "updateSupplierActive");
+}
+
+export async function updateSupplierTechnician(
+  tx: DbTransaction,
+  organizationId: string,
+  supplierId: string,
+  isTechnician: boolean,
+): Promise<void> {
+  const rows = await tx
+    .update(suppliers)
+    .set({ isTechnician })
+    .where(
+      and(
+        eq(suppliers.organizationId, organizationId),
+        eq(suppliers.id, supplierId),
+      ),
+    )
+    .returning({ id: suppliers.id });
+  assertUpdatedOne(rows, "updateSupplierTechnician");
+}
+
+// Los técnicos activos, por nombre, para la orden de servicio (brief-29.6, D-3).
+export function findActiveTechnicians(
+  organizationId: string,
+): Promise<{ id: string; name: string }[]> {
+  return getDb()
+    .select({ id: suppliers.id, name: suppliers.name })
+    .from(suppliers)
+    .where(
+      and(
+        eq(suppliers.organizationId, organizationId),
+        eq(suppliers.isActive, true),
+        eq(suppliers.isTechnician, true),
+      ),
+    )
+    .orderBy(sql`lower(${suppliers.name})`, asc(suppliers.id));
 }
 
 // Los nombres de unos proveedores, para las pantallas de los pagos (brief-22.6, D-13).

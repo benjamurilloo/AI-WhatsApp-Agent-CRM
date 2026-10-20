@@ -3,9 +3,9 @@ import { getExchangeSetup } from "@/modules/fx";
 import {
   getSupplierNames,
   listGoodsReceiptsForAccounts,
-  type GoodsReceiptForPayment,
 } from "@/modules/purchasing";
 import { authorize, type AuthContext } from "@/modules/organizations";
+import { listTechnicianChargesForAccounts } from "@/modules/service";
 import { failure, type Failure } from "@/shared/errors";
 import { moneyFromDatabase, moneyToDatabase, type Money } from "@/shared/money";
 import { imputeAccount, type CurrencyAccount } from "./imputation";
@@ -98,6 +98,8 @@ export async function getSupplierAccountSummary(
 // El estado de cuenta (D-4): el resumen y la imputación de hoy por moneda, y los comprobantes del
 // proveedor, de los más nuevos a los más viejos, sin saldo corrido.
 export type SupplierStatementReceipt = {
+  // Desde la 29.6: una recepción o la orden de servicio reparada de un técnico (brief-29.6, D-7).
+  kind: "goods_receipt" | "service_order";
   id: string;
   displayNumber: string;
   issuedAt: Date;
@@ -121,7 +123,13 @@ export type SupplierStatementCurrency = SupplierCurrencySummary & {
 };
 
 export type SupplierStatementDocument = {
-  kind: "goods_receipt" | "goods_receipt_void" | "payment" | "payment_void";
+  kind:
+    | "goods_receipt"
+    | "goods_receipt_void"
+    | "payment"
+    | "payment_void"
+    // Desde la 29.6: la orden reparada, con su fecha de reparación (brief-29.6, D-7).
+    | "service_order";
   // El documento que se abre: la recepción para una recepción y su anulación, el pago para un pago y
   // su anulación.
   id: string;
@@ -182,6 +190,18 @@ function statementDocuments(
       });
     }
   }
+  for (const charge of ledger.charges) {
+    documents.push({
+      kind: "service_order",
+      id: charge.id,
+      displayNumber: charge.displayNumber,
+      createdAt: charge.repairedAt,
+      currency: charge.currency,
+      amount: charge.total,
+      destination: null,
+      voided: false,
+    });
+  }
   for (const payment of ledger.payments) {
     const receipt =
       payment.goodsReceiptId === null
@@ -225,9 +245,34 @@ function statementDocuments(
   );
 }
 
+// Lo que va al debe, por id: las recepciones y las órdenes reparadas.
+type DebitDocument = {
+  kind: SupplierStatementReceipt["kind"];
+  displayNumber: string;
+};
+
+function debitDocuments(ledger: SupplierLedger): Map<string, DebitDocument> {
+  return new Map<string, DebitDocument>([
+    ...ledger.receipts.map(
+      (receipt) =>
+        [
+          receipt.id,
+          { kind: "goods_receipt", displayNumber: receipt.displayNumber },
+        ] as const,
+    ),
+    ...ledger.charges.map(
+      (charge) =>
+        [
+          charge.id,
+          { kind: "service_order", displayNumber: charge.displayNumber },
+        ] as const,
+    ),
+  ]);
+}
+
 function statementCurrency(
   account: CurrencyAccount,
-  receipts: Map<string, GoodsReceiptForPayment>,
+  receipts: Map<string, DebitDocument>,
 ): SupplierStatementCurrency {
   return {
     ...summarizeSupplierAccount(account),
@@ -241,6 +286,7 @@ function statementCurrency(
       ),
     },
     receipts: account.sales.map((row) => ({
+      kind: receipts.get(row.saleId)?.kind ?? "goods_receipt",
       id: row.saleId,
       displayNumber: receipts.get(row.saleId)?.displayNumber ?? "",
       issuedAt: row.issuedAt,
@@ -270,9 +316,7 @@ export async function getSupplierStatement(
   const ledger = await repository.withSnapshot((tx) =>
     supplierLedger(tx, context.organizationId, id),
   );
-  const receipts = new Map(
-    ledger.receipts.map((receipt) => [receipt.id, receipt]),
-  );
+  const receipts = debitDocuments(ledger);
   const documents = statementDocuments(ledger);
   const currencies = ledger.accounts.map((row) =>
     statementCurrency(row, receipts),
@@ -331,25 +375,35 @@ function groupBy<T>(rows: T[], key: (row: T) => string): Map<string, T[]> {
 }
 
 async function readOwed(organizationId: string): Promise<Owed[]> {
-  const { receipts, payments } = await repository.withSnapshot(async (tx) => {
-    // Una tras otra, en la misma foto: van por la conexión de la transacción.
-    const receipts = await listGoodsReceiptsForAccounts(tx, organizationId);
-    const payments = await paymentRepository.findAccountsSupplierPayments(
-      organizationId,
-      tx,
-    );
-    return { receipts, payments };
-  });
+  const { receipts, payments, charges } = await repository.withSnapshot(
+    async (tx) => {
+      // Una tras otra, en la misma foto: van por la conexión de la transacción.
+      const receipts = await listGoodsReceiptsForAccounts(tx, organizationId);
+      const payments = await paymentRepository.findAccountsSupplierPayments(
+        organizationId,
+        tx,
+      );
+      // Desde la 29.6, las órdenes reparadas de los técnicos (brief-29.6, D-7).
+      const charges = await listTechnicianChargesForAccounts(
+        tx,
+        organizationId,
+      );
+      return { receipts, payments, charges };
+    },
+  );
   const paymentsOf = groupBy(payments, (row) => row.supplierId);
+  const receiptsOf = groupBy(receipts, (row) => row.supplierId);
+  const chargesOf = groupBy(charges, (row) => row.supplierId);
   const owed: Owed[] = [];
-  // Sin recepciones no hay deuda: solo los proveedores con alguna.
-  for (const [supplierId, supplierReceipts] of groupBy(
-    receipts,
-    (row) => row.supplierId,
-  )) {
+  // Sin recepciones ni órdenes reparadas no hay deuda: solo los proveedores con alguna.
+  for (const supplierId of new Set([
+    ...receiptsOf.keys(),
+    ...chargesOf.keys(),
+  ])) {
     const input = supplierAccountInput(
-      supplierReceipts,
+      receiptsOf.get(supplierId) ?? [],
       paymentsOf.get(supplierId) ?? [],
+      chargesOf.get(supplierId) ?? [],
     );
     for (const account of imputeAccount(input)) {
       const summary = summarizeSupplierAccount(account);

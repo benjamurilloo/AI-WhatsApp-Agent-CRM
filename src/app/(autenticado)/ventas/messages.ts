@@ -150,6 +150,8 @@ function saleLineRuleMessage(
   }
   return {
     inactive_product: "El producto está desactivado.",
+    service_product:
+      "Una reparación no se vende acá: se cobra al entregar su orden de servicio.",
     units_required:
       "Este producto se vende por unidad: escribí el IMEI de cada unidad, uno por renglón.",
     not_unit_tracked:

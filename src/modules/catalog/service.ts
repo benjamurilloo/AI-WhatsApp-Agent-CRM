@@ -374,7 +374,12 @@ export async function lockProductForStockChange(
   organizationId: string,
   productId: string,
 ): Promise<
-  { status: "active" | "inactive"; tracking: StockTracking } | "not_found"
+  | {
+      status: "active" | "inactive";
+      tracking: StockTracking;
+      isService: boolean;
+    }
+  | "not_found"
 > {
   const product = await repository.lockProductShared(
     tx,
@@ -385,6 +390,8 @@ export async function lockProductForStockChange(
   return {
     status: product.isActive ? "active" : "inactive",
     tracking: product.tracking,
+    // Desde la 29.6: el producto de servicio no tiene stock (brief-29.6, D-5).
+    isService: product.isService,
   };
 }
 
@@ -397,7 +404,11 @@ export async function lockProductForTrackingChange(
   tx: DbTransaction,
   organizationId: string,
   productId: string,
-): Promise<{ isActive: boolean; tracking: StockTracking } | null> {
+): Promise<{
+  isActive: boolean;
+  tracking: StockTracking;
+  isService: boolean;
+} | null> {
   if (!productIdSchema.safeParse(productId).success) return null;
   return (
     (await repository.lockProductExclusive(tx, organizationId, productId)) ??
@@ -438,6 +449,9 @@ export type OrderProduct = {
   id: string;
   isActive: boolean;
   tracking: StockTracking;
+  // Desde la 29.6: el producto de servicio no entra en un pedido ni en una venta de la pantalla, y la
+  // venta de una reparación lo exige (brief-29.6, D-5 y D-6).
+  isService: boolean;
   price: ProductPrice | null;
 };
 
@@ -464,11 +478,75 @@ export async function lockProductsForOrder(
           id: product.id,
           isActive: product.isActive,
           tracking: product.tracking,
+          isService: product.isService,
           price: price ? toPrice(price) : null,
         },
       ];
     }),
   );
+}
+
+// El producto de servicio de las reparaciones (ADR 0024, punto 10; brief-29.6, D-5): uno por
+// organización, que se vende solo por su orden de servicio y nunca tiene stock. Lo crea el script de
+// capacidades al activar repairs con el perfil, con el admin que nombró y dentro de su transacción: no
+// autoriza nada, como applyAttributeTemplate. tests/guards/capability-reads.test.ts fija que nada de
+// src/ fuera de catalog lo nombra. Si ya existe, no hace nada.
+export const SERVICE_PRODUCT_SKU = "REPARACION";
+
+export async function createServiceProduct(
+  tx: DbTransaction,
+  input: { organizationId: string; actorUserId: string },
+): Promise<{ status: "created" | "exists"; productId: string }> {
+  const { organizationId, actorUserId } = input;
+  const existing = await repository.findServiceProduct(organizationId, tx);
+  if (existing) return { status: "exists", productId: existing.id };
+  const values: repository.ProductValues = {
+    sku: SERVICE_PRODUCT_SKU,
+    name: "Reparación",
+    description: null,
+    unit: "unidad",
+    reorderPoint: "0.000",
+    brand: null,
+    category: null,
+    condition: "new",
+    barcode: null,
+    weightKg: null,
+    lengthCm: null,
+    widthCm: null,
+    heightCm: null,
+    location: null,
+    shelf: null,
+  };
+  const productId = await repository.insertServiceProduct(
+    tx,
+    organizationId,
+    values,
+  );
+  if (isUniqueViolation(productId)) {
+    throw new Error(
+      `El SKU ${SERVICE_PRODUCT_SKU} ya es de otro producto de la organización: cambialo y volvé a correr el comando.`,
+    );
+  }
+  await recordAudit(tx, {
+    organizationId,
+    actorUserId,
+    entityType: "product",
+    entityId: productId,
+    action: "create",
+    diff: {
+      before: null,
+      after: { ...values, isService: true, isActive: true, origen: "perfil" },
+    },
+  });
+  return { status: "created", productId };
+}
+
+// El producto de servicio de la organización, para la venta de una reparación (brief-29.6, D-6):
+// service lo busca y sales lo bloquea con lockProductsForOrder. Null si la organización no lo tiene.
+export async function findServiceProduct(
+  organizationId: string,
+): Promise<{ id: string; isActive: boolean } | null> {
+  return (await repository.findServiceProduct(organizationId)) ?? null;
 }
 
 // Historial de auditoría del producto (FR-AUD-02, brief-4.4, D-1 y su ajuste 1). audit no
@@ -1013,14 +1091,15 @@ export async function searchActiveProductsForService(
   return withCurrentPrices(organizationId, rows);
 }
 
-// Un producto inactivo, usado, de otra organización o inexistente da null, sin distinguir.
+// Un producto inactivo, usado, de otra organización o inexistente da null, sin distinguir. Desde la
+// 29.6, también el producto de servicio (brief-29.6, D-5).
 export async function getActiveProductForService(
   organizationId: string,
   productId: string,
 ): Promise<ServiceProduct | null> {
   if (!productIdSchema.safeParse(productId).success) return null;
   const row = await repository.findProduct(organizationId, productId);
-  if (!row?.isActive || row.condition === "used") return null;
+  if (!row?.isActive || row.condition === "used" || row.isService) return null;
   const [product] = await withCurrentPrices(organizationId, [row]);
   return product ?? null;
 }

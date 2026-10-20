@@ -8,10 +8,21 @@ import type { Profile } from "./index";
 // Versión 2, del 2026-10-19 (brief-29.5, D-5): suma serialized_units y los grados de las unidades,
 // tres ejemplos que el negocio ajusta. Una organización que ya activó el perfil no los recibe sola:
 // los recibe al activar serialized_units con el perfil.
+//
+// Versión 3, del 2026-10-20 (brief-29.6, D-1): suma repairs y seis tipos de reparación de ejemplo, sin
+// precios. Al activar repairs con el perfil, el script crea también el producto de servicio.
 export const IPHONE_PROFILE: Profile = {
   name: "iphone",
   label: "Venta de iPhone",
-  capabilities: ["variants", "serialized_units"],
+  capabilities: ["variants", "serialized_units", "repairs"],
+  repairTypes: [
+    { name: "Cambio de batería" },
+    { name: "Cambio de pantalla" },
+    { name: "Cámara trasera" },
+    { name: "Cámara frontal" },
+    { name: "Pin de carga" },
+    { name: "Face ID" },
+  ],
   grades: [
     { name: "A", description: "Como nuevo" },
     { name: "B", description: "Marcas leves" },

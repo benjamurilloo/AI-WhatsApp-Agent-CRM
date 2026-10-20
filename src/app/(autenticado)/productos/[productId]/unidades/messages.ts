@@ -116,7 +116,9 @@ export function trackingRejection(
       message:
         result.rule === "has_movements"
           ? TRACKING_LOCKED_MESSAGE
-          : "La organización no tiene activada la carga por unidad.",
+          : result.rule === "service_product"
+            ? "Este es el producto de las reparaciones: no tiene stock ni unidades."
+            : "La organización no tiene activada la carga por unidad.",
     };
   }
   return commonRejection(result.code, requestId);

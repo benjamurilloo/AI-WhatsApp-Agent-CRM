@@ -33,9 +33,11 @@ export type StockTracking = (typeof stockTracking.enumValues)[number];
 
 // modelId no es un campo del formulario general: lo escribe la capacidad variants (brief-29.2, D-4).
 // tracking tampoco: lo cambia inventory con writeProductTracking, desde la 29.5 (brief-29.5, D-3).
+// isService, desde la 29.6, lo fija el alta del producto de servicio y no cambia (brief-29.6, D-5).
 export type ProductRow = { id: string } & ProductValues & {
     modelId: string | null;
     tracking: StockTracking;
+    isService: boolean;
     isActive: boolean;
     createdAt: Date;
     updatedAt: Date;
@@ -84,6 +86,7 @@ const productColumns = {
   shelf: products.shelf,
   modelId: products.modelId,
   tracking: products.tracking,
+  isService: products.isService,
   isActive: products.isActive,
   createdAt: products.createdAt,
   updatedAt: products.updatedAt,
@@ -122,9 +125,15 @@ export async function lockProductShared(
   tx: DbTransaction,
   organizationId: string,
   productId: string,
-): Promise<{ isActive: boolean; tracking: StockTracking } | undefined> {
+): Promise<
+  { isActive: boolean; tracking: StockTracking; isService: boolean } | undefined
+> {
   const rows = await tx
-    .select({ isActive: products.isActive, tracking: products.tracking })
+    .select({
+      isActive: products.isActive,
+      tracking: products.tracking,
+      isService: products.isService,
+    })
     .from(products)
     .where(
       and(
@@ -161,13 +170,21 @@ export async function lockProductsShared(
   tx: DbTransaction,
   organizationId: string,
   productIds: string[],
-): Promise<{ id: string; isActive: boolean; tracking: StockTracking }[]> {
+): Promise<
+  {
+    id: string;
+    isActive: boolean;
+    tracking: StockTracking;
+    isService: boolean;
+  }[]
+> {
   if (productIds.length === 0) return [];
   return tx
     .select({
       id: products.id,
       isActive: products.isActive,
       tracking: products.tracking,
+      isService: products.isService,
     })
     .from(products)
     .where(
@@ -241,6 +258,8 @@ export function findProducts(
 //
 // Desde la 29.5, con `excludeUsed: true` deja afuera los productos usados: lo pasa solo la búsqueda
 // del agente, que no los ve hasta la 29.8 (brief-29.5, D-7). Los buscadores de la aplicación sí.
+// Desde la 29.6, el producto de servicio nunca sale: se vende solo por su orden de servicio, y ni el
+// agente ni los buscadores de los comprobantes lo ofrecen (brief-29.6, D-5).
 export function findActiveProductsRanked(
   organizationId: string,
   text: string,
@@ -258,6 +277,7 @@ export function findActiveProductsRanked(
       and(
         eq(products.organizationId, organizationId),
         eq(products.isActive, true),
+        eq(products.isService, false),
         options.excludeUsed ? ne(products.condition, "used") : undefined,
         or(productSearchCondition(text), skuMatch),
       ),
@@ -341,6 +361,39 @@ export function insertProduct(
   });
 }
 
+// El producto de servicio de la organización (brief-29.6, D-5): a lo sumo uno, por el índice único
+// parcial. El alta lo crea con su marca, que ninguna otra escritura toca.
+export function insertServiceProduct(
+  tx: DbTransaction,
+  organizationId: string,
+  values: ProductValues,
+): Promise<string | ProductUniqueViolation> {
+  return inSavepoint(tx, async (savepoint) => {
+    const rows = await savepoint
+      .insert(products)
+      .values({ organizationId, ...values, isService: true })
+      .returning({ id: products.id });
+    return rows[0]!.id;
+  });
+}
+
+export async function findServiceProduct(
+  organizationId: string,
+  executor: Executor = getDb(),
+): Promise<{ id: string; isActive: boolean } | undefined> {
+  const rows = await executor
+    .select({ id: products.id, isActive: products.isActive })
+    .from(products)
+    .where(
+      and(
+        eq(products.organizationId, organizationId),
+        eq(products.isService, true),
+      ),
+    )
+    .limit(1);
+  return rows[0];
+}
+
 // El llamador ya leyó la fila filtrada por organización y con FOR UPDATE en esta misma
 // transacción, así que cero filas actualizadas no es una carrera: es un defecto de
 // programación. Se lanza dentro de la transacción, que revierte (9.0.1, D-1).
@@ -377,9 +430,15 @@ export async function lockProductExclusive(
   tx: DbTransaction,
   organizationId: string,
   productId: string,
-): Promise<{ isActive: boolean; tracking: StockTracking } | undefined> {
+): Promise<
+  { isActive: boolean; tracking: StockTracking; isService: boolean } | undefined
+> {
   const rows = await tx
-    .select({ isActive: products.isActive, tracking: products.tracking })
+    .select({
+      isActive: products.isActive,
+      tracking: products.tracking,
+      isService: products.isService,
+    })
     .from(products)
     .where(
       and(

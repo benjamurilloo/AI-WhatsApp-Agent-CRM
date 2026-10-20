@@ -93,6 +93,8 @@ export default defineConfig([
       "src/modules/purchasing/**/*.{ts,tsx}",
       // Desde la 29.4 (ADR 0025, punto 13, R-M8).
       "src/modules/fx/**/*.{ts,tsx}",
+      // Desde la 29.6 (ADR 0024, punto 16; brief-29.6, D-8).
+      "src/modules/service/**/*.{ts,tsx}",
     ],
     rules: restrict(moduleInternals, leaveModuleRelative, httpAndPresentation),
   },

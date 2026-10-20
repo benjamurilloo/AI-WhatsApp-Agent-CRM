@@ -23,6 +23,9 @@ import { getDb, type Db } from "@/shared/db";
  *     (brief-16.1, D-10). Con --borrar se van con la ficha, por la clave con ON DELETE CASCADE;
  *   - desde la 19.2, la ficha queda desactivada: sin nombre ni teléfono no hay a quién cargarle un
  *     pedido, y el alta rechaza a un cliente inactivo (brief-19.2, D-9).
+ * Desde la 29.6, sus órdenes de servicio pierden el IMEI del equipo y lo que reportó, que son datos
+ * suyos (brief-29.6, D-11): el trigger de la 0058 deja pasar ese UPDATE y ningún otro sin cambio de
+ * estado. Una orden de servicio retiene la ficha por su clave (RESTRICT), como un pedido.
  * Los pedidos no se tocan: no guardan texto de la persona, solo ids, cantidades, montos, estados y
  * fechas, y su auditoría tampoco (ADR 0020, punto 10; brief-19.2, D-11). Un cliente con pedidos no
  * se borra: la clave del pedido lo impide (RESTRICT), así que va al vaciado aunque no tenga
@@ -65,6 +68,8 @@ export type ClientDataReport = {
   receiptVoids: number;
   refunds: number;
   refundVoids: number;
+  // Desde la 29.6 (brief-29.6, D-11): sus órdenes de servicio, que también impiden borrarlo.
+  serviceOrders: number;
   // Un cliente sin conversaciones, pedidos ni ventas sí se puede borrar del todo (brief-8.2,
   // hallazgo 7; brief-19.2; brief-20.2). En la 20.2 toda venta tiene un pedido, así que las ventas
   // no cambian el resultado hasta la venta sin pedido de la 20.3 (brief-20.2, H-1).
@@ -90,6 +95,7 @@ export async function reportClientData(
     receipt_voids: number;
     refunds: number;
     refund_voids: number;
+    service_orders: number;
   }>(
     sql`select
           exists (select 1 from clients
@@ -125,7 +131,9 @@ export async function reportClientData(
            where organization_id = ${organizationId} and client_id = ${clientId}) as refunds,
           (select count(*)::int from refund_voids v
              join refunds d on d.organization_id = v.organization_id and d.id = v.refund_id
-           where v.organization_id = ${organizationId} and d.client_id = ${clientId}) as refund_voids`,
+           where v.organization_id = ${organizationId} and d.client_id = ${clientId}) as refund_voids,
+          (select count(*)::int from service_orders
+           where organization_id = ${organizationId} and client_id = ${clientId}) as service_orders`,
   );
   const row = counts.rows[0]!;
   return {
@@ -142,13 +150,15 @@ export async function reportClientData(
     receiptVoids: row.receipt_voids,
     refunds: row.refunds,
     refundVoids: row.refund_voids,
+    serviceOrders: row.service_orders,
     deletable:
       row.exists &&
       row.conversations === 0 &&
       row.orders === 0 &&
       row.sales === 0 &&
       row.receipts === 0 &&
-      row.refunds === 0,
+      row.refunds === 0 &&
+      row.service_orders === 0,
   };
 }
 
@@ -169,6 +179,8 @@ export type ErasureResult = {
   notes: number;
   auditEntries: number;
   tags: number;
+  // Desde la 29.6: las órdenes de servicio que tenían IMEI o lo que reportó.
+  serviceOrders: number;
 };
 
 // Lo que una transacción y la base tienen en común.
@@ -195,6 +207,15 @@ export async function eraseClientData(
   clientId: string,
 ): Promise<ErasureResult> {
   return db.transaction(async (tx) => {
+    // Antes que la ficha, sus órdenes de servicio, en el orden de la entrega, que toma la orden y
+    // después la ficha en modo compartido (brief-29.6, D-9). Al revés, un vaciado y una entrega del
+    // mismo cliente se trababan (revisión independiente de la 29.6, hallazgo 2).
+    await tx.execute(
+      sql`select id from service_orders
+          where organization_id = ${organizationId} and client_id = ${clientId}
+          order by id
+          for update`,
+    );
     // Primero la ficha y después sus conversaciones, en el orden en que las bloquea la ingestión
     // (resolveIngestedConversation). Sin esto, un mensaje que la ingestión confirma mientras corre
     // el vaciado quedaba fuera de la foto del UPDATE de messages, con su texto, y el script
@@ -232,6 +253,14 @@ export async function eraseClientData(
             and external_ref is not null`,
     );
     const auditEntries = await eraseAuditEntries(tx, organizationId, clientId);
+    // El IMEI y lo que reportó, en sus órdenes de servicio (brief-29.6, D-11). Las que existían ya
+    // están bloqueadas, y la ficha también: una orden nueva de este cliente se confirmó antes de que
+    // el vaciado tomara la ficha, porque el alta la toma en modo compartido, y este UPDATE la ve.
+    const serviceOrders = await tx.execute(
+      sql`update service_orders set device_serial = null, reported_issue = null
+          where organization_id = ${organizationId} and client_id = ${clientId}
+            and (device_serial is not null or reported_issue is not null)`,
+    );
     const tags = await tx.execute(
       sql`delete from client_tag_assignments
           where organization_id = ${organizationId} and client_id = ${clientId}`,
@@ -261,6 +290,7 @@ export async function eraseClientData(
       notes: notes.rowCount ?? 0,
       auditEntries,
       tags: tags.rowCount ?? 0,
+      serviceOrders: serviceOrders.rowCount ?? 0,
     };
   });
 }
@@ -338,6 +368,11 @@ export function describeRetained(report: ClientDataReport): string[] {
       `${report.refundVoids} anulaciones de devoluciones en 'refund_voids': quedan el número, la fecha, la devolución, la moneda, el monto y el motivo de la lista, sin ningún texto de la persona.`,
     );
   }
+  if (report.serviceOrders > 0) {
+    retained.push(
+      `${report.serviceOrders} órdenes de servicio en 'service_orders', sin el IMEI ni lo que reportó: quedan el número, el modelo, el estado, las fechas, el técnico y los montos, y su presupuesto en 'service_order_lines'.`,
+    );
+  }
   if (report.auditEntries > 0) {
     retained.push(
       `${report.auditEntries} entradas en 'audit_logs', sin valores: queda que hubo un cambio, de qué tipo y cuándo.`,
@@ -409,7 +444,7 @@ async function main() {
   console.log(
     `Cliente ${clientId}: ${report.conversations} conversaciones, ${report.messages} mensajes, ` +
       `${report.notes} notas, ${report.auditEntries} entradas de auditoría, ${report.tags} etiquetas, ${report.orders} pedidos, ${report.sales} ventas, ${report.saleVoids} anulaciones, ${report.receipts} cobros, ` +
-      `${report.receiptVoids} anulaciones de cobros, ${report.refunds} devoluciones, ${report.refundVoids} anulaciones de devoluciones.`,
+      `${report.receiptVoids} anulaciones de cobros, ${report.refunds} devoluciones, ${report.refundVoids} anulaciones de devoluciones, ${report.serviceOrders} órdenes de servicio.`,
   );
 
   const vaciar = args.includes("--vaciar");
@@ -446,7 +481,7 @@ async function main() {
   );
   console.log(
     `Vaciado y desactivada: la ficha, ${result.conversations} conversaciones, ${result.messages} mensajes, ` +
-      `${result.notes} notas y ${result.auditEntries} entradas de auditoría; ${result.tags} etiquetas quitadas.`,
+      `${result.notes} notas, ${result.serviceOrders} órdenes de servicio y ${result.auditEntries} entradas de auditoría; ${result.tags} etiquetas quitadas.`,
   );
   console.log("Queda, sin nada que identifique a la persona:");
   printRetained(report);

@@ -1024,6 +1024,8 @@ describe("campos de operación (brief-17.2)", () => {
       "products_length_cm_positive",
       "products_location_length",
       "products_reorder_point_non_negative",
+      // El producto de servicio no tiene stock (brief-29.6, D-5).
+      "products_service_quantity",
       "products_shelf_length",
       "products_weight_kg_positive",
       "products_width_cm_positive",
@@ -1043,6 +1045,8 @@ describe("campos de operación (brief-17.2)", () => {
       "products_model_idx",
       "products_organization_barcode_lower_unique",
       "products_organization_id_id_unique",
+      // Un solo producto de servicio por organización (brief-29.6, D-5).
+      "products_organization_service_unique",
       "products_organization_sku_lower_unique",
       "products_pkey",
       "products_search_idx",

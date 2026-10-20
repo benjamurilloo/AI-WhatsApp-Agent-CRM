@@ -118,11 +118,17 @@ describe("base de test", () => {
       // La devolución y su anulación (brief-21.5).
       "refund_voids",
       "refunds",
+      // La lista de reparaciones (brief-29.6, D-2).
+      "repair_prices",
+      "repair_types",
       // Las unidades de una línea de pedido y de venta (brief-29.5.2, D-1).
       "sale_line_units",
       "sale_lines",
       "sale_voids",
       "sales",
+      // La orden de servicio y su presupuesto (brief-29.6, D-4).
+      "service_order_lines",
+      "service_orders",
       "sessions",
       // Las unidades de un producto (brief-29.5, D-2).
       "stock_units",

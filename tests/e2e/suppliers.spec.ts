@@ -30,7 +30,7 @@ test.afterAll(async () => {
 // solo inserción: TRUNCATE es la vía documentada para vaciarlas (ADR 0013).
 test.beforeEach(async () => {
   await db.execute(
-    sql`truncate table supplier_payment_voids, supplier_payments, goods_receipt_voids, goods_receipt_line_units, goods_receipt_lines, goods_receipts, purchase_order_lines, purchase_orders, suppliers, audit_logs`,
+    sql`truncate table service_order_lines, service_orders, supplier_payment_voids, supplier_payments, goods_receipt_voids, goods_receipt_line_units, goods_receipt_lines, goods_receipts, purchase_order_lines, purchase_orders, suppliers, audit_logs`,
   );
   await db.execute(sql`delete from login_attempts`);
   await db.execute(sql`delete from sessions`);

@@ -8,7 +8,11 @@ import {
   inlineButtonClass,
   secondaryLinkClass,
 } from "@/app/_components/form-styles";
-import { deactivateSupplierAction, reactivateSupplierAction } from "../actions";
+import {
+  deactivateSupplierAction,
+  reactivateSupplierAction,
+  setTechnicianAction,
+} from "../actions";
 import type { SupplierChangeState } from "../messages";
 
 // Desactivar con confirmación en un segundo paso de la URL y reactivar (brief-22.2, D-5 y D-9),
@@ -82,6 +86,42 @@ export function DeactivateSupplierConfirm({
         </button>
       </form>
     </div>
+  );
+}
+
+// La marca de técnico (brief-29.6, D-3): un botón, sin confirmación, porque se deshace con el
+// contrario y no toca las órdenes que ya tiene.
+export function TechnicianForm({
+  supplierId,
+  isTechnician,
+}: {
+  supplierId: string;
+  isTechnician: boolean;
+}) {
+  const [state, formAction, pending] = useActionState(
+    setTechnicianAction,
+    initialState,
+  );
+  const message = useErrorMessage(state);
+  return (
+    <form action={formAction} className="flex flex-col gap-3">
+      <input type="hidden" name="supplierId" value={supplierId} />
+      <input
+        type="hidden"
+        name="isTechnician"
+        value={isTechnician ? "0" : "1"}
+      />
+      {message}
+      <div>
+        <button type="submit" disabled={pending} className={inlineButtonClass}>
+          {pending
+            ? "Guardando…"
+            : isTechnician
+              ? "Dejar de marcarlo como técnico"
+              : "Marcarlo como técnico"}
+        </button>
+      </div>
+    </form>
   );
 }
 

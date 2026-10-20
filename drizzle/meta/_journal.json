@@ -407,6 +407,13 @@
       "when": 1792497655593,
       "tag": "0057_las_unidades_en_pedidos_y_ventas",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1792521509485,
+      "tag": "0058_las_reparaciones_de_equipos_de_clientes",
+      "breakpoints": true
     }
   ]
 }
