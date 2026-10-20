@@ -224,12 +224,14 @@ test -n '$SHA'
 sudo -u crm bash -c 'cd /srv/crm-production && git fetch && git checkout --detach $SHA && npm ci --no-audit --no-fund'
 sudo bash -c '. /etc/crm-production/migrate.env && export DATABASE_URL && cd /srv/crm-production && exec runuser -u crm -- npm run db:migrate'
 sudo systemctl stop crm-production
-if ! sudo bash -c '. /etc/crm-production/app.env && export NODE_ENV PORT HOSTNAME DATABASE_URL TRUSTED_PROXY && cd /srv/crm-production && exec runuser -u crm -- npm run build'; then sudo systemctl start crm-production; echo 'FALLÓ EL BUILD'; exit 1; fi
+if ! sudo bash -c '. /etc/crm-production/app.env && export NODE_ENV PORT HOSTNAME DATABASE_URL TRUSTED_PROXY && export NODE_OPTIONS=--max-old-space-size=1536 && cd /srv/crm-production && exec runuser -u crm -- npm run build'; then sudo systemctl start crm-production; echo 'FALLÓ EL BUILD'; exit 1; fi
 sudo systemctl start crm-production
 test \"\$(sudo -u crm git -C /srv/crm-production rev-parse HEAD)\" = '$SHA' && echo 'desplegado: $SHA'"
 ```
 
 **El servicio se detiene durante el build** (desde la 29.5, 2026-10-20). El droplet tiene 2 GB y no tiene swap. El build de `3a9a69b` llegó a ~1 GB con la aplicación viva, que ocupaba ~600 MB, y el kernel lo mató (`Out of memory: Killed process … next-build`). Antes de morir había borrado el `.next` anterior: la aplicación vieja siguió respondiendo, pero la hoja de estilos daba `500`. Con el servicio detenido, el build terminó bien. El costo es que el sitio no responde durante el build, unos dos minutos. Si el build falla, el servicio se vuelve a arrancar igual, pero sobre un `.next` incompleto: se corrige y se repite este paso, o se vuelve atrás.
+
+**El build corre con 1.536 MB de heap** (desde la 29.6, 2026-10-20). El de `b00e53d` se quedó sin memoria en el paso de tipos, en el límite por defecto de Node, de unos 980 MB, con 1,5 GB libres y el servicio detenido (`FATAL ERROR: Ineffective mark-compacts near heap limit`). El servicio volvió a arrancar sobre el `.next` incompleto y no respondió durante unos minutos, hasta que el build se repitió con `NODE_OPTIONS=--max-old-space-size=1536`. Ese tope entra en lo que queda libre solo con el servicio detenido: con la aplicación viva, el kernel mataría el build, como en la 29.5.
 
 `$SHA` lo expande la shell del operador, **antes** de que el comando salga por `ssh`. Así llega al servidor como texto fijo. La primera versión de este paso se corría ya dentro del servidor, donde `$SHA` no existe. `git checkout --detach` sin argumento no falla: deja HEAD donde estaba. Así, el despliegue «salía bien» sin cambiar de versión. Lo encontró la revisión independiente de la 13.1. Por eso:
 - `test -n` corta si `SHA` llegó vacío;

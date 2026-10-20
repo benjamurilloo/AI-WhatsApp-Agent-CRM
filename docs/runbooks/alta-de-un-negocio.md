@@ -47,6 +47,8 @@ Imprime el id de la organización, el del `admin` y la contraseña inicial **una
 
 *Desde la 29.5* ([brief-29.5](../decisions/brief-29.5-las-unidades.md)), el perfil `iphone` activa también **`serialized_units`**, las unidades con IMEI, y al activarla copia los grados A, B y C. **Siempre con `--profile iphone`**: con `--capability serialized_units` no se copian los grados, y una corrida posterior con `--profile` tampoco los copia, porque la capacidad ya está activa (lo dice la salida); quedan para crearlos en la pantalla Grados. Una organización que ya tenía `variants` corre el mismo comando: dice que `variants` ya estaba activa, activa `serialized_units` y copia los grados. Así se activó en «iPhone Demo» el 2026-10-20.
 
+*Desde la 29.6* ([brief-29.6](../decisions/brief-29.6-las-reparaciones-de-equipos-de-clientes.md)), el perfil `iphone` activa también **`repairs`**, las reparaciones: copia los seis tipos de reparación de ejemplo, sin precios, y crea el producto de servicio «Reparación». **El producto de servicio se crea al activar `repairs` también con `--capability repairs`**; los tipos, solo con el perfil. `repairs` usa los modelos de `variants`: sola, la lista de reparaciones queda sin modelos. Una organización que ya tenía `variants` y `serialized_units` corre el mismo comando, que dice que esas dos ya estaban activas y activa `repairs`. Así se activó en «iPhone Demo» el 2026-10-20.
+
 El correo del `admin` llega por el entorno:
 
 ```

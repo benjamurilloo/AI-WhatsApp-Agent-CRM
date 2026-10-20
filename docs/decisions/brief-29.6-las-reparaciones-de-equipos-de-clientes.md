@@ -10,7 +10,7 @@ generated_at: 2026-10-20
 - **Contrato**: `task-brief.v1`
 - **Tipo de tarea**: `implementation`. Migración, código, pruebas y despliegue.
 - **Nivel de evidencia objetivo**: `deterministic` (tests contra PostgreSQL) y `producer-consumer` (pantallas ↔ servicio ↔ base, con end-to-end).
-- **Estado**: **aprobado** por el usuario el 2026-10-20, con las recomendaciones del brief tal como están. Las decisiones de división, de la deuda con el técnico y de `in_review` las tomó el usuario el 2026-10-20 (abajo, «Decidido por el usuario»).
+- **Estado**: **aprobado** por el usuario el 2026-10-20, con las recomendaciones del brief tal como están; **cerrado** el 2026-10-20, desplegado (`b00e53d`) y recorrido (§Cierre). Las decisiones de división, de la deuda con el técnico y de `in_review` las tomó el usuario el 2026-10-20 (abajo, «Decidido por el usuario»).
 - **Fuentes**: [ADR 0024](0024-rubros-y-capacidades.md), puntos 7, 10, 13, 14, 16 y 17; [ADR 0023](0023-compras-y-proveedores.md), puntos 2, 11 y 12; [ADR 0025](0025-tipo-de-cambio.md), puntos 1 y 5; [ADR 0019](0019-bases-de-los-comprobantes.md), punto 3; [ADR 0021](0021-la-venta.md); [DataModel](../architecture/DataModel.md).
 
 ## Objetivo
@@ -235,7 +235,33 @@ Pedir autorización explícita, en su turno, **antes de**:
 
 ## Cierre
 
-*Pendiente*: los criterios, la revisión independiente, el despliegue y el recorrido del usuario.
+*Del 2026-10-20, después del despliegue, la activación y el recorrido del usuario.*
+
+### Criterios
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| AC-1 | cumple | `repair-list.ts` (costo en null para un `viewer`; auditoría `create`, `price_change` y `cost_change`); `service-orders.test.ts`, «la lista de reparaciones»; `repairs.spec.ts` |
+| AC-2 | cumple | `purchasing/technicians.ts`; «el técnico» |
+| AC-3 | cumple | el trigger `service_orders_guard`, que desde la revisión fija también las columnas de cada transición (hallazgo 3); «el ciclo de la orden» y los dos tests de «el trigger de la orden», cada rechazo por su mensaje |
+| AC-4 | cumple | `quote.ts` (`price_currency_mismatch` y `cost_currency_mismatch`); `service_order_lines_guard`, de solo inserción y, desde la revisión, sin pasar los totales (hallazgo 4); `quote.test.ts` y la integración |
+| AC-5 | cumple | `issueServiceSale` sin `sellStock` y la anulación sin `restoreSaleStock`; «la anulación de la venta de una reparación» y el end-to-end hasta el cobro |
+| AC-6 | cumple | `deliverServiceOrder` y el CHECK `service_orders_sale_delivered`; «el ciclo de la orden» |
+| AC-7 | cumple | `supplierAccountInput` con las órdenes reparadas; «la deuda con el técnico», con el pago a cuenta y, desde la revisión, una recepción cubierta que no cambia cuando aparece una orden (hallazgo 1) |
+| AC-8 | cumple | la regla `service_product` en el pedido, la venta, el ajuste, el seguimiento, la orden de compra y la recepción; las lecturas del agente lo excluyen; los triggers de `inventories` e `inventory_movements`; «el producto de servicio fuera de su orden» |
+| AC-9 | cumple | «dos entregas simultáneas», con una tercera conexión que retiene la orden |
+| AC-10 | cumple | `getServiceOrder` y `listServiceOrders` sin el técnico ni el costo para un `viewer`; «el viewer» y el end-to-end |
+| AC-11 | cumple | «el aislamiento y la capacidad»; las suites existentes pasan, con los cambios de forma de las desviaciones 6 y 7 y de `catalog.test.ts` |
+| AC-12 | cumple | «la activación»; en producción, «iPhone Demo» con 6 tipos y 1 producto de servicio |
+| AC-13 | cumple | CI run 39497730523 en `success` sobre `b00e53d60e3a3ccce347780358ee41d5c4194ca3`: unitarias 1047, guardas 818, integración 1669 y end-to-end 270, con axe |
+| AC-14 | cumple | revisión independiente del 2026-10-20, antes del despliegue (abajo) |
+| AC-15 | cumple | desplegada (`b00e53d`, 59 migraciones); el usuario activó `repairs` en «iPhone Demo» con `org:capability --profile iphone`, recorrió el flujo y dijo «esta todo perfecto». Recuentos después: «iPhone Demo» con `repairs`, `serialized_units` y `variants`, 6 tipos, 6 precios, 1 producto de servicio sin fila de stock, 1 técnico y 1 orden entregada con su línea; «Demostración Vixora» y «Vixora» sin capacidades ni nada de reparaciones |
+
+**Nivel alcanzado**: validado en integración (`producer-consumer`), desplegado y recorrido en producción sobre una organización demo. No hay negocio real. La orden de una unidad propia es de la 29.6.2.
+
+### El despliegue
+
+El primer build en producción **se quedó sin memoria en el paso de tipos**: el heap de Node llegó a su límite por defecto, unos 980 MB, con 1,5 GB libres en el droplet y el servicio detenido. Como dice el README, el servicio volvió a arrancar, pero sobre un `.next` incompleto, y quedó reiniciándose: **producción no respondió durante unos minutos**. El segundo build, con `NODE_OPTIONS=--max-old-space-size=1536`, terminó bien. La migración 0058 se había aplicado antes de detener el servicio. El paso 3 del [README de producción](../../deploy/production/README.md#desplegar-un-cambio) usa ese heap desde este cierre.
 
 ### Desviaciones y decisiones de implementación
 

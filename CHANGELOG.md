@@ -2,6 +2,34 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-20 — 29.6: las reparaciones de equipos de clientes
+
+Cierra el 2026-10-20, desplegada en producción (`b00e53d`) y recorrida por el usuario ([brief-29.6](docs/decisions/brief-29.6-las-reparaciones-de-equipos-de-clientes.md), §Cierre). Construye la capacidad `repairs` del [ADR 0024](docs/decisions/0024-rubros-y-capacidades.md) sobre «iPhone Demo», para el equipo de un cliente. La orden de una unidad propia queda para la 29.6.2, por decisión del usuario.
+
+**Certifica:**
+- **La lista de reparaciones**: los tipos y, por modelo, el precio al cliente y el costo del técnico, con auditoría. Un `viewer` ve el precio y no el costo.
+- **La marca de técnico** en el proveedor. Solo los técnicos activos reciben órdenes.
+- **La orden de servicio** (`OS-`) del equipo de un cliente, con el IMEI opcional y lo que reporta, y su comprobante de recepción. Pasa por recibida, en el técnico, presupuestada, aprobada o rechazada, reparada y entregada, y se cancela con un motivo antes de repararse. **El trigger rechaza cualquier otra transición y fija las columnas de cada una.**
+- **El presupuesto**, uno por orden, armado con la lista del modelo y editable antes de guardarlo. Se rechaza con monedas mezcladas, y sus líneas no cambian ni se agregan después.
+- **La entrega de una orden reparada emite su venta** en la misma operación, con el producto de servicio y el total aprobado, sin tocar el stock. Se cobra como cualquier venta, y su anulación no toca el stock. Una orden rechazada se entrega sin venta.
+- **Lo que cobra el técnico va al debe de su cuenta de proveedor** desde que la orden queda reparada, y un pago a cuenta lo cancela de la deuda más vieja a la más nueva.
+- **El producto de servicio se vende solo por su orden**: el pedido, la venta de la pantalla, el ajuste, la orden de compra y la recepción lo rechazan, el agente no lo ve, y la base no le deja tener stock.
+- **Dos entregas simultáneas emiten una sola venta**, probado con una tercera conexión que retiene la orden.
+- **El vaciado de datos de un cliente** deja en null el IMEI y lo que reportó en sus órdenes, y la exportación los incluye.
+- **La migración 0058**, aditiva.
+- **En producción**: el usuario activó `repairs` en «iPhone Demo», recorrió una orden hasta la entrega, la venta y la cuenta del técnico, y lo dio por bueno. «Demostración Vixora» y «Vixora» quedaron sin capacidades ni nada de reparaciones.
+- **Una revisión independiente** antes del despliegue (R1, ocho hallazgos menores), verificada contra el código y resuelta.
+
+**No certifica:**
+- ningún negocio real;
+- la orden de una unidad propia, que es de la 29.6.2;
+- el cobro de un diagnóstico, ni un pago contra una orden de servicio;
+- `repairs` activada sin `variants`: la lista queda sin modelos;
+- una segunda revisión independiente de las correcciones, que son autoevaluación;
+- ningún cambio en la forma de los contratos del agente.
+
+**El despliegue**: el primer build se quedó sin memoria en el paso de tipos, y producción no respondió durante unos minutos hasta que el build se repitió con más heap. El README de producción lo usa desde este cierre.
+
 ## 2026-10-20 — 29.5.2: las unidades en pedidos y ventas
 
 Cierra el 2026-10-20, desplegada en producción (`6d07f03`) y recorrida por el usuario ([brief-29.5.2](docs/decisions/brief-29.5.2-las-unidades-en-pedidos-y-ventas.md), §Cierre). Levanta el rechazo de los productos por unidad en pedidos y ventas que dejó la 29.5, sobre «iPhone Demo».
