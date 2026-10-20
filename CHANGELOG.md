@@ -2,6 +2,28 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-20 — 29.5.2: las unidades en pedidos y ventas
+
+Cierra el 2026-10-20, desplegada en producción (`6d07f03`) y recorrida por el usuario ([brief-29.5.2](docs/decisions/brief-29.5.2-las-unidades-en-pedidos-y-ventas.md), §Cierre). Levanta el rechazo de los productos por unidad en pedidos y ventas que dejó la 29.5, sobre «iPhone Demo».
+
+**Certifica:**
+- **El pedido elige sus unidades por IMEI al crearse**, sin reservarlas. Un IMEI ajeno, de otro producto, no disponible, repetido o mal escrito se rechaza nombrándolo.
+- **Confirmar reserva exactamente esas unidades**, o rechaza todo nombrando las que ya no están disponibles. Cancelar un confirmado las libera, y entregar las vende, con un movimiento por unidad.
+- **La venta de un pedido copia sus unidades**, y la venta sin pedido las elige y las vende; su anulación las devuelve a disponibles. El comprobante de la venta y el de la anulación muestran el IMEI de cada unidad.
+- **El precio propio de una unidad**, opcional, que un `admin` corrige con auditoría. La línea vale la suma de sus unidades.
+- **La invariante**: el saldo de un producto por unidad es igual a sus disponibles y reservadas, y cada reservada está en exactamente un pedido confirmado, comprobada después de cada test de `inventory`, `purchasing`, `orders` y `sales`.
+- **La concurrencia**: dos confirmaciones, una venta contra una confirmación y dos anulaciones de la misma venta, probadas.
+- **La migración 0057**, aditiva: `order_line_units`, `sale_line_units`, los estados `reserved` y `sold`, y el precio de la unidad.
+- **En producción**: el usuario recorrió la unidad con precio propio, un pedido con dos unidades hasta su venta, y una venta sin pedido con su anulación. Los recuentos coinciden con el recorrido, sin desvíos de la invariante; «Demostración Vixora» y «Vixora» sin unidades.
+- **Una revisión independiente** antes del despliegue (1 hallazgo de procedimiento, 1 mayor y 5 menores), verificada contra el código y resuelta. El mayor: dos anulaciones simultáneas de una venta sin pedido terminaban en un error interno.
+
+**No certifica:**
+- ningún negocio real;
+- el pedido del agente de un producto por unidad: sigue rechazado como un producto que no existe, hasta la 29.8;
+- la cobertura que el brief pedía y no tiene test: el pedido sin JavaScript, el detalle del pedido para un `viewer` y el trigger transición por transición (desviación 8);
+- una segunda revisión independiente de las correcciones, que son autoevaluación;
+- ningún cambio en la forma de los contratos del agente.
+
 ## 2026-10-20 — 29.5: las unidades
 
 Cierra el 2026-10-20, desplegada en producción (`3a9a69b`) y recorrida por el usuario ([brief-29.5](docs/decisions/brief-29.5-las-unidades.md), §Cierre). Construye la capacidad `serialized_units` del [ADR 0024](docs/decisions/0024-rubros-y-capacidades.md) sobre «iPhone Demo».

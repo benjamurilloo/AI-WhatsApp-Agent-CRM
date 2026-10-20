@@ -218,7 +218,7 @@ Pedir autorización explícita, en su turno, **antes de**:
 
 ## Cierre
 
-*Del 2026-10-20, antes del despliegue. Se completa con el despliegue y el recorrido.*
+*Del 2026-10-20, antes del despliegue; completado ese día con el despliegue y el recorrido.*
 
 ### Criterios
 
@@ -235,9 +235,11 @@ Pedir autorización explícita, en su turno, **antes de**:
 | AC-9 | cumple | `tests/integration/stock-invariant.ts`, con la regla completa y cada reservada en exactamente un pedido confirmado, corre después de cada test de `inventory`, `purchasing`, `orders` y `sales` (en `sales`, sin la suma de movimientos: desviación 5) |
 | AC-10 | cumple | `getSale` y `listProductUnits` para un `viewer`, con los IMEI y los precios, sin costo; integración |
 | AC-11 | cumple | las suites existentes pasan sin cambios de conducta; solo se ajustaron las aserciones de los campos nuevos (`reason`, `lineTotal`) y las listas de tablas |
-| AC-12 | pendiente | local: typecheck, lint, formato, unitarias y guardas (1820), integración y e2e (ver «Corridas»); CI sobre el SHA desplegado |
+| AC-12 | cumple | CI run 39450745241 en `success` sobre `6d07f030235a0f032bfff17c439e5bdb1e99e7db`; en local, typecheck, lint, formato, unitarias y guardas (1820), integración y e2e completo (264, con axe) (ver «Corridas») |
 | AC-13 | cumple | revisión independiente del 2026-10-20, antes del despliegue (abajo) |
-| AC-14 | pendiente | despliegue y recorrido |
+| AC-14 | cumple | desplegada (`6d07f03`, 58 migraciones, con el servicio detenido durante el build); el usuario recorrió en «iPhone Demo» la unidad con precio propio, el pedido con dos unidades (el total como suma, confirmar, entregar y la venta con los IMEI en el comprobante), la venta sin pedido y su anulación, y dijo «esta todo perfecto». Recuentos después del recorrido: «iPhone Demo» con 4 unidades (2 vendidas, 1 disponible, 1 dada de baja), 2 en `order_line_units`, 3 en `sale_line_units` y 1 con precio propio, y 0 productos por unidad cuyo saldo o reservado no coincide con sus unidades; «Demostración Vixora» y «Vixora» con 0 unidades y 0 filas en las dos tablas nuevas |
+
+**Nivel alcanzado**: validado en integración (`producer-consumer`), desplegado y recorrido en producción sobre una organización demo. No hay negocio real, y el pedido del agente de un producto por unidad sigue rechazado hasta la 29.8.
 
 ### Desviaciones y decisiones de implementación
 
@@ -265,4 +267,5 @@ Del 2026-10-20, antes del despliegue, por un agente que no participó, de solo l
 ### Corridas
 
 - **Integración**: la primera corrida completa (43 minutos con la máquina saturada) dio 18 fallos. Cinco eran aserciones de contrato que había que actualizar (`reason: "insufficient"`, `lineTotal: null` y las dos tablas nuevas en `audit` e `identity-schema`); el resto, tiempos agotados y un PostgreSQL local que se reinició a mitad de la corrida. Después de reiniciar la máquina, los 13 archivos afectados pasaron (203 tests). La corrida completa siguiente (16 minutos) dio 1650 de 1651, con dos archivos que crean y borran bases (`migration-0054` y `organization-bootstrap`) por tiempo agotado; repetidos solos, pasaron.
-- **End-to-end**: `units.spec.ts`, 9 de 9, después de hacer exacto un selector que también encontraba «Subtotal estimado:».
+- **End-to-end**: `units.spec.ts`, 9 de 9, después de hacer exacto un selector que también encontraba «Subtotal estimado:». El completo, 264 de 264.
+- **El despliegue (2026-10-20)**: con el servicio detenido durante el build, como pide el runbook desde la 29.5; terminó bien a la primera. Producción anotó `3a9a69b` como SHA anterior para volver atrás.
