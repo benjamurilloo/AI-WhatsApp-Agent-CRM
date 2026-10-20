@@ -72,8 +72,12 @@ export const organizationMembers = pgTable(
 // Capacidades activables por organización (ADR 0024, punto 3; brief-29.2, D-2). Cada valor del
 // enum entra con la subfase que lo usa, con ALTER TYPE … ADD VALUE: la 29.2 lo crea solo con
 // variants. Una fila por capacidad activada; no se desactiva (hace falta un ADR). La lee una sola
-// función del repositorio, que vigila tests/guards/capability-reads.test.ts.
-export const capability = pgEnum("capability", ["variants"]);
+// función del repositorio, que vigila tests/guards/capability-reads.test.ts. serialized_units, desde
+// la 29.5: los productos por unidad, con IMEI (ADR 0024, punto 6; brief-29.5, D-2).
+export const capability = pgEnum("capability", [
+  "variants",
+  "serialized_units",
+]);
 
 export const organizationCapabilities = pgTable(
   "organization_capabilities",

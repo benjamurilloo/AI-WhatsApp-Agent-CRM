@@ -79,6 +79,9 @@ export function parseLines(
 
 export type LineRule =
   | "inactive_product"
+  // Desde la 29.5: un producto por unidad no entra en un pedido ni en una venta hasta la 29.5.2
+  // (brief-29.5, D-1).
+  | "unit_tracked"
   | "no_price"
   | "currency_mismatch"
   | "duplicate_product"
@@ -114,6 +117,8 @@ export type LinePrice = { id: string; amount: string; currency: string };
 
 export type LineProduct<P extends LinePrice> = {
   isActive: boolean;
+  // Desde la 29.5; sin él, por cantidad.
+  tracking?: "quantity" | "unit";
   price: P | null;
 };
 
@@ -161,6 +166,9 @@ export function evaluateLines<P extends LinePrice>(
     const { position, productId } = line;
     if (!product.isActive) {
       return [{ position, productId, rule: "inactive_product" }];
+    }
+    if (product.tracking === "unit") {
+      return [{ position, productId, rule: "unit_tracked" }];
     }
     if (!product.price) return [{ position, productId, rule: "no_price" }];
     return [];

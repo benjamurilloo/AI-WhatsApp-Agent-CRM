@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { applyAttributeTemplate } from "@/modules/catalog";
+import { applyGradeTemplate } from "@/modules/inventory";
 import {
   activateCapability,
   getProfile,
@@ -18,12 +19,17 @@ import { getDb } from "@/shared/db";
 //
 // El correo también puede llegar por CAPACIDAD_ADMIN_CORREO, para no dejarlo en el log de sudo ni a
 // la vista de `ps`, como en org:create. El argumento, si viene, gana.
+//
+// Desde la 29.5 (brief-29.5, D-5), serialized_units: con el perfil, si esta corrida la activa, copia
+// también los grados del perfil, con la misma regla (saltea los que la organización ya tiene). Una
+// organización que ya tenía variants activa la nueva con el mismo comando del perfil: variants queda
+// como estaba y los atributos que ya tiene se saltean.
 
 const usage =
   "Uso: npm run org:capability -- --organization <id> --admin-email <correo> (--profile <perfil> | --capability <capacidad>). Perfiles: " +
   PROFILES.map((profile) => profile.name).join(", ");
 
-const CAPABILITIES: readonly Capability[] = ["variants"];
+const CAPABILITIES: readonly Capability[] = ["variants", "serialized_units"];
 
 function option(args: string[], name: string): string | undefined {
   const index = args.indexOf(name);
@@ -61,6 +67,7 @@ async function main() {
     const lines: string[] = [];
     let actorUserId = "";
     let activated = false;
+    const activatedNow = new Set<Capability>();
     for (const capability of capabilities) {
       const result = await activateCapability(tx, {
         organizationId,
@@ -75,7 +82,10 @@ async function main() {
         );
       }
       actorUserId = result.actorUserId;
-      if (result.status === "activated") activated = true;
+      if (result.status === "activated") {
+        activated = true;
+        activatedNow.add(capability);
+      }
       lines.push(
         result.status === "activated"
           ? `Capacidad activada: ${capability}.`
@@ -96,6 +106,22 @@ async function main() {
       });
       lines.push(
         `Perfil «${profile.label}»: atributos creados: ${copied.created.join(", ") || "ninguno"}; ya existían: ${copied.skipped.join(", ") || "ninguno"}.`,
+      );
+      if (activatedNow.has("serialized_units") && profile.grades.length > 0) {
+        const grades = await applyGradeTemplate(tx, {
+          organizationId,
+          actorUserId,
+          grades: profile.grades,
+        });
+        lines.push(
+          `Perfil «${profile.label}»: grados creados: ${grades.created.join(", ") || "ninguno"}; ya existían: ${grades.skipped.join(", ") || "ninguno"}.`,
+        );
+      }
+    } else if (activatedNow.has("serialized_units")) {
+      // Sin perfil no hay plantilla de grados: se dice, para que nadie la dé por copiada (revisión
+      // independiente de la 29.5, m-6).
+      lines.push(
+        "Sin --profile no se copiaron grados, y una corrida posterior con --profile tampoco los copia: se crean desde la pantalla Grados.",
       );
     }
     return lines;

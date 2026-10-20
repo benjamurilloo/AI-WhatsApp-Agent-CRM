@@ -80,6 +80,8 @@ describe("base de test", () => {
       // La cotización (brief-29.4, D-3).
       "exchange_rate_settings",
       "exchange_rates",
+      // Los IMEI de una línea de recepción (brief-29.5, D-4).
+      "goods_receipt_line_units",
       // La recepción y sus líneas (brief-22.4), y su anulación (brief-22.5).
       "goods_receipt_lines",
       "goods_receipt_voids",
@@ -119,11 +121,15 @@ describe("base de test", () => {
       "sale_voids",
       "sales",
       "sessions",
+      // Las unidades de un producto (brief-29.5, D-2).
+      "stock_units",
       // Los pagos a proveedores y su anulación (brief-22.6).
       "supplier_payment_voids",
       "supplier_payments",
       // Los proveedores (brief-22.2).
       "suppliers",
+      // Los grados de la organización (brief-29.5, D-5).
+      "unit_grades",
       "users",
     ]);
   });

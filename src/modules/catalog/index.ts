@@ -25,6 +25,12 @@ export {
   searchProducts,
   setProductPrice,
   updateProduct,
+  // El seguimiento por unidad, para inventory (brief-29.5, D-3 y D-4).
+  findProductTrackings,
+  lockProductForTrackingChange,
+  STOCK_TRACKINGS,
+  writeProductTracking,
+  type StockTracking,
   type CreateProductResult,
   type ProductAuditEntry,
   type ProductAuditResult,

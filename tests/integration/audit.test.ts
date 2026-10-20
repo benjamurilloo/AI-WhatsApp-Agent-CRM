@@ -144,6 +144,8 @@ const INSERT_ONLY_TABLES = [
   "goods_receipt_lines",
   "goods_receipt_voids",
   "goods_receipts",
+  // Los IMEI de una línea de recepción (brief-29.5, D-2 y D-4).
+  "goods_receipt_line_units",
   "inventory_movements",
   "messages",
   // Líneas de un pedido (brief-19.2).
@@ -189,6 +191,10 @@ const NO_DELETE_TABLES = [
   "purchase_orders",
   // Los proveedores, con borrado lógico (brief-22.2, D-1; ADR 0023, punto 2).
   "suppliers",
+  // Las unidades, que se dan de baja y no se borran, y los grados, que se desactivan (brief-29.5,
+  // D-2 y D-5).
+  "stock_units",
+  "unit_grades",
 ];
 // Se insertan y se borran, pero no se actualizan: una asignación se pone y se quita (brief-16.1,
 // D-6), un día especial se agrega y se quita (brief-17.4, P-2), y una imagen de producto se sube y

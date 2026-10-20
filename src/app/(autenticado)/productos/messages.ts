@@ -30,6 +30,12 @@ export const NO_MOVEMENT_RESULTS_MESSAGE =
 export const INACTIVE_PRODUCT_NOTICE =
   "Este producto está desactivado y no admite ajustes.";
 
+// Un producto por unidad (brief-29.5, D-4 y D-6): su stock se mueve cargando o dando de baja unidades.
+export const UNIT_TRACKED_ADJUSTMENT_MESSAGE =
+  "Este producto se lleva por unidad: su stock se mueve cargando o dando de baja unidades, no con un ajuste de cantidad.";
+export const UNIT_CONDITION_LOCKED_MESSAGE =
+  "Este producto se lleva por unidad: su condición no cambia. Para vender el equipo con otra condición, cargalo en otro producto.";
+
 export function unexpectedErrorMessage(requestId: string): string {
   return `No pudimos guardar el cambio. Código: ${requestId}`;
 }
@@ -171,6 +177,7 @@ export function formatMeasure(value: string): string {
 export const CONDITION_LABEL: Record<ProductCondition, string> = {
   new: "Nuevo",
   refurbished: "Reacondicionado",
+  used: "Usado",
 };
 
 export type ProductFormState =
@@ -267,6 +274,10 @@ export function adjustmentRejectionMessage(
     case "BUSINESS_RULE_VIOLATION":
       if (rejection.rule === "inactive_product") {
         return { field: null, message: INACTIVE_PRODUCT_NOTICE };
+      }
+      // Desde la 29.5 (brief-29.5, D-4).
+      if (rejection.rule === "unit_tracked") {
+        return { field: null, message: UNIT_TRACKED_ADJUSTMENT_MESSAGE };
       }
       // Desde la 19.3, below_reserved (ADR 0020, punto 5): primero se cancela un pedido.
       if (rejection.rule === "below_reserved") {

@@ -36,6 +36,7 @@ function product(overrides: Partial<Product> = {}): Product {
     location: null,
     shelf: null,
     modelId: null,
+    tracking: "quantity",
     isActive: true,
     createdAt: new Date("2026-09-15T00:00:00Z"),
     updatedAt: new Date("2026-09-15T00:00:00Z"),

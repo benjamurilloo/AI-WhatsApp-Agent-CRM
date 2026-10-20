@@ -65,6 +65,12 @@ function readForm(formData: FormData): GoodsReceiptFormValues {
   const quantities = all("quantity");
   const costs = all("unitCost");
   const priceCurrencies = all("priceCurrency");
+  // Los IMEI de cada fila, desde la 29.5 (brief-29.5, D-6): un campo de texto por fila, más largo que
+  // los demás, porque lleva un IMEI por unidad.
+  const serials = formData
+    .getAll("serials")
+    .map((value) => String(value).slice(0, 20_000));
+  const trackings = all("tracking");
   const lines: GoodsReceiptFormLine[] = productTexts.map((text, index) => ({
     orderLineId: (orderLineIds[index] ?? "").trim(),
     productId: (productIds[index] ?? "").trim(),
@@ -72,6 +78,8 @@ function readForm(formData: FormData): GoodsReceiptFormValues {
     quantity: (quantities[index] ?? "").trim(),
     unitCost: (costs[index] ?? "").trim(),
     priceCurrency: (priceCurrencies[index] ?? "").trim().slice(0, 3),
+    serials: serials[index] ?? "",
+    tracking: (trackings[index] ?? "").trim().slice(0, 10),
   }));
   const text = (name: string, max: number) =>
     String(formData.get(name) ?? "")
@@ -99,7 +107,11 @@ function sentRows(values: GoodsReceiptFormValues): number[] {
         ? [index]
         : [];
     }
-    return line.productId || line.productText || line.quantity || line.unitCost
+    return line.productId ||
+      line.productText ||
+      line.quantity ||
+      line.unitCost ||
+      line.serials.trim()
       ? [index]
       : [];
   });
@@ -149,6 +161,7 @@ export async function createGoodsReceiptAction(
         productId: line.productId,
         quantity: line.quantity,
         unitCost: line.unitCost,
+        serials: line.serials,
       })),
     };
     const result = await createGoodsReceipt(context, input);
@@ -204,6 +217,8 @@ export type GoodsReceiptProductOption = {
   label: string;
   detail?: string;
   priceCurrency: string;
+  // Desde la 29.5: «unit» abre el campo de los IMEI (brief-29.5, D-6).
+  tracking: string;
 };
 
 export async function searchGoodsReceiptProductsAction(
@@ -226,6 +241,7 @@ export async function searchGoodsReceiptProductsAction(
       priceCurrency: prices.ok
         ? (prices.prices.get(product.id)?.currency ?? "")
         : "",
+      tracking: product.tracking,
     }));
   } catch (error) {
     log("INTERNAL", error);

@@ -25,6 +25,7 @@ import {
   productFieldError,
   reactivationDuplicateMessage,
   unexpectedErrorMessage,
+  UNIT_CONDITION_LOCKED_MESSAGE,
   variantDuplicateMessage,
   variantFieldError,
   type VariantFormValues,
@@ -99,6 +100,14 @@ function productFormError(
       };
     }
     return { ...base, ...productConflictError(result.field) };
+  }
+  // Desde la 29.5 (brief-29.5, D-3).
+  if (result.code === "BUSINESS_RULE_VIOLATION") {
+    return {
+      ...base,
+      field: "condition",
+      message: UNIT_CONDITION_LOCKED_MESSAGE,
+    };
   }
   return {
     ...base,

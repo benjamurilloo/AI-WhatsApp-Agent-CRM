@@ -12,6 +12,7 @@ import { getAuthContext } from "@/modules/organizations";
 import { getDb } from "@/shared/db";
 import { quantityFromDatabase, quantityToDatabase } from "@/shared/quantity";
 import { resetDatabase } from "./reset-database";
+import { expectStockInvariant } from "./stock-invariant";
 
 // Ajustes de stock con conexiones simultáneas (brief-4.3.2). Otra conexión retiene un bloqueo,
 // se comprueba en pg_stat_activity que todos esperan en él (D-2) y recién entonces se suelta (D-1).
@@ -100,6 +101,10 @@ async function hold(query: SQL): Promise<() => Promise<void>> {
 
 afterEach(async () => {
   await Promise.all(heldLocks.splice(0).map((releaseLock) => releaseLock()));
+  // El invariante de las unidades, después de cada test (brief-29.5, D-8). Esta suite arma saldos con SQL directo, sin
+  // movimiento, así que la suma de los movimientos no se compara: la comparan units.test.ts y
+  // orders-cycle.test.ts.
+  await expectStockInvariant({ movements: false });
 });
 
 // Espera hasta que la base de test tenga exactamente `count` conexiones detenidas en un bloqueo.

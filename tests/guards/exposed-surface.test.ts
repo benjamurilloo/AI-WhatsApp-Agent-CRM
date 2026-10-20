@@ -337,6 +337,30 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
   // Fijar el costo de un producto, solo admin en el caso de uso (brief-18.2).
   "src/app/(autenticado)/productos/[productId]/costos/actions.ts#setCostAction":
     { requirement: "sesion" },
+  // Las unidades de un producto (brief-29.5, D-3 y D-6): solo admin y con serialized_units, lo
+  // exige inventory; la sesión la pide el helper del archivo antes de cualquier efecto.
+  "src/app/(autenticado)/productos/[productId]/unidades/actions.ts#changeTrackingAction":
+    { requirement: "sesion" },
+  "src/app/(autenticado)/productos/[productId]/unidades/actions.ts#registerUnitAction":
+    { requirement: "sesion" },
+  "src/app/(autenticado)/productos/[productId]/unidades/actions.ts#writeOffUnitAction":
+    { requirement: "sesion" },
+  "src/app/(autenticado)/productos/[productId]/unidades/actions.ts#correctUnitAction":
+    { requirement: "sesion" },
+  // Los grados de la organización (brief-29.5, D-5): solo admin y con serialized_units, lo exige
+  // inventory.
+  "src/app/(autenticado)/grados/actions.ts#createGradeAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/grados/actions.ts#updateGradeAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/grados/actions.ts#setGradeActiveAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/grados/actions.ts#moveGradeAction": {
+    requirement: "sesion",
+  },
   "src/app/(autenticado)/usuarios/actions.ts#createMemberAction": {
     requirement: "sesion",
   },

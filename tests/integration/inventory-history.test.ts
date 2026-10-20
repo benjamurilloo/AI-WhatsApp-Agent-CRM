@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, afterAll, beforeEach, describe, expect, it } from "vitest";
 import { hashPassword, login } from "@/modules/auth";
 import {
   adjustStock,
@@ -10,6 +10,7 @@ import {
 import { getAuthContext, type AuthContext } from "@/modules/organizations";
 import { getDb } from "@/shared/db";
 import { resetDatabase } from "./reset-database";
+import { expectStockInvariant } from "./stock-invariant";
 
 // Historial de movimientos contra PostgreSQL real (brief-4.3.3): orden, paginación en SQL,
 // filtros por tipo y período en la zona de la organización, autor, autorización y aislamiento.
@@ -117,6 +118,13 @@ beforeEach(async () => {
   storedHash ??= await hashPassword(PASSWORD);
 });
 
+// El invariante de las unidades, después de cada test (brief-29.5, D-8). Esta suite arma saldos con SQL directo, sin
+// movimiento, así que la suma de los movimientos no se compara: la comparan units.test.ts y
+// orders-cycle.test.ts.
+afterEach(async () => {
+  await expectStockInvariant({ movements: false });
+});
+
 afterAll(async () => {
   await getDb().$client.end();
 });
@@ -170,6 +178,8 @@ describe("listStockMovements: contenido y orden", () => {
         reason: "Rotura",
         createdAt: expect.any(Date),
         author: { id: s.adminA.userId, name: "Ana Pérez" },
+        // Desde la 29.5: un producto por cantidad no tiene unidad (brief-29.5, D-6).
+        unitSerial: null,
       },
       {
         id: expect.any(String),
@@ -179,6 +189,7 @@ describe("listStockMovements: contenido y orden", () => {
         reason: "Conteo",
         createdAt: expect.any(Date),
         author: { id: s.adminA.userId, name: "Ana Pérez" },
+        unitSerial: null,
       },
     ]);
   });

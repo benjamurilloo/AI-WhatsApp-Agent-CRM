@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { getCurrentPrices } from "@/modules/catalog";
+import { getCurrentPrices, getProductsByIds } from "@/modules/catalog";
 import {
   getPurchaseOrder,
   MAX_GOODS_RECEIPT_LINES,
@@ -82,9 +82,16 @@ export default async function NewGoodsReceiptPage({
         />
       );
     }
-    const prices = await getCurrentPrices(
-      context,
-      lines.map((line) => line.productId),
+    const ids = lines.map((line) => line.productId);
+    const [prices, products] = await Promise.all([
+      getCurrentPrices(context, ids),
+      getProductsByIds(context, ids),
+    ]);
+    // Desde la 29.5: los productos por unidad piden un IMEI por unidad (brief-29.5, D-6).
+    const trackings = new Map(
+      products.ok
+        ? products.products.map((product) => [product.id, product.tracking])
+        : [],
     );
     order = {
       id: receivable.id,
@@ -102,6 +109,8 @@ export default async function NewGoodsReceiptPage({
         priceCurrency: prices.ok
           ? (prices.prices.get(line.productId)?.currency ?? "")
           : "",
+        serials: "",
+        tracking: trackings.get(line.productId) ?? "",
         pending: line.pending,
         unit: line.product?.unit ?? "",
       })),
@@ -120,7 +129,9 @@ export default async function NewGoodsReceiptPage({
         subtitle={
           <p>
             La recepción suma el stock de cada producto y deja como costo
-            vigente el costo recibido. Se numera al registrarla y no se edita.
+            vigente el costo recibido. En un producto que se lleva por unidad,
+            crea una unidad por cada IMEI, con el costo de la línea. Se numera
+            al registrarla y no se edita.
           </p>
         }
       />

@@ -171,9 +171,11 @@ describe("validateProductInput (brief-4.2, D-4)", () => {
       [{ unit: "" }, "unit"],
       [{ reorderPoint: "" }, "reorderPoint"],
       [{ reorderPoint: "1,2345" }, "reorderPoint"],
-      // FR-PROD-10: solo las dos condiciones del enum (brief-11.1, D-3).
+      // FR-PROD-10: solo las condiciones del enum (brief-11.1, D-3). Desde la 29.5 el enum tiene
+      // used, que el servicio acepta solo con la capacidad serialized_units: lo prueba la
+      // integración (brief-29.5, D-2).
       [{ condition: "" }, "condition"],
-      [{ condition: "used" }, "condition"],
+      [{ condition: "usado" }, "condition"],
       [{ condition: "NEW" }, "condition"],
     ] as const) {
       expect(validateProductInput({ ...valid, ...override })).toEqual({

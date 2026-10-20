@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { MOVEMENT_DIRECTION } from "@/modules/inventory";
 import {
   DEFAULT_VIEW,
   hasActiveMovementFilters,
@@ -141,6 +142,15 @@ describe("toHistoryFilters", () => {
     ]) {
       expect(movementSign(type)).toBe("−");
     }
+  });
+
+  // brief-29.5, D-8: el signo de la pantalla y el del invariante del saldo son el mismo, para cada
+  // valor del enum.
+  it("el signo de la pantalla coincide con el del saldo en cada tipo", () => {
+    for (const [type, direction] of Object.entries(MOVEMENT_DIRECTION)) {
+      expect(movementSign(type)).toBe(direction === 1 ? "+" : "−");
+    }
+    expect(Object.keys(MOVEMENT_DIRECTION)).toHaveLength(7);
   });
 });
 

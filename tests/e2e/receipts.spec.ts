@@ -32,11 +32,11 @@ test.afterAll(async () => {
 // se vacía para que cada caso empiece en V-000001, C-000001 y R-000001.
 test.beforeEach(async () => {
   await db.execute(
-    sql`truncate table supplier_payment_voids, supplier_payments, goods_receipt_voids, goods_receipt_lines, goods_receipts, purchase_order_lines, purchase_orders, refund_voids, refunds, receipt_voids, receipts, cash_movements, cash_session_closing_amounts,
+    sql`truncate table supplier_payment_voids, supplier_payments, goods_receipt_voids, goods_receipt_line_units, goods_receipt_lines, goods_receipts, purchase_order_lines, purchase_orders, refund_voids, refunds, receipt_voids, receipts, cash_movements, cash_session_closing_amounts,
           cash_session_closings, cash_session_opening_amounts, cash_sessions, payment_methods,
           sale_voids, sale_lines, sales, order_lines, orders, document_counters, audit_logs,
           inventory_movements, inventories, product_images, product_costs, product_prices,
-          attribute_values, products, conversation_notes, messages, conversations, client_tag_assignments, clients`,
+          attribute_values, stock_units, products, conversation_notes, messages, conversations, client_tag_assignments, clients`,
   );
   await db.execute(sql`delete from login_attempts`);
   await db.execute(sql`delete from sessions`);

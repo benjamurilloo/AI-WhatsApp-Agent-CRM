@@ -25,6 +25,7 @@ import {
 } from "../actions";
 import {
   currencyWarning,
+  SERIALS_HINT,
   SUPPLIER_REFERENCE_HINT,
   type GoodsReceiptFormLine,
   type GoodsReceiptFormState,
@@ -55,6 +56,8 @@ const blank = (key: number): Row => ({
   quantity: "",
   unitCost: "",
   priceCurrency: "",
+  serials: "",
+  tracking: "",
 });
 
 const initialState: GoodsReceiptFormState = { status: "idle" };
@@ -124,6 +127,7 @@ function GoodsReceiptFields({
         ...line,
         quantity: sent[index]?.quantity ?? line.quantity,
         unitCost: sent[index]?.unitCost ?? line.unitCost,
+        serials: sent[index]?.serials ?? line.serials,
         key: index,
       }));
     }
@@ -346,6 +350,7 @@ function GoodsReceiptFields({
                         productId: option.id,
                         productText: `${option.label} (${option.detail})`,
                         priceCurrency: option.priceCurrency,
+                        tracking: option.tracking,
                       })
                     }
                     onType={(text) =>
@@ -353,6 +358,7 @@ function GoodsReceiptFields({
                         productId: "",
                         productText: text,
                         priceCurrency: "",
+                        tracking: "",
                       })
                     }
                   />
@@ -411,6 +417,48 @@ function GoodsReceiptFields({
                     <span className="sr-only"> la línea {position}</span>
                   </button>
                 </div>
+              )}
+              <input type="hidden" name="tracking" value={row.tracking} />
+              {row.tracking === "quantity" ? (
+                <input type="hidden" name="serials" value="" />
+              ) : (
+                // Los IMEI (brief-29.5, D-6). Sin JavaScript no se sabe si el producto se lleva por
+                // unidad: el campo va plegado y se abre a mano; con JavaScript se abre al elegirlo.
+                <details
+                  className="sm:col-span-full"
+                  open={
+                    row.tracking === "unit" || Boolean(row.serials) || undefined
+                  }
+                >
+                  <summary className="cursor-pointer text-sm font-semibold">
+                    IMEI de las unidades
+                  </summary>
+                  <div className="mt-2 flex flex-col gap-1">
+                    <label htmlFor={`imei-${row.key}`} className={labelClass}>
+                      IMEI o número de serie, uno por renglón
+                    </label>
+                    <textarea
+                      id={`imei-${row.key}`}
+                      name="serials"
+                      rows={3}
+                      autoComplete="off"
+                      spellCheck={false}
+                      value={row.serials}
+                      onChange={(event) =>
+                        update(row.key, { serials: event.currentTarget.value })
+                      }
+                      className={`${inputClass} font-mono`}
+                      aria-invalid={Boolean(error) || undefined}
+                      aria-describedby={`imei-${row.key}-ayuda`}
+                    />
+                    <p
+                      id={`imei-${row.key}-ayuda`}
+                      className="text-sm text-muted"
+                    >
+                      {SERIALS_HINT}
+                    </p>
+                  </div>
+                </details>
               )}
               <p className="text-sm text-muted sm:col-span-full">
                 {estimate && currency

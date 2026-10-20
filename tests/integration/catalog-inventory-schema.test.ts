@@ -175,7 +175,7 @@ describe("products", () => {
     expect(
       await codeOf(
         sql`insert into products (organization_id, sku, name, condition)
-            values (${s.orgA}, 'A', 'A', 'used')`,
+            values (${s.orgA}, 'A', 'A', 'broken')`,
       ),
     ).toBe("22P02");
     expect(

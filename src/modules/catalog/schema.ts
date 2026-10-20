@@ -23,11 +23,18 @@ import { searchQuery, searchVector, tsvector } from "@/shared/search";
 // normalización y el armado de la consulta viven en src/shared/search, compartidos con
 // knowledge (brief-11.2, D-6).
 
-// Condición comercial (brief-11.1, D-3). Agregar un valor es un ALTER TYPE aditivo.
+// Condición comercial (brief-11.1, D-3). Agregar un valor es un ALTER TYPE aditivo. used, desde la
+// 29.5 (ADR 0024, punto 6; brief-29.5, D-2): solo con la capacidad serialized_units, y el agente no
+// lo ve hasta la 29.8 (D-7).
 export const productCondition = pgEnum("product_condition", [
   "new",
   "refurbished",
+  "used",
 ]);
+
+// Cómo se lleva el stock del producto (ADR 0024, punto 6; brief-29.5, D-2 y D-3): por cantidad o por
+// unidad, cada una con su IMEI. Lo cambia solo inventory, mientras el producto no tenga movimientos.
+export const stockTracking = pgEnum("stock_tracking", ["quantity", "unit"]);
 
 // Campos de operación (brief-17.2, D-3, D-5 y D-6): los largos de los textos y las escalas de los
 // números. La base los exige con CHECK; el servicio, con los mismos valores.
@@ -111,6 +118,8 @@ export const products = pgTable(
     brand: text("brand"),
     category: text("category"),
     condition: productCondition("condition").notNull().default("new"),
+    // Desde la 29.5 (D-3). No es un campo del formulario: lo escribe writeProductTracking.
+    tracking: stockTracking("tracking").notNull().default("quantity"),
     // Campos de operación (brief-17.2), todos opcionales. El código de barras se guarda como se
     // escribió y es único por organización sin distinguir mayúsculas, como el SKU (D-3). Peso en
     // kg y dimensiones en cm, con unidad fija (D-5); las tres dimensiones van juntas o ninguna.

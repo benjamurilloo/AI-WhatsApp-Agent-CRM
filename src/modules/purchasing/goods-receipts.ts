@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
   auditUserIds,
@@ -11,7 +12,13 @@ import {
   lockProductsForOrder,
   recordReceivedCosts,
 } from "@/modules/catalog";
-import { receiveStock } from "@/modules/inventory";
+import {
+  getUnitSerials,
+  isSerialTakenError,
+  parseUnitSerial,
+  receiveStock,
+  splitUnitSerials,
+} from "@/modules/inventory";
 import { formatDocumentNumber, nextDocumentNumber } from "@/modules/numbering";
 import {
   authorize,
@@ -112,6 +119,9 @@ export type GoodsReceiptLineInput = {
   productId: string;
   quantity: string;
   unitCost: string;
+  // Desde la 29.5, en un producto por unidad: un IMEI por unidad, uno por renglón o separados por
+  // espacios o comas (brief-29.5, D-6). En un producto por cantidad va vacío.
+  serials?: string;
 };
 
 export type GoodsReceiptInput = {
@@ -139,7 +149,13 @@ export type GoodsReceiptValidationFailure = Failure<
   }
 >;
 
-// exceeds_pending lleva lo que falta recibir de la línea de la orden.
+// exceeds_pending lleva lo que falta recibir de la línea de la orden. Desde la 29.5, los IMEI de un
+// producto por unidad (brief-29.5, D-6): uno por unidad, con la cantidad entera (serials_count), con
+// su forma (serial_format), sin repetirse en la recepción (serial_repeated), y ninguno en un producto
+// por cantidad (serials_not_allowed).
+export type GoodsReceiptSerialRule =
+  "serials_count" | "serial_format" | "serial_repeated" | "serials_not_allowed";
+
 export type GoodsReceiptLineRuleIssue =
   | PurchaseOrderLineRuleIssue
   | {
@@ -147,7 +163,8 @@ export type GoodsReceiptLineRuleIssue =
       productId: string;
       rule: "exceeds_pending";
       pending: string;
-    };
+    }
+  | { position: number; productId: string; rule: GoodsReceiptSerialRule };
 
 export type CreateGoodsReceiptResult =
   | {
@@ -179,6 +196,12 @@ export type CreateGoodsReceiptResult =
   | Failure<
       "BUSINESS_RULE_VIOLATION",
       { rule: "stock_limit"; productIds: string[] }
+    >
+  // Desde la 29.5: IMEI que ya tienen una unidad vigente en la organización. Vacío si dos recepciones
+  // simultáneas chocaron en la base y no se sabe cuál.
+  | Failure<
+      "BUSINESS_RULE_VIOLATION",
+      { rule: "serials_taken"; serials: string[] }
     >;
 
 type ParsedLines = Extract<
@@ -202,7 +225,18 @@ type Prepared = {
   lines: ParsedLines;
   // Con orden, la línea de la orden de cada posición.
   orderLineIds: Map<number, string>;
+  // Los IMEI escritos en cada posición, separados y sin vacíos (brief-29.5, D-6).
+  serials: Map<number, string[]>;
 };
+
+function serialsByPosition(input: GoodsReceiptInput): Map<number, string[]> {
+  return new Map(
+    input.lines.map((line, index) => [
+      index + 1,
+      splitUnitSerials((line.serials ?? "").slice(0, 20_000)),
+    ]),
+  );
+}
 
 async function prepareGoodsReceipt(
   organizationId: string,
@@ -260,6 +294,7 @@ async function prepareGoodsReceipt(
       supplierReference: reference.value,
       lines: parsed.lines,
       orderLineIds: new Map(),
+      serials: serialsByPosition(input),
     };
   }
 
@@ -317,7 +352,40 @@ async function prepareGoodsReceipt(
     supplierReference: reference.value,
     lines: parsed.lines,
     orderLineIds: new Map(ids.map((id, index) => [index + 1, id])),
+    serials: serialsByPosition(input),
   };
+}
+
+// Los IMEI de cada línea contra el seguimiento de su producto, leído con los productos bloqueados
+// (brief-29.5, D-6). Un IMEI se compara sin distinguir mayúsculas, como el índice de la base.
+function serialIssues(
+  lines: { position: number; productId: string; quantity: Quantity }[],
+  serials: Map<number, string[]>,
+  trackings: Map<string, "quantity" | "unit">,
+): GoodsReceiptLineRuleIssue[] {
+  const seen = new Set<string>();
+  return lines.flatMap((line): GoodsReceiptLineRuleIssue[] => {
+    const { position, productId } = line;
+    const written = serials.get(position) ?? [];
+    const issue = (rule: GoodsReceiptSerialRule) => [
+      { position, productId, rule },
+    ];
+    if (trackings.get(productId) !== "unit") {
+      return written.length > 0 ? issue("serials_not_allowed") : [];
+    }
+    if (written.some((serial) => parseUnitSerial(serial) === null)) {
+      return issue("serial_format");
+    }
+    if (BigInt(written.length) * 1000n !== line.quantity) {
+      return issue("serials_count");
+    }
+    const lowered = written.map((serial) => serial.toLowerCase());
+    const repeated =
+      new Set(lowered).size !== lowered.length ||
+      lowered.some((serial) => seen.has(serial));
+    for (const serial of lowered) seen.add(serial);
+    return repeated ? issue("serial_repeated") : [];
+  });
 }
 
 // El rechazo que llega con los saldos bloqueados se lanza, para revertir la transacción y con ella
@@ -325,6 +393,12 @@ async function prepareGoodsReceipt(
 class StockLimit extends Error {
   constructor(readonly productIds: string[]) {
     super("stock_limit");
+  }
+}
+
+class SerialsTaken extends Error {
+  constructor(readonly serials: string[]) {
+    super("serials_taken");
   }
 }
 
@@ -457,15 +531,59 @@ export async function createGoodsReceipt(
           }
         }
 
+        // Desde la 29.5, los IMEI de cada línea contra el seguimiento de su producto (D-6).
+        const trackings = new Map(
+          [...products.values()].map((product) => [
+            product.id,
+            product.tracking,
+          ]),
+        );
+        const serialRules = serialIssues(
+          evaluated.lines,
+          prepared.serials,
+          trackings,
+        );
+        if (serialRules.length > 0) {
+          return {
+            ok: false,
+            code: "BUSINESS_RULE_VIOLATION",
+            rule: "line_rules",
+            lines: serialRules,
+          };
+        }
+        const unitSerials = new Map(
+          evaluated.lines.flatMap((line) =>
+            trackings.get(line.productId) === "unit"
+              ? [[line.productId, prepared.serials.get(line.position)!]]
+              : [],
+          ),
+        );
+
         // 5. La entrada de stock: bloquea los saldos y, después de comprobar que caben, toma el número
-        // al armar el motivo (ADR 0023, punto 10). El motivo no nombra al proveedor (punto 12).
+        // al armar el motivo (ADR 0023, punto 10). El motivo no nombra al proveedor (punto 12). Desde la
+        // 29.5, crea las unidades de cada línea de un producto por unidad, con el costo de la línea y la
+        // recepción como origen: su id se elige acá (brief-29.5, D-4).
+        const receiptId = randomUUID();
         let number: number | null = null;
         const stock = await receiveStock(tx, {
           organizationId,
-          lines: evaluated.lines.map((line) => ({
-            productId: line.productId,
-            quantity: quantityToDatabase(line.quantity),
-          })),
+          originId: receiptId,
+          lines: evaluated.lines.map((line) => {
+            const serials = unitSerials.get(line.productId);
+            return {
+              productId: line.productId,
+              quantity: quantityToDatabase(line.quantity),
+              ...(serials
+                ? {
+                    units: serials.map((serial) => ({
+                      serial,
+                      cost: moneyToDatabase(line.unitCost),
+                      costCurrency: currency,
+                    })),
+                  }
+                : {}),
+            };
+          }),
           reason: async () => {
             number = await nextDocumentNumber(
               tx,
@@ -476,12 +594,18 @@ export async function createGoodsReceipt(
           },
           createdBy: userId,
         });
-        if (!stock.ok) throw new StockLimit(stock.productIds);
+        if (!stock.ok) {
+          if (stock.reason === "serials_taken") {
+            throw new SerialsTaken(stock.serials);
+          }
+          throw new StockLimit(stock.productIds);
+        }
         if (number === null) throw new Error("la entrada no pidió el número");
         const displayNumber = formatGoodsReceiptNumber(number);
 
         // 6. La recepción y sus líneas.
         const receipt = await receiptRepository.insertGoodsReceipt(tx, {
+          id: receiptId,
           organizationId,
           number,
           supplierId,
@@ -499,25 +623,42 @@ export async function createGoodsReceipt(
           unitCost: moneyToDatabase(line.unitCost),
           lineTotal: moneyToDatabase(line.total),
         }));
-        await receiptRepository.insertGoodsReceiptLines(
+        const lineIds = await receiptRepository.insertGoodsReceiptLines(
           tx,
           organizationId,
           receipt.id,
           newLines,
         );
+        await receiptRepository.insertGoodsReceiptLineUnits(
+          tx,
+          organizationId,
+          [...stock.unitIds].flatMap(([productId, unitIds]) =>
+            unitIds.map((unitId) => ({
+              goodsReceiptLineId: lineIds.get(productId)!,
+              unitId,
+            })),
+          ),
+        );
 
         // El costo, después de la entrada de stock: los saldos ya ordenan a dos recepciones del mismo
         // producto, así que el costo vigente que lee catalog es el de la que confirmó antes (H-2).
-        await recordReceivedCosts(tx, {
-          organizationId,
-          createdBy: userId,
-          goodsReceiptNumber: displayNumber,
-          lines: newLines.map((line) => ({
-            productId: line.productId,
-            amount: line.unitCost,
-            currency,
-          })),
-        });
+        // Desde la 29.5, solo de los productos por cantidad: el costo de un producto por unidad vive en
+        // cada unidad (ADR 0024, punto 6; brief-29.5, H-6).
+        const costLines = newLines.filter(
+          (line) => !unitSerials.has(line.productId),
+        );
+        if (costLines.length > 0) {
+          await recordReceivedCosts(tx, {
+            organizationId,
+            createdBy: userId,
+            goodsReceiptNumber: displayNumber,
+            lines: costLines.map((line) => ({
+              productId: line.productId,
+              amount: line.unitCost,
+              currency,
+            })),
+          });
+        }
 
         // El cierre automático: si después de esta recepción no falta nada de ninguna línea (D-9).
         let closedOrder = false;
@@ -573,6 +714,15 @@ export async function createGoodsReceipt(
                   [`line_${line.position}_quantity`, line.quantity],
                   [`line_${line.position}_unit_cost`, line.unitCost],
                   [`line_${line.position}_total`, line.lineTotal],
+                  // Desde la 29.5, los IMEI de un producto por unidad.
+                  ...(unitSerials.has(line.productId)
+                    ? [
+                        [
+                          `line_${line.position}_serials`,
+                          unitSerials.get(line.productId)!.join(", "),
+                        ],
+                      ]
+                    : []),
                 ]),
               ),
             },
@@ -586,6 +736,14 @@ export async function createGoodsReceipt(
       },
     );
   } catch (error) {
+    if (error instanceof SerialsTaken || isSerialTakenError(error)) {
+      return {
+        ok: false,
+        code: "BUSINESS_RULE_VIOLATION",
+        rule: "serials_taken",
+        serials: error instanceof SerialsTaken ? error.serials : [],
+      };
+    }
     if (!(error instanceof StockLimit)) throw error;
     return {
       ok: false,
@@ -769,6 +927,8 @@ export type GoodsReceiptLine = {
   quantity: string;
   unitCost: string;
   lineTotal: string;
+  // Desde la 29.5: los IMEI de las unidades que creó la línea; vacía en un producto por cantidad.
+  serials: string[];
 };
 
 export type GoodsReceiptDetail = {
@@ -817,7 +977,7 @@ export async function getGoodsReceipt(
     goodsReceiptId.toLowerCase(),
   );
   if (!receipt) return failure("NOT_FOUND");
-  const [lines, supplier, order, receiptVoid] = await Promise.all([
+  const [lines, supplier, order, receiptVoid, lineUnits] = await Promise.all([
     receiptRepository.findGoodsReceiptLines(organizationId, receipt.id),
     supplierRepository.findSupplier(organizationId, receipt.supplierId),
     receipt.purchaseOrderId
@@ -827,7 +987,18 @@ export async function getGoodsReceipt(
         )
       : Promise.resolve(undefined),
     receiptRepository.findVoidByGoodsReceipt(organizationId, receipt.id),
+    receiptRepository.findGoodsReceiptLineUnits(organizationId, receipt.id),
   ]);
+  const serials = await getUnitSerials(
+    organizationId,
+    lineUnits.map((row) => row.unitId),
+  );
+  const serialsByProduct = new Map<string, string[]>();
+  for (const row of lineUnits) {
+    const list = serialsByProduct.get(row.productId) ?? [];
+    list.push(serials.get(row.unitId) ?? "");
+    serialsByProduct.set(row.productId, list);
+  }
   const products = await getProductsByIds(
     context,
     lines.map((line) => line.productId),
@@ -874,6 +1045,10 @@ export async function getGoodsReceipt(
           quantity: line.quantity,
           unitCost: line.unitCost,
           lineTotal: line.lineTotal,
+          // En orden alfabético: las filas de la línea no guardan el orden en que se escribieron.
+          serials: (serialsByProduct.get(line.productId) ?? []).sort((a, b) =>
+            a.localeCompare(b),
+          ),
         };
       }),
       receiptVoid: receiptVoid

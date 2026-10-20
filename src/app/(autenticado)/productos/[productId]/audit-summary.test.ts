@@ -71,6 +71,20 @@ describe("describeAuditDiff", () => {
     ).toBe("Punto de reposición: 5 → 10 · Nombre: Café → Café molido");
   });
 
+  // Revisión independiente de la 29.5, m-2: sin la etiqueta, la edición quedaba en blanco.
+  it("brief-29.5 D-3: el cambio de seguimiento se lee con su etiqueta", () => {
+    expect(
+      describeAuditDiff(
+        entry({
+          diff: {
+            before: { tracking: "quantity" },
+            after: { tracking: "unit" },
+          },
+        }),
+      ),
+    ).toBe("Se lleva: Por cantidad → Por unidad, con IMEI");
+  });
+
   it("FR-PROD-16: subir, reemplazar y quitar la imagen se leen con el hash corto y el tamaño", () => {
     const image = (before: string | null, after: string | null) =>
       describeAuditDiff(

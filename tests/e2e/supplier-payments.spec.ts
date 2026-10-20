@@ -36,12 +36,12 @@ test.afterAll(async () => {
 test.beforeEach(async () => {
   await db.execute(
     sql`truncate table supplier_payment_voids, supplier_payments, goods_receipt_voids,
-          goods_receipt_lines, goods_receipts, purchase_order_lines, purchase_orders, suppliers,
+          goods_receipt_line_units, goods_receipt_lines, goods_receipts, purchase_order_lines, purchase_orders, suppliers,
           refund_voids, refunds, receipt_voids, receipts, cash_movements,
           cash_session_closing_amounts, cash_session_closings, cash_session_opening_amounts,
           cash_sessions, payment_methods, document_counters, audit_logs, sale_voids, sale_lines,
           sales, order_lines, orders, inventory_movements, inventories, product_images,
-          product_costs, product_prices, attribute_values, products`,
+          product_costs, product_prices, attribute_values, stock_units, products`,
   );
   await db.execute(sql`delete from login_attempts`);
   await db.execute(sql`delete from sessions`);

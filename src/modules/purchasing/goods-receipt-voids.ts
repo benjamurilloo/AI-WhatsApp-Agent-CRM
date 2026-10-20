@@ -54,6 +54,12 @@ export type VoidGoodsReceiptResult =
   | Failure<
       "BUSINESS_RULE_VIOLATION",
       { rule: "insufficient_stock"; shortages: GoodsReceiptVoidShortage[] }
+    >
+  // Desde la 29.5: una unidad que creó la recepción ya no está disponible, porque se dio de baja (o,
+  // desde la 29.5.2, se reservó o se vendió). Lleva sus IMEI (brief-29.5, D-4).
+  | Failure<
+      "BUSINESS_RULE_VIOLATION",
+      { rule: "units_not_available"; serials: string[] }
     >;
 
 const idSchema = z.uuid();
@@ -92,6 +98,12 @@ class InsufficientStock extends Error {
   }
 }
 
+class UnitsNotAvailable extends Error {
+  constructor(readonly serials: string[]) {
+    super("units_not_available");
+  }
+}
+
 export async function voidGoodsReceipt(
   context: AuthContext,
   goodsReceiptId: string,
@@ -122,6 +134,17 @@ export async function voidGoodsReceipt(
     organizationId,
     receipt.id,
   );
+  // Desde la 29.5, las unidades que creó cada línea de un producto por unidad: son de solo inserción.
+  const unitIds = new Map<string, string[]>();
+  for (const row of await receiptRepository.findGoodsReceiptLineUnits(
+    organizationId,
+    receipt.id,
+  )) {
+    unitIds.set(row.productId, [
+      ...(unitIds.get(row.productId) ?? []),
+      row.unitId,
+    ]);
+  }
   const displayNumber = formatGoodsReceiptNumber(receipt.number);
 
   try {
@@ -163,6 +186,9 @@ export async function voidGoodsReceipt(
           lines: lines.map((line) => ({
             productId: line.productId,
             quantity: line.quantity,
+            ...(unitIds.has(line.productId)
+              ? { unitIds: unitIds.get(line.productId)! }
+              : {}),
           })),
           reason: async () => {
             const again = await voidedNow();
@@ -177,10 +203,13 @@ export async function voidGoodsReceipt(
           createdBy: userId,
         });
         if (!stock.ok) {
-          // 4. Con los saldos tomados: si otra anulación de la misma recepción confirmó antes, el
-          // stock que falta es el que ella sacó, y la respuesta es «ya anulada» (H-3).
+          // 4. Con los saldos o las unidades tomados: si otra anulación de la misma recepción confirmó
+          // antes, el stock que falta es el que ella sacó, y la respuesta es «ya anulada» (H-3).
           const again = await voidedNow();
           if (again) throw new AlreadyVoided(again);
+          if (stock.reason === "units_unavailable") {
+            throw new UnitsNotAvailable(stock.units.map((unit) => unit.serial));
+          }
           const positions = new Map(
             lines.map((line) => [line.productId, line.position]),
           );
@@ -234,6 +263,14 @@ export async function voidGoodsReceipt(
         code: "BUSINESS_RULE_VIOLATION",
         rule: "insufficient_stock",
         shortages: error.shortages,
+      };
+    }
+    if (error instanceof UnitsNotAvailable) {
+      return {
+        ok: false,
+        code: "BUSINESS_RULE_VIOLATION",
+        rule: "units_not_available",
+        serials: error.serials,
       };
     }
     // La base es la última defensa: dos anulaciones que igual chocan en

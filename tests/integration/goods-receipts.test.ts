@@ -19,6 +19,7 @@ import {
 } from "@/modules/purchasing";
 import { getDb } from "@/shared/db";
 import { resetDatabase } from "./reset-database";
+import { expectStockInvariant } from "./stock-invariant";
 
 // La recepción contra PostgreSQL real (brief-22.4): las operaciones (AC-2 a AC-4), los rechazos
 // (AC-6), la serialización (AC-5) y el rendimiento (AC-8). Los helpers son los de
@@ -290,6 +291,10 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await Promise.all(heldLocks.splice(0).map((releaseLock) => releaseLock()));
+  // El invariante de las unidades, después de cada test (brief-29.5, D-8). Esta suite arma saldos con SQL directo, sin
+  // movimiento, así que la suma de los movimientos no se compara: la comparan units.test.ts y
+  // orders-cycle.test.ts.
+  await expectStockInvariant({ movements: false });
 });
 
 afterAll(async () => {

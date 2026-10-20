@@ -12,7 +12,10 @@ import {
   listProductSuggestions,
 } from "@/modules/catalog";
 import { getProductStock, listStockMovements } from "@/modules/inventory";
-import { getOrganizationTimezone } from "@/modules/organizations";
+import {
+  getOrganizationTimezone,
+  hasCapability,
+} from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
 import { auditActorLabels } from "@/app/(autenticado)/_audit/actor";
 import { ActionNotice } from "@/app/_components/action-notice";
@@ -49,6 +52,7 @@ import { ProductForm } from "../product-form";
 import { StockStatusBadge } from "../stock-status";
 import { auditActionLabel, describeAuditDiff } from "./audit-summary";
 import { CostSummary } from "./costos/cost-summary";
+import { movementSign } from "./movimientos/filters";
 import { DeactivateConfirm, ReactivateForm } from "./product-actions";
 import { ProductImageUpload, RemoveImageConfirm } from "./product-image";
 import { ProductSubNav } from "./product-sub-nav";
@@ -254,6 +258,10 @@ export default async function ProductPage({
                 ? { modelId: variant.model?.id ?? "", attributes: variant.raw }
                 : undefined
             }
+            usedCondition={await hasCapability(
+              context.organizationId,
+              "serialized_units",
+            )}
           />
         </div>
       ) : (
@@ -446,6 +454,23 @@ export default async function ProductPage({
             <SectionCard id="stock-titulo" title="Stock" icon="layers">
               <DetailList
                 items={[
+                  // Desde la 29.5 (brief-29.5, D-6): un producto por unidad lo dice, y sus unidades
+                  // están en su propia pantalla.
+                  ...(product.tracking === "unit"
+                    ? [
+                        {
+                          label: "Se lleva",
+                          value: (
+                            <Link
+                              href={`/productos/${product.id}/unidades`}
+                              className={linkClass}
+                            >
+                              Por unidad, con IMEI
+                            </Link>
+                          ),
+                        },
+                      ]
+                    : []),
                   {
                     label: "Stock actual",
                     value: (
@@ -496,7 +521,7 @@ export default async function ProductPage({
                   {movements.map((movement) => (
                     <li key={movement.id} className="tabular-nums">
                       {formatShortDateTime(movement.createdAt, timeZone)} ·{" "}
-                      {movement.type === "adjustment_positive" ? "+" : "−"}
+                      {movementSign(movement.type)}
                       {formatQuantity(movement.quantity)} · {movement.reason}
                     </li>
                   ))}
@@ -508,7 +533,9 @@ export default async function ProductPage({
                   className={`${linkClass} inline-flex items-center gap-1.5 text-sm`}
                 >
                   <Icon name="trendingUp" className="size-4" />
-                  Ver historial y ajustar
+                  {product.tracking === "unit"
+                    ? "Ver historial"
+                    : "Ver historial y ajustar"}
                 </Link>
               </p>
             </SectionCard>

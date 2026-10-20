@@ -2,6 +2,7 @@ import { and, asc, count, desc, eq, sql, type SQL } from "drizzle-orm";
 import { getDb, type Db, type DbTransaction } from "@/shared/db";
 import {
   goodsReceiptLines,
+  goodsReceiptLineUnits,
   goodsReceiptVoidReason,
   goodsReceiptVoids,
   goodsReceipts,
@@ -10,8 +11,8 @@ import {
 // Acceso a goods_receipts y goods_receipt_lines (ADR 0023, punto 4; brief-22.4) y, desde la 22.5,
 // goods_receipt_voids (punto 6; brief-22.5). Toda consulta filtra por organization_id en SQL, también
 // las lecturas por id (D-8). Las únicas escrituras son insertGoodsReceipt, insertGoodsReceiptLines e
-// insertGoodsReceiptVoid, y ninguna cambia ni borra: los triggers de la 0049 y la 0050 son la segunda
-// defensa.
+// insertGoodsReceiptVoid, y desde la 29.5 insertGoodsReceiptLineUnits, y ninguna cambia ni borra: los
+// triggers de la 0049, la 0050 y la 0056 son la segunda defensa.
 
 type Executor = Db | DbTransaction;
 
@@ -60,6 +61,9 @@ const lineColumns = {
 };
 
 export type NewGoodsReceipt = {
+  // Desde la 29.5 lo elige purchasing antes de la entrada de stock: es el origen de las unidades que
+  // crea la recepción (brief-29.5, D-4).
+  id: string;
   organizationId: string;
   number: number;
   supplierId: string;
@@ -83,15 +87,64 @@ export async function insertGoodsReceipt(
 
 export type NewGoodsReceiptLine = GoodsReceiptLineRow;
 
+// Devuelve el id de la línea de cada producto: un producto va en una sola línea.
 export async function insertGoodsReceiptLines(
   tx: DbTransaction,
   organizationId: string,
   goodsReceiptId: string,
   lines: NewGoodsReceiptLine[],
-): Promise<void> {
-  await tx
+): Promise<Map<string, string>> {
+  const rows = await tx
     .insert(goodsReceiptLines)
-    .values(lines.map((line) => ({ ...line, organizationId, goodsReceiptId })));
+    .values(lines.map((line) => ({ ...line, organizationId, goodsReceiptId })))
+    .returning({
+      id: goodsReceiptLines.id,
+      productId: goodsReceiptLines.productId,
+    });
+  return new Map(rows.map((row) => [row.productId, row.id]));
+}
+
+// Las unidades que creó cada línea de un producto por unidad (brief-29.5, D-2).
+export async function insertGoodsReceiptLineUnits(
+  tx: DbTransaction,
+  organizationId: string,
+  rows: { goodsReceiptLineId: string; unitId: string }[],
+): Promise<void> {
+  if (rows.length === 0) return;
+  await tx
+    .insert(goodsReceiptLineUnits)
+    .values(rows.map((row) => ({ ...row, organizationId })));
+}
+
+// Las unidades de las líneas de una recepción, con el producto de su línea, ordenadas por línea. Son de
+// solo inserción: se leen sin bloqueo.
+export function findGoodsReceiptLineUnits(
+  organizationId: string,
+  goodsReceiptId: string,
+): Promise<{ productId: string; unitId: string }[]> {
+  return getDb()
+    .select({
+      productId: goodsReceiptLines.productId,
+      unitId: goodsReceiptLineUnits.unitId,
+    })
+    .from(goodsReceiptLineUnits)
+    .innerJoin(
+      goodsReceiptLines,
+      and(
+        eq(
+          goodsReceiptLines.organizationId,
+          goodsReceiptLineUnits.organizationId,
+        ),
+        eq(goodsReceiptLines.id, goodsReceiptLineUnits.goodsReceiptLineId),
+      ),
+    )
+    .where(
+      and(
+        eq(goodsReceiptLineUnits.organizationId, organizationId),
+        eq(goodsReceiptLines.goodsReceiptId, goodsReceiptId),
+      ),
+    )
+    .orderBy(asc(goodsReceiptLines.position), asc(goodsReceiptLineUnits.id));
 }
 
 export async function findGoodsReceipt(

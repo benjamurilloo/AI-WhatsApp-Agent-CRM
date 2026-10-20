@@ -180,6 +180,32 @@ describe("evaluateLines", () => {
     });
   });
 
+  // brief-29.5, D-1: un producto por unidad no entra en un pedido ni en una venta hasta la 29.5.2,
+  // aunque tenga precio; uno sin seguimiento se toma por cantidad.
+  it("rechaza un producto por unidad, después de los inactivos", () => {
+    expect(
+      evaluateLines(
+        [
+          line(1, A, 1_000n, PRICE_A),
+          line(2, B, 1_000n, PRICE_B),
+          line(3, C, 1_000n, PRICE_C),
+        ],
+        new Map([
+          [A, { ...product(price(PRICE_A, "1.00"), false), tracking: "unit" }],
+          [B, { ...product(price(PRICE_B, "1.00")), tracking: "unit" }],
+          [C, { ...product(price(PRICE_C, "1.00")), tracking: "quantity" }],
+        ]),
+      ),
+    ).toEqual({
+      ok: false,
+      reason: "line_rules",
+      lines: [
+        { position: 1, productId: A, rule: "inactive_product" },
+        { position: 2, productId: B, rule: "unit_tracked" },
+      ],
+    });
+  });
+
   it("el precio que cambió, con el vigente, antes que la moneda y los montos", () => {
     const current = price(PRICE_B, "2.00", "USD");
     expect(

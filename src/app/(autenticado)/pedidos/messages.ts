@@ -89,6 +89,8 @@ const LINE_FIELD_MESSAGE: Record<OrderLineField, string> = {
 export function lineRuleMessage(rule: OrderLineRule, currency: string): string {
   return {
     inactive_product: "El producto está desactivado.",
+    unit_tracked:
+      "Este producto se vende por unidad: todavía no se puede agregar a un pedido ni a una venta.",
     no_price: "El producto no tiene precio: fijalo antes de pedirlo.",
     currency_mismatch: `El precio está en otra moneda que la primera línea (${currency}).`,
     duplicate_product:
@@ -271,6 +273,14 @@ export function transitionRejection(
         message:
           "El pedido tiene productos desactivados: reactivalos o cancelá el pedido. No se reservó nada.",
         details: result.lines.map((line) => `${label(line)}: desactivado.`),
+      };
+    case "unit_tracked":
+      return {
+        message:
+          "El pedido tiene productos que se venden por unidad: todavía no se pueden confirmar en un pedido. Cancelalo y cargá la venta cuando se pueda. No se reservó nada.",
+        details: result.lines.map(
+          (line) => `${label(line)}: se vende por unidad.`,
+        ),
       };
     case "invalid_transition":
       return {

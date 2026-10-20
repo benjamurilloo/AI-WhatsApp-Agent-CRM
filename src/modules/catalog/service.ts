@@ -39,6 +39,7 @@ import {
   DIMENSION_SCALE,
   PRODUCT_FIELD_LIMITS,
   productCondition,
+  stockTracking,
   WEIGHT_SCALE,
 } from "./schema";
 
@@ -328,7 +329,13 @@ export async function listProductFilterOptions(
 export const SUGGEST_LIMIT = 8;
 export const SUGGEST_MIN_LENGTH = 2;
 
-export type ProductSuggestion = { id: string; name: string; sku: string };
+// Desde la 29.5, con el seguimiento: la recepción pide los IMEI de un producto por unidad.
+export type ProductSuggestion = {
+  id: string;
+  name: string;
+  sku: string;
+  tracking: StockTracking;
+};
 
 export async function suggestProducts(
   context: AuthContext,
@@ -346,33 +353,91 @@ export async function suggestProducts(
   );
   return {
     ok: true,
-    products: rows.map((row) => ({ id: row.id, name: row.name, sku: row.sku })),
+    products: rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      sku: row.sku,
+      tracking: row.tracking,
+    })),
   };
 }
 
 // Para el ajuste de stock de inventory (brief-4.3.1, D-1): verifica y bloquea el producto dentro
-// de la transacción de quien ajusta, que ya autorizó. Exige la transacción, como recordAudit.
+// de la transacción de quien ajusta, que ya autorizó. Exige la transacción, como recordAudit. Desde
+// la 29.5 devuelve también el seguimiento: el ajuste de cantidad se rechaza en un producto por unidad,
+// y el alta y la baja de una unidad lo exigen (brief-29.5, D-4).
+export type StockTracking = repository.StockTracking;
+export const STOCK_TRACKINGS = stockTracking.enumValues;
+
 export async function lockProductForStockChange(
   tx: DbTransaction,
   organizationId: string,
   productId: string,
-): Promise<"active" | "inactive" | "not_found"> {
+): Promise<
+  { status: "active" | "inactive"; tracking: StockTracking } | "not_found"
+> {
   const product = await repository.lockProductShared(
     tx,
     organizationId,
     productId,
   );
   if (!product) return "not_found";
-  return product.isActive ? "active" : "inactive";
+  return {
+    status: product.isActive ? "active" : "inactive",
+    tracking: product.tracking,
+  };
+}
+
+// El cambio del seguimiento (ADR 0024, punto 6; brief-29.5, D-3). catalog no lee inventory: el cambio
+// lo hace inventory, que bloquea el producto con lockProductForTrackingChange, comprueba que no tiene
+// movimientos y escribe con writeProductTracking, en su transacción. El bloqueo es FOR UPDATE: toda
+// escritura del stock toma el producto FOR SHARE, así que ninguna corre a la vez que el cambio.
+// tests/guards/unit-writes.test.ts fija que solo changeProductTracking de inventory las llama.
+export async function lockProductForTrackingChange(
+  tx: DbTransaction,
+  organizationId: string,
+  productId: string,
+): Promise<{ isActive: boolean; tracking: StockTracking } | null> {
+  if (!productIdSchema.safeParse(productId).success) return null;
+  return (
+    (await repository.lockProductExclusive(tx, organizationId, productId)) ??
+    null
+  );
+}
+
+export function writeProductTracking(
+  tx: DbTransaction,
+  organizationId: string,
+  productId: string,
+  tracking: StockTracking,
+): Promise<void> {
+  return repository.updateProductTracking(
+    tx,
+    organizationId,
+    productId,
+    tracking,
+  );
+}
+
+// El seguimiento de productos que quien llama ya bloqueó, para que inventory compruebe sus líneas
+// (brief-29.5, D-4). Un id de otra organización no vuelve.
+export function findProductTrackings(
+  tx: DbTransaction,
+  organizationId: string,
+  productIds: string[],
+): Promise<Map<string, StockTracking>> {
+  return repository.findTrackings(tx, organizationId, [...new Set(productIds)]);
 }
 
 // Los productos de un pedido, para orders (brief-19.2; ADR 0020, puntos 3 y 6): los bloquea en modo
 // compartido, ordenados por id, y lee su precio vigente en la misma transacción, así que un cambio
 // de precio simultáneo no se cruza con el alta. orders ya autorizó; un id que no es de la
-// organización no vuelve.
+// organización no vuelve. Desde la 29.5, con el seguimiento: un producto por unidad no entra en un
+// pedido ni en una venta hasta la 29.5.2 (brief-29.5, D-1), y la recepción pide sus IMEI.
 export type OrderProduct = {
   id: string;
   isActive: boolean;
+  tracking: StockTracking;
   price: ProductPrice | null;
 };
 
@@ -398,6 +463,7 @@ export async function lockProductsForOrder(
         {
           id: product.id,
           isActive: product.isActive,
+          tracking: product.tracking,
           price: price ? toPrice(price) : null,
         },
       ];
@@ -524,6 +590,21 @@ async function variantAllowed(
   );
 }
 
+// La condición used existe solo con la capacidad serialized_units (brief-29.5, D-2): sin ella, el
+// formulario no la ofrece y el servicio la rechaza como una condición inválida (invariante 1).
+async function usedNotAllowed(
+  context: AuthContext,
+  condition: ProductCondition,
+): Promise<Failure<"VALIDATION_ERROR", { fields: ProductField[] }> | null> {
+  if (
+    condition !== "used" ||
+    (await hasCapability(context.organizationId, "serialized_units"))
+  ) {
+    return null;
+  }
+  return { ok: false, code: "VALIDATION_ERROR", fields: ["condition"] };
+}
+
 export type CreateProductResult =
   | { ok: true; productId: string }
   | Failure<"FORBIDDEN" | "NOT_FOUND">
@@ -541,6 +622,8 @@ export async function createProduct(
   const validated = validateProductInput(input);
   if (!validated.ok) return validated;
   const { values } = validated;
+  const used = await usedNotAllowed(context, values.condition);
+  if (used) return used;
 
   return repository.withTransaction(
     async (tx): Promise<CreateProductResult> => {
@@ -588,7 +671,10 @@ export type UpdateProductResult =
   | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
   | ProductConflict
   | Failure<"VALIDATION_ERROR", { fields: ProductField[] }>
-  | ProductVariantRejection;
+  | ProductVariantRejection
+  // Desde la 29.5 (brief-29.5, D-3): la condición de un producto por unidad no cambia. Sus unidades
+  // se cargaron con esa condición: un iPhone nuevo no pasa a usado sin pasar por la baja.
+  | Failure<"BUSINESS_RULE_VIOLATION", { rule: "unit_condition_locked" }>;
 
 export async function updateProduct(
   context: AuthContext,
@@ -615,6 +701,20 @@ export async function updateProduct(
         { forUpdate: true },
       );
       if (!current) return failure("NOT_FOUND");
+      if (
+        current.tracking === "unit" &&
+        values.condition !== current.condition
+      ) {
+        return {
+          ok: false,
+          code: "BUSINESS_RULE_VIOLATION",
+          rule: "unit_condition_locked",
+        };
+      }
+      if (current.condition !== values.condition) {
+        const used = await usedNotAllowed(context, values.condition);
+        if (used) return used;
+      }
 
       // Con modelo, el duplicado se vuelve a comprobar aunque solo cambie la condición (D-6). El
       // producto ya está bloqueado; el modelo se bloquea después, siempre en ese orden.
@@ -896,7 +996,10 @@ async function withCurrentPrices(
   });
 }
 
-// El texto y el límite llegan ya validados por la API (D-4).
+// El texto y el límite llegan ya validados por la API (D-4). Desde la 29.5, las lecturas de servicio
+// dejan afuera los productos usados: read-v1 y read-v2 admiten solo new y refurbished, y el agente no
+// ofrece usados hasta el contrato de la 29.8 (ADR 0024, punto 15; brief-29.5, D-7). No cambia la forma
+// del contrato: cambia qué productos aparecen.
 export async function searchActiveProductsForService(
   organizationId: string,
   query: { text: string; limit: number },
@@ -905,18 +1008,19 @@ export async function searchActiveProductsForService(
     organizationId,
     query.text.trim(),
     query.limit,
+    { excludeUsed: true },
   );
   return withCurrentPrices(organizationId, rows);
 }
 
-// Un producto inactivo, de otra organización o inexistente da null, sin distinguir.
+// Un producto inactivo, usado, de otra organización o inexistente da null, sin distinguir.
 export async function getActiveProductForService(
   organizationId: string,
   productId: string,
 ): Promise<ServiceProduct | null> {
   if (!productIdSchema.safeParse(productId).success) return null;
   const row = await repository.findProduct(organizationId, productId);
-  if (!row?.isActive) return null;
+  if (!row?.isActive || row.condition === "used") return null;
   const [product] = await withCurrentPrices(organizationId, [row]);
   return product ?? null;
 }

@@ -1,8 +1,10 @@
 import type {
   CreateGoodsReceiptResult,
   GoodsReceiptLineRuleIssue,
+  GoodsReceiptSerialRule,
   GoodsReceiptVoidReason,
   GoodsReceiptVoidShortage,
+  PurchaseOrderLineRule,
   VoidGoodsReceiptResult,
 } from "@/modules/purchasing";
 import { formatQuantity } from "@/shared/quantity";
@@ -55,6 +57,9 @@ export type GoodsReceiptFormLine = {
   unitCost: string;
   // La moneda del precio vigente, para la advertencia (D-7); vacía si no tiene precio.
   priceCurrency: string;
+  // Desde la 29.5: los IMEI escritos, y si el producto se lleva por unidad («unit»), cuando se sabe.
+  serials: string;
+  tracking: string;
 };
 
 export type GoodsReceiptFormValues = {
@@ -101,11 +106,28 @@ const NONE = {
 export const SUPPLIER_REFERENCE_HINT =
   "Opcional: el número del remito o de la factura, hasta 40 letras, números, espacios, guiones o barras.";
 
+// Los IMEI de un producto por unidad (brief-29.5, D-6).
+export const SERIALS_HINT =
+  "Solo para productos que se llevan por unidad: un IMEI o número de serie por unidad, uno por renglón.";
+
+const SERIAL_RULE_MESSAGE: Record<GoodsReceiptSerialRule, string> = {
+  serials_count:
+    "Este producto se lleva por unidad: escribí un IMEI por cada unidad recibida, y la cantidad sin decimales.",
+  serial_format:
+    "Un IMEI o número de serie tiene de 1 a 32 letras, números o guiones, sin espacios.",
+  serial_repeated: "Hay un IMEI repetido en la recepción.",
+  serials_not_allowed:
+    "Este producto se lleva por cantidad: no lleva IMEI. Borralos para recibirlo.",
+};
+
 export function lineRuleIssueMessage(issue: GoodsReceiptLineRuleIssue): string {
   if (issue.rule === "exceeds_pending") {
     return `Falta recibir ${formatQuantity(issue.pending)}: no se puede recibir más que eso con esta orden.`;
   }
-  return lineRuleMessage(issue.rule);
+  if (Object.hasOwn(SERIAL_RULE_MESSAGE, issue.rule)) {
+    return SERIAL_RULE_MESSAGE[issue.rule as GoodsReceiptSerialRule];
+  }
+  return lineRuleMessage(issue.rule as PurchaseOrderLineRule);
 }
 
 function validationRejection(
@@ -252,6 +274,14 @@ export function goodsReceiptRejection(
               ]),
             ),
           };
+        case "serials_taken":
+          return {
+            ...NONE,
+            message:
+              result.serials.length > 0
+                ? `Ya hay una unidad cargada con ${result.serials.length === 1 ? "este IMEI" : "estos IMEI"}: ${result.serials.join(", ")}. Revisalos, o dala de baja si se cargó mal.`
+                : "Otra carga registró uno de estos IMEI al mismo tiempo. Revisá las unidades del producto y volvé a intentar.",
+          };
       }
   }
 }
@@ -285,7 +315,7 @@ export const VOID_REASON_LABEL: Record<GoodsReceiptVoidReason, string> = {
 
 // Lo que pasa con el stock y con el costo, dicho antes de confirmar (D-9; ADR 0023, punto 6).
 export const VOID_STOCK_NOTE =
-  "Sale del stock lo que la recepción sumó, con un movimiento «Anulación de recepción» por producto, solo si alcanza lo disponible.";
+  "Sale del stock lo que la recepción sumó, con un movimiento «Anulación de recepción» por producto, solo si alcanza lo disponible. En un producto que se lleva por unidad, las unidades de la recepción se dan de baja, una por una, solo si siguen disponibles.";
 export const VOID_COST_NOTE =
   "Anular no restaura el costo: si hace falta, corregilo en la ficha del producto.";
 export const VOID_ORDER_NOTE =
@@ -330,6 +360,12 @@ export function voidGoodsReceiptRejection(
           ...none,
           message: `Esta recepción ya está anulada, por ${result.receiptVoid.displayNumber}.`,
           existing: { displayNumber: result.receiptVoid.displayNumber },
+        };
+      }
+      if (result.rule === "units_not_available") {
+        return {
+          ...none,
+          message: `${result.serials.length === 1 ? "Una unidad" : "Unas unidades"} de esta recepción ya no ${result.serials.length === 1 ? "está disponible" : "están disponibles"} (${result.serials.join(", ")}): se dieron de baja. La recepción no se puede anular.`,
         };
       }
       return {

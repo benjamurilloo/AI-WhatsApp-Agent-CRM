@@ -4,10 +4,19 @@ import type { Profile } from "./index";
 // color son de variante; «Trae caja» es un dato que solo se muestra. Una sola lista de colores para
 // todos los modelos, del iPhone 11 en adelante (D-7): opciones por modelo quedan como mejora. Sin
 // modelos: los modelos son de cada negocio.
+//
+// Versión 2, del 2026-10-19 (brief-29.5, D-5): suma serialized_units y los grados de las unidades,
+// tres ejemplos que el negocio ajusta. Una organización que ya activó el perfil no los recibe sola:
+// los recibe al activar serialized_units con el perfil.
 export const IPHONE_PROFILE: Profile = {
   name: "iphone",
   label: "Venta de iPhone",
-  capabilities: ["variants"],
+  capabilities: ["variants", "serialized_units"],
+  grades: [
+    { name: "A", description: "Como nuevo" },
+    { name: "B", description: "Marcas leves" },
+    { name: "C", description: "Marcas visibles" },
+  ],
   attributes: [
     {
       key: "capacidad",

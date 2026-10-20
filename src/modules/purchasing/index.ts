@@ -91,6 +91,7 @@ export {
   type GoodsReceiptLine,
   type GoodsReceiptLineInput,
   type GoodsReceiptLineRuleIssue,
+  type GoodsReceiptSerialRule,
   type GoodsReceiptListFilters,
   type GoodsReceiptPage,
   type GoodsReceiptStatusFilter,

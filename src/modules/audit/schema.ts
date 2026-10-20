@@ -61,6 +61,10 @@ export const auditEntityType = pgEnum("audit_entity_type", [
   "organization",
   "exchange_rate_setting",
   "exchange_rate",
+  // Las unidades (brief-29.5, D-2 y D-5): la unidad con su IMEI (el alta, la baja y la corrección del
+  // grado o la batería) y el grado de la lista de la organización.
+  "stock_unit",
+  "unit_grade",
 ]);
 
 export const auditAction = pgEnum("audit_action", [

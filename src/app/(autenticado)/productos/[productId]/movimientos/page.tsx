@@ -35,6 +35,7 @@ import {
   NO_MOVEMENTS_MESSAGE,
   noticeMessage,
   PRODUCT_NOT_FOUND_MESSAGE,
+  UNIT_TRACKED_ADJUSTMENT_MESSAGE,
 } from "../../messages";
 import { ProductSubNav } from "../product-sub-nav";
 import { AdjustForm } from "./adjust-form";
@@ -161,7 +162,18 @@ export default async function MovementsPage({
 
       <ProductSubNav productId={product.id} current="movimientos" />
 
-      {isAdmin ? (
+      {isAdmin && product.tracking === "unit" ? (
+        // Desde la 29.5 (brief-29.5, D-6): en un producto por unidad no hay ajuste de cantidad.
+        <p className={`mt-6 ${cardClass} p-6`}>
+          {UNIT_TRACKED_ADJUSTMENT_MESSAGE}{" "}
+          <Link
+            href={`/productos/${product.id}/unidades`}
+            className={linkClass}
+          >
+            Ver las unidades
+          </Link>
+        </p>
+      ) : isAdmin ? (
         product.isActive ? (
           <SectionCard
             id="ajuste-titulo"
@@ -322,7 +334,14 @@ export default async function MovementsPage({
                       >
                         {formatQuantity(movement.balanceAfter)}
                       </td>
-                      <td className={tableCellClass}>{movement.reason}</td>
+                      <td className={tableCellClass}>
+                        {movement.reason}
+                        {movement.unitSerial ? (
+                          <span className="block font-mono text-xs text-muted">
+                            IMEI {movement.unitSerial}
+                          </span>
+                        ) : null}
+                      </td>
                       <td className={`${tableCellClass} text-muted`}>
                         {movement.author.name}
                       </td>
@@ -353,6 +372,11 @@ export default async function MovementsPage({
                     Saldo: {formatQuantity(movement.balanceAfter)} ·{" "}
                     {movement.reason}
                   </p>
+                  {movement.unitSerial ? (
+                    <p className="mt-1 font-mono text-xs text-muted">
+                      IMEI {movement.unitSerial}
+                    </p>
+                  ) : null}
                 </li>
               ))}
             </ul>

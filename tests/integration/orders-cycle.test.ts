@@ -19,6 +19,7 @@ import {
 import { getAuthContext, type AuthContext } from "@/modules/organizations";
 import { getDb } from "@/shared/db";
 import { resetDatabase } from "./reset-database";
+import { signedMovementSum } from "./stock-invariant";
 
 // El ciclo del pedido contra PostgreSQL real (brief-19.3): las funciones de stock (AC-2), las
 // transiciones (AC-3), la concurrencia (AC-4), el ajuste frente a lo reservado (AC-5) y la
@@ -965,9 +966,10 @@ describe("la conciliación (AC-7, D-11)", () => {
         on_hand: string;
         expected: string;
       }>(
+        // El signo de cada tipo, del mapa de inventory (brief-29.5, H-9): antes sumaba solo
+        // adjustment_positive y restaba todo lo demás, también goods_receipt y sale_void.
         sql`select i.product_id, i.quantity_on_hand as on_hand,
-                   sum(case when m.type = 'adjustment_positive' then m.quantity
-                            else -m.quantity end)::numeric(14, 3) as expected
+                   ${signedMovementSum()}::numeric(14, 3) as expected
             from inventories i
             join inventory_movements m on m.product_id = i.product_id
             group by i.product_id, i.quantity_on_hand`,

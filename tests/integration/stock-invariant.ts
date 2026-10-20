@@ -1,0 +1,93 @@
+import { sql, type SQL } from "drizzle-orm";
+import { expect } from "vitest";
+import { MOVEMENT_DIRECTION } from "@/modules/inventory";
+import { getDb } from "@/shared/db";
+
+// El invariante del saldo y las unidades (ADR 0024, punto 6; brief-29.5, D-8). Para cada producto de la
+// base:
+// - un producto por unidad tiene quantity_on_hand igual a sus unidades available (en la 29.5, sin
+//   reserved: lo reservado de un producto unit es 0), y cada movimiento suyo nombra su unidad;
+// - un producto por cantidad no tiene unidades vigentes, y ningún movimiento suyo nombra una unidad;
+// - con { movements: true }, la suma de los movimientos con su signo es igual al saldo (ADR 0008).
+//   Las suites que arman el saldo con SQL directo, sin movimiento, la apagan: su preparación no
+//   pasa por inventory.
+//
+// Se corre después de cada test de las suites de inventory y purchasing; la 29.5.2 lo suma a orders y
+// sales.
+
+// La suma con signo de los movimientos, desde MOVEMENT_DIRECTION: un tipo nuevo sin signo no compila.
+export function signedMovementSum(alias = "m"): SQL {
+  const incoming = Object.entries(MOVEMENT_DIRECTION)
+    .filter(([, direction]) => direction === 1)
+    .map(([type]) => type);
+  return sql.raw(
+    `sum(case when ${alias}.type::text in (${incoming.map((type) => `'${type}'`).join(", ")}) then ${alias}.quantity else -${alias}.quantity end)`,
+  );
+}
+
+type Row = {
+  product_id: string;
+  tracking: string;
+  on_hand: string;
+  reserved: string;
+  movements: string | null;
+  available_units: number;
+  live_units: number;
+  misplaced: number;
+};
+
+export async function expectStockInvariant(
+  options: { movements: boolean } = { movements: true },
+): Promise<void> {
+  const result = await getDb().execute<Row>(
+    sql`select p.id as product_id, p.tracking::text as tracking,
+               coalesce(i.quantity_on_hand, 0)::numeric(14, 3)::text as on_hand,
+               coalesce(i.quantity_reserved, 0)::numeric(14, 3)::text as reserved,
+               (select ${signedMovementSum()}::numeric(14, 3)::text
+                  from inventory_movements m
+                 where m.organization_id = p.organization_id and m.product_id = p.id) as movements,
+               (select count(*)::int from stock_units u
+                 where u.organization_id = p.organization_id and u.product_id = p.id
+                   and u.status = 'available') as available_units,
+               (select count(*)::int from stock_units u
+                 where u.organization_id = p.organization_id and u.product_id = p.id
+                   and u.status <> 'written_off') as live_units,
+               (select count(*)::int from inventory_movements m
+                 where m.organization_id = p.organization_id and m.product_id = p.id
+                   and ((p.tracking = 'unit') <> (m.unit_id is not null))) as misplaced
+          from products p
+          left join inventories i on i.organization_id = p.organization_id and i.product_id = p.id
+         order by p.id`,
+  );
+  const broken = result.rows.flatMap((row) => {
+    const problems: string[] = [];
+    if (row.tracking === "unit") {
+      if (Number(row.on_hand) !== row.available_units) {
+        problems.push(
+          `saldo ${row.on_hand} con ${row.available_units} unidades disponibles`,
+        );
+      }
+      if (Number(row.reserved) !== 0) {
+        problems.push(`reservado ${row.reserved} en un producto por unidad`);
+      }
+    } else if (row.live_units > 0) {
+      problems.push(
+        `${row.live_units} unidades vigentes en un producto por cantidad`,
+      );
+    }
+    if (row.misplaced > 0) {
+      problems.push(`${row.misplaced} movimientos con la unidad mal puesta`);
+    }
+    if (
+      options.movements &&
+      row.movements !== null &&
+      row.movements !== row.on_hand
+    ) {
+      problems.push(`movimientos ${row.movements} y saldo ${row.on_hand}`);
+    }
+    return problems.map((problem) => `${row.product_id}: ${problem}`);
+  });
+  expect(broken, `Invariante del saldo roto:\n${broken.join("\n")}`).toEqual(
+    [],
+  );
+}

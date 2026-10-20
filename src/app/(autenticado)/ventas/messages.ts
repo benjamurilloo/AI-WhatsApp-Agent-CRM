@@ -132,6 +132,8 @@ function saleLineRuleMessage(
 ): string {
   return {
     inactive_product: "El producto está desactivado.",
+    unit_tracked:
+      "Este producto se vende por unidad: todavía no se puede agregar a un pedido ni a una venta.",
     no_price: "El producto no tiene precio: fijalo antes de venderlo.",
     currency_mismatch: `El precio está en otra moneda que la primera línea (${currency}).`,
     duplicate_product:

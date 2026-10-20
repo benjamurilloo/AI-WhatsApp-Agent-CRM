@@ -2,6 +2,7 @@ import { z } from "zod";
 import { recordAudit } from "@/modules/audit";
 import {
   deriveStockStatus,
+  findProductTrackings,
   getActiveProductForService,
   getCurrentPrices,
   getProduct,
@@ -13,6 +14,7 @@ import {
   type ProductActivityFilter,
   type ServiceProduct,
   type StockStatus,
+  type StockTracking,
 } from "@/modules/catalog";
 import {
   authorize,
@@ -32,6 +34,7 @@ import {
 } from "@/shared/quantity";
 import * as repository from "./repository";
 import { inventoryMovementType } from "./schema";
+import * as unitRepository from "./unit-repository";
 
 // Productos con saldo y estado de stock (brief-4.2, D-1): catalog aporta los productos y deriva
 // el estado; inventory aporta el saldo y compone en memoria, sin JOIN entre módulos.
@@ -447,6 +450,19 @@ export async function getProductBalanceForService(
 
 export type StockMovementType = repository.StockMovementType;
 
+// El efecto de cada tipo de movimiento en el saldo físico (brief-29.5, D-8; H-9): +1 suma, −1 resta. Un
+// Record exige un signo por cada valor del enum, así que un tipo nuevo no compila sin el suyo. Lo usan
+// el invariante de los tests y la conciliación del ciclo de pedidos.
+export const MOVEMENT_DIRECTION: Record<StockMovementType, 1 | -1> = {
+  adjustment_positive: 1,
+  adjustment_negative: -1,
+  order_delivery: -1,
+  sale: -1,
+  sale_void: 1,
+  goods_receipt: 1,
+  goods_receipt_void: -1,
+};
+
 // El ajuste manual acepta solo sus dos tipos: order_delivery lo escribe la entrega de un pedido
 // (ADR 0020, punto 4); sale, la venta sin pedido (ADR 0021, punto 5); sale_void, la reposición de
 // su anulación (ADR 0021, punto 6); goods_receipt, la recepción de mercadería (ADR 0023, punto 4), y
@@ -540,7 +556,10 @@ export type StockAdjustmentResult =
   | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
   | Failure<"VALIDATION_ERROR", { fields: StockAdjustmentField[] }>
   | Failure<"CONFLICT", { currentQuantityOnHand: string }>
+  // unit_tracked, desde la 29.5: en un producto por unidad, el saldo solo se mueve por una unidad
+  // (brief-29.5, D-4).
   | Failure<"BUSINESS_RULE_VIOLATION", { rule: "inactive_product" }>
+  | Failure<"BUSINESS_RULE_VIOLATION", { rule: "unit_tracked" }>
   | Failure<
       "BUSINESS_RULE_VIOLATION",
       {
@@ -592,11 +611,18 @@ export async function adjustStock(
       if (product === "not_found") {
         throw new AdjustmentRejected(failure("NOT_FOUND"));
       }
-      if (product === "inactive") {
+      if (product.status === "inactive") {
         throw new AdjustmentRejected({
           ok: false,
           code: "BUSINESS_RULE_VIOLATION",
           rule: "inactive_product",
+        });
+      }
+      if (product.tracking === "unit") {
+        throw new AdjustmentRejected({
+          ok: false,
+          code: "BUSINESS_RULE_VIOLATION",
+          rule: "unit_tracked",
         });
       }
 
@@ -732,6 +758,8 @@ export type StockMovement = {
   reason: string;
   createdAt: Date;
   author: { id: string; name: string };
+  // Desde la 29.5: el IMEI de la unidad, en un producto por unidad (brief-29.5, D-6).
+  unitSerial: string | null;
 };
 
 export type StockMovementPage = {
@@ -853,6 +881,27 @@ async function lockLines(
   return locked;
 }
 
+// Hasta la 29.5.2, un producto por unidad no entra en un pedido ni en una venta (brief-29.5, D-1):
+// orders y sales lo rechazan con su regla antes de llegar acá. Si llegara, es un defecto de quien
+// llama, y se lanza antes de tocar el saldo: el saldo de un producto unit solo se mueve con una unidad.
+async function rejectUnitTracked(
+  tx: DbTransaction,
+  organizationId: string,
+  lines: StockLine[],
+): Promise<void> {
+  const trackings = await findProductTrackings(
+    tx,
+    organizationId,
+    lines.map((line) => line.productId),
+  );
+  const unit = lines.find((line) => trackings.get(line.productId) === "unit");
+  if (unit) {
+    throw new Error(
+      `producto por unidad en una línea de cantidad: ${unit.productId}`,
+    );
+  }
+}
+
 // Reserva todas las líneas o ninguna. Si alguna pide más que lo disponible, no escribe nada y
 // devuelve las que no alcanzan; quien llama revierte la transacción (la fila en 0 que pudo crear
 // lockBalance se va con ella).
@@ -861,6 +910,7 @@ export async function reserveStock(
   organizationId: string,
   lines: StockLine[],
 ): Promise<{ ok: true } | { ok: false; shortages: StockShortage[] }> {
+  await rejectUnitTracked(tx, organizationId, lines);
   const locked = await lockLines(tx, organizationId, lines);
   const shortages = locked
     .filter((line) => line.onHand - line.reserved < line.quantity)
@@ -889,6 +939,7 @@ export async function releaseStock(
   organizationId: string,
   lines: StockLine[],
 ): Promise<void> {
+  await rejectUnitTracked(tx, organizationId, lines);
   const locked = await lockLines(tx, organizationId, lines);
   for (const line of locked) {
     if (line.reserved < line.quantity) {
@@ -915,6 +966,7 @@ export async function deliverStock(
     createdBy: string;
   },
 ): Promise<void> {
+  await rejectUnitTracked(tx, delivery.organizationId, delivery.lines);
   const locked = await lockLines(tx, delivery.organizationId, delivery.lines);
   for (const line of locked) {
     if (line.reserved < line.quantity || line.onHand < line.quantity) {
@@ -953,6 +1005,7 @@ export async function sellStock(
     createdBy: string;
   },
 ): Promise<{ ok: true } | { ok: false; shortages: StockShortage[] }> {
+  await rejectUnitTracked(tx, sale.organizationId, sale.lines);
   const locked = await lockLines(tx, sale.organizationId, sale.lines);
   const shortages = locked
     .filter((line) => line.onHand - line.reserved < line.quantity)
@@ -996,6 +1049,7 @@ export async function restoreSaleStock(
     createdBy: string;
   },
 ): Promise<{ ok: true } | { ok: false; productIds: string[] }> {
+  await rejectUnitTracked(tx, restore.organizationId, restore.lines);
   const locked = await lockLines(tx, restore.organizationId, restore.lines);
   const balances = locked.map((line) => ({
     line,
@@ -1043,16 +1097,93 @@ export async function restoreSaleStock(
 // El motivo es una función, como en sellStock: lleva el número de la recepción, y el contador va
 // después de los saldos (ADR 0023, punto 10). Se llama una sola vez, después de comprobar y antes de
 // escribir. inventory no conoce las recepciones ni los proveedores: el motivo no los nombra.
+//
+// Desde la 29.5 (ADR 0024, punto 6; brief-29.5, D-4), una línea de un producto por unidad trae una
+// unidad por cada unidad de cantidad, con su IMEI y el costo de la línea. Cada una se crea available,
+// con su movimiento goods_receipt de 1 que la nombra, y el origen es la recepción (originId, que
+// purchasing elige antes de insertarla). Un IMEI que ya tiene una unidad vigente rechaza la recepción
+// antes de pedir el motivo (serials_taken). Dos recepciones simultáneas con el mismo IMEI chocan en el
+// índice único parcial: la segunda lanza, y purchasing lo traduce con isSerialTakenError. Una línea
+// que no cumple la regla de su seguimiento es un defecto de quien llama, que ya la comprobó.
+export type ReceivedUnit = {
+  serial: string;
+  // El costo de la línea, en la escala de la base, y la moneda de la recepción.
+  cost: string;
+  costCurrency: string;
+};
+
+export type ReceiptStockLine = StockLine & { units?: ReceivedUnit[] };
+
+export type ReceiveStockResult =
+  // Las unidades creadas de cada producto por unidad, en el orden de su línea.
+  | { ok: true; unitIds: Map<string, string[]> }
+  | { ok: false; reason: "stock_limit"; productIds: string[] }
+  | { ok: false; reason: "serials_taken"; serials: string[] };
+
+const ONE: Quantity = 1000n;
+
+// La regla de cada línea según su seguimiento: en un producto por unidad, una unidad por cada unidad
+// de cantidad, sin IMEI repetidos; en uno por cantidad, ninguna.
+function checkUnitLines(
+  trackings: Map<string, StockTracking>,
+  lines: { productId: string; quantity: string; count: number | null }[],
+): void {
+  for (const line of lines) {
+    const unit = trackings.get(line.productId) === "unit";
+    const quantity = quantityFromDatabase(line.quantity);
+    if (
+      unit &&
+      (line.count === null || BigInt(line.count) * ONE !== quantity)
+    ) {
+      throw new Error(`unidades que no cubren la línea: ${line.productId}`);
+    }
+    if (!unit && line.count !== null && line.count > 0) {
+      throw new Error(
+        `unidades en un producto por cantidad: ${line.productId}`,
+      );
+    }
+  }
+}
+
 export async function receiveStock(
   tx: DbTransaction,
   receipt: {
     organizationId: string;
-    lines: StockLine[];
+    lines: ReceiptStockLine[];
+    // La recepción, como origen plano de las unidades (ADR 0024, R-16).
+    originId: string;
     reason: () => Promise<string>;
     createdBy: string;
   },
-): Promise<{ ok: true } | { ok: false; productIds: string[] }> {
-  const locked = await lockLines(tx, receipt.organizationId, receipt.lines);
+): Promise<ReceiveStockResult> {
+  const { organizationId } = receipt;
+  const trackings = await findProductTrackings(
+    tx,
+    organizationId,
+    receipt.lines.map((line) => line.productId),
+  );
+  checkUnitLines(
+    trackings,
+    receipt.lines.map((line) => ({
+      productId: line.productId,
+      quantity: line.quantity,
+      count: line.units ? line.units.length : null,
+    })),
+  );
+  const serials = receipt.lines.flatMap((line) =>
+    (line.units ?? []).map((unit) => unit.serial),
+  );
+  if (
+    new Set(serials.map((serial) => serial.toLowerCase())).size !==
+    serials.length
+  ) {
+    throw new Error("IMEI repetido en las líneas de la recepción");
+  }
+  const unitsByProduct = new Map(
+    receipt.lines.map((line) => [line.productId, line.units ?? []]),
+  );
+
+  const locked = await lockLines(tx, organizationId, receipt.lines);
   const balances = locked.map((line) => ({
     line,
     after: computeBalanceAfter(
@@ -1068,23 +1199,75 @@ export async function receiveStock(
   if (received.length < balances.length) {
     return {
       ok: false,
+      reason: "stock_limit",
       productIds: balances
         .filter(({ after }) => !after.ok)
         .map(({ line }) => line.productId),
     };
   }
+  const taken = await unitRepository.findTakenSerials(
+    tx,
+    organizationId,
+    serials,
+  );
+  if (taken.length > 0) {
+    return { ok: false, reason: "serials_taken", serials: taken };
+  }
+  // reason() toma el contador de la recepción, por organización, antes de insertar cualquier unidad.
+  // Dos recepciones simultáneas de la misma organización quedan en fila ahí: la segunda inserta
+  // después de que la primera confirmó, y un IMEI compartido choca en el índice único (23505), sin
+  // ciclo de esperas posible; el índice es por organización, así que dos organizaciones no chocan
+  // (revisión independiente de la 29.5, m-4, verificado como no alcanzable).
   const reason = await receipt.reason();
+  const unitIds = new Map<string, string[]>();
   for (const { line, balanceAfter } of received) {
-    await repository.applyGoodsReceipt(tx, {
-      organizationId: receipt.organizationId,
+    const base = {
+      organizationId,
       productId: line.productId,
-      quantity: quantityToDatabase(line.quantity),
-      balanceAfter: quantityToDatabase(balanceAfter),
       reason,
       createdBy: receipt.createdBy,
-    });
+    };
+    if (trackings.get(line.productId) !== "unit") {
+      await repository.applyGoodsReceipt(tx, {
+        ...base,
+        quantity: quantityToDatabase(line.quantity),
+        balanceAfter: quantityToDatabase(balanceAfter),
+      });
+      continue;
+    }
+    const created: string[] = [];
+    let onHand = line.onHand;
+    for (const unit of unitsByProduct.get(line.productId)!) {
+      const unitId = await unitRepository.insertStockUnit(tx, {
+        organizationId,
+        productId: line.productId,
+        serial: unit.serial,
+        gradeId: null,
+        batteryHealth: null,
+        cost: unit.cost,
+        costCurrency: unit.costCurrency,
+        originType: "goods_receipt",
+        originId: receipt.originId,
+        createdBy: receipt.createdBy,
+      });
+      onHand += ONE;
+      await repository.applyGoodsReceipt(tx, {
+        ...base,
+        quantity: quantityToDatabase(ONE),
+        balanceAfter: quantityToDatabase(onHand),
+        unitId,
+      });
+      created.push(unitId);
+    }
+    unitIds.set(line.productId, created);
   }
-  return { ok: true };
+  return { ok: true, unitIds };
+}
+
+// Dos recepciones o dos altas simultáneas con el mismo IMEI: la segunda choca en el índice único
+// parcial y su transacción se revierte. Quien la abrió lo traduce con esto, fuera de la transacción.
+export function isSerialTakenError(error: unknown): boolean {
+  return unitRepository.isSerialTaken(error);
 }
 
 // La salida de la anulación de una recepción de mercadería (ADR 0023, punto 6; brief-22.5, D-3), con
@@ -1099,16 +1282,74 @@ export async function receiveStock(
 // El motivo es una función, como en sellStock: lleva el número de la anulación, y el contador va
 // después de los saldos (ADR 0023, punto 10). Se llama una sola vez, después de comprobar y antes de
 // escribir. inventory no conoce las recepciones ni los proveedores: el motivo no los nombra.
+//
+// Desde la 29.5 (ADR 0024, punto 6; brief-29.5, D-4), una línea de un producto por unidad trae las
+// unidades que creó la recepción. Se bloquean FOR UPDATE, después de los productos y antes de los
+// saldos; si alguna ya no está available, no escribe nada y las devuelve (units_unavailable). Si
+// todas lo están, cada una pasa a written_off con su movimiento goods_receipt_void de 1 que la nombra.
+export type RemovalStockLine = StockLine & { unitIds?: string[] };
+
+export type UnavailableUnit = {
+  id: string;
+  serial: string;
+  status: unitRepository.StockUnitStatus;
+};
+
+export type RemoveReceivedStockResult =
+  | { ok: true }
+  | { ok: false; reason: "insufficient"; shortages: StockShortage[] }
+  | { ok: false; reason: "units_unavailable"; units: UnavailableUnit[] };
+
 export async function removeReceivedStock(
   tx: DbTransaction,
   removal: {
     organizationId: string;
-    lines: StockLine[];
+    lines: RemovalStockLine[];
     reason: () => Promise<string>;
     createdBy: string;
   },
-): Promise<{ ok: true } | { ok: false; shortages: StockShortage[] }> {
-  const locked = await lockLines(tx, removal.organizationId, removal.lines);
+): Promise<RemoveReceivedStockResult> {
+  const { organizationId } = removal;
+  const trackings = await findProductTrackings(
+    tx,
+    organizationId,
+    removal.lines.map((line) => line.productId),
+  );
+  checkUnitLines(
+    trackings,
+    removal.lines.map((line) => ({
+      productId: line.productId,
+      quantity: line.quantity,
+      count: line.unitIds ? line.unitIds.length : null,
+    })),
+  );
+  const unitIdsByProduct = new Map(
+    removal.lines.map((line) => [line.productId, line.unitIds ?? []]),
+  );
+  const wanted = removal.lines.flatMap((line) => line.unitIds ?? []);
+  const units = await unitRepository.lockUnits(tx, organizationId, wanted);
+  const byId = new Map(units.map((unit) => [unit.id, unit]));
+  for (const line of removal.lines) {
+    for (const unitId of line.unitIds ?? []) {
+      if (byId.get(unitId)?.productId !== line.productId) {
+        throw new Error(`unidad que no es de la línea: ${unitId}`);
+      }
+    }
+  }
+  const unavailable = units.filter((unit) => unit.status !== "available");
+  if (unavailable.length > 0) {
+    return {
+      ok: false,
+      reason: "units_unavailable",
+      units: unavailable.map(({ id, serial, status }) => ({
+        id,
+        serial,
+        status,
+      })),
+    };
+  }
+
+  const locked = await lockLines(tx, organizationId, removal.lines);
   const shortages = locked
     .filter((line) => line.onHand - line.reserved < line.quantity)
     .map((line) => ({
@@ -1116,17 +1357,37 @@ export async function removeReceivedStock(
       requested: quantityToDatabase(line.quantity),
       available: quantityToDatabase(line.onHand - line.reserved),
     }));
-  if (shortages.length > 0) return { ok: false, shortages };
+  if (shortages.length > 0) {
+    return { ok: false, reason: "insufficient", shortages };
+  }
   const reason = await removal.reason();
   for (const line of locked) {
-    await repository.applyGoodsReceiptVoid(tx, {
-      organizationId: removal.organizationId,
+    const base = {
+      organizationId,
       productId: line.productId,
-      quantity: quantityToDatabase(line.quantity),
-      balanceAfter: quantityToDatabase(line.onHand - line.quantity),
       reason,
       createdBy: removal.createdBy,
-    });
+    };
+    if (trackings.get(line.productId) !== "unit") {
+      await repository.applyGoodsReceiptVoid(tx, {
+        ...base,
+        quantity: quantityToDatabase(line.quantity),
+        balanceAfter: quantityToDatabase(line.onHand - line.quantity),
+      });
+      continue;
+    }
+    const lineUnits = unitIdsByProduct.get(line.productId)!;
+    await unitRepository.setUnitsWrittenOff(tx, organizationId, lineUnits);
+    let onHand = line.onHand;
+    for (const unitId of lineUnits) {
+      onHand -= ONE;
+      await repository.applyGoodsReceiptVoid(tx, {
+        ...base,
+        quantity: quantityToDatabase(ONE),
+        balanceAfter: quantityToDatabase(onHand),
+        unitId,
+      });
+    }
   }
   return { ok: true };
 }

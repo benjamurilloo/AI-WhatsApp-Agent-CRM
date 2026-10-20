@@ -274,6 +274,15 @@ export default async function GoodsReceiptPage({
                     ) : (
                       UNKNOWN_PRODUCT_TEXT
                     )}
+                    {line.serials.length > 0 ? (
+                      // Desde la 29.5: los IMEI de las unidades que creó la línea (brief-29.5, D-6).
+                      <span className="mt-1 block text-xs text-muted">
+                        IMEI:{" "}
+                        <span className="font-mono break-all">
+                          {line.serials.join(", ")}
+                        </span>
+                      </span>
+                    ) : null}
                   </td>
                   <td
                     className={`${tableCellClass} text-right whitespace-nowrap tabular-nums`}

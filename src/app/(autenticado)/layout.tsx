@@ -44,6 +44,11 @@ export default async function AuthenticatedLayout({
     ...(frame.capabilities.includes("variants")
       ? [{ href: "/modelos", label: "Modelos", icon: "layers" as const }]
       : []),
+    // Los grados de las unidades, solo con la capacidad serialized_units (brief-29.5, D-5), con la
+    // misma regla: la página vuelve a comprobarla.
+    ...(frame.capabilities.includes("serialized_units")
+      ? [{ href: "/grados", label: "Grados", icon: "tag" as const }]
+      : []),
     // Pedidos, para los dos roles (brief-19.2).
     { href: "/pedidos", label: "Pedidos", icon: "list" },
     // Ventas, para los dos roles (brief-20.2).

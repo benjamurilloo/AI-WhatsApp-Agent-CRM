@@ -24,6 +24,7 @@ import {
 import { issueSale } from "@/modules/sales";
 import { getDb } from "@/shared/db";
 import { resetDatabase } from "./reset-database";
+import { expectStockInvariant } from "./stock-invariant";
 
 // La anulación de la recepción contra PostgreSQL real (brief-22.5): la salida de stock (AC-2), la
 // operación y lo vigente en la orden (AC-3), la serialización (AC-4), los rechazos (AC-5), la
@@ -264,6 +265,10 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await Promise.all(heldLocks.splice(0).map((releaseLock) => releaseLock()));
+  // El invariante de las unidades, después de cada test (brief-29.5, D-8). Esta suite arma saldos con SQL directo, sin
+  // movimiento, así que la suma de los movimientos no se compara: la comparan units.test.ts y
+  // orders-cycle.test.ts.
+  await expectStockInvariant({ movements: false });
 });
 
 afterAll(async () => {
@@ -358,6 +363,7 @@ describe("la salida de stock (AC-2; D-3)", () => {
       expect(result.ok).toBe(false);
       expect(
         !result.ok &&
+          result.reason === "insufficient" &&
           [...result.shortages].sort((a, b) =>
             a.productId < b.productId ? -1 : 1,
           ),

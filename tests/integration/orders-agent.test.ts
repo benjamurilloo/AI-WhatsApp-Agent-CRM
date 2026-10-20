@@ -509,6 +509,19 @@ describe("brief-19.4: las reglas de order.placed (AC-4)", () => {
     });
   });
 
+  // brief-29.5, D-1 y D-7: un producto por unidad no entra en el pedido del agente hasta la 29.5.2, con
+  // el mismo error que un producto que no se vende; el contrato no cambia.
+  it("un producto por unidad se rechaza como uno que no se vende", async () => {
+    const s = await scenario();
+    await getDb().execute(
+      sql`update products set tracking = 'unit' where id = ${s.ars}`,
+    );
+    expect(
+      await rejected(s.context, [{ product_id: s.ars, quantity: "1" }]),
+    ).toBe("product_not_found");
+    expect(await ordersOf(s.context.organizationId)).toEqual([]);
+  });
+
   it("un cliente desactivado no recibe pedidos", async () => {
     const s = await scenario();
     await getDb().execute(

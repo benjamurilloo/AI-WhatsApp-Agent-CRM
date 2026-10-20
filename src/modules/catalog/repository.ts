@@ -5,6 +5,7 @@ import {
   eq,
   inArray,
   isNotNull,
+  ne,
   or,
   sql,
   type SQL,
@@ -17,6 +18,7 @@ import {
   productPrices,
   products,
   productSearchCondition,
+  stockTracking,
 } from "./schema";
 
 // Acceso a products, product_prices y product_costs. Toda consulta filtra por organization_id en
@@ -27,10 +29,13 @@ import {
 type Executor = Db | DbTransaction;
 
 export type ProductCondition = (typeof productCondition.enumValues)[number];
+export type StockTracking = (typeof stockTracking.enumValues)[number];
 
 // modelId no es un campo del formulario general: lo escribe la capacidad variants (brief-29.2, D-4).
+// tracking tampoco: lo cambia inventory con writeProductTracking, desde la 29.5 (brief-29.5, D-3).
 export type ProductRow = { id: string } & ProductValues & {
     modelId: string | null;
+    tracking: StockTracking;
     isActive: boolean;
     createdAt: Date;
     updatedAt: Date;
@@ -78,6 +83,7 @@ const productColumns = {
   location: products.location,
   shelf: products.shelf,
   modelId: products.modelId,
+  tracking: products.tracking,
   isActive: products.isActive,
   createdAt: products.createdAt,
   updatedAt: products.updatedAt,
@@ -116,9 +122,9 @@ export async function lockProductShared(
   tx: DbTransaction,
   organizationId: string,
   productId: string,
-): Promise<{ isActive: boolean } | undefined> {
+): Promise<{ isActive: boolean; tracking: StockTracking } | undefined> {
   const rows = await tx
-    .select({ isActive: products.isActive })
+    .select({ isActive: products.isActive, tracking: products.tracking })
     .from(products)
     .where(
       and(
@@ -155,10 +161,14 @@ export async function lockProductsShared(
   tx: DbTransaction,
   organizationId: string,
   productIds: string[],
-): Promise<{ id: string; isActive: boolean }[]> {
+): Promise<{ id: string; isActive: boolean; tracking: StockTracking }[]> {
   if (productIds.length === 0) return [];
   return tx
-    .select({ id: products.id, isActive: products.isActive })
+    .select({
+      id: products.id,
+      isActive: products.isActive,
+      tracking: products.tracking,
+    })
     .from(products)
     .where(
       and(
@@ -228,11 +238,14 @@ export function findProducts(
 // `barcode: true` encuentra también el código de barras exacto, que ordena con el SKU exacto: lo
 // pasan solo las sugerencias del buscador (brief-20.3, D-5). La API de lectura no lo pasa, así que
 // read-v1 y read-v2 no cambian.
+//
+// Desde la 29.5, con `excludeUsed: true` deja afuera los productos usados: lo pasa solo la búsqueda
+// del agente, que no los ve hasta la 29.8 (brief-29.5, D-7). Los buscadores de la aplicación sí.
 export function findActiveProductsRanked(
   organizationId: string,
   text: string,
   limit: number,
-  options: { barcode?: boolean } = {},
+  options: { barcode?: boolean; excludeUsed?: boolean } = {},
 ): Promise<ProductRow[]> {
   const skuMatch = options.barcode
     ? sql`(lower(${products.sku}) = lower(${text}) or lower(${products.barcode}) = lower(${text}))`
@@ -245,6 +258,7 @@ export function findActiveProductsRanked(
       and(
         eq(products.organizationId, organizationId),
         eq(products.isActive, true),
+        options.excludeUsed ? ne(products.condition, "used") : undefined,
         or(productSearchCondition(text), skuMatch),
       ),
     )
@@ -355,6 +369,65 @@ export function updateProductValues(
       .returning({ id: products.id });
     assertUpdatedOne(rows, "updateProductValues");
   });
+}
+
+// El seguimiento del stock (brief-29.5, D-3): el producto FOR UPDATE, para que ninguna escritura del
+// stock, que lo toma FOR SHARE, corra a la vez que el cambio.
+export async function lockProductExclusive(
+  tx: DbTransaction,
+  organizationId: string,
+  productId: string,
+): Promise<{ isActive: boolean; tracking: StockTracking } | undefined> {
+  const rows = await tx
+    .select({ isActive: products.isActive, tracking: products.tracking })
+    .from(products)
+    .where(
+      and(
+        eq(products.organizationId, organizationId),
+        eq(products.id, productId),
+      ),
+    )
+    .limit(1)
+    .for("update");
+  return rows[0];
+}
+
+export async function updateProductTracking(
+  tx: DbTransaction,
+  organizationId: string,
+  productId: string,
+  tracking: StockTracking,
+): Promise<void> {
+  const rows = await tx
+    .update(products)
+    .set({ tracking })
+    .where(
+      and(
+        eq(products.organizationId, organizationId),
+        eq(products.id, productId),
+      ),
+    )
+    .returning({ id: products.id });
+  assertUpdatedOne(rows, "updateProductTracking");
+}
+
+// El seguimiento de varios productos, para inventory, en la transacción de quien ya los bloqueó.
+export async function findTrackings(
+  tx: DbTransaction,
+  organizationId: string,
+  productIds: string[],
+): Promise<Map<string, StockTracking>> {
+  if (productIds.length === 0) return new Map();
+  const rows = await tx
+    .select({ id: products.id, tracking: products.tracking })
+    .from(products)
+    .where(
+      and(
+        eq(products.organizationId, organizationId),
+        inArray(products.id, productIds),
+      ),
+    );
+  return new Map(rows.map((row) => [row.id, row.tracking]));
 }
 
 export async function updateProductActive(

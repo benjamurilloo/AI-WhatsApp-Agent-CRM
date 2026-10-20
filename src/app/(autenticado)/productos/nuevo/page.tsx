@@ -3,7 +3,7 @@ import {
   getVariantFormOptions,
   listProductSuggestions,
 } from "@/modules/catalog";
-import { authorize } from "@/modules/organizations";
+import { authorize, hasCapability } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
 import { BackLink, DetailHeader } from "@/app/_components/detail-header";
 import { PageNotice } from "@/app/_components/page-notice";
@@ -55,6 +55,10 @@ export default async function NewProductPage({
           suggestions={suggestions.ok ? suggestions : undefined}
           variantOptions={variantOptions}
           variantValues={{ modelId, attributes: {} }}
+          usedCondition={await hasCapability(
+            context.organizationId,
+            "serialized_units",
+          )}
         />
       </div>
     </main>

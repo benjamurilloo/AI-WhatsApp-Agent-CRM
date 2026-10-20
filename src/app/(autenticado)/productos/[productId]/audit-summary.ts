@@ -1,7 +1,12 @@
-import type { ProductAuditEntry, ProductCondition } from "@/modules/catalog";
+import type {
+  ProductAuditEntry,
+  ProductCondition,
+  StockTracking,
+} from "@/modules/catalog";
 import { formatMoney } from "@/shared/money";
 import { formatQuantity } from "@/shared/quantity";
 import { CONDITION_LABEL, formatMeasure } from "../messages";
+import { TRACKING_LABEL } from "./unidades/messages";
 
 // Traduce un registro de auditoría a texto legible para la pantalla 4 (wireframe 04):
 // solo los campos relevantes, sin IDs internos ni nombres de columnas.
@@ -38,6 +43,8 @@ const FIELD_LABEL: Record<string, string> = {
   image: "Imagen",
   isActive: "Activo",
   quantityOnHand: "Stock",
+  // El cambio de seguimiento, auditado como edición del producto (brief-29.5, D-3).
+  tracking: "Se lleva",
 };
 
 const QUANTITY_FIELDS = new Set(["reorderPoint", "quantityOnHand"]);
@@ -89,6 +96,9 @@ function show(field: string, value: string | number | boolean | null): string {
   const text = String(value);
   if (field === "condition" && Object.hasOwn(CONDITION_LABEL, text)) {
     return CONDITION_LABEL[text as ProductCondition];
+  }
+  if (field === "tracking" && Object.hasOwn(TRACKING_LABEL, text)) {
+    return TRACKING_LABEL[text as StockTracking];
   }
   if (Object.hasOwn(MEASURE_UNIT, field)) {
     return `${formatMeasure(text)} ${MEASURE_UNIT[field]}`;

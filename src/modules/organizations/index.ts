@@ -46,4 +46,5 @@ export {
   PROFILES,
   type Profile,
   type ProfileAttribute,
+  type ProfileGrade,
 } from "./profiles";

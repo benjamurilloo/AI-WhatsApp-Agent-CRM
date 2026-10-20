@@ -1,10 +1,13 @@
 import { and, count, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
-import { getDb, type DbTransaction } from "@/shared/db";
+import { getDb, type Db, type DbTransaction } from "@/shared/db";
 import {
   inventories,
   inventoryMovements,
   inventoryMovementType,
+  stockUnits,
 } from "./schema";
+
+type Executor = Db | DbTransaction;
 
 // Acceso a inventories e inventory_movements: lectura de saldos (brief-4.2, D-1) y las únicas
 // escrituras del saldo (brief-4.3.1, D-6; desde la 19.3, lo reservado y la entrega del ADR 0020;
@@ -67,6 +70,8 @@ export type MovementRow = {
   reason: string;
   createdBy: string;
   createdAt: Date;
+  // Desde la 29.5: el IMEI de la unidad que entró o salió, en un producto por unidad (D-6).
+  unitSerial: string | null;
 };
 
 // Período [from 00:00, to + 1 día 00:00) en la zona de la organización, convertido por
@@ -113,19 +118,30 @@ export function findMovements(
       reason: inventoryMovements.reason,
       createdBy: inventoryMovements.createdBy,
       createdAt: inventoryMovements.createdAt,
+      unitSerial: stockUnits.serial,
     })
     .from(inventoryMovements)
+    .leftJoin(
+      stockUnits,
+      and(
+        eq(stockUnits.organizationId, inventoryMovements.organizationId),
+        eq(stockUnits.id, inventoryMovements.unitId),
+      ),
+    )
     .where(movementConditions(query))
     .orderBy(desc(inventoryMovements.createdAt), desc(inventoryMovements.id))
     .limit(limit)
     .offset(offset);
 }
 
+// Desde la 29.5, también en la transacción del cambio de seguimiento, con el producto bloqueado
+// (brief-29.5, D-3).
 export async function hasMovements(
   organizationId: string,
   productId: string,
+  executor: Executor = getDb(),
 ): Promise<boolean> {
-  const rows = await getDb()
+  const rows = await executor
     .select({ id: inventoryMovements.id })
     .from(inventoryMovements)
     .where(
@@ -173,6 +189,8 @@ export type StockChange = {
   balanceAfter: string;
   reason: string;
   createdBy: string;
+  // Desde la 29.5: la unidad del alta o la baja manual (brief-29.5, D-4).
+  unitId?: string | null;
 };
 
 // Única vía que cambia quantity_on_hand: siempre junto con el movimiento cuyo balance_after
@@ -259,6 +277,8 @@ export type Sale = {
   balanceAfter: string;
   reason: string;
   createdBy: string;
+  // Desde la 29.5, en la recepción y su anulación: la unidad que entra o sale (brief-29.5, D-4).
+  unitId?: string | null;
 };
 
 // La salida de una línea de una venta sin pedido (ADR 0021, punto 5): el movimiento sale y el
@@ -328,6 +348,7 @@ export async function applyGoodsReceipt(
     balanceAfter: receipt.balanceAfter,
     reason: receipt.reason,
     createdBy: receipt.createdBy,
+    unitId: receipt.unitId ?? null,
   });
   await tx
     .update(inventories)
@@ -355,6 +376,7 @@ export async function applyGoodsReceiptVoid(
     balanceAfter: removal.balanceAfter,
     reason: removal.reason,
     createdBy: removal.createdBy,
+    unitId: removal.unitId ?? null,
   });
   await tx
     .update(inventories)

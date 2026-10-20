@@ -285,6 +285,18 @@ export function contractAmount(amount: string, currency: string): string {
   return `${integer}.${fraction.slice(0, decimals.decimals)}`;
 }
 
+// La condición del contrato: new o refurbished. Desde la 29.5 el modelo tiene también used, y las
+// lecturas de servicio de catalog dejan afuera esos productos hasta el contrato de la 29.8 (brief-29.5,
+// D-7). Si uno llegara acá, es un defecto: se lanza en vez de mandarlo con otra condición.
+export function contractCondition(
+  condition: ServiceCatalogProduct["condition"],
+): ContractProduct["condition"] {
+  if (condition === "used") {
+    throw new Error("Un producto usado llegó a una lectura de servicio.");
+  }
+  return condition;
+}
+
 // Mapeo explícito, campo por campo: ningún dato del modelo sale por accidente.
 export function toContractProduct(
   product: ServiceCatalogProduct,
@@ -297,7 +309,7 @@ export function toContractProduct(
     unit: product.unit,
     brand: product.brand,
     category: product.category,
-    condition: product.condition,
+    condition: contractCondition(product.condition),
     price: product.price
       ? {
           amount: contractAmount(product.price.amount, product.price.currency),

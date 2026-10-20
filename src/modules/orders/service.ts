@@ -379,8 +379,12 @@ export async function placeOrderFromIngestion(
   const writable: WritableLine[] = [];
   for (const line of lines) {
     const product = products.get(line.productId);
-    // Inexistente, de otra organización o inactivo, sin distinguir, como la lectura (D-6).
-    if (!product || !product.isActive) return reject("product_not_found");
+    // Inexistente, de otra organización o inactivo, sin distinguir, como la lectura (D-6). Desde la
+    // 29.5, también un producto por unidad: no entra en un pedido hasta la 29.5.2, y el contrato del
+    // agente no cambia (brief-29.5, D-1 y D-7).
+    if (!product || !product.isActive || product.tracking === "unit") {
+      return reject("product_not_found");
+    }
     if (!product.price) return reject("product_without_price");
     if (currency === null) {
       currency = product.price.currency;
@@ -468,6 +472,12 @@ export type OrderTransitionResult =
       "BUSINESS_RULE_VIOLATION",
       { rule: "inactive_product"; lines: OrderLineRef[] }
     >
+  // Desde la 29.5: un pedido pendiente de un producto que después pasó a llevarse por unidad no se
+  // confirma hasta la 29.5.2 (brief-29.5, D-1).
+  | Failure<
+      "BUSINESS_RULE_VIOLATION",
+      { rule: "unit_tracked"; lines: OrderLineRef[] }
+    >
   | Failure<
       "BUSINESS_RULE_VIOLATION",
       {
@@ -549,6 +559,20 @@ async function transitionOrder(
                 code: "BUSINESS_RULE_VIOLATION",
                 rule: "inactive_product",
                 lines: inactive.map((line) => ({
+                  position: line.position,
+                  productId: line.productId,
+                })),
+              };
+            }
+            const unitTracked = lines.filter(
+              (line) => products.get(line.productId)?.tracking === "unit",
+            );
+            if (unitTracked.length > 0) {
+              return {
+                ok: false,
+                code: "BUSINESS_RULE_VIOLATION",
+                rule: "unit_tracked",
+                lines: unitTracked.map((line) => ({
                   position: line.position,
                   productId: line.productId,
                 })),

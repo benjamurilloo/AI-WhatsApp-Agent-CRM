@@ -161,6 +161,7 @@ export function ProductForm({
   suggestions = NO_SUGGESTIONS,
   variantOptions = null,
   variantValues = NO_VARIANT,
+  usedCondition = false,
 }: {
   mode: "crear" | "editar";
   productId?: string;
@@ -169,6 +170,8 @@ export function ProductForm({
   // null sin la capacidad: la tarjeta no se muestra y el formulario no manda el modelo.
   variantOptions?: VariantFormOptions | null;
   variantValues?: VariantFormValues;
+  // Desde la 29.5: la condición «Usado», solo con la capacidad serialized_units.
+  usedCondition?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(
     mode === "crear" ? createProductAction : updateProductAction,
@@ -217,11 +220,19 @@ export function ProductForm({
             aria-describedby={errorId}
             className={inputClass}
           >
-            {Object.entries(field.options).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
+            {Object.entries(field.options)
+              // «Usado» solo con la capacidad serialized_units (brief-29.5, D-2).
+              .filter(
+                ([value]) =>
+                  value !== "used" ||
+                  usedCondition ||
+                  shown[field.name] === "used",
+              )
+              .map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
           </select>
         ) : field.long ? (
           <textarea

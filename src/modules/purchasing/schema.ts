@@ -17,6 +17,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { users } from "@/modules/auth/schema";
 import { products } from "@/modules/catalog/schema";
+import { stockUnits } from "@/modules/inventory/schema";
 import { organizations } from "@/modules/organizations/schema";
 
 // docs/architecture/DataModel.md, tabla suppliers (ADR 0023, punto 2; brief-22.2, D-1) y, desde la
@@ -416,6 +417,11 @@ export const goodsReceiptLines = pgTable(
       table.goodsReceiptId,
       table.position,
     ),
+    // Destino de la clave compuesta de goods_receipt_line_units (brief-29.5, D-2).
+    unique("goods_receipt_lines_organization_id_id_unique").on(
+      table.organizationId,
+      table.id,
+    ),
     check(
       "goods_receipt_lines_position_range",
       sql`${table.position} between 1 and ${sql.raw(String(MAX_GOODS_RECEIPT_LINES))}`,
@@ -425,6 +431,39 @@ export const goodsReceiptLines = pgTable(
     check(
       "goods_receipt_lines_line_total_positive",
       sql`${table.lineTotal} > 0`,
+    ),
+  ],
+);
+
+// Las unidades que creó cada línea de una recepción de un producto por unidad (ADR 0024, punto 6;
+// brief-29.5, D-2): una fila por unidad, de solo inserción. El número de filas es igual a la cantidad
+// de la línea: lo comprueba purchasing y lo prueba un test.
+export const goodsReceiptLineUnits = pgTable(
+  "goods_receipt_line_units",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    goodsReceiptLineId: uuid("goods_receipt_line_id").notNull(),
+    unitId: uuid("unit_id").notNull(),
+  },
+  (table) => [
+    foreignKey({
+      name: "goods_receipt_line_units_line_fk",
+      columns: [table.organizationId, table.goodsReceiptLineId],
+      foreignColumns: [goodsReceiptLines.organizationId, goodsReceiptLines.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "goods_receipt_line_units_unit_fk",
+      columns: [table.organizationId, table.unitId],
+      foreignColumns: [stockUnits.organizationId, stockUnits.id],
+    }).onDelete("restrict"),
+    // Una unidad nace en una sola línea.
+    unique("goods_receipt_line_units_unit_unique").on(table.unitId),
+    index("goods_receipt_line_units_line_idx").on(
+      table.organizationId,
+      table.goodsReceiptLineId,
     ),
   ],
 );
