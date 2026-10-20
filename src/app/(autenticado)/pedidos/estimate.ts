@@ -29,6 +29,34 @@ export function estimateLineTotal(
   return total === 0n ? null : moneyToDatabase(total);
 }
 
+// El subtotal estimado de una línea por unidad (brief-29.5.2, D-2 y D-5): cada IMEI vale su precio
+// propio, si es de una unidad de la lista y lo tiene, o el del producto, redondeado como una línea de
+// cantidad 1, como lo hace el servicio. known dice si todos los IMEI son de unidades de la lista: solo
+// entonces el monto viaja como esperado. Null si no hay IMEI, si algún precio está en otra moneda o si
+// da cero.
+export function estimateUnitsTotal(
+  productPrice: { amount: string; currency: string },
+  units: ReadonlyMap<string, { amount: string; currency: string } | null>,
+  serials: string[],
+): { total: string; known: boolean } | null {
+  const decimals = currencyDecimals(productPrice.currency);
+  if (!decimals.ok || serials.length === 0) return null;
+  let total = 0n;
+  let known = true;
+  for (const serial of serials) {
+    const key = serial.toLowerCase();
+    if (!units.has(key)) known = false;
+    const price = units.get(key) ?? productPrice;
+    if (price.currency !== productPrice.currency) return null;
+    total += roundLineTotal(
+      moneyFromDatabase(price.amount),
+      1000n,
+      decimals.decimals,
+    );
+  }
+  return total === 0n ? null : { total: moneyToDatabase(total), known };
+}
+
 // La suma de los subtotales de una moneda, con la escala de la base.
 export function sumEstimates(totals: string[]): string {
   return moneyToDatabase(

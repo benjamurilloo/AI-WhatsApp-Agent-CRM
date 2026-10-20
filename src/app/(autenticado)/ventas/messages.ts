@@ -9,6 +9,7 @@ import type {
 import { formatQuantity } from "@/shared/quantity";
 import {
   STATUS_LABEL,
+  unitIssuesByLine,
   type OrderFormLine,
   type OrderFormValues,
 } from "../pedidos/messages";
@@ -124,20 +125,41 @@ const SALE_LINE_FIELD_MESSAGE: Record<SaleLineField, string> = {
   product: "Elegí un producto de la lista.",
   quantity: "Escribí una cantidad mayor que cero, con hasta tres decimales.",
   expectedPrice: "Volvé a elegir el producto.",
+  serials:
+    "Revisá los IMEI: uno por renglón, sin repetir, con letras, dígitos o guiones.",
 };
+
+// Con el IMEI que la línea repite o escribió mal, lo nombra (brief-29.5.2, AC-1).
+function saleLineFieldMessage(field: SaleLineField, serial?: string): string {
+  if (field === "serials" && serial !== undefined) {
+    return `Revisá el IMEI ${serial}: está repetido en la línea o tiene caracteres que no van (solo letras, dígitos y guiones).`;
+  }
+  return SALE_LINE_FIELD_MESSAGE[field];
+}
 
 function saleLineRuleMessage(
   rule: SaleLineRuleIssue["rule"],
   currency: string,
+  serial?: string,
 ): string {
+  if (rule === "duplicate_unit" && serial !== undefined) {
+    return `El IMEI ${serial} ya está en otra línea.`;
+  }
+  if (rule === "unit_currency_mismatch" && serial !== undefined) {
+    return `La unidad con IMEI ${serial} tiene su precio en otra moneda que la primera línea (${currency}): corregí su precio.`;
+  }
   return {
     inactive_product: "El producto está desactivado.",
-    unit_tracked:
-      "Este producto se vende por unidad: todavía no se puede agregar a un pedido ni a una venta.",
+    units_required:
+      "Este producto se vende por unidad: escribí el IMEI de cada unidad, uno por renglón.",
+    not_unit_tracked:
+      "Este producto no se vende por unidad: borrá los IMEI y escribí la cantidad.",
     no_price: "El producto no tiene precio: fijalo antes de venderlo.",
     currency_mismatch: `El precio está en otra moneda que la primera línea (${currency}).`,
+    unit_currency_mismatch: `Una unidad tiene su precio en otra moneda que la primera línea (${currency}): corregí su precio.`,
     duplicate_product:
       "El producto ya está en otra línea: sumá la cantidad ahí.",
+    duplicate_unit: "Un IMEI de esta línea ya está en otra línea.",
     zero_total: "El total de la línea da cero: subí la cantidad.",
     amount_too_large: "El total de la línea es demasiado grande.",
   }[rule];
@@ -180,7 +202,7 @@ export function saleRejection(
       return byLine(
         result.lines.map((line) => [
           line.position,
-          SALE_LINE_FIELD_MESSAGE[line.field],
+          saleLineFieldMessage(line.field, line.serial),
         ]),
       );
     case "NOT_FOUND":
@@ -225,10 +247,17 @@ export function saleRejection(
           clientError: null,
         };
       }
+      if (result.rule === "units") {
+        return {
+          message: "Revisá los IMEI marcados. No se emitió nada.",
+          lineErrors: unitIssuesByLine(result.units),
+          clientError: null,
+        };
+      }
       return byLine(
         result.lines.map((line) => [
           line.position,
-          saleLineRuleMessage(line.rule, firstCurrency),
+          saleLineRuleMessage(line.rule, firstCurrency, line.serial),
         ]),
       );
     case "CONFLICT":
@@ -238,7 +267,12 @@ export function saleRejection(
             ? "Cambió el precio de un producto desde que lo elegiste. Revisá el precio nuevo y volvé a emitir la venta."
             : "Cambiaron los precios de algunos productos desde que los elegiste. Revisá los precios nuevos y volvé a emitir la venta.",
         lineErrors: Object.fromEntries(
-          result.prices.map((line) => [line.position, "El precio cambió."]),
+          result.prices.map((line) => [
+            line.position,
+            line.lineTotal === null
+              ? "El precio cambió."
+              : "Cambió el precio de una unidad: revisá el total de la línea.",
+          ]),
         ),
         clientError: null,
       };

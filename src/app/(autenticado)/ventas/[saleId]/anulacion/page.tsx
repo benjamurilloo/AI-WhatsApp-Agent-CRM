@@ -28,6 +28,10 @@ import {
   UNKNOWN_PRODUCT_TEXT,
   VOID_REASON_LABEL,
 } from "../../messages";
+import {
+  LineUnitList,
+  lineUnitPriceText,
+} from "../../../pedidos/line-unit-list";
 import { PrintButton } from "../print-button";
 
 export const metadata: Metadata = {
@@ -191,6 +195,7 @@ export default async function SaleVoidPage({
                     ) : (
                       UNKNOWN_PRODUCT_TEXT
                     )}
+                    <LineUnitList units={line.units} currency={line.currency} />
                   </td>
                   <td
                     className={`${tableCellClass} text-right whitespace-nowrap tabular-nums`}
@@ -203,7 +208,7 @@ export default async function SaleVoidPage({
                   <td
                     className={`${tableCellClass} text-right whitespace-nowrap tabular-nums`}
                   >
-                    {formatMoney(line.unitPrice, line.currency)}
+                    {lineUnitPriceText(line)}
                   </td>
                   <td
                     className={`${tableCellClass} text-right whitespace-nowrap tabular-nums`}

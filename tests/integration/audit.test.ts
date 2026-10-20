@@ -150,6 +150,8 @@ const INSERT_ONLY_TABLES = [
   "messages",
   // Líneas de un pedido (brief-19.2).
   "order_lines",
+  // Las unidades de una línea de pedido y de venta (brief-29.5.2, D-1).
+  "order_line_units",
   // Costo de un producto (brief-18.2).
   "product_costs",
   "product_prices",
@@ -163,6 +165,7 @@ const INSERT_ONLY_TABLES = [
   "refunds",
   // La venta y sus líneas (brief-20.2; ADR 0021, punto 2).
   "sale_lines",
+  "sale_line_units",
   // La anulación de una venta (brief-20.4; ADR 0021, punto 6).
   "sale_voids",
   "sales",

@@ -50,4 +50,12 @@ export {
   type OrderSummary,
   type OrderValidationFailure,
   type PlaceAgentOrderResult,
+  // Las unidades en el pedido y en la venta (brief-29.5.2, D-1 y D-5): sales resuelve las de su venta
+  // sin pedido con las mismas reglas y describe las suyas como el pedido.
+  describeLineUnits,
+  getUnitOrders,
+  priceConflicts,
+  resolveLinesUnits,
+  type LinePriceConflict,
+  type OrderLineUnit,
 } from "./service";

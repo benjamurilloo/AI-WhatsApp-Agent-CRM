@@ -30,6 +30,9 @@ export const TRACKING_LOCKED_MESSAGE =
 export const UNIT_STATUS_LABEL: Record<UnitStatus, string> = {
   available: "Disponible",
   written_off: "Dada de baja",
+  // Desde la 29.5.2 (brief-29.5.2, D-5).
+  reserved: "Reservada",
+  sold: "Vendida",
 };
 
 export const UNIT_ORIGIN_LABEL = {
@@ -74,6 +77,10 @@ const UNIT_FIELD_MESSAGE: Record<UnitField, string> = {
   gradeId: "Elegí un grado activo de la lista, o ninguno.",
   batteryHealth:
     "Escribí la batería como un número de 0 a 100, o dejala vacía.",
+  price:
+    "Escribí el precio, mayor que cero, con los decimales de la moneda, o dejá el precio y la moneda vacíos.",
+  priceCurrency:
+    "Elegí la moneda del precio, o dejá el precio y la moneda vacíos.",
 };
 
 function balanceMessage(rule: string): string {
@@ -162,7 +169,7 @@ export function writeOffRejection(
       field: null,
       message:
         result.rule === "unit_not_available"
-          ? "Esta unidad ya no está disponible: alguien la dio de baja."
+          ? "Esta unidad ya no está disponible: está reservada, vendida o dada de baja."
           : balanceMessage(result.rule),
     };
   }
@@ -180,7 +187,8 @@ export function correctRejection(
   if (result.code === "BUSINESS_RULE_VIOLATION") {
     return {
       field: null,
-      message: "Esta unidad ya no está disponible: no se corrige.",
+      message:
+        "Esta unidad ya no está disponible (está reservada, vendida o dada de baja): no se corrige.",
     };
   }
   return commonRejection(result.code, requestId);

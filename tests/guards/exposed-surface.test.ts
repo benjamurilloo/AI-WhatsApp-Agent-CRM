@@ -131,6 +131,11 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
   "src/app/(autenticado)/pedidos/actions.ts#searchOrderClientsAction": {
     requirement: "sesion",
   },
+  // Las unidades disponibles de un producto, para elegirlas en un pedido o una venta (brief-29.5.2,
+  // D-5): una lectura de los dos roles, sin el costo; inventory autoriza y resuelve la organización.
+  "src/app/(autenticado)/pedidos/actions.ts#searchOrderUnitsAction": {
+    requirement: "sesion",
+  },
   // Ventas (brief-20.2, D-4): emitir es solo de admin, lo exige sales.
   "src/app/(autenticado)/ventas/actions.ts#issueSaleAction": {
     requirement: "sesion",

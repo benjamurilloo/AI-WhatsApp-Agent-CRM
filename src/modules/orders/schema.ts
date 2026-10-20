@@ -16,6 +16,7 @@ import {
 import { users } from "@/modules/auth/schema";
 import { products } from "@/modules/catalog/schema";
 import { clients } from "@/modules/crm/schema";
+import { stockUnits } from "@/modules/inventory/schema";
 import {
   ingestionCredentials,
   ingestionEvents,
@@ -184,6 +185,13 @@ export const orderLines = pgTable(
       table.orderId,
       table.position,
     ),
+    // Destino de la clave compuesta de order_line_units: la unidad es del producto de su línea, y la
+    // línea, de la misma organización (brief-29.5.2, D-4).
+    unique("order_lines_organization_id_product_unique").on(
+      table.organizationId,
+      table.id,
+      table.productId,
+    ),
     check(
       "order_lines_position_range",
       sql`${table.position} between 1 and ${sql.raw(String(MAX_ORDER_LINES))}`,
@@ -192,5 +200,53 @@ export const orderLines = pgTable(
     check("order_lines_unit_price_positive", sql`${table.unitPrice} > 0`),
     check("order_lines_line_total_positive", sql`${table.lineTotal} > 0`),
     check("order_lines_currency_format", sql`${table.currency} ~ '^[A-Z]{3}$'`),
+  ],
+);
+
+// Las unidades de cada línea de un pedido de un producto por unidad (ADR 0024, punto 6; brief-29.5.2,
+// D-1 y D-4): se eligen al crear el pedido y se guardan sin reservarlas; confirmar reserva exactamente
+// estas. De solo inserción, como order_lines. Sin UNIQUE (unit_id): una unidad puede estar en un
+// pedido cancelado y después en otro. Que esté reservada por un solo pedido confirmado lo asegura su
+// estado (stock_units_guard). El producto se repite acá para que las dos claves compuestas aten la
+// unidad al producto de la línea.
+export const orderLineUnits = pgTable(
+  "order_line_units",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    orderLineId: uuid("order_line_id").notNull(),
+    productId: uuid("product_id").notNull(),
+    unitId: uuid("unit_id").notNull(),
+    // El precio de la unidad al crear el pedido, en la moneda de la línea: el propio de la unidad o, si
+    // no tiene, el vigente del producto (D-2). Nunca se recalcula (ADR 0020, punto 3).
+    unitPrice: numeric("unit_price", { precision: 14, scale: 2 }).notNull(),
+  },
+  (table) => [
+    foreignKey({
+      name: "order_line_units_line_fk",
+      columns: [table.organizationId, table.orderLineId, table.productId],
+      foreignColumns: [
+        orderLines.organizationId,
+        orderLines.id,
+        orderLines.productId,
+      ],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "order_line_units_unit_fk",
+      columns: [table.organizationId, table.productId, table.unitId],
+      foreignColumns: [
+        stockUnits.organizationId,
+        stockUnits.productId,
+        stockUnits.id,
+      ],
+    }).onDelete("restrict"),
+    unique("order_line_units_line_unit_unique").on(
+      table.orderLineId,
+      table.unitId,
+    ),
+    index("order_line_units_unit_idx").on(table.organizationId, table.unitId),
+    check("order_line_units_unit_price_positive", sql`${table.unitPrice} > 0`),
   ],
 );

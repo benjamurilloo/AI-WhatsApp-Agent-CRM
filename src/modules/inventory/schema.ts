@@ -126,11 +126,13 @@ export const unitGrades = pgTable(
 );
 
 // El estado de una unidad (ADR 0024, punto 6). Cada valor entra con la subfase que lo usa (R-19): la
-// 29.5 crea available y written_off; reserved y sold, la 29.5.2; in_repair, la 29.6; in_review, la
-// 29.7. Las transiciones las fija el trigger stock_units_guard.
+// 29.5 crea available y written_off; reserved y sold, la 29.5.2 (brief-29.5.2, D-3 y D-4); in_repair,
+// la 29.6; in_review, la 29.7. Las transiciones las fija el trigger stock_units_guard.
 export const stockUnitStatus = pgEnum("stock_unit_status", [
   "available",
   "written_off",
+  "reserved",
+  "sold",
 ]);
 
 // De dónde vino la unidad. trade_in entra con la 29.7.
@@ -161,6 +163,10 @@ export const stockUnits = pgTable(
     batteryHealth: smallint("battery_health"),
     cost: numeric("cost", { precision: 14, scale: 2 }).notNull(),
     costCurrency: text("cost_currency").notNull(),
+    // El precio propio de la unidad (ADR 0024, punto 6; brief-29.5.2, D-2): opcional, y sin él vale el
+    // precio vigente del producto. Lo fija el alta manual y lo corrige un admin; la recepción no.
+    price: numeric("price", { precision: 14, scale: 2 }),
+    priceCurrency: text("price_currency"),
     originType: stockUnitOrigin("origin_type").notNull(),
     // Clave plana, sin clave foránea (ADR 0024, R-16): inventory no importa los esquemas de quien la
     // crea. En una recepción, la recepción; en el alta manual, null.
@@ -219,6 +225,16 @@ export const stockUnits = pgTable(
     check(
       "stock_units_cost_currency_format",
       sql`${table.costCurrency} ~ '^[A-Z]{3}$'`,
+    ),
+    // El precio y su moneda, los dos o ninguno.
+    check(
+      "stock_units_price_pair",
+      sql`(${table.price} is null) = (${table.priceCurrency} is null)`,
+    ),
+    check("stock_units_price_positive", sql`${table.price} > 0`),
+    check(
+      "stock_units_price_currency_format",
+      sql`${table.priceCurrency} ~ '^[A-Z]{3}$'`,
     ),
   ],
 );

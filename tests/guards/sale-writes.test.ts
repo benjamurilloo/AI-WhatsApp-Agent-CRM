@@ -18,11 +18,13 @@ import { describe, expect, it } from "vitest";
 
 const REPOSITORY = "src/modules/sales/repository.ts";
 
-// La emisión inserta la cabecera y sus líneas, y la anulación, su comprobante. Nada más escribe: ni
-// la venta ni la anulación cambian nunca.
+// La emisión inserta la cabecera, sus líneas y, desde la 29.5.2, las unidades de sus líneas
+// (brief-29.5.2, D-4), y la anulación, su comprobante. Nada más escribe: ni la venta ni la anulación
+// cambian nunca.
 const AUTHORIZED = new Map([
   ["insertSale", ["insert sales"]],
   ["insertSaleLines", ["insert sale_lines"]],
+  ["insertSaleLineUnits", ["insert sale_line_units"]],
   ["insertSaleVoid", ["insert sale_voids"]],
 ]);
 
@@ -30,16 +32,18 @@ const TABLES = new Map([
   ["sales", "sales"],
   ["salelines", "sale_lines"],
   ["sale_lines", "sale_lines"],
+  ["salelineunits", "sale_line_units"],
+  ["sale_line_units", "sale_line_units"],
   ["salevoids", "sale_voids"],
   ["sale_voids", "sale_voids"],
 ]);
 
 // La tabla en SQL: su nombre, con o sin esquema y comillas, o el objeto de Drizzle interpolado.
 // El nombre queda en el grupo 2 o en el 3.
-const SQL_TABLE = String.raw`(?:"?public"?\s*\.\s*)?"?(sales|sale_lines|sale_voids)"?\b|\$\{\s*(?:\w+\.)?(sales|saleLines|saleVoids)\s*\}`;
+const SQL_TABLE = String.raw`(?:"?public"?\s*\.\s*)?"?(sales|sale_lines|sale_line_units|sale_voids)"?\b|\$\{\s*(?:\w+\.)?(sales|saleLines|saleLineUnits|saleVoids)\s*\}`;
 
 const WRITE_PATTERNS = [
-  /\.(insert|update|delete)\(\s*(?:\w+\.)?(sales|saleLines|saleVoids)\s*\)/g,
+  /\.(insert|update|delete)\(\s*(?:\w+\.)?(sales|saleLines|saleLineUnits|saleVoids)\s*\)/g,
   new RegExp(
     String.raw`\b(insert\s+into|update|delete\s+from|truncate(?:\s+table)?)(?:\s+only)?\s+(?:${SQL_TABLE})`,
     "gi",
@@ -169,6 +173,17 @@ describe("detección de escrituras de ventas", () => {
       file: "src/modules/inventory/repository.ts",
       code: 'await tx.execute(sql`insert into "sale_voids" (number) values (1)`);',
     },
+    // Desde la 29.5.2 (brief-29.5.2, D-4): las unidades de cada línea.
+    {
+      name: "las unidades de una línea insertadas desde la función de las líneas",
+      file: REPOSITORY,
+      code: "export async function insertSaleLines(tx) {\n  await tx.insert(saleLineUnits).values(v);\n}",
+    },
+    {
+      name: "delete de las unidades de una línea en SQL",
+      file: "src/modules/sales/service.ts",
+      code: "await tx.execute(sql`delete from sale_line_units`);",
+    },
   ])("detecta: $name", ({ file, code }) => {
     expect(findViolations(file, code)).not.toEqual([]);
   });
@@ -218,6 +233,7 @@ describe("repositorio", () => {
     expect(writes).toEqual([
       "insertSale: insert sales",
       "insertSaleLines: insert sale_lines",
+      "insertSaleLineUnits: insert sale_line_units",
       "insertSaleVoid: insert sale_voids",
     ]);
   });

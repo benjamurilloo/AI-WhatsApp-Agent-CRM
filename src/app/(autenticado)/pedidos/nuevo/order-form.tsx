@@ -17,9 +17,16 @@ import {
   searchOrderProductsAction,
   type OrderProductOption,
 } from "../actions";
-import { estimateLineTotal, sumEstimates } from "../estimate";
-import type { OrderFormLine, OrderFormState } from "../messages";
+import { sumEstimates } from "../estimate";
+import type { OrderFormState } from "../messages";
 import { Picker } from "./picker";
+import {
+  blankLine,
+  estimateRow,
+  LineQuantity,
+  LineSerials,
+  type LineRow,
+} from "./line-units";
 
 // Formulario del alta de un pedido (brief-19.2, D-5 a D-7). El cliente y cada producto se eligen
 // con un buscador; cada línea muestra el precio vigente y su subtotal estimado, y el total estimado
@@ -31,25 +38,20 @@ import { Picker } from "./picker";
 
 const INITIAL_ROWS = 5;
 
-type Row = OrderFormLine & { key: number };
+type Row = LineRow;
 
-const blank = (key: number): Row => ({
-  key,
-  productId: "",
-  productText: "",
-  quantity: "",
-  expectedPriceId: "",
-  price: null,
-});
+const blank = blankLine;
 
 const initialState: OrderFormState = { status: "idle" };
 
 export function OrderForm({
   initialClient,
   maxLines,
+  unitsEnabled,
 }: {
   initialClient: { id: string; name: string } | null;
   maxLines: number;
+  unitsEnabled: boolean;
 }) {
   const [state, formAction, pending] = useActionState(
     createOrderAction,
@@ -65,6 +67,7 @@ export function OrderForm({
       pending={pending}
       initialClient={initialClient}
       maxLines={maxLines}
+      unitsEnabled={unitsEnabled}
     />
   );
 }
@@ -75,12 +78,14 @@ function OrderFields({
   pending,
   initialClient,
   maxLines,
+  unitsEnabled,
 }: {
   state: OrderFormState;
   formAction: (formData: FormData) => void;
   pending: boolean;
   initialClient: { id: string; name: string } | null;
   maxLines: number;
+  unitsEnabled: boolean;
 }) {
   const failed = state.status === "error" ? state : null;
   const [client, setClient] = useState({
@@ -100,7 +105,7 @@ function OrderFields({
     if (failed) errorRef.current?.focus();
   }, [failed]);
 
-  const update = (key: number, change: Partial<OrderFormLine>) =>
+  const update = (key: number, change: Partial<Row>) =>
     setRows((current) =>
       current.map((row) => (row.key === key ? { ...row, ...change } : row)),
     );
@@ -110,7 +115,7 @@ function OrderFields({
   const currency = priced[0]?.price?.currency ?? null;
   const estimates = priced.flatMap((row) =>
     row.price && row.price.currency === currency
-      ? [estimateLineTotal(row.price.amount, row.price.currency, row.quantity)]
+      ? [estimateRow(row).estimate]
       : [],
   );
   const mixed = priced.some((row) => row.price?.currency !== currency);
@@ -163,13 +168,7 @@ function OrderFields({
           const position = index + 1;
           const error = failed?.lineErrors[position];
           const errorId = `linea-${row.key}-error`;
-          const estimate = row.price
-            ? estimateLineTotal(
-                row.price.amount,
-                row.price.currency,
-                row.quantity,
-              )
-            : null;
+          const { estimate, expectedLineTotal } = estimateRow(row);
           return (
             <fieldset
               key={row.key}
@@ -202,6 +201,9 @@ function OrderFields({
                             currency: option.price.currency,
                           }
                         : null,
+                      unitTracked: option.unitTracked,
+                      serials: "",
+                      unitOptions: undefined,
                     })
                   }
                   onType={(text) =>
@@ -210,6 +212,8 @@ function OrderFields({
                       productText: text,
                       expectedPriceId: "",
                       price: null,
+                      unitTracked: false,
+                      unitOptions: undefined,
                     })
                   }
                 />
@@ -230,24 +234,13 @@ function OrderFields({
                   value={row.price?.currency ?? ""}
                 />
               </div>
-              <div className="flex flex-col gap-1">
-                <label htmlFor={`cantidad-${row.key}`} className={labelClass}>
-                  Cantidad
-                </label>
-                <input
-                  id={`cantidad-${row.key}`}
-                  name="quantity"
-                  inputMode="decimal"
-                  autoComplete="off"
-                  value={row.quantity}
-                  onChange={(event) =>
-                    update(row.key, { quantity: event.currentTarget.value })
-                  }
-                  className={inputClass}
-                  aria-invalid={Boolean(error) || undefined}
-                  aria-describedby={error ? errorId : undefined}
-                />
-              </div>
+              <LineQuantity
+                row={row}
+                unitsEnabled={unitsEnabled}
+                invalid={Boolean(error)}
+                describedBy={error ? errorId : undefined}
+                onChange={(change) => update(row.key, change)}
+              />
               <div className="flex items-end">
                 <button
                   type="button"
@@ -263,6 +256,14 @@ function OrderFields({
                   <span className="sr-only"> la línea {position}</span>
                 </button>
               </div>
+              <LineSerials
+                row={row}
+                unitsEnabled={unitsEnabled}
+                expectedLineTotal={expectedLineTotal}
+                invalid={Boolean(error)}
+                describedBy={error ? errorId : undefined}
+                onChange={(change) => update(row.key, change)}
+              />
               <p className="text-sm text-muted sm:col-span-3">
                 {row.price
                   ? `Precio: ${formatMoney(row.price.amount, row.price.currency)}`

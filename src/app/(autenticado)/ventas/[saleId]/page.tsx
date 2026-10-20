@@ -47,6 +47,7 @@ import {
   VOID_REASON_LABEL,
   VOIDED_BADGE_TEXT,
 } from "../messages";
+import { LineUnitList, lineUnitPriceText } from "../../pedidos/line-unit-list";
 import { auditActionLabel, describeAuditDiff } from "./audit-summary";
 import { SaleReceiptsSection } from "./cobrar/sale-receipts-section";
 import { PrintButton } from "./print-button";
@@ -306,6 +307,10 @@ export default async function SalePage({
                       ) : (
                         UNKNOWN_PRODUCT_TEXT
                       )}
+                      <LineUnitList
+                        units={line.units}
+                        currency={line.currency}
+                      />
                     </td>
                     <td
                       className={`${tableCellClass} text-right whitespace-nowrap tabular-nums`}
@@ -318,7 +323,7 @@ export default async function SalePage({
                     <td
                       className={`${tableCellClass} text-right whitespace-nowrap tabular-nums`}
                     >
-                      {formatMoney(line.unitPrice, line.currency)}
+                      {lineUnitPriceText(line)}
                     </td>
                     <td
                       className={`${tableCellClass} text-right whitespace-nowrap tabular-nums`}

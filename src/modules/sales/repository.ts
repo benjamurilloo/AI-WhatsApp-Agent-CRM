@@ -4,17 +4,26 @@ import {
   count,
   desc,
   eq,
+  inArray,
   isNotNull,
+  isNull,
   sql,
   type SQL,
 } from "drizzle-orm";
 import { getDb, type Db, type DbTransaction } from "@/shared/db";
-import { saleLines, saleVoidReason, saleVoids, sales } from "./schema";
+import {
+  saleLines,
+  saleLineUnits,
+  saleVoidReason,
+  saleVoids,
+  sales,
+} from "./schema";
 
 // Acceso a sales, sale_lines y, desde la 20.4, sale_voids (ADR 0021; brief-20.2; brief-20.4). Toda
-// consulta filtra por organization_id en SQL. Las únicas escrituras son insertSale, insertSaleLines
-// e insertSaleVoid, y nada actualiza ni borra: lo vigila tests/guards/sale-writes.test.ts (D-3). Los
-// triggers de la 0039 y la 0041 son la segunda defensa.
+// consulta filtra por organization_id en SQL. Las únicas escrituras son insertSale, insertSaleLines,
+// insertSaleVoid y, desde la 29.5.2, insertSaleLineUnits (brief-29.5.2, D-4), y nada actualiza ni
+// borra: lo vigila tests/guards/sale-writes.test.ts (D-3). Los triggers de la 0039, la 0041 y la
+// 0057 son la segunda defensa.
 
 type Executor = Db | DbTransaction;
 
@@ -55,7 +64,11 @@ export type SaleLineRow = {
   lineTotal: string;
 };
 
+// Una línea leída, con su id: las unidades de la línea lo nombran (brief-29.5.2, D-4).
+export type StoredSaleLineRow = SaleLineRow & { id: string };
+
 const lineColumns = {
+  id: saleLines.id,
   productId: saleLines.productId,
   position: saleLines.position,
   quantity: saleLines.quantity,
@@ -94,10 +107,106 @@ export async function insertSaleLines(
   organizationId: string,
   saleId: string,
   lines: SaleLineRow[],
-): Promise<void> {
-  await tx
+): Promise<{ id: string; position: number }[]> {
+  return tx
     .insert(saleLines)
-    .values(lines.map((line) => ({ ...line, organizationId, saleId })));
+    .values(
+      lines.map((line) => ({
+        organizationId,
+        saleId,
+        productId: line.productId,
+        position: line.position,
+        quantity: line.quantity,
+        unitPrice: line.unitPrice,
+        currency: line.currency,
+        lineTotal: line.lineTotal,
+      })),
+    )
+    .returning({ id: saleLines.id, position: saleLines.position });
+}
+
+// Las unidades de las líneas de una venta (brief-29.5.2, D-3 y D-4): se escriben con la emisión, con
+// la misma transacción, y no cambian.
+export type NewSaleLineUnit = {
+  saleLineId: string;
+  productId: string;
+  unitId: string;
+  unitPrice: string;
+};
+
+export async function insertSaleLineUnits(
+  tx: DbTransaction,
+  organizationId: string,
+  units: NewSaleLineUnit[],
+): Promise<void> {
+  if (units.length === 0) return;
+  await tx
+    .insert(saleLineUnits)
+    .values(units.map((unit) => ({ ...unit, organizationId })));
+}
+
+export function findSaleLineUnits(
+  organizationId: string,
+  saleLineIds: string[],
+): Promise<{ saleLineId: string; unitId: string; unitPrice: string }[]> {
+  if (saleLineIds.length === 0) return Promise.resolve([]);
+  return getDb()
+    .select({
+      saleLineId: saleLineUnits.saleLineId,
+      unitId: saleLineUnits.unitId,
+      unitPrice: saleLineUnits.unitPrice,
+    })
+    .from(saleLineUnits)
+    .where(
+      and(
+        eq(saleLineUnits.organizationId, organizationId),
+        inArray(saleLineUnits.saleLineId, saleLineIds),
+      ),
+    );
+}
+
+// La venta vigente (sin anular) de cada unidad, para la ficha de unidades (brief-29.5.2, D-5). Una
+// unidad vendida por una venta sin pedido está en una sola; una de un pedido, en su venta, si la tiene.
+export function findCurrentSalesOfUnits(
+  organizationId: string,
+  unitIds: string[],
+): Promise<{ unitId: string; saleId: string; number: number }[]> {
+  if (unitIds.length === 0) return Promise.resolve([]);
+  return getDb()
+    .select({
+      unitId: saleLineUnits.unitId,
+      saleId: sales.id,
+      number: sales.number,
+    })
+    .from(saleLineUnits)
+    .innerJoin(
+      saleLines,
+      and(
+        eq(saleLines.organizationId, saleLineUnits.organizationId),
+        eq(saleLines.id, saleLineUnits.saleLineId),
+      ),
+    )
+    .innerJoin(
+      sales,
+      and(
+        eq(sales.organizationId, saleLines.organizationId),
+        eq(sales.id, saleLines.saleId),
+      ),
+    )
+    .leftJoin(
+      saleVoids,
+      and(
+        eq(saleVoids.organizationId, sales.organizationId),
+        eq(saleVoids.saleId, sales.id),
+      ),
+    )
+    .where(
+      and(
+        eq(saleLineUnits.organizationId, organizationId),
+        inArray(saleLineUnits.unitId, unitIds),
+        isNull(saleVoids.id),
+      ),
+    );
 }
 
 // drizzle-orm envuelve el error de pg; el código y la constraint quedan en la causa. La regla se lee
@@ -263,7 +372,7 @@ export async function findVoidBySale(
 export async function findSaleLines(
   organizationId: string,
   saleId: string,
-): Promise<SaleLineRow[]> {
+): Promise<StoredSaleLineRow[]> {
   return getDb()
     .select(lineColumns)
     .from(saleLines)

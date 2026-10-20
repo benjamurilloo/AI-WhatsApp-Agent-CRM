@@ -55,6 +55,12 @@ export {
   type RemovalStockLine,
   type RemoveReceivedStockResult,
   type UnavailableUnit,
+  // Las unidades en pedidos y ventas (brief-29.5.2, D-1 y D-3).
+  resolveLineUnits,
+  type LineUnitIssue,
+  type LineUnitRequest,
+  type ResolvedUnit,
+  type TakeStockResult,
 } from "./service";
 // Las unidades con IMEI (ADR 0024, punto 6; brief-29.5): el seguimiento, el alta, la baja, la
 // corrección y las lecturas.
@@ -79,6 +85,13 @@ export {
   type UnitInput,
   type UnitStatus,
   type WriteOffUnitResult,
+  // Desde la 29.5.2 (brief-29.5.2, D-2 y D-5).
+  getUnitSummaries,
+  listAvailableUnits,
+  type AvailableUnit,
+  type UnitDetailsInput,
+  type UnitPrice,
+  type UnitSummary,
 } from "./units";
 // Los grados de las unidades (brief-29.5, D-5).
 export {

@@ -16,18 +16,25 @@ import { describe, expect, it } from "vitest";
 // llamadas por nombre, también con espacio de nombres. No ve: un alias en el import, una referencia
 // guardada en una variable, el nombre armado en tiempo de ejecución, ni SQL escrito a mano contra la
 // base. Los seeds y los tests quedan fuera: no son src/.
+//
+// Desde la 29.5.2 (brief-29.5.2, D-3 y D-9): setUnitsStatus, el cambio de estado de pedidos y ventas,
+// con sus cinco llamadores en inventory, y las funciones de inventory que mueven unidades en pedidos y
+// ventas, cada una desde su único caso de uso en orders o sales.
 
 const UNIT_REPOSITORY = "src/modules/inventory/unit-repository.ts";
 const SERVICE = "src/modules/inventory/service.ts";
 const UNITS = "src/modules/inventory/units.ts";
 const GRADES = "src/modules/inventory/grades.ts";
 const CATALOG_SERVICE = "src/modules/catalog/service.ts";
+const ORDERS_SERVICE = "src/modules/orders/service.ts";
+const SALES_SERVICE = "src/modules/sales/service.ts";
 const UNIT_ACTIONS =
   "src/app/(autenticado)/productos/[productId]/unidades/actions.ts";
 const GRADE_ACTIONS = "src/app/(autenticado)/grados/actions.ts";
 
 const AUTHORIZED = new Map([
   ["insertStockUnit", ["insert stock_units"]],
+  ["setUnitsStatus", ["update stock_units"]],
   ["setUnitsWrittenOff", ["update stock_units"]],
   ["updateUnitDetails", ["update stock_units"]],
   ["insertGrade", ["insert unit_grades"]],
@@ -113,6 +120,36 @@ const CALLERS = new Map<string, { file: string; from: string[] }[]>([
     ],
   ],
   ["updateUnitDetails", [{ file: UNITS, from: ["correctUnit"] }]],
+  // Los estados de pedidos y ventas (brief-29.5.2, D-3): cada función de inventory, y cada una desde
+  // su caso de uso.
+  [
+    "setUnitsStatus",
+    [
+      {
+        file: SERVICE,
+        from: [
+          "reserveStock",
+          "releaseStock",
+          "deliverStock",
+          "sellStock",
+          "restoreSaleStock",
+        ],
+      },
+    ],
+  ],
+  ["reserveStock", [{ file: ORDERS_SERVICE, from: ["transitionOrder"] }]],
+  ["releaseStock", [{ file: ORDERS_SERVICE, from: ["transitionOrder"] }]],
+  ["deliverStock", [{ file: ORDERS_SERVICE, from: ["transitionOrder"] }]],
+  ["sellStock", [{ file: SALES_SERVICE, from: ["issueSale"] }]],
+  ["restoreSaleStock", [{ file: SALES_SERVICE, from: ["voidSale"] }]],
+  ["resolveLineUnits", [{ file: ORDERS_SERVICE, from: ["resolveLinesUnits"] }]],
+  [
+    "resolveLinesUnits",
+    [
+      { file: ORDERS_SERVICE, from: ["createOrder"] },
+      { file: SALES_SERVICE, from: ["issueSale"] },
+    ],
+  ],
   [
     "insertGrade",
     [{ file: GRADES, from: ["createUnitGrade", "applyGradeTemplate"] }],
@@ -270,6 +307,21 @@ describe("detección de llamadores de las unidades", () => {
       code: "export async function receiveStock(tx) {\n  await repository.applyStockChange(tx, c);\n}",
     },
     {
+      name: "el ajuste reservando unidades",
+      file: SERVICE,
+      code: "export async function adjustStock(tx) {\n  await unitRepository.setUnitsStatus(tx, o, ids, 'available', 'reserved');\n}",
+    },
+    {
+      name: "la venta vendiendo unidades desde la venta de un pedido",
+      file: SALES_SERVICE,
+      code: "export async function issueSaleFromOrder(c) {\n  await sellStock(tx, s);\n}",
+    },
+    {
+      name: "la reserva desde la emisión de una venta",
+      file: SALES_SERVICE,
+      code: "export async function issueSale(c) {\n  await reserveStock(tx, o, l);\n}",
+    },
+    {
       name: "un grado creado desde la corrección de una unidad",
       file: UNITS,
       code: "export async function correctUnit(tx) {\n  await unitRepository.insertGrade(tx, o, v);\n}",
@@ -288,6 +340,11 @@ describe("detección de llamadores de las unidades", () => {
       name: "el alta desde su acción, dentro de una flecha",
       file: UNIT_ACTIONS,
       code: "export async function registerUnitAction() {\n  return runForm(r, v, (context) => registerUnit(context, p, v));\n}",
+    },
+    {
+      name: "la venta sin pedido vendiendo sus unidades",
+      file: SERVICE,
+      code: "export async function sellStock(tx) {\n  await unitRepository.setUnitsStatus(tx, o, ids, 'available', 'sold');\n}",
     },
     {
       name: "el cambio del seguimiento",
@@ -337,6 +394,7 @@ describe("repositorio", () => {
     );
     expect(writes).toEqual([
       "insertStockUnit: insert stock_units",
+      "setUnitsStatus: update stock_units",
       "setUnitsWrittenOff: update stock_units",
       "updateUnitDetails: update stock_units",
       "insertGrade: insert unit_grades",

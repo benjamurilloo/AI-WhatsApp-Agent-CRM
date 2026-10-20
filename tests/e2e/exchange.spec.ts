@@ -35,7 +35,7 @@ async function reset(keep: boolean) {
           refund_voids,
           refunds, receipt_voids, receipts, exchange_rates, exchange_rate_settings, cash_movements,
           cash_session_closing_amounts, cash_session_closings, cash_session_opening_amounts,
-          cash_sessions, payment_methods, sale_voids, sale_lines, sales, order_lines, orders,
+          cash_sessions, payment_methods, sale_voids, sale_line_units, sale_lines, sales, order_line_units, order_lines, orders,
           document_counters, audit_logs, inventory_movements, inventories, product_images,
           product_costs, product_prices, attribute_values, stock_units, products, conversation_notes, messages,
           conversations, client_tag_assignments, clients`,

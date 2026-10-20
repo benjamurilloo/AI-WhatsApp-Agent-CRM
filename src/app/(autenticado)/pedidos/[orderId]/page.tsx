@@ -40,6 +40,7 @@ import {
   UNKNOWN_CLIENT_TEXT,
   UNKNOWN_PRODUCT_TEXT,
 } from "../messages";
+import { LineUnitList, lineUnitPriceText } from "../line-unit-list";
 import { OrderStatusBadge } from "../status-badge";
 import { auditActionLabel, describeAuditDiff } from "./audit-summary";
 import { IssueSaleConfirm } from "./issue-sale";
@@ -243,6 +244,11 @@ export default async function OrderPage({
                       ) : (
                         UNKNOWN_PRODUCT_TEXT
                       )}
+                      <LineUnitList
+                        units={line.units}
+                        currency={line.currency}
+                        markUnavailable={order.status === "pending"}
+                      />
                     </td>
                     <td
                       className={`${tableCellClass} text-right whitespace-nowrap tabular-nums`}
@@ -269,7 +275,7 @@ export default async function OrderPage({
                     <td
                       className={`${tableCellClass} text-right whitespace-nowrap tabular-nums`}
                     >
-                      {formatMoney(line.unitPrice, line.currency)}
+                      {lineUnitPriceText(line)}
                     </td>
                     <td
                       className={`${tableCellClass} text-right whitespace-nowrap tabular-nums`}

@@ -1,10 +1,11 @@
 import { and, asc, count, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { getDb, type Db, type DbTransaction } from "@/shared/db";
-import { orderLines, orders, orderStatus } from "./schema";
+import { orderLines, orderLineUnits, orders, orderStatus } from "./schema";
 
 // Acceso a orders y order_lines (ADR 0020; brief-19.2). Toda consulta filtra por organization_id en
-// SQL. Las únicas escrituras son insertOrder, insertOrderLines y updateOrderStatus, y ninguna borra:
-// lo vigila tests/guards/order-writes.test.ts (D-4). El trigger de la 0036 es la segunda defensa.
+// SQL. Las únicas escrituras son insertOrder, insertOrderLines, updateOrderStatus y, desde la 29.5.2,
+// insertOrderLineUnits (brief-29.5.2, D-4), y ninguna borra: lo vigila
+// tests/guards/order-writes.test.ts (D-4). Los triggers de la 0036 y la 0057 son la segunda defensa.
 
 type Executor = Db | DbTransaction;
 
@@ -123,10 +124,97 @@ export async function insertOrderLines(
   organizationId: string,
   orderId: string,
   lines: NewOrderLine[],
-): Promise<void> {
-  await tx
+): Promise<{ id: string; position: number }[]> {
+  return tx
     .insert(orderLines)
-    .values(lines.map((line) => ({ ...line, organizationId, orderId })));
+    .values(lines.map((line) => ({ ...line, organizationId, orderId })))
+    .returning({ id: orderLines.id, position: orderLines.position });
+}
+
+// Las unidades de las líneas de un pedido (brief-29.5.2, D-1 y D-4): se escriben con el alta, con la
+// misma transacción, y no cambian.
+export type NewOrderLineUnit = {
+  orderLineId: string;
+  productId: string;
+  unitId: string;
+  unitPrice: string;
+};
+
+export async function insertOrderLineUnits(
+  tx: DbTransaction,
+  organizationId: string,
+  units: NewOrderLineUnit[],
+): Promise<void> {
+  if (units.length === 0) return;
+  await tx
+    .insert(orderLineUnits)
+    .values(units.map((unit) => ({ ...unit, organizationId })));
+}
+
+export type OrderLineUnitRow = {
+  orderLineId: string;
+  unitId: string;
+  unitPrice: string;
+};
+
+// Las unidades de unas líneas, en el orden en que se eligieron (el id no lo dice: se ordena por el
+// IMEI en quien las muestra). Una línea de otra organización no trae nada.
+export function findOrderLineUnits(
+  organizationId: string,
+  orderLineIds: string[],
+  executor: Executor = getDb(),
+): Promise<OrderLineUnitRow[]> {
+  if (orderLineIds.length === 0) return Promise.resolve([]);
+  return executor
+    .select({
+      orderLineId: orderLineUnits.orderLineId,
+      unitId: orderLineUnits.unitId,
+      unitPrice: orderLineUnits.unitPrice,
+    })
+    .from(orderLineUnits)
+    .where(
+      and(
+        eq(orderLineUnits.organizationId, organizationId),
+        inArray(orderLineUnits.orderLineId, orderLineIds),
+      ),
+    );
+}
+
+// El pedido confirmado o entregado de cada unidad, para la ficha de unidades (brief-29.5.2, D-5): una
+// unidad reservada o vendida por entrega está en exactamente uno (invariante 3).
+export function findActiveOrdersOfUnits(
+  organizationId: string,
+  unitIds: string[],
+): Promise<{ unitId: string; orderId: string; number: number }[]> {
+  if (unitIds.length === 0) return Promise.resolve([]);
+  return getDb()
+    .select({
+      unitId: orderLineUnits.unitId,
+      orderId: orders.id,
+      number: orders.number,
+    })
+    .from(orderLineUnits)
+    .innerJoin(
+      orderLines,
+      and(
+        eq(orderLines.organizationId, orderLineUnits.organizationId),
+        eq(orderLines.id, orderLineUnits.orderLineId),
+      ),
+    )
+    .innerJoin(
+      orders,
+      and(
+        eq(orders.organizationId, orderLines.organizationId),
+        eq(orders.id, orderLines.orderId),
+      ),
+    )
+    .where(
+      and(
+        eq(orderLineUnits.organizationId, organizationId),
+        inArray(orderLineUnits.unitId, unitIds),
+        inArray(orders.status, ["confirmed", "delivered"]),
+      ),
+    );
 }
 
 // forUpdate: una transición bloquea la cabecera antes de leer su estado (ADR 0020, punto 6).

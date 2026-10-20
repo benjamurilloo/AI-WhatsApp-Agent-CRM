@@ -8,6 +8,7 @@ import {
 } from "@/modules/ingestion";
 import { getDb } from "@/shared/db";
 import { resetDatabase } from "./reset-database";
+import { expectStockInvariant } from "./stock-invariant";
 
 // El pedido pendiente que deja el agente, contra PostgreSQL real (brief-19.4): order.placed por el
 // contrato v2, su proyección en orders (AC-3), sus reglas con su precedencia (AC-4), la
@@ -212,6 +213,8 @@ beforeEach(async () => {
 
 afterEach(async () => {
   if (releaseHeld) await releaseHeld();
+  // El invariante del saldo y las unidades después de cada test (brief-29.5.2, D-7).
+  await expectStockInvariant();
 });
 
 afterAll(async () => {

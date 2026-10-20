@@ -17,8 +17,6 @@ import { E2E_PASSWORD } from "./global-setup";
 
 const [ADMIN_IPHONE, VIEWER_IPHONE] = SEED_IPHONE_USERS;
 const IPHONE = SEED_IPHONE_ORGANIZATION_ID;
-const UNIT_TRACKED =
-  "Este producto se vende por unidad: todavía no se puede agregar a un pedido ni a una venta.";
 
 let db: Db;
 
@@ -29,7 +27,7 @@ const SEEDED_USER_IDS = [...SEED_USERS, ...SEED_IPHONE_USERS].map(
 // Vacía los productos y todo lo de la tienda de ejemplo; con keep, vuelve a sembrarla.
 async function reset(keep: boolean) {
   await db.execute(
-    sql`truncate table supplier_payment_voids, supplier_payments, goods_receipt_voids, goods_receipt_line_units, goods_receipt_lines, goods_receipts, purchase_order_lines, purchase_orders, suppliers, document_counters, refund_voids, refunds, receipt_voids, receipts, sale_voids, sale_lines, sales, order_lines, orders, audit_logs, inventory_movements, stock_units, unit_grades, inventories, product_images, product_costs, product_prices, attribute_values, products`,
+    sql`truncate table supplier_payment_voids, supplier_payments, goods_receipt_voids, goods_receipt_line_units, goods_receipt_lines, goods_receipts, purchase_order_lines, purchase_orders, suppliers, document_counters, refund_voids, refunds, receipt_voids, receipts, sale_voids, sale_line_units, sale_lines, sales, order_line_units, order_lines, orders, audit_logs, inventory_movements, stock_units, unit_grades, inventories, product_images, product_costs, product_prices, attribute_values, products`,
   );
   await db.execute(sql`delete from clients where organization_id = ${IPHONE}`);
   await db.execute(
@@ -264,27 +262,207 @@ test("un admin pasa un producto a «por unidad», recibe con IMEI, carga y da de
   await expect(page.getByText("IMEI 356938035643809").first()).toBeVisible();
 });
 
-test("el pedido de un producto por unidad se rechaza con su motivo", async ({
-  page,
-}) => {
-  const productId = await insertProduct("IP15-128", "iPhone 15 128 GB");
+// Unidades disponibles de un producto por unidad, como las deja el alta manual: con su saldo y su
+// movimiento. price, el precio propio de la unidad (brief-29.5.2, D-2).
+async function insertUnits(
+  productId: string,
+  units: { serial: string; price?: string }[],
+) {
   await db.execute(
     sql`update products set tracking = 'unit' where id = ${productId}`,
   );
+  let count = 0;
+  for (const unit of units) {
+    const row = await db.execute<{ id: string }>(
+      sql`insert into stock_units (organization_id, product_id, serial, cost, cost_currency,
+            price, price_currency, origin_type, created_by)
+          values (${IPHONE}, ${productId}, ${unit.serial}, 800, 'USD',
+            ${unit.price ?? null}, ${unit.price ? "USD" : null}, 'manual', ${ADMIN_IPHONE.id})
+          returning id`,
+    );
+    count += 1;
+    await db.execute(
+      sql`insert into inventory_movements (organization_id, product_id, type, quantity,
+            balance_after, reason, unit_id, created_by)
+          values (${IPHONE}, ${productId}, 'adjustment_positive', 1, ${count},
+            'Alta manual de una unidad', ${row.rows[0]!.id}, ${ADMIN_IPHONE.id})`,
+    );
+  }
   await db.execute(
-    sql`insert into clients (organization_id, display_name) values (${IPHONE}, 'Lucía Gómez')`,
+    sql`insert into inventories (organization_id, product_id, quantity_on_hand)
+        values (${IPHONE}, ${productId}, ${count})`,
   );
+}
+
+async function insertClient(name: string) {
+  await db.execute(
+    sql`insert into clients (organization_id, display_name) values (${IPHONE}, ${name})`,
+  );
+}
+
+async function transition(page: Page, button: string, yes: string) {
+  await page.getByRole("button", { name: button }).click();
+  await page.getByRole("button", { name: yes }).click();
+}
+
+// Las unidades en pedidos y ventas (brief-29.5.2, D-5, AC-1 a AC-4).
+test("un pedido elige sus unidades, se confirma, se entrega y su venta lleva los IMEI", async ({
+  page,
+}) => {
+  const productId = await insertProduct("IP15-128", "iPhone 15 128 GB");
+  await insertUnits(productId, [
+    { serial: "356938035643809" },
+    { serial: "356938035643810", price: "1050" },
+    { serial: "356938035643811" },
+  ]);
+  await insertClient("Lucía Gómez");
   await login(page, ADMIN_IPHONE.email);
+
   await page.goto("/pedidos/nuevo");
   await pick(page, "Cliente", "Luc");
   await pick(line(page, 1), "Producto", "IP15-128");
-  await line(page, 1).getByLabel("Cantidad").fill("1");
+  // En un producto por unidad, el campo de IMEI reemplaza a la cantidad.
+  await expect(line(page, 1).getByLabel("Cantidad")).toHaveCount(0);
+  const imei = line(page, 1).getByLabel("IMEI de las unidades");
+  await expect(imei).toBeVisible();
+  await line(page, 1)
+    .getByRole("button", { name: "Agregar el IMEI 356938035643809" })
+    .click();
+  await line(page, 1)
+    .getByRole("button", { name: "Agregar el IMEI 356938035643810" })
+    .click();
+  await expect(imei).toHaveValue("356938035643809\n356938035643810");
+  await expect(line(page, 1)).toContainText("2 unidades");
+  // Las dos unidades: la del precio del producto y la de su precio propio (D-2).
+  await expect(
+    page.getByText("Total estimado: US$ 2.149,00", { exact: true }),
+  ).toBeVisible();
+  await expectAccessible(page, "pedido con unidades");
   await page.getByRole("button", { name: "Crear pedido" }).click();
-  await expect(line(page, 1)).toContainText(UNIT_TRACKED);
-  const orders = await db.execute<{ count: number }>(
-    sql`select count(*)::int as count from orders`,
+
+  await expect(page).toHaveURL(/\/pedidos\/[0-9a-f-]{36}\?aviso=creado$/);
+  await expect(page.getByText("IMEI 356938035643809")).toBeVisible();
+  await expect(page.getByText("IMEI 356938035643810")).toBeVisible();
+  await expect(page.getByText("Por unidad", { exact: true })).toBeVisible();
+  await expectAccessible(page, "pedido pendiente con unidades");
+  // Pendiente, no toca el stock.
+  expect(await unitRows(productId)).toEqual([
+    { serial: "356938035643809", status: "available" },
+    { serial: "356938035643810", status: "available" },
+    { serial: "356938035643811", status: "available" },
+  ]);
+
+  await transition(page, "Confirmar pedido", "Sí, confirmar el pedido");
+  await expect(
+    page.getByText("Pedido confirmado: el stock quedó reservado."),
+  ).toBeVisible();
+  expect((await unitRows(productId)).map((row) => row.status)).toEqual([
+    "reserved",
+    "reserved",
+    "available",
+  ]);
+
+  // La ficha de unidades muestra las reservadas con su pedido.
+  await page.goto(`/productos/${productId}/unidades`);
+  await expect(
+    page.getByRole("heading", { name: "Reservadas y vendidas" }),
+  ).toBeVisible();
+  await expect(page.getByText("1 unidad disponible.")).toBeVisible();
+  await expectAccessible(page, "unidades reservadas");
+  await page.getByRole("link", { name: "Pedido P-000001" }).first().click();
+
+  await transition(page, "Marcar entregado", "Sí, marcar entregado");
+  await expect(page.getByText(/^Pedido entregado/)).toBeVisible();
+  expect((await unitRows(productId)).map((row) => row.status)).toEqual([
+    "sold",
+    "sold",
+    "available",
+  ]);
+  expect(await onHand(productId)).toBe("1.000");
+
+  await page.getByRole("link", { name: "Emitir venta" }).click();
+  await page.getByRole("button", { name: "Sí, emitir la venta" }).click();
+  await expect(page).toHaveURL(/\/ventas\/[0-9a-f-]+\?aviso=emitida$/);
+  const sale = page.getByRole("table", { name: /Líneas de la venta/ });
+  await expect(sale).toContainText("IMEI 356938035643809");
+  await expect(sale).toContainText("IMEI 356938035643810");
+  await expectAccessible(page, "comprobante de la venta con IMEI");
+});
+
+test("una venta sin pedido vende sus unidades, rechaza una reservada y su anulación las devuelve", async ({
+  page,
+}) => {
+  const productId = await insertProduct("IP15-128", "iPhone 15 128 GB");
+  await insertUnits(productId, [
+    { serial: "356938035643809" },
+    { serial: "356938035643810" },
+  ]);
+  // Una reservada, como la deja un pedido confirmado.
+  await db.execute(
+    sql`update stock_units set status = 'reserved' where serial = '356938035643810'`,
   );
-  expect(orders.rows[0]!.count).toBe(0);
+  await db.execute(
+    sql`update inventories set quantity_reserved = 1 where product_id = ${productId}`,
+  );
+  await login(page, ADMIN_IPHONE.email);
+
+  await page.goto("/ventas/nueva");
+  await pick(line(page, 1), "Producto", "IP15-128");
+  await line(page, 1)
+    .getByLabel("IMEI de las unidades")
+    .fill("356938035643809\n356938035643810");
+  await page.getByRole("button", { name: "Emitir venta" }).click();
+  await expect(line(page, 1)).toContainText(
+    "IMEI 356938035643810 ya no está disponible",
+  );
+  await expectAccessible(page, "venta con un IMEI no disponible");
+
+  await line(page, 1)
+    .getByLabel("IMEI de las unidades")
+    .fill("356938035643809");
+  await page.getByRole("button", { name: "Emitir venta" }).click();
+  await expect(page).toHaveURL(/\/ventas\/[0-9a-f-]+\?aviso=emitida$/);
+  await expect(
+    page.getByRole("table", { name: /Líneas de la venta/ }),
+  ).toContainText("IMEI 356938035643809");
+  expect((await unitRows(productId)).map((row) => row.status)).toEqual([
+    "sold",
+    "reserved",
+  ]);
+
+  await page.getByRole("link", { name: "Anular venta" }).click();
+  await page.getByRole("radio", { name: "Error de carga" }).check();
+  await page.getByRole("button", { name: "Sí, anular la venta" }).click();
+  await expect(page.getByText("Venta anulada.")).toBeVisible();
+  expect((await unitRows(productId)).map((row) => row.status)).toEqual([
+    "available",
+    "reserved",
+  ]);
+  await page
+    .getByRole("link", { name: "Ver el comprobante de la anulación" })
+    .click();
+  await expect(page.getByText("IMEI 356938035643809")).toBeVisible();
+  await expectAccessible(page, "comprobante de la anulación con IMEI");
+});
+
+test("el pedido con IMEI entra en 375 px sin desplazamiento horizontal", async ({
+  page,
+}) => {
+  const productId = await insertProduct("IP15-128", "iPhone 15 128 GB");
+  await insertUnits(productId, [{ serial: "356938035643809", price: "1050" }]);
+  await page.setViewportSize({ width: 375, height: 800 });
+  await login(page, ADMIN_IPHONE.email);
+  await page.goto("/pedidos/nuevo");
+  await pick(line(page, 1), "Producto", "IP15-128");
+  await expect(
+    line(page, 1).getByRole("button", {
+      name: "Agregar el IMEI 356938035643809",
+    }),
+  ).toBeVisible();
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - window.innerWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(0);
 });
 
 test("un viewer ve las unidades sin el costo ni los formularios", async ({
@@ -339,6 +517,25 @@ test("la pantalla de unidades entra en 375 px sin desplazamiento horizontal", as
 
 test.describe("sin JavaScript", () => {
   test.use({ javaScriptEnabled: false });
+
+  test("un admin vende una unidad por su IMEI, con el producto por SKU", async ({
+    page,
+  }) => {
+    const productId = await insertProduct("IP15-128", "iPhone 15 128 GB");
+    await insertUnits(productId, [{ serial: "356938035643809" }]);
+    await login(page, ADMIN_IPHONE.email);
+    await page.goto("/ventas/nueva");
+    await line(page, 1).getByLabel("Producto").fill("IP15-128");
+    await line(page, 1)
+      .getByLabel("IMEI de las unidades")
+      .fill("356938035643809");
+    await page.getByRole("button", { name: "Emitir venta" }).click();
+    await expect(page).toHaveURL(/\/ventas\/[0-9a-f-]+\?aviso=emitida$/);
+    await expect(page.getByText("IMEI 356938035643809")).toBeVisible();
+    expect(await unitRows(productId)).toEqual([
+      { serial: "356938035643809", status: "sold" },
+    ]);
+  });
 
   test("un admin carga una unidad y la ve en la lista", async ({ page }) => {
     const productId = await insertProduct("IP15P-256", "iPhone 15 Pro 256 GB");

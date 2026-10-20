@@ -8,9 +8,10 @@ import {
 } from "./schema";
 
 // Acceso a stock_units y unit_grades (ADR 0024, puntos 6 y 13; brief-29.5, D-2, D-4 y D-5). Las
-// escrituras de stock_units son insertStockUnit, setUnitsWrittenOff y updateUnitDetails, y las de
-// unit_grades, insertGrade y updateGrade: tests/guards/unit-writes.test.ts fija quién llama a cada una.
-// El saldo y los movimientos siguen en repository.ts.
+// escrituras de stock_units son insertStockUnit, setUnitsWrittenOff, updateUnitDetails y, desde la
+// 29.5.2, setUnitsStatus, de brief-29.5.2, D-3; las de unit_grades, insertGrade y updateGrade:
+// tests/guards/unit-writes.test.ts fija quién llama a cada una. El saldo y los movimientos siguen en
+// repository.ts.
 
 type Executor = Db | DbTransaction;
 
@@ -27,6 +28,9 @@ export type StockUnitRow = {
   batteryHealth: number | null;
   cost: string;
   costCurrency: string;
+  // Desde la 29.5.2 (brief-29.5.2, D-2): los dos o ninguno.
+  price: string | null;
+  priceCurrency: string | null;
   originType: StockUnitOrigin;
   originId: string | null;
   createdBy: string;
@@ -44,6 +48,8 @@ const unitColumns = {
   batteryHealth: stockUnits.batteryHealth,
   cost: stockUnits.cost,
   costCurrency: stockUnits.costCurrency,
+  price: stockUnits.price,
+  priceCurrency: stockUnits.priceCurrency,
   originType: stockUnits.originType,
   originId: stockUnits.originId,
   createdBy: stockUnits.createdBy,
@@ -56,8 +62,12 @@ const gradeJoin = and(
   eq(unitGrades.id, stockUnits.gradeId),
 );
 
-// Las unidades de un producto: las disponibles primero (el orden del enum), cada grupo de la más
-// nueva a la más vieja.
+// El orden de los estados en la ficha: las disponibles, las reservadas, las vendidas y las dadas de
+// baja. Desde la 29.5.2 el orden del enum ya no sirve: sus valores nuevos van al final.
+const statusOrder = sql`case ${stockUnits.status}::text
+  when 'available' then 0 when 'reserved' then 1 when 'sold' then 2 else 3 end`;
+
+// Las unidades de un producto, por estado y cada grupo de la más nueva a la más vieja.
 export function findUnitsOfProduct(
   organizationId: string,
   productId: string,
@@ -72,11 +82,7 @@ export function findUnitsOfProduct(
         eq(stockUnits.productId, productId),
       ),
     )
-    .orderBy(
-      asc(stockUnits.status),
-      desc(stockUnits.createdAt),
-      desc(stockUnits.id),
-    );
+    .orderBy(asc(statusOrder), desc(stockUnits.createdAt), desc(stockUnits.id));
 }
 
 export async function findUnit(
@@ -120,7 +126,60 @@ export type LockedUnit = {
   productId: string;
   serial: string;
   status: StockUnitStatus;
+  price: string | null;
+  priceCurrency: string | null;
 };
+
+const lockedColumns = {
+  id: stockUnits.id,
+  productId: stockUnits.productId,
+  serial: stockUnits.serial,
+  status: stockUnits.status,
+  price: stockUnits.price,
+  priceCurrency: stockUnits.priceCurrency,
+};
+
+// Las unidades vigentes (no dadas de baja) con esos IMEI, sin distinguir mayúsculas y sin bloqueo:
+// un IMEI tiene a lo sumo una vigente por organización (el índice único parcial). Para elegir las
+// unidades de una línea de un pedido o una venta (brief-29.5.2, D-1 y D-5).
+export async function findCurrentUnitsBySerials(
+  executor: Executor,
+  organizationId: string,
+  serials: string[],
+): Promise<LockedUnit[]> {
+  if (serials.length === 0) return [];
+  const lowered = [...new Set(serials.map((serial) => serial.toLowerCase()))];
+  return executor
+    .select(lockedColumns)
+    .from(stockUnits)
+    .where(
+      and(
+        eq(stockUnits.organizationId, organizationId),
+        ne(stockUnits.status, "written_off"),
+        inArray(sql<string>`lower(${stockUnits.serial})`, lowered),
+      ),
+    );
+}
+
+// Las unidades disponibles de un producto, para elegirlas en un pedido o una venta (brief-29.5.2,
+// D-5), de la más vieja a la más nueva.
+export function findAvailableUnitsOfProduct(
+  organizationId: string,
+  productId: string,
+): Promise<StockUnitRow[]> {
+  return getDb()
+    .select(unitColumns)
+    .from(stockUnits)
+    .leftJoin(unitGrades, gradeJoin)
+    .where(
+      and(
+        eq(stockUnits.organizationId, organizationId),
+        eq(stockUnits.productId, productId),
+        eq(stockUnits.status, "available"),
+      ),
+    )
+    .orderBy(asc(stockUnits.createdAt), asc(stockUnits.id));
+}
 
 // Las unidades FOR UPDATE, ordenadas por id: después del producto y antes del saldo (ADR 0024, punto
 // 16; brief-29.5, D-4). Una de otra organización no vuelve.
@@ -131,12 +190,7 @@ export function lockUnits(
 ): Promise<LockedUnit[]> {
   if (unitIds.length === 0) return Promise.resolve([]);
   return tx
-    .select({
-      id: stockUnits.id,
-      productId: stockUnits.productId,
-      serial: stockUnits.serial,
-      status: stockUnits.status,
-    })
+    .select(lockedColumns)
     .from(stockUnits)
     .where(
       and(
@@ -178,6 +232,8 @@ export type NewStockUnit = {
   batteryHealth: number | null;
   cost: string;
   costCurrency: string;
+  // Sin él, la unidad no tiene precio propio (brief-29.5.2, D-2).
+  price?: { amount: string; currency: string } | null;
   originType: StockUnitOrigin;
   originId: string | null;
   createdBy: string;
@@ -189,11 +245,43 @@ export async function insertStockUnit(
   tx: DbTransaction,
   unit: NewStockUnit,
 ): Promise<string> {
+  const { price, ...values } = unit;
   const rows = await tx
     .insert(stockUnits)
-    .values(unit)
+    .values({
+      ...values,
+      price: price?.amount ?? null,
+      priceCurrency: price?.currency ?? null,
+    })
     .returning({ id: stockUnits.id });
   return rows[0]!.id;
+}
+
+// Un cambio de estado de pedidos y ventas (brief-29.5.2, D-3): solo desde from, que quien llama ya
+// comprobó con las unidades bloqueadas, así que una que no cambia es un defecto y se lanza dentro de
+// la transacción. El trigger stock_units_guard rechaza la transición que no esté permitida.
+export async function setUnitsStatus(
+  tx: DbTransaction,
+  organizationId: string,
+  unitIds: string[],
+  from: StockUnitStatus,
+  to: StockUnitStatus,
+): Promise<void> {
+  if (unitIds.length === 0) return;
+  const rows = await tx
+    .update(stockUnits)
+    .set({ status: to })
+    .where(
+      and(
+        eq(stockUnits.organizationId, organizationId),
+        inArray(stockUnits.id, unitIds),
+        eq(stockUnits.status, from),
+      ),
+    )
+    .returning({ id: stockUnits.id });
+  if (rows.length !== unitIds.length) {
+    throw new Error(`setUnitsStatus: una unidad no estaba en ${from}`);
+  }
 }
 
 // Solo desde available: quien llama ya las bloqueó y comprobó su estado, así que una que no cambia es
@@ -224,11 +312,21 @@ export async function updateUnitDetails(
   tx: DbTransaction,
   organizationId: string,
   unitId: string,
-  details: { gradeId: string | null; batteryHealth: number | null },
+  details: {
+    gradeId: string | null;
+    batteryHealth: number | null;
+    // Desde la 29.5.2 (brief-29.5.2, D-2).
+    price: { amount: string; currency: string } | null;
+  },
 ): Promise<void> {
+  const { price, ...rest } = details;
   const rows = await tx
     .update(stockUnits)
-    .set(details)
+    .set({
+      ...rest,
+      price: price?.amount ?? null,
+      priceCurrency: price?.currency ?? null,
+    })
     .where(
       and(
         eq(stockUnits.organizationId, organizationId),

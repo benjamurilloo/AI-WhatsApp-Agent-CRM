@@ -20,9 +20,13 @@ import {
 import {
   deliverStock,
   getAvailableStock,
+  getUnitSummaries,
   releaseStock,
   reserveStock,
+  resolveLineUnits,
+  type LineUnitIssue,
   type StockLine,
+  type UnitStatus,
 } from "@/modules/inventory";
 import { formatDocumentNumber, nextDocumentNumber } from "@/modules/numbering";
 import {
@@ -40,8 +44,10 @@ import {
   sumLineTotals,
   type LineField,
   type LineInput,
+  type LineProduct,
   type LineRule,
   type LineRuleIssue,
+  type LineUnit,
   type ParsedLine,
 } from "@/shared/lines";
 import {
@@ -99,7 +105,7 @@ export type OrderValidationFailure = Failure<
   "VALIDATION_ERROR",
   {
     reason: "client" | "no_lines" | "too_many_lines" | "lines";
-    lines: { position: number; field: OrderLineField }[];
+    lines: { position: number; field: OrderLineField; serial?: string }[];
   }
 >;
 
@@ -122,16 +128,56 @@ export type CreateOrderResult =
       { rule: "line_rules"; lines: OrderLineRuleIssue[] }
     >
   | Failure<"BUSINESS_RULE_VIOLATION", { rule: "total_too_large" }>
+  // Desde la 29.5.2: un IMEI que no es de una unidad disponible del producto de su línea
+  // (brief-29.5.2, D-5, AC-1).
   | Failure<
-      "CONFLICT",
-      {
-        prices: {
-          position: number;
-          productId: string;
-          price: ProductPrice | null;
-        }[];
-      }
-    >;
+      "BUSINESS_RULE_VIOLATION",
+      { rule: "units"; units: LineUnitIssue[] }
+    >
+  | Failure<"CONFLICT", { prices: LinePriceConflict[] }>;
+
+// El precio que cambió: el del producto o, desde la 29.5.2, el monto de una línea por unidad
+// (lineTotal, con la escala de la base; null si lo que cambió fue el precio del producto).
+export type LinePriceConflict = {
+  position: number;
+  productId: string;
+  price: ProductPrice | null;
+  lineTotal: string | null;
+};
+
+// Las unidades de las líneas de un producto por unidad con IMEI (brief-29.5.2, D-1 y D-5), con los
+// productos ya bloqueados. Una línea de un producto inexistente, inactivo o por cantidad no se resuelve:
+// evaluateLines responde su regla. lock: la venta sin pedido las bloquea, el alta del pedido no.
+export async function resolveLinesUnits(
+  tx: DbTransaction,
+  organizationId: string,
+  lines: ParsedLine[],
+  products: Map<string, LineProduct<ProductPrice>>,
+  { lock }: { lock: boolean },
+): Promise<
+  | {
+      ok: true;
+      units: Map<number, (LineUnit & { id: string; serial: string })[]>;
+    }
+  | { ok: false; issues: LineUnitIssue[] }
+> {
+  const requests = lines
+    .filter((line) => {
+      const product = products.get(line.productId);
+      return (
+        product?.isActive === true &&
+        product.tracking === "unit" &&
+        line.serials.length > 0
+      );
+    })
+    .map(({ position, productId, serials }) => ({
+      position,
+      productId,
+      serials,
+    }));
+  if (requests.length === 0) return { ok: true, units: new Map() };
+  return resolveLineUnits(tx, organizationId, requests, { lock });
+}
 
 function validateOrderInput(
   input: OrderInput,
@@ -195,7 +241,24 @@ export async function createOrder(
       organizationId,
       lines.map((line) => line.productId),
     );
-    const evaluated = evaluateLines(lines, products);
+    // Las unidades se leen sin reservarlas: un pendiente no toca el stock, y confirmar vuelve a
+    // mirarlas con su bloqueo (brief-29.5.2, D-1).
+    const resolved = await resolveLinesUnits(
+      tx,
+      organizationId,
+      lines,
+      products,
+      { lock: false },
+    );
+    if (!resolved.ok) {
+      return {
+        ok: false,
+        code: "BUSINESS_RULE_VIOLATION",
+        rule: "units",
+        units: resolved.issues,
+      };
+    }
+    const evaluated = evaluateLines(lines, products, resolved.units);
     if (!evaluated.ok) {
       switch (evaluated.reason) {
         case "missing_products":
@@ -209,7 +272,11 @@ export async function createOrder(
           return lineRules(evaluated.lines);
         // El precio que vio quien carga el pedido tiene que seguir vigente (D-5).
         case "price_changed":
-          return { ok: false, code: "CONFLICT", prices: evaluated.lines };
+          return {
+            ok: false,
+            code: "CONFLICT",
+            prices: priceConflicts(evaluated.lines),
+          };
         case "total_too_large":
           return {
             ok: false,
@@ -224,19 +291,49 @@ export async function createOrder(
       clientId,
       creator: { createdBy: userId },
       currency: evaluated.currency,
-      lines: evaluated.lines,
+      lines: evaluated.lines.map((line) => ({
+        position: line.position,
+        productId: line.productId,
+        quantity: line.quantity,
+        unitPrice: line.unitPrice,
+        total: line.total,
+        units: line.serials.map((_, index) => ({
+          unitId: resolved.units.get(line.position)![index]!.id,
+          unitPrice: line.unitPrices[index]!,
+        })),
+      })),
       total: evaluated.total,
     });
     return { ok: true, order };
   });
 }
 
+export function priceConflicts(
+  lines: {
+    position: number;
+    productId: string;
+    price: ProductPrice;
+    lineTotal: Money | null;
+  }[],
+): LinePriceConflict[] {
+  return lines.map((line) => ({
+    position: line.position,
+    productId: line.productId,
+    price: line.price,
+    lineTotal: line.lineTotal === null ? null : moneyToDatabase(line.lineTotal),
+  }));
+}
+
 type WritableLine = {
   position: number;
   productId: string;
   quantity: Quantity;
-  price: ProductPrice;
+  // En centésimos (brief-29.5.2, D-2: en una línea por unidad, el común de sus unidades o el del
+  // producto).
+  unitPrice: Money;
   total: Money;
+  // Las unidades elegidas, con su precio; vacío en un producto por cantidad y en el pedido del agente.
+  units: { unitId: string; unitPrice: Money }[];
 };
 
 // La escritura del alta, común a la app y al agente (brief-19.4, D-7): el número al final, para
@@ -267,11 +364,35 @@ async function writeOrder(
     productId: line.productId,
     position: line.position,
     quantity: quantityToDatabase(line.quantity),
-    unitPrice: line.price.amount,
+    unitPrice: moneyToDatabase(line.unitPrice),
     currency,
     lineTotal: moneyToDatabase(line.total),
   }));
-  await repository.insertOrderLines(tx, organizationId, order.id, newLines);
+  const inserted = await repository.insertOrderLines(
+    tx,
+    organizationId,
+    order.id,
+    newLines,
+  );
+  const lineIds = new Map(inserted.map((line) => [line.position, line.id]));
+  await repository.insertOrderLineUnits(
+    tx,
+    organizationId,
+    input.lines.flatMap((line) =>
+      line.units.map((unit) => ({
+        orderLineId: lineIds.get(line.position)!,
+        productId: line.productId,
+        unitId: unit.unitId,
+        unitPrice: moneyToDatabase(unit.unitPrice),
+      })),
+    ),
+  );
+  const unitIds = new Map(
+    input.lines.map((line) => [
+      line.position,
+      line.units.map((unit) => unit.unitId),
+    ]),
+  );
   // Solo ids, cantidades, montos y estado: ningún dato del cliente (brief-19.2, D-11). audit
   // admite valores planos, así que cada línea va con sus claves numeradas.
   await recordAudit(tx, {
@@ -297,6 +418,15 @@ async function writeOrder(
             [`line_${line.position}_quantity`, line.quantity],
             [`line_${line.position}_unit_price`, line.unitPrice],
             [`line_${line.position}_total`, line.lineTotal],
+            // Desde la 29.5.2, solo en una línea por unidad: los ids de sus unidades, sin el IMEI.
+            ...(unitIds.get(line.position)!.length > 0
+              ? [
+                  [
+                    `line_${line.position}_unit_ids`,
+                    unitIds.get(line.position)!.join(","),
+                  ],
+                ]
+              : []),
           ]),
         ),
       },
@@ -380,8 +510,9 @@ export async function placeOrderFromIngestion(
   for (const line of lines) {
     const product = products.get(line.productId);
     // Inexistente, de otra organización o inactivo, sin distinguir, como la lectura (D-6). Desde la
-    // 29.5, también un producto por unidad: no entra en un pedido hasta la 29.5.2, y el contrato del
-    // agente no cambia (brief-29.5, D-1 y D-7).
+    // 29.5, también un producto por unidad, y sigue así en la 29.5.2: el agente no ve IMEI ni puede
+    // elegir unidades, y su contrato no cambia; pedir por unidad desde el agente es de la 29.8
+    // (brief-29.5, D-1 y D-7; brief-29.5.2, D-1 y D-6).
     if (!product || !product.isActive || product.tracking === "unit") {
       return reject("product_not_found");
     }
@@ -403,7 +534,12 @@ export async function placeOrderFromIngestion(
       decimals,
     );
     if (!total.ok) return reject("amount_out_of_range");
-    writable.push({ ...line, price: product.price, total: total.total });
+    writable.push({
+      ...line,
+      unitPrice: moneyFromDatabase(product.price.amount),
+      total: total.total,
+      units: [],
+    });
   }
   const orderTotal = sumLineTotals(writable.map((line) => line.total));
   if (orderTotal === null) return reject("amount_out_of_range");
@@ -473,10 +609,19 @@ export type OrderTransitionResult =
       { rule: "inactive_product"; lines: OrderLineRef[] }
     >
   // Desde la 29.5: un pedido pendiente de un producto que después pasó a llevarse por unidad no se
-  // confirma hasta la 29.5.2 (brief-29.5, D-1).
+  // confirma (brief-29.5, D-1). Desde la 29.5.2, solo si su línea no tiene unidades: se creó cuando el
+  // producto se llevaba por cantidad (brief-29.5.2, D-3).
   | Failure<
       "BUSINESS_RULE_VIOLATION",
       { rule: "unit_tracked"; lines: OrderLineRef[] }
+    >
+  // Desde la 29.5.2: una unidad del pedido ya no está disponible al confirmar (brief-29.5.2, D-1).
+  | Failure<
+      "BUSINESS_RULE_VIOLATION",
+      {
+        rule: "units_unavailable";
+        units: (OrderLineRef & { serial: string; status: UnitStatus })[];
+      }
     >
   | Failure<
       "BUSINESS_RULE_VIOLATION",
@@ -497,6 +642,27 @@ class TransitionRejected extends Error {
     super(result.code);
     this.name = "TransitionRejected";
   }
+}
+
+// Los ids de las unidades de cada línea que tiene, por id de línea; una línea sin unidades no está.
+async function lineUnitIds(
+  organizationId: string,
+  lineIds: string[],
+  executor?: DbTransaction,
+): Promise<Map<string, string[]>> {
+  const rows = await repository.findOrderLineUnits(
+    organizationId,
+    lineIds,
+    executor,
+  );
+  const byLine = new Map<string, string[]>();
+  for (const row of rows) {
+    byLine.set(row.orderLineId, [
+      ...(byLine.get(row.orderLineId) ?? []),
+      row.unitId,
+    ]);
+  }
+  return byLine;
 }
 
 async function transitionOrder(
@@ -534,10 +700,21 @@ async function transitionOrder(
             order.id,
             tx,
           );
-          const stockLines: StockLine[] = lines.map((line) => ({
-            productId: line.productId,
-            quantity: line.quantity,
-          }));
+          // Las unidades elegidas al crear (brief-29.5.2, D-1): confirmar reserva exactamente estas,
+          // cancelar las libera y entregar las vende.
+          const unitIdsByLine = await lineUnitIds(
+            organizationId,
+            lines.map((line) => line.id),
+            tx,
+          );
+          const stockLines: StockLine[] = lines.map((line) => {
+            const unitIds = unitIdsByLine.get(line.id);
+            return {
+              productId: line.productId,
+              quantity: line.quantity,
+              ...(unitIds ? { unitIds } : {}),
+            };
+          });
           const positions = new Map(
             lines.map((line) => [line.productId, line.position]),
           );
@@ -565,7 +742,9 @@ async function transitionOrder(
               };
             }
             const unitTracked = lines.filter(
-              (line) => products.get(line.productId)?.tracking === "unit",
+              (line) =>
+                products.get(line.productId)?.tracking === "unit" &&
+                !unitIdsByLine.has(line.id),
             );
             if (unitTracked.length > 0) {
               return {
@@ -579,6 +758,36 @@ async function transitionOrder(
               };
             }
             const reserved = await reserveStock(tx, organizationId, stockLines);
+            if (!reserved.ok && reserved.reason === "units_unavailable") {
+              const lineOfUnit = new Map(
+                lines.flatMap((line) =>
+                  (unitIdsByLine.get(line.id) ?? []).map((unitId) => [
+                    unitId,
+                    line,
+                  ]),
+                ),
+              );
+              throw new TransitionRejected({
+                ok: false,
+                code: "BUSINESS_RULE_VIOLATION",
+                rule: "units_unavailable",
+                units: reserved.units
+                  .map((unit) => {
+                    const line = lineOfUnit.get(unit.id)!;
+                    return {
+                      position: line.position,
+                      productId: line.productId,
+                      serial: unit.serial,
+                      status: unit.status,
+                    };
+                  })
+                  .sort(
+                    (a, b) =>
+                      a.position - b.position ||
+                      a.serial.localeCompare(b.serial),
+                  ),
+              });
+            }
             if (!reserved.ok) {
               throw new TransitionRejected({
                 ok: false,
@@ -644,6 +853,9 @@ export type OrderForSale = {
     unitPrice: string;
     currency: string;
     lineTotal: string;
+    // Desde la 29.5.2: las unidades de la línea, con su precio; la venta las copia (brief-29.5.2,
+    // D-3). Vacío en una línea por cantidad.
+    units: { unitId: string; unitPrice: string }[];
   }[];
 };
 
@@ -657,6 +869,11 @@ export async function lockOrderForSale(
   });
   if (!order) return null;
   const lines = await repository.findOrderLines(organizationId, order.id, tx);
+  const units = await repository.findOrderLineUnits(
+    organizationId,
+    lines.map((line) => line.id),
+    tx,
+  );
   return {
     id: order.id,
     number: order.number,
@@ -671,6 +888,9 @@ export async function lockOrderForSale(
       unitPrice: line.unitPrice,
       currency: line.currency,
       lineTotal: line.lineTotal,
+      units: units
+        .filter((unit) => unit.orderLineId === line.id)
+        .map(({ unitId, unitPrice }) => ({ unitId, unitPrice })),
     })),
   };
 }
@@ -960,7 +1180,47 @@ export type OrderLine = {
   lineTotal: string;
   // Lo disponible hoy, solo en un pendiente (brief-19.3, D-9); null en los demás estados.
   available: string | null;
+  // Desde la 29.5.2: las unidades de la línea, por IMEI, con su precio y su estado de hoy; en un
+  // pendiente, una que no está available hace que confirmar se rechace (brief-29.5.2, D-5).
+  units: OrderLineUnit[];
 };
+
+export type OrderLineUnit = {
+  unitId: string;
+  // Vacío si la unidad no se pudo leer; no debería pasar, por la clave foránea.
+  serial: string;
+  unitPrice: string;
+  status: UnitStatus | null;
+};
+
+// Las unidades de unas líneas con su IMEI y su estado, ordenadas por IMEI. orders o sales ya
+// autorizaron. Lo usa también la venta, que guarda las mismas filas en sale_line_units.
+export async function describeLineUnits(
+  organizationId: string,
+  rows: { lineId: string; unitId: string; unitPrice: string }[],
+): Promise<Map<string, OrderLineUnit[]>> {
+  const summaries = await getUnitSummaries(
+    organizationId,
+    rows.map((row) => row.unitId),
+  );
+  const byLine = new Map<string, OrderLineUnit[]>();
+  for (const row of rows) {
+    const summary = summaries.get(row.unitId);
+    byLine.set(row.lineId, [
+      ...(byLine.get(row.lineId) ?? []),
+      {
+        unitId: row.unitId,
+        serial: summary?.serial ?? "",
+        unitPrice: row.unitPrice,
+        status: summary?.status ?? null,
+      },
+    ]);
+  }
+  for (const units of byLine.values()) {
+    units.sort((a, b) => a.serial.localeCompare(b.serial));
+  }
+  return byLine;
+}
 
 export type OrderDetail = {
   id: string;
@@ -998,13 +1258,25 @@ export async function getOrder(
     order.id,
   );
   const productIds = lines.map((line) => line.productId);
-  const [clients, products, available] = await Promise.all([
+  const [clients, products, available, unitRows] = await Promise.all([
     getClientsByIds(context, [order.clientId]),
     getProductsByIds(context, productIds),
     order.status === "pending"
       ? getAvailableStock(context, productIds)
       : Promise.resolve(null),
+    repository.findOrderLineUnits(
+      context.organizationId,
+      lines.map((line) => line.id),
+    ),
   ]);
+  const units = await describeLineUnits(
+    context.organizationId,
+    unitRows.map((row) => ({
+      lineId: row.orderLineId,
+      unitId: row.unitId,
+      unitPrice: row.unitPrice,
+    })),
+  );
   const productsById = new Map(
     products.ok
       ? products.products.map((product) => [product.id, product])
@@ -1046,6 +1318,7 @@ export async function getOrder(
           available: available?.ok
             ? (available.available.get(line.productId) ?? null)
             : null,
+          units: units.get(line.id) ?? [],
         };
       }),
     },
@@ -1097,5 +1370,32 @@ export async function listOrderAudit(
     total: found.total,
     page: found.page,
     pageCount: found.pageCount,
+  };
+}
+
+// El pedido confirmado o entregado de cada unidad, para la ficha de unidades del producto
+// (brief-29.5.2, D-5). Los dos roles. Una unidad sin pedido activo no está.
+export async function getUnitOrders(
+  context: AuthContext,
+  unitIds: string[],
+): Promise<
+  | { ok: true; orders: Map<string, { id: string; displayNumber: string }> }
+  | Failure<"FORBIDDEN">
+> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  const valid = unitIds.filter((id) => idSchema.safeParse(id).success);
+  const rows = await repository.findActiveOrdersOfUnits(
+    context.organizationId,
+    valid,
+  );
+  return {
+    ok: true,
+    orders: new Map(
+      rows.map((row) => [
+        row.unitId,
+        { id: row.orderId, displayNumber: formatOrderNumber(row.number) },
+      ]),
+    ),
   };
 }

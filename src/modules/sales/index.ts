@@ -9,6 +9,7 @@ export {
   getSale,
   getSaleForOrder,
   getSaleForReceipt,
+  getUnitSales,
   issueSale,
   issueSaleFromOrder,
   listSaleAudit,

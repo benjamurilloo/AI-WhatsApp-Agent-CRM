@@ -197,7 +197,69 @@ function GradeSelect({
   );
 }
 
-// El alta manual de una unidad (D-4): su IMEI, su costo, su grado y su batería.
+// El precio propio de la unidad (brief-29.5.2, D-2): opcional, con su moneda. Vacíos los dos, la
+// unidad vale el precio del producto.
+function PriceFields({
+  state,
+  prefix,
+  currencies,
+  price,
+  priceCurrency,
+}: {
+  state: FormState;
+  prefix: string;
+  currencies: { code: string; label: string }[];
+  price: string;
+  priceCurrency: string;
+}) {
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-3">
+      <Field
+        state={state}
+        prefix={prefix}
+        name="price"
+        label="Precio propio"
+        hint="Opcional. Sin él, la unidad vale el precio del producto."
+      >
+        {(props) => (
+          <input
+            {...props}
+            name="price"
+            inputMode="decimal"
+            autoComplete="off"
+            defaultValue={value(state, "price", price)}
+            className={inputClass}
+          />
+        )}
+      </Field>
+      <Field
+        state={state}
+        prefix={prefix}
+        name="priceCurrency"
+        label="Moneda del precio"
+      >
+        {(props) => (
+          <select
+            {...props}
+            name="priceCurrency"
+            defaultValue={value(state, "priceCurrency", priceCurrency)}
+            className={selectClass}
+          >
+            <option value="">—</option>
+            {currencies.map((currency) => (
+              <option key={currency.code} value={currency.code}>
+                {currency.label}
+              </option>
+            ))}
+          </select>
+        )}
+      </Field>
+    </div>
+  );
+}
+
+// El alta manual de una unidad (D-4): su IMEI, su costo, su grado y su batería; desde la 29.5.2, su
+// precio propio (brief-29.5.2, D-2).
 export function RegisterUnitForm({
   productId,
   grades,
@@ -302,6 +364,13 @@ export function RegisterUnitForm({
             />
           )}
         </Field>
+        <PriceFields
+          state={state}
+          prefix={prefix}
+          currencies={currencies}
+          price=""
+          priceCurrency=""
+        />
       </div>
       <GeneralError state={state} errorRef={errorRef} />
       <div>
@@ -370,7 +439,8 @@ export function WriteOffForm({
   );
 }
 
-// La corrección del grado o la batería (D-4). El IMEI y el costo no se corrigen.
+// La corrección del grado o la batería (D-4) y, desde la 29.5.2, del precio propio (brief-29.5.2,
+// D-2). El IMEI y el costo no se corrigen.
 export function CorrectUnitForm({
   productId,
   unitId,
@@ -378,6 +448,9 @@ export function CorrectUnitForm({
   grades,
   gradeId,
   batteryHealth,
+  currencies,
+  price,
+  priceCurrency,
 }: {
   productId: string;
   unitId: string;
@@ -385,6 +458,9 @@ export function CorrectUnitForm({
   grades: GradeOption[];
   gradeId: string;
   batteryHealth: string;
+  currencies: { code: string; label: string }[];
+  price: string;
+  priceCurrency: string;
 }) {
   const [state, formAction, pending] = useActionState(correctUnitAction, idle);
   const prefix = `corregir-${unitId}`;
@@ -425,6 +501,13 @@ export function CorrectUnitForm({
             />
           )}
         </Field>
+        <PriceFields
+          state={state}
+          prefix={prefix}
+          currencies={currencies}
+          price={price}
+          priceCurrency={priceCurrency}
+        />
       </div>
       <GeneralError state={state} errorRef={errorRef} />
       <div className="flex flex-wrap gap-3">

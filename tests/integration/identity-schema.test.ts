@@ -94,6 +94,7 @@ describe("base de test", () => {
       "knowledge_entries",
       "login_attempts",
       "messages",
+      "order_line_units",
       "order_lines",
       "orders",
       // Las capacidades de una organización (brief-29.2, D-1).
@@ -117,6 +118,8 @@ describe("base de test", () => {
       // La devolución y su anulación (brief-21.5).
       "refund_voids",
       "refunds",
+      // Las unidades de una línea de pedido y de venta (brief-29.5.2, D-1).
+      "sale_line_units",
       "sale_lines",
       "sale_voids",
       "sales",

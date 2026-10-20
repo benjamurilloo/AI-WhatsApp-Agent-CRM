@@ -10,6 +10,7 @@
   - **punto 2**: la Fase 20 suma dos valores a `document_kind`, `sale` y `sale_void`, no uno;
   - **§Consecuencias**: `sales` dependerá de `orders`, que expone una función que bloquea un pedido para la venta. `ingestion` deja de ser la única dependencia hacia `orders`, y `orders` sigue sin depender de quien lo usa.
 - *Nota del 2026-10-18 por el [ADR 0024](0024-rubros-y-capacidades.md), puntos 6 y 15*: el punto 3 sigue entero —un producto va en una sola línea—, y la línea de un producto con unidades lleva sus unidades en `order_line_units`. Confirmar reserva esas unidades, y entregar las saca del local (`deliverStock`). **Un pedido pendiente del agente no reserva la unidad que pide**: la primera confirmación la reserva y la segunda falla. Un pedido rechaza un producto de servicio. El texto de este ADR no cambia.
+- *Nota del 2026-10-20, por la 29.5.2* ([brief-29.5.2](brief-29.5.2-las-unidades-en-pedidos-y-ventas.md)): implementado lo que anticipaba la nota del 2026-10-18, con una precisión. **Un pendiente guarda sus unidades pero no las reserva**, como no reserva ninguna cantidad (punto 4), y el agente no pide productos por unidad hasta la 29.8. El punto 3 se mantiene: el monto de la línea se fija al crearse, ahora como la suma de sus unidades, y no se recalcula. El texto de este ADR no cambia.
 
 ## Contexto
 

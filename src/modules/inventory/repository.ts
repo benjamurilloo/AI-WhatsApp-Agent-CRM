@@ -238,6 +238,8 @@ export type Delivery = {
   reservedAfter: string;
   reason: string;
   createdBy: string;
+  // Desde la 29.5.2: la unidad que sale, en un producto por unidad (brief-29.5.2, D-3).
+  unitId?: string | null;
 };
 
 // La entrega de una línea de un pedido (ADR 0020, punto 4): el movimiento order_delivery y,
@@ -255,6 +257,7 @@ export async function applyDelivery(
     balanceAfter: delivery.balanceAfter,
     reason: delivery.reason,
     createdBy: delivery.createdBy,
+    unitId: delivery.unitId ?? null,
   });
   await tx
     .update(inventories)
@@ -277,7 +280,8 @@ export type Sale = {
   balanceAfter: string;
   reason: string;
   createdBy: string;
-  // Desde la 29.5, en la recepción y su anulación: la unidad que entra o sale (brief-29.5, D-4).
+  // Desde la 29.5, en la recepción y su anulación: la unidad que entra o sale (brief-29.5, D-4); desde
+  // la 29.5.2, también en la venta sin pedido y su anulación (brief-29.5.2, D-3).
   unitId?: string | null;
 };
 
@@ -294,6 +298,7 @@ export async function applySale(tx: DbTransaction, sale: Sale): Promise<void> {
     balanceAfter: sale.balanceAfter,
     reason: sale.reason,
     createdBy: sale.createdBy,
+    unitId: sale.unitId ?? null,
   });
   await tx
     .update(inventories)
@@ -321,6 +326,7 @@ export async function applySaleVoid(
     balanceAfter: restore.balanceAfter,
     reason: restore.reason,
     createdBy: restore.createdBy,
+    unitId: restore.unitId ?? null,
   });
   await tx
     .update(inventories)

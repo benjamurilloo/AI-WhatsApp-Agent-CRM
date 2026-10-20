@@ -134,6 +134,10 @@ export type UnitInput = {
   gradeId: string;
   // Vacío: sin dato. De 0 a 100.
   batteryHealth: string;
+  // El precio propio y su moneda, desde la 29.5.2 (brief-29.5.2, D-2): los dos vacíos, sin precio
+  // propio; la unidad vale el precio del producto.
+  price?: string;
+  priceCurrency?: string;
 };
 
 export type UnitField = keyof UnitInput;
@@ -144,7 +148,11 @@ const UNIT_FIELDS: UnitField[] = [
   "currency",
   "gradeId",
   "batteryHealth",
+  "price",
+  "priceCurrency",
 ];
+
+export type UnitPrice = { amount: string; currency: string };
 
 type UnitValues = {
   serial: string;
@@ -152,6 +160,7 @@ type UnitValues = {
   currency: string;
   gradeId: string | null;
   batteryHealth: number | null;
+  price: UnitPrice | null;
 };
 
 const optionalId = z
@@ -168,16 +177,45 @@ const optionalBattery = z
   .transform((value) => (value === "" ? null : Number(value)))
   .refine((value) => value === null || value <= 100);
 
-function validateDetails(input: { gradeId: string; batteryHealth: string }) {
+export type UnitDetailsInput = {
+  gradeId: string;
+  batteryHealth: string;
+  price?: string;
+  priceCurrency?: string;
+};
+
+// El precio propio: los dos campos vacíos, ninguno; si no, un monto mayor que cero en una moneda que se
+// acepta, con sus decimales.
+function validatePrice(input: { price?: string; priceCurrency?: string }): {
+  fields: UnitField[];
+  price: UnitPrice | null;
+} {
+  const amount = (input.price ?? "").trim();
+  const currency = (input.priceCurrency ?? "").trim().toUpperCase();
+  if (amount === "" && currency === "") return { fields: [], price: null };
+  const decimals = currencyDecimals(currency);
+  if (!decimals.ok) return { fields: ["priceCurrency"], price: null };
+  const parsed = parseMoneyInput(amount, decimals.decimals);
+  if (!parsed.ok) return { fields: ["price"], price: null };
+  return {
+    fields: [],
+    price: { amount: moneyToDatabase(parsed.amount), currency },
+  };
+}
+
+function validateDetails(input: UnitDetailsInput) {
   const fields: UnitField[] = [];
   const grade = optionalId.safeParse(input.gradeId);
   if (!grade.success) fields.push("gradeId");
   const battery = optionalBattery.safeParse(input.batteryHealth);
   if (!battery.success) fields.push("batteryHealth");
+  const price = validatePrice(input);
+  fields.push(...price.fields);
   return {
     fields,
     gradeId: grade.success ? grade.data : null,
     batteryHealth: battery.success ? battery.data : null,
+    price: price.price,
   };
 }
 
@@ -216,6 +254,7 @@ export function validateUnitInput(
       currency,
       gradeId: details.gradeId,
       batteryHealth: details.batteryHealth,
+      price: details.price,
     },
   };
 }
@@ -342,6 +381,7 @@ export async function registerUnit(
         batteryHealth: values.batteryHealth,
         cost: values.cost,
         costCurrency: values.currency,
+        price: values.price,
         originType: "manual",
         originId: null,
         createdBy: userId,
@@ -372,6 +412,8 @@ export async function registerUnit(
             cost_currency: values.currency,
             grade_id: values.gradeId,
             battery_health: values.batteryHealth,
+            price: values.price?.amount ?? null,
+            price_currency: values.price?.currency ?? null,
             origin: "manual",
           },
         },
@@ -499,7 +541,9 @@ export async function writeOffUnit(
 }
 
 // La corrección del grado o la batería de una unidad disponible (D-4), con auditoría. El costo no se
-// corrige en la 29.5, y el IMEI no se edita nunca. No toca el saldo: solo bloquea la unidad.
+// corrige en la 29.5, y el IMEI no se edita nunca. No toca el saldo: solo bloquea la unidad. Desde la
+// 29.5.2, también el precio propio (brief-29.5.2, D-2): sin los dos campos de precio, no cambia; con
+// los dos vacíos, se quita.
 
 export type CorrectUnitResult =
   | { ok: true; changed: boolean; productId: string }
@@ -510,7 +554,7 @@ export type CorrectUnitResult =
 export async function correctUnit(
   context: AuthContext,
   unitId: string,
-  input: { gradeId: string; batteryHealth: string },
+  input: UnitDetailsInput,
 ): Promise<CorrectUnitResult> {
   const authorized = authorize(context, { role: "admin" });
   if (!authorized.ok) return authorized;
@@ -538,6 +582,12 @@ export async function correctUnit(
       locked.id,
       tx,
     ))!;
+    if (input.price === undefined && input.priceCurrency === undefined) {
+      details.price =
+        current.price !== null && current.priceCurrency !== null
+          ? { amount: current.price, currency: current.priceCurrency }
+          : null;
+    }
     if (
       details.gradeId !== current.gradeId &&
       !(await checkGrade(organizationId, details.gradeId, tx))
@@ -554,21 +604,48 @@ export async function correctUnit(
       before.battery_health = current.batteryHealth;
       after.battery_health = details.batteryHealth;
     }
-    if (Object.keys(after).length === 0) {
+    // El precio se compara en la escala de la base, y se audita aparte, con price_change (ADR 0024,
+    // R-24; brief-29.5.2, D-2).
+    const priceChanged =
+      (details.price?.amount ?? null) !== current.price ||
+      (details.price?.currency ?? null) !== current.priceCurrency;
+    if (Object.keys(after).length === 0 && !priceChanged) {
       return { ok: true, changed: false, productId: current.productId };
     }
     await unitRepository.updateUnitDetails(tx, organizationId, locked.id, {
       gradeId: details.gradeId,
       batteryHealth: details.batteryHealth,
+      price: details.price,
     });
-    await recordAudit(tx, {
-      organizationId,
-      actorUserId: userId,
-      entityType: "stock_unit",
-      entityId: locked.id,
-      action: "update",
-      diff: { before, after },
-    });
+    if (Object.keys(after).length > 0) {
+      await recordAudit(tx, {
+        organizationId,
+        actorUserId: userId,
+        entityType: "stock_unit",
+        entityId: locked.id,
+        action: "update",
+        diff: { before, after },
+      });
+    }
+    if (priceChanged) {
+      await recordAudit(tx, {
+        organizationId,
+        actorUserId: userId,
+        entityType: "stock_unit",
+        entityId: locked.id,
+        action: "price_change",
+        diff: {
+          before: {
+            price: current.price,
+            price_currency: current.priceCurrency,
+          },
+          after: {
+            price: details.price?.amount ?? null,
+            price_currency: details.price?.currency ?? null,
+          },
+        },
+      });
+    }
     return { ok: true, changed: true, productId: current.productId };
   });
 }
@@ -586,6 +663,8 @@ export type ProductUnit = {
   batteryHealth: number | null;
   // null para un viewer.
   cost: { amount: string; currency: string } | null;
+  // El precio propio, para los dos roles (brief-29.5.2, D-8); null si no tiene.
+  price: UnitPrice | null;
   origin: unitRepository.StockUnitOrigin;
   createdAt: Date;
   updatedAt: Date;
@@ -609,6 +688,10 @@ function toProductUnit(
         : null,
     batteryHealth: row.batteryHealth,
     cost: withCost ? { amount: row.cost, currency: row.costCurrency } : null,
+    price:
+      row.price !== null && row.priceCurrency !== null
+        ? { amount: row.price, currency: row.priceCurrency }
+        : null,
     origin: row.originType,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -666,4 +749,58 @@ export async function getUnitSerials(
 ): Promise<Map<string, string>> {
   const rows = await unitRepository.findUnitsByIds(organizationId, unitIds);
   return new Map(rows.map((row) => [row.id, row.serial]));
+}
+
+// Las unidades disponibles de un producto, para elegirlas en un pedido o una venta (brief-29.5.2,
+// D-5): el IMEI, el grado, la batería y el precio propio, sin el costo. Los dos roles, como la ficha;
+// solo un admin crea pedidos y ventas.
+export type AvailableUnit = {
+  id: string;
+  serial: string;
+  grade: string | null;
+  batteryHealth: number | null;
+  price: UnitPrice | null;
+};
+
+export async function listAvailableUnits(
+  context: AuthContext,
+  productId: string,
+): Promise<
+  | { ok: true; units: AvailableUnit[] }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+> {
+  const found = await getProduct(context, productId);
+  if (!found.ok) return found;
+  if (found.product.tracking !== "unit") return { ok: true, units: [] };
+  const rows = await unitRepository.findAvailableUnitsOfProduct(
+    context.organizationId,
+    found.product.id,
+  );
+  return {
+    ok: true,
+    units: rows.map((row) => {
+      const unit = toProductUnit(row, false);
+      return {
+        id: unit.id,
+        serial: unit.serial,
+        grade: unit.grade?.name ?? null,
+        batteryHealth: unit.batteryHealth,
+        price: unit.price,
+      };
+    }),
+  };
+}
+
+// El IMEI y el estado de unas unidades, para el detalle de un pedido o de una venta y sus comprobantes
+// (brief-29.5.2, D-5): orders y sales ya autorizaron. Una unidad de otra organización no vuelve.
+export type UnitSummary = { serial: string; status: UnitStatus };
+
+export async function getUnitSummaries(
+  organizationId: string,
+  unitIds: string[],
+): Promise<Map<string, UnitSummary>> {
+  const rows = await unitRepository.findUnitsByIds(organizationId, unitIds);
+  return new Map(
+    rows.map((row) => [row.id, { serial: row.serial, status: row.status }]),
+  );
 }

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { MAX_ORDER_LINES } from "@/modules/orders";
+import { hasCapability } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
 import {
   BackLink,
@@ -44,7 +45,13 @@ export default async function NewSalePage() {
         icon="receipt"
         className="mt-6"
       >
-        <SaleForm maxLines={MAX_ORDER_LINES} />
+        <SaleForm
+          maxLines={MAX_ORDER_LINES}
+          unitsEnabled={await hasCapability(
+            context.organizationId,
+            "serialized_units",
+          )}
+        />
       </SectionCard>
     </main>
   );

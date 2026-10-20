@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { getClientsByIds } from "@/modules/crm";
 import { MAX_ORDER_LINES } from "@/modules/orders";
+import { hasCapability } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
 import {
   BackLink,
@@ -63,7 +64,14 @@ export default async function NewOrderPage({
         icon="list"
         className="mt-6"
       >
-        <OrderForm initialClient={initialClient} maxLines={MAX_ORDER_LINES} />
+        <OrderForm
+          initialClient={initialClient}
+          maxLines={MAX_ORDER_LINES}
+          unitsEnabled={await hasCapability(
+            context.organizationId,
+            "serialized_units",
+          )}
+        />
       </SectionCard>
     </main>
   );

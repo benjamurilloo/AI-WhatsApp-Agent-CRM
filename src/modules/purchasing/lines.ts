@@ -120,7 +120,12 @@ export function evaluatePurchaseOrderLines(
 ): PurchaseOrderLinesEvaluation {
   // duplicateLines espera la línea del pedido, con su precio esperado, que acá no existe.
   const duplicates = duplicateLines(
-    lines.map((line) => ({ ...line, expectedPriceId: null })),
+    lines.map((line) => ({
+      ...line,
+      expectedPriceId: null,
+      serials: [],
+      expectedLineTotal: null,
+    })),
   );
   if (duplicates.length > 0) {
     return {

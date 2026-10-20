@@ -11,6 +11,11 @@
   - **punto 6, la condición**: la de un producto `unit` no cambia (`unit_condition_locked`), una regla más estricta que «mientras tenga unidades vigentes», porque `catalog` no lee `inventory`;
   - **punto 6, «stock-writes fija cada función y su único llamador»**: lo cumplen las funciones nuevas, en `tests/guards/unit-writes.test.ts`; las reglas de la 19.3 a la 22.5 siguen fijando el archivo o la carpeta (H-2), y endurecerlas queda fuera;
   - **la auditoría**: además de `stock_unit`, la `0056` suma la entidad `unit_grade` a `audit_entity_type`, para el alta, la edición, el orden y la desactivación de un grado; la copia del perfil se audita igual. Ninguna sentencia de la `0056` usa los valores que agrega.
+- *Nota del 2026-10-20, por la 29.5.2* ([brief-29.5.2](brief-29.5.2-las-unidades-en-pedidos-y-ventas.md), aprobado por el usuario con D-1 (a) y D-2 (a)), sin cambiar el texto:
+  - **punto 6, las líneas**: se resuelve la contradicción que dejó la nota de la 29.5. **El pedido elige sus unidades al crearse**, en la pantalla, y las guarda en `order_line_units` sin reservarlas; confirmarlo reserva exactamente esas, o rechaza todo nombrando las que ya no están disponibles. **El pedido del agente de un producto `unit` sigue rechazado** como `product_not_found`, sin cambio de contrato, hasta la 29.8;
+  - **punto 6, el precio de cada unidad**: entra `stock_units.price` con su moneda, opcional, que fija el alta manual y corrige un `admin` con auditoría `price_change`. La línea vale la suma de sus unidades, cada una con su precio propio o el del producto. **El producto sigue necesitando un precio**: da el precio esperado y la moneda del comprobante. En una línea con unidades de distinto precio, `order_lines.unit_price` guarda el del producto, y el de cada unidad queda en `order_line_units.unit_price`;
+  - **punto 6, los estados**: la `0057` suma `reserved` y `sold`, con las transiciones `available → reserved → available`, `reserved → sold`, `available → sold` y `sold → available`; `written_off` sigue final;
+  - **punto 16, el orden de bloqueo**: la anulación de una venta sin pedido no bloquea la venta, así que dos anulaciones se serializan en sus unidades; la segunda vuelve a mirar la anulación previa con las unidades bloqueadas (revisión independiente de la 29.5.2, H-2).
 
 ## Contexto
 

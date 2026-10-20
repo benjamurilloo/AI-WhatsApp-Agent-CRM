@@ -15,6 +15,7 @@ import {
 import { getAuthContext, type AuthContext } from "@/modules/organizations";
 import { getDb } from "@/shared/db";
 import { resetDatabase } from "./reset-database";
+import { expectStockInvariant } from "./stock-invariant";
 
 // El pedido contra PostgreSQL real (brief-19.2): el alta con sus reglas (AC-3), los montos
 // (AC-4), los bloqueos (AC-5), la cancelación (AC-6), las lecturas (AC-7) y la auditoría (AC-8).
@@ -224,6 +225,8 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await Promise.all(heldLocks.splice(0).map((releaseLock) => releaseLock()));
+  // El invariante del saldo y las unidades después de cada test (brief-29.5.2, D-7).
+  await expectStockInvariant();
 });
 
 afterAll(async () => {
@@ -567,6 +570,7 @@ describe("createOrder: el alta (AC-3 y AC-4)", () => {
           {
             position: 2,
             productId: s.tea,
+            lineTotal: null,
             price: {
               id: changed.price.id,
               amount: "0.10",

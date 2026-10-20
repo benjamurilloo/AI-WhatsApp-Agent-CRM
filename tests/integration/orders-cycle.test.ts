@@ -19,7 +19,7 @@ import {
 import { getAuthContext, type AuthContext } from "@/modules/organizations";
 import { getDb } from "@/shared/db";
 import { resetDatabase } from "./reset-database";
-import { signedMovementSum } from "./stock-invariant";
+import { expectStockInvariant, signedMovementSum } from "./stock-invariant";
 
 // El ciclo del pedido contra PostgreSQL real (brief-19.3): las funciones de stock (AC-2), las
 // transiciones (AC-3), la concurrencia (AC-4), el ajuste frente a lo reservado (AC-5) y la
@@ -258,6 +258,8 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await Promise.all(heldLocks.splice(0).map((releaseLock) => releaseLock()));
+  // El invariante del saldo y las unidades después de cada test (brief-29.5.2, D-7).
+  await expectStockInvariant();
 });
 
 afterAll(async () => {
@@ -582,6 +584,7 @@ describe("las funciones de stock de inventory (AC-2)", () => {
       );
       expect(result).toEqual({
         ok: false,
+        reason: "insufficient",
         shortages: [
           { productId: s.tea, requested: "1.500", available: "1.000" },
         ],

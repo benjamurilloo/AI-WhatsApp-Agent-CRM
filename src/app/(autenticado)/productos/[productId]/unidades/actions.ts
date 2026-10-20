@@ -125,6 +125,8 @@ export async function registerUnitAction(
     currency: text(formData, "currency", 3),
     gradeId: text(formData, "gradeId", 64),
     batteryHealth: text(formData, "batteryHealth", 8),
+    price: text(formData, "price", 40),
+    priceCurrency: text(formData, "priceCurrency", 3),
   };
   return runForm(
     "productos.unidades.cargar",
@@ -160,6 +162,8 @@ export async function correctUnitAction(
   const values = {
     gradeId: text(formData, "gradeId", 64),
     batteryHealth: text(formData, "batteryHealth", 8),
+    price: text(formData, "price", 40),
+    priceCurrency: text(formData, "priceCurrency", 3),
   };
   return runForm(
     "productos.unidades.corregir",

@@ -6,11 +6,7 @@ import {
   recordAudit,
   type NamedAuditLogEntry,
 } from "@/modules/audit";
-import {
-  getProductsByIds,
-  lockProductsForOrder,
-  type ProductPrice,
-} from "@/modules/catalog";
+import { getProductsByIds, lockProductsForOrder } from "@/modules/catalog";
 import {
   getClientsByIds,
   lockClientForOrder,
@@ -19,12 +15,18 @@ import {
 import {
   restoreSaleStock,
   sellStock,
+  type LineUnitIssue,
   type StockShortage,
 } from "@/modules/inventory";
 import { formatDocumentNumber, nextDocumentNumber } from "@/modules/numbering";
 import {
+  describeLineUnits,
   lockOrderForSale,
   MAX_ORDER_LINES,
+  priceConflicts,
+  resolveLinesUnits,
+  type LinePriceConflict,
+  type OrderLineUnit,
   type OrderStatus,
 } from "@/modules/orders";
 import {
@@ -119,6 +121,31 @@ function soldResult(sale: repository.SaleRow): IssueSaleResult {
   };
 }
 
+// Las líneas en el diff de la auditoría, con claves numeradas: audit solo admite valores planos. Desde
+// la 29.5.2, una línea por unidad suma los ids de sus unidades, sin el IMEI (brief-29.5.2, D-4).
+function lineAuditEntries(
+  lines: {
+    position: number;
+    productId: string;
+    quantity: string;
+    unitPrice: string;
+    lineTotal: string;
+    unitIds: string[];
+  }[],
+): Record<string, string> {
+  return Object.fromEntries(
+    lines.flatMap((line) => [
+      [`line_${line.position}_product_id`, line.productId],
+      [`line_${line.position}_quantity`, line.quantity],
+      [`line_${line.position}_unit_price`, line.unitPrice],
+      [`line_${line.position}_total`, line.lineTotal],
+      ...(line.unitIds.length > 0
+        ? [[`line_${line.position}_unit_ids`, line.unitIds.join(",")]]
+        : []),
+    ]),
+  );
+}
+
 export async function issueSaleFromOrder(
   context: AuthContext,
   orderId: string,
@@ -178,11 +205,28 @@ export async function issueSaleFromOrder(
           replacesSaleId,
           createdBy: userId,
         });
-        await repository.insertSaleLines(
+        const inserted = await repository.insertSaleLines(
           tx,
           organizationId,
           sale.id,
           order.lines,
+        );
+        // Las unidades del pedido, copiadas con su precio: ya salieron con la entrega, así que la
+        // venta no las toca (brief-29.5.2, D-3).
+        const lineIds = new Map(
+          inserted.map((line) => [line.position, line.id]),
+        );
+        await repository.insertSaleLineUnits(
+          tx,
+          organizationId,
+          order.lines.flatMap((line) =>
+            line.units.map((unit) => ({
+              saleLineId: lineIds.get(line.position)!,
+              productId: line.productId,
+              unitId: unit.unitId,
+              unitPrice: unit.unitPrice,
+            })),
+          ),
         );
         // Sin nombres ni textos del cliente (brief-20.2, D-7): el vaciado no tiene que alcanzar
         // la auditoría de las ventas. La auditoría solo admite valores planos: las líneas van con
@@ -206,13 +250,11 @@ export async function issueSaleFromOrder(
               currency: sale.currency,
               total: sale.total,
               lines: order.lines.length,
-              ...Object.fromEntries(
-                order.lines.flatMap((line) => [
-                  [`line_${line.position}_product_id`, line.productId],
-                  [`line_${line.position}_quantity`, line.quantity],
-                  [`line_${line.position}_unit_price`, line.unitPrice],
-                  [`line_${line.position}_total`, line.lineTotal],
-                ]),
+              ...lineAuditEntries(
+                order.lines.map((line) => ({
+                  ...line,
+                  unitIds: line.units.map((unit) => unit.unitId),
+                })),
               ),
             },
           },
@@ -251,7 +293,7 @@ export type SaleValidationFailure = Failure<
   "VALIDATION_ERROR",
   {
     reason: "client" | "no_lines" | "too_many_lines" | "lines";
-    lines: { position: number; field: SaleLineField }[];
+    lines: { position: number; field: SaleLineField; serial?: string }[];
   }
 >;
 
@@ -284,16 +326,13 @@ export type IssueSaleWithoutOrderResult =
       "BUSINESS_RULE_VIOLATION",
       { rule: "insufficient_stock"; lines: SaleShortage[] }
     >
+  // Desde la 29.5.2: un IMEI que no es de una unidad disponible del producto de su línea
+  // (brief-29.5.2, D-5, AC-4).
   | Failure<
-      "CONFLICT",
-      {
-        prices: {
-          position: number;
-          productId: string;
-          price: ProductPrice | null;
-        }[];
-      }
-    >;
+      "BUSINESS_RULE_VIOLATION",
+      { rule: "units"; units: LineUnitIssue[] }
+    >
+  | Failure<"CONFLICT", { prices: LinePriceConflict[] }>;
 
 function validateSaleInput(
   input: SaleInput,
@@ -326,6 +365,14 @@ function validateSaleInput(
 class InsufficientStock extends Error {
   constructor(readonly shortages: StockShortage[]) {
     super("insufficient_stock");
+  }
+}
+
+// Una unidad que dejó de estar disponible entre su bloqueo y la venta no debería pasar: la venta la
+// bloqueó al resolverla. Si pasa, se rechaza como un IMEI no disponible (brief-29.5.2, D-3).
+class UnitsUnavailable extends Error {
+  constructor(readonly issues: LineUnitIssue[]) {
+    super("units");
   }
 }
 
@@ -374,7 +421,24 @@ export async function issueSale(
           organizationId,
           lines.map((line) => line.productId),
         );
-        const evaluated = evaluateLines(lines, products);
+        // Las unidades FOR UPDATE, después de los productos y antes de los saldos (ADR 0024, punto
+        // 16; brief-29.5.2, D-3): la venta las vende en esta transacción.
+        const resolved = await resolveLinesUnits(
+          tx,
+          organizationId,
+          lines,
+          products,
+          { lock: true },
+        );
+        if (!resolved.ok) {
+          return {
+            ok: false,
+            code: "BUSINESS_RULE_VIOLATION",
+            rule: "units",
+            units: resolved.issues,
+          };
+        }
+        const evaluated = evaluateLines(lines, products, resolved.units);
         if (!evaluated.ok) {
           switch (evaluated.reason) {
             case "missing_products":
@@ -394,7 +458,11 @@ export async function issueSale(
             // Una venta cobra lo que dice el comprobante: el precio que vio quien vende tiene que
             // seguir vigente (brief-20.3, D-4).
             case "price_changed":
-              return { ok: false, code: "CONFLICT", prices: evaluated.lines };
+              return {
+                ok: false,
+                code: "CONFLICT",
+                prices: priceConflicts(evaluated.lines),
+              };
             case "total_too_large":
               return {
                 ok: false,
@@ -406,12 +474,17 @@ export async function issueSale(
 
         // El número se toma después de comprobar lo disponible y antes de escribir los
         // movimientos, que lo llevan en el motivo. Con un rechazo, no se consume.
+        const unitsOf = (position: number) =>
+          resolved.units.get(position) ?? [];
         let number: number | null = null;
         const sold = await sellStock(tx, {
           organizationId,
           lines: evaluated.lines.map((line) => ({
             productId: line.productId,
             quantity: quantityToDatabase(line.quantity),
+            ...(line.serials.length > 0
+              ? { unitIds: unitsOf(line.position).map((unit) => unit.id) }
+              : {}),
           })),
           reason: async () => {
             number = await nextDocumentNumber(tx, organizationId, "sale");
@@ -419,6 +492,20 @@ export async function issueSale(
           },
           createdBy: userId,
         });
+        if (!sold.ok && sold.reason === "units_unavailable") {
+          const positions = new Map(
+            evaluated.lines.flatMap((line) =>
+              unitsOf(line.position).map((unit) => [unit.id, line.position]),
+            ),
+          );
+          throw new UnitsUnavailable(
+            sold.units.map((unit) => ({
+              position: positions.get(unit.id)!,
+              serial: unit.serial,
+              reason: "unavailable",
+            })),
+          );
+        }
         if (!sold.ok) throw new InsufficientStock(sold.shortages);
         if (number === null) throw new Error("La venta no tomó su número.");
 
@@ -426,9 +513,10 @@ export async function issueSale(
           productId: line.productId,
           position: line.position,
           quantity: quantityToDatabase(line.quantity),
-          unitPrice: line.price.amount,
+          unitPrice: moneyToDatabase(line.unitPrice),
           currency: line.price.currency,
           lineTotal: moneyToDatabase(line.total),
+          unitIds: unitsOf(line.position).map((unit) => unit.id),
         }));
         const sale = await repository.insertSale(tx, {
           organizationId,
@@ -440,11 +528,26 @@ export async function issueSale(
           replacesSaleId: null,
           createdBy: userId,
         });
-        await repository.insertSaleLines(
+        const inserted = await repository.insertSaleLines(
           tx,
           organizationId,
           sale.id,
           saleLines,
+        );
+        const lineIds = new Map(
+          inserted.map((line) => [line.position, line.id]),
+        );
+        await repository.insertSaleLineUnits(
+          tx,
+          organizationId,
+          evaluated.lines.flatMap((line) =>
+            unitsOf(line.position).map((unit, index) => ({
+              saleLineId: lineIds.get(line.position)!,
+              productId: line.productId,
+              unitId: unit.id,
+              unitPrice: moneyToDatabase(line.unitPrices[index]!),
+            })),
+          ),
         );
         // El mismo diff de la venta de un pedido, con order_id nulo y, sin cliente, client_id
         // nulo (brief-20.3, D-8). Sin nombres ni textos del cliente.
@@ -463,14 +566,7 @@ export async function issueSale(
               currency: sale.currency,
               total: sale.total,
               lines: saleLines.length,
-              ...Object.fromEntries(
-                saleLines.flatMap((line) => [
-                  [`line_${line.position}_product_id`, line.productId],
-                  [`line_${line.position}_quantity`, line.quantity],
-                  [`line_${line.position}_unit_price`, line.unitPrice],
-                  [`line_${line.position}_total`, line.lineTotal],
-                ]),
-              ),
+              ...lineAuditEntries(saleLines),
             },
           },
         });
@@ -485,6 +581,14 @@ export async function issueSale(
       },
     );
   } catch (error) {
+    if (error instanceof UnitsUnavailable) {
+      return {
+        ok: false,
+        code: "BUSINESS_RULE_VIOLATION",
+        rule: "units",
+        units: error.issues,
+      };
+    }
     // Sin traducir un 23505: una venta sin pedido no pasa por el índice del pedido (H-4).
     if (!(error instanceof InsufficientStock)) throw error;
     const positions = new Map(
@@ -580,6 +684,17 @@ export async function voidSale(
   const previous = await repository.findVoidBySale(organizationId, sale.id);
   if (previous) return voidedResult(previous);
   const lines = await repository.findSaleLines(organizationId, sale.id);
+  // Las unidades que vendió, como sus líneas: inmutables (brief-29.5.2, D-3).
+  const unitIdsByLine = new Map<string, string[]>();
+  for (const row of await repository.findSaleLineUnits(
+    organizationId,
+    lines.map((line) => line.id),
+  )) {
+    unitIdsByLine.set(row.saleLineId, [
+      ...(unitIdsByLine.get(row.saleLineId) ?? []),
+      row.unitId,
+    ]);
+  }
 
   try {
     return await repository.withTransaction(
@@ -610,10 +725,24 @@ export async function voidSale(
           );
           const restored = await restoreSaleStock(tx, {
             organizationId,
-            lines: lines.map((line) => ({
-              productId: line.productId,
-              quantity: line.quantity,
-            })),
+            lines: lines.map((line) => {
+              const unitIds = unitIdsByLine.get(line.id);
+              return {
+                productId: line.productId,
+                quantity: line.quantity,
+                ...(unitIds ? { unitIds } : {}),
+              };
+            }),
+            // Con unidades, la segunda anulación se serializa en ellas: mira antes de exigirlas
+            // vendidas (H-2). Sin unidades, en los saldos, y el motivo vuelve a mirar.
+            recheck: async () => {
+              const again = await repository.findVoidBySale(
+                organizationId,
+                sale.id,
+                tx,
+              );
+              if (again) throw new AlreadyVoided(again);
+            },
             reason: async () => {
               const again = await repository.findVoidBySale(
                 organizationId,
@@ -843,6 +972,9 @@ export type SaleLine = {
   unitPrice: string;
   currency: string;
   lineTotal: string;
+  // Desde la 29.5.2: las unidades de la línea, por IMEI y con su precio, para el comprobante
+  // (brief-29.5.2, D-5). Vacío en una línea por cantidad.
+  units: OrderLineUnit[];
 };
 
 export type SaleDetail = {
@@ -886,6 +1018,19 @@ export async function getSale(
   const sale = await repository.findSale(context.organizationId, saleId);
   if (!sale) return failure("NOT_FOUND");
   const lines = await repository.findSaleLines(context.organizationId, sale.id);
+  const units = await describeLineUnits(
+    context.organizationId,
+    (
+      await repository.findSaleLineUnits(
+        context.organizationId,
+        lines.map((line) => line.id),
+      )
+    ).map((row) => ({
+      lineId: row.saleLineId,
+      unitId: row.unitId,
+      unitPrice: row.unitPrice,
+    })),
+  );
   const [clients, products, saleVoid, replaces, replacedBy] = await Promise.all(
     [
       getClientsByIds(context, sale.clientId === null ? [] : [sale.clientId]),
@@ -931,6 +1076,7 @@ export async function getSale(
           unitPrice: line.unitPrice,
           currency: line.currency,
           lineTotal: line.lineTotal,
+          units: units.get(line.id) ?? [],
         };
       }),
       saleVoid: saleVoid
@@ -1098,4 +1244,31 @@ export async function listSalesForAccounts(
 ): Promise<SaleForReceipt[]> {
   const rows = await repository.findSalesForAccounts(tx, organizationId);
   return rows.map(saleForReceipt);
+}
+
+// La venta vigente de cada unidad, para la ficha de unidades del producto (brief-29.5.2, D-5). Los dos
+// roles. Una unidad sin venta vigente no está.
+export async function getUnitSales(
+  context: AuthContext,
+  unitIds: string[],
+): Promise<
+  | { ok: true; sales: Map<string, { id: string; displayNumber: string }> }
+  | Failure<"FORBIDDEN">
+> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  const valid = unitIds.filter((id) => idSchema.safeParse(id).success);
+  const rows = await repository.findCurrentSalesOfUnits(
+    context.organizationId,
+    valid,
+  );
+  return {
+    ok: true,
+    sales: new Map(
+      rows.map((row) => [
+        row.unitId,
+        { id: row.saleId, displayNumber: formatSaleNumber(row.number) },
+      ]),
+    ),
+  };
 }

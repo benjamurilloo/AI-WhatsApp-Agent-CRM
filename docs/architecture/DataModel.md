@@ -542,13 +542,15 @@ Insert-only. Nunca se actualiza ni se borra: `crm_app` solo tiene `SELECT` e `IN
 
 **Implementadas en la 29.5** ([brief-29.5](../decisions/brief-29.5-las-unidades.md), migración `drizzle/0056_*`, con sus triggers y privilegios al final), según el [ADR 0024](../decisions/0024-rubros-y-capacidades.md), puntos 6 y 13. Un producto por unidad tiene **una fila por equipo, con su IMEI**, y su saldo es la cantidad de sus unidades `available`. Tres tablas nuevas, `products.tracking`, `inventory_movements.unit_id`, el valor `used` de `product_condition`, la capacidad `serialized_units` y los tipos de auditoría `stock_unit` y `unit_grade`. **Una organización sin la capacidad, y un producto `quantity`, se comportan como antes** (invariante 1). Ningún `CHECK`, trigger ni dato de la `0056` nombra los valores agregados a un enum existente: `scripts/migrar.ts` aplica las pendientes en una transacción (H-10; `tests/integration/migration-0056.test.ts`).
 
-**Hasta la 29.5.2, un producto `unit` no entra en un pedido ni en una venta** (D-1): el alta, la confirmación de un pendiente, la venta sin pedido y el pedido del agente lo rechazan, y `inventory` lanza si una reserva, entrega, venta o reposición lo recibiera. Las unidades entran por la recepción y el alta manual, y salen por la anulación de la recepción y la baja manual.
+~~**Hasta la 29.5.2, un producto `unit` no entra en un pedido ni en una venta** (D-1): el alta, la confirmación de un pendiente, la venta sin pedido y el pedido del agente lo rechazan, y `inventory` lanza si una reserva, entrega, venta o reposición lo recibiera.~~ Las unidades entran por la recepción y el alta manual, y salen por la anulación de la recepción y la baja manual.
 
-**El orden de bloqueo** (ADR 0024, punto 16; D-4): el producto `FOR SHARE`, las unidades `FOR UPDATE` por id, los saldos `FOR UPDATE` por producto, el contador y los inserts. El cambio del seguimiento toma el producto `FOR UPDATE`, así que ninguna escritura del stock corre a la vez.
+*Desde la 29.5.2* ([brief-29.5.2](../decisions/brief-29.5.2-las-unidades-en-pedidos-y-ventas.md), migración `drizzle/0057_*`): **un producto `unit` entra en un pedido y en una venta eligiendo sus unidades por IMEI**. El pedido las guarda al crearse en `order_line_units` sin reservarlas; confirmarlo las reserva (`available → reserved`), cancelarlo confirmado las libera, y entregarlo las vende (`reserved → sold`). La venta de un pedido copia sus unidades a `sale_line_units` sin tocarlas. La venta sin pedido las vende (`available → sold`) y su anulación las devuelve (`sold → available`). Un movimiento de 1 por unidad, con su `unit_id`, en la entrega, la venta y la anulación. **El pedido del agente de un producto `unit` sigue rechazado** como `product_not_found` (D-6). El saldo de un producto `unit` es igual a sus unidades `available` y `reserved`, lo reservado es igual a sus `reserved`, y cada `reserved` está en exactamente un pedido confirmado (D-7).
+
+**El orden de bloqueo** (ADR 0024, punto 16; D-4): el producto `FOR SHARE`, las unidades `FOR UPDATE` por id, los saldos `FOR UPDATE` por producto, el contador y los inserts. *Desde la 29.5.2*, en pedidos y ventas, antes de todo la cabecera del pedido `FOR UPDATE` (o, en la venta sin pedido, el cliente en modo compartido). La anulación de una venta sin pedido no bloquea la venta: dos anulaciones se serializan en sus unidades, y la segunda vuelve a mirar si ya hay una anulación con las unidades bloqueadas, antes de exigirlas vendidas (revisión independiente de la 29.5.2, H-2). El cambio del seguimiento toma el producto `FOR UPDATE`, así que ninguna escritura del stock corre a la vez.
 
 #### `stock_units`
 
-Módulo dueño: `inventory`. La escriben solo `insertStockUnit`, `setUnitsWrittenOff` y `updateUnitDetails` de `inventory/unit-repository.ts`, y `tests/guards/unit-writes.test.ts` fija el único llamador de cada una, a nivel de función (D-4).
+Módulo dueño: `inventory`. La escriben solo `insertStockUnit`, `setUnitsWrittenOff`, `updateUnitDetails` y, desde la 29.5.2, `setUnitsStatus` de `inventory/unit-repository.ts`, y `tests/guards/unit-writes.test.ts` fija el único llamador de cada una, a nivel de función (D-4).
 
 | Columna | Tipo | Notas |
 |---|---|---|
@@ -556,20 +558,22 @@ Módulo dueño: `inventory`. La escriben solo `insertStockUnit`, `setUnitsWritte
 | `organization_id` | uuid FK → organizations, not null | `ON DELETE RESTRICT` |
 | `product_id` | uuid not null | FK compuesta `stock_units_product_fk (organization_id, product_id)` → `products`, `ON DELETE RESTRICT` |
 | `serial` | text not null | el IMEI o número de serie, como se escribió. `stock_units_serial_format`: `^[A-Za-z0-9][A-Za-z0-9-]{0,31}$`. **Único por organización sin distinguir mayúsculas entre las unidades que no están dadas de baja**: índice único parcial `stock_units_organization_serial_lower_unique (organization_id, lower(serial)) WHERE status <> 'written_off'`. Una dada de baja libera su IMEI: una recepción anulada se vuelve a recibir y un IMEI mal cargado se corrige con la baja y un alta nueva. No se edita (trigger) |
-| `status` | `stock_unit_status` enum(`available`,`written_off`) not null default `available` | cada estado entra con la subfase que lo usa (ADR 0024, R-19): `reserved` y `sold` en la 29.5.2, `in_repair` en la 29.6, `in_review` en la 29.7 |
+| `status` | `stock_unit_status` enum(`available`,`written_off`,`reserved`,`sold`) not null default `available` | cada estado entra con la subfase que lo usa (ADR 0024, R-19): `reserved` y `sold` *entraron en la 29.5.2* (`0057`), `in_repair` en la 29.6, `in_review` en la 29.7 |
 | `grade_id` | uuid null | FK compuesta `stock_units_grade_fk (organization_id, grade_id)` → `unit_grades`, `ON DELETE RESTRICT`. El grado estético; un admin lo corrige, con auditoría |
 | `battery_health` | smallint null | la salud de la batería en porcentaje, `CHECK` de 0 a 100 |
 | `cost` | numeric(14, 2) not null | `CHECK (> 0)`. El costo de la unidad: el de su línea en la recepción, o el del alta manual. **No se corrige en la 29.5** |
 | `cost_currency` | text not null | `CHECK (~ '^[A-Z]{3}$')`; la moneda de la recepción o la del alta |
+| `price` | numeric(14, 2) null, *desde la 29.5.2* | el precio propio de la unidad (brief-29.5.2, D-2): lo fija el alta manual y lo corrige un `admin`, con auditoría `price_change`; la recepción no lo fija. Nulo: vale el precio vigente del producto. `stock_units_price_positive (> 0)` |
+| `price_currency` | text null, *desde la 29.5.2* | `stock_units_price_currency_format (~ '^[A-Z]{3}$')`; `stock_units_price_pair`: el precio y su moneda, los dos o ninguno |
 | `origin_type` | `stock_unit_origin` enum(`goods_receipt`,`manual`) not null | `trade_in` entra en la 29.7 |
 | `origin_id` | uuid null | **clave plana, sin clave foránea** (ADR 0024, R-16): en una recepción, la recepción, cuyo id elige `purchasing` antes de insertarla; en el alta manual, nula |
 | `created_by` | uuid FK → users, not null | `ON DELETE RESTRICT` |
 | `created_at`, `updated_at` | timestamptz not null | |
 | — | `UNIQUE (organization_id, id)` y `UNIQUE (organization_id, product_id, id)` | destinos de las claves de `goods_receipt_line_units` y de `inventory_movements` |
 
-Índice `stock_units_product_status_idx (organization_id, product_id, status)`, para las unidades de un producto. **Trigger `stock_units_guard`**: una unidad nace `available`, no se borra, y su id, su organización, su producto, su IMEI, su origen, su autor y su alta no cambian; la única transición de la 29.5 es `available → written_off`, y una dada de baja ya no cambia. Las transiciones se comparan como texto, para que la subfase que sume un estado cambie solo la función. `crm_app`: `SELECT`, `INSERT` y `UPDATE`, sin `DELETE`.
+Índice `stock_units_product_status_idx (organization_id, product_id, status)`, para las unidades de un producto. **Trigger `stock_units_guard`**: una unidad nace `available`, no se borra, y su id, su organización, su producto, su IMEI, su origen, su autor y su alta no cambian; la única transición de la 29.5 es `available → written_off`, y una dada de baja ya no cambia. *Desde la 29.5.2* (`0057`, `CREATE OR REPLACE` de `stock_units_guard_change`), también `available → reserved`, `reserved → available`, `reserved → sold`, `available → sold` y `sold → available`; `written_off` sigue final. La baja, la corrección y la anulación de una recepción siguen exigiendo `available`. Las transiciones se comparan como texto, para que la subfase que sume un estado cambie solo la función. `crm_app`: `SELECT`, `INSERT` y `UPDATE`, sin `DELETE`.
 
-**Lo lee**: la ficha del producto (`/productos/[id]/unidades`), para los dos roles; **el costo solo lo ve un `admin`** (FR-PROD-21). El historial de movimientos muestra el IMEI de cada movimiento. El agente no lee las unidades: su contrato es de la 29.8.
+**Lo lee**: la ficha del producto (`/productos/[id]/unidades`), para los dos roles; **el costo solo lo ve un `admin`** (FR-PROD-21). Desde la 29.5.2, también el pedido y la venta nuevos (las disponibles, con su grado, batería y precio), el detalle del pedido, el comprobante de la venta y el de su anulación (el IMEI y el precio de cada unidad); la ficha muestra las reservadas y vendidas con su pedido o su venta. El historial de movimientos muestra el IMEI de cada movimiento. El agente no lee las unidades: su contrato es de la 29.8.
 
 #### `unit_grades`
 
@@ -873,11 +877,27 @@ Las únicas escrituras de la aplicación son `insertOrder` y `updateOrderStatus`
 | `product_id` | uuid not null | FK compuesta `(organization_id, product_id)` → `products (organization_id, id)`, `ON DELETE RESTRICT`; `UNIQUE (order_id, product_id)`: un producto va en una sola línea |
 | `position` | smallint not null | de 1 a 50 (`CHECK`; brief-19.2, D-6); `UNIQUE (order_id, position)` |
 | `quantity` | numeric(14, 3) not null | `CHECK (> 0)` |
-| `unit_price` | numeric(14, 2) not null | el precio vigente al crear el pedido; `CHECK (> 0)` |
+| `unit_price` | numeric(14, 2) not null | el precio vigente al crear el pedido; `CHECK (> 0)`. *Desde la 29.5.2*, en un producto `unit`: el precio común de sus unidades si todas valen lo mismo (aunque sea el propio), o el del producto si valen distinto; el de cada una está en `order_line_units.unit_price` (brief-29.5.2, desviación 2) |
 | `currency` | text not null | la del pedido |
-| `line_total` | numeric(14, 2) not null | precio por cantidad, redondeado a los decimales de la moneda con el medio hacia afuera del cero (ADR 0019, punto 4); `CHECK (> 0)` |
+| `line_total` | numeric(14, 2) not null | precio por cantidad, redondeado a los decimales de la moneda con el medio hacia afuera del cero (ADR 0019, punto 4); `CHECK (> 0)`. *Desde la 29.5.2*, en un producto `unit`: la suma de sus unidades, cada una redondeada como una línea de cantidad 1 |
+| — | `UNIQUE order_lines_organization_id_product_unique (organization_id, id, product_id)`, *desde la 0057* | destino de la clave de `order_line_units` |
 
 **Límite conocido** (brief-19.2, H-4): la línea no copia el nombre ni el SKU del producto, porque el ADR 0020 fija lo que guarda. El detalle de un pedido muestra el nombre de hoy: si el producto se renombra, un pedido viejo lo muestra con el nombre nuevo. La pantalla lo dice.
+
+### `order_line_units`
+
+**Implementada en la 29.5.2** ([brief-29.5.2](../decisions/brief-29.5.2-las-unidades-en-pedidos-y-ventas.md), D-1 y D-4; migración `0057`). Módulo dueño: `orders`. **De solo inserción** (regla 10). Las unidades que eligió cada línea de un pedido de un producto `unit`, una fila por unidad, guardadas al crear el pedido. **El número de filas es igual a la cantidad de la línea**: lo comprueba el servicio y lo prueba `units-orders-sales.test.ts`. Un pendiente no las reserva; confirmar reserva exactamente esas.
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | uuid PK | |
+| `organization_id` | uuid FK → organizations, not null | `ON DELETE RESTRICT` |
+| `order_line_id` | uuid not null | FK compuesta `order_line_units_line_fk (organization_id, order_line_id, product_id)` → `order_lines (organization_id, id, product_id)`, `ON DELETE RESTRICT` |
+| `product_id` | uuid not null | el de la línea; con las dos claves, **la unidad es del producto de la línea** |
+| `unit_id` | uuid not null | FK compuesta `order_line_units_unit_fk (organization_id, product_id, unit_id)` → `stock_units (organization_id, product_id, id)`, `ON DELETE RESTRICT`. `UNIQUE order_line_units_line_unit_unique (order_line_id, unit_id)`. **Sin `UNIQUE (unit_id)`**: una unidad puede estar en un pedido cancelado y después en otro |
+| `unit_price` | numeric(14, 2) not null | el precio de la unidad al crear el pedido: el propio o el del producto, redondeado; `CHECK (> 0)` |
+
+Índice `order_line_units_unit_idx (organization_id, unit_id)`, para los pedidos de una unidad. `crm_app`: `SELECT` e `INSERT`; el trigger `order_line_units_insert_only` rechaza `UPDATE` y `DELETE` con `P0001`. La única escritura es `insertOrderLineUnits`, que vigila `order-writes`. Auditoría: el `create` del pedido suma `line_N_unit_ids`.
 
 ### `sales`
 
@@ -949,11 +969,18 @@ Las claves foráneas de la anulación toman la venta y el autor después del con
 | `product_id` | uuid not null | FK compuesta `(organization_id, product_id)` → `products (organization_id, id)`, `ON DELETE RESTRICT`; `UNIQUE (sale_id, product_id)` |
 | `position` | smallint not null | la de la línea del pedido; `CHECK (> 0)`; `UNIQUE (sale_id, position)` |
 | `quantity` | numeric(14, 3) not null | `CHECK (> 0)` |
-| `unit_price` | numeric(14, 2) not null | el de la línea del pedido; `CHECK (> 0)` |
+| `unit_price` | numeric(14, 2) not null | el de la línea del pedido; `CHECK (> 0)`. *Desde la 29.5.2*, en una venta sin pedido de un producto `unit`, la misma regla que `order_lines.unit_price` |
 | `currency` | text not null | la de la venta |
-| `line_total` | numeric(14, 2) not null | el de la línea del pedido; `CHECK (> 0)` |
+| `line_total` | numeric(14, 2) not null | el de la línea del pedido; `CHECK (> 0)`. *Desde la 29.5.2*, en una venta sin pedido de un producto `unit`, la suma de sus unidades |
+| — | `UNIQUE sale_lines_organization_id_product_unique (organization_id, id, product_id)`, *desde la 0057* | destino de la clave de `sale_line_units` |
 
 **Límite conocido** (brief-20.2, H-3): como la del pedido, la línea no copia el nombre ni el SKU del producto (ADR 0021, punto 7). El comprobante muestra el nombre de hoy: si el producto se renombra, reimprimir una venta vieja lo muestra con el nombre nuevo. La pantalla lo dice. Para retirar un producto de la venta, se desactiva en lugar de renombrarlo.
+
+### `sale_line_units`
+
+**Implementada en la 29.5.2** ([brief-29.5.2](../decisions/brief-29.5.2-las-unidades-en-pedidos-y-ventas.md), D-3 y D-4; migración `0057`). Módulo dueño: `sales`. **De solo inserción** (regla 10). Las unidades de cada línea de una venta de un producto `unit`: la copia de `order_line_units` en la venta de un pedido, o las elegidas en la venta sin pedido. La misma forma que `order_line_units`, contra `sale_lines`: `sale_line_units_line_fk (organization_id, sale_line_id, product_id)` → `sale_lines (organization_id, id, product_id)`, `sale_line_units_unit_fk (organization_id, product_id, unit_id)` → `stock_units`, `UNIQUE sale_line_units_line_unit_unique (sale_line_id, unit_id)`, `unit_price > 0` e índice `sale_line_units_unit_idx (organization_id, unit_id)`. La anulación de una venta sin pedido las lee para devolver esas unidades a `available`; la de una venta de un pedido no las toca.
+
+`crm_app`: `SELECT` e `INSERT`; el trigger `sale_line_units_insert_only` rechaza `UPDATE` y `DELETE` con `P0001`. La única escritura es `insertSaleLineUnits`, que vigila `sale-writes`.
 
 ### `payment_methods`
 

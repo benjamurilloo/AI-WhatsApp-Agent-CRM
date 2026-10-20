@@ -1036,9 +1036,13 @@ describe("la recepción de mercadería con IMEI (D-4, AC-2)", () => {
   );
 });
 
-describe("los rechazos hasta la 29.5.2 (D-1, AC-5)", () => {
+// Desde la 29.5.2 (brief-29.5.2, D-3 y D-5), el pedido y la venta llevan los IMEI: sin ellos, una línea
+// de un producto por unidad se rechaza con units_required, y un pendiente creado cuando el producto era
+// por cantidad sigue sin confirmarse (unit_tracked). Los caminos con unidades están en
+// units-orders-sales.test.ts.
+describe("los rechazos sin IMEI (D-1, AC-5; brief-29.5.2, D-3)", () => {
   it(
-    "el ajuste, el pedido, su confirmación y la venta de un producto por unidad",
+    "el ajuste, el pedido sin IMEI, la confirmación de un pendiente viejo y la venta sin IMEI",
     async () => {
       const s = await seed();
       const phone = await newProduct(s.adminA, "IP13");
@@ -1075,7 +1079,7 @@ describe("los rechazos hasta la 29.5.2 (D-1, AC-5)", () => {
         ok: false,
         code: "BUSINESS_RULE_VIOLATION",
         rule: "line_rules",
-        lines: [{ position: 1, productId: phone, rule: "unit_tracked" }],
+        lines: [{ position: 1, productId: phone, rule: "units_required" }],
       });
       expect(await confirmOrder(s.adminA, pending.order.id)).toEqual({
         ok: false,
@@ -1094,7 +1098,7 @@ describe("los rechazos hasta la 29.5.2 (D-1, AC-5)", () => {
         ok: false,
         code: "BUSINESS_RULE_VIOLATION",
         rule: "line_rules",
-        lines: [{ position: 1, productId: phone, rule: "unit_tracked" }],
+        lines: [{ position: 1, productId: phone, rule: "units_required" }],
       });
       expect(await balance(phone)).toEqual({
         on_hand: "1.000",

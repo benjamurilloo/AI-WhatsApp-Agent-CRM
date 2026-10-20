@@ -8,11 +8,13 @@ import {
   listUnitGrades,
   type ProductUnit,
 } from "@/modules/inventory";
+import { getUnitOrders } from "@/modules/orders";
 import {
   getMainCurrency,
   getOrganizationTimezone,
   hasCapability,
 } from "@/modules/organizations";
+import { getUnitSales } from "@/modules/sales";
 import { requireSession } from "@/app/_auth/session";
 import { ActionNotice } from "@/app/_components/action-notice";
 import {
@@ -50,6 +52,7 @@ import {
   TRACKING_LABEL,
   TRACKING_LOCKED_MESSAGE,
   UNIT_ORIGIN_LABEL,
+  UNIT_STATUS_LABEL,
   UNITS_TITLE,
 } from "./messages";
 
@@ -76,7 +79,9 @@ function currencyOptions(
 // serialized_units: cómo se lleva su stock y, en un producto por unidad, sus unidades disponibles y
 // las dadas de baja. Un admin cambia el seguimiento mientras no haya movimientos, carga, corrige y da
 // de baja unidades; un viewer ve la lista sin el costo (FR-PROD-21). ?baja=<id> y ?corregir=<id>
-// abren el formulario de una unidad. Sin la capacidad, 404.
+// abren el formulario de una unidad. Sin la capacidad, 404. Desde la 29.5.2 (brief-29.5.2, D-2 y D-5),
+// el precio propio de cada unidad, para los dos roles, y las reservadas y vendidas, con su pedido o su
+// venta.
 export default async function ProductUnitsPage({
   params,
   searchParams,
@@ -111,7 +116,15 @@ export default async function ProductUnitsPage({
   const units = await listProductUnits(context, product.id);
   const list: ProductUnit[] = units.ok ? units.units : [];
   const available = list.filter((unit) => unit.status === "available");
-  const writtenOff = list.filter((unit) => unit.status !== "available");
+  const writtenOff = list.filter((unit) => unit.status === "written_off");
+  const committed = list.filter(
+    (unit) => unit.status === "reserved" || unit.status === "sold",
+  );
+  const committedIds = committed.map((unit) => unit.id);
+  const [unitOrders, unitSales] = await Promise.all([
+    getUnitOrders(context, committedIds),
+    getUnitSales(context, committedIds),
+  ]);
   const history = await listStockMovements(context, product.id, {
     type: "all",
     from: "",
@@ -203,6 +216,9 @@ export default async function ProductUnitsPage({
                     ? ""
                     : String(correcting.batteryHealth)
                 }
+                currencies={currencyOptions(mainCurrency)}
+                price={correcting.price?.amount ?? ""}
+                priceCurrency={correcting.price?.currency ?? ""}
               />
             </SectionCard>
           ) : null}
@@ -214,7 +230,7 @@ export default async function ProductUnitsPage({
             className="mt-6"
           >
             <p className="text-sm text-muted">
-              {availableText(product.quantityOnHand)}.
+              {availableText(product.quantityAvailable)}.
             </p>
             {available.length === 0 ? (
               <p className="mt-3">{NO_AVAILABLE_UNITS_MESSAGE}</p>
@@ -237,6 +253,12 @@ export default async function ProductUnitsPage({
                         className={`${tableHeadCellClass} text-right`}
                       >
                         Batería
+                      </th>
+                      <th
+                        scope="col"
+                        className={`${tableHeadCellClass} text-right`}
+                      >
+                        Precio
                       </th>
                       {isAdmin ? (
                         <th
@@ -272,6 +294,16 @@ export default async function ProductUnitsPage({
                           className={`${tableCellClass} text-right tabular-nums`}
                         >
                           {batteryText(unit.batteryHealth)}
+                        </td>
+                        <td
+                          className={`${tableCellClass} text-right whitespace-nowrap tabular-nums`}
+                        >
+                          {unit.price
+                            ? formatMoney(
+                                unit.price.amount,
+                                unit.price.currency,
+                              )
+                            : "Del producto"}
                         </td>
                         {isAdmin ? (
                           <td
@@ -346,6 +378,51 @@ export default async function ProductUnitsPage({
                   </Link>
                 </p>
               ) : null}
+            </SectionCard>
+          ) : null}
+
+          {committed.length > 0 ? (
+            <SectionCard
+              id="comprometidas-titulo"
+              title="Reservadas y vendidas"
+              icon="list"
+              className="mt-6"
+            >
+              <ul className="flex flex-col gap-2 text-sm">
+                {committed.map((unit) => {
+                  const order = unitOrders.ok
+                    ? unitOrders.orders.get(unit.id)
+                    : undefined;
+                  const sale = unitSales.ok
+                    ? unitSales.sales.get(unit.id)
+                    : undefined;
+                  return (
+                    <li key={unit.id} className="flex flex-wrap gap-x-2">
+                      <span className="font-mono">{unit.serial}</span>
+                      <span>· {UNIT_STATUS_LABEL[unit.status]}</span>
+                      {order ? (
+                        <Link
+                          href={`/pedidos/${order.id}`}
+                          className={secondaryLinkClass}
+                        >
+                          Pedido {order.displayNumber}
+                        </Link>
+                      ) : null}
+                      {sale ? (
+                        <Link
+                          href={`/ventas/${sale.id}`}
+                          className={secondaryLinkClass}
+                        >
+                          Venta {sale.displayNumber}
+                        </Link>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="mt-3 text-sm text-muted">
+                Una unidad reservada o vendida no se corrige ni se da de baja.
+              </p>
             </SectionCard>
           ) : null}
 

@@ -1,3 +1,4 @@
+import type { LineUnitIssue, UnitStatus } from "@/modules/inventory";
 import type {
   CreateOrderResult,
   OrderLineField,
@@ -6,6 +7,17 @@ import type {
   OrderTransitionResult,
 } from "@/modules/orders";
 import { formatQuantity } from "@/shared/quantity";
+
+// El estado de una unidad que impide confirmar o vender, en una frase (brief-29.5.2, D-5).
+export const UNIT_STATUS_TEXT: Record<UnitStatus, string> = {
+  available: "está disponible",
+  reserved: "está reservada por otro pedido",
+  sold: "ya se vendió",
+  written_off: "se dio de baja",
+};
+
+// La marca de una unidad de un pendiente que ya no está disponible: confirmar la va a rechazar.
+export const UNIT_UNAVAILABLE_MARK = "No disponible";
 
 // Textos de las pantallas de pedidos (brief-19.2; Screens.md §14 a §16).
 
@@ -60,6 +72,13 @@ export type OrderFormLine = {
   expectedPriceId: string;
   // El precio que se mostró, para que el formulario lo siga mostrando.
   price: { amount: string; currency: string } | null;
+  // Desde la 29.5.2 (brief-29.5.2, D-5): los IMEI de la línea, uno por renglón, y el monto que vio
+  // quien carga con esas unidades (vacío si no lo vio).
+  serials: string;
+  expectedLineTotal: string;
+  // Si el producto elegido se lleva por unidad: el formulario muestra el campo de IMEI en lugar de la
+  // cantidad. Sin JavaScript se muestran los dos.
+  unitTracked: boolean;
 };
 
 export type OrderFormValues = {
@@ -84,20 +103,73 @@ const LINE_FIELD_MESSAGE: Record<OrderLineField, string> = {
   product: "Elegí un producto de la lista.",
   quantity: "Escribí una cantidad mayor que cero, con hasta tres decimales.",
   expectedPrice: "Volvé a elegir el producto.",
+  serials:
+    "Revisá los IMEI: uno por renglón, sin repetir, con letras, dígitos o guiones.",
 };
 
-export function lineRuleMessage(rule: OrderLineRule, currency: string): string {
+// Con el IMEI que la línea repite o escribió mal, lo nombra (brief-29.5.2, AC-1).
+export function lineFieldMessage(
+  field: OrderLineField,
+  serial?: string,
+): string {
+  if (field === "serials" && serial !== undefined) {
+    return `Revisá el IMEI ${serial}: está repetido en la línea o tiene caracteres que no van (solo letras, dígitos y guiones).`;
+  }
+  return LINE_FIELD_MESSAGE[field];
+}
+
+export function lineRuleMessage(
+  rule: OrderLineRule,
+  currency: string,
+  serial?: string,
+): string {
+  if (rule === "duplicate_unit" && serial !== undefined) {
+    return `El IMEI ${serial} ya está en otra línea.`;
+  }
+  if (rule === "unit_currency_mismatch" && serial !== undefined) {
+    return `La unidad con IMEI ${serial} tiene su precio en otra moneda que la primera línea (${currency}): corregí su precio.`;
+  }
   return {
     inactive_product: "El producto está desactivado.",
-    unit_tracked:
-      "Este producto se vende por unidad: todavía no se puede agregar a un pedido ni a una venta.",
+    units_required:
+      "Este producto se vende por unidad: escribí el IMEI de cada unidad, uno por renglón.",
+    not_unit_tracked:
+      "Este producto no se vende por unidad: borrá los IMEI y escribí la cantidad.",
     no_price: "El producto no tiene precio: fijalo antes de pedirlo.",
     currency_mismatch: `El precio está en otra moneda que la primera línea (${currency}).`,
+    unit_currency_mismatch: `Una unidad tiene su precio en otra moneda que la primera línea (${currency}): corregí su precio.`,
     duplicate_product:
       "El producto ya está en otra línea: sumá la cantidad ahí.",
+    duplicate_unit: "Un IMEI de esta línea ya está en otra línea.",
     zero_total: "El total de la línea da cero: subí la cantidad.",
     amount_too_large: "El total de la línea es demasiado grande.",
   }[rule];
+}
+
+// Un IMEI rechazado (brief-29.5.2, AC-1), nombrándolo.
+const UNIT_ISSUE_TEXT: Record<LineUnitIssue["reason"], string> = {
+  not_found: "no es de ninguna unidad",
+  other_product: "es de una unidad de otro producto",
+  unavailable:
+    "ya no está disponible (está reservado, vendido o en otro pedido)",
+};
+
+export function unitIssuesByLine(
+  issues: LineUnitIssue[],
+): Record<number, string> {
+  const byLine = new Map<number, string[]>();
+  for (const issue of issues) {
+    byLine.set(issue.position, [
+      ...(byLine.get(issue.position) ?? []),
+      `${issue.serial} ${UNIT_ISSUE_TEXT[issue.reason]}`,
+    ]);
+  }
+  return Object.fromEntries(
+    [...byLine].map(([position, texts]) => [
+      position,
+      `IMEI ${texts.join("; ")}.`,
+    ]),
+  );
 }
 
 type Rejection = Pick<
@@ -142,7 +214,7 @@ export function orderRejection(
         lineErrors: Object.fromEntries(
           result.lines.map((line) => [
             line.position,
-            LINE_FIELD_MESSAGE[line.field],
+            lineFieldMessage(line.field, line.serial),
           ]),
         ),
         clientError: null,
@@ -177,12 +249,19 @@ export function orderRejection(
       if (result.rule === "total_too_large") {
         return { ...none, message: "El total del pedido es demasiado grande." };
       }
+      if (result.rule === "units") {
+        return {
+          message: "Revisá los IMEI marcados.",
+          lineErrors: unitIssuesByLine(result.units),
+          clientError: null,
+        };
+      }
       return {
         message: "Revisá las líneas marcadas.",
         lineErrors: Object.fromEntries(
           result.lines.map((line) => [
             line.position,
-            lineRuleMessage(line.rule, firstCurrency),
+            lineRuleMessage(line.rule, firstCurrency, line.serial),
           ]),
         ),
         clientError: null,
@@ -194,7 +273,12 @@ export function orderRejection(
             ? "Cambió el precio de un producto desde que lo elegiste. Revisá el precio nuevo y volvé a crear el pedido."
             : "Cambiaron los precios de algunos productos desde que los elegiste. Revisá los precios nuevos y volvé a crear el pedido.",
         lineErrors: Object.fromEntries(
-          result.prices.map((line) => [line.position, "El precio cambió."]),
+          result.prices.map((line) => [
+            line.position,
+            line.lineTotal === null
+              ? "El precio cambió."
+              : "Cambió el precio de una unidad: revisá el total de la línea.",
+          ]),
         ),
         clientError: null,
       };
@@ -214,7 +298,7 @@ export const CANCELLED_NOTICE = "Pedido cancelado.";
 export const CREATED_NOTICE = "Pedido creado.";
 export const CONFIRMED_NOTICE = "Pedido confirmado: el stock quedó reservado.";
 export const DELIVERED_NOTICE =
-  "Pedido entregado: el stock se descontó con un movimiento por línea.";
+  "Pedido entregado: el stock se descontó con un movimiento por línea, o uno por unidad en un producto que se vende por unidad.";
 
 const NOTICES: Record<string, string> = {
   creado: CREATED_NOTICE,
@@ -277,9 +361,18 @@ export function transitionRejection(
     case "unit_tracked":
       return {
         message:
-          "El pedido tiene productos que se venden por unidad: todavía no se pueden confirmar en un pedido. Cancelalo y cargá la venta cuando se pueda. No se reservó nada.",
+          "El pedido tiene productos que pasaron a venderse por unidad y sus líneas no tienen IMEI. Cancelalo y creá otro eligiendo las unidades. No se reservó nada.",
         details: result.lines.map(
           (line) => `${label(line)}: se vende por unidad.`,
+        ),
+      };
+    case "units_unavailable":
+      return {
+        message:
+          "Algunas unidades del pedido ya no están disponibles. Para cambiarlas, cancelá el pedido y creá otro. No se reservó nada.",
+        details: result.units.map(
+          (unit) =>
+            `${label(unit)}: IMEI ${unit.serial} ${UNIT_STATUS_TEXT[unit.status]}.`,
         ),
       };
     case "invalid_transition":

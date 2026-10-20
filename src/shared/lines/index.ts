@@ -10,8 +10,13 @@ export {
 export {
   duplicateLines,
   evaluateLines,
+  LINE_SERIAL_PATTERN,
+  MAX_LINE_SERIALS,
   parseLines,
+  splitLineSerials,
+  type LineUnit,
   type LineField,
+  type LineFieldIssue,
   type LineInput,
   type LinePrice,
   type LineProduct,

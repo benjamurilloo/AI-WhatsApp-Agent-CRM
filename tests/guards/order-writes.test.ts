@@ -14,13 +14,18 @@ import { describe, expect, it } from "vitest";
 // No ve: SQL escrito a mano contra la base; la tabla bajo otro nombre (un alias en el import, una
 // variable que la guarda); el nombre armado en tiempo de ejecución; ni una escritura en una CTE o en
 // un trigger nuevo.
+//
+// Desde la 29.5.2 (brief-29.5.2, D-4 y D-9), también order_line_units: las unidades de cada línea, de
+// solo inserción, que se escriben con el alta.
 
 const REPOSITORY = "src/modules/orders/repository.ts";
 
-// El alta inserta la cabecera y sus líneas; una transición cambia el estado y su fecha.
+// El alta inserta la cabecera, sus líneas y las unidades de sus líneas; una transición cambia el estado
+// y su fecha.
 const AUTHORIZED = new Map([
   ["insertOrder", ["insert orders"]],
   ["insertOrderLines", ["insert order_lines"]],
+  ["insertOrderLineUnits", ["insert order_line_units"]],
   ["updateOrderStatus", ["update orders"]],
 ]);
 
@@ -28,14 +33,16 @@ const TABLES = new Map([
   ["orders", "orders"],
   ["orderlines", "order_lines"],
   ["order_lines", "order_lines"],
+  ["orderlineunits", "order_line_units"],
+  ["order_line_units", "order_line_units"],
 ]);
 
 // La tabla en SQL: su nombre, con o sin esquema y comillas, o el objeto de Drizzle interpolado.
 // El nombre queda en el grupo 2 o en el 3.
-const SQL_TABLE = String.raw`(?:"?public"?\s*\.\s*)?"?(orders|order_lines)"?\b|\$\{\s*(?:\w+\.)?(orders|orderLines)\s*\}`;
+const SQL_TABLE = String.raw`(?:"?public"?\s*\.\s*)?"?(orders|order_lines|order_line_units)"?\b|\$\{\s*(?:\w+\.)?(orders|orderLines|orderLineUnits)\s*\}`;
 
 const WRITE_PATTERNS = [
-  /\.(insert|update|delete)\(\s*(?:\w+\.)?(orders|orderLines)\s*\)/g,
+  /\.(insert|update|delete)\(\s*(?:\w+\.)?(orders|orderLines|orderLineUnits)\s*\)/g,
   new RegExp(
     String.raw`\b(insert\s+into|update|delete\s+from|truncate(?:\s+table)?)(?:\s+only)?\s+(?:${SQL_TABLE})`,
     "gi",
@@ -145,6 +152,16 @@ describe("detección de escrituras de pedidos", () => {
       code: "await db.execute(sql`truncate table only orders`);",
     },
     {
+      name: "las unidades de una línea insertadas desde la función de las líneas",
+      file: REPOSITORY,
+      code: "export async function insertOrderLines(tx) {\n  await tx.insert(orderLineUnits).values(v);\n}",
+    },
+    {
+      name: "delete de las unidades de una línea en SQL",
+      file: "src/modules/orders/service.ts",
+      code: "await tx.execute(sql`delete from order_line_units`);",
+    },
+    {
       name: "UPDATE ONLY",
       file: "src/app/accion.ts",
       code: "await db.execute(sql`UPDATE ONLY order_lines SET quantity = 1`);",
@@ -194,6 +211,7 @@ describe("repositorio", () => {
     expect(writes).toEqual([
       "insertOrder: insert orders",
       "insertOrderLines: insert order_lines",
+      "insertOrderLineUnits: insert order_line_units",
       "updateOrderStatus: update orders",
     ]);
   });

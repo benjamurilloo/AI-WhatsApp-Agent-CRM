@@ -17,6 +17,7 @@ import {
 import { users } from "@/modules/auth/schema";
 import { products } from "@/modules/catalog/schema";
 import { clients } from "@/modules/crm/schema";
+import { stockUnits } from "@/modules/inventory/schema";
 import { orders } from "@/modules/orders/schema";
 import { organizations } from "@/modules/organizations/schema";
 
@@ -155,11 +156,63 @@ export const saleLines = pgTable(
     }).onDelete("restrict"),
     unique("sale_lines_sale_product_unique").on(table.saleId, table.productId),
     unique("sale_lines_sale_position_unique").on(table.saleId, table.position),
+    // Destino de la clave compuesta de sale_line_units (brief-29.5.2, D-4).
+    unique("sale_lines_organization_id_product_unique").on(
+      table.organizationId,
+      table.id,
+      table.productId,
+    ),
     check("sale_lines_position_positive", sql`${table.position} > 0`),
     check("sale_lines_quantity_positive", sql`${table.quantity} > 0`),
     check("sale_lines_unit_price_positive", sql`${table.unitPrice} > 0`),
     check("sale_lines_line_total_positive", sql`${table.lineTotal} > 0`),
     check("sale_lines_currency_format", sql`${table.currency} ~ '^[A-Z]{3}$'`),
+  ],
+);
+
+// Las unidades de cada línea de una venta de un producto por unidad (ADR 0024, punto 6; brief-29.5.2,
+// D-3 y D-4): en una venta sin pedido, las que vendió; en la de un pedido, copiadas de
+// order_line_units. De solo inserción, como sale_lines. Sin UNIQUE (unit_id): la venta anulada de un
+// pedido y la que la reemplaza nombran las mismas unidades, y una unidad que vuelve con la anulación de
+// una venta sin pedido se puede vender otra vez.
+export const saleLineUnits = pgTable(
+  "sale_line_units",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    saleLineId: uuid("sale_line_id").notNull(),
+    productId: uuid("product_id").notNull(),
+    unitId: uuid("unit_id").notNull(),
+    // El precio de la unidad en la moneda de la línea, como en order_line_units.
+    unitPrice: numeric("unit_price", { precision: 14, scale: 2 }).notNull(),
+  },
+  (table) => [
+    foreignKey({
+      name: "sale_line_units_line_fk",
+      columns: [table.organizationId, table.saleLineId, table.productId],
+      foreignColumns: [
+        saleLines.organizationId,
+        saleLines.id,
+        saleLines.productId,
+      ],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "sale_line_units_unit_fk",
+      columns: [table.organizationId, table.productId, table.unitId],
+      foreignColumns: [
+        stockUnits.organizationId,
+        stockUnits.productId,
+        stockUnits.id,
+      ],
+    }).onDelete("restrict"),
+    unique("sale_line_units_line_unit_unique").on(
+      table.saleLineId,
+      table.unitId,
+    ),
+    index("sale_line_units_unit_idx").on(table.organizationId, table.unitId),
+    check("sale_line_units_unit_price_positive", sql`${table.unitPrice} > 0`),
   ],
 );
 

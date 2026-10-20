@@ -31,6 +31,7 @@ import {
 } from "@/modules/sales";
 import { getDb } from "@/shared/db";
 import { resetDatabase } from "./reset-database";
+import { expectStockInvariant } from "./stock-invariant";
 
 // La venta de un pedido entregado contra PostgreSQL real (brief-20.2): la numeración (AC-2), la
 // emisión (AC-3), la concurrencia (AC-4), las lecturas (AC-5) y la auditoría (AC-6). Los helpers
@@ -284,6 +285,9 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await Promise.all(heldLocks.splice(0).map((releaseLock) => releaseLock()));
+  // El invariante del saldo y las unidades después de cada test (brief-29.5.2, D-7), sin la suma de
+  // movimientos: un test lleva el saldo a su máximo con SQL directo, sin movimiento.
+  await expectStockInvariant({ movements: false });
 });
 
 afterAll(async () => {
@@ -1166,6 +1170,7 @@ describe("la venta sin pedido (brief-20.3, AC-3)", () => {
           {
             position: 1,
             productId: s.tv,
+            lineTotal: null,
             price: expect.objectContaining({
               id: newPrice,
               amount: "460000.00",

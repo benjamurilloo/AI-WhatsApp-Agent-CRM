@@ -836,8 +836,17 @@ export async function listStockMovements(
 // bloqueó la cabecera y los productos, y la pasa por tipo. Cada función bloquea los saldos
 // ordenados por producto, sin depender del orden de quien llama. inventory no conoce los pedidos:
 // recibe líneas y, para la entrega, el motivo ya escrito.
+//
+// Desde la 29.5.2 (ADR 0024, punto 6; brief-29.5.2, D-3), una línea de un producto por unidad trae sus
+// unidades (unitIds), una por cada unidad de cantidad, y una de un producto por cantidad no trae
+// ninguna. Las unidades se bloquean FOR UPDATE por id, después de los productos y antes de los saldos
+// (ADR 0024, punto 16), y cambian de estado con el saldo: un movimiento de 1 por unidad, que la nombra.
 
-export type StockLine = { productId: string; quantity: string };
+export type StockLine = {
+  productId: string;
+  quantity: string;
+  unitIds?: string[];
+};
 
 export type StockShortage = {
   productId: string;
@@ -881,46 +890,157 @@ async function lockLines(
   return locked;
 }
 
-// Hasta la 29.5.2, un producto por unidad no entra en un pedido ni en una venta (brief-29.5, D-1):
-// orders y sales lo rechazan con su regla antes de llegar acá. Si llegara, es un defecto de quien
-// llama, y se lanza antes de tocar el saldo: el saldo de un producto unit solo se mueve con una unidad.
-async function rejectUnitTracked(
+const ONE: Quantity = 1000n;
+
+// La regla de cada línea según su seguimiento: en un producto por unidad, una unidad por cada unidad
+// de cantidad, sin IMEI repetidos; en uno por cantidad, ninguna.
+function checkUnitLines(
+  trackings: Map<string, StockTracking>,
+  lines: { productId: string; quantity: string; count: number | null }[],
+): void {
+  for (const line of lines) {
+    const unit = trackings.get(line.productId) === "unit";
+    const quantity = quantityFromDatabase(line.quantity);
+    if (
+      unit &&
+      (line.count === null || BigInt(line.count) * ONE !== quantity)
+    ) {
+      throw new Error(`unidades que no cubren la línea: ${line.productId}`);
+    }
+    if (!unit && line.count !== null && line.count > 0) {
+      throw new Error(
+        `unidades en un producto por cantidad: ${line.productId}`,
+      );
+    }
+  }
+}
+
+export type UnavailableUnit = {
+  id: string;
+  serial: string;
+  status: unitRepository.StockUnitStatus;
+};
+
+type LineUnits = {
+  trackings: Map<string, StockTracking>;
+  units: unitRepository.LockedUnit[];
+  unitIdsByProduct: Map<string, string[]>;
+};
+
+// Comprueba la regla de las líneas y bloquea sus unidades. Una línea que no la cumple, una unidad
+// repetida, de otra organización o de otro producto son defectos de quien llama, que ya las eligió:
+// se lanza antes de tocar el saldo. Hasta la 29.5.2, esto era rejectUnitTracked, que lanzaba ante
+// cualquier producto por unidad (brief-29.5, D-1).
+async function lockLineUnits(
   tx: DbTransaction,
   organizationId: string,
   lines: StockLine[],
-): Promise<void> {
+): Promise<LineUnits> {
   const trackings = await findProductTrackings(
     tx,
     organizationId,
     lines.map((line) => line.productId),
   );
-  const unit = lines.find((line) => trackings.get(line.productId) === "unit");
-  if (unit) {
-    throw new Error(
-      `producto por unidad en una línea de cantidad: ${unit.productId}`,
-    );
+  checkUnitLines(
+    trackings,
+    lines.map((line) => ({
+      productId: line.productId,
+      quantity: line.quantity,
+      count: line.unitIds ? line.unitIds.length : null,
+    })),
+  );
+  const wanted = lines.flatMap((line) => line.unitIds ?? []);
+  if (new Set(wanted).size !== wanted.length) {
+    throw new Error("unidad repetida en las líneas");
+  }
+  const units = await unitRepository.lockUnits(tx, organizationId, wanted);
+  const byId = new Map(units.map((unit) => [unit.id, unit]));
+  for (const line of lines) {
+    for (const unitId of line.unitIds ?? []) {
+      if (byId.get(unitId)?.productId !== line.productId) {
+        throw new Error(`unidad que no es de la línea: ${unitId}`);
+      }
+    }
+  }
+  return {
+    trackings,
+    units,
+    unitIdsByProduct: new Map(
+      lines.map((line) => [line.productId, line.unitIds ?? []]),
+    ),
+  };
+}
+
+function unavailableUnits(
+  units: unitRepository.LockedUnit[],
+  expected: unitRepository.StockUnitStatus,
+): UnavailableUnit[] {
+  return units
+    .filter((unit) => unit.status !== expected)
+    .map(({ id, serial, status }) => ({ id, serial, status }));
+}
+
+// Que una unidad de un pedido confirmado no esté reservada al liberarlo o entregarlo, o que una
+// vendida por una venta sin pedido no esté vendida al anularla, es un defecto: el estado solo cambia
+// por estos caminos, y el trigger rechaza las demás transiciones (brief-29.5.2, D-3).
+function requireStatus(
+  units: unitRepository.LockedUnit[],
+  expected: unitRepository.StockUnitStatus,
+): void {
+  const wrong = unavailableUnits(units, expected);
+  if (wrong.length > 0) {
+    throw new Error(`unidad que no está ${expected}: ${wrong[0]!.id}`);
   }
 }
 
-// Reserva todas las líneas o ninguna. Si alguna pide más que lo disponible, no escribe nada y
-// devuelve las que no alcanzan; quien llama revierte la transacción (la fila en 0 que pudo crear
-// lockBalance se va con ella).
-export async function reserveStock(
-  tx: DbTransaction,
-  organizationId: string,
-  lines: StockLine[],
-): Promise<{ ok: true } | { ok: false; shortages: StockShortage[] }> {
-  await rejectUnitTracked(tx, organizationId, lines);
-  const locked = await lockLines(tx, organizationId, lines);
-  const shortages = locked
+function shortagesOf(locked: LockedLine[]): StockShortage[] {
+  return locked
     .filter((line) => line.onHand - line.reserved < line.quantity)
     .map((line) => ({
       productId: line.productId,
       requested: quantityToDatabase(line.quantity),
       available: quantityToDatabase(line.onHand - line.reserved),
     }));
-  if (shortages.length > 0) return { ok: false, shortages };
+}
+
+// El resultado de reservar y de vender: desde la 29.5.2, una unidad que ya no está disponible (la
+// reservó otro pedido, se vendió o se dio de baja) rechaza todo, nombrándola (brief-29.5.2, D-3).
+export type TakeStockResult =
+  | { ok: true }
+  | { ok: false; reason: "insufficient"; shortages: StockShortage[] }
+  | { ok: false; reason: "units_unavailable"; units: UnavailableUnit[] };
+
+// Reserva todas las líneas o ninguna. Si alguna pide más que lo disponible, o alguna unidad ya no está
+// disponible, no escribe nada y lo devuelve; quien llama revierte la transacción (la fila en 0 que
+// pudo crear lockBalance se va con ella). Las unidades pasan a reserved, sin movimiento, como lo
+// reservado de un producto por cantidad.
+export async function reserveStock(
+  tx: DbTransaction,
+  organizationId: string,
+  lines: StockLine[],
+): Promise<TakeStockResult> {
+  const { units, unitIdsByProduct } = await lockLineUnits(
+    tx,
+    organizationId,
+    lines,
+  );
+  const unavailable = unavailableUnits(units, "available");
+  if (unavailable.length > 0) {
+    return { ok: false, reason: "units_unavailable", units: unavailable };
+  }
+  const locked = await lockLines(tx, organizationId, lines);
+  const shortages = shortagesOf(locked);
+  if (shortages.length > 0) {
+    return { ok: false, reason: "insufficient", shortages };
+  }
   for (const line of locked) {
+    await unitRepository.setUnitsStatus(
+      tx,
+      organizationId,
+      unitIdsByProduct.get(line.productId)!,
+      "available",
+      "reserved",
+    );
     await repository.setReserved(
       tx,
       organizationId,
@@ -933,18 +1053,30 @@ export async function reserveStock(
 
 // Libera lo reservado de un pedido confirmado que se cancela. Nunca se rechaza por el producto:
 // lo reservado tiene que poder liberarse siempre (ADR 0020, punto 4). Si no alcanzara, es un
-// defecto, y el CHECK de la base es la última defensa.
+// defecto, y el CHECK de la base es la última defensa. Las unidades vuelven a available.
 export async function releaseStock(
   tx: DbTransaction,
   organizationId: string,
   lines: StockLine[],
 ): Promise<void> {
-  await rejectUnitTracked(tx, organizationId, lines);
+  const { units, unitIdsByProduct } = await lockLineUnits(
+    tx,
+    organizationId,
+    lines,
+  );
+  requireStatus(units, "reserved");
   const locked = await lockLines(tx, organizationId, lines);
   for (const line of locked) {
     if (line.reserved < line.quantity) {
       throw new Error(`reservado insuficiente para liberar: ${line.productId}`);
     }
+    await unitRepository.setUnitsStatus(
+      tx,
+      organizationId,
+      unitIdsByProduct.get(line.productId)!,
+      "reserved",
+      "available",
+    );
     await repository.setReserved(
       tx,
       organizationId,
@@ -956,7 +1088,8 @@ export async function releaseStock(
 
 // La salida física de un pedido entregado: un movimiento order_delivery por línea, y el saldo y
 // lo reservado bajan juntos. Lo entregado ya estaba reservado, así que nunca deja el saldo por
-// debajo de lo reservado ni negativo.
+// debajo de lo reservado ni negativo. En un producto por unidad, cada unidad pasa a sold, con su
+// movimiento de 1.
 export async function deliverStock(
   tx: DbTransaction,
   delivery: {
@@ -966,23 +1099,56 @@ export async function deliverStock(
     createdBy: string;
   },
 ): Promise<void> {
-  await rejectUnitTracked(tx, delivery.organizationId, delivery.lines);
-  const locked = await lockLines(tx, delivery.organizationId, delivery.lines);
+  const { organizationId } = delivery;
+  const { trackings, units, unitIdsByProduct } = await lockLineUnits(
+    tx,
+    organizationId,
+    delivery.lines,
+  );
+  requireStatus(units, "reserved");
+  const locked = await lockLines(tx, organizationId, delivery.lines);
   for (const line of locked) {
     if (line.reserved < line.quantity || line.onHand < line.quantity) {
       throw new Error(
         `reservado insuficiente para entregar: ${line.productId}`,
       );
     }
-    await repository.applyDelivery(tx, {
-      organizationId: delivery.organizationId,
+    const base = {
+      organizationId,
       productId: line.productId,
-      quantity: quantityToDatabase(line.quantity),
-      balanceAfter: quantityToDatabase(line.onHand - line.quantity),
-      reservedAfter: quantityToDatabase(line.reserved - line.quantity),
       reason: delivery.reason,
       createdBy: delivery.createdBy,
-    });
+    };
+    if (trackings.get(line.productId) !== "unit") {
+      await repository.applyDelivery(tx, {
+        ...base,
+        quantity: quantityToDatabase(line.quantity),
+        balanceAfter: quantityToDatabase(line.onHand - line.quantity),
+        reservedAfter: quantityToDatabase(line.reserved - line.quantity),
+      });
+      continue;
+    }
+    const lineUnits = unitIdsByProduct.get(line.productId)!;
+    await unitRepository.setUnitsStatus(
+      tx,
+      organizationId,
+      lineUnits,
+      "reserved",
+      "sold",
+    );
+    let onHand = line.onHand;
+    let reserved = line.reserved;
+    for (const unitId of lineUnits) {
+      onHand -= ONE;
+      reserved -= ONE;
+      await repository.applyDelivery(tx, {
+        ...base,
+        quantity: quantityToDatabase(ONE),
+        balanceAfter: quantityToDatabase(onHand),
+        reservedAfter: quantityToDatabase(reserved),
+        unitId,
+      });
+    }
   }
 }
 
@@ -991,7 +1157,9 @@ export async function deliverStock(
 // ordenados por producto y comprueba lo disponible (saldo menos reservado) de cada línea. Si alguna
 // no alcanza, no escribe nada y devuelve las que no alcanzan; quien llama revierte la transacción
 // (la fila en 0 que pudo crear lockBalance se va con ella). Si todas alcanzan, pide el motivo y
-// escribe un movimiento sale por línea con el saldo nuevo, sin tocar lo reservado.
+// escribe un movimiento sale por línea con el saldo nuevo, sin tocar lo reservado. En un producto por
+// unidad (brief-29.5.2, D-3), cada unidad tiene que estar available y pasa a sold, con su movimiento
+// sale de 1.
 //
 // El motivo lleva el número de la venta, y el contador va después de los saldos (ADR 0021, punto
 // 7): por eso llega como una función, que se llama una sola vez, después de comprobar y antes de
@@ -1004,27 +1172,56 @@ export async function sellStock(
     reason: () => Promise<string>;
     createdBy: string;
   },
-): Promise<{ ok: true } | { ok: false; shortages: StockShortage[] }> {
-  await rejectUnitTracked(tx, sale.organizationId, sale.lines);
-  const locked = await lockLines(tx, sale.organizationId, sale.lines);
-  const shortages = locked
-    .filter((line) => line.onHand - line.reserved < line.quantity)
-    .map((line) => ({
-      productId: line.productId,
-      requested: quantityToDatabase(line.quantity),
-      available: quantityToDatabase(line.onHand - line.reserved),
-    }));
-  if (shortages.length > 0) return { ok: false, shortages };
+): Promise<TakeStockResult> {
+  const { organizationId } = sale;
+  const { trackings, units, unitIdsByProduct } = await lockLineUnits(
+    tx,
+    organizationId,
+    sale.lines,
+  );
+  const unavailable = unavailableUnits(units, "available");
+  if (unavailable.length > 0) {
+    return { ok: false, reason: "units_unavailable", units: unavailable };
+  }
+  const locked = await lockLines(tx, organizationId, sale.lines);
+  const shortages = shortagesOf(locked);
+  if (shortages.length > 0) {
+    return { ok: false, reason: "insufficient", shortages };
+  }
   const reason = await sale.reason();
   for (const line of locked) {
-    await repository.applySale(tx, {
-      organizationId: sale.organizationId,
+    const base = {
+      organizationId,
       productId: line.productId,
-      quantity: quantityToDatabase(line.quantity),
-      balanceAfter: quantityToDatabase(line.onHand - line.quantity),
       reason,
       createdBy: sale.createdBy,
-    });
+    };
+    if (trackings.get(line.productId) !== "unit") {
+      await repository.applySale(tx, {
+        ...base,
+        quantity: quantityToDatabase(line.quantity),
+        balanceAfter: quantityToDatabase(line.onHand - line.quantity),
+      });
+      continue;
+    }
+    const lineUnits = unitIdsByProduct.get(line.productId)!;
+    await unitRepository.setUnitsStatus(
+      tx,
+      organizationId,
+      lineUnits,
+      "available",
+      "sold",
+    );
+    let onHand = line.onHand;
+    for (const unitId of lineUnits) {
+      onHand -= ONE;
+      await repository.applySale(tx, {
+        ...base,
+        quantity: quantityToDatabase(ONE),
+        balanceAfter: quantityToDatabase(onHand),
+        unitId,
+      });
+    }
   }
   return { ok: true };
 }
@@ -1035,22 +1232,36 @@ export async function sellStock(
 // lo que salió tiene que poder volver. Si algún saldo nuevo no cabe en numeric(14, 3), no escribe
 // nada y devuelve los productos (stock_limit); quien llama revierte la transacción. Si todos caben,
 // pide el motivo y escribe un movimiento sale_void por línea con el saldo nuevo, sin tocar lo
-// reservado: sumar al saldo nunca lo deja por debajo.
+// reservado: sumar al saldo nunca lo deja por debajo. En un producto por unidad (brief-29.5.2, D-3),
+// las unidades que vendió vuelven de sold a available, con su movimiento sale_void de 1.
 //
 // El motivo es una función, como en sellStock: lleva el número de la anulación, y el contador va
 // después de los saldos (ADR 0021, punto 7). Se llama una sola vez, después de comprobar y antes de
 // escribir. inventory no conoce las ventas.
+//
+// recheck corre con las unidades ya bloqueadas y antes de exigir que estén vendidas: dos anulaciones
+// de la misma venta se serializan en sus unidades, y la segunda tiene que ver la primera como ya
+// anulada, no como una unidad en otro estado (revisión independiente de la 29.5.2, H-2). No toma el
+// contador: va después de los saldos.
 export async function restoreSaleStock(
   tx: DbTransaction,
   restore: {
     organizationId: string;
     lines: StockLine[];
+    recheck?: () => Promise<void>;
     reason: () => Promise<string>;
     createdBy: string;
   },
 ): Promise<{ ok: true } | { ok: false; productIds: string[] }> {
-  await rejectUnitTracked(tx, restore.organizationId, restore.lines);
-  const locked = await lockLines(tx, restore.organizationId, restore.lines);
+  const { organizationId } = restore;
+  const { trackings, units, unitIdsByProduct } = await lockLineUnits(
+    tx,
+    organizationId,
+    restore.lines,
+  );
+  await restore.recheck?.();
+  requireStatus(units, "sold");
+  const locked = await lockLines(tx, organizationId, restore.lines);
   const balances = locked.map((line) => ({
     line,
     after: computeBalanceAfter(
@@ -1073,16 +1284,120 @@ export async function restoreSaleStock(
   }
   const reason = await restore.reason();
   for (const { line, balanceAfter } of restored) {
-    await repository.applySaleVoid(tx, {
-      organizationId: restore.organizationId,
+    const base = {
+      organizationId,
       productId: line.productId,
-      quantity: quantityToDatabase(line.quantity),
-      balanceAfter: quantityToDatabase(balanceAfter),
       reason,
       createdBy: restore.createdBy,
-    });
+    };
+    if (trackings.get(line.productId) !== "unit") {
+      await repository.applySaleVoid(tx, {
+        ...base,
+        quantity: quantityToDatabase(line.quantity),
+        balanceAfter: quantityToDatabase(balanceAfter),
+      });
+      continue;
+    }
+    const lineUnits = unitIdsByProduct.get(line.productId)!;
+    await unitRepository.setUnitsStatus(
+      tx,
+      organizationId,
+      lineUnits,
+      "sold",
+      "available",
+    );
+    let onHand = line.onHand;
+    for (const unitId of lineUnits) {
+      onHand += ONE;
+      await repository.applySaleVoid(tx, {
+        ...base,
+        quantity: quantityToDatabase(ONE),
+        balanceAfter: quantityToDatabase(onHand),
+        unitId,
+      });
+    }
   }
   return { ok: true };
+}
+
+// Las unidades de las líneas de un pedido o una venta, por su IMEI (brief-29.5.2, D-1 y D-5): orders y
+// sales ya bloquearon los productos y pasan su transacción. Cada IMEI tiene que ser de una unidad
+// vigente de la organización, del producto de su línea y available. Con lock, las unidades quedan
+// FOR UPDATE por id (la venta sin pedido, que las vende en la misma transacción); sin él, se leen
+// (el alta del pedido, que no reserva: confirmar vuelve a mirarlas). El precio es el propio de la
+// unidad, o null si no tiene. Los IMEI repetidos los rechaza quien llama, al validar.
+
+export type LineUnitRequest = {
+  position: number;
+  productId: string;
+  serials: string[];
+};
+
+export type ResolvedUnit = {
+  id: string;
+  serial: string;
+  price: { amount: string; currency: string } | null;
+};
+
+export type LineUnitIssue = {
+  position: number;
+  serial: string;
+  reason: "not_found" | "other_product" | "unavailable";
+};
+
+export async function resolveLineUnits(
+  tx: DbTransaction,
+  organizationId: string,
+  lines: LineUnitRequest[],
+  { lock }: { lock: boolean },
+): Promise<
+  | { ok: true; units: Map<number, ResolvedUnit[]> }
+  | { ok: false; issues: LineUnitIssue[] }
+> {
+  const found = await unitRepository.findCurrentUnitsBySerials(
+    tx,
+    organizationId,
+    lines.flatMap((line) => line.serials),
+  );
+  // Bloqueadas, se vuelven a leer: entre la lectura y el bloqueo, otra transacción pudo cambiarlas.
+  const current = lock
+    ? await unitRepository.lockUnits(
+        tx,
+        organizationId,
+        found.map((unit) => unit.id),
+      )
+    : found;
+  const bySerial = new Map(
+    current.map((unit) => [unit.serial.toLowerCase(), unit]),
+  );
+  const issues: LineUnitIssue[] = [];
+  const units = new Map<number, ResolvedUnit[]>();
+  for (const line of lines) {
+    const resolved: ResolvedUnit[] = [];
+    for (const serial of line.serials) {
+      const unit = bySerial.get(serial.toLowerCase());
+      const { position } = line;
+      if (!unit || unit.status === "written_off") {
+        issues.push({ position, serial, reason: "not_found" });
+      } else if (unit.productId !== line.productId) {
+        issues.push({ position, serial, reason: "other_product" });
+      } else if (unit.status !== "available") {
+        issues.push({ position, serial, reason: "unavailable" });
+      } else {
+        resolved.push({
+          id: unit.id,
+          serial: unit.serial,
+          price:
+            unit.price !== null && unit.priceCurrency !== null
+              ? { amount: unit.price, currency: unit.priceCurrency }
+              : null,
+        });
+      }
+    }
+    units.set(line.position, resolved);
+  }
+  if (issues.length > 0) return { ok: false, issues };
+  return { ok: true, units };
 }
 
 // La entrada de una recepción de mercadería (ADR 0023, punto 4; brief-22.4, D-3), con la conducta de
@@ -1119,31 +1434,6 @@ export type ReceiveStockResult =
   | { ok: true; unitIds: Map<string, string[]> }
   | { ok: false; reason: "stock_limit"; productIds: string[] }
   | { ok: false; reason: "serials_taken"; serials: string[] };
-
-const ONE: Quantity = 1000n;
-
-// La regla de cada línea según su seguimiento: en un producto por unidad, una unidad por cada unidad
-// de cantidad, sin IMEI repetidos; en uno por cantidad, ninguna.
-function checkUnitLines(
-  trackings: Map<string, StockTracking>,
-  lines: { productId: string; quantity: string; count: number | null }[],
-): void {
-  for (const line of lines) {
-    const unit = trackings.get(line.productId) === "unit";
-    const quantity = quantityFromDatabase(line.quantity);
-    if (
-      unit &&
-      (line.count === null || BigInt(line.count) * ONE !== quantity)
-    ) {
-      throw new Error(`unidades que no cubren la línea: ${line.productId}`);
-    }
-    if (!unit && line.count !== null && line.count > 0) {
-      throw new Error(
-        `unidades en un producto por cantidad: ${line.productId}`,
-      );
-    }
-  }
-}
 
 export async function receiveStock(
   tx: DbTransaction,
@@ -1287,13 +1577,8 @@ export function isSerialTakenError(error: unknown): boolean {
 // unidades que creó la recepción. Se bloquean FOR UPDATE, después de los productos y antes de los
 // saldos; si alguna ya no está available, no escribe nada y las devuelve (units_unavailable). Si
 // todas lo están, cada una pasa a written_off con su movimiento goods_receipt_void de 1 que la nombra.
-export type RemovalStockLine = StockLine & { unitIds?: string[] };
-
-export type UnavailableUnit = {
-  id: string;
-  serial: string;
-  status: unitRepository.StockUnitStatus;
-};
+// Desde la 29.5.2, unitIds está en StockLine (brief-29.5.2, D-3).
+export type RemovalStockLine = StockLine;
 
 export type RemoveReceivedStockResult =
   | { ok: true }
@@ -1310,43 +1595,15 @@ export async function removeReceivedStock(
   },
 ): Promise<RemoveReceivedStockResult> {
   const { organizationId } = removal;
-  const trackings = await findProductTrackings(
+  const { trackings, units, unitIdsByProduct } = await lockLineUnits(
     tx,
     organizationId,
-    removal.lines.map((line) => line.productId),
+    removal.lines,
   );
-  checkUnitLines(
-    trackings,
-    removal.lines.map((line) => ({
-      productId: line.productId,
-      quantity: line.quantity,
-      count: line.unitIds ? line.unitIds.length : null,
-    })),
-  );
-  const unitIdsByProduct = new Map(
-    removal.lines.map((line) => [line.productId, line.unitIds ?? []]),
-  );
-  const wanted = removal.lines.flatMap((line) => line.unitIds ?? []);
-  const units = await unitRepository.lockUnits(tx, organizationId, wanted);
-  const byId = new Map(units.map((unit) => [unit.id, unit]));
-  for (const line of removal.lines) {
-    for (const unitId of line.unitIds ?? []) {
-      if (byId.get(unitId)?.productId !== line.productId) {
-        throw new Error(`unidad que no es de la línea: ${unitId}`);
-      }
-    }
-  }
-  const unavailable = units.filter((unit) => unit.status !== "available");
+  // Desde la 29.5.2, una unidad reservada o vendida tampoco sale (brief-29.5.2, AC-7).
+  const unavailable = unavailableUnits(units, "available");
   if (unavailable.length > 0) {
-    return {
-      ok: false,
-      reason: "units_unavailable",
-      units: unavailable.map(({ id, serial, status }) => ({
-        id,
-        serial,
-        status,
-      })),
-    };
+    return { ok: false, reason: "units_unavailable", units: unavailable };
   }
 
   const locked = await lockLines(tx, organizationId, removal.lines);

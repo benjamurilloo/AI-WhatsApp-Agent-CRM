@@ -2,12 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import {
-  getCurrentPrices,
-  searchProducts,
-  suggestProducts,
-} from "@/modules/catalog";
+import { getCurrentPrices, suggestProducts } from "@/modules/catalog";
 import { suggestClients } from "@/modules/crm";
+import { listAvailableUnits } from "@/modules/inventory";
 import {
   cancelOrder,
   confirmOrder,
@@ -21,11 +18,16 @@ import type { AuthContext } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
 import { logEvent, newRequestId } from "@/shared/log";
 import {
+  applyPriceConflicts,
+  readFormLines,
+  resolveTypedLine,
+  toLineInput,
+} from "./form-lines";
+import {
   orderRejection,
   TRANSITION_NOTICE,
   transitionRejection,
   unexpectedErrorMessage,
-  type OrderFormLine,
   type OrderFormState,
   type OrderFormValues,
   type OrderTransitionName,
@@ -58,43 +60,20 @@ function logger(route: string, context: AuthContext) {
   };
 }
 
-// Lo que envió el formulario. Las líneas llegan como campos repetidos, en orden; una línea sin
-// producto, sin texto y sin cantidad es una fila vacía del formulario y no se envía a orders.
+// Lo que envió el formulario: el cliente y las líneas (form-lines.ts, compartido con la venta).
 function readForm(formData: FormData): OrderFormValues {
-  const all = (name: string) =>
-    formData.getAll(name).map((value) => String(value).slice(0, 200));
-  const productIds = all("productId");
-  const productTexts = all("productText");
-  const quantities = all("quantity");
-  const expected = all("expectedPriceId");
-  const amounts = all("priceAmount");
-  const currencies = all("priceCurrency");
-  const lines: OrderFormLine[] = [];
-  for (let index = 0; index < productTexts.length; index++) {
-    const line = {
-      productId: (productIds[index] ?? "").trim(),
-      productText: (productTexts[index] ?? "").trim(),
-      quantity: (quantities[index] ?? "").trim(),
-      expectedPriceId: (expected[index] ?? "").trim(),
-      price:
-        amounts[index] && currencies[index]
-          ? { amount: amounts[index]!, currency: currencies[index]! }
-          : null,
-    };
-    if (line.productId || line.productText || line.quantity) lines.push(line);
-  }
   return {
     clientId: String(formData.get("clientId") ?? "").trim(),
     clientText: String(formData.get("clientText") ?? "")
       .trim()
       .slice(0, 200),
-    lines,
+    lines: readFormLines(formData),
   };
 }
 
 // Sin JavaScript, el buscador es un campo de texto (brief-19.2, D-7): el cliente se reconoce por su
-// nombre exacto, y el producto por su SKU exacto. Como quien carga no vio el precio, el esperado
-// es el vigente de ahora.
+// nombre exacto, y el producto por su SKU exacto (resolveTypedLine). Como quien carga no vio el
+// precio, el esperado es el vigente de ahora.
 async function resolveTypedValues(
   context: AuthContext,
   values: OrderFormValues,
@@ -111,32 +90,7 @@ async function resolveTypedValues(
     if (exact.length === 1) clientId = exact[0]!.id;
   }
   const lines = await Promise.all(
-    values.lines.map(async (line) => {
-      if (line.productId || !line.productText) return line;
-      const found = await searchProducts(context, {
-        text: line.productText,
-        activity: "active",
-      });
-      const exact = found.ok
-        ? found.products.filter(
-            (product) =>
-              product.sku.toLowerCase() === line.productText.toLowerCase(),
-          )
-        : [];
-      if (exact.length !== 1) return line;
-      const product = exact[0]!;
-      const prices = await getCurrentPrices(context, [product.id]);
-      const price = prices.ok ? prices.prices.get(product.id) : undefined;
-      return {
-        ...line,
-        productId: product.id,
-        productText: `${product.name} (${product.sku})`,
-        expectedPriceId: price?.id ?? "",
-        price: price
-          ? { amount: price.amount, currency: price.currency }
-          : null,
-      };
-    }),
+    values.lines.map((line) => resolveTypedLine(context, line)),
   );
   return { ...values, clientId, lines };
 }
@@ -155,25 +109,13 @@ export async function createOrderAction(
     values = await resolveTypedValues(context, values);
     const input: OrderInput = {
       clientId: values.clientId,
-      lines: values.lines.map((line) => ({
-        productId: line.productId,
-        quantity: line.quantity,
-        expectedPriceId: line.expectedPriceId,
-      })),
+      lines: values.lines.map(toLineInput),
     };
     const result = await createOrder(context, input);
     if (!result.ok) {
       log(result.code);
-      // Tras un CONFLICT, el precio nuevo pasa a ser el que se muestra y el esperado.
       if (result.code === "CONFLICT") {
-        for (const changed of result.prices) {
-          const line = values.lines[changed.position - 1];
-          if (!line) continue;
-          line.expectedPriceId = changed.price?.id ?? "";
-          line.price = changed.price
-            ? { amount: changed.price.amount, currency: changed.price.currency }
-            : null;
-        }
+        applyPriceConflicts(values.lines, result.prices);
       }
       const firstCurrency = values.lines[0]?.price?.currency ?? "";
       return {
@@ -293,6 +235,8 @@ export type OrderProductOption = {
   label: string;
   detail: string;
   price: { id: string; amount: string; currency: string } | null;
+  // Desde la 29.5.2: el formulario pide los IMEI en lugar de la cantidad (brief-29.5.2, D-5; H-8).
+  unitTracked: boolean;
 };
 
 export type OrderClientOption = { id: string; label: string };
@@ -319,8 +263,40 @@ export async function searchOrderProductsAction(
         price: price
           ? { id: price.id, amount: price.amount, currency: price.currency }
           : null,
+        unitTracked: product.tracking === "unit",
       };
     });
+  } catch (error) {
+    log("INTERNAL", error);
+    return [];
+  }
+}
+
+// Las unidades disponibles de un producto por unidad, para elegirlas en una línea (brief-29.5.2,
+// D-5): el IMEI, el grado, la batería y el precio propio, sin el costo. Una lectura, como las
+// sugerencias; ante un error, una lista vacía, y el IMEI se puede escribir igual.
+export type OrderUnitOption = {
+  serial: string;
+  grade: string | null;
+  batteryHealth: number | null;
+  price: { amount: string; currency: string } | null;
+};
+
+export async function searchOrderUnitsAction(
+  productId: string,
+): Promise<OrderUnitOption[]> {
+  const context = await requireSession();
+  const { log } = logger("pedidos.unidades", context);
+  try {
+    if (typeof productId !== "string") return [];
+    const found = await listAvailableUnits(context, productId.slice(0, 64));
+    if (!found.ok) return [];
+    return found.units.map((unit) => ({
+      serial: unit.serial,
+      grade: unit.grade,
+      batteryHealth: unit.batteryHealth,
+      price: unit.price,
+    }));
   } catch (error) {
     log("INTERNAL", error);
     return [];
