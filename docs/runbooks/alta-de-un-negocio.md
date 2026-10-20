@@ -43,7 +43,11 @@ Imprime el id de la organización, el del `admin` y la contraseña inicial **una
 
 *Desde la 29.2* ([brief-29.2](../decisions/brief-29.2-capacidades-y-variantes.md), [ADR 0024](../decisions/0024-rubros-y-capacidades.md)). Solo para un negocio cuyo rubro tiene un perfil, como una tienda de iPhone. **Un negocio sin capacidades se salta este paso** y no cambia en nada.
 
-`org:capability` activa la capacidad y, con `--profile`, copia los atributos del perfil (para `iphone`: Capacidad, Color y Trae caja) **en la misma transacción**, auditada con el `admin` como autor. Activarla dos veces no hace nada y lo dice. **No se desactiva**: no hay comando. El correo del `admin` llega por el entorno:
+`org:capability` activa la capacidad y, con `--profile`, copia los atributos del perfil (para `iphone`: Capacidad, Color y Trae caja) **en la misma transacción**, auditada con el `admin` como autor. Activarla dos veces no hace nada y lo dice. **No se desactiva**: no hay comando.
+
+*Desde la 29.5* ([brief-29.5](../decisions/brief-29.5-las-unidades.md)), el perfil `iphone` activa también **`serialized_units`**, las unidades con IMEI, y al activarla copia los grados A, B y C. **Siempre con `--profile iphone`**: con `--capability serialized_units` no se copian los grados, y una corrida posterior con `--profile` tampoco los copia, porque la capacidad ya está activa (lo dice la salida); quedan para crearlos en la pantalla Grados. Una organización que ya tenía `variants` corre el mismo comando: dice que `variants` ya estaba activa, activa `serialized_units` y copia los grados. Así se activó en «iPhone Demo» el 2026-10-20.
+
+El correo del `admin` llega por el entorno:
 
 ```
 sudo bash -c 'read -r -p "Id de la organización: " ORG_ID; read -r -p "Correo del admin: " CAPACIDAD_ADMIN_CORREO; export CAPACIDAD_ADMIN_CORREO; . /etc/crm-production/app.env && export DATABASE_URL && cd /srv/crm-production && exec runuser -u crm -- npm run --silent org:capability -- --organization "$ORG_ID" --profile iphone'

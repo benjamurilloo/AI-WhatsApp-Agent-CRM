@@ -2,6 +2,32 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-20 — 29.5: las unidades
+
+Cierra el 2026-10-20, desplegada en producción (`3a9a69b`) y recorrida por el usuario ([brief-29.5](docs/decisions/brief-29.5-las-unidades.md), §Cierre). Construye la capacidad `serialized_units` del [ADR 0024](docs/decisions/0024-rubros-y-capacidades.md) sobre «iPhone Demo».
+
+**Certifica:**
+- **Un producto por unidad**: un `admin` lo elige mientras el producto no tiene movimientos, en una organización con la capacidad. Cada unidad lleva su IMEI o número de serie, su costo, su grado y su batería.
+- **La recepción con IMEI**: cada unidad recibida entra `available`, el saldo sube una por unidad con su movimiento, y no se escribe `product_costs`. La anulación las da de baja, o se rechaza si alguna ya no está disponible.
+- **El alta y la baja manuales**, con motivo, y la corrección del grado y la batería, desde la pantalla Unidades del producto. El IMEI y el costo no se corrigen.
+- **Los grados**, con su pantalla y su auditoría (`unit_grade`). `org:capability --profile iphone` copia A, B y C al activar la capacidad.
+- **El IMEI único** entre las unidades vigentes de una organización, también con dos altas y dos recepciones concurrentes; el de una unidad dada de baja se vuelve a cargar.
+- **La invariante**: el saldo de un producto por unidad es igual a sus unidades en stock, comprobada después de cada test de las suites de `inventory` y `purchasing`, con una guarda de las escrituras de unidades.
+- **Lo que se rechaza**: el ajuste de cantidad, el pedido (también el del agente) y la venta de un producto por unidad, hasta la 29.5.2.
+- **La condición `used`**: las lecturas del agente no devuelven productos usados; los buscadores de la aplicación sí.
+- **La migración 0056**, aditiva: `stock_units`, `unit_grades`, `goods_receipt_line_units`, `products.tracking`, `inventory_movements.unit_id` y los valores nuevos de los enums.
+- **Sin la capacidad, y en un producto por cantidad, nada cambia**, probado.
+- **En producción**: la capacidad activada por el operador en «iPhone Demo» con los grados A, B y C; el usuario recorrió los grados, el seguimiento, el alta, la recepción con IMEI, la corrección, la baja y el rechazo en pedidos y ventas. «Demostración Vixora» y «Vixora» sin capacidades, grados, unidades ni productos por unidad, comprobado con recuentos.
+- **Una revisión independiente** antes del despliegue (R1: 1 mayor, 7 menores y 9 notas), verificada contra el código y resuelta.
+- **El despliegue detiene el servicio durante el build**: el primer build murió por memoria en el droplet y dejó la hoja de estilos en `500` hasta repetirlo con el servicio detenido. El runbook de producción lo hace así desde ahora.
+
+**No certifica:**
+- ningún negocio real: el de iPhone sigue sin confirmar;
+- las unidades en los pedidos y las ventas: son de la 29.5.2;
+- la comparación de la suma de movimientos en todas las suites (desviación 5 del brief: solo en la de unidades);
+- una segunda revisión independiente de las correcciones, que son autoevaluación;
+- ningún cambio en la forma de los contratos del agente.
+
 ## 2026-10-19 — 29.4.3: devoluciones y pagos en otra moneda
 
 Cierra el 2026-10-19, desplegada en producción (`93c2be1`) y recorrida por el usuario ([brief-29.4.3](docs/decisions/brief-29.4.3-devoluciones-y-pagos-en-otra-moneda.md), §Cierre). Construye la regla del punto 5 del [ADR 0025](docs/decisions/0025-tipo-de-cambio.md) en las salidas de dinero, sobre «iPhone Demo».

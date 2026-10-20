@@ -220,7 +220,7 @@ Pedir autorización explícita, en su turno, **antes de**:
 
 ## Cierre
 
-*Parcial, del 2026-10-19, antes del despliegue. Se completa con el despliegue, la activación y el recorrido (AC-12).*
+*Del 2026-10-19, antes del despliegue; completado el 2026-10-20 con el despliegue, la activación y el recorrido.*
 
 ### Criterios
 
@@ -234,10 +234,12 @@ Pedir autorización explícita, en su turno, **antes de**:
 | AC-6 | parcial | `tests/integration/stock-invariant.ts` corre después de cada test de las suites de `inventory` y `purchasing`; la suma de movimientos se compara solo en `units.test.ts`, porque las demás arman los saldos con SQL directo (desviación 5) |
 | AC-7 | cumple | `findActiveProductsRanked` con `excludeUsed` en las lecturas del agente; `units.test.ts`, «el agente no ve los usados» |
 | AC-8 | cumple | `listProductUnits` sin costo para un `viewer`; `units.test.ts` y el e2e |
-| AC-9 | cumple localmente | las suites existentes pasan; falta CI sobre el SHA desplegado |
-| AC-10 | pendiente de CI | local: typecheck, lint, formato, unitarias y guardas (1797), e2e completo (261, con axe), integración (ver «Corridas») |
+| AC-9 | cumple | las suites existentes pasan en CI sobre el SHA desplegado |
+| AC-10 | cumple | CI run 39400700235 en `success` sobre `3a9a69b6925b06b717d1722b3d99b22f1c0893d3`; en local, typecheck, lint, formato, unitarias y guardas (1797), e2e completo (261, con axe) e integración (ver «Corridas») |
 | AC-11 | cumple | revisión independiente del 2026-10-19, antes del despliegue (abajo) |
-| AC-12 | pendiente | despliegue, activación en «iPhone Demo» y recorrido del usuario |
+| AC-12 | cumple | desplegada (`3a9a69b`, 57 migraciones); el operador activó la capacidad con `--profile iphone` en «iPhone Demo», que quedó con `variants`, `serialized_units` y los grados A, B y C; el usuario recorrió grados, seguimiento, alta, recepción con IMEI, corrección, baja y el rechazo en pedidos y ventas, y dijo «esta todo perfecto». Recuentos: «Demostración Vixora» y «Vixora» con 0 capacidades, 0 grados, 0 unidades y 0 productos `unit` |
+
+**Nivel alcanzado**: validado en integración (`producer-consumer`), desplegado y recorrido en producción sobre una organización demo. No hay negocio real.
 
 ### Desviaciones
 
@@ -268,3 +270,5 @@ Del 2026-10-19, antes del despliegue, por un agente que no participó, de solo l
 - Con la máquina saturada (una llamada de Zoom en curso), el e2e mostró caídas del navegador, timeouts de conexión y procesos que Windows no dejó crear. Liberada la memoria, el e2e de unidades pasó 6 de 6 y el completo 261 de 261.
 - La integración completa dio 9 fallos: 3 de esta subfase (tests de esquema que no conocían las tablas nuevas, y uno que usaba `used` como condición inválida), corregidos; los otros, del entorno. `product-images` D-9 falla en esta máquina porque `bash` es el de WSL, que no hereda las variables de Windows; no cambió en la 29.5.
 - El e2e encontró dos defectos del propio test: localizadores ambiguos y la búsqueda del producto por un prefijo del SKU, que solo se encuentra completo.
+- La última integración completa, con la máquina libre, dio 1631 de 1633. Los dos fallos son del entorno: `product-images` D-9 (el `bash` de WSL) y el umbral de rendimiento de `supplier-payments`, que pasa corrido solo y cuyo código no tocó la 29.5.
+- **El despliegue (2026-10-20).** El primer build en el droplet (2 GB, sin swap) murió por memoria (`Out of memory: Killed process … next-build`, ~1 GB, con la aplicación viva ocupando ~600 MB). `set -e` cortó antes del reinicio, pero el build ya había borrado el `.next` anterior: la aplicación vieja respondía `/api/health` y `/login`, y la hoja de estilos daba `500`. La migración `0056` ya estaba aplicada, y es aditiva. Se repitió el build con el servicio detenido y terminó bien; la verificación posterior pasó (los 11 estáticos de `/login` en 200, HSTS solo sobre HTTPS, la aplicación solo en loopback, ingestión y lectura en 401 sin token). Por decisión del usuario, el paso 3 de [Desplegar un cambio](../../deploy/production/README.md#desplegar-un-cambio) detiene ahora el servicio durante el build.
