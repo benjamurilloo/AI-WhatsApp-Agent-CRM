@@ -356,6 +356,12 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
     { requirement: "sesion" },
   "src/app/(autenticado)/productos/[productId]/unidades/actions.ts#correctUnitAction":
     { requirement: "sesion" },
+  // La reparación de una unidad propia (brief-29.6.2, D-7): mandarla exige admin, repairs y
+  // serialized_units, lo exige service; liberarla, admin y serialized_units, lo exige inventory.
+  "src/app/(autenticado)/productos/[productId]/unidades/actions.ts#sendUnitToRepairAction":
+    { requirement: "sesion" },
+  "src/app/(autenticado)/productos/[productId]/unidades/actions.ts#releaseUnitAction":
+    { requirement: "sesion" },
   // Los grados de la organización (brief-29.5, D-5): solo admin y con serialized_units, lo exige
   // inventory.
   "src/app/(autenticado)/grados/actions.ts#createGradeAction": {
@@ -403,6 +409,11 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
     requirement: "sesion",
   },
   "src/app/(autenticado)/reparaciones/actions.ts#cancelServiceOrderAction": {
+    requirement: "sesion",
+  },
+  // Marcar reparada una unidad propia (brief-29.6.2, D-7): admin, repairs y serialized_units, lo
+  // exige service.
+  "src/app/(autenticado)/reparaciones/actions.ts#markOwnUnitRepairedAction": {
     requirement: "sesion",
   },
   "src/app/(autenticado)/usuarios/actions.ts#createMemberAction": {

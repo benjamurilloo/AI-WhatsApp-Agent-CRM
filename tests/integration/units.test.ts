@@ -597,6 +597,7 @@ describe("el alta, la baja y la corrección manual (D-4, AC-3, AC-4)", () => {
       expect(await writeOffUnit(s.adminA, unitId, "IMEI mal cargado")).toEqual({
         ok: true,
         productId: phone,
+        from: "available",
       });
       await register(s.adminA, other, "ABC123");
       expect(await unitsOf(phone)).toEqual([

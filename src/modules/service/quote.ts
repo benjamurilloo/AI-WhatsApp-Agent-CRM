@@ -8,8 +8,9 @@ import {
 } from "@/shared/money";
 
 // Las reglas puras de la orden de servicio (brief-29.6, D-4): las transiciones de su estado y el
-// armado del presupuesto. No leen la base: quien llama bloquea la orden, lee la lista del modelo y les
-// pasa lo que leyó. El trigger de la 0058 fija las mismas transiciones en la base.
+// armado del presupuesto; desde la 29.6.2, las de la orden de una unidad propia y sus líneas, solo con
+// el costo (brief-29.6.2, D-3). No leen la base: quien llama bloquea la orden, lee la lista del modelo
+// y les pasa lo que leyó. El trigger de la 0059 fija las mismas transiciones en la base.
 
 export type ServiceOrderStatus =
   | "received"
@@ -37,11 +38,31 @@ export const SERVICE_ORDER_TRANSITIONS: Readonly<
   cancelled: [],
 };
 
+export type ServiceOrderKind = "customer_device" | "own_unit";
+
+// La orden de una unidad propia (brief-29.6.2, D-3) nace sent y salta el presupuesto: pasa a repaired,
+// que es final porque la unidad no sale del local, o a cancelled.
+export const OWN_UNIT_TRANSITIONS: Readonly<
+  Record<ServiceOrderStatus, readonly ServiceOrderStatus[]>
+> = {
+  received: [],
+  sent: ["repaired", "cancelled"],
+  quoted: [],
+  approved: [],
+  rejected: [],
+  repaired: [],
+  delivered: [],
+  cancelled: [],
+};
+
 export function canTransition(
   from: ServiceOrderStatus,
   to: ServiceOrderStatus,
+  kind: ServiceOrderKind = "customer_device",
 ): boolean {
-  return SERVICE_ORDER_TRANSITIONS[from].includes(to);
+  const transitions =
+    kind === "own_unit" ? OWN_UNIT_TRANSITIONS : SERVICE_ORDER_TRANSITIONS;
+  return transitions[from].includes(to);
 }
 
 const idSchema = z.uuid();
@@ -218,4 +239,98 @@ export function evaluateQuote(
     return { ok: false, reason: "total_too_large" };
   }
   return { ok: true, lines: validated.lines, customerTotal, technicianTotal };
+}
+
+// Las líneas de una unidad propia (brief-29.6.2, D-3): un tipo de reparación y lo que cobró el técnico,
+// sin precio al cliente, en la moneda del costo de la unidad (U-1), que fija quien llama. Un tipo con
+// costo en la lista en otra moneda se carga a mano en esta: no hay conversión.
+export type RepairCostLineInput = { repairTypeId: string; cost: string };
+
+export type RepairCostLineIssue = {
+  position: number;
+  field: "repairType" | "cost";
+  reason?: AmountRejection;
+};
+
+export type ParsedRepairCostLine = {
+  position: number;
+  repairTypeId: string;
+  cost: Money;
+};
+
+export type RepairCostValidation =
+  | { ok: true; lines: ParsedRepairCostLine[] }
+  | {
+      ok: false;
+      reason: "currency" | "no_lines" | "too_many_lines" | "lines";
+      lines: RepairCostLineIssue[];
+    };
+
+export function parseRepairCostInput(
+  lines: RepairCostLineInput[],
+  currency: string,
+  maxLines: number,
+): RepairCostValidation {
+  const decimals = currencyDecimals(currency);
+  if (!decimals.ok) return { ok: false, reason: "currency", lines: [] };
+  if (lines.length === 0) return { ok: false, reason: "no_lines", lines: [] };
+  if (lines.length > maxLines) {
+    return { ok: false, reason: "too_many_lines", lines: [] };
+  }
+  const issues: RepairCostLineIssue[] = [];
+  const parsed: ParsedRepairCostLine[] = [];
+  const seen = new Set<string>();
+  lines.forEach((line, index) => {
+    const position = index + 1;
+    const repairTypeId = line.repairTypeId.trim().toLowerCase();
+    if (!idSchema.safeParse(repairTypeId).success || seen.has(repairTypeId)) {
+      issues.push({ position, field: "repairType" });
+      return;
+    }
+    seen.add(repairTypeId);
+    const cost = parseMoneyInput(line.cost, decimals.decimals);
+    if (!cost.ok) {
+      issues.push({ position, field: "cost", reason: cost.reason });
+      return;
+    }
+    parsed.push({ position, repairTypeId, cost: cost.amount });
+  });
+  if (issues.length > 0) return { ok: false, reason: "lines", lines: issues };
+  return { ok: true, lines: parsed };
+}
+
+export type RepairCostRule = "missing_type" | "inactive_type";
+
+export type RepairCostEvaluation =
+  | { ok: true; lines: ParsedRepairCostLine[]; total: Money }
+  | {
+      ok: false;
+      reason: "line_rules";
+      lines: { position: number; repairTypeId: string; rule: RepairCostRule }[];
+    }
+  | { ok: false; reason: "total_too_large" };
+
+// Cada tipo existe y está activo, y el total cabe en numeric(14, 2).
+export function evaluateRepairCosts(
+  lines: ParsedRepairCostLine[],
+  types: ReadonlyMap<string, { isActive: boolean }>,
+): RepairCostEvaluation {
+  const issues: {
+    position: number;
+    repairTypeId: string;
+    rule: RepairCostRule;
+  }[] = [];
+  for (const { position, repairTypeId } of lines) {
+    const type = types.get(repairTypeId);
+    if (!type) issues.push({ position, repairTypeId, rule: "missing_type" });
+    else if (!type.isActive) {
+      issues.push({ position, repairTypeId, rule: "inactive_type" });
+    }
+  }
+  if (issues.length > 0) {
+    return { ok: false, reason: "line_rules", lines: issues };
+  }
+  const total = sumLineTotals(lines.map((line) => line.cost));
+  if (total === null) return { ok: false, reason: "total_too_large" };
+  return { ok: true, lines, total };
 }

@@ -93,6 +93,20 @@ export {
   type UnitPrice,
   type UnitSummary,
 } from "./units";
+// La reparación de una unidad propia (brief-29.6.2, D-2): service manda a reparar, marca reparada y
+// cancela con su transacción; liberar a la venta es una acción de un admin.
+export {
+  cancelUnitRepair,
+  getUnitForRepair,
+  RELEASE_REASON,
+  releaseUnit,
+  returnUnitFromRepair,
+  sendUnitToRepair,
+  type ReleaseUnitResult,
+  type ReturnUnitFromRepairResult,
+  type SendUnitToRepairResult,
+  type UnitForRepair,
+} from "./unit-repairs";
 // Los grados de las unidades (brief-29.5, D-5).
 export {
   applyGradeTemplate,

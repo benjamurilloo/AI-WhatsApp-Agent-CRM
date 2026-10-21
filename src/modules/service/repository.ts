@@ -1,9 +1,20 @@
-import { and, asc, count, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  inArray,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { getDb, type Db, type DbTransaction } from "@/shared/db";
 import {
   repairPrices,
   repairTypes,
   serviceOrderCancelReason,
+  serviceOrderKind,
   serviceOrderLines,
   serviceOrders,
   serviceOrderStatus,
@@ -283,6 +294,7 @@ export async function updateRepairPrice(
 
 // Las órdenes de servicio (D-4).
 
+export type ServiceOrderKind = (typeof serviceOrderKind.enumValues)[number];
 export type ServiceOrderStatus = (typeof serviceOrderStatus.enumValues)[number];
 export type ServiceOrderCancelReason =
   (typeof serviceOrderCancelReason.enumValues)[number];
@@ -292,7 +304,10 @@ export const SERVICE_ORDER_CANCEL_REASONS = serviceOrderCancelReason.enumValues;
 export type ServiceOrderRow = {
   id: string;
   number: number;
-  clientId: string;
+  // Desde la 29.6.2 (brief-29.6.2, D-3): una orden tiene cliente o unidad, según su tipo.
+  kind: ServiceOrderKind;
+  clientId: string | null;
+  unitId: string | null;
   modelId: string;
   deviceSerial: string | null;
   reportedIssue: string | null;
@@ -318,7 +333,9 @@ export type ServiceOrderRow = {
 const orderColumns = {
   id: serviceOrders.id,
   number: serviceOrders.number,
+  kind: serviceOrders.kind,
   clientId: serviceOrders.clientId,
+  unitId: serviceOrders.unitId,
   modelId: serviceOrders.modelId,
   deviceSerial: serviceOrders.deviceSerial,
   reportedIssue: serviceOrders.reportedIssue,
@@ -355,7 +372,29 @@ export async function insertServiceOrder(
 ): Promise<ServiceOrderRow> {
   const rows = await tx
     .insert(serviceOrders)
-    .values(values)
+    .values({ ...values, kind: "customer_device" })
+    .returning(orderColumns);
+  return rows[0]!;
+}
+
+// La orden de una unidad propia (brief-29.6.2, D-3) nace mandada al técnico: la unidad ya está en el
+// local, y no hay recepción.
+export async function insertOwnUnitServiceOrder(
+  tx: DbTransaction,
+  values: {
+    organizationId: string;
+    number: number;
+    unitId: string;
+    modelId: string;
+    reportedIssue: string;
+    technicianId: string;
+    sentAt: Date;
+    createdBy: string;
+  },
+): Promise<ServiceOrderRow> {
+  const rows = await tx
+    .insert(serviceOrders)
+    .values({ ...values, kind: "own_unit", status: "sent" })
     .returning(orderColumns);
   return rows[0]!;
 }
@@ -382,7 +421,7 @@ export async function findServiceOrder(
   return rows[0];
 }
 
-// Lo que fija una transición: el estado y sus columnas. El trigger de la 0058 rechaza todo lo demás.
+// Lo que fija una transición: el estado y sus columnas. El trigger de la 0059 rechaza todo lo demás.
 export type ServiceOrderTransition = { status: ServiceOrderStatus } & Partial<{
   technicianId: string;
   customerCurrency: string;
@@ -422,7 +461,8 @@ export async function updateServiceOrder(
 export type ServiceOrderLineRow = {
   repairTypeId: string;
   position: number;
-  price: string;
+  // Null en una unidad propia, que no tiene precio al cliente (brief-29.6.2, D-3).
+  price: string | null;
   cost: string;
 };
 
@@ -458,13 +498,19 @@ export function findServiceOrderLines(
     .orderBy(asc(serviceOrderLines.position));
 }
 
-// La lista (D-10): por estado, por número y por cliente.
+// La lista (D-10): por estado, por número y por cliente; desde la 29.6.2, por tipo y por unidad.
 export type ServiceOrderListQuery = {
   organizationId: string;
   // Null: todos los estados.
   statuses: ServiceOrderStatus[] | null;
   number: number | null;
   clientId: string | null;
+  // Null: los dos tipos.
+  kind?: ServiceOrderKind | null;
+  unitId?: string | null;
+  // Las que siguen abiertas, con los estados abiertos de cada tipo: una orden propia reparada ya
+  // terminó, y una de cliente reparada espera la entrega (brief-29.6.2, D-7).
+  open?: Record<ServiceOrderKind, ServiceOrderStatus[]> | null;
 };
 
 function listConditions(query: ServiceOrderListQuery): SQL {
@@ -479,6 +525,24 @@ function listConditions(query: ServiceOrderListQuery): SQL {
   }
   if (query.clientId !== null) {
     conditions.push(eq(serviceOrders.clientId, query.clientId));
+  }
+  if (query.kind != null) {
+    conditions.push(eq(serviceOrders.kind, query.kind));
+  }
+  if (query.unitId != null) {
+    conditions.push(eq(serviceOrders.unitId, query.unitId));
+  }
+  if (query.open != null) {
+    conditions.push(
+      or(
+        ...Object.entries(query.open).map(([kind, statuses]) =>
+          and(
+            eq(serviceOrders.kind, kind as ServiceOrderKind),
+            inArray(serviceOrders.status, statuses),
+          ),
+        ),
+      )!,
+    );
   }
   return and(...conditions)!;
 }
@@ -507,8 +571,25 @@ export function findServiceOrders(
     .offset(offset);
 }
 
-// Lo que se le debe a los técnicos (D-7): las órdenes reparadas o entregadas que se repararon, con su
-// técnico, su costo total y la fecha de reparación. Lee con la transacción de cash: en el pago, detrás
+// Las órdenes de unas unidades propias (brief-29.6.2, D-7), de la más reciente a la más vieja.
+export function findServiceOrdersOfUnits(
+  organizationId: string,
+  unitIds: string[],
+): Promise<ServiceOrderRow[]> {
+  return getDb()
+    .select(orderColumns)
+    .from(serviceOrders)
+    .where(
+      and(
+        eq(serviceOrders.organizationId, organizationId),
+        inArray(serviceOrders.unitId, unitIds),
+      ),
+    )
+    .orderBy(desc(serviceOrders.createdAt), desc(serviceOrders.id));
+}
+
+// Lo que se le debe a los técnicos (D-7): las órdenes reparadas o entregadas que se repararon, de los
+// dos tipos (brief-29.6.2, D-4), con su técnico, su costo total y la fecha de reparación. Lee con la transacción de cash: en el pago, detrás
 // del bloqueo de cobros; en las lecturas de la cuenta, en una sola foto.
 export type TechnicianChargeRow = {
   id: string;
@@ -545,7 +626,8 @@ export async function findTechnicianCharges(
       ),
     )
     .orderBy(asc(serviceOrders.repairedAt), asc(serviceOrders.number));
-  // repaired_at supone approved_at, quoted_at, sent_at y el técnico (CHECK de la 0058).
+  // repaired_at supone sent_at, el técnico y su total (CHECK de la 0059): el del presupuesto en la
+  // orden de un cliente, y el que se fija al repararla en la de una unidad propia.
   return rows.map((row) => ({
     id: row.id,
     number: row.number,

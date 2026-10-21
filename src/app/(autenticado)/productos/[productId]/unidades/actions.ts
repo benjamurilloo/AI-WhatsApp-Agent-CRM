@@ -6,14 +6,18 @@ import {
   changeProductTracking,
   correctUnit,
   registerUnit,
+  releaseUnit,
   writeOffUnit,
 } from "@/modules/inventory";
 import type { AuthContext } from "@/modules/organizations";
+import { createOwnUnitServiceOrder } from "@/modules/service";
 import { requireSession } from "@/app/_auth/session";
 import { logEvent, newRequestId } from "@/shared/log";
 import {
   correctRejection,
   registerRejection,
+  releaseRejection,
+  sendToRepairRejection,
   trackingRejection,
   unexpectedErrorMessage,
   writeOffRejection,
@@ -24,7 +28,7 @@ import {
 // Server Actions de las unidades de un producto (brief-29.5, D-3, D-4 y D-6). Next.js compara Origin
 // con Host; la sesión se verifica acá, y el rol, la organización y la capacidad, en inventory. El log
 // lleva actor, organización, código y duración, nunca el IMEI ni el costo. Cada una es el único
-// llamador de su servicio (tests/guards/unit-writes.test.ts).
+// llamador de su servicio (tests/guards/unit-writes.test.ts y, mandar a reparar, service-writes).
 
 type LogCode = Parameters<typeof logEvent>[0]["code"];
 
@@ -82,6 +86,7 @@ async function runForm<R extends { ok: boolean; code?: string }>(
     }
     logDone(started, requestId, route, "OK", context);
     revalidatePath("/productos", "layout");
+    revalidatePath("/reparaciones", "layout");
     destination = outcome(result as R & { ok: true });
   } catch (error) {
     logDone(started, requestId, route, "INTERNAL", context, error);
@@ -148,7 +153,8 @@ export async function writeOffUnitAction(
     "productos.unidades.baja",
     values,
     (context) => writeOffUnit(context, unitId, values.reason),
-    (result) => `${unitsPath(result.productId)}?aviso=unidad-baja`,
+    (result) =>
+      `${unitsPath(result.productId)}?aviso=${result.from === "in_review" ? "unidad-baja-revision" : "unidad-baja"}`,
     writeOffRejection,
   );
 }
@@ -174,5 +180,39 @@ export async function correctUnitAction(
         ? `${unitsPath(result.productId)}?aviso=unidad-corregida`
         : unitsPath(productId),
     correctRejection,
+  );
+}
+
+// Mandar una unidad a reparar (brief-29.6.2, D-7): crea su orden propia y lleva a la orden.
+export async function sendUnitToRepairAction(
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const unitId = text(formData, "unitId", 64);
+  const values = {
+    technicianId: text(formData, "technicianId", 64),
+    reportedIssue: text(formData, "reportedIssue", 1100),
+  };
+  return runForm(
+    "productos.unidades.reparar",
+    values,
+    (context) => createOwnUnitServiceOrder(context, unitId, values),
+    (result) => `/reparaciones/${result.order.id}?aviso=unidad-mandada`,
+    sendToRepairRejection,
+  );
+}
+
+// Liberar a la venta una unidad en revisión (brief-29.6.2, D-2).
+export async function releaseUnitAction(
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const unitId = text(formData, "unitId", 64);
+  return runForm(
+    "productos.unidades.liberar",
+    {},
+    (context) => releaseUnit(context, unitId),
+    (result) => `${unitsPath(result.productId)}?aviso=unidad-liberada`,
+    releaseRejection,
   );
 }

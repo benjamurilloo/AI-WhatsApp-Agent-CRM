@@ -70,6 +70,10 @@ const TYPE_LABEL: Record<string, string> = {
   // Desde la 22.5: la salida de la anulación de una recepción; el motivo nombra la anulación y la
   // recepción, no el proveedor (ADR 0023, punto 6; brief-22.5, D-9).
   goods_receipt_void: "Anulación de recepción",
+  // Desde la 29.6.2: una unidad que va a reparar y una que se libera a la venta; el motivo de la
+  // primera lleva el número de su orden (brief-29.6.2, D-1).
+  unit_to_repair: "A reparación",
+  unit_released: "Liberada a la venta",
 };
 
 // Pantalla 5 (wireframe 05): ajuste para admin e historial para admin y viewer, con filtros
@@ -225,6 +229,8 @@ export default async function MovementsPage({
               <option value="anulacion-recepcion">
                 Anulación de recepción
               </option>
+              <option value="a-reparacion">A reparación</option>
+              <option value="liberacion">Liberada a la venta</option>
             </select>
           </div>
           <div className="flex flex-col gap-1">

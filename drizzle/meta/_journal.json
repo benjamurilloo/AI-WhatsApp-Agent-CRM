@@ -414,6 +414,13 @@
       "when": 1792521509485,
       "tag": "0058_las_reparaciones_de_equipos_de_clientes",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1792536423345,
+      "tag": "0059_las_reparaciones_de_unidades_propias",
+      "breakpoints": true
     }
   ]
 }

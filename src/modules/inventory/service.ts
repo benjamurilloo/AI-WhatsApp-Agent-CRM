@@ -463,6 +463,8 @@ export const MOVEMENT_DIRECTION: Record<StockMovementType, 1 | -1> = {
   sale_void: 1,
   goods_receipt: 1,
   goods_receipt_void: -1,
+  unit_to_repair: -1,
+  unit_released: 1,
 };
 
 // El ajuste manual acepta solo sus dos tipos: order_delivery lo escribe la entrega de un pedido

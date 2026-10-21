@@ -17,6 +17,8 @@ import {
   changeTrackingAction,
   correctUnitAction,
   registerUnitAction,
+  releaseUnitAction,
+  sendUnitToRepairAction,
   writeOffUnitAction,
 } from "./actions";
 import { TRACKING_HINT, TRACKING_LABEL, type FormState } from "./messages";
@@ -387,10 +389,13 @@ export function WriteOffForm({
   productId,
   unitId,
   serial,
+  inReview = false,
 }: {
   productId: string;
   unitId: string;
   serial: string;
+  // Desde la 29.6.2: una unidad en revisión se da de baja sin tocar el stock (brief-29.6.2, U-2).
+  inReview?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(writeOffUnitAction, idle);
   const prefix = `baja-${unitId}`;
@@ -401,8 +406,11 @@ export function WriteOffForm({
       <input type="hidden" name="unitId" value={unitId} />
       <p>
         Dar de baja la unidad{" "}
-        <span className="font-mono font-semibold">{serial}</span>: sale del
-        stock y no vuelve. Su IMEI queda libre para cargarlo de nuevo.
+        <span className="font-mono font-semibold">{serial}</span>:{" "}
+        {inReview
+          ? "está en revisión, fuera del stock, y no vuelve."
+          : "sale del stock y no vuelve."}{" "}
+        Su IMEI queda libre para cargarlo de nuevo.
       </p>
       <Field
         state={state}
@@ -521,6 +529,116 @@ export function CorrectUnitForm({
           Cancelar
         </Link>
       </div>
+    </form>
+  );
+}
+
+export type TechnicianOption = { id: string; name: string };
+
+// Mandar una unidad a reparar (brief-29.6.2, D-7): el técnico y qué hay que reparar. Crea la orden
+// propia, ya mandada, y lleva a ella.
+export function SendToRepairForm({
+  productId,
+  unitId,
+  serial,
+  technicians,
+}: {
+  productId: string;
+  unitId: string;
+  serial: string;
+  technicians: TechnicianOption[];
+}) {
+  const [state, formAction, pending] = useActionState(
+    sendUnitToRepairAction,
+    idle,
+  );
+  const prefix = `reparar-${unitId}`;
+  const errorRef = useFocusError(state, prefix);
+  return (
+    <form action={formAction} className="flex flex-col gap-4">
+      <input type="hidden" name="unitId" value={unitId} />
+      <p>
+        Mandar la unidad{" "}
+        <span className="font-mono font-semibold">{serial}</span> al técnico:
+        sale del stock hasta que vuelva y se libere a la venta.
+      </p>
+      <Field
+        state={state}
+        prefix={prefix}
+        name="technicianId"
+        label="Técnico"
+        required
+      >
+        {(props) => (
+          <select
+            {...props}
+            name="technicianId"
+            required
+            defaultValue={value(state, "technicianId", "")}
+            className={selectClass}
+          >
+            <option value="">Elegí un técnico</option>
+            {technicians.map((technician) => (
+              <option key={technician.id} value={technician.id}>
+                {technician.name}
+              </option>
+            ))}
+          </select>
+        )}
+      </Field>
+      <Field
+        state={state}
+        prefix={prefix}
+        name="reportedIssue"
+        label="Qué hay que reparar"
+        required
+      >
+        {(props) => (
+          <textarea
+            {...props}
+            name="reportedIssue"
+            required
+            rows={3}
+            maxLength={1000}
+            defaultValue={value(state, "reportedIssue", "")}
+            className={inputClass}
+          />
+        )}
+      </Field>
+      <GeneralError state={state} errorRef={errorRef} />
+      <div className="flex flex-wrap gap-3">
+        <button type="submit" disabled={pending} className={inlineButtonClass}>
+          {pending ? "Mandando…" : "Mandar a reparar"}
+        </button>
+        <Link
+          href={`/productos/${productId}/unidades`}
+          className={secondaryLinkClass}
+        >
+          Cancelar
+        </Link>
+      </div>
+    </form>
+  );
+}
+
+// Liberar a la venta una unidad en revisión (brief-29.6.2, D-2): vuelve al stock.
+export function ReleaseUnitForm({
+  unitId,
+  serial,
+}: {
+  unitId: string;
+  serial: string;
+}) {
+  const [state, formAction, pending] = useActionState(releaseUnitAction, idle);
+  const errorRef = useFocusError(state, `liberar-${unitId}`);
+  return (
+    <form action={formAction} className="flex flex-col gap-2">
+      <input type="hidden" name="unitId" value={unitId} />
+      <button type="submit" disabled={pending} className={inlineButtonClass}>
+        {pending ? "Liberando…" : "Liberar a la venta"}
+        <span className="sr-only"> {serial}</span>
+      </button>
+      <GeneralError state={state} errorRef={errorRef} />
     </form>
   );
 }

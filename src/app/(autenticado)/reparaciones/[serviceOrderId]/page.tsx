@@ -5,6 +5,7 @@ import { AUDIT_PAGE_SIZE } from "@/modules/audit";
 import { getOrganizationTimezone } from "@/modules/organizations";
 import { listTechnicians } from "@/modules/purchasing";
 import {
+  getOwnUnitRepairForm,
   getQuoteForm,
   getServiceOrder,
   listServiceOrderAudit,
@@ -38,16 +39,20 @@ import {
   CANCEL_REASON_LABEL,
   ERASED_TEXT,
   noticeMessage,
+  OWN_UNIT_TEXT,
   SERVICE_ORDER_NOT_FOUND_MESSAGE,
   UNKNOWN_CLIENT_TEXT,
   UNKNOWN_MODEL_TEXT,
   UNKNOWN_TYPE_TEXT,
+  UNKNOWN_UNIT_TEXT,
 } from "../messages";
+import { UNIT_STATUS_LABEL } from "@/app/(autenticado)/productos/[productId]/unidades/messages";
 import { ServiceOrderStatusBadge } from "../sub-nav";
 import { auditActionLabel, describeAuditDiff } from "./audit-summary";
 import {
   CancelForm,
   DeliverButton,
+  OwnUnitRepairedForm,
   QuoteForm,
   SendForm,
   StepButton,
@@ -69,7 +74,9 @@ const CANCELLABLE = new Set(["received", "sent", "quoted", "approved"]);
 // El detalle de una orden de servicio (brief-29.6, D-4 y D-10): el equipo y el cliente, el técnico, el
 // presupuesto, la venta de la entrega y, para un admin, la acción de cada estado y la historia. Un
 // viewer la ve sin el técnico ni el costo (ADR 0024, punto 14). El comprobante de recepción se imprime
-// en su propia página. Sin la capacidad repairs, 404.
+// en su propia página. Sin la capacidad repairs, 404. Desde la 29.6.2 (brief-29.6.2, D-7), la orden de
+// una unidad propia: la unidad, el técnico, qué hay que reparar y, mientras está en el técnico,
+// marcarla reparada con lo que cobró o cancelarla. No tiene presupuesto, comprobante ni entrega.
 export default async function ServiceOrderPage({
   params,
   searchParams,
@@ -94,26 +101,32 @@ export default async function ServiceOrderPage({
   const order = found.order;
   const href = `/reparaciones/${order.id}`;
   const isAdmin = context.role === "admin";
-  const [timeZone, audit, technicians, quoteForm] = await Promise.all([
-    getOrganizationTimezone(context),
-    isAdmin
-      ? listServiceOrderAudit(context, order.id, page(query.historial))
-      : Promise.resolve(null),
-    isAdmin && order.status === "received"
-      ? listTechnicians(context)
-      : Promise.resolve(null),
-    isAdmin && order.status === "sent"
-      ? getQuoteForm(context, order.id)
-      : Promise.resolve(null),
-  ]);
+  const ownUnit = order.kind === "own_unit";
+  const [timeZone, audit, technicians, quoteForm, repairForm] =
+    await Promise.all([
+      getOrganizationTimezone(context),
+      isAdmin
+        ? listServiceOrderAudit(context, order.id, page(query.historial))
+        : Promise.resolve(null),
+      isAdmin && order.status === "received"
+        ? listTechnicians(context)
+        : Promise.resolve(null),
+      isAdmin && order.status === "sent" && !ownUnit
+        ? getQuoteForm(context, order.id)
+        : Promise.resolve(null),
+      isAdmin && order.status === "sent" && ownUnit
+        ? getOwnUnitRepairForm(context, order.id)
+        : Promise.resolve(null),
+    ]);
   const actorLabel = audit?.ok
     ? await auditActorLabels(context.organizationId, audit.entries)
     : null;
   const notice = noticeMessage(query.aviso);
   const money = (amount: string | null, currency: string | null) =>
     amount !== null && currency !== null ? formatMoney(amount, currency) : "—";
+  const unitLabel = order.unit?.serial ?? UNKNOWN_UNIT_TEXT;
   const dates: [string, Date | null][] = [
-    ["Recibida", order.createdAt],
+    [ownUnit ? "Creada" : "Recibida", order.createdAt],
     ["Mandada al técnico", order.sentAt],
     ["Presupuestada", order.quotedAt],
     ["Aprobada", order.approvedAt],
@@ -132,15 +145,19 @@ export default async function ServiceOrderPage({
         badges={<ServiceOrderStatusBadge status={order.status} />}
         subtitle={
           <p>
-            {order.client?.displayName ?? UNKNOWN_CLIENT_TEXT} ·{" "}
-            {order.model?.name ?? UNKNOWN_MODEL_TEXT}
+            {ownUnit
+              ? `${OWN_UNIT_TEXT} ${unitLabel}`
+              : (order.client?.displayName ?? UNKNOWN_CLIENT_TEXT)}{" "}
+            · {order.model?.name ?? UNKNOWN_MODEL_TEXT}
           </p>
         }
         actions={
-          <Link href={`${href}/recepcion`} className={secondaryLinkClass}>
-            <Icon name="printer" className="size-4" />
-            Comprobante de recepción
-          </Link>
+          ownUnit ? undefined : (
+            <Link href={`${href}/recepcion`} className={secondaryLinkClass}>
+              <Icon name="printer" className="size-4" />
+              Comprobante de recepción
+            </Link>
+          )
         }
       />
 
@@ -150,7 +167,8 @@ export default async function ServiceOrderPage({
 
       {isAdmin &&
       order.status !== "delivered" &&
-      order.status !== "cancelled" ? (
+      order.status !== "cancelled" &&
+      !(ownUnit && order.status === "repaired") ? (
         <section
           aria-labelledby="siguiente-titulo"
           className={`mt-6 ${cardClass} p-5 sm:p-6`}
@@ -171,6 +189,23 @@ export default async function ServiceOrderPage({
                   desde su ficha en{" "}
                   <Link href="/compras/proveedores" className={linkClass}>
                     Proveedores
+                  </Link>
+                  .
+                </p>
+              )
+            ) : null}
+            {order.status === "sent" && repairForm?.ok ? (
+              repairForm.form.rows.length > 0 ? (
+                <OwnUnitRepairedForm
+                  serviceOrderId={order.id}
+                  rows={repairForm.form.rows}
+                  currency={repairForm.form.currency}
+                />
+              ) : (
+                <p className="text-sm">
+                  No hay tipos de reparación activos: cargalos en la{" "}
+                  <Link href="/reparaciones/lista" className={linkClass}>
+                    lista de reparaciones
                   </Link>
                   .
                 </p>
@@ -251,10 +286,11 @@ export default async function ServiceOrderPage({
             <div className="mt-6 border-t border-border pt-4">
               <h3 className="text-sm font-semibold">Cancelar la orden</h3>
               <p className="mb-3 text-sm text-muted">
-                No se deshace: si hay que volver a recibir el equipo, se carga
-                otra orden.
+                {ownUnit
+                  ? "No se deshace: la unidad vuelve en revisión, sin cambiar su costo. Para mandarla otra vez, se carga otra orden."
+                  : "No se deshace: si hay que volver a recibir el equipo, se carga otra orden."}
               </p>
-              <CancelForm serviceOrderId={order.id} />
+              <CancelForm serviceOrderId={order.id} ownUnit={ownUnit} />
             </div>
           ) : null}
         </section>
@@ -266,34 +302,64 @@ export default async function ServiceOrderPage({
           className={`${cardClass} p-5 sm:p-6`}
         >
           <h2 id="equipo-titulo" className={sectionTitleClass}>
-            El equipo
+            {ownUnit ? "La unidad" : "El equipo"}
           </h2>
           <dl className="mt-3 grid gap-2 text-sm">
-            <div>
-              <dt className="text-muted">Cliente</dt>
-              <dd className="font-semibold">
-                {order.client ? (
-                  <Link
-                    href={`/clientes/${order.client.id}`}
-                    className={linkClass}
-                  >
-                    {order.client.displayName}
-                  </Link>
-                ) : (
-                  UNKNOWN_CLIENT_TEXT
-                )}
-              </dd>
-            </div>
+            {ownUnit ? (
+              <div>
+                <dt className="text-muted">Unidad propia</dt>
+                <dd className="font-mono font-semibold">
+                  {order.unit?.productId ? (
+                    <Link
+                      href={`/productos/${order.unit.productId}/unidades`}
+                      className={linkClass}
+                    >
+                      {unitLabel}
+                    </Link>
+                  ) : (
+                    unitLabel
+                  )}
+                </dd>
+                {order.unit?.productName ? (
+                  <dd>{order.unit.productName}</dd>
+                ) : null}
+                {order.unit?.status ? (
+                  <dd className="text-muted">
+                    Hoy: {UNIT_STATUS_LABEL[order.unit.status]}
+                  </dd>
+                ) : null}
+              </div>
+            ) : (
+              <div>
+                <dt className="text-muted">Cliente</dt>
+                <dd className="font-semibold">
+                  {order.client ? (
+                    <Link
+                      href={`/clientes/${order.client.id}`}
+                      className={linkClass}
+                    >
+                      {order.client.displayName}
+                    </Link>
+                  ) : (
+                    UNKNOWN_CLIENT_TEXT
+                  )}
+                </dd>
+              </div>
+            )}
             <div>
               <dt className="text-muted">Modelo</dt>
               <dd>{order.model?.name ?? UNKNOWN_MODEL_TEXT}</dd>
             </div>
+            {ownUnit ? null : (
+              <div>
+                <dt className="text-muted">IMEI o número de serie</dt>
+                <dd className="font-mono">{order.deviceSerial ?? "—"}</dd>
+              </div>
+            )}
             <div>
-              <dt className="text-muted">IMEI o número de serie</dt>
-              <dd className="font-mono">{order.deviceSerial ?? "—"}</dd>
-            </div>
-            <div>
-              <dt className="text-muted">Lo que reporta el cliente</dt>
+              <dt className="text-muted">
+                {ownUnit ? "Qué hay que reparar" : "Lo que reporta el cliente"}
+              </dt>
               <dd className="whitespace-pre-line">
                 {order.reportedIssue ?? ERASED_TEXT}
               </dd>
@@ -347,12 +413,13 @@ export default async function ServiceOrderPage({
         className={`mt-6 ${cardClass} p-5 sm:p-6`}
       >
         <h2 id="presupuesto-titulo" className={sectionTitleClass}>
-          Presupuesto
+          {ownUnit ? "Reparaciones" : "Presupuesto"}
         </h2>
         {order.lines.length === 0 ? (
           <p className="mt-2 text-sm text-muted">
-            Todavía no tiene presupuesto: se carga cuando el técnico revisa el
-            equipo.
+            {ownUnit
+              ? "Se cargan cuando el técnico la devuelve: lo que reparó y lo que cobró."
+              : "Todavía no tiene presupuesto: se carga cuando el técnico revisa el equipo."}
           </p>
         ) : (
           <div
@@ -370,12 +437,14 @@ export default async function ServiceOrderPage({
                   <th scope="col" className={tableHeadCellClass}>
                     Reparación
                   </th>
-                  <th
-                    scope="col"
-                    className={`${tableHeadCellClass} text-right`}
-                  >
-                    Precio al cliente
-                  </th>
+                  {ownUnit ? null : (
+                    <th
+                      scope="col"
+                      className={`${tableHeadCellClass} text-right`}
+                    >
+                      Precio al cliente
+                    </th>
+                  )}
                   {isAdmin ? (
                     <th
                       scope="col"
@@ -392,11 +461,13 @@ export default async function ServiceOrderPage({
                     <td className={tableCellClass}>
                       {line.repairTypeName ?? UNKNOWN_TYPE_TEXT}
                     </td>
-                    <td
-                      className={`${tableCellClass} text-right whitespace-nowrap tabular-nums`}
-                    >
-                      {money(line.price, order.customerCurrency)}
-                    </td>
+                    {ownUnit ? null : (
+                      <td
+                        className={`${tableCellClass} text-right whitespace-nowrap tabular-nums`}
+                      >
+                        {money(line.price, order.customerCurrency)}
+                      </td>
+                    )}
                     {isAdmin ? (
                       <td
                         className={`${tableCellClass} text-right whitespace-nowrap tabular-nums`}
@@ -407,28 +478,32 @@ export default async function ServiceOrderPage({
                   </tr>
                 ))}
               </tbody>
-              <tfoot>
-                <tr>
-                  <th
-                    scope="row"
-                    className={`${tableCellClass} text-right font-semibold`}
-                  >
-                    Total
-                  </th>
-                  <td
-                    className={`${tableCellClass} text-right font-semibold whitespace-nowrap tabular-nums`}
-                  >
-                    {money(order.customerTotal, order.customerCurrency)}
-                  </td>
-                  {isAdmin ? (
-                    <td
-                      className={`${tableCellClass} text-right font-semibold whitespace-nowrap tabular-nums`}
+              {ownUnit && !isAdmin ? null : (
+                <tfoot>
+                  <tr>
+                    <th
+                      scope="row"
+                      className={`${tableCellClass} text-right font-semibold`}
                     >
-                      {money(order.technicianTotal, order.technicianCurrency)}
-                    </td>
-                  ) : null}
-                </tr>
-              </tfoot>
+                      Total
+                    </th>
+                    {ownUnit ? null : (
+                      <td
+                        className={`${tableCellClass} text-right font-semibold whitespace-nowrap tabular-nums`}
+                      >
+                        {money(order.customerTotal, order.customerCurrency)}
+                      </td>
+                    )}
+                    {isAdmin ? (
+                      <td
+                        className={`${tableCellClass} text-right font-semibold whitespace-nowrap tabular-nums`}
+                      >
+                        {money(order.technicianTotal, order.technicianCurrency)}
+                      </td>
+                    ) : null}
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
         )}

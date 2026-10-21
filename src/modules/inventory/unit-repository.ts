@@ -8,10 +8,10 @@ import {
 } from "./schema";
 
 // Acceso a stock_units y unit_grades (ADR 0024, puntos 6 y 13; brief-29.5, D-2, D-4 y D-5). Las
-// escrituras de stock_units son insertStockUnit, setUnitsWrittenOff, updateUnitDetails y, desde la
-// 29.5.2, setUnitsStatus, de brief-29.5.2, D-3; las de unit_grades, insertGrade y updateGrade:
-// tests/guards/unit-writes.test.ts fija quién llama a cada una. El saldo y los movimientos siguen en
-// repository.ts.
+// escrituras de stock_units son insertStockUnit, setUnitsWrittenOff, updateUnitDetails, desde la
+// 29.5.2, setUnitsStatus, de brief-29.5.2, D-3, y desde la 29.6.2, setUnitRepaired, de brief-29.6.2,
+// D-2; las de unit_grades, insertGrade y updateGrade: tests/guards/unit-writes.test.ts fija quién
+// llama a cada una. El saldo y los movimientos siguen en repository.ts.
 
 type Executor = Db | DbTransaction;
 
@@ -284,12 +284,13 @@ export async function setUnitsStatus(
   }
 }
 
-// Solo desde available: quien llama ya las bloqueó y comprobó su estado, así que una que no cambia es
-// un defecto, y se lanza dentro de la transacción.
+// Desde available o, desde la 29.6.2, desde in_review (brief-29.6.2, U-2): quien llama ya las bloqueó y
+// comprobó su estado, así que una que no cambia es un defecto, y se lanza dentro de la transacción.
 export async function setUnitsWrittenOff(
   tx: DbTransaction,
   organizationId: string,
   unitIds: string[],
+  from: "available" | "in_review" = "available",
 ): Promise<void> {
   if (unitIds.length === 0) return;
   const rows = await tx
@@ -299,12 +300,36 @@ export async function setUnitsWrittenOff(
       and(
         eq(stockUnits.organizationId, organizationId),
         inArray(stockUnits.id, unitIds),
-        eq(stockUnits.status, "available"),
+        eq(stockUnits.status, from),
       ),
     )
     .returning({ id: stockUnits.id });
   if (rows.length !== unitIds.length) {
-    throw new Error("setUnitsWrittenOff: una unidad no estaba disponible");
+    throw new Error(`setUnitsWrittenOff: una unidad no estaba en ${from}`);
+  }
+}
+
+// La vuelta de reparación (brief-29.6.2, D-2): in_repair → in_review con el costo ya sumado. El
+// trigger acepta un costo nuevo solo en esta transición, y solo mayor.
+export async function setUnitRepaired(
+  tx: DbTransaction,
+  organizationId: string,
+  unitId: string,
+  cost: string,
+): Promise<void> {
+  const rows = await tx
+    .update(stockUnits)
+    .set({ status: "in_review", cost })
+    .where(
+      and(
+        eq(stockUnits.organizationId, organizationId),
+        eq(stockUnits.id, unitId),
+        eq(stockUnits.status, "in_repair"),
+      ),
+    )
+    .returning({ id: stockUnits.id });
+  if (rows.length !== 1) {
+    throw new Error("setUnitRepaired: la unidad no estaba en reparación");
   }
 }
 

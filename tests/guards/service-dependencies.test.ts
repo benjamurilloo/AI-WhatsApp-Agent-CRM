@@ -4,15 +4,14 @@ import { describe, expect, it } from "vitest";
 
 // Guarda de la dirección de las dependencias de service (brief-29.6, D-8; ADR 0024, punto 16), con el
 // molde de purchasing-dependencies. service depende de catalog, crm, purchasing, sales, numbering,
-// organizations y audit, y ningún módulo depende de service salvo cash, que lee las deudas de los
+// organizations y audit, y desde la 29.6.2 de inventory (brief-29.6.2, D-5), y ningún módulo depende de service salvo cash, que lee las deudas de los
 // técnicos (D-7). Un import de service en sales o en inventory cerraría un ciclo que ni
 // eslint.config.mjs ni module-boundary ven: los dos solo prohíben entrar a un módulo por fuera de su
 // index.ts.
 //
 // Dos reglas:
 // 1. src/modules/service/ importa solo de su lista, los esquemas de los módulos que nombra en
-//    schema.ts, src/shared, sus propios archivos y paquetes. No importa inventory hasta la 29.6.2, ni
-//    cash, ni orders;
+//    schema.ts, src/shared, sus propios archivos y paquetes. No importa cash ni orders;
 // 2. entre los módulos, solo cash importa service. Las pantallas y los scripts lo usan, y no cuentan.
 //
 // Lee el texto: import y export con from, el import de efecto y el import dinámico con un literal. No
@@ -21,6 +20,7 @@ import { describe, expect, it } from "vitest";
 const SERVICE_ALLOWED = new Set([
   "catalog",
   "crm",
+  "inventory",
   "purchasing",
   "sales",
   "numbering",
@@ -33,6 +33,7 @@ const SCHEMAS_ALLOWED = new Set([
   "auth",
   "catalog",
   "crm",
+  "inventory",
   "organizations",
   "purchasing",
   "sales",
@@ -74,12 +75,12 @@ function importerViolations(file: string, code: string): string[] {
 
 describe("detección", () => {
   it.each([
-    ["inventory", 'import { sellStock } from "@/modules/inventory";'],
     ["cash", 'import { createSupplierPayment } from "@/modules/cash";'],
     ["orders", 'export { createOrder } from "@/modules/orders";'],
+    ["tradeins", 'import { registerTradeIn } from "@/modules/tradeins";'],
     [
-      "inventory por su esquema",
-      'import { stockUnits } from "@/modules/inventory/schema";',
+      "orders por su esquema",
+      'import { orders } from "@/modules/orders/schema";',
     ],
     [
       "cash con un import dinámico",
@@ -98,6 +99,8 @@ describe("detección", () => {
       'import { findServiceProduct } from "@/modules/catalog";',
       'import { clients } from "@/modules/crm/schema";',
       'import { issueServiceSale } from "@/modules/sales";',
+      'import { sendUnitToRepair } from "@/modules/inventory";',
+      'import { stockUnits } from "@/modules/inventory/schema";',
       'import { sales } from "@/modules/sales/schema";',
       'import { lockTechnicianForServiceOrder } from "@/modules/purchasing";',
       'import { failure } from "@/shared/errors";',

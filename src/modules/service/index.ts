@@ -1,8 +1,9 @@
 // Interfaz pública del módulo service (ADR 0024, puntos 7 y 10; brief-29.6): las reparaciones, detrás
 // de la capacidad repairs. La lista de reparaciones por modelo, la orden de servicio del equipo de un
-// cliente con su presupuesto y su venta, y lo que se le debe a cada técnico, que lee cash. service
-// depende de catalog, crm, purchasing, sales, numbering, organizations y audit; ningún módulo depende
-// de service salvo cash, por las deudas del técnico. Lo fija la guarda service-dependencies.
+// cliente con su presupuesto y su venta, la de una unidad propia (brief-29.6.2), y lo que se le debe a
+// cada técnico, que lee cash. service depende de catalog, crm, inventory (desde la 29.6.2), purchasing,
+// sales, numbering, organizations y audit; ningún módulo depende de service salvo cash, por las deudas
+// del técnico. Lo fija la guarda service-dependencies.
 export {
   applyRepairTypeTemplate,
   createRepairType,
@@ -55,6 +56,7 @@ export {
   listServiceOrders,
   markServiceOrderRepaired,
   MAX_SERVICE_ORDER_LINES,
+  OPEN_OWN_UNIT_STATUSES,
   OPEN_SERVICE_ORDER_STATUSES,
   parseServiceOrderNumberSearch,
   quoteServiceOrder,
@@ -76,6 +78,8 @@ export {
   type ServiceOrderDetail,
   type ServiceOrderField,
   type ServiceOrderInput,
+  type ServiceOrderKind,
+  type ServiceOrderKindFilter,
   type ServiceOrderLine,
   type ServiceOrderListFilters,
   type ServiceOrderPage,
@@ -85,6 +89,25 @@ export {
   type ServiceOrderSummary,
   type TransitionResult,
 } from "./service-orders";
+// La orden de una unidad propia (brief-29.6.2, D-3).
+export {
+  createOwnUnitServiceOrder,
+  getOwnUnitRepairForm,
+  listUnitServiceOrders,
+  markOwnUnitRepaired,
+  type CreateOwnUnitServiceOrderResult,
+  type MarkOwnUnitRepairedResult,
+  type OwnUnitRepairField,
+  type OwnUnitRepairInput,
+  type RepairCostForm,
+  type RepairCostFormRow,
+  type UnitServiceOrder,
+} from "./own-unit-orders";
+export {
+  type RepairCostLineInput,
+  type RepairCostLineIssue,
+  type RepairCostRule,
+} from "./quote";
 // Para cash (D-7): las deudas de los técnicos, con su transacción.
 export {
   listTechnicianChargesForAccount,

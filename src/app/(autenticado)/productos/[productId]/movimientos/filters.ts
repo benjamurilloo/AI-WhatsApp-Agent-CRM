@@ -11,7 +11,9 @@ export type SearchParams = Record<string, string | string[] | undefined>;
 // 20.3: la salida de una venta sin pedido (brief-20.3, H-2). anulacion, desde la 20.4: la
 // reposición de su anulación (brief-20.4, D-7). recepcion, desde la 22.4: la entrada de una
 // recepción de mercadería (brief-22.4, D-14). anulacion-recepcion, desde la 22.5: la salida de la
-// anulación de una recepción (brief-22.5, D-9).
+// anulación de una recepción (brief-22.5, D-9). a-reparacion y liberacion, desde la 29.6.2: la salida de
+// una unidad disponible que va a reparar y la entrada de una unidad que se libera a la venta
+// (brief-29.6.2, D-1).
 export type MovementTypeKey =
   | "todos"
   | "positivo"
@@ -20,7 +22,9 @@ export type MovementTypeKey =
   | "venta"
   | "anulacion"
   | "recepcion"
-  | "anulacion-recepcion";
+  | "anulacion-recepcion"
+  | "a-reparacion"
+  | "liberacion";
 export type PeriodKey = "todo" | "7d" | "30d" | "90d" | "personalizado";
 
 const TYPE_PARAM: Record<MovementTypeKey, string> = {
@@ -32,13 +36,21 @@ const TYPE_PARAM: Record<MovementTypeKey, string> = {
   anulacion: "sale_void",
   recepcion: "goods_receipt",
   "anulacion-recepcion": "goods_receipt_void",
+  "a-reparacion": "unit_to_repair",
+  liberacion: "unit_released",
 };
 
 // Los tipos que suman al saldo: el ajuste positivo, desde la 20.4 la reposición de una anulación
 // (revisión independiente de la 20.4, R-1) y, desde la 22.4, la recepción (brief-22.4, D-14). El
 // efecto lo da el tipo (ADR 0021, punto 6). Los demás restan, también la anulación de una recepción
-// (brief-22.5, H-6).
-const INCOMING = new Set(["adjustment_positive", "sale_void", "goods_receipt"]);
+// (brief-22.5, H-6). Desde la 29.6.2, la liberación de una unidad a la venta suma, y mandarla a
+// reparar resta (brief-29.6.2, D-1).
+const INCOMING = new Set([
+  "adjustment_positive",
+  "sale_void",
+  "goods_receipt",
+  "unit_released",
+]);
 
 export function movementSign(type: string): "+" | "−" {
   return INCOMING.has(type) ? "+" : "−";
@@ -110,6 +122,8 @@ export function parseMovementView(params: SearchParams): MovementView {
         "anulacion",
         "recepcion",
         "anulacion-recepcion",
+        "a-reparacion",
+        "liberacion",
       ] as const,
       DEFAULT_VIEW.type,
     ),

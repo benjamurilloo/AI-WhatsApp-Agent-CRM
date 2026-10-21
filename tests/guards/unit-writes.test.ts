@@ -20,6 +20,11 @@ import { describe, expect, it } from "vitest";
 // Desde la 29.5.2 (brief-29.5.2, D-3 y D-9): setUnitsStatus, el cambio de estado de pedidos y ventas,
 // con sus cinco llamadores en inventory, y las funciones de inventory que mueven unidades en pedidos y
 // ventas, cada una desde su único caso de uso en orders o sales.
+//
+// Desde la 29.6.2 (brief-29.6.2, D-2 y D-5): la reparación de una unidad propia. sendUnitToRepair,
+// returnUnitFromRepair y cancelUnitRepair, cada una desde su único caso de uso en service, y
+// releaseUnit desde su Server Action. setUnitRepaired, la única escritura que cambia el costo, la llama
+// solo returnUnitFromRepair.
 
 const UNIT_REPOSITORY = "src/modules/inventory/unit-repository.ts";
 const SERVICE = "src/modules/inventory/service.ts";
@@ -28,6 +33,9 @@ const GRADES = "src/modules/inventory/grades.ts";
 const CATALOG_SERVICE = "src/modules/catalog/service.ts";
 const ORDERS_SERVICE = "src/modules/orders/service.ts";
 const SALES_SERVICE = "src/modules/sales/service.ts";
+const UNIT_REPAIRS = "src/modules/inventory/unit-repairs.ts";
+const OWN_UNIT_ORDERS = "src/modules/service/own-unit-orders.ts";
+const SERVICE_ORDERS = "src/modules/service/service-orders.ts";
 const UNIT_ACTIONS =
   "src/app/(autenticado)/productos/[productId]/unidades/actions.ts";
 const GRADE_ACTIONS = "src/app/(autenticado)/grados/actions.ts";
@@ -36,6 +44,7 @@ const AUTHORIZED = new Map([
   ["insertStockUnit", ["insert stock_units"]],
   ["setUnitsStatus", ["update stock_units"]],
   ["setUnitsWrittenOff", ["update stock_units"]],
+  ["setUnitRepaired", ["update stock_units"]],
   ["updateUnitDetails", ["update stock_units"]],
   ["insertGrade", ["insert unit_grades"]],
   ["updateGrade", ["update unit_grades"]],
@@ -135,7 +144,25 @@ const CALLERS = new Map<string, { file: string; from: string[] }[]>([
           "restoreSaleStock",
         ],
       },
+      {
+        file: UNIT_REPAIRS,
+        from: ["sendUnitToRepair", "cancelUnitRepair", "releaseUnit"],
+      },
     ],
+  ],
+  ["setUnitRepaired", [{ file: UNIT_REPAIRS, from: ["returnUnitFromRepair"] }]],
+  // La reparación de una unidad propia (brief-29.6.2, D-2).
+  [
+    "sendUnitToRepair",
+    [{ file: OWN_UNIT_ORDERS, from: ["createOwnUnitServiceOrder"] }],
+  ],
+  [
+    "returnUnitFromRepair",
+    [{ file: OWN_UNIT_ORDERS, from: ["markOwnUnitRepaired"] }],
+  ],
+  [
+    "cancelUnitRepair",
+    [{ file: SERVICE_ORDERS, from: ["cancelServiceOrder"] }],
   ],
   ["reserveStock", [{ file: ORDERS_SERVICE, from: ["transitionOrder"] }]],
   ["releaseStock", [{ file: ORDERS_SERVICE, from: ["transitionOrder"] }]],
@@ -169,6 +196,7 @@ const CALLERS = new Map<string, { file: string; from: string[] }[]>([
     [
       { file: SERVICE, from: ["adjustStock"] },
       { file: UNITS, from: ["registerUnit", "writeOffUnit"] },
+      { file: UNIT_REPAIRS, from: ["sendUnitToRepair", "releaseUnit"] },
     ],
   ],
   // El seguimiento: inventory comprueba, catalog escribe (ADR 0024, R-16; brief-29.5, D-3).
@@ -189,6 +217,7 @@ const CALLERS = new Map<string, { file: string; from: string[] }[]>([
   ["registerUnit", [{ file: UNIT_ACTIONS, from: ["registerUnitAction"] }]],
   ["writeOffUnit", [{ file: UNIT_ACTIONS, from: ["writeOffUnitAction"] }]],
   ["correctUnit", [{ file: UNIT_ACTIONS, from: ["correctUnitAction"] }]],
+  ["releaseUnit", [{ file: UNIT_ACTIONS, from: ["releaseUnitAction"] }]],
   ["createUnitGrade", [{ file: GRADE_ACTIONS, from: ["createGradeAction"] }]],
   ["updateUnitGrade", [{ file: GRADE_ACTIONS, from: ["updateGradeAction"] }]],
   [
@@ -396,6 +425,7 @@ describe("repositorio", () => {
       "insertStockUnit: insert stock_units",
       "setUnitsStatus: update stock_units",
       "setUnitsWrittenOff: update stock_units",
+      "setUnitRepaired: update stock_units",
       "updateUnitDetails: update stock_units",
       "insertGrade: insert unit_grades",
       "updateGrade: update unit_grades",

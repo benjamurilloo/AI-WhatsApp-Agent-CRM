@@ -442,12 +442,15 @@ export async function registerUnit(
 
 // La baja manual de una unidad (D-4): available -> written_off, con su motivo, y baja el saldo en 1
 // con un movimiento adjustment_negative que la nombra. No mira si el producto está activo: lo que
-// entró tiene que poder salir. Un IMEI mal cargado se corrige con la baja y un alta nueva.
+// entró tiene que poder salir. Un IMEI mal cargado se corrige con la baja y un alta nueva. Desde la
+// 29.6.2, también una unidad en revisión, sin movimiento, porque ya está fuera del saldo
+// (brief-29.6.2, U-2).
 
 export const WRITE_OFF_REASON_MAX_LENGTH = 500;
 
 export type WriteOffUnitResult =
-  | { ok: true; productId: string }
+  // from: el estado de antes, available o, desde la 29.6.2, in_review, que no mueve el saldo.
+  | { ok: true; productId: string; from: "available" | "in_review" }
   | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
   | Failure<"VALIDATION_ERROR", { fields: ["reason"] }>
   | Failure<"BUSINESS_RULE_VIOLATION", { rule: "unit_not_available" }>
@@ -491,6 +494,32 @@ export async function writeOffUnit(
       const [locked] = await unitRepository.lockUnits(tx, organizationId, [
         unit.id,
       ]);
+      // Una unidad en revisión ya está fuera del saldo: se da de baja sin movimiento (brief-29.6.2,
+      // U-2).
+      if (locked?.status === "in_review") {
+        await unitRepository.setUnitsWrittenOff(
+          tx,
+          organizationId,
+          [unit.id],
+          "in_review",
+        );
+        await recordAudit(tx, {
+          organizationId,
+          actorUserId: userId,
+          entityType: "stock_unit",
+          entityId: unit.id,
+          action: "status_change",
+          diff: {
+            before: { status: "in_review", reason: null },
+            after: { status: "written_off", reason: parsedReason.data },
+          },
+        });
+        return {
+          ok: true as const,
+          productId: unit.productId,
+          from: "in_review" as const,
+        };
+      }
       if (locked?.status !== "available") {
         throw new UnitRejected({
           ok: false,
@@ -538,7 +567,11 @@ export async function writeOffUnit(
           after: { status: "written_off", reason: parsedReason.data },
         },
       });
-      return { ok: true as const, productId: unit.productId };
+      return {
+        ok: true as const,
+        productId: unit.productId,
+        from: "available" as const,
+      };
     });
   } catch (error) {
     if (error instanceof UnitRejected) {
@@ -551,7 +584,8 @@ export async function writeOffUnit(
 // La corrección del grado o la batería de una unidad disponible (D-4), con auditoría. El costo no se
 // corrige en la 29.5, y el IMEI no se edita nunca. No toca el saldo: solo bloquea la unidad. Desde la
 // 29.5.2, también el precio propio (brief-29.5.2, D-2): sin los dos campos de precio, no cambia; con
-// los dos vacíos, se quita.
+// los dos vacíos, se quita. Desde la 29.6.2, también en una unidad en revisión, antes de liberarla
+// (brief-29.6.2, U-3).
 
 export type CorrectUnitResult =
   | { ok: true; changed: boolean; productId: string }
@@ -578,7 +612,8 @@ export async function correctUnit(
       unitId.toLowerCase(),
     ]);
     if (!locked) return failure("NOT_FOUND");
-    if (locked.status !== "available") {
+    // Desde la 29.6.2, también una unidad en revisión, antes de liberarla (brief-29.6.2, U-3).
+    if (locked.status !== "available" && locked.status !== "in_review") {
       return {
         ok: false,
         code: "BUSINESS_RULE_VIOLATION",
@@ -800,8 +835,13 @@ export async function listAvailableUnits(
 }
 
 // El IMEI y el estado de unas unidades, para el detalle de un pedido o de una venta y sus comprobantes
-// (brief-29.5.2, D-5): orders y sales ya autorizaron. Una unidad de otra organización no vuelve.
-export type UnitSummary = { serial: string; status: UnitStatus };
+// (brief-29.5.2, D-5): orders y sales ya autorizaron. Una unidad de otra organización no vuelve. Desde
+// la 29.6.2, con su producto, para la orden de una unidad propia (brief-29.6.2, D-7).
+export type UnitSummary = {
+  serial: string;
+  status: UnitStatus;
+  productId: string;
+};
 
 export async function getUnitSummaries(
   organizationId: string,
@@ -809,6 +849,9 @@ export async function getUnitSummaries(
 ): Promise<Map<string, UnitSummary>> {
   const rows = await unitRepository.findUnitsByIds(organizationId, unitIds);
   return new Map(
-    rows.map((row) => [row.id, { serial: row.serial, status: row.status }]),
+    rows.map((row) => [
+      row.id,
+      { serial: row.serial, status: row.status, productId: row.productId },
+    ]),
   );
 }

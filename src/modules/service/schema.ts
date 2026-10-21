@@ -18,14 +18,15 @@ import {
 import { users } from "@/modules/auth/schema";
 import { productModels } from "@/modules/catalog/schema";
 import { clients } from "@/modules/crm/schema";
+import { stockUnits } from "@/modules/inventory/schema";
 import { organizations } from "@/modules/organizations/schema";
 import { suppliers } from "@/modules/purchasing/schema";
 import { sales } from "@/modules/sales/schema";
 
 // docs/architecture/DataModel.md, tablas repair_types, repair_prices, service_orders y
 // service_order_lines (ADR 0024, puntos 7 y 10; brief-29.6, D-2 y D-4). Todo detrás de la capacidad
-// repairs. En la 29.6 la orden es solo la del equipo de un cliente (customer_device); la de una unidad
-// propia (own_unit) entra con la 29.6.2 (R-19).
+// repairs. La 29.6 crea la orden del equipo de un cliente (customer_device); la 29.6.2, la de una unidad
+// propia (own_unit; brief-29.6.2, D-3).
 
 // Límites de la lista y de la orden. Los mismos valores van en los CHECK.
 export const REPAIR_TYPE_NAME_MAX_LENGTH = 60;
@@ -134,11 +135,13 @@ export const repairPrices = pgTable(
 // crea customer_device; own_unit, la 29.6.2.
 export const serviceOrderKind = pgEnum("service_order_kind", [
   "customer_device",
+  "own_unit",
 ]);
 
-// Los estados de la orden (D-4). El trigger de la 0058 fija las transiciones:
+// Los estados de la orden (D-4). El trigger de la 0059 fija las transiciones. Del equipo de un cliente:
 // received → sent → quoted → approved o rejected; approved → repaired → delivered; rejected →
-// delivered, sin venta; y cancelled desde received, sent, quoted o approved.
+// delivered, sin venta; y cancelled desde received, sent, quoted o approved. De una unidad propia
+// (brief-29.6.2, D-3): nace sent, y sent → repaired, que es final, o sent → cancelled.
 export const serviceOrderStatus = pgEnum("service_order_status", [
   "received",
   "sent",
@@ -159,9 +162,10 @@ export const serviceOrderCancelReason = pgEnum("service_order_cancel_reason", [
 ]);
 
 // La orden de servicio (D-4), numerada OS-000123. Un compromiso con estado, como el pedido: admite
-// UPDATE y no DELETE, y su trigger (0058) solo deja cambiar el estado, sus fechas y lo que cada
+// UPDATE y no DELETE, y su trigger (0059) solo deja cambiar el estado, sus fechas y lo que cada
 // transición fija (el técnico, el presupuesto, el motivo y la venta), una sola vez. No copia datos del
-// cliente: lo nombra por su clave (ADR 0024, punto 14).
+// cliente: lo nombra por su clave (ADR 0024, punto 14). La de una unidad propia (brief-29.6.2, D-3) no
+// tiene cliente, IMEI propio, presupuesto ni venta: nombra la unidad.
 export const serviceOrders = pgTable(
   "service_orders",
   {
@@ -172,19 +176,24 @@ export const serviceOrders = pgTable(
     // Del contador de numbering, por organización.
     number: bigint("number", { mode: "number" }).notNull(),
     kind: serviceOrderKind("kind").notNull().default("customer_device"),
-    clientId: uuid("client_id").notNull(),
-    // El modelo del equipo: da los precios de la lista.
+    // El cliente del equipo; en una unidad propia, null.
+    clientId: uuid("client_id"),
+    // La unidad propia que va a reparar; en el equipo de un cliente, null (brief-29.6.2, D-3).
+    unitId: uuid("unit_id"),
+    // El modelo del equipo, o el del producto de la unidad: da los precios de la lista.
     modelId: uuid("model_id").notNull(),
     // El IMEI del equipo del cliente, opcional, y lo que reporta el cliente, obligatorio al crearla.
     // Son datos personales (D-11): el vaciado de datos de un cliente los deja en null, y es el único
-    // UPDATE que los toca (trigger de la 0058). Por eso reported_issue admite null en la base.
+    // UPDATE que los toca (trigger de la 0059). Por eso reported_issue admite null en la base. En una
+    // unidad propia, el IMEI es el de la unidad, y lo que reporta es qué hay que reparar.
     deviceSerial: text("device_serial"),
     reportedIssue: text("reported_issue"),
     // Desde que se manda.
     technicianId: uuid("technician_id"),
     status: serviceOrderStatus("status").notNull().default("received"),
     // El presupuesto, desde quoted: una moneda para lo que paga el cliente y una para lo que cobra el
-    // técnico, y la suma de las líneas de cada lado.
+    // técnico, y la suma de las líneas de cada lado. En una unidad propia, solo lo del técnico, desde
+    // repaired, en la moneda del costo de la unidad (brief-29.6.2, U-1).
     customerCurrency: text("customer_currency"),
     customerTotal: numeric("customer_total", { precision: 14, scale: 2 }),
     technicianCurrency: text("technician_currency"),
@@ -229,6 +238,11 @@ export const serviceOrders = pgTable(
       foreignColumns: [clients.organizationId, clients.id],
     }).onDelete("restrict"),
     foreignKey({
+      name: "service_orders_unit_fk",
+      columns: [table.organizationId, table.unitId],
+      foreignColumns: [stockUnits.organizationId, stockUnits.id],
+    }).onDelete("restrict"),
+    foreignKey({
       name: "service_orders_model_fk",
       columns: [table.organizationId, table.modelId],
       foreignColumns: [productModels.organizationId, productModels.id],
@@ -260,6 +274,14 @@ export const serviceOrders = pgTable(
       table.clientId,
       table.createdAt.desc(),
     ),
+    // Las órdenes de una unidad, y a lo sumo una abierta (brief-29.6.2, D-3): una orden propia está
+    // abierta mientras está sent.
+    index("service_orders_unit_idx")
+      .on(table.organizationId, table.unitId, table.createdAt.desc())
+      .where(sql`${table.unitId} is not null`),
+    uniqueIndex("service_orders_unit_open_unique")
+      .on(table.organizationId, table.unitId)
+      .where(sql`${table.unitId} is not null and ${table.status} = 'sent'`),
     // Las deudas de un técnico: su cuenta (D-7).
     index("service_orders_technician_idx")
       .on(table.organizationId, table.technicianId)
@@ -289,7 +311,22 @@ export const serviceOrders = pgTable(
       "service_orders_technician_total_positive",
       sql`${table.technicianTotal} > 0`,
     ),
-    // El técnico está desde que se mandó, y el presupuesto, desde que se presupuestó.
+    // Cada tipo nombra lo suyo: el cliente y su IMEI, o la unidad (brief-29.6.2, D-3). Los CHECK nombran
+    // solo customer_device: own_unit se agrega en la misma migración (H-5).
+    check(
+      "service_orders_kind_subject",
+      sql`(${table.kind} = 'customer_device') = (${table.clientId} is not null)
+        and (${table.kind} = 'customer_device') = (${table.unitId} is null)
+        and (${table.kind} = 'customer_device' or ${table.deviceSerial} is null)`,
+    ),
+    // Una unidad propia no tiene presupuesto, entrega ni venta.
+    check(
+      "service_orders_own_unit_path",
+      sql`${table.kind} = 'customer_device'
+        or (${table.quotedAt} is null and ${table.deliveredAt} is null and ${table.saleId} is null)`,
+    ),
+    // El técnico está desde que se mandó, y el presupuesto, desde que se presupuestó. En una unidad
+    // propia, lo del técnico está desde que se reparó.
     check(
       "service_orders_technician_sent",
       sql`(${table.technicianId} is not null) = (${table.sentAt} is not null)`,
@@ -298,17 +335,20 @@ export const serviceOrders = pgTable(
       "service_orders_quote_together",
       sql`(${table.quotedAt} is not null) = (${table.customerCurrency} is not null)
         and (${table.quotedAt} is not null) = (${table.customerTotal} is not null)
-        and (${table.quotedAt} is not null) = (${table.technicianCurrency} is not null)
-        and (${table.quotedAt} is not null) = (${table.technicianTotal} is not null)`,
+        and (${table.technicianCurrency} is not null) = (${table.technicianTotal} is not null)
+        and (${table.technicianTotal} is not null) = case when ${table.kind} = 'customer_device'
+          then ${table.quotedAt} is not null else ${table.repairedAt} is not null end`,
     ),
-    // Cada fecha supone la anterior del camino, y aprobada y rechazada se excluyen.
+    // Cada fecha supone la anterior del camino, y aprobada y rechazada se excluyen. Una unidad propia
+    // pasa de mandada a reparada.
     check(
       "service_orders_dates_chain",
       sql`(${table.quotedAt} is null or ${table.sentAt} is not null)
         and (${table.approvedAt} is null or ${table.quotedAt} is not null)
         and (${table.rejectedAt} is null or ${table.quotedAt} is not null)
         and (${table.approvedAt} is null or ${table.rejectedAt} is null)
-        and (${table.repairedAt} is null or ${table.approvedAt} is not null)`,
+        and (${table.repairedAt} is null or ${table.sentAt} is not null)
+        and (${table.repairedAt} is null or ${table.approvedAt} is not null or ${table.kind} <> 'customer_device')`,
     ),
     // Las fechas de cada estado (D-4). Entregada: reparada o rechazada, una de las dos.
     check(
@@ -337,7 +377,9 @@ export const serviceOrders = pgTable(
 
 // Las líneas del presupuesto, de solo inserción (D-4): una por tipo de reparación, con el precio al
 // cliente y el costo del técnico copiados de la lista y editables antes de guardar. Las monedas van en
-// la cabecera. Se insertan al presupuestar y no cambian: un presupuesto distinto es otra orden.
+// la cabecera. Se insertan al presupuestar y no cambian: un presupuesto distinto es otra orden. En una
+// unidad propia, se insertan al marcarla reparada y no tienen precio (brief-29.6.2, D-3): lo exige el
+// trigger, que ve la cabecera.
 export const serviceOrderLines = pgTable(
   "service_order_lines",
   {
@@ -348,7 +390,7 @@ export const serviceOrderLines = pgTable(
     serviceOrderId: uuid("service_order_id").notNull(),
     repairTypeId: uuid("repair_type_id").notNull(),
     position: smallint("position").notNull(),
-    price: numeric("price", { precision: 14, scale: 2 }).notNull(),
+    price: numeric("price", { precision: 14, scale: 2 }),
     cost: numeric("cost", { precision: 14, scale: 2 }).notNull(),
   },
   (table) => [

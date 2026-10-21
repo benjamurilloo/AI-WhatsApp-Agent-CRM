@@ -17,6 +17,7 @@ import {
   cancelServiceOrderAction,
   changeServiceOrderAction,
   deliverServiceOrderAction,
+  markOwnUnitRepairedAction,
   quoteServiceOrderAction,
   sendServiceOrderAction,
   type QuoteFormState,
@@ -361,7 +362,14 @@ export function DeliverButton({
 }
 
 // La cancelación, con el motivo de la lista. No se deshace.
-export function CancelForm({ serviceOrderId }: { serviceOrderId: string }) {
+export function CancelForm({
+  serviceOrderId,
+  ownUnit = false,
+}: {
+  serviceOrderId: string;
+  // Desde la 29.6.2: solo cambia el aviso (brief-29.6.2, D-2).
+  ownUnit?: boolean;
+}) {
   const [state, formAction, pending] = useActionState(
     cancelServiceOrderAction,
     idle,
@@ -369,6 +377,7 @@ export function CancelForm({ serviceOrderId }: { serviceOrderId: string }) {
   return (
     <form action={formAction} className="flex flex-col gap-3">
       <input type="hidden" name="serviceOrderId" value={serviceOrderId} />
+      {ownUnit ? <input type="hidden" name="ownUnit" value="1" /> : null}
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex min-w-0 flex-col gap-1">
           <label htmlFor="motivo" className={labelClass}>
@@ -394,6 +403,149 @@ export function CancelForm({ serviceOrderId }: { serviceOrderId: string }) {
         </button>
       </div>
       <ChangeError state={state} />
+    </form>
+  );
+}
+
+// Marcar reparada una unidad propia (brief-29.6.2, D-3): las reparaciones que hizo el técnico y lo que
+// cobró por cada una, en la moneda del costo de la unidad. La lista propone su costo cuando está en esa
+// moneda; si no, se carga a mano.
+export type RepairCostRow = {
+  repairTypeId: string;
+  name: string;
+  listCost: string | null;
+};
+
+export function OwnUnitRepairedForm({
+  serviceOrderId,
+  rows,
+  currency,
+}: {
+  serviceOrderId: string;
+  rows: RepairCostRow[];
+  currency: string;
+}) {
+  const [state, formAction, pending] = useActionState(
+    markOwnUnitRepairedAction,
+    idleQuote,
+  );
+  const failed = state.status === "error" ? state : null;
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (state.status === "error") errorRef.current?.focus();
+  }, [state]);
+  const [checked, setChecked] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(
+      rows.map((row) => [
+        row.repairTypeId,
+        failed ? failed.values[`include_${row.repairTypeId}`] === "1" : false,
+      ]),
+    ),
+  );
+  const value = (name: string, fallback: string) =>
+    failed ? (failed.values[name] ?? fallback) : fallback;
+
+  return (
+    <form action={formAction} className="flex flex-col gap-4">
+      <input type="hidden" name="serviceOrderId" value={serviceOrderId} />
+      <p className="text-sm">
+        Marcá lo que reparó el técnico y lo que cobró, en {currency}, la moneda
+        del costo de la unidad. El total se suma a su costo, queda en la cuenta
+        del técnico, y la unidad vuelve en revisión.
+      </p>
+      <div
+        className="overflow-x-auto"
+        tabIndex={0}
+        role="region"
+        aria-label="Reparaciones que hizo el técnico"
+      >
+        <table className="w-full border-collapse text-left text-sm">
+          <caption className="sr-only">
+            Reparaciones que hizo el técnico, con lo que cobró
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col" className={tableHeadCellClass}>
+                Reparación
+              </th>
+              <th scope="col" className={tableHeadCellClass}>
+                Lo que cobró el técnico
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const id = row.repairTypeId;
+              const error = failed?.rows[id];
+              return (
+                <tr key={id}>
+                  <td className={tableCellClass}>
+                    <input type="hidden" name="typeIds" value={id} />
+                    <label className="flex items-center gap-2 font-semibold">
+                      <input
+                        type="checkbox"
+                        name={`include_${id}`}
+                        value="1"
+                        checked={checked[id] ?? false}
+                        onChange={(event) =>
+                          setChecked((current) => ({
+                            ...current,
+                            [id]: event.currentTarget.checked,
+                          }))
+                        }
+                        aria-describedby={
+                          error ? `fila-${id}-error` : undefined
+                        }
+                        className="size-4 accent-primary"
+                      />
+                      {row.name}
+                    </label>
+                    {row.listCost ? null : (
+                      <span className="block text-xs text-muted">
+                        Sin costo en {currency} en la lista: cargalo a mano.
+                      </span>
+                    )}
+                    {error ? (
+                      <p id={`fila-${id}-error`} className={fieldErrorClass}>
+                        {error}
+                      </p>
+                    ) : null}
+                  </td>
+                  <td className={tableCellClass}>
+                    <label htmlFor={`costo-${id}`} className="sr-only">
+                      Lo que cobró el técnico por {row.name}
+                    </label>
+                    <input
+                      id={`costo-${id}`}
+                      name={`cost_${id}`}
+                      inputMode="decimal"
+                      autoComplete="off"
+                      defaultValue={value(
+                        `cost_${id}`,
+                        row.listCost ? amountInput(row.listCost) : "",
+                      )}
+                      className={`${inputClass} w-32 tabular-nums`}
+                    />
+                    <span className="ml-1 text-xs text-muted">{currency}</span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div aria-live="polite" aria-atomic="true">
+        {failed ? (
+          <p ref={errorRef} tabIndex={-1} className={formMessageClass}>
+            {failed.message}
+          </p>
+        ) : null}
+      </div>
+      <div>
+        <button type="submit" disabled={pending} className={inlineButtonClass}>
+          {pending ? "Guardando…" : "Marcar reparada"}
+        </button>
+      </div>
     </form>
   );
 }

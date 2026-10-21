@@ -14,6 +14,8 @@ export const UNIT_STATUS_TEXT: Record<UnitStatus, string> = {
   reserved: "está reservada por otro pedido",
   sold: "ya se vendió",
   written_off: "se dio de baja",
+  in_repair: "está en reparación",
+  in_review: "está en revisión, sin liberar a la venta",
 };
 
 // La marca de una unidad de un pendiente que ya no está disponible: confirmar la va a rechazar.

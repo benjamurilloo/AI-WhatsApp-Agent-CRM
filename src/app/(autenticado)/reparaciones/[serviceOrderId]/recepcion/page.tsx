@@ -24,7 +24,8 @@ const TITLE = "Comprobante de recepción";
 
 // El comprobante de recepción del equipo, imprimible, para el cliente (brief-29.6, D-10): el número, el
 // cliente, el modelo, el IMEI, lo que reporta y la fecha. Sin el técnico ni el costo. Al imprimir queda
-// solo el comprobante, como el de la orden de compra. Los dos roles.
+// solo el comprobante, como el de la orden de compra. Los dos roles. Una orden de una unidad propia no
+// tiene recepción (brief-29.6.2, D-7): 404.
 export default async function ReceptionReceiptPage({
   params,
 }: {
@@ -44,6 +45,7 @@ export default async function ReceptionReceiptPage({
     );
   }
   const order = found.order;
+  if (order.kind === "own_unit") notFound();
   const [timeZone, frame] = await Promise.all([
     getOrganizationTimezone(context),
     getAppFrame(context),

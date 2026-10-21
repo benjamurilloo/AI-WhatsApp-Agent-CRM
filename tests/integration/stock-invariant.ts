@@ -15,7 +15,7 @@ import { getDb } from "@/shared/db";
 //   pasa por inventory.
 //
 // Se corre después de cada test de las suites de inventory, purchasing y, desde la 29.5.2, orders y
-// sales.
+// sales; desde la 29.6, también service.
 
 // La suma con signo de los movimientos, desde MOVEMENT_DIRECTION: un tipo nuevo sin signo no compila.
 export function signedMovementSum(alias = "m"): SQL {

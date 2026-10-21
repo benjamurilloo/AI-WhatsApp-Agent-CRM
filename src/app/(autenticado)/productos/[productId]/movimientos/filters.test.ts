@@ -126,6 +126,11 @@ describe("toHistoryFilters", () => {
     expect(parseMovementView({ tipo: "anulacion-recepcion" }).type).toBe(
       "anulacion-recepcion",
     );
+    // brief-29.6.2, D-1: mandar una unidad a reparar y liberarla.
+    expect(parseMovementView({ tipo: "a-reparacion" }).type).toBe(
+      "a-reparacion",
+    );
+    expect(parseMovementView({ tipo: "liberacion" }).type).toBe("liberacion");
   });
 
   // brief-22.4, D-14: la recepción suma, como el ajuste positivo y la anulación de una venta.
@@ -150,7 +155,7 @@ describe("toHistoryFilters", () => {
     for (const [type, direction] of Object.entries(MOVEMENT_DIRECTION)) {
       expect(movementSign(type)).toBe(direction === 1 ? "+" : "−");
     }
-    expect(Object.keys(MOVEMENT_DIRECTION)).toHaveLength(7);
+    expect(Object.keys(MOVEMENT_DIRECTION)).toHaveLength(9);
   });
 });
 

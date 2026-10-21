@@ -1,6 +1,7 @@
 import type {
   CreateServiceOrderResult,
   DeliverServiceOrderResult,
+  MarkOwnUnitRepairedResult,
   QuoteLineIssue,
   QuoteRuleIssue,
   QuoteServiceOrderResult,
@@ -9,6 +10,7 @@ import type {
   SendServiceOrderResult,
   ServiceOrderCancelReason,
   ServiceOrderField,
+  ServiceOrderKind,
   ServiceOrderStatus,
   SetRepairPriceResult,
   TransitionResult,
@@ -16,7 +18,8 @@ import type {
 import type { AmountRejection } from "@/shared/money";
 
 // Textos de las reparaciones (brief-29.6, D-10): las órdenes de servicio, su presupuesto, su entrega y
-// la lista de reparaciones por modelo.
+// la lista de reparaciones por modelo; desde la 29.6.2, la orden de una unidad propia (brief-29.6.2,
+// D-7).
 
 export const SERVICE_ORDERS_TITLE = "Órdenes de servicio";
 export const REPAIR_LIST_TITLE = "Lista de reparaciones";
@@ -40,6 +43,13 @@ export const UNKNOWN_TYPE_TEXT = "Tipo desconocido";
 export const RECEPTION_LEGEND =
   "Comprobante de recepción del equipo. No es una factura.";
 export const ERASED_TEXT = "Dato vaciado a pedido del cliente.";
+export const OWN_UNIT_TEXT = "Unidad propia";
+export const UNKNOWN_UNIT_TEXT = "Unidad desconocida";
+
+export const KIND_LABEL: Record<ServiceOrderKind, string> = {
+  customer_device: "Equipo de un cliente",
+  own_unit: "Unidad propia",
+};
 
 export function unexpectedErrorMessage(requestId: string): string {
   return `No pudimos guardar el cambio. Código: ${requestId}`;
@@ -304,6 +314,69 @@ export function deliverMessage(
   return changeMessage(result.code, requestId);
 }
 
+// Marcar reparada una unidad propia (brief-29.6.2, D-3): las líneas con lo que cobró el técnico.
+export function markRepairedRejection(
+  result: Exclude<MarkOwnUnitRepairedResult, { ok: true }>,
+  requestId: string,
+  typeIds: string[],
+): QuoteRejection {
+  if (result.code === "VALIDATION_ERROR" && "reason" in result) {
+    switch (result.reason) {
+      case "currency":
+        return {
+          message: "La moneda del costo de la unidad no se acepta.",
+          rows: {},
+        };
+      case "no_lines":
+        return {
+          message: "Marcá al menos una reparación que hizo el técnico.",
+          rows: {},
+        };
+      case "too_many_lines":
+        return {
+          message: "Son demasiadas reparaciones para una orden.",
+          rows: {},
+        };
+      case "lines":
+        return {
+          message: "Revisá las reparaciones marcadas.",
+          rows: Object.fromEntries(
+            result.lines.map((issue) => [
+              typeIds[issue.position - 1] ?? "",
+              issue.field === "repairType"
+                ? "Esta reparación no se puede cargar."
+                : `Costo: ${amountMessage(issue.reason)}`,
+            ]),
+          ),
+        };
+    }
+  }
+  if (result.code === "BUSINESS_RULE_VIOLATION") {
+    if (result.rule === "line_rules") {
+      return {
+        message: "Revisá las reparaciones marcadas.",
+        rows: Object.fromEntries(
+          result.lines.map((issue) => [
+            issue.repairTypeId,
+            QUOTE_RULE_MESSAGE[issue.rule],
+          ]),
+        ),
+      };
+    }
+    if (result.rule === "invalid_transition") {
+      return { message: transitionText(result.status), rows: {} };
+    }
+    return {
+      message:
+        result.rule === "cost_limit"
+          ? "El costo de la unidad pasaría el máximo que se puede guardar."
+          : "El total es demasiado grande.",
+      rows: {},
+    };
+  }
+  return { message: changeMessage(result.code, requestId), rows: {} };
+}
+
 const NOTICES: Record<string, string> = {
   "tipo-creado": "Tipo de reparación creado.",
   "tipo-editado": "Tipo de reparación actualizado.",
@@ -323,6 +396,13 @@ const NOTICES: Record<string, string> = {
   "orden-entregada-venta":
     "Equipo entregado: se emitió la venta. Cobrala desde su detalle.",
   "orden-cancelada": "Orden cancelada.",
+  // Desde la 29.6.2 (brief-29.6.2, D-7).
+  "unidad-mandada":
+    "Unidad mandada a reparar: salió del stock hasta que vuelva y se libere a la venta.",
+  "unidad-reparada":
+    "Unidad reparada: lo que cobró el técnico se sumó a su costo y quedó en su cuenta de proveedor. La unidad está en revisión: liberala a la venta desde sus unidades.",
+  "unidad-cancelada":
+    "Orden cancelada: la unidad volvió en revisión, sin cambiar su costo.",
 };
 
 export function noticeMessage(

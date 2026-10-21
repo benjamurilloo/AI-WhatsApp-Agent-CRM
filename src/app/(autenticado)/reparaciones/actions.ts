@@ -10,6 +10,7 @@ import {
   createRepairType,
   createServiceOrder,
   deliverServiceOrder,
+  markOwnUnitRepaired,
   markServiceOrderRepaired,
   moveRepairType,
   quoteServiceOrder,
@@ -28,6 +29,7 @@ import {
   changeMessage,
   createOrderRejection,
   deliverMessage,
+  markRepairedRejection,
   priceRejection,
   quoteRejection,
   repairTypeRejection,
@@ -38,7 +40,7 @@ import {
   type FormState,
 } from "./messages";
 
-// Server Actions de las reparaciones (brief-29.6, D-10). Next.js compara Origin con Host; la sesión se
+// Server Actions de las reparaciones (brief-29.6, D-10; brief-29.6.2, D-7). Next.js compara Origin con Host; la sesión se
 // verifica acá, y el rol, la organización y la capacidad, en service. El log lleva actor, organización,
 // código y duración, nunca el cliente, el IMEI, lo que reportó ni los montos.
 
@@ -350,6 +352,8 @@ async function runTransition<R extends { ok: boolean }>(
     }
     log("OK");
     revalidatePath(ORDERS);
+    // Una orden propia cambia el estado de su unidad (brief-29.6.2, D-2).
+    revalidatePath("/productos", "layout");
     destination = `${ORDERS}/${serviceOrderId}?aviso=${notice(result as Extract<R, { ok: true }>)}`;
   } catch (error) {
     log("INTERNAL", error);
@@ -505,6 +509,8 @@ export async function cancelServiceOrderAction(
 ): Promise<ChangeState> {
   const serviceOrderId = text(formData, "serviceOrderId", 64);
   const reason = text(formData, "reason", 32);
+  // Solo elige el aviso: la orden propia vuelve la unidad a revisión (brief-29.6.2, D-2).
+  const ownUnit = text(formData, "ownUnit", 1) === "1";
   return runTransition(
     "reparaciones.cancelar",
     serviceOrderId,
@@ -513,6 +519,58 @@ export async function cancelServiceOrderAction(
       result.code === "VALIDATION_ERROR"
         ? "Elegí el motivo de la cancelación."
         : transitionMessage(result, requestId),
-    () => "orden-cancelada",
+    () => (ownUnit ? "unidad-cancelada" : "orden-cancelada"),
   );
+}
+
+// Marcar reparada una unidad propia (brief-29.6.2, D-3): las reparaciones que hizo el técnico y lo
+// que cobró por cada una, en la moneda del costo de la unidad.
+export async function markOwnUnitRepairedAction(
+  _previous: QuoteFormState,
+  formData: FormData,
+): Promise<QuoteFormState> {
+  const context = await requireSession();
+  const { requestId, log } = logger("reparaciones.unidad-reparada", context);
+  const serviceOrderId = text(formData, "serviceOrderId", 64);
+  const typeIds = formData
+    .getAll("typeIds")
+    .slice(0, 100)
+    .map((value) => String(value).slice(0, 64));
+  const values: Record<string, string> = {};
+  for (const id of typeIds) {
+    values[`include_${id}`] = text(formData, `include_${id}`, 1);
+    values[`cost_${id}`] = text(formData, `cost_${id}`, 40);
+  }
+  const chosen = typeIds.filter((id) => values[`include_${id}`] === "1");
+  let destination: string;
+  try {
+    const result = await markOwnUnitRepaired(
+      context,
+      serviceOrderId,
+      chosen.map((id) => ({ repairTypeId: id, cost: values[`cost_${id}`]! })),
+    );
+    if (!result.ok) {
+      log(result.code);
+      return {
+        status: "error",
+        requestId,
+        values,
+        ...markRepairedRejection(result, requestId, chosen),
+      };
+    }
+    log("OK");
+    revalidatePath(ORDERS);
+    revalidatePath("/productos", "layout");
+    destination = `${ORDERS}/${serviceOrderId}?aviso=unidad-reparada`;
+  } catch (error) {
+    log("INTERNAL", error);
+    return {
+      status: "error",
+      requestId,
+      values,
+      rows: {},
+      message: unexpectedErrorMessage(requestId),
+    };
+  }
+  redirect(destination);
 }

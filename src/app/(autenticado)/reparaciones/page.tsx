@@ -24,6 +24,8 @@ import { formatShortDateTime } from "@/app/_format/date-time";
 import { formatMoney } from "@/shared/money";
 import {
   hasActiveServiceOrderFilters,
+  KIND_PARAMS,
+  kindParam,
   parseServiceOrderFilters,
   serviceOrderFiltersHref,
   statusParam,
@@ -32,13 +34,16 @@ import {
 } from "./filters";
 import {
   FORBIDDEN_ACTION_MESSAGE,
+  KIND_LABEL,
   NO_OPEN_SERVICE_ORDERS_MESSAGE,
   NO_SERVICE_ORDER_RESULTS_MESSAGE,
   noticeMessage,
   SERVICE_ORDERS_TITLE,
   STATUS_LABEL,
+  OWN_UNIT_TEXT,
   UNKNOWN_CLIENT_TEXT,
   UNKNOWN_MODEL_TEXT,
+  UNKNOWN_UNIT_TEXT,
 } from "./messages";
 import { RepairsSubNav, ServiceOrderStatusBadge } from "./sub-nav";
 
@@ -51,10 +56,17 @@ const FILTER_LABEL: Record<string, string> = {
   todas: "Todas",
 };
 
+const KIND_FILTER_LABEL: Record<string, string> = {
+  todos: "Todos",
+  clientes: KIND_LABEL.customer_device,
+  "unidades-propias": KIND_LABEL.own_unit,
+};
+
 // La lista de órdenes de servicio (brief-29.6, D-10): la más nueva primero, con el filtro de estado,
 // que arranca en las que están en curso, y la búsqueda por número, en la URL. Tabla en escritorio y
 // tarjetas en móvil, como Compras. Los dos roles; «Nueva orden», solo admin. Sin la capacidad
-// repairs, 404.
+// repairs, 404. Desde la 29.6.2 (brief-29.6.2, D-7), el filtro por tipo, y una orden de una unidad
+// propia dice «Unidad propia» con el producto y el IMEI en lugar del cliente; nace desde las unidades del producto.
 export default async function ServiceOrdersPage({
   searchParams,
 }: {
@@ -77,16 +89,29 @@ export default async function ServiceOrdersPage({
   const isAdmin = context.role === "admin";
   const filtered = hasActiveServiceOrderFilters(filters);
   const notice = noticeMessage(query.aviso);
-  const total = (order: (typeof result.orders)[number]) =>
-    order.customerTotal !== null && order.customerCurrency !== null
-      ? formatMoney(order.customerTotal, order.customerCurrency)
-      : "Sin presupuesto";
+  type Row = (typeof result.orders)[number];
+  const total = (order: Row) =>
+    order.kind === "own_unit"
+      ? "No se cobra"
+      : order.customerTotal !== null && order.customerCurrency !== null
+        ? formatMoney(order.customerTotal, order.customerCurrency)
+        : "Sin presupuesto";
+  const subject = (order: Row) =>
+    order.kind === "own_unit"
+      ? [
+          OWN_UNIT_TEXT,
+          order.unitProductName,
+          order.unitSerial ?? UNKNOWN_UNIT_TEXT,
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      : (order.clientName ?? UNKNOWN_CLIENT_TEXT);
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8">
       <PageHeader
         title={SERVICE_ORDERS_TITLE}
-        subtitle="Los equipos de los clientes que pasan por el técnico, desde que se reciben hasta que se entregan."
+        subtitle="Los equipos de los clientes y las unidades propias que pasan por el técnico."
         action={
           isAdmin
             ? { href: "/reparaciones/nueva", label: "+ Nueva orden" }
@@ -140,6 +165,23 @@ export default async function ServiceOrdersPage({
             ))}
           </select>
         </div>
+        <div className="flex flex-col gap-1">
+          <label htmlFor="tipo" className={labelClass}>
+            Tipo
+          </label>
+          <select
+            id="tipo"
+            name="tipo"
+            defaultValue={kindParam(filters.kind)}
+            className={selectClass}
+          >
+            {KIND_PARAMS.map(([param]) => (
+              <option key={param} value={param}>
+                {KIND_FILTER_LABEL[param]}
+              </option>
+            ))}
+          </select>
+        </div>
         <button type="submit" className={inlineButtonClass}>
           <Icon name="filter" className="size-4" />
           Aplicar filtros
@@ -161,8 +203,8 @@ export default async function ServiceOrdersPage({
           }
           description={
             filtered
-              ? "Probá con otro número o con otro estado."
-              : "Una orden de servicio registra el equipo de un cliente que pasa por el técnico. Las entregadas y las canceladas están en «Todas»."
+              ? "Probá con otro número, otro estado u otro tipo."
+              : "Una orden de servicio registra el equipo de un cliente, o una unidad propia, que pasa por el técnico. Las terminadas y las canceladas están en «Todas»."
           }
           actions={[
             {
@@ -197,7 +239,7 @@ export default async function ServiceOrdersPage({
                     Fecha
                   </th>
                   <th scope="col" className={tableHeadCellClass}>
-                    Cliente
+                    Cliente o unidad
                   </th>
                   <th scope="col" className={tableHeadCellClass}>
                     Modelo
@@ -229,9 +271,7 @@ export default async function ServiceOrdersPage({
                     <td className={`${tableCellClass} whitespace-nowrap`}>
                       {formatShortDateTime(order.createdAt, timeZone)}
                     </td>
-                    <td className={tableCellClass}>
-                      {order.clientName ?? UNKNOWN_CLIENT_TEXT}
-                    </td>
+                    <td className={tableCellClass}>{subject(order)}</td>
                     <td className={tableCellClass}>
                       {order.modelName ?? UNKNOWN_MODEL_TEXT}
                     </td>
@@ -264,9 +304,7 @@ export default async function ServiceOrdersPage({
                   </Link>
                   <ServiceOrderStatusBadge status={order.status} />
                 </p>
-                <p className="mt-1 font-semibold">
-                  {order.clientName ?? UNKNOWN_CLIENT_TEXT}
-                </p>
+                <p className="mt-1 font-semibold">{subject(order)}</p>
                 <p className="mt-1 text-sm text-muted">
                   {order.modelName ?? UNKNOWN_MODEL_TEXT} ·{" "}
                   {formatShortDateTime(order.createdAt, timeZone)} ·{" "}

@@ -6,12 +6,23 @@ import {
   recordAudit,
   type NamedAuditLogEntry,
 } from "@/modules/audit";
-import { findServiceProduct, getModel, listModels } from "@/modules/catalog";
+import {
+  findServiceProduct,
+  getModel,
+  getProductsByIds,
+  listModels,
+} from "@/modules/catalog";
 import {
   getClientsByIds,
   lockClientForOrder,
   type Client,
 } from "@/modules/crm";
+import {
+  cancelUnitRepair,
+  getUnitSummaries,
+  type UnitStatus,
+  type UnitSummary,
+} from "@/modules/inventory";
 import { formatDocumentNumber, nextDocumentNumber } from "@/modules/numbering";
 import {
   authorize,
@@ -44,7 +55,8 @@ import {
 } from "./schema";
 
 // Casos de uso de la orden de servicio del equipo de un cliente (ADR 0024, punto 10; brief-29.6, D-4,
-// D-6, D-9 y D-11). service es dueño de la regla: abre la transacción y se la pasa a crm (el cliente),
+// D-6, D-9 y D-11), y lo común a la de una unidad propia (brief-29.6.2, D-3): la cancelación y las
+// lecturas. Mandar una unidad a reparar y marcarla reparada están en own-unit-orders.ts. service es dueño de la regla: abre la transacción y se la pasa a crm (el cliente),
 // purchasing (el técnico), sales (la venta de la entrega), numbering (el número) y audit. De la
 // capacidad repairs: sin ella, la orden no existe para nadie.
 //
@@ -58,6 +70,7 @@ import {
 // compartido y el producto de servicio FOR SHARE (los dos dentro de issueServiceSale), el contador de
 // la venta y sus inserts, y al final actualiza la orden.
 
+export type ServiceOrderKind = repository.ServiceOrderKind;
 export type ServiceOrderStatus = repository.ServiceOrderStatus;
 export type ServiceOrderCancelReason = repository.ServiceOrderCancelReason;
 export const SERVICE_ORDER_STATUSES = repository.SERVICE_ORDER_STATUSES;
@@ -68,7 +81,8 @@ export { MAX_SERVICE_ORDER_LINES, REPORTED_ISSUE_MAX_LENGTH };
 export const SERVICE_ORDERS_PAGE_SIZE = 25;
 export const CLIENT_SERVICE_ORDERS_LIMIT = 5;
 
-// Las que todavía no terminaron: el filtro «En curso» de la lista.
+// Las que todavía no terminaron: el filtro «En curso» de la lista. Una orden de una unidad propia
+// termina al repararla (brief-29.6.2, D-3): está en curso solo mientras está en el técnico.
 export const OPEN_SERVICE_ORDER_STATUSES: readonly ServiceOrderStatus[] = [
   "received",
   "sent",
@@ -77,6 +91,7 @@ export const OPEN_SERVICE_ORDER_STATUSES: readonly ServiceOrderStatus[] = [
   "rejected",
   "repaired",
 ];
+export const OPEN_OWN_UNIT_STATUSES: readonly ServiceOrderStatus[] = ["sent"];
 
 const idSchema = z.uuid();
 const serialPattern = new RegExp(DEVICE_SERIAL_PATTERN);
@@ -93,7 +108,7 @@ export function parseServiceOrderNumberSearch(text: string): number | null {
   return Number.isSafeInteger(value) && value > 0 ? value : null;
 }
 
-async function requireRepairs(
+export async function requireRepairs(
   context: AuthContext,
   role?: "admin",
 ): Promise<{ ok: true } | Failure<"FORBIDDEN" | "NOT_FOUND">> {
@@ -251,8 +266,8 @@ export async function createServiceOrder(
   );
 }
 
-// Las transiciones (D-4). Una orden que ya no está en el estado de partida responde
-// invalid_transition con su estado, sin escribir ni auditar.
+// Las transiciones (D-4). Una orden que ya no está en el estado de partida, o que es del otro tipo,
+// responde invalid_transition con su estado, sin escribir ni auditar.
 
 type InvalidTransition = Failure<
   "BUSINESS_RULE_VIOLATION",
@@ -264,7 +279,9 @@ export type TransitionResult =
   | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
   | InvalidTransition;
 
-function invalidTransition(status: ServiceOrderStatus): InvalidTransition {
+export function invalidTransition(
+  status: ServiceOrderStatus,
+): InvalidTransition {
   return {
     ok: false,
     code: "BUSINESS_RULE_VIOLATION",
@@ -273,11 +290,13 @@ function invalidTransition(status: ServiceOrderStatus): InvalidTransition {
   };
 }
 
-// Lo común a toda transición: la capacidad y el rol, el id, la orden FOR UPDATE y el estado.
-async function inTransition<R>(
+// Lo común a toda transición: la capacidad y el rol, el id, la orden FOR UPDATE, su tipo y su estado.
+// kind null acepta los dos tipos: la cancelación.
+export async function inTransition<R>(
   context: AuthContext,
   serviceOrderId: string,
   to: ServiceOrderStatus,
+  kind: ServiceOrderKind | null,
   work: (
     tx: Parameters<Parameters<typeof repository.withTransaction>[0]>[0],
     order: repository.ServiceOrderRow,
@@ -300,13 +319,17 @@ async function inTransition<R>(
       { forUpdate: true },
     );
     if (!order) return failure("NOT_FOUND");
-    if (!canTransition(order.status, to))
+    if (
+      (kind !== null && order.kind !== kind) ||
+      !canTransition(order.status, to, order.kind)
+    ) {
       return invalidTransition(order.status);
+    }
     return work(tx, order);
   });
 }
 
-function statusAudit(
+export function statusAudit(
   context: AuthContext,
   order: repository.ServiceOrderRow,
   before: Record<string, string | number | null>,
@@ -344,6 +367,7 @@ export async function sendServiceOrder(
     context,
     serviceOrderId,
     "sent",
+    "customer_device",
     async (tx, order): Promise<SendServiceOrderResult> => {
       const technician = await lockTechnicianForServiceOrder(
         tx,
@@ -429,6 +453,7 @@ export async function quoteServiceOrder(
     context,
     serviceOrderId,
     "quoted",
+    "customer_device",
     async (tx, order): Promise<QuoteServiceOrderResult> => {
       const { organizationId } = context;
       // La lista del modelo, leída con la orden bloqueada: lo que cuenta es la lista de ahora.
@@ -532,6 +557,7 @@ async function simpleTransition(
     context,
     serviceOrderId,
     to,
+    "customer_device",
     async (tx, order): Promise<TransitionResult> => {
       const now = new Date();
       await repository.updateServiceOrder(
@@ -594,6 +620,7 @@ export async function deliverServiceOrder(
     context,
     serviceOrderId,
     "delivered",
+    "customer_device",
     async (tx, order): Promise<DeliverServiceOrderResult> => {
       const deliveredAt = new Date();
       if (order.status === "rejected") {
@@ -625,7 +652,7 @@ export async function deliverServiceOrder(
       const sale = await issueServiceSale(tx, {
         organizationId,
         userId,
-        clientId: order.clientId,
+        clientId: order.clientId!,
         productId: product.id,
         currency: order.customerCurrency!,
         total: order.customerTotal!,
@@ -649,7 +676,9 @@ export async function deliverServiceOrder(
   );
 }
 
-// La cancelación (D-4): con un motivo de la lista, desde received, sent, quoted o approved.
+// La cancelación (D-4): con un motivo de la lista, desde received, sent, quoted o approved. La de una
+// unidad propia, solo desde sent, y la unidad vuelve a revisión sin cambiar su costo (brief-29.6.2,
+// D-2): después de la orden, la unidad, como al marcarla reparada (D-6).
 const cancelReasonSchema = z.enum(repository.SERVICE_ORDER_CANCEL_REASONS);
 
 export async function cancelServiceOrder(
@@ -667,6 +696,7 @@ export async function cancelServiceOrder(
     context,
     serviceOrderId,
     "cancelled",
+    null,
     async (tx, order): Promise<TransitionResult> => {
       await repository.updateServiceOrder(
         tx,
@@ -678,6 +708,14 @@ export async function cancelServiceOrder(
           cancelReason: parsed.data,
         },
       );
+      if (order.kind === "own_unit") {
+        await cancelUnitRepair(tx, {
+          organizationId: context.organizationId,
+          unitId: order.unitId!,
+          reference: formatServiceOrderNumber(order.number),
+          createdBy: context.userId,
+        });
+      }
       await recordAudit(
         tx,
         statusAudit(
@@ -699,9 +737,16 @@ export type ServiceOrderSummary = {
   id: string;
   number: number;
   displayNumber: string;
-  clientId: string;
+  kind: ServiceOrderKind;
+  // Null en una unidad propia.
+  clientId: string | null;
   // Null si el cliente no se pudo leer; no debería pasar, por la clave foránea.
   clientName: string | null;
+  // El IMEI de la unidad propia; null en la orden de un cliente.
+  unitId: string | null;
+  unitSerial: string | null;
+  // El producto de la unidad propia (brief-29.6.2, D-7); null en la orden de un cliente.
+  unitProductName: string | null;
   modelId: string;
   modelName: string | null;
   status: ServiceOrderStatus;
@@ -712,9 +757,12 @@ export type ServiceOrderSummary = {
 };
 
 export type ServiceOrderStatusFilter = "all" | "open" | ServiceOrderStatus;
+export type ServiceOrderKindFilter = "all" | ServiceOrderKind;
 
 export type ServiceOrderListFilters = {
   status: ServiceOrderStatusFilter;
+  // Desde la 29.6.2; sin él, los dos tipos.
+  kind?: ServiceOrderKindFilter;
   // Lo que escribió quien busca; vacío no filtra.
   number: string;
   page: number;
@@ -728,32 +776,58 @@ export type ServiceOrderPage = {
   pageCount: number;
 };
 
+// El nombre del producto de cada unidad propia, por la interfaz de catalog, sin JOIN.
+async function unitProductNames(
+  context: AuthContext,
+  units: Map<string, UnitSummary>,
+): Promise<Map<string, string>> {
+  const productIds = [...units.values()].map((unit) => unit.productId);
+  if (productIds.length === 0) return new Map();
+  const products = await getProductsByIds(context, productIds);
+  return new Map(
+    products.ok
+      ? products.products.map((product) => [product.id, product.name])
+      : [],
+  );
+}
+
 async function summarize(
   context: AuthContext,
   rows: repository.ServiceOrderRow[],
 ): Promise<ServiceOrderSummary[]> {
   if (rows.length === 0) return [];
-  const [clients, models] = await Promise.all([
-    getClientsByIds(
-      context,
-      rows.map((row) => row.clientId),
-    ),
+  const clientIds = rows.flatMap((row) => (row.clientId ? [row.clientId] : []));
+  const unitIds = rows.flatMap((row) => (row.unitId ? [row.unitId] : []));
+  const [clients, models, units] = await Promise.all([
+    clientIds.length > 0
+      ? getClientsByIds(context, clientIds)
+      : Promise.resolve(null),
     listModels(context),
+    getUnitSummaries(context.organizationId, unitIds),
   ]);
   const clientNames = new Map(
-    clients.ok
+    clients?.ok === true
       ? clients.clients.map((client) => [client.id, client.displayName])
       : [],
   );
   const modelNames = new Map(
     models.ok ? models.models.map((model) => [model.id, model.name]) : [],
   );
+  const productNames = await unitProductNames(context, units);
+  const productOf = (unitId: string) => {
+    const unit = units.get(unitId);
+    return unit ? (productNames.get(unit.productId) ?? null) : null;
+  };
   return rows.map((row) => ({
     id: row.id,
     number: row.number,
     displayNumber: formatServiceOrderNumber(row.number),
+    kind: row.kind,
     clientId: row.clientId,
-    clientName: clientNames.get(row.clientId) ?? null,
+    clientName: row.clientId ? (clientNames.get(row.clientId) ?? null) : null,
+    unitId: row.unitId,
+    unitSerial: row.unitId ? (units.get(row.unitId)?.serial ?? null) : null,
+    unitProductName: row.unitId ? productOf(row.unitId) : null,
     modelId: row.modelId,
     modelName: modelNames.get(row.modelId) ?? null,
     status: row.status,
@@ -780,13 +854,22 @@ export async function listServiceOrders(
   const query: repository.ServiceOrderListQuery = {
     organizationId: context.organizationId,
     statuses:
-      filters.status === "all"
+      filters.status === "all" || filters.status === "open"
         ? null
-        : filters.status === "open"
-          ? [...OPEN_SERVICE_ORDER_STATUSES]
-          : [filters.status],
+        : [filters.status],
+    open:
+      filters.status === "open"
+        ? {
+            customer_device: [...OPEN_SERVICE_ORDER_STATUSES],
+            own_unit: [...OPEN_OWN_UNIT_STATUSES],
+          }
+        : null,
     number,
     clientId: null,
+    kind:
+      filters.kind === undefined || filters.kind === "all"
+        ? null
+        : filters.kind,
   };
   const total = await repository.countServiceOrders(query);
   const pageCount = Math.max(1, Math.ceil(total / SERVICE_ORDERS_PAGE_SIZE));
@@ -842,7 +925,8 @@ export type ServiceOrderLine = {
   repairTypeId: string;
   // El nombre de hoy: la línea no lo copia.
   repairTypeName: string | null;
-  price: string;
+  // Null en una unidad propia (brief-29.6.2, D-3).
+  price: string | null;
   // Null para un viewer.
   cost: string | null;
 };
@@ -852,9 +936,18 @@ export type ServiceOrderDetail = {
   number: number;
   displayNumber: string;
   status: ServiceOrderStatus;
-  // El cliente como lo entrega crm para el rol. Null no debería pasar, por la clave foránea.
+  kind: ServiceOrderKind;
+  // El cliente como lo entrega crm para el rol; null en una unidad propia.
   client: Client | null;
-  clientId: string;
+  clientId: string | null;
+  // La unidad propia, con su IMEI y su estado de hoy; null en la orden de un cliente.
+  unit: {
+    id: string;
+    serial: string | null;
+    status: UnitStatus | null;
+    productId: string | null;
+    productName: string | null;
+  } | null;
   model: { id: string; name: string } | null;
   // Null después del vaciado de datos del cliente (D-11).
   deviceSerial: string | null;
@@ -903,11 +996,13 @@ export async function getServiceOrder(
   );
   if (!order) return failure("NOT_FOUND");
   const admin = context.role === "admin";
-  const [lines, types, clients, model, technicianNames, sale] =
+  const [lines, types, clients, model, technicianNames, sale, units] =
     await Promise.all([
       repository.findServiceOrderLines(organizationId, order.id),
       repository.findRepairTypes(organizationId),
-      getClientsByIds(context, [order.clientId]),
+      order.clientId !== null
+        ? getClientsByIds(context, [order.clientId])
+        : Promise.resolve(null),
       getModel(context, order.modelId),
       admin && order.technicianId !== null
         ? getSupplierNames(context, [order.technicianId])
@@ -915,8 +1010,11 @@ export async function getServiceOrder(
       order.saleId !== null
         ? getSale(context, order.saleId)
         : Promise.resolve(null),
+      getUnitSummaries(organizationId, order.unitId ? [order.unitId] : []),
     ]);
   const typeNames = new Map(types.map((type) => [type.id, type.name]));
+  const unit = order.unitId !== null ? units.get(order.unitId) : undefined;
+  const productNames = await unitProductNames(context, units);
   return {
     ok: true,
     order: {
@@ -924,8 +1022,21 @@ export async function getServiceOrder(
       number: order.number,
       displayNumber: formatServiceOrderNumber(order.number),
       status: order.status,
-      client: clients.ok ? (clients.clients[0] ?? null) : null,
+      kind: order.kind,
+      client: clients?.ok === true ? (clients.clients[0] ?? null) : null,
       clientId: order.clientId,
+      unit:
+        order.unitId !== null
+          ? {
+              id: order.unitId,
+              serial: unit?.serial ?? null,
+              status: unit?.status ?? null,
+              productId: unit?.productId ?? null,
+              productName: unit
+                ? (productNames.get(unit.productId) ?? null)
+                : null,
+            }
+          : null,
       model: model.ok ? { id: model.model.id, name: model.model.name } : null,
       deviceSerial: order.deviceSerial,
       reportedIssue: order.reportedIssue,
@@ -1010,7 +1121,7 @@ export async function getQuoteForm(
     serviceOrderId.toLowerCase(),
   );
   if (!order) return failure("NOT_FOUND");
-  if (!canTransition(order.status, "quoted")) {
+  if (!canTransition(order.status, "quoted", order.kind)) {
     return invalidTransition(order.status);
   }
   const [types, prices, main] = await Promise.all([

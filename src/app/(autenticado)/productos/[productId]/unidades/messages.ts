@@ -2,10 +2,12 @@ import type {
   ChangeTrackingResult,
   CorrectUnitResult,
   RegisterUnitResult,
+  ReleaseUnitResult,
   UnitField,
   UnitStatus,
   WriteOffUnitResult,
 } from "@/modules/inventory";
+import type { CreateOwnUnitServiceOrderResult } from "@/modules/service";
 import type { StockTracking } from "@/modules/catalog";
 import { formatQuantity } from "@/shared/quantity";
 
@@ -33,6 +35,9 @@ export const UNIT_STATUS_LABEL: Record<UnitStatus, string> = {
   // Desde la 29.5.2 (brief-29.5.2, D-5).
   reserved: "Reservada",
   sold: "Vendida",
+  // Desde la 29.6.2 (brief-29.6.2, D-7).
+  in_repair: "En reparación",
+  in_review: "En revisión",
 };
 
 export const UNIT_ORIGIN_LABEL = {
@@ -171,7 +176,7 @@ export function writeOffRejection(
       field: null,
       message:
         result.rule === "unit_not_available"
-          ? "Esta unidad ya no está disponible: está reservada, vendida o dada de baja."
+          ? "Esta unidad ya no está disponible ni en revisión: está reservada, vendida, en reparación o dada de baja."
           : balanceMessage(result.rule),
     };
   }
@@ -190,7 +195,77 @@ export function correctRejection(
     return {
       field: null,
       message:
-        "Esta unidad ya no está disponible (está reservada, vendida o dada de baja): no se corrige.",
+        "Esta unidad ya no está disponible ni en revisión (está reservada, vendida, en reparación o dada de baja): no se corrige.",
+    };
+  }
+  return commonRejection(result.code, requestId);
+}
+
+// Mandar una unidad a reparar (brief-29.6.2, D-7). El campo es el técnico o qué hay que reparar.
+export function sendToRepairRejection(
+  result: Exclude<CreateOwnUnitServiceOrderResult, { ok: true }>,
+  requestId: string,
+): Rejection {
+  if (result.code === "VALIDATION_ERROR" && "fields" in result) {
+    return result.fields[0] === "technician"
+      ? { field: "technicianId", message: "Elegí un técnico de la lista." }
+      : {
+          field: "reportedIssue",
+          message: "Escribí qué hay que reparar, de hasta 1000 caracteres.",
+        };
+  }
+  if (result.code === "NOT_FOUND" && "target" in result) {
+    return result.target === "technician"
+      ? { field: "technicianId", message: "Ese técnico ya no existe." }
+      : { field: null, message: UNIT_NOT_FOUND_MESSAGE };
+  }
+  if (result.code === "BUSINESS_RULE_VIOLATION") {
+    switch (result.rule) {
+      case "unit_not_available":
+        return {
+          field: null,
+          message:
+            "Esta unidad ya no está disponible ni en revisión: está reservada, vendida, en reparación o dada de baja.",
+        };
+      case "unit_without_model":
+        return {
+          field: null,
+          message:
+            "El producto de esta unidad no tiene modelo: asignale uno para mandarla a reparar, porque las reparaciones se cargan con la lista del modelo.",
+        };
+      case "inactive_technician":
+        return {
+          field: "technicianId",
+          message: "Ese técnico está desactivado. Elegí otro.",
+        };
+      case "not_technician":
+        return {
+          field: "technicianId",
+          message: "Ese proveedor no está marcado como técnico. Elegí otro.",
+        };
+      default:
+        return {
+          field: null,
+          message:
+            "Mandarla a reparar dejaría el stock por debajo de lo reservado por pedidos confirmados.",
+        };
+    }
+  }
+  return commonRejection(result.code, requestId);
+}
+
+// Liberar una unidad en revisión a la venta (brief-29.6.2, D-2).
+export function releaseRejection(
+  result: Exclude<ReleaseUnitResult, { ok: true }>,
+  requestId: string,
+): Rejection {
+  if (result.code === "BUSINESS_RULE_VIOLATION") {
+    return {
+      field: null,
+      message:
+        result.rule === "unit_not_in_review"
+          ? "Esta unidad ya no está en revisión."
+          : balanceMessage(result.rule),
     };
   }
   return commonRejection(result.code, requestId);
@@ -202,6 +277,10 @@ const NOTICES: Record<string, string> = {
   "unidad-cargada": "Unidad cargada: el stock subió en 1.",
   "unidad-baja": "Unidad dada de baja: el stock bajó en 1.",
   "unidad-corregida": "Unidad corregida.",
+  // Desde la 29.6.2 (brief-29.6.2, D-7).
+  "unidad-liberada": "Unidad liberada a la venta: el stock subió en 1.",
+  "unidad-baja-revision":
+    "Unidad dada de baja. Estaba en revisión, fuera del stock: el stock no cambió.",
 };
 
 export function noticeMessage(

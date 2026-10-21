@@ -18,11 +18,18 @@ import { describe, expect, it } from "vitest";
 // guardada en una variable, el nombre armado en tiempo de ejecución, ni SQL escrito a mano contra la
 // base. El vaciado de datos de un cliente (scripts/client-data-delete.ts) y los tests quedan fuera: no
 // son src/.
+//
+// Desde la 29.6.2 (brief-29.6.2, D-5): la orden de una unidad propia, con su alta, su paso a reparada
+// con las líneas, y sus casos de uso desde su Server Action. Mandar a reparar se llama desde la
+// pantalla de unidades del producto.
 
 const REPOSITORY = "src/modules/service/repository.ts";
 const REPAIR_LIST = "src/modules/service/repair-list.ts";
 const ORDERS = "src/modules/service/service-orders.ts";
+const OWN_UNIT_ORDERS = "src/modules/service/own-unit-orders.ts";
 const ACTIONS = "src/app/(autenticado)/reparaciones/actions.ts";
+const UNIT_ACTIONS =
+  "src/app/(autenticado)/productos/[productId]/unidades/actions.ts";
 
 const AUTHORIZED = new Map([
   ["insertRepairType", ["insert repair_types"]],
@@ -30,6 +37,7 @@ const AUTHORIZED = new Map([
   ["insertRepairPrice", ["insert repair_prices"]],
   ["updateRepairPrice", ["update repair_prices"]],
   ["insertServiceOrder", ["insert service_orders"]],
+  ["insertOwnUnitServiceOrder", ["insert service_orders"]],
   ["updateServiceOrder", ["update service_orders"]],
   ["insertServiceOrderLines", ["insert service_order_lines"]],
 ]);
@@ -125,6 +133,10 @@ const CALLERS = new Map<string, { file: string; from: string[] }[]>([
   ["writeRepairPrice", [{ file: REPAIR_LIST, from: ["setRepairPrice"] }]],
   ["insertServiceOrder", [{ file: ORDERS, from: ["createServiceOrder"] }]],
   [
+    "insertOwnUnitServiceOrder",
+    [{ file: OWN_UNIT_ORDERS, from: ["createOwnUnitServiceOrder"] }],
+  ],
+  [
     "updateServiceOrder",
     [
       {
@@ -137,9 +149,16 @@ const CALLERS = new Map<string, { file: string; from: string[] }[]>([
           "cancelServiceOrder",
         ],
       },
+      { file: OWN_UNIT_ORDERS, from: ["markOwnUnitRepaired"] },
     ],
   ],
-  ["insertServiceOrderLines", [{ file: ORDERS, from: ["quoteServiceOrder"] }]],
+  [
+    "insertServiceOrderLines",
+    [
+      { file: ORDERS, from: ["quoteServiceOrder"] },
+      { file: OWN_UNIT_ORDERS, from: ["markOwnUnitRepaired"] },
+    ],
+  ],
   [
     "simpleTransition",
     [
@@ -188,6 +207,14 @@ const CALLERS = new Map<string, { file: string; from: string[] }[]>([
   [
     "cancelServiceOrder",
     [{ file: ACTIONS, from: ["cancelServiceOrderAction"] }],
+  ],
+  [
+    "createOwnUnitServiceOrder",
+    [{ file: UNIT_ACTIONS, from: ["sendUnitToRepairAction"] }],
+  ],
+  [
+    "markOwnUnitRepaired",
+    [{ file: ACTIONS, from: ["markOwnUnitRepairedAction"] }],
   ],
 ]);
 
@@ -313,6 +340,7 @@ describe("repositorio", () => {
       "insertRepairPrice: insert repair_prices",
       "updateRepairPrice: update repair_prices",
       "insertServiceOrder: insert service_orders",
+      "insertOwnUnitServiceOrder: insert service_orders",
       "updateServiceOrder: update service_orders",
       "insertServiceOrderLines: insert service_order_lines",
     ]);

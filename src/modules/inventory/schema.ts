@@ -67,7 +67,9 @@ export const inventories = pgTable(
 // sin pedido (ADR 0021, punto 5). sale_void, desde la 20.4: la reposición de la anulación de una
 // venta sin pedido (ADR 0021, punto 6). goods_receipt, desde la 22.4: la entrada de una recepción
 // de mercadería (ADR 0023, punto 4; brief-22.4, D-3). goods_receipt_void, desde la 22.5: la salida de
-// la anulación de una recepción (ADR 0023, punto 6; brief-22.5, D-3).
+// la anulación de una recepción (ADR 0023, punto 6; brief-22.5, D-3). unit_to_repair y unit_released,
+// desde la 29.6.2: la salida de una unidad disponible que va a reparar y la entrada de una unidad que
+// se libera a la venta (ADR 0024, punto 6; brief-29.6.2, D-1).
 export const inventoryMovementType = pgEnum("inventory_movement_type", [
   "adjustment_positive",
   "adjustment_negative",
@@ -76,6 +78,8 @@ export const inventoryMovementType = pgEnum("inventory_movement_type", [
   "sale_void",
   "goods_receipt",
   "goods_receipt_void",
+  "unit_to_repair",
+  "unit_released",
 ]);
 
 // Los grados de las unidades (ADR 0024, punto 13; brief-29.5, D-5): una lista por organización, que
@@ -126,13 +130,15 @@ export const unitGrades = pgTable(
 );
 
 // El estado de una unidad (ADR 0024, punto 6). Cada valor entra con la subfase que lo usa (R-19): la
-// 29.5 crea available y written_off; reserved y sold, la 29.5.2 (brief-29.5.2, D-3 y D-4); in_repair,
-// la 29.6; in_review, la 29.7. Las transiciones las fija el trigger stock_units_guard.
+// 29.5 crea available y written_off; reserved y sold, la 29.5.2 (brief-29.5.2, D-3 y D-4); in_repair e
+// in_review, la 29.6.2 (brief-29.6.2, D-1). Las transiciones las fija el trigger stock_units_guard.
 export const stockUnitStatus = pgEnum("stock_unit_status", [
   "available",
   "written_off",
   "reserved",
   "sold",
+  "in_repair",
+  "in_review",
 ]);
 
 // De dónde vino la unidad. trade_in entra con la 29.7.
@@ -146,7 +152,8 @@ export const UNIT_SERIAL_MAX_LENGTH = 32;
 export const UNIT_SERIAL_PATTERN = "^[A-Za-z0-9][A-Za-z0-9-]{0,31}$";
 
 // Las unidades de un producto por unidad (ADR 0024, punto 6; brief-29.5, D-2). El saldo de un
-// producto unit es igual a sus unidades available. crm_app no tiene DELETE: una unidad se da de baja.
+// producto unit es igual a sus unidades available y, desde la 29.5.2, reserved; las que están en
+// reparación o en revisión (29.6.2) quedan fuera. crm_app no tiene DELETE: una unidad se da de baja.
 export const stockUnits = pgTable(
   "stock_units",
   {

@@ -365,7 +365,7 @@ export function voidGoodsReceiptRejection(
       if (result.rule === "units_not_available") {
         return {
           ...none,
-          message: `${result.serials.length === 1 ? "Una unidad" : "Unas unidades"} de esta recepción ya no ${result.serials.length === 1 ? "está disponible" : "están disponibles"} (${result.serials.join(", ")}): se dieron de baja. La recepción no se puede anular.`,
+          message: `${result.serials.length === 1 ? "Una unidad" : "Unas unidades"} de esta recepción ya no ${result.serials.length === 1 ? "está disponible" : "están disponibles"} (${result.serials.join(", ")}): se reservaron, se vendieron, se dieron de baja o están en reparación o en revisión. La recepción no se puede anular.`,
         };
       }
       return {
