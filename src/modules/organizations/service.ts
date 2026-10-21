@@ -270,7 +270,18 @@ export async function getAdminContextForScript(input: {
 
 export type ActivateCapabilityResult =
   | { ok: true; status: "activated" | "already_active"; actorUserId: string }
-  | Failure<"NOT_FOUND" | "FORBIDDEN">;
+  | Failure<"NOT_FOUND" | "FORBIDDEN">
+  // Desde la 29.7: una capacidad que exige otra (brief-29.7, D-1).
+  | Failure<
+      "BUSINESS_RULE_VIOLATION",
+      { rule: "capability_required"; requires: Capability }
+    >;
+
+// Las capacidades que exigen otra activa antes (ADR 0024, punto 3): trade_ins, la recepción de
+// usados, crea unidades con IMEI (brief-29.7, D-1).
+export const CAPABILITY_REQUIRES: Partial<Record<Capability, Capability>> = {
+  trade_ins: "serialized_units",
+};
 
 // Activación de una capacidad (ADR 0024, punto 3): la llama solo el script de operador
 // scripts/activar-capacidad.ts, dentro de la transacción que también copia el perfil de rubro, así
@@ -289,6 +300,16 @@ export async function activateCapability(
   }
   const actor = await findScriptActor(tx, input);
   if (!actor) return failure("FORBIDDEN");
+  // Con la organización bloqueada: nadie activa ni desactiva nada a la vez.
+  const requires = CAPABILITY_REQUIRES[input.capability];
+  if (requires && !(await hasCapability(input.organizationId, requires, tx))) {
+    return {
+      ok: false,
+      code: "BUSINESS_RULE_VIOLATION",
+      rule: "capability_required",
+      requires,
+    };
+  }
 
   const capabilityId = await repository.insertCapability(tx, {
     organizationId: input.organizationId,

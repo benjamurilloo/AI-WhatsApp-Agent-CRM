@@ -107,6 +107,14 @@ export {
   type SendUnitToRepairResult,
   type UnitForRepair,
 } from "./unit-repairs";
+// La unidad de un usado (brief-29.7, D-2): tradeins la crea al emitir el comprobante PU y la da de
+// baja al anularlo, con su transacción.
+export {
+  registerTradeInUnit,
+  writeOffTradeInUnit,
+  type RegisterTradeInUnitResult,
+  type WriteOffTradeInUnitResult,
+} from "./trade-in-units";
 // Los grados de las unidades (brief-29.5, D-5).
 export {
   applyGradeTemplate,

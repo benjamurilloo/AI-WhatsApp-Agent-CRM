@@ -49,6 +49,14 @@ export const POSTAL_CODE_FORMAT_MESSAGE =
   "Ingresá un código postal de hasta 10 letras y números, por ejemplo 1425 o C1425ABC.";
 export const SEGMENT_TOO_LONG_MESSAGE =
   "El segmento no puede superar los 60 caracteres.";
+// El DNI y el Instagram, desde la 29.7 (brief-29.7, D-6).
+export const DOCUMENT_NUMBER_FORMAT_MESSAGE =
+  "Ingresá un DNI de 7 u 8 dígitos, con o sin puntos.";
+export const DOCUMENT_NUMBER_HINT =
+  "Opcional. No identifica al cliente: el identificador es el teléfono.";
+export const INSTAGRAM_FORMAT_MESSAGE =
+  "Ingresá el usuario de Instagram: hasta 30 letras, números, puntos o guiones bajos.";
+export const INSTAGRAM_HINT = "El usuario, con o sin la @.";
 export const SEGMENT_HINT =
   "Una clasificación comercial, por ejemplo Mayorista o Minorista.";
 // Lo que ve un viewer en lugar del email, la calle y el código postal (D-8).
@@ -67,6 +75,8 @@ const CLIENT_FIELD_MESSAGES: Record<ClientField, string> = {
   province: PROVINCE_MESSAGE,
   postalCode: POSTAL_CODE_FORMAT_MESSAGE,
   segment: SEGMENT_TOO_LONG_MESSAGE,
+  documentNumber: DOCUMENT_NUMBER_FORMAT_MESSAGE,
+  instagram: INSTAGRAM_FORMAT_MESSAGE,
 };
 
 // El orden del formulario (D-11).
@@ -75,6 +85,8 @@ const CLIENT_FIELD_ORDER: ClientField[] = [
   "phone",
   "notes",
   "email",
+  "documentNumber",
+  "instagram",
   "kind",
   "companyName",
   "jobTitle",

@@ -35,7 +35,7 @@ test.afterAll(async () => {
 // se vacía para que cada caso empiece en OC-000001 y RC-000001.
 test.beforeEach(async () => {
   await db.execute(
-    sql`truncate table service_order_lines, service_orders, supplier_payment_voids, supplier_payments, goods_receipt_voids, goods_receipt_line_units, goods_receipt_lines, goods_receipts, purchase_order_lines, purchase_orders,
+    sql`truncate table trade_in_voids, trade_in_checklist_results, trade_ins, service_order_lines, service_orders, supplier_payment_voids, supplier_payments, goods_receipt_voids, goods_receipt_line_units, goods_receipt_lines, goods_receipts, purchase_order_lines, purchase_orders,
           suppliers, document_counters, audit_logs, refund_voids, refunds, receipt_voids, receipts,
           sale_voids, sale_line_units, sale_lines, sales, order_line_units, order_lines, orders, inventory_movements, inventories,
           product_images, product_costs, product_prices, attribute_values, stock_units, products`,

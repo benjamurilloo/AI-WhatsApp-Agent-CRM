@@ -26,6 +26,9 @@ import { getDb, type Db } from "@/shared/db";
  * Desde la 29.6, sus órdenes de servicio pierden el IMEI del equipo y lo que reportó, que son datos
  * suyos (brief-29.6, D-11): el trigger de la 0058 deja pasar ese UPDATE y ningún otro sin cambio de
  * estado. Una orden de servicio retiene la ficha por su clave (RESTRICT), como un pedido.
+ * Desde la 29.7, la ficha pierde también el DNI y el Instagram (brief-29.7, D-6). Sus recepciones de
+ * usados no se tocan: no tienen datos de la persona, solo ids, el IMEI del equipo que entregó, montos y
+ * fechas, como una venta; y retienen la ficha por su clave (RESTRICT).
  * Los pedidos no se tocan: no guardan texto de la persona, solo ids, cantidades, montos, estados y
  * fechas, y su auditoría tampoco (ADR 0020, punto 10; brief-19.2, D-11). Un cliente con pedidos no
  * se borra: la clave del pedido lo impide (RESTRICT), así que va al vaciado aunque no tenga
@@ -70,6 +73,10 @@ export type ClientDataReport = {
   refundVoids: number;
   // Desde la 29.6 (brief-29.6, D-11): sus órdenes de servicio, que también impiden borrarlo.
   serviceOrders: number;
+  // Desde la 29.7 (brief-29.7, D-6): sus recepciones de usados, que también lo impiden, y sus
+  // anulaciones, que cuelgan de la recepción.
+  tradeIns: number;
+  tradeInVoids: number;
   // Un cliente sin conversaciones, pedidos ni ventas sí se puede borrar del todo (brief-8.2,
   // hallazgo 7; brief-19.2; brief-20.2). En la 20.2 toda venta tiene un pedido, así que las ventas
   // no cambian el resultado hasta la venta sin pedido de la 20.3 (brief-20.2, H-1).
@@ -96,6 +103,8 @@ export async function reportClientData(
     refunds: number;
     refund_voids: number;
     service_orders: number;
+    trade_ins: number;
+    trade_in_voids: number;
   }>(
     sql`select
           exists (select 1 from clients
@@ -133,7 +142,12 @@ export async function reportClientData(
              join refunds d on d.organization_id = v.organization_id and d.id = v.refund_id
            where v.organization_id = ${organizationId} and d.client_id = ${clientId}) as refund_voids,
           (select count(*)::int from service_orders
-           where organization_id = ${organizationId} and client_id = ${clientId}) as service_orders`,
+           where organization_id = ${organizationId} and client_id = ${clientId}) as service_orders,
+          (select count(*)::int from trade_ins
+           where organization_id = ${organizationId} and client_id = ${clientId}) as trade_ins,
+          (select count(*)::int from trade_in_voids v
+             join trade_ins t on t.organization_id = v.organization_id and t.id = v.trade_in_id
+           where v.organization_id = ${organizationId} and t.client_id = ${clientId}) as trade_in_voids`,
   );
   const row = counts.rows[0]!;
   return {
@@ -151,6 +165,8 @@ export async function reportClientData(
     refunds: row.refunds,
     refundVoids: row.refund_voids,
     serviceOrders: row.service_orders,
+    tradeIns: row.trade_ins,
+    tradeInVoids: row.trade_in_voids,
     deletable:
       row.exists &&
       row.conversations === 0 &&
@@ -158,7 +174,8 @@ export async function reportClientData(
       row.sales === 0 &&
       row.receipts === 0 &&
       row.refunds === 0 &&
-      row.service_orders === 0,
+      row.service_orders === 0 &&
+      row.trade_ins === 0,
   };
 }
 
@@ -279,6 +296,8 @@ export async function eraseClientData(
               province = null,
               postal_code = null,
               segment = null,
+              document_number = null,
+              instagram = null,
               is_active = false,
               updated_at = now()
           where organization_id = ${organizationId} and id = ${clientId}`,
@@ -371,6 +390,16 @@ export function describeRetained(report: ClientDataReport): string[] {
   if (report.serviceOrders > 0) {
     retained.push(
       `${report.serviceOrders} órdenes de servicio en 'service_orders', sin el IMEI ni lo que reportó: quedan el número, el modelo, el estado, las fechas, el técnico y los montos, y su presupuesto en 'service_order_lines'.`,
+    );
+  }
+  if (report.tradeIns > 0) {
+    retained.push(
+      `${report.tradeIns} recepciones de usados en 'trade_ins', con su checklist: quedan el número, la fecha, el producto, la unidad, el IMEI del equipo, la batería, el grado, el valor y el destino, sin ningún texto de la persona.`,
+    );
+  }
+  if (report.tradeInVoids > 0) {
+    retained.push(
+      `${report.tradeInVoids} anulaciones de usados en 'trade_in_voids': quedan el número, la fecha, la recepción y el motivo de la lista, sin ningún texto de la persona.`,
     );
   }
   if (report.auditEntries > 0) {

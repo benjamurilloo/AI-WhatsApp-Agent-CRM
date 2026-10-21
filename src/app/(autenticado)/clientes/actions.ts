@@ -45,6 +45,8 @@ const FORM_FIELDS: (keyof ClientFormValues)[] = [
   "province",
   "postalCode",
   "segment",
+  "documentNumber",
+  "instagram",
 ];
 
 function clientValues(formData: FormData): ClientFormValues {

@@ -1,0 +1,63 @@
+// Interfaz pública del módulo tradeins (ADR 0024, punto 8; brief-29.7): la recepción de usados, detrás
+// de la capacidad trade_ins. El checklist de la organización, el comprobante PU con su resultado y la
+// unidad que nace en revisión, y la anulación APU, que orquesta cash. tradeins depende de catalog, crm,
+// inventory, numbering, organizations y audit; ningún módulo depende de tradeins salvo cash, por la
+// anulación (U-4). Lo fija la guarda tradeins-dependencies.
+export {
+  applyChecklistTemplate,
+  CHECKLIST_ITEM_NAME_MAX_LENGTH,
+  createChecklistItem,
+  listChecklistItems,
+  MAX_CHECKLIST_ITEMS,
+  moveChecklistItem,
+  requireTradeIns,
+  setChecklistItemActive,
+  tradeInsAllowed,
+  updateChecklistItem,
+  type ChecklistItem,
+  type ChecklistItemField,
+  type ChecklistItemInput,
+  type ChecklistItemWriteResult,
+  type ChecklistTemplateItem,
+  type MoveDirection,
+} from "./checklist";
+export {
+  CLIENT_TRADE_INS_LIMIT,
+  createTradeIn,
+  formatTradeInNumber,
+  formatTradeInVoidNumber,
+  getTradeIn,
+  getTradeInForm,
+  getUnitTradeIns,
+  listClientTradeIns,
+  listTradeInAudit,
+  listTradeIns,
+  parseTradeInNumberSearch,
+  TRADE_IN_DESTINATIONS,
+  TRADE_IN_VOID_REASONS,
+  TRADE_INS_PAGE_SIZE,
+  validateTradeInInput,
+  type CreateTradeInResult,
+  type TradeInCheck,
+  type TradeInDestination,
+  type TradeInDestinationFilter,
+  type TradeInDetail,
+  type TradeInField,
+  type TradeInForm,
+  type TradeInInput,
+  type TradeInListFilters,
+  type TradeInPage,
+  type TradeInRef,
+  type TradeInStatusFilter,
+  type TradeInSummary,
+  type TradeInValidationFailure,
+  type TradeInVoidReason,
+} from "./trade-ins";
+// Para cash (U-4): la anulación, con su transacción y bajo su bloqueo.
+export {
+  findTradeInVoidNumber,
+  isTradeInAlreadyVoidedError,
+  voidTradeInInCash,
+  type VoidTradeInRef,
+  type VoidTradeInResult,
+} from "./trade-ins";

@@ -131,6 +131,8 @@ describe("toHistoryFilters", () => {
       "a-reparacion",
     );
     expect(parseMovementView({ tipo: "liberacion" }).type).toBe("liberacion");
+    // Desde la 29.7 (brief-29.7, D-2).
+    expect(parseMovementView({ tipo: "baja-usado" }).type).toBe("baja-usado");
   });
 
   // brief-22.4, D-14: la recepción suma, como el ajuste positivo y la anulación de una venta.
@@ -155,7 +157,7 @@ describe("toHistoryFilters", () => {
     for (const [type, direction] of Object.entries(MOVEMENT_DIRECTION)) {
       expect(movementSign(type)).toBe(direction === 1 ? "+" : "−");
     }
-    expect(Object.keys(MOVEMENT_DIRECTION)).toHaveLength(9);
+    expect(Object.keys(MOVEMENT_DIRECTION)).toHaveLength(10);
   });
 });
 

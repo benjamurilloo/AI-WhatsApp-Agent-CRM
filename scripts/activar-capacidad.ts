@@ -11,6 +11,7 @@ import {
   type Capability,
 } from "@/modules/organizations";
 import { applyRepairTypeTemplate } from "@/modules/service";
+import { applyChecklistTemplate } from "@/modules/tradeins";
 import { getDb } from "@/shared/db";
 
 // Activa una capacidad en una organización y, con --profile, copia el perfil de rubro (ADR 0024,
@@ -32,6 +33,10 @@ import { getDb } from "@/shared/db";
 // Desde la 29.6 (brief-29.6, D-1), repairs: con el perfil, si esta corrida la activa, copia los tipos de
 // reparación de ejemplo con la misma regla, y crea el producto de servicio de la organización, que no
 // se crea desde la pantalla. Sin el perfil, también lo crea: sin él no hay venta de una reparación.
+//
+// Desde la 29.7 (brief-29.7, D-1 y D-3), trade_ins, que exige serialized_units activa: sin ella se
+// rechaza y no se activa nada. Con el perfil, que activa las dos en orden, si esta corrida la activa,
+// copia el checklist de un usado con la misma regla.
 
 const usage =
   "Uso: npm run org:capability -- --organization <id> --admin-email <correo> (--profile <perfil> | --capability <capacidad>). Perfiles: " +
@@ -41,6 +46,7 @@ const CAPABILITIES: readonly Capability[] = [
   "variants",
   "serialized_units",
   "repairs",
+  "trade_ins",
 ];
 
 function option(args: string[], name: string): string | undefined {
@@ -90,7 +96,9 @@ async function main() {
         throw new Error(
           result.code === "NOT_FOUND"
             ? "No existe esa organización. No se activó nada."
-            : "El correo no es de un admin activo de esa organización. No se activó nada.",
+            : result.code === "BUSINESS_RULE_VIOLATION"
+              ? `La capacidad ${capability} exige ${result.requires} activa. No se activó nada.`
+              : "El correo no es de un admin activo de esa organización. No se activó nada.",
         );
       }
       actorUserId = result.actorUserId;
@@ -137,6 +145,19 @@ async function main() {
         });
         lines.push(
           `Perfil «${profile.label}»: tipos de reparación creados: ${types.created.join(", ") || "ninguno"}; ya existían: ${types.skipped.join(", ") || "ninguno"}.`,
+        );
+      }
+      if (
+        activatedNow.has("trade_ins") &&
+        profile.tradeInChecklist.length > 0
+      ) {
+        const items = await applyChecklistTemplate(tx, {
+          organizationId,
+          actorUserId,
+          items: profile.tradeInChecklist,
+        });
+        lines.push(
+          `Perfil «${profile.label}»: puntos del checklist de usados creados: ${items.created.join(", ") || "ninguno"}; ya existían: ${items.skipped.join(", ") || "ninguno"}.`,
         );
       }
     } else if (activatedNow.has("serialized_units")) {

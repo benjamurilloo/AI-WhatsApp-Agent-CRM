@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, notInArray, sql } from "drizzle-orm";
 import { getDb, type Db, type DbTransaction } from "@/shared/db";
 import {
   stockUnitOrigin,
@@ -139,9 +139,9 @@ const lockedColumns = {
   priceCurrency: stockUnits.priceCurrency,
 };
 
-// Las unidades vigentes (no dadas de baja) con esos IMEI, sin distinguir mayúsculas y sin bloqueo:
-// un IMEI tiene a lo sumo una vigente por organización (el índice único parcial). Para elegir las
-// unidades de una línea de un pedido o una venta (brief-29.5.2, D-1 y D-5).
+// Las unidades no dadas de baja con esos IMEI, sin distinguir mayúsculas y sin bloqueo. Para elegir
+// las unidades de una línea de un pedido o una venta (brief-29.5.2, D-1 y D-5). Desde la 29.7 un IMEI
+// puede tener una vendida y otra en el local (brief-29.7, U-2): quien elige prefiere la del local.
 export async function findCurrentUnitsBySerials(
   executor: Executor,
   organizationId: string,
@@ -202,8 +202,12 @@ export function lockUnits(
     .for("update");
 }
 
-// Los IMEI de la lista que ya tienen una unidad vigente en la organización, sin distinguir mayúsculas.
-// Es el aviso con nombre; la última defensa es el índice único parcial.
+// Los estados de una unidad que está en el local: los que cuenta el índice único parcial del IMEI.
+// Desde la 29.7, una vendida tampoco cuenta (brief-29.7, U-2).
+const OUT_OF_SHOP: StockUnitStatus[] = ["written_off", "sold"];
+
+// Los IMEI de la lista que ya tienen una unidad en el local, sin distinguir mayúsculas. Es el aviso con
+// nombre; la última defensa es el índice único parcial.
 export async function findTakenSerials(
   tx: DbTransaction,
   organizationId: string,
@@ -217,10 +221,45 @@ export async function findTakenSerials(
     .where(
       and(
         eq(stockUnits.organizationId, organizationId),
-        ne(stockUnits.status, "written_off"),
+        notInArray(stockUnits.status, OUT_OF_SHOP),
         inArray(sql<string>`lower(${stockUnits.serial})`, lowered),
       ),
     );
+  return rows.map((row) => row.serial);
+}
+
+// Los IMEI de unas unidades que volvieron al local en otra unidad (brief-29.7, U-2): un equipo vendido
+// que se recibió como usado. La anulación de su venta se rechaza, porque la vendida volvería al local
+// con el IMEI de la otra. Sin bloqueo: el índice único parcial es la última defensa.
+export async function findSerialsBackInShop(
+  tx: DbTransaction,
+  organizationId: string,
+  unitIds: string[],
+): Promise<string[]> {
+  if (unitIds.length === 0) return [];
+  const rows = await tx
+    .selectDistinct({ serial: stockUnits.serial })
+    .from(stockUnits)
+    .where(
+      and(
+        eq(stockUnits.organizationId, organizationId),
+        notInArray(stockUnits.id, unitIds),
+        notInArray(stockUnits.status, OUT_OF_SHOP),
+        inArray(
+          sql<string>`lower(${stockUnits.serial})`,
+          tx
+            .select({ serial: sql<string>`lower(${stockUnits.serial})` })
+            .from(stockUnits)
+            .where(
+              and(
+                eq(stockUnits.organizationId, organizationId),
+                inArray(stockUnits.id, unitIds),
+              ),
+            ),
+        ),
+      ),
+    )
+    .orderBy(stockUnits.serial);
   return rows.map((row) => row.serial);
 }
 
@@ -237,9 +276,11 @@ export type NewStockUnit = {
   originType: StockUnitOrigin;
   originId: string | null;
   createdBy: string;
+  // Desde la 29.7, la unidad de un usado nace en revisión (brief-29.7, D-2). Sin él, disponible.
+  status?: "available" | "in_review";
 };
 
-// Nace disponible (trigger stock_units_guard). Un IMEI repetido entre las vigentes lo rechaza el
+// Nace disponible, o en revisión la de un usado (trigger stock_units_guard). Un IMEI repetido entre las vigentes lo rechaza el
 // índice único parcial: la transacción queda abortada y quien llama la revierte entera.
 export async function insertStockUnit(
   tx: DbTransaction,

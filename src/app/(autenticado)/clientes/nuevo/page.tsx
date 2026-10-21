@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { listClientFilterOptions, PROVINCES } from "@/modules/crm";
-import { authorize } from "@/modules/organizations";
+import { authorize, hasCapability } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
 import { BackLink, DetailHeader } from "@/app/_components/detail-header";
 import { PageNotice } from "@/app/_components/page-notice";
@@ -25,6 +25,7 @@ export default async function NewClientPage() {
   const options: ClientFormOptions = {
     provinces: Object.entries(PROVINCES),
     segments: found.ok ? found.segments : [],
+    tradeIns: await hasCapability(context.organizationId, "trade_ins"),
   };
 
   return (

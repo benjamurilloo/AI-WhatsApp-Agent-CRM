@@ -43,6 +43,7 @@ export const UNIT_STATUS_LABEL: Record<UnitStatus, string> = {
 export const UNIT_ORIGIN_LABEL = {
   goods_receipt: "Recepción de mercadería",
   manual: "Alta manual",
+  trade_in: "Usado recibido",
 } as const;
 
 export const NO_AVAILABLE_UNITS_MESSAGE = "No hay unidades disponibles.";

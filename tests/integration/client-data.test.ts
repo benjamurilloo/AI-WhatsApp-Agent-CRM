@@ -776,6 +776,9 @@ const EXTRA_FIELDS: Record<string, string> = {
   province: "AR-W",
   postal_code: "W3400ABC",
   segment: "Mayorista kumquat",
+  // El DNI y el Instagram, desde la 29.7 (brief-29.7, FR-CLI-05).
+  document_number: "30111222",
+  instagram: "ana.kumquat",
 };
 
 // Las columnas nulables de clients, leídas del catálogo de la base y no de una lista escrita a mano.

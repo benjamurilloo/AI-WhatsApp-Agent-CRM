@@ -59,6 +59,10 @@ export type ClientExport = {
   // Desde la 29.6 (brief-29.6, D-11).
   service_orders: Record<string, unknown>[];
   service_order_lines: Record<string, unknown>[];
+  // Desde la 29.7 (brief-29.7, D-6): los usados que entregó, su checklist y sus anulaciones.
+  trade_ins: Record<string, unknown>[];
+  trade_in_checklist_results: Record<string, unknown>[];
+  trade_in_voids: Record<string, unknown>[];
 };
 
 export async function exportClientData(
@@ -245,6 +249,33 @@ export async function exportClientData(
         order by o.number, l.position`,
   );
 
+  // Los usados recibidos (brief-29.7, D-6), con el nombre de hoy del producto y del grado.
+  const tradeIns = await db.execute<Record<string, unknown>>(
+    sql`select t.id, t.number, 'PU-' || lpad(t.number::text, greatest(6, length(t.number::text)), '0') as display_number,
+               t.created_at, p.name as product, t.serial, t.battery_health, g.name as grade,
+               t.currency, t.value, t.destination
+        from trade_ins t
+        join products p on p.organization_id = t.organization_id and p.id = t.product_id
+        join unit_grades g on g.organization_id = t.organization_id and g.id = t.grade_id
+        where t.organization_id = ${organizationId} and t.client_id = ${clientId}
+        order by t.number`,
+  );
+  const tradeInResults = await db.execute<Record<string, unknown>>(
+    sql`select r.trade_in_id, t.number as trade_in_number, r.position, r.item_name, r.was_mandatory, r.passed
+        from trade_in_checklist_results r
+        join trade_ins t on t.organization_id = r.organization_id and t.id = r.trade_in_id
+        where r.organization_id = ${organizationId} and t.client_id = ${clientId}
+        order by t.number, r.position`,
+  );
+  const tradeInVoids = await db.execute<Record<string, unknown>>(
+    sql`select v.id, v.number, 'APU-' || lpad(v.number::text, greatest(6, length(v.number::text)), '0') as display_number,
+               v.created_at, v.trade_in_id, t.number as trade_in_number, v.reason
+        from trade_in_voids v
+        join trade_ins t on t.organization_id = v.organization_id and t.id = v.trade_in_id
+        where v.organization_id = ${organizationId} and t.client_id = ${clientId}
+        order by v.number`,
+  );
+
   return {
     exported_at: now.toISOString(),
     organization_id: organizationId,
@@ -270,6 +301,9 @@ export async function exportClientData(
     refund_voids: refundVoids.rows,
     service_orders: serviceOrders.rows,
     service_order_lines: serviceOrderLines.rows,
+    trade_ins: tradeIns.rows,
+    trade_in_checklist_results: tradeInResults.rows,
+    trade_in_voids: tradeInVoids.rows,
   };
 }
 

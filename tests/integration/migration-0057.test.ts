@@ -29,6 +29,7 @@ const URL_0057 = (() => {
 })();
 
 let folder: string;
+let folder0057: string;
 
 async function maintenance(query: string) {
   const client = new Client({ connectionString: maintenanceUrl(BASE_URL) });
@@ -40,14 +41,16 @@ async function maintenance(query: string) {
   }
 }
 
-// Una copia de drizzle/ con las migraciones hasta la 0056.
-function folderUpTo0056(): string {
+// Una copia de drizzle/ con las migraciones hasta la indicada. La 0057 se aplica desde una copia hasta
+// la 0057 y no desde drizzle/: drizzle aplica las pendientes en una sola transacción, y la 0060 usa en
+// el índice del IMEI el valor 'sold' que la 0057 agrega (brief-29.7, U-2).
+function folderUpTo(last: number): string {
   const target = mkdtempSync(join(tmpdir(), "crm-m0057-"));
   mkdirSync(join(target, "meta"));
   const journal = JSON.parse(
     readFileSync("drizzle/meta/_journal.json", "utf8"),
   ) as { entries: { idx: number; tag: string }[] };
-  journal.entries = journal.entries.filter((entry) => entry.idx <= 56);
+  journal.entries = journal.entries.filter((entry) => entry.idx <= last);
   writeFileSync(join(target, "meta", "_journal.json"), JSON.stringify(journal));
   for (const entry of journal.entries) {
     copyFileSync(
@@ -82,11 +85,13 @@ beforeAll(async () => {
   await maintenance(`drop database if exists "${NAME}" with (force)`);
   // template0: una conexión abierta a template1 haría fallar el CREATE DATABASE.
   await maintenance(`create database "${NAME}" template template0`);
-  folder = folderUpTo0056();
+  folder = folderUpTo(56);
+  folder0057 = folderUpTo(57);
 }, 60_000);
 
 afterAll(async () => {
   rmSync(folder, { recursive: true, force: true });
+  rmSync(folder0057, { recursive: true, force: true });
   await maintenance(`drop database if exists "${NAME}" with (force)`);
 }, 60_000);
 
@@ -158,7 +163,7 @@ describe("la 0057 sobre una base en la 0056 (invariante 8)", () => {
     });
 
     // La 0057, sola, sobre la base confirmada.
-    await migrateWith("drizzle");
+    await migrateWith(folder0057);
 
     await withClient(async (client) => {
       // Los valores nuevos se usan en la transacción siguiente, con las transiciones del trigger.

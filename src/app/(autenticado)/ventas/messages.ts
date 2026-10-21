@@ -332,6 +332,14 @@ export function voidSaleRejection(
           existing: { displayNumber: result.saleVoid.displayNumber },
         };
       }
+      // Desde la 29.7 (brief-29.7, U-2): el equipo vendido volvió al local como usado.
+      if (result.rule === "unit_serial_back") {
+        const serials = result.serials.join(", ");
+        return {
+          message: `No se puede anular: ${result.serials.length === 1 ? "el IMEI" : "los IMEI"} ${serials} ${result.serials.length === 1 ? "volvió" : "volvieron"} al local en otra unidad, como un usado recibido. La unidad vendida no puede volver con el mismo IMEI. No se anuló nada.`,
+          existing: null,
+        };
+      }
       return {
         message:
           "No se puede reponer el stock: el saldo de algún producto superaría el máximo. No se anuló nada.",

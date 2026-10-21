@@ -38,6 +38,11 @@ export const CLIENT_FIELD_LIMITS = {
 // espacios internos, recortado. El servicio lo lleva a esta forma antes de guardar.
 export const POSTAL_CODE_PATTERN = "^[A-Z0-9][A-Z0-9 ]{0,9}$";
 
+// El DNI, de 7 u 8 dígitos sin puntos, y el usuario de Instagram sin @ (brief-29.7, D-6). Los mismos
+// patrones van en los CHECK de la tabla.
+export const DOCUMENT_NUMBER_PATTERN = "^[0-9]{7,8}$";
+export const INSTAGRAM_PATTERN = "^[A-Za-z0-9._]{1,30}$";
+
 // Normalización de texto para buscar por prefijo sin distinguir mayúsculas ni acentos
 // (brief-9.0.2, D-1 y D-2). `immutable_unaccent` la define la migración 0015.
 //
@@ -74,6 +79,11 @@ export const clients = pgTable(
     province: text("province"),
     postalCode: text("postal_code"),
     segment: text("segment"),
+    // Desde la 29.7 (ADR 0024, punto 14; brief-29.7, D-6): opcionales y sin unicidad. El DNI nunca
+    // identifica al cliente (ADR 0007, nota del 2026-10-18). Como el email, no llegan a un viewer ni
+    // al agente, y el vaciado los lleva a nulo.
+    documentNumber: text("document_number"),
+    instagram: text("instagram"),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -118,6 +128,14 @@ export const clients = pgTable(
     check(
       "clients_segment_length",
       sql`char_length(${table.segment}) between 1 and ${sql.raw(String(CLIENT_FIELD_LIMITS.segment))}`,
+    ),
+    check(
+      "clients_document_number_format",
+      sql`${table.documentNumber} ~ ${sql.raw(`'${DOCUMENT_NUMBER_PATTERN}'`)}`,
+    ),
+    check(
+      "clients_instagram_format",
+      sql`${table.instagram} ~ ${sql.raw(`'${INSTAGRAM_PATTERN}'`)}`,
     ),
     // Alcanza también a los inactivos: un número pertenece a un solo cliente (D-3).
     uniqueIndex("clients_organization_phone_unique")

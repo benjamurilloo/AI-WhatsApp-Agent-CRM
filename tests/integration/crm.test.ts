@@ -91,6 +91,9 @@ const NO_EXTRA_FIELDS = {
   province: null,
   postalCode: null,
   segment: null,
+  // Desde la 29.7 (brief-29.7, FR-CLI-05).
+  documentNumber: null,
+  instagram: null,
 };
 
 const ana: ClientInput = {
@@ -454,7 +457,13 @@ describe("getClient", () => {
         phone: { kind: "full", e164: PHONE },
         notes: "Prefiere contacto por la tarde",
         // Desde la 17.1 (brief-17.1, D-8): los datos de contacto, solo para un admin.
-        contact: { email: null, addressLine: null, postalCode: null },
+        contact: {
+          email: null,
+          addressLine: null,
+          postalCode: null,
+          documentNumber: null,
+          instagram: null,
+        },
         kind: null,
         companyName: null,
         jobTitle: null,
@@ -887,7 +896,10 @@ describe("campos ampliados (brief-17.1)", () => {
       "clients_address_line_length",
       "clients_city_length",
       "clients_company_name_length",
+      // Desde la 0060 (brief-29.7, FR-CLI-05).
+      "clients_document_number_format",
       "clients_email_format",
+      "clients_instagram_format",
       "clients_job_title_length",
       "clients_phone_e164_format",
       "clients_postal_code_format",

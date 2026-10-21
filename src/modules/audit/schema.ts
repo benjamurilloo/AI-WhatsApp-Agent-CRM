@@ -70,6 +70,10 @@ export const auditEntityType = pgEnum("audit_entity_type", [
   "repair_type",
   "repair_price",
   "service_order",
+  // Los usados (brief-29.7, D-3 y D-4): la recepción, con create al emitirla y void al anularla, y el
+  // punto del checklist de la organización.
+  "trade_in",
+  "trade_in_checklist_item",
 ]);
 
 export const auditAction = pgEnum("audit_action", [

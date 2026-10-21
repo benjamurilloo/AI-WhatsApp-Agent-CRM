@@ -24,6 +24,8 @@ import * as repository from "./repository";
 import {
   CLIENT_FIELD_LIMITS,
   CLIENT_KINDS,
+  DOCUMENT_NUMBER_PATTERN,
+  INSTAGRAM_PATTERN,
   POSTAL_CODE_PATTERN,
   type ClientKind,
 } from "./schema";
@@ -38,18 +40,27 @@ export type ClientActivityFilter = repository.ActivityFilter;
 // Una etiqueta tal como la muestra un cliente: activa o no (brief-16.1, D-8).
 export type ClientTag = repository.ClientTagRow;
 
-// Los datos de contacto que un viewer no recibe, como el teléfono completo (brief-17.1, D-8).
+// Los datos de contacto que un viewer no recibe, como el teléfono completo (brief-17.1, D-8). Desde
+// la 29.7, también el DNI y el Instagram (brief-29.7, D-6).
 export type ClientContact = {
   email: string | null;
   addressLine: string | null;
   postalCode: string | null;
+  documentNumber: string | null;
+  instagram: string | null;
 };
 
 // El teléfono sale de crm ya resuelto para el rol: un viewer nunca recibe el número (D-2). Desde la
-// 17.1, tampoco el email, la calle ni el código postal: `contact` es null para un viewer.
+// 17.1, tampoco el email, la calle ni el código postal, y desde la 29.7 el DNI y el Instagram:
+// `contact` es null para un viewer.
 export type Client = Omit<
   repository.ClientRow,
-  "phoneE164" | "email" | "addressLine" | "postalCode"
+  | "phoneE164"
+  | "email"
+  | "addressLine"
+  | "postalCode"
+  | "documentNumber"
+  | "instagram"
 > & {
   phone: ClientPhone;
   contact: ClientContact | null;
@@ -61,12 +72,22 @@ function toClient(
   context: AuthContext,
   tags: Map<string, ClientTag[]>,
 ): Client {
-  const { phoneE164, email, addressLine, postalCode, ...rest } = row;
+  const {
+    phoneE164,
+    email,
+    addressLine,
+    postalCode,
+    documentNumber,
+    instagram,
+    ...rest
+  } = row;
   return {
     ...rest,
     phone: phoneForRole(phoneE164, context.role),
     contact:
-      context.role === "admin" ? { email, addressLine, postalCode } : null,
+      context.role === "admin"
+        ? { email, addressLine, postalCode, documentNumber, instagram }
+        : null,
     tags: tags.get(row.id) ?? [],
   };
 }
@@ -83,7 +104,9 @@ export type ClientField =
   | "city"
   | "province"
   | "postalCode"
-  | "segment";
+  | "segment"
+  | "documentNumber"
+  | "instagram";
 
 // Los campos de la 17.1 son opcionales también en la entrada: omitidos, quedan vacíos.
 export type ClientInput = {
@@ -99,6 +122,9 @@ export type ClientInput = {
   province?: string | null;
   postalCode?: string | null;
   segment?: string | null;
+  // Desde la 29.7 (brief-29.7, D-6).
+  documentNumber?: string | null;
+  instagram?: string | null;
 };
 
 // Texto opcional: se recorta, y vacío es nulo.
@@ -184,6 +210,33 @@ const clientInputSchema = z
         return value;
       }),
     segment: optionalText(CLIENT_FIELD_LIMITS.segment),
+    // El DNI sin puntos ni espacios: «30.123.456» se guarda como 30123456 (brief-29.7, D-6).
+    documentNumber: z
+      .string()
+      .nullish()
+      .transform((value, ctx) => {
+        const digits = (value ?? "").replace(/[.\s]/g, "");
+        if (!digits) return null;
+        if (!new RegExp(DOCUMENT_NUMBER_PATTERN).test(digits)) {
+          ctx.addIssue({ code: "custom", message: "DNI inválido" });
+          return z.NEVER;
+        }
+        return digits;
+      }),
+    // El usuario de Instagram, sin la @ si la trae.
+    instagram: z
+      .string()
+      .trim()
+      .nullish()
+      .transform((value, ctx) => {
+        const user = (value ?? "").replace(/^@/, "");
+        if (!user) return null;
+        if (!new RegExp(INSTAGRAM_PATTERN).test(user)) {
+          ctx.addIssue({ code: "custom", message: "Instagram inválido" });
+          return z.NEVER;
+        }
+        return user;
+      }),
   })
   .transform(({ displayName, phone, ...rest }): repository.ClientValues => ({
     displayName,
@@ -204,6 +257,8 @@ const CLIENT_FIELDS: ClientField[] = [
   "province",
   "postalCode",
   "segment",
+  "documentNumber",
+  "instagram",
 ];
 const VALUE_FIELDS: (keyof repository.ClientValues)[] = [
   "displayName",
@@ -218,6 +273,8 @@ const VALUE_FIELDS: (keyof repository.ClientValues)[] = [
   "province",
   "postalCode",
   "segment",
+  "documentNumber",
+  "instagram",
 ];
 
 export function validateClientInput(

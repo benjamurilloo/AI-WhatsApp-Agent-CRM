@@ -1008,6 +1008,8 @@ describe("lecturas (AC-7)", () => {
         email: "lucia@example.com",
         addressLine: null,
         postalCode: null,
+        documentNumber: null,
+        instagram: null,
       });
       const asViewer = await getOrder(s.viewerA, created.order.id);
       if (!asViewer.ok) throw new Error(asViewer.code);

@@ -4,7 +4,8 @@
 // (brief-21.5), y desde la 21.6, la cuenta corriente: el cobro a cuenta, el estado de cuenta, el
 // resumen y la lista de deudores (brief-21.6), y desde la 22.6, los pagos a proveedores y su anulación
 // (brief-22.6), con la cuenta del proveedor que usa su tope. Ningún módulo depende de cash: la usan
-// solo las pantallas. cash depende de purchasing desde la 22.6 (ADR 0023, punto 11).
+// solo las pantallas. cash depende de purchasing desde la 22.6 (ADR 0023, punto 11), y de tradeins
+// desde la 29.7, por la anulación de un usado (brief-29.7, U-4).
 export {
   CASH_MOVEMENT_REASONS,
   CASH_RECEIPTS_PAGE_SIZE,
@@ -173,3 +174,6 @@ export {
   type SupplierStatementDocument,
   type SupplierStatementReceipt,
 } from "./supplier-accounts";
+// La anulación de un usado recibido (brief-29.7, D-5 y U-4): cash la orquesta bajo su bloqueo y llama
+// a tradeins.
+export { voidTradeIn, type VoidTradeInCashResult } from "./trade-in-voids";

@@ -5,7 +5,10 @@ import {
   listStockMovements,
   MOVEMENTS_PAGE_SIZE,
 } from "@/modules/inventory";
-import { getOrganizationTimezone } from "@/modules/organizations";
+import {
+  getOrganizationTimezone,
+  hasCapability,
+} from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
 import {
   BackLink,
@@ -74,6 +77,9 @@ const TYPE_LABEL: Record<string, string> = {
   // primera lleva el número de su orden (brief-29.6.2, D-1).
   unit_to_repair: "A reparación",
   unit_released: "Liberada a la venta",
+  // Desde la 29.7: la baja de la unidad disponible de un usado anulado; el motivo nombra la anulación y
+  // la recepción (brief-29.7, D-2).
+  unit_written_off: "Baja por anulación de un usado",
 };
 
 // Pantalla 5 (wireframe 05): ajuste para admin e historial para admin y viewer, con filtros
@@ -107,6 +113,8 @@ export default async function MovementsPage({
   const product = found.product;
   const view = parseMovementView(query);
   const timeZone = await getOrganizationTimezone(context);
+  // El filtro de la baja de un usado, solo con la capacidad trade_ins (brief-29.7; revisión B-1).
+  const tradeIns = await hasCapability(context.organizationId, "trade_ins");
   const history = await listStockMovements(
     context,
     product.id,
@@ -231,6 +239,11 @@ export default async function MovementsPage({
               </option>
               <option value="a-reparacion">A reparación</option>
               <option value="liberacion">Liberada a la venta</option>
+              {tradeIns ? (
+                <option value="baja-usado">
+                  Baja por anulación de un usado
+                </option>
+              ) : null}
             </select>
           </div>
           <div className="flex flex-col gap-1">

@@ -62,6 +62,9 @@ const NO_EXTRA_VALUES = {
   province: null,
   postalCode: null,
   segment: null,
+  // Desde la 29.7 (brief-29.7, D-6).
+  documentNumber: null,
+  instagram: null,
 };
 
 describe("validateClientInput (brief-5.2, D-5)", () => {
@@ -155,5 +158,51 @@ describe("clientPageBounds", () => {
     expect(clientPageBounds(26, 9).page).toBe(2);
     expect(clientPageBounds(26, 0).page).toBe(1);
     expect(clientPageBounds(26, Number.NaN).page).toBe(1);
+  });
+});
+
+describe("el DNI y el Instagram (brief-29.7, D-6)", () => {
+  it("el DNI se guarda sin puntos ni espacios, con 7 u 8 dígitos", () => {
+    expect(
+      validateClientInput({ displayName: "Bea", documentNumber: "30.123.456" }),
+    ).toMatchObject({ ok: true, values: { documentNumber: "30123456" } });
+    expect(
+      validateClientInput({
+        displayName: "Bea",
+        documentNumber: " 1 234 567 ",
+      }),
+    ).toMatchObject({ ok: true, values: { documentNumber: "1234567" } });
+    expect(
+      validateClientInput({ displayName: "Bea", documentNumber: "" }),
+    ).toMatchObject({ ok: true, values: { documentNumber: null } });
+    for (const documentNumber of ["123456", "123456789", "30-123-456"]) {
+      expect(
+        validateClientInput({ displayName: "Bea", documentNumber }),
+        documentNumber,
+      ).toEqual({
+        ok: false,
+        code: "VALIDATION_ERROR",
+        fields: ["documentNumber"],
+      });
+    }
+  });
+
+  it("el Instagram se guarda sin la @, con letras, números, puntos y guiones bajos", () => {
+    expect(
+      validateClientInput({ displayName: "Bea", instagram: " @bea.ok_1 " }),
+    ).toMatchObject({ ok: true, values: { instagram: "bea.ok_1" } });
+    expect(
+      validateClientInput({ displayName: "Bea", instagram: "@" }),
+    ).toMatchObject({ ok: true, values: { instagram: null } });
+    for (const instagram of ["bea ok", "bea-ok", "a".repeat(31)]) {
+      expect(
+        validateClientInput({ displayName: "Bea", instagram }),
+        instagram,
+      ).toEqual({
+        ok: false,
+        code: "VALIDATION_ERROR",
+        fields: ["instagram"],
+      });
+    }
   });
 });

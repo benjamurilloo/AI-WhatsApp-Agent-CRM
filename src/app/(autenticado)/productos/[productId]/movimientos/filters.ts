@@ -13,7 +13,8 @@ export type SearchParams = Record<string, string | string[] | undefined>;
 // recepción de mercadería (brief-22.4, D-14). anulacion-recepcion, desde la 22.5: la salida de la
 // anulación de una recepción (brief-22.5, D-9). a-reparacion y liberacion, desde la 29.6.2: la salida de
 // una unidad disponible que va a reparar y la entrada de una unidad que se libera a la venta
-// (brief-29.6.2, D-1).
+// (brief-29.6.2, D-1). baja-usado, desde la 29.7: la baja de la unidad disponible de un usado anulado
+// (brief-29.7, D-2).
 export type MovementTypeKey =
   | "todos"
   | "positivo"
@@ -24,7 +25,8 @@ export type MovementTypeKey =
   | "recepcion"
   | "anulacion-recepcion"
   | "a-reparacion"
-  | "liberacion";
+  | "liberacion"
+  | "baja-usado";
 export type PeriodKey = "todo" | "7d" | "30d" | "90d" | "personalizado";
 
 const TYPE_PARAM: Record<MovementTypeKey, string> = {
@@ -38,6 +40,7 @@ const TYPE_PARAM: Record<MovementTypeKey, string> = {
   "anulacion-recepcion": "goods_receipt_void",
   "a-reparacion": "unit_to_repair",
   liberacion: "unit_released",
+  "baja-usado": "unit_written_off",
 };
 
 // Los tipos que suman al saldo: el ajuste positivo, desde la 20.4 la reposición de una anulación
@@ -124,6 +127,7 @@ export function parseMovementView(params: SearchParams): MovementView {
         "anulacion-recepcion",
         "a-reparacion",
         "liberacion",
+        "baja-usado",
       ] as const,
       DEFAULT_VIEW.type,
     ),

@@ -13,6 +13,8 @@ import {
   type Client,
 } from "@/modules/crm";
 import {
+  getUnitSummaries,
+  isSerialTakenError,
   restoreSaleStock,
   sellStock,
   type LineUnitIssue,
@@ -714,6 +716,11 @@ export type VoidSaleResult =
   | Failure<
       "BUSINESS_RULE_VIOLATION",
       { rule: "stock_limit"; productIds: string[] }
+    >
+  // Desde la 29.7 (brief-29.7, U-2): el IMEI de una unidad vendida volvió al local en otra unidad.
+  | Failure<
+      "BUSINESS_RULE_VIOLATION",
+      { rule: "unit_serial_back"; serials: string[] }
     >;
 
 const reasonSchema = z.enum(repository.SALE_VOID_REASONS);
@@ -746,6 +753,12 @@ class AlreadyVoided extends Error {
 class StockLimit extends Error {
   constructor(readonly productIds: string[]) {
     super("stock_limit");
+  }
+}
+
+class SerialBack extends Error {
+  constructor(readonly serials: string[]) {
+    super("unit_serial_back");
   }
 }
 
@@ -856,6 +869,9 @@ export async function voidSale(
               },
               createdBy: userId,
             });
+            if (!restored.ok && restored.reason === "serial_back") {
+              throw new SerialBack(restored.serials);
+            }
             if (!restored.ok) throw new StockLimit(restored.productIds);
           }
         }
@@ -902,6 +918,29 @@ export async function voidSale(
         code: "BUSINESS_RULE_VIOLATION",
         rule: "stock_limit",
         productIds: error.productIds,
+      };
+    }
+    if (error instanceof SerialBack) {
+      return {
+        ok: false,
+        code: "BUSINESS_RULE_VIOLATION",
+        rule: "unit_serial_back",
+        serials: error.serials,
+      };
+    }
+    // El índice único parcial del IMEI, la última defensa (brief-29.7, U-2): un usado con el IMEI de
+    // una unidad de la venta se recibió entre la comprobación y la escritura. Nombra los IMEI de la
+    // venta, que es lo que la anulación devolvía al local.
+    if (isSerialTakenError(error)) {
+      const summaries = await getUnitSummaries(
+        organizationId,
+        [...unitIdsByLine.values()].flat(),
+      );
+      return {
+        ok: false,
+        code: "BUSINESS_RULE_VIOLATION",
+        rule: "unit_serial_back",
+        serials: [...summaries.values()].map((unit) => unit.serial).sort(),
       };
     }
     // La base es la última defensa: dos anulaciones que igual chocan en sale_voids_sale_unique son

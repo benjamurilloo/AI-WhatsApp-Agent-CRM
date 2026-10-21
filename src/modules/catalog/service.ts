@@ -378,6 +378,8 @@ export async function lockProductForStockChange(
       status: "active" | "inactive";
       tracking: StockTracking;
       isService: boolean;
+      // Desde la 29.7: la unidad de un usado va a un producto usado (brief-29.7, D-4).
+      condition: ProductCondition;
     }
   | "not_found"
 > {
@@ -392,6 +394,7 @@ export async function lockProductForStockChange(
     tracking: product.tracking,
     // Desde la 29.6: el producto de servicio no tiene stock (brief-29.6, D-5).
     isService: product.isService,
+    condition: product.condition,
   };
 }
 

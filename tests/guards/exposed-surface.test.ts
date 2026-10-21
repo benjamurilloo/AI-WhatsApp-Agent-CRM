@@ -416,6 +416,26 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
   "src/app/(autenticado)/reparaciones/actions.ts#markOwnUnitRepairedAction": {
     requirement: "sesion",
   },
+  // Los usados (brief-29.7, D-7): la recepción y el checklist, solo admin y con trade_ins, lo exige
+  // tradeins; la anulación, también cash, que la orquesta.
+  "src/app/(autenticado)/usados/actions.ts#createTradeInAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/usados/actions.ts#voidTradeInAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/usados/actions.ts#createChecklistItemAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/usados/actions.ts#updateChecklistItemAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/usados/actions.ts#setChecklistItemActiveAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/usados/actions.ts#moveChecklistItemAction": {
+    requirement: "sesion",
+  },
   "src/app/(autenticado)/usuarios/actions.ts#createMemberAction": {
     requirement: "sesion",
   },

@@ -34,6 +34,9 @@ export type ClientExtraValues = {
   province: ProvinceCode | null;
   postalCode: string | null;
   segment: string | null;
+  // Desde la 29.7 (brief-29.7, D-6).
+  documentNumber: string | null;
+  instagram: string | null;
 };
 
 export type ClientRow = {
@@ -68,6 +71,8 @@ const clientColumns = {
   province: sql<ProvinceCode | null>`${clients.province}`,
   postalCode: clients.postalCode,
   segment: clients.segment,
+  documentNumber: clients.documentNumber,
+  instagram: clients.instagram,
   isActive: clients.isActive,
   createdAt: clients.createdAt,
   updatedAt: clients.updatedAt,

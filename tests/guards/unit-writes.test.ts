@@ -25,6 +25,10 @@ import { describe, expect, it } from "vitest";
 // returnUnitFromRepair y cancelUnitRepair, cada una desde su único caso de uso en service, y
 // releaseUnit desde su Server Action. setUnitRepaired, la única escritura que cambia el costo, la llama
 // solo returnUnitFromRepair.
+//
+// Desde la 29.7 (brief-29.7, D-2, D-5 y U-3): la unidad de un usado. registerTradeInUnit, desde la
+// recepción de tradeins, y writeOffTradeInUnit, desde la anulación de tradeins, que llama solo cash
+// (voidTradeIn), cada caso de uso desde su Server Action.
 
 const UNIT_REPOSITORY = "src/modules/inventory/unit-repository.ts";
 const SERVICE = "src/modules/inventory/service.ts";
@@ -39,6 +43,10 @@ const SERVICE_ORDERS = "src/modules/service/service-orders.ts";
 const UNIT_ACTIONS =
   "src/app/(autenticado)/productos/[productId]/unidades/actions.ts";
 const GRADE_ACTIONS = "src/app/(autenticado)/grados/actions.ts";
+const TRADE_IN_UNITS = "src/modules/inventory/trade-in-units.ts";
+const TRADE_INS = "src/modules/tradeins/trade-ins.ts";
+const TRADE_IN_VOIDS = "src/modules/cash/trade-in-voids.ts";
+const TRADE_IN_ACTIONS = "src/app/(autenticado)/usados/actions.ts";
 
 const AUTHORIZED = new Map([
   ["insertStockUnit", ["insert stock_units"]],
@@ -119,6 +127,7 @@ const CALLERS = new Map<string, { file: string; from: string[] }[]>([
     [
       { file: SERVICE, from: ["receiveStock"] },
       { file: UNITS, from: ["registerUnit"] },
+      { file: TRADE_IN_UNITS, from: ["registerTradeInUnit"] },
     ],
   ],
   [
@@ -126,6 +135,7 @@ const CALLERS = new Map<string, { file: string; from: string[] }[]>([
     [
       { file: SERVICE, from: ["removeReceivedStock"] },
       { file: UNITS, from: ["writeOffUnit"] },
+      { file: TRADE_IN_UNITS, from: ["writeOffTradeInUnit"] },
     ],
   ],
   ["updateUnitDetails", [{ file: UNITS, from: ["correctUnit"] }]],
@@ -164,6 +174,15 @@ const CALLERS = new Map<string, { file: string; from: string[] }[]>([
     "cancelUnitRepair",
     [{ file: SERVICE_ORDERS, from: ["cancelServiceOrder"] }],
   ],
+  // La unidad de un usado (brief-29.7, D-2 y U-3).
+  ["registerTradeInUnit", [{ file: TRADE_INS, from: ["createTradeIn"] }]],
+  ["writeOffTradeInUnit", [{ file: TRADE_INS, from: ["voidTradeInInCash"] }]],
+  ["voidTradeInInCash", [{ file: TRADE_IN_VOIDS, from: ["voidTradeIn"] }]],
+  [
+    "createTradeIn",
+    [{ file: TRADE_IN_ACTIONS, from: ["createTradeInAction"] }],
+  ],
+  ["voidTradeIn", [{ file: TRADE_IN_ACTIONS, from: ["voidTradeInAction"] }]],
   ["reserveStock", [{ file: ORDERS_SERVICE, from: ["transitionOrder"] }]],
   ["releaseStock", [{ file: ORDERS_SERVICE, from: ["transitionOrder"] }]],
   ["deliverStock", [{ file: ORDERS_SERVICE, from: ["transitionOrder"] }]],
@@ -197,6 +216,7 @@ const CALLERS = new Map<string, { file: string; from: string[] }[]>([
       { file: SERVICE, from: ["adjustStock"] },
       { file: UNITS, from: ["registerUnit", "writeOffUnit"] },
       { file: UNIT_REPAIRS, from: ["sendUnitToRepair", "releaseUnit"] },
+      { file: TRADE_IN_UNITS, from: ["writeOffTradeInUnit"] },
     ],
   ],
   // El seguimiento: inventory comprueba, catalog escribe (ADR 0024, R-16; brief-29.5, D-3).

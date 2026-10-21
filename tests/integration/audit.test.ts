@@ -174,6 +174,10 @@ const INSERT_ONLY_TABLES = [
   "supplier_payments",
   // Las líneas del presupuesto de una orden de servicio (brief-29.6, D-4).
   "service_order_lines",
+  // El usado recibido, su checklist y su anulación (brief-29.7, D-2 y D-6).
+  "trade_in_checklist_results",
+  "trade_in_voids",
+  "trade_ins",
 ];
 // Se actualizan pero no se borran (brief-6.1, D-3; credenciales, brief-6.5.3, D-1; información
 // del negocio, brief-11.2, D-4; el horario semanal, brief-17.4, P-1).
@@ -205,6 +209,8 @@ const NO_DELETE_TABLES = [
   "repair_prices",
   "repair_types",
   "service_orders",
+  // Los ítems del checklist de recepción, que se editan y se desactivan (brief-29.7, D-3).
+  "trade_in_checklist_items",
 ];
 // Se insertan y se borran, pero no se actualizan: una asignación se pone y se quita (brief-16.1,
 // D-6), un día especial se agrega y se quita (brief-17.4, P-2), y una imagen de producto se sube y

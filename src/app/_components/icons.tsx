@@ -340,6 +340,13 @@ const PATHS = {
       <rect width="12" height="8" x="6" y="14" />
     </>
   ),
+  // Los usados (brief-29.7, D-7).
+  smartphone: (
+    <>
+      <rect width="14" height="20" x="5" y="2" rx="2" ry="2" />
+      <path d="M12 18h.01" />
+    </>
+  ),
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof PATHS;

@@ -11,7 +11,10 @@ import {
   PROVINCES,
   type Client,
 } from "@/modules/crm";
-import { getOrganizationTimezone } from "@/modules/organizations";
+import {
+  getOrganizationTimezone,
+  hasCapability,
+} from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
 import { auditActorLabels } from "@/app/(autenticado)/_audit/actor";
 import { InlineSkeleton } from "@/app/_components/skeleton";
@@ -49,6 +52,7 @@ import { DeactivateConfirm, ReactivateForm } from "./client-actions";
 import { ClientAccount } from "./client-account";
 import { ClientOrders } from "./client-orders";
 import { ClientServiceOrders } from "./client-service-orders";
+import { ClientTradeIns } from "./client-trade-ins";
 import { ClientTags } from "./client-tags";
 import {
   ClientConversations,
@@ -74,7 +78,8 @@ const TITLE = "Clientes";
 // Lo que crm no entregó al rol se dice; lo que está vacío queda en «—», como en el resto del detalle.
 function contactValue(
   client: Client,
-  field: "email" | "addressLine" | "postalCode",
+  field:
+    "email" | "addressLine" | "postalCode" | "documentNumber" | "instagram",
 ) {
   if (client.contact === null) {
     return <span className="text-muted">{CONTACT_HIDDEN_MESSAGE}</span>;
@@ -82,7 +87,14 @@ function contactValue(
   return client.contact[field];
 }
 
-function ClientExtraCards({ client }: { client: Client }) {
+// El DNI y el Instagram, solo con la capacidad trade_ins (brief-29.7, D-6; revisión M-1).
+function ClientExtraCards({
+  client,
+  tradeIns,
+}: {
+  client: Client;
+  tradeIns: boolean;
+}) {
   return (
     <div className="grid items-start gap-6 md:grid-cols-2">
       <SectionCard id="contacto-titulo" title="Contacto" icon="mail">
@@ -93,6 +105,21 @@ function ClientExtraCards({ client }: { client: Client }) {
               icon: "mail",
               value: contactValue(client, "email"),
             },
+            ...(tradeIns
+              ? [
+                  {
+                    label: "DNI",
+                    value: contactValue(client, "documentNumber"),
+                  },
+                  {
+                    label: "Instagram",
+                    value:
+                      client.contact?.instagram != null
+                        ? `@${client.contact.instagram}`
+                        : contactValue(client, "instagram"),
+                  },
+                ]
+              : []),
           ]}
         />
       </SectionCard>
@@ -165,6 +192,7 @@ export default async function ClientPage({
   const client = found.client;
   const isAdmin = context.role === "admin";
   const editing = isAdmin && query.editar === "1";
+  const tradeIns = await hasCapability(context.organizationId, "trade_ins");
   const confirming =
     isAdmin && query.confirmar === "desactivar" && client.isActive;
   const notice = noticeMessage(query.aviso);
@@ -286,10 +314,13 @@ export default async function ClientPage({
               province: client.province ?? "",
               postalCode: client.contact?.postalCode ?? "",
               segment: client.segment ?? "",
+              documentNumber: client.contact?.documentNumber ?? "",
+              instagram: client.contact?.instagram ?? "",
             }}
             options={{
               provinces: Object.entries(PROVINCES),
               segments: segments?.ok ? segments.segments : [],
+              tradeIns,
             }}
           />
         </div>
@@ -336,7 +367,7 @@ export default async function ClientPage({
                 ]}
               />
             </SectionCard>
-            <ClientExtraCards client={client} />
+            <ClientExtraCards client={client} tradeIns={tradeIns} />
           </div>
 
           <div className="flex flex-col gap-6">
@@ -379,6 +410,14 @@ export default async function ClientPage({
 
             {/* Sus órdenes de servicio, con la capacidad repairs (brief-29.6, D-10). */}
             <ClientServiceOrders
+              context={context}
+              clientId={client.id}
+              clientActive={client.isActive}
+              timeZone={timeZone}
+            />
+
+            {/* Los usados que entregó, con la capacidad trade_ins (brief-29.7, D-7). */}
+            <ClientTradeIns
               context={context}
               clientId={client.id}
               clientActive={client.isActive}

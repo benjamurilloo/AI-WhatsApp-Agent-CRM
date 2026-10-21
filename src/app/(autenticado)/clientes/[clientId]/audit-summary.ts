@@ -26,6 +26,8 @@ const VALUE_LABEL: Record<string, string> = {
   province: "Provincia",
   postalCode: "Código postal",
   segment: "Segmento",
+  documentNumber: "DNI",
+  instagram: "Instagram",
   isActive: "Activo",
 };
 
@@ -68,6 +70,8 @@ const FIELD_ORDER = [
   "phoneE164",
   "notes",
   "email",
+  "documentNumber",
+  "instagram",
   "kind",
   "companyName",
   "jobTitle",

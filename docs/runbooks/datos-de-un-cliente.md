@@ -20,7 +20,7 @@ suma datos del cliente que este runbook tiene que exportar y vaciar cuando exist
 Instagram (`clients.document_number` e `instagram`, 29.7), las recepciones de usados (`trade_ins`,
 29.7), las órdenes de servicio de sus equipos con el IMEI (`service_orders`, 29.6) y sus turnos
 (`appointments`, 29.10). Sus claves al cliente son `RESTRICT`. Cada subfase amplía este runbook y
-su test cuando crea la tabla.
+su test cuando crea la tabla. *Precisado el 2026-10-21 por la 29.7* (ADR 0024, nota del punto 14): `trade_ins` se exporta y retiene la ficha, pero el vaciado no la toca, porque no guarda datos de la persona.
 
 ## Antes de tocar nada
 
@@ -47,7 +47,7 @@ Incluye los seis orígenes que guardan datos de la persona y, desde la 19.2, sus
 
 | Origen | Qué lleva |
 |---|---|
-| `clients` | nombre, teléfono en E.164 y notas; *desde la 17.1*, email, tipo, empresa, cargo, dirección (calle, ciudad, provincia y código postal) y segmento ([brief-17.1](../decisions/brief-17.1-campos-de-clientes.md), D-12) |
+| `clients` | nombre, teléfono en E.164 y notas; *desde la 17.1*, email, tipo, empresa, cargo, dirección (calle, ciudad, provincia y código postal) y segmento ([brief-17.1](../decisions/brief-17.1-campos-de-clientes.md), D-12); *desde la 29.7*, el DNI y el Instagram ([brief-29.7](../decisions/brief-29.7-la-recepcion-de-usados.md), D-6) |
 | `conversations` | sus conversaciones, con estado y fechas |
 | `messages` | sus mensajes, **con el cuerpo** |
 | `conversation_notes` | *desde la 16.4*: las notas internas de sus conversaciones, con el texto, la fecha y el id del usuario del CRM que la escribió ([brief-16.4](../decisions/brief-16.4-notas-de-la-conversacion.md), D-5) |
@@ -58,6 +58,7 @@ Incluye los seis orígenes que guardan datos de la persona y, desde la 19.2, sus
 | `receipts` | *desde la 21.3* ([brief-21.3](../decisions/brief-21.3-el-cobro-de-una-venta.md), D-9; [ADR 0022](../decisions/0022-cobros-y-caja.md), punto 14): sus cobros, con el número (`display_number`, `R-000123`), la fecha, la venta y su número, el medio, la moneda y el monto (campo `receipts`). Llegan al cliente por el `client_id` que el cobro copia de la venta; el cobro de una venta sin cliente no aparece. No guardan texto de la persona. *Desde la 21.4* ([brief-21.4](../decisions/brief-21.4-la-sena.md), D-9): también sus señas, que copian el cliente del pedido; cada fila dice su destino (`target`, `sale` u `order`) y, en una seña, el pedido y su número (`order_id`, `order_number`) en lugar de la venta |
 | `receipt_voids`, `refunds` y `refund_voids` | *desde la 21.5* ([brief-21.5](../decisions/brief-21.5-la-anulacion-y-la-devolucion.md), D-10; ADR 0022, punto 14): las anulaciones de sus cobros (`AR-…`, con el cobro y su número, la moneda, el monto y el motivo de la lista), sus devoluciones (`D-…`, con su destino, el medio, la moneda y el monto) y las anulaciones de sus devoluciones (`AD-…`, con la devolución y su número). Las anulaciones llegan al cliente por su cobro o su devolución; la devolución, por el `client_id` de la cuenta. La devolución de una venta sin cliente no aparece. **Los comprobantes, no el saldo**: calcularlo acá sería una segunda implementación de la regla de imputación. No guardan texto de la persona |
 | `service_orders` y `service_order_lines` | *desde la 29.6* ([brief-29.6](../decisions/brief-29.6-las-reparaciones-de-equipos-de-clientes.md), D-11): sus órdenes de servicio, con número, fecha, estado, el modelo (su nombre de hoy), **el IMEI del equipo y lo que reportó**, que son datos suyos, lo que paga y sus fechas, y el presupuesto por reparación, con el nombre de hoy del tipo y el precio. Sin el técnico ni su costo, que no son datos de la persona |
+| `trade_ins`, `trade_in_checklist_results` y `trade_in_voids` | *desde la 29.7* ([brief-29.7](../decisions/brief-29.7-la-recepcion-de-usados.md), D-6): los usados que entregó, con número, fecha, el producto (su nombre de hoy), el IMEI, la batería, el grado, la moneda, el valor y el destino; el resultado de cada punto del checklist, con el nombre copiado; y sus anulaciones, con número, fecha y motivo |
 
 **No incluye `ingestion_events`**, y es a propósito: esa tabla guarda el emisor, una referencia
 opaca suya, el hash del payload y fechas. El propio archivo lo dice en su campo `excluded`, para
@@ -108,7 +109,7 @@ En una sola transacción:
 
 | Dónde | Qué se vacía | Qué queda |
 |---|---|---|
-| `clients` | nombre, teléfono y notas, y desde la 17.1 **todos** los campos ampliados, también el tipo, la provincia y el segmento | la ficha, con el nombre `Cliente eliminado <primeros 8 del id>` y, desde la 19.2, **desactivada**: sin nombre ni teléfono no hay a quién cargarle un pedido, y el alta rechaza a un cliente inactivo (D-9). Reactivarla a mano sigue siendo posible |
+| `clients` | nombre, teléfono y notas, y desde la 17.1 **todos** los campos ampliados, también el tipo, la provincia y el segmento; desde la 29.7, el DNI y el Instagram | la ficha, con el nombre `Cliente eliminado <primeros 8 del id>` y, desde la 19.2, **desactivada**: sin nombre ni teléfono no hay a quién cargarle un pedido, y el alta rechaza a un cliente inactivo (D-9). Reactivarla a mano sigue siendo posible |
 | `conversations` | la referencia externa | fechas y estado |
 | `messages` | el texto y la referencia externa | fecha, dirección, tipo y autor |
 | `conversation_notes` (desde la 16.4) | el texto de las notas de sus conversaciones: son texto libre y pueden nombrar a la persona | la nota, con su fecha y el usuario del CRM que la escribió |
@@ -119,6 +120,7 @@ En una sola transacción:
 | `receipts` y su auditoría (desde la 21.3) | **nada**: no guardan texto de la persona, solo el número, la venta, el medio, la moneda, el monto y la fecha, y la auditoría del cobro tampoco (brief-21.3, D-7) | los cobros completos, con el cliente ya vaciado |
 | `receipt_voids`, `refunds`, `refund_voids` y su auditoría (desde la 21.5) | **nada**: no guardan texto de la persona, solo el número, el comprobante que anulan, el medio, la moneda, el monto, el motivo de la lista y la fecha, y la auditoría tampoco ([brief-21.5](../decisions/brief-21.5-la-anulacion-y-la-devolucion.md), D-13) | los comprobantes completos, con el cliente ya vaciado |
 | `service_orders` (desde la 29.6) | **el IMEI del equipo y lo que reportó el cliente** quedan en `null` ([brief-29.6](../decisions/brief-29.6-las-reparaciones-de-equipos-de-clientes.md), D-11). El trigger `service_orders_guard` deja pasar ese `UPDATE`, en cualquier estado, y ningún otro sin cambio de estado. La auditoría de la orden no los guarda | el número, el modelo, el estado, las fechas, el técnico, los montos y el presupuesto. **Una orden de servicio retiene la ficha** (`ON DELETE RESTRICT`): un cliente con órdenes va al caso B |
+| `trade_ins`, sus resultados y sus anulaciones (desde la 29.7) | **nada**: no guardan texto de la persona ni sus datos. El IMEI es el del equipo que ahora es del negocio, y la auditoría no guarda datos del cliente ([brief-29.7](../decisions/brief-29.7-la-recepcion-de-usados.md), D-4 y D-6) | todo. **Un usado retiene la ficha** (`ON DELETE RESTRICT`): un cliente con usados va al caso B |
 
 Un segundo vaciado no cambia nada ni falla. Con la ingestión encendida, el vaciado espera a los mensajes de esa persona que se están guardando en ese momento, y los alcanza (revisión independiente de la 13.4, R-2). Lo mismo con una nota que un usuario del CRM está guardando en ese momento (revisión de la 16.4, R-1).
 

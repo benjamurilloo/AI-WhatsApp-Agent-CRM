@@ -421,6 +421,13 @@
       "when": 1792536423345,
       "tag": "0059_las_reparaciones_de_unidades_propias",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1792581955898,
+      "tag": "0060_la_recepcion_de_usados",
+      "breakpoints": true
     }
   ]
 }

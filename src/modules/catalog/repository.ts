@@ -126,13 +126,20 @@ export async function lockProductShared(
   organizationId: string,
   productId: string,
 ): Promise<
-  { isActive: boolean; tracking: StockTracking; isService: boolean } | undefined
+  | {
+      isActive: boolean;
+      tracking: StockTracking;
+      isService: boolean;
+      condition: ProductCondition;
+    }
+  | undefined
 > {
   const rows = await tx
     .select({
       isActive: products.isActive,
       tracking: products.tracking,
       isService: products.isService,
+      condition: products.condition,
     })
     .from(products)
     .where(

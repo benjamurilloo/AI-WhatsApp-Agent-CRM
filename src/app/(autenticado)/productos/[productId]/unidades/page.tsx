@@ -17,6 +17,7 @@ import {
 import { listTechnicians } from "@/modules/purchasing";
 import { getUnitSales } from "@/modules/sales";
 import { listUnitServiceOrders, repairsAllowed } from "@/modules/service";
+import { getUnitTradeIns } from "@/modules/tradeins";
 import { requireSession } from "@/app/_auth/session";
 import { ActionNotice } from "@/app/_components/action-notice";
 import {
@@ -87,7 +88,8 @@ function currencyOptions(
 // el precio propio de cada unidad, para los dos roles, y las reservadas y vendidas, con su pedido o su
 // venta. Desde la 29.6.2 (brief-29.6.2, D-7), con repairs, un admin manda a reparar una unidad
 // disponible o en revisión (?reparar=<id>), y libera, corrige o da de baja una en revisión; las que
-// están en reparación o en revisión se listan aparte, con su orden.
+// están en reparación o en revisión se listan aparte, con su orden. Desde la 29.7 (brief-29.7, D-7),
+// la unidad de un usado recibido dice su origen con un enlace a su comprobante PU.
 export default async function ProductUnitsPage({
   params,
   searchParams,
@@ -130,15 +132,33 @@ export default async function ProductUnitsPage({
   const inShop = list.filter(
     (unit) => unit.status === "in_repair" || unit.status === "in_review",
   );
-  const [unitOrders, unitSales, repairs, repairOrders] = await Promise.all([
-    getUnitOrders(context, committedIds),
-    getUnitSales(context, committedIds),
-    repairsAllowed(context),
-    listUnitServiceOrders(
-      context,
-      list.map((unit) => unit.id),
-    ),
-  ]);
+  const [unitOrders, unitSales, repairs, repairOrders, tradeIns] =
+    await Promise.all([
+      getUnitOrders(context, committedIds),
+      getUnitSales(context, committedIds),
+      repairsAllowed(context),
+      listUnitServiceOrders(
+        context,
+        list.map((unit) => unit.id),
+      ),
+      getUnitTradeIns(
+        context,
+        list
+          .filter((unit) => unit.origin === "trade_in")
+          .map((unit) => unit.id),
+      ),
+    ]);
+  // El origen de una unidad; la de un usado, con su comprobante.
+  const origin = (unit: ProductUnit) => {
+    const tradeIn = tradeIns.get(unit.id);
+    return tradeIn ? (
+      <Link href={`/usados/${tradeIn.id}`} className={secondaryLinkClass}>
+        {UNIT_ORIGIN_LABEL.trade_in} {tradeIn.displayNumber}
+      </Link>
+    ) : (
+      UNIT_ORIGIN_LABEL[unit.origin]
+    );
+  };
   // Las que ya salieron del local y pasaron por el técnico (brief-29.6.2, D-7).
   const repairedBefore = list.filter(
     (unit) =>
@@ -373,9 +393,7 @@ export default async function ProductUnitsPage({
                               : ""}
                           </td>
                         ) : null}
-                        <td className={tableCellClass}>
-                          {UNIT_ORIGIN_LABEL[unit.origin]}
-                        </td>
+                        <td className={tableCellClass}>{origin(unit)}</td>
                         <td
                           className={`${tableCellClass} whitespace-nowrap tabular-nums`}
                         >
@@ -471,6 +489,7 @@ export default async function ProductUnitsPage({
                     >
                       <span className="font-mono">{unit.serial}</span>
                       <span>· {UNIT_STATUS_LABEL[unit.status]}</span>
+                      {unit.origin === "trade_in" ? origin(unit) : null}
                       {isAdmin && unit.cost ? (
                         <span className="tabular-nums text-muted">
                           · Costo{" "}

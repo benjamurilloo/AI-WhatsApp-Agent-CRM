@@ -18,6 +18,8 @@ import { SuggestInput } from "@/app/_components/suggest-input";
 import { createClientAction, updateClientAction } from "./actions";
 import { KIND_LABEL } from "./filters";
 import {
+  DOCUMENT_NUMBER_HINT,
+  INSTAGRAM_HINT,
   NOTES_HINT,
   PHONE_HINT,
   SEGMENT_HINT,
@@ -46,6 +48,8 @@ const EMPTY: ClientFormValues = {
   province: "",
   postalCode: "",
   segment: "",
+  documentNumber: "",
+  instagram: "",
 };
 
 type FieldSpec = {
@@ -94,6 +98,22 @@ const FIELDS: FieldSpec[] = [
     type: "email",
     placeholder: "Ej. juan@ejemplo.com",
     maxLength: 254,
+  },
+  {
+    name: "documentNumber",
+    label: "DNI",
+    required: false,
+    hint: DOCUMENT_NUMBER_HINT,
+    placeholder: "Ej. 30123456",
+    maxLength: 12,
+  },
+  {
+    name: "instagram",
+    label: "Instagram",
+    required: false,
+    hint: INSTAGRAM_HINT,
+    placeholder: "Ej. juanperez",
+    maxLength: 31,
   },
   { name: "kind", label: "Tipo", required: false, choices: "kind" },
   {
@@ -170,7 +190,7 @@ const GROUPS: {
     id: "form-contacto-titulo",
     title: "Contacto",
     icon: "mail",
-    fields: ["email"],
+    fields: ["email", "documentNumber", "instagram"],
   },
   {
     id: "form-empresa-titulo",
@@ -194,10 +214,18 @@ const GROUPS: {
 
 // Las listas del formulario. Las provincias y los segmentos llegan de la página, que los lee de crm
 // en el servidor: este componente no importa valores de crm.
+// El DNI y el Instagram se cargan solo con la capacidad trade_ins (brief-29.7, D-6; revisión M-1):
+// sin ella, el formulario no cambia, y los valores viajan ocultos para que la edición no los borre.
 export type ClientFormOptions = {
   provinces: [code: string, name: string][];
   segments: string[];
+  tradeIns: boolean;
 };
+
+const TRADE_IN_FIELDS: (keyof ClientFormValues)[] = [
+  "documentNumber",
+  "instagram",
+];
 
 export function ClientForm({
   mode,
@@ -239,6 +267,11 @@ export function ClientForm({
       {clientId ? (
         <input type="hidden" name="clientId" value={clientId} />
       ) : null}
+      {options.tradeIns
+        ? null
+        : TRADE_IN_FIELDS.map((name) => (
+            <input key={name} type="hidden" name={name} value={shown[name]} />
+          ))}
 
       {GROUPS.map((group) => (
         <SectionCard
@@ -248,83 +281,85 @@ export function ClientForm({
           icon={group.icon}
         >
           <div className="grid gap-4 sm:grid-cols-2">
-            {FIELDS.filter((field) => group.fields.includes(field.name)).map(
-              (field) => {
-                const invalid = failed && state.field === field.name;
-                const hintId = field.hint ? `${field.name}-ayuda` : undefined;
-                const errorId = invalid ? `${field.name}-error` : undefined;
-                const common = {
-                  id: field.name,
-                  name: field.name,
-                  required: field.required,
-                  defaultValue: shown[field.name],
-                  "aria-invalid": invalid ? true : undefined,
-                  "aria-describedby":
-                    [errorId, hintId].filter(Boolean).join(" ") || undefined,
-                  className: inputClass,
-                  placeholder: field.placeholder,
-                };
-                return (
-                  <div
-                    key={field.name}
-                    className={`flex flex-col gap-1 ${field.multiline ? "sm:col-span-2" : ""}`}
-                  >
-                    <label htmlFor={field.name} className={labelClass}>
-                      {field.label}
-                      {field.required ? " *" : ""}
-                    </label>
-                    {field.multiline ? (
-                      <textarea {...common} rows={4} />
-                    ) : field.choices ? (
-                      <select
-                        id={common.id}
-                        name={common.name}
-                        defaultValue={common.defaultValue}
-                        aria-invalid={common["aria-invalid"]}
-                        aria-describedby={common["aria-describedby"]}
-                        className={inputClass}
-                      >
-                        <option value="">Sin dato</option>
-                        {choices[field.choices].map(([value, label]) => (
-                          <option key={value} value={value}>
-                            {label}
-                          </option>
-                        ))}
-                      </select>
-                    ) : field.suggest ? (
-                      <SuggestInput
-                        id={common.id}
-                        name={common.name}
-                        required={common.required}
-                        defaultValue={common.defaultValue}
-                        placeholder={common.placeholder}
-                        aria-invalid={common["aria-invalid"]}
-                        aria-describedby={common["aria-describedby"]}
-                        className={inputClass}
-                        options={options.segments}
-                      />
-                    ) : (
-                      <input
-                        {...common}
-                        type={field.type ?? "text"}
-                        maxLength={field.maxLength}
-                        autoComplete="off"
-                      />
-                    )}
-                    {field.hint ? (
-                      <p id={hintId} className="text-sm text-muted">
-                        {field.hint}
-                      </p>
-                    ) : null}
-                    {invalid ? (
-                      <p id={errorId} className={fieldErrorClass}>
-                        {state.message}
-                      </p>
-                    ) : null}
-                  </div>
-                );
-              },
-            )}
+            {FIELDS.filter(
+              (field) =>
+                group.fields.includes(field.name) &&
+                (options.tradeIns || !TRADE_IN_FIELDS.includes(field.name)),
+            ).map((field) => {
+              const invalid = failed && state.field === field.name;
+              const hintId = field.hint ? `${field.name}-ayuda` : undefined;
+              const errorId = invalid ? `${field.name}-error` : undefined;
+              const common = {
+                id: field.name,
+                name: field.name,
+                required: field.required,
+                defaultValue: shown[field.name],
+                "aria-invalid": invalid ? true : undefined,
+                "aria-describedby":
+                  [errorId, hintId].filter(Boolean).join(" ") || undefined,
+                className: inputClass,
+                placeholder: field.placeholder,
+              };
+              return (
+                <div
+                  key={field.name}
+                  className={`flex flex-col gap-1 ${field.multiline ? "sm:col-span-2" : ""}`}
+                >
+                  <label htmlFor={field.name} className={labelClass}>
+                    {field.label}
+                    {field.required ? " *" : ""}
+                  </label>
+                  {field.multiline ? (
+                    <textarea {...common} rows={4} />
+                  ) : field.choices ? (
+                    <select
+                      id={common.id}
+                      name={common.name}
+                      defaultValue={common.defaultValue}
+                      aria-invalid={common["aria-invalid"]}
+                      aria-describedby={common["aria-describedby"]}
+                      className={inputClass}
+                    >
+                      <option value="">Sin dato</option>
+                      {choices[field.choices].map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : field.suggest ? (
+                    <SuggestInput
+                      id={common.id}
+                      name={common.name}
+                      required={common.required}
+                      defaultValue={common.defaultValue}
+                      placeholder={common.placeholder}
+                      aria-invalid={common["aria-invalid"]}
+                      aria-describedby={common["aria-describedby"]}
+                      className={inputClass}
+                      options={options.segments}
+                    />
+                  ) : (
+                    <input
+                      {...common}
+                      type={field.type ?? "text"}
+                      maxLength={field.maxLength}
+                      autoComplete="off"
+                    />
+                  )}
+                  {field.hint ? (
+                    <p id={hintId} className="text-sm text-muted">
+                      {field.hint}
+                    </p>
+                  ) : null}
+                  {invalid ? (
+                    <p id={errorId} className={fieldErrorClass}>
+                      {state.message}
+                    </p>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
         </SectionCard>
       ))}

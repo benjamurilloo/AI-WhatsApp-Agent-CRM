@@ -69,7 +69,8 @@ export const inventories = pgTable(
 // de mercadería (ADR 0023, punto 4; brief-22.4, D-3). goods_receipt_void, desde la 22.5: la salida de
 // la anulación de una recepción (ADR 0023, punto 6; brief-22.5, D-3). unit_to_repair y unit_released,
 // desde la 29.6.2: la salida de una unidad disponible que va a reparar y la entrada de una unidad que
-// se libera a la venta (ADR 0024, punto 6; brief-29.6.2, D-1).
+// se libera a la venta (ADR 0024, punto 6; brief-29.6.2, D-1). unit_written_off, desde la 29.7: la baja
+// de la unidad disponible de un usado anulado (ADR 0024, punto 8; brief-29.7, D-2).
 export const inventoryMovementType = pgEnum("inventory_movement_type", [
   "adjustment_positive",
   "adjustment_negative",
@@ -80,6 +81,7 @@ export const inventoryMovementType = pgEnum("inventory_movement_type", [
   "goods_receipt_void",
   "unit_to_repair",
   "unit_released",
+  "unit_written_off",
 ]);
 
 // Los grados de las unidades (ADR 0024, punto 13; brief-29.5, D-5): una lista por organización, que
@@ -141,10 +143,12 @@ export const stockUnitStatus = pgEnum("stock_unit_status", [
   "in_review",
 ]);
 
-// De dónde vino la unidad. trade_in entra con la 29.7.
+// De dónde vino la unidad. trade_in, desde la 29.7: el usado recibido de un cliente, que nace en
+// revisión (ADR 0024, punto 6; brief-29.7, D-2).
 export const stockUnitOrigin = pgEnum("stock_unit_origin", [
   "goods_receipt",
   "manual",
+  "trade_in",
 ]);
 
 // El número de serie o IMEI: de 1 a 32 letras, dígitos o guiones, sin espacios (brief-29.5, D-2).
@@ -176,7 +180,7 @@ export const stockUnits = pgTable(
     priceCurrency: text("price_currency"),
     originType: stockUnitOrigin("origin_type").notNull(),
     // Clave plana, sin clave foránea (ADR 0024, R-16): inventory no importa los esquemas de quien la
-    // crea. En una recepción, la recepción; en el alta manual, null.
+    // crea. En una recepción, la recepción; en el alta manual, null; en un usado, su comprobante PU.
     originId: uuid("origin_id"),
     createdBy: uuid("created_by")
       .notNull()
@@ -200,11 +204,12 @@ export const stockUnits = pgTable(
       columns: [table.organizationId, table.gradeId],
       foreignColumns: [unitGrades.organizationId, unitGrades.id],
     }).onDelete("restrict"),
-    // Un IMEI no se repite entre las unidades vigentes de una organización: una dada de baja lo
-    // libera, para volver a recibir lo que se anuló o corregir un IMEI mal cargado (D-2).
+    // Un IMEI no se repite entre las unidades que están en el local: una dada de baja lo libera, para
+    // volver a recibir lo que se anuló o corregir un IMEI mal cargado (brief-29.5, D-2), y desde la
+    // 29.7 también una vendida, para recibir como usado un equipo que el local vendió (brief-29.7, U-2).
     uniqueIndex("stock_units_organization_serial_lower_unique")
       .on(table.organizationId, sql`lower(${table.serial})`)
-      .where(sql`${table.status} <> 'written_off'`),
+      .where(sql`${table.status} not in ('written_off', 'sold')`),
     // Destino de las claves foráneas de los movimientos y de las líneas.
     unique("stock_units_organization_id_id_unique").on(
       table.organizationId,

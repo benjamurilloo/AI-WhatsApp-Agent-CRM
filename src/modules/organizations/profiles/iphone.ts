@@ -11,10 +11,26 @@ import type { Profile } from "./index";
 //
 // Versión 3, del 2026-10-20 (brief-29.6, D-1): suma repairs y seis tipos de reparación de ejemplo, sin
 // precios. Al activar repairs con el perfil, el script crea también el producto de servicio.
+//
+// Versión 4, del 2026-10-21 (brief-29.7, D-1 y D-3): suma trade_ins y el checklist de un usado, diez
+// puntos de ejemplo, dos de ellos obligatorios para aceptar el equipo. La batería no es un punto: es un
+// dato de la recepción; y los daños estéticos van en el grado.
 export const IPHONE_PROFILE: Profile = {
   name: "iphone",
   label: "Venta de iPhone",
-  capabilities: ["variants", "serialized_units", "repairs"],
+  capabilities: ["variants", "serialized_units", "repairs", "trade_ins"],
+  tradeInChecklist: [
+    { name: "Cámara trasera", isMandatory: false },
+    { name: "Cámara frontal", isMandatory: false },
+    { name: "Micrófono", isMandatory: false },
+    { name: "True Tone", isMandatory: false },
+    { name: "Táctil", isMandatory: false },
+    { name: "Parlantes", isMandatory: false },
+    { name: "Face ID", isMandatory: false },
+    { name: "Sin piezas desconocidas", isMandatory: false },
+    { name: "Toma señal", isMandatory: true },
+    { name: "iCloud desvinculado", isMandatory: true },
+  ],
   repairTypes: [
     { name: "Cambio de batería" },
     { name: "Cambio de pantalla" },

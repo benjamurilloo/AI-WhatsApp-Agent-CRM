@@ -60,6 +60,17 @@ export default async function AuthenticatedLayout({
           },
         ]
       : []),
+    // Los usados, para los dos roles y solo con la capacidad trade_ins (brief-29.7, D-7), con la misma
+    // regla: cada página vuelve a comprobarla.
+    ...(frame.capabilities.includes("trade_ins")
+      ? [
+          {
+            href: "/usados",
+            label: "Usados",
+            icon: "smartphone" as const,
+          },
+        ]
+      : []),
     // Pedidos, para los dos roles (brief-19.2).
     { href: "/pedidos", label: "Pedidos", icon: "list" },
     // Ventas, para los dos roles (brief-20.2).

@@ -465,6 +465,7 @@ export const MOVEMENT_DIRECTION: Record<StockMovementType, 1 | -1> = {
   goods_receipt_void: -1,
   unit_to_repair: -1,
   unit_released: 1,
+  unit_written_off: -1,
 };
 
 // El ajuste manual acepta solo sus dos tipos: order_delivery lo escribe la entrega de un pedido
@@ -1252,6 +1253,11 @@ export async function sellStock(
 // después de los saldos (ADR 0021, punto 7). Se llama una sola vez, después de comprobar y antes de
 // escribir. inventory no conoce las ventas.
 //
+// Desde la 29.7 (brief-29.7, U-2), si el IMEI de una unidad vendida volvió al local en otra unidad, como
+// un usado recibido, la anulación se rechaza nombrándolo (serial_back), antes de tomar los saldos: la
+// vendida volvería al local con el IMEI de otra. Lo que se cuela entre esta lectura y la escritura lo
+// rechaza el índice único parcial, y sales lo traduce a la misma regla.
+//
 // recheck corre con las unidades ya bloqueadas y antes de exigir que estén vendidas: dos anulaciones
 // de la misma venta se serializan en sus unidades, y la segunda tiene que ver la primera como ya
 // anulada, no como una unidad en otro estado (revisión independiente de la 29.5.2, H-2). No toma el
@@ -1265,7 +1271,11 @@ export async function restoreSaleStock(
     reason: () => Promise<string>;
     createdBy: string;
   },
-): Promise<{ ok: true } | { ok: false; productIds: string[] }> {
+): Promise<
+  | { ok: true }
+  | { ok: false; reason: "stock_limit"; productIds: string[] }
+  | { ok: false; reason: "serial_back"; serials: string[] }
+> {
   const { organizationId } = restore;
   const { trackings, units, unitIdsByProduct } = await lockLineUnits(
     tx,
@@ -1274,6 +1284,13 @@ export async function restoreSaleStock(
   );
   await restore.recheck?.();
   requireStatus(units, "sold");
+  const back = await unitRepository.findSerialsBackInShop(
+    tx,
+    organizationId,
+    units.map((unit) => unit.id),
+  );
+  if (back.length > 0)
+    return { ok: false, reason: "serial_back", serials: back };
   const locked = await lockLines(tx, organizationId, restore.lines);
   const balances = locked.map((line) => ({
     line,
@@ -1290,6 +1307,7 @@ export async function restoreSaleStock(
   if (restored.length < balances.length) {
     return {
       ok: false,
+      reason: "stock_limit",
       productIds: balances
         .filter(({ after }) => !after.ok)
         .map(({ line }) => line.productId),
@@ -1338,7 +1356,9 @@ export async function restoreSaleStock(
 // vigente de la organización, del producto de su línea y available. Con lock, las unidades quedan
 // FOR UPDATE por id (la venta sin pedido, que las vende en la misma transacción); sin él, se leen
 // (el alta del pedido, que no reserva: confirmar vuelve a mirarlas). El precio es el propio de la
-// unidad, o null si no tiene. Los IMEI repetidos los rechaza quien llama, al validar.
+// unidad, o null si no tiene. Los IMEI repetidos los rechaza quien llama, al validar. Desde la 29.7 un
+// IMEI puede tener una unidad vendida y otra en el local (brief-29.7, U-2): se elige la del local, y
+// la vendida responde solo si no hay otra, como «ya no está disponible».
 
 export type LineUnitRequest = {
   position: number;
@@ -1380,9 +1400,12 @@ export async function resolveLineUnits(
         found.map((unit) => unit.id),
       )
     : found;
-  const bySerial = new Map(
-    current.map((unit) => [unit.serial.toLowerCase(), unit]),
-  );
+  const bySerial = new Map<string, unitRepository.LockedUnit>();
+  for (const unit of current) {
+    const key = unit.serial.toLowerCase();
+    if (bySerial.has(key) && unit.status === "sold") continue;
+    bySerial.set(key, unit);
+  }
   const issues: LineUnitIssue[] = [];
   const units = new Map<number, ResolvedUnit[]>();
   for (const line of lines) {

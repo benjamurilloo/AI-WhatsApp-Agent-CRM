@@ -137,6 +137,11 @@ describe("base de test", () => {
       "supplier_payments",
       // Los proveedores (brief-22.2).
       "suppliers",
+      // El usado recibido, su checklist y su anulación (brief-29.7, D-2 y D-6).
+      "trade_in_checklist_items",
+      "trade_in_checklist_results",
+      "trade_in_voids",
+      "trade_ins",
       // Los grados de la organización (brief-29.5, D-5).
       "unit_grades",
       "users",
