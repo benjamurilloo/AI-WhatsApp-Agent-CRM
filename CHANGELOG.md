@@ -2,6 +2,27 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-21 — 29.7: la recepción de usados
+
+Cierra el 2026-10-21, desplegada en producción (`43ce6fb`) y recorrida por el usuario ([brief-29.7](docs/decisions/brief-29.7-la-recepcion-de-usados.md), §Cierre). Abre la capacidad `trade_ins` del [ADR 0024](docs/decisions/0024-rubros-y-capacidades.md), sobre «iPhone Demo». *Dividida por el usuario el 2026-10-20*: la permuta y la compra van en la 29.7.2, y la cotización en la 29.7.3.
+
+**Certifica:**
+- **La recepción de un usado** (`PU-`) contra un cliente activo y un producto usado llevado por unidad, con el checklist completo, la batería, el grado, el valor reconocido y su destino. **El equipo entra como una unidad `in_review`** con ese valor como costo y origen `trade_in`, **sin cambiar el saldo**, y sigue los caminos de la 29.6.2: se repara, se corrige, se libera y se vende.
+- **El checklist de la organización**, configurable y auditado, copiado del perfil `iphone` con diez puntos; un punto obligatorio que no pasa rechaza la recepción nombrándolo, y el resultado guarda una copia del nombre.
+- **La anulación** (`APU-`), orquestada por `cash` bajo su bloqueo: da de baja la unidad sin movimiento desde `in_review` y con `unit_written_off` desde `available`, y se rechaza en cualquier otro estado y una segunda vez.
+- **El IMEI de un equipo que el local vendió y vuelve** crea una unidad nueva: el IMEI es único entre las unidades del local, y anular la venta original se rechaza con `unit_serial_back` (U-2, en toda organización con `serialized_units`).
+- **El DNI y el Instagram del cliente**, opcionales, validados y auditados, visibles solo con `trade_ins`, fuera del `viewer` y del agente, exportados y vaciados. El vaciado no toca los usados, y un cliente con usados no se borra.
+- **Las carreras**: dos recepciones del mismo IMEI, y la anulación contra mandar a reparar su unidad, cada una con una tercera conexión.
+- **La migración 0060**, aditiva: cuatro tablas de solo inserción, dos columnas en `clients`, el movimiento `unit_written_off` y el índice del IMEI que excluye las vendidas, probada sobre unidades en todos los estados.
+- **En producción**: el usuario activó `trade_ins` en «iPhone Demo», recibió y anuló un usado, y cargó el DNI o el Instagram de un cliente, y lo dio por bueno. «Demostración Vixora» y «Vixora» quedaron sin capacidades, checklist ni usados.
+- **Una revisión independiente** antes del despliegue (R1, una media y cuatro bajas), verificada contra el código y resuelta, dos de los hallazgos con decisión del usuario.
+
+**No certifica:**
+- ningún negocio real;
+- la permuta como medio de cobro, el pago al cliente ni la cotización: hasta la 29.7.2, el valor reconocido se paga o se descuenta fuera del sistema;
+- una segunda revisión independiente de las correcciones, que son autoevaluación;
+- ningún cambio en la forma de los contratos del agente.
+
 ## 2026-10-20 — 29.6.2: las reparaciones de unidades propias
 
 Cierra el 2026-10-20, desplegada en producción (`0967593`) y recorrida por el usuario ([brief-29.6.2](docs/decisions/brief-29.6.2-las-reparaciones-de-unidades-propias.md), §Cierre). Completa la capacidad `repairs` del [ADR 0024](docs/decisions/0024-rubros-y-capacidades.md) con la reparación de una unidad del stock, sobre «iPhone Demo».

@@ -49,6 +49,8 @@ Imprime el id de la organización, el del `admin` y la contraseña inicial **una
 
 *Desde la 29.6* ([brief-29.6](../decisions/brief-29.6-las-reparaciones-de-equipos-de-clientes.md)), el perfil `iphone` activa también **`repairs`**, las reparaciones: copia los seis tipos de reparación de ejemplo, sin precios, y crea el producto de servicio «Reparación». **El producto de servicio se crea al activar `repairs` también con `--capability repairs`**; los tipos, solo con el perfil. `repairs` usa los modelos de `variants`: sola, la lista de reparaciones queda sin modelos. Una organización que ya tenía `variants` y `serialized_units` corre el mismo comando, que dice que esas dos ya estaban activas y activa `repairs`. Así se activó en «iPhone Demo» el 2026-10-20.
 
+*Desde la 29.7* ([brief-29.7](../decisions/brief-29.7-la-recepcion-de-usados.md)), el perfil `iphone` activa también **`trade_ins`**, la recepción de usados, y al activarla copia el checklist de un usado, diez puntos con la marca de ejemplo. **`trade_ins` exige `serialized_units`**: con `--capability trade_ins` en una organización sin unidades, el comando se rechaza y no activa nada. Con la capacidad, la ficha del cliente muestra el DNI y el Instagram. Para recibir un usado, el negocio necesita un producto usado llevado por unidad, que se crea desde la pantalla. Una organización que ya tenía las otras tres corre el mismo comando. Así se activó en «iPhone Demo» el 2026-10-21.
+
 El correo del `admin` llega por el entorno:
 
 ```

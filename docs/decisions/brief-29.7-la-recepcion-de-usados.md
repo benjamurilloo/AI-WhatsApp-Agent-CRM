@@ -10,7 +10,7 @@ generated_at: 2026-10-20
 - **Contrato**: `task-brief.v1`
 - **Tipo de tarea**: `implementation`. Migración, módulo nuevo, código, pruebas y despliegue.
 - **Nivel de evidencia objetivo**: `deterministic` (tests contra PostgreSQL) y `producer-consumer` (pantallas ↔ servicio ↔ base, con end-to-end).
-- **Estado**: **aprobado** por el usuario el 2026-10-21, con las decisiones U-1 a U-5 que tomó el 2026-10-20, todas con la opción recomendada (abajo).
+- **Estado**: **aprobado** por el usuario el 2026-10-21, con las decisiones U-1 a U-5 que tomó el 2026-10-20, todas con la opción recomendada (abajo); **cerrado** el 2026-10-21, desplegado (`43ce6fb`) y recorrido (§Cierre).
 - **Fuentes**: [ADR 0024](0024-rubros-y-capacidades.md), puntos 2, 3, 6, 8, 13, 14, 16 y 17, y sus notas de la 29.5 a la 29.6.2; [ADR 0025](0025-tipo-de-cambio.md), punto 5; [ADR 0007](0007-identificador-de-cliente-solo-telefono.md), nota del 2026-10-18; [ADR 0022](0022-cobros-y-caja.md), nota del 2026-10-18; [ADR 0015](0015-vaciado-de-una-sola-direccion-en-tablas-de-solo-insercion.md); [brief-29.6.2](brief-29.6.2-las-reparaciones-de-unidades-propias.md); [DataModel](../architecture/DataModel.md); [runbook de datos de un cliente](../runbooks/datos-de-un-cliente.md).
 
 ## Objetivo
@@ -266,8 +266,7 @@ Registradas al implementar, el 2026-10-21, para la revisión independiente. Ning
    - la lista de tablas y la de privilegios suman las cuatro tablas nuevas;
    - el vaciado suma las dos columnas a `EXTRA_FIELDS`;
    - el recuento de tipos de movimiento pasa de 9 a 10;
-   - las 28 specs end-to-end que vacían tablas suman las tres tablas nuevas que referencian a `clients`, `products` y `stock_units`: un `TRUNCATE` de una tabla referenciada falla aunque la tabla que la referencia esté vacía.
-
+   - las 28 specs end-to-end que vacían tablas suman las tres tablas nuevas que referencian a `clients`, `products` y `stock_units`: un `TRUNCATE` de una tabla referenciada falla aunque la tabla que la referencia esté vacía;
    - el caso 9 de `clients.spec.ts` (dos sesiones y cuatro rutas, con sus cuerpos crudos) quedó al borde del límite de 30 s: pasó en 29,9 s y falló en la corrida siguiente. Lleva `test.slow()`, como los otros casos largos del repo. La ficha consulta ahora la capacidad `trade_ins`. No tengo una medición de antes del cambio.
 
    Ninguno de estos cambios altera una conducta.
@@ -283,3 +282,40 @@ La revisión del 2026-10-21 dio R1, sin bloqueantes, con un hallazgo medio y cua
 - **B-3, la última defensa de `voidSale`** nombra todos los IMEI de la venta, no solo el que volvió. Solo ocurre en la carrera contra una recepción simultánea; el camino normal nombra el correcto. Se acepta.
 - **B-4, el vaciado y los usados.** El ADR 0024, punto 14, decía que las tablas nuevas también se vacían. El brief (D-6) decía que el vaciado no toca `trade_ins`. **Decidido por el usuario: como el brief**, porque el IMEI es el del equipo que ahora es del negocio. Lo registra una nota fechada en el ADR. Un test nuevo prueba que un cliente con usados no se borra, que el informe nombra los usados retenidos y que el vaciado deja los usados intactos y borra el DNI y el Instagram.
 - **Estado documental:** las líneas del DataModel que todavía ubicaban `trade_in_payments` y `trade_in_margins` en la 29.7 se corrigieron con una nota fechada (U-1).
+
+## Cierre
+
+*Del 2026-10-21, después del despliegue y el recorrido del usuario.*
+
+### Criterios
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| AC-1 | cumple | `receiveTradeIn` de `tradeins` con `registerTradeInUnit` de `inventory`; `trade-ins.test.ts`, la recepción con la unidad `in_review`, su costo, su origen y el saldo sin cambios; el end-to-end de la recepción |
+| AC-2 | cumple | los rechazos de D-4 por su nombre en `trade-ins.test.ts`, y el punto obligatorio que no pasó, nombrado; el end-to-end del punto obligatorio |
+| AC-3 | cumple | `trade_in_checklist_results` con `item_name` y `was_mandatory`; la prueba que renombra el punto después de la recepción |
+| AC-4 | cumple | el índice `stock_units_organization_serial_lower_unique` sin las vendidas (`0060`); la anulación de la venta original rechazada con `unit_serial_back`, y el pedido que elige la unidad del local (U-2) |
+| AC-5 | cumple | la unidad del usado mandada a reparar, corregida, liberada y vendida con los caminos de la 29.6.2 y la 29.5.2, en integración y en el end-to-end |
+| AC-6 | cumple | `voidTradeIn` en `cash` con `writeOffTradeInUnit`: sin movimiento desde `in_review`, `unit_written_off` desde `available`, y los rechazos en los demás estados y en la segunda anulación |
+| AC-7 | cumple | dos recepciones del mismo IMEI y la anulación contra mandar a reparar, cada una con una tercera conexión que retiene la fila |
+| AC-8 | cumple | los triggers de solo inserción de las cuatro tablas y el nacimiento `in_review` solo con origen `trade_in`, cada rechazo por su mensaje |
+| AC-9 | cumple, con la convención del proyecto | `expectStockInvariant` después de cada test de `trade-ins.test.ts` |
+| AC-10 | cumple | la pantalla del checklist con su auditoría; `org:capability --profile iphone` copia los diez puntos con la marca de ejemplo, en integración y en producción |
+| AC-11 | cumple | el DNI y el Instagram validados y auditados, fuera del `viewer` y de los contratos del agente, exportados y vaciados, con el runbook de datos de un cliente; desde la revisión, solo con la capacidad (M-1) y con la prueba del vaciado (B-4) |
+| AC-12 | cumple | el `viewer` en integración y en el end-to-end, sin el valor, el DNI ni el Instagram, y sin acciones |
+| AC-13 | cumple, con una excepción declarada | sin `trade_ins` nada cambia, salvo el índice del IMEI, que U-2 decidió para toda organización con `serialized_units` (B-2); `trade_ins` sin `serialized_units` rechazada por el script; los cambios de forma de las suites existentes, en la desviación 7 |
+| AC-14 | cumple | CI run 39620872230 en `success` sobre `43ce6fbe12164cd201871aeb1dad1f2a752e3b9e`: guardas 840, unitarias 1058, integración 1700 y end-to-end 282, con axe |
+| AC-15 | cumple | revisión independiente del 2026-10-21, antes del despliegue (§«Lo que corrigió la revisión independiente») |
+| AC-16 | cumple | desplegada (`43ce6fb`, 61 migraciones, la `0060` verificada en la base); el usuario activó `trade_ins` en «iPhone Demo» y recorrió el flujo: «todo perfecto». Recuentos después: «iPhone Demo» con las capacidades `variants`, `serialized_units`, `repairs` y `trade_ins`, 10 puntos de checklist, 1 recepción, 1 anulación y 1 cliente con DNI o Instagram; «Demostración Vixora» y «Vixora» sin capacidades, puntos, recepciones ni clientes con esos datos |
+
+**Nivel alcanzado**: validado en integración (`producer-consumer`), desplegado y recorrido en producción sobre una organización demo. No hay negocio real.
+
+### Lo que queda
+
+- **La permuta y la compra de usados** (la 29.7.2) y **la cotización** (la 29.7.3), en Notion, en «Esperando». Hasta la 29.7.2, el valor reconocido se paga o se descuenta fuera del sistema.
+- **Las correcciones de la revisión no tuvieron una segunda revisión independiente**: son autoevaluación, verificadas por sus pruebas y la CI.
+- **El lint local** también revisa `.claude/skills/`, que Git ignora y la CI no ve: con una skill de terceros instalada ahí, `npm run lint` falla en la máquina local sin que el código del CRM tenga errores.
+
+### El despliegue
+
+Sin incidentes: la `0060` se aplicó antes de detener el servicio, y el build, con el heap de 1.536 MB, terminó a la primera. Producción estaba en la `0059`, así que la `0060` corrió sola (desviación 6). Después, el servicio activo, `/login` en 200 desde afuera, y `/usados` y `/clientes` redirigiendo al login sin sesión. Para volver atrás, `0967593`.
