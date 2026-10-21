@@ -29,7 +29,7 @@ const SEEDED_USER_IDS = [...SEED_USERS, ...SEED_IPHONE_USERS].map(
 // Vacía los productos y todo lo de la tienda de ejemplo; con keep, vuelve a sembrarla.
 async function reset(keep: boolean) {
   await db.execute(
-    sql`truncate table trade_in_voids, trade_in_checklist_results, trade_ins, service_order_lines, service_orders, supplier_payment_voids, supplier_payments, goods_receipt_voids, goods_receipt_line_units, goods_receipt_lines, goods_receipts, purchase_order_lines, purchase_orders, refund_voids, refunds, receipt_voids, receipts, sale_voids, sale_line_units, sale_lines, sales, order_line_units, order_lines, orders, audit_logs, inventory_movements, inventories, product_images, product_costs, product_prices, attribute_values, stock_units, products`,
+    sql`truncate table trade_in_payment_voids, trade_in_payments, trade_in_voids, trade_in_checklist_results, trade_ins, service_order_lines, service_orders, supplier_payment_voids, supplier_payments, goods_receipt_voids, goods_receipt_line_units, goods_receipt_lines, goods_receipts, purchase_order_lines, purchase_orders, refund_voids, refunds, receipt_voids, receipts, sale_voids, sale_line_units, sale_lines, sales, order_line_units, order_lines, orders, audit_logs, inventory_movements, inventories, product_images, product_costs, product_prices, attribute_values, stock_units, products`,
   );
   const iphone = SEED_IPHONE_ORGANIZATION_ID;
   await db.execute(

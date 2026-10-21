@@ -5,7 +5,8 @@
 // resumen y la lista de deudores (brief-21.6), y desde la 22.6, los pagos a proveedores y su anulación
 // (brief-22.6), con la cuenta del proveedor que usa su tope. Ningún módulo depende de cash: la usan
 // solo las pantallas. cash depende de purchasing desde la 22.6 (ADR 0023, punto 11), y de tradeins
-// desde la 29.7, por la anulación de un usado (brief-29.7, U-4).
+// desde la 29.7, por la anulación de un usado (brief-29.7, U-4), y desde la 29.7.2 por la permuta y el
+// pago de un usado (brief-29.7.2).
 export {
   CASH_MOVEMENT_REASONS,
   CASH_RECEIPTS_PAGE_SIZE,
@@ -177,3 +178,32 @@ export {
 // La anulación de un usado recibido (brief-29.7, D-5 y U-4): cash la orquesta bajo su bloqueo y llama
 // a tradeins.
 export { voidTradeIn, type VoidTradeInCashResult } from "./trade-in-voids";
+// La permuta y la compra de usados (brief-29.7.2): el medio de sistema, que crea org:capability, el
+// pago de un usado y su anulación, y lo que el usado hizo con su valor.
+export {
+  ensureTradeInPaymentMethod,
+  TRADE_IN_PAYMENT_METHOD_NAME,
+  type PermutaOffer,
+  type SessionTradeInPayments,
+  type TradeInReceiptFailure,
+} from "./service";
+export {
+  createTradeInPayment,
+  formatTradeInPaymentNumber,
+  formatTradeInPaymentVoidNumber,
+  getTradeInMoney,
+  getTradeInPayment,
+  getTradeInPaymentForm,
+  listTradeInsToPay,
+  TRADE_IN_PAYMENT_VOID_REASONS,
+  voidTradeInPayment,
+  type CreateTradeInPaymentResult,
+  type TradeInMoney,
+  type TradeInPaymentDetail,
+  type TradeInPaymentField,
+  type TradeInPaymentForm,
+  type TradeInPaymentListItem,
+  type TradeInPaymentRef,
+  type TradeInPaymentVoidReason,
+  type VoidTradeInPaymentResult,
+} from "./trade-in-payments";

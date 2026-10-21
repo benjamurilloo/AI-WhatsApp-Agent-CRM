@@ -63,6 +63,10 @@ export type ClientExport = {
   trade_ins: Record<string, unknown>[];
   trade_in_checklist_results: Record<string, unknown>[];
   trade_in_voids: Record<string, unknown>[];
+  // Desde la 29.7.2 (brief-29.7.2, D-8): los pagos de sus usados comprados y sus anulaciones. Los cobros
+  // con «Permuta» van en receipts, con su usado.
+  trade_in_payments: Record<string, unknown>[];
+  trade_in_payment_voids: Record<string, unknown>[];
 };
 
 export async function exportClientData(
@@ -185,10 +189,12 @@ export async function exportClientData(
                r.created_at, r.target, r.sale_id, s.number as sale_number,
                r.order_id, o.number as order_number,
                m.name as payment_method, r.currency, r.amount,
-               r.tendered_currency, r.tendered_amount, r.exchange_rate
+               r.tendered_currency, r.tendered_amount, r.exchange_rate,
+               r.trade_in_id, ti.number as trade_in_number
         from receipts r
         left join sales s on s.organization_id = r.organization_id and s.id = r.sale_id
         left join orders o on o.organization_id = r.organization_id and o.id = r.order_id
+        left join trade_ins ti on ti.organization_id = r.organization_id and ti.id = r.trade_in_id
         join payment_methods m on m.organization_id = r.organization_id and m.id = r.payment_method_id
         where r.organization_id = ${organizationId} and r.client_id = ${clientId}
         order by r.number`,
@@ -275,6 +281,26 @@ export async function exportClientData(
         where v.organization_id = ${organizationId} and t.client_id = ${clientId}
         order by v.number`,
   );
+  // Los pagos de sus usados (brief-29.7.2, D-8), con el medio y el usado por su número.
+  const tradeInPayments = await db.execute<Record<string, unknown>>(
+    sql`select p.id, p.number, 'PPU-' || lpad(p.number::text, greatest(6, length(p.number::text)), '0') as display_number,
+               p.created_at, p.trade_in_id, t.number as trade_in_number, m.name as payment_method,
+               p.currency, p.amount, p.tendered_currency, p.tendered_amount, p.exchange_rate
+        from trade_in_payments p
+        join trade_ins t on t.organization_id = p.organization_id and t.id = p.trade_in_id
+        join payment_methods m on m.organization_id = p.organization_id and m.id = p.payment_method_id
+        where p.organization_id = ${organizationId} and t.client_id = ${clientId}
+        order by p.number`,
+  );
+  const tradeInPaymentVoids = await db.execute<Record<string, unknown>>(
+    sql`select v.id, v.number, 'APPU-' || lpad(v.number::text, greatest(6, length(v.number::text)), '0') as display_number,
+               v.created_at, v.trade_in_payment_id, p.number as trade_in_payment_number, v.reason
+        from trade_in_payment_voids v
+        join trade_in_payments p on p.organization_id = v.organization_id and p.id = v.trade_in_payment_id
+        join trade_ins t on t.organization_id = p.organization_id and t.id = p.trade_in_id
+        where v.organization_id = ${organizationId} and t.client_id = ${clientId}
+        order by v.number`,
+  );
 
   return {
     exported_at: now.toISOString(),
@@ -304,6 +330,8 @@ export async function exportClientData(
     trade_ins: tradeIns.rows,
     trade_in_checklist_results: tradeInResults.rows,
     trade_in_voids: tradeInVoids.rows,
+    trade_in_payments: tradeInPayments.rows,
+    trade_in_payment_voids: tradeInPaymentVoids.rows,
   };
 }
 

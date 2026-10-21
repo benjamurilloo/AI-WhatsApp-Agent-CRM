@@ -144,6 +144,11 @@ export function paymentRejection(
             "La cotización cambió mientras cargabas el pago. Revisá la equivalencia y volvé a registrarlo.",
             ["amount"],
           );
+        case "trade_in_method_requires_trade_in":
+          return plain(
+            "«Permuta» solo descuenta un usado de una venta. Elegí otro medio.",
+            ["paymentMethod"],
+          );
         case "payment_method_inactive":
           return plain(
             "Ese medio de pago está desactivado. Elegí otro de la lista.",

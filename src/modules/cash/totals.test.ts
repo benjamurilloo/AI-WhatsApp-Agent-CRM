@@ -12,6 +12,8 @@ describe("computeCashTotals (ADR 0022, punto 8; brief-21.2, D-4)", () => {
         refundVoids: [],
         supplierPayments: [],
         supplierPaymentVoids: [],
+        tradeInPayments: [],
+        tradeInPaymentVoids: [],
         movements: [],
       }),
     ).toEqual([]);
@@ -29,6 +31,8 @@ describe("computeCashTotals (ADR 0022, punto 8; brief-21.2, D-4)", () => {
       refundVoids: [],
       supplierPayments: [],
       supplierPaymentVoids: [],
+      tradeInPayments: [],
+      tradeInPaymentVoids: [],
       movements: [
         { kind: "contribution", currency: "ARS", amount: "2500.50" },
         { kind: "withdrawal", currency: "ARS", amount: "3000.00" },
@@ -46,6 +50,8 @@ describe("computeCashTotals (ADR 0022, punto 8; brief-21.2, D-4)", () => {
         refundVoids: 0n,
         supplierPayments: 0n,
         supplierPaymentVoids: 0n,
+        tradeInPayments: 0n,
+        tradeInPaymentVoids: 0n,
         contributions: 250_100n,
         withdrawals: 300_000n,
         expected: 950_100n,
@@ -59,6 +65,8 @@ describe("computeCashTotals (ADR 0022, punto 8; brief-21.2, D-4)", () => {
         refundVoids: 0n,
         supplierPayments: 0n,
         supplierPaymentVoids: 0n,
+        tradeInPayments: 0n,
+        tradeInPaymentVoids: 0n,
         contributions: 0n,
         withdrawals: 2_000n,
         expected: 3_000n,
@@ -76,6 +84,8 @@ describe("computeCashTotals (ADR 0022, punto 8; brief-21.2, D-4)", () => {
         refundVoids: [],
         supplierPayments: [],
         supplierPaymentVoids: [],
+        tradeInPayments: [],
+        tradeInPaymentVoids: [],
         movements: [{ kind: "contribution", currency: "EUR", amount: "10.00" }],
       }),
     ).toEqual([
@@ -88,6 +98,8 @@ describe("computeCashTotals (ADR 0022, punto 8; brief-21.2, D-4)", () => {
         refundVoids: 0n,
         supplierPayments: 0n,
         supplierPaymentVoids: 0n,
+        tradeInPayments: 0n,
+        tradeInPaymentVoids: 0n,
         contributions: 0n,
         withdrawals: 0n,
         expected: 0n,
@@ -101,6 +113,8 @@ describe("computeCashTotals (ADR 0022, punto 8; brief-21.2, D-4)", () => {
         refundVoids: 0n,
         supplierPayments: 0n,
         supplierPaymentVoids: 0n,
+        tradeInPayments: 0n,
+        tradeInPaymentVoids: 0n,
         contributions: 1_000n,
         withdrawals: 0n,
         expected: 1_000n,
@@ -121,6 +135,8 @@ describe("computeCashTotals (ADR 0022, punto 8; brief-21.2, D-4)", () => {
       refundVoids: [],
       supplierPayments: [],
       supplierPaymentVoids: [],
+      tradeInPayments: [],
+      tradeInPaymentVoids: [],
       movements: [],
     });
     expect(totals.map((row) => row.currency)).toEqual(["ARS", "EUR", "USD"]);
@@ -140,6 +156,8 @@ describe("computeCashTotals (ADR 0022, punto 8; brief-21.2, D-4)", () => {
         refundVoids: [],
         supplierPayments: [],
         supplierPaymentVoids: [],
+        tradeInPayments: [],
+        tradeInPaymentVoids: [],
         movements: [{ kind: "withdrawal", currency: "ARS", amount: "300.00" }],
       }),
     ).toEqual([
@@ -152,6 +170,8 @@ describe("computeCashTotals (ADR 0022, punto 8; brief-21.2, D-4)", () => {
         refundVoids: 0n,
         supplierPayments: 0n,
         supplierPaymentVoids: 0n,
+        tradeInPayments: 0n,
+        tradeInPaymentVoids: 0n,
         contributions: 0n,
         withdrawals: 30_000n,
         expected: 10_050n,
@@ -165,9 +185,52 @@ describe("computeCashTotals (ADR 0022, punto 8; brief-21.2, D-4)", () => {
         refundVoids: 0n,
         supplierPayments: 0n,
         supplierPaymentVoids: 0n,
+        tradeInPayments: 0n,
+        tradeInPaymentVoids: 0n,
         contributions: 0n,
         withdrawals: 0n,
         expected: 2_000n,
+      },
+    ]);
+  });
+
+  // Desde la 29.7.2 (brief-29.7.2, D-5): los pagos de usados restan como los pagos a proveedores, y sus
+  // anulaciones en la sesión suman, cada uno en su moneda.
+  it("los pagos de usados en efectivo restan y sus anulaciones en la sesión suman", () => {
+    const totals = computeCashTotals({
+      opening: [{ currency: "USD", amount: "500.00" }],
+      receipts: [],
+      receiptVoids: [],
+      refunds: [],
+      refundVoids: [],
+      supplierPayments: [{ currency: "USD", amount: "40.00" }],
+      supplierPaymentVoids: [],
+      tradeInPayments: [
+        { currency: "USD", amount: "300.00" },
+        { currency: "ARS", amount: "1000.00" },
+      ],
+      tradeInPaymentVoids: [{ currency: "USD", amount: "100.00" }],
+      movements: [],
+    });
+    expect(
+      totals.map((row) => ({
+        currency: row.currency,
+        tradeInPayments: row.tradeInPayments,
+        tradeInPaymentVoids: row.tradeInPaymentVoids,
+        expected: row.expected,
+      })),
+    ).toEqual([
+      {
+        currency: "ARS",
+        tradeInPayments: 100_000n,
+        tradeInPaymentVoids: 0n,
+        expected: -100_000n,
+      },
+      {
+        currency: "USD",
+        tradeInPayments: 30_000n,
+        tradeInPaymentVoids: 10_000n,
+        expected: 50_000n - 4_000n - 30_000n + 10_000n,
       },
     ]);
   });
@@ -190,6 +253,8 @@ describe("computeCashTotals con las anulaciones y las devoluciones (ADR 0022, pu
         refundVoids: [{ currency: "ARS", amount: "5.00" }],
         supplierPayments: [],
         supplierPaymentVoids: [],
+        tradeInPayments: [],
+        tradeInPaymentVoids: [],
         movements: [
           { kind: "contribution", currency: "ARS", amount: "10.00" },
           { kind: "withdrawal", currency: "ARS", amount: "20.00" },
@@ -205,6 +270,8 @@ describe("computeCashTotals con las anulaciones y las devoluciones (ADR 0022, pu
         refundVoids: 500n,
         supplierPayments: 0n,
         supplierPaymentVoids: 0n,
+        tradeInPayments: 0n,
+        tradeInPaymentVoids: 0n,
         contributions: 1_000n,
         withdrawals: 2_000n,
         expected: 31_000n,
@@ -222,6 +289,8 @@ describe("computeCashTotals con las anulaciones y las devoluciones (ADR 0022, pu
         refundVoids: [],
         supplierPayments: [],
         supplierPaymentVoids: [],
+        tradeInPayments: [],
+        tradeInPaymentVoids: [],
         movements: [],
       }).map((row) => [row.currency, row.expected]),
     ).toEqual([["USD", 600n]]);
@@ -241,6 +310,8 @@ describe("computeCashTotals con los pagos a proveedores (ADR 0023, punto 8; brie
         { currency: "ARS", amount: "150.00" },
       ],
       supplierPaymentVoids: [{ currency: "ARS", amount: "150.00" }],
+      tradeInPayments: [],
+      tradeInPaymentVoids: [],
       movements: [{ kind: "withdrawal", currency: "ARS", amount: "100.00" }],
     });
     expect(totals).toEqual([
@@ -253,6 +324,8 @@ describe("computeCashTotals con los pagos a proveedores (ADR 0023, punto 8; brie
         refundVoids: 0n,
         supplierPayments: 55_000n,
         supplierPaymentVoids: 15_000n,
+        tradeInPayments: 0n,
+        tradeInPaymentVoids: 0n,
         contributions: 0n,
         withdrawals: 10_000n,
         // 1000 + 300 − 100 − 550 + 150
@@ -270,6 +343,8 @@ describe("computeCashTotals con los pagos a proveedores (ADR 0023, punto 8; brie
       refundVoids: [],
       supplierPayments: [{ currency: "USD", amount: "20.00" }],
       supplierPaymentVoids: [{ currency: "EUR", amount: "5.00" }],
+      tradeInPayments: [],
+      tradeInPaymentVoids: [],
       movements: [],
     });
     expect(totals.map((row) => [row.currency, row.expected])).toEqual([

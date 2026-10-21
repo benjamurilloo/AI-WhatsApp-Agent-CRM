@@ -23,7 +23,8 @@ import { organizations } from "@/modules/organizations/schema";
 // ADR 0023, punto 6; brief-22.5); desde la 22.6, el pago a un proveedor y su anulación
 // (supplier_payment y supplier_payment_void, ADR 0023, punto 8; brief-22.6); desde la 29.6, la orden
 // de servicio (service_order, ADR 0024, punto 10; brief-29.6, D-4); desde la 29.7, la recepción de un
-// usado y su anulación (trade_in y trade_in_void, ADR 0024, punto 8; brief-29.7, D-4 y D-5).
+// usado y su anulación (trade_in y trade_in_void, ADR 0024, punto 8; brief-29.7, D-4 y D-5); desde la
+// 29.7.2, el pago de un usado y su anulación (trade_in_payment y trade_in_payment_void, brief-29.7.2, D-3).
 export const documentKind = pgEnum("document_kind", [
   "order",
   "sale",
@@ -41,6 +42,8 @@ export const documentKind = pgEnum("document_kind", [
   "service_order",
   "trade_in",
   "trade_in_void",
+  "trade_in_payment",
+  "trade_in_payment_void",
 ]);
 
 export const documentCounters = pgTable(

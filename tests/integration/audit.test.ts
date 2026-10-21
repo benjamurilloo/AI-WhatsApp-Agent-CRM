@@ -176,6 +176,9 @@ const INSERT_ONLY_TABLES = [
   "service_order_lines",
   // El usado recibido, su checklist y su anulación (brief-29.7, D-2 y D-6).
   "trade_in_checklist_results",
+  // El pago de un usado comprado y su anulación (brief-29.7.2, D-5).
+  "trade_in_payment_voids",
+  "trade_in_payments",
   "trade_in_voids",
   "trade_ins",
 ];

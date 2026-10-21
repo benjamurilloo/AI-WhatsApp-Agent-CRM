@@ -205,7 +205,20 @@ export default async function ReceiptPage({
           </div>
           <div>
             <dt className="text-muted">Medio de pago</dt>
-            <dd>{receipt.paymentMethodName}</dd>
+            <dd>
+              {receipt.paymentMethodName}
+              {receipt.tradeIn ? (
+                <>
+                  {" "}
+                  <Link
+                    href={`/usados/${receipt.tradeIn.id}`}
+                    className={linkClass}
+                  >
+                    {receipt.tradeIn.displayNumber}
+                  </Link>
+                </>
+              ) : null}
+            </dd>
           </div>
           <div>
             <dt className="text-muted">Monto</dt>

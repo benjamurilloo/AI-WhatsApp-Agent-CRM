@@ -36,6 +36,12 @@
   - **punto 8, sin texto libre**: el comprobante no lleva observaciones, para no guardar datos personales en una tabla de solo inserción (ADR 0015). Lleva una copia del nombre de cada punto del checklist y de si era obligatorio;
   - **punto 14, el DNI en el comprobante** (U-5): el comprobante impreso por un `admin` muestra el DNI, **leído de la ficha al imprimir**, sin copiarlo al comprobante. El DNI y el Instagram no llegan a un `viewer` ni al agente, y el vaciado los borra. El valor reconocido no llega a un `viewer`. **El formulario y la ficha muestran el DNI y el Instagram solo con `trade_ins`** (revisión M-1, decidido por el usuario);
   - **punto 14, el vaciado y los usados** (revisión B-4, decidido por el usuario): **el vaciado no toca `trade_ins`, sus resultados ni sus anulaciones**, porque no guardan datos de la persona: el IMEI es el del equipo, que ya es del negocio. Se exportan, y un cliente con usados no se borra. Esto precisa lo que el punto 14 decía de las tablas nuevas, que también se vaciaban.
+- *Nota del 2026-10-21, por la 29.7.2* ([brief-29.7.2](brief-29.7.2-la-permuta-y-la-compra-de-usados.md), aprobado por el usuario con las recomendaciones, U-1 a U-4 en su opción (a)), sin cambiar el texto:
+  - **punto 8, contra qué va la permuta** (U-1): **solo contra una venta**. La seña y el cobro a cuenta rechazan «Permuta»; el valor de un usado con destino permuta no entra a la cuenta corriente como un cobro suelto;
+  - **punto 8, de quién es la venta** (U-2): **del mismo cliente del usado**. Un usado no se descuenta de la venta de otro cliente, ni de una venta sin cliente;
+  - **punto 8, la venta anulada** (U-3): un cobro con «Permuta» de una venta que se anula **pasa al crédito del cliente, como cualquier cobro** (ADR 0022). El usado queda usado mientras el cobro siga vigente; para liberarlo, se anula el cobro;
+  - **punto 8, quién crea el medio** (U-4): **`org:capability`**, al activar `trade_ins` y al volver a correrlo con la capacidad activa, auditado. La `0061` no escribe datos. Si ya hay un medio llamado «Permuta», el comando se detiene y lo dice. El medio no se renombra ni se desactiva, no es efectivo y no cuenta para el tope de medios;
+  - **punto 8, la moneda**: el cobro con «Permuta» va en la moneda del usado, que tiene que ser la de la venta, sin conversión (ADR 0025, R-B5). El pago de un usado comprado va en la moneda del usado, y puede salir en la otra moneda con la cotización, como el pago a un proveedor (ADR 0025, punto 5).
 
 ## Contexto
 

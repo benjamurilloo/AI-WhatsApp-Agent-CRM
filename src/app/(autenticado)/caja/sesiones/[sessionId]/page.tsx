@@ -28,10 +28,12 @@ import {
   CurrencyTotalsTable,
   MovementsTable,
   LateSupplierPaymentVoidsTable,
+  LateTradeInPaymentVoidsTable,
   LateVoidsTable,
   SessionReceiptsTable,
   SessionRefundsTable,
   SessionSupplierPaymentsTable,
+  SessionTradeInPaymentsTable,
 } from "../../session-tables";
 import { auditActionLabel, describeAuditDiff } from "./audit-summary";
 import { ReferenceTotal } from "../../reference-total";
@@ -98,7 +100,8 @@ export default async function CashSessionPage({
     : null;
   const lateCount =
     session.lateVoids.length +
-    (session.supplierPayments?.lateVoids.length ?? 0);
+    (session.supplierPayments?.lateVoids.length ?? 0) +
+    (session.tradeInPayments?.lateVoids.length ?? 0);
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 lg:px-8 print:max-w-none print:p-0">
@@ -188,6 +191,18 @@ export default async function CashSessionPage({
           </>
         ) : null}
 
+        {session.tradeInPayments && session.tradeInPayments.items.length > 0 ? (
+          <>
+            <h3 className="mt-6 font-semibold">Pagos de usados en efectivo</h3>
+            <div className="mt-2">
+              <SessionTradeInPaymentsTable
+                session={session}
+                timeZone={timeZone}
+              />
+            </div>
+          </>
+        ) : null}
+
         <h3 className="mt-6 font-semibold">Aportes y retiros</h3>
         <div className="mt-2">
           <MovementsTable session={session} timeZone={timeZone} />
@@ -207,6 +222,12 @@ export default async function CashSessionPage({
             </div>
             <div className="mt-2">
               <LateSupplierPaymentVoidsTable
+                session={session}
+                timeZone={timeZone}
+              />
+            </div>
+            <div className="mt-2">
+              <LateTradeInPaymentVoidsTable
                 session={session}
                 timeZone={timeZone}
               />

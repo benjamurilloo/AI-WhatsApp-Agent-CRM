@@ -51,6 +51,8 @@ Imprime el id de la organización, el del `admin` y la contraseña inicial **una
 
 *Desde la 29.7* ([brief-29.7](../decisions/brief-29.7-la-recepcion-de-usados.md)), el perfil `iphone` activa también **`trade_ins`**, la recepción de usados, y al activarla copia el checklist de un usado, diez puntos con la marca de ejemplo. **`trade_ins` exige `serialized_units`**: con `--capability trade_ins` en una organización sin unidades, el comando se rechaza y no activa nada. Con la capacidad, la ficha del cliente muestra el DNI y el Instagram. Para recibir un usado, el negocio necesita un producto usado llevado por unidad, que se crea desde la pantalla. Una organización que ya tenía las otras tres corre el mismo comando. Así se activó en «iPhone Demo» el 2026-10-21.
 
+*Desde la 29.7.2* ([brief-29.7.2](../decisions/brief-29.7.2-la-permuta-y-la-compra-de-usados.md), U-4), con `trade_ins` el comando **crea también el medio de pago de sistema «Permuta»**, en la misma transacción y auditado: al activar la capacidad y al volver a correrlo con la capacidad ya activa, que es como se crea en una organización que la activó antes de la 29.7.2. Si el medio ya existe, no hace nada. **Si ya hay un medio llamado «Permuta»** que no es de sistema, el comando se detiene sin activar nada y lo dice: se renombra ese medio desde «Caja → Medios de pago» y se vuelve a correr.
+
 El correo del `admin` llega por el entorno:
 
 ```

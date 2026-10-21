@@ -8,24 +8,34 @@ import {
   voidTradeInInCash,
   type VoidTradeInResult,
 } from "@/modules/tradeins";
+import { formatDocumentNumber } from "@/modules/numbering";
 import { failure, type Failure } from "@/shared/errors";
 import * as repository from "./repository";
+import * as tradeInPaymentRepository from "./trade-in-payment-repository";
 
-// La anulación de un usado recibido (ADR 0024, punto 8; brief-29.7, D-5, U-3 y U-4). Vive en cash desde
-// esta subfase, aunque en la 29.7 solo compruebe la unidad: la 29.7.2 le suma que ningún cobro con
-// «Permuta» ni pago de compra vigente use el usado, y esas comprobaciones necesitan el bloqueo de cobros.
-// cash llama a tradeins, que escribe la anulación y llama a inventory para dar de baja la unidad: cash no
-// depende de inventory (U-3).
+// La anulación de un usado recibido (ADR 0024, punto 8; brief-29.7, D-5, U-3 y U-4). Vive en cash: desde
+// la 29.7.2 (D-4) se rechaza mientras un cobro vigente con «Permuta» lo use o un pago vigente lo pague, y
+// esas comprobaciones se leen con el bloqueo de cobros, el mismo que toman el cobro, el pago y sus
+// anulaciones. cash llama a tradeins, que escribe la anulación y llama a inventory para dar de baja la
+// unidad: cash no depende de inventory (U-3).
 //
-// Solo admin, en READ COMMITTED: el bloqueo de cobros de la organización y, ya con él, todo lo demás en
-// voidTradeInInCash.
+// Solo admin, en READ COMMITTED: el bloqueo de cobros de la organización, los cobros y los pagos del
+// usado y, si ninguno está vigente, todo lo demás en voidTradeInInCash.
 
 const idSchema = z.uuid();
 
 export type VoidTradeInCashResult =
   | VoidTradeInResult
   | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
-  | Failure<"VALIDATION_ERROR", { fields: ["reason"] }>;
+  | Failure<"VALIDATION_ERROR", { fields: ["reason"] }>
+  // El primer cobro o pago vigente, por su número (brief-29.7.2, D-4).
+  | Failure<
+      "BUSINESS_RULE_VIOLATION",
+      {
+        rule: "trade_in_used_in_receipt" | "trade_in_paid";
+        displayNumber: string;
+      }
+    >;
 
 type Rejection = Exclude<VoidTradeInResult, { ok: true }>;
 
@@ -56,6 +66,35 @@ export async function voidTradeIn(
   try {
     return await repository.withTransaction(async (tx) => {
       await repository.lockCash(tx, organizationId);
+      const receipt = (
+        await repository.findTradeInReceipts(organizationId, tradeInId, tx)
+      ).find((row) => row.voided === null);
+      if (receipt) {
+        return {
+          ok: false,
+          code: "BUSINESS_RULE_VIOLATION",
+          rule: "trade_in_used_in_receipt",
+          displayNumber: formatDocumentNumber("receipt", receipt.number),
+        } as const;
+      }
+      const payment = (
+        await tradeInPaymentRepository.findTradeInPayments(
+          organizationId,
+          tradeInId,
+          tx,
+        )
+      ).find((row) => row.voided === null);
+      if (payment) {
+        return {
+          ok: false,
+          code: "BUSINESS_RULE_VIOLATION",
+          rule: "trade_in_paid",
+          displayNumber: formatDocumentNumber(
+            "trade_in_payment",
+            payment.number,
+          ),
+        } as const;
+      }
       const result = await voidTradeInInCash(tx, {
         organizationId,
         tradeInId,

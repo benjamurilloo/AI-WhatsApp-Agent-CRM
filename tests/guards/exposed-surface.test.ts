@@ -424,6 +424,13 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
   "src/app/(autenticado)/usados/actions.ts#voidTradeInAction": {
     requirement: "sesion",
   },
+  // El pago de un usado comprado y su anulación (brief-29.7.2, D-6): solo admin y con trade_ins, en cash.
+  "src/app/(autenticado)/usados/actions.ts#createTradeInPaymentAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/usados/actions.ts#voidTradeInPaymentAction": {
+    requirement: "sesion",
+  },
   "src/app/(autenticado)/usados/actions.ts#createChecklistItemAction": {
     requirement: "sesion",
   },

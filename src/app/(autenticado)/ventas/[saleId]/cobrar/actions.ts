@@ -43,7 +43,8 @@ export async function createSaleReceiptAction(
     });
   const saleId = String(formData.get("saleId") ?? "").slice(0, 64);
   const values: ReceiptFormValues = {
-    paymentMethodId: String(formData.get("paymentMethodId") ?? "").slice(0, 64),
+    // «medio|usado» con «Permuta» (brief-29.7.2, D-6): dos ids.
+    paymentMethodId: String(formData.get("paymentMethodId") ?? "").slice(0, 80),
     amount: String(formData.get("amount") ?? "")
       .trim()
       .slice(0, 40),
@@ -62,11 +63,16 @@ export async function createSaleReceiptAction(
     64,
   );
 
+  // La permuta: el medio de sistema y el usado que descuenta.
+  const [paymentMethodId = "", tradeInId] = values.paymentMethodId.split("|");
+
   let receiptId: string;
   try {
     const result = await createSaleReceipt(context, {
       saleId,
       ...values,
+      paymentMethodId,
+      ...(tradeInId === undefined ? {} : { tradeInId }),
       exchangeRateId,
     });
     if (!result.ok) {

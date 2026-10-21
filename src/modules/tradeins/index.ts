@@ -53,9 +53,14 @@ export {
   type TradeInValidationFailure,
   type TradeInVoidReason,
 } from "./trade-ins";
-// Para cash (U-4): la anulación, con su transacción y bajo su bloqueo.
+// Para cash (U-4): la anulación, con su transacción y bajo su bloqueo; desde la 29.7.2, el usado de un
+// cobro con «Permuta» o de un pago (brief-29.7.2, D-2 y D-3).
 export {
   findTradeInVoidNumber,
+  getTradeInForPayment,
+  getTradeInsForPayment,
+  listClientTradeInsForPermuta,
+  type TradeInForPayment,
   isTradeInAlreadyVoidedError,
   voidTradeInInCash,
   type VoidTradeInRef,

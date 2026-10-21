@@ -87,6 +87,15 @@ export function accountReceiptRejection(
       return plain(`Moneda: elegí una de la lista.${rest}`, fields);
     }
   }
-  // El medio, el monto y la caja: los mismos rechazos y textos que el cobro de una venta.
-  return receiptRejection(result as Parameters<typeof receiptRejection>[0]);
+  // El medio, el monto y la caja: los mismos rechazos y textos que el cobro de una venta. Un cobro a
+  // cuenta no lleva usado (brief-29.7.2, U-1): ese campo no existe en su formulario.
+  const rejected = receiptRejection(
+    result as Parameters<typeof receiptRejection>[0],
+  );
+  return {
+    ...rejected,
+    fields: rejected.fields.filter(
+      (field): field is Exclude<typeof field, "tradeIn"> => field !== "tradeIn",
+    ),
+  };
 }

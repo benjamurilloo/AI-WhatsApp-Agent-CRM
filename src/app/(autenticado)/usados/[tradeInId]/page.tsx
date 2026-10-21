@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AUDIT_PAGE_SIZE } from "@/modules/audit";
+import { getTradeInMoney } from "@/modules/cash";
 import { getOrganizationTimezone } from "@/modules/organizations";
 import {
   getTradeIn,
@@ -40,6 +41,7 @@ import {
 import { TradeInStatusBadge } from "../sub-nav";
 import { auditActionLabel, describeAuditDiff } from "./audit-summary";
 import { VoidForm } from "./forms";
+import { TradeInMoneySection } from "./money-section";
 
 export const metadata: Metadata = {
   title: "Usado recibido — AI WhatsApp Agent CRM",
@@ -55,7 +57,9 @@ function page(value: string | string[] | undefined): number {
 // El detalle de una recepción (brief-29.7, D-7): el cliente, el equipo con su unidad, el checklist, el
 // valor y el destino, la anulación si la tiene y, para un admin, «Anular» y la historia. Un viewer la ve
 // sin el valor (D-8). El comprobante PU y el de su anulación se imprimen en su propia página. Sin la
-// capacidad trade_ins, 404.
+// capacidad trade_ins, 404. Desde la 29.7.2, un admin ve también lo que el usado hizo con su valor: los
+// cobros con «Permuta» o los pagos, y «Pagar» (brief-29.7.2, D-6); la anulación no se ofrece mientras un
+// cobro o un pago vigente lo use (D-4).
 export default async function TradeInPage({
   params,
   searchParams,
@@ -80,12 +84,19 @@ export default async function TradeInPage({
   const tradeIn = found.tradeIn;
   const href = `/usados/${tradeIn.id}`;
   const isAdmin = context.role === "admin";
-  const [timeZone, audit] = await Promise.all([
+  const [timeZone, audit, money] = await Promise.all([
     getOrganizationTimezone(context),
     isAdmin
       ? listTradeInAudit(context, tradeIn.id, page(query.historial))
       : Promise.resolve(null),
+    isAdmin ? getTradeInMoney(context, tradeIn.id) : Promise.resolve(null),
   ]);
+  // El primer cobro o pago vigente que impide anular (D-4).
+  const blocking = money?.ok
+    ? money.money.destination === "sale_credit"
+      ? money.money.receipts.find((row) => row.voided === null)
+      : money.money.payments.find((row) => row.voided === null)
+    : undefined;
   const actorLabel = audit?.ok
     ? await auditActorLabels(context.organizationId, audit.entries)
     : null;
@@ -157,7 +168,16 @@ export default async function TradeInPage({
           <h2 id="anular-titulo" className={sectionTitleClass}>
             Anular la recepción
           </h2>
-          {voidable ? (
+          {blocking ? (
+            <p className="mt-2 text-sm text-muted">
+              No se puede anular: el{" "}
+              {money?.ok && money.money.destination === "sale_credit"
+                ? "cobro"
+                : "pago"}{" "}
+              <span className="font-mono">{blocking.displayNumber}</span> lo
+              usa. Anulá primero ese comprobante.
+            </p>
+          ) : voidable ? (
             <>
               <p className="mt-2 mb-3 text-sm text-muted">
                 No se deshace: emite el comprobante de anulación y da de baja la
@@ -259,6 +279,15 @@ export default async function TradeInPage({
           </dl>
         </section>
       </div>
+
+      {money?.ok ? (
+        <TradeInMoneySection
+          tradeInId={tradeIn.id}
+          money={money.money}
+          voided={tradeIn.void !== null}
+          timeZone={timeZone}
+        />
+      ) : null}
 
       <section
         aria-labelledby="checklist-titulo"

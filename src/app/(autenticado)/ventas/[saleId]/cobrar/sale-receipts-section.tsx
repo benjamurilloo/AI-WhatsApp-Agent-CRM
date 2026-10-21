@@ -197,7 +197,20 @@ export function SaleReceiptsSection({
                       </span>
                     ) : null}
                   </td>
-                  <td className={tableCellClass}>{row.paymentMethodName}</td>
+                  <td className={tableCellClass}>
+                    {row.paymentMethodName}
+                    {row.tradeIn ? (
+                      <>
+                        {" "}
+                        <Link
+                          href={`/usados/${row.tradeIn.id}`}
+                          className={linkClass}
+                        >
+                          {row.tradeIn.displayNumber}
+                        </Link>
+                      </>
+                    ) : null}
+                  </td>
                   <td className={numberCell}>
                     {formatMoney(row.amount, row.currency)}
                     {row.tender ? (

@@ -337,6 +337,12 @@ export function paymentMethodRejection(
             message: "La lista inicial se crea solo con la lista vacía.",
             field: null,
           };
+        case "system_payment_method":
+          return {
+            message:
+              "«Permuta» es un medio del sistema: no se renombra ni se desactiva.",
+            field: null,
+          };
       }
   }
 }

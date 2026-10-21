@@ -28,12 +28,19 @@ import { describe, expect, it } from "vitest";
 // supplier_payments solo desde insertSupplierPayment, que llama solo createSupplierPayment, y
 // supplier_payment_voids solo desde insertSupplierPaymentVoid, que llama solo voidSupplierPayment.
 //
+// Desde la 29.7.2 (brief-29.7.2, D-3), los pagos de usados, con el mismo molde: trade_in_payments solo
+// desde insertTradeInPayment, que llama solo createTradeInPayment, y trade_in_payment_voids solo desde
+// insertTradeInPaymentVoid, que llama solo voidTradeInPayment.
+//
 // Ve y no ve lo mismo que sale-writes.
 
 const REPOSITORY = "src/modules/cash/repository.ts";
 const SERVICE = "src/modules/cash/service.ts";
 const PAYMENT_REPOSITORY = "src/modules/cash/supplier-payment-repository.ts";
 const PAYMENT_SERVICE = "src/modules/cash/supplier-payments.ts";
+const TRADE_IN_PAYMENT_REPOSITORY =
+  "src/modules/cash/trade-in-payment-repository.ts";
+const TRADE_IN_PAYMENT_SERVICE = "src/modules/cash/trade-in-payments.ts";
 
 const AUTHORIZED = new Map([
   ["insertPaymentMethod", ["insert payment_methods"]],
@@ -50,12 +57,17 @@ const AUTHORIZED = new Map([
   ["insertRefundVoid", ["insert refund_voids"]],
   ["insertSupplierPayment", ["insert supplier_payments"]],
   ["insertSupplierPaymentVoid", ["insert supplier_payment_voids"]],
+  ["insertTradeInPayment", ["insert trade_in_payments"]],
+  ["insertTradeInPaymentVoid", ["insert trade_in_payment_voids"]],
 ]);
 
-// El archivo de cada escritura: las de los pagos a proveedores viven en su repositorio (D-12).
+// El archivo de cada escritura: las de los pagos a proveedores y las de los pagos de usados viven en su
+// repositorio (D-12 de la 22.6; D-3 de la 29.7.2).
 const FILE_OF = new Map([
   ["insertSupplierPayment", PAYMENT_REPOSITORY],
   ["insertSupplierPaymentVoid", PAYMENT_REPOSITORY],
+  ["insertTradeInPayment", TRADE_IN_PAYMENT_REPOSITORY],
+  ["insertTradeInPaymentVoid", TRADE_IN_PAYMENT_REPOSITORY],
 ]);
 const fileOf = (fn: string) => FILE_OF.get(fn) ?? REPOSITORY;
 
@@ -75,6 +87,8 @@ const CALLERS = new Map([
   ["insertRefundVoid", ["voidRefund"]],
   ["insertSupplierPayment", ["createSupplierPayment"]],
   ["insertSupplierPaymentVoid", ["voidSupplierPayment"]],
+  ["insertTradeInPayment", ["createTradeInPayment"]],
+  ["insertTradeInPaymentVoid", ["voidTradeInPayment"]],
 ]);
 
 const TABLES = new Map([
@@ -100,12 +114,16 @@ const TABLES = new Map([
   ["supplier_payments", "supplier_payments"],
   ["supplierpaymentvoids", "supplier_payment_voids"],
   ["supplier_payment_voids", "supplier_payment_voids"],
+  ["tradeinpayments", "trade_in_payments"],
+  ["trade_in_payments", "trade_in_payments"],
+  ["tradeinpaymentvoids", "trade_in_payment_voids"],
+  ["trade_in_payment_voids", "trade_in_payment_voids"],
 ]);
 
 const SQL_NAMES =
-  "payment_methods|cash_sessions|cash_session_opening_amounts|cash_session_closings|cash_session_closing_amounts|cash_movements|receipts|receipt_voids|refunds|refund_voids|supplier_payments|supplier_payment_voids";
+  "payment_methods|cash_sessions|cash_session_opening_amounts|cash_session_closings|cash_session_closing_amounts|cash_movements|receipts|receipt_voids|refunds|refund_voids|supplier_payments|supplier_payment_voids|trade_in_payments|trade_in_payment_voids";
 const DRIZZLE_NAMES =
-  "paymentMethods|cashSessions|cashSessionOpeningAmounts|cashSessionClosings|cashSessionClosingAmounts|cashMovements|receipts|receiptVoids|refunds|refundVoids|supplierPayments|supplierPaymentVoids";
+  "paymentMethods|cashSessions|cashSessionOpeningAmounts|cashSessionClosings|cashSessionClosingAmounts|cashMovements|receipts|receiptVoids|refunds|refundVoids|supplierPayments|supplierPaymentVoids|tradeInPayments|tradeInPaymentVoids";
 
 // La tabla en SQL: su nombre, con o sin esquema y comillas, o el objeto de Drizzle interpolado.
 // El nombre queda en el grupo 2 o en el 3.
@@ -168,7 +186,7 @@ function findCalls(code: string): { write: string; fn: string | null }[] {
   return [
     ...code.matchAll(
       new RegExp(
-        String.raw`\b(?:repository|paymentRepository)\.(${writes})\(`,
+        String.raw`\b(?:repository|paymentRepository|tradeInPaymentRepository)\.(${writes})\(`,
         "g",
       ),
     ),
@@ -324,6 +342,21 @@ describe("detección de escrituras de la caja", () => {
       code: "await tx.execute(sql`delete from supplier_payment_voids`);",
     },
     {
+      name: "un pago de un usado insertado fuera de su función",
+      file: TRADE_IN_PAYMENT_REPOSITORY,
+      code: "export async function seedPayment(tx) {\n  await tx.insert(tradeInPayments).values(v);\n}",
+    },
+    {
+      name: "un pago de un usado actualizado, aun desde su función",
+      file: TRADE_IN_PAYMENT_REPOSITORY,
+      code: "export async function insertTradeInPayment(tx) {\n  await tx.update(tradeInPayments).set({ amount: 1 });\n}",
+    },
+    {
+      name: "una anulación de pago de un usado borrada con SQL literal en tradeins",
+      file: "src/modules/tradeins/repository.ts",
+      code: "await tx.execute(sql`delete from trade_in_payment_voids`);",
+    },
+    {
       name: "TRUNCATE TABLE ONLY",
       file: "src/app/accion.ts",
       code: "await db.execute(sql`truncate table only cash_session_opening_amounts`);",
@@ -391,6 +424,14 @@ describe("detección de escrituras de la caja", () => {
       code: "export async function reversePayment(c) {\n  await paymentRepository.insertSupplierPaymentVoid(tx, v);\n}",
     },
     {
+      name: "un pago de un usado escrito desde su anulación",
+      code: "export async function voidTradeInPayment(c) {\n  await tradeInPaymentRepository.insertTradeInPayment(tx, v);\n}",
+    },
+    {
+      name: "una anulación de pago de un usado escrita desde la anulación del usado",
+      code: "export async function voidTradeIn(c) {\n  await tradeInPaymentRepository.insertTradeInPaymentVoid(tx, v);\n}",
+    },
+    {
       name: "una sesión creada desde un caso de uso nuevo",
       code: "export async function reopenCashSession(c) {\n  await repository.insertCashSession(tx, v);\n}",
     },
@@ -440,11 +481,18 @@ describe("repositorio", () => {
       "insertSupplierPayment: insert supplier_payments",
       "insertSupplierPaymentVoid: insert supplier_payment_voids",
     ]);
+    const tradeInPayments = findCashWrites(
+      readFileSync(TRADE_IN_PAYMENT_REPOSITORY, "utf8"),
+    ).map(({ operation, fn }) => `${fn}: ${operation}`);
+    expect(tradeInPayments).toEqual([
+      "insertTradeInPayment: insert trade_in_payments",
+      "insertTradeInPaymentVoid: insert trade_in_payment_voids",
+    ]);
   });
 
   it("cada escritura de la caja la llama solo su caso de uso", () => {
-    const codes = [SERVICE, PAYMENT_SERVICE].map((file) =>
-      readFileSync(file, "utf8"),
+    const codes = [SERVICE, PAYMENT_SERVICE, TRADE_IN_PAYMENT_SERVICE].map(
+      (file) => readFileSync(file, "utf8"),
     );
     for (const code of codes) expect(findCallerViolations(code)).toEqual([]);
     // Y cada una se llama: si una deja de llamarse, la guarda se queda sin objeto.
@@ -459,7 +507,7 @@ describe("repositorio", () => {
     const outside = files.filter(
       (file) =>
         !file.startsWith("src/modules/cash/") &&
-        /modules\/cash\/(?:supplier-payment-)?repository/.test(
+        /modules\/cash\/(?:supplier-payment-|trade-in-payment-)?repository/.test(
           readFileSync(file, "utf8"),
         ),
     );

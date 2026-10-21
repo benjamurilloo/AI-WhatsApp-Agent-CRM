@@ -1,4 +1,14 @@
-import type { VoidTradeInCashResult } from "@/modules/cash";
+import type {
+  CreateTradeInPaymentResult,
+  TenderField,
+  TradeInPaymentField,
+  TradeInPaymentVoidReason,
+  VoidTradeInCashResult,
+  VoidTradeInPaymentResult,
+} from "@/modules/cash";
+import { formatMoney } from "@/shared/money";
+import { ROW_PROBLEM_TEXT } from "@/app/(autenticado)/caja/messages";
+import { RATE_TEXT } from "@/app/(autenticado)/ventas/[saleId]/cobrar/messages";
 import type {
   ChecklistItemWriteResult,
   CreateTradeInResult,
@@ -181,6 +191,11 @@ export function voidTradeInMessage(
         return `Esta recepción ya está anulada por ${result.voidDisplayNumber}.`;
       case "unit_not_in_shop":
         return `No se puede anular: la unidad está ${UNIT_STATUS_LABEL[result.status].toLowerCase()}. Se anula solo mientras está en revisión o disponible.`;
+      // Desde la 29.7.2 (brief-29.7.2, D-4).
+      case "trade_in_used_in_receipt":
+        return `No se puede anular: el cobro ${result.displayNumber} lo usa como permuta. Anulá primero ese cobro.`;
+      case "trade_in_paid":
+        return `No se puede anular: el pago ${result.displayNumber} lo paga. Anulá primero ese pago.`;
       default:
         return "No se puede anular: el stock del producto no lo permite.";
     }
@@ -221,6 +236,9 @@ const NOTICES: Record<string, string> = {
   "usado-recibido":
     "Usado recibido. El equipo entró a las unidades del producto, en revisión.",
   "usado-anulado": "Recepción anulada. La unidad quedó dada de baja.",
+  // Desde la 29.7.2 (brief-29.7.2, D-6).
+  "pago-registrado": "Pago registrado.",
+  "pago-anulado": "Pago anulado.",
   "punto-creado": "Punto agregado al checklist.",
   "punto-guardado": "Punto guardado.",
   "punto-desactivado":
@@ -234,4 +252,172 @@ export function noticeMessage(
 ): string | null {
   const key = Array.isArray(value) ? value[0] : value;
   return key && Object.hasOwn(NOTICES, key) ? NOTICES[key]! : null;
+}
+
+// El pago de un usado comprado y su anulación (brief-29.7.2, D-3 y D-6).
+
+export const PAYMENT_TITLE = "Pagar un usado";
+export const PAYMENT_ADMIN_ONLY_MESSAGE =
+  "Solo un administrador paga usados y ve sus pagos.";
+export const PAYMENT_NOT_FOUND_MESSAGE = "Este pago no existe.";
+export const PAYMENT_TRADE_IN_VOIDED_MESSAGE =
+  "Esta recepción está anulada: no se le registran pagos.";
+export const PAYMENT_NOT_PURCHASE_MESSAGE =
+  "Este usado se recibió como permuta: no se le paga al cliente, se descuenta de una venta suya con «Permuta».";
+export const PAYMENT_PAID_MESSAGE =
+  "Este usado ya está pagado: no le falta nada.";
+export const PAYMENT_NO_METHODS_MESSAGE =
+  "No hay medios de pago activos. Un administrador los crea o los reactiva en la caja.";
+
+export const PAYMENT_VOID_REASON_LABEL: Record<
+  TradeInPaymentVoidReason,
+  string
+> = {
+  not_paid: "El pago no se hizo",
+  wrong_method: "Medio de pago equivocado",
+  wrong_amount: "Monto equivocado",
+  wrong_target: "Usado equivocado",
+  other: "Otro",
+};
+
+// Desde la 29.4.3, como en el pago a un proveedor: la moneda que sale y la cotización acordada.
+export type PaymentFormField = TradeInPaymentField | TenderField;
+
+export type PaymentFormValues = {
+  paymentMethodId: string;
+  amount: string;
+  tenderedCurrency: string;
+  exchangeRate: string;
+};
+
+export type PaymentFormState =
+  | { status: "idle" }
+  | {
+      status: "error";
+      requestId: string;
+      values: PaymentFormValues;
+      message: string;
+      fields: PaymentFormField[];
+      // El rechazo de un pago en efectivo con la caja cerrada enlaza a «Abrir caja».
+      openCash: boolean;
+    };
+
+const PAYMENT_AMOUNT_TEXT: Record<string, string> = {
+  ...ROW_PROBLEM_TEXT,
+  limit:
+    "Con este pago, lo esperado de la caja pasaría el máximo que se puede guardar.",
+  conversion:
+    "con esta cotización no da un monto que se pueda aplicar. Revisalo o revisá la cotización.",
+};
+
+export function paymentUnexpectedErrorMessage(requestId: string): string {
+  return `No pudimos registrar el pago. Código: ${requestId}`;
+}
+
+export function tradeInPaymentRejection(
+  result: Exclude<CreateTradeInPaymentResult, { ok: true }>,
+): { message: string; fields: PaymentFormField[]; openCash: boolean } {
+  const plain = (message: string, fields: PaymentFormField[] = []) => ({
+    message,
+    fields,
+    openCash: false,
+  });
+  switch (result.code) {
+    case "FORBIDDEN":
+      return plain(PAYMENT_ADMIN_ONLY_MESSAGE);
+    case "NOT_FOUND":
+      return "entity" in result && result.entity === "payment_method"
+        ? plain("Ese medio de pago ya no existe. Elegí otro de la lista.", [
+            "paymentMethod",
+          ])
+        : plain(TRADE_IN_NOT_FOUND_MESSAGE);
+    case "VALIDATION_ERROR": {
+      if (!("fields" in result)) return plain(TRADE_IN_NOT_FOUND_MESSAGE);
+      const fields: PaymentFormField[] = result.fields;
+      const parts: string[] = [];
+      if (fields.includes("paymentMethod")) {
+        parts.push("Medio de pago: elegí uno de la lista.");
+      }
+      if (fields.includes("tenderedCurrency")) {
+        parts.push(
+          "Moneda que sale: la otra moneda solo sale contra un usado en la moneda principal.",
+        );
+      }
+      if (fields.includes("exchangeRate")) {
+        const reason =
+          "exchangeRate" in result ? result.exchangeRate : undefined;
+        parts.push(`Cotización acordada: ${RATE_TEXT[reason ?? "invalid"]}`);
+      }
+      if (fields.includes("amount")) {
+        const reason = "amount" in result ? result.amount : undefined;
+        parts.push(`Monto: ${PAYMENT_AMOUNT_TEXT[reason ?? "required"]}`);
+      }
+      return plain(parts.join(" ") || "Revisá los datos.", fields);
+    }
+    case "BUSINESS_RULE_VIOLATION":
+      switch (result.rule) {
+        case "trade_in_voided":
+          return plain(PAYMENT_TRADE_IN_VOIDED_MESSAGE);
+        case "trade_in_not_purchase":
+          return plain(PAYMENT_NOT_PURCHASE_MESSAGE);
+        case "trade_in_method_requires_trade_in":
+          return plain(
+            "«Permuta» descuenta un usado de una venta: no le paga al cliente. Elegí otro medio.",
+            ["paymentMethod"],
+          );
+        case "payment_method_inactive":
+          return plain(
+            "Ese medio de pago está desactivado. Elegí otro de la lista.",
+            ["paymentMethod"],
+          );
+        case "no_open_session":
+          return {
+            message:
+              "La caja está cerrada: un pago en efectivo necesita una sesión abierta.",
+            fields: ["paymentMethod"],
+            openCash: true,
+          };
+        case "insufficient_cash":
+          return plain(
+            `En la caja no alcanza el efectivo: hay ${formatMoney(result.expected, result.currency)}.`,
+            ["amount"],
+          );
+        case "exceeds_outstanding":
+          return plain(
+            result.outstanding === "0.00"
+              ? PAYMENT_PAID_MESSAGE
+              : `El pago supera lo que falta: ${formatMoney(result.outstanding, result.currency)}.`,
+            ["amount"],
+          );
+        case "no_exchange_rate":
+          return plain(
+            "No hay una cotización cargada: sin ella no se paga en la otra moneda. Cargala en Caja → Cotización.",
+            ["exchangeRate"],
+          );
+        case "exchange_rate_changed":
+          return plain(
+            "La cotización cambió mientras cargabas el pago. Revisá la equivalencia y volvé a registrarlo.",
+            ["amount"],
+          );
+        default:
+          return plain("No se pudo registrar el pago. Revisá los datos.");
+      }
+  }
+}
+
+export function voidTradeInPaymentMessage(
+  result: Exclude<VoidTradeInPaymentResult, { ok: true }>,
+  requestId: string,
+): string {
+  if (result.code === "BUSINESS_RULE_VIOLATION") {
+    return `Este pago ya está anulado por ${result.void.displayNumber}.`;
+  }
+  if (result.code === "VALIDATION_ERROR" && "fields" in result) {
+    return (result.fields as string[]).includes("reason")
+      ? "Elegí un motivo de la lista."
+      : "Con esta anulación, lo esperado de la caja pasaría el máximo que se puede guardar.";
+  }
+  if (result.code === "FORBIDDEN") return PAYMENT_ADMIN_ONLY_MESSAGE;
+  if (result.code === "NOT_FOUND") return PAYMENT_NOT_FOUND_MESSAGE;
+  return changeMessage(result.code, requestId);
 }

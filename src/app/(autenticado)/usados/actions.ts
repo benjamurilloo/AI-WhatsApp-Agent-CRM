@@ -2,7 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { voidTradeIn } from "@/modules/cash";
+import {
+  createTradeInPayment,
+  voidTradeIn,
+  voidTradeInPayment,
+} from "@/modules/cash";
 import { suggestClients } from "@/modules/crm";
 import type { AuthContext } from "@/modules/organizations";
 import {
@@ -20,15 +24,21 @@ import {
   changeMessage,
   checklistItemRejection,
   createTradeInRejection,
+  paymentUnexpectedErrorMessage,
+  tradeInPaymentRejection,
   unexpectedErrorMessage,
   voidTradeInMessage,
+  voidTradeInPaymentMessage,
   type ChangeState,
   type FormState,
+  type PaymentFormState,
+  type PaymentFormValues,
 } from "./messages";
 
 // Server Actions de los usados (brief-29.7, D-7). Next.js compara Origin con Host; la sesión se
 // verifica acá, y el rol, la organización y la capacidad, en tradeins y en cash. El log lleva actor,
-// organización, código y duración, nunca el cliente, el IMEI ni el valor.
+// organización, código y duración, nunca el cliente, el IMEI ni el valor. Desde la 29.7.2, el pago de un
+// usado comprado y su anulación (brief-29.7.2, D-6), que escribe cash: tampoco el medio ni los montos.
 
 const TRADE_INS = "/usados";
 const CHECKLIST = "/usados/checklist";
@@ -172,6 +182,93 @@ export async function voidTradeInAction(
     };
   }
   redirect(destination);
+}
+
+// El pago de un usado comprado (brief-29.7.2, D-3 y D-6): el usado viaja en un campo oculto.
+export async function createTradeInPaymentAction(
+  _previous: PaymentFormState,
+  formData: FormData,
+): Promise<PaymentFormState> {
+  const context = await requireSession();
+  const { requestId, log } = logger("usados.pagar", context);
+  const tradeInId = text(formData, "tradeInId", 64);
+  const values: PaymentFormValues = {
+    paymentMethodId: text(formData, "paymentMethodId", 64),
+    amount: text(formData, "amount", 40).trim(),
+    // La moneda que sale y la cotización acordada (ADR 0025, punto 5).
+    tenderedCurrency: text(formData, "tenderedCurrency", 8),
+    exchangeRate: text(formData, "exchangeRate", 40).trim(),
+  };
+  // La vigente que mostró el formulario: si cambió, el pago se rechaza.
+  const exchangeRateId = text(formData, "exchangeRateId", 64);
+  let paymentId: string;
+  try {
+    const result = await createTradeInPayment(context, {
+      tradeInId,
+      ...values,
+      exchangeRateId,
+    });
+    if (!result.ok) {
+      log(result.code);
+      if ("rule" in result && result.rule === "exchange_rate_changed") {
+        revalidatePath(`${TRADE_INS}/${tradeInId}/pago`);
+      }
+      return {
+        status: "error",
+        requestId,
+        values,
+        ...tradeInPaymentRejection(result),
+      };
+    }
+    log("OK");
+    paymentId = result.payment.id;
+  } catch (error) {
+    log("INTERNAL", error);
+    return {
+      status: "error",
+      requestId,
+      values,
+      message: paymentUnexpectedErrorMessage(requestId),
+      fields: [],
+      openCash: false,
+    };
+  }
+  revalidatePath(TRADE_INS);
+  revalidatePath(`${TRADE_INS}/${tradeInId}`);
+  revalidatePath("/caja");
+  redirect(`${TRADE_INS}/pagos/${paymentId}?aviso=pago-registrado`);
+}
+
+export async function voidTradeInPaymentAction(
+  _previous: ChangeState,
+  formData: FormData,
+): Promise<ChangeState> {
+  const context = await requireSession();
+  const { requestId, log } = logger("usados.pagos.anular", context);
+  const paymentId = text(formData, "paymentId", 64);
+  const reason = text(formData, "reason", 40);
+  try {
+    const result = await voidTradeInPayment(context, { paymentId, reason });
+    if (!result.ok) {
+      log(result.code);
+      return {
+        status: "error",
+        requestId,
+        message: voidTradeInPaymentMessage(result, requestId),
+      };
+    }
+    log("OK");
+  } catch (error) {
+    log("INTERNAL", error);
+    return {
+      status: "error",
+      requestId,
+      message: unexpectedErrorMessage(requestId),
+    };
+  }
+  revalidatePath(TRADE_INS, "layout");
+  revalidatePath("/caja");
+  redirect(`${TRADE_INS}/pagos/${paymentId}?aviso=pago-anulado`);
 }
 
 // El checklist (D-3).

@@ -23,6 +23,7 @@ import { orders } from "@/modules/orders/schema";
 import { organizations } from "@/modules/organizations/schema";
 import { goodsReceipts, suppliers } from "@/modules/purchasing/schema";
 import { sales } from "@/modules/sales/schema";
+import { tradeIns } from "@/modules/tradeins/schema";
 
 // docs/architecture/DataModel.md, tablas payment_methods, cash_sessions,
 // cash_session_opening_amounts, cash_session_closings, cash_session_closing_amounts y
@@ -34,10 +35,17 @@ import { sales } from "@/modules/sales/schema";
 // depender de sales en la base (brief-21.2, H-3). Abierta o cerrada se deriva de que exista el
 // cierre. El inicial, lo contado y lo esperado van por moneda, en dos tablas hijas (D-1).
 
+// El papel de un medio de sistema (ADR 0024, punto 8; brief-29.7.2, D-1): hoy solo trade_in,
+// «Permuta». Un medio de los de siempre no tiene ninguno.
+export const paymentMethodSystemRole = pgEnum("payment_method_system_role", [
+  "trade_in",
+]);
+
 // La lista de con qué se registra un cobro, por organización (ADR 0022, punto 10; brief-21.2, D-6).
 // Se edita con borrado lógico: crm_app tiene SELECT, INSERT y UPDATE, sin DELETE. «Es efectivo» se
 // fija al crearlo: el trigger de la 0042 rechaza cambiarlo, para que un cobro viejo no cambie de
-// caja.
+// caja. Desde la 29.7.2, el papel de sistema también se fija al crearlo, y el trigger de la 0061
+// rechaza renombrar o desactivar un medio de sistema (brief-29.7.2, D-1).
 export const paymentMethods = pgTable(
   "payment_methods",
   {
@@ -48,6 +56,8 @@ export const paymentMethods = pgTable(
     name: text("name").notNull(),
     isCash: boolean("is_cash").notNull(),
     isActive: boolean("is_active").notNull().default(true),
+    // Nulo en los medios de siempre (brief-29.7.2, D-1).
+    systemRole: paymentMethodSystemRole("system_role"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -62,6 +72,10 @@ export const paymentMethods = pgTable(
       table.organizationId,
       sql`lower(${table.name})`,
     ),
+    // A lo sumo un medio de cada papel de sistema por organización (brief-29.7.2, D-1).
+    uniqueIndex("payment_methods_organization_system_role_unique")
+      .on(table.organizationId, table.systemRole)
+      .where(sql`${table.systemRole} IS NOT NULL`),
     // Destino de la clave compuesta de los cobros, desde la 21.3.
     unique("payment_methods_organization_id_id_unique").on(
       table.organizationId,
@@ -333,6 +347,10 @@ export const receipts = pgTable(
     tenderedAmount: numeric("tendered_amount", { precision: 14, scale: 2 }),
     exchangeRate: numeric("exchange_rate", { precision: 18, scale: 6 }),
     exchangeRateId: uuid("exchange_rate_id"),
+    // El usado de un cobro con «Permuta» (ADR 0024, punto 8; brief-29.7.2, D-2): nulo en cualquier
+    // otro. Que vaya siempre con el medio de sistema, y el medio con él, lo exige el trigger
+    // receipts_check_trade_in de la 0061.
+    tradeInId: uuid("trade_in_id"),
     // Siempre un usuario: el agente no cobra (ADR 0022, punto 12).
     createdBy: uuid("created_by")
       .notNull()
@@ -428,6 +446,17 @@ export const receipts = pgTable(
     check(
       "receipts_exchange_rate_minimum",
       sql`${table.exchangeRate} IS NULL OR ${table.exchangeRate} >= 1`,
+    ),
+    // La permuta (brief-29.7.2, D-2): solo contra una venta (U-1) y sin conversión (ADR 0025, R-B5).
+    foreignKey({
+      name: "receipts_trade_in_fk",
+      columns: [table.organizationId, table.tradeInId],
+      foreignColumns: [tradeIns.organizationId, tradeIns.id],
+    }).onDelete("restrict"),
+    index("receipts_trade_in_idx").on(table.organizationId, table.tradeInId),
+    check(
+      "receipts_trade_in_check",
+      sql`${table.tradeInId} IS NULL OR (${table.target}::text = 'sale' AND ${table.tenderedCurrency} IS NULL)`,
     ),
   ],
 );
@@ -540,8 +569,8 @@ export const receiptVoids = pgTable(
 // de un cliente, o lo que queda a devolver de una venta sin cliente anulada.
 // Lo que entró o salió en otra moneda que el destino (ADR 0025, punto 5): la moneda y el monto, la
 // cotización usada, copiada, y su fila si fue la vigente. Lo usan, desde la 29.4.3, la devolución, el
-// pago a un proveedor y sus anulaciones (brief-29.4.3, D-2); los cobros lo declaran en línea desde la
-// 29.4, con los mismos nombres.
+// pago a un proveedor y sus anulaciones (brief-29.4.3, D-2), y desde la 29.7.2 el pago de un usado y su
+// anulación (brief-29.7.2, D-3); los cobros lo declaran en línea desde la 29.4, con los mismos nombres.
 function tenderedColumns() {
   return {
     tenderedCurrency: text("tendered_currency"),
@@ -903,6 +932,151 @@ export const supplierPaymentVoids = pgTable(
     check("supplier_payment_voids_amount_positive", sql`${table.amount} > 0`),
     check(
       "supplier_payment_voids_currency_format",
+      sql`${table.currency} ~ '^[A-Z]{3}$'`,
+    ),
+  ],
+);
+
+// El pago de un usado comprado (ADR 0024, punto 8; brief-29.7.2, D-3), con la forma del pago a un
+// proveedor: un comprobante emitido, de solo inserción (SELECT e INSERT para crm_app y
+// cash_reject_change() de la 0042), sin estados ni texto libre. Siempre contra un usado con destino
+// purchase, en su moneda: lo asegura el servicio, que lee el usado por la interfaz de tradeins con el
+// bloqueo de cobros tomado. Sin cliente: llega a él por el usado. Si el medio es efectivo, sale de la
+// sesión abierta: lo exigen receipts_check_cash_session() y cash_reject_closed_session(), reutilizados,
+// y el medio nunca es uno de sistema (trade_in_payments_check_method de la 0061).
+export const tradeInPayments = pgTable(
+  "trade_in_payments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    // Del contador de numbering con el tipo trade_in_payment; se muestra como PPU-000123.
+    number: bigint("number", { mode: "number" }).notNull(),
+    tradeInId: uuid("trade_in_id").notNull(),
+    paymentMethodId: uuid("payment_method_id").notNull(),
+    // La sesión de caja, solo si el medio es efectivo.
+    sessionId: uuid("session_id"),
+    // La del usado, copiada: lo aplicado.
+    currency: text("currency").notNull(),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    // Lo que salió en la otra moneda, con la regla del ADR 0025, punto 5.
+    ...tenderedColumns(),
+    // Siempre un usuario: el agente no paga.
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(sql`clock_timestamp()`),
+  },
+  (table) => [
+    unique("trade_in_payments_organization_number_unique").on(
+      table.organizationId,
+      table.number,
+    ),
+    // Destino de la clave compuesta de la anulación.
+    unique("trade_in_payments_organization_id_id_unique").on(
+      table.organizationId,
+      table.id,
+    ),
+    foreignKey({
+      name: "trade_in_payments_trade_in_fk",
+      columns: [table.organizationId, table.tradeInId],
+      foreignColumns: [tradeIns.organizationId, tradeIns.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "trade_in_payments_payment_method_fk",
+      columns: [table.organizationId, table.paymentMethodId],
+      foreignColumns: [paymentMethods.organizationId, paymentMethods.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "trade_in_payments_session_fk",
+      columns: [table.organizationId, table.sessionId],
+      foreignColumns: [cashSessions.organizationId, cashSessions.id],
+    }).onDelete("restrict"),
+    // Los pagos de un usado y los de una sesión.
+    index("trade_in_payments_trade_in_idx").on(
+      table.organizationId,
+      table.tradeInId,
+    ),
+    index("trade_in_payments_session_idx").on(
+      table.organizationId,
+      table.sessionId,
+    ),
+    ...tenderedConstraints("trade_in_payments", table),
+    check("trade_in_payments_number_positive", sql`${table.number} > 0`),
+    check("trade_in_payments_amount_positive", sql`${table.amount} > 0`),
+    check(
+      "trade_in_payments_currency_format",
+      sql`${table.currency} ~ '^[A-Z]{3}$'`,
+    ),
+  ],
+);
+
+// El motivo de la anulación de un pago de un usado, de una lista cerrada y sin texto libre: los del
+// pago a un proveedor (brief-29.7.2, D-3). wrong_target es un pago al usado equivocado.
+export const tradeInPaymentVoidReason = pgEnum("trade_in_payment_void_reason", [
+  "not_paid",
+  "wrong_method",
+  "wrong_amount",
+  "wrong_target",
+  "other",
+]);
+
+// La anulación de un pago de un usado (brief-29.7.2, D-3), con las reglas de la del pago a un
+// proveedor: entera, a lo sumo una vez, la moneda, el monto, lo que salió y la sesión copiados. Lo
+// defiende trade_in_payment_voids_check_copy() de la 0061.
+export const tradeInPaymentVoids = pgTable(
+  "trade_in_payment_voids",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    // Del contador de numbering con el tipo trade_in_payment_void; se muestra como APPU-000001.
+    number: bigint("number", { mode: "number" }).notNull(),
+    tradeInPaymentId: uuid("trade_in_payment_id").notNull(),
+    currency: text("currency").notNull(),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    ...tenderedColumns(),
+    reason: tradeInPaymentVoidReason("reason").notNull(),
+    // La sesión abierta del pago en efectivo anulado: lo esperado de esa sesión deja de restarlo.
+    sessionId: uuid("session_id"),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(sql`clock_timestamp()`),
+  },
+  (table) => [
+    unique("trade_in_payment_voids_organization_number_unique").on(
+      table.organizationId,
+      table.number,
+    ),
+    unique("trade_in_payment_voids_trade_in_payment_unique").on(
+      table.tradeInPaymentId,
+    ),
+    foreignKey({
+      name: "trade_in_payment_voids_trade_in_payment_fk",
+      columns: [table.organizationId, table.tradeInPaymentId],
+      foreignColumns: [tradeInPayments.organizationId, tradeInPayments.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "trade_in_payment_voids_session_fk",
+      columns: [table.organizationId, table.sessionId],
+      foreignColumns: [cashSessions.organizationId, cashSessions.id],
+    }).onDelete("restrict"),
+    index("trade_in_payment_voids_session_idx").on(
+      table.organizationId,
+      table.sessionId,
+    ),
+    ...tenderedConstraints("trade_in_payment_voids", table),
+    check("trade_in_payment_voids_number_positive", sql`${table.number} > 0`),
+    check("trade_in_payment_voids_amount_positive", sql`${table.amount} > 0`),
+    check(
+      "trade_in_payment_voids_currency_format",
       sql`${table.currency} ~ '^[A-Z]{3}$'`,
     ),
   ],

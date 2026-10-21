@@ -38,6 +38,7 @@ import {
   readReceiptFields,
   returnExceedsLimit,
   ruleFailure,
+  selectableMethods,
   sessionRef,
   type ExchangeOffer,
   type InsufficientCash,
@@ -856,7 +857,7 @@ async function formBase(organizationId: string): Promise<FormBase> {
     repository.findLastSession(organizationId),
   ]);
   return {
-    paymentMethods: methods.filter((method) => method.isActive),
+    paymentMethods: selectableMethods(methods),
     openSession: last && last.closedAt === null ? sessionRef(last) : null,
   };
 }

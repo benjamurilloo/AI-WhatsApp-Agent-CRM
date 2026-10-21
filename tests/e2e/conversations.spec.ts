@@ -29,7 +29,7 @@ test.beforeAll(() => {
 // Los demás specs borran organizaciones: no pueden quedar filas que lo impidan (brief-6.1).
 test.afterAll(async () => {
   await db.execute(
-    sql`truncate table trade_in_voids, trade_in_checklist_results, trade_ins, service_order_lines, service_orders, refund_voids, refunds, receipt_voids, receipts, sale_voids, sale_line_units, sale_lines, sales, order_line_units, order_lines, orders, conversation_notes, messages, conversations, client_tag_assignments, clients`,
+    sql`truncate table trade_in_payment_voids, trade_in_payments, trade_in_voids, trade_in_checklist_results, trade_ins, service_order_lines, service_orders, refund_voids, refunds, receipt_voids, receipts, sale_voids, sale_line_units, sale_lines, sales, order_line_units, order_lines, orders, conversation_notes, messages, conversations, client_tag_assignments, clients`,
   );
   await db.$client.end();
 });
@@ -37,7 +37,7 @@ test.afterAll(async () => {
 // audit_logs y messages son de solo inserción: TRUNCATE es la vía documentada para vaciarlas (ADR 0013).
 test.beforeEach(async () => {
   await db.execute(
-    sql`truncate table trade_in_voids, trade_in_checklist_results, trade_ins, service_order_lines, service_orders, refund_voids, refunds, receipt_voids, receipts, sale_voids, sale_line_units, sale_lines, sales, order_line_units, order_lines, orders, audit_logs, conversation_notes, messages, conversations, client_tag_assignments, clients`,
+    sql`truncate table trade_in_payment_voids, trade_in_payments, trade_in_voids, trade_in_checklist_results, trade_ins, service_order_lines, service_orders, refund_voids, refunds, receipt_voids, receipts, sale_voids, sale_line_units, sale_lines, sales, order_line_units, order_lines, orders, audit_logs, conversation_notes, messages, conversations, client_tag_assignments, clients`,
   );
   await db.execute(sql`delete from login_attempts`);
   await db.execute(sql`delete from sessions`);

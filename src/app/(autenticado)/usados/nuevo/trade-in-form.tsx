@@ -324,8 +324,8 @@ export function TradeInForm({
           </p>
         ) : (
           <p id="destino-ayuda" className="text-sm text-muted">
-            No cambia después. Por ahora, la permuta y el pago al cliente se
-            hacen fuera del sistema.
+            No cambia después. La permuta se descuenta al cobrar una venta del
+            cliente, y la compra se le paga desde el usado.
           </p>
         )}
       </fieldset>

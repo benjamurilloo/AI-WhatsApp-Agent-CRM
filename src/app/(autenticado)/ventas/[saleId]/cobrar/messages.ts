@@ -39,15 +39,33 @@ export const NO_EXCHANGE_RATE_MESSAGE =
 export const EXCHANGE_RATE_CHANGED_MESSAGE =
   "La cotización cambió mientras cargabas el cobro. Revisá la equivalencia y volvé a registrarlo.";
 
-// Desde la 29.4, también la moneda que entra y la cotización acordada.
-export type ReceiptFormField = ReceiptField | TenderField;
+// Desde la 29.4, también la moneda que entra y la cotización acordada; desde la 29.7.2, el usado de la
+// permuta, que solo tiene el cobro de una venta (brief-29.7.2, D-6). La seña y el cobro a cuenta usan
+// estos mismos textos, sin el usado.
+export type ReceiptFormField = ReceiptField | TenderField | "tradeIn";
 
 export type ReceiptFormValues = {
   paymentMethodId: string;
   amount: string;
   tenderedCurrency: string;
   exchangeRate: string;
+  tradeInId?: string;
 };
+
+// Los rechazos de la permuta (brief-29.7.2, D-2).
+export const TRADE_IN_RECEIPT_TEXT = {
+  methodWithoutTradeIn:
+    "«Permuta» solo descuenta un usado elegido en el cobro de una venta. Elegí otro medio.",
+  tradeInWithoutMethod: "Un usado se descuenta solo con «Permuta».",
+  notFound: "Ese usado no existe. Elegí otro de la lista.",
+  voided: "Ese usado está anulado: ya no descuenta ninguna venta.",
+  notSaleCredit:
+    "Ese usado se recibió como compra: se le paga al cliente, no descuenta una venta.",
+  otherClient:
+    "Ese usado es de otro cliente: la permuta solo descuenta una venta de quien lo trajo.",
+  currencyMismatch:
+    "La permuta va en la moneda del usado, sin conversión, y esta venta está en otra moneda.",
+} as const;
 
 export type ReceiptFormState =
   | { status: "idle" }
@@ -77,6 +95,9 @@ export function receiptRejection(
     case "FORBIDDEN":
       return plain(RECEIPT_ADMIN_ONLY_MESSAGE);
     case "NOT_FOUND":
+      if ("entity" in result && result.entity === "trade_in") {
+        return plain(TRADE_IN_RECEIPT_TEXT.notFound, ["tradeIn"]);
+      }
       return "entity" in result && result.entity === "payment_method"
         ? plain("Ese medio de pago ya no existe. Elegí otro de la lista.", [
             "paymentMethod",
@@ -131,6 +152,33 @@ export function receiptRejection(
               ? "A esta venta ya no le falta nada por cobrar."
               : `El cobro supera lo que falta: ${formatMoney(
                   result.outstanding,
+                  result.currency,
+                )}.`,
+            ["amount"],
+          );
+        case "trade_in_method_requires_trade_in":
+          return plain(TRADE_IN_RECEIPT_TEXT.methodWithoutTradeIn, [
+            "paymentMethod",
+            "tradeIn",
+          ]);
+        case "trade_in_requires_trade_in_method":
+          return plain(TRADE_IN_RECEIPT_TEXT.tradeInWithoutMethod, [
+            "paymentMethod",
+          ]);
+        case "trade_in_voided":
+          return plain(TRADE_IN_RECEIPT_TEXT.voided, ["tradeIn"]);
+        case "trade_in_not_sale_credit":
+          return plain(TRADE_IN_RECEIPT_TEXT.notSaleCredit, ["tradeIn"]);
+        case "trade_in_other_client":
+          return plain(TRADE_IN_RECEIPT_TEXT.otherClient, ["tradeIn"]);
+        case "trade_in_currency_mismatch":
+          return plain(TRADE_IN_RECEIPT_TEXT.currencyMismatch, ["tradeIn"]);
+        case "exceeds_trade_in_available":
+          return plain(
+            result.available === "0.00"
+              ? "De ese usado ya no queda nada por descontar."
+              : `La permuta supera lo que queda del usado: ${formatMoney(
+                  result.available,
                   result.currency,
                 )}.`,
             ["amount"],

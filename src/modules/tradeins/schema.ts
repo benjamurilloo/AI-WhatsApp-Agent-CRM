@@ -24,7 +24,7 @@ import { organizations } from "@/modules/organizations/schema";
 // docs/architecture/DataModel.md, tablas trade_in_checklist_items, trade_ins,
 // trade_in_checklist_results y trade_in_voids (ADR 0024, punto 8; brief-29.7, D-3 a D-5). Todo detrás
 // de la capacidad trade_ins. La 29.7 recibe el usado; lo que hace cada destino con la plata (la
-// permuta y la compra) llega con la 29.7.2.
+// permuta y la compra) lo hace cash desde la 29.7.2.
 
 // Límites. Los mismos valores van en los CHECK.
 export const CHECKLIST_ITEM_NAME_MAX_LENGTH = 80;
@@ -78,7 +78,8 @@ export const tradeInChecklistItems = pgTable(
 );
 
 // El destino del valor reconocido (D-4): la permuta, como crédito en una venta, o la compra del
-// equipo. Se elige al emitir y no cambia; lo que hace cada uno con la plata llega con la 29.7.2.
+// equipo. Se elige al emitir y no cambia; lo que hace cada uno con la plata lo hace cash desde la
+// 29.7.2 (el cobro con «Permuta» y trade_in_payments).
 export const tradeInDestination = pgEnum("trade_in_destination", [
   "sale_credit",
   "purchase",

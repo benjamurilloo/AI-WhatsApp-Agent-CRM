@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getSaleReceiptForm } from "@/modules/cash";
 import { getOrganizationTimezone } from "@/modules/organizations";
+import { formatDate } from "@/app/_format/date-time";
 import { requireSession } from "@/app/_auth/session";
 import { receiptExchange } from "@/app/(autenticado)/caja/exchange";
 import { BackLink } from "@/app/_components/detail-header";
@@ -28,17 +29,27 @@ const TITLE = "Registrar cobro";
 // Pantalla 28 (brief-21.3, D-8): el cobro de una venta, solo admin. El medio, de los activos, y el
 // monto, propuesto en lo que falta. Una venta anulada o ya cobrada no ofrece el formulario. Al
 // guardar vuelve al detalle de la venta con el aviso y el enlace al recibo. Desde la 29.4, con moneda
-// principal, ?moneda= elige la moneda que entra (brief-29.4, D-6).
+// principal, ?moneda= elige la moneda que entra (brief-29.4, D-6). Desde la 29.7.2, «Permuta» con cada
+// usado del cliente que tiene algo disponible (brief-29.7.2, D-6).
+// Un monto de la base («300.00») en centavos, para comparar sin redondeos.
+function cents(amount: string): bigint {
+  const [whole, fraction = ""] = amount.split(".");
+  return BigInt(whole! + fraction.padEnd(2, "0").slice(0, 2));
+}
+
 export default async function SaleReceiptPage({
   params,
   searchParams,
 }: {
   params: Promise<{ saleId: string }>;
-  searchParams: Promise<{ moneda?: string | string[] }>;
+  searchParams: Promise<{
+    moneda?: string | string[];
+    usado?: string | string[];
+  }>;
 }) {
   const context = await requireSession();
   const { saleId } = await params;
-  const { moneda } = await searchParams;
+  const { moneda, usado } = await searchParams;
   const back = { href: `/ventas/${saleId}`, label: "Volver a la venta" };
   if (context.role !== "admin") {
     return (
@@ -64,20 +75,47 @@ export default async function SaleReceiptPage({
     );
   }
   const { sale } = form;
+  const timezone = await getOrganizationTimezone(context);
+  // ?usado= elige un usado de la permuta y propone el menor entre lo que queda y lo que falta
+  // (brief-29.7.2, D-6). La permuta va en la moneda de la venta.
+  const chosenTradeIn =
+    form.permuta?.tradeIns.find((tradeIn) => tradeIn.id === usado) ?? null;
+  const chosenPermuta = chosenTradeIn
+    ? {
+        tradeInId: chosenTradeIn.id,
+        amount:
+          cents(chosenTradeIn.available) < cents(form.outstanding)
+            ? chosenTradeIn.availableInput
+            : form.outstandingInput,
+      }
+    : null;
+  const permuta = form.permuta
+    ? {
+        ...form.permuta,
+        tradeIns: form.permuta.tradeIns.map((tradeIn) => ({
+          ...tradeIn,
+          received: formatDate(tradeIn.createdAt, timezone),
+        })),
+      }
+    : null;
   const exchange = receiptExchange({
     offer: form.exchange,
     targetCurrency: sale.currency,
     outstanding: form.outstanding,
     outstandingInput: form.outstandingInput,
-    chosen: typeof moneda === "string" ? moneda.toUpperCase() : undefined,
+    chosen: chosenPermuta
+      ? sale.currency
+      : typeof moneda === "string"
+        ? moneda.toUpperCase()
+        : undefined,
     basePath: `/ventas/${sale.id}/cobrar`,
-    timezone: await getOrganizationTimezone(context),
+    timezone,
   });
   const blocked = form.voided
     ? RECEIPT_SALE_VOIDED_MESSAGE
     : form.outstanding === "0.00"
       ? RECEIPT_COLLECTED_MESSAGE
-      : form.paymentMethods.length === 0
+      : form.paymentMethods.length === 0 && form.permuta === null
         ? NO_ACTIVE_METHODS_MESSAGE
         : null;
 
@@ -110,6 +148,9 @@ export default async function SaleReceiptPage({
           </p>
         ) : (
           <ReceiptForm
+            // Elegir un usado vuelve a montar el formulario: sin esto, después de un rechazo quedaría
+            // lo enviado y no lo propuesto.
+            key={chosenPermuta?.tradeInId ?? "sin-usado"}
             action={createSaleReceiptAction}
             target={{ field: "saleId", id: sale.id }}
             cancelHref={back.href}
@@ -119,6 +160,9 @@ export default async function SaleReceiptPage({
             paymentMethods={form.paymentMethods}
             hasOpenSession={form.openSession !== null}
             exchange={exchange}
+            permuta={permuta}
+            chosenPermuta={chosenPermuta}
+            permutaPath={`/ventas/${sale.id}/cobrar`}
           />
         )}
       </div>

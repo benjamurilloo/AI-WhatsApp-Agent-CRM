@@ -1,4 +1,14 @@
-import { and, asc, count, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  inArray,
+  notInArray,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { getDb, type Db, type DbTransaction } from "@/shared/db";
 import {
   tradeInChecklistItems,
@@ -278,6 +288,51 @@ export async function findTradeIn(
   return rows[0] ? toTradeInRow(rows[0]) : undefined;
 }
 
+// Los usados de una lista de ids, anulados incluidos, para cash (brief-29.7.2): con la transacción que
+// recibe, que en un cobro o un pago tiene el bloqueo de cobros tomado.
+export async function findTradeInsByIds(
+  organizationId: string,
+  tradeInIds: string[],
+  executor: Executor = getDb(),
+): Promise<TradeInRow[]> {
+  if (tradeInIds.length === 0) return [];
+  const rows = await executor
+    .select(tradeInColumns)
+    .from(tradeIns)
+    .leftJoin(tradeInVoids, voidJoin)
+    .where(
+      and(
+        eq(tradeIns.organizationId, organizationId),
+        inArray(tradeIns.id, tradeInIds),
+      ),
+    )
+    .orderBy(tradeIns.number);
+  return rows.map(toTradeInRow);
+}
+
+// Los usados vigentes de un cliente con un destino, del más viejo al más nuevo, para la permuta.
+export async function findClientCurrentTradeIns(
+  organizationId: string,
+  clientId: string,
+  destination: TradeInDestination,
+  executor: Executor = getDb(),
+): Promise<TradeInRow[]> {
+  const rows = await executor
+    .select(tradeInColumns)
+    .from(tradeIns)
+    .leftJoin(tradeInVoids, voidJoin)
+    .where(
+      and(
+        eq(tradeIns.organizationId, organizationId),
+        eq(tradeIns.clientId, clientId),
+        eq(tradeIns.destination, destination),
+        sql`${tradeInVoids.id} is null`,
+      ),
+    )
+    .orderBy(tradeIns.number);
+  return rows.map(toTradeInRow);
+}
+
 // La recepción que creó una unidad, para su ficha.
 export async function findTradeInsByUnits(
   organizationId: string,
@@ -306,6 +361,9 @@ export type TradeInListQuery = {
   // El IMEI, sin distinguir mayúsculas.
   serial: string | null;
   clientId: string | null;
+  // Los usados que no entran, por id: el filtro «Falta pagar» deja afuera los pagados del todo, que
+  // calcula cash (brief-29.7.2, D-6). Vacío, no deja ninguno afuera.
+  excludeIds?: string[];
 };
 
 function listConditions(query: TradeInListQuery): SQL {
@@ -324,6 +382,9 @@ function listConditions(query: TradeInListQuery): SQL {
   }
   if (query.clientId !== null) {
     conditions.push(eq(tradeIns.clientId, query.clientId));
+  }
+  if (query.excludeIds && query.excludeIds.length > 0) {
+    conditions.push(notInArray(tradeIns.id, query.excludeIds));
   }
   return and(...conditions)!;
 }

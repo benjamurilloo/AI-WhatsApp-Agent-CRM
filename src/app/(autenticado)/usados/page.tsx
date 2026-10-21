@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { listTradeInsToPay } from "@/modules/cash";
 import { getOrganizationTimezone } from "@/modules/organizations";
 import { listTradeIns, TRADE_INS_PAGE_SIZE } from "@/modules/tradeins";
 import { requireSession } from "@/app/_auth/session";
@@ -51,7 +52,8 @@ export const metadata: Metadata = {
 // La lista de usados recibidos (brief-29.7, D-7): la más nueva primero, con los filtros de estado y de
 // destino y la búsqueda por número o IMEI, en la URL. Tabla en escritorio y tarjetas en móvil, como
 // Reparaciones. Los dos roles; el valor, solo un admin (D-8), y «Recibir un usado», solo admin. Sin la
-// capacidad trade_ins, 404.
+// capacidad trade_ins, 404. Desde la 29.7.2, «Falta pagar» solo para un admin, que lo lee de cash
+// (brief-29.7.2, D-6): para un viewer, ese estado no existe y se lista todo.
 export default async function TradeInsPage({
   searchParams,
 }: {
@@ -59,8 +61,16 @@ export default async function TradeInsPage({
 }) {
   const context = await requireSession();
   const query = await searchParams;
-  const filters = parseTradeInFilters(query);
-  const result = await listTradeIns(context, filters);
+  const isAdmin = context.role === "admin";
+  const parsed = parseTradeInFilters(query);
+  const filters =
+    parsed.status === "to_pay" && !isAdmin
+      ? { ...parsed, status: "all" as const }
+      : parsed;
+  const result =
+    filters.status === "to_pay"
+      ? await listTradeInsToPay(context, filters)
+      : await listTradeIns(context, { ...filters, status: filters.status });
   if (!result.ok) {
     if (result.code === "NOT_FOUND") notFound();
     return (
@@ -68,7 +78,6 @@ export default async function TradeInsPage({
     );
   }
   const timeZone = await getOrganizationTimezone(context);
-  const isAdmin = context.role === "admin";
   const filtered = hasActiveTradeInFilters(filters);
   const notice = noticeMessage(query.aviso);
   type Row = (typeof result.tradeIns)[number];
@@ -125,7 +134,9 @@ export default async function TradeInsPage({
             defaultValue={statusParam(filters.status)}
             className={selectClass}
           >
-            {STATUS_PARAMS.map(([param, , label]) => (
+            {STATUS_PARAMS.filter(
+              ([, status]) => isAdmin || status !== "to_pay",
+            ).map(([param, , label]) => (
               <option key={param} value={param}>
                 {label}
               </option>

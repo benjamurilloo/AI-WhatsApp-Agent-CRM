@@ -500,9 +500,12 @@ export type TradeInPage = {
   pageCount: number;
 };
 
+// options.excludeIds deja afuera esos usados: el filtro «Falta pagar», que arma cash con lo pagado
+// (brief-29.7.2, D-6).
 export async function listTradeIns(
   context: AuthContext,
   filters: TradeInListFilters,
+  options: { excludeIds?: string[] } = {},
 ): Promise<TradeInPage | Failure<"FORBIDDEN" | "NOT_FOUND">> {
   const allowed = await requireTradeIns(context);
   if (!allowed.ok) return allowed;
@@ -520,6 +523,7 @@ export async function listTradeIns(
     number,
     serial,
     clientId: null,
+    excludeIds: options.excludeIds ?? [],
   };
   const total = await repository.countTradeIns(query);
   const pageCount = Math.max(1, Math.ceil(total / TRADE_INS_PAGE_SIZE));
@@ -843,4 +847,66 @@ export async function findTradeInVoidNumber(
 ): Promise<string | null> {
   const row = await repository.findTradeIn(organizationId, tradeInId);
   return row?.voided ? formatTradeInVoidNumber(row.voided.number) : null;
+}
+
+// Para cash (brief-29.7.2, D-2 y D-3): el usado de un cobro con «Permuta» o de un pago, leído con la
+// transacción de cash, que tiene el bloqueo de cobros tomado. Sin bloquear la fila: crm_app no tiene
+// UPDATE en trade_ins. Todo lo que cambia lo usado o lo pagado toma ese bloqueo.
+export type TradeInForPayment = TradeInRef & {
+  clientId: string;
+  value: string;
+  currency: string;
+  destination: TradeInDestination;
+  createdAt: Date;
+  voided: boolean;
+};
+
+function forPayment(row: repository.TradeInRow): TradeInForPayment {
+  return {
+    id: row.id,
+    number: row.number,
+    displayNumber: formatTradeInNumber(row.number),
+    clientId: row.clientId,
+    value: row.value,
+    currency: row.currency,
+    destination: row.destination,
+    createdAt: row.createdAt,
+    voided: row.voided !== null,
+  };
+}
+
+export async function getTradeInsForPayment(
+  tx: DbTransaction,
+  organizationId: string,
+  tradeInIds: string[],
+): Promise<TradeInForPayment[]> {
+  const ids = [
+    ...new Set(tradeInIds.filter((id) => idSchema.safeParse(id).success)),
+  ];
+  const rows = await repository.findTradeInsByIds(organizationId, ids, tx);
+  return rows.map(forPayment);
+}
+
+export async function getTradeInForPayment(
+  tx: DbTransaction,
+  organizationId: string,
+  tradeInId: string,
+): Promise<TradeInForPayment | null> {
+  const [row] = await getTradeInsForPayment(tx, organizationId, [tradeInId]);
+  return row ?? null;
+}
+
+// Los usados vigentes de un cliente para la permuta (destino sale_credit), del más viejo al más nuevo.
+export async function listClientTradeInsForPermuta(
+  tx: DbTransaction,
+  organizationId: string,
+  clientId: string,
+): Promise<TradeInForPayment[]> {
+  const rows = await repository.findClientCurrentTradeIns(
+    organizationId,
+    clientId,
+    "sale_credit",
+    tx,
+  );
+  return rows.map(forPayment);
 }

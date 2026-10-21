@@ -30,6 +30,7 @@ import {
   SessionReceiptsTable,
   SessionRefundsTable,
   SessionSupplierPaymentsTable,
+  SessionTradeInPaymentsTable,
 } from "./session-tables";
 import { ReferenceTotal } from "./reference-total";
 
@@ -138,6 +139,17 @@ export default async function CashPage({
           >
             <SessionRefundsTable session={open} timeZone={timeZone} />
           </SectionCard>
+
+          {open.tradeInPayments && open.tradeInPayments.items.length > 0 ? (
+            <SectionCard
+              id="pagos-usados-titulo"
+              title="Pagos de usados en efectivo"
+              icon="smartphone"
+              className="mt-6"
+            >
+              <SessionTradeInPaymentsTable session={open} timeZone={timeZone} />
+            </SectionCard>
+          ) : null}
 
           {open.supplierPayments ? (
             <SectionCard

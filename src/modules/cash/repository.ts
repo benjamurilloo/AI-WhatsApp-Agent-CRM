@@ -6,6 +6,7 @@ import {
   eq,
   inArray,
   isNotNull,
+  isNull,
   sql,
 } from "drizzle-orm";
 import { getDb, type Db, type DbTransaction } from "@/shared/db";
@@ -18,6 +19,7 @@ import {
   cashSessionOpeningAmounts,
   cashSessions,
   paymentMethods,
+  paymentMethodSystemRole,
   receipts,
   receiptTarget,
   receiptVoidReason,
@@ -104,11 +106,16 @@ export function isSessionAlreadyClosed(error: unknown): boolean {
 
 // Medios de pago (ADR 0022, punto 10; brief-21.2, D-6).
 
+export type PaymentMethodSystemRole =
+  (typeof paymentMethodSystemRole.enumValues)[number];
+
 export type PaymentMethodRow = {
   id: string;
   name: string;
   isCash: boolean;
   isActive: boolean;
+  // El papel de un medio de sistema, «Permuta», o null (brief-29.7.2, D-1).
+  systemRole: PaymentMethodSystemRole | null;
   createdAt: Date;
 };
 
@@ -117,6 +124,7 @@ const paymentMethodColumns = {
   name: paymentMethods.name,
   isCash: paymentMethods.isCash,
   isActive: paymentMethods.isActive,
+  systemRole: paymentMethods.systemRole,
   createdAt: paymentMethods.createdAt,
 };
 
@@ -151,6 +159,8 @@ export async function findPaymentMethod(
   return rows[0];
 }
 
+// Los medios de la organización, sin los de sistema (brief-29.7.2, D-1): «Permuta» no cuenta para el
+// límite de activos ni hace que la lista deje de estar vacía para la lista inicial.
 export async function countPaymentMethods(
   tx: DbTransaction,
   organizationId: string,
@@ -162,10 +172,30 @@ export async function countPaymentMethods(
     .where(
       and(
         eq(paymentMethods.organizationId, organizationId),
+        isNull(paymentMethods.systemRole),
         activeOnly ? eq(paymentMethods.isActive, true) : undefined,
       ),
     );
   return rows[0]!.total;
+}
+
+// El medio de sistema de un papel, si la organización lo tiene.
+export async function findSystemPaymentMethod(
+  tx: DbTransaction,
+  organizationId: string,
+  systemRole: PaymentMethodSystemRole,
+): Promise<PaymentMethodRow | undefined> {
+  const rows = await tx
+    .select(paymentMethodColumns)
+    .from(paymentMethods)
+    .where(
+      and(
+        eq(paymentMethods.organizationId, organizationId),
+        eq(paymentMethods.systemRole, systemRole),
+      ),
+    )
+    .limit(1);
+  return rows[0];
 }
 
 function isNameTaken(error: unknown): boolean {
@@ -191,7 +221,11 @@ async function inNameSavepoint<T>(
 export async function insertPaymentMethod(
   tx: DbTransaction,
   organizationId: string,
-  values: { name: string; isCash: boolean },
+  values: {
+    name: string;
+    isCash: boolean;
+    systemRole?: PaymentMethodSystemRole;
+  },
 ): Promise<string | "name_taken"> {
   return inNameSavepoint(tx, async (savepoint) => {
     const rows = await savepoint
@@ -539,6 +573,8 @@ export type ReceiptRow = {
   tenderedAmount: string | null;
   exchangeRate: string | null;
   exchangeRateId: string | null;
+  // El usado de un cobro con «Permuta» (brief-29.7.2, D-2), o null.
+  tradeInId: string | null;
   createdBy: string;
   createdAt: Date;
   // Su anulación, si la tiene (brief-21.5, D-8): las lecturas la muestran y no la cuentan.
@@ -581,6 +617,7 @@ const receiptBaseColumns = {
   tenderedAmount: receipts.tenderedAmount,
   exchangeRate: receipts.exchangeRate,
   exchangeRateId: receipts.exchangeRateId,
+  tradeInId: receipts.tradeInId,
   createdBy: receipts.createdBy,
   createdAt: receipts.createdAt,
 };
@@ -609,6 +646,8 @@ export type NewReceipt = {
   amount: string;
   // Lo recibido en otra moneda (brief-29.4, D-6), o null.
   tender: ReceiptTender | null;
+  // El usado de un cobro con «Permuta» (brief-29.7.2, D-2): solo contra una venta y sin lo recibido.
+  tradeInId?: string | null;
   createdBy: string;
 };
 
@@ -720,6 +759,27 @@ export function findSaleReceipts(
       and(
         eq(receipts.organizationId, organizationId),
         eq(receipts.saleId, saleId),
+      ),
+    )
+    .orderBy(...receiptOrder);
+}
+
+// Los cobros con «Permuta» que usan un usado, anulados incluidos (brief-29.7.2, D-2 y D-4): lo usado
+// suma los vigentes. Con tx, dentro del cobro o de la anulación del usado, con el bloqueo de cobros
+// tomado.
+export function findTradeInReceipts(
+  organizationId: string,
+  tradeInId: string,
+  executor: Executor = getDb(),
+): Promise<ReceiptRow[]> {
+  return executor
+    .select(receiptColumns)
+    .from(receipts)
+    .leftJoin(receiptVoids, receiptVoidJoin)
+    .where(
+      and(
+        eq(receipts.organizationId, organizationId),
+        eq(receipts.tradeInId, tradeInId),
       ),
     )
     .orderBy(...receiptOrder);

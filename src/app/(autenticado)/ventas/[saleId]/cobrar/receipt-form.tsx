@@ -2,7 +2,12 @@
 
 import Link from "next/link";
 import { useActionState, useEffect, useRef, useState } from "react";
-import type { PaymentMethod } from "@/modules/cash";
+import type { PaymentMethod, PermutaOffer } from "@/modules/cash";
+
+export type PermutaChoice = Omit<PermutaOffer, "tradeIns"> & {
+  tradeIns: (PermutaOffer["tradeIns"][number] & { received: string })[];
+};
+import { formatMoney } from "@/shared/money";
 import {
   fieldErrorClass,
   formMessageClass,
@@ -32,6 +37,10 @@ import type {
 // del cobro o la de la seña. Desde la 29.4, con moneda principal, se puede recibir en la otra moneda
 // de la organización (brief-29.4, D-6): la moneda que entra se elige con un enlace y el servidor
 // vuelve a armar el formulario con el monto propuesto en ella.
+//
+// Desde la 29.7.2 (brief-29.7.2, D-6), el cobro de una venta ofrece «Permuta» con cada usado del cliente
+// que tiene algo disponible, como una opción más del medio: su valor lleva el medio y el usado
+// («medio|usado»), y la acción los separa. Así funciona sin JavaScript y sigue siendo un solo paso.
 
 const initialState: ReceiptFormState = { status: "idle" };
 
@@ -45,6 +54,9 @@ export function ReceiptForm({
   paymentMethods,
   hasOpenSession,
   exchange,
+  permuta = null,
+  chosenPermuta = null,
+  permutaPath,
 }: {
   action: (
     previous: ReceiptFormState,
@@ -59,6 +71,14 @@ export function ReceiptForm({
   paymentMethods: PaymentMethod[];
   hasOpenSession: boolean;
   exchange: ReceiptExchangeProps | null;
+  // Solo en el cobro de una venta con usados del cliente para descontar, con la fecha de cada uno ya
+  // escrita en la zona de la organización.
+  permuta?: PermutaChoice | null;
+  // El usado elegido por ?usado=, con lo propuesto: el menor entre lo que queda y lo que falta
+  // (brief-29.7.2, D-6).
+  chosenPermuta?: { tradeInId: string; amount: string } | null;
+  // Adónde lleva «Proponer lo que queda» de cada usado.
+  permutaPath?: string;
 }) {
   const [state, formAction, pending] = useActionState(action, initialState);
   const errorRef = useRef<HTMLParagraphElement>(null);
@@ -66,10 +86,18 @@ export function ReceiptForm({
   const values: ReceiptFormValues = failed
     ? state.values
     : {
-        // Con un solo medio activo, se propone ese.
+        // Con un usado elegido, la permuta con ese usado; con un solo medio activo, ese.
         paymentMethodId:
-          paymentMethods.length === 1 ? paymentMethods[0]!.id : "",
-        amount: exchange ? exchange.proposed : outstanding,
+          permuta && chosenPermuta
+            ? `${permuta.paymentMethodId}|${chosenPermuta.tradeInId}`
+            : paymentMethods.length === 1
+              ? paymentMethods[0]!.id
+              : "",
+        amount: chosenPermuta
+          ? chosenPermuta.amount
+          : exchange
+            ? exchange.proposed
+            : outstanding,
         tenderedCurrency: exchange?.tendered ?? currency,
         exchangeRate: "",
       };
@@ -84,7 +112,11 @@ export function ReceiptForm({
   return (
     <form
       // Con otra moneda que entra, el formulario se vuelve a montar con su monto propuesto.
-      key={failed ? state.requestId : `nuevo-${tendered}`}
+      key={
+        failed
+          ? state.requestId
+          : `nuevo-${tendered}-${chosenPermuta?.tradeInId ?? ""}`
+      }
       action={formAction}
       className="flex flex-col gap-4"
     >
@@ -134,10 +166,50 @@ export function ReceiptForm({
             ) : null}
           </label>
         ))}
+        {permuta?.tradeIns.map((tradeIn) => (
+          <label
+            key={tradeIn.id}
+            className="flex flex-wrap items-center gap-x-2 text-sm"
+          >
+            <input
+              type="radio"
+              name="paymentMethodId"
+              value={`${permuta.paymentMethodId}|${tradeIn.id}`}
+              required
+              defaultChecked={
+                values.paymentMethodId ===
+                `${permuta.paymentMethodId}|${tradeIn.id}`
+              }
+              aria-invalid={
+                invalid("paymentMethod") || invalid("tradeIn")
+                  ? true
+                  : undefined
+              }
+              className={radioClass}
+            />
+            Permuta con el usado {tradeIn.displayNumber}
+            <span className="text-muted">
+              (del {tradeIn.received}; queda{" "}
+              {formatMoney(tradeIn.available, currency)})
+            </span>
+            {permutaPath && chosenPermuta?.tradeInId !== tradeIn.id ? (
+              <Link
+                href={`${permutaPath}?usado=${tradeIn.id}`}
+                className={linkClass}
+                aria-label={`Proponer lo que queda de ${tradeIn.displayNumber}`}
+              >
+                Proponer lo que queda
+              </Link>
+            ) : null}
+          </label>
+        ))}
         <p id="cobro-medio-ayuda" className="text-sm text-muted">
           {hasOpenSession
             ? "Un cobro en efectivo entra a la sesión de caja abierta."
             : "La caja está cerrada: para cobrar en efectivo, primero abrila."}
+          {permuta
+            ? " La permuta descuenta el usado del cliente, en la moneda de la venta y sin pasar por la caja."
+            : null}
         </p>
         {invalid("paymentMethod") ? (
           <p className={fieldErrorClass}>Elegí un medio de pago de la lista.</p>

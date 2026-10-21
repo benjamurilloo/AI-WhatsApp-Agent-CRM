@@ -847,6 +847,39 @@ describe("los scripts de operador (AC-4, AC-5)", () => {
     );
   }
 
+  it("org:capability se detiene sin activar nada si ya hay un medio llamado «Permuta» (brief-29.7.2, U-4)", async () => {
+    const orgId = await createOrganization("Con Permuta");
+    await addUser(orgId, "permuta@example.com", "admin");
+    await getDb().execute(
+      sql`insert into payment_methods (organization_id, name, is_cash)
+          values (${orgId}, 'Permuta', false)`,
+    );
+    let failure = "";
+    try {
+      run("scripts/activar-capacidad.ts", [
+        "--organization",
+        orgId,
+        "--admin-email",
+        "permuta@example.com",
+        "--profile",
+        "iphone",
+      ]);
+    } catch (error) {
+      failure = String((error as { stderr?: string }).stderr ?? error);
+    }
+    expect(failure).toContain("Ya hay un medio de pago llamado «Permuta»");
+    const capabilities = await getDb().execute<{ count: string }>(
+      sql`select count(*)::text as count from organization_capabilities
+          where organization_id = ${orgId}`,
+    );
+    expect(capabilities.rows[0]!.count).toBe("0");
+    const methods = await getDb().execute<{ count: string }>(
+      sql`select count(*)::text as count from payment_methods
+          where organization_id = ${orgId} and system_role is not null`,
+    );
+    expect(methods.rows[0]!.count).toBe("0");
+  });
+
   it("org:capability activa y copia una vez; demo:catalog retoma una carga cortada y se niega con datos ajenos", async () => {
     const orgId = await createOrganization("iPhone Demo");
     await addUser(orgId, "demo@example.com", "admin");
@@ -871,6 +904,15 @@ describe("los scripts de operador (AC-4, AC-5)", () => {
     const again = activate();
     expect(again).toContain("ya estaba activa");
     expect(again).toContain("no se copió");
+    // Desde la 29.7.2 (brief-29.7.2, U-4; revisión independiente, NB-3): con trade_ins, el comando crea
+    // el medio de sistema «Permuta» al activar, y al volver a correrlo no crea otro.
+    expect(activation).toContain("Medio de pago de sistema creado: Permuta.");
+    expect(again).toContain("El medio de pago Permuta ya existía.");
+    const systemMethods = await getDb().execute<{ count: string }>(
+      sql`select count(*)::text as count from payment_methods
+          where organization_id = ${orgId} and system_role is not null`,
+    );
+    expect(systemMethods.rows[0]!.count).toBe("1");
 
     // H-4 de la revisión: una carga cortada después de crear un producto y antes de fijar su
     // precio. El script lo saltea, le fija el precio y completa el resto.

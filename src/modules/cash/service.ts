@@ -19,6 +19,12 @@ import {
 } from "@/modules/fx";
 import { formatDocumentNumber, nextDocumentNumber } from "@/modules/numbering";
 import {
+  getTradeInForPayment,
+  getTradeInsForPayment,
+  listClientTradeInsForPermuta,
+  type TradeInForPayment,
+} from "@/modules/tradeins";
+import {
   getOrderForReceipt,
   getOrdersForAccountsByIds,
   listClientOrdersForAccount,
@@ -30,6 +36,7 @@ import {
   authorize,
   getMainCurrency,
   getMemberSummaries,
+  hasCapability,
   type AuthContext,
 } from "@/modules/organizations";
 import { failure, type Failure } from "@/shared/errors";
@@ -59,6 +66,13 @@ import {
 } from "./imputation";
 import * as repository from "./repository";
 import * as paymentRepository from "./supplier-payment-repository";
+import * as tradeInPaymentRepository from "./trade-in-payment-repository";
+import {
+  formatTradeInPaymentNumber,
+  formatTradeInPaymentVoidNumber,
+  tradeInPaymentListItems,
+  type TradeInPaymentListItem,
+} from "./trade-in-payment-views";
 import {
   accountReceiptCurrencies,
   canConvert,
@@ -189,9 +203,72 @@ export const INITIAL_PAYMENT_METHODS: readonly {
 
 export type PaymentMethod = repository.PaymentMethodRow;
 
+// Los medios que se eligen en un formulario: los activos, sin los de sistema (brief-29.7.2, D-1).
+// «Permuta» solo aparece en el cobro de una venta, con el usado que descuenta.
+export function selectableMethods(methods: PaymentMethod[]): PaymentMethod[] {
+  return methods.filter(
+    (method) => method.isActive && method.systemRole === null,
+  );
+}
+
+// El medio de sistema «Permuta» (ADR 0024, punto 8; brief-29.7.2, D-1 y U-4): lo crea org:capability al
+// activar trade_ins, o al volver a correrlo si falta, con su auditoría. No es efectivo, no cuenta para el
+// límite de activos y no se renombra ni se desactiva. Toma el bloqueo de cobros, como todo alta de un
+// medio. Con un medio de la organización que ya se llama «Permuta», no lo crea y lo dice.
+export const TRADE_IN_PAYMENT_METHOD_NAME = "Permuta";
+
+export async function ensureTradeInPaymentMethod(
+  tx: DbTransaction,
+  organizationId: string,
+  actorUserId: string,
+): Promise<
+  | { ok: true; created: boolean; paymentMethodId: string }
+  | { ok: false; reason: "name_taken" }
+> {
+  await repository.lockCash(tx, organizationId);
+  const existing = await repository.findSystemPaymentMethod(
+    tx,
+    organizationId,
+    "trade_in",
+  );
+  if (existing) {
+    return { ok: true, created: false, paymentMethodId: existing.id };
+  }
+  const values = {
+    name: TRADE_IN_PAYMENT_METHOD_NAME,
+    isCash: false,
+    systemRole: "trade_in" as const,
+  };
+  const id = await repository.insertPaymentMethod(tx, organizationId, values);
+  if (id === "name_taken") return { ok: false, reason: "name_taken" };
+  await recordAudit(tx, {
+    organizationId,
+    actorUserId,
+    entityType: "payment_method",
+    entityId: id,
+    action: "create",
+    diff: {
+      before: null,
+      after: {
+        name: values.name,
+        isCash: values.isCash,
+        isActive: true,
+        systemRole: values.systemRole,
+      },
+    },
+  });
+  return { ok: true, created: true, paymentMethodId: id };
+}
+
 const nameSchema = z.string().trim().min(1).max(40);
 
 type PaymentMethodRule = "duplicate_name" | "limit_reached";
+
+// Un medio de sistema no se renombra ni se desactiva (brief-29.7.2, D-1).
+type SystemPaymentMethod = Failure<
+  "BUSINESS_RULE_VIOLATION",
+  { rule: "system_payment_method" }
+>;
 
 export function ruleFailure<R extends string>(
   rule: R,
@@ -315,7 +392,8 @@ export type RenamePaymentMethodResult =
   | { ok: true; changed: boolean }
   | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
   | Failure<"VALIDATION_ERROR", { fields: "name"[] }>
-  | Failure<"BUSINESS_RULE_VIOLATION", { rule: "duplicate_name" }>;
+  | Failure<"BUSINESS_RULE_VIOLATION", { rule: "duplicate_name" }>
+  | SystemPaymentMethod;
 
 // Solo el nombre: «es efectivo» no se edita (ADR 0022, punto 10).
 export async function renamePaymentMethod(
@@ -343,6 +421,8 @@ export async function renamePaymentMethod(
         tx,
       );
       if (!current) return failure("NOT_FOUND");
+      if (current.systemRole !== null)
+        return ruleFailure("system_payment_method");
       if (current.name === name.data) return { ok: true, changed: false };
       const updated = await repository.updatePaymentMethodName(
         tx,
@@ -367,7 +447,8 @@ export async function renamePaymentMethod(
 export type PaymentMethodActiveResult =
   | { ok: true; changed: boolean }
   | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
-  | Failure<"BUSINESS_RULE_VIOLATION", { rule: "limit_reached" }>;
+  | Failure<"BUSINESS_RULE_VIOLATION", { rule: "limit_reached" }>
+  | SystemPaymentMethod;
 
 // Un medio inactivo no se elige para un cobro nuevo, y los cobros viejos lo conservan (punto 10).
 async function setPaymentMethodActive(
@@ -391,6 +472,8 @@ async function setPaymentMethodActive(
         tx,
       );
       if (!current) return failure("NOT_FOUND");
+      if (current.systemRole !== null)
+        return ruleFailure("system_payment_method");
       if (current.isActive === isActive) return { ok: true, changed: false };
       if (isActive) {
         const active = await repository.countPaymentMethods(
@@ -552,6 +635,19 @@ async function readTotalsInput(
       sessionId,
       executor,
     );
+  // Desde la 29.7.2 (brief-29.7.2, D-5): los pagos de usados en efectivo y sus anulaciones.
+  const tradeInPayments =
+    await tradeInPaymentRepository.findSessionTradeInPayments(
+      organizationId,
+      sessionId,
+      executor,
+    );
+  const tradeInPaymentVoids =
+    await tradeInPaymentRepository.findSessionTradeInPaymentVoids(
+      organizationId,
+      sessionId,
+      executor,
+    );
   const movements = await repository.findMovements(
     organizationId,
     sessionId,
@@ -565,6 +661,8 @@ async function readTotalsInput(
     refundVoids,
     supplierPayments,
     supplierPaymentVoids,
+    tradeInPayments,
+    tradeInPaymentVoids,
     movements,
   };
 }
@@ -581,6 +679,7 @@ function totalsOf(
     receipts: input.receipts.map(cashSideOf),
     refunds: input.refunds.map(cashSideOf),
     supplierPayments: input.supplierPayments.map(cashSideOf),
+    tradeInPayments: input.tradeInPayments.map(cashSideOf),
   } satisfies TotalsInput);
 }
 
@@ -1112,6 +1211,9 @@ export type CashCurrencyTotals = {
   // Desde la 22.6 (brief-22.6, D-9): los dos roles los ven (ADR 0023, punto 12).
   supplierPayments: string;
   supplierPaymentVoids: string;
+  // Desde la 29.7.2 (brief-29.7.2, D-5): los pagos de usados, también para los dos roles.
+  tradeInPayments: string;
+  tradeInPaymentVoids: string;
   contributions: string;
   withdrawals: string;
   expected: string;
@@ -1149,8 +1251,18 @@ export type CashSessionDetail = SessionRef & {
   // sesión y las anulaciones posteriores a su cierre, solo para un admin. Para un viewer es null: ve
   // los totales, no el detalle.
   supplierPayments: SessionSupplierPayments | null;
+  // Desde la 29.7.2 (brief-29.7.2, D-5): los pagos de usados en efectivo y sus anulaciones posteriores
+  // al cierre, solo para un admin, como los pagos a proveedores.
+  tradeInPayments: SessionTradeInPayments | null;
   // Lo esperado de todas las monedas en la principal (brief-29.4, D-7). El arqueo sigue por moneda.
   reference: ReferenceView | null;
+};
+
+export type SessionTradeInPayments = {
+  items: TradeInPaymentListItem[];
+  lateVoids: (Omit<LateSupplierPaymentVoidView, "reason"> & {
+    reason: tradeInPaymentRepository.TradeInPaymentVoidReason;
+  })[];
 };
 
 export type LateSupplierPaymentVoidView = {
@@ -1211,23 +1323,35 @@ async function sessionDetail(
 ): Promise<CashSessionDetail> {
   const { organizationId } = context;
   const isAdmin = context.role === "admin";
-  const [input, closing, lateVoids, lateSupplierPaymentVoids, setup] =
-    await Promise.all([
-      readTotalsInput(organizationId, session.id),
-      session.closedAt === null
-        ? Promise.resolve([])
-        : repository.findClosingAmounts(organizationId, [session.id]),
-      session.closedAt === null
-        ? Promise.resolve([])
-        : repository.findLateVoids(organizationId, session.id),
-      session.closedAt === null || !isAdmin
-        ? Promise.resolve([])
-        : paymentRepository.findLateSupplierPaymentVoids(
-            organizationId,
-            session.id,
-          ),
-      getExchangeSetup(organizationId),
-    ]);
+  const [
+    input,
+    closing,
+    lateVoids,
+    lateSupplierPaymentVoids,
+    lateTradeInPaymentVoids,
+    setup,
+  ] = await Promise.all([
+    readTotalsInput(organizationId, session.id),
+    session.closedAt === null
+      ? Promise.resolve([])
+      : repository.findClosingAmounts(organizationId, [session.id]),
+    session.closedAt === null
+      ? Promise.resolve([])
+      : repository.findLateVoids(organizationId, session.id),
+    session.closedAt === null || !isAdmin
+      ? Promise.resolve([])
+      : paymentRepository.findLateSupplierPaymentVoids(
+          organizationId,
+          session.id,
+        ),
+    session.closedAt === null || !isAdmin
+      ? Promise.resolve([])
+      : tradeInPaymentRepository.findLateTradeInPaymentVoids(
+          organizationId,
+          session.id,
+        ),
+    getExchangeSetup(organizationId),
+  ]);
   const { receipts, refunds, movements } = input;
   const totals = totalsOf(input);
   const closingOf = new Map(closing.map((row) => [row.currency, row]));
@@ -1243,6 +1367,8 @@ async function sessionDetail(
         refundVoids: 0n,
         supplierPayments: 0n,
         supplierPaymentVoids: 0n,
+        tradeInPayments: 0n,
+        tradeInPaymentVoids: 0n,
         contributions: 0n,
         withdrawals: 0n,
         expected: 0n,
@@ -1291,6 +1417,8 @@ async function sessionDetail(
         refundVoids: moneyToDatabase(row.refundVoids),
         supplierPayments: moneyToDatabase(row.supplierPayments),
         supplierPaymentVoids: moneyToDatabase(row.supplierPaymentVoids),
+        tradeInPayments: moneyToDatabase(row.tradeInPayments),
+        tradeInPaymentVoids: moneyToDatabase(row.tradeInPaymentVoids),
         contributions: moneyToDatabase(row.contributions),
         withdrawals: moneyToDatabase(row.withdrawals),
         expected: moneyToDatabase(expected),
@@ -1338,6 +1466,25 @@ async function sessionDetail(
             source: {
               id: row.sourceId,
               displayNumber: formatSupplierPaymentNumber(row.sourceNumber),
+            },
+            currency: row.currency,
+            amount: row.amount,
+            reason: row.reason,
+            createdAt: row.createdAt,
+          })),
+        }
+      : null,
+    tradeInPayments: isAdmin
+      ? {
+          items: await tradeInPaymentListItems(
+            organizationId,
+            input.tradeInPayments,
+          ),
+          lateVoids: lateTradeInPaymentVoids.map((row) => ({
+            displayNumber: formatTradeInPaymentVoidNumber(row.number),
+            source: {
+              id: row.sourceId,
+              displayNumber: formatTradeInPaymentNumber(row.sourceNumber),
             },
             currency: row.currency,
             amount: row.amount,
@@ -1937,7 +2084,12 @@ export type PaymentFailure =
   | ReceiptFieldsFailure
   | Failure<"NOT_FOUND", { entity: "payment_method" }>
   | Failure<"BUSINESS_RULE_VIOLATION", { rule: "payment_method_inactive" }>
-  | Failure<"BUSINESS_RULE_VIOLATION", { rule: "no_open_session" }>;
+  | Failure<"BUSINESS_RULE_VIOLATION", { rule: "no_open_session" }>
+  // Desde la 29.7.2 (D-1): «Permuta» solo va en el cobro de una venta con su usado.
+  | Failure<
+      "BUSINESS_RULE_VIOLATION",
+      { rule: "trade_in_method_requires_trade_in" }
+    >;
 
 export type ReceiptPaymentFailure = PaymentFailure | TenderFailure;
 
@@ -2030,6 +2182,11 @@ export async function readPayment(
   if (!method) {
     return { ok: false, code: "NOT_FOUND", entity: "payment_method" };
   }
+  // El medio de sistema no pasa por acá: la seña, el cobro a cuenta, la devolución y los pagos lo
+  // rechazan, y el cobro de una venta con «Permuta» lee su medio aparte (brief-29.7.2, D-1 y U-1).
+  if (method.systemRole !== null) {
+    return ruleFailure("trade_in_method_requires_trade_in");
+  }
   if (!method.isActive) return ruleFailure("payment_method_inactive");
   let session: ReceiptPayment["session"] = null;
   if (method.isCash) {
@@ -2106,7 +2263,9 @@ async function auditReceipt(
   receipt: repository.ReceiptRow,
   payment: ReceiptPayment,
   destination:
-    { sale_number: number } | { order_number: number } | { target: "account" },
+    | { sale_number: number; trade_in_number?: number }
+    | { order_number: number }
+    | { target: "account" },
 ) {
   await recordAudit(tx, {
     organizationId: context.organizationId,
@@ -2144,7 +2303,127 @@ export type CreateSaleReceiptResult =
   | Failure<"NOT_FOUND", { entity: "sale" }>
   | ReceiptPaymentFailure
   | Failure<"BUSINESS_RULE_VIOLATION", { rule: "sale_voided" }>
-  | ExceedsOutstanding;
+  | ExceedsOutstanding
+  | TradeInReceiptFailure;
+
+// Los rechazos de un cobro con «Permuta» (brief-29.7.2, D-2), cada uno con su nombre.
+export type TradeInReceiptFailure =
+  | Failure<"NOT_FOUND", { entity: "trade_in" }>
+  | Failure<
+      "BUSINESS_RULE_VIOLATION",
+      {
+        rule:
+          | "trade_in_requires_trade_in_method"
+          | "trade_in_voided"
+          | "trade_in_not_sale_credit"
+          | "trade_in_other_client"
+          | "trade_in_currency_mismatch";
+      }
+    >
+  | Failure<
+      "BUSINESS_RULE_VIOLATION",
+      {
+        rule: "exceeds_trade_in_available";
+        currency: string;
+        available: string;
+      }
+    >;
+
+// Lo disponible de un usado para la permuta: su valor menos los cobros vigentes con «Permuta» que lo
+// usan (brief-29.7.2, D-2). Con tx y el bloqueo de cobros tomado, todo lo que lo cambia espera.
+export async function tradeInAvailable(
+  tx: DbTransaction,
+  organizationId: string,
+  tradeIn: { id: string; value: string },
+): Promise<Money> {
+  const used = await repository.findTradeInReceipts(
+    organizationId,
+    tradeIn.id,
+    tx,
+  );
+  return (
+    moneyFromDatabase(tradeIn.value) -
+    used
+      .filter((row) => row.voided === null)
+      .reduce((sum, row) => sum + moneyFromDatabase(row.amount), 0n)
+  );
+}
+
+type PermutaRead =
+  | { ok: true; payment: ReceiptPayment; tradeIn: TradeInForPayment }
+  | ReceiptFieldsFailure
+  | Failure<"NOT_FOUND", { entity: "payment_method" }>
+  | TradeInReceiptFailure;
+
+// El cobro con «Permuta» (D-2), con el bloqueo de cobros, la venta y su cliente ya tomados: el medio de
+// sistema, el monto en la moneda de la venta sin conversión (R-B5), y el usado vigente, sale_credit, del
+// cliente de la venta (U-2) y en su moneda, sin superar lo disponible.
+async function readPermuta(
+  tx: DbTransaction,
+  organizationId: string,
+  sale: SaleForReceipt,
+  fields: { methodId: string; amountText: string },
+  tradeInId: string,
+  tenderInput: TenderInput,
+): Promise<PermutaRead> {
+  const method = await repository.findPaymentMethod(
+    organizationId,
+    fields.methodId,
+    tx,
+  );
+  if (!method) {
+    return { ok: false, code: "NOT_FOUND", entity: "payment_method" };
+  }
+  if (method.systemRole !== "trade_in") {
+    return ruleFailure("trade_in_requires_trade_in_method");
+  }
+  // Sin la capacidad, la permuta no existe aunque el medio haya quedado (revisión independiente de la
+  // 29.7.2, O-1).
+  if (!(await hasCapability(organizationId, "trade_ins", tx))) {
+    return { ok: false, code: "NOT_FOUND", entity: "trade_in" };
+  }
+  if (tenderedCurrencyOf(tenderInput, sale.currency) !== sale.currency) {
+    return ruleFailure("trade_in_currency_mismatch");
+  }
+  const parsed = parseCashAmount(fields.amountText, sale.currency, {
+    allowZero: false,
+  });
+  if (!parsed.ok) {
+    return {
+      ok: false,
+      code: "VALIDATION_ERROR",
+      fields: ["amount"],
+      amount: parsed.reason,
+    };
+  }
+  const tradeIn = await getTradeInForPayment(tx, organizationId, tradeInId);
+  if (!tradeIn) return { ok: false, code: "NOT_FOUND", entity: "trade_in" };
+  if (tradeIn.voided) return ruleFailure("trade_in_voided");
+  if (tradeIn.destination !== "sale_credit") {
+    return ruleFailure("trade_in_not_sale_credit");
+  }
+  if (tradeIn.clientId !== sale.clientId) {
+    return ruleFailure("trade_in_other_client");
+  }
+  if (tradeIn.currency !== sale.currency) {
+    return ruleFailure("trade_in_currency_mismatch");
+  }
+  const available = await tradeInAvailable(tx, organizationId, tradeIn);
+  if (parsed.amount > available) {
+    return {
+      ok: false,
+      code: "BUSINESS_RULE_VIOLATION",
+      rule: "exceeds_trade_in_available",
+      currency: tradeIn.currency,
+      available: moneyToDatabase(available > 0n ? available : 0n),
+    };
+  }
+  return {
+    ok: true,
+    payment: { amount: parsed.amount, method, session: null, tender: null },
+    tradeIn,
+  };
+}
 
 // El cobro (D-3), solo de admin, en READ COMMITTED:
 //
@@ -2158,17 +2437,29 @@ export type CreateSaleReceiptResult =
 //
 // Una venta anulada después de leerla, ya con el contador, queda con su cobro, y su monto pasa a la
 // cuenta o a devolver (ADR 0022, punto 4; D-10). La venta no se bloquea: tampoco su pedido.
+//
+// Desde la 29.7.2 (D-2), con tradeInId el cobro es con «Permuta»: readPermuta en lugar de readPayment,
+// en el paso 3, y el cobro guarda su usado. La permuta de una venta que después se anula pasa a la
+// cuenta del cliente como cualquier cobro (U-3).
 export async function createSaleReceipt(
   context: AuthContext,
   input: {
     saleId: string;
     paymentMethodId: string;
     amount: string;
+    tradeInId?: string;
   } & TenderInput,
 ): Promise<CreateSaleReceiptResult> {
   const authorized = authorize(context, { role: "admin" });
   if (!authorized.ok) return authorized;
   if (!idSchema.safeParse(input.saleId).success) {
+    return failure("VALIDATION_ERROR");
+  }
+  const tradeInId =
+    input.tradeInId === undefined || input.tradeInId.trim() === ""
+      ? null
+      : input.tradeInId.trim().toLowerCase();
+  if (tradeInId !== null && !idSchema.safeParse(tradeInId).success) {
     return failure("VALIDATION_ERROR");
   }
   const fields = readReceiptFields(input);
@@ -2192,20 +2483,33 @@ export async function createSaleReceipt(
       }
       if (sale.voided) return ruleFailure("sale_voided");
 
-      const read = await readPayment(
-        tx,
-        organizationId,
-        fields,
-        sale.currency,
-        input,
-      );
-      if (!read.ok) return read;
+      let tradeIn: TradeInForPayment | null = null;
+      let chosen: ReceiptPayment;
+      if (tradeInId !== null) {
+        const permuta = await readPermuta(
+          tx,
+          organizationId,
+          sale,
+          fields,
+          tradeInId,
+          input,
+        );
+        if (!permuta.ok) return permuta;
+        tradeIn = permuta.tradeIn;
+        chosen = permuta.payment;
+      } else {
+        const read = await readPayment(
+          tx,
+          organizationId,
+          fields,
+          sale.currency,
+          input,
+        );
+        if (!read.ok) return read;
+        chosen = read.payment;
+      }
       const standing = await saleStanding(tx, organizationId, sale);
-      const fitted = fitPayment(
-        read.payment,
-        standing.outstanding,
-        sale.currency,
-      );
+      const fitted = fitPayment(chosen, standing.outstanding, sale.currency);
       if (!fitted.ok) return fitted;
       const { payment } = fitted;
       const limit = await exceedsCashLimit(
@@ -2228,10 +2532,13 @@ export async function createSaleReceipt(
         currency: sale.currency,
         amount: moneyToDatabase(payment.amount),
         tender: tenderColumns(payment.tender),
+        tradeInId: tradeIn?.id ?? null,
         createdBy: userId,
       });
       await auditReceipt(tx, { organizationId, userId }, receipt, payment, {
         sale_number: sale.number,
+        // El usado de la permuta, por su número (brief-29.7.2, D-2).
+        ...(tradeIn ? { trade_in_number: tradeIn.number } : {}),
       });
       return { ok: true, receipt: receiptRef(receipt) };
     },
@@ -2949,6 +3256,8 @@ export type ReceiptListItem = ReceiptRef & {
   order: DocumentRef | null;
   // El cliente de un cobro a cuenta (brief-21.6, D-9).
   account: { clientId: string } | null;
+  // El usado de un cobro con «Permuta» (brief-29.7.2, D-2 y D-6).
+  tradeIn: DocumentRef | null;
   paymentMethodName: string;
   isCash: boolean;
   // Lo aplicado, en la moneda del destino.
@@ -3001,15 +3310,24 @@ async function destinationsOf(
 ): Promise<{
   sales: Map<string, DocumentRef>;
   orders: Map<string, DocumentRef>;
+  tradeIns: Map<string, DocumentRef>;
 }> {
   const unique = (ids: (string | null)[]) => [
     ...new Set(ids.filter((id): id is string => id !== null)),
   ];
   const saleIds = unique(rows.map((row) => row.saleId));
   const orderIds = unique(rows.map((row) => row.orderId));
+  const tradeInIds = unique(rows.map((row) => row.tradeInId));
   const sales = new Map<string, DocumentRef>();
   const orders = new Map<string, DocumentRef>();
-  if (saleIds.length === 0 && orderIds.length === 0) return { sales, orders };
+  const tradeIns = new Map<string, DocumentRef>();
+  if (
+    saleIds.length === 0 &&
+    orderIds.length === 0 &&
+    tradeInIds.length === 0
+  ) {
+    return { sales, orders, tradeIns };
+  }
   await repository.withTransaction(async (tx) => {
     for (const id of saleIds) {
       const sale = await getSaleForReceipt(tx, organizationId, id);
@@ -3019,11 +3337,22 @@ async function destinationsOf(
       const order = await getOrderForReceipt(tx, organizationId, id);
       if (order) orders.set(id, { id, displayNumber: order.displayNumber });
     }
+    // Los usados de los cobros con «Permuta», de una sola lectura (brief-29.7.2, D-6).
+    for (const tradeIn of await getTradeInsForPayment(
+      tx,
+      organizationId,
+      tradeInIds,
+    )) {
+      tradeIns.set(tradeIn.id, {
+        id: tradeIn.id,
+        displayNumber: tradeIn.displayNumber,
+      });
+    }
   });
-  return { sales, orders };
+  return { sales, orders, tradeIns };
 }
 
-async function receiptListItems(
+export async function receiptListItems(
   organizationId: string,
   rows: repository.ReceiptRow[],
 ): Promise<ReceiptListItem[]> {
@@ -3049,6 +3378,10 @@ async function receiptListItems(
         row.target === "account" && row.clientId !== null
           ? { clientId: row.clientId }
           : null,
+      tradeIn:
+        row.tradeInId === null
+          ? null
+          : (destinations.tradeIns.get(row.tradeInId) ?? null),
       paymentMethodName: method?.name ?? "",
       isCash: method?.isCash ?? false,
       currency: row.currency,
@@ -3228,6 +3561,54 @@ export function exchangeOffer(
   };
 }
 
+// La permuta en el cobro de una venta (brief-29.7.2, D-6): el medio de sistema y los usados sale_credit
+// vigentes del cliente de la venta en su moneda, con lo disponible de cada uno. Null si la organización
+// no tiene «Permuta», si la venta no tiene cliente o si el cliente no tiene usados con algo disponible.
+export type PermutaOffer = {
+  paymentMethodId: string;
+  tradeIns: (DocumentRef & {
+    createdAt: Date;
+    available: string;
+    availableInput: string;
+  })[];
+};
+
+async function permutaOffer(
+  organizationId: string,
+  sale: { clientId: string | null; currency: string },
+): Promise<PermutaOffer | null> {
+  const clientId = sale.clientId;
+  if (clientId === null) return null;
+  return repository.withSnapshot(async (tx) => {
+    if (!(await hasCapability(organizationId, "trade_ins", tx))) return null;
+    const method = await repository.findSystemPaymentMethod(
+      tx,
+      organizationId,
+      "trade_in",
+    );
+    if (!method) return null;
+    const candidates = (
+      await listClientTradeInsForPermuta(tx, organizationId, clientId)
+    ).filter((tradeIn) => tradeIn.currency === sale.currency);
+    const tradeIns: PermutaOffer["tradeIns"] = [];
+    for (const tradeIn of candidates) {
+      const available = await tradeInAvailable(tx, organizationId, tradeIn);
+      if (available <= 0n) continue;
+      const text = moneyToDatabase(available);
+      tradeIns.push({
+        id: tradeIn.id,
+        displayNumber: tradeIn.displayNumber,
+        createdAt: tradeIn.createdAt,
+        available: text,
+        availableInput: amountForInput(text, tradeIn.currency),
+      });
+    }
+    return tradeIns.length === 0
+      ? null
+      : { paymentMethodId: method.id, tradeIns };
+  });
+}
+
 export type SaleReceiptForm = {
   ok: true;
   sale: { id: string; displayNumber: string; currency: string };
@@ -3239,6 +3620,8 @@ export type SaleReceiptForm = {
   paymentMethods: PaymentMethod[];
   openSession: SessionRef | null;
   exchange: ExchangeOffer | null;
+  // Desde la 29.7.2 (D-6): «Permuta», si el cliente de la venta tiene usados para descontar.
+  permuta: PermutaOffer | null;
 };
 
 // Lo que necesita el formulario del cobro (D-8): la venta, lo que falta, los medios activos y si hay
@@ -3255,13 +3638,17 @@ export async function getSaleReceiptForm(
   const { organizationId } = context;
   const found = await readSaleStanding(organizationId, saleId);
   if (!found) return failure("NOT_FOUND");
-  const [methods, last, setup] = await Promise.all([
+  const [methods, last, setup, permuta] = await Promise.all([
     repository.findPaymentMethods(organizationId),
     repository.findLastSession(organizationId),
     getExchangeSetup(organizationId),
+    found.sale.voided
+      ? Promise.resolve(null)
+      : permutaOffer(organizationId, found.sale),
   ]);
   return {
     ok: true,
+    permuta,
     exchange: exchangeOffer(
       setup,
       found.sale.currency,
@@ -3278,7 +3665,7 @@ export async function getSaleReceiptForm(
       found.sale.currency,
     ),
     voided: found.sale.voided,
-    paymentMethods: methods.filter((method) => method.isActive),
+    paymentMethods: selectableMethods(methods),
     openSession: last && last.closedAt === null ? sessionRef(last) : null,
   };
 }
@@ -3402,7 +3789,7 @@ export async function getOrderReceiptForm(
     },
     outstanding,
     outstandingInput: amountForInput(outstanding, found.order.currency),
-    paymentMethods: methods.filter((method) => method.isActive),
+    paymentMethods: selectableMethods(methods),
     openSession: last && last.closedAt === null ? sessionRef(last) : null,
   };
 }
@@ -3786,7 +4173,7 @@ export async function getClientRefundForm(
     inFavor: account.accounts
       .filter((row) => row.inFavor > 0n)
       .map((row) => refundable(row.currency, row.inFavor)),
-    paymentMethods: methods.filter((method) => method.isActive),
+    paymentMethods: selectableMethods(methods),
     openSession: last && last.closedAt === null ? sessionRef(last) : null,
     exchange:
       setup && inFavorMain > 0n
@@ -3834,7 +4221,7 @@ export async function getSaleRefundForm(
     },
     refundable: found.sale.clientId === null && found.sale.voided,
     toRefund: refundable(found.sale.currency, found.standing.toRefund),
-    paymentMethods: methods.filter((method) => method.isActive),
+    paymentMethods: selectableMethods(methods),
     openSession: last && last.closedAt === null ? sessionRef(last) : null,
     exchange: exchangeOffer(
       setup,
@@ -4525,7 +4912,7 @@ export async function getAccountReceiptForm(
         : latest
           ? { currency: latest.currency, amount: "0.00", amountInput: "" }
           : null,
-    paymentMethods: methods.filter((method) => method.isActive),
+    paymentMethods: selectableMethods(methods),
     openSession: last && last.closedAt === null ? sessionRef(last) : null,
     exchange: setup
       ? {

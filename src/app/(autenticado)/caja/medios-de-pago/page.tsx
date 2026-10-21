@@ -64,11 +64,14 @@ export default async function PaymentMethodsPage({
   }
   const isAdmin = context.role === "admin";
   const methods = result.paymentMethods;
+  // «Permuta» es un medio del sistema (brief-29.7.2, D-1): no se renombra ni se desactiva, y no cuenta
+  // para la lista inicial.
+  const editable = methods.filter((method) => method.systemRole === null);
   const editing = isAdmin
-    ? methods.find((method) => method.id === single(query.editar))
+    ? editable.find((method) => method.id === single(query.editar))
     : undefined;
   const confirming = isAdmin
-    ? methods.find(
+    ? editable.find(
         (method) => method.isActive && method.id === single(query.confirmar),
       )
     : undefined;
@@ -86,7 +89,7 @@ export default async function PaymentMethodsPage({
         {notice ? <ActionNotice>{notice}</ActionNotice> : null}
       </div>
 
-      {isAdmin && methods.length === 0 ? (
+      {isAdmin && editable.length === 0 ? (
         <SectionCard
           id="lista-inicial-titulo"
           title="Empezá con la lista inicial"
@@ -182,11 +185,18 @@ export default async function PaymentMethodsPage({
                 <tr key={method.id}>
                   <td className={`${tableCellClass} font-semibold`}>
                     {method.name}
+                    {method.systemRole !== null ? (
+                      <span className="block text-xs font-normal text-muted">
+                        Del sistema
+                      </span>
+                    ) : null}
                   </td>
                   <td className={tableCellClass}>
-                    {method.isCash
-                      ? "Efectivo: entra a la caja"
-                      : "No pasa por la caja"}
+                    {method.systemRole === "trade_in"
+                      ? "Descuenta un usado de una venta: no pasa por la caja"
+                      : method.isCash
+                        ? "Efectivo: entra a la caja"
+                        : "No pasa por la caja"}
                   </td>
                   <td className={tableCellClass}>
                     <span
@@ -199,7 +209,11 @@ export default async function PaymentMethodsPage({
                   </td>
                   {isAdmin ? (
                     <td className={tableCellClass}>
-                      {method.isActive ? (
+                      {method.systemRole !== null ? (
+                        <span className="text-sm text-muted">
+                          No se renombra ni se desactiva
+                        </span>
+                      ) : method.isActive ? (
                         <div className="flex flex-wrap gap-2">
                           <Link
                             href={`/caja/medios-de-pago?editar=${method.id}`}

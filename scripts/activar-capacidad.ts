@@ -3,6 +3,10 @@ import {
   applyAttributeTemplate,
   createServiceProduct,
 } from "@/modules/catalog";
+import {
+  ensureTradeInPaymentMethod,
+  TRADE_IN_PAYMENT_METHOD_NAME,
+} from "@/modules/cash";
 import { applyGradeTemplate } from "@/modules/inventory";
 import {
   activateCapability,
@@ -37,6 +41,11 @@ import { getDb } from "@/shared/db";
 // Desde la 29.7 (brief-29.7, D-1 y D-3), trade_ins, que exige serialized_units activa: sin ella se
 // rechaza y no se activa nada. Con el perfil, que activa las dos en orden, si esta corrida la activa,
 // copia el checklist de un usado con la misma regla.
+//
+// Desde la 29.7.2 (brief-29.7.2, D-1 y U-4), con trade_ins, con o sin perfil, crea el medio de pago de
+// sistema «Permuta» si falta: al activarla, y también al volver a correr el comando con trade_ins ya
+// activa, que es como lo recibe una organización que la activó en la 29.7. Si ya hay un medio de la
+// organización llamado «Permuta», no se activa ni se crea nada.
 
 const usage =
   "Uso: npm run org:capability -- --organization <id> --admin-email <correo> (--profile <perfil> | --capability <capacidad>). Perfiles: " +
@@ -165,6 +174,24 @@ async function main() {
       // independiente de la 29.5, m-6).
       lines.push(
         "Sin --profile no se copiaron grados, y una corrida posterior con --profile tampoco los copia: se crean desde la pantalla Grados.",
+      );
+    }
+    // «Permuta», con o sin perfil, con trade_ins activa, nueva o de antes (brief-29.7.2, U-4).
+    if (capabilities.includes("trade_ins")) {
+      const method = await ensureTradeInPaymentMethod(
+        tx,
+        organizationId,
+        actorUserId,
+      );
+      if (!method.ok) {
+        throw new Error(
+          `Ya hay un medio de pago llamado «${TRADE_IN_PAYMENT_METHOD_NAME}»: renombralo en Caja → Medios de pago y volvé a correr el comando. No se activó ni se creó nada.`,
+        );
+      }
+      lines.push(
+        method.created
+          ? `Medio de pago de sistema creado: ${TRADE_IN_PAYMENT_METHOD_NAME}.`
+          : `El medio de pago ${TRADE_IN_PAYMENT_METHOD_NAME} ya existía.`,
       );
     }
     // El producto de servicio, con o sin perfil, al activar repairs (D-1 y D-5): uno por organización.

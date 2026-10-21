@@ -4,22 +4,26 @@ import type {
 } from "@/modules/tradeins";
 
 // Los filtros de la lista de usados recibidos, en la URL (brief-29.7, D-7): el estado, el destino y la
-// búsqueda por número o IMEI.
+// búsqueda por número o IMEI. Desde la 29.7.2, el estado «Falta pagar», solo para un admin: los usados
+// comprados vigentes que no están pagados del todo, que arma cash (brief-29.7.2, D-6).
 
 export type SearchParams = Record<string, string | string[] | undefined>;
 
+export type TradeInListStatus = TradeInStatusFilter | "to_pay";
+
 export type TradeInFilters = {
-  status: TradeInStatusFilter;
+  status: TradeInListStatus;
   destination: TradeInDestinationFilter;
   search: string;
   page: number;
 };
 
 // El estado en la URL, en castellano. Sin parámetro, todas.
-export const STATUS_PARAMS: readonly [string, TradeInStatusFilter, string][] = [
+export const STATUS_PARAMS: readonly [string, TradeInListStatus, string][] = [
   ["todas", "all", "Todas"],
   ["vigentes", "current", "Vigentes"],
   ["anuladas", "voided", "Anuladas"],
+  ["falta-pagar", "to_pay", "Falta pagar"],
 ];
 
 export const DESTINATION_PARAMS: readonly [
@@ -47,13 +51,14 @@ export function parseTradeInFilters(query: SearchParams): TradeInFilters {
   const rawPage = single(query.pagina);
   return {
     status,
-    destination,
+    // «Falta pagar» son solo los usados comprados: el selector muestra «Compra».
+    destination: status === "to_pay" ? "purchase" : destination,
     search: single(query.buscar).slice(0, 40),
     page: /^[1-9][0-9]{0,5}$/.test(rawPage) ? Number(rawPage) : 1,
   };
 }
 
-export function statusParam(status: TradeInStatusFilter): string {
+export function statusParam(status: TradeInListStatus): string {
   return STATUS_PARAMS.find(([, value]) => value === status)?.[0] ?? "todas";
 }
 

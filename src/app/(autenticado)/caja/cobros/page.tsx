@@ -223,6 +223,17 @@ export default async function ReceiptsPage({
                     </td>
                     <td className={tableCellClass}>
                       {receipt.paymentMethodName}
+                      {receipt.tradeIn ? (
+                        <>
+                          {" "}
+                          <Link
+                            href={`/usados/${receipt.tradeIn.id}`}
+                            className={linkClass}
+                          >
+                            {receipt.tradeIn.displayNumber}
+                          </Link>
+                        </>
+                      ) : null}
                     </td>
                     <td
                       className={`${tableCellClass} text-right whitespace-nowrap tabular-nums`}
