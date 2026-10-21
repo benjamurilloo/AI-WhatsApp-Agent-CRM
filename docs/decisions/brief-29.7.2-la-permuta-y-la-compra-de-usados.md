@@ -262,3 +262,41 @@ Hecha el 2026-10-21 por un agente que no participó del trabajo, con acceso de s
 **Corridas finales.** La suite end-to-end completa corrió dos veces con la máquina cargada: la primera perdió el servidor en la prueba 10 (`ERR_CONNECTION_REFUSED` en las 276 siguientes); la segunda dio 278 pasadas y 9 fallidas, ocho por tiempo o por el navegador caído (`Target crashed`) y una real, la de NB-1. Con la corrección, las nueve specs de esas fallas corrieron solas: 67 de 67.
 
 **El rendimiento de la sesión de caja.** En la corrida completa de integración (1720 de 1721), la prueba de rendimiento de `supplier-payments.test.ts` superó el umbral de 754 ms en el detalle de una sesión con 500 pagos en efectivo (925 ms), donde la 29.7.2 suma dos lecturas a los totales. Se midió aparte, cinco corridas con las lecturas y cinco sin ellas: medianas de 510 ms y 517 ms, con picos de 1247 ms y 775 ms en cada lado. La diferencia es ruido de la máquina y no de la subfase; la prueba quedó sin cambios.
+
+## Cierre
+
+*Del 2026-10-21, después del despliegue y el recorrido del usuario.*
+
+### Criterios
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| AC-1 | cumple | el cobro con «Permuta» en `cash` (`readPermuta` bajo `lockCash`), con el `R` que guarda el usado; `trade-in-payments.test.ts` y el end-to-end del cobro; desde la revisión, el formulario propone el menor de los dos montos (NB-1) |
+| AC-2 | cumple | los rechazos de D-2 por su nombre en `trade-in-payments.test.ts`; los dos cobros que superan el disponible dejan uno; la anulación del cobro libera el disponible |
+| AC-3 | cumple | «Permuta» sin renombrar ni desactivar; la seña, el cobro a cuenta, la devolución, el pago a proveedor y el pago de un usado lo rechazan, probados desde la revisión (NB-2); el `CHECK` y el trigger del medio en la base |
+| AC-4 | cumple | el pago de un usado con cualquier medio activo, también en la otra moneda, hasta lo que falta; el efectivo sin dejar la sesión en negativo; el `PPU` |
+| AC-5 | cumple | la anulación `APPU`, una sola vez y con motivo; la plata vuelve a la caja solo con la sesión del pago abierta |
+| AC-6 | cumple | `voidTradeIn` rechaza con un cobro o un pago vigente nombrando el comprobante, y pasa después de anularlos, en integración |
+| AC-7 | cumple | el cobro y el pago contra la anulación del mismo usado, cada uno con una tercera conexión: un solo ganador |
+| AC-8 | cumple | la venta anulada con un cobro con «Permuta», según U-3, probada |
+| AC-9 | cumple | los triggers de solo inserción, de copia y del medio, cada rechazo por su mensaje; la sesión cerrada y las ramas de otra moneda del trigger de copia, sin prueba directa (O-7) |
+| AC-10 | cumple | `org:capability` crea «Permuta» una vez y lo dice al repetirse; con un medio ya llamado «Permuta» se detiene sin activar nada (NB-3); en producción lo corrió el usuario sobre «iPhone Demo», que ya tenía `trade_ins` |
+| AC-11 | cumple, con una desviación aceptada | `computeCashTotals` suma los pagos y sus anulaciones con la regla de los pagos a proveedores (desviación 1, NB-5, aceptada por el usuario); la sesión con el total a los dos roles y la lista solo a un `admin` |
+| AC-12 | cumple | el `viewer` en integración y en el end-to-end; los contratos del agente sin cambios |
+| AC-13 | cumple | sin `trade_ins` nada cambia; los cambios de forma de las suites existentes, en las desviaciones 9 y 11 |
+| AC-14 | cumple | `migration-0061.test.ts` sobre una base en la `0060` con datos; en producción, la `0061` corrió sola |
+| AC-15 | cumple | CI run 39668254399 en `success` sobre `703c334c28e558deadad03d408af22d253d9de52`: guardas 845, unitarias 1059, integración 1721 y end-to-end 287, con axe |
+| AC-16 | cumple | revisión independiente del 2026-10-21, antes del despliegue (§«Revisión independiente») |
+| AC-17 | cumple | desplegada (`703c334`, 62 migraciones, las dos tablas verificadas en la base); el usuario creó «Permuta» en «iPhone Demo» y recorrió el flujo: «todo perfecto». Recuentos después: «iPhone Demo» con 1 medio de sistema, 3 usados, 1 cobro con «Permuta», 1 pago de usado y 1 anulación de pago; «Demostración Vixora» y «Vixora» sin medios de sistema, usados, cobros con «Permuta» ni pagos |
+
+**Nivel alcanzado**: validado en integración (`producer-consumer`), desplegado y recorrido en producción sobre una organización demo. No hay negocio real.
+
+### Lo que queda
+
+- **La cotización de usados** (la 29.7.3), en Notion, en «Esperando».
+- **Las correcciones de la revisión no tuvieron una segunda revisión independiente**: son autoevaluación, verificadas por sus pruebas y la CI.
+- **La prueba de rendimiento del detalle de una sesión** de `supplier-payments.test.ts` sigue al borde de su umbral en la máquina local; en la CI pasó.
+
+### El despliegue
+
+Sin incidentes: la `0061` se aplicó antes de detener el servicio, y el build, con el heap de 1.536 MB, terminó a la primera. Producción estaba en la `0060`, así que la `0061` corrió sola. Después, el servicio activo y `/api/health` en 200 desde afuera. Para volver atrás, `43ce6fb`.

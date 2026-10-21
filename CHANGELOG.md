@@ -2,6 +2,24 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-21 — 29.7.2: la permuta y la compra de usados
+
+Cierra el 2026-10-21, desplegada en producción (`703c334`) y recorrida por el usuario ([brief-29.7.2](docs/decisions/brief-29.7.2-la-permuta-y-la-compra-de-usados.md), §Cierre). Lleva a la caja el valor reconocido de un usado de la 29.7 ([ADR 0024](docs/decisions/0024-rubros-y-capacidades.md), puntos 8 y 9; [ADR 0025](docs/decisions/0025-tipo-de-cambio.md), punto 5), sobre «iPhone Demo».
+
+**Certifica:**
+- **La permuta**: el medio de sistema «Permuta», creado por `org:capability` una vez por organización con `trade_ins`, descuenta en el cobro de una venta un usado `sale_credit` del mismo cliente y la misma moneda, hasta lo menor entre lo que queda y lo que falta. El recibo guarda el usado, y anularlo libera el disponible. «Permuta» no se renombra ni se desactiva, y la seña, el cobro a cuenta, la devolución y los pagos lo rechazan.
+- **La compra**: el pago de un usado `purchase` (`PPU`) con cualquier medio activo, también en la otra moneda, hasta lo que falta, y su anulación (`APPU`). El efectivo sale de la sesión abierta sin dejarla en negativo, y la caja lo cuenta en lo esperado, el cierre y el historial.
+- **La anulación del usado** se rechaza con un cobro o un pago vigente, nombrando el comprobante, y las carreras entre cobrar, pagar y anular dejan un solo ganador, con una tercera conexión.
+- **La migración 0061**, aditiva: dos tablas de solo inserción, el rol de sistema del medio y el usado en el recibo, probada sola sobre una base en la `0060`.
+- **En producción**: el usuario creó «Permuta» en «iPhone Demo», cobró una venta con un usado, pagó otro y anuló el pago, y lo dio por bueno. «Demostración Vixora» y «Vixora» quedaron sin medios de sistema, usados ni pagos.
+- **Una revisión independiente** antes del despliegue (sin bloqueantes, cinco no bloqueantes y siete observaciones), verificada contra el código y resuelta; NB-5 la aceptó el usuario como desviación.
+
+**No certifica:**
+- ningún negocio real;
+- la cotización de un usado, que es la 29.7.3;
+- una segunda revisión independiente de las correcciones, que son autoevaluación;
+- ningún cambio en la forma de los contratos del agente.
+
 ## 2026-10-21 — 29.7: la recepción de usados
 
 Cierra el 2026-10-21, desplegada en producción (`43ce6fb`) y recorrida por el usuario ([brief-29.7](docs/decisions/brief-29.7-la-recepcion-de-usados.md), §Cierre). Abre la capacidad `trade_ins` del [ADR 0024](docs/decisions/0024-rubros-y-capacidades.md), sobre «iPhone Demo». *Dividida por el usuario el 2026-10-20*: la permuta y la compra van en la 29.7.2, y la cotización en la 29.7.3.
