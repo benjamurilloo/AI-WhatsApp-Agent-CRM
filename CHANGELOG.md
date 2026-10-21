@@ -2,6 +2,27 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-20 — 29.6.2: las reparaciones de unidades propias
+
+Cierra el 2026-10-20, desplegada en producción (`0967593`) y recorrida por el usuario ([brief-29.6.2](docs/decisions/brief-29.6.2-las-reparaciones-de-unidades-propias.md), §Cierre). Completa la capacidad `repairs` del [ADR 0024](docs/decisions/0024-rubros-y-capacidades.md) con la reparación de una unidad del stock, sobre «iPhone Demo».
+
+**Certifica:**
+- **La orden de una unidad propia** (`OS-`, tipo `own_unit`): nace mandada al técnico desde las unidades del producto, sin cliente, precio ni venta, y solo se marca reparada o se cancela. Una unidad no tiene dos abiertas.
+- **Los estados `in_repair` e `in_review` de la unidad**, fuera del saldo. Mandar a reparar una unidad disponible la saca del stock con `unit_to_repair`; liberarla en revisión la devuelve con `unit_released`, y se vende como cualquier otra.
+- **Lo que cobró el técnico se suma al costo de la unidad**, en la moneda de ese costo y con auditoría, y va al debe de la cuenta del técnico, sin cambios en `cash`.
+- **En revisión, la unidad se corrige o se da de baja sin movimiento**; cancelar la orden la deja en revisión sin tocar su costo.
+- **Los triggers** de la unidad, la orden y las líneas rechazan cualquier otro camino, cada uno con su mensaje, y una orden propia no nace reparada.
+- **Mandar a reparar contra confirmar un pedido de la misma unidad** deja un solo ganador, probado con una tercera conexión.
+- **La migración 0059**, aditiva, probada sobre una base en la 0058 con órdenes de clientes en varios estados.
+- **En producción**: el usuario recorrió dos órdenes propias en «iPhone Demo» hasta la liberación, la venta y la baja, y lo dio por bueno. «Demostración Vixora» y «Vixora» quedaron sin órdenes de servicio ni unidades.
+- **Una revisión independiente** antes del despliegue (R1, diez hallazgos no bloqueantes), verificada contra el código y resuelta.
+
+**No certifica:**
+- ningún negocio real;
+- que una pantalla muestre el motivo de la baja de una unidad en revisión o la historia de su costo: quedan en la auditoría (tarea en Notion);
+- una segunda revisión independiente de las correcciones, que son autoevaluación;
+- ningún cambio en la forma de los contratos del agente.
+
 ## 2026-10-20 — 29.6: las reparaciones de equipos de clientes
 
 Cierra el 2026-10-20, desplegada en producción (`b00e53d`) y recorrida por el usuario ([brief-29.6](docs/decisions/brief-29.6-las-reparaciones-de-equipos-de-clientes.md), §Cierre). Construye la capacidad `repairs` del [ADR 0024](docs/decisions/0024-rubros-y-capacidades.md) sobre «iPhone Demo», para el equipo de un cliente. La orden de una unidad propia queda para la 29.6.2, por decisión del usuario.

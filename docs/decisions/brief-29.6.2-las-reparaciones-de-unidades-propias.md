@@ -10,7 +10,7 @@ generated_at: 2026-10-20
 - **Contrato**: `task-brief.v1`
 - **Tipo de tarea**: `implementation`. Migración, código, pruebas y despliegue.
 - **Nivel de evidencia objetivo**: `deterministic` (tests contra PostgreSQL) y `producer-consumer` (pantallas ↔ servicio ↔ base, con end-to-end).
-- **Estado**: **aprobado** por el usuario el 2026-10-20, con las recomendaciones del brief tal como están. Las decisiones U-1 a U-3 las tomó ese mismo día (abajo).
+- **Estado**: **aprobado** por el usuario el 2026-10-20, con las recomendaciones del brief tal como están; **cerrado** el 2026-10-20, desplegado (`0967593`) y recorrido (§Cierre). Las decisiones U-1 a U-3 las tomó ese mismo día (abajo).
 - **Fuentes**: [ADR 0024](0024-rubros-y-capacidades.md), puntos 6, 10, 14, 16 y 17, y su nota de la 29.6; [ADR 0025](0025-tipo-de-cambio.md), puntos 1 y 5; [brief-29.6](brief-29.6-las-reparaciones-de-equipos-de-clientes.md), U-1 y U-3; [brief-29.5](brief-29.5-las-unidades.md) y [brief-29.5.2](brief-29.5.2-las-unidades-en-pedidos-y-ventas.md); [DataModel](../architecture/DataModel.md).
 
 ## Objetivo
@@ -238,7 +238,7 @@ Registradas al implementar, el 2026-10-20, para la revisión independiente. Ning
 
 La revisión del 2026-10-20 dio R1, con diez hallazgos no bloqueantes. Verificados contra el código, los diez eran ciertos:
 
-1. **El trigger dejaba nacer una orden propia con la reparación hecha** y el costo del técnico, que la cuenta le habría debido. El `INSERT` de una orden propia exige ahora `repaired_at` y `technician_total` en null (`0059`, sin desplegar todavía).
+1. **El trigger dejaba nacer una orden propia con la reparación hecha** y el costo del técnico, que la cuenta le habría debido. El `INSERT` de una orden propia exige ahora `repaired_at` y `technician_total` en null (`0059`, antes de desplegarla).
 2. **La unidad muestra todas sus órdenes**: las que están en el local, todas las suyas; las que ya salieron, en «Reparaciones anteriores» (D-7).
 3. **`stock-writes`**: desviación 9.
 4. **El end-to-end vende la unidad liberada** y ve su orden en «Reparaciones anteriores» (D-10).
@@ -248,3 +248,39 @@ La revisión del 2026-10-20 dio R1, con diez hallazgos no bloqueantes. Verificad
 8. **El aviso de anular una recepción** decía que las unidades no disponibles «se dieron de baja»; ya era inexacto desde la 29.5.2. Ahora nombra los cinco destinos.
 9. **La lista y la orden muestran el producto de la unidad** (D-7), por la interfaz de `catalog`.
 10. **La carrera comprueba que el rechazo nombra la unidad** y dónde está.
+
+## Cierre
+
+*Del 2026-10-20, después del despliegue y el recorrido del usuario.*
+
+### Criterios
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| AC-1 | cumple | `unit-repairs.ts` (`sendUnitToRepair`, con `unit_to_repair` solo desde `available`); `service-own-units.test.ts`, «el ciclo de una unidad propia» y «los rechazos al mandar a reparar» |
+| AC-2 | cumple | `markOwnUnitRepaired` y `returnUnitFromRepair`, con la auditoría `cost_change`; «el ciclo de una unidad propia»; el end-to-end (costo de 800 a 840) |
+| AC-3 | cumple | `cancelServiceOrder` con `cancelUnitRepair`; «el ciclo de una unidad propia»; el end-to-end de la cancelación |
+| AC-4 | cumple | `releaseUnit` con `unit_released`; la integración la libera y la vende, y desde la revisión también el end-to-end (hallazgo 4) |
+| AC-5 | cumple | los tres triggers de la `0059` y los CHECK `service_orders_kind_subject` y `service_orders_own_unit_path`; «los triggers de la orden propia y de la unidad», tres tests, cada rechazo por su mensaje, completados en la revisión (hallazgos 1 y 6) |
+| AC-6 | cumple | `findTechnicianCharges` lee `repaired_at` sin mirar el tipo; «la cuenta del técnico», con el pago a cuenta; el end-to-end ve la orden al debe |
+| AC-7 | cumple | el índice único parcial `service_orders_unit_open_unique`; «los rechazos al mandar a reparar» |
+| AC-8 | cumple | «mandar a reparar contra confirmar un pedido», con una tercera conexión; desde la revisión, el rechazo nombra la unidad (hallazgo 10) |
+| AC-9 | cumple, con la convención del proyecto | `expectStockInvariant` corre después de cada test de `service-own-units.test.ts`, no de cada escritura |
+| AC-10 | cumple | «el viewer y la capacidad»; el end-to-end del viewer |
+| AC-11 | cumple | «la moneda, la baja y la corrección en revisión», un test por decisión |
+| AC-12 | cumple | «sin repairs no se manda a reparar; sin serialized_units, ni se manda ni se libera» (hallazgo 5); las suites existentes pasan, con un solo cambio de forma: `writeOffUnit` devuelve `from` (desviación 6, `units.test.ts`) |
+| AC-13 | cumple | CI run 39525450244 en `success` sobre `0967593c8053b8fc2f519b66df45f18a423a2d36`: unitarias 1051, guardas 818, integración 1685 y end-to-end 275, con axe |
+| AC-14 | cumple | revisión independiente del 2026-10-20, antes del despliegue (§«Lo que corrigió la revisión independiente») |
+| AC-15 | cumple | desplegada (`0967593`, 60 migraciones, la `0059` verificada en la base); el usuario recorrió el flujo en «iPhone Demo» y dijo «esta todo perfecto». Recuentos después: «iPhone Demo» con 2 órdenes propias reparadas, sus 4 unidades vendidas o dadas de baja, 2 movimientos `unit_to_repair` y 1 `unit_released`; «Demostración Vixora» y «Vixora» sin órdenes de servicio ni unidades |
+
+**Nivel alcanzado**: validado en integración (`producer-consumer`), desplegado y recorrido en producción sobre una organización demo. No hay negocio real.
+
+### Lo que queda
+
+- **El motivo de la baja de una unidad en revisión** y la historia del costo de una unidad no se muestran en ninguna pantalla: quedan en la auditoría. Es una tarea en Notion, en «Esperando», por decisión del usuario del 2026-10-20.
+- **Las correcciones de la revisión no tuvieron una segunda revisión independiente**: son autoevaluación, verificadas por sus pruebas y la CI.
+- **La 29.7** reutiliza `in_review` y `releaseUnit` para los usados.
+
+### El despliegue
+
+Sin incidentes: la `0059` se aplicó antes de detener el servicio, y el build, con el heap de 1.536 MB, terminó a la primera. Después, el servicio activo, `/login` en 200 desde el servidor y desde afuera, y ningún error en el journal.
