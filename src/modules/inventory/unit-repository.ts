@@ -139,6 +139,25 @@ const lockedColumns = {
   priceCurrency: stockUnits.priceCurrency,
 };
 
+// Las unidades con esos ids, sin bloqueo, en la transacción de quien llama. Para el pedido del agente,
+// que elige por id, nunca por IMEI (brief-29.8, D-7). Una de otra organización no vuelve.
+export function findUnitsByIdsIn(
+  executor: Executor,
+  organizationId: string,
+  unitIds: string[],
+): Promise<LockedUnit[]> {
+  if (unitIds.length === 0) return Promise.resolve([]);
+  return executor
+    .select(lockedColumns)
+    .from(stockUnits)
+    .where(
+      and(
+        eq(stockUnits.organizationId, organizationId),
+        inArray(stockUnits.id, unitIds),
+      ),
+    );
+}
+
 // Las unidades no dadas de baja con esos IMEI, sin distinguir mayúsculas y sin bloqueo. Para elegir
 // las unidades de una línea de un pedido o una venta (brief-29.5.2, D-1 y D-5). Desde la 29.7 un IMEI
 // puede tener una vendida y otra en el local (brief-29.7, U-2): quien elige prefiere la del local.

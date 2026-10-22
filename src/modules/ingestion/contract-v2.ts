@@ -181,6 +181,37 @@ const orderPlacedSchema = z.strictObject({
     .max(MAX_AGENT_ORDER_LINES),
 });
 
+// El pedido con unidades del agente (brief-29.8, D-7; U-2): un tipo nuevo dentro de v2, compatible.
+// Cada línea es de cantidad, como en order.placed, o de unidades, con de 1 a 10 ids sin repetir, leídos
+// de la lectura v3. La cantidad de una línea de unidades es la cuenta de ids. order.placed no cambia.
+export const ORDER_PLACED_WITH_UNITS_EVENT_TYPE_V2 = "order.placed_with_units";
+export const MAX_AGENT_LINE_UNITS = 10;
+
+const orderPlacedWithUnitsSchema = z.strictObject({
+  contract_version: z.literal(INGESTION_CONTRACT_VERSION_V2),
+  event_type: z.literal(ORDER_PLACED_WITH_UNITS_EVENT_TYPE_V2),
+  event_id: externalRef,
+  occurred_at: timestamp,
+  client: z.strictObject({
+    phone: z.string().regex(E164),
+  }),
+  lines: z
+    .array(
+      z.union([
+        z.strictObject({
+          product_id: z.uuid(),
+          quantity: quantityText,
+        }),
+        z.strictObject({
+          product_id: z.uuid(),
+          unit_ids: z.array(z.uuid()).min(1).max(MAX_AGENT_LINE_UNITS),
+        }),
+      ]),
+    )
+    .min(1)
+    .max(MAX_AGENT_ORDER_LINES),
+});
+
 export type MessageRecordedEventV2 = z.infer<typeof messageRecordedSchema>;
 export type ClientResolvedEventV2 = z.infer<typeof clientResolvedSchema>;
 export type ConversationResolvedEventV2 = z.infer<
@@ -191,13 +222,17 @@ export type ConversationEscalatedEventV2 = z.infer<
 >;
 export type ClientTagEventV2 = z.infer<typeof clientTagSchema>;
 export type OrderPlacedEventV2 = z.infer<typeof orderPlacedSchema>;
+export type OrderPlacedWithUnitsEventV2 = z.infer<
+  typeof orderPlacedWithUnitsSchema
+>;
 export type IngestionEventV2 =
   | MessageRecordedEventV2
   | ClientResolvedEventV2
   | ConversationResolvedEventV2
   | ConversationEscalatedEventV2
   | ClientTagEventV2
-  | OrderPlacedEventV2;
+  | OrderPlacedEventV2
+  | OrderPlacedWithUnitsEventV2;
 
 export type ParseIngestionEventV2Result =
   | { ok: true; event: IngestionEventV2 }
@@ -293,6 +328,28 @@ export function parseIngestionEventV2(
     // El uuid se compara sin mayúsculas: es el mismo producto (D-3).
     const products = event.lines.map((line) => line.product_id.toLowerCase());
     if (new Set(products).size !== products.length) rejected.add("lines");
+    if (rejected.size > 0) return invalid(rejected);
+    return { ok: true, event };
+  }
+
+  if (eventType === ORDER_PLACED_WITH_UNITS_EVENT_TYPE_V2) {
+    const parsed = orderPlacedWithUnitsSchema.safeParse(json);
+    if (!parsed.success) return invalid(fieldsOf(parsed.error.issues));
+    const event: OrderPlacedWithUnitsEventV2 = {
+      ...parsed.data,
+      occurred_at: toUtc(parsed.data.occurred_at),
+    };
+    const rejected = new Set<string>();
+    if (late(event.occurred_at)) rejected.add("occurred_at");
+    // Los uuid se comparan sin mayúsculas, como en order.placed: ni un producto ni una unidad se
+    // repiten en su línea.
+    const products = event.lines.map((line) => line.product_id.toLowerCase());
+    if (new Set(products).size !== products.length) rejected.add("lines");
+    for (const line of event.lines) {
+      if (!("unit_ids" in line)) continue;
+      const units = line.unit_ids.map((id) => id.toLowerCase());
+      if (new Set(units).size !== units.length) rejected.add("lines");
+    }
     if (rejected.size > 0) return invalid(rejected);
     return { ok: true, event };
   }

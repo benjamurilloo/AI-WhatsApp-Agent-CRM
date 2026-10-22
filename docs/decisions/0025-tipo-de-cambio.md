@@ -21,6 +21,13 @@
 - **Fases**: la fila de la 29.4 nombra «el cambio de fuente», que con lo de arriba pasa a la 29.4.2.
 - **Punto 5**: el formulario manda la cotización vigente que mostró, y si cambió mientras se cargaba el cobro, se rechaza: lo aplicado nunca sale de una cotización que el `admin` no vio (P-4).
 
+*Nota del 2026-10-22, al implementar la 29.8* ([brief-29.8](brief-29.8-el-catalogo-del-rubro-para-el-agente.md), U-3, y la respuesta del agente del mismo día), sin cambiar el texto de abajo:
+
+- **Punto 10, la cotización vencida** (U-3): con la vigente vencida, de más de 24 horas hábiles, **el precio convertido va vacío** y el agente da el precio en su moneda. El CRM no entrega un número viejo, en lugar de pedirle al agente que interprete una marca. También va vacío sin cotización, con una moneda que no es del par o si la conversión no cabe.
+- **Punto 10, la frase**: el agente dice **«a la cotización vigente»**, no «de hoy», porque la vigente puede ser de ayer o del viernes (propuesta del agente, aceptada por el usuario el 2026-10-22).
+- **Punto 10, la tasa**: el contrato la da tal como está guardada, cuántas unidades de la otra moneda vale una de la principal. **No se invierte** según la dirección.
+- **Consecuencias, la dependencia**: `src/app/api/read/` lee `getExchangeSetup`, como anticipaba este ADR. Ningún módulo suma una dependencia de `fx`: la guarda `fx-dependencies` sigue igual.
+
 *Nota del 2026-10-19, al implementar la 29.4.2* ([brief-29.4.2](brief-29.4.2-la-lectura-de-la-cotizacion.md)), con las decisiones del usuario sobre D-4 y D-5, sin cambiar el texto de abajo:
 
 - **Punto 4, el límite del 10 %**: se mide **contra la vigente**, no contra la última automática. Medido contra la automática, después de un salto real el lector quedaba trabado para siempre, porque cada lectura se rechazaba contra la misma automática vieja y una carga manual no lo destrababa (H-2). «Cambió o no» se sigue midiendo contra la última automática, así que R-M12 no cambia: una carga manual no se pisa mientras la fuente no cambie de valor (D-4).

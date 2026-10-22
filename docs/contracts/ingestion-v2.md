@@ -12,11 +12,13 @@
 
 - *Desde la 19.4* ([brief-19.4](../decisions/brief-19.4-el-pedido-del-agente.md)): **un tipo nuevo, solo en v2**, para dejar un pedido pendiente (§Pedidos). **Diseñado, implementado y validado localmente** con requests sintéticos (19.4.1). **No** está desplegado ni validado con el agente: eso es la 19.4.2 y la 19.4.3.
 
+- *Desde la 29.8* ([brief-29.8](../decisions/brief-29.8-el-catalogo-del-rubro-para-el-agente.md), D-7 y U-2): **un tipo nuevo, solo en v2**, `order.placed_with_units`, para dejar un pedido pendiente con las unidades que eligió el cliente (§Pedidos con unidades). Es un cambio compatible dentro de v2: `order.placed` no cambia. **Diseñado, implementado y validado localmente** con requests sintéticos. **No** está validado con el agente: lo confirma la ventana de la 29.8.
+
 *Hasta la 12.5 este párrafo decía que el emisor seguía sin cablear a su pipeline; actualizado por la revisión independiente de la 12.5 (R-2).* En `tests/fixtures/ingestion/v2/` conviven los fixtures de **forma asumida** (`"shape": "assumed"`, los vectores del contrato) y **seis capturas del agente** (`"shape": "captured"`), que guardan el cuerpo tal como llegó a staging. Este contrato no deriva de la forma de eventos de ningún sistema existente.
 
 ## Qué cambia respecto de v1
 
-v2 es la misma superficie de escritura que [v1](ingestion-v1.md), en otra ruta, con los mismos cuatro eventos. *Desde la 16.2* suma dos que v1 no tiene: `client.tag_added` y `client.tag_removed` (§Etiquetas). *Desde la 19.4*, un tercero: `order.placed` (§Pedidos). **v1 sigue funcionando igual**, congelada. Todo lo que este documento no menciona rige como en v1: referencias opacas, fechas, texto, tamaño, identidad, idempotencia, algoritmo del hash, reglas de negocio (`422`), vigencia de la conversación y proyección.
+v2 es la misma superficie de escritura que [v1](ingestion-v1.md), en otra ruta, con los mismos cuatro eventos. *Desde la 16.2* suma dos que v1 no tiene: `client.tag_added` y `client.tag_removed` (§Etiquetas). *Desde la 19.4*, un tercero: `order.placed` (§Pedidos). *Desde la 29.8*, un cuarto: `order.placed_with_units` (§Pedidos con unidades). **v1 sigue funcionando igual**, congelada. Todo lo que este documento no menciona rige como en v1: referencias opacas, fechas, texto, tamaño, identidad, idempotencia, algoritmo del hash, reglas de negocio (`422`), vigencia de la conversación y proyección.
 
 | | v1 | v2 |
 |---|---|---|
@@ -29,6 +31,7 @@ v2 es la misma superficie de escritura que [v1](ingestion-v1.md), en otra ruta, 
 | Correlación | no existe | `X-Correlation-Id`, validado antes del límite de tasa |
 | Etiquetas del cliente (16.2) | no existen: un `client.tag_added` da `400` en `event_type` | `client.tag_added` y `client.tag_removed` |
 | Pedido pendiente (19.4) | no existe: un `order.placed` da `400` en `event_type` | `order.placed` |
+| Pedido con unidades (29.8) | no existe: da `400` en `event_type` | `order.placed_with_units` |
 
 ## Transporte
 
@@ -264,6 +267,8 @@ Lo que hace el emisor ante un `422` es lo de la guía: no reenvía el mismo `eve
 | `currency_mismatch` | los precios de las líneas están en monedas distintas: un pedido tiene una sola, la de su primera línea |
 | `amount_out_of_range` | el total de una línea redondea a cero, o una línea o el total no caben en `numeric(14, 2)` |
 
+*Nota del 2026-10-22, 29.8* ([brief-29.8](../decisions/brief-29.8-el-catalogo-del-rubro-para-el-agente.md), H-8), sin cambiar la conducta: este documento no lo decía, pero desde la 29.5 **`product_not_found` incluye un producto que se lleva por unidad** (un equipo con su IMEI), y desde la 29.6, **un producto de servicio** (brief-29.5, D-7; brief-29.6, D-5). El código lo hacía y lo probaba; el documento había quedado atrás. Pedir un producto por unidad es `order.placed_with_units` (§Pedidos con unidades).
+
 **Precedencia**: primero el cliente; después las líneas en su orden, y dentro de cada línea las reglas en el orden de la tabla. Se responde la primera que falla.
 
 **Qué hace el emisor ante un `422`** (D-10): lo de la guía (no reenvía el mismo `event_id`) y, como el cliente ya escuchó que su pedido quedó anotado, **deriva la conversación** con `conversation.escalated`, para que una persona lo vea en la app. El CRM no guarda el contenido rechazado.
@@ -292,9 +297,77 @@ Lo que hace el emisor ante un `422` es lo de la guía: no reenvía el mismo `eve
 
 `payload_hash`: `9c312d278d0e5a3fb0d212270a8940fe75cae1e169b7bf3b6059d753e5f49fab`, calculado sobre este texto, escrito a mano, con `sha256sum`. Las líneas conservan el orden en que llegan: otro orden es otro contenido.
 
+## Pedidos con unidades (desde la 29.8)
+
+[brief-29.8](../decisions/brief-29.8-el-catalogo-del-rubro-para-el-agente.md), D-7 y U-2; [ADR 0024](../decisions/0024-rubros-y-capacidades.md), punto 15. Un tipo que **solo existe en v2**, compatible dentro de v2 (§Versionado). **`order.placed` no cambia**: sigue rechazando un producto por unidad como `product_not_found`.
+
+**Qué hace**: lo mismo que `order.placed` (§Pedidos), con una diferencia: **una línea puede traer las unidades que eligió el cliente**, por su `unit_id`, leído de la ruta de unidades de [read-v3](read-v3.md). Deja un pedido **pendiente**, con las unidades guardadas en el pedido, **sin reservarlas**.
+
+**Cuándo usarlo**: el agente informó que lo manda solo cuando el pedido tiene al menos una línea de unidades, y que un pedido solo de cantidades sigue por `order.placed`. Los dos caminos valen: este tipo acepta también un pedido solo de cantidades.
+
+| Campo | Tipo | Nulable | Reglas |
+|---|---|---|---|
+| `event_type` | string | no | `"order.placed_with_units"` |
+| `client.phone` | string | no | E.164, como en `order.placed` |
+| `lines` | arreglo | no | de **1 a 10** líneas, sin repetir un producto. **Cada línea es de un tipo**: de cantidad o de unidades. Una con los dos campos, o con ninguno, da `400` con `lines` |
+| línea de cantidad | objeto | no | `{product_id, quantity}`, con las reglas de `order.placed`. Para un producto que se lleva por cantidad |
+| línea de unidades | objeto | no | `{product_id, unit_ids}`: de **1 a 10** uuid, sin repetir en la línea, también con otra capitalización. Para un producto que se lleva por unidad. **La cantidad de la línea es la cuenta de ids** |
+
+**Sin precios**, como en `order.placed`:
+- el CRM copia al crear el pedido **el precio de cada unidad**: el propio, o el del producto si no tiene uno;
+- cada unidad se redondea como una línea de cantidad 1, y el monto de la línea es la suma.
+
+**Reglas de negocio**: las de `order.placed`, con dos nuevas.
+
+| `rule` | Cuándo |
+|---|---|
+| `client_not_found` | como en `order.placed` |
+| `client_inactive` | como en `order.placed` |
+| `product_not_found` | como en `order.placed`, pero **un producto por unidad sí se acepta**. Un producto de servicio sigue fuera |
+| `product_without_price` | como en `order.placed` |
+| `unit_tracking_mismatch` | una línea de cantidad para un producto que se lleva por unidad, o una de unidades para uno que se lleva por cantidad |
+| `unit_not_available` | una unidad no existe, es de otro producto o de otra organización, o **ya no está disponible**: reservada, en revisión, en reparación, vendida o dada de baja. **Sin distinguir** |
+| `currency_mismatch` | como en `order.placed`, y además una unidad con precio propio en otra moneda que el pedido |
+| `amount_out_of_range` | como en `order.placed`, para la línea de cantidad o para cada unidad |
+
+**Precedencia**: la de `order.placed`. Primero el cliente; después las líneas en su orden, y dentro de cada línea las reglas en el orden de la tabla. Se responde la primera que falla. **Un rechazo no crea el pedido ni consume un número**, y un reenvío responde la misma regla.
+
+**No reserva** ([ADR 0020](../decisions/0020-el-pedido.md); ADR 0024, punto 15, R-10):
+- dos pendientes pueden pedir la misma unidad, y los dos se aceptan;
+- la persona que confirma el primero la reserva, y confirmar el segundo falla porque la unidad ya no está disponible;
+- **el emisor nunca dice «te la reservo» ni «es tuya»**: es una solicitud que confirma el local.
+
+**Respuesta**: la de `order.placed`, `{result, order: {number}}`. El reenvío idéntico es `duplicate`, con el mismo número.
+
+**Qué hace el emisor ante un `422`**: lo de `order.placed`, **deriva la conversación** con `conversation.escalated`. El agente informó que guarda en la propuesta los `unit_id` que leyó en ese turno, así que una unidad vendida entre el resumen y el «sí» del cliente llega como `unit_not_available`.
+
+**No cuenta en la métrica 12**: no es un mensaje ([MetricsCatalog](../analytics/MetricsCatalog.md) §12).
+
+**`order.placed_with_units`**:
+
+```json
+{
+  "contract_version": "2",
+  "event_type": "order.placed_with_units",
+  "event_id": "evt-v2-pedido-unidades-0001",
+  "occurred_at": "2026-09-16T12:00:18-03:00",
+  "client": { "phone": "+5491155550001" },
+  "lines": [
+    { "product_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7", "unit_ids": ["a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"] },
+    { "product_id": "9b2f4d1a-6c3e-4f8a-b5d7-2e1c0a9f8b6d", "quantity": "1" }
+  ]
+}
+```
+
+```text
+{"client":{"phone":"+5491155550001"},"contract_version":"2","event_id":"evt-v2-pedido-unidades-0001","event_type":"order.placed_with_units","lines":[{"product_id":"7c9e6679-7425-40de-944b-e07fc1f90ae7","unit_ids":["a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"]},{"product_id":"9b2f4d1a-6c3e-4f8a-b5d7-2e1c0a9f8b6d","quantity":"1"}],"occurred_at":"2026-09-16T15:00:18.000Z"}
+```
+
+`payload_hash`: `5223e47c7c08f334e8017421fe57cd0a8bd39b5d28ca3cec53f8854224f45d2d`, calculado sobre este texto con SHA-256, y fijado como vector en `contract-v2.test.ts`. **Los ids de las unidades conservan el orden en que llegan**: otro orden es otro contenido.
+
 ## Respuestas
 
-- **Éxito y reenvío**: las formas y los códigos de v1 para cada evento, con `"contract_version": "2"`. `message.recorded` responde `201` al aceptar y `200` al reenvío; los otros tres, desde la 16.2 los dos de etiquetas y desde la 19.4 el pedido, siempre `200`.
+- **Éxito y reenvío**: las formas y los códigos de v1 para cada evento, con `"contract_version": "2"`. `message.recorded` responde `201` al aceptar y `200` al reenvío; los otros tres, desde la 16.2 los dos de etiquetas, desde la 19.4 el pedido y desde la 29.8 el pedido con unidades, siempre `200`.
 - **Errores**: la tabla de v1, con dos diferencias: el campo `correlation_id` en `VALIDATION_ERROR` y el `reason` del `409`.
 
 ### `CONFLICT` con motivo (brief-12.3, D-7)
@@ -329,7 +402,7 @@ El cuerpo del `409` es `{ "code": "CONFLICT", "request_id", "reason" }`.
 | `409` con `event_payload_mismatch` | el emisor armó dos contenidos con el mismo `event_id` | **alerta**: es un defecto del emisor, y el segundo contenido no se guardó |
 | `400 VALIDATION_ERROR` | el evento o la correlación son inválidos | no reenvía el mismo: corrige y manda uno nuevo |
 | `401`, `403` o `404` | credencial, alcance, allowlist o endpoint apagado | no reenvía hasta corregir la configuración: **retiene** el evento, avisa y lo reenvía igual cuando la configuración se corrige. **Nunca lo descarta** |
-| `422 BUSINESS_RULE_VIOLATION` | una regla de negocio, con `rule`; es **terminal** | no reenvía el mismo `event_id`: corrige la causa y manda un evento nuevo. *Desde la 19.4*, ante un `422` de `order.placed`, además deriva la conversación (§Pedidos) |
+| `422 BUSINESS_RULE_VIOLATION` | una regla de negocio, con `rule`; es **terminal** | no reenvía el mismo `event_id`: corrige la causa y manda un evento nuevo. *Desde la 19.4*, ante un `422` de `order.placed`, además deriva la conversación (§Pedidos); *desde la 29.8*, también ante uno de `order.placed_with_units` (§Pedidos con unidades) |
 
 *Aclarado el 2026-09-27 por la 12.5* ([brief-12.5](../decisions/brief-12.5-turno-completo-en-staging.md), a partir del hallazgo H-5 del emisor, con la aprobación del usuario). La fila de `401`, `403` y `404` decía solo «no reenvía hasta corregir la configuración». Se leyó como «el evento se descarta», y con esa lectura, **apagar la ingestión para mantenimiento hace perder mensajes**. No es lo que quería decir:
 
@@ -362,4 +435,11 @@ Las reglas de v1: agregar un `event_type` o un canal que el modelo admita es com
 - **Validado en integración** (12.3.3, O-35): la autenticación y el validador con el tráfico del agente, cruzados con el log, las filas, el `payload_hash` y el dashboard, en la misma evidencia.
 - **Etiquetas, desde la 16.2** (`deterministic`): `contract-v2.test.ts` con los dos vectores y la validación; `client-tags-ingestion.test.ts`, contra PostgreSQL real, con las tres reglas, los reenvíos, el actor, la concurrencia con la ficha y el aislamiento; `analytics-ingestion.test.ts`, fuera de la métrica 12. Fixtures de forma asumida. **Validado en integración** con el agente como emisor real, en la ventana 16.2.3 de la organización de demostración de producción ([brief-16.2](../decisions/brief-16.2-etiquetas-puestas-por-el-agente.md), §Resultados 16.2.3).
 - **Pedido del agente, desde la 19.4** (`deterministic`): `contract-v2.test.ts` con el vector y cada `400` de las líneas; `orders-agent.test.ts`, contra PostgreSQL real, con la proyección, el reenvío con el mismo número, cada regla con su precedencia, la concurrencia con la desactivación y el cambio de precio, y el aislamiento; `ingestion-v2-http.test.ts` con las respuestas; `analytics-ingestion.test.ts`, fuera de la métrica 12. Fixtures de forma asumida. **Validado en integración** con el agente como emisor real, en la ventana 19.4.3 de la organización de demostración de producción (2026-10-12): un pedido aceptado (`P-000004`), su reenvío `duplicate` con el mismo número, un `422 product_not_found` sin consumir un número y su `conversation.escalated`, conciliados contra `ingestion_events`, `orders`, `order_lines`, la auditoría y el journal ([brief-19.4](../decisions/brief-19.4-el-pedido-del-agente.md), §La conciliación del pedido). Dos capturas: `captured-order-placed.json` y `captured-order-placed-rejected.json`, con el teléfono reemplazado por uno sintético. **Sin validar con el emisor real**: `client_inactive`, `currency_mismatch` y `amount_out_of_range`, y un pedido de más de una línea.
+- **Pedido con unidades, desde la 29.8** (`deterministic`):
+  - `contract-v2.test.ts`: el vector, cada `400` de las líneas y que `order.placed` no admite una línea de unidades;
+  - `orders-agent-units.test.ts`, contra PostgreSQL real: el pendiente con sus unidades sin reservarlas, el precio de cada una, el reenvío con el mismo número, la auditoría sin el IMEI, cada regla nueva con su precedencia y sin consumir un número, los dos pendientes con la misma unidad y la segunda confirmación que falla, y `order.placed` que sigue rechazando el producto por unidad;
+  - `analytics-ingestion.test.ts`, fuera de la métrica 12;
+  - fixtures de forma asumida.
+
+  **Sin validar con el emisor real**: todo, hasta la ventana de la 29.8.
 - **Sin validar**: un turno que haya recorrido la cadena real del agente, la referencia que el CRM devuelve distinta de la propuesta, y los dos `409` con el emisor real.

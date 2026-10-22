@@ -49,6 +49,16 @@
   - **punto 8, la venta anulada** (U-3): un cobro con «Permuta» de una venta que se anula **pasa al crédito del cliente, como cualquier cobro** (ADR 0022). El usado queda usado mientras el cobro siga vigente; para liberarlo, se anula el cobro;
   - **punto 8, quién crea el medio** (U-4): **`org:capability`**, al activar `trade_ins` y al volver a correrlo con la capacidad activa, auditado. La `0061` no escribe datos. Si ya hay un medio llamado «Permuta», el comando se detiene y lo dice. El medio no se renombra ni se desactiva, no es efectivo y no cuenta para el tope de medios;
   - **punto 8, la moneda**: el cobro con «Permuta» va en la moneda del usado, que tiene que ser la de la venta, sin conversión (ADR 0025, R-B5). El pago de un usado comprado va en la moneda del usado, y puede salir en la otra moneda con la cotización, como el pago a un proveedor (ADR 0025, punto 5).
+- *Nota del 2026-10-22, por la 29.8* ([brief-29.8](brief-29.8-el-catalogo-del-rubro-para-el-agente.md), aprobado por el usuario con las recomendaciones, U-1 a U-4 en su opción (a), y confirmado por el agente el mismo día), sin cambiar el texto:
+  - **punto 15, la división**: los contratos del agente se dividen en tres (decisión del usuario del 2026-10-21):
+    - **29.8**: las capacidades, el catálogo con los usados, las unidades disponibles, el precio convertido y el pedido de una unidad;
+    - **29.8.2**: las reparaciones con su precio y el estado de las órdenes de servicio, con su propia decisión de privacidad, porque hoy ninguna lectura del agente se busca por teléfono;
+    - **29.8.3**: la cotización de un usado, con `checklist_incomplete` (brief-29.7.3, O-3) y la regla del punto 13 de no cotizar con valores de ejemplo;
+  - **punto 15, cómo llega** (U-1 y U-2): por **`read-v3`**, una versión nueva de la lectura, y por **`order.placed_with_units`**, un tipo nuevo dentro de `ingestion-v2`. `read-v1`, `read-v2` y `order.placed` no cambian: v1 y v2 siguen sin los usados, y `order.placed` sigue rechazando el producto por unidad. Un producto nuevo que se lleva por unidad aparece en v1 y v2, como desde la 29.5 (precisado por la revisión independiente de la 29.8, H-5). Los productos de servicio siguen fuera de la lectura hasta la 29.8.2;
+  - **punto 15, el pedido de una unidad** (R-10): lo deja el agente con las unidades que eligió el cliente, **sin reservarlas**; reserva la confirmación de una persona. Dos pendientes pueden pedir la misma unidad, y la segunda confirmación falla;
+  - **punto 15, las fotos** (U-4): **las unidades no tienen fotos**, y la 29.8 no las agrega. La imagen del producto para el agente es la ruta del [ADR 0018](0018-imagenes-de-producto.md), punto 7, que tampoco existe todavía. Las dos quedan para una subfase propia, cuando el agente la pida. El agente informó el 2026-10-22 que hoy no manda imágenes de producto;
+  - **punto 15, los modelos**: no hay ruta de modelos (decisión del usuario del 2026-10-22). El agente busca por texto, y el filtro por modelo de la lista se queda;
+  - **punto 14, lo que el agente nunca lee**: lo fija una guarda nueva, `agent-contract-fields`, sobre todas las respuestas de la lectura y de la ingestión. Hasta la 29.8 solo lo verificaba, para el costo, un test de integración.
 
 ## Contexto
 

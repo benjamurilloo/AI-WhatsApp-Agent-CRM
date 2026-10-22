@@ -58,6 +58,7 @@ export {
   type ProductVariantRejection,
   type ProductSuggestions,
   type ServiceProduct,
+  type ServiceProductScope,
   type SetPriceResult,
   type StockStatus,
   type UpdateProductResult,
@@ -110,6 +111,9 @@ export {
   createModel,
   getModel,
   getProductVariants,
+  // La API de lectura v3 (brief-29.8, D-2).
+  getProductVariantsForService,
+  type ServiceProductVariant,
   getVariantFormOptions,
   hasVariants,
   listAttributes,

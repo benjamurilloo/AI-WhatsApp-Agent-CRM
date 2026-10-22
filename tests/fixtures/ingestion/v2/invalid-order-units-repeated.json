@@ -1,0 +1,28 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: no proviene de ningún emisor real (brief-29.8, D-7). La ventana con el agente la contrasta con lo que mande.",
+  "description": "La misma unidad dos veces en su línea: un defecto del emisor, que da 400 con lines.",
+  "received_at": "2026-09-16T15:00:00.000Z",
+  "payload": {
+    "contract_version": "2",
+    "event_type": "order.placed_with_units",
+    "event_id": "evt-v2-pedido-unidades-0002",
+    "occurred_at": "2026-09-16T12:00:18-03:00",
+    "client": {
+      "phone": "+5491155550001"
+    },
+    "lines": [
+      {
+        "product_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+        "unit_ids": [
+          "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+          "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
+        ]
+      }
+    ]
+  },
+  "expected": {
+    "ok": false,
+    "fields": ["lines"]
+  }
+}

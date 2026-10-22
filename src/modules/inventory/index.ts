@@ -92,6 +92,12 @@ export {
   type UnitDetailsInput,
   type UnitPrice,
   type UnitSummary,
+  // La API de lectura v3 y el pedido del agente con unidades (brief-29.8, D-3 y D-7).
+  listAvailableUnitsForService,
+  resolveAgentLineUnits,
+  type AgentLineUnits,
+  type AgentUnit,
+  type ServiceAvailableUnit,
 } from "./units";
 // La reparación de una unidad propia (brief-29.6.2, D-2): service manda a reparar, marca reparada y
 // cancela con su transacción; liberar a la venta es una acción de un admin.

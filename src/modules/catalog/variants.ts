@@ -1298,6 +1298,55 @@ export async function getProductVariants(
   return views;
 }
 
+// El modelo y la variante de unos productos, para la API de lectura v3 (brief-29.8, D-2). La
+// organización sale de la credencial y no hay rol. Solo los atributos que son variante y están activos,
+// en el orden de la organización: el agente ofrece el equipo, no la ficha. null sin la capacidad, y
+// entonces el producto va sin modelo ni atributos.
+export type ServiceProductVariant = {
+  model: { id: string; name: string; brand: string | null } | null;
+  attributes: { key: string; name: string; value: string }[];
+};
+
+export async function getProductVariantsForService(
+  organizationId: string,
+  products: { id: string; modelId: string | null }[],
+): Promise<Map<string, ServiceProductVariant> | null> {
+  if (!(await hasCapability(organizationId, "variants"))) return null;
+  const [definitions, models, values] = await Promise.all([
+    loadDefinitions(organizationId),
+    repository.findModels(organizationId),
+    repository.findValues(
+      organizationId,
+      products.map((product) => product.id),
+    ),
+  ]);
+  const variantDefinitions = definitions.filter(
+    (definition) => definition.isVariant && definition.isActive,
+  );
+  const modelsById = new Map(models.map((model) => [model.id, model]));
+  const views = new Map<string, ServiceProductVariant>();
+  for (const product of products) {
+    const byDefinition = new Map(
+      values
+        .filter((value) => value.productId === product.id)
+        .map((value) => [value.definitionId, value]),
+    );
+    const model = product.modelId ? modelsById.get(product.modelId) : undefined;
+    views.set(product.id, {
+      model: model
+        ? { id: model.id, name: model.name, brand: model.brand }
+        : null,
+      attributes: variantDefinitions.flatMap((definition) => {
+        const value = displayValue(definition, byDefinition.get(definition.id));
+        return value === null
+          ? []
+          : [{ key: definition.key, name: definition.name, value }];
+      }),
+    });
+  }
+  return views;
+}
+
 // Lo que el formulario de producto ofrece: modelos y definiciones activos, más el modelo y las
 // opciones que el producto ya tiene aunque estén desactivados. null sin la capacidad.
 export type VariantFormOptions = {

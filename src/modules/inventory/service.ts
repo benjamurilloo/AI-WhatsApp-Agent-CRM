@@ -13,6 +13,7 @@ import {
   type Product,
   type ProductActivityFilter,
   type ServiceProduct,
+  type ServiceProductScope,
   type StockStatus,
   type StockTracking,
 } from "@/modules/catalog";
@@ -372,20 +373,31 @@ export async function getCatalogProductForService(
   return withStatus ?? null;
 }
 
-// Las mismas dos, para la v2: el estado sale de lo disponible (brief-19.4, D-12).
+// Las mismas dos, para la v2: el estado sale de lo disponible (brief-19.4, D-12). Desde la 29.8, la v3
+// pasa el alcance con los usados y sus filtros (brief-29.8, D-2); sin él, la v2 no cambia.
 export async function searchCatalogAvailableForService(
   organizationId: string,
   query: { text: string; limit: number },
+  scope: ServiceProductScope = {},
 ): Promise<ServiceCatalogProduct[]> {
-  const products = await searchActiveProductsForService(organizationId, query);
+  const products = await searchActiveProductsForService(
+    organizationId,
+    query,
+    scope,
+  );
   return withStockStatus(organizationId, products, "available");
 }
 
 export async function getCatalogProductAvailableForService(
   organizationId: string,
   productId: string,
+  scope: Pick<ServiceProductScope, "includeUsed"> = {},
 ): Promise<ServiceCatalogProduct | null> {
-  const product = await getActiveProductForService(organizationId, productId);
+  const product = await getActiveProductForService(
+    organizationId,
+    productId,
+    scope,
+  );
   if (!product) return null;
   const [withStatus] = await withStockStatus(
     organizationId,
@@ -436,8 +448,13 @@ export type ServiceProductBalance = {
 export async function getProductBalanceForService(
   organizationId: string,
   productId: string,
+  scope: Pick<ServiceProductScope, "includeUsed"> = {},
 ): Promise<ServiceProductBalance | null> {
-  const product = await getActiveProductForService(organizationId, productId);
+  const product = await getActiveProductForService(
+    organizationId,
+    productId,
+    scope,
+  );
   if (!product) return null;
   const balances = await repository.findBalances(organizationId, [product.id]);
   return {

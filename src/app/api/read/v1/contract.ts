@@ -42,8 +42,15 @@ export const MESSAGES_MAX_LIMIT = 50;
 const CONTROL = /\p{Cc}/u;
 const LONE_SURROGATE = /[\uD800-\uDFFF]/u;
 
+// model_id y condition, desde la 29.8: solo los filtros de la lista de la v3 (brief-29.8, D-2).
 export type ReadField =
-  "q" | "limit" | "product_id" | "conversation_ref" | "correlation_id";
+  | "q"
+  | "limit"
+  | "product_id"
+  | "conversation_ref"
+  | "correlation_id"
+  | "model_id"
+  | "condition";
 
 type Parsed<T> = { ok: true; value: T } | { ok: false; field: ReadField };
 
@@ -286,8 +293,9 @@ export function contractAmount(amount: string, currency: string): string {
 }
 
 // La condición del contrato: new o refurbished. Desde la 29.5 el modelo tiene también used, y las
-// lecturas de servicio de catalog dejan afuera esos productos hasta el contrato de la 29.8 (brief-29.5,
-// D-7). Si uno llegara acá, es un defecto: se lanza en vez de mandarlo con otra condición.
+// lecturas de servicio de catalog dejan afuera esos productos para v1 y v2 (brief-29.5, D-7). Desde la
+// 29.8 los lee solo read-v3, con su propio mapeo (brief-29.8, D-2). Si uno llegara acá, es un defecto:
+// se lanza en vez de mandarlo con otra condición.
 export function contractCondition(
   condition: ServiceCatalogProduct["condition"],
 ): ContractProduct["condition"] {

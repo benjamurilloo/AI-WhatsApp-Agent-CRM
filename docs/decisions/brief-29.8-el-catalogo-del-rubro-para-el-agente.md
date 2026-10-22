@@ -332,3 +332,28 @@ Detenerse y consultar si:
 - **el agente pide una forma distinta** del contrato;
 - **una lectura `…ForService` necesitaría devolver** un IMEI, un costo o un dato del cliente;
 - **el pedido con unidades necesitaría reservar** o tocar `stock_units`.
+
+## Desviaciones de la implementación
+
+1. **D-5 y D-9, las guardas `capability-reads` y `service-read-entry-points` no cambiaron** (revisión independiente, H-1). El brief decía que se actualizaban, pero las dos ya cubren lo nuevo por su forma:
+   - `capability-reads` vigila el acceso a la tabla, y `listCapabilitiesForService` lee por `findCapabilities`, la única lectura autorizada;
+   - `service-read-entry-points` vigila los nombres `…ForService` por patrón, y las funciones nuevas viven en `src/modules/` y se llaman desde `src/app/api/read/`, las dos carpetas permitidas.
+
+   Agregarles un caso no sumaba detección. `exposed-surface` sí cambió, con las cinco rutas.
+2. **D-4, sin ruta de modelos**: decisión del usuario del 2026-10-22 (§La respuesta del agente).
+
+## Revisión independiente
+
+Un agente que no participó del trabajo revisó la implementación en solo lectura, contra este brief y las reglas vigentes, el 2026-10-22. **Veredicto: R1, sin bloqueantes**, con 5 no bloqueantes y 4 observaciones. Cada hallazgo se verificó contra el código antes de aceptarlo (autoevaluación de la verificación):
+
+| Hallazgo | Verificación | Resolución |
+|---|---|---|
+| H-1, las guardas que el brief decía actualizar | cierto | desviación 1, declarada |
+| H-2, sin prueba con cada capacidad apagada | cierto | caso 10 de `read-api-v3.test.ts`, que borra las filas de capacidad en la base de prueba. Falla si se quita la comprobación de `serialized_units` (probado y revertido) |
+| H-3, puntos ciegos de `agent-contract-fields` | cierto | la guarda separa también por camelCase; la regla de texto ve claves anidadas en la misma línea y abreviaturas entre llaves; el recorrido usa la definición interna de zod 4 (pipe, intersección, lazy, record, tupla, default) y lanza ante un tipo contenedor que no conoce; fija claves de los esquemas con `.refine()`. Cada forma nueva tiene su caso de fallo |
+| H-4, dos frases de FunctionalRequirements | cierto | corregidas con nota fechada (FR-USA-13 y la precisión de la 29.5) |
+| H-5, la nota del ADR 0024 decía que v1 y v2 no tienen productos por unidad | cierto | corregida: un producto nuevo por unidad aparece en v1 y v2 desde la 29.5; solo los usados y los de servicio quedan fuera |
+| H-6, «la única lectura» de las capacidades | cierto | DataModel, Overview y el comentario de `organizations/service.ts` nombran `listCapabilitiesForService` |
+| H-7, `order.placed_with_units` no consulta `serialized_units` | cierto | aceptado sin cambio: el pedido de la pantalla tampoco la consulta, y una capacidad no se desactiva, así que no hay producto por unidad sin ella |
+| H-8, la guía del emisor no nombraba el tipo nuevo | cierto | la fila del `422` lo nombra |
+| H-9, sin prueba de `client_inactive` ni `amount_out_of_range` por la rama de unidades | cierto | caso nuevo en `orders-agent-units.test.ts` |

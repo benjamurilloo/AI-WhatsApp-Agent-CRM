@@ -263,15 +263,22 @@ export function findProducts(
 // pasan solo las sugerencias del buscador (brief-20.3, D-5). La API de lectura no lo pasa, así que
 // read-v1 y read-v2 no cambian.
 //
-// Desde la 29.5, con `excludeUsed: true` deja afuera los productos usados: lo pasa solo la búsqueda
-// del agente, que no los ve hasta la 29.8 (brief-29.5, D-7). Los buscadores de la aplicación sí.
+// Desde la 29.5, con `excludeUsed: true` deja afuera los productos usados: lo pasa la búsqueda del
+// agente de read-v1 y read-v2 (brief-29.5, D-7). Desde la 29.8, la de read-v3 no lo pasa y suma los
+// filtros modelId y condition (brief-29.8, D-2). Los buscadores de la aplicación ven los usados.
 // Desde la 29.6, el producto de servicio nunca sale: se vende solo por su orden de servicio, y ni el
 // agente ni los buscadores de los comprobantes lo ofrecen (brief-29.6, D-5).
 export function findActiveProductsRanked(
   organizationId: string,
   text: string,
   limit: number,
-  options: { barcode?: boolean; excludeUsed?: boolean } = {},
+  options: {
+    barcode?: boolean;
+    excludeUsed?: boolean;
+    // Los filtros de la lectura v3 (brief-29.8, D-2).
+    modelId?: string;
+    condition?: ProductCondition;
+  } = {},
 ): Promise<ProductRow[]> {
   const skuMatch = options.barcode
     ? sql`(lower(${products.sku}) = lower(${text}) or lower(${products.barcode}) = lower(${text}))`
@@ -286,6 +293,10 @@ export function findActiveProductsRanked(
         eq(products.isActive, true),
         eq(products.isService, false),
         options.excludeUsed ? ne(products.condition, "used") : undefined,
+        options.modelId ? eq(products.modelId, options.modelId) : undefined,
+        options.condition
+          ? eq(products.condition, options.condition)
+          : undefined,
         or(productSearchCondition(text), skuMatch),
       ),
     )

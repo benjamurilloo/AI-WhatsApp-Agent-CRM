@@ -27,6 +27,9 @@ export {
   INGESTION_FIELDS_V2,
   MAX_AGENT_ORDER_LINES,
   ORDER_PLACED_EVENT_TYPE_V2,
+  // El pedido con unidades (brief-29.8, D-7).
+  MAX_AGENT_LINE_UNITS,
+  ORDER_PLACED_WITH_UNITS_EVENT_TYPE_V2,
   ingestionPayloadHashV2,
   isPhoneAsName,
   MESSAGE_KINDS_V2,

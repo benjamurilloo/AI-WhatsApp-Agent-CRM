@@ -17,6 +17,7 @@ export {
   getOrganizationTimezone,
   getOrganizationTimezoneForService,
   hasCapability,
+  listCapabilitiesForService,
   listMembers,
   reactivateMember,
   setMainCurrency,

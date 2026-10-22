@@ -1079,30 +1079,47 @@ async function withCurrentPrices(
 
 // El texto y el límite llegan ya validados por la API (D-4). Desde la 29.5, las lecturas de servicio
 // dejan afuera los productos usados: read-v1 y read-v2 admiten solo new y refurbished, y el agente no
-// ofrece usados hasta el contrato de la 29.8 (ADR 0024, punto 15; brief-29.5, D-7). No cambia la forma
+// ofrecía usados hasta el contrato de la 29.8 (ADR 0024, punto 15; brief-29.5, D-7). No cambia la forma
 // del contrato: cambia qué productos aparecen.
+//
+// Desde la 29.8, la lectura v3 pasa includeUsed y sus filtros (brief-29.8, D-2): los usados entran, y
+// los productos de servicio siguen fuera. Sin includeUsed, la conducta de v1 y v2 no cambia.
+export type ServiceProductScope = {
+  includeUsed?: boolean;
+  modelId?: string;
+  condition?: ProductCondition;
+};
+
 export async function searchActiveProductsForService(
   organizationId: string,
   query: { text: string; limit: number },
+  scope: ServiceProductScope = {},
 ): Promise<ServiceProduct[]> {
   const rows = await repository.findActiveProductsRanked(
     organizationId,
     query.text.trim(),
     query.limit,
-    { excludeUsed: true },
+    {
+      excludeUsed: !scope.includeUsed,
+      modelId: scope.modelId,
+      condition: scope.condition,
+    },
   );
   return withCurrentPrices(organizationId, rows);
 }
 
 // Un producto inactivo, usado, de otra organización o inexistente da null, sin distinguir. Desde la
-// 29.6, también el producto de servicio (brief-29.6, D-5).
+// 29.6, también el producto de servicio (brief-29.6, D-5). Desde la 29.8, con includeUsed, el usado
+// vuelve (brief-29.8, D-2).
 export async function getActiveProductForService(
   organizationId: string,
   productId: string,
+  scope: Pick<ServiceProductScope, "includeUsed"> = {},
 ): Promise<ServiceProduct | null> {
   if (!productIdSchema.safeParse(productId).success) return null;
   const row = await repository.findProduct(organizationId, productId);
-  if (!row?.isActive || row.condition === "used" || row.isService) return null;
+  if (!row?.isActive || row.isService) return null;
+  if (row.condition === "used" && !scope.includeUsed) return null;
   const [product] = await withCurrentPrices(organizationId, [row]);
   return product ?? null;
 }

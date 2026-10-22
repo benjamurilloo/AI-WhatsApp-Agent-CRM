@@ -1,0 +1,24 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: ningún consumidor real leyó esta respuesta (brief-29.8, D-2). La ventana con el agente la contrasta con lo que lea.",
+  "description": "El stock de un usado por unidad: el de v2, con lo disponible igual a sus unidades available.",
+  "request": {
+    "method": "GET",
+    "path": "/api/read/v3/products/7c9e6679-7425-40de-944b-e07fc1f90ae7/stock",
+    "headers": {
+      "authorization": "Bearer crm_read_<token>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "contract_version": "3",
+      "product_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+      "quantity_on_hand": "3",
+      "quantity_reserved": "1",
+      "quantity_available": "2",
+      "unit": "unidad",
+      "stock_status": "disponible"
+    }
+  }
+}

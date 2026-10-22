@@ -4,6 +4,7 @@
 - **Diseñado e implementado** en la 19.4.1 ([brief-19.4](../decisions/brief-19.4-el-pedido-del-agente.md), D-12), a pedido del agente (respuesta al pedido 19.4 del 2026-10-11).
 - **Validado localmente** con requests sintéticos (`deterministic`).
 - **Validado en integración** con el agente como consumidor real, en producción, en la organización de demostración, el 2026-10-12 (19.4.3): la búsqueda, el detalle y el stock, conciliados por `X-Request-Id` contra el journal. **Lo disponible con reservas no se vio en producción**: no había nada reservado.
+- *Nota del 2026-10-22, 29.8* ([brief-29.8](../decisions/brief-29.8-el-catalogo-del-rubro-para-el-agente.md), H-8), sin cambiar la conducta. Como en v1, **desde la 29.5 los productos usados y desde la 29.6 los de servicio no aparecen**, y dan el 404 del detalle y del stock. El documento no lo decía. Los usados, con su modelo, su variante y sus unidades, se leen por [read-v3](read-v3.md); el agente informó el 2026-10-22 que deja de usar v2 cuando adopte v3.
 
 ## Qué cambia respecto de v1
 

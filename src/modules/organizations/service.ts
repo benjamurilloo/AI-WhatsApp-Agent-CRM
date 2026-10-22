@@ -14,6 +14,7 @@ import type { DbTransaction } from "@/shared/db";
 import { failure, type Failure } from "@/shared/errors";
 import { acceptedCurrencies } from "@/shared/money";
 import * as repository from "./repository";
+import { capability } from "./schema";
 
 export type MemberRole = "admin" | "viewer";
 
@@ -228,7 +229,8 @@ export async function getAppFrame(context: AuthContext): Promise<AppFrame> {
 }
 
 // Capacidades activables (ADR 0024, punto 3; brief-29.2, D-2). hasCapability es la única lectura
-// para los demás módulos: cada página, acción y lectura de una capacidad la consulta en el
+// para los demás módulos (desde la 29.8, la API de lectura v3 lee la lista con
+// listCapabilitiesForService): cada página, acción y lectura de una capacidad la consulta en el
 // servidor, como la autorización por rol. El menú no alcanza, porque el layout no se vuelve a
 // ejecutar en cada navegación.
 export type Capability = repository.CapabilityName;
@@ -240,6 +242,16 @@ export async function hasCapability(
 ): Promise<boolean> {
   const capabilities = await repository.findCapabilities(organizationId, tx);
   return capabilities.includes(capability);
+}
+
+// Las capacidades activas de una organización, para la API de lectura v3 (brief-29.8, D-5). La
+// organización sale de la credencial y no hay rol. Lee por findCapabilities, como hasCapability, y
+// ordena por el enum: la misma organización responde siempre igual.
+export async function listCapabilitiesForService(
+  organizationId: string,
+): Promise<Capability[]> {
+  const active = new Set(await repository.findCapabilities(organizationId));
+  return capability.enumValues.filter((value) => active.has(value));
 }
 
 // El contexto de un admin para un script de operador (brief-29.2, D-9): el script de la demo carga el

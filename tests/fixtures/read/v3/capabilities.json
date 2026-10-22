@@ -1,0 +1,19 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: ningún consumidor real leyó esta respuesta (brief-29.8, D-5). La ventana con el agente la contrasta con lo que lea.",
+  "description": "Las capacidades activas de un negocio de celulares, en el orden del enum. Un valor nuevo es compatible: el emisor ignora los que no conoce.",
+  "request": {
+    "method": "GET",
+    "path": "/api/read/v3/capabilities",
+    "headers": {
+      "authorization": "Bearer crm_read_<token>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "contract_version": "3",
+      "capabilities": ["variants", "serialized_units", "repairs", "trade_ins"]
+    }
+  }
+}

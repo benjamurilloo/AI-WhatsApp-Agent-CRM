@@ -523,6 +523,28 @@ const HANDLERS: Readonly<Record<string, Entry>> = {
     requirement: "sin-sesion",
     why: "stock de la API de lectura v2 (brief-19.4, D-12): el borde de v1, con una credencial de alcance read; devuelve el físico, lo reservado y lo disponible, sin el punto de reposición ni los movimientos",
   },
+  // La lectura v3, el catálogo del rubro (brief-29.8, D-1 a D-5): el mismo borde que v1 y v2. Nunca
+  // devuelve un IMEI, un costo ni un margen (tests/guards/agent-contract-fields.test.ts).
+  "src/app/api/read/v3/products/route.ts": {
+    requirement: "sin-sesion",
+    why: "API de lectura v3 (brief-29.8, D-2): el borde de v1, con una credencial de alcance read, apagada salvo READ_API_ENABLED, y una sesión válida no la autentica; suma los usados, el modelo, la variante y el precio convertido",
+  },
+  "src/app/api/read/v3/products/[productId]/route.ts": {
+    requirement: "sin-sesion",
+    why: "API de lectura v3 (brief-29.8, D-2): el borde de v1, con una credencial de alcance read, apagada salvo READ_API_ENABLED, y una sesión válida no la autentica",
+  },
+  "src/app/api/read/v3/products/[productId]/stock/route.ts": {
+    requirement: "sin-sesion",
+    why: "stock de la API de lectura v3 (brief-29.8, D-2): el de v2, con los usados, con una credencial de alcance read",
+  },
+  "src/app/api/read/v3/products/[productId]/units/route.ts": {
+    requirement: "sin-sesion",
+    why: "unidades disponibles de la API de lectura v3 (brief-29.8, D-3): grado, batería y precio, sin el IMEI, el costo ni el origen, con una credencial de alcance read",
+  },
+  "src/app/api/read/v3/capabilities/route.ts": {
+    requirement: "sin-sesion",
+    why: "capacidades de la API de lectura v3 (brief-29.8, D-5): las activas de la organización de la credencial de alcance read",
+  },
   "src/app/api/read/v1/knowledge/route.ts": {
     requirement: "sin-sesion",
     why: "API de lectura (brief-11.3): autentica con una credencial de alcance read, apagada salvo READ_API_ENABLED, y una sesión válida no la autentica",

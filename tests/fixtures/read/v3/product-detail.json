@@ -1,0 +1,47 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: ningún consumidor real leyó esta respuesta (brief-29.8, D-2). La ventana con el agente la contrasta con lo que lea.",
+  "description": "Un iPhone usado por su id: se lleva por unidad, con su modelo, su variante y el precio en pesos con la cotización vigente. El precio es el base del producto, el que heredan las unidades sin precio propio.",
+  "request": {
+    "method": "GET",
+    "path": "/api/read/v3/products/7c9e6679-7425-40de-944b-e07fc1f90ae7",
+    "headers": {
+      "authorization": "Bearer crm_read_<token>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "contract_version": "3",
+      "product": {
+        "product_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+        "sku": "IP13-128-AZUL-USADO",
+        "name": "iPhone 13 128 GB Azul",
+        "description": null,
+        "unit": "unidad",
+        "brand": "Apple",
+        "category": "Celulares",
+        "condition": "used",
+        "price": { "amount": "420.00", "currency": "USD" },
+        "stock_status": "disponible",
+        "tracking": "unit",
+        "model": {
+          "model_id": "3f1c2b4a-8d6e-4f0a-9b7c-1e2d3c4b5a69",
+          "name": "iPhone 13",
+          "brand": "Apple"
+        },
+        "attributes": [
+          { "key": "capacidad", "name": "Capacidad", "value": "128 GB" },
+          { "key": "color", "name": "Color", "value": "Azul" },
+          { "key": "trae_caja", "name": "Trae caja", "value": "No" }
+        ],
+        "price_converted": {
+          "amount": "504000.00",
+          "currency": "ARS",
+          "rate": "1200",
+          "rate_as_of": "2026-10-22T13:00:00.000Z"
+        }
+      }
+    }
+  }
+}

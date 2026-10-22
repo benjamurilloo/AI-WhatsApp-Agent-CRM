@@ -1,0 +1,29 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: no proviene de ningún emisor real (brief-29.8, D-7). La ventana con el agente la contrasta con lo que mande.",
+  "description": "Un pedido con una línea de unidades, con el id de la unidad leído de la ruta units de read-v3, y una de cantidad.",
+  "received_at": "2026-09-16T15:00:00.000Z",
+  "payload": {
+    "contract_version": "2",
+    "event_type": "order.placed_with_units",
+    "event_id": "evt-v2-pedido-unidades-0001",
+    "occurred_at": "2026-09-16T12:00:18-03:00",
+    "client": {
+      "phone": "+5491155550001"
+    },
+    "lines": [
+      {
+        "product_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+        "unit_ids": ["a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"]
+      },
+      {
+        "product_id": "9b2f4d1a-6c3e-4f8a-b5d7-2e1c0a9f8b6d",
+        "quantity": "1"
+      }
+    ]
+  },
+  "expected": {
+    "ok": true,
+    "payload_hash": "5223e47c7c08f334e8017421fe57cd0a8bd39b5d28ca3cec53f8854224f45d2d"
+  }
+}

@@ -23,6 +23,7 @@ import {
   getUnitSummaries,
   releaseStock,
   reserveStock,
+  resolveAgentLineUnits,
   resolveLineUnits,
   type LineUnitIssue,
   type StockLine,
@@ -445,20 +446,34 @@ async function writeOrder(
 // actor. Las reglas son las del alta de la app, sin el precio esperado (el agente no manda precios),
 // con una sola respuesta en el orden de D-6: primero el cliente y después las líneas en su orden.
 // Ninguna regla escribe, así que un rechazo no consume un número. No mira el stock (D-8).
+//
+// Desde la 29.8 (brief-29.8, D-7), con withUnits, el pedido de order.placed_with_units: una línea puede
+// traer los ids de las unidades que eligió el cliente, de un producto por unidad. Después de
+// product_without_price, unit_tracking_mismatch (una línea de cantidad de un producto por unidad, o una
+// de unidades de uno por cantidad) y unit_not_available. El precio de cada unidad es el propio o el del
+// producto, como en el pedido de la pantalla (brief-29.5.2, D-2), y una unidad con precio propio en otra
+// moneda es currency_mismatch. Las unidades quedan en order_line_units sin reservarse. Sin withUnits
+// (order.placed), el producto por unidad sigue siendo product_not_found.
 
 export type AgentOrderRule =
   | "client_not_found"
   | "client_inactive"
   | "product_not_found"
   | "product_without_price"
+  | "unit_tracking_mismatch"
+  | "unit_not_available"
   | "currency_mismatch"
   | "amount_out_of_range";
 
-export type AgentOrderLineInput = { productId: string; quantity: string };
+export type AgentOrderLineInput =
+  | { productId: string; quantity: string }
+  | { productId: string; unitIds: string[] };
 
 export type PlaceAgentOrderResult =
   | { ok: true; order: { number: number; displayNumber: string } }
   | { ok: false; rule: AgentOrderRule };
+
+const ONE_UNIT: Quantity = 1000n;
 
 export async function placeOrderFromIngestion(
   tx: DbTransaction,
@@ -467,20 +482,31 @@ export async function placeOrderFromIngestion(
     credentialId: string;
     ingestionEventId: string;
     phoneE164: string;
+    withUnits?: boolean;
     lines: AgentOrderLineInput[];
   },
 ): Promise<PlaceAgentOrderResult> {
   const { organizationId } = input;
+  const withUnits = input.withUnits === true;
   const lines = input.lines.map((line, index) => {
+    const position = index + 1;
+    const productId = line.productId.toLowerCase();
+    if ("unitIds" in line) {
+      if (!withUnits || line.unitIds.length === 0) {
+        throw new Error("Una línea de unidades que el contrato no admite.");
+      }
+      return {
+        position,
+        productId,
+        quantity: BigInt(line.unitIds.length) * ONE_UNIT,
+        unitIds: line.unitIds.map((id) => id.toLowerCase()),
+      };
+    }
     const quantity = parseQuantityInput(line.quantity);
     if (quantity === null || quantity === 0n) {
       throw new Error("Una cantidad que el contrato no debía aceptar.");
     }
-    return {
-      position: index + 1,
-      productId: line.productId.toLowerCase(),
-      quantity,
-    };
+    return { position, productId, quantity, unitIds: null };
   });
   const reject = (rule: AgentOrderRule): PlaceAgentOrderResult => ({
     ok: false,
@@ -502,6 +528,16 @@ export async function placeOrderFromIngestion(
     organizationId,
     lines.map((line) => line.productId),
   );
+  // Las unidades de las líneas de unidades, leídas sin reservarlas, como el alta de la pantalla
+  // (brief-29.5.2, D-1). Se leen todas antes de recorrer las líneas, y cada línea responde la suya en
+  // su turno.
+  const lineUnits = await resolveAgentLineUnits(
+    tx,
+    organizationId,
+    lines.flatMap(({ position, productId, unitIds }) =>
+      unitIds ? [{ position, productId, unitIds }] : [],
+    ),
+  );
   // Una moneda por pedido, la de la primera línea (ADR 0019, punto 3). Si la primera falla, se
   // responde su regla antes de mirar la moneda de las demás.
   let currency: string | null = null;
@@ -510,19 +546,23 @@ export async function placeOrderFromIngestion(
   for (const line of lines) {
     const product = products.get(line.productId);
     // Inexistente, de otra organización o inactivo, sin distinguir, como la lectura (D-6). Desde la
-    // 29.5, también un producto por unidad, y sigue así en la 29.5.2: el agente no ve IMEI ni puede
-    // elegir unidades, y su contrato no cambia; pedir por unidad desde el agente es de la 29.8
-    // (brief-29.5, D-1 y D-7; brief-29.5.2, D-1 y D-6). Desde la 29.6, también el producto de servicio:
-    // el agente no lo ve, y una reparación se cobra por su orden (brief-29.6, D-5).
+    // 29.5, también un producto por unidad en order.placed: su contrato no cambia, y pedir por unidad
+    // es de order.placed_with_units (brief-29.5, D-1 y D-7; brief-29.8, D-7). Desde la 29.6, también el
+    // producto de servicio: el agente no lo ve, y una reparación se cobra por su orden (brief-29.6, D-5).
     if (
       !product ||
       !product.isActive ||
-      product.tracking === "unit" ||
+      (product.tracking === "unit" && !withUnits) ||
       product.isService
     ) {
       return reject("product_not_found");
     }
     if (!product.price) return reject("product_without_price");
+    if ((product.tracking === "unit") !== (line.unitIds !== null)) {
+      return reject("unit_tracking_mismatch");
+    }
+    const units = line.unitIds ? lineUnits.get(line.position) : [];
+    if (!units) return reject("unit_not_available");
     if (currency === null) {
       currency = product.price.currency;
       const found = currencyDecimals(currency);
@@ -531,20 +571,51 @@ export async function placeOrderFromIngestion(
       }
       decimals = found.decimals;
     }
-    if (product.price.currency !== currency) {
+    if (
+      product.price.currency !== currency ||
+      units.some((unit) => unit.price && unit.price.currency !== currency)
+    ) {
       return reject("currency_mismatch");
     }
-    const total = computeLineTotal(
-      moneyFromDatabase(product.price.amount),
-      line.quantity,
-      decimals,
-    );
-    if (!total.ok) return reject("amount_out_of_range");
+    const productPrice = moneyFromDatabase(product.price.amount);
+    if (units.length === 0) {
+      const total = computeLineTotal(productPrice, line.quantity, decimals);
+      if (!total.ok) return reject("amount_out_of_range");
+      writable.push({
+        position: line.position,
+        productId: line.productId,
+        quantity: line.quantity,
+        unitPrice: productPrice,
+        total: total.total,
+        units: [],
+      });
+      continue;
+    }
+    // Cada unidad se redondea como una línea de cantidad 1, y la línea es la suma (brief-29.5.2, D-2).
+    const unitPrices: Money[] = [];
+    for (const unit of units) {
+      const priced = computeLineTotal(
+        unit.price ? moneyFromDatabase(unit.price.amount) : productPrice,
+        ONE_UNIT,
+        decimals,
+      );
+      if (!priced.ok) return reject("amount_out_of_range");
+      unitPrices.push(priced.total);
+    }
+    const total = sumLineTotals(unitPrices);
+    if (total === null) return reject("amount_out_of_range");
     writable.push({
-      ...line,
-      unitPrice: moneyFromDatabase(product.price.amount),
-      total: total.total,
-      units: [],
+      position: line.position,
+      productId: line.productId,
+      quantity: line.quantity,
+      unitPrice: unitPrices.every((price) => price === unitPrices[0])
+        ? unitPrices[0]!
+        : productPrice,
+      total,
+      units: units.map((unit, index) => ({
+        unitId: unit.id,
+        unitPrice: unitPrices[index]!,
+      })),
     });
   }
   const orderTotal = sumLineTotals(writable.map((line) => line.total));

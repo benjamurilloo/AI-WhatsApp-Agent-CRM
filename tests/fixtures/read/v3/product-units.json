@@ -1,0 +1,45 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: ningún consumidor real leyó esta respuesta (brief-29.8, D-3). La ventana con el agente la contrasta con lo que lea.",
+  "description": "Las unidades disponibles de un usado, de la más barata a la más cara: una con precio propio y otra con el del producto. Sin el IMEI, el costo ni el origen.",
+  "request": {
+    "method": "GET",
+    "path": "/api/read/v3/products/7c9e6679-7425-40de-944b-e07fc1f90ae7/units",
+    "headers": {
+      "authorization": "Bearer crm_read_<token>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "contract_version": "3",
+      "product_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+      "items": [
+        {
+          "unit_id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+          "grade": "B",
+          "battery_health": 81,
+          "price": { "amount": "395.00", "currency": "USD" },
+          "price_converted": {
+            "amount": "474000.00",
+            "currency": "ARS",
+            "rate": "1200",
+            "rate_as_of": "2026-10-22T13:00:00.000Z"
+          }
+        },
+        {
+          "unit_id": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+          "grade": "A",
+          "battery_health": 87,
+          "price": { "amount": "420.00", "currency": "USD" },
+          "price_converted": {
+            "amount": "504000.00",
+            "currency": "ARS",
+            "rate": "1200",
+            "rate_as_of": "2026-10-22T13:00:00.000Z"
+          }
+        }
+      ]
+    }
+  }
+}

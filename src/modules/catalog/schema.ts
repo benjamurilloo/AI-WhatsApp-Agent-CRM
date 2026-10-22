@@ -24,8 +24,8 @@ import { searchQuery, searchVector, tsvector } from "@/shared/search";
 // knowledge (brief-11.2, D-6).
 
 // Condición comercial (brief-11.1, D-3). Agregar un valor es un ALTER TYPE aditivo. used, desde la
-// 29.5 (ADR 0024, punto 6; brief-29.5, D-2): solo con la capacidad serialized_units, y el agente no
-// lo ve hasta la 29.8 (D-7).
+// 29.5 (ADR 0024, punto 6; brief-29.5, D-2): solo con la capacidad serialized_units. El agente lo ve
+// solo por read-v3, desde la 29.8; read-v1 y read-v2 siguen sin él (brief-29.8, D-2).
 export const productCondition = pgEnum("product_condition", [
   "new",
   "refurbished",

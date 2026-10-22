@@ -257,6 +257,35 @@ describe("métrica 12: errores de ingestión (brief-7.3)", () => {
     );
   });
 
+  // El pedido con unidades (brief-29.8, D-7), fallido o no: tampoco es un mensaje. Calculado a mano:
+  // sigue en total 7 y fallidos 5.
+  it("brief-29.8: un pedido con unidades, fallido o no, no cuenta en la métrica 12", async () => {
+    const { orgA, orgB, adminA } = await users();
+    await mainFixture(orgA, orgB);
+    await getDb().execute(
+      sql`insert into ingestion_events
+            (organization_id, source, external_ref, event_type, payload_hash, status,
+             error_code, received_at, processed_at)
+          values
+            (${orgA}, 'wa-cloud', 'evt-unidades-fallido', 'order.placed_with_units',
+             'hash-unidades-1', 'failed', 'unit_not_available',
+             '2026-09-02T18:00:00Z', '2026-09-02T18:00:00Z'),
+            (${orgA}, 'wa-cloud', 'evt-unidades-ok', 'order.placed_with_units',
+             'hash-unidades-2', 'processed', null,
+             '2026-09-02T18:00:00Z', '2026-09-02T18:00:00Z')`,
+    );
+
+    const value = valueOf(
+      await getIngestionErrors(adminA, PERIOD, INGESTION_OFF),
+    );
+    if (value.status !== "value") throw new Error("se esperaba un valor");
+    expect(value.total).toBe(7);
+    expect(value.failed).toBe(5);
+    expect(value.groups.map((group) => group.errorCode)).not.toContain(
+      "unit_not_available",
+    );
+  });
+
   it("agrupa por origen y código, ordenado por conteo y con desempate alfabético", async () => {
     const { orgA, orgB, adminA } = await users();
     await mainFixture(orgA, orgB);

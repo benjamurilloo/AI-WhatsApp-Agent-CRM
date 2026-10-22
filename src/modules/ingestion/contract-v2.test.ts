@@ -13,6 +13,7 @@ import {
   INGESTION_FIELDS_V2,
   ingestionPayloadHashV2,
   isPhoneAsName,
+  MAX_AGENT_LINE_UNITS,
   MAX_AGENT_ORDER_LINES,
   MESSAGE_KINDS_V2,
   MESSAGE_SENDERS_V2,
@@ -124,6 +125,23 @@ function orderPayload(): Payload {
   };
 }
 
+const UNIT_ID = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d";
+
+// El pedido con unidades del agente (brief-29.8, D-7): una línea de unidades y una de cantidad.
+function unitsOrderPayload(): Payload {
+  return {
+    contract_version: "2",
+    event_type: "order.placed_with_units",
+    event_id: "evt-v2-pedido-unidades-0001",
+    occurred_at: "2026-09-16T12:00:18-03:00",
+    client: { phone: "+5491155550001" },
+    lines: [
+      { product_id: COFFEE_ID, unit_ids: [UNIT_ID] },
+      { product_id: TEA_ID, quantity: "1" },
+    ],
+  };
+}
+
 function parse(value: unknown, receivedAt = RECEIVED_AT) {
   return parseIngestionEventV2(JSON.stringify(value), receivedAt);
 }
@@ -184,6 +202,13 @@ const VECTORS = [
     canonical:
       '{"client":{"phone":"+5491155550001"},"contract_version":"2","event_id":"evt-v2-pedido-0001","event_type":"order.placed","lines":[{"product_id":"7c9e6679-7425-40de-944b-e07fc1f90ae7","quantity":"2"},{"product_id":"9b2f4d1a-6c3e-4f8a-b5d7-2e1c0a9f8b6d","quantity":"1.5"}],"occurred_at":"2026-09-16T15:00:16.000Z"}',
     hash: "9c312d278d0e5a3fb0d212270a8940fe75cae1e169b7bf3b6059d753e5f49fab",
+  },
+  {
+    name: "order.placed_with_units",
+    payload: unitsOrderPayload,
+    canonical:
+      '{"client":{"phone":"+5491155550001"},"contract_version":"2","event_id":"evt-v2-pedido-unidades-0001","event_type":"order.placed_with_units","lines":[{"product_id":"7c9e6679-7425-40de-944b-e07fc1f90ae7","unit_ids":["a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"]},{"product_id":"9b2f4d1a-6c3e-4f8a-b5d7-2e1c0a9f8b6d","quantity":"1"}],"occurred_at":"2026-09-16T15:00:18.000Z"}',
+    hash: "5223e47c7c08f334e8017421fe57cd0a8bd39b5d28ca3cec53f8854224f45d2d",
   },
 ];
 
@@ -563,6 +588,93 @@ describe("brief-19.4: el pedido del agente", () => {
   it("solo existe en v2: v1 lo rechaza como tipo desconocido", () => {
     const v1 = parseIngestionEventV1(
       JSON.stringify({ ...orderPayload(), contract_version: "1" }),
+      RECEIVED_AT,
+    );
+    expect(v1.ok).toBe(false);
+    if (!v1.ok) expect(v1.fields).toContain("event_type");
+  });
+});
+
+describe("brief-29.8: el pedido con unidades del agente (D-7)", () => {
+  const withLines = (lines: unknown) => ({ ...unitsOrderPayload(), lines });
+  const unitId = (i: number) =>
+    `a1b2c3d4-e5f6-4a7b-8c9d-${String(i).padStart(12, "0")}`;
+
+  it("cada línea es de cantidad o de unidades, nunca de las dos", () => {
+    expect(parse(unitsOrderPayload()).ok).toBe(true);
+    expect(
+      fieldsOf(
+        withLines([
+          { product_id: COFFEE_ID, unit_ids: [UNIT_ID], quantity: "1" },
+        ]),
+      ),
+    ).toEqual(["lines"]);
+    expect(fieldsOf(withLines([{ product_id: COFFEE_ID }]))).toEqual(["lines"]);
+  });
+
+  it("de 1 a 10 ids por línea, uuid y sin repetir, también con otra capitalización", () => {
+    expect(
+      parse(
+        withLines([
+          {
+            product_id: COFFEE_ID,
+            unit_ids: Array.from({ length: MAX_AGENT_LINE_UNITS }, (_, i) =>
+              unitId(i),
+            ),
+          },
+        ]),
+      ).ok,
+    ).toBe(true);
+    for (const invalid of [
+      [],
+      Array.from({ length: MAX_AGENT_LINE_UNITS + 1 }, (_, i) => unitId(i)),
+      ["356789012345678"],
+      [UNIT_ID, UNIT_ID.toUpperCase()],
+      UNIT_ID,
+    ]) {
+      expect(
+        fieldsOf(withLines([{ product_id: COFFEE_ID, unit_ids: invalid }])),
+      ).toEqual(["lines"]);
+    }
+  });
+
+  it("de 1 a 10 líneas, sin repetir un producto, sin precios ni campos de más", () => {
+    expect(fieldsOf(withLines([]))).toEqual(["lines"]);
+    expect(
+      fieldsOf(
+        withLines([
+          { product_id: COFFEE_ID, unit_ids: [UNIT_ID] },
+          { product_id: COFFEE_ID.toUpperCase(), quantity: "1" },
+        ]),
+      ),
+    ).toEqual(["lines"]);
+    expect(
+      fieldsOf(
+        withLines([
+          { product_id: COFFEE_ID, unit_ids: [UNIT_ID], unit_price: "420" },
+        ]),
+      ),
+    ).toEqual(["lines"]);
+    expect(
+      fieldsOf({
+        ...unitsOrderPayload(),
+        client: { phone: "+5491155550001", display_name: "Ana" },
+      }),
+    ).toEqual(["client"]);
+  });
+
+  it("order.placed no admite líneas de unidades: su contrato no cambia", () => {
+    expect(
+      fieldsOf({
+        ...orderPayload(),
+        lines: [{ product_id: COFFEE_ID, unit_ids: [UNIT_ID] }],
+      }),
+    ).toEqual(["lines"]);
+  });
+
+  it("solo existe en v2: v1 lo rechaza como tipo desconocido", () => {
+    const v1 = parseIngestionEventV1(
+      JSON.stringify({ ...unitsOrderPayload(), contract_version: "1" }),
       RECEIVED_AT,
     );
     expect(v1.ok).toBe(false);

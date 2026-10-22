@@ -13,6 +13,7 @@ import {
   hasCapability,
   type AuthContext,
 } from "@/modules/organizations";
+import type { DbTransaction } from "@/shared/db";
 import { failure, type Failure } from "@/shared/errors";
 import {
   currencyDecimals,
@@ -832,6 +833,89 @@ export async function listAvailableUnits(
       };
     }),
   };
+}
+
+// Las unidades disponibles de un producto, para la API de lectura v3 (brief-29.8, D-3). La organización
+// sale de la credencial y no hay rol. **Sin el IMEI, el costo ni el origen**: el agente nunca los lee
+// (ADR 0024, punto 14). Sin la capacidad serialized_units, ninguna. Quien llama ya comprobó que el
+// producto es activo, de la organización y por unidad; el precio es el propio, o null.
+export type ServiceAvailableUnit = {
+  id: string;
+  grade: string | null;
+  batteryHealth: number | null;
+  price: UnitPrice | null;
+};
+
+export async function listAvailableUnitsForService(
+  organizationId: string,
+  productId: string,
+): Promise<ServiceAvailableUnit[]> {
+  if (!idSchema.safeParse(productId).success) return [];
+  if (!(await hasCapability(organizationId, "serialized_units"))) return [];
+  const rows = await unitRepository.findAvailableUnitsOfProduct(
+    organizationId,
+    productId,
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    grade: row.gradeName,
+    batteryHealth: row.batteryHealth,
+    price:
+      row.price !== null && row.priceCurrency !== null
+        ? { amount: row.price, currency: row.priceCurrency }
+        : null,
+  }));
+}
+
+// Las unidades del pedido del agente, por id (brief-29.8, D-7): orders ya bloqueó los productos y pasa
+// su transacción. Se leen sin bloquearlas, como el alta del pedido de la pantalla: un pendiente no
+// reserva, y confirmar vuelve a mirarlas. Por posición: las unidades de la línea, en el orden de sus
+// ids, o null si alguna no existe, es de otra organización o de otro producto, o no está available, sin
+// distinguir. orders decide en qué orden responde cada regla.
+export type AgentLineUnits = {
+  position: number;
+  productId: string;
+  unitIds: string[];
+};
+
+export type AgentUnit = { id: string; price: UnitPrice | null };
+
+export async function resolveAgentLineUnits(
+  tx: DbTransaction,
+  organizationId: string,
+  lines: AgentLineUnits[],
+): Promise<Map<number, AgentUnit[] | null>> {
+  const ids = lines.flatMap((line) =>
+    line.unitIds.map((id) => id.toLowerCase()),
+  );
+  const found = await unitRepository.findUnitsByIdsIn(tx, organizationId, ids);
+  const byId = new Map(found.map((unit) => [unit.id.toLowerCase(), unit]));
+  const result = new Map<number, AgentUnit[] | null>();
+  for (const line of lines) {
+    const resolved: AgentUnit[] = [];
+    for (const unitId of line.unitIds) {
+      const unit = byId.get(unitId.toLowerCase());
+      if (
+        !unit ||
+        unit.productId !== line.productId ||
+        unit.status !== "available"
+      ) {
+        break;
+      }
+      resolved.push({
+        id: unit.id,
+        price:
+          unit.price !== null && unit.priceCurrency !== null
+            ? { amount: unit.price, currency: unit.priceCurrency }
+            : null,
+      });
+    }
+    result.set(
+      line.position,
+      resolved.length === line.unitIds.length ? resolved : null,
+    );
+  }
+  return result;
 }
 
 // El IMEI y el estado de unas unidades, para el detalle de un pedido o de una venta y sus comprobantes

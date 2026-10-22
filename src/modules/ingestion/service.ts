@@ -41,6 +41,7 @@ import {
   type IngestionFieldV2,
   type MessageRecordedEventV2,
   type OrderPlacedEventV2,
+  type OrderPlacedWithUnitsEventV2,
 } from "./contract-v2";
 import * as repository from "./repository";
 
@@ -54,7 +55,8 @@ import * as repository from "./repository";
 // en la conversación vigente del cliente o en una nueva, y conversation.escalated (D-6) deriva una
 // conversación a una persona, auditada con la credencial. Desde la 16.2, client.tag_added y
 // client.tag_removed ponen y quitan una etiqueta del catálogo, solo en v2. Desde la 19.4,
-// order.placed deja un pedido pendiente en orders, también solo en v2.
+// order.placed deja un pedido pendiente en orders, también solo en v2. Desde la 29.8,
+// order.placed_with_units deja el pendiente con las unidades que eligió el cliente (brief-29.8, D-7).
 
 // Desde la 12.3 (D-1), el contrato v2 entra por recordIngestionEventV2 con el mismo ledger y la
 // misma proyección. Lo único que cambia según la versión es el CONFLICT: v2 dice por qué (D-7).
@@ -106,7 +108,7 @@ export type ClientTagAccepted = {
   eventType: ClientTagEventV2["event_type"];
 };
 
-// order.placed (brief-19.4, D-6): siempre 200, con el número del pedido. order es null solo en un
+// order.placed (brief-19.4, D-6) y, desde la 29.8, order.placed_with_units (D-7): siempre 200, con el número del pedido. order es null solo en un
 // reenvío cuyo evento no tiene pedido, que no debería pasar.
 export type OrderPlacedAccepted = {
   ok: true;
@@ -138,6 +140,9 @@ export const INGESTION_RULES = [
   "product_without_price",
   "currency_mismatch",
   "amount_out_of_range",
+  // Desde la 29.8 (D-7), solo de order.placed_with_units.
+  "unit_tracking_mismatch",
+  "unit_not_available",
 ] as const;
 export type IngestionRule = (typeof INGESTION_RULES)[number];
 
@@ -218,7 +223,10 @@ async function duplicate(
   if (event.event_type === "message.recorded") {
     return messageAccepted(event, "duplicate");
   }
-  if (event.event_type === "order.placed") {
+  if (
+    event.event_type === "order.placed" ||
+    event.event_type === "order.placed_with_units"
+  ) {
     // El mismo número que la primera vez, por el vínculo del pedido con su evento, sin escribir
     // (brief-19.4, D-6).
     return {
@@ -447,25 +455,28 @@ async function projectClientTag(
 
 // El pedido pendiente del agente (brief-19.4): orders busca y bloquea al cliente por teléfono, aplica
 // las reglas del alta y audita con la credencial. Un rechazo queda failed con la regla (D-6) y no
-// escribe nada en orders.
+// escribe nada en orders. Desde la 29.8, order.placed_with_units admite líneas de unidades; order.placed
+// sigue rechazando el producto por unidad como product_not_found (brief-29.8, D-7).
 async function projectOrderPlaced(
   tx: DbTransaction,
   context: IngestionContext,
   reserved: string,
-  event: OrderPlacedEventV2,
+  event: OrderPlacedEventV2 | OrderPlacedWithUnitsEventV2,
 ): Promise<RecordIngestionEventResult> {
   if (!context.credentialId) {
-    throw new Error("order.placed sin credencial para auditar");
+    throw new Error(`${event.event_type} sin credencial para auditar`);
   }
   const placed = await placeOrderFromIngestion(tx, {
     organizationId: context.organizationId,
     credentialId: context.credentialId,
     ingestionEventId: reserved,
     phoneE164: event.client.phone,
-    lines: event.lines.map((line) => ({
-      productId: line.product_id,
-      quantity: line.quantity,
-    })),
+    withUnits: event.event_type === "order.placed_with_units",
+    lines: event.lines.map((line) =>
+      "unit_ids" in line
+        ? { productId: line.product_id, unitIds: line.unit_ids }
+        : { productId: line.product_id, quantity: line.quantity },
+    ),
   });
   if (!placed.ok) return rejectByRule(tx, context, reserved, placed.rule);
   await repository.finishEvent(tx, context.organizationId, reserved, {
@@ -621,7 +632,10 @@ async function recordEvent(
       if (isClientTagEvent(event)) {
         return projectClientTag(tx, context, reserved, event);
       }
-      if (event.event_type === "order.placed") {
+      if (
+        event.event_type === "order.placed" ||
+        event.event_type === "order.placed_with_units"
+      ) {
         return projectOrderPlaced(tx, context, reserved, event);
       }
       return projectClient(tx, context, reserved, event);
