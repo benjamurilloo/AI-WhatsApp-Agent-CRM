@@ -250,3 +250,38 @@ El 2026-10-21, el agente `independent-reviewer`, de solo lectura, que no partici
 - **O-6, corregido.** El comentario de los perfiles ahora dice que volver a correr el script completa lo que falta.
 - **O-7, aceptado sin cambio.** Sin JavaScript se recorren la cotización y la configuración desbordada. Los formularios con `useActionState` siguen el patrón de las subfases anteriores.
 - **O-8.** La deduplicación de un tipo repetido vive en `quoteTradeIn` y la cubre la integración, no la unitaria. `.claude/settings.json` no entra en el commit.
+
+## Cierre
+
+*Del 2026-10-21, después del despliegue y el recorrido del usuario.*
+
+### Criterios
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| AC-1 | cumple | `computeTradeInQuote` en `bigint`, con los dos extremos redondeados hacia abajo (`quote-rule.test.ts`); `quoteTradeIn` con el desglose en `trade-in-quotes.test.ts` y en el end-to-end |
+| AC-2 | cumple | un tipo por punto que falla y el de la batería bajo el umbral, sumados una vez por tipo; el punto sin tipo no descuenta; en el umbral no resta, en integración |
+| AC-3 | cumple, con una desviación aceptada | cada motivo por su nombre, con lo que falta; sin `checklist_incomplete` (desviación 1, O-3, aceptada por el usuario, a revisar en la 29.8); el orden, en el DataModel (NB-2) |
+| AC-4 | cumple | filas y auditoría iguales antes y después de cotizar, en integración |
+| AC-5 | cumple, con una precisión aceptada | valores sueltos y márgenes con auditoría, sus `CHECK` y sin `DELETE`; la marca de ejemplo se apaga al guardar, aunque sea sin cambios (O-2, aceptada por el usuario) |
+| AC-6 | cumple | la reparación de un punto con auditoría; la de otra organización, rechazada por la función y por la FK compuesta |
+| AC-7 | cumple, desde la revisión | `org:capability` crea los valores y vincula los puntos en esa corrida; al repetirse no toca nada, tampoco un punto al que un `admin` le sacó la reparación (B-2), en `variants.test.ts` |
+| AC-8 | cumple | el `viewer` sin «Cotizar», «Configuración» ni la reparación de un punto, en integración y en el end-to-end; los contratos del agente sin cambios |
+| AC-9 | cumple, con la frontera ampliada | `tradeins → service` con `getRepairCostsForQuote` y `listRepairTypes` (B-1, aceptado por el usuario y registrado en el ADR 0024); `service` no importa `tradeins` |
+| AC-10 | cumple | sin `trade_ins`, 404; los cambios de forma de las suites, en la desviación 10 |
+| AC-11 | cumple | `migration-0062.test.ts` sobre una base en la `0061` con datos; en producción, la `0062` corrió sola |
+| AC-12 | cumple | CI run 39701131091 en `success` sobre `b2b22fee567613111cfff1df72e3d6a729bf9609`: guardas 848, unitarias 1073, integración 1736 y end-to-end 291, con axe. La corrida de `b507274` había fallado solo en el formato de una spec, corregido en `b2b22fe` |
+| AC-13 | cumple | revisión independiente del 2026-10-21, antes del despliegue (§«Revisión independiente») |
+| AC-14 | cumple | desplegada (`b2b22fe`, 63 migraciones, las tablas y la columna verificadas en la base); el usuario corrió `org:capability --profile iphone` en «iPhone Demo», cargó un margen y recorrió la cotización: «todo perfecto». Recuentos después: «iPhone Demo» con sus valores (ya sin la marca de ejemplo), 1 margen y 4 puntos con reparación; «Demostración Vixora» y «Vixora» sin valores, márgenes ni puntos con reparación |
+
+**Nivel alcanzado**: validado en integración (`producer-consumer`), desplegado y recorrido en producción sobre una organización demo. No hay negocio real.
+
+### Lo que queda
+
+- **El contrato del agente para la cotización** (la 29.8), donde se revisa también la falta de `checklist_incomplete` (O-3).
+- **Las correcciones de la revisión no tuvieron una segunda revisión independiente**: son autoevaluación, verificadas por sus pruebas y la CI.
+- **`clients.spec.ts` caso 9 se cuelga a veces en la máquina local** (una corrida en 20 s, otra hasta el límite de 90 s); en la CI pasó. No se comparó contra la 29.7.2: es fragilidad de la prueba, no de lo que prueba, hasta que se demuestre lo contrario.
+
+### El despliegue
+
+Sin incidentes en el servidor: la `0062` se aplicó antes de detener el servicio, y el build, con el heap de 1.536 MB, terminó a la primera. Antes, la CI de `b507274` falló en el formato de `trade-in-quotes.spec.ts`, retocada a mano después de pasar prettier; se corrigió en `b2b22fe`, que es lo desplegado. Después, el servicio activo, el journal sin errores y `/login` en 200 desde afuera. Para volver atrás, `703c334`.

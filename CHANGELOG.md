@@ -2,6 +2,25 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-21 — 29.7.3: la cotización de usados
+
+Cierra el 2026-10-21, desplegada en producción (`b2b22fe`) y recorrida por el usuario ([brief-29.7.3](docs/decisions/brief-29.7.3-la-cotizacion-de-usados.md), §Cierre). Implementa la cotización orientativa de un usado ([ADR 0024](docs/decisions/0024-rubros-y-capacidades.md), puntos 9, 13 y 16), sobre «iPhone Demo».
+
+**Certifica:**
+- **La cotización** (Usados → Cotizar, solo `admin`, no escribe nada, también sin JavaScript): el precio vigente del producto usado, menos las reparaciones que necesita según los puntos que no pasaron y la batería bajo el umbral, cada tipo una vez, menos el margen del modelo, en un rango redondeado hacia abajo, con el desglose. Sin un dato, dice cuál falta.
+- **La configuración** (Usados → Configuración, solo `admin`): los valores sueltos (`trade_in_settings`: umbral de batería, rango, redondeo y la reparación de la batería) y el margen de cada modelo (`trade_in_margins`), auditados, sin borrado. Y la reparación de cada punto del checklist, con `repairs`.
+- **La copia del perfil**: `org:capability --profile iphone` crea los valores de ejemplo y vincula cuatro puntos en la corrida que los crea; al repetirse no toca nada (revisión, B-2).
+- **La frontera**: `tradeins` lee de `service` los costos (`getRepairCostsForQuote`) y la lista de tipos (`listRepairTypes`), aceptado por el usuario y registrado en el ADR 0024; `service` no conoce `tradeins`.
+- **La migración 0062**, aditiva: dos tablas y una columna, probada sola sobre una base en la `0061`.
+- **En producción**: el usuario corrió el perfil en «iPhone Demo», cargó un margen y cotizó un usado, y lo dio por bueno. «Demostración Vixora» y «Vixora» quedaron sin valores, márgenes ni puntos con reparación.
+- **Una revisión independiente** antes del despliegue (2 bloqueantes, 2 no bloqueantes y 8 observaciones), verificada contra el código y resuelta, con las decisiones del usuario.
+
+**No certifica:**
+- ningún negocio real;
+- la cotización para el agente, que es la 29.8, ni la falta de `checklist_incomplete` en ese contrato (O-3);
+- una segunda revisión independiente de las correcciones, que son autoevaluación;
+- ningún cambio en la forma de los contratos del agente.
+
 ## 2026-10-21 — 29.7.2: la permuta y la compra de usados
 
 Cierra el 2026-10-21, desplegada en producción (`703c334`) y recorrida por el usuario ([brief-29.7.2](docs/decisions/brief-29.7.2-la-permuta-y-la-compra-de-usados.md), §Cierre). Lleva a la caja el valor reconocido de un usado de la 29.7 ([ADR 0024](docs/decisions/0024-rubros-y-capacidades.md), puntos 8 y 9; [ADR 0025](docs/decisions/0025-tipo-de-cambio.md), punto 5), sobre «iPhone Demo».
