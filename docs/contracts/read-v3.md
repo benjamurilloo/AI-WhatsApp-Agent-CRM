@@ -57,7 +57,7 @@ El objeto de v1, con estos cambios:
 | Campo | Tipo | Nulable | Reglas |
 |---|---|---|---|
 | `condition` | string | no | `new`, `refurbished` o **`used`** |
-| `price` | objeto | sí | como en v1. **En un producto por unidad es el precio base**, el que heredan las unidades sin precio propio, y puede no coincidir con ninguna unidad disponible: el precio de cada equipo sale de la ruta de unidades |
+| `price` | objeto | sí | como en v1: `null` si nunca se fijó uno. **En un producto por unidad es el precio base**, el que heredan las unidades sin precio propio, y puede no coincidir con ninguna unidad disponible: el precio de cada equipo sale de la ruta de unidades. *Precisado el 2026-10-22, al cierre de la 29.8, a pedido del agente*: **un producto activo sin precio es un estado válido**, por ejemplo mientras se termina de cargar. El agente no lo ofrece a un precio ni anota un pedido con él, porque la ingestión lo rechazaría con `product_without_price`: ofrece pasar con una persona. La forma no cambia |
 | `stock_status` | string | no | la regla de v2, sobre lo disponible. En un producto por unidad, lo disponible son sus unidades `available` |
 | `tracking` | string | no | `quantity`: se vende por cantidad. `unit`: cada equipo es una unidad, con su grado, su batería y su precio |
 | `model` | objeto | sí | `{model_id, name, brand}`; `null` sin la capacidad `variants` o si el producto no tiene modelo. `brand` es nulable |

@@ -357,3 +357,69 @@ Un agente que no participó del trabajo revisó la implementación en solo lectu
 | H-7, `order.placed_with_units` no consulta `serialized_units` | cierto | aceptado sin cambio: el pedido de la pantalla tampoco la consulta, y una capacidad no se desactiva, así que no hay producto por unidad sin ella |
 | H-8, la guía del emisor no nombraba el tipo nuevo | cierto | la fila del `422` lo nombra |
 | H-9, sin prueba de `client_inactive` ni `amount_out_of_range` por la rama de unidades | cierto | caso nuevo en `orders-agent-units.test.ts` |
+
+## Cierre
+
+*Del 2026-10-22, después del despliegue y de la ventana del agente.*
+
+### Criterios
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| AC-1 | cumple | `read-api-v3.test.ts`: lista y detalle con `condition` (también `used`), `tracking`, `model`, `attributes` y `price_converted`, con los filtros `q`, `limit`, `model_id` y `condition`, y sin productos de servicio. En la ventana, el agente leyó el iPhone 13 usado y los nueve iPhone 15 |
+| AC-2 | cumple | solo las `available`, con grado, batería y precio propio o heredado, de la más barata a la más cara; el cuerpo crudo sin el IMEI ni el costo, en integración. En la ventana, las dos unidades del usado llegaron en ese orden (US$ 399 y US$ 429) |
+| AC-3 | cumple | las capacidades en el orden del enum, y vacías sin ninguna (caso 10, que borra las filas); sin la ruta de modelos (D-4) |
+| AC-4 | cumple | `contract.test.ts` y la integración: el precio convertido con una cotización vigente, y `null` en cada caso de D-6, también con la cotización vencida. En la ventana, «a la cotización vigente» con la cotización de «iPhone Demo» |
+| AC-5 | cumple localmente | `orders-agent-units.test.ts`: el pendiente con sus unidades en `order_line_units`, sin reservarlas; el reenvío es `duplicate` con el mismo número; cada regla en su orden, sin consumir un número. **El agente todavía no lo usa** (su 3.51) |
+| AC-6 | cumple localmente | dos pendientes con la misma unidad se aceptan; confirmar el primero la reserva y el segundo falla con `units_unavailable`, en integración |
+| AC-7 | cumple | `agent-contract-fields` pasa, y cada clave prohibida falla en cada forma, desde la revisión también con camelCase y los tipos de zod que contienen otros (H-3). El comentario del contrato v3 que nombraba el Instagram lo rechazó `trade-ins.test.ts` en la CI de `94865f2`, y se corrigió en `dd43606` |
+| AC-8 | cumple | las suites de v1, v2, `ingestion-v1` y `order.placed` pasan sin cambios de conducta. En la ventana, el agente siguió usando v1 para el contexto y `order.placed` para su pedido |
+| AC-9 | cumple | `read-api-v3.test.ts`: 404 apagada, 401, 403 por alcance o por la allowlist, el límite, la correlación y el log fijo. En producción, las cinco rutas dieron 401 sin credencial después del despliegue |
+| AC-10 | cumple | CI run 39793399047 en `success` sobre `dd43606786723ec2653dec69ddb455a3714d4ebb`: guardas 867, unitarias 1104, integración 1754 y end-to-end 291. La corrida de `94865f2` había fallado solo por ese comentario (AC-7) |
+| AC-11 | cumple | revisión independiente del 2026-10-22, antes del despliegue (§Revisión independiente) |
+| AC-12 | cumple para la lectura | desplegada (`dd43606`, sin migraciones). El agente adoptó `read-v3` el mismo día y mandó su aviso de la ventana; el CRM lo concilió por `X-Correlation-Id` (§La ventana). **`order.placed_with_units` no tuvo ventana**: el agente lo va a usar en su 3.51 |
+
+**Nivel alcanzado**:
+- **`read-v3`**: validado en integración (`producer-consumer`), con el agente real contra producción, sobre una organización demo.
+- **`order.placed_with_units`**: validado localmente, y desplegado.
+
+No hay negocio real.
+
+### La ventana
+
+El 2026-10-22 el usuario creó las tres credenciales de «iPhone Demo» (`read`, `ingest` y `context`, con `source` `agente-iphone-demo`) y las sumó a las allowlists, sin quitar las de `agente-demo`. Se cargaron cuatro unidades de prueba por la pantalla:
+- dos en el iPhone 13 128 GB Azul usado;
+- dos en el iPhone 15 128 GB Azul, que pasó a llevarse por unidad porque no tenía movimientos.
+
+El agente probó sus tres tokens y recorrió usados, unidades, la referencia en pesos y un pedido por cantidad (`Aviso-3.50-Ventana-29.8.md`, del agente). Lo que el CRM concilió con su log, de 19:00 a 20:05 UTC:
+- **la prueba de tokens**, a las 19:11 y a las 19:13: `read` y `units` en `OK`, `context` en `NOT_FOUND` y `ingest` en `VALIDATION_ERROR`, como lo cuenta el agente;
+- **cada lectura de su tabla, con el mismo `request_id`**, en `OK`;
+- **el pedido `31136`**, a las 19:57:36 en `OK`. En el CRM es `P-000002`: pendiente, origen «Agente», 2 × $12.000;
+- **ningún `401` ni `403`**, y ningún uso de `agente-demo` desde las 19:00.
+
+Hubo tres diferencias menores:
+- una lectura del agente figura a las 19:47, no a las 19:46;
+- hay lecturas que su tabla no nombra;
+- el log no guarda el tipo del evento, así que el pedido se confirmó en el CRM.
+
+**No hay fixtures capturados**: el aviso trae los códigos y los ids, no los cuerpos. Los fixtures de `tests/fixtures/read/v3/` siguen siendo de forma asumida. Según su aviso, las respuestas reales pasaron la validación estricta del agente.
+
+El agente preguntó si `price: null` es válido. Lo es desde v1, y `read-v3.md` lo precisa ahora. Su otra propuesta, que la app no deje activar un producto por cantidad sin precio, cambiaría una regla del producto: queda para que la decida el usuario.
+
+### Lo que queda
+
+- **`order.placed_with_units` con el agente real**: su 3.51. Se concilia cuando avise.
+- **La búsqueda con la unidad pegada** («128gb» contra «128 GB»): el agente la resolvió de su lado. Queda como mejora posible de la búsqueda del CRM, sin tarea.
+- **Las correcciones de la revisión no tuvieron una segunda revisión independiente**: son autoevaluación, verificadas por sus pruebas y la CI.
+- **En la máquina local**, la suite completa de integración da seis fallas de tiempo ajenas a la 29.8, que en la CI pasan:
+  - cuatro en `client-tags.test.ts`, que pasan al correr el archivo solo;
+  - dos de rendimiento, en `supplier-payments.test.ts` y `product-images.test.ts`, que también fallan solas.
+
+### El despliegue
+
+Sin incidentes en el servidor. No había migraciones. El build, con el servicio detenido y el heap de 1.536 MB, terminó a la primera. Antes, la CI de `94865f2` falló en `trade-ins.test.ts` por el comentario (AC-7): esa suite no se había corrido completa en local antes del push. Se corrigió en `dd43606`, que es lo desplegado. El auto-mode bloqueó el paso 3 del runbook y el usuario cambió a modo manual. Después del despliegue:
+- el servicio activo;
+- `/api/health` y la hoja de estilos en 200;
+- las rutas v3, `read/v1` e `ingestion/v2` en 401 sin credencial.
+
+Para volver atrás, `b2b22fe`.

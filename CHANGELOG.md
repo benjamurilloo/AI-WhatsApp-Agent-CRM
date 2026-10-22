@@ -2,6 +2,26 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-22 — 29.8: el catálogo del rubro para el agente
+
+Cierra el 2026-10-22, desplegada en producción (`dd43606`) y con la lectura adoptada por el agente ese mismo día ([brief-29.8](docs/decisions/brief-29.8-el-catalogo-del-rubro-para-el-agente.md), §Cierre). Implementa la primera parte del punto 15 del [ADR 0024](docs/decisions/0024-rubros-y-capacidades.md), sobre «iPhone Demo».
+
+**Certifica:**
+- **`read-v3`, con cinco rutas** ([read-v3.md](docs/contracts/read-v3.md)): la lista, el detalle y el stock de productos, con los usados, `tracking`, el modelo, los atributos y el precio convertido «a la cotización vigente», que va `null` sin una cotización vigente; las unidades disponibles de un producto, con grado, batería y precio, sin el IMEI ni el costo; y las capacidades. Tienen el borde de v1 y v2.
+- **`order.placed_with_units`** en `ingestion-v2`: un pendiente con líneas de cantidad o de unidades, que no reserva, con `unit_tracking_mismatch` y `unit_not_available`.
+- **La guarda `agent-contract-fields`**: ningún esquema de respuesta de la lectura ni ninguna respuesta de la ingestión nombra un IMEI, un costo, un margen, un DNI ni un Instagram, con un caso de fallo por cada forma.
+- **v1, v2, `ingestion-v1` y `order.placed` sin cambios de conducta**, y sin migraciones.
+- **La ventana con el agente real**, sobre producción: probó sus tres tokens, leyó usados, unidades y la referencia en pesos, y anotó un pedido por cantidad (`P-000002`). El CRM lo concilió por `X-Correlation-Id`, sin un `401` ni un `403`.
+- **Una revisión independiente** antes del despliegue (R1, sin bloqueantes), verificada contra el código y resuelta.
+- **La recuenta de la superficie expuesta** (SecurityModel): 240 puntos de entrada, con 91 páginas, 128 Server Actions y 21 Route Handlers.
+
+**No certifica:**
+- ningún negocio real;
+- `order.placed_with_units` con el agente real, que lo va a usar en su 3.51: está validado localmente;
+- fixtures capturados de v3, que siguen siendo de forma asumida;
+- las reparaciones, las órdenes de servicio y la cotización de un usado para el agente, que son la 29.8.2 y la 29.8.3;
+- una segunda revisión independiente de las correcciones, que son autoevaluación.
+
 ## 2026-10-21 — 29.7.3: la cotización de usados
 
 Cierra el 2026-10-21, desplegada en producción (`b2b22fe`) y recorrida por el usuario ([brief-29.7.3](docs/decisions/brief-29.7.3-la-cotizacion-de-usados.md), §Cierre). Implementa la cotización orientativa de un usado ([ADR 0024](docs/decisions/0024-rubros-y-capacidades.md), puntos 9, 13 y 16), sobre «iPhone Demo».
