@@ -26,8 +26,9 @@ import {
 // las unidades disponibles de un producto y las capacidades. El transporte, los errores y el log son
 // los de v1. Como en v1, los esquemas son estrictos y los tests validan contra ellos.
 //
-// El agente nunca recibe un IMEI, un costo, un margen, un DNI ni un Instagram (ADR 0024, punto 14):
-// cada campo se mapea a mano, y tests/guards/agent-contract-fields.test.ts revisa las claves.
+// El agente nunca recibe un IMEI, un costo, un margen ni los datos de identidad del cliente (ADR
+// 0024, punto 14): cada campo se mapea a mano, y tests/guards/agent-contract-fields.test.ts revisa
+// las claves.
 
 export const READ_CONTRACT_VERSION_V3 = "3";
 
