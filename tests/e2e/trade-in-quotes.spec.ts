@@ -208,9 +208,7 @@ test("un modelo sin margen no se cotiza; con el margen, la cotización resta la 
   await expect(
     result.getByText("No se guarda.", { exact: false }),
   ).toBeVisible();
-  await expect(
-    result.getByText("De ejemplo", { exact: true }),
-  ).toBeVisible();
+  await expect(result.getByText("De ejemplo", { exact: true })).toBeVisible();
   await expect(result.getByText("(no pasó «Cámara trasera»)")).toBeVisible();
   await expect(result.getByText("(batería bajo el umbral)")).toBeVisible();
   // El checklist conserva lo enviado.
