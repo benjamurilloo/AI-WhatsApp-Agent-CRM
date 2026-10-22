@@ -12,8 +12,13 @@ import { RATE_TEXT } from "@/app/(autenticado)/ventas/[saleId]/cobrar/messages";
 import type {
   ChecklistItemWriteResult,
   CreateTradeInResult,
+  QuoteSettingsField,
+  QuoteSettingsResult,
+  SetMarginResult,
   TradeInDestination,
   TradeInField,
+  TradeInQuoteField,
+  TradeInQuoteUnavailable,
   TradeInVoidReason,
 } from "@/modules/tradeins";
 import type { AmountRejection } from "@/shared/money";
@@ -245,7 +250,109 @@ const NOTICES: Record<string, string> = {
     "Punto desactivado: no se pide en las recepciones nuevas.",
   "punto-reactivado": "Punto reactivado.",
   "punto-movido": "Orden del checklist guardado.",
+  // Desde la 29.7.3 (brief-29.7.3, D-5).
+  "punto-reparacion": "Reparación del punto guardada.",
+  "valores-guardados": "Valores de la cotización guardados.",
+  "margen-guardado": "Margen guardado.",
 };
+
+// La cotización de un usado (brief-29.7.3, D-4 y D-5).
+
+export const QUOTE_TITLE = "Cotizar un usado";
+export const SETTINGS_TITLE = "Configuración de la cotización";
+export const QUOTE_ADMIN_ONLY_MESSAGE =
+  "Solo un administrador puede cotizar usados y configurar la cotización.";
+export const QUOTE_LEGEND =
+  "Cotización orientativa: el valor final lo fija una persona al revisar el equipo. No se guarda.";
+export const EXAMPLE_VALUES_TEXT =
+  "Usa valores de ejemplo del perfil. Cambialos en Configuración.";
+
+const QUOTE_SETTINGS_FIELD_MESSAGE: Record<QuoteSettingsField, string> = {
+  batteryThreshold: "Ingresá un porcentaje entero de 1 a 100.",
+  rangePercent: "Ingresá un porcentaje de 0 a 50, con hasta dos decimales.",
+  roundingStep: "Ingresá un monto mayor que cero.",
+  roundingCurrency: "Elegí una moneda de la lista.",
+  batteryRepairTypeId: "Elegí una reparación de la lista.",
+};
+
+const QUOTE_SETTINGS_FIELD_ORDER: QuoteSettingsField[] = [
+  "batteryThreshold",
+  "batteryRepairTypeId",
+  "rangePercent",
+  "roundingStep",
+  "roundingCurrency",
+];
+
+export function quoteSettingsRejection(
+  result: Exclude<QuoteSettingsResult, { ok: true }>,
+  requestId: string,
+): { field: string | null; message: string } {
+  if (result.code === "VALIDATION_ERROR" && "fields" in result) {
+    const field = QUOTE_SETTINGS_FIELD_ORDER.find((name) =>
+      result.fields.includes(name),
+    )!;
+    return {
+      field,
+      message:
+        field === "roundingStep" && result.amount
+          ? AMOUNT_MESSAGE[result.amount]
+          : QUOTE_SETTINGS_FIELD_MESSAGE[field],
+    };
+  }
+  return { field: null, message: changeMessage(result.code, requestId) };
+}
+
+export function marginRejection(
+  result: Exclude<SetMarginResult, { ok: true }>,
+  requestId: string,
+): { field: string | null; message: string } {
+  if (result.code === "VALIDATION_ERROR" && "fields" in result) {
+    return result.fields.includes("currency")
+      ? { field: "currency", message: "Elegí una moneda de la lista." }
+      : {
+          field: "amount",
+          message:
+            result.amount && result.amount !== "zero"
+              ? AMOUNT_MESSAGE[result.amount]
+              : "Escribí un margen, por ejemplo 50 o 0.",
+        };
+  }
+  if (result.code === "NOT_FOUND") {
+    return { field: null, message: "Ese modelo ya no existe." };
+  }
+  return { field: null, message: changeMessage(result.code, requestId) };
+}
+
+export const QUOTE_FIELD_MESSAGE: Record<TradeInQuoteField, string> = {
+  product: "Elegí el producto usado que querés cotizar.",
+  batteryHealth: "Ingresá la salud de la batería, de 0 a 100.",
+};
+
+// Por qué no hay cotización, con lo que falta para que la haya.
+export function quoteUnavailableMessage(
+  rule: TradeInQuoteUnavailable,
+  repairs: string[] = [],
+): string {
+  const named = repairs.map((name) => `«${name}»`).join(", ");
+  switch (rule) {
+    case "no_settings":
+      return "No hay cotización: faltan los valores de la cotización. Cargalos en Configuración.";
+    case "product_not_quotable":
+      return "No hay cotización: se cotiza un producto usado, que se lleva por unidad y tiene modelo.";
+    case "no_reference_price":
+      return "No hay cotización: el producto no tiene precio. Cargalo en su ficha.";
+    case "no_margin":
+      return "No hay cotización: el modelo no tiene margen. Cargalo en Configuración.";
+    case "no_battery_repair_type":
+      return "No hay cotización: la batería está bajo el umbral y no hay una reparación elegida para la batería. Elegila en Configuración.";
+    case "no_repair_cost":
+      return `No hay cotización: falta el costo de ${named} para este modelo. Cargalo en la lista de reparaciones.`;
+    case "currency_mismatch":
+      return "No hay cotización: el precio, los costos, el margen y el redondeo no están todos en la misma moneda.";
+    case "not_positive":
+      return "No hay cotización: con las reparaciones y el margen, el equipo no tiene valor.";
+  }
+}
 
 export function noticeMessage(
   value: string | string[] | undefined,

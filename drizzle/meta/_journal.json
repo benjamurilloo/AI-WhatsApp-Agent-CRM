@@ -435,6 +435,13 @@
       "when": 1792602889473,
       "tag": "0061_la_permuta_y_la_compra_de_usados",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1792618040996,
+      "tag": "0062_la_cotizacion_de_usados",
+      "breakpoints": true
     }
   ]
 }

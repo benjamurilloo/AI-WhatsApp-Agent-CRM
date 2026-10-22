@@ -10,11 +10,13 @@ import {
   labelClass,
   secondaryButtonClass,
   secondaryLinkClass,
+  selectClass,
 } from "@/app/_components/form-styles";
 import {
   createChecklistItemAction,
   moveChecklistItemAction,
   setChecklistItemActiveAction,
+  setChecklistItemRepairTypeAction,
   updateChecklistItemAction,
 } from "../actions";
 import type { ChangeState, FormState } from "../messages";
@@ -211,6 +213,61 @@ export function ChecklistItemMoveForm({
         >
           <span aria-hidden="true">↓</span>
           <span className="sr-only">Bajar el punto {name}</span>
+        </button>
+      </div>
+      <ChangeError state={state} />
+    </form>
+  );
+}
+
+// La reparación que necesita el equipo si el punto no pasa (brief-29.7.3, D-3), para la cotización.
+// «Ninguna» la saca: el punto no descuenta nada.
+export function ChecklistItemRepairTypeForm({
+  itemId,
+  name,
+  repairTypeId,
+  repairTypes,
+}: {
+  itemId: string;
+  name: string;
+  repairTypeId: string | null;
+  repairTypes: { id: string; name: string; isActive: boolean }[];
+}) {
+  const [state, formAction, pending] = useActionState(
+    setChecklistItemRepairTypeAction,
+    idleChange,
+  );
+  const id = `punto-${itemId}-reparacion`;
+  return (
+    <form action={formAction} className="flex flex-col gap-2">
+      <input type="hidden" name="itemId" value={itemId} />
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="flex flex-col gap-1">
+          <label htmlFor={id} className={labelClass}>
+            Si no pasa, necesita
+            <span className="sr-only"> (punto {name})</span>
+          </label>
+          <select
+            id={id}
+            name="repairTypeId"
+            defaultValue={repairTypeId ?? ""}
+            className={selectClass}
+          >
+            <option value="">Ninguna reparación</option>
+            {repairTypes.map((type) => (
+              <option key={type.id} value={type.id}>
+                {type.isActive ? type.name : `${type.name} (inactiva)`}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button
+          type="submit"
+          disabled={pending}
+          className={secondaryButtonClass}
+        >
+          {pending ? "Guardando…" : "Guardar"}
+          <span className="sr-only"> la reparación del punto {name}</span>
         </button>
       </div>
       <ChangeError state={state} />

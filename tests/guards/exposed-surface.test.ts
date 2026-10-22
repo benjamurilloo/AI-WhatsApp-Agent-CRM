@@ -443,6 +443,16 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
   "src/app/(autenticado)/usados/actions.ts#moveChecklistItemAction": {
     requirement: "sesion",
   },
+  // La cotización (brief-29.7.3, D-3 y D-5): solo admin, con trade_ins, lo exige tradeins.
+  "src/app/(autenticado)/usados/actions.ts#setChecklistItemRepairTypeAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/usados/actions.ts#updateQuoteSettingsAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/usados/actions.ts#setTradeInMarginAction": {
+    requirement: "sesion",
+  },
   "src/app/(autenticado)/usuarios/actions.ts#createMemberAction": {
     requirement: "sesion",
   },

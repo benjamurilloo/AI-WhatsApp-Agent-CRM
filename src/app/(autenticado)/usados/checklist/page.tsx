@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { listRepairTypes } from "@/modules/service";
 import { listChecklistItems, tradeInsAllowed } from "@/modules/tradeins";
 import { requireSession } from "@/app/_auth/session";
 import { ActionNotice } from "@/app/_components/action-notice";
@@ -28,6 +29,7 @@ import {
   ChecklistItemActiveForm,
   ChecklistItemForm,
   ChecklistItemMoveForm,
+  ChecklistItemRepairTypeForm,
 } from "./forms";
 
 export const metadata: Metadata = {
@@ -41,7 +43,8 @@ function single(value: string | string[] | undefined): string {
 // El checklist de un usado (ADR 0024, puntos 8 y 13; brief-29.7, D-3 y D-7): los puntos que se revisan
 // al recibir un equipo, en su orden, cada uno obligatorio o no. Solo admin: agrega, edita, ordena y
 // desactiva. Un punto no se borra: las recepciones guardan la copia de su nombre. ?editar=<id> abre la
-// edición de un punto. Sin la capacidad trade_ins, 404.
+// edición de un punto. Sin la capacidad trade_ins, 404. Desde la 29.7.3 (brief-29.7.3, D-3), con repairs,
+// la reparación que necesita el equipo si el punto no pasa, para la cotización.
 export default async function ChecklistPage({
   searchParams,
 }: {
@@ -53,7 +56,18 @@ export default async function ChecklistPage({
     return <PageNotice title={CHECKLIST_TITLE} message={ADMIN_ONLY_MESSAGE} />;
   }
   const query = await searchParams;
-  const result = await listChecklistItems(context);
+  const [result, types] = await Promise.all([
+    listChecklistItems(context),
+    listRepairTypes(context),
+  ]);
+  // Sin repairs no hay tipos: el campo no aparece.
+  const repairTypes = types.ok
+    ? types.types.map((type) => ({
+        id: type.id,
+        name: type.name,
+        isActive: type.isActive,
+      }))
+    : null;
   if (!result.ok) {
     if (result.code === "NOT_FOUND") notFound();
     return (
@@ -67,7 +81,11 @@ export default async function ChecklistPage({
     <main className="mx-auto max-w-6xl px-4 py-8">
       <PageHeader
         title={CHECKLIST_TITLE}
-        subtitle="Lo que se revisa al recibir un equipo usado. Si un punto obligatorio no pasa, el equipo no se recibe."
+        subtitle={
+          repairTypes
+            ? "Lo que se revisa al recibir un equipo usado. Si un punto obligatorio no pasa, el equipo no se recibe. Si un punto con reparación no pasa, la cotización descuenta su costo; un punto sin reparación no descuenta nada."
+            : "Lo que se revisa al recibir un equipo usado. Si un punto obligatorio no pasa, el equipo no se recibe."
+        }
       />
       <TradeInsSubNav current="checklist" isAdmin />
 
@@ -144,6 +162,16 @@ export default async function ChecklistPage({
                     />
                   </div>
                 )}
+                {repairTypes && editingId !== item.id ? (
+                  <div className="mt-3">
+                    <ChecklistItemRepairTypeForm
+                      itemId={item.id}
+                      name={item.name}
+                      repairTypeId={item.repairTypeId}
+                      repairTypes={repairTypes}
+                    />
+                  </div>
+                ) : null}
               </li>
             ))}
           </ul>

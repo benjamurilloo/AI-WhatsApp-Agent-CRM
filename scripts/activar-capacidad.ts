@@ -14,8 +14,11 @@ import {
   PROFILES,
   type Capability,
 } from "@/modules/organizations";
-import { applyRepairTypeTemplate } from "@/modules/service";
-import { applyChecklistTemplate } from "@/modules/tradeins";
+import {
+  applyRepairTypeTemplate,
+  repairTypeIdsByName,
+} from "@/modules/service";
+import { applyChecklistTemplate, applyQuoteTemplate } from "@/modules/tradeins";
 import { getDb } from "@/shared/db";
 
 // Activa una capacidad en una organización y, con --profile, copia el perfil de rubro (ADR 0024,
@@ -46,6 +49,12 @@ import { getDb } from "@/shared/db";
 // sistema «Permuta» si falta: al activarla, y también al volver a correr el comando con trade_ins ya
 // activa, que es como lo recibe una organización que la activó en la 29.7. Si ya hay un medio de la
 // organización llamado «Permuta», no se activa ni se crea nada.
+//
+// Desde la 29.7.3 (brief-29.7.3, D-1, D-3 y U-4), con trade_ins y el perfil: crea los valores sueltos de
+// la cotización si faltan y, en esa misma corrida, pone el tipo de reparación del perfil en los puntos
+// del checklist que no tienen uno, buscando los tipos por nombre. También al volver a correr el comando
+// con trade_ins ya activa. Con los valores ya creados no toca los puntos (revisión independiente, B-2):
+// no pisa nada que la organización ya tenga. Sin perfil, los valores se cargan en la pantalla.
 
 const usage =
   "Uso: npm run org:capability -- --organization <id> --admin-email <correo> (--profile <perfil> | --capability <capacidad>). Perfiles: " +
@@ -192,6 +201,38 @@ async function main() {
         method.created
           ? `Medio de pago de sistema creado: ${TRADE_IN_PAYMENT_METHOD_NAME}.`
           : `El medio de pago ${TRADE_IN_PAYMENT_METHOD_NAME} ya existía.`,
+      );
+    }
+    // Los valores de la cotización y los tipos del checklist, con el perfil, con trade_ins activa, nueva o
+    // de antes (brief-29.7.3, U-4).
+    if (profile?.tradeInQuote && capabilities.includes("trade_ins")) {
+      const quote = profile.tradeInQuote;
+      const typeIds = await repairTypeIdsByName(tx, organizationId);
+      const itemRepairTypes = new Map<string, string>();
+      for (const item of profile.tradeInChecklist) {
+        const typeId = item.repairType
+          ? typeIds.get(item.repairType.toLowerCase())
+          : undefined;
+        if (typeId) itemRepairTypes.set(item.name.toLowerCase(), typeId);
+      }
+      const copied = await applyQuoteTemplate(tx, {
+        organizationId,
+        actorUserId,
+        template: {
+          batteryThreshold: quote.batteryThreshold,
+          rangePercent: quote.rangePercent,
+          roundingStep: quote.roundingStep,
+          roundingCurrency: quote.roundingCurrency,
+          batteryRepairTypeId:
+            typeIds.get(quote.batteryRepairType.toLowerCase()) ?? null,
+          itemRepairTypes,
+        },
+      });
+      lines.push(
+        copied.settingsCreated
+          ? `Perfil «${profile.label}»: valores de la cotización creados, de ejemplo.`
+          : "Los valores de la cotización ya existían.",
+        `Perfil «${profile.label}»: puntos del checklist con su reparación: ${copied.itemsLinked.join(", ") || "ninguno nuevo"}.`,
       );
     }
     // El producto de servicio, con o sin perfil, al activar repairs (D-1 y D-5): uno por organización.

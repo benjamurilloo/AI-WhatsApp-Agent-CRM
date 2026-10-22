@@ -3,11 +3,15 @@
 // cliente con su presupuesto y su venta, la de una unidad propia (brief-29.6.2), y lo que se le debe a
 // cada técnico, que lee cash. service depende de catalog, crm, inventory (desde la 29.6.2), purchasing,
 // sales, numbering, organizations y audit; ningún módulo depende de service salvo cash, por las deudas
-// del técnico. Lo fija la guarda service-dependencies.
+// del técnico, y desde la 29.7.3 tradeins, que lee los costos para la cotización de un usado. Lo fija
+// la guarda service-dependencies.
 export {
   applyRepairTypeTemplate,
   createRepairType,
   getModelRepairPrices,
+  getRepairCostsForQuote,
+  repairTypeIdsByName,
+  type RepairCostForQuote,
   listRepairModels,
   listRepairTypes,
   moveRepairType,

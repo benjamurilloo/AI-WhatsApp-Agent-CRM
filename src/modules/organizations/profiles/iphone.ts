@@ -15,22 +15,42 @@ import type { Profile } from "./index";
 // Versión 4, del 2026-10-21 (brief-29.7, D-1 y D-3): suma trade_ins y el checklist de un usado, diez
 // puntos de ejemplo, dos de ellos obligatorios para aceptar el equipo. La batería no es un punto: es un
 // dato de la recepción; y los daños estéticos van en el grado.
+//
+// Versión 5, del 2026-10-21 (brief-29.7.3, D-1 y D-3): suma los valores sueltos de la cotización, de
+// ejemplo (batería bajo 80 %, rango del 10 %, redondeo de 10 USD, la batería con «Cambio de batería»), y
+// el tipo de reparación de cuatro puntos. Sin márgenes: son por modelo, y los modelos son de cada
+// negocio (U-3). Una organización que ya tiene trade_ins los recibe al volver a correr el script (U-4).
 export const IPHONE_PROFILE: Profile = {
   name: "iphone",
   label: "Venta de iPhone",
   capabilities: ["variants", "serialized_units", "repairs", "trade_ins"],
   tradeInChecklist: [
-    { name: "Cámara trasera", isMandatory: false },
-    { name: "Cámara frontal", isMandatory: false },
+    {
+      name: "Cámara trasera",
+      isMandatory: false,
+      repairType: "Cámara trasera",
+    },
+    {
+      name: "Cámara frontal",
+      isMandatory: false,
+      repairType: "Cámara frontal",
+    },
     { name: "Micrófono", isMandatory: false },
     { name: "True Tone", isMandatory: false },
-    { name: "Táctil", isMandatory: false },
+    { name: "Táctil", isMandatory: false, repairType: "Cambio de pantalla" },
     { name: "Parlantes", isMandatory: false },
-    { name: "Face ID", isMandatory: false },
+    { name: "Face ID", isMandatory: false, repairType: "Face ID" },
     { name: "Sin piezas desconocidas", isMandatory: false },
     { name: "Toma señal", isMandatory: true },
     { name: "iCloud desvinculado", isMandatory: true },
   ],
+  tradeInQuote: {
+    batteryThreshold: 80,
+    rangePercent: "10.00",
+    roundingStep: "10.00",
+    roundingCurrency: "USD",
+    batteryRepairType: "Cambio de batería",
+  },
   repairTypes: [
     { name: "Cambio de batería" },
     { name: "Cambio de pantalla" },

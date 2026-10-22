@@ -3,7 +3,8 @@ import { IPHONE_PROFILE } from "./iphone";
 // Perfiles de rubro (ADR 0024, punto 13; brief-29.2, D-8). Un perfil son datos: las capacidades que
 // activa y lo que copia a la organización. Las definiciones de atributos las escribe catalog, que es
 // dueño de sus tablas: el script de capacidades le pasa la lista en la misma transacción. Cambiar
-// una plantilla no toca las organizaciones que ya la copiaron.
+// una plantilla no cambia lo que las organizaciones ya copiaron; desde la 29.7.2 y la 29.7.3 (U-4), volver
+// a correr el script completa lo que falta (el medio «Permuta», los valores de la cotización).
 
 export type ProfileAttribute = {
   key: string;
@@ -30,8 +31,23 @@ export type ProfileGrade = { name: string; description: string | null };
 export type ProfileRepairType = { name: string };
 
 // Los puntos del checklist de un usado que copia el perfil al activar trade_ins (brief-29.7, D-3), con
-// si son obligatorios para aceptar el equipo. Los escribe tradeins, dueño de su tabla.
-export type ProfileChecklistItem = { name: string; isMandatory: boolean };
+// si son obligatorios para aceptar el equipo. Los escribe tradeins, dueño de su tabla. Desde la 29.7.3
+// (brief-29.7.3, D-3), el nombre del tipo de reparación que necesita el equipo si el punto no pasa.
+export type ProfileChecklistItem = {
+  name: string;
+  isMandatory: boolean;
+  repairType?: string;
+};
+
+// Los valores sueltos de la cotización de un usado (brief-29.7.3, D-1), de ejemplo. La reparación de la
+// batería va por nombre: el script la busca entre los tipos de la organización.
+export type ProfileTradeInQuote = {
+  batteryThreshold: number;
+  rangePercent: string;
+  roundingStep: string;
+  roundingCurrency: string;
+  batteryRepairType: string;
+};
 
 export type Profile = {
   name: string;
@@ -41,6 +57,7 @@ export type Profile = {
   grades: ProfileGrade[];
   repairTypes: ProfileRepairType[];
   tradeInChecklist: ProfileChecklistItem[];
+  tradeInQuote: ProfileTradeInQuote | null;
 };
 
 export const PROFILES: readonly Profile[] = [IPHONE_PROFILE];

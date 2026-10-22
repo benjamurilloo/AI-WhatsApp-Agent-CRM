@@ -604,6 +604,64 @@ async function writeRepairPrice(
   return { ok: true, changed: true };
 }
 
+// La cotización de un usado (brief-29.7.3, D-4): cada tipo de la organización, activo o no, con el costo
+// estimado para un modelo, o null si no lo tiene. La lee tradeins, la única otra lectura de service
+// (ADR 0024, punto 16). Solo admin: el costo es suyo. Sin repairs no hay tipos, y una cotización que
+// necesita una reparación no se puede hacer.
+export type RepairCostForQuote = {
+  name: string;
+  cost: string | null;
+  costCurrency: string | null;
+};
+
+export async function getRepairCostsForQuote(
+  context: AuthContext,
+  modelId: string,
+): Promise<
+  | { ok: true; types: Map<string, RepairCostForQuote> }
+  | Failure<"FORBIDDEN" | "VALIDATION_ERROR">
+> {
+  const admin = authorize(context, { role: "admin" });
+  if (!admin.ok) return admin;
+  if (!idSchema.safeParse(modelId).success) return failure("VALIDATION_ERROR");
+  if (!(await repairsAllowed(context))) return { ok: true, types: new Map() };
+  const [types, prices] = await Promise.all([
+    repository.findRepairTypes(context.organizationId),
+    repository.findModelRepairPrices(
+      context.organizationId,
+      modelId.toLowerCase(),
+    ),
+  ]);
+  const byType = new Map(prices.map((row) => [row.repairTypeId, row]));
+  return {
+    ok: true,
+    types: new Map(
+      types.map((type) => {
+        const price = byType.get(type.id);
+        return [
+          type.id,
+          {
+            name: type.name,
+            cost: price?.cost ?? null,
+            costCurrency: price?.costCurrency ?? null,
+          },
+        ];
+      }),
+    ),
+  };
+}
+
+// Los tipos de la organización por nombre en minúsculas, para que el script de capacidades le pase a
+// tradeins los de su plantilla (brief-29.7.3, U-4). No autoriza nada: la llama solo el script, dentro
+// de su transacción (tests/guards/capability-reads.test.ts).
+export async function repairTypeIdsByName(
+  tx: DbTransaction,
+  organizationId: string,
+): Promise<Map<string, string>> {
+  const types = await repository.findRepairTypes(organizationId, tx);
+  return new Map(types.map((type) => [type.name.toLowerCase(), type.id]));
+}
+
 // Las monedas que se pueden elegir, para los formularios.
 export function repairCurrencies(): string[] {
   return acceptedCurrencies();

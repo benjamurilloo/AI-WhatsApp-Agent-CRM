@@ -5,6 +5,7 @@ import {
   hasCapability,
   type AuthContext,
 } from "@/modules/organizations";
+import { listRepairTypes } from "@/modules/service";
 import type { DbTransaction } from "@/shared/db";
 import { failure, type Failure } from "@/shared/errors";
 import * as repository from "./repository";
@@ -224,6 +225,64 @@ export async function setChecklistItemActive(
           { isActive },
         ),
       );
+      return { ok: true, itemId: current.id, changed: true };
+    },
+  );
+}
+
+// El tipo de reparación de un punto (brief-29.7.3, D-3): la reparación que necesita el equipo si el
+// punto no pasa, para la cotización. Vacío lo saca. Solo con repairs: sin ella no hay tipos que elegir.
+export type ChecklistItemRepairTypeResult =
+  | { ok: true; itemId: string; changed: boolean }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">;
+
+export async function setChecklistItemRepairType(
+  context: AuthContext,
+  itemId: string,
+  repairTypeId: string,
+): Promise<ChecklistItemRepairTypeResult> {
+  const allowed = await requireTradeIns(context, "admin");
+  if (!allowed.ok) return allowed;
+  if (!idSchema.safeParse(itemId).success) return failure("VALIDATION_ERROR");
+  const typeText = repairTypeId.trim().toLowerCase();
+  let typeId: string | null = null;
+  if (typeText !== "") {
+    if (!idSchema.safeParse(typeText).success) {
+      return failure("VALIDATION_ERROR");
+    }
+    const types = await listRepairTypes(context);
+    if (!types.ok || !types.types.some((type) => type.id === typeText)) {
+      return failure("NOT_FOUND");
+    }
+    typeId = typeText;
+  }
+  const { organizationId } = context;
+  return repository.withTransaction(
+    async (tx): Promise<ChecklistItemRepairTypeResult> => {
+      const current = await repository.findChecklistItem(
+        organizationId,
+        itemId.toLowerCase(),
+        tx,
+        { forUpdate: true },
+      );
+      if (!current) return failure("NOT_FOUND");
+      if (current.repairTypeId === typeId) {
+        return { ok: true, itemId: current.id, changed: false };
+      }
+      await repository.updateChecklistItem(tx, organizationId, current.id, {
+        repairTypeId: typeId,
+      });
+      await recordAudit(tx, {
+        organizationId,
+        actorUserId: context.userId,
+        entityType: "trade_in_checklist_item",
+        entityId: current.id,
+        action: "update",
+        diff: {
+          before: { repairTypeId: current.repairTypeId },
+          after: { repairTypeId: typeId },
+        },
+      });
       return { ok: true, itemId: current.id, changed: true };
     },
   );

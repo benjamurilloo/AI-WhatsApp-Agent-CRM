@@ -96,11 +96,15 @@ function usesTemplateCopy(file: string, code: string): boolean {
 // Desde la 29.6 (brief-29.6, D-1), lo que copia el perfil al activar repairs, con el mismo molde: la
 // copia de los tipos de reparación, que solo nombra service, y el alta del producto de servicio, que
 // solo nombra catalog. Ninguna autoriza nada: las llama el script de capacidades. Desde la 29.7
-// (brief-29.7, D-1), la copia del checklist de un usado, que solo nombra tradeins.
+// (brief-29.7, D-1), la copia del checklist de un usado, que solo nombra tradeins. Desde la 29.7.3
+// (brief-29.7.3, U-4), la copia de los valores de la cotización, que solo nombra tradeins, y los tipos
+// de reparación por nombre que le pasa el script, que solo nombra service.
 const SCRIPT_ONLY_COPIES = [
   { name: "applyRepairTypeTemplate", owner: "src/modules/service/" },
   { name: "createServiceProduct", owner: "src/modules/catalog/" },
   { name: "applyChecklistTemplate", owner: "src/modules/tradeins/" },
+  { name: "applyQuoteTemplate", owner: "src/modules/tradeins/" },
+  { name: "repairTypeIdsByName", owner: "src/modules/service/" },
 ];
 
 function scriptOnlyViolations(file: string, code: string): string[] {
@@ -270,7 +274,7 @@ describe("repositorio", () => {
     expect(users).toEqual([]);
   });
 
-  it("solo service nombra applyRepairTypeTemplate, solo catalog createServiceProduct y solo tradeins applyChecklistTemplate, dentro de src/", () => {
+  it("solo service nombra applyRepairTypeTemplate y repairTypeIdsByName, solo catalog createServiceProduct y solo tradeins applyChecklistTemplate y applyQuoteTemplate, dentro de src/", () => {
     expect(
       files.flatMap((file) =>
         scriptOnlyViolations(file, readFileSync(file, "utf8")),

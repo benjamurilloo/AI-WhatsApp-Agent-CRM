@@ -1,8 +1,10 @@
 // Interfaz pública del módulo tradeins (ADR 0024, punto 8; brief-29.7): la recepción de usados, detrás
 // de la capacidad trade_ins. El checklist de la organización, el comprobante PU con su resultado y la
 // unidad que nace en revisión, y la anulación APU, que orquesta cash. tradeins depende de catalog, crm,
-// inventory, numbering, organizations y audit; ningún módulo depende de tradeins salvo cash, por la
-// anulación (U-4). Lo fija la guarda tradeins-dependencies.
+// inventory, numbering, organizations y audit, y desde la 29.7.3 de service, para la cotización: lee los
+// costos de reparación y la lista de tipos (ADR 0024, nota de la 29.7.3); ningún módulo depende de
+// tradeins salvo cash, por la anulación (U-4).
+// Lo fija la guarda tradeins-dependencies.
 export {
   applyChecklistTemplate,
   CHECKLIST_ITEM_NAME_MAX_LENGTH,
@@ -12,15 +14,45 @@ export {
   moveChecklistItem,
   requireTradeIns,
   setChecklistItemActive,
+  setChecklistItemRepairType,
   tradeInsAllowed,
   updateChecklistItem,
   type ChecklistItem,
   type ChecklistItemField,
   type ChecklistItemInput,
+  type ChecklistItemRepairTypeResult,
   type ChecklistItemWriteResult,
   type ChecklistTemplateItem,
   type MoveDirection,
 } from "./checklist";
+// La cotización de un usado (brief-29.7.3).
+export {
+  applyQuoteTemplate,
+  getQuoteSettingsForm,
+  getTradeInQuoteForm,
+  listTradeInMargins,
+  MAX_RANGE_PERCENT,
+  quoteTradeIn,
+  setTradeInMargin,
+  updateQuoteSettings,
+  type MarginField,
+  type MarginInput,
+  type ModelMargin,
+  type QuoteSettings,
+  type QuoteSettingsField,
+  type QuoteSettingsForm,
+  type QuoteSettingsInput,
+  type QuoteSettingsResult,
+  type QuoteTemplate,
+  type QuoteTradeInResult,
+  type SetMarginResult,
+  type TradeInQuote,
+  type TradeInQuoteField,
+  type TradeInQuoteForm,
+  type TradeInQuoteInput,
+  type TradeInQuoteRepair,
+  type TradeInQuoteUnavailable,
+} from "./quote";
 export {
   CLIENT_TRADE_INS_LIMIT,
   createTradeIn,

@@ -76,6 +76,10 @@ export const auditEntityType = pgEnum("audit_entity_type", [
   "trade_in_checklist_item",
   // El pago de un usado (brief-29.7.2, D-3): create al emitirlo y void al anularlo.
   "trade_in_payment",
+  // La cotización de un usado (brief-29.7.3, D-1 y D-2): los valores sueltos de la organización y el
+  // margen de cada modelo, con create y update.
+  "trade_in_settings",
+  "trade_in_margin",
 ]);
 
 export const auditAction = pgEnum("audit_action", [

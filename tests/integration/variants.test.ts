@@ -913,6 +913,81 @@ describe("los scripts de operador (AC-4, AC-5)", () => {
           where organization_id = ${orgId} and system_role is not null`,
     );
     expect(systemMethods.rows[0]!.count).toBe("1");
+    // Desde la 29.7.3 (brief-29.7.3, U-4, AC-7): con el perfil, los valores de la cotización, de
+    // ejemplo, y la reparación de cuatro puntos del checklist; al volver a correrlo, nada nuevo.
+    expect(activation).toContain(
+      "valores de la cotización creados, de ejemplo.",
+    );
+    expect(activation).toContain(
+      "puntos del checklist con su reparación: Cámara trasera, Cámara frontal, Táctil, Face ID.",
+    );
+    expect(again).toContain("Los valores de la cotización ya existían.");
+    expect(again).toContain("con su reparación: ninguno nuevo.");
+    const settings = await getDb().execute<{
+      battery_threshold: number;
+      range_percent: string;
+      rounding_step: string;
+      rounding_currency: string;
+      battery_type: string | null;
+      is_example: boolean;
+    }>(
+      sql`select s.battery_threshold, s.range_percent, s.rounding_step, s.rounding_currency,
+                 t.name as battery_type, s.is_example
+          from trade_in_settings s
+          left join repair_types t on t.id = s.battery_repair_type_id
+          where s.organization_id = ${orgId}`,
+    );
+    expect(settings.rows).toEqual([
+      {
+        battery_threshold: 80,
+        range_percent: "10.00",
+        rounding_step: "10.00",
+        rounding_currency: "USD",
+        battery_type: "Cambio de batería",
+        is_example: true,
+      },
+    ]);
+    const linked = await getDb().execute<{ item: string; type: string }>(
+      sql`select i.name as item, t.name as type
+          from trade_in_checklist_items i
+          join repair_types t on t.id = i.repair_type_id
+          where i.organization_id = ${orgId}
+          order by i.position`,
+    );
+    expect(linked.rows).toEqual([
+      { item: "Cámara trasera", type: "Cámara trasera" },
+      { item: "Cámara frontal", type: "Cámara frontal" },
+      { item: "Táctil", type: "Cambio de pantalla" },
+      { item: "Face ID", type: "Face ID" },
+    ]);
+    // No pisa lo que la organización cambió: un umbral y un punto sin reparación.
+    await getDb().execute(
+      sql`update trade_in_settings set battery_threshold = 70, is_example = false
+          where organization_id = ${orgId}`,
+    );
+    await getDb().execute(
+      sql`update trade_in_checklist_items set repair_type_id = null
+          where organization_id = ${orgId} and name = 'Face ID'`,
+    );
+    const third = activate();
+    expect(third).toContain("Los valores de la cotización ya existían.");
+    // Revisión independiente, B-2: los puntos se vinculan solo al crear los valores, así que el punto al
+    // que un admin le sacó la reparación queda sin ella.
+    expect(third).toContain("con su reparación: ninguno nuevo.");
+    const faceId = await getDb().execute<{ repair_type_id: string | null }>(
+      sql`select repair_type_id from trade_in_checklist_items
+          where organization_id = ${orgId} and name = 'Face ID'`,
+    );
+    expect(faceId.rows).toEqual([{ repair_type_id: null }]);
+    const after = await getDb().execute<{ battery_threshold: number }>(
+      sql`select battery_threshold from trade_in_settings where organization_id = ${orgId}`,
+    );
+    expect(after.rows[0]!.battery_threshold).toBe(70);
+    const audits = await getDb().execute<{ count: string }>(
+      sql`select count(*)::text as count from audit_logs
+          where organization_id = ${orgId} and entity_type = 'trade_in_settings'`,
+    );
+    expect(audits.rows[0]!.count).toBe("1");
 
     // H-4 de la revisión: una carga cortada después de crear un producto y antes de fijar su
     // precio. El script lo saltea, le fija el precio y completa el resto.

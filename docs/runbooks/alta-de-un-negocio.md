@@ -53,6 +53,8 @@ Imprime el id de la organización, el del `admin` y la contraseña inicial **una
 
 *Desde la 29.7.2* ([brief-29.7.2](../decisions/brief-29.7.2-la-permuta-y-la-compra-de-usados.md), U-4), con `trade_ins` el comando **crea también el medio de pago de sistema «Permuta»**, en la misma transacción y auditado: al activar la capacidad y al volver a correrlo con la capacidad ya activa, que es como se crea en una organización que la activó antes de la 29.7.2. Si el medio ya existe, no hace nada. **Si ya hay un medio llamado «Permuta»** que no es de sistema, el comando se detiene sin activar nada y lo dice: se renombra ese medio desde «Caja → Medios de pago» y se vuelve a correr.
 
+*Desde la 29.7.3* ([brief-29.7.3](../decisions/brief-29.7.3-la-cotizacion-de-usados.md), U-4), con `trade_ins` y **`--profile iphone`** el comando crea también **los valores de la cotización de un usado**, de ejemplo (batería bajo 80 %, rango del 10 %, redondeo de 10 USD, la batería con «Cambio de batería»), si faltan, y en esa misma corrida pone **la reparación de cuatro puntos del checklist** (las dos cámaras, «Táctil» con «Cambio de pantalla» y «Face ID») en los que no tienen una. También al volver a correrlo con la capacidad activa. Si los valores ya existían, no toca nada: ni los valores ni los puntos, aunque un punto haya quedado sin reparación (un `admin` pudo sacársela a propósito). Si un `admin` guardó la configuración antes de correr el comando, los puntos se vinculan a mano en Usados → Checklist. **Los márgenes no vienen en el perfil**: el negocio los carga por modelo en Usados → Configuración, y sin margen un modelo no se cotiza. Sin `--profile`, los valores se cargan en esa misma pantalla.
+
 El correo del `admin` llega por el entorno:
 
 ```

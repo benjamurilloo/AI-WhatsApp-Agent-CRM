@@ -12,7 +12,9 @@ import { describe, expect, it } from "vitest";
 // Dos reglas:
 // 1. src/modules/service/ importa solo de su lista, los esquemas de los módulos que nombra en
 //    schema.ts, src/shared, sus propios archivos y paquetes. No importa cash ni orders;
-// 2. entre los módulos, solo cash importa service. Las pantallas y los scripts lo usan, y no cuentan.
+// 2. entre los módulos, solo cash importa service, y desde la 29.7.3 tradeins, para los costos de la
+//    cotización de un usado (brief-29.7.3, D-4). Qué nombres puede tomar tradeins lo fija la guarda
+//    tradeins-dependencies. Las pantallas y los scripts lo usan, y no cuentan.
 //
 // Lee el texto: import y export con from, el import de efecto y el import dinámico con un literal. No
 // ve un especificador armado en tiempo de ejecución.
@@ -67,7 +69,7 @@ function serviceViolations(file: string, code: string): string[] {
 
 function importerViolations(file: string, code: string): string[] {
   const owner = /^src\/modules\/([^/]+)\//.exec(file)?.[1];
-  if (!owner || owner === "cash" || owner === "service") return [];
+  if (!owner || ["cash", "service", "tradeins"].includes(owner)) return [];
   return specifiers(code)
     .filter((specifier) => moduleOf(specifier)?.name === "service")
     .map((specifier) => `${file} importa ${specifier}`);
@@ -120,11 +122,17 @@ describe("detección", () => {
     ).not.toEqual([]);
   });
 
-  it("regla 2, permite cash, las pantallas y los scripts", () => {
+  it("regla 2, permite cash, tradeins, las pantallas y los scripts", () => {
     const code =
       'import { listTechnicianChargesForAccount } from "@/modules/service";';
     expect(
       importerViolations("src/modules/cash/supplier-payments.ts", code),
+    ).toEqual([]);
+    expect(
+      importerViolations(
+        "src/modules/tradeins/quote.ts",
+        'import { getRepairCostsForQuote } from "@/modules/service";',
+      ),
     ).toEqual([]);
     expect(
       importerViolations("src/app/(autenticado)/reparaciones/page.tsx", code),
@@ -147,7 +155,7 @@ describe("el código", () => {
     ).toEqual([]);
   });
 
-  it("entre los módulos, solo cash importa service, y cash sí lo importa", () => {
+  it("entre los módulos, solo cash y tradeins importan service, y cash sí lo importa", () => {
     expect(
       files.flatMap((file) =>
         importerViolations(file, readFileSync(file, "utf8")),

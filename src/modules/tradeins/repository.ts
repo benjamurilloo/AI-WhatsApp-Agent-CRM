@@ -14,7 +14,9 @@ import {
   tradeInChecklistItems,
   tradeInChecklistResults,
   tradeInDestination,
+  tradeInMargins,
   tradeIns,
+  tradeInSettings,
   tradeInVoidReason,
   tradeInVoids,
 } from "./schema";
@@ -59,6 +61,7 @@ export type ChecklistItemRow = {
   position: number;
   isActive: boolean;
   isExample: boolean;
+  repairTypeId: string | null;
 };
 
 const itemColumns = {
@@ -68,6 +71,7 @@ const itemColumns = {
   position: tradeInChecklistItems.position,
   isActive: tradeInChecklistItems.isActive,
   isExample: tradeInChecklistItems.isExample,
+  repairTypeId: tradeInChecklistItems.repairTypeId,
 };
 
 // En su orden, y el id para desempatar. forUpdate bloquea la lista entera: dos altas o dos movimientos
@@ -149,7 +153,7 @@ export function updateChecklistItem(
   tx: DbTransaction,
   organizationId: string,
   itemId: string,
-  values: Partial<ChecklistItemValues>,
+  values: Partial<ChecklistItemValues & { repairTypeId: string | null }>,
 ): Promise<void | "name_taken"> {
   return inSavepoint(tx, async (savepoint) => {
     const rows = await savepoint
@@ -527,4 +531,162 @@ export async function insertTradeInVoid(
 // Dos anulaciones de la misma recepción que llegaron hasta la base.
 export function isTradeInAlreadyVoided(error: unknown): boolean {
   return uniqueViolationOf(error, "trade_in_voids_trade_in_unique");
+}
+
+// Los valores sueltos y los márgenes de la cotización (brief-29.7.3, D-1 y D-2).
+
+export type QuoteSettingsRow = {
+  id: string;
+  batteryThreshold: number;
+  rangePercent: string;
+  roundingStep: string;
+  roundingCurrency: string;
+  batteryRepairTypeId: string | null;
+  isExample: boolean;
+};
+
+const settingsColumns = {
+  id: tradeInSettings.id,
+  batteryThreshold: tradeInSettings.batteryThreshold,
+  rangePercent: tradeInSettings.rangePercent,
+  roundingStep: tradeInSettings.roundingStep,
+  roundingCurrency: tradeInSettings.roundingCurrency,
+  batteryRepairTypeId: tradeInSettings.batteryRepairTypeId,
+  isExample: tradeInSettings.isExample,
+};
+
+export async function findQuoteSettings(
+  organizationId: string,
+  executor: Executor = getDb(),
+  options: { forUpdate?: boolean } = {},
+): Promise<QuoteSettingsRow | undefined> {
+  const query = executor
+    .select(settingsColumns)
+    .from(tradeInSettings)
+    .where(eq(tradeInSettings.organizationId, organizationId))
+    .limit(1);
+  const rows = options.forUpdate ? await query.for("update") : await query;
+  return rows[0];
+}
+
+export type QuoteSettingsValues = Omit<QuoteSettingsRow, "id">;
+
+const SETTINGS_UNIQUE = "trade_in_settings_organization_unique";
+
+// Una por organización: si otra transacción la creó a la vez, devuelve "taken" y no escribe nada.
+export async function insertQuoteSettings(
+  tx: DbTransaction,
+  organizationId: string,
+  values: QuoteSettingsValues,
+): Promise<string | "taken"> {
+  try {
+    return await tx.transaction(async (savepoint) => {
+      const rows = await savepoint
+        .insert(tradeInSettings)
+        .values({ organizationId, ...values })
+        .returning({ id: tradeInSettings.id });
+      return rows[0]!.id;
+    });
+  } catch (error) {
+    if (uniqueViolationOf(error, SETTINGS_UNIQUE)) return "taken";
+    throw error;
+  }
+}
+
+export async function updateQuoteSettings(
+  tx: DbTransaction,
+  organizationId: string,
+  values: QuoteSettingsValues,
+): Promise<void> {
+  const rows = await tx
+    .update(tradeInSettings)
+    .set({ ...values, updatedAt: new Date() })
+    .where(eq(tradeInSettings.organizationId, organizationId))
+    .returning({ id: tradeInSettings.id });
+  if (rows.length === 0) {
+    throw new Error("updateQuoteSettings: la organización no tiene valores");
+  }
+}
+
+export type MarginRow = {
+  id: string;
+  modelId: string;
+  amount: string;
+  currency: string;
+};
+
+const marginColumns = {
+  id: tradeInMargins.id,
+  modelId: tradeInMargins.modelId,
+  amount: tradeInMargins.amount,
+  currency: tradeInMargins.currency,
+};
+
+export async function findMargins(
+  organizationId: string,
+): Promise<MarginRow[]> {
+  return getDb()
+    .select(marginColumns)
+    .from(tradeInMargins)
+    .where(eq(tradeInMargins.organizationId, organizationId));
+}
+
+export async function findMargin(
+  organizationId: string,
+  modelId: string,
+  executor: Executor = getDb(),
+  options: { forUpdate?: boolean } = {},
+): Promise<MarginRow | undefined> {
+  const query = executor
+    .select(marginColumns)
+    .from(tradeInMargins)
+    .where(
+      and(
+        eq(tradeInMargins.organizationId, organizationId),
+        eq(tradeInMargins.modelId, modelId),
+      ),
+    )
+    .limit(1);
+  const rows = options.forUpdate ? await query.for("update") : await query;
+  return rows[0];
+}
+
+const MARGIN_UNIQUE = "trade_in_margins_organization_model_unique";
+
+export async function insertMargin(
+  tx: DbTransaction,
+  organizationId: string,
+  values: { modelId: string; amount: string; currency: string },
+): Promise<string | "taken"> {
+  try {
+    return await tx.transaction(async (savepoint) => {
+      const rows = await savepoint
+        .insert(tradeInMargins)
+        .values({ organizationId, ...values })
+        .returning({ id: tradeInMargins.id });
+      return rows[0]!.id;
+    });
+  } catch (error) {
+    if (uniqueViolationOf(error, MARGIN_UNIQUE)) return "taken";
+    throw error;
+  }
+}
+
+export async function updateMargin(
+  tx: DbTransaction,
+  organizationId: string,
+  marginId: string,
+  values: { amount: string; currency: string },
+): Promise<void> {
+  const rows = await tx
+    .update(tradeInMargins)
+    .set({ ...values, updatedAt: new Date() })
+    .where(
+      and(
+        eq(tradeInMargins.organizationId, organizationId),
+        eq(tradeInMargins.id, marginId),
+      ),
+    )
+    .returning({ id: tradeInMargins.id });
+  if (rows.length === 0) throw new Error("updateMargin: el margen no existe");
 }

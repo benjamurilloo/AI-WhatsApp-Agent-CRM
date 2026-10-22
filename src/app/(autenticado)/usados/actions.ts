@@ -14,7 +14,10 @@ import {
   createTradeIn,
   moveChecklistItem,
   setChecklistItemActive,
+  setChecklistItemRepairType,
+  setTradeInMargin,
   updateChecklistItem,
+  updateQuoteSettings,
   type ChecklistItemWriteResult,
   type MoveDirection,
 } from "@/modules/tradeins";
@@ -24,7 +27,9 @@ import {
   changeMessage,
   checklistItemRejection,
   createTradeInRejection,
+  marginRejection,
   paymentUnexpectedErrorMessage,
+  quoteSettingsRejection,
   tradeInPaymentRejection,
   unexpectedErrorMessage,
   voidTradeInMessage,
@@ -402,4 +407,108 @@ export async function moveChecklistItemAction(
     (context) => moveChecklistItem(context, itemId, direction as MoveDirection),
     null,
   );
+}
+
+// La cotización (brief-29.7.3, D-3 y D-5): el tipo de reparación de un punto, los valores sueltos y el
+// margen de un modelo. La cotización misma no tiene acción: es un formulario GET que no escribe nada.
+
+const SETTINGS = "/usados/configuracion";
+
+export async function setChecklistItemRepairTypeAction(
+  _previous: ChangeState,
+  formData: FormData,
+): Promise<ChangeState> {
+  const itemId = text(formData, "itemId", 64);
+  const repairTypeId = text(formData, "repairTypeId", 64);
+  return runItemChange(
+    "usados.checklist.reparacion",
+    (context) => setChecklistItemRepairType(context, itemId, repairTypeId),
+    "punto-reparacion",
+  );
+}
+
+export async function updateQuoteSettingsAction(
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const context = await requireSession();
+  const { requestId, log } = logger("usados.configuracion.valores", context);
+  const values = {
+    batteryThreshold: text(formData, "batteryThreshold", 8),
+    rangePercent: text(formData, "rangePercent", 8),
+    roundingStep: text(formData, "roundingStep", 40),
+    roundingCurrency: text(formData, "roundingCurrency", 8),
+    batteryRepairTypeId: text(formData, "batteryRepairTypeId", 64),
+  };
+  let destination: string;
+  try {
+    const result = await updateQuoteSettings(context, values);
+    if (!result.ok) {
+      log(result.code);
+      return {
+        status: "error",
+        requestId,
+        values,
+        ...quoteSettingsRejection(result, requestId),
+      };
+    }
+    log("OK");
+    revalidatePath(SETTINGS);
+    revalidatePath("/usados/cotizar");
+    destination = result.changed
+      ? `${SETTINGS}?aviso=valores-guardados`
+      : SETTINGS;
+  } catch (error) {
+    log("INTERNAL", error);
+    return {
+      status: "error",
+      requestId,
+      values,
+      field: null,
+      message: unexpectedErrorMessage(requestId),
+    };
+  }
+  redirect(destination);
+}
+
+export async function setTradeInMarginAction(
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const context = await requireSession();
+  const { requestId, log } = logger("usados.configuracion.margen", context);
+  const values = {
+    modelId: text(formData, "modelId", 64),
+    amount: text(formData, "amount", 40),
+    currency: text(formData, "currency", 8),
+  };
+  let destination: string;
+  try {
+    const result = await setTradeInMargin(context, values);
+    if (!result.ok) {
+      log(result.code);
+      return {
+        status: "error",
+        requestId,
+        values,
+        ...marginRejection(result, requestId),
+      };
+    }
+    log("OK");
+    revalidatePath(SETTINGS);
+    revalidatePath("/usados/cotizar");
+    destination = result.changed
+      ? `${SETTINGS}?aviso=margen-guardado#margenes`
+      : `${SETTINGS}#margenes`;
+  } catch (error) {
+    log("INTERNAL", error);
+    return {
+      status: "error",
+      requestId,
+      values,
+      field: null,
+      message: unexpectedErrorMessage(requestId),
+    };
+  }
+  redirect(destination);
 }
