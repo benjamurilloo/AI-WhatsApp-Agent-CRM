@@ -6,6 +6,12 @@ Cada sección cita el nivel de validación de lo que afirma. Los hallazgos abier
 
 ## Superficie expuesta
 
+*Nota del 2026-10-22, 29.8.2* ([brief-29.8.2](../decisions/brief-29.8.2-las-reparaciones-para-el-agente.md), D-1 a D-4). **Los Route Handlers pasan de 21 a 23, y los puntos de entrada, de 240 a 242**, contados contra el árbol de `src/app`: 91 páginas, 128 Server Actions y 23 Route Handlers. Las dos rutas nuevas son de la lectura v3, con su borde, sin sesión:
+- `GET /api/read/v3/repairs`, con una credencial de alcance `read`: los modelos activos y el **precio al cliente** de cada tipo activo, nunca el costo;
+- `GET /api/read/v3/service-orders`, con una credencial de alcance **`context`**: las órdenes del cliente de la conversación que nombra `conversation_ref`. **Es la primera lectura del agente sobre datos de un cliente.** El agente nunca manda un teléfono (U-1). Una conversación ajena o inexistente da el mismo 404, la referencia no queda en el log, y la respuesta no trae el IMEI, lo que reportó el cliente, el técnico, un costo ni la venta.
+
+Las dos lo prueban sobre el cuerpo crudo, con valores sembrados (`read-api-v3-repairs.test.ts`), y la guarda `agent-contract-fields` cubre sus esquemas. **Límite aceptado por el usuario** (U-1; ADR 0007): quien escribe desde el WhatsApp de otra persona ve las órdenes de esa persona, como el historial y los pedidos.
+
 *Nota del 2026-10-22, 29.8* ([brief-29.8](../decisions/brief-29.8-el-catalogo-del-rubro-para-el-agente.md), D-1 a D-5). **Los Route Handlers pasan de 16 a 21**, contados contra el árbol de `src/app`. Las cinco rutas nuevas son de la lectura v3:
 - `GET /api/read/v3/products`;
 - `GET /api/read/v3/products/{product_id}`;

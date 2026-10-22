@@ -7,6 +7,7 @@ import type {
   ServiceProductBalance,
 } from "@/modules/inventory";
 import type { Capability } from "@/modules/organizations";
+import type { ServiceClientOrder, ServiceRepairModel } from "@/modules/service";
 import {
   convertMoney,
   currencyDecimals,
@@ -23,7 +24,9 @@ import {
 // Contrato de lectura v3: el catálogo del rubro (docs/contracts/read-v3.md; brief-29.8, D-1 a D-6).
 // Las tres rutas de productos de la v2, con el objeto ampliado (la condición con los usados, el
 // seguimiento, el modelo, los atributos de la variante y el precio convertido), y dos rutas nuevas:
-// las unidades disponibles de un producto y las capacidades. El transporte, los errores y el log son
+// las unidades disponibles de un producto y las capacidades. Desde la 29.8.2, dos más: las
+// reparaciones de un modelo y las órdenes de servicio del cliente de una conversación (brief-29.8.2,
+// D-1 a D-4), un cambio compatible dentro de v3. El transporte, los errores y el log son
 // los de v1. Como en v1, los esquemas son estrictos y los tests validan contra ellos.
 //
 // El agente nunca recibe un IMEI, un costo, un margen ni los datos de identidad del cliente (ADR
@@ -116,6 +119,69 @@ export const unitListResponseSchemaV3 = z.strictObject({
 export const capabilityListResponseSchemaV3 = z.strictObject({
   contract_version: z.literal(READ_CONTRACT_VERSION_V3),
   capabilities: z.array(z.string().regex(/^[a-z][a-z_]*$/)),
+});
+
+const modelSchemaV3 = z.strictObject({
+  model_id: z.uuid(),
+  name: z.string().min(1),
+  brand: z.string().nullable(),
+});
+
+const moneySchemaV3 = z.strictObject({ amount: contractMoney, currency });
+
+// Las reparaciones de un modelo (brief-29.8.2, D-2): solo el precio al cliente, nunca el costo.
+export const repairListResponseSchemaV3 = z.strictObject({
+  contract_version: z.literal(READ_CONTRACT_VERSION_V3),
+  items: z.array(
+    z.strictObject({
+      model: modelSchemaV3,
+      repairs: z
+        .array(
+          z.strictObject({
+            repair_type_id: z.uuid(),
+            name: z.string().min(1),
+            price: moneySchemaV3,
+            price_converted: priceConvertedSchema,
+          }),
+        )
+        .min(1),
+    }),
+  ),
+});
+
+export const SERVICE_ORDER_STATUSES_V3 = [
+  "received",
+  "sent",
+  "quoted",
+  "approved",
+  "rejected",
+  "repaired",
+  "delivered",
+  "cancelled",
+] as const;
+
+// Las órdenes del cliente de la conversación (brief-29.8.2, D-3 y D-4): sin el IMEI, lo que reportó el
+// cliente, el técnico, el costo, la venta ni el motivo de una cancelación. El presupuesto va sin
+// convertir.
+export const serviceOrderSchemaV3 = z.strictObject({
+  number: z.string().regex(/^OS-[0-9]{6,}$/),
+  model: modelSchemaV3,
+  status: z.enum(SERVICE_ORDER_STATUSES_V3),
+  status_at: z.iso.datetime({ precision: 3 }),
+  received_at: z.iso.datetime({ precision: 3 }),
+  quote: z
+    .strictObject({
+      total: moneySchemaV3,
+      repairs: z.array(
+        z.strictObject({ name: z.string().min(1), price: moneySchemaV3 }),
+      ),
+    })
+    .nullable(),
+});
+
+export const serviceOrderListResponseSchemaV3 = z.strictObject({
+  contract_version: z.literal(READ_CONTRACT_VERSION_V3),
+  items: z.array(serviceOrderSchemaV3),
 });
 
 export type ContractProductV3 = z.infer<typeof productSchemaV3>;
@@ -270,6 +336,62 @@ export function toContractProductStockV3(
     quantity_available: contractQuantity(stock.quantityAvailable),
     unit: stock.unit,
     stock_status: stock.stockStatus,
+  };
+}
+
+export type ContractRepairListV3 = z.infer<typeof repairListResponseSchemaV3>;
+
+// Mapeo explícito (brief-29.8.2, D-2): el modelo y cada reparación con su precio al cliente y el
+// convertido, con una sola cotización por respuesta.
+export function toContractRepairListV3(
+  models: ServiceRepairModel[],
+  setup: ExchangeSetup | null,
+): ContractRepairListV3 {
+  return {
+    contract_version: READ_CONTRACT_VERSION_V3,
+    items: models.map(({ model, repairs }) => ({
+      model: { model_id: model.id, name: model.name, brand: model.brand },
+      repairs: repairs.map((repair) => ({
+        repair_type_id: repair.repairTypeId,
+        name: repair.name,
+        price: contractPrice(repair.price)!,
+        price_converted: convertPrice(repair.price, setup),
+      })),
+    })),
+  };
+}
+
+export type ContractServiceOrderListV3 = z.infer<
+  typeof serviceOrderListResponseSchemaV3
+>;
+
+// Mapeo explícito (brief-29.8.2, D-4): el número como lo tiene el cliente en su comprobante.
+export function toContractServiceOrderListV3(
+  orders: ServiceClientOrder[],
+  formatNumber: (number: number) => string,
+): ContractServiceOrderListV3 {
+  return {
+    contract_version: READ_CONTRACT_VERSION_V3,
+    items: orders.map((order) => ({
+      number: formatNumber(order.number),
+      model: {
+        model_id: order.model.id,
+        name: order.model.name,
+        brand: order.model.brand,
+      },
+      status: order.status,
+      status_at: order.statusAt.toISOString(),
+      received_at: order.receivedAt.toISOString(),
+      quote: order.quote
+        ? {
+            total: contractPrice(order.quote.total)!,
+            repairs: order.quote.repairs.map((repair) => ({
+              name: repair.name,
+              price: contractPrice(repair.price)!,
+            })),
+          }
+        : null,
+    })),
   };
 }
 

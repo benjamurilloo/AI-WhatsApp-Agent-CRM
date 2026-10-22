@@ -112,6 +112,17 @@ export {
   type RepairCostLineIssue,
   type RepairCostRule,
 } from "./quote";
+// Para la API de lectura v3 (brief-29.8.2, D-6): la lista con el precio al cliente y las órdenes de un
+// cliente, sin costos, IMEI ni técnico.
+export {
+  CLIENT_SERVICE_ORDERS_FOR_SERVICE_LIMIT,
+  CLOSED_SERVICE_ORDERS_DAYS,
+  listClientServiceOrdersForService,
+  listRepairPricesForService,
+  REPAIR_MODELS_FOR_SERVICE_LIMIT,
+  type ServiceClientOrder,
+  type ServiceRepairModel,
+} from "./agent-reads";
 // Para cash (D-7): las deudas de los técnicos, con su transacción.
 export {
   listTechnicianChargesForAccount,

@@ -1,5 +1,6 @@
 import { and, asc, count, eq, inArray, isNotNull, ne, sql } from "drizzle-orm";
 import { getDb, type Db, type DbTransaction } from "@/shared/db";
+import { searchQuery, searchVector } from "@/shared/search";
 import {
   attributeDefinitions,
   attributeOptions,
@@ -139,6 +140,47 @@ export function findModels(
     .from(productModels)
     .where(eq(productModels.organizationId, organizationId))
     .orderBy(asc(productModels.position), asc(productModels.name));
+}
+
+// Los modelos activos que coinciden con el texto, por prefijo de cada palabra en el nombre y la
+// marca, o el de ese id (brief-29.8.2, D-2). El vector se calcula en la consulta, sin índice: los
+// modelos de una organización son pocos y se filtran antes por organization_id. Por nombre.
+export function findActiveModelsMatching(
+  organizationId: string,
+  filter: { text: string } | { modelId: string },
+): Promise<ModelRow[]> {
+  const match =
+    "text" in filter
+      ? sql`${searchVector(sql`${productModels.name} || ' ' || coalesce(${productModels.brand}, '')`)} @@ ${searchQuery(filter.text)}`
+      : eq(productModels.id, filter.modelId);
+  return getDb()
+    .select(modelColumns)
+    .from(productModels)
+    .where(
+      and(
+        eq(productModels.organizationId, organizationId),
+        eq(productModels.isActive, true),
+        match,
+      ),
+    )
+    .orderBy(sql`lower(${productModels.name})`, asc(productModels.id));
+}
+
+// Unos modelos por id, activos o no: el nombre del modelo de una orden de servicio.
+export function findModelsByIds(
+  organizationId: string,
+  modelIds: string[],
+): Promise<ModelRow[]> {
+  if (modelIds.length === 0) return Promise.resolve([]);
+  return getDb()
+    .select(modelColumns)
+    .from(productModels)
+    .where(
+      and(
+        eq(productModels.organizationId, organizationId),
+        inArray(productModels.id, modelIds),
+      ),
+    );
 }
 
 export async function findModel(

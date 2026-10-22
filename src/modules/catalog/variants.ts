@@ -1298,6 +1298,35 @@ export async function getProductVariants(
   return views;
 }
 
+export type ServiceModel = { id: string; name: string; brand: string | null };
+
+// Los modelos activos por texto o por id, para las reparaciones de la API de lectura v3
+// (brief-29.8.2, D-2), que las compone service. La organización sale de la credencial y no hay rol.
+// Sin la capacidad variants no hay modelos: lista vacía.
+export async function searchActiveModelsForService(
+  organizationId: string,
+  filter: { text: string } | { modelId: string },
+): Promise<ServiceModel[]> {
+  if (!(await hasCapability(organizationId, "variants"))) return [];
+  const models = await repository.findActiveModelsMatching(
+    organizationId,
+    filter,
+  );
+  return models.map(({ id, name, brand }) => ({ id, name, brand }));
+}
+
+// Unos modelos por id, activos o no, para el nombre del modelo de las órdenes de servicio de la API
+// de lectura v3 (brief-29.8.2, D-4). No mira la capacidad: la orden ya nombra su modelo.
+export async function getModelsForService(
+  organizationId: string,
+  modelIds: string[],
+): Promise<Map<string, ServiceModel>> {
+  const models = await repository.findModelsByIds(organizationId, modelIds);
+  return new Map(
+    models.map(({ id, name, brand }) => [id, { id, name, brand }]),
+  );
+}
+
 // El modelo y la variante de unos productos, para la API de lectura v3 (brief-29.8, D-2). La
 // organización sale de la credencial y no hay rol. Solo los atributos que son variante y están activos,
 // en el orden de la organización: el agente ofrece el equipo, no la ficha. null sin la capacidad, y

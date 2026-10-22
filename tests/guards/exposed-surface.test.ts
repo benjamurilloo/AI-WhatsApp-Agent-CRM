@@ -545,6 +545,15 @@ const HANDLERS: Readonly<Record<string, Entry>> = {
     requirement: "sin-sesion",
     why: "capacidades de la API de lectura v3 (brief-29.8, D-5): las activas de la organización de la credencial de alcance read",
   },
+  // Las reparaciones y las órdenes de servicio para el agente (brief-29.8.2, D-1 a D-4).
+  "src/app/api/read/v3/repairs/route.ts": {
+    requirement: "sin-sesion",
+    why: "reparaciones de la API de lectura v3 (brief-29.8.2, D-2): los modelos activos con el precio al cliente de cada tipo activo, nunca el costo, con una credencial de alcance read",
+  },
+  "src/app/api/read/v3/service-orders/route.ts": {
+    requirement: "sin-sesion",
+    why: "órdenes de servicio de la API de lectura v3 (brief-29.8.2, D-3 y D-4): las del cliente de la conversación nombrada por conversation_ref, nunca por teléfono, sin el IMEI, lo reportado, el técnico ni el costo, con una credencial de alcance context",
+  },
   "src/app/api/read/v1/knowledge/route.ts": {
     requirement: "sin-sesion",
     why: "API de lectura (brief-11.3): autentica con una credencial de alcance read, apagada salvo READ_API_ENABLED, y una sesión válida no la autentica",

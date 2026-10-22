@@ -4,7 +4,9 @@ import {
   count,
   desc,
   eq,
+  gte,
   inArray,
+  notInArray,
   or,
   sql,
   type SQL,
@@ -192,6 +194,36 @@ export function findModelRepairPrices(
       and(
         eq(repairPrices.organizationId, organizationId),
         eq(repairPrices.modelId, modelId),
+      ),
+    );
+}
+
+// El precio al cliente de unos modelos, para el agente (brief-29.8.2, D-2): sin el costo, que ni se
+// lee.
+export type CustomerRepairPriceRow = {
+  repairTypeId: string;
+  modelId: string;
+  price: string;
+  priceCurrency: string;
+};
+
+export function findCustomerRepairPrices(
+  organizationId: string,
+  modelIds: string[],
+): Promise<CustomerRepairPriceRow[]> {
+  if (modelIds.length === 0) return Promise.resolve([]);
+  return getDb()
+    .select({
+      repairTypeId: repairPrices.repairTypeId,
+      modelId: repairPrices.modelId,
+      price: repairPrices.price,
+      priceCurrency: repairPrices.priceCurrency,
+    })
+    .from(repairPrices)
+    .where(
+      and(
+        eq(repairPrices.organizationId, organizationId),
+        inArray(repairPrices.modelId, modelIds),
       ),
     );
 }
@@ -569,6 +601,99 @@ export function findServiceOrders(
     .orderBy(desc(serviceOrders.createdAt), desc(serviceOrders.id))
     .limit(limit)
     .offset(offset);
+}
+
+// Las órdenes de un cliente para el agente (brief-29.8.2, U-3 y D-4): las del equipo de un cliente,
+// abiertas o cerradas (entregadas o canceladas) desde `closedSince`, de la más reciente a la más vieja.
+// Solo las columnas que el contrato usa: ni el IMEI, ni lo que reporta, ni el técnico, ni el costo. El
+// filtro por tipo es una segunda defensa: una orden propia no tiene cliente, y el de client_id ya la deja
+// fuera.
+export type AgentServiceOrderRow = {
+  id: string;
+  number: number;
+  modelId: string;
+  status: ServiceOrderStatus;
+  customerCurrency: string | null;
+  customerTotal: string | null;
+  sentAt: Date | null;
+  quotedAt: Date | null;
+  approvedAt: Date | null;
+  rejectedAt: Date | null;
+  repairedAt: Date | null;
+  deliveredAt: Date | null;
+  cancelledAt: Date | null;
+  createdAt: Date;
+};
+
+export function findClientServiceOrdersForAgent(
+  organizationId: string,
+  clientId: string,
+  closedSince: Date,
+  limit: number,
+): Promise<AgentServiceOrderRow[]> {
+  return getDb()
+    .select({
+      id: serviceOrders.id,
+      number: serviceOrders.number,
+      modelId: serviceOrders.modelId,
+      status: serviceOrders.status,
+      customerCurrency: serviceOrders.customerCurrency,
+      customerTotal: serviceOrders.customerTotal,
+      sentAt: serviceOrders.sentAt,
+      quotedAt: serviceOrders.quotedAt,
+      approvedAt: serviceOrders.approvedAt,
+      rejectedAt: serviceOrders.rejectedAt,
+      repairedAt: serviceOrders.repairedAt,
+      deliveredAt: serviceOrders.deliveredAt,
+      cancelledAt: serviceOrders.cancelledAt,
+      createdAt: serviceOrders.createdAt,
+    })
+    .from(serviceOrders)
+    .where(
+      and(
+        eq(serviceOrders.organizationId, organizationId),
+        eq(serviceOrders.kind, "customer_device"),
+        eq(serviceOrders.clientId, clientId),
+        or(
+          notInArray(serviceOrders.status, ["delivered", "cancelled"]),
+          gte(serviceOrders.deliveredAt, closedSince),
+          gte(serviceOrders.cancelledAt, closedSince),
+        ),
+      ),
+    )
+    .orderBy(desc(serviceOrders.createdAt), desc(serviceOrders.id))
+    .limit(limit);
+}
+
+// Las líneas de unas órdenes con su precio al cliente, para el presupuesto que ve el agente
+// (brief-29.8.2, D-4): sin el costo del técnico.
+export type CustomerOrderLineRow = {
+  serviceOrderId: string;
+  repairTypeId: string;
+  position: number;
+  price: string | null;
+};
+
+export function findCustomerOrderLines(
+  organizationId: string,
+  serviceOrderIds: string[],
+): Promise<CustomerOrderLineRow[]> {
+  if (serviceOrderIds.length === 0) return Promise.resolve([]);
+  return getDb()
+    .select({
+      serviceOrderId: serviceOrderLines.serviceOrderId,
+      repairTypeId: serviceOrderLines.repairTypeId,
+      position: serviceOrderLines.position,
+      price: serviceOrderLines.price,
+    })
+    .from(serviceOrderLines)
+    .where(
+      and(
+        eq(serviceOrderLines.organizationId, organizationId),
+        inArray(serviceOrderLines.serviceOrderId, serviceOrderIds),
+      ),
+    )
+    .orderBy(asc(serviceOrderLines.position));
 }
 
 // Las órdenes de unas unidades propias (brief-29.6.2, D-7), de la más reciente a la más vieja.

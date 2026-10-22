@@ -706,6 +706,25 @@ export async function getAgentPauseForService(
   return { ok: true, agentPausedAt: found.agentPausedAt };
 }
 
+export type ConversationClientResult =
+  { ok: true; clientId: string | null } | Failure<"NOT_FOUND">;
+
+// El cliente de una conversación, para las órdenes de servicio de la API de lectura v3
+// (brief-29.8.2, D-3 y D-6): el agente nombra la conversación, nunca un teléfono. Ajena o
+// inexistente dan el mismo NOT_FOUND; una sin cliente resuelto, clientId null.
+export async function getConversationClientForService(
+  organizationId: string,
+  input: { channel: ConversationChannel; conversationRef: string },
+): Promise<ConversationClientResult> {
+  const found = await repository.findConversationClientByExternalRef({
+    organizationId,
+    channel: input.channel,
+    externalRef: input.conversationRef,
+  });
+  if (found === undefined) return failure("NOT_FOUND");
+  return { ok: true, clientId: found.clientId };
+}
+
 export type ClientActivityResult =
   | ({
       ok: true;

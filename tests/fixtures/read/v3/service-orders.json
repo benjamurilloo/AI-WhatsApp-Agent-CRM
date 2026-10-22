@@ -1,0 +1,56 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: ningún consumidor real leyó esta respuesta (brief-29.8.2, D-3 y D-4). La ventana con el agente la contrasta con lo que lea.",
+  "description": "Las órdenes del cliente de la conversación: una presupuestada, con el total y las reparaciones sin convertir, y una recibida, sin presupuesto. Sin el IMEI, lo que reportó el cliente, el técnico ni el costo. El teléfono no viaja: la consulta nombra la conversación.",
+  "request": {
+    "method": "GET",
+    "path": "/api/read/v3/service-orders?conversation_ref=conv-propuesta-0001",
+    "headers": {
+      "authorization": "Bearer crm_ctx_<token>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "contract_version": "3",
+      "items": [
+        {
+          "number": "OS-000124",
+          "model": {
+            "model_id": "3f1c2b4a-8d6e-4f0a-9b7c-1e2d3c4b5a69",
+            "name": "iPhone 11",
+            "brand": "Apple"
+          },
+          "status": "quoted",
+          "status_at": "2026-10-22T15:00:00.000Z",
+          "received_at": "2026-10-20T13:10:00.000Z",
+          "quote": {
+            "total": { "amount": "165.00", "currency": "USD" },
+            "repairs": [
+              {
+                "name": "Cambio de pantalla",
+                "price": { "amount": "120.00", "currency": "USD" }
+              },
+              {
+                "name": "Cambio de batería",
+                "price": { "amount": "45.00", "currency": "USD" }
+              }
+            ]
+          }
+        },
+        {
+          "number": "OS-000123",
+          "model": {
+            "model_id": "5b3e4d6c-0f8a-4b2c-9d9e-3a4f5e6d7c8b",
+            "name": "iPhone 13",
+            "brand": "Apple"
+          },
+          "status": "received",
+          "status_at": "2026-10-19T12:00:00.000Z",
+          "received_at": "2026-10-19T12:00:00.000Z",
+          "quote": null
+        }
+      ]
+    }
+  }
+}

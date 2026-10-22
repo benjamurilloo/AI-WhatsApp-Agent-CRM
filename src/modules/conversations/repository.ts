@@ -376,6 +376,27 @@ export async function findAgentPauseByExternalRef(values: {
   return rows[0];
 }
 
+// Cliente de la conversación de la organización con esa referencia del emisor, sin bloquear
+// (brief-29.8.2, D-3). undefined: ajena o inexistente; clientId null: sin cliente resuelto.
+export async function findConversationClientByExternalRef(values: {
+  organizationId: string;
+  channel: ConversationChannel;
+  externalRef: string;
+}): Promise<{ clientId: string | null } | undefined> {
+  const rows = await getDb()
+    .select({ clientId: conversations.clientId })
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.organizationId, values.organizationId),
+        eq(conversations.channel, values.channel),
+        eq(conversations.externalRef, values.externalRef),
+      ),
+    )
+    .limit(1);
+  return rows[0];
+}
+
 // Id de la conversación de la organización con esa referencia del emisor, sin bloquear: la
 // lectura del historial no escribe (brief-12.4, D-3).
 export async function findConversationIdByExternalRef(values: {

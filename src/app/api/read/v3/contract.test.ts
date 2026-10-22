@@ -10,9 +10,13 @@ import {
   productListResponseSchemaV3,
   productResponseSchemaV3,
   productStockResponseSchemaV3,
+  repairListResponseSchemaV3,
+  serviceOrderListResponseSchemaV3,
   sortUnitsByPrice,
   toContractCapabilities,
   toContractProductV3,
+  toContractRepairListV3,
+  toContractServiceOrderListV3,
   toContractUnitV3,
   unitListResponseSchemaV3,
   type ContractUnitV3,
@@ -271,11 +275,143 @@ describe("las capacidades (D-5)", () => {
   });
 });
 
+const MODEL = {
+  id: "3f1c2b4a-8d6e-4f0a-9b7c-1e2d3c4b5a69",
+  name: "iPhone 11",
+  brand: "Apple",
+};
+
+describe("las reparaciones (brief-29.8.2, D-2)", () => {
+  it("el precio al cliente con el convertido, y el esquema no admite un costo", () => {
+    const body = toContractRepairListV3(
+      [
+        {
+          model: MODEL,
+          repairs: [
+            {
+              repairTypeId: "5f0c9a8e-3b1d-4c2a-9e7f-1a2b3c4d5e6f",
+              name: "Cambio de batería",
+              price: { amount: "45.00", currency: "USD" },
+            },
+          ],
+        },
+      ],
+      setup(),
+    );
+    expect(body).toStrictEqual({
+      contract_version: "3",
+      items: [
+        {
+          model: { model_id: MODEL.id, name: "iPhone 11", brand: "Apple" },
+          repairs: [
+            {
+              repair_type_id: "5f0c9a8e-3b1d-4c2a-9e7f-1a2b3c4d5e6f",
+              name: "Cambio de batería",
+              price: { amount: "45.00", currency: "USD" },
+              price_converted: {
+                amount: "54000.00",
+                currency: "ARS",
+                rate: "1200",
+                rate_as_of: AS_OF.toISOString(),
+              },
+            },
+          ],
+        },
+      ],
+    });
+    expect(repairListResponseSchemaV3.safeParse(body).success).toBe(true);
+    const repair = body.items[0]!.repairs[0]!;
+    for (const invalid of [
+      { ...repair, cost: { amount: "20.00", currency: "USD" } },
+      { ...repair, price: null },
+    ]) {
+      expect(
+        repairListResponseSchemaV3.safeParse({
+          ...body,
+          items: [{ ...body.items[0], repairs: [invalid] }],
+        }).success,
+      ).toBe(false);
+    }
+    // Un modelo sin reparaciones no se publica.
+    expect(
+      repairListResponseSchemaV3.safeParse({
+        ...body,
+        items: [{ ...body.items[0], repairs: [] }],
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("las órdenes de servicio (brief-29.8.2, D-4)", () => {
+  const order = {
+    number: 123,
+    model: MODEL,
+    status: "quoted" as const,
+    statusAt: new Date("2026-10-22T15:00:00.000Z"),
+    receivedAt: new Date("2026-10-20T13:10:00.000Z"),
+    quote: {
+      total: { amount: "120.00", currency: "USD" },
+      repairs: [
+        {
+          name: "Cambio de pantalla",
+          price: { amount: "120.00", currency: "USD" },
+        },
+      ],
+    },
+  };
+
+  it("el número del comprobante, las fechas y el presupuesto sin convertir", () => {
+    const body = toContractServiceOrderListV3(
+      [order, { ...order, number: 7, status: "received", quote: null }],
+      (number) => `OS-${String(number).padStart(6, "0")}`,
+    );
+    expect(body.items[0]).toStrictEqual({
+      number: "OS-000123",
+      model: { model_id: MODEL.id, name: "iPhone 11", brand: "Apple" },
+      status: "quoted",
+      status_at: "2026-10-22T15:00:00.000Z",
+      received_at: "2026-10-20T13:10:00.000Z",
+      quote: {
+        total: { amount: "120.00", currency: "USD" },
+        repairs: [
+          {
+            name: "Cambio de pantalla",
+            price: { amount: "120.00", currency: "USD" },
+          },
+        ],
+      },
+    });
+    expect(body.items[1]).toMatchObject({ number: "OS-000007", quote: null });
+    expect(serviceOrderListResponseSchemaV3.safeParse(body).success).toBe(true);
+  });
+
+  it("el esquema no admite el IMEI, lo reportado, el técnico, un costo ni un estado desconocido", () => {
+    const valid = toContractServiceOrderListV3([order], () => "OS-000123")
+      .items[0]!;
+    for (const invalid of [
+      { ...valid, device_serial: "356789012345678" },
+      { ...valid, reported_issue: "No carga" },
+      { ...valid, technician: "Técnico" },
+      { ...valid, quote: { ...valid.quote, technician_total: "50.00" } },
+      { ...valid, status: "lost" },
+      { ...valid, number: "123" },
+      { ...valid, quote: { ...valid.quote, price_converted: null } },
+    ]) {
+      expect(
+        serviceOrderListResponseSchemaV3.safeParse({
+          contract_version: "3",
+          items: [invalid],
+        }).success,
+      ).toBe(false);
+    }
+  });
+});
+
 describe("fixtures del contrato v3", () => {
   const dir = path.join(process.cwd(), "tests/fixtures/read/v3");
   const files = readdirSync(dir).filter((file) => file.endsWith(".json"));
 
-  it("existen las cinco rutas", () => {
+  it("existen las siete rutas", () => {
     const paths = files.map(
       (file) =>
         JSON.parse(readFileSync(path.join(dir, file), "utf8")).request
@@ -290,6 +426,10 @@ describe("fixtures del contrato v3", () => {
     expect(paths.some((p) => p.endsWith("/stock"))).toBe(true);
     expect(paths.some((p) => p.endsWith("/units"))).toBe(true);
     expect(paths).toContain("/api/read/v3/capabilities");
+    expect(paths.some((p) => p.startsWith("/api/read/v3/repairs?"))).toBe(true);
+    expect(
+      paths.some((p) => p.startsWith("/api/read/v3/service-orders?")),
+    ).toBe(true);
   });
 
   it.each(files)("%s declara su forma y pasa el validador", (file) => {
@@ -307,9 +447,13 @@ describe("fixtures del contrato v3", () => {
         ? unitListResponseSchemaV3
         : requestPath.endsWith("/capabilities")
           ? capabilityListResponseSchemaV3
-          : "items" in body
-            ? productListResponseSchemaV3
-            : productResponseSchemaV3;
+          : requestPath.startsWith("/api/read/v3/repairs?")
+            ? repairListResponseSchemaV3
+            : requestPath.startsWith("/api/read/v3/service-orders?")
+              ? serviceOrderListResponseSchemaV3
+              : "items" in body
+                ? productListResponseSchemaV3
+                : productResponseSchemaV3;
     const parsed = schema.safeParse(body);
     expect(parsed.success, parsed.error?.message).toBe(true);
   });

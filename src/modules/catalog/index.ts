@@ -114,6 +114,10 @@ export {
   // La API de lectura v3 (brief-29.8, D-2).
   getProductVariantsForService,
   type ServiceProductVariant,
+  // Las reparaciones y las órdenes de servicio de la API de lectura v3 (brief-29.8.2, D-6).
+  getModelsForService,
+  searchActiveModelsForService,
+  type ServiceModel,
   getVariantFormOptions,
   hasVariants,
   listAttributes,
