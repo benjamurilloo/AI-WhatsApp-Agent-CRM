@@ -3,8 +3,8 @@
 **Estado**:
 - **Diseñado e implementado** en la 29.8 ([brief-29.8](../decisions/brief-29.8-el-catalogo-del-rubro-para-el-agente.md), D-1 a D-6), con la confirmación del agente del 2026-10-22 (`Respuesta-29.8-Agente-al-CRM.md`): lo usa tal como está.
 - **Validado localmente** con requests sintéticos, contra PostgreSQL real (`deterministic`).
-- **No validado en integración**: ningún consumidor real lo leyó todavía. Sus fixtures tienen **forma asumida**. La ventana con el agente los contrasta (brief-29.8, D-11).
-- *Ampliado en la 29.8.2* ([brief-29.8.2](../decisions/brief-29.8.2-las-reparaciones-para-el-agente.md), D-1 a D-4), con la confirmación del agente del 2026-10-22 (`Respuesta-29.8.2-Agente-al-CRM.md`): **las reparaciones de un modelo** y **las órdenes de servicio del cliente de una conversación**. Son dos rutas nuevas, un cambio compatible: ninguna respuesta existente cambia. **Validadas localmente**. El agente las adopta en una subfase suya, todavía sin fecha.
+- ~~**No validado en integración**: ningún consumidor real lo leyó todavía. Sus fixtures tienen **forma asumida**. La ventana con el agente los contrasta (brief-29.8, D-11).~~ *Precisado el 2026-10-23*: el agente leyó las rutas de la 29.8 en sus ventanas 3.50 y 3.51 (brief-29.8, §Cierre). Los fixtures siguen siendo de **forma asumida**, porque las conciliaciones traen ids, no cuerpos.
+- *Ampliado en la 29.8.2* ([brief-29.8.2](../decisions/brief-29.8.2-las-reparaciones-para-el-agente.md), D-1 a D-4), con la confirmación del agente del 2026-10-22 (`Respuesta-29.8.2-Agente-al-CRM.md`): **las reparaciones de un modelo** y **las órdenes de servicio del cliente de una conversación**. Son dos rutas nuevas, un cambio compatible: ninguna respuesta existente cambia. **Validadas localmente**. *Desde el 2026-10-23*, **validadas en integración con el agente real**: su ventana 3.52 leyó las dos y coincide con el log de producción (brief-29.8.2, §La ventana). Sus fixtures siguen siendo de forma asumida.
 
 ## Qué cambia respecto de v2
 
@@ -323,4 +323,4 @@ Las reglas de v1:
   Las dos comprobaciones de la capacidad `repairs` se quitaron una por vez, y el caso 6 falló en las dos.
 - **`tests/guards/exposed-surface.test.ts`** declara las siete rutas.
 
-**Sin validar en integración**: todo el contrato, hasta la ventana con el agente.
+~~**Sin validar en integración**: todo el contrato, hasta la ventana con el agente.~~ *Desde el 2026-10-23*, las dos rutas de la 29.8.2 están validadas en integración con el agente real (su ventana 3.52, brief-29.8.2, §La ventana). Los fixtures siguen siendo de forma asumida.

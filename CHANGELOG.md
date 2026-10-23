@@ -4,7 +4,7 @@ Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qu�
 
 ## 2026-10-23 — 29.8.2: las reparaciones y las órdenes de servicio para el agente
 
-Cierra el 2026-10-23, desplegada en producción (`a7a890f`, que suma un e2e estabilizado y el límite de la CI en 45 min), sin la ventana del agente, que queda en «Esperando» ([brief-29.8.2](docs/decisions/brief-29.8.2-las-reparaciones-para-el-agente.md), §Cierre). Implementa la segunda parte del punto 15 del [ADR 0024](docs/decisions/0024-rubros-y-capacidades.md), sobre «iPhone Demo».
+Cierra el 2026-10-23, desplegada en producción (`a7a890f`, que suma un e2e estabilizado y el límite de la CI en 45 min), con la ventana del agente (su 3.52) conciliada el mismo día: las cinco lecturas coinciden con el log de producción, y las dos rutas quedan validadas en integración ([brief-29.8.2](docs/decisions/brief-29.8.2-las-reparaciones-para-el-agente.md), §Cierre). Implementa la segunda parte del punto 15 del [ADR 0024](docs/decisions/0024-rubros-y-capacidades.md), sobre «iPhone Demo».
 
 **Certifica:**
 - **`GET /api/read/v3/repairs`** ([read-v3.md](docs/contracts/read-v3.md)), con alcance `read`: por texto o por `model_id`, los modelos activos con los precios al cliente de los tipos activos, también los que el negocio no vende, con el precio convertido; nunca el costo; hasta 10.

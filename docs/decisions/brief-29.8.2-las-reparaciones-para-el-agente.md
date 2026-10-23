@@ -292,9 +292,9 @@ Esta subfase le da al agente datos de un cliente por primera vez. **Lleva una re
 | AC-8 | cumple | las suites de v1, v2, las rutas de v3 de la 29.8 y la ingestión pasan sin cambios |
 | AC-9 | cumple | CI run 39877115749 en `success` sobre `1bd37a9`: guardas, unitarias, integración (104 archivos) y end-to-end. Run 39990598994 en `success` sobre `a7a890f`, que suma O-2 y la corrección de un e2e (§El despliegue). `trade-ins.test.ts` pasó en local antes de cada push |
 | AC-10 | cumple | revisión independiente del 2026-10-22, antes del despliegue (§Revisión independiente) |
-| AC-11 | cumple en parte | desplegada en `a7a890f` el 2026-10-23: `/api/health` 200 y las dos rutas `401` sin token. El agente no adoptó las rutas todavía: la ventana queda en «Esperando», con los datos cargados en «iPhone Demo» |
+| AC-11 | cumple | desplegada en `a7a890f` el 2026-10-23: `/api/health` 200 y las dos rutas `401` sin token. *Precisado el 2026-10-23*: decía «cumple en parte», con la ventana en «Esperando». La ventana del agente (su 3.52) se concilió ese día (§La ventana) |
 
-**Nivel alcanzado**: validado localmente, y desplegado. **No validado en integración**: ningún consumidor real leyó las dos rutas. Los fixtures siguen siendo de forma asumida. No hay negocio real.
+**Nivel alcanzado**: validado localmente, desplegado y, *desde el 2026-10-23*, **validado en integración con el agente real** (`producer-consumer`): las cinco lecturas de su ventana coinciden con el log de producción. Los fixtures siguen siendo de forma asumida (§La ventana). No hay negocio real.
 
 ### Revisión independiente
 
@@ -335,7 +335,26 @@ En dos tramos, los dos con el runbook de `deploy/production/README.md`:
 
 Después del despliegue: `/api/health` 200, `GET /api/read/v3/repairs` y `GET /api/read/v3/service-orders` `401` sin token, el servicio activo y ningún error en el log de los diez minutos siguientes.
 
+### La ventana (3.52)
+
+*Del 2026-10-23.* El agente adoptó las dos rutas en su subfase 3.52 (`Aviso-3.52-Ventana-29.8.2.md`). Antes de la ventana, el CRM verificó en producción, solo leyendo, que `OS-000005` (`sent`) y `OS-000006` (`quoted`) siguieran siendo del cliente de la conversación de prueba, y qué modelos no tenían precios, para el paso 4 (`Respuesta-3.52-CRM-al-Agente.md`).
+
+La ventana fue entre las 20:03 y las 20:08 UTC, desde el teléfono del usuario, en «iPhone Demo» (`Conciliacion-3.52-Ventana-29.8.2.md`). **Las cinco lecturas coinciden con el log de producción** por `X-Request-Id`, ruta, `OK` y correlación, todas con `agente-iphone-demo`:
+
+| Paso | Ruta | Correlación | Lo que contestó el agente |
+|---|---|---|---|
+| 1, un modelo que no se vende | `repairs` | `33250:r1:i1` | la batería del XR, US$ 35, con su equivalente «a la cotización vigente» |
+| 2b, el modelo que dijo el cliente | `repairs` | `33311:r1:i1` | la batería del 15 Pro, US$ 85. El 2a preguntó el modelo sin leer |
+| 3, «¿cómo va mi equipo?» | `service-orders` | `33344:r1:i1` | `OS-000006` presupuestada en US$ 70 y `OS-000005` en el técnico, en ese orden |
+| 4a, un modelo sin precios | `repairs` | `33377:r1:i1` | `items: []`: derivó |
+| 4b, una reparación sin precio | `repairs` | `33409:r1:i1` | el 15 sin la pantalla, elegido por nombre exacto sobre el 15 Pro: derivó |
+
+El paso 5, «quiero aprobar el presupuesto», no leyó nada y derivó. En toda la ventana, de 20:00 a 20:12: ninguna respuesta distinta de `OK`, ninguna `429`, nada con `agente-demo`, y el log sin la búsqueda ni la referencia de la conversación. La respuesta es `Respuesta-Conciliacion-3.52-CRM-al-Agente.md`, en el Escritorio del usuario.
+
+- **En el 2b el agente mandó `q=15 pro`**, sin «iphone». Trajo solo el 15 Pro, pero con otra marca podría traer algo inesperado. El agente lo anotó de su lado.
+- **No hay fixtures capturados**, como en la 29.8: la conciliación trae los ids y lo que dijo el agente, no los cuerpos. Los de `tests/fixtures/read/v3/` siguen siendo de forma asumida.
+
 ### Lo que queda
 
-- **La ventana con el agente**, en «Esperando»: se concilia por `X-Correlation-Id` cuando avise, y se capturan los fixtures.
+- ~~**La ventana con el agente**, en «Esperando»: se concilia por `X-Correlation-Id` cuando avise, y se capturan los fixtures.~~ *Conciliada el 2026-10-23* (§La ventana).
 - **En la máquina local**, la suite completa de integración da fallas de tiempo que en la CI pasan: timeouts al correr con otras cargas, y el rendimiento del detalle de una sesión en `supplier-payments.test.ts` (916 a 1.093 ms contra 754), que pasó en la CI.
