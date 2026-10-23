@@ -273,3 +273,69 @@ No cambia ninguna decisión del brief.
 ## Revisión independiente
 
 Esta subfase le da al agente datos de un cliente por primera vez. **Lleva una revisión independiente** de un agente que no participó del trabajo, con acceso de solo lectura, contra este brief y contra las reglas vigentes, antes del despliegue (AC-10). La revisión no autoriza nada.
+
+## Cierre
+
+*Del 2026-10-23, después del despliegue. El agente todavía no adoptó las dos rutas: la ventana queda en «Esperando» (AC-11, D-8).*
+
+### Criterios
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| AC-1 | cumple | `read-api-v3-repairs.test.ts`, casos 1, 1b y 2: por texto y por `model_id`, con un modelo que no se vende, dos que empiezan igual, el modelo y el tipo inactivos, el precio en pesos convertido a dólares, el tope de 10 contado entre los que tienen precio, y cada `400` |
+| AC-2 | cumple | casos 3, 4 y 5: las órdenes del cliente de la conversación, de la más nueva a la más vieja, sin la de otro cliente, de otra organización ni de una unidad propia; el mismo `404` para una conversación inexistente o ajena; `items: []` sin cliente o sin órdenes |
+| AC-3 | cumple | casos 3 y 4: cada estado con su `status_at` y su presupuesto, `null` antes de `quoted`. Una orden rechazada, entregada o cancelada después del presupuesto lo conserva (O-1, decidido por el usuario). Una cancelada como cargada por error no aparece (O-2, decidido por el usuario) |
+| AC-4 | cumple | caso 6, que borra la fila de `repairs`; caso 6b, sin `variants`. Quitar cualquiera de las dos comprobaciones hace fallar el caso 6 |
+| AC-5 | cumple | caso 3: el cuerpo crudo sin el IMEI, lo reportado, el técnico, el costo ni el teléfono, sembrados; caso 1: la lista sin el costo. `agent-contract-fields` pasa |
+| AC-6 | cumple | caso 7, en las dos rutas: el alcance, la allowlist, el 401, la correlación válida e inválida y el apagado; el límite en `service-orders`, porque el borde es el `serveRead` compartido. Caso 8: el log con las rutas fijas |
+| AC-7 | cumple | casos 2, 3 y 5: otra organización y otro cliente de la misma |
+| AC-8 | cumple | las suites de v1, v2, las rutas de v3 de la 29.8 y la ingestión pasan sin cambios |
+| AC-9 | cumple | CI run 39877115749 en `success` sobre `1bd37a9`: guardas, unitarias, integración (104 archivos) y end-to-end. Run 39990598994 en `success` sobre `a7a890f`, que suma O-2 y la corrección de un e2e (§El despliegue). `trade-ins.test.ts` pasó en local antes de cada push |
+| AC-10 | cumple | revisión independiente del 2026-10-22, antes del despliegue (§Revisión independiente) |
+| AC-11 | cumple en parte | desplegada en `a7a890f` el 2026-10-23: `/api/health` 200 y las dos rutas `401` sin token. El agente no adoptó las rutas todavía: la ventana queda en «Esperando», con los datos cargados en «iPhone Demo» |
+
+**Nivel alcanzado**: validado localmente, y desplegado. **No validado en integración**: ningún consumidor real leyó las dos rutas. Los fixtures siguen siendo de forma asumida. No hay negocio real.
+
+### Revisión independiente
+
+Un agente que no participó del trabajo, con acceso de solo lectura, revisó el 2026-10-22 contra este brief y las reglas vigentes: **R1, sin bloqueantes**. Cada hallazgo se verificó contra el código:
+- **M-1**, el borde de AC-6 probado solo en parte: corregido en el caso 7.
+- **M-2**, los estados sin `status_at` ni presupuesto en los tests: corregido en el caso 4, con una orden `approved`.
+- **B-1**, el `404` antes de la capacidad sin documentar: precisado en `read-v3.md`.
+- **B-2**, el borde de 30 días probado a los 29 y a los 31: el caso 4 lo prueba a los 30 días justos y un milisegundo después. PostgreSQL guarda microsegundos y `Date`, milisegundos, así que la entrega se escribe en el test con una fecha exacta; cambiar `gte` por `gt` hace fallar el caso.
+- **B-3**, `read-v3.md` decía «dos rutas nuevas»: corregido.
+- **O-1**, el presupuesto de una cancelada o rechazada: **el usuario decidió conservarlo**, como recomendé. Documentado en `read-v3.md` y en la nota del ADR 0024.
+- **O-2**, una cancelada como cargada por error: **el usuario decidió ocultarla**, como recomendé, porque pudo ser de otro cliente. Implementado en `33784a7`; quitar el filtro hace fallar el caso 4.
+- **O-3**, el filtro por tipo redundante: aceptado como segunda defensa, comentado.
+- **O-4**: el tope de 10 con su caso (1b); `FunctionalRequirements.md` (FR-API-12) e `IntegrationBoundaries.md`, actualizados.
+
+Las correcciones no tuvieron una segunda revisión independiente: son autoevaluación, verificadas por sus pruebas y la CI.
+
+### Next.js 16.4.2
+
+La CI del primer push de la implementación (`d034193`) se cortó en la auditoría de dependencias: el 2026-10-22 se publicaron GHSA-2464-fhr4-w9xw (crítico), GHSA-p3m5-59mp-jv5r (alto) y GHSA-673q-mjm6-r5xr (crítico) contra Next 16.0.0 a 16.4.0. Producción corría 16.3.8. Con la autorización del usuario se subió a 16.4.2 en `1bd37a9`, que se desplegó junto con la 29.8.2. El CRM no usa `"use cache"` ni `next/image`, pero tiene 128 Server Actions.
+
+### Los datos de la ventana
+
+Cargados el 2026-10-23 por la pantalla en «iPhone Demo»:
+- **iPhone XR**, un modelo sin productos, con precio de batería (US$ 35) y de pantalla (US$ 70);
+- **iPhone 15** e **iPhone 15 Pro**, con precio de batería (US$ 70 y US$ 85): `q=iphone 15` trae los dos;
+- dos órdenes de **Benja Murillo**, el cliente de la conversación de prueba del agente: **OS-000005**, iPhone XR, en el técnico; y **OS-000006**, iPhone 15, presupuestada en US$ 70.
+
+El aviso para el agente es `Aviso-29.8.2-CRM-al-Agente.md`, en el Escritorio del usuario: corrige `as_of` por `rate_as_of` en la nota anterior y precisa O-1 y O-2.
+
+### El despliegue
+
+En dos tramos, los dos con el runbook de `deploy/production/README.md`:
+
+1. **`1bd37a9`**, la implementación con Next 16.4.2, sobre `dd43606`. Las dos rutas respondieron `401` sin token y el log quedó sin errores.
+2. **`a7a890f`**, el 2026-10-23 a las 17:44 UTC, sobre `1bd37a9`, que quedó anotado en `despliegues` para volver atrás. Suma O-2 (`33784a7`) y un commit propio de la CI:
+   - **La corrida de `33784a7`** se cortó a los 35 min en su primer intento, con los e2e corriendo. El segundo intento terminó en 34 min 20 s con un e2e fallado: `client-fields.spec.ts` buscaba el aviso «Cliente creado.» por `getByRole("status")`, y mientras la ficha carga el esqueleto «Cargando…» también es un `status`. Encontró dos y falló por strict mode. Es una carrera del test, ajena a O-2.
+   - **`a7a890f`** filtra ese aviso por su texto, en los tres lugares del spec, y sube `timeout-minutes` de 35 a 45 (decisión del usuario). Su corrida tardó 38 min 52 s: con el límite anterior se habría cortado.
+
+Después del despliegue: `/api/health` 200, `GET /api/read/v3/repairs` y `GET /api/read/v3/service-orders` `401` sin token, el servicio activo y ningún error en el log de los diez minutos siguientes.
+
+### Lo que queda
+
+- **La ventana con el agente**, en «Esperando»: se concilia por `X-Correlation-Id` cuando avise, y se capturan los fixtures.
+- **En la máquina local**, la suite completa de integración da fallas de tiempo que en la CI pasan: timeouts al correr con otras cargas, y el rendimiento del detalle de una sesión en `supplier-payments.test.ts` (916 a 1.093 ms contra 754), que pasó en la CI.

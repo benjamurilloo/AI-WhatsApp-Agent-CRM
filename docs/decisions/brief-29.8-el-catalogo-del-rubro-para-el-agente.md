@@ -381,7 +381,7 @@ Un agente que no participó del trabajo revisó la implementación en solo lectu
 
 **Nivel alcanzado**:
 - **`read-v3`**: validado en integración (`producer-consumer`), con el agente real contra producción, sobre una organización demo.
-- **`order.placed_with_units`**: validado localmente, y desplegado.
+- **`order.placed_with_units`**: validado localmente, y desplegado. *Desde el 2026-10-23, validado en integración* (`producer-consumer`) con la 3.51 del agente (§La ventana de `order.placed_with_units`).
 
 No hay negocio real.
 
@@ -406,9 +406,26 @@ Hubo tres diferencias menores:
 
 El agente preguntó si `price: null` es válido. Lo es desde v1, y `read-v3.md` lo precisa ahora. Su otra propuesta, que la app no deje activar un producto por cantidad sin precio, cambiaría una regla del producto: queda para que la decida el usuario.
 
+### La ventana de `order.placed_with_units` (3.51)
+
+*Del 2026-10-23.* El agente usó `order.placed_with_units` por primera vez sobre «iPhone Demo» (`Aviso-3.51-Ventana-29.8.md` y `Conciliacion-3.51-Ventana-29.8.md`, del agente). El CRM lo concilió con su log por `X-Correlation-Id`:
+- **el pedido de una unidad** (`32711`, 15:44:39 UTC): `OK`, **`P-000004`**, pendiente, origen «Agente», US$ 399, con la unidad sin reservar. La lectura de unidades de la que salió el `unit_id` es de segundos antes (`32691:r1:i1`);
+- **su reenvío idéntico** (15:52:09): `OK`, sin un segundo pedido;
+- **una unidad ya reservada** por un pedido que el usuario confirmó (`31434`, 2026-10-22 a las 22:42:11): `BUSINESS_RULE_VIOLATION`, y detrás la escalada en `OK`. El usuario canceló después ese pedido (`P-000003`) y la unidad volvió a estar disponible;
+- **un producto con `price: null`** (`32892`): ningún pedido;
+- **un pedido por cantidad** (`32972`): `order.placed`, **`P-000005`**.
+
+Hubo una escalada que el aviso no anunciaba (`31500`): un «sí» del agente sin una propuesta con `unit_id`, que el agente corrigió de su lado. Ningún `401`, `403` ni `INTERNAL`. Hubo dos diferencias menores:
+- las horas del agente llegan un minuto antes;
+- los dos `X-Request-Id` que el agente cita para la búsqueda de «usbc» son de turnos anteriores al paso 4.
+
+El log no guarda el tipo de evento ni distingue `accepted` de `duplicate`: el pedido y la falta de un segundo se confirmaron en la app. La respuesta del CRM es `Respuesta-Conciliacion-3.51-CRM-al-Agente.md`, en el Escritorio del usuario.
+
+**Nivel**: `order.placed_with_units` queda **validado en integración** (`producer-consumer`), con el agente real contra producción, sobre una organización demo. La búsqueda de «usbc» contra «USB-C» es la misma clase de caso que «128gb»: la resuelve el agente, sin tarea del CRM.
+
 ### Lo que queda
 
-- **`order.placed_with_units` con el agente real**: su 3.51. Se concilia cuando avise.
+- ~~**`order.placed_with_units` con el agente real**: su 3.51. Se concilia cuando avise.~~ *Conciliado el 2026-10-23* (§La ventana de `order.placed_with_units`).
 - **La búsqueda con la unidad pegada** («128gb» contra «128 GB»): el agente la resolvió de su lado. Queda como mejora posible de la búsqueda del CRM, sin tarea.
 - **Las correcciones de la revisión no tuvieron una segunda revisión independiente**: son autoevaluación, verificadas por sus pruebas y la CI.
 - **En la máquina local**, la suite completa de integración da seis fallas de tiempo ajenas a la 29.8, que en la CI pasan:

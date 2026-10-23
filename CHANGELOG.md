@@ -2,6 +2,24 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-23 — 29.8.2: las reparaciones y las órdenes de servicio para el agente
+
+Cierra el 2026-10-23, desplegada en producción (`a7a890f`, que suma un e2e estabilizado y el límite de la CI en 45 min), sin la ventana del agente, que queda en «Esperando» ([brief-29.8.2](docs/decisions/brief-29.8.2-las-reparaciones-para-el-agente.md), §Cierre). Implementa la segunda parte del punto 15 del [ADR 0024](docs/decisions/0024-rubros-y-capacidades.md), sobre «iPhone Demo».
+
+**Certifica:**
+- **`GET /api/read/v3/repairs`** ([read-v3.md](docs/contracts/read-v3.md)), con alcance `read`: por texto o por `model_id`, los modelos activos con los precios al cliente de los tipos activos, también los que el negocio no vende, con el precio convertido; nunca el costo; hasta 10.
+- **`GET /api/read/v3/service-orders?conversation_ref=`**, con alcance `context`: las órdenes del equipo del cliente de la conversación, abiertas y cerradas en los últimos 30 días, hasta 5, con el estado, sus fechas y el presupuesto sin convertir. **Nunca recibe un teléfono.** Nunca trae el IMEI, lo reportado, el técnico, el costo ni el motivo de una cancelación, ni una orden cancelada como cargada por error.
+- **Sin la capacidad `repairs`**, las dos devuelven `items: []`. Sin migraciones y sin dependencias nuevas entre módulos.
+- **Next.js 16.4.2**, por tres avisos de seguridad publicados el 2026-10-22 contra la 16.3.8 que corría producción.
+- **Una revisión independiente** antes del despliegue (R1, sin bloqueantes), verificada contra el código y resuelta; O-1 y O-2, decididos por el usuario.
+
+**No certifica:**
+- ningún negocio real;
+- las dos rutas con el agente real: están validadas localmente y desplegadas, y la ventana espera;
+- fixtures capturados, que siguen siendo de forma asumida;
+- la cotización de un usado para el agente, que es la 29.8.3;
+- una segunda revisión independiente de las correcciones, que son autoevaluación.
+
 ## 2026-10-22 — 29.8: el catálogo del rubro para el agente
 
 Cierra el 2026-10-22, desplegada en producción (`dd43606`) y con la lectura adoptada por el agente ese mismo día ([brief-29.8](docs/decisions/brief-29.8-el-catalogo-del-rubro-para-el-agente.md), §Cierre). Implementa la primera parte del punto 15 del [ADR 0024](docs/decisions/0024-rubros-y-capacidades.md), sobre «iPhone Demo».
@@ -17,7 +35,7 @@ Cierra el 2026-10-22, desplegada en producción (`dd43606`) y con la lectura ado
 
 **No certifica:**
 - ningún negocio real;
-- `order.placed_with_units` con el agente real, que lo va a usar en su 3.51: está validado localmente;
+- ~~`order.placed_with_units` con el agente real, que lo va a usar en su 3.51: está validado localmente;~~ *Validado con el agente real el 2026-10-23*: su 3.51 se concilió por `X-Correlation-Id` (`P-000004` y su reenvío, `unit_not_available`, `P-000005`) ([brief-29.8](docs/decisions/brief-29.8-el-catalogo-del-rubro-para-el-agente.md), §La ventana de `order.placed_with_units`);
 - fixtures capturados de v3, que siguen siendo de forma asumida;
 - las reparaciones, las órdenes de servicio y la cotización de un usado para el agente, que son la 29.8.2 y la 29.8.3;
 - una segunda revisión independiente de las correcciones, que son autoevaluación.
