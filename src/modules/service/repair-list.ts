@@ -623,14 +623,36 @@ export async function getRepairCostsForQuote(
 > {
   const admin = authorize(context, { role: "admin" });
   if (!admin.ok) return admin;
+  return readRepairCostsForQuote(context.organizationId, modelId);
+}
+
+// La misma lectura para la cotización del agente (brief-29.8.3, D-6), con la organización de la
+// credencial y sin authorize, como las demás …ForService. El costo no sale de tradeins: la cotización
+// del agente devuelve solo el rango redondeado (H-3).
+export async function getRepairCostsForQuoteForService(
+  organizationId: string,
+  modelId: string,
+): Promise<
+  | { ok: true; types: Map<string, RepairCostForQuote> }
+  | Failure<"VALIDATION_ERROR">
+> {
+  return readRepairCostsForQuote(organizationId, modelId);
+}
+
+async function readRepairCostsForQuote(
+  organizationId: string,
+  modelId: string,
+): Promise<
+  | { ok: true; types: Map<string, RepairCostForQuote> }
+  | Failure<"VALIDATION_ERROR">
+> {
   if (!idSchema.safeParse(modelId).success) return failure("VALIDATION_ERROR");
-  if (!(await repairsAllowed(context))) return { ok: true, types: new Map() };
+  if (!(await hasCapability(organizationId, "repairs"))) {
+    return { ok: true, types: new Map() };
+  }
   const [types, prices] = await Promise.all([
-    repository.findRepairTypes(context.organizationId),
-    repository.findModelRepairPrices(
-      context.organizationId,
-      modelId.toLowerCase(),
-    ),
+    repository.findRepairTypes(organizationId),
+    repository.findModelRepairPrices(organizationId, modelId.toLowerCase()),
   ]);
   const byType = new Map(prices.map((row) => [row.repairTypeId, row]));
   return {

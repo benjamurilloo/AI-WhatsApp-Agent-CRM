@@ -65,6 +65,13 @@
   - **punto 15, las reparaciones por modelo** (U-4): `GET /api/read/v3/repairs`, por texto o por `model_id`, entre los modelos activos con algún precio de un tipo activo, porque **el negocio repara modelos que no vende**. Solo el precio al cliente, con el convertido;
   - **punto 15, el producto de servicio** (D-5): **sigue fuera de la lectura**. Lo que contesta el agente sale de la lista; la nota de la 29.8 lo dejaba fuera «hasta la 29.8.2»;
   - **punto 14, lo que el agente nunca lee de una orden**: además del IMEI y los costos, **lo que reportó el cliente, el técnico, la venta y el motivo de una cancelación**.
+- *Nota del 2026-10-23, por la 29.8.3* ([brief-29.8.3](brief-29.8.3-la-cotizacion-de-un-usado-para-el-agente.md), aprobado por el usuario con las recomendaciones, U-1 a U-5 en su opción (a), y confirmado por el agente el mismo día), sin cambiar el texto:
+  - **punto 15, la cotización orientativa de un usado**: dos rutas de `read-v3`, `trade-in-checklist` (las preguntas) y `trade-in-quote` (la respuesta), con la regla del punto 9 y la pantalla del `admin`, sin duplicarla;
+  - **punto 9, lo que ve el agente**: **solo el rango redondeado hacia abajo** y los nombres de las reparaciones descontadas. Nunca el valor exacto, el precio de referencia, el margen, los costos, el porcentaje ni el paso;
+  - **punto 9, las respuestas del checklist** (U-2): para el agente, **cada punto activo se responde**, en `passed` o en `failed`; uno sin responder da `checklist_incomplete`. La pantalla del `admin` sigue como en la 29.7.3, donde un punto que no se marca no pasó;
+  - **punto 13, los valores de ejemplo** (U-3): **el agente nunca cotiza con valores de ejemplo, en ninguna organización**. El CRM no tiene una marca de «tráfico real»: la regla queda más estricta que el texto, nunca menos;
+  - **punto 9, cuando no hay cotización** (U-4): el agente recibe uno de tres motivos, `checklist_incomplete`, `not_accepted` o `not_quotable`. Los motivos finos quedan para el `admin`;
+  - **punto 16, `tradeins → service`** (revisión independiente de la 29.8.3, NB-4): una tercera lectura, `getRepairCostsForQuoteForService`, los mismos costos sin `authorize` para la cotización del agente. La dirección no cambia.
 
 ## Contexto
 

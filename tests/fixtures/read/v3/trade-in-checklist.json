@@ -1,0 +1,30 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: ningún consumidor real leyó esta respuesta (brief-29.8.3, D-2). La ventana con el agente la contrasta con lo que lea.",
+  "description": "Los puntos activos del checklist, en el orden de la organización, con si son obligatorios. Sin la reparación de cada punto ni su costo.",
+  "request": {
+    "method": "GET",
+    "path": "/api/read/v3/trade-in-checklist",
+    "headers": {
+      "authorization": "Bearer crm_read_<token>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "contract_version": "3",
+      "items": [
+        {
+          "item_id": "7b2e1c4d-5f6a-4b7c-8d9e-0f1a2b3c4d5e",
+          "name": "Face ID funciona",
+          "mandatory": true
+        },
+        {
+          "item_id": "8c3f2d5e-6a7b-4c8d-9e0f-1a2b3c4d5e6f",
+          "name": "Pantalla sin rayas",
+          "mandatory": false
+        }
+      ]
+    }
+  }
+}

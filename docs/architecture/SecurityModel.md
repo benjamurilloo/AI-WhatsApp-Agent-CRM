@@ -6,6 +6,12 @@ Cada sección cita el nivel de validación de lo que afirma. Los hallazgos abier
 
 ## Superficie expuesta
 
+*Nota del 2026-10-23, 29.8.3* ([brief-29.8.3](../decisions/brief-29.8.3-la-cotizacion-de-un-usado-para-el-agente.md), D-1 a D-5). **Los Route Handlers pasan de 23 a 25, y los puntos de entrada, de 242 a 244**: 91 páginas, 128 Server Actions y 25 Route Handlers. Las dos rutas nuevas son de la lectura v3, con su borde, sin sesión y con una credencial de alcance `read`:
+- `GET /api/read/v3/trade-in-checklist`: los puntos activos del checklist de un usado, sin su reparación ni su costo;
+- `GET /api/read/v3/trade-in-quote`: la cotización orientativa de un usado. **Devuelve solo el rango redondeado hacia abajo**: nunca el valor exacto, el precio de referencia, el margen, el costo de una reparación, el porcentaje ni el paso, porque con cualquiera de ellos se despeja el margen del negocio. No escribe nada, y nunca cotiza con valores de ejemplo.
+
+Lo prueba `read-api-v3-trade-in-quote.test.ts` sobre el cuerpo crudo, con montos sembrados, y la guarda `agent-contract-fields` cubre sus esquemas. **Límite aceptado** (ADR 0024, punto 9, R-21): varias cotizaciones que difieren en un punto dejan ver un orden de magnitud del costo de una reparación, nunca el costo exacto.
+
 *Nota del 2026-10-22, 29.8.2* ([brief-29.8.2](../decisions/brief-29.8.2-las-reparaciones-para-el-agente.md), D-1 a D-4). **Los Route Handlers pasan de 21 a 23, y los puntos de entrada, de 240 a 242**, contados contra el árbol de `src/app`: 91 páginas, 128 Server Actions y 23 Route Handlers. Las dos rutas nuevas son de la lectura v3, con su borde, sin sesión:
 - `GET /api/read/v3/repairs`, con una credencial de alcance `read`: los modelos activos y el **precio al cliente** de cada tipo activo, nunca el costo;
 - `GET /api/read/v3/service-orders`, con una credencial de alcance **`context`**: las órdenes del cliente de la conversación que nombra `conversation_ref`. **Es la primera lectura del agente sobre datos de un cliente.** El agente nunca manda un teléfono (U-1). Una conversación ajena o inexistente da el mismo 404, la referencia no queda en el log, y la respuesta no trae el IMEI, lo que reportó el cliente, el técnico, un costo ni la venta.

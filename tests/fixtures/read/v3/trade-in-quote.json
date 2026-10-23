@@ -1,0 +1,35 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: ningún consumidor real leyó esta respuesta (brief-29.8.3, D-3). La ventana con el agente la contrasta con lo que lea.",
+  "description": "La cotización de un iPhone 13 usado con la pantalla rayada y la batería bajo el umbral: el rango redondeado hacia abajo, en dólares y en pesos a la cotización vigente, y los nombres de lo que se descontó. Nunca el valor exacto, el precio de referencia, el margen, los costos, el porcentaje ni el paso.",
+  "request": {
+    "method": "GET",
+    "path": "/api/read/v3/trade-in-quote?product_id=9d4a3e6f-7b8c-4d9e-8f01-2b3c4d5e6f70&battery_health=76&passed=7b2e1c4d-5f6a-4b7c-8d9e-0f1a2b3c4d5e&failed=8c3f2d5e-6a7b-4c8d-9e0f-1a2b3c4d5e6f",
+    "headers": {
+      "authorization": "Bearer crm_read_<token>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "contract_version": "3",
+      "quote": {
+        "product": {
+          "product_id": "9d4a3e6f-7b8c-4d9e-8f01-2b3c4d5e6f70",
+          "name": "iPhone 13 128 GB Usado"
+        },
+        "estimate": true,
+        "range": { "low": "330.00", "high": "370.00", "currency": "USD" },
+        "range_converted": {
+          "low": "396000.00",
+          "high": "444000.00",
+          "currency": "ARS",
+          "rate": "1200",
+          "rate_as_of": "2026-10-22T13:00:00.000Z"
+        },
+        "repairs": ["Cambio de pantalla", "Cambio de batería"]
+      },
+      "reason": null
+    }
+  }
+}

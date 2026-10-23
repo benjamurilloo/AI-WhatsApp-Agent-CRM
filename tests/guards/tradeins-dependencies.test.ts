@@ -9,7 +9,9 @@ import { describe, expect, it } from "vitest";
 //    los esquemas que nombra schema.ts por sus claves foráneas, src/shared, sus propios archivos y
 //    paquetes. No importa cash. Desde la 29.7.3 (brief-29.7.3, D-4; ADR 0024, punto 16) importa service
 //    solo para la cotización: getRepairCostsForQuote y listRepairTypes, con import nombrado, y de su
-//    esquema solo repairTypes, por las claves foráneas. Nada más de service, ni un re-export;
+//    esquema solo repairTypes, por las claves foráneas. Desde la 29.8.3 (brief-29.8.3, D-6), también
+//    getRepairCostsForQuoteForService, para la cotización del agente. Nada más de service, ni un
+//    re-export;
 // 2. entre los módulos, solo cash importa tradeins, por la anulación (U-4). Las pantallas y los scripts
 //    lo usan, y no cuentan. Un import de tradeins en inventory o en crm cerraría un ciclo que ni
 //    eslint.config.mjs ni module-boundary ven;
@@ -41,8 +43,13 @@ const SCHEMAS_ALLOWED = new Set([
   "organizations",
 ]);
 
-// Lo único que tradeins toma de service (desde la 29.7.3), por nombre.
-const SERVICE_NAMES = new Set(["getRepairCostsForQuote", "listRepairTypes"]);
+// Lo único que tradeins toma de service (desde la 29.7.3), por nombre. Desde la 29.8.3, también la
+// lectura de los costos para la cotización del agente (brief-29.8.3, D-6).
+const SERVICE_NAMES = new Set([
+  "getRepairCostsForQuote",
+  "getRepairCostsForQuoteForService",
+  "listRepairTypes",
+]);
 const SERVICE_SCHEMA_NAMES = new Set(["repairTypes"]);
 
 const SERVICE_IMPORT =

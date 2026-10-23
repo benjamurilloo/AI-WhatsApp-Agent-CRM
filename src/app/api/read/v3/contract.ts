@@ -8,6 +8,10 @@ import type {
 } from "@/modules/inventory";
 import type { Capability } from "@/modules/organizations";
 import type { ServiceClientOrder, ServiceRepairModel } from "@/modules/service";
+import type {
+  ServiceChecklistItem,
+  ServiceTradeInQuoteResult,
+} from "@/modules/tradeins";
 import {
   convertMoney,
   currencyDecimals,
@@ -26,7 +30,8 @@ import {
 // seguimiento, el modelo, los atributos de la variante y el precio convertido), y dos rutas nuevas:
 // las unidades disponibles de un producto y las capacidades. Desde la 29.8.2, dos más: las
 // reparaciones de un modelo y las órdenes de servicio del cliente de una conversación (brief-29.8.2,
-// D-1 a D-4), un cambio compatible dentro de v3. El transporte, los errores y el log son
+// D-1 a D-4), y desde la 29.8.3, el checklist y la cotización orientativa de un usado (brief-29.8.3,
+// D-2 y D-3), cambios compatibles dentro de v3. El transporte, los errores y el log son
 // los de v1. Como en v1, los esquemas son estrictos y los tests validan contra ellos.
 //
 // El agente nunca recibe un IMEI, un costo, un margen ni los datos de identidad del cliente (ADR
@@ -183,6 +188,72 @@ export const serviceOrderListResponseSchemaV3 = z.strictObject({
   contract_version: z.literal(READ_CONTRACT_VERSION_V3),
   items: z.array(serviceOrderSchemaV3),
 });
+
+// El checklist de un usado (brief-29.8.3, D-2): los puntos activos, sin su reparación ni su costo.
+export const tradeInChecklistResponseSchemaV3 = z.strictObject({
+  contract_version: z.literal(READ_CONTRACT_VERSION_V3),
+  items: z.array(
+    z.strictObject({
+      item_id: z.uuid(),
+      name: z.string().min(1),
+      mandatory: z.boolean(),
+    }),
+  ),
+});
+
+export const TRADE_IN_QUOTE_REASONS_V3 = [
+  "checklist_incomplete",
+  "not_accepted",
+  "not_quotable",
+] as const;
+
+// La cotización de un usado (brief-29.8.3, D-3 y U-4): el rango redondeado y los nombres de lo que se
+// descontó, o null y uno de tres motivos. Nunca el valor exacto, el precio de referencia, el margen,
+// los costos, el porcentaje ni el paso (H-3).
+export const tradeInQuoteResponseSchemaV3 = z
+  .strictObject({
+    contract_version: z.literal(READ_CONTRACT_VERSION_V3),
+    quote: z
+      .strictObject({
+        product: z.strictObject({
+          product_id: z.uuid(),
+          name: z.string().min(1),
+        }),
+        estimate: z.literal(true),
+        range: z.strictObject({
+          low: contractMoney,
+          high: contractMoney,
+          currency,
+        }),
+        range_converted: z
+          .strictObject({
+            low: contractMoney,
+            high: contractMoney,
+            currency,
+            rate: rateText,
+            rate_as_of: z.iso.datetime({ precision: 3 }),
+          })
+          .nullable(),
+        repairs: z.array(z.string().min(1)),
+      })
+      .nullable(),
+    reason: z
+      .discriminatedUnion("code", [
+        z.strictObject({
+          code: z.literal("checklist_incomplete"),
+          item_ids: z.array(z.uuid()).min(1),
+        }),
+        z.strictObject({
+          code: z.literal("not_accepted"),
+          items: z.array(z.string().min(1)).min(1),
+        }),
+        z.strictObject({ code: z.literal("not_quotable") }),
+      ])
+      .nullable(),
+  })
+  .refine((body) => (body.quote === null) !== (body.reason === null), {
+    message: "una cotización o un motivo, nunca los dos ni ninguno",
+  });
 
 export type ContractProductV3 = z.infer<typeof productSchemaV3>;
 export type ContractPriceConverted = z.infer<typeof priceConvertedSchema>;
@@ -392,6 +463,92 @@ export function toContractServiceOrderListV3(
           }
         : null,
     })),
+  };
+}
+
+export type ContractTradeInChecklistV3 = z.infer<
+  typeof tradeInChecklistResponseSchemaV3
+>;
+
+export function toContractTradeInChecklistV3(
+  items: ServiceChecklistItem[],
+): ContractTradeInChecklistV3 {
+  return {
+    contract_version: READ_CONTRACT_VERSION_V3,
+    items: items.map((item) => ({
+      item_id: item.id,
+      name: item.name,
+      mandatory: item.isMandatory,
+    })),
+  };
+}
+
+export type ContractTradeInQuoteV3 = z.infer<
+  typeof tradeInQuoteResponseSchemaV3
+>;
+
+// El rango en la otra moneda (U-5), con la regla de convertPrice para el techo y el piso. Un piso en
+// cero es cero en las dos monedas: convertPrice no convierte un monto que no es positivo.
+function convertRange(
+  low: string,
+  high: string,
+  currency: string,
+  setup: ExchangeSetup | null,
+): NonNullable<ContractTradeInQuoteV3["quote"]>["range_converted"] {
+  const top = convertPrice({ amount: high, currency }, setup);
+  if (!top) return null;
+  const bottom =
+    moneyFromDatabase(low) === 0n
+      ? { amount: contractAmount("0", top.currency) }
+      : convertPrice({ amount: low, currency }, setup);
+  if (!bottom) return null;
+  return {
+    low: bottom.amount,
+    high: top.amount,
+    currency: top.currency,
+    rate: top.rate,
+    rate_as_of: top.rate_as_of,
+  };
+}
+
+// Los motivos finos de tradeins pasan a los tres del contrato (U-4): el agente solo distingue qué
+// preguntar, cuándo decir que no se recibe y cuándo derivar. Cualquier motivo nuevo cae en not_quotable.
+export function toContractTradeInQuoteV3(
+  result: Exclude<ServiceTradeInQuoteResult, { code: "NOT_FOUND" }>,
+  setup: ExchangeSetup | null,
+): ContractTradeInQuoteV3 {
+  if (!result.ok) {
+    return {
+      contract_version: READ_CONTRACT_VERSION_V3,
+      quote: null,
+      reason:
+        result.code === "CHECKLIST_INCOMPLETE"
+          ? { code: "checklist_incomplete", item_ids: result.itemIds }
+          : result.code === "NOT_ACCEPTED"
+            ? { code: "not_accepted", items: result.items }
+            : { code: "not_quotable" },
+    };
+  }
+  const { quote } = result;
+  return {
+    contract_version: READ_CONTRACT_VERSION_V3,
+    quote: {
+      product: { product_id: quote.product.id, name: quote.product.name },
+      estimate: true,
+      range: {
+        low: contractAmount(quote.low, quote.currency),
+        high: contractAmount(quote.high, quote.currency),
+        currency: quote.currency,
+      },
+      range_converted: convertRange(
+        quote.low,
+        quote.high,
+        quote.currency,
+        setup,
+      ),
+      repairs: quote.repairs,
+    },
+    reason: null,
   };
 }
 

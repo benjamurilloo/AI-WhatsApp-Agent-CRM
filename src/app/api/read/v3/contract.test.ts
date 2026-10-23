@@ -17,7 +17,11 @@ import {
   toContractProductV3,
   toContractRepairListV3,
   toContractServiceOrderListV3,
+  toContractTradeInChecklistV3,
+  toContractTradeInQuoteV3,
   toContractUnitV3,
+  tradeInChecklistResponseSchemaV3,
+  tradeInQuoteResponseSchemaV3,
   unitListResponseSchemaV3,
   type ContractUnitV3,
 } from "./contract";
@@ -407,11 +411,172 @@ describe("las órdenes de servicio (brief-29.8.2, D-4)", () => {
   });
 });
 
+describe("el checklist de un usado (brief-29.8.3, D-2)", () => {
+  it("los puntos con su id, su nombre y si son obligatorios, sin la reparación", () => {
+    const body = toContractTradeInChecklistV3([
+      {
+        id: "7b2e1c4d-5f6a-4b7c-8d9e-0f1a2b3c4d5e",
+        name: "Face ID funciona",
+        isMandatory: true,
+      },
+    ]);
+    expect(body).toStrictEqual({
+      contract_version: "3",
+      items: [
+        {
+          item_id: "7b2e1c4d-5f6a-4b7c-8d9e-0f1a2b3c4d5e",
+          name: "Face ID funciona",
+          mandatory: true,
+        },
+      ],
+    });
+    expect(tradeInChecklistResponseSchemaV3.safeParse(body).success).toBe(true);
+    expect(
+      tradeInChecklistResponseSchemaV3.safeParse({
+        ...body,
+        items: [{ ...body.items[0], repair_type_id: body.items[0]!.item_id }],
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("la cotización de un usado (brief-29.8.3, D-3, U-4 y U-5)", () => {
+  const quote = {
+    ok: true as const,
+    quote: {
+      product: {
+        id: "9d4a3e6f-7b8c-4d9e-8f01-2b3c4d5e6f70",
+        name: "iPhone 13 128 GB Usado",
+      },
+      currency: "USD",
+      low: "330.00",
+      high: "370.00",
+      repairs: ["Cambio de pantalla", "Cambio de batería"],
+    },
+  };
+
+  it("el rango redondeado con el convertido y los nombres de las reparaciones", () => {
+    const body = toContractTradeInQuoteV3(quote, setup());
+    expect(body).toStrictEqual({
+      contract_version: "3",
+      quote: {
+        product: {
+          product_id: "9d4a3e6f-7b8c-4d9e-8f01-2b3c4d5e6f70",
+          name: "iPhone 13 128 GB Usado",
+        },
+        estimate: true,
+        range: { low: "330.00", high: "370.00", currency: "USD" },
+        range_converted: {
+          low: "396000.00",
+          high: "444000.00",
+          currency: "ARS",
+          rate: "1200",
+          rate_as_of: AS_OF.toISOString(),
+        },
+        repairs: ["Cambio de pantalla", "Cambio de batería"],
+      },
+      reason: null,
+    });
+    expect(tradeInQuoteResponseSchemaV3.safeParse(body).success).toBe(true);
+  });
+
+  it("un piso en cero es cero en las dos monedas", () => {
+    const body = toContractTradeInQuoteV3(
+      { ok: true, quote: { ...quote.quote, low: "0.00", high: "10.00" } },
+      setup(),
+    );
+    expect(body.quote?.range).toStrictEqual({
+      low: "0.00",
+      high: "10.00",
+      currency: "USD",
+    });
+    expect(body.quote?.range_converted).toMatchObject({
+      low: "0.00",
+      high: "12000.00",
+    });
+  });
+
+  it.each([
+    ["sin cotización vigente", setup({ current: false })],
+    ["con la vigente vencida", setup({ stale: true })],
+    ["sin configuración", null],
+    ["con una moneda fuera del par", setup({ main: "EUR", quote: "ARS" })],
+  ])("el convertido va null %s", (_case, exchange) => {
+    expect(
+      toContractTradeInQuoteV3(quote, exchange).quote?.range_converted,
+    ).toBeNull();
+  });
+
+  it("cada motivo fino pasa a uno de los tres del contrato", () => {
+    const reason = (result: Parameters<typeof toContractTradeInQuoteV3>[0]) =>
+      toContractTradeInQuoteV3(result, setup()).reason;
+    expect(
+      reason({
+        ok: false,
+        code: "CHECKLIST_INCOMPLETE",
+        itemIds: ["7b2e1c4d-5f6a-4b7c-8d9e-0f1a2b3c4d5e"],
+      }),
+    ).toStrictEqual({
+      code: "checklist_incomplete",
+      item_ids: ["7b2e1c4d-5f6a-4b7c-8d9e-0f1a2b3c4d5e"],
+    });
+    expect(
+      reason({ ok: false, code: "NOT_ACCEPTED", items: ["Face ID funciona"] }),
+    ).toStrictEqual({ code: "not_accepted", items: ["Face ID funciona"] });
+    for (const rule of [
+      "product_not_quotable",
+      "no_settings",
+      "example_values",
+      "no_capability",
+      "no_reference_price",
+      "no_margin",
+      "no_battery_repair_type",
+      "no_repair_cost",
+      "currency_mismatch",
+      "not_positive",
+    ] as const) {
+      const body = toContractTradeInQuoteV3(
+        { ok: false, code: "UNAVAILABLE", rule },
+        setup(),
+      );
+      expect(body).toStrictEqual({
+        contract_version: "3",
+        quote: null,
+        reason: { code: "not_quotable" },
+      });
+      expect(tradeInQuoteResponseSchemaV3.safeParse(body).success).toBe(true);
+    }
+  });
+
+  it("el esquema no admite el valor exacto, el margen, un costo, el paso ni un motivo fino", () => {
+    const valid = toContractTradeInQuoteV3(quote, setup());
+    const inner = valid.quote!;
+    for (const invalid of [
+      { ...valid, quote: { ...inner, value: "372.50" } },
+      { ...valid, quote: { ...inner, margin: "100.00" } },
+      { ...valid, quote: { ...inner, reference: "520.00" } },
+      {
+        ...valid,
+        quote: { ...inner, repairs: [{ name: "x", cost: "40.00" }] },
+      },
+      { ...valid, quote: { ...inner, rounding_step: "10.00" } },
+      { ...valid, quote: { ...inner, estimate: false } },
+      { ...valid, quote: null, reason: { code: "no_margin" } },
+      { ...valid, quote: null, reason: null },
+      { ...valid, reason: { code: "not_quotable" } },
+    ]) {
+      expect(tradeInQuoteResponseSchemaV3.safeParse(invalid).success).toBe(
+        false,
+      );
+    }
+  });
+});
+
 describe("fixtures del contrato v3", () => {
   const dir = path.join(process.cwd(), "tests/fixtures/read/v3");
   const files = readdirSync(dir).filter((file) => file.endsWith(".json"));
 
-  it("existen las siete rutas", () => {
+  it("existen las nueve rutas", () => {
     const paths = files.map(
       (file) =>
         JSON.parse(readFileSync(path.join(dir, file), "utf8")).request
@@ -429,6 +594,10 @@ describe("fixtures del contrato v3", () => {
     expect(paths.some((p) => p.startsWith("/api/read/v3/repairs?"))).toBe(true);
     expect(
       paths.some((p) => p.startsWith("/api/read/v3/service-orders?")),
+    ).toBe(true);
+    expect(paths).toContain("/api/read/v3/trade-in-checklist");
+    expect(
+      paths.some((p) => p.startsWith("/api/read/v3/trade-in-quote?")),
     ).toBe(true);
   });
 
@@ -451,9 +620,13 @@ describe("fixtures del contrato v3", () => {
             ? repairListResponseSchemaV3
             : requestPath.startsWith("/api/read/v3/service-orders?")
               ? serviceOrderListResponseSchemaV3
-              : "items" in body
-                ? productListResponseSchemaV3
-                : productResponseSchemaV3;
+              : requestPath === "/api/read/v3/trade-in-checklist"
+                ? tradeInChecklistResponseSchemaV3
+                : requestPath.startsWith("/api/read/v3/trade-in-quote?")
+                  ? tradeInQuoteResponseSchemaV3
+                  : "items" in body
+                    ? productListResponseSchemaV3
+                    : productResponseSchemaV3;
     const parsed = schema.safeParse(body);
     expect(parsed.success, parsed.error?.message).toBe(true);
   });

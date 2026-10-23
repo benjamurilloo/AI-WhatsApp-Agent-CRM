@@ -10,6 +10,7 @@ export {
   createRepairType,
   getModelRepairPrices,
   getRepairCostsForQuote,
+  getRepairCostsForQuoteForService,
   repairTypeIdsByName,
   type RepairCostForQuote,
   listRepairModels,

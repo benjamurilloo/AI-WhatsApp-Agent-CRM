@@ -53,6 +53,15 @@ export {
   type TradeInQuoteRepair,
   type TradeInQuoteUnavailable,
 } from "./quote";
+// La cotización para el agente (brief-29.8.3, D-6): lecturas de servicio, solo para la API de lectura.
+export {
+  listTradeInChecklistForService,
+  quoteTradeInForService,
+  type ServiceChecklistItem,
+  type ServiceTradeInQuote,
+  type ServiceTradeInQuoteResult,
+  type ServiceTradeInQuoteUnavailable,
+} from "./quote";
 export {
   CLIENT_TRADE_INS_LIMIT,
   createTradeIn,

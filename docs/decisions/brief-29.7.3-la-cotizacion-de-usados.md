@@ -244,7 +244,7 @@ El 2026-10-21, el agente `independent-reviewer`, de solo lectura, que no partici
 - **NB-2, corregido.** El DataModel decía que el orden de los motivos estaba en D-4, que es solo una lista. Ahora el DataModel fija el orden del código.
 - **O-1, corregido.** Sin `repairs`, una reparación pedida solo por la batería se llama «Batería» y no queda sin nombre.
 - **O-2, aceptado por el usuario.** Guardar la configuración, aunque sea sin cambios, apaga «De ejemplo»: guardar es confirmar los valores. D-1 y AC-5 decían «al cambiar un valor».
-- **O-3, aceptado por el usuario.** Queda sin `checklist_incomplete` (desviación 1). Se vuelve a mirar con el contrato del agente, en la 29.8.
+- **O-3, aceptado por el usuario.** Queda sin `checklist_incomplete` (desviación 1). Se vuelve a mirar con el contrato del agente, en la 29.8. *Resuelto el 2026-10-23 en la 29.8.3* ([brief-29.8.3](brief-29.8.3-la-cotizacion-de-un-usado-para-el-agente.md), U-2): **para el agente sí hay `checklist_incomplete`**, porque cada punto activo va en `passed` o en `failed`. La pantalla del `admin` no cambia.
 - **O-4, corregido.** En el desglose, cada par `dt`/`dd` va en su `div`.
 - **O-5, corregido.** «Ir a la configuración» aparece solo para los motivos que se arreglan ahí: los valores sueltos, el margen, la moneda y el valor no positivo.
 - **O-6, corregido.** El comentario de los perfiles ahora dice que volver a correr el script completa lo que falta.

@@ -1,14 +1,23 @@
 import { z } from "zod";
 import { recordAudit } from "@/modules/audit";
 import {
+  getActiveProductForService,
   getCurrentPrices,
   getModel,
   getProductsByIds,
   listModels,
   searchProducts,
 } from "@/modules/catalog";
-import { getMainCurrency, type AuthContext } from "@/modules/organizations";
-import { getRepairCostsForQuote, listRepairTypes } from "@/modules/service";
+import {
+  getMainCurrency,
+  hasCapability,
+  type AuthContext,
+} from "@/modules/organizations";
+import {
+  getRepairCostsForQuote,
+  getRepairCostsForQuoteForService,
+  listRepairTypes,
+} from "@/modules/service";
 import type { DbTransaction } from "@/shared/db";
 import { failure, type Failure } from "@/shared/errors";
 import {
@@ -501,18 +510,96 @@ export async function quoteTradeIn(
   }
   if (fields.length > 0) return { ok: false, code: "VALIDATION_ERROR", fields };
   const passed = new Set(input.passed.map((id) => id.trim().toLowerCase()));
-  const { organizationId } = context;
 
   const products = await getProductsByIds(context, [productId]);
   const product = products.ok ? products.products[0] : undefined;
   if (!product) return failure("NOT_FOUND");
+  const computed = await computeQuote(context.organizationId, {
+    product,
+    batteryHealth,
+    checklist: { passed, failed: null },
+    rejectExample: false,
+    price: async () => {
+      const prices = await getCurrentPrices(context, [product.id]);
+      return prices.ok ? prices.prices.get(product.id) : undefined;
+    },
+    costs: (modelId) => getRepairCostsForQuote(context, modelId),
+  });
+  if (computed.ok) return computed;
+  switch (computed.rule) {
+    case "mandatory_failed":
+      return {
+        ok: false,
+        code: "BUSINESS_RULE_VIOLATION",
+        rule: "mandatory_failed",
+        items: computed.items,
+      };
+    // La pantalla no pide cada respuesta ni rechaza los valores de ejemplo: los marca (D-5).
+    case "checklist_incomplete":
+    case "example_values":
+      throw new Error("motivo de la cotización del agente en la del admin");
+    default:
+      return unavailable(computed.rule, computed.repairs);
+  }
+}
+
+// El costo de cada tipo para un modelo, como lo da service; derivado para no importar más nombres de
+// service que los que fija tests/guards/tradeins-dependencies.test.ts.
+type RepairCostForQuote =
+  Extract<
+    Awaited<ReturnType<typeof getRepairCostsForQuoteForService>>,
+    { ok: true }
+  >["types"] extends Map<string, infer Cost>
+    ? Cost
+    : never;
+
+type QuoteProduct = {
+  id: string;
+  name: string;
+  condition: string;
+  tracking: string;
+  isService: boolean;
+  modelId: string | null;
+};
+
+type QuotePrice = { amount: string; currency: string; createdAt: Date };
+
+type QuoteComputation =
+  | { ok: true; quote: TradeInQuote }
+  | { ok: false; rule: "mandatory_failed"; items: string[] }
+  | { ok: false; rule: TradeInQuoteUnavailable; repairs?: string[] }
+  | { ok: false; rule: "checklist_incomplete"; itemIds: string[] }
+  | { ok: false; rule: "example_values" };
+
+// La cotización, para la pantalla del admin y para el agente (brief-29.8.3, D-6): la misma regla, con lo
+// que cambia entre los dos como parámetro. checklist.failed es null en la pantalla, donde un punto que no
+// viene en passed no pasó (brief-29.7.3, desviación 1); para el agente, cada punto activo tiene que
+// estar en passed o en failed (U-2), y un id que no es de un punto activo se ignora en los dos.
+// rejectExample: el agente nunca cotiza con valores de ejemplo (U-3).
+async function computeQuote(
+  organizationId: string,
+  input: {
+    product: QuoteProduct;
+    batteryHealth: number;
+    checklist: { passed: Set<string>; failed: Set<string> | null };
+    rejectExample: boolean;
+    price: () => Promise<QuotePrice | undefined>;
+    costs: (
+      modelId: string,
+    ) => Promise<
+      { ok: true; types: Map<string, RepairCostForQuote> } | { ok: false }
+    >;
+  },
+): Promise<QuoteComputation> {
+  const { product, batteryHealth } = input;
+  const { passed, failed } = input.checklist;
   if (
     product.condition !== "used" ||
     product.tracking !== "unit" ||
     product.isService ||
     product.modelId === null
   ) {
-    return unavailable("product_not_quotable");
+    return { ok: false, rule: "product_not_quotable" };
   }
   const modelId = product.modelId;
 
@@ -520,15 +607,29 @@ export async function quoteTradeIn(
     repository.findQuoteSettings(organizationId),
     repository.findChecklistItems(organizationId),
   ]);
-  if (!settings) return unavailable("no_settings");
+  if (!settings) return { ok: false, rule: "no_settings" };
+  if (input.rejectExample && settings.isExample) {
+    return { ok: false, rule: "example_values" };
+  }
   const active = items.filter((item) => item.isActive);
+  if (failed !== null) {
+    const unanswered = active.filter(
+      (item) => !passed.has(item.id) && !failed.has(item.id),
+    );
+    if (unanswered.length > 0) {
+      return {
+        ok: false,
+        rule: "checklist_incomplete",
+        itemIds: unanswered.map((item) => item.id),
+      };
+    }
+  }
   const mandatoryFailed = active.filter(
     (item) => item.isMandatory && !passed.has(item.id),
   );
   if (mandatoryFailed.length > 0) {
     return {
       ok: false,
-      code: "BUSINESS_RULE_VIOLATION",
       rule: "mandatory_failed",
       items: mandatoryFailed.map((item) => item.name),
     };
@@ -555,14 +656,16 @@ export async function quoteTradeIn(
     needed.set(settings.batteryRepairTypeId, entry);
   }
 
-  const [costs, prices, margin] = await Promise.all([
+  const [costs, price, margin] = await Promise.all([
     needed.size > 0
-      ? getRepairCostsForQuote(context, modelId)
+      ? input.costs(modelId)
       : Promise.resolve({ ok: true as const, types: new Map() }),
-    getCurrentPrices(context, [product.id]),
+    input.price(),
     repository.findMargin(organizationId, modelId),
   ]);
-  const types = costs.ok ? costs.types : new Map();
+  const types: Map<string, RepairCostForQuote> = costs.ok
+    ? costs.types
+    : new Map();
   const repairs: QuoteRepair[] = [...needed.keys()].map((repairTypeId) => {
     const type = types.get(repairTypeId);
     return {
@@ -580,7 +683,6 @@ export async function quoteTradeIn(
           : null,
     };
   });
-  const price = prices.ok ? prices.prices.get(product.id) : undefined;
   const result = computeTradeInQuote({
     reference: price
       ? { amount: moneyFromDatabase(price.amount), currency: price.currency }
@@ -596,7 +698,13 @@ export async function quoteTradeIn(
       currency: settings.roundingCurrency,
     },
   });
-  if (!result.ok) return unavailable(result.reason, result.repairs);
+  if (!result.ok) {
+    return {
+      ok: false,
+      rule: result.reason,
+      ...(result.repairs ? { repairs: result.repairs } : {}),
+    };
+  }
   return {
     ok: true,
     quote: {
@@ -618,6 +726,111 @@ export async function quoteTradeIn(
       usesExample: settings.isExample,
     },
   };
+}
+
+// --- Para el agente (brief-29.8.3) ---
+//
+// Lecturas de servicio: reciben la organización de la credencial y no pasan por authorize, como las
+// demás …ForService (tests/guards/service-read-entry-points.test.ts). Solo la API de lectura las llama.
+
+export type ServiceChecklistItem = {
+  id: string;
+  name: string;
+  isMandatory: boolean;
+};
+
+// Los puntos activos, en el orden de la organización (D-2): lo que el agente le pregunta al cliente. Sin
+// trade_ins, ninguno.
+export async function listTradeInChecklistForService(
+  organizationId: string,
+): Promise<ServiceChecklistItem[]> {
+  if (!(await hasCapability(organizationId, "trade_ins"))) return [];
+  const items = await repository.findChecklistItems(organizationId);
+  return items
+    .filter((item) => item.isActive)
+    .map((item) => ({
+      id: item.id,
+      name: item.name,
+      isMandatory: item.isMandatory,
+    }));
+}
+
+// Lo único que sale de la cotización hacia el agente (D-3, H-3): el rango redondeado y los nombres de
+// las reparaciones. Ni el valor exacto, ni el precio de referencia, ni el margen, ni los costos, ni el
+// porcentaje o el paso: con cualquiera de ellos se despeja el margen. computeQuote los calcula y
+// quoteTradeInForService los descarta acá: no salen del módulo.
+export type ServiceTradeInQuote = {
+  product: { id: string; name: string };
+  currency: string;
+  low: string;
+  high: string;
+  repairs: string[];
+};
+
+export type ServiceTradeInQuoteUnavailable =
+  TradeInQuoteUnavailable | "example_values" | "no_capability";
+
+export type ServiceTradeInQuoteResult =
+  | { ok: true; quote: ServiceTradeInQuote }
+  | { ok: false; code: "NOT_FOUND" }
+  | { ok: false; code: "CHECKLIST_INCOMPLETE"; itemIds: string[] }
+  | { ok: false; code: "NOT_ACCEPTED"; items: string[] }
+  | { ok: false; code: "UNAVAILABLE"; rule: ServiceTradeInQuoteUnavailable };
+
+// La entrada llega validada por la API: el producto y los ids como uuid en minúsculas, la batería de 0
+// a 100, y ningún id en las dos listas. Un producto inexistente, inactivo, de servicio o de otra
+// organización es NOT_FOUND, como el detalle de producto de v3; sin trade_ins, no cotiza.
+export async function quoteTradeInForService(
+  organizationId: string,
+  input: {
+    productId: string;
+    batteryHealth: number;
+    passed: string[];
+    failed: string[];
+  },
+): Promise<ServiceTradeInQuoteResult> {
+  const product = await getActiveProductForService(
+    organizationId,
+    input.productId,
+    { includeUsed: true },
+  );
+  if (!product) return { ok: false, code: "NOT_FOUND" };
+  if (!(await hasCapability(organizationId, "trade_ins"))) {
+    return { ok: false, code: "UNAVAILABLE", rule: "no_capability" };
+  }
+  const computed = await computeQuote(organizationId, {
+    product,
+    batteryHealth: input.batteryHealth,
+    checklist: { passed: new Set(input.passed), failed: new Set(input.failed) },
+    rejectExample: true,
+    price: async () => product.price ?? undefined,
+    costs: (modelId) =>
+      getRepairCostsForQuoteForService(organizationId, modelId),
+  });
+  if (computed.ok) {
+    return {
+      ok: true,
+      quote: {
+        product: computed.quote.product,
+        currency: computed.quote.currency,
+        low: computed.quote.low,
+        high: computed.quote.high,
+        repairs: computed.quote.repairs.map((repair) => repair.name),
+      },
+    };
+  }
+  switch (computed.rule) {
+    case "checklist_incomplete":
+      return {
+        ok: false,
+        code: "CHECKLIST_INCOMPLETE",
+        itemIds: computed.itemIds,
+      };
+    case "mandatory_failed":
+      return { ok: false, code: "NOT_ACCEPTED", items: computed.items };
+    default:
+      return { ok: false, code: "UNAVAILABLE", rule: computed.rule };
+  }
 }
 
 // --- La copia del perfil (U-4) ---
