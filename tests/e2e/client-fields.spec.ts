@@ -114,7 +114,10 @@ async function clientRow(name: string) {
   return result.rows[0]!;
 }
 
-const status = (page: Page) => page.getByRole("status");
+// Filtra por el texto: mientras la ficha carga, el «Cargando…» del esqueleto también es un
+// `role="status"` (la corrida de 33784a7 encontró dos y falló por strict mode).
+const status = (page: Page, text: string) =>
+  page.getByRole("status").filter({ hasText: text });
 
 // Pasa el foco con Tab hasta `target`, como lo haría una persona con el teclado.
 async function tabTo(page: Page, target: ReturnType<Page["getByLabel"]>) {
@@ -167,7 +170,7 @@ test("1. FR-CLI-12: un admin da de alta y edita con los campos nuevos, y el hist
   await page.getByLabel("Segmento").fill(FULL.segment);
   await page.getByRole("button", { name: "Crear cliente" }).click();
 
-  await expect(status(page)).toHaveText("Cliente creado.");
+  await expect(status(page, "Cliente creado.")).toHaveText("Cliente creado.");
   expect(await clientRow("Ana Kumquat")).toMatchObject({
     email: FULL.email,
     kind: "company",
@@ -196,7 +199,9 @@ test("1. FR-CLI-12: un admin da de alta y edita con los campos nuevos, y el hist
   await page.getByLabel("Provincia").selectOption({ label: "Córdoba" });
   await page.getByLabel("Segmento").fill("");
   await page.getByRole("button", { name: "Guardar cambios" }).click();
-  await expect(status(page)).toHaveText("Cliente actualizado.");
+  await expect(status(page, "Cliente actualizado.")).toHaveText(
+    "Cliente actualizado.",
+  );
   expect(await clientRow("Ana Kumquat")).toMatchObject({
     province: "AR-X",
     segment: null,
@@ -352,7 +357,7 @@ test("5. AC-8: el alta con los campos nuevos solo con teclado, y la ficha a 375 
   await tabTo(page, page.getByRole("button", { name: "Crear cliente" }));
   await page.keyboard.press("Enter");
 
-  await expect(status(page)).toHaveText("Cliente creado.");
+  await expect(status(page, "Cliente creado.")).toHaveText("Cliente creado.");
   expect(await clientRow("Gabi Teclado")).toMatchObject({
     email: "gabi@example.com",
     kind: "person",

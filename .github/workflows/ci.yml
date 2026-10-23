@@ -21,7 +21,9 @@ jobs:
     # con todos los pasos en verde (brief-19.3, §Cierre). Decisión del usuario.
     # 25 hasta el 2026-10-14: la corrida de 0543ef6 tardó 18 min, y su primer intento lo cortó
     # un runner lento (brief-21.4, H-10 y D-12). Decisión del usuario.
-    timeout-minutes: 35
+    # 35 hasta el 2026-10-23: el primer intento de 33784a7 se cortó con los e2e corriendo, y el
+    # segundo tardó 34 min 20 s (brief-29.8.2, §Cierre). Decisión del usuario.
+    timeout-minutes: 45
 
     services:
       postgres:
