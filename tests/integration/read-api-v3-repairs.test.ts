@@ -704,7 +704,7 @@ describe(
 
     // Revisión independiente de la 29.8.2, M-2 y B-2: cada estado con su status_at y su presupuesto, y el
     // borde de 30 días justos.
-    it("4. U-3: cada estado con su fecha y su presupuesto; las cerradas aparecen 30 días justos; las abiertas siempre; como mucho 5", async () => {
+    it("4. U-3: cada estado con su fecha y su presupuesto; las cerradas aparecen 30 días justos; las abiertas siempre; una cancelada por error nunca; como mucho 5", async () => {
       const open = await orderAt(s, "sent");
       const approved = await orderAt(s, "approved");
       const rejectedOrder = await orderAt(s, "quoted");
@@ -732,6 +732,10 @@ describe(
       // Cancelada después del presupuesto: lo conserva (D-4).
       const cancelled = await orderAt(s, "quoted");
       ok(await cancelServiceOrder(s.admin, cancelled.id, "customer_withdrew"));
+      // Cancelada por cargarse por error: pudo ser de otro cliente. Nunca aparece, ni ocupa un lugar del
+      // tope (O-2 de la revisión independiente; decisión del usuario).
+      const mistaken = await orderAt(s, "quoted");
+      ok(await cancelServiceOrder(s.admin, mistaken.id, "entered_by_mistake"));
 
       const timestamps = await getDb().execute<{
         id: string;

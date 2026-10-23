@@ -212,7 +212,7 @@ Fixture, con forma asumida: `repairs.json`.
 
 - **El teléfono nunca viaja en una lectura** (U-1). El CRM busca la conversación, toma su cliente y devuelve sus órdenes.
 - **Una conversación inexistente o de otra organización** da `404 NOT_FOUND`, sin distinguir, como `conversation-state`. **Una sin cliente**, o un cliente sin órdenes, da `items: []`.
-- **Cuáles** (U-3): las del equipo de un cliente, **abiertas** y **cerradas** (entregadas o canceladas) **en los últimos 30 días**, hasta 5, de la más nueva a la más vieja. Nunca la orden de una unidad propia del negocio.
+- **Cuáles** (U-3): las del equipo de un cliente, **abiertas** y **cerradas** (entregadas o canceladas) **en los últimos 30 días**, hasta 5, de la más nueva a la más vieja. Nunca la orden de una unidad propia del negocio. *Precisado el 2026-10-23* (revisión independiente de la 29.8.2, O-2; decisión del usuario): **nunca una cancelada como cargada por error** (`entered_by_mistake`), porque pudo ser de otro cliente.
 - **Sin la capacidad `repairs`**, `items: []`. La conversación se busca antes: sin la capacidad, una inexistente o ajena sigue dando el mismo `404`.
 - **Una orden cancelada o rechazada después del presupuesto conserva su `quote`**: es el que se le dio al cliente, y el `status` dice que ya no está vigente.
 - **Límite aceptado** (U-1; ADR 0007): el cliente es su teléfono. Quien escribe desde el WhatsApp de otra persona ve las órdenes de esa persona, como el historial y los pedidos.
@@ -314,7 +314,7 @@ Las reglas de v1:
 - *Desde la 29.8.2*, **`tests/integration/read-api-v3-repairs.test.ts`**, contra PostgreSQL real, prueba:
   - la búsqueda por texto y por id, con un modelo que no se vende, dos que empiezan igual, el modelo y el tipo inactivos, y el precio en pesos convertido a dólares;
   - las órdenes del cliente de la conversación, con el presupuesto desde `quoted`, sin la de otro cliente, de otra organización ni de una unidad propia;
-  - cada estado con su `status_at` y su presupuesto, también la orden rechazada, entregada o cancelada después del presupuesto;
+  - cada estado con su `status_at` y su presupuesto, también la orden rechazada, entregada o cancelada después del presupuesto, y que una cancelada por error no aparece ni ocupa un lugar del tope;
   - la ventana de 30 días justos, a un milisegundo de cada lado, y el tope de 5;
   - el 404 sin distinguir, la conversación sin cliente y el 400;
   - cada capacidad apagada y el log;

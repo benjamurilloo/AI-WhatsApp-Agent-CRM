@@ -607,7 +607,8 @@ export function findServiceOrders(
 // abiertas o cerradas (entregadas o canceladas) desde `closedSince`, de la más reciente a la más vieja.
 // Solo las columnas que el contrato usa: ni el IMEI, ni lo que reporta, ni el técnico, ni el costo. El
 // filtro por tipo es una segunda defensa: una orden propia no tiene cliente, y el de client_id ya la deja
-// fuera.
+// fuera. Una orden cancelada como entered_by_mistake nunca aparece: pudo ser de otro cliente (revisión
+// independiente de la 29.8.2, O-2; decisión del usuario del 2026-10-23).
 export type AgentServiceOrderRow = {
   id: string;
   number: number;
@@ -654,6 +655,7 @@ export function findClientServiceOrdersForAgent(
         eq(serviceOrders.organizationId, organizationId),
         eq(serviceOrders.kind, "customer_device"),
         eq(serviceOrders.clientId, clientId),
+        sql`${serviceOrders.cancelReason} is distinct from 'entered_by_mistake'`,
         or(
           notInArray(serviceOrders.status, ["delivered", "cancelled"]),
           gte(serviceOrders.deliveredAt, closedSince),
