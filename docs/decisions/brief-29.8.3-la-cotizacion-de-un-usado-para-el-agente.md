@@ -13,7 +13,7 @@ generated_at: 2026-10-23
   - `deterministic`, con tests contra PostgreSQL;
   - `producer-consumer` del lado del CRM: contrato ↔ servicio ↔ base;
   - **validado en integración con el agente** en una ventana como la de la 29.8, si el agente adopta el contrato (D-8).
-- **Estado**: **aprobado por el usuario el 2026-10-23, con las recomendaciones: U-1 a U-5 en su opción (a).** Como en la 29.8 y la 29.8.2, **no se implementa hasta que el agente confirme por escrito que lo va a usar**, o pida cambios (D-8). La pregunta está en `Pregunta-29.8.3-CRM-al-Agente.md`, en el Escritorio del usuario. **El agente confirmó el mismo día** que las usa sin cambios (§La respuesta del agente). **El usuario decidió el 2026-10-23 seguir con la 29.8.3 después de la ventana de la 29.8.2**, que se concilió ese día. **Cerrado el 2026-10-25**, desplegado (`9a971ae`), con la ventana del agente conciliada y `not_accepted` y `not_quotable` sin leer por el agente (§Cierre).
+- **Estado**: **aprobado por el usuario el 2026-10-23, con las recomendaciones: U-1 a U-5 en su opción (a).** Como en la 29.8 y la 29.8.2, **no se implementa hasta que el agente confirme por escrito que lo va a usar**, o pida cambios (D-8). La pregunta está en `Pregunta-29.8.3-CRM-al-Agente.md`, en el Escritorio del usuario. **El agente confirmó el mismo día** que las usa sin cambios (§La respuesta del agente). **El usuario decidió el 2026-10-23 seguir con la 29.8.3 después de la ventana de la 29.8.2**, que se concilió ese día. **Cerrado el 2026-10-25**, desplegado (`9a971ae`), con la ventana del agente conciliada y `not_accepted` y `not_quotable` sin leer por el agente (§Cierre). *Ese mismo día, la ventana corta 3.54 leyó `not_quotable`; `not_accepted` sigue sin leer* (§La ventana corta).
 - **Fuentes**:
   - [ADR 0024](0024-rubros-y-capacidades.md): punto 9 (la cotización de un usado), punto 13 (el perfil y la regla de los valores de ejemplo), punto 14 (lo que el agente nunca lee), punto 15 (el agente) y punto 16 (las dependencias);
   - [ADR 0014](0014-el-agente-de-whatsapp-como-consumidor-del-crm.md);
@@ -351,9 +351,9 @@ Un hallazgo del revisor no autoriza nada: el commit, el push y el despliegue los
 | AC-9 | cumple | `trade-in-quotes.test.ts`, la regresión de `quoteTradeIn`, y las suites de v1, v2, v3 y la ingestión, sin cambios, en la CI |
 | AC-10 | cumple | CI run 40032175544 en `success` sobre `9a971ae`: guardas, unitarias, integración, build y end-to-end. `trade-ins.test.ts` pasó en local antes de cada push |
 | AC-11 | cumple | revisión independiente del 2026-10-23, antes del despliegue (§Revisión independiente) |
-| AC-12 | cumple, con lo que no se leyó declarado | desplegada en `9a971ae` el 2026-10-23; la ventana 3.53 se concilió el 2026-10-25 (§La ventana). `not_accepted` y `not_quotable` no los leyó el agente |
+| AC-12 | cumple, con lo que no se leyó declarado | desplegada en `9a971ae` el 2026-10-23; la ventana 3.53 se concilió el 2026-10-25 (§La ventana). `not_accepted` y `not_quotable` no los leyó el agente. *Desde la ventana corta 3.54, el mismo día, solo `not_accepted`* (§La ventana corta) |
 
-**Nivel alcanzado**: validado localmente, desplegado y **validado en integración con el agente real** (`producer-consumer`) para el checklist, el rango (con una reparación, la batería bajo el umbral y un piso igual al techo) y `checklist_incomplete`. **`not_accepted` y `not_quotable` quedan validados localmente**: el agente no llegó a leerlos. Los fixtures siguen siendo de forma asumida. No hay negocio real.
+**Nivel alcanzado**: validado localmente, desplegado y **validado en integración con el agente real** (`producer-consumer`) para el checklist, el rango (con una reparación, la batería bajo el umbral y un piso igual al techo) y `checklist_incomplete`. **`not_accepted` y `not_quotable` quedan validados localmente**: el agente no llegó a leerlos. Los fixtures siguen siendo de forma asumida. No hay negocio real. *Desde la ventana corta 3.54, el mismo día, también `not_quotable` está validado en integración; solo `not_accepted` sigue validado localmente* (§La ventana corta).
 
 ### `zod` 4.6.7
 
@@ -397,7 +397,30 @@ La ventana fue entre las 01:36 y las 01:45 UTC, desde el teléfono del usuario, 
 
 La respuesta es `Respuesta-Conciliacion-3.53-CRM-al-Agente.md`, en el Escritorio del usuario.
 
+### La ventana corta (3.54)
+
+*Del 2026-10-25.* Antes de la ventana, el CRM le corrigió al agente lo que esperaba en su paso 7b: sin ningún punto respondido, `checklist_incomplete` trae los 10 ids, no solo los obligatorios (`Respuesta-3.54-CRM-al-Agente.md`). Para empezar con el historial limpio, el usuario cerró la conversación anterior desde la pantalla de la conversación: una cerrada nunca es la vigente.
+
+La ventana fue entre las 17:53 y las 18:05 UTC, desde el teléfono del usuario, en «iPhone Demo» (`Conciliacion-3.54-Ventana-corta.md`). **Sus 22 lecturas coinciden con el log de producción** por `X-Request-Id`, ruta, `OK` y correlación, comparadas con un script: 11 a `products`, 5 a `trade-in-checklist`, 5 a `trade-in-quote` y 1 a las unidades. Con `conversation-state` y `messages` de los 11 turnos son 44 líneas, todas `OK` y de «iPhone Demo». De 17:50 a 18:10 no hay ninguna línea `warn` ni `error`, ni un `400` ni un `429`. Hubo una sola `trade-in-quote` por turno.
+
+| Paso | Correlación | Lo que recibió | Esperado |
+|---|---|---|---|
+| 2 | `36652:r1:i1` | `checklist_incomplete`, 10 ids | sí: batería sin puntos |
+| 3 | `36684:r1:i1` | `170.00`–`190.00` | caso 1 |
+| 4 | `36717:r1:i1` | `150.00`–`160.00`, «Cambio de batería» | caso 2 |
+| 5 | `36750:r1:i1` | `70.00`–`70.00`, «Face ID» | caso 5 |
+| 7b–7c | `36847:r1:i1` | `not_quotable` | caso 8 |
+
+- **`not_quotable` queda leído por el agente real**: el iPhone 13 128 GB con los 10 puntos en `passed`, sin margen.
+- **`not_accepted` sigue sin leer.** En el paso 6, con «no toma señal», el agente preguntó el modelo y no cotizó. Es una falla de su lado, que corrige.
+- **En el paso 5, el agente presentó el rango como el precio del cambio de Face ID.** Es lo que vale el equipo con la reparación descontada, y el contrato no da montos de reparaciones. Se lo marcamos como una contradicción con el contrato (`Respuesta-Conciliacion-3.54-CRM-al-Agente.md`); lo corrige de su lado.
+- **En el paso 8**, la búsqueda «iphone 12 128» de usados trajo el iPhone 13 128 GB. El agente comprobó el modelo y no cotizó con otro.
+- **El corte del paso 10 es del límite del agente**: no hubo `429` del CRM.
+- Los resultados de negocio salen del registro del agente: el log guarda el código, no el rango ni el motivo.
+
+La respuesta es `Respuesta-Conciliacion-3.54-CRM-al-Agente.md`, en el Escritorio del usuario.
+
 ### Lo que queda
 
-- **Una ventana corta con `not_accepted` y `not_quotable`**, cuando el agente corrija sus pasos 7, 8c y 9: una tarea en «Esperando». «iPhone Demo» queda como está hasta entonces.
+- ~~**Una ventana corta con `not_accepted` y `not_quotable`**, cuando el agente corrija sus pasos 7, 8c y 9: una tarea en «Esperando». «iPhone Demo» queda como está hasta entonces.~~ *Actualizado el 2026-10-25, después de la 3.54*: queda **solo `not_accepted`**, cuando el agente corrija su paso 6. La tarea sigue en «Esperando», y «iPhone Demo», como está.
 - **En la máquina local**, la suite completa de integración sigue dando fallas de tiempo que en la CI pasan.
