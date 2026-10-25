@@ -2,6 +2,26 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-25 — 29.8.3: la cotización de un usado para el agente
+
+Cierra el 2026-10-25, desplegada en producción (`9a971ae`, que suma `zod` 4.6.7 por un aviso de seguridad), con la ventana del agente (su 3.53) conciliada ese día: las 31 lecturas que reportó coinciden con el log de producción ([brief-29.8.3](docs/decisions/brief-29.8.3-la-cotizacion-de-un-usado-para-el-agente.md), §Cierre). Implementa la tercera parte del punto 15 del [ADR 0024](docs/decisions/0024-rubros-y-capacidades.md), sobre «iPhone Demo».
+
+**Certifica:**
+- **`GET /api/read/v3/trade-in-checklist`** ([read-v3.md](docs/contracts/read-v3.md)), con alcance `read`: los puntos activos del checklist, en su orden, con id, nombre y si son obligatorios; `items: []` sin `trade_ins`.
+- **`GET /api/read/v3/trade-in-quote`**, con alcance `read`: la cotización orientativa de un usado, con la regla de la pantalla del `admin`, compartida y no duplicada. **Solo el rango redondeado**, el convertido y los nombres de las reparaciones descontadas; nunca el valor exacto, el precio de referencia, el margen, los costos, el porcentaje ni el paso, que no salen del módulo. Cada punto activo se responde (`checklist_incomplete`, que cierra O-3 de la 29.7.3 para el agente); un obligatorio que falla da `not_accepted`; todo lo demás, `not_quotable`. **Nunca cotiza con valores de ejemplo.**
+- **No escribe nada.** Sin migraciones; una tercera lectura de `tradeins` en `service`, sin `authorize`.
+- **La ventana con el agente real**: el checklist, el rango (con una reparación, la batería bajo el umbral y un piso igual al techo) y `checklist_incomplete`, validados en integración.
+- **`zod` 4.6.7**, por GHSA-mrhx-c7xc-m3w5 (alto), publicado contra la 4.6.4 que corría producción.
+- **Una revisión independiente** antes del despliegue (sin bloqueantes, cinco no bloqueantes y seis observaciones), verificada contra el código y resuelta.
+- **La recuenta de la superficie expuesta** (SecurityModel): 244 puntos de entrada, con 91 páginas, 128 Server Actions y 25 Route Handlers.
+
+**No certifica:**
+- ningún negocio real;
+- `not_accepted` y `not_quotable` con el agente real: el agente no los leyó en su ventana, por fallas de su lado que corrige en una subfase suya. Están validados localmente, y su ventana corta queda en «Esperando»;
+- un piso en cero con el agente: los costos de «iPhone Demo» no lo dan, y está probado localmente;
+- fixtures capturados, que siguen siendo de forma asumida;
+- una segunda revisión independiente de las correcciones, que son autoevaluación.
+
 ## 2026-10-23 — 29.8.2: las reparaciones y las órdenes de servicio para el agente
 
 Cierra el 2026-10-23, desplegada en producción (`a7a890f`, que suma un e2e estabilizado y el límite de la CI en 45 min), con la ventana del agente (su 3.52) conciliada el mismo día: las cinco lecturas coinciden con el log de producción, y las dos rutas quedan validadas en integración ([brief-29.8.2](docs/decisions/brief-29.8.2-las-reparaciones-para-el-agente.md), §Cierre). Implementa la segunda parte del punto 15 del [ADR 0024](docs/decisions/0024-rubros-y-capacidades.md), sobre «iPhone Demo».
@@ -17,7 +37,7 @@ Cierra el 2026-10-23, desplegada en producción (`a7a890f`, que suma un e2e esta
 - ningún negocio real;
 - las dos rutas con el agente real: están validadas localmente y desplegadas, y la ventana espera;
 - fixtures capturados, que siguen siendo de forma asumida;
-- la cotización de un usado para el agente, que es la 29.8.3;
+- ~~la cotización de un usado para el agente, que es la 29.8.3;~~ *Cerrada el 2026-10-25* (29.8.3);
 - una segunda revisión independiente de las correcciones, que son autoevaluación.
 
 ## 2026-10-22 — 29.8: el catálogo del rubro para el agente

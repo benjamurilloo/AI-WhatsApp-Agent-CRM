@@ -13,7 +13,7 @@ generated_at: 2026-10-23
   - `deterministic`, con tests contra PostgreSQL;
   - `producer-consumer` del lado del CRM: contrato ↔ servicio ↔ base;
   - **validado en integración con el agente** en una ventana como la de la 29.8, si el agente adopta el contrato (D-8).
-- **Estado**: **aprobado por el usuario el 2026-10-23, con las recomendaciones: U-1 a U-5 en su opción (a).** Como en la 29.8 y la 29.8.2, **no se implementa hasta que el agente confirme por escrito que lo va a usar**, o pida cambios (D-8). La pregunta está en `Pregunta-29.8.3-CRM-al-Agente.md`, en el Escritorio del usuario. **El agente confirmó el mismo día** que las usa sin cambios (§La respuesta del agente). **El usuario decidió el 2026-10-23 seguir con la 29.8.3 después de la ventana de la 29.8.2**, que se concilió ese día.
+- **Estado**: **aprobado por el usuario el 2026-10-23, con las recomendaciones: U-1 a U-5 en su opción (a).** Como en la 29.8 y la 29.8.2, **no se implementa hasta que el agente confirme por escrito que lo va a usar**, o pida cambios (D-8). La pregunta está en `Pregunta-29.8.3-CRM-al-Agente.md`, en el Escritorio del usuario. **El agente confirmó el mismo día** que las usa sin cambios (§La respuesta del agente). **El usuario decidió el 2026-10-23 seguir con la 29.8.3 después de la ventana de la 29.8.2**, que se concilió ese día. **Cerrado el 2026-10-25**, desplegado (`9a971ae`), con la ventana del agente conciliada y `not_accepted` y `not_quotable` sin leer por el agente (§Cierre).
 - **Fuentes**:
   - [ADR 0024](0024-rubros-y-capacidades.md): punto 9 (la cotización de un usado), punto 13 (el perfil y la regla de los valores de ejemplo), punto 14 (lo que el agente nunca lee), punto 15 (el agente) y punto 16 (las dependencias);
   - [ADR 0014](0014-el-agente-de-whatsapp-como-consumidor-del-crm.md);
@@ -331,3 +331,73 @@ Necesaria antes del cierre: la subfase abre un contrato con un consumidor extern
 | O-6. `.claude/settings.json` sin seguimiento | Cierto | Queda fuera del commit |
 
 Un hallazgo del revisor no autoriza nada: el commit, el push y el despliegue los autoriza el usuario.
+
+## Cierre
+
+*Del 2026-10-25, después del despliegue y de la ventana del agente (su 3.53). El usuario decidió cerrar con `not_accepted` y `not_quotable` sin leer por el agente: quedan declarados abajo, y su ventana corta, en «Esperando».*
+
+### Criterios
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| AC-1 | cumple | `read-api-v3-trade-in-quote.test.ts`, casos 1 y 3c: los puntos activos en su orden, sin el inactivo, y `items: []` sin `trade_ins`, también con los datos intactos |
+| AC-2 | cumple | casos 2 y 2b: el mismo piso y techo que `quoteTradeIn`, con la reparación de un punto, la batería bajo el umbral y un piso en cero (este, desde la revisión, NB-5) |
+| AC-3 | cumple | casos 3, 3b y 3c, y las unitarias del mapeo: `checklist_incomplete` con sus ids, `not_accepted` con sus nombres, y cada motivo fino, los valores de ejemplo y la capacidad apagada como `not_quotable` |
+| AC-4 | cumple | caso 4 y `trade-in-quote/handler.test.ts` (desde la revisión, NB-3): cada `400` por su campo y el mismo `404` para un producto ajeno, inactivo, de servicio o inexistente |
+| AC-5 | cumple | caso 5, con montos sembrados que no aparecen en ningún otro campo; `agent-contract-fields` pasa en la CI |
+| AC-6 | cumple | caso 2 con la cotización vigente y vencida; las unitarias de `convertRange`, con cada caso `null` |
+| AC-7 | cumple | casos 7 y 8, en las dos rutas |
+| AC-8 | cumple | casos 4 y 3d (desde la revisión, NB-2): el producto y los puntos de otra organización con `trade_ins`. Quitar el filtro por organización de los puntos hace fallar el 3d |
+| AC-9 | cumple | `trade-in-quotes.test.ts`, la regresión de `quoteTradeIn`, y las suites de v1, v2, v3 y la ingestión, sin cambios, en la CI |
+| AC-10 | cumple | CI run 40032175544 en `success` sobre `9a971ae`: guardas, unitarias, integración, build y end-to-end. `trade-ins.test.ts` pasó en local antes de cada push |
+| AC-11 | cumple | revisión independiente del 2026-10-23, antes del despliegue (§Revisión independiente) |
+| AC-12 | cumple, con lo que no se leyó declarado | desplegada en `9a971ae` el 2026-10-23; la ventana 3.53 se concilió el 2026-10-25 (§La ventana). `not_accepted` y `not_quotable` no los leyó el agente |
+
+**Nivel alcanzado**: validado localmente, desplegado y **validado en integración con el agente real** (`producer-consumer`) para el checklist, el rango (con una reparación, la batería bajo el umbral y un piso igual al techo) y `checklist_incomplete`. **`not_accepted` y `not_quotable` quedan validados localmente**: el agente no llegó a leerlos. Los fixtures siguen siendo de forma asumida. No hay negocio real.
+
+### `zod` 4.6.7
+
+La CI del push de la implementación (`e01e071`) se cortó en la auditoría de dependencias, antes de lint y de las pruebas: GHSA-mrhx-c7xc-m3w5 (alto), publicado contra `zod` anterior a 4.6.6, que puede agotar la memoria al validar colecciones restringidas demasiado grandes. Producción corría 4.6.4. Con la autorización del usuario se subió a 4.6.7 en `9a971ae`, un commit propio, solo el parche. Pasaron en local tsc, eslint, unitarias, guardas y las cinco suites de integración de la cotización y de `read-v3`, y la CI de `9a971ae` cubrió los dos commits.
+
+### El despliegue
+
+`9a971ae`, el 2026-10-23, con el runbook de `deploy/production/README.md`, sobre `a7a890f`, que es el SHA para volver atrás. Sin migraciones. Después: el servicio activo, `/api/health` y `/login` `200`, la hoja de estilos `200`, y `trade-in-checklist` y `trade-in-quote` `401` sin token.
+
+### Los datos de la ventana
+
+No se cargó nada: «iPhone Demo» ya tenía lo que pedía D-8. Se verificó en producción, solo leyendo:
+- los valores confirmados: umbral 80, rango 10 %, paso 10 USD, sin la marca de ejemplo;
+- 10 puntos activos, 2 obligatorios, 4 con reparación;
+- el **iPhone 12 64 GB Negro**, usado, a US$ 299, con margen de US$ 100 y costos para sus reparaciones;
+- el **iPhone 13 128 GB Azul**, usado, sin margen: `not_quotable`;
+- ningún iPhone 12 de 128 GB usado.
+
+El piso en cero no se da con esos costos. El agente no lo pidió: queda en sus pruebas y en las nuestras (caso 2b). Los casos esperados, calculados con la regla, están en `Ventana-29.8.3-CRM-al-Agente.md`, en el Escritorio del usuario.
+
+### La ventana (3.53)
+
+*Del 2026-10-25.* Antes de la ventana, el CRM le marcó al agente que su paso 8 iba a dar `not_accepted` y no `not_quotable`: el CRM revisa las respuestas antes que el margen, y el agente iba a reusar las del iPhone 12 (`Respuesta-3.53-CRM-al-Agente.md`). El agente eligió que las respuestas son de un equipo, y partió el paso 8 en tres turnos (`Respuesta-3.53-Agente-al-CRM.md`).
+
+La ventana fue entre las 01:36 y las 01:45 UTC, desde el teléfono del usuario, en «iPhone Demo» (`Conciliacion-3.53-Ventana-29.8.3.md`). **Sus 31 lecturas coinciden con el log de producción** por `X-Request-Id`, ruta, `OK` y correlación: 11 a `products`, 10 a `trade-in-checklist` y 10 a `trade-in-quote`. De 01:33 a 01:50, los 84 pedidos del log son de `agente-iphone-demo` y todos `OK`: ningún `400` ni `429`.
+
+| Paso | Correlación | Lo que recibió | Esperado |
+|---|---|---|---|
+| 1 | `35306:r1:i1` | `checklist_incomplete`, 10 ids | sí: el agente tomó la batería de un turno de prueba anterior |
+| 3 | `35339:r1:i1` | `170.00`–`190.00` | caso 1 |
+| 4 | `35371:r1:i1` y `r2:i1` | `150.00`–`160.00`, «Cambio de batería», dos veces | caso 2 |
+| 5 | `35408:r1:i1` | `80.00`–`90.00`, «Cámara trasera» | caso 3 |
+| 6 | `35441:r1:i1` y `r2:i1` | `checklist_incomplete` (8 ids) y `70.00`–`70.00`, «Face ID» | caso 5 |
+| 8b | `35547:r1:i1` | `checklist_incomplete`, 10 ids | sí |
+| 8c | `35581:r1:i1` y `r2:i1` | `checklist_incomplete`, 9 y 2 ids | no llegó a `not_quotable` |
+
+- **Lo que salió distinto es del lado del agente**, y lo corrige en una subfase suya. En el paso 7 tomó «no toma señal» como un problema técnico y no cotizó, así que `not_accepted` no se leyó. En el 8c mandó los puntos en partes, así que `not_quotable` tampoco. En los pasos 4 y 8c, su límite de rondas cortó el turno.
+- **Una lectura nº 32, que la conciliación del agente no listaba**: `products` a las 01:45:24 (`35617:r1:i1`), su paso 9. Encontró «iPhone 12 128 GB Azul reacondicionado», que existe en «iPhone Demo» con condición `refurbished`, y dijo que estaba sin stock. El dato salió del CRM, no lo inventó el agente.
+- **Ningún monto salió de otro lado que la cotización del turno**, según la conciliación del agente. Nunca dijo «te pagamos» ni un monto fijo.
+- **No hay fixtures capturados**: la conciliación trae los ids y lo que dijo el agente, no los cuerpos.
+
+La respuesta es `Respuesta-Conciliacion-3.53-CRM-al-Agente.md`, en el Escritorio del usuario.
+
+### Lo que queda
+
+- **Una ventana corta con `not_accepted` y `not_quotable`**, cuando el agente corrija sus pasos 7, 8c y 9: una tarea en «Esperando». «iPhone Demo» queda como está hasta entonces.
+- **En la máquina local**, la suite completa de integración sigue dando fallas de tiempo que en la CI pasan.
