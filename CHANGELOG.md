@@ -17,7 +17,7 @@ Cierra el 2026-10-25, desplegada en producción (`9a971ae`, que suma `zod` 4.6.7
 
 **No certifica:**
 - ningún negocio real;
-- ~~`not_accepted` y `not_quotable` con el agente real: el agente no los leyó en su ventana, por fallas de su lado que corrige en una subfase suya. Están validados localmente, y su ventana corta queda en «Esperando»;~~ *Precisado el 2026-10-25*: la ventana corta 3.54 leyó `not_quotable`, que queda validado en integración, y coincide con el log de producción. **`not_accepted` sigue sin leer**, validado localmente, y su ventana queda en «Esperando» ([brief-29.8.3](docs/decisions/brief-29.8.3-la-cotizacion-de-un-usado-para-el-agente.md), §La ventana corta);
+- ~~`not_accepted` y `not_quotable` con el agente real: el agente no los leyó en su ventana, por fallas de su lado que corrige en una subfase suya. Están validados localmente, y su ventana corta queda en «Esperando»;~~ *Precisado el 2026-10-25*: la ventana corta 3.54 leyó `not_quotable`, que queda validado en integración, y coincide con el log de producción. ~~**`not_accepted` sigue sin leer**, validado localmente, y su ventana queda en «Esperando»~~ ([brief-29.8.3](docs/decisions/brief-29.8.3-la-cotizacion-de-un-usado-para-el-agente.md), §La ventana corta). *Precisado el mismo día*: la ventana del caso 6 leyó `not_accepted`, y coincide con el log. Los cuatro resultados quedan validados en integración (§La ventana del caso 6);
 - un piso en cero con el agente: los costos de «iPhone Demo» no lo dan, y está probado localmente;
 - fixtures capturados, que siguen siendo de forma asumida;
 - una segunda revisión independiente de las correcciones, que son autoevaluación.
