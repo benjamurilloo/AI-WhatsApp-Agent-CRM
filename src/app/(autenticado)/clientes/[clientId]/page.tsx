@@ -52,6 +52,7 @@ import { DeactivateConfirm, ReactivateForm } from "./client-actions";
 import { ClientAccount } from "./client-account";
 import { ClientOrders } from "./client-orders";
 import { ClientServiceOrders } from "./client-service-orders";
+import { ClientUnits } from "./client-units";
 import { ClientTradeIns } from "./client-trade-ins";
 import { ClientTags } from "./client-tags";
 import {
@@ -407,6 +408,9 @@ export default async function ClientPage({
                 timeZone={timeZone}
               />
             </SectionCard>
+
+            {/* Los equipos que compró, con la capacidad serialized_units (brief-29.9, D-3). */}
+            <ClientUnits context={context} clientId={client.id} />
 
             {/* Sus órdenes de servicio, con la capacidad repairs (brief-29.6, D-10). */}
             <ClientServiceOrders

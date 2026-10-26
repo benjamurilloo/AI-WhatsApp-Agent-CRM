@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import {
   createUnitGrade,
   moveUnitGrade,
+  saveUnitWarrantySettings,
   setUnitGradeActive,
   updateUnitGrade,
   type GradeWriteResult,
@@ -13,6 +14,10 @@ import {
 import type { AuthContext } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
 import { logEvent, newRequestId } from "@/shared/log";
+import {
+  WARRANTY_SETTINGS_DAYS_MESSAGE,
+  type WarrantySettingsState,
+} from "../_warranty/settings-state";
 import {
   changeMessage,
   gradeRejection,
@@ -183,4 +188,48 @@ export async function moveGradeAction(
     (context) => moveUnitGrade(context, gradeId, direction as MoveDirection),
     () => null,
   );
+}
+
+// Los días de garantía de una unidad vendida (brief-29.9, D-1): un admin, con serialized_units.
+export async function saveUnitWarrantySettingsAction(
+  _previous: WarrantySettingsState,
+  formData: FormData,
+): Promise<WarrantySettingsState> {
+  const requestId = newRequestId();
+  const started = performance.now();
+  const route = "grados.garantia";
+  const context = await requireSession();
+  const values = { warrantyDays: text(formData, "warrantyDays", 8) };
+  let destination: string;
+  try {
+    const result = await saveUnitWarrantySettings(context, values);
+    if (!result.ok) {
+      logDone(started, requestId, route, result.code, context);
+      return {
+        status: "error",
+        requestId,
+        values,
+        ...(result.code === "VALIDATION_ERROR"
+          ? {
+              field: "warrantyDays" as const,
+              message: WARRANTY_SETTINGS_DAYS_MESSAGE,
+            }
+          : { field: null, message: changeMessage(result.code, requestId) }),
+      };
+    }
+    logDone(started, requestId, route, "OK", context);
+    revalidatePath(GRADES);
+    revalidatePath("/productos", "layout");
+    destination = result.changed ? `${GRADES}?aviso=garantia-guardada` : GRADES;
+  } catch (error) {
+    logDone(started, requestId, route, "INTERNAL", context, error);
+    return {
+      status: "error",
+      requestId,
+      values,
+      field: null,
+      message: unexpectedErrorMessage(requestId),
+    };
+  }
+  redirect(destination);
 }

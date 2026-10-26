@@ -363,3 +363,40 @@ export function findOrders(
     .limit(limit)
     .offset(offset);
 }
+
+// Las unidades de los pedidos entregados de un cliente, para «Equipos comprados» de su ficha
+// (brief-29.9, D-3): la entrega es la que saca la unidad. De la entrega más nueva a la más vieja.
+export function findClientDeliveredUnits(
+  organizationId: string,
+  clientId: string,
+): Promise<{ unitId: string; orderId: string; number: number }[]> {
+  return getDb()
+    .select({
+      unitId: orderLineUnits.unitId,
+      orderId: orders.id,
+      number: orders.number,
+    })
+    .from(orderLineUnits)
+    .innerJoin(
+      orderLines,
+      and(
+        eq(orderLines.organizationId, orderLineUnits.organizationId),
+        eq(orderLines.id, orderLineUnits.orderLineId),
+      ),
+    )
+    .innerJoin(
+      orders,
+      and(
+        eq(orders.organizationId, orderLines.organizationId),
+        eq(orders.id, orderLines.orderId),
+      ),
+    )
+    .where(
+      and(
+        eq(orderLineUnits.organizationId, organizationId),
+        eq(orders.clientId, clientId),
+        eq(orders.status, "delivered"),
+      ),
+    )
+    .orderBy(desc(orders.deliveredAt), desc(orders.id));
+}

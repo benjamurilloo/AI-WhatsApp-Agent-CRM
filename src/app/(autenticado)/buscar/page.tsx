@@ -141,11 +141,13 @@ export default async function SearchPage({
                       </li>
                     ))}
                   </ul>
-                  <p className="mt-3 text-sm">
-                    <Link href={group.moreHref} className={linkClass}>
-                      {group.moreLabel}
-                    </Link>
-                  </p>
+                  {group.moreHref ? (
+                    <p className="mt-3 text-sm">
+                      <Link href={group.moreHref} className={linkClass}>
+                        {group.moreLabel}
+                      </Link>
+                    </p>
+                  ) : null}
                 </section>
               ))}
             </div>

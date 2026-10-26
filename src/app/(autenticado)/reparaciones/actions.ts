@@ -16,6 +16,7 @@ import {
   quoteServiceOrder,
   rejectServiceOrder,
   renameRepairType,
+  saveServiceWarrantySettings,
   sendServiceOrder,
   setRepairPrice,
   setRepairTypeActive,
@@ -25,6 +26,10 @@ import {
 } from "@/modules/service";
 import { requireSession } from "@/app/_auth/session";
 import { logEvent, newRequestId } from "@/shared/log";
+import {
+  WARRANTY_SETTINGS_DAYS_MESSAGE,
+  type WarrantySettingsState,
+} from "../_warranty/settings-state";
 import {
   changeMessage,
   createOrderRejection,
@@ -245,6 +250,47 @@ export async function setRepairPriceAction(
     log("OK");
     revalidatePath(LIST);
     destination = listHref(modelId, result.changed ? "precio-guardado" : null);
+  } catch (error) {
+    log("INTERNAL", error);
+    return {
+      status: "error",
+      requestId,
+      values,
+      field: null,
+      message: unexpectedErrorMessage(requestId),
+    };
+  }
+  redirect(destination);
+}
+
+// Los días de garantía de una reparación entregada (brief-29.9, D-1): un admin, con repairs.
+export async function saveServiceWarrantySettingsAction(
+  _previous: WarrantySettingsState,
+  formData: FormData,
+): Promise<WarrantySettingsState> {
+  const context = await requireSession();
+  const { requestId, log } = logger("reparaciones.garantia", context);
+  const values = { warrantyDays: text(formData, "warrantyDays", 8) };
+  let destination: string;
+  try {
+    const result = await saveServiceWarrantySettings(context, values);
+    if (!result.ok) {
+      log(result.code);
+      return {
+        status: "error",
+        requestId,
+        values,
+        ...(result.code === "VALIDATION_ERROR"
+          ? {
+              field: "warrantyDays" as const,
+              message: WARRANTY_SETTINGS_DAYS_MESSAGE,
+            }
+          : { field: null, message: changeMessage(result.code, requestId) }),
+      };
+    }
+    log("OK");
+    revalidatePath(ORDERS, "layout");
+    destination = result.changed ? `${LIST}?aviso=garantia-guardada` : LIST;
   } catch (error) {
     log("INTERNAL", error);
     return {

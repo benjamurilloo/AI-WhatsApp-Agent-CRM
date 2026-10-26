@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { listUnitGrades } from "@/modules/inventory";
+import { getUnitWarrantySettings, listUnitGrades } from "@/modules/inventory";
 import { requireSession } from "@/app/_auth/session";
 import { ActionNotice } from "@/app/_components/action-notice";
 import { EmptyState } from "@/app/_components/empty-state";
@@ -15,6 +15,8 @@ import { Icon } from "@/app/_components/icons";
 import { PageHeader } from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
 import { SectionCard } from "@/app/_components/section-card";
+import { WarrantySettingsForm } from "../_warranty/warranty-settings-form";
+import { saveUnitWarrantySettingsAction } from "./actions";
 import { GradeActiveForm, GradeForm, GradeMoveForm } from "./forms";
 import {
   FORBIDDEN_ACTION_MESSAGE,
@@ -34,7 +36,8 @@ function single(value: string | string[] | undefined): string | undefined {
 // Los grados de las unidades (ADR 0024, punto 13; brief-29.5, D-5): los copió el perfil de rubro y un
 // admin los ajusta. Un grado no se borra: se desactiva, y las unidades que lo tienen lo conservan.
 // ?editar=<id> abre la edición de un grado. Un viewer ve la lista sin formularios. Sin la capacidad
-// serialized_units, 404.
+// serialized_units, 404. Desde la 29.9 (brief-29.9, D-1), un admin fija acá los días de garantía de una
+// unidad vendida, que vale para las unidades sin días propios.
 export default async function GradesPage({
   searchParams,
 }: {
@@ -53,6 +56,8 @@ export default async function GradesPage({
   const editingId = isAdmin ? single(query.editar) : undefined;
   const notice = noticeMessage(query.aviso);
   const grades = result.grades;
+  const warranty = isAdmin ? await getUnitWarrantySettings(context) : null;
+  const warrantySettings = warranty?.ok ? warranty.settings : null;
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-8 lg:px-8">
@@ -135,6 +140,31 @@ export default async function GradesPage({
           })}
         </div>
       )}
+
+      {isAdmin ? (
+        <SectionCard
+          id="garantia-titulo"
+          title="Garantía de las unidades vendidas"
+          icon="tag"
+          className="mt-6"
+        >
+          <p className="text-sm">
+            {warrantySettings
+              ? `Una unidad vendida tiene ${warrantySettings.warrantyDays} días de garantía, salvo que tenga los suyos${warrantySettings.isExample ? ". Es el valor de ejemplo del perfil" : ""}.`
+              : "Todavía no hay días de garantía: las unidades vendidas sin días propios dicen «Garantía sin configurar»."}
+          </p>
+          <div className="mt-3">
+            <WarrantySettingsForm
+              action={saveUnitWarrantySettingsAction}
+              prefix="garantia-unidades"
+              warrantyDays={
+                warrantySettings ? String(warrantySettings.warrantyDays) : ""
+              }
+              hint="Desde la venta o la entrega del pedido, incluido el último día. Cero: sin garantía."
+            />
+          </div>
+        </SectionCard>
+      ) : null}
 
       {isAdmin ? (
         <SectionCard

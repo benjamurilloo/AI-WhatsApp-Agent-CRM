@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { getMainCurrency } from "@/modules/organizations";
 import {
   getModelRepairPrices,
+  getServiceWarrantySettings,
   listRepairModels,
   listRepairTypes,
   repairCurrencies,
@@ -28,6 +29,8 @@ import { Icon } from "@/app/_components/icons";
 import { PageHeader } from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
 import { formatMoney } from "@/shared/money";
+import { WarrantySettingsForm } from "../../_warranty/warranty-settings-form";
+import { saveServiceWarrantySettingsAction } from "../actions";
 import type { SearchParams } from "../filters";
 import {
   FORBIDDEN_ACTION_MESSAGE,
@@ -60,7 +63,8 @@ function amountInput(value: string): string {
 // La lista de reparaciones (ADR 0024, punto 7; brief-29.6, D-2 y D-10): los tipos de reparación de la
 // organización y, para el modelo elegido con ?modelo=<id>, el precio al cliente y el costo del técnico
 // de cada tipo. Un admin la edita; un viewer la ve sin el costo. ?editar=<id> abre la edición de un
-// tipo. Sin la capacidad repairs, 404.
+// tipo. Sin la capacidad repairs, 404. Desde la 29.9 (brief-29.9, D-1), un admin fija los días de
+// garantía de una reparación entregada.
 export default async function RepairListPage({
   searchParams,
 }: {
@@ -85,10 +89,12 @@ export default async function RepairListPage({
   const modelList = models.ok ? models.models : [];
   const modelId = single(query.modelo);
   const selected = modelList.find((model) => model.id === modelId) ?? null;
-  const [prices, mainCurrency] = await Promise.all([
+  const [prices, mainCurrency, warranty] = await Promise.all([
     selected ? getModelRepairPrices(context, selected.id) : null,
     getMainCurrency(context.organizationId),
+    isAdmin ? getServiceWarrantySettings(context) : null,
   ]);
+  const warrantySettings = warranty?.ok ? warranty.settings : null;
   const currencies = repairCurrencies();
   const defaultCurrency = mainCurrency ?? "USD";
   const editingId = isAdmin ? single(query.editar) : "";
@@ -323,6 +329,32 @@ export default async function RepairListPage({
           </div>
         ) : null}
       </section>
+
+      {isAdmin ? (
+        <section
+          aria-labelledby="garantia-titulo"
+          className={`mt-6 ${cardClass} p-5 sm:p-6`}
+        >
+          <h2 id="garantia-titulo" className={sectionTitleClass}>
+            Garantía de las reparaciones
+          </h2>
+          <p className="mt-2 text-sm">
+            {warrantySettings
+              ? `Una reparación entregada tiene ${warrantySettings.warrantyDays} días de garantía${warrantySettings.isExample ? ", el valor de ejemplo del perfil" : ""}.`
+              : "Todavía no hay días de garantía: las reparaciones entregadas dicen «Garantía sin configurar»."}
+          </p>
+          <div className="mt-3">
+            <WarrantySettingsForm
+              action={saveServiceWarrantySettingsAction}
+              prefix="garantia-reparaciones"
+              warrantyDays={
+                warrantySettings ? String(warrantySettings.warrantyDays) : ""
+              }
+              hint="Desde el día de la entrega, incluido el último. Cero: sin garantía."
+            />
+          </div>
+        </section>
+      ) : null}
     </main>
   );
 }

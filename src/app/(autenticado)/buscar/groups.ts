@@ -1,10 +1,16 @@
 import type { RemoteSuggestion } from "@/app/_components/suggest-filter";
 
-// La búsqueda global (brief-23.3): seis tipos, cada uno con la lectura y el permiso de su módulo
+// La búsqueda global (brief-23.3): seis tipos, y desde la 29.9 los equipos por IMEI (brief-29.9, U-3), cada uno con la lectura y el permiso de su módulo
 // (D-2). Este archivo solo junta y da forma, sin leer nada: lo que se prueba sin base.
 
 export type SearchKind =
-  "clients" | "orders" | "products" | "sales" | "purchaseOrders" | "suppliers";
+  | "clients"
+  | "orders"
+  | "products"
+  | "devices"
+  | "sales"
+  | "purchaseOrders"
+  | "suppliers";
 
 export type SearchHit = {
   id: string;
@@ -19,8 +25,8 @@ export type SearchGroup = {
   kind: SearchKind;
   title: string;
   hits: SearchHit[];
-  // «Ver todos en …»: la lista del módulo con la búsqueda puesta.
-  moreHref: string;
+  // «Ver todos en …»: la lista del módulo con la búsqueda puesta. Null si el tipo no tiene lista.
+  moreHref: string | null;
   moreLabel: string;
 };
 
@@ -36,6 +42,7 @@ export const SEARCH_KINDS: readonly SearchKind[] = [
   "clients",
   "orders",
   "products",
+  "devices",
   "sales",
   "purchaseOrders",
   "suppliers",
@@ -65,7 +72,7 @@ type KindText = {
   // Lo que dice cada opción para un lector de pantalla que no anuncia el grupo (D-5, R-3).
   spoken: string;
   moreLabel: string;
-  moreHref: (text: string) => string;
+  moreHref: ((text: string) => string) | null;
 };
 
 function listHref(path: string, param: string) {
@@ -90,6 +97,15 @@ export const KIND_TEXT: Readonly<Record<SearchKind, KindText>> = {
     spoken: "producto",
     moreLabel: "Ver todos en Productos",
     moreHref: listHref("/productos", "q"),
+  },
+  // Las unidades y las órdenes de equipos de clientes con ese IMEI, con su garantía (brief-29.9, U-3).
+  // No hay una lista de equipos: /buscar muestra el grupo entero (las unidades de un IMEI y hasta 20
+  // órdenes), y Enter en las sugerencias lleva ahí.
+  devices: {
+    title: "Equipos",
+    spoken: "equipo",
+    moreLabel: "",
+    moreHref: null,
   },
   sales: {
     title: "Ventas",
@@ -127,14 +143,18 @@ export function composeGroups(
       failed.push(kind);
       return;
     }
-    const hits = outcome.value.slice(0, limit);
-    if (hits.length === 0) return;
     const { title, moreLabel, moreHref } = KIND_TEXT[kind];
+    // Un tipo sin lista no se corta en /buscar: es el único lugar donde se ve entero.
+    const hits =
+      moreHref || limit === SUGGEST_LIMIT
+        ? outcome.value.slice(0, limit)
+        : outcome.value;
+    if (hits.length === 0) return;
     groups.push({
       kind,
       title,
       hits,
-      moreHref: moreHref(text),
+      moreHref: moreHref ? moreHref(text) : null,
       moreLabel,
     });
   });

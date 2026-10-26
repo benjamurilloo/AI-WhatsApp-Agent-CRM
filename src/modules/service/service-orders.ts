@@ -22,12 +22,14 @@ import {
   getUnitSummaries,
   type UnitStatus,
   type UnitSummary,
+  type Warranty,
 } from "@/modules/inventory";
 import { formatDocumentNumber, nextDocumentNumber } from "@/modules/numbering";
 import {
   authorize,
   getMainCurrency,
   getMemberSummaries,
+  getOrganizationTimezone,
   type AuthContext,
 } from "@/modules/organizations";
 import {
@@ -48,6 +50,11 @@ import {
 } from "./quote";
 import { repairsAllowed } from "./repair-list";
 import * as repository from "./repository";
+import {
+  findServiceSettings,
+  hasServiceWarranty,
+  serviceOrderWarranty,
+} from "./warranties";
 import {
   DEVICE_SERIAL_PATTERN,
   MAX_SERVICE_ORDER_LINES,
@@ -754,6 +761,8 @@ export type ServiceOrderSummary = {
   customerTotal: string | null;
   customerCurrency: string | null;
   createdAt: Date;
+  // La garantía de una orden de un cliente reparada y entregada (brief-29.9, D-2); null en las demás.
+  warranty: Warranty | null;
 };
 
 export type ServiceOrderStatusFilter = "all" | "open" | ServiceOrderStatus;
@@ -814,6 +823,7 @@ async function summarize(
     models.ok ? models.models.map((model) => [model.id, model.name]) : [],
   );
   const productNames = await unitProductNames(context, units);
+  const warrantyOf = await warrantyReader(context, rows);
   const productOf = (unitId: string) => {
     const unit = units.get(unitId);
     return unit ? (productNames.get(unit.productId) ?? null) : null;
@@ -834,8 +844,58 @@ async function summarize(
     customerTotal: row.customerTotal,
     customerCurrency: row.customerCurrency,
     createdAt: row.createdAt,
+    warranty: warrantyOf(row),
   }));
 }
+
+// Los días y la zona se leen una vez, y solo si alguna orden es de un cliente y se entregó reparada.
+async function warrantyReader(
+  context: AuthContext,
+  rows: repository.ServiceOrderRow[],
+): Promise<(row: repository.ServiceOrderRow) => Warranty | null> {
+  if (!rows.some(hasServiceWarranty)) return () => null;
+  const now = new Date();
+  const [settings, timezone] = await Promise.all([
+    findServiceSettings(context.organizationId),
+    getOrganizationTimezone(context),
+  ]);
+  return (row) =>
+    serviceOrderWarranty(row, settings?.warrantyDays ?? null, timezone, now);
+}
+
+// Las órdenes de equipos de clientes con un IMEI, sin distinguir mayúsculas, para la búsqueda
+// (brief-29.9, U-3). Los dos roles; sin la capacidad, ninguna. Un texto que no tiene la forma de un IMEI
+// no encuentra nada.
+export async function listServiceOrdersBySerial(
+  context: AuthContext,
+  serial: string,
+): Promise<
+  | { ok: true; orders: ServiceOrderSummary[] }
+  | Failure<"FORBIDDEN" | "NOT_FOUND">
+> {
+  const allowed = await requireRepairs(context);
+  if (!allowed.ok) return allowed;
+  const trimmed = serial.trim();
+  if (!new RegExp(DEVICE_SERIAL_PATTERN).test(trimmed)) {
+    return { ok: true, orders: [] };
+  }
+  const rows = await repository.findServiceOrders(
+    {
+      organizationId: context.organizationId,
+      statuses: null,
+      number: null,
+      clientId: null,
+      kind: "customer_device",
+      deviceSerial: trimmed,
+    },
+    SERIAL_SEARCH_LIMIT,
+    0,
+  );
+  return { ok: true, orders: await summarize(context, rows) };
+}
+
+// Las órdenes de un IMEI como máximo: un equipo que vuelve más veces ya es un caso para la lista.
+const SERIAL_SEARCH_LIMIT = 20;
 
 const EMPTY_PAGE = { total: 0, page: 1, pageCount: 1 } as const;
 

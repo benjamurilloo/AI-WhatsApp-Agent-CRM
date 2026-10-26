@@ -29,7 +29,7 @@ const failed: PromiseSettledResult<SearchHit[]> = {
 };
 
 describe("kindsForRole", () => {
-  it("un admin busca en los seis tipos, en el orden de los grupos", () => {
+  it("un admin busca en los siete tipos, en el orden de los grupos", () => {
     expect(kindsForRole("admin")).toEqual(SEARCH_KINDS);
   });
 
@@ -38,6 +38,7 @@ describe("kindsForRole", () => {
       "clients",
       "orders",
       "products",
+      "devices",
       "sales",
     ]);
   });
@@ -93,10 +94,32 @@ describe("composeGroups", () => {
       clients: "/clientes?q=P-12+%26",
       orders: "/pedidos?numero=P-12+%26",
       products: "/productos?q=P-12+%26",
+      // Los equipos no tienen lista: el grupo es todo (brief-29.9, U-3).
+      devices: null,
       sales: "/ventas?numero=P-12+%26",
       purchaseOrders: "/compras/ordenes?numero=P-12+%26",
       suppliers: "/compras/proveedores?q=P-12+%26",
     });
+  });
+
+  it("los equipos no se cortan en /buscar, que no tiene a dónde llevarlos", () => {
+    const devices = Array.from({ length: 10 }, (_, index) =>
+      hit(String(index)),
+    );
+    const page = composeGroups(
+      "356938035643809",
+      ["devices"],
+      [ok(devices)],
+      8,
+    );
+    expect(page.groups[0]!.hits).toHaveLength(10);
+    const suggest = composeGroups(
+      "356938035643809",
+      ["devices"],
+      [ok(devices)],
+      3,
+    );
+    expect(suggest.groups[0]!.hits).toHaveLength(3);
   });
 });
 

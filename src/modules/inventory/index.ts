@@ -138,3 +138,25 @@ export {
   type MoveDirection,
   type UnitGrade,
 } from "./grades";
+// La garantía de una unidad vendida (brief-29.9, D-1 a D-3): los días de la organización y los de una
+// unidad, la garantía derivada y la búsqueda por IMEI. La regla, pura, la usa también service.
+export {
+  applyUnitSettingsTemplate,
+  findUnitsBySerial,
+  getUnitWarranties,
+  getUnitWarrantySettings,
+  MAX_WARRANTY_DAYS,
+  saveUnitWarrantySettings,
+  setUnitWarrantyDays,
+  type UnitWarrantyDaysResult,
+  type WarrantySettings,
+  type WarrantySettingsResult,
+  type WarrantyUnit,
+  type WarrantyUnitsResult,
+} from "./warranties";
+export {
+  deriveWarranty,
+  localDate,
+  type Warranty,
+  type WarrantySource,
+} from "./warranty";

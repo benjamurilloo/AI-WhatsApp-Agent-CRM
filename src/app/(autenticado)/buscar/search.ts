@@ -1,9 +1,17 @@
 import { suggestProducts } from "@/modules/catalog";
 import { searchClients, suggestClients } from "@/modules/crm";
+import { findUnitsBySerial } from "@/modules/inventory";
 import { listOrders } from "@/modules/orders";
 import type { AuthContext } from "@/modules/organizations";
 import { listPurchaseOrders, listSuppliers } from "@/modules/purchasing";
 import { listSales } from "@/modules/sales";
+import { listServiceOrdersBySerial } from "@/modules/service";
+import { UNIT_STATUS_LABEL } from "@/app/(autenticado)/productos/[productId]/unidades/messages";
+import {
+  STATUS_LABEL as SERVICE_ORDER_STATUS_LABEL,
+  UNKNOWN_MODEL_TEXT,
+} from "@/app/(autenticado)/reparaciones/messages";
+import { warrantyText } from "@/app/(autenticado)/_warranty/warranty-text";
 import {
   STATUS_LABEL as ORDER_STATUS_LABEL,
   UNKNOWN_CLIENT_TEXT,
@@ -93,6 +101,31 @@ const READERS: Readonly<Record<SearchKind, Reader>> = {
       detailStyle: "code",
       href: `/productos/${product.id}`,
     }));
+  },
+  // Las unidades y las órdenes de clientes con ese IMEI exacto. Sin la capacidad, cada lectura responde
+  // NOT_FOUND y su parte queda vacía.
+  async devices(context, text) {
+    const [units, orders] = await Promise.all([
+      findUnitsBySerial(context, text),
+      listServiceOrdersBySerial(context, text),
+    ]);
+    const unitHits: SearchHit[] = (units.ok ? units.units : []).map((unit) => ({
+      id: unit.id,
+      label: unit.serial,
+      detail: `${unit.productName} · ${unit.warranty ? warrantyText(unit.warranty) : UNIT_STATUS_LABEL[unit.status]}`,
+      detailStyle: "text",
+      href: `/productos/${unit.productId}/unidades`,
+    }));
+    const orderHits: SearchHit[] = (orders.ok ? orders.orders : []).map(
+      (order) => ({
+        id: order.id,
+        label: order.displayNumber,
+        detail: `${order.modelName ?? UNKNOWN_MODEL_TEXT} · ${order.warranty ? warrantyText(order.warranty) : SERVICE_ORDER_STATUS_LABEL[order.status]}`,
+        detailStyle: "text",
+        href: `/reparaciones/${order.id}`,
+      }),
+    );
+    return [...unitHits, ...orderHits];
   },
   async sales(context, text) {
     const result = await listSales(context, {

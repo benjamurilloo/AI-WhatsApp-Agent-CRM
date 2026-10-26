@@ -84,6 +84,39 @@ export const inventoryMovementType = pgEnum("inventory_movement_type", [
   "unit_written_off",
 ]);
 
+// Los días de garantía, como máximo (brief-29.9, D-1): diez años.
+export const MAX_WARRANTY_DAYS = 3650;
+
+// Los valores sueltos de serialized_units (ADR 0024, punto 13; brief-29.9, U-2 y D-1): una fila por
+// organización, que crea org:capability con los días del perfil. Se edita, no se borra. is_example
+// queda hasta que un admin la guarda.
+export const unitSettings = pgTable(
+  "unit_settings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    // Los días de garantía de una unidad vendida que no tiene los suyos.
+    warrantyDays: smallint("warranty_days").notNull(),
+    isExample: boolean("is_example").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    unique("unit_settings_organization_unique").on(table.organizationId),
+    check(
+      "unit_settings_warranty_days_range",
+      sql`${table.warrantyDays} between 0 and ${sql.raw(String(MAX_WARRANTY_DAYS))}`,
+    ),
+  ],
+);
+
 // Los grados de las unidades (ADR 0024, punto 13; brief-29.5, D-5): una lista por organización, que
 // copia el perfil de rubro y edita un admin. Un grado en uso no se borra: se desactiva.
 export const UNIT_GRADE_NAME_MAX_LENGTH = 40;
@@ -178,6 +211,9 @@ export const stockUnits = pgTable(
     // precio vigente del producto. Lo fija el alta manual y lo corrige un admin; la recepción no.
     price: numeric("price", { precision: 14, scale: 2 }),
     priceCurrency: text("price_currency"),
+    // Los días de garantía propios de la unidad (ADR 0024, punto 6; brief-29.9, D-1): nulo, los del
+    // perfil (unit_settings); cero, sin garantía. Los edita un admin en cualquier estado, también vendida.
+    warrantyDays: smallint("warranty_days"),
     originType: stockUnitOrigin("origin_type").notNull(),
     // Clave plana, sin clave foránea (ADR 0024, R-16): inventory no importa los esquemas de quien la
     // crea. En una recepción, la recepción; en el alta manual, null; en un usado, su comprobante PU.
@@ -228,6 +264,10 @@ export const stockUnits = pgTable(
     check(
       "stock_units_serial_format",
       sql`${table.serial} ~ ${sql.raw(`'${UNIT_SERIAL_PATTERN}'`)}`,
+    ),
+    check(
+      "stock_units_warranty_days_range",
+      sql`${table.warrantyDays} between 0 and ${sql.raw(String(MAX_WARRANTY_DAYS))}`,
     ),
     check(
       "stock_units_battery_health_range",

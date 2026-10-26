@@ -7,6 +7,7 @@ import {
   correctUnit,
   registerUnit,
   releaseUnit,
+  setUnitWarrantyDays,
   writeOffUnit,
 } from "@/modules/inventory";
 import type { AuthContext } from "@/modules/organizations";
@@ -20,6 +21,7 @@ import {
   sendToRepairRejection,
   trackingRejection,
   unexpectedErrorMessage,
+  warrantyDaysRejection,
   writeOffRejection,
   type FormState,
   type Rejection,
@@ -180,6 +182,26 @@ export async function correctUnitAction(
         ? `${unitsPath(result.productId)}?aviso=unidad-corregida`
         : unitsPath(productId),
     correctRejection,
+  );
+}
+
+// Los días de garantía propios de una unidad (brief-29.9, D-1): vacío, los de la organización.
+export async function setUnitWarrantyDaysAction(
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const productId = text(formData, "productId", 64);
+  const unitId = text(formData, "unitId", 64);
+  const values = { warrantyDays: text(formData, "warrantyDays", 8) };
+  return runForm(
+    "productos.unidades.garantia",
+    values,
+    (context) => setUnitWarrantyDays(context, unitId, values),
+    (result) =>
+      result.changed
+        ? `${unitsPath(result.productId)}?aviso=garantia-cambiada`
+        : unitsPath(productId),
+    warrantyDaysRejection,
   );
 }
 

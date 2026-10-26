@@ -51,6 +51,8 @@ export const IPHONE_PROFILE: Profile = {
     roundingCurrency: "USD",
     batteryRepairType: "Cambio de batería",
   },
+  // «30 días para todo» (ADR 0024, R-7).
+  warrantyDays: 30,
   repairTypes: [
     { name: "Cambio de batería" },
     { name: "Cambio de pantalla" },

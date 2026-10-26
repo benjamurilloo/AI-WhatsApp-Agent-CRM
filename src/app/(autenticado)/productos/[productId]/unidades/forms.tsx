@@ -19,6 +19,7 @@ import {
   registerUnitAction,
   releaseUnitAction,
   sendUnitToRepairAction,
+  setUnitWarrantyDaysAction,
   writeOffUnitAction,
 } from "./actions";
 import { TRACKING_HINT, TRACKING_LABEL, type FormState } from "./messages";
@@ -516,6 +517,77 @@ export function CorrectUnitForm({
           price={price}
           priceCurrency={priceCurrency}
         />
+      </div>
+      <GeneralError state={state} errorRef={errorRef} />
+      <div className="flex flex-wrap gap-3">
+        <button type="submit" disabled={pending} className={inlineButtonClass}>
+          {pending ? "Guardando…" : "Guardar"}
+        </button>
+        <Link
+          href={`/productos/${productId}/unidades`}
+          className={secondaryLinkClass}
+        >
+          Cancelar
+        </Link>
+      </div>
+    </form>
+  );
+}
+
+// Los días de garantía propios de una unidad (brief-29.9, D-1), en cualquier estado salvo dada de baja.
+// Vacío, la unidad usa los de la organización.
+export function WarrantyDaysForm({
+  productId,
+  unitId,
+  serial,
+  warrantyDays,
+  organizationDays,
+}: {
+  productId: string;
+  unitId: string;
+  serial: string;
+  warrantyDays: string;
+  // Los de la organización, para la ayuda; null si no tiene.
+  organizationDays: number | null;
+}) {
+  const [state, formAction, pending] = useActionState(
+    setUnitWarrantyDaysAction,
+    idle,
+  );
+  const prefix = `garantia-${unitId}`;
+  const errorRef = useFocusError(state, prefix);
+  return (
+    <form action={formAction} className="flex flex-col gap-4">
+      <input type="hidden" name="productId" value={productId} />
+      <input type="hidden" name="unitId" value={unitId} />
+      <p>
+        Días de garantía de la unidad{" "}
+        <span className="font-mono font-semibold">{serial}</span>.
+      </p>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field
+          state={state}
+          prefix={prefix}
+          name="warrantyDays"
+          label="Días de garantía"
+          hint={
+            organizationDays === null
+              ? "Vacío: los de la organización, que todavía no tiene. Cero: sin garantía."
+              : `Vacío: los de la organización, ${organizationDays}. Cero: sin garantía.`
+          }
+        >
+          {(props) => (
+            <input
+              {...props}
+              name="warrantyDays"
+              inputMode="numeric"
+              autoComplete="off"
+              maxLength={4}
+              defaultValue={value(state, "warrantyDays", warrantyDays)}
+              className={inputClass}
+            />
+          )}
+        </Field>
       </div>
       <GeneralError state={state} errorRef={errorRef} />
       <div className="flex flex-wrap gap-3">

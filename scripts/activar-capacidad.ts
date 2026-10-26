@@ -7,7 +7,10 @@ import {
   ensureTradeInPaymentMethod,
   TRADE_IN_PAYMENT_METHOD_NAME,
 } from "@/modules/cash";
-import { applyGradeTemplate } from "@/modules/inventory";
+import {
+  applyGradeTemplate,
+  applyUnitSettingsTemplate,
+} from "@/modules/inventory";
 import {
   activateCapability,
   getProfile,
@@ -16,6 +19,7 @@ import {
 } from "@/modules/organizations";
 import {
   applyRepairTypeTemplate,
+  applyServiceSettingsTemplate,
   repairTypeIdsByName,
 } from "@/modules/service";
 import { applyChecklistTemplate, applyQuoteTemplate } from "@/modules/tradeins";
@@ -55,6 +59,10 @@ import { getDb } from "@/shared/db";
 // del checklist que no tienen uno, buscando los tipos por nombre. También al volver a correr el comando
 // con trade_ins ya activa. Con los valores ya creados no toca los puntos (revisión independiente, B-2):
 // no pisa nada que la organización ya tenga. Sin perfil, los valores se cargan en la pantalla.
+//
+// Desde la 29.9 (brief-29.9, D-1), con el perfil: crea los días de garantía de serialized_units
+// (unit_settings) y de repairs (service_settings) si faltan, de ejemplo, con las capacidades nuevas o de
+// antes. Si ya existen no los toca. Sin perfil, los días se cargan en la pantalla.
 
 const usage =
   "Uso: npm run org:capability -- --organization <id> --admin-email <correo> (--profile <perfil> | --capability <capacidad>). Perfiles: " +
@@ -134,7 +142,7 @@ async function main() {
     // plantilla nueva no toca a quien copió la anterior (ADR 0024, punto 13; brief-29.2, AC-4).
     if (profile && !activated) {
       lines.push(
-        `El perfil «${profile.label}» no se copió: la capacidad ya estaba activa.`,
+        `Los atributos, los grados, los tipos de reparación y el checklist del perfil «${profile.label}» no se copiaron: la capacidad ya estaba activa.`,
       );
     } else if (profile) {
       const copied = await applyAttributeTemplate(tx, {
@@ -234,6 +242,34 @@ async function main() {
           : "Los valores de la cotización ya existían.",
         `Perfil «${profile.label}»: puntos del checklist con su reparación: ${copied.itemsLinked.join(", ") || "ninguno nuevo"}.`,
       );
+    }
+    // Los días de garantía, con el perfil, con cada capacidad activa, nueva o de antes (brief-29.9, D-1).
+    if (profile?.warrantyDays != null) {
+      const warrantyDays = profile.warrantyDays;
+      if (capabilities.includes("serialized_units")) {
+        const units = await applyUnitSettingsTemplate(tx, {
+          organizationId,
+          actorUserId,
+          warrantyDays,
+        });
+        lines.push(
+          units.created
+            ? `Perfil «${profile.label}»: garantía de las unidades vendidas creada, ${warrantyDays} días, de ejemplo.`
+            : "La garantía de las unidades vendidas ya existía.",
+        );
+      }
+      if (capabilities.includes("repairs")) {
+        const repairs = await applyServiceSettingsTemplate(tx, {
+          organizationId,
+          actorUserId,
+          warrantyDays,
+        });
+        lines.push(
+          repairs.created
+            ? `Perfil «${profile.label}»: garantía de las reparaciones creada, ${warrantyDays} días, de ejemplo.`
+            : "La garantía de las reparaciones ya existía.",
+        );
+      }
     }
     // El producto de servicio, con o sin perfil, al activar repairs (D-1 y D-5): uno por organización.
     if (activatedNow.has("repairs")) {

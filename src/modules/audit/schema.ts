@@ -80,6 +80,10 @@ export const auditEntityType = pgEnum("audit_entity_type", [
   // margen de cada modelo, con create y update.
   "trade_in_settings",
   "trade_in_margin",
+  // La garantía (brief-29.9, D-1): los valores sueltos de serialized_units y de repairs, con create y
+  // update. Los días de una unidad se auditan sobre la unidad (stock_unit, update).
+  "unit_settings",
+  "service_settings",
 ]);
 
 export const auditAction = pgEnum("audit_action", [

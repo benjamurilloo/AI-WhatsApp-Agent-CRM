@@ -5,6 +5,7 @@ import type {
   ReleaseUnitResult,
   UnitField,
   UnitStatus,
+  UnitWarrantyDaysResult,
   WriteOffUnitResult,
 } from "@/modules/inventory";
 import type { CreateOwnUnitServiceOrderResult } from "@/modules/service";
@@ -202,6 +203,26 @@ export function correctRejection(
   return commonRejection(result.code, requestId);
 }
 
+// Los días de garantía de una unidad (brief-29.9, D-1).
+export const WARRANTY_DAYS_MESSAGE =
+  "Escribí los días de garantía como un número entero de 0 a 3650, o dejalo vacío para usar los de la organización.";
+
+export function warrantyDaysRejection(
+  result: Exclude<UnitWarrantyDaysResult, { ok: true }>,
+  requestId: string,
+): Rejection {
+  if (result.code === "VALIDATION_ERROR" && "fields" in result) {
+    return { field: "warrantyDays", message: WARRANTY_DAYS_MESSAGE };
+  }
+  if (result.code === "BUSINESS_RULE_VIOLATION") {
+    return {
+      field: null,
+      message: "Esta unidad está dada de baja: ya no cambia.",
+    };
+  }
+  return commonRejection(result.code, requestId);
+}
+
 // Mandar una unidad a reparar (brief-29.6.2, D-7). El campo es el técnico o qué hay que reparar.
 export function sendToRepairRejection(
   result: Exclude<CreateOwnUnitServiceOrderResult, { ok: true }>,
@@ -278,6 +299,8 @@ const NOTICES: Record<string, string> = {
   "unidad-cargada": "Unidad cargada: el stock subió en 1.",
   "unidad-baja": "Unidad dada de baja: el stock bajó en 1.",
   "unidad-corregida": "Unidad corregida.",
+  // Desde la 29.9 (brief-29.9, D-1).
+  "garantia-cambiada": "Días de garantía de la unidad guardados.",
   // Desde la 29.6.2 (brief-29.6.2, D-7).
   "unidad-liberada": "Unidad liberada a la venta: el stock subió en 1.",
   "unidad-baja-revision":

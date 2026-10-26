@@ -29,6 +29,9 @@ import { describe, expect, it } from "vitest";
 // Desde la 29.7 (brief-29.7, D-2, D-5 y U-3): la unidad de un usado. registerTradeInUnit, desde la
 // recepción de tradeins, y writeOffTradeInUnit, desde la anulación de tradeins, que llama solo cash
 // (voidTradeIn), cada caso de uso desde su Server Action.
+//
+// Desde la 29.9 (brief-29.9, D-1): los días de garantía de una unidad. updateUnitWarrantyDays, desde el
+// caso de uso setUnitWarrantyDays, y este desde su Server Action.
 
 const UNIT_REPOSITORY = "src/modules/inventory/unit-repository.ts";
 const SERVICE = "src/modules/inventory/service.ts";
@@ -47,6 +50,7 @@ const TRADE_IN_UNITS = "src/modules/inventory/trade-in-units.ts";
 const TRADE_INS = "src/modules/tradeins/trade-ins.ts";
 const TRADE_IN_VOIDS = "src/modules/cash/trade-in-voids.ts";
 const TRADE_IN_ACTIONS = "src/app/(autenticado)/usados/actions.ts";
+const WARRANTIES = "src/modules/inventory/warranties.ts";
 
 const AUTHORIZED = new Map([
   ["insertStockUnit", ["insert stock_units"]],
@@ -54,6 +58,7 @@ const AUTHORIZED = new Map([
   ["setUnitsWrittenOff", ["update stock_units"]],
   ["setUnitRepaired", ["update stock_units"]],
   ["updateUnitDetails", ["update stock_units"]],
+  ["updateUnitWarrantyDays", ["update stock_units"]],
   ["insertGrade", ["insert unit_grades"]],
   ["updateGrade", ["update unit_grades"]],
 ]);
@@ -139,6 +144,16 @@ const CALLERS = new Map<string, { file: string; from: string[] }[]>([
     ],
   ],
   ["updateUnitDetails", [{ file: UNITS, from: ["correctUnit"] }]],
+  // Los días de garantía de una unidad (brief-29.9, D-1), desde su caso de uso, y este desde su Server
+  // Action.
+  [
+    "updateUnitWarrantyDays",
+    [{ file: WARRANTIES, from: ["setUnitWarrantyDays"] }],
+  ],
+  [
+    "setUnitWarrantyDays",
+    [{ file: UNIT_ACTIONS, from: ["setUnitWarrantyDaysAction"] }],
+  ],
   // Los estados de pedidos y ventas (brief-29.5.2, D-3): cada función de inventory, y cada una desde
   // su caso de uso.
   [
@@ -446,6 +461,7 @@ describe("repositorio", () => {
       "setUnitsStatus: update stock_units",
       "setUnitsWrittenOff: update stock_units",
       "setUnitRepaired: update stock_units",
+      "updateUnitWarrantyDays: update stock_units",
       "updateUnitDetails: update stock_units",
       "insertGrade: insert unit_grades",
       "updateGrade: update unit_grades",

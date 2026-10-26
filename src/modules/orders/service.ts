@@ -1476,3 +1476,32 @@ export async function getUnitOrders(
     ),
   };
 }
+
+// Las unidades que un cliente se llevó en sus pedidos entregados (brief-29.9, D-3). Los dos roles: es
+// lo que el detalle de cada pedido ya muestra.
+export async function listClientDeliveredUnits(
+  context: AuthContext,
+  clientId: string,
+): Promise<
+  | {
+      ok: true;
+      units: { unitId: string; orderId: string; displayNumber: string }[];
+    }
+  | Failure<"FORBIDDEN" | "VALIDATION_ERROR">
+> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  if (!idSchema.safeParse(clientId).success) return failure("VALIDATION_ERROR");
+  const rows = await repository.findClientDeliveredUnits(
+    context.organizationId,
+    clientId.toLowerCase(),
+  );
+  return {
+    ok: true,
+    units: rows.map((row) => ({
+      unitId: row.unitId,
+      orderId: row.orderId,
+      displayNumber: formatOrderNumber(row.number),
+    })),
+  };
+}

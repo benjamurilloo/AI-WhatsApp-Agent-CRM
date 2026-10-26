@@ -15,6 +15,8 @@ export {
   getOrder,
   getOrderForReceipt,
   listClientOrdersForAccount,
+  // «Equipos comprados» de la ficha del cliente (brief-29.9, D-3).
+  listClientDeliveredUnits,
   getOrdersForAccountsByIds,
   listOrderAudit,
   listOrders,

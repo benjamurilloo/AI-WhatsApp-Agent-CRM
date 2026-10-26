@@ -10,6 +10,8 @@ export {
   getSaleForOrder,
   getSaleForReceipt,
   getUnitSales,
+  // «Equipos comprados» de la ficha del cliente (brief-29.9, D-3).
+  listClientSoldUnits,
   issueSale,
   issueSaleFromOrder,
   // La venta de una reparación, para service (brief-29.6, D-6).

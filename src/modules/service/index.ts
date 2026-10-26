@@ -58,6 +58,7 @@ export {
   getServiceOrder,
   listClientServiceOrders,
   listServiceOrderAudit,
+  listServiceOrdersBySerial,
   listServiceOrders,
   markServiceOrderRepaired,
   MAX_SERVICE_ORDER_LINES,
@@ -130,3 +131,11 @@ export {
   listTechnicianChargesForAccounts,
   type TechnicianCharge,
 } from "./technician-charges";
+// La garantía de una reparación entregada (brief-29.9, D-1 y D-2): los días de la organización.
+export {
+  applyServiceSettingsTemplate,
+  getServiceWarrantySettings,
+  saveServiceWarrantySettings,
+  type ServiceWarrantySettings,
+  type ServiceWarrantySettingsResult,
+} from "./warranties";

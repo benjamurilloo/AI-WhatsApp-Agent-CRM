@@ -18,7 +18,7 @@ import {
 import { users } from "@/modules/auth/schema";
 import { productModels } from "@/modules/catalog/schema";
 import { clients } from "@/modules/crm/schema";
-import { stockUnits } from "@/modules/inventory/schema";
+import { MAX_WARRANTY_DAYS, stockUnits } from "@/modules/inventory/schema";
 import { organizations } from "@/modules/organizations/schema";
 import { suppliers } from "@/modules/purchasing/schema";
 import { sales } from "@/modules/sales/schema";
@@ -36,6 +36,36 @@ export const MAX_SERVICE_ORDER_LINES = 20;
 // El IMEI o número de serie del equipo del cliente, con la forma de stock_units (brief-29.5, D-2): de
 // 1 a 32 caracteres. No es una unidad del stock y no se compara con stock_units (D-4).
 export const DEVICE_SERIAL_PATTERN = "^[A-Za-z0-9][A-Za-z0-9-]{0,31}$";
+
+// Los valores sueltos de repairs (ADR 0024, punto 13; brief-29.9, U-2 y D-1): una fila por
+// organización, que crea org:capability con los días del perfil. Se edita, no se borra. is_example
+// queda hasta que un admin la guarda.
+export const serviceSettings = pgTable(
+  "service_settings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    // Los días de garantía de una reparación entregada.
+    warrantyDays: smallint("warranty_days").notNull(),
+    isExample: boolean("is_example").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    unique("service_settings_organization_unique").on(table.organizationId),
+    check(
+      "service_settings_warranty_days_range",
+      sql`${table.warrantyDays} between 0 and ${sql.raw(String(MAX_WARRANTY_DAYS))}`,
+    ),
+  ],
+);
 
 // Los tipos de reparación de la organización (D-2): «Cambio de batería», «Cambio de pantalla». Se
 // editan y se desactivan, nunca se borran: un tipo en uso conserva su nombre en las órdenes.

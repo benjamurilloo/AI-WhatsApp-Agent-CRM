@@ -1409,3 +1409,31 @@ export async function getUnitSales(
     ),
   };
 }
+
+// Las unidades que un cliente compró en ventas sin pedido vigentes (brief-29.9, D-3). Los dos roles.
+export async function listClientSoldUnits(
+  context: AuthContext,
+  clientId: string,
+): Promise<
+  | {
+      ok: true;
+      units: { unitId: string; saleId: string; displayNumber: string }[];
+    }
+  | Failure<"FORBIDDEN" | "VALIDATION_ERROR">
+> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  if (!idSchema.safeParse(clientId).success) return failure("VALIDATION_ERROR");
+  const rows = await repository.findClientSoldUnits(
+    context.organizationId,
+    clientId.toLowerCase(),
+  );
+  return {
+    ok: true,
+    units: rows.map((row) => ({
+      unitId: row.unitId,
+      saleId: row.saleId,
+      displayNumber: formatSaleNumber(row.number),
+    })),
+  };
+}

@@ -16,6 +16,7 @@ import type {
   TransitionResult,
 } from "@/modules/service";
 import type { AmountRejection } from "@/shared/money";
+import { WARRANTY_SETTINGS_NOTICE } from "../_warranty/settings-state";
 
 // Textos de las reparaciones (brief-29.6, D-10): las órdenes de servicio, su presupuesto, su entrega y
 // la lista de reparaciones por modelo; desde la 29.6.2, la orden de una unidad propia (brief-29.6.2,
@@ -384,6 +385,8 @@ const NOTICES: Record<string, string> = {
     "Tipo desactivado: ya no se ofrece en el presupuesto. Las órdenes que lo tienen lo conservan.",
   "tipo-reactivado": "Tipo reactivado.",
   "precio-guardado": "Precio guardado.",
+  // Desde la 29.9 (brief-29.9, D-1).
+  "garantia-guardada": WARRANTY_SETTINGS_NOTICE,
   "orden-creada": "Orden de servicio creada.",
   "orden-mandada": "Orden mandada al técnico.",
   "orden-presupuestada": "Presupuesto guardado.",

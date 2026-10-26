@@ -58,6 +58,9 @@ export type Profile = {
   repairTypes: ProfileRepairType[];
   tradeInChecklist: ProfileChecklistItem[];
   tradeInQuote: ProfileTradeInQuote | null;
+  // Los días de garantía de una unidad vendida y de una reparación entregada (brief-29.9, D-1): el script
+  // los copia a unit_settings y a service_settings, de ejemplo. Nulo, el perfil no los trae.
+  warrantyDays: number | null;
 };
 
 export const PROFILES: readonly Profile[] = [IPHONE_PROFILE];

@@ -10,7 +10,7 @@ import {
 // Acceso a stock_units y unit_grades (ADR 0024, puntos 6 y 13; brief-29.5, D-2, D-4 y D-5). Las
 // escrituras de stock_units son insertStockUnit, setUnitsWrittenOff, updateUnitDetails, desde la
 // 29.5.2, setUnitsStatus, de brief-29.5.2, D-3, y desde la 29.6.2, setUnitRepaired, de brief-29.6.2,
-// D-2; las de unit_grades, insertGrade y updateGrade: tests/guards/unit-writes.test.ts fija quién
+// D-2, y desde la 29.9, updateUnitWarrantyDays, de brief-29.9, D-1; las de unit_grades, insertGrade y updateGrade: tests/guards/unit-writes.test.ts fija quién
 // llama a cada una. El saldo y los movimientos siguen en repository.ts.
 
 type Executor = Db | DbTransaction;
@@ -31,6 +31,8 @@ export type StockUnitRow = {
   // Desde la 29.5.2 (brief-29.5.2, D-2): los dos o ninguno.
   price: string | null;
   priceCurrency: string | null;
+  // Desde la 29.9 (brief-29.9, D-1): nulo, los de la organización.
+  warrantyDays: number | null;
   originType: StockUnitOrigin;
   originId: string | null;
   createdBy: string;
@@ -50,6 +52,7 @@ const unitColumns = {
   costCurrency: stockUnits.costCurrency,
   price: stockUnits.price,
   priceCurrency: stockUnits.priceCurrency,
+  warrantyDays: stockUnits.warrantyDays,
   originType: stockUnits.originType,
   originId: stockUnits.originId,
   createdBy: stockUnits.createdBy,
@@ -390,6 +393,31 @@ export async function setUnitRepaired(
     .returning({ id: stockUnits.id });
   if (rows.length !== 1) {
     throw new Error("setUnitRepaired: la unidad no estaba en reparación");
+  }
+}
+
+// Los días de garantía propios de una unidad (brief-29.9, D-1): no tocan el saldo, el estado ni el
+// costo, así que valen en cualquier estado salvo dada de baja, que el trigger rechaza.
+export async function updateUnitWarrantyDays(
+  tx: DbTransaction,
+  organizationId: string,
+  unitId: string,
+  warrantyDays: number | null,
+): Promise<void> {
+  const rows = await tx
+    .update(stockUnits)
+    .set({ warrantyDays })
+    .where(
+      and(
+        eq(stockUnits.organizationId, organizationId),
+        eq(stockUnits.id, unitId),
+      ),
+    )
+    .returning({ id: stockUnits.id });
+  if (rows.length === 0) {
+    throw new Error(
+      "updateUnitWarrantyDays: la unidad no existe en esta organización",
+    );
   }
 }
 

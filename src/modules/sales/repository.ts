@@ -552,3 +552,48 @@ export function findSalesForAccounts(
     )
     .orderBy(asc(sales.createdAt), asc(sales.number));
 }
+
+// Las unidades de las ventas sin pedido vigentes de un cliente, para «Equipos comprados» de su ficha
+// (brief-29.9, D-3). Las de un pedido las da orders, desde la entrega: la venta de un pedido las copia.
+export function findClientSoldUnits(
+  organizationId: string,
+  clientId: string,
+): Promise<{ unitId: string; saleId: string; number: number }[]> {
+  return getDb()
+    .select({
+      unitId: saleLineUnits.unitId,
+      saleId: sales.id,
+      number: sales.number,
+    })
+    .from(saleLineUnits)
+    .innerJoin(
+      saleLines,
+      and(
+        eq(saleLines.organizationId, saleLineUnits.organizationId),
+        eq(saleLines.id, saleLineUnits.saleLineId),
+      ),
+    )
+    .innerJoin(
+      sales,
+      and(
+        eq(sales.organizationId, saleLines.organizationId),
+        eq(sales.id, saleLines.saleId),
+      ),
+    )
+    .leftJoin(
+      saleVoids,
+      and(
+        eq(saleVoids.organizationId, sales.organizationId),
+        eq(saleVoids.saleId, sales.id),
+      ),
+    )
+    .where(
+      and(
+        eq(saleLineUnits.organizationId, organizationId),
+        eq(sales.clientId, clientId),
+        isNull(sales.orderId),
+        isNull(saleVoids.id),
+      ),
+    )
+    .orderBy(desc(sales.createdAt), desc(sales.id));
+}

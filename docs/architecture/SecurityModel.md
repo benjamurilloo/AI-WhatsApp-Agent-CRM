@@ -6,6 +6,12 @@ Cada sección cita el nivel de validación de lo que afirma. Los hallazgos abier
 
 ## Superficie expuesta
 
+*Nota del 2026-10-25, 29.9* ([brief-29.9](../decisions/brief-29.9-la-garantia.md), D-1, D-3 y D-6). **Las Server Actions pasan de 128 a 131, y los puntos de entrada, de 244 a 247**: 91 páginas, 131 Server Actions y 25 Route Handlers. Las tres nuevas exigen sesión, y `admin` y su capacidad en el módulo:
+- `saveUnitWarrantySettingsAction` (Grados) y `saveServiceWarrantySettingsAction` (la lista de reparaciones): los días de garantía de la organización;
+- `setUnitWarrantyDaysAction` (las unidades de un producto): los días propios de una unidad, también vendida.
+
+**La garantía se ve con los dos roles**: es un dato de la venta, no un costo. La búsqueda por IMEI de `/buscar` le muestra a un `viewer` el IMEI de un equipo de un cliente, que ya ve en la orden de servicio: no suma ningún dato nuevo. El agente no lee la garantía.
+
 *Nota del 2026-10-23, 29.8.3* ([brief-29.8.3](../decisions/brief-29.8.3-la-cotizacion-de-un-usado-para-el-agente.md), D-1 a D-5). **Los Route Handlers pasan de 23 a 25, y los puntos de entrada, de 242 a 244**: 91 páginas, 128 Server Actions y 25 Route Handlers. Las dos rutas nuevas son de la lectura v3, con su borde, sin sesión y con una credencial de alcance `read`:
 - `GET /api/read/v3/trade-in-checklist`: los puntos activos del checklist de un usado, sin su reparación ni su costo;
 - `GET /api/read/v3/trade-in-quote`: la cotización orientativa de un usado. **Devuelve solo el rango redondeado hacia abajo**: nunca el valor exacto, el precio de referencia, el margen, el costo de una reparación, el porcentaje ni el paso, porque con cualquiera de ellos se despeja el margen del negocio. No escribe nada, y nunca cotiza con valores de ejemplo.

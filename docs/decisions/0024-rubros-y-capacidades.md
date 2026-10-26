@@ -384,6 +384,8 @@ valor orientativo = precio de referencia del usado
 - **La ficha del cliente, la búsqueda por IMEI y la unidad** muestran si un equipo sigue en garantía.
 - **Un reclamo** es una orden de servicio con la marca `warranty_claim`, que apunta a la venta o a la orden original. Eso es `service → sales`, la misma dirección que el cobro del punto 10. **No se le cobra al cliente**, y lo que cobre el técnico es costo del negocio.
 
+*Nota del 2026-10-25, por la 29.9* ([brief-29.9](brief-29.9-la-garantia.md), U-1 a U-4 y H-3). **Los días del perfil viven en una fila por capacidad**: `unit_settings` (`serialized_units`) y `service_settings` (`repairs`), cada una con los 30 días de R-7. **«La fecha de la venta, o de la entrega del pedido» se toma del último movimiento `sale` u `order_delivery` de la unidad**, que `inventory` ya guarda: es la misma fecha, y así `inventory` no lee `sales` ni `orders`. Una unidad vendida que volvió al local, con otra unidad posterior del mismo IMEI, no tiene garantía (U-4). La búsqueda por IMEI es un grupo de `/buscar` (U-3). **El reclamo pasa a la 29.9.2** (U-1), y su brief decide a qué apunta: la unidad vendida o la venta que dice este punto (brief-29.9, H-8).
+
 ### 12. Los turnos
 
 **Entran por decisión del usuario del 2026-10-18 (U-1).**

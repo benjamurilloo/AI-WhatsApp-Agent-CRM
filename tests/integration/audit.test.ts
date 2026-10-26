@@ -217,6 +217,9 @@ const NO_DELETE_TABLES = [
   // Los valores sueltos y los márgenes de la cotización, que se editan (brief-29.7.3, D-1 y D-2).
   "trade_in_margins",
   "trade_in_settings",
+  // Los días de garantía de cada capacidad, que se editan (brief-29.9, D-1 y D-5).
+  "service_settings",
+  "unit_settings",
 ];
 // Se insertan y se borran, pero no se actualizan: una asignación se pone y se quita (brief-16.1,
 // D-6), un día especial se agrega y se quita (brief-17.4, P-2), y una imagen de producto se sube y

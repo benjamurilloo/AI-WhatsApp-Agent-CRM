@@ -540,6 +540,8 @@ export type ServiceOrderListQuery = {
   // Null: los dos tipos.
   kind?: ServiceOrderKind | null;
   unitId?: string | null;
+  // El IMEI del equipo de un cliente, sin distinguir mayúsculas (brief-29.9, U-3).
+  deviceSerial?: string | null;
   // Las que siguen abiertas, con los estados abiertos de cada tipo: una orden propia reparada ya
   // terminó, y una de cliente reparada espera la entrega (brief-29.6.2, D-7).
   open?: Record<ServiceOrderKind, ServiceOrderStatus[]> | null;
@@ -563,6 +565,11 @@ function listConditions(query: ServiceOrderListQuery): SQL {
   }
   if (query.unitId != null) {
     conditions.push(eq(serviceOrders.unitId, query.unitId));
+  }
+  if (query.deviceSerial != null) {
+    conditions.push(
+      sql`lower(${serviceOrders.deviceSerial}) = ${query.deviceSerial.toLowerCase()}`,
+    );
   }
   if (query.open != null) {
     conditions.push(

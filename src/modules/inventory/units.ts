@@ -709,6 +709,8 @@ export type ProductUnit = {
   cost: { amount: string; currency: string } | null;
   // El precio propio, para los dos roles (brief-29.5.2, D-8); null si no tiene.
   price: UnitPrice | null;
+  // Los días de garantía propios (brief-29.9, D-1); null, los de la organización.
+  warrantyDays: number | null;
   origin: unitRepository.StockUnitOrigin;
   createdAt: Date;
   updatedAt: Date;
@@ -736,6 +738,7 @@ function toProductUnit(
       row.price !== null && row.priceCurrency !== null
         ? { amount: row.price, currency: row.priceCurrency }
         : null,
+    warrantyDays: row.warrantyDays,
     origin: row.originType,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,

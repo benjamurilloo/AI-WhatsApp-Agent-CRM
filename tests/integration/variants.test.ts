@@ -847,6 +847,7 @@ describe("los scripts de operador (AC-4, AC-5)", () => {
     );
   }
 
+  // Lanza el script, como el test siguiente: el tiempo por defecto no alcanza en una máquina lenta.
   it("org:capability se detiene sin activar nada si ya hay un medio llamado «Permuta» (brief-29.7.2, U-4)", async () => {
     const orgId = await createOrganization("Con Permuta");
     await addUser(orgId, "permuta@example.com", "admin");
@@ -878,7 +879,7 @@ describe("los scripts de operador (AC-4, AC-5)", () => {
           where organization_id = ${orgId} and system_role is not null`,
     );
     expect(methods.rows[0]!.count).toBe("0");
-  });
+  }, 60_000);
 
   it("org:capability activa y copia una vez; demo:catalog retoma una carga cortada y se niega con datos ajenos", async () => {
     const orgId = await createOrganization("iPhone Demo");
@@ -903,11 +904,42 @@ describe("los scripts de operador (AC-4, AC-5)", () => {
     // H-9 de la revisión: con la capacidad ya activa, el perfil no se vuelve a copiar.
     const again = activate();
     expect(again).toContain("ya estaba activa");
-    expect(again).toContain("no se copió");
+    expect(again).toContain("no se copiaron");
     // Desde la 29.7.2 (brief-29.7.2, U-4; revisión independiente, NB-3): con trade_ins, el comando crea
     // el medio de sistema «Permuta» al activar, y al volver a correrlo no crea otro.
     expect(activation).toContain("Medio de pago de sistema creado: Permuta.");
     expect(again).toContain("El medio de pago Permuta ya existía.");
+    // Desde la 29.9 (brief-29.9, D-1, AC-2): los días de garantía, de ejemplo, al activar; al volver a
+    // correrlo, nada nuevo. Una organización con las capacidades ya activas y sin los días, como
+    // «iPhone Demo» en producción, los recibe al correrlo de nuevo.
+    expect(activation).toContain(
+      "garantía de las unidades vendidas creada, 30 días, de ejemplo.",
+    );
+    expect(activation).toContain(
+      "garantía de las reparaciones creada, 30 días, de ejemplo.",
+    );
+    expect(again).toContain("La garantía de las unidades vendidas ya existía.");
+    expect(again).toContain("La garantía de las reparaciones ya existía.");
+    await getDb().execute(
+      sql`delete from unit_settings where organization_id = ${orgId}`,
+    );
+    await getDb().execute(
+      sql`delete from service_settings where organization_id = ${orgId}`,
+    );
+    const backfill = activate();
+    expect(backfill).toContain("ya estaba activa");
+    expect(backfill).toContain(
+      "garantía de las unidades vendidas creada, 30 días, de ejemplo.",
+    );
+    expect(backfill).toContain(
+      "garantía de las reparaciones creada, 30 días, de ejemplo.",
+    );
+    const warrantyRows = await getDb().execute<{ days: number }>(
+      sql`select warranty_days as days from unit_settings where organization_id = ${orgId}
+          union all
+          select warranty_days from service_settings where organization_id = ${orgId}`,
+    );
+    expect(warrantyRows.rows).toEqual([{ days: 30 }, { days: 30 }]);
     const systemMethods = await getDb().execute<{ count: string }>(
       sql`select count(*)::text as count from payment_methods
           where organization_id = ${orgId} and system_role is not null`,

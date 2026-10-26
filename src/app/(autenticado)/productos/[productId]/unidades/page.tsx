@@ -3,6 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   getProductStock,
+  getUnitWarranties,
+  getUnitWarrantySettings,
   listProductUnits,
   listStockMovements,
   listUnitGrades,
@@ -35,6 +37,10 @@ import { PageNotice } from "@/app/_components/page-notice";
 import { SectionCard } from "@/app/_components/section-card";
 import { formatShortDateTime } from "@/app/_format/date-time";
 import { acceptedCurrencies, formatMoney } from "@/shared/money";
+import {
+  warrantyDaysText,
+  warrantyText,
+} from "../../../_warranty/warranty-text";
 import type { SearchParams } from "../../filters";
 import {
   FORBIDDEN_PAGE_MESSAGE,
@@ -47,6 +53,7 @@ import {
   ReleaseUnitForm,
   SendToRepairForm,
   TrackingForm,
+  WarrantyDaysForm,
   WriteOffForm,
 } from "./forms";
 import {
@@ -89,7 +96,9 @@ function currencyOptions(
 // venta. Desde la 29.6.2 (brief-29.6.2, D-7), con repairs, un admin manda a reparar una unidad
 // disponible o en revisión (?reparar=<id>), y libera, corrige o da de baja una en revisión; las que
 // están en reparación o en revisión se listan aparte, con su orden. Desde la 29.7 (brief-29.7, D-7),
-// la unidad de un usado recibido dice su origen con un enlace a su comprobante PU.
+// la unidad de un usado recibido dice su origen con un enlace a su comprobante PU. Desde la 29.9
+// (brief-29.9, D-1 y D-3), una unidad vendida dice su garantía, y un admin cambia los días de garantía
+// de una unidad que no está dada de baja (?garantia=<id>).
 export default async function ProductUnitsPage({
   params,
   searchParams,
@@ -132,7 +141,7 @@ export default async function ProductUnitsPage({
   const inShop = list.filter(
     (unit) => unit.status === "in_repair" || unit.status === "in_review",
   );
-  const [unitOrders, unitSales, repairs, repairOrders, tradeIns] =
+  const [unitOrders, unitSales, repairs, repairOrders, tradeIns, warranties] =
     await Promise.all([
       getUnitOrders(context, committedIds),
       getUnitSales(context, committedIds),
@@ -147,7 +156,17 @@ export default async function ProductUnitsPage({
           .filter((unit) => unit.origin === "trade_in")
           .map((unit) => unit.id),
       ),
+      getUnitWarranties(
+        context,
+        committed
+          .filter((unit) => unit.status === "sold")
+          .map((unit) => unit.id),
+      ),
     ]);
+  const warrantyOf = (unitId: string) =>
+    warranties.ok
+      ? (warranties.units.find((unit) => unit.id === unitId)?.warranty ?? null)
+      : null;
   // El origen de una unidad; la de un usado, con su comprobante.
   const origin = (unit: ProductUnit) => {
     const tradeIn = tradeIns.get(unit.id);
@@ -199,6 +218,16 @@ export default async function ProductUnitsPage({
       ? workable.find((unit) => unit.id === single(query.reparar))
       : undefined;
   const technicians = repairing ? await listTechnicians(context) : null;
+  // Los días de garantía, en cualquier estado salvo dada de baja (brief-29.9, D-1).
+  const warrantyEditing = isAdmin
+    ? list.find(
+        (unit) =>
+          unit.status !== "written_off" && unit.id === single(query.garantia),
+      )
+    : undefined;
+  const organizationWarranty = warrantyEditing
+    ? await getUnitWarrantySettings(context)
+    : null;
   const base = `/productos/${product.id}/unidades`;
 
   return (
@@ -272,6 +301,30 @@ export default async function ProductUnitsPage({
                   su ficha para mandarle unidades.
                 </p>
               )}
+            </SectionCard>
+          ) : null}
+          {warrantyEditing ? (
+            <SectionCard
+              id="garantia-titulo"
+              title="Días de garantía"
+              icon="pencil"
+              className="mt-6"
+            >
+              <WarrantyDaysForm
+                productId={product.id}
+                unitId={warrantyEditing.id}
+                serial={warrantyEditing.serial}
+                warrantyDays={
+                  warrantyEditing.warrantyDays === null
+                    ? ""
+                    : String(warrantyEditing.warrantyDays)
+                }
+                organizationDays={
+                  organizationWarranty?.ok
+                    ? (organizationWarranty.settings?.warrantyDays ?? null)
+                    : null
+                }
+              />
             </SectionCard>
           ) : null}
           {correcting ? (
@@ -407,6 +460,13 @@ export default async function ProductUnitsPage({
                                 className={secondaryLinkClass}
                               >
                                 Corregir
+                                <span className="sr-only"> {unit.serial}</span>
+                              </Link>
+                              <Link
+                                href={`${base}?garantia=${unit.id}#garantia-titulo`}
+                                className={secondaryLinkClass}
+                              >
+                                Garantía
                                 <span className="sr-only"> {unit.serial}</span>
                               </Link>
                               {repairs ? (
@@ -588,6 +648,8 @@ export default async function ProductUnitsPage({
                   const sale = unitSales.ok
                     ? unitSales.sales.get(unit.id)
                     : undefined;
+                  const warranty = warrantyOf(unit.id);
+                  const days = warranty ? warrantyDaysText(warranty) : null;
                   return (
                     <li key={unit.id} className="flex flex-wrap gap-x-2">
                       <span className="font-mono">{unit.serial}</span>
@@ -608,12 +670,28 @@ export default async function ProductUnitsPage({
                           Venta {sale.displayNumber}
                         </Link>
                       ) : null}
+                      {warranty ? (
+                        <span>
+                          · {warrantyText(warranty)}
+                          {days ? ` (${days})` : ""}
+                        </span>
+                      ) : null}
+                      {isAdmin ? (
+                        <Link
+                          href={`${base}?garantia=${unit.id}#garantia-titulo`}
+                          className={secondaryLinkClass}
+                        >
+                          Días de garantía
+                          <span className="sr-only"> {unit.serial}</span>
+                        </Link>
+                      ) : null}
                     </li>
                   );
                 })}
               </ul>
               <p className="mt-3 text-sm text-muted">
                 Una unidad reservada o vendida no se corrige ni se da de baja.
+                Sus días de garantía sí se cambian.
               </p>
             </SectionCard>
           ) : null}

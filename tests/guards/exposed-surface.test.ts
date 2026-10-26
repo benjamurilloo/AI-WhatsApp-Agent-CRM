@@ -376,6 +376,16 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
   "src/app/(autenticado)/grados/actions.ts#moveGradeAction": {
     requirement: "sesion",
   },
+  // La garantía (brief-29.9, D-1): los días de la organización para una unidad vendida y para una
+  // reparación entregada, y los de una unidad. Las tres exigen admin y su capacidad, en inventory o en
+  // service.
+  "src/app/(autenticado)/grados/actions.ts#saveUnitWarrantySettingsAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/reparaciones/actions.ts#saveServiceWarrantySettingsAction":
+    { requirement: "sesion" },
+  "src/app/(autenticado)/productos/[productId]/unidades/actions.ts#setUnitWarrantyDaysAction":
+    { requirement: "sesion" },
   // Las reparaciones (brief-29.6, D-10): la lista y la orden de servicio, solo admin y con repairs, lo
   // exige service.
   "src/app/(autenticado)/reparaciones/actions.ts#createRepairTypeAction": {

@@ -1,4 +1,5 @@
 import type { GradeField, GradeWriteResult } from "@/modules/inventory";
+import { WARRANTY_SETTINGS_NOTICE } from "../_warranty/settings-state";
 
 // Textos de la pantalla de grados de las unidades, de la capacidad serialized_units (brief-29.5,
 // D-5).
@@ -63,6 +64,8 @@ const NOTICES: Record<string, string> = {
   "grado-desactivado":
     "Grado desactivado: ya no se ofrece al cargar una unidad. Las que lo tienen lo conservan.",
   "grado-reactivado": "Grado reactivado.",
+  // Desde la 29.9 (brief-29.9, D-1).
+  "garantia-guardada": WARRANTY_SETTINGS_NOTICE,
 };
 
 export function noticeMessage(

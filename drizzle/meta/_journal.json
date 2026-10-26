@@ -442,6 +442,13 @@
       "when": 1792618040996,
       "tag": "0062_la_cotizacion_de_usados",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1792958592734,
+      "tag": "0063_la_garantia",
+      "breakpoints": true
     }
   ]
 }
