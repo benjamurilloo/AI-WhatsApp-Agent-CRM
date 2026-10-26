@@ -2,6 +2,27 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-26 — 29.10: los turnos
+
+Cierra el 2026-10-26, desplegada en producción (`c667765`, con la migración `0065`), con la capacidad activada en «iPhone Demo» y recorrida por el usuario ([brief-29.10](docs/decisions/brief-29.10-los-turnos.md), §Cierre). Implementa los turnos del punto 12 del [ADR 0024](docs/decisions/0024-rubros-y-capacidades.md) en la app; el agente pasa a la 29.10.2.
+
+**Certifica:**
+- **La capacidad `appointments`**: el calendario por día y por semana sobre el horario del local, con su día especial; la duración (de 15 a 120 minutos) y el cupo por franja; los motivos, que se ordenan y se desactivan.
+- **El turno que da un `admin`** nace confirmado; se confirma uno pedido, se cancela, y se marca atendido o ausente solo cuando empezó. La base lo exige con el trigger de la `0065`, aunque se salte el servicio.
+- **El cupo** se cuenta bajo el bloqueo de la fila de valores: dos altas a la vez en la última plaza dejan una.
+- **La zona de la organización**: el turno se guarda y se muestra en ella, y la hora que falta del horario de verano se rechaza.
+- **Un turno ya dado no se mueve** con un cambio de horario, duración o cupo; el calendario lo marca.
+- **Datos de un cliente**: un turno retiene la ficha, el vaciado deja su nota en nulo y la exportación los trae.
+- **Dónde se ve**: `/turnos`, la ficha del cliente y «Dar un turno» desde las unidades de un producto; un `viewer` ve y no opera.
+- **Una revisión independiente** antes del despliegue: dos bloqueantes y once no bloqueantes, verificados contra el código y resueltos o aceptados.
+
+**No certifica:**
+- ningún negocio real;
+- los turnos para el agente (29.10.2): `read-v3` y `ingestion-v2` no cambian;
+- recordatorios ni avisos: el CRM no envía mensajes;
+- N-3, N-8 y N-9 de la revisión, que quedan abiertos (§Cierre del brief);
+- una segunda revisión independiente de las correcciones, que son autoevaluación.
+
 ## 2026-10-26 — 29.9.2: el reclamo de garantía
 
 Cierra el 2026-10-26, desplegada en producción (`7316ac4`, con la migración `0064`) y recorrida por el usuario sobre «iPhone Demo»: un reclamo de una unidad vendida y otro de una reparación entregada, los dos hasta la entrega ([brief-29.9.2](docs/decisions/brief-29.9.2-el-reclamo-de-garantia.md), §Cierre). Completa el punto 11 del [ADR 0024](docs/decisions/0024-rubros-y-capacidades.md).

@@ -10,7 +10,7 @@ generated_at: 2026-10-26
 - **Contrato**: `task-brief.v1`
 - **Tipo de tarea**: `implementation`. Módulo nuevo, migración, pantallas, pruebas y despliegue.
 - **Nivel de evidencia objetivo**: `deterministic` (tests contra PostgreSQL) y `producer-consumer` (pantallas ↔ servicio ↔ base, con end-to-end).
-- **Estado**: **aprobado por el usuario el 2026-10-26**, con la opción (a) en U-1 a U-6.
+- **Estado**: **aprobado por el usuario el 2026-10-26**, con la opción (a) en U-1 a U-6. **Cerrado el 2026-10-26** (§Cierre).
 - **Fuentes**:
   - [ADR 0024](0024-rubros-y-capacidades.md): U-1 (los turnos entran), punto 12 (los turnos), punto 13 (el perfil y sus valores), punto 14 (roles), punto 15 (el agente) y punto 16 (`appointments` y sus dependencias);
   - [brief-17.4](brief-17.4-informacion-del-negocio-estructurada.md): `business_hours`, sus excepciones y la lectura de servicio;
@@ -188,3 +188,34 @@ Que un negocio con la capacidad `appointments` lleve una agenda de turnos para v
 - Si la migración obliga a tocar filas existentes.
 - Cualquier cambio en un contrato del agente.
 - Si un turno tuviera que crear una venta, una orden o un cobro.
+
+## Cierre
+
+*Del 2026-10-26, después del despliegue y del recorrido del usuario, que lo aprobó sin observaciones.*
+
+### Criterios
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| AC-1 | cumple | `migration-0065.test.ts`: la `0064` confirmada con datos, la `0065` sola, las filas iguales; en producción, 66 migraciones, las tres tablas, el trigger y la capacidad |
+| AC-2 | cumple | `appointments.test.ts`: las franjas de cada fecha con su excepción; la zona de la organización (Tokio) y el mismo horario local a los dos lados del cambio de Nueva York, que antes no tenían prueba (revisión independiente, B-1). Sabotear la zona hace fallar los dos tests |
+| AC-3 | cumple | `appointments.test.ts`: cada rechazo con su motivo; la hora que falta del horario de verano se rechaza como fuera de horario (`slotExists`, B-1) |
+| AC-4 | cumple | `appointments.test.ts`: dos altas a la vez y el bloqueo sostenido desde una tercera conexión; sin el `FOR UPDATE` el test falla |
+| AC-5 | cumple | `appointments.test.ts`: las transiciones por el servicio, y en la base `confirmed -> requested`, `cancelled -> confirmed`, `attended -> cancelled` y `requested -> attended` sin pasar por él (N-5) |
+| AC-6 | cumple | `appointments.test.ts`: un cambio de cupo, horario o duración no mueve ningún turno y el calendario los marca |
+| AC-7 | cumple | `variants.test.ts` lee la salida de `org:capability` (N-6); en producción, «iPhone Demo» con 30 minutos, 1 por franja, de ejemplo, y los cinco motivos, auditados |
+| AC-8 | cumple | `appointments.spec.ts` (el `admin`, con confirmar uno pedido, B-2, y el `viewer`); `appointments.test.ts`: sin la capacidad, lecturas y escrituras dan `NOT_FOUND` (N-7); el recorrido del usuario |
+| AC-9 | cumple | las FK compuestas de la `0065`; `appointments.test.ts`, el aislamiento entre organizaciones |
+| AC-10 | cumple | `appointments.test.ts` y `client-data.test.ts`; el runbook, con sus filas en las tablas de exportar y vaciar (N-2) |
+| AC-11 | cumple | `appointments-dependencies`: desde la revisión (N-1), de `knowledge` solo admite `getEffectiveBusinessDays`; volver a importar `getBusinessHoursForService` la hace fallar |
+| AC-12 | cumple | CI de `c667765` (run 40395689186, `success`): guardas 891, unitarias 1156, integración 1809, e2e 298 |
+| AC-13 | cumple | revisión independiente: dos bloqueantes (B-1, B-2) y once no bloqueantes, verificados contra el código; corregidos B-1, B-2 y N-1 a N-7; N-10 lo decidió el usuario (se queda); N-11 no era un hallazgo |
+| AC-14 | cumple | desplegada en `c667765` con la `0065`; la capacidad activada en «iPhone Demo» con autorización del usuario; el recorrido del usuario, sin observaciones |
+
+### Lo que queda abierto, a sabiendas
+
+- **N-3**: el horario se lee antes de la transacción del alta; un cambio de horario en ese instante puede dejar un turno fuera de horario, que el calendario marca (U-5).
+- **N-8**: la base fija qué fecha cambia en cada transición, no su valor.
+- **N-9**: `NEW.status = OLD.status` sin `::text`, inocuo porque el enum nace en la misma migración.
+- El calendario puede mostrar libre una franja de la hora que falta del horario de verano, que el alta rechaza; solo en un local abierto a esa hora.
+- Las correcciones de la revisión son autoevaluación: no hubo una segunda revisión independiente.
