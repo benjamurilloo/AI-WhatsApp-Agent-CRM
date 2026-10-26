@@ -426,6 +426,13 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
   "src/app/(autenticado)/reparaciones/actions.ts#markOwnUnitRepairedAction": {
     requirement: "sesion",
   },
+  // El reclamo de garantía (brief-29.9.2, D-5): abrirlo y marcarlo reparado, solo admin y con repairs,
+  // lo exige service; el de una unidad, también serialized_units.
+  "src/app/(autenticado)/reparaciones/actions.ts#createWarrantyClaimAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/reparaciones/actions.ts#markWarrantyClaimRepairedAction":
+    { requirement: "sesion" },
   // Los usados (brief-29.7, D-7): la recepción y el checklist, solo admin y con trade_ins, lo exige
   // tradeins; la anulación, también cash, que la orquesta.
   "src/app/(autenticado)/usados/actions.ts#createTradeInAction": {

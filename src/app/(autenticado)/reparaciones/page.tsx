@@ -60,6 +60,7 @@ const KIND_FILTER_LABEL: Record<string, string> = {
   todos: "Todos",
   clientes: KIND_LABEL.customer_device,
   "unidades-propias": KIND_LABEL.own_unit,
+  reclamos: KIND_LABEL.warranty_claim,
 };
 
 // La lista de órdenes de servicio (brief-29.6, D-10): la más nueva primero, con el filtro de estado,
@@ -90,8 +91,9 @@ export default async function ServiceOrdersPage({
   const filtered = hasActiveServiceOrderFilters(filters);
   const notice = noticeMessage(query.aviso);
   type Row = (typeof result.orders)[number];
+  // Desde la 29.9.2, un reclamo de garantía tampoco se cobra (brief-29.9.2, D-2).
   const total = (order: Row) =>
-    order.kind === "own_unit"
+    order.kind !== "customer_device"
       ? "No se cobra"
       : order.customerTotal !== null && order.customerCurrency !== null
         ? formatMoney(order.customerTotal, order.customerCurrency)
@@ -105,7 +107,9 @@ export default async function ServiceOrdersPage({
         ]
           .filter(Boolean)
           .join(" · ")
-      : (order.clientName ?? UNKNOWN_CLIENT_TEXT);
+      : order.kind === "warranty_claim"
+        ? `${KIND_LABEL.warranty_claim} · ${order.clientName ?? UNKNOWN_CLIENT_TEXT}`
+        : (order.clientName ?? UNKNOWN_CLIENT_TEXT);
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8">

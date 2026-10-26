@@ -45,7 +45,8 @@ export default async function ReceptionReceiptPage({
     );
   }
   const order = found.order;
-  if (order.kind === "own_unit") notFound();
+  // Un reclamo de garantía no tiene comprobante imprimible (brief-29.9.2, alcance excluido).
+  if (order.kind !== "customer_device") notFound();
   const [timeZone, frame] = await Promise.all([
     getOrganizationTimezone(context),
     getAppFrame(context),

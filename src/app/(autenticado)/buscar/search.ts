@@ -8,6 +8,7 @@ import { listSales } from "@/modules/sales";
 import { listServiceOrdersBySerial } from "@/modules/service";
 import { UNIT_STATUS_LABEL } from "@/app/(autenticado)/productos/[productId]/unidades/messages";
 import {
+  KIND_LABEL,
   STATUS_LABEL as SERVICE_ORDER_STATUS_LABEL,
   UNKNOWN_MODEL_TEXT,
 } from "@/app/(autenticado)/reparaciones/messages";
@@ -120,7 +121,8 @@ const READERS: Readonly<Record<SearchKind, Reader>> = {
       (order) => ({
         id: order.id,
         label: order.displayNumber,
-        detail: `${order.modelName ?? UNKNOWN_MODEL_TEXT} · ${order.warranty ? warrantyText(order.warranty) : SERVICE_ORDER_STATUS_LABEL[order.status]}`,
+        // Un reclamo de garantía lo dice (brief-29.9.2, D-5).
+        detail: `${order.kind === "warranty_claim" ? `${KIND_LABEL.warranty_claim} · ` : ""}${order.modelName ?? UNKNOWN_MODEL_TEXT} · ${order.warranty ? warrantyText(order.warranty) : SERVICE_ORDER_STATUS_LABEL[order.status]}`,
         detailStyle: "text",
         href: `/reparaciones/${order.id}`,
       }),

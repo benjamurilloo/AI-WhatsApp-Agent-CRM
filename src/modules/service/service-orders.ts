@@ -99,6 +99,13 @@ export const OPEN_SERVICE_ORDER_STATUSES: readonly ServiceOrderStatus[] = [
   "repaired",
 ];
 export const OPEN_OWN_UNIT_STATUSES: readonly ServiceOrderStatus[] = ["sent"];
+// Un reclamo sigue abierto hasta que se entrega o se cancela (brief-29.9.2, D-1): son los estados del
+// índice único parcial del reclamo abierto.
+export const OPEN_WARRANTY_CLAIM_STATUSES: readonly ServiceOrderStatus[] = [
+  "received",
+  "sent",
+  "repaired",
+];
 
 const idSchema = z.uuid();
 const serialPattern = new RegExp(DEVICE_SERIAL_PATTERN);
@@ -298,12 +305,12 @@ export function invalidTransition(
 }
 
 // Lo común a toda transición: la capacidad y el rol, el id, la orden FOR UPDATE, su tipo y su estado.
-// kind null acepta los dos tipos: la cancelación.
+// kind acepta un tipo o varios; null acepta todos: la cancelación.
 export async function inTransition<R>(
   context: AuthContext,
   serviceOrderId: string,
   to: ServiceOrderStatus,
-  kind: ServiceOrderKind | null,
+  kind: ServiceOrderKind | readonly ServiceOrderKind[] | null,
   work: (
     tx: Parameters<Parameters<typeof repository.withTransaction>[0]>[0],
     order: repository.ServiceOrderRow,
@@ -326,8 +333,9 @@ export async function inTransition<R>(
       { forUpdate: true },
     );
     if (!order) return failure("NOT_FOUND");
+    const kinds = kind === null || Array.isArray(kind) ? kind : [kind];
     if (
-      (kind !== null && order.kind !== kind) ||
+      (kinds !== null && !kinds.includes(order.kind)) ||
       !canTransition(order.status, to, order.kind)
     ) {
       return invalidTransition(order.status);
@@ -352,7 +360,8 @@ export function statusAudit(
   };
 }
 
-// Mandarla al técnico (D-3 y D-9): uno activo, con la marca.
+// Mandarla al técnico (D-3 y D-9): uno activo, con la marca. También un reclamo de garantía
+// (brief-29.9.2, D-2).
 export type SendServiceOrderResult =
   | TransitionResult
   | Failure<"NOT_FOUND", { target: "technician" }>
@@ -374,7 +383,7 @@ export async function sendServiceOrder(
     context,
     serviceOrderId,
     "sent",
-    "customer_device",
+    ["customer_device", "warranty_claim"],
     async (tx, order): Promise<SendServiceOrderResult> => {
       const technician = await lockTechnicianForServiceOrder(
         tx,
@@ -608,7 +617,8 @@ export function markServiceOrderRepaired(
 }
 
 // La entrega (D-6): una orden reparada emite su venta en la misma transacción; una rechazada vuelve sin
-// reparar y sin venta. De dos entregas simultáneas, la segunda espera la orden y ve delivered (AC-9).
+// reparar y sin venta, y un reclamo de garantía reparado, sin venta: el cliente no paga nada
+// (brief-29.9.2, D-2). De dos entregas simultáneas, la segunda espera la orden y ve delivered (AC-9).
 export type DeliverServiceOrderResult =
   | {
       ok: true;
@@ -627,10 +637,10 @@ export async function deliverServiceOrder(
     context,
     serviceOrderId,
     "delivered",
-    "customer_device",
+    ["customer_device", "warranty_claim"],
     async (tx, order): Promise<DeliverServiceOrderResult> => {
       const deliveredAt = new Date();
-      if (order.status === "rejected") {
+      if (order.status === "rejected" || order.kind === "warranty_claim") {
         await repository.updateServiceOrder(tx, organizationId, order.id, {
           status: "delivered",
           deliveredAt,
@@ -685,7 +695,8 @@ export async function deliverServiceOrder(
 
 // La cancelación (D-4): con un motivo de la lista, desde received, sent, quoted o approved. La de una
 // unidad propia, solo desde sent, y la unidad vuelve a revisión sin cambiar su costo (brief-29.6.2,
-// D-2): después de la orden, la unidad, como al marcarla reparada (D-6).
+// D-2): después de la orden, la unidad, como al marcarla reparada (D-6). La de un reclamo, desde
+// received o sent; «no lo cubre la garantía» es solo suyo (brief-29.9.2, U-3).
 const cancelReasonSchema = z.enum(repository.SERVICE_ORDER_CANCEL_REASONS);
 
 export async function cancelServiceOrder(
@@ -705,6 +716,9 @@ export async function cancelServiceOrder(
     "cancelled",
     null,
     async (tx, order): Promise<TransitionResult> => {
+      if (parsed.data === "not_covered" && order.kind !== "warranty_claim") {
+        return failure("VALIDATION_ERROR");
+      }
       await repository.updateServiceOrder(
         tx,
         context.organizationId,
@@ -754,6 +768,9 @@ export type ServiceOrderSummary = {
   unitSerial: string | null;
   // El producto de la unidad propia (brief-29.6.2, D-7); null en la orden de un cliente.
   unitProductName: string | null;
+  // El equipo original de un reclamo de garantía (brief-29.9.2, D-5); null en los otros tipos.
+  claimUnitId: string | null;
+  claimServiceOrderId: string | null;
   modelId: string;
   modelName: string | null;
   status: ServiceOrderStatus;
@@ -838,6 +855,8 @@ async function summarize(
     unitId: row.unitId,
     unitSerial: row.unitId ? (units.get(row.unitId)?.serial ?? null) : null,
     unitProductName: row.unitId ? productOf(row.unitId) : null,
+    claimUnitId: row.claimUnitId,
+    claimServiceOrderId: row.claimServiceOrderId,
     modelId: row.modelId,
     modelName: modelNames.get(row.modelId) ?? null,
     status: row.status,
@@ -864,8 +883,9 @@ async function warrantyReader(
 }
 
 // Las órdenes de equipos de clientes con un IMEI, sin distinguir mayúsculas, para la búsqueda
-// (brief-29.9, U-3). Los dos roles; sin la capacidad, ninguna. Un texto que no tiene la forma de un IMEI
-// no encuentra nada.
+// (brief-29.9, U-3), y desde la 29.9.2 los reclamos de garantía, que llevan el IMEI del equipo original
+// (brief-29.9.2, D-5). Una unidad propia no tiene IMEI en la orden (CHECK kind_subject). Los dos roles;
+// sin la capacidad, ninguna. Un texto que no tiene la forma de un IMEI no encuentra nada.
 export async function listServiceOrdersBySerial(
   context: AuthContext,
   serial: string,
@@ -885,7 +905,7 @@ export async function listServiceOrdersBySerial(
       statuses: null,
       number: null,
       clientId: null,
-      kind: "customer_device",
+      kind: null,
       deviceSerial: trimmed,
     },
     SERIAL_SEARCH_LIMIT,
@@ -922,6 +942,7 @@ export async function listServiceOrders(
         ? {
             customer_device: [...OPEN_SERVICE_ORDER_STATUSES],
             own_unit: [...OPEN_OWN_UNIT_STATUSES],
+            warranty_claim: [...OPEN_WARRANTY_CLAIM_STATUSES],
           }
         : null,
     number,
@@ -1034,8 +1055,40 @@ export type ServiceOrderDetail = {
     displayNumber: string;
     voidDisplayNumber: string | null;
   } | null;
+  // El equipo original de un reclamo de garantía (brief-29.9.2, D-5): la unidad vendida o la orden
+  // entregada. Null en los otros tipos.
+  claimOf:
+    | {
+        kind: "unit";
+        id: string;
+        serial: string | null;
+        productId: string | null;
+      }
+    | { kind: "order"; id: string; displayNumber: string | null }
+    | null;
+  // Los reclamos de esta orden, si es la de un cliente (D-5).
+  claims: ClaimRef[];
+  // La garantía de una orden de un cliente reparada y entregada (brief-29.9, D-2), para abrir un
+  // reclamo desde el detalle; null en las demás.
+  warranty: Warranty | null;
   createdAt: Date;
 };
+
+export type ClaimRef = {
+  id: string;
+  displayNumber: string;
+  status: ServiceOrderStatus;
+  createdAt: Date;
+};
+
+export function toClaimRef(row: repository.ServiceOrderRow): ClaimRef {
+  return {
+    id: row.id,
+    displayNumber: formatServiceOrderNumber(row.number),
+    status: row.status,
+    createdAt: row.createdAt,
+  };
+}
 
 export async function getServiceOrder(
   context: AuthContext,
@@ -1056,24 +1109,48 @@ export async function getServiceOrder(
   );
   if (!order) return failure("NOT_FOUND");
   const admin = context.role === "admin";
-  const [lines, types, clients, model, technicianNames, sale, units] =
-    await Promise.all([
-      repository.findServiceOrderLines(organizationId, order.id),
-      repository.findRepairTypes(organizationId),
-      order.clientId !== null
-        ? getClientsByIds(context, [order.clientId])
-        : Promise.resolve(null),
-      getModel(context, order.modelId),
-      admin && order.technicianId !== null
-        ? getSupplierNames(context, [order.technicianId])
-        : Promise.resolve(null),
-      order.saleId !== null
-        ? getSale(context, order.saleId)
-        : Promise.resolve(null),
-      getUnitSummaries(organizationId, order.unitId ? [order.unitId] : []),
-    ]);
+  const unitIds = [order.unitId, order.claimUnitId].flatMap((id) =>
+    id ? [id] : [],
+  );
+  const [
+    lines,
+    types,
+    clients,
+    model,
+    technicianNames,
+    sale,
+    units,
+    original,
+    claims,
+    warrantyOf,
+  ] = await Promise.all([
+    repository.findServiceOrderLines(organizationId, order.id),
+    repository.findRepairTypes(organizationId),
+    order.clientId !== null
+      ? getClientsByIds(context, [order.clientId])
+      : Promise.resolve(null),
+    getModel(context, order.modelId),
+    admin && order.technicianId !== null
+      ? getSupplierNames(context, [order.technicianId])
+      : Promise.resolve(null),
+    order.saleId !== null
+      ? getSale(context, order.saleId)
+      : Promise.resolve(null),
+    getUnitSummaries(organizationId, unitIds),
+    order.claimServiceOrderId !== null
+      ? repository.findServiceOrder(organizationId, order.claimServiceOrderId)
+      : Promise.resolve(undefined),
+    order.kind === "customer_device"
+      ? repository.findClaimsOf(organizationId, {
+          serviceOrderIds: [order.id],
+        })
+      : Promise.resolve([]),
+    warrantyReader(context, [order]),
+  ]);
   const typeNames = new Map(types.map((type) => [type.id, type.name]));
   const unit = order.unitId !== null ? units.get(order.unitId) : undefined;
+  const claimUnit =
+    order.claimUnitId !== null ? units.get(order.claimUnitId) : undefined;
   const productNames = await unitProductNames(context, units);
   return {
     ok: true,
@@ -1137,6 +1214,25 @@ export async function getServiceOrder(
               voidDisplayNumber: sale.sale.saleVoid?.displayNumber ?? null,
             }
           : null,
+      claimOf:
+        order.claimUnitId !== null
+          ? {
+              kind: "unit",
+              id: order.claimUnitId,
+              serial: claimUnit?.serial ?? null,
+              productId: claimUnit?.productId ?? null,
+            }
+          : order.claimServiceOrderId !== null
+            ? {
+                kind: "order",
+                id: order.claimServiceOrderId,
+                displayNumber: original
+                  ? formatServiceOrderNumber(original.number)
+                  : null,
+              }
+            : null,
+      claims: claims.map(toClaimRef),
+      warranty: warrantyOf(order),
       createdAt: order.createdAt,
     },
   };

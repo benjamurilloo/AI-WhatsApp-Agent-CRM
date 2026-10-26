@@ -27,6 +27,7 @@ import {
   invalidTransition,
   requireRepairs,
   statusAudit,
+  type ServiceOrderKind,
   type ServiceOrderRef,
   type ServiceOrderStatus,
   type TransitionResult,
@@ -437,10 +438,12 @@ export async function getOwnUnitRepairForm(
 }
 
 // Las órdenes de unas unidades, para la lista de unidades de un producto (D-7): por unidad, de la más
-// reciente a la más vieja. Los dos roles; sin repairs, ninguna.
+// reciente a la más vieja. Desde la 29.9.2, también los reclamos de garantía de una unidad vendida
+// (brief-29.9.2, D-5). Los dos roles; sin repairs, ninguna.
 export type UnitServiceOrder = {
   id: string;
   displayNumber: string;
+  kind: ServiceOrderKind;
   status: ServiceOrderStatus;
   createdAt: Date;
 };
@@ -452,20 +455,27 @@ export async function listUnitServiceOrders(
   const allowed = await requireRepairs(context);
   const ids = unitIds.filter((id) => idSchema.safeParse(id).success);
   if (!allowed.ok || ids.length === 0) return new Map();
-  const rows = await repository.findServiceOrdersOfUnits(
-    context.organizationId,
-    ids.map((id) => id.toLowerCase()),
+  const lowered = ids.map((id) => id.toLowerCase());
+  const [own, claims] = await Promise.all([
+    repository.findServiceOrdersOfUnits(context.organizationId, lowered),
+    repository.findClaimsOf(context.organizationId, { unitIds: lowered }),
+  ]);
+  const rows = [...own, ...claims].sort(
+    (a, b) =>
+      b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id),
   );
   const byUnit = new Map<string, UnitServiceOrder[]>();
   for (const row of rows) {
-    const list = byUnit.get(row.unitId!) ?? [];
+    const unitId = (row.unitId ?? row.claimUnitId)!;
+    const list = byUnit.get(unitId) ?? [];
     list.push({
       id: row.id,
       displayNumber: formatServiceOrderNumber(row.number),
+      kind: row.kind,
       status: row.status,
       createdAt: row.createdAt,
     });
-    byUnit.set(row.unitId!, list);
+    byUnit.set(unitId, list);
   }
   return byUnit;
 }

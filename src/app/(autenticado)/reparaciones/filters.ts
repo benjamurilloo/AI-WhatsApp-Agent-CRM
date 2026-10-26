@@ -34,6 +34,8 @@ export const KIND_PARAMS: readonly [string, ServiceOrderKindFilter][] = [
   ["todos", "all"],
   ["clientes", "customer_device"],
   ["unidades-propias", "own_unit"],
+  // Desde la 29.9.2 (brief-29.9.2, D-5).
+  ["reclamos", "warranty_claim"],
 ];
 
 function single(value: string | string[] | undefined): string {

@@ -26,7 +26,8 @@ import { sales } from "@/modules/sales/schema";
 // docs/architecture/DataModel.md, tablas repair_types, repair_prices, service_orders y
 // service_order_lines (ADR 0024, puntos 7 y 10; brief-29.6, D-2 y D-4). Todo detrás de la capacidad
 // repairs. La 29.6 crea la orden del equipo de un cliente (customer_device); la 29.6.2, la de una unidad
-// propia (own_unit; brief-29.6.2, D-3).
+// propia (own_unit; brief-29.6.2, D-3); la 29.9.2, el reclamo de garantía (warranty_claim; brief-29.9.2,
+// D-1).
 
 // Límites de la lista y de la orden. Los mismos valores van en los CHECK.
 export const REPAIR_TYPE_NAME_MAX_LENGTH = 60;
@@ -162,16 +163,18 @@ export const repairPrices = pgTable(
 );
 
 // El tipo de orden (ADR 0024, punto 10). Cada valor entra con la subfase que lo usa (R-19): la 29.6
-// crea customer_device; own_unit, la 29.6.2.
+// crea customer_device; own_unit, la 29.6.2; warranty_claim, la 29.9.2.
 export const serviceOrderKind = pgEnum("service_order_kind", [
   "customer_device",
   "own_unit",
+  "warranty_claim",
 ]);
 
-// Los estados de la orden (D-4). El trigger de la 0059 fija las transiciones. Del equipo de un cliente:
+// Los estados de la orden (D-4). El trigger (0059; desde la 29.9.2, 0064) fija las transiciones. Del equipo de un cliente:
 // received → sent → quoted → approved o rejected; approved → repaired → delivered; rejected →
 // delivered, sin venta; y cancelled desde received, sent, quoted o approved. De una unidad propia
-// (brief-29.6.2, D-3): nace sent, y sent → repaired, que es final, o sent → cancelled.
+// (brief-29.6.2, D-3): nace sent, y sent → repaired, que es final, o sent → cancelled. De un reclamo
+// (brief-29.9.2, D-2): received → sent → repaired → delivered, y cancelled desde received o sent.
 export const serviceOrderStatus = pgEnum("service_order_status", [
   "received",
   "sent",
@@ -184,18 +187,21 @@ export const serviceOrderStatus = pgEnum("service_order_status", [
 ]);
 
 // El motivo de una cancelación, de una lista cerrada (D-4), como el de la anulación de una venta.
+// not_covered, «no lo cubre la garantía», solo cancela un reclamo (brief-29.9.2, U-3).
 export const serviceOrderCancelReason = pgEnum("service_order_cancel_reason", [
   "customer_withdrew",
   "not_repairable",
   "entered_by_mistake",
   "other",
+  "not_covered",
 ]);
 
 // La orden de servicio (D-4), numerada OS-000123. Un compromiso con estado, como el pedido: admite
-// UPDATE y no DELETE, y su trigger (0059) solo deja cambiar el estado, sus fechas y lo que cada
+// UPDATE y no DELETE, y su trigger (0059; desde la 29.9.2, 0064) solo deja cambiar el estado, sus fechas y lo que cada
 // transición fija (el técnico, el presupuesto, el motivo y la venta), una sola vez. No copia datos del
 // cliente: lo nombra por su clave (ADR 0024, punto 14). La de una unidad propia (brief-29.6.2, D-3) no
-// tiene cliente, IMEI propio, presupuesto ni venta: nombra la unidad.
+// tiene cliente, IMEI propio, presupuesto ni venta: nombra la unidad. El reclamo de garantía
+// (brief-29.9.2, D-1) nombra al cliente y al equipo original, y no tiene presupuesto ni venta.
 export const serviceOrders = pgTable(
   "service_orders",
   {
@@ -208,6 +214,10 @@ export const serviceOrders = pgTable(
     kind: serviceOrderKind("kind").notNull().default("customer_device"),
     // El cliente del equipo; en una unidad propia, null.
     clientId: uuid("client_id"),
+    // El equipo original de un reclamo (brief-29.9.2, U-1): la unidad vendida o la orden de servicio
+    // entregada, exactamente una. Null en los otros tipos.
+    claimUnitId: uuid("claim_unit_id"),
+    claimServiceOrderId: uuid("claim_service_order_id"),
     // La unidad propia que va a reparar; en el equipo de un cliente, null (brief-29.6.2, D-3).
     unitId: uuid("unit_id"),
     // El modelo del equipo, o el del producto de la unidad: da los precios de la lista.
@@ -273,6 +283,16 @@ export const serviceOrders = pgTable(
       foreignColumns: [stockUnits.organizationId, stockUnits.id],
     }).onDelete("restrict"),
     foreignKey({
+      name: "service_orders_claim_unit_fk",
+      columns: [table.organizationId, table.claimUnitId],
+      foreignColumns: [stockUnits.organizationId, stockUnits.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "service_orders_claim_order_fk",
+      columns: [table.organizationId, table.claimServiceOrderId],
+      foreignColumns: [table.organizationId, table.id],
+    }).onDelete("restrict"),
+    foreignKey({
       name: "service_orders_model_fk",
       columns: [table.organizationId, table.modelId],
       foreignColumns: [productModels.organizationId, productModels.id],
@@ -312,6 +332,28 @@ export const serviceOrders = pgTable(
     uniqueIndex("service_orders_unit_open_unique")
       .on(table.organizationId, table.unitId)
       .where(sql`${table.unitId} is not null and ${table.status} = 'sent'`),
+    // Los reclamos de un equipo, y a lo sumo uno abierto (brief-29.9.2, D-1): un reclamo está abierto
+    // hasta que se entrega o se cancela.
+    index("service_orders_claim_unit_idx")
+      .on(table.organizationId, table.claimUnitId, table.createdAt.desc())
+      .where(sql`${table.claimUnitId} is not null`),
+    uniqueIndex("service_orders_claim_unit_open_unique")
+      .on(table.organizationId, table.claimUnitId)
+      .where(
+        sql`${table.claimUnitId} is not null and ${table.status} in ('received', 'sent', 'repaired')`,
+      ),
+    index("service_orders_claim_order_idx")
+      .on(
+        table.organizationId,
+        table.claimServiceOrderId,
+        table.createdAt.desc(),
+      )
+      .where(sql`${table.claimServiceOrderId} is not null`),
+    uniqueIndex("service_orders_claim_order_open_unique")
+      .on(table.organizationId, table.claimServiceOrderId)
+      .where(
+        sql`${table.claimServiceOrderId} is not null and ${table.status} in ('received', 'sent', 'repaired')`,
+      ),
     // Las deudas de un técnico: su cuenta (D-7).
     index("service_orders_technician_idx")
       .on(table.organizationId, table.technicianId)
@@ -341,22 +383,28 @@ export const serviceOrders = pgTable(
       "service_orders_technician_total_positive",
       sql`${table.technicianTotal} > 0`,
     ),
-    // Cada tipo nombra lo suyo: el cliente y su IMEI, o la unidad (brief-29.6.2, D-3). Los CHECK nombran
-    // solo customer_device: own_unit se agrega en la misma migración (H-5).
+    // Cada tipo nombra lo suyo: el cliente y su IMEI, la unidad (brief-29.6.2, D-3), o el cliente y
+    // exactamente un equipo original (brief-29.9.2, D-1). own_unit y warranty_claim se comparan como
+    // texto: una base nueva aplica todas las migraciones en una transacción, y un valor agregado con
+    // ALTER TYPE no se usa como enum en ella (brief-29.9.2, H-8). customer_device nació con el tipo.
     check(
       "service_orders_kind_subject",
-      sql`(${table.kind} = 'customer_device') = (${table.clientId} is not null)
-        and (${table.kind} = 'customer_device') = (${table.unitId} is null)
-        and (${table.kind} = 'customer_device' or ${table.deviceSerial} is null)`,
+      sql`(${table.kind}::text = 'own_unit') = (${table.unitId} is not null)
+        and (${table.kind}::text = 'own_unit') = (${table.clientId} is null)
+        and (${table.kind}::text <> 'own_unit' or ${table.deviceSerial} is null)
+        and (${table.kind}::text = 'warranty_claim') = (${table.claimUnitId} is not null or ${table.claimServiceOrderId} is not null)
+        and (${table.claimUnitId} is null or ${table.claimServiceOrderId} is null)`,
     ),
-    // Una unidad propia no tiene presupuesto, entrega ni venta.
+    // Solo la orden de un cliente tiene presupuesto y venta. Una unidad propia tampoco se entrega.
     check(
-      "service_orders_own_unit_path",
+      "service_orders_unquoted_path",
       sql`${table.kind} = 'customer_device'
-        or (${table.quotedAt} is null and ${table.deliveredAt} is null and ${table.saleId} is null)`,
+        or (${table.quotedAt} is null and ${table.saleId} is null
+          and (${table.kind}::text <> 'own_unit' or ${table.deliveredAt} is null))`,
     ),
     // El técnico está desde que se mandó, y el presupuesto, desde que se presupuestó. En una unidad
-    // propia, lo del técnico está desde que se reparó.
+    // propia, lo del técnico está desde que se reparó; en un reclamo, puede no estar nunca, porque el
+    // técnico pudo repararlo sin cargo (brief-29.9.2, U-2).
     check(
       "service_orders_technician_sent",
       sql`(${table.technicianId} is not null) = (${table.sentAt} is not null)`,
@@ -366,8 +414,11 @@ export const serviceOrders = pgTable(
       sql`(${table.quotedAt} is not null) = (${table.customerCurrency} is not null)
         and (${table.quotedAt} is not null) = (${table.customerTotal} is not null)
         and (${table.technicianCurrency} is not null) = (${table.technicianTotal} is not null)
-        and (${table.technicianTotal} is not null) = case when ${table.kind} = 'customer_device'
-          then ${table.quotedAt} is not null else ${table.repairedAt} is not null end`,
+        and case ${table.kind}::text
+          when 'customer_device' then (${table.technicianTotal} is not null) = (${table.quotedAt} is not null)
+          when 'own_unit' then (${table.technicianTotal} is not null) = (${table.repairedAt} is not null)
+          else ${table.technicianTotal} is null or ${table.repairedAt} is not null
+        end`,
     ),
     // Cada fecha supone la anterior del camino, y aprobada y rechazada se excluyen. Una unidad propia
     // pasa de mandada a reparada.
@@ -397,10 +448,16 @@ export const serviceOrders = pgTable(
           when 'cancelled' then ${table.repairedAt} is null and ${table.rejectedAt} is null
         end`,
     ),
-    // Una orden entregada que se reparó tiene su venta, y ninguna otra la tiene (invariante del brief).
+    // Una orden de un cliente entregada que se reparó tiene su venta, y ninguna otra la tiene
+    // (invariante del brief). Un reclamo, nunca (brief-29.9.2, invariante).
     check(
       "service_orders_sale_delivered",
-      sql`(${table.saleId} is not null) = (${table.status} = 'delivered' and ${table.repairedAt} is not null)`,
+      sql`(${table.saleId} is not null) = (${table.kind} = 'customer_device' and ${table.status} = 'delivered' and ${table.repairedAt} is not null)`,
+    ),
+    // «No lo cubre la garantía» solo cancela un reclamo (brief-29.9.2, U-3).
+    check(
+      "service_orders_not_covered_claim",
+      sql`${table.cancelReason} is null or ${table.cancelReason}::text <> 'not_covered' or ${table.kind}::text = 'warranty_claim'`,
     ),
   ],
 );

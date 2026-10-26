@@ -220,14 +220,15 @@ export async function applyServiceSettingsTemplate(
 }
 
 type WarrantyOrder = {
-  kind: "customer_device" | "own_unit";
+  kind: "customer_device" | "own_unit" | "warranty_claim";
   status: string;
   repairedAt: Date | null;
   deliveredAt: Date | null;
 };
 
 // Tiene garantía solo la orden de un cliente, reparada y entregada. Una rechazada, una sin entregar o
-// una unidad propia no tienen.
+// una unidad propia no tienen, y un reclamo tampoco: no da garantía propia ni reinicia la del equipo
+// (brief-29.9.2, D-2).
 export function hasServiceWarranty(
   order: WarrantyOrder,
 ): order is WarrantyOrder & { deliveredAt: Date } {

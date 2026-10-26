@@ -18,11 +18,13 @@ import {
   changeServiceOrderAction,
   deliverServiceOrderAction,
   markOwnUnitRepairedAction,
+  markWarrantyClaimRepairedAction,
   quoteServiceOrderAction,
   sendServiceOrderAction,
   type QuoteFormState,
 } from "../actions";
 import { CANCEL_REASON_LABEL, type ChangeState } from "../messages";
+import type { ServiceOrderCancelReason } from "@/modules/service";
 
 // Las acciones de cada estado de la orden de servicio (brief-29.6, D-4 y D-10). Funcionan sin
 // JavaScript; ante un rechazo muestran el mensaje y llevan el foco a él.
@@ -340,9 +342,12 @@ export function StepButton({
 export function DeliverButton({
   serviceOrderId,
   label,
+  claim = false,
 }: {
   serviceOrderId: string;
   label: string;
+  // Desde la 29.9.2: solo cambia el aviso (brief-29.9.2, D-2).
+  claim?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(
     deliverServiceOrderAction,
@@ -351,6 +356,7 @@ export function DeliverButton({
   return (
     <form action={formAction} className="flex flex-col gap-2">
       <input type="hidden" name="serviceOrderId" value={serviceOrderId} />
+      {claim ? <input type="hidden" name="claim" value="1" /> : null}
       <div>
         <button type="submit" disabled={pending} className={inlineButtonClass}>
           {pending ? "Entregando…" : label}
@@ -364,9 +370,13 @@ export function DeliverButton({
 // La cancelación, con el motivo de la lista. No se deshace.
 export function CancelForm({
   serviceOrderId,
+  reasons,
   ownUnit = false,
 }: {
   serviceOrderId: string;
+  // Los motivos del tipo de la orden: «no lo cubre la garantía» es solo de un reclamo (brief-29.9.2,
+  // U-3).
+  reasons: ServiceOrderCancelReason[];
   // Desde la 29.6.2: solo cambia el aviso (brief-29.6.2, D-2).
   ownUnit?: boolean;
 }) {
@@ -391,9 +401,9 @@ export function CancelForm({
             className={selectClass}
           >
             <option value="">Elegí un motivo</option>
-            {Object.entries(CANCEL_REASON_LABEL).map(([reason, label]) => (
+            {reasons.map((reason) => (
               <option key={reason} value={reason}>
-                {label}
+                {CANCEL_REASON_LABEL[reason]}
               </option>
             ))}
           </select>
@@ -544,6 +554,170 @@ export function OwnUnitRepairedForm({
       <div>
         <button type="submit" disabled={pending} className={inlineButtonClass}>
           {pending ? "Guardando…" : "Marcar reparada"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+// Marcar reparado un reclamo de garantía (brief-29.9.2, D-2): lo que reparó el técnico y lo que
+// cobró, en una moneda, como una unidad propia; o sin cargo, si lo cubrió con su propia garantía
+// (U-2). La lista propone su costo cuando está en la moneda propuesta.
+export function WarrantyClaimRepairedForm({
+  serviceOrderId,
+  rows,
+  currencies,
+  currency,
+}: {
+  serviceOrderId: string;
+  rows: RepairCostRow[];
+  currencies: string[];
+  currency: string;
+}) {
+  const [state, formAction, pending] = useActionState(
+    markWarrantyClaimRepairedAction,
+    idleQuote,
+  );
+  const failed = state.status === "error" ? state : null;
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (state.status === "error") errorRef.current?.focus();
+  }, [state]);
+  const [checked, setChecked] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(
+      rows.map((row) => [
+        row.repairTypeId,
+        failed ? failed.values[`include_${row.repairTypeId}`] === "1" : false,
+      ]),
+    ),
+  );
+  const value = (name: string, fallback: string) =>
+    failed ? (failed.values[name] ?? fallback) : fallback;
+
+  return (
+    <form action={formAction} className="flex flex-col gap-4">
+      <input type="hidden" name="serviceOrderId" value={serviceOrderId} />
+      <p className="text-sm">
+        Marcá lo que reparó el técnico y lo que cobró: queda en su cuenta de
+        proveedor. Si lo reparó sin cobrar, usá «Reparado sin cargo». Al cliente
+        no se le cobra nada.
+      </p>
+      <div className="flex min-w-0 flex-col gap-1 sm:max-w-xs">
+        <label htmlFor="reclamo-moneda" className={labelClass}>
+          Moneda de lo que cobró el técnico
+        </label>
+        <select
+          id="reclamo-moneda"
+          name="currency"
+          defaultValue={value("currency", currency)}
+          className={selectClass}
+        >
+          <option value="">Elegí una moneda</option>
+          {currencies.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div
+        className="overflow-x-auto"
+        tabIndex={0}
+        role="region"
+        aria-label="Reparaciones que hizo el técnico"
+      >
+        <table className="w-full border-collapse text-left text-sm">
+          <caption className="sr-only">
+            Reparaciones que hizo el técnico, con lo que cobró
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col" className={tableHeadCellClass}>
+                Reparación
+              </th>
+              <th scope="col" className={tableHeadCellClass}>
+                Lo que cobró el técnico
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const id = row.repairTypeId;
+              const error = failed?.rows[id];
+              return (
+                <tr key={id}>
+                  <td className={tableCellClass}>
+                    <input type="hidden" name="typeIds" value={id} />
+                    <label className="flex items-center gap-2 font-semibold">
+                      <input
+                        type="checkbox"
+                        name={`include_${id}`}
+                        value="1"
+                        checked={checked[id] ?? false}
+                        onChange={(event) =>
+                          setChecked((current) => ({
+                            ...current,
+                            [id]: event.currentTarget.checked,
+                          }))
+                        }
+                        aria-describedby={
+                          error ? `reclamo-fila-${id}-error` : undefined
+                        }
+                        className="size-4 accent-primary"
+                      />
+                      {row.name}
+                    </label>
+                    {error ? (
+                      <p
+                        id={`reclamo-fila-${id}-error`}
+                        className={fieldErrorClass}
+                      >
+                        {error}
+                      </p>
+                    ) : null}
+                  </td>
+                  <td className={tableCellClass}>
+                    <label htmlFor={`reclamo-costo-${id}`} className="sr-only">
+                      Lo que cobró el técnico por {row.name}
+                    </label>
+                    <input
+                      id={`reclamo-costo-${id}`}
+                      name={`cost_${id}`}
+                      inputMode="decimal"
+                      autoComplete="off"
+                      defaultValue={value(
+                        `cost_${id}`,
+                        row.listCost ? amountInput(row.listCost) : "",
+                      )}
+                      className={`${inputClass} w-32 tabular-nums`}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div aria-live="polite" aria-atomic="true">
+        {failed ? (
+          <p ref={errorRef} tabIndex={-1} className={formMessageClass}>
+            {failed.message}
+          </p>
+        ) : null}
+      </div>
+      <div className="flex flex-wrap gap-3">
+        <button type="submit" disabled={pending} className={inlineButtonClass}>
+          {pending ? "Guardando…" : "Marcar reparado"}
+        </button>
+        <button
+          type="submit"
+          name="noCharge"
+          value="1"
+          formNoValidate
+          disabled={pending}
+          className={secondaryButtonClass}
+        >
+          Reparado sin cargo
         </button>
       </div>
     </form>

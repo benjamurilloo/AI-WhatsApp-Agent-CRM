@@ -9,7 +9,8 @@ import {
 
 // Las reglas puras de la orden de servicio (brief-29.6, D-4): las transiciones de su estado y el
 // armado del presupuesto; desde la 29.6.2, las de la orden de una unidad propia y sus líneas, solo con
-// el costo (brief-29.6.2, D-3). No leen la base: quien llama bloquea la orden, lee la lista del modelo
+// el costo (brief-29.6.2, D-3); desde la 29.9.2, las del reclamo de garantía (brief-29.9.2, D-2), que
+// usa las mismas líneas. No leen la base: quien llama bloquea la orden, lee la lista del modelo
 // y les pasa lo que leyó. El trigger de la 0059 fija las mismas transiciones en la base.
 
 export type ServiceOrderStatus =
@@ -38,7 +39,8 @@ export const SERVICE_ORDER_TRANSITIONS: Readonly<
   cancelled: [],
 };
 
-export type ServiceOrderKind = "customer_device" | "own_unit";
+export type ServiceOrderKind =
+  "customer_device" | "own_unit" | "warranty_claim";
 
 // La orden de una unidad propia (brief-29.6.2, D-3) nace sent y salta el presupuesto: pasa a repaired,
 // que es final porque la unidad no sale del local, o a cancelled.
@@ -55,14 +57,38 @@ export const OWN_UNIT_TRANSITIONS: Readonly<
   cancelled: [],
 };
 
+// El reclamo de garantía (brief-29.9.2, D-2): sin presupuesto, aprobación ni rechazo. Se cancela solo
+// antes de repararlo: después, el técnico ya trabajó.
+export const WARRANTY_CLAIM_TRANSITIONS: Readonly<
+  Record<ServiceOrderStatus, readonly ServiceOrderStatus[]>
+> = {
+  received: ["sent", "cancelled"],
+  sent: ["repaired", "cancelled"],
+  quoted: [],
+  approved: [],
+  rejected: [],
+  repaired: ["delivered"],
+  delivered: [],
+  cancelled: [],
+};
+
+const TRANSITIONS_BY_KIND: Readonly<
+  Record<
+    ServiceOrderKind,
+    Readonly<Record<ServiceOrderStatus, readonly ServiceOrderStatus[]>>
+  >
+> = {
+  customer_device: SERVICE_ORDER_TRANSITIONS,
+  own_unit: OWN_UNIT_TRANSITIONS,
+  warranty_claim: WARRANTY_CLAIM_TRANSITIONS,
+};
+
 export function canTransition(
   from: ServiceOrderStatus,
   to: ServiceOrderStatus,
   kind: ServiceOrderKind = "customer_device",
 ): boolean {
-  const transitions =
-    kind === "own_unit" ? OWN_UNIT_TRANSITIONS : SERVICE_ORDER_TRANSITIONS;
-  return transitions[from].includes(to);
+  return TRANSITIONS_BY_KIND[kind][from].includes(to);
 }
 
 const idSchema = z.uuid();

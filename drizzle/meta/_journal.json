@@ -449,6 +449,13 @@
       "when": 1792958592734,
       "tag": "0063_la_garantia",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1793017999876,
+      "tag": "0064_el_reclamo_de_garantia",
+      "breakpoints": true
     }
   ]
 }

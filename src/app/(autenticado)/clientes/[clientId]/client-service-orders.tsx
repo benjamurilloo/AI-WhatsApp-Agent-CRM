@@ -4,7 +4,10 @@ import { listClientServiceOrders } from "@/modules/service";
 import { linkClass, primaryLinkClass } from "@/app/_components/form-styles";
 import { SectionCard } from "@/app/_components/section-card";
 import { formatShortDateTime } from "@/app/_format/date-time";
-import { UNKNOWN_MODEL_TEXT } from "@/app/(autenticado)/reparaciones/messages";
+import {
+  KIND_LABEL,
+  UNKNOWN_MODEL_TEXT,
+} from "@/app/(autenticado)/reparaciones/messages";
 import { ServiceOrderStatusBadge } from "@/app/(autenticado)/reparaciones/sub-nav";
 import { warrantyText } from "@/app/(autenticado)/_warranty/warranty-text";
 
@@ -48,6 +51,9 @@ export async function ClientServiceOrders({
                     {order.displayNumber}
                   </Link>
                   <span className="block text-sm text-muted">
+                    {order.kind === "warranty_claim"
+                      ? `${KIND_LABEL.warranty_claim} · `
+                      : ""}
                     {order.modelName ?? UNKNOWN_MODEL_TEXT} ·{" "}
                     {formatShortDateTime(order.createdAt, timeZone)}
                     {order.warranty ? ` · ${warrantyText(order.warranty)}` : ""}

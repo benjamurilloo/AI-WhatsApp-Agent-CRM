@@ -64,6 +64,8 @@ export {
   MAX_SERVICE_ORDER_LINES,
   OPEN_OWN_UNIT_STATUSES,
   OPEN_SERVICE_ORDER_STATUSES,
+  OPEN_WARRANTY_CLAIM_STATUSES,
+  type ClaimRef,
   parseServiceOrderNumberSearch,
   quoteServiceOrder,
   rejectServiceOrder,
@@ -114,6 +116,21 @@ export {
   type RepairCostLineIssue,
   type RepairCostRule,
 } from "./quote";
+// El reclamo de garantía (brief-29.9.2, D-1 y D-2).
+export {
+  createWarrantyClaim,
+  getWarrantyClaimForm,
+  getWarrantyClaimRepairForm,
+  markWarrantyClaimRepaired,
+  type CreateWarrantyClaimResult,
+  type MarkWarrantyClaimRepairedResult,
+  type WarrantyClaimForm,
+  type WarrantyClaimInput,
+  type WarrantyClaimRepairForm,
+  type WarrantyClaimRepairFormRow,
+  type WarrantyClaimRepairInput,
+  type WarrantyClaimRule,
+} from "./warranty-claims";
 // Para la API de lectura v3 (brief-29.8.2, D-6): la lista con el precio al cliente y las órdenes de un
 // cliente, sin costos, IMEI ni técnico.
 export {

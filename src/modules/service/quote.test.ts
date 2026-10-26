@@ -7,6 +7,7 @@ import {
   parseQuoteInput,
   parseRepairCostInput,
   SERVICE_ORDER_TRANSITIONS,
+  WARRANTY_CLAIM_TRANSITIONS,
   type QuoteType,
   type ServiceOrderStatus,
 } from "./quote";
@@ -50,6 +51,40 @@ describe("las transiciones", () => {
     ["cancelled", "received"],
   ])("rechaza %s → %s", (from, to) => {
     expect(canTransition(from, to)).toBe(false);
+  });
+});
+
+// El reclamo de garantía (brief-29.9.2, D-2 y D-7): su camino corto, y ningún otro tipo lo toma.
+describe("las transiciones del reclamo de garantía", () => {
+  it("son exactamente las de D-2", () => {
+    const pairs = Object.entries(WARRANTY_CLAIM_TRANSITIONS).flatMap(
+      ([from, targets]) => targets.map((to) => `${from}->${to}`),
+    );
+    expect(pairs.sort()).toEqual(
+      [
+        "received->sent",
+        "sent->repaired",
+        "repaired->delivered",
+        "received->cancelled",
+        "sent->cancelled",
+      ].sort(),
+    );
+  });
+
+  it.each<[ServiceOrderStatus, ServiceOrderStatus]>([
+    ["sent", "quoted"],
+    ["repaired", "cancelled"],
+    ["received", "repaired"],
+    ["delivered", "cancelled"],
+  ])("rechaza %s → %s", (from, to) => {
+    expect(canTransition(from, to, "warranty_claim")).toBe(false);
+  });
+
+  it("sent → repaired es del reclamo y de la unidad propia, no de la orden de un cliente", () => {
+    expect(canTransition("sent", "repaired", "warranty_claim")).toBe(true);
+    expect(canTransition("sent", "repaired", "own_unit")).toBe(true);
+    expect(canTransition("sent", "repaired", "customer_device")).toBe(false);
+    expect(canTransition("received", "sent", "own_unit")).toBe(false);
   });
 });
 

@@ -340,6 +340,9 @@ export type ServiceOrderRow = {
   kind: ServiceOrderKind;
   clientId: string | null;
   unitId: string | null;
+  // El equipo original de un reclamo (brief-29.9.2, U-1): uno de los dos, o ninguno en otro tipo.
+  claimUnitId: string | null;
+  claimServiceOrderId: string | null;
   modelId: string;
   deviceSerial: string | null;
   reportedIssue: string | null;
@@ -367,6 +370,8 @@ const orderColumns = {
   number: serviceOrders.number,
   kind: serviceOrders.kind,
   clientId: serviceOrders.clientId,
+  claimUnitId: serviceOrders.claimUnitId,
+  claimServiceOrderId: serviceOrders.claimServiceOrderId,
   unitId: serviceOrders.unitId,
   modelId: serviceOrders.modelId,
   deviceSerial: serviceOrders.deviceSerial,
@@ -431,6 +436,75 @@ export async function insertOwnUnitServiceOrder(
   return rows[0]!;
 }
 
+// El reclamo de garantía (brief-29.9.2, D-1) nace recibido, como la orden de un cliente, y nombra el
+// equipo original. Un reclamo ya abierto del mismo equipo choca con el índice único parcial: "open". Corre
+// en un savepoint, para que ese choque deshaga solo esta escritura.
+const CLAIM_OPEN_INDEXES = new Set([
+  "service_orders_claim_unit_open_unique",
+  "service_orders_claim_order_open_unique",
+]);
+
+function isClaimOpen(error: unknown): boolean {
+  const e = error as {
+    code?: string;
+    constraint?: string;
+    cause?: { code?: string; constraint?: string };
+  } | null;
+  const source = e?.cause ?? e;
+  return (
+    source?.code === "23505" && CLAIM_OPEN_INDEXES.has(source.constraint ?? "")
+  );
+}
+
+export async function insertWarrantyClaim(
+  tx: DbTransaction,
+  values: {
+    organizationId: string;
+    number: number;
+    clientId: string;
+    claimUnitId: string | null;
+    claimServiceOrderId: string | null;
+    modelId: string;
+    deviceSerial: string | null;
+    reportedIssue: string;
+    createdBy: string;
+  },
+): Promise<ServiceOrderRow | "open"> {
+  try {
+    return await tx.transaction(async (savepoint) => {
+      const rows = await savepoint
+        .insert(serviceOrders)
+        .values({ ...values, kind: "warranty_claim" })
+        .returning(orderColumns);
+      return rows[0]!;
+    });
+  } catch (error) {
+    if (isClaimOpen(error)) return "open";
+    throw error;
+  }
+}
+
+// Los reclamos de unos equipos originales (D-5), de los más recientes a los más viejos.
+export function findClaimsOf(
+  organizationId: string,
+  target: { unitIds: string[] } | { serviceOrderIds: string[] },
+): Promise<ServiceOrderRow[]> {
+  const ids = "unitIds" in target ? target.unitIds : target.serviceOrderIds;
+  if (ids.length === 0) return Promise.resolve([]);
+  return getDb()
+    .select(orderColumns)
+    .from(serviceOrders)
+    .where(
+      and(
+        eq(serviceOrders.organizationId, organizationId),
+        "unitIds" in target
+          ? inArray(serviceOrders.claimUnitId, ids)
+          : inArray(serviceOrders.claimServiceOrderId, ids),
+      ),
+    )
+    .orderBy(desc(serviceOrders.createdAt), desc(serviceOrders.id));
+}
+
 // Cada transición bloquea la cabecera FOR UPDATE y decide con lo leído (D-9): de dos transiciones de la
 // misma orden, la segunda espera y ve el estado que dejó la primera.
 export async function findServiceOrder(
@@ -453,7 +527,7 @@ export async function findServiceOrder(
   return rows[0];
 }
 
-// Lo que fija una transición: el estado y sus columnas. El trigger de la 0059 rechaza todo lo demás.
+// Lo que fija una transición: el estado y sus columnas. El trigger (0059; desde la 29.9.2, 0064) rechaza todo lo demás.
 export type ServiceOrderTransition = { status: ServiceOrderStatus } & Partial<{
   technicianId: string;
   customerCurrency: string;
@@ -723,7 +797,7 @@ export function findServiceOrdersOfUnits(
 }
 
 // Lo que se le debe a los técnicos (D-7): las órdenes reparadas o entregadas que se repararon, de los
-// dos tipos (brief-29.6.2, D-4), con su técnico, su costo total y la fecha de reparación. Lee con la transacción de cash: en el pago, detrás
+// tres tipos (brief-29.6.2, D-4; brief-29.9.2, D-4) y con costo, con su técnico, su costo total y la fecha de reparación. Lee con la transacción de cash: en el pago, detrás
 // del bloqueo de cobros; en las lecturas de la cuenta, en una sola foto.
 export type TechnicianChargeRow = {
   id: string;
@@ -754,14 +828,17 @@ export async function findTechnicianCharges(
       and(
         eq(serviceOrders.organizationId, organizationId),
         sql`${serviceOrders.repairedAt} is not null`,
+        // Un reclamo reparado sin cargo no le debe nada al técnico (brief-29.9.2, D-4).
+        sql`${serviceOrders.technicianTotal} is not null`,
         technicianIds === null
           ? undefined
           : inArray(serviceOrders.technicianId, technicianIds),
       ),
     )
     .orderBy(asc(serviceOrders.repairedAt), asc(serviceOrders.number));
-  // repaired_at supone sent_at, el técnico y su total (CHECK de la 0059): el del presupuesto en la
-  // orden de un cliente, y el que se fija al repararla en la de una unidad propia.
+  // repaired_at supone sent_at y el técnico (CHECK de la 0059), y el filtro, su total: el del
+  // presupuesto en la orden de un cliente, y el que se fija al repararla en la de una unidad propia o en
+  // un reclamo con cargo.
   return rows.map((row) => ({
     id: row.id,
     number: row.number,

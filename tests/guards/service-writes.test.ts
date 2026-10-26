@@ -22,11 +22,15 @@ import { describe, expect, it } from "vitest";
 // Desde la 29.6.2 (brief-29.6.2, D-5): la orden de una unidad propia, con su alta, su paso a reparada
 // con las líneas, y sus casos de uso desde su Server Action. Mandar a reparar se llama desde la
 // pantalla de unidades del producto.
+//
+// Desde la 29.9.2 (brief-29.9.2, D-7): el reclamo de garantía, con su alta y su paso a reparado con las
+// líneas, desde sus Server Actions.
 
 const REPOSITORY = "src/modules/service/repository.ts";
 const REPAIR_LIST = "src/modules/service/repair-list.ts";
 const ORDERS = "src/modules/service/service-orders.ts";
 const OWN_UNIT_ORDERS = "src/modules/service/own-unit-orders.ts";
+const CLAIMS = "src/modules/service/warranty-claims.ts";
 const ACTIONS = "src/app/(autenticado)/reparaciones/actions.ts";
 const UNIT_ACTIONS =
   "src/app/(autenticado)/productos/[productId]/unidades/actions.ts";
@@ -38,6 +42,7 @@ const AUTHORIZED = new Map([
   ["updateRepairPrice", ["update repair_prices"]],
   ["insertServiceOrder", ["insert service_orders"]],
   ["insertOwnUnitServiceOrder", ["insert service_orders"]],
+  ["insertWarrantyClaim", ["insert service_orders"]],
   ["updateServiceOrder", ["update service_orders"]],
   ["insertServiceOrderLines", ["insert service_order_lines"]],
 ]);
@@ -136,6 +141,7 @@ const CALLERS = new Map<string, { file: string; from: string[] }[]>([
     "insertOwnUnitServiceOrder",
     [{ file: OWN_UNIT_ORDERS, from: ["createOwnUnitServiceOrder"] }],
   ],
+  ["insertWarrantyClaim", [{ file: CLAIMS, from: ["createWarrantyClaim"] }]],
   [
     "updateServiceOrder",
     [
@@ -150,6 +156,7 @@ const CALLERS = new Map<string, { file: string; from: string[] }[]>([
         ],
       },
       { file: OWN_UNIT_ORDERS, from: ["markOwnUnitRepaired"] },
+      { file: CLAIMS, from: ["markWarrantyClaimRepaired"] },
     ],
   ],
   [
@@ -157,6 +164,7 @@ const CALLERS = new Map<string, { file: string; from: string[] }[]>([
     [
       { file: ORDERS, from: ["quoteServiceOrder"] },
       { file: OWN_UNIT_ORDERS, from: ["markOwnUnitRepaired"] },
+      { file: CLAIMS, from: ["markWarrantyClaimRepaired"] },
     ],
   ],
   [
@@ -215,6 +223,14 @@ const CALLERS = new Map<string, { file: string; from: string[] }[]>([
   [
     "markOwnUnitRepaired",
     [{ file: ACTIONS, from: ["markOwnUnitRepairedAction"] }],
+  ],
+  [
+    "createWarrantyClaim",
+    [{ file: ACTIONS, from: ["createWarrantyClaimAction"] }],
+  ],
+  [
+    "markWarrantyClaimRepaired",
+    [{ file: ACTIONS, from: ["markWarrantyClaimRepairedAction"] }],
   ],
 ]);
 
@@ -341,6 +357,7 @@ describe("repositorio", () => {
       "updateRepairPrice: update repair_prices",
       "insertServiceOrder: insert service_orders",
       "insertOwnUnitServiceOrder: insert service_orders",
+      "insertWarrantyClaim: insert service_orders",
       "updateServiceOrder: update service_orders",
       "insertServiceOrderLines: insert service_order_lines",
     ]);

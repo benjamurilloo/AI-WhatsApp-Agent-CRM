@@ -1,7 +1,10 @@
 import type {
   CreateServiceOrderResult,
+  CreateWarrantyClaimResult,
   DeliverServiceOrderResult,
   MarkOwnUnitRepairedResult,
+  MarkWarrantyClaimRepairedResult,
+  WarrantyClaimRule,
   QuoteLineIssue,
   QuoteRuleIssue,
   QuoteServiceOrderResult,
@@ -50,6 +53,7 @@ export const UNKNOWN_UNIT_TEXT = "Unidad desconocida";
 export const KIND_LABEL: Record<ServiceOrderKind, string> = {
   customer_device: "Equipo de un cliente",
   own_unit: "Unidad propia",
+  warranty_claim: "Reclamo de garantía",
 };
 
 export function unexpectedErrorMessage(requestId: string): string {
@@ -72,7 +76,22 @@ export const CANCEL_REASON_LABEL: Record<ServiceOrderCancelReason, string> = {
   not_repairable: "No tiene arreglo",
   entered_by_mistake: "Cargada por error",
   other: "Otro motivo",
+  not_covered: "No lo cubre la garantía",
 };
+
+// Los motivos que ofrece cada tipo: «no lo cubre la garantía» es solo de un reclamo (brief-29.9.2,
+// U-3).
+export function cancelReasonsFor(
+  kind: ServiceOrderKind,
+): ServiceOrderCancelReason[] {
+  return (Object.keys(CANCEL_REASON_LABEL) as ServiceOrderCancelReason[])
+    .filter((reason) => kind === "warranty_claim" || reason !== "not_covered")
+    .sort((a, b) =>
+      kind === "warranty_claim"
+        ? Number(b === "not_covered") - Number(a === "not_covered")
+        : 0,
+    );
+}
 
 // El estado de un formulario: el campo con error, o null para el mensaje general.
 export type FormState =
@@ -378,6 +397,83 @@ export function markRepairedRejection(
   return { message: changeMessage(result.code, requestId), rows: {} };
 }
 
+// El reclamo de garantía (brief-29.9.2, D-5).
+export const WARRANTY_CLAIM_TITLE = "Reclamo de garantía";
+export const NEW_WARRANTY_CLAIM_TITLE = "Nuevo reclamo de garantía";
+
+const CLAIM_RULE_MESSAGE: Record<WarrantyClaimRule, string> = {
+  not_claimable:
+    "Ese equipo no se puede reclamar: tiene que ser una unidad vendida o una reparación entregada.",
+  not_in_warranty:
+    "Ese equipo no está en garantía. Si corresponde cubrirlo igual, cambiá los días de garantía de la unidad.",
+  claim_open: "Ese equipo ya tiene un reclamo abierto.",
+  inactive_client:
+    "El cliente está desactivado: reactivalo antes de cargarle un reclamo.",
+  unit_without_model:
+    "El producto de la unidad no tiene modelo: asignale uno para cargar el reclamo.",
+};
+
+export function createClaimRejection(
+  result: Exclude<CreateWarrantyClaimResult, { ok: true }>,
+  requestId: string,
+): { field: string | null; message: string } {
+  if (result.code === "VALIDATION_ERROR" && "fields" in result) {
+    return {
+      field: "reportedIssue",
+      message: ORDER_FIELD_MESSAGE.reportedIssue,
+    };
+  }
+  if (result.code === "NOT_FOUND" && "target" in result) {
+    return {
+      field: null,
+      message:
+        result.target === "client"
+          ? "El cliente ya no existe."
+          : "El equipo ya no existe.",
+    };
+  }
+  if (result.code === "BUSINESS_RULE_VIOLATION") {
+    return { field: null, message: CLAIM_RULE_MESSAGE[result.rule] };
+  }
+  return { field: null, message: changeMessage(result.code, requestId) };
+}
+
+export function claimFormMessage(
+  result: Exclude<CreateWarrantyClaimResult, { ok: true }>,
+): string {
+  if (result.code === "BUSINESS_RULE_VIOLATION") {
+    return CLAIM_RULE_MESSAGE[result.rule];
+  }
+  if (result.code === "FORBIDDEN") return ADMIN_ONLY_MESSAGE;
+  return "Ese equipo no existe.";
+}
+
+// Marcar reparado un reclamo: con lo que cobró el técnico, o sin cargo.
+export function markClaimRepairedRejection(
+  result: Exclude<MarkWarrantyClaimRepairedResult, { ok: true }>,
+  requestId: string,
+  typeIds: string[],
+): QuoteRejection {
+  if (
+    result.code === "VALIDATION_ERROR" &&
+    "reason" in result &&
+    result.reason === "currency"
+  ) {
+    return { message: "Elegí la moneda de lo que cobró el técnico.", rows: {} };
+  }
+  if (
+    result.code === "BUSINESS_RULE_VIOLATION" &&
+    result.rule === "total_too_large"
+  ) {
+    return { message: "El total es demasiado grande.", rows: {} };
+  }
+  return markRepairedRejection(
+    result as Exclude<MarkOwnUnitRepairedResult, { ok: true }>,
+    requestId,
+    typeIds,
+  );
+}
+
 const NOTICES: Record<string, string> = {
   "tipo-creado": "Tipo de reparación creado.",
   "tipo-editado": "Tipo de reparación actualizado.",
@@ -406,6 +502,13 @@ const NOTICES: Record<string, string> = {
     "Unidad reparada: lo que cobró el técnico se sumó a su costo y quedó en su cuenta de proveedor. La unidad está en revisión: liberala a la venta desde sus unidades.",
   "unidad-cancelada":
     "Orden cancelada: la unidad volvió en revisión, sin cambiar su costo.",
+  // Desde la 29.9.2 (brief-29.9.2, D-5).
+  "reclamo-creado": "Reclamo de garantía creado.",
+  "reclamo-reparado":
+    "Reclamo reparado: lo que cobró el técnico quedó en su cuenta de proveedor.",
+  "reclamo-reparado-sin-cargo":
+    "Reclamo reparado sin cargo: no queda deuda con el técnico.",
+  "reclamo-entregado": "Equipo entregado, sin cobrarle al cliente.",
 };
 
 export function noticeMessage(

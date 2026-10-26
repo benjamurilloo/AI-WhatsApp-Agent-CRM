@@ -562,7 +562,10 @@ export default async function ProductUnitsPage({
                           href={`/reparaciones/${order.id}`}
                           className={secondaryLinkClass}
                         >
-                          Orden {order.displayNumber}
+                          {order.kind === "warranty_claim"
+                            ? "Reclamo"
+                            : "Orden"}{" "}
+                          {order.displayNumber}
                         </Link>
                       ))}
                       {isAdmin && unit.status === "in_review" ? (
@@ -624,7 +627,8 @@ export default async function ProductUnitsPage({
                         href={`/reparaciones/${order.id}`}
                         className={secondaryLinkClass}
                       >
-                        Orden {order.displayNumber}
+                        {order.kind === "warranty_claim" ? "Reclamo" : "Orden"}{" "}
+                        {order.displayNumber}
                       </Link>
                     ))}
                   </li>

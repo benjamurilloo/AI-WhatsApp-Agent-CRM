@@ -386,6 +386,8 @@ valor orientativo = precio de referencia del usado
 
 *Nota del 2026-10-25, por la 29.9* ([brief-29.9](brief-29.9-la-garantia.md), U-1 a U-4 y H-3). **Los días del perfil viven en una fila por capacidad**: `unit_settings` (`serialized_units`) y `service_settings` (`repairs`), cada una con los 30 días de R-7. **«La fecha de la venta, o de la entrega del pedido» se toma del último movimiento `sale` u `order_delivery` de la unidad**, que `inventory` ya guarda: es la misma fecha, y así `inventory` no lee `sales` ni `orders`. Una unidad vendida que volvió al local, con otra unidad posterior del mismo IMEI, no tiene garantía (U-4). La búsqueda por IMEI es un grupo de `/buscar` (U-3). **El reclamo pasa a la 29.9.2** (U-1), y su brief decide a qué apunta: la unidad vendida o la venta que dice este punto (brief-29.9, H-8).
 
+*Nota del 2026-10-26, por la 29.9.2* ([brief-29.9.2](brief-29.9.2-el-reclamo-de-garantia.md), U-1 a U-4). **El reclamo apunta al equipo, no a la venta**: a la unidad vendida (`claim_unit_id`) o a la orden de servicio entregada (`claim_service_order_id`), exactamente una. Es de donde sale la garantía, y una venta con varias unidades no dice cuál volvió. Por eso **no hay arista `service → sales` para el reclamo**: `service` lee la unidad y su garantía de `inventory`, como ya hacía desde la 29.6.2, y el cliente de una unidad lo da la ficha del cliente, porque saber de quién es una unidad exige `orders`, que `service` no lee (H-5). La «marca» es un tipo de orden, `warranty_claim`, con su propio camino: se recibe, se manda, se repara y se entrega, sin presupuesto ni venta. Lo que cobra el técnico es opcional: un reclamo sin cargo no es una deuda (U-2). Uno que la garantía no cubre se cancela con `not_covered` (U-3). El agente no ve los reclamos, y ningún contrato cambia (U-4).
+
 ### 12. Los turnos
 
 **Entran por decisión del usuario del 2026-10-18 (U-1).**
@@ -475,6 +477,8 @@ valor orientativo = precio de referencia del usado
 
 - **Módulos nuevos**: `service`, `tradeins` y `appointments`. Los tres entran en la lista de módulos de dominio de `eslint.config.mjs` y del Overview.
 - **`service`** depende de `catalog`, `inventory`, `purchasing` (el técnico), **`sales`** (emite la venta de una reparación y lee la venta de un reclamo), `crm`, `numbering`, `organizations` y `audit`.
+
+  *Nota del 2026-10-26, por la 29.9.2* ([brief-29.9.2](brief-29.9.2-el-reclamo-de-garantia.md), U-1): **`service` no lee la venta de un reclamo**. El reclamo apunta a la unidad o a la orden original (nota del punto 11), y la arista `service → sales` queda solo para la venta de una reparación.
 - **`tradeins`** depende de `catalog`, `inventory`, `crm`, `numbering`, `organizations`, `audit` y **`service`**, solo para leer los costos de reparación de la cotización.
 - **`appointments`** depende de `crm`, `knowledge` (el horario), `catalog` e `inventory` (la referencia opcional), `organizations` y `audit` (revisión, R-16).
 - **`cash`** suma la dependencia de `tradeins`: la permuta, la compra de usados y la anulación del usado.

@@ -9,9 +9,11 @@ import {
   cancelServiceOrder,
   createRepairType,
   createServiceOrder,
+  createWarrantyClaim,
   deliverServiceOrder,
   markOwnUnitRepaired,
   markServiceOrderRepaired,
+  markWarrantyClaimRepaired,
   moveRepairType,
   quoteServiceOrder,
   rejectServiceOrder,
@@ -32,8 +34,10 @@ import {
 } from "../_warranty/settings-state";
 import {
   changeMessage,
+  createClaimRejection,
   createOrderRejection,
   deliverMessage,
+  markClaimRepairedRejection,
   markRepairedRejection,
   priceRejection,
   quoteRejection,
@@ -539,13 +543,19 @@ export async function deliverServiceOrderAction(
   formData: FormData,
 ): Promise<ChangeState> {
   const serviceOrderId = text(formData, "serviceOrderId", 64);
+  // Solo elige el aviso: un reclamo se entrega sin venta (brief-29.9.2, D-2).
+  const claim = text(formData, "claim", 1) === "1";
   return runTransition(
     "reparaciones.entregar",
     serviceOrderId,
     (context) => deliverServiceOrder(context, serviceOrderId),
     deliverMessage,
     (result) =>
-      result.sale === null ? "orden-entregada" : "orden-entregada-venta",
+      result.sale !== null
+        ? "orden-entregada-venta"
+        : claim
+          ? "reclamo-entregado"
+          : "orden-entregada",
   );
 }
 
@@ -567,6 +577,125 @@ export async function cancelServiceOrderAction(
         : transitionMessage(result, requestId),
     () => (ownUnit ? "unidad-cancelada" : "orden-cancelada"),
   );
+}
+
+// Abrir un reclamo de garantía (brief-29.9.2, D-1 y D-5): desde una unidad que compró el cliente, con el
+// cliente de su ficha, o desde una reparación entregada, que ya nombra al cliente.
+export async function createWarrantyClaimAction(
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const context = await requireSession();
+  const { requestId, log } = logger("reparaciones.reclamo.crear", context);
+  const values = {
+    unitId: text(formData, "unitId", 64).trim(),
+    clientId: text(formData, "clientId", 64).trim(),
+    serviceOrderId: text(formData, "serviceOrderId", 64).trim(),
+    reportedIssue: text(formData, "reportedIssue", 1100),
+  };
+  let destination: string;
+  try {
+    const result = await createWarrantyClaim(
+      context,
+      values.unitId !== ""
+        ? {
+            unitId: values.unitId,
+            clientId: values.clientId,
+            reportedIssue: values.reportedIssue,
+          }
+        : {
+            serviceOrderId: values.serviceOrderId,
+            reportedIssue: values.reportedIssue,
+          },
+    );
+    if (!result.ok) {
+      log(result.code);
+      return {
+        status: "error",
+        requestId,
+        values,
+        ...createClaimRejection(result, requestId),
+      };
+    }
+    log("OK");
+    revalidatePath(ORDERS);
+    revalidatePath("/clientes", "layout");
+    revalidatePath("/productos", "layout");
+    destination = `${ORDERS}/${result.order.id}?aviso=reclamo-creado`;
+  } catch (error) {
+    log("INTERNAL", error);
+    return {
+      status: "error",
+      requestId,
+      values,
+      field: null,
+      message: unexpectedErrorMessage(requestId),
+    };
+  }
+  redirect(destination);
+}
+
+// Marcar reparado un reclamo (brief-29.9.2, D-2): lo que reparó el técnico y lo que cobró, en una
+// moneda, o sin cargo con su propio botón.
+export async function markWarrantyClaimRepairedAction(
+  _previous: QuoteFormState,
+  formData: FormData,
+): Promise<QuoteFormState> {
+  const context = await requireSession();
+  const { requestId, log } = logger("reparaciones.reclamo.reparado", context);
+  const serviceOrderId = text(formData, "serviceOrderId", 64);
+  const noCharge = text(formData, "noCharge", 1) === "1";
+  const typeIds = formData
+    .getAll("typeIds")
+    .slice(0, 100)
+    .map((value) => String(value).slice(0, 64));
+  const values: Record<string, string> = {
+    currency: text(formData, "currency", 3),
+  };
+  for (const id of typeIds) {
+    values[`include_${id}`] = text(formData, `include_${id}`, 1);
+    values[`cost_${id}`] = text(formData, `cost_${id}`, 40);
+  }
+  const chosen = typeIds.filter((id) => values[`include_${id}`] === "1");
+  let destination: string;
+  try {
+    const result = await markWarrantyClaimRepaired(
+      context,
+      serviceOrderId,
+      noCharge
+        ? { charge: false }
+        : {
+            charge: true,
+            currency: values.currency!,
+            lines: chosen.map((id) => ({
+              repairTypeId: id,
+              cost: values[`cost_${id}`]!,
+            })),
+          },
+    );
+    if (!result.ok) {
+      log(result.code);
+      return {
+        status: "error",
+        requestId,
+        values,
+        ...markClaimRepairedRejection(result, requestId, chosen),
+      };
+    }
+    log("OK");
+    revalidatePath(ORDERS);
+    destination = `${ORDERS}/${serviceOrderId}?aviso=${noCharge ? "reclamo-reparado-sin-cargo" : "reclamo-reparado"}`;
+  } catch (error) {
+    log("INTERNAL", error);
+    return {
+      status: "error",
+      requestId,
+      values,
+      rows: {},
+      message: unexpectedErrorMessage(requestId),
+    };
+  }
+  redirect(destination);
 }
 
 // Marcar reparada una unidad propia (brief-29.6.2, D-3): las reparaciones que hizo el técnico y lo
