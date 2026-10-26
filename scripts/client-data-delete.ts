@@ -29,6 +29,9 @@ import { getDb, type Db } from "@/shared/db";
  * Desde la 29.7, la ficha pierde también el DNI y el Instagram (brief-29.7, D-6). Sus recepciones de
  * usados no se tocan: no tienen datos de la persona, solo ids, el IMEI del equipo que entregó, montos y
  * fechas, como una venta; y retienen la ficha por su clave (RESTRICT).
+ * Desde la 29.10, sus turnos pierden la nota, que es texto libre y puede nombrar a la persona
+ * (brief-29.10, D-6, corregido por el usuario): el trigger de la 0065 deja pasar ese UPDATE y ningún
+ * otro sin cambio de estado. Un turno retiene la ficha por su clave (RESTRICT), como una orden.
  * Los pedidos no se tocan: no guardan texto de la persona, solo ids, cantidades, montos, estados y
  * fechas, y su auditoría tampoco (ADR 0020, punto 10; brief-19.2, D-11). Un cliente con pedidos no
  * se borra: la clave del pedido lo impide (RESTRICT), así que va al vaciado aunque no tenga
@@ -77,6 +80,8 @@ export type ClientDataReport = {
   // anulaciones, que cuelgan de la recepción.
   tradeIns: number;
   tradeInVoids: number;
+  // Desde la 29.10 (brief-29.10, D-6): sus turnos, que también impiden borrarlo.
+  appointments: number;
   // Un cliente sin conversaciones, pedidos ni ventas sí se puede borrar del todo (brief-8.2,
   // hallazgo 7; brief-19.2; brief-20.2). En la 20.2 toda venta tiene un pedido, así que las ventas
   // no cambian el resultado hasta la venta sin pedido de la 20.3 (brief-20.2, H-1).
@@ -105,6 +110,7 @@ export async function reportClientData(
     service_orders: number;
     trade_ins: number;
     trade_in_voids: number;
+    appointments: number;
   }>(
     sql`select
           exists (select 1 from clients
@@ -147,7 +153,9 @@ export async function reportClientData(
            where organization_id = ${organizationId} and client_id = ${clientId}) as trade_ins,
           (select count(*)::int from trade_in_voids v
              join trade_ins t on t.organization_id = v.organization_id and t.id = v.trade_in_id
-           where v.organization_id = ${organizationId} and t.client_id = ${clientId}) as trade_in_voids`,
+           where v.organization_id = ${organizationId} and t.client_id = ${clientId}) as trade_in_voids,
+          (select count(*)::int from appointments
+           where organization_id = ${organizationId} and client_id = ${clientId}) as appointments`,
   );
   const row = counts.rows[0]!;
   return {
@@ -167,6 +175,7 @@ export async function reportClientData(
     serviceOrders: row.service_orders,
     tradeIns: row.trade_ins,
     tradeInVoids: row.trade_in_voids,
+    appointments: row.appointments,
     deletable:
       row.exists &&
       row.conversations === 0 &&
@@ -175,7 +184,8 @@ export async function reportClientData(
       row.receipts === 0 &&
       row.refunds === 0 &&
       row.service_orders === 0 &&
-      row.trade_ins === 0,
+      row.trade_ins === 0 &&
+      row.appointments === 0,
   };
 }
 
@@ -198,6 +208,8 @@ export type ErasureResult = {
   tags: number;
   // Desde la 29.6: las órdenes de servicio que tenían IMEI o lo que reportó.
   serviceOrders: number;
+  // Desde la 29.10: los turnos que tenían nota.
+  appointments: number;
 };
 
 // Lo que una transacción y la base tienen en común.
@@ -278,6 +290,13 @@ export async function eraseClientData(
           where organization_id = ${organizationId} and client_id = ${clientId}
             and (device_serial is not null or reported_issue is not null)`,
     );
+    // La nota de sus turnos (brief-29.10, D-6). Un turno nuevo de este cliente se confirmó antes de que el
+    // vaciado tomara la ficha, porque el alta la toma en modo compartido, y este UPDATE lo ve.
+    const appointments = await tx.execute(
+      sql`update appointments set note = null
+          where organization_id = ${organizationId} and client_id = ${clientId}
+            and note is not null`,
+    );
     const tags = await tx.execute(
       sql`delete from client_tag_assignments
           where organization_id = ${organizationId} and client_id = ${clientId}`,
@@ -310,6 +329,7 @@ export async function eraseClientData(
       auditEntries,
       tags: tags.rowCount ?? 0,
       serviceOrders: serviceOrders.rowCount ?? 0,
+      appointments: appointments.rowCount ?? 0,
     };
   });
 }
@@ -402,6 +422,11 @@ export function describeRetained(report: ClientDataReport): string[] {
       `${report.tradeInVoids} anulaciones de usados en 'trade_in_voids': quedan el número, la fecha, la recepción y el motivo de la lista, sin ningún texto de la persona.`,
     );
   }
+  if (report.appointments > 0) {
+    retained.push(
+      `${report.appointments} turnos en 'appointments', sin la nota: quedan el motivo, la fecha, el horario, el estado, la referencia y quién lo dio.`,
+    );
+  }
   if (report.auditEntries > 0) {
     retained.push(
       `${report.auditEntries} entradas en 'audit_logs', sin valores: queda que hubo un cambio, de qué tipo y cuándo.`,
@@ -473,7 +498,7 @@ async function main() {
   console.log(
     `Cliente ${clientId}: ${report.conversations} conversaciones, ${report.messages} mensajes, ` +
       `${report.notes} notas, ${report.auditEntries} entradas de auditoría, ${report.tags} etiquetas, ${report.orders} pedidos, ${report.sales} ventas, ${report.saleVoids} anulaciones, ${report.receipts} cobros, ` +
-      `${report.receiptVoids} anulaciones de cobros, ${report.refunds} devoluciones, ${report.refundVoids} anulaciones de devoluciones, ${report.serviceOrders} órdenes de servicio.`,
+      `${report.receiptVoids} anulaciones de cobros, ${report.refunds} devoluciones, ${report.refundVoids} anulaciones de devoluciones, ${report.serviceOrders} órdenes de servicio, ${report.appointments} turnos.`,
   );
 
   const vaciar = args.includes("--vaciar");
@@ -510,7 +535,7 @@ async function main() {
   );
   console.log(
     `Vaciado y desactivada: la ficha, ${result.conversations} conversaciones, ${result.messages} mensajes, ` +
-      `${result.notes} notas, ${result.serviceOrders} órdenes de servicio y ${result.auditEntries} entradas de auditoría; ${result.tags} etiquetas quitadas.`,
+      `${result.notes} notas, ${result.serviceOrders} órdenes de servicio, ${result.appointments} turnos y ${result.auditEntries} entradas de auditoría; ${result.tags} etiquetas quitadas.`,
   );
   console.log("Queda, sin nada que identifique a la persona:");
   printRetained(report);

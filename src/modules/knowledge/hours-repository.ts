@@ -360,3 +360,52 @@ export async function computeStatus(
     days: row.days,
   };
 }
+
+// Los días de un rango de fechas locales, con el día especial ya aplicado, como days de computeStatus
+// pero para cualquier fecha (brief-29.10, H-1): el calendario de turnos los lee. Las fechas van
+// AAAA-MM-DD, from <= to, y el servicio acota el largo del rango. Con los días, cuántos días de la
+// semana tienen fila: el servicio decide con eso si el horario está cargado.
+export async function findEffectiveDays(
+  organizationId: string,
+  from: string,
+  to: string,
+  executor: Executor = getDb(),
+): Promise<{ weekdays: number; days: EffectiveDay[] }> {
+  const result = await executor.execute<{
+    weekdays: number;
+    days: EffectiveDay[];
+  }>(sql`
+    with days as (
+      select day::date as day
+      from generate_series(${from}::date, ${to}::date, interval '1 day') as day
+    ),
+    effective as (
+      select
+        days.day,
+        e.reason,
+        case when e.id is not null then e.opens_1 else w.opens_1 end as opens_1,
+        case when e.id is not null then e.closes_1 else w.closes_1 end as closes_1,
+        case when e.id is not null then e.opens_2 else w.opens_2 end as opens_2,
+        case when e.id is not null then e.closes_2 else w.closes_2 end as closes_2
+      from days
+      left join ${businessHourExceptions} e
+        on e.organization_id = ${organizationId} and e.date = days.day
+      left join ${businessHours} w
+        on w.organization_id = ${organizationId}
+        and w.weekday = extract(isodow from days.day)
+    )
+    select coalesce(json_agg(json_build_object(
+      'date', to_char(day, 'YYYY-MM-DD'),
+      'weekday', extract(isodow from day)::int,
+      'reason', reason,
+      'opens1', left(opens_1::text, 5),
+      'closes1', left(closes_1::text, 5),
+      'opens2', left(opens_2::text, 5),
+      'closes2', left(closes_2::text, 5)
+    ) order by day), '[]'::json) as days,
+    (select count(*)::int from ${businessHours}
+      where organization_id = ${organizationId}) as weekdays
+    from effective
+  `);
+  return result.rows[0]!;
+}

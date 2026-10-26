@@ -406,6 +406,8 @@ valor orientativo = precio de referencia del usado
 - **El agente pide un turno**, que queda `requested` hasta que una persona lo confirma, como el pedido pendiente de la 19.4. Una franja con un turno `requested` cuenta como ocupada.
 - Sin recordatorios ni avisos: el CRM no envía mensajes (Scope, §Sigue fuera; el [ADR 0017](0017-responder-desde-el-crm.md) espera un negocio real).
 
+*Nota del 2026-10-26, por la 29.10* ([brief-29.10](brief-29.10-los-turnos.md), U-1 a U-6 y D-6). **La 29.10 son los turnos en la app; el agente pasa a la 29.10.2** (U-1): las franjas libres en `read-v3` y el turno pedido en `ingestion-v2`, con su ventana. La duración es una de 15, 20, 30, 45, 60, 90 o 120 minutos (U-2), y los valores del perfil `iphone` son 30 minutos, un turno por franja y cinco motivos, respondidos por el usuario (U-3), en `appointment_settings`, la fila de valores sueltos de la capacidad. El cliente es obligatorio y existente (U-4). Un turno guarda su inicio y su fin: un cambio de horario, duración o cupo no lo mueve ni lo cancela, y el calendario lo marca (U-5). Se da hasta 90 días adelante, nunca en una franja que ya empezó (U-6). Un turno retiene la ficha del cliente, y el vaciado deja su nota en nulo (D-6). El cupo lo exige el servicio bajo el bloqueo de la fila de valores, no un `CHECK`.
+
 ### 13. El perfil de rubro
 
 **La plantilla** está versionada en el repositorio (`src/modules/organizations/profiles/`), como los seeds. **Se copia a la organización** con el mismo script que activa las capacidades, en una sola transacción, con su auditoría.
@@ -502,7 +504,7 @@ Ajusta el D-15 del brief. El tipo de cambio sube, porque el negocio vende en dos
 | **29.7 — La recepción de usados y la permuta** | `trade_ins`, el checklist, `trade_in_margins`, la cotización, «Permuta», `trade_in_payments`, la anulación en `cash`, y el DNI y el Instagram del cliente (U-5) |
 | **29.8 — El agente del rubro** | los contratos del punto 15, salvo los turnos |
 | **29.9 — La garantía** | la garantía derivada y el reclamo |
-| **29.10 — Los turnos** | `appointments`, `appointment_reasons`, el calendario y su contrato con el agente |
+| **29.10 — Los turnos** | `appointments`, `appointment_reasons`, el calendario y su contrato con el agente. *Dividida el 2026-10-26 (U-1, nota del punto 12)*: la 29.10, en la app; el contrato con el agente, en la 29.10.2 |
 
 **Desde la 29.2**, la fase se construye con el negocio confirmado o por decisión explícita del usuario registrada con fecha (brief-29.1, D-16).
 

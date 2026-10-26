@@ -76,12 +76,14 @@ export const organizationMembers = pgTable(
 // la 29.5: los productos por unidad, con IMEI (ADR 0024, punto 6; brief-29.5, D-2). repairs, desde la
 // 29.6: la lista de reparaciones, los técnicos y las órdenes de servicio (ADR 0024, punto 10;
 // brief-29.6, D-1). trade_ins, desde la 29.7: la recepción de usados, que exige serialized_units
-// (ADR 0024, punto 8; brief-29.7, D-1).
+// (ADR 0024, punto 8; brief-29.7, D-1). appointments, desde la 29.10: los turnos para visitar el local
+// (ADR 0024, punto 12; brief-29.10, D-1).
 export const capability = pgEnum("capability", [
   "variants",
   "serialized_units",
   "repairs",
   "trade_ins",
+  "appointments",
 ]);
 
 export const organizationCapabilities = pgTable(

@@ -920,6 +920,19 @@ describe("los scripts de operador (AC-4, AC-5)", () => {
     );
     expect(again).toContain("La garantía de las unidades vendidas ya existía.");
     expect(again).toContain("La garantía de las reparaciones ya existía.");
+    // Desde la 29.10 (brief-29.10, D-1, AC-7; revisión independiente, N-6): la duración, el cupo y los
+    // motivos de turno, de ejemplo; al volver a correrlo, nada nuevo.
+    expect(activation).toContain("Capacidad activada: appointments.");
+    expect(activation).toContain(
+      "turnos de 30 minutos, 1 por franja, de ejemplo.",
+    );
+    expect(activation).toContain(
+      "motivos de turno creados: Ver o comprar un equipo, Entregar un usado, Reparación o diagnóstico, Retirar un equipo, Otro; ya existían: ninguno.",
+    );
+    expect(again).toContain("La duración y el cupo de los turnos ya existían.");
+    expect(again).toContain(
+      "motivos de turno creados: ninguno; ya existían: Ver o comprar un equipo",
+    );
     await getDb().execute(
       sql`delete from unit_settings where organization_id = ${orgId}`,
     );

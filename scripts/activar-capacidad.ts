@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { applyAppointmentsTemplate } from "@/modules/appointments";
 import {
   applyAttributeTemplate,
   createServiceProduct,
@@ -63,6 +64,10 @@ import { getDb } from "@/shared/db";
 // Desde la 29.9 (brief-29.9, D-1), con el perfil: crea los días de garantía de serialized_units
 // (unit_settings) y de repairs (service_settings) si faltan, de ejemplo, con las capacidades nuevas o de
 // antes. Si ya existen no los toca. Sin perfil, los días se cargan en la pantalla.
+//
+// Desde la 29.10 (brief-29.10, D-1), appointments: con el perfil, crea la duración y el cupo de los turnos
+// si faltan, de ejemplo, y los motivos que la organización no tiene, por nombre, con la capacidad nueva o
+// de antes. Sin perfil, se cargan en la pantalla de configuración de los turnos.
 
 const usage =
   "Uso: npm run org:capability -- --organization <id> --admin-email <correo> (--profile <perfil> | --capability <capacidad>). Perfiles: " +
@@ -73,6 +78,7 @@ const CAPABILITIES: readonly Capability[] = [
   "serialized_units",
   "repairs",
   "trade_ins",
+  "appointments",
 ];
 
 function option(args: string[], name: string): string | undefined {
@@ -270,6 +276,23 @@ async function main() {
             : "La garantía de las reparaciones ya existía.",
         );
       }
+    }
+    // Los turnos, con el perfil, con appointments activa, nueva o de antes (brief-29.10, D-1).
+    if (profile?.appointments && capabilities.includes("appointments")) {
+      const template = profile.appointments;
+      const copied = await applyAppointmentsTemplate(tx, {
+        organizationId,
+        actorUserId,
+        slotMinutes: template.slotMinutes,
+        capacity: template.capacity,
+        reasons: template.reasons,
+      });
+      lines.push(
+        copied.settingsCreated
+          ? `Perfil «${profile.label}»: turnos de ${template.slotMinutes} minutos, ${template.capacity} por franja, de ejemplo.`
+          : "La duración y el cupo de los turnos ya existían.",
+        `Perfil «${profile.label}»: motivos de turno creados: ${copied.created.join(", ") || "ninguno"}; ya existían: ${copied.skipped.join(", ") || "ninguno"}.`,
+      );
     }
     // El producto de servicio, con o sin perfil, al activar repairs (D-1 y D-5): uno por organización.
     if (activatedNow.has("repairs")) {

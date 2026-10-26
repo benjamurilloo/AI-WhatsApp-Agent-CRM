@@ -51,6 +51,7 @@ import { auditActionLabel, describeAuditDiff } from "./audit-summary";
 import { DeactivateConfirm, ReactivateForm } from "./client-actions";
 import { ClientAccount } from "./client-account";
 import { ClientOrders } from "./client-orders";
+import { ClientAppointments } from "./client-appointments";
 import { ClientServiceOrders } from "./client-service-orders";
 import { ClientUnits } from "./client-units";
 import { ClientTradeIns } from "./client-trade-ins";
@@ -418,6 +419,13 @@ export default async function ClientPage({
               clientId={client.id}
               clientActive={client.isActive}
               timeZone={timeZone}
+            />
+
+            {/* Sus turnos, con la capacidad appointments (brief-29.10, D-5). */}
+            <ClientAppointments
+              context={context}
+              clientId={client.id}
+              clientActive={client.isActive}
             />
 
             {/* Los usados que entregó, con la capacidad trade_ins (brief-29.7, D-7). */}

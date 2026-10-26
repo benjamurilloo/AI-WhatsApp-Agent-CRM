@@ -58,6 +58,10 @@ describe("base de test", () => {
       sql`select tablename from pg_tables where schemaname = 'public' order by tablename`,
     );
     expect(result.rows.map((row) => row.tablename)).toEqual([
+      // Los turnos, sus motivos y sus valores (brief-29.10, D-2).
+      "appointment_reasons",
+      "appointment_settings",
+      "appointments",
       // Los atributos de un producto (brief-29.2, D-3).
       "attribute_definitions",
       "attribute_options",

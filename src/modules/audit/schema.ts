@@ -84,6 +84,12 @@ export const auditEntityType = pgEnum("audit_entity_type", [
   // update. Los días de una unidad se auditan sobre la unidad (stock_unit, update).
   "unit_settings",
   "service_settings",
+  // Los turnos (brief-29.10, D-2 y D-4): el turno, con create y status_change; el motivo de la lista de
+  // la organización, con create, update, deactivate y reactivate; y los valores sueltos (la duración y
+  // el cupo), con create y update.
+  "appointment",
+  "appointment_reason",
+  "appointment_settings",
 ]);
 
 export const auditAction = pgEnum("audit_action", [

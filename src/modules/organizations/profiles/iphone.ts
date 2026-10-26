@@ -20,10 +20,20 @@ import type { Profile } from "./index";
 // ejemplo (batería bajo 80 %, rango del 10 %, redondeo de 10 USD, la batería con «Cambio de batería»), y
 // el tipo de reparación de cuatro puntos. Sin márgenes: son por modelo, y los modelos son de cada
 // negocio (U-3). Una organización que ya tiene trade_ins los recibe al volver a correr el script (U-4).
+//
+// Versión 6, del 2026-10-26 (brief-29.10, D-1 y U-3): suma appointments, con franjas de 30 minutos, un
+// turno por franja y cinco motivos de ejemplo, respondidos por el usuario. Una organización que ya activó
+// el perfil los recibe al volver a correr el script.
 export const IPHONE_PROFILE: Profile = {
   name: "iphone",
   label: "Venta de iPhone",
-  capabilities: ["variants", "serialized_units", "repairs", "trade_ins"],
+  capabilities: [
+    "variants",
+    "serialized_units",
+    "repairs",
+    "trade_ins",
+    "appointments",
+  ],
   tradeInChecklist: [
     {
       name: "Cámara trasera",
@@ -53,6 +63,17 @@ export const IPHONE_PROFILE: Profile = {
   },
   // «30 días para todo» (ADR 0024, R-7).
   warrantyDays: 30,
+  appointments: {
+    slotMinutes: 30,
+    capacity: 1,
+    reasons: [
+      "Ver o comprar un equipo",
+      "Entregar un usado",
+      "Reparación o diagnóstico",
+      "Retirar un equipo",
+      "Otro",
+    ],
+  },
   repairTypes: [
     { name: "Cambio de batería" },
     { name: "Cambio de pantalla" },

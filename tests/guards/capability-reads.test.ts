@@ -100,7 +100,8 @@ function usesTemplateCopy(file: string, code: string): boolean {
 // (brief-29.7.3, U-4), la copia de los valores de la cotización, que solo nombra tradeins, y los tipos
 // de reparación por nombre que le pasa el script, que solo nombra service. Desde la 29.9 (brief-29.9,
 // D-1), la copia de los días de garantía: la de las unidades, que solo nombra inventory, y la de las
-// reparaciones, que solo nombra service.
+// reparaciones, que solo nombra service. Desde la 29.10 (brief-29.10, D-1), la copia de los turnos, que
+// solo nombra appointments.
 const SCRIPT_ONLY_COPIES = [
   { name: "applyRepairTypeTemplate", owner: "src/modules/service/" },
   { name: "createServiceProduct", owner: "src/modules/catalog/" },
@@ -109,6 +110,7 @@ const SCRIPT_ONLY_COPIES = [
   { name: "repairTypeIdsByName", owner: "src/modules/service/" },
   { name: "applyUnitSettingsTemplate", owner: "src/modules/inventory/" },
   { name: "applyServiceSettingsTemplate", owner: "src/modules/service/" },
+  { name: "applyAppointmentsTemplate", owner: "src/modules/appointments/" },
 ];
 
 function scriptOnlyViolations(file: string, code: string): string[] {

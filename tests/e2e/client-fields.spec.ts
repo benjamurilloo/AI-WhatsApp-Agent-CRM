@@ -23,7 +23,7 @@ test.beforeAll(() => {
 
 test.afterAll(async () => {
   await db.execute(
-    sql`truncate table trade_in_payment_voids, trade_in_payments, trade_in_voids, trade_in_checklist_results, trade_ins, service_order_lines, service_orders, refund_voids, refunds, receipt_voids, receipts, sale_voids, sale_line_units, sale_lines, sales, order_line_units, order_lines, orders, audit_logs, client_tag_assignments, client_tags, conversation_notes, messages, conversations, clients`,
+    sql`truncate table appointments, trade_in_payment_voids, trade_in_payments, trade_in_voids, trade_in_checklist_results, trade_ins, service_order_lines, service_orders, refund_voids, refunds, receipt_voids, receipts, sale_voids, sale_line_units, sale_lines, sales, order_line_units, order_lines, orders, audit_logs, client_tag_assignments, client_tags, conversation_notes, messages, conversations, clients`,
   );
   await db.$client.end();
 });
@@ -31,7 +31,7 @@ test.afterAll(async () => {
 // audit_logs es de solo inserción: TRUNCATE es la vía documentada para vaciarla (ADR 0013).
 test.beforeEach(async () => {
   await db.execute(
-    sql`truncate table trade_in_payment_voids, trade_in_payments, trade_in_voids, trade_in_checklist_results, trade_ins, service_order_lines, service_orders, refund_voids, refunds, receipt_voids, receipts, sale_voids, sale_line_units, sale_lines, sales, order_line_units, order_lines, orders, audit_logs, client_tag_assignments, client_tags, conversation_notes, messages, conversations, clients`,
+    sql`truncate table appointments, trade_in_payment_voids, trade_in_payments, trade_in_voids, trade_in_checklist_results, trade_ins, service_order_lines, service_orders, refund_voids, refunds, receipt_voids, receipts, sale_voids, sale_line_units, sale_lines, sales, order_line_units, order_lines, orders, audit_logs, client_tag_assignments, client_tags, conversation_notes, messages, conversations, clients`,
   );
   await db.execute(sql`delete from login_attempts`);
   await db.execute(sql`delete from sessions`);

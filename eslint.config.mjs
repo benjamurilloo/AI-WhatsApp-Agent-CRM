@@ -97,6 +97,8 @@ export default defineConfig([
       "src/modules/service/**/*.{ts,tsx}",
       // Desde la 29.7 (ADR 0024, punto 16; brief-29.7, D-1).
       "src/modules/tradeins/**/*.{ts,tsx}",
+      // Desde la 29.10 (ADR 0024, punto 16; brief-29.10, D-1).
+      "src/modules/appointments/**/*.{ts,tsx}",
     ],
     rules: restrict(moduleInternals, leaveModuleRelative, httpAndPresentation),
   },

@@ -241,6 +241,18 @@ Desde la subfase 11.2 ([brief-11.2](../decisions/brief-11.2-informacion-del-nego
 - **FR-INFO-05** (agregado el 2026-10-09 por la 17.4): cualquier usuario ve el horario semanal y los días especiales próximos; el historial, solo un admin.
 - **FR-INFO-06** (agregado el 2026-10-09 por la 17.4): el CRM calcula si el negocio está **abierto en un instante** y **cuándo cambia** la próxima vez, en los próximos 7 días, con el reloj de PostgreSQL y la zona horaria de la organización, aplicando el día especial de cada fecha. Una apertura es inclusiva y un cierre no.
 
+## Turnos
+
+*Desde la 29.10, con la capacidad «turnos»* ([brief-29.10](../decisions/brief-29.10-los-turnos.md); [ADR 0024](../decisions/0024-rubros-y-capacidades.md), punto 12). Sin la capacidad, nada de esta sección existe: las pantallas responden 404 y el menú no la muestra. El agente pide turnos desde la 29.10.2.
+
+- **FR-TUR-01**: En Turnos → Configuración, un admin fija **la duración de una franja** (15, 20, 30, 45, 60, 90 o 120 minutos) y **cuántos turnos caben a la vez** en ella (de 1 a 20), y ajusta **los motivos** de un turno: agrega, renombra, ordena y desactiva, hasta 20, con el nombre único sin distinguir mayúsculas. Un motivo no se borra. Cada cambio se audita. El perfil del rubro trae valores de ejemplo, que se confirman al guardarlos.
+- **FR-TUR-02**: **Las franjas de un día salen del horario del local** (FR-INFO-04), con su día especial: desde la apertura de cada tramo, una por cada duración, mientras termine antes del cierre. Un día cerrado no tiene franjas.
+- **FR-TUR-03**: Cualquier usuario ve **el calendario** por semana o por día: cada franja libre, con lugar, completa o sobre el cupo, y cada turno con su horario, su cliente, su motivo y su estado. El calendario marca **los turnos que quedaron fuera del horario vigente o sobre el cupo** después de un cambio de horario, duración o cupo, que no los mueve ni los cancela.
+- **FR-TUR-04**: Un admin **da un turno** a un cliente activo: la fecha, una franja libre, el motivo activo, una nota opcional y, desde las unidades de un producto, el equipo como referencia. Nace confirmado. Se rechaza fuera de horario, en una franja llena, en una que ya empezó y más allá de 90 días, cada uno con su mensaje, y dos altas a la vez en la última plaza dejan una sola.
+- **FR-TUR-05**: Un admin **confirma** un turno pedido, **cancela** uno pedido o confirmado, y **marca atendido o ausente** uno confirmado que ya empezó. Ningún otro cambio existe, y la base lo exige. Un pedido ocupa su franja como un confirmado. Cada cambio se audita.
+- **FR-TUR-06**: Cualquier usuario ve el detalle de un turno con su historia, y los turnos de un cliente en su ficha. **Un viewer no da turnos ni los cambia, ni ve la configuración.**
+- **FR-TUR-07**: Sin recordatorios ni avisos: el CRM no envía mensajes.
+
 ## API de lectura para sistemas externos
 
 Agregada el 2026-09-24 por la 11.3 ([brief-11.3](../decisions/brief-11.3-api-de-lectura.md)), con el [contrato de lectura v1](../contracts/read-v1.md). El consumidor previsto es el agente de WhatsApp ([ADR 0014](../decisions/0014-el-agente-de-whatsapp-como-consumidor-del-crm.md)); ~~ninguno está conectado~~ (*corregido el 2026-10-08*, revisión independiente de la 16.6.1: el agente la lee en staging desde la 12.5.2 y en producción desde la 13.5.2-a).

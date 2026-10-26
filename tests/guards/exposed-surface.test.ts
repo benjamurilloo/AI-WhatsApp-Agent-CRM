@@ -470,6 +470,29 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
   "src/app/(autenticado)/usados/actions.ts#setTradeInMarginAction": {
     requirement: "sesion",
   },
+  // Los turnos (brief-29.10, D-4): el alta, los cambios de estado y la configuración, solo admin y con
+  // appointments, lo exige appointments.
+  "src/app/(autenticado)/turnos/actions.ts#createAppointmentAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/turnos/actions.ts#changeAppointmentStatusAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/turnos/actions.ts#saveAppointmentSettingsAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/turnos/actions.ts#createAppointmentReasonAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/turnos/actions.ts#renameAppointmentReasonAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/turnos/actions.ts#setAppointmentReasonActiveAction": {
+    requirement: "sesion",
+  },
+  "src/app/(autenticado)/turnos/actions.ts#moveAppointmentReasonAction": {
+    requirement: "sesion",
+  },
   "src/app/(autenticado)/usuarios/actions.ts#createMemberAction": {
     requirement: "sesion",
   },

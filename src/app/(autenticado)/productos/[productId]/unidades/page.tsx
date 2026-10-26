@@ -10,6 +10,7 @@ import {
   listUnitGrades,
   type ProductUnit,
 } from "@/modules/inventory";
+import { appointmentsAllowed } from "@/modules/appointments";
 import { getUnitOrders } from "@/modules/orders";
 import {
   getMainCurrency,
@@ -192,6 +193,8 @@ export default async function ProductUnitsPage({
     page: 1,
   });
   const hasMovements = history.ok && history.total > 0;
+  // Un turno para ver una unidad disponible, con la capacidad appointments (brief-29.10, D-5).
+  const appointments = isAdmin && (await appointmentsAllowed(context));
   const grades = isAdmin ? await listUnitGrades(context) : null;
   const activeGrades = grades?.ok
     ? grades.grades
@@ -478,6 +481,18 @@ export default async function ProductUnitsPage({
                                   <span className="sr-only">
                                     {" "}
                                     {unit.serial}
+                                  </span>
+                                </Link>
+                              ) : null}
+                              {appointments ? (
+                                <Link
+                                  href={`/turnos/nuevo?unidad=${unit.id}`}
+                                  className={secondaryLinkClass}
+                                >
+                                  Dar un turno
+                                  <span className="sr-only">
+                                    {" "}
+                                    para {unit.serial}
                                   </span>
                                 </Link>
                               ) : null}

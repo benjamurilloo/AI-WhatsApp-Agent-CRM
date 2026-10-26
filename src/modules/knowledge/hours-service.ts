@@ -474,3 +474,36 @@ export async function getBusinessHoursStatusAt(
   const timezone = await getOrganizationTimezone(context);
   return hours.computeStatus(context.organizationId, timezone, at);
 }
+
+// Los días de un rango de fechas locales, con el día especial aplicado (brief-29.10, H-1 y D-3), para el
+// calendario de turnos. La llama appointments, que ya autorizó al usuario y comprobó su capacidad; por
+// eso recibe la organización, como getBusinessHoursForService. Un rango inválido o de más de
+// MAX_RANGE_DAYS días no lee nada. configured dice si el horario semanal está cargado, como en
+// getBusinessHoursForService, para que appointments no tenga que leer las dos (brief-29.10, D-1).
+export const MAX_RANGE_DAYS = 62;
+
+export async function getEffectiveBusinessDays(
+  organizationId: string,
+  from: string,
+  to: string,
+): Promise<{ configured: boolean; days: EffectiveBusinessDay[] } | null> {
+  if (!isCalendarDate(from) || !isCalendarDate(to) || from > to) return null;
+  const span =
+    (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) /
+    86_400_000;
+  if (span >= MAX_RANGE_DAYS) return null;
+  const { weekdays, days } = await hours.findEffectiveDays(
+    organizationId,
+    from,
+    to,
+  );
+  return {
+    configured: weekdays === WEEKDAYS.length,
+    days: days.map((day) => ({
+      date: day.date,
+      weekday: day.weekday as Weekday,
+      slots: toSlots(day),
+      reason: day.reason,
+    })),
+  };
+}

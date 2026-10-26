@@ -284,6 +284,7 @@ describe("cliente con conversaciones: se vacía, no se borra (brief-13.4, D-2)",
       auditEntries: 1,
       tags: 0,
       serviceOrders: 0,
+      appointments: 0,
     });
 
     for (const value of [
@@ -378,6 +379,7 @@ describe("cliente con conversaciones: se vacía, no se borra (brief-13.4, D-2)",
       auditEntries: 0,
       tags: 0,
       serviceOrders: 0,
+      appointments: 0,
     });
   });
 

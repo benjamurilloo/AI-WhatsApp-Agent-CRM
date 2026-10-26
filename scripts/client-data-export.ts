@@ -22,6 +22,8 @@ import { getDb, type Db } from "@/shared/db";
  * Desde la 29.6, sus órdenes de servicio (brief-29.6, D-11): el modelo, el IMEI del equipo, lo que
  * reportó, el estado, las fechas, lo que paga y el presupuesto por reparación, sin el técnico ni su
  * costo, que no son datos de la persona.
+ * Desde la 29.10, sus turnos (brief-29.10, D-6): el motivo, el inicio y el fin, la nota, el estado y
+ * sus fechas, y la referencia por su nombre de hoy. El autor no, que no es un dato de la persona.
  *
  * `ingestion_events` queda fuera a propósito: guarda `source`, una referencia opaca del emisor,
  * el hash del payload y fechas. No tiene datos personales (brief-8.2, hallazgo 9). Se dice acá
@@ -67,6 +69,8 @@ export type ClientExport = {
   // con «Permuta» van en receipts, con su usado.
   trade_in_payments: Record<string, unknown>[];
   trade_in_payment_voids: Record<string, unknown>[];
+  // Desde la 29.10 (brief-29.10, D-6).
+  appointments: Record<string, unknown>[];
 };
 
 export async function exportClientData(
@@ -302,6 +306,19 @@ export async function exportClientData(
         order by v.number`,
   );
 
+  // Sus turnos (brief-29.10, D-6), con el nombre de hoy del motivo y de la referencia.
+  const appointments = await db.execute<Record<string, unknown>>(
+    sql`select a.id, a.created_at, r.name as reason, a.starts_at, a.ends_at, a.note, a.status,
+               p.name as product, u.serial as unit_serial, a.confirmed_at, a.cancelled_at,
+               a.attended_at, a.no_show_at
+        from appointments a
+        join appointment_reasons r on r.organization_id = a.organization_id and r.id = a.reason_id
+        left join products p on p.organization_id = a.organization_id and p.id = a.product_id
+        left join stock_units u on u.organization_id = a.organization_id and u.id = a.unit_id
+        where a.organization_id = ${organizationId} and a.client_id = ${clientId}
+        order by a.starts_at, a.id`,
+  );
+
   return {
     exported_at: now.toISOString(),
     organization_id: organizationId,
@@ -332,6 +349,7 @@ export async function exportClientData(
     trade_in_voids: tradeInVoids.rows,
     trade_in_payments: tradeInPayments.rows,
     trade_in_payment_voids: tradeInPaymentVoids.rows,
+    appointments: appointments.rows,
   };
 }
 

@@ -19,7 +19,7 @@ export type ProfileAttribute = {
 // del módulo por una ruta relativa): si un valor de acá no existiera en el enum capability, el
 // script de activación, que se lo pasa a activateCapability, deja de compilar.
 export type ProfileCapability =
-  "variants" | "serialized_units" | "repairs" | "trade_ins";
+  "variants" | "serialized_units" | "repairs" | "trade_ins" | "appointments";
 
 // Los grados de las unidades que copia el perfil al activar serialized_units (brief-29.5, D-5). Los
 // escribe inventory, dueño de su tabla, como catalog los atributos.
@@ -49,6 +49,14 @@ export type ProfileTradeInQuote = {
   batteryRepairType: string;
 };
 
+// Los turnos que copia el perfil al activar appointments (brief-29.10, D-1 y U-3): la duración de una
+// franja, el cupo y los motivos, de ejemplo. Los escribe appointments, dueño de sus tablas.
+export type ProfileAppointments = {
+  slotMinutes: number;
+  capacity: number;
+  reasons: string[];
+};
+
 export type Profile = {
   name: string;
   label: string;
@@ -61,6 +69,8 @@ export type Profile = {
   // Los días de garantía de una unidad vendida y de una reparación entregada (brief-29.9, D-1): el script
   // los copia a unit_settings y a service_settings, de ejemplo. Nulo, el perfil no los trae.
   warrantyDays: number | null;
+  // Nulo, el perfil no trae turnos.
+  appointments: ProfileAppointments | null;
 };
 
 export const PROFILES: readonly Profile[] = [IPHONE_PROFILE];

@@ -20,7 +20,7 @@ suma datos del cliente que este runbook tiene que exportar y vaciar cuando exist
 Instagram (`clients.document_number` e `instagram`, 29.7), las recepciones de usados (`trade_ins`,
 29.7), las órdenes de servicio de sus equipos con el IMEI (`service_orders`, 29.6) y sus turnos
 (`appointments`, 29.10). Sus claves al cliente son `RESTRICT`. Cada subfase amplía este runbook y
-su test cuando crea la tabla. *Precisado el 2026-10-21 por la 29.7* (ADR 0024, nota del punto 14): `trade_ins` se exporta y retiene la ficha, pero el vaciado no la toca, porque no guarda datos de la persona.
+su test cuando crea la tabla. *Precisado el 2026-10-21 por la 29.7* (ADR 0024, nota del punto 14): `trade_ins` se exporta y retiene la ficha, pero el vaciado no la toca, porque no guarda datos de la persona. *Precisado el 2026-10-26 por la 29.10* ([brief-29.10](../decisions/brief-29.10-los-turnos.md), D-6, corregido por el usuario): `appointments` se exporta (el motivo, el horario, la nota, el estado y sus fechas, y la referencia) y retiene la ficha, así que un cliente con turnos no se borra, se vacía; el vaciado deja la nota de cada turno en nulo, porque es texto libre que puede nombrar a la persona.
 
 ## Antes de tocar nada
 
@@ -60,6 +60,7 @@ Incluye los seis orígenes que guardan datos de la persona y, desde la 19.2, sus
 | `service_orders` y `service_order_lines` | *desde la 29.6* ([brief-29.6](../decisions/brief-29.6-las-reparaciones-de-equipos-de-clientes.md), D-11): sus órdenes de servicio, con número, fecha, estado, el modelo (su nombre de hoy), **el IMEI del equipo y lo que reportó**, que son datos suyos, lo que paga y sus fechas, y el presupuesto por reparación, con el nombre de hoy del tipo y el precio. Sin el técnico ni su costo, que no son datos de la persona |
 | `trade_ins`, `trade_in_checklist_results` y `trade_in_voids` | *desde la 29.7* ([brief-29.7](../decisions/brief-29.7-la-recepcion-de-usados.md), D-6): los usados que entregó, con número, fecha, el producto (su nombre de hoy), el IMEI, la batería, el grado, la moneda, el valor y el destino; el resultado de cada punto del checklist, con el nombre copiado; y sus anulaciones, con número, fecha y motivo |
 | `trade_in_payments` y `trade_in_payment_voids` | *desde la 29.7.2* ([brief-29.7.2](../decisions/brief-29.7.2-la-permuta-y-la-compra-de-usados.md), D-8): los pagos de sus usados comprados (`PPU-000123`), con número, fecha, el usado y su número, el medio, la moneda, el monto y lo que salió en otra moneda; y sus anulaciones (`APPU-000012`), con número, fecha y motivo (campos `trade_in_payments` y `trade_in_payment_voids`). Llegan al cliente por sus usados. En `receipts`, un cobro con «Permuta» suma `trade_in_id` y `trade_in_number` |
+| `appointments` | *desde la 29.10* ([brief-29.10](../decisions/brief-29.10-los-turnos.md), D-6): sus turnos, con el motivo (su nombre de hoy), el inicio y el fin (`timestamptz`), **la nota**, que es texto libre y puede nombrarla, el estado y la fecha de cada paso, y la referencia, con el nombre de hoy del producto o el número de serie de la unidad. Sin quién lo dio, que no es dato de la persona |
 
 **No incluye `ingestion_events`**, y es a propósito: esa tabla guarda el emisor, una referencia
 opaca suya, el hash del payload y fechas. El propio archivo lo dice en su campo `excluded`, para
@@ -100,7 +101,7 @@ Queda en `audit_logs` que hubo cambios sobre una ficha, de qué tipo y cuándo, 
 
 ### Caso B — el cliente tiene conversaciones o pedidos
 
-La ficha no se puede borrar: `messages` → `conversations` → `clients` son `ON DELETE RESTRICT`, y los mensajes no se borran; desde la 19.2, también `orders` → `clients`, y un pedido nunca se borra; desde la 20.2, también `sales` → `clients`, y una venta nunca se borra; desde la 21.3, también `receipts` → `clients`, y un cobro nunca se borra; desde la 21.5, también `refunds` → `clients`, y una devolución nunca se borra. Se vacía:
+La ficha no se puede borrar: `messages` → `conversations` → `clients` son `ON DELETE RESTRICT`, y los mensajes no se borran; desde la 19.2, también `orders` → `clients`, y un pedido nunca se borra; desde la 20.2, también `sales` → `clients`, y una venta nunca se borra; desde la 21.3, también `receipts` → `clients`, y un cobro nunca se borra; desde la 21.5, también `refunds` → `clients`, y una devolución nunca se borra; desde la 29.10, también `appointments` → `clients`, y un turno nunca se borra, se cancela. Se vacía:
 
 ```
 npx tsx scripts/client-data-delete.ts --org <organization_id> --client <client_id> --vaciar
@@ -123,6 +124,7 @@ En una sola transacción:
 | `service_orders` (desde la 29.6) | **el IMEI del equipo y lo que reportó el cliente** quedan en `null` ([brief-29.6](../decisions/brief-29.6-las-reparaciones-de-equipos-de-clientes.md), D-11). El trigger `service_orders_guard` deja pasar ese `UPDATE`, en cualquier estado, y ningún otro sin cambio de estado. La auditoría de la orden no los guarda | el número, el modelo, el estado, las fechas, el técnico, los montos y el presupuesto. **Una orden de servicio retiene la ficha** (`ON DELETE RESTRICT`): un cliente con órdenes va al caso B |
 | `trade_ins`, sus resultados y sus anulaciones (desde la 29.7) | **nada**: no guardan texto de la persona ni sus datos. El IMEI es el del equipo que ahora es del negocio, y la auditoría no guarda datos del cliente ([brief-29.7](../decisions/brief-29.7-la-recepcion-de-usados.md), D-4 y D-6) | todo. **Un usado retiene la ficha** (`ON DELETE RESTRICT`): un cliente con usados va al caso B |
 | `trade_in_payments` y sus anulaciones (desde la 29.7.2) | **nada**: no guardan texto de la persona ni la referencian; llegan a ella por el usado, y la auditoría no guarda datos del cliente ([brief-29.7.2](../decisions/brief-29.7.2-la-permuta-y-la-compra-de-usados.md), D-8) | todo |
+| `appointments` (desde la 29.10) | **la nota** queda en `null` ([brief-29.10](../decisions/brief-29.10-los-turnos.md), D-6). El trigger `appointments_guard_change` deja pasar ese `UPDATE`, en cualquier estado, y ningún otro sin cambio de estado. La auditoría del turno no guarda la nota | el motivo, la fecha, el horario, el estado y sus fechas, la referencia y quién lo dio. **Un turno retiene la ficha** (`ON DELETE RESTRICT`): un cliente con turnos va al caso B |
 
 Un segundo vaciado no cambia nada ni falla. Con la ingestión encendida, el vaciado espera a los mensajes de esa persona que se están guardando en ese momento, y los alcanza (revisión independiente de la 13.4, R-2). Lo mismo con una nota que un usuario del CRM está guardando en ese momento (revisión de la 16.4, R-1).
 

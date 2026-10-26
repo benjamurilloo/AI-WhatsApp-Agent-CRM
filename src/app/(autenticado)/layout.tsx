@@ -71,6 +71,17 @@ export default async function AuthenticatedLayout({
           },
         ]
       : []),
+    // Los turnos, para los dos roles y solo con la capacidad appointments (brief-29.10, D-5), con la
+    // misma regla: cada página vuelve a comprobarla.
+    ...(frame.capabilities.includes("appointments")
+      ? [
+          {
+            href: "/turnos",
+            label: "Turnos",
+            icon: "calendar" as const,
+          },
+        ]
+      : []),
     // Pedidos, para los dos roles (brief-19.2).
     { href: "/pedidos", label: "Pedidos", icon: "list" },
     // Ventas, para los dos roles (brief-20.2).
