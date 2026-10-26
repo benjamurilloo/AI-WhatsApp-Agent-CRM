@@ -10,7 +10,7 @@ generated_at: 2026-10-26
 - **Contrato**: `task-brief.v1`
 - **Tipo de tarea**: `implementation`. Migración, código, pruebas y despliegue.
 - **Nivel de evidencia objetivo**: `deterministic` (tests contra PostgreSQL) y `producer-consumer` (pantallas ↔ servicio ↔ base, con end-to-end).
-- **Estado**: **aprobado por el usuario el 2026-10-26**, con la opción (a) en U-1 a U-5.
+- **Estado**: **aprobado por el usuario el 2026-10-26**, con la opción (a) en U-1 a U-5. **Cerrado el 2026-10-26** (§Cierre).
 - **Fuentes**:
   - [ADR 0024](0024-rubros-y-capacidades.md): punto 10 (la orden de servicio y la cuenta del técnico), punto 11 (la garantía y el reclamo), punto 15 (el agente) y punto 16 (las dependencias);
   - [brief-29.9](brief-29.9-la-garantia.md): U-1 (la división), H-7, H-8 y NB-1;
@@ -179,3 +179,57 @@ Que el negocio pueda **recibir un equipo que vuelve en garantía y repararlo sin
 - Si la cuenta del técnico o el saldo de caja necesitan un cambio fuera de D-4.
 - Cualquier cambio en un contrato del agente.
 - Si algún camino emitiría una venta o un cobro para un reclamo.
+
+## Cierre
+
+*Del 2026-10-26, después del despliegue y del recorrido del usuario, que lo aprobó sin observaciones.*
+
+### Criterios
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| AC-1 | cumple | `migration-0064.test.ts`: una base en la `0063` con 10 órdenes de los dos tipos (recibida, mandada, presupuestada, aprobada, rechazada, reparada, cancelada y entregada con su venta), la `0064` sola, las filas iguales y los valores nuevos en la transacción siguiente; en producción, 65 migraciones y las 6 órdenes de «iPhone Demo» sin cambios |
+| AC-2 | cumple | `warranty-claims.test.ts`, de punta a punta sobre una unidad y sobre una reparación; el recorrido del usuario |
+| AC-3 | cumple | `warranty-claims.test.ts`, los rechazos: fuera de garantía, unidad no vendida, orden no reparada y reclamo abierto. El cliente inactivo lo rechaza el código (`inactive_client`) sin un test propio |
+| AC-4 | cumple | `quote.test.ts` y la parte de la base de `warranty-claims.test.ts`: cada transición fuera de la lista, el cambio de cliente o de equipo durante una transición, sin pasar por el servicio |
+| AC-5 | cumple | `warranty-claims.test.ts`: con cargo, la deuda pasa de 35 a 55; sin cargo, ninguna. Quitar el filtro de `findTechnicianCharges` hace fallar el test |
+| AC-6 | cumple | `warranty-claims.test.ts`: la entrega sin venta y `not_covered` rechazado fuera de un reclamo, en el servicio y en la base; en producción, los dos reclamos entregados sin `sale_id` |
+| AC-7 | cumple | `warranty-claims.test.ts`: la garantía del equipo original antes y después; el reclamo, sin garantía |
+| AC-8 | cumple | `warranty-claims.spec.ts`, el recorrido del `admin` y el del `viewer`; las acciones, en `exposed-surface` |
+| AC-9 | cumple | las FK compuestas cruzadas rechazadas en la base y `warranty-claims.test.ts`, el aislamiento |
+| AC-10 | cumple | `warranty-claims.test.ts`: la lectura del agente (`listClientServiceOrdersForService`) no devuelve el reclamo; `read-v3.md` sin cambios |
+| AC-11 | cumple | en local: tipos, lint, unitarias y guardas (2011 tests) y la integración entera (108 archivos). CI de `7316ac4` en `success` (run 40340513476, segundo intento), con la integración y el e2e enteros |
+| AC-12 | cumple | §Revisión independiente |
+| AC-13 | cumple | §El despliegue |
+
+### Revisión independiente
+
+Antes del commit, sobre `98e92ca` más el árbol de trabajo, un agente que no participó: **R1, sin bloqueantes**, seis no bloqueantes y dos observaciones. Cada cita se verificó contra el código y era correcta.
+
+- **NB-1**: el ADR 0024 decía en el punto 16 que `service` lee la venta de un reclamo, y en el punto 11 lo contrario. Nota fechada en el punto 16, sin reescribir el texto aceptado.
+- **NB-2 y NB-3**: el Roadmap decía «brief por hacer», y faltaba la fila del brief en el índice de decisiones. Corregidos.
+- **NB-4**: el Overview no nombraba `getUnitWarranties` entre lo que `service` usa de `inventory`. Es la misma arista; agregado.
+- **NB-5**: faltaban pruebas. El test de la `0064` suma órdenes presupuestadas, aprobadas y una entregada con su venta; el del reclamo, la FK cruzada de la orden, una línea con precio y el cambio de cliente o de equipo durante una transición.
+- **NB-6**: comentarios que atribuían el trigger solo a la `0059`, y el DataModel no explicaba el IMEI de un reclamo. Corregidos.
+- **O-1**: `.claude/settings.json` quedó fuera del commit.
+- **O-2**: un mismo aparato puede tener un reclamo abierto por la unidad y otro por una reparación posterior. Coincide con D-1: el reclamo apunta a un destino, no al IMEI.
+
+Las correcciones son autoevaluación: no hubo una segunda revisión independiente.
+
+### El despliegue
+
+- **La CI de `7316ac4` se cortó** a los 45 minutos del límite del job: instalar Chromium tardó 13 minutos. Habían pasado 294 e2e, y `sales.spec.ts:276` (un `viewer` en ventas, fuera de este cambio) pasó los 30 s; en local pasa en 5 a 7 s. Un segundo intento de la misma corrida dio `success`.
+- **`repairs.spec.ts:246`** rozaba los 30 s en local: en la línea base `98e92ca` tarda 22,7 s, y con este cambio 29,8 s en frío y 20,0 s después. No es una regresión.
+- **Antes**, solo leyendo: 64 migraciones, y en «iPhone Demo» cuatro órdenes de clientes (cancelada, entregada, presupuestada y mandada) y dos propias reparadas.
+- **El paso 3 del runbook**, el 2026-10-26: `7316ac4`, con el servicio detenido durante el build y 1.536 MB de heap. Quedó anotado `ff3f0fb` para volver atrás: el código anterior sigue andando sobre la `0064`, que solo agrega y reescribe restricciones equivalentes para los dos tipos de antes. No hace falta `org:capability`.
+- **Después**, solo leyendo: 65 migraciones, las mismas seis órdenes, el tipo `warranty_claim` y las restricciones nuevas; `/api/health` en 200.
+- **El recorrido del usuario**: un reclamo de una unidad vendida y otro de la reparación entregada, los dos llevados hasta la entrega, con el costo del técnico y sin venta. El segundo costó encontrarlo: la lista de reparaciones abre en «En curso», que no muestra las entregadas.
+
+### Lo que queda
+
+- **Los límites declarados**:
+  - el agente no ve los reclamos (U-4 (a)); `read-v3.md` no lo dice, para no tocar el contrato;
+  - `service_orders_unquoted_path` no se puede probar aislado en un reclamo: PostgreSQL evalúa los `CHECK` en orden alfabético, y antes lo frenan `dates_chain` y `sale_delivered`. Es una defensa redundante;
+  - la exportación de datos de un cliente (`scripts/client-data-export.ts`) lista los reclamos junto con las demás órdenes, sin decir el tipo.
+- **NB-1 de la 29.9** queda como está (U-5 (a)).
+- **Un acceso más directo al reclamo de una reparación**, por ejemplo desde la ficha del cliente, como el de la unidad: lo sugirió el recorrido, sin decisión del usuario.

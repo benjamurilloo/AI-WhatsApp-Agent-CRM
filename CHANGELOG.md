@@ -2,6 +2,25 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-26 — 29.9.2: el reclamo de garantía
+
+Cierra el 2026-10-26, desplegada en producción (`7316ac4`, con la migración `0064`) y recorrida por el usuario sobre «iPhone Demo»: un reclamo de una unidad vendida y otro de una reparación entregada, los dos hasta la entrega ([brief-29.9.2](docs/decisions/brief-29.9.2-el-reclamo-de-garantia.md), §Cierre). Completa el punto 11 del [ADR 0024](docs/decisions/0024-rubros-y-capacidades.md).
+
+**Certifica:**
+- **El reclamo es una orden de servicio** de tipo `warranty_claim`, que apunta a exactamente un equipo: la unidad vendida o la orden de un cliente entregada y reparada, las dos en garantía. Uno abierto por equipo.
+- **El camino**: recibido, en el técnico, reparado (con el costo del técnico o sin cargo), entregado; cancelado desde recibido o en el técnico, con el motivo nuevo `not_covered`, que solo vale en un reclamo. La base lo exige con el trigger y los `CHECK` de la `0064`, aunque se salte el servicio.
+- **Nunca una venta ni un cobro al cliente.** Con costo, la deuda queda en la cuenta del técnico; sin costo, ninguna, y la cuenta no lee órdenes sin total.
+- **La garantía del equipo no cambia**, y el reclamo no tiene garantía propia.
+- **Dónde se ve**: la orden, con el equipo en garantía y sus reclamos; la lista de reparaciones, con el filtro «Reclamo de garantía»; la ficha del cliente, por unidad; `/buscar` y las unidades de un producto. Solo un `admin` lo abre y lo mueve; un `viewer` lo ve sin costos.
+- **La `0064` aplicada sola sobre la `0063`** no cambia ninguna orden, probado con órdenes en cada estado y en producción.
+- **Una revisión independiente** antes del despliegue (R1, sin bloqueantes, seis no bloqueantes y dos observaciones), verificada contra el código y resuelta.
+
+**No certifica:**
+- ningún negocio real;
+- el reclamo para el agente: `read-v3` no lo devuelve (U-4 (a));
+- un reclamo de un producto sin IMEI, un comprobante del reclamo ni métricas de garantía;
+- una segunda revisión independiente de las correcciones, que son autoevaluación.
+
 ## 2026-10-26 — 29.9: la garantía
 
 Cierra el 2026-10-26, desplegada en producción (`ff3f0fb`, con la migración `0063`) y recorrida por el usuario sobre «iPhone Demo», con los 30 días de ejemplo creados por `org:capability` ([brief-29.9](docs/decisions/brief-29.9-la-garantia.md), §Cierre). Implementa el punto 11 del [ADR 0024](docs/decisions/0024-rubros-y-capacidades.md), sin el reclamo, que pasa a la 29.9.2.
