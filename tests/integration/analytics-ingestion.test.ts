@@ -286,6 +286,35 @@ describe("métrica 12: errores de ingestión (brief-7.3)", () => {
     );
   });
 
+  // El turno que pide el agente (brief-29.10.2, D-3), fallido o no: tampoco es un mensaje. Calculado
+  // a mano: sigue en total 7 y fallidos 5.
+  it("brief-29.10.2: un turno pedido por el agente, fallido o no, no cuenta en la métrica 12", async () => {
+    const { orgA, orgB, adminA } = await users();
+    await mainFixture(orgA, orgB);
+    await getDb().execute(
+      sql`insert into ingestion_events
+            (organization_id, source, external_ref, event_type, payload_hash, status,
+             error_code, received_at, processed_at)
+          values
+            (${orgA}, 'wa-cloud', 'evt-turno-fallido', 'appointment.requested',
+             'hash-turno-1', 'failed', 'slot_full',
+             '2026-09-02T18:00:00Z', '2026-09-02T18:00:00Z'),
+            (${orgA}, 'wa-cloud', 'evt-turno-ok', 'appointment.requested',
+             'hash-turno-2', 'processed', null,
+             '2026-09-02T18:00:00Z', '2026-09-02T18:00:00Z')`,
+    );
+
+    const value = valueOf(
+      await getIngestionErrors(adminA, PERIOD, INGESTION_OFF),
+    );
+    if (value.status !== "value") throw new Error("se esperaba un valor");
+    expect(value.total).toBe(7);
+    expect(value.failed).toBe(5);
+    expect(value.groups.map((group) => group.errorCode)).not.toContain(
+      "slot_full",
+    );
+  });
+
   it("agrupa por origen y código, ordenado por conteo y con desempate alfabético", async () => {
     const { orgA, orgB, adminA } = await users();
     await mainFixture(orgA, orgB);

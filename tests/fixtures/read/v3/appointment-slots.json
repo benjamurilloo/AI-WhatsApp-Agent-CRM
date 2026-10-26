@@ -1,0 +1,45 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: ningún consumidor real leyó esta respuesta (brief-29.10.2, D-2). La ventana con el agente la contrasta con lo que lea.",
+  "description": "La fecha de hoy del negocio, la duración, los motivos activos y, por día, las franjas que el agente puede pedir, con el desplazamiento de la zona. Sin ocupación, cupo ni turnos.",
+  "request": {
+    "method": "GET",
+    "path": "/api/read/v3/appointment-slots?from=2026-10-29&days=2",
+    "headers": {
+      "authorization": "Bearer crm_read_<token>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "contract_version": "3",
+      "today": "2026-10-27",
+      "slot_minutes": 30,
+      "reasons": [
+        {
+          "reason_id": "3c5e7a9b-1d2f-4a6b-8c0d-2e4f6a8b0c1d",
+          "name": "Ver o comprar un equipo"
+        },
+        {
+          "reason_id": "4d6f8a0c-2e3a-4b7c-9d1e-3f5a7b9c1d2e",
+          "name": "Entregar un usado"
+        }
+      ],
+      "days": [
+        {
+          "date": "2026-10-29",
+          "slots": [
+            {
+              "starts_at": "2026-10-29T15:00:00-03:00",
+              "ends_at": "2026-10-29T15:30:00-03:00"
+            },
+            {
+              "starts_at": "2026-10-29T15:30:00-03:00",
+              "ends_at": "2026-10-29T16:00:00-03:00"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

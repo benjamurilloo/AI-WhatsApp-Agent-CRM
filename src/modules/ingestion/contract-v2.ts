@@ -17,7 +17,7 @@ import {
 // evento de v1, con el tipo original del mensaje (kind, D-2) y el autor de una salida (sent_by,
 // D-3). Las referencias, las fechas, el texto y el hash siguen las reglas de v1, que no cambia. Desde
 // la 16.2, dos tipos que solo existen en v2: poner y quitar una etiqueta en un cliente. Desde la
-// 19.4, un tercero: el pedido pendiente que deja el agente.
+// 19.4, un tercero: el pedido pendiente que deja el agente. Desde la 29.10.2, el turno que pide.
 
 export const INGESTION_CONTRACT_VERSION_V2 = "2";
 
@@ -58,6 +58,11 @@ export const INGESTION_FIELDS_V2 = [
   "tag",
   "tag.id",
   "lines",
+  "appointment",
+  "appointment.reason_id",
+  "appointment.starts_at",
+  "appointment.product_id",
+  "appointment.unit_id",
 ] as const;
 
 export type IngestionFieldV2 = (typeof INGESTION_FIELDS_V2)[number];
@@ -212,6 +217,29 @@ const orderPlacedWithUnitsSchema = z.strictObject({
     .max(MAX_AGENT_ORDER_LINES),
 });
 
+// El turno que pide el agente (brief-29.10.2, D-3; U-3): el cliente por teléfono, que tiene que existir,
+// el motivo y el inicio de una franja, leídos de GET /api/read/v3/appointment-slots, y opcional un
+// producto o una unidad, nunca los dos. Sin nota ni fin: el fin lo pone el CRM. starts_at sigue las
+// reglas de fecha de occurred_at y se normaliza a UTC, así que el desplazamiento con que llega no cambia
+// el contenido. Un tipo nuevo es un cambio compatible dentro de v2.
+export const APPOINTMENT_REQUESTED_EVENT_TYPE_V2 = "appointment.requested";
+
+const appointmentRequestedSchema = z.strictObject({
+  contract_version: z.literal(INGESTION_CONTRACT_VERSION_V2),
+  event_type: z.literal(APPOINTMENT_REQUESTED_EVENT_TYPE_V2),
+  event_id: externalRef,
+  occurred_at: timestamp,
+  client: z.strictObject({
+    phone: z.string().regex(E164),
+  }),
+  appointment: z.strictObject({
+    reason_id: z.uuid(),
+    starts_at: timestamp,
+    product_id: z.uuid().optional(),
+    unit_id: z.uuid().optional(),
+  }),
+});
+
 export type MessageRecordedEventV2 = z.infer<typeof messageRecordedSchema>;
 export type ClientResolvedEventV2 = z.infer<typeof clientResolvedSchema>;
 export type ConversationResolvedEventV2 = z.infer<
@@ -225,6 +253,9 @@ export type OrderPlacedEventV2 = z.infer<typeof orderPlacedSchema>;
 export type OrderPlacedWithUnitsEventV2 = z.infer<
   typeof orderPlacedWithUnitsSchema
 >;
+export type AppointmentRequestedEventV2 = z.infer<
+  typeof appointmentRequestedSchema
+>;
 export type IngestionEventV2 =
   | MessageRecordedEventV2
   | ClientResolvedEventV2
@@ -232,7 +263,8 @@ export type IngestionEventV2 =
   | ConversationEscalatedEventV2
   | ClientTagEventV2
   | OrderPlacedEventV2
-  | OrderPlacedWithUnitsEventV2;
+  | OrderPlacedWithUnitsEventV2
+  | AppointmentRequestedEventV2;
 
 export type ParseIngestionEventV2Result =
   | { ok: true; event: IngestionEventV2 }
@@ -349,6 +381,28 @@ export function parseIngestionEventV2(
       if (!("unit_ids" in line)) continue;
       const units = line.unit_ids.map((id) => id.toLowerCase());
       if (new Set(units).size !== units.length) rejected.add("lines");
+    }
+    if (rejected.size > 0) return invalid(rejected);
+    return { ok: true, event };
+  }
+
+  if (eventType === APPOINTMENT_REQUESTED_EVENT_TYPE_V2) {
+    const parsed = appointmentRequestedSchema.safeParse(json);
+    if (!parsed.success) return invalid(fieldsOf(parsed.error.issues));
+    const { product_id, unit_id } = parsed.data.appointment;
+    const event: AppointmentRequestedEventV2 = {
+      ...parsed.data,
+      occurred_at: toUtc(parsed.data.occurred_at),
+      appointment: {
+        ...parsed.data.appointment,
+        starts_at: toUtc(parsed.data.appointment.starts_at),
+      },
+    };
+    const rejected = new Set<string>();
+    if (late(event.occurred_at)) rejected.add("occurred_at");
+    // Un producto o una unidad, nunca los dos (U-3).
+    if (product_id !== undefined && unit_id !== undefined) {
+      rejected.add("appointment");
     }
     if (rejected.size > 0) return invalid(rejected);
     return { ok: true, event };

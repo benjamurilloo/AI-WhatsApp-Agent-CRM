@@ -9,13 +9,16 @@ import { describe, expect, it } from "vitest";
 //    organizations, los esquemas que nombra schema.ts por sus claves foráneas, src/shared, sus propios
 //    archivos y paquetes. De knowledge lee el horario solo con getEffectiveBusinessDays, «la única
 //    arista» de D-1, y su tipo; nunca lo escribe;
-// 2. ningún módulo importa appointments (D-1). Las pantallas y los scripts lo usan, y no cuentan. Un
-//    import de appointments en crm o en inventory cerraría un ciclo que ni eslint.config.mjs ni
-//    module-boundary ven;
+// 2. ningún módulo importa appointments (D-1), salvo ingestion desde la 29.10.2 (U-1), y solo con
+//    requestAppointmentFromIngestion y findAppointmentRequestedByIngestion, como importa el pedido de
+//    orders. La regla nombra funciones, así que la guarda lista funciones: otro nombre de appointments en
+//    ingestion también falla. Las pantallas y los scripts lo usan, y no cuentan. Un import de
+//    appointments en crm o en inventory cerraría un ciclo que ni eslint.config.mjs ni module-boundary
+//    ven;
 // 3. las tres tablas de appointments se escriben solo desde las funciones de su repositorio, y cada una
-//    tiene un llamador fijo: el turno, desde su alta y sus cambios de estado; los valores y los motivos,
-//    desde sus casos de uso y la copia del perfil. El vaciado de la nota de un turno lo hace
-//    scripts/client-data-delete.ts, fuera de src/, con el rol dueño (D-6).
+//    tiene un llamador fijo: el turno, desde su alta, el pedido del agente (29.10.2) y sus cambios de
+//    estado; los valores y los motivos, desde sus casos de uso y la copia del perfil. El vaciado de la
+//    nota de un turno lo hace scripts/client-data-delete.ts, fuera de src/, con el rol dueño (D-6).
 //
 // Lee el texto: import y export con from, el import de efecto y el import dinámico con un literal; las
 // escrituras con Drizzle o SQL literal; y las llamadas al repositorio por su espacio de nombres. No ve
@@ -30,11 +33,13 @@ const APPOINTMENTS_ALLOWED = new Set([
   "organizations",
 ]);
 
-// Los esquemas que nombra schema.ts por sus claves foráneas.
+// Los esquemas que nombra schema.ts por sus claves foráneas. ingestion, desde la 29.10.2: la credencial y
+// el evento del turno que pide el agente (D-4).
 const SCHEMAS_ALLOWED = new Set([
   "auth",
   "catalog",
   "crm",
+  "ingestion",
   "inventory",
   "organizations",
 ]);
@@ -59,14 +64,22 @@ const KNOWLEDGE_NAMES = new Set([
   "EffectiveBusinessDay",
 ]);
 
-const KNOWLEDGE_IMPORT =
-  /\b(?:import|export)\s+(?:type\s+)?(\{[^}]*\}|\*(?:\s+as\s+\w+)?|\w+)\s*from\s*["']@\/modules\/knowledge["']/g;
-
-function knowledgeViolations(file: string, code: string): string[] {
-  return [...code.matchAll(KNOWLEDGE_IMPORT)].flatMap((match) => {
+// Los nombres que un archivo toma de un módulo, fuera de una lista: un import entero (`* as`, por
+// defecto) también es una violación.
+function namedImportViolations(
+  file: string,
+  code: string,
+  module: string,
+  allowed: ReadonlySet<string>,
+): string[] {
+  const pattern = new RegExp(
+    String.raw`\b(?:import|export)\s+(?:type\s+)?(\{[^}]*\}|\*(?:\s+as\s+\w+)?|\w+)\s*from\s*["']@/modules/${module}["']`,
+    "g",
+  );
+  return [...code.matchAll(pattern)].flatMap((match) => {
     const clause = match[1]!;
     if (!clause.startsWith("{"))
-      return [`${file} importa ${clause} de knowledge`];
+      return [`${file} importa ${clause} de ${module}`];
     return clause
       .slice(1, -1)
       .split(",")
@@ -77,10 +90,20 @@ function knowledgeViolations(file: string, code: string): string[] {
           .split(/\s+as\s+/)[0]!
           .trim(),
       )
-      .filter((name) => name !== "" && !KNOWLEDGE_NAMES.has(name))
-      .map((name) => `${file} importa ${name} de knowledge`);
+      .filter((name) => name !== "" && !allowed.has(name))
+      .map((name) => `${file} importa ${name} de ${module}`);
   });
 }
+
+function knowledgeViolations(file: string, code: string): string[] {
+  return namedImportViolations(file, code, "knowledge", KNOWLEDGE_NAMES);
+}
+
+// Lo único que ingestion toma de appointments (U-1 de la 29.10.2).
+const INGESTION_NAMES = new Set([
+  "requestAppointmentFromIngestion",
+  "findAppointmentRequestedByIngestion",
+]);
 
 function appointmentsViolations(file: string, code: string): string[] {
   return knowledgeViolations(file, code).concat(
@@ -102,9 +125,29 @@ function appointmentsImportViolations(file: string, code: string): string[] {
 function importerViolations(file: string, code: string): string[] {
   const owner = /^src\/modules\/([^/]+)\//.exec(file)?.[1];
   if (!owner || owner === "appointments") return [];
-  return specifiers(code)
-    .filter((specifier) => moduleOf(specifier)?.name === "appointments")
-    .map((specifier) => `${file} importa ${specifier}`);
+  const imports = specifiers(code).filter(
+    (specifier) => moduleOf(specifier)?.name === "appointments",
+  );
+  if (owner !== "ingestion") {
+    return imports.map((specifier) => `${file} importa ${specifier}`);
+  }
+  // ingestion: solo la interfaz pública, con un import estático de los dos nombres. Un import dinámico,
+  // el esquema o cualquier otro nombre fallan.
+  const named = [
+    ...code.matchAll(
+      /\b(?:import|export)\s+(?:type\s+)?\{[^}]*\}\s*from\s*["']@\/modules\/appointments["']/g,
+    ),
+  ].length;
+  return imports
+    .filter((specifier) => specifier !== "@/modules/appointments")
+    .map((specifier) => `${file} importa ${specifier}`)
+    .concat(
+      imports.filter((specifier) => specifier === "@/modules/appointments")
+        .length > named
+        ? [`${file} importa appointments sin nombrar qué`]
+        : [],
+    )
+    .concat(namedImportViolations(file, code, "appointments", INGESTION_NAMES));
 }
 
 // Regla 3: las escrituras.
@@ -211,7 +254,15 @@ const CALLERS = new Map<string, { file: string; from: string[] }[]>([
       },
     ],
   ],
-  ["insertAppointment", [{ file: APPOINTMENTS, from: ["createAppointment"] }]],
+  [
+    "insertAppointment",
+    [
+      {
+        file: APPOINTMENTS,
+        from: ["createAppointment", "requestAppointmentFromIngestion"],
+      },
+    ],
+  ],
   [
     "updateAppointmentStatus",
     [{ file: APPOINTMENTS, from: ["changeAppointmentStatus"] }],
@@ -262,6 +313,11 @@ describe("detección", () => {
       'import {\n  getBusinessHoursForService,\n  getEffectiveBusinessDays,\n} from "@/modules/knowledge";',
     ],
     ["knowledge entero", 'import * as knowledge from "@/modules/knowledge";'],
+    // De ingestion, solo el esquema (brief-29.10.2, D-5): la interfaz es una condición de detención.
+    [
+      "ingestion más allá de su esquema",
+      'import { recordIngestionEventV2 } from "@/modules/ingestion";',
+    ],
   ])("regla 1, detecta que appointments importe %s", (_name, code) => {
     expect(
       appointmentsViolations("src/modules/appointments/appointments.ts", code),
@@ -278,6 +334,7 @@ describe("detección", () => {
       'import { clients } from "@/modules/crm/schema";',
       'import { getUnitSummaries } from "@/modules/inventory";',
       'import { stockUnits } from "@/modules/inventory/schema";',
+      'import { ingestionEvents } from "@/modules/ingestion/schema";',
       'import {\n  getEffectiveBusinessDays,\n  type EffectiveBusinessDay,\n} from "@/modules/knowledge";',
       'import { authorize } from "@/modules/organizations";',
       'import { failure } from "@/shared/errors";',
@@ -300,6 +357,43 @@ describe("detección", () => {
     expect(
       importerViolations(`src/modules/${owner}/service.ts`, code),
     ).not.toEqual([]);
+  });
+
+  // Dentro del grano de U-1: ingestion puede importar appointments, pero solo dos nombres.
+  it.each([
+    [
+      "otro nombre",
+      'import {\n  findAppointmentRequestedByIngestion,\n  createAppointment,\n} from "@/modules/appointments";',
+    ],
+    [
+      "el módulo entero",
+      'import * as appointments from "@/modules/appointments";',
+    ],
+    [
+      "el esquema",
+      'import { appointments } from "@/modules/appointments/schema";',
+    ],
+    ["un import dinámico", 'const a = await import("@/modules/appointments");'],
+    [
+      "un re-export de otro nombre",
+      'export { listFreeSlotsForService } from "@/modules/appointments";',
+    ],
+  ])(
+    "regla 2, detecta que ingestion importe de appointments %s",
+    (_name, code) => {
+      expect(
+        importerViolations("src/modules/ingestion/service.ts", code),
+      ).not.toEqual([]);
+    },
+  );
+
+  it("regla 2, permite a ingestion sus dos nombres", () => {
+    expect(
+      importerViolations(
+        "src/modules/ingestion/service.ts",
+        'import {\n  findAppointmentRequestedByIngestion,\n  requestAppointmentFromIngestion,\n} from "@/modules/appointments";',
+      ),
+    ).toEqual([]);
   });
 
   it("regla 2, permite las pantallas", () => {
@@ -369,7 +463,7 @@ describe("el código", () => {
     ).toEqual([]);
   });
 
-  it("ningún módulo importa appointments", () => {
+  it("ningún módulo importa appointments, salvo ingestion con sus dos nombres", () => {
     expect(
       files.flatMap((file) =>
         importerViolations(file, readFileSync(file, "utf8")),

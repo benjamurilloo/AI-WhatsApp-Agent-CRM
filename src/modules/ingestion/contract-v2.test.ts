@@ -142,6 +142,25 @@ function unitsOrderPayload(): Payload {
   };
 }
 
+const REASON_ID = "3c5e7a9b-1d2f-4a6b-8c0d-2e4f6a8b0c1d";
+
+// El turno que pide el agente (brief-29.10.2, D-3): el inicio de la franja con el desplazamiento del
+// negocio, que el hash normaliza a UTC, y un producto como referencia.
+function appointmentPayload(): Payload {
+  return {
+    contract_version: "2",
+    event_type: "appointment.requested",
+    event_id: "evt-v2-turno-0001",
+    occurred_at: "2026-09-16T12:00:20-03:00",
+    client: { phone: "+5491155550001" },
+    appointment: {
+      reason_id: REASON_ID,
+      starts_at: "2026-09-18T15:00:00-03:00",
+      product_id: COFFEE_ID,
+    },
+  };
+}
+
 function parse(value: unknown, receivedAt = RECEIVED_AT) {
   return parseIngestionEventV2(JSON.stringify(value), receivedAt);
 }
@@ -209,6 +228,13 @@ const VECTORS = [
     canonical:
       '{"client":{"phone":"+5491155550001"},"contract_version":"2","event_id":"evt-v2-pedido-unidades-0001","event_type":"order.placed_with_units","lines":[{"product_id":"7c9e6679-7425-40de-944b-e07fc1f90ae7","unit_ids":["a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"]},{"product_id":"9b2f4d1a-6c3e-4f8a-b5d7-2e1c0a9f8b6d","quantity":"1"}],"occurred_at":"2026-09-16T15:00:18.000Z"}',
     hash: "5223e47c7c08f334e8017421fe57cd0a8bd39b5d28ca3cec53f8854224f45d2d",
+  },
+  {
+    name: "appointment.requested",
+    payload: appointmentPayload,
+    canonical:
+      '{"appointment":{"product_id":"7c9e6679-7425-40de-944b-e07fc1f90ae7","reason_id":"3c5e7a9b-1d2f-4a6b-8c0d-2e4f6a8b0c1d","starts_at":"2026-09-18T18:00:00.000Z"},"client":{"phone":"+5491155550001"},"contract_version":"2","event_id":"evt-v2-turno-0001","event_type":"appointment.requested","occurred_at":"2026-09-16T15:00:20.000Z"}',
+    hash: "90d9c7f4e6a9e8e6d42cde8de08199fab246529bbd9dbb40f68d3fac62097eef",
   },
 ];
 
@@ -358,8 +384,19 @@ describe("el teléfono como nombre (D-8)", () => {
 });
 
 describe("reglas heredadas de v1", () => {
-  it("FR-API-07: nombra los campos de v1 más kind y sent_by, la etiqueta (brief-16.2) y las líneas (brief-19.4)", () => {
-    const added = ["message.kind", "message.sent_by", "tag", "tag.id", "lines"];
+  it("FR-API-07: nombra los campos de v1 más kind y sent_by, la etiqueta (brief-16.2), las líneas (brief-19.4) y el turno (brief-29.10.2)", () => {
+    const added = [
+      "message.kind",
+      "message.sent_by",
+      "tag",
+      "tag.id",
+      "lines",
+      "appointment",
+      "appointment.reason_id",
+      "appointment.starts_at",
+      "appointment.product_id",
+      "appointment.unit_id",
+    ];
     expect(
       INGESTION_FIELDS_V2.filter((field) => !added.includes(field)),
     ).toEqual([...INGESTION_FIELDS]);
@@ -675,6 +712,103 @@ describe("brief-29.8: el pedido con unidades del agente (D-7)", () => {
   it("solo existe en v2: v1 lo rechaza como tipo desconocido", () => {
     const v1 = parseIngestionEventV1(
       JSON.stringify({ ...unitsOrderPayload(), contract_version: "1" }),
+      RECEIVED_AT,
+    );
+    expect(v1.ok).toBe(false);
+    if (!v1.ok) expect(v1.fields).toContain("event_type");
+  });
+});
+
+describe("brief-29.10.2: el turno que pide el agente (D-3)", () => {
+  const withAppointment = (appointment: Payload) => ({
+    ...appointmentPayload(),
+    appointment,
+  });
+  const base = () => appointmentPayload().appointment as Payload;
+
+  it("la referencia es opcional: sin ella, con un producto o con una unidad", () => {
+    const bare = base();
+    delete bare.product_id;
+    expect(parse(withAppointment(bare)).ok).toBe(true);
+    expect(parse(appointmentPayload()).ok).toBe(true);
+    expect(parse(withAppointment({ ...bare, unit_id: UNIT_ID })).ok).toBe(true);
+  });
+
+  it("un producto y una unidad a la vez dan 400 con appointment", () => {
+    expect(fieldsOf(withAppointment({ ...base(), unit_id: UNIT_ID }))).toEqual([
+      "appointment",
+    ]);
+  });
+
+  it("cada campo con su nombre: el motivo, el inicio y la referencia", () => {
+    expect(fieldsOf(withAppointment({ ...base(), reason_id: "x" }))).toEqual([
+      "appointment.reason_id",
+    ]);
+    for (const startsAt of [
+      "2026-09-18 15:00",
+      "2026-09-18T15:00:00",
+      null,
+      1789322400,
+    ]) {
+      expect(
+        fieldsOf(withAppointment({ ...base(), starts_at: startsAt })),
+      ).toEqual(["appointment.starts_at"]);
+    }
+    expect(fieldsOf(withAppointment({ ...base(), product_id: "x" }))).toEqual([
+      "appointment.product_id",
+    ]);
+    expect(fieldsOf(withAppointment({ ...base(), unit_id: null }))).toEqual([
+      "appointment.unit_id",
+    ]);
+  });
+
+  it("sin nota, sin fin y sin campos de más", () => {
+    for (const extra of [
+      { note: "Viene con la caja" },
+      { ends_at: "2026-09-18T15:30:00-03:00" },
+    ]) {
+      expect(fieldsOf(withAppointment({ ...base(), ...extra }))).toEqual([
+        "appointment",
+      ]);
+    }
+    expect(
+      fieldsOf({
+        ...appointmentPayload(),
+        client: { phone: "+5491155550001", display_name: "Ana" },
+      }),
+    ).toEqual(["client"]);
+  });
+
+  it("starts_at se normaliza a UTC: el mismo instante con otro desplazamiento es el mismo contenido", () => {
+    const hashOf = (startsAt: string) => {
+      const result = parse(withAppointment({ ...base(), starts_at: startsAt }));
+      if (!result.ok) throw new Error(result.fields.join(", "));
+      return ingestionPayloadHashV2(result.event);
+    };
+    expect(hashOf("2026-09-18T18:00:00Z")).toBe(
+      hashOf("2026-09-18T15:00:00-03:00"),
+    );
+    expect(hashOf("2026-09-18T15:30:00-03:00")).not.toBe(
+      hashOf("2026-09-18T15:00:00-03:00"),
+    );
+  });
+
+  it("starts_at en el futuro se acepta: solo occurred_at tiene el límite de reloj", () => {
+    expect(
+      parse(withAppointment({ ...base(), starts_at: "2027-01-01T10:00:00Z" }))
+        .ok,
+    ).toBe(true);
+    expect(
+      fieldsOf({
+        ...appointmentPayload(),
+        occurred_at: "2026-09-16T15:10:00Z",
+      }),
+    ).toEqual(["occurred_at"]);
+  });
+
+  it("solo existe en v2: v1 lo rechaza como tipo desconocido", () => {
+    const v1 = parseIngestionEventV1(
+      JSON.stringify({ ...appointmentPayload(), contract_version: "1" }),
       RECEIVED_AT,
     );
     expect(v1.ok).toBe(false);

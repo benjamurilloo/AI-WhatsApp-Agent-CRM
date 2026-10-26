@@ -6,6 +6,7 @@ import type {
   ServiceCatalogProduct,
   ServiceProductBalance,
 } from "@/modules/inventory";
+import type { FreeSlots } from "@/modules/appointments";
 import type { Capability } from "@/modules/organizations";
 import type { ServiceClientOrder, ServiceRepairModel } from "@/modules/service";
 import type {
@@ -200,6 +201,53 @@ export const tradeInChecklistResponseSchemaV3 = z.strictObject({
     }),
   ),
 });
+
+// Las franjas libres para el agente (brief-29.10.2, D-2 y A-1): la fecha de hoy del negocio, la duración,
+// los motivos activos y, por día, las franjas que puede pedir, con el desplazamiento de la zona. Nunca la
+// ocupación, el cupo ni un turno (D-7).
+const slotInstant = z.iso.datetime({ offset: true, local: false });
+
+export const appointmentSlotsResponseSchemaV3 = z.strictObject({
+  contract_version: z.literal(READ_CONTRACT_VERSION_V3),
+  today: z.iso.date(),
+  slot_minutes: z.number().int().positive().nullable(),
+  reasons: z.array(
+    z.strictObject({ reason_id: z.uuid(), name: z.string().min(1) }),
+  ),
+  days: z.array(
+    z.strictObject({
+      date: z.iso.date(),
+      slots: z
+        .array(z.strictObject({ starts_at: slotInstant, ends_at: slotInstant }))
+        .min(1),
+    }),
+  ),
+});
+
+export type ContractAppointmentSlotsV3 = z.infer<
+  typeof appointmentSlotsResponseSchemaV3
+>;
+
+export function toContractAppointmentSlotsV3(
+  slots: FreeSlots,
+): ContractAppointmentSlotsV3 {
+  return {
+    contract_version: READ_CONTRACT_VERSION_V3,
+    today: slots.today,
+    slot_minutes: slots.slotMinutes,
+    reasons: slots.reasons.map((reason) => ({
+      reason_id: reason.id,
+      name: reason.name,
+    })),
+    days: slots.days.map((day) => ({
+      date: day.date,
+      slots: day.slots.map((slot) => ({
+        starts_at: slot.startsAt,
+        ends_at: slot.endsAt,
+      })),
+    })),
+  };
+}
 
 export const TRADE_IN_QUOTE_REASONS_V3 = [
   "checklist_incomplete",

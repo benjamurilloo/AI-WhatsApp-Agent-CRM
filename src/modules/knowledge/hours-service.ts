@@ -14,6 +14,7 @@ import {
   type AuthContext,
 } from "@/modules/organizations";
 import { isCalendarDate } from "@/shared/calendar";
+import type { DbTransaction } from "@/shared/db";
 import { failure, type Failure } from "@/shared/errors";
 import * as hours from "./hours-repository";
 import * as repository from "./repository";
@@ -480,12 +481,15 @@ export async function getBusinessHoursStatusAt(
 // eso recibe la organización, como getBusinessHoursForService. Un rango inválido o de más de
 // MAX_RANGE_DAYS días no lee nada. configured dice si el horario semanal está cargado, como en
 // getBusinessHoursForService, para que appointments no tenga que leer las dos (brief-29.10, D-1).
+// Con tx, lee en la transacción de quien llama, como hasCapability: el turno del agente lo lee bajo
+// su bloqueo sin pedir otra conexión del pool (brief-29.10.2, D-5).
 export const MAX_RANGE_DAYS = 62;
 
 export async function getEffectiveBusinessDays(
   organizationId: string,
   from: string,
   to: string,
+  tx?: DbTransaction,
 ): Promise<{ configured: boolean; days: EffectiveBusinessDay[] } | null> {
   if (!isCalendarDate(from) || !isCalendarDate(to) || from > to) return null;
   const span =
@@ -496,6 +500,7 @@ export async function getEffectiveBusinessDays(
     organizationId,
     from,
     to,
+    tx,
   );
   return {
     configured: weekdays === WEEKDAYS.length,

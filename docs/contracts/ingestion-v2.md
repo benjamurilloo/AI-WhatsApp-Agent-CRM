@@ -14,11 +14,13 @@
 
 - *Desde la 29.8* ([brief-29.8](../decisions/brief-29.8-el-catalogo-del-rubro-para-el-agente.md), D-7 y U-2): **un tipo nuevo, solo en v2**, `order.placed_with_units`, para dejar un pedido pendiente con las unidades que eligió el cliente (§Pedidos con unidades). Es un cambio compatible dentro de v2: `order.placed` no cambia. **Diseñado, implementado y validado localmente** con requests sintéticos. **No** está validado con el agente: lo confirma la ventana de la 29.8.
 
+- *Desde la 29.10.2* ([brief-29.10.2](../decisions/brief-29.10.2-los-turnos-para-el-agente.md), D-3 y A-2): **un tipo nuevo, solo en v2**, `appointment.requested`, para pedir un turno de visita al local (§Turnos). Es un cambio compatible dentro de v2. **Diseñado, implementado y validado localmente** con requests sintéticos. **No** está validado con el agente: lo confirma la ventana de la 29.10.2.
+
 *Hasta la 12.5 este párrafo decía que el emisor seguía sin cablear a su pipeline; actualizado por la revisión independiente de la 12.5 (R-2).* En `tests/fixtures/ingestion/v2/` conviven los fixtures de **forma asumida** (`"shape": "assumed"`, los vectores del contrato) y **seis capturas del agente** (`"shape": "captured"`), que guardan el cuerpo tal como llegó a staging. Este contrato no deriva de la forma de eventos de ningún sistema existente.
 
 ## Qué cambia respecto de v1
 
-v2 es la misma superficie de escritura que [v1](ingestion-v1.md), en otra ruta, con los mismos cuatro eventos. *Desde la 16.2* suma dos que v1 no tiene: `client.tag_added` y `client.tag_removed` (§Etiquetas). *Desde la 19.4*, un tercero: `order.placed` (§Pedidos). *Desde la 29.8*, un cuarto: `order.placed_with_units` (§Pedidos con unidades). **v1 sigue funcionando igual**, congelada. Todo lo que este documento no menciona rige como en v1: referencias opacas, fechas, texto, tamaño, identidad, idempotencia, algoritmo del hash, reglas de negocio (`422`), vigencia de la conversación y proyección.
+v2 es la misma superficie de escritura que [v1](ingestion-v1.md), en otra ruta, con los mismos cuatro eventos. *Desde la 16.2* suma dos que v1 no tiene: `client.tag_added` y `client.tag_removed` (§Etiquetas). *Desde la 19.4*, un tercero: `order.placed` (§Pedidos). *Desde la 29.8*, un cuarto: `order.placed_with_units` (§Pedidos con unidades). *Desde la 29.10.2*, un quinto: `appointment.requested` (§Turnos). **v1 sigue funcionando igual**, congelada. Todo lo que este documento no menciona rige como en v1: referencias opacas, fechas, texto, tamaño, identidad, idempotencia, algoritmo del hash, reglas de negocio (`422`), vigencia de la conversación y proyección.
 
 | | v1 | v2 |
 |---|---|---|
@@ -32,6 +34,7 @@ v2 es la misma superficie de escritura que [v1](ingestion-v1.md), en otra ruta, 
 | Etiquetas del cliente (16.2) | no existen: un `client.tag_added` da `400` en `event_type` | `client.tag_added` y `client.tag_removed` |
 | Pedido pendiente (19.4) | no existe: un `order.placed` da `400` en `event_type` | `order.placed` |
 | Pedido con unidades (29.8) | no existe: da `400` en `event_type` | `order.placed_with_units` |
+| Turno pedido (29.10.2) | no existe: da `400` en `event_type` | `appointment.requested` |
 
 ## Transporte
 
@@ -365,9 +368,82 @@ Lo que hace el emisor ante un `422` es lo de la guía: no reenvía el mismo `eve
 
 `payload_hash`: `5223e47c7c08f334e8017421fe57cd0a8bd39b5d28ca3cec53f8854224f45d2d`, calculado sobre este texto con SHA-256, y fijado como vector en `contract-v2.test.ts`. **Los ids de las unidades conservan el orden en que llegan**: otro orden es otro contenido.
 
+## Turnos (desde la 29.10.2)
+
+[brief-29.10.2](../decisions/brief-29.10.2-los-turnos-para-el-agente.md), D-3 y A-2; [ADR 0024](../decisions/0024-rubros-y-capacidades.md), puntos 12 y 15. Un tipo que **solo existe en v2**, compatible dentro de v2 (§Versionado).
+
+**Qué hace**: deja un turno **pedido** (`requested`) para visitar el local, a nombre del cliente, con **la credencial como autor** y el evento que lo creó guardado en el turno. El turno **ocupa su franja** desde ese momento. **El emisor nunca lo confirma, lo cancela, lo mueve ni lo marca**: eso lo hace una persona desde la app.
+
+**Cuándo mandarlo**: el agente informó que lo manda como el pedido, en el turno siguiente al «sí» del cliente a un resumen cerrado, con la franja y el motivo que leyó en el turno del resumen.
+
+| Campo | Tipo | Nulable | Reglas |
+|---|---|---|---|
+| `event_type` | string | no | `"appointment.requested"` |
+| `client.phone` | string | no | E.164, como en `order.placed`. Es el único campo de `client`. El cliente tiene que existir: `client.resolved` va antes |
+| `appointment.reason_id` | string | no | un `reason_id` de [`GET /api/read/v3/appointment-slots`](read-v3.md), en minúsculas |
+| `appointment.starts_at` | string | no | el `starts_at` de una franja de esa lectura, **tal como vino**. Sigue las reglas de fecha de `occurred_at`, pero puede estar en el futuro |
+| `appointment.product_id` | string | se omite | opcional: un producto de `read-v3`, por ejemplo el equipo que el cliente quiere ver |
+| `appointment.unit_id` | string | se omite | opcional: una unidad de la ruta de unidades de `read-v3`. **Nunca junto con `product_id`**: los dos dan `400` con `appointment` |
+
+- **Sin nota ni fin**: un campo de más dentro de `appointment` da `400` con `appointment`. El fin lo pone el CRM con la duración vigente.
+- **`starts_at` se normaliza a UTC en el `payload_hash`**, como `occurred_at`: el mismo instante con otro desplazamiento es el mismo contenido.
+
+**Respuesta**: siempre `200`, con la franja y nada más, sin el id del turno ni el del cliente:
+
+```json
+{ "contract_version": "2", "event_id": "evt-v2-turno-0001", "result": "accepted", "appointment": { "starts_at": "2026-09-18T15:00:00-03:00", "ends_at": "2026-09-18T15:30:00-03:00" } }
+```
+
+`duplicate` es el reenvío idéntico, con la misma franja y sin escribir.
+
+**Reglas de negocio**: `422 BUSINESS_RULE_VIOLATION`, **terminales**, con una sola `rule`, en este orden de precedencia; se responde la primera que falla. **Un rechazo no escribe el turno**, y un reenvío responde la misma regla aunque la franja se haya liberado.
+
+| `rule` | Cuándo |
+|---|---|
+| `not_offered` | la organización no tiene la capacidad `appointments`, o no tiene duración y cupo |
+| `client_not_found` | el teléfono no es de ningún cliente de la organización |
+| `client_inactive` | el cliente está desactivado |
+| `reason_not_found` | el motivo no existe, es de otra organización o está inactivo, **sin distinguir** |
+| `reference_not_found` | el producto o la unidad no existe, es de otra organización, está inactivo o dado de baja, sin distinguir |
+| `client_has_pending_request` | el cliente ya tiene **un turno pedido que no empezó**: uno por cliente. Uno confirmado no cuenta |
+| `outside_hours` | `starts_at` no es el inicio de una franja vigente en la hora local del negocio, o cae en la hora que falta del horario de verano |
+| `in_the_past` | la franja ya empezó |
+| `too_soon` | empieza en menos de **2 horas** |
+| `too_far` | empieza más de **14 días** después de hoy, en la fecha del negocio |
+| `slot_full` | la franja no tiene lugar al momento del pedido: la lectura no reserva |
+
+**Qué hace el emisor ante un `422`**: lo de la guía (no reenvía el mismo `event_id`) y **deriva la conversación** con `conversation.escalated`, ante **cualquier** regla, como con `order.placed`. El agente manda el evento después de responderle al cliente, así que el cliente ya escuchó que su turno quedó pedido; una persona del local le ofrece otra franja (A-2). Las reglas finas quedan para el diagnóstico, en `ingestion_events.error_code`.
+
+**Lo que el emisor dice**: «te lo pedimos; el local te lo confirma». Nunca «te espero», «quedó agendado» ni «confirmado». **El CRM no avisa**: no manda mensajes.
+
+**No cuenta en la métrica 12**: no es un mensaje ([MetricsCatalog](../analytics/MetricsCatalog.md) §12).
+
+**`appointment.requested`**:
+
+```json
+{
+  "contract_version": "2",
+  "event_type": "appointment.requested",
+  "event_id": "evt-v2-turno-0001",
+  "occurred_at": "2026-09-16T12:00:20-03:00",
+  "client": { "phone": "+5491155550001" },
+  "appointment": {
+    "reason_id": "3c5e7a9b-1d2f-4a6b-8c0d-2e4f6a8b0c1d",
+    "starts_at": "2026-09-18T15:00:00-03:00",
+    "product_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+  }
+}
+```
+
+```text
+{"appointment":{"product_id":"7c9e6679-7425-40de-944b-e07fc1f90ae7","reason_id":"3c5e7a9b-1d2f-4a6b-8c0d-2e4f6a8b0c1d","starts_at":"2026-09-18T18:00:00.000Z"},"client":{"phone":"+5491155550001"},"contract_version":"2","event_id":"evt-v2-turno-0001","event_type":"appointment.requested","occurred_at":"2026-09-16T15:00:20.000Z"}
+```
+
+`payload_hash`: `90d9c7f4e6a9e8e6d42cde8de08199fab246529bbd9dbb40f68d3fac62097eef`, calculado sobre este texto, escrito a mano, con `sha256sum`, y fijado como vector en `contract-v2.test.ts`.
+
 ## Respuestas
 
-- **Éxito y reenvío**: las formas y los códigos de v1 para cada evento, con `"contract_version": "2"`. `message.recorded` responde `201` al aceptar y `200` al reenvío; los otros tres, desde la 16.2 los dos de etiquetas, desde la 19.4 el pedido y desde la 29.8 el pedido con unidades, siempre `200`.
+- **Éxito y reenvío**: las formas y los códigos de v1 para cada evento, con `"contract_version": "2"`. `message.recorded` responde `201` al aceptar y `200` al reenvío; los otros tres, desde la 16.2 los dos de etiquetas, desde la 19.4 el pedido, desde la 29.8 el pedido con unidades y desde la 29.10.2 el turno pedido, siempre `200`.
 - **Errores**: la tabla de v1, con dos diferencias: el campo `correlation_id` en `VALIDATION_ERROR` y el `reason` del `409`.
 
 ### `CONFLICT` con motivo (brief-12.3, D-7)
@@ -402,7 +478,7 @@ El cuerpo del `409` es `{ "code": "CONFLICT", "request_id", "reason" }`.
 | `409` con `event_payload_mismatch` | el emisor armó dos contenidos con el mismo `event_id` | **alerta**: es un defecto del emisor, y el segundo contenido no se guardó |
 | `400 VALIDATION_ERROR` | el evento o la correlación son inválidos | no reenvía el mismo: corrige y manda uno nuevo |
 | `401`, `403` o `404` | credencial, alcance, allowlist o endpoint apagado | no reenvía hasta corregir la configuración: **retiene** el evento, avisa y lo reenvía igual cuando la configuración se corrige. **Nunca lo descarta** |
-| `422 BUSINESS_RULE_VIOLATION` | una regla de negocio, con `rule`; es **terminal** | no reenvía el mismo `event_id`: corrige la causa y manda un evento nuevo. *Desde la 19.4*, ante un `422` de `order.placed`, además deriva la conversación (§Pedidos); *desde la 29.8*, también ante uno de `order.placed_with_units` (§Pedidos con unidades) |
+| `422 BUSINESS_RULE_VIOLATION` | una regla de negocio, con `rule`; es **terminal** | no reenvía el mismo `event_id`: corrige la causa y manda un evento nuevo. *Desde la 19.4*, ante un `422` de `order.placed`, además deriva la conversación (§Pedidos); *desde la 29.8*, también ante uno de `order.placed_with_units` (§Pedidos con unidades); *desde la 29.10.2*, también ante uno de `appointment.requested` (§Turnos) |
 
 *Aclarado el 2026-09-27 por la 12.5* ([brief-12.5](../decisions/brief-12.5-turno-completo-en-staging.md), a partir del hallazgo H-5 del emisor, con la aprobación del usuario). La fila de `401`, `403` y `404` decía solo «no reenvía hasta corregir la configuración». Se leyó como «el evento se descarta», y con esa lectura, **apagar la ingestión para mantenimiento hace perder mensajes**. No es lo que quería decir:
 

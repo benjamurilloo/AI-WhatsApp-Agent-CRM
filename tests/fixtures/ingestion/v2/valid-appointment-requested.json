@@ -1,0 +1,24 @@
+{
+  "shape": "assumed",
+  "note": "Forma asumida, no verificada: no proviene de ningún emisor real (brief-29.10.2, D-3). La ventana con el agente la contrasta con lo que mande.",
+  "description": "Un turno pedido: el motivo y el inicio de una franja leídos de la ruta appointment-slots de read-v3, con el desplazamiento del negocio, y un producto como referencia.",
+  "received_at": "2026-09-16T15:00:00.000Z",
+  "payload": {
+    "contract_version": "2",
+    "event_type": "appointment.requested",
+    "event_id": "evt-v2-turno-0001",
+    "occurred_at": "2026-09-16T12:00:20-03:00",
+    "client": {
+      "phone": "+5491155550001"
+    },
+    "appointment": {
+      "reason_id": "3c5e7a9b-1d2f-4a6b-8c0d-2e4f6a8b0c1d",
+      "starts_at": "2026-09-18T15:00:00-03:00",
+      "product_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+    }
+  },
+  "expected": {
+    "ok": true,
+    "payload_hash": "90d9c7f4e6a9e8e6d42cde8de08199fab246529bbd9dbb40f68d3fac62097eef"
+  }
+}

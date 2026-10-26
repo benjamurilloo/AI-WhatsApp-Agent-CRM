@@ -603,6 +603,11 @@ const HANDLERS: Readonly<Record<string, Entry>> = {
     requirement: "sin-sesion",
     why: "cotización de un usado de la API de lectura v3 (brief-29.8.3, D-3): solo el rango redondeado, nunca el valor exacto, el margen ni los costos; no escribe nada; con una credencial de alcance read",
   },
+  // Los turnos para el agente (brief-29.10.2, D-1 y D-2).
+  "src/app/api/read/v3/appointment-slots/route.ts": {
+    requirement: "sin-sesion",
+    why: "franjas libres de la API de lectura v3 (brief-29.10.2, D-2): la fecha de hoy, los motivos activos y las franjas que el agente puede pedir, nunca la ocupación, el cupo ni un turno; no escribe nada; con una credencial de alcance read",
+  },
   "src/app/api/read/v1/knowledge/route.ts": {
     requirement: "sin-sesion",
     why: "API de lectura (brief-11.3): autentica con una credencial de alcance read, apagada salvo READ_API_ENABLED, y una sesión válida no la autentica",

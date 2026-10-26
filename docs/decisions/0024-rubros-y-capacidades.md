@@ -408,6 +408,8 @@ valor orientativo = precio de referencia del usado
 
 *Nota del 2026-10-26, por la 29.10* ([brief-29.10](brief-29.10-los-turnos.md), U-1 a U-6 y D-6). **La 29.10 son los turnos en la app; el agente pasa a la 29.10.2** (U-1): las franjas libres en `read-v3` y el turno pedido en `ingestion-v2`, con su ventana. La duración es una de 15, 20, 30, 45, 60, 90 o 120 minutos (U-2), y los valores del perfil `iphone` son 30 minutos, un turno por franja y cinco motivos, respondidos por el usuario (U-3), en `appointment_settings`, la fila de valores sueltos de la capacidad. El cliente es obligatorio y existente (U-4). Un turno guarda su inicio y su fin: un cambio de horario, duración o cupo no lo mueve ni lo cancela, y el calendario lo marca (U-5). Se da hasta 90 días adelante, nunca en una franja que ya empezó (U-6). Un turno retiene la ficha del cliente, y el vaciado deja su nota en nulo (D-6). El cupo lo exige el servicio bajo el bloqueo de la fila de valores, no un `CHECK`.
 
+*Nota del 2026-10-26, por la 29.10.2* ([brief-29.10.2](brief-29.10.2-los-turnos-para-el-agente.md), U-2 a U-4, A-1 y A-2). **El agente pide un turno** con `appointment.requested` en `ingestion-v2`, y lee las franjas en `GET /api/read/v3/appointment-slots`. Nace `requested`, con la credencial como autor (la `0066`, como el pedido de la 19.4), y la base exige que un turno de una credencial nazca pedido. Para el agente, **hasta 14 días adelante y nunca una franja que empiece en menos de 2 horas** (U-2); la app sigue con sus 90 días. El turno pedido lleva el cliente, el motivo, la franja y, opcional, un producto o una unidad, **sin nota** (U-3). **Un solo turno pedido que no empezó por cliente** (U-4): un turno pedido ocupa su franja, a diferencia de un pedido pendiente, que no reserva. Ante cualquier rechazo, el agente deriva a una persona (A-2).
+
 ### 13. El perfil de rubro
 
 **La plantilla** está versionada en el repositorio (`src/modules/organizations/profiles/`), como los seeds. **Se copia a la organización** con el mismo script que activa las capacidades, en una sola transacción, con su auditoría.
@@ -471,6 +473,8 @@ valor orientativo = precio de referencia del usado
 
 **Lo que no registra el agente**: recepciones de usados, órdenes de servicio, cobros ni pagos (ADR 0016, punto 5). Escribe solo el pedido pendiente y el turno pedido, y una persona los confirma.
 
+*Nota del 2026-10-26, por la 29.10.2* ([brief-29.10.2](brief-29.10.2-los-turnos-para-el-agente.md), D-1 a D-3): **los horarios libres y el pedido de un turno** son `GET /api/read/v3/appointment-slots` (alcance `read`, con la fecha de hoy del negocio, los motivos y las franjas que puede pedir, sin ocupación ni turnos) y `appointment.requested` en `ingestion-v2`. El agente confirmó por escrito que los usa (`Respuesta-29.10.2-Agente-al-CRM.md`). **No lee la agenda del cliente** (U-5): si pregunta «¿me confirmaron?», deriva. El CRM no avisa la confirmación: se la da una persona.
+
 **Precios en pesos**: hasta el ADR 0025, el agente da el precio en la moneda del producto (USD) y no convierte.
 
 **Entre la 29.5 y la 29.8** (revisión, R-14): `read-v1` y `read-v2` admiten solo `new` y `refurbished` en un objeto estricto. Hasta el contrato nuevo, **los dos excluyen los productos `used` y los de servicio** de sus listas y búsquedas. No cambia la forma, cambia qué productos aparecen. El agente no ofrece usados hasta la 29.8, y el usuario lo sabe.
@@ -483,9 +487,15 @@ valor orientativo = precio de referencia del usado
   *Nota del 2026-10-26, por la 29.9.2* ([brief-29.9.2](brief-29.9.2-el-reclamo-de-garantia.md), U-1): **`service` no lee la venta de un reclamo**. El reclamo apunta a la unidad o a la orden original (nota del punto 11), y la arista `service → sales` queda solo para la venta de una reparación.
 - **`tradeins`** depende de `catalog`, `inventory`, `crm`, `numbering`, `organizations`, `audit` y **`service`**, solo para leer los costos de reparación de la cotización.
 - **`appointments`** depende de `crm`, `knowledge` (el horario), `catalog` e `inventory` (la referencia opcional), `organizations` y `audit` (revisión, R-16).
+
+  *Nota del 2026-10-26, por la 29.10.2* ([brief-29.10.2](brief-29.10.2-los-turnos-para-el-agente.md), U-1, decisión del usuario): **`ingestion` depende de `appointments`**, solo con `requestAppointmentFromIngestion` y `findAppointmentRequestedByIngestion`, como depende de `orders` desde la 19.4: la ingestión abre la transacción del evento y le pide la escritura al módulo dueño. `appointments` no depende de `ingestion` salvo en `schema.ts`, para las claves compuestas de la credencial y el evento. Corrige «ningún módulo depende de `appointments`» del brief-29.10 (D-1). Sin ciclos: ninguno de los módulos que `appointments` importa usa la interfaz de `ingestion`; solo `audit` y `orders` nombran su `schema.ts`, para sus claves (verificado en el código el 2026-10-26).
 - **`cash`** suma la dependencia de `tradeins`: la permuta, la compra de usados y la anulación del usado.
 - **Ningún módulo del núcleo depende de un módulo de capacidad**, salvo `cash`, como ya depende de `purchasing` (brief, AC-7). En particular, **ni `sales` ni `inventory` conocen `service` ni `tradeins`**.
+
+  *Nota del 2026-10-26, por la 29.10.2* (revisión independiente, N-3): desde la 29.10.2 hay una segunda excepción, **`ingestion`**, que depende de `appointments` con los dos nombres de la nota de arriba (U-1, decisión del usuario). La ingestión sigue sin escribir turnos por su cuenta: le pide la escritura al módulo dueño, y sin la capacidad `appointments` el evento da `not_offered`.
 - **No hay ciclos.** Las aristas nuevas son `service → sales`, `service → purchasing`, `tradeins → service`, `cash → tradeins`, y las de `appointments` hacia el núcleo. Ninguna tiene la vuelta.
+
+  *Nota del 2026-10-26, por la 29.10.2* (revisión independiente, N-3): suma la arista `ingestion → appointments`. Su vuelta es solo de esquema (`appointments/schema.ts` nombra el de `ingestion` para sus claves compuestas), como la de `orders` desde la 19.4. Entre las interfaces de los módulos sigue sin haber ciclos.
 - **Guardas**: `purchasing-dependencies` cambia su regla 2 («solo `cash` importa `purchasing`»), porque `service` también la importa. Cada módulo nuevo lleva su guarda de dependencias, como esa.
 - **Una regla de bloqueo para todos**: **la unidad se bloquea después del producto y antes del saldo**. El orden completo de cada operación lo fija su brief.
 

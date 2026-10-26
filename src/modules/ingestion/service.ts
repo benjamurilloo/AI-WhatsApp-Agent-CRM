@@ -1,4 +1,8 @@
 import {
+  findAppointmentRequestedByIngestion,
+  requestAppointmentFromIngestion,
+} from "@/modules/appointments";
+import {
   escalateIngestedConversation,
   findEscalatedConversation,
   findIngestedConversation,
@@ -33,6 +37,7 @@ import {
   CLIENT_TAG_EVENT_TYPES_V2,
   ingestionPayloadHashV2,
   parseIngestionEventV2,
+  type AppointmentRequestedEventV2,
   type ClientResolvedEventV2,
   type ClientTagEventV2,
   type ConversationEscalatedEventV2,
@@ -56,7 +61,8 @@ import * as repository from "./repository";
 // conversación a una persona, auditada con la credencial. Desde la 16.2, client.tag_added y
 // client.tag_removed ponen y quitan una etiqueta del catálogo, solo en v2. Desde la 19.4,
 // order.placed deja un pedido pendiente en orders, también solo en v2. Desde la 29.8,
-// order.placed_with_units deja el pendiente con las unidades que eligió el cliente (brief-29.8, D-7).
+// order.placed_with_units deja el pendiente con las unidades que eligió el cliente (brief-29.8, D-7). Desde
+// la 29.10.2, appointment.requested deja el turno pedido en appointments (D-3 a D-5).
 
 // Desde la 12.3 (D-1), el contrato v2 entra por recordIngestionEventV2 con el mismo ledger y la
 // misma proyección. Lo único que cambia según la versión es el CONFLICT: v2 dice por qué (D-7).
@@ -117,12 +123,22 @@ export type OrderPlacedAccepted = {
   order: { number: number; displayNumber: string } | null;
 };
 
+// appointment.requested (brief-29.10.2, D-3): siempre 200, con la franja y nada más. appointment es null
+// solo en un reenvío cuyo evento no tiene turno, que no debería pasar.
+export type AppointmentRequestedAccepted = {
+  ok: true;
+  result: "accepted" | "duplicate";
+  eventId: string;
+  appointment: { startsAt: string; endsAt: string } | null;
+};
+
 export type IngestionAccepted =
   | MessageAccepted
   | ClientAccepted
   | ConversationAccepted
   | ClientTagAccepted
-  | OrderPlacedAccepted;
+  | OrderPlacedAccepted
+  | AppointmentRequestedAccepted;
 
 // Reglas de negocio de los tipos nuevos (brief-12.2, C-2): responden 422 y quedan como failed con
 // la regla en error_code, para que un reenvío responda la misma (decisión del usuario del
@@ -143,6 +159,17 @@ export const INGESTION_RULES = [
   // Desde la 29.8 (D-7), solo de order.placed_with_units.
   "unit_tracking_mismatch",
   "unit_not_available",
+  // Desde la 29.10.2 (D-3), de appointment.requested, que también usa client_not_found y
+  // client_inactive.
+  "not_offered",
+  "reason_not_found",
+  "reference_not_found",
+  "client_has_pending_request",
+  "outside_hours",
+  "in_the_past",
+  "too_soon",
+  "too_far",
+  "slot_full",
 ] as const;
 export type IngestionRule = (typeof INGESTION_RULES)[number];
 
@@ -234,6 +261,19 @@ async function duplicate(
       result: "duplicate",
       eventId: event.event_id,
       order: await findOrderPlacedByIngestion(
+        tx,
+        context.organizationId,
+        storedId,
+      ),
+    };
+  }
+  if (event.event_type === "appointment.requested") {
+    // La misma franja que la primera vez, por el vínculo del turno con su evento, sin escribir.
+    return {
+      ok: true,
+      result: "duplicate",
+      eventId: event.event_id,
+      appointment: await findAppointmentRequestedByIngestion(
         tx,
         context.organizationId,
         storedId,
@@ -490,6 +530,40 @@ async function projectOrderPlaced(
   };
 }
 
+// El turno que pide el agente (brief-29.10.2): appointments bloquea al cliente por teléfono y los valores
+// de la organización, aplica las reglas de la franja que comparte con el alta de la app y audita con la
+// credencial. Un rechazo queda failed con la regla (D-3) y no escribe nada en appointments.
+async function projectAppointmentRequested(
+  tx: DbTransaction,
+  context: IngestionContext,
+  reserved: string,
+  event: AppointmentRequestedEventV2,
+): Promise<RecordIngestionEventResult> {
+  if (!context.credentialId) {
+    throw new Error(`${event.event_type} sin credencial para auditar`);
+  }
+  const requested = await requestAppointmentFromIngestion(tx, {
+    organizationId: context.organizationId,
+    credentialId: context.credentialId,
+    ingestionEventId: reserved,
+    phoneE164: event.client.phone,
+    reasonId: event.appointment.reason_id,
+    startsAt: event.appointment.starts_at,
+    productId: event.appointment.product_id ?? null,
+    unitId: event.appointment.unit_id ?? null,
+  });
+  if (!requested.ok) return rejectByRule(tx, context, reserved, requested.rule);
+  await repository.finishEvent(tx, context.organizationId, reserved, {
+    status: "processed",
+  });
+  return {
+    ok: true,
+    result: "accepted",
+    eventId: event.event_id,
+    appointment: requested.appointment,
+  };
+}
+
 async function projectClient(
   tx: DbTransaction,
   context: IngestionContext,
@@ -637,6 +711,9 @@ async function recordEvent(
         event.event_type === "order.placed_with_units"
       ) {
         return projectOrderPlaced(tx, context, reserved, event);
+      }
+      if (event.event_type === "appointment.requested") {
+        return projectAppointmentRequested(tx, context, reserved, event);
       }
       return projectClient(tx, context, reserved, event);
     },

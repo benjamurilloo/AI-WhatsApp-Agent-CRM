@@ -578,3 +578,125 @@ describe(
     });
   },
 );
+
+describe(
+  "endpoint de ingestión v2: el turno pedido por el agente (brief-29.10.2)",
+  { timeout: TEST_TIMEOUT },
+  () => {
+    const requested = () => fixture("v2", "valid-appointment-requested");
+
+    // appointments con 30 minutos y cupo 1, el motivo y el producto del vector, abierto todo el día, y
+    // una fecha a tres días: el servicio mira la hora de la base, no la del request.
+    async function offered(): Promise<string> {
+      const vector = requested().appointment;
+      const user = await getDb().execute<{ id: string }>(
+        sql`insert into users (email, password_hash, name)
+            values ('turnos@example.com', 'x', 'Admin') returning id`,
+      );
+      await getDb().execute(
+        sql`insert into organization_capabilities (organization_id, capability, activated_by)
+            values (${orgA}, 'appointments', ${user.rows[0]!.id})`,
+      );
+      await getDb().execute(
+        sql`insert into appointment_settings (organization_id, slot_minutes, capacity)
+            values (${orgA}, 30, 1)`,
+      );
+      await getDb().execute(
+        sql`insert into appointment_reasons (id, organization_id, name)
+            values (${vector.reason_id}, ${orgA}, 'Revisión')`,
+      );
+      await getDb().execute(
+        sql`insert into products (id, organization_id, sku, name)
+            values (${vector.product_id}, ${orgA}, 'P-turno', 'Producto')`,
+      );
+      for (let weekday = 1; weekday <= 7; weekday++) {
+        await getDb().execute(
+          sql`insert into business_hours (organization_id, weekday, opens_1, closes_1)
+              values (${orgA}, ${weekday}, '00:00', '23:59')`,
+        );
+      }
+      const date = await getDb().execute<{ date: string }>(
+        sql`select to_char((now() at time zone 'America/Argentina/Buenos_Aires')::date + 3,
+                           'YYYY-MM-DD') as date`,
+      );
+      return date.rows[0]!.date;
+    }
+
+    function withStart(date: string, eventId?: string): Payload {
+      const payload = requested();
+      return {
+        ...payload,
+        ...(eventId ? { event_id: eventId } : {}),
+        appointment: {
+          ...payload.appointment,
+          starts_at: `${date}T15:00:00-03:00`,
+        },
+      };
+    }
+
+    it("D-3: responde 200 con la franja y su desplazamiento, y la misma en el reenvío", async () => {
+      await send(emitter.token, clientEvent());
+      const date = await offered();
+
+      const accepted = await send(emitter.token, withStart(date), {
+        "x-correlation-id": "turno-del-agente",
+      });
+      expect(accepted.status).toBe(200);
+      expect(accepted.headers.get("x-correlation-id")).toBe("turno-del-agente");
+      const body = {
+        contract_version: "2",
+        event_id: "evt-v2-turno-0001",
+        result: "accepted",
+        appointment: {
+          starts_at: `${date}T15:00:00-03:00`,
+          ends_at: `${date}T15:30:00-03:00`,
+        },
+      };
+      expect(await accepted.json()).toStrictEqual(body);
+
+      const again = await send(emitter.token, withStart(date));
+      expect(again.status).toBe(200);
+      expect(await again.json()).toStrictEqual({
+        ...body,
+        result: "duplicate",
+      });
+    });
+
+    it("D-3: una regla responde 422 con rule; producto y unidad juntos, 400; v1 rechaza el tipo", async () => {
+      await send(emitter.token, clientEvent());
+      const date = await offered();
+      expect((await send(emitter.token, withStart(date))).status).toBe(200);
+
+      const pending = await send(
+        emitter.token,
+        withStart(date, "evt-v2-turno-0003"),
+      );
+      expect(pending.status).toBe(422);
+      expect(await pending.json()).toStrictEqual({
+        code: "BUSINESS_RULE_VIOLATION",
+        request_id: expect.any(String),
+        rule: "client_has_pending_request",
+      });
+
+      const both = await send(
+        emitter.token,
+        fixture("v2", "invalid-appointment-product-and-unit"),
+      );
+      expect(both.status).toBe(400);
+      expect(await both.json()).toMatchObject({
+        code: "VALIDATION_ERROR",
+        fields: ["appointment"],
+      });
+
+      const v1 = await sendV1(emitter.token, {
+        ...withStart(date, "evt-v1-turno"),
+        contract_version: "1",
+      });
+      expect(v1.status).toBe(400);
+      expect(await v1.json()).toMatchObject({
+        code: "VALIDATION_ERROR",
+        fields: expect.arrayContaining(["event_type"]),
+      });
+    });
+  },
+);

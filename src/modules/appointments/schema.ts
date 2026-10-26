@@ -16,6 +16,10 @@ import {
 import { users } from "@/modules/auth/schema";
 import { products } from "@/modules/catalog/schema";
 import { clients } from "@/modules/crm/schema";
+import {
+  ingestionCredentials,
+  ingestionEvents,
+} from "@/modules/ingestion/schema";
 import { stockUnits } from "@/modules/inventory/schema";
 import { organizations } from "@/modules/organizations/schema";
 
@@ -33,6 +37,12 @@ export const MAX_APPOINTMENT_REASONS = 20;
 export const APPOINTMENT_NOTE_MAX_LENGTH = 500;
 // Hasta cuántos días adelante se da un turno (U-6).
 export const BOOKING_HORIZON_DAYS = 90;
+// El turno que pide el agente (brief-29.10.2, U-2): hasta 14 días adelante, y nunca una franja que
+// empiece en menos de 2 horas. Un turno pedido ocupa su franja hasta que una persona lo mira.
+export const AGENT_BOOKING_HORIZON_DAYS = 14;
+export const AGENT_BOOKING_LEAD_MINUTES = 120;
+// Cuántos días lee el agente por pedido de franjas (D-2).
+export const AGENT_SLOT_DAYS_MAX = 7;
 
 // Los valores sueltos de appointments (ADR 0024, punto 13): una fila por organización, que crea
 // org:capability con los del perfil. Se edita, no se borra. is_example queda hasta que un admin la
@@ -138,9 +148,13 @@ export const appointments = pgTable(
     // Texto libre: el vaciado de datos de un cliente lo deja en nulo (D-6).
     note: text("note"),
     status: appointmentStatus("status").notNull(),
-    createdBy: uuid("created_by")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+    // Quién lo dio: exactamente uno, un usuario o, desde la 29.10.2, la credencial del agente, con el
+    // evento de ingestión que lo creó (brief-29.10.2, D-4), como el pedido de la 19.4.
+    createdBy: uuid("created_by").references(() => users.id, {
+      onDelete: "restrict",
+    }),
+    createdByCredentialId: uuid("created_by_credential_id"),
+    ingestionEventId: uuid("ingestion_event_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .default(sql`clock_timestamp()`),
@@ -181,6 +195,30 @@ export const appointments = pgTable(
       columns: [table.organizationId, table.unitId],
       foreignColumns: [stockUnits.organizationId, stockUnits.id],
     }).onDelete("restrict"),
+    // Las dos, compuestas con la organización: con la columna nula, MATCH SIMPLE no las comprueba.
+    foreignKey({
+      name: "appointments_created_by_credential_fk",
+      columns: [table.organizationId, table.createdByCredentialId],
+      foreignColumns: [
+        ingestionCredentials.organizationId,
+        ingestionCredentials.id,
+      ],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "appointments_ingestion_event_fk",
+      columns: [table.organizationId, table.ingestionEventId],
+      foreignColumns: [ingestionEvents.organizationId, ingestionEvents.id],
+    }).onDelete("restrict"),
+    // Un evento crea a lo sumo un turno: el reenvío responde la misma franja.
+    unique("appointments_ingestion_event_unique").on(table.ingestionEventId),
+    check(
+      "appointments_one_creator",
+      sql`num_nonnulls(${table.createdBy}, ${table.createdByCredentialId}) = 1`,
+    ),
+    check(
+      "appointments_event_iff_credential",
+      sql`(${table.ingestionEventId} is null) = (${table.createdByCredentialId} is null)`,
+    ),
     index("appointments_starts_idx").on(table.organizationId, table.startsAt),
     index("appointments_client_idx").on(
       table.organizationId,

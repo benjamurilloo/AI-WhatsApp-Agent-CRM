@@ -53,6 +53,8 @@ Que un negocio con la capacidad `appointments` lleve una agenda de turnos para v
   - (a) **Recomendada**: nunca en una franja que ya empezó, y hasta 90 días adelante. El horizonte del agente lo decide la 29.10.2.
   - (b) Sin límite hacia adelante.
 
+  *Nota del 2026-10-26, por la 29.10.2* ([brief-29.10.2](brief-29.10.2-los-turnos-para-el-agente.md), U-2): el horizonte del agente es **14 días**, y nunca una franja que empiece en menos de **2 horas**. La app sigue con los 90 días.
+
 ## Decisiones
 
 *Con las opciones (a), aprobadas por el usuario el 2026-10-26.*
@@ -62,6 +64,8 @@ Que un negocio con la capacidad `appointments` lleve una agenda de turnos para v
 - **`appointments`** como valor nuevo de `capability` y como módulo de dominio nuevo, en `eslint.config.mjs`, el Overview y su guarda de dependencias.
 - `appointments` depende de `crm` (el cliente), `knowledge` (el horario), `catalog` e `inventory` (la referencia opcional), `organizations` y `audit` (ADR 0024, punto 16). **Ningún módulo depende de `appointments`.** La única arista hacia `knowledge` es la lectura nueva de H-1 (H-8). Los nombres de clientes, productos y unidades se piden por ids a su módulo y se componen en memoria, sin `JOIN`.
 - **`org:capability --profile iphone`** la activa y copia los valores de U-3, con `is_example`, también en una organización que ya tiene las otras capacidades.
+
+*Nota del 2026-10-26, por la 29.10.2* ([brief-29.10.2](brief-29.10.2-los-turnos-para-el-agente.md), U-1, decisión del usuario): «ningún módulo depende de `appointments`» tiene una excepción, **`ingestion`**, con dos nombres (`requestAppointmentFromIngestion` y `findAppointmentRequestedByIngestion`), como depende de `orders` desde la 19.4. `appointments/schema.ts` suma el esquema de `ingestion` para las claves de la credencial y el evento. La guarda `appointments-dependencies` lo fija por nombre.
 
 ### D-2 — Las tablas (migración `0065`)
 

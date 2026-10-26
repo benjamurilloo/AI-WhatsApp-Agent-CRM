@@ -44,6 +44,7 @@ const LONE_SURROGATE = /[\uD800-\uDFFF]/u;
 
 // model_id y condition, desde la 29.8: solo los filtros de la lista de la v3 (brief-29.8, D-2).
 // battery_health, passed y failed, desde la 29.8.3: la cotización de un usado (brief-29.8.3, D-3).
+// from y days, desde la 29.10.2: las franjas libres (brief-29.10.2, D-2).
 export type ReadField =
   | "q"
   | "limit"
@@ -54,7 +55,9 @@ export type ReadField =
   | "condition"
   | "battery_health"
   | "passed"
-  | "failed";
+  | "failed"
+  | "from"
+  | "days";
 
 type Parsed<T> = { ok: true; value: T } | { ok: false; field: ReadField };
 

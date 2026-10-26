@@ -32,7 +32,13 @@ const SEEDED_USER_IDS = [...SEED_USERS, ...SEED_IPHONE_USERS].map(
 
 async function reset(keep: boolean) {
   await db.execute(
-    sql`truncate table appointments, appointment_reasons, appointment_settings, unit_settings, service_settings, trade_in_margins, trade_in_settings, trade_in_payment_voids, trade_in_payments, trade_in_voids, trade_in_checklist_results, trade_ins, trade_in_checklist_items, service_order_lines, service_orders, repair_prices, repair_types, supplier_payment_voids, supplier_payments, goods_receipt_voids, goods_receipt_line_units, goods_receipt_lines, goods_receipts, purchase_order_lines, purchase_orders, suppliers, document_counters, refund_voids, refunds, receipt_voids, receipts, cash_movements, cash_session_closing_amounts, cash_session_closings, cash_session_opening_amounts, cash_sessions, sale_voids, sale_line_units, sale_lines, sales, order_line_units, order_lines, orders, audit_logs, inventory_movements, stock_units, unit_grades, inventories, product_images, product_costs, product_prices, attribute_values, products`,
+    sql`truncate table appointments, appointment_reasons, appointment_settings, unit_settings, service_settings, trade_in_margins, trade_in_settings, trade_in_payment_voids, trade_in_payments, trade_in_voids, trade_in_checklist_results, trade_ins, trade_in_checklist_items, service_order_lines, service_orders, repair_prices, repair_types, supplier_payment_voids, supplier_payments, goods_receipt_voids, goods_receipt_line_units, goods_receipt_lines, goods_receipts, purchase_order_lines, purchase_orders, suppliers, document_counters, refund_voids, refunds, receipt_voids, receipts, cash_movements, cash_session_closing_amounts, cash_session_closings, cash_session_opening_amounts, cash_sessions, sale_voids, sale_line_units, sale_lines, sales, order_line_units, order_lines, orders, audit_logs, inventory_movements, stock_units, unit_grades, inventories, product_images, product_costs, product_prices, attribute_values, products, ingestion_events`,
+  );
+  // El turno pedido por el agente deja su evento y su credencial (brief-29.10.2). ingestion_events es de
+  // solo inserción: va en el TRUNCATE de arriba, la vía documentada (ADR 0013), con orders y appointments,
+  // las dos que la nombran.
+  await db.execute(
+    sql`delete from ingestion_credentials where organization_id = ${IPHONE}`,
   );
   await db.execute(
     sql`delete from business_hour_exceptions where organization_id = ${IPHONE}`,
@@ -111,8 +117,8 @@ async function today(): Promise<string> {
   return result.rows[0]!.today;
 }
 
-// Un turno escrito directo en la base: el servicio no deja dar uno que ya empezó, y una persona no da
-// uno pedido (desde la 29.10.2 lo pide el agente).
+// Un turno escrito directo en la base: el servicio no deja dar uno que ya empezó. El pedido lo pide el
+// agente (brief-29.10.2): con su credencial y el evento que lo creó, como lo deja la ingestión.
 async function insertAppointment(
   startsAt: ReturnType<typeof sql>,
   status: "requested" | "confirmed" = "confirmed",
@@ -123,11 +129,32 @@ async function insertAppointment(
                 order by position limit 1) as reason`,
   );
   const { client, reason } = ids.rows[0]!;
+  if (status === "confirmed") {
+    const created = await db.execute<{ id: string }>(
+      sql`insert into appointments (organization_id, client_id, reason_id, starts_at, ends_at, status,
+            created_by, confirmed_at)
+          values (${IPHONE}, ${client}, ${reason}, ${startsAt}, ${startsAt} + interval '30 minutes',
+            'confirmed', ${ADMIN_IPHONE.id}, now())
+          returning id`,
+    );
+    return created.rows[0]!.id;
+  }
+  const credential = await db.execute<{ id: string }>(
+    sql`insert into ingestion_credentials (organization_id, source, scope, token_hash)
+        values (${IPHONE}, 'agente-whatsapp', 'ingest', 'e2e') returning id`,
+  );
+  const event = await db.execute<{ id: string }>(
+    sql`insert into ingestion_events (organization_id, source, external_ref, event_type, payload_hash,
+          status, processed_at)
+        values (${IPHONE}, 'agente-whatsapp', 'evt-e2e-turno', 'appointment.requested', 'e2e',
+          'processed', now())
+        returning id`,
+  );
   const created = await db.execute<{ id: string }>(
     sql`insert into appointments (organization_id, client_id, reason_id, starts_at, ends_at, status,
-          created_by, confirmed_at)
+          created_by_credential_id, ingestion_event_id)
         values (${IPHONE}, ${client}, ${reason}, ${startsAt}, ${startsAt} + interval '30 minutes',
-          ${status}, ${ADMIN_IPHONE.id}, ${status === "confirmed" ? sql`now()` : null})
+          'requested', ${credential.rows[0]!.id}, ${event.rows[0]!.id})
         returning id`,
   );
   return created.rows[0]!.id;
@@ -257,13 +284,22 @@ test("un admin da un turno desde el calendario, ve la franja llena, configura, c
   await expect(page.getByText("Cancelado").first()).toBeVisible();
   await expect(nextStep(page)).toHaveCount(0);
 
-  // Un turno pedido se confirma.
+  // Un turno que pidió el agente se ve con su origen y se confirma (brief-29.10.2, D-5).
   const requested = await insertAppointment(
     sql`((${future}::date + '11:00'::time) at time zone ${TIMEZONE})`,
     "requested",
   );
+  await page.goto(`/turnos?fecha=${future}&vista=dia`);
+  await expect(
+    page
+      .getByRole("list", { name: /^Turnos del/ })
+      .getByRole("listitem")
+      .filter({ hasText: "11:00 a 11:30" }),
+  ).toContainText("Pedido por el agente");
   await page.goto(`/turnos/${requested}`);
   await expect(page.getByText("Pedido").first()).toBeVisible();
+  await expect(page.getByText("Agente · agente-whatsapp")).toBeVisible();
+  await expectAccessible(page, "turno pedido por el agente");
   await nextStep(page).getByRole("button", { name: "Confirmar" }).click();
   await expect(page).toHaveURL(/\?aviso=turno-confirmado$/);
   await expect(page.getByRole("status")).toContainText("Turno confirmado.");

@@ -130,6 +130,22 @@ function acceptedResponse(
       { status: 200, headers },
     );
   }
+  if ("appointment" in accepted) {
+    // El turno que pide el agente, solo en v2 (brief-29.10.2, D-3): siempre 200, con la franja y nada
+    // más, sin el id del turno ni el del cliente. v1 nunca llega acá.
+    return Response.json(
+      {
+        contract_version: edge.contractVersion,
+        event_id: accepted.eventId,
+        result: accepted.result,
+        appointment: accepted.appointment && {
+          starts_at: accepted.appointment.startsAt,
+          ends_at: accepted.appointment.endsAt,
+        },
+      },
+      { status: 200, headers },
+    );
+  }
   if ("conversation" in accepted) {
     // Siempre 200, con la referencia de la conversación y sin el id interno ni el teléfono
     // (brief-12.2, D-5).

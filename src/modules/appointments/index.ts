@@ -1,7 +1,21 @@
 // Interfaz pública del módulo appointments: los turnos para visitar el local (ADR 0024, punto 12;
-// brief-29.10). Ningún módulo lo importa (D-1): lo usan las pantallas y el script de capacidades.
+// brief-29.10). Lo usan las pantallas, el script de capacidades y la lectura del agente. Desde la 29.10.2
+// (U-1), un solo módulo lo importa: ingestion, con requestAppointmentFromIngestion y
+// findAppointmentRequestedByIngestion, como importa el pedido de orders.
 export {
   addDays,
+  AGENT_APPOINTMENT_RULES,
+  AGENT_BOOKING_HORIZON_DAYS,
+  AGENT_BOOKING_LEAD_MINUTES,
+  AGENT_SLOT_DAYS_MAX,
+  findAppointmentRequestedByIngestion,
+  listFreeSlotsForService,
+  requestAppointmentFromIngestion,
+  type AgentAppointmentRule,
+  type FreeSlot,
+  type FreeSlots,
+  type RequestAppointmentResult,
+  type RequestedAppointment,
   APPOINTMENT_NOTE_MAX_LENGTH,
   APPOINTMENT_TARGETS,
   BOOKING_HORIZON_DAYS,

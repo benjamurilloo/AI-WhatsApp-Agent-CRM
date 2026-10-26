@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { ExchangeSetup } from "@/modules/fx";
 import type { ServiceCatalogProduct } from "@/modules/inventory";
 import {
+  appointmentSlotsResponseSchemaV3,
   capabilityListResponseSchemaV3,
   contractRate,
   convertPrice,
@@ -13,6 +14,7 @@ import {
   repairListResponseSchemaV3,
   serviceOrderListResponseSchemaV3,
   sortUnitsByPrice,
+  toContractAppointmentSlotsV3,
   toContractCapabilities,
   toContractProductV3,
   toContractRepairListV3,
@@ -572,11 +574,102 @@ describe("la cotización de un usado (brief-29.8.3, D-3, U-4 y U-5)", () => {
   });
 });
 
+describe("las franjas libres (brief-29.10.2, D-2 y A-1)", () => {
+  const slots = {
+    today: "2026-10-27",
+    slotMinutes: 30,
+    reasons: [
+      {
+        id: "3c5e7a9b-1d2f-4a6b-8c0d-2e4f6a8b0c1d",
+        name: "Ver o comprar un equipo",
+      },
+    ],
+    days: [
+      {
+        date: "2026-10-29",
+        slots: [
+          {
+            startsAt: "2026-10-29T15:00:00-03:00",
+            endsAt: "2026-10-29T15:30:00-03:00",
+          },
+        ],
+      },
+    ],
+  };
+
+  it("la fecha de hoy, la duración, los motivos y las franjas con su desplazamiento", () => {
+    const body = toContractAppointmentSlotsV3(slots);
+    expect(body).toStrictEqual({
+      contract_version: "3",
+      today: "2026-10-27",
+      slot_minutes: 30,
+      reasons: [
+        {
+          reason_id: "3c5e7a9b-1d2f-4a6b-8c0d-2e4f6a8b0c1d",
+          name: "Ver o comprar un equipo",
+        },
+      ],
+      days: [
+        {
+          date: "2026-10-29",
+          slots: [
+            {
+              starts_at: "2026-10-29T15:00:00-03:00",
+              ends_at: "2026-10-29T15:30:00-03:00",
+            },
+          ],
+        },
+      ],
+    });
+    expect(appointmentSlotsResponseSchemaV3.safeParse(body).success).toBe(true);
+  });
+
+  it("sin la capacidad: today siempre, y nada más", () => {
+    const body = toContractAppointmentSlotsV3({
+      today: "2026-10-27",
+      slotMinutes: null,
+      reasons: [],
+      days: [],
+    });
+    expect(body).toStrictEqual({
+      contract_version: "3",
+      today: "2026-10-27",
+      slot_minutes: null,
+      reasons: [],
+      days: [],
+    });
+    expect(appointmentSlotsResponseSchemaV3.safeParse(body).success).toBe(true);
+  });
+
+  it("el esquema no admite ocupación, cupo, turnos, un día vacío ni un instante sin desplazamiento", () => {
+    const valid = toContractAppointmentSlotsV3(slots);
+    const day = valid.days[0]!;
+    const slot = day.slots[0]!;
+    for (const invalid of [
+      { ...valid, capacity: 1 },
+      { ...valid, today: undefined },
+      { ...valid, days: [{ ...day, slots: [] }] },
+      { ...valid, days: [{ ...day, slots: [{ ...slot, occupied: 0 }] }] },
+      { ...valid, days: [{ ...day, appointments: [] }] },
+      {
+        ...valid,
+        days: [
+          { ...day, slots: [{ ...slot, starts_at: "2026-10-29T15:00:00" }] },
+        ],
+      },
+    ]) {
+      expect(appointmentSlotsResponseSchemaV3.safeParse(invalid).success).toBe(
+        false,
+      );
+    }
+  });
+});
+
 describe("fixtures del contrato v3", () => {
   const dir = path.join(process.cwd(), "tests/fixtures/read/v3");
   const files = readdirSync(dir).filter((file) => file.endsWith(".json"));
 
-  it("existen las nueve rutas", () => {
+  it("existen las diez rutas", () => {
     const paths = files.map(
       (file) =>
         JSON.parse(readFileSync(path.join(dir, file), "utf8")).request
@@ -598,6 +691,9 @@ describe("fixtures del contrato v3", () => {
     expect(paths).toContain("/api/read/v3/trade-in-checklist");
     expect(
       paths.some((p) => p.startsWith("/api/read/v3/trade-in-quote?")),
+    ).toBe(true);
+    expect(
+      paths.some((p) => p.startsWith("/api/read/v3/appointment-slots?")),
     ).toBe(true);
   });
 
@@ -624,9 +720,11 @@ describe("fixtures del contrato v3", () => {
                 ? tradeInChecklistResponseSchemaV3
                 : requestPath.startsWith("/api/read/v3/trade-in-quote?")
                   ? tradeInQuoteResponseSchemaV3
-                  : "items" in body
-                    ? productListResponseSchemaV3
-                    : productResponseSchemaV3;
+                  : requestPath.startsWith("/api/read/v3/appointment-slots?")
+                    ? appointmentSlotsResponseSchemaV3
+                    : "items" in body
+                      ? productListResponseSchemaV3
+                      : productResponseSchemaV3;
     const parsed = schema.safeParse(body);
     expect(parsed.success, parsed.error?.message).toBe(true);
   });

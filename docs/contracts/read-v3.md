@@ -6,10 +6,11 @@
 - ~~**No validado en integración**: ningún consumidor real lo leyó todavía. Sus fixtures tienen **forma asumida**. La ventana con el agente los contrasta (brief-29.8, D-11).~~ *Precisado el 2026-10-23*: el agente leyó las rutas de la 29.8 en sus ventanas 3.50 y 3.51 (brief-29.8, §Cierre). Los fixtures siguen siendo de **forma asumida**, porque las conciliaciones traen ids, no cuerpos.
 - *Ampliado en la 29.8.2* ([brief-29.8.2](../decisions/brief-29.8.2-las-reparaciones-para-el-agente.md), D-1 a D-4), con la confirmación del agente del 2026-10-22 (`Respuesta-29.8.2-Agente-al-CRM.md`): **las reparaciones de un modelo** y **las órdenes de servicio del cliente de una conversación**. Son dos rutas nuevas, un cambio compatible: ninguna respuesta existente cambia. **Validadas localmente**. *Desde el 2026-10-23*, **validadas en integración con el agente real**: su ventana 3.52 leyó las dos y coincide con el log de producción (brief-29.8.2, §La ventana). Sus fixtures siguen siendo de forma asumida.
 - *Ampliado en la 29.8.3* ([brief-29.8.3](../decisions/brief-29.8.3-la-cotizacion-de-un-usado-para-el-agente.md), D-1 a D-5), con la confirmación del agente del 2026-10-23 (`Respuesta-29.8.3-Agente-al-CRM.md`): **el checklist de un usado** y **su cotización orientativa**, con solo el rango redondeado. Dos rutas nuevas, un cambio compatible. **Validadas localmente**. *Desde el 2026-10-25*, **validadas en integración con el agente real** en su ventana 3.53 (brief-29.8.3, §La ventana): el checklist, el rango y `checklist_incomplete`. **`not_accepted` y `not_quotable` siguen validados solo localmente**: el agente no los leyó. *Desde la ventana corta 3.54, el mismo día, también `not_quotable` está validado en integración; solo `not_accepted` sigue validado localmente* (brief-29.8.3, §La ventana corta). *Desde la ventana del caso 6, el mismo día, también `not_accepted`: las dos rutas quedan validadas en integración enteras* (§La ventana del caso 6). Sus fixtures siguen siendo de forma asumida.
+- *Ampliado en la 29.10.2* ([brief-29.10.2](../decisions/brief-29.10.2-los-turnos-para-el-agente.md), D-2 y A-1), con la confirmación del agente del 2026-10-26 (`Respuesta-29.10.2-Agente-al-CRM.md`), que pidió sumar `today`: **las franjas libres para pedir un turno**. Una ruta nueva, un cambio compatible. **Validada localmente**. Su fixture es de forma asumida.
 
 ## Qué cambia respecto de v2
 
-La v3 es el catálogo de un negocio con rubro ([ADR 0024](../decisions/0024-rubros-y-capacidades.md), punto 15): **las tres rutas de productos de [v2](read-v2.md), con el objeto ampliado**, y dos rutas nuevas. *Desde la 29.8.2 (2026-10-22)*, cuatro: las reparaciones y las órdenes de servicio. *Desde la 29.8.3 (2026-10-23)*, seis: el checklist y la cotización de un usado.
+La v3 es el catálogo de un negocio con rubro ([ADR 0024](../decisions/0024-rubros-y-capacidades.md), punto 15): **las tres rutas de productos de [v2](read-v2.md), con el objeto ampliado**, y dos rutas nuevas. *Desde la 29.8.2 (2026-10-22)*, cuatro: las reparaciones y las órdenes de servicio. *Desde la 29.8.3 (2026-10-23)*, seis: el checklist y la cotización de un usado. *Desde la 29.10.2 (2026-10-26)*, siete: las franjas libres.
 
 | | v2 | v3 |
 |---|---|---|
@@ -19,7 +20,7 @@ La v3 es el catálogo de un negocio con rubro ([ADR 0024](../decisions/0024-rubr
 | Productos de servicio | fuera, desde la 29.6 | fuera. *Desde la 29.8.2* (D-5): siguen fuera; lo que contesta el agente sale de la ruta de reparaciones |
 | El producto | el objeto de v1 | el de v1, con `condition` que admite `used`, y `tracking`, `model`, `attributes` y `price_converted` |
 | Filtros de la lista | `q` y `limit` | más `model_id` y `condition` |
-| Rutas nuevas | — | las unidades disponibles de un producto y las capacidades; *desde la 29.8.2*, las reparaciones y las órdenes de servicio; *desde la 29.8.3*, el checklist y la cotización de un usado |
+| Rutas nuevas | — | las unidades disponibles de un producto y las capacidades; *desde la 29.8.2*, las reparaciones y las órdenes de servicio; *desde la 29.8.3*, el checklist y la cotización de un usado; *desde la 29.10.2*, las franjas libres |
 
 **v1 y v2 no cambian** y siguen sin los usados. Las demás rutas de lectura (información del negocio, historial, etiquetas, estado de la conversación y horario) **solo existen en v1**.
 
@@ -321,6 +322,49 @@ Fixture, con forma asumida: `trade-in-checklist.json`.
 
 Fixture, con forma asumida: `trade-in-quote.json`.
 
+### `GET /api/read/v3/appointment-slots`
+
+*Desde la 29.10.2* ([brief-29.10.2](../decisions/brief-29.10.2-los-turnos-para-el-agente.md), D-2, U-2 y A-1). Las franjas en las que el agente puede pedir un turno para visitar el local, con [`appointment.requested`](ingestion-v2.md). Alcance `read`: no lleva clientes ni turnos.
+
+| Parámetro | Obligatorio | Reglas |
+|---|---|---|
+| `from` | no | una fecha `AAAA-MM-DD`, en la zona del negocio. Sin él, hoy. Anterior a hoy, o una fecha que no existe, da `400` con `from` |
+| `days` | no | de 1 a 7. Sin él, 7. Fuera de rango da `400` con `days` |
+
+```json
+{
+  "contract_version": "3",
+  "today": "2026-10-27",
+  "slot_minutes": 30,
+  "reasons": [
+    { "reason_id": "…", "name": "Ver o comprar un equipo" }
+  ],
+  "days": [
+    {
+      "date": "2026-10-29",
+      "slots": [
+        { "starts_at": "2026-10-29T15:00:00-03:00", "ends_at": "2026-10-29T15:30:00-03:00" }
+      ]
+    }
+  ]
+}
+```
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `today` | string, fecha | **la fecha de hoy en la zona del negocio**, siempre, también sin la capacidad y aunque hoy no tenga franjas. Con ella el agente pasa «mañana» o «el jueves» a una fecha (A-1) |
+| `slot_minutes` | entero | la duración de una franja; `null` sin la capacidad `appointments` o sin duración y cupo |
+| `reasons` | arreglo | los motivos activos, en el orden del negocio, con `reason_id` y `name` |
+| `days` | arreglo | por fecha, las franjas que se pueden pedir. Un día sin ninguna no aparece |
+| `slots[].starts_at`, `ends_at` | string, instante | con el **desplazamiento del negocio en esa fecha**: el agente no necesita saber la zona. `starts_at` es lo que manda en el pedido, tal como vino |
+
+- **Solo las franjas que el agente puede pedir** (U-2): con lugar (la ocupación cuenta los turnos pedidos y los confirmados), que empiezan dentro de **2 horas o más**, **hasta 14 días** después de hoy, y que **existen en la hora local**: nunca una de la hora que falta del horario de verano. Un rango que pasa los 14 días se recorta, sin error.
+- **Sin ocupación, cupo ni turnos**: libre, o no aparece.
+- **La lectura no reserva**: entre leer y pedir, otro puede ocupar la franja; el pedido da `slot_full`.
+- **El agente no calcula franjas** con el horario de `GET /api/read/v1/business-hours`: solo ofrece las que lee aquí.
+
+Fixture, con forma asumida: `appointment-slots.json`.
+
 ## El precio convertido
 
 [ADR 0025](../decisions/0025-tipo-de-cambio.md), punto 10; brief-29.8, D-6 y U-3.
@@ -365,7 +409,8 @@ Los de v1. El log lleva las rutas fijas, nunca el id, la búsqueda ni la referen
 - `/api/read/v3/products/{product_id}/units`;
 - `/api/read/v3/capabilities`;
 - *desde la 29.8.2*, `/api/read/v3/repairs` y `/api/read/v3/service-orders`;
-- *desde la 29.8.3*, `/api/read/v3/trade-in-checklist` y `/api/read/v3/trade-in-quote`, nunca el producto ni las respuestas.
+- *desde la 29.8.3*, `/api/read/v3/trade-in-checklist` y `/api/read/v3/trade-in-quote`, nunca el producto ni las respuestas;
+- *desde la 29.10.2*, `/api/read/v3/appointment-slots`, nunca las fechas pedidas.
 
 ## Versionado
 

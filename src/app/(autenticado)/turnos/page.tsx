@@ -21,6 +21,7 @@ import { PageNotice } from "@/app/_components/page-notice";
 import { calendarDayIn, shiftDays } from "@/app/_format/date-time";
 import { isCalendarDate } from "@/shared/calendar";
 import {
+  AGENT_REQUEST_LABEL,
   CALENDAR_TITLE,
   FORBIDDEN_ACTION_MESSAGE,
   formatRange,
@@ -252,6 +253,9 @@ function DayCard({
               </Link>
               <span className="text-muted">{item.reasonName}</span>
               <AppointmentStatusBadge status={item.status} />
+              {item.byAgent ? (
+                <span className="text-muted">{AGENT_REQUEST_LABEL}</span>
+              ) : null}
               {item.outsideHours ? (
                 <span className="font-semibold text-danger">
                   Fuera de horario

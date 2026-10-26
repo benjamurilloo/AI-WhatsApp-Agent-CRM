@@ -9,6 +9,7 @@ import {
   type AppointmentTarget,
 } from "@/modules/appointments";
 import { AUDIT_PAGE_SIZE } from "@/modules/audit";
+import { getCredentialSources } from "@/modules/ingestion";
 import { auditActorLabels } from "@/app/(autenticado)/_audit/actor";
 import { formatDayDate } from "@/app/(autenticado)/informacion/horario/messages";
 import { requireSession } from "@/app/_auth/session";
@@ -24,6 +25,7 @@ import { PageNotice } from "@/app/_components/page-notice";
 import { SectionCard } from "@/app/_components/section-card";
 import { formatShortDateTime } from "@/app/_format/date-time";
 import {
+  appointmentOriginLabel,
   auditActionLabel,
   describeAuditDiff,
   formatRange,
@@ -89,6 +91,16 @@ export default async function AppointmentPage({
   const actorLabel = audit.ok
     ? await auditActorLabels(context.organizationId, audit.entries)
     : null;
+  // El emisor de la credencial del agente, como en la historia (brief-29.10.2, D-5).
+  const { createdByCredentialId } = appointment;
+  const origin = appointmentOriginLabel(
+    createdByCredentialId,
+    createdByCredentialId === null
+      ? new Map()
+      : await getCredentialSources(context.organizationId, [
+          createdByCredentialId,
+        ]),
+  );
   const notice = noticeMessage(query.aviso);
   const targets = context.role === "admin" ? targetsOf(appointment) : [];
   const steps: [string, Date | null][] = [
@@ -142,6 +154,10 @@ export default async function AppointmentPage({
           <div>
             <dt className="text-sm text-muted">Motivo</dt>
             <dd>{appointment.reasonName}</dd>
+          </div>
+          <div>
+            <dt className="text-sm text-muted">Origen</dt>
+            <dd>{origin}</dd>
           </div>
           <div>
             <dt className="text-sm text-muted">Horario</dt>

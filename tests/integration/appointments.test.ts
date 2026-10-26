@@ -342,6 +342,8 @@ describe("las franjas y el alta (AC-2, AC-3)", () => {
           reasonName: "Ver o comprar un equipo",
           outsideHours: false,
           overCapacity: false,
+          // Lo dio una persona, no el agente (brief-29.10.2, D-5).
+          byAgent: false,
         },
       ]);
       const detail = ok(

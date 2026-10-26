@@ -51,6 +51,21 @@ export const TARGET_LABEL: Record<AppointmentTarget, string> = {
   no_show: "Marcar ausente",
 };
 
+// El turno que pidió el agente (brief-29.10.2, D-5): en la lista del día, y su origen en el detalle con
+// el emisor de la credencial, como el pedido de la 19.4.
+export const AGENT_REQUEST_LABEL = "Pedido por el agente";
+export const AGENT_ORIGIN_LABEL = "Agente";
+export const TEAM_ORIGIN_LABEL = "Equipo";
+
+export function appointmentOriginLabel(
+  createdByCredentialId: string | null,
+  sources: ReadonlyMap<string, string> = new Map(),
+): string {
+  if (createdByCredentialId === null) return TEAM_ORIGIN_LABEL;
+  const source = sources.get(createdByCredentialId);
+  return source ? `${AGENT_ORIGIN_LABEL} · ${source}` : AGENT_ORIGIN_LABEL;
+}
+
 // "10:00" y "10:30" → "10:00 a 10:30".
 export function formatRange(start: string, end: string): string {
   return `${start} a ${end}`;

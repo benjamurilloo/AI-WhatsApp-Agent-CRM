@@ -240,7 +240,9 @@ export type AppointmentRow = {
   end: string;
   // Si ya empezó, según now() de PostgreSQL.
   started: boolean;
-  createdBy: string;
+  // Exactamente uno: el usuario que lo dio o, desde la 29.10.2, la credencial del agente que lo pidió.
+  createdBy: string | null;
+  createdByCredentialId: string | null;
   createdAt: Date;
   confirmedAt: Date | null;
   cancelledAt: Date | null;
@@ -262,6 +264,7 @@ function appointmentColumns(timezone: string) {
     end: sql<string>`to_char(${appointments.endsAt} at time zone ${timezone}, 'HH24:MI')`,
     started: sql<boolean>`${appointments.startsAt} <= now()`,
     createdBy: appointments.createdBy,
+    createdByCredentialId: appointments.createdByCredentialId,
     createdAt: appointments.createdAt,
     confirmedAt: appointments.confirmedAt,
     cancelledAt: appointments.cancelledAt,
@@ -375,6 +378,132 @@ export async function slotExists(
   return result.rows[0]!.exists;
 }
 
+// La hora local de un instante en la zona de la organización (brief-29.10.2, H-7). exact dice si el
+// instante es justo esa hora local, sin segundos, y si la hora local vuelve al mismo instante: en la hora
+// repetida del fin del horario de verano, solo uno de los dos instantes vuelve.
+export async function findLocalOf(
+  executor: Executor,
+  instant: string,
+  timezone: string,
+): Promise<{ date: string; time: string; exact: boolean }> {
+  const local = sql`(${instant}::timestamptz at time zone ${timezone})`;
+  const result = await executor.execute<{
+    date: string;
+    time: string;
+    exact: boolean;
+  }>(
+    sql`select to_char(${local}, 'YYYY-MM-DD') as date,
+               to_char(${local}, 'HH24:MI') as time,
+               date_trunc('minute', ${local}) = ${local}
+                 and (date_trunc('minute', ${local}) at time zone ${timezone}) = ${instant}::timestamptz
+                 as exact`,
+  );
+  return result.rows[0]!;
+}
+
+// Si una franja local empieza antes de la anticipación que pide el agente (U-2), contado por PostgreSQL.
+export async function startsWithin(
+  executor: Executor,
+  slot: { date: string; start: string; timezone: string },
+  minutes: number,
+): Promise<boolean> {
+  const result = await executor.execute<{ soon: boolean }>(
+    sql`select ${localInstant(slot.date, slot.start, slot.timezone)}
+                 < now() + make_interval(mins => ${minutes}) as soon`,
+  );
+  return result.rows[0]!.soon;
+}
+
+export type DescribedSlot = {
+  date: string;
+  start: string;
+  end: string;
+  // Si el inicio y el fin existen en la hora local (D-7 de la 29.10).
+  exists: boolean;
+  // El desplazamiento de la zona en el inicio y en el fin, en minutos al este de UTC.
+  startOffset: number;
+  endOffset: number;
+  // Si existe y empieza después de la anticipación (U-2): la que el agente puede pedir (H-6).
+  bookable: boolean;
+};
+
+// Las franjas de varios días en una consulta, para la lectura del agente (brief-29.10.2, D-2): cuáles
+// existen, el desplazamiento de cada borde y cuáles se pueden pedir. La hora que falta nunca se puede
+// pedir: la lectura filtra solo por bookable.
+export async function describeSlots(
+  timezone: string,
+  slots: { date: string; start: string; end: string }[],
+  leadMinutes: number,
+  executor: Executor = getDb(),
+): Promise<DescribedSlot[]> {
+  if (slots.length === 0) return [];
+  const local = (time: string) => sql.raw(`(s.date::date + s.${time}::time)`);
+  const instant = (time: string) =>
+    sql`(${local(time)} at time zone ${timezone})`;
+  const exists = (time: string) =>
+    sql`((${instant(time)} at time zone ${timezone}) = ${local(time)})`;
+  const offset = (time: string) =>
+    sql`(extract(epoch from (${local(time)} - (${instant(time)} at time zone 'UTC'))) / 60)::int`;
+  const result = await executor.execute<DescribedSlot>(
+    sql`select s.date, s.start, s."end",
+               ${exists("start")} and ${exists('"end"')} as "exists",
+               ${offset("start")} as "startOffset",
+               ${offset('"end"')} as "endOffset",
+               ${exists("start")} and ${exists('"end"')}
+                 and ${instant("start")} >= now() + make_interval(mins => ${leadMinutes}) as "bookable"
+          from (select e.item ->> 'date' as date, e.item ->> 'start' as start,
+                       e.item ->> 'end' as "end", e.position
+                  from jsonb_array_elements(${JSON.stringify(slots)}::jsonb)
+                       with ordinality as e(item, position)) as s
+         order by s.position`,
+  );
+  return result.rows;
+}
+
+// Si el cliente ya tiene un turno pedido que no empezó (U-4). Se llama bajo el bloqueo de los valores,
+// como el cupo: dos pedidos del mismo cliente se ordenan.
+export async function hasPendingRequest(
+  tx: DbTransaction,
+  organizationId: string,
+  clientId: string,
+): Promise<boolean> {
+  const result = await tx.execute<{ pending: boolean }>(
+    sql`select exists (
+          select 1 from ${appointments}
+           where organization_id = ${organizationId}
+             and client_id = ${clientId}
+             and status::text = 'requested'
+             and starts_at > now()
+        ) as pending`,
+  );
+  return result.rows[0]!.pending;
+}
+
+// La franja del turno que creó un evento, para responder su reenvío sin escribir.
+export async function findAppointmentByIngestionEvent(
+  tx: DbTransaction,
+  organizationId: string,
+  ingestionEventId: string,
+  timezone: string,
+): Promise<AppointmentRow | undefined> {
+  const rows = await tx
+    .select(appointmentColumns(timezone))
+    .from(appointments)
+    .where(
+      and(
+        eq(appointments.organizationId, organizationId),
+        eq(appointments.ingestionEventId, ingestionEventId),
+      ),
+    )
+    .limit(1);
+  return rows[0];
+}
+
+// El autor de un turno: una persona, o la credencial del agente con el evento que lo creó (D-4).
+export type AppointmentCreator =
+  | { createdBy: string }
+  | { createdByCredentialId: string; ingestionEventId: string };
+
 export type NewAppointment = {
   clientId: string;
   reasonId: string;
@@ -386,7 +515,7 @@ export type NewAppointment = {
   end: string;
   timezone: string;
   status: "requested" | "confirmed";
-  createdBy: string;
+  creator: AppointmentCreator;
 };
 
 export async function insertAppointment(
@@ -394,12 +523,13 @@ export async function insertAppointment(
   organizationId: string,
   values: NewAppointment,
 ): Promise<string> {
-  const { date, start, end, timezone, status, ...rest } = values;
+  const { date, start, end, timezone, status, creator, ...rest } = values;
   const rows = await tx
     .insert(appointments)
     .values({
       organizationId,
       ...rest,
+      ...creator,
       status,
       startsAt: localInstant(date, start, timezone),
       endsAt: localInstant(date, end, timezone),
