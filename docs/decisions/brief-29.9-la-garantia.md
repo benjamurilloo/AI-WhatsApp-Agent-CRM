@@ -268,3 +268,39 @@ Una sola función pura por caso, con sus pruebas unitarias. Las lecturas de cada
 | O-6. Dos tablas de una columna | — | Es lo aprobado en U-2 (a) |
 
 Fuera de la revisión, al correr las suites juntas falló una vez un test de `units-orders-sales`: el de la corrección del precio, que ordena por `created_at` dos auditorías de la misma transacción, con el mismo `now()`. Solo pasa. Es de antes y no se toca aquí. El test del medio «Permuta» de `variants.test.ts` lanza el script y tardaba más que los 5 s por defecto. Ahora tiene 60 s, como su vecino.
+
+## Cierre
+
+*Del 2026-10-26, después del despliegue, de `org:capability` en «iPhone Demo» y del recorrido del usuario, que lo aprobó sin observaciones.*
+
+### Criterios
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| AC-1 | cumple | `warranty.test.ts`: los `CHECK` y los `UNIQUE` de la `0063`; en producción, las dos tablas y la columna, con 64 migraciones |
+| AC-2 | cumple | `warranty.test.ts` y `variants.test.ts`, en una organización nueva y en una activa sin las filas; en producción, las dos filas de «iPhone Demo» con 30 días, `is_example` y dos auditorías `create` |
+| AC-3 | cumple | unitarias de la regla (último día, zona horaria, fin de mes y de año, bisiesto) e integración de la venta sin pedido y del pedido entregado |
+| AC-4 | cumple | integración: la venta anulada, la venta otra vez y el equipo que volvió al local |
+| AC-5 | cumple | `service/warranties.test.ts` e integración de la reparación entregada |
+| AC-6 | cumple | integración, «sin configurar» |
+| AC-7 | cumple | integración de los roles y la auditoría, y el e2e del `viewer`; ver NB-6 |
+| AC-8 | cumple | e2e del `admin` (unidad, `/buscar` y ficha del cliente) y el recorrido del usuario |
+| AC-9 | cumple | integración con el mismo IMEI en dos organizaciones; quitar el filtro lo hace fallar (NB-2) |
+| AC-10 | cumple | CI de `ff3f0fb` en `success` (run 40314640509), con la integración entera y el e2e entero |
+| AC-11 | cumple | §Revisión independiente: R1, sin bloqueantes, todo verificado; NB-1 decidido por el usuario |
+| AC-12 | cumple | §El despliegue |
+
+### El despliegue
+
+- **La primera CI falló.** La de `a62f071` (la implementación) cortó en la integración: `identity-schema.test.ts` lista las tablas de la base, y no tenía las dos nuevas. En local se habían corrido las suites por archivo, no la integración entera. `ff3f0fb` las suma; la integración entera pasó en local (106 archivos, 1787 tests) y la CI, en `success`, con el build y el e2e.
+- **Los dos e2e de reparaciones** que fallaban en la máquina local, también en la línea base, pasaron en la CI: era el entorno local.
+- **Antes**, solo leyendo: ninguna unidad `sold` sin movimiento de salida (4 vendidas de 13), «iPhone Demo» con `serialized_units` y `repairs`, y 63 migraciones.
+- **El paso 3 del runbook**, el 2026-10-26: `ff3f0fb`, con el servicio detenido durante el build y 1.536 MB de heap. Quedó anotado `9a971ae` para volver atrás, que no pierde datos: la `0063` solo agrega.
+- **`org:capability --profile iphone` en «iPhone Demo»**: las cuatro capacidades ya estaban activas, y creó las dos garantías de 30 días, de ejemplo. Un primer intento no llegó a correr: un error de comillas lo dejó en el mensaje de uso, sin tocar la base.
+
+### Lo que queda
+
+- **NB-1**, aceptado como limitación: una unidad posterior dada de baja también cuenta como «volvió al local». Se revisa en la 29.9.2.
+- **La 29.9.2, el reclamo**, en «Esperando», con su brief por hacer (resuelve H-8).
+- Un test de `units-orders-sales` falla a veces, al ordenar dos auditorías con el mismo `now()`. Es de antes.
+- Las correcciones de la revisión son autoevaluación: no hubo una segunda revisión independiente.

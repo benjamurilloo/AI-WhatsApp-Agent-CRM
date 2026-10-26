@@ -2,6 +2,23 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-26 — 29.9: la garantía
+
+Cierra el 2026-10-26, desplegada en producción (`ff3f0fb`, con la migración `0063`) y recorrida por el usuario sobre «iPhone Demo», con los 30 días de ejemplo creados por `org:capability` ([brief-29.9](docs/decisions/brief-29.9-la-garantia.md), §Cierre). Implementa el punto 11 del [ADR 0024](docs/decisions/0024-rubros-y-capacidades.md), sin el reclamo, que pasa a la 29.9.2.
+
+**Certifica:**
+- **La garantía derivada, nunca guardada**: una unidad vendida la tiene desde su último movimiento `sale` u `order_delivery`, y una reparación entregada, desde `delivered_at`. Cubre el último día en la zona de la organización. Una venta anulada la quita; un equipo que volvió al local, con otra unidad posterior del mismo IMEI, no la tiene.
+- **Los días**: los de la unidad (`stock_units.warranty_days`) o los de la organización (`unit_settings` y `service_settings`, una fila por capacidad), editables por un `admin` con su auditoría. Sin fila, «sin configurar».
+- **Dónde se ve**: el detalle de la unidad, con el inicio y el vencimiento; la ficha del cliente («Equipos comprados» y sus órdenes); y `/buscar` por IMEI, con el grupo «Equipos» entero.
+- **`org:capability --profile iphone`** crea los 30 días de ejemplo, también en una organización con la capacidad ya activa.
+- **Una revisión independiente** antes del despliegue (R1, sin bloqueantes, seis no bloqueantes y seis observaciones), verificada contra el código y resuelta; NB-1 lo decidió el usuario.
+
+**No certifica:**
+- ningún negocio real;
+- el reclamo de garantía, que es la 29.9.2;
+- que una unidad posterior dada de baja distinga «volvió y se descartó» de «fue un error de carga»: cuenta como que volvió (NB-1, limitación aceptada);
+- una segunda revisión independiente de las correcciones, que son autoevaluación.
+
 ## 2026-10-25 — 29.8.3: la cotización de un usado para el agente
 
 Cierra el 2026-10-25, desplegada en producción (`9a971ae`, que suma `zod` 4.6.7 por un aviso de seguridad), con la ventana del agente (su 3.53) conciliada ese día: las 31 lecturas que reportó coinciden con el log de producción ([brief-29.8.3](docs/decisions/brief-29.8.3-la-cotizacion-de-un-usado-para-el-agente.md), §Cierre). Implementa la tercera parte del punto 15 del [ADR 0024](docs/decisions/0024-rubros-y-capacidades.md), sobre «iPhone Demo».
