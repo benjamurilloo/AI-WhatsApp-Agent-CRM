@@ -129,6 +129,8 @@ describe("base de test", () => {
       // La orden de servicio y su presupuesto (brief-29.6, D-4).
       "service_order_lines",
       "service_orders",
+      // Los días de garantía de la organización (brief-29.9, D-2).
+      "service_settings",
       "sessions",
       // Las unidades de un producto (brief-29.5, D-2).
       "stock_units",
@@ -150,6 +152,7 @@ describe("base de test", () => {
       "trade_ins",
       // Los grados de la organización (brief-29.5, D-5).
       "unit_grades",
+      "unit_settings",
       "users",
     ]);
   });
