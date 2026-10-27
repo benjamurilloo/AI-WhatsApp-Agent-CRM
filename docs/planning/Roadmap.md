@@ -455,6 +455,8 @@ Reglas comunes a las cuatro fases:
   - **24.7 Información y usuarios**: el horario rediseñado, la búsqueda de usuarios y la auditoría en la ficha.
 
   El orden se fija al abrir la fase.
+
+  *Nota del 2026-10-27, al cerrar la Fase 29*: el usuario decidió seguir con la Fase 24 en una sesión nueva. Su proyecto en Notion y sus siete subfases ya existen, en «No comenzado» y «Esperando». Este plan es del 2026-10-17, **anterior a la Fase 29**, que sumó pantallas sin mockup: unidades, reparaciones, usados, garantía y turnos. Al abrir la fase, el usuario decide el orden y si esas pantallas entran en la subfase de su módulo.
 - **Fase 25 — Métricas comerciales y dashboard con pestañas**: absorbe el pedido «métricas por sección» del 2026-10-14 (abajo).
   - **Métricas nuevas**: ingresos, ventas, ticket promedio, la serie diaria, los productos destacados y el valor de inventario.
   - **Bloques del dashboard**: «Requiere atención» (stock bajo y conversaciones sin respuesta) y la actividad reciente.
