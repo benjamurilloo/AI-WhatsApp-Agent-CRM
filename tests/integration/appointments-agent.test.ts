@@ -461,8 +461,10 @@ describe(
       );
       const lead = 120 * 60 * 1000;
       expect(starts.every((start) => start >= before + lead)).toBe(true);
-      // La primera es la primera de la grilla después de la anticipación: a lo sumo media hora más tarde.
-      expect(starts[0]!).toBeLessThan(after + lead + 30 * 60 * 1000);
+      // La primera es la primera de la grilla después de la anticipación: a lo sumo una hora más tarde.
+      // Una hora y no media: el día cierra a las 23:59, así que la última franja es la de 23:00 y la
+      // siguiente es la de 00:00 del día después (la CI lo encontró corriendo a las 21:05 locales).
+      expect(starts[0]!).toBeLessThanOrEqual(after + lead + 60 * 60 * 1000);
     });
 
     it("en otra zona, el desplazamiento de esa zona", async () => {
