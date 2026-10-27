@@ -2,6 +2,22 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-27 — Fase 29: rubros
+
+Cierra el 2026-10-27 por decisión del usuario, con la 29.10.2. La abrió el usuario el 2026-10-18, antes de la Fase 24, para ofrecerle el CRM a un negocio de venta de iPhone ([Roadmap](docs/planning/Roadmap.md), §Fase 29).
+
+**Certifica:**
+- **El núcleo y las capacidades** del [ADR 0024](docs/decisions/0024-rubros-y-capacidades.md): `variants`, `serialized_units`, `repairs`, `trade_ins` y `appointments`, activables por organización con un perfil de rubro, que es un dato.
+- **El tipo de cambio** del [ADR 0025](docs/decisions/0025-tipo-de-cambio.md): la moneda principal, la cotización leída de DolarAPI y los cobros, las devoluciones y los pagos en otra moneda.
+- **El perfil de venta de iPhone**: variantes, unidades con IMEI en pedidos y ventas, reparaciones de equipos de clientes y propios, usados con su recepción, permuta, compra y cotización, garantía con su reclamo, y turnos.
+- **El agente como consumidor del rubro**: `read-v3` (catálogo, unidades, reparaciones, órdenes de servicio, cotización de usados y franjas libres) y los eventos `order.placed_with_units` y `appointment.requested`, validados en integración en sus ventanas.
+- **Veinte subfases**, de la 29.1 a la 29.10.2, todas con su brief aprobado y su revisión independiente, desplegadas en producción sobre «iPhone Demo» (`0d3c852`, 67 migraciones).
+
+**No certifica:**
+- **ningún negocio real**: todo se construyó por decisión del usuario sobre la organización demo (brief-29.1, D-16);
+- los límites aceptados de cada subfase, listados en el §Cierre de su brief;
+- «Mostrar el motivo de la baja de una unidad en revisión», pendiente de la 29.6.2, que pasó al proyecto raíz de Notion.
+
 ## 2026-10-27 — 29.10.2: los turnos para el agente
 
 Cierra el 2026-10-27, desplegada en producción (`0d3c852`, con la migración `0066`) y con la ventana del agente (su 3.55) conciliada ese día sobre «iPhone Demo» ([brief-29.10.2](docs/decisions/brief-29.10.2-los-turnos-para-el-agente.md), §Cierre). Completa el punto 12 del [ADR 0024](docs/decisions/0024-rubros-y-capacidades.md) para el agente.

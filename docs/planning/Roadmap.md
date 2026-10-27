@@ -510,6 +510,7 @@ Reglas comunes a las cuatro fases:
 - **Gate de entrada de la construcción**: la 29.1 se hace con el negocio sin confirmar. **Desde la 29.2**, con el negocio confirmado o por decisión explícita del usuario registrada con fecha (brief-29.1, D-16).
 - **Supuestos del negocio**: los responde el usuario, que conoce el rubro y al cliente, y se registran como su respuesta con fecha, no como confirmación del negocio.
 - **Gate de salida**: decisión del usuario. La 29.1 lleva revisión independiente antes de la aceptación del ADR (D-17).
+- **Cerrada el 2026-10-27**, por decisión del usuario, con la 29.10.2. Las veinte subfases, de la 29.1 a la 29.10.2, están cerradas y desplegadas sobre la organización demo «iPhone Demo» (producción en `0d3c852`, 67 migraciones). El agente consume el catálogo, las reparaciones, la cotización de usados y los turnos del rubro, validados en integración en sus ventanas. **No hubo un negocio real confirmado**: cada subfase se construyó por decisión del usuario (D-16). La tarea «Mostrar el motivo de la baja de una unidad en revisión», pendiente de la 29.6.2, pasó al proyecto raíz de Notion, para una fase que toque productos o unidades.
 
 ---
 
