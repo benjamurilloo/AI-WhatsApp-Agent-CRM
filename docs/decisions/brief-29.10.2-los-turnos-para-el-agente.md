@@ -13,7 +13,7 @@ generated_at: 2026-10-26
   - `deterministic`, con tests contra PostgreSQL;
   - `producer-consumer` del lado del CRM: contrato ↔ servicio ↔ base, y la app que confirma el turno pedido;
   - **validado en integración con el agente** en una ventana como la de la 29.8, si el agente adopta el contrato (D-9).
-- **Estado**: **aprobado por el usuario el 2026-10-26, con las recomendaciones: U-1 a U-5 en su opción (a).** Como en la 29.8, la 29.8.2 y la 29.8.3, **no se implementa hasta que el agente confirme por escrito que lo va a usar**, o pida cambios (D-9). La pregunta está en `Pregunta-29.10.2-CRM-al-Agente.md`, en el Escritorio del usuario. **El agente confirmó el mismo día** que las usa, con un agregado y una diferencia de conducta, que el usuario aprobó (A-1 y A-2, §La respuesta del agente).
+- **Estado**: **cerrado el 2026-10-27**, desplegado (`0d3c852`, migración `0066`) y con la ventana del agente conciliada (§Cierre). **Aprobado por el usuario el 2026-10-26, con las recomendaciones: U-1 a U-5 en su opción (a).** Como en la 29.8, la 29.8.2 y la 29.8.3, **no se implementa hasta que el agente confirme por escrito que lo va a usar**, o pida cambios (D-9). La pregunta está en `Pregunta-29.10.2-CRM-al-Agente.md`, en el Escritorio del usuario. **El agente confirmó el mismo día** que las usa, con un agregado y una diferencia de conducta, que el usuario aprobó (A-1 y A-2, §La respuesta del agente).
 - **Fuentes**:
   - [ADR 0024](0024-rubros-y-capacidades.md): punto 12 (los turnos y su nota del 2026-10-26), punto 14 (lo que el agente nunca lee), punto 15 (el agente: «los horarios libres y el pedido de un turno»; «escribe solo el pedido pendiente y el turno pedido») y punto 16 (las dependencias);
   - [ADR 0014](0014-el-agente-de-whatsapp-como-consumidor-del-crm.md);
@@ -325,3 +325,38 @@ El agente confirmó por escrito que **va a usar la ruta y el evento con esta for
 - Si la migración obliga a tocar filas existentes.
 - Cualquier cambio en una respuesta existente de un contrato del agente.
 - Si el agente tuviera que confirmar, cancelar o mover un turno.
+
+## Cierre
+
+*Del 2026-10-27, después del despliegue y de la ventana con el agente (su 3.55), conciliada ese día.*
+
+### Criterios
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| AC-1 | cumple | `migration-0066.test.ts`: la `0065` con datos, la `0066` sola, las filas iguales. En producción: 67 migraciones, las tres columnas y las tres restricciones, y el turno que ya existía con su autor intacto |
+| AC-2 | cumple | `appointments-agent.test.ts`: el rango, el horizonte, la anticipación, la ocupación y Tokio. Desde la revisión (N-1), `bookable` exige que la franja exista: la prueba del repositorio la afirma en falso para la hora que falta en 2027 (Nueva York y Santiago), y quitar la condición la hace fallar. La prueba sobre la ruta queda como desvío aceptado (D-8) |
+| AC-3 | cumple | `appointments-agent.test.ts` e `ingestion-v2-http.test.ts` (N-8): `200` con la franja y `duplicate`. En la ventana: el `accepted` del paso 2 y el `duplicate` del paso 7, sin sumar fila |
+| AC-4 | cumple | `appointments-agent.test.ts`: cada regla y, desde la revisión (N-2), los pares de precedencia que faltaban y el pedido en la hora que falta. En la ventana: `client_has_pending_request` y `slot_full` |
+| AC-5 | cumple | `appointments-agent.test.ts`: un pedido del agente y un alta de la app a la vez, con el bloqueo sostenido desde una tercera conexión |
+| AC-6 | cumple | `appointments-agent.test.ts` y `migration-0066.test.ts`: cada rechazo con el nombre exacto de su restricción o del trigger |
+| AC-7 | cumple | `appointments.spec.ts` («Pedido por el agente» y el origen) y `appointments-agent.test.ts` (confirmar y, desde la revisión, cancelar). En la ventana, el usuario confirmó el turno del agente y después lo canceló |
+| AC-8 | cumple | `appointments-agent.test.ts` sobre el cuerpo crudo; `agent-contract-fields`; ningún esquema existente cambió |
+| AC-9 | cumple | `appointments-dependencies`: `ingestion` solo con los dos nombres, y desde la revisión (N-4), el caso de `appointments` importando la interfaz de `ingestion`. Importar un tercer nombre la hizo fallar |
+| AC-10 | cumple | CI de `0d3c852` (run 40426668024, `success`): guardas 898, unitarias 1170, integración 1839, e2e 298. Antes fallaron dos corridas, por dos defectos de prueba (§Lo que falló en la CI) |
+| AC-11 | cumple | `Respuesta-29.10.2-Agente-al-CRM.md`, del 2026-10-26: A-1 y A-2, aprobadas por el usuario |
+| AC-12 | cumple | Revisión independiente: un bloqueante (B-1, el turno contaba en la métrica 12) y nueve no bloqueantes, verificados contra el código. Todos corregidos, salvo los dos desvíos de D-8 que el usuario aceptó |
+| AC-13 | cumple | Desplegada el 2026-10-26 en `0d3c852` con la `0066`. La ventana del 2026-10-27, de 18:59 a 19:20 UTC, conciliada por `X-Correlation-Id` contra el log, `ingestion_events`, `appointments` y la auditoría: 5 lecturas `OK`; los eventos `accepted`, `client_has_pending_request`, `slot_full` y `duplicate`; dos derivaciones de `open` a `pending`; ningún `400`, `409` ni `429` |
+
+### Lo que falló en la CI
+
+- **`6b6370c`**: el TRUNCATE de `dashboard-sin-ingestion.spec.ts` vaciaba `ingestion_events` sin `appointments`, que la referencia desde la `0066`. Se corrigió en `5c25c1d`. Localmente solo se habían corrido los e2e de turnos.
+- **`5c25c1d`**: la prueba de la anticipación esperaba la primera franja a menos de media hora. La CI corrió a las 21:05 locales, y con el día abierto hasta las 23:59 la siguiente franja era la de 00:00, a 55 minutos. Se corrigió en `0d3c852`, con un margen de una hora. El caso no se reprodujo localmente: la corrección se sostiene en que el hueco más largo de esa grilla es de una hora.
+
+### Lo que queda abierto, a sabiendas
+
+- **N-3 de la 29.10**: el horario se lee en la transacción del pedido, pero quien lo cambia no toma el bloqueo. Un cambio en ese instante puede dejar un turno pedido fuera de horario, que una persona ve antes de confirmar (D-5).
+- **Los dos desvíos de D-8**, aceptados por el usuario el 2026-10-26: la hora que falta no se prueba sobre la ruta, y la unidad dada de baja no tiene prueba propia.
+- **Los turnos del cliente para el agente** (U-5): fuera. El agente dijo que le servirían para no ofrecer franjas a quien ya tiene un turno pedido. Sería una subfase nueva.
+- **Ofrecer otra franja después de un `422`** sigue siendo de una persona. Que lo haga el agente es una decisión de su arquitectura.
+- **Las correcciones de la revisión son autoevaluación**: no hubo una segunda revisión independiente.

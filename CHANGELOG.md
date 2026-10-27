@@ -2,6 +2,30 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-27 — 29.10.2: los turnos para el agente
+
+Cierra el 2026-10-27, desplegada en producción (`0d3c852`, con la migración `0066`) y con la ventana del agente (su 3.55) conciliada ese día sobre «iPhone Demo» ([brief-29.10.2](docs/decisions/brief-29.10.2-los-turnos-para-el-agente.md), §Cierre). Completa el punto 12 del [ADR 0024](docs/decisions/0024-rubros-y-capacidades.md) para el agente.
+
+**Certifica:**
+- **Las franjas libres** en `GET /api/read/v3/appointment-slots`: la fecha de hoy del negocio, la duración, los motivos activos y solo las franjas que el agente puede pedir, con 2 horas de anticipación, hasta 14 días adelante y nunca en la hora que falta del horario de verano. Sin clientes, turnos, ocupación ni cupo.
+- **El turno pedido** con `appointment.requested` en `ingestion-v2`:
+  - nace `requested`, con la credencial y el evento como autor, auditado;
+  - once reglas en su precedencia;
+  - las reglas de la franja y el cupo son las del alta de la app, bajo el mismo bloqueo, sin duplicarlas;
+  - el agente deriva ante cualquier `422`;
+  - no cuenta en la métrica 12.
+- **La base lo exige** con la `0066`: un turno de credencial nace pedido, tiene un solo autor y su evento. La migración no tocó ninguna fila.
+- **La app** muestra «Pedido por el agente» y el origen del turno; un `admin` lo confirma o lo cancela.
+- **Las dependencias**: `ingestion` importa de `appointments` solo dos nombres, y la guarda los fija.
+- **Una revisión independiente** antes del despliegue: un bloqueante (el turno contaba en la métrica 12) y nueve no bloqueantes, verificados contra el código y corregidos, salvo dos desvíos de pruebas que el usuario aceptó.
+- **Validada en integración** con el agente real: 5 lecturas, los eventos `accepted`, `client_has_pending_request`, `slot_full` y `duplicate`, y dos derivaciones, conciliados por `X-Correlation-Id`.
+
+**No certifica:**
+- ningún negocio real;
+- los turnos del cliente para el agente (U-5), que quedan fuera;
+- N-3 de la 29.10, que se achica y no desaparece: quien cambia el horario no toma el bloqueo;
+- una segunda revisión independiente de las correcciones, que son autoevaluación.
+
 ## 2026-10-26 — 29.10: los turnos
 
 Cierra el 2026-10-26, desplegada en producción (`c667765`, con la migración `0065`), con la capacidad activada en «iPhone Demo» y recorrida por el usuario ([brief-29.10](docs/decisions/brief-29.10-los-turnos.md), §Cierre). Implementa los turnos del punto 12 del [ADR 0024](docs/decisions/0024-rubros-y-capacidades.md) en la app; el agente pasa a la 29.10.2.
