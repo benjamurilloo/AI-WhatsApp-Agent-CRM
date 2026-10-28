@@ -1,0 +1,65 @@
+{
+  "method": "Luminancia relativa sRGB; opacos; no medición de PNG",
+  "pairs": [
+    {
+      "name": "primary-white",
+      "fg": "#6D28D9",
+      "bg": "#FFFFFF",
+      "ratio": "7.105"
+    },
+    {
+      "name": "secondary-white",
+      "fg": "#5A5573",
+      "bg": "#FFFFFF",
+      "ratio": "7.043"
+    },
+    {
+      "name": "border-white",
+      "fg": "#E3DFF0",
+      "bg": "#FFFFFF",
+      "ratio": "1.306"
+    },
+    {
+      "name": "control-white",
+      "fg": "#817A98",
+      "bg": "#FFFFFF",
+      "ratio": "4.061"
+    },
+    {
+      "name": "green",
+      "fg": "#166534",
+      "bg": "#DCFCE7",
+      "ratio": "6.492"
+    },
+    {
+      "name": "amber",
+      "fg": "#92400E",
+      "bg": "#FEF3C7",
+      "ratio": "6.367"
+    },
+    {
+      "name": "blue",
+      "fg": "#1E40AF",
+      "bg": "#DBEAFE",
+      "ratio": "7.149"
+    },
+    {
+      "name": "gray",
+      "fg": "#4B5563",
+      "bg": "#F3F4F6",
+      "ratio": "6.867"
+    },
+    {
+      "name": "red",
+      "fg": "#B91C1C",
+      "bg": "#FEF2F2",
+      "ratio": "5.915"
+    },
+    {
+      "name": "violet",
+      "fg": "#6D28D9",
+      "bg": "#EDE7FE",
+      "ratio": "5.908"
+    }
+  ]
+}

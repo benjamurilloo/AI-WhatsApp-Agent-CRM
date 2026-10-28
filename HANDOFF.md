@@ -158,17 +158,21 @@ Este archivo es el traspaso entre sesiones. Cada fase se trabaja en una sesión 
 
 0. *Actualizado el 2026-10-27, al cerrar la Fase 29*: **el usuario decidió seguir con la Fase 24 — Pantallas rediseñadas con lo que ya existe, en una sesión nueva.** La 13.5.2-b conserva su prioridad si aparece un negocio real. `confirmado`
 
-   **Ya preparado** (2026-10-27):
-   - **Notion**, releído ese día:
+   *Actualizado el 2026-10-28, al replanificar la Fase 24 con la v2*: el usuario trajo el rediseño v2 (`docs/ui-redesign/v2/`, con la auditoría en `docs/ui-redesign/00-auditoria-actual/`) y decidió cuatro cosas: lecturas nuevas en los módulos sin migraciones, reabrir todo el marco de la 23.1, las secciones de la Fase 29 como subfases propias y el orden del Roadmap. El Roadmap, §Fases 23 a 28, tiene la tabla de 19 subfases de la 24 (de la 24.1 Marco y patrones a la 24.10), la Fase 25 en siete subfases y lo que la v2 dibuja y no entra, en «Fuera del rediseño». El borrador `brief-24.1-conversaciones.md` quedó superado y sin aprobar: se rehace como brief-24.3. `confirmado`
+
+   **Ya preparado** (2026-10-27, replanificado el 2026-10-28):
+   - **Notion**, releído el 2026-10-28:
      - el proyecto `406702be6f4e81ea99b9c795c45ce2d4`, creado con la plantilla «Nuevo Proyecto», con sus cuatro bases inline y en «No comenzado»;
      - su tarea espejo en el raíz, `406702be6f4e815b967dd5697cd080c1`, en «Esperando»;
-     - las siete subfases del Roadmap en «Esperando»: 24.1 `406702be6f4e81fc9c01d364bdbc1a11`, 24.2 `406702be6f4e81509a1ef6180ab602fd`, 24.3 `406702be6f4e817d9c30c481f4af28fe`, 24.4 `406702be6f4e81adba03d35ed680af69`, 24.5 `406702be6f4e819db835dc5a9f3d8537`, 24.6 `406702be6f4e811e9f4bed3922595fec` y 24.7 `406702be6f4e814c9c43ec63d8b44f34`.
-   - **No hay brief** de ninguna subfase de la 24.
+     - las 19 subfases en «Esperando». Las siete del 2026-10-27 se renombraron por contenido: 24.3 Conversaciones `406702be6f4e81fc9c01d364bdbc1a11`, 24.4.1 `406702be6f4e81509a1ef6180ab602fd`, 24.5.1 `406702be6f4e817d9c30c481f4af28fe`, 24.6.1 `406702be6f4e81adba03d35ed680af69`, 24.8.1 `406702be6f4e819db835dc5a9f3d8537`, 24.7.1 `406702be6f4e811e9f4bed3922595fec` y 24.10 `406702be6f4e814c9c43ec63d8b44f34`. Las doce nuevas: 24.1 Marco y patrones `407702be6f4e816ba0e0fa60add54a3b`, 24.2 `407702be6f4e8115aa90fa6076ba508b`, 24.4.2 `407702be6f4e81319894cba55c59f1a3`, 24.5.2 `407702be6f4e8150bd75d63a504414f0`, 24.5.3 `407702be6f4e814cbd6de9a5458f8acf`, 24.6.2 `407702be6f4e8193ac63ea12a55674ef`, 24.7.2 `407702be6f4e81c481d3ccb1082ad5d6`, 24.7.3 `407702be6f4e8170a096e0afaf649d38`, 24.8.2 `407702be6f4e816fbc12d5a89286cac7`, 24.9.1 `407702be6f4e81e79461d7af3fe70237`, 24.9.2 `407702be6f4e81068fbeccd398dfd458` y 24.9.3 `407702be6f4e819bab41e7524947ca99`;
+     - la tarea «Mostrar el motivo de la baja de una unidad en revisión» `400702be6f4e8130beffea0fa99a9306` sigue en el raíz, en «Esperando», como subtarea de la 24.5.2;
+     - la Fase 25 no tiene proyecto en Notion: se crea al abrirla.
+   - **No hay brief aprobado** de ninguna subfase de la 24. Lo siguiente es el brief de la 24.1 Marco y patrones.
 
    **Para arrancar la sesión de la Fase 24:**
    1. Los cuatro pasos de inicio de `CLAUDE.md`: el vault (`Start Here` y el hub del CRM), Notion, el estado real del repo y el resumen antes de actuar. Leer la corrida de la CI del último commit por `headSha`.
    2. Leer el Roadmap, §Fases 23 a 28: la lista de la Fase 24, «Fuera del rediseño», los gates y la regla de que **la accesibilidad verificada con axe no puede retroceder**. Leer también `docs/ui-redesign/manifest.md` y el lote del módulo de la primera subfase.
-   3. **Tres decisiones del usuario**, antes del primer brief:
+   3. **Tres decisiones del usuario**, antes del primer brief (*tomadas el 2026-10-27 y reemplazadas el 2026-10-28 por las cuatro de la v2, arriba*):
       - **el orden de las subfases**, que el Roadmap fija al abrir la fase;
       - **las pantallas de la Fase 29 que no tienen mockup** (unidades, reparaciones, usados, garantía y turnos): si entran en la subfase de su módulo o quedan como están. El plan de la 24 es del 2026-10-17, anterior a la Fase 29;
       - **la tarea «Mostrar el motivo de la baja de una unidad en revisión»** (`400702be6f4e8130beffea0fa99a9306`, en el raíz): si entra en la 24.3.

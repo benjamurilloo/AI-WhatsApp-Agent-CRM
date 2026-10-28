@@ -1,0 +1,26 @@
+{
+  "date": "2026-10-28",
+  "localReferences": 558,
+  "broken": [],
+  "indexedPNG": 145,
+  "newPNG": 12,
+  "newDimensions": [
+    {
+      "Name": "1536x1024",
+      "Count": 1
+    },
+    {
+      "Name": "1672x941",
+      "Count": 10
+    },
+    {
+      "Name": "941x1672",
+      "Count": 1
+    }
+  ],
+  "missingFromIndex": [],
+  "priorPNGUnchanged": 133,
+  "priorPNGChanged": 0,
+  "mathIdentities": 34,
+  "applicationTestsRun": false
+}

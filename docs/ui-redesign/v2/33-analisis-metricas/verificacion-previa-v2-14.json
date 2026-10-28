@@ -1,0 +1,1199 @@
+[
+  {
+    "path": "00-arquitectura-global/desktop/01-navegacion-agrupada-v2.png",
+    "module": "00-arquitectura-global",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1354869,
+    "sha256": "759D14E351B0B60FC8224F5ED2E3183EBD86FAFD9C2EC497D03D931FE79063F3"
+  },
+  {
+    "path": "00-arquitectura-global/desktop/05-busqueda-global-v2.png",
+    "module": "00-arquitectura-global",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1552213,
+    "sha256": "1C1C01D79A0947551E868B38F4109EC9F68AEE4CE2F606ADCF3808D3AFB80CCD"
+  },
+  {
+    "path": "00-arquitectura-global/estados/06-estados-accesibilidad-v2.png",
+    "module": "00-arquitectura-global",
+    "type": "estados",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1371725,
+    "sha256": "30355C38747EFDA99168A3454DA9ECA7D37DB2209BAF7C70A566240A634A8180"
+  },
+  {
+    "path": "00-arquitectura-global/mobile/02-menu-mas-v2.png",
+    "module": "00-arquitectura-global",
+    "type": "mobile",
+    "width": 941,
+    "height": 1672,
+    "bytes": 1165403,
+    "sha256": "A5933ABE10A0D0BB813689FC91A1807FDE359E6D86E3709FDE639C17C4675C6B"
+  },
+  {
+    "path": "02-dashboard/desktop/03-dashboard-operativo-v2.png",
+    "module": "02-dashboard",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1683290,
+    "sha256": "6CF1B49967EC69E62BBEB8DA0A1D8DFC801E70A9BAEA17BF23A5B20FA5AB22D3"
+  },
+  {
+    "path": "02-dashboard/mobile/04-dashboard-mobile-v2.png",
+    "module": "02-dashboard",
+    "type": "mobile",
+    "width": 941,
+    "height": 1672,
+    "bytes": 1282416,
+    "sha256": "18150A656E76C7445D805C5A6211D48B4AA112B665143AFB65F6935D2CA7B9FB"
+  },
+  {
+    "path": "03-conversaciones/desktop/01-bandeja-conversaciones-v2.png",
+    "module": "03-conversaciones",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1384578,
+    "sha256": "93ED6AB3C2CD9DE8E4EC21E887D5F2EFEE329FC374E77AC5170621DF9FF23245"
+  },
+  {
+    "path": "03-conversaciones/desktop/02-chat-activo-v2.png",
+    "module": "03-conversaciones",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1574889,
+    "sha256": "5A4F979F0AE718005BAAA67154D4942F0C1A608123A826F06B9FAE7AE67B8130"
+  },
+  {
+    "path": "03-conversaciones/desktop/05-notas-control-agente-v2.png",
+    "module": "03-conversaciones",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1460331,
+    "sha256": "4F6E09613464758F71467678D153F84599946E7D8FEE25E8D3D3CD93DEECC2CB"
+  },
+  {
+    "path": "03-conversaciones/estados/06-estados-atencion-v2.png",
+    "module": "03-conversaciones",
+    "type": "estados",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1373636,
+    "sha256": "90CF387585B4399325212BA8BF34C8A1EB146BEC13D9A0D9BC4D990FEA3175D7"
+  },
+  {
+    "path": "03-conversaciones/mobile/03-bandeja-mobile-v2.png",
+    "module": "03-conversaciones",
+    "type": "mobile",
+    "width": 941,
+    "height": 1672,
+    "bytes": 1303278,
+    "sha256": "FEB49C0CEA731E6CA09D9E354829042C2DF0386B9268B81764069649D5E6FED6"
+  },
+  {
+    "path": "03-conversaciones/mobile/04-chat-mobile-v2.png",
+    "module": "03-conversaciones",
+    "type": "mobile",
+    "width": 941,
+    "height": 1672,
+    "bytes": 1281403,
+    "sha256": "8EE053EB72AEBDE62C7D5888389D20E9AC6BA9E0405DAE328BBEDC210E5CFA83"
+  },
+  {
+    "path": "04-clientes/desktop/01-listado-clientes-v2.png",
+    "module": "04-clientes",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1295688,
+    "sha256": "22085BEBDD9506E2ED2BBC5951E09F8B434A2D8EA995E82C75E91900A42F18A0"
+  },
+  {
+    "path": "04-clientes/desktop/02-alta-edicion-cliente-v2.png",
+    "module": "04-clientes",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1588348,
+    "sha256": "C0B376E3D89D682C5FE758AF29740740D37A99B8E10C8F690E8FE36EEE99ACD2"
+  },
+  {
+    "path": "04-clientes/desktop/03-ficha-resumen-v2.png",
+    "module": "04-clientes",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1336423,
+    "sha256": "8288B393460DB484DFD70C859E00DAC3754521304505A6C2FA1545D6B0D3F28E"
+  },
+  {
+    "path": "04-clientes/desktop/04-operaciones-relacionadas-v2.png",
+    "module": "04-clientes",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1342092,
+    "sha256": "ECEAE2E455AE55C1351934744C75764E04B2A2F26130CE86FF73A3A3270E154A"
+  },
+  {
+    "path": "04-clientes/desktop/05-cuenta-corriente-cobro-v2.png",
+    "module": "04-clientes",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1367687,
+    "sha256": "218C48BD2A0DA0261E87247323F18069259F5A97BB582C1CE6583DDAC72CC97B"
+  },
+  {
+    "path": "04-clientes/estados/08-etiquetas-actividad-estados-v2.png",
+    "module": "04-clientes",
+    "type": "estados",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1730757,
+    "sha256": "A2CD1242EDC10994416A9C878D24EF23A0F520A8719F93AA898F9569CA83AD03"
+  },
+  {
+    "path": "04-clientes/mobile/06-listado-mobile-v2.png",
+    "module": "04-clientes",
+    "type": "mobile",
+    "width": 941,
+    "height": 1672,
+    "bytes": 1265002,
+    "sha256": "130757AAEACA4846D76AC6B4740D3C05A7EC3F8E6269491C0C1D975C2FCC6F01"
+  },
+  {
+    "path": "04-clientes/mobile/07-ficha-mobile-v2.png",
+    "module": "04-clientes",
+    "type": "mobile",
+    "width": 941,
+    "height": 1672,
+    "bytes": 1251329,
+    "sha256": "68E9FD4F090393CFC30055F6B5BD18C5C7D8885E197DBD4A4D279F5DA3D413DE"
+  },
+  {
+    "path": "05-productos/desktop/01-catalogo-por-modelo-v2.png",
+    "module": "05-productos",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1288284,
+    "sha256": "FB518EA991A9A939E9B8A2BB76ED39C66E2E2FCA21A75B92F1A3CA4E638AE501"
+  },
+  {
+    "path": "05-productos/desktop/02-alta-edicion-producto-v2.png",
+    "module": "05-productos",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1299403,
+    "sha256": "24C4A58696CD83E46F03DEA5FCEADBC22244EC02C7EF7EC6F9799314638C5920"
+  },
+  {
+    "path": "05-productos/desktop/09-ficha-producto-resumen-v2.png",
+    "module": "05-productos",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1319246,
+    "sha256": "F1C3887E4201F9996475F21E57B29A71796E7ACF7550F010D6C92C6DC9B4721E"
+  },
+  {
+    "path": "05-productos/desktop/10-unidades-ficha-imei-v2.png",
+    "module": "05-productos",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1578661,
+    "sha256": "67561DB7BCDE3FEA490C21C6E60007738D5C5C069464B8C537ED2465F0E437AA"
+  },
+  {
+    "path": "05-productos/desktop/11-movimientos-ajuste-trazable-v2.png",
+    "module": "05-productos",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1343961,
+    "sha256": "5EDE907E3E4016AD3CC32F0E39BC99FC79236EA5A3D368DB9A4AE9A019DFFA82"
+  },
+  {
+    "path": "05-productos/desktop/12-precios-historial-v2.png",
+    "module": "05-productos",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1301271,
+    "sha256": "89771619FCD60E8FEF9408A98A46FF5056E0E8C9AA938AEA2F80B613F3A0655B"
+  },
+  {
+    "path": "05-productos/desktop/13-costos-margen-v2.png",
+    "module": "05-productos",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1612022,
+    "sha256": "C1D4BD7755746AEE40FC86C1BB1CCDB24213701916E09FE49893DCAB628B7778"
+  },
+  {
+    "path": "05-productos/estados/08-estados-catalogo-modelos-grados-v2.png",
+    "module": "05-productos",
+    "type": "estados",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1439049,
+    "sha256": "61BD175ACCBD72F56281148358B97120EE75AED8D991335264DFE682C44578A4"
+  },
+  {
+    "path": "05-productos/estados/15-estados-inventario-v2.png",
+    "module": "05-productos",
+    "type": "estados",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1627332,
+    "sha256": "DBF4C3FB1D24332DD404E1DC23CF7EF70D83E719A7DAD823B55A3E43D04C9353"
+  },
+  {
+    "path": "05-productos/mobile/07-catalogo-mobile-v2.png",
+    "module": "05-productos",
+    "type": "mobile",
+    "width": 941,
+    "height": 1672,
+    "bytes": 1526889,
+    "sha256": "9C6BC6BA342EFB9A6ED1E9FB4FC96704524D1227A34E706D84BE66F4EB099ABA"
+  },
+  {
+    "path": "05-productos/mobile/14-unidad-mobile-v2.png",
+    "module": "05-productos",
+    "type": "mobile",
+    "width": 941,
+    "height": 1672,
+    "bytes": 1186755,
+    "sha256": "D933B6BBE5C699E9AD415F371AD15AB28EADA594106145B8FB55187BCA821DEB"
+  },
+  {
+    "path": "13-modelos/desktop/03-listado-alta-modelos-v2.png",
+    "module": "13-modelos",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1338767,
+    "sha256": "AFC8708320283A078DBA80EF7CF53E421C492DFDB504746DFEB9AF2BBF1B3408"
+  },
+  {
+    "path": "13-modelos/desktop/04-ficha-modelo-v2.png",
+    "module": "13-modelos",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1319202,
+    "sha256": "93123FF515C78663F1B36B9AA507AD3EE2450022481D2D9757439DD7A67F8A7A"
+  },
+  {
+    "path": "13-modelos/desktop/05-atributos-variante-v2.png",
+    "module": "13-modelos",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1313432,
+    "sha256": "99C2C9312D6DBCDA70A96D0835B4921B477A853F8BE118A45D50E858C4C320E9"
+  },
+  {
+    "path": "14-grados/desktop/06-grados-garantias-v2.png",
+    "module": "14-grados",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1270399,
+    "sha256": "8B4819AB87EEB3A2AAABC3CD83F85228B5DFAC939C1CF3A920A32764F9D16A4F"
+  },
+  {
+    "path": "15-reparaciones/desktop/01-ordenes-servicio-v2.png",
+    "module": "15-reparaciones",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1400597,
+    "sha256": "8764C37A1304788BE6658219A0DEF036730938DA398C211FE4F042433DBFC2CD"
+  },
+  {
+    "path": "15-reparaciones/desktop/02-nueva-orden-recepcion-v2.png",
+    "module": "15-reparaciones",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1274214,
+    "sha256": "C25B5F2F4EE9B3075F86F0574D54FC4DB79B3565AB005D7E3F39C38C0692043A"
+  },
+  {
+    "path": "15-reparaciones/desktop/03-presupuesto-aprobacion-v2.png",
+    "module": "15-reparaciones",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1571130,
+    "sha256": "D45C26D9A5EEA322F0CC17F0B5F447C1811EE08DFDADF88E44A04B90A081F76A"
+  },
+  {
+    "path": "15-reparaciones/desktop/04-ficha-reparacion-siguiente-paso-v2.png",
+    "module": "15-reparaciones",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1355046,
+    "sha256": "34B95A9FFF049157C5B3F3DF4377983C254B9E027E535354533EFEB9B9AA7203"
+  },
+  {
+    "path": "15-reparaciones/desktop/05-comprobante-revision-entrega-v2.png",
+    "module": "15-reparaciones",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1343384,
+    "sha256": "FB0E9ECEDBDCDC24FA05F9955E9BBFD15CFE5746AEE3DAC0831859DC8F764B09"
+  },
+  {
+    "path": "15-reparaciones/desktop/06-lista-reparaciones-precios-v2.png",
+    "module": "15-reparaciones",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1325842,
+    "sha256": "17C32D8AA750D16CE1EE4D4C5571BEE739372A9B956356557C77960C2B6F9A18"
+  },
+  {
+    "path": "15-reparaciones/desktop/08-reparacion-unidad-propia-v2.png",
+    "module": "15-reparaciones",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1567879,
+    "sha256": "E1E850588A6BD12A210AAC94914CBC27E2D09387EE2C2D265627865A301497A2"
+  },
+  {
+    "path": "15-reparaciones/desktop/09-reclamo-garantia-v2.png",
+    "module": "15-reparaciones",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1465681,
+    "sha256": "AEB5AF805AF78FA6A1532C25A2F56C98C7D508307FE8099C5DC36CB4ED29CF6C"
+  },
+  {
+    "path": "15-reparaciones/estados/11-estados-servicio-garantia-v2.png",
+    "module": "15-reparaciones",
+    "type": "estados",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1350797,
+    "sha256": "2421DE1F88897426433F0EF39A8DD70ADAA0765FDF7089E0351CA8CDF1E31D73"
+  },
+  {
+    "path": "15-reparaciones/mobile/10-ficha-servicio-mobile-v2.png",
+    "module": "15-reparaciones",
+    "type": "mobile",
+    "width": 941,
+    "height": 1672,
+    "bytes": 1233403,
+    "sha256": "969FB2478890168B7D31932A206BFE5CB65E07714205064D16BB7F58B1D4A17C"
+  },
+  {
+    "path": "16-tecnicos/desktop/07-tecnicos-proveedor-v2.png",
+    "module": "16-tecnicos",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1331617,
+    "sha256": "9914598E8E8093B3E1BC9B0E2ACA75B5C6DBE8E436062BE1CA4AAD4E34A54B2A"
+  },
+  {
+    "path": "17-usados/desktop/01-recepciones-usados-v2.png",
+    "module": "17-usados",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1369376,
+    "sha256": "898E45BDD5CA1CA0FDF9FE2AFE7531EE08F97D768B76BA54DAE5C96A533FBA98"
+  },
+  {
+    "path": "17-usados/desktop/02-recepcion-equipo-checklist-v2.png",
+    "module": "17-usados",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1291797,
+    "sha256": "387AEDFD54EFB7FCFBEF8FE6132A3C26F7BA3DF5494317E8C48647480385B54B"
+  },
+  {
+    "path": "17-usados/desktop/03-valor-destino-confirmacion-v2.png",
+    "module": "17-usados",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1605438,
+    "sha256": "1C755DE2FF9704A13A6ADB187DC19B927F18388F62F03C342945C310A5680F14"
+  },
+  {
+    "path": "17-usados/desktop/04-ficha-compra-pago-v2.png",
+    "module": "17-usados",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1296466,
+    "sha256": "AE3D0BAFE1632BEF29A214295DF717190A42E7531F7BBC8C26EBC1FFAD673DFD"
+  },
+  {
+    "path": "17-usados/desktop/05-permuta-aplicaciones-v2.png",
+    "module": "17-usados",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1367435,
+    "sha256": "168982986F84B600D760165D408FF6FB2A0AD067D005B803938C74C5BC18E2A0"
+  },
+  {
+    "path": "17-usados/desktop/06-cotizador-orientativo-v2.png",
+    "module": "17-usados",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1552300,
+    "sha256": "201FADED11BBE33DA4EA82DC539D9FF5DA5AD93E0D7F779773A32CED20DA08A1"
+  },
+  {
+    "path": "17-usados/desktop/07-checklist-configuracion-v2.png",
+    "module": "17-usados",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1305952,
+    "sha256": "36383DD44853E9471FC333D7E8BA40477C46136DDEDA233E83C2C76C7C32D443"
+  },
+  {
+    "path": "17-usados/desktop/08-reglas-margenes-cotizacion-v2.png",
+    "module": "17-usados",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1301459,
+    "sha256": "17547FC8F814AD01A3AFDBECB30A1C304E1FB2351A08F57314C5D8DFA7A69098"
+  },
+  {
+    "path": "17-usados/desktop/09-comprobante-usado-v2.png",
+    "module": "17-usados",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1549667,
+    "sha256": "3D73728C2468C81FC82265814688C4B3C7AEF98466FFDEE24D8B681ECF6A670F"
+  },
+  {
+    "path": "17-usados/estados/11-estados-usados-permutas-v2.png",
+    "module": "17-usados",
+    "type": "estados",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1397207,
+    "sha256": "59BF0E5E15B12F2B2D5B63C9D6660731981240D7D09CE431A0EF0AE73DA7AE13"
+  },
+  {
+    "path": "17-usados/mobile/10-ficha-usado-mobile-v2.png",
+    "module": "17-usados",
+    "type": "mobile",
+    "width": 941,
+    "height": 1672,
+    "bytes": 1572140,
+    "sha256": "8E50C937B90F4DAEAE2AD231AC17EE0F38F549A44473044FB2935BD8DCB18459"
+  },
+  {
+    "path": "18-turnos/desktop/01-calendario-semanal-v2.png",
+    "module": "18-turnos",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1389259,
+    "sha256": "F7D050D6AD5F7F64E93C36DFFADF76BEE8E45003AB097A1B1475B4FCC683AF1B"
+  },
+  {
+    "path": "18-turnos/desktop/02-agenda-diaria-v2.png",
+    "module": "18-turnos",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1369954,
+    "sha256": "F3F921A602C23821AD7D40DF83E9C6FE0B78205D20FBB0CD87E4A898F9870AA5"
+  },
+  {
+    "path": "18-turnos/desktop/03-nuevo-turno-v2.png",
+    "module": "18-turnos",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1618592,
+    "sha256": "3DA0E576295071F9672009E4C2E64F480F27C4999264359A8045ABB8179E9368"
+  },
+  {
+    "path": "18-turnos/desktop/04-turno-pedido-agente-v2.png",
+    "module": "18-turnos",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1337022,
+    "sha256": "96574B3BB94866E2524C64C06F05C6188CB711ECF20AE31134CB35AD4DBF1DFE"
+  },
+  {
+    "path": "18-turnos/desktop/05-turno-confirmado-atencion-v2.png",
+    "module": "18-turnos",
+    "type": "desktop",
+    "width": 1603,
+    "height": 981,
+    "bytes": 1329028,
+    "sha256": "8C116CCE1AD962032DE17AEF39F5D9DB6AB612BAD66256D76EFF41A305FC6EC9"
+  },
+  {
+    "path": "18-turnos/desktop/06-configuracion-agenda-v2.png",
+    "module": "18-turnos",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1347731,
+    "sha256": "163BCC62DE1A35CDA0226D8946F19EA6E94EAFCDF004802CEA10C7983B762176"
+  },
+  {
+    "path": "18-turnos/desktop/07-motivos-turnos-v2.png",
+    "module": "18-turnos",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1285877,
+    "sha256": "DD15ADC89239392E90E54DD3920AE14C7C9829E7FB0FB626FF5B80EAD7E71576"
+  },
+  {
+    "path": "18-turnos/estados/10-estados-conflictos-turnos-v2.png",
+    "module": "18-turnos",
+    "type": "estados",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1351528,
+    "sha256": "4CAD60D37EEDE8E5D44196BF0A4286B373BD9EF900CD811EE60AA784C6BD2F11"
+  },
+  {
+    "path": "18-turnos/mobile/08-agenda-diaria-mobile-v2.png",
+    "module": "18-turnos",
+    "type": "mobile",
+    "width": 941,
+    "height": 1672,
+    "bytes": 1312218,
+    "sha256": "36BBC9595B43AD63934569C0C033A6AA34624948093F856A597F9C7B26F12EFE"
+  },
+  {
+    "path": "18-turnos/mobile/09-nuevo-turno-mobile-v2.png",
+    "module": "18-turnos",
+    "type": "mobile",
+    "width": 941,
+    "height": 1672,
+    "bytes": 1528671,
+    "sha256": "B295720D4293342AFBFB91EDB14AF354A730F732D6252CB9F3B6C33AC6529060"
+  },
+  {
+    "path": "19-pedidos/desktop/01-listado-pedidos-v2.png",
+    "module": "19-pedidos",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1567583,
+    "sha256": "F7A9411E9688366B8EEA59A407D6541C40B5A3B16AACE69802E125F92EEA52BA"
+  },
+  {
+    "path": "19-pedidos/desktop/02-nuevo-pedido-unidades-v2.png",
+    "module": "19-pedidos",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1508058,
+    "sha256": "BDB25D6B81CBEB46CDA77C3B88228FA6E4EDB5516A715EF265C0B7D3CAC321B0"
+  },
+  {
+    "path": "19-pedidos/desktop/03-pedido-pendiente-confirmar-v2.png",
+    "module": "19-pedidos",
+    "type": "desktop",
+    "width": 1602,
+    "height": 982,
+    "bytes": 1524527,
+    "sha256": "577DA275C5F87C2AF321E37A0D66A3B700F13A99EF38AFB13C0B559491ECEB8C"
+  },
+  {
+    "path": "19-pedidos/desktop/04-pedido-sena-v2.png",
+    "module": "19-pedidos",
+    "type": "desktop",
+    "width": 1671,
+    "height": 941,
+    "bytes": 1603396,
+    "sha256": "70F55D775085D389B1A4BED19603C5AA14F3816C1B3E7C66163FC975830B1BBD"
+  },
+  {
+    "path": "19-pedidos/desktop/05-pedido-confirmado-entrega-v2.png",
+    "module": "19-pedidos",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1364819,
+    "sha256": "411D18326EB11B060D42033ABEC963228ABD80EEADB149A1C8175BAB7C66B9D6"
+  },
+  {
+    "path": "19-pedidos/desktop/06-pedido-entregado-emitir-venta-v2.png",
+    "module": "19-pedidos",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1567135,
+    "sha256": "2E6020C028E88D69D21A63390FF72728D126DF7DAC46F80F2C23D4C9254746E0"
+  },
+  {
+    "path": "19-pedidos/estados/08-estados-pedidos-ventas-v2.png",
+    "module": "19-pedidos",
+    "type": "estados",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1691985,
+    "sha256": "8DC458267F1E497CEF32EF63AFDB60D1DF1E2F75EACE2417E51596DD2C3E1CA5"
+  },
+  {
+    "path": "19-pedidos/mobile/07-ficha-pedido-mobile-v2.png",
+    "module": "19-pedidos",
+    "type": "mobile",
+    "width": 941,
+    "height": 1672,
+    "bytes": 1443769,
+    "sha256": "0EFD99B3E9C8AD7921EB368B0DCAF6C148BB79C16118EC0973089ACE5CAC8BD4"
+  },
+  {
+    "path": "20-ventas/desktop/01-listado-ventas-v2.png",
+    "module": "20-ventas",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1322829,
+    "sha256": "4D6FD7FC15ACA5076F9507BF784844F19831B8B4378A3902CB974BFE59A0848E"
+  },
+  {
+    "path": "20-ventas/desktop/02-nueva-venta-mostrador-v2.png",
+    "module": "20-ventas",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1309369,
+    "sha256": "351EFAE7C54B1D7BCEBB5854E3332DC562CF8956C0EE149948834CFC1711CDFB"
+  },
+  {
+    "path": "20-ventas/desktop/03-ficha-venta-cobro-permuta-v2.png",
+    "module": "20-ventas",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1585204,
+    "sha256": "52D2A2452181A4B93B60C5A8C659F02DB0DBADE50E64A888370D047C6958DB6D"
+  },
+  {
+    "path": "20-ventas/desktop/04-anular-venta-sin-pedido-v2.png",
+    "module": "20-ventas",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1454046,
+    "sha256": "8A856592B25B138E6CFD257DF769901FA0FDDD9CEAE4CFFD1CF14AD7BB8575EB"
+  },
+  {
+    "path": "20-ventas/desktop/05-comprobante-venta-v2.png",
+    "module": "20-ventas",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1298159,
+    "sha256": "EA335D1D765C172714C03A75C1FE67F6F8A57CC8E2CB932A62A357B10091DAE6"
+  },
+  {
+    "path": "20-ventas/mobile/06-nueva-venta-mobile-v2.png",
+    "module": "20-ventas",
+    "type": "mobile",
+    "width": 941,
+    "height": 1672,
+    "bytes": 1220531,
+    "sha256": "251421D5ED6C7BA1A5E266275BEE826518380A83AA855E6B674020896E24EE94"
+  },
+  {
+    "path": "21-caja/desktop/01-caja-abierta-v2.png",
+    "module": "21-caja",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1559499,
+    "sha256": "A41935AE8ED61391D32DF5B8949DB43CEC3B3C950AD5F4930F29044741EFFB34"
+  },
+  {
+    "path": "21-caja/desktop/02-apertura-caja-v2.png",
+    "module": "21-caja",
+    "type": "desktop",
+    "width": 1671,
+    "height": 941,
+    "bytes": 1491782,
+    "sha256": "009AE537AE303062D4644202166A2477DEBFA414B21BD44371AABD18D092FF10"
+  },
+  {
+    "path": "21-caja/desktop/03-movimiento-efectivo-v2.png",
+    "module": "21-caja",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1341215,
+    "sha256": "74B3A326B22A1E0A07693F118923CDFD6EB8B80A2306A5965A138733FE817821"
+  },
+  {
+    "path": "21-caja/desktop/04-cierre-arqueo-v2.png",
+    "module": "21-caja",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1613749,
+    "sha256": "F214B67A5EEE45F9573AAF65320CCE2E9365673B0578429AC2CCC84FA5277DC2"
+  },
+  {
+    "path": "21-caja/desktop/05-sesiones-arqueo-historico-v2.png",
+    "module": "21-caja",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1262959,
+    "sha256": "A28A13E5F221B64F476F199510158F461DB02A4BD3EACF89893EFB32CC93FCD0"
+  },
+  {
+    "path": "21-caja/desktop/06-cobros-recibo-conversion-v2.png",
+    "module": "21-caja",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1510636,
+    "sha256": "F527E00280BFE6D42351EEDFBBA3BFE9194199CB4CC150AA35710EF96192742B"
+  },
+  {
+    "path": "21-caja/desktop/07-devolucion-venta-sin-cliente-v2.png",
+    "module": "21-caja",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1555848,
+    "sha256": "5628A515AB43A284E3A3A730CA281EAA62066A34A4424BEF6D9A42849AAF0272"
+  },
+  {
+    "path": "21-caja/estados/09-estados-caja-cuentas-v2.png",
+    "module": "21-caja",
+    "type": "estados",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1634783,
+    "sha256": "CDFEF64DA04403432FFB46EB1E8150B421381BF33AFC02F60DE0788F3519C761"
+  },
+  {
+    "path": "21-caja/mobile/08-caja-mobile-v2.png",
+    "module": "21-caja",
+    "type": "mobile",
+    "width": 941,
+    "height": 1672,
+    "bytes": 1266445,
+    "sha256": "2370F62CE8946720E08E1086CE963041EAE8DA1D1BAD6F3E07BA9211F1F029F1"
+  },
+  {
+    "path": "22-cuentas-clientes/desktop/01-deudores-por-moneda-v2.png",
+    "module": "22-cuentas-clientes",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1322659,
+    "sha256": "A12C3DF07BE9F783718E7CCD061E41D0BF0788523B70E44F66841614A57C2F6E"
+  },
+  {
+    "path": "22-cuentas-clientes/desktop/02-estado-cuenta-cliente-v2.png",
+    "module": "22-cuentas-clientes",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1342530,
+    "sha256": "23E5ACE9E7E4F80DA48FA50E8A847902FC71A012039202B68574C55576A0B08F"
+  },
+  {
+    "path": "22-cuentas-clientes/desktop/03-cobro-a-cuenta-imputacion-v2.png",
+    "module": "22-cuentas-clientes",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1353318,
+    "sha256": "FCD163257DDAECCC9EC89C6A2763F4162BEDCCBB9A960F3992EC6482FEA55EA3"
+  },
+  {
+    "path": "23-tipo-cambio/desktop/01-cotizacion-fuente-historial-v2.png",
+    "module": "23-tipo-cambio",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1454042,
+    "sha256": "0B16EBBA4ABEFD6E6A8262892B2E1B483DDEDB1250B422BEC343D344479D19CC"
+  },
+  {
+    "path": "24-medios-pago/desktop/01-medios-pago-configuracion-v2.png",
+    "module": "24-medios-pago",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1352563,
+    "sha256": "1532890A936134AA5B145418A61114B4C7D9000BCDD311392954EDD5E176C813"
+  },
+  {
+    "path": "25-compras/desktop/01-ordenes-compra-v2.png",
+    "module": "25-compras",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1353060,
+    "sha256": "2213F273A16D5A9D3939949F56507338898BD1E2DEA34FB77760F016D75003CB"
+  },
+  {
+    "path": "25-compras/desktop/02-nueva-orden-compra-v2.png",
+    "module": "25-compras",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1287408,
+    "sha256": "3E00F44BB2CA7A35D07F3B6597A7CA2968045D906168C81B706E5E79501B64F0"
+  },
+  {
+    "path": "25-compras/desktop/03-orden-parcial-v2.png",
+    "module": "25-compras",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1310713,
+    "sha256": "22C8B5B65DD5B1F96794070A59537E694F7D53C9D1874BD5C8C022A99CCBDBC2"
+  },
+  {
+    "path": "25-compras/estados/04-estados-compras-proveedores-v2.png",
+    "module": "25-compras",
+    "type": "estados",
+    "width": 1536,
+    "height": 1024,
+    "bytes": 1642613,
+    "sha256": "F7184BE92C29551BBF8C933DF7EEA8E20674744736879EA1B81549E4D44D513E"
+  },
+  {
+    "path": "26-recepciones/desktop/01-recepciones-compra-v2.png",
+    "module": "26-recepciones",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1304854,
+    "sha256": "A1A8170B34994A4BE5DA91E5FC340BF6823424F9C015C97E5AD18B9C542AB912"
+  },
+  {
+    "path": "26-recepciones/desktop/02-recibir-imei-con-orden-v2.png",
+    "module": "26-recepciones",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1296302,
+    "sha256": "7C482014675A8947D448C4CED338029E888599444C83545954538337F7B80FDD"
+  },
+  {
+    "path": "26-recepciones/desktop/03-recepcion-sin-orden-v2.png",
+    "module": "26-recepciones",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1587628,
+    "sha256": "47EB42E0589E5D8BA7E87825ED8C6FDA1056095C50F4A6A4399BCC079FCD094E"
+  },
+  {
+    "path": "26-recepciones/desktop/04-detalle-anulacion-recepcion-v2.png",
+    "module": "26-recepciones",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1653031,
+    "sha256": "FBC44D61DD328EF79A8CFCD53EDFAA7641FB9DDE209F7B0231C8FE383559333D"
+  },
+  {
+    "path": "26-recepciones/mobile/05-recibir-imei-mobile-v2.png",
+    "module": "26-recepciones",
+    "type": "mobile",
+    "width": 941,
+    "height": 1672,
+    "bytes": 1489541,
+    "sha256": "08050DC6BDB8B3E5BAD28E0ACF8AC76E6F38FD2C109D019F1E3C4519D9FFCBEF"
+  },
+  {
+    "path": "27-pagos-proveedores/desktop/01-pagos-detalle-v2.png",
+    "module": "27-pagos-proveedores",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1674925,
+    "sha256": "1244F557319CB49B608F723F86CAAC7186D54F63FA391A6C727A2ADDDCC8AA06"
+  },
+  {
+    "path": "27-pagos-proveedores/desktop/02-pago-recepcion-conversion-v2.png",
+    "module": "27-pagos-proveedores",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1351630,
+    "sha256": "A20C01265DBAED6697D88B11C974CF09B689F550730390DB405FECA8722E9417"
+  },
+  {
+    "path": "27-pagos-proveedores/desktop/03-cuentas-a-pagar-v2.png",
+    "module": "27-pagos-proveedores",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1334834,
+    "sha256": "5E8A1206B3CBEA77BD2AF2C1E70D069100486A6ED2D13B549E75B47E2ED43EE5"
+  },
+  {
+    "path": "27-pagos-proveedores/desktop/04-pago-a-cuenta-v2.png",
+    "module": "27-pagos-proveedores",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1370516,
+    "sha256": "54E11715D8FBA309F92E5BF706808C9F091B8EF5FF6D5BD14340B723DF885317"
+  },
+  {
+    "path": "28-proveedores/desktop/01-proveedores-v2.png",
+    "module": "28-proveedores",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1282132,
+    "sha256": "0B4712654180F9A5C57F5188F1AF987BFD0575A4EABDF6421C1C833E0C158A5A"
+  },
+  {
+    "path": "28-proveedores/desktop/02-estado-cuenta-v2.png",
+    "module": "28-proveedores",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1424049,
+    "sha256": "392A53734B1864DC54C7AB5D1F1601F77C6CE89570965A3AD5DC3538E3B60C4F"
+  },
+  {
+    "path": "28-proveedores/desktop/03-ficha-tecnico-v2.png",
+    "module": "28-proveedores",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1355524,
+    "sha256": "EE62974CDEBD71376F64F44220D2E949C8E334F91498C43C19C33C8943D92907"
+  },
+  {
+    "path": "28-proveedores/desktop/04-alta-edicion-proveedor-v2.png",
+    "module": "28-proveedores",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1277629,
+    "sha256": "86E27678E4B502F955D6A91BBC109C7EB27C95296BA11FEA14145960E479539F"
+  },
+  {
+    "path": "29-informacion/desktop/01-base-conocimiento-v2.png",
+    "module": "29-informacion",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1280401,
+    "sha256": "4920BF6E0166053CD54102E4BF12086A9E7F7CF87CEA178E382B519F8A3E9C84"
+  },
+  {
+    "path": "29-informacion/desktop/02-nueva-entrada-v2.png",
+    "module": "29-informacion",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1597535,
+    "sha256": "F40E6D83D897758F84FD4C5A29E98C6105C53FC9B90FD38BF7253BF9289140B5"
+  },
+  {
+    "path": "29-informacion/desktop/03-detalle-entrada-v2.png",
+    "module": "29-informacion",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1515596,
+    "sha256": "79B584DDB010B290D1547923E4F39FF863A66FCE98704922144C144A339C3C8F"
+  },
+  {
+    "path": "29-informacion/estados/05-estados-administracion-v2.png",
+    "module": "29-informacion",
+    "type": "estados",
+    "width": 1536,
+    "height": 1024,
+    "bytes": 1664614,
+    "sha256": "9AF613EEFE4BD0F2CE011D634362EB2D0B7372B1CC68A651DB79C47B00706F4A"
+  },
+  {
+    "path": "29-informacion/mobile/04-informacion-consulta-mobile-v2.png",
+    "module": "29-informacion",
+    "type": "mobile",
+    "width": 941,
+    "height": 1672,
+    "bytes": 1236937,
+    "sha256": "DFE71713346440DC708C3E2D39330838F796957BB6ED84F29BCD0335A7204416"
+  },
+  {
+    "path": "30-horarios/desktop/01-horario-semanal-v2.png",
+    "module": "30-horarios",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1525825,
+    "sha256": "4B59A551F2B2E8A1957932D5A84C9CD6E5C5F30E827337144FA1FD0E277D75BB"
+  },
+  {
+    "path": "30-horarios/desktop/02-dia-especial-v2.png",
+    "module": "30-horarios",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1375605,
+    "sha256": "D8EC7E5477F58685D510BA6E89CCA67CF7FE9ED1224A9BD13EFC88B669FDD285"
+  },
+  {
+    "path": "30-horarios/desktop/03-quitar-dia-historial-v2.png",
+    "module": "30-horarios",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1634293,
+    "sha256": "9B9842228830447FD338C45112051A3D29F6FF5C0727C9E901BECBCE0E6E5AE7"
+  },
+  {
+    "path": "31-usuarios/desktop/01-usuarios-v2.png",
+    "module": "31-usuarios",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1325997,
+    "sha256": "A541940365FC8C491D0E20D0F8EA844E3BE191EE319D8B97D5E148E3E123E73C"
+  },
+  {
+    "path": "31-usuarios/desktop/02-nuevo-usuario-v2.png",
+    "module": "31-usuarios",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1341153,
+    "sha256": "1F7D84D103C3E42F32BC0D1CF6A52A47B6BCFC7AD9A228380E791680D9E01421"
+  },
+  {
+    "path": "31-usuarios/desktop/03-ficha-cambio-rol-v2.png",
+    "module": "31-usuarios",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1273133,
+    "sha256": "87076DF13E786AF0C4CE9218461112AC4A1E25F14079A13782E3F900B16D1C94"
+  },
+  {
+    "path": "31-usuarios/desktop/04-credencial-inicial-v2.png",
+    "module": "31-usuarios",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1234528,
+    "sha256": "6A884A363F6CDDF7323EEC427E4D2A6A5B7422B46C874A1C25AA5B3941D0927D"
+  },
+  {
+    "path": "31-usuarios/desktop/05-primer-ingreso-v2.png",
+    "module": "31-usuarios",
+    "type": "desktop",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1079254,
+    "sha256": "B60A192335944830F8942ABF1D615B5B29DB4137DFE4DD8F5BA60EBAA135669D"
+  },
+  {
+    "path": "31-usuarios/mobile/06-usuarios-mobile-v2.png",
+    "module": "31-usuarios",
+    "type": "mobile",
+    "width": 941,
+    "height": 1672,
+    "bytes": 1263571,
+    "sha256": "35786672E2DF32ADA2187258C4A0BB2401A9BDE2EE52CDB58FF13A8B5844C2F0"
+  },
+  {
+    "path": "32-consistencia-accesibilidad/mobile/07-formulario-mobile-teclado-v2.png",
+    "module": "32-consistencia-accesibilidad",
+    "type": "mobile",
+    "width": 941,
+    "height": 1672,
+    "bytes": 1261021,
+    "sha256": "F7BEED155383E4D0CD856581491EC41DFCE8FB91397B28907E7C8EF5A3CA934B"
+  },
+  {
+    "path": "32-consistencia-accesibilidad/referencias/01-sistema-visual-estados-v2.png",
+    "module": "32-consistencia-accesibilidad",
+    "type": "referencias",
+    "width": 1536,
+    "height": 1024,
+    "bytes": 1461020,
+    "sha256": "3D6E466D9290F617A6D804B8802F6808C1274FEC04D5129D6E3FF844BF74C770"
+  },
+  {
+    "path": "32-consistencia-accesibilidad/referencias/02-acciones-navegacion-v2.png",
+    "module": "32-consistencia-accesibilidad",
+    "type": "referencias",
+    "width": 1536,
+    "height": 1024,
+    "bytes": 1576563,
+    "sha256": "7E8EB7246ED6114A4F4BA4821A56D5D412269E561E325303FF6C2E044078C6A4"
+  },
+  {
+    "path": "32-consistencia-accesibilidad/referencias/03-formularios-errores-v2.png",
+    "module": "32-consistencia-accesibilidad",
+    "type": "referencias",
+    "width": 1536,
+    "height": 1024,
+    "bytes": 1537118,
+    "sha256": "CE3CE6D254B9CC81677825F2AC9B01403C8591FFA03CB407634156AEA28FFEC6"
+  },
+  {
+    "path": "32-consistencia-accesibilidad/referencias/04-confirmaciones-seguras-v2.png",
+    "module": "32-consistencia-accesibilidad",
+    "type": "referencias",
+    "width": 1536,
+    "height": 1024,
+    "bytes": 1297599,
+    "sha256": "C8711F42C4D8CF5DD2C4FECDDD68DA036874885634436108910173A87D34FC78"
+  },
+  {
+    "path": "32-consistencia-accesibilidad/referencias/05-vacios-carga-fallos-v2.png",
+    "module": "32-consistencia-accesibilidad",
+    "type": "referencias",
+    "width": 1536,
+    "height": 1024,
+    "bytes": 1251421,
+    "sha256": "0F2AED3687F287D76A6B70EEE7B5B45A0BBA2F3CC5765CB5D39380061632772B"
+  },
+  {
+    "path": "32-consistencia-accesibilidad/referencias/06-teclado-foco-lectura-v2.png",
+    "module": "32-consistencia-accesibilidad",
+    "type": "referencias",
+    "width": 1536,
+    "height": 1024,
+    "bytes": 1458022,
+    "sha256": "B05DA88D32695F0EC0559C453173EAF6FB821EB93E01FB2710E1C0480097B5F7"
+  }
+]

@@ -429,7 +429,8 @@ Reglas comunes a las cuatro fases:
 
 *Planificadas el 2026-10-17 por decisión del usuario, con la Fase 22 cerrada y ninguna fase de ERP abierta. Ese mismo día el usuario aprobó el plan y el orden recomendado: **23 → 24 → 25 → 26**. Las fases 27 y 28 se abren cuando el uso las pida. El plan se ajusta a medida que aparezcan funciones o mejoras nuevas, con su enmienda fechada. La 13.5.2-b conserva su prioridad: si se confirma un negocio real, la fase abierta se pausa.*
 
-- **Referencia visual**: los 44 mockups de [docs/ui-redesign/](../ui-redesign/manifest.md), generados por el usuario con otra herramienta y organizados en ocho lotes: sistema visual, marco, dashboard y un lote por módulo, en escritorio, en móvil y con sus estados. Igual que en la Fase 15, son bocetos: **una pieza no entra por estar dibujada**. Cada pieza se asigna a una fase, o se excluye con su motivo.
+- **Referencia visual, desde el 2026-10-28: la v2** ([docs/ui-redesign/v2/](../ui-redesign/v2/README.md)), 145 mockups en 14 lotes que el usuario preparó con otra herramienta sobre «iPhone Demo», con un README por módulo, [criterios de implementación](../ui-redesign/v2/criterios-implementacion-v2.md) y la [auditoría de partida](../ui-redesign/00-auditoria-actual/inventario-pantallas-v2.md). Reemplaza a la v1 como referencia de las Fases 24 y 25; la v1 se conserva para comparar. Vale lo mismo que antes: **una pieza no entra por estar dibujada**, y ante una diferencia mandan las reglas del dominio y los permisos, después el README del módulo y al final el dibujo (criterios v2, §Prioridad). La revisión del 2026-10-28 (siete revisores de solo lectura, uno por grupo de lotes, con los hallazgos de más peso verificados contra el código) clasificó cada pieza; lo que contradice decisiones vigentes está abajo, en «Fuera del rediseño».
+- **Referencia visual anterior (v1)**: los 44 mockups de [docs/ui-redesign/](../ui-redesign/manifest.md), generados por el usuario con otra herramienta y organizados en ocho lotes: sistema visual, marco, dashboard y un lote por módulo, en escritorio, en móvil y con sus estados. Igual que en la Fase 15, son bocetos: **una pieza no entra por estar dibujada**. Cada pieza se asigna a una fase, o se excluye con su motivo.
 - **Lo que el análisis del 2026-10-17 encontró**:
   - **Lo que ya existe**: la paleta, Manrope, el modo oscuro y el panel de 256 px coinciden con los mockups desde la [Fase 15](#fase-15--identidad-visual-y-presentación).
   - **Lo que pide más trabajo**:
@@ -445,7 +446,38 @@ Reglas comunes a las cuatro fases:
   - **23.3 — Búsqueda global** ([brief-23.3](../decisions/brief-23.3-busqueda-global.md), aprobado el 2026-10-18), de solo lectura, sobre clientes, pedidos, productos, ventas, órdenes de compra y proveedores, con los permisos de cada módulo. **Cerrada el 2026-10-18** ([brief-23.3](../decisions/brief-23.3-busqueda-global.md) §Cierre): sin migración, desplegada (`1bf9299`) y recorrida por el usuario.
 
     **Fase 23 cerrada el 2026-10-18**, con la 23.3, la última de sus subfases ([CHANGELOG](../../CHANGELOG.md)). La 13.5.2-b conserva su prioridad.
-- **Fase 24 — Pantallas rediseñadas con lo que ya existe**: una subfase por módulo, cada una con su brief, sin tablas nuevas.
+- **Fase 24 — Pantallas rediseñadas con lo que ya existe**, replanificada el 2026-10-28 sobre la v2 por decisión del usuario. Cada subfase con su brief.
+  - **Reglas**:
+    - **sin migraciones, tablas ni contratos nuevos**;
+    - **se permiten lecturas nuevas en los módulos** (contadores, saldos en una lista, operaciones unificadas, filtros). Cada brief las declara, y las que leen por lote, las mide;
+    - lo que exige un dato nuevo va a su fase o a un ADR.
+  - **El marco de la 23.1 se reabre** (decisión del usuario del 2026-10-28): navegación agrupada, foco violeta y búsqueda en diálogo con Ctrl/Cmd+K. Enmienda la D-4 del [brief-23.1](../decisions/brief-23.1-tokens-y-marco.md) y lo que la 23.3 dejó «para la Fase 24 si se pide».
+  - **Las secciones de la Fase 29 entran como subfases propias**, ahora que la v2 las dibuja (decisión del usuario del 2026-10-28). Reemplaza la «24.8 al final, sin mockup» que el usuario había decidido el 2026-10-27.
+  - **El orden** es el de la tabla. La 24.1 va primero porque las demás heredan sus patrones. La 24.7.2 va antes de la pestaña de cuenta de la ficha del cliente (24.4.1), o comparte su componente. La 24.9.2 va después de los patrones de pago de la 24.7.
+
+  | Subfase | Contenido | Lecturas nuevas (sin migración) |
+  |---|---|---|
+  | **24.1 Marco y patrones** | <ul><li>Menú en grupos con acordeones.</li><li>«Más» agrupado en el teléfono.</li><li>Migas con grupo.</li><li>Foco violeta con separación.</li><li>Estados con ícono y texto.</li><li>Barra inferior oculta en el hilo y en los formularios.</li><li>Ficha con «siguiente paso» y «Más acciones».</li><li>Resumen de errores y barra de guardado estable.</li></ul> | — |
+  | **24.2 Búsqueda en diálogo** | <ul><li>Ctrl/Cmd+K, con el foco atrapado y devuelto.</li><li>Búsqueda por IMEI.</li><li>Grupos de reparaciones y turnos, con los permisos de cada módulo.</li></ul> | Reparaciones y turnos |
+  | **24.3 Conversaciones** | <ul><li>Bandeja con pestañas de estado y filtro «Atención humana».</li><li>Hilo con las notas intercaladas.</li><li>Franja del agente: tomar o reactivar.</li><li>Contexto del cliente: reparación, turno y etiquetas.</li><li>Sin vista previa ni teléfono (FR-CONV-01).</li></ul> | Contadores por estado y contexto del cliente |
+  | **24.4.1 Clientes: ficha** | <ul><li>Pestañas Resumen, Operaciones, Cuenta y Actividad.</li><li>El `viewer`, enmascarado.</li><li>Garantía, DNI e Instagram según capacidad.</li></ul> | — |
+  | **24.4.2 Clientes: operaciones y lista** | <ul><li>Operaciones y actividad unificadas.</li><li>«Próxima atención».</li><li>Saldo por moneda en la lista y vistas.</li><li>Aviso de duplicado.</li></ul> | Composición entre módulos y saldo por lote |
+  | **24.5.1 Productos: catálogo y ficha** | <ul><li>Catálogo agrupado por modelo, solo con `variants`.</li><li>Resumen con disponible, reservado y en revisión.</li><li>Movimientos y precios.</li></ul> | Sumas por modelo |
+  | **24.5.2 Unidades, costo y margen** | <ul><li>Panel de la unidad con su historial.</li><li>Motivo de la baja en revisión (tarea `400702be6f4e8130beffea0fa99a9306`).</li><li>Costo por unidad y margen estimado.</li><li>Valor de inventario: la suma de los costos registrados, sin método de valuación.</li></ul> | Historial, motivo y costo por unidad |
+  | **24.5.3 Modelos y grados** | Lo que existe, sin código ni color del grado y sin atributos por modelo | Disponible por modelo |
+  | **24.6.1 Pedidos** | <ul><li>Contadores.</li><li>Ficha con cronología.</li><li>Paneles para confirmar, señar, entregar y emitir.</li></ul> | Contadores |
+  | **24.6.2 Ventas** | <ul><li>Cobro y origen en la lista, con medición.</li><li>Anulación con su efecto en dinero.</li><li>Mostrador en escritorio y teléfono.</li></ul> | Saldo por lote, número del origen y vista previa de la anulación |
+  | **24.7.1 Caja y cierre** | <ul><li>Caja actual con movimientos unificados.</li><li>Apertura (propone el último cierre, brief-21.2) y movimiento con previsión.</li><li>Cierre en dos pasos y sesiones.</li></ul> | — |
+  | **24.7.2 Cobros, devoluciones y cuentas de clientes** | <ul><li>Filtro por cliente y «Registrar cobro» con elección de destino.</li><li>Deudores en Finanzas.</li><li>Estado de cuenta compartido con la ficha.</li></ul> | Filtro, búsqueda y la venta más antigua |
+  | **24.7.3 Cotización y medios de pago** | Rediseño | — |
+  | **24.8.1 Compras: órdenes y recepciones** | <ul><li>Cierre completo o con faltante.</li><li>Recepción en dos pasos y en el teléfono.</li><li>Unidades de la recepción con su estado.</li></ul> | Lo recibido en la lista y unidades por recepción |
+  | **24.8.2 Pagos, a pagar, proveedores y técnicos** | <ul><li>Panel del pago y filtro por moneda.</li><li>A pagar con recepciones y trabajos separados.</li><li>Ficha del técnico, solo `admin`.</li></ul> | Filtros y órdenes por técnico |
+  | **24.9.1 Órdenes de servicio** | <ul><li>Lista con próximo paso, contadores y filtro por técnico.</li><li>Ficha con presupuesto, entrega, unidad propia y reclamo.</li><li>La lista de reparaciones.</li></ul> | Contadores y filtros |
+  | **24.9.2 Usados** | <ul><li>Lista con el estado de la unidad y la situación del valor.</li><li>Recepción en dos pasos.</li><li>Pagos y aplicaciones.</li></ul> | Lectura por lote entre `tradeins`, `inventory` y `cash` |
+  | **24.9.3 Turnos** | Semana, día, atención y configuración | Opcional: el teléfono en el día |
+  | **24.10 Información, horarios y usuarios** | <ul><li>Pestañas y vista previa.</li><li>«Abierto ahora».</li><li>Búsqueda de usuarios.</li><li>Auditoría en la ficha del miembro.</li></ul> | Búsqueda y auditoría del miembro |
+
+  *Plan anterior, del 2026-10-17, reemplazado por la tabla de arriba el 2026-10-28; se conserva para la trazabilidad:*
   - **24.1 Conversaciones**: bandeja en tres paneles y notas en el hilo.
   - **24.2 Clientes**: valor del cliente, ficha con pestañas y actividad unificada.
   - **24.3 Productos**: costo, margen, valor de inventario, reservado y evolución del stock.
@@ -457,7 +489,20 @@ Reglas comunes a las cuatro fases:
   El orden se fija al abrir la fase.
 
   *Nota del 2026-10-27, al cerrar la Fase 29*: el usuario decidió seguir con la Fase 24 en una sesión nueva. Su proyecto en Notion y sus siete subfases ya existen, en «No comenzado» y «Esperando». Este plan es del 2026-10-17, **anterior a la Fase 29**, que sumó pantallas sin mockup: unidades, reparaciones, usados, garantía y turnos. Al abrir la fase, el usuario decide el orden y si esas pantallas entran en la subfase de su módulo.
-- **Fase 25 — Métricas comerciales y dashboard con pestañas**: absorbe el pedido «métricas por sección» del 2026-10-14 (abajo).
+- **Fase 25 — Métricas comerciales y dashboard con pestañas**: absorbe el pedido «métricas por sección» del 2026-10-14 (abajo). *Replanificada el 2026-10-28 sobre la v2* ([V2-14](../ui-redesign/v2/33-analisis-metricas/README.md) y el dashboard de V2-01):
+  - **Alcance decidido por el usuario**: el del plan original. Quedan para una fase futura las vistas Clientes, Operación y Finanzas del centro «Análisis» y las pestañas de métricas en las fichas de producto y de cliente. También queda fuera todo lo que la v2 marca «Sin medición»: resolución por IA, atribución, satisfacción y rotación.
+
+  | Subfase | Contenido | Tamaño |
+  |---|---|---|
+  | **25.1 Catálogo comercial** | <ul><li>Solo documento.</li><li>Las convenciones: venta vigente, moneda nativa sin sumar monedas, una anulación posterior cambia el histórico.</li><li>Las fichas de ventas, comprobantes, ticket, serie diaria, unidades vendidas, ranking y valor de inventario.</li></ul> | S |
+  | **25.2 Dashboard con pestañas** | «Operativo» y «WhatsApp», con las métricas 1 a 14 sin cambiar sus fórmulas | S |
+  | **25.3 Lecturas comerciales** | <ul><li>Las consultas de la 25.1.</li><li>Sus tests de fixture: venta anulada después, sin cliente, dos monedas, medianoche.</li></ul> | M |
+  | **25.4 Bloques operativos** | <ul><li>Las acciones de arriba.</li><li>«Requiere atención»: stock bajo, presupuestos por aprobar, equipos listos, pedidos pendientes y **la cola de conversaciones sin respuesta, como definición propia distinta de la métrica 8**.</li><li>Ventas de hoy, turnos de hoy, la caja por moneda y los cobros de 7 días, separados de las ventas.</li></ul> | M |
+  | **25.5 Actividad reciente** | Desde la auditoría, con permisos por fila | M |
+  | **25.6 Análisis de ventas** | Pantalla propia: indicadores, serie diaria, comparación, ranking por producto o modelo y desglose con su definición | M |
+  | **25.7 Margen bruto** | El brief decide entre una migración con el costo al emitir, necesaria para las unidades porque su costo cambia con una reparación (`0059`), y reconstruirlo desde `product_costs` para los productos por cantidad | L |
+
+  *Plan anterior, del 2026-10-17, que la tabla de arriba ordena:*
   - **Métricas nuevas**: ingresos, ventas, ticket promedio, la serie diaria, los productos destacados y el valor de inventario.
   - **Bloques del dashboard**: «Requiere atención» (stock bajo y conversaciones sin respuesta) y la actividad reciente.
   - **Analítica de ventas**: una pantalla propia.
@@ -476,6 +521,35 @@ Reglas comunes a las cuatro fases:
   - de compras: la aprobación de órdenes, las fechas estimadas, el rendimiento del proveedor, el escaneo y las fotos ([ADR 0023](../decisions/0023-compras-y-proveedores.md));
   - del pedido y la venta: el envío, la pasarela de pago, el reembolso al medio, los canales, los impuestos, los depósitos y las variantes (ADR 0016 a 0021). *Precisado el 2026-10-18*: las variantes pasan a la [Fase 29](#fase-29--rubros-núcleo-capacidades-y-perfiles), cuyo ADR 0024 es el «propio ADR» que pide esta lista;
   - la campana de notificaciones ([Scope](../product/Scope.md)).
+  - *Sumado el 2026-10-28, de la revisión de la v2*:
+    - **Exceden el modelo de hoy**:
+      - los favoritos y «Personalizar accesos», y la foto del usuario;
+      - la vista previa de mensajes en la lista (FR-CONV-01) y el teléfono en la conversación (pantalla 9);
+      - el saldo corrido y el saldo inicial de un período en el estado de cuenta (brief-21.6);
+      - la cuenta bancaria de destino (ADR 0022).
+    - **Contradicen el ADR 0024 o sus notas**:
+      - el grado en el producto o en el SKU, cuando el grado es de la unidad (punto 6);
+      - los atributos por modelo, cuando son de la organización (punto 4);
+      - la garantía por grado, o «congelada al entregar», cuando la garantía se deriva y no se guarda (brief-29.9, D-2);
+      - «Actualizar costo» de una unidad, cuando su costo solo cambia por una reparación (nota de la 29.6.2);
+      - el ajuste genérico de un producto por unidad: es la baja de la unidad.
+    - **Necesitan datos nuevos**:
+      - el código propio de la unidad (`U-0101`), la serie y varios IMEI;
+      - el código y el color del grado;
+      - la descripción y la imagen del modelo;
+      - el motivo de un cambio de precio;
+      - el tipo de documento del cliente.
+    - **Van a otras fases**:
+      - las fotos y observaciones de la recepción de una reparación y los adjuntos, que necesitan almacenamiento de archivos (Fase 28, con su ADR);
+      - el IMEI «con permiso» y ocultar importes por rol (Fase 28);
+      - la selección múltiple y exportar (Fase 27);
+      - las no leídas y la asignación (Fase 26).
+    - **Con su propia decisión**: la casilla «Es técnico» dentro del alta del proveedor, que cambia el contrato de `createSupplier` (brief-29.6, D-3).
+    - **Textos de la v2 que se corrigen al implementar**:
+      - «el inicial no se copia del cierre»: la apertura lo propone, editable (brief-21.2);
+      - «equivalente orientativo»: se dice «de referencia» (ADR 0025, punto 6);
+      - «Resuelta»: el estado de la conversación es «Cerrada»;
+      - el aviso «USDT se registra en USD»: el ADR 0025, punto 8, lo decide, pero el código no lo aplica, así que se omite hasta que el negocio lo pida.
 - **Gate de entrada**: decisión del usuario del 2026-10-17 para la Fase 23. Cada fase siguiente se abre con su decisión, su proyecto en Notion y el brief de su primera subfase.
 - **Gate de salida**: decisión del usuario. Las Fases 23 a 25 no abren ni cierran un gate de producción, así que cada subfase se cierra con autoevaluación declarada, salvo que su brief diga otra cosa. Las que empiezan por un ADR (26 y 28) deciden en él si llevan revisión independiente. **La accesibilidad verificada con axe no puede retroceder.**
 - **Nivel de validación**: el de cada subfase. Las que se despliegan quedan **verificadas en producción**, sin certificar un nivel superior.
