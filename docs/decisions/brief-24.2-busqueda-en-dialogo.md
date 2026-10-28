@@ -221,7 +221,7 @@ Es la segunda subfase de la Fase 24 (Roadmap, §Fases 23 a 28). Hereda el marco 
 
 ## Cierre
 
-*Del 2026-10-28, antes del commit. La CI, el despliegue y el recorrido del usuario se completan después.*
+*Del 2026-10-28, después del despliegue y del recorrido del usuario («esta todo perfecto»).*
 
 ### Criterios
 
@@ -236,8 +236,8 @@ Es la segunda subfase de la Fase 24 (Roadmap, §Fases 23 a 28). Hereda el marco 
 | AC-7 | cumple | Sin hidratar, los dos disparadores son enlaces a `/buscar`. `search.spec.ts`, sin JavaScript: el botón de la barra a 1280 px y, desde la revisión (NB-5), la lupa a 375 px hasta `/buscar`, que muestra Clientes, Reparaciones y Turnos |
 | AC-8 | cumple | axe en claro y en oscuro: la lista abierta a 1280 px, el diálogo con resultados a 375 px, `/buscar` a 375 px y el diálogo con reparaciones y turnos |
 | AC-9 | cumple | La medición, abajo |
-| AC-10 | pendiente | La CI del SHA. En local pasaron los 306 end-to-end, en dos corridas. En la primera, el servidor de pruebas se cayó sin dejar causa en el log, y desde ahí 193 casos fallaron con «conexión rechazada». En la segunda, que repitió solo esos 193, pasaron 192 y `sales.spec.ts` agotó el tiempo en su última aserción. Ese spec, repetido solo, pasa sus 12 casos. Antes pasaron typecheck, lint, build y las 1185 pruebas de Vitest |
-| AC-11 | pendiente | Despliegue y recorrido. La revisión independiente se hizo antes (D-8, b) |
+| AC-10 | cumple | CI de `d169b84` (run 40755256574, `success`): lint, tipos, guardas, unitarios, integración, build y los end-to-end. En local pasaron los 306 end-to-end, en dos corridas. En la primera, el servidor de pruebas se cayó sin dejar causa en el log, y desde ahí 193 casos fallaron con «conexión rechazada». En la segunda, que repitió solo esos 193, pasaron 192 y `sales.spec.ts` agotó el tiempo en su última aserción. Ese spec, repetido solo, pasa sus 12 casos. Antes pasaron typecheck, lint, build y las 1185 pruebas de Vitest |
+| AC-11 | cumple | Desplegada el 2026-10-28 en `d169b84`, sin migraciones; antes corría `fcefdb8`. Revisión independiente antes del despliegue (D-8, b). Recorrida por el usuario el mismo día |
 
 ### La medición de R-1
 
@@ -302,6 +302,7 @@ La hizo un agente que no participó del trabajo, con acceso de solo lectura, con
 - **Elegir un resultado con cambios sin guardar.** Se navega con `router.push` y no pregunta, porque el guarda solo intercepta clics en enlaces.
   - Ya pasaba con la barra de la 23.3. Ahora se llega desde cualquier pantalla.
   - Arreglarlo toca el guarda, fuera de los archivos autorizados.
+  - Es una tarea en Notion, en «Esperando», en el proyecto de la Fase 24.
 - **Por teléfono, `/buscar` muestra más que antes.** Encuentra al cliente y también sus reparaciones y turnos. Es coherente con H-7 de la 23.3 (riesgo aceptado), y no muestra el número.
 
 ### Autoevaluación

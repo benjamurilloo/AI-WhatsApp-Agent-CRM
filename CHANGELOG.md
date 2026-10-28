@@ -2,6 +2,24 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-28 — 24.2: búsqueda en diálogo
+
+Segunda subfase de la Fase 24 ([brief-24.2](docs/decisions/brief-24.2-busqueda-en-dialogo.md) §Cierre).
+
+**Certifica:**
+- **La búsqueda global en un diálogo modal**:
+  - se abre con el botón «Buscar en el sistema…» de la barra, con la lupa del teléfono, a pantalla completa, o con ⌘K en Mac y Ctrl+K en los demás sistemas;
+  - el fondo queda inerte, Tab no sale y el foco vuelve a quien lo abrió;
+  - la cantidad de resultados se anuncia;
+  - sin JavaScript, los dos disparadores llevan a `/buscar`.
+- **Los grupos Reparaciones y Turnos**: por el número de la orden y por los primeros tres clientes encontrados, con la capacidad de su módulo y para los dos roles, en el diálogo y en `/buscar`. Sin teléfono, email, dirección ni importe en lo que recibe un `viewer`, comprobado sobre todo lo que llega a su navegador y con la prueba hecha fallar a propósito.
+- **R-1 medido**: sin diferencia apreciable con y sin los grupos nuevos.
+- **Validado en integración, desplegado en producción** (`d169b84`, sin migraciones) y recorrido por el usuario, con una revisión independiente antes del despliegue: 2 bloqueantes y 9 no bloqueantes, verificados y resueltos o declarados.
+
+**No certifica:**
+- que elegir un resultado pregunte por los cambios sin guardar: navega con `router.push`, como la barra de la 23.3;
+- las filas de Reparaciones y Turnos con la disposición exacta de D-3 (desvío 2).
+
 ## 2026-10-28 — 24.1: marco y patrones
 
 Primera subfase de la Fase 24, replanificada ese día con el rediseño v2 ([brief-24.1](docs/decisions/brief-24.1-marco-y-patrones.md) §Cierre).
