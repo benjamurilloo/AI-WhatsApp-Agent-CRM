@@ -18,10 +18,15 @@ import {
 } from "@/app/_components/detail-header";
 import { DetailList } from "@/app/_components/detail-list";
 import {
-  dangerOutlineLinkClass,
+  primaryLinkClass,
   secondaryLinkClass,
 } from "@/app/_components/form-styles";
 import { Icon } from "@/app/_components/icons";
+import {
+  MoreActions,
+  moreActionDangerClass,
+  moreActionItemClass,
+} from "@/app/_components/more-actions";
 import { PageNotice } from "@/app/_components/page-notice";
 import { SectionCard } from "@/app/_components/section-card";
 import { formatShortDateTime } from "@/app/_format/date-time";
@@ -52,7 +57,9 @@ function page(value: string | string[] | undefined): number {
 // Pantalla 12 (brief-11.2, D-7): el contenido completo con sus saltos de línea y la vigencia. Solo
 // para admin: edición, desactivación con confirmación, reactivación y la auditoría paginada
 // (FR-INFO-01, FR-AUD-02). Un viewer lee, sin formularios ni auditoría. Presentación de la 15.4:
-// tarjetas y el ícono de la categoría, sin pestañas (brief-15.4, D-3).
+// tarjetas y el ícono de la categoría, sin pestañas (brief-15.4, D-3). Desde la 24.1, la ficha de
+// referencia del patrón de la v2 (brief-24.1, D-8): la acción primaria es la siguiente transición
+// válida («Editar», o «Reactivar» si está inactiva) y «Desactivar» vive en «Más acciones».
 export default async function KnowledgeEntryPage({
   params,
   searchParams,
@@ -107,26 +114,48 @@ export default async function KnowledgeEntryPage({
         leading={<HeaderIcon name={categoryIcon(entry.category)} />}
         badges={<KnowledgeStatusBadge status={entry.status} />}
         subtitle={entry.category}
-        actions={
+        primary={
           isAdmin && !editing ? (
-            <>
+            entry.isActive ? (
               <Link
                 href={`/informacion/${entry.id}?editar=1`}
-                className={secondaryLinkClass}
+                className={primaryLinkClass}
               >
                 <Icon name="pencil" className="size-4" />
                 Editar
               </Link>
-              {entry.isActive && !confirming ? (
+            ) : (
+              <ReactivateForm entryId={entry.id} />
+            )
+          ) : null
+        }
+        actions={
+          isAdmin && !editing && !entry.isActive ? (
+            <Link
+              href={`/informacion/${entry.id}?editar=1`}
+              className={secondaryLinkClass}
+            >
+              <Icon name="pencil" className="size-4" />
+              Editar
+            </Link>
+          ) : null
+        }
+        more={
+          isAdmin && !editing && entry.isActive && !confirming ? (
+            <MoreActions
+              id="mas-acciones-entrada"
+              label="Más acciones de la entrada"
+            >
+              <li>
                 <Link
                   href={`/informacion/${entry.id}?confirmar=desactivar`}
-                  className={dangerOutlineLinkClass}
+                  className={`${moreActionItemClass} ${moreActionDangerClass}`}
                 >
                   <Icon name="power" className="size-4" />
                   Desactivar
                 </Link>
-              ) : null}
-            </>
+              </li>
+            </MoreActions>
           ) : null
         }
       />
@@ -141,15 +170,18 @@ export default async function KnowledgeEntryPage({
         </div>
       ) : null}
 
+      {/* Reactivar es la acción primaria del encabezado; acá queda el porqué. */}
       {isAdmin && !entry.isActive ? (
         <SectionCard
           id="estado-titulo"
           title="Estado"
           icon="power"
-          description="Está desactivada: no se considera vigente aunque esté dentro de sus fechas."
           className="mt-6"
         >
-          <ReactivateForm entryId={entry.id} />
+          <p>
+            Está desactivada: no se considera vigente aunque esté dentro de sus
+            fechas. Reactivala desde el encabezado.
+          </p>
         </SectionCard>
       ) : null}
 

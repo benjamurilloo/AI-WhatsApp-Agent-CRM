@@ -8,7 +8,9 @@ import { E2E_PASSWORD } from "./global-setup";
 
 // El marco común de la brief-15.1 (D-4 a D-6), con el aspecto de los mockups desde la brief-23.1:
 // panel lateral desde 1024 px y barra inferior debajo, con una sola navegación «Principal» visible
-// en cada tamaño, y las migas y el menú del usuario en la barra superior.
+// en cada tamaño, y las migas y el menú del usuario en la barra superior. Desde la brief-24.1, el
+// menú va en grupos por tarea, las migas suman el grupo y la barra inferior se retira en los
+// formularios y en el hilo.
 
 const [ADMIN_SEED] = SEED_USERS;
 const ADMIN = ADMIN_SEED.email;
@@ -64,7 +66,7 @@ async function expectAccessible(page: Page, state: string) {
   await page.emulateMedia({ colorScheme: null });
 }
 
-test("caso 1: a 1280 px el panel navega, las migas siguen la sección y el menú del usuario se abre", async ({
+test("caso 1: a 1280 px el panel navega en grupos, las migas siguen el grupo y la sección, y el menú del usuario se abre", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -75,24 +77,39 @@ test("caso 1: a 1280 px el panel navega, las migas siguen la sección y el menú
   // La barra inferior es solo para pantallas chicas.
   await expect(page.getByRole("button", { name: "Más" })).toBeHidden();
 
-  // El orden de los mockups (brief-23.1, D-4).
+  // Los grupos por tarea (brief-24.1, D-1). La organización del seed no tiene capacidades: no hay
+  // Turnos, Modelos, Grados, Usados ni Reparaciones, y el grupo Servicio técnico no aparece.
+  await expect(nav.getByRole("button")).toHaveText([
+    "Atención",
+    "Catálogo e inventario",
+    "Comercial",
+    "Finanzas",
+    "Abastecimiento",
+    "Administración",
+  ]);
   await expect(nav.getByRole("link")).toHaveText([
-    "Dashboard",
+    "Inicio",
     "Conversaciones",
     "Clientes",
     "Productos",
     "Pedidos",
     "Ventas",
     "Caja",
+    "Cuentas de clientes",
     "Compras",
+    "Recepciones",
+    "Pagos",
+    "Proveedores",
     "Información",
+    "Horarios",
     "Usuarios",
   ]);
 
-  // Migas «‹organización› / ‹sección›» (D-6): en la portada, la sección es la página actual.
+  // Migas «‹organización› / ‹grupo› / ‹sección›» (D-4): en la portada, la sección es la página
+  // actual. Inicio no tiene grupo.
   const crumbs = page.getByRole("navigation", { name: "Migas" });
   await expect(crumbs).toContainText("Organización de ejemplo");
-  await expect(crumbs.getByText("Dashboard")).toHaveAttribute(
+  await expect(crumbs.getByText("Inicio")).toHaveAttribute(
     "aria-current",
     "page",
   );
@@ -103,6 +120,7 @@ test("caso 1: a 1280 px el panel navega, las migas siguen la sección y el menú
     "aria-current",
     "page",
   );
+  await expect(crumbs).toContainText("Catálogo e inventario");
   await expect(crumbs.getByText("Productos")).toHaveAttribute(
     "aria-current",
     "page",
@@ -111,6 +129,18 @@ test("caso 1: a 1280 px el panel navega, las migas siguen la sección y el menú
   await page.goto("/productos/nuevo");
   await crumbs.getByRole("link", { name: "Productos" }).click();
   await expect(page).toHaveURL("/productos");
+
+  // Un destino que es una subruta se marca él, y no la sección que lo contiene (H-3).
+  await page.goto("/compras/recepciones");
+  await expect(nav.getByRole("link", { name: "Recepciones" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expect(nav.getByRole("link", { name: "Compras" })).not.toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expect(crumbs).toContainText("Abastecimiento");
 
   // El panel queda a la izquierda del contenido, con el usuario al pie.
   const panel = await nav.boundingBox();
@@ -144,7 +174,45 @@ test("caso 1: a 1280 px el panel navega, las migas siguen la sección y el menú
   await expectAccessible(page, "marco a 1280 px");
 });
 
-test("caso 2: a 375 px la barra inferior navega y «Más» se abre, se cierra con Escape y devuelve el foco", async ({
+test("caso 1b: a 1280 px un grupo se cierra con el teclado, se recuerda al recargar, y el de la página actual se abre siempre", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await login(page, ADMIN);
+
+  const nav = page.getByRole("navigation", { name: "Principal" });
+  const comercial = nav.getByRole("button", { name: "Comercial" });
+  const ventas = nav.getByRole("link", { name: "Ventas" });
+  // La primera vez, todos abiertos (D-2).
+  await expect(comercial).toHaveAttribute("aria-expanded", "true");
+  await expect(ventas).toBeVisible();
+
+  await comercial.focus();
+  await page.keyboard.press("Enter");
+  await expect(comercial).toHaveAttribute("aria-expanded", "false");
+  await expect(ventas).toBeHidden();
+  await expectAccessible(page, "grupo cerrado a 1280 px");
+
+  // Se recuerda en este navegador.
+  await page.reload();
+  await expect(comercial).toHaveAttribute("aria-expanded", "false");
+  await expect(ventas).toBeHidden();
+
+  // En una página del grupo, el grupo se abre aunque esté cerrado.
+  await page.goto("/ventas");
+  await expect(comercial).toHaveAttribute("aria-expanded", "true");
+  await expect(ventas).toHaveAttribute("aria-current", "page");
+
+  // Volver a abrirlo lo deja abierto también fuera de sus páginas.
+  await page.goto("/");
+  await expect(comercial).toHaveAttribute("aria-expanded", "false");
+  await comercial.click();
+  await expect(comercial).toHaveAttribute("aria-expanded", "true");
+  await page.reload();
+  await expect(ventas).toBeVisible();
+});
+
+test("caso 2: a 375 px la barra inferior navega y «Más» lista los grupos, se cierra con Escape y devuelve el foco", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 375, height: 800 });
@@ -171,20 +239,33 @@ test("caso 2: a 375 px la barra inferior navega y «Más» se abre, se cierra co
     "page",
   );
 
-  // «Más» lleva el resto de las secciones del rol.
+  // «Más» lleva el resto de los destinos del rol, bajo el título de su grupo (brief-24.1, D-3).
+  // Atención queda sin destinos fuera de la barra y no aparece.
   const extra = nav.locator("#navegacion-mas");
   await expect(more).toHaveAttribute("aria-expanded", "false");
   await expect(extra).toBeHidden();
   await more.click();
   await expect(more).toHaveAttribute("aria-expanded", "true");
+  await expect(extra.getByRole("list")).toHaveCount(5);
+  await expect(
+    extra.getByRole("list", { name: "Abastecimiento" }).getByRole("link"),
+  ).toHaveText(["Compras", "Recepciones", "Pagos", "Proveedores"]);
   await expect(extra.getByRole("link")).toHaveText([
     "Productos",
     "Pedidos",
     "Caja",
+    "Cuentas de clientes",
     "Compras",
+    "Recepciones",
+    "Pagos",
+    "Proveedores",
     "Información",
+    "Horarios",
     "Usuarios",
   ]);
+  for (const link of await extra.getByRole("link").all()) {
+    expect((await link.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  }
   await expectAccessible(page, "«Más» abierto a 375 px");
 
   await extra.getByRole("link", { name: "Caja" }).focus();
@@ -192,7 +273,7 @@ test("caso 2: a 375 px la barra inferior navega y «Más» se abre, se cierra co
   await expect(extra).toBeHidden();
   await expect(more).toBeFocused();
 
-  // Navegar también lo cierra.
+  // Navegar también lo cierra, y el destino que vive en «Más» marca «Más».
   await more.click();
   await extra.getByRole("link", { name: "Productos" }).click();
   await expect(page).toHaveURL("/productos");
@@ -216,7 +297,7 @@ test("caso 2: a 375 px la barra inferior navega y «Más» se abre, se cierra co
   await expectAccessible(page, "barra inferior a 375 px");
 });
 
-test("caso 2b: a 375 px, «Más» de un viewer no lista Compras ni Usuarios", async ({
+test("caso 2b: a 375 px, «Más» de un viewer no lista Abastecimiento ni Usuarios", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 375, height: 800 });
@@ -224,12 +305,42 @@ test("caso 2b: a 375 px, «Más» de un viewer no lista Compras ni Usuarios", as
 
   const nav = page.getByRole("navigation", { name: "Principal" });
   await nav.getByRole("button", { name: "Más" }).click();
-  await expect(nav.locator("#navegacion-mas").getByRole("link")).toHaveText([
+  const extra = nav.locator("#navegacion-mas");
+  await expect(extra.getByRole("list", { name: "Abastecimiento" })).toHaveCount(
+    0,
+  );
+  await expect(extra.getByRole("link")).toHaveText([
     "Productos",
     "Pedidos",
     "Caja",
+    "Cuentas de clientes",
     "Información",
+    "Horarios",
   ]);
+});
+
+test("caso 2c: a 375 px la barra inferior se retira en un formulario y en el hilo, y vuelve en la lista", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  await login(page, ADMIN);
+
+  const nav = page.getByRole("navigation", { name: "Principal" });
+  await expect(nav).toBeVisible();
+
+  // Un formulario (brief-24.1, D-7): sin barra, y la página no reserva su alto.
+  await page.goto("/clientes/nuevo");
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(nav).toHaveCount(0);
+  await expectAccessible(page, "formulario sin barra inferior a 375 px");
+
+  // El hilo de una conversación: la ruta alcanza, aunque la conversación no exista.
+  await page.goto("/conversaciones/00000000-0000-4000-8000-000000000000");
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(nav).toHaveCount(0);
+
+  await page.goto("/clientes");
+  await expect(nav).toBeVisible();
 });
 
 test("caso 3: brief-15.5 la marca muestra el símbolo de Vixora y la pestaña tiene su ícono", async ({

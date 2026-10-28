@@ -6,10 +6,8 @@ import { EmptyState } from "@/app/_components/empty-state";
 import { ActionNotice } from "@/app/_components/action-notice";
 import { BackLink } from "@/app/_components/detail-header";
 import {
-  activeBadgeClass,
   cardClass,
   dangerOutlineLinkClass,
-  inactiveBadgeClass,
   linkClass,
   secondaryLinkClass,
   tableCellClass,
@@ -19,6 +17,7 @@ import { Icon } from "@/app/_components/icons";
 import { PageHeader } from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
 import { SectionCard } from "@/app/_components/section-card";
+import { StatusBadge as Badge } from "@/app/_components/status-badge";
 import { TagChip } from "@/app/_components/tag-chip";
 import type { SearchParams } from "../filters";
 import {
@@ -236,9 +235,12 @@ export default async function TagCatalogPage({
 
 function StatusBadge({ isActive }: { isActive: boolean }) {
   return (
-    <span className={isActive ? activeBadgeClass : inactiveBadgeClass}>
+    <Badge
+      tone={isActive ? "success" : "neutral"}
+      icon={isActive ? "circleCheck" : "circleMinus"}
+    >
       {isActive ? "Activa" : "Inactiva"}
-    </span>
+    </Badge>
   );
 }
 

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Suspense, type ReactNode } from "react";
-import { getAppFrame } from "@/modules/organizations";
+import { getAppFrame, getMainCurrency } from "@/modules/organizations";
 import { logoutAction } from "@/app/_auth/logout";
 import { requireSession } from "@/app/_auth/session";
 import { AppNav } from "@/app/_components/app-nav";
@@ -12,8 +12,12 @@ import {
   secondaryButtonClass,
 } from "@/app/_components/form-styles";
 import { Icon } from "@/app/_components/icons";
-import { BottomNav, SidebarColumn } from "@/app/_components/mobile-nav";
-import type { NavLink } from "@/app/_components/nav-links";
+import {
+  BottomNav,
+  ContentColumn,
+  SidebarColumn,
+} from "@/app/_components/mobile-nav";
+import { visibleGroups, type NavGroup } from "@/app/_components/nav-links";
 import { NavigationProgress } from "@/app/_components/navigation-progress";
 import { SearchIcon } from "@/app/_components/page-header";
 import { SuggestInput } from "@/app/_components/suggest-input";
@@ -32,73 +36,134 @@ export default async function AuthenticatedLayout({
 }: Readonly<{ children: ReactNode }>) {
   const context = await requireSession();
   const frame = await getAppFrame(context);
+  // Sin moneda principal, la cotización no existe (brief-29.4, D-4), como en el sub-menú de la caja.
+  const mainCurrency = await getMainCurrency(context.organizationId);
   const theme = await readTheme();
-  // El orden de los mockups (brief-23.1, D-4).
-  const links: NavLink[] = [
-    { href: "/", label: "Dashboard", icon: "dashboard" },
-    { href: "/conversaciones", label: "Conversaciones", icon: "messageCircle" },
-    { href: "/clientes", label: "Clientes", icon: "users" },
-    { href: "/productos", label: "Productos", icon: "package" },
-    // Modelos y atributos, solo con la capacidad variants (ADR 0024, punto 3; brief-29.2, D-3). Cada
-    // página de /modelos vuelve a comprobar la capacidad: el menú no alcanza.
-    ...(frame.capabilities.includes("variants")
-      ? [{ href: "/modelos", label: "Modelos", icon: "layers" as const }]
-      : []),
-    // Los grados de las unidades, solo con la capacidad serialized_units (brief-29.5, D-5), con la
-    // misma regla: la página vuelve a comprobarla.
-    ...(frame.capabilities.includes("serialized_units")
-      ? [{ href: "/grados", label: "Grados", icon: "tag" as const }]
-      : []),
-    // Las reparaciones, para los dos roles y solo con la capacidad repairs (brief-29.6, D-10), con la
-    // misma regla: cada página vuelve a comprobarla.
-    ...(frame.capabilities.includes("repairs")
-      ? [
-          {
-            href: "/reparaciones",
-            label: "Reparaciones",
-            icon: "wrench" as const,
-          },
-        ]
-      : []),
-    // Los usados, para los dos roles y solo con la capacidad trade_ins (brief-29.7, D-7), con la misma
-    // regla: cada página vuelve a comprobarla.
-    ...(frame.capabilities.includes("trade_ins")
-      ? [
-          {
-            href: "/usados",
-            label: "Usados",
-            icon: "smartphone" as const,
-          },
-        ]
-      : []),
-    // Los turnos, para los dos roles y solo con la capacidad appointments (brief-29.10, D-5), con la
-    // misma regla: cada página vuelve a comprobarla.
-    ...(frame.capabilities.includes("appointments")
-      ? [
-          {
-            href: "/turnos",
-            label: "Turnos",
-            icon: "calendar" as const,
-          },
-        ]
-      : []),
-    // Pedidos, para los dos roles (brief-19.2).
-    { href: "/pedidos", label: "Pedidos", icon: "list" },
-    // Ventas, para los dos roles (brief-20.2).
-    { href: "/ventas", label: "Ventas", icon: "receipt" },
-    // La caja del efectivo y los medios de pago, para los dos roles (brief-21.2, D-10).
-    { href: "/caja", label: "Caja", icon: "banknote" },
-    // Compras, solo para admin, como Usuarios (brief-22.2, D-9; ADR 0023, punto 12). /compras lleva
-    // a las órdenes de compra desde la 22.3 (brief-22.3, D-10), y el enlace queda marcado en todas
-    // sus pantallas.
-    ...(context.role === "admin"
-      ? [{ href: "/compras", label: "Compras", icon: "truck" as const }]
-      : []),
-    { href: "/informacion", label: "Información", icon: "info" },
-    ...(context.role === "admin"
-      ? [{ href: "/usuarios", label: "Usuarios", icon: "user" as const }]
-      : []),
-  ];
+  const admin = context.role === "admin";
+  const has = (capability: (typeof frame.capabilities)[number]) =>
+    frame.capabilities.includes(capability);
+  // Los grupos por tarea de la v2 (brief-24.1, D-1). Cada destino aparece solo si su capacidad y
+  // su rol lo permiten, y un grupo sin destinos no se muestra. El menú no alcanza: cada página
+  // vuelve a comprobar la sesión, el rol y la capacidad.
+  const groups: NavGroup[] = visibleGroups([
+    {
+      id: "inicio",
+      label: null,
+      links: [{ href: "/", label: "Inicio", icon: "home" }],
+    },
+    {
+      id: "atencion",
+      label: "Atención",
+      links: [
+        {
+          href: "/conversaciones",
+          label: "Conversaciones",
+          icon: "messageCircle",
+        },
+        { href: "/clientes", label: "Clientes", icon: "users" },
+        // Los turnos, para los dos roles y solo con la capacidad appointments (brief-29.10, D-5).
+        ...(has("appointments")
+          ? [{ href: "/turnos", label: "Turnos", icon: "calendar" as const }]
+          : []),
+      ],
+    },
+    {
+      id: "catalogo",
+      label: "Catálogo e inventario",
+      links: [
+        { href: "/productos", label: "Productos", icon: "package" },
+        // Modelos y atributos, solo con la capacidad variants (ADR 0024, punto 3; brief-29.2, D-3).
+        ...(has("variants")
+          ? [{ href: "/modelos", label: "Modelos", icon: "layers" as const }]
+          : []),
+        // Los grados de las unidades, solo con la capacidad serialized_units (brief-29.5, D-5).
+        ...(has("serialized_units")
+          ? [{ href: "/grados", label: "Grados", icon: "tag" as const }]
+          : []),
+        // Los usados, para los dos roles y solo con la capacidad trade_ins (brief-29.7, D-7).
+        ...(has("trade_ins")
+          ? [{ href: "/usados", label: "Usados", icon: "smartphone" as const }]
+          : []),
+      ],
+    },
+    {
+      id: "servicio",
+      label: "Servicio técnico",
+      // Las reparaciones, para los dos roles y solo con la capacidad repairs (brief-29.6, D-10).
+      links: has("repairs")
+        ? [{ href: "/reparaciones", label: "Reparaciones", icon: "wrench" }]
+        : [],
+    },
+    {
+      id: "comercial",
+      label: "Comercial",
+      // Pedidos y ventas, para los dos roles (brief-19.2 y brief-20.2).
+      links: [
+        { href: "/pedidos", label: "Pedidos", icon: "list" },
+        { href: "/ventas", label: "Ventas", icon: "receipt" },
+      ],
+    },
+    {
+      id: "finanzas",
+      label: "Finanzas",
+      // La caja, los deudores y la cotización, para los dos roles (brief-21.2, D-10): sus
+      // servicios autorizan a cualquier miembro (brief-24.1, H-4). La cotización, solo con moneda
+      // principal.
+      links: [
+        { href: "/caja", label: "Caja", icon: "banknote" },
+        {
+          href: "/caja/deudores",
+          label: "Cuentas de clientes",
+          icon: "fileText",
+        },
+        ...(mainCurrency
+          ? [
+              {
+                href: "/caja/cotizacion",
+                label: "Tipo de cambio",
+                icon: "trendingUp" as const,
+              },
+            ]
+          : []),
+      ],
+    },
+    {
+      id: "abastecimiento",
+      label: "Abastecimiento",
+      // Solo para admin, como Usuarios (brief-22.2, D-9; ADR 0023, punto 12). /compras lleva a las
+      // órdenes de compra desde la 22.3 (brief-22.3, D-10).
+      links: admin
+        ? [
+            // «/compras» y no «/compras/ordenes» (adonde redirige): así «A pagar» y las demás
+            // subrutas sin destino propio marcan Compras.
+            { href: "/compras", label: "Compras", icon: "truck" },
+            {
+              href: "/compras/recepciones",
+              label: "Recepciones",
+              icon: "package",
+            },
+            { href: "/compras/pagos", label: "Pagos", icon: "creditCard" },
+            {
+              href: "/compras/proveedores",
+              label: "Proveedores",
+              icon: "building",
+            },
+          ]
+        : [],
+    },
+    {
+      id: "administracion",
+      label: "Administración",
+      links: [
+        { href: "/informacion", label: "Información", icon: "info" },
+        // El horario, para los dos roles (brief-24.1, H-4).
+        { href: "/informacion/horario", label: "Horarios", icon: "clock" },
+        ...(admin
+          ? [{ href: "/usuarios", label: "Usuarios", icon: "user" as const }]
+          : []),
+      ],
+    },
+  ]);
 
   return (
     // Al imprimir, sin grilla: con el panel oculto, el contenido quedaría en su columna de 16rem
@@ -109,7 +174,7 @@ export default async function AuthenticatedLayout({
       <SidebarColumn>
         <div className="flex flex-col gap-6 px-4 py-4 lg:sticky lg:top-0 lg:h-dvh lg:overflow-y-auto lg:py-6">
           <Brand />
-          <AppNav links={links} />
+          <AppNav groups={groups} />
           {/* El usuario al pie del panel, como texto (brief-23.1, D-5): las acciones están en el
               menú de la barra superior. */}
           <div className="mt-auto hidden items-center gap-3 border-t border-border pt-4 lg:flex">
@@ -124,7 +189,7 @@ export default async function AuthenticatedLayout({
         </div>
       </SidebarColumn>
       {/* Debajo de lg, el margen inferior deja ver lo que tapa la barra inferior. */}
-      <div className="min-w-0 pb-24 lg:pb-0 print:pb-0">
+      <ContentColumn>
         <header className="border-b border-border bg-surface print:hidden">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 lg:px-8">
             <span className="lg:hidden">
@@ -133,7 +198,7 @@ export default async function AuthenticatedLayout({
             <div className="order-last w-full min-w-0 sm:order-none sm:w-auto sm:flex-1">
               <Breadcrumbs
                 organizationName={frame.organizationName}
-                links={links}
+                groups={groups}
               />
             </div>
             {/* La búsqueda global desde lg (brief-23.3, D-5): un formulario GET a /buscar, con las
@@ -198,8 +263,8 @@ export default async function AuthenticatedLayout({
           </div>
         </header>
         {children}
-      </div>
-      <BottomNav links={links} />
+      </ContentColumn>
+      <BottomNav groups={groups} />
       {/* La barra de carga (brief-23.2, D-3): useSearchParams pide su propio suspenso. */}
       <Suspense fallback={null}>
         <NavigationProgress />

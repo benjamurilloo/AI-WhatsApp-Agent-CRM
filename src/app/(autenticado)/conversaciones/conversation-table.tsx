@@ -8,6 +8,7 @@ import {
 } from "@/app/_components/form-styles";
 import { Avatar } from "@/app/_components/avatar";
 import { Icon } from "@/app/_components/icons";
+import { StatusBadge as Badge } from "@/app/_components/status-badge";
 import { formatShortDateTime } from "@/app/_format/date-time";
 import { AGENT_PAUSED_LABEL, CHANNEL_LABEL, NO_CLIENT_TEXT } from "./messages";
 import { StatusBadge } from "./status-badge";
@@ -21,10 +22,9 @@ import { StatusBadge } from "./status-badge";
 // Texto con ícono decorativo: el color acompaña, no informa solo.
 export function AgentPausedBadge() {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-warning-soft px-2.5 py-0.5 text-[0.8125rem] font-semibold whitespace-nowrap text-on-warning-soft">
-      <span aria-hidden="true">⏸</span>
+    <Badge tone="warning" icon="circlePause">
       {AGENT_PAUSED_LABEL}
-    </span>
+    </Badge>
   );
 }
 

@@ -128,7 +128,7 @@ test("caso 1: un admin ve la lista con (vos), el marco común con su organizaci�
   await expect(banner.getByRole("button", { name: "Salir" })).toBeVisible();
 
   const nav = page.getByRole("navigation", { name: "Principal" });
-  await expect(nav.getByRole("link", { name: "Dashboard" })).toHaveAttribute(
+  await expect(nav.getByRole("link", { name: "Inicio" })).toHaveAttribute(
     "aria-current",
     "page",
   );
@@ -347,7 +347,7 @@ test("caso 7: un viewer no ve el enlace y las páginas de usuarios muestran el p
 }) => {
   await login(page, VIEWER);
   const nav = page.getByRole("navigation", { name: "Principal" });
-  await expect(nav.getByRole("link", { name: "Dashboard" })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Inicio" })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Usuarios" })).toHaveCount(0);
 
   const adminMemberId = await memberIdOf(ADMIN_SEED.id);
@@ -457,9 +457,10 @@ test("caso 11: el alta se completa solo con teclado", async ({ page }) => {
   await page.goto("/usuarios/nuevo");
 
   // Desde el inicio del documento, atravesando el marco común hasta el primer campo. Desde la
-  // brief-23.1 el marco suma una parada: la sección de las migas, que acá es un enlace.
+  // brief-23.1 el marco suma una parada: la sección de las migas, que acá es un enlace. Desde la
+  // brief-24.1 suma los botones de los grupos del menú y sus destinos nuevos.
   const name = page.getByLabel("Nombre");
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 40; i++) {
     if (await name.evaluate((element) => element === document.activeElement)) {
       break;
     }

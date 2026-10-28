@@ -1,5 +1,7 @@
 import type { AppointmentStatus } from "@/modules/appointments";
 import { SubNav } from "@/app/_components/sub-nav";
+import type { IconName } from "@/app/_components/icons";
+import { StatusBadge, type StatusTone } from "@/app/_components/status-badge";
 import { STATUS_LABEL } from "./messages";
 
 // Las pantallas de Turnos (brief-29.10, D-5): el calendario y, para un admin, el alta y la
@@ -43,21 +45,21 @@ export function AppointmentsSubNav({
 }
 
 // El estado de un turno nunca depende solo del color: lleva ícono y texto, como el de una orden de
-// servicio. El ícono es decorativo.
-const ICON: Record<AppointmentStatus, string> = {
-  requested: "●",
-  confirmed: "✓",
-  cancelled: "✕",
-  attended: "✓",
-  no_show: "✕",
+// servicio, con la insignia compartida (brief-24.1, D-6).
+const ICON: Record<AppointmentStatus, IconName> = {
+  requested: "clock",
+  confirmed: "calendar",
+  cancelled: "circleX",
+  attended: "circleCheck",
+  no_show: "circleMinus",
 };
 
-const TONE: Record<AppointmentStatus, string> = {
-  requested: "bg-warning-soft text-on-warning-soft",
-  confirmed: "bg-primary-soft text-on-primary-soft",
-  cancelled: "bg-surface-muted text-muted",
-  attended: "bg-success-soft text-on-success-soft",
-  no_show: "bg-surface-muted text-muted",
+const TONE: Record<AppointmentStatus, StatusTone> = {
+  requested: "warning",
+  confirmed: "primary",
+  cancelled: "neutral",
+  attended: "success",
+  no_show: "neutral",
 };
 
 export function AppointmentStatusBadge({
@@ -66,11 +68,8 @@ export function AppointmentStatusBadge({
   status: AppointmentStatus;
 }) {
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[0.8125rem] font-semibold whitespace-nowrap ${TONE[status]}`}
-    >
-      <span aria-hidden="true">{ICON[status]}</span>
+    <StatusBadge tone={TONE[status]} icon={ICON[status]}>
       {STATUS_LABEL[status]}
-    </span>
+    </StatusBadge>
   );
 }

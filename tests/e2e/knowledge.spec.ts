@@ -126,11 +126,12 @@ async function entryRows() {
   return result.rows;
 }
 
-// La etiqueta de estado lleva un ícono decorativo antes del texto (status-badge.tsx).
+// La etiqueta de estado lleva un ícono decorativo, un SVG sin texto desde la 24.1 (brief-24.1,
+// D-6): el nombre es el texto entero. Se busca la insignia, con su ícono, y no una opción del filtro.
 const badge = (page: Page, label: string) =>
   page
-    .locator("main")
-    .getByText(new RegExp(`^\\S\\s*${label}$`))
+    .locator("main span.rounded-full:has(> svg)")
+    .filter({ hasText: new RegExp(`^${label}$`) })
     .first();
 
 const entriesTable = (page: Page) =>
@@ -240,7 +241,8 @@ test("caso 2: FR-INFO-01 la validación y el título repetido marcan el campo y 
   await login(page, ADMIN);
   await page.goto("/informacion/nueva");
 
-  // Vigencia invertida: el error va al campo del final, con el foco.
+  // Vigencia invertida: el error va al campo del final. Desde la brief-24.1 (D-8), el foco va al
+  // resumen de errores del comienzo, y su enlace lleva al campo.
   await fillForm(page, {
     title: "Envíos",
     category: "Envíos",
@@ -249,14 +251,22 @@ test("caso 2: FR-INFO-01 la validación y el título repetido marcan el campo y 
     validUntil: "2026-12-24",
   });
   await page.getByRole("button", { name: "Crear entrada" }).click();
+  const summary = page.locator("#resumen-errores");
+  await expect(summary).toBeFocused();
+  await expect(summary).toContainText("Revisá 1 campo para guardar");
   const until = page.getByLabel("Vigente hasta");
-  await expect(until).toBeFocused();
   await expect(until).toHaveAttribute("aria-invalid", "true");
-  await expect(
-    page.getByText(
-      "Ingresá una fecha válida, igual o posterior a la de inicio, o dejala vacía.",
-    ),
-  ).toBeVisible();
+  await summary.getByRole("link").click();
+  await expect(until).toBeFocused();
+  // La barra de guardado no tapa el campo enfocado (WCAG 2.4.11).
+  const untilBox = await until.boundingBox();
+  const barBox = await page.locator(".form-action-bar").boundingBox();
+  expect(untilBox!.y + untilBox!.height).toBeLessThanOrEqual(barBox!.y);
+  // El mensaje está dos veces: en el resumen, como enlace, y junto al campo.
+  const untilError =
+    "Ingresá una fecha válida, igual o posterior a la de inicio, o dejala vacía.";
+  await expect(page.locator("#validUntil-error")).toHaveText(untilError);
+  await expect(summary.getByRole("link")).toHaveText(untilError);
   await expect(page.getByLabel("Contenido")).toHaveValue("A todo el país.");
   await expect(page.getByLabel("Vigente desde")).toHaveValue("2026-12-26");
   await expectAccessible(page, "alta con error de vigencia");
@@ -265,10 +275,12 @@ test("caso 2: FR-INFO-01 la validación y el título repetido marcan el campo y 
   await fillForm(page, { title: "MEDIOS DE PAGO", validUntil: "" });
   await page.getByRole("button", { name: "Crear entrada" }).click();
   const title = page.getByLabel("Título");
+  await expect(summary).toBeFocused();
+  await summary.getByRole("link").click();
   await expect(title).toBeFocused();
-  await expect(
-    page.getByText("Ya existe una entrada con ese título."),
-  ).toBeVisible();
+  await expect(page.locator("#title-error")).toHaveText(
+    "Ya existe una entrada con ese título.",
+  );
   await expect(title).toHaveValue("MEDIOS DE PAGO");
   await expect(page.getByLabel("Categoría")).toHaveValue("Envíos");
   await expect(page.getByLabel("Contenido")).toHaveValue("A todo el país.");
@@ -328,6 +340,20 @@ test("caso 4: FR-INFO-01 desactivar pide confirmación, deja la entrada inactiva
   const entryId = await insertEntry("Envíos", { category: "Envíos" });
   await login(page, ADMIN);
   await page.goto(`/informacion/${entryId}`);
+  // «Editar» es la acción primaria y «Desactivar» vive en «Más acciones» (brief-24.1, D-8), que
+  // se abre con el teclado, se cierra con Escape y devuelve el foco.
+  const more = page.getByRole("button", { name: "Más acciones de la entrada" });
+  await expect(page.getByRole("link", { name: "Editar" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Desactivar" })).toBeHidden();
+  await more.focus();
+  await page.keyboard.press("Enter");
+  await expect(more).toHaveAttribute("aria-expanded", "true");
+  await expectAccessible(page, "más acciones abierto");
+  await page.getByRole("link", { name: "Desactivar" }).focus();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("link", { name: "Desactivar" })).toBeHidden();
+  await expect(more).toBeFocused();
+  await more.click();
   await page.getByRole("link", { name: "Desactivar" }).click();
   await expect(page).toHaveURL(`/informacion/${entryId}?confirmar=desactivar`);
   await expect(page.getByText('¿Desactivar "Envíos"?')).toBeFocused();
@@ -492,9 +518,10 @@ test("caso 8: FR-INFO-01 el alta se completa solo con teclado", async ({
   await login(page, ADMIN);
   await page.goto("/informacion/nueva");
 
-  // brief-23.1 el marco suma una parada: la sección de las migas, que acá es un enlace.
+  // brief-23.1 el marco suma una parada: la sección de las migas, que acá es un enlace. Desde la
+  // brief-24.1 suma los botones de los grupos del menú y sus destinos nuevos.
   const title = page.getByLabel("Título");
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 40; i++) {
     if (await title.evaluate((element) => element === document.activeElement)) {
       break;
     }
@@ -524,7 +551,7 @@ test("caso 8: FR-INFO-01 el alta se completa solo con teclado", async ({
   await expect(page.getByLabel("Vigente desde")).toBeFocused();
   await tabUntil(page.getByLabel("Vigente hasta"));
   await expect(page.getByLabel("Vigente hasta")).toBeFocused();
-  const cancel = page.getByRole("link", { name: "Cancelar" });
+  const cancel = page.getByRole("link", { name: "Cancelar edición" });
   await tabUntil(cancel);
   await expect(cancel).toBeFocused();
   await page.keyboard.press("Tab");
@@ -561,6 +588,63 @@ test("caso 9: FR-INFO-02 en móvil la lista se ve como tarjetas, sin desplazamie
     ),
   ).toBe(true);
   await expectAccessible(page, "lista en móvil");
+});
+
+test("caso 9b: brief-24.1 a 375 px la ficha, el alta con errores y la edición, sin la barra inferior en los formularios", async ({
+  page,
+}) => {
+  const entryId = await insertEntry("Medios de pago", { category: "Pagos" });
+  await page.setViewportSize({ width: 375, height: 800 });
+  await login(page, ADMIN);
+  const bottomNav = page.getByRole("navigation", { name: "Principal" });
+
+  // La ficha conserva la barra inferior, y «Más acciones» se abre (brief-24.1, D-8).
+  await page.goto(`/informacion/${entryId}`);
+  await expect(bottomNav).toBeVisible();
+  await page
+    .getByRole("button", { name: "Más acciones de la entrada" })
+    .click();
+  await expect(page.getByRole("link", { name: "Desactivar" })).toBeVisible();
+  await expectAccessible(page, "ficha con «Más acciones» en móvil");
+
+  // El alta: sin barra inferior (D-7), y el resumen de errores enfocado.
+  await page.goto("/informacion/nueva");
+  await expect(bottomNav).toHaveCount(0);
+  await fillForm(page, {
+    title: "Envíos",
+    category: "Envíos",
+    content: "A todo el país.",
+    validFrom: "2026-12-26",
+    validUntil: "2026-12-24",
+  });
+  await page.getByRole("button", { name: "Crear entrada" }).click();
+  await expect(page.locator("#resumen-errores")).toBeFocused();
+  await expectAccessible(page, "alta con errores en móvil");
+
+  // La edición en la misma ficha (?editar=1) también retira la barra inferior: la de guardado es
+  // la única pegada abajo, y el campo enfocado no queda debajo de ella (WCAG 2.4.11).
+  await page.goto(`/informacion/${entryId}?editar=1`);
+  await expect(page.getByLabel("Título")).toHaveValue("Medios de pago");
+  await expect(bottomNav).toHaveCount(0);
+  // El último campo, el más cercano a la barra: al enfocarse, el desplazamiento lo deja entero por
+  // encima de ella.
+  const until = page.getByLabel("Vigente hasta");
+  await until.focus();
+  await expect(until).toBeFocused();
+  const untilBox = await until.boundingBox();
+  const bar = page.locator(".form-action-bar");
+  const barBox = await bar.boundingBox();
+  expect(untilBox!.y + untilBox!.height).toBeLessThanOrEqual(barBox!.y);
+  expect(barBox!.y + barBox!.height).toBeLessThanOrEqual(800);
+  await expect(
+    bar.getByRole("button", { name: "Guardar cambios" }),
+  ).toBeInViewport();
+  await expectAccessible(page, "edición en móvil");
+
+  // Al volver a la ficha, la barra vuelve.
+  await bar.getByRole("link", { name: "Cancelar edición" }).click();
+  await expect(page).toHaveURL(`/informacion/${entryId}`);
+  await expect(bottomNav).toBeVisible();
 });
 
 test("caso 10: brief-15.2 la categoría sugiere las ya usadas con su propia lista", async ({

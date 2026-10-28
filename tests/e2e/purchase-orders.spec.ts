@@ -371,7 +371,7 @@ test("un viewer no ve Compras y las páginas de órdenes muestran el permiso sin
   const orderId = await insertOrder(1, supplierId, coffee);
   await login(page, VIEWER);
   const nav = page.getByRole("navigation", { name: "Principal" });
-  await expect(nav.getByRole("link", { name: "Dashboard" })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Inicio" })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Compras" })).toHaveCount(0);
 
   for (const path of [

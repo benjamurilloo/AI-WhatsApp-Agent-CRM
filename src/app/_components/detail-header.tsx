@@ -20,19 +20,27 @@ export function BackLink({ href, label }: { href: string; label: string }) {
   );
 }
 
+// Las acciones de la ficha (brief-24.1, D-8; criterios v2, §Ubicación de botones): `primary` es la
+// siguiente transición válida, una sola; `actions`, las secundarias visibles, como imprimir; y
+// `more`, el «Más acciones» con lo menos frecuente y lo destructivo, al final.
 export function DetailHeader({
   title,
   leading,
   badges,
   subtitle,
+  primary,
   actions,
+  more,
 }: {
   title: string;
   leading?: ReactNode;
   badges?: ReactNode;
   subtitle?: ReactNode;
+  primary?: ReactNode;
   actions?: ReactNode;
+  more?: ReactNode;
 }) {
+  const hasActions = Boolean(primary || actions || more);
   return (
     <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
       <div className="flex min-w-0 items-center gap-4">
@@ -47,7 +55,13 @@ export function DetailHeader({
           ) : null}
         </div>
       </div>
-      {actions ? <div className="flex flex-wrap gap-3">{actions}</div> : null}
+      {hasActions ? (
+        <div className="flex flex-wrap items-start gap-3">
+          {primary}
+          {actions}
+          {more}
+        </div>
+      ) : null}
     </div>
   );
 }

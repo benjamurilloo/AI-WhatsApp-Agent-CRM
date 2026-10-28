@@ -29,7 +29,9 @@
   --action: #6d28d9;
   --action-hover: #5b21b6;
   --on-action: #ffffff;
-  --focus: #1d4ed8;
+  /* El foco violeta de la v2 (brief-24.1, D-5), con la separación de outline-offset: más de 5:1
+     contra cada fondo, en los dos temas (H-2). */
+  --focus: #6d28d9;
   --danger: #b42318;
   --danger-hover: #8a1b12;
   --on-danger: #ffffff;
@@ -76,7 +78,7 @@
     --action: #7c3aed;
     --action-hover: #6d28d9;
     --on-action: #ffffff;
-    --focus: #7cb4f5;
+    --focus: #a48bfa;
     --danger: #f47a6e;
     --danger-hover: #f79a90;
     --on-danger: #160f33;
@@ -120,7 +122,7 @@
   --action: #7c3aed;
   --action-hover: #6d28d9;
   --on-action: #ffffff;
-  --focus: #7cb4f5;
+  --focus: #a48bfa;
   --danger: #f47a6e;
   --danger-hover: #f79a90;
   --on-danger: #160f33;
@@ -194,6 +196,41 @@
 
 body {
   @apply bg-background font-sans text-foreground antialiased;
+}
+
+/*
+ * Íconos de las insignias que se arman con una clase y no con StatusBadge (brief-24.1, D-6):
+ * activeBadgeClass e inactiveBadgeClass, en form-styles.ts. Un tilde y una barra dibujados con
+ * bordes, del color del texto y sin imágenes: la CSP no admite data: en img-src (src/proxy.ts).
+ * Decorativos: el texto dice el estado.
+ */
+.badge-icon-check::before {
+  content: "";
+  flex-shrink: 0;
+  width: 0.3125rem;
+  height: 0.625rem;
+  margin: 0 0.1875rem 0.125rem;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.badge-icon-minus::before {
+  content: "";
+  flex-shrink: 0;
+  width: 0.625rem;
+  height: 2px;
+  margin: 0 0.125rem;
+  border-radius: 1px;
+  background-color: currentColor;
+}
+
+/*
+ * Con una barra de guardado pegada abajo (form-action-bar.tsx, brief-24.1, D-8), el campo enfocado
+ * no queda debajo de ella (WCAG 2.4.11): el desplazamiento reserva su alto.
+ */
+html:has(.form-action-bar) {
+  scroll-padding-bottom: 6rem;
 }
 
 /*

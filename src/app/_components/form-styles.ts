@@ -82,7 +82,8 @@ const badgeClass =
 
 export const roleBadgeClass = `${badgeClass} bg-primary-soft text-on-primary-soft`;
 
-// El punto acompaña al texto, no lo reemplaza (brief-15.1).
-export const activeBadgeClass = `${badgeClass} gap-1.5 bg-success-soft text-on-success-soft before:size-1.5 before:rounded-full before:bg-current before:content-['']`;
+// El ícono acompaña al texto, no lo reemplaza (brief-15.1). Desde la 24.1 es el de StatusBadge,
+// como máscara CSS en globals.css, para que las pantallas que usan la clase no cambien (D-6).
+export const activeBadgeClass = `${badgeClass} gap-1.5 badge-icon-check bg-success-soft text-on-success-soft`;
 
-export const inactiveBadgeClass = `${badgeClass} bg-surface-muted text-muted`;
+export const inactiveBadgeClass = `${badgeClass} gap-1.5 badge-icon-minus bg-surface-muted text-muted`;

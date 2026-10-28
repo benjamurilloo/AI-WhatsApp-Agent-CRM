@@ -202,7 +202,7 @@ test("caso 1: el dashboard es la portada y muestra el período y la zona horaria
   await login(page, ADMIN);
   await expect(page).toHaveURL("/");
   const nav = page.getByRole("navigation", { name: "Principal" });
-  await expect(nav.getByRole("link", { name: "Dashboard" })).toHaveAttribute(
+  await expect(nav.getByRole("link", { name: "Inicio" })).toHaveAttribute(
     "aria-current",
     "page",
   );

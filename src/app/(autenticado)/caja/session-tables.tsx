@@ -1,11 +1,11 @@
 import Link from "next/link";
 import type { CashSessionDetail } from "@/modules/cash";
 import {
-  inactiveBadgeClass,
   linkClass,
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
+import { StatusBadge } from "@/app/_components/status-badge";
 import { formatShortDateTime } from "@/app/_format/date-time";
 import {
   formatMoney,
@@ -45,12 +45,14 @@ function net(amount: string, voided: string): string {
 
 function VoidedBadge({ displayNumber }: { displayNumber: string }) {
   return (
-    <span
-      className={`${inactiveBadgeClass} ml-2 font-sans`}
+    <StatusBadge
+      tone="neutral"
+      icon="circleX"
+      className="ml-2 font-sans"
       title={`Anulado por ${displayNumber}`}
     >
       Anulado
-    </span>
+    </StatusBadge>
   );
 }
 

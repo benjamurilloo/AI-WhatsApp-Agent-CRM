@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useActionState, useEffect, useRef } from "react";
+import { ErrorSummary } from "@/app/_components/error-summary";
+import { FormActionBar } from "@/app/_components/form-action-bar";
 import {
   fieldErrorClass,
-  formMessageClass,
   inlineButtonClass,
   inputClass,
   labelClass,
@@ -26,7 +27,10 @@ import {
 // mientras responde el servidor. La categoría es texto libre con sugerencias de las que ya usa la
 // organización (D-2). Ningún campo es un select: tras un rechazo, React reinicia el formulario y
 // cada campo vuelve a su valor por defecto, que es lo enviado (brief-11.1, lección del select).
-// Desde la 15.4, los campos van en dos tarjetas, en el mismo orden (brief-15.4).
+// Desde la 15.4, los campos van en dos tarjetas, en el mismo orden (brief-15.4). Desde la 24.1, el
+// formulario de referencia del patrón de la v2 (brief-24.1, D-8): un envío rechazado muestra el
+// resumen de errores al comienzo, con el foco y un enlace al campo, y las acciones van en la barra
+// de guardado del pie.
 
 const initialState: KnowledgeFormState = { status: "idle" };
 
@@ -129,24 +133,27 @@ export function KnowledgeForm({
     mode === "crear" ? createKnowledgeAction : updateKnowledgeAction,
     initialState,
   );
-  const errorRef = useRef<HTMLParagraphElement>(null);
+  const summaryRef = useRef<HTMLDivElement>(null);
   const { formRef, dialog } = useUnsavedChanges();
   const failed = state.status === "error";
   const shown = failed ? state.values : values;
 
-  // El foco va al primer campo inválido, o al mensaje general (Screens.md, reglas comunes).
+  // El foco va al resumen, que dice qué revisar y lleva al campo (brief-24.1, D-8).
   useEffect(() => {
-    if (state.status !== "error") return;
-    if (state.field) {
-      document.getElementById(state.field)?.focus();
-    } else {
-      errorRef.current?.focus();
-    }
+    if (state.status === "error") summaryRef.current?.focus();
   }, [state]);
 
   return (
     <form action={formAction} className="flex flex-col gap-6" ref={formRef}>
       {entryId ? <input type="hidden" name="entryId" value={entryId} /> : null}
+
+      {failed ? (
+        <ErrorSummary
+          ref={summaryRef}
+          id="resumen-errores"
+          errors={[{ field: state.field, message: state.message }]}
+        />
+      ) : null}
 
       {GROUPS.map((group) => (
         <SectionCard
@@ -207,20 +214,12 @@ export function KnowledgeForm({
         </SectionCard>
       ))}
 
-      <div aria-live="polite" aria-atomic="true">
-        {failed && !state.field ? (
-          <p ref={errorRef} tabIndex={-1} className={formMessageClass}>
-            {state.message}
-          </p>
-        ) : null}
-      </div>
-
-      <div className="flex flex-wrap justify-end gap-3">
+      <FormActionBar>
         <Link
           href={entryId ? `/informacion/${entryId}` : "/informacion"}
           className={secondaryLinkClass}
         >
-          Cancelar
+          Cancelar edición
         </Link>
         <button type="submit" disabled={pending} className={inlineButtonClass}>
           {pending
@@ -229,7 +228,7 @@ export function KnowledgeForm({
               ? "Crear entrada"
               : "Guardar cambios"}
         </button>
-      </div>
+      </FormActionBar>
       <UnsavedChangesDialog {...dialog} />
     </form>
   );

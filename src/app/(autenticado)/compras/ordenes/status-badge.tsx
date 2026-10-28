@@ -1,19 +1,21 @@
 import type { PurchaseOrderStatus } from "@/modules/purchasing";
+import type { IconName } from "@/app/_components/icons";
+import { StatusBadge, type StatusTone } from "@/app/_components/status-badge";
 import { STATUS_LABEL } from "./messages";
 
 // El estado de una orden nunca depende solo del color: lleva ícono y texto, como el del pedido
-// (Screens.md §3). El ícono es decorativo.
+// (Screens.md §3), con la insignia compartida (brief-24.1, D-6).
 
-const ICON: Record<PurchaseOrderStatus, string> = {
-  open: "●",
-  closed: "✓",
-  cancelled: "✕",
+const ICON: Record<PurchaseOrderStatus, IconName> = {
+  open: "clock",
+  closed: "circleCheck",
+  cancelled: "circleX",
 };
 
-const TONE: Record<PurchaseOrderStatus, string> = {
-  open: "bg-warning-soft text-on-warning-soft",
-  closed: "bg-success-soft text-on-success-soft",
-  cancelled: "bg-surface-muted text-muted",
+const TONE: Record<PurchaseOrderStatus, StatusTone> = {
+  open: "warning",
+  closed: "success",
+  cancelled: "neutral",
 };
 
 export function PurchaseOrderStatusBadge({
@@ -22,11 +24,8 @@ export function PurchaseOrderStatusBadge({
   status: PurchaseOrderStatus;
 }) {
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[0.8125rem] font-semibold whitespace-nowrap ${TONE[status]}`}
-    >
-      <span aria-hidden="true">{ICON[status]}</span>
+    <StatusBadge tone={TONE[status]} icon={ICON[status]}>
       {STATUS_LABEL[status]}
-    </span>
+    </StatusBadge>
   );
 }

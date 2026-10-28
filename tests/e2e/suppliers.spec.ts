@@ -93,7 +93,8 @@ test("un admin llega a Compras, da de alta un proveedor con el teclado y ve los 
     .getByRole("link", { name: "Proveedores" })
     .click();
   await expect(page).toHaveURL("/compras/proveedores");
-  await expect(nav.getByRole("link", { name: "Compras" })).toHaveAttribute(
+  // Desde la 24.1, Proveedores es un destino propio del grupo Abastecimiento (brief-24.1, D-1).
+  await expect(nav.getByRole("link", { name: "Proveedores" })).toHaveAttribute(
     "aria-current",
     "page",
   );
@@ -227,7 +228,7 @@ test("un viewer no ve Compras y las páginas de proveedores muestran el permiso 
   });
   await login(page, VIEWER);
   const nav = page.getByRole("navigation", { name: "Principal" });
-  await expect(nav.getByRole("link", { name: "Dashboard" })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Inicio" })).toBeVisible();
   await expect(nav.getByRole("link", { name: "Compras" })).toHaveCount(0);
 
   for (const path of [

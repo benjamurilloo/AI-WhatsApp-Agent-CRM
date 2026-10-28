@@ -151,6 +151,27 @@ const PATHS = {
       <path d="M12 6v6l4 2" />
     </>
   ),
+  // Los de estado de las insignias (brief-24.1, D-6).
+  circleX: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="m15 9-6 6" />
+      <path d="m9 9 6 6" />
+    </>
+  ),
+  circleMinus: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M8 12h8" />
+    </>
+  ),
+  circlePause: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M10 15V9" />
+      <path d="M14 15V9" />
+    </>
+  ),
   timer: (
     <>
       <path d="M10 2h4" />

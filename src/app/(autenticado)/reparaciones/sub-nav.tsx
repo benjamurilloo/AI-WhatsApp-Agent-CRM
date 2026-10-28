@@ -1,4 +1,6 @@
 import { SubNav } from "@/app/_components/sub-nav";
+import type { IconName } from "@/app/_components/icons";
+import { StatusBadge, type StatusTone } from "@/app/_components/status-badge";
 import type { ServiceOrderStatus } from "@/modules/service";
 import { STATUS_LABEL } from "./messages";
 
@@ -27,27 +29,27 @@ export function RepairsSubNav({ current }: { current: "ordenes" | "lista" }) {
 }
 
 // El estado de una orden nunca depende solo del color: lleva ícono y texto, como el del pedido
-// (Screens.md §3). El ícono es decorativo.
-const ICON: Record<ServiceOrderStatus, string> = {
-  received: "●",
-  sent: "→",
-  quoted: "$",
-  approved: "✓",
-  rejected: "✕",
-  repaired: "✓",
-  delivered: "✓",
-  cancelled: "✕",
+// (Screens.md §3), con la insignia compartida (brief-24.1, D-6).
+const ICON: Record<ServiceOrderStatus, IconName> = {
+  received: "clock",
+  sent: "send",
+  quoted: "fileText",
+  approved: "check",
+  rejected: "circleX",
+  repaired: "wrench",
+  delivered: "circleCheck",
+  cancelled: "circleX",
 };
 
-const TONE: Record<ServiceOrderStatus, string> = {
-  received: "bg-warning-soft text-on-warning-soft",
-  sent: "bg-warning-soft text-on-warning-soft",
-  quoted: "bg-primary-soft text-on-primary-soft",
-  approved: "bg-primary-soft text-on-primary-soft",
-  rejected: "bg-surface-muted text-muted",
-  repaired: "bg-success-soft text-on-success-soft",
-  delivered: "bg-success-soft text-on-success-soft",
-  cancelled: "bg-surface-muted text-muted",
+const TONE: Record<ServiceOrderStatus, StatusTone> = {
+  received: "warning",
+  sent: "warning",
+  quoted: "primary",
+  approved: "primary",
+  rejected: "neutral",
+  repaired: "success",
+  delivered: "success",
+  cancelled: "neutral",
 };
 
 export function ServiceOrderStatusBadge({
@@ -56,11 +58,8 @@ export function ServiceOrderStatusBadge({
   status: ServiceOrderStatus;
 }) {
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[0.8125rem] font-semibold whitespace-nowrap ${TONE[status]}`}
-    >
-      <span aria-hidden="true">{ICON[status]}</span>
+    <StatusBadge tone={TONE[status]} icon={ICON[status]}>
       {STATUS_LABEL[status]}
-    </span>
+    </StatusBadge>
   );
 }

@@ -137,12 +137,11 @@ test("caso 1: un admin llega desde la navegación, ve el vacío y crea el primer
 }) => {
   await login(page, ADMIN);
   const nav = page.getByRole("navigation", { name: "Principal" });
-  await nav.getByRole("link", { name: "Clientes" }).click();
+  await nav.getByRole("link", { name: "Clientes", exact: true }).click();
   await expect(page).toHaveURL("/clientes");
-  await expect(nav.getByRole("link", { name: "Clientes" })).toHaveAttribute(
-    "aria-current",
-    "page",
-  );
+  await expect(
+    nav.getByRole("link", { name: "Clientes", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
   await expect(page.getByText("Todavía no hay clientes.")).toBeVisible();
   await expectAccessible(page, "lista vacía");
 
@@ -160,10 +159,9 @@ test("caso 1: un admin llega desde la navegación, ve el vacío y crea el primer
   await expect(page).toHaveURL(/\/clientes\/[0-9a-f-]{36}\?aviso=creado$/);
   await expect(page.getByText("Cliente creado.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Ana Pérez" })).toBeVisible();
-  await expect(nav.getByRole("link", { name: "Clientes" })).toHaveAttribute(
-    "aria-current",
-    "page",
-  );
+  await expect(
+    nav.getByRole("link", { name: "Clientes", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
   const data = page.getByRole("region", { name: "Información principal" });
   await expect(data).toContainText(PHONE);
   await expect(data).toContainText("Prefiere retirar por la tarde.");
@@ -528,9 +526,10 @@ test("caso 11: el alta se completa solo con teclado", async ({ page }) => {
   await login(page, ADMIN);
   await page.goto("/clientes/nuevo");
 
-  // brief-23.1 el marco suma una parada: la sección de las migas, que acá es un enlace.
+  // brief-23.1 el marco suma una parada: la sección de las migas, que acá es un enlace. Desde la
+  // brief-24.1 suma los botones de los grupos del menú y sus destinos nuevos.
   const name = page.getByLabel("Nombre *");
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 40; i++) {
     if (await name.evaluate((element) => element === document.activeElement)) {
       break;
     }

@@ -191,6 +191,12 @@ test("un admin carga la cotización y un viewer la ve sin el formulario", async 
 }) => {
   await login(page, ADMIN.email);
   await page.goto("/caja");
+  // Con moneda principal, el menú lleva a la cotización (brief-24.1, D-1).
+  await expect(
+    page
+      .getByRole("navigation", { name: "Principal" })
+      .getByRole("link", { name: "Tipo de cambio" }),
+  ).toHaveAttribute("href", "/caja/cotizacion");
   await page.getByRole("link", { name: "Cotización" }).click();
   await expect(page).toHaveURL(/\/caja\/cotizacion$/);
   await expect(
@@ -420,6 +426,12 @@ test("sin moneda principal no hay cotización: ni pestaña ni página", async ({
   await login(page, ADMIN_BASIC);
   await page.goto("/caja");
   await expect(page.getByRole("link", { name: "Cotización" })).toHaveCount(0);
+  // Tampoco en el menú (brief-24.1, D-1).
+  await expect(
+    page
+      .getByRole("navigation", { name: "Principal" })
+      .getByRole("link", { name: "Tipo de cambio" }),
+  ).toHaveCount(0);
   await page.goto("/caja/cotizacion");
   await expect(
     page.getByRole("heading", { name: NOT_FOUND_TITLE }),
