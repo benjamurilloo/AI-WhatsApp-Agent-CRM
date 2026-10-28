@@ -2,6 +2,20 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-28 — 24.1: marco y patrones
+
+Primera subfase de la Fase 24, replanificada ese día con el rediseño v2 ([brief-24.1](docs/decisions/brief-24.1-marco-y-patrones.md) §Cierre).
+
+**Certifica:**
+- **El marco de la v2**: el menú en siete grupos por tarea con Inicio, que se abren y se cierran y se recuerdan en el navegador, con el destino de prefijo más largo; «Más» del teléfono con títulos de grupo; las migas «organización / grupo / sección»; el foco violeta en los dos temas; la barra inferior retirada en el hilo, en los formularios y en la edición con `?editar=1`.
+- **Los patrones compartidos**: `StatusBadge`, en las once insignias propias, con su tono de siempre; «Más acciones», el resumen de errores y la barra de guardado, en la ficha y el formulario de una entrada de Información.
+- **Validado en integración, desplegado en producción** (`fcefdb8`, sin migraciones) y recorrido por el usuario, con una revisión independiente antes del despliegue.
+
+**No certifica:**
+- las demás pantallas con los patrones de ficha y de formulario: llegan con la subfase de cada módulo;
+- que las clases compartidas de activo e inactivo usen `StatusBadge`: llevan un ícono de CSS;
+- N-5, N-6 y N-8 de la revisión, abiertos en el §Cierre.
+
 ## 2026-10-27 — Fase 29: rubros
 
 Cierra el 2026-10-27 por decisión del usuario, con la 29.10.2. La abrió el usuario el 2026-10-18, antes de la Fase 24, para ofrecerle el CRM a un negocio de venta de iPhone ([Roadmap](docs/planning/Roadmap.md), §Fase 29).

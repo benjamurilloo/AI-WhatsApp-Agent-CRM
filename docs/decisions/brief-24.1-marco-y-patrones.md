@@ -7,7 +7,7 @@ generated_at: 2026-10-28
 
 # Brief: 24.1 — Marco y patrones
 
-**Estado: aprobado el 2026-10-28 por el usuario, con las recomendaciones de D-1 a D-11.** Eso fija:
+**Estado: cerrado el 2026-10-28**, desplegado en `fcefdb8` y recorrido por el usuario (§Cierre). **Estado: aprobado el 2026-10-28 por el usuario, con las recomendaciones de D-1 a D-11.** Eso fija:
 
 - los grupos de D-1, con «Inicio»;
 - los grupos abiertos al empezar y recordados en el navegador (D-2, a);
@@ -320,3 +320,68 @@ Tocar algo fuera de esta lista es un hallazgo de la revisión.
 - **R-2**: los botones de los grupos suman tabulaciones antes del contenido. Se mitiga revisando los topes de los recorridos con teclado de H-9, como en la 23.1. Un enlace para saltar al contenido queda como mejora, si el usuario lo pide.
 - **R-3**: la migración de las insignias toca once archivos de módulos distintos. Se mitiga con D-6 (a): solo cambia el marcado, no el tono ni el texto.
 - **R-4**: `localStorage` puede no estar disponible (navegación privada o bloqueada). Se mitiga con el `try/catch` de D-2 y con todo abierto como valor por defecto.
+
+## Cierre
+
+*Del 2026-10-28, después del despliegue y del recorrido del usuario («esta todo perfecto»).*
+
+### Criterios
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| AC-1 | cumple | `layout.tsx`: los grupos de D-1, cada destino con su rol y su capacidad. Desde la revisión (B-1), «Tipo de cambio» solo con moneda principal, como el sub-menú de la caja. `frame.spec.ts` (casos 1, 2 y 2b) y `exchange.spec.ts` (con moneda principal y sin ella) |
+| AC-2 | cumple | `app-nav.tsx` y `nav-links.ts`: `aria-expanded`, lo cerrado en `localStorage` con `try/catch`, el grupo actual siempre abierto y el prefijo más largo. `nav-links.test.ts` y `frame.spec.ts`, caso 1b |
+| AC-3 | cumple | `breadcrumbs.tsx` y `crumbFor`. `frame.spec.ts`, caso 1. En `/compras/ordenes` la sección sale como enlace, por el desvío 2 |
+| AC-4 | cumple | `mobile-nav.tsx`: «Más» con los títulos de grupo, destinos de al menos 44 px y Escape que devuelve el foco. `frame.spec.ts`, casos 2 y 2b |
+| AC-5 | cumple | `hidesBottomBar`: el hilo, las rutas de D-7 y, desde la revisión (B-2), la edición con `?editar=1`. `nav-links.test.ts`, `frame.spec.ts` (casos 2 y 2c) y `knowledge.spec.ts` (caso 9b) |
+| AC-6 | cumple | Foco `#6d28d9` y `#a48bfa`, de 5,09:1 o más contra cada fondo. axe en claro y en oscuro sobre el marco a 1280 y 375 px, y sobre Información a 1280 px y, desde la revisión (B-3), a 375 px: la ficha con «Más acciones», el alta con errores y la edición (`knowledge.spec.ts`, caso 9b) |
+| AC-7 | cumple en parte | Las once implementaciones de H-5 usan `StatusBadge`, con el tono de siempre. Las clases compartidas de activo e inactivo no: desvío 1 |
+| AC-8 | cumple | `informacion/[entryId]/page.tsx`. `knowledge.spec.ts`, caso 4 |
+| AC-9 | cumple | `ErrorSummary` y `FormActionBar` en `knowledge-form.tsx`. `knowledge.spec.ts`, casos 2 y 9b |
+| AC-10 | cumple | CI de `fcefdb8` (run 40726169818, `success`): lint, tipos, guardas, unitarios, integración, build y los 301 end-to-end |
+| AC-11 | cumple | Desplegada el 2026-10-28 en `fcefdb8`, sin migraciones; antes corría `0d3c852`. Revisión independiente antes del despliegue (D-11, b). Recorrida por el usuario el mismo día |
+
+### La revisión independiente
+
+La hizo un agente que no participó del trabajo, con acceso de solo lectura, contra este brief, los criterios de la v2 y las reglas del proyecto. Cada hallazgo se verificó contra el código antes de aceptarlo.
+
+- **Tres bloqueantes**, todos confirmados y corregidos antes del commit:
+  - **B-1**: «Tipo de cambio» llevaba a un 404 en las organizaciones sin moneda principal, y `frame.spec.ts` lo esperaba.
+  - **B-2**: la edición con `?editar=1` conservaba la barra inferior, que en el teléfono quedaba encima de la barra de guardado.
+  - **B-3**: no había axe a 375 px en la ficha, el alta ni la edición de Información.
+- **Ocho no bloqueantes**:
+  - **N-1** (Screens.md decía que todas las insignias usan `StatusBadge`), **N-2** (Screens.md mandaba el foco al primer error) y **N-7** (el resumen de errores, sin rol, no admitía nombre): corregidos.
+  - **N-3** (Compras → `/compras/ordenes`): se probó y se revirtió; queda como desvío 2.
+  - **N-4** (`pago` y `reclamo` en la lista de D-7): aceptado; queda como desvío 3.
+  - **N-5**, **N-6** y **N-8**: abiertos, abajo.
+- **Las correcciones de la revisión son autoevaluación**: no hubo una segunda revisión independiente.
+
+### Desvíos
+
+1. **AC-7: `activeBadgeClass` e `inactiveBadgeClass` no pasaron a `StatusBadge`.** Se usan 125 veces en 34 archivos, fuera de la lista autorizada. Llevan un tilde y una barra dibujados con bordes en `globals.css`. La primera versión usaba un SVG en `data:`, y la CSP (`img-src 'self'`) lo bloqueaba: lo encontró `security-headers.spec.ts`. `roleBadgeClass` no cambia, porque marca un rol y no un estado. Cada módulo las pasa a `StatusBadge` en su subfase.
+2. **Compras apunta a `/compras` y no a `/compras/ordenes`** (D-1). `/compras` redirige a las órdenes, y como prefijo hace que «A pagar» (`/compras/a-pagar`) y las demás subrutas sin destino propio marquen «Compras». El costo es que en `/compras/ordenes` la miga de la sección es un enlace y no la página actual.
+3. **La lista de D-7 suma `pago` y `reclamo`**, que también son formularios. Lo permitía D-7, y está en Screens.md. `recepcion` y `cotizar` conservan la barra: no son altas.
+4. **Archivos fuera de la lista autorizada**: `exchange.spec.ts`, por las dos comprobaciones del menú de B-1.
+
+### Lo que falló en las pruebas locales
+
+- **La primera corrida completa: 5 de 300.** Cuatro defectos, todos corregidos:
+  - la CSP de arriba;
+  - los títulos de grupo de «Más», que existían ocultos aunque el panel estuviera cerrado: «Servicio técnico» chocaba con el campo «Técnico» de reparaciones;
+  - el localizador «Clientes», que encontraba también «Cuentas de clientes»;
+  - la expectativa de `suppliers.spec.ts`, porque desde D-1 el destino activo en proveedores es «Proveedores».
+
+  El quinto fue un timeout en `units.spec.ts` que no se repitió.
+- **La segunda: 3 de 301.**
+  - El caso 9b nuevo medía un área de texto que a 375 px no entra en la pantalla. Se cambió al último campo, el más cercano a la barra.
+  - Dos casos de clientes fallaron por timeout y pasaron al correr el spec solo.
+- **La CI de `fcefdb8` pasó la primera vez.**
+
+### Lo que queda abierto, a sabiendas
+
+- **N-5**: el botón del grupo de la página actual guarda el cierre, pero no cambia nada a la vista hasta salir del grupo.
+- **N-6**: el panel se desplaza entero. Con muchos destinos y poca altura, el usuario del pie puede quedar fuera de la vista; sigue en el menú de la barra superior.
+- **N-8**: el tope de tabulaciones de cuatro recorridos pasó de 20 a 40 sin recalcularlo. Un enlace para saltar al contenido (R-2) lo volvería innecesario.
+- **La barra de guardado y el resumen de errores** solo están en Información. Cada módulo los adopta en su subfase (D-8, D-9).
+- **No vi en pantalla los íconos de CSS de las clases**: los cubren axe y los end-to-end, y el recorrido del usuario.
+- **El borrador `brief-24.1-conversaciones.md`**, reemplazado por este brief, sigue sin commitear hasta que el usuario decida si se borra.
