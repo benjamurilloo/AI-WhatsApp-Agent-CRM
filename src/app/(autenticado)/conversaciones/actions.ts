@@ -5,8 +5,7 @@ import {
   addConversationNote,
   changeAgentPause,
   changeConversationStatus,
-  listConversationMessages,
-  listConversationNotes,
+  listConversationTimeline,
 } from "@/modules/conversations";
 import { requireSession } from "@/app/_auth/session";
 import { logEvent, newRequestId } from "@/shared/log";
@@ -18,17 +17,14 @@ import {
   CONVERSATION_NOT_FOUND_MESSAGE,
   FORBIDDEN_ACTION_MESSAGE,
   loadMessagesErrorMessage,
-  loadNotesErrorMessage,
   NOTE_ADDED_MESSAGE,
   noteErrorMessage,
   statusChangedMessage,
   statusChangeErrorMessage,
   statusUnchangedMessage,
-  toNoteItems,
   unexpectedErrorMessage,
   type NoteFormState,
   type OlderMessagesResult,
-  type OlderNotesResult,
   type StatusChangeState,
 } from "./messages";
 
@@ -205,57 +201,9 @@ export async function addConversationNoteAction(
   }
 }
 
-// Lectura de las 25 notas anteriores a un cursor (brief-16.4, D-3), como los mensajes anteriores.
-export async function loadOlderNotesAction(
-  conversationId: string,
-  before: string,
-): Promise<OlderNotesResult> {
-  const requestId = newRequestId();
-  const started = performance.now();
-  const context = await requireSession();
-
-  try {
-    if (typeof before !== "string" || before.trim() === "") {
-      return { ok: false, message: loadNotesErrorMessage(requestId) };
-    }
-    const result = await listConversationNotes(
-      context,
-      String(conversationId),
-      { before },
-    );
-    if (!result.ok) {
-      return {
-        ok: false,
-        message:
-          result.code === "FORBIDDEN"
-            ? FORBIDDEN_ACTION_MESSAGE
-            : result.code === "NOT_FOUND"
-              ? CONVERSATION_NOT_FOUND_MESSAGE
-              : loadNotesErrorMessage(requestId),
-      };
-    }
-    return {
-      ok: true,
-      items: toNoteItems(result.notes, result.timezone),
-      before: result.before,
-    };
-  } catch (error) {
-    logEvent({
-      level: "error",
-      requestId,
-      route: "conversaciones.notas_anteriores",
-      code: "INTERNAL",
-      userId: context.userId,
-      organizationId: context.organizationId,
-      durationMs: performance.now() - started,
-      error,
-    });
-    return { ok: false, message: loadNotesErrorMessage(requestId) };
-  }
-}
-
-// Lectura de los 50 mensajes anteriores a un cursor (D-3). No muta ni revalida, y solo registra
-// los errores inesperados, para que el código que ve el usuario tenga su evento.
+// Lectura de las 50 entradas anteriores a un cursor (D-3), mensajes y notas desde la 24.3
+// (brief-24.3, D-5). No muta ni revalida, y solo registra los errores inesperados, para que el
+// código que ve el usuario tenga su evento.
 export async function loadOlderMessagesAction(
   conversationId: string,
   before: string,
@@ -269,7 +217,7 @@ export async function loadOlderMessagesAction(
     if (typeof before !== "string" || before.trim() === "") {
       return { ok: false, message: loadMessagesErrorMessage(requestId) };
     }
-    const result = await listConversationMessages(
+    const result = await listConversationTimeline(
       context,
       String(conversationId),
       { before },
@@ -287,7 +235,7 @@ export async function loadOlderMessagesAction(
     }
     return {
       ok: true,
-      items: toTimelineItems(result.messages, result.timezone),
+      items: toTimelineItems(result.entries, result.timezone),
       before: result.before,
     };
   } catch (error) {

@@ -3,12 +3,22 @@ import { expect, test, type Page, type Response } from "@playwright/test";
 import { sql } from "drizzle-orm";
 import { createDb, type Db } from "@/shared/db";
 import { SEED_ORGANIZATION_ID, SEED_USERS, seedBasic } from "../../seeds/basic";
+import {
+  SEED_IPHONE_ORGANIZATION_ID,
+  SEED_IPHONE_USERS,
+  seedIphone,
+} from "../../seeds/demo-iphone";
 import { e2eDatabaseUrl } from "../integration/test-database";
 import { E2E_PASSWORD } from "./global-setup";
 
 // Pantallas 8 y 9 de punta a punta: Chromium, next start, Server Actions, conversations, crm,
 // audit y PostgreSQL real, sin mocks (brief-6.4). No hay ingestión todavía: cada caso inserta sus
 // conversaciones y mensajes con SQL, como fixtures sintéticos (D-5).
+//
+// Desde la 24.3 (brief-24.3), los pasos de la v2: la bandeja abre en Abiertas, con las pestañas de
+// estado y el chip «Atención humana»; la búsqueda de cliente va arriba y el resto en «Más filtros»;
+// el hilo intercala las notas, la franja del agente toma y reactiva, el encabezado cierra y reabre,
+// la nota va al pie y el contexto del cliente al costado, con «Ver contexto» en el teléfono.
 
 const [ADMIN_SEED, VIEWER_SEED] = SEED_USERS;
 const ADMIN = ADMIN_SEED.email;
@@ -29,7 +39,7 @@ test.beforeAll(() => {
 // Los demás specs borran organizaciones: no pueden quedar filas que lo impidan (brief-6.1).
 test.afterAll(async () => {
   await db.execute(
-    sql`truncate table appointments, trade_in_payment_voids, trade_in_payments, trade_in_voids, trade_in_checklist_results, trade_ins, service_order_lines, service_orders, refund_voids, refunds, receipt_voids, receipts, sale_voids, sale_line_units, sale_lines, sales, order_line_units, order_lines, orders, conversation_notes, messages, conversations, client_tag_assignments, clients`,
+    sql`truncate table appointments, trade_in_payment_voids, trade_in_payments, trade_in_voids, trade_in_checklist_results, trade_ins, service_order_lines, service_orders, refund_voids, refunds, receipt_voids, receipts, sale_voids, sale_line_units, sale_lines, sales, order_line_units, order_lines, orders, conversation_notes, messages, conversations, client_tag_assignments, client_tags, clients`,
   );
   await db.$client.end();
 });
@@ -37,7 +47,7 @@ test.afterAll(async () => {
 // audit_logs y messages son de solo inserción: TRUNCATE es la vía documentada para vaciarlas (ADR 0013).
 test.beforeEach(async () => {
   await db.execute(
-    sql`truncate table appointments, trade_in_payment_voids, trade_in_payments, trade_in_voids, trade_in_checklist_results, trade_ins, service_order_lines, service_orders, refund_voids, refunds, receipt_voids, receipts, sale_voids, sale_line_units, sale_lines, sales, order_line_units, order_lines, orders, audit_logs, conversation_notes, messages, conversations, client_tag_assignments, clients`,
+    sql`truncate table appointments, trade_in_payment_voids, trade_in_payments, trade_in_voids, trade_in_checklist_results, trade_ins, service_order_lines, service_orders, refund_voids, refunds, receipt_voids, receipts, sale_voids, sale_line_units, sale_lines, sales, order_line_units, order_lines, orders, audit_logs, conversation_notes, messages, conversations, client_tag_assignments, client_tags, clients`,
   );
   await db.execute(sql`delete from login_attempts`);
   await db.execute(sql`delete from sessions`);
@@ -152,6 +162,15 @@ const ago = (days: number, hours = 0) =>
 const conversationsTable = (page: Page) =>
   page.getByRole("table", { name: "Conversaciones de la organización" });
 const timeline = (page: Page) => page.getByRole("list", { name: "Mensajes" });
+const statusTabs = (page: Page) =>
+  page.getByRole("navigation", { name: "Estado de las conversaciones" });
+const moreFilters = (page: Page) =>
+  page.getByText("Más filtros", { exact: true }).click();
+// La franja del agente: su título dice si está pausado o activo (brief-24.3, D-7).
+const agentStrip = (page: Page) =>
+  page.getByRole("region", { name: /^(Atención humana|Agente activo) · / });
+const headerBadge = (page: Page, text: string) =>
+  page.getByRole("main").getByText(text, { exact: true }).first();
 
 test("caso 1: un admin llega desde la navegación y ve el vacío", async ({
   page,
@@ -204,7 +223,7 @@ test("caso 2: la lista muestra cliente, estado, fechas y cantidad, sin contenido
   });
 
   await login(page, VIEWER);
-  await page.goto("/conversaciones");
+  await page.goto("/conversaciones?estado=todos");
   const rows = conversationsTable(page).getByRole("row");
   await expect(rows).toHaveCount(3);
   // Del último mensaje más reciente al más antiguo; fechas en la zona de la organización.
@@ -241,7 +260,10 @@ test("caso 2: la lista muestra cliente, estado, fechas y cantidad, sin contenido
     pending = [];
   };
   page.on("response", listener);
-  for (const route of ["/conversaciones", "/conversaciones?estado=pendiente"]) {
+  for (const route of [
+    "/conversaciones?estado=todos",
+    "/conversaciones?estado=pendiente",
+  ]) {
     await page.goto(route);
     await drain();
     bodies.push(await page.content());
@@ -260,6 +282,7 @@ test("caso 2: la lista muestra cliente, estado, fechas y cantidad, sin contenido
   for (const body of bodies) expect(body).not.toContain(SECRET_BODY);
 
   // Control: el detalle sí lo muestra; el test no pasa por vacío.
+  await page.goto("/conversaciones?estado=todos");
   await rows.nth(2).getByRole("link", { name: "Sin cliente" }).click();
   await expect(timeline(page)).toContainText(SECRET_BODY);
 });
@@ -280,16 +303,17 @@ test("caso 3: filtra por estado y período, distingue sin resultados y pagina", 
   }
 
   await login(page, ADMIN);
-  await page.goto("/conversaciones");
+  await page.goto("/conversaciones?estado=todos");
   await expect(conversationsTable(page).getByRole("row")).toHaveCount(1 + 25);
   await expect(
     page.getByText("Mostrando 1 a 25 de 26 conversaciones"),
   ).toBeVisible();
   await page.getByRole("link", { name: "Página siguiente" }).click();
-  await expect(page).toHaveURL("/conversaciones?pagina=2");
+  await expect(page).toHaveURL("/conversaciones?estado=todos&pagina=2");
   await expect(conversationsTable(page).getByRole("row")).toHaveCount(1 + 1);
   await expect(conversationsTable(page)).toContainText("Cerrada");
 
+  await moreFilters(page);
   await page.getByLabel("Período (último mensaje)").selectOption("30d");
   await page.getByRole("button", { name: "Aplicar filtros" }).click();
   // Un formulario GET envía todos sus campos; los enlaces usan la URL canónica.
@@ -297,8 +321,10 @@ test("caso 3: filtra por estado y período, distingue sin resultados y pagina", 
   await expect(conversationsTable(page).getByRole("row")).toHaveCount(1 + 25);
   await expect(conversationsTable(page)).not.toContainText("Cerrada");
 
-  await page.getByLabel("Estado").selectOption("cerrada");
-  await page.getByRole("button", { name: "Aplicar filtros" }).click();
+  // El estado es una pestaña: conserva el período (brief-24.3, D-1).
+  await statusTabs(page)
+    .getByRole("link", { name: /^Cerradas/ })
+    .click();
   await expect(page).toHaveURL(/periodo=30d&estado=cerrada(&|$)/);
   await expect(
     page.getByText("Ninguna conversación coincide con estos filtros."),
@@ -309,6 +335,7 @@ test("caso 3: filtra por estado y período, distingue sin resultados y pagina", 
   await expect(conversationsTable(page).getByRole("row")).toHaveCount(1 + 25);
 
   // Período personalizado: las fechas aparecen al elegirlo y uno invertido se señala.
+  await moreFilters(page);
   await page
     .getByLabel("Período (último mensaje)")
     .selectOption("personalizado");
@@ -342,8 +369,8 @@ test("caso 4: el filtro de cliente busca con crm, aplica uno y ofrece elegir ent
 
   await login(page, VIEWER);
   await page.goto("/conversaciones");
-  await page.getByLabel("Cliente").fill("bru");
-  await page.getByRole("button", { name: "Aplicar filtros" }).click();
+  await page.getByLabel("Buscar cliente").fill("bru");
+  await page.getByRole("button", { name: "Buscar", exact: true }).click();
   await expect(page).toHaveURL(`/conversaciones?cliente=${bruno}`);
   await expect(page.getByText("Cliente: Bruno Díaz")).toBeVisible();
   await expect(conversationsTable(page).getByRole("row")).toHaveCount(2);
@@ -351,9 +378,9 @@ test("caso 4: el filtro de cliente busca con crm, aplica uno y ofrece elegir ent
 
   await page.getByRole("link", { name: "Quitar cliente" }).click();
   await expect(page).toHaveURL("/conversaciones");
-  await page.getByLabel("Cliente").fill("Ana");
-  await page.getByRole("button", { name: "Aplicar filtros" }).click();
-  await expect(page).toHaveURL(/[?&]buscar_cliente=Ana&orden=reciente$/);
+  await page.getByLabel("Buscar cliente").fill("Ana");
+  await page.getByRole("button", { name: "Buscar", exact: true }).click();
+  await expect(page).toHaveURL(/[?&]buscar_cliente=Ana(&|$)/);
   const choices = page.getByRole("list", {
     name: "Varios clientes coinciden. Elegí uno para filtrar:",
   });
@@ -416,7 +443,13 @@ test("caso 5: el detalle muestra el timeline en orden, con la dirección en text
   await expect(
     page.getByRole("heading", { name: "María Gómez" }),
   ).toBeVisible();
-  await expect(page.getByText("WhatsApp · Estado: Abierta")).toBeVisible();
+  await expect(page.getByRole("main")).toContainText(
+    "WhatsApp · Iniciada el 10/09 09:12",
+  );
+  await expect(headerBadge(page, "Abierta")).toBeVisible();
+  await expect(agentStrip(page)).toContainText(
+    "Agente activo · Responde automáticamente",
+  );
   await expect(page.getByText(`Horas en ${TIMEZONE}.`)).toBeVisible();
 
   const items = timeline(page).getByRole("listitem");
@@ -434,14 +467,14 @@ test("caso 5: el detalle muestra el timeline en orden, con la dirección en text
   await expect(items.nth(3)).toContainText("(mensaje sin texto)");
   await expect(page.locator("main")).not.toContainText("6666");
   await expect(
-    page.getByRole("button", { name: "Cambiar estado" }),
+    page.getByRole("button", { name: "Cerrar conversación" }),
   ).toBeHidden();
   await expect(
     page.getByRole("button", { name: "Cargar mensajes anteriores" }),
   ).toBeHidden();
   await expectAccessible(page, "detalle como viewer");
 
-  await page.getByRole("link", { name: "Ver cliente" }).click();
+  await page.getByRole("link", { name: "Ver ficha" }).click();
   await expect(page).toHaveURL(`/clientes/${clientId}`);
 });
 
@@ -475,7 +508,7 @@ test("caso 6: cargar mensajes anteriores agrega 50 arriba sin mover la lectura",
   await page.keyboard.press("Enter");
   await expect(items).toHaveCount(60);
   await expect(
-    page.getByText("Se cargaron 10 mensajes anteriores."),
+    page.getByText("Se cargaron 10 entradas anteriores."),
   ).toBeAttached();
   await expect(items.first()).toContainText("Mensaje 01");
   const after = (await reading.boundingBox())!.y;
@@ -486,45 +519,66 @@ test("caso 6: cargar mensajes anteriores agrega 50 arriba sin mover la lectura",
   await expectAccessible(page, "timeline completo");
 });
 
-test("caso 7: un admin cambia el estado y queda auditado", async ({ page }) => {
+test("caso 7: un admin cierra, reabre y marca como pendiente desde el encabezado, auditado y sin tocar la pausa", async ({
+  page,
+}) => {
   const conversationId = await insertConversation({
     messages: [{ direction: "inbound", sentAt: ago(1), body: "hola" }],
   });
+  await db.execute(
+    sql`update conversations set agent_paused_at = now() where id = ${conversationId}`,
+  );
 
   await login(page, ADMIN);
   await page.goto(`/conversaciones/${conversationId}`);
-  const status = page.getByRole("combobox", { name: "Estado" });
-  await expect(status).toHaveValue("open");
+  await expect(headerBadge(page, "Abierta")).toBeVisible();
   await expectAccessible(page, "detalle como admin");
 
-  await status.selectOption("closed");
-  await page.getByRole("button", { name: "Cambiar estado" }).click();
+  await page.getByRole("button", { name: "Cerrar conversación" }).click();
   await expect(page.getByText("Estado cambiado a Cerrada.")).toBeVisible();
-  await expect(page.getByText("WhatsApp · Estado: Cerrada")).toBeVisible();
-  await expect(status).toHaveValue("closed");
+  await expect(headerBadge(page, "Cerrada")).toBeVisible();
+  // Cerrar no reactiva al agente: las dos marcas son independientes (brief-24.3, H-4).
+  await expect(agentStrip(page)).toContainText("Atención humana");
   await expectAccessible(page, "estado cambiado");
 
-  // Elegir el mismo estado no escribe nada.
-  await page.getByRole("button", { name: "Cambiar estado" }).click();
-  await expect(
-    page.getByText("La conversación ya estaba Cerrada."),
-  ).toBeVisible();
+  await page.getByRole("button", { name: "Reabrir" }).click();
+  await expect(page.getByText("Estado cambiado a Abierta.")).toBeVisible();
+  const more = page.getByRole("button", {
+    name: "Más acciones de la conversación",
+  });
+  await more.click();
+  await page.getByRole("button", { name: "Marcar como pendiente" }).click();
+  await expect(page.getByText("Estado cambiado a Pendiente.")).toBeVisible();
+  await expect(headerBadge(page, "Pendiente")).toBeVisible();
 
   const audit = await db.execute<{
     action: string;
     diff: { before: { status: string }; after: { status: string } };
   }>(
     sql`select action, diff from audit_logs
-        where entity_type = 'conversation' and entity_id = ${conversationId}`,
+        where entity_type = 'conversation' and entity_id = ${conversationId}
+        order by created_at, id`,
   );
   expect(audit.rows).toEqual([
     {
       action: "status_change",
       diff: { before: { status: "open" }, after: { status: "closed" } },
     },
+    {
+      action: "status_change",
+      diff: { before: { status: "closed" }, after: { status: "open" } },
+    },
+    {
+      action: "status_change",
+      diff: { before: { status: "open" }, after: { status: "pending" } },
+    },
   ]);
+  const row = await db.execute<{ paused: boolean }>(
+    sql`select agent_paused_at is not null as paused from conversations where id = ${conversationId}`,
+  );
+  expect(row.rows[0]!.paused).toBe(true);
 
-  await page.goto("/conversaciones?estado=cerrada");
+  await page.goto("/conversaciones?estado=pendiente");
   await expect(conversationsTable(page).getByRole("row")).toHaveCount(2);
 });
 
@@ -538,9 +592,10 @@ test("caso 8: el servidor rechaza el cambio de estado de quien dejó de ser admi
   await login(page, VIEWER);
   await page.goto(`/conversaciones/${conversationId}`);
   await expect(
-    page.getByRole("region", { name: "Cambiar estado" }),
+    page.getByRole("button", { name: "Cerrar conversación" }),
   ).toBeHidden();
-  expect(await page.content()).not.toContain("Cambiar estado");
+  expect(await page.content()).not.toContain("Cerrar conversación");
+  expect(await page.content()).not.toContain("Marcar como pendiente");
   await page.context().clearCookies();
 
   // Un admin abre el formulario y pierde el rol antes de enviarlo: el control ya está en su
@@ -550,8 +605,7 @@ test("caso 8: el servidor rechaza el cambio de estado de quien dejó de ser admi
   await db.execute(
     sql`update organization_members set role = 'viewer' where user_id = ${ADMIN_SEED.id}`,
   );
-  await page.getByRole("combobox", { name: "Estado" }).selectOption("closed");
-  await page.getByRole("button", { name: "Cambiar estado" }).click();
+  await page.getByRole("button", { name: "Cerrar conversación" }).click();
   const message = page.getByText("No tenés permiso para esta acción.");
   await expect(message).toBeVisible();
   await expect(message).toBeFocused();
@@ -594,7 +648,7 @@ test("caso 10: en móvil la lista son tarjetas y las burbujas ocupan el ancho", 
 
   await page.setViewportSize({ width: 375, height: 800 });
   await login(page, VIEWER);
-  await page.goto("/conversaciones");
+  await page.goto("/conversaciones?estado=todos");
   await expect(page.getByRole("table")).toBeHidden();
   const cards = page.getByRole("list", {
     name: "Conversaciones de la organización",
@@ -603,6 +657,10 @@ test("caso 10: en móvil la lista son tarjetas y las burbujas ocupan el ancho", 
   await expect(cards).toContainText("Sin cliente");
   await expect(cards).toContainText("Pendiente");
   await expect(cards).toContainText("2 mensajes");
+  await expect(cards).toContainText("Agente activo");
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(375);
   await expectAccessible(page, "lista en móvil");
 
   await page.goto(`/conversaciones/${conversationId}`);
@@ -696,6 +754,7 @@ test("caso 12: brief-15.2 ordena por último mensaje en los dos sentidos y por i
   await page.goto("/conversaciones");
   await expect(firstClient()).toContainText("Ana Pérez");
 
+  await moreFilters(page);
   await page.getByLabel("Ordenar por").selectOption("antigua");
   await page.getByRole("button", { name: "Aplicar filtros" }).click();
   await expect(page).toHaveURL(/[?&]orden=antigua$/);
@@ -746,9 +805,7 @@ test("caso 13: brief-15.2 con 10 filas por página, el estado y el orden se cons
 
   const sizes = page.getByRole("group", { name: "Filas por página" });
   await sizes.getByRole("link", { name: "10 filas por página" }).click();
-  await expect(page).toHaveURL(
-    "/conversaciones?estado=abierta&orden=inicio&filas=10",
-  );
+  await expect(page).toHaveURL("/conversaciones?orden=inicio&filas=10");
   await expect(rows).toHaveCount(1 + 10);
   const pagination = page.getByRole("navigation", { name: "Paginación" });
   await expect(
@@ -757,16 +814,18 @@ test("caso 13: brief-15.2 con 10 filas por página, el estado y el orden se cons
 
   await pagination.getByRole("link", { name: "Página siguiente" }).click();
   await expect(page).toHaveURL(
-    "/conversaciones?estado=abierta&orden=inicio&filas=10&pagina=2",
+    "/conversaciones?orden=inicio&filas=10&pagina=2",
   );
   await expect(rows).toHaveCount(1 + 2);
   await expect(firstClient()).toContainText("Cliente 11");
   await expect(conversationsTable(page)).not.toContainText("Cerrada Ruiz");
-  await expect(page.getByLabel("Estado")).toHaveValue("abierta");
+  await expect(
+    statusTabs(page).getByRole("link", { name: /^Abiertas/ }),
+  ).toHaveAttribute("aria-current", "page");
   await expect(page.getByLabel("Ordenar por")).toHaveValue("inicio");
 });
 
-test("caso 14: brief-16.3 un admin pausa y reanuda al agente con el teclado; la lista marca la fila", async ({
+test("caso 14: brief-16.3 y 24.3 un admin toma la conversación y reactiva al agente con el teclado desde la franja; la lista marca la fila", async ({
   page,
 }) => {
   const conversationId = await insertConversation({
@@ -776,29 +835,30 @@ test("caso 14: brief-16.3 un admin pausa y reanuda al agente con el teclado; la 
 
   await login(page, ADMIN);
   await page.goto(`/conversaciones/${conversationId}`);
-  const agent = page.getByRole("region", { name: "Agente" });
-  await expect(agent).toContainText("el agente no contesta");
-  const pause = page.getByRole("button", { name: "Pausar al agente" });
+  await expect(agentStrip(page)).toContainText("Responde automáticamente");
+  const pause = page.getByRole("button", { name: "Tomar conversación" });
   await pause.focus();
   await page.keyboard.press("Enter");
   await expect(
-    page.getByText("Agente pausado.", { exact: true }),
+    page.getByText("Tomaste la conversación: el agente está pausado.", {
+      exact: true,
+    }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("region", { name: "Conversación" }),
-  ).toContainText(/Agente pausado\s*Pausado desde el \d{2}\/\d{2} \d{2}:\d{2}/);
+  await expect(agentStrip(page)).toContainText(
+    /Atención humana · Agente pausado\s*Pausado desde el \d{2}\/\d{2} \d{2}:\d{2}\. .*el agente no contesta/,
+  );
   // El estado no cambia (invariante 1).
-  await expect(page.getByText("WhatsApp · Estado: Pendiente")).toBeVisible();
+  await expect(headerBadge(page, "Pendiente")).toBeVisible();
   await expectAccessible(page, "agente pausado");
 
-  await page.goto("/conversaciones");
-  await expect(conversationsTable(page)).toContainText("Agente pausado");
+  await page.goto("/conversaciones?estado=pendiente");
+  await expect(conversationsTable(page)).toContainText("Atención humana");
   await expectAccessible(page, "lista con una pausada");
   await page.setViewportSize({ width: 375, height: 800 });
   const cards = page.getByRole("list", {
     name: "Conversaciones de la organización",
   });
-  await expect(cards).toContainText("Agente pausado");
+  await expect(cards).toContainText("Atención humana");
   const scrollWidth = await page.evaluate(
     () => document.documentElement.scrollWidth,
   );
@@ -807,14 +867,14 @@ test("caso 14: brief-16.3 un admin pausa y reanuda al agente con el teclado; la 
 
   await page.goto(`/conversaciones/${conversationId}`);
   await expectAccessible(page, "detalle pausado en móvil");
-  const resume = page.getByRole("button", { name: "Reanudar al agente" });
+  const resume = page.getByRole("button", { name: "Reactivar agente" });
   await resume.focus();
   await page.keyboard.press("Enter");
   await expect(
-    page.getByText("Agente reanudado.", { exact: true }),
+    page.getByText("Agente reactivado.", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Pausar al agente" }),
+    page.getByRole("button", { name: "Tomar conversación" }),
   ).toBeVisible();
 
   const audit = await db.execute<{
@@ -860,21 +920,24 @@ test("caso 15: brief-16.3 un viewer ve la marca sin el botón, una cerrada no se
 
   await login(page, VIEWER);
   await page.goto(`/conversaciones/${conversationId}`);
+  await expect(agentStrip(page)).toContainText(
+    "Atención humana · Agente pausado",
+  );
   await expect(
-    page.getByRole("region", { name: "Conversación" }),
-  ).toContainText("Agente pausado");
-  await expect(page.getByRole("region", { name: "Agente" })).toBeHidden();
-  expect(await page.content()).not.toContain("Reanudar al agente");
+    page.getByRole("button", { name: "Reactivar agente" }),
+  ).toBeHidden();
+  expect(await page.content()).not.toContain("Reactivar agente");
+  expect(await page.content()).not.toContain("Tomar conversación");
   await expectAccessible(page, "pausada como viewer");
   await page.context().clearCookies();
 
   await login(page, ADMIN);
   await page.goto(`/conversaciones/${closedId}`);
-  await expect(page.getByRole("region", { name: "Agente" })).toContainText(
+  await expect(agentStrip(page)).toContainText(
     "Una conversación cerrada no se pausa",
   );
   await expect(
-    page.getByRole("button", { name: "Pausar al agente" }),
+    page.getByRole("button", { name: "Tomar conversación" }),
   ).toBeHidden();
 
   // Un admin abre la pantalla y pierde el rol antes de reanudar: solo el servidor puede rechazarlo.
@@ -882,7 +945,7 @@ test("caso 15: brief-16.3 un viewer ve la marca sin el botón, una cerrada no se
   await db.execute(
     sql`update organization_members set role = 'viewer' where user_id = ${ADMIN_SEED.id}`,
   );
-  await page.getByRole("button", { name: "Reanudar al agente" }).click();
+  await page.getByRole("button", { name: "Reactivar agente" }).click();
   const message = page.getByText("No tenés permiso para esta acción.");
   await expect(message).toBeVisible();
   await expect(message).toBeFocused();
@@ -896,9 +959,13 @@ test("caso 15: brief-16.3 un viewer ve la marca sin el botón, una cerrada no se
   expect(audit.rows).toEqual([]);
 });
 
-const notesList = (page: Page) => page.getByRole("list", { name: "Notas" });
+// La nota al pie del hilo (brief-24.3, D-8) y las notas intercaladas en él (D-5).
+const noteForm = (page: Page) =>
+  page.getByRole("region", { name: "Nota interna" });
+const noteItems = (page: Page) =>
+  timeline(page).getByRole("listitem").filter({ hasText: "Nota interna" });
 
-test("caso 16: brief-16.4 un admin agrega una nota con el teclado, en una cerrada; el texto no va a la auditoría", async ({
+test("caso 16: brief-16.4 y 24.3 un admin guarda una nota al pie con el teclado, en una cerrada; aparece en el hilo y el texto no va a la auditoría", async ({
   page,
 }) => {
   const conversationId = await insertConversation({
@@ -908,14 +975,17 @@ test("caso 16: brief-16.4 un admin agrega una nota con el teclado, en una cerrad
 
   await login(page, ADMIN);
   await page.goto(`/conversaciones/${conversationId}`);
-  const notes = page.getByRole("region", { name: "Notas" });
-  await expect(notes).toContainText("Sin notas.");
+  const notes = noteForm(page);
+  await expect(noteItems(page)).toHaveCount(0);
+  await expect(notes).toContainText(
+    "El cliente no la ve ni la recibe el agente",
+  );
   await expectAccessible(page, "sin notas");
 
   // Solo espacios: el navegador lo deja pasar y el servidor lo rechaza, con el foco en el campo.
-  const field = page.getByLabel("Nueva nota");
+  const field = page.getByLabel("Nota para el equipo");
   await field.fill("   ");
-  await page.getByRole("button", { name: "Agregar nota" }).click();
+  await page.getByRole("button", { name: "Guardar nota" }).click();
   await expect(
     notes.getByText("Escribí la nota, de hasta 1000 caracteres."),
   ).toBeVisible();
@@ -924,20 +994,24 @@ test("caso 16: brief-16.4 un admin agrega una nota con el teclado, en una cerrad
   await expectAccessible(page, "nota rechazada");
 
   await field.fill(`Llamó al fijo: ${MARKUP_BODY}\nRetira el viernes`);
-  await page.getByRole("button", { name: "Agregar nota" }).focus();
+  await page.getByRole("button", { name: "Guardar nota" }).focus();
   await page.keyboard.press("Enter");
   await expect(
-    notes.getByText("Nota agregada.", { exact: true }),
+    notes.getByText("Nota guardada.", { exact: true }),
   ).toBeVisible();
   await expect(field).toHaveValue("");
-  const item = notesList(page).getByRole("listitem");
+  // La nota aparece al final del hilo, después del mensaje, con candado, autor y «Solo equipo».
+  const item = noteItems(page);
   await expect(item).toHaveCount(1);
+  await expect(timeline(page).getByRole("listitem").last()).toContainText(
+    "Nota interna",
+  );
   await expect(item).toContainText(ADMIN_SEED.name);
-  await expect(item).toContainText(/\d{2}\/\d{2} \d{2}:\d{2}/);
+  await expect(item).toContainText("Solo equipo");
+  await expect(item).toContainText(/\d{2}:\d{2}/);
   // El texto se muestra escapado, sin HTML ni enlaces.
   await expect(item).toContainText(MARKUP_BODY);
   await expect(item.locator("b, a")).toHaveCount(0);
-  await expect(notes).not.toContainText("Sin notas.");
   await expectAccessible(page, "con una nota");
 
   await page.setViewportSize({ width: 375, height: 800 });
@@ -972,70 +1046,449 @@ test("caso 16: brief-16.4 un admin agrega una nota con el teclado, en una cerrad
     },
   ]);
   // El estado no cambia: la conversación sigue cerrada.
-  await expect(page.getByText("WhatsApp · Estado: Cerrada")).toBeVisible();
+  await expect(headerBadge(page, "Cerrada")).toBeVisible();
 });
 
-test("caso 17: brief-16.4 un viewer lee las notas sin el formulario, ve las anteriores, y el servidor rechaza a quien dejó de ser admin", async ({
+async function insertNote(
+  conversationId: string,
+  createdAt: Date,
+  body: string,
+  organizationId = SEED_ORGANIZATION_ID,
+  actorUserId: string = ADMIN_SEED.id,
+) {
+  await db.execute(
+    sql`insert into conversation_notes (organization_id, conversation_id, actor_user_id, body_text, created_at)
+        values (${organizationId}, ${conversationId}, ${actorUserId}, ${body}, ${createdAt.toISOString()})`,
+  );
+}
+
+test("caso 17: brief-24.3 un viewer lee las notas intercaladas, también en el borde de una página, sin el formulario, y el servidor rechaza a quien dejó de ser admin", async ({
   page,
 }) => {
+  // 55 mensajes, uno por minuto. La nota A va entre el 2 y el 3; la nota B, a la misma hora que el
+  // 6. La primera página trae las 50 entradas más recientes: empieza en la nota B, y el mensaje 6,
+  // de su misma hora, queda en la anterior (R-2).
+  const base = new Date("2026-09-01T12:00:00Z").getTime();
+  const at = (minute: number) => new Date(base + minute * 60_000);
   const conversationId = await insertConversation({
-    messages: [{ direction: "inbound", sentAt: ago(1), body: "hola" }],
+    messages: Array.from({ length: 55 }, (_, index) => ({
+      direction: "inbound" as const,
+      sentAt: at(index + 1),
+      body: `Mensaje ${String(index + 1).padStart(2, "0")}`,
+    })),
   });
-  // 27 notas: 25 en la primera página y 2 detrás de «Ver anteriores».
-  for (let index = 1; index <= 27; index++) {
-    await db.execute(
-      sql`insert into conversation_notes (organization_id, conversation_id, actor_user_id, body_text, created_at)
-          values (${SEED_ORGANIZATION_ID}, ${conversationId}, ${ADMIN_SEED.id}, ${`Nota ${index}`},
-                  ${new Date(Date.now() - (30 - index) * 60 * 1000).toISOString()})`,
-    );
-  }
+  await insertNote(conversationId, new Date(base + 2.5 * 60_000), "Nota A");
+  await insertNote(conversationId, at(6), "Nota B");
 
   await login(page, VIEWER);
   await page.goto(`/conversaciones/${conversationId}`);
-  const notes = page.getByRole("region", { name: "Notas" });
-  await expect(notesList(page).getByRole("listitem")).toHaveCount(25);
-  await expect(notesList(page).getByRole("listitem").first()).toContainText(
-    "Nota 27",
-  );
-  await expect(notes.getByLabel("Nueva nota")).toBeHidden();
-  expect(await page.content()).not.toContain("Agregar nota");
+  const items = timeline(page).getByRole("listitem");
+  await expect(items).toHaveCount(50);
+  await expect(items.first()).toContainText("Nota B");
+  await expect(items.first()).toContainText("Nota interna");
+  await expect(items.nth(1)).toContainText("Mensaje 07");
+  await expect(noteForm(page)).toBeHidden();
+  expect(await page.content()).not.toContain("Guardar nota");
   await expectAccessible(page, "notas como viewer");
 
-  const older = page.getByRole("button", { name: "Ver anteriores" });
+  const older = page.getByRole("button", {
+    name: "Cargar mensajes anteriores",
+  });
   await older.focus();
   await page.keyboard.press("Enter");
-  await expect(notesList(page).getByRole("listitem")).toHaveCount(27);
-  await expect(notesList(page).getByRole("listitem").last()).toContainText(
-    "Nota 1",
-  );
+  await expect(items).toHaveCount(57);
+  await expect(
+    page.getByText("Se cargaron 7 entradas anteriores."),
+  ).toBeAttached();
+  await expect(
+    items.evaluateAll((elements) =>
+      elements.map((element) =>
+        element.textContent?.includes("Nota interna")
+          ? `n:${element.textContent.match(/Nota [AB]/)?.[0]}`
+          : `m:${element.textContent?.match(/Mensaje \d{2}/)?.[0]}`,
+      ),
+    ),
+  ).resolves.toEqual([
+    "m:Mensaje 01",
+    "m:Mensaje 02",
+    "n:Nota A",
+    "m:Mensaje 03",
+    "m:Mensaje 04",
+    "m:Mensaje 05",
+    "m:Mensaje 06",
+    "n:Nota B",
+    ...Array.from(
+      { length: 49 },
+      (_, index) => `m:Mensaje ${String(index + 7).padStart(2, "0")}`,
+    ),
+  ]);
   await expect(older).toBeHidden();
-  await expect(notesList(page)).toBeFocused();
+  await expect(timeline(page)).toBeFocused();
   await expectAccessible(page, "todas las notas como viewer");
   await page.context().clearCookies();
 
-  // Un admin abre la pantalla y pierde el rol antes de agregar: solo el servidor puede rechazarlo.
+  // Un admin abre la pantalla y pierde el rol antes de guardar: solo el servidor puede rechazarlo.
   await login(page, ADMIN);
   await page.goto(`/conversaciones/${conversationId}`);
   await db.execute(
     sql`update organization_members set role = 'viewer' where user_id = ${ADMIN_SEED.id}`,
   );
-  await page.getByLabel("Nueva nota").fill("No debería quedar");
-  await page.getByRole("button", { name: "Agregar nota" }).click();
+  const field = page.getByLabel("Nota para el equipo");
+  await field.fill("No debería quedar");
+  await page.getByRole("button", { name: "Guardar nota" }).click();
   await expect(
-    notes.getByText("No tenés permiso para esta acción."),
+    noteForm(page).getByText("No tenés permiso para esta acción."),
   ).toBeVisible();
-  await expect(page.getByLabel("Nueva nota")).toHaveValue("No debería quedar");
+  await expect(field).toHaveValue("No debería quedar");
   // El rechazo no es por el texto: el campo no se marca inválido.
-  await expect(page.getByLabel("Nueva nota")).not.toHaveAttribute(
-    "aria-invalid",
-    "true",
-  );
+  await expect(field).not.toHaveAttribute("aria-invalid", "true");
   const count = await db.execute<{ count: number }>(
     sql`select count(*)::int as count from conversation_notes where conversation_id = ${conversationId}`,
   );
-  expect(count.rows[0]!.count).toBe(27);
+  expect(count.rows[0]!.count).toBe(2);
   const audit = await db.execute(
     sql`select 1 from audit_logs where action = 'note_added'`,
   );
   expect(audit.rows).toEqual([]);
+});
+
+test("caso 18: brief-24.3 las pestañas y el chip «Atención humana» filtran y cuentan, en la URL (AC-1 y AC-2)", async ({
+  page,
+}) => {
+  const message = [
+    { direction: "inbound" as const, sentAt: ago(1), body: "hola" },
+  ];
+  const pausedOpen = await insertConversation({ messages: message });
+  await insertConversation({ messages: message });
+  const pausedPending = await insertConversation({
+    status: "pending",
+    messages: message,
+  });
+  await insertConversation({ status: "closed", messages: message });
+  for (const id of [pausedOpen, pausedPending]) {
+    await db.execute(
+      sql`update conversations set agent_paused_at = now() where id = ${id}`,
+    );
+  }
+
+  await login(page, VIEWER);
+  await page.goto("/conversaciones");
+  const tab = (name: string) =>
+    statusTabs(page).getByRole("link", { name, exact: true });
+  await expect(tab("Abiertas 2")).toHaveAttribute("aria-current", "page");
+  await expect(tab("Pendientes 1")).toBeVisible();
+  await expect(tab("Cerradas 1")).toBeVisible();
+  await expect(tab("Todas 4")).toBeVisible();
+  await expect(conversationsTable(page).getByRole("row")).toHaveCount(1 + 2);
+  const chip = page.getByRole("link", { name: /^Atención humana/ });
+  await expect(chip).toHaveText(/Atención humana\s*1/);
+  await expect(chip).not.toHaveAttribute("aria-current", /.*/);
+  await expectAccessible(page, "bandeja con pestañas");
+
+  // El chip se combina con la pestaña y las cantidades pasan a ser las del agente pausado.
+  await chip.click();
+  await expect(page).toHaveURL("/conversaciones?atencion=humana");
+  await expect(chip).toHaveAttribute("aria-current", "true");
+  await expect(conversationsTable(page).getByRole("row")).toHaveCount(1 + 1);
+  await expect(conversationsTable(page)).toContainText("Atención humana");
+  await expect(tab("Abiertas 1")).toBeVisible();
+  await expect(tab("Pendientes 1")).toBeVisible();
+  await expect(tab("Cerradas 0")).toBeVisible();
+  await expect(tab("Todas 2")).toBeVisible();
+  await expectAccessible(page, "atención humana");
+
+  await tab("Todas 2").click();
+  await expect(page).toHaveURL("/conversaciones?estado=todos&atencion=humana");
+  await expect(conversationsTable(page).getByRole("row")).toHaveCount(1 + 2);
+  await expect(conversationsTable(page)).not.toContainText("Agente activo");
+
+  // Se quita con el mismo chip, y la pestaña se conserva.
+  await page.getByRole("link", { name: /^Atención humana/ }).click();
+  await expect(page).toHaveURL("/conversaciones?estado=todos");
+  await expect(conversationsTable(page).getByRole("row")).toHaveCount(1 + 4);
+  await expect(conversationsTable(page)).toContainText("Agente activo");
+
+  // La ficha del cliente lleva a todos los estados (brief-24.3, H-9).
+  const clientId = await insertClient("Rosa Díaz");
+  await insertConversation({
+    clientId,
+    status: "closed",
+    messages: message,
+  });
+  await page.goto(`/clientes/${clientId}`);
+  await page.getByRole("link", { name: "Ver en Conversaciones" }).click();
+  await expect(page).toHaveURL(
+    `/conversaciones?estado=todos&cliente=${clientId}`,
+  );
+  await expect(conversationsTable(page)).toContainText("Rosa Díaz");
+});
+
+test("caso 19: brief-24.3 el contexto del cliente sin reparaciones ni turnos, sin cliente, y «Ver contexto» en el teléfono (AC-6 y AC-8)", async ({
+  page,
+}) => {
+  const clientId = await insertClient("Carla Gómez", {
+    phone: "+5491144445555",
+  });
+  const tag = await db.execute<{ id: string }>(
+    sql`insert into client_tags (organization_id, name, color, is_active)
+        values (${SEED_ORGANIZATION_ID}, 'Mayorista', 'blue', true) returning id`,
+  );
+  await db.execute(
+    sql`insert into client_tag_assignments (organization_id, client_id, tag_id)
+        values (${SEED_ORGANIZATION_ID}, ${clientId}, ${tag.rows[0]!.id})`,
+  );
+  const withClient = await insertConversation({
+    clientId,
+    messages: [{ direction: "inbound", sentAt: ago(1), body: "hola" }],
+  });
+  const withoutClient = await insertConversation({
+    messages: [{ direction: "inbound", sentAt: ago(1), body: "hola" }],
+  });
+
+  await login(page, ADMIN);
+  await page.goto(`/conversaciones/${withClient}`);
+  const contextCard = page.getByRole("region", {
+    name: "Contexto del cliente",
+  });
+  await expect(contextCard).toContainText("Mayorista");
+  // Sin repairs ni appointments, sus bloques no aparecen.
+  await expect(contextCard).not.toContainText("Reparación");
+  await expect(contextCard).not.toContainText("Próximo turno");
+  await expect(
+    contextCard.getByRole("link", { name: "Crear turno" }),
+  ).toHaveCount(0);
+  await expect(
+    contextCard.getByRole("link", { name: "Crear pedido" }),
+  ).toHaveAttribute("href", `/pedidos/nuevo?cliente=${clientId}`);
+  await expect(
+    contextCard.getByRole("link", { name: "Ver ficha" }),
+  ).toHaveAttribute("href", `/clientes/${clientId}`);
+  // «Ver contexto» es del teléfono.
+  await expect(page.getByRole("button", { name: "Ver contexto" })).toBeHidden();
+  await expect(page.getByRole("main")).not.toContainText("4444");
+  await expectAccessible(page, "contexto sin capacidades");
+
+  await page.goto(`/conversaciones/${withoutClient}`);
+  await expect(contextCard).toContainText(
+    "Esta conversación no tiene un cliente asociado.",
+  );
+
+  // A 375 px el contexto se abre y se cierra con el teclado, debajo del encabezado.
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.goto(`/conversaciones/${withClient}`);
+  const toggle = page.getByRole("button", { name: "Ver contexto" });
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(contextCard).toBeHidden();
+  await toggle.focus();
+  await page.keyboard.press("Enter");
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(contextCard).toBeVisible();
+  await expect(contextCard).toContainText("Mayorista");
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(375);
+  await expectAccessible(page, "contexto abierto en móvil");
+  await page.keyboard.press("Enter");
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(contextCard).toBeHidden();
+  // Las acciones de estado van en el encabezado también en el teléfono.
+  await expect(
+    page.getByRole("button", { name: "Cerrar conversación" }),
+  ).toBeVisible();
+  await expectAccessible(page, "detalle en móvil con la franja");
+});
+
+test.describe("con reparaciones y turnos (brief-24.3, D-6)", () => {
+  const IPHONE = SEED_IPHONE_ORGANIZATION_ID;
+  const [ADMIN_IPHONE, VIEWER_IPHONE] = SEED_IPHONE_USERS;
+
+  // Lo que la clienta y su orden guardan y el contexto no copia (AC-7): el teléfono, el email, lo
+  // que reportó y los dos totales del presupuesto, con y sin coma decimal. El cuerpo del mensaje
+  // sí se muestra en el hilo.
+  const LUCIA_PHONE = "+5491166554433";
+  const LUCIA_EMAIL = "lucia.gomez@ejemplo.com.ar";
+  const HIDDEN = [
+    "5491166554433",
+    "549116655",
+    LUCIA_EMAIL,
+    "Pantalla con manchas",
+    "987.65",
+    "987,65",
+    "432.10",
+    "432,10",
+  ];
+
+  test.afterAll(async () => {
+    await db.execute(
+      sql`truncate table appointments, trade_in_payment_voids, trade_in_payments, trade_in_voids, trade_in_checklist_results, trade_ins, service_order_lines, service_orders, supplier_payment_voids, supplier_payments, goods_receipt_voids,
+          goods_receipt_line_units, goods_receipt_lines, goods_receipts, purchase_order_lines, purchase_orders, suppliers,
+          document_counters, audit_logs, refund_voids, refunds, receipt_voids, receipts,
+          sale_voids, sale_line_units, sale_lines, sales, order_line_units, order_lines, orders, conversation_notes, messages,
+          conversations, client_tag_assignments, client_tags, clients, inventory_movements, inventories,
+          product_images, product_costs, product_prices, attribute_values, stock_units, products`,
+    );
+    await db.execute(sql`delete from sessions`);
+    for (const table of [
+      "appointment_reasons",
+      "attribute_options",
+      "attribute_definitions",
+      "product_models",
+      "organization_capabilities",
+      "organization_members",
+    ]) {
+      await db.execute(
+        sql`delete from ${sql.identifier(table)} where organization_id = ${IPHONE}`,
+      );
+    }
+    const iphoneUsers = sql.join(
+      SEED_IPHONE_USERS.map((user) => sql`${user.id}`),
+      sql`, `,
+    );
+    await db.execute(sql`delete from users where id in (${iphoneUsers})`);
+    await db.execute(sql`delete from organizations where id = ${IPHONE}`);
+  });
+
+  test("caso 20: el contexto muestra la reparación abierta y el próximo turno, y un viewer no recibe un teléfono, un email ni un importe (AC-6 y AC-7)", async ({
+    page,
+  }) => {
+    // Siembra la tienda de ejemplo y recorre con dos roles.
+    test.slow();
+    await seedIphone(db, E2E_PASSWORD);
+    for (const capability of ["repairs", "appointments"]) {
+      await db.execute(
+        sql`insert into organization_capabilities (organization_id, capability, activated_by)
+            values (${IPHONE}, ${capability}, ${ADMIN_IPHONE.id}) on conflict do nothing`,
+      );
+    }
+    const one = async (query: ReturnType<typeof sql>) =>
+      (await db.execute<{ id: string }>(query)).rows[0]!.id;
+    const client = await one(
+      sql`insert into clients (organization_id, display_name, phone_e164, email)
+          values (${IPHONE}, 'Lucía Gómez', ${LUCIA_PHONE}, ${LUCIA_EMAIL}) returning id`,
+    );
+    const model = await one(
+      sql`select id from product_models where organization_id = ${IPHONE} and name = 'iPhone 13'`,
+    );
+    const technician = await one(
+      sql`insert into suppliers (organization_id, name, is_technician)
+          values (${IPHONE}, 'Técnico Uno', true) returning id`,
+    );
+    const order = await one(
+      sql`insert into service_orders (organization_id, number, client_id, model_id, device_serial,
+            reported_issue, created_by)
+          values (${IPHONE}, 248, ${client}, ${model}, '356938035643809', 'Pantalla con manchas',
+            ${ADMIN_IPHONE.id}) returning id`,
+    );
+    // Hasta presupuestada, por SQL, como en repairs.spec.ts.
+    await db.execute(
+      sql`update service_orders set status = 'sent', technician_id = ${technician},
+            sent_at = now() where id = ${order}`,
+    );
+    await db.execute(
+      sql`update service_orders set status = 'quoted', quoted_at = now(),
+            customer_currency = 'USD', customer_total = 987.65, technician_currency = 'USD',
+            technician_total = 432.10 where id = ${order}`,
+    );
+    const reason = await one(
+      sql`insert into appointment_reasons (organization_id, name, position, is_example)
+          values (${IPHONE}, 'Retirar un equipo', 0, true) returning id`,
+    );
+    const appointment = await one(
+      sql`insert into appointments (organization_id, client_id, reason_id, starts_at, ends_at, status,
+            created_by, confirmed_at)
+          values (${IPHONE}, ${client}, ${reason}, date_trunc('hour', now()) + interval '2 days',
+            date_trunc('hour', now()) + interval '2 days 30 minutes', 'confirmed',
+            ${ADMIN_IPHONE.id}, now())
+          returning id`,
+    );
+    const conversationId = await insertConversation({
+      clientId: client,
+      organizationId: IPHONE,
+      messages: [
+        {
+          direction: "inbound",
+          sentAt: ago(0, 1),
+          body: "¿Ya está mi iPhone?",
+        },
+      ],
+    });
+    await insertNote(
+      conversationId,
+      ago(0, 0.5),
+      "Avisar cuando llegue el repuesto",
+      IPHONE,
+      ADMIN_IPHONE.id,
+    );
+
+    await login(page, ADMIN_IPHONE.email);
+    await page.goto(`/conversaciones/${conversationId}`);
+    const contextCard = page.getByRole("region", {
+      name: "Contexto del cliente",
+    });
+    await expect(contextCard).toContainText("iPhone 13");
+    await expect(
+      contextCard.getByRole("link", { name: "Ver reparación" }),
+    ).toHaveAttribute("href", `/reparaciones/${order}`);
+    await expect(contextCard).toContainText("Retirar un equipo");
+    await expect(
+      contextCard.getByRole("link", { name: "Ver turno" }),
+    ).toHaveAttribute("href", `/turnos/${appointment}`);
+    await expect(
+      contextCard.getByRole("link", { name: "Crear turno" }),
+    ).toHaveAttribute("href", `/turnos/nuevo?cliente=${client}`);
+    await expect(
+      contextCard.getByRole("link", { name: "Crear pedido" }),
+    ).toHaveAttribute("href", `/pedidos/nuevo?cliente=${client}`);
+    await expectAccessible(page, "contexto con reparación y turno");
+    await page.context().clearCookies();
+
+    // Lo que recibe el navegador de un viewer en la bandeja y el hilo: el contexto llega sin
+    // acciones y sin ningún dato oculto.
+    await login(page, VIEWER_IPHONE.email);
+    const bodies: string[] = [];
+    let pending: Promise<void>[] = [];
+    // Solo el documento, con su RSC en línea, y las respuestas POST de las Server Actions: los
+    // prefetch de los enlaces piden otras pantallas, y uno cortado deja su lectura colgada.
+    const listener = (response: Response) => {
+      if (!response.url().startsWith("http://localhost")) return;
+      const request = response.request();
+      if (request.resourceType() !== "document" && request.method() !== "POST")
+        return;
+      pending.push(
+        response
+          .text()
+          .then((text) => void bodies.push(text))
+          .catch(() => undefined),
+      );
+    };
+    page.on("response", listener);
+    for (const route of [
+      `/conversaciones/${conversationId}`,
+      "/conversaciones",
+    ]) {
+      await page.goto(route);
+      await page.waitForLoadState("networkidle");
+      await Promise.all(pending);
+      pending = [];
+      bodies.push(await page.content());
+    }
+    page.off("response", listener);
+    await page.goto(`/conversaciones/${conversationId}`);
+    await expect(contextCard).toContainText("iPhone 13");
+    await expect(contextCard).toContainText("Retirar un equipo");
+    await expect(
+      contextCard.getByRole("link", { name: "Crear turno" }),
+    ).toHaveCount(0);
+    await expect(noteItems(page)).toContainText(
+      "Avisar cuando llegue el repuesto",
+    );
+    // Control: el recorrido trajo la conversación, el contexto y la nota.
+    const joined = bodies.join("\n");
+    expect(joined).toContain("Lucía Gómez");
+    expect(joined).toContain("Ver reparación");
+    expect(joined).toContain("Avisar cuando llegue el repuesto");
+    for (const hidden of HIDDEN) expect(joined).not.toContain(hidden);
+    expect(joined).not.toContain("Crear pedido");
+    await expectAccessible(page, "contexto como viewer");
+  });
 });

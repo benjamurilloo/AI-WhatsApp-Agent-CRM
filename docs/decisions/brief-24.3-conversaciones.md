@@ -268,3 +268,78 @@ Es la tercera subfase de la Fase 24 (Roadmap, §Fases 23 a 28). Hereda el marco 
 - **R-2: el borde del cursor.** Una nota y un mensaje con la misma hora no pueden perderse ni repetirse entre páginas. El cursor desempata por tipo y por id, y un test lo cubre.
 - **R-3: los pasos de los end-to-end** cambian en `conversations.spec.ts` y en los specs que llegan a la lista. Se listan los que cambian.
 - **R-4: los nombres nuevos.** «Atención humana», «Tomar conversación» y «Ver contexto» pueden capturar localizadores por subcadena en otros specs, como pasó en la 24.2. Se buscan en todos los specs antes de correr la suite.
+
+## Cierre
+
+*Del 2026-10-28, antes del commit de la implementación. El despliegue y el recorrido del usuario (AC-11 y AC-12) quedan pendientes de autorización.*
+
+### Criterios
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| AC-1 | cumple | `countConversationsByStatusAndPause`, un solo `GROUP BY` con los filtros de la lista, sin el estado ni la pausa pedidos. `SubNav` con `count` y `aria-current`. `conversation-inbox.test.ts`: las cantidades por estado y por pausa, para los dos roles y sin otra organización. Caso 18: las cuatro pestañas, sus cantidades y `?estado=` en la URL; la bandeja abre en Abiertas |
+| AC-2 | cumple | `agentPaused` en `listConversations`, `?atencion=humana`. `conversation-inbox.test.ts`: la pausa con el estado, sin cruzar organizaciones. Caso 18: el chip filtra dentro de la pestaña, cuenta, cambia las cantidades de las pestañas y se quita |
+| AC-3 | cumple | `AgentBadge`: «Atención humana» o «Agente activo» junto al estado, y el avatar en la tarjeta. La consulta de la lista no cambió de columnas. El caso 2 (FR-CONV-01) comprueba lo mismo que antes |
+| AC-4 | cumple | `listConversationTimeline` con el cursor `(fecha, tipo, id)`. `conversation-inbox.test.ts`: el orden con el autor, una nota en el borde y un mensaje en el borde (los dos casos de R-2, comprobados al revés, abajo), más notas que mensajes, sin mensajes, otra organización y un cursor inválido o viejo. Caso 17: el viewer lee Nota A y Nota B en el borde de una página, también después de «Cargar mensajes anteriores». La nota lleva candado, «Nota interna» y «Solo equipo» |
+| AC-5 | cumple | `AgentStrip` y `StatusActions`. Caso 14: tomar y reactivar con el teclado desde la franja, anunciado, auditado y sin tocar el estado. Caso 7: cerrar, reabrir y marcar como pendiente desde el encabezado y «Más acciones», auditado y sin tocar la pausa. Casos 8 y 15: el servidor rechaza a quien dejó de ser admin |
+| AC-6 | cumple | `client-context.tsx` pide `listClientServiceOrders` y `listClientAppointments` solo con la capacidad. `client-context-pick.test.ts`: qué reparación y qué turno se eligen. Caso 19: sin capacidades, sin bloques; sin cliente, lo dice. Caso 20, en la tienda iPhone: la reparación abierta más reciente, el próximo turno, las etiquetas, «Ver ficha», y «Crear turno» y «Crear pedido» con `?cliente=` para el admin |
+| AC-7 | cumple | Casos 15, 17 y 20: el viewer ve la franja, las notas y el contexto sin botones ni formularios. El caso 20 junta los documentos y las respuestas POST que recibe el viewer en la bandeja y el hilo, con una clienta con teléfono y email y una orden presupuestada: no llegan ni el teléfono, ni el email, ni los importes. Se comprobó al revés: con `customerTotal` mostrado a propósito, falla en «987.65» |
+| AC-8 | cumple | Casos 10, 14, 16 y 19 a 375 px: tarjetas en la bandeja; «Ver contexto» con `aria-expanded` se abre y se cierra con el teclado; sin desplazamiento horizontal |
+| AC-9 | cumple | `expectAccessible` corre axe en claro y en oscuro en 34 estados, entre ellos la bandeja con pestañas, «Atención humana», el contexto abierto a 1280 y 375 px, el contexto con reparación y turno, la nota y las notas como viewer |
+| AC-10 | cumple | La medición, abajo |
+| AC-11 | pendiente | En local: En local pasaron los 309 end-to-end, en dos corridas. En la primera, en 40,9 minutos, pasaron 306 y tres agotaron el tiempo sin una aserción fallida: el caso 6 de `conversations.spec.ts`, el caso 9 de `clients.spec.ts` y uno de `order-receipts.spec.ts`. La segunda, que repitió solo esos tres, los pasó. Antes pasaron typecheck, lint y Vitest completo: 3932 de 3934 en la corrida completa; los dos que fallaron (`supplier-payments`, un umbral de tiempo, y `warranty-claims`) pasan repetidos solos y no tocan conversaciones. La CI, en el SHA del commit |
+| AC-12 | pendiente | El despliegue y el recorrido, con autorización. La revisión independiente (D-11, b) ya se hizo, abajo |
+
+### La medición de R-1
+
+- **Método:** en local, con PostgreSQL de desarrollo, un test temporal de integración, borrado después. 10.000 conversaciones en una organización, una de cada diez pausada; el hilo de una conversación con 200 mensajes y 30 notas.
+- **Corridas:** 20 por variante.
+- **Resultado:**
+
+| Lectura | Mediana | p95 |
+|---|---|---|
+| La lista sola, como hoy | 15,3 ms | 17,1 ms |
+| La lista con las cantidades | 14,4 ms | 17,2 ms |
+| La lista con «Atención humana» | 17,5 ms | 22,2 ms |
+| El hilo con las dos lecturas de hoy, en paralelo | 16,2 ms | 21,2 ms |
+| El hilo intercalado | 14,9 ms | 19,1 ms |
+
+- **Conclusión:** no hay diferencia medible, y la condición de detención (más del doble) no se cumple. Sin índice nuevo.
+
+### La revisión independiente
+
+La hizo un agente que no participó del trabajo, con acceso de solo lectura, contra este brief, la v2 y las reglas del proyecto. Cada hallazgo se verificó contra el código antes de aceptarlo. No ejecutó pruebas.
+
+- **Un bloqueante, de alcance:** archivos fuera de los autorizados. Son los cuatro del desvío 1. No se revierten: decide el usuario.
+- **Seis no bloqueantes:**
+  - **N-1** (la página es de 50 entradas, no de «50 mensajes más las notas»): se declara como desvío 2.
+  - **N-2** (el contenido de «Ver contexto» se oculta con CSS en lugar de no renderizarse): desvío 3.
+  - **N-3** (en el teléfono, la acción principal de estado queda fuera de «Más acciones»): desvío 4.
+  - **N-4** (faltaba el test con un mensaje en el borde): agregado. Falla si la condición de las notas pasa de `<` a `<=` (`[12, 50]` en lugar de `[11, 50]`), y se restauró.
+  - **N-5** (faltaba la nota de la pantalla 7 en `Screens.md`): agregada.
+  - **N-6** (en el DOM, el contexto va antes del hilo): se acepta como riesgo menor de WCAG 1.3.2, abajo.
+- **Observaciones:**
+  - `listConversationMessages` y `listConversationNotes` ya solo se usan en tests: quedan, abajo.
+  - `.claude/settings.json`, sin seguimiento, queda fuera del commit.
+  - Faltaba la fila de la 24.3 en `docs/decisions/README.md`: se agrega al cerrar.
+
+### Desvíos
+
+1. **Cuatro archivos fuera de los autorizados:**
+   - **`tests/integration/conversation-inbox.test.ts`** en lugar de `service.test.ts`: ese archivo es del proyecto unitario de Vitest, sin base, y los tests contra PostgreSQL viven en `tests/integration/`.
+   - **`tests/guards/exposed-surface.test.ts`:** se quitó `loadOlderNotesAction` (desvío 5), y la guarda lista cada Server Action.
+   - **`docs/architecture/SecurityModel.md`:** la cuenta de puntos de entrada baja de 262 a 261 (96 páginas, 139 Server Actions y 26 Route Handlers), y la línea de la 16.4 queda anotada.
+   - **`docs/architecture/DataModel.md`, sección `conversation_notes`:** la nota de la lectura intercalada y su medición. El brief autorizaba solo la sección `conversations`.
+2. **La página del hilo es de 50 entradas** (N-1), sumando mensajes y notas, no de 50 mensajes más sus notas. Así una página tiene un tamaño fijo y el cursor es uno solo. «Cargar mensajes anteriores» conserva el nombre.
+3. **«Ver contexto» oculta con CSS** (N-2): el contexto se renderiza siempre y, cerrado, lleva `max-lg:hidden`. Así queda abierto sin JavaScript (D-9) y no hay una segunda lectura al abrir. Oculto con `display: none`, no llega al árbol de accesibilidad.
+4. **En el teléfono, la acción principal de estado** (N-3) queda en el encabezado, como en la computadora, y «Más acciones» lleva solo el otro estado.
+5. **`loadOlderNotesAction` se quitó:** las notas se cargan con los mensajes. Se borraron `agent-pause-form.tsx`, `status-form.tsx` y `conversation-notes-form.tsx`, reemplazados por la franja, las acciones del encabezado y la nota al pie.
+
+### Qué queda abierto
+
+- **El orden del DOM** (N-6): en la computadora, el contexto va a la derecha pero primero en el DOM, para que en el teléfono quede arriba del hilo. Un lector de pantalla lo lee antes que los mensajes. Tiene su propio encabezado, «Contexto del cliente». Riesgo menor aceptado de WCAG 1.3.2.
+- **`listConversationMessages` y `listConversationNotes`** ya no los usa ninguna pantalla, solo los tests. Quitarlos se deja para una subfase que toque el módulo.
+
+### Autoevaluación
+
+Esta sección la escribió el mismo agente que implementó; la revisión de arriba es la única independiente.

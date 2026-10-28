@@ -2,13 +2,11 @@ import type {
   AgentPauseAction,
   ConversationChannel,
   ConversationListField,
-  ConversationNote,
   ConversationStatus,
   MessageDirection,
   MessageKind,
   MessageSender,
 } from "@/modules/conversations";
-import { formatShortDateTime } from "@/app/_format/date-time";
 import type { ErrorCode } from "@/shared/errors";
 
 // Textos de las pantallas 8 y 9 (wireframes 08 y 09) y de la sección de conversaciones de la 7,
@@ -31,6 +29,9 @@ export const CHOOSE_CLIENT_MESSAGE =
   "Varios clientes coinciden. Elegí uno para filtrar:";
 export const MORE_CLIENTS_MESSAGE =
   "Se muestran los primeros 25. Escribí más del nombre para acotar.";
+// La búsqueda de cliente de la bandeja (brief-24.3, D-4): el teléfono se escribe entero y nunca
+// se muestra.
+export const CLIENT_SEARCH_HINT = "Nombre o teléfono";
 export const CLIENT_FILTER_NOT_FOUND_MESSAGE =
   "El cliente del filtro no existe.";
 
@@ -118,7 +119,6 @@ export function statusChangeErrorMessage(
 
 // Pausa del agente (brief-16.3, D-4 y D-5). La marca es texto: el color acompaña.
 export const AGENT_PAUSED_LABEL = "Agente pausado";
-export const AGENT_ACTIVE_TEXT = "Activo";
 export const CLOSED_NOT_PAUSABLE_TEXT =
   "Una conversación cerrada no se pausa: el agente no recibe mensajes en ella.";
 export const AGENT_PAUSE_HINT =
@@ -128,8 +128,18 @@ export function agentPausedSinceText(since: string): string {
   return `Pausado desde el ${since}`;
 }
 
+// La franja del agente y las insignias de la bandeja (brief-24.3, D-3 y D-7). «Atención humana»
+// es la pausa, no el estado pendiente: las dos marcas son independientes.
+export const HUMAN_ATTENTION_LABEL = "Atención humana";
+export const AGENT_ACTIVE_LABEL = "Agente activo";
+export const AGENT_ACTIVE_STRIP_TEXT = "Responde automáticamente";
+export const TAKE_CONVERSATION_LABEL = "Tomar conversación";
+export const REACTIVATE_AGENT_LABEL = "Reactivar agente";
+
 export function agentPauseChangedMessage(action: AgentPauseAction): string {
-  return action === "pause" ? "Agente pausado." : "Agente reanudado.";
+  return action === "pause"
+    ? "Tomaste la conversación: el agente está pausado."
+    : "Agente reactivado.";
 }
 
 export function agentPauseUnchangedMessage(action: AgentPauseAction): string {
@@ -155,18 +165,33 @@ export function agentPauseErrorMessage(
 }
 
 // Notas de la conversación (brief-16.4, D-6). Internas: no las ve el cliente ni el agente.
-export const NO_NOTES_MESSAGE = "Sin notas.";
 export const ERASED_NOTE_TEXT = "(nota vaciada con los datos del cliente)";
 export const FORMER_MEMBER_TEXT = "Usuario que ya no es miembro";
-export const NOTES_HINT =
-  "Solo las ve el equipo: no le llegan al cliente ni al agente. Una nota no se edita ni se borra.";
 export const NOTE_BODY_ERROR_MESSAGE =
   "Escribí la nota, de hasta 1000 caracteres.";
-export const NOTE_ADDED_MESSAGE = "Nota agregada.";
+export const NOTE_ADDED_MESSAGE = "Nota guardada.";
+// La nota en el hilo y al pie (brief-24.3, D-5 y D-8).
+export const NOTE_LABEL = "Nota interna";
+export const NOTE_ONLY_TEAM_TEXT = "Solo equipo";
+export const NOTE_FIELD_LABEL = "Nota para el equipo";
+export const NOTE_FIELD_HINT =
+  "El cliente no la ve ni la recibe el agente. Una nota no se edita ni se borra.";
 
-export function loadNotesErrorMessage(requestId: string): string {
-  return `No pudimos cargar las notas anteriores. Código: ${requestId}`;
-}
+// Las acciones de estado del encabezado (brief-24.3, D-7), con «Cerrada» (D-2).
+export const STATUS_ACTION_LABEL: Record<ConversationStatus, string> = {
+  open: "Marcar como abierta",
+  pending: "Marcar como pendiente",
+  closed: "Cerrar conversación",
+};
+export const REOPEN_LABEL = "Reabrir";
+
+// El contexto del cliente (brief-24.3, D-6).
+export const CONTEXT_TITLE = "Contexto del cliente";
+export const SHOW_CONTEXT_LABEL = "Ver contexto";
+export const NO_CLIENT_CONTEXT_TEXT =
+  "Esta conversación no tiene un cliente asociado.";
+export const NO_CONTEXT_DATA_TEXT =
+  "Sin reparaciones abiertas, turnos próximos ni etiquetas.";
 
 export function noteErrorMessage(
   code: Exclude<ErrorCode, "UNAUTHENTICATED">,
@@ -201,31 +226,6 @@ export type NoteFormState =
       invalidBody: boolean;
     };
 
-// Una nota ya formateada en el servidor, con la zona de la organización, como TimelineItem.
-export type NoteItem = {
-  id: string;
-  author: string;
-  when: string;
-  body: string | null;
-};
-
-// Las notas del servicio a lo que muestra la tarjeta. El texto viaja tal cual: lo escapa React.
-export function toNoteItems(
-  notes: ConversationNote[],
-  timeZone: string,
-): NoteItem[] {
-  return notes.map((note) => ({
-    id: note.id,
-    author: note.author.name || FORMER_MEMBER_TEXT,
-    when: formatShortDateTime(note.createdAt, timeZone),
-    body: note.body,
-  }));
-}
-
-export type OlderNotesResult =
-  | { ok: true; items: NoteItem[]; before: string | null }
-  | { ok: false; message: string };
-
 // Estado de la acción de cambio de estado; el mensaje se anuncia con aria-live.
 export type StatusChangeState =
   | { status: "idle" }
@@ -233,8 +233,10 @@ export type StatusChangeState =
   | { status: "error"; requestId: string; message: string };
 
 // Un mensaje del timeline ya formateado en el servidor, con la zona de la organización: el
-// componente de cliente no formatea fechas ni importa módulos.
-export type TimelineItem = {
+// componente de cliente no formatea fechas ni importa módulos. Desde la 24.3, el hilo intercala
+// las notas (brief-24.3, D-5).
+export type MessageTimelineItem = {
+  type: "message";
   id: string;
   direction: MessageDirection;
   directionLabel: string;
@@ -245,6 +247,18 @@ export type TimelineItem = {
   time: string;
   body: string | null;
 };
+
+export type NoteTimelineItem = {
+  type: "note";
+  id: string;
+  author: string;
+  day: string;
+  time: string;
+  // null: vaciada con los datos del cliente (brief-16.4, D-5).
+  body: string | null;
+};
+
+export type TimelineItem = MessageTimelineItem | NoteTimelineItem;
 
 // Un separador de día va antes del primer mensaje de cada día, también al unir páginas.
 export function startsDay(items: TimelineItem[], index: number): boolean {

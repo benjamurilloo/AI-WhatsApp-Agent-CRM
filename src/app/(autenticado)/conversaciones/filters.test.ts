@@ -4,6 +4,7 @@ import {
   conversationFiltersHref,
   DEFAULT_VIEW,
   hasActiveConversationFilters,
+  hasMoreFilters,
   parseClientSectionsView,
   parseConversationView,
   toListFilters,
@@ -20,12 +21,13 @@ describe("filtros de la pantalla 8 (brief-6.4)", () => {
     expect(toListFilters(DEFAULT_VIEW, BUENOS_AIRES)).toEqual({
       from: "",
       to: "",
-      status: "all",
+      status: "open",
       channel: "all",
       clientId: "",
       page: 1,
       sort: "recent",
       pageSize: 25,
+      agentPaused: false,
     });
   });
 
@@ -72,7 +74,40 @@ describe("filtros de la pantalla 8 (brief-6.4)", () => {
       page: 2,
       sort: "oldest",
       pageSize: 50,
+      agentPaused: false,
     });
+  });
+
+  it("brief-24.3: Abiertas por defecto, Todas con estado=todos, y «Atención humana» (D-1 y D-3)", () => {
+    expect(DEFAULT_VIEW.status).toBe("abierta");
+    const all = parseConversationView({ estado: "todos" });
+    expect(all.status).toBe("todos");
+    expect(conversationFiltersHref(all)).toBe("/conversaciones?estado=todos");
+    expect(toListFilters(all, BUENOS_AIRES).status).toBe("all");
+    expect(parseConversationView({ estado: "archivada" }).status).toBe(
+      "abierta",
+    );
+
+    const human = parseConversationView({
+      estado: "pendiente",
+      atencion: "humana",
+    });
+    expect(human.attention).toBe(true);
+    expect(toListFilters(human, BUENOS_AIRES).agentPaused).toBe(true);
+    expect(conversationFiltersHref(human)).toBe(
+      "/conversaciones?estado=pendiente&atencion=humana",
+    );
+    expect(hasActiveConversationFilters(human)).toBe(true);
+    expect(parseConversationView({ atencion: "otra" }).attention).toBe(false);
+  });
+
+  it("brief-24.3: «Más filtros» se abre solo con período, canal u orden propios (D-4)", () => {
+    expect(hasMoreFilters(DEFAULT_VIEW)).toBe(false);
+    expect(hasMoreFilters({ ...DEFAULT_VIEW, status: "todos" })).toBe(false);
+    expect(hasMoreFilters({ ...DEFAULT_VIEW, attention: true })).toBe(false);
+    expect(hasMoreFilters({ ...DEFAULT_VIEW, period: "7d" })).toBe(true);
+    expect(hasMoreFilters({ ...DEFAULT_VIEW, channel: "whatsapp" })).toBe(true);
+    expect(hasMoreFilters({ ...DEFAULT_VIEW, sort: "inicio" })).toBe(true);
   });
 
   it("las fechas solo cuentan con el período personalizado", () => {

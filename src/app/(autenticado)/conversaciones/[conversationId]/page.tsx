@@ -1,10 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import {
-  CONVERSATION_STATUSES,
   getConversation,
-  listConversationMessages,
-  listConversationNotes,
+  listConversationTimeline,
   NOTE_MAX_LENGTH,
 } from "@/modules/conversations";
 import { requireSession } from "@/app/_auth/session";
@@ -14,28 +11,23 @@ import {
   DetailHeader,
   HeaderIcon,
 } from "@/app/_components/detail-header";
-import { DetailList } from "@/app/_components/detail-list";
-import { linkClass } from "@/app/_components/form-styles";
 import { PageNotice } from "@/app/_components/page-notice";
 import { SectionCard } from "@/app/_components/section-card";
 import { formatShortDateTime } from "@/app/_format/date-time";
 import {
-  AGENT_ACTIVE_TEXT,
-  AGENT_PAUSE_HINT,
   agentPausedSinceText,
   CHANNEL_LABEL,
   CONVERSATION_NOT_FOUND_MESSAGE,
   FORBIDDEN_PAGE_MESSAGE,
   NO_CLIENT_TEXT,
   NO_MESSAGES_MESSAGE,
-  STATUS_LABEL,
-  toNoteItems,
 } from "../messages";
-import { AgentPausedBadge } from "../conversation-table";
 import { StatusBadge } from "../status-badge";
-import { AgentPauseForm } from "./agent-pause-form";
-import { ConversationNotes } from "./conversation-notes-form";
-import { StatusForm } from "./status-form";
+import { AgentStrip } from "./agent-strip";
+import { ClientContext } from "./client-context";
+import { ContextDisclosure } from "./context-disclosure";
+import { NoteForm } from "./note-form";
+import { StatusActions } from "./status-actions";
 import { Timeline } from "./timeline";
 import { toTimelineItems } from "./timeline-items";
 
@@ -45,12 +37,13 @@ export const metadata: Metadata = {
 
 const TITLE = "Conversación";
 
-// Pantalla 9 (wireframe 09): cabecera sin teléfono, timeline con los 50 mensajes más recientes y
-// cambio de estado solo para admin (brief-6.4). Un viewer no recibe el formulario. Presentación
-// de la 15.4: los mensajes como burbujas y, al costado, los datos de la conversación y el cambio
-// de estado. Sin campo para escribir ni tildes de leído (brief-15.4, D-7). Desde la 16.3, la marca
-// de pausa del agente para todos, y pausar o reanudar solo para admin (D-4). Desde la 16.4, las
-// notas internas para todos, y agregarlas solo para admin (brief-16.4, D-6).
+// Pantalla 9 (wireframe 09): cabecera sin teléfono, timeline con las 50 entradas más recientes y
+// cambio de estado solo para admin (brief-6.4). Un viewer no recibe los formularios. Sin campo para
+// escribir al cliente ni tildes de leído (brief-15.4, D-7; ADR 0017). Desde la 24.3, al patrón de
+// la v2 (brief-24.3): el estado en el encabezado con «Cerrar conversación» o «Reabrir» y «Más
+// acciones» (D-7), la franja del agente para los dos roles con tomar y reactivar para admin (D-7),
+// las notas intercaladas en el hilo (D-5), la nota interna al pie para admin (D-8) y el contexto
+// del cliente al costado, o con «Ver contexto» en el teléfono (D-6 y D-9).
 export default async function ConversationPage({
   params,
 }: {
@@ -59,19 +52,12 @@ export default async function ConversationPage({
   const context = await requireSession();
   const { conversationId } = await params;
 
-  const [found, timeline, notes] = await Promise.all([
+  const [found, timeline] = await Promise.all([
     getConversation(context, conversationId),
-    listConversationMessages(context, conversationId, { before: "" }),
-    listConversationNotes(context, conversationId, { before: "" }),
+    listConversationTimeline(context, conversationId, { before: "" }),
   ]);
-  if (!found.ok || !timeline.ok || !notes.ok) {
-    const code = !found.ok
-      ? found.code
-      : !timeline.ok
-        ? timeline.code
-        : !notes.ok
-          ? notes.code
-          : null;
+  if (!found.ok || !timeline.ok) {
+    const code = !found.ok ? found.code : !timeline.ok ? timeline.code : null;
     if (code === "FORBIDDEN") {
       return <PageNotice title={TITLE} message={FORBIDDEN_PAGE_MESSAGE} />;
     }
@@ -88,6 +74,8 @@ export default async function ConversationPage({
   const isAdmin = context.role === "admin";
   const title = conversation.client?.name ?? NO_CLIENT_TEXT;
   const timeZone = timeline.timezone;
+  const items = toTimelineItems(timeline.entries, timeZone);
+  const last = items.at(-1);
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 lg:px-8">
@@ -105,136 +93,79 @@ export default async function ConversationPage({
             <HeaderIcon name="messageCircle" />
           )
         }
+        badges={<StatusBadge status={conversation.status} />}
         subtitle={
           <p>
-            {CHANNEL_LABEL[conversation.channel]} · Estado:{" "}
-            <span className="font-semibold text-foreground">
-              {STATUS_LABEL[conversation.status]}
-            </span>
-            {conversation.client ? (
+            {CHANNEL_LABEL[conversation.channel]} · Iniciada el{" "}
+            {formatShortDateTime(conversation.startedAt, timeZone)}
+            {conversation.lastMessageAt ? (
               <>
-                {" · "}
-                <Link
-                  href={`/clientes/${conversation.client.id}`}
-                  className={linkClass}
-                >
-                  Ver cliente
-                </Link>
+                {" "}
+                · Último mensaje el{" "}
+                {formatShortDateTime(conversation.lastMessageAt, timeZone)}
               </>
             ) : null}
           </p>
         }
+        primary={
+          isAdmin ? (
+            <StatusActions
+              conversationId={conversation.id}
+              current={conversation.status}
+            />
+          ) : null
+        }
+      />
+
+      <AgentStrip
+        conversationId={conversation.id}
+        pausedSince={
+          conversation.agentPausedAt
+            ? agentPausedSinceText(
+                formatShortDateTime(conversation.agentPausedAt, timeZone),
+              )
+            : null
+        }
+        canPause={conversation.status !== "closed"}
+        canChange={isAdmin}
       />
 
       <div className="mt-6 grid items-start gap-6 lg:grid-cols-3">
+        <div className="min-w-0 lg:col-start-3 lg:row-start-1">
+          <ContextDisclosure>
+            <ClientContext
+              context={context}
+              clientId={conversation.client?.id ?? null}
+              timeZone={timeZone}
+            />
+          </ContextDisclosure>
+        </div>
+
         <SectionCard
           id="mensajes-titulo"
           title="Mensajes"
           icon="messagesSquare"
-          className="lg:col-span-2"
+          className="min-w-0 lg:col-span-2 lg:col-start-1 lg:row-start-1"
         >
-          {timeline.messages.length === 0 ? (
+          {items.length === 0 ? (
             <p>{NO_MESSAGES_MESSAGE}</p>
           ) : (
+            // Una nota nueva cambia la última entrada: el hilo vuelve a empezar desde ella.
             <Timeline
+              key={last ? `${last.type}-${last.id}` : "vacio"}
               conversationId={conversation.id}
-              initialItems={toTimelineItems(timeline.messages, timeZone)}
+              initialItems={items}
               initialBefore={timeline.before}
             />
           )}
           <p className="mt-4 text-sm text-muted">Horas en {timeZone}.</p>
-        </SectionCard>
-
-        <div className="flex min-w-0 flex-col gap-6">
-          <SectionCard
-            id="conversacion-titulo"
-            title="Conversación"
-            icon="info"
-          >
-            <DetailList
-              items={[
-                {
-                  label: "Cliente",
-                  value: conversation.client?.name ?? NO_CLIENT_TEXT,
-                },
-                {
-                  label: "Estado",
-                  value: <StatusBadge status={conversation.status} />,
-                },
-                {
-                  label: "Agente",
-                  value: conversation.agentPausedAt ? (
-                    <span className="flex flex-wrap items-center gap-2">
-                      <AgentPausedBadge />
-                      <span>
-                        {agentPausedSinceText(
-                          formatShortDateTime(
-                            conversation.agentPausedAt,
-                            timeZone,
-                          ),
-                        )}
-                      </span>
-                    </span>
-                  ) : (
-                    AGENT_ACTIVE_TEXT
-                  ),
-                },
-                {
-                  label: "Canal",
-                  value: CHANNEL_LABEL[conversation.channel],
-                },
-                {
-                  label: "Iniciada",
-                  value: formatShortDateTime(conversation.startedAt, timeZone),
-                },
-                {
-                  label: "Último mensaje",
-                  value: conversation.lastMessageAt
-                    ? formatShortDateTime(conversation.lastMessageAt, timeZone)
-                    : null,
-                },
-              ]}
-            />
-          </SectionCard>
-
-          <SectionCard id="notas-titulo" title="Notas" icon="fileText">
-            <ConversationNotes
+          {isAdmin ? (
+            <NoteForm
               conversationId={conversation.id}
-              initialItems={toNoteItems(notes.notes, timeZone)}
-              initialBefore={notes.before}
-              canAdd={isAdmin}
               maxLength={NOTE_MAX_LENGTH}
             />
-          </SectionCard>
-
-          {isAdmin ? (
-            <SectionCard id="agente-titulo" title="Agente" icon="power">
-              <p className="mb-3 text-sm text-muted">{AGENT_PAUSE_HINT}</p>
-              <AgentPauseForm
-                conversationId={conversation.id}
-                paused={conversation.agentPausedAt !== null}
-                canPause={conversation.status !== "closed"}
-              />
-            </SectionCard>
           ) : null}
-
-          {isAdmin ? (
-            <SectionCard
-              id="estado-titulo"
-              title="Cambiar estado"
-              icon="circleCheck"
-            >
-              <StatusForm
-                conversationId={conversation.id}
-                current={conversation.status}
-                options={CONVERSATION_STATUSES.map((status) => ({
-                  value: status,
-                  label: STATUS_LABEL[status],
-                }))}
-              />
-            </SectionCard>
-          ) : null}
-        </div>
+        </SectionCard>
       </div>
     </main>
   );

@@ -645,6 +645,13 @@ Se quitaron `(organization_id, status, started_at desc)` y `(client_id, started_
 
 *Enmendado el 2026-10-06 (brief-15.2, hallazgo H-3 de la revisión independiente).* Desde la 15.2.1, `/conversaciones?estado=…&orden=inicio` sí ordena por inicio dentro de un estado. No se repone el índice: el plan recorre `conversations_organization_started_idx` hacia atrás y filtra el estado, y en local, con 10.000 conversaciones y 3.225 abiertas en una organización, la primera página tarda 6,9 ms de mediana y la última 7,5 ms, lejos del umbral de la 13.2. Se revisa si un estado llega a ser una fracción chica de un volumen mucho mayor.
 
+*Nota del 2026-10-28, 24.3* ([brief-24.3](../decisions/brief-24.3-conversaciones.md), D-1, D-3 y R-1). Dos lecturas nuevas de la bandeja, sin migración ni índice:
+
+- **El filtro «Atención humana»**: `agent_paused_at is not null`, combinable con los demás filtros de la lista.
+- **Las cantidades por estado y por pausa** (`countConversationsByStatusAndPause`): un solo `GROUP BY status, agent_paused_at is not null` con el período, el canal y el cliente de la lista, que ignora el estado y la pausa pedidos.
+
+Sin índice sobre `agent_paused_at`: la pausa es una fracción de las conversaciones de una organización y se cuenta en el mismo recorrido. En local, con 10.000 conversaciones en una organización (una de cada diez pausada) y 20 corridas, la lista con las cantidades tarda 14,4 ms de mediana (p95 17,2 ms) contra 15,3 ms (p95 17,1 ms) sin ellas, y con «Atención humana», 17,5 ms (p95 22,2 ms).
+
 ### `messages`
 
 **Implementada en la 6.1.** Módulo dueño: `conversations`. Insert-only (regla 10): `crm_app` solo tiene `SELECT` e `INSERT`, y el trigger `messages_insert_only` rechaza `UPDATE` y `DELETE` para cualquier rol con `P0001` (brief-6.1, D-3).
@@ -681,6 +688,8 @@ Vaciado (brief-13.4, D-2 y D-3; ADR 0015): ante un pedido de borrado, `body_text
 | `created_at` | timestamptz not null default `clock_timestamp()` | hora del `INSERT` |
 
 Índice: `conversation_notes_conversation_created_idx` sobre `(organization_id, conversation_id, created_at desc)`, para la tarjeta «Notas» de la pantalla 9, de a 25 con cursor `(created_at, id)`.
+
+*Nota del 2026-10-28, 24.3* ([brief-24.3](../decisions/brief-24.3-conversaciones.md), D-5 y R-2). Desde la 24.3, la pantalla 9 intercala las notas con los mensajes en `listConversationTimeline`, de un solo módulo y sin `JOIN` con otro: de a 50 entradas con un cursor `(fecha, tipo, id)`, en el que a igual fecha el mensaje va antes que la nota. Cada página lee hasta 51 mensajes y 51 notas anteriores al cursor, por `messages_conversation_sent_idx` y este índice, y se queda con las 50 mayores: ninguna entrada se pierde ni se repite en el borde (`conversation-inbox.test.ts`, que falla si se invierte el desempate). En local, el hilo de una conversación con 200 mensajes y 30 notas tarda 14,9 ms de mediana (p95 19,1 ms), contra 16,2 ms (p95 21,2 ms) de las dos lecturas de antes en paralelo, en 20 corridas.
 
 **El texto vive solo acá** (invariante 2): la auditoría `note_added` guarda el id de la nota, no el texto, y el log tampoco lo lleva. Una nota no se edita ni se borra; una equivocada se corrige con otra.
 

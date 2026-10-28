@@ -10,20 +10,30 @@ import { Avatar } from "@/app/_components/avatar";
 import { Icon } from "@/app/_components/icons";
 import { StatusBadge as Badge } from "@/app/_components/status-badge";
 import { formatShortDateTime } from "@/app/_format/date-time";
-import { AGENT_PAUSED_LABEL, CHANNEL_LABEL, NO_CLIENT_TEXT } from "./messages";
+import {
+  AGENT_ACTIVE_LABEL,
+  CHANNEL_LABEL,
+  HUMAN_ATTENTION_LABEL,
+  NO_CLIENT_TEXT,
+} from "./messages";
 import { StatusBadge } from "./status-badge";
 
 // Conversaciones de la pantalla 8 y de la sección de la 7 (wireframes 07 y 08): tabla en
 // escritorio y tarjetas en móvil; la versión oculta no entra al árbol de accesibilidad. Sin
 // contenido de mensajes ni teléfono. Componente de servidor. Desde la brief-15.1, con avatar del
 // cliente y un ícono genérico de canal junto a su nombre (D-8). Desde la brief-16.3, la marca
-// «Agente pausado» junto al estado (D-4).
+// «Agente pausado» junto al estado (D-4). Desde la 24.3, cada fila dice «Atención humana» o «Agente
+// activo» (brief-24.3, D-3), y la tarjeta del teléfono lleva el avatar (D-9).
 
 // Texto con ícono decorativo: el color acompaña, no informa solo.
-export function AgentPausedBadge() {
-  return (
+export function AgentBadge({ paused }: { paused: boolean }) {
+  return paused ? (
     <Badge tone="warning" icon="circlePause">
-      {AGENT_PAUSED_LABEL}
+      {HUMAN_ATTENTION_LABEL}
+    </Badge>
+  ) : (
+    <Badge tone="neutral" icon="power">
+      {AGENT_ACTIVE_LABEL}
     </Badge>
   );
 }
@@ -104,7 +114,7 @@ export function ConversationTable({
                 <td className={tableCellClass}>
                   <span className="flex flex-wrap items-center gap-2">
                     <StatusBadge status={conversation.status} />
-                    {conversation.agentPausedAt ? <AgentPausedBadge /> : null}
+                    <AgentBadge paused={conversation.agentPausedAt !== null} />
                   </span>
                 </td>
                 {showClient ? (
@@ -127,17 +137,20 @@ export function ConversationTable({
       <ul aria-label={caption} className="mt-6 flex flex-col gap-3 md:hidden">
         {conversations.map((conversation) => (
           <li key={conversation.id} className={`${cardClass} p-4`}>
-            <p className="font-semibold">
+            <p className="flex items-center gap-3 font-semibold">
+              {showClient && conversation.client ? (
+                <Avatar name={conversation.client.name} />
+              ) : null}
               <Link
                 href={`/conversaciones/${conversation.id}`}
-                className={linkClass}
+                className={`${linkClass} min-w-0 break-words`}
               >
                 {linkText(conversation)}
               </Link>
             </p>
             <p className="mt-2 flex flex-wrap items-center gap-2 text-sm">
               <StatusBadge status={conversation.status} />
-              {conversation.agentPausedAt ? <AgentPausedBadge /> : null}
+              <AgentBadge paused={conversation.agentPausedAt !== null} />
               <span>{CHANNEL_LABEL[conversation.channel]}</span>
             </p>
             <p className="mt-1 text-sm text-muted tabular-nums">

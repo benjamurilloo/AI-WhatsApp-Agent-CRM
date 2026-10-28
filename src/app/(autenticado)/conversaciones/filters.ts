@@ -9,7 +9,8 @@ import { DEFAULT_PAGE_SIZE, parsePageSize } from "@/app/_components/pagination";
 
 // Filtros de la pantalla 8 en la URL (brief-6.4):
 // ?periodo=&desde=&hasta=&estado=&canal=&cliente=&buscar_cliente=&pagina=, más el orden y las
-// filas por página de la brief-15.2: ?orden=&filas=.
+// filas por página de la brief-15.2: ?orden=&filas=. Desde la 24.3, el estado es una pestaña con
+// Abiertas por defecto (D-1) y ?atencion=humana filtra el agente pausado (D-3).
 // El parseo es puro y un valor desconocido vuelve al de defecto. Los atajos de período son los de
 // la pantalla 5, con "todo" por defecto (D-2); la búsqueda de cliente se resuelve en la página
 // con crm (D-1).
@@ -82,19 +83,37 @@ export type ConversationView = {
   page: number;
   sort: SortKey;
   pageSize: number;
+  // Solo las del agente pausado, «Atención humana» (brief-24.3, D-3).
+  attention: boolean;
 };
 
 export const DEFAULT_VIEW: ConversationView = {
   period: "todo",
   from: "",
   to: "",
-  status: "todos",
+  status: "abierta",
   channel: "todos",
   clientId: "",
   clientSearch: "",
   page: 1,
   sort: "reciente",
   pageSize: DEFAULT_PAGE_SIZE,
+  attention: false,
+};
+
+// Las pestañas de la bandeja, en su orden (brief-24.3, D-1).
+export const STATUS_TABS: readonly StatusKey[] = [
+  "abierta",
+  "pendiente",
+  "cerrada",
+  "todos",
+];
+
+export const STATUS_TAB_LABEL: Record<StatusKey, string> = {
+  abierta: "Abiertas",
+  pendiente: "Pendientes",
+  cerrada: "Cerradas",
+  todos: "Todas",
 };
 
 const MAX_TEXT_LENGTH = 100;
@@ -118,13 +137,15 @@ export function parsePage(value: string | string[] | undefined): number {
   return raw && /^[1-9][0-9]{0,5}$/.test(raw) ? Number(raw) : 1;
 }
 
+// La bandeja cae en Abiertas; la sección de la pantalla 7, en todos.
 export function parseStatusKey(
   value: string | string[] | undefined,
+  fallback: StatusKey,
 ): StatusKey {
   return keyOf(
     single(value),
     Object.keys(STATUS_PARAM) as StatusKey[],
-    DEFAULT_VIEW.status,
+    fallback,
   );
 }
 
@@ -136,7 +157,7 @@ export function parseConversationView(params: SearchParams): ConversationView {
     period,
     from: custom ? (single(params.desde)?.trim().slice(0, 10) ?? "") : "",
     to: custom ? (single(params.hasta)?.trim().slice(0, 10) ?? "") : "",
-    status: parseStatusKey(params.estado),
+    status: parseStatusKey(params.estado, DEFAULT_VIEW.status),
     channel: keyOf(
       single(params.canal),
       Object.keys(CHANNEL_PARAM) as ChannelKey[],
@@ -154,6 +175,7 @@ export function parseConversationView(params: SearchParams): ConversationView {
       DEFAULT_VIEW.sort,
     ),
     pageSize: parsePageSize(params.filas),
+    attention: single(params.atencion) === "humana",
   };
 }
 
@@ -171,6 +193,7 @@ export function toListFilters(
     page: view.page,
     sort: SORT_PARAM[view.sort],
     pageSize: view.pageSize,
+    agentPaused: view.attention,
   };
   if (view.period === "personalizado") {
     return { ...base, from: view.from, to: view.to };
@@ -195,6 +218,7 @@ export function conversationFiltersHref(view: ConversationView): string {
     }
   }
   if (view.status !== DEFAULT_VIEW.status) query.set("estado", view.status);
+  if (view.attention) query.set("atencion", "humana");
   if (view.channel !== DEFAULT_VIEW.channel) query.set("canal", view.channel);
   if (view.clientId) {
     query.set("cliente", view.clientId);
@@ -215,8 +239,18 @@ export function hasActiveConversationFilters(view: ConversationView): boolean {
     view.period !== DEFAULT_VIEW.period ||
     view.status !== DEFAULT_VIEW.status ||
     view.channel !== DEFAULT_VIEW.channel ||
+    view.attention ||
     view.clientId !== "" ||
     view.clientSearch !== ""
+  );
+}
+
+// «Más filtros» se abre si alguno de los suyos no es el de por defecto (brief-24.3, D-4).
+export function hasMoreFilters(view: ConversationView): boolean {
+  return (
+    view.period !== DEFAULT_VIEW.period ||
+    view.channel !== DEFAULT_VIEW.channel ||
+    view.sort !== DEFAULT_VIEW.sort
   );
 }
 
@@ -233,7 +267,7 @@ export function parseClientSectionsView(
 ): ClientSectionsView {
   return {
     auditPage: parsePage(params.auditoria),
-    conversationStatus: parseStatusKey(params.estado_conv),
+    conversationStatus: parseStatusKey(params.estado_conv, "todos"),
     conversationPage: parsePage(params.pagina_conv),
   };
 }

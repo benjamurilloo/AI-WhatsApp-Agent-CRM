@@ -79,12 +79,10 @@ const ACTIONS: Readonly<Record<string, Entry>> = {
   "src/app/(autenticado)/conversaciones/actions.ts#loadOlderMessagesAction": {
     requirement: "sesion",
   },
-  // Notas de la conversación (brief-16.4, D-2): agregar es solo de admin, lo exige conversations;
-  // leer las anteriores, de los dos roles.
+  // Notas de la conversación (brief-16.4, D-2): agregar es solo de admin, lo exige conversations.
+  // Desde la 24.3 las notas anteriores llegan con los mensajes anteriores, intercaladas en el hilo:
+  // loadOlderNotesAction se quitó (brief-24.3, D-5).
   "src/app/(autenticado)/conversaciones/actions.ts#addConversationNoteAction": {
-    requirement: "sesion",
-  },
-  "src/app/(autenticado)/conversaciones/actions.ts#loadOlderNotesAction": {
     requirement: "sesion",
   },
   "src/app/(autenticado)/informacion/actions.ts#createKnowledgeAction": {

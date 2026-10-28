@@ -4,6 +4,7 @@ import {
   eq,
   inArray,
   isNotNull,
+  isNull,
   max,
   sql,
   type SQL,
@@ -70,6 +71,8 @@ export type ConversationQuery = {
   from: string | null;
   to: string | null;
   timezone: string;
+  // true: solo con el agente pausado; false: solo activo; null: sin filtro (brief-24.3, D-3).
+  agentPaused: boolean | null;
 };
 
 // Período [from 00:00, to + 1 día 00:00) en la zona de la organización, como el historial de
@@ -82,6 +85,13 @@ function conversationConditions(query: ConversationQuery): SQL | undefined {
   if (query.channel) conditions.push(eq(conversations.channel, query.channel));
   if (query.clientId) {
     conditions.push(eq(conversations.clientId, query.clientId));
+  }
+  if (query.agentPaused !== null) {
+    conditions.push(
+      query.agentPaused
+        ? isNotNull(conversations.agentPausedAt)
+        : isNull(conversations.agentPausedAt),
+    );
   }
   if (query.from) {
     conditions.push(
@@ -104,6 +114,22 @@ export async function countConversations(
     .from(conversations)
     .where(conversationConditions(query));
   return rows[0]!.total;
+}
+
+// Cantidades por estado y por pausa con los demás filtros de la lista (brief-24.3, D-1 y D-3):
+// una sola lectura agrupada, que ignora el estado y la pausa de la consulta. Sin índice sobre
+// agent_paused_at: se cuenta en el mismo recorrido por organización (R-1).
+export async function countConversationsByStatusAndPause(
+  query: ConversationQuery,
+): Promise<{ status: ConversationStatus; paused: boolean; total: number }[]> {
+  const paused = sql<boolean>`${conversations.agentPausedAt} is not null`;
+  return getDb()
+    .select({ status: conversations.status, paused, total: count() })
+    .from(conversations)
+    .where(
+      conversationConditions({ ...query, status: null, agentPaused: null }),
+    )
+    .groupBy(conversations.status, paused);
 }
 
 // Órdenes del listado (brief-15.2, D-1).
@@ -269,6 +295,7 @@ export function findMessagesBefore(
   conversationId: string,
   before: MessageCursor | null,
   limit: number,
+  extra?: SQL,
 ): Promise<MessageRow[]> {
   return getDb()
     .select({
@@ -288,6 +315,7 @@ export function findMessagesBefore(
         before === null
           ? undefined
           : sql`(${messages.sentAt}, ${messages.id}) < (${before.sentAt}::timestamptz, ${before.id}::uuid)`,
+        extra,
       ),
     )
     .orderBy(sql`${messages.sentAt} desc`, sql`${messages.id} desc`)
@@ -312,6 +340,7 @@ export function findNotesBefore(
   conversationId: string,
   before: NoteCursor | null,
   limit: number,
+  extra?: SQL,
 ): Promise<NoteRow[]> {
   return getDb()
     .select({
@@ -329,6 +358,7 @@ export function findNotesBefore(
         before === null
           ? undefined
           : sql`(${conversationNotes.createdAt}, ${conversationNotes.id}) < (${before.createdAt}::timestamptz, ${before.id}::uuid)`,
+        extra,
       ),
     )
     .orderBy(
@@ -336,6 +366,60 @@ export function findNotesBefore(
       sql`${conversationNotes.id} desc`,
     )
     .limit(limit);
+}
+
+// Cursor del hilo intercalado (brief-24.3, D-5): el orden es (fecha, tipo, id), con el mensaje
+// antes que la nota a igual fecha. Las fechas van con microsegundos, en UTC.
+export type TimelineCursor = {
+  at: string;
+  kind: "message" | "note";
+  id: string;
+};
+
+// Mensajes con clave menor que el cursor, del más reciente al más antiguo. Ante una nota, todo
+// mensaje de su misma fecha va antes que ella.
+export function findTimelineMessages(
+  organizationId: string,
+  conversationId: string,
+  before: TimelineCursor | null,
+  limit: number,
+): Promise<MessageRow[]> {
+  return findMessagesBefore(
+    organizationId,
+    conversationId,
+    before === null
+      ? null
+      : before.kind === "message"
+        ? { sentAt: before.at, id: before.id }
+        : null,
+    limit,
+    before?.kind === "note"
+      ? sql`${messages.sentAt} <= ${before.at}::timestamptz`
+      : undefined,
+  );
+}
+
+// Notas con clave menor que el cursor, de la más reciente a la más vieja. Ante un mensaje, ninguna
+// nota de su misma fecha va antes que él.
+export function findTimelineNotes(
+  organizationId: string,
+  conversationId: string,
+  before: TimelineCursor | null,
+  limit: number,
+): Promise<NoteRow[]> {
+  return findNotesBefore(
+    organizationId,
+    conversationId,
+    before === null
+      ? null
+      : before.kind === "note"
+        ? { createdAt: before.at, id: before.id }
+        : null,
+    limit,
+    before?.kind === "message"
+      ? sql`${conversationNotes.createdAt} < ${before.at}::timestamptz`
+      : undefined,
+  );
 }
 
 // conversation_notes es de solo inserción (brief-16.4, D-1): no hay update ni delete.

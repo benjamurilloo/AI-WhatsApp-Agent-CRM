@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CONVERSATION_NOT_FOUND_MESSAGE,
   FORBIDDEN_ACTION_MESSAGE,
+  FORMER_MEMBER_TEXT,
   periodHasError,
   startsDay,
   statusChangedMessage,
@@ -46,6 +47,7 @@ describe("timeline (pantalla 9)", () => {
     const items = toTimelineItems(
       [
         {
+          type: "message",
           id: "a",
           direction: "inbound",
           // 23:30 del 9 en Buenos Aires.
@@ -55,6 +57,7 @@ describe("timeline (pantalla 9)", () => {
           sentBy: null,
         },
         {
+          type: "message",
           id: "b",
           direction: "outbound",
           sentAt: new Date("2026-09-10T03:10:00Z"),
@@ -67,6 +70,7 @@ describe("timeline (pantalla 9)", () => {
     );
     expect(items).toEqual([
       {
+        type: "message",
         id: "a",
         direction: "inbound",
         directionLabel: "Cliente",
@@ -77,6 +81,7 @@ describe("timeline (pantalla 9)", () => {
         body: "<b>Hola</b>",
       },
       {
+        type: "message",
         id: "b",
         direction: "outbound",
         directionLabel: "Negocio",
@@ -94,6 +99,7 @@ describe("timeline (pantalla 9)", () => {
     const items = toTimelineItems(
       [
         {
+          type: "message",
           id: "a",
           direction: "inbound",
           sentAt: at,
@@ -102,6 +108,7 @@ describe("timeline (pantalla 9)", () => {
           sentBy: null,
         },
         {
+          type: "message",
           id: "b",
           direction: "outbound",
           sentAt: at,
@@ -110,6 +117,7 @@ describe("timeline (pantalla 9)", () => {
           sentBy: "agent",
         },
         {
+          type: "message",
           id: "c",
           direction: "outbound",
           sentAt: at,
@@ -118,6 +126,7 @@ describe("timeline (pantalla 9)", () => {
           sentBy: "person",
         },
         {
+          type: "message",
           id: "d",
           direction: "outbound",
           sentAt: at,
@@ -129,7 +138,9 @@ describe("timeline (pantalla 9)", () => {
       BUENOS_AIRES,
     );
     expect(
-      items.map(({ kindLabel, senderLabel }) => [kindLabel, senderLabel]),
+      items.map((item) =>
+        item.type === "message" ? [item.kindLabel, item.senderLabel] : [],
+      ),
     ).toEqual([
       ["Audio (transcripción)", null],
       [null, "Agente"],
@@ -138,8 +149,49 @@ describe("timeline (pantalla 9)", () => {
     ]);
   });
 
+  it("brief-24.3: una nota lleva su autor, y la de alguien que ya no es miembro lo dice (D-5)", () => {
+    const items = toTimelineItems(
+      [
+        {
+          type: "note",
+          id: "n1",
+          author: { id: "u1", name: "Ana" },
+          createdAt: new Date("2026-09-10T15:05:00Z"),
+          body: "llamar",
+        },
+        {
+          type: "note",
+          id: "n2",
+          author: { id: "u2", name: "" },
+          createdAt: new Date("2026-09-10T15:06:00Z"),
+          body: null,
+        },
+      ],
+      BUENOS_AIRES,
+    );
+    expect(items).toEqual([
+      {
+        type: "note",
+        id: "n1",
+        author: "Ana",
+        day: "10/09/2026",
+        time: "12:05",
+        body: "llamar",
+      },
+      {
+        type: "note",
+        id: "n2",
+        author: FORMER_MEMBER_TEXT,
+        day: "10/09/2026",
+        time: "12:06",
+        body: null,
+      },
+    ]);
+  });
+
   it("pone un separador en el primer mensaje de cada día, también al unir páginas", () => {
     const item = (id: string, day: string): TimelineItem => ({
+      type: "message",
       id,
       direction: "inbound",
       directionLabel: "Cliente",

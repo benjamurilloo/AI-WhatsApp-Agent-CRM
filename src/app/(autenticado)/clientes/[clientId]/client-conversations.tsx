@@ -138,7 +138,7 @@ export async function ClientConversations({
         ) : null}
         {result.clientHasConversations ? (
           <Link
-            href={`/conversaciones?cliente=${clientId}`}
+            href={`/conversaciones?estado=todos&cliente=${clientId}`}
             className={`${linkClass} py-2 sm:ml-auto`}
           >
             Ver en Conversaciones

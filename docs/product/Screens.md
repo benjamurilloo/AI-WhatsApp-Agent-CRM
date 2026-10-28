@@ -220,6 +220,7 @@ Agregada en la 18.2 ([brief-18.2](../decisions/brief-18.2-costo-y-margen.md), FR
 - **Etiquetas** *(16.1, FR-CLI-09 y 10)*: una tarjeta «Etiquetas» con los chips, para los dos roles; una inactiva lleva «(inactiva)» y borde punteado. Un `admin` agrega desde un selector con las activas que el cliente no tiene y quita con un botón por chip («Quitar Reclamo»). Son formularios con Server Actions, como el resto de la ficha. La auditoría muestra «Etiqueta agregada: Reclamo» y «Etiqueta quitada: Reclamo».
 - **Campos ampliados** *(17.1, FR-CLI-12 y 13)*: cuatro tarjetas debajo de «Información principal»: «Contacto» (email), «Empresa» (tipo, empresa y cargo), «Dirección» (calle y número, ciudad, provincia y código postal) y «Clasificación» (segmento), con «—» en lo vacío. A un `viewer`, el email, la calle y el código postal no le llegan del servidor, y la tarjeta dice «Solo visible para administradores.». El formulario de alta y edición suma las mismas cuatro tarjetas, todas opcionales; el tipo y la provincia son selectores con «Sin dato», y el segmento sugiere los ya cargados.
 - **Agente pausado** *(16.3, FR-CONV-06)*: las conversaciones del cliente usan la misma tabla que la pantalla 8, así que también muestran la marca «Agente pausado» junto al estado. Solo se ve; pausar y reanudar se hace desde la pantalla 9.
+- *Nota del 2026-10-28, 24.3* ([brief-24.3](../decisions/brief-24.3-conversaciones.md), D-3): la tabla compartida dice «Atención humana» o «Agente activo» en cada fila, en lugar de «Agente pausado» solo en las pausadas. «Ver en Conversaciones» lleva a la bandeja con todos los estados (`?estado=todos`), porque la bandeja abre en Abiertas (H-9).
 
 ## 8. Lista de conversaciones
 
@@ -235,6 +236,12 @@ Agregada en la 18.2 ([brief-18.2](../decisions/brief-18.2-costo-y-margen.md), FR
 - **Responsive**: tarjetas en móvil.
 - **Accesibilidad**: el estado se muestra con texto, y la marca de pausa también: el color y el ícono acompañan.
 - **No mostrar**: vista previa del contenido de los mensajes (subfase 1.3, D-2). La consulta de la lista no trae el cuerpo del último mensaje, así que la restricción es del modelo de consulta y no solo de la vista.
+- *Nota del 2026-10-28, 24.3* ([brief-24.3](../decisions/brief-24.3-conversaciones.md)), al patrón de la v2. Reemplaza, de arriba, el filtro de estado y el orden de los filtros:
+  - **Pestañas de estado** (D-1): Abiertas, Pendientes, Cerradas y Todas, cada una con su cantidad y la actual con `aria-current`. La bandeja abre en **Abiertas**; `?estado=todos` muestra todas, y es lo que pide «Ver en Conversaciones» desde la ficha del cliente. El estado cerrado sigue llamándose «Cerrada» (D-2).
+  - **«Atención humana»** (D-3): un chip que filtra las conversaciones con el agente pausado, combinable con la pestaña y los demás filtros, con su cantidad; `?atencion=humana`. Es la pausa, no el estado pendiente: una derivada está pendiente con el agente activo. Con el chip, las cantidades de las pestañas son las del agente pausado.
+  - **Búsqueda y «Más filtros»** (D-4): «Buscar cliente», por nombre o teléfono, en dos pasos como antes; el teléfono se escribe entero y nunca se muestra. Período, canal y orden van en «Más filtros», un `<details>` abierto si alguno no es el de por defecto.
+  - **Cada fila** dice «Atención humana» o «Agente activo» junto al estado (reemplaza «Agente pausado»), y la tarjeta del teléfono lleva el avatar (D-9).
+  - **Sin** la vista previa del último mensaje, el panel de vista previa, el teléfono ni «Sin leer» (H-2 y H-3). Todo son enlaces o un formulario GET: funciona sin JavaScript.
 
 ## 9. Detalle de conversación y timeline
 
@@ -250,6 +257,13 @@ Agregada en la 18.2 ([brief-18.2](../decisions/brief-18.2-costo-y-margen.md), FR
 - **Responsive**: burbujas a ancho completo en móvil.
 - **Accesibilidad**: la dirección se indica con texto ("Cliente" o "Negocio") y no solo con la alineación o el color. El timeline es una lista semántica.
 - **No mostrar**: el cuerpo del mensaje y, desde la 16.4, el texto de las notas se renderizan siempre como texto plano escapado, sin HTML ni enlaces automáticos.
+- *Nota del 2026-10-28, 24.3* ([brief-24.3](../decisions/brief-24.3-conversaciones.md)), al patrón de la v2. Reemplaza, de arriba, las tarjetas «Conversación», «Notas», «Agente» y «Cambiar estado»:
+  - **Encabezado** (D-7): el nombre, el estado como insignia, el canal y las fechas. Para `admin`, «Cerrar conversación» en una abierta o pendiente y «Reabrir» en una cerrada; el otro estado («Marcar como pendiente» o «Marcar como abierta») va en «Más acciones». Cerrar no reactiva al agente.
+  - **Franja del agente** (D-7), para los dos roles: «Atención humana · Agente pausado», con desde cuándo y qué significa, o «Agente activo · Responde automáticamente». Para `admin`, «Tomar conversación» (pausa) o «Reactivar agente» (reanuda), con un clic y auditados como antes; una cerrada sin pausa no se toma.
+  - **Hilo con las notas intercaladas** (D-5): mensajes y notas en un solo orden por fecha, de a 50 entradas con «Cargar mensajes anteriores». Una nota lleva candado, «Nota interna», su autor, su hora y «Solo equipo»: se distingue por el texto y el ícono, no solo por el color.
+  - **Nota interna al pie** (D-8), solo para `admin`: «Nota para el equipo», con la ayuda de que el cliente no la ve ni la recibe el agente, y «Guardar nota». Sin pestaña para responder al cliente: el CRM no envía mensajes ([ADR 0017](../decisions/0017-responder-desde-el-crm.md)).
+  - **Contexto del cliente** (D-6), al costado, para los dos roles: «Ver ficha», la reparación abierta más reciente con «Ver reparación» (con `repairs`), el próximo turno pedido o confirmado con «Ver turno» (con `appointments`) y las etiquetas. Para `admin`, «Crear turno» y «Crear pedido» con el cliente elegido. Sin cliente, lo dice. Nunca un importe ni un dato de contacto.
+  - **Teléfono** (D-9): el contexto se abre y se cierra con «Ver contexto», debajo del encabezado (`aria-expanded`); sin JavaScript queda abierto.
 
 ## 10. Usuarios y roles
 

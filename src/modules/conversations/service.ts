@@ -130,6 +130,8 @@ export type ConversationListFilters = {
   page: number;
   sort?: ConversationSort;
   pageSize?: number;
+  // true: solo las del agente pausado, «Atención humana» (brief-24.3, D-3).
+  agentPaused?: boolean;
 };
 
 export type ConversationListField =
@@ -244,6 +246,7 @@ export async function listConversations(
     organizationId: context.organizationId,
     ...validated.values,
     timezone: await getOrganizationTimezone(context),
+    agentPaused: filters.agentPaused === true ? true : null,
   };
   const sort =
     filters.sort && CONVERSATION_SORTS.includes(filters.sort)
@@ -261,6 +264,48 @@ export async function listConversations(
     found.total > 0 ||
     (await repository.hasConversations(context.organizationId));
   return { ok: true, ...found, organizationHasConversations };
+}
+
+export type ConversationCounts = Record<
+  ConversationStatus,
+  { total: number; paused: number }
+>;
+
+export type ConversationCountsResult =
+  | { ok: true; counts: ConversationCounts }
+  | Failure<"FORBIDDEN">
+  | Failure<"VALIDATION_ERROR", { fields: ConversationListField[] }>;
+
+// Cantidades de la bandeja (brief-24.3, D-1 y D-3), para admin y viewer: por estado, todas y las
+// del agente pausado, con el período, el canal y el cliente de la lista. Ignora el estado pedido.
+export async function getConversationCounts(
+  context: AuthContext,
+  filters: Omit<ConversationListFilters, "page" | "status">,
+): Promise<ConversationCountsResult> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  const validated = validateConversationListFilters({
+    from: filters.from,
+    to: filters.to,
+    channel: filters.channel,
+    clientId: filters.clientId,
+    status: "all",
+  });
+  if (!validated.ok) return validated;
+  const rows = await repository.countConversationsByStatusAndPause({
+    organizationId: context.organizationId,
+    ...validated.values,
+    timezone: await getOrganizationTimezone(context),
+    agentPaused: null,
+  });
+  const counts = Object.fromEntries(
+    CONVERSATION_STATUSES.map((status) => [status, { total: 0, paused: 0 }]),
+  ) as ConversationCounts;
+  for (const row of rows) {
+    counts[row.status].total += row.total;
+    if (row.paused) counts[row.status].paused += row.total;
+  }
+  return { ok: true, counts };
 }
 
 export type ConversationDetail = Omit<ConversationSummary, "messageCount">;
@@ -315,13 +360,13 @@ export function encodeMessageCursor(cursor: repository.MessageCursor): string {
   );
 }
 
-const cursorSchema = z.tuple([
-  z
-    .string()
-    .regex(/^[1-9]\d{3}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/)
-    .refine((value) => !Number.isNaN(Date.parse(value))),
-  idSchema,
-]);
+// Instante exacto de un cursor: microsegundos, en UTC.
+const exactInstantSchema = z
+  .string()
+  .regex(/^[1-9]\d{3}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/)
+  .refine((value) => !Number.isNaN(Date.parse(value)));
+
+const cursorSchema = z.tuple([exactInstantSchema, idSchema]);
 
 export function decodeMessageCursor(
   text: string,
@@ -630,6 +675,165 @@ export async function listConversationNotes(
   };
 }
 
+export const TIMELINE_PAGE_SIZE = 50;
+
+export type ConversationTimelineEntry =
+  | ({ type: "message" } & ConversationMessage)
+  | ({ type: "note" } & ConversationNote);
+
+export type ConversationTimelineResult =
+  | {
+      ok: true;
+      // Del más antiguo al más reciente, mensajes y notas en un solo orden.
+      entries: ConversationTimelineEntry[];
+      // Cursor para cargar los anteriores, o null si no hay más.
+      before: string | null;
+      timezone: string;
+    }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">;
+
+type TimelineKind = repository.TimelineCursor["kind"];
+
+// Cursor opaco del hilo intercalado (brief-24.3, D-5): fecha exacta, tipo e id, en base64url.
+export function encodeTimelineCursor(
+  cursor: repository.TimelineCursor,
+): string {
+  return Buffer.from(
+    JSON.stringify([
+      cursor.at,
+      cursor.kind === "message" ? "m" : "n",
+      cursor.id,
+    ]),
+  ).toString("base64url");
+}
+
+const timelineCursorSchema = z.tuple([
+  exactInstantSchema,
+  z.enum(["m", "n"]),
+  idSchema,
+]);
+
+export function decodeTimelineCursor(
+  text: string,
+): repository.TimelineCursor | null {
+  if (!/^[A-Za-z0-9_-]{1,200}$/.test(text)) return null;
+  try {
+    const parsed = timelineCursorSchema.safeParse(
+      JSON.parse(Buffer.from(text, "base64url").toString("utf8")),
+    );
+    return parsed.success
+      ? {
+          at: parsed.data[0],
+          kind: parsed.data[1] === "m" ? "message" : "note",
+          id: parsed.data[2],
+        }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+type TimelineKey = { at: string; type: TimelineKind; id: string };
+
+// Orden descendente por (fecha, tipo, id): a igual fecha la nota es mayor que el mensaje. Las
+// fechas tienen ancho fijo y los uuid se comparan como en PostgreSQL, por su texto en minúsculas.
+export function compareTimelineDesc(a: TimelineKey, b: TimelineKey): number {
+  if (a.at !== b.at) return a.at < b.at ? 1 : -1;
+  if (a.type !== b.type) return a.type === "note" ? -1 : 1;
+  return a.id === b.id ? 0 : a.id < b.id ? 1 : -1;
+}
+
+type TimelineRow =
+  | { type: "message"; at: string; id: string; row: repository.MessageRow }
+  | { type: "note"; at: string; id: string; row: repository.NoteRow };
+
+// El hilo con las notas intercaladas (brief-24.3, D-5), para admin y viewer: de a 50 entradas,
+// mensajes o notas, empezando por las más recientes. Lee 51 de cada tabla antes del cursor y se
+// queda con las 50 mayores: ninguna entrada se pierde ni se repite en el borde de una página
+// (R-2), y ninguna página lee más de 102 filas.
+export async function listConversationTimeline(
+  context: AuthContext,
+  conversationId: string,
+  options: { before: string },
+): Promise<ConversationTimelineResult> {
+  const found = await findReadable(context, conversationId);
+  if (!found.ok) return found;
+  const text = options.before.trim();
+  const before = text === "" ? null : decodeTimelineCursor(text);
+  if (text !== "" && before === null) return failure("VALIDATION_ERROR");
+  const [messageRows, noteRows] = await Promise.all([
+    repository.findTimelineMessages(
+      context.organizationId,
+      found.row.id,
+      before,
+      TIMELINE_PAGE_SIZE + 1,
+    ),
+    repository.findTimelineNotes(
+      context.organizationId,
+      found.row.id,
+      before,
+      TIMELINE_PAGE_SIZE + 1,
+    ),
+  ]);
+  const merged: TimelineRow[] = [
+    ...messageRows.map((row) => ({
+      type: "message" as const,
+      at: row.sentAtExact,
+      id: row.id,
+      row,
+    })),
+    ...noteRows.map((row) => ({
+      type: "note" as const,
+      at: row.createdAtExact,
+      id: row.id,
+      row,
+    })),
+  ].sort(compareTimelineDesc);
+  const page = merged.slice(0, TIMELINE_PAGE_SIZE);
+  const oldest = page.at(-1);
+  // Autores sin JOIN con users, por la interfaz de organizations (9.0.1).
+  const authorIds = [
+    ...new Set(
+      page.flatMap((entry) =>
+        entry.type === "note" ? [entry.row.actorUserId] : [],
+      ),
+    ),
+  ];
+  const authors = new Map(
+    authorIds.length === 0
+      ? []
+      : (await getMemberSummaries(context.organizationId, authorIds)).map(
+          (user) => [user.id, user.name],
+        ),
+  );
+  return {
+    ok: true,
+    entries: page.reverse().map((entry): ConversationTimelineEntry => {
+      if (entry.type === "message") {
+        const { id, direction, sentAt, body, kind, sentBy } = entry.row;
+        return { type: "message", id, direction, sentAt, body, kind, sentBy };
+      }
+      const { id, actorUserId, body, createdAt } = entry.row;
+      return {
+        type: "note",
+        id,
+        author: { id: actorUserId, name: authors.get(actorUserId) ?? "" },
+        body,
+        createdAt,
+      };
+    }),
+    before:
+      merged.length > TIMELINE_PAGE_SIZE && oldest
+        ? encodeTimelineCursor({
+            at: oldest.at,
+            kind: oldest.type,
+            id: oldest.id,
+          })
+        : null,
+    timezone: await getOrganizationTimezone(context),
+  };
+}
+
 export type AddConversationNoteResult =
   | { ok: true; noteId: string }
   // VALIDATION_ERROR sin fields: id inválido. Con fields: el texto.
@@ -758,6 +962,7 @@ export async function getClientActivity(
     from: null,
     to: null,
     timezone: await getOrganizationTimezone(context),
+    agentPaused: null,
   };
   const [found, lastInteraction] = await Promise.all([
     conversationPage(context, query, filters.page),

@@ -676,7 +676,10 @@ test("caso 14: el detalle muestra la última interacción y las conversaciones d
   await section.getByRole("link", { name: "Limpiar filtro" }).first().click();
   await expect(page).toHaveURL(`/clientes/${clientId}`);
   await section.getByRole("link", { name: "Ver en Conversaciones" }).click();
-  await expect(page).toHaveURL(`/conversaciones?cliente=${clientId}`);
+  // Con todos los estados: la bandeja abre en Abiertas (brief-24.3, H-9).
+  await expect(page).toHaveURL(
+    `/conversaciones?estado=todos&cliente=${clientId}`,
+  );
   await expect(page.getByText("Cliente: Ana Pérez")).toBeVisible();
 
   await page.goto(`/clientes/${clientId}`);
