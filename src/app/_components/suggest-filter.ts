@@ -68,3 +68,10 @@ export const REMOTE_DELAY_MS = 250;
 export function looksLikePhone(text: string): boolean {
   return /^[\d\s+().-]+$/.test(text.trim());
 }
+
+// Un teléfono entero escrito en el diálogo de búsqueda: las sugerencias no lo buscan, y el diálogo
+// avisa que Enter abre la búsqueda completa, que sí (brief-24.2, D-4; brief-23.3, D-3). Ocho
+// dígitos o más: un número de pedido o de venta, más corto, se sigue buscando.
+export function looksLikeFullPhone(text: string): boolean {
+  return looksLikePhone(text) && text.replace(/\D/g, "").length >= 8;
+}

@@ -409,7 +409,7 @@ test("la lista filtra por estado y por proveedor, y busca por PP y APP", async (
   await expect(table).toContainText("Distribuidora Norte");
   await expectAccessible(page, "lista de pagos");
   await page.getByLabel("Estado").selectOption("anulado");
-  await page.getByRole("button", { name: "Buscar" }).click();
+  await page.getByRole("button", { name: "Buscar", exact: true }).click();
   await expect(page).toHaveURL(/estado=anulado/);
   await expect(table.getByRole("row")).toHaveCount(2);
   await expect(table).toContainText("PP-000002");

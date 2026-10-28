@@ -218,3 +218,92 @@ Es la segunda subfase de la Fase 24 (Roadmap, §Fases 23 a 28). Hereda el marco 
 - **R-2: el atajo Ctrl+K le gana al del navegador.** Se acepta, como en las aplicaciones de H-7. La tecla se muestra al lado del botón.
 - **R-3: el diálogo cambia los pasos de abrir la búsqueda** en `search.spec.ts` y en cualquier spec que use el campo de la barra. Se mitiga conservando el nombre «Buscar en el sistema» del combobox y del botón, y listando los pasos que cambian.
 - **R-4: el foco devuelto por el navegador al cerrar un `<dialog>`** depende de la versión. Se comprueba en el end-to-end. Si no llega al disparador, se devuelve a mano.
+
+## Cierre
+
+*Del 2026-10-28, antes del commit. La CI, el despliegue y el recorrido del usuario se completan después.*
+
+### Criterios
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| AC-1 | cumple | `search-dialog.tsx`: el botón de la barra, la lupa y el atajo (⌘K en Mac y Ctrl+K en los demás, desvío 4), y el foco al buscador después de `showModal`. `search.spec.ts`: Ctrl+K desde `#q` en `/clientes`, sin escribir en el campo, y la lupa a 375 px |
+| AC-2 | cumple | `showModal()` deja el fondo inerte. Tab y Escape se toman a mano (desvío 1). El foco vuelve a quien abrió. `search.spec.ts`: Tab y Mayús+Tab quedan en el diálogo de búsqueda, y Esc y «Cerrar la búsqueda» devuelven el foco al campo y al botón |
+| AC-3 | cumple | El combobox de la 23.3 con `inline`. La cantidad va en un `aria-live="polite"` del pie. `search.spec.ts`: «3 resultados», flechas y Enter hasta la ficha, y Enter con un teléfono hasta `/buscar` |
+| AC-4 | cumple | `search.ts`: Reparaciones por número y por los primeros tres clientes, y Turnos por esos clientes. Sin la capacidad, las lecturas del módulo responden `NOT_FOUND`. `search.spec.ts`, en la tienda iPhone: el admin y el viewer ven los dos grupos, y desde la revisión (B-2) con `repairs` y `appointments` apagadas ni el diálogo ni `/buscar` los muestran |
+| AC-5 | cumple | Cada resultado copia solo número, cliente, modelo, motivo y estado. Desde la revisión (B-1), `search.spec.ts` junta todo lo que recibe el viewer de la tienda iPhone: los documentos de `/buscar`, por nombre, teléfono entero y número, y las respuestas de la Server Action. Una clienta con teléfono y email y una orden presupuestada: no llegan ni el teléfono, ni el email, ni lo reportado, ni los dos totales. La prueba se comprobó al revés: con el total metido a propósito en el detalle, falla en «987.65». El caso de la 23.3 sigue igual |
+| AC-6 | cumple | Debajo de `sm`, `h-dvh w-full m-0`. `search.spec.ts`: la caja mide 0, 375 y 800 y no hay desplazamiento horizontal |
+| AC-7 | cumple | Sin hidratar, los dos disparadores son enlaces a `/buscar`. `search.spec.ts`, sin JavaScript: el botón de la barra a 1280 px y, desde la revisión (NB-5), la lupa a 375 px hasta `/buscar`, que muestra Clientes, Reparaciones y Turnos |
+| AC-8 | cumple | axe en claro y en oscuro: la lista abierta a 1280 px, el diálogo con resultados a 375 px, `/buscar` a 375 px y el diálogo con reparaciones y turnos |
+| AC-9 | cumple | La medición, abajo |
+| AC-10 | pendiente | La CI del SHA. En local pasaron los 306 end-to-end, en dos corridas. En la primera, el servidor de pruebas se cayó sin dejar causa en el log, y desde ahí 193 casos fallaron con «conexión rechazada». En la segunda, que repitió solo esos 193, pasaron 192 y `sales.spec.ts` agotó el tiempo en su última aserción. Ese spec, repetido solo, pasa sus 12 casos. Antes pasaron typecheck, lint, build y las 1185 pruebas de Vitest |
+| AC-11 | pendiente | Despliegue y recorrido. La revisión independiente se hizo antes (D-8, b) |
+
+### La medición de R-1
+
+- **Método:** en local, con `next start` y PostgreSQL de desarrollo, un spec temporal de Playwright, borrado después. Se escribe «Lucía» en el diálogo y se toma desde la última tecla hasta que se ve «N resultados», menos los 250 ms de espera de la escritura.
+  - Incluye el dibujo de la lista.
+  - No se midió la respuesta de red sola: en una respuesta de Server Action, Playwright no da `finished()`, `body()` ni `requestfinished`.
+- **Corridas:** 20 por variante, intercaladas.
+  - **Sin las capacidades:** la búsqueda de la 23.3.
+  - **Con los grupos nuevos:** tres clientas, cada una con 2 órdenes y 2 turnos.
+- **Resultado:** las medianas fueron de 180,4 y 140,5 ms sin los grupos nuevos y de 170,4 y 152,4 ms con ellos. El máximo, 236,9 y 250,2 ms.
+- **Conclusión:** no hay diferencia medible, y la condición de detención (más del doble) no se cumple.
+
+### La revisión independiente
+
+La hizo un agente que no participó del trabajo, con acceso de solo lectura, contra este brief, el de la 23.3, la v2 y las reglas del proyecto. Cada hallazgo se verificó contra el código antes de aceptarlo. No ejecutó pruebas.
+
+- **Dos bloqueantes**, los dos confirmados y corregidos:
+  - **B-1:** el caso del viewer no cubría los grupos nuevos con datos. La clienta no tenía teléfono, y el caso de la tienda iPhone solo miraba los títulos.
+  - **B-2:** no había un caso con reparaciones y turnos guardados y la capacidad apagada.
+- **Nueve no bloqueantes:**
+  - **NB-1** (la trampa de foco propia, sin declarar) y **NB-2** (las filas, distintas de la tabla de D-3): se declaran como desvíos 1 y 2. En NB-2, además, un motivo vacío dejaba «Lucía · · Confirmado»: corregido.
+  - **NB-3** (Ctrl+K con el diálogo abierto pisaba a quien lo abrió): corregido, ahora vuelve al buscador.
+  - **NB-4:**
+    - El atajo se apilaba sobre otro diálogo: corregido.
+    - En Mac tomaba Ctrl+K: corregido, solo ⌘K.
+    - Ignora la composición de texto y la tecla mantenida: corregido.
+    - Elegir un resultado no pasa por el guarda de cambios sin guardar: queda abierto (ver abajo).
+  - **NB-5** (la lupa sin JavaScript y los grupos nuevos en `/buscar` sin JavaScript): corregido con un caso.
+  - **NB-6** (la comprobación de Tab daba verdadero en cualquier `<dialog>`): corregida, mira el de búsqueda.
+  - **NB-7** (`.claude/settings.json` sin seguimiento): queda fuera del commit.
+  - **NB-8** (los comentarios de `buscar/page.tsx` sobre la lupa): corregidos.
+  - **NB-9** (una lectura por cliente que fallaba se llevaba también la orden por número): corregido con `allSettled`.
+- **Estado documental:**
+  - `Screens.md` decía que la búsqueda muestra solo el nombre o el número: se corrige en la nota de la 24.2.
+  - `HANDOFF.md` y el índice de `docs/decisions/` se actualizan al cerrar.
+  - `SecurityModel.md:55` nombraba solo cinco módulos y «solo el nombre o el número». No estaba entre los archivos autorizados. El usuario autorizó corregirlo en el commit de la implementación.
+
+### Desvíos
+
+1. **La trampa de foco y Escape, a mano.** H-5 esperaba que el `<dialog>` nativo bastara.
+   - **Qué pasaba en Chromium:**
+     - el primer Escape en un campo de búsqueda con texto borraba el texto sin cerrar;
+     - Tab desde el último control salía a la interfaz del navegador.
+   - **Corrección:** el diálogo toma las dos teclas antes que el campo, y Tab da la vuelta entre los controles visibles.
+   - Es lo que preveía R-4 para el foco.
+2. **Las filas de Reparaciones y Turnos.** D-3 dibujaba el número y el modelo arriba, el cliente debajo y el estado a la derecha.
+   - Quedan como el resto de la búsqueda de la 23.3: el número arriba y, debajo, una línea con cliente, modelo y estado.
+   - En una unidad propia, el IMEI ocupa el lugar del cliente.
+   - El turno muestra la fecha y el horario, y debajo el cliente, el motivo y el estado.
+3. **Diez localizadores en seis specs que no abren la búsqueda.** Son `client-fields`, `client-tags`, `clients`, `goods-receipt-voids`, `supplier-payments` y `suppliers`.
+   - `getByRole("button", { name: "Buscar" })` coincidía por subcadena también con «Buscar en el sistema…», que ahora es un botón.
+   - Llevan `exact: true`, como «Clientes» en la 24.1.
+   - El nombre del botón no se cambió, porque es su texto visible (WCAG 2.5.3).
+4. **El atajo según el sistema.** El brief decía Ctrl/Cmd+K. Queda ⌘K en Mac y Ctrl+K en los demás, para no quitarle a macOS el Ctrl+K de los campos de texto.
+   - `aria-keyshortcuts` y la tecla al lado del botón siguen al sistema.
+5. **Cambios en `SuggestInput` y `suggest-filter.ts`**, autorizados «si hace falta»:
+   - `inline`, `onResults` y `onNavigate`;
+   - `looksLikeFullPhone`.
+
+### Qué queda abierto
+
+- **Elegir un resultado con cambios sin guardar.** Se navega con `router.push` y no pregunta, porque el guarda solo intercepta clics en enlaces.
+  - Ya pasaba con la barra de la 23.3. Ahora se llega desde cualquier pantalla.
+  - Arreglarlo toca el guarda, fuera de los archivos autorizados.
+- **Por teléfono, `/buscar` muestra más que antes.** Encuentra al cliente y también sus reparaciones y turnos. Es coherente con H-7 de la 23.3 (riesgo aceptado), y no muestra el número.
+
+### Autoevaluación
+
+Esta sección la escribió el mismo agente que implementó; la revisión de arriba es la única independiente.

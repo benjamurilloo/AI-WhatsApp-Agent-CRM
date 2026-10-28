@@ -51,6 +51,13 @@ type InputProps = {
   children?: ReactNode;
   // La altura y el ancho de la lista, si no sirven los de siempre.
   listClassName?: string;
+  // En el diálogo de búsqueda (brief-24.2, D-1): la lista va debajo del campo, en el flujo, y no
+  // se cierra al perder el foco ni con Escape, que cierra el diálogo.
+  inline?: boolean;
+  // Cuántas sugerencias llegaron del servidor, o null si el texto no alcanza para pedirlas.
+  onResults?: (count: number | null) => void;
+  // Al elegir una opción que lleva a otra página.
+  onNavigate?: () => void;
 };
 
 type Source =
@@ -79,6 +86,9 @@ export function SuggestInput({
   type = "text",
   children,
   listClassName = "max-h-60 min-w-60",
+  inline = false,
+  onResults,
+  onNavigate,
   ...input
 }: InputProps & Source) {
   const router = useRouter();
@@ -122,6 +132,7 @@ export function SuggestInput({
       (skipPhones && looksLikePhone(query))
     ) {
       setRemote([]);
+      onResults?.(null);
       return;
     }
     timer.current = setTimeout(async () => {
@@ -131,9 +142,13 @@ export function SuggestInput({
           // Lista nueva: la opción marcada de la anterior ya no significa nada.
           setRemote(found);
           setActive(-1);
+          onResults?.(found.length);
         }
       } catch {
-        if (ticket === lastRequest.current) setRemote([]);
+        if (ticket === lastRequest.current) {
+          setRemote([]);
+          onResults?.(0);
+        }
       }
     }, REMOTE_DELAY_MS);
   }
@@ -148,6 +163,7 @@ export function SuggestInput({
     setActive(-1);
     setOpen(false);
     if (item.href) {
+      onNavigate?.();
       router.push(item.href);
       return;
     }
@@ -172,7 +188,7 @@ export function SuggestInput({
       // Elegir no envía el formulario; Enter sin una opción activa sí, como siempre.
       event.preventDefault();
       choose(shown[active]);
-    } else if (event.key === "Escape" && expanded) {
+    } else if (event.key === "Escape" && expanded && !inline) {
       event.preventDefault();
       setOpen(false);
       setActive(-1);
@@ -200,8 +216,18 @@ export function SuggestInput({
           event.preventDefault();
           choose(item);
         }}
-        className={`cursor-pointer px-3 py-2 ${index === active ? "bg-primary-soft text-on-primary-soft" : "hover:bg-surface-muted"}`}
+        className={`cursor-pointer px-3 py-2 ${inline ? "rounded-lg" : ""} ${index === active ? "bg-primary-soft text-on-primary-soft" : "hover:bg-surface-muted"}`}
       >
+        {/* En el diálogo, la fila elegida dice qué hace Enter (v2, V2-01 §05). El lector ya anuncia
+            la opción activa: esto es solo para la vista. */}
+        {inline && index === active ? (
+          <span
+            aria-hidden="true"
+            className="float-right ml-3 text-sm font-semibold text-primary"
+          >
+            Abrir ↵
+          </span>
+        ) : null}
         {item.label}
         {item.detail ? (
           <>
@@ -243,6 +269,7 @@ export function SuggestInput({
         onClick={(event) => show(event.currentTarget.value)}
         onKeyDown={onKeyDown}
         onBlur={() => {
+          if (inline) return;
           setOpen(false);
           setActive(-1);
         }}
@@ -253,7 +280,11 @@ export function SuggestInput({
         role="listbox"
         aria-label="Sugerencias"
         hidden={!expanded}
-        className={`absolute inset-x-0 top-full z-20 mt-1 ${listClassName} overflow-y-auto rounded-xl border border-border-strong bg-surface py-1 text-base text-foreground shadow-lg`}
+        className={
+          inline
+            ? `mt-3 ${listClassName} overflow-y-auto text-base text-foreground`
+            : `absolute inset-x-0 top-full z-20 mt-1 ${listClassName} overflow-y-auto rounded-xl border border-border-strong bg-surface py-1 text-base text-foreground shadow-lg`
+        }
       >
         {expanded
           ? groupSuggestions(shown).map((group) =>

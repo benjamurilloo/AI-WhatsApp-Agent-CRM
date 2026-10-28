@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { groupSuggestions } from "@/app/_components/suggest-filter";
+import {
+  groupSuggestions,
+  looksLikeFullPhone,
+} from "@/app/_components/suggest-filter";
 import {
   composeGroups,
   kindsForRole,
   SEARCH_KINDS,
+  searchScopeText,
   toSuggestions,
   type SearchHit,
 } from "./groups";
@@ -29,13 +33,16 @@ const failed: PromiseSettledResult<SearchHit[]> = {
 };
 
 describe("kindsForRole", () => {
-  it("un admin busca en los siete tipos, en el orden de los grupos", () => {
+  it("un admin busca en los nueve tipos, en el orden de los grupos", () => {
     expect(kindsForRole("admin")).toEqual(SEARCH_KINDS);
+    expect(SEARCH_KINDS).toHaveLength(9);
   });
 
-  it("un viewer no pide compras ni proveedores (H-1c)", () => {
+  it("un viewer no pide compras ni proveedores (H-1c), y sí reparaciones y turnos (brief-24.2, D-3)", () => {
     expect(kindsForRole("viewer")).toEqual([
       "clients",
+      "repairs",
+      "appointments",
       "orders",
       "products",
       "devices",
@@ -92,6 +99,9 @@ describe("composeGroups", () => {
       ),
     ).toEqual({
       clients: "/clientes?q=P-12+%26",
+      // Sin una lista que reúna lo encontrado por cliente (brief-24.2, D-3).
+      repairs: null,
+      appointments: null,
       orders: "/pedidos?numero=P-12+%26",
       products: "/productos?q=P-12+%26",
       // Los equipos no tienen lista: el grupo es todo (brief-29.9, U-3).
@@ -120,6 +130,39 @@ describe("composeGroups", () => {
       3,
     );
     expect(suggest.groups[0]!.hits).toHaveLength(3);
+  });
+});
+
+describe("searchScopeText", () => {
+  it("nombra solo lo que el rol y las capacidades dejan ver (brief-24.2, D-6)", () => {
+    expect(searchScopeText("viewer", [])).toBe(
+      "Clientes, pedidos, productos y ventas",
+    );
+    expect(searchScopeText("admin", [])).toBe(
+      "Clientes, pedidos, productos, ventas, compras y proveedores",
+    );
+    expect(
+      searchScopeText("viewer", [
+        "repairs",
+        "appointments",
+        "serialized_units",
+      ]),
+    ).toBe(
+      "Clientes, reparaciones, turnos, pedidos, productos, equipos por IMEI y ventas",
+    );
+    expect(searchScopeText("viewer", ["serialized_units"])).toContain(
+      "equipos por IMEI",
+    );
+  });
+});
+
+describe("looksLikeFullPhone", () => {
+  it("un teléfono entero sí; un número de pedido, un nombre o un IMEI con letras, no (brief-24.2, D-4)", () => {
+    expect(looksLikeFullPhone("+54 11 5555-0182")).toBe(true);
+    expect(looksLikeFullPhone("1155550182")).toBe(true);
+    expect(looksLikeFullPhone("123")).toBe(false);
+    expect(looksLikeFullPhone("P-000123")).toBe(false);
+    expect(looksLikeFullPhone("Lucía")).toBe(false);
   });
 });
 

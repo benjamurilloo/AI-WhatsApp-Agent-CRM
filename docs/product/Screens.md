@@ -40,6 +40,15 @@
   - **Debajo de `lg`**: un botón con lupa en la barra lleva a `/buscar`, con el campo enfocado.
   - **`/buscar?q=`**: hasta ocho por tipo, en tarjetas por grupo, cada una con «Ver todos en …» hacia la lista del módulo con la búsqueda puesta. Sin resultados, «No encontramos nada para «…».». Si un tipo no se pudo leer, los demás se muestran y un aviso dice cuál faltó, con el código del log. Solo muestra el nombre o el número de cada resultado, nunca un dato de contacto.
   - **Sin atajo de teclado**, ni historial, ni resaltado del texto encontrado.
+- **Búsqueda en diálogo, desde la 24.2** ([brief-24.2](../decisions/brief-24.2-busqueda-en-dialogo.md)) *(nota del 2026-10-28; reemplaza, de la nota de la 23.3, el campo de la barra, la lupa y «sin atajo de teclado»)*:
+  - **Cómo se abre**: con el botón «Buscar en el sistema…» de la barra desde `lg`, con la lupa debajo, o con ⌘K en Mac y Ctrl+K en los demás sistemas, desde cualquier pantalla y también con el foco en un campo (no se abre encima de otro diálogo). Es un diálogo modal: el fondo queda inerte, Tab no sale, y Esc o «Cerrar la búsqueda» lo cierran y devuelven el foco a quien lo abrió. Debajo de 640 px ocupa la pantalla. Sin JavaScript, el botón y la lupa son enlaces a `/buscar`.
+  - **Adentro**: el título «Buscar en el sistema» y, debajo, lo que el rol y las capacidades dejan buscar. El combobox de la 23.3, con la lista debajo del campo. La fila elegida dice «Abrir ↵». Al pie, la cantidad de resultados, anunciada al lector, «Solo contenido al que tenés acceso» y las teclas. Un teléfono entero no se busca en el diálogo: un aviso dice que Enter abre la búsqueda completa.
+  - **Reparaciones y turnos**: dos grupos nuevos, después de Clientes, con la capacidad de su módulo y para los dos roles.
+    - **Reparaciones**: la orden por su número (`OS-000123`, `123`) y hasta tres órdenes de cada uno de los primeros tres clientes encontrados.
+    - **Turnos**: hasta tres turnos de esos clientes, porque un turno no tiene número.
+    - **Lo que muestra cada fila**: la reparación, su cliente, el modelo y el estado; el turno, la fecha y el horario, el cliente, el motivo y el estado. Los dos están también en `/buscar`.
+  - **Ningún dato de contacto ni importe**: cada resultado muestra su nombre o número y un detalle (cliente, modelo, motivo, estado), nunca un teléfono, un email ni un total. Corrige el «Solo muestra el nombre o el número» de la nota de la 23.3, que ya era inexacto entonces: el pedido decía «Ana Pérez · Pendiente».
+  - **Sin chips de filtro** (D-5): los grupos ya separan los tipos.
 - **Marco y patrones de la v2, desde la 24.1** ([brief-24.1](../decisions/brief-24.1-marco-y-patrones.md)) *(nota del 2026-10-28; reemplaza, de la nota de la 23.1, el orden del panel, las migas y el «Más» del teléfono)*: la referencia pasa a ser [docs/ui-redesign/v2/](../ui-redesign/v2/manifest-v2.md).
   - **Panel lateral en grupos por tarea**:
     - Inicio, arriba y sin grupo;

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Suspense, type ReactNode } from "react";
 import { getAppFrame, getMainCurrency } from "@/modules/organizations";
 import { logoutAction } from "@/app/_auth/logout";
@@ -7,10 +6,7 @@ import { AppNav } from "@/app/_components/app-nav";
 import { Avatar } from "@/app/_components/avatar";
 import { Brand } from "@/app/_components/brand";
 import { Breadcrumbs } from "@/app/_components/breadcrumbs";
-import {
-  inputClass,
-  secondaryButtonClass,
-} from "@/app/_components/form-styles";
+import { secondaryButtonClass } from "@/app/_components/form-styles";
 import { Icon } from "@/app/_components/icons";
 import {
   BottomNav,
@@ -19,16 +15,20 @@ import {
 } from "@/app/_components/mobile-nav";
 import { visibleGroups, type NavGroup } from "@/app/_components/nav-links";
 import { NavigationProgress } from "@/app/_components/navigation-progress";
-import { SearchIcon } from "@/app/_components/page-header";
-import { SuggestInput } from "@/app/_components/suggest-input";
+import {
+  SearchBarTrigger,
+  SearchDialog,
+  SearchIconTrigger,
+} from "@/app/_components/search-dialog";
 import { ThemeSelector } from "@/app/_components/theme-selector";
 import { UserMenu } from "@/app/_components/user-menu";
 import { readTheme } from "@/app/_theme/read-theme";
 import { searchEverythingAction } from "./buscar/actions";
+import { searchScopeText } from "./buscar/groups";
 
 // Marco común de las páginas autenticadas (brief-3.7, D-7; wireframe 02), con el aspecto de los
 // mockups del rediseño (brief-23.1): panel lateral con la marca, la navegación y el usuario al
-// pie; barra superior con las migas, la búsqueda global (brief-23.3), el tema y el menú del usuario; y debajo de lg, una barra
+// pie; barra superior con las migas, la búsqueda global (brief-23.3; en un diálogo desde la 24.2), el tema y el menú del usuario; y debajo de lg, una barra
 // inferior en lugar del panel. Solo muestra datos: un layout no se vuelve a ejecutar en cada
 // navegación, así que cada página y cada acción verifican la sesión por su cuenta.
 export default async function AuthenticatedLayout({
@@ -201,43 +201,17 @@ export default async function AuthenticatedLayout({
                 groups={groups}
               />
             </div>
-            {/* La búsqueda global desde lg (brief-23.3, D-5): un formulario GET a /buscar, con las
-                sugerencias agrupadas mientras se escribe. Enter sin una opción elegida abre la
-                página de resultados; sin JavaScript, es el formulario solo. */}
-            <form
-              method="get"
-              action="/buscar"
-              role="search"
-              aria-label="Búsqueda global"
-              className="hidden w-full max-w-md lg:block"
-            >
-              <label htmlFor="busqueda-global" className="sr-only">
-                Buscar en el sistema
-              </label>
-              <div className="relative">
-                <SuggestInput
-                  id="busqueda-global"
-                  name="q"
-                  type="search"
-                  placeholder="Buscar en el sistema…"
-                  className={`${inputClass} pl-9`}
-                  listClassName="max-h-[min(28rem,70dvh)] min-w-80"
-                  load={searchEverythingAction}
-                >
-                  <SearchIcon />
-                </SuggestInput>
-              </div>
-            </form>
+            {/* La búsqueda global desde lg: un botón con forma de campo que abre el diálogo, también
+                con Ctrl/Cmd+K (brief-24.2, D-1). Sin JavaScript, un enlace a /buscar. */}
+            <div className="hidden w-full max-w-md lg:block">
+              <SearchBarTrigger />
+            </div>
             <div className="ml-auto flex items-center gap-3">
-              {/* Debajo de lg, la lupa lleva a /buscar (D-5). Se llama como el campo de escritorio, y
-                  no «Buscar», que es el nombre del buscador de cada lista. */}
-              <Link
-                href="/buscar"
-                aria-label="Buscar en el sistema"
+              {/* Debajo de lg, la lupa abre el mismo diálogo a pantalla completa (D-2). Se llama
+                  como el botón de escritorio, y no «Buscar», que es el buscador de cada lista. */}
+              <SearchIconTrigger
                 className={`${secondaryButtonClass} lg:hidden`}
-              >
-                <Icon name="search" className="size-4" />
-              </Link>
+              />
               <ThemeSelector current={theme} />
               <UserMenu userName={frame.userName}>
                 <p className="text-sm leading-tight">
@@ -265,6 +239,11 @@ export default async function AuthenticatedLayout({
         {children}
       </ContentColumn>
       <BottomNav groups={groups} />
+      {/* El diálogo de la búsqueda, uno para toda la aplicación (brief-24.2, D-1). */}
+      <SearchDialog
+        scope={searchScopeText(context.role, frame.capabilities)}
+        load={searchEverythingAction}
+      />
       {/* La barra de carga (brief-23.2, D-3): useSearchParams pide su propio suspenso. */}
       <Suspense fallback={null}>
         <NavigationProgress />

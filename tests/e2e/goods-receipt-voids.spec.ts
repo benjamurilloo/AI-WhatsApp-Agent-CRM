@@ -431,7 +431,7 @@ test("la lista marca las anuladas, filtra por estado y busca por el número de l
     table.getByRole("row").filter({ hasText: "RC-000001" }),
   ).not.toContainText("Anulada");
   await page.getByLabel("Estado").selectOption("anulada");
-  await page.getByRole("button", { name: "Buscar" }).click();
+  await page.getByRole("button", { name: "Buscar", exact: true }).click();
   await expect(page).toHaveURL(/estado=anulada/);
   await expect(table.getByRole("link", { name: "RC-000002" })).toBeVisible();
   await expect(table.getByRole("link", { name: "RC-000001" })).toHaveCount(0);

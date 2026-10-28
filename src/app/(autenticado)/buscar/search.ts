@@ -1,3 +1,4 @@
+import { listClientAppointments } from "@/modules/appointments";
 import { suggestProducts } from "@/modules/catalog";
 import { searchClients, suggestClients } from "@/modules/crm";
 import { findUnitsBySerial } from "@/modules/inventory";
@@ -5,7 +6,12 @@ import { listOrders } from "@/modules/orders";
 import type { AuthContext } from "@/modules/organizations";
 import { listPurchaseOrders, listSuppliers } from "@/modules/purchasing";
 import { listSales } from "@/modules/sales";
-import { listServiceOrdersBySerial } from "@/modules/service";
+import {
+  listClientServiceOrders,
+  listServiceOrders,
+  listServiceOrdersBySerial,
+  type ServiceOrderSummary,
+} from "@/modules/service";
 import { UNIT_STATUS_LABEL } from "@/app/(autenticado)/productos/[productId]/unidades/messages";
 import {
   KIND_LABEL,
@@ -13,6 +19,11 @@ import {
   UNKNOWN_MODEL_TEXT,
 } from "@/app/(autenticado)/reparaciones/messages";
 import { warrantyText } from "@/app/(autenticado)/_warranty/warranty-text";
+import { formatDayDate } from "@/app/(autenticado)/informacion/horario/messages";
+import {
+  formatRange,
+  STATUS_LABEL as APPOINTMENT_STATUS_LABEL,
+} from "@/app/(autenticado)/turnos/messages";
 import {
   STATUS_LABEL as ORDER_STATUS_LABEL,
   UNKNOWN_CLIENT_TEXT,
@@ -27,6 +38,7 @@ import {
 } from "@/app/(autenticado)/ventas/messages";
 import {
   composeGroups,
+  FOUND_CLIENTS_LIMIT,
   kindsForRole,
   MAX_SEARCH_LENGTH,
   PAGE_LIMIT,
@@ -45,11 +57,35 @@ import {
 
 export type SearchMode = "suggest" | "page";
 
+// `found`: los primeros clientes del grupo Clientes, de los que salen las reparaciones y los turnos
+// (brief-24.2, D-3). Si la lectura de clientes falla, es una lista vacía.
 type Reader = (
   context: AuthContext,
   text: string,
   mode: SearchMode,
+  found: Promise<SearchHit[]>,
 ) => Promise<SearchHit[]>;
+
+// Una orden de servicio como resultado, por número o por cliente. Una unidad propia no tiene
+// cliente: dice su IMEI.
+function serviceOrderHit(order: ServiceOrderSummary): SearchHit {
+  const who = order.clientName ?? order.unitSerial;
+  const claim =
+    order.kind === "warranty_claim" ? `${KIND_LABEL.warranty_claim} · ` : "";
+  return {
+    id: order.id,
+    label: order.displayNumber,
+    detail: [
+      who,
+      `${claim}${order.modelName ?? UNKNOWN_MODEL_TEXT}`,
+      SERVICE_ORDER_STATUS_LABEL[order.status],
+    ]
+      .filter(Boolean)
+      .join(" · "),
+    detailStyle: "text",
+    href: `/reparaciones/${order.id}`,
+  };
+}
 
 // Una lectura que responde FORBIDDEN no debería ocurrir (kindsForRole no la pide); si ocurre, el
 // grupo queda vacío, como en la lista de su módulo.
@@ -75,6 +111,63 @@ const READERS: Readonly<Record<SearchKind, Reader>> = {
       label: client.displayName,
       href: `/clientes/${client.id}`,
     }));
+  },
+  // Por el número de la orden, y las de los clientes encontrados, hasta tres de cada uno, en el
+  // orden de su ficha. Sin la capacidad, la lectura por número responde NOT_FOUND y no se piden las
+  // demás.
+  async repairs(context, text, _mode, found) {
+    const [byNumber, clients] = await Promise.all([
+      listServiceOrders(context, { status: "all", number: text, page: 1 }),
+      found,
+    ]);
+    if (!byNumber.ok) return [];
+    // Una lectura por cliente que falla deja afuera solo sus órdenes, no las encontradas por número.
+    const perClient = await Promise.allSettled(
+      clients.map((client) => listClientServiceOrders(context, client.id)),
+    );
+    const orders = [
+      ...byNumber.orders,
+      ...perClient.flatMap((outcome) =>
+        outcome.status === "fulfilled" && outcome.value.ok
+          ? outcome.value.orders.slice(0, SUGGEST_LIMIT)
+          : [],
+      ),
+    ];
+    const seen = new Set<string>();
+    return orders
+      .filter((order) => !seen.has(order.id) && seen.add(order.id))
+      .map(serviceOrderHit);
+  },
+  // Los turnos de los clientes encontrados, hasta tres de cada uno, en el orden de su ficha. Sin la
+  // capacidad, cada lectura responde NOT_FOUND y el grupo queda vacío.
+  async appointments(context, _text, _mode, found) {
+    const clients = await found;
+    const perClient = await Promise.all(
+      clients.map(async (client) => ({
+        client,
+        result: await listClientAppointments(context, client.id),
+      })),
+    );
+    return perClient.flatMap(({ client, result }) =>
+      result.ok
+        ? result.appointments
+            .slice(0, SUGGEST_LIMIT)
+            .map((item): SearchHit => ({
+              id: item.id,
+              label: `${formatDayDate(item.date)}, ${formatRange(item.start, item.end)}`,
+              // Un motivo que ya no se encuentra llega vacío y no deja un separador suelto.
+              detail: [
+                client.label,
+                item.reasonName,
+                APPOINTMENT_STATUS_LABEL[item.status],
+              ]
+                .filter(Boolean)
+                .join(" · "),
+              detailStyle: "text",
+              href: `/turnos/${item.id}`,
+            }))
+        : [],
+    );
   },
   async orders(context, text) {
     const result = await listOrders(context, {
@@ -200,8 +293,16 @@ export async function searchEverything(
   mode: SearchMode,
 ): Promise<SearchResult & { error?: unknown }> {
   const kinds = kindsForRole(context.role);
+  const clients = READERS.clients(context, text, mode, Promise.resolve([]));
+  // Los primeros clientes, para las reparaciones y los turnos; si su lectura falla, ninguno.
+  const found = clients.then(
+    (hits) => hits.slice(0, FOUND_CLIENTS_LIMIT),
+    (): SearchHit[] => [],
+  );
   const settled = await Promise.allSettled(
-    kinds.map((kind) => READERS[kind](context, text, mode)),
+    kinds.map((kind) =>
+      kind === "clients" ? clients : READERS[kind](context, text, mode, found),
+    ),
   );
   const result = composeGroups(
     text,

@@ -183,7 +183,7 @@ test("un admin edita, desactiva, busca, reactiva y ve la historia", async ({
   await expect(table).toContainText("Bodega del Sur");
   await expect(table).not.toContainText("Distribuidora Norte SRL");
   await page.getByLabel("Estado").selectOption("inactivos");
-  await page.getByRole("button", { name: "Buscar" }).click();
+  await page.getByRole("button", { name: "Buscar", exact: true }).click();
   await expect(page).toHaveURL(/\/compras\/proveedores\?q=&estado=inactivos$/);
   await expect(table).toContainText("Distribuidora Norte SRL");
   await expectAccessible(page, "lista de inactivos");

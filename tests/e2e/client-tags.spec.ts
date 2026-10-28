@@ -270,7 +270,7 @@ test("3. FR-CLI-10: la lista muestra las etiquetas y filtra por una, también en
   await expectAccessible(page, "lista con etiquetas y «+1»");
 
   await page.getByLabel("Etiqueta").selectOption({ label: "Reclamo" });
-  await page.getByRole("button", { name: "Buscar" }).click();
+  await page.getByRole("button", { name: "Buscar", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`etiqueta=${reclamo}`));
   await expect(table.getByRole("link", { name: "Ana Filtro" })).toBeVisible();
   await expect(table.getByRole("link", { name: "Beto Filtro" })).toHaveCount(0);
@@ -403,7 +403,7 @@ test("6. AC-10: alta, asignación y filtro solo con teclado, y la ficha a 375 px
   await page.goto("/clientes");
   await tabTo(page, page.getByLabel("Etiqueta"));
   await page.keyboard.type("R");
-  await tabTo(page, page.getByRole("button", { name: "Buscar" }));
+  await tabTo(page, page.getByRole("button", { name: "Buscar", exact: true }));
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/etiqueta=/);
   const table = page.getByRole("table", {

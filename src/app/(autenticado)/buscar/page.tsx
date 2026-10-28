@@ -26,8 +26,9 @@ type SearchParams = Record<string, string | string[] | undefined>;
 
 // La página de resultados de la búsqueda global (brief-23.3, D-1): hasta ocho por tipo, con «Ver
 // todos en …» hacia la lista de cada módulo. Es un formulario GET: funciona sin JavaScript, y es
-// adonde lleva la lupa de la barra en el teléfono (D-5). Solo muestra el nombre o el número de cada
-// resultado, nunca un dato de contacto (D-3).
+// adonde llevan Enter en el diálogo de búsqueda y, sin JavaScript, sus dos disparadores (brief-24.2,
+// D-4 y AC-7). Muestra el nombre o el número de cada resultado y un detalle (cliente, modelo,
+// motivo, estado), nunca un dato de contacto ni un importe (D-3; brief-24.2, AC-5).
 export default async function SearchPage({
   searchParams,
 }: {
@@ -77,7 +78,7 @@ export default async function SearchPage({
               name="q"
               type="search"
               defaultValue={text}
-              // Desde la lupa de la barra se llega para escribir (D-5).
+              // Sin JavaScript, la lupa y el botón de la barra traen acá para escribir (brief-24.2, AC-7).
               autoFocus={text === ""}
               placeholder="Nombre, número, SKU o CUIT"
               className={`${inputClass} pl-9`}

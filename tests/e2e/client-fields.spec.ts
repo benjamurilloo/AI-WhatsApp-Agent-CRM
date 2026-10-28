@@ -305,7 +305,7 @@ test("4. FR-CLI-14: la lista filtra por tipo, provincia y segmento, combinados y
     "Santa Fe",
   ]);
   await page.getByLabel("Tipo").selectOption({ label: "Empresa" });
-  await page.getByRole("button", { name: "Buscar" }).click();
+  await page.getByRole("button", { name: "Buscar", exact: true }).click();
   await expect(page).toHaveURL(/tipo=empresa/);
   await expect(
     table.getByRole("link", { name: "Bruno Empresa" }),
@@ -317,7 +317,7 @@ test("4. FR-CLI-14: la lista filtra por tipo, provincia y segmento, combinados y
 
   await page.getByLabel("Provincia").selectOption({ label: "Santa Fe" });
   await page.getByLabel("Segmento").selectOption({ label: "Mayorista" });
-  await page.getByRole("button", { name: "Buscar" }).click();
+  await page.getByRole("button", { name: "Buscar", exact: true }).click();
   await expect(page).toHaveURL(
     /tipo=empresa&provincia=AR-S&segmento=Mayorista/,
   );

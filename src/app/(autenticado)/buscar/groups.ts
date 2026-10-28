@@ -1,10 +1,14 @@
 import type { RemoteSuggestion } from "@/app/_components/suggest-filter";
 
-// La búsqueda global (brief-23.3): seis tipos, y desde la 29.9 los equipos por IMEI (brief-29.9, U-3), cada uno con la lectura y el permiso de su módulo
-// (D-2). Este archivo solo junta y da forma, sin leer nada: lo que se prueba sin base.
+// La búsqueda global (brief-23.3): seis tipos, desde la 29.9 los equipos por IMEI (brief-29.9, U-3),
+// y desde la 24.2 las reparaciones y los turnos (brief-24.2, D-3), cada uno con la lectura y el
+// permiso de su módulo (D-2). Este archivo solo junta y da forma, sin leer nada: lo que se prueba sin
+// base.
 
 export type SearchKind =
   | "clients"
+  | "repairs"
+  | "appointments"
   | "orders"
   | "products"
   | "devices"
@@ -37,9 +41,12 @@ export type SearchResult = {
   failed: SearchKind[];
 };
 
-// El orden de los grupos (D-1).
+// El orden de los grupos (D-1). Desde la 24.2, las reparaciones y los turnos van después de los
+// clientes, porque la mayoría sale de ellos (brief-24.2, D-3).
 export const SEARCH_KINDS: readonly SearchKind[] = [
   "clients",
+  "repairs",
+  "appointments",
   "orders",
   "products",
   "devices",
@@ -64,6 +71,9 @@ export function kindsForRole(role: string): SearchKind[] {
 export const SUGGEST_LIMIT = 3;
 export const PAGE_LIMIT = 8;
 
+// De cuántos clientes encontrados se leen las reparaciones y los turnos (brief-24.2, D-3, R-1).
+export const FOUND_CLIENTS_LIMIT = 3;
+
 // Lo que se lee de lo que escribe quien busca, como en las sugerencias de cada módulo (H-2).
 export const MAX_SEARCH_LENGTH = 100;
 
@@ -85,6 +95,21 @@ export const KIND_TEXT: Readonly<Record<SearchKind, KindText>> = {
     spoken: "cliente",
     moreLabel: "Ver todos en Clientes",
     moreHref: listHref("/clientes", "q"),
+  },
+  // Por el número de la orden y las de los clientes encontrados (brief-24.2, D-3). Sin lista que
+  // las reúna: /buscar muestra el grupo entero.
+  repairs: {
+    title: "Reparaciones",
+    spoken: "reparación",
+    moreLabel: "",
+    moreHref: null,
+  },
+  // Los turnos de los clientes encontrados: un turno no tiene número (brief-24.2, H-3).
+  appointments: {
+    title: "Turnos",
+    spoken: "turno",
+    moreLabel: "",
+    moreHref: null,
   },
   orders: {
     title: "Pedidos",
@@ -126,6 +151,29 @@ export const KIND_TEXT: Readonly<Record<SearchKind, KindText>> = {
     moreHref: listHref("/compras/proveedores", "q"),
   },
 };
+
+// Lo que se puede buscar, para el subtítulo del diálogo (brief-24.2, D-6): solo los tipos que el
+// rol y las capacidades de la organización dejan ver. Los equipos existen con unidades o con
+// reparaciones.
+export function searchScopeText(
+  role: string,
+  capabilities: readonly string[],
+): string {
+  const has = (capability: string) => capabilities.includes(capability);
+  const parts = [
+    "clientes",
+    ...(has("repairs") ? ["reparaciones"] : []),
+    ...(has("appointments") ? ["turnos"] : []),
+    "pedidos",
+    "productos",
+    ...(has("serialized_units") || has("repairs") ? ["equipos por IMEI"] : []),
+    "ventas",
+    ...(role === "admin" ? ["compras", "proveedores"] : []),
+  ];
+  const last = parts.pop()!;
+  const text = `${parts.join(", ")} y ${last}`;
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
 
 // Junta lo que devolvió cada lectura: un tipo que falló queda en `failed` y fuera de los grupos;
 // uno sin resultados, fuera de los dos.

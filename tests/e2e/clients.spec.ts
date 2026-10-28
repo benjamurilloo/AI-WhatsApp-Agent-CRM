@@ -241,7 +241,7 @@ test("caso 3: el teléfono de un cliente desactivado da el aviso en el campo y s
   await page.goto("/clientes");
   await page.getByLabel("Buscar", { exact: true }).fill("+54 9 11 6666-7788");
   await page.getByLabel("Actividad").selectOption("todos");
-  await page.getByRole("button", { name: "Buscar" }).click();
+  await page.getByRole("button", { name: "Buscar", exact: true }).click();
   await expect(page).toHaveURL(
     "/clientes?q=%2B54+9+11+6666-7788&actividad=todos&orden=interaccion",
   );
@@ -262,7 +262,7 @@ test("caso 4: busca por nombre y por teléfono, filtra y pagina desde la URL", a
   await expect(clientsTable(page)).not.toContainText("Carla");
 
   await page.getByLabel("Buscar", { exact: true }).fill("ana");
-  await page.getByRole("button", { name: "Buscar" }).click();
+  await page.getByRole("button", { name: "Buscar", exact: true }).click();
   await expect(page).toHaveURL(
     "/clientes?q=ana&actividad=activos&orden=interaccion",
   );
@@ -750,7 +750,7 @@ test("caso 17: brief-15.2 ordena por nombre en los dos sentidos y elige las fila
   await expect(firstName()).toContainText("Zoe Luna");
 
   await page.getByLabel("Ordenar por").selectOption("nombre");
-  await page.getByRole("button", { name: "Buscar" }).click();
+  await page.getByRole("button", { name: "Buscar", exact: true }).click();
   await expect(page).toHaveURL(/[?&]orden=nombre$/);
   await expect(firstName()).toContainText("Cliente 01");
   await expect(
