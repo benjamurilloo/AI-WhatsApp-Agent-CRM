@@ -2,6 +2,24 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-29 — 24.4.1: clientes, ficha
+
+Cuarta subfase de la Fase 24 ([brief-24.4.1](docs/decisions/brief-24.4.1-clientes-ficha.md) §Cierre).
+
+**Certifica:**
+- **La ficha del cliente en cuatro pestañas** elegidas por la URL (`?pestana=`), que funcionan sin JavaScript: Resumen, Operaciones, Cuenta corriente y Actividad, con las lecturas que ya existían.
+- **El encabezado**: avatar, etiquetas, «Cliente desde», «Abrir conversación» a la más reciente, «Editar» y «···» con «Desactivar» o «Reactivar», estos dos solo para un `admin`.
+- **El Resumen**: datos de contacto con copiar, los indicadores por moneda sin sumarlas, «En curso» y la última interacción sin el texto del mensaje.
+- **Operaciones** en dos columnas independientes, sin huecos entre tarjetas; **la Cuenta corriente** con el mismo cuerpo que `/cuenta`, que imprime lo mismo; **Actividad** con las conversaciones, su filtro y la auditoría para un `admin`.
+- **Un `viewer`** recorre las cuatro pestañas sin botones y no recibe el teléfono completo, el email, la calle, el código postal ni la auditoría, comprobado sobre lo que llega a su navegador.
+- **Corrige la ficha de Información en producción desde la 24.1**: las clases de «Más acciones» llegaban como código a un componente de servidor.
+- **R-3 medido**: el Resumen lee 0,83 veces lo que leía la ficha anterior.
+- **Validado en integración, desplegado en producción** (`fb68ae1` y el ajuste `6fcea6a`, sin migraciones) y recorrido por el usuario, con una revisión independiente antes del despliegue.
+
+**No certifica:**
+- la forma exacta de los mockups: los desvíos de la tabla de AC-9, aceptados por el usuario, y lo que pasa a la 24.4.2 (la tabla de operaciones, la actividad unificada y «Próxima atención») y a la 24.7.2 (el panel de cobro y el período);
+- el saldo a favor en otra moneda junto a una deuda (O-2) ni la separación de Operaciones con un caso propio: se midió con un spec temporal.
+
 ## 2026-10-29 — 24.3 y 24.3.1: conversaciones
 
 Tercera subfase de la Fase 24, en dos vueltas: la [24.3](docs/decisions/brief-24.3-conversaciones.md) llevó el contenido de la v2, y la [24.3.1](docs/decisions/brief-24.3.1-conversaciones-como-chat.md), la forma, después de que el usuario rechazara la primera en el recorrido (los dos §Cierre).

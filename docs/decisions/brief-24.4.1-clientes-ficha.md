@@ -7,7 +7,7 @@ generated_at: 2026-10-29
 
 # Brief: 24.4.1 — Clientes: ficha
 
-**Estado: aprobado el 2026-10-29 por el usuario, con las recomendaciones de D-1 a D-8.**
+**Estado: aprobado el 2026-10-29 por el usuario, con las recomendaciones de D-1 a D-8. Cerrado el 2026-10-29: desplegado (`6fcea6a`) y recorrido por el usuario.**
 
 ## Objetivo
 
@@ -188,7 +188,7 @@ Es la cuarta subfase de la Fase 24 (Roadmap, §Fase 24, fila 24.4.1). La [24.4.2
 
 ## Cierre
 
-*Del 2026-10-29, antes del commit de la implementación. AC-10 y AC-11 se completan después de la CI, del despliegue y del recorrido del usuario.*
+*Del 2026-10-29, antes del commit de la implementación; AC-10, AC-11, los desvíos y el ajuste de Operaciones se completaron ese mismo día, después del recorrido del usuario.*
 
 ### Criterios
 
@@ -202,9 +202,9 @@ Es la cuarta subfase de la Fase 24 (Roadmap, §Fase 24, fila 24.4.1). La [24.4.2
 | AC-6 | cumple | Caso 20: un `viewer` recorre las cuatro pestañas, sin «Editar», «···», «Registrar cobro», copiar ni formularios salvo el filtro GET de Actividad. Lo que llega a su navegador y la respuesta cruda del servidor no contienen el teléfono, el email, la calle, el código postal, «Historial de auditoría» ni «Auditoría de», con un cliente que tiene todos esos datos |
 | AC-7 | cumple | `clientSectionsHref` siempre con `pestana=actividad` (`filters.test.ts`); el filtro lleva el campo oculto. Casos 5, 14 y 16 |
 | AC-8 | cumple | Axe en claro y en oscuro en las cuatro pestañas (caso 19, 1280 px) y a 375 px con la confirmación de desactivar (caso 22), sin desplazamiento horizontal |
-| AC-9 | cumple; los desvíos los decide el usuario | La comparación, abajo |
-| AC-10 | pendiente | Se completa con la CI del SHA que se despliegue |
-| AC-11 | pendiente | La revisión independiente se hizo antes del despliegue (abajo). Faltan el despliegue y el recorrido |
+| AC-9 | cumple | La comparación, abajo. El usuario aceptó todos los desvíos en el recorrido |
+| AC-10 | cumple | `fb68ae1`, corrida 40945829087, y `6fcea6a`, el ajuste de Operaciones, corrida 40958301381: las dos `success`, leídas por `headSha`. Cada una tardó 39 minutos, contra un límite de 45 por job |
+| AC-11 | cumple | La revisión independiente, antes del despliegue (abajo). `fb68ae1` desplegado el 2026-10-29, sin migraciones nuevas (67); en el recorrido, el usuario pidió quitar los huecos entre las tarjetas de Operaciones (abajo, «Defectos»), y `6fcea6a` se desplegó el mismo día. El usuario dio el recorrido por bueno: «esta todo perfecto» |
 
 ### La medición de R-3
 
@@ -237,11 +237,11 @@ Capturas de las cuatro pestañas a 1440 y 375 px y del menú «···», con un 
 | 16 | «Ventas registradas» con el ícono de comprobante, no el carrito | 03 | El juego de íconos no tiene carrito |
 | 17 | La migaja del marco dice «Clientes», sin el nombre del cliente | 03 | Es el marco de la 24.1; la ficha lleva «← Clientes» |
 
-Los desvíos 12 y 14 a 17 no se consultaron por separado: los decide el usuario en el recorrido.
+Los desvíos 12 y 14 a 17 no se consultaron por separado: el usuario los aceptó al dar por bueno el recorrido, el 2026-10-29.
 
 ### Defectos encontrados y corregidos
 
-- **Las clases de «Más acciones» llegaban como código.** `moreActionItemClass` y `moreActionDangerClass` vivían en `more-actions.tsx`, que es `"use client"`. Un componente de servidor que las importaba recibía una referencia de cliente y no el texto: el ítem salía con el código de una función como clase. Afectaba a la ficha nueva («Desactivar» no se podía tocar a 375 px, caso 22) y **a la ficha de Información en producción desde la 24.1** (`fcefdb8`), en «Eliminar». Se movieron a `more-action-styles.ts`. Toca `informacion/[entryId]/page.tsx` y `conversaciones/[conversationId]/status-actions.tsx`, fuera de los archivos autorizados, solo en el import, y saca dos exports de `more-actions.tsx`, más de lo que permite la regla de `_components/` (desvío 18, para el usuario).
+- **Las clases de «Más acciones» llegaban como código.** `moreActionItemClass` y `moreActionDangerClass` vivían en `more-actions.tsx`, que es `"use client"`. Un componente de servidor que las importaba recibía una referencia de cliente y no el texto: el ítem salía con el código de una función como clase. Afectaba a la ficha nueva («Desactivar» no se podía tocar a 375 px, caso 22) y **a la ficha de Información en producción desde la 24.1** (`fcefdb8`), en «Eliminar». Se movieron a `more-action-styles.ts`. Toca `informacion/[entryId]/page.tsx` y `conversaciones/[conversationId]/status-actions.tsx`, fuera de los archivos autorizados, solo en el import, y saca dos exports de `more-actions.tsx`, más de lo que permite la regla de `_components/` (desvío 18, aceptado por el usuario en el recorrido).
 - **Sin JavaScript, la actividad quedaba en el esqueleto.** «Abrir conversación» y las conversaciones de Actividad estaban dentro de un `Suspense`; sin JavaScript no se reemplazaba. Se espera la lectura en la página, sin `Suspense`. La lectura ya estaba en la medición de R-3.
 - **La fecha salía «29 de oct de 2026».** Ahora se arma con `formatToParts`: «29 oct 2026».
 - **Operaciones dejaba huecos entre tarjetas** (en el recorrido del usuario, después de `fb68ae1`). La grilla de dos columnas daba a cada fila la altura de su tarjeta más alta: con Reparaciones larga y Pedidos corta, Turnos quedaba lejos de Pedidos. Ahora son dos columnas independientes (Pedidos, Turnos y Equipos; Reparaciones y Usados), separadas siempre por 24 px. En pantallas angostas las columnas son `contents` y `order` conserva el orden anterior. Una sección sin su capacidad no rinde nada y su envoltorio vacío se oculta con `empty:hidden`. Medido con Playwright a 1440 y a 375 px, con contenido de distinto alto inyectado en las tarjetas.
@@ -255,7 +255,7 @@ Un agente que no participó del trabajo, con acceso de solo lectura, revisó el 
 | N-1 | «Reactivar» no estaba en «···», como pide D-2 | Corregido: «Reactivar» es un ítem de «···» y no queda la tarjeta «Estado». Screens.md, pantalla 7, ajustado |
 | N-2 | Las tarjetas de Operaciones sin la cantidad de D-5 | Desvío 9, aceptado por el usuario |
 | N-3 | El caso 20 no probaba que el `viewer` no reciba la auditoría: el cliente no tenía filas y la tarjeta vacía no dibuja «Auditoría de» | Corregido: busca también «Historial de auditoría», que sale aunque no haya filas |
-| N-4 | Dos archivos fuera de los autorizados y un cambio en `_components` | Verificado y justificado: el defecto de las clases, arriba. Desvío 18, para el usuario |
+| N-4 | Dos archivos fuera de los autorizados y un cambio en `_components` | Verificado y justificado: el defecto de las clases, arriba. Desvío 18, aceptado por el usuario |
 | N-5 | No verificaba que `/cuenta` imprima lo mismo | Verificado: mismo JSX (AC-4) |
 | O-1 | «Ventas registradas» contaba de una lista cortada en 500 comprobantes | Corregido: cuenta las vigentes de cada moneda, que llegan enteras |
 | O-2 | Con deuda en una moneda, el saldo a favor en otra no se veía | Corregido: la deuda y debajo «A favor …», sin sumar. Sin test propio |
@@ -276,8 +276,9 @@ Un agente que no participó del trabajo, con acceso de solo lectura, revisó el 
 - **Unitarias y guardas:** 2093 de 2094. Falló `forbidden-references.test.ts` por tiempo (42 s, con la máquina cargada); sola pasó 10 de 10.
 - **Integración:** solo el test temporal de R-3. Esta subfase no toca `src/modules/`.
 - **End-to-end:** la suite completa se cortó al terminar una sesión, después de 282 tests, con 269 pasados. Las 13 que fallaron, todas por tiempo y ninguna con un localizador de la ficha, pasaron solas con el build siguiente. Los specs que no llegó a correr (`users`, `variants`, `warranty`, `warranty-claims`) y `clients.spec.ts`: 48 de 50; los casos 21 (el defecto sin JavaScript, corregido) y 22 (por tiempo; pasó solo). Después de las últimas correcciones, con un build nuevo: `clients`, `client-fields`, `client-tags`, `accounts` y `exchange`, 50 de 50.
+- **Después del ajuste de Operaciones**, con un build nuevo: `clients`, `orders` y `units`, 37 de 41 en la corrida y 3 más repetidas. El caso 9 de `clients.spec.ts` agota el tiempo en esta máquina con y sin el ajuste (probado con `fb68ae1` sin el cambio), no abre Operaciones y pasó en las dos corridas de CI.
 - **En esta máquina**, con poca memoria libre (116 MB en un momento), un build y un servidor de prueba se cayeron, y varias pruebas cortaron por tiempo en lugares distintos. Ninguna falla quedó sin repetir.
 
 ### Autoevaluación
 
-Esta sección la escribió quien implementó, y es autoevaluación salvo la revisión independiente, que se cita. Lo que no está probado: O-2 no tiene test propio; el formato del teléfono y los desvíos 12 y 14 a 17 no se consultaron por separado.
+Esta sección la escribió quien implementó, y es autoevaluación salvo la revisión independiente, que se cita. Lo que no está probado: O-2 no tiene test propio; el formato del teléfono y los desvíos 12 y 14 a 17 no se consultaron por separado (el usuario los aceptó con el recorrido); la separación de Operaciones no tiene un caso propio: se midió con un spec temporal, borrado.
