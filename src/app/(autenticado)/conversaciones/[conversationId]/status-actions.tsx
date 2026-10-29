@@ -23,7 +23,8 @@ import {
 // principal es «Cerrar conversación» en una abierta o pendiente, y «Reabrir» en una cerrada; el
 // otro estado va en «Más acciones». Cerrar no toca la pausa del agente (H-4). Cada botón es su
 // propio formulario sobre la misma acción, así el resultado se anuncia en un solo lugar, con
-// aria-live, y un error recibe el foco.
+// aria-live, y un error recibe el foco. Desde la 24.3.1, «Más acciones» es el botón «···» del mockup
+// 02 (brief-24.3.1).
 
 const initialState: StatusChangeState = { status: "idle" };
 
@@ -67,18 +68,22 @@ export function StatusActions({
             name="status"
             value={primary}
             disabled={pending}
-            className={inlineButtonClass}
+            // En el teléfono, solo el ícono junto a «···», como en 04; el nombre no cambia.
+            className={`${inlineButtonClass} max-sm:size-11 max-sm:px-0`}
           >
             <Icon
-              name={primary === "closed" ? "circleCheck" : "undo"}
+              name={primary === "closed" ? "check" : "undo"}
               className="size-4"
             />
-            {primary === "closed" ? STATUS_ACTION_LABEL.closed : REOPEN_LABEL}
+            <span className="max-sm:sr-only">
+              {primary === "closed" ? STATUS_ACTION_LABEL.closed : REOPEN_LABEL}
+            </span>
           </button>
         </form>
         <MoreActions
           id="mas-acciones-conversacion"
           label="Más acciones de la conversación"
+          iconOnly
         >
           <li>
             <form action={formAction}>

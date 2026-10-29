@@ -26,7 +26,8 @@ import { PageHeader, SearchIcon } from "@/app/_components/page-header";
 import { PageNotice } from "@/app/_components/page-notice";
 import { Pagination, shownRangeText } from "@/app/_components/pagination";
 import { SubNav } from "@/app/_components/sub-nav";
-import { ConversationTable } from "./conversation-table";
+import { ConversationList } from "./conversation-list";
+import { PreviewPanel } from "./preview-panel";
 import {
   conversationFiltersHref,
   DEFAULT_VIEW,
@@ -46,9 +47,13 @@ import {
   type StatusKey,
 } from "./filters";
 import {
+  ALL_CHIP_LABEL,
   CHOOSE_CLIENT_MESSAGE,
-  CLIENT_SEARCH_HINT,
   HUMAN_ATTENTION_LABEL,
+  FILTERS_SHORT_LABEL,
+  MORE_FILTERS_LABEL,
+  ONE_ROW_PER_CLIENT_TEXT,
+  SEARCH_PLACEHOLDER,
   CLIENT_FILTER_NOT_FOUND_MESSAGE,
   FORBIDDEN_PAGE_MESSAGE,
   MORE_CLIENTS_MESSAGE,
@@ -67,12 +72,14 @@ const TITLE = "Conversaciones";
 
 type ClientChoice = { id: string; name: string; isActive: boolean };
 
-const TAB_ICON = {
-  abierta: "circleCheck",
-  pendiente: "clock",
-  cerrada: "circleMinus",
-  todos: "list",
-} as const;
+// Un chip de la bandeja (brief-24.3.1; mockup 01): enlace con aria-current si está aplicado.
+function chipClass(current: boolean): string {
+  return `inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus ${
+    current
+      ? "border-transparent bg-primary-soft text-on-primary-soft"
+      : "border-border bg-surface text-foreground hover:bg-surface-muted"
+  }`;
+}
 
 // La cantidad de una pestaña, o la del chip, con «Atención humana» aplicada o no.
 function countFor(
@@ -96,7 +103,10 @@ function countFor(
 // (brief-24.3): las pestañas de estado con su cantidad, Abiertas por defecto (D-1), el chip
 // «Atención humana», que filtra el agente pausado (D-3), la búsqueda de cliente por nombre o
 // teléfono y el resto de los filtros en «Más filtros» (D-4). Todo son enlaces o un formulario GET:
-// funciona sin JavaScript.
+// funciona sin JavaScript. Desde la 24.3.1, como chat (brief-24.3.1; mockups 01 y 03): una fila por
+// cliente con su conversación más reciente (D-1), los chips, la búsqueda y «Más filtros» en una
+// línea, y en escritorio el panel de vista previa de la elegida con `?ver=` (D-2), que sin elegir
+// no lee ningún hilo (D-3).
 export default async function ConversationsPage({
   searchParams,
 }: {
@@ -176,21 +186,29 @@ export default async function ConversationsPage({
     <main className="mx-auto max-w-6xl px-4 py-8">
       <PageHeader
         title={TITLE}
-        subtitle="Analizá y gestioná todas las conversaciones con tus clientes."
+        subtitle="Atendé consultas, ventas y servicio técnico desde un solo lugar."
       />
 
       <SubNav
+        scroll
         label="Estado de las conversaciones"
         items={STATUS_TABS.map((status) => ({
           href: conversationFiltersHref({ ...view, status, page: 1 }),
           label: STATUS_TAB_LABEL[status],
-          icon: TAB_ICON[status],
           current: view.status === status,
           count: counts ? countFor(counts, status, view.attention) : undefined,
         }))}
       />
 
-      <p className="mt-4">
+      <div className="mt-5 flex flex-wrap items-start gap-3">
+        <Link
+          href={conversationFiltersHref({ ...view, attention: false, page: 1 })}
+          aria-current={view.attention ? undefined : "true"}
+          // En el teléfono no entra en la fila: «Atención humana» se quita con otro toque (mockup 03).
+          className={`order-2 max-sm:hidden lg:order-none ${chipClass(!view.attention)}`}
+        >
+          {ALL_CHIP_LABEL}
+        </Link>
         <Link
           href={conversationFiltersHref({
             ...view,
@@ -198,20 +216,12 @@ export default async function ConversationsPage({
             page: 1,
           })}
           aria-current={view.attention ? "true" : undefined}
-          className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus ${
-            view.attention
-              ? "border-transparent bg-warning-soft text-on-warning-soft"
-              : "border-border bg-surface text-foreground hover:bg-surface-muted"
-          }`}
+          className={`order-2 lg:order-none ${chipClass(view.attention)}`}
         >
-          <Icon
-            name={view.attention ? "check" : "circlePause"}
-            className="size-4"
-          />
           {HUMAN_ATTENTION_LABEL}
           {counts ? " " : null}
           {counts ? (
-            <span className="tabular-nums">
+            <span className="rounded-full bg-surface-muted px-2 py-0.5 text-xs text-foreground tabular-nums">
               {countFor(counts, view.status, true)}
             </span>
           ) : null}
@@ -219,159 +229,164 @@ export default async function ConversationsPage({
             <span className="sr-only"> (filtro aplicado: quitarlo)</span>
           ) : null}
         </Link>
-      </p>
 
-      <form
-        key={conversationFiltersHref(view)}
-        method="get"
-        action="/conversaciones"
-        className="mt-4 flex flex-col gap-3"
-      >
-        {view.status !== DEFAULT_VIEW.status ? (
-          <input type="hidden" name="estado" value={view.status} />
-        ) : null}
-        {view.attention ? (
-          <input type="hidden" name="atencion" value="humana" />
-        ) : null}
-        {view.pageSize !== DEFAULT_VIEW.pageSize ? (
-          <input type="hidden" name="filas" value={view.pageSize} />
-        ) : null}
-        {view.clientId ? (
-          <input type="hidden" name="cliente" value={view.clientId} />
-        ) : (
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="flex flex-col gap-1">
-              <label htmlFor="buscar_cliente" className={labelClass}>
+        <form
+          key={conversationFiltersHref(view)}
+          method="get"
+          action="/conversaciones"
+          // Sin caja propia: la búsqueda y «Más filtros» se ordenan con los chips.
+          className="contents"
+        >
+          {view.status !== DEFAULT_VIEW.status ? (
+            <input type="hidden" name="estado" value={view.status} />
+          ) : null}
+          {view.attention ? (
+            <input type="hidden" name="atencion" value="humana" />
+          ) : null}
+          {view.pageSize !== DEFAULT_VIEW.pageSize ? (
+            <input type="hidden" name="filas" value={view.pageSize} />
+          ) : null}
+          {view.clientId ? (
+            <input type="hidden" name="cliente" value={view.clientId} />
+          ) : (
+            <div className="relative order-1 w-full min-w-0 lg:order-none lg:w-auto lg:flex-1">
+              <label htmlFor="buscar_cliente" className="sr-only">
                 Buscar cliente
               </label>
-              <div className="relative">
-                <SearchIcon />
-                <input
-                  id="buscar_cliente"
-                  name="buscar_cliente"
-                  type="search"
-                  defaultValue={view.clientSearch}
-                  aria-describedby="buscar-cliente-ayuda"
-                  className={`${inputClass} w-72 max-w-full pl-9`}
-                />
+              <SearchIcon />
+              <input
+                id="buscar_cliente"
+                name="buscar_cliente"
+                type="search"
+                placeholder={SEARCH_PLACEHOLDER}
+                defaultValue={view.clientSearch}
+                className={`${inputClass} min-h-11 rounded-full pl-9`}
+              />
+              {/* Enter busca; el botón aparece al llegar con el teclado. Anclado siempre dentro del
+                  campo: en su lugar del flujo, oculto, desbordaba la página a 375 px. */}
+              <button
+                type="submit"
+                className={`sr-only top-1 right-1 focus:not-sr-only focus:absolute ${inlineButtonClass}`}
+              >
+                Buscar
+              </button>
+            </div>
+          )}
+          <details
+            open={hasMoreFilters(view)}
+            className="group relative order-3 ml-auto lg:order-none lg:ml-0"
+          >
+            <summary className="inline-flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-xl border border-border bg-surface px-4 text-sm font-semibold text-foreground hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus [&::-webkit-details-marker]:hidden">
+              <Icon name="filter" className="size-4" />
+              <span className="sm:hidden">{FILTERS_SHORT_LABEL}</span>
+              <span className="max-sm:hidden">{MORE_FILTERS_LABEL}</span>
+              <Icon
+                name="chevronDown"
+                className="size-4 transition-transform group-open:rotate-180 motion-reduce:transition-none"
+              />
+            </summary>
+            <div
+              className={`absolute right-0 z-30 mt-2 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-3 p-4 ${cardClass} shadow-lg`}
+            >
+              <div className="flex flex-col gap-1">
+                <label htmlFor="periodo" className={labelClass}>
+                  Período (último mensaje)
+                </label>
+                <select
+                  id="periodo"
+                  name="periodo"
+                  defaultValue={view.period}
+                  className={selectClass}
+                >
+                  {PERIOD_KEYS.map((period) => (
+                    <option key={period} value={period}>
+                      {PERIOD_LABEL[period]}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <p id="buscar-cliente-ayuda" className="text-sm text-muted">
-                {CLIENT_SEARCH_HINT}
-              </p>
+              {view.period === "personalizado" ? (
+                <>
+                  <div className="flex flex-col gap-1">
+                    <label htmlFor="desde" className={labelClass}>
+                      Desde
+                    </label>
+                    <input
+                      id="desde"
+                      name="desde"
+                      type="date"
+                      defaultValue={view.from}
+                      aria-invalid={periodInvalid || undefined}
+                      aria-describedby={
+                        periodInvalid ? "periodo-error" : undefined
+                      }
+                      className={inputClass}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label htmlFor="hasta" className={labelClass}>
+                      Hasta
+                    </label>
+                    <input
+                      id="hasta"
+                      name="hasta"
+                      type="date"
+                      defaultValue={view.to}
+                      aria-invalid={periodInvalid || undefined}
+                      aria-describedby={
+                        periodInvalid ? "periodo-error" : undefined
+                      }
+                      className={inputClass}
+                    />
+                  </div>
+                </>
+              ) : null}
+              <div className="flex flex-col gap-1">
+                <label htmlFor="canal" className={labelClass}>
+                  Canal
+                </label>
+                <select
+                  id="canal"
+                  name="canal"
+                  defaultValue={view.channel}
+                  className={selectClass}
+                >
+                  <option value="todos">Todos</option>
+                  <option value="whatsapp">WhatsApp</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label htmlFor="orden" className={labelClass}>
+                  Ordenar por
+                </label>
+                <select
+                  id="orden"
+                  name="orden"
+                  defaultValue={view.sort}
+                  className={selectClass}
+                >
+                  {(Object.keys(SORT_LABEL) as SortKey[]).map((key) => (
+                    <option key={key} value={key}>
+                      {SORT_LABEL[key]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button type="submit" className={inlineButtonClass}>
+                Aplicar filtros
+              </button>
             </div>
-            <button type="submit" className={`${inlineButtonClass} mb-6`}>
-              <Icon name="search" className="size-4" />
-              Buscar
-            </button>
-          </div>
-        )}
-        <details open={hasMoreFilters(view)} className="group">
-          <summary className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg text-sm font-semibold text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus">
-            <Icon name="filter" className="size-4" />
-            Más filtros
-            <Icon
-              name="chevronDown"
-              className="size-4 transition-transform group-open:rotate-180 motion-reduce:transition-none"
-            />
-          </summary>
-          <div className="mt-3 flex flex-wrap items-end gap-3">
-            <div className="flex flex-col gap-1">
-              <label htmlFor="periodo" className={labelClass}>
-                Período (último mensaje)
-              </label>
-              <select
-                id="periodo"
-                name="periodo"
-                defaultValue={view.period}
-                className={selectClass}
-              >
-                {PERIOD_KEYS.map((period) => (
-                  <option key={period} value={period}>
-                    {PERIOD_LABEL[period]}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {view.period === "personalizado" ? (
-              <>
-                <div className="flex flex-col gap-1">
-                  <label htmlFor="desde" className={labelClass}>
-                    Desde
-                  </label>
-                  <input
-                    id="desde"
-                    name="desde"
-                    type="date"
-                    defaultValue={view.from}
-                    aria-invalid={periodInvalid || undefined}
-                    aria-describedby={
-                      periodInvalid ? "periodo-error" : undefined
-                    }
-                    className={inputClass}
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label htmlFor="hasta" className={labelClass}>
-                    Hasta
-                  </label>
-                  <input
-                    id="hasta"
-                    name="hasta"
-                    type="date"
-                    defaultValue={view.to}
-                    aria-invalid={periodInvalid || undefined}
-                    aria-describedby={
-                      periodInvalid ? "periodo-error" : undefined
-                    }
-                    className={inputClass}
-                  />
-                </div>
-              </>
-            ) : null}
-            <div className="flex flex-col gap-1">
-              <label htmlFor="canal" className={labelClass}>
-                Canal
-              </label>
-              <select
-                id="canal"
-                name="canal"
-                defaultValue={view.channel}
-                className={selectClass}
-              >
-                <option value="todos">Todos</option>
-                <option value="whatsapp">WhatsApp</option>
-              </select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <label htmlFor="orden" className={labelClass}>
-                Ordenar por
-              </label>
-              <select
-                id="orden"
-                name="orden"
-                defaultValue={view.sort}
-                className={selectClass}
-              >
-                {(Object.keys(SORT_LABEL) as SortKey[]).map((key) => (
-                  <option key={key} value={key}>
-                    {SORT_LABEL[key]}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <button type="submit" className={inlineButtonClass}>
-              Aplicar filtros
-            </button>
-          </div>
-        </details>
-        {filtered ? (
-          <p>
-            <Link href="/conversaciones" className={`${linkClass} py-2`}>
-              Limpiar filtros
-            </Link>
-          </p>
-        ) : null}
-      </form>
+          </details>
+        </form>
+      </div>
+
+      {filtered ? (
+        <p className="mt-3">
+          <Link href="/conversaciones" className={`${linkClass} py-2`}>
+            Limpiar filtros
+          </Link>
+        </p>
+      ) : null}
 
       {view.clientId && !clientMissing ? (
         <p className="mt-4 text-sm">
@@ -481,32 +496,40 @@ export default async function ConversationsPage({
           }
         />
       ) : (
-        <>
-          <ConversationTable
-            conversations={result.conversations}
-            timeZone={result.timezone}
-            caption="Conversaciones de la organización"
-            showClient
-          />
-          <Pagination
-            page={result.page}
-            pageCount={result.pageCount}
-            rangeText={shownRangeText({
-              page: result.page,
-              pageSize: view.pageSize,
-              shown: result.conversations.length,
-              total: result.total,
-              singular: "conversación",
-              plural: "conversaciones",
-            })}
-            hrefFor={(page) => conversationFiltersHref({ ...view, page })}
-            pageSize={{
-              current: view.pageSize,
-              hrefFor: (pageSize) =>
-                conversationFiltersHref({ ...view, pageSize, page: 1 }),
-            }}
-          />
-        </>
+        <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]">
+          <div className="min-w-0">
+            <ConversationList
+              conversations={result.conversations}
+              timeZone={result.timezone}
+              selectedId={view.selected}
+              previewHref={(id) =>
+                conversationFiltersHref({ ...view, selected: id })
+              }
+            />
+            <p className="mt-3 text-xs text-muted">{ONE_ROW_PER_CLIENT_TEXT}</p>
+            <Pagination
+              page={result.page}
+              pageCount={result.pageCount}
+              rangeText={shownRangeText({
+                page: result.page,
+                pageSize: view.pageSize,
+                shown: result.conversations.length,
+                total: result.total,
+                singular: "conversación",
+                plural: "conversaciones",
+              })}
+              hrefFor={(page) => conversationFiltersHref({ ...view, page })}
+              pageSize={{
+                current: view.pageSize,
+                hrefFor: (pageSize) =>
+                  conversationFiltersHref({ ...view, pageSize, page: 1 }),
+              }}
+            />
+          </div>
+          <div className="hidden min-w-0 lg:sticky lg:top-24 lg:block">
+            <PreviewPanel context={context} selectedId={view.selected} />
+          </div>
+        </div>
       )}
 
       <p className="mt-6 flex items-center gap-2 text-sm text-muted">

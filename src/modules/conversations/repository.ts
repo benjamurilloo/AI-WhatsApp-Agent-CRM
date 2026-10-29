@@ -73,7 +73,16 @@ export type ConversationQuery = {
   timezone: string;
   // true: solo con el agente pausado; false: solo activo; null: sin filtro (brief-24.3, D-3).
   agentPaused: boolean | null;
+  // true: una fila por cliente, su conversación más reciente, y cada una sin cliente
+  // (brief-24.3.1, D-1). Los demás filtros se aplican a esa conversación.
+  latestPerClient?: boolean;
 };
+
+// La conversación más reciente de un cliente: último mensaje, inicio e id, en ese orden. Es el
+// mismo orden que usa la bandeja agrupada y el hilo unido para elegir sobre cuál se actúa.
+const LATEST_ORDER = sql.raw(
+  "last_message_at desc nulls last, started_at desc, id desc",
+);
 
 // Período [from 00:00, to + 1 día 00:00) en la zona de la organización, como el historial de
 // movimientos (brief-4.3.3, D-3). Una conversación sin mensajes no entra en un período.
@@ -85,6 +94,13 @@ function conversationConditions(query: ConversationQuery): SQL | undefined {
   if (query.channel) conditions.push(eq(conversations.channel, query.channel));
   if (query.clientId) {
     conditions.push(eq(conversations.clientId, query.clientId));
+  }
+  if (query.latestPerClient) {
+    // Subconsulta correlacionada por conversations_organization_client_last_message_idx, dentro
+    // del módulo y sin JOIN con otro (R-1).
+    conditions.push(
+      sql`(${conversations.clientId} is null or ${conversations.id} = (select latest.id from conversations latest where latest.organization_id = ${conversations.organizationId} and latest.client_id = ${conversations.clientId} order by ${sql.raw("latest.last_message_at desc nulls last, latest.started_at desc, latest.id desc")} limit 1))`,
+    );
   }
   if (query.agentPaused !== null) {
     conditions.push(
@@ -227,6 +243,24 @@ export async function findConversation(
   return rows[0];
 }
 
+// Las conversaciones de un cliente, de la más reciente a la más vieja, para el hilo unido
+// (brief-24.3.1, D-1).
+export function findClientConversations(
+  organizationId: string,
+  clientId: string,
+): Promise<ConversationRow[]> {
+  return getDb()
+    .select(conversationColumns)
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.organizationId, organizationId),
+        eq(conversations.clientId, clientId),
+      ),
+    )
+    .orderBy(LATEST_ORDER);
+}
+
 // El llamador ya leyó la fila filtrada por organización y con FOR UPDATE en esta misma
 // transacción, así que cero filas actualizadas no es una carrera: es un defecto de
 // programación. Se lanza dentro de la transacción, que revierte (9.0.1, D-1).
@@ -277,6 +311,7 @@ export async function updateAgentPause(
 
 export type MessageRow = {
   id: string;
+  conversationId: string;
   direction: MessageDirection;
   sentAt: Date;
   // sent_at con microsegundos, en UTC: Date solo tiene milisegundos y el cursor no puede perderlos.
@@ -292,7 +327,8 @@ export type MessageCursor = { sentAt: string; id: string };
 // Mensajes anteriores al cursor (sent_at, id), del más reciente al más antiguo (D-2).
 export function findMessagesBefore(
   organizationId: string,
-  conversationId: string,
+  // Una conversación, o todas las de un cliente en el hilo unido (brief-24.3.1, D-1).
+  conversationId: string | string[],
   before: MessageCursor | null,
   limit: number,
   extra?: SQL,
@@ -300,6 +336,7 @@ export function findMessagesBefore(
   return getDb()
     .select({
       id: messages.id,
+      conversationId: messages.conversationId,
       direction: messages.direction,
       sentAt: messages.sentAt,
       sentAtExact: sql<string>`to_char(${messages.sentAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
@@ -311,7 +348,9 @@ export function findMessagesBefore(
     .where(
       and(
         eq(messages.organizationId, organizationId),
-        eq(messages.conversationId, conversationId),
+        typeof conversationId === "string"
+          ? eq(messages.conversationId, conversationId)
+          : inArray(messages.conversationId, conversationId),
         before === null
           ? undefined
           : sql`(${messages.sentAt}, ${messages.id}) < (${before.sentAt}::timestamptz, ${before.id}::uuid)`,
@@ -324,6 +363,7 @@ export function findMessagesBefore(
 
 export type NoteRow = {
   id: string;
+  conversationId: string;
   actorUserId: string;
   // Nulo: el texto se vació con los datos del cliente (brief-16.4, D-5).
   body: string | null;
@@ -337,7 +377,7 @@ export type NoteCursor = { createdAt: string; id: string };
 // Notas anteriores al cursor (created_at, id), de la más reciente a la más vieja (brief-16.4, D-3).
 export function findNotesBefore(
   organizationId: string,
-  conversationId: string,
+  conversationId: string | string[],
   before: NoteCursor | null,
   limit: number,
   extra?: SQL,
@@ -345,6 +385,7 @@ export function findNotesBefore(
   return getDb()
     .select({
       id: conversationNotes.id,
+      conversationId: conversationNotes.conversationId,
       actorUserId: conversationNotes.actorUserId,
       body: conversationNotes.bodyText,
       createdAt: conversationNotes.createdAt,
@@ -354,7 +395,9 @@ export function findNotesBefore(
     .where(
       and(
         eq(conversationNotes.organizationId, organizationId),
-        eq(conversationNotes.conversationId, conversationId),
+        typeof conversationId === "string"
+          ? eq(conversationNotes.conversationId, conversationId)
+          : inArray(conversationNotes.conversationId, conversationId),
         before === null
           ? undefined
           : sql`(${conversationNotes.createdAt}, ${conversationNotes.id}) < (${before.createdAt}::timestamptz, ${before.id}::uuid)`,
@@ -380,7 +423,7 @@ export type TimelineCursor = {
 // mensaje de su misma fecha va antes que ella.
 export function findTimelineMessages(
   organizationId: string,
-  conversationId: string,
+  conversationId: string | string[],
   before: TimelineCursor | null,
   limit: number,
 ): Promise<MessageRow[]> {
@@ -403,7 +446,7 @@ export function findTimelineMessages(
 // nota de su misma fecha va antes que él.
 export function findTimelineNotes(
   organizationId: string,
-  conversationId: string,
+  conversationId: string | string[],
   before: TimelineCursor | null,
   limit: number,
 ): Promise<NoteRow[]> {

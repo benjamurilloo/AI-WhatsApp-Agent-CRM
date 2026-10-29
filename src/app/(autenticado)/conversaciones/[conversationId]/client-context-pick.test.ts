@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  appointmentDayText,
   pickNextAppointment,
   pickOpenServiceOrder,
 } from "./client-context-pick";
@@ -42,5 +43,14 @@ describe("el contexto del cliente (brief-24.3, D-6)", () => {
       )?.id,
     ).toBe("g");
     expect(pickNextAppointment(appointments.slice(4), today)).toBeNull();
+  });
+
+  it("brief-24.3.1: el día del turno dice Hoy, Mañana o el día con la fecha", () => {
+    expect(appointmentDayText("2026-10-28", "2026-10-28")).toBe("Hoy");
+    expect(appointmentDayText("2026-10-29", "2026-10-28")).toBe("Mañana");
+    expect(appointmentDayText("2026-11-01", "2026-10-31")).toBe("Mañana");
+    expect(appointmentDayText("2026-10-30", "2026-10-28")).toMatch(
+      /30\/10\/2026$/,
+    );
   });
 });

@@ -85,6 +85,9 @@ export type ConversationView = {
   pageSize: number;
   // Solo las del agente pausado, «Atención humana» (brief-24.3, D-3).
   attention: boolean;
+  // La conversación del panel de vista previa, `?ver=` (brief-24.3.1, D-2); vacía: ninguna (D-3).
+  // La valida el servicio.
+  selected: string;
 };
 
 export const DEFAULT_VIEW: ConversationView = {
@@ -99,6 +102,7 @@ export const DEFAULT_VIEW: ConversationView = {
   sort: "reciente",
   pageSize: DEFAULT_PAGE_SIZE,
   attention: false,
+  selected: "",
 };
 
 // Las pestañas de la bandeja, en su orden (brief-24.3, D-1).
@@ -176,6 +180,7 @@ export function parseConversationView(params: SearchParams): ConversationView {
     ),
     pageSize: parsePageSize(params.filas),
     attention: single(params.atencion) === "humana",
+    selected: single(params.ver)?.trim().slice(0, 64) ?? "",
   };
 }
 
@@ -194,6 +199,8 @@ export function toListFilters(
     sort: SORT_PARAM[view.sort],
     pageSize: view.pageSize,
     agentPaused: view.attention,
+    // La bandeja es de a un cliente por fila (brief-24.3.1, D-1).
+    latestPerClient: true,
   };
   if (view.period === "personalizado") {
     return { ...base, from: view.from, to: view.to };
@@ -230,6 +237,7 @@ export function conversationFiltersHref(view: ConversationView): string {
     query.set("filas", String(view.pageSize));
   }
   if (view.page > 1) query.set("pagina", String(view.page));
+  if (view.selected) query.set("ver", view.selected);
   const text = query.toString();
   return text ? `/conversaciones?${text}` : "/conversaciones";
 }

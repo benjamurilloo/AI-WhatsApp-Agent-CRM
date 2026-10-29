@@ -20,14 +20,18 @@ export const moreActionItemClass =
 
 export const moreActionDangerClass = "text-danger hover:bg-danger-soft";
 
+// iconOnly: el botón muestra solo «···», como el hilo de la v2 (brief-24.3.1); el nombre accesible
+// sigue siendo label.
 export function MoreActions({
   id,
   label,
   children,
+  iconOnly = false,
 }: {
   id: string;
   label: string;
   children: ReactNode;
+  iconOnly?: boolean;
 }) {
   const menu = useDisclosure();
   return (
@@ -40,10 +44,14 @@ export function MoreActions({
         aria-controls={id}
         aria-label={label}
         onClick={menu.toggle}
-        className={secondaryButtonClass}
+        className={
+          iconOnly
+            ? `${secondaryButtonClass} size-11 px-0`
+            : secondaryButtonClass
+        }
       >
-        <Icon name="ellipsis" className="size-4" />
-        Más acciones
+        <Icon name="ellipsis" className={iconOnly ? "size-5" : "size-4"} />
+        {iconOnly ? null : "Más acciones"}
       </button>
       <div
         id={id}

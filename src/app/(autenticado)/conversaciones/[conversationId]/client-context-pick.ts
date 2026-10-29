@@ -1,3 +1,5 @@
+import { formatDayDate } from "@/app/(autenticado)/informacion/horario/messages";
+
 // Qué reparación y qué turno muestra el contexto del cliente (brief-24.3, D-6). Puro: la página
 // compone las lecturas de service y appointments, sin JOIN entre módulos.
 
@@ -36,4 +38,14 @@ export function pickNextAppointment<
     }
   }
   return next;
+}
+
+// El día de un turno en el contexto: «Hoy» y «Mañana», o el día de la semana con la fecha, como el
+// mockup 02 (brief-24.3.1). Fechas YYYY-MM-DD.
+export function appointmentDayText(date: string, today: string): string {
+  if (date === today) return "Hoy";
+  const next = new Date(`${today}T00:00:00Z`);
+  next.setUTCDate(next.getUTCDate() + 1);
+  if (date === next.toISOString().slice(0, 10)) return "Mañana";
+  return formatDayDate(date);
 }

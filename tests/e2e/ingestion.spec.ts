@@ -95,11 +95,12 @@ test("caso 1: un evento aceptado aparece en la pantalla de conversaciones", asyn
   await expect(page).not.toHaveURL(/\/login$/);
 
   await page.goto("/conversaciones");
-  const table = page.getByRole("table", {
+  // Desde la 24.3.1, una lista de chats; en escritorio la fila abre el panel de vista previa.
+  const list = page.getByRole("list", {
     name: "Conversaciones de la organización",
   });
-  await expect(table.getByRole("row")).toHaveCount(2);
-  await table.getByRole("link", { name: CLIENT_NAME }).click();
+  await expect(list.getByRole("listitem")).toHaveCount(1);
+  await list.getByRole("link", { name: new RegExp(CLIENT_NAME) }).click();
   await expect(
     page
       .getByRole("list", { name: "Mensajes" })

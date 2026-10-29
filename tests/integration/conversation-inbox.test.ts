@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { hashPassword, login } from "@/modules/auth";
 import {
   getConversationCounts,
+  getConversationThread,
   listConversations,
   listConversationTimeline,
   TIMELINE_PAGE_SIZE,
@@ -71,15 +72,24 @@ async function seed() {
 async function insertConversation(
   organizationId: string,
   status: "open" | "pending" | "closed",
-  options: { paused?: boolean; at?: string } = {},
+  options: { paused?: boolean; at?: string; clientId?: string } = {},
 ) {
   const at = new Date(options.at ?? "2026-10-20T14:00:00.000Z");
   const result = await getDb().execute<{ id: string }>(
     sql`insert into conversations
-          (organization_id, channel, status, started_at, last_message_at, agent_paused_at)
-        values (${organizationId}, 'whatsapp', ${status}, ${at}, ${at},
-          ${options.paused ? at : null})
+          (organization_id, client_id, channel, status, started_at, last_message_at,
+           agent_paused_at)
+        values (${organizationId}, ${options.clientId ?? null}, 'whatsapp', ${status}, ${at},
+          ${at}, ${options.paused ? at : null})
         returning id`,
+  );
+  return result.rows[0]!.id;
+}
+
+async function insertClient(organizationId: string, name: string) {
+  const result = await getDb().execute<{ id: string }>(
+    sql`insert into clients (organization_id, display_name)
+        values (${organizationId}, ${name}) returning id`,
   );
   return result.rows[0]!.id;
 }
@@ -386,6 +396,225 @@ describe(
       expect(
         await listConversationTimeline(s.adminA, id, { before: old }),
       ).toEqual({ ok: false, code: "VALIDATION_ERROR" });
+    });
+  },
+);
+
+describe(
+  "la bandeja por cliente y el hilo unido (brief-24.3.1, D-1)",
+  {
+    timeout: TEST_TIMEOUT,
+  },
+  () => {
+    it("AC-1: una fila por cliente con su conversación más reciente, las sin cliente aparte, y los filtros y cantidades sobre esa fila", async () => {
+      const s = await seed();
+      const lucia = await insertClient(s.orgA, "Lucía");
+      const martin = await insertClient(s.orgA, "Martín");
+      // Lucía: una pendiente vieja y una abierta nueva; cuenta como abierta.
+      await insertConversation(s.orgA, "pending", {
+        clientId: lucia,
+        at: "2026-10-10T10:00:00Z",
+      });
+      const luciaNew = await insertConversation(s.orgA, "open", {
+        clientId: lucia,
+        at: "2026-10-20T10:00:00Z",
+      });
+      const martinOnly = await insertConversation(s.orgA, "closed", {
+        clientId: martin,
+        paused: true,
+        at: "2026-10-15T10:00:00Z",
+      });
+      const anonymous1 = await insertConversation(s.orgA, "open", {
+        at: "2026-10-18T10:00:00Z",
+      });
+      const anonymous2 = await insertConversation(s.orgA, "open", {
+        at: "2026-10-17T10:00:00Z",
+      });
+      // Otra organización con el mismo nombre de cliente no agrupa nada.
+      const other = await insertClient(s.orgB, "Lucía");
+      await insertConversation(s.orgB, "open", { clientId: other });
+
+      const grouped = { ...noFilters, latestPerClient: true };
+      for (const context of [s.adminA, s.viewerA]) {
+        const all = await listConversations(context, {
+          ...grouped,
+          status: "all",
+          page: 1,
+        });
+        if (!all.ok) throw new Error(all.code);
+        expect(all.total).toBe(4);
+        expect(all.conversations.map((c) => c.id)).toEqual([
+          luciaNew,
+          anonymous1,
+          anonymous2,
+          martinOnly,
+        ]);
+
+        const pending = await listConversations(context, {
+          ...grouped,
+          status: "pending",
+          page: 1,
+        });
+        if (!pending.ok) throw new Error(pending.code);
+        expect(pending.total).toBe(0);
+
+        const paused = await listConversations(context, {
+          ...grouped,
+          status: "all",
+          agentPaused: true,
+          page: 1,
+        });
+        if (!paused.ok) throw new Error(paused.code);
+        expect(paused.conversations.map((c) => c.id)).toEqual([martinOnly]);
+
+        const counts = await getConversationCounts(context, grouped);
+        if (!counts.ok) throw new Error(counts.code);
+        expect(counts.counts).toEqual({
+          open: { total: 3, paused: 0 },
+          pending: { total: 0, paused: 0 },
+          closed: { total: 1, paused: 1 },
+        });
+      }
+
+      // Sin agrupar, como antes: las cinco.
+      const flat = await listConversations(s.adminA, {
+        ...noFilters,
+        status: "all",
+        page: 1,
+      });
+      if (!flat.ok) throw new Error(flat.code);
+      expect(flat.total).toBe(5);
+    });
+
+    it("AC-2: el hilo une las conversaciones del cliente, con la más reciente para actuar, y no cruza organizaciones", async () => {
+      const s = await seed();
+      const lucia = await insertClient(s.orgA, "Lucía");
+      const first = await insertConversation(s.orgA, "closed", {
+        clientId: lucia,
+        at: "2026-10-10T10:00:00Z",
+      });
+      const second = await insertConversation(s.orgA, "open", {
+        clientId: lucia,
+        at: "2026-10-20T10:00:00Z",
+      });
+      const alone = await insertConversation(s.orgA, "open");
+      await insertMessage(s.orgA, first, "2026-10-10T10:00:00Z", "uno");
+      await insertNote(
+        s.orgA,
+        first,
+        s.adminAId,
+        "2026-10-10T11:00:00Z",
+        "nota",
+      );
+      await insertMessage(s.orgA, second, "2026-10-20T10:00:00Z", "dos");
+
+      for (const context of [s.adminA, s.viewerA]) {
+        for (const id of [first, second]) {
+          expect(await getConversationThread(context, id)).toEqual({
+            ok: true,
+            latestId: second,
+            conversations: [
+              { id: first, status: "closed", startedAt: expect.any(Date) },
+              { id: second, status: "open", startedAt: expect.any(Date) },
+            ],
+          });
+          const timeline = await listConversationTimeline(context, id, {
+            before: "",
+            scope: "client",
+          });
+          if (!timeline.ok) throw new Error(timeline.code);
+          expect(
+            timeline.entries.map((e) => [label(e), e.conversationId]),
+          ).toEqual([
+            ["m:uno", first],
+            ["n:nota", first],
+            ["m:dos", second],
+          ]);
+        }
+      }
+      // Sin el alcance del cliente, solo la pedida.
+      const single = await listConversationTimeline(s.adminA, first, {
+        before: "",
+      });
+      if (!single.ok) throw new Error(single.code);
+      expect(single.entries.map(label)).toEqual(["m:uno", "n:nota"]);
+
+      // Sin cliente, el hilo es la conversación sola.
+      expect(await getConversationThread(s.adminA, alone)).toEqual({
+        ok: true,
+        latestId: alone,
+        conversations: [
+          { id: alone, status: "open", startedAt: expect.any(Date) },
+        ],
+      });
+      expect(await getConversationThread(s.adminB, first)).toEqual({
+        ok: false,
+        code: "NOT_FOUND",
+      });
+    });
+
+    it("R-2: el hilo unido pagina sin perder ni repetir entradas en el borde entre dos conversaciones, y el panel lee 8", async () => {
+      const s = await seed();
+      const lucia = await insertClient(s.orgA, "Lucía");
+      const first = await insertConversation(s.orgA, "closed", {
+        clientId: lucia,
+        at: "2026-10-10T10:00:00Z",
+      });
+      const second = await insertConversation(s.orgA, "open", {
+        clientId: lucia,
+        at: "2026-10-20T10:00:00Z",
+      });
+      const expected: string[] = [];
+      for (let i = 0; i < 30; i++) {
+        const at = `2026-10-10T10:${String(i).padStart(2, "0")}:00Z`;
+        await insertMessage(s.orgA, first, at, `a${i}`);
+        expected.push(`m:a${i}`);
+      }
+      // A la misma hora que el último de la primera, el primero de la segunda; con 49 después, la
+      // página de 50 corta entre los dos: el empate queda partido entre dos páginas.
+      await insertMessage(s.orgA, second, "2026-10-10T10:29:00Z", "b0");
+      for (let i = 1; i < 50; i++) {
+        const at = `2026-10-20T10:${String(i).padStart(2, "0")}:00Z`;
+        await insertMessage(s.orgA, second, at, `b${i}`);
+      }
+      const pages: ConversationTimelineEntry[][] = [];
+      let before = "";
+      for (;;) {
+        const result = await listConversationTimeline(s.adminA, second, {
+          before,
+          scope: "client",
+        });
+        if (!result.ok) throw new Error(result.code);
+        pages.unshift(result.entries);
+        if (result.before === null) break;
+        before = result.before;
+      }
+      expect(pages.map((page) => page.length)).toEqual([
+        30,
+        TIMELINE_PAGE_SIZE,
+      ]);
+      const labels = pages.flat().map(label);
+      expect(new Set(labels).size).toBe(80);
+      // El corte cae en el empate: uno queda al final de una página y el otro al principio de la otra.
+      expect(new Set([pages[0]!.at(-1)!, pages[1]![0]!].map(label))).toEqual(
+        new Set(["m:a29", "m:b0"]),
+      );
+      // a29 y b0 tienen la misma hora: van juntas, en el orden de su id, con las dos conversaciones
+      // en orden alrededor.
+      expect(labels.slice(0, 29)).toEqual(expected.slice(0, 29));
+      expect(new Set(labels.slice(29, 31))).toEqual(new Set(["m:a29", "m:b0"]));
+      expect(labels.slice(31)).toEqual(
+        Array.from({ length: 49 }, (_, i) => `m:b${i + 1}`),
+      );
+
+      const preview = await listConversationTimeline(s.viewerA, second, {
+        before: "",
+        scope: "client",
+        limit: 8,
+      });
+      if (!preview.ok) throw new Error(preview.code);
+      expect(preview.entries.map(label)).toEqual(labels.slice(-8));
+      expect(preview.before).not.toBeNull();
     });
   },
 );

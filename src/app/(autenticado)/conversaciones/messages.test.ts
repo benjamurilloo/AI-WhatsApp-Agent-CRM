@@ -4,13 +4,15 @@ import {
   FORBIDDEN_ACTION_MESSAGE,
   FORMER_MEMBER_TEXT,
   periodHasError,
+  conversationSeparatorText,
+  startsConversation,
   startsDay,
   statusChangedMessage,
   statusChangeErrorMessage,
   statusUnchangedMessage,
   type TimelineItem,
 } from "./messages";
-import { toTimelineItems } from "./[conversationId]/timeline-items";
+import { dayLabel, toTimelineItems } from "./[conversationId]/timeline-items";
 
 const BUENOS_AIRES = "America/Argentina/Buenos_Aires";
 
@@ -42,12 +44,15 @@ describe("textos de las pantallas 8 y 9 (brief-6.4)", () => {
   });
 });
 
+const NOW = new Date("2026-09-11T15:00:00Z");
+
 describe("timeline (pantalla 9)", () => {
   it("formatea en la zona de la organización y nombra la dirección con texto", () => {
     const items = toTimelineItems(
       [
         {
           type: "message",
+          conversationId: "c1",
           id: "a",
           direction: "inbound",
           // 23:30 del 9 en Buenos Aires.
@@ -58,6 +63,7 @@ describe("timeline (pantalla 9)", () => {
         },
         {
           type: "message",
+          conversationId: "c1",
           id: "b",
           direction: "outbound",
           sentAt: new Date("2026-09-10T03:10:00Z"),
@@ -67,27 +73,34 @@ describe("timeline (pantalla 9)", () => {
         },
       ],
       BUENOS_AIRES,
+      NOW,
     );
     expect(items).toEqual([
       {
         type: "message",
+        conversationId: "c1",
         id: "a",
         direction: "inbound",
         directionLabel: "Cliente",
         kindLabel: null,
         senderLabel: null,
+        avatar: "client",
         day: "09/09/2026",
+        dayLabel: "9 sept",
         time: "23:30",
         body: "<b>Hola</b>",
       },
       {
         type: "message",
+        conversationId: "c1",
         id: "b",
         direction: "outbound",
         directionLabel: "Negocio",
         kindLabel: null,
         senderLabel: null,
+        avatar: "business",
         day: "10/09/2026",
+        dayLabel: "Ayer · 10 sept",
         time: "00:10",
         body: null,
       },
@@ -100,6 +113,7 @@ describe("timeline (pantalla 9)", () => {
       [
         {
           type: "message",
+          conversationId: "c1",
           id: "a",
           direction: "inbound",
           sentAt: at,
@@ -109,6 +123,7 @@ describe("timeline (pantalla 9)", () => {
         },
         {
           type: "message",
+          conversationId: "c1",
           id: "b",
           direction: "outbound",
           sentAt: at,
@@ -118,6 +133,7 @@ describe("timeline (pantalla 9)", () => {
         },
         {
           type: "message",
+          conversationId: "c1",
           id: "c",
           direction: "outbound",
           sentAt: at,
@@ -127,6 +143,7 @@ describe("timeline (pantalla 9)", () => {
         },
         {
           type: "message",
+          conversationId: "c1",
           id: "d",
           direction: "outbound",
           sentAt: at,
@@ -154,6 +171,7 @@ describe("timeline (pantalla 9)", () => {
       [
         {
           type: "note",
+          conversationId: "c1",
           id: "n1",
           author: { id: "u1", name: "Ana" },
           createdAt: new Date("2026-09-10T15:05:00Z"),
@@ -161,6 +179,7 @@ describe("timeline (pantalla 9)", () => {
         },
         {
           type: "note",
+          conversationId: "c1",
           id: "n2",
           author: { id: "u2", name: "" },
           createdAt: new Date("2026-09-10T15:06:00Z"),
@@ -168,21 +187,26 @@ describe("timeline (pantalla 9)", () => {
         },
       ],
       BUENOS_AIRES,
+      NOW,
     );
     expect(items).toEqual([
       {
         type: "note",
+        conversationId: "c1",
         id: "n1",
         author: "Ana",
         day: "10/09/2026",
+        dayLabel: "Ayer · 10 sept",
         time: "12:05",
         body: "llamar",
       },
       {
         type: "note",
+        conversationId: "c1",
         id: "n2",
         author: FORMER_MEMBER_TEXT,
         day: "10/09/2026",
+        dayLabel: "Ayer · 10 sept",
         time: "12:06",
         body: null,
       },
@@ -192,12 +216,15 @@ describe("timeline (pantalla 9)", () => {
   it("pone un separador en el primer mensaje de cada día, también al unir páginas", () => {
     const item = (id: string, day: string): TimelineItem => ({
       type: "message",
+      conversationId: "c1",
       id,
       direction: "inbound",
+      avatar: "client",
       directionLabel: "Cliente",
       kindLabel: null,
       senderLabel: null,
       day,
+      dayLabel: day,
       time: "10:00",
       body: "x",
     });
@@ -210,5 +237,43 @@ describe("timeline (pantalla 9)", () => {
       false,
       true,
     ]);
+  });
+
+  it("brief-24.3.1: la píldora dice Hoy, Ayer o el día, con el año si no es el actual", () => {
+    const today = new Date("2026-10-28T15:00:00Z");
+    expect(
+      dayLabel(new Date("2026-10-28T12:00:00Z"), BUENOS_AIRES, today),
+    ).toBe("Hoy · 28 oct");
+    expect(
+      dayLabel(new Date("2026-10-27T12:00:00Z"), BUENOS_AIRES, today),
+    ).toBe("Ayer · 27 oct");
+    expect(
+      dayLabel(new Date("2026-10-20T12:00:00Z"), BUENOS_AIRES, today),
+    ).toBe("20 oct");
+    expect(
+      dayLabel(new Date("2025-12-31T12:00:00Z"), BUENOS_AIRES, today),
+    ).toBe("31 dic 2025");
+  });
+
+  it("brief-24.3.1: un separador de conversación va donde cambia la conversación, no en la primera (D-1)", () => {
+    const item = (id: string, conversationId: string): TimelineItem => ({
+      type: "note",
+      id,
+      conversationId,
+      author: "Ana",
+      day: "10/09/2026",
+      dayLabel: "10 sept",
+      time: "10:00",
+      body: "x",
+    });
+    const items = [item("1", "a"), item("2", "a"), item("3", "b")];
+    expect(items.map((_, index) => startsConversation(items, index))).toEqual([
+      false,
+      false,
+      true,
+    ]);
+    expect(conversationSeparatorText("25/10/2026", "closed")).toBe(
+      "Conversación del 25/10/2026 · Cerrada",
+    );
   });
 });

@@ -220,7 +220,8 @@ export async function loadOlderMessagesAction(
     const result = await listConversationTimeline(
       context,
       String(conversationId),
-      { before },
+      // El hilo unido del cliente, como la pantalla (brief-24.3.1, D-1).
+      { before, scope: "client" },
     );
     if (!result.ok) {
       return {

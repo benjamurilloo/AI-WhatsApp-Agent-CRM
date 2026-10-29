@@ -160,3 +160,107 @@ El usuario recorrió la 24.3 en producción (`c3ddae4`) y dijo que no quedó com
 - **Necesario ahora:** la agrupación, el hilo unido, el panel y la forma de 01 a 05.
 - **Antes de producción:** nada nuevo; la 24.3 ya está desplegada y esta la reemplaza.
 - **Después:** la línea de reparación por fila (D-5), «Sin leer» (Fase 26) y responder (ADR 0017). Y, para el resto de la Fase 24, la comparación visual de AC-9 se vuelve un criterio de cada subfase.
+
+## Cierre
+
+*Del 2026-10-29, antes del commit de la implementación. El commit, la CI, el despliegue y el recorrido del usuario (AC-11 y AC-12) quedan pendientes de autorización.*
+
+### Criterios
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| AC-1 | cumple | `latestPerClient` en `listConversations` y en las cantidades: la más reciente de cada cliente se elige antes de filtrar. `conversation-inbox.test.ts`: una fila por cliente, las sin cliente aparte, y los filtros y las cantidades sobre esa fila. Caso 21: una fila por cliente en la bandeja. Debajo de la lista, «Cada cliente aparece una vez, con su conversación más reciente.» (R-3) |
+| AC-2 | cumple | `getConversationThread` y `listConversationTimeline` con `scope: "client"`. `conversation-inbox.test.ts`: el hilo une las conversaciones sin cruzar organizaciones, y R-2 cruza el borde entre dos conversaciones sin perder ni repetir entradas. Caso 21: los separadores y la redirección de una conversación anterior a la más reciente, con `#conversacion-{id}`. Cada conversación lleva un solo ancla |
+| AC-3 | cumple | Las acciones, la franja y la nota reciben el id de la más reciente. Casos 7, 14 y 16: anunciados y auditados como en la 24.3. Caso 22: la confirmación de «Tomar conversación» se abre con el teclado, se cierra con Escape y con «Cancelar», devuelve el foco y no pausa; a 375 px entra en la pantalla |
+| AC-4 | cumple, sin test sin JavaScript | Caso 21: una fila lleva a `?ver=` conservando los filtros, el panel muestra la conversación y «Abrir conversación» lleva al hilo; sin `?ver=`, el panel no lee ningún hilo (D-3). La fila es un enlace y el panel se arma en el servidor, así que no depende de JavaScript, pero ningún caso lo corre sin JavaScript (m-2, abajo) |
+| AC-5 | cumple | El caso 2 (FR-CONV-01) comprueba lo mismo que antes, sobre la lista sin `?ver=` |
+| AC-6 | cumple | `client-context.tsx`: una tarjeta por bloque, «Sin turno asignado», «Actividad del agente» (D-4) y las acciones relacionadas como lista solo para `admin`. `client-context-pick.test.ts`. Casos 19 y 20 |
+| AC-7 | cumple | Caso 20: el viewer recorre la bandeja, el panel con `?ver=` y el hilo, y lo que recibe no contiene el teléfono, el email ni los importes de la clienta. Casos 15 y 17: sin botones ni formularios |
+| AC-8 | cumple | `conversations.spec.ts` llama a axe en 40 estados, en claro y en oscuro: la bandeja con y sin panel, el hilo activo y pausado, la confirmación (también a 375 px), la nota y el teléfono. Los casos 10 y 14 comprueban además que nada se sale del ancho a 375 px |
+| AC-9 | cumple, con desvíos a decidir | La comparación, abajo. Lo que no excluye una regla está marcado como desvío para tu decisión |
+| AC-10 | cumple, por encima del umbral | La medición, abajo. Las cantidades superan el doble: se informó y el usuario decidió aceptarlo y documentarlo (2026-10-29) |
+| AC-11 | pendiente | En local: typecheck, lint y prettier en los archivos cambiados. Vitest unitarias y guardas: 2092 de 2092 en dos corridas; en una primera, 1 de 2092 falló y no guardé la salida, así que no sé cuál fue. Integración completa: 258 archivos, 3942 pruebas, antes de las correcciones de la revisión; después, `conversation-inbox.test.ts` de nuevo, 11 de 11. End-to-end: la suite completa, antes de las correcciones, pasó 304 de 311 en 51,3 minutos; las 7 que fallaron agotaron el tiempo, en una máquina con poca memoria libre, y ninguna es de conversaciones. Después de las correcciones y con un build nuevo, esas 7 más `conversations.spec.ts` e `ingestion.spec.ts` pasaron 31 de 31. La CI, en el SHA del commit |
+| AC-12 | pendiente | El despliegue y el recorrido, con autorización. La revisión independiente (D-6) ya se hizo, abajo |
+
+### La medición de R-1
+
+- **Método:** en local, con PostgreSQL de desarrollo, un test temporal de integración, borrado después. 10.000 conversaciones en una organización: 9.500 repartidas en 3.000 clientes y 500 sin cliente, una de cada diez pausada. El hilo de un cliente con 4 conversaciones de 50 mensajes y 30 notas.
+- **Corridas:** 20 por variante, con la lectura de la 24.3 en la misma corrida.
+- **Resultado:**
+
+| Lectura | 24.3.1, mediana (p95) | 24.3, mediana (p95) | Veces |
+|---|---|---|---|
+| La primera página de la lista | 16,2 ms (19,1 ms) | 9,6 ms (12,2 ms) | 1,7 |
+| Las cantidades de las pestañas | 20,3 ms (22,0 ms) | 4,3 ms (10,2 ms) | 4,7 |
+| La lista con «Atención humana» | 9,7 ms (13,0 ms) | — | — |
+| La última página de la lista | 54,2 ms (63,5 ms) | — | — |
+| El hilo unido | 10,5 ms (17,5 ms) | 8,2 ms (9,9 ms), una conversación | 1,3 |
+
+- **Conclusión:** la condición de detención se cumplió en las cantidades: 4,7 veces más lentas. La lista sola tarda 1,7 veces más y el hilo, 1,3. Lista y cantidades juntas suman unos 36 ms por carga, contra unos 14 ms en la 24.3. Se informó antes de seguir, y el usuario decidió **aceptarlo y documentarlo** (2026-10-29), sin índice ni migración: la Fase 24 no los admite (H-5). Queda anotado en `DataModel.md`, y se vuelve a medir si una organización llega a un volumen mucho mayor.
+
+### La comparación visual (AC-9)
+
+Capturas de la bandeja con y sin panel, los filtros y la bandeja en el teléfono, el hilo pausado, el hilo activo con la confirmación y el hilo en el teléfono, comparadas con 01 a 05. Las capturas son del build anterior a las correcciones de la revisión; esas correcciones cambiaron la ayuda de un viewer, un ancla y el ancho de un formulario, no la forma.
+
+| Diferencia con la v2 | Mockup | Por qué queda |
+|---|---|---|
+| Sin el teléfono del cliente | 01 a 05 | FR-CONV-01 (H-4) |
+| Sin la vista previa del mensaje en la fila | 01, 03 | FR-CONV-01, enmendado: el texto solo en el panel (H-3, H-4) |
+| Sin «Sin leer» ni «2 sin leer» | 01, 03 | Fase 26 (H-4) |
+| Sin «WhatsApp conectado» | 01 | ADR 0014 (H-4) |
+| Sin «Responder», «Adjuntar» ni «Entregado» | 02, 04, 05 | ADR 0017 (H-4) |
+| Sin «Consulta de producto» | 05 | La v2 prohíbe inferir del texto del chat (H-4) |
+| La tarjeta del teléfono sin la línea de reparación | 03 | D-5 (b) |
+| El panel sin elegir dice «Elegí una conversación para verla acá» en lugar de mostrar la primera | 01 | D-3 (a) |
+| El panel muestra 8 entradas, no 20 | 01 | Desvío de D-2, decidido por el usuario el 2026-10-29: con 8 se ve como 01 |
+| El ancho máximo del contenido y el título de la página | 01, 02 | El marco de la 24.1 |
+| Los separadores entre conversaciones | 02 | D-1 (a): la v2 no tiene un cliente con varias conversaciones |
+| Las insignias dicen «Atención humana» y «Agente activo», no «Humano» y «Agente» | 01, 03 | Las etiquetas de la 24.3 (D-3), que la franja comparte |
+| «Cerrar conversación», no «Resolver»; la pestaña es «Cerradas», no «Resueltas» | 01, 02 | brief-24.3, D-2: el estado se sigue llamando «Cerrada» |
+| La paginación va debajo de la lista, fuera de su tarjeta | 01 | El patrón de paginación de la 24.1 |
+| En escritorio, la franja pausada sigue diciendo desde cuándo | 02 | Desvío: el dato es de la 16.3 y la v2 no lo muestra. A decidir |
+| «Guardar nota» en ámbar oscuro, no ámbar claro | 05 | Desvío: no hay un ámbar sólido con contraste AA en los tokens. Gana el contraste (Invariantes) |
+| «Todas» no aparece en el teléfono | 03 | Desvío: en 375 px no entra en la línea de «Atención humana» y «Filtros». A decidir |
+| Las pestañas del teléfono son subrayadas con desplazamiento, no un control segmentado | 03 | Desvío: el patrón de `SubNav` de la 24.1. A decidir |
+| «Ver contexto» va arriba de la tarjeta, no debajo del encabezado | 04 | Desvío: el contexto va antes en el orden de lectura. Corrige la nota de la 24.3 (D-9) en `Screens.md` |
+| Sin migas en el hilo; «···» sin el texto «Más»; el avatar de una persona es un ícono, no sus iniciales; el pie dice «Mostrando 1 a N de M» | 02, 04, 05 | Desvíos de detalle que encontró la revisión (m-4). A decidir |
+| Sin la reparación en la tarjeta del hilo en el teléfono; «Crear turno» solo en las acciones relacionadas | 04, 05 | Desvíos de detalle (m-4). A decidir |
+| La confirmación de «Tomar conversación» es un panel flotante, no un menú anclado | 05 | Desvío: el panel tiene foco, Escape y «Cancelar» (AC-3). A decidir |
+
+### La revisión independiente
+
+La hizo un agente que no participó del trabajo, con acceso de solo lectura, contra este brief, la v2 y las reglas del proyecto. Cada hallazgo se verificó contra el código antes de aceptarlo. No ejecutó pruebas.
+
+- **Mayores:**
+  - **M-1**, las cantidades a más del doble de la 24.3: informado, y el usuario lo aceptó (arriba). El revisor notó además que la línea base (9,6 y 4,3 ms) no coincide con la publicada en la 24.3 (14,4 ms con cantidades): aquella fue otra corrida, con otros datos; esta midió las dos lecturas en la misma corrida, sobre los mismos datos.
+  - **M-2**, el test de R-2 del hilo unido no cruzaba el borde de página en el límite entre conversaciones: corregido. Ahora la primera conversación tiene 30 entradas y la segunda 50, el corte cae entre a29 y b0, y el test lo comprueba.
+  - **M-3**, el panel lee 8 entradas y D-2 decía 20, y el test probaba 20: el usuario decidió dejar 8 (2026-10-29), y el test prueba 8.
+- **Menores:**
+  - **m-1**, AC-7 no se probaba en el panel: corregido; el caso 20 recorre también `/conversaciones?ver=` como viewer.
+  - **m-2**, ningún caso recorre la bandeja, el panel ni «Tomar conversación» sin JavaScript: queda, declarado en AC-4.
+  - **m-3**, R-3 pedía una ayuda en la pestaña: resuelto con una línea debajo de la lista, «Cada cliente aparece una vez, con su conversación más reciente.», no en la pestaña.
+  - **m-4**, desvíos de detalle de la forma: en la tabla de AC-9.
+  - **m-5**, los nombres de las lecturas difieren del brief: `listClientInbox` es la opción `latestPerClient` de `listConversations` y de las cantidades, y `listClientTimeline` es `scope: "client"` de `listConversationTimeline`, más `getConversationThread`. El comportamiento es el del brief, y `DataModel.md` documenta los nombres reales.
+  - **m-6**, el cambio de `SubNav` en el teléfono afectaba a todas sus pantallas: corregido; ahora es la opción `scroll`, que solo usa esta bandeja.
+  - **m-7**, «Ver contexto» arriba de la tarjeta contradice la nota de la 24.3 (D-9): documentado en `Screens.md`. Queda que, en el teléfono, el `h2` del contexto se lee antes que el `h1`.
+- **Notas:**
+  - **n-1**: la lista sigue leyendo la cantidad de mensajes, que la fila ya no muestra, y el título del caso 2 todavía dice «y cantidad». Queda.
+  - **n-2**: un viewer leía en el panel «Abrí la conversación para agregar una nota.»: corregido; lee «Abrí la conversación para leerla entera.».
+  - **n-3**: el panel muestra la conversación de `?ver=`, no siempre la más reciente, y las pestañas conservan `?ver=`. Solo se nota con una URL escrita a mano o al cambiar de pestaña. Queda.
+  - **n-4**: un viewer lee «Las respuestas automáticas están habilitadas» en una cerrada. Queda.
+  - **n-5**: `.claude/settings.json`, sin seguimiento y ajeno a la subfase, no entra en el commit.
+- **Sospechas, no verificadas:**
+  - **s-1**, dos separadores con el mismo `id` si dos conversaciones se intercalan: corregido, un ancla por conversación.
+  - **s-2**, la confirmación podía salirse de la pantalla a 375 px: corregido; el caso 22 comprueba que entra.
+  - **s-3**, la redirección con `#conversacion-…` se prueba en navegación de documento y no en navegación del cliente: queda.
+
+### Desvíos
+
+- **D-2:** 8 entradas en el panel, no 20 (decidido por el usuario).
+- **Alcance incluido 1:** los nombres de las lecturas (m-5).
+- **Archivos autorizados:** `SubNav` ganó las opciones `scroll` e ícono, y `Avatar` el tono `soft`, dentro de `src/app/_components/`, que el brief permite para una opción nueva.
+- **AC-9:** los desvíos de forma de la tabla, a decidir en el recorrido.
+
+### Autoevaluación
+
+Este cierre, los criterios y la tabla de AC-9 son **autoevaluación** del agente que implementó. La revisión independiente encontró 3 hallazgos mayores, 7 menores, 5 notas y 3 sospechas que la autoevaluación no había visto. Esa revisión no otorga ninguna autorización.

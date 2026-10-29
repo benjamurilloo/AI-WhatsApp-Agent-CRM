@@ -242,6 +242,13 @@ Agregada en la 18.2 ([brief-18.2](../decisions/brief-18.2-costo-y-margen.md), FR
   - **Búsqueda y «Más filtros»** (D-4): «Buscar cliente», por nombre o teléfono, en dos pasos como antes; el teléfono se escribe entero y nunca se muestra. Período, canal y orden van en «Más filtros», un `<details>` abierto si alguno no es el de por defecto.
   - **Cada fila** dice «Atención humana» o «Agente activo» junto al estado (reemplaza «Agente pausado»), y la tarjeta del teléfono lleva el avatar (D-9).
   - **Sin** la vista previa del último mensaje, el panel de vista previa, el teléfono ni «Sin leer» (H-2 y H-3). Todo son enlaces o un formulario GET: funciona sin JavaScript.
+- *Nota del 2026-10-28, 24.3.1* ([brief-24.3.1](../decisions/brief-24.3.1-conversaciones-como-chat.md)), a la forma de los mockups 01 y 03 de la v2. Reemplaza, de la nota anterior, la tabla, la búsqueda en su propio bloque y «Sin el panel de vista previa»:
+  - **Una fila por cliente** (D-1), con su conversación más reciente; las conversaciones sin cliente, una fila cada una. Las pestañas, el chip, los filtros y las cantidades se aplican a esa conversación: un cliente con una pendiente vieja y una abierta nueva está en Abiertas.
+  - **La lista de chats**: avatar, nombre, la hora del último mensaje (o el día, si no fue hoy), las insignias de estado y de agente, y una flecha. Sin el texto de ningún mensaje ni el teléfono (FR-CONV-01, enmendado).
+  - **En una línea**: «Todas», «Atención humana N», «Buscar nombre o teléfono» (con su rótulo para lectores de pantalla; Enter busca) y el botón «Más filtros», que abre período, canal y orden.
+  - **El panel de vista previa** (D-2), en escritorio: una fila lleva a `?ver={id}` sin perder los filtros y queda resaltada con `aria-current`. El panel muestra el encabezado, la reparación abierta (con `repairs`) y las últimas 8 entradas del hilo unido, para leer, con «Abrir conversación». Sin elegir, dice «Elegí una conversación para verla acá» y no lee ningún hilo (D-3).
+  - **En el teléfono**: la búsqueda arriba, «Atención humana» y «Filtros» debajo, y las tarjetas abren el hilo; las pestañas van en una fila con su propio desplazamiento.
+  - **Debajo de la lista**, «Cada cliente aparece una vez, con su conversación más reciente.» (R-3), y el pie de la paginación.
 
 ## 9. Detalle de conversación y timeline
 
@@ -264,6 +271,14 @@ Agregada en la 18.2 ([brief-18.2](../decisions/brief-18.2-costo-y-margen.md), FR
   - **Nota interna al pie** (D-8), solo para `admin`: «Nota para el equipo», con la ayuda de que el cliente no la ve ni la recibe el agente, y «Guardar nota». Sin pestaña para responder al cliente: el CRM no envía mensajes ([ADR 0017](../decisions/0017-responder-desde-el-crm.md)).
   - **Contexto del cliente** (D-6), al costado, para los dos roles: «Ver ficha», la reparación abierta más reciente con «Ver reparación» (con `repairs`), el próximo turno pedido o confirmado con «Ver turno» (con `appointments`) y las etiquetas. Para `admin`, «Crear turno» y «Crear pedido» con el cliente elegido. Sin cliente, lo dice. Nunca un importe ni un dato de contacto.
   - **Teléfono** (D-9): el contexto se abre y se cierra con «Ver contexto», debajo del encabezado (`aria-expanded`); sin JavaScript queda abierto.
+- *Nota del 2026-10-28, 24.3.1* ([brief-24.3.1](../decisions/brief-24.3.1-conversaciones-como-chat.md)), a la forma de los mockups 02, 04 y 05 de la v2:
+  - **El hilo une las conversaciones del cliente** (D-1), con un separador «Conversación del 25/10/2026 · Cerrada» entre ellas. Una conversación anterior redirige a la más reciente, con el ancla de su separador; la franja, el estado, las acciones y la nota son de la más reciente.
+  - **Arriba**, la flecha con «Conversaciones» («Chats» en el teléfono). El encabezado, la franja, el hilo y la nota van en una tarjeta; «Más acciones» es el botón «···».
+  - **La franja**: lila con el ícono del agente y «Las respuestas automáticas están habilitadas», o ámbar con el de persona cuando está pausado. «Tomar conversación» pide confirmar en un panel («Tomar atención humana»), que se cierra con Escape o «Cancelar»; sin JavaScript, envía directo.
+  - **Los mensajes**: la fecha en una píldora («Hoy · 28 oct»), el avatar de quien escribe (las iniciales del cliente, o el ícono del agente o de una persona), las burbujas del negocio en lila claro, y el autor arriba y la hora abajo. Para un mensaje del cliente, «Cliente» va solo para lectores de pantalla.
+  - **La nota en el hilo**: candado, «Nota interna · autor · hora» y «Solo equipo» a la derecha. **Al pie**: el aviso «Solo el equipo puede ver esta nota. No se envía por WhatsApp.», «Guardar una nota no pausa al agente.» y «Guardar nota» ámbar con candado.
+  - **El contexto**: una tarjeta por bloque con su ícono y su rótulo (Reparación, Turno, Etiquetas), «Ver ficha» arriba, «Sin turno asignado» y «Sin etiquetas» cuando no hay, «Actividad del agente» con la hora de su última respuesta (D-4) y las acciones relacionadas como lista.
+  - **En el teléfono** (04): el encabezado en una fila (avatar, nombre, estado, la acción de estado como ícono y «···»), sin el subtítulo; la franja solo con su título, en dos renglones, y «Reactivar». «Ver contexto» queda arriba de la tarjeta, no debajo del encabezado como decía la nota de la 24.3 (D-9): el contexto va antes en el orden de lectura.
 
 ## 10. Usuarios y roles
 

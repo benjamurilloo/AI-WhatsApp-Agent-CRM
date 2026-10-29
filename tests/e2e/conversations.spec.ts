@@ -19,6 +19,11 @@ import { E2E_PASSWORD } from "./global-setup";
 // estado y el chip «Atención humana»; la búsqueda de cliente va arriba y el resto en «Más filtros»;
 // el hilo intercala las notas, la franja del agente toma y reactiva, el encabezado cierra y reabre,
 // la nota va al pie y el contexto del cliente al costado, con «Ver contexto» en el teléfono.
+//
+// Desde la 24.3.1 (brief-24.3.1), como chat: la bandeja es una lista con una fila por cliente, que
+// en escritorio abre el panel de vista previa con ?ver=; el hilo une las conversaciones del
+// cliente; «Tomar conversación» pide confirmar; y los textos de la franja y de la nota son los de
+// los mockups.
 
 const [ADMIN_SEED, VIEWER_SEED] = SEED_USERS;
 const ADMIN = ADMIN_SEED.email;
@@ -159,8 +164,10 @@ async function insertOtherOrganization() {
 const ago = (days: number, hours = 0) =>
   new Date(Date.now() - days * DAY_MS - hours * 60 * 60 * 1000);
 
-const conversationsTable = (page: Page) =>
-  page.getByRole("table", { name: "Conversaciones de la organización" });
+// La lista visible: en escritorio y en el teléfono hay una cada una, y la oculta no está en el árbol.
+const inbox = (page: Page) =>
+  page.getByRole("list", { name: "Conversaciones de la organización" });
+const inboxRows = (page: Page) => inbox(page).getByRole("listitem");
 const timeline = (page: Page) => page.getByRole("list", { name: "Mensajes" });
 const statusTabs = (page: Page) =>
   page.getByRole("navigation", { name: "Estado de las conversaciones" });
@@ -168,7 +175,9 @@ const moreFilters = (page: Page) =>
   page.getByText("Más filtros", { exact: true }).click();
 // La franja del agente: su título dice si está pausado o activo (brief-24.3, D-7).
 const agentStrip = (page: Page) =>
-  page.getByRole("region", { name: /^(Atención humana|Agente activo) · / });
+  page.getByRole("region", {
+    name: /^(Atención humana · Agente pausado|Agente activo)$/,
+  });
 const headerBadge = (page: Page, text: string) =>
   page.getByRole("main").getByText(text, { exact: true }).first();
 
@@ -224,18 +233,17 @@ test("caso 2: la lista muestra cliente, estado, fechas y cantidad, sin contenido
 
   await login(page, VIEWER);
   await page.goto("/conversaciones?estado=todos");
-  const rows = conversationsTable(page).getByRole("row");
-  await expect(rows).toHaveCount(3);
-  // Del último mensaje más reciente al más antiguo; fechas en la zona de la organización.
-  await expect(rows.nth(1)).toContainText("María Gómez");
-  await expect(rows.nth(1)).toContainText("WhatsApp");
-  await expect(rows.nth(1)).toContainText("Abierta");
-  await expect(rows.nth(1)).toContainText("10/09 09:12");
-  await expect(rows.nth(1)).toContainText("11/09 18:40");
-  await expect(rows.nth(1).getByRole("cell").last()).toHaveText("2");
-  await expect(rows.nth(2)).toContainText("Sin cliente");
-  await expect(rows.nth(2)).toContainText("Pendiente");
-  await expect(conversationsTable(page)).not.toContainText("6666");
+  const rows = inboxRows(page);
+  await expect(rows).toHaveCount(2);
+  // Del último mensaje más reciente al más antiguo; el día del último, en la zona de la
+  // organización (brief-24.3.1).
+  await expect(rows.nth(0)).toContainText("María Gómez");
+  await expect(rows.nth(0)).toContainText("Abierta");
+  await expect(rows.nth(0)).toContainText("Agente activo");
+  await expect(rows.nth(0)).toContainText("11/09");
+  await expect(rows.nth(1)).toContainText("Sin cliente");
+  await expect(rows.nth(1)).toContainText("Pendiente");
+  await expect(inbox(page)).not.toContainText("6666");
   await expectAccessible(page, "lista con conversaciones");
 
   // Nada de lo que recibe el navegador en la pantalla 8 trae un cuerpo (FR-CONV-01): ni el
@@ -275,15 +283,19 @@ test("caso 2: la lista muestra cliente, estado, fechas y cantidad, sin contenido
     .getByRole("navigation", { name: "Principal" })
     .getByRole("link", { name: "Conversaciones" })
     .click();
-  await expect(conversationsTable(page)).toBeVisible();
+  await expect(inbox(page)).toBeVisible();
   await drain();
   page.off("response", listener);
   expect(bodies.length).toBeGreaterThan(4);
   for (const body of bodies) expect(body).not.toContain(SECRET_BODY);
 
-  // Control: el detalle sí lo muestra; el test no pasa por vacío.
+  // Control: el panel y el detalle sí lo muestran; el test no pasa por vacío. El panel solo con
+  // ?ver= (FR-CONV-01, enmendado por la 24.3.1).
   await page.goto("/conversaciones?estado=todos");
-  await rows.nth(2).getByRole("link", { name: "Sin cliente" }).click();
+  await rows.nth(1).getByRole("link").click();
+  await expect(page).toHaveURL(/[?&]ver=/);
+  await expect(timeline(page)).toContainText(SECRET_BODY);
+  await page.getByRole("link", { name: "Abrir conversación" }).click();
   await expect(timeline(page)).toContainText(SECRET_BODY);
 });
 
@@ -304,22 +316,22 @@ test("caso 3: filtra por estado y período, distingue sin resultados y pagina", 
 
   await login(page, ADMIN);
   await page.goto("/conversaciones?estado=todos");
-  await expect(conversationsTable(page).getByRole("row")).toHaveCount(1 + 25);
+  await expect(inboxRows(page)).toHaveCount(25);
   await expect(
     page.getByText("Mostrando 1 a 25 de 26 conversaciones"),
   ).toBeVisible();
   await page.getByRole("link", { name: "Página siguiente" }).click();
   await expect(page).toHaveURL("/conversaciones?estado=todos&pagina=2");
-  await expect(conversationsTable(page).getByRole("row")).toHaveCount(1 + 1);
-  await expect(conversationsTable(page)).toContainText("Cerrada");
+  await expect(inboxRows(page)).toHaveCount(1);
+  await expect(inbox(page)).toContainText("Cerrada");
 
   await moreFilters(page);
   await page.getByLabel("Período (último mensaje)").selectOption("30d");
   await page.getByRole("button", { name: "Aplicar filtros" }).click();
   // Un formulario GET envía todos sus campos; los enlaces usan la URL canónica.
   await expect(page).toHaveURL(/[?&]periodo=30d(&|$)/);
-  await expect(conversationsTable(page).getByRole("row")).toHaveCount(1 + 25);
-  await expect(conversationsTable(page)).not.toContainText("Cerrada");
+  await expect(inboxRows(page)).toHaveCount(25);
+  await expect(inbox(page)).not.toContainText("Cerrada");
 
   // El estado es una pestaña: conserva el período (brief-24.3, D-1).
   await statusTabs(page)
@@ -332,7 +344,7 @@ test("caso 3: filtra por estado y período, distingue sin resultados y pagina", 
   await expectAccessible(page, "sin resultados");
   await page.getByRole("link", { name: "Limpiar filtros" }).first().click();
   await expect(page).toHaveURL("/conversaciones");
-  await expect(conversationsTable(page).getByRole("row")).toHaveCount(1 + 25);
+  await expect(inboxRows(page)).toHaveCount(25);
 
   // Período personalizado: las fechas aparecen al elegirlo y uno invertido se señala.
   await moreFilters(page);
@@ -350,7 +362,7 @@ test("caso 3: filtra por estado y período, distingue sin resultados y pagina", 
   await expect(page.getByLabel("Hasta")).toHaveAccessibleDescription(
     /«Desde» no puede ser posterior a «Hasta»/,
   );
-  await expect(conversationsTable(page)).toBeHidden();
+  await expect(inbox(page)).toBeHidden();
   await expectAccessible(page, "período inválido");
 });
 
@@ -370,27 +382,27 @@ test("caso 4: el filtro de cliente busca con crm, aplica uno y ofrece elegir ent
   await login(page, VIEWER);
   await page.goto("/conversaciones");
   await page.getByLabel("Buscar cliente").fill("bru");
-  await page.getByRole("button", { name: "Buscar", exact: true }).click();
+  await page.getByLabel("Buscar cliente").press("Enter");
   await expect(page).toHaveURL(`/conversaciones?cliente=${bruno}`);
   await expect(page.getByText("Cliente: Bruno Díaz")).toBeVisible();
-  await expect(conversationsTable(page).getByRole("row")).toHaveCount(2);
+  await expect(inboxRows(page)).toHaveCount(1);
   await expectAccessible(page, "filtrado por cliente");
 
   await page.getByRole("link", { name: "Quitar cliente" }).click();
   await expect(page).toHaveURL("/conversaciones");
   await page.getByLabel("Buscar cliente").fill("Ana");
-  await page.getByRole("button", { name: "Buscar", exact: true }).click();
+  await page.getByLabel("Buscar cliente").press("Enter");
   await expect(page).toHaveURL(/[?&]buscar_cliente=Ana(&|$)/);
   const choices = page.getByRole("list", {
     name: "Varios clientes coinciden. Elegí uno para filtrar:",
   });
   await expect(choices.getByRole("listitem")).toHaveCount(2);
-  await expect(conversationsTable(page)).toBeHidden();
+  await expect(inbox(page)).toBeHidden();
   await expectAccessible(page, "elegir cliente");
   await choices.getByRole("link", { name: "Anabel Ruiz" }).click();
   await expect(page).toHaveURL(`/conversaciones?cliente=${anabel}`);
-  await expect(conversationsTable(page)).toContainText("Anabel Ruiz");
-  await expect(conversationsTable(page)).not.toContainText("Ana Pérez");
+  await expect(inbox(page)).toContainText("Anabel Ruiz");
+  await expect(inbox(page)).not.toContainText("Ana Pérez");
 
   await page.goto("/conversaciones?buscar_cliente=Zoe");
   await expect(
@@ -436,9 +448,11 @@ test("caso 5: el detalle muestra el timeline en orden, con la dirección en text
 
   await login(page, VIEWER);
   await page.goto("/conversaciones");
-  await conversationsTable(page)
-    .getByRole("link", { name: "María Gómez" })
+  await inbox(page)
+    .getByRole("link", { name: /María Gómez/ })
     .click();
+  await expect(page).toHaveURL(`/conversaciones?ver=${conversationId}`);
+  await page.getByRole("link", { name: "Abrir conversación" }).click();
   await expect(page).toHaveURL(`/conversaciones/${conversationId}`);
   await expect(
     page.getByRole("heading", { name: "María Gómez" }),
@@ -448,18 +462,18 @@ test("caso 5: el detalle muestra el timeline en orden, con la dirección en text
   );
   await expect(headerBadge(page, "Abierta")).toBeVisible();
   await expect(agentStrip(page)).toContainText(
-    "Agente activo · Responde automáticamente",
+    "Las respuestas automáticas están habilitadas.",
   );
   await expect(page.getByText(`Horas en ${TIMEZONE}.`)).toBeVisible();
 
   const items = timeline(page).getByRole("listitem");
   await expect(items).toHaveCount(4);
-  await expect(items.nth(0)).toContainText("10/09/2026");
+  await expect(items.nth(0)).toContainText("10 sept");
   await expect(items.nth(0)).toContainText("Cliente · 09:12");
   await expect(items.nth(0)).toContainText("Hola, ¿tienen café molido?");
   await expect(items.nth(1)).toContainText("Negocio · 09:20");
-  await expect(items.nth(1)).not.toContainText("10/09/2026");
-  await expect(items.nth(2)).toContainText("11/09/2026");
+  await expect(items.nth(1)).not.toContainText("10 sept");
+  await expect(items.nth(2)).toContainText("11 sept");
   // El marcado se muestra literal: ni negrita ni enlace (Screens §9).
   await expect(items.nth(2)).toContainText(MARKUP_BODY);
   await expect(items.nth(2).locator("b")).toHaveCount(0);
@@ -579,7 +593,7 @@ test("caso 7: un admin cierra, reabre y marca como pendiente desde el encabezado
   expect(row.rows[0]!.paused).toBe(true);
 
   await page.goto("/conversaciones?estado=pendiente");
-  await expect(conversationsTable(page).getByRole("row")).toHaveCount(2);
+  await expect(inboxRows(page)).toHaveCount(1);
 });
 
 test("caso 8: el servidor rechaza el cambio de estado de quien dejó de ser admin", async ({
@@ -635,7 +649,7 @@ test("caso 9: una conversación de otra organización o un id inválido no exist
   await expect(page.getByText("No hay conversaciones.")).toBeVisible();
 });
 
-test("caso 10: en móvil la lista son tarjetas y las burbujas ocupan el ancho", async ({
+test("caso 10: en móvil la lista son tarjetas y las burbujas entran en el ancho", async ({
   page,
 }) => {
   const conversationId = await insertConversation({
@@ -649,15 +663,16 @@ test("caso 10: en móvil la lista son tarjetas y las burbujas ocupan el ancho", 
   await page.setViewportSize({ width: 375, height: 800 });
   await login(page, VIEWER);
   await page.goto("/conversaciones?estado=todos");
-  await expect(page.getByRole("table")).toBeHidden();
-  const cards = page.getByRole("list", {
-    name: "Conversaciones de la organización",
-  });
+  const cards = inbox(page);
   await expect(cards.getByRole("listitem")).toHaveCount(1);
   await expect(cards).toContainText("Sin cliente");
   await expect(cards).toContainText("Pendiente");
-  await expect(cards).toContainText("2 mensajes");
   await expect(cards).toContainText("Agente activo");
+  // En el teléfono la tarjeta abre el hilo, no el panel (brief-24.3.1, D-2).
+  await expect(cards.getByRole("link")).toHaveAttribute(
+    "href",
+    `/conversaciones/${conversationId}`,
+  );
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(375);
@@ -666,10 +681,18 @@ test("caso 10: en móvil la lista son tarjetas y las burbujas ocupan el ancho", 
   await page.goto(`/conversaciones/${conversationId}`);
   const items = timeline(page).getByRole("listitem");
   const listBox = (await timeline(page).boundingBox())!;
-  for (const index of [0, 1]) {
-    const bubble = items.nth(index).locator("p").last();
-    const box = (await bubble.boundingBox())!;
-    expect(Math.abs(box.width - listBox.width)).toBeLessThan(2);
+  for (const [index, text] of [
+    [0, "hola"],
+    [1, "buen día"],
+  ] as const) {
+    const box = (await items
+      .nth(index)
+      .getByText(text, { exact: true })
+      .boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(listBox.x - 1);
+    expect(box.x + box.width).toBeLessThanOrEqual(
+      listBox.x + listBox.width + 1,
+    );
   }
   const scrollWidth = await page.evaluate(
     () => document.documentElement.scrollWidth,
@@ -722,7 +745,7 @@ test("caso 11: FR-API-07: el timeline rotula el tipo original y quién respondi�
   await expect(items.nth(2)).toContainText("Negocio · Persona · 09:05");
   await expect(items.nth(2)).toContainText("Imagen");
   // Sin dato (un mensaje de v1 o de los seeds): sin rótulo.
-  await expect(items.nth(3)).toHaveText(/^Cliente · 09:06s*Gracias$/);
+  await expect(items.nth(3)).toHaveText(/^Cliente · 09:06\s*Gracias\s*09:06$/);
   await expectAccessible(page, "timeline con tipo y autor");
 });
 
@@ -749,8 +772,8 @@ test("caso 12: brief-15.2 ordena por último mensaje en los dos sentidos y por i
   });
   await login(page, ADMIN);
 
-  const rows = conversationsTable(page).getByRole("row");
-  const firstClient = () => rows.nth(1).getByRole("cell").first();
+  const rows = inboxRows(page);
+  const firstClient = () => rows.first();
   await page.goto("/conversaciones");
   await expect(firstClient()).toContainText("Ana Pérez");
 
@@ -759,15 +782,11 @@ test("caso 12: brief-15.2 ordena por último mensaje en los dos sentidos y por i
   await page.getByRole("button", { name: "Aplicar filtros" }).click();
   await expect(page).toHaveURL(/[?&]orden=antigua$/);
   await expect(firstClient()).toContainText("Carla Gómez");
-  await expect(rows.last().getByRole("cell").first()).toContainText(
-    "Ana Pérez",
-  );
+  await expect(rows.last()).toContainText("Ana Pérez");
 
   await page.goto("/conversaciones?orden=inicio");
   await expect(firstClient()).toContainText("Bruno Díaz");
-  await expect(rows.last().getByRole("cell").first()).toContainText(
-    "Ana Pérez",
-  );
+  await expect(rows.last()).toContainText("Ana Pérez");
 
   const sizes = page.getByRole("group", { name: "Filas por página" });
   await sizes.getByRole("link", { name: "50 filas por página" }).click();
@@ -775,7 +794,7 @@ test("caso 12: brief-15.2 ordena por último mensaje en los dos sentidos y por i
   await expect(
     sizes.getByText("50 filas por página", { exact: false }),
   ).toBeVisible();
-  await expect(rows).toHaveCount(1 + 3);
+  await expect(rows).toHaveCount(3);
   await expectAccessible(page, "lista por inicio, 50 filas");
 });
 
@@ -799,14 +818,14 @@ test("caso 13: brief-15.2 con 10 filas por página, el estado y el orden se cons
   await login(page, ADMIN);
   await page.goto("/conversaciones?estado=abierta&orden=inicio");
 
-  const rows = conversationsTable(page).getByRole("row");
-  const firstClient = () => rows.nth(1).getByRole("cell").first();
+  const rows = inboxRows(page);
+  const firstClient = () => rows.first();
   await expect(firstClient()).toContainText("Cliente 01");
 
   const sizes = page.getByRole("group", { name: "Filas por página" });
   await sizes.getByRole("link", { name: "10 filas por página" }).click();
   await expect(page).toHaveURL("/conversaciones?orden=inicio&filas=10");
-  await expect(rows).toHaveCount(1 + 10);
+  await expect(rows).toHaveCount(10);
   const pagination = page.getByRole("navigation", { name: "Paginación" });
   await expect(
     pagination.getByText("Mostrando 1 a 10 de 12 conversaciones"),
@@ -816,9 +835,9 @@ test("caso 13: brief-15.2 con 10 filas por página, el estado y el orden se cons
   await expect(page).toHaveURL(
     "/conversaciones?orden=inicio&filas=10&pagina=2",
   );
-  await expect(rows).toHaveCount(1 + 2);
+  await expect(rows).toHaveCount(2);
   await expect(firstClient()).toContainText("Cliente 11");
-  await expect(conversationsTable(page)).not.toContainText("Cerrada Ruiz");
+  await expect(inbox(page)).not.toContainText("Cerrada Ruiz");
   await expect(
     statusTabs(page).getByRole("link", { name: /^Abiertas/ }),
   ).toHaveAttribute("aria-current", "page");
@@ -835,9 +854,18 @@ test("caso 14: brief-16.3 y 24.3 un admin toma la conversación y reactiva al ag
 
   await login(page, ADMIN);
   await page.goto(`/conversaciones/${conversationId}`);
-  await expect(agentStrip(page)).toContainText("Responde automáticamente");
+  await expect(agentStrip(page)).toContainText(
+    "Las respuestas automáticas están habilitadas.",
+  );
   const pause = page.getByRole("button", { name: "Tomar conversación" });
   await pause.focus();
+  await page.keyboard.press("Enter");
+  // Pide confirmar (brief-24.3.1): el foco va al botón del panel y Enter toma.
+  const confirm = page.getByRole("group", { name: "Tomar atención humana" });
+  await expect(confirm).toBeVisible();
+  await expect(
+    confirm.getByRole("button", { name: "Tomar conversación" }),
+  ).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(
     page.getByText("Tomaste la conversación: el agente está pausado.", {
@@ -845,14 +873,14 @@ test("caso 14: brief-16.3 y 24.3 un admin toma la conversación y reactiva al ag
     }),
   ).toBeVisible();
   await expect(agentStrip(page)).toContainText(
-    /Atención humana · Agente pausado\s*Pausado desde el \d{2}\/\d{2} \d{2}:\d{2}\. .*el agente no contesta/,
+    /Atención humana · Agente pausado\s*Pausado desde el \d{2}\/\d{2} \d{2}:\d{2}\. Las respuestas automáticas están pausadas mientras atendés\./,
   );
   // El estado no cambia (invariante 1).
   await expect(headerBadge(page, "Pendiente")).toBeVisible();
   await expectAccessible(page, "agente pausado");
 
   await page.goto("/conversaciones?estado=pendiente");
-  await expect(conversationsTable(page)).toContainText("Atención humana");
+  await expect(inbox(page)).toContainText("Atención humana");
   await expectAccessible(page, "lista con una pausada");
   await page.setViewportSize({ width: 375, height: 800 });
   const cards = page.getByRole("list", {
@@ -978,8 +1006,9 @@ test("caso 16: brief-16.4 y 24.3 un admin guarda una nota al pie con el teclado,
   const notes = noteForm(page);
   await expect(noteItems(page)).toHaveCount(0);
   await expect(notes).toContainText(
-    "El cliente no la ve ni la recibe el agente",
+    "Solo el equipo puede ver esta nota. No se envía por WhatsApp.",
   );
+  await expect(notes).toContainText("Guardar una nota no pausa al agente.");
   await expectAccessible(page, "sin notas");
 
   // Solo espacios: el navegador lo deja pasar y el servidor lo rechaza, con el foco en el campo.
@@ -1179,7 +1208,7 @@ test("caso 18: brief-24.3 las pestañas y el chip «Atención humana» filtran y
   await expect(tab("Pendientes 1")).toBeVisible();
   await expect(tab("Cerradas 1")).toBeVisible();
   await expect(tab("Todas 4")).toBeVisible();
-  await expect(conversationsTable(page).getByRole("row")).toHaveCount(1 + 2);
+  await expect(inboxRows(page)).toHaveCount(2);
   const chip = page.getByRole("link", { name: /^Atención humana/ });
   await expect(chip).toHaveText(/Atención humana\s*1/);
   await expect(chip).not.toHaveAttribute("aria-current", /.*/);
@@ -1189,8 +1218,8 @@ test("caso 18: brief-24.3 las pestañas y el chip «Atención humana» filtran y
   await chip.click();
   await expect(page).toHaveURL("/conversaciones?atencion=humana");
   await expect(chip).toHaveAttribute("aria-current", "true");
-  await expect(conversationsTable(page).getByRole("row")).toHaveCount(1 + 1);
-  await expect(conversationsTable(page)).toContainText("Atención humana");
+  await expect(inboxRows(page)).toHaveCount(1);
+  await expect(inbox(page)).toContainText("Atención humana");
   await expect(tab("Abiertas 1")).toBeVisible();
   await expect(tab("Pendientes 1")).toBeVisible();
   await expect(tab("Cerradas 0")).toBeVisible();
@@ -1199,14 +1228,14 @@ test("caso 18: brief-24.3 las pestañas y el chip «Atención humana» filtran y
 
   await tab("Todas 2").click();
   await expect(page).toHaveURL("/conversaciones?estado=todos&atencion=humana");
-  await expect(conversationsTable(page).getByRole("row")).toHaveCount(1 + 2);
-  await expect(conversationsTable(page)).not.toContainText("Agente activo");
+  await expect(inboxRows(page)).toHaveCount(2);
+  await expect(inbox(page)).not.toContainText("Agente activo");
 
   // Se quita con el mismo chip, y la pestaña se conserva.
   await page.getByRole("link", { name: /^Atención humana/ }).click();
   await expect(page).toHaveURL("/conversaciones?estado=todos");
-  await expect(conversationsTable(page).getByRole("row")).toHaveCount(1 + 4);
-  await expect(conversationsTable(page)).toContainText("Agente activo");
+  await expect(inboxRows(page)).toHaveCount(4);
+  await expect(inbox(page)).toContainText("Agente activo");
 
   // La ficha del cliente lleva a todos los estados (brief-24.3, H-9).
   const clientId = await insertClient("Rosa Díaz");
@@ -1220,7 +1249,7 @@ test("caso 18: brief-24.3 las pestañas y el chip «Atención humana» filtran y
   await expect(page).toHaveURL(
     `/conversaciones?estado=todos&cliente=${clientId}`,
   );
-  await expect(conversationsTable(page)).toContainText("Rosa Díaz");
+  await expect(inbox(page)).toContainText("Rosa Díaz");
 });
 
 test("caso 19: brief-24.3 el contexto del cliente sin reparaciones ni turnos, sin cliente, y «Ver contexto» en el teléfono (AC-6 y AC-8)", async ({
@@ -1253,7 +1282,7 @@ test("caso 19: brief-24.3 el contexto del cliente sin reparaciones ni turnos, si
   await expect(contextCard).toContainText("Mayorista");
   // Sin repairs ni appointments, sus bloques no aparecen.
   await expect(contextCard).not.toContainText("Reparación");
-  await expect(contextCard).not.toContainText("Próximo turno");
+  await expect(contextCard).not.toContainText("Turno");
   await expect(
     contextCard.getByRole("link", { name: "Crear turno" }),
   ).toHaveCount(0);
@@ -1296,6 +1325,149 @@ test("caso 19: brief-24.3 el contexto del cliente sin reparaciones ni turnos, si
     page.getByRole("button", { name: "Cerrar conversación" }),
   ).toBeVisible();
   await expectAccessible(page, "detalle en móvil con la franja");
+});
+
+test("caso 21: brief-24.3.1 una fila por cliente, el panel con ?ver= y el hilo unido con sus separadores; una conversación anterior redirige a la más reciente (AC-1, AC-2 y AC-4)", async ({
+  page,
+}) => {
+  const lucia = await insertClient("Lucía Gómez");
+  const older = await insertConversation({
+    clientId: lucia,
+    status: "pending",
+    messages: [
+      { direction: "inbound", sentAt: ago(5), body: "Primera consulta" },
+    ],
+  });
+  const latest = await insertConversation({
+    clientId: lucia,
+    messages: [
+      { direction: "inbound", sentAt: ago(0, 2), body: "Segunda consulta" },
+      {
+        direction: "outbound",
+        sentAt: ago(0, 1),
+        body: "Te respondo",
+        sentBy: "agent",
+      },
+    ],
+  });
+  await insertConversation({
+    messages: [{ direction: "inbound", sentAt: ago(1), body: "anónima" }],
+  });
+
+  await login(page, VIEWER);
+  // La pendiente vieja de Lucía no cuenta: su fila es la abierta (R-3).
+  await page.goto("/conversaciones?estado=pendiente");
+  await expect(
+    page.getByText("Ninguna conversación coincide con estos filtros."),
+  ).toBeVisible();
+  await page.goto("/conversaciones?estado=todos");
+  const rows = inboxRows(page);
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first()).toContainText("Lucía Gómez");
+  await expect(
+    statusTabs(page).getByRole("link", { name: "Todas 2", exact: true }),
+  ).toBeVisible();
+
+  // Sin elegir, el panel lo dice y no lee ningún hilo (D-3).
+  const preview = page.getByRole("region", { name: "Vista previa" });
+  await expect(preview).toContainText("Elegí una conversación para verla acá.");
+  await expect(timeline(page)).toHaveCount(0);
+  await expectAccessible(page, "bandeja sin elegir");
+
+  // La fila abre el panel sin perder los filtros, y queda marcada.
+  await rows.first().getByRole("link").click();
+  await expect(page).toHaveURL(`/conversaciones?estado=todos&ver=${latest}`);
+  await expect(rows.first().getByRole("link")).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+  const panel = page.getByRole("region", { name: /^Vista previa: Lucía/ });
+  await expect(panel).toContainText("Segunda consulta");
+  await expect(panel).toContainText("Te respondo");
+  await expect(panel.getByRole("button")).toHaveCount(0);
+  await expectAccessible(page, "bandeja con el panel");
+
+  // El hilo une las dos conversaciones, con un separador antes de cada una.
+  await panel.getByRole("link", { name: "Abrir conversación" }).click();
+  await expect(page).toHaveURL(`/conversaciones/${latest}`);
+  const items = timeline(page).getByRole("listitem");
+  await expect(items).toHaveCount(3);
+  await expect(items.nth(0)).toContainText(
+    /Conversación del \d{2}\/\d{2}\/\d{4} · Pendiente/,
+  );
+  await expect(items.nth(0)).toContainText("Primera consulta");
+  await expect(items.nth(1)).toContainText(
+    /Conversación del \d{2}\/\d{2}\/\d{4} · Abierta/,
+  );
+  await expect(items.nth(2)).toContainText("Negocio · Agente");
+  // La franja y el estado son los de la más reciente.
+  await expect(headerBadge(page, "Abierta")).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Contexto del cliente" }),
+  ).toContainText("Respuesta automática");
+  await expectAccessible(page, "hilo unido");
+
+  // La anterior redirige a la más reciente, al separador de la pedida.
+  await page.goto(`/conversaciones/${older}`);
+  await expect(page).toHaveURL(
+    `/conversaciones/${latest}#conversacion-${older}`,
+  );
+  await expect(page.locator(`#conversacion-${older}`)).toBeVisible();
+});
+
+test("caso 22: brief-24.3.1 la confirmación de «Tomar conversación» se cierra con Escape y con «Cancelar», devuelve el foco y no pausa (AC-3)", async ({
+  page,
+}) => {
+  const conversationId = await insertConversation({
+    messages: [{ direction: "inbound", sentAt: ago(0, 1), body: "hola" }],
+  });
+
+  await login(page, ADMIN);
+  await page.goto(`/conversaciones/${conversationId}`);
+  // El de la franja; el panel abierto tiene otro con el mismo nombre, que es el que toma.
+  const take = page
+    .getByRole("button", { name: "Tomar conversación" })
+    .and(page.locator("[aria-expanded]"));
+  const confirm = page.getByRole("group", { name: "Tomar atención humana" });
+  await expect(take).toHaveAttribute("aria-expanded", "false");
+  await take.focus();
+  await page.keyboard.press("Enter");
+  await expect(confirm).toBeVisible();
+  await expect(take).toHaveAttribute("aria-expanded", "true");
+  await expect(confirm).toContainText(
+    "Pausa al agente para que puedas responder.",
+  );
+  await expectAccessible(page, "confirmar tomar");
+  await page.keyboard.press("Escape");
+  await expect(confirm).toBeHidden();
+  await expect(take).toBeFocused();
+
+  await page.keyboard.press("Enter");
+  await confirm.getByRole("button", { name: "Cancelar" }).click();
+  await expect(confirm).toBeHidden();
+  await expect(take).toBeFocused();
+
+  // En el teléfono, la confirmación entra en la pantalla.
+  await page.setViewportSize({ width: 375, height: 800 });
+  await take.click();
+  await expect(confirm).toBeVisible();
+  const box = (await confirm.boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(375);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(375);
+  await expectAccessible(page, "confirmar tomar en móvil");
+  await confirm.getByRole("button", { name: "Cancelar" }).click();
+
+  const audit = await db.execute(
+    sql`select 1 from audit_logs where action = 'agent_pause_change'`,
+  );
+  expect(audit.rows).toEqual([]);
+  const row = await db.execute<{ paused: boolean }>(
+    sql`select agent_paused_at is not null as paused from conversations where id = ${conversationId}`,
+  );
+  expect(row.rows[0]!.paused).toBe(false);
 });
 
 test.describe("con reparaciones y turnos (brief-24.3, D-6)", () => {
@@ -1465,6 +1637,8 @@ test.describe("con reparaciones y turnos (brief-24.3, D-6)", () => {
     for (const route of [
       `/conversaciones/${conversationId}`,
       "/conversaciones",
+      // El panel de vista previa lee la reparación y el hilo (brief-24.3.1, AC-7).
+      `/conversaciones?ver=${conversationId}`,
     ]) {
       await page.goto(route);
       await page.waitForLoadState("networkidle");

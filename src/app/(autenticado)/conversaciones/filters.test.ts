@@ -28,6 +28,7 @@ describe("filtros de la pantalla 8 (brief-6.4)", () => {
       sort: "recent",
       pageSize: 25,
       agentPaused: false,
+      latestPerClient: true,
     });
   });
 
@@ -75,7 +76,22 @@ describe("filtros de la pantalla 8 (brief-6.4)", () => {
       sort: "oldest",
       pageSize: 50,
       agentPaused: false,
+      latestPerClient: true,
     });
+  });
+
+  it("brief-24.3.1: la conversación del panel va en ?ver= y la bandeja agrupa por cliente (D-1 y D-2)", () => {
+    expect(DEFAULT_VIEW.selected).toBe("");
+    const view = parseConversationView({
+      ver: `  ${CLIENT_ID}  `,
+      estado: "todos",
+    });
+    expect(view.selected).toBe(CLIENT_ID);
+    expect(conversationFiltersHref(view)).toBe(
+      `/conversaciones?estado=todos&ver=${CLIENT_ID}`,
+    );
+    expect(parseConversationView({ ver: ["a", "b"] }).selected).toBe("a");
+    expect(toListFilters(view, BUENOS_AIRES).latestPerClient).toBe(true);
   });
 
   it("brief-24.3: Abiertas por defecto, Todas con estado=todos, y «Atención humana» (D-1 y D-3)", () => {

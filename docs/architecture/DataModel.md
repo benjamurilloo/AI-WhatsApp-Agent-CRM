@@ -652,6 +652,13 @@ Se quitaron `(organization_id, status, started_at desc)` y `(client_id, started_
 
 Sin índice sobre `agent_paused_at`: la pausa es una fracción de las conversaciones de una organización y se cuenta en el mismo recorrido. En local, con 10.000 conversaciones en una organización (una de cada diez pausada) y 20 corridas, la lista con las cantidades tarda 14,4 ms de mediana (p95 17,2 ms) contra 15,3 ms (p95 17,1 ms) sin ellas, y con «Atención humana», 17,5 ms (p95 22,2 ms).
 
+*Nota del 2026-10-28, 24.3.1* ([brief-24.3.1](../decisions/brief-24.3.1-conversaciones-como-chat.md), D-1 y R-1). La bandeja muestra **una fila por cliente**, sin migración ni índice:
+
+- **`latestPerClient`**: una conversación con cliente entra solo si es la más reciente de ese cliente, por `last_message_at desc nulls last, started_at desc, id desc`, con una subconsulta correlacionada por `conversations_organization_client_last_message_idx`. Se elige **antes** de filtrar: el estado, la pausa, el canal, el período y las cantidades se aplican a esa conversación, así que un cliente con una pendiente vieja y una abierta nueva cuenta solo en Abiertas. Las conversaciones sin cliente son una fila cada una.
+- **`getConversationThread`**: las conversaciones del cliente, de la más vieja a la más reciente, y el id de la más reciente; sin cliente, solo la pedida.
+
+En local, con 10.000 conversaciones en una organización (9.500 repartidas en 3.000 clientes y 500 sin cliente, una de cada diez pausada) y 20 corridas: la primera página tarda 16,2 ms de mediana (p95 19,1 ms) contra 9,6 ms (p95 12,2 ms) por conversación; las cantidades, 20,3 ms (p95 22,0 ms) contra 4,3 ms (p95 10,2 ms); «Atención humana», 9,7 ms (p95 13,0 ms); y la última página de todas, 54,2 ms (p95 63,5 ms). Se revisa si una organización llega a un volumen mucho mayor.
+
 ### `messages`
 
 **Implementada en la 6.1.** Módulo dueño: `conversations`. Insert-only (regla 10): `crm_app` solo tiene `SELECT` e `INSERT`, y el trigger `messages_insert_only` rechaza `UPDATE` y `DELETE` para cualquier rol con `P0001` (brief-6.1, D-3).
@@ -692,6 +699,8 @@ Vaciado (brief-13.4, D-2 y D-3; ADR 0015): ante un pedido de borrado, `body_text
 *Nota del 2026-10-28, 24.3* ([brief-24.3](../decisions/brief-24.3-conversaciones.md), D-5 y R-2). Desde la 24.3, la pantalla 9 intercala las notas con los mensajes en `listConversationTimeline`, de un solo módulo y sin `JOIN` con otro: de a 50 entradas con un cursor `(fecha, tipo, id)`, en el que a igual fecha el mensaje va antes que la nota. Cada página lee hasta 51 mensajes y 51 notas anteriores al cursor, por `messages_conversation_sent_idx` y este índice, y se queda con las 50 mayores: ninguna entrada se pierde ni se repite en el borde (`conversation-inbox.test.ts`, que falla si se invierte el desempate). En local, el hilo de una conversación con 200 mensajes y 30 notas tarda 14,9 ms de mediana (p95 19,1 ms), contra 16,2 ms (p95 21,2 ms) de las dos lecturas de antes en paralelo, en 20 corridas.
 
 **El texto vive solo acá** (invariante 2): la auditoría `note_added` guarda el id de la nota, no el texto, y el log tampoco lo lleva. Una nota no se edita ni se borra; una equivocada se corrige con otra.
+
+*Nota del 2026-10-28, 24.3.1* ([brief-24.3.1](../decisions/brief-24.3.1-conversaciones-como-chat.md), D-1 y R-2). Desde la 24.3.1, `listConversationTimeline` con `scope: "client"` une los mensajes y las notas de **todas las conversaciones del cliente** (`conversation_id in (…)`), con el mismo cursor `(fecha, tipo, id)` y los mismos índices; cada entrada lleva su `conversationId` para el separador. En local, un cliente con 4 conversaciones de 50 mensajes y 30 notas: 10,5 ms de mediana (p95 17,5 ms) contra 8,2 ms (p95 9,9 ms) para una sola conversación.
 
 Vaciado (brief-16.4, D-5; ADR 0015, enmienda del 2026-10-07): `scripts/client-data-delete.ts --vaciar` lleva a nulo `body_text` de las notas de todas las conversaciones del cliente, en la misma transacción que sus mensajes. Quedan la fecha y el autor. Las notas de una conversación sin cliente no se alcanzan, como sus mensajes.
 

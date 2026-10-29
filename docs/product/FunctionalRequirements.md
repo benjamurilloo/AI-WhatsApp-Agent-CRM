@@ -71,6 +71,10 @@ Agregados en la 29.2, capacidades y variantes ([brief-29.2](../decisions/brief-2
 ## Conversaciones y mensajes
 
 - **FR-CONV-01**: Cualquier usuario puede listar conversaciones filtrando por período, estado, canal y cliente. La lista no incluye el contenido de ningún mensaje, ni truncado: la consulta no trae el cuerpo del último mensaje (subfase 1.3, D-2).
+  - *Enmendado el 2026-10-28 por la 24.3.1* ([brief-24.3.1](../decisions/brief-24.3.1-conversaciones-como-chat.md), D-1 y D-2), por decisión del usuario; el texto de arriba se conserva:
+    - **La bandeja agrupa por cliente**: una fila por cliente, con su conversación más reciente, y una por cada conversación sin cliente. Los filtros se aplican a esa conversación.
+    - **La lista y sus filas siguen sin el texto de ningún mensaje ni el teléfono**, y su consulta no trae ningún cuerpo.
+    - **En escritorio, la pantalla 8 suma un panel de vista previa** de la conversación elegida con `?ver=`: lee aparte, como la pantalla 9, las últimas entradas del hilo, para los dos roles, que ya podían leerlo. Sin elegir, no lee ningún hilo.
 - **FR-CONV-02**: El detalle de una conversación muestra el timeline cronológico de mensajes, diferenciando visualmente entrantes y salientes.
 - **FR-CONV-03**: Una conversación tiene un estado (`open`, `pending`, `closed`) consultable y filtrable. Un admin puede cambiarlo manualmente y el cambio queda auditado. *Precisado el 2026-09-25 por la 12.2 ([brief-12.2](../decisions/brief-12.2-conversacion-vigente-y-derivacion.md), D-4)*: `pending` significa **«espera a una persona»**, y es el estado al que la deriva un servicio (FR-API-06).
 - **FR-CONV-04**: Existe un contrato de ingestión (endpoint y esquema de payload versionados), documentado y probado con datos sintéticos, que crea conversaciones y mensajes de forma idempotente por `(organization_id, source, external_ref)` del evento. Reenviar el mismo evento no duplica datos. Reenviarlo con otro contenido se rechaza con `CONFLICT` sin modificar nada.

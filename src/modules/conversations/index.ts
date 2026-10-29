@@ -1,7 +1,8 @@
 // Interfaz pública del módulo conversations (brief-6.3; conversación vigente para ingestion,
 // brief-12.2; historial para la API de lectura, brief-12.4; pausa del agente, brief-16.3; notas,
 // brief-16.4; el cliente de una conversación para la API de lectura, brief-29.8.2; el hilo
-// intercalado y las cantidades de la bandeja, brief-24.3).
+// intercalado y las cantidades de la bandeja, brief-24.3; la bandeja por cliente y el hilo unido,
+// brief-24.3.1).
 export {
   addConversationNote,
   type AddConversationNoteResult,
@@ -13,6 +14,9 @@ export {
   type ConversationTimelineEntry,
   type ConversationTimelineResult,
   getConversationCounts,
+  getConversationThread,
+  type ConversationThreadResult,
+  type ThreadConversation,
   type ConversationCounts,
   type ConversationCountsResult,
   NOTE_MAX_LENGTH,

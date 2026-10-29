@@ -132,7 +132,14 @@ export function agentPausedSinceText(since: string): string {
 // es la pausa, no el estado pendiente: las dos marcas son independientes.
 export const HUMAN_ATTENTION_LABEL = "Atención humana";
 export const AGENT_ACTIVE_LABEL = "Agente activo";
-export const AGENT_ACTIVE_STRIP_TEXT = "Responde automáticamente";
+export const AGENT_ACTIVE_STRIP_TEXT =
+  "Las respuestas automáticas están habilitadas.";
+// Desde la 24.3.1, la forma de los mockups 02 y 05 (brief-24.3.1).
+export const AGENT_PAUSED_STRIP_TEXT =
+  "Las respuestas automáticas están pausadas mientras atendés.";
+export const TAKE_CONFIRM_TITLE = "Tomar atención humana";
+export const TAKE_CONFIRM_TEXT = "Pausa al agente para que puedas responder.";
+export const CANCEL_LABEL = "Cancelar";
 export const TAKE_CONVERSATION_LABEL = "Tomar conversación";
 export const REACTIVATE_AGENT_LABEL = "Reactivar agente";
 
@@ -175,7 +182,9 @@ export const NOTE_LABEL = "Nota interna";
 export const NOTE_ONLY_TEAM_TEXT = "Solo equipo";
 export const NOTE_FIELD_LABEL = "Nota para el equipo";
 export const NOTE_FIELD_HINT =
-  "El cliente no la ve ni la recibe el agente. Una nota no se edita ni se borra.";
+  "Guardar una nota no pausa al agente. Una nota no se edita ni se borra.";
+export const NOTE_ONLY_TEAM_NOTICE = "Solo el equipo puede ver esta nota.";
+export const NOTE_NOT_SENT_NOTICE = "No se envía por WhatsApp.";
 
 // Las acciones de estado del encabezado (brief-24.3, D-7), con «Cerrada» (D-2).
 export const STATUS_ACTION_LABEL: Record<ConversationStatus, string> = {
@@ -192,6 +201,36 @@ export const NO_CLIENT_CONTEXT_TEXT =
   "Esta conversación no tiene un cliente asociado.";
 export const NO_CONTEXT_DATA_TEXT =
   "Sin reparaciones abiertas, turnos próximos ni etiquetas.";
+export const NO_APPOINTMENT_TEXT = "Sin turno asignado";
+export const NO_TAGS_TEXT = "Sin etiquetas";
+export const AGENT_ACTIVITY_TITLE = "Actividad del agente";
+export const AGENT_REPLY_TEXT = "Respuesta automática";
+
+// La bandeja como chat y su panel (brief-24.3.1, D-1 a D-3).
+export const SEARCH_PLACEHOLDER = "Buscar nombre o teléfono";
+export const ALL_CHIP_LABEL = "Todas";
+export const MORE_FILTERS_LABEL = "Más filtros";
+// En el teléfono, como el mockup 03.
+export const FILTERS_SHORT_LABEL = "Filtros";
+export const PREVIEW_TITLE = "Vista previa";
+export const PREVIEW_EMPTY_TEXT = "Elegí una conversación para verla acá.";
+// La agrupación de la bandeja (brief-24.3.1, R-3): las pestañas cuentan la más reciente de cada cliente.
+export const ONE_ROW_PER_CLIENT_TEXT =
+  "Cada cliente aparece una vez, con su conversación más reciente.";
+export const PREVIEW_HINT = "Abrí la conversación para agregar una nota.";
+// Un viewer no agrega notas.
+export const PREVIEW_VIEWER_HINT = "Abrí la conversación para leerla entera.";
+export const OPEN_CONVERSATION_LABEL = "Abrir conversación";
+export const BACK_TO_LIST_LABEL = "Conversaciones";
+export const BACK_TO_CHATS_LABEL = "Chats";
+
+// El separador entre dos conversaciones del hilo unido (D-1).
+export function conversationSeparatorText(
+  startedAt: string,
+  status: ConversationStatus,
+): string {
+  return `Conversación del ${startedAt} · ${STATUS_LABEL[status]}`;
+}
 
 export function noteErrorMessage(
   code: Exclude<ErrorCode, "UNAUTHENTICATED">,
@@ -238,12 +277,18 @@ export type StatusChangeState =
 export type MessageTimelineItem = {
   type: "message";
   id: string;
+  // Para los separadores del hilo unido (brief-24.3.1, D-1).
+  conversationId: string;
+  // El avatar de la burbuja: el cliente, el agente, una persona o el negocio sin dato.
+  avatar: "client" | "agent" | "person" | "business";
   direction: MessageDirection;
   directionLabel: string;
   // null: sin rótulo (brief-12.3, D-5).
   kindLabel: string | null;
   senderLabel: string | null;
+  // day compara días; dayLabel se muestra en la píldora («Hoy · 27 oct»).
   day: string;
+  dayLabel: string;
   time: string;
   body: string | null;
 };
@@ -251,8 +296,10 @@ export type MessageTimelineItem = {
 export type NoteTimelineItem = {
   type: "note";
   id: string;
+  conversationId: string;
   author: string;
   day: string;
+  dayLabel: string;
   time: string;
   // null: vaciada con los datos del cliente (brief-16.4, D-5).
   body: string | null;
@@ -263,6 +310,18 @@ export type TimelineItem = MessageTimelineItem | NoteTimelineItem;
 // Un separador de día va antes del primer mensaje de cada día, también al unir páginas.
 export function startsDay(items: TimelineItem[], index: number): boolean {
   return index === 0 || items[index - 1]?.day !== items[index]?.day;
+}
+
+// Un separador de conversación va antes de la primera entrada de cada una, salvo la primera del
+// hilo (brief-24.3.1, D-1).
+export function startsConversation(
+  items: TimelineItem[],
+  index: number,
+): boolean {
+  return (
+    index > 0 &&
+    items[index - 1]?.conversationId !== items[index]?.conversationId
+  );
 }
 
 export type OlderMessagesResult =

@@ -132,6 +132,8 @@ export type ConversationListFilters = {
   pageSize?: number;
   // true: solo las del agente pausado, «Atención humana» (brief-24.3, D-3).
   agentPaused?: boolean;
+  // true: una fila por cliente, con su conversación más reciente (brief-24.3.1, D-1).
+  latestPerClient?: boolean;
 };
 
 export type ConversationListField =
@@ -247,6 +249,7 @@ export async function listConversations(
     ...validated.values,
     timezone: await getOrganizationTimezone(context),
     agentPaused: filters.agentPaused === true ? true : null,
+    latestPerClient: filters.latestPerClient === true,
   };
   const sort =
     filters.sort && CONVERSATION_SORTS.includes(filters.sort)
@@ -297,6 +300,7 @@ export async function getConversationCounts(
     ...validated.values,
     timezone: await getOrganizationTimezone(context),
     agentPaused: null,
+    latestPerClient: filters.latestPerClient === true,
   });
   const counts = Object.fromEntries(
     CONVERSATION_STATUSES.map((status) => [status, { total: 0, paused: 0 }]),
@@ -350,6 +354,47 @@ export async function getConversation(
       client: clientId === null ? null : (clients.get(clientId) ?? null),
     },
     timezone: await getOrganizationTimezone(context),
+  };
+}
+
+export type ThreadConversation = {
+  id: string;
+  status: ConversationStatus;
+  startedAt: Date;
+};
+
+export type ConversationThreadResult =
+  | {
+      ok: true;
+      // La conversación sobre la que se actúa: la más reciente del cliente, o la pedida si no
+      // tiene cliente.
+      latestId: string;
+      // Las del hilo unido, de la más vieja a la más reciente.
+      conversations: ThreadConversation[];
+    }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">;
+
+// Las conversaciones del hilo unido de la pantalla 9 (brief-24.3.1, D-1), para admin y viewer: las
+// del cliente de la pedida, o solo ella si no tiene cliente.
+export async function getConversationThread(
+  context: AuthContext,
+  conversationId: string,
+): Promise<ConversationThreadResult> {
+  const found = await findReadable(context, conversationId);
+  if (!found.ok) return found;
+  const rows =
+    found.row.clientId === null
+      ? [found.row]
+      : await repository.findClientConversations(
+          context.organizationId,
+          found.row.clientId,
+        );
+  return {
+    ok: true,
+    latestId: rows[0]!.id,
+    conversations: rows
+      .map(({ id, status, startedAt }) => ({ id, status, startedAt }))
+      .reverse(),
   };
 }
 
@@ -677,9 +722,10 @@ export async function listConversationNotes(
 
 export const TIMELINE_PAGE_SIZE = 50;
 
+// conversationId: la conversación de la entrada, para los separadores del hilo unido (brief-24.3.1).
 export type ConversationTimelineEntry =
-  | ({ type: "message" } & ConversationMessage)
-  | ({ type: "note" } & ConversationNote);
+  | ({ type: "message"; conversationId: string } & ConversationMessage)
+  | ({ type: "note"; conversationId: string } & ConversationNote);
 
 export type ConversationTimelineResult =
   | {
@@ -754,25 +800,44 @@ type TimelineRow =
 export async function listConversationTimeline(
   context: AuthContext,
   conversationId: string,
-  options: { before: string },
+  // scope "client": todas las conversaciones del cliente de la pedida (brief-24.3.1, D-1). limit:
+  // menos entradas, para el panel de la bandeja (D-2); nunca más de 50.
+  options: {
+    before: string;
+    scope?: "conversation" | "client";
+    limit?: number;
+  },
 ): Promise<ConversationTimelineResult> {
   const found = await findReadable(context, conversationId);
   if (!found.ok) return found;
+  const pageSize = Math.min(
+    TIMELINE_PAGE_SIZE,
+    Math.max(1, Math.trunc(options.limit ?? TIMELINE_PAGE_SIZE)),
+  );
+  const ids =
+    options.scope === "client" && found.row.clientId !== null
+      ? (
+          await repository.findClientConversations(
+            context.organizationId,
+            found.row.clientId,
+          )
+        ).map((row) => row.id)
+      : found.row.id;
   const text = options.before.trim();
   const before = text === "" ? null : decodeTimelineCursor(text);
   if (text !== "" && before === null) return failure("VALIDATION_ERROR");
   const [messageRows, noteRows] = await Promise.all([
     repository.findTimelineMessages(
       context.organizationId,
-      found.row.id,
+      ids,
       before,
-      TIMELINE_PAGE_SIZE + 1,
+      pageSize + 1,
     ),
     repository.findTimelineNotes(
       context.organizationId,
-      found.row.id,
+      ids,
       before,
-      TIMELINE_PAGE_SIZE + 1,
+      pageSize + 1,
     ),
   ]);
   const merged: TimelineRow[] = [
@@ -789,7 +854,7 @@ export async function listConversationTimeline(
       row,
     })),
   ].sort(compareTimelineDesc);
-  const page = merged.slice(0, TIMELINE_PAGE_SIZE);
+  const page = merged.slice(0, pageSize);
   const oldest = page.at(-1);
   // Autores sin JOIN con users, por la interfaz de organizations (9.0.1).
   const authorIds = [
@@ -810,12 +875,23 @@ export async function listConversationTimeline(
     ok: true,
     entries: page.reverse().map((entry): ConversationTimelineEntry => {
       if (entry.type === "message") {
-        const { id, direction, sentAt, body, kind, sentBy } = entry.row;
-        return { type: "message", id, direction, sentAt, body, kind, sentBy };
+        const { id, conversationId, direction, sentAt, body, kind, sentBy } =
+          entry.row;
+        return {
+          type: "message",
+          conversationId,
+          id,
+          direction,
+          sentAt,
+          body,
+          kind,
+          sentBy,
+        };
       }
-      const { id, actorUserId, body, createdAt } = entry.row;
+      const { id, conversationId, actorUserId, body, createdAt } = entry.row;
       return {
         type: "note",
+        conversationId,
         id,
         author: { id: actorUserId, name: authors.get(actorUserId) ?? "" },
         body,
@@ -823,7 +899,7 @@ export async function listConversationTimeline(
       };
     }),
     before:
-      merged.length > TIMELINE_PAGE_SIZE && oldest
+      merged.length > pageSize && oldest
         ? encodeTimelineCursor({
             at: oldest.at,
             kind: oldest.type,
