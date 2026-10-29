@@ -2,6 +2,23 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-29 — 24.3 y 24.3.1: conversaciones
+
+Tercera subfase de la Fase 24, en dos vueltas: la [24.3](docs/decisions/brief-24.3-conversaciones.md) llevó el contenido de la v2, y la [24.3.1](docs/decisions/brief-24.3.1-conversaciones-como-chat.md), la forma, después de que el usuario rechazara la primera en el recorrido (los dos §Cierre).
+
+**Certifica:**
+- **La bandeja como lista de chats**: una fila por cliente con su conversación más reciente, y las conversaciones sin cliente aparte. Las pestañas por estado con su cantidad, «Atención humana», la búsqueda y «Más filtros» se aplican a esa conversación. Sin el texto de ningún mensaje ni el teléfono en la lista (FR-CONV-01, enmendado).
+- **El panel de vista previa** en escritorio, con `?ver=` y sin perder los filtros: el encabezado, la reparación abierta y las últimas 8 entradas, para los dos roles. Sin elegir, no lee ningún hilo.
+- **El hilo unido**: los mensajes y las notas de todas las conversaciones del cliente, con separadores, paginado de a 50 sin perder ni repetir entradas en el borde entre dos conversaciones; una conversación anterior redirige a la más reciente. La franja del agente, lila o ámbar, con confirmación para tomar; las acciones de estado; la nota interna al pie; el contexto del cliente en tarjetas.
+- **Un `viewer`** lee la bandeja, el panel y el hilo sin botones ni formularios, y no recibe un teléfono, un email ni un importe.
+- **R-1 medido**: la primera página, 1,7 veces la 24.3; el hilo unido, 1,3; las cantidades, 4,7 veces (20,3 ms de mediana). Por encima del umbral del brief: se informó, y el usuario lo aceptó.
+- **Validado en integración, desplegado en producción** (`18aaaf5`, sin migraciones) y recorrido por el usuario, con una revisión independiente antes de cada despliegue.
+
+**No certifica:**
+- que la bandeja, el panel y «Tomar conversación» funcionen sin JavaScript: así están armados, pero ningún caso lo corre;
+- la forma exacta de los mockups: ocho desvíos aceptados por el usuario y las exclusiones por regla, en la tabla de AC-9 de la 24.3.1;
+- el rendimiento de las cantidades con un volumen mucho mayor que 10.000 conversaciones.
+
 ## 2026-10-28 — 24.2: búsqueda en diálogo
 
 Segunda subfase de la Fase 24 ([brief-24.2](docs/decisions/brief-24.2-busqueda-en-dialogo.md) §Cierre).

@@ -163,7 +163,7 @@ El usuario recorrió la 24.3 en producción (`c3ddae4`) y dijo que no quedó com
 
 ## Cierre
 
-*Del 2026-10-29, antes del commit de la implementación. El commit, la CI, el despliegue y el recorrido del usuario (AC-11 y AC-12) quedan pendientes de autorización.*
+*Del 2026-10-29, antes del commit de la implementación; completado ese día después del despliegue y del recorrido del usuario, que aceptó los desvíos de AC-9.*
 
 ### Criterios
 
@@ -177,10 +177,10 @@ El usuario recorrió la 24.3 en producción (`c3ddae4`) y dijo que no quedó com
 | AC-6 | cumple | `client-context.tsx`: una tarjeta por bloque, «Sin turno asignado», «Actividad del agente» (D-4) y las acciones relacionadas como lista solo para `admin`. `client-context-pick.test.ts`. Casos 19 y 20 |
 | AC-7 | cumple | Caso 20: el viewer recorre la bandeja, el panel con `?ver=` y el hilo, y lo que recibe no contiene el teléfono, el email ni los importes de la clienta. Casos 15 y 17: sin botones ni formularios |
 | AC-8 | cumple | `conversations.spec.ts` llama a axe en 40 estados, en claro y en oscuro: la bandeja con y sin panel, el hilo activo y pausado, la confirmación (también a 375 px), la nota y el teléfono. Los casos 10 y 14 comprueban además que nada se sale del ancho a 375 px |
-| AC-9 | cumple, con desvíos a decidir | La comparación, abajo. Lo que no excluye una regla está marcado como desvío para tu decisión |
+| AC-9 | cumple | La comparación, abajo. Lo que no excluye una regla quedó como desvío, y el usuario aceptó los ocho el 2026-10-29, en el recorrido |
 | AC-10 | cumple, por encima del umbral | La medición, abajo. Las cantidades superan el doble: se informó y el usuario decidió aceptarlo y documentarlo (2026-10-29) |
-| AC-11 | pendiente | En local: typecheck, lint y prettier en los archivos cambiados. Vitest unitarias y guardas: 2092 de 2092 en dos corridas; en una primera, 1 de 2092 falló y no guardé la salida, así que no sé cuál fue. Integración completa: 258 archivos, 3942 pruebas, antes de las correcciones de la revisión; después, `conversation-inbox.test.ts` de nuevo, 11 de 11. End-to-end: la suite completa, antes de las correcciones, pasó 304 de 311 en 51,3 minutos; las 7 que fallaron agotaron el tiempo, en una máquina con poca memoria libre, y ninguna es de conversaciones. Después de las correcciones y con un build nuevo, esas 7 más `conversations.spec.ts` e `ingestion.spec.ts` pasaron 31 de 31. La CI, en el SHA del commit |
-| AC-12 | pendiente | El despliegue y el recorrido, con autorización. La revisión independiente (D-6) ya se hizo, abajo |
+| AC-11 | cumple | CI de `18aaaf5` (run 40884869557, `success`): lint, tipos, guardas, tests y build. En local: typecheck, lint y prettier en los archivos cambiados. Vitest unitarias y guardas: 2092 de 2092 en dos corridas; en una primera, 1 de 2092 falló y no guardé la salida, así que no sé cuál fue. Integración completa: 258 archivos, 3942 pruebas, antes de las correcciones de la revisión; después, `conversation-inbox.test.ts` de nuevo, 11 de 11. End-to-end: la suite completa, antes de las correcciones, pasó 304 de 311 en 51,3 minutos; las 7 que fallaron agotaron el tiempo, en una máquina con poca memoria libre, y ninguna es de conversaciones. Después de las correcciones y con un build nuevo, esas 7 más `conversations.spec.ts` e `ingestion.spec.ts` pasaron 31 de 31 |
+| AC-12 | cumple | Desplegada el 2026-10-29 en `18aaaf5`, sin migraciones; antes corría `c3ddae4`. El servicio quedó activo y `/login` respondió 200. Revisión independiente antes del despliegue (D-6). Recorrida por el usuario el mismo día, sin hallazgos |
 
 ### La medición de R-1
 
@@ -218,14 +218,14 @@ Capturas de la bandeja con y sin panel, los filtros y la bandeja en el teléfono
 | Las insignias dicen «Atención humana» y «Agente activo», no «Humano» y «Agente» | 01, 03 | Las etiquetas de la 24.3 (D-3), que la franja comparte |
 | «Cerrar conversación», no «Resolver»; la pestaña es «Cerradas», no «Resueltas» | 01, 02 | brief-24.3, D-2: el estado se sigue llamando «Cerrada» |
 | La paginación va debajo de la lista, fuera de su tarjeta | 01 | El patrón de paginación de la 24.1 |
-| En escritorio, la franja pausada sigue diciendo desde cuándo | 02 | Desvío: el dato es de la 16.3 y la v2 no lo muestra. A decidir |
+| En escritorio, la franja pausada sigue diciendo desde cuándo | 02 | Desvío: el dato es de la 16.3 y la v2 no lo muestra. Aceptado |
 | «Guardar nota» en ámbar oscuro, no ámbar claro | 05 | Desvío: no hay un ámbar sólido con contraste AA en los tokens. Gana el contraste (Invariantes) |
-| «Todas» no aparece en el teléfono | 03 | Desvío: en 375 px no entra en la línea de «Atención humana» y «Filtros». A decidir |
-| Las pestañas del teléfono son subrayadas con desplazamiento, no un control segmentado | 03 | Desvío: el patrón de `SubNav` de la 24.1. A decidir |
+| «Todas» no aparece en el teléfono | 03 | Desvío: en 375 px no entra en la línea de «Atención humana» y «Filtros». Aceptado |
+| Las pestañas del teléfono son subrayadas con desplazamiento, no un control segmentado | 03 | Desvío: el patrón de `SubNav` de la 24.1. Aceptado |
 | «Ver contexto» va arriba de la tarjeta, no debajo del encabezado | 04 | Desvío: el contexto va antes en el orden de lectura. Corrige la nota de la 24.3 (D-9) en `Screens.md` |
-| Sin migas en el hilo; «···» sin el texto «Más»; el avatar de una persona es un ícono, no sus iniciales; el pie dice «Mostrando 1 a N de M» | 02, 04, 05 | Desvíos de detalle que encontró la revisión (m-4). A decidir |
-| Sin la reparación en la tarjeta del hilo en el teléfono; «Crear turno» solo en las acciones relacionadas | 04, 05 | Desvíos de detalle (m-4). A decidir |
-| La confirmación de «Tomar conversación» es un panel flotante, no un menú anclado | 05 | Desvío: el panel tiene foco, Escape y «Cancelar» (AC-3). A decidir |
+| Sin migas en el hilo; «···» sin el texto «Más»; el avatar de una persona es un ícono, no sus iniciales; el pie dice «Mostrando 1 a N de M» | 02, 04, 05 | Desvíos de detalle que encontró la revisión (m-4). Aceptados |
+| Sin la reparación en la tarjeta del hilo en el teléfono; «Crear turno» solo en las acciones relacionadas | 04, 05 | Desvíos de detalle (m-4). Aceptados |
+| La confirmación de «Tomar conversación» es un panel flotante, no un menú anclado | 05 | Desvío: el panel tiene foco, Escape y «Cancelar» (AC-3). Aceptado |
 
 ### La revisión independiente
 
@@ -259,7 +259,7 @@ La hizo un agente que no participó del trabajo, con acceso de solo lectura, con
 - **D-2:** 8 entradas en el panel, no 20 (decidido por el usuario).
 - **Alcance incluido 1:** los nombres de las lecturas (m-5).
 - **Archivos autorizados:** `SubNav` ganó las opciones `scroll` e ícono, y `Avatar` el tono `soft`, dentro de `src/app/_components/`, que el brief permite para una opción nueva.
-- **AC-9:** los desvíos de forma de la tabla, a decidir en el recorrido.
+- **AC-9:** los desvíos de forma de la tabla, aceptados por el usuario el 2026-10-29.
 
 ### Autoevaluación
 

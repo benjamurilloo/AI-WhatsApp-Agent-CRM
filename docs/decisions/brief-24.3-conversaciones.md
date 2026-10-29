@@ -271,7 +271,7 @@ Es la tercera subfase de la Fase 24 (Roadmap, §Fases 23 a 28). Hereda el marco 
 
 ## Cierre
 
-*Del 2026-10-28, antes del commit de la implementación. El despliegue y el recorrido del usuario (AC-11 y AC-12) quedan pendientes de autorización.*
+*Del 2026-10-28, antes del commit de la implementación; completado el 2026-10-29, al cerrar la [24.3.1](brief-24.3.1-conversaciones-como-chat.md). El usuario recorrió esta subfase en producción y dijo que no quedó como la v2: la forma la llevó la 24.3.1, y esta cierra con ella.*
 
 ### Criterios
 
@@ -287,8 +287,8 @@ Es la tercera subfase de la Fase 24 (Roadmap, §Fases 23 a 28). Hereda el marco 
 | AC-8 | cumple | Casos 10, 14, 16 y 19 a 375 px: tarjetas en la bandeja; «Ver contexto» con `aria-expanded` se abre y se cierra con el teclado; sin desplazamiento horizontal |
 | AC-9 | cumple | `expectAccessible` corre axe en claro y en oscuro en 34 estados, entre ellos la bandeja con pestañas, «Atención humana», el contexto abierto a 1280 y 375 px, el contexto con reparación y turno, la nota y las notas como viewer |
 | AC-10 | cumple | La medición, abajo |
-| AC-11 | pendiente | En local: En local pasaron los 309 end-to-end, en dos corridas. En la primera, en 40,9 minutos, pasaron 306 y tres agotaron el tiempo sin una aserción fallida: el caso 6 de `conversations.spec.ts`, el caso 9 de `clients.spec.ts` y uno de `order-receipts.spec.ts`. La segunda, que repitió solo esos tres, los pasó. Antes pasaron typecheck, lint y Vitest completo: 3932 de 3934 en la corrida completa; los dos que fallaron (`supplier-payments`, un umbral de tiempo, y `warranty-claims`) pasan repetidos solos y no tocan conversaciones. La CI, en el SHA del commit |
-| AC-12 | pendiente | El despliegue y el recorrido, con autorización. La revisión independiente (D-11, b) ya se hizo, abajo |
+| AC-11 | cumple | CI de `c3ddae4` (run 40787983223, `success`). En local pasaron los 309 end-to-end, en dos corridas. En la primera, en 40,9 minutos, pasaron 306 y tres agotaron el tiempo sin una aserción fallida: el caso 6 de `conversations.spec.ts`, el caso 9 de `clients.spec.ts` y uno de `order-receipts.spec.ts`. La segunda, que repitió solo esos tres, los pasó. Antes pasaron typecheck, lint y Vitest completo: 3932 de 3934 en la corrida completa; los dos que fallaron (`supplier-payments`, un umbral de tiempo, y `warranty-claims`) pasan repetidos solos y no tocan conversaciones |
+| AC-12 | cumple, con la 24.3.1 | Desplegada el 2026-10-28 en `c3ddae4`, sin migraciones; antes corría `d169b84`. Revisión independiente antes del despliegue (D-11, b). En el recorrido, el usuario rechazó la forma, no el contenido: lo corrigió la 24.3.1, desplegada en `18aaaf5` y recorrida el 2026-10-29 |
 
 ### La medición de R-1
 
