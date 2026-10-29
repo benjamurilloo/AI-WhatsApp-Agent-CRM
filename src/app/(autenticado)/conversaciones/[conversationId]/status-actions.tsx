@@ -8,10 +8,8 @@ import {
   inlineButtonClass,
 } from "@/app/_components/form-styles";
 import { Icon } from "@/app/_components/icons";
-import {
-  MoreActions,
-  moreActionItemClass,
-} from "@/app/_components/more-actions";
+import { moreActionItemClass } from "@/app/_components/more-action-styles";
+import { MoreActions } from "@/app/_components/more-actions";
 import { changeConversationStatusAction } from "../actions";
 import {
   REOPEN_LABEL,

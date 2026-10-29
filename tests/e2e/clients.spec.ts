@@ -129,6 +129,12 @@ async function clientCount() {
 const clientsTable = (page: Page) =>
   page.getByRole("table", { name: "Clientes de la organización" });
 
+// Las pestañas de la ficha (brief-24.4.1, D-1): enlaces con aria-current.
+const clientTab = (page: Page, name: string) =>
+  page
+    .getByRole("navigation", { name: /^Secciones de / })
+    .getByRole("link", { name, exact: true });
+
 // Emisor sintético del caso 16 (brief-12.1, D-4): no coincide con ningún nombre real.
 const SERVICE_SOURCE = "emisor-e2e";
 
@@ -162,9 +168,28 @@ test("caso 1: un admin llega desde la navegación, ve el vacío y crea el primer
   await expect(
     nav.getByRole("link", { name: "Clientes", exact: true }),
   ).toHaveAttribute("aria-current", "page");
-  const data = page.getByRole("region", { name: "Información principal" });
+  await expect(clientTab(page, "Resumen")).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  const data = page.getByRole("region", { name: "Datos de contacto" });
   await expect(data).toContainText(PHONE);
   await expect(data).toContainText("Prefiere retirar por la tarde.");
+  await expect(
+    page.getByRole("region", { name: "Última interacción" }),
+  ).toContainText("Sin interacciones");
+  // Sin conversaciones, «Abrir conversación» no aparece (brief-24.4.1, AC-2).
+  await expect(
+    page.getByRole("link", { name: "Abrir conversación" }),
+  ).toBeHidden();
+  await expectAccessible(page, "detalle recién creado");
+
+  // La auditoría, en la pestaña Actividad (brief-24.4.1, D-6).
+  await clientTab(page, "Actividad").click();
+  await expect(clientTab(page, "Actividad")).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
   const audit = page.getByRole("table", { name: "Auditoría de Ana Pérez" });
   await expect(audit).toContainText("Alta");
   await expect(audit).toContainText(
@@ -172,10 +197,8 @@ test("caso 1: un admin llega desde la navegación, ve el vacío y crea el primer
   );
   await expect(audit).not.toContainText("Prefiere retirar");
   await expect(audit).toContainText(ADMIN_NAME);
-  await expect(page.getByText(`Fechas en ${TIMEZONE}.`)).toBeVisible();
-  await expect(data).toContainText("Última interacción");
-  await expect(data).toContainText("Sin interacciones");
-  await expectAccessible(page, "detalle recién creado");
+  await expect(page.getByText(`Fechas en ${TIMEZONE}.`).first()).toBeVisible();
+  await expectAccessible(page, "actividad recién creado");
 
   await page.getByRole("link", { name: "Volver a clientes" }).click();
   await expect(clientsTable(page)).toContainText("Ana Pérez");
@@ -315,9 +338,10 @@ test("caso 5: editar deja el cambio resumido en la auditoría", async ({
   await page.getByRole("button", { name: "Guardar cambios" }).click();
   await expect(page.getByText("Cliente actualizado.")).toBeVisible();
 
-  const data = page.getByRole("region", { name: "Información principal" });
+  const data = page.getByRole("region", { name: "Datos de contacto" });
   await expect(data).toContainText("Sin teléfono");
   await expect(data).toContainText("Nota nueva");
+  await clientTab(page, "Actividad").click();
   const audit = page.getByRole("table", { name: /Auditoría de/ });
   await expect(audit).toContainText("Edición");
   await expect(audit).toContainText(
@@ -356,6 +380,8 @@ test("caso 7: desactivar pide confirmación y se puede reactivar", async ({
   const clientId = await insertClient("Ana Pérez", { phone: PHONE });
   await login(page, ADMIN);
   await page.goto(`/clientes/${clientId}`);
+  // Desactivar está en «Más acciones del cliente» (brief-24.4.1, D-2).
+  await page.getByRole("button", { name: "Más acciones del cliente" }).click();
   await page.getByRole("link", { name: "Desactivar" }).click();
   await expect(page.getByText('¿Desactivar "Ana Pérez"?')).toBeFocused();
   await expectAccessible(page, "confirmación de desactivar");
@@ -369,9 +395,13 @@ test("caso 7: desactivar pide confirmación y se puede reactivar", async ({
   await expect(page.getByText("Ana Pérez")).toBeHidden();
 
   await page.goto(`/clientes/${clientId}`);
+  // Reactivar también está en «Más acciones del cliente» (D-2).
+  await page.getByRole("button", { name: "Más acciones del cliente" }).click();
   await page.getByRole("button", { name: "Reactivar" }).click();
   await expect(page.getByText("Cliente reactivado.")).toBeVisible();
-  await expect(page.getByText("Activo", { exact: true })).toBeVisible();
+  // Activo ya no lleva insignia: solo «Inactivo» se marca (brief-24.4.1, D-2).
+  await expect(page.getByText("Inactivo", { exact: true })).toBeHidden();
+  await clientTab(page, "Actividad").click();
   const audit = page.getByRole("table", { name: /Auditoría de/ });
   await expect(audit).toContainText("Desactivación");
   await expect(audit).toContainText("Reactivación");
@@ -401,14 +431,23 @@ test("caso 8: un viewer ve el teléfono enmascarado y no recibe formularios ni a
   await expectAccessible(page, "lista como viewer");
 
   await page.goto(`/clientes/${clientId}`);
-  const data = page.getByRole("region", { name: "Información principal" });
+  const data = page.getByRole("region", { name: "Datos de contacto" });
   await expect(data).toContainText("•••• 7788");
   await expect(data).toContainText("Prefiere la tarde.");
+  await expect(data.getByRole("button", { name: /^Copiar/ })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Editar" })).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: "Más acciones del cliente" }),
+  ).toBeHidden();
   await expect(page.getByRole("link", { name: "Desactivar" })).toBeHidden();
+  await expectAccessible(page, "detalle como viewer");
+  await clientTab(page, "Actividad").click();
+  await expect(clientTab(page, "Actividad")).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
   await expect(page.getByRole("table", { name: /Auditoría de/ })).toBeHidden();
   expect(await page.content()).not.toContain("Historial de auditoría");
-  await expectAccessible(page, "detalle como viewer");
 
   await page.goto("/clientes/nuevo");
   await expect(page.getByText(FORBIDDEN_PAGE)).toBeVisible();
@@ -640,9 +679,21 @@ test("caso 14: el detalle muestra la última interacción y las conversaciones d
 
   await login(page, VIEWER);
   await page.goto(`/clientes/${clientId}`);
-  const data = page.getByRole("region", { name: "Información principal" });
-  await expect(data).toContainText("Última interacción");
-  await expect(data).toContainText("02/09 10:00 · WhatsApp");
+  // En el Resumen, la fecha y el canal, sin el texto del mensaje (brief-24.4.1, H-1).
+  await expect(
+    page.getByRole("region", { name: "Última interacción" }),
+  ).toContainText("WhatsApp · 02/09 10:00");
+  // «Abrir conversación» lleva a la más reciente, también para un viewer (D-2).
+  const latest = await db.execute<{ id: string }>(
+    sql`select id from conversations where client_id = ${clientId}
+        order by last_message_at desc limit 1`,
+  );
+  await expect(
+    page.getByRole("link", { name: "Abrir conversación" }),
+  ).toHaveAttribute("href", `/conversaciones/${latest.rows[0]!.id}`);
+
+  await clientTab(page, "Actividad").click();
+  await expect(page).toHaveURL(`/clientes/${clientId}?pestana=actividad`);
   const section = page.getByRole("region", { name: "Conversaciones" });
   const table = section.getByRole("table", {
     name: "Conversaciones de Ana Pérez",
@@ -655,12 +706,16 @@ test("caso 14: el detalle muestra la última interacción y las conversaciones d
   await expectAccessible(page, "detalle con conversaciones");
 
   await section.getByRole("link", { name: "Página siguiente" }).click();
-  await expect(page).toHaveURL(`/clientes/${clientId}?pagina_conv=2`);
+  await expect(page).toHaveURL(
+    `/clientes/${clientId}?pestana=actividad&pagina_conv=2`,
+  );
   await expect(table.getByRole("row")).toHaveCount(1 + 1);
 
   await section.getByLabel("Estado").selectOption("cerrada");
   await section.getByRole("button", { name: "Filtrar" }).click();
-  await expect(page).toHaveURL(`/clientes/${clientId}?estado_conv=cerrada`);
+  await expect(page).toHaveURL(
+    `/clientes/${clientId}?pestana=actividad&estado_conv=cerrada`,
+  );
   await expect(table.getByRole("row")).toHaveCount(1 + 1);
   await section.getByLabel("Estado").selectOption("pendiente");
   await section.getByRole("button", { name: "Filtrar" }).click();
@@ -674,7 +729,7 @@ test("caso 14: el detalle muestra la última interacción y las conversaciones d
   }
 
   await section.getByRole("link", { name: "Limpiar filtro" }).first().click();
-  await expect(page).toHaveURL(`/clientes/${clientId}`);
+  await expect(page).toHaveURL(`/clientes/${clientId}?pestana=actividad`);
   await section.getByRole("link", { name: "Ver en Conversaciones" }).click();
   // Con todos los estados: la bandeja abre en Abiertas (brief-24.3, H-9).
   await expect(page).toHaveURL(
@@ -682,7 +737,7 @@ test("caso 14: el detalle muestra la última interacción y las conversaciones d
   );
   await expect(page.getByText("Cliente: Ana Pérez")).toBeVisible();
 
-  await page.goto(`/clientes/${clientId}`);
+  await page.goto(`/clientes/${clientId}?pestana=actividad`);
   await table.getByRole("link").first().click();
   await expect(page).toHaveURL(/\/conversaciones\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("heading", { name: "Ana Pérez" })).toBeVisible();
@@ -693,7 +748,7 @@ test("caso 15: un cliente sin conversaciones muestra el vacío", async ({
 }) => {
   const clientId = await insertClient("Lucía Fernández");
   await login(page, ADMIN);
-  await page.goto(`/clientes/${clientId}`);
+  await page.goto(`/clientes/${clientId}?pestana=actividad`);
   const section = page.getByRole("region", { name: "Conversaciones" });
   await expect(
     section.getByText("Sin conversaciones registradas."),
@@ -723,7 +778,7 @@ test("caso 16 (FR-AUD-03): la auditoría muestra al servicio como autor, solo pa
   );
 
   await login(page, ADMIN);
-  await page.goto(`/clientes/${clientId}`);
+  await page.goto(`/clientes/${clientId}?pestana=actividad`);
   const audit = page.getByRole("table", { name: /Auditoría de/ });
   await expect(audit).toContainText(`Servicio · ${SERVICE_SOURCE}`);
   await expect(audit).toContainText("Alta");
@@ -731,7 +786,7 @@ test("caso 16 (FR-AUD-03): la auditoría muestra al servicio como autor, solo pa
 
   await page.context().clearCookies();
   await login(page, VIEWER);
-  await page.goto(`/clientes/${clientId}`);
+  await page.goto(`/clientes/${clientId}?pestana=actividad`);
   await expect(page.getByRole("heading", { name: "Carla Ruiz" })).toBeVisible();
   expect(await page.content()).not.toContain(SERVICE_SOURCE);
 });
@@ -998,4 +1053,204 @@ test("brief-23.2: la ficha pregunta antes de salir con cambios sin guardar, y el
   const unload = await beforeUnload;
   expect(unload.type()).toBe("beforeunload");
   await unload.dismiss();
+});
+
+// La ficha en cuatro pestañas (brief-24.4.1). Un cliente con todos los datos de contacto: lo que un
+// viewer no debe recibir tiene que existir para que la prueba diga algo (AC-6).
+const CONTACT = {
+  email: "ana.privada@example.com",
+  address: "Pasaje Reservado 742",
+  postal: "C1405XYZ",
+};
+
+async function insertFullClient() {
+  const result = await db.execute<{ id: string }>(
+    sql`insert into clients (organization_id, display_name, phone_e164, notes, email, address_line,
+                             city, postal_code)
+        values (${SEED_ORGANIZATION_ID}, 'Ana Pérez', ${PHONE}, 'Prefiere la tarde.',
+                ${CONTACT.email}, ${CONTACT.address}, 'Rosario', ${CONTACT.postal})
+        returning id`,
+  );
+  return result.rows[0]!.id;
+}
+
+// Cada pestaña y la región que la identifica.
+const TABS = [
+  { name: "Resumen", param: "", region: "Datos de contacto" },
+  { name: "Operaciones", param: "?pestana=operaciones", region: "Pedidos" },
+  {
+    name: "Cuenta corriente",
+    param: "?pestana=cuenta",
+    region: "Cuenta corriente",
+  },
+  { name: "Actividad", param: "?pestana=actividad", region: "Conversaciones" },
+] as const;
+
+test("caso 19: brief-24.4.1 las cuatro pestañas se eligen por la URL, con aria-current, y un admin ve sus acciones (AC-1 a AC-5)", async ({
+  page,
+}) => {
+  const clientId = await insertFullClient();
+  await insertConversation(clientId, "open", new Date("2026-09-01T12:00:00Z"));
+  await login(page, ADMIN);
+  await page.goto(`/clientes/${clientId}`);
+  await expect(page.getByText(/^Cliente desde \d+ \w+ \d{4}$/)).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Abrir conversación" }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Editar" })).toBeVisible();
+
+  for (const tab of TABS) {
+    await clientTab(page, tab.name).click();
+    await expect(page).toHaveURL(`/clientes/${clientId}${tab.param}`);
+    await expect(clientTab(page, tab.name)).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    await expect(
+      page.getByRole("region", { name: tab.region, exact: true }),
+    ).toBeVisible();
+    await expectAccessible(page, `pestaña ${tab.name}`);
+  }
+
+  // El Resumen: copiar para un admin y los indicadores, sin sumar monedas.
+  await page.goto(`/clientes/${clientId}`);
+  const contact = page.getByRole("region", { name: "Datos de contacto" });
+  await expect(
+    contact.getByRole("button", { name: "Copiar teléfono" }),
+  ).toBeVisible();
+  await expect(
+    contact.getByRole("button", { name: "Copiar email" }),
+  ).toBeVisible();
+  await expect(page.getByText("Ventas registradas")).toBeVisible();
+  await expect(page.getByText("Al día")).toBeVisible();
+  await expect(page.getByRole("region", { name: "En curso" })).toContainText(
+    "Nada en curso.",
+  );
+
+  // La cuenta: «Registrar cobro» lleva al cobro de hoy.
+  await page.goto(`/clientes/${clientId}?pestana=cuenta`);
+  const account = page.getByRole("region", {
+    name: "Cuenta corriente",
+    exact: true,
+  });
+  await expect(account).toContainText(
+    "Este cliente no tiene ventas ni cobros.",
+  );
+  await expect(
+    account.getByRole("link", { name: "Registrar cobro" }),
+  ).toHaveAttribute("href", `/clientes/${clientId}/cobrar`);
+  // Un valor desconocido vuelve a Resumen.
+  await page.goto(`/clientes/${clientId}?pestana=otra`);
+  await expect(clientTab(page, "Resumen")).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+});
+
+test("caso 20: brief-24.4.1 un viewer ve las cuatro pestañas sin acciones y no recibe el teléfono, el email, la calle, el código postal ni la auditoría (AC-6)", async ({
+  page,
+}) => {
+  const clientId = await insertFullClient();
+  await login(page, VIEWER);
+  for (const tab of TABS) {
+    await page.goto(`/clientes/${clientId}${tab.param}`);
+    await expect(
+      page.getByRole("region", { name: tab.region, exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "Editar" })).toBeHidden();
+    await expect(
+      page.getByRole("button", { name: "Más acciones del cliente" }),
+    ).toBeHidden();
+    await expect(
+      page.getByRole("link", { name: "Registrar cobro" }),
+    ).toBeHidden();
+    await expect(page.getByRole("button", { name: /^Copiar/ })).toHaveCount(0);
+    // El único formulario de un viewer es el filtro GET de las conversaciones.
+    await expect(page.locator("main form")).toHaveCount(
+      tab.name === "Actividad" ? 1 : 0,
+    );
+    // Lo que llega al navegador y la respuesta cruda del servidor.
+    const raw = await (
+      await page.request.get(`/clientes/${clientId}${tab.param}`)
+    ).text();
+    for (const body of [await page.content(), raw]) {
+      for (const fragment of [
+        ...HIDDEN_FRAGMENTS,
+        CONTACT.email,
+        CONTACT.address,
+        CONTACT.postal,
+      ]) {
+        expect(body, `${tab.name}: ${fragment}`).not.toContain(fragment);
+      }
+      // El título de la tarjeta sale aunque no haya filas: así no depende de que haya auditoría.
+      expect(body).not.toContain("Historial de auditoría");
+      expect(body).not.toContain("Auditoría de");
+    }
+  }
+});
+
+test.describe("brief-24.4.1 sin JavaScript", () => {
+  test.use({ javaScriptEnabled: false });
+
+  test("caso 21: las pestañas son enlaces y cada una carga sola (AC-1)", async ({
+    page,
+  }) => {
+    const clientId = await insertFullClient();
+    const conversationId = await insertConversation(
+      clientId,
+      "open",
+      new Date("2026-09-01T12:00:00Z"),
+    );
+    await login(page, ADMIN);
+    await page.goto(`/clientes/${clientId}`);
+    for (const tab of TABS) {
+      await clientTab(page, tab.name).click();
+      await expect(page).toHaveURL(`/clientes/${clientId}${tab.param}`);
+      await expect(
+        page.getByRole("region", { name: tab.region, exact: true }),
+      ).toBeVisible();
+      // Lo que llega dentro de un Suspense también está, sin el script que cambia el esqueleto.
+      await expect(
+        page.getByRole("link", { name: "Abrir conversación" }),
+      ).toHaveAttribute("href", `/conversaciones/${conversationId}`);
+    }
+    await expect(
+      page.getByRole("link", { name: /^Conversación del / }),
+    ).toBeVisible();
+    // Sin JavaScript, «Más acciones» queda a la vista con «Desactivar».
+    await expect(page.getByRole("link", { name: "Desactivar" })).toBeVisible();
+  });
+});
+
+test("caso 22: brief-24.4.1 la ficha en el teléfono, sin desplazamiento horizontal (AC-8)", async ({
+  page,
+}) => {
+  const clientId = await insertFullClient();
+  await insertConversation(clientId, "open", new Date("2026-09-01T12:00:00Z"));
+  await page.setViewportSize({ width: 375, height: 812 });
+  await login(page, ADMIN);
+  for (const tab of TABS) {
+    await page.goto(`/clientes/${clientId}${tab.param}`);
+    await expect(
+      page.getByRole("region", { name: tab.region, exact: true }),
+    ).toBeVisible();
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(overflow, tab.name).toBeLessThanOrEqual(0);
+    await expectAccessible(page, `pestaña ${tab.name} a 375 px`);
+  }
+  // En el teléfono, «Más datos» abre el resto del contacto.
+  await page.goto(`/clientes/${clientId}`);
+  const contact = page.getByRole("region", { name: "Datos de contacto" });
+  await contact.getByText("Más datos").click();
+  await expect(contact.getByText("Rosario").first()).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Editar cliente" }),
+  ).toBeVisible();
+  // La confirmación de desactivar, también a 375 px.
+  await page.getByRole("button", { name: "Más acciones del cliente" }).click();
+  await page.getByRole("link", { name: "Desactivar" }).click();
+  await expect(page.getByText('¿Desactivar "Ana Pérez"?')).toBeFocused();
+  await expectAccessible(page, "confirmación de desactivar a 375 px");
 });

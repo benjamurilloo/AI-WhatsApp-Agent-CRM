@@ -405,10 +405,23 @@ test("la ficha del cliente suma lo que debe en la moneda principal", async ({
   await insertSale(1, "100.00", "USD", clientId);
   await insertSale(2, "50000.00", "ARS", clientId);
   await login(page, VIEWER.email);
-  await page.goto(`/clientes/${clientId}`);
+  // En la pestaña Cuenta corriente de la ficha (brief-24.4.1, D-4), con el selector de moneda.
+  await page.goto(`/clientes/${clientId}?pestana=cuenta`);
   await expect(
     page.getByText(/Debe en total:\s*US\$\s150,00\s*de referencia/),
   ).toBeVisible();
+  const currencies = page.getByRole("navigation", {
+    name: "Moneda de la cuenta",
+  });
+  await expect(currencies.getByRole("link")).toHaveCount(2);
+  await currencies.getByRole("link", { name: "USD" }).click();
+  await expect(page).toHaveURL(
+    `/clientes/${clientId}?pestana=cuenta&moneda=USD`,
+  );
+  await expect(currencies.getByRole("link", { name: "USD" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
   await page.goto(`/clientes/${clientId}/cuenta`);
   await expect(
     page.getByText(/Debe en total:\s*US\$\s150,00\s*de referencia/),

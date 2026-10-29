@@ -263,7 +263,8 @@ export function hasMoreFilters(view: ConversationView): boolean {
 }
 
 // Enlaces de la sección de conversaciones de la pantalla 7 (D-4): sus parámetros conviven con
-// los de la auditoría, y cada enlace conserva los de la otra sección.
+// los de la auditoría, y cada enlace conserva los de la otra sección. Desde la 24.4.1, las dos están
+// en la pestaña Actividad de la ficha, y cada enlace la lleva (brief-24.4.1, AC-7).
 export type ClientSectionsView = {
   auditPage: number;
   conversationStatus: StatusKey;
@@ -284,7 +285,7 @@ export function clientSectionsHref(
   clientId: string,
   view: ClientSectionsView,
 ): string {
-  const query = new URLSearchParams();
+  const query = new URLSearchParams({ pestana: "actividad" });
   if (view.auditPage > 1) query.set("auditoria", String(view.auditPage));
   if (view.conversationStatus !== "todos") {
     query.set("estado_conv", view.conversationStatus);
@@ -292,6 +293,5 @@ export function clientSectionsHref(
   if (view.conversationPage > 1) {
     query.set("pagina_conv", String(view.conversationPage));
   }
-  const text = query.toString();
-  return text ? `/clientes/${clientId}?${text}` : `/clientes/${clientId}`;
+  return `/clientes/${clientId}?${query.toString()}`;
 }

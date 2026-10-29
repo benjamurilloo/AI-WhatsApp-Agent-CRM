@@ -223,15 +223,18 @@ test("2. FR-CLI-09: un admin agrega y quita etiquetas en la ficha, con teclado y
   ).toHaveCount(0);
   await expectAccessible(page, "ficha con una etiqueta");
 
-  // La auditoría del cliente lo cuenta con el nombre.
+  // La auditoría del cliente lo cuenta con el nombre, en la pestaña Actividad (brief-24.4.1, D-6).
+  await page.goto(`/clientes/${clientId}?pestana=actividad`);
   await expect(page.getByText("Etiqueta agregada: Reclamo")).toBeVisible();
 
   // Quitar con el teclado: el botón tiene nombre propio.
+  await page.goto(`/clientes/${clientId}`);
   const remove = page.getByRole("button", { name: "Quitar Reclamo" });
   await remove.focus();
   await page.keyboard.press("Enter");
   await expect(status(page)).toHaveText("Etiqueta quitada.");
   expect(await assignedNames(clientId)).toEqual([]);
+  await page.goto(`/clientes/${clientId}?pestana=actividad`);
   await expect(page.getByText("Etiqueta quitada: Reclamo")).toBeVisible();
 });
 
@@ -452,6 +455,7 @@ test("7. FR-CLI-11: la etiqueta que puso el agente se ve en la ficha, con el ser
   await expect(page.getByRole("region", { name: "Etiquetas" })).toContainText(
     "Interesado",
   );
+  await page.goto(`/clientes/${clientId}?pestana=actividad`);
   const audit = page.getByRole("table", { name: /Auditoría de/ });
   await expect(audit).toContainText(`Servicio · ${AGENT_SOURCE}`);
   await expect(audit).toContainText("Etiqueta agregada: Interesado");

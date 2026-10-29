@@ -5,9 +5,10 @@ import { useActionState, useEffect, useRef } from "react";
 import {
   dangerButtonClass,
   formMessageClass,
-  inlineButtonClass,
   secondaryLinkClass,
 } from "@/app/_components/form-styles";
+import { moreActionItemClass } from "@/app/_components/more-action-styles";
+import { Icon } from "@/app/_components/icons";
 import { deactivateClientAction, reactivateClientAction } from "../actions";
 import type { ClientChangeState } from "../messages";
 
@@ -89,15 +90,15 @@ export function ReactivateForm({ clientId }: { clientId: string }) {
   );
   const message = useErrorMessage(state);
 
+  // Desde la 24.4.1, un ítem de «Más acciones» (brief-24.4.1, D-2).
   return (
-    <form action={formAction} className="flex flex-col gap-3">
+    <form action={formAction}>
       <input type="hidden" name="clientId" value={clientId} />
       {message}
-      <div>
-        <button type="submit" disabled={pending} className={inlineButtonClass}>
-          {pending ? "Reactivando…" : "Reactivar"}
-        </button>
-      </div>
+      <button type="submit" disabled={pending} className={moreActionItemClass}>
+        <Icon name="power" className="size-4" />
+        {pending ? "Reactivando…" : "Reactivar"}
+      </button>
     </form>
   );
 }

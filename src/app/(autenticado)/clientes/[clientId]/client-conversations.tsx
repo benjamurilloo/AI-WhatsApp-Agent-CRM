@@ -4,7 +4,6 @@ import {
   type ClientActivityResult,
 } from "@/modules/conversations";
 import {
-  cardClass,
   labelClass,
   linkClass,
   secondaryButtonClass,
@@ -13,46 +12,31 @@ import {
 import { Icon } from "@/app/_components/icons";
 import { Pagination, shownRangeText } from "@/app/_components/pagination";
 import { StatTile } from "@/app/_components/stat-tile";
-import { formatShortDateTime } from "@/app/_format/date-time";
 import { ConversationTable } from "@/app/(autenticado)/conversaciones/conversation-table";
 import {
   clientSectionsHref,
   type ClientSectionsView,
 } from "@/app/(autenticado)/conversaciones/filters";
 import {
-  CHANNEL_LABEL,
   NO_CLIENT_CONVERSATION_RESULTS_MESSAGE,
   NO_CLIENT_CONVERSATIONS_MESSAGE,
-  NO_INTERACTIONS_TEXT,
 } from "@/app/(autenticado)/conversaciones/messages";
 import { daysSinceText } from "./stats";
 
 // Actividad del cliente en la pantalla 7 (wireframe 07; brief-6.4, D-4). La página crea la
-// promesa sin esperarla, y cada parte la espera dentro de su Suspense: los datos del cliente se
-// muestran antes. Sin contenido de mensajes.
+// promesa sin esperarla y cada parte la espera. Desde la 24.4.1, sin Suspense: con él, sin
+// JavaScript quedaba el esqueleto (brief-24.4.1, AC-1). Sin contenido de mensajes.
 
 type Activity = Promise<ClientActivityResult>;
 
-export async function LastInteraction({ activity }: { activity: Activity }) {
-  const result = await activity;
-  if (!result.ok) return <>—</>;
-  if (!result.lastInteraction) return <>{NO_INTERACTIONS_TEXT}</>;
-  return (
-    <>
-      {formatShortDateTime(result.lastInteraction.at, result.timezone)} ·{" "}
-      {CHANNEL_LABEL[result.lastInteraction.channel]}
-    </>
-  );
-}
-
 // Estadísticas del cliente (brief-15.4, D-6): la cantidad de conversaciones, sin filtro de
 // estado, y los días desde la última interacción. Sin el total de mensajes: exigiría una consulta
-// nueva.
+// nueva. Desde la 24.4.1, arriba de las conversaciones en la pestaña Actividad.
 export async function ClientStats({ activity }: { activity: Activity }) {
   const result = await activity;
   if (!result.ok) return <p className="text-sm text-muted">—</p>;
   return (
-    <div className="flex flex-col gap-3">
+    <div className="grid gap-3 sm:grid-cols-2">
       <StatTile
         icon="messageCircle"
         value={String(result.total)}
@@ -67,15 +51,6 @@ export async function ClientStats({ activity }: { activity: Activity }) {
         }
         label="Desde la última interacción"
       />
-    </div>
-  );
-}
-
-export function ClientStatsSkeleton() {
-  return (
-    <div aria-hidden="true" className="flex flex-col gap-3">
-      <div className="h-16 animate-pulse rounded-xl bg-surface-muted" />
-      <div className="h-16 animate-pulse rounded-xl bg-surface-muted" />
     </div>
   );
 }
@@ -108,6 +83,8 @@ export async function ClientConversations({
         action={`/clientes/${clientId}`}
         className="flex flex-wrap items-end gap-3"
       >
+        {/* El filtro vuelve a la pestaña Actividad (brief-24.4.1, AC-7). */}
+        <input type="hidden" name="pestana" value="actividad" />
         {view.auditPage > 1 ? (
           <input type="hidden" name="auditoria" value={view.auditPage} />
         ) : null}
@@ -195,15 +172,5 @@ export async function ClientConversations({
         </>
       )}
     </>
-  );
-}
-
-// Skeleton con la forma de la sección mientras llega la actividad (Screens, reglas comunes).
-export function ClientConversationsSkeleton() {
-  return (
-    <div aria-hidden="true" className="mt-4 flex flex-col gap-3">
-      <div className="h-10 w-48 animate-pulse rounded-md bg-surface-muted" />
-      <div className={`h-32 animate-pulse ${cardClass} bg-surface-muted`} />
-    </div>
   );
 }

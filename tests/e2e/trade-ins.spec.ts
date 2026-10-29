@@ -267,12 +267,16 @@ test("un admin recibe un usado, lo ve en revisión, lo libera y lo vende", async
       sql`select id from clients where display_name = ${CLIENT}`,
     )
   ).rows[0]!.id;
+  // El DNI en el Resumen y el usado en Operaciones (brief-24.4.1, D-3 y D-5).
   await page.goto(`/clientes/${clientId}`);
+  await expect(
+    page.getByRole("region", { name: "Datos de contacto" }),
+  ).toContainText("30123456");
+  await page.goto(`/clientes/${clientId}?pestana=operaciones`);
   await expect(
     page.getByRole("heading", { name: "Usados entregados" }),
   ).toBeVisible();
   await expect(page.getByRole("link", { name: "PU-000001" })).toBeVisible();
-  await expect(page.getByText("30123456")).toBeVisible();
 });
 
 test("un punto obligatorio que no pasa rechaza la recepción y no escribe nada", async ({

@@ -13,12 +13,7 @@ import { Icon } from "./icons";
 // para que dos fichas no tengan tres controles llamados «Más». Sin JavaScript, la lista queda a la
 // vista.
 
-// Cada ítem es un enlace o un botón con esta clase; los destructivos suman moreActionDangerClass y
-// van al final.
-export const moreActionItemClass =
-  "flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold text-foreground hover:bg-surface-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus";
-
-export const moreActionDangerClass = "text-danger hover:bg-danger-soft";
+// Las clases de los ítems están en more-action-styles.ts.
 
 // iconOnly: el botón muestra solo «···», como el hilo de la v2 (brief-24.3.1); el nombre accesible
 // sigue siendo label.

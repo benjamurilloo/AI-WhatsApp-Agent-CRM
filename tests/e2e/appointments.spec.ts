@@ -315,6 +315,11 @@ test("un admin da un turno desde el calendario, ve la franja llena, configura, c
   // La ficha de la clienta muestra sus turnos.
   await page.goto("/clientes");
   await page.getByRole("link", { name: "Lucía Gómez" }).click();
+  // En la pestaña Operaciones de la ficha (brief-24.4.1, D-5).
+  await page
+    .getByRole("navigation", { name: /^Secciones de / })
+    .getByRole("link", { name: "Operaciones" })
+    .click();
   const section = page.getByRole("region", { name: "Turnos" });
   await expect(section.getByRole("listitem")).toHaveCount(3);
   await expect(

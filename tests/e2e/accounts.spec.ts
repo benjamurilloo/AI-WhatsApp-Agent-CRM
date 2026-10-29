@@ -201,11 +201,23 @@ test("un admin abre el estado de cuenta desde la ficha, cobra a cuenta con la vi
   await insertSale(2, "2000.00", clientId, { daysAgo: 1 });
   await login(page, ADMIN);
 
-  // La tarjeta de la ficha.
+  // El saldo en el Resumen y la pestaña Cuenta corriente de la ficha (brief-24.4.1, D-3 y D-4).
   await page.goto(`/clientes/${clientId}`);
-  const card = page.getByRole("region", { name: "Cuenta corriente" });
-  await expect(card).toContainText(/Debe ARS\s*\$\s5\.000,00/);
-  await card.getByRole("link", { name: "Estado de cuenta" }).click();
+  await page.getByRole("link", { name: "Consultar cuenta corriente" }).click();
+  await expect(page).toHaveURL(`/clientes/${clientId}?pestana=cuenta`);
+  const card = page.getByRole("region", {
+    name: "Cuenta corriente",
+    exact: true,
+  });
+  await expect(card).toContainText(/Saldo pendiente\s*\$\s5\.000,00/);
+  await expect(card).toContainText("V-000001");
+  await expect(
+    card.getByRole("link", { name: "Registrar cobro" }),
+  ).toBeVisible();
+  await expectAccessible(page, "pestaña cuenta corriente");
+  await card
+    .getByRole("link", { name: "Estado de cuenta para imprimir" })
+    .click();
   await expect(page).toHaveURL(new RegExp(`/clientes/${clientId}/cuenta$`));
   const statement = page.locator("[data-comprobante]");
   await expect(statement).toContainText("Documento no válido como factura");
@@ -268,16 +280,21 @@ test("un admin abre el estado de cuenta desde la ficha, cobra a cuenta con la vi
   );
 
   // Lo que queda a favor se devuelve desde la ficha.
-  await page.goto(`/clientes/${clientId}`);
-  await expect(card).toContainText(/A favor ARS\s*\$\s1\.000,00/);
+  await page.goto(`/clientes/${clientId}?pestana=cuenta`);
+  await expect(card).toContainText(/A favor\s*\$\s1\.000,00/);
   await card.getByRole("link", { name: "Devolver saldo a favor" }).click();
   await page.getByRole("radio", { name: "Transferencia" }).check();
   await page.getByRole("button", { name: "Registrar devolución" }).click();
   await expect(page.getByText("Devolución registrada.")).toBeVisible();
-  await page.goto(`/clientes/${clientId}`);
-  await expect(card).toContainText("No debe nada ni tiene saldo a favor.");
+  await page.goto(`/clientes/${clientId}?pestana=cuenta`);
+  await expect(card).toContainText(/Saldo pendiente\s*\$\s0,00/);
+  await expect(
+    card.getByRole("link", { name: "Devolver saldo a favor" }),
+  ).toHaveCount(0);
   // El estado de cuenta de un cliente al día: el saldo en cero.
-  await card.getByRole("link", { name: "Estado de cuenta" }).click();
+  await card
+    .getByRole("link", { name: "Estado de cuenta para imprimir" })
+    .click();
   await expect(statement).toContainText(/Saldo\s*\$\s0,00/);
   await expectAccessible(page, "estado de cuenta al día");
 });
@@ -355,10 +372,13 @@ test("un viewer ve la cuenta y los deudores sin ninguna acción", async ({
   await insertSale(1, "3000.00", clientId);
   await login(page, VIEWER);
 
-  await page.goto(`/clientes/${clientId}`);
-  const card = page.getByRole("region", { name: "Cuenta corriente" });
-  await expect(card).toContainText(/Debe ARS/);
-  await expect(card.getByRole("link", { name: "Cobrar a cuenta" })).toHaveCount(
+  await page.goto(`/clientes/${clientId}?pestana=cuenta`);
+  const card = page.getByRole("region", {
+    name: "Cuenta corriente",
+    exact: true,
+  });
+  await expect(card).toContainText(/Saldo pendiente\s*\$\s3\.000,00/);
+  await expect(card.getByRole("link", { name: "Registrar cobro" })).toHaveCount(
     0,
   );
   await page.goto(`/clientes/${clientId}/cuenta`);

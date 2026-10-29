@@ -185,15 +185,16 @@ describe("parámetros de la pantalla 7 (D-4)", () => {
       conversationPage: 3,
     });
     expect(clientSectionsHref(CLIENT_ID, { ...view, auditPage: 3 })).toBe(
-      `/clientes/${CLIENT_ID}?auditoria=3&estado_conv=cerrada&pagina_conv=3`,
+      `/clientes/${CLIENT_ID}?pestana=actividad&auditoria=3&estado_conv=cerrada&pagina_conv=3`,
     );
+    // Desde la 24.4.1, sin filtros sigue en la pestaña Actividad.
     expect(
       clientSectionsHref(CLIENT_ID, {
         auditPage: 1,
         conversationStatus: "todos",
         conversationPage: 1,
       }),
-    ).toBe(`/clientes/${CLIENT_ID}`);
+    ).toBe(`/clientes/${CLIENT_ID}?pestana=actividad`);
     expect(parseClientSectionsView({ estado_conv: "otra" })).toEqual({
       auditPage: 1,
       conversationStatus: "todos",

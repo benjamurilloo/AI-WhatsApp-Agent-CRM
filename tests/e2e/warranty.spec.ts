@@ -218,6 +218,11 @@ test("un admin ve la garantía de una unidad vendida, cambia sus días y la busc
   // La ficha de la clienta (D-3).
   await page.goto("/clientes");
   await page.getByRole("link", { name: "Lucía Gómez" }).click();
+  // En la pestaña Operaciones de la ficha (brief-24.4.1, D-5).
+  await page
+    .getByRole("navigation", { name: /^Secciones de / })
+    .getByRole("link", { name: "Operaciones" })
+    .click();
   const bought = page.getByRole("region", { name: "Equipos comprados" });
   await expect(bought).toContainText(SERIAL);
   await expect(bought).toContainText(/Venta V-\d+/);

@@ -145,6 +145,8 @@ const FULL = {
 test("1. FR-CLI-12: un admin da de alta y edita con los campos nuevos, y el historial los nombra", async ({
   page,
 }) => {
+  // Alta, edición, dos análisis de axe y, desde la 24.4.1, la pestaña Actividad para la auditoría.
+  test.slow();
   await insertClient("Otro Cliente", { segment: "Minorista" });
   await login(page, ADMIN);
   await page.goto("/clientes/nuevo");
@@ -182,19 +184,21 @@ test("1. FR-CLI-12: un admin da de alta y edita con los campos nuevos, y el hist
     postal_code: FULL.postal,
     segment: FULL.segment,
   });
-  const contact = page.getByRole("region", { name: "Contacto" });
+  // Desde la 24.4.1, todos en «Datos de contacto» del Resumen (brief-24.4.1, D-3).
+  const contact = page.getByRole("region", { name: "Datos de contacto" });
   await expect(contact).toContainText(FULL.email);
-  const address = page.getByRole("region", { name: "Dirección" });
-  await expect(address).toContainText("Santa Fe");
-  await expect(address).toContainText(FULL.postal);
-  await expect(page.getByRole("region", { name: "Empresa" })).toContainText(
-    FULL.company,
-  );
+  await expect(contact).toContainText("Santa Fe");
+  await expect(contact).toContainText(FULL.postal);
+  await expect(contact).toContainText(FULL.company);
   await expectAccessible(page, "ficha con los campos nuevos");
 
   // Editar: otra provincia y sin segmento. El formulario precarga lo guardado.
+  // exact: el Resumen tiene «Copiar email», que getByLabel también encuentra mientras navega.
   await page.getByRole("link", { name: "Editar" }).click();
-  await expect(page.getByLabel("Email")).toHaveValue(FULL.email);
+  await expect(page).toHaveURL(/editar=1/);
+  await expect(page.getByLabel("Email", { exact: true })).toHaveValue(
+    FULL.email,
+  );
   await expect(page.getByLabel("Provincia")).toHaveValue("AR-S");
   await page.getByLabel("Provincia").selectOption({ label: "Córdoba" });
   await page.getByLabel("Segmento").fill("");
@@ -206,6 +210,8 @@ test("1. FR-CLI-12: un admin da de alta y edita con los campos nuevos, y el hist
     province: "AR-X",
     segment: null,
   });
+  // Desde la 24.4.1, la auditoría está en la pestaña Actividad (brief-24.4.1, D-6).
+  await page.goto(`${new URL(page.url()).pathname}?pestana=actividad`);
   await expect(
     page.getByRole("table", { name: /^Auditoría de Ana Kumquat/ }),
   ).toContainText(
@@ -251,17 +257,12 @@ test("3. FR-CLI-13: un viewer no recibe el email, la calle ni el código postal"
   for (const hidden of [FULL.email, FULL.address, FULL.postal]) {
     expect(html, hidden).not.toContain(hidden);
   }
-  const contact = page.getByRole("region", { name: "Contacto" });
+  const contact = page.getByRole("region", { name: "Datos de contacto" });
   await expect(contact).toContainText("Solo visible para administradores.");
-  const address = page.getByRole("region", { name: "Dirección" });
-  await expect(address).toContainText(FULL.city);
-  await expect(address).toContainText("Santa Fe");
-  await expect(page.getByRole("region", { name: "Empresa" })).toContainText(
-    FULL.company,
-  );
-  await expect(
-    page.getByRole("region", { name: "Clasificación" }),
-  ).toContainText(FULL.segment);
+  await expect(contact).toContainText(FULL.city);
+  await expect(contact).toContainText("Santa Fe");
+  await expect(contact).toContainText(FULL.company);
+  await expect(contact).toContainText(FULL.segment);
   await expect(page.getByRole("link", { name: "Editar" })).toHaveCount(0);
   await expectAccessible(page, "ficha del viewer");
 
@@ -366,9 +367,9 @@ test("5. AC-8: el alta con los campos nuevos solo con teclado, y la ficha a 375 
 
   await page.setViewportSize({ width: 375, height: 800 });
   await page.reload();
-  await expect(page.getByRole("region", { name: "Dirección" })).toContainText(
-    "Tucumán",
-  );
+  await expect(
+    page.getByRole("region", { name: "Datos de contacto" }),
+  ).toContainText("Tucumán");
   await expectNoHorizontalScroll(page);
   await expectAccessible(page, "ficha en el móvil");
 });

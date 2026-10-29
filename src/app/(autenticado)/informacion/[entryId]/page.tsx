@@ -23,10 +23,10 @@ import {
 } from "@/app/_components/form-styles";
 import { Icon } from "@/app/_components/icons";
 import {
-  MoreActions,
   moreActionDangerClass,
   moreActionItemClass,
-} from "@/app/_components/more-actions";
+} from "@/app/_components/more-action-styles";
+import { MoreActions } from "@/app/_components/more-actions";
 import { PageNotice } from "@/app/_components/page-notice";
 import { SectionCard } from "@/app/_components/section-card";
 import { formatShortDateTime } from "@/app/_format/date-time";

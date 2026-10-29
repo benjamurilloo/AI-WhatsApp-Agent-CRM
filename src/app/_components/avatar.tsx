@@ -30,6 +30,12 @@ export function softToneOf(name: string): string {
 }
 
 // tone "soft": un color claro por nombre, como las conversaciones de la v2 (brief-24.3.1).
+// tone "brand": el violeta claro del encabezado de la ficha del cliente (brief-24.4.1).
+const TONE_CLASS = {
+  solid: "bg-action text-on-action",
+  brand: SOFT_TONES[0]!,
+};
+
 export function Avatar({
   name,
   className = "size-9 text-sm",
@@ -37,12 +43,12 @@ export function Avatar({
 }: {
   name: string;
   className?: string;
-  tone?: "solid" | "soft";
+  tone?: "solid" | "soft" | "brand";
 }) {
   return (
     <span
       aria-hidden="true"
-      className={`grid shrink-0 place-items-center rounded-full font-bold ${tone === "soft" ? softToneOf(name) : "bg-action text-on-action"} ${className}`}
+      className={`grid shrink-0 place-items-center rounded-full font-bold ${tone === "soft" ? softToneOf(name) : TONE_CLASS[tone]} ${className}`}
     >
       {initialsOf(name)}
     </span>

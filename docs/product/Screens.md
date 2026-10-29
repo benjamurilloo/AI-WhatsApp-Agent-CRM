@@ -221,6 +221,20 @@ Agregada en la 18.2 ([brief-18.2](../decisions/brief-18.2-costo-y-margen.md), FR
 - **Campos ampliados** *(17.1, FR-CLI-12 y 13)*: cuatro tarjetas debajo de «Información principal»: «Contacto» (email), «Empresa» (tipo, empresa y cargo), «Dirección» (calle y número, ciudad, provincia y código postal) y «Clasificación» (segmento), con «—» en lo vacío. A un `viewer`, el email, la calle y el código postal no le llegan del servidor, y la tarjeta dice «Solo visible para administradores.». El formulario de alta y edición suma las mismas cuatro tarjetas, todas opcionales; el tipo y la provincia son selectores con «Sin dato», y el segmento sugiere los ya cargados.
 - **Agente pausado** *(16.3, FR-CONV-06)*: las conversaciones del cliente usan la misma tabla que la pantalla 8, así que también muestran la marca «Agente pausado» junto al estado. Solo se ve; pausar y reanudar se hace desde la pantalla 9.
 - *Nota del 2026-10-28, 24.3* ([brief-24.3](../decisions/brief-24.3-conversaciones.md), D-3): la tabla compartida dice «Atención humana» o «Agente activo» en cada fila, en lugar de «Agente pausado» solo en las pausadas. «Ver en Conversaciones» lleva a la bandeja con todos los estados (`?estado=todos`), porque la bandeja abre en Abiertas (H-9).
+- *Nota del 2026-10-29, 24.4.1* ([brief-24.4.1](../decisions/brief-24.4.1-clientes-ficha.md)), a la forma de los mockups 03, 04, 05 y 07 de la v2. Reemplaza, de arriba, la disposición en tarjetas apiladas y «Responsive: los datos van arriba y las conversaciones abajo»:
+  - **Cuatro pestañas** (D-1): Resumen, Operaciones, Cuenta corriente y Actividad, como enlaces con `?pestana=`. Sin el parámetro es Resumen. Cada una lee solo lo que muestra, y sin JavaScript funciona igual.
+  - **El encabezado** (D-2):
+    - el avatar, el nombre, las etiquetas como insignias, «Inactivo» si lo está, y «Cliente desde» con la fecha de alta;
+    - «Abrir conversación», la acción principal para los dos roles, que lleva a la conversación más reciente y no aparece sin conversaciones;
+    - para un `admin`, «Editar» y «Más acciones del cliente» con «Desactivar» o, con el cliente inactivo, «Reactivar».
+  - **Resumen** (D-3):
+    - «Datos de contacto», con copiar el teléfono y el email para un `admin`, los demás datos y las notas («Más datos» en el teléfono), y las etiquetas;
+    - los indicadores «Ventas registradas», «Reparaciones abiertas» (con `repairs`) y «Saldo pendiente», por moneda y sin sumar monedas (con deuda en una moneda y saldo a favor en otra, la deuda y debajo «A favor …»);
+    - «En curso», con la reparación abierta y el próximo turno;
+    - «Última interacción», con la fecha y el canal, sin el texto del mensaje.
+  - **Cuenta corriente** (D-4): con más de una moneda, un selector; los indicadores de la moneda elegida; y el estado de cuenta, el mismo componente que imprime `/clientes/{id}/cuenta`, sin saldo corrido. Para un `admin`, «Registrar cobro» y, si hay saldo a favor, «Devolver saldo a favor».
+  - **Operaciones** (D-5): las tarjetas de pedidos, reparaciones, turnos, usados y equipos, cada una con su capacidad.
+  - **Actividad** (D-6): las estadísticas, las conversaciones con su filtro y su paginación y, para un `admin`, la auditoría. Sus enlaces conservan `?pestana=actividad`.
 
 ## 8. Lista de conversaciones
 

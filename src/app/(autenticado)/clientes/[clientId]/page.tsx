@@ -1,15 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Suspense } from "react";
 import { AUDIT_PAGE_SIZE } from "@/modules/audit";
-import { getClientActivity } from "@/modules/conversations";
+import {
+  getClientActivity,
+  type ClientActivityResult,
+} from "@/modules/conversations";
 import {
   getClient,
   listActiveClientTags,
   listClientAudit,
   listClientFilterOptions,
   PROVINCES,
-  type Client,
 } from "@/modules/crm";
 import {
   getOrganizationTimezone,
@@ -17,21 +18,25 @@ import {
 } from "@/modules/organizations";
 import { requireSession } from "@/app/_auth/session";
 import { auditActorLabels } from "@/app/(autenticado)/_audit/actor";
-import { InlineSkeleton } from "@/app/_components/skeleton";
 import { ActionNotice } from "@/app/_components/action-notice";
 import { AuditCard } from "@/app/_components/audit-card";
 import { Avatar } from "@/app/_components/avatar";
-import { BackLink, DetailHeader } from "@/app/_components/detail-header";
-import { DetailList } from "@/app/_components/detail-list";
+import { DetailHeader } from "@/app/_components/detail-header";
 import {
-  activeBadgeClass,
-  dangerOutlineLinkClass,
   inactiveBadgeClass,
+  primaryLinkClass,
   secondaryLinkClass,
 } from "@/app/_components/form-styles";
 import { Icon } from "@/app/_components/icons";
+import {
+  moreActionDangerClass,
+  moreActionItemClass,
+} from "@/app/_components/more-action-styles";
+import { MoreActions } from "@/app/_components/more-actions";
 import { PageNotice } from "@/app/_components/page-notice";
 import { SectionCard } from "@/app/_components/section-card";
+import { SubNav } from "@/app/_components/sub-nav";
+import { TagChip } from "@/app/_components/tag-chip";
 import { formatShortDateTime } from "@/app/_format/date-time";
 import {
   clientSectionsHref,
@@ -39,30 +44,30 @@ import {
   STATUS_PARAM,
 } from "@/app/(autenticado)/conversaciones/filters";
 import { ClientForm } from "../client-form";
-import { KIND_LABEL, type SearchParams } from "../filters";
+import type { SearchParams } from "../filters";
 import {
   CLIENT_NOT_FOUND_MESSAGE,
-  CONTACT_HIDDEN_MESSAGE,
   FORBIDDEN_PAGE_MESSAGE,
   noticeMessage,
 } from "../messages";
-import { PhoneText } from "../phone-text";
+import { AccountTab } from "./account-tab";
 import { auditActionLabel, describeAuditDiff } from "./audit-summary";
 import { DeactivateConfirm, ReactivateForm } from "./client-actions";
-import { ClientAccount } from "./client-account";
-import { ClientOrders } from "./client-orders";
 import { ClientAppointments } from "./client-appointments";
+import { ClientConversations, ClientStats } from "./client-conversations";
+import { ClientOrders } from "./client-orders";
 import { ClientServiceOrders } from "./client-service-orders";
-import { ClientUnits } from "./client-units";
-import { ClientTradeIns } from "./client-trade-ins";
 import { ClientTags } from "./client-tags";
+import { ClientTradeIns } from "./client-trade-ins";
+import { ClientUnits } from "./client-units";
+import { SummaryTab } from "./summary-tab";
 import {
-  ClientConversations,
-  ClientConversationsSkeleton,
-  ClientStats,
-  ClientStatsSkeleton,
-  LastInteraction,
-} from "./client-conversations";
+  CLIENT_TAB_LABEL,
+  CLIENT_TABS,
+  clientTabHref,
+  parseClientTab,
+  type ClientTab,
+} from "./tabs";
 
 export const metadata: Metadata = {
   title: "Cliente — AI WhatsApp Agent CRM",
@@ -71,101 +76,46 @@ export const metadata: Metadata = {
 const TITLE = "Clientes";
 
 // Pantalla 7 (wireframe 07): datos y, solo para admin, edición, desactivación con confirmación e
-// historial de auditoría paginado (FR-AUD-02). La última interacción y las conversaciones cargan
-// por separado, con sus propios parámetros de URL (brief-6.4, D-4). Presentación de la 15.4:
-// tarjetas, avatar y estadísticas con lo que la página ya carga (brief-15.4, D-6). Desde la 17.1,
-// los campos ampliados en cuatro tarjetas; a un viewer, crm no le entrega el email, la calle ni el
-// código postal, y la tarjeta lo dice (brief-17.1, D-8 y D-11).
+// historial de auditoría paginado (FR-AUD-02). Presentación de la 15.4 y campos ampliados de la 17.1:
+// a un viewer, crm no le entrega el email, la calle ni el código postal, y la ficha lo dice
+// (brief-17.1, D-8 y D-11). Desde la 24.4.1 (brief-24.4.1; mockups 03, 04, 05 y 07 de la v2), en
+// cuatro pestañas que son enlaces (D-1): cada una lee solo lo que muestra. El encabezado lleva
+// «Abrir conversación» como acción principal, «Editar» y «Más acciones» (D-2).
 
-// Lo que crm no entregó al rol se dice; lo que está vacío queda en «—», como en el resto del detalle.
-function contactValue(
-  client: Client,
-  field:
-    "email" | "addressLine" | "postalCode" | "documentNumber" | "instagram",
-) {
-  if (client.contact === null) {
-    return <span className="text-muted">{CONTACT_HIDDEN_MESSAGE}</span>;
-  }
-  return client.contact[field];
-}
-
-// El DNI y el Instagram, solo con la capacidad trade_ins (brief-29.7, D-6; revisión M-1).
-function ClientExtraCards({
-  client,
-  tradeIns,
+// La conversación más reciente: desde la 24.3.1, su hilo une todas las del cliente. Sin ninguna, no
+// aparece (AC-2).
+async function OpenConversationLink({
+  activity,
 }: {
-  client: Client;
-  tradeIns: boolean;
+  activity: Promise<ClientActivityResult>;
 }) {
+  const result = await activity;
+  const latest = result.ok ? result.conversations[0] : undefined;
+  if (!latest) return null;
   return (
-    <div className="grid items-start gap-6 md:grid-cols-2">
-      <SectionCard id="contacto-titulo" title="Contacto" icon="mail">
-        <DetailList
-          items={[
-            {
-              label: "Email",
-              icon: "mail",
-              value: contactValue(client, "email"),
-            },
-            ...(tradeIns
-              ? [
-                  {
-                    label: "DNI",
-                    value: contactValue(client, "documentNumber"),
-                  },
-                  {
-                    label: "Instagram",
-                    value:
-                      client.contact?.instagram != null
-                        ? `@${client.contact.instagram}`
-                        : contactValue(client, "instagram"),
-                  },
-                ]
-              : []),
-          ]}
-        />
-      </SectionCard>
-      <SectionCard id="empresa-titulo" title="Empresa" icon="building">
-        <DetailList
-          items={[
-            {
-              label: "Tipo",
-              value: client.kind ? KIND_LABEL[client.kind] : null,
-            },
-            { label: "Empresa", value: client.companyName },
-            { label: "Cargo", value: client.jobTitle },
-          ]}
-        />
-      </SectionCard>
-      <SectionCard id="direccion-titulo" title="Dirección" icon="mapPin">
-        <DetailList
-          items={[
-            {
-              label: "Calle y número",
-              value: contactValue(client, "addressLine"),
-            },
-            { label: "Ciudad", value: client.city },
-            {
-              label: "Provincia",
-              value: client.province ? PROVINCES[client.province] : null,
-            },
-            {
-              label: "Código postal",
-              value: contactValue(client, "postalCode"),
-            },
-          ]}
-        />
-      </SectionCard>
-      <SectionCard
-        id="clasificacion-titulo"
-        title="Clasificación"
-        icon="layers"
-      >
-        <DetailList items={[{ label: "Segmento", value: client.segment }]} />
-      </SectionCard>
-    </div>
+    <Link
+      href={`/conversaciones/${latest.id}`}
+      className={`${primaryLinkClass} min-h-11 max-sm:w-full`}
+    >
+      <Icon name="messageCircle" className="size-4" />
+      Abrir conversación
+    </Link>
   );
 }
+
+// «29 oct 2026», como la v2: es-AR intercala «de» y a veces un punto en el mes.
+function sinceText(value: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("es-AR", {
+    timeZone,
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).formatToParts(value);
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((item) => item.type === type)?.value ?? "";
+  return `${part("day")} ${part("month").replace(/\./g, "")} ${part("year")}`;
+}
+
 export default async function ClientPage({
   params,
   searchParams,
@@ -194,85 +144,150 @@ export default async function ClientPage({
   const client = found.client;
   const isAdmin = context.role === "admin";
   const editing = isAdmin && query.editar === "1";
-  const tradeIns = await hasCapability(context.organizationId, "trade_ins");
+  const tab: ClientTab = parseClientTab(query.pestana);
   const confirming =
     isAdmin && query.confirmar === "desactivar" && client.isActive;
   const notice = noticeMessage(query.aviso);
   const sections = parseClientSectionsView(query);
-  // Sin await: la esperan las partes que la muestran, cada una en su Suspense.
-  const activity = getClientActivity(context, client.id, {
-    status: STATUS_PARAM[sections.conversationStatus],
-    page: sections.conversationPage,
-  });
-  // Las estadísticas cuentan todas las conversaciones: con un filtro de estado, se piden aparte.
-  const allActivity =
-    sections.conversationStatus === "todos"
-      ? activity
-      : getClientActivity(context, client.id, {
-          status: STATUS_PARAM.todos,
-          page: 1,
-        });
+  // Sin await: la esperan las partes que la muestran, sin Suspense, para que lleguen en el HTML y
+  // funcionen sin JavaScript (brief-24.4.1, AC-1): con un Suspense, sin JavaScript quedaba el
+  // esqueleto. Todas las conversaciones, para «Abrir conversación», el Resumen y las estadísticas;
+  // la edición no muestra ninguna de las tres.
+  const allActivity = editing
+    ? null
+    : getClientActivity(context, client.id, {
+        status: STATUS_PARAM.todos,
+        page: 1,
+      });
+  // Actividad con un filtro de estado o en otra página lo pide aparte; las estadísticas cuentan
+  // todas.
+  const activity =
+    tab === "actividad" &&
+    (sections.conversationStatus !== "todos" || sections.conversationPage > 1)
+      ? getClientActivity(context, client.id, {
+          status: STATUS_PARAM[sections.conversationStatus],
+          page: sections.conversationPage,
+        })
+      : allActivity;
 
-  // Las activas para el selector de agregar, solo para un admin (brief-16.1, D-5).
-  const activeTags = isAdmin ? await listActiveClientTags(context) : null;
-  // La auditoría solo se pide para un admin: el servidor no la entrega a un viewer.
-  const audit = isAdmin
-    ? await listClientAudit(context, client.id, sections.auditPage)
-    : null;
-  // La zona, para la auditoría y para las fechas de los pedidos (brief-19.2, D-8).
   const timeZone = await getOrganizationTimezone(context);
+  const showTabs = !editing;
+  // Cada lectura, solo en la pestaña que la muestra (D-1).
+  const tradeIns =
+    editing && (await hasCapability(context.organizationId, "trade_ins"));
+  const activeTags =
+    showTabs && tab === "resumen" && isAdmin
+      ? await listActiveClientTags(context)
+      : null;
+  // La auditoría solo se pide para un admin: el servidor no la entrega a un viewer.
+  const audit =
+    showTabs && tab === "actividad" && isAdmin
+      ? await listClientAudit(context, client.id, sections.auditPage)
+      : null;
   // Los segmentos ya cargados, para sugerir en la edición (brief-17.1, D-5).
   const segments = editing ? await listClientFilterOptions(context) : null;
   const actorLabel = audit?.ok
     ? await auditActorLabels(context.organizationId, audit.entries)
     : null;
 
+  const tags = (
+    <section aria-labelledby="etiquetas-titulo">
+      <h3 id="etiquetas-titulo" className="text-lg font-bold tracking-tight">
+        Etiquetas
+      </h3>
+      <div className="mt-3">
+        <ClientTags
+          clientId={client.id}
+          tags={client.tags}
+          activeTags={activeTags?.ok ? activeTags.tags : []}
+          canEdit={isAdmin}
+        />
+      </div>
+    </section>
+  );
+
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8 lg:px-8">
-      <BackLink href="/clientes" label="Volver a clientes" />
+    <main className="mx-auto max-w-6xl px-4 py-6 lg:px-8">
+      <p>
+        <Link
+          href="/clientes"
+          className="inline-flex items-center gap-2 rounded-lg font-semibold text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+        >
+          <Icon name="arrowLeft" className="size-5" />
+          <span className="sr-only">Volver a </span>
+          Clientes
+        </Link>
+      </p>
 
       <DetailHeader
         title={client.displayName}
         leading={
           <Avatar
             name={client.displayName}
-            className="size-14 text-xl sm:size-16 sm:text-2xl"
+            tone="brand"
+            className="size-16 text-xl sm:size-20 sm:text-2xl"
           />
         }
         badges={
-          <span
-            className={client.isActive ? activeBadgeClass : inactiveBadgeClass}
-          >
-            {client.isActive ? "Activo" : "Inactivo"}
-          </span>
+          <>
+            {client.tags.length > 0 ? (
+              <ul aria-label="Etiquetas" className="flex flex-wrap gap-2">
+                {client.tags.map((tag) => (
+                  <li key={tag.id}>
+                    <TagChip
+                      name={tag.name}
+                      color={tag.color}
+                      isActive={tag.isActive}
+                    />
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {client.isActive ? null : (
+              <span className={inactiveBadgeClass}>Inactivo</span>
+            )}
+          </>
         }
-        subtitle={
-          <Suspense fallback={<InlineSkeleton />}>
-            <span className="text-sm">
-              Última interacción: <LastInteraction activity={activity} />
-            </span>
-          </Suspense>
+        subtitle={`Cliente desde ${sinceText(client.createdAt, timeZone)}`}
+        primary={
+          allActivity === null ? null : (
+            <OpenConversationLink activity={allActivity} />
+          )
         }
         actions={
           isAdmin && !editing ? (
-            <>
-              <Link
-                href={`/clientes/${client.id}?editar=1`}
-                className={secondaryLinkClass}
-              >
-                <Icon name="pencil" className="size-4" />
-                Editar
-              </Link>
-              {client.isActive && !confirming ? (
-                <Link
-                  href={`/clientes/${client.id}?confirmar=desactivar`}
-                  className={dangerOutlineLinkClass}
-                >
-                  <Icon name="power" className="size-4" />
-                  Desactivar
-                </Link>
-              ) : null}
-            </>
+            <Link
+              href={`/clientes/${client.id}?editar=1`}
+              className={`${secondaryLinkClass} min-h-11 max-sm:w-full`}
+            >
+              <Icon name="pencil" className="size-4" />
+              Editar
+              <span className="sm:hidden">cliente</span>
+            </Link>
+          ) : null
+        }
+        more={
+          // «Desactivar» o «Reactivar», según el estado (D-2).
+          isAdmin && !editing && !confirming ? (
+            <MoreActions
+              id="mas-acciones-cliente"
+              label="Más acciones del cliente"
+              iconOnly
+            >
+              <li>
+                {client.isActive ? (
+                  <Link
+                    href={`/clientes/${client.id}?confirmar=desactivar`}
+                    className={`${moreActionItemClass} ${moreActionDangerClass}`}
+                  >
+                    <Icon name="power" className="size-4" />
+                    Desactivar
+                  </Link>
+                ) : (
+                  <ReactivateForm clientId={client.id} />
+                )}
+              </li>
+            </MoreActions>
           ) : null
         }
       />
@@ -285,17 +300,6 @@ export default async function ClientPage({
         <div className="mt-6">
           <DeactivateConfirm clientId={client.id} name={client.displayName} />
         </div>
-      ) : null}
-
-      {isAdmin && !client.isActive ? (
-        <SectionCard
-          id="estado-titulo"
-          title="Estado"
-          icon="power"
-          className="mt-6"
-        >
-          <ReactivateForm clientId={client.id} />
-        </SectionCard>
       ) : null}
 
       {editing && client.phone?.kind !== "masked" && client.contact !== null ? (
@@ -326,157 +330,144 @@ export default async function ClientPage({
             }}
           />
         </div>
-      ) : (
-        <div className="mt-6 grid items-start gap-6 lg:grid-cols-3">
-          <div className="flex flex-col gap-6 lg:col-span-2">
-            <SectionCard
-              id="datos-titulo"
-              title="Información principal"
-              icon="user"
-            >
-              <DetailList
-                items={[
-                  { label: "Nombre", icon: "user", value: client.displayName },
-                  {
-                    label: "Teléfono",
-                    icon: "phone",
-                    value: (
-                      <PhoneText
-                        phone={client.phone}
-                        emptyText="Sin teléfono"
-                      />
-                    ),
-                  },
-                  {
-                    label: "Última interacción",
-                    icon: "clock",
-                    value: (
-                      <Suspense fallback={<InlineSkeleton />}>
-                        <LastInteraction activity={activity} />
-                      </Suspense>
-                    ),
-                  },
-                  {
-                    label: "Notas",
-                    icon: "fileText",
-                    value: (
-                      <span className="text-muted">
-                        {client.notes ?? "Sin notas"}
-                      </span>
-                    ),
-                    multiline: true,
-                  },
-                ]}
-              />
-            </SectionCard>
-            <ClientExtraCards client={client} tradeIns={tradeIns} />
-          </div>
-
-          <div className="flex flex-col gap-6">
-            <SectionCard
-              id="estadisticas-titulo"
-              title="Estadísticas"
-              icon="chartColumn"
-            >
-              <Suspense fallback={<ClientStatsSkeleton />}>
-                <ClientStats activity={allActivity} />
-              </Suspense>
-            </SectionCard>
-
-            <SectionCard id="etiquetas-titulo" title="Etiquetas" icon="tag">
-              <ClientTags
-                clientId={client.id}
-                tags={client.tags}
-                activeTags={activeTags?.ok ? activeTags.tags : []}
-                canEdit={isAdmin}
-              />
-            </SectionCard>
-
-            {/* La cuenta corriente, compuesta con cash (brief-21.6, D-7). */}
-            <SectionCard
-              id="cuenta-titulo"
-              title="Cuenta corriente"
-              icon="banknote"
-            >
-              <ClientAccount context={context} clientId={client.id} />
-            </SectionCard>
-
-            <SectionCard id="pedidos-titulo" title="Pedidos" icon="list">
-              <ClientOrders
-                context={context}
-                clientId={client.id}
-                clientActive={client.isActive}
-                timeZone={timeZone}
-              />
-            </SectionCard>
-
-            {/* Los equipos que compró, con la capacidad serialized_units (brief-29.9, D-3). */}
-            <ClientUnits context={context} clientId={client.id} />
-
-            {/* Sus órdenes de servicio, con la capacidad repairs (brief-29.6, D-10). */}
-            <ClientServiceOrders
-              context={context}
-              clientId={client.id}
-              clientActive={client.isActive}
-              timeZone={timeZone}
-            />
-
-            {/* Sus turnos, con la capacidad appointments (brief-29.10, D-5). */}
-            <ClientAppointments
-              context={context}
-              clientId={client.id}
-              clientActive={client.isActive}
-            />
-
-            {/* Los usados que entregó, con la capacidad trade_ins (brief-29.7, D-7). */}
-            <ClientTradeIns
-              context={context}
-              clientId={client.id}
-              clientActive={client.isActive}
-              timeZone={timeZone}
-            />
-          </div>
-        </div>
-      )}
-
-      <SectionCard
-        id="conversaciones-titulo"
-        title="Conversaciones"
-        icon="messageCircle"
-        className="mt-6"
-      >
-        <Suspense fallback={<ClientConversationsSkeleton />}>
-          <ClientConversations
-            clientId={client.id}
-            clientName={client.displayName}
-            activity={activity}
-            view={sections}
-          />
-        </Suspense>
-      </SectionCard>
-
-      {audit?.ok && timeZone ? (
+      ) : allActivity === null || activity === null ? null : (
         <>
-          <AuditCard
-            caption={`Auditoría de ${client.displayName}`}
-            rows={audit.entries.map((entry) => ({
-              id: entry.id,
-              when: formatShortDateTime(entry.createdAt, timeZone),
-              actor: actorLabel?.(entry.actor),
-              action: auditActionLabel(entry),
-              change: describeAuditDiff(entry),
+          <SubNav
+            label={`Secciones de ${client.displayName}`}
+            scroll
+            items={CLIENT_TABS.map((item) => ({
+              href: clientTabHref(client.id, item),
+              label: CLIENT_TAB_LABEL[item],
+              current: item === tab,
             }))}
-            page={audit.page}
-            pageCount={audit.pageCount}
-            pageSize={AUDIT_PAGE_SIZE}
-            total={audit.total}
-            hrefFor={(target) =>
-              clientSectionsHref(client.id, { ...sections, auditPage: target })
-            }
           />
-          <p className="mt-4 text-sm text-muted">Fechas en {timeZone}.</p>
+
+          {tab === "resumen" ? (
+            <SummaryTab
+              context={context}
+              client={client}
+              timeZone={timeZone}
+              activity={allActivity}
+              tags={tags}
+            />
+          ) : null}
+
+          {tab === "operaciones" ? (
+            <div className="mt-6 flex flex-col gap-6">
+              <div className="grid items-start gap-6 lg:grid-cols-2">
+                <SectionCard id="pedidos-titulo" title="Pedidos" icon="list">
+                  <ClientOrders
+                    context={context}
+                    clientId={client.id}
+                    clientActive={client.isActive}
+                    timeZone={timeZone}
+                  />
+                </SectionCard>
+
+                {/* Sus órdenes de servicio, con la capacidad repairs (brief-29.6, D-10). */}
+                <ClientServiceOrders
+                  context={context}
+                  clientId={client.id}
+                  clientActive={client.isActive}
+                  timeZone={timeZone}
+                />
+
+                {/* Sus turnos, con la capacidad appointments (brief-29.10, D-5). */}
+                <ClientAppointments
+                  context={context}
+                  clientId={client.id}
+                  clientActive={client.isActive}
+                />
+
+                {/* Los usados que entregó, con la capacidad trade_ins (brief-29.7, D-7). */}
+                <ClientTradeIns
+                  context={context}
+                  clientId={client.id}
+                  clientActive={client.isActive}
+                  timeZone={timeZone}
+                />
+
+                {/* Los equipos que compró, con la capacidad serialized_units (brief-29.9, D-3). */}
+                <ClientUnits context={context} clientId={client.id} />
+              </div>
+              <p className="flex items-start gap-2 rounded-xl border border-border bg-primary-soft/40 px-4 py-3 text-sm">
+                <Icon name="info" className="mt-0.5 size-4 shrink-0" />
+                <span>
+                  Los importes corresponden a cada operación. Consultá pagos y
+                  saldos en{" "}
+                  <Link
+                    href={clientTabHref(client.id, "cuenta")}
+                    className="font-semibold text-primary underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                  >
+                    Cuenta corriente
+                  </Link>
+                  .
+                </span>
+              </p>
+            </div>
+          ) : null}
+
+          {tab === "cuenta" ? (
+            <AccountTab
+              context={context}
+              clientId={client.id}
+              timeZone={timeZone}
+              currencyParam={
+                typeof query.moneda === "string" ? query.moneda : undefined
+              }
+            />
+          ) : null}
+
+          {tab === "actividad" ? (
+            <>
+              <SectionCard
+                id="conversaciones-titulo"
+                title="Conversaciones"
+                icon="messageCircle"
+                className="mt-6"
+              >
+                <ClientStats activity={allActivity} />
+                <div className="mt-6">
+                  <ClientConversations
+                    clientId={client.id}
+                    clientName={client.displayName}
+                    activity={activity}
+                    view={sections}
+                  />
+                </div>
+              </SectionCard>
+
+              {audit?.ok && timeZone ? (
+                <>
+                  <AuditCard
+                    caption={`Auditoría de ${client.displayName}`}
+                    rows={audit.entries.map((entry) => ({
+                      id: entry.id,
+                      when: formatShortDateTime(entry.createdAt, timeZone),
+                      actor: actorLabel?.(entry.actor),
+                      action: auditActionLabel(entry),
+                      change: describeAuditDiff(entry),
+                    }))}
+                    page={audit.page}
+                    pageCount={audit.pageCount}
+                    pageSize={AUDIT_PAGE_SIZE}
+                    total={audit.total}
+                    hrefFor={(target) =>
+                      clientSectionsHref(client.id, {
+                        ...sections,
+                        auditPage: target,
+                      })
+                    }
+                  />
+                  <p className="mt-4 text-sm text-muted">
+                    Fechas en {timeZone}.
+                  </p>
+                </>
+              ) : null}
+            </>
+          ) : null}
         </>
-      ) : null}
+      )}
     </main>
   );
 }

@@ -1244,7 +1244,7 @@ test("caso 18: brief-24.3 las pestañas y el chip «Atención humana» filtran y
     status: "closed",
     messages: message,
   });
-  await page.goto(`/clientes/${clientId}`);
+  await page.goto(`/clientes/${clientId}?pestana=actividad`);
   await page.getByRole("link", { name: "Ver en Conversaciones" }).click();
   await expect(page).toHaveURL(
     `/conversaciones?estado=todos&cliente=${clientId}`,

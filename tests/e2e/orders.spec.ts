@@ -261,7 +261,8 @@ test("un admin crea un pedido de dos líneas, lo encuentra y lo cancela", async 
 
   await page.goto("/pedidos");
   await expect(page.getByRole("link", { name: "P-000001" })).toHaveCount(1);
-  await page.goto(`/clientes/${clientId}`);
+  // En la pestaña Operaciones de la ficha (brief-24.4.1, D-5).
+  await page.goto(`/clientes/${clientId}?pestana=operaciones`);
   const card = page.getByRole("region", { name: "Pedidos" });
   await expect(card.getByRole("link", { name: "P-000001" })).toBeVisible();
   await card.getByRole("link", { name: "P-000001" }).click();
@@ -411,7 +412,7 @@ test("un viewer ve la lista y el detalle sin contacto ni botones, y no entra al 
   await page.goto("/pedidos/nuevo");
   await expect(page.getByText(FORBIDDEN_PAGE)).toBeVisible();
 
-  await page.goto(`/clientes/${clientId}`);
+  await page.goto(`/clientes/${clientId}?pestana=operaciones`);
   const card = page.getByRole("region", { name: "Pedidos" });
   await expect(card.getByRole("link", { name: "P-000007" })).toBeVisible();
   await expect(card.getByRole("link", { name: "+ Nuevo pedido" })).toHaveCount(

@@ -185,3 +185,98 @@ Es la cuarta subfase de la Fase 24 (Roadmap, §Fase 24, fila 24.4.1). La [24.4.2
 - **Necesario ahora:** las pestañas, el encabezado, el Resumen y la forma de 03, 05 y 07 con lo que existe.
 - **Antes de producción:** nada nuevo; la ficha de hoy ya está desplegada.
 - **Después:** la tabla de operaciones, la actividad unificada, «Próxima atención», el formulario y la lista (24.4.2); el panel de cobro y el período (24.7.2).
+
+## Cierre
+
+*Del 2026-10-29, antes del commit de la implementación. AC-10 y AC-11 se completan después de la CI, del despliegue y del recorrido del usuario.*
+
+### Criterios
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| AC-1 | cumple | `tabs.ts` y `tabs.test.ts`: `?pestana=` con Resumen por defecto y un valor desconocido que vuelve a Resumen. `page.tsx`: las etiquetas activas solo en Resumen, la auditoría solo en Actividad, y la edición sin la actividad. Caso 19: las cuatro pestañas por la URL con `aria-current`. Caso 21, sin JavaScript: las pestañas son enlaces, y «Abrir conversación» y la fila de la conversación llegan en el HTML. Ese caso encontró un defecto: con `Suspense`, sin JavaScript quedaba el esqueleto; se sacó (abajo, «Defectos») |
+| AC-2 | cumple | Encabezado con avatar, etiquetas, «Inactivo» solo si lo está, «Cliente desde 29 oct 2026», «Abrir conversación» a la más reciente y oculto sin conversaciones (casos 14, 15 y 19). «Editar» y «···» solo para `admin` (caso 20). «···» lleva «Desactivar» con la confirmación de hoy (caso 7) o, con el cliente inactivo, «Reactivar» (N-1 de la revisión, abajo) |
+| AC-3 | cumple | `summary-tab.tsx`: «Datos de contacto» con copiar solo con el teléfono completo, «Más datos», etiquetas; «Ventas registradas» (las vigentes de cada moneda), «Reparaciones abiertas» con `repairs`, «Saldo pendiente» por moneda sin sumar; «En curso» con `pickOpenServiceOrder` y `pickNextAppointment`; «Última interacción» con canal y hora, sin el texto (H-1). Casos 1, 14, 19 y `client-fields.spec.ts` |
+| AC-4 | cumple | `account-statement.tsx` (`StatementBody`) lo usan la pestaña y `/cuenta`. La salida de `/cuenta` no cambió: el cuerpo es el mismo JSX que antes, comparado línea por línea (N-5 de la revisión). Sin saldo corrido (H-2). «Registrar cobro» y «Devolver saldo a favor» solo para `admin`: `accounts.spec.ts` y `exchange.spec.ts` |
+| AC-5 | cumple, con un desvío | Operaciones: las tarjetas de cada módulo con su capacidad y la nota de 04. Actividad: las conversaciones con su filtro y su paginación, y la auditoría para `admin` (casos 5, 14, 16; `client-tags.spec.ts`). Las tarjetas no llevan la cantidad que pedía D-5 (desvío 9) |
+| AC-6 | cumple | Caso 20: un `viewer` recorre las cuatro pestañas, sin «Editar», «···», «Registrar cobro», copiar ni formularios salvo el filtro GET de Actividad. Lo que llega a su navegador y la respuesta cruda del servidor no contienen el teléfono, el email, la calle, el código postal, «Historial de auditoría» ni «Auditoría de», con un cliente que tiene todos esos datos |
+| AC-7 | cumple | `clientSectionsHref` siempre con `pestana=actividad` (`filters.test.ts`); el filtro lleva el campo oculto. Casos 5, 14 y 16 |
+| AC-8 | cumple | Axe en claro y en oscuro en las cuatro pestañas (caso 19, 1280 px) y a 375 px con la confirmación de desactivar (caso 22), sin desplazamiento horizontal |
+| AC-9 | cumple; los desvíos los decide el usuario | La comparación, abajo |
+| AC-10 | pendiente | Se completa con la CI del SHA que se despliegue |
+| AC-11 | pendiente | La revisión independiente se hizo antes del despliegue (abajo). Faltan el despliegue y el recorrido |
+
+### La medición de R-3
+
+- **Método:** en local, con PostgreSQL de desarrollo, un test temporal de integración, borrado después. Un cliente con 50 ventas, 10 pedidos, 10 órdenes de servicio y 10 turnos. Las lecturas de la ficha de `e065cb1` (todas las secciones, la auditoría con sus autores y las garantías de las unidades) contra las del Resumen, alternadas, después de una corrida de calentamiento.
+- **Corridas:** 20 por variante.
+- **Resultado:** el Resumen, 59,7 ms de mediana (p90 65,4); la ficha anterior, 72,3 ms (p90 79,3). **0,83 veces**: por debajo del umbral. Las lecturas del Resumen son un subconjunto de las de antes.
+- **Límite:** mide las lecturas, no el render ni la red.
+
+### La comparación visual (AC-9)
+
+Capturas de las cuatro pestañas a 1440 y 375 px y del menú «···», con un spec temporal, borrado después, lado a lado con 03, 04, 05, 07 y el panel 05 de 08. Se corrigió durante la comparación: los indicadores ocupan todo el ancho según cuántos haya, el avatar del encabezado es violeta claro (tono `brand`, como 03), los tres botones del encabezado tienen la misma altura (44 px) y, en el teléfono, el contacto va después de los indicadores, como 07.
+
+| # | Diferencia | Mockup | Por qué queda |
+|---|---|---|---|
+| 1 | Sin «Próxima atención» arriba del Resumen | 03, 07 | H-3: pasa a la 24.4.2 |
+| 2 | Operaciones con las tarjetas de hoy, sin la tabla unificada, sus filtros ni «Nueva operación» | 04 | H-3 y D-5: 24.4.2 |
+| 3 | Actividad con las conversaciones y la auditoría, sin el historial unificado | 08, panel 05 | H-3 y D-6: 24.4.2 |
+| 4 | Sin saldo corrido ni «Saldo inicial del período», y sin el selector de período | 05 | H-2 (brief-21.6, ADR 0022); el período, 24.7.2 |
+| 5 | Sin el panel «Registrar cobro»: es un enlace a `/cobrar` | 05 | H-4: 24.7.2 |
+| 6 | «Última interacción» sin el texto del mensaje | 03 | H-1 (Screens.md, pantalla 7) |
+| 7 | El bloque «En ARS» de la Cuenta repite las cifras de los indicadores | 05 | D-4: es el cuerpo compartido con `/cuenta`, que no cambia |
+| 8 | El teléfono en E.164 (`+5491155550000`), sin espacios | 03, 07 | Es el formato de toda la aplicación; darle formato es otra decisión |
+| 9 | Las tarjetas de Operaciones sin la cantidad que pedía D-5 | 04 | Desvío: solo Pedidos y Reparaciones la tienen sin una lectura nueva, y la 24.4.2 rehace esa pestaña con los contadores de 04 (N-2 de la revisión; el usuario lo aceptó el 2026-10-29) |
+| 10 | En el teléfono, «···» queda debajo de «Editar cliente», no arriba junto a «← Clientes» | 07 | Desvío: moverlo cambia el encabezado compartido de todas las fichas (O-5; aceptado el 2026-10-29) |
+| 11 | Las notas van dentro de «Más datos», cerrado en el teléfono | 07 | Desvío, como describe Screens.md (O-5; aceptado el 2026-10-29) |
+| 12 | Los indicadores van uno debajo del otro en el teléfono; 07 pone dos por fila | 07 | Desvío: a 375 px, «$ 77.500,00» no entra en media fila con el tamaño de 07 |
+| 13 | «Más datos» muestra todos los campos del cliente; 03 muestra solo documento y localidad | 03 | D-3: los campos existen y el admin los ve hoy |
+| 14 | Las etiquetas con su «✕» y el selector de hoy, sin «Editar etiquetas» | 03 | Desvío: es el componente de etiquetas de la 16.1, con su teclado y su auditoría |
+| 15 | La insignia «Activo» ya no aparece; solo «Inactivo» | 03 | Desvío, como 03, que no la dibuja |
+| 16 | «Ventas registradas» con el ícono de comprobante, no el carrito | 03 | El juego de íconos no tiene carrito |
+| 17 | La migaja del marco dice «Clientes», sin el nombre del cliente | 03 | Es el marco de la 24.1; la ficha lleva «← Clientes» |
+
+Los desvíos 12 y 14 a 17 no se consultaron por separado: los decide el usuario en el recorrido.
+
+### Defectos encontrados y corregidos
+
+- **Las clases de «Más acciones» llegaban como código.** `moreActionItemClass` y `moreActionDangerClass` vivían en `more-actions.tsx`, que es `"use client"`. Un componente de servidor que las importaba recibía una referencia de cliente y no el texto: el ítem salía con el código de una función como clase. Afectaba a la ficha nueva («Desactivar» no se podía tocar a 375 px, caso 22) y **a la ficha de Información en producción desde la 24.1** (`fcefdb8`), en «Eliminar». Se movieron a `more-action-styles.ts`. Toca `informacion/[entryId]/page.tsx` y `conversaciones/[conversationId]/status-actions.tsx`, fuera de los archivos autorizados, solo en el import, y saca dos exports de `more-actions.tsx`, más de lo que permite la regla de `_components/` (desvío 18, para el usuario).
+- **Sin JavaScript, la actividad quedaba en el esqueleto.** «Abrir conversación» y las conversaciones de Actividad estaban dentro de un `Suspense`; sin JavaScript no se reemplazaba. Se espera la lectura en la página, sin `Suspense`. La lectura ya estaba en la medición de R-3.
+- **La fecha salía «29 de oct de 2026».** Ahora se arma con `formatToParts`: «29 oct 2026».
+
+### La revisión independiente (D-8)
+
+Un agente que no participó del trabajo, con acceso de solo lectura, revisó el working tree contra el brief y las reglas. Veredicto **R1**, sin bloqueantes y sin fugas a un `viewer`. Cada hallazgo se verificó contra el código antes de aceptarlo:
+
+| Hallazgo | Qué decía | Resultado |
+|---|---|---|
+| N-1 | «Reactivar» no estaba en «···», como pide D-2 | Corregido: «Reactivar» es un ítem de «···» y no queda la tarjeta «Estado». Screens.md, pantalla 7, ajustado |
+| N-2 | Las tarjetas de Operaciones sin la cantidad de D-5 | Desvío 9, aceptado por el usuario |
+| N-3 | El caso 20 no probaba que el `viewer` no reciba la auditoría: el cliente no tenía filas y la tarjeta vacía no dibuja «Auditoría de» | Corregido: busca también «Historial de auditoría», que sale aunque no haya filas |
+| N-4 | Dos archivos fuera de los autorizados y un cambio en `_components` | Verificado y justificado: el defecto de las clases, arriba. Desvío 18, para el usuario |
+| N-5 | No verificaba que `/cuenta` imprima lo mismo | Verificado: mismo JSX (AC-4) |
+| O-1 | «Ventas registradas» contaba de una lista cortada en 500 comprobantes | Corregido: cuenta las vigentes de cada moneda, que llegan enteras |
+| O-2 | Con deuda en una moneda, el saldo a favor en otra no se veía | Corregido: la deuda y debajo «A favor …», sin sumar. Sin test propio |
+| O-3 | La edición leía la actividad sin mostrarla | Corregido |
+| O-4 | Sin JavaScript, lo que va en un `Suspense` no estaba probado | El caso 21 reforzado lo confirmó como defecto; corregido (arriba) |
+| O-5 | «···» y las notas en el teléfono, distintos de D-2 y D-3 | Desvíos 10 y 11, aceptados por el usuario |
+| O-6 | Un comentario de `CopyButton` engañoso; dos `aria-current` en Cuenta; `.claude/settings.json` sin trackear | El comentario, corregido. Los dos `aria-current` (pestaña y moneda) quedan: son dos navegaciones distintas y axe no los marca. `.claude/settings.json` no entra en el commit |
+
+### Desvío 18, de archivos
+
+- `src/app/_components/more-action-styles.ts`, nuevo, y `more-actions.tsx` sin los dos exports de clases.
+- `src/app/(autenticado)/informacion/[entryId]/page.tsx` y `src/app/(autenticado)/conversaciones/[conversationId]/status-actions.tsx`: solo el import.
+- `src/app/_components/avatar.tsx` suma el tono `brand`, una opción nueva que no cambia el comportamiento por defecto, dentro de la regla.
+
+### Pruebas
+
+- **Typecheck, lint y prettier** en los archivos cambiados: sin errores.
+- **Unitarias y guardas:** 2093 de 2094. Falló `forbidden-references.test.ts` por tiempo (42 s, con la máquina cargada); sola pasó 10 de 10.
+- **Integración:** solo el test temporal de R-3. Esta subfase no toca `src/modules/`.
+- **End-to-end:** la suite completa se cortó al terminar una sesión, después de 282 tests, con 269 pasados. Las 13 que fallaron, todas por tiempo y ninguna con un localizador de la ficha, pasaron solas con el build siguiente. Los specs que no llegó a correr (`users`, `variants`, `warranty`, `warranty-claims`) y `clients.spec.ts`: 48 de 50; los casos 21 (el defecto sin JavaScript, corregido) y 22 (por tiempo; pasó solo). Después de las últimas correcciones, con un build nuevo: `clients`, `client-fields`, `client-tags`, `accounts` y `exchange`, 50 de 50.
+- **En esta máquina**, con poca memoria libre (116 MB en un momento), un build y un servidor de prueba se cayeron, y varias pruebas cortaron por tiempo en lugares distintos. Ninguna falla quedó sin repetir.
+
+### Autoevaluación
+
+Esta sección la escribió quien implementó, y es autoevaluación salvo la revisión independiente, que se cita. Lo que no está probado: O-2 no tiene test propio; el formato del teléfono y los desvíos 12 y 14 a 17 no se consultaron por separado.

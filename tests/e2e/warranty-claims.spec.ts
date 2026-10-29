@@ -187,9 +187,14 @@ async function sell(page: Page) {
   await expect(page).toHaveURL(/\/ventas\/[0-9a-f-]+\?aviso=emitida$/);
 }
 
+// Los equipos y las reparaciones están en la pestaña Operaciones de la ficha (brief-24.4.1, D-5).
 async function openClient(page: Page) {
   await page.goto("/clientes");
   await page.getByRole("link", { name: "Lucía Gómez" }).click();
+  await page
+    .getByRole("navigation", { name: /^Secciones de / })
+    .getByRole("link", { name: "Operaciones" })
+    .click();
 }
 
 const bought = (page: Page) =>
