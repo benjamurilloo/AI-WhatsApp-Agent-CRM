@@ -212,7 +212,31 @@ Cada diferencia que quede se declara en el §Cierre, como en la [24.4.2](brief-2
 
 ## Cierre
 
-*Parcial, antes de la revisión independiente, del despliegue y del recorrido del usuario.*
+*Completo. Cerrada el 2026-10-30, con AC-12 y AC-13 cumplidos.*
+
+### AC-12 y AC-13: la CI, el despliegue y el recorrido
+
+**La CI** de `5f23186` quedó en `success` (run 41115673095), con los diecisiete pasos verdes: lint, typecheck, formato, guardas, unitarios, integración sobre PostgreSQL 18, build, Chromium y los end-to-end. Tardó **25 min 7 s** —integración 6 m 40 s, build 32 s, end-to-end 15 m 41 s—, contra los 31 y 32 minutos de la 24.4.2 y el límite de 45 (R-4 resuelto). **Ninguna de las dos incógnitas que este §Cierre dejaba abiertas se reprodujo**: ni la caída del worker (`0xC0000409`) ni el umbral de `supplier-payments`. Las dos eran de esta máquina, no del código.
+
+**El primer intento de esa corrida falló sin ejecutar un solo paso**, en 3 segundos, con la anotación «The job was not started because recent account payments have failed or your spending limit needs to be increased»: los minutos de Actions del repositorio privado estaban bloqueados por facturación. El usuario **hizo público el repositorio** ese día, lo que da minutos ilimitados en los runners estándar, y la misma corrida relanzada con `gh run rerun` se ejecutó entera. Antes de aceptar el cambio de visibilidad se auditó el historial completo, 383 commits, en busca de secretos: sin `.env`, `.pgpass`, `.pem` ni claves privadas, cero claves de API, tokens, JWT y hashes argon2, y las nueve cadenas de conexión con contraseña, todas con marcador. Nada que rotar. **Lo que esa auditoría no cubrió y se encontró después**: el historial conserva una IP pública del usuario y su sha256 sin sal en `evidencia-9.1-staging.md`, y dos hashes más en `evidencia-11.4-piloto.md`, reemplazados por marcadores el 2026-09-29. El usuario decidió aceptarlo: reescribir el historial rompería todos los SHA del proyecto, incluido el desplegado y los citados en briefs, CHANGELOG, HANDOFF y Notion. **La línea 189 de `docs/runbooks/restaurar-la-base.md` sigue afirmando que el repositorio es privado y hay que corregirla**, junto con las otras tres observaciones de abajo.
+
+**El despliegue**, el 2026-10-30, con `5f23186` y sin migraciones (67, igual que antes), siguiendo el §«Desplegar un cambio» del README de producción. `d2b2226` quedó anotado en `/var/lib/crm-production/despliegues` para volver atrás, y la vuelta atrás es solo código. La verificación posterior, los siete pasos:
+
+| Paso | Resultado |
+|---|---|
+| 1. Configuración desplegada = versionada | **15 de 16**: `/usr/local/bin/crm-backup.sh` del servidor está dos líneas de comentario atrás respecto del versionado, agregadas en la 13.2. Sin diferencia funcional |
+| 2. Un solo salto de proxy | **iguales**, con la fila de `login_attempts` de las 20:40:07 UTC. La tabla estaba vacía antes de la prueba, así que no hay ambigüedad de fila vieja. **No se corrió el control desde otra IP** con un túnel SOCKS |
+| 3. HSTS | presente sobre HTTPS, ausente sobre HTTP, que redirige con 301 |
+| 4. Solo en loopback | `127.0.0.1:3000` |
+| 5. El rol de la app no es el dueño | `crm_app_login` corre, `crm_owner` es el dueño, 0 tablas del rol de la app |
+| 6. Ingestión y API de lectura | `ingestion/v1`, `ingestion/v2` y `read/v1/products` dan **401** sin token |
+| 7. Sin datos reales de cliente | **se cumple en sustancia**: «Vixora» tiene 0 clientes, 0 mensajes y 0 productos. Las 4, 10, 278, 51 filas y 3 organizaciones son de «Demostración Vixora» y «iPhone Demo» |
+
+Ni la IP ni su hash se anotaron en ningún lado, como pide el runbook.
+
+**Tres observaciones documentales**, ninguna de esta subfase y todas fuera de sus archivos autorizados, a corregir en un cambio aparte junto con la línea 189: el paso 7 del README pide 1 organización y cero filas, de cuando producción no tenía las organizaciones de demostración; el README dice «dieciocho» archivos de configuración y el bucle del runbook cubre 16; y el `crm-backup.sh` del servidor hay que reinstalarlo.
+
+**El recorrido del usuario**, el 2026-10-30, sobre las tres partes en producción: aceptado sin objeciones, incluido el desvío de los íconos en un solo color que este §Cierre había marcado para mirar ahí.
 
 ### R-1: la medición
 
@@ -252,19 +276,21 @@ Corregido por la comparación: el saldo en dos monedas llegaba al borde de su ta
 
 ### Validación
 
-Validado en integración en local para los recorridos UI ↔ servicio ↔ base de los specs; las ramas de lectura fallida quedan en validado localmente, con módulos simulados. Batería entera, después de las correcciones de las dos revisiones independientes:
+**Nivel alcanzado: validado en integración, desplegado en producción y recorrido por el usuario**, con tres revisiones independientes antes del despliegue. Las ramas de lectura fallida quedan en **validado localmente**, con módulos simulados: no son evidencia de integración y el nivel superior no se infiere de ellas.
+
+Batería entera en local, después de las correcciones de las dos primeras revisiones independientes, y repetida completa en la CI sobre el SHA desplegado:
 
 - **End-to-end:** los 42 specs de `tests/e2e`, 329 de 329, a la primera, de a un spec por vez y con 120 s por línea de comandos, porque la máquina tiene poca memoria. Esto no prueba que entren en los 30 s normales; lo dirá la CI.
 - **Unit:** 1236 de 1236. Los estados de falla de `client-data.test.ts` usan módulos simulados: no son evidencia de integración.
 - **Guards:** 898 de 898, con un índice temporal que simula el commit, porque `git ls-files` lista los cuatro archivos borrados sin confirmar, y con 180 s por test.
 - **Integración:** 1866 de 1869. Ninguno falló: el worker de `appointments-agent.test.ts` se cayó y sus últimos 3 tests no corrieron. El archivo, repetido solo, pasó 26 de 26.
 - **Prettier, typecheck y build:** pasan. Eslint marcó un import de tipo sin usar en `activity-events.ts`. Después de quitarlo se repitieron typecheck, eslint, unit y build, y pasaron; no se repitieron los end-to-end ni el resto de integración, porque ese import no llega al código que corre.
-- **Desvío de la condición de detención «la batería entera se corre después de la última línea de código»**, señalado por la tercera revisión independiente y decidido por el usuario el 2026-10-30. Los «329 de 329» y los «1866 de 1869» corresponden al árbol anterior a quitar ese import, no al entregado. La corrida completa sobre el árbol entregado es la de la CI en el SHA que se despliega (AC-12). Si la CI sale roja por esto, el desvío queda desmentido y se informa.
+- **Desvío de la condición de detención «la batería entera se corre después de la última línea de código»**, señalado por la tercera revisión independiente y decidido por el usuario el 2026-10-30. Los «329 de 329» y los «1866 de 1869» corresponden al árbol anterior a quitar ese import, no al entregado. La corrida completa sobre el árbol entregado es la de la CI en el SHA que se despliega (AC-12). **Resuelto:** esa corrida salió verde sobre `5f23186`, así que la batería entera sí corrió sobre el árbol entregado y el desvío quedó curado, no solo declarado.
 
-Sin resolver, la CI lo confirma o lo desmiente:
+Dos cosas quedaban sin resolver, y **la CI las resolvió: ninguna se reprodujo** en el entorno limpio. Las dos eran de esta máquina.
 
-- **La caída del worker** (código `0xC0000409`): pasó en dos corridas, en `service-orders` y en `appointments-agent`, y no se encontró la causa. Que cambie de archivo apunta al entorno; no está demostrado.
-- **El umbral de `supplier-payments`:** el detalle de una sesión con 500 pagos dio 1101 y 827 ms contra 754 en dos corridas con carga. Pasó 3 de 3 corrido solo y en esta última batería completa. Ese código no cambió en esta subfase, salvo por los módulos que `cash` importa.
+- **La caída del worker** (código `0xC0000409`): pasó en dos corridas locales, en `service-orders` y en `appointments-agent`, y no se encontró la causa. Que cambiara de archivo apuntaba al entorno, y la CI lo confirma.
+- **El umbral de `supplier-payments`:** el detalle de una sesión con 500 pagos dio 1101 y 827 ms contra 754 en dos corridas locales con carga. Pasó 3 de 3 corrido solo, en la última batería local completa y en la CI. Ese código no cambió en esta subfase, salvo por los módulos que `cash` importa.
 
 Las corridas anteriores tuvieron cortes por tiempo y caídas del servidor con menos de 100 MB libres; la causa de las caídas no se encontró en el registro.
 

@@ -2,6 +2,28 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-30 — 24.4.3: clientes, operaciones y actividad
+
+Sexta subfase de la Fase 24 ([brief-24.4.3](docs/decisions/brief-24.4.3-clientes-operaciones-y-actividad.md) §Cierre).
+
+**Certifica:**
+- **La pestaña Operaciones como una tabla unificada** de ventas, pedidos, reparaciones, turnos y usados, compuesta en memoria desde cinco lecturas nuevas con un tope de 200 por tipo, sin `JOIN` entre módulos. Con chips por tipo y su cantidad, búsqueda por número o equipo, filtros de estado y fecha, y paginación, todo por la URL y sin JavaScript. «Equipos» queda debajo, con su reclamo de garantía.
+- **Ningún importe de operaciones distintas se suma**, ni en una moneda ni en dos, y la tabla lo dice en su franja.
+- **Un dato que no se pudo leer nunca se muestra como cero ni como vacío**: el tipo que falló no tiene chip, se avisa cuál no se pudo leer, y con más de 200 filas por tipo la tabla enlaza la lista del módulo.
+- **La pestaña Actividad como una cronología** de hasta 200 eventos, de más nuevo a más viejo, con conversaciones, notas, altas y estados con fecha de reparaciones y turnos, pedidos, ventas, usados, cobros y devoluciones, cada uno con enlace a su registro. La tarjeta «Conversaciones» y la auditoría de un `admin` siguen debajo.
+- **«Próxima atención» en el Resumen**, ámbar desde `sm`, con el próximo turno, si no la reparación lista para retirar, y si no un estado neutral que no inventa una recomendación.
+- **Una sola definición de reparación abierta** (O-1 de la 24.4.2): el Resumen y la lista dan la misma cantidad, sin el corte a las 5 más recientes.
+- **Ni un mensaje ni una nota llegan con su texto** a estas pestañas, comprobado sobre lo que llega al navegador de un `viewer` y de un `admin`.
+- **R-1 medido**: 110 ms el peor camino con un cliente en el tope de 200 por tipo, contra un umbral de 400 fijado antes de medir.
+- **Validado en integración, desplegado en producción** (`5f23186`, sin migraciones) y recorrido por el usuario, con **tres revisiones independientes** antes del despliegue, las tres R1, y la CI completa en verde sobre el SHA desplegado en 25 min 7 s.
+
+**No certifica:**
+- la forma exacta de los mockups: los doce desvíos de AC-9, aceptados por el usuario, entre ellos que la cronología no cita el texto de mensajes ni notas (lo prohíbe Screens, pantalla 7 y 8), que el turno no tiene número ni vínculo con una reparación porque el modelo no lo tiene, y que los íconos van en un solo color;
+- la búsqueda por IMEI, el detalle de productos de pedidos y ventas, y el medio de pago en la cronología: excluidos en el brief;
+- que los chips cuenten el total real más allá de 200 filas por tipo, ni que las filas del mismo minuto tengan un orden estable que no sea el UUID: quedan declaradas;
+- que axe cubra las tres variantes de «Próxima atención» a 375 px: solo la del turno, y sobre la variante blanca;
+- la cobertura de prueba del render de las lecturas fallidas: se prueban las funciones, no el render.
+
 ## 2026-10-30 — 24.4.2: clientes, lista y formulario
 
 Quinta subfase de la Fase 24 ([brief-24.4.2](docs/decisions/brief-24.4.2-clientes-lista-y-formulario.md) §Cierre).
