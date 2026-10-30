@@ -243,13 +243,15 @@ Los pasos van encadenados con `&&`: si falla la escritura de un archivo, la cont
 
 El rol con login de la aplicación, `crm_app_login`, se crea como dice el paso 6 del aprovisionamiento. **Diseñado, no ejecutado**: AC-18 restauró en un contenedor y no levantó la aplicación.
 
-**5. La comprobación servidor contra repositorio cubre los dieciséis archivos** de la tabla del README de producción, no los seis de staging. Entre ellos van los dos de la copia externa, los dos del aviso de vida (13.3), la retención del journal (13.4) y los dos del aviso de tamaño de la base (17.5). *Corregido el 2026-10-09*: decía catorce, la cuenta anterior a la 17.5. *Corregido el 2026-10-01*: decía once, la cuenta de la 13.1, y el bucle no cubría los archivos del aviso de vida.
+**5. La comprobación servidor contra repositorio cubre los dieciocho archivos** de la tabla del README de producción, no los seis de staging. Entre ellos van los dos de la copia externa, los dos del aviso de vida (13.3), la retención del journal (13.4), los dos del aviso de tamaño de la base (17.5) y los dos del lector de cotización (29.4.2). *Corregido el 2026-10-30*: decía dieciséis **y el bucle cubría dieciséis**, sin los dos de `crm-fx-reader`, que entraron en la 29.4.2. El README de producción sí decía dieciocho: el bucle se quedó atrás, así que **la comprobación pasaba en verde habiendo mirado 16 de 18 archivos**. Lo encontró el cierre de la 24.4.3, al contar los archivos versionados contra los del bucle. Los dos que faltaban se compararon ese día y coincidían, así que el agujero no tapaba ninguna deriva. *Corregido el 2026-10-09*: decía catorce, la cuenta anterior a la 17.5. *Corregido el 2026-10-01*: decía once, la cuenta de la 13.1, y el bucle no cubría los archivos del aviso de vida.
+
+**La lección, que ya pasó dos veces:** cuando una subfase agrega un archivo de configuración, hay que agregarlo **al bucle**, no solo a la cuenta del README. Un bucle que mira menos archivos de los que dice no falla: pasa en verde.
 
 ```
 for f in crm-backup.sh crm-backup-offsite.sh crm-restore-check.sh crm-heartbeat.sh crm-db-size.sh; do
   ssh crm-production "sudo cat /usr/local/bin/$f" | diff - "deploy/production/$f" && echo "$f OK"
 done
-for f in crm-production.service crm-backup.service crm-backup-offsite.service crm-backup.timer crm-restore-check.service crm-restore-check.timer crm-heartbeat@.service crm-db-size.service; do
+for f in crm-production.service crm-backup.service crm-backup-offsite.service crm-backup.timer crm-restore-check.service crm-restore-check.timer crm-heartbeat@.service crm-db-size.service crm-fx-reader.service crm-fx-reader.timer; do
   ssh crm-production "sudo cat /etc/systemd/system/$f" | diff - "deploy/production/$f" && echo "$f OK"
 done
 ssh crm-production "sudo cat /etc/nginx/sites-available/crm-production" | diff - deploy/production/nginx-crm-production.conf && echo "nginx OK"

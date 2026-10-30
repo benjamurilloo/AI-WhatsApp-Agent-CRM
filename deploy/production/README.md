@@ -270,7 +270,13 @@ Los mismos cinco pasos de staging, con `crm-production` en lugar de `crm-staging
 4. **La aplicación escucha solo en loopback.**
 5. **El rol de la aplicación no es el dueño.**
 6. **La ingestión y la API de lectura, como deben estar**: `POST /api/ingestion/v1/events`, `POST /api/ingestion/v2/events` y `GET /api/read/v1/products` responden desde afuera **`401` sin token mientras estén encendidas** para un emisor (desde la 13.5.2-a, solo para `agente-demo`), y **`404` si están apagadas**. *Hasta el cierre de la 16.2 (2026-10-07) este paso pedía siempre `404`; quedó viejo al encenderlas en la 13.5.2-a.*
-7. **Ningún dato real de un cliente**: `select count(*)` de `clients`, `conversations`, `messages` y `products` da 0 en las cuatro, y `organizations` da 1.
+7. **Ningún dato real de un cliente**: `select count(*)` de `clients`, `conversations`, `messages` y `products` da 0 **en la organización real**, y las demás organizaciones son de demostración. Se comprueba por organización, no en total:
+
+   ```
+   ssh crm-production "sudo bash -c '. /etc/crm-production/migrate.env && export DATABASE_URL && psql \"\$DATABASE_URL\" -At -c \"select o.name, (select count(*) from clients c where c.organization_id=o.id), (select count(*) from messages m join conversations v on v.id=m.conversation_id where v.organization_id=o.id), (select count(*) from products p where p.organization_id=o.id), o.created_at::date from organizations o order by o.created_at\"'"
+   ```
+
+   *Corregido el 2026-10-30, al cerrar la 24.4.3*: pedía cero en las cuatro tablas **en total** y **una** organización, que era la cuenta de la 13.1, cuando producción tenía solo «Vixora». Desde entonces se crearon «Demostración Vixora» (2026-10-03, la 13.5.2-a) y «iPhone Demo» (2026-10-18, la 29.2), así que el paso daba por fallado algo que estaba bien: al medirlo ese día dio 4 clientes, 10 conversaciones, 278 mensajes, 51 productos y 3 organizaciones, **todo de las dos de demostración**, con «Vixora» en cero. Un paso de verificación que falla cuando no hay nada mal se deja de mirar: por eso ahora pide el desglose por organización, que sigue siendo verdadero cuando se agregue otra demostración.
 
 ## Monitoreo y alertas
 
