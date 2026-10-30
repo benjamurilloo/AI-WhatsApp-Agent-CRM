@@ -11,6 +11,7 @@ import {
   countOpenServiceOrdersByClient,
   listClientIdsWithOpenServiceOrders,
 } from "@/modules/service";
+import { logEvent, newRequestId } from "@/shared/log";
 import {
   interactionFilter,
   type ClientFilters,
@@ -111,7 +112,15 @@ async function readBalances(
     const result = await getClientBalances(context);
     return result.ok ? result.balances : null;
   } catch (error) {
-    console.error("No se pudo leer el saldo de los clientes", error);
+    logEvent({
+      level: "error",
+      requestId: newRequestId(),
+      route: "/clientes",
+      code: "INTERNAL",
+      userId: context.userId,
+      organizationId: context.organizationId,
+      error,
+    });
     return null;
   }
 }
