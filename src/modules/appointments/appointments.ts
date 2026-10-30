@@ -782,6 +782,33 @@ export async function listAppointmentAudit(
   };
 }
 
+// Cuántos turnos pendientes desde hoy tiene cada uno de unos clientes, para «En curso» de la lista de
+// clientes (brief-24.4.2, D-3 y H-4). Sin la capacidad, ninguno.
+export async function countUpcomingAppointmentsByClient(
+  context: AuthContext,
+  clientIds: string[],
+): Promise<
+  | { ok: true; counts: Map<string, number> }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+> {
+  const allowed = await requireAppointments(context);
+  if (!allowed.ok) return allowed;
+  if (!clientIds.every((id) => idSchema.safeParse(id).success)) {
+    return failure("VALIDATION_ERROR");
+  }
+  if (clientIds.length === 0) return { ok: true, counts: new Map() };
+  const timezone = await getOrganizationTimezone(context);
+  const rows = await repository.countUpcomingByClient(
+    context.organizationId,
+    clientIds.map((id) => id.toLowerCase()),
+    timezone,
+  );
+  return {
+    ok: true,
+    counts: new Map(rows.map((row) => [row.clientId, row.total])),
+  };
+}
+
 // Los turnos de un cliente, para su ficha (D-5): los dos roles, los más nuevos primero.
 export const CLIENT_APPOINTMENTS_LIMIT = 20;
 

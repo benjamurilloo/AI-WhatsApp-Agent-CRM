@@ -6,6 +6,7 @@ import {
   assignClientTag,
   createClient,
   deactivateClient,
+  findClientByPhone,
   reactivateClient,
   removeClientTag,
   suggestClients,
@@ -26,6 +27,7 @@ import {
   type ClientChangeState,
   type ClientFormState,
   type ClientFormValues,
+  type DuplicateClient,
 } from "./messages";
 
 // Server Actions de las pantallas 6 y 7 (brief-5.3). Next.js compara Origin con Host; la sesión,
@@ -75,6 +77,21 @@ function logDone(
   });
 }
 
+// El cliente que ya tiene el teléfono (brief-24.4.2, D-8). Si no se puede leer, el formulario
+// muestra el error del campo de siempre.
+async function duplicateOf(
+  context: AuthContext,
+  phone: string,
+): Promise<DuplicateClient | null> {
+  // Si la lectura falla, tampoco se pierde el rechazo: queda el error del campo (revisión, O-3).
+  try {
+    const found = await findClientByPhone(context, phone);
+    return found.ok ? found.client : null;
+  } catch {
+    return null;
+  }
+}
+
 // Alta y edición comparten el manejo de rechazos: el formulario conserva lo escrito.
 async function runClientForm(
   route: string,
@@ -116,6 +133,10 @@ async function runClientForm(
           result.code === "CONFLICT"
             ? PHONE_TAKEN_MESSAGE
             : clientChangeMessage(result.code, requestId),
+        duplicate:
+          result.code === "CONFLICT"
+            ? await duplicateOf(context, values.phone)
+            : undefined,
       };
     }
     logDone(started, requestId, route, "OK", context);

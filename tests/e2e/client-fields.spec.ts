@@ -150,20 +150,29 @@ test("1. FR-CLI-12: un admin da de alta y edita con los campos nuevos, y el hist
   await insertClient("Otro Cliente", { segment: "Minorista" });
   await login(page, ADMIN);
   await page.goto("/clientes/nuevo");
-  for (const card of ["Contacto", "Empresa", "Dirección", "Clasificación"]) {
+  // Desde la 24.4.2, las tres secciones de 02 (brief-24.4.2, D-7).
+  for (const card of [
+    "Datos de contacto",
+    "Identificación y domicilio",
+    "Organización interna",
+  ]) {
     await expect(page.getByRole("region", { name: card })).toBeVisible();
   }
   await expectAccessible(page, "alta con los campos nuevos");
 
-  await page.getByLabel("Nombre *").fill("Ana Kumquat");
-  await page.getByLabel("Email").fill("  Ana.Kumquat@Example.com ");
+  await page.getByLabel("Nombre completo *").fill("Ana Kumquat");
+  await page
+    .getByLabel("Correo electrónico")
+    .fill("  Ana.Kumquat@Example.com ");
   await page.getByLabel("Tipo").selectOption({ label: "Empresa" });
   await page
-    .getByRole("textbox", { name: "Empresa", exact: true })
+    .getByRole("textbox", { name: "Empresa (opcional)", exact: true })
     .fill(FULL.company);
   await page.getByLabel("Cargo").fill(FULL.job);
+  // La dirección está en «Identificación y domicilio», plegado mientras esté vacío (D-7).
+  await page.getByText("Agregar documento y dirección (opcional)").click();
   await page.getByLabel("Calle y número").fill(FULL.address);
-  await page.getByLabel("Ciudad").fill(FULL.city);
+  await page.getByLabel("Localidad").fill(FULL.city);
   await page.getByLabel("Provincia").selectOption({ label: "Santa Fe" });
   await page.getByLabel("Código postal").fill("s2000abc");
   // D-5: el segmento sugiere los ya cargados en la organización.
@@ -196,9 +205,7 @@ test("1. FR-CLI-12: un admin da de alta y edita con los campos nuevos, y el hist
   // exact: el Resumen tiene «Copiar email», que getByLabel también encuentra mientras navega.
   await page.getByRole("link", { name: "Editar" }).click();
   await expect(page).toHaveURL(/editar=1/);
-  await expect(page.getByLabel("Email", { exact: true })).toHaveValue(
-    FULL.email,
-  );
+  await expect(page.getByLabel("Correo electrónico")).toHaveValue(FULL.email);
   await expect(page.getByLabel("Provincia")).toHaveValue("AR-S");
   await page.getByLabel("Provincia").selectOption({ label: "Córdoba" });
   await page.getByLabel("Segmento").fill("");
@@ -224,16 +231,23 @@ test("2. AC-2: un código postal inválido marca su campo y conserva lo escrito"
 }) => {
   await login(page, ADMIN);
   await page.goto("/clientes/nuevo");
-  await page.getByLabel("Nombre *").fill("Bruno Postal");
-  await page.getByLabel("Ciudad").fill("Rosario");
+  await page.getByLabel("Nombre completo *").fill("Bruno Postal");
+  await page.getByText("Agregar documento y dirección (opcional)").click();
+  await page.getByLabel("Localidad").fill("Rosario");
   await page.getByLabel("Código postal").fill("14-25");
   await page.getByRole("button", { name: "Crear cliente" }).click();
 
   const postal = page.getByLabel("Código postal");
+  // Desde la 24.4.2, el foco va al resumen de errores, que lleva al campo (brief-24.1, D-8).
+  const summary = page.getByRole("group", {
+    name: "Revisá 1 campo para guardar",
+  });
+  await expect(summary).toBeFocused();
+  await summary.getByRole("link").click();
   await expect(postal).toBeFocused();
   await expect(postal).toHaveAttribute("aria-invalid", "true");
-  await expect(page.getByText(/Ingresá un código postal/)).toBeVisible();
-  await expect(page.getByLabel("Ciudad")).toHaveValue("Rosario");
+  await expect(postal).toHaveAccessibleDescription(/Ingresá un código postal/);
+  await expect(page.getByLabel("Localidad")).toHaveValue("Rosario");
   await expect(postal).toHaveValue("14-25");
   await expectAccessible(page, "error en el código postal");
 });
@@ -299,6 +313,8 @@ test("4. FR-CLI-14: la lista filtra por tipo, provincia y segmento, combinados y
   const table = page.getByRole("table", {
     name: "Clientes de la organización",
   });
+  // Tipo, provincia y segmento están en «Más filtros» (brief-24.4.2, D-6).
+  await page.getByText("Más filtros").click();
   // El selector de provincia ofrece solo las que tiene algún cliente.
   await expect(page.getByLabel("Provincia").locator("option")).toHaveText([
     "Todas",
@@ -347,14 +363,17 @@ test("5. AC-8: el alta con los campos nuevos solo con teclado, y la ficha a 375 
 }) => {
   await login(page, ADMIN);
   await page.goto("/clientes/nuevo");
-  await tabTo(page, page.getByLabel("Nombre *"));
+  await tabTo(page, page.getByLabel("Nombre completo *"));
   await page.keyboard.type("Gabi Teclado");
-  await tabTo(page, page.getByLabel("Email"));
+  await tabTo(page, page.getByLabel("Correo electrónico"));
   await page.keyboard.type("gabi@example.com");
-  await tabTo(page, page.getByLabel("Tipo"));
-  await page.keyboard.type("P");
+  // «Identificación y domicilio» se abre con Enter sobre su resumen (D-7).
+  await tabTo(page, page.getByText("Agregar documento y dirección (opcional)"));
+  await page.keyboard.press("Enter");
   await tabTo(page, page.getByLabel("Provincia"));
   await page.keyboard.type("Tuc");
+  await tabTo(page, page.getByLabel("Tipo"));
+  await page.keyboard.type("P");
   await tabTo(page, page.getByRole("button", { name: "Crear cliente" }));
   await page.keyboard.press("Enter");
 

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb, type Db, type DbTransaction } from "@/shared/db";
 import {
   appointmentReasons,
@@ -343,6 +343,30 @@ export async function findClientAppointments(
     )
     .orderBy(desc(appointments.startsAt), desc(appointments.id))
     .limit(limit);
+}
+
+// Cuántos turnos pedidos o confirmados desde hoy, en días de la organización, tiene cada uno de unos
+// clientes (brief-24.4.2, D-3): el mismo corte que el próximo turno del contexto del cliente.
+export async function countUpcomingByClient(
+  organizationId: string,
+  clientIds: string[],
+  timezone: string,
+): Promise<{ clientId: string; total: number }[]> {
+  const rows = await getDb()
+    .select({ clientId: appointments.clientId, total: count() })
+    .from(appointments)
+    .where(
+      and(
+        eq(appointments.organizationId, organizationId),
+        inArray(appointments.clientId, clientIds),
+        inArray(appointments.status, ["requested", "confirmed"]),
+        sql`(${appointments.startsAt} at time zone ${timezone})::date >= (now() at time zone ${timezone})::date`,
+      ),
+    )
+    .groupBy(appointments.clientId);
+  return rows.flatMap((row) =>
+    row.clientId === null ? [] : [{ clientId: row.clientId, total: row.total }],
+  );
 }
 
 // Cuántos turnos que ocupan su franja se superponen a una franja local (D-3). Se llama bajo el bloqueo

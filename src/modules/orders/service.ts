@@ -1240,6 +1240,34 @@ export async function listRecentClientOrders(
   return { ok: true, orders: await summarize(context, rows), total };
 }
 
+// Los pedidos abiertos (pendientes o confirmados) de unos clientes, para «En curso» de la lista de
+// clientes (brief-24.4.2, D-3 y H-4): los ids de una página, no la organización.
+export const OPEN_ORDER_STATUSES: OrderStatus[] = ["pending", "confirmed"];
+
+export async function countOpenOrdersByClient(
+  context: AuthContext,
+  clientIds: string[],
+): Promise<
+  | { ok: true; counts: Map<string, number> }
+  | Failure<"FORBIDDEN" | "VALIDATION_ERROR">
+> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  if (!clientIds.every((id) => idSchema.safeParse(id).success)) {
+    return failure("VALIDATION_ERROR");
+  }
+  if (clientIds.length === 0) return { ok: true, counts: new Map() };
+  const rows = await repository.countOrdersByClient(
+    context.organizationId,
+    clientIds.map((id) => id.toLowerCase()),
+    OPEN_ORDER_STATUSES,
+  );
+  return {
+    ok: true,
+    counts: new Map(rows.map((row) => [row.clientId, row.total])),
+  };
+}
+
 export type OrderLine = {
   position: number;
   productId: string;

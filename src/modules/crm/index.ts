@@ -24,6 +24,7 @@ export {
   resolveClientByPhone,
   UNNAMED_CLIENT_LABEL,
   type ResolvedClient,
+  findClientByPhone,
   getClientsByIds,
   listClientAudit,
   listClientOrderKeys,

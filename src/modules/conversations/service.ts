@@ -1062,7 +1062,7 @@ export async function getClientActivity(
 
 export type ClientWithInteraction = Client & { lastInteractionAt: Date | null };
 
-export type ClientInteractionPage =
+export type ClientInteractionPage<View extends string = never> =
   | {
       ok: true;
       clients: ClientWithInteraction[];
@@ -1070,6 +1070,10 @@ export type ClientInteractionPage =
       page: number;
       pageCount: number;
       timezone: string;
+      // Cuántos clientes cumplen el filtro sin la vista, y cuántos de ellos hay en cada conjunto
+      // pedido (brief-24.4.2, D-1): el ámbito de las cantidades de las vistas.
+      scopeTotal: number;
+      viewCounts: Record<View, number>;
     }
   | Failure<"FORBIDDEN">;
 
@@ -1081,11 +1085,32 @@ export const CLIENT_SORTS = [
 ] as const;
 export type ClientSort = (typeof CLIENT_SORTS)[number];
 
+// El filtro por última interacción (brief-24.4.2, D-4): desde una fecha, o sin ninguna.
+export type InteractionFilter = { since: Date } | "none" | null;
+
 export type ClientInteractionFilters = ClientListFilters & {
   sort?: ClientSort;
   // Filas por página (brief-15.2, D-2); fuera de 1 a 50, CLIENTS_PAGE_SIZE.
   pageSize?: number;
+  interaction?: InteractionFilter;
 };
+
+// Las vistas de la lista (brief-24.4.2, D-1) vienen de otros módulos (cash, service), que este no
+// importa: la página le pasa los ids de cada una. views son los conjuntos que se cuentan sobre el
+// filtro; view, el que además recorta la lista.
+export type ClientViewOptions<View extends string> = {
+  views?: Record<View, ReadonlySet<string>>;
+  view?: View | null;
+};
+
+export function matchesInteraction(
+  at: Date | undefined,
+  filter: InteractionFilter,
+): boolean {
+  if (filter === null) return true;
+  if (filter === "none") return at === undefined;
+  return at !== undefined && at.getTime() >= filter.since.getTime();
+}
 
 // Filas por página válidas para los dos listados de este módulo.
 function listPageSize(pageSize: number | undefined, fallback: number): number {
@@ -1115,17 +1140,30 @@ export function orderClientIds(
 }
 
 // Orden compuesto en memoria (brief-6.3, D-1): crm da los ids y el teléfono según el rol.
-export async function searchClientsByLastInteraction(
+export async function searchClientsByLastInteraction<
+  View extends string = never,
+>(
   context: AuthContext,
   filters: ClientInteractionFilters,
-): Promise<ClientInteractionPage> {
+  options: ClientViewOptions<View> = {},
+): Promise<ClientInteractionPage<View>> {
   const keys = await listClientOrderKeys(context, filters);
   if (!keys.ok) return keys;
   const lastInteraction = await repository.findLastInteractionByClient(
     context.organizationId,
   );
+  const interaction = filters.interaction ?? null;
+  const scoped = keys.clientIds.filter((id) =>
+    matchesInteraction(lastInteraction.get(id), interaction),
+  );
+  const views = options.views ?? ({} as Record<View, ReadonlySet<string>>);
+  const viewCounts = {} as Record<View, number>;
+  for (const name of Object.keys(views) as View[]) {
+    viewCounts[name] = scoped.filter((id) => views[name].has(id)).length;
+  }
+  const only = options.view ? views[options.view] : undefined;
   const ordered = orderClientIds(
-    keys.clientIds,
+    only ? scoped.filter((id) => only.has(id)) : scoped,
     lastInteraction,
     filters.sort ?? "last_interaction",
   );
@@ -1147,6 +1185,33 @@ export async function searchClientsByLastInteraction(
     page,
     pageCount,
     timezone: await getOrganizationTimezone(context),
+    scopeTotal: scoped.length,
+    viewCounts,
+  };
+}
+
+// Cuántas conversaciones abiertas o pendientes tiene cada uno de unos clientes, para «En curso» de la
+// lista de clientes (brief-24.4.2, D-3). Los dos roles, como la lista.
+export async function countOpenConversationsByClient(
+  context: AuthContext,
+  clientIds: string[],
+): Promise<
+  | { ok: true; counts: Map<string, number> }
+  | Failure<"FORBIDDEN" | "VALIDATION_ERROR">
+> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  if (!clientIds.every((id) => idSchema.safeParse(id).success)) {
+    return failure("VALIDATION_ERROR");
+  }
+  if (clientIds.length === 0) return { ok: true, counts: new Map() };
+  const rows = await repository.countOpenConversationsByClient(
+    context.organizationId,
+    clientIds.map((id) => id.toLowerCase()),
+  );
+  return {
+    ok: true,
+    counts: new Map(rows.map((row) => [row.clientId, row.total])),
   };
 }
 

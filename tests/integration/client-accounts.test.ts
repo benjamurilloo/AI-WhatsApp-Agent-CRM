@@ -9,6 +9,7 @@ import {
   createSaleReceipt,
   getAccountReceiptForm,
   getClientAccountSummary,
+  getClientBalances,
   getClientStatement,
   getSaleReceipts,
   listDebtors,
@@ -631,6 +632,100 @@ describe("las lecturas de la cuenta (AC-6)", () => {
           ],
         },
       });
+    },
+    TEST_TIMEOUT,
+  );
+});
+
+// El saldo de la lista de clientes (brief-24.4.2, D-2 y AC-2): por cliente y moneda, sin sumar, con
+// la misma regla que la ficha; un cliente sin ventas con un cobro a cuenta tiene saldo a favor.
+describe("el saldo de cada cliente para la lista (brief-24.4.2)", () => {
+  it(
+    "da lo mismo que el resumen de la ficha, por moneda, y no cruza la organización",
+    async () => {
+      const s = await seed();
+      await fullAccount(s);
+      const favorOnly = await addClient(s.orgA, "Solo A Favor");
+      await receivedAccount(s, "400", "ARS", favorOnly);
+      await addClient(s.orgA, "Sin Nada");
+      const saleB = await issueSale(s.adminB, {
+        clientId: s.clientB,
+        lines: [
+          {
+            productId: s.productB.productId,
+            quantity: "1",
+            expectedPriceId: s.productB.priceId,
+          },
+        ],
+      });
+      if (!saleB.ok) throw new Error("venta de B rechazada");
+
+      for (const context of [s.adminA, s.viewerA]) {
+        const result = await getClientBalances(context);
+        if (!result.ok) throw new Error(`saldo rechazado: ${result.code}`);
+        const sorted = [...result.balances].sort((x, y) =>
+          (x.clientId + x.currency).localeCompare(y.clientId + y.currency),
+        );
+        expect(sorted).toEqual(
+          [
+            {
+              clientId: s.clientA,
+              currency: "ARS",
+              owed: "2000.00",
+              inFavor: "0.00",
+            },
+            {
+              clientId: s.clientA,
+              currency: "USD",
+              owed: "0.00",
+              inFavor: "130.00",
+            },
+            {
+              clientId: favorOnly,
+              currency: "ARS",
+              owed: "0.00",
+              inFavor: "400.00",
+            },
+          ].sort((x, y) =>
+            (x.clientId + x.currency).localeCompare(y.clientId + y.currency),
+          ),
+        );
+      }
+
+      // La misma regla que la ficha (condición de detención del brief).
+      const summary = await getClientAccountSummary(s.adminA, s.clientA);
+      if (!summary.ok) throw new Error("resumen rechazado");
+      expect(
+        summary.currencies.map(({ currency, owed, inFavor }) => ({
+          currency,
+          owed,
+          inFavor,
+        })),
+      ).toEqual([
+        { currency: "ARS", owed: "2000.00", inFavor: "0.00" },
+        { currency: "USD", owed: "0.00", inFavor: "130.00" },
+      ]);
+
+      const favorSummary = await getClientAccountSummary(s.adminA, favorOnly);
+      if (!favorSummary.ok) throw new Error("resumen rechazado");
+      expect(
+        favorSummary.currencies.map(({ currency, owed, inFavor }) => ({
+          currency,
+          owed,
+          inFavor,
+        })),
+      ).toEqual([{ currency: "ARS", owed: "0.00", inFavor: "400.00" }]);
+
+      const otherOrg = await getClientBalances(s.adminB);
+      if (!otherOrg.ok) throw new Error("saldo de B rechazado");
+      expect(otherOrg.balances).toEqual([
+        {
+          clientId: s.clientB,
+          currency: "ARS",
+          owed: "1000.00",
+          inFavor: "0.00",
+        },
+      ]);
     },
     TEST_TIMEOUT,
   );

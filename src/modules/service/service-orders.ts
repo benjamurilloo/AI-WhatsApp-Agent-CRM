@@ -1001,6 +1001,64 @@ export async function listClientServiceOrders(
   return { ok: true, orders: await summarize(context, rows), total };
 }
 
+// Las órdenes abiertas de clientes, con los estados abiertos de cada tipo, como el filtro «En curso»
+// de la lista (brief-24.4.2, H-4). Sin la capacidad, ninguna: la página no las pide.
+function openClientOrdersQuery(
+  organizationId: string,
+): repository.ServiceOrderListQuery {
+  return {
+    organizationId,
+    statuses: null,
+    number: null,
+    clientId: null,
+    open: {
+      customer_device: [...OPEN_SERVICE_ORDER_STATUSES],
+      own_unit: [...OPEN_OWN_UNIT_STATUSES],
+      warranty_claim: [...OPEN_WARRANTY_CLAIM_STATUSES],
+    },
+  };
+}
+
+// Cuántas órdenes abiertas tiene cada uno de unos clientes, para «En curso» (D-3).
+export async function countOpenServiceOrdersByClient(
+  context: AuthContext,
+  clientIds: string[],
+): Promise<
+  | { ok: true; counts: Map<string, number> }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+> {
+  const allowed = await requireRepairs(context);
+  if (!allowed.ok) return allowed;
+  if (!clientIds.every((id) => idSchema.safeParse(id).success)) {
+    return failure("VALIDATION_ERROR");
+  }
+  if (clientIds.length === 0) return { ok: true, counts: new Map() };
+  const rows = await repository.countServiceOrdersByClient(
+    openClientOrdersQuery(context.organizationId),
+    clientIds.map((id) => id.toLowerCase()),
+  );
+  return {
+    ok: true,
+    counts: new Map(rows.map((row) => [row.clientId, row.total])),
+  };
+}
+
+// Los clientes de la organización con alguna orden abierta, para la vista «Con reparaciones» y su
+// cantidad (D-1): todos, no los de una página.
+export async function listClientIdsWithOpenServiceOrders(
+  context: AuthContext,
+): Promise<
+  { ok: true; clientIds: Set<string> } | Failure<"FORBIDDEN" | "NOT_FOUND">
+> {
+  const allowed = await requireRepairs(context);
+  if (!allowed.ok) return allowed;
+  const rows = await repository.countServiceOrdersByClient(
+    openClientOrdersQuery(context.organizationId),
+    null,
+  );
+  return { ok: true, clientIds: new Set(rows.map((row) => row.clientId)) };
+}
+
 export type ServiceOrderLine = {
   position: number;
   repairTypeId: string;

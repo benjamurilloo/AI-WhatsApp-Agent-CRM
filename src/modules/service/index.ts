@@ -56,6 +56,8 @@ export {
   formatServiceOrderNumber,
   getQuoteForm,
   getServiceOrder,
+  countOpenServiceOrdersByClient,
+  listClientIdsWithOpenServiceOrders,
   listClientServiceOrders,
   listServiceOrderAudit,
   listServiceOrdersBySerial,

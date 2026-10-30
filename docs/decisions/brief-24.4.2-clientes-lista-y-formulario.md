@@ -252,3 +252,128 @@ Es la quinta subfase de la Fase 24. **El usuario dividió el 2026-10-29 la fila 
 - **Necesario ahora:** la lista y el formulario con la forma de 01, 02 y 06, el saldo y las vistas.
 - **Antes de producción:** nada nuevo; la lista y el formulario de hoy ya están desplegados.
 - **Después:** la 24.4.3 (Operaciones y Actividad unificadas, «Próxima atención»); el panel de cobro y el período (24.7.2).
+
+
+## Cierre
+
+*Del 2026-10-29, antes del commit de la implementación. AC-12 y AC-13 se completan después de la CI, del despliegue y del recorrido del usuario. Los desvíos de abajo los decide el usuario.*
+
+### Criterios
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| AC-1 | cumple | `filters.ts` (`?vista=`, `VIEW_PARAM`) y `list-data.ts`: una vista que no se ofrece vale «Todos». Las cantidades salen de `searchClientsByLastInteraction` con `scopeTotal` y `viewCounts`, sobre los ids del filtro sin la vista (`client-list.test.ts`, «las vistas y la última interacción»). Caso 23: «Todos 3» y «Con saldo 1», `aria-current`, la vista recorta la lista y viaja con la búsqueda, para los dos roles. Caso 27: «Con reparaciones 1» solo con `repairs` |
+| AC-2 | cumple | `getClientBalances` sale de `readAccounts` e `imputeAccount`, como la ficha: da lo mismo que `getClientAccountSummary` para el cliente que debe en ARS y tiene a favor en USD, y para el que solo tiene un cobro a cuenta (`client-accounts.test.ts`). `list-cells.test.ts`: «No disponible» sin ningún número, «Sin saldo pendiente» y una línea por moneda sin sumar. Caso 23, en la pantalla |
+| AC-3 | cumple | Las cuatro lecturas de «En curso» con su estado abierto, su rol, su capacidad y su organización (`client-list.test.ts`). `list-cells.test.ts`: dos líneas, «+N» con el detalle y «Sin operaciones abiertas». Casos 23, 24 y 27 |
+| AC-4 | cumple | `interactionFilter` (`filters.test.ts`) y `matchesInteraction` (`client-list.test.ts`); caso 24 en la pantalla. La columna se llama «Última interacción» |
+| AC-5 | cumple, con dos desvíos | «Más filtros» es un `<details>` que queda abierto con un filtro aplicado; caso 25 sin JavaScript. El «⋮» de cada fila con «Ver ficha» y, solo para un `admin`, «Editar» (caso 23). Las filas por página y los filtros en el teléfono, desvíos 9 y 10 |
+| AC-6 | cumple | Las tres secciones, el resumen de errores, la barra de guardado y «Antes de guardar» (`client-form.tsx`). `client-fields.spec.ts` 1 y 2, casos 1, 2, 5 y 11 (el orden del teclado) |
+| AC-7 | cumple | `findClientByPhone` solo para un `admin` y sin cruzar la organización (`client-list.test.ts`). Caso 3: el aviso con el cliente inactivo, el foco, «Ver ficha existente», «Volver al formulario» que lleva el foco al teléfono y el borrador intacto. Caso 6, en la edición. Caso 26, sin JavaScript |
+| AC-8 | cumple | Caso 23: lo que recibe un `viewer` en `/clientes` no tiene el teléfono completo, y ve las vistas, el saldo y «En curso» sin «Editar». `client-fields.spec.ts` 3: ni el email, ni la calle, ni el código postal |
+| AC-9 | cumple; los desvíos los decide el usuario | La comparación, abajo |
+| AC-10 | cumple, con el 5× por encima del umbral | La medición, abajo |
+| AC-11 | cumple | Axe en claro y en oscuro en la lista (casos 1, 4, 23 y 27, y a 375 px en el 23), en el alta (caso 1), en el alta y el aviso a 375 px con el domicilio abierto y sin desplazamiento horizontal (caso 28), y en el aviso (caso 3) |
+| AC-12 | pendiente | Se completa con la CI del SHA que se despliegue |
+| AC-13 | pendiente | La revisión independiente se hizo antes del despliegue (abajo). Faltan el despliegue y el recorrido |
+
+### La medición de R-1
+
+- **Método:** `scripts/medir-caminos.ts`, con el camino nuevo `clientes.readClientList`, que llama a la misma composición que la pantalla (`list-data.ts`). Corrió contra la base `_test`, con dos organizaciones sembradas por un script del scratchpad, fuera del repositorio (`sembrar-lista-2442.ts`). Cinco corridas por camino, tras una de calentamiento, sin otra corrida en el mismo servidor.
+  - **1×:** 400 clientes, 4.000 ventas y 4.200 cobros (3.800 de venta y 400 a cuenta), una conversación por cliente y 100 pedidos pendientes.
+  - **5×:** 2.000 clientes, 20.000 ventas y 21.000 cobros, con lo mismo.
+- **El umbral**, fijado antes de medir: 400 ms de camino completo con 1×.
+
+| Camino (mediana) | 1× | 5× |
+|---|---|---|
+| La lista de hoy (`searchClientsByLastInteraction`), primera y última página | 16,1 a 17,4 ms | 36,6 a 43,4 ms |
+| La lista nueva, «Todos», primera página | 88,3 ms | 373,4 ms |
+| La lista nueva, «Todos», última página | 104,8 ms | 520,3 ms |
+| La lista nueva, «Con saldo», primera página | 88,2 ms | 566,4 ms |
+| La lista nueva, «Con saldo», última página | 77,4 ms | 345,1 ms |
+| La lista de deudores (`listDebtors`), las tres variantes | 65,1 a 82,5 ms | 303,3 a 381,8 ms |
+
+- **Resultado:** con 1× la lista cumple el umbral con holgura: 77 a 105 ms, de 5 a 6 veces la de hoy. Con 5× lo supera en tres de las cuatro variantes, de 345 a 566 ms, como se esperaba (R-1): cuesta un poco más que la lista de deudores, porque lee lo mismo y además las vistas y «En curso». **El usuario decide** si se acepta el mismo límite de la lista de deudores: se revisa si un negocio se acerca a 20.000 ventas con cliente.
+- **Límites:** mide las lecturas del servidor, no el render ni la red, y una llamada por vez. Las 30 corridas que el script marca como fallidas son de caminos de la API del agente que esta siembra no tiene (sin conversaciones con referencia del emisor), no de esta lista.
+
+### La comparación visual (AC-9)
+
+Capturas de la lista, el alta, la edición, el aviso de duplicado, «Más filtros» abierto y el vacío sin resultados, a 1440 y 375 px, con un spec temporal, borrado después, lado a lado con 01, 02, 06 y los paneles 02 a 04 de 08. Los datos son de alto desigual: clientes con y sin saldo, en dos monedas, con dos pedidos y con ninguna operación, con dos etiquetas y con una. Se corrigió durante la comparación: el nombre y «Sin saldo pendiente» se partían en dos líneas en escritorio.
+
+| # | Diferencia | Mockup | Por qué queda |
+|---|---|---|---|
+| 1 | Sin casillas ni barra de selección | 01 | H-7: la acción en lote es una escritura nueva |
+| 2 | La búsqueda es por nombre o teléfono, sin documento | 01, 06 | H-6 |
+| 3 | La columna se llama «Saldo», con una línea por moneda, y sin deuda dice «Sin saldo pendiente», no «ARS 0» | 01 | D-2: «ARS 0» no dice de qué moneda con dos; 06 usa «Sin saldo pendiente» |
+| 4 | Sin flechas de orden en las columnas: el orden está en «Más filtros» | 01 | H-12 y D-6 |
+| 5 | «Última interacción», no «Última actividad» | 01 | H-5 y D-4 |
+| 6 | Los usados no aparecen en «En curso» | 01 | H-4 |
+| 7 | El teléfono en E.164, sin espacios | 01, 06, 08 | Como la ficha (24.4.1, diferencia 8) |
+| 8 | El «⋮» de cada fila es el botón con borde de «Más acciones» | 01, 06 | El patrón de la 24.1 |
+| 9 | «Filas por página» sigue en la paginación, no en «Más filtros» | — | **Desvío** (H-4 de la revisión): D-6 la ponía en «Más filtros»; la `Pagination` compartida ya la tiene, y con un selector más habría dos controles para lo mismo |
+| 10 | En el teléfono, «Etiquetas» y «Última interacción» quedan a la vista y el desplegable dice «Más filtros», no «Filtros» | 06 | **Desvío** (H-4 de la revisión): D-6 los ponía en «Filtros». Moverlos solo en el teléfono duplicaría los campos del formulario GET, y un campo oculto viaja igual |
+| 11 | En el teléfono, «Gestionar etiquetas» es un botón a todo el ancho, no un enlace con flecha | 06 | **Desvío**: es el mismo enlace del encabezado de escritorio |
+| 12 | La paginación dice «Mostrando 1 a 5 de 5 clientes», con «Página siguiente» y las filas | 01, 06 | Es la `Pagination` compartida de la 15.1 |
+| 13 | El teléfono del formulario es un solo campo E.164, sin el país aparte, y opcional | 02 | H-8 y H-9 |
+| 14 | «Organización interna» lleva tipo, empresa, cargo, segmento y observaciones, sin etiquetas | 02 | H-10 y D-7: los campos existen; las etiquetas en el alta son una escritura nueva |
+| 15 | En «Antes de guardar», el enlace es «Buscar en la lista», aparte del texto | 02 | **Desvío** (O-4 de la revisión): un enlace con el texto entero sería largo de nombrar |
+| 16 | «Volver a clientes», no «← Clientes» | 02 | Como la ficha |
+| 17 | El borde del aviso de duplicado es neutro, no ámbar | 08 (02) | No hay un token de borde ámbar; agregarlo cambia los tokens de la 23.1 |
+| 18 | «Crear cliente» nunca se deshabilita por un error | 08 (03) | El README de 04-clientes lo pide así: permitir el intento y explicar los errores |
+| 19 | El vacío con filtros dice «Ningún cliente coincide con esta búsqueda.», no «No encontramos coincidencias» | 08 (04) | **Desvío** (O-4 de la revisión): es el texto de la pantalla 6 desde la 5.3, con sus pruebas |
+| 20 | Dos etiquetas de una fila van una debajo de la otra | 01 | El ancho de la columna con siete columnas |
+
+### Defectos encontrados y corregidos
+
+- **El nombre y el saldo se partían en dos líneas** en escritorio: en la comparación visual.
+- **Una vista vacía decía «Todavía no hay clientes»** (H-2 de la revisión): en «Con saldo» sin deudores, la página mostraba el vacío de una organización sin clientes y «Nuevo cliente». Ahora dice «Ningún cliente en esta vista.» con «Ver todos» (caso 27).
+- **Un test con el texto corrupto** (H-3 de la revisión): una edición hecha con PowerShell guardó `client-list.test.ts` con el UTF-8 decodificado dos veces. Se reparó y se releyó.
+- **Si la búsqueda del duplicado lanzaba un error**, se perdía también el error del campo (O-3 de la revisión). Ahora la lectura que falla deja el aviso de siempre.
+- **El formateo tocó seis archivos de `service`** que la subfase no cambia, solo en los finales de línea. Se restauraron antes de seguir.
+- **Los localizadores de R-2**: «Nombre completo», «Correo electrónico», «Teléfono», que también encuentra el aviso «Este teléfono…», «Etiqueta», que también encuentra «Más acciones de Hugo Sin Etiqueta», y el foco, que va al resumen de errores como en la 24.1. Se ajustaron en `clients`, `client-fields`, `client-tags` y `security-headers`.
+
+### La revisión independiente (D-9)
+
+Un agente que no participó del trabajo, con acceso de solo lectura, revisó el working tree contra el brief y las reglas. Veredicto **R1**: un bloqueante, siete no bloqueantes y seis observaciones, sin fugas a un `viewer`, sin `JOIN` entre módulos y con `listDebtors` igual en lo observable. Cada hallazgo se verificó contra el código antes de aceptarlo:
+
+| Hallazgo | Qué decía | Resultado |
+|---|---|---|
+| H-1 (bloqueante) | `list-data.ts` y `list-cells.tsx` están fuera de los archivos autorizados | Verificado. Desvío 21, abajo, para el usuario |
+| H-2 | Una vista vacía decía «Todavía no hay clientes» | Corregido (arriba) |
+| H-3 | Mojibake en `client-list.test.ts` | Corregido (arriba) |
+| H-4 | Las filas por página y los filtros en el teléfono se apartan de D-6 | Desvíos 9 y 10, para el usuario |
+| H-5 | Ningún caso pasaba axe por el formulario y el aviso a 375 px | Corregido: caso 28 |
+| H-6 | «No disponible» y «Con reparaciones» con `repairs` no tenían prueba | Corregido: `list-cells.test.ts` y caso 27 |
+| H-7 | Faltaban el aislamiento de los turnos, los dos roles en tres lecturas y el cliente sin ventas | Corregido en `client-list.test.ts` y `client-accounts.test.ts` |
+| H-8 | Faltaba la medición, y el Overview la daba por hecha | La medición, arriba |
+| O-1 | «Reparación abierta» en la lista no es exactamente la de la ficha | Verificado. La lista usa los estados abiertos de cada tipo, como el filtro «En curso» de Reparaciones. La ficha cuenta lo no entregado ni cancelado de las 5 más recientes. Difieren solo en un reclamo o una unidad propia con estados que la ficha cuenta y la lista no. Queda declarado; unificarlo es de la 24.4.3 |
+| O-2 | Una lectura de «En curso» rechazada se ve como «nada abierto» | Verificado. Con las autorizaciones de hoy, cada lectura solo se rechaza por un id inválido, que la página nunca pasa. Queda declarado |
+| O-3 | El aviso podía perder el error del campo | Corregido (arriba) |
+| O-4 | Dos textos de 02 y 08 no son literales | Diferencias 15 y 19 |
+| O-5 | Un comentario de test contradecía el código | Corregido |
+| O-6 | `.claude/settings.json` sin seguimiento | No entra en el commit |
+
+La revisión señaló además que el HANDOFF, el CHANGELOG de la 24.4.1 y el brief de la 24.4.1 remiten a la 24.4.2 lo que ahora es de la 24.4.3. El HANDOFF se actualiza al cerrar. Los otros dos son registros históricos, escritos antes de la división.
+
+### Desvío 21, de archivos
+
+- `src/app/(autenticado)/clientes/list-data.ts`: la composición de la lista, que el §Alcance incluido (punto 2) permitía hacer en la página. Va aparte para que `scripts/medir-caminos.ts` mida exactamente ese camino (R-1).
+- `src/app/(autenticado)/clientes/list-cells.tsx` y `list-cells.test.ts`: las celdas que comparten la tabla y las tarjetas, y su prueba.
+- `tests/integration/client-list.test.ts`: la integración de las lecturas nuevas, que el §Alcance incluido (punto 6) pide. El brief no nombraba el archivo.
+
+### Pruebas
+
+- **Typecheck, lint y prettier**: sin errores.
+- **Unitarias y guardas**: 2.098 de 2.098, antes de `list-cells.test.ts`. `forbidden-references.test.ts` cortó por tiempo en la corrida completa (39 s, con la máquina cargada) y pasó sola, 10 de 10, como en la 24.4.1. Después, los unitarios de `clientes/`: 51 de 51.
+- **Integración**: `client-accounts.test.ts` y `client-list.test.ts`, 13 de 13, después de las correcciones de la revisión.
+- **End-to-end**:
+  - `clients`, `client-fields`, `client-tags` y `security-headers` corrieron completos: 33 de 45 la primera vez y 40 de 45 la segunda, con los localizadores corregidos.
+  - Las cinco que quedaban pasaron repetidas. Eran una corrección de test (el error del código postal sale en el resumen y en el campo), la limpieza del caso 23 (`receipts` no admite `DELETE`) y tres cortes por tiempo o por la caída del servidor de prueba.
+  - Después de las correcciones de la revisión, los casos 3, 23, 26, 27 y 28: 5 de 5.
+- **En esta máquina**, con 387 MB libres, el servidor de prueba se cayó una vez y varias pruebas cortaron por tiempo en lugares distintos. Ninguna falla quedó sin repetir.
+
+### Autoevaluación
+
+Esta sección la escribió quien implementó, y es autoevaluación salvo la revisión independiente, que se cita. Lo que no está probado:
+- los desvíos 9 a 11, 15, 19 y 21, y la decisión sobre el 5× de R-1, que no se consultaron por separado;
+- O-1 y O-2, que quedan declarados;
+- la suite end-to-end completa en esta máquina: solo los cuatro specs que tocan la lista y el formulario. La CI la corre entera.

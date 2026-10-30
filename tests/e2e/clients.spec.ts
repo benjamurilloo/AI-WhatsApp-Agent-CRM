@@ -151,14 +151,23 @@ test("caso 1: un admin llega desde la navegación, ve el vacío y crea el primer
   await expect(page.getByText("Todavía no hay clientes.")).toBeVisible();
   await expectAccessible(page, "lista vacía");
 
-  await page.getByRole("link", { name: "Crear el primero" }).click();
+  // El vacío lleva «Nuevo cliente», como el encabezado (brief-24.4.2, panel 04 de 08).
+  await page
+    .getByRole("main")
+    .getByRole("link", { name: "Nuevo cliente" })
+    .last()
+    .click();
   await expect(page).toHaveURL("/clientes/nuevo");
-  await page.getByLabel("Nombre *").fill("Ana Pérez");
-  await page.getByLabel("Teléfono").fill("+54 9 11 6666-7788");
-  await expect(page.getByLabel("Notas")).toHaveAccessibleDescription(
-    "No registres datos sensibles innecesarios.",
+  await page.getByLabel("Nombre completo *").fill("Ana Pérez");
+  await page.getByLabel("Teléfono WhatsApp").fill("+54 9 11 6666-7788");
+  await expect(
+    page.getByLabel("Observaciones internas"),
+  ).toHaveAccessibleDescription(
+    "Esta información es visible para el equipo. No registres datos sensibles innecesarios.",
   );
-  await page.getByLabel("Notas").fill("Prefiere retirar por la tarde.");
+  await page
+    .getByLabel("Observaciones internas")
+    .fill("Prefiere retirar por la tarde.");
   await expectAccessible(page, "alta");
   await page.getByRole("button", { name: "Crear cliente" }).click();
 
@@ -213,63 +222,86 @@ test("caso 2: la validación marca el campo, conserva lo escrito y no crea nada"
 }) => {
   await login(page, ADMIN);
   await page.goto("/clientes/nuevo");
-  await page.getByLabel("Nombre *").fill("   ");
-  await page.getByLabel("Teléfono").fill("011 5555-1234");
+  await page.getByLabel("Nombre completo *").fill("   ");
+  await page.getByLabel("Teléfono WhatsApp").fill("011 5555-1234");
   await page.getByRole("button", { name: "Crear cliente" }).click();
 
-  const name = page.getByLabel("Nombre *");
+  const name = page.getByLabel("Nombre completo *");
   await expect(name).toHaveAccessibleDescription(
     "Ingresá un nombre de hasta 200 caracteres.",
   );
+  // Desde la 24.4.2, el foco va al resumen de errores, que lleva al campo (brief-24.1, D-8).
+  const summary = page.getByRole("group", {
+    name: "Revisá 1 campo para guardar",
+  });
+  await expect(summary).toBeFocused();
+  await summary
+    .getByRole("link", { name: "Ingresá un nombre de hasta 200 caracteres." })
+    .click();
   await expect(name).toBeFocused();
 
   await name.fill("Bruno Díaz");
   await page.getByRole("button", { name: "Crear cliente" }).click();
-  const phone = page.getByLabel("Teléfono");
+  const phone = page.getByLabel("Teléfono WhatsApp");
   await expect(phone).toHaveAccessibleDescription(/con \+ y código de país/);
   await expect(phone).toHaveAttribute("aria-invalid", "true");
-  await expect(phone).toBeFocused();
+  await expect(summary).toBeFocused();
   await expect(phone).toHaveValue("011 5555-1234");
-  await expect(page.getByLabel("Nombre *")).toHaveValue("Bruno Díaz");
+  await expect(page.getByLabel("Nombre completo *")).toHaveValue("Bruno Díaz");
   await expectAccessible(page, "alta con teléfono inválido");
 
   await phone.fill("+5491155559999");
-  await page.getByLabel("Notas").fill("n".repeat(1001));
+  await page.getByLabel("Observaciones internas").fill("n".repeat(1001));
   await page.getByRole("button", { name: "Crear cliente" }).click();
-  await expect(page.getByLabel("Notas")).toHaveAccessibleDescription(
-    /no pueden superar los 1000 caracteres/,
-  );
+  await expect(
+    page.getByLabel("Observaciones internas"),
+  ).toHaveAccessibleDescription(/no pueden superar los 1000 caracteres/);
   expect(await clientCount()).toBe(0);
 });
 
-test("caso 3: el teléfono de un cliente desactivado da el aviso en el campo y se encuentra con Todos", async ({
+test("caso 3: el teléfono de un cliente desactivado muestra el aviso de duplicado y se encuentra con Todos", async ({
   page,
 }) => {
   await insertClient("Ana Pérez", { phone: PHONE, isActive: false });
   await login(page, ADMIN);
   await page.goto("/clientes/nuevo");
-  await page.getByLabel("Nombre *").fill("Otra Ana");
-  await page.getByLabel("Teléfono").fill("+54 (9) 11 6666.7788");
+  await page.getByLabel("Nombre completo *").fill("Otra Ana");
+  await page.getByLabel("Teléfono WhatsApp").fill("+54 (9) 11 6666.7788");
   await page.getByRole("button", { name: "Crear cliente" }).click();
 
-  const phone = page.getByLabel("Teléfono");
+  // El aviso de 08 (brief-24.4.2, D-8): el otro cliente, inactivo, con su ficha. El foco va al aviso.
+  const notice = page.getByRole("group", {
+    name: "Este teléfono ya está registrado",
+  });
+  await expect(notice).toBeFocused();
+  await expect(notice).toContainText("Ana Pérez");
+  await expect(notice).toContainText(PHONE);
+  await expect(notice).toContainText("Inactivo");
+  await expect(
+    notice.getByRole("link", { name: "Ver ficha existente" }),
+  ).toHaveAttribute("href", /^\/clientes\/[0-9a-f-]{36}$/);
+  const phone = page.getByLabel("Teléfono WhatsApp");
   await expect(phone).toHaveAccessibleDescription(
     /Ya existe un cliente con ese teléfono\. Si está desactivado/,
   );
-  await expect(phone).toBeFocused();
-  await expect(page.getByLabel("Nombre *")).toHaveValue("Otra Ana");
+  await expect(page.getByLabel("Nombre completo *")).toHaveValue("Otra Ana");
+  await expect(phone).toHaveValue("+54 (9) 11 6666.7788");
   await expectAccessible(page, "alta con teléfono duplicado");
+  await notice.getByRole("link", { name: "Volver al formulario" }).click();
+  await expect(phone).toBeFocused();
   expect(await clientCount()).toBe(1);
 
   await page.goto("/clientes");
   await page.getByLabel("Buscar", { exact: true }).fill("+54 9 11 6666-7788");
+  // La actividad está en «Más filtros» (D-6).
+  await page.getByText("Más filtros").click();
   await page.getByLabel("Actividad").selectOption("todos");
   await page.getByRole("button", { name: "Buscar", exact: true }).click();
   await expect(page).toHaveURL(
-    "/clientes?q=%2B54+9+11+6666-7788&actividad=todos&orden=interaccion",
+    "/clientes?q=%2B54+9+11+6666-7788&interaccion=&actividad=todos&orden=interaccion",
   );
   await expect(clientsTable(page)).toContainText("Ana Pérez");
-  await expect(clientsTable(page)).toContainText("No");
+  await expect(clientsTable(page)).toContainText("Inactivo");
 });
 
 test("caso 4: busca por nombre y por teléfono, filtra y pagina desde la URL", async ({
@@ -287,7 +319,7 @@ test("caso 4: busca por nombre y por teléfono, filtra y pagina desde la URL", a
   await page.getByLabel("Buscar", { exact: true }).fill("ana");
   await page.getByRole("button", { name: "Buscar", exact: true }).click();
   await expect(page).toHaveURL(
-    "/clientes?q=ana&actividad=activos&orden=interaccion",
+    "/clientes?q=ana&interaccion=&actividad=activos&orden=interaccion",
   );
   await expect(clientsTable(page).getByRole("row")).toHaveCount(2);
   await expect(clientsTable(page)).toContainText("Ana Pérez");
@@ -330,11 +362,11 @@ test("caso 5: editar deja el cambio resumido en la auditoría", async ({
   await page.goto(`/clientes/${clientId}`);
   await page.getByRole("link", { name: "Editar" }).click();
   await expect(page).toHaveURL(`/clientes/${clientId}?editar=1`);
-  await expect(page.getByLabel("Teléfono")).toHaveValue(PHONE);
+  await expect(page.getByLabel("Teléfono WhatsApp")).toHaveValue(PHONE);
   await expectAccessible(page, "edición");
 
-  await page.getByLabel("Teléfono").fill("");
-  await page.getByLabel("Notas").fill("Nota nueva");
+  await page.getByLabel("Teléfono WhatsApp").fill("");
+  await page.getByLabel("Observaciones internas").fill("Nota nueva");
   await page.getByRole("button", { name: "Guardar cambios" }).click();
   await expect(page.getByText("Cliente actualizado.")).toBeVisible();
 
@@ -360,10 +392,13 @@ test("caso 6: editar con el teléfono de otro cliente muestra el aviso en el cam
   });
   await login(page, ADMIN);
   await page.goto(`/clientes/${brunoId}?editar=1`);
-  await page.getByLabel("Teléfono").fill(PHONE);
+  await page.getByLabel("Teléfono WhatsApp").fill(PHONE);
   await page.getByRole("button", { name: "Guardar cambios" }).click();
 
-  const phone = page.getByLabel("Teléfono");
+  await expect(
+    page.getByRole("group", { name: "Este teléfono ya está registrado" }),
+  ).toContainText("Ana Pérez");
+  const phone = page.getByLabel("Teléfono WhatsApp");
   await expect(phone).toHaveAccessibleDescription(
     /Ya existe un cliente con ese teléfono/,
   );
@@ -417,9 +452,7 @@ test("caso 8: un viewer ve el teléfono enmascarado y no recibe formularios ni a
   await insertClient("Número corto", { phone: "+1234" });
   await login(page, VIEWER);
   await page.goto("/clientes");
-  await expect(
-    page.getByRole("link", { name: "+ Nuevo cliente" }),
-  ).toBeHidden();
+  await expect(page.getByRole("link", { name: "Nuevo cliente" })).toBeHidden();
   const table = clientsTable(page);
   await expect(table).toContainText("•••• 7788");
   await expect(
@@ -451,14 +484,14 @@ test("caso 8: un viewer ve el teléfono enmascarado y no recibe formularios ni a
 
   await page.goto("/clientes/nuevo");
   await expect(page.getByText(FORBIDDEN_PAGE)).toBeVisible();
-  await expect(page.getByLabel("Nombre *")).toBeHidden();
+  await expect(page.getByLabel("Nombre completo *")).toBeHidden();
 
   // Forzar la edición por la URL tampoco entrega el formulario.
   await page.goto(`/clientes/${clientId}?editar=1`);
   await expect(
     page.getByRole("button", { name: "Guardar cambios" }),
   ).toBeHidden();
-  await expect(page.getByLabel("Teléfono")).toBeHidden();
+  await expect(page.getByLabel("Teléfono WhatsApp")).toBeHidden();
 });
 
 test("caso 9 (H-5): nada de lo que recibe el navegador de un viewer contiene el número", async ({
@@ -567,7 +600,7 @@ test("caso 11: el alta se completa solo con teclado", async ({ page }) => {
 
   // brief-23.1 el marco suma una parada: la sección de las migas, que acá es un enlace. Desde la
   // brief-24.1 suma los botones de los grupos del menú y sus destinos nuevos.
-  const name = page.getByLabel("Nombre *");
+  const name = page.getByLabel("Nombre completo *");
   for (let i = 0; i < 40; i++) {
     if (await name.evaluate((element) => element === document.activeElement)) {
       break;
@@ -578,14 +611,24 @@ test("caso 11: el alta se completa solo con teclado", async ({ page }) => {
   await page.keyboard.type("Cliente de teclado");
   await page.keyboard.press("Tab");
   await page.keyboard.type("+5491155557777");
+  // Desde la 24.4.2, el orden de 02 (brief-24.4.2, D-7): el correo, el desplegable plegado de
+  // identificación y domicilio, la organización interna con las observaciones al final, el enlace
+  // de «Antes de guardar» y la barra de guardado.
   await page.keyboard.press("Tab");
-  await page.keyboard.type("Sin datos sensibles");
-  // Desde la 17.1, las cuatro tarjetas opcionales van antes de los botones: nueve campos que se
-  // pasan sin completar (brief-17.1, D-11).
+  await expect(page.getByLabel("Correo electrónico")).toBeFocused();
   await page.keyboard.press("Tab");
-  await expect(page.getByLabel("Email")).toBeFocused();
-  for (let i = 0; i < 8; i++) await page.keyboard.press("Tab");
+  await expect(
+    page.getByText("Agregar documento y dirección (opcional)"),
+  ).toBeFocused();
+  for (let i = 0; i < 4; i++) await page.keyboard.press("Tab");
   await expect(page.getByLabel("Segmento")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByLabel("Observaciones internas")).toBeFocused();
+  await page.keyboard.type("Sin datos sensibles");
+  await page.keyboard.press("Tab");
+  await expect(
+    page.getByRole("link", { name: "Buscar en la lista" }),
+  ).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(page.getByRole("link", { name: "Cancelar" })).toBeFocused();
   await page.keyboard.press("Tab");
@@ -807,12 +850,13 @@ test("caso 17: brief-15.2 ordena por nombre en los dos sentidos y elige las fila
   // Por defecto, por última interacción: Zoe es la única con una.
   await expect(firstName()).toContainText("Zoe Luna");
 
+  await page.getByText("Más filtros").click();
   await page.getByLabel("Ordenar por").selectOption("nombre");
   await page.getByRole("button", { name: "Buscar", exact: true }).click();
   await expect(page).toHaveURL(/[?&]orden=nombre$/);
   await expect(firstName()).toContainText("Cliente 01");
   await expect(
-    page.getByText(/^Ordenados por nombre \(A–Z\) · Fechas en/),
+    page.getByText(/Ordenados por nombre \(A–Z\) · Fechas en/),
   ).toBeVisible();
 
   await page.goto("/clientes?orden=nombre-za");
@@ -943,22 +987,23 @@ test("brief-23.2: el vacío y la búsqueda sin resultados muestran su ícono, su
   await login(page, VIEWER);
   await page.goto("/clientes");
   await expect(page.getByText("Todavía no hay clientes.")).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Crear el primero" }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Nuevo cliente" })).toHaveCount(
+    0,
+  );
   await page.context().clearCookies();
 
   await login(page, ADMIN);
   await page.goto("/clientes");
   await expect(page.getByText("Todavía no hay clientes.")).toBeVisible();
   await expect(
-    page.getByText(
-      "Cada cliente que cargues o que escriba por WhatsApp aparece acá, con su última interacción.",
-    ),
+    page.getByText("Comenzá agregando tu primer cliente para verlo acá."),
   ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Crear el primero" }),
-  ).toHaveAttribute("href", "/clientes/nuevo");
+  // El del encabezado y el del vacío (brief-24.4.2, panel 04 de 08).
+  const create = page
+    .getByRole("main")
+    .getByRole("link", { name: "Nuevo cliente" });
+  await expect(create).toHaveCount(2);
+  await expect(create.last()).toHaveAttribute("href", "/clientes/nuevo");
   await expectAccessible(page, "vacío");
   await page.setViewportSize({ width: 375, height: 800 });
   await expectAccessible(page, "vacío a 375 px");
@@ -970,11 +1015,14 @@ test("brief-23.2: el vacío y la búsqueda sin resultados muestran su ícono, su
     page.getByText("Ningún cliente coincide con esta búsqueda."),
   ).toBeVisible();
   await expect(
-    page.getByText("Probá con otras palabras o quitá algún filtro."),
+    page.getByText(
+      "Probá con otros términos o ajustá los filtros de búsqueda.",
+    ),
   ).toBeVisible();
+  // Solo el del encabezado.
   await expect(
-    page.getByRole("link", { name: "Crear el primero" }),
-  ).toHaveCount(0);
+    page.getByRole("main").getByRole("link", { name: "Nuevo cliente" }),
+  ).toHaveCount(1);
   // El del formulario de búsqueda y el del vacío.
   const clear = page.getByRole("link", { name: "Limpiar filtros" });
   await expect(clear).toHaveCount(2);
@@ -1007,7 +1055,7 @@ test("brief-23.2: la ficha pregunta antes de salir con cambios sin guardar, y el
   // Con un cambio, pregunta con el diálogo del sistema. El foco empieza en «Seguir editando».
   await page.goto(edit);
   await expect(form).toHaveCount(1);
-  await page.getByLabel("Notas").fill("Algo nuevo");
+  await page.getByLabel("Observaciones internas").fill("Algo nuevo");
   await nav.getByRole("link", { name: "Productos" }).click();
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText("Si salís ahora, se pierden.");
@@ -1023,7 +1071,9 @@ test("brief-23.2: la ficha pregunta antes de salir con cambios sin guardar, y el
   await stay.click();
   await expect(dialog).toBeHidden();
   await expect(page).toHaveURL(edit);
-  await expect(page.getByLabel("Notas")).toHaveValue("Algo nuevo");
+  await expect(page.getByLabel("Observaciones internas")).toHaveValue(
+    "Algo nuevo",
+  );
 
   // «Salir sin guardar» sale, también desde el «Cancelar» del formulario.
   await page.getByRole("link", { name: "Cancelar" }).click();
@@ -1034,7 +1084,7 @@ test("brief-23.2: la ficha pregunta antes de salir con cambios sin guardar, y el
   // Después de guardar, no pregunta. El aviso lleva el tilde, dentro de su región de estado.
   await page.goto(edit);
   await expect(form).toHaveCount(1);
-  await page.getByLabel("Notas").fill("Guardada");
+  await page.getByLabel("Observaciones internas").fill("Guardada");
   await page.getByRole("button", { name: "Guardar cambios" }).click();
   const notice = page
     .getByRole("status")
@@ -1047,7 +1097,7 @@ test("brief-23.2: la ficha pregunta antes de salir con cambios sin guardar, y el
   // Cerrar la pestaña con un cambio pide confirmación del navegador: ese aviso no se puede reemplazar.
   await page.goto(edit);
   await expect(form).toHaveCount(1);
-  await page.getByLabel("Notas").fill("Otra cosa");
+  await page.getByLabel("Observaciones internas").fill("Otra cosa");
   const beforeUnload = page.waitForEvent("dialog");
   await page.close({ runBeforeUnload: true });
   const unload = await beforeUnload;
@@ -1253,4 +1303,301 @@ test("caso 22: brief-24.4.1 la ficha en el teléfono, sin desplazamiento horizon
   await page.getByRole("link", { name: "Desactivar" }).click();
   await expect(page.getByText('¿Desactivar "Ana Pérez"?')).toBeFocused();
   await expectAccessible(page, "confirmación de desactivar a 375 px");
+});
+
+// La lista de la 24.4.2 (brief-24.4.2, AC-1 a AC-5 y AC-8): las vistas con su cantidad, el saldo por
+// moneda sin sumar y «En curso». Ana debe en pesos y tiene a favor en dólares, con un pedido y una
+// conversación abiertos; Bruno no tiene nada; Carla pagó todo. Los cobros y las ventas van por SQL,
+// con un medio de pago propio que se borra al terminar.
+async function insertListAccounts() {
+  const ana = await insertClient("Ana Pérez", { phone: PHONE });
+  const bruno = await insertClient("Bruno Díaz");
+  const carla = await insertClient("Carla Paga");
+  const method = await db.execute<{ id: string }>(
+    sql`insert into payment_methods (organization_id, name, is_cash)
+        values (${SEED_ORGANIZATION_ID}, 'Lista e2e', false) returning id`,
+  );
+  const methodId = method.rows[0]!.id;
+  const sale = async (number: number, clientId: string, total: string) =>
+    (
+      await db.execute<{ id: string }>(
+        sql`insert into sales (organization_id, number, client_id, currency, total, created_by)
+            values (${SEED_ORGANIZATION_ID}, ${number}, ${clientId}, 'ARS', ${total}, ${ADMIN_SEED.id})
+            returning id`,
+      )
+    ).rows[0]!.id;
+  await sale(1, ana, "150000.00");
+  const paid = await sale(2, carla, "50000.00");
+  await db.execute(
+    sql`insert into receipts (organization_id, number, target, sale_id, client_id, payment_method_id,
+          currency, amount, created_by)
+        values (${SEED_ORGANIZATION_ID}, 1, 'sale', ${paid}, ${carla}, ${methodId}, 'ARS', '50000.00',
+          ${ADMIN_SEED.id}),
+          (${SEED_ORGANIZATION_ID}, 2, 'account', null, ${ana}, ${methodId}, 'USD', '100.00',
+          ${ADMIN_SEED.id})`,
+  );
+  await db.execute(
+    sql`insert into orders (organization_id, number, client_id, currency, total, created_by)
+        values (${SEED_ORGANIZATION_ID}, 1, ${ana}, 'ARS', '1000.00', ${ADMIN_SEED.id})`,
+  );
+  await insertConversation(ana, "open", new Date("2026-09-01T12:00:00Z"));
+  return { ana, bruno, carla };
+}
+
+async function deleteListMethod() {
+  // receipts es de solo inserción (ADR 0013): se vacía con el TRUNCATE de beforeEach, que lleva las
+  // tablas que la referencian, y recién entonces se puede borrar el medio.
+  await db.execute(
+    sql`truncate table appointments, trade_in_payment_voids, trade_in_payments, trade_in_voids, trade_in_checklist_results, trade_ins, service_order_lines, service_orders, refund_voids, refunds, receipt_voids, receipts, sale_voids, sale_line_units, sale_lines, sales, order_line_units, order_lines, orders`,
+  );
+  await db.execute(
+    sql`delete from payment_methods where organization_id = ${SEED_ORGANIZATION_ID} and name = 'Lista e2e'`,
+  );
+}
+
+const views = (page: Page) =>
+  page.getByRole("navigation", { name: "Vistas de clientes" });
+
+const rowOf = (page: Page, name: string) =>
+  clientsTable(page).getByRole("row").filter({ hasText: name });
+
+test("caso 23 (brief-24.4.2): las vistas con su cantidad, el saldo por moneda y «En curso», para los dos roles", async ({
+  page,
+}) => {
+  test.slow();
+  await insertListAccounts();
+  try {
+    for (const email of [ADMIN, VIEWER]) {
+      await login(page, email);
+      await page.goto("/clientes");
+      // Sin repairs, «Con reparaciones» no se ofrece (D-1).
+      await expect(views(page).getByRole("link")).toHaveText([
+        "Todos 3",
+        "Con saldo 1",
+      ]);
+      await expect(
+        views(page).getByRole("link", { name: "Todos 3" }),
+      ).toHaveAttribute("aria-current", "page");
+
+      // AC-2: una línea por moneda, sin sumar.
+      const ana = rowOf(page, "Ana Pérez");
+      await expect(ana).toContainText("$ 150.000,00");
+      await expect(ana).toContainText("Pendiente");
+      await expect(ana).toContainText("A favor US$ 100,00");
+      // AC-3: lo abierto de cada módulo.
+      await expect(ana).toContainText("1 pedido");
+      await expect(ana).toContainText("1 conversación");
+      const bruno = rowOf(page, "Bruno Díaz");
+      await expect(bruno).toContainText("Sin operaciones abiertas");
+      await expect(bruno).toContainText("Sin saldo pendiente");
+      await expect(rowOf(page, "Carla Paga")).toContainText(
+        "Sin saldo pendiente",
+      );
+
+      // La vista recorta la lista y conserva la cantidad de las demás (AC-1).
+      await views(page).getByRole("link", { name: "Con saldo 1" }).click();
+      await expect(page).toHaveURL("/clientes?vista=con-saldo");
+      await expect(
+        views(page).getByRole("link", { name: "Con saldo 1" }),
+      ).toHaveAttribute("aria-current", "page");
+      await expect(clientsTable(page).getByRole("row")).toHaveCount(2);
+      await expect(clientsTable(page)).toContainText("Ana Pérez");
+      // Combinable con la búsqueda: la vista viaja en el formulario.
+      await page.getByLabel("Buscar", { exact: true }).fill("bruno");
+      await page.getByRole("button", { name: "Buscar", exact: true }).click();
+      await expect(page).toHaveURL(/vista=con-saldo/);
+      await expect(views(page).getByRole("link")).toHaveText([
+        "Todos 1",
+        "Con saldo 0",
+      ]);
+      await expectAccessible(page, `vista con saldo como ${email}`);
+
+      // El «⋮» de la fila (D-5): «Editar» solo para un admin.
+      await page.goto("/clientes");
+      await page
+        .getByRole("button", { name: "Más acciones de Ana Pérez" })
+        .first()
+        .click();
+      await expect(
+        page.getByRole("link", { name: "Ver ficha" }).first(),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("link", { name: "Editar", exact: true }),
+      ).toHaveCount(email === ADMIN ? 1 : 0);
+      await page.context().clearCookies();
+    }
+
+    // AC-8: lo que recibe un viewer no tiene el teléfono completo.
+    await login(page, VIEWER);
+    const response = await page.goto("/clientes");
+    const html = (await response?.text()) ?? "";
+    for (const fragment of HIDDEN_FRAGMENTS) {
+      expect(html).not.toContain(fragment);
+    }
+    await expect(clientsTable(page)).toContainText("•••• 7788");
+
+    // AC-11 en el teléfono: tarjetas sin desplazamiento horizontal.
+    await page.setViewportSize({ width: 375, height: 800 });
+    await page.goto("/clientes");
+    const cards = page.getByRole("list", {
+      name: "Clientes de la organización",
+    });
+    await expect(cards).toContainText("Saldo");
+    await expect(cards).toContainText("Sin saldo pendiente");
+    expect(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <=
+          document.documentElement.clientWidth,
+      ),
+    ).toBe(true);
+    await expectAccessible(page, "lista a 375 px");
+  } finally {
+    await deleteListMethod();
+  }
+});
+
+test("caso 24 (brief-24.4.2): el filtro por última interacción", async ({
+  page,
+}) => {
+  const ana = await insertClient("Ana Reciente");
+  await insertClient("Bruno Nunca");
+  await insertConversation(ana, "closed", new Date(Date.now() - 2 * 86400000));
+  await login(page, ADMIN);
+  await page.goto("/clientes");
+  await page.getByLabel("Última interacción").selectOption("7-dias");
+  await page.getByRole("button", { name: "Buscar", exact: true }).click();
+  await expect(page).toHaveURL(/interaccion=7-dias/);
+  await expect(clientsTable(page).getByRole("row")).toHaveCount(2);
+  await expect(clientsTable(page)).toContainText("Ana Reciente");
+  await page.goto("/clientes?interaccion=sin");
+  await expect(clientsTable(page).getByRole("row")).toHaveCount(2);
+  await expect(clientsTable(page)).toContainText("Bruno Nunca");
+  // Una conversación cerrada no está «En curso».
+  await page.goto("/clientes");
+  await expect(rowOf(page, "Ana Reciente")).toContainText(
+    "Sin operaciones abiertas",
+  );
+});
+
+test.describe("brief-24.4.2 sin JavaScript", () => {
+  test.use({ javaScriptEnabled: false });
+
+  test("caso 25: «Más filtros» se abre, filtra y queda abierto con un filtro aplicado (AC-5)", async ({
+    page,
+  }) => {
+    await insertClient("Ana Activa");
+    await insertClient("Carla Inactiva", { isActive: false });
+    await login(page, ADMIN);
+    await page.goto("/clientes");
+    await expect(page.getByLabel("Actividad")).toBeHidden();
+    await page.getByText("Más filtros").click();
+    await page.getByLabel("Actividad").selectOption("inactivos");
+    await page.getByRole("button", { name: "Buscar", exact: true }).click();
+    await expect(page).toHaveURL(/actividad=inactivos/);
+    await expect(clientsTable(page)).toContainText("Carla Inactiva");
+    await expect(page.getByLabel("Actividad")).toBeVisible();
+  });
+
+  test("caso 26: el aviso de duplicado llega como respuesta del envío (AC-7)", async ({
+    page,
+  }) => {
+    await insertClient("Ana Pérez", { phone: PHONE });
+    await login(page, ADMIN);
+    await page.goto("/clientes/nuevo");
+    await page.getByLabel("Nombre completo *").fill("Otra Ana");
+    await page.getByLabel("Teléfono WhatsApp").fill(PHONE);
+    await page.getByRole("button", { name: "Crear cliente" }).click();
+    await expect(
+      page.getByRole("group", { name: "Este teléfono ya está registrado" }),
+    ).toContainText("Ana Pérez");
+    await expect(page.getByLabel("Nombre completo *")).toHaveValue("Otra Ana");
+    expect(await clientCount()).toBe(1);
+  });
+});
+
+const noHorizontalScroll = (page: Page) =>
+  page.evaluate(
+    () =>
+      document.documentElement.scrollWidth <=
+      document.documentElement.clientWidth,
+  );
+
+test("caso 27 (brief-24.4.2): con repairs, la vista «Con reparaciones» y la reparación en «En curso»", async ({
+  page,
+}) => {
+  const ana = await insertClient("Ana Reparación");
+  await insertClient("Bruno Sin Orden");
+  await db.execute(
+    sql`insert into organization_capabilities (organization_id, capability, activated_by)
+        values (${SEED_ORGANIZATION_ID}, 'repairs', ${ADMIN_SEED.id})`,
+  );
+  try {
+    await db.execute(
+      sql`with m as (
+            insert into product_models (organization_id, name)
+            values (${SEED_ORGANIZATION_ID}, 'Modelo e2e 24.4.2') returning id
+          )
+          insert into service_orders (organization_id, number, client_id, model_id, device_serial,
+                                      reported_issue, created_by)
+          select ${SEED_ORGANIZATION_ID}, 1, ${ana}, m.id, '356938035643809', 'No carga',
+            ${ADMIN_SEED.id} from m`,
+    );
+    await login(page, ADMIN);
+    await page.goto("/clientes");
+    await expect(views(page).getByRole("link")).toHaveText([
+      "Todos 2",
+      "Con saldo 0",
+      "Con reparaciones 1",
+    ]);
+    await expect(rowOf(page, "Ana Reparación")).toContainText("1 reparación");
+    await views(page).getByRole("link", { name: "Con reparaciones 1" }).click();
+    await expect(page).toHaveURL("/clientes?vista=con-reparaciones");
+    await expect(clientsTable(page).getByRole("row")).toHaveCount(2);
+    await expect(clientsTable(page)).toContainText("Ana Reparación");
+
+    // Una vista sin clientes no dice que no hay clientes (revisión de la 24.4.2, H-2).
+    await views(page).getByRole("link", { name: "Con saldo 0" }).click();
+    await expect(page.getByText("Ningún cliente en esta vista.")).toBeVisible();
+    await expect(page.getByText("Todavía no hay clientes.")).toBeHidden();
+    await expect(page.getByRole("link", { name: "Ver todos" })).toHaveAttribute(
+      "href",
+      "/clientes",
+    );
+    await expectAccessible(page, "vista sin clientes");
+  } finally {
+    await db.execute(
+      sql`truncate table service_order_lines, service_orders, audit_logs`,
+    );
+    await db.execute(
+      sql`delete from product_models where organization_id = ${SEED_ORGANIZATION_ID} and name = 'Modelo e2e 24.4.2'`,
+    );
+    await db.execute(
+      sql`delete from organization_capabilities where organization_id = ${SEED_ORGANIZATION_ID} and capability = 'repairs'`,
+    );
+  }
+});
+
+test("caso 28 (brief-24.4.2, AC-11): el formulario y el aviso de duplicado a 375 px", async ({
+  page,
+}) => {
+  await insertClient("Ana Pérez", { phone: PHONE });
+  await login(page, ADMIN);
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.goto("/clientes/nuevo");
+  await expect(page.getByLabel("Nombre completo *")).toBeVisible();
+  expect(await noHorizontalScroll(page)).toBe(true);
+  await expectAccessible(page, "alta a 375 px");
+  await page.getByText("Agregar documento y dirección (opcional)").click();
+  expect(await noHorizontalScroll(page)).toBe(true);
+  await expectAccessible(page, "alta con el domicilio abierto a 375 px");
+
+  await page.getByLabel("Nombre completo *").fill("Otra Ana");
+  await page.getByLabel("Teléfono WhatsApp").fill(PHONE);
+  await page.getByRole("button", { name: "Crear cliente" }).click();
+  await expect(
+    page.getByRole("group", { name: "Este teléfono ya está registrado" }),
+  ).toBeFocused();
+  expect(await noHorizontalScroll(page)).toBe(true);
+  await expectAccessible(page, "aviso de duplicado a 375 px");
 });

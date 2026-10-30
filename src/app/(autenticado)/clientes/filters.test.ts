@@ -3,6 +3,7 @@ import {
   clientFiltersHref,
   DEFAULT_FILTERS,
   hasActiveFilters,
+  interactionFilter,
   parseClientFilters,
 } from "./filters";
 
@@ -28,6 +29,8 @@ describe("parseClientFilters", () => {
       kind: null,
       province: null,
       segment: null,
+      interaction: null,
+      view: "all",
     });
     expect(parseClientFilters({ actividad: "inactivos" }).activity).toBe(
       "inactive",
@@ -106,7 +109,11 @@ describe("clientFiltersHref", () => {
       "/clientes?q=Ana+P%C3%A9rez&actividad=todos&orden=nombre&filas=10&etiqueta=3f1702be-6f4e-8135-830d-dd1c5d574187&tipo=empresa&provincia=AR-S&segmento=Mayorista+norte&pagina=4",
     );
     const params = Object.fromEntries(new URL(href, "http://x").searchParams);
-    expect(parseClientFilters(params)).toEqual(filters);
+    expect(parseClientFilters(params)).toEqual({
+      ...filters,
+      interaction: null,
+      view: "all",
+    });
   });
 });
 
@@ -157,5 +164,66 @@ describe("tipo, provincia y segmento (brief-17.1, D-9)", () => {
     expect(hasActiveFilters({ ...DEFAULT_FILTERS, segment: "Mayorista" })).toBe(
       true,
     );
+  });
+});
+
+// La vista y la última interacción de la 24.4.2 (brief-24.4.2, D-1 y D-4).
+describe("la vista y la última interacción", () => {
+  it("se leen de la URL y un valor desconocido vale el de defecto", () => {
+    expect(parseClientFilters({ vista: "con-saldo" }).view).toBe(
+      "with_balance",
+    );
+    expect(parseClientFilters({ vista: "con-reparaciones" }).view).toBe(
+      "with_repairs",
+    );
+    for (const vista of ["", "toString", "saldo"]) {
+      expect(parseClientFilters({ vista }).view).toBe("all");
+    }
+    expect(parseClientFilters({ interaccion: "7-dias" }).interaction).toBe(
+      "7d",
+    );
+    expect(parseClientFilters({ interaccion: "sin" }).interaction).toBe("none");
+    for (const interaccion of ["", "hoy", "constructor"]) {
+      expect(parseClientFilters({ interaccion }).interaction).toBeNull();
+    }
+  });
+
+  it("van y vuelven por el enlace, sin los valores por defecto", () => {
+    const href = clientFiltersHref({
+      ...DEFAULT_FILTERS,
+      view: "with_balance",
+      interaction: "30d",
+    });
+    expect(href).toBe("/clientes?vista=con-saldo&interaccion=30-dias");
+    const params = Object.fromEntries(new URL(href, "http://x").searchParams);
+    expect(parseClientFilters(params)).toEqual({
+      ...DEFAULT_FILTERS,
+      view: "with_balance",
+      interaction: "30d",
+    });
+    expect(clientFiltersHref({ ...DEFAULT_FILTERS, view: "all" })).toBe(
+      "/clientes",
+    );
+  });
+
+  it("la interacción es un filtro y la vista no", () => {
+    expect(hasActiveFilters({ ...DEFAULT_FILTERS, interaction: "7d" })).toBe(
+      true,
+    );
+    expect(hasActiveFilters({ ...DEFAULT_FILTERS, view: "with_balance" })).toBe(
+      false,
+    );
+  });
+
+  it("el período se cuenta hacia atrás desde ahora", () => {
+    const now = new Date("2026-10-29T12:00:00Z");
+    expect(interactionFilter(null, now)).toBeNull();
+    expect(interactionFilter("none", now)).toBe("none");
+    expect(interactionFilter("7d", now)).toEqual({
+      since: new Date("2026-10-22T12:00:00Z"),
+    });
+    expect(interactionFilter("30d", now)).toEqual({
+      since: new Date("2026-09-29T12:00:00Z"),
+    });
   });
 });

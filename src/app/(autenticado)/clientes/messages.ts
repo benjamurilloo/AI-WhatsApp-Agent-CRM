@@ -9,6 +9,8 @@ export const FORBIDDEN_ACTION_MESSAGE =
   "No tenés permiso para hacer esta acción.";
 export const CLIENT_NOT_FOUND_MESSAGE = "Este cliente no existe.";
 export const NO_CLIENTS_MESSAGE = "Todavía no hay clientes.";
+// Una vista sin clientes, con la organización que sí los tiene (brief-24.4.2, D-1).
+export const NO_CLIENTS_IN_VIEW_MESSAGE = "Ningún cliente en esta vista.";
 export const NO_CLIENT_RESULTS_MESSAGE =
   "Ningún cliente coincide con esta búsqueda.";
 
@@ -110,6 +112,15 @@ export function clientFieldError(fields: ClientField[]): {
 
 export type ClientFormValues = Record<ClientField, string>;
 
+// El cliente que ya tiene el teléfono, para el aviso de duplicado (brief-24.4.2, D-8). Solo lo
+// recibe un admin: el formulario es suyo.
+export type DuplicateClient = {
+  id: string;
+  displayName: string;
+  phoneE164: string;
+  isActive: boolean;
+};
+
 export type ClientFormState =
   | { status: "idle" }
   | {
@@ -118,7 +129,15 @@ export type ClientFormState =
       field: ClientField | null;
       message: string;
       values: ClientFormValues;
+      // Con un teléfono repetido, el otro cliente, si se pudo leer.
+      duplicate?: DuplicateClient | null;
     };
+
+export const DUPLICATE_TITLE = "Este teléfono ya está registrado";
+export const DUPLICATE_DESCRIPTION =
+  "Parece que este número ya pertenece a otro cliente.";
+export const DUPLICATE_NOTE =
+  "Revisá antes de crear otro cliente. No hacemos una fusión automática.";
 
 // Desactivar y reactivar (pantalla 7).
 

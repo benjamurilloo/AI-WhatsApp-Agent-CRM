@@ -430,6 +430,29 @@ export async function insertClientIfPhoneAbsent(
     : undefined;
 }
 
+// El cliente de la organización con ese teléfono, activo o no, para el aviso de duplicado del
+// formulario (brief-24.4.2, D-8). Sin transacción: es una lectura para mostrar, no un bloqueo.
+export async function findClientByPhone(
+  organizationId: string,
+  phoneE164: string,
+): Promise<ResolvedClientRow | undefined> {
+  const rows = await getDb()
+    .select({
+      id: clients.id,
+      displayName: clients.displayName,
+      isActive: clients.isActive,
+    })
+    .from(clients)
+    .where(
+      and(
+        eq(clients.organizationId, organizationId),
+        eq(clients.phoneE164, phoneE164),
+      ),
+    )
+    .limit(1);
+  return rows[0];
+}
+
 export async function findResolvedClientByPhone(
   tx: DbTransaction,
   organizationId: string,

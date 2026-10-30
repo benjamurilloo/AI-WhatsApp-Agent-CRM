@@ -27,6 +27,7 @@ export {
   getAppointmentCalendar,
   getAppointmentForm,
   listAppointmentAudit,
+  countUpcomingAppointmentsByClient,
   listClientAppointments,
   type AppointmentAuditEntry,
   type AppointmentCalendar,

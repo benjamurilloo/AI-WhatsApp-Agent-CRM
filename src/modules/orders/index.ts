@@ -20,6 +20,7 @@ export {
   getOrdersForAccountsByIds,
   listOrderAudit,
   listOrders,
+  countOpenOrdersByClient,
   listRecentClientOrders,
   lockOrderForReceipt,
   lockOrderForSale,

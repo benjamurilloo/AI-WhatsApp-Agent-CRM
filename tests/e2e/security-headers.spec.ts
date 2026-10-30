@@ -246,7 +246,7 @@ test("4. una Server Action con Origin ajeno es rechazada y no escribe", async ({
   });
 
   await page.goto("/clientes/nuevo");
-  await page.getByLabel("Nombre *").fill("Cliente legítimo");
+  await page.getByLabel("Nombre completo *").fill("Cliente legítimo");
   await page.getByRole("button", { name: "Crear cliente" }).click();
   await expect(page).not.toHaveURL(/\/nuevo$/);
 

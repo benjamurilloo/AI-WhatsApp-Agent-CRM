@@ -338,6 +338,29 @@ export async function countOrders(query: OrderListQuery): Promise<number> {
   return rows[0]!.total;
 }
 
+// Cuántos pedidos en unos estados tiene cada uno de unos clientes, para «En curso» de la lista de
+// clientes (brief-24.4.2, D-3). Un cliente sin ninguno no tiene fila.
+export async function countOrdersByClient(
+  organizationId: string,
+  clientIds: string[],
+  statuses: OrderStatus[],
+): Promise<{ clientId: string; total: number }[]> {
+  const rows = await getDb()
+    .select({ clientId: orders.clientId, total: count() })
+    .from(orders)
+    .where(
+      and(
+        eq(orders.organizationId, organizationId),
+        inArray(orders.clientId, clientIds),
+        inArray(orders.status, statuses),
+      ),
+    )
+    .groupBy(orders.clientId);
+  return rows.flatMap((row) =>
+    row.clientId === null ? [] : [{ clientId: row.clientId, total: row.total }],
+  );
+}
+
 export type OrderListRow = OrderRow & { lineCount: number };
 
 // De la más reciente a la más vieja, paginada en SQL (brief-19.2, D-10). La cantidad de líneas es

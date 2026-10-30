@@ -6,6 +6,7 @@ import {
   eq,
   gte,
   inArray,
+  isNotNull,
   notInArray,
   or,
   sql,
@@ -668,6 +669,30 @@ export async function countServiceOrders(
     .from(serviceOrders)
     .where(listConditions(query));
   return rows[0]?.total ?? 0;
+}
+
+// Cuántas órdenes de la lista tiene cada cliente, para la lista de clientes (brief-24.4.2, D-1 y D-3):
+// con unos ids, los de una página; con null, todos los de la organización. Una orden sin cliente (de
+// una unidad propia) no cuenta.
+export async function countServiceOrdersByClient(
+  query: ServiceOrderListQuery,
+  clientIds: string[] | null,
+): Promise<{ clientId: string; total: number }[]> {
+  const rows = await getDb()
+    .select({ clientId: serviceOrders.clientId, total: count() })
+    .from(serviceOrders)
+    .where(
+      and(
+        listConditions(query),
+        clientIds === null
+          ? isNotNull(serviceOrders.clientId)
+          : inArray(serviceOrders.clientId, clientIds),
+      ),
+    )
+    .groupBy(serviceOrders.clientId);
+  return rows.flatMap((row) =>
+    row.clientId === null ? [] : [{ clientId: row.clientId, total: row.total }],
+  );
 }
 
 export function findServiceOrders(

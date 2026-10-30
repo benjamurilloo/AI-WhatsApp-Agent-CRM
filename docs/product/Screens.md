@@ -202,6 +202,13 @@ Agregada en la 18.2 ([brief-18.2](../decisions/brief-18.2-costo-y-margen.md), FR
 - **Etiquetas** *(16.1, FR-CLI-10)*: hasta tres chips por fila y «+N» con las demás; un filtro «Etiqueta» con las activas, en la URL (`etiqueta=<id>`), combinable con la búsqueda, la actividad y el orden. Una etiqueta ajena, inexistente o inactiva en la URL se ignora. Un botón «Etiquetas» lleva al catálogo (pantalla 13).
 - **Tipo, provincia y segmento** *(17.1, FR-CLI-14)*: tres selectores más, en la URL (`tipo=persona|empresa`, `provincia=<código>`, `segmento=<texto>`), combinables con los demás filtros. Cada selector aparece y ofrece valores solo si algún cliente de la organización los tiene; cualquier otro valor en la URL se ignora. Sin columnas nuevas en la tabla.
 - **No mostrar**: el teléfono completo a un `viewer`, en la lista ni en ninguna otra vista. El enmascarado se aplica en el servidor: la respuesta que recibe un `viewer` no contiene el número completo. La búsqueda por teléfono completo funciona igual para ambos roles, porque el filtro se resuelve en la consulta y no depende de lo que se renderice.
+- *Nota del 2026-10-29, 24.4.2* ([brief-24.4.2](../decisions/brief-24.4.2-clientes-lista-y-formulario.md)), a la forma de los mockups 01 y 06 de la v2. Suma, a lo de arriba:
+  - **Las vistas** (D-1): «Todos», «Con saldo» y, con `repairs`, «Con reparaciones», como enlaces con `?vista=` y `aria-current`. Cada una lleva la cantidad de clientes que cumplen los demás filtros. «Con saldo» es un cliente que debe algo en alguna moneda.
+  - **El saldo** (D-2): una línea por moneda, sin sumar: el importe con «Pendiente», «A favor» y el importe, o «Sin saldo pendiente». Si no se pudo leer, «No disponible», nunca un cero. Lo ven los dos roles, como la cuenta en la ficha.
+  - **«En curso»** (D-3): los pedidos pendientes o confirmados, las reparaciones abiertas (con `repairs`), los turnos pedidos o confirmados desde hoy (con `appointments`) y las conversaciones abiertas o pendientes, hasta dos líneas y «+N». Sin nada, «Sin operaciones abiertas». Los usados no entran: no tienen un estado abierto.
+  - **La última interacción** (D-4): la columna se llama «Última interacción», y el filtro del mismo nombre ofrece los últimos 7 o 30 días y «Sin interacciones», en la URL (`interaccion=`).
+  - **La tabla** (D-5): Cliente (con «Inactivo» si lo está, en lugar de la columna «Activo»), Contacto, Etiquetas, En curso, Saldo, Última interacción y «Más acciones de {nombre}», con «Ver ficha» y, para un `admin`, «Editar». Sin selección múltiple.
+  - **Los filtros** (D-6): la búsqueda, «Etiquetas» y «Última interacción» a la vista; la actividad, el tipo, la provincia, el segmento y el orden en «Más filtros», plegado, que queda abierto con alguno aplicado. El botón «Etiquetas» pasa a «Gestionar etiquetas».
 
 ## 7. Detalle y edición de cliente
 
@@ -235,6 +242,12 @@ Agregada en la 18.2 ([brief-18.2](../decisions/brief-18.2-costo-y-margen.md), FR
   - **Cuenta corriente** (D-4): con más de una moneda, un selector; los indicadores de la moneda elegida; y el estado de cuenta, el mismo componente que imprime `/clientes/{id}/cuenta`, sin saldo corrido. Para un `admin`, «Registrar cobro» y, si hay saldo a favor, «Devolver saldo a favor».
   - **Operaciones** (D-5): las tarjetas de pedidos, reparaciones, turnos, usados y equipos, cada una con su capacidad.
   - **Actividad** (D-6): las estadísticas, las conversaciones con su filtro y su paginación y, para un `admin`, la auditoría. Sus enlaces conservan `?pestana=actividad`.
+- *Nota del 2026-10-29, 24.4.2* ([brief-24.4.2](../decisions/brief-24.4.2-clientes-lista-y-formulario.md)), el formulario de alta y de edición, a la forma de 02 de la v2 (D-7 y D-8). Reemplaza, de arriba, las cuatro tarjetas opcionales de la 17.1:
+  - **«Datos de contacto»:** nombre completo, teléfono de WhatsApp en E.164 y opcional, y correo electrónico.
+  - **«Identificación y domicilio»:** plegado mientras esté vacío; DNI e Instagram (con `trade_ins`), calle y número, localidad, provincia y código postal.
+  - **«Organización interna»:** tipo, empresa, cargo, segmento y las observaciones internas, con el aviso de datos sensibles.
+  - **«Antes de guardar»** a la derecha en escritorio, el resumen de errores arriba y la barra de guardado de la 24.1 abajo.
+  - **El teléfono repetido** muestra el aviso «Este teléfono ya está registrado» con el otro cliente (nombre, teléfono e «Inactivo» si lo está), «Ver ficha existente» y «Volver al formulario». El borrador se conserva y no se fusiona nada.
 
 ## 8. Lista de conversaciones
 

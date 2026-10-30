@@ -515,6 +515,43 @@ export async function listClientOrderKeys(
   return { ok: true, clientIds };
 }
 
+// El cliente que ya tiene un teléfono, activo o no, para el aviso de duplicado del formulario
+// (brief-24.4.2, D-8). Solo un admin, que es quien ve el formulario y ya ve los teléfonos completos.
+export type ClientByPhone = {
+  id: string;
+  displayName: string;
+  phoneE164: string;
+  isActive: boolean;
+};
+
+export async function findClientByPhone(
+  context: AuthContext,
+  phone: string,
+): Promise<
+  | { ok: true; client: ClientByPhone | null }
+  | Failure<"FORBIDDEN" | "VALIDATION_ERROR">
+> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  const phoneE164 = normalizePhone(phone);
+  if (phoneE164 === null) return failure("VALIDATION_ERROR");
+  const row = await repository.findClientByPhone(
+    context.organizationId,
+    phoneE164,
+  );
+  return {
+    ok: true,
+    client: row
+      ? {
+          id: row.id,
+          displayName: row.displayName,
+          phoneE164,
+          isActive: row.isActive,
+        }
+      : null,
+  };
+}
+
 // Clientes de la organización con esos ids, en el orden pedido y con el teléfono según el rol.
 // Un id ajeno o inexistente no aparece.
 export async function getClientsByIds(

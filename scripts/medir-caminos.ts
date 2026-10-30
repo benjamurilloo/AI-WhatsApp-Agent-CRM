@@ -82,6 +82,11 @@ import {
 import { listCurrentEntriesForService } from "@/modules/knowledge";
 import { listMembers, type AuthContext } from "@/modules/organizations";
 import { getDb } from "@/shared/db";
+import {
+  DEFAULT_FILTERS as CLIENT_LIST_DEFAULTS,
+  type ClientView,
+} from "@/app/(autenticado)/clientes/filters";
+import { readClientList } from "@/app/(autenticado)/clientes/list-data";
 
 const CORRIDAS = 5;
 
@@ -607,6 +612,37 @@ async function main(): Promise<void> {
     ["cash.listDebtors (21.6)", () => deudores(null)(1)],
     ["cash.listDebtors (21.6, última página)", ultimaPagina(deudores(null))],
     ["cash.listDebtors (21.6, ARS)", () => deudores("ARS")(1)],
+  );
+  // La lista de clientes de la 24.4.2 (brief-24.4.2, R-1): el saldo de toda la organización, los
+  // clientes con reparaciones abiertas, la lista con sus vistas y «En curso» de la página, con el
+  // mismo readClientList de la pantalla. Como la de deudores, lee el saldo de todos en cada carga.
+  // Primera y última página, en «Todos» y en «Con saldo». La lista de hoy, sin saldo ni «En curso»,
+  // es conversations.searchClientsByLastInteraction, más arriba.
+  const listaDeClientes = (view: ClientView) => async (page: number) => {
+    const data = await readClientList(
+      context,
+      { ...CLIENT_LIST_DEFAULTS, activity: "all", view, page },
+      new Date(),
+    );
+    return data === null ? null : data.result;
+  };
+  listados.push(
+    [
+      "clientes.readClientList (24.4.2, Todos)",
+      () => listaDeClientes("all")(1),
+    ],
+    [
+      "clientes.readClientList (24.4.2, Todos, última página)",
+      ultimaPagina(listaDeClientes("all")),
+    ],
+    [
+      "clientes.readClientList (24.4.2, Con saldo)",
+      () => listaDeClientes("with_balance")(1),
+    ],
+    [
+      "clientes.readClientList (24.4.2, Con saldo, última página)",
+      ultimaPagina(listaDeClientes("with_balance")),
+    ],
   );
   // La lista de proveedores a los que se les debe de la 22.7 (brief-22.7, D-7, D-8 y AC-6): lee las
   // recepciones de la organización por purchasing y los pagos vigentes, en una sola foto, y pasa la

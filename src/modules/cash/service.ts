@@ -4977,7 +4977,12 @@ function groupBy<T>(
 
 type Debt = Omit<DebtorRow, "displayName"> & { owedAmount: Money };
 
-async function readDebts(organizationId: string): Promise<Debt[]> {
+// Las cuentas de todos los clientes de la organización, en una instantánea: la lectura de la lista de
+// deudores y del saldo de la lista de clientes (brief-24.4.2, D-2). Cada cuenta sale de imputeAccount,
+// como la de la ficha. Un cliente sin ventas también tiene cuenta si tiene cobros: todo a favor.
+async function readAccounts(
+  organizationId: string,
+): Promise<Map<string, CurrencyAccount[]>> {
   const { sales, receipts, refunds, orders } = await repository.withSnapshot(
     async (tx) => {
       // Una tras otra, en la misma instantánea: van por la conexión de la transacción.
@@ -5002,18 +5007,31 @@ async function readDebts(organizationId: string): Promise<Debt[]> {
     },
   );
   const ordersById = new Map(orders.map((order) => [order.id, order]));
+  const salesOf = groupBy(sales, (row) => row.clientId);
   const receiptsOf = groupBy(receipts, (row) => row.clientId);
   const refundsOf = groupBy(refunds, (row) => row.clientId);
-  const debts: Debt[] = [];
-  // Sin ventas no hay deuda: solo los clientes con alguna.
-  for (const [clientId, clientSales] of groupBy(sales, (row) => row.clientId)) {
+  const accounts = new Map<string, CurrencyAccount[]>();
+  for (const clientId of new Set([
+    ...salesOf.keys(),
+    ...receiptsOf.keys(),
+    ...refundsOf.keys(),
+  ])) {
     const ledger = ledgerFrom(
-      clientSales,
+      salesOf.get(clientId) ?? [],
       ordersById,
       receiptsOf.get(clientId) ?? [],
       refundsOf.get(clientId) ?? [],
     );
-    for (const account of imputeAccount(ledger.input)) {
+    accounts.set(clientId, imputeAccount(ledger.input));
+  }
+  return accounts;
+}
+
+async function readDebts(organizationId: string): Promise<Debt[]> {
+  const debts: Debt[] = [];
+  // Sin ventas no hay deuda: un cliente sin ninguna tiene salesWithBalance en 0.
+  for (const [clientId, accounts] of await readAccounts(organizationId)) {
+    for (const account of accounts) {
       const summary = summarize(account);
       if (summary.salesWithBalance === 0) continue;
       debts.push({
@@ -5093,4 +5111,38 @@ export async function listDebtors(
       reference,
     },
   };
+}
+
+// El saldo de cada cliente de la organización, por moneda, para la lista de clientes (brief-24.4.2,
+// D-2): lo que debe y lo que tiene a favor, sin sumar monedas. Lee la organización entera, como la
+// lista de deudores, porque la vista «Con saldo» y su cantidad cuentan a todos los del filtro. Un
+// cliente sin fila no debe nada ni tiene nada a favor. Lo retenido no es saldo: no se lista.
+export type ClientBalance = {
+  clientId: string;
+  currency: string;
+  owed: string;
+  inFavor: string;
+};
+
+export async function getClientBalances(
+  context: AuthContext,
+): Promise<{ ok: true; balances: ClientBalance[] } | Failure<"FORBIDDEN">> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  const balances: ClientBalance[] = [];
+  for (const [clientId, accounts] of await readAccounts(
+    context.organizationId,
+  )) {
+    for (const account of accounts) {
+      const summary = summarize(account);
+      if (summary.owed === "0.00" && summary.inFavor === "0.00") continue;
+      balances.push({
+        clientId,
+        currency: summary.currency,
+        owed: summary.owed,
+        inFavor: summary.inFavor,
+      });
+    }
+  }
+  return { ok: true, balances };
 }

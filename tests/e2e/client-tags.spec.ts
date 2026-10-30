@@ -127,7 +127,7 @@ test("1. FR-CLI-08: un admin crea las sugeridas, agrega, edita, desactiva y reac
 }) => {
   await login(page, ADMIN);
   await page.goto("/clientes");
-  await page.getByRole("link", { name: "Etiquetas" }).click();
+  await page.getByRole("link", { name: "Gestionar etiquetas" }).click();
   await expect(
     page.getByRole("heading", { level: 1, name: "Etiquetas de clientes" }),
   ).toBeVisible();
@@ -272,7 +272,9 @@ test("3. FR-CLI-10: la lista muestra las etiquetas y filtra por una, también en
   );
   await expectAccessible(page, "lista con etiquetas y «+1»");
 
-  await page.getByLabel("Etiqueta").selectOption({ label: "Reclamo" });
+  await page
+    .getByLabel("Etiquetas", { exact: true })
+    .selectOption({ label: "Reclamo" });
   await page.getByRole("button", { name: "Buscar", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`etiqueta=${reclamo}`));
   await expect(table.getByRole("link", { name: "Ana Filtro" })).toBeVisible();
@@ -319,7 +321,9 @@ test("4. D-8: una etiqueta inactiva queda en el cliente, marcada, y no se ofrece
 
   await page.goto("/clientes");
   await expect(
-    page.getByLabel("Etiqueta").locator("option", { hasText: "Vieja" }),
+    page
+      .getByLabel("Etiquetas", { exact: true })
+      .locator("option", { hasText: "Vieja" }),
   ).toHaveCount(0);
 });
 
@@ -404,7 +408,7 @@ test("6. AC-10: alta, asignación y filtro solo con teclado, y la ficha a 375 px
 
   // Pantalla 6: el filtro.
   await page.goto("/clientes");
-  await tabTo(page, page.getByLabel("Etiqueta"));
+  await tabTo(page, page.getByLabel("Etiquetas", { exact: true }));
   await page.keyboard.type("R");
   await tabTo(page, page.getByRole("button", { name: "Buscar", exact: true }));
   await page.keyboard.press("Enter");

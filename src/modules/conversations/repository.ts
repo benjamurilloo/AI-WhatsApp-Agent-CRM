@@ -582,6 +582,28 @@ export function findLatestMessages(
     .limit(limit);
 }
 
+// Cuántas conversaciones abiertas o pendientes tiene cada uno de unos clientes, para «En curso» de la
+// lista de clientes (brief-24.4.2, D-3 y H-4).
+export async function countOpenConversationsByClient(
+  organizationId: string,
+  clientIds: string[],
+): Promise<{ clientId: string; total: number }[]> {
+  const rows = await getDb()
+    .select({ clientId: conversations.clientId, total: count() })
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.organizationId, organizationId),
+        inArray(conversations.clientId, clientIds),
+        inArray(conversations.status, ["open", "pending"]),
+      ),
+    )
+    .groupBy(conversations.clientId);
+  return rows.flatMap((row) =>
+    row.clientId === null ? [] : [{ clientId: row.clientId, total: row.total }],
+  );
+}
+
 // Última interacción de cada cliente con conversaciones (brief-1.2, D-2), para componer el orden
 // de la lista de clientes (brief-6.3, D-1).
 export async function findLastInteractionByClient(
