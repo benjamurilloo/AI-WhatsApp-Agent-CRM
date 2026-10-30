@@ -209,3 +209,95 @@ Cada diferencia que quede se declara en el §Cierre, como en la [24.4.2](brief-2
 - **Necesario ahora:** las tres partes con la forma de la v2 y la reparación abierta unificada.
 - **Antes de producción:** nada nuevo; las pestañas de hoy ya están desplegadas.
 - **Después:** el panel de cobro y el período (24.7.2). El número de turno, si algún día se quiere, sería otra subfase con migración.
+
+## Cierre
+
+*Parcial, antes de la revisión independiente, del despliegue y del recorrido del usuario.*
+
+### R-1: la medición
+
+`scripts/medir-caminos.ts` con `CRM_CLIENTE_OPERACIONES`, base local, mediana de 5 corridas tras una de calentamiento, en una máquina con poca memoria libre. Mide la ficha del cliente más las lecturas de cada pestaña. Una lectura rechazada se marca como falla, no cuenta como lectura veloz, y Operaciones exige los cinco tipos.
+
+| Cliente | Resumen | Operaciones | Actividad |
+|---|---|---|---|
+| 10 de cada tipo | 42,0 ms (34,5 a 70,3) | 47,3 ms (42,8 a 86,3) | 51,5 ms (43,4 a 63,5) |
+| 250 de cada tipo, 200 leídos | 38,5 ms (37,4 a 43,1) | 110,4 ms (97,4 a 116,2) | 95,5 ms (81,8 a 109,8) |
+
+Dentro del umbral de 400 ms. No es todo lo que hace la página: faltan el render, la zona horaria, las etiquetas, los nombres de la auditoría y las capacidades del Resumen. La siembra no tiene unidades, así que Equipos se mide con la lista vacía. Que el Resumen dé menos con más filas no se investigó; las diferencias son chicas y puede ser ruido. Dos mediciones anteriores se descartaron: la primera no comprobaba que las lecturas hubieran salido bien y la segunda era anterior a estas comprobaciones, y sus cifras variaron entre corridas con la carga de la máquina.
+
+### R-2 y R-3: los caminos
+
+Los specs se ajustaron a la tabla. «Ver los N pedidos» y «Ver en la lista de pedidos» dejan de estar: la tabla muestra los pedidos del cliente y, pasado el tope, el aviso enlaza las listas de ventas y de pedidos, las que filtran por cliente. Las altas pasan a «Nueva operación».
+
+### AC-9: la comparación visual
+
+Capturas a 1440 y 375 px con tres clientes: todos los tipos en dos monedas, solo dos monedas y sin nada. La comparación es autoevaluación.
+
+Corregido por la comparación: el saldo en dos monedas llegaba al borde de su tarjeta (ahora `text-xl` y puede partirse) y «Próxima atención» era ámbar en el teléfono, donde 07 la muestra blanca.
+
+| Diferencia con la v2 | Motivo |
+|---|---|
+| Sin cita del mensaje o la nota en Actividad y Última interacción | H-3: el texto no sale del hilo (Screens, pantalla 7 y 8) |
+| El turno no tiene número (`TUR-0186`) | El modelo no lo tiene; sin migraciones en la Fase 24 |
+| «Próxima atención» no une turno y reparación en una línea | No hay relación entre los dos en los datos (D-6) |
+| Los números son `V-000001`, `P-`, `OS-` y `PU-` | Los formatos vigentes |
+| Sin flecha de orden en «Fecha» | El orden es fijo (D-1) |
+| Botón «Filtrar», rótulo «Buscar» y selects nativos | Funciona sin JavaScript y con el teclado (AC-3) |
+| «Nueva operación» es un solo botón, no dividido | Sin alta predeterminada; el botón solo abre el menú (D-4) |
+| Importes con `$` y centavos | `formatMoney`, como en todo el CRM |
+| Íconos de tipo y de la cronología en un solo color | Los del panel lateral y el sistema de la v2 ya aplicado; **desvío a mirar en el recorrido** |
+| En la cronología y en la tabla, las columnas en mayúsculas y las insignias de estado | Los componentes compartidos del CRM |
+| Saldo en `text-xl`, menor que el del mockup | El mockup tiene un importe corto; con dos monedas no entra |
+| En el teléfono, «···» en su fila, pestañas con desplazamiento y sin tarjeta «En curso» resumida | Decisiones de la 24.4.1, fuera de esta subfase |
+
+### Validación
+
+Validado en integración en local para los recorridos UI ↔ servicio ↔ base de los specs; las ramas de lectura fallida quedan en validado localmente, con módulos simulados. Batería entera, después de las correcciones de las dos revisiones independientes:
+
+- **End-to-end:** los 42 specs de `tests/e2e`, 329 de 329, a la primera, de a un spec por vez y con 120 s por línea de comandos, porque la máquina tiene poca memoria. Esto no prueba que entren en los 30 s normales; lo dirá la CI.
+- **Unit:** 1236 de 1236. Los estados de falla de `client-data.test.ts` usan módulos simulados: no son evidencia de integración.
+- **Guards:** 898 de 898, con un índice temporal que simula el commit, porque `git ls-files` lista los cuatro archivos borrados sin confirmar, y con 180 s por test.
+- **Integración:** 1866 de 1869. Ninguno falló: el worker de `appointments-agent.test.ts` se cayó y sus últimos 3 tests no corrieron. El archivo, repetido solo, pasó 26 de 26.
+- **Prettier, typecheck y build:** pasan. Eslint marcó un import de tipo sin usar en `activity-events.ts`. Después de quitarlo se repitieron typecheck, eslint, unit y build, y pasaron; no se repitieron los end-to-end ni el resto de integración, porque ese import no llega al código que corre.
+- **Desvío de la condición de detención «la batería entera se corre después de la última línea de código»**, señalado por la tercera revisión independiente y decidido por el usuario el 2026-10-30. Los «329 de 329» y los «1866 de 1869» corresponden al árbol anterior a quitar ese import, no al entregado. La corrida completa sobre el árbol entregado es la de la CI en el SHA que se despliega (AC-12). Si la CI sale roja por esto, el desvío queda desmentido y se informa.
+
+Sin resolver, la CI lo confirma o lo desmiente:
+
+- **La caída del worker** (código `0xC0000409`): pasó en dos corridas, en `service-orders` y en `appointments-agent`, y no se encontró la causa. Que cambie de archivo apunta al entorno; no está demostrado.
+- **El umbral de `supplier-payments`:** el detalle de una sesión con 500 pagos dio 1101 y 827 ms contra 754 en dos corridas con carga. Pasó 3 de 3 corrido solo y en esta última batería completa. Ese código no cambió en esta subfase, salvo por los módulos que `cash` importa.
+
+Las corridas anteriores tuvieron cortes por tiempo y caídas del servidor con menos de 100 MB libres; la causa de las caídas no se encontró en el registro.
+
+### La revisión independiente
+
+Tres revisiones de un agente que no participó del trabajo, las tres con veredicto R1. Los hallazgos se verificaron contra el código antes de aceptarse.
+
+- **Primera, corregido:** el estado vacío que afirmaba que no había operaciones cuando un módulo falló, las lecturas sin protección de Actividad, la evidencia de AC-8 y los huecos de prueba de AC-2, AC-6 y AC-7, además de los menores.
+- **Segunda, corregido:** «Equipos comprados» tumbaba la pestaña con una excepción y mostraba un rechazo como «no compró equipos»; la batería que se llamaba final corría 12 de 42 specs; lo que afirmaba la medición; el caso 31, que no comprobaba el texto privado para un admin; y axe en «Próxima atención» con un turno.
+
+- **Tercera**, acotada a lo que se corrigió después de la segunda, al arreglo de eslint y a la honestidad de este §Cierre. No ejecutó nada: solo lectura. Dio por cumplidas las cinco correcciones de la segunda, el arreglo de eslint sin importadores rotos y los invariantes que esas correcciones tocan. Sus dos bloqueantes:
+  - **`.claude/settings.json`** en el árbol, fuera de la lista cerrada de archivos autorizados. **Resuelto:** queda afuera del commit y sin trackear; es un archivo de permisos local de la herramienta, ajeno a la subfase.
+  - **La batería entera no se corrió después de la última línea de código**, contra la condición de detención. **Decidido por el usuario el 2026-10-30:** se declara el desvío (§Validación) y la corrida completa sobre el árbol entregado es la de la CI, que AC-12 exige igual sobre el SHA que se despliega.
+
+  Y tres hallazgos no bloqueantes, verificados contra el código y declarados abajo sin corregir, para no volver a mover código después de la batería: `hides()`, la precisión de axe en «Próxima atención» y la letra de D-7.
+
+Lo corregido después de la segunda revisión se revisó en la tercera. Lo que la tercera dejó declarado sin corregir es autoevaluación.
+
+### Declarado, sin corregir
+
+- Las filas de la misma fecha y minuto se ordenan por UUID.
+- «Últimos 30 días» incluye los turnos futuros.
+- Con filtros, los chips cuentan solo lo leído: más allá de 200 filas por tipo no son el total real.
+- `?eventos=` se pierde al paginar conversaciones: `conversaciones/filters.ts` está fuera de los archivos autorizados.
+- Las listas de estados están duplicadas.
+- Las notas de una conversación con `last_message_at` nulo no aparecen en Actividad.
+- **Desvío de la letra de AC-7, a decidir por el usuario:** el criterio pide los tres tipos y se prueban dos, porque `own_unit` no tiene cliente.
+- El texto de lectura fallida del Resumen y el render de las fallas de Operaciones y de Equipos no tienen test: solo se prueban las funciones. Las excepciones del Resumen siguen yendo a `error.tsx`, como antes.
+- `hasCapability` no está protegida: si lanza, tumba Operaciones y Actividad. Lee la misma base que la ficha, que ya se leyó antes en la página.
+- «En curso» parcial no tiene aviso propio: si fallan las órdenes y hay un turno, lista el turno, y el aviso aparece en otra tarjeta.
+- `listClientTradeIns` quedó exportada y solo la usa un test.
+- **axe en «Próxima atención», más preciso que lo que decía este §Cierre** (tercera revisión): la variante ámbar existe solo desde `sm` (`summary-tab.tsx:315`), así que el axe de la variante ámbar corre a la anchura por defecto, 1280. A 375 px axe sí corre, pero sobre la variante blanca (`appointments.spec.ts:328`). De los tres casos de D-6, solo el del turno tiene axe a 375 px; la reparación lista (`repairs.spec.ts:317`) y el estado neutral (`clients.spec.ts:1902`) corren solo a 1280. Es un cumplimiento parcial de la letra de AC-11 para el Resumen.
+- **`hides()` no distingue capacidad apagada de permiso denegado** (`client-units-data.ts:26`): `NOT_FOUND` y `FORBIDDEN` ocultan la tarjeta de Equipos. Hoy no cambia nada, porque `NOT_FOUND` lo produce la capacidad y `FORBIDDEN`, solo la falta de sesión. Si alguna de esas lecturas pasara a rechazar por rol, la tarjeta desaparecería en silencio en vez de decir que no se pudo leer, contra el invariante de esta subfase.
+- **Desvío de la letra de D-7:** D-7 dice que «Reparaciones abiertas» del Resumen pasa a `countOpenServiceOrdersByClient`, y el Resumen usa `listOpenClientServiceOrders` (`summary-tab.tsx:287`). La sustancia se cumple: las dos derivan de `openClientOrdersQuery` y ninguna está topada por «las 5 más recientes», así que el Resumen y la lista dan la misma cantidad (AC-7).
+- `pickOpenServiceOrder`, del contexto de la conversación, sigue igual. Para las órdenes de un cliente su definición de abierta coincide con la de la lista, y solo cambia el corte a las 5 primeras.
+- Las capturas de AC-9 no están versionadas y son anteriores a un ajuste: en el teléfono, «Nueva operación» ahora va a la derecha cuando baja de línea, para que el panel no salga de la pantalla. Se mira en el recorrido.

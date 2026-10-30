@@ -273,10 +273,10 @@ test("un admin recibe un usado, lo ve en revisión, lo libera y lo vende", async
     page.getByRole("region", { name: "Datos de contacto" }),
   ).toContainText("30123456");
   await page.goto(`/clientes/${clientId}?pestana=operaciones`);
+  await expect(page.getByRole("link", { name: /PU-000001/ })).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Usados entregados" }),
-  ).toBeVisible();
-  await expect(page.getByRole("link", { name: "PU-000001" })).toBeVisible();
+    page.getByRole("region", { name: /^Operaciones de / }).getByRole("table"),
+  ).toContainText(/US\$\s300,00/);
 });
 
 test("un punto obligatorio que no pasa rechaza la recepción y no escribe nada", async ({
@@ -375,6 +375,20 @@ test("un viewer ve los usados sin el valor, el DNI ni las acciones", async ({
   await page.goto(`${url}/comprobante`);
   await expect(page.getByText("30123456")).toHaveCount(0);
   await expect(page.getByText(/US\$\s300,00/)).toHaveCount(0);
+  // Lo que llega al navegador en las tres partes de la ficha (brief-24.4.3, AC-8).
+  const clientId = (
+    await db.execute<{ id: string }>(
+      sql`select id from clients where display_name = ${CLIENT}`,
+    )
+  ).rows[0]!.id;
+  for (const tab of ["resumen", "operaciones", "actividad"]) {
+    const html = await (
+      await page.request.get(`/clientes/${clientId}?pestana=${tab}`)
+    ).text();
+    // El Resumen solo lista lo que está en curso, y un usado recibido no lo está.
+    if (tab !== "resumen") expect(html).toContain("PU-000001");
+    expect(html).not.toMatch(/300[.,]00/);
+  }
   await page.goto("/usados/nuevo");
   await expect(page.getByText(/Solo un administrador/)).toBeVisible();
 });

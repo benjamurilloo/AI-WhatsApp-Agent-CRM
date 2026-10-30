@@ -54,6 +54,10 @@ import {
   getQuoteForm,
   getServiceOrder,
   listClientServiceOrders,
+  CLIENT_OPERATION_SERVICE_ORDERS_LIMIT,
+  countOpenServiceOrdersByClient,
+  listClientOperationServiceOrders,
+  listOpenClientServiceOrders,
   listRepairTypes,
   listServiceOrderAudit,
   listServiceOrders,
@@ -1250,6 +1254,89 @@ describe("el aislamiento y la capacidad (AC-11)", () => {
         code: "BUSINESS_RULE_VIOLATION",
         rule: "inactive_client",
       });
+    },
+    TEST_TIMEOUT,
+  );
+});
+
+// Operaciones, Actividad y el Resumen de la ficha del cliente (brief-24.4.3, D-2, D-5 y D-7).
+describe("las órdenes de la ficha del cliente", () => {
+  it(
+    "da las fechas de cada estado y si sigue abierta, para los dos roles, sin el IMEI del equipo",
+    async () => {
+      const s = await seed();
+      const open = await orderAt(s, "repaired");
+      const closed = await newOrder(s, "");
+      ok(await cancelServiceOrder(s.admin, closed.id, "customer_withdrew"));
+
+      const listed = ok(
+        await listClientOperationServiceOrders(s.viewer, s.clientId),
+      );
+      expect(listed.total).toBe(2);
+      const byId = new Map(listed.orders.map((order) => [order.id, order]));
+      expect(byId.get(open.id)).toMatchObject({
+        status: "repaired",
+        open: true,
+      });
+      expect(byId.get(open.id)?.sentAt).toBeInstanceOf(Date);
+      expect(byId.get(open.id)?.quotedAt).toBeInstanceOf(Date);
+      expect(byId.get(open.id)?.repairedAt).toBeInstanceOf(Date);
+      expect(byId.get(closed.id)).toMatchObject({ open: false });
+      expect(byId.get(closed.id)?.cancelledAt).toBeInstanceOf(Date);
+      expect(JSON.stringify(listed.orders)).not.toContain("356789012345678");
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "el Resumen y la lista dan la misma cantidad, con más de 5 órdenes (AC-7)",
+    async () => {
+      const s = await seed();
+      for (let i = 0; i < 7; i++) await newOrder(s, "");
+      const closed = await newOrder(s, "");
+      ok(await cancelServiceOrder(s.admin, closed.id, "customer_withdrew"));
+
+      const summary = ok(
+        await listOpenClientServiceOrders(s.admin, s.clientId),
+      );
+      const list = ok(
+        await countOpenServiceOrdersByClient(s.admin, [s.clientId]),
+      );
+      expect(summary.total).toBe(7);
+      expect(summary.orders).toHaveLength(7);
+      expect(list.counts.get(s.clientId)).toBe(summary.total);
+      expect(summary.orders.map((order) => order.id)).not.toContain(closed.id);
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "corta en el tope con la cantidad real, y sin repairs no existe",
+    async () => {
+      const s = await seed();
+      await newOrder(s, "");
+      await getDb().execute(
+        sql`insert into service_orders
+             select (jsonb_populate_record(o, jsonb_build_object(
+               'id', gen_random_uuid(), 'number', o.number + n))).*
+             from service_orders o, generate_series(1, ${CLIENT_OPERATION_SERVICE_ORDERS_LIMIT}) n`,
+      );
+      const capped = ok(
+        await listClientOperationServiceOrders(s.admin, s.clientId),
+      );
+      expect(capped.total).toBe(CLIENT_OPERATION_SERVICE_ORDERS_LIMIT + 1);
+      expect(capped.orders).toHaveLength(CLIENT_OPERATION_SERVICE_ORDERS_LIMIT);
+
+      const notFound = { ok: false, code: "NOT_FOUND" };
+      expect(
+        await listClientOperationServiceOrders(s.adminC, s.clientId),
+      ).toEqual(notFound);
+      expect(await listOpenClientServiceOrders(s.adminC, s.clientId)).toEqual(
+        notFound,
+      );
+      expect(
+        ok(await listClientOperationServiceOrders(s.adminB, s.clientId)).total,
+      ).toBe(0);
     },
     TEST_TIMEOUT,
   );

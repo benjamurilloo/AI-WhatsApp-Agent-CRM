@@ -51,15 +51,13 @@ import {
   noticeMessage,
 } from "../messages";
 import { AccountTab } from "./account-tab";
+import { ActivityCard } from "./activity-card";
+import { parseEventsLimit } from "./activity-events";
 import { auditActionLabel, describeAuditDiff } from "./audit-summary";
 import { DeactivateConfirm, ReactivateForm } from "./client-actions";
-import { ClientAppointments } from "./client-appointments";
 import { ClientConversations, ClientStats } from "./client-conversations";
-import { ClientOrders } from "./client-orders";
-import { ClientServiceOrders } from "./client-service-orders";
 import { ClientTags } from "./client-tags";
-import { ClientTradeIns } from "./client-trade-ins";
-import { ClientUnits } from "./client-units";
+import { OperationsTab } from "./operations-tab";
 import { SummaryTab } from "./summary-tab";
 import {
   CLIENT_TAB_LABEL,
@@ -353,80 +351,14 @@ export default async function ClientPage({
           ) : null}
 
           {tab === "operaciones" ? (
-            <div className="mt-6 flex flex-col gap-6">
-              {/* Dos columnas independientes y no una grilla: en una grilla cada fila toma la
-                  altura de su tarjeta más alta y deja un hueco debajo de la otra. En pantallas
-                  angostas las columnas no existen (contents) y order conserva el orden
-                  Pedidos, Reparaciones, Turnos, Usados, Equipos. Una sección sin su capacidad
-                  no rinde nada y su envoltorio vacío se oculta (empty:hidden). */}
-              <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-                <div className="contents lg:flex lg:min-w-0 lg:flex-1 lg:flex-col lg:gap-6">
-                  <SectionCard
-                    id="pedidos-titulo"
-                    title="Pedidos"
-                    icon="list"
-                    className="order-1"
-                  >
-                    <ClientOrders
-                      context={context}
-                      clientId={client.id}
-                      clientActive={client.isActive}
-                      timeZone={timeZone}
-                    />
-                  </SectionCard>
-
-                  {/* Sus turnos, con la capacidad appointments (brief-29.10, D-5). */}
-                  <div className="order-3 empty:hidden">
-                    <ClientAppointments
-                      context={context}
-                      clientId={client.id}
-                      clientActive={client.isActive}
-                    />
-                  </div>
-
-                  {/* Los equipos que compró, con la capacidad serialized_units (brief-29.9, D-3). */}
-                  <div className="order-5 empty:hidden">
-                    <ClientUnits context={context} clientId={client.id} />
-                  </div>
-                </div>
-
-                <div className="contents lg:flex lg:min-w-0 lg:flex-1 lg:flex-col lg:gap-6">
-                  {/* Sus órdenes de servicio, con la capacidad repairs (brief-29.6, D-10). */}
-                  <div className="order-2 empty:hidden">
-                    <ClientServiceOrders
-                      context={context}
-                      clientId={client.id}
-                      clientActive={client.isActive}
-                      timeZone={timeZone}
-                    />
-                  </div>
-
-                  {/* Los usados que entregó, con la capacidad trade_ins (brief-29.7, D-7). */}
-                  <div className="order-4 empty:hidden">
-                    <ClientTradeIns
-                      context={context}
-                      clientId={client.id}
-                      clientActive={client.isActive}
-                      timeZone={timeZone}
-                    />
-                  </div>
-                </div>
-              </div>
-              <p className="flex items-start gap-2 rounded-xl border border-border bg-primary-soft/40 px-4 py-3 text-sm">
-                <Icon name="info" className="mt-0.5 size-4 shrink-0" />
-                <span>
-                  Los importes corresponden a cada operación. Consultá pagos y
-                  saldos en{" "}
-                  <Link
-                    href={clientTabHref(client.id, "cuenta")}
-                    className="font-semibold text-primary underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-                  >
-                    Cuenta corriente
-                  </Link>
-                  .
-                </span>
-              </p>
-            </div>
+            <OperationsTab
+              context={context}
+              clientId={client.id}
+              clientName={client.displayName}
+              clientActive={client.isActive}
+              timeZone={timeZone}
+              query={query}
+            />
           ) : null}
 
           {tab === "cuenta" ? (
@@ -442,6 +374,16 @@ export default async function ClientPage({
 
           {tab === "actividad" ? (
             <>
+              <ActivityCard
+                context={context}
+                clientId={client.id}
+                timeZone={timeZone}
+                limit={parseEventsLimit(query)}
+                moreHref={(limit) =>
+                  `${clientSectionsHref(client.id, sections)}&eventos=${limit}`
+                }
+              />
+
               <SectionCard
                 id="conversaciones-titulo"
                 title="Conversaciones"

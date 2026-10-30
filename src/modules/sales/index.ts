@@ -12,6 +12,10 @@ export {
   getUnitSales,
   // «Equipos comprados» de la ficha del cliente (brief-29.9, D-3).
   listClientSoldUnits,
+  // Operaciones y Actividad de la ficha del cliente (brief-24.4.3, D-2 y D-5).
+  CLIENT_OPERATION_SALES_LIMIT,
+  type ClientOperationSale,
+  listClientOperationSales,
   issueSale,
   issueSaleFromOrder,
   // La venta de una reparación, para service (brief-29.6, D-6).

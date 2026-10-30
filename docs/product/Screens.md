@@ -248,6 +248,10 @@ Agregada en la 18.2 ([brief-18.2](../decisions/brief-18.2-costo-y-margen.md), FR
   - **«Organización interna»:** tipo, empresa, cargo, segmento y las observaciones internas, con el aviso de datos sensibles.
   - **«Antes de guardar»** a la derecha en escritorio, el resumen de errores arriba y la barra de guardado de la 24.1 abajo.
   - **El teléfono repetido** muestra el aviso «Este teléfono ya está registrado» con el otro cliente (nombre, teléfono e «Inactivo» si lo está), «Ver ficha existente» y «Volver al formulario». El borrador se conserva y no se fusiona nada.
+- *Nota del 2026-10-30, 24.4.3* ([brief-24.4.3](../decisions/brief-24.4.3-clientes-operaciones-y-actividad.md)), a la forma de 03, 04, 07 y el panel 05 de 08 de la v2. Reemplaza las tarjetas de pedidos, reparaciones, turnos y usados de la ficha:
+  - **Operaciones** es una tabla sola, con ventas, pedidos, reparaciones, turnos y usados por fecha descendente; tarjetas en el teléfono. Chips por tipo con su cantidad, búsqueda por número o equipo, estado y fecha, por la URL (`?tipo`, `?buscar`, `?estado`, `?fecha`, `?pagina`) y sin JavaScript. Lee hasta 200 por tipo y lo dice si hay más. «Nueva operación» solo abre el formulario de cada tipo con el cliente elegido; un viewer o un cliente inactivo no la reciben.
+  - **Actividad** suma una cronología: un enlace por evento, sin el texto de mensajes ni notas (pantalla 8, subfase 1.3, D-2), de a 20 con «Ver más actividad». Lo que no se pudo leer se dice. La tarjeta de conversaciones y la auditoría siguen debajo.
+  - **Resumen** suma «Próxima atención» arriba: el próximo turno o, si no hay, la reparación lista para retirar; neutral si no hay nada. Blanca en el teléfono y ámbar desde `sm`.
 
 ## 8. Lista de conversaciones
 

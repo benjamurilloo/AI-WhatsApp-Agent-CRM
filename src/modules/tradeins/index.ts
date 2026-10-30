@@ -63,7 +63,10 @@ export {
   type ServiceTradeInQuoteUnavailable,
 } from "./quote";
 export {
+  CLIENT_OPERATION_TRADE_INS_LIMIT,
   CLIENT_TRADE_INS_LIMIT,
+  type ClientOperationTradeIn,
+  listClientOperationTradeIns,
   createTradeIn,
   formatTradeInNumber,
   formatTradeInVoidNumber,

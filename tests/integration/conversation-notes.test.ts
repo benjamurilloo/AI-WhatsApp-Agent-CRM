@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { hashPassword, login } from "@/modules/auth";
 import {
   addConversationNote,
+  listClientConversationEvents,
   listConversationNotes,
   NOTES_PAGE_SIZE,
 } from "@/modules/conversations";
@@ -319,6 +320,62 @@ describe(
       expect(read.notes).toMatchObject([
         { body: null, author: { id: s.adminA.userId } },
       ]);
+    });
+  },
+);
+
+// La cronología de la ficha del cliente (brief-24.4.3, D-5).
+describe(
+  "los eventos de conversación de la ficha",
+  { timeout: TEST_TIMEOUT },
+  () => {
+    async function clientWithConversation(organizationId: string) {
+      const conversationId = await insertConversation(organizationId);
+      const client = await getDb().execute<{ id: string }>(
+        sql`insert into clients (organization_id, display_name)
+          values (${organizationId}, 'Lucía') returning id`,
+      );
+      const clientId = client.rows[0]!.id;
+      await getDb().execute(
+        sql`update conversations set client_id = ${clientId} where id = ${conversationId}`,
+      );
+      return { conversationId, clientId };
+    }
+
+    it("una fila por conversación y las notas con su autor, nunca el texto, para los dos roles", async () => {
+      const s = await seed();
+      const { conversationId, clientId } = await clientWithConversation(s.orgA);
+      const noted = await addConversationNote(s.adminA, {
+        conversationId,
+        body: "TEXTO-PRIVADO",
+      });
+      expect(noted.ok).toBe(true);
+
+      for (const context of [s.adminA, s.viewerA]) {
+        const events = await listClientConversationEvents(context, clientId);
+        if (!events.ok) throw new Error(events.code);
+        expect(events.conversations).toMatchObject([
+          { id: conversationId, channel: "whatsapp" },
+        ]);
+        expect(events.notes).toMatchObject([{ conversationId }]);
+        expect(events.notes[0]?.author).not.toBe("");
+        expect(JSON.stringify(events)).not.toContain("TEXTO-PRIVADO");
+      }
+    });
+
+    it("no cruza la organización y un cliente sin conversaciones no da eventos", async () => {
+      const s = await seed();
+      const { clientId } = await clientWithConversation(s.orgA);
+      expect((await listClientConversationEvents(s.adminB, clientId)).ok).toBe(
+        false,
+      );
+      const other = await getDb().execute<{ id: string }>(
+        sql`insert into clients (organization_id, display_name)
+          values (${s.orgA}, 'Mario') returning id`,
+      );
+      expect(
+        await listClientConversationEvents(s.adminA, other.rows[0]!.id),
+      ).toEqual({ ok: true, conversations: [], notes: [] });
     });
   },
 );

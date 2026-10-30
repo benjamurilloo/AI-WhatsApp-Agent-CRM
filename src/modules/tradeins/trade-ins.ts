@@ -572,6 +572,47 @@ export async function listClientTradeIns(
   return { ok: true, tradeIns: await summarize(context, rows), total };
 }
 
+// Los usados de un cliente para Operaciones y Actividad de su ficha (brief-24.4.3, D-2 y D-5): los más
+// recientes hasta el tope, la cantidad real y la fecha de la anulación. El valor, solo un admin.
+export const CLIENT_OPERATION_TRADE_INS_LIMIT = 200;
+
+export type ClientOperationTradeIn = TradeInSummary & {
+  voidedAt: Date | null;
+};
+
+export async function listClientOperationTradeIns(
+  context: AuthContext,
+  clientId: string,
+): Promise<
+  | { ok: true; tradeIns: ClientOperationTradeIn[]; total: number }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+> {
+  const allowed = await requireTradeIns(context);
+  if (!allowed.ok) return allowed;
+  if (!idSchema.safeParse(clientId).success) return failure("VALIDATION_ERROR");
+  const query: repository.TradeInListQuery = {
+    organizationId: context.organizationId,
+    voided: null,
+    destination: null,
+    number: null,
+    serial: null,
+    clientId: clientId.toLowerCase(),
+  };
+  const [total, rows] = await Promise.all([
+    repository.countTradeIns(query),
+    repository.findTradeIns(query, CLIENT_OPERATION_TRADE_INS_LIMIT, 0),
+  ]);
+  const summaries = await summarize(context, rows);
+  return {
+    ok: true,
+    tradeIns: summaries.map((summary, index) => ({
+      ...summary,
+      voidedAt: rows[index]!.voided?.createdAt ?? null,
+    })),
+    total,
+  };
+}
+
 // La recepción que creó cada unidad, para la ficha de unidades (D-7). Sin la capacidad, ninguna.
 export async function getUnitTradeIns(
   context: AuthContext,

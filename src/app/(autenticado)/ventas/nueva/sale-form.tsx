@@ -49,9 +49,12 @@ const initialState: SaleFormState = { status: "idle" };
 export function SaleForm({
   maxLines,
   unitsEnabled,
+  initialClient = null,
 }: {
   maxLines: number;
   unitsEnabled: boolean;
+  // Desde «Nueva operación» de la ficha del cliente (brief-24.4.3, D-4).
+  initialClient?: { id: string; name: string } | null;
 }) {
   const [state, formAction, pending] = useActionState(
     createSaleAction,
@@ -67,6 +70,7 @@ export function SaleForm({
       pending={pending}
       maxLines={maxLines}
       unitsEnabled={unitsEnabled}
+      initialClient={initialClient}
     />
   );
 }
@@ -77,17 +81,19 @@ function SaleFields({
   pending,
   maxLines,
   unitsEnabled,
+  initialClient,
 }: {
   state: SaleFormState;
   formAction: (formData: FormData) => void;
   pending: boolean;
   maxLines: number;
   unitsEnabled: boolean;
+  initialClient: { id: string; name: string } | null;
 }) {
   const failed = state.status === "error" ? state : null;
   const [client, setClient] = useState({
-    id: failed ? failed.values.clientId : "",
-    text: failed ? failed.values.clientText : "",
+    id: failed ? failed.values.clientId : (initialClient?.id ?? ""),
+    text: failed ? failed.values.clientText : (initialClient?.name ?? ""),
   });
   const [rows, setRows] = useState<Row[]>(() => {
     const sent = failed ? failed.values.lines : [];

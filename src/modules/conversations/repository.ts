@@ -1,6 +1,7 @@
 import {
   and,
   count,
+  desc,
   eq,
   inArray,
   isNotNull,
@@ -402,6 +403,61 @@ export function findNotesBefore(
           ? undefined
           : sql`(${conversationNotes.createdAt}, ${conversationNotes.id}) < (${before.createdAt}::timestamptz, ${before.id}::uuid)`,
         extra,
+      ),
+    )
+    .orderBy(
+      sql`${conversationNotes.createdAt} desc`,
+      sql`${conversationNotes.id} desc`,
+    )
+    .limit(limit);
+}
+
+// Las conversaciones de un cliente con su último mensaje, para la cronología de su ficha
+// (brief-24.4.3, D-5). Sin contenido: una conversación sin mensajes no es un evento.
+export function findClientConversationEvents(
+  organizationId: string,
+  clientId: string,
+  limit: number,
+): Promise<{ id: string; channel: ConversationChannel; at: Date | null }[]> {
+  return getDb()
+    .select({
+      id: conversations.id,
+      channel: conversations.channel,
+      at: conversations.lastMessageAt,
+    })
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.organizationId, organizationId),
+        eq(conversations.clientId, clientId),
+        isNotNull(conversations.lastMessageAt),
+      ),
+    )
+    .orderBy(sql`${conversations.lastMessageAt} desc`, desc(conversations.id))
+    .limit(limit);
+}
+
+// Las notas de unas conversaciones sin su texto, para la misma cronología (D-5, H-3): el cuerpo no se
+// selecciona, así que no puede llegar a la pantalla.
+export function findNoteEvents(
+  organizationId: string,
+  conversationIds: string[],
+  limit: number,
+): Promise<
+  { id: string; conversationId: string; actorUserId: string; at: Date }[]
+> {
+  return getDb()
+    .select({
+      id: conversationNotes.id,
+      conversationId: conversationNotes.conversationId,
+      actorUserId: conversationNotes.actorUserId,
+      at: conversationNotes.createdAt,
+    })
+    .from(conversationNotes)
+    .where(
+      and(
+        eq(conversationNotes.organizationId, organizationId),
+        inArray(conversationNotes.conversationId, conversationIds),
       ),
     )
     .orderBy(

@@ -35,6 +35,7 @@ import {
   applyServiceSettingsTemplate,
   approveServiceOrder,
   cancelServiceOrder,
+  countOpenServiceOrdersByClient,
   createServiceOrder,
   createWarrantyClaim,
   deliverServiceOrder,
@@ -43,6 +44,7 @@ import {
   getWarrantyClaimRepairForm,
   listClientServiceOrders,
   listClientServiceOrdersForService,
+  listOpenClientServiceOrders,
   listRepairTypes,
   listServiceOrders,
   listServiceOrdersBySerial,
@@ -295,6 +297,46 @@ afterEach(async () => {
 
 afterAll(async () => {
   await getDb().$client.end();
+});
+
+// brief-24.4.3, AC-7. Una unidad propia no tiene cliente (D-7), así que no puede entrar en la cuenta
+// de uno: de los tres tipos, los dos que un cliente puede tener.
+describe("las reparaciones abiertas de un cliente, con reclamos (brief-24.4.3, AC-7)", () => {
+  it(
+    "el Resumen y la lista cuentan lo mismo con un equipo del cliente y un reclamo",
+    async () => {
+      const s = await seed();
+      const unitId = await soldUnit(s);
+      ok(
+        await createWarrantyClaim(s.admin, {
+          unitId,
+          clientId: s.clientId,
+          reportedIssue: "No carga.",
+        }),
+      );
+      ok(
+        await createServiceOrder(s.admin, {
+          clientId: s.clientId,
+          modelId: s.modelId,
+          deviceSerial: "",
+          reportedIssue: "No enciende",
+        }),
+      );
+      const summary = ok(
+        await listOpenClientServiceOrders(s.admin, s.clientId),
+      );
+      const list = ok(
+        await countOpenServiceOrdersByClient(s.admin, [s.clientId]),
+      );
+      expect(summary.total).toBe(2);
+      expect(summary.orders.map((order) => order.kind).sort()).toEqual([
+        "customer_device",
+        "warranty_claim",
+      ]);
+      expect(list.counts.get(s.clientId)).toBe(summary.total);
+    },
+    TEST_TIMEOUT,
+  );
 });
 
 describe("el reclamo de una unidad vendida (AC-2, AC-4, AC-5, AC-6, AC-7)", () => {

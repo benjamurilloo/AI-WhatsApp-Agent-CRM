@@ -9,6 +9,8 @@ import {
   getOrder,
   listOrderAudit,
   listOrders,
+  CLIENT_OPERATION_ORDERS_LIMIT,
+  listClientOperationOrders,
   listRecentClientOrders,
   type OrderInput,
 } from "@/modules/orders";
@@ -1083,6 +1085,58 @@ describe("auditoría del alta (AC-8)", () => {
       for (const personal of ["Lucía", "Gómez", "5491155550000", "lucia@"]) {
         expect(text).not.toContain(personal);
       }
+    },
+    TEST_TIMEOUT,
+  );
+});
+
+// Operaciones y Actividad de la ficha del cliente (brief-24.4.3, D-2 y D-5).
+describe("los pedidos de la ficha del cliente", () => {
+  it(
+    "da la cantidad real, corta en el tope, los dos roles leen y no cruza la organización",
+    async () => {
+      const s = await seed();
+      const created = await createOrder(
+        s.adminA,
+        input(s.clientA, [[s.coffee, "1", s.coffeePrice]]),
+      );
+      if (!created.ok) throw new Error(created.code);
+      const cancelled = await cancelOrder(s.adminA, created.order.id);
+      if (!cancelled.ok) throw new Error(cancelled.code);
+
+      const first = await listClientOperationOrders(s.viewerA, s.clientA);
+      if (!first.ok) throw new Error(first.code);
+      expect(first.total).toBe(1);
+      expect(first.orders[0]).toMatchObject({
+        lineCount: 1,
+        status: "cancelled",
+      });
+      expect(first.orders[0]?.cancelledAt).toBeInstanceOf(Date);
+
+      const inB = await listClientOperationOrders(s.adminB, s.clientA);
+      expect(inB).toEqual({ ok: true, orders: [], total: 0 });
+
+      // Un pedido nace pendiente (trigger): se clona el que sigue pendiente.
+      const pending = await createOrder(
+        s.adminA,
+        input(s.clientA, [[s.coffee, "1", s.coffeePrice]]),
+      );
+      if (!pending.ok) throw new Error(pending.code);
+      await getDb().execute(
+        sql`insert into orders
+             select (jsonb_populate_record(o, jsonb_build_object(
+               'id', gen_random_uuid(), 'number', o.number + n))).*
+             from orders o, generate_series(1, ${CLIENT_OPERATION_ORDERS_LIMIT}) n
+             where o.id = ${pending.order.id}`,
+      );
+      const capped = await listClientOperationOrders(s.adminA, s.clientA);
+      if (!capped.ok) throw new Error(capped.code);
+      expect(capped.total).toBe(CLIENT_OPERATION_ORDERS_LIMIT + 2);
+      expect(capped.orders).toHaveLength(CLIENT_OPERATION_ORDERS_LIMIT);
+
+      expect(
+        await listClientOperationOrders(s.adminA, "no-es-un-id"),
+      ).toMatchObject({ ok: false, code: "VALIDATION_ERROR" });
     },
     TEST_TIMEOUT,
   );

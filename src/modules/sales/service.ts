@@ -1358,6 +1358,67 @@ export async function getSaleForReceipt(
   return row ? saleForReceipt(row) : null;
 }
 
+// Las ventas de un cliente para Operaciones y Actividad de su ficha (brief-24.4.3, D-2 y D-5): las más
+// recientes hasta el tope, anuladas incluidas, y la cantidad real. Sin costo ni margen.
+export const CLIENT_OPERATION_SALES_LIMIT = 200;
+
+export type ClientOperationSale = {
+  id: string;
+  displayNumber: string;
+  lineCount: number;
+  total: string;
+  currency: string;
+  createdAt: Date;
+  voidDisplayNumber: string | null;
+  voidedAt: Date | null;
+};
+
+export async function listClientOperationSales(
+  context: AuthContext,
+  clientId: string,
+): Promise<
+  | { ok: true; sales: ClientOperationSale[]; total: number }
+  | Failure<"FORBIDDEN" | "VALIDATION_ERROR">
+> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  if (!idSchema.safeParse(clientId).success) return failure("VALIDATION_ERROR");
+  const id = clientId.toLowerCase();
+  const [total, rows] = await Promise.all([
+    repository.countSales({
+      organizationId: context.organizationId,
+      clientId: id,
+      number: null,
+      voidNumber: null,
+      status: "all",
+      from: null,
+      to: null,
+      // Sin período, la zona no se usa.
+      timezone: "UTC",
+    }),
+    repository.findClientSaleOperations(
+      context.organizationId,
+      id,
+      CLIENT_OPERATION_SALES_LIMIT,
+    ),
+  ]);
+  return {
+    ok: true,
+    sales: rows.map((row) => ({
+      id: row.id,
+      displayNumber: formatSaleNumber(row.number),
+      lineCount: row.lineCount,
+      total: row.total,
+      currency: row.currency,
+      createdAt: row.createdAt,
+      voidDisplayNumber:
+        row.voidNumber === null ? null : formatSaleVoidNumber(row.voidNumber),
+      voidedAt: row.voidedAt,
+    })),
+    total,
+  };
+}
+
 // Las ventas de un cliente, anuladas incluidas, de la más vieja a la más nueva.
 export async function listClientSalesForAccount(
   tx: DbTransaction,

@@ -313,18 +313,41 @@ test("un admin da un turno desde el calendario, ve la franja llena, configura, c
   await expect(page.getByText("Atendido").first()).toBeVisible();
 
   // La ficha de la clienta muestra sus turnos.
+  await insertAppointment(
+    sql`((${future}::date + '14:00'::time) at time zone ${TIMEZONE})`,
+  );
   await page.goto("/clientes");
   await page.getByRole("link", { name: "Lucía Gómez" }).click();
+  // «Próxima atención», con el turno que sigue (brief-24.4.3, D-6).
+  const attention = page.getByRole("region", { name: "Próxima atención" });
+  await expect(
+    attention.getByRole("link", { name: "Ver turno" }),
+  ).toBeVisible();
+  await expectAccessible(page, "próxima atención con un turno");
+  const viewport = page.viewportSize()!;
+  await page.setViewportSize({ width: 375, height: 800 });
+  await expectAccessible(page, "próxima atención con un turno a 375 px");
+  await page.setViewportSize(viewport);
+  // Con más de una, «Ver todas» lleva a Operaciones con «En curso» (AC-6).
+  await attention.getByRole("link", { name: "Ver todas" }).click();
+  await expect(page).toHaveURL(/pestana=operaciones&estado=en_curso$/);
+  const section = page.getByRole("region", { name: /^Operaciones de / });
+  await expect(section.getByLabel("Estado")).toHaveValue("en_curso");
+  await expect(
+    section.getByRole("link", { name: /Ver detalle de turno/ }),
+  ).toHaveCount(2);
   // En la pestaña Operaciones de la ficha (brief-24.4.1, D-5).
   await page
     .getByRole("navigation", { name: /^Secciones de / })
     .getByRole("link", { name: "Operaciones" })
     .click();
-  const section = page.getByRole("region", { name: "Turnos" });
-  await expect(section.getByRole("listitem")).toHaveCount(3);
   await expect(
-    section.getByRole("link", { name: "+ Dar un turno" }),
-  ).toBeVisible();
+    section.getByRole("link", { name: /Ver detalle de turno/ }),
+  ).toHaveCount(4);
+  await section.getByRole("button", { name: "Nueva operación" }).click();
+  await expect(
+    section.getByRole("link", { name: "Turno", exact: true }),
+  ).toHaveAttribute("href", /^\/turnos\/nuevo\?cliente=/);
 });
 
 test("un viewer ve el calendario y el turno, y no los opera", async ({

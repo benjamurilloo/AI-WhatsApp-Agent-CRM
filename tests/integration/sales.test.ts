@@ -21,6 +21,8 @@ import {
   getSaleForOrder,
   issueSale,
   issueSaleFromOrder,
+  CLIENT_OPERATION_SALES_LIMIT,
+  listClientOperationSales,
   listSaleAudit,
   listSales,
   parseSaleNumberSearch,
@@ -2139,6 +2141,48 @@ describe("la anulación: lecturas (brief-20.4, AC-6)", () => {
         "void",
         "create",
       ]);
+    },
+    TEST_TIMEOUT,
+  );
+});
+
+// Operaciones y Actividad de la ficha del cliente (brief-24.4.3, D-2 y D-5).
+describe("las ventas de la ficha del cliente", () => {
+  it(
+    "da la anulación con su fecha, la cantidad real y el tope, sin cruzar la organización",
+    async () => {
+      const s = await seed();
+      const sale = await issue(s, await delivered(s, [[s.tv, "1"]]));
+      expect((await voidSale(s.adminA, sale.id, "not_completed")).ok).toBe(
+        true,
+      );
+
+      const first = await listClientOperationSales(s.viewerA, s.clientA);
+      if (!first.ok) throw new Error(first.code);
+      expect(first.total).toBe(1);
+      expect(first.sales[0]).toMatchObject({
+        id: sale.id,
+        displayNumber: "V-000001",
+        lineCount: 1,
+        voidDisplayNumber: "A-000001",
+      });
+      expect(first.sales[0]?.voidedAt).toBeInstanceOf(Date);
+      expect(await listClientOperationSales(s.adminB, s.clientA)).toEqual({
+        ok: true,
+        sales: [],
+        total: 0,
+      });
+
+      await getDb().execute(
+        sql`insert into sales
+             select (jsonb_populate_record(v, jsonb_build_object(
+               'id', gen_random_uuid(), 'number', v.number + n, 'order_id', null))).*
+             from sales v, generate_series(1, ${CLIENT_OPERATION_SALES_LIMIT}) n`,
+      );
+      const capped = await listClientOperationSales(s.adminA, s.clientA);
+      if (!capped.ok) throw new Error(capped.code);
+      expect(capped.total).toBe(CLIENT_OPERATION_SALES_LIMIT + 1);
+      expect(capped.sales).toHaveLength(CLIENT_OPERATION_SALES_LIMIT);
     },
     TEST_TIMEOUT,
   );

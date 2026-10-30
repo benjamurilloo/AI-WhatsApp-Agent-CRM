@@ -466,6 +466,41 @@ export function findSales(
     .offset(offset);
 }
 
+export type ClientSaleOperationRow = SaleRow & {
+  lineCount: number;
+  voidNumber: number | null;
+  voidedAt: Date | null;
+};
+
+// Las ventas de un cliente para su ficha (brief-24.4.3, D-2 y D-5), las más recientes, con la fecha de
+// su anulación. Con un LEFT JOIN a la anulación, que es a lo sumo una, como en la cuenta del cliente.
+export function findClientSaleOperations(
+  organizationId: string,
+  clientId: string,
+  limit: number,
+): Promise<ClientSaleOperationRow[]> {
+  return getDb()
+    .select({
+      ...saleColumns,
+      lineCount: sql<number>`(
+        select count(*)::int from sale_lines l
+        where l.organization_id = "sales"."organization_id"
+          and l.sale_id = "sales"."id")`,
+      voidNumber: saleVoids.number,
+      voidedAt: saleVoids.createdAt,
+    })
+    .from(sales)
+    .leftJoin(saleVoids, saleVoidJoin)
+    .where(
+      and(
+        eq(sales.organizationId, organizationId),
+        eq(sales.clientId, clientId),
+      ),
+    )
+    .orderBy(desc(sales.createdAt), desc(sales.id))
+    .limit(limit);
+}
+
 // Lecturas para cash (ADR 0022, punto 13; brief-21.3, D-4): la venta que se cobra y las ventas de un
 // cliente para la imputación. Reciben la transacción de cash y no bloquean: una venta no se puede
 // bloquear (ADR 0022, punto 4). Anulada es que tenga su anulación. Desde la 21.4, con su pedido

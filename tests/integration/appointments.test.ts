@@ -12,6 +12,8 @@ import {
   listAppointmentAudit,
   listAppointmentReasons,
   listClientAppointments,
+  CLIENT_OPERATION_APPOINTMENTS_LIMIT,
+  listClientOperationAppointments,
   moveAppointmentReason,
   renameAppointmentReason,
   saveAppointmentSettings,
@@ -1223,6 +1225,75 @@ describe("los datos de un cliente (AC-10, D-6)", () => {
       expect(
         (await eraseClientData(getDb(), s.orgId, s.clientId)).appointments,
       ).toBe(0);
+    },
+    TEST_TIMEOUT,
+  );
+});
+
+// Operaciones y Actividad de la ficha del cliente (brief-24.4.3, D-2 y D-5).
+describe("los turnos de la ficha del cliente", () => {
+  it(
+    "da las fechas de cada estado, la cantidad real y el tope; no la nota; sin cruzar la organización",
+    async () => {
+      const s = await seed();
+      const created = ok(
+        await createAppointment(
+          s.admin,
+          input(s, s.future, "10:00", { note: "NOTA-PRIVADA" }),
+        ),
+      );
+      const id = created.appointmentId;
+      ok(await changeAppointmentStatus(s.admin, id, "cancelled"));
+
+      const listed = ok(
+        await listClientOperationAppointments(s.viewer, s.clientId),
+      );
+      expect(listed.total).toBe(1);
+      expect(listed.appointments[0]).toMatchObject({
+        id,
+        status: "cancelled",
+        start: "10:00",
+      });
+      expect(listed.appointments[0]?.confirmedAt).toBeInstanceOf(Date);
+      expect(listed.appointments[0]?.cancelledAt).toBeInstanceOf(Date);
+      expect(JSON.stringify(listed)).not.toContain("NOTA-PRIVADA");
+
+      expect(
+        ok(await listClientOperationAppointments(s.b.admin, s.clientId)).total,
+      ).toBe(0);
+
+      // Un turno nace pedido o confirmado (trigger): se clona el que sigue vigente.
+      const pending = ok(
+        await createAppointment(s.admin, input(s, s.future, "11:00")),
+      );
+      await getDb().execute(
+        sql`insert into appointments
+             select (jsonb_populate_record(a, jsonb_build_object('id', gen_random_uuid()))).*
+             from appointments a, generate_series(1, ${CLIENT_OPERATION_APPOINTMENTS_LIMIT}) n
+             where a.id = ${pending.appointmentId}`,
+      );
+      const capped = ok(
+        await listClientOperationAppointments(s.admin, s.clientId),
+      );
+      expect(capped.total).toBe(CLIENT_OPERATION_APPOINTMENTS_LIMIT + 2);
+      expect(capped.appointments).toHaveLength(
+        CLIENT_OPERATION_APPOINTMENTS_LIMIT,
+      );
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "sin appointments, no existe",
+    async () => {
+      const s = await seed();
+      const plain = await returningId(
+        sql`insert into organizations (name) values ('Sin turnos') returning id`,
+      );
+      const plainAdmin = await member(plain, "plain@example.com", "admin");
+      expect(
+        await listClientOperationAppointments(plainAdmin.context, s.clientId),
+      ).toEqual({ ok: false, code: "NOT_FOUND" });
     },
     TEST_TIMEOUT,
   );

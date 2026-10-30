@@ -1127,7 +1127,11 @@ async function insertFullClient() {
 // Cada pestaña y la región que la identifica.
 const TABS = [
   { name: "Resumen", param: "", region: "Datos de contacto" },
-  { name: "Operaciones", param: "?pestana=operaciones", region: "Pedidos" },
+  {
+    name: "Operaciones",
+    param: "?pestana=operaciones",
+    region: "Operaciones de Ana",
+  },
   {
     name: "Cuenta corriente",
     param: "?pestana=cuenta",
@@ -1215,9 +1219,9 @@ test("caso 20: brief-24.4.1 un viewer ve las cuatro pestañas sin acciones y no 
       page.getByRole("link", { name: "Registrar cobro" }),
     ).toBeHidden();
     await expect(page.getByRole("button", { name: /^Copiar/ })).toHaveCount(0);
-    // El único formulario de un viewer es el filtro GET de las conversaciones.
+    // Los únicos formularios de un viewer son los filtros GET de operaciones y conversaciones.
     await expect(page.locator("main form")).toHaveCount(
-      tab.name === "Actividad" ? 1 : 0,
+      tab.name === "Actividad" || tab.name === "Operaciones" ? 1 : 0,
     );
     // Lo que llega al navegador y la respuesta cruda del servidor.
     const raw = await (
@@ -1645,4 +1649,320 @@ test("caso 29 (recorrido de la 24.4.2): el «···» de la última fila no agre
   });
   await openLastRow();
   await expectAccessible(page, "menú de la fila abierto");
+});
+
+// La pestaña Operaciones, la cronología y «Próxima atención» (brief-24.4.3). Ana tiene una venta, un
+// pedido, un cobro y una conversación con una nota: el texto de los dos no sale de su hilo.
+const PRIVATE_NOTE = "NOTA-PRIVADA-E2E";
+const PRIVATE_MESSAGE = "MENSAJE-PRIVADO-E2E";
+
+async function insertOperations() {
+  const { ana } = await insertListAccounts();
+  const conversation = await db.execute<{ id: string }>(
+    sql`select id from conversations where client_id = ${ana}`,
+  );
+  await db.execute(
+    sql`insert into messages (organization_id, conversation_id, direction, sent_at, body_text)
+        values (${SEED_ORGANIZATION_ID}, ${conversation.rows[0]!.id}, 'inbound', now(), ${PRIVATE_MESSAGE})`,
+  );
+  await db.execute(
+    sql`insert into conversation_notes (organization_id, conversation_id, actor_user_id, body_text)
+        values (${SEED_ORGANIZATION_ID}, ${conversation.rows[0]!.id}, ${ADMIN_SEED.id}, ${PRIVATE_NOTE})`,
+  );
+  return ana;
+}
+
+const operations = (page: Page) =>
+  page.getByRole("region", { name: /^Operaciones de / });
+const chips = (page: Page) =>
+  page.getByRole("navigation", { name: "Tipos de operación" });
+
+async function expectFitsWidth(page: Page) {
+  const overflow = await page.evaluate(
+    () =>
+      document.documentElement.scrollWidth -
+      document.documentElement.clientWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(0);
+}
+
+test.describe("operaciones y actividad (brief-24.4.3)", () => {
+  test.afterEach(async () => {
+    await deleteListMethod();
+  });
+
+  test("caso 30 (brief-24.4.3, AC-1 a AC-4 y AC-11): la tabla de operaciones, sus filtros y «Nueva operación»", async ({
+    page,
+  }) => {
+    const ana = await insertOperations();
+    await login(page, ADMIN);
+    await page.goto(`/clientes/${ana}?pestana=operaciones`);
+
+    await expect(chips(page).getByRole("link")).toHaveText([
+      /Todas\s+2/,
+      /Ventas\s+1/,
+      /Pedidos\s+1/,
+    ]);
+    const table = operations(page).getByRole("table");
+    await expect(table.getByRole("columnheader")).toHaveText([
+      "Tipo",
+      "Referencia y detalle",
+      "Fecha",
+      "Estado",
+      "Importe",
+      "Acciones",
+    ]);
+    await expect(table.getByRole("row")).toHaveCount(3);
+    await expect(table).toContainText("V-000001");
+    await expect(table).toContainText("P-000001");
+    await expect(table.getByRole("link", { name: /V-000001/ })).toHaveAttribute(
+      "href",
+      /^\/ventas\//,
+    );
+    await expect(operations(page)).toContainText("Los importes corresponden");
+    await expect(operations(page)).toContainText(/1 – 2 de 2 operaciones/);
+    await expectAccessible(page, "operaciones");
+
+    // «Nueva operación»: solo abre el formulario con el cliente elegido.
+    await page.getByRole("button", { name: "Nueva operación" }).click();
+    const venta = operations(page).getByRole("link", {
+      name: "Venta",
+      exact: true,
+    });
+    await expect(venta).toHaveAttribute("href", `/ventas/nueva?cliente=${ana}`);
+    await expect(
+      operations(page).getByRole("link", { name: "Pedido", exact: true }),
+    ).toHaveAttribute("href", `/pedidos/nuevo?cliente=${ana}`);
+    // Sin repairs, appointments ni trade_ins, esas opciones no están.
+    await expect(
+      operations(page).getByRole("link", { name: "Reparación", exact: true }),
+    ).toHaveCount(0);
+    await expectAccessible(page, "nueva operación abierta");
+    await venta.click();
+    await expect(page.getByRole("combobox", { name: /^Cliente/ })).toHaveValue(
+      "Ana Pérez",
+    );
+    await page.goto(`/clientes/${ana}?pestana=operaciones`);
+
+    // A 375 px: tarjetas y nada se sale del ancho.
+    await page.setViewportSize({ width: 375, height: 800 });
+    await expect(table).toBeHidden();
+    await expect(
+      page
+        .getByRole("list", { name: /^Operaciones de / })
+        .getByRole("listitem"),
+    ).toHaveCount(2);
+    await expectFitsWidth(page);
+    await expectAccessible(page, "operaciones a 375 px");
+
+    // Abierto a 375 px, el panel entra entero en la pantalla.
+    await page.getByRole("button", { name: "Nueva operación" }).click();
+    const panel = await page.locator("#nueva-operacion").boundingBox();
+    expect(panel!.x).toBeGreaterThanOrEqual(0);
+    expect(panel!.x + panel!.width).toBeLessThanOrEqual(375);
+    await expectFitsWidth(page);
+    await expectAccessible(page, "nueva operación abierta a 375 px");
+
+    // Un cliente inactivo no ofrece altas.
+    await db.execute(
+      sql`update clients set is_active = false where id = ${ana}`,
+    );
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.reload();
+    await expect(
+      page.getByRole("button", { name: "Nueva operación" }),
+    ).toHaveCount(0);
+
+    // ?cliente= de ventas: uno inactivo, uno ajeno o un id inválido dejan el formulario sin cliente.
+    const other = await db.execute<{ id: string }>(
+      sql`insert into organizations (name) values ('Otra organización') returning id`,
+    );
+    const foreignId = await insertClient("Cliente ajeno", {
+      organizationId: other.rows[0]!.id,
+    });
+    for (const id of [ana, foreignId, "no-es-un-uuid"]) {
+      await page.goto(`/ventas/nueva?cliente=${id}`);
+      await expect(
+        page.getByRole("combobox", { name: /^Cliente/ }),
+      ).toHaveValue("");
+    }
+  });
+
+  test("caso 36 (brief-24.4.3, AC-2): pasado el tope, las cantidades reales y el aviso con su lista", async ({
+    page,
+  }) => {
+    const ana = await insertOperations();
+    await db.execute(
+      sql`insert into orders (organization_id, number, client_id, currency, total, created_by)
+        select ${SEED_ORGANIZATION_ID}, 100 + n, ${ana}, 'ARS', '1.00', ${ADMIN_SEED.id}
+        from generate_series(1, 201) n`,
+    );
+    await login(page, ADMIN);
+    await page.goto(`/clientes/${ana}?pestana=operaciones`);
+    await expect(chips(page).getByRole("link")).toHaveText([
+      /Todas\s+203/,
+      /Ventas\s+1/,
+      /Pedidos\s+202/,
+    ]);
+    await expect(operations(page)).toContainText(
+      "Se muestran las 200 más recientes de cada tipo.",
+    );
+    await expect(
+      operations(page).getByRole("link", { name: "Ver pedidos" }),
+    ).toHaveAttribute("href", `/pedidos?cliente=${ana}`);
+    await expect(
+      operations(page).getByRole("link", { name: "Ver ventas" }),
+    ).toHaveCount(0);
+  });
+
+  test("caso 31 (brief-24.4.3, AC-5): la cronología, con un enlace por evento y sin texto de mensajes o notas", async ({
+    page,
+  }) => {
+    const ana = await insertOperations();
+    await login(page, ADMIN);
+    await page.goto(`/clientes/${ana}?pestana=actividad`);
+    const card = page.getByRole("region", { name: "Actividad", exact: true });
+    const events = card.getByRole("listitem");
+    await expect(card).toContainText("Nota interna agregada");
+    await expect(card).toContainText("Última interacción");
+    await expect(card).toContainText("Venta registrada");
+    await expect(card).toContainText("Pedido creado");
+    await expect(card).toContainText("Cobro registrado");
+    await expect(events).toHaveCount(5);
+    await expect(
+      events.filter({ hasText: "Cobro registrado" }).getByRole("link"),
+    ).toHaveAttribute("href", /^\/cobros\//);
+    await expect(
+      card.getByRole("link", { name: "Ver más actividad" }),
+    ).toHaveCount(0);
+    // La tarjeta de conversaciones y la auditoría siguen debajo.
+    await expect(
+      page.getByRole("region", { name: "Conversaciones" }),
+    ).toBeVisible();
+    const html = await (
+      await page.request.get(`/clientes/${ana}?pestana=actividad`)
+    ).text();
+    expect(html).not.toContain(PRIVATE_NOTE);
+    expect(html).not.toContain(PRIVATE_MESSAGE);
+    await expectAccessible(page, "actividad");
+    await page.setViewportSize({ width: 375, height: 800 });
+    await expectFitsWidth(page);
+    await expectAccessible(page, "actividad a 375 px");
+
+    // «Ver más actividad» suma de a 20.
+    await db.execute(
+      sql`insert into orders (organization_id, number, client_id, currency, total, created_by)
+        select ${SEED_ORGANIZATION_ID}, 100 + n, ${ana}, 'ARS', '1.00', ${ADMIN_SEED.id}
+        from generate_series(1, 25) n`,
+    );
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.reload();
+    await expect(events).toHaveCount(20);
+    await card.getByRole("link", { name: "Ver más actividad" }).click();
+    await expect(page).toHaveURL(/eventos=40/);
+    await expect(events).toHaveCount(30);
+  });
+
+  test("caso 32 (brief-24.4.3, AC-8): un viewer recorre las tres partes sin acciones ni texto privado", async ({
+    page,
+  }) => {
+    const ana = await insertOperations();
+    await login(page, VIEWER);
+    await page.goto(`/clientes/${ana}?pestana=operaciones`);
+    await expect(operations(page).getByRole("table")).toContainText("V-000001");
+    await expect(
+      page.getByRole("button", { name: "Nueva operación" }),
+    ).toHaveCount(0);
+    await expectAccessible(page, "operaciones para un viewer");
+
+    for (const url of [
+      `/clientes/${ana}`,
+      `/clientes/${ana}?pestana=operaciones`,
+      `/clientes/${ana}?pestana=actividad`,
+    ]) {
+      const response = await page.request.get(url);
+      const html = await response.text();
+      expect(html).not.toContain(PRIVATE_NOTE);
+      expect(html).not.toContain(PRIVATE_MESSAGE);
+      for (const fragment of HIDDEN_FRAGMENTS) {
+        expect(html).not.toContain(fragment);
+      }
+    }
+  });
+
+  test("caso 33 (brief-24.4.3, AC-6): «Próxima atención» neutral, sin turnos ni reparaciones", async ({
+    page,
+  }) => {
+    const ana = await insertOperations();
+    await login(page, ADMIN);
+    await page.goto(`/clientes/${ana}`);
+    const card = page.getByRole("region", { name: "Próxima atención" });
+    await expect(card).toContainText("Sin atenciones pendientes.");
+    await expect(card.getByRole("link")).toHaveCount(0);
+    await expectAccessible(page, "próxima atención neutral");
+  });
+
+  test.describe("sin JavaScript (brief-24.4.3, AC-3)", () => {
+    test.use({ javaScriptEnabled: false });
+
+    test("caso 34: los chips, la búsqueda y los filtros funcionan por la URL", async ({
+      page,
+    }) => {
+      const ana = await insertOperations();
+      await login(page, ADMIN);
+      await page.goto(`/clientes/${ana}?pestana=operaciones`);
+      const table = operations(page).getByRole("table");
+
+      await chips(page)
+        .getByRole("link", { name: /Pedidos/ })
+        .click();
+      await expect(page).toHaveURL(/tipo=pedido/);
+      await expect(table.getByRole("row")).toHaveCount(2);
+      await expect(table).toContainText("P-000001");
+
+      await chips(page).getByRole("link", { name: /Todas/ }).click();
+      await page.getByLabel("Buscar", { exact: true }).fill("v-000001");
+      await page.getByRole("button", { name: "Filtrar" }).click();
+      await expect(page).toHaveURL(/buscar=v-000001/);
+      await expect(table.getByRole("row")).toHaveCount(2);
+      await expect(table).toContainText("V-000001");
+
+      // «En curso» es el pedido pendiente; la venta no. Los chips cuentan sobre el filtro.
+      await page.goto(`/clientes/${ana}?pestana=operaciones&estado=en_curso`);
+      await expect(chips(page).getByRole("link")).toHaveText([
+        /Todas\s+1/,
+        /Ventas\s+0/,
+        /Pedidos\s+1/,
+      ]);
+      await page.goto(`/clientes/${ana}?pestana=operaciones&buscar=zzz`);
+      await expect(
+        page.getByText("No encontramos operaciones con esos filtros."),
+      ).toBeVisible();
+      await page.getByRole("link", { name: "Limpiar filtros" }).first().click();
+      await expect(table.getByRole("row")).toHaveCount(3);
+
+      // La fecha deja afuera un pedido de hace 60 días.
+      await db.execute(
+        sql`insert into orders (organization_id, number, client_id, currency, total, created_by, created_at)
+          values (${SEED_ORGANIZATION_ID}, 900, ${ana}, 'ARS', '1.00', ${ADMIN_SEED.id}, now() - interval '60 days')`,
+      );
+      await page.getByLabel("Fecha", { exact: true }).selectOption("30");
+      await page.getByRole("button", { name: "Filtrar" }).click();
+      await expect(page).toHaveURL(/fecha=30/);
+      await expect(table.getByRole("row")).toHaveCount(3);
+      await page.goto(`/clientes/${ana}?pestana=operaciones&fecha=90`);
+      await expect(table.getByRole("row")).toHaveCount(4);
+    });
+
+    test("caso 35: «Nueva operación» deja las opciones a la vista", async ({
+      page,
+    }) => {
+      const ana = await insertOperations();
+      await login(page, ADMIN);
+      await page.goto(`/clientes/${ana}?pestana=operaciones`);
+      await expect(
+        operations(page).getByRole("link", { name: "Pedido", exact: true }),
+      ).toBeVisible();
+    });
+  });
 });

@@ -345,6 +345,22 @@ export async function findClientAppointments(
     .limit(limit);
 }
 
+export async function countClientAppointments(
+  organizationId: string,
+  clientId: string,
+): Promise<number> {
+  const rows = await getDb()
+    .select({ total: count() })
+    .from(appointments)
+    .where(
+      and(
+        eq(appointments.organizationId, organizationId),
+        eq(appointments.clientId, clientId),
+      ),
+    );
+  return rows[0]?.total ?? 0;
+}
+
 // Cuántos turnos pedidos o confirmados desde hoy, en días de la organización, tiene cada uno de unos
 // clientes (brief-24.4.2, D-3): el mismo corte que el próximo turno del contexto del cliente.
 export async function countUpcomingByClient(

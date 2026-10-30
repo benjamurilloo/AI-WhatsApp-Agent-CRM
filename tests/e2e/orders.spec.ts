@@ -263,9 +263,9 @@ test("un admin crea un pedido de dos líneas, lo encuentra y lo cancela", async 
   await expect(page.getByRole("link", { name: "P-000001" })).toHaveCount(1);
   // En la pestaña Operaciones de la ficha (brief-24.4.1, D-5).
   await page.goto(`/clientes/${clientId}?pestana=operaciones`);
-  const card = page.getByRole("region", { name: "Pedidos" });
-  await expect(card.getByRole("link", { name: "P-000001" })).toBeVisible();
-  await card.getByRole("link", { name: "P-000001" }).click();
+  const card = page.getByRole("region", { name: /^Operaciones de / });
+  await expect(card.getByRole("link", { name: /P-000001/ })).toBeVisible();
+  await card.getByRole("link", { name: /P-000001/ }).click();
 
   await page.getByRole("button", { name: "Cancelar pedido" }).click();
   await expect(page.getByText(/¿Cancelar el pedido P-000001\?/)).toBeVisible();
@@ -413,11 +413,11 @@ test("un viewer ve la lista y el detalle sin contacto ni botones, y no entra al 
   await expect(page.getByText(FORBIDDEN_PAGE)).toBeVisible();
 
   await page.goto(`/clientes/${clientId}?pestana=operaciones`);
-  const card = page.getByRole("region", { name: "Pedidos" });
-  await expect(card.getByRole("link", { name: "P-000007" })).toBeVisible();
-  await expect(card.getByRole("link", { name: "+ Nuevo pedido" })).toHaveCount(
-    0,
-  );
+  const card = page.getByRole("region", { name: /^Operaciones de / });
+  await expect(card.getByRole("link", { name: /P-000007/ })).toBeVisible();
+  await expect(
+    card.getByRole("button", { name: "Nueva operación" }),
+  ).toHaveCount(0);
 });
 
 test("brief-19.3: un admin confirma con el teclado, ve lo reservado en el producto, entrega y ve la entrega en el historial", async ({

@@ -246,6 +246,7 @@ test("un admin carga la lista de reparaciones de un modelo, y un viewer la ve si
 test("una orden recorre la recepción, el técnico, el presupuesto, la reparación, la entrega con su venta y el cobro", async ({
   page,
 }) => {
+  test.slow();
   await db.execute(
     sql`insert into repair_prices (organization_id, repair_type_id, model_id, price,
           price_currency, cost, cost_currency)
@@ -305,6 +306,26 @@ test("una orden recorre la recepción, el técnico, el presupuesto, la reparaci�
     .getByRole("button", { name: "El técnico la devolvió reparada" })
     .click();
   await expect(page.getByText(/Orden reparada/)).toBeVisible();
+  // «Próxima atención» y la cronología de la ficha (brief-24.4.3, D-5 y D-6).
+  await page.goto("/clientes");
+  await page.getByRole("link", { name: "Ana Reparación" }).first().click();
+  const attention = page.getByRole("region", { name: "Próxima atención" });
+  await expect(attention).toContainText("OS-000001");
+  await expect(
+    attention.getByRole("link", { name: "Ver reparación" }),
+  ).toHaveAttribute("href", new URL(orderUrl).pathname);
+  await expectAccessible(page, "próxima atención con una reparación lista");
+  await page
+    .getByRole("navigation", { name: /^Secciones de / })
+    .getByRole("link", { name: "Actividad" })
+    .click();
+  const activity = page.getByRole("region", {
+    name: "Actividad",
+    exact: true,
+  });
+  await expect(activity).toContainText("Reparación lista · OS-000001");
+  await expect(activity).toContainText("Presupuesto aprobado · OS-000001");
+  await page.goto(orderUrl);
   await page
     .getByRole("button", { name: "Entregar y emitir la venta" })
     .click();

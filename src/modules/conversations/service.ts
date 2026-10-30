@@ -1060,6 +1060,60 @@ export async function getClientActivity(
   };
 }
 
+// Lo que la cronología de la ficha toma de este módulo (brief-24.4.3, D-5), para los dos roles: una
+// fila por conversación, en su último mensaje, y las notas con su autor. Nunca el texto (H-3).
+export const CLIENT_ACTIVITY_EVENTS_LIMIT = 200;
+
+export type ClientConversationEvents = {
+  conversations: { id: string; channel: ConversationChannel; at: Date }[];
+  notes: { id: string; conversationId: string; author: string; at: Date }[];
+};
+
+export async function listClientConversationEvents(
+  context: AuthContext,
+  clientId: string,
+): Promise<
+  | ({ ok: true } & ClientConversationEvents)
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+> {
+  const client = await getClient(context, clientId);
+  if (!client.ok) return client;
+  const { organizationId } = context;
+  const rows = await repository.findClientConversationEvents(
+    organizationId,
+    client.client.id,
+    CLIENT_ACTIVITY_EVENTS_LIMIT,
+  );
+  const notes =
+    rows.length === 0
+      ? []
+      : await repository.findNoteEvents(
+          organizationId,
+          rows.map((row) => row.id),
+          CLIENT_ACTIVITY_EVENTS_LIMIT,
+        );
+  // Autores sin JOIN con users, por la interfaz de organizations (9.0.1).
+  const authors = new Map(
+    (
+      await getMemberSummaries(organizationId, [
+        ...new Set(notes.map((note) => note.actorUserId)),
+      ])
+    ).map((user) => [user.id, user.name]),
+  );
+  return {
+    ok: true,
+    conversations: rows.flatMap((row) =>
+      row.at ? [{ id: row.id, channel: row.channel, at: row.at }] : [],
+    ),
+    notes: notes.map((note) => ({
+      id: note.id,
+      conversationId: note.conversationId,
+      author: authors.get(note.actorUserId) ?? "",
+      at: note.at,
+    })),
+  };
+}
+
 export type ClientWithInteraction = Client & { lastInteractionAt: Date | null };
 
 export type ClientInteractionPage<View extends string = never> =

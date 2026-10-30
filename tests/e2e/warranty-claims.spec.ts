@@ -282,7 +282,7 @@ test("un admin abre un reclamo desde la ficha, lo repara sin cargo y lo entrega 
   await openClient(page);
   await expect(bought(page)).toContainText(/Reclamo OS-\d+ · Entregada/);
   await expect(
-    page.getByRole("region", { name: "Reparaciones" }),
+    page.getByRole("region", { name: /^Operaciones de / }),
   ).toContainText("Reclamo de garantía · iPhone 15");
   await page.goto(`/buscar?q=${SERIAL}`);
   await expect(page.getByRole("region", { name: "Equipos" })).toContainText(

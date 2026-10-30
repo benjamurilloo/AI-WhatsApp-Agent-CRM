@@ -1001,6 +1001,12 @@ export async function listClientServiceOrders(
   return { ok: true, orders: await summarize(context, rows), total };
 }
 
+const OPEN_STATUSES_BY_KIND: Record<ServiceOrderKind, ServiceOrderStatus[]> = {
+  customer_device: [...OPEN_SERVICE_ORDER_STATUSES],
+  own_unit: [...OPEN_OWN_UNIT_STATUSES],
+  warranty_claim: [...OPEN_WARRANTY_CLAIM_STATUSES],
+};
+
 // Las órdenes abiertas de clientes, con los estados abiertos de cada tipo, como el filtro «En curso»
 // de la lista (brief-24.4.2, H-4). Sin la capacidad, ninguna: la página no las pide.
 function openClientOrdersQuery(
@@ -1011,12 +1017,100 @@ function openClientOrdersQuery(
     statuses: null,
     number: null,
     clientId: null,
-    open: {
-      customer_device: [...OPEN_SERVICE_ORDER_STATUSES],
-      own_unit: [...OPEN_OWN_UNIT_STATUSES],
-      warranty_claim: [...OPEN_WARRANTY_CLAIM_STATUSES],
-    },
+    open: OPEN_STATUSES_BY_KIND,
   };
+}
+
+// Las órdenes de un cliente para Operaciones y Actividad de su ficha (brief-24.4.3, D-2 y D-5): las
+// más recientes hasta el tope, la cantidad real, si sigue abierta y la fecha de cada estado. Sin el IMEI
+// del equipo del cliente (H-8).
+export const CLIENT_OPERATION_SERVICE_ORDERS_LIMIT = 200;
+
+export type ClientOperationServiceOrder = ServiceOrderSummary & {
+  open: boolean;
+  sentAt: Date | null;
+  quotedAt: Date | null;
+  approvedAt: Date | null;
+  rejectedAt: Date | null;
+  repairedAt: Date | null;
+  deliveredAt: Date | null;
+  cancelledAt: Date | null;
+};
+
+function isOpenServiceOrder(row: repository.ServiceOrderRow): boolean {
+  return OPEN_STATUSES_BY_KIND[row.kind].includes(row.status);
+}
+
+export async function listClientOperationServiceOrders(
+  context: AuthContext,
+  clientId: string,
+): Promise<
+  | { ok: true; orders: ClientOperationServiceOrder[]; total: number }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+> {
+  const allowed = await requireRepairs(context);
+  if (!allowed.ok) return allowed;
+  if (!idSchema.safeParse(clientId).success) return failure("VALIDATION_ERROR");
+  const query: repository.ServiceOrderListQuery = {
+    organizationId: context.organizationId,
+    statuses: null,
+    number: null,
+    clientId: clientId.toLowerCase(),
+  };
+  const [total, rows] = await Promise.all([
+    repository.countServiceOrders(query),
+    repository.findServiceOrders(
+      query,
+      CLIENT_OPERATION_SERVICE_ORDERS_LIMIT,
+      0,
+    ),
+  ]);
+  const summaries = await summarize(context, rows);
+  return {
+    ok: true,
+    orders: summaries.map((summary, index) => {
+      const row = rows[index]!;
+      return {
+        ...summary,
+        open: isOpenServiceOrder(row),
+        sentAt: row.sentAt,
+        quotedAt: row.quotedAt,
+        approvedAt: row.approvedAt,
+        rejectedAt: row.rejectedAt,
+        repairedAt: row.repairedAt,
+        deliveredAt: row.deliveredAt,
+        cancelledAt: row.cancelledAt,
+      };
+    }),
+    total,
+  };
+}
+
+// Las órdenes abiertas de un cliente, para el Resumen de su ficha (brief-24.4.3, D-6 y D-7): la misma
+// definición que la lista, sin «de las 5 más recientes». Hasta el tope, y la cantidad real.
+export async function listOpenClientServiceOrders(
+  context: AuthContext,
+  clientId: string,
+): Promise<
+  | { ok: true; orders: ServiceOrderSummary[]; total: number }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+> {
+  const allowed = await requireRepairs(context);
+  if (!allowed.ok) return allowed;
+  if (!idSchema.safeParse(clientId).success) return failure("VALIDATION_ERROR");
+  const query: repository.ServiceOrderListQuery = {
+    ...openClientOrdersQuery(context.organizationId),
+    clientId: clientId.toLowerCase(),
+  };
+  const [total, rows] = await Promise.all([
+    repository.countServiceOrders(query),
+    repository.findServiceOrders(
+      query,
+      CLIENT_OPERATION_SERVICE_ORDERS_LIMIT,
+      0,
+    ),
+  ]);
+  return { ok: true, orders: await summarize(context, rows), total };
 }
 
 // Cuántas órdenes abiertas tiene cada uno de unos clientes, para «En curso» (D-3).

@@ -7,7 +7,10 @@
 export {
   cancelOrder,
   confirmOrder,
+  CLIENT_OPERATION_ORDERS_LIMIT,
   CLIENT_ORDERS_LIMIT,
+  type ClientOperationOrder,
+  listClientOperationOrders,
   createOrder,
   deliverOrder,
   findOrderPlacedByIngestion,

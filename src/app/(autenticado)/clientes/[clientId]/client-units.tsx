@@ -1,17 +1,11 @@
 import Link from "next/link";
-import { getUnitWarranties } from "@/modules/inventory";
-import { listClientDeliveredUnits } from "@/modules/orders";
 import type { AuthContext } from "@/modules/organizations";
-import { listClientSoldUnits } from "@/modules/sales";
-import {
-  listUnitServiceOrders,
-  OPEN_WARRANTY_CLAIM_STATUSES,
-  repairsAllowed,
-} from "@/modules/service";
+import { OPEN_WARRANTY_CLAIM_STATUSES } from "@/modules/service";
 import { STATUS_LABEL } from "@/app/(autenticado)/reparaciones/messages";
 import { linkClass, secondaryLinkClass } from "@/app/_components/form-styles";
 import { SectionCard } from "@/app/_components/section-card";
 import { warrantyText } from "@/app/(autenticado)/_warranty/warranty-text";
+import { readClientUnits } from "./client-units-data";
 
 // Los equipos que compró el cliente en su ficha (brief-29.9, D-3): las unidades de sus pedidos
 // entregados y de sus ventas sin pedido vigentes, con su garantía. La página compone: orders y sales
@@ -25,45 +19,24 @@ export async function ClientUnits({
   context: AuthContext;
   clientId: string;
 }) {
-  const [delivered, sold] = await Promise.all([
-    listClientDeliveredUnits(context, clientId),
-    listClientSoldUnits(context, clientId),
-  ]);
-  const documents = new Map<string, { href: string; label: string }>();
-  for (const unit of delivered.ok ? delivered.units : []) {
-    if (!documents.has(unit.unitId)) {
-      documents.set(unit.unitId, {
-        href: `/pedidos/${unit.orderId}`,
-        label: `Pedido ${unit.displayNumber}`,
-      });
-    }
+  const data = await readClientUnits(context, clientId);
+  if (data === null) {
+    return (
+      <SectionCard id="equipos-titulo" title="Equipos comprados" icon="package">
+        <p className="text-sm text-muted">
+          No se pudieron leer los equipos de este cliente.
+        </p>
+      </SectionCard>
+    );
   }
-  for (const unit of sold.ok ? sold.units : []) {
-    if (!documents.has(unit.unitId)) {
-      documents.set(unit.unitId, {
-        href: `/ventas/${unit.saleId}`,
-        label: `Venta ${unit.displayNumber}`,
-      });
-    }
-  }
-  const [result, serviceOrders] = await Promise.all([
-    getUnitWarranties(context, [...documents.keys()]),
-    listUnitServiceOrders(context, [...documents.keys()]),
-  ]);
-  if (!result.ok) return null;
+  if (data.section === null) return null;
+  const { documents, units, serviceOrders, repairs } = data.section;
   // Los reclamos de garantía de cada unidad (brief-29.9.2, D-5); sin repairs, ninguno, y no se ofrece
   // abrir uno. Lo abre un admin, con la unidad en garantía y sin otro reclamo abierto.
   const claimsOf = (unitId: string) =>
     (serviceOrders.get(unitId) ?? []).filter(
       (order) => order.kind === "warranty_claim",
     );
-  const repairs = context.role === "admin" && (await repairsAllowed(context));
-  // En el orden de los comprobantes: la entrega o la venta más nueva primero.
-  const byId = new Map(result.units.map((unit) => [unit.id, unit]));
-  const units = [...documents.keys()].flatMap((id) => {
-    const unit = byId.get(id);
-    return unit ? [unit] : [];
-  });
   return (
     <SectionCard id="equipos-titulo" title="Equipos comprados" icon="package">
       {units.length === 0 ? (

@@ -1240,6 +1240,45 @@ export async function listRecentClientOrders(
   return { ok: true, orders: await summarize(context, rows), total };
 }
 
+// Los pedidos de un cliente para Operaciones y Actividad de su ficha (brief-24.4.3, D-2 y D-5): los
+// más recientes hasta el tope, la cantidad real y la fecha de la cancelación.
+export const CLIENT_OPERATION_ORDERS_LIMIT = 200;
+
+export type ClientOperationOrder = OrderSummary & {
+  cancelledAt: Date | null;
+};
+
+export async function listClientOperationOrders(
+  context: AuthContext,
+  clientId: string,
+): Promise<
+  | { ok: true; orders: ClientOperationOrder[]; total: number }
+  | Failure<"FORBIDDEN" | "VALIDATION_ERROR">
+> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  if (!idSchema.safeParse(clientId).success) return failure("VALIDATION_ERROR");
+  const query: repository.OrderListQuery = {
+    organizationId: context.organizationId,
+    statuses: null,
+    clientId: clientId.toLowerCase(),
+    number: null,
+  };
+  const [total, rows] = await Promise.all([
+    repository.countOrders(query),
+    repository.findOrders(query, CLIENT_OPERATION_ORDERS_LIMIT, 0),
+  ]);
+  const summaries = await summarize(context, rows);
+  return {
+    ok: true,
+    orders: summaries.map((summary, index) => ({
+      ...summary,
+      cancelledAt: rows[index]!.cancelledAt,
+    })),
+    total,
+  };
+}
+
 // Los pedidos abiertos (pendientes o confirmados) de unos clientes, para «En curso» de la lista de
 // clientes (brief-24.4.2, D-3 y H-4): los ids de una página, no la organización.
 export const OPEN_ORDER_STATUSES: OrderStatus[] = ["pending", "confirmed"];

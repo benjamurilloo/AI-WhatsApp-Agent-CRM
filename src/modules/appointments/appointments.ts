@@ -856,6 +856,61 @@ export async function listClientAppointments(
   };
 }
 
+// Los turnos de un cliente para Operaciones y Actividad de su ficha (brief-24.4.3, D-2 y D-5): hasta el
+// tope, la cantidad real y la fecha de cada estado. Sin la nota del turno.
+export const CLIENT_OPERATION_APPOINTMENTS_LIMIT = 200;
+
+export type ClientOperationAppointment = ClientAppointment & {
+  createdAt: Date;
+  confirmedAt: Date | null;
+  cancelledAt: Date | null;
+  attendedAt: Date | null;
+  noShowAt: Date | null;
+};
+
+export async function listClientOperationAppointments(
+  context: AuthContext,
+  clientId: string,
+): Promise<
+  | { ok: true; appointments: ClientOperationAppointment[]; total: number }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
+> {
+  const allowed = await requireAppointments(context);
+  if (!allowed.ok) return allowed;
+  if (!idSchema.safeParse(clientId).success) return failure("VALIDATION_ERROR");
+  const { organizationId } = context;
+  const id = clientId.toLowerCase();
+  const timezone = await getOrganizationTimezone(context);
+  const [total, rows, reasons] = await Promise.all([
+    repository.countClientAppointments(organizationId, id),
+    repository.findClientAppointments(
+      organizationId,
+      id,
+      timezone,
+      CLIENT_OPERATION_APPOINTMENTS_LIMIT,
+    ),
+    repository.findReasons(organizationId),
+  ]);
+  const names = new Map(reasons.map((reason) => [reason.id, reason.name]));
+  return {
+    ok: true,
+    appointments: rows.map((row) => ({
+      id: row.id,
+      date: row.date,
+      start: row.start,
+      end: row.end,
+      status: row.status,
+      reasonName: names.get(row.reasonId) ?? "",
+      createdAt: row.createdAt,
+      confirmedAt: row.confirmedAt,
+      cancelledAt: row.cancelledAt,
+      attendedAt: row.attendedAt,
+      noShowAt: row.noShowAt,
+    })),
+    total,
+  };
+}
+
 // Los turnos del agente (brief-29.10.2). Las funciones …ForService y …FromIngestion reciben la
 // organización de la credencial y no pasan por authorize, como las demás de la lectura y la ingestión.
 

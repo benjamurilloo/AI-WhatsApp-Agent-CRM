@@ -56,6 +56,8 @@ import {
   setChecklistItemActive,
   updateChecklistItem,
   type TradeInInput,
+  CLIENT_OPERATION_TRADE_INS_LIMIT,
+  listClientOperationTradeIns,
 } from "@/modules/tradeins";
 import { getDb } from "@/shared/db";
 import {
@@ -1350,6 +1352,74 @@ describe("el viewer y la capacidad (AC-12 y AC-13)", () => {
       expect(await getUnitTradeIns(s.adminB, [created.unitId])).toEqual(
         new Map(),
       );
+    },
+    TEST_TIMEOUT,
+  );
+});
+
+// Operaciones y Actividad de la ficha del cliente (brief-24.4.3, D-2 y D-5).
+describe("los usados de la ficha del cliente", () => {
+  it(
+    "un viewer no recibe el valor, da la anulación con su fecha y no existe sin trade_ins",
+    async () => {
+      const s = await seed();
+      const created = await receive(s, { serial: "IMEI-OPER" });
+      ok(
+        await voidTradeIn(s.admin, {
+          tradeInId: created.tradeIn.id,
+          reason: "entered_by_mistake",
+        }),
+      );
+      const asAdmin = ok(
+        await listClientOperationTradeIns(s.admin, s.clientId),
+      );
+      expect(asAdmin.tradeIns[0]?.value).not.toBeNull();
+      expect(asAdmin.tradeIns[0]?.voidDisplayNumber).toBe("APU-000001");
+      expect(asAdmin.tradeIns[0]?.voidedAt).toBeInstanceOf(Date);
+      const asViewer = ok(
+        await listClientOperationTradeIns(s.viewer, s.clientId),
+      );
+      expect(asViewer.total).toBe(1);
+      expect(asViewer.tradeIns[0]?.value).toBeNull();
+      expect(await listClientOperationTradeIns(s.adminB, s.clientId)).toEqual({
+        ok: false,
+        code: "NOT_FOUND",
+      });
+      // Con la capacidad, otra organización sigue sin ver los usados de este cliente.
+      await getDb().execute(
+        sql`insert into organization_capabilities (organization_id, capability, activated_by)
+            values (${s.adminB.organizationId}, 'trade_ins', ${s.adminB.userId})`,
+      );
+      expect(
+        ok(await listClientOperationTradeIns(s.adminB, s.clientId)),
+      ).toMatchObject({ tradeIns: [], total: 0 });
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "corta en el tope con la cantidad real",
+    async () => {
+      const s = await seed();
+      const created = await receive(s, { serial: "IMEI-TOPE" });
+      await getDb().execute(
+        sql`with n as (
+               select g, gen_random_uuid() as unit_id
+               from generate_series(1, ${CLIENT_OPERATION_TRADE_INS_LIMIT}) g),
+             units as (
+               insert into stock_units
+               select (jsonb_populate_record(u, jsonb_build_object(
+                 'id', n.unit_id, 'serial', u.serial || n.g))).*
+               from stock_units u, n where u.id = ${created.unitId})
+             insert into trade_ins
+             select (jsonb_populate_record(t, jsonb_build_object(
+               'id', gen_random_uuid(), 'number', t.number + n.g, 'unit_id', n.unit_id,
+               'serial', t.serial || n.g))).*
+             from trade_ins t, n`,
+      );
+      const capped = ok(await listClientOperationTradeIns(s.admin, s.clientId));
+      expect(capped.total).toBe(CLIENT_OPERATION_TRADE_INS_LIMIT + 1);
+      expect(capped.tradeIns).toHaveLength(CLIENT_OPERATION_TRADE_INS_LIMIT);
     },
     TEST_TIMEOUT,
   );

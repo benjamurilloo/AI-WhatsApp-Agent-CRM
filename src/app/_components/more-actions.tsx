@@ -2,7 +2,7 @@
 
 import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { useDisclosure } from "./disclosure";
-import { secondaryButtonClass } from "./form-styles";
+import { inlineButtonClass, secondaryButtonClass } from "./form-styles";
 import { Icon } from "./icons";
 
 // «Más acciones» de una ficha (brief-24.1, D-8): las acciones menos frecuentes y las destructivas,
@@ -28,12 +28,15 @@ export function MoreActions({
   children,
   iconOnly = false,
   floating = false,
+  primaryText,
 }: {
   id: string;
   label: string;
   children: ReactNode;
   iconOnly?: boolean;
   floating?: boolean;
+  // Opción de la 24.4.3 (D-4): la acción principal de una tarjeta, como «+ Nueva operación ⌄» de 04.
+  primaryText?: string;
 }) {
   const menu = useDisclosure();
   const { open, button } = menu;
@@ -71,13 +74,25 @@ export function MoreActions({
         aria-label={label}
         onClick={menu.toggle}
         className={
-          iconOnly
-            ? `${secondaryButtonClass} size-11 px-0`
-            : secondaryButtonClass
+          primaryText !== undefined
+            ? inlineButtonClass
+            : iconOnly
+              ? `${secondaryButtonClass} size-11 px-0`
+              : secondaryButtonClass
         }
       >
-        <Icon name="ellipsis" className={iconOnly ? "size-5" : "size-4"} />
-        {iconOnly ? null : "Más acciones"}
+        {primaryText !== undefined ? (
+          <>
+            <Icon name="plus" className="size-4" />
+            {primaryText}
+            <Icon name="chevronDown" className="size-4" />
+          </>
+        ) : (
+          <>
+            <Icon name="ellipsis" className={iconOnly ? "size-5" : "size-4"} />
+            {iconOnly ? null : "Más acciones"}
+          </>
+        )}
       </button>
       <div
         ref={panel}

@@ -71,8 +71,20 @@ import {
   resolveIngestedConversation,
   searchClientsByLastInteraction,
 } from "@/modules/conversations";
-import { listDebtors, listSuppliersOwed } from "@/modules/cash";
-import { searchClients, suggestClients } from "@/modules/crm";
+import { listClientAppointments } from "@/modules/appointments";
+import {
+  getClientStatement,
+  listDebtors,
+  listSuppliersOwed,
+} from "@/modules/cash";
+import { getClientActivity } from "@/modules/conversations";
+import {
+  getClient,
+  listClientAudit,
+  searchClients,
+  suggestClients,
+} from "@/modules/crm";
+import { listOpenClientServiceOrders } from "@/modules/service";
 import {
   getCatalogProductForService,
   listProductStock,
@@ -87,6 +99,14 @@ import {
   type ClientView,
 } from "@/app/(autenticado)/clientes/filters";
 import { readClientList } from "@/app/(autenticado)/clientes/list-data";
+import { readClientActivityEvents } from "@/app/(autenticado)/clientes/[clientId]/activity-data";
+import { readClientUnits } from "@/app/(autenticado)/clientes/[clientId]/client-units-data";
+import { readClientOperations } from "@/app/(autenticado)/clientes/[clientId]/operations-data";
+import {
+  buildOperationsView,
+  DEFAULT_OPERATION_FILTERS,
+  toOperationRows,
+} from "@/app/(autenticado)/clientes/[clientId]/operations-rows";
 
 const CORRIDAS = 5;
 
@@ -644,6 +664,81 @@ async function main(): Promise<void> {
       ultimaPagina(listaDeClientes("with_balance")),
     ],
   );
+  // Las pestañas de la ficha de la 24.4.3 (brief-24.4.3, R-1), con el mismo código de la pantalla. Se
+  // miden solo si CRM_CLIENTE_OPERACIONES nombra un cliente, con su etiqueta en la tanda.
+  const clienteOperaciones = process.env.CRM_CLIENTE_OPERACIONES;
+  if (clienteOperaciones) {
+    // Lo que toda pestaña de la ficha lee además de lo suyo (page.tsx).
+    const ficha = async () => {
+      const [cliente, actividad] = await Promise.all([
+        getClient(context, clienteOperaciones),
+        getClientActivity(context, clienteOperaciones, {
+          status: "all",
+          page: 1,
+        }),
+      ]);
+      // Una lectura rechazada vuelve enseguida: no puede pasar por una lectura veloz.
+      if (!cliente.ok || !actividad.ok) throw new Error("La ficha no se leyó.");
+    };
+    listados.push(
+      [
+        "clientes.ficha (24.4.3, pestaña Resumen, camino completo)",
+        async () => {
+          await ficha();
+          const [statement, orders, appointments] = await Promise.all([
+            getClientStatement(context, clienteOperaciones),
+            listOpenClientServiceOrders(context, clienteOperaciones),
+            listClientAppointments(context, clienteOperaciones),
+          ]);
+          if (!statement.ok) return statement;
+          if (!orders.ok) return orders;
+          if (!appointments.ok) return appointments;
+          return { rows: orders.orders };
+        },
+      ],
+      [
+        "clientes.ficha (24.4.3, pestaña Operaciones, camino completo)",
+        async () => {
+          await ficha();
+          const [data, unidades] = await Promise.all([
+            readClientOperations(context, clienteOperaciones),
+            readClientUnits(context, clienteOperaciones),
+          ]);
+          // Una fuente que falla vuelve enseguida: no puede pasar por una lectura veloz.
+          if (data.failed.length > 0) {
+            return { ok: false, code: data.failed.join(",") };
+          }
+          if (unidades === null) return { ok: false, code: "equipos" };
+          // Sin una capacidad, la tanda no mediría «de cada tipo».
+          if (Object.keys(data.totals).length < 5) {
+            return { ok: false, code: "faltan capacidades" };
+          }
+          const hoy = new Date().toISOString().slice(0, 10);
+          const filas = toOperationRows(data.sources, "UTC", hoy);
+          return buildOperationsView(
+            filas,
+            DEFAULT_OPERATION_FILTERS,
+            data.totals,
+            hoy,
+          );
+        },
+      ],
+      [
+        "clientes.ficha (24.4.3, pestaña Actividad, camino completo)",
+        async () => {
+          await ficha();
+          const [data, auditoria] = await Promise.all([
+            readClientActivityEvents(context, clienteOperaciones),
+            listClientAudit(context, clienteOperaciones, 1),
+          ]);
+          if (!auditoria.ok) return auditoria;
+          return data.failed.length > 0
+            ? { ok: false, code: data.failed.join(",") }
+            : { rows: data.events };
+        },
+      ],
+    );
+  }
   // La lista de proveedores a los que se les debe de la 22.7 (brief-22.7, D-7, D-8 y AC-6): lee las
   // recepciones de la organización por purchasing y los pagos vigentes, en una sola foto, y pasa la
   // cuenta de cada proveedor por imputeAccount. Como la de deudores, la primera página y la última

@@ -50,7 +50,11 @@ export {
 export {
   approveServiceOrder,
   cancelServiceOrder,
+  CLIENT_OPERATION_SERVICE_ORDERS_LIMIT,
   CLIENT_SERVICE_ORDERS_LIMIT,
+  type ClientOperationServiceOrder,
+  listClientOperationServiceOrders,
+  listOpenClientServiceOrders,
   createServiceOrder,
   deliverServiceOrder,
   formatServiceOrderNumber,
