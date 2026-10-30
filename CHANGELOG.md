@@ -2,6 +2,23 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-30 — 24.4.2: clientes, lista y formulario
+
+Quinta subfase de la Fase 24 ([brief-24.4.2](docs/decisions/brief-24.4.2-clientes-lista-y-formulario.md) §Cierre).
+
+**Certifica:**
+- **La lista de clientes con vistas** por la URL (`?vista=`): «Todos», «Con saldo» y, con `repairs`, «Con reparaciones», con su cantidad.
+- **El saldo por moneda en cada fila**, sin sumar monedas, con el mismo cálculo que la ficha; si no se puede leer dice «No disponible», nunca un cero.
+- **«En curso» por cliente** (reparaciones, turnos, pedidos y conversaciones abiertas), el filtro «Última interacción» y «Más filtros» sin JavaScript.
+- **El formulario en tres secciones**, con «Antes de guardar» y **el aviso de teléfono duplicado** con «Ver ficha existente», solo para un `admin` y sin cruzar organizaciones.
+- **El menú «···» de la fila** flota sobre la tabla, sin agregarle desplazamiento, por pedido del recorrido.
+- **R-1 medido**: 77 a 105 ms con los datos de hoy; 345 a 566 ms con 5×, por encima del umbral en 3 de 4 variantes, con el límite aceptado por el usuario: se revisa si un negocio se acerca a 20.000 ventas con cliente.
+- **Validado en integración, desplegado en producción** (`d55b916` y el ajuste `d2b2226`, sin migraciones) y recorrido por el usuario, con una revisión independiente antes del despliegue.
+
+**No certifica:**
+- la forma exacta de los mockups: los desvíos 9, 10, 11, 15 y 19 de AC-9, aceptados por el usuario, y lo que pasa a la 24.4.3 (operaciones y actividad unificadas, «Próxima atención»);
+- que «reparación abierta» signifique lo mismo en la lista y en la ficha (O-1, a unificar en la 24.4.3), ni una lectura de «En curso» rechazada, que se ve como «nada abierto» (O-2): quedan declaradas.
+
 ## 2026-10-29 — 24.4.1: clientes, ficha
 
 Cuarta subfase de la Fase 24 ([brief-24.4.1](docs/decisions/brief-24.4.1-clientes-ficha.md) §Cierre).

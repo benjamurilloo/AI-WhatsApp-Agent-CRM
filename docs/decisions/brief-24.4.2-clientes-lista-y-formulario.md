@@ -7,7 +7,7 @@ generated_at: 2026-10-29
 
 # Brief: 24.4.2 — Clientes: lista y formulario
 
-**Estado: aprobado el 2026-10-29 por el usuario, con las recomendaciones de D-1 a D-9.**
+**Estado: aprobado el 2026-10-29 por el usuario, con las recomendaciones de D-1 a D-9; cerrado el 2026-10-30, desplegado (`d55b916` y el ajuste del menú `d2b2226`, sin migraciones) y recorrido por el usuario.**
 
 ## Objetivo
 
@@ -256,7 +256,9 @@ Es la quinta subfase de la Fase 24. **El usuario dividió el 2026-10-29 la fila 
 
 ## Cierre
 
-*Del 2026-10-29, antes del commit de la implementación. AC-12 y AC-13 se completan después de la CI, del despliegue y del recorrido del usuario. Los desvíos de abajo los decide el usuario.*
+*Del 2026-10-29, antes del commit de la implementación; completado el 2026-10-30, con la CI, el despliegue y el recorrido del usuario.*
+
+**Decisión del usuario (2026-10-29, después del commit c5c2287):** acepta, con la recomendación, el límite del 5× de R-1 (el mismo de la lista de deudores, a revisar si un negocio se acerca a 20.000 ventas con cliente) y los desvíos 9, 10, 11, 15, 19 y 21. O-1 y O-2 quedan declarados.
 
 ### Criterios
 
@@ -270,11 +272,11 @@ Es la quinta subfase de la Fase 24. **El usuario dividió el 2026-10-29 la fila 
 | AC-6 | cumple | Las tres secciones, el resumen de errores, la barra de guardado y «Antes de guardar» (`client-form.tsx`). `client-fields.spec.ts` 1 y 2, casos 1, 2, 5 y 11 (el orden del teclado) |
 | AC-7 | cumple | `findClientByPhone` solo para un `admin` y sin cruzar la organización (`client-list.test.ts`). Caso 3: el aviso con el cliente inactivo, el foco, «Ver ficha existente», «Volver al formulario» que lleva el foco al teléfono y el borrador intacto. Caso 6, en la edición. Caso 26, sin JavaScript |
 | AC-8 | cumple | Caso 23: lo que recibe un `viewer` en `/clientes` no tiene el teléfono completo, y ve las vistas, el saldo y «En curso» sin «Editar». `client-fields.spec.ts` 3: ni el email, ni la calle, ni el código postal |
-| AC-9 | cumple; los desvíos los decide el usuario | La comparación, abajo |
-| AC-10 | cumple, con el 5× por encima del umbral | La medición, abajo |
+| AC-9 | cumple, con los desvíos aceptados por el usuario | La comparación, abajo |
+| AC-10 | cumple, con el 5× por encima del umbral, aceptado por el usuario | La medición, abajo |
 | AC-11 | cumple | Axe en claro y en oscuro en la lista (casos 1, 4, 23 y 27, y a 375 px en el 23), en el alta (caso 1), en el alta y el aviso a 375 px con el domicilio abierto y sin desplazamiento horizontal (caso 28), y en el aviso (caso 3) |
-| AC-12 | pendiente | Se completa con la CI del SHA que se despliegue |
-| AC-13 | pendiente | La revisión independiente se hizo antes del despliegue (abajo). Faltan el despliegue y el recorrido |
+| AC-12 | cumple | CI en verde en los dos SHA desplegados: `d55b916` (run 40990920881) y `d2b2226` (run 41043718346). La primera corrida, de `c5c2287` (run 40989599266), falló y no se desplegó: ver abajo |
+| AC-13 | cumple | La revisión independiente, antes del despliegue (abajo). Desplegada en `d55b916` y `d2b2226`, con `/api/health` y `/login` en 200, y recorrida por el usuario, que pidió un ajuste (abajo) y aprobó el cierre |
 
 ### La medición de R-1
 
@@ -331,6 +333,11 @@ Capturas de la lista, el alta, la edición, el aviso de duplicado, «Más filtro
 - **El formateo tocó seis archivos de `service`** que la subfase no cambia, solo en los finales de línea. Se restauraron antes de seguir.
 - **Los localizadores de R-2**: «Nombre completo», «Correo electrónico», «Teléfono», que también encuentra el aviso «Este teléfono…», «Etiqueta», que también encuentra «Más acciones de Hugo Sin Etiqueta», y el foco, que va al resumen de errores como en la 24.1. Se ajustaron en `clients`, `client-fields`, `client-tags` y `security-headers`.
 
+### Después del commit de la implementación
+
+- **La CI de `c5c2287` falló en la guarda de superficie de log**: `list-data.ts` usaba `console.error`. La corrida local de las guardas era anterior a esa línea y no se repitió antes de pedir el commit. Se corrigió con `logEvent` en `d55b916`, y las 898 guardas se corrieron enteras antes de pedir el siguiente.
+- **El ajuste del recorrido (`d2b2226`)**: el contenedor de la tabla, con `overflow-x-auto`, también desplaza en vertical, así que el menú «···» de una fila le agregaba una barra y, en la última fila, quedaba fuera de la vista. `MoreActions` ganó `floating`: la lista se ubica respecto de la ventana y abre hacia arriba si no entra abajo. Solo lo usa la lista de clientes. Caso 29 de `clients.spec.ts`. Las otras pantallas que usan el menú no cambian de forma; las cubre la CI.
+
 ### La revisión independiente (D-9)
 
 Un agente que no participó del trabajo, con acceso de solo lectura, revisó el working tree contra el brief y las reglas. Veredicto **R1**: un bloqueante, siete no bloqueantes y seis observaciones, sin fugas a un `viewer`, sin `JOIN` entre módulos y con `listDebtors` igual en lo observable. Cada hallazgo se verificó contra el código antes de aceptarlo:
@@ -374,6 +381,5 @@ La revisión señaló además que el HANDOFF, el CHANGELOG de la 24.4.1 y el bri
 ### Autoevaluación
 
 Esta sección la escribió quien implementó, y es autoevaluación salvo la revisión independiente, que se cita. Lo que no está probado:
-- los desvíos 9 a 11, 15, 19 y 21, y la decisión sobre el 5× de R-1, que no se consultaron por separado;
 - O-1 y O-2, que quedan declarados;
 - la suite end-to-end completa en esta máquina: solo los cuatro specs que tocan la lista y el formulario. La CI la corre entera.
