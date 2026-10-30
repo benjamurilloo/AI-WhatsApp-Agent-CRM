@@ -219,6 +219,7 @@ export function RowActions({
       id={`${idPrefix}-${clientId}`}
       label={`Más acciones de ${name}`}
       iconOnly
+      floating
     >
       <li>
         <Link href={`/clientes/${clientId}`} className={moreActionItemClass}>

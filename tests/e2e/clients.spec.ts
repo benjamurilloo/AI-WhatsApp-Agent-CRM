@@ -1601,3 +1601,48 @@ test("caso 28 (brief-24.4.2, AC-11): el formulario y el aviso de duplicado a 375
   expect(await noHorizontalScroll(page)).toBe(true);
   await expectAccessible(page, "aviso de duplicado a 375 px");
 });
+
+test("caso 29 (recorrido de la 24.4.2): el «···» de la última fila no agrega desplazamiento a la tabla", async ({
+  page,
+}) => {
+  await insertClient("Ana Primera");
+  await insertClient("Bruno Último");
+  await login(page, ADMIN);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/clientes");
+
+  const table = clientsTable(page);
+  const scrollsInside = () =>
+    table.evaluate((element) => {
+      const wrapper = element.parentElement as HTMLElement;
+      return (
+        wrapper.scrollHeight > wrapper.clientHeight ||
+        wrapper.scrollWidth > wrapper.clientWidth
+      );
+    });
+  const lastRowLabel = "Más acciones de Bruno Último";
+  const openLastRow = async () => {
+    await table.getByRole("button", { name: lastRowLabel }).click();
+    const item = table.getByRole("link", { name: "Editar", exact: true });
+    await expect(item).toBeVisible();
+    await expect(item).toBeInViewport({ ratio: 1 });
+    expect(await scrollsInside()).toBe(false);
+    return item;
+  };
+
+  const item = await openLastRow();
+  await page.keyboard.press("Escape");
+  await expect(item).toBeHidden();
+  await expect(table.getByRole("button", { name: lastRowLabel })).toBeFocused();
+
+  // Sin lugar abajo, abre hacia arriba, sin salirse de la ventana.
+  const box = await table
+    .getByRole("button", { name: lastRowLabel })
+    .boundingBox();
+  await page.setViewportSize({
+    width: 1280,
+    height: Math.ceil((box?.y ?? 0) + (box?.height ?? 0) + 20),
+  });
+  await openLastRow();
+  await expectAccessible(page, "menú de la fila abierto");
+});
