@@ -6,7 +6,9 @@ import {
   computeBalanceAfter,
   movementPageBounds,
   MOVEMENTS_PAGE_SIZE,
+  NO_MODEL_GROUP,
   PRODUCTS_PAGE_SIZE,
+  sumByModel,
   validateMovementHistoryFilters,
   validateStockAdjustmentInput,
   type MovementHistoryFilters,
@@ -233,7 +235,14 @@ describe("composeProductStockPage", () => {
   it("sin resultados devuelve una página vacía", () => {
     expect(
       composeProductStockPage([], new Map(), { stockStatus: "all", page: 1 }),
-    ).toEqual({ products: [], total: 0, page: 1, pageCount: 1 });
+      // modelTotals desde la 24.5.1 (brief-24.5.1, D-2): vacío porque no se agrupa.
+    ).toEqual({
+      products: [],
+      total: 0,
+      page: 1,
+      pageCount: 1,
+      modelTotals: new Map(),
+    });
   });
 });
 
@@ -480,5 +489,170 @@ describe("movementPageBounds", () => {
     expect(movementPageBounds(60, Number.POSITIVE_INFINITY).page).toBe(3);
     expect(movementPageBounds(60, 2.9).page).toBe(2);
     expect(movementPageBounds(60, Number.NaN).page).toBe(1);
+  });
+});
+
+// Las sumas por modelo del catálogo agrupado (brief-24.5.1, D-2 y AC-3).
+describe("sumByModel (brief-24.5.1, D-2)", () => {
+  const MODEL_A = "00000000-0000-4000-8000-00000000aaaa";
+  const MODEL_B = "00000000-0000-4000-8000-00000000bbbb";
+
+  const withStock = (
+    products: Product[],
+    balances: Map<string, { onHand: string; reserved: string }>,
+  ) =>
+    composeProductStockPage(products, balances, {
+      stockStatus: "all",
+      page: 1,
+    }).products;
+
+  it("suma las presentaciones, lo disponible y lo reservado de cada modelo", () => {
+    const a1 = product({ modelId: MODEL_A, name: "A1" });
+    const a2 = product({ modelId: MODEL_A, name: "A2" });
+    const b1 = product({ modelId: MODEL_B, name: "B1" });
+    const balances = new Map([
+      [a1.id, { onHand: "5.000", reserved: "1.000" }],
+      [a2.id, { onHand: "3.000", reserved: "2.000" }],
+      [b1.id, { onHand: "7.000", reserved: "0.000" }],
+    ]);
+    expect(sumByModel(withStock([a1, a2, b1], balances))).toEqual(
+      new Map([
+        [
+          MODEL_A,
+          {
+            products: 2,
+            // 5-1 y 3-2 disponibles; 1 y 2 reservados.
+            quantityAvailable: "5.000",
+            quantityReserved: "3.000",
+          },
+        ],
+        [
+          MODEL_B,
+          {
+            products: 1,
+            quantityAvailable: "7.000",
+            quantityReserved: "0.000",
+          },
+        ],
+      ]),
+    );
+  });
+
+  it("los productos sin modelo van a su propio grupo, con la clave vacía", () => {
+    const loose = product({ modelId: null, name: "Funda" });
+    const balances = new Map([[loose.id, onHand("4.000")]]);
+    const totals = sumByModel(withStock([loose], balances));
+    expect(totals.get(NO_MODEL_GROUP)).toEqual({
+      products: 1,
+      quantityAvailable: "4.000",
+      quantityReserved: "0.000",
+    });
+    expect([...totals.keys()]).toEqual([NO_MODEL_GROUP]);
+  });
+
+  it("un modelo cuyo stock está todo reservado suma cero disponible, no desaparece", () => {
+    const taken = product({ modelId: MODEL_A, name: "Agotado" });
+    const balances = new Map([
+      [taken.id, { onHand: "2.000", reserved: "2.000" }],
+    ]);
+    expect(sumByModel(withStock([taken], balances))).toEqual(
+      new Map([
+        [
+          MODEL_A,
+          {
+            products: 1,
+            quantityAvailable: "0.000",
+            quantityReserved: "2.000",
+          },
+        ],
+      ]),
+    );
+  });
+
+  it("sin productos no hay grupos", () => {
+    expect(sumByModel([])).toEqual(new Map());
+  });
+
+  it("suma con decimales sin error de punto flotante", () => {
+    const a1 = product({ modelId: MODEL_A, name: "A1", unit: "kg" });
+    const a2 = product({ modelId: MODEL_A, name: "A2", unit: "kg" });
+    const a3 = product({ modelId: MODEL_A, name: "A3", unit: "kg" });
+    const balances = new Map([
+      [a1.id, onHand("0.100")],
+      [a2.id, onHand("0.200")],
+      [a3.id, onHand("0.400")],
+    ]);
+    // 0.1 + 0.2 + 0.4 en punto flotante da 0.7000000000000001.
+    expect(
+      sumByModel(withStock([a1, a2, a3], balances)).get(MODEL_A),
+    ).toMatchObject({ quantityAvailable: "0.700" });
+  });
+});
+
+// Las sumas que devuelve la página (brief-24.5.1, D-2): del resultado filtrado, no de la tajada.
+describe("composeProductStockPage y las sumas por modelo (brief-24.5.1, AC-3)", () => {
+  const MODEL_A = "00000000-0000-4000-8000-00000000aaaa";
+
+  it("sin agrupar no trae sumas: nadie las mira", () => {
+    const p = product({ modelId: MODEL_A });
+    const page = composeProductStockPage(
+      [p],
+      new Map([[p.id, onHand("3.000")]]),
+      { stockStatus: "all", page: 1 },
+    );
+    expect(page.modelTotals).toEqual(new Map());
+  });
+
+  it("agrupando, las sumas cubren el resultado filtrado entero y no solo la página", () => {
+    const many = Array.from({ length: PRODUCTS_PAGE_SIZE + 3 }, (_, index) =>
+      product({ modelId: MODEL_A, name: `P${String(index).padStart(3, "0")}` }),
+    );
+    const balances = new Map(many.map((p) => [p.id, onHand("1.000")]));
+    const page = composeProductStockPage(
+      many,
+      balances,
+      {
+        stockStatus: "all",
+        page: 1,
+        sort: "name_asc",
+        pageSize: PRODUCTS_PAGE_SIZE,
+      },
+      new Map(),
+      new Map([[MODEL_A, 0]]),
+    );
+    expect(page.products).toHaveLength(PRODUCTS_PAGE_SIZE);
+    expect(page.total).toBe(PRODUCTS_PAGE_SIZE + 3);
+    // La página muestra PRODUCTS_PAGE_SIZE, pero el grupo declara los PRODUCTS_PAGE_SIZE + 3.
+    expect(page.modelTotals.get(MODEL_A)).toEqual({
+      products: PRODUCTS_PAGE_SIZE + 3,
+      quantityAvailable: `${PRODUCTS_PAGE_SIZE + 3}.000`,
+      quantityReserved: "0.000",
+    });
+  });
+
+  it("el filtro de estado se aplica antes de sumar: las sumas son del resultado filtrado", () => {
+    const empty = product({ modelId: MODEL_A, name: "Sin stock" });
+    const stocked = product({ modelId: MODEL_A, name: "Con stock" });
+    const balances = new Map([
+      [empty.id, onHand("0.000")],
+      [stocked.id, onHand("50.000")],
+    ]);
+    const page = composeProductStockPage(
+      [empty, stocked],
+      balances,
+      {
+        stockStatus: "disponible",
+        page: 1,
+        sort: "name_asc",
+        pageSize: PRODUCTS_PAGE_SIZE,
+      },
+      new Map(),
+      new Map([[MODEL_A, 0]]),
+    );
+    expect(page.modelTotals.get(MODEL_A)).toEqual({
+      products: 1,
+      quantityAvailable: "50.000",
+      quantityReserved: "0.000",
+    });
   });
 });

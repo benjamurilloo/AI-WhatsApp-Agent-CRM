@@ -118,6 +118,7 @@
 - **Responsive**: tarjetas en móvil con nombre, marca y categoría, precio, stock y estado; desde la 17.5, con la miniatura.
 - **Accesibilidad**: el estado se muestra con texto e ícono además del color. «Bajo stock» usa el token de advertencia desde la 11.1 (O-17).
 - *Desde la 19.3* ([brief-19.3](../decisions/brief-19.3-reserva-y-ciclo.md), D-7; FR-PROD-05 enmendado): la columna de stock muestra **lo disponible** y, si hay algo reservado, «N reservado» debajo; el estado, su filtro y el orden por stock usan lo disponible. En móvil, «N unidad disponible · M reservado».
+- *Desde la 24.5.1* ([brief-24.5.1](../decisions/brief-24.5.1-productos-catalogo-y-ficha.md), D-2 a D-5): con la capacidad `variants`, el catálogo ofrece dos vistas de los mismos resultados, **«Por modelo»** y **«Lista»**, como dos enlaces y no como una casilla. Agrupado, cada modelo encabeza sus presentaciones con el nombre, las sumas del **resultado filtrado entero** —«4 presentaciones · 8 disponibles · 1 reservada», y lo dice cuando hay un filtro puesto— y **«Ver modelo»**, que lleva a su ficha. El chevron abre y cierra el grupo: son **dos destinos distintos**. Los grupos arrancan abiertos y los cerrados viajan en `?cerrado=<id>`, repetible, con `sin-modelo` para el grupo de los productos sin modelo; se listan los cerrados y no los abiertos para que la ausencia del parámetro sea el estado inicial. Son enlaces, así que funciona sin JavaScript, y el estado sobrevive a paginar y a cambiar las filas por página. Al pie, la nota de qué excluye «disponible». Abrir un producto le pasa la consulta del catálogo en `?desde=`, y su «Volver a productos» la usa para devolver búsqueda, filtros, orden, página y grupos; sin ella vuelve a `/productos`. **La posición del scroll queda fuera.**
 - **No mostrar**: nada sensible específico.
 
 ## 4. Detalle y edición de producto
@@ -137,6 +138,8 @@
 
 *Desde la 19.3* ([brief-19.3](../decisions/brief-19.3-reserva-y-ciclo.md), D-7), la tarjeta «Stock» de la ficha suma «Reservado» y «Disponible»; el estado usa lo disponible.
 
+*Desde la 24.5.1* ([brief-24.5.1](../decisions/brief-24.5.1-productos-catalogo-y-ficha.md), D-1 y D-6): la barra de la ficha tiene la forma de las pestañas de la v2 —Resumen, Unidades, Movimientos, Precios y Costos, con el actual subrayado y su propio desplazamiento horizontal en el teléfono—, **sin mover las cinco rutas**: siguen siendo cinco páginas. El encabezado abre con la identidad del producto, condición y SKU, igual en las tres pestañas, con **«Ver unidades» como acción principal** y «Desactivar» en el menú de desbordamiento. En un producto **por unidad**, debajo de la barra van tres contadores —Disponibles, Reservadas y En revisión— y una línea que dice cuántas unidades físicas hay y que lo que está en reparación o en revisión **no entra en el saldo**. **No llevan un total que los sume**: sumarlos no da ningún número del sistema. En un producto por cantidad no se muestran, tampoco en cero; si la lectura falla, se dice «No disponible» y nunca un cero. Los contadores todavía no abren la lista filtrada: el filtro por estado de las unidades es de la 24.5.2.
+
 ## 5. Ajuste de inventario e historial de movimientos
 
 - **Objetivo**: corregir stock con trazabilidad y consultar el historial.
@@ -154,6 +157,8 @@
 
 *Desde la 19.3* ([brief-19.3](../decisions/brief-19.3-reserva-y-ciclo.md), D-7): la cabecera muestra también lo reservado y lo disponible; el historial etiqueta las entregas de pedidos («Entrega de pedido», con el número del pedido en el motivo) y las filtra con `?tipo=entrega`; *desde la 20.3* ([brief-20.3](../decisions/brief-20.3-la-venta-sin-pedido.md), H-2), también las ventas sin pedido («Venta», con el número de la venta en el motivo), con `?tipo=venta`, y desde la 20.4 ([brief-20.4](../decisions/brief-20.4-la-anulacion.md), D-7) las reposiciones de una anulación («Anulación de venta», con los dos números en el motivo), con `?tipo=anulacion`; el ajuste avisa antes de enviar si el saldo quedaría por debajo de lo reservado, y el servidor lo rechaza con `below_reserved` y un mensaje con el saldo, lo reservado, la cantidad y qué hacer (cancelar primero el pedido que no se puede cumplir).
 
+*Desde la 24.5.1* ([brief-24.5.1](../decisions/brief-24.5.1-productos-catalogo-y-ficha.md), D-8): la pantalla toma la forma de la lámina 11. El encabezado es el del producto, con su identidad y la barra de pestañas; debajo, el stock, lo reservado y lo disponible, que la v2 no dibuja y acá se conservan porque esta es la pantalla donde se ajusta. Cada tipo de movimiento lleva su insignia con ícono —verde y «+» si suma existencias, neutra y «−» si resta—, con el nombre del tipo siempre escrito, y la columna «Autor» pasa a llamarse «Responsable». Sin lecturas nuevas: no hay búsqueda por referencia ni exportación, y el ajuste sigue siendo el formulario de siempre.
+
 ## 5b. Precios de un producto
 
 Agregada en la 11.1 ([brief-11.1](../decisions/brief-11.1-catalogo-comercial.md), FR-PROD-12 y FR-PROD-13). Ruta `/productos/[id]/precios`.
@@ -170,6 +175,8 @@ Agregada en la 11.1 ([brief-11.1](../decisions/brief-11.1-catalogo-comercial.md)
 - **Responsive**: el historial pasa a tarjetas.
 - **Accesibilidad**: el monto formateado se anuncia con `aria-live`; los errores se asocian a su campo con `aria-describedby` y reciben el foco.
 - **No mostrar**: ninguna acción para editar ni borrar un precio. El formulario, a `viewer`.
+
+*Desde la 24.5.1* ([brief-24.5.1](../decisions/brief-24.5.1-productos-catalogo-y-ficha.md), D-8): la pantalla toma la forma de la lámina 12. El precio vigente deja de ser una línea del encabezado y pasa a una tarjeta **«Precio de venta»** con el importe grande, desde cuándo rige y la nota de que solo vale para operaciones nuevas, sin cambiar las ventas ni los pedidos ya registrados. En escritorio, el formulario queda a la derecha y la tarjeta y el historial a la izquierda; en el teléfono el formulario va primero, que es a lo que viene un `admin`. La columna «Autor» pasa a llamarse «Responsable». El historial no tiene «Precio anterior» ni «Motivo», que la v2 propone: **el motivo de un cambio de precio no se guarda**.
 
 ## 5c. Costos y margen de un producto
 

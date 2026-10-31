@@ -8,7 +8,7 @@ import {
   listModels,
   listProductFilterOptions,
 } from "@/modules/catalog";
-import { listProductStock } from "@/modules/inventory";
+import { listProductStock, NO_MODEL_GROUP } from "@/modules/inventory";
 import { requireSession } from "@/app/_auth/session";
 import {
   activeBadgeClass,
@@ -18,7 +18,6 @@ import {
   inputClass,
   labelClass,
   linkClass,
-  radioClass,
   roleBadgeClass,
   selectClass,
   tableCellClass,
@@ -42,6 +41,9 @@ import {
   hasActiveFilters,
   parseProductFilters,
   productFiltersHref,
+  parseCollapsedModels,
+  productHref,
+  toggleGroupHref,
   SORT_LABEL,
   SORT_PARAM,
   sortParam,
@@ -54,6 +56,7 @@ import {
   NO_PRODUCTS_MESSAGE,
 } from "./messages";
 import { ProductThumbnail } from "./product-image-view";
+import { ModelGroupHeading } from "./model-group-heading";
 import { StockStatusBadge } from "./stock-status";
 
 export const metadata: Metadata = {
@@ -82,7 +85,9 @@ export default async function ProductsPage({
   searchParams: Promise<SearchParams>;
 }) {
   const context = await requireSession();
-  const parsed = parseProductFilters(await searchParams);
+  const query = await searchParams;
+  const parsed = parseProductFilters(query);
+  const collapsed = parseCollapsedModels(query);
   const models = await listModels(context);
   // Sin la capacidad, ?modelo= y ?agrupar= no hacen nada: la lista queda como antes de la 29.2.
   const filters = models.ok
@@ -121,14 +126,24 @@ export default async function ProductsPage({
   const modelNames = new Map(
     models.ok ? models.models.map((model) => [model.id, model.name]) : [],
   );
-  const groupHeading = (index: number): string | null => {
-    if (!filters.groupByModel) return null;
-    const modelId = result.products[index]!.modelId;
-    if (index > 0 && result.products[index - 1]!.modelId === modelId) {
-      return null;
-    }
-    return (modelId && modelNames.get(modelId)) || "Sin modelo";
+  const groupKeyAt = (index: number) =>
+    result.products[index]!.modelId ?? NO_MODEL_GROUP;
+  // Desde la 24.5.1 (brief-24.5.1, D-3): el encabezado del grupo es una fila con el nombre del
+  // modelo, su chevron y sus sumas, y los grupos cerrados viajan en la URL.
+  const startsGroup = (index: number): boolean => {
+    if (!filters.groupByModel) return false;
+    return index === 0 || groupKeyAt(index - 1) !== groupKeyAt(index);
   };
+  const groupHeading = (index: number): string | null => {
+    if (!startsGroup(index)) return null;
+    const key = groupKeyAt(index);
+    return (key && modelNames.get(key)) || "Sin modelo";
+  };
+  const isCollapsed = (index: number) =>
+    filters.groupByModel && collapsed.has(groupKeyAt(index));
+  // Las sumas del grupo: del resultado filtrado entero, no de esta página (brief-24.5.1, D-2).
+  const groupTotals = (index: number) =>
+    result.modelTotals.get(groupKeyAt(index)) ?? null;
   const columnCount = context.role === "admin" ? 10 : 9;
   const thumbnails = imageVersions.ok ? imageVersions.versions : new Map();
   const prices = found.ok ? found.prices : new Map();
@@ -285,21 +300,11 @@ export default async function ProductsPage({
             </select>
           </div>
         ) : null}
-        {models.ok ? (
-          <label
-            htmlFor="agrupar"
-            className="flex items-center gap-2 py-2 text-sm"
-          >
-            <input
-              id="agrupar"
-              type="checkbox"
-              name="agrupar"
-              value="modelo"
-              defaultChecked={filters.groupByModel}
-              className={radioClass}
-            />
-            Agrupar por modelo
-          </label>
+        {/* La vista se elige arriba de la tabla, no acá (brief-24.5.1, D-4). Va como campo oculto
+            para que cambiar un filtro no te saque de la vista en la que estabas. *Hasta la 24.5.1*
+            era una casilla «Agrupar por modelo» dentro de este formulario (brief-29.2, D-4). */}
+        {models.ok && filters.groupByModel ? (
+          <input type="hidden" name="agrupar" value="modelo" />
         ) : null}
         <div className="flex flex-col gap-1">
           <label htmlFor="orden" className={labelClass}>
@@ -363,7 +368,44 @@ export default async function ProductsPage({
         />
       ) : (
         <>
-          <div className={`mt-8 hidden overflow-x-auto md:block ${cardClass}`}>
+          {/* Las dos vistas de la v2 sobre los mismos resultados (brief-24.5.1, D-4). Son enlaces,
+              así que conservan filtros, orden y página y funcionan sin JavaScript. Sin la capacidad
+              `variants` no se ofrecen: no hay modelos que agrupar. */}
+          {models.ok ? (
+            <nav
+              aria-label="Vista del catálogo"
+              className="mt-8 flex items-center gap-1 text-sm"
+            >
+              {(
+                [
+                  ["Por modelo", true],
+                  ["Lista", false],
+                ] as const
+              ).map(([label, grouped]) => {
+                const current = filters.groupByModel === grouped;
+                return (
+                  <Link
+                    key={label}
+                    href={productFiltersHref(
+                      { ...filters, groupByModel: grouped, page: 1 },
+                      grouped ? collapsed : [],
+                    )}
+                    aria-current={current ? "page" : undefined}
+                    className={`rounded-md px-3 py-1.5 ${
+                      current
+                        ? "bg-surface-muted font-semibold"
+                        : "text-muted hover:bg-surface-muted"
+                    }`}
+                  >
+                    {label}
+                  </Link>
+                );
+              })}
+            </nav>
+          ) : null}
+          <div
+            className={`${models.ok ? "mt-3" : "mt-8"} hidden overflow-x-auto md:block ${cardClass}`}
+          >
             <table className="w-full border-collapse text-left text-sm">
               <caption className="sr-only">
                 Productos de la organización
@@ -415,11 +457,29 @@ export default async function ProductsPage({
                           colSpan={columnCount}
                           className={`${headCellClass} bg-surface-muted`}
                         >
-                          {groupHeading(index)}
+                          <ModelGroupHeading
+                            name={groupHeading(index)!}
+                            modelId={groupKeyAt(index)}
+                            collapsed={collapsed.has(groupKeyAt(index))}
+                            href={toggleGroupHref(
+                              filters,
+                              collapsed,
+                              groupKeyAt(index),
+                            )}
+                            totals={groupTotals(index)}
+                            filtered={hasActiveFilters(filters)}
+                          />
                         </th>
                       </tr>
                     ) : null}
-                    <tr>
+                    {/* Un grupo cerrado oculta sus filas; su encabezado sigue diciendo cuántas son
+                        y cuánto hay (brief-24.5.1, D-3). El atributo `hidden` las saca del árbol de
+                        accesibilidad, y la clase asegura el `display: none`: el `display: table-row`
+                        de la hoja del navegador le gana al `hidden` a secas. */}
+                    <tr
+                      hidden={isCollapsed(index)}
+                      className={isCollapsed(index) ? "hidden" : undefined}
+                    >
                       <td
                         className={`${cellClass} font-mono text-xs whitespace-nowrap`}
                       >
@@ -434,7 +494,7 @@ export default async function ProductsPage({
                           <span>
                             <Link
                               id={`producto-${product.id}`}
-                              href={`/productos/${product.id}`}
+                              href={productHref(product.id, filters, collapsed)}
                               className={linkClass}
                             >
                               {product.name}
@@ -505,11 +565,25 @@ export default async function ProductsPage({
             {result.products.map((product, index) => (
               <Fragment key={product.id}>
                 {groupHeading(index) ? (
-                  <li className="mt-2 text-sm font-semibold text-muted">
-                    {groupHeading(index)}
+                  <li className="mt-2 text-sm font-semibold">
+                    <ModelGroupHeading
+                      name={groupHeading(index)!}
+                      modelId={groupKeyAt(index)}
+                      collapsed={collapsed.has(groupKeyAt(index))}
+                      href={toggleGroupHref(
+                        filters,
+                        collapsed,
+                        groupKeyAt(index),
+                      )}
+                      totals={groupTotals(index)}
+                      filtered={hasActiveFilters(filters)}
+                    />
                   </li>
                 ) : null}
-                <li className={`${cardClass} p-4`}>
+                <li
+                  hidden={isCollapsed(index)}
+                  className={isCollapsed(index) ? "hidden" : `${cardClass} p-4`}
+                >
                   <p className="flex items-center gap-2.5 font-semibold">
                     <ProductThumbnail
                       productId={product.id}
@@ -517,7 +591,7 @@ export default async function ProductsPage({
                     />
                     <span>
                       <Link
-                        href={`/productos/${product.id}`}
+                        href={productHref(product.id, filters, collapsed)}
                         className={linkClass}
                       >
                         {product.name}
@@ -582,13 +656,23 @@ export default async function ProductsPage({
             singular: "producto",
             plural: "productos",
           })}
-          hrefFor={(page) => productFiltersHref({ ...filters, page })}
+          hrefFor={(page) =>
+            productFiltersHref({ ...filters, page }, collapsed)
+          }
           pageSize={{
             current: filters.pageSize,
             hrefFor: (pageSize) =>
-              productFiltersHref({ ...filters, pageSize, page: 1 }),
+              productFiltersHref({ ...filters, pageSize, page: 1 }, collapsed),
           }}
         />
+      ) : null}
+      {/* La nota al pie de la lámina 01: qué quiere decir «disponible», que es de lo que habla
+          toda la columna y todas las sumas de los grupos (brief-24.5.1, D-2). */}
+      {result.total > 0 ? (
+        <p className="mt-4 text-sm text-muted">
+          Disponible no cuenta lo reservado por pedidos confirmados ni las
+          unidades que no están a la venta.
+        </p>
       ) : null}
       <p className="sr-only">
         {STOCK_STATUS_LABEL.disponible}, {STOCK_STATUS_LABEL.bajo_stock} y{" "}

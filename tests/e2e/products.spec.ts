@@ -238,6 +238,9 @@ test("caso 4: desactivar pide confirmación, quita el ajuste y se puede reactiva
   });
   await login(page, ADMIN);
   await page.goto(`/productos/${productId}`);
+  // Desde la 24.5.1, «Desactivar» está en «Más acciones del producto», como en la ficha del
+  // cliente de la 24.4.1 (brief-24.5.1, alcance incluido 3).
+  await page.getByRole("button", { name: "Más acciones del producto" }).click();
   await page.getByRole("link", { name: "Desactivar" }).click();
   await expect(
     page.getByText('¿Desactivar "Café molido 250 g"?'),
@@ -290,9 +293,9 @@ test("caso 5: un ajuste positivo se registra, aparece en el historial y en el de
   await expect(table).toContainText("Ajuste positivo");
   await expect(table).toContainText("Recepción");
   await expect(table).toContainText(ADMIN_NAME);
-  await expect(
-    page.getByText("Inventario · Stock actual: 10 unidad"),
-  ).toBeVisible();
+  // Desde la 24.5.1, el encabezado abre con la identidad del producto y el stock va en la línea
+  // de abajo (brief-24.5.1, D-8).
+  await expect(page.getByText("Stock 10 unidad")).toBeVisible();
   await expectAccessible(page, "historial con un movimiento");
 
   expect(await movements(productId)).toEqual([
@@ -366,9 +369,7 @@ test("caso 7: si el stock cambió mientras se completaba, el ajuste pide confirm
   ).toBeFocused();
   await expect(page.getByText(/Saldo actualizado: 4\./)).toBeVisible();
   // La pantalla se actualiza con el saldo real y el motivo escrito no se pierde.
-  await expect(
-    page.getByText("Inventario · Stock actual: 4 unidad"),
-  ).toBeVisible();
+  await expect(page.getByText("Stock 4 unidad")).toBeVisible();
   await expect(page.getByLabel("Motivo *")).toHaveValue("Recepción");
   await expectAccessible(page, "ajuste con cambio concurrente");
   expect(await movements(productId)).toHaveLength(1);
@@ -725,9 +726,11 @@ test("caso 15: FR-PROD-12 el admin fija precios; «300.000» en CLP se rechaza",
   await expect(page.getByText("Precio nuevo: CLP 300.000")).toBeVisible();
   await page.getByRole("button", { name: "Confirmar precio" }).click();
   await expect(page.getByText("Precio fijado.")).toBeVisible();
+  // Desde la 24.5.1, el precio vigente es la tarjeta «Precio de venta» de la lámina 12, no una
+  // línea del encabezado (brief-24.5.1, D-8).
   await expect(
-    page.getByText("Precios · Precio vigente: CLP 300.000"),
-  ).toBeVisible();
+    page.getByRole("region", { name: "Precio de venta" }),
+  ).toContainText("CLP 300.000");
   expect(await prices(productId)).toEqual([
     { amount: "300000.00", currency: "CLP" },
   ]);
@@ -738,8 +741,8 @@ test("caso 15: FR-PROD-12 el admin fija precios; «300.000» en CLP se rechaza",
   await expect(page.getByText("Precio nuevo: US$ 1.234,50")).toBeVisible();
   await page.getByRole("button", { name: "Confirmar precio" }).click();
   await expect(
-    page.getByText("Precios · Precio vigente: US$ 1.234,50"),
-  ).toBeVisible();
+    page.getByRole("region", { name: "Precio de venta" }),
+  ).toContainText("US$ 1.234,50");
   const history = page.getByRole("table", {
     name: "Historial de precios de Café molido 250 g",
   });
@@ -821,8 +824,8 @@ test("caso 16: FR-PROD-12 si el precio cambió mientras se completaba, pide conf
   await page.getByLabel("Monto *").fill("5100");
   await page.getByRole("button", { name: "Confirmar precio" }).click();
   await expect(
-    page.getByText(/^Precios · Precio vigente: \$\s5\.100,00$/),
-  ).toBeVisible();
+    page.getByRole("region", { name: "Precio de venta" }),
+  ).toContainText(/\$\s5\.100,00/);
   await expect(page.getByText(/El precio cambió/)).toBeHidden();
   expect(await prices(productId)).toHaveLength(3);
 
@@ -866,8 +869,8 @@ test("caso 17: FR-PROD-13 un viewer ve precios e historial sin formulario", asyn
   await page.goto(`/productos/${productId}`);
   await page.getByRole("link", { name: "Ver historial de precios" }).click();
   await expect(
-    page.getByText("Precios · Precio vigente: $ 1.500,00"),
-  ).toBeVisible();
+    page.getByRole("region", { name: "Precio de venta" }),
+  ).toContainText("$ 1.500,00");
   await expect(
     page.getByRole("table", {
       name: "Historial de precios de Café molido 250 g",
@@ -1301,7 +1304,7 @@ test("caso 24: brief-18.2 el admin fija el costo y ve el margen con su base", as
   await expect(page.getByText("Precio fijado.")).toBeVisible();
   await page
     .getByRole("navigation", { name: "Secciones del producto" })
-    .getByRole("link", { name: "Costos y margen" })
+    .getByRole("link", { name: "Costos" })
     .click();
   await expect(margin).toContainText(/\$\s60,50 · 50,0 % del precio/);
   await expect(margin).toContainText("100,0 % sobre el costo");
@@ -1358,20 +1361,46 @@ test("caso 25: brief-18.2 un viewer no ve el costo, el margen ni su página", as
   await expect(
     page.getByRole("region", { name: "Costo y margen" }),
   ).toHaveCount(0);
-  await expect(
-    page.getByRole("link", { name: /Costos y margen|fijar costo|costos/ }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /costos?/i })).toHaveCount(0);
   await expect(page.locator("body")).not.toContainText("987,65");
 
   for (const path of ["precios", "movimientos"]) {
     await page.goto(`/productos/${productId}/${path}`);
-    await expect(
-      page.getByRole("link", { name: "Costos y margen" }),
-    ).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Costos" })).toHaveCount(0);
   }
 
   await page.goto(`/productos/${productId}/costos`);
   await expect(page.getByText(FORBIDDEN_PAGE)).toBeVisible();
   await expect(page.locator("body")).not.toContainText("987,65");
   await expectAccessible(page, "costos para viewer");
+});
+
+test("caso 26: brief-24.5.1 la ficha entra en 320 px con un nombre largo", async ({
+  page,
+}) => {
+  // El nombre que destapó el defecto: una sola palabra larga fijaba el ancho mínimo del título y
+  // desbordaba la página cinco píxeles (brief-24.5.1, AC-12). El arreglo vive en
+  // detail-header.tsx, así que esto cuida a todas las fichas, no solo a esta.
+  const productId = await insertProduct(
+    "IP13-128-MED-R",
+    "iPhone 13 128 GB Medianoche reacondicionado",
+    { balance: "4" },
+  );
+  await page.setViewportSize({ width: 320, height: 800 });
+  await login(page, ADMIN);
+  for (const path of ["", "/movimientos", "/precios"]) {
+    await page.goto(`/productos/${productId}${path}`);
+    await expect(
+      page.getByRole("heading", {
+        name: "iPhone 13 128 GB Medianoche reacondicionado",
+      }),
+    ).toBeVisible();
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(overflow, `desbordamiento horizontal en /productos/…${path}`).toBe(
+      0,
+    );
+  }
+  await expectAccessible(page, "ficha a 320 px");
 });

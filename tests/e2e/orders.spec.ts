@@ -534,7 +534,11 @@ test("brief-19.3: sin stock no confirma y dice qué falta; un ajuste no baja de 
   await expect(page).toHaveURL(/\?aviso=confirmado$/);
 
   await page.goto(`/productos/${tea}/movimientos`);
-  await expect(page.getByText(/Reservado: 8 · Disponible: 2/)).toBeVisible();
+  // Desde la 24.5.1 la línea lleva también el stock y va sin dos puntos (brief-24.5.1, D-8); lo
+  // que esta prueba vigila sigue siendo lo de la 19.3: que reservado y disponible sean 8 y 2.
+  await expect(
+    page.getByText(/Stock 10 unidad · Reservado 8 · Disponible 2/),
+  ).toBeVisible();
   await page.getByLabel("Negativo (−)").check();
   await page.getByLabel("Cantidad *").fill("3");
   await page.getByLabel("Motivo *").fill("Rotura");

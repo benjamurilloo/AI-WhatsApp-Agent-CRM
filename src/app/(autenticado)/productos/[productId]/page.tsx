@@ -11,7 +11,11 @@ import {
   listProductAudit,
   listProductSuggestions,
 } from "@/modules/catalog";
-import { getProductStock, listStockMovements } from "@/modules/inventory";
+import {
+  countUnitsByStatus,
+  getProductStock,
+  listStockMovements,
+} from "@/modules/inventory";
 import {
   getOrganizationTimezone,
   hasCapability,
@@ -31,15 +35,22 @@ import {
   dangerOutlineLinkClass,
   inactiveBadgeClass,
   linkClass,
+  primaryLinkClass,
   secondaryLinkClass,
 } from "@/app/_components/form-styles";
 import { Icon } from "@/app/_components/icons";
+import {
+  moreActionDangerClass,
+  moreActionItemClass,
+} from "@/app/_components/more-action-styles";
+import { MoreActions } from "@/app/_components/more-actions";
 import { PageNotice } from "@/app/_components/page-notice";
 import { SectionCard } from "@/app/_components/section-card";
 import { formatShortDateTime } from "@/app/_format/date-time";
+import { logEvent, newRequestId } from "@/shared/log";
 import { formatMoney } from "@/shared/money";
 import { formatQuantity } from "@/shared/quantity";
-import type { SearchParams } from "../filters";
+import { catalogReturnHref, type SearchParams } from "../filters";
 import {
   CONDITION_LABEL,
   FORBIDDEN_PAGE_MESSAGE,
@@ -56,6 +67,8 @@ import { movementSign } from "./movimientos/filters";
 import { DeactivateConfirm, ReactivateForm } from "./product-actions";
 import { ProductImageUpload, RemoveImageConfirm } from "./product-image";
 import { ProductSubNav } from "./product-sub-nav";
+import { readUnitCounts } from "./unit-counts";
+import { UnitCountersPanel } from "./unit-counters-panel";
 
 export const metadata: Metadata = {
   title: "Producto — AI WhatsApp Agent CRM",
@@ -101,7 +114,7 @@ export default async function ProductPage({
       <PageNotice
         title={TITLE}
         message={PRODUCT_NOT_FOUND_MESSAGE}
-        back={{ href: "/productos", label: "Volver a productos" }}
+        back={{ href: catalogReturnHref(query), label: "Volver a productos" }}
       />
     );
   }
@@ -145,6 +158,27 @@ export default async function ProductPage({
   // Las sugerencias de marca, categoría y ubicación solo hacen falta si se edita (brief-11.1,
   // D-2; brief-17.2, D-6).
   const suggestions = editing ? await listProductSuggestions(context) : null;
+  // Los recuentos de unidades por estado, solo en un producto por unidad (brief-24.5.1, D-6). Se
+  // piden una sola vez y se cuentan en SQL. Los tres desenlaces —leído, por cantidad, no se pudo
+  // leer— los resuelve `readUnitCounts`, que es donde vive el `catch`: un error de base lanza, y
+  // sin atraparlo el Resumen no podría anunciar «No disponible» (I-2 y AC-8).
+  const unitCounts =
+    product.tracking === "unit"
+      ? await readUnitCounts(
+          () => countUnitsByStatus(context, product.id),
+          (error) =>
+            logEvent({
+              level: "error",
+              requestId: newRequestId(),
+              route: "/productos/[productId]",
+              code: "INTERNAL",
+              userId: context.userId,
+              organizationId: context.organizationId,
+              error,
+            }),
+        )
+      : undefined;
+
   // El modelo y los atributos: null sin la capacidad, y la ficha queda como antes.
   const variants = await getProductVariants(context, [product]);
   const variant = variants?.get(product.id);
@@ -164,7 +198,10 @@ export default async function ProductPage({
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 lg:px-8">
-      <BackLink href="/productos" label="Volver a productos" />
+      {/* Vuelve al catálogo con su contexto si se llegó desde ahí (brief-24.5.1, D-5, AC-10):
+          `catalogReturnHref` solo acepta parámetros que el catálogo entiende, así que un `?desde=`
+          fabricado no manda a otra ruta. Sin el parámetro, vuelve a `/productos` como siempre. */}
+      <BackLink href={catalogReturnHref(query)} label="Volver a productos" />
 
       <DetailHeader
         title={product.name}
@@ -181,27 +218,58 @@ export default async function ProductPage({
             </span>
           </>
         }
-        subtitle={<span className="font-mono text-sm">{product.sku}</span>}
+        /* La línea de identidad de la lámina 09: la condición y el SKU, igual en las tres
+           pestañas que toca la 24.5.1 (brief-24.5.1, D-8). */
+        subtitle={
+          <p>
+            {CONDITION_LABEL[product.condition]} · SKU{" "}
+            <span className="font-mono">{product.sku}</span>
+          </p>
+        }
+        /* «Ver unidades» es la acción principal del Resumen en la v2 (brief-24.5.1, D-6, y
+           lámina 09). Solo existe en un producto por unidad: uno por cantidad no tiene adónde
+           ir. La ve también un viewer, porque la pantalla de unidades es de lectura. */
+        primary={
+          product.tracking === "unit" && !editing ? (
+            <Link
+              href={`/productos/${product.id}/unidades`}
+              className={`${primaryLinkClass} min-h-11`}
+            >
+              <Icon name="hash" className="size-4" />
+              Ver unidades
+            </Link>
+          ) : null
+        }
         actions={
           isAdmin && !editing ? (
-            <>
-              <Link
-                href={`/productos/${product.id}?editar=1`}
-                className={secondaryLinkClass}
-              >
-                <Icon name="pencil" className="size-4" />
-                Editar
-              </Link>
-              {product.isActive && !confirming ? (
+            <Link
+              href={`/productos/${product.id}?editar=1`}
+              className={`${secondaryLinkClass} min-h-11`}
+            >
+              <Icon name="pencil" className="size-4" />
+              Editar
+            </Link>
+          ) : null
+        }
+        /* Desactivar es destructiva y poco frecuente: va en el menú de desbordamiento, como en la
+           ficha del cliente de la 24.4.1 y como la lámina 09 (brief-24.5.1, alcance incluido 3). */
+        more={
+          isAdmin && !editing && !confirming && product.isActive ? (
+            <MoreActions
+              id="mas-acciones-producto"
+              label="Más acciones del producto"
+              iconOnly
+            >
+              <li>
                 <Link
                   href={`/productos/${product.id}?confirmar=desactivar`}
-                  className={dangerOutlineLinkClass}
+                  className={`${moreActionItemClass} ${moreActionDangerClass}`}
                 >
                   <Icon name="power" className="size-4" />
                   Desactivar
                 </Link>
-              ) : null}
-            </>
+              </li>
+            </MoreActions>
           ) : null
         }
       />
@@ -228,6 +296,19 @@ export default async function ProductPage({
       ) : null}
 
       <ProductSubNav productId={product.id} current="resumen" />
+
+      {/* Los contadores de unidades, arriba de todo, como la fila de tarjetas de la lámina 09
+          (brief-24.5.1, D-6, AC-5 y AC-6). Solo en un producto por unidad: uno por cantidad no
+          tiene unidades, así que no se muestra ninguno, tampoco en cero (I-2). Si la lectura
+          falló, se dice; no se muestran ceros (AC-8). */}
+      {!editing && unitCounts ? (
+        <UnitCountersPanel counts={unitCounts} />
+      ) : null}
+      {!editing && unitCounts === null ? (
+        <p className="mt-6 text-sm text-muted">
+          No disponible: no se pudieron leer las unidades.
+        </p>
+      ) : null}
 
       {editing ? (
         <div className="mt-6">
@@ -266,67 +347,69 @@ export default async function ProductPage({
         </div>
       ) : (
         <div className="mt-6 grid items-start gap-6 lg:grid-cols-3">
-          <SectionCard
-            id="datos-titulo"
-            title="Información básica"
-            icon="package"
-            className="lg:col-span-2"
-          >
-            <DetailList
-              items={[
-                {
-                  label: "SKU",
-                  icon: "hash",
-                  value: <span className="font-mono">{product.sku}</span>,
-                },
-                {
-                  label: "Código de barras",
-                  icon: "hash",
-                  value: product.barcode ? (
-                    <span className="font-mono">{product.barcode}</span>
-                  ) : null,
-                },
-                { label: "Nombre", icon: "package", value: product.name },
-                { label: "Marca", icon: "tag", value: product.brand },
-                { label: "Categoría", icon: "list", value: product.category },
-                {
-                  label: "Condición",
-                  icon: "circleCheck",
-                  value: CONDITION_LABEL[product.condition],
-                },
-                ...(variant
-                  ? [
-                      {
-                        label: "Modelo",
-                        icon: "layers" as const,
-                        value: variant.model ? (
-                          <Link
-                            href={`/modelos/${variant.model.id}`}
-                            className={linkClass}
-                          >
-                            {variant.model.name}
-                          </Link>
-                        ) : null,
-                      },
-                      ...variant.attributes.map((attribute) => ({
-                        label: attribute.name,
-                        icon: "tag" as const,
-                        value: attribute.value,
-                      })),
-                    ]
-                  : []),
-                { label: "Unidad", icon: "layers", value: product.unit },
-                {
-                  label: "Descripción",
-                  icon: "fileText",
-                  value: product.description,
-                  multiline: true,
-                },
-              ]}
-            />
-          </SectionCard>
-
+          {/* Las dos columnas van cada una en un solo contenedor. Antes eran tres celdas en dos
+              filas, y la grilla repartía el alto de la columna derecha entre las dos filas: con la
+              derecha más alta que la izquierda quedaba un hueco grande en el medio. */}
           <div className="flex min-w-0 flex-col gap-6 lg:col-span-2">
+            <SectionCard
+              id="datos-titulo"
+              title="Información básica"
+              icon="package"
+            >
+              <DetailList
+                items={[
+                  {
+                    label: "SKU",
+                    icon: "hash",
+                    value: <span className="font-mono">{product.sku}</span>,
+                  },
+                  {
+                    label: "Código de barras",
+                    icon: "hash",
+                    value: product.barcode ? (
+                      <span className="font-mono">{product.barcode}</span>
+                    ) : null,
+                  },
+                  { label: "Nombre", icon: "package", value: product.name },
+                  { label: "Marca", icon: "tag", value: product.brand },
+                  { label: "Categoría", icon: "list", value: product.category },
+                  {
+                    label: "Condición",
+                    icon: "circleCheck",
+                    value: CONDITION_LABEL[product.condition],
+                  },
+                  ...(variant
+                    ? [
+                        {
+                          label: "Modelo",
+                          icon: "layers" as const,
+                          value: variant.model ? (
+                            <Link
+                              href={`/modelos/${variant.model.id}`}
+                              className={linkClass}
+                            >
+                              {variant.model.name}
+                            </Link>
+                          ) : null,
+                        },
+                        ...variant.attributes.map((attribute) => ({
+                          label: attribute.name,
+                          icon: "tag" as const,
+                          value: attribute.value,
+                        })),
+                      ]
+                    : []),
+                  { label: "Unidad", icon: "layers", value: product.unit },
+                  {
+                    label: "Descripción",
+                    icon: "fileText",
+                    value: product.description,
+                    multiline: true,
+                  },
+                ]}
+              />
+            </SectionCard>
+
             <SectionCard id="logistica-titulo" title="Logística" icon="truck">
               <DetailList
                 items={[
@@ -369,7 +452,7 @@ export default async function ProductPage({
             </SectionCard>
           </div>
 
-          <div className="flex min-w-0 flex-col gap-6 lg:col-start-3 lg:row-start-1 lg:row-span-2">
+          <div className="flex min-w-0 flex-col gap-6 lg:col-start-3 lg:row-start-1">
             <SectionCard id="imagen-titulo" title="Imagen" icon="package">
               <ProductImage
                 productId={product.id}

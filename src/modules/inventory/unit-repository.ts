@@ -1,4 +1,14 @@
-import { and, asc, desc, eq, inArray, ne, notInArray, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  inArray,
+  ne,
+  notInArray,
+  sql,
+} from "drizzle-orm";
 import { getDb, type Db, type DbTransaction } from "@/shared/db";
 import {
   stockUnitOrigin,
@@ -16,6 +26,11 @@ import {
 type Executor = Db | DbTransaction;
 
 export type StockUnitStatus = (typeof stockUnitStatus.enumValues)[number];
+
+// Los seis estados, tomados del enum y no escritos a mano: un estado nuevo en el schema entra acá
+// solo (brief-24.5.1, D-6).
+export const UNIT_STATUSES: readonly StockUnitStatus[] =
+  stockUnitStatus.enumValues;
 export type StockUnitOrigin = (typeof stockUnitOrigin.enumValues)[number];
 
 export type StockUnitRow = {
@@ -86,6 +101,28 @@ export function findUnitsOfProduct(
       ),
     )
     .orderBy(asc(statusOrder), desc(stockUnits.createdAt), desc(stockUnits.id));
+}
+
+// Cuántas unidades tiene un producto en cada estado, contadas en SQL (brief-24.5.1, D-6). El
+// Resumen de la ficha necesita tres números, y findUnitsOfProduct no tiene LIMIT: traería todas las
+// unidades del producto para contarlas en memoria. Devuelve solo los estados con al menos una fila;
+// quien la usa decide qué hacer con los que faltan, y un estado ausente significa cero unidades en
+// ese estado, no un dato que no se pudo leer.
+export async function countUnitsByStatus(
+  organizationId: string,
+  productId: string,
+): Promise<Map<StockUnitStatus, number>> {
+  const rows = await getDb()
+    .select({ status: stockUnits.status, total: count() })
+    .from(stockUnits)
+    .where(
+      and(
+        eq(stockUnits.organizationId, organizationId),
+        eq(stockUnits.productId, productId),
+      ),
+    )
+    .groupBy(stockUnits.status);
+  return new Map(rows.map((row) => [row.status, row.total]));
 }
 
 export async function findUnit(

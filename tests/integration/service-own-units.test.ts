@@ -24,6 +24,7 @@ import {
 } from "@/modules/catalog";
 import {
   changeProductTracking,
+  countUnitsByStatus,
   correctUnit,
   listProductUnits,
   registerUnit,
@@ -1186,6 +1187,133 @@ describe("el viewer y la capacidad (AC-10 y AC-12)", () => {
       });
       expect(await unitRow(waiting.unitId)).toMatchObject({
         status: "available",
+      });
+    },
+    TEST_TIMEOUT,
+  );
+});
+
+// El recuento por estado de la 24.5.1 (brief-24.5.1, D-6 y AC-7). Vive acá porque este archivo es
+// el único que llega a los seis estados: in_repair e in_review necesitan una orden de unidad propia.
+describe("el recuento de unidades por estado (brief-24.5.1, AC-7)", () => {
+  it(
+    "cuenta los seis estados de un mismo producto en una sola consulta",
+    async () => {
+      const s = await seed();
+      // Un producto con seis unidades: la de phone() y cinco más.
+      const base = await phone(s, "40", { serial: "IMEI40-DISPONIBLE" });
+      const extra = async (serial: string) =>
+        ok(
+          await registerUnit(s.admin, base.productId, {
+            serial,
+            cost: "450",
+            currency: "USD",
+            gradeId: "",
+            batteryHealth: "",
+          }),
+        ).unitId;
+      const reservedId = await extra("IMEI40-RESERVADA");
+      const soldId = await extra("IMEI40-VENDIDA");
+      const goneId = await extra("IMEI40-BAJA");
+      const repairId = await extra("IMEI40-REPARACION");
+      const reviewId = await extra("IMEI40-REVISION");
+
+      // Reservada: un pedido confirmado.
+      const order = ok(
+        await createOrder(s.admin, {
+          clientId: s.clientId,
+          lines: [
+            {
+              productId: base.productId,
+              quantity: "",
+              expectedPriceId: base.priceId,
+              serials: "IMEI40-RESERVADA",
+              expectedLineTotal: "",
+            },
+          ],
+        }),
+      );
+      ok(await confirmOrder(s.admin, order.order.id));
+      // Vendida.
+      ok(
+        await issueSale(s.admin, {
+          clientId: "",
+          lines: [
+            {
+              productId: base.productId,
+              quantity: "",
+              expectedPriceId: base.priceId,
+              serials: "IMEI40-VENDIDA",
+            },
+          ],
+        }),
+      );
+      // Dada de baja, en reparación y en revisión.
+      ok(await writeOffUnit(s.admin, goneId, "Rota"));
+      ok(await sendToRepair(s, repairId));
+      const toReview = ok(await sendToRepair(s, reviewId));
+      ok(await markOwnUnitRepaired(s.admin, toReview.order.id, batteryLine(s)));
+
+      // Los seis estados quedaron realmente puestos, y no los supone el recuento.
+      expect([
+        (await unitRow(base.unitId)).status,
+        (await unitRow(reservedId)).status,
+        (await unitRow(soldId)).status,
+        (await unitRow(goneId)).status,
+        (await unitRow(repairId)).status,
+        (await unitRow(reviewId)).status,
+      ]).toEqual([
+        "available",
+        "reserved",
+        "sold",
+        "written_off",
+        "in_repair",
+        "in_review",
+      ]);
+
+      const counted = ok(await countUnitsByStatus(s.admin, base.productId));
+      expect(counted).toEqual({
+        ok: true,
+        tracking: "unit",
+        counts: {
+          available: 1,
+          reserved: 1,
+          sold: 1,
+          written_off: 1,
+          in_repair: 1,
+          in_review: 1,
+        },
+      });
+      // Lo que esta subfase declara (brief-24.5.1, I-3): el saldo cuenta las disponibles y las
+      // reservadas, y nada más. Con seis unidades físicas, una en cada estado, el saldo es 2: la
+      // vendida, la dada de baja, la que está en reparación y la que está en revisión quedan fuera.
+      // Por eso el Resumen no puede dibujar un total que sume disponible + reservado + en revisión,
+      // que daría 3 y no coincide con ningún número del sistema.
+      expect(await onHand(base.productId)).toBe("2.000");
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "un viewer también lo lee, y otra organización no ve nada",
+    async () => {
+      const s = await seed();
+      const base = await phone(s, "41", { serial: "IMEI41" });
+      expect(ok(await countUnitsByStatus(s.viewer, base.productId))).toEqual({
+        ok: true,
+        tracking: "unit",
+        counts: {
+          available: 1,
+          reserved: 0,
+          sold: 0,
+          written_off: 0,
+          in_repair: 0,
+          in_review: 0,
+        },
+      });
+      expect(await countUnitsByStatus(s.adminC, base.productId)).toEqual({
+        ok: false,
+        code: "NOT_FOUND",
       });
     },
     TEST_TIMEOUT,

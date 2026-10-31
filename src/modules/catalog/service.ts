@@ -57,12 +57,17 @@ export const PRODUCT_CONDITIONS = productCondition.enumValues;
 export type StockStatus = "disponible" | "bajo_stock" | "sin_stock";
 
 // Único umbral: reorder_point (subfase 1.2, D-10). Comparación exacta en milésimas (D-2).
+// El primer parámetro es **lo disponible**, no el saldo físico: la 19.3 lo cambió y enmendó
+// FR-PROD-05 con fecha ([brief-19.3](../../../docs/decisions/brief-19.3-reserva-y-ciclo.md), D-7;
+// ADR 0020, punto 7). *Renombrado el 2026-10-30 en la 24.5.1* (brief-24.5.1, D-7 y H-4): se llamaba
+// `quantityOnHand`, y los tres llamadores de `inventory` ya le pasaban lo disponible, así que el
+// nombre decía lo contrario de lo que recibía. Sin cambio de conducta.
 export function deriveStockStatus(
-  quantityOnHand: Quantity,
+  quantityAvailable: Quantity,
   reorderPoint: Quantity,
 ): StockStatus {
-  if (quantityOnHand <= 0n) return "sin_stock";
-  if (quantityOnHand <= reorderPoint) return "bajo_stock";
+  if (quantityAvailable <= 0n) return "sin_stock";
+  if (quantityAvailable <= reorderPoint) return "bajo_stock";
   return "disponible";
 }
 

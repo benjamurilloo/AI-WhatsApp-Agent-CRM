@@ -720,6 +720,41 @@ export type ProductUnitsResult =
   | { ok: true; tracking: StockTracking; units: ProductUnit[] }
   | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">;
 
+// Los recuentos de unidades por estado, para el Resumen de la ficha (brief-24.5.1, D-6).
+export type UnitStatusCounts = Record<unitRepository.StockUnitStatus, number>;
+
+// Un producto por cantidad no tiene unidades, así que no lleva recuentos: el tipo lo impide, para
+// que la pantalla no pueda mostrar un cero donde no hay nada que contar (brief-24.5.1, I-2).
+export type UnitStatusCountsResult =
+  | { ok: true; tracking: "unit"; counts: UnitStatusCounts }
+  | { ok: true; tracking: "quantity"; counts: null }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">;
+
+// Cuántas unidades hay en cada estado. Los dos roles, como la ficha. Un estado sin filas vale cero:
+// el producto se leyó bien y no hay unidades en ese estado, que no es lo mismo que no haber podido
+// leerlo (brief-24.5.1, I-2 y D-6).
+export async function countUnitsByStatus(
+  context: AuthContext,
+  productId: string,
+): Promise<UnitStatusCountsResult> {
+  const found = await getProduct(context, productId);
+  if (!found.ok) return found;
+  if (found.product.tracking !== "unit") {
+    return { ok: true, tracking: "quantity", counts: null };
+  }
+  const totals = await unitRepository.countUnitsByStatus(
+    context.organizationId,
+    found.product.id,
+  );
+  const counts = Object.fromEntries(
+    unitRepository.UNIT_STATUSES.map((status) => [
+      status,
+      totals.get(status) ?? 0,
+    ]),
+  ) as UnitStatusCounts;
+  return { ok: true, tracking: "unit", counts };
+}
+
 function toProductUnit(
   row: unitRepository.StockUnitRow,
   withCost: boolean,

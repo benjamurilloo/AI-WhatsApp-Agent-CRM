@@ -15,6 +15,8 @@ export {
   listProductStock,
   listStockMovements,
   MOVEMENTS_PAGE_SIZE,
+  // Las sumas por modelo del catálogo agrupado (brief-24.5.1, D-2).
+  NO_MODEL_GROUP,
   PRODUCT_SORTS,
   PRODUCTS_PAGE_SIZE,
   receiveStock,
@@ -25,7 +27,9 @@ export {
   searchCatalogAvailableForService,
   searchCatalogForService,
   sellStock,
+  sumByModel,
   type BalanceRule,
+  type ModelTotals,
   type MovementHistoryField,
   type MovementHistoryFilters,
   type StockMovement,
@@ -67,6 +71,8 @@ export {
 export {
   changeProductTracking,
   correctUnit,
+  // El recuento por estado para el Resumen de la ficha (brief-24.5.1, D-6).
+  countUnitsByStatus,
   getUnit,
   getUnitSerials,
   listProductUnits,
@@ -81,6 +87,8 @@ export {
   type ProductUnit,
   type ProductUnitsResult,
   type RegisterUnitResult,
+  type UnitStatusCounts,
+  type UnitStatusCountsResult,
   type UnitField,
   type UnitInput,
   type UnitStatus,

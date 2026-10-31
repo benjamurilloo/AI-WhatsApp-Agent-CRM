@@ -1,4 +1,5 @@
 import type { ProductActivityFilter, StockStatus } from "@/modules/catalog";
+import { NO_MODEL_GROUP } from "@/modules/inventory";
 import type {
   ProductListFilters,
   ProductSort,
@@ -115,13 +116,48 @@ export function parseProductFilters(
   };
 }
 
+// Los grupos **cerrados** del catálogo agrupado (brief-24.5.1, D-3). Se listan los cerrados y no los
+// abiertos para que la ausencia del parámetro sea el estado inicial: todos abiertos. Repetible:
+// ?cerrado=<id>&cerrado=<id>. Un valor que no es un uuid se ignora, como ?modelo=.
+export const COLLAPSED_PARAM = "cerrado";
+
+// Cuántos grupos se pueden recordar cerrados. Un tope porque la URL la escribe quien quiera: sin él,
+// una dirección fabricada podría traer miles de valores y hacer trabajo inútil en cada render.
+export const MAX_COLLAPSED = 200;
+
+// El grupo de los productos sin modelo se identifica internamente con NO_MODEL_GROUP, la cadena
+// vacía, que no se puede escribir en una URL. En el parámetro usa este valor, que ningún uuid puede
+// ser, así que ese grupo también se puede cerrar.
+export const NO_MODEL_PARAM = "sin-modelo";
+
+const groupKeyFromParam = (value: string): string | null => {
+  if (value === NO_MODEL_PARAM) return NO_MODEL_GROUP;
+  return UUID_PATTERN.test(value) ? value : null;
+};
+
+const groupKeyToParam = (key: string): string =>
+  key === NO_MODEL_GROUP ? NO_MODEL_PARAM : key;
+
+export function parseCollapsedModels(params: SearchParams): Set<string> {
+  const raw = params[COLLAPSED_PARAM];
+  const values = Array.isArray(raw) ? raw : raw ? [raw] : [];
+  const keys = values
+    .map(groupKeyFromParam)
+    .filter((key): key is string => key !== null);
+  return new Set(keys.slice(0, MAX_COLLAPSED));
+}
+
 const paramOf = <T extends string>(map: Record<string, T>, value: T) =>
   Object.keys(map).find((key) => map[key] === value)!;
 
 export const sortParam = (sort: ProductSort) => paramOf(SORT_PARAM, sort);
 
 // Query string sin los valores por defecto: "/productos" limpio equivale a los filtros iniciales.
-export function productFiltersHref(filters: ProductListFilters): string {
+// `collapsed` conserva los grupos cerrados al cambiar de página o de filtro (brief-24.5.1, D-3).
+export function productFiltersHref(
+  filters: ProductListFilters,
+  collapsed?: Iterable<string>,
+): string {
   const query = new URLSearchParams();
   if (filters.text !== DEFAULT_FILTERS.text) query.set("q", filters.text);
   if (filters.stockStatus !== DEFAULT_FILTERS.stockStatus) {
@@ -141,8 +177,70 @@ export function productFiltersHref(filters: ProductListFilters): string {
     query.set("filas", String(filters.pageSize));
   }
   if (filters.page > 1) query.set("pagina", String(filters.page));
+  // Solo cuando se agrupa: sin grupos, un ?cerrado= no significa nada.
+  if (filters.groupByModel) {
+    for (const key of collapsed ?? []) {
+      query.append(COLLAPSED_PARAM, groupKeyToParam(key));
+    }
+  }
   const text = query.toString();
   return text ? `/productos?${text}` : "/productos";
+}
+
+// El enlace del chevron: cierra el grupo si está abierto y lo abre si está cerrado, conservando
+// filtros, orden, página y los demás grupos (brief-24.5.1, D-3). Es un enlace, así que funciona sin
+// JavaScript.
+export function toggleGroupHref(
+  filters: ProductListFilters,
+  collapsed: Set<string>,
+  groupKey: string,
+): string {
+  const next = new Set(collapsed);
+  if (next.has(groupKey)) next.delete(groupKey);
+  else next.add(groupKey);
+  return productFiltersHref(filters, next);
+}
+
+// «Volver a productos» con el contexto del catálogo (brief-24.5.1, D-5). La ficha recibe la query
+// del catálogo en ?desde= y la usa para volver; sin ella, vuelve a /productos limpio. Se guarda
+// codificada porque lleva sus propios `&` y `=`.
+export const RETURN_PARAM = "desde";
+
+export function productHref(
+  productId: string,
+  filters: ProductListFilters,
+  collapsed?: Iterable<string>,
+): string {
+  const href = productFiltersHref(filters, collapsed);
+  const query = href.slice(href.indexOf("?") + 1);
+  // Sin filtros ni página, `productFiltersHref` devuelve "/productos" sin "?": no hay qué recordar.
+  if (!href.includes("?") || !query) return `/productos/${productId}`;
+  return `/productos/${productId}?${RETURN_PARAM}=${encodeURIComponent(query)}`;
+}
+
+// La vuelta al catálogo, desde la ficha. Solo se aceptan parámetros que el catálogo entiende: una
+// ?desde= fabricada no puede inyectar nada más, ni mandar a otra ruta.
+export function catalogReturnHref(params: SearchParams): string {
+  const raw = single(params[RETURN_PARAM]);
+  if (!raw) return "/productos";
+  const incoming = new URLSearchParams(raw);
+  const asRecord: SearchParams = {};
+  for (const [key, value] of incoming) {
+    if (key === COLLAPSED_PARAM) {
+      const previous = asRecord[key];
+      asRecord[key] = Array.isArray(previous)
+        ? [...previous, value]
+        : previous
+          ? [previous as string, value]
+          : [value];
+    } else {
+      asRecord[key] = value;
+    }
+  }
+  return productFiltersHref(
+    parseProductFilters(asRecord),
+    parseCollapsedModels(asRecord),
+  );
 }
 
 export function hasActiveFilters(filters: ProductListFilters): boolean {

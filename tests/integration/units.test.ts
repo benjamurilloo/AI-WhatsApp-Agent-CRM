@@ -19,6 +19,7 @@ import {
   adjustStock,
   applyGradeTemplate,
   changeProductTracking,
+  countUnitsByStatus,
   correctUnit,
   createUnitGrade,
   getCatalogProductAvailableForService,
@@ -1270,6 +1271,84 @@ describe("los grados (D-5)", () => {
         ok: false,
         code: "NOT_FOUND",
       });
+    },
+    TEST_TIMEOUT,
+  );
+});
+
+// El recuento por estado de la 24.5.1 (brief-24.5.1, D-6 y AC-7). Los seis estados juntos se prueban
+// en service-own-units.test.ts, que es el único que llega a in_repair y a in_review.
+describe("el recuento de unidades por estado (brief-24.5.1, AC-7)", () => {
+  const ZERO = {
+    available: 0,
+    reserved: 0,
+    sold: 0,
+    written_off: 0,
+    in_repair: 0,
+    in_review: 0,
+  };
+
+  it(
+    "un producto por unidad sin unidades da cero en los seis estados, no un error",
+    async () => {
+      const s = await seed();
+      const productId = await unitProduct(s.adminA, "SIN-UNIDADES");
+      expect(await countUnitsByStatus(s.adminA, productId)).toEqual({
+        ok: true,
+        tracking: "unit",
+        counts: ZERO,
+      });
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "con unidades en un solo estado, solo ese estado tiene número",
+    async () => {
+      const s = await seed();
+      const productId = await unitProduct(s.adminA, "TRES-DISPONIBLES");
+      await register(s.adminA, productId, "SERIE-A");
+      await register(s.adminA, productId, "SERIE-B");
+      await register(s.adminA, productId, "SERIE-C");
+      expect(await countUnitsByStatus(s.adminA, productId)).toEqual({
+        ok: true,
+        tracking: "unit",
+        counts: { ...ZERO, available: 3 },
+      });
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "un producto por cantidad no trae recuentos: no hay unidades que contar",
+    async () => {
+      const s = await seed();
+      const productId = await newProduct(s.adminA, "POR-CANTIDAD");
+      expect(await countUnitsByStatus(s.adminA, productId)).toEqual({
+        ok: true,
+        tracking: "quantity",
+        counts: null,
+      });
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "otra organización no lo ve, y un producto que no existe tampoco",
+    async () => {
+      const s = await seed();
+      const productId = await unitProduct(s.adminA, "AJENO");
+      await register(s.adminA, productId, "SERIE-AJENA");
+      expect(await countUnitsByStatus(s.adminB, productId)).toEqual({
+        ok: false,
+        code: "NOT_FOUND",
+      });
+      expect(
+        await countUnitsByStatus(
+          s.adminA,
+          "00000000-0000-4000-8000-000000000000",
+        ),
+      ).toEqual({ ok: false, code: "NOT_FOUND" });
     },
     TEST_TIMEOUT,
   );

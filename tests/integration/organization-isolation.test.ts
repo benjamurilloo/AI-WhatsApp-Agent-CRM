@@ -4,6 +4,7 @@ import * as catalogRepository from "@/modules/catalog/repository";
 import * as conversationsRepository from "@/modules/conversations/repository";
 import * as crmRepository from "@/modules/crm/repository";
 import * as ingestionRepository from "@/modules/ingestion/repository";
+import * as unitRepository from "@/modules/inventory/unit-repository";
 import {
   createSupplierPayment,
   getGoodsReceiptPayments,
@@ -941,5 +942,47 @@ describe("los pagos a proveedores no alcanzan a otra organización", () => {
                  (select count(*)::int from supplier_payment_voids) as voids`,
     );
     expect(written.rows[0]).toEqual({ payments: 1, voids: 1 });
+  });
+});
+
+// La lectura agrupada de la 24.5.1 (brief-24.5.1, D-6, AC-7 e I-5). Va acá y no en
+// tests/integration/units.test.ts por el mismo motivo que explica la cabecera de este archivo: por
+// el servicio, `countUnitsByStatus` llama primero a `getProduct`, que filtra por organización y
+// devuelve NOT_FOUND, así que la consulta agrupada nunca llega a correr con una organización
+// ajena. Visto desde afuera, el `where` del repositorio es inobservable: la prueba de units.test.ts
+// pasaría igual si se borrara.
+//
+// Lo encontró la revisión independiente del 2026-10-31 (hallazgo N-7): «la aserción pasaría con
+// `eq(stockUnits.organizationId, …)` borrado».
+describe("el recuento de unidades por estado no alcanza a otra organización", () => {
+  it("cuenta las unidades de su dueña y ninguna de la organización ajena", async () => {
+    await getDb().execute(
+      sql`update products set tracking = 'unit' where id = ${fixture.productB}`,
+    );
+    await getDb().execute(
+      sql`insert into stock_units (organization_id, product_id, serial, cost, cost_currency,
+            origin_type, created_by)
+          values (${fixture.orgB}, ${fixture.productB}, 'SERIE-B-1', 100, 'USD',
+                  'manual', ${fixture.userB}),
+                 (${fixture.orgB}, ${fixture.productB}, 'SERIE-B-2', 100, 'USD',
+                  'manual', ${fixture.userB})`,
+    );
+
+    // El control, que es lo que le da sentido al caso de abajo: con su dueña, la consulta sí
+    // devuelve filas. Sin esta aserción, un mapa vacío podría significar que el fixture no insertó
+    // nada y la prueba pasaría por el motivo equivocado.
+    const propias = await unitRepository.countUnitsByStatus(
+      fixture.orgB,
+      fixture.productB,
+    );
+    expect(propias.get("available")).toBe(2);
+
+    // La organización ajena no ve ninguna, aunque pida el mismo producto por su id: el filtro vive
+    // en el `where` de la consulta, no solo en la comprobación del servicio.
+    const ajenas = await unitRepository.countUnitsByStatus(
+      fixture.orgA,
+      fixture.productB,
+    );
+    expect([...ajenas.entries()]).toEqual([]);
   });
 });

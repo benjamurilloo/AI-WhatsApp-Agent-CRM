@@ -206,17 +206,151 @@ test("la lista se agrupa por modelo, en el orden que el admin les da", async ({
   await table.getByRole("button", { name: "Bajar iPhone 13" }).click();
   await expect(table.getByRole("link").first()).toHaveText("iPhone 15");
 
-  // Agrupada (D-4): el nombre del modelo encabeza sus productos.
+  // Agrupada (D-4): el nombre del modelo encabeza sus productos. Desde la 24.5.1 se elige con el
+  // enlace «Por modelo», no con una casilla, y el encabezado lleva además sus sumas y «Ver modelo»
+  // (brief-24.5.1, D-4 y AC-4).
   await page.goto("/productos");
-  await page.getByLabel("Agrupar por modelo").check();
-  await page.getByRole("button", { name: "Aplicar filtros" }).click();
+  await page.getByRole("link", { name: "Por modelo" }).click();
   await expect(page).toHaveURL(/agrupar=modelo/);
   const products = page.getByRole("table", {
     name: "Productos de la organización",
   });
   const groups = products.locator("th[scope=colgroup]");
-  await expect(groups).toHaveText(["iPhone 15", "iPhone 13"]);
+  await expect(groups).toHaveCount(2);
+  await expect(groups.nth(0)).toContainText("iPhone 15");
+  await expect(groups.nth(1)).toContainText("iPhone 13");
+  await expect(
+    groups.nth(0).getByRole("link", { name: "Ver modelo" }),
+  ).toBeVisible();
   await expectAccessible(page, "lista agrupada por modelo");
+
+  // El catálogo agrupado a 320 px, con los grupos abiertos (brief-24.5.1, AC-12).
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.reload();
+  // A 320 px la tabla se reemplaza por las tarjetas, que son las que hay que medir.
+  await expect(
+    page.getByRole("list", { name: "Productos de la organización" }),
+  ).toBeVisible();
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - window.innerWidth,
+  );
+  expect(overflow, "desbordamiento horizontal del catálogo agrupado").toBe(0);
+  await expectAccessible(page, "lista agrupada por modelo a 320 px");
+});
+
+test("los grupos del catálogo se cierran y se abren por enlace, y «Volver a productos» recupera el recorrido", async ({
+  browser,
+  page,
+}) => {
+  // AC-2, AC-4 y AC-10 del brief-24.5.1. El estado de los grupos y el recorrido de vuelta viven
+  // los dos en la URL, así que lo que se prueba acá es que son enlaces de verdad; el último bloque
+  // repite el cierre con JavaScript apagado.
+  const model13 = "5eed0000-0000-4000-8210-000000000001";
+  const model15 = "5eed0000-0000-4000-8210-000000000002";
+  await login(page, ADMIN_IPHONE.email);
+
+  const products = page.getByRole("table", {
+    name: "Productos de la organización",
+  });
+  const groups = products.locator("th[scope=colgroup]");
+  const row = (name: string) =>
+    products.getByRole("row").filter({ hasText: name });
+  const MEDIANOCHE = "iPhone 13 128 GB Medianoche reacondicionado";
+  const NEGRO = "iPhone 15 128 GB Negro";
+
+  await page.goto("/productos?agrupar=modelo");
+  // Los grupos arrancan abiertos: sin `cerrado` en la URL, el chevron ofrece cerrar.
+  await expect(groups.nth(0)).toContainText("iPhone 13");
+  await expect(groups.nth(0)).toContainText("2 presentaciones");
+  await expect(row(MEDIANOCHE)).toBeVisible();
+  const close13 = page.getByRole("link", { name: "Cerrar el grupo iPhone 13" });
+  await expect(close13).toHaveAttribute("aria-expanded", "true");
+
+  await close13.click();
+  await expect(page).toHaveURL(new RegExp(`cerrado=${model13}`));
+  await expect(row(MEDIANOCHE)).toBeHidden();
+  // Cerrar oculta filas, no información: el encabezado sigue diciendo cuánto hay en el grupo.
+  await expect(groups.nth(0)).toContainText("2 presentaciones");
+  await expect(row(NEGRO)).toBeVisible();
+
+  const open13 = page.getByRole("link", { name: "Abrir el grupo iPhone 13" });
+  await expect(open13).toHaveAttribute("aria-expanded", "false");
+  await open13.click();
+  await expect(page).not.toHaveURL(/cerrado=/);
+  await expect(row(MEDIANOCHE)).toBeVisible();
+
+  // AC-4: el chevron y «Ver modelo» son dos destinos distintos en el mismo encabezado.
+  await groups.nth(0).getByRole("link", { name: "Ver modelo" }).click();
+  await expect(page).toHaveURL(`/modelos/${model13}`);
+
+  // AC-10: con un filtro puesto y un grupo cerrado, entrar a un producto y volver recupera las dos
+  // cosas. El enlace del producto lleva el recorrido en `desde`.
+  await page.goto(`/productos?agrupar=modelo&q=128+GB&cerrado=${model15}`);
+  await expect(row(NEGRO)).toBeHidden();
+  await row(MEDIANOCHE).getByRole("link", { name: MEDIANOCHE }).click();
+  await expect(page).toHaveURL(/\?desde=/);
+  await page.getByRole("link", { name: "Volver a productos" }).click();
+  await expect(page).toHaveURL(/agrupar=modelo/);
+  await expect(page).toHaveURL(new RegExp(`cerrado=${model15}`));
+  await expect(page.getByLabel("Buscar", { exact: true })).toHaveValue(
+    "128 GB",
+  );
+  await expect(row(NEGRO)).toBeHidden();
+
+  // Sin `desde`, el mismo enlace vuelve al catálogo sin filtros.
+  const direct = await db.execute<{ id: string }>(
+    sql`select id from products where sku = 'IP13-128-MED-R'`,
+  );
+  await page.goto(`/productos/${direct.rows[0]!.id}`);
+  await page.getByRole("link", { name: "Volver a productos" }).click();
+  await expect(page).toHaveURL("/productos");
+
+  // AC-12: en el teléfono, los dos destinos del encabezado se tocan con el dedo. A 375 px la tabla
+  // se reemplaza por las tarjetas, así que hay que medir las de la lista y no las de la tabla, que
+  // sigue en el árbol escondida.
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.goto("/productos?agrupar=modelo");
+  const cards = page.getByRole("list", {
+    name: "Productos de la organización",
+  });
+  for (const [what, locator] of [
+    [
+      "el chevron del grupo",
+      cards.getByRole("link", { name: /grupo iPhone 13/ }),
+    ],
+    ["«Ver modelo»", cards.getByRole("link", { name: "Ver modelo" }).first()],
+  ] as const) {
+    const box = await locator.boundingBox();
+    expect(box, `caja de ${what}`).not.toBeNull();
+    expect(box!.height, `alto de ${what}`).toBeGreaterThanOrEqual(44);
+  }
+  // El chevron es además cuadrado: un ícono solo necesita ancho propio, no el de su fila.
+  const chevron = await cards
+    .getByRole("link", { name: /grupo iPhone 13/ })
+    .boundingBox();
+  expect(chevron!.width, "ancho del chevron del grupo").toBeGreaterThanOrEqual(
+    44,
+  );
+  await page.setViewportSize({ width: 1280, height: 800 });
+
+  // Sin JavaScript: el chevron es un enlace, no un botón que esconda filas en el cliente.
+  const context = await browser.newContext({
+    javaScriptEnabled: false,
+    storageState: await page.context().storageState(),
+  });
+  const noScript = await context.newPage();
+  await noScript.goto("/productos?agrupar=modelo");
+  const hidden = noScript
+    .getByRole("table", { name: "Productos de la organización" })
+    .getByRole("row")
+    .filter({ hasText: MEDIANOCHE });
+  await expect(hidden).toBeVisible();
+  await noScript
+    .getByRole("link", { name: "Cerrar el grupo iPhone 13" })
+    .click();
+  await expect(noScript).toHaveURL(new RegExp(`cerrado=${model13}`));
+  await expect(hidden).toBeHidden();
+  await context.close();
 });
 
 test("un admin agrega una opción a un atributo", async ({ page }) => {
@@ -265,6 +399,30 @@ test("sin la capacidad no hay «Modelos», la sección da 404 y el formulario no
       page.getByRole("link", { name: "Productos" }).first(),
     ).toBeVisible();
   }
+  // La mitad negativa de AC-1 (brief-24.5.1): sin la capacidad, el catálogo no ofrece la
+  // alternativa y la lista queda como antes. Sin esto, quitar la condición del conmutador no
+  // rompía ninguna prueba (N-6 de la revisión independiente del 2026-10-31).
+  // La organización del seed básico no tiene productos, y un catálogo vacío no probaría nada: le
+  // ponemos dos para que la lista exista y la ausencia del conmutador signifique algo.
+  await db.execute(
+    sql`insert into products (organization_id, sku, name, unit, reorder_point)
+        values (${SEED_ORGANIZATION_ID}, 'SIN-CAP-1', 'Teclado', 'unidad', 1),
+               (${SEED_ORGANIZATION_ID}, 'SIN-CAP-2', 'Mouse', 'unidad', 1)`,
+  );
+  await page.goto("/productos");
+  const sinCapacidad = page.getByRole("table", {
+    name: "Productos de la organización",
+  });
+  await expect(sinCapacidad.getByRole("row")).toHaveCount(1 + 2);
+  await expect(
+    page.getByRole("navigation", { name: "Vista del catálogo" }),
+  ).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Por modelo" })).toHaveCount(0);
+  // Y pedir el agrupado por la URL tampoco lo activa: la lista sale sin encabezados de grupo.
+  await page.goto("/productos?agrupar=modelo");
+  await expect(sinCapacidad.getByRole("row")).toHaveCount(1 + 2);
+  await expect(sinCapacidad.locator("th[scope=colgroup]")).toHaveCount(0);
+
   await page.goto("/productos/nuevo");
   await expect(
     page.getByRole("heading", { name: "Nuevo producto" }),

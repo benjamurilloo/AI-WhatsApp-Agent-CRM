@@ -9,6 +9,12 @@ import { SubNav } from "@/app/_components/sub-nav";
 // página de costos y su servicio rechazan a un viewer por su cuenta. Desde la 29.5, las unidades,
 // solo con la capacidad serialized_units (brief-29.5, D-6), con la misma regla: la página la vuelve a
 // comprobar.
+//
+// Desde la 24.5.1 (brief-24.5.1, D-1, variante (a)) la barra tiene la forma de las pestañas de la
+// lámina 09: los cinco nombres cortos de la v2, sin íconos —como ya las dejó la 24.3.1 en la
+// bandeja— y con su propio desplazamiento horizontal en el teléfono. Las cinco rutas no se mueven:
+// lo que cambia es el dibujo, no la navegación. El `aria-current` y el recorrido por teclado los
+// pone `SubNav`, que son enlaces de verdad.
 export async function ProductSubNav({
   productId,
   current,
@@ -22,11 +28,11 @@ export async function ProductSubNav({
   return (
     <SubNav
       label="Secciones del producto"
+      scroll
       items={[
         {
           href: base,
           label: "Resumen",
-          icon: "package",
           current: current === "resumen",
         },
         ...(units
@@ -34,29 +40,25 @@ export async function ProductSubNav({
               {
                 href: `${base}/unidades`,
                 label: "Unidades",
-                icon: "hash" as const,
                 current: current === "unidades",
               },
             ]
           : []),
         {
           href: `${base}/movimientos`,
-          label: "Movimientos de stock",
-          icon: "layers",
+          label: "Movimientos",
           current: current === "movimientos",
         },
         {
           href: `${base}/precios`,
-          label: "Historial de precios",
-          icon: "tag",
+          label: "Precios",
           current: current === "precios",
         },
         ...(context.role === "admin"
           ? [
               {
                 href: `${base}/costos`,
-                label: "Costos y margen",
-                icon: "creditCard" as const,
+                label: "Costos",
                 current: current === "costos",
               },
             ]

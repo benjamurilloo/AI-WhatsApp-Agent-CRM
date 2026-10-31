@@ -29,9 +29,11 @@ import { Icon } from "@/app/_components/icons";
 import { PageNotice } from "@/app/_components/page-notice";
 import { Pagination, shownRangeText } from "@/app/_components/pagination";
 import { SectionCard } from "@/app/_components/section-card";
+import { StatusBadge } from "@/app/_components/status-badge";
 import { formatShortDateTime } from "@/app/_format/date-time";
 import { formatQuantity } from "@/shared/quantity";
 import {
+  CONDITION_LABEL,
   FORBIDDEN_PAGE_MESSAGE,
   INACTIVE_PRODUCT_NOTICE,
   NO_MOVEMENT_RESULTS_MESSAGE,
@@ -81,6 +83,21 @@ const TYPE_LABEL: Record<string, string> = {
   // la recepción (brief-29.7, D-2).
   unit_written_off: "Baja por anulación de un usado",
 };
+
+// El tipo del movimiento con su ícono, como la lámina 11 (brief-24.5.1, D-8). El tono dice si el
+// movimiento suma o resta existencias; el nombre del tipo va siempre escrito, así que el color no
+// es el único portador del significado (criterios v2, §Semántica por contexto).
+function MovementType({ type }: { type: string }) {
+  const incoming = movementSign(type) === "+";
+  return (
+    <StatusBadge
+      tone={incoming ? "success" : "neutral"}
+      icon={incoming ? "plus" : "circleMinus"}
+    >
+      {TYPE_LABEL[type]}
+    </StatusBadge>
+  );
+}
 
 // Pantalla 5 (wireframe 05): ajuste para admin e historial para admin y viewer, con filtros
 // y página en la URL. Las fechas se muestran en la zona de la organización (brief-4.4, D-3).
@@ -143,23 +160,31 @@ export default async function MovementsPage({
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 lg:px-8">
-      <BackLink href={`/productos/${product.id}`} label="Volver al producto" />
+      {/* Desde la 24.5.1 (brief-24.5.1, D-1 (a) y D-8): con la barra de pestañas, el Resumen está
+          a un clic, y la salida que muestra la lámina 11 es el catálogo. El contexto del catálogo
+          no llega hasta acá: `?desde=` ya significa «fecha inicial» en esta pantalla desde la 4.4
+          (`filters.ts`), y renombrar un parámetro público no es de esta subfase. La diferencia
+          está declarada en el apartado «Comparación visual (AC-11)» del brief, punto 24. */}
+      <BackLink href="/productos" label="Volver a productos" />
       <DetailHeader
         title={product.name}
-        leading={<HeaderIcon name="layers" />}
+        leading={<HeaderIcon name="package" />}
         subtitle={
           <p>
-            Inventario · Stock actual:{" "}
-            <span className="font-semibold text-foreground tabular-nums">
-              {formatQuantity(product.quantityOnHand)} {product.unit}
-            </span>
-            {/* Lo reservado y lo disponible, desde la 19.3 (brief-19.3, D-7). */}
+            {CONDITION_LABEL[product.condition]} · SKU{" "}
+            <span className="font-mono">{product.sku}</span>
+            {/* Lo reservado y lo disponible, desde la 19.3 (brief-19.3, D-7). La lámina 11 no los
+                tiene; se conservan porque esta es la pantalla donde se ajusta el stock. */}
             <span className="block">
-              Reservado:{" "}
+              Stock{" "}
+              <span className="font-semibold text-foreground tabular-nums">
+                {formatQuantity(product.quantityOnHand)} {product.unit}
+              </span>{" "}
+              · Reservado{" "}
               <span className="font-semibold text-foreground tabular-nums">
                 {formatQuantity(product.quantityReserved)}
               </span>{" "}
-              · Disponible:{" "}
+              · Disponible{" "}
               <span className="font-semibold text-foreground tabular-nums">
                 {formatQuantity(product.quantityAvailable)}
               </span>
@@ -329,7 +354,7 @@ export default async function MovementsPage({
                       Motivo
                     </th>
                     <th scope="col" className={tableHeadCellClass}>
-                      Autor
+                      Responsable
                     </th>
                   </tr>
                 </thead>
@@ -340,7 +365,7 @@ export default async function MovementsPage({
                         {formatShortDateTime(movement.createdAt, timeZone)}
                       </td>
                       <td className={tableCellClass}>
-                        {TYPE_LABEL[movement.type]}
+                        <MovementType type={movement.type} />
                       </td>
                       <td
                         className={`${tableCellClass} text-right tabular-nums`}
@@ -383,9 +408,12 @@ export default async function MovementsPage({
                     {formatShortDateTime(movement.createdAt, timeZone)} ·{" "}
                     {movement.author.name}
                   </p>
-                  <p className="mt-1 font-semibold tabular-nums">
-                    {TYPE_LABEL[movement.type]} {movementSign(movement.type)}{" "}
-                    {formatQuantity(movement.quantity)}
+                  <p className="mt-1 flex flex-wrap items-center gap-2 font-semibold tabular-nums">
+                    <MovementType type={movement.type} />
+                    <span>
+                      {movementSign(movement.type)}{" "}
+                      {formatQuantity(movement.quantity)}
+                    </span>
                   </p>
                   <p className="mt-1 text-sm">
                     Saldo: {formatQuantity(movement.balanceAfter)} ·{" "}

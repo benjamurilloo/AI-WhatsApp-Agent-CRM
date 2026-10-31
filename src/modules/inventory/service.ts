@@ -160,12 +160,60 @@ export function productPageSize(pageSize: number | undefined): number {
     : PRODUCTS_PAGE_SIZE;
 }
 
+// Las sumas de un grupo del catálogo agrupado por modelo (brief-24.5.1, D-2). Describen el
+// **resultado filtrado completo**, no la página que se muestra: se calculan antes de cortarla.
+export type ModelTotals = {
+  // Cuántas presentaciones del modelo cumplen el filtro.
+  products: number;
+  quantityAvailable: string;
+  quantityReserved: string;
+};
+
 export type ProductStockPage = {
   products: ProductStock[];
   total: number;
   page: number;
   pageCount: number;
+  // Por modelo, con "" para los que no tienen modelo. Vacío si no se agrupa (brief-24.5.1, D-2).
+  modelTotals: Map<string, ModelTotals>;
 };
+
+// La clave del grupo: el modelo, o "" para «Sin modelo». Un `null` como clave de un Map es incómodo
+// de leer y de serializar, así que el grupo sin modelo usa la cadena vacía, que ningún id puede ser.
+export const NO_MODEL_GROUP = "";
+
+// Las sumas por modelo del resultado filtrado (brief-24.5.1, D-2). Pliegue en memoria sobre lo que
+// ya está cargado: no hay consulta nueva ni `JOIN` entre módulos (I-1). No suma importes, solo
+// cantidades, y cada cantidad se suma con la aritmética exacta de `quantity`, nunca con números de
+// punto flotante.
+export function sumByModel(products: ProductStock[]): Map<string, ModelTotals> {
+  const totals = new Map<
+    string,
+    { products: number; available: Quantity; reserved: Quantity }
+  >();
+  for (const product of products) {
+    const key = product.modelId ?? NO_MODEL_GROUP;
+    const current = totals.get(key) ?? {
+      products: 0,
+      available: 0n,
+      reserved: 0n,
+    };
+    current.products += 1;
+    current.available += quantityFromDatabase(product.quantityAvailable);
+    current.reserved += quantityFromDatabase(product.quantityReserved);
+    totals.set(key, current);
+  }
+  return new Map(
+    [...totals].map(([key, value]) => [
+      key,
+      {
+        products: value.products,
+        quantityAvailable: quantityToDatabase(value.available),
+        quantityReserved: quantityToDatabase(value.reserved),
+      },
+    ]),
+  );
+}
 
 const collator = new Intl.Collator("es", { sensitivity: "base" });
 
@@ -262,6 +310,9 @@ export function composeProductStockPage(
     total: matching.length,
     page,
     pageCount,
+    // Antes del corte, así que las sumas son del resultado filtrado y no de la página que se ve
+    // (brief-24.5.1, D-2). Solo cuando se agrupa: sin agrupar nadie las mira.
+    modelTotals: modelOrder ? sumByModel(matching) : new Map(),
   };
 }
 

@@ -576,3 +576,158 @@ test("sin la capacidad, la pantalla de unidades no existe", async ({
   await page.goto(`/productos/${productId}/unidades`);
   await expect(page.getByText("No encontramos esta página")).toBeVisible();
 });
+
+test("el Resumen muestra los tres contadores de unidades y la barra de pestañas de la v2", async ({
+  page,
+}) => {
+  // AC-5, AC-6, AC-9 y la mitad del Resumen de AC-12 del brief-24.5.1, con el ejemplo del README de
+  // la lámina 09: cinco unidades físicas, tres disponibles, una reservada y una en revisión.
+  // Un producto que la tienda de ejemplo no siembra: sus cuatro variantes ya ocupan sus SKU.
+  const unit = await insertProduct("IP15P-256", "iPhone 15 Pro 256 GB");
+  await insertUnits(unit, [
+    { serial: "356938035643809" },
+    { serial: "356938035643810" },
+    { serial: "356938035643811" },
+    { serial: "356938035643812" },
+    { serial: "356938035643813" },
+  ]);
+  await db.execute(
+    sql`update stock_units set status = 'reserved' where serial = '356938035643812'`,
+  );
+  // A revisión se llega desde reparación, no desde disponible: es el único camino que acepta el
+  // trigger de la 0059.
+  await db.execute(
+    sql`update stock_units set status = 'in_repair' where serial = '356938035643813'`,
+  );
+  await db.execute(
+    sql`update stock_units set status = 'in_review' where serial = '356938035643813'`,
+  );
+  const quantity = await insertProduct("CAB-USBC-1M", "Cable USB-C de 1 metro");
+  const service = await db.execute<{ id: string }>(
+    sql`insert into products (organization_id, sku, name, is_service)
+        values (${IPHONE}, 'SERV-REP', 'Servicio de reparación', true)
+        returning id`,
+  );
+
+  await login(page, ADMIN_IPHONE.email);
+  await page.goto(`/productos/${unit}`);
+
+  // AC-5: tres contadores y ninguno más, porque un total que los sume no es ningún número del
+  // sistema. El número y la etiqueta de cada tarjeta son dos `block` dentro del mismo párrafo, así
+  // que el texto del párrafo es el número pegado al nombre.
+  const counters = page.getByRole("region", { name: "Unidades del producto" });
+  const tiles = counters.locator("p").filter({ hasNotText: "unidades" });
+  await expect(tiles).toHaveText([
+    "3Disponibles",
+    "1Reservadas",
+    "1En revisión",
+  ]);
+  await expect(counters.locator("p")).toHaveCount(4);
+  await expect(counters).not.toContainText("Total");
+  // La línea que explica por qué las cinco físicas no son el saldo.
+  await expect(counters).toContainText("5 unidades físicas en el local.");
+  await expect(counters).toContainText(
+    "El saldo cuenta las disponibles y las reservadas: lo que está en reparación o en revisión queda fuera.",
+  );
+  await expect(counters).toContainText("Hoy hay una fuera del saldo.");
+  // «Ver unidades» es la acción principal del encabezado, no un enlace de los contadores (D-6).
+  await expect(counters.getByRole("link")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Ver unidades" })).toBeVisible();
+  await expectAccessible(page, "resumen con los contadores de unidades");
+
+  // AC-9: los cinco nombres cortos de la v2, la actual con aria-current, y las cinco rutas
+  // respondiendo donde siempre.
+  const tabs = page.getByRole("navigation", { name: "Secciones del producto" });
+  await expect(tabs.getByRole("link")).toHaveText([
+    "Resumen",
+    "Unidades",
+    "Movimientos",
+    "Precios",
+    "Costos",
+  ]);
+  await expect(tabs.getByRole("link", { name: "Resumen" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  for (const [label, path] of [
+    ["Unidades", "/unidades"],
+    ["Movimientos", "/movimientos"],
+    ["Precios", "/precios"],
+    ["Costos", "/costos"],
+  ] as const) {
+    await tabs.getByRole("link", { name: label }).click();
+    await expect(page).toHaveURL(`/productos/${unit}${path}`);
+    await expect(tabs.getByRole("link", { name: label })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  }
+  // Se recorre con el teclado porque son enlaces de verdad, no pestañas de JavaScript.
+  await page.goto(`/productos/${unit}`);
+  await tabs.getByRole("link", { name: "Resumen" }).focus();
+  await page.keyboard.press("Tab");
+  await expect(tabs.getByRole("link", { name: "Unidades" })).toBeFocused();
+
+  // AC-5 pide la explicación sin condición: en un producto con todo disponible, donde no hay nada
+  // fuera del saldo, la regla se dice igual y no aparece el recuento de lo que está fuera (N-5 de
+  // la revisión independiente).
+  const todoDisponible = await insertProduct("IP14-128", "iPhone 14 128 GB");
+  await insertUnits(todoDisponible, [
+    { serial: "356938035643820" },
+    { serial: "356938035643821" },
+  ]);
+  await page.goto(`/productos/${todoDisponible}`);
+  const sinNadaFuera = page.getByRole("region", {
+    name: "Unidades del producto",
+  });
+  await expect(sinNadaFuera).toContainText("2 unidades físicas en el local.");
+  await expect(sinNadaFuera).toContainText(
+    "El saldo cuenta las disponibles y las reservadas: lo que está en reparación o en revisión queda fuera.",
+  );
+  await expect(sinNadaFuera).not.toContainText("fuera del saldo.");
+  await page.goto(`/productos/${unit}`);
+
+  // AC-12: en el teléfono las cinco pestañas se tocan con el dedo, y la barra se desplaza en vez de
+  // apilarse. Medidas, no deducidas de las clases.
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.goto(`/productos/${unit}`);
+  for (const label of [
+    "Resumen",
+    "Unidades",
+    "Movimientos",
+    "Precios",
+    "Costos",
+  ]) {
+    const box = await tabs.getByRole("link", { name: label }).boundingBox();
+    expect(box, `caja de la pestaña ${label}`).not.toBeNull();
+    expect(box!.height, `alto de la pestaña ${label}`).toBeGreaterThanOrEqual(
+      44,
+    );
+  }
+  // El menú de más acciones del encabezado es el otro objetivo que la 24.5.1 agregó.
+  const more = await page
+    .getByRole("button", { name: "Más acciones del producto" })
+    .boundingBox();
+  expect(more!.height, "alto del menú de más acciones").toBeGreaterThanOrEqual(
+    44,
+  );
+  expect(more!.width, "ancho del menú de más acciones").toBeGreaterThanOrEqual(
+    44,
+  );
+  await page.setViewportSize({ width: 1280, height: 800 });
+
+  // AC-6: un producto por cantidad no tiene contadores, y «En revisión» no aparece ni en cero.
+  await page.goto(`/productos/${quantity}`);
+  await expect(
+    page.getByRole("region", { name: "Unidades del producto" }),
+  ).toHaveCount(0);
+  await expect(page.locator("body")).not.toContainText("En revisión");
+
+  // Y el producto de servicio sigue diciendo que no tiene stock (brief-29.6, D-5).
+  await page.goto(`/productos/${service.rows[0]!.id}`);
+  await expect(
+    page.getByText(
+      "Es el producto de las reparaciones: no tiene stock, y se vende solo al entregar una orden de servicio.",
+    ),
+  ).toBeVisible();
+});

@@ -47,7 +47,12 @@ export function DetailHeader({
         {leading}
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <h1 className={`${pageTitleClass} break-words`}>{title}</h1>
+            {/* `min-w-0` porque el título es un ítem de un flex: sin él su ancho mínimo es el de
+                su palabra más larga, y un nombre como «iPhone 13 128 GB Medianoche
+                reacondicionado» desbordaba la página a 320 px. `break-words` sabe cortar la
+                palabra, pero solo puede hacerlo cuando la caja ya puede encogerse
+                (brief-24.5.1, AC-12). */}
+            <h1 className={`${pageTitleClass} min-w-0 break-words`}>{title}</h1>
             {badges}
           </div>
           {subtitle ? (
