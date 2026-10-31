@@ -19,9 +19,11 @@ Séptima subfase de la Fase 24 ([brief-24.5.1](docs/decisions/brief-24.5.1-produ
 - **Reflujo a 320 px con desbordamiento cero** en el catálogo agrupado y en las tres pestañas de la ficha, con objetivos táctiles de 44 px medidos, y `axe` sin violaciones en claro y en oscuro. El arreglo del desbordamiento —un `min-w-0` en el `h1` de `detail-header.tsx`, autorizado aparte— alcanza a toda pantalla de detalle.
 - **Validado en integración**: los recorridos del catálogo agrupado y del Resumen contra el build de producción, con Server Actions y PostgreSQL real, más 2166 pruebas de `unit` y `guards`.
 - **Una revisión independiente** antes del despliegue, **R2**, con sus tres bloqueantes verificados contra el código y resueltos: el único técnico era que AC-8 no tenía prueba y su rama era inalcanzable.
+- **Desplegada en producción en `7311823`** el 2026-10-31 y **recorrida por el usuario**, sin migraciones nuevas (67), con la **CI completa en verde sobre el SHA desplegado** (run 41200486766, `success`, 25 min 47 s) y las verificaciones del runbook pasadas: 18 de 18 archivos de configuración idénticos, HSTS, escucha solo en loopback, rol de la aplicación distinto del dueño, ingestión y lectura desde afuera en `401`, la organización real en cero filas y ninguna advertencia en el journal. Para volver atrás, `5f23186`.
 
 **No certifica:**
-- **el despliegue ni el recorrido en producción** (AC-15), ni la batería entera verde en la CI sobre el SHA desplegado (AC-13): al escribir esta entrada, ninguno de los dos ocurrió;
+- **el paso 2 del runbook de producción, el del único salto de proxy**: no se corrió para este despliegue, porque necesita un ingreso fallido desde el navegador y `curl` no deja la fila. La comparación de configuración cubre `nginx-crm-production.conf` byte a byte, pero eso es indirecto, no un sustituto;
+- **el nivel «preparado para producción»**: estar desplegada y recorrida cumple AC-13 y AC-15, y no agrega backups probados, rollback ensayado ni observabilidad evaluada, que son de la fase y no de esta subfase;
 - la forma exacta de los mockups: las 24 diferencias declaradas una por una en el §Cierre del brief, entre ellas que **los contadores del Resumen no son enlaces** —la pantalla de Unidades no tiene filtro por estado todavía— y que **solo el Resumen recupera el recorrido del catálogo**;
 - que **cambiar un filtro conserve los grupos cerrados**: el formulario es un `GET` y no lleva `cerrado`, así que los grupos vuelven a abrirse. Declarado y deliberado;
 - la posición del scroll al volver al catálogo: excluida en el brief;

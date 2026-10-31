@@ -358,7 +358,7 @@ Con el vocabulario del proyecto, y **sin inferir un nivel de otro**:
 
 - **Validado localmente**: funciones puras (`unit-counts`, `sumByModel`, filtros) y `countUnitsByStatus` contra PostgreSQL real. 2166 pruebas de `unit` y `guards`, y las de `integration` de esta entrega.
 - **Validado en integración**: los recorridos de Playwright del catálogo agrupado y del Resumen, contra el build de producción, con Server Actions y PostgreSQL real.
-- **No alcanzado todavía**: validado en staging y preparado para producción. AC-13 (la batería entera verde **en la CI sobre el SHA que se despliega**) y AC-15 (desplegado y recorrido por el usuario) quedan pendientes al escribir esto.
+- **No alcanzado todavía**: validado en staging y preparado para producción. AC-13 (la batería entera verde **en la CI sobre el SHA que se despliega**) y AC-15 (desplegado y recorrido por el usuario) quedan pendientes al escribir esto. *Completados el mismo día: ver «Despliegue y recorrido» al final de este cierre.* Que estén cumplidos **no mueve el nivel a «preparado para producción»**, que además pide seguridad, observabilidad, backups probados y rollback: eso es una evaluación de la fase, no de esta subfase.
 
 La comparación visual es **evidencia de forma, no de integración**, y su ejemplo se armó escribiendo filas en la base: un fixture, declarado como tal.
 
@@ -388,3 +388,17 @@ Un hallazgo del revisor que no era de esta subfase y conviene no perder: **`HAND
 ### Compromiso no cumplido
 
 §Riesgos se comprometía a medir el camino completo del catálogo con el conjunto más grande disponible y anotarlo. **No se hizo.** El camino nuevo —el pliegue de `sumByModel` dentro de `composeProductStockPage`— no está en `scripts/medir-caminos.ts`, que mide `inventory.listProductStock` en seis variantes y ninguna agrupada. El usuario autorizó tocar ese archivo el 2026-10-31 y, en el mismo turno, decidió **diferir la medición y declararla**: queda para la 24.5.2, con la autorización ya registrada. Lo que sí está medido es lo que H-5 sostenía: las sumas son un pliegue en memoria sobre un conjunto ya cargado, no una consulta nueva.
+
+### Despliegue y recorrido (AC-13 y AC-15)
+
+*Agregado el 2026-10-31, después del despliegue.*
+
+**AC-13 cumplido**: la CI completa en verde sobre el SHA que se desplegó. Corrida **41200486766** sobre **`7311823`**, `conclusion: success`, 25 min 47 s, con los quince pasos verdes, la integración contra PostgreSQL 18 y la batería end-to-end de Chromium. Única anotación: el aviso de GitHub de que `ubuntu-latest` migra a Ubuntu 26.
+
+Conviene registrar **por qué el SHA desplegado es el del cierre y no el de la implementación**: la implementación (`f3a37f1`) y el cierre (`7311823`) se subieron juntos, así que la CI corrió sobre la punta y no sobre el commit intermedio. Se desplegó `7311823` para que AC-13 se cumpla literalmente —CI verde sobre el SHA que se despliega— y no por interpretación; el contenido de código es idéntico, porque el commit de cierre solo toca documentación. **La lección es del procedimiento, no del código**: subir implementación y cierre en el mismo push deja al commit de implementación sin corrida propia.
+
+**AC-15 cumplido**: desplegado en producción el 2026-10-31 y recorrido por el usuario, que lo dio por correcto. Sin migraciones nuevas (67). Para volver atrás, `5f23186`, anotado en `/var/lib/crm-production/despliegues`.
+
+Las verificaciones posteriores al despliegue del runbook de producción, todas pasadas: servicio `active` (desde las 12:50:17 UTC), HEAD del servidor igual al SHA, **18 de 18 archivos de configuración idénticos a los versionados**, HSTS presente sobre HTTPS y ausente sobre HTTP, escucha solo en `127.0.0.1:3000`, el rol de la aplicación distinto del dueño de la base, ingestión y lectura desde afuera en `401`, la organización real en cero filas con los datos en las dos de demostración, `/productos` sin sesión en `307`, y ninguna advertencia en el journal.
+
+**El paso 2 —un solo salto de proxy— no se corrió para este despliegue**, y queda declarado: necesita un ingreso fallido desde el navegador, porque es una Server Action y un `POST` de `curl` no deja la fila en `login_attempts`. Lo que ese paso vigila —que nginx reemplace la cabecera en vez de agregarla— está cubierto indirectamente porque la comparación de configuración incluye `nginx-crm-production.conf` byte a byte, y este despliegue no toca la topología de proxy. No es un sustituto: es una verificación menos.
