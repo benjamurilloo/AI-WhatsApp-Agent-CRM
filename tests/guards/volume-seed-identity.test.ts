@@ -259,17 +259,45 @@ describe("la distribución cumple D-1", () => {
 });
 
 describe("la distribución de la medición de la 13.2 (D-3)", () => {
+  // *Ampliada el 2026-10-31 (24.5.2, D-9 y H-14)* con `models` y `units`. Este caso es, por
+  // diseño, **la puerta de cualquier cambio a la distribución de medición**: todo campo que no se
+  // saque explícitamente cae en `...resto` y rompe la igualdad. Eso es lo que se quiere, y por eso
+  // los dos campos nuevos no solo se sacan: **se afirman en positivo**, así que quitarle los
+  // modelos o las unidades a la distribución de medición vuelve a hacer fallar este caso.
   it("es la de la 9.3, con referencias, precios e información, más una organización", () => {
     expect(VOLUME_MEASUREMENT).toHaveLength(VOLUME_DISTRIBUTION.length + 1);
     for (const [i, shape] of VOLUME_DISTRIBUTION.entries()) {
-      const { externalRefs, prices, knowledgeEntries, ...resto } =
-        VOLUME_MEASUREMENT[i]!;
+      const {
+        externalRefs,
+        prices,
+        knowledgeEntries,
+        models,
+        units,
+        ...resto
+      } = VOLUME_MEASUREMENT[i]!;
       // Lo que ya medía la 9.3 no cambia: mismos tamaños, mismos ordinales, mismos eventos.
       expect(resto).toEqual(shape);
       expect(externalRefs).toBe(true);
       expect(prices).toBe(true);
       expect(knowledgeEntries).toBeGreaterThan(0);
+      // Sin modelos el catálogo agrupado no agrupa nada, y sin unidades la lista de unidades no
+      // tiene qué listar: las dos mediciones de la 24.5.2 necesitan los dos (H-14).
+      expect(models).toBeGreaterThan(0);
+      expect(units).toBeGreaterThan(0);
     }
+  });
+
+  // El tamaño de las unidades **no** se afirma por organización: las chicas llevan pocas a
+  // propósito, porque lo que esta distribución busca es la asimetría entre organizaciones, que es
+  // lo que le da selectividad al planificador. Lo que sí hace falta es que **la organización que se
+  // mide** tenga más unidades que una página, o la medición no mediría la paginación (24.5.2, D-9).
+  it("la organización más grande tiene más unidades que una página", () => {
+    const grande = VOLUME_MEASUREMENT.reduce((mayor, shape) =>
+      shape.size > mayor.size ? shape : mayor,
+    );
+    expect(grande.units!).toBeGreaterThan(25);
+    // Y sus modelos tienen que dar grupos de más de una presentación, o el agrupado sería trivial.
+    expect(grande.size / grande.models!).toBeGreaterThan(1);
   });
 
   it("la organización nueva es chica y su conversación concentrada domina sus mensajes", () => {

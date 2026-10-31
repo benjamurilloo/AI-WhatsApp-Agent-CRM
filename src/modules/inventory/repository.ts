@@ -134,6 +134,55 @@ export function findMovements(
     .offset(offset);
 }
 
+// Los movimientos de UNA unidad, de más nuevo a más viejo, con tope (brief-24.5.2, D-3). El
+// historial del panel de la unidad los une con sus entradas de auditoría, así que acá no hay
+// paginación: se trae hasta `limit` y quien la usa dice cuál es el tope y cuántas filas trajo, para
+// no presentar una mitad como si fuera todo (R-2 del brief).
+//
+// El filtro por organización va en SQL y no se deduce de que el id de la unidad sea único: con
+// `unit_id` solo, una organización ajena leería los movimientos de una unidad que no es suya. Se
+// prueba llamando a este repositorio, porque a través del servicio el `NOT_FOUND` lo produce una
+// capa anterior y el `where` no sería observable (brief-24.5.2, I-6 y AC-11).
+//
+// Comprobado en los dos sentidos el 2026-10-31: al borrar `eq(inventoryMovements.organizationId,
+// organizationId)` de este `where` falla **una sola** prueba, «los movimientos de una unidad son
+// los de su dueña y ninguno ajeno», y ninguna otra de `organization-isolation.test.ts`. Las otras
+// dos pruebas nuevas de ese archivo cubren `unitConditions` de `unit-repository.ts`, que es otro
+// `where`: cada filtro tiene su propia prueba y ninguna cubre al otro.
+export function findUnitMovements(
+  organizationId: string,
+  unitId: string,
+  limit: number,
+): Promise<MovementRow[]> {
+  return getDb()
+    .select({
+      id: inventoryMovements.id,
+      type: inventoryMovements.type,
+      quantity: inventoryMovements.quantity,
+      balanceAfter: inventoryMovements.balanceAfter,
+      reason: inventoryMovements.reason,
+      createdBy: inventoryMovements.createdBy,
+      createdAt: inventoryMovements.createdAt,
+      unitSerial: stockUnits.serial,
+    })
+    .from(inventoryMovements)
+    .leftJoin(
+      stockUnits,
+      and(
+        eq(stockUnits.organizationId, inventoryMovements.organizationId),
+        eq(stockUnits.id, inventoryMovements.unitId),
+      ),
+    )
+    .where(
+      and(
+        eq(inventoryMovements.organizationId, organizationId),
+        eq(inventoryMovements.unitId, unitId),
+      ),
+    )
+    .orderBy(desc(inventoryMovements.createdAt), desc(inventoryMovements.id))
+    .limit(limit);
+}
+
 // Desde la 29.5, también en la transacción del cambio de seguimiento, con el producto bloqueado
 // (brief-29.5, D-3).
 export async function hasMovements(

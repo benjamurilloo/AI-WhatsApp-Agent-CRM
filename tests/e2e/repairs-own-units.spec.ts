@@ -253,10 +253,33 @@ test("una unidad va a reparar, vuelve con el costo sumado, se libera y la cuenta
 
   // Liberarla desde sus unidades: vuelve al stock.
   await page.getByRole("link", { name: SERIAL }).click();
+  // Desde la 24.5.2 no hay una sección «En reparación y en revisión»: son dos chips distintos de la
+  // lista única, y el estado va como insignia en su columna (brief-24.5.2, D-6 y D-11).
+  // Ampliación de la lista cerrada autorizada por el usuario el 2026-10-31.
+  // Scope a la tabla y no a la región: los chips del filtro de la 24.5.2 repiten las mismas
+  // palabras que las insignias de estado, así que sobre la región entera el localizador casa
+  // también con el chip y no prueba lo que dice probar.
+  await expect(page.getByRole("table").getByText("En revisión")).toBeVisible();
+  // AC-9 del brief-24.5.2, la mitad que no era el chip: la unidad en revisión muestra **su orden**
+  // en la misma celda del estado, y ese enlace es el acceso a la checklist del técnico. Antes de la
+  // 24.5.2 esto vivía en la sección «En reparación y en revisión»; al unificar la lista había que
+  // comprobar que no se perdiera, no suponerlo.
   await expect(
-    page.getByRole("heading", { name: "En reparación y en revisión" }),
+    page.getByRole("table").getByRole("link", { name: "Orden OS-000001" }),
   ).toBeVisible();
-  await expect(page.getByText("· En revisión", { exact: true })).toBeVisible();
+  // Y el chip de «En revisión» es un filtro propio, distinto del de reparación: la unidad aparece
+  // ahí, con su orden al lado.
+  await page.getByRole("link", { name: /^En revisión/ }).click();
+  await expect(page).toHaveURL(/\?estado=revision$/);
+  const enRevision = page.getByRole("table");
+  // `exact: true`: el nombre accesible de cada acción de la fila incluye el serial, así que un
+  // localizador laxo casa con cuatro elementos y rompe por modo estricto (lección de la 24.5.2).
+  await expect(
+    enRevision.getByRole("link", { name: SERIAL, exact: true }),
+  ).toBeVisible();
+  await expect(
+    enRevision.getByRole("link", { name: "Orden OS-000001" }),
+  ).toBeVisible();
   await expectAccessible(page, "unidad en revisión");
   await page
     .getByRole("button", { name: `Liberar a la venta ${SERIAL}` })
@@ -294,9 +317,9 @@ test("una unidad va a reparar, vuelve con el costo sumado, se libera y la cuenta
   await expect(page).toHaveURL(/\/ventas\/[0-9a-f-]+\?aviso=emitida$/);
   expect(await unitStatus()).toMatchObject({ status: "sold" });
   await page.goto(`/productos/${ids.product}/unidades`);
-  await expect(
-    page.getByRole("heading", { name: "Reparaciones anteriores" }),
-  ).toBeVisible();
+  // Desde la 24.5.2 la orden de una unidad que ya pasó por el técnico vive en la columna Estado de
+  // la lista única, no en una sección «Reparaciones anteriores» (brief-24.5.2, D-11).
+  await expect(page.getByRole("table").getByText("Vendida")).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Orden OS-000001" }),
   ).toBeVisible();
@@ -353,7 +376,9 @@ test("un viewer ve la orden propia sin el técnico, el costo ni las acciones", a
   await expect(page.getByText(/US\$\s35,00/)).toHaveCount(0);
   await expectAccessible(page, "orden propia para un viewer");
   await page.goto(`/productos/${ids.product}/unidades`);
-  await expect(page.getByText("· En revisión", { exact: true })).toBeVisible();
+  // Desde la 24.5.2 el estado va como insignia en su columna, no como «· En revisión» en una lista
+  // (brief-24.5.2, D-11). Scope a la tabla: el chip del filtro repite la misma palabra.
+  await expect(page.getByRole("table").getByText("En revisión")).toBeVisible();
   await expect(
     page.getByRole("button", { name: /Liberar a la venta/ }),
   ).toHaveCount(0);
@@ -371,8 +396,9 @@ test("las unidades y la orden propia entran en 375 px sin desplazamiento horizon
   ).toBeVisible();
   await expectNoHorizontalScroll(page);
   await page.goto(`/productos/${ids.product}/unidades`);
+  // Idem: la lista única con el estado como insignia (brief-24.5.2, D-11).
   await expect(
-    page.getByRole("heading", { name: "En reparación y en revisión" }),
+    page.getByRole("table").getByText("En reparación"),
   ).toBeVisible();
   await expectNoHorizontalScroll(page);
   await page.goto("/reparaciones?tipo=unidades-propias");

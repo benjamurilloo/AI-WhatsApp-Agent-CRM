@@ -986,7 +986,14 @@ describe("el precio propio, el viewer y el aislamiento (D-2, D-8, invariante 7)"
         price: "870",
         priceCurrency: "USD",
       });
-      const viewed = await listProductUnits(s.viewerA, phone.id);
+      // Desde la 24.5.2 esta lectura pide sus filtros y pagina (brief-24.5.2, D-8). Esta prueba es
+      // de la 29.5.2 y mira el precio y el costo de la unidad, así que pide la primera página sin
+      // filtros.
+      const viewed = await listProductUnits(s.viewerA, phone.id, {
+        status: null,
+        serial: "",
+        page: 1,
+      });
       expect(viewed.ok && viewed.units[0]).toMatchObject({
         serial: "111",
         cost: null,

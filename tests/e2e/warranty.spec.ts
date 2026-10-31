@@ -173,8 +173,11 @@ async function sell(page: Page) {
   await expect(page).toHaveURL(/\/ventas\/[0-9a-f-]+\?aviso=emitida$/);
 }
 
+// Desde la 24.5.2 la pantalla de unidades tiene **una sola lista** y la garantía de una unidad
+// vendida vive en su columna Estado, no en una sección «Reservadas y vendidas» (brief-24.5.2, D-11).
+// Ampliación de la lista cerrada autorizada por el usuario el 2026-10-31.
 const committed = (page: Page) =>
-  page.getByRole("region", { name: "Reservadas y vendidas" });
+  page.getByRole("region", { name: "Unidades" });
 
 test("un admin ve la garantía de una unidad vendida, cambia sus días y la busca por IMEI", async ({
   page,

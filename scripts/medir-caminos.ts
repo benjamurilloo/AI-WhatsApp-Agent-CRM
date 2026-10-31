@@ -88,8 +88,10 @@ import { listOpenClientServiceOrders } from "@/modules/service";
 import {
   getCatalogProductForService,
   listProductStock,
+  listProductUnits,
   listStockMovements,
   searchCatalogForService,
+  type UnitStatus,
 } from "@/modules/inventory";
 import { listCurrentEntriesForService } from "@/modules/knowledge";
 import { listMembers, type AuthContext } from "@/modules/organizations";
@@ -337,6 +339,21 @@ async function main(): Promise<void> {
   const productoId = producto.rows[0]?.id ?? null;
   const movimientos = producto.rows[0]?.n ?? 0;
 
+  // Un producto **por unidad** con la mayor cantidad de unidades, para la lista de la 24.5.2
+  // (brief-24.5.2, D-9). Es el peor caso disponible de esa pantalla: hasta la 24.5.2 esa lectura
+  // traía todas las unidades del producto sin `LIMIT` (H-6), y lo que se mide ahora es la página
+  // con el filtro y la búsqueda aplicados en SQL.
+  const conUnidades = await db.execute<{ id: string; n: number }>(
+    sql`select p.id, count(u.id)::int as n
+          from products p
+          join stock_units u
+            on u.organization_id = p.organization_id and u.product_id = p.id
+         where p.organization_id = ${organizationId} and p.tracking = 'unit'
+         group by p.id order by n desc limit 1`,
+  );
+  const productoUnidadesId = conUnidades.rows[0]?.id ?? null;
+  const unidades = conUnidades.rows[0]?.n ?? 0;
+
   // Control negativo (CRM_CONTROL=1): un período imposible hace que todas las métricas devuelvan
   // un `Failure`. Si con él la tabla no muestra fallas y el script sale con 0, el verde del modo
   // normal no vale nada (11.0, AC-4).
@@ -487,6 +504,35 @@ async function main(): Promise<void> {
           activity: "active",
           page: 1,
           sort: "stock_asc",
+          pageSize: 50,
+        }),
+    ],
+    // El catálogo agrupado por modelo (brief-24.5.1, D-2 y §Riesgos). **Esta medición es la deuda
+    // que la 24.5.1 dejó**: su §Riesgos prometía medir el camino completo del agrupado y no se
+    // hizo, el usuario autorizó tocar este archivo el 2026-10-31 y decidió diferirla a la 24.5.2
+    // (brief-24.5.2, D-9). Lo que agrega sobre el camino sin agrupar es el pliegue de `sumByModel`
+    // dentro de `composeProductStockPage`, en memoria y sobre un conjunto ya cargado: la hipótesis
+    // de H-5 de la 24.5.1 es que no agrega ninguna consulta. Esto lo comprueba o lo refuta.
+    [
+      "inventory.listProductStock (agrupado por modelo, 24.5.1)",
+      () =>
+        listProductStock(context, {
+          text: "",
+          stockStatus: "all",
+          activity: "active",
+          page: 1,
+          groupByModel: true,
+        }),
+    ],
+    [
+      "inventory.listProductStock (agrupado, 50 filas, 24.5.1)",
+      () =>
+        listProductStock(context, {
+          text: "",
+          stockStatus: "all",
+          activity: "active",
+          page: 1,
+          groupByModel: true,
           pageSize: 50,
         }),
     ],
@@ -771,6 +817,35 @@ async function main(): Promise<void> {
           page: 1,
         }),
     ]);
+  }
+
+  // La lista de unidades de la 24.5.2 (D-5, D-7, D-8 y D-9): sin filtro, filtrada por estado y con
+  // la búsqueda por sufijo, que es la que lleva un `like` con comodín a la izquierda y por lo tanto
+  // la que no puede usar el índice del serial. Las tres sobre el producto con más unidades.
+  if (productoUnidadesId) {
+    const unidadesDe = (
+      extra: Partial<{ status: UnitStatus; serial: string }>,
+    ) =>
+      listProductUnits(context, productoUnidadesId, {
+        status: null,
+        serial: "",
+        page: 1,
+        ...extra,
+      });
+    listados.push(
+      [
+        `inventory.listProductUnits (producto con ${unidades} unidades, 24.5.2)`,
+        () => unidadesDe({}),
+      ],
+      [
+        "inventory.listProductUnits (por estado, 24.5.2)",
+        () => unidadesDe({ status: "available" }),
+      ],
+      [
+        "inventory.listProductUnits (búsqueda por sufijo de IMEI, 24.5.2)",
+        () => unidadesDe({ serial: "0001" }),
+      ],
+    );
   }
 
   // La API de lectura, con los límites por defecto del contrato (10 y 20). El detalle devuelve

@@ -4,6 +4,7 @@ import * as catalogRepository from "@/modules/catalog/repository";
 import * as conversationsRepository from "@/modules/conversations/repository";
 import * as crmRepository from "@/modules/crm/repository";
 import * as ingestionRepository from "@/modules/ingestion/repository";
+import * as inventoryRepository from "@/modules/inventory/repository";
 import * as unitRepository from "@/modules/inventory/unit-repository";
 import {
   createSupplierPayment,
@@ -984,5 +985,116 @@ describe("el recuento de unidades por estado no alcanza a otra organización", (
       fixture.productB,
     );
     expect([...ajenas.entries()]).toEqual([]);
+  });
+});
+
+// Las tres lecturas nuevas de la 24.5.2 (brief-24.5.2, D-3, D-8, I-6 y AC-11). Van acá por el mismo
+// motivo que la de arriba: a través del servicio, `getProduct` o `findUnit` filtran por organización
+// y devuelven NOT_FOUND antes de que la consulta corra, así que el `where` del repositorio es
+// inobservable desde afuera. La forma de cada caso es la misma: **primero el control positivo**, que
+// es lo que impide que la prueba pase porque el fixture no insertó nada, y después la organización
+// ajena.
+describe("las lecturas de la lista y del historial de unidades no alcanzan a otra organización", () => {
+  // El mismo escenario que el describe anterior, repetido acá porque `beforeEach` rehace la base.
+  const dosUnidadesDeB = async () => {
+    await getDb().execute(
+      sql`update products set tracking = 'unit' where id = ${fixture.productB}`,
+    );
+    await getDb().execute(
+      sql`insert into stock_units (organization_id, product_id, serial, cost, cost_currency,
+            origin_type, created_by)
+          values (${fixture.orgB}, ${fixture.productB}, 'SERIE-B-1421', 100, 'USD',
+                  'manual', ${fixture.userB}),
+                 (${fixture.orgB}, ${fixture.productB}, 'SERIE-B-1422', 100, 'USD',
+                  'manual', ${fixture.userB})`,
+    );
+    const rows = await getDb().execute<{ id: string }>(
+      sql`select id from stock_units where organization_id = ${fixture.orgB}
+          order by serial`,
+    );
+    return rows.rows.map((row) => row.id);
+  };
+
+  const todas = (organizationId: string, productId: string) => ({
+    organizationId,
+    productId,
+    status: null,
+    serialSuffix: null,
+  });
+
+  it("la página de unidades de un producto trae las de su dueña y ninguna ajena", async () => {
+    await dosUnidadesDeB();
+
+    const propias = await unitRepository.findUnitsPageOfProduct(
+      todas(fixture.orgB, fixture.productB),
+      25,
+      0,
+    );
+    expect(propias).toHaveLength(2);
+
+    const ajenas = await unitRepository.findUnitsPageOfProduct(
+      todas(fixture.orgA, fixture.productB),
+      25,
+      0,
+    );
+    expect(ajenas).toEqual([]);
+  });
+
+  it("el total de unidades de un producto cuenta las de su dueña y ninguna ajena", async () => {
+    await dosUnidadesDeB();
+
+    expect(
+      await unitRepository.countUnitsOfProduct(
+        todas(fixture.orgB, fixture.productB),
+      ),
+    ).toBe(2);
+    expect(
+      await unitRepository.countUnitsOfProduct(
+        todas(fixture.orgA, fixture.productB),
+      ),
+    ).toBe(0);
+
+    // Y el sufijo filtra de verdad, no por casualidad: el alfabeto del serial no tiene
+    // metacaracteres de LIKE, así que esto también fija que el patrón se arma como sufijo.
+    expect(
+      await unitRepository.countUnitsOfProduct({
+        ...todas(fixture.orgB, fixture.productB),
+        serialSuffix: "1421",
+      }),
+    ).toBe(1);
+    expect(
+      await unitRepository.countUnitsOfProduct({
+        ...todas(fixture.orgB, fixture.productB),
+        serialSuffix: "SERIE",
+      }),
+    ).toBe(0);
+  });
+
+  it("los movimientos de una unidad son los de su dueña y ninguno ajeno", async () => {
+    const [unitId] = await dosUnidadesDeB();
+    await getDb().execute(
+      sql`insert into inventory_movements (organization_id, product_id, unit_id, type, quantity,
+            balance_after, reason, created_by)
+          values (${fixture.orgB}, ${fixture.productB}, ${unitId}, 'adjustment_negative', 1,
+                  0, 'Retiro por deterioro', ${fixture.userB})`,
+    );
+
+    const propios = await inventoryRepository.findUnitMovements(
+      fixture.orgB,
+      unitId!,
+      50,
+    );
+    expect(propios.map((movement) => movement.reason)).toEqual([
+      "Retiro por deterioro",
+    ]);
+
+    // Con el id de la unidad en la mano, una organización ajena no lee sus movimientos: el filtro
+    // por organización está en el `where` y no se deduce de que el id sea único.
+    const ajenos = await inventoryRepository.findUnitMovements(
+      fixture.orgA,
+      unitId!,
+      50,
+    );
+    expect(ajenos).toEqual([]);
   });
 });

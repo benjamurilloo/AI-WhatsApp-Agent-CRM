@@ -302,7 +302,7 @@ export default async function ProductPage({
           tiene unidades, así que no se muestra ninguno, tampoco en cero (I-2). Si la lectura
           falló, se dice; no se muestran ceros (AC-8). */}
       {!editing && unitCounts ? (
-        <UnitCountersPanel counts={unitCounts} />
+        <UnitCountersPanel counts={unitCounts} productId={product.id} />
       ) : null}
       {!editing && unitCounts === null ? (
         <p className="mt-6 text-sm text-muted">

@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+﻿import { sql } from "drizzle-orm";
 import {
   afterAll,
   afterEach,
@@ -27,7 +27,9 @@ import {
   getProductBalanceForService,
   getProductStockForService,
   listProductUnits,
+  listUnitAudit,
   listUnitGrades,
+  listUnitMovements,
   moveUnitGrade,
   registerUnit,
   searchCatalogAvailableForService,
@@ -62,6 +64,11 @@ import { expectStockInvariant } from "./stock-invariant";
 
 const PASSWORD = "contraseña-correcta-larga";
 const TEST_TIMEOUT = 30000;
+
+// Desde la 24.5.2, `listProductUnits` pide sus filtros y pagina (brief-24.5.2, D-8). Estas pruebas
+// son de la 29.5 y miran otra cosa, así que piden la primera página sin filtros: el parámetro es
+// obligatorio a propósito, para que ningún llamador herede el tope sin enterarse.
+const ALL_UNITS = { status: null, serial: "", page: 1 } as const;
 let storedHash: string;
 
 async function createOrganization(name: string) {
@@ -557,7 +564,7 @@ describe("el alta, la baja y la corrección manual (D-4, AC-3, AC-4)", () => {
         { action: "create", entity_type: "stock_unit" },
       ]);
 
-      const listed = await listProductUnits(s.adminA, phone);
+      const listed = await listProductUnits(s.adminA, phone, ALL_UNITS);
       expect(listed.ok && listed.units).toMatchObject([
         {
           serial: "356938035643809",
@@ -569,7 +576,7 @@ describe("el alta, la baja y la corrección manual (D-4, AC-3, AC-4)", () => {
         },
       ]);
       // El viewer ve la unidad sin su costo (AC-8).
-      const viewed = await listProductUnits(s.viewerA, phone);
+      const viewed = await listProductUnits(s.viewerA, phone, ALL_UNITS);
       expect(viewed.ok && viewed.units[0]!.cost).toBeNull();
       expect(await registerUnit(s.viewerA, phone, unit("222"))).toMatchObject({
         code: "FORBIDDEN",
@@ -790,7 +797,7 @@ describe("la recepción de mercadería con IMEI (D-4, AC-2)", () => {
         sql`select product_id from product_costs`,
       );
       expect(costs.rows).toEqual([{ product_id: box }]);
-      const units = await listProductUnits(s.adminA, phone);
+      const units = await listProductUnits(s.adminA, phone, ALL_UNITS);
       expect(units.ok && units.units.map((u) => [u.origin, u.cost])).toEqual([
         ["goods_receipt", { amount: "400.00", currency: "USD" }],
         ["goods_receipt", { amount: "400.00", currency: "USD" }],
@@ -1166,7 +1173,7 @@ describe("el aislamiento (invariante 7)", () => {
       expect(
         await correctUnit(s.adminB, unitId, { gradeId: "", batteryHealth: "" }),
       ).toEqual({ ok: false, code: "NOT_FOUND" });
-      expect(await listProductUnits(s.adminB, phone)).toEqual({
+      expect(await listProductUnits(s.adminB, phone, ALL_UNITS)).toEqual({
         ok: false,
         code: "NOT_FOUND",
       });
@@ -1349,6 +1356,154 @@ describe("el recuento de unidades por estado (brief-24.5.1, AC-7)", () => {
           "00000000-0000-4000-8000-000000000000",
         ),
       ).toEqual({ ok: false, code: "NOT_FOUND" });
+    },
+    TEST_TIMEOUT,
+  );
+});
+
+// Las dos lecturas del historial de una unidad (brief-24.5.2, D-3, D-10, I-9, AC-8, AC-12 y AC-19).
+//
+// **Por qué existe este describe**: la revisión independiente del 2026-10-31 encontró como su
+// bloqueante B-3 que `listUnitAudit` y `listUnitMovements` no tenían **ninguna** prueba que las
+// llamara. Estaban escritas bien, pero nada las vigilaba: borrar el `authorize(context, {role:
+// "admin"})` de la auditoría no hacía fallar nada, y AC-12 pide exactamente que el servicio
+// responda FORBIDDEN a un viewer, «no solo le oculta el enlace». La comprobación de presentación
+// que había en el end-to-end **no puede** cubrirlo, porque para un viewer la página nunca llama a
+// la lectura.
+describe("el historial de una unidad (24.5.2, D-3 y D-10)", () => {
+  // Una unidad dada de baja **por el camino real y completo**: alta y baja con los casos de uso del
+  // módulo, sin una sola sentencia a mano.
+  //
+  // El primer intento de este fixture llevaba la unidad a `in_review` con dos `update` por SQL,
+  // para probar el caso en que el motivo vive **solo** en la auditoría. **La batería lo rechazó**:
+  // su comprobación de invariantes del saldo falló con «saldo 1.000 con 0 unidades disponibles o
+  // reservadas». Tenía razón — sacar una unidad del saldo sin escribir su movimiento es un estado
+  // que ninguna operación real produce, y el seed del proyecto ya lo dice de otra forma: «el saldo
+  // sale de la cadena de movimientos y no al revés». El camino a `in_review` pasa por una orden de
+  // servicio de unidad propia (29.6.2), que necesita técnico y modelo; ese caso lo cubre el
+  // end-to-end, que arma el estado con la interfaz.
+  //
+  // Lo que se pierde acá no hace falta: para AC-12, AC-19 e I-9 lo que importa es **quién puede
+  // leer la auditoría**, y eso no depende de cómo se dio de baja la unidad.
+  async function unidadDadaDeBaja(s: Seed) {
+    const phone = await unitProduct(s.adminA, "IP13");
+    const unitId = await register(s.adminA, phone, "356938035643809");
+    const baja = await writeOffUnit(s.adminA, unitId, "Pantalla rota");
+    expect(baja.ok).toBe(true);
+    return { phone, unitId };
+  }
+
+  it(
+    "un admin lee los movimientos de la unidad, con su motivo y su autor compuesto",
+    async () => {
+      const s = await seed();
+      const { unitId } = await unidadDadaDeBaja(s);
+
+      const movimientos = await listUnitMovements(s.adminA, unitId);
+      expect(movimientos.ok).toBe(true);
+      if (!movimientos.ok) throw new Error("no debería");
+      // Los dos de esta unidad, del más nuevo al más viejo, y **solo** los de esta unidad.
+      expect(movimientos.movements.map((m) => m.type)).toEqual([
+        "adjustment_negative",
+        "adjustment_positive",
+      ]);
+      expect(movimientos.movements[0]!.reason).toBe("Pantalla rota");
+      // El autor lo compone `inventory` con `organizations`, por ids y sin JOIN.
+      expect(movimientos.movements[0]!.author.name).not.toBe("");
+      expect(movimientos.limit).toBeGreaterThan(0);
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "un admin lee la auditoría de la unidad, con el motivo y la acción de cada entrada",
+    async () => {
+      const s = await seed();
+      const { unitId } = await unidadDadaDeBaja(s);
+
+      const auditoria = await listUnitAudit(s.adminA, unitId, 1);
+      expect(auditoria.ok).toBe(true);
+      if (!auditoria.ok) throw new Error("no debería");
+      const baja = auditoria.entries.find(
+        (entry) => entry.diff.after?.status === "written_off",
+      );
+      expect(baja?.diff.after?.reason).toBe("Pantalla rota");
+      expect(baja?.action).toBe("status_change");
+      // El nombre del autor lo compone `inventory`, no `audit`: el Overview lo exige así.
+      expect(baja?.actor).toMatchObject({ kind: "user" });
+      if (baja?.actor.kind === "user") expect(baja.actor.name).not.toBe("");
+      // Hay más de una acción sobre la unidad: el alta también se audita. Es lo que hace que
+      // rotular todas como «Cambio de estado» fuera un defecto (N-2).
+      expect(
+        new Set(auditoria.entries.map((entry) => entry.action)).size,
+      ).toBeGreaterThan(1);
+      expect(auditoria.total).toBe(auditoria.entries.length);
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "un viewer lee los movimientos y la auditoría le responde FORBIDDEN en el servicio (AC-12, AC-19, I-9)",
+    async () => {
+      const s = await seed();
+      const { unitId } = await unidadDadaDeBaja(s);
+
+      // Los movimientos sí: un movimiento de stock no es auditoría, y `listStockMovements` siempre
+      // fue de los dos roles. De acá sale que un viewer vea el motivo de una baja desde
+      // `available` y no el de una desde `in_review` (AC-19).
+      const movimientos = await listUnitMovements(s.viewerA, unitId);
+      expect(movimientos.ok).toBe(true);
+
+      // La auditoría no. **Esto es lo que no estaba probado**: si alguien borra el `authorize` del
+      // servicio, esta aserción falla. Ocultar el bloque en la pantalla es *además*, no en lugar de.
+      expect(await listUnitAudit(s.viewerA, unitId, 1)).toMatchObject({
+        ok: false,
+        code: "FORBIDDEN",
+      });
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "ninguna de las dos lecturas alcanza una unidad de otra organización",
+    async () => {
+      const s = await seed();
+      const { unitId } = await unidadDadaDeBaja(s);
+
+      // El control positivo primero, que es lo que le da sentido al caso: con su dueña, las dos
+      // lecturas devuelven algo.
+      expect((await listUnitMovements(s.adminA, unitId)).ok).toBe(true);
+      expect((await listUnitAudit(s.adminA, unitId, 1)).ok).toBe(true);
+
+      // Con el id en la mano, la organización ajena no lee ni una ni la otra.
+      expect(await listUnitMovements(s.adminB, unitId)).toMatchObject({
+        ok: false,
+        code: "NOT_FOUND",
+      });
+      expect(await listUnitAudit(s.adminB, unitId, 1)).toMatchObject({
+        ok: false,
+        code: "NOT_FOUND",
+      });
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "sin la capacidad serialized_units, las dos lecturas no existen",
+    async () => {
+      const s = await seed();
+      const { unitId } = await unidadDadaDeBaja(s);
+
+      // La organización C no tiene la capacidad. Un NOT_FOUND y no un FORBIDDEN: para ella la
+      // pantalla de unidades no existe.
+      expect(await listUnitMovements(s.adminC, unitId)).toMatchObject({
+        ok: false,
+        code: "NOT_FOUND",
+      });
+      expect(await listUnitAudit(s.adminC, unitId, 1)).toMatchObject({
+        ok: false,
+        code: "NOT_FOUND",
+      });
     },
     TEST_TIMEOUT,
   );

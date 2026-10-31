@@ -10,6 +10,8 @@ import type {
 } from "@/modules/inventory";
 import type { CreateOwnUnitServiceOrderResult } from "@/modules/service";
 import type { StockTracking } from "@/modules/catalog";
+import type { IconName } from "@/app/_components/icons";
+import type { StatusTone } from "@/app/_components/status-badge";
 import { formatQuantity } from "@/shared/quantity";
 
 // Textos de la pantalla de unidades de un producto (brief-29.5, D-3, D-4 y D-6).
@@ -47,7 +49,156 @@ export const UNIT_ORIGIN_LABEL = {
   trade_in: "Usado recibido",
 } as const;
 
-export const NO_AVAILABLE_UNITS_MESSAGE = "No hay unidades disponibles.";
+// El tono y el ícono de cada estado (brief-24.5.2, D-6; criterios de la v2): disponible verde,
+// reservada azul y en revisión ámbar, **siempre con texto**, que es lo que leen los lectores de
+// pantalla. «En reparación» va en neutro y no en ámbar para que no se confunda con «en revisión»:
+// son dos estados distintos desde la 29.6.2 y esta subfase los separa.
+export const UNIT_STATUS_TONE: Record<UnitStatus, StatusTone> = {
+  available: "success",
+  reserved: "info",
+  sold: "primary",
+  in_repair: "neutral",
+  in_review: "warning",
+  written_off: "danger",
+};
+
+export const UNIT_STATUS_ICON: Record<UnitStatus, IconName> = {
+  available: "check",
+  reserved: "receipt",
+  sold: "banknote",
+  in_repair: "wrench",
+  in_review: "eye",
+  written_off: "power",
+};
+
+// Los tipos de movimiento, para el historial de una unidad (brief-24.5.2, D-3).
+//
+// **Duplica `TYPE_LABEL` de `movimientos/page.tsx`, y la duplicación es deliberada**: ese archivo
+// está fuera de la lista cerrada de archivos autorizados de esta subfase, y la regla es que salirse
+// de la lista se para y se pregunta. Unificarlos en un módulo compartido es el remedio, y
+// corresponde hacerlo cuando una subfase tenga autorizados los dos archivos. Mientras tanto, el
+// riesgo es que se separen: si se agrega un tipo al enum, hay que tocar las dos copias.
+export const MOVEMENT_TYPE_LABEL: Record<string, string> = {
+  adjustment_positive: "Ajuste positivo",
+  adjustment_negative: "Ajuste negativo",
+  order_delivery: "Entrega de pedido",
+  sale: "Venta",
+  sale_void: "Anulación de venta",
+  goods_receipt: "Recepción",
+  goods_receipt_void: "Anulación de recepción",
+  unit_to_repair: "A reparación",
+  unit_released: "Liberada a la venta",
+  unit_written_off: "Baja de usado",
+};
+
+export function movementTypeLabel(type: string): string {
+  return MOVEMENT_TYPE_LABEL[type] ?? type;
+}
+
+// El historial del panel y sus estados (brief-24.5.2, D-3, D-10 e I-2).
+export const HISTORY_EMPTY_MESSAGE = "Esta unidad todavía no tiene eventos.";
+export const HISTORY_MOVEMENTS_UNAVAILABLE_MESSAGE =
+  "No disponible: no pudimos leer los movimientos de esta unidad. No significa que no tenga.";
+export const HISTORY_AUDIT_UNAVAILABLE_MESSAGE =
+  "No disponible: no pudimos leer los cambios de estado de esta unidad. No significa que no tenga.";
+// Lo que ve un viewer. No es un error: es la frontera de roles que ya existía (SecurityModel).
+export const HISTORY_AUDIT_ADMIN_ONLY_MESSAGE =
+  "Los cambios de estado de una unidad los ve un administrador.";
+
+// El aviso de tope, **por fuente**. Antes solo cubría los movimientos y la auditoría quedaba
+// recortada en silencio: era el riesgo R-2 del brief sin mitigar, y lo encontró la revisión
+// independiente (N-1). Un historial recortado que se ve completo es peor que uno que lo dice.
+export function historyCapMessage({
+  movementsShown,
+  movementsLimit,
+  auditShown,
+  auditTotal,
+}: {
+  movementsShown: number;
+  movementsLimit: number;
+  auditShown: number;
+  auditTotal: number | null;
+}): string {
+  const avisos: string[] = [];
+  if (movementsLimit > 0 && movementsShown >= movementsLimit) {
+    avisos.push(`los últimos ${movementsLimit} movimientos`);
+  }
+  // El total de la auditoría lo devuelve la lectura, así que acá no se estima: se compara.
+  if (auditTotal !== null && auditTotal > auditShown) {
+    avisos.push(`${auditShown} de ${auditTotal} cambios`);
+  }
+  return avisos.length === 0
+    ? ""
+    : `Se muestran ${avisos.join(" y ")}: el historial está recortado.`;
+}
+
+// Cómo se nombra cada acción de auditoría sobre una unidad. Son **cinco**, no una: antes todas se
+// dibujaban como «Cambio de estado», así que una corrección de grado o un cambio de días de
+// garantía aparecía como un cambio de estado y sin ningún dato (N-2).
+const UNIT_AUDIT_ACTION_LABEL: Record<string, string> = {
+  create: "Alta de la unidad",
+  status_change: "Cambio de estado",
+  update: "Corrección",
+  price_change: "Cambio de precio",
+  cost_change: "Cambio de costo",
+};
+
+export function unitAuditActionLabel(action: string): string {
+  return UNIT_AUDIT_ACTION_LABEL[action] ?? "Cambio registrado";
+}
+
+// Los campos de una entrada, con su nombre en español. Se dice **qué** cambió y no a qué valor: un
+// valor de auditoría puede ser un dato que esta pantalla no muestra a este rol.
+const UNIT_AUDIT_FIELD_LABEL: Record<string, string> = {
+  gradeId: "el grado",
+  batteryHealth: "la batería",
+  price: "el precio",
+  priceCurrency: "la moneda del precio",
+  cost: "el costo",
+  costCurrency: "la moneda del costo",
+  warrantyDays: "los días de garantía",
+  serial: "el IMEI",
+};
+
+export function unitAuditChangedText(changed: string[]): string {
+  if (changed.length === 0) return "";
+  const nombres = changed.map(
+    (campo) => UNIT_AUDIT_FIELD_LABEL[campo] ?? campo,
+  );
+  return nombres.length === 1
+    ? `Cambió ${nombres[0]}.`
+    : `Cambiaron ${nombres.slice(0, -1).join(", ")} y ${nombres.at(-1)}.`;
+}
+
+// El filtro por estado y la búsqueda de la lista (brief-24.5.2, D-5 y D-7).
+export const ALL_UNITS_LABEL = "Todas";
+export const SEARCH_LABEL = "Buscar por IMEI o serie";
+
+export function searchTooShortMessage(min: number): string {
+  return `Escribí al menos ${min} caracteres del final del IMEI para buscar. Mientras tanto, la lista no está filtrada por búsqueda.`;
+}
+
+export const NO_UNITS_FOR_FILTER_MESSAGE =
+  "Ninguna unidad coincide con el filtro o la búsqueda.";
+export const NO_UNITS_MESSAGE = "Este producto todavía no tiene unidades.";
+// Los tres mensajes son distintos a propósito: «no coincide ninguna» habla del filtro, «todavía no
+// tiene» afirma algo sobre el producto, y este dice que **no se sabe**. Confundirlos es lo que I-2
+// prohíbe.
+export const UNITS_UNAVAILABLE_MESSAGE =
+  "No disponible: no pudimos leer las unidades de este producto. No significa que no tenga.";
+export const UNIT_COUNTS_UNAVAILABLE_MESSAGE =
+  "No disponible: no pudimos leer cuántas unidades hay en cada estado, así que los filtros van sin su cantidad.";
+// Un `?unidad=` que no resuelve. Es **otra cosa** que los tres de arriba: la lectura salió bien y la
+// respuesta es que esa unidad no está acá, así que no se dice «no disponible» ni se calla. No se
+// distingue entre «no existe», «es de otra organización» y «es de otro producto»: para quien mira es
+// el mismo hecho, y separarlos le contaría a una organización algo de las otras.
+export const UNIT_PANEL_NOT_FOUND_MESSAGE =
+  "No encontramos esa unidad entre las de este producto. El enlace puede ser viejo.";
+
+// `NO_AVAILABLE_UNITS_MESSAGE` («No hay unidades disponibles.») se retiró en la 24.5.2: era el vacío
+// de la sección «Unidades disponibles», que D-11 reemplazó por la lista única. Sus dos vacíos son
+// `NO_UNITS_MESSAGE` y `NO_UNITS_FOR_FILTER_MESSAGE`, que distinguen «no tiene ninguna» de «ninguna
+// coincide con el filtro».
 export const NOT_UNIT_TRACKED_MESSAGE =
   "Este producto se lleva por cantidad: no tiene unidades.";
 export const UNIT_NOT_FOUND_MESSAGE = "Esta unidad no existe.";

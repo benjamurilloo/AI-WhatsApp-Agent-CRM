@@ -1,5 +1,12 @@
-import { z } from "zod";
-import { recordAudit } from "@/modules/audit";
+﻿import { z } from "zod";
+import {
+  AUDIT_PAGE_SIZE,
+  auditUserIds,
+  listEntityAuditLogs,
+  nameAuditActors,
+  recordAudit,
+  type NamedAuditLogEntry,
+} from "@/modules/audit";
 import {
   getProduct,
   lockProductForStockChange,
@@ -10,6 +17,7 @@ import {
 } from "@/modules/catalog";
 import {
   authorize,
+  getMemberSummaries,
   hasCapability,
   type AuthContext,
 } from "@/modules/organizations";
@@ -716,10 +724,6 @@ export type ProductUnit = {
   updatedAt: Date;
 };
 
-export type ProductUnitsResult =
-  | { ok: true; tracking: StockTracking; units: ProductUnit[] }
-  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">;
-
 // Los recuentos de unidades por estado, para el Resumen de la ficha (brief-24.5.1, D-6).
 export type UnitStatusCounts = Record<unitRepository.StockUnitStatus, number>;
 
@@ -780,21 +784,238 @@ function toProductUnit(
   };
 }
 
+export const UNITS_PAGE_SIZE = 25;
+
+// El mínimo del sufijo de IMEI, que no es decorativo: con menos caracteres la búsqueda dejaría
+// enumerar identificadores tipeando un dígito (brief-24.5.2, D-7).
+export const UNIT_SEARCH_MIN_LENGTH = 4;
+
+const unitSearchSchema = z
+  .string()
+  .trim()
+  .regex(new RegExp(`^[A-Za-z0-9-]{${UNIT_SEARCH_MIN_LENGTH},}$`));
+
+// Qué pasó con la búsqueda. Distingue «no buscó» de «buscó con menos de cuatro caracteres», porque
+// una lista sin filtrar tiene que poder decir **por qué** no filtró, en vez de devolver todo como si
+// la búsqueda se hubiera aplicado (brief-24.5.2, D-7 y AC-3).
+export type UnitSearchState = "none" | "applied" | "too_short";
+
+// Lo que la lista de unidades necesita saber de la URL. `status` en null es «todas».
+export type UnitListQuery = {
+  status: unitRepository.StockUnitStatus | null;
+  serial: string;
+  page: number;
+};
+
+export type ProductUnitsPage = {
+  tracking: StockTracking;
+  units: ProductUnit[];
+  total: number;
+  page: number;
+  pageCount: number;
+  search: UnitSearchState;
+  // Si el producto tiene unidades ignorando los filtros: distingue «sin resultados» de «sin
+  // unidades», como la pantalla de Movimientos desde su hallazgo 9.
+  productHasUnits: boolean;
+};
+
+export type ProductUnitsResult =
+  | ({ ok: true } & ProductUnitsPage)
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">;
+
+// Las unidades de un producto, **paginadas**, con el filtro por estado y la búsqueda por sufijo de
+// IMEI aplicados en SQL (brief-24.5.2, D-5, D-7 y D-8). Los dos roles, como la ficha; un viewer las
+// recibe sin el costo (FR-PROD-21).
+//
+// Hasta la 24.5.2 esta lectura traía **todas** las unidades del producto sin `LIMIT` (H-6, que es el
+// H-2 de la 24.5.1). El tercer parámetro es obligatorio a propósito: con un valor por omisión, un
+// llamador nuevo heredaría el tope sin enterarse, y el riesgo de esta lectura es justamente recortar
+// filas en silencio (R-1 del brief).
 export async function listProductUnits(
   context: AuthContext,
   productId: string,
+  query: UnitListQuery,
 ): Promise<ProductUnitsResult> {
   const found = await getProduct(context, productId);
   if (!found.ok) return found;
-  const rows = await unitRepository.findUnitsOfProduct(
-    context.organizationId,
-    found.product.id,
+
+  const parsed = unitSearchSchema.safeParse(query.serial);
+  const typed = query.serial.trim().length > 0;
+  const search: UnitSearchState = parsed.success
+    ? "applied"
+    : typed
+      ? "too_short"
+      : "none";
+  const serialSuffix = parsed.success ? parsed.data : null;
+
+  const filter: unitRepository.UnitQuery = {
+    organizationId: context.organizationId,
+    productId: found.product.id,
+    status: query.status,
+    serialSuffix,
+  };
+  const total = await unitRepository.countUnitsOfProduct(filter);
+  const pageCount = Math.max(1, Math.ceil(total / UNITS_PAGE_SIZE));
+  const page = Math.min(Math.max(1, query.page), pageCount);
+  const rows = await unitRepository.findUnitsPageOfProduct(
+    filter,
+    UNITS_PAGE_SIZE,
+    (page - 1) * UNITS_PAGE_SIZE,
   );
   const withCost = context.role === "admin";
+
+  // Sin filtros, el total ya responde si el producto tiene unidades: no se gasta otra consulta.
+  const filtered = query.status !== null || serialSuffix !== null;
+  const productHasUnits =
+    total > 0 ||
+    (filtered &&
+      (await unitRepository.countUnitsOfProduct({
+        ...filter,
+        status: null,
+        serialSuffix: null,
+      })) > 0);
+
   return {
     ok: true,
     tracking: found.product.tracking,
     units: rows.map((row) => toProductUnit(row, withCost)),
+    total,
+    page,
+    pageCount,
+    search,
+    productHasUnits,
+  };
+}
+
+export const UNIT_AUDIT_PAGE_SIZE = AUDIT_PAGE_SIZE;
+
+export type UnitAuditResult =
+  | {
+      ok: true;
+      entries: NamedAuditLogEntry[];
+      total: number;
+      page: number;
+      pageCount: number;
+    }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">;
+
+// La auditoría de una unidad, para el Historial de su panel (brief-24.5.2, D-3 y D-10). Es la única
+// fuente del motivo de una baja **desde `in_review`**: esa baja no es un movimiento de stock, porque
+// la unidad ya estaba fuera del saldo (U-2 de la 29.6.2), así que su motivo vive solo acá.
+//
+// **Solo `admin`** (D-10 e I-9): `SecurityModel.md` reserva la auditoría a `admin`, y el mismo
+// `authorize` lo pone `catalog.listProductAudit`. Autoriza **en el servicio**, no en la
+// presentación: a un viewer le responde FORBIDDEN, y ocultarle el bloque es además, no en lugar de.
+//
+// Como manda el Overview, la lectura de `audit` no autoriza ni compone nombres: eso lo hace el
+// módulo dueño de la entidad, que acá es `inventory`. El nombre del autor se compone con
+// `getMemberSummaries` de `organizations`, por ids y sin `JOIN`.
+export async function listUnitAudit(
+  context: AuthContext,
+  unitId: string,
+  page: number,
+): Promise<UnitAuditResult> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  if (!idSchema.safeParse(unitId).success) return failure("VALIDATION_ERROR");
+  if (!(await hasCapability(context.organizationId, "serialized_units"))) {
+    return failure("NOT_FOUND");
+  }
+  // La unidad tiene que ser de la organización antes de leer su auditoría: si no, un id ajeno
+  // devolvería las entradas de una unidad que no es suya.
+  const row = await unitRepository.findUnit(
+    context.organizationId,
+    unitId.toLowerCase(),
+  );
+  if (!row) return failure("NOT_FOUND");
+
+  const found = await listEntityAuditLogs({
+    organizationId: context.organizationId,
+    entityTypes: ["stock_unit"],
+    entityId: row.id,
+    page,
+  });
+  const names = new Map(
+    (
+      await getMemberSummaries(
+        context.organizationId,
+        auditUserIds(found.entries),
+      )
+    ).map((user) => [user.id, user.name]),
+  );
+  return {
+    ok: true,
+    entries: nameAuditActors(found.entries, names),
+    total: found.total,
+    page: found.page,
+    pageCount: found.pageCount,
+  };
+}
+
+// El tope del historial de movimientos de una unidad. No pagina: una unidad tiene pocos movimientos,
+// y el panel dice el tope y cuántos trajo para no presentar una mitad como si fuera todo (R-2).
+export const UNIT_MOVEMENTS_LIMIT = 50;
+
+export type UnitMovement = {
+  id: string;
+  type: repository.StockMovementType;
+  quantity: string;
+  reason: string;
+  createdAt: Date;
+  // Compuesto por ids con getMemberSummaries, sin JOIN, como StockMovement.
+  author: { id: string; name: string };
+};
+
+export type UnitMovementsResult =
+  | { ok: true; movements: UnitMovement[]; limit: number }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">;
+
+// Los movimientos de una unidad. **Los dos roles**, como `listStockMovements`: un movimiento de
+// stock no es auditoría, y el modelo de seguridad reserva a `admin` la auditoría, no los
+// movimientos (brief-24.5.2, H-12 y D-10). Esto es lo que hace que un viewer sí vea el motivo de una
+// baja desde `available`, que vive en el movimiento, y no el de una baja desde `in_review`.
+export async function listUnitMovements(
+  context: AuthContext,
+  unitId: string,
+): Promise<UnitMovementsResult> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  if (!idSchema.safeParse(unitId).success) return failure("VALIDATION_ERROR");
+  if (!(await hasCapability(context.organizationId, "serialized_units"))) {
+    return failure("NOT_FOUND");
+  }
+  const row = await unitRepository.findUnit(
+    context.organizationId,
+    unitId.toLowerCase(),
+  );
+  if (!row) return failure("NOT_FOUND");
+
+  const rows = await repository.findUnitMovements(
+    context.organizationId,
+    row.id,
+    UNIT_MOVEMENTS_LIMIT,
+  );
+  const names = new Map(
+    (
+      await getMemberSummaries(context.organizationId, [
+        ...new Set(rows.map((movement) => movement.createdBy)),
+      ])
+    ).map((user) => [user.id, user.name]),
+  );
+  return {
+    ok: true,
+    limit: UNIT_MOVEMENTS_LIMIT,
+    movements: rows.map((movement) => ({
+      id: movement.id,
+      type: movement.type,
+      quantity: movement.quantity,
+      reason: movement.reason,
+      createdAt: movement.createdAt,
+      author: {
+        id: movement.createdBy,
+        name: names.get(movement.createdBy) ?? "",
+      },
+    })),
   };
 }
 

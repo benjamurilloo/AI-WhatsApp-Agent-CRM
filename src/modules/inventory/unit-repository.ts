@@ -8,6 +8,7 @@ import {
   ne,
   notInArray,
   sql,
+  type SQL,
 } from "drizzle-orm";
 import { getDb, type Db, type DbTransaction } from "@/shared/db";
 import {
@@ -101,6 +102,64 @@ export function findUnitsOfProduct(
       ),
     )
     .orderBy(asc(statusOrder), desc(stockUnits.createdAt), desc(stockUnits.id));
+}
+
+// Qué recorta la lista de unidades de un producto (brief-24.5.2, D-5, D-7 y D-8). `status` en null
+// es «todas» y `serialSuffix` en null es «sin búsqueda»: los dos se aplican en SQL, porque filtrar
+// en memoria sobre una lectura sin tope movería el problema en lugar de resolverlo.
+export type UnitQuery = {
+  organizationId: string;
+  productId: string;
+  status: StockUnitStatus | null;
+  serialSuffix: string | null;
+};
+
+function unitConditions(query: UnitQuery): SQL | undefined {
+  // Comprobado en los dos sentidos el 2026-10-31: al borrar este filtro por organización fallan
+  // **dos** de las tres pruebas nuevas de `organization-isolation.test.ts` —la de la página y la
+  // del total, que son las que pasan por acá— y **ninguna** de las 29 de `units.test.ts`, porque
+  // ahí el servicio ya filtró antes (brief-24.5.2, AC-11). La tercera, la de los movimientos de
+  // una unidad, no toca esta función: su `where` vive en `findUnitMovements` de `repository.ts`.
+  const conditions: (SQL | undefined)[] = [
+    eq(stockUnits.organizationId, query.organizationId),
+    eq(stockUnits.productId, query.productId),
+  ];
+  if (query.status) conditions.push(eq(stockUnits.status, query.status));
+  if (query.serialSuffix) {
+    // El sufijo llega validado contra [A-Za-z0-9-]{4,32}, que es el alfabeto del serial
+    // (UNIT_SERIAL_PATTERN), así que **no puede traer `%`, `_` ni `\`**: no hay metacaracteres de
+    // LIKE que escapar. La validación es la defensa, no un escape que alguien pueda olvidar al
+    // agregar otra búsqueda. Si ese alfabeto cambiara, esto hay que revisarlo.
+    conditions.push(
+      sql`lower(${stockUnits.serial}) like ${`%${query.serialSuffix.toLowerCase()}`}`,
+    );
+  }
+  return and(...conditions);
+}
+
+// Cuántas unidades casan con el filtro, para el total real de la página.
+export async function countUnitsOfProduct(query: UnitQuery): Promise<number> {
+  const rows = await getDb()
+    .select({ total: count() })
+    .from(stockUnits)
+    .where(unitConditions(query));
+  return rows[0]!.total;
+}
+
+// Una página de las unidades de un producto, con el mismo orden que findUnitsOfProduct.
+export function findUnitsPageOfProduct(
+  query: UnitQuery,
+  limit: number,
+  offset: number,
+): Promise<StockUnitRow[]> {
+  return getDb()
+    .select(unitColumns)
+    .from(stockUnits)
+    .leftJoin(unitGrades, gradeJoin)
+    .where(unitConditions(query))
+    .orderBy(asc(statusOrder), desc(stockUnits.createdAt), desc(stockUnits.id))
+    .limit(limit)
+    .offset(offset);
 }
 
 // Cuántas unidades tiene un producto en cada estado, contadas en SQL (brief-24.5.1, D-6). El

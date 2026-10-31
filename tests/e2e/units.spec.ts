@@ -1,6 +1,7 @@
-import AxeBuilder from "@axe-core/playwright";
+﻿import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { sql } from "drizzle-orm";
+import { UNITS_PAGE_SIZE } from "@/modules/inventory";
 import { createDb, type Db } from "@/shared/db";
 import { SEED_ORGANIZATION_ID, SEED_USERS, seedBasic } from "../../seeds/basic";
 import {
@@ -155,6 +156,10 @@ async function pick(scope: Locator | Page, label: string, text: string) {
 test("un admin pasa un producto a «por unidad», recibe con IMEI, carga y da de baja", async ({
   page,
 }) => {
+  // Cinco corridas de axe en los dos temas sobre pantallas que la 24.5.2 agrandó —la lista de
+  // unidades suma los chips y la columna Estado—: pasa de los 30 s por defecto. Ya rozaba el
+  // límite en la 24.5.1, donde había timeado y pasado sola en 57 s.
+  test.slow();
   const productId = await insertProduct("IP15P-256", "iPhone 15 Pro 256 GB");
   await db.execute(
     sql`insert into suppliers (organization_id, name) values (${IPHONE}, 'Importadora Norte')`,
@@ -175,7 +180,11 @@ test("un admin pasa un producto a «por unidad», recibe con IMEI, carga y da de
   await expect(
     page.getByText("Listo: cambió cómo se lleva el stock del producto."),
   ).toBeVisible();
-  await expect(page.getByText("No hay unidades disponibles.")).toBeVisible();
+  // Desde la 24.5.2 la pantalla tiene una sola lista y este producto todavía no tiene ninguna
+  // unidad, que no es lo mismo que «ninguna coincide con el filtro» (brief-24.5.2, D-11).
+  await expect(
+    page.getByText("Este producto todavía no tiene unidades."),
+  ).toBeVisible();
 
   // La recepción pide un IMEI por unidad (D-6).
   await page.goto("/compras/recepciones/nueva");
@@ -241,8 +250,18 @@ test("un admin pasa un producto a «por unidad», recibe con IMEI, carga y da de
   await expect(
     page.getByText("Unidad dada de baja: el stock bajó en 1."),
   ).toBeVisible();
+  // Desde la 24.5.2 no hay una sección «Dadas de baja»: es el chip `?estado=bajas` de la lista
+  // única (brief-24.5.2, D-11). La unidad dada de baja aparece ahí, con su insignia.
+  await page.goto(`/productos/${productId}/unidades?estado=bajas`);
+  const bajas = page.getByRole("region", { name: "Unidades" });
   await expect(
-    page.getByRole("heading", { name: "Dadas de baja" }),
+    bajas.getByRole("link", { name: "356938035643809", exact: true }),
+  ).toBeVisible();
+  // Scope a la tabla y no a la región: **los chips del filtro repiten las mismas palabras que las
+  // insignias de estado**, así que `getByText("Dada de baja")` sobre la región entera también casa
+  // con el chip y no prueba lo que dice probar.
+  await expect(
+    bajas.getByRole("table").getByText("Dada de baja"),
   ).toBeVisible();
   expect(await unitRows(productId)).toEqual([
     { serial: "356938035643809", status: "written_off" },
@@ -364,8 +383,12 @@ test("un pedido elige sus unidades, se confirma, se entrega y su venta lleva los
 
   // La ficha de unidades muestra las reservadas con su pedido.
   await page.goto(`/productos/${productId}/unidades`);
+  // Desde la 24.5.2 la reserva y su pedido viven en la columna Estado de la lista única, no en una
+  // sección «Reservadas y vendidas» (brief-24.5.2, D-11).
+  // Scope a la tabla: los chips del filtro repiten las palabras de las insignias (ver arriba), y
+  // acá hay dos unidades reservadas, así que además hace falta `first()`.
   await expect(
-    page.getByRole("heading", { name: "Reservadas y vendidas" }),
+    page.getByRole("table").getByText("Reservada").first(),
   ).toBeVisible();
   await expect(page.getByText("1 unidad disponible.")).toBeVisible();
   await expectAccessible(page, "unidades reservadas");
@@ -630,8 +653,20 @@ test("el Resumen muestra los tres contadores de unidades y la barra de pestañas
     "El saldo cuenta las disponibles y las reservadas: lo que está en reparación o en revisión queda fuera.",
   );
   await expect(counters).toContainText("Hoy hay una fuera del saldo.");
-  // «Ver unidades» es la acción principal del encabezado, no un enlace de los contadores (D-6).
-  await expect(counters.getByRole("link")).toHaveCount(0);
+  // Desde la 24.5.2 **cada contador es un enlace** a la lista filtrada por su estado
+  // (brief-24.5.2, D-5 y AC-2): cierra la primera diferencia declarada de la 24.5.1, que decía
+  // «Ver unidades es la acción principal del encabezado, no un enlace de los contadores» y
+  // afirmaba `toHaveCount(0)`. El encabezado conserva «Ver unidades».
+  await expect(counters.getByRole("link")).toHaveCount(3);
+  await expect(
+    counters.getByRole("link", { name: /Disponibles/ }),
+  ).toHaveAttribute("href", /\/unidades\?estado=disponibles$/);
+  await expect(
+    counters.getByRole("link", { name: /Reservadas/ }),
+  ).toHaveAttribute("href", /\/unidades\?estado=reservadas$/);
+  await expect(
+    counters.getByRole("link", { name: /En revisión/ }),
+  ).toHaveAttribute("href", /\/unidades\?estado=revision$/);
   await expect(page.getByRole("link", { name: "Ver unidades" })).toBeVisible();
   await expectAccessible(page, "resumen con los contadores de unidades");
 
@@ -730,4 +765,326 @@ test("el Resumen muestra los tres contadores de unidades y la barra de pestañas
       "Es el producto de las reparaciones: no tiene stock, y se vende solo al entregar una orden de servicio.",
     ),
   ).toBeVisible();
+});
+
+// La lista de unidades de la 24.5.2 (brief-24.5.2, D-5, D-6, D-7, D-8 y D-11; AC-1, AC-3, AC-4,
+// AC-6, AC-9 y AC-13). 26 unidades para que haya dos páginas: con 25 el tope no se vería y la
+// prueba pasaría sin probar la paginación.
+async function insertManyUnits(productId: string, total: number) {
+  await insertUnits(
+    productId,
+    Array.from({ length: total }, (_, index) => ({
+      serial: `35693803564${String(index).padStart(4, "0")}`,
+    })),
+  );
+}
+
+test("la lista de unidades se filtra por estado, se busca por sufijo de IMEI y se pagina", async ({
+  page,
+}) => {
+  test.slow();
+  const productId = await insertProduct("IP15-512", "iPhone 15 512 GB");
+  await insertManyUnits(productId, 26);
+  // Una en revisión y otra reservada, para que los chips no sean todos cero y para que
+  // «En reparación» y «En revisión» se vean como dos estados distintos (D-6). La de revisión se
+  // recorre de verdad: el trigger no admite el salto directo.
+  const todas = await unitRows(productId);
+  const enRevision = todas[0]!.serial;
+  const reservada = todas[1]!.serial;
+  await db.execute(
+    sql`update stock_units set status = 'in_repair' where serial = ${enRevision}`,
+  );
+  await db.execute(
+    sql`update stock_units set status = 'in_review' where serial = ${enRevision}`,
+  );
+  await db.execute(
+    sql`update stock_units set status = 'reserved' where serial = ${reservada}`,
+  );
+
+  await login(page, ADMIN_IPHONE.email);
+  await page.goto(`/productos/${productId}/unidades`);
+  const lista = page.getByRole("region", { name: "Unidades" });
+
+  // AC-4: la lista está paginada y dice su total real, que es 26 y no 25.
+  await expect(
+    lista.getByText("Mostrando 1 a 25 de 26 unidades"),
+  ).toBeVisible();
+  await expect(lista.getByRole("row")).toHaveCount(UNITS_PAGE_SIZE + 1);
+  await expectAccessible(page, "lista de unidades");
+
+  // AC-1 y D-6: los seis chips con su cantidad, y «En reparación» aparte de «En revisión».
+  const chips = page.getByRole("navigation", { name: "Filtrar por estado" });
+  await expect(chips.getByRole("link")).toHaveText([
+    "Todas",
+    "Disponible24",
+    "Reservada1",
+    "En reparación0",
+    "En revisión1",
+    "Vendida0",
+    "Dada de baja0",
+  ]);
+  // Los objetivos táctiles se **miden**, no se infieren de las clases (AC-13): así un fallo
+  // informa el número real.
+  for (const name of [/^Todas$/, /^En revisión/]) {
+    const box = await chips.getByRole("link", { name }).boundingBox();
+    expect(box!.height, `alto del chip ${name}`).toBeGreaterThanOrEqual(44);
+  }
+
+  // AC-1: el filtro deja una lista efectivamente filtrada.
+  await chips.getByRole("link", { name: /^En revisión/ }).click();
+  await expect(page).toHaveURL(/\?estado=revision$/);
+  await expect(lista.getByRole("row")).toHaveCount(2);
+  // Scope a la tabla: el chip del filtro también dice «En revisión».
+  await expect(lista.getByRole("table").getByText("En revisión")).toBeVisible();
+
+  // AC-3: la búsqueda por sufijo de cuatro caracteres o más.
+  await page.goto(`/productos/${productId}/unidades`);
+  await page.getByLabel("Buscar por IMEI o serie").fill("0007");
+  await page.getByRole("button", { name: "Buscar", exact: true }).click();
+  await expect(lista.getByRole("row")).toHaveCount(2);
+  await expect(
+    lista.getByRole("link", { name: "356938035640007", exact: true }),
+  ).toBeVisible();
+
+  // Con menos de cuatro no busca y **lo dice**, en lugar de devolver todo como si hubiera buscado.
+  await page.goto(`/productos/${productId}/unidades?imei=07`);
+  await expect(
+    page.getByText(
+      "Escribí al menos 4 caracteres del final del IMEI para buscar.",
+      { exact: false },
+    ),
+  ).toBeVisible();
+  await expect(
+    lista.getByText("Mostrando 1 a 25 de 26 unidades"),
+  ).toBeVisible();
+
+  // Un sufijo que no casa conserva los filtros y ofrece restablecer (AC-3).
+  await page.goto(
+    `/productos/${productId}/unidades?estado=disponibles&imei=9999`,
+  );
+  await expect(
+    page.getByText("Ninguna unidad coincide con el filtro o la búsqueda."),
+  ).toBeVisible();
+  await expect(page.getByLabel("Buscar por IMEI o serie")).toHaveValue("9999");
+  await expect(
+    chips.getByRole("link", { name: /^Disponible/ }),
+  ).toHaveAttribute("aria-current", "true");
+  await expect(page.getByRole("link", { name: "Restablecer" })).toBeVisible();
+
+  // AC-13: reflujo a 320 px con desbordamiento cero.
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.goto(`/productos/${productId}/unidades`);
+  await expect(
+    lista.getByText("Mostrando 1 a 25 de 26 unidades"),
+  ).toBeVisible();
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - window.innerWidth,
+  );
+  expect(overflow, "desbordamiento a 320 px").toBeLessThanOrEqual(0);
+});
+
+// El panel y el motivo de la baja (brief-24.5.2, D-2, D-3, D-4 y D-10; AC-5, AC-7, AC-12 y AC-19).
+// Es la razón de ser de la subfase: el motivo de una baja **desde en revisión** existía solo en la
+// auditoría y ninguna pantalla lo leía.
+test("el panel de la unidad muestra su historial y el motivo de las dos bajas", async ({
+  page,
+}) => {
+  test.slow();
+  const productId = await insertProduct("IP14-256", "iPhone 14 256 GB");
+  await insertUnits(productId, [
+    { serial: "356938035641111" },
+    { serial: "356938035642222" },
+  ]);
+  // La segunda, recorrida de verdad hasta «en revisión».
+  await db.execute(
+    sql`update stock_units set status = 'in_repair' where serial = '356938035642222'`,
+  );
+  await db.execute(
+    sql`update stock_units set status = 'in_review' where serial = '356938035642222'`,
+  );
+
+  await login(page, ADMIN_IPHONE.email);
+
+  // La baja de una unidad **disponible**: su motivo queda en el movimiento de stock.
+  await page.goto(`/productos/${productId}/unidades`);
+  await page.getByRole("link", { name: "Dar de baja 356938035641111" }).click();
+  await page.getByLabel("Motivo *").fill("Pantalla rota en el traslado");
+  await page.getByRole("button", { name: "Dar de baja" }).click();
+  await expect(
+    page.getByText("Unidad dada de baja: el stock bajó en 1."),
+  ).toBeVisible();
+
+  // La baja de la unidad **en revisión**: no es un movimiento, y su motivo queda solo en la
+  // auditoría (U-2 de la 29.6.2).
+  await page.getByRole("link", { name: "Dar de baja 356938035642222" }).click();
+  await page.getByLabel("Motivo *").fill("No tiene arreglo: se descarta");
+  await page.getByRole("button", { name: "Dar de baja" }).click();
+  await expect(
+    page.getByText(
+      "Unidad dada de baja. Estaba en revisión, fuera del stock: el stock no cambió.",
+    ),
+  ).toBeVisible();
+
+  // AC-5: el panel se abre por la URL, con Detalle e Historial.
+  await page.goto(`/productos/${productId}/unidades?estado=bajas`);
+  await page
+    .getByRole("link", { name: "356938035642222", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\?estado=bajas&unidad=[0-9a-f-]+/);
+  const panel = page.getByRole("region", { name: "Unidad", exact: true });
+  await expect(panel.getByRole("link", { name: "Detalle" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expect(panel.getByText("Dada de baja")).toBeVisible();
+  await expectAccessible(page, "panel de la unidad");
+
+  // AC-7 y AC-19: el motivo de la baja desde «en revisión», que vive solo en la auditoría.
+  await panel.getByRole("link", { name: "Historial" }).click();
+  await expect(panel.getByText("No tiene arreglo: se descarta")).toBeVisible();
+  await expect(
+    panel.getByText("Cambio de estado", { exact: false }).first(),
+  ).toBeVisible();
+  await expectAccessible(page, "historial de la unidad");
+
+  // Cerrar vuelve a la lista con el filtro intacto (D-2). La URL se afirma **hasta el final**: con
+  // `/\?estado=bajas/` suelto, la aserción pasaba igual con el panel abierto, porque esa URL
+  // también contiene `?estado=bajas`. Una aserción que no puede fallar no vigila nada.
+  await panel.getByRole("link", { name: /^Cerrar/ }).click();
+  await expect(page).toHaveURL(/\?estado=bajas(#.*)?$/);
+  await expect(panel).toHaveCount(0);
+
+  // AC-7, la otra mitad: el motivo de la baja de la unidad disponible, que vive en el movimiento.
+  await page
+    .getByRole("link", { name: "356938035641111", exact: true })
+    .click();
+  const otro = page.getByRole("region", { name: "Unidad", exact: true });
+  // Se espera a que el panel sea **el de esta unidad** antes de tocar sus pestañas: sin esto, el
+  // clic siguiente puede caer en el panel anterior, que todavía está en el DOM.
+  await expect(otro).toContainText("356938035641111");
+  await otro.getByRole("link", { name: "Historial" }).click();
+  // **Dos veces, y es correcto**: la baja de una unidad disponible escribe el motivo en los dos
+  // lugares —el movimiento de stock y la entrada de auditoría— porque son dos eventos distintos: el
+  // efecto sobre el saldo y el cambio de estado (H-3). El historial muestra los dos, cada uno con su
+  // tipo. Se afirma la cantidad en vez de usar `first()`: así, si alguna vez pasara a escribirse en
+  // un solo lugar, esta prueba lo dice en lugar de seguir pasando.
+  await expect(otro.getByText("Pantalla rota en el traslado")).toHaveCount(2);
+
+  // AC-13 **dentro del panel**, que es la mitad que faltaba: el criterio pide reflujo a 320 px y
+  // objetivos táctiles medidos «en la lista y en el panel», y el panel tiene sus propios `sr-only`
+  // —el de «Cerrar»—, que son exactamente los que desbordaban la tabla (H-15). Medirlo acá, con el
+  // panel abierto, es lo único que distingue «no desborda» de «no lo miramos».
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.reload();
+  const estrecho = page.getByRole("region", { name: "Unidad", exact: true });
+  await expect(estrecho).toContainText("356938035641111");
+  const desbordePanel = await page.evaluate(
+    () => document.documentElement.scrollWidth - window.innerWidth,
+  );
+  expect(
+    desbordePanel,
+    "desbordamiento a 320 px con el panel abierto",
+  ).toBeLessThanOrEqual(0);
+
+  // Medidos del navegador, no inferidos de las clases: `min-h-11` es una promesa, `boundingBox` es
+  // el hecho.
+  for (const pestaña of ["Detalle", "Historial"]) {
+    const caja = await estrecho
+      .getByRole("link", { name: pestaña, exact: true })
+      .boundingBox();
+    expect(
+      caja!.height,
+      `alto de la pestaña ${pestaña} del panel`,
+    ).toBeGreaterThanOrEqual(44);
+  }
+  const cerrar = await estrecho
+    .getByRole("link", { name: /^Cerrar/ })
+    .boundingBox();
+  expect(cerrar!.height, "alto de Cerrar del panel").toBeGreaterThanOrEqual(44);
+  expect(cerrar!.width, "ancho de Cerrar del panel").toBeGreaterThanOrEqual(44);
+  await page.setViewportSize({ width: 1280, height: 720 });
+
+  // N-10: un `?unidad=` que no resuelve **lo dice**. El id es un uuid válido que no existe, así que
+  // la lectura llega hasta la base y vuelve vacía; antes de este arreglo la pantalla se dibujaba
+  // igual que sin el parámetro y no había forma de distinguir «no está» de «no pasó nada».
+  await page.goto(
+    `/productos/${productId}/unidades?unidad=00000000-0000-0000-0000-000000000000`,
+  );
+  await expect(
+    page.getByText("No encontramos esa unidad entre las de este producto."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Unidad", exact: true }),
+  ).toContainText("Volver a la lista");
+  // Y la lista se sigue viendo: el aviso ocupa el lugar del panel, no el de la pantalla.
+  await expect(
+    page.getByRole("link", { name: "356938035641111", exact: true }),
+  ).toBeVisible();
+
+  // AC-12 y AC-19: un viewer ve los movimientos y **no** la auditoría, así que ve el motivo de la
+  // baja de la unidad disponible y no el de la que estaba en revisión.
+  await page.context().clearCookies();
+  await login(page, VIEWER_IPHONE.email);
+  await page.goto(`/productos/${productId}/unidades?estado=bajas`);
+  await page
+    .getByRole("link", { name: "356938035642222", exact: true })
+    .click();
+  const viewerPanel = page.getByRole("region", { name: "Unidad", exact: true });
+  await expect(viewerPanel).toContainText("356938035642222");
+  await viewerPanel.getByRole("link", { name: "Historial" }).click();
+  await expect(
+    viewerPanel.getByText(
+      "Los cambios de estado de una unidad los ve un administrador.",
+    ),
+  ).toBeVisible();
+  await expect(viewerPanel).not.toContainText("No tiene arreglo: se descarta");
+  // Y nunca dice «sin eventos» cuando lo que pasa es que no ve una de las dos fuentes (I-2).
+  await expect(viewerPanel).not.toContainText(
+    "Esta unidad todavía no tiene eventos.",
+  );
+  await expect(viewerPanel).not.toContainText("Costo");
+  await expectAccessible(page, "historial de la unidad para un viewer");
+});
+
+test.describe("la lista de unidades sin JavaScript", () => {
+  test.use({ javaScriptEnabled: false });
+
+  // AC-1, AC-3 y AC-5 sin scripts: el filtro y el panel son enlaces, y la búsqueda un form GET.
+  test("el filtro, la búsqueda y el panel funcionan con enlaces y un formulario GET", async ({
+    page,
+  }) => {
+    const productId = await insertProduct("IP13-64", "iPhone 13 64 GB");
+    await insertUnits(productId, [
+      { serial: "356938035643333" },
+      { serial: "356938035644444" },
+    ]);
+    await login(page, ADMIN_IPHONE.email);
+    await page.goto(`/productos/${productId}/unidades`);
+
+    await page
+      .getByRole("navigation", { name: "Filtrar por estado" })
+      .getByRole("link", { name: /^Disponible/ })
+      .click();
+    await expect(page).toHaveURL(/\?estado=disponibles$/);
+
+    await page.getByLabel("Buscar por IMEI o serie").fill("4444");
+    await page.getByRole("button", { name: "Buscar", exact: true }).click();
+    await expect(page).toHaveURL(/estado=disponibles/);
+    await expect(page).toHaveURL(/imei=4444/);
+    const lista = page.getByRole("region", { name: "Unidades" });
+    await expect(
+      lista.getByRole("link", { name: "356938035644444", exact: true }),
+    ).toBeVisible();
+    await expect(
+      lista.getByRole("link", { name: "356938035643333", exact: true }),
+    ).toHaveCount(0);
+
+    await page
+      .getByRole("link", { name: "356938035644444", exact: true })
+      .click();
+    const panel = page.getByRole("region", { name: "Unidad", exact: true });
+    await expect(panel).toContainText("356938035644444");
+    await panel.getByRole("link", { name: "Historial" }).click();
+    await expect(panel.getByText("Alta manual de una unidad")).toBeVisible();
+  });
 });

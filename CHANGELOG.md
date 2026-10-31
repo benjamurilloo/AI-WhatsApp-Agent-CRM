@@ -2,6 +2,37 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-31 — 24.5.2: unidades, panel, historial y filtros
+
+Octava subfase de la Fase 24 ([brief-24.5.2](docs/decisions/brief-24.5.2-unidades-panel-historial-y-filtros.md) §Cierre).
+
+**Certifica:**
+- **La pantalla de Unidades como una sola lista filtrable**, con chips por estado y su cantidad, búsqueda por sufijo de IMEI de cuatro caracteres o más, y paginación de 25, todo por la URL y sin JavaScript. Reemplaza cinco secciones fijas que filtraban en memoria sobre todas las unidades del producto; lo que cada una aportaba vive en la columna Estado, con la insignia y el pedido, la venta o la orden de servicio de la unidad.
+- **`in_repair` e `in_review` son dos estados con dos chips distintos**, y la unidad en revisión muestra su orden de servicio, que es el acceso a su checklist.
+- **Los tres contadores del Resumen son enlaces a la lista filtrada**: era la primera diferencia que la 24.5.1 declaró y dejó pendiente.
+- **El panel de la unidad, con Detalle e Historial como enlaces reales**, abierto por `?unidad=<id>` y `?vista=`, sin ruta nueva.
+- **El motivo de la baja de una unidad en revisión, visible por fin**: existía solo en `audit_logs` desde la 29.6.2 y ninguna pantalla lo leía. El de una unidad **disponible** sigue en su movimiento de stock, y por eso lo ven los dos roles.
+- **El Historial une dos fuentes en memoria, con la frontera de roles que ya existía**: los movimientos los ven los dos roles y la auditoría **solo un `admin`**, porque el modelo de seguridad la reserva. La asimetría está declarada, no disimulada, y la sostiene el servicio: quitarle `{ role: "admin" }` a `listUnitAudit` hace fallar **exactamente** la prueba del `viewer`.
+- **Una fuente que no se pudo leer se anuncia y nunca se dibuja como «sin eventos»**, ni en el historial ni en la lista ni en los contadores de los chips. La rama es alcanzable: el `catch` vive en la composición y la lectura entra inyectada, así que la prueba la fuerza sin mockear el módulo, y sin el `catch` fallan dos pruebas.
+- **Cada lectura nueva filtra por organización en SQL, probado donde es observable** —llamando al repositorio con una organización ajena—, y cada filtro tiene su propia prueba: borrar el de `unitConditions` hace fallar dos, borrar el de `findUnitMovements` hace fallar una, y ninguna cubre al otro.
+- **Un `?unidad=` que no resuelve lo dice**, con la vuelta a la lista, y el panel exige que la unidad sea **de este producto**: antes, una unidad de otro producto abría el panel rodeada de la ficha equivocada.
+- **Reflujo a 320 px con desbordamiento cero en la lista y en el panel**, con objetivos táctiles de 44 px **medidos**, y `axe` sin violaciones en claro y en oscuro. La medición encontró dos defectos reales: un `sr-only` posicionado en absoluto que escapaba del contenedor con `overflow-x-auto` y estiraba el documento, y el enlace «Cerrar» con 38 px de alto.
+- **Las dos mediciones que la 24.5.1 difirió, hechas**, con sus umbrales escritos antes de medir, sobre una base sembrada propia y con los datos verificados antes de medir: el catálogo agrupado cuesta **339,4 ms contra 317,0** del no agrupado, un 7 %, lo que **confirma H-5 de la 24.5.1**; la lista de unidades, 4,6 a 5,2 ms.
+- **Ninguna migración, tabla ni columna nueva** (67 migraciones, las mismas).
+- **Validado localmente**: 2.183 pruebas de `unit` y `guards`, y 1.884 de `integration` —con un archivo ajeno a esta subfase que no llegó a correr por una caída de worker y se verificó por separado—.
+- **Validado en integración**: los recorridos de `units.spec.ts` y `repairs-own-units.spec.ts` contra el build de producción, con Server Actions y PostgreSQL real.
+- **Una revisión independiente, R2**, con sus tres bloqueantes verificados contra el código y resueltos, y diez no bloqueantes atendidos. Uno de los bloqueantes era **el mismo defecto que la 24.5.1 dejó como su B-3**, repetido en esta subfase a diez líneas del lugar donde estaba bien hecho.
+
+**No certifica:**
+- **la batería end-to-end completa sobre estos cambios**: se lanzó y el entorno la detuvo por falta de memoria en la prueba 60 de 298, con `Target crashed` y workers caídos, no con aserciones. No cuenta como evidencia ni a favor ni en contra; lo que la cubre es la CI;
+- **el despliegue y el recorrido del usuario**: AC-17 y AC-18 quedan pendientes al escribir esto;
+- **el nivel «preparado para producción»**, que además pide backups probados, rollback ensayado y observabilidad evaluada: eso se evalúa por fase;
+- la forma exacta de los mockups: **25 diferencias declaradas una por una** en el §Cierre del brief. Dos son mejoras reales que el sistema no da y quedan anotadas para la 24.5.2-b: el enlace a la unidad existente cuando el IMEI está repetido, y decirle al `viewer` por qué no ve el costo;
+- **que la tabla entre sin desplazamiento horizontal a 1440 px**: con ocho columnas más las acciones, no entra. Es consecuencia directa de unificar las cinco secciones y no se recortó ninguna columna acá;
+- el costo por unidad, el margen y el valor de inventario por producto: son de la **24.5.2-b**;
+- el enmascarado del IMEI, que sigue pidiendo un ADR, ni la edición de la unidad con varios IMEI, ni la selección múltiple;
+- cuatro observaciones de entorno declaradas y **no corregidas**, todas ajenas a esta subfase: el resultado de una prueba que depende de la consola que lanza el runner, `format:check` y `eslint` locales fallando por archivos de otra fase y por una skill de terceros, una batería que sale con código 0 con un archivo que no corrió, y la clase de botón secundario del proyecto con 38 px de alto.
+
 ## 2026-10-31 — 24.5.1: productos, catálogo y ficha
 
 Séptima subfase de la Fase 24 ([brief-24.5.1](docs/decisions/brief-24.5.1-productos-catalogo-y-ficha.md) §Cierre).

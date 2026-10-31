@@ -1120,7 +1120,16 @@ describe("el viewer y la capacidad (AC-10 y AC-12)", () => {
         unit: { serial: unit.serial, status: "in_review" },
       });
       expect(seen.lines).toMatchObject([{ cost: null, price: null }]);
-      const units = ok(await listProductUnits(s.viewer, unit.productId));
+      // Desde la 24.5.2 esta lectura pide sus filtros y pagina (brief-24.5.2, D-8). Esta prueba es
+      // de la 29.6.2 y mira que un viewer vea la unidad en revisión sin su costo, así que pide la
+      // primera página sin filtros.
+      const units = ok(
+        await listProductUnits(s.viewer, unit.productId, {
+          status: null,
+          serial: "",
+          page: 1,
+        }),
+      );
       expect(units.units[0]).toMatchObject({ status: "in_review", cost: null });
       expect(await releaseUnit(s.viewer, unit.unitId)).toMatchObject({
         ok: false,

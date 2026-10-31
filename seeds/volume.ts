@@ -1,15 +1,24 @@
-import { createHash } from "node:crypto";
+﻿import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { sql } from "drizzle-orm";
 import { hashPassword, PASSWORD_MIN_LENGTH } from "@/modules/auth";
 import { users } from "@/modules/auth/schema";
-import { productPrices, products } from "@/modules/catalog/schema";
+import {
+  productModels,
+  productPrices,
+  products,
+} from "@/modules/catalog/schema";
 import { conversations, messages } from "@/modules/conversations/schema";
 import { clients } from "@/modules/crm/schema";
 import { ingestionEvents } from "@/modules/ingestion/schema";
-import { inventories, inventoryMovements } from "@/modules/inventory/schema";
+import {
+  inventories,
+  inventoryMovements,
+  stockUnits,
+} from "@/modules/inventory/schema";
 import { knowledgeEntries } from "@/modules/knowledge/schema";
 import {
+  organizationCapabilities,
   organizationMembers,
   organizations,
 } from "@/modules/organizations/schema";
@@ -108,6 +117,23 @@ export type VolumeShape = {
   // Una conversación más, con esta cantidad de mensajes, todos más recientes que los demás: el
   // caso del plan del historial que la 12.4 dejó sin medir (H-3).
   concentratedMessages?: number;
+  // Lo que sigue es de la 24.5.2 (D-9, H-14) y también es opcional.
+  //
+  // **Por qué hizo falta**: hasta la 24.5.2 este seed no sembraba ni capacidades, ni modelos, ni
+  // una sola unidad con IMEI. Eso dejaba **sin instrumento** a dos caminos que ya existían en la
+  // aplicación: el catálogo agrupado por modelo (24.5.1) y la lista de unidades de un producto.
+  // La medición que el §Riesgos de la 24.5.1 prometía no se hizo por esto, y el motivo no estaba
+  // escrito en ninguna parte: no era que faltara agregar el camino al script de medición —eso
+  // también faltaba, y no alcanzaba—, era que no había datos sobre los que el camino significara
+  // algo. Un camino sin datos que lo ejerciten no se puede medir, y medirlo sobre tres filas de
+  // una organización de demostración y llamarlo «la medición» es peor que declararlo sin medir.
+  //
+  // Cuántos modelos tiene la organización, con la capacidad `variants` activada. Los productos se
+  // reparten entre ellos y **uno de cada cinco queda sin modelo**, para que el grupo «Sin modelo»
+  // del catálogo agrupado exista y no sea un caso que nunca se mide.
+  models?: number;
+  // Un producto por unidad con esta cantidad de unidades, con la capacidad `serialized_units`.
+  units?: number;
 };
 
 export const VOLUME_ORDINAL_0: VolumeShape = {
@@ -144,12 +170,19 @@ export const VOLUME_DISTRIBUTION: readonly VolumeShape[] = [
 // mayoría de los mensajes. Es una hipótesis, como la de la 9.3: no hay uso real que la corrija
 // hasta que entre el primer negocio.
 export const VOLUME_CONCENTRATED_ORDINAL = 20;
+// *Ampliada el 2026-10-31 (24.5.2, D-9 y H-14)* con `models` y `units`. Antes, esta distribución no
+// tenía ni modelos ni unidades, y por eso el catálogo agrupado y la lista de unidades **no se podían
+// medir**: no había datos que ejercitaran esos caminos. Los números no son redondos por gusto:
+// 50 modelos sobre 10.000 productos dan grupos de unas 160 presentaciones, que es un grupo grande
+// de verdad, y 500 unidades en un producto pasan de sobra las 25 de una página.
 export const VOLUME_MEASUREMENT: readonly VolumeShape[] = [
   ...VOLUME_DISTRIBUTION.map((shape) => ({
     ...shape,
     externalRefs: true,
     prices: true,
     knowledgeEntries: shape.size >= 1_000 ? 200 : 30,
+    models: shape.size >= 1_000 ? 50 : 5,
+    units: shape.size >= 10_000 ? 500 : shape.size >= 1_000 ? 100 : 10,
   })),
   {
     ordinal: VOLUME_CONCENTRATED_ORDINAL,
@@ -294,9 +327,11 @@ function rowGenerator(kind: number, index: number, ordinal = 0): () => number {
 
 // 1 clientes · 2 conversaciones · 3 mensajes · 4 productos · 5 saldos · 6 movimientos · 7 usuarios
 // · 8 eventos de ingestión (9.3) · 9 precios · a información del negocio · b la conversación
-// concentrada · c sus mensajes (13.2). El ordinal de organización va en el segundo grupo, que estaba
-// fijo en `0000`: con ordinal 0 el id es el histórico y con otro ordinal no puede colisionar.
-export type VolumeKind = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | "a" | "b" | "c";
+// concentrada · c sus mensajes (13.2) · d modelos · e el producto por unidad, su saldo y sus
+// movimientos · f sus unidades (24.5.2). El ordinal de organización va en el segundo grupo, que
+// estaba fijo en `0000`: con ordinal 0 el id es el histórico y con otro ordinal no puede colisionar.
+export type VolumeKind =
+  1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | "a" | "b" | "c" | "d" | "e" | "f";
 
 export function volumeId(kind: VolumeKind, index: number, ordinal = 0): string {
   return `5eed000${kind}-${hex4(ordinal)}-4000-8000-${index.toString(16).padStart(12, "0")}`;
@@ -530,6 +565,14 @@ export async function seedVolumeOrganization(
       unit: pick(UNITS),
       reorderPoint: String(Math.floor(random() * 20)),
       isActive: random() >= 0.05,
+      // El modelo, solo si la forma lo declara (24.5.2). El reparto es por módulo del índice y no
+      // por el generador: así los grupos del catálogo agrupado tienen tamaños parejos y conocidos,
+      // que es lo que hace comparable una medición entre corridas. **Uno de cada cinco queda sin
+      // modelo** para que el grupo «Sin modelo» exista.
+      modelId:
+        shape.models && i % 5 !== 0
+          ? volumeId("d", i % shape.models, ordinal)
+          : null,
     });
 
     // Unos pocos productos concentran cientos de movimientos; el resto tiene entre 0 y 6, y los
@@ -566,6 +609,110 @@ export async function seedVolumeOrganization(
         quantityOnHand: String(balance),
       });
     }
+  }
+
+  // Modelos, capacidades y el producto por unidad (24.5.2, D-9 y H-14).
+  //
+  // El producto por unidad va **aparte del bucle de arriba**, con su propio índice: la garantía del
+  // seed desde la 6.2 es que «la fila i es la misma con cualquier tamaño», y meterlo en el bucle
+  // habría cambiado qué es la fila i. Lleva un movimiento por unidad, porque el saldo de este seed
+  // sale de la cadena de movimientos y no al revés.
+  const modelRows: (typeof productModels.$inferInsert)[] = [];
+  const capabilityRows: (typeof organizationCapabilities.$inferInsert)[] = [];
+  const unitRows: (typeof stockUnits.$inferInsert)[] = [];
+
+  if (shape.models) {
+    capabilityRows.push({
+      organizationId,
+      capability: "variants",
+      activatedBy: user.id,
+    });
+    for (let i = 0; i < shape.models; i++) {
+      const random = rowGenerator(11, i, ordinal);
+      const pick = <T>(list: readonly T[]): T =>
+        list[Math.floor(random() * list.length)]!;
+      modelRows.push({
+        id: volumeId("d", i, ordinal),
+        organizationId,
+        name: `${pick(PRODUCT_NOUNS)} modelo ${i + 1}`,
+        brand: pick(PRODUCT_QUALIFIERS),
+        position: i,
+        isActive: true,
+        createdAt: end!,
+        updatedAt: end!,
+      });
+    }
+  }
+
+  if (shape.units) {
+    capabilityRows.push({
+      organizationId,
+      capability: "serialized_units",
+      activatedBy: user.id,
+    });
+    const unitProductId = volumeId("e", 0, ordinal);
+    productRows.push({
+      id: unitProductId,
+      organizationId,
+      sku: `SKU-UNIDADES-${hex4(ordinal)}`,
+      name: `Equipo por unidad ${ordinal}`,
+      description: null,
+      unit: "unidad",
+      reorderPoint: "0",
+      isActive: true,
+      tracking: "unit",
+      modelId: shape.models ? volumeId("d", 0, ordinal) : null,
+    });
+    // **Todas nacen `available`, y se quedan así.** Dos razones, las dos verificadas y no supuestas:
+    //
+    // 1. El trigger `stock_units_guard` **rechaza un `insert` que no nazca `available`**, así que
+    //    sembrar una unidad ya reservada o vendida exigiría insertarla disponible y después
+    //    recorrerla con `update` por cada transición legal. Se puede, pero no hace falta.
+    // 2. Para **medir**, el caso caro de `listProductUnits` es el conjunto de resultados más
+    //    grande, que es justamente «todas disponibles»; un filtro por otro estado devuelve pocas
+    //    filas o ninguna, y eso es el caso barato. El reparto de estados le importa a los
+    //    recorridos end-to-end, que lo arman ellos, no a la medición.
+    //
+    // Queda declarado como límite de este seed: **no sirve para ejercitar el filtro por estado con
+    // volumen**. Si alguna vez hace falta, se agrega recorriendo la máquina de estados con `update`.
+    for (let i = 0; i < shape.units; i++) {
+      const random = rowGenerator(12, i, ordinal);
+      const at = new Date(end!.getTime() - (shape.units - i) * 60 * 1000);
+      unitRows.push({
+        id: volumeId("f", i, ordinal),
+        organizationId,
+        productId: unitProductId,
+        // Respeta `stock_units_serial_format`. Sus últimos cuatro dígitos son únicos dentro del
+        // producto, que es lo que la búsqueda por sufijo de la 24.5.2 necesita para que una
+        // medición de ese camino devuelva una sola fila y no un conjunto al azar.
+        serial: `VOL-${hex4(ordinal)}-${String(i + 1).padStart(6, "0")}`,
+        cost: ((50_000 + Math.floor(random() * 50_000)) / 100).toFixed(2),
+        costCurrency: "USD",
+        originType: "manual",
+        createdBy: user.id,
+        createdAt: at,
+      });
+      // Un movimiento por unidad: el saldo de este seed sale de la cadena de movimientos y no al
+      // revés, así que el saldo final es exactamente `shape.units`.
+      movementRows.push({
+        id: volumeId("e", i + 1, ordinal),
+        organizationId,
+        productId: unitProductId,
+        type: "adjustment_positive",
+        quantity: "1",
+        balanceAfter: String(i + 1),
+        reason: "Alta de una unidad del seed de volumen",
+        unitId: volumeId("f", i, ordinal),
+        createdBy: user.id,
+        createdAt: at,
+      });
+    }
+    balanceRows.push({
+      id: volumeId("e", 0, ordinal),
+      organizationId,
+      productId: unitProductId,
+      quantityOnHand: String(shape.units),
+    });
   }
 
   // Precios (13.2, D-3). `product_prices` es de solo inserción: la idempotencia es por id. La
@@ -714,6 +861,29 @@ export async function seedVolumeOrganization(
     ),
   );
 
+  // Las capacidades y los modelos van **antes** que los productos: `products.model_id` apunta al
+  // modelo, y sin la capacidad la vista agrupada no se ofrece (24.5.2).
+  await db.transaction((tx) =>
+    insertInBatches(capabilityRows, (batch) =>
+      tx
+        .insert(organizationCapabilities)
+        .values(batch)
+        .onConflictDoNothing({
+          target: [
+            organizationCapabilities.organizationId,
+            organizationCapabilities.capability,
+          ],
+        }),
+    ),
+  );
+  await db.transaction((tx) =>
+    insertInBatches(modelRows, (batch) =>
+      tx
+        .insert(productModels)
+        .values(batch)
+        .onConflictDoNothing({ target: productModels.id }),
+    ),
+  );
   await db.transaction((tx) =>
     insertInBatches(productRows, (batch) =>
       tx
@@ -736,6 +906,19 @@ export async function seedVolumeOrganization(
         .onConflictDoNothing({ target: organizationMembers.userId }),
     ),
   );
+  // Las unidades van **antes** que los movimientos: `inventory_movements.unit_id` las referencia.
+  // Nacen todas `available`, que es lo único que el trigger `stock_units_guard` admite en un
+  // `insert` (24.5.2).
+  if (unitRows.length > 0) {
+    await db.transaction((tx) =>
+      insertInBatches(unitRows, (batch) =>
+        tx
+          .insert(stockUnits)
+          .values(batch)
+          .onConflictDoNothing({ target: stockUnits.id }),
+      ),
+    );
+  }
   // inventory_movements es de solo inserción (ADR 0013): la idempotencia es por id y nunca por
   // UPDATE, que el trigger rechazaría. El saldo sí se puede actualizar, pero se deja fijo con
   // DO NOTHING para que el estado de la primera corrida no cambie en las siguientes.

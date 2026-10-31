@@ -2,12 +2,18 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
+  countUnitsByStatus,
   getProductStock,
+  getUnit,
   getUnitWarranties,
   getUnitWarrantySettings,
   listProductUnits,
   listStockMovements,
+  listUnitAudit,
   listUnitGrades,
+  listUnitMovements,
+  UNIT_SEARCH_MIN_LENGTH,
+  UNITS_PAGE_SIZE,
   type ProductUnit,
 } from "@/modules/inventory";
 import { appointmentsAllowed } from "@/modules/appointments";
@@ -22,6 +28,7 @@ import { getUnitSales } from "@/modules/sales";
 import { listUnitServiceOrders, repairsAllowed } from "@/modules/service";
 import { getUnitTradeIns } from "@/modules/tradeins";
 import { requireSession } from "@/app/_auth/session";
+import { auditActorLabels } from "../../../_audit/actor";
 import { ActionNotice } from "@/app/_components/action-notice";
 import {
   BackLink,
@@ -30,13 +37,19 @@ import {
 } from "@/app/_components/detail-header";
 import {
   dangerOutlineLinkClass,
+  inputClass,
+  labelClass,
+  secondaryButtonClass,
   secondaryLinkClass,
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
 import { PageNotice } from "@/app/_components/page-notice";
+import { Pagination, shownRangeText } from "@/app/_components/pagination";
 import { SectionCard } from "@/app/_components/section-card";
+import { StatusBadge } from "@/app/_components/status-badge";
 import { formatShortDateTime } from "@/app/_format/date-time";
+import { logEvent, newRequestId } from "@/shared/log";
 import { acceptedCurrencies, formatMoney } from "@/shared/money";
 import {
   warrantyDaysText,
@@ -48,6 +61,15 @@ import {
   PRODUCT_NOT_FOUND_MESSAGE,
 } from "../../messages";
 import { ProductSubNav } from "../product-sub-nav";
+import { readUnitCounts } from "../unit-counts";
+import { readUnitList } from "./list-data";
+import {
+  listHref,
+  panelHref,
+  readUnitFilters,
+  STATUS_ORDER,
+  STATUS_VALUE,
+} from "./filters";
 import {
   CorrectUnitForm,
   RegisterUnitForm,
@@ -58,24 +80,31 @@ import {
   WriteOffForm,
 } from "./forms";
 import {
-  availableText,
+  ALL_UNITS_LABEL,
   batteryText,
-  NO_AVAILABLE_UNITS_MESSAGE,
+  NO_UNITS_FOR_FILTER_MESSAGE,
+  NO_UNITS_MESSAGE,
+  UNIT_COUNTS_UNAVAILABLE_MESSAGE,
+  UNIT_PANEL_NOT_FOUND_MESSAGE,
+  UNITS_UNAVAILABLE_MESSAGE,
   noticeMessage,
+  SEARCH_LABEL,
+  searchTooShortMessage,
   TRACKING_LABEL,
   TRACKING_LOCKED_MESSAGE,
   UNIT_ORIGIN_LABEL,
+  UNIT_STATUS_ICON,
   UNIT_STATUS_LABEL,
+  UNIT_STATUS_TONE,
   UNITS_TITLE,
+  availableText,
 } from "./messages";
+import { readUnitHistory } from "./unit-history";
+import { UnitPanel } from "./unit-panel";
 
 export const metadata: Metadata = {
   title: "Unidades — AI WhatsApp Agent CRM",
 };
-
-function single(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
 
 // Las monedas del costo, con la principal primero.
 function currencyOptions(
@@ -89,17 +118,19 @@ function currencyOptions(
 }
 
 // Las unidades de un producto (ADR 0024, punto 6; brief-29.5, D-3, D-4 y D-6), de la capacidad
-// serialized_units: cómo se lleva su stock y, en un producto por unidad, sus unidades disponibles y
-// las dadas de baja. Un admin cambia el seguimiento mientras no haya movimientos, carga, corrige y da
-// de baja unidades; un viewer ve la lista sin el costo (FR-PROD-21). ?baja=<id> y ?corregir=<id>
-// abren el formulario de una unidad. Sin la capacidad, 404. Desde la 29.5.2 (brief-29.5.2, D-2 y D-5),
-// el precio propio de cada unidad, para los dos roles, y las reservadas y vendidas, con su pedido o su
-// venta. Desde la 29.6.2 (brief-29.6.2, D-7), con repairs, un admin manda a reparar una unidad
-// disponible o en revisión (?reparar=<id>), y libera, corrige o da de baja una en revisión; las que
-// están en reparación o en revisión se listan aparte, con su orden. Desde la 29.7 (brief-29.7, D-7),
-// la unidad de un usado recibido dice su origen con un enlace a su comprobante PU. Desde la 29.9
-// (brief-29.9, D-1 y D-3), una unidad vendida dice su garantía, y un admin cambia los días de garantía
-// de una unidad que no está dada de baja (?garantia=<id>).
+// serialized_units. Un admin cambia el seguimiento mientras no haya movimientos, carga, corrige y da
+// de baja unidades; un viewer ve la lista sin el costo (FR-PROD-21). Sin la capacidad, 404.
+//
+// Desde la 24.5.2 (brief-24.5.2, D-2, D-5, D-6, D-7 y D-8) la pantalla tiene la forma de la lámina
+// 10: **una sola lista**, filtrable por estado (`?estado=`), buscable por sufijo de IMEI (`?imei=`)
+// y paginada, con el panel de la unidad en `?unidad=<id>` y sus dos pestañas en `?vista=`.
+//
+// Reemplaza las cinco secciones fijas que la pantalla tenía hasta la 29.9 —disponibles, en
+// reparación y en revisión, reparaciones anteriores, reservadas y vendidas, y dadas de baja—, que
+// filtraban **en memoria** sobre todas las unidades del producto. No era una elección de forma: con
+// la lectura paginada de D-8 esas secciones mostrarían un recorte de una página y mentirían. Lo que
+// cada una aportaba vive ahora en la columna Estado, que lleva el pedido, la venta o la orden de
+// reparación de la unidad, y en el panel.
 export default async function ProductUnitsPage({
   params,
   searchParams,
@@ -113,6 +144,7 @@ export default async function ProductUnitsPage({
   }
   const { productId } = await params;
   const query = await searchParams;
+  const filters = readUnitFilters(query);
 
   const found = await getProductStock(context, productId);
   if (!found.ok) {
@@ -131,26 +163,45 @@ export default async function ProductUnitsPage({
   }
   const product = found.product;
   const isAdmin = context.role === "admin";
-  const units = await listProductUnits(context, product.id);
-  const list: ProductUnit[] = units.ok ? units.units : [];
-  const available = list.filter((unit) => unit.status === "available");
-  const writtenOff = list.filter((unit) => unit.status === "written_off");
-  const committed = list.filter(
-    (unit) => unit.status === "reserved" || unit.status === "sold",
-  );
-  const committedIds = committed.map((unit) => unit.id);
-  const inShop = list.filter(
-    (unit) => unit.status === "in_repair" || unit.status === "in_review",
-  );
+  const base = `/productos/${product.id}/unidades`;
+
+  // Las dos lecturas de la lista pasan por la capa de composición, con su `catch`: un error de base
+  // **lanza**, así que sin esto la rama que anuncia «No disponible» era código muerto (I-2; el
+  // bloqueante B-2 de la revisión independiente). `readUnitCounts` es el mismo de la 24.5.1.
+  const reportar = (error: unknown) =>
+    logEvent({
+      level: "error",
+      requestId: newRequestId(),
+      route: "/productos/[productId]/unidades",
+      code: "INTERNAL",
+      userId: context.userId,
+      organizationId: context.organizationId,
+      error,
+    });
+  const [units, counts] = await Promise.all([
+    readUnitList(
+      () =>
+        listProductUnits(context, product.id, {
+          status: filters.status,
+          serial: filters.serial,
+          page: filters.page,
+        }),
+      reportar,
+    ),
+    readUnitCounts(() => countUnitsByStatus(context, product.id), reportar),
+  ]);
+  const list: ProductUnit[] = units?.units ?? [];
+  const ids = list.map((unit) => unit.id);
+  const committedIds = list
+    .filter((unit) => unit.status === "reserved" || unit.status === "sold")
+    .map((unit) => unit.id);
+
   const [unitOrders, unitSales, repairs, repairOrders, tradeIns, warranties] =
     await Promise.all([
       getUnitOrders(context, committedIds),
       getUnitSales(context, committedIds),
       repairsAllowed(context),
-      listUnitServiceOrders(
-        context,
-        list.map((unit) => unit.id),
-      ),
+      listUnitServiceOrders(context, ids),
       getUnitTradeIns(
         context,
         list
@@ -159,11 +210,10 @@ export default async function ProductUnitsPage({
       ),
       getUnitWarranties(
         context,
-        committed
-          .filter((unit) => unit.status === "sold")
-          .map((unit) => unit.id),
+        list.filter((unit) => unit.status === "sold").map((unit) => unit.id),
       ),
     ]);
+
   const warrantyOf = (unitId: string) =>
     warranties.ok
       ? (warranties.units.find((unit) => unit.id === unitId)?.warranty ?? null)
@@ -179,13 +229,7 @@ export default async function ProductUnitsPage({
       UNIT_ORIGIN_LABEL[unit.origin]
     );
   };
-  // Las que ya salieron del local y pasaron por el técnico (brief-29.6.2, D-7).
-  const repairedBefore = list.filter(
-    (unit) =>
-      unit.status !== "in_repair" &&
-      unit.status !== "in_review" &&
-      repairOrders.has(unit.id),
-  );
+
   const history = await listStockMovements(context, product.id, {
     type: "all",
     from: "",
@@ -206,32 +250,203 @@ export default async function ProductUnitsPage({
     ? await getMainCurrency(context.organizationId)
     : null;
   const notice = noticeMessage(query.aviso);
-  // Una unidad disponible o, desde la 29.6.2, en revisión (brief-29.6.2, U-2 y U-3).
-  const workable = list.filter(
-    (unit) => unit.status === "available" || unit.status === "in_review",
-  );
+
+  // Los formularios ya no buscan su unidad **en la lista**: con la lista paginada, una unidad que
+  // está en la página 2 no aparecería y el formulario no se abriría. `getUnit` la resuelve por id y
+  // filtra por organización, así que además deja de depender de qué página se está mirando.
+  const single = (value: string | string[] | undefined) =>
+    Array.isArray(value) ? value[0] : value;
+  const openUnit = async (id: string | undefined) => {
+    if (!id) return undefined;
+    const result = await getUnit(context, id);
+    return result.ok ? result.unit : undefined;
+  };
+  const workable = <T extends { status: ProductUnit["status"] }>(
+    unit: T | undefined,
+  ) =>
+    unit && (unit.status === "available" || unit.status === "in_review")
+      ? unit
+      : undefined;
+
   const writingOff = isAdmin
-    ? workable.find((unit) => unit.id === single(query.baja))
+    ? workable(await openUnit(single(query.baja)))
     : undefined;
   const correcting = isAdmin
-    ? workable.find((unit) => unit.id === single(query.corregir))
+    ? workable(await openUnit(single(query.corregir)))
     : undefined;
   const repairing =
     isAdmin && repairs
-      ? workable.find((unit) => unit.id === single(query.reparar))
+      ? workable(await openUnit(single(query.reparar)))
       : undefined;
   const technicians = repairing ? await listTechnicians(context) : null;
   // Los días de garantía, en cualquier estado salvo dada de baja (brief-29.9, D-1).
-  const warrantyEditing = isAdmin
-    ? list.find(
-        (unit) =>
-          unit.status !== "written_off" && unit.id === single(query.garantia),
-      )
+  const warrantyCandidate = isAdmin
+    ? await openUnit(single(query.garantia))
     : undefined;
+  const warrantyEditing =
+    warrantyCandidate && warrantyCandidate.status !== "written_off"
+      ? warrantyCandidate
+      : undefined;
   const organizationWarranty = warrantyEditing
     ? await getUnitWarrantySettings(context)
     : null;
-  const base = `/productos/${product.id}/unidades`;
+
+  // El panel de la unidad (D-2). Su historial sale de dos fuentes y **la auditoría solo la lee un
+  // admin** (D-10): a un viewer no se la pedimos, y el servicio igual la rechazaría (I-9).
+  //
+  // Dos recortes sobre lo que `getUnit` devuelve, y los dos son del panel, no del servicio:
+  //
+  // 1. La unidad tiene que ser **de este producto**. `getUnit` resuelve por id dentro de la
+  //    organización, así que un `?unidad=` de otro producto abriría un panel con una unidad que no
+  //    está en la lista que se está mirando, con la ficha y los contadores de otro producto
+  //    alrededor. Es incoherente, y no hace falta leer la base para verlo.
+  // 2. Si no resuelve —id inválido, unidad de otra organización, de otro producto, o borrada—, la
+  //    pantalla **lo dice** en lugar de dibujar la lista como si no se hubiera pedido nada. Era el
+  //    hallazgo N-10: el enlace viejo o retocado a mano no daba error ni aviso, simplemente no
+  //    pasaba nada, y el usuario no tenía forma de saber si el panel estaba vacío o roto.
+  const panelCandidate = filters.unitId
+    ? await openUnit(filters.unitId)
+    : undefined;
+  const panelUnit =
+    panelCandidate && panelCandidate.productId === product.id
+      ? panelCandidate
+      : undefined;
+  const panelMissing = Boolean(filters.unitId) && !panelUnit;
+  const panelHistory = panelUnit
+    ? await readUnitHistory({
+        readMovements: () => listUnitMovements(context, panelUnit.id),
+        readAudit: isAdmin
+          ? () => listUnitAudit(context, panelUnit.id, 1)
+          : null,
+        onError: (error) =>
+          logEvent({
+            level: "error",
+            requestId: newRequestId(),
+            route: "/productos/[productId]/unidades",
+            code: "INTERNAL",
+            userId: context.userId,
+            organizationId: context.organizationId,
+            error,
+          }),
+      })
+    : null;
+  // La etiqueta del autor de una entrada de auditoría, con el emisor de una credencial de servicio
+  // resuelto desde `ingestion`. La compone la página porque ningún módulo de dominio puede leer
+  // `ingestion` sin un ciclo, y es la misma que usan las demás vistas de auditoría del proyecto:
+  // tener una tercera forma de nombrar lo mismo era el hallazgo N-8.
+  const actorLabel = await auditActorLabels(
+    context.organizationId,
+    panelHistory?.audit ?? [],
+  );
+
+  // Las acciones de una unidad, compartidas por la fila y el panel.
+  const actionsFor = (unit: ProductUnit) => {
+    const canWork = unit.status === "available" || unit.status === "in_review";
+    return (
+      <>
+        {isAdmin && canWork ? (
+          <>
+            <Link
+              href={`${base}?corregir=${unit.id}#corregir-titulo`}
+              className={secondaryLinkClass}
+            >
+              Corregir
+              <span className="sr-only"> {unit.serial}</span>
+            </Link>
+            {repairs ? (
+              <Link
+                href={`${base}?reparar=${unit.id}#reparar-titulo`}
+                className={secondaryLinkClass}
+              >
+                Mandar a reparar
+                <span className="sr-only"> {unit.serial}</span>
+              </Link>
+            ) : null}
+          </>
+        ) : null}
+        {isAdmin && unit.status === "in_review" ? (
+          <ReleaseUnitForm unitId={unit.id} serial={unit.serial} />
+        ) : null}
+        {isAdmin && unit.status === "available" && appointments ? (
+          <Link
+            href={`/turnos/nuevo?unidad=${unit.id}`}
+            className={secondaryLinkClass}
+          >
+            Dar un turno
+            <span className="sr-only"> para {unit.serial}</span>
+          </Link>
+        ) : null}
+        {isAdmin && unit.status !== "written_off" ? (
+          <Link
+            href={`${base}?garantia=${unit.id}#garantia-titulo`}
+            className={secondaryLinkClass}
+          >
+            Días de garantía
+            <span className="sr-only"> {unit.serial}</span>
+          </Link>
+        ) : null}
+        {isAdmin && canWork ? (
+          <Link
+            href={`${base}?baja=${unit.id}#baja-titulo`}
+            className={dangerOutlineLinkClass}
+          >
+            Dar de baja
+            <span className="sr-only"> {unit.serial}</span>
+          </Link>
+        ) : null}
+      </>
+    );
+  };
+
+  // El estado de una unidad con lo que la ata a otra cosa: su pedido, su venta, sus órdenes de
+  // reparación y su garantía. Es lo que antes vivía en las secciones «Reservadas y vendidas»,
+  // «En reparación y en revisión» y «Reparaciones anteriores».
+  const statusCell = (unit: ProductUnit) => {
+    const order = unitOrders.ok ? unitOrders.orders.get(unit.id) : undefined;
+    const sale = unitSales.ok ? unitSales.sales.get(unit.id) : undefined;
+    const warranty = warrantyOf(unit.id);
+    const days = warranty ? warrantyDaysText(warranty) : null;
+    const orders = repairOrders.get(unit.id) ?? [];
+    return (
+      <div className="flex flex-col gap-1">
+        <StatusBadge
+          tone={UNIT_STATUS_TONE[unit.status]}
+          icon={UNIT_STATUS_ICON[unit.status]}
+        >
+          {UNIT_STATUS_LABEL[unit.status]}
+        </StatusBadge>
+        {order ? (
+          <Link href={`/pedidos/${order.id}`} className={secondaryLinkClass}>
+            Pedido {order.displayNumber}
+          </Link>
+        ) : null}
+        {sale ? (
+          <Link href={`/ventas/${sale.id}`} className={secondaryLinkClass}>
+            Venta {sale.displayNumber}
+          </Link>
+        ) : null}
+        {orders.map((serviceOrder) => (
+          <Link
+            key={serviceOrder.id}
+            href={`/reparaciones/${serviceOrder.id}`}
+            className={secondaryLinkClass}
+          >
+            {serviceOrder.kind === "warranty_claim" ? "Reclamo" : "Orden"}{" "}
+            {serviceOrder.displayNumber}
+          </Link>
+        ))}
+        {warranty ? (
+          <span className="text-sm text-muted">
+            {warrantyText(warranty)}
+            {days ? ` (${days})` : ""}
+          </span>
+        ) : null}
+      </div>
+    );
+  };
+
+  const pageHref = (target: number) =>
+    listHref(base, filters, { page: target });
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 lg:px-8">
@@ -355,162 +570,300 @@ export default async function ProductUnitsPage({
             </SectionCard>
           ) : null}
 
+          {/* Un `?unidad=` que no resuelve ocupa el lugar del panel y **lo dice**, con la vuelta a
+              la lista a mano. Antes no pasaba nada: ni panel, ni aviso, ni error (N-10). */}
+          {panelMissing ? (
+            <SectionCard
+              id="unidad-titulo"
+              title="Unidad"
+              icon="smartphone"
+              className="mt-6"
+            >
+              <p className="text-sm">{UNIT_PANEL_NOT_FOUND_MESSAGE}</p>
+              <p className="mt-3">
+                <Link
+                  href={`${listHref(base, filters)}#unidades-titulo`}
+                  className={secondaryLinkClass}
+                >
+                  Volver a la lista
+                </Link>
+              </p>
+            </SectionCard>
+          ) : null}
+
+          {panelUnit && panelHistory ? (
+            <UnitPanel
+              unit={panelUnit}
+              view={filters.view}
+              detailHref={panelHref(base, filters, panelUnit.id, "detalle")}
+              historyHref={panelHref(base, filters, panelUnit.id, "historial")}
+              closeHref={`${listHref(base, filters)}#unidades-titulo`}
+              history={panelHistory}
+              isAdmin={isAdmin}
+              timeZone={timeZone}
+              actorLabel={actorLabel}
+              extras={actionsFor(panelUnit)}
+            />
+          ) : null}
+
           <SectionCard
-            id="disponibles-titulo"
-            title="Unidades disponibles"
-            icon="package"
+            id="unidades-titulo"
+            title="Unidades"
+            icon="smartphone"
             className="mt-6"
           >
             <p className="text-sm text-muted">
-              {availableText(product.quantityAvailable)}.
+              {availableText(product.quantityAvailable)}. El saldo cuenta las
+              disponibles y las reservadas: lo que está en reparación o en
+              revisión queda fuera.
             </p>
-            {available.length === 0 ? (
-              <p className="mt-3">{NO_AVAILABLE_UNITS_MESSAGE}</p>
+
+            {/* El filtro por estado, por la URL, con la cantidad de cada uno. Los contadores del
+                Resumen de la ficha enlazan acá (D-5): esta es la pantalla que les faltaba. */}
+            <nav aria-label="Filtrar por estado" className="mt-4">
+              <ul className="flex flex-wrap gap-2">
+                <li>
+                  <Link
+                    href={listHref(base, filters, { status: null, page: 1 })}
+                    aria-current={filters.status === null ? "true" : undefined}
+                    className={`inline-flex min-h-11 items-center rounded-full border px-3 text-sm font-semibold ${
+                      filters.status === null
+                        ? "border-primary bg-primary-soft text-on-primary-soft"
+                        : "border-border text-muted hover:text-foreground"
+                    }`}
+                  >
+                    {ALL_UNITS_LABEL}
+                  </Link>
+                </li>
+                {STATUS_ORDER.map((status) => (
+                  <li key={status}>
+                    <Link
+                      href={listHref(base, filters, { status, page: 1 })}
+                      aria-current={
+                        filters.status === status ? "true" : undefined
+                      }
+                      className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-3 text-sm font-semibold ${
+                        filters.status === status
+                          ? "border-primary bg-primary-soft text-on-primary-soft"
+                          : "border-border text-muted hover:text-foreground"
+                      }`}
+                    >
+                      {UNIT_STATUS_LABEL[status]}
+                      {/* Si el recuento no se pudo leer, el chip va **sin número** y el aviso de
+                          abajo lo dice: un cero afirmaría que no hay ninguna unidad en ese estado
+                          (I-2). `undefined` es un producto por cantidad, que no llega acá. */}
+                      {counts ? (
+                        <span className="tabular-nums">{counts[status]}</span>
+                      ) : null}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+            {/* Si el recuento falló, los chips quedan sin número y **se dice**. Antes esta rama no
+                existía y los números desaparecían en silencio (I-2). */}
+            {counts === null ? (
+              <p className="mt-2 text-sm text-muted">
+                {UNIT_COUNTS_UNAVAILABLE_MESSAGE}
+              </p>
+            ) : null}
+
+            {/* La búsqueda es un GET: conserva el estado elegido en un campo oculto y no arrastra
+                la página, porque con otro conjunto de resultados la página 3 no es la misma. */}
+            <form
+              method="get"
+              action={base}
+              className="mt-4 flex flex-wrap items-end gap-3"
+            >
+              {filters.status ? (
+                <input
+                  type="hidden"
+                  name="estado"
+                  value={STATUS_VALUE[filters.status]}
+                />
+              ) : null}
+              <div className="min-w-0 grow sm:grow-0">
+                <label htmlFor="imei" className={labelClass}>
+                  {SEARCH_LABEL}
+                </label>
+                <input
+                  id="imei"
+                  name="imei"
+                  type="search"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  defaultValue={filters.serial}
+                  className={`${inputClass} sm:w-64`}
+                />
+              </div>
+              <button type="submit" className={secondaryButtonClass}>
+                Buscar
+              </button>
+              {filters.status !== null || filters.serial ? (
+                <Link
+                  href={base}
+                  className={`${secondaryLinkClass} inline-flex min-h-11 items-center`}
+                >
+                  Restablecer
+                </Link>
+              ) : null}
+            </form>
+
+            {units?.search === "too_short" ? (
+              <p role="status" className="mt-3 text-sm text-muted">
+                {searchTooShortMessage(UNIT_SEARCH_MIN_LENGTH)}
+              </p>
+            ) : null}
+
+            {/* Una lectura que no se pudo hacer se **anuncia**, y ahora la rama es alcanzable: el
+                `catch` vive en `list-data.ts` y la prueba lo fuerza (I-2, AC-10). */}
+            {units === null ? (
+              <p className="mt-3">{UNITS_UNAVAILABLE_MESSAGE}</p>
+            ) : list.length === 0 ? (
+              <p className="mt-3">
+                {units.productHasUnits
+                  ? NO_UNITS_FOR_FILTER_MESSAGE
+                  : NO_UNITS_MESSAGE}
+              </p>
             ) : (
-              <div className="mt-3 overflow-x-auto">
-                <table className="w-full text-sm">
-                  <caption className="sr-only">
-                    Unidades disponibles de {product.name}
-                  </caption>
-                  <thead>
-                    <tr>
-                      <th scope="col" className={tableHeadCellClass}>
-                        IMEI o serie
-                      </th>
-                      <th scope="col" className={tableHeadCellClass}>
-                        Grado
-                      </th>
-                      <th
-                        scope="col"
-                        className={`${tableHeadCellClass} text-right`}
-                      >
-                        Batería
-                      </th>
-                      <th
-                        scope="col"
-                        className={`${tableHeadCellClass} text-right`}
-                      >
-                        Precio
-                      </th>
-                      {isAdmin ? (
+              <>
+                {/* `relative` no es decorativo y su ausencia costó un desbordamiento a 375 px
+                    (AC-13). Los `sr-only` de la tabla —el encabezado «Acciones» y el IMEI que cada
+                    acción agrega a su nombre accesible— están **posicionados en absoluto**, así que
+                    sin un ancestro posicionado resuelven contra el documento: quedan en x≈1000,
+                    escapan de este contenedor que scrollea y estiran el `scrollWidth` del `html`.
+                    Con `relative`, este div es su bloque contenedor y su desbordamiento queda acá.
+                    La tabla de antes de la 24.5.2 no lo sufría porque era angosta: con una sola
+                    sección y pocas columnas, sus `sr-only` caían dentro de los 375 px. */}
+                <div className="relative mt-4 overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <caption className="sr-only">
+                      Unidades de {product.name}
+                    </caption>
+                    <thead>
+                      <tr>
+                        <th scope="col" className={tableHeadCellClass}>
+                          IMEI o serie
+                        </th>
+                        <th scope="col" className={tableHeadCellClass}>
+                          Estado
+                        </th>
+                        <th scope="col" className={tableHeadCellClass}>
+                          Grado
+                        </th>
                         <th
                           scope="col"
                           className={`${tableHeadCellClass} text-right`}
                         >
-                          Costo
+                          Batería
                         </th>
-                      ) : null}
-                      <th scope="col" className={tableHeadCellClass}>
-                        Origen
-                      </th>
-                      <th scope="col" className={tableHeadCellClass}>
-                        Alta
-                      </th>
-                      {isAdmin ? (
+                        <th
+                          scope="col"
+                          className={`${tableHeadCellClass} text-right`}
+                        >
+                          Precio
+                        </th>
+                        {isAdmin ? (
+                          <th
+                            scope="col"
+                            className={`${tableHeadCellClass} text-right`}
+                          >
+                            Costo
+                          </th>
+                        ) : null}
+                        <th scope="col" className={tableHeadCellClass}>
+                          Origen
+                        </th>
+                        <th scope="col" className={tableHeadCellClass}>
+                          Alta
+                        </th>
                         <th scope="col" className={tableHeadCellClass}>
                           <span className="sr-only">Acciones</span>
                         </th>
-                      ) : null}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {available.map((unit) => (
-                      <tr key={unit.id}>
-                        <td className={`${tableCellClass} font-mono`}>
-                          {unit.serial}
-                        </td>
-                        <td className={tableCellClass}>
-                          {unit.grade?.name ?? ""}
-                        </td>
-                        <td
-                          className={`${tableCellClass} text-right tabular-nums`}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {list.map((unit) => (
+                        <tr
+                          key={unit.id}
+                          // El resaltado de la fila abierta es solo eso: no es una selección, y la
+                          // lámina advierte que no se mezclen. No hay casilla porque no hay
+                          // operación masiva (alcance excluido).
+                          className={
+                            unit.id === panelUnit?.id ? "bg-primary-soft" : ""
+                          }
                         >
-                          {batteryText(unit.batteryHealth)}
-                        </td>
-                        <td
-                          className={`${tableCellClass} text-right whitespace-nowrap tabular-nums`}
-                        >
-                          {unit.price
-                            ? formatMoney(
-                                unit.price.amount,
-                                unit.price.currency,
-                              )
-                            : "Del producto"}
-                        </td>
-                        {isAdmin ? (
+                          <td className={`${tableCellClass} font-mono`}>
+                            <Link
+                              href={panelHref(base, filters, unit.id)}
+                              className={`${secondaryLinkClass} inline-flex min-h-11 items-center`}
+                            >
+                              {unit.serial}
+                            </Link>
+                          </td>
+                          <td className={tableCellClass}>{statusCell(unit)}</td>
+                          <td className={tableCellClass}>
+                            {unit.grade?.name ?? ""}
+                          </td>
+                          <td
+                            className={`${tableCellClass} text-right tabular-nums`}
+                          >
+                            {batteryText(unit.batteryHealth)}
+                          </td>
                           <td
                             className={`${tableCellClass} text-right whitespace-nowrap tabular-nums`}
                           >
-                            {unit.cost
+                            {unit.price
                               ? formatMoney(
-                                  unit.cost.amount,
-                                  unit.cost.currency,
+                                  unit.price.amount,
+                                  unit.price.currency,
                                 )
-                              : ""}
+                              : "Del producto"}
                           </td>
-                        ) : null}
-                        <td className={tableCellClass}>{origin(unit)}</td>
-                        <td
-                          className={`${tableCellClass} whitespace-nowrap tabular-nums`}
-                        >
-                          {formatShortDateTime(unit.createdAt, timeZone)}
-                        </td>
-                        {isAdmin ? (
+                          {isAdmin ? (
+                            <td
+                              className={`${tableCellClass} text-right whitespace-nowrap tabular-nums`}
+                            >
+                              {unit.cost
+                                ? formatMoney(
+                                    unit.cost.amount,
+                                    unit.cost.currency,
+                                  )
+                                : ""}
+                            </td>
+                          ) : null}
+                          <td className={tableCellClass}>{origin(unit)}</td>
+                          <td
+                            className={`${tableCellClass} whitespace-nowrap tabular-nums`}
+                          >
+                            {formatShortDateTime(unit.createdAt, timeZone)}
+                          </td>
                           <td className={tableCellClass}>
-                            <div className="flex flex-wrap gap-2">
-                              <Link
-                                href={`${base}?corregir=${unit.id}#corregir-titulo`}
-                                className={secondaryLinkClass}
-                              >
-                                Corregir
-                                <span className="sr-only"> {unit.serial}</span>
-                              </Link>
-                              <Link
-                                href={`${base}?garantia=${unit.id}#garantia-titulo`}
-                                className={secondaryLinkClass}
-                              >
-                                Garantía
-                                <span className="sr-only"> {unit.serial}</span>
-                              </Link>
-                              {repairs ? (
-                                <Link
-                                  href={`${base}?reparar=${unit.id}#reparar-titulo`}
-                                  className={secondaryLinkClass}
-                                >
-                                  Mandar a reparar
-                                  <span className="sr-only">
-                                    {" "}
-                                    {unit.serial}
-                                  </span>
-                                </Link>
-                              ) : null}
-                              {appointments ? (
-                                <Link
-                                  href={`/turnos/nuevo?unidad=${unit.id}`}
-                                  className={secondaryLinkClass}
-                                >
-                                  Dar un turno
-                                  <span className="sr-only">
-                                    {" "}
-                                    para {unit.serial}
-                                  </span>
-                                </Link>
-                              ) : null}
-                              <Link
-                                href={`${base}?baja=${unit.id}#baja-titulo`}
-                                className={dangerOutlineLinkClass}
-                              >
-                                Dar de baja
-                                <span className="sr-only"> {unit.serial}</span>
-                              </Link>
+                            <div className="flex flex-wrap items-center gap-2">
+                              {actionsFor(unit)}
                             </div>
                           </td>
-                        ) : null}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <Pagination
+                  className="mt-4"
+                  page={units.page}
+                  pageCount={units.pageCount}
+                  rangeText={shownRangeText({
+                    page: units.page,
+                    pageSize: UNITS_PAGE_SIZE,
+                    shown: list.length,
+                    total: units.total,
+                    singular: "unidad",
+                    plural: "unidades",
+                  })}
+                  hrefFor={pageHref}
+                />
+              </>
             )}
           </SectionCard>
 
@@ -539,205 +892,6 @@ export default async function ProductUnitsPage({
                   </Link>
                 </p>
               ) : null}
-            </SectionCard>
-          ) : null}
-
-          {inShop.length > 0 ? (
-            <SectionCard
-              id="reparacion-titulo"
-              title="En reparación y en revisión"
-              icon="wrench"
-              className="mt-6"
-            >
-              <p className="text-sm text-muted">
-                Están en el local, fuera del stock: no se venden ni se reservan.
-                Una unidad vuelve de reparación en revisión, y se vende cuando
-                se libera.
-              </p>
-              <ul className="mt-3 flex flex-col gap-3 text-sm">
-                {inShop.map((unit) => {
-                  const orders = repairOrders.get(unit.id) ?? [];
-                  return (
-                    <li
-                      key={unit.id}
-                      className="flex flex-wrap items-center gap-x-3 gap-y-2"
-                    >
-                      <span className="font-mono">{unit.serial}</span>
-                      <span>· {UNIT_STATUS_LABEL[unit.status]}</span>
-                      {unit.origin === "trade_in" ? origin(unit) : null}
-                      {isAdmin && unit.cost ? (
-                        <span className="tabular-nums text-muted">
-                          · Costo{" "}
-                          {formatMoney(unit.cost.amount, unit.cost.currency)}
-                        </span>
-                      ) : null}
-                      {orders.map((order) => (
-                        <Link
-                          key={order.id}
-                          href={`/reparaciones/${order.id}`}
-                          className={secondaryLinkClass}
-                        >
-                          {order.kind === "warranty_claim"
-                            ? "Reclamo"
-                            : "Orden"}{" "}
-                          {order.displayNumber}
-                        </Link>
-                      ))}
-                      {isAdmin && unit.status === "in_review" ? (
-                        <>
-                          <ReleaseUnitForm
-                            unitId={unit.id}
-                            serial={unit.serial}
-                          />
-                          <Link
-                            href={`${base}?corregir=${unit.id}#corregir-titulo`}
-                            className={secondaryLinkClass}
-                          >
-                            Corregir
-                            <span className="sr-only"> {unit.serial}</span>
-                          </Link>
-                          {repairs ? (
-                            <Link
-                              href={`${base}?reparar=${unit.id}#reparar-titulo`}
-                              className={secondaryLinkClass}
-                            >
-                              Mandar a reparar
-                              <span className="sr-only"> {unit.serial}</span>
-                            </Link>
-                          ) : null}
-                          <Link
-                            href={`${base}?baja=${unit.id}#baja-titulo`}
-                            className={dangerOutlineLinkClass}
-                          >
-                            Dar de baja
-                            <span className="sr-only"> {unit.serial}</span>
-                          </Link>
-                        </>
-                      ) : null}
-                    </li>
-                  );
-                })}
-              </ul>
-            </SectionCard>
-          ) : null}
-
-          {repairedBefore.length > 0 ? (
-            <SectionCard
-              id="reparaciones-anteriores-titulo"
-              title="Reparaciones anteriores"
-              icon="wrench"
-              className="mt-6"
-            >
-              <ul className="flex flex-col gap-2 text-sm">
-                {repairedBefore.map((unit) => (
-                  <li
-                    key={unit.id}
-                    className="flex flex-wrap items-center gap-x-3 gap-y-2"
-                  >
-                    <span className="font-mono">{unit.serial}</span>
-                    <span>· {UNIT_STATUS_LABEL[unit.status]}</span>
-                    {(repairOrders.get(unit.id) ?? []).map((order) => (
-                      <Link
-                        key={order.id}
-                        href={`/reparaciones/${order.id}`}
-                        className={secondaryLinkClass}
-                      >
-                        {order.kind === "warranty_claim" ? "Reclamo" : "Orden"}{" "}
-                        {order.displayNumber}
-                      </Link>
-                    ))}
-                  </li>
-                ))}
-              </ul>
-            </SectionCard>
-          ) : null}
-
-          {committed.length > 0 ? (
-            <SectionCard
-              id="comprometidas-titulo"
-              title="Reservadas y vendidas"
-              icon="list"
-              className="mt-6"
-            >
-              <ul className="flex flex-col gap-2 text-sm">
-                {committed.map((unit) => {
-                  const order = unitOrders.ok
-                    ? unitOrders.orders.get(unit.id)
-                    : undefined;
-                  const sale = unitSales.ok
-                    ? unitSales.sales.get(unit.id)
-                    : undefined;
-                  const warranty = warrantyOf(unit.id);
-                  const days = warranty ? warrantyDaysText(warranty) : null;
-                  return (
-                    <li key={unit.id} className="flex flex-wrap gap-x-2">
-                      <span className="font-mono">{unit.serial}</span>
-                      <span>· {UNIT_STATUS_LABEL[unit.status]}</span>
-                      {order ? (
-                        <Link
-                          href={`/pedidos/${order.id}`}
-                          className={secondaryLinkClass}
-                        >
-                          Pedido {order.displayNumber}
-                        </Link>
-                      ) : null}
-                      {sale ? (
-                        <Link
-                          href={`/ventas/${sale.id}`}
-                          className={secondaryLinkClass}
-                        >
-                          Venta {sale.displayNumber}
-                        </Link>
-                      ) : null}
-                      {warranty ? (
-                        <span>
-                          · {warrantyText(warranty)}
-                          {days ? ` (${days})` : ""}
-                        </span>
-                      ) : null}
-                      {isAdmin ? (
-                        <Link
-                          href={`${base}?garantia=${unit.id}#garantia-titulo`}
-                          className={secondaryLinkClass}
-                        >
-                          Días de garantía
-                          <span className="sr-only"> {unit.serial}</span>
-                        </Link>
-                      ) : null}
-                    </li>
-                  );
-                })}
-              </ul>
-              <p className="mt-3 text-sm text-muted">
-                Una unidad reservada o vendida no se corrige ni se da de baja.
-                Sus días de garantía sí se cambian.
-              </p>
-            </SectionCard>
-          ) : null}
-
-          {writtenOff.length > 0 ? (
-            <SectionCard
-              id="bajas-titulo"
-              title="Dadas de baja"
-              icon="power"
-              className="mt-6"
-            >
-              <ul className="flex flex-col gap-2 text-sm">
-                {writtenOff.map((unit) => (
-                  <li key={unit.id}>
-                    <span className="font-mono">{unit.serial}</span>
-                    <span className="text-muted">
-                      {" "}
-                      · {formatShortDateTime(unit.updatedAt, timeZone)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-3 text-sm text-muted">
-                El motivo de la baja de una unidad disponible está en los
-                movimientos de stock. Una en revisión ya estaba fuera del stock:
-                su baja no es un movimiento.
-              </p>
             </SectionCard>
           ) : null}
         </>

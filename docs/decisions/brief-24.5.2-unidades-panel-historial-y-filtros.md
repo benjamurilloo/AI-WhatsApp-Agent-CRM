@@ -34,6 +34,15 @@ Verificados contra el código y la documentación, no supuestos.
 - **H-8 — El IMEI se muestra entero hoy, a los dos roles, y no hay ningún enmascarado de series en el código.** El único enmascarado del proyecto es el del teléfono de un cliente, en `crm`. La lámina pide el IMEI enmascarado con un «Mostrar» que revela «solo con permiso», y el proyecto tiene dos roles, no permisos por campo. Es una decisión pendiente, no algo que este brief resuelva: ver «Decisiones pendientes».
 - **H-9 — La búsqueda global por IMEI exige el IMEI completo y bien formado.** `findUnitsBySerial` (en `warranties.ts`) descarta cualquier texto que no case entero con `UNIT_SERIAL_PATTERN` y después busca por igualdad. Para la búsqueda global está bien; **para la lista sería casi inútil**, porque habría que tipear el IMEI entero. La lámina usa sufijos de cuatro dígitos en su propio ejemplo. Ver D-7.
 - **H-10 — `in_repair` e `in_review` comparten una sección.** «En reparación y en revisión» los muestra juntos, y la lámina 10 los quiere separados, con el pendiente y el acceso al checklist en la que está en revisión.
+- **H-12 — La auditoría está reservada a `admin` por el modelo de seguridad, y los movimientos no.** *Agregado el 2026-10-31, después de aprobar el brief y antes de escribir código.* [SecurityModel.md](../architecture/SecurityModel.md) dice: «Lectura permitida a ambos roles dentro de su organización, **salvo lo que un caso de uso reserva a `admin`**: la auditoría, los datos de contacto completos del cliente y, desde la 18.2, el costo y el margen». El código lo confirma: `catalog.listProductAudit` empieza con `authorize(context, { role: "admin" })`, mientras que `inventory.listStockMovements` dice explícitamente «Lectura para admin y viewer». **Esto contradecía el AC-12 de este brief**, que daba el historial entero a un `viewer`. Se resolvió con D-10.
+- **H-13 — Paginar `listProductUnits` toca tres archivos de prueba que no estaban en la lista cerrada.** *Agregado el 2026-10-31, al enumerar los llamadores como pide AC-4 y antes de tocar nada.* Hay **un solo llamador de producción**, la página de Unidades. Los otros son de prueba: `tests/integration/units.test.ts` (cuatro sitios), `units-orders-sales.test.ts` y `service-own-units.test.ts`, los tres **no autorizados** entonces. **Se paró y se preguntó**, como manda la condición de detención 1; ver la nota de «Archivos autorizados».
+
+*Corregido dos veces el 2026-10-31, por el hallazgo N-4 de la revisión independiente.* Esta enumeración tenía dos errores, y los dos importan porque AC-4 pide precisamente enumerar bien:
+
+1. Decía que el cuarto llamador era **`src/modules/inventory/units.test.ts`**, el del módulo. **No lo es ni lo fue**: ese archivo solo importa `parseUnitSerial`, `splitUnitSerials` y `validateUnitInput`, y no está modificado. El llamador es el homónimo de `tests/integration/`, que ya estaba en la lista de los tres.
+2. Decía que uno de los tres «compara el resultado entero con `toEqual`, así que el cambio de forma los rompe con certeza». **Era inexacto**: ese `toEqual` está sobre la rama de fallo (`{ ok: false, code: "NOT_FOUND" }`), que no cambió de forma. Lo que los rompía era el parámetro nuevo, un error de compilación, no una aserción. La autorización seguía siendo necesaria; el motivo estaba dicho más fuerte de lo que era.
+
+Y **apareció un llamador más después**: `scripts/medir-caminos.ts`, al agregarle los caminos de D-9. Está en la lista desde el principio, así que no hubo que pedir nada, pero la enumeración de AC-4 queda completa solo contándolo.
 - **H-11 — «Dadas de baja» no muestra ningún motivo**, y su párrafo explicativo dice literalmente que el de una unidad disponible está en los movimientos y el de una en revisión no es un movimiento. Es el texto que la tarea de Notion citó como el síntoma.
 
 ## Decisiones
@@ -78,7 +87,9 @@ Se unen y se ordenan en memoria, **de más nuevo a más viejo**, sin `JOIN`. La 
 
 Se muestra en el Historial del panel **y** en la sección «Dadas de baja», que hoy no muestra ninguno. El párrafo explicativo de H-11, que hoy dice que el motivo está en otra parte, se reemplaza.
 
-**Los dos caminos llevan una prueba cada uno**, con la unidad recorrida de verdad hasta el estado que corresponde (`available → in_repair → in_review → baja` para el segundo), porque el trigger `stock_units_guard` no admite atajos. Es exactamente el error que la [nota del vault](#fuentes-de-verdad) sobre la señal de la aserción pide evitar: la prueba del camino de la auditoría tiene que fallar si se borra la lectura de la auditoría, y eso se demuestra.
+**Los dos caminos llevan una prueba cada uno**, con la unidad recorrida de verdad hasta el estado que corresponde (`available → in_repair → in_review → baja` para el segundo), porque el trigger `stock_units_guard` no admite atajos.
+
+*Precisado el 2026-10-31, al verlo en el recorrido*: en la baja de una unidad **disponible**, el motivo aparece **dos veces** en el historial, y es correcto: la baja escribe los dos registros —el movimiento de stock y la entrada de auditoría— porque son dos eventos distintos, el efecto sobre el saldo y el cambio de estado. Cada fila lleva su tipo, así que se distinguen. Queda declarado para que se mire en el recorrido: si resulta ruidoso, la decisión es de presentación y no cambia nada de lo que se escribe. En la baja **desde `in_review`** aparece una sola vez, porque no hay movimiento, y a un `viewer` también una sola, porque no ve la auditoría. Es exactamente el error que la [nota del vault](#fuentes-de-verdad) sobre la señal de la aserción pide evitar: la prueba del camino de la auditoría tiene que fallar si se borra la lectura de la auditoría, y eso se demuestra.
 
 ### D-5 — El filtro por estado va en la URL, y los contadores del Resumen son sus enlaces
 
@@ -111,6 +122,45 @@ Es un cambio de contrato de una lectura existente con varios consumidores. **Ant
 
 Las dos con **el umbral fijado por escrito antes de medir**, y el número anotado en el cierre. Si una no se puede medir, se dice que no se midió: no se infiere de la otra.
 
+### D-10 — El historial respeta la frontera de roles que ya existe, y no la mueve
+
+*Agregada el 2026-10-31, por decisión del usuario, al encontrar H-12 antes de escribir código.*
+
+El historial de la unidad tiene dos fuentes y **cada una cae de un lado distinto de la línea que el modelo de seguridad ya trazó**:
+
+| Fuente | Quién la ve | Por qué |
+|---|---|---|
+| Los movimientos de stock de la unidad | **los dos roles** | `listStockMovements` es «para admin y viewer» desde siempre |
+| Las entradas de auditoría de `stock_unit` | **solo `admin`** | SecurityModel reserva la auditoría a `admin` (H-12) |
+
+Así que la lectura nueva de la auditoría de una unidad **empieza con `authorize(context, { role: "admin" })`**, igual que `catalog.listProductAudit`. A un `viewer` el panel le muestra su mitad —los movimientos— y una línea que dice que los cambios de estado los ve un `admin`: **no se le dibuja un historial incompleto como si fuera completo**, que sería la misma falta que I-2 prohíbe para un dato que no se pudo leer.
+
+**La consecuencia, declarada y aceptada**: el motivo de una baja **desde `available`** lo ven los dos roles, porque vive en el movimiento; el de una baja **desde `in_review`** lo ve solo un `admin`, porque vive solo en la auditoría. La asimetría no es un invento de esta subfase: es dónde quedó cada dato en la 29.6.2, y el modelo de seguridad decide quién lee cada lugar.
+
+**Lo que esto cierra**: la tarea de Notion preguntaba «qué ve un `viewer`» y ésta es la respuesta, con su fundamento. Mover la línea —abrirle la auditoría a un `viewer`— **sigue siendo posible pero es otra cosa**: enmienda `SecurityModel.md` y, por su peso, pide un ADR. No entra acá.
+
+### D-11 — Las cinco secciones fijas de la pantalla se vuelven una sola lista
+
+*Agregada el 2026-10-31, al implementar. No estaba escrita en el brief aprobado y conviene que lo esté, porque saca de la pantalla secciones que el usuario ya conocía.*
+
+Hasta ahora la pantalla tenía cinco secciones fijas —«Unidades disponibles», «En reparación y en revisión», «Reparaciones anteriores», «Reservadas y vendidas» y «Dadas de baja»— que se armaban **filtrando en memoria** sobre todas las unidades del producto. Pasan a ser **una sola lista** con el filtro por estado, que es lo que dibuja la lámina 10.
+
+**No es una elección de forma: D-8 la fuerza.** Con la lectura paginada, una sección que filtra en memoria ve solo las unidades de la página que se está mirando, así que «Unidades disponibles» mostraría las disponibles *de esa página* y parecería que no hay más. Mantener las secciones **y** paginar es incoherente; mantener las secciones **sin** paginar es H-6, el problema que vinimos a arreglar.
+
+Lo que cada sección aportaba no se pierde:
+
+| Sección que se va | Dónde vive ahora |
+|---|---|
+| «Unidades disponibles» | la lista con `?estado=disponibles`, que es el chip por defecto del Resumen |
+| «En reparación y en revisión» | dos chips distintos, por D-6, con el estado en la columna Estado |
+| «Reservadas y vendidas» | la columna Estado, con su pedido o su venta |
+| «Reparaciones anteriores» | la columna Estado, con sus órdenes de servicio, y el Historial del panel |
+| «Dadas de baja» | `?estado=bajas`, y el **motivo** en el Historial del panel |
+
+**Consecuencia sobre AC-7, precisada acá**: el motivo de la baja se muestra **en el panel**, y la lista lleva a él. No se muestra en cada fila de la lista porque el motivo de una baja desde `in_review` vive en la auditoría y `listEntityAuditLogs` lee **una** entidad por llamada: una columna «motivo» en la lista costaría una lectura de auditoría por fila. Batearlas pediría una lectura nueva en `audit`, que está fuera de la lista cerrada de archivos autorizados. Entre una lectura por fila y una cuando se abre la unidad, se eligió la segunda.
+
+**Efecto colateral declarado**: seis aserciones de la batería end-to-end vigilaban los títulos de esas secciones, en tres archivos. Dos de esos archivos estaban fuera de la lista cerrada; **se paró y se preguntó**, y el usuario los autorizó el 2026-10-31.
+
 ## Alcance incluido
 
 - Panel de la unidad con Detalle e Historial, por la URL (D-2, D-3).
@@ -125,6 +175,17 @@ Las dos con **el umbral fijado por escrito antes de medir**, y el número anotad
 ## Archivos autorizados
 
 Lista **cerrada**. Salirse de ella **se para y se pregunta, sin excepción por tamaño ni por evidencia de que el cambio esté confinado** — es la regla que la 24.5.1 escribió después de romperla ([brief-24.5.1](brief-24.5.1-productos-catalogo-y-ficha.md) §Archivos autorizados).
+
+*Ampliada el 2026-10-31, con autorización del usuario en el turno, antes de escribir código*: los tres archivos de `tests/integration/` marcados abajo. El motivo es H-13, y la regla **funcionó como se esperaba**: al enumerar los llamadores de `listProductUnits` como pide AC-4, aparecieron tres archivos de prueba fuera de la lista, se paró, se preguntó y se autorizaron. No se amplió sola, que es lo que pasó en la 24.5.1.
+
+*Ampliada tres veces más el 2026-10-31*, y **una de ellas mal**. Lo encontró la revisión independiente como su bloqueante B-1, y conviene que quede escrito con precisión porque es la misma regla que esta subfase heredó de la 24.5.1 como su lección principal:
+
+- **`seeds/volume.ts` y `tests/guards/volume-seed-identity.test.ts`: se paró, se preguntó y el usuario los autorizó**, cada uno en su turno. Lo que estuvo mal no fue el procedimiento sino el registro: **no se agregaron a esta tabla en el momento**, así que durante varias horas el brief decía una cosa y el árbol de trabajo mostraba otra. H-14 seguía afirmando «se para y se pregunta» sin registrar que se había preguntado y que la respuesta había sido sí. Un brief cuya virtud declarada es registrar las ampliaciones con fecha no puede dejarlas sin registrar.
+- **`src/modules/inventory/repository.ts`: no se preguntó.** La lectura nueva `findUnitMovements` se escribió ahí porque los movimientos de stock viven en ese archivo, y la lista autorizaba `unit-repository.ts`, que es otro. **Es un cruce de la condición de detención 1**, exactamente el que la 24.5.1 escribió como su lección: «salirse de la lista cerrada se para y se pregunta, sin excepción por tamaño ni por confinamiento». El razonamiento implícito fue el de siempre —«es donde corresponde, son cuarenta líneas»— y es el razonamiento que la regla prohíbe. El usuario lo autorizó **retroactivamente** el 2026-10-31, después de que la revisión lo encontrara.
+
+**Lo que esto dice de la regla**: funcionó tres veces de cuatro, y la vez que falló no la detectó ni la autoevaluación ni ninguna prueba, sino la revisión independiente leyendo el `git status` contra la tabla. La precaución que faltaba es barata: **antes de pedir la revisión, comparar la lista de archivos tocados contra la tabla, uno por uno**. Pasa a ser parte del cierre.
+
+*Nota sobre un hallazgo de B-1 que no corresponde*: la revisión incluyó `.claude/settings.json` entre los archivos fuera de la lista. **No es de esta subfase**: está sin seguimiento desde antes de empezarla —aparece así en el primer `git status` de la sesión— y el usuario decidió el 2026-10-31, durante la 24.5.1, dejarlo como está. No se tocó.
 
 | Archivo | Para qué |
 |---|---|
@@ -141,6 +202,16 @@ Lista **cerrada**. Salirse de ella **se para y se pregunta, sin excepción por t
 | `src/modules/inventory/index.ts` | Lo que se exporta |
 | `src/modules/inventory/units.test.ts` | Pruebas del módulo |
 | `tests/integration/organization-isolation.test.ts` | El filtro por organización de cada lectura nueva, donde es observable |
+| `tests/integration/units.test.ts` | **Ampliación autorizada el 2026-10-31.** Aserciones a la forma paginada |
+| `tests/integration/units-orders-sales.test.ts` | **Ampliación autorizada el 2026-10-31.** Idem |
+| `tests/integration/service-own-units.test.ts` | **Ampliación autorizada el 2026-10-31.** Idem |
+| `tests/e2e/warranty.spec.ts` | **Ampliación autorizada el 2026-10-31** (segunda tanda). Aserción de «Reservadas y vendidas», sección que D-11 elimina |
+| `tests/e2e/repairs-own-units.spec.ts` | **Ampliación autorizada el 2026-10-31** (segunda tanda). Aserciones de «En reparación y en revisión» y «Reparaciones anteriores», idem |
+| `seeds/volume.ts` | **Ampliación autorizada el 2026-10-31** (tercera tanda, por H-14). La capacidad `variants`, los modelos y el producto por unidad, sin los cuales las dos mediciones de D-9 no se podían hacer |
+| `tests/guards/volume-seed-identity.test.ts` | **Ampliación autorizada el 2026-10-31** (tercera tanda). El guard que fija la distribución de medición: todo campo nuevo cae en su igualdad y la rompe, así que extender el seed obliga a pasar por él |
+| `src/modules/inventory/repository.ts` | **Ampliación autorizada el 2026-10-31, RETROACTIVAMENTE** (cuarta tanda). La lectura nueva `findUnitMovements`. Ver la nota de abajo: acá **no se paró a preguntar y había que hacerlo** |
+| `src/app/(autenticado)/productos/[productId]/unidades/list-data.ts` | **Nuevo. Ampliación autorizada el 2026-10-31** (quinta tanda, al arreglar B-2). La lectura de la lista en la capa de composición, con el `catch` y la lectura inyectada |
+| `src/app/(autenticado)/productos/[productId]/unidades/list-data.test.ts` | **Nuevo. Ampliación autorizada el 2026-10-31** (quinta tanda). Sus cinco pruebas, incluida la del fallo forzado |
 | `tests/e2e/units.spec.ts` | Los recorridos |
 | `scripts/medir-caminos.ts` | Las dos mediciones (autorización del 2026-10-31) |
 | `docs/architecture/Overview.md` | La fila de `inventory`, por las lecturas nuevas |
@@ -202,6 +273,7 @@ Del vault, dos notas que esta subfase tiene que tener a la vista porque describe
 - **I-6** — Toda lectura nueva filtra por organización **en SQL**, y eso se prueba donde es observable: llamando al repositorio, no al servicio.
 - **I-7** — Sin JavaScript: filtro, búsqueda, paginación, panel y sus dos pestañas funcionan con enlaces y formularios `GET`.
 - **I-8** — Ningún identificador completo aparece en un mensaje de error.
+- **I-9** — La lectura de la auditoría de una unidad **autoriza en el servicio**, no en la presentación: a un `viewer` le responde `FORBIDDEN`, y ocultarle el bloque es presentación además, no en lugar de. Es la regla que `product-sub-nav.tsx` ya enuncia para la pestaña de Costos.
 
 ## Criterios de aceptación
 
@@ -213,12 +285,13 @@ Del vault, dos notas que esta subfase tiene que tener a la vista porque describe
 | **AC-4** | La lista está paginada, con su total real, y el filtro y la búsqueda se aplican en SQL. Enumerados y revisados todos los llamadores de `listProductUnits`. |
 | **AC-5** | `?unidad=<id>` abre el panel de la unidad con Detalle, y `&vista=historial` lo abre en Historial. Las dos pestañas tienen `aria-current` y se recorren por teclado. Cerrar el panel vuelve a la lista con sus filtros intactos. |
 | **AC-6** | El Historial une los movimientos de la unidad y sus entradas de auditoría, de más nuevo a más viejo, y **cada fila dice de qué tipo de evento viene**. Una reserva y un pase a revisión no aparecen como entrada ni salida física. |
-| **AC-7** | El motivo de la baja se muestra para una unidad dada de baja **desde `available`** (desde el movimiento) y para una **desde `in_review`** (desde la auditoría), en el panel y en «Dadas de baja». **Una prueba por camino**, con la unidad recorrida de verdad hasta su estado. |
+| **AC-7** | *Modificado el 2026-10-31 por decisión del usuario, tras el hallazgo N-7 de la revisión independiente; antes decía «en el panel y en “Dadas de baja”».* El motivo de la baja se muestra para una unidad dada de baja **desde `available`** (desde el movimiento) y para una **desde `in_review`** (desde la auditoría), **en el panel**, y la lista lleva a él. **Una prueba por camino**, con la unidad recorrida de verdad hasta su estado. **El cambio es de alcance sobre un criterio ya aprobado**: lo propuso D-11 al implementar, la revisión lo marcó como tal y lo decidió el usuario, no yo. El motivo es el costo —una lectura de auditoría por fila de la lista, o una lectura nueva en `audit` que está fuera de alcance—, y la sección «Dadas de baja» que el criterio nombraba ya no existe: es el chip `?estado=bajas`. |
 | **AC-8** | Borrar la lectura de la auditoría hace fallar la prueba del segundo camino, y solo esa. Demostrado en los dos sentidos. |
 | **AC-9** | «En reparación» y «En revisión» son dos secciones con dos valores de filtro distintos. La de en revisión muestra el pendiente y el acceso a su checklist. Ningún total cambia. |
 | **AC-10** | Si la lectura de la auditoría falla, el Historial lo anuncia y no dice «sin eventos». Probado con la lectura forzada a fallar, **sin mockear el módulo**, y comprobado que sin el `catch` la prueba falla. |
 | **AC-11** | Cada lectura nueva filtra por organización en SQL, probado llamando al **repositorio** con una organización ajena, con un control positivo, en `tests/integration/organization-isolation.test.ts`. Borrar el filtro hace fallar solo la prueba nueva. |
-| **AC-12** | Un `viewer` ve la lista, el panel y el historial **sin el costo**, comprobado sobre lo que llega al navegador, y ningún total le permite deducirlo. |
+| **AC-12** | *Corregido el 2026-10-31 por H-12 y D-10; antes decía que un `viewer` ve «la lista, el panel y el historial sin el costo», lo que contradecía `SecurityModel.md`.* Un `viewer` ve la lista y el panel **sin el costo**, comprobado sobre lo que llega al navegador, y ningún total le permite deducirlo. Del historial ve **solo los movimientos**, con una línea que dice que los cambios de estado los ve un `admin`; **no** ve ninguna entrada de auditoría, y la lectura nueva de la auditoría le responde `FORBIDDEN` en el servicio, no solo le oculta el enlace. |
+| **AC-19** | El motivo de una baja **desde `available`** lo ven los dos roles (vive en el movimiento) y el de una baja **desde `in_review`**, solo un `admin` (vive solo en la auditoría). Las dos mitades probadas, con el `viewer` comprobado contra el servicio. |
 | **AC-13** | Reflujo a 320 px con desbordamiento cero en la lista y en el panel; objetivos táctiles de 44 px **medidos**, no inferidos de clases; `axe` sin violaciones en claro y en oscuro. |
 | **AC-14** | Las dos mediciones de D-9 hechas, con su umbral escrito **antes** de medir y el número anotado en el cierre. Si una no se pudo hacer, se declara. |
 | **AC-15** | Comparación visual contra las láminas 10, 14 y 15, con **cada diferencia declarada una por una** y su motivo. |
@@ -253,6 +326,234 @@ Se para y se pregunta, sin implementar, cuando:
 - **R-2 — El historial de dos fuentes puede mentir sobre su completitud.** Si cada fuente tiene su tope y se unen, el resultado puede parecer completo y no serlo. Mitigación: el panel dice el tope y cuántos eventos trajo, como la tabla de Operaciones de la 24.4.3.
 - **R-3 — La medición diferida se vuelve a diferir.** Ya pasó una vez. Mitigación: AC-14 la pone como criterio y la condición de detención 7 obliga a declararla si no se pudo.
 
+### Los umbrales de D-9, fijados antes de medir
+
+*Escritos el 2026-10-31, **antes** de correr una sola medición.* Fijarlos después es elegir el umbral que el número ya cumple, que es exactamente lo que vuelve inútil a la medición.
+
+| Camino | Umbral | Por qué ese número |
+|---|---|---|
+| `inventory.listProductStock` **agrupado por modelo** | **400 ms** de camino completo | El mismo que la 21.6 y la 24.4.3 fijaron para una pantalla de lista. H-5 de la 24.5.1 sostenía que el agrupado no agrega ninguna consulta —es un pliegue en memoria sobre un conjunto ya cargado—, así que se espera **cerca del camino sin agrupar**; si se despega mucho de él, H-5 era falso y eso es el hallazgo |
+| `inventory.listProductUnits` con filtro y búsqueda | **400 ms** | Idem. El caso que más puede costar es la búsqueda por sufijo, porque un `like '%…'` no puede usar el índice del serial |
+
+Las dos se miden con `scripts/medir-caminos.ts` sobre la base local, mediana de 5 corridas, y **el número se anota en el cierre aunque pase**. Si se supera, se informa (condición de detención).
+
+#### H-14 — Por qué la medición de la 24.5.1 no se había hecho: la siembra de volumen no tiene unidades ni modelos
+
+*Agregado el 2026-10-31, al ir a medir.* Los dos caminos de arriba están ya **agregados al script** y los umbrales están fijados, pero **no se pueden correr sobre un caso que signifique algo**, y el motivo no es falta de tiempo:
+
+`seeds/volume.ts` es de la 8.5 y **no siembra nada de lo que estos dos caminos necesitan**. Verificado por búsqueda en el archivo: no tiene `organization_capabilities`, ni `product_models`, ni `tracking`, ni una sola fila de `stock_units`. Entonces, en la organización de volumen:
+
+- **el catálogo agrupado no agrupa nada**: sin la capacidad `variants` la vista no se ofrece, y sin modelos todos los productos caerían en «Sin modelo»;
+- **la lista de unidades no tiene unidades que listar**: ningún producto es `tracking = 'unit'`.
+
+La única organización que sí tiene modelos, variantes y unidades es la de demostración «iPhone Demo», con un puñado de filas: medir ahí da un número real de un caso que no es el peor, y presentarlo como la medición de §Riesgos sería peor que no medir.
+
+**Esto explica, y nadie lo había escrito, por qué la medición que la 24.5.1 prometió no se hizo**: no era una omisión de la 24.5.1, era que el instrumento no alcanza al camino. El brief de la 24.5.1 lo atribuyó a que «el camino nuevo no está en `scripts/medir-caminos.ts`», que era verdad pero no era la causa: agregarlo, como se acaba de hacer, no alcanza.
+
+**Lo que haría falta**: extender `seeds/volume.ts` con la capacidad `variants`, unos modelos asignados a los productos, y un producto `tracking = 'unit'` con cientos de unidades. Estaba fuera de la lista cerrada, así que se paró y se preguntó (condición de detención 1). Es un arreglo que sirve más allá de esta subfase: cualquier medición futura de un camino de unidades, modelos o capacidades se va a topar con lo mismo.
+
+*Resuelto el 2026-10-31*: **el usuario autorizó `seeds/volume.ts`**, y después `tests/guards/volume-seed-identity.test.ts`, que es la puerta obligatoria de cualquier cambio a la distribución de medición. Las dos ampliaciones están en la tabla de «Archivos autorizados». Con eso **las dos mediciones se hicieron**: sus condiciones y sus números están en «Las mediciones de D-9». Este párrafo se conserva porque explica **por qué la deuda venía de la 24.5.1**, que es lo que no estaba escrito en ninguna parte.
+
+### Las mediciones de D-9: hechas, con sus números
+
+*Corridas el 2026-10-31, después de fijar los umbrales y de verificar los datos.* **La deuda que la 24.5.1 dejó queda pagada.**
+
+**Condiciones**, que se declaran porque un número sin ellas no se puede volver a comparar:
+
+- Base local `crm_medicion_test`, creada para esto, con las **67 migraciones** —las mismas que producción— y **vacía de antes**. `crm_dev` no se tocó.
+- PostgreSQL **18.6**, `shared_buffers` 16384×8kB, `work_mem` 4096 kB, `effective_cache_size` 524288×8kB, `random_page_cost` 4, `plan_cache_mode` auto.
+- **Colación `en_US.utf8` con proveedor libc**, igual que `crm_dev` y **distinta de producción**, que usa ICU `es` (13.2). Para estos dos caminos casi no cambia nada —la búsqueda por sufijo lleva un `like '%…'` que ningún índice btree puede usar bajo ninguna colación—, pero la diferencia queda dicha.
+- `seeds/volume.ts medicion`: 21 organizaciones, 14.120 productos, 96.016 mensajes. La medida, la ordinal 0, con **10.001 productos, 50 modelos, 8.001 productos con modelo y 2.000 sin modelo** (grupos de unas 160 presentaciones) y **500 unidades** en un producto por unidad.
+- Mediana de **5 corridas tras una de calentamiento**, una llamada por vez. No mide concurrencia.
+- Máquina con poca memoria libre (~1,2 GB de 7,7 GB), como la de la 24.4.3.
+
+**Los datos se verificaron antes de medir, no después.** Si los modelos no hubieran entrado, el catálogo «agrupado» habría medido una agrupación trivial y el número habría salido excelente por el motivo equivocado.
+
+| Camino | Mediana | Mínimo | Máximo | Umbral |
+|---|---|---|---|---|
+| `listProductStock` **agrupado por modelo** | **339,4 ms** | 304,0 | 360,1 | 400 ✅ |
+| `listProductStock` agrupado, 50 filas | **324,0 ms** | 298,7 | 346,4 | 400 ✅ |
+| `listProductStock` **sin agrupar** (referencia) | 317,0 ms | 255,5 | 330,0 | — |
+| `listProductUnits`, 500 unidades | **4,8 ms** | 4,0 | 5,2 | 400 ✅ |
+| `listProductUnits` por estado | **5,2 ms** | 4,8 | 5,7 | 400 ✅ |
+| `listProductUnits` búsqueda por sufijo | **4,6 ms** | 4,2 | 5,6 | 400 ✅ |
+
+**H-5 de la 24.5.1 queda confirmada, y es el resultado que importa más que el número**: agrupar cuesta **22,4 ms sobre 317,0**, un 7 %. El pliegue de `sumByModel` es una operación en memoria sobre un conjunto que la lista ya tenía cargado, **no una consulta nueva**. Si hubiera sido una consulta por grupo, con 50 modelos el número se habría despegado y el hallazgo habría sido el contrario.
+
+**La lista de unidades no tiene problema de camino**, y la búsqueda por sufijo **no es más lenta** que la lista sin filtro (4,6 contra 4,8 ms): con 500 unidades de un producto, recorrerlas es trivial y el `like '%…'` no se nota. El tope de D-8 no se puso por el tiempo de hoy sino porque la lectura **no tenía ninguno**, y 500 unidades en un producto es un número chico para un negocio con varios años.
+
+Controles del propio script, los dos en orden: **0 sentencias preparadas con nombre** en 10 conexiones del pool, y `plan_cache_mode` en `auto`, sin fijar por rol ni por base.
+
+**Observación, ajena a esta subfase**: con el mismo umbral de 400 ms, **dos caminos que ya están en producción lo superan** — `listProductStock` ordenado por precio (**459,0 ms**) y ordenado por stock con 50 filas (**402,0 ms**), los dos de la 15.2. No los toca esta subfase y no son una regresión suya; quedan dichos porque el umbral que usé los deja afuera y eso es información del proyecto, no un detalle de forma.
+
+## Hallazgos de la implementación
+
+*Escritos el 2026-10-31, mientras se implementaba. Se doblan al §Cierre cuando la subfase cierre; se anotan acá para no perderlos.*
+
+### H-15 — Un `sr-only` dentro de un contenedor que scrollea estira el documento, salvo que el contenedor sea un bloque contenedor
+
+**Defecto real, encontrado por AC-13 y corregido.** La pantalla de unidades **desbordaba horizontalmente a 375 px**.
+
+No se diagnosticó por inspección: un diagnóstico temporal le preguntó al navegador qué elementos se salen del ancho, y la respuesta fue precisa. `body` tenía `scrollWidth` 375 y **`html` tenía 1011**, que es la firma de algo fuera del flujo.
+
+La causa son los `<span class="sr-only">` de la tabla —el encabezado «Acciones» y el IMEI que cada acción agrega a su nombre accesible—. Están **posicionados en absoluto**, así que sin un ancestro posicionado resuelven su bloque contenedor contra el documento: quedaban en x≈1000, **escapaban del `div` con `overflow-x-auto`** y estiraban el `scrollWidth` del `html`. El arreglo es una clase, `relative` en ese contenedor, y está comentado en el código con su motivo.
+
+**Por qué no había aparecido antes**: la tabla anterior a esta subfase era angosta —una sección y menos columnas—, así que sus `sr-only` caían dentro de los 375 px. El defecto estaba **latente en el patrón**, no en el código viejo: lo destapó ensanchar la tabla a 1005 px con la lista única de D-11. Cualquier tabla ancha del proyecto con un `sr-only` adentro tiene el mismo problema esperando.
+
+Verificado en los dos sentidos: con `relative`, `scrollWidth` 375 = `innerWidth` 375; sin él, 1011.
+
+### H-16 — Una aserción de URL demasiado laxa no podía fallar, y tapaba un defecto de la propia prueba
+
+**Defecto de mis pruebas, no del código.** La prueba del panel afirmaba, después de cerrarlo, `toHaveURL(/\?estado=bajas/)`. Esa URL **también la cumple la página con el panel abierto**, porque la URL del panel contiene `?estado=bajas` y sigue con `&unidad=…`. La aserción pasaba sin importar si cerrar funcionaba.
+
+Y no funcionaba: el clic siguiente caía en el panel **anterior**, que todavía estaba en el DOM, así que la prueba comprobaba el historial de la unidad equivocada. La aserción que debía detectarlo no podía fallar.
+
+Corregido: `toHaveURL(/\?estado=bajas(#.*)?$/)`, más `toHaveCount(0)` del panel, más esperar a que el panel sea el de **esa** unidad antes de tocar sus pestañas. Es la misma familia que las notas del vault sobre la señal de la aserción: **una prueba que no puede fallar no vigila nada.**
+
+De paso, un detalle de localizadores que vale anotar: el **nombre accesible** de un chip es `"Disponible 0"`, **con espacio**, mientras su `textContent` es `"Disponible0"`, sin espacio. `getByRole(name:)` usa el primero y `toHaveText` el segundo. Los localizadores de los chips pasaron a expresiones regulares.
+
+### O-1 — Una prueba de integración falla en Windows porque `spawnSync("bash")` es el `bash` de WSL, que no hereda el entorno
+
+**Observación ajena a esta subfase, no corregida acá: el archivo está fuera de la lista cerrada.**
+
+`tests/integration/product-images.test.ts` → «D-9: el aviso de tamaño termina bien bajo el umbral y con error por encima» **falla en esta máquina**. Es el único fallo de la batería de integración: **1878 de 1879 pasan**.
+
+No es de la 24.5.2: no toca ni `deploy/production/crm-db-size.sh` ni ese archivo de prueba, y ninguno de los dos está modificado en el árbol de trabajo.
+
+La causa, medida y no supuesta:
+
+1. El script, corrido a mano desde Git Bash con `CRM_DB_SIZE_THRESHOLD_BYTES=1`, **funciona**: sale por `exit 1` con «por encima del umbral». Con el umbral por omisión sale `OK`. El script está bien.
+2. La prueba lo invoca con `spawnSync("bash", …)` pasándole la variable en `env`. En esta máquina **`bash` resuelve a `C:\windows\system32\bash.exe`, que es el lanzador de WSL**, y una sonda propia lo confirma: con `spawnSync("bash")` el proceso es `/bin/bash` y la variable llega como `NO_DEFINIDA`; invocando el `bash` de Git explícitamente, llega como `llego`.
+3. El caso «bajo el umbral» pasa igual porque solo depende del `PATH`, que WSL **sí** importa por interoperabilidad; el que se pierde es la variable propia.
+
+Así que la prueba toma el umbral por omisión de 1 GB, la base de test ocupa 117 MB, y el script sale `OK` cuando la prueba espera el error.
+
+**Es la segunda observación de la nota del vault** `bash Called From PowerShell on Windows Can Be WSL, Which Drops the Caller's Environment`, esta vez desde el `spawnSync` de Node y no desde PowerShell. Vale como adenda a esa nota.
+
+El arreglo —resolver el `bash` de Git, o pasar el umbral por argumento en vez de por entorno— **corresponde a un cambio aparte**, como los cuatro instrumentos que encontró la 24.4.3. En la CI, que corre en Linux, esto no se ve.
+
+**Ampliación del 2026-10-31, medida al cerrar, y es peor de lo que decía arriba.** La misma prueba, sin tocar una línea, **pasa o falla según desde qué consola se lance vitest**:
+
+| Consola | `bash` que resuelve | Resultado |
+|---|---|---|
+| PowerShell | `C:\windows\system32\bash.exe` (lanzador de WSL) | **1 falla**, 12 pasan |
+| Git Bash | el `bash` de Git | **13 pasan** |
+
+Las dos corridas son del mismo archivo, con la misma base y a un minuto de distancia. `spawnSync("bash")` resuelve contra el `PATH` **de quien lanzó el proceso**, y ese `PATH` es distinto en cada consola.
+
+Lo que esto cambia: no es «una prueba que falla en Windows», es **una prueba cuyo resultado depende de un dato que nadie declaró** —la consola—. Pasa en verde y no por eso está comprobada. Es exactamente la forma de un falso verde, y vale como segunda adenda a la nota del vault.
+
+### O-4 — `secondaryButtonClass` da 38 px de alto, y es la clase de botón secundario de todo el proyecto
+
+**Encontrado al cubrir AC-13 dentro del panel (N-6), corregido solo en el panel.**
+
+La prueba nueva midió el alto de «Cerrar» y dio **38 px**, contra los 44 que pide AC-13: `secondaryButtonClass` es `px-3 py-2 text-sm` más el borde, sin `min-h`. Las dos pestañas del panel sí dan 44, porque llevan `min-h-11` explícito.
+
+El arreglo acá es local: «Cerrar» lleva `min-h-11 min-w-11`. **No se tocó la clase compartida**, y conviene decir por qué y qué queda abierto:
+
+- `secondaryButtonClass` y `secondaryLinkClass` las usa **todo el proyecto** —caja, reparaciones, ventas, compras, cada acción de fila de esta misma pantalla—. Cambiar el alto de base mueve la altura de decenas de pantallas y es un cambio de sistema visual, con su propio brief.
+- Por lo tanto **las acciones de fila y las del panel que vienen de `extras` siguen midiendo 38 px**. AC-13 se cumple para los controles propios de esta subfase —los chips del filtro, las dos pestañas y «Cerrar»—, y **no** para los botones secundarios heredados. Queda declarado, no disimulado.
+
+Lo que esto confirma, que es lo que AC-13 buscaba al pedir «medidos, no inferidos de clases»: la clase estaba puesta con intención y el número no era el que se suponía. Inferirlo de leer el código habría dado 44.
+
+### O-3 — La batería de integración completa terminó con un worker caído y **salió con código 0**
+
+**Observación de la corrida de cierre, no un defecto del código de la subfase.**
+
+La batería entera —1.186 segundos— informó **113 de 114 archivos** pasados, **1.884 pruebas pasadas, ninguna fallada**, y **un error**: el worker que corría `tests/integration/migration-0059.test.ts` murió con código `3221226505` (`0xC0000409`, el *fast fail* de Windows) «during started state», es decir **antes de ejecutar ninguna de sus pruebas**.
+
+Dos comprobaciones:
+
+1. **Ese archivo, corrido solo, pasa** —junto con `product-images.test.ts`, 14 pruebas en 26 segundos—. No es un defecto del archivo ni de esta subfase, que no lo toca.
+2. **El proceso salió con código 0.** Un archivo que nunca corrió, un error informado en el resumen, y aun así la corrida se reporta como exitosa ante cualquier cosa que mire el código de salida.
+
+Lo segundo es lo que importa anotar: **el código de salida no distingue «todo pasó» de «un archivo no llegó a correr»**. En una corrida local eso se ve leyendo el resumen; en un `&&` de script, no. Para esta subfase se resolvió corriendo el archivo caído por separado, que es lo que deja la afirmación en pie; vale como precaución general —**contar los archivos del resumen, no confiar en el código de salida**— y, si se quiere una guarda, corresponde a un cambio aparte.
+
+### O-2 — `npm run format:check` falla en esta máquina por quince archivos de la Fase 29 que están en CRLF
+
+**Observación ajena a esta subfase, no corregida acá.**
+
+`npx prettier --check .` informa **18 archivos** con problemas de estilo. Ninguno es de la 24.5.2: son quince archivos de `reparaciones/` y `modules/service/` de la Fase 29, dos pruebas de esa misma fase, y `.claude/settings.json`. Los tres grupos están **sin modificar** en el árbol de trabajo.
+
+La causa, medida: esos quince archivos están en **CRLF** y los otros 693 de `src` en LF. Con `core.autocrlf=true` y sin `.gitattributes`, el índice guarda LF y lo que queda en disco depende de quién escribió el archivo —`git` al reponerlo, o las herramientas de esta sesión—. Prettier, con su `endOfLine: "lf"` por omisión, marca el archivo entero.
+
+Dos consecuencias que importan:
+
+1. **En la CI no se ve**, porque ahí el repositorio se clona en Linux y sale del índice en LF. Es la misma asimetría que O-1, con otra causa.
+2. **`format:check` local no es una señal utilizable tal como está**: falla por archivos que nadie tocó. Lo que se comprobó para esta subfase es `prettier --check` **sobre los archivos de este cambio**, y está limpio. `eslint` tiene el problema simétrico: 749 errores, todos de `.claude/skills/impeccable/scripts/*.js`, que son de una skill de terceros, están en `.gitignore` y no los ignora la configuración de ESLint. Acotado a `src tests scripts seeds`, limpio.
+
+Arreglarlo —un `.gitattributes` con `* text=auto eol=lf`, más una pasada de Prettier, más un `ignores` de ESLint para `.claude/`— **corresponde a un cambio aparte**: toca quince archivos de otra fase y la configuración de dos herramientas.
+
+## AC-15 — La comparación visual contra las láminas 10, 14 y 15
+
+Hecha el 2026-10-31 sobre el build de producción, con capturas tomadas del navegador: la lista y el panel a 1440 px, el panel y la lista a 390 px, y los estados. Las capturas fueron temporales y **no quedan versionadas**: el instrumento que las tomó se agregó a `units.spec.ts`, se usó y se borró, y el archivo volvió a su estado exacto.
+
+**Cómo leer esta sección**: cada diferencia se declara una por una, con su motivo y con quién la decidió. Ninguna «se parece bastante». Las que ya estaban decididas antes de implementar se marcan con la decisión que las fijó.
+
+### Lámina 10 — Unidades (escritorio)
+
+| # | Diferencia | Motivo |
+|---|---|---|
+| 1 | **El panel va arriba de la lista, no a la derecha** | **Ya declarada en D-2.** La lámina lo dibuja como columna fija a la derecha; acá es una tarjeta sobre la lista, en la misma página y por URL. Una ruta `/unidades/[unitId]` sería una sexta ruta de producto y la variante (a) de D-1 de la 24.5.1 fijó que las rutas no se mueven en esta parte de la fase |
+| 2 | **El filtro por estado son chips con su cantidad, no dos desplegables** | **Ya declarada en D-5.** La lámina tiene «Estado» y «Batería» como `select`; acá son chips que son **enlaces**, porque el filtro tiene que funcionar sin JavaScript y ser compartible por URL. El chip además lleva la cantidad, que en la lámina vive en una fila aparte |
+| 3 | **No existe el filtro por batería** | Fuera de alcance: no estaba en el alcance incluido ni tiene criterio. La batería se muestra en su columna |
+| 4 | **La fila de resumen «5 físicas · 3 disponibles · 1 reservada · 1 en revisión» no existe como tal** | Sus números están en los chips. Mantener las dos cosas sería decir dos veces lo mismo, y la lámina las tiene separadas porque sus chips no llevan número |
+| 5 | **No hay columna de selección múltiple** | **Ya declarada en el alcance excluido**: la selección múltiple y su barra de acciones quedan como mejora posterior |
+| 6 | **No hay columna «Unidad» con un código U-0101** | **El modelo no tiene ese dato.** Una unidad se identifica por su IMEI o serie, que es su columna. Inventar un código correlativo sería crear un campo nuevo fuera del brief |
+| 7 | **El IMEI se muestra entero, sin «Mostrar» ni «Copiar»** | **Ya declarada en D-1 y en el alcance excluido**: el enmascarado pide un ADR y quedó fuera de la Fase 24 |
+| 8 | **La tabla tiene más columnas que la lámina y necesita desplazamiento horizontal a 1440 px** | La lámina muestra cinco columnas; acá hay ocho más las acciones, porque D-11 trajo a la lista única lo que vivía en las cinco secciones fijas —precio, costo, origen, alta— y las acciones por fila que ya existían. Es la consecuencia directa de D-11 y se ve: a 1440 px la columna de acciones queda cortada y la tabla scrollea. **No se recorta ninguna columna acá**, porque cada una venía de una sección que esta subfase eliminó y sacarla sería perder un dato que el usuario ya tenía. Queda anotado como candidato a revisar en la 24.5.2-b, junto con el costo y el margen |
+| 9 | **El botón «Recibir unidades» no está arriba de la lista** | Las altas de unidades entran por recepciones de compra o por el alta manual, que ya tienen su lugar. No se movió nada de eso en esta subfase |
+| 10 | **La cabecera del producto no tiene miniatura, ni «Usado · Grado A», ni «Editar producto», ni «···»** | **Anterior a esta subfase**: la cabecera es la que dejó la 24.5.1 y su lámina. No se tocó |
+| 11 | **La tarjeta «Cómo se lleva el stock» no está en la lámina** | Anterior a esta subfase. Explica por qué el seguimiento no se puede cambiar, que es información que la lámina no contempla |
+
+### Lámina 14 — Unidad (teléfono)
+
+| # | Diferencia | Motivo |
+|---|---|---|
+| 12 | **No es una pantalla propia con «‹ Unidades» arriba: es el panel dentro de la pantalla de unidades** | **Ya declarada en D-2**, por el mismo motivo que la diferencia 1 |
+| 13 | **Las dos pestañas Detalle e Historial sí están**, con la misma forma y el mismo subrayado | Sin diferencia. Son enlaces reales, así que andan sin JavaScript, y miden los 44 px de AC-13 |
+| 14 | **El Detalle es una lista de pares etiqueta/valor, no cuatro tarjetas con ícono** | La lámina agrupa en «Identificación», «Estado del equipo», «Origen» y «Garantía». Acá son ocho campos en dos columnas. Agrupar en tarjetas dentro de un panel que ya es una tarjeta agrega un nivel de anidado sin dato nuevo; y dos de esos grupos dependen de datos que no tenemos (ver 15 y 16) |
+| 15 | **No hay fila «Checklist · Verificado» ni enlace «Ver checklist»** | **El dato existe pero es de otro módulo**: el checklist vive en la orden de servicio (`service`), y la unidad en revisión **ya enlaza su orden** desde la columna Estado de la lista, que es el acceso al checklist que pide AC-9. Repetirlo adentro del panel pedía una lectura más por unidad |
+| 16 | **No hay sección «Origen» con recepción y fecha ni «Ver recepción»** | El panel muestra «Origen: Alta manual» y la fecha de alta. El enlace al comprobante de origen —recepción o usado— existe **en la fila de la lista**, no en el panel; duplicarlo era otra lectura |
+| 17 | **No hay sección «Garantía» con estado y «Revisar política»** | La garantía de la unidad se edita con «Días de garantía», que está entre las acciones del panel, y se muestra en la columna Estado de la lista. La política de garantía es una pantalla de administración, no un enlace de esta vista |
+| 18 | **El aviso «El grado es una clasificación estética» no está** | Es una leyenda de la lámina sin dato detrás. No se agregó texto que no estuviera decidido |
+| 19 | **«Editar unidad» no es un botón primario a ancho completo: son «Corregir», «Días de garantía», «Dar de baja» y «Cerrar»** | Son las acciones que el sistema ya tiene para una unidad, con los nombres que ya usa. «Editar unidad» como acción única no existe |
+
+### Lámina 15 — Estados y validaciones del inventario
+
+| # | Estado de la lámina | Qué hay |
+|---|---|---|
+| 20 | **«Sin unidades disponibles»** con sus tres números y «Ver reservas» | **Está, con otra forma**: «Ninguna unidad coincide con el filtro o la búsqueda», con los chips mostrando la cantidad de cada estado y «Restablecer» para volver. Los tres números de la lámina son los chips, y «Ver reservas» es el chip «Reservada» |
+| 21 | **«No se pudo consultar el inventario»**, con el último dato conocido y «Reintentar» | **Está el anuncio, no el último dato conocido ni el reintento**: si la lectura falla se dice «No disponible: no pudimos leer las unidades de este producto. No significa que no tenga», y si fallan los recuentos los chips van sin número y se dice. **No guardamos un último valor conocido**, y mostrarlo sería afirmar un número viejo como si fuera el de ahora, que es justo lo que I-2 prohíbe. «Reintentar» es recargar: no hay estado que preservar |
+| 22 | **«IMEI ya registrado»**, con el enlace a la unidad existente | Anterior a esta subfase: el alta rechaza un IMEI repetido con su mensaje. **El enlace «Abrir U-0101» no está** y sería una mejora real; no entra acá porque el formulario de alta no es de esta subfase |
+| 23 | **«Inventario actualizado por otra persona»** | **No está, y no corresponde todavía**: la pantalla no tiene edición concurrente con borrador. Cuando la 24.5.2-b traiga la edición de la unidad, ahí sí |
+| 24 | **«Costos restringidos»**, con una tarjeta que lo explica | **El `viewer` no ve la columna Costo y no se le explica por qué.** Verificado en la captura: su tabla tiene siete columnas en vez de ocho. La lámina propone decirlo; acá se omite en silencio, que es lo que el proyecto viene haciendo desde la 18.2 con el costo y el margen (FR-PROD-21). **Es la única diferencia de esta lámina que vale como mejora y no tiene decisión en contra**: queda anotada para la 24.5.2-b, que es la que toca costo y margen |
+| 25 | **«Ajuste por cantidad»** | No es de esta pantalla: el ajuste por cantidad es de un producto sin seguimiento por unidad y vive en Movimientos. La propia lámina lo aclara al pie |
+
+**Resumen honesto**: de las 25 diferencias, 13 estaban decididas antes de implementar (D-1, D-2, D-5, D-11 y el alcance excluido), 7 son de pantallas o datos anteriores a esta subfase, 3 son datos que el modelo no tiene, y **2 son mejoras reales que la lámina propone y el sistema no da**: el enlace a la unidad existente cuando el IMEI está repetido (22) y decirle al `viewer` por qué no ve el costo (24). Las dos quedan anotadas para la 24.5.2-b. Ninguna se presenta como implementada.
+
+## La revisión independiente del 2026-10-31 y qué se hizo con cada hallazgo
+
+Veredicto **R2**: tres bloqueantes y diez no bloqueantes. El revisor tuvo **solo `Read`, `Grep` y `Glob`**: no corrió nada, así que todo lo que informó se verificó contra el código —y dos veces contra la ejecución— antes de aceptarlo. Un hallazgo resultó equivocado y se dice cuál.
+
+| Hallazgo | Verificación | Qué se hizo |
+|---|---|---|
+| **B-1**. Archivos tocados fuera de la lista cerrada y ampliaciones sin registrar | **Real en parte**: `src/modules/inventory/repository.ts` se tocó **sin preguntar**, que es un cruce de la condición de detención 1; tres ampliaciones estaban acordadas pero no escritas. **Equivocado** en `.claude/settings.json`: es anterior a la subfase, no está versionado, y el usuario decidió dejarlo | Las cuatro ampliaciones registradas con su fecha; `repository.ts` autorizado **retroactivamente** por el usuario y marcado como tal; la precaución nueva anotada: antes de pedir la revisión, comparar los archivos tocados contra la tabla, uno por uno |
+| **B-2**. La rama que anuncia «no pudimos leer las unidades» es inalcanzable | **Real**, y es **el mismo defecto que el B-3 de la 24.5.1**: la página ya había leído el producto, y un error de base lanza en vez de volver como `Failure` | `list-data.ts` nuevo, con el `catch` en la capa de composición y la lectura inyectada, más cinco pruebas. **Mutación demostrada**: sin el `catch`, dos pruebas fallan |
+| **B-3**. Ninguna prueba llama a `listUnitAudit` ni a `listUnitMovements` | **Real**: la frontera de roles de D-10 no tenía prueba de servicio | Cuatro pruebas de integración nuevas, con el fixture armado por los casos de uso reales. **Mutación demostrada**: al quitar `{ role: "admin" }` del `authorize`, falla **exactamente** la del `viewer` |
+| **N-1**. El recorte del historial estaba mitigado solo para los movimientos | Real: el `total` de la auditoría se descartaba, así que 26 entradas se veían como 25 completas | El aviso de recorte cubre las dos fuentes, con su prueba |
+| **N-2**. Las otras cuatro acciones de auditoría se dibujaban como «cambio de estado» y sin dato | Real: `update`, `price_change`, `cost_change` y `create` caían en la misma rama | Cada acción con su etiqueta y sus campos; pruebas por acción |
+| **N-3**. El comentario de mutación de `unit-repository.ts` atribuía mal lo que la mutación prueba | Real. **Medido hoy en los dos sentidos**: al borrar el filtro fallan **dos** de las tres pruebas, no tres, y ninguna de las 29 de `units.test.ts` | Comentario corregido en `unit-repository.ts`, y uno nuevo en `findUnitMovements` con su propia medición: borrar **ese** filtro hace fallar **una sola** prueba. Cada filtro tiene su prueba y ninguna cubre al otro |
+| **N-4**. La enumeración de §Situación tenía dos errores | Real, y pesa porque AC-4 pide justamente enumerar bien | Corregida dos veces |
+| **N-5**. `writeOffReasonFrom` quedó sin uso al mover el motivo al panel | Real | Retirada, con un comentario donde estaba que explica por qué |
+| **N-6**. AC-13 no estaba cubierto **dentro** del panel | Real: se medían los 320 px y los 44 px de la lista, y el criterio dice «en la lista y en el panel». El panel tiene su propio `sr-only`, que es la clase de elemento de H-15 | Bloque nuevo en la prueba del panel: desbordamiento a 320 px con el panel abierto, y el alto de las dos pestañas y de «Cerrar» **medidos** del navegador |
+| **N-7**. La prueba de aislamiento del recuento por estado pasaría con el filtro por organización borrado | Real, por el mismo motivo que las otras: el servicio devuelve `NOT_FOUND` antes de que la consulta corra | Prueba nueva contra el repositorio, en `organization-isolation.test.ts` |
+| **N-8**. Una tercera forma de nombrar al autor de una entrada de auditoría | Real | El panel recibe la etiqueta ya resuelta por `auditActorLabels`, la misma que el resto de las vistas de auditoría |
+| **N-9**. AC-9 pedía el pendiente y el acceso a su checklist, y nadie lo había comprobado | **El código lo cumplía**: la celda de estado compone la orden de servicio de cada unidad, en cualquier estado. Lo que faltaba era la prueba | Aserciones nuevas en `repairs-own-units.spec.ts`: la unidad en revisión muestra «Orden OS-000001», y el chip de «En revisión» la lista con su orden |
+| **N-10**. Un `?unidad=` que no resuelve no dibujaba nada y no decía nada | Real, y al verificarlo apareció **un segundo caso que el hallazgo no nombraba**: `getUnit` resuelve por id dentro de la organización, así que un `?unidad=` de **otro producto** abría el panel con una unidad ajena a la lista que se está mirando | El panel exige que la unidad sea de este producto, y si `?unidad=` no resuelve la pantalla **lo dice**, con la vuelta a la lista. Mensaje propio: la lectura salió bien, así que no es «no disponible» |
+
+**Lo que esta revisión deja como lección, y no es el recuento de hallazgos.** B-2 es el defecto de la 24.5.1 repetido en la misma subfase, en la lista, mientras se hacía bien en el panel, a diez líneas de distancia —y con la nota del vault que lo nombra entre las que este brief se obliga a tener a la vista. Tenerla a la vista no alcanzó. Lo que sí lo encontró fue leer el código buscando una **forma reconocible**: una rama de error que ningún camino alcanza. Eso es buscable, no intuible.
+
 ## Situación en la fase
 
 - **Necesario ahora**: el panel, el historial, el motivo de la baja, el filtro y la separación de estados. Cierran la primera diferencia declarada de la 24.5.1 y la tarea que viene arrastrándose desde la 29.6.2.
@@ -260,3 +561,48 @@ Se para y se pregunta, sin implementar, cuando:
 - **Mejora posterior**: el enmascarado del IMEI (P-1), el valor de inventario de toda la organización (P-2), la edición de la unidad con varios IMEI y la selección múltiple con su barra de acciones.
 
 Después de esta subfase y de 24.5.2-b viene **24.5.3 — Modelos y grados**, que conserva su número y su tarea de Notion.
+
+## Cierre
+
+*Escrito el 2026-10-31.*
+
+### Qué quedó hecho
+
+La pantalla de Unidades es **una sola lista**: chips por estado con su cantidad, búsqueda por sufijo de IMEI de cuatro caracteres o más, paginación de 25, y todo por la URL y sin JavaScript. Reemplaza las cinco secciones fijas que filtraban en memoria sobre todas las unidades del producto; lo que cada una aportaba vive en la columna **Estado**, que lleva la insignia y el pedido, la venta o la orden de servicio de la unidad. **`in_repair` e `in_review` son dos estados con dos chips distintos**, y los tres contadores del Resumen son enlaces a esta lista filtrada: era la primera diferencia que la 24.5.1 declaró y dejó pendiente.
+
+Al tocar una unidad se abre su **panel**, con **Detalle** e **Historial** como dos enlaces reales. El Historial une **dos fuentes en memoria** —los movimientos de stock, que ven los dos roles, y los cambios de estado de la auditoría, que **solo ve un `admin`**—, y ahí aparece por fin **el motivo de la baja de una unidad en revisión**, que existía solo en `audit_logs` y ninguna pantalla leía desde la 29.6.2. Si una de las dos fuentes no se pudo leer, se dice, y **nunca se dibuja «sin eventos»** en su lugar.
+
+Por dentro: tres lecturas nuevas (`listUnitAudit`, `listUnitMovements` y la forma paginada de `listProductUnits`), el filtro por organización en SQL en cada una, la composición de las dos fuentes fuera de los módulos, y **ninguna migración, tabla ni columna nueva** (67 migraciones, las mismas).
+
+### Nivel de validación alcanzado
+
+Con el vocabulario del proyecto, y **sin inferir un nivel de otro**:
+
+- **Validado localmente**: las funciones puras —los filtros de la URL, la composición del historial, la lectura de la lista— y las lecturas nuevas contra PostgreSQL real. 2.183 pruebas de `unit` y `guards`; la batería de `integration` con 1.884 pruebas, **con la salvedad de O-3**: un archivo ajeno a esta subfase no llegó a correr por una caída de worker y se verificó aparte.
+- **Validado en integración, con el alcance exacto de lo que corrió**: los recorridos de `units.spec.ts` —18 pruebas, incluidas la lista con filtro, búsqueda, paginación, 320 px y 44 px medidos; el panel con los dos motivos de baja y el caso del `viewer`; y el describe sin JavaScript— y los de `repairs-own-units.spec.ts`, contra el build de producción, con Server Actions y PostgreSQL real. **Con una precisión que conviene no redondear**: 17 de esas 18 pasaron en la corrida anterior al arreglo de O-4, y la prueba del panel —la que encontró los 38 px— pasó en una corrida posterior, sola. El archivo entero no volvió a estar verde **en una sola corrida** después de ese arreglo, que agrega dos clases de alto mínimo y nada más.
+- **La batería end-to-end completa NO está corrida sobre estos cambios.** Se lanzó y **la detuvo el entorno por falta de memoria** en la prueba 60 de 298: 59 pasadas, el resto no corrió, y los fallos que figuran en el log son `Target crashed` y `worker process exited unexpectedly`, no aserciones. **No cuenta como evidencia de nada**, ni a favor ni en contra. Lo que la cubre es AC-17: la batería entera en la CI, sobre Linux y sobre el SHA que se despliega, que es además el gate que el brief fijó.
+- **No alcanzado todavía al escribir esto**: validado en staging y preparado para producción. AC-17 (la batería entera verde **en la CI sobre el SHA que se despliega**) y AC-18 (desplegada y recorrida por el usuario) quedan pendientes. Cumplirlos **no mueve el nivel a «preparado para producción»**, que además pide seguridad, observabilidad, backups probados y rollback: eso se evalúa por fase, no por subfase.
+
+Las mediciones de D-9 son **evidencia de rendimiento sobre una base sembrada**, no sobre datos reales, y su base no tiene la intercalación de producción: está declarado junto a los números.
+
+### Las tres mutaciones que el brief exigía, y lo que probó cada una
+
+| Mutación | Qué falla | Qué prueba |
+|---|---|---|
+| Quitar el `catch` de `list-data.ts` | 2 pruebas de `list-data.test.ts` | Que la rama que anuncia «no pudimos leer» **se alcanza** (AC-10, I-2) |
+| Quitar `{ role: "admin" }` de `listUnitAudit` | **solo** la prueba del `viewer` | Que la frontera de roles de D-10 la sostiene el servicio, no la pantalla |
+| Borrar el filtro por organización de `unitConditions` | 2 de las 3 de `organization-isolation.test.ts`, y **ninguna** de las 29 de `units.test.ts` | Que el `where` se prueba donde es observable (AC-11) |
+| Borrar el filtro por organización de `findUnitMovements` | **1 sola**, la de los movimientos | Que cada filtro tiene su prueba y ninguna cubre al otro (N-3) |
+
+La cuarta fila no estaba en el brief: salió de corregir el comentario mal atribuido que encontró N-3, y es la que convirtió una afirmación en una medición.
+
+### Lo que esta subfase deja anotado para la 24.5.2-b
+
+- **La tabla necesita desplazamiento horizontal a 1440 px** con sus ocho columnas más las acciones (diferencia 8 de AC-15). Es consecuencia directa de D-11 y no se recortó nada acá, porque cada columna venía de una sección eliminada.
+- **Al `viewer` no se le dice por qué no ve el costo** (diferencia 24). La lámina 15 propone decirlo; el proyecto lo omite en silencio desde la 18.2.
+- **El enlace a la unidad existente cuando el IMEI está repetido** (diferencia 22), que es del formulario de alta.
+- El enmascarado del IMEI sigue pidiendo un ADR, y el valor de inventario por organización sigue fuera.
+
+### Lo que no se arregló acá, y por qué
+
+Cuatro observaciones de entorno, las cuatro ajenas a esta subfase y las cuatro declaradas arriba: **O-1** (el resultado de una prueba depende de la consola que lanza el runner), **O-2** (`format:check` y `eslint` locales fallan por archivos de otra fase y por una skill de terceros), **O-3** (la batería salió con código 0 con un archivo que no corrió) y **O-4** (`secondaryButtonClass` da 38 px en todo el proyecto). Ninguna se tocó: las cuatro cruzan archivos de otras fases o configuración de herramientas, y entrarían a esta subfase por la puerta que la condición de detención 1 prohíbe.

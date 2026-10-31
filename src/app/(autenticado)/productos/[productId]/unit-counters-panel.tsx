@@ -1,5 +1,7 @@
+import Link from "next/link";
 import type { UnitStatusCounts } from "@/modules/inventory";
 import { StatTile } from "@/app/_components/stat-tile";
+import { STATUS_VALUE } from "./unidades/filters";
 import { outsideBalance, physicalUnits, unitCounters } from "./unit-counts";
 
 // Los contadores de unidades del Resumen (brief-24.5.1, D-6). Van arriba de todo, debajo de la
@@ -9,17 +11,28 @@ import { outsideBalance, physicalUnits, unitCounters } from "./unit-counts";
 // No se dibuja un total que los sume: sumar disponibles, reservadas y en revisión no da ningún
 // número del sistema (I-3). La línea de abajo explica por qué las físicas no son el saldo.
 //
-// Diferencia declarada con la v2: la lámina 09 dice que «cada contador abre la lista filtrada», y
-// acá los contadores no son enlaces. La pantalla de Unidades todavía no tiene filtro por estado, y
-// además mete reparación y revisión en el mismo grupo; las dos cosas las arregla la 24.5.2
-// (brief-24.5.1, H-3 y D-6).
+// *Resuelto el 2026-10-31 por la 24.5.2 (brief-24.5.2, D-5 y AC-2)*: **cada contador es ahora un
+// enlace a la lista filtrada por su estado**, como pide la lámina 09. Decía: «los contadores no son
+// enlaces. La pantalla de Unidades todavía no tiene filtro por estado, y además mete reparación y
+// revisión en el mismo grupo; las dos cosas las arregla la 24.5.2». Era la primera diferencia
+// declarada de la 24.5.1 y queda cerrada.
+//
+// El enlace envuelve la tarjeta en vez de pasarle un `href`: `StatTile` es un componente compartido
+// y está fuera de la lista cerrada de archivos autorizados de esta subfase. El nombre accesible del
+// enlace es el contenido de la tarjeta («3 Disponibles»), y su área de toque es la tarjeta entera.
 const ICONS = {
   available: "circleCheck",
   reserved: "lock",
   in_review: "clock",
 } as const;
 
-export function UnitCountersPanel({ counts }: { counts: UnitStatusCounts }) {
+export function UnitCountersPanel({
+  counts,
+  productId,
+}: {
+  counts: UnitStatusCounts;
+  productId: string;
+}) {
   const counters = unitCounters(counts);
   const physical = physicalUnits(counts);
   const outside = outsideBalance(counts);
@@ -30,12 +43,17 @@ export function UnitCountersPanel({ counts }: { counts: UnitStatusCounts }) {
       </h2>
       <div className="grid gap-3 sm:grid-cols-3">
         {counters.map((counter) => (
-          <StatTile
+          <Link
             key={counter.key}
-            icon={ICONS[counter.key]}
-            value={String(counter.total)}
-            label={counter.label}
-          />
+            href={`/productos/${productId}/unidades?estado=${STATUS_VALUE[counter.key]}`}
+            className="rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          >
+            <StatTile
+              icon={ICONS[counter.key]}
+              value={String(counter.total)}
+              label={counter.label}
+            />
+          </Link>
         ))}
       </div>
       {/* AC-5 pide la explicación **sin condición**: antes solo aparecía si había algo en
