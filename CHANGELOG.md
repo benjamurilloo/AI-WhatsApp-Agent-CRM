@@ -2,6 +2,33 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-10-31 — 24.5.1: productos, catálogo y ficha
+
+Séptima subfase de la Fase 24 ([brief-24.5.1](docs/decisions/brief-24.5.1-productos-catalogo-y-ficha.md) §Cierre).
+
+**Certifica:**
+- **El catálogo con dos vistas sobre los mismos resultados**, «Por modelo» y «Lista», elegidas por la URL. Sin la capacidad `variants` la alternativa no se ofrece y la lista queda como antes, con prueba de esa mitad negativa.
+- **Los grupos se abren y se cierran con un enlace**, con los **cerrados** en `?cerrado=` para que la ausencia del parámetro sea «todos abiertos». Funciona con JavaScript deshabilitado, comprobado en un contexto sin scripts.
+- **Las sumas del encabezado de grupo describen el resultado filtrado entero, no la página**: se pliegan dentro de `composeProductStockPage` antes del corte, y el encabezado aclara «(del resultado filtrado)» cuando hay un filtro puesto. Un grupo cerrado sigue diciendo cuánto hay.
+- **El chevron y «Ver modelo» son dos destinos distintos** en el mismo encabezado; «Ver modelo» lleva a `/modelos/<id>` y el grupo «Sin modelo» no lo tiene, porque no hay ficha adónde ir.
+- **La barra de pestañas de la ficha con la forma de la v2** —cinco nombres cortos, sin íconos, con desplazamiento propio en el teléfono—, con `aria-current`, recorrido por teclado y **las cinco rutas intactas**: cambió el dibujo, no la navegación.
+- **Los tres contadores del Resumen sin un total que los sume**, porque sumar disponibles, reservadas y en revisión no da ningún número del sistema: el saldo cuenta las disponibles y las reservadas. En un producto por cantidad «En revisión» no aparece ni en cero, y el tipo del servicio lo hace imposible.
+- **Una lectura que no se pudo hacer se anuncia, no se dibuja como cero**, y el camino es alcanzable: un error de base lanza, se atrapa en la composición y se registra. Probado con la lectura forzada a fallar, y comprobado que sin el `catch` la prueba falla.
+- **`countUnitsByStatus` agrupa en SQL** filtrando por organización, con el filtro probado donde es observable —llamando al repositorio con una organización ajena—, no solo donde el servicio ya devuelve `NOT_FOUND`.
+- **`catalog` sigue sin conocer `inventory`**, ninguna consulta hace `JOIN` contra tablas de otro módulo y **no se agregó ninguna migración, tabla ni columna**.
+- **Reflujo a 320 px con desbordamiento cero** en el catálogo agrupado y en las tres pestañas de la ficha, con objetivos táctiles de 44 px medidos, y `axe` sin violaciones en claro y en oscuro. El arreglo del desbordamiento —un `min-w-0` en el `h1` de `detail-header.tsx`, autorizado aparte— alcanza a toda pantalla de detalle.
+- **Validado en integración**: los recorridos del catálogo agrupado y del Resumen contra el build de producción, con Server Actions y PostgreSQL real, más 2166 pruebas de `unit` y `guards`.
+- **Una revisión independiente** antes del despliegue, **R2**, con sus tres bloqueantes verificados contra el código y resueltos: el único técnico era que AC-8 no tenía prueba y su rama era inalcanzable.
+
+**No certifica:**
+- **el despliegue ni el recorrido en producción** (AC-15), ni la batería entera verde en la CI sobre el SHA desplegado (AC-13): al escribir esta entrada, ninguno de los dos ocurrió;
+- la forma exacta de los mockups: las 24 diferencias declaradas una por una en el §Cierre del brief, entre ellas que **los contadores del Resumen no son enlaces** —la pantalla de Unidades no tiene filtro por estado todavía— y que **solo el Resumen recupera el recorrido del catálogo**;
+- que **cambiar un filtro conserve los grupos cerrados**: el formulario es un `GET` y no lleva `cerrado`, así que los grupos vuelven a abrirse. Declarado y deliberado;
+- la posición del scroll al volver al catálogo: excluida en el brief;
+- la medición del camino completo del catálogo agrupado que §Riesgos prometía: **diferida a la 24.5.2 por decisión del usuario**, con la autorización del archivo ya registrada;
+- el filtro por estado de la lista de unidades, el costo, el margen, y separar `in_repair` de `in_review`: todo de la 24.5.2;
+- el formulario de alta y edición de producto (lámina 02): sin subfase asignada, señalado como hueco del plan.
+
 ## 2026-10-30 — 24.4.3: clientes, operaciones y actividad
 
 Sexta subfase de la Fase 24 ([brief-24.4.3](docs/decisions/brief-24.4.3-clientes-operaciones-y-actividad.md) §Cierre).

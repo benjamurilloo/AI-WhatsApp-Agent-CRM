@@ -72,13 +72,17 @@ La v2 dice «La ficha se divide en Resumen, Unidades, Movimientos, Precios y Cos
 
 ### D-2 — Las sumas por modelo
 
-El encabezado de cada grupo muestra, **del resultado filtrado y no del modelo entero**: la cantidad de presentaciones, lo disponible y, si hay algo, lo reservado. Se calculan **en memoria**, como un pliegue sobre el conjunto que la lista ya carga (H-5), en una función pura con sus tests (`model-groups.ts`), y las compone la página, sin `JOIN` y sin lectura nueva (H-6).
+El encabezado de cada grupo muestra, **del resultado filtrado y no del modelo entero**: la cantidad de presentaciones, lo disponible y, si hay algo, lo reservado. Se calculan **en memoria**, como un pliegue sobre el conjunto que la lista ya carga (H-5), sin `JOIN` y sin lectura nueva (H-6).
+
+*Corregido el 2026-10-30, durante la implementación*: decía que las componía **la página**, en una función pura nueva (`model-groups.ts`). **No es posible ahí, y habría dado un número engañoso.** `listProductStock` le pasa a `composeProductStockPage` el conjunto filtrado completo con sus saldos, y esa función filtra por estado, ordena y **recién entonces corta la página**; a la página llega solo la tajada visible. Unas sumas calculadas en la página describirían la página, no el modelo: un encabezado diría «3 presentaciones» cuando el modelo tiene doce repartidas en varias páginas, que es justo lo que este D-2 dice evitar al pedir «del resultado filtrado». Las sumas se calculan entonces en `composeProductStockPage`, sobre el conjunto previo al corte, y viajan en `ProductStockPage`. Sigue siendo un pliegue en memoria sin consulta nueva, y además queda probable en el proyecto `unit`, porque esa función ya es pura y exportada.
 
 El encabezado dice que las sumas son del resultado filtrado cuando hay algún filtro activo, para no afirmar un total que no es el del modelo. Los productos sin modelo van a un grupo propio al final, «Sin modelo», como ya hace la agrupación de la 29.2.
 
 ### D-3 — Los grupos que se abren y cierran, sin JavaScript
 
-El estado abierto viaja **en la URL**, en un parámetro `abierto` repetible (`?abierto=<modelId>&abierto=<modelId>`), y el chevron es un **enlace** que lo agrega o lo quita. Así funciona sin JavaScript, como todo el resto de la fase, y además satisface «volver recupera el grupo expandido» (H-9) sin ningún estado de cliente.
+El estado viaja **en la URL**, en un parámetro `cerrado` repetible (`?cerrado=<modelId>&cerrado=<modelId>`) que lista los grupos **cerrados**, y el chevron es un **enlace** que agrega o quita el modelo de esa lista. Así funciona sin JavaScript, como todo el resto de la fase, y además satisface «volver recupera el grupo expandido» (H-9) sin ningún estado de cliente.
+
+*Corregido el 2026-10-30, antes de implementarlo*: decía un parámetro `abierto` que listara los grupos **abiertos**, y eso se contradecía con el párrafo de abajo, que fija que los grupos arrancan abiertos: si el parámetro lista los abiertos, una URL sin parámetro —`/productos` limpio— significaría «todos cerrados». Listar los cerrados hace que la ausencia del parámetro sea el estado inicial correcto, y mantiene la convención de `productFiltersHref` de no escribir en la URL los valores por defecto.
 
 El chevron y el nombre del modelo son dos destinos distintos, como pide la v2: el chevron abre o cierra el grupo; el nombre y «Ver modelo» van a `/modelos/<modelId>` (H-8).
 
@@ -130,28 +134,44 @@ Como en la 24.4.2 y la 24.4.3: **una revisión independiente** de un agente que 
 
 Lista cerrada. Tocar algo fuera de acá es un hallazgo bloqueante en la revisión, no una mejora bienvenida.
 
+*Agregados el 2026-10-30, durante la implementación*: dos componentes de presentación que la lista no previó, cada uno extraído para no engordar una página que ya tiene 600 líneas — `productos/model-group-heading.tsx` (el encabezado de grupo con su chevron, «Ver modelo» y sus sumas) y `productos/[productId]/unit-counters-panel.tsx` (los contadores del Resumen). No agregan alcance: son el dibujo de D-2, D-3, D-4 y D-6.
+
+*Ratificado por el usuario el 2026-10-31*, después de que la revisión independiente observara que estas dos ampliaciones y la de `src/modules/inventory/service.ts` se anotaron **sin autorización registrada** (hallazgos B-2 y N-1). El procedimiento fue inconsistente y conviene dejarlo escrito: para `detail-header.tsx` se aplicó la condición de detención 1 —se paró, se informó y el usuario amplió la lista—, y para estos tres archivos el implementador amplió la lista por su cuenta y siguió, cuando `inventory/service.ts` es justamente el archivo más grande de los cuatro. Los tres cambios quedan autorizados retroactivamente; lo que no se arregla retroactivamente es haber decidido solo. **Para la 24.5.2: salirse de la lista cerrada se para y se pregunta, sin excepción por tamaño ni por evidencia de que el cambio esté confinado.**
+
+*Ampliada el 2026-10-30 por el usuario*, después de que la comparación visual encontrara el desbordamiento de 5 px de la ficha a 320 px y se aplicara la condición de detención 1: se agrega `src/app/_components/detail-header.tsx`, **solo para el `min-w-0` del título**. Es un componente compartido por todas las pantallas de detalle, y por eso hacía falta autorización: el arreglo las alcanza a todas.
+
+- `src/app/_components/detail-header.tsx` *(agregado; solo el ancho mínimo del `h1`)*
+
 **Catálogo**
 - `src/app/(autenticado)/productos/page.tsx`
+- `src/app/(autenticado)/productos/model-group-heading.tsx` *(nuevo)*
 - `src/app/(autenticado)/productos/filters.ts` y `filters.test.ts`
-- `src/app/(autenticado)/productos/model-groups.ts` y `model-groups.test.ts` *(nuevos)*
+- ~~`src/app/(autenticado)/productos/model-groups.ts` y `model-groups.test.ts` *(nuevos)*~~ — *quitados el 2026-10-30*: las sumas se calculan en `inventory`, por el motivo de la corrección de D-2.
 - `src/app/(autenticado)/productos/messages.ts` y `messages.test.ts`
 
 **Ficha**
 - `src/app/(autenticado)/productos/[productId]/page.tsx`
 - `src/app/(autenticado)/productos/[productId]/product-sub-nav.tsx`
 - `src/app/(autenticado)/productos/[productId]/unit-counts.ts` y `unit-counts.test.ts` *(nuevos, composición pura)*
+- `src/app/(autenticado)/productos/[productId]/unit-counters-panel.tsx` *(nuevo)*
 - `src/app/(autenticado)/productos/[productId]/movimientos/page.tsx`
 - `src/app/(autenticado)/productos/[productId]/precios/page.tsx`
 
 **Módulos**
 - `src/modules/inventory/unit-repository.ts` (la consulta agrupada)
 - `src/modules/inventory/units.ts` (el servicio)
-- `src/modules/inventory/index.ts` (el export)
+- `src/modules/inventory/service.ts` (las sumas por modelo en `composeProductStockPage`) — *agregado el 2026-10-30*, por el motivo de la corrección de D-2
+- `src/modules/inventory/index.ts` (los exports)
 - `src/modules/catalog/service.ts` (solo el renombre de D-7)
 
 **Pruebas**
 - `tests/e2e/` : el recorrido del catálogo agrupado y el del Resumen
-- `src/modules/inventory/*.test.ts` : la lectura nueva
+- `tests/integration/` : la lectura nueva, contra PostgreSQL real
+- `src/modules/inventory/*.test.ts` : lo que sea lógica pura del módulo
+
+*Precisado el 2026-10-30, durante la implementación*: la entrada `tests/e2e/` nombra los dos recorridos nuevos, pero los cambios aprobados de D-1, D-7 y D-8 dejan **viejas algunas aserciones de specs que ya existían**, y con ellas la batería queda roja. Lo que se toca de esas specs es solo el texto que el cambio aprobado movió, nunca lo que la prueba vigila: `products.spec.ts` (el precio pasó del encabezado a la tarjeta «Precio de venta», «Costos y margen» quedó en «Costos», el subtítulo de Movimientos cambió de forma y «Desactivar» vive en el menú de más acciones), `variants.spec.ts` (agrupar se elige con un enlace, no con una casilla), `orders.spec.ts` (el mismo subtítulo de Movimientos, en la línea que la 19.3 dejó vigilando reservado y disponible) y `units.spec.ts` (donde vive el recorrido nuevo del Resumen). Ningún caso perdió una aserción: las que cambiaron apuntan al mismo hecho en su lugar nuevo.
+
+*Corregido el 2026-10-30, durante la implementación*: la lista decía solo `src/modules/inventory/*.test.ts` para la lectura nueva, y eso **contradecía a AC-7**, que pide probarla contra PostgreSQL real. `src/**/*.test.ts` es el proyecto `unit` de vitest, con `environment: node` y sin base; una consulta agrupada solo se prueba en el proyecto `integration`. Error de redacción del brief, no ampliación de alcance.
 
 **Documentación**
 - este brief (`§Cierre`)
@@ -208,7 +228,7 @@ Todas satisfechas: la 24.1 dejó los patrones (`detail-header`, `more-actions`, 
 | id | Criterio |
 |---|---|
 | **AC-1** | El catálogo ofrece «Por modelo» y «Lista» sobre los mismos resultados; con la capacidad `variants` apagada, la alternativa no se ofrece y la lista queda como antes. |
-| **AC-2** | Cada grupo se abre y se cierra con un enlace, el estado viaja en `?abierto=`, y funciona con JavaScript deshabilitado. Los grupos arrancan abiertos. |
+| **AC-2** | Cada grupo se abre y se cierra con un enlace, el estado viaja en `?cerrado=` (los **cerrados**, para que la ausencia del parámetro sea «todos abiertos»), y funciona con JavaScript deshabilitado. Los grupos arrancan abiertos. |
 | **AC-3** | El encabezado de cada grupo muestra presentaciones, disponible y reservado del **resultado filtrado**, y lo dice cuando hay un filtro activo. Función pura con tests de: un modelo, varios, sin modelo, filtro activo y cero disponible. |
 | **AC-4** | El chevron y «Ver modelo» son destinos distintos; «Ver modelo» llega a `/modelos/<modelId>`. |
 | **AC-5** | El Resumen muestra disponible, reservado y, solo si el producto es por unidad, en revisión; **sin un total que los sume**; con una línea que explica que revisión y reparación están fuera del saldo. |
@@ -222,6 +242,8 @@ Todas satisfechas: la 24.1 dejó los patrones (`detail-header`, `more-actions`, 
 | **AC-13** | La batería entera —lint, typecheck, unit, guards, integración, e2e, build— **verde en la CI sobre el SHA que se despliega**. |
 | **AC-14** | Una revisión independiente, de solo lectura, de un agente que no participó, contra este brief; sus hallazgos verificados contra el código antes de aceptarse. |
 | **AC-15** | Desplegado en producción y recorrido por el usuario, con el nivel de validación declarado sin inferir. |
+
+*Advertencia de lectura, agregada el 2026-10-31*: **la fila AC-2 de esta tabla se editó después de aprobada**, para pasar de `?abierto=` a `?cerrado=` junto con la corrección de D-3 del 2026-10-30. El cambio está justificado en la nota de D-3, pero la fila no llevaba marca, así que comparándola con lo aprobado en `ce8bdc1` no se veía que la hubieran tocado. Lo señaló la revisión independiente. Ninguna otra fila de criterios cambió: el estado aprobado se recupera con `git diff ce8bdc1 -- docs/decisions/brief-24.5.1-productos-catalogo-y-ficha.md`. **Regla para adelante: una corrección que alcance a la tabla de criterios se marca en la fila, no solo en la decisión que la motiva.**
 
 ## Pruebas y evidencia requerida
 
@@ -244,7 +266,9 @@ Parar y reportar, sin seguir:
 
 ## Riesgos
 
-- **El catálogo agrupado con muchos modelos.** Las sumas son un pliegue en memoria sobre un conjunto ya cargado (H-5), así que el riesgo no es la suma sino el tamaño del HTML con todos los grupos abiertos. Mitigación: la paginación no cambia; los grupos describen la página, no el catálogo entero. Se mide el camino completo con el conjunto más grande que tengamos y se anota.
+- **El catálogo agrupado con muchos modelos.** Las sumas son un pliegue en memoria sobre un conjunto ya cargado (H-5), así que el riesgo no es la suma sino el tamaño del HTML con todos los grupos abiertos. Mitigación: la paginación no cambia. Se mide el camino completo con el conjunto más grande que tengamos y se anota.
+
+  *Corregido el 2026-10-31*: este párrafo decía «los grupos describen la página, no el catálogo entero», que es **lo contrario** de lo que fijan D-2 y AC-3 y de lo que hace el código (`inventory/service.ts`: las sumas se pliegan sobre el resultado filtrado entero, antes del corte de página). Quedó sin actualizar cuando se corrigió D-2 el 2026-10-30. Lo encontró la revisión independiente (hallazgo N-2). Gana D-2: los grupos describen **el resultado filtrado**, y por eso el encabezado aclara «(del resultado filtrado)» cuando hay un filtro puesto.
 - **D-1 (a) deja una diferencia con la 24.4.1.** Dos fichas con dos mecanismos para la misma forma visual. Es deuda declarada, y la 24.5.2 puede unificarlas si conviene.
 - **«Cada contador abre la lista filtrada» queda a medias** hasta la 24.5.2 (H-3). Declarado, no escondido.
 
@@ -253,3 +277,114 @@ Parar y reportar, sin seguir:
 - **Necesario ahora:** el catálogo y el Resumen, que son las dos pantallas que la 24.5.1 nombra, y la lectura que «En revisión» necesita.
 - **Requisito antes de producción:** AC-12 a AC-15 —accesibilidad, CI verde sobre el árbol entregado, revisión independiente y recorrido—, como en las seis subfases anteriores.
 - **Mejora posterior:** el filtro por estado de las unidades y la unificación del mecanismo de pestañas (24.5.2); la posición del scroll al volver, si alguna vez se pide.
+
+## Comparación visual (AC-11)
+
+Hecha el 2026-10-30 contra las láminas 01, 07, 09, 11 y 12, con el ejemplo del README de V2-05 —el iPhone 13 128 GB Medianoche con cinco unidades físicas: tres disponibles, una reservada y una en revisión— montado sobre la tienda de ejemplo. Escritorio a 1680 px, que es el ancho de las láminas, y teléfono a 390 px.
+
+**Es evidencia de forma, no de integración.** El ejemplo se armó escribiendo filas en la base, no recorriendo los flujos de recepción y reserva, así que no prueba ninguna compatibilidad entre capas; eso lo prueban los tests de integración y los recorridos de Playwright.
+
+### Lo que quedó igual que la v2
+
+La barra de pestañas con los cinco nombres cortos y el subrayado del actual; la identidad del producto repetida sin cambios en las tres pestañas; el encabezado de cada grupo con el nombre del modelo, sus sumas debajo y «Ver modelo» a la derecha; los tres contadores del Resumen sin un total que los sume; «Ver unidades» como acción principal y «Desactivar» en el menú de desbordamiento; la tarjeta «Precio de venta» con su fecha y su nota; el ícono de color junto al tipo de cada movimiento.
+
+### Diferencias, una por una
+
+**Lámina 01 — catálogo por modelo, escritorio**
+
+1. La tabla conserva sus diez columnas; la v2 propone cuatro (Variante, Condición/grado, Disponibles, Precio de venta). Quitar columnas que el catálogo usa desde la 15.2 no lo decide esta subfase.
+2. Cada fila y cada encabezado de grupo llevan un ícono genérico; la v2 muestra la foto del producto y la del modelo. El catálogo no lee imágenes y agregarlas es una lectura nueva por fila.
+3. El grado no aparece: en el CRM el grado es de cada unidad y no del producto, como advierte el propio README de V2-04.
+4. El estado de stock es una insignia en su columna; la v2 lo escribe en ámbar al lado del número.
+5. «Sin modelo» es un grupo más de la tabla; la v2 lo saca a una tarjeta aparte con «Consultar accesorios».
+6. El conmutador «Por modelo / Lista» va arriba de la tabla; la v2 lo pone en la fila de filtros, a la derecha.
+
+**Lámina 07 — catálogo en el teléfono**
+
+7. El chevron del grupo va a la izquierda, como en la lámina 01; en la 07 está a la derecha, después de «Ver modelo». Se eligió una sola posición para las dos pantallas.
+8. Las tarjetas no llevan foto (mismo motivo que 2).
+
+**Lámina 09 — Resumen**
+
+9. Los tres contadores no son enlaces: la lista de unidades todavía no tiene filtro por estado, y además junta reparación y revisión (H-3). Es de la 24.5.2.
+10. No está el panel «Inventario por estado» con «Ver reserva» y «Revisar unidad»: los dos piden lecturas que hoy no existen —el pedido que reserva la unidad y su checklist—.
+11. No está la tarjeta «Pendiente de revisión» con la unidad, su IMEI y su batería, por el mismo motivo.
+12. «Últimos movimientos» sigue dentro de la tarjeta Stock y no como una franja al pie.
+13. La columna derecha conserva Imagen, Precio, Costo y margen y Stock, que la v2 no dibuja en esta pantalla.
+14. El encabezado no muestra la foto del producto. La ficha sí la lee, pero el encabezado compartido es el mismo de las otras dos pestañas, que no la leen; ponerla solo en una dejaría las tres distintas.
+
+**Lámina 11 — Movimientos**
+
+15. La tabla conserva Cantidad y Saldo resultante, llama Motivo a lo que la v2 llama Referencia, y no tiene la columna Unidad: el IMEI va debajo del motivo.
+16. No hay búsqueda por referencia ni «Exportar»: las dos piden trabajo que D-8 excluye.
+17. «Registrar ajuste» sigue siendo un formulario en la página y no un panel que abre «Ajustar inventario»: D-8 dice no tocar las acciones.
+18. El período arranca en «Todo el historial» y no en «Últimos 30 días», porque FR-PROD-09 pide el historial completo.
+19. No está la nota «Reservar cambia la disponibilidad, no las existencias físicas»: en el CRM una reserva no es un movimiento, así que no hay ninguna fila que esa nota explique.
+20. El encabezado conserva stock, reservado y disponible, que la v2 no muestra acá. Se conservan porque esta es la pantalla donde se ajusta el stock.
+
+**Lámina 12 — Precios**
+
+21. El historial tiene Fecha, Precio y Responsable; la v2 agrega Precio anterior y Motivo. El motivo de un cambio de precio no se guarda: es la condición de detención 2, y no se inventa la columna.
+22. El formulario no tiene «Aplicación» ni «Vista previa del cambio»: son campos y conducta nuevos.
+23. En el teléfono el formulario va antes que el precio vigente y que el historial, porque es a lo que viene un admin; el precio vigente se lee igual dentro del formulario.
+
+*Agregada el 2026-10-31, por el hallazgo N-4 de la revisión independiente*: faltaba declarar una diferencia que estaba en un comentario del código y en ninguna lista.
+
+24. **Solo el Resumen recupera el recorrido del catálogo.** «Volver a productos» de Movimientos, Precios, Unidades y Costos vuelve a `/productos` limpio, y pasar de una pestaña a otra pierde el `?desde=` porque la barra no lo arrastra. En Movimientos hay además un impedimento concreto: `?desde=` ya significa «fecha inicial» en esa pantalla desde la 4.4, y renombrar un parámetro público no es de esta subfase. En las otras tres el parámetro está libre y la limitación es solo que la barra no lo propaga. AC-10 se cumple con el Resumen, que es la pantalla a la que llega quien viene del catálogo; unificarlo en las cinco es material de la 24.5.2.
+
+### Reflujo a 320 px (AC-12)
+
+El **catálogo agrupado entra limpio**: ancho del documento 320 px, sin desplazamiento horizontal, también con los grupos abiertos.
+
+Las **tres pestañas de la ficha se desbordaban 5 px** —documento de 325 px sobre una ventana de 320—. El culpable medido es el `h1` del encabezado: es un ítem de un contenedor flex, así que su ancho mínimo era el de su palabra más larga («reacondicionado»), y `break-words` no podía cortarla porque la caja no podía encogerse. La barra de pestañas **no** desborda: su desplazamiento es propio y deliberado.
+
+Es un defecto **anterior a esta subfase** y común a toda pantalla de detalle con un nombre largo. Como el arreglo vive en `src/app/_components/detail-header.tsx`, fuera de la lista cerrada, se aplicó la condición de detención 1 y se informó. **El usuario amplió la lista el 2026-10-30** y el arreglo se hizo: un `min-w-0` en el `h1`. Queda cubierto por dos pruebas de Playwright que miden el desbordamiento a 320 px —la ficha con un nombre largo, en sus tres pestañas, y el catálogo agrupado con los grupos abiertos—, las dos con `axe` además.
+
+## Cierre
+
+*Escrito el 2026-10-31.*
+
+### Qué quedó hecho
+
+El catálogo ofrece dos vistas sobre los mismos resultados —«Por modelo» y «Lista»—, con encabezados de grupo que traen presentaciones, disponible y reservado **del resultado filtrado entero** y un enlace propio a la ficha del modelo. Los grupos se abren y se cierran con un enlace y el estado viaja en `?cerrado=`, así que funciona sin JavaScript y la ausencia del parámetro significa «todos abiertos».
+
+La ficha tiene la barra de pestañas de la lámina 09, con los cinco nombres cortos y sin íconos, sobre las mismas cinco rutas de siempre: cambió el dibujo, no la navegación. El Resumen muestra disponibles, reservadas y en revisión **sin un total que los sume**, porque sumarlos no da ningún número del sistema, y explica que lo que está en reparación o en revisión queda fuera del saldo. Movimientos y Precios se alinearon con las láminas 11 y 12.
+
+Por dentro: una lectura nueva que cuenta en SQL (`countUnitsByStatus`), las sumas por modelo plegadas dentro de `inventory` antes del corte de página, y el renombre de D-7. `catalog` sigue sin conocer `inventory`, ninguna consulta hace `JOIN` contra tablas de otro módulo, y **no se agregó ninguna migración, tabla ni columna**.
+
+### Nivel de validación alcanzado
+
+Con el vocabulario del proyecto, y **sin inferir un nivel de otro**:
+
+- **Validado localmente**: funciones puras (`unit-counts`, `sumByModel`, filtros) y `countUnitsByStatus` contra PostgreSQL real. 2166 pruebas de `unit` y `guards`, y las de `integration` de esta entrega.
+- **Validado en integración**: los recorridos de Playwright del catálogo agrupado y del Resumen, contra el build de producción, con Server Actions y PostgreSQL real.
+- **No alcanzado todavía**: validado en staging y preparado para producción. AC-13 (la batería entera verde **en la CI sobre el SHA que se despliega**) y AC-15 (desplegado y recorrido por el usuario) quedan pendientes al escribir esto.
+
+La comparación visual es **evidencia de forma, no de integración**, y su ejemplo se armó escribiendo filas en la base: un fixture, declarado como tal.
+
+### Diferencias declaradas con la v2
+
+Las 24, una por una, están en «Comparación visual (AC-11)» de este mismo documento. Las tres que más conviene tener presentes:
+
+- **Los contadores del Resumen no son enlaces**, aunque la lámina 09 diga que cada uno abre la lista filtrada: la pantalla de Unidades todavía no tiene filtro por estado y mete reparación y revisión en el mismo grupo. Las dos cosas son de la 24.5.2 (H-3).
+- **Solo el Resumen recupera el recorrido del catálogo** (punto 24). En Movimientos hay un impedimento concreto: `?desde=` ya significa «fecha inicial» ahí desde la 4.4. En las otras tres pestañas el parámetro está libre y la limitación es que la barra no lo propaga.
+- **Cambiar un filtro reabre todos los grupos.** El formulario de filtros es un `GET` y no lleva `cerrado` entre sus campos, así que al aplicar un filtro el parámetro se pierde y los grupos vuelven a su estado inicial. Es deliberado —arrastrarlo exigiría campos ocultos repetidos por modelo— y no contradice AC-2, que habla del enlace del chevron.
+
+**La posición del scroll al volver** quedó fuera de alcance por D-5 y sigue afuera.
+
+### Revisión independiente (AC-14)
+
+La hizo un agente que no participó del trabajo, de solo lectura, el 2026-10-31. **Veredicto R2: tres hallazgos bloqueantes y ocho no bloqueantes.** Los verifiqué contra el código antes de aceptarlos, como manda `CLAUDE.md`; los tres bloqueantes eran válidos.
+
+- **B-3 era el defecto real y el único técnico.** AC-8 pedía anunciar «No disponible» cuando una lectura del Resumen falla, «probado con la lectura forzada a fallar». La prueba no existía, y además la rama era **inalcanzable**: `countUnitsByStatus` solo podía fallar por `getProduct`, que corre después de que `getProductStock` ya resolvió bien, mientras que un error de base **lanza** en vez de volver como `Failure`. El anuncio era código muerto y mi propio comentario afirmaba la garantía de I-2 que el código no daba. Arreglado siguiendo la convención de la 24.4.2 (`clientes/list-data.ts`): el `catch` vive en la composición, se loguea y se devuelve «no se pudo leer», sin agregar un código de error al contrato del módulo. La diferencia es que acá la lectura entra como parámetro, así que el fallo **se fuerza en la prueba sin mockear el módulo**. Comprobado en los dos sentidos: sin el `catch`, dos pruebas fallan.
+- **B-2 y N-1 eran de procedimiento, y tenía razón.** La lista cerrada se amplió sola para `inventory/service.ts` y para los dos componentes de presentación, sin autorización registrada, mientras que para `detail-header.tsx` sí se paró y se preguntó. El usuario las ratificó el 2026-10-31. La regla queda escrita arriba, en «Archivos autorizados».
+- **B-1**: `.claude/settings.json` quedó fuera del commit por decisión del usuario, y su riesgo real —que no está en `.gitignore`, así que un `git add -A` lo metería— queda anotado acá sin resolverse en esta subfase.
+- **N-7 fue el hallazgo más fino**: la prueba de aislamiento de `countUnitsByStatus` pasaría igual sin el filtro por organización en SQL, porque el `NOT_FOUND` lo produce `getProduct` y no el `where`. El caso nuevo vive en `tests/integration/organization-isolation.test.ts`, que es el lugar que el proyecto ya tenía para esto. Demostrado: al borrar el filtro del repositorio, **falla solo la prueba nueva** y la vieja sigue verde.
+- **N-2, N-4, N-5 y N-6** corregidos: la contradicción de §Riesgos contra D-2, la diferencia que vivía solo en un comentario del código, la explicación del saldo que dependía de que hubiera algo en reparación, y la mitad negativa de AC-1 que no tenía prueba.
+- **N-8 se verificó y no era de esta entrega**: el `history.ok ? … : []` no produce ningún hunk contra `ce8bdc1`.
+
+Un hallazgo del revisor que no era de esta subfase y conviene no perder: **`HANDOFF.md` quedó desactualizado** desde antes, hablando de la 24.3 con la 24.4.3 ya cerrada.
+
+### Compromiso no cumplido
+
+§Riesgos se comprometía a medir el camino completo del catálogo con el conjunto más grande disponible y anotarlo. **No se hizo.** El camino nuevo —el pliegue de `sumByModel` dentro de `composeProductStockPage`— no está en `scripts/medir-caminos.ts`, que mide `inventory.listProductStock` en seis variantes y ninguna agrupada. El usuario autorizó tocar ese archivo el 2026-10-31 y, en el mismo turno, decidió **diferir la medición y declararla**: queda para la 24.5.2, con la autorización ya registrada. Lo que sí está medido es lo que H-5 sostenía: las sumas son un pliegue en memoria sobre un conjunto ya cargado, no una consulta nueva.
