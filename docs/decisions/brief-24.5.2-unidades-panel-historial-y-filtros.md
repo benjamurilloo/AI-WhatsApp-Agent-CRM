@@ -185,6 +185,19 @@ Lista **cerrada**. Salirse de ella **se para y se pregunta, sin excepción por t
 
 **Lo que esto dice de la regla**: funcionó tres veces de cuatro, y la vez que falló no la detectó ni la autoevaluación ni ninguna prueba, sino la revisión independiente leyendo el `git status` contra la tabla. La precaución que faltaba es barata: **antes de pedir la revisión, comparar la lista de archivos tocados contra la tabla, uno por uno**. Pasa a ser parte del cierre.
 
+*Séptima observación sobre la misma regla, y la que corrige la precaución, el 2026-10-31*: **la CI encontró un cuarto archivo de pruebas roto por D-11**, `tests/e2e/trade-ins.spec.ts`, después del commit `dba970c`. 334 pruebas pasaron y falló una.
+
+La enumeración que armó la segunda tanda buscó los archivos que **nombran las secciones eliminadas** —«En reparación y en revisión», «Reparaciones anteriores», «Reservadas y vendidas»— y encontró dos. `trade-ins.spec.ts` no nombra ninguna sección: afirmaba sobre el **texto de la fila**, `"· En revisión"`, un formato que D-11 reemplaza por una insignia en su columna. La búsqueda no podía alcanzarlo.
+
+**Y la precaución que esta subfase se había impuesto tampoco**, porque cubre una sola dirección: «comparar los archivos tocados contra la tabla» detecta un archivo que toqué sin autorización, y no detecta **un archivo que el cambio rompe y que nunca enumeré**. Son dos huecos distintos y hacen falta las dos comprobaciones:
+
+1. **Hacia adelante**: todo archivo tocado figura en la tabla. La que ya estaba.
+2. **Hacia atrás**: antes de cerrar, buscar en las pruebas **los textos y las formas que el cambio elimina**, no solo los nombres de lo eliminado. Acá habría bastado con grepear `"· "` junto a cada etiqueta de estado, que es como la lista vieja componía sus filas.
+
+Lo barrido después del fallo, con los seis textos del formato viejo: `trade-ins.spec.ts` era el único que quedaba.
+
+**Lo que esto dice del gate**: AC-17 —la batería entera verde en la CI sobre el SHA que se despliega— hizo exactamente su trabajo. La batería local no lo habría encontrado tampoco, porque la detuvo el entorno en la prueba 60 de 298 y `trade-ins.spec.ts` corre mucho después.
+
 *Nota sobre un hallazgo de B-1 que no corresponde*: la revisión incluyó `.claude/settings.json` entre los archivos fuera de la lista. **No es de esta subfase**: está sin seguimiento desde antes de empezarla —aparece así en el primer `git status` de la sesión— y el usuario decidió el 2026-10-31, durante la 24.5.1, dejarlo como está. No se tocó.
 
 | Archivo | Para qué |
@@ -212,6 +225,7 @@ Lista **cerrada**. Salirse de ella **se para y se pregunta, sin excepción por t
 | `src/modules/inventory/repository.ts` | **Ampliación autorizada el 2026-10-31, RETROACTIVAMENTE** (cuarta tanda). La lectura nueva `findUnitMovements`. Ver la nota de abajo: acá **no se paró a preguntar y había que hacerlo** |
 | `src/app/(autenticado)/productos/[productId]/unidades/list-data.ts` | **Nuevo. Ampliación autorizada el 2026-10-31** (quinta tanda, al arreglar B-2). La lectura de la lista en la capa de composición, con el `catch` y la lectura inyectada |
 | `src/app/(autenticado)/productos/[productId]/unidades/list-data.test.ts` | **Nuevo. Ampliación autorizada el 2026-10-31** (quinta tanda). Sus cinco pruebas, incluida la del fallo forzado |
+| `tests/e2e/trade-ins.spec.ts` | **Ampliación autorizada el 2026-10-31** (sexta tanda, después de que la CI fallara). Afirmaba «· En revisión» con el formato de fila que D-11 elimina. Ver la nota de abajo: **lo encontró la CI, no la enumeración** |
 | `tests/e2e/units.spec.ts` | Los recorridos |
 | `scripts/medir-caminos.ts` | Las dos mediciones (autorización del 2026-10-31) |
 | `docs/architecture/Overview.md` | La fila de `inventory`, por las lecturas nuevas |
@@ -581,6 +595,7 @@ Con el vocabulario del proyecto, y **sin inferir un nivel de otro**:
 - **Validado localmente**: las funciones puras —los filtros de la URL, la composición del historial, la lectura de la lista— y las lecturas nuevas contra PostgreSQL real. 2.183 pruebas de `unit` y `guards`; la batería de `integration` con 1.884 pruebas, **con la salvedad de O-3**: un archivo ajeno a esta subfase no llegó a correr por una caída de worker y se verificó aparte.
 - **Validado en integración, con el alcance exacto de lo que corrió**: los recorridos de `units.spec.ts` —18 pruebas, incluidas la lista con filtro, búsqueda, paginación, 320 px y 44 px medidos; el panel con los dos motivos de baja y el caso del `viewer`; y el describe sin JavaScript— y los de `repairs-own-units.spec.ts`, contra el build de producción, con Server Actions y PostgreSQL real. **Con una precisión que conviene no redondear**: 17 de esas 18 pasaron en la corrida anterior al arreglo de O-4, y la prueba del panel —la que encontró los 38 px— pasó en una corrida posterior, sola. El archivo entero no volvió a estar verde **en una sola corrida** después de ese arreglo, que agrega dos clases de alto mínimo y nada más.
 - **La batería end-to-end completa NO está corrida sobre estos cambios.** Se lanzó y **la detuvo el entorno por falta de memoria** en la prueba 60 de 298: 59 pasadas, el resto no corrió, y los fallos que figuran en el log son `Target crashed` y `worker process exited unexpectedly`, no aserciones. **No cuenta como evidencia de nada**, ni a favor ni en contra. Lo que la cubre es AC-17: la batería entera en la CI, sobre Linux y sobre el SHA que se despliega, que es además el gate que el brief fijó.
+- **Y el gate sirvió.** La primera corrida de CI, la del commit `dba970c` (run 41249814697), volvió **`failure`**: 334 pruebas pasadas y **una fallada**, `trade-ins.spec.ts`, que afirmaba sobre el formato de fila que D-11 elimina. Un cuarto archivo roto por el mismo motivo que los otros tres, y el único que la enumeración previa no alcanzó. Corregido con autorización del usuario en el turno, y anotado arriba, en §Archivos autorizados. **La batería local no lo habría encontrado**: se había detenido en la prueba 60 de 298, y esa corre mucho después.
 - **No alcanzado todavía al escribir esto**: validado en staging y preparado para producción. AC-17 (la batería entera verde **en la CI sobre el SHA que se despliega**) y AC-18 (desplegada y recorrida por el usuario) quedan pendientes. Cumplirlos **no mueve el nivel a «preparado para producción»**, que además pide seguridad, observabilidad, backups probados y rollback: eso se evalúa por fase, no por subfase.
 
 Las mediciones de D-9 son **evidencia de rendimiento sobre una base sembrada**, no sobre datos reales, y su base no tiene la intercalación de producción: está declarado junto a los números.

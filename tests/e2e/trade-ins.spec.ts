@@ -238,8 +238,17 @@ test("un admin recibe un usado, lo ve en revisión, lo libera y lo vende", async
   await expectAccessible(page, "comprobante PU");
 
   // En las unidades, en revisión y con su origen.
+  //
+  // Desde la 24.5.2 el estado va como **insignia en su columna** de la lista única, no como
+  // «· En revisión» dentro de un ítem de lista (brief-24.5.2, D-11). Ampliación de la lista cerrada
+  // autorizada por el usuario el 2026-10-31, después de que **la CI** encontrara esta rotura: es el
+  // cuarto archivo de pruebas que afirmaba sobre las secciones que D-11 eliminó, y el único que la
+  // enumeración previa no alcanzó, porque no nombra ninguna sección.
+  //
+  // Scope a la tabla: el chip del filtro dice las mismas palabras que la insignia, así que sobre la
+  // página entera el localizador casa con los dos y no prueba lo que dice probar.
   await page.goto(`/productos/${productId}/unidades`);
-  await expect(page.getByText("· En revisión", { exact: true })).toBeVisible();
+  await expect(page.getByRole("table").getByText("En revisión")).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Usado recibido PU-000001" }),
   ).toBeVisible();
