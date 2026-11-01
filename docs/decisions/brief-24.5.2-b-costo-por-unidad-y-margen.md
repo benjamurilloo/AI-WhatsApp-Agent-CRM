@@ -286,6 +286,10 @@ Las siete verificaciones del runbook, pasadas:
 
 Ni la IP ni su hash se versionan, ni acá ni en ningún otro lado: solo si coinciden y a qué hora es la fila.
 
+## Recorrido del usuario (AC-18)
+
+Hecho el 2026-11-01 sobre `1e26d3a` en producción, **sin objeciones**. Con esto se cumplen los dieciocho criterios de aceptación y la subfase cierra entera.
+
 ## Condiciones de detención
 
 Se para y se reporta, sin seguir, cuando:

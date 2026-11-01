@@ -28,8 +28,9 @@ Novena subfase de la Fase 24 ([brief-24.5.2-b](docs/decisions/brief-24.5.2-b-cos
 - **La verificación 5 se hizo de otra forma que la que dice el runbook, y la nueva prueba más.** El runbook pide intentar un `DELETE FROM audit_logs` y esperar `permission denied`; acá se leyó el catálogo: el rol de la aplicación es `crm_app_login`, el dueño de la tabla es `crm_owner`, y sus privilegios sobre `audit_logs` son **sin borrado, con lectura e inserción**, que es exactamente lo que corresponde a una tabla de solo inserción. No ejecuta ninguna escritura y dice las tres cosas en lugar de una. Queda propuesto para el runbook, que no está en la lista cerrada de esta subfase.
 - **El paso 2 se corrió con el método corregido el 2026-11-01**, el de `curl` contra el formulario sin JavaScript, y cumplió: la fila tenía segundos de antigüedad, era **la única** de la ventana de 15 minutos, su clave coincide con el hash de la IP del operador y **no** es la constante `sin-proxy`; el intento por el túnel SOCKS dejó una **clave distinta**, que además coincide con el hash de la IP de salida del túnel. Ni la IP ni su hash se versionan: solo el veredicto y la hora de la fila.
 
+- **Recorrida por el usuario sobre lo desplegado** el 2026-11-01, sin objeciones (AC-18). Con esto quedan cumplidos los dieciocho criterios del brief.
+
 **No certifica:**
-- **el recorrido del usuario**, pendiente al escribir esto;
 - **la batería end-to-end completa en esta máquina**: corrieron `units.spec.ts` y `products.spec.ts`, que son los dos specs que esta subfase toca. La batería entera la cubre la CI sobre el SHA que se despliega;
 - **el nivel «preparado para producción»**, que además pide backups probados, rollback ensayado y observabilidad evaluada: eso se evalúa por fase;
 - **que las tres lecturas salgan en una sola foto**: van en un `Promise.all`, así que una venta concurrente entre dos de ellas deja el subtotal y la tabla contando distinto. El proyecto tiene `withSnapshot` y no está en `inventory`; llevarlo ahí sale de la lista cerrada y el usuario decidió declararlo y no tocarlo;
