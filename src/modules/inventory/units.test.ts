@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { parseUnitSerial, splitUnitSerials, validateUnitInput } from "./units";
+import {
+  computeUnitCostBase,
+  parseUnitSerial,
+  splitUnitSerials,
+  validateUnitInput,
+} from "./units";
 import { LINE_SERIAL_PATTERN } from "@/shared/lines";
 import { UNIT_SERIAL_PATTERN } from "./schema";
 
@@ -136,5 +141,56 @@ describe("validateUnitInput", () => {
 describe("la forma del IMEI en las líneas de pedidos y ventas", () => {
   it("es la de stock_units", () => {
     expect(LINE_SERIAL_PATTERN.source).toBe(UNIT_SERIAL_PATTERN);
+  });
+});
+
+// La base del margen de la pantalla de costos (brief-24.5.2-b, AC-4 y AC-5-b). Es una función pura
+// sobre los grupos que agrega SQL, así que se prueba sin base.
+describe("computeUnitCostBase", () => {
+  const group = (currency: string, units: number, total: bigint) => ({
+    status: "available" as const,
+    currency,
+    units,
+    total,
+  });
+
+  it("sin disponibles no hay base, y dice que es por eso", () => {
+    expect(computeUnitCostBase([])).toEqual({ ok: false, reason: "no_units" });
+  });
+
+  it("con una sola moneda devuelve el total y el promedio", () => {
+    // 350 + 360 + 370 = 1.080 en tres unidades: el ejemplo de la lámina 13.
+    expect(computeUnitCostBase([group("USD", 3, 108_000n)])).toEqual({
+      ok: true,
+      currency: "USD",
+      units: 3,
+      total: 108_000n,
+      average: 36_000n,
+    });
+  });
+
+  it("el promedio se redondea con el medio hacia afuera del cero, como el ADR 0019", () => {
+    // 100,01 en dos unidades son 50,005: el medio va para arriba, a 50,01.
+    const base = computeUnitCostBase([group("ARS", 2, 10_001n)]);
+    expect(base).toMatchObject({ ok: true, average: 5_001n });
+  });
+
+  it("con dos monedas en la base no hay total ni promedio, y dice cuál es el motivo", () => {
+    // Dos recepciones del mismo producto en monedas distintas. Sumarlas sería inventar un tipo de
+    // cambio que el punto 5 del ADR 0019 no autoriza (brief-24.5.2-b, D-13).
+    expect(
+      computeUnitCostBase([
+        group("ARS", 1, 95_000_00n),
+        group("USD", 2, 71_000n),
+      ]),
+    ).toEqual({ ok: false, reason: "mixed_currency" });
+  });
+
+  it("en una moneda sin decimales el promedio no cae en una fracción que no existe", () => {
+    // Dos unidades de 300.000 y 300.001 pesos chilenos. Redondeando solo a centésimos el promedio
+    // daba 300.000,50, medio peso en una moneda que no tiene centavos; con la escala de la moneda
+    // da 300.001, que es un monto que el CLP puede expresar (ADR 0019, punto 4).
+    const base = computeUnitCostBase([group("CLP", 2, 60_000_100n)]);
+    expect(base).toMatchObject({ ok: true, average: 30_000_100n });
   });
 });

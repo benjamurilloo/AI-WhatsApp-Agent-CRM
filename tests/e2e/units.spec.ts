@@ -243,6 +243,19 @@ test("un admin pasa un producto a «por unidad», recibe con IMEI, carga y da de
     page.getByText("Ya hay una unidad vigente con ese IMEI."),
   ).toBeVisible();
 
+  // brief-24.5.2-b, AC-12 y D-9: el error **lleva hasta** la unidad que lo tiene, en vez de dejar
+  // que el usuario la busque a mano. El enlace abre su panel, así que después de seguirlo la
+  // unidad tiene que estar ahí.
+  const existente = page.getByRole("link", {
+    name: "Ver la unidad que lo tiene",
+  });
+  await expect(existente).toBeVisible();
+  await existente.click();
+  await expect(
+    page.getByRole("region", { name: "Unidad", exact: true }),
+  ).toContainText("F2LXK0ABCDEF");
+  await page.goBack();
+
   // Desde el 2026-11-01 las acciones de una fila viven dentro de «···» (MoreActions), para que la
   // tabla entre sin desplazamiento: hay que abrirlo antes de tocarlas.
   await page
@@ -290,18 +303,26 @@ test("un admin pasa un producto a «por unidad», recibe con IMEI, carga y da de
 // movimiento. price, el precio propio de la unidad (brief-29.5.2, D-2).
 async function insertUnits(
   productId: string,
-  units: { serial: string; price?: string }[],
+  units: {
+    serial: string;
+    price?: string;
+    // El costo y su moneda. La columna es NOT NULL con CHECK (cost > 0): acá no hay «sin costo»,
+    // y el defecto queda en 800 USD para las pruebas que ya existían (brief-24.5.2-b, D-12).
+    cost?: string;
+    currency?: string;
+  }[],
 ) {
   await db.execute(
     sql`update products set tracking = 'unit' where id = ${productId}`,
   );
   let count = 0;
   for (const unit of units) {
+    const currency = unit.currency ?? "USD";
     const row = await db.execute<{ id: string }>(
       sql`insert into stock_units (organization_id, product_id, serial, cost, cost_currency,
             price, price_currency, origin_type, created_by)
-          values (${IPHONE}, ${productId}, ${unit.serial}, 800, 'USD',
-            ${unit.price ?? null}, ${unit.price ? "USD" : null}, 'manual', ${ADMIN_IPHONE.id})
+          values (${IPHONE}, ${productId}, ${unit.serial}, ${unit.cost ?? "800"}, ${currency},
+            ${unit.price ?? null}, ${unit.price ? currency : null}, 'manual', ${ADMIN_IPHONE.id})
           returning id`,
     );
     count += 1;
@@ -1102,4 +1123,248 @@ test.describe("la lista de unidades sin JavaScript", () => {
     await panel.getByRole("link", { name: "Historial" }).click();
     await expect(panel.getByText("Alta manual de una unidad")).toBeVisible();
   });
+});
+
+// El costo por unidad y su margen en la pantalla de costos (brief-24.5.2-b, lámina 13; AC-1 a
+// AC-8, AC-13 y D-13). Vive acá y no en products.spec.ts porque las unidades con IMEI necesitan
+// `serialized_units` y la tienda de ejemplo, que es lo que esta spec ya levanta.
+//
+// Los cuatro casos de la evidencia `producer-consumer` del brief van en una sola corrida: un
+// producto por unidad, uno por cantidad, uno con margen negativo y uno con dos monedas. El cuarto
+// reemplaza al «producto con una unidad sin costo» del brief original, que es un estado imposible:
+// la columna es NOT NULL con CHECK (cost > 0) (D-12).
+test("la pantalla de costos muestra el costo por unidad, su margen y las excluidas", async ({
+  page,
+}, testInfo) => {
+  // Cuatro pantallas con axe en los dos temas, más la medición a 320 px.
+  test.slow();
+
+  // El producto por unidad. Precio 1099 USD, que es el que pone insertProduct.
+  const porUnidad = await insertProduct("IP15-128", "iPhone 15 128 GB");
+  await insertUnits(porUnidad, [
+    { serial: "356938035650001", cost: "900" },
+    { serial: "356938035650002", cost: "1000" },
+    // Cuesta más que el precio: su fila tiene margen negativo (I-5).
+    { serial: "356938035650003", cost: "1100" },
+    // Con precio propio, que manda sobre el del producto (D-6).
+    { serial: "356938035650004", cost: "1000", price: "1200" },
+    // Fuera de la base, en «Otras existencias».
+    { serial: "356938035650005", cost: "950" },
+  ]);
+  // El trigger de `stock_units` **no** permite available -> in_review: el camino legal pasa por la
+  // reparación, que es como llega una unidad a revisión (brief-29.6.2). El atajo era el error, otra
+  // vez: la base lo rechaza y hace bien.
+  await db.execute(
+    sql`update stock_units set status = 'in_repair' where serial = '356938035650005'`,
+  );
+  await db.execute(
+    sql`update stock_units set status = 'in_review' where serial = '356938035650005'`,
+  );
+  // En revisión está **fuera** del stock (brief-29.6.2): el saldo que dejó el ayudante contaba las
+  // cinco. La pantalla de costos no lee `inventories`, pero un fixture que miente se cree después.
+  await db.execute(
+    sql`update inventories set quantity_on_hand = 4 where product_id = ${porUnidad}`,
+  );
+
+  await login(page, ADMIN_IPHONE.email);
+  await page.goto(`/productos/${porUnidad}/costos`);
+
+  // AC-1 y AC-2: los cuatro números sobre las **disponibles**. Base 4 unidades, 4000 USD, promedio
+  // 1000; contra el precio de 1099 da 99 USD y 9,0 %. La unidad en revisión no entra: si entrara,
+  // el promedio sería 990 y el margen 9,9 %.
+  const resumen = page.getByRole("region", {
+    name: "Margen estimado sobre las disponibles",
+  });
+  await expect(resumen).toContainText("Base del cálculo: 4 unidades");
+  await expect(resumen).toContainText(/Precio de venta\s*US\$\s1\.099,00/);
+  await expect(resumen).toContainText(
+    /Costo promedio de las disponibles\s*US\$\s1\.000,00/,
+  );
+  await expect(resumen).toContainText(/Ganancia bruta estimada\s*US\$\s99,00/);
+  await expect(resumen).toContainText(/Margen bruto estimado\s*9,0 %/);
+  // La tira de la fórmula, que es lo que vuelve auditable el porcentaje.
+  await expect(resumen).toContainText(
+    /\(US\$\s1\.099,00 − US\$\s1\.000,00\) ÷ US\$\s1\.099,00 × 100 = 9,0 %/,
+  );
+  await expect(resumen).toContainText(
+    "Estimación antes de gastos e impuestos. No es ganancia neta.",
+  );
+  // El margen de la base es positivo: el aviso de I-5 **no** está acá.
+  await expect(resumen).not.toContainText("El costo supera el precio.");
+
+  // AC-3: la tabla por unidad, con el precio de referencia de cada una y su origen (D-6).
+  const tabla = page.getByRole("region", { name: "Costo por unidad" });
+  const fila = (serial: string) => tabla.getByRole("row", { name: serial });
+  await expect(fila("356938035650001")).toContainText(/US\$\s900,00/);
+  await expect(fila("356938035650001")).toContainText(
+    /US\$\s1\.099,00 · del producto/,
+  );
+  await expect(fila("356938035650001")).toContainText(/US\$\s199,00/);
+  await expect(fila("356938035650001")).toContainText("18,1 %");
+  await expect(fila("356938035650004")).toContainText(
+    /US\$\s1\.200,00 · propio/,
+  );
+  await expect(fila("356938035650004")).toContainText("16,7 %");
+  // I-5 en la fila: importe, texto e icono, comprobados sin mirar el color. El texto es un
+  // `sr-only`, que es justo lo que un lector de pantalla recibe y el signo menos solo no dice.
+  await expect(fila("356938035650003")).toContainText(/−US\$\s1,00/);
+  await expect(fila("356938035650003")).toContainText("−0,1 %");
+  await expect(fila("356938035650003")).toContainText(
+    "El costo supera el precio.",
+  );
+  await expect(
+    fila("356938035650003").locator("svg[aria-hidden='true']"),
+  ).not.toHaveCount(0);
+  // La unidad en revisión no está en esta tabla.
+  await expect(fila("356938035650005")).toHaveCount(0);
+
+  // AC-4 e I-7: el subtotal llega agregado de SQL sobre **todas** las disponibles, y con cinco
+  // filas el tope de 25 no recortó nada, así que el aviso de tope no se dibuja.
+  await expect(tabla).toContainText(
+    /Base: 4 disponibles · Costo total US\$\s4\.000,00/,
+  );
+  await expect(tabla).not.toContainText("Se muestran");
+
+  // AC-6: las reservadas y en revisión existen, tienen costo y están afuera del cálculo.
+  const otras = page.getByRole("region", { name: "Otras existencias" });
+  await expect(otras).toContainText("Excluidas del cálculo.");
+  await expect(otras).toContainText("356938035650005");
+  await expect(otras).toContainText(/En revisión: 1 · US\$\s950,00/);
+  await expectAccessible(page, "costos por unidad");
+
+  // La lámina 13 en el ancho de la lámina, para la comparación visual de AC-15. Queda adjunta a la
+  // corrida, no versionada: el acuerdo del proyecto es declarar las diferencias, no fijar un PNG.
+  await page.setViewportSize({ width: 1440, height: 1200 });
+  await page.reload();
+  await expect(resumen).toContainText("Base del cálculo: 4 unidades");
+  const capturaAncha = testInfo.outputPath("costos-por-unidad-1440.png");
+  await page.screenshot({
+    path: capturaAncha,
+    fullPage: true,
+  });
+  await testInfo.attach("costos-por-unidad-1440.png", {
+    path: capturaAncha,
+    contentType: "image/png",
+  });
+
+  // AC-13: reflujo a 320 px con desbordamiento cero medido contra documentElement, y los objetivos
+  // táctiles de la pantalla medidos del navegador. Las secciones nuevas no agregan controles: lo
+  // que hay para medir son las pestañas del producto, que es por donde se llega.
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.reload();
+  await expect(tabla).toContainText(
+    /Base: 4 disponibles · Costo total US\$\s4\.000,00/,
+  );
+  const desborde = await page.evaluate(
+    () => document.documentElement.scrollWidth - window.innerWidth,
+  );
+  expect(desborde, "desbordamiento a 320 px en costos").toBeLessThanOrEqual(0);
+  const pestañas = page.getByRole("navigation", {
+    name: "Secciones del producto",
+  });
+  for (const nombre of ["Unidades", "Costos"]) {
+    const caja = await pestañas
+      .getByRole("link", { name: nombre, exact: true })
+      .boundingBox();
+    expect(
+      caja!.height,
+      `alto de la pestaña ${nombre} a 320 px`,
+    ).toBeGreaterThanOrEqual(44);
+  }
+  const capturaAngosta = testInfo.outputPath("costos-por-unidad-320.png");
+  await page.screenshot({
+    path: capturaAngosta,
+    fullPage: true,
+  });
+  await testInfo.attach("costos-por-unidad-320.png", {
+    path: capturaAngosta,
+    contentType: "image/png",
+  });
+  await expectAccessible(page, "costos por unidad a 320 px");
+  await page.setViewportSize({ width: 1280, height: 720 });
+
+  // AC-8: un producto **por cantidad** no tiene ninguna de las tres secciones. No es una tabla
+  // vacía: una tabla vacía afirmaría que no tiene unidades, y este producto no las lleva.
+  const porCantidad = await insertProduct("CARG-20W", "Cargador 20 W");
+  await page.goto(`/productos/${porCantidad}/costos`);
+  await expect(
+    page.getByRole("region", { name: "Costo y margen" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Margen estimado sobre las disponibles" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("region", { name: "Costo por unidad" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("region", { name: "Otras existencias" }),
+  ).toHaveCount(0);
+  // Y tampoco se cuela el aviso de que no se pudo leer: no hay nada que leer (I-2).
+  await expect(page.getByText("No disponible: no pudimos leer")).toHaveCount(0);
+
+  // I-5 sobre la base: el promedio de las disponibles supera al precio.
+  const enPerdida = await insertProduct("IP15-512", "iPhone 15 512 GB");
+  await insertUnits(enPerdida, [{ serial: "356938035650011", cost: "1500" }]);
+  await page.goto(`/productos/${enPerdida}/costos`);
+  const perdida = page.getByRole("region", {
+    name: "Margen estimado sobre las disponibles",
+  });
+  await expect(perdida).toContainText("Base del cálculo: 1 unidad disponible");
+  await expect(perdida).toContainText(/−US\$\s401,00/);
+  await expect(perdida).toContainText("−36,5 %");
+  await expect(perdida).toContainText("El costo supera el precio.");
+  await expectAccessible(page, "costos con margen negativo");
+
+  // D-13: con el costo en dos monedas no hay promedio ni margen, y el subtotal va por moneda. Un
+  // promedio entre dólares y pesos sería un número inventado.
+  const dosMonedas = await insertProduct("IP14-128", "iPhone 14 128 GB");
+  await insertUnits(dosMonedas, [
+    { serial: "356938035650021", cost: "900" },
+    { serial: "356938035650022", cost: "500000", currency: "ARS" },
+  ]);
+  await page.goto(`/productos/${dosMonedas}/costos`);
+  const mezcla = page.getByRole("region", {
+    name: "Margen estimado sobre las disponibles",
+  });
+  await expect(mezcla).toContainText(
+    "Las unidades disponibles tienen el costo en más de una moneda",
+  );
+  await expect(mezcla).not.toContainText("Margen bruto estimado");
+  const tablaMezcla = page.getByRole("region", { name: "Costo por unidad" });
+  await expect(tablaMezcla).toContainText(
+    /Base: 1 disponible · Costo total US\$\s900,00/,
+  );
+  await expect(tablaMezcla).toContainText(
+    /Base: 1 disponible · Costo total \$\s500\.000,00/,
+  );
+  await expectAccessible(page, "costos con dos monedas");
+
+  // AC-9, la otra mitad: lo que importa no es que la pantalla no dibuje el costo, sino que ningún
+  // costo por unidad **llegue al documento** que recibe el navegador. La frontera la hace el
+  // servicio por su cuenta (`getProductUnitCosts` autoriza antes de leer) y la página corta todavía
+  // antes, pero eso se afirma mirando el HTML, no la intención. Hasta acá, la única prueba de un
+  // viewer en /costos era la de la 18.2, sobre un producto **por cantidad**: no cubría nada de esto
+  // (NB-4 de la revisión independiente).
+  await page.context().clearCookies();
+  await login(page, VIEWER_IPHONE.email);
+  await page.goto(`/productos/${porUnidad}/costos`);
+  await expect(
+    page.getByText("No tenés permiso para ver esta página."),
+  ).toBeVisible();
+  const documento = page.locator("body");
+  // Los cuatro costos de las disponibles, el promedio, el total y el de la unidad en revisión.
+  for (const importe of [
+    "900,00",
+    "1.000,00",
+    "1.100,00",
+    "1.200,00",
+    "4.000,00",
+    "950,00",
+  ]) {
+    await expect(documento, `el viewer no recibe ${importe}`).not.toContainText(
+      importe,
+    );
+  }
+  await expect(documento).not.toContainText("Costo por unidad");
+  await expect(documento).not.toContainText("Otras existencias");
 });

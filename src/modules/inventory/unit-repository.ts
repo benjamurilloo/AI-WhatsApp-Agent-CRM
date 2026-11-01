@@ -184,6 +184,86 @@ export async function countUnitsByStatus(
   return new Map(rows.map((row) => [row.status, row.total]));
 }
 
+// Los costos de las unidades de un producto, sumados en SQL por estado **y por moneda**
+// (brief-24.5.2-b, AC-2 e I-7). Dos motivos para que agregue la base y no la pantalla:
+//
+// - La lista de unidades pagina de a 25 desde la 24.5.2, así que sumar lo dibujado daría un total
+//   que no es el total. Es el defecto que la 24.5.1 evitó plegando sus sumas por modelo antes del
+//   corte de página.
+// - `stock_units.cost` es `NOT NULL` con `CHECK (cost > 0)`, pero `cost_currency` **no** es la
+//   misma para todas las unidades de un producto: la fija cada recepción, y el trigger solo impide
+//   que la moneda de una unidad cambie después. Dos recepciones en monedas distintas dejan dos
+//   monedas en el mismo producto, y entonces **no hay un total**. Por eso la moneda entra en el
+//   `GROUP BY` en vez de asumirse única: quien llama recibe los grupos y decide, que es lo mismo
+//   que hace `computeMargin` cuando el precio y el costo no coinciden (ADR 0019, punto 5).
+//
+// Corrida de mutación del 2026-11-01 (AC-10): borrando el filtro por organización de acá falla
+// **exactamente una** prueba, la de la suma de `organization-isolation.test.ts`, y **ninguna** de
+// las 37 de `units.test.ts`, porque ahí el servicio ya filtró con `getProduct` antes de llegar.
+export type UnitCostGroup = {
+  status: StockUnitStatus;
+  currency: string;
+  units: number;
+  // La suma en la escala de la base, como la devuelve `numeric`.
+  total: string;
+};
+
+export async function sumUnitCostsByStatus(
+  organizationId: string,
+  productId: string,
+): Promise<UnitCostGroup[]> {
+  return getDb()
+    .select({
+      status: stockUnits.status,
+      currency: stockUnits.costCurrency,
+      units: count(),
+      // `sum` de un grupo no vacío nunca es nulo, y el `GROUP BY` no produce grupos vacíos.
+      total: sql<string>`sum(${stockUnits.cost})`,
+    })
+    .from(stockUnits)
+    .where(
+      and(
+        eq(stockUnits.organizationId, organizationId),
+        eq(stockUnits.productId, productId),
+      ),
+    )
+    .groupBy(stockUnits.status, stockUnits.costCurrency)
+    .orderBy(asc(stockUnits.status), asc(stockUnits.costCurrency));
+}
+
+// Las unidades de un producto en cierto conjunto de estados, con tope (brief-24.5.2-b, R-3). La
+// pantalla de costos dibuja dos tablas —las disponibles y «otras existencias», que son dos estados
+// juntos— y `findUnitsPageOfProduct` filtra por **un** estado. El tope lo decide quien llama y la
+// pantalla **dice en pantalla** cuándo recortó: lo que no se puede es recortar en silencio.
+//
+// Los totales NO salen de acá: salen de `sumUnitCostsByStatus`, que agrega en SQL sobre todas las
+// filas. Separarlos es a propósito — si el subtotal se calculara sobre estas filas, el tope lo
+// volvería mentira.
+//
+// Corrida de mutación del 2026-11-01 (AC-10): borrando el filtro por organización de acá falla
+// **exactamente una** prueba, la de las unidades por estado de `organization-isolation.test.ts`, y
+// ninguna de `units.test.ts`, por el mismo motivo que arriba.
+export function findUnitsOfProductByStatuses(
+  organizationId: string,
+  productId: string,
+  statuses: readonly StockUnitStatus[],
+  limit: number,
+): Promise<StockUnitRow[]> {
+  return getDb()
+    .select(unitColumns)
+    .from(stockUnits)
+    .leftJoin(unitGrades, gradeJoin)
+    .where(
+      and(
+        eq(stockUnits.organizationId, organizationId),
+        eq(stockUnits.productId, productId),
+        inArray(stockUnits.status, [...statuses]),
+      ),
+    )
+    .orderBy(asc(statusOrder), desc(stockUnits.createdAt), desc(stockUnits.id))
+    .limit(limit);
+}
+
 export async function findUnit(
   organizationId: string,
   unitId: string,
@@ -344,6 +424,32 @@ export async function findTakenSerials(
       ),
     );
   return rows.map((row) => row.serial);
+}
+
+// Cuál es la unidad vigente que tiene ese IMEI (brief-24.5.2-b, D-9). `findTakenSerials` responde
+// **si** está tomado, que es lo que necesita el alta masiva; esto responde **cuál**, que es lo que
+// necesita el enlace. Devuelve también el producto, porque la unidad que lo tiene puede ser de otro
+// y el enlace tiene que llevar a la ficha correcta.
+//
+// Mismo recorte que `findTakenSerials`: solo las que siguen en el local (`OUT_OF_SHOP` afuera) y
+// la comparación sin distinguir mayúsculas, porque así es el índice único parcial.
+export async function findUnitBySerial(
+  organizationId: string,
+  serial: string,
+  executor: Executor = getDb(),
+): Promise<{ id: string; productId: string } | undefined> {
+  const rows = await executor
+    .select({ id: stockUnits.id, productId: stockUnits.productId })
+    .from(stockUnits)
+    .where(
+      and(
+        eq(stockUnits.organizationId, organizationId),
+        notInArray(stockUnits.status, OUT_OF_SHOP),
+        eq(sql<string>`lower(${stockUnits.serial})`, serial.toLowerCase()),
+      ),
+    )
+    .limit(1);
+  return rows[0];
 }
 
 // Los IMEI de unas unidades que volvieron al local en otra unidad (brief-29.7, U-2): un equipo vendido

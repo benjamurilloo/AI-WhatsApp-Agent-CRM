@@ -80,6 +80,11 @@ export {
   type SetCostResult,
 } from "./service";
 export {
+  // Desde la 24.5.2-b, la función pura también sale por la interfaz pública: la pantalla de costos
+  // calcula el margen **de cada unidad**, con el costo que viene de `inventory` y el precio que
+  // viene de acá, y componer eso es trabajo de la página. Tenerla afuera habría obligado a rehacer
+  // la aritmética del punto 4 del ADR 0019 en un segundo lugar.
+  computeMargin,
   formatMarginAmount,
   formatPercentTenths,
   type Margin,

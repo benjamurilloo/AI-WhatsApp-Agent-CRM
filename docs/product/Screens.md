@@ -197,6 +197,14 @@ Agregada en la 18.2 ([brief-18.2](../decisions/brief-18.2-costo-y-margen.md), FR
 - **Responsive y accesibilidad**: como la 5b.
 - **No mostrar**: ninguna acción para editar ni borrar un costo. Nada de esta pantalla a `viewer`. El costo y el margen no van en la lista de productos (D-4).
 
+*Desde la 24.5.2-b* ([brief-24.5.2-b](../decisions/brief-24.5.2-b-costo-por-unidad-y-margen.md)): la pantalla toma la forma de la **lámina 13** y suma el costo **por unidad**, que es otro dato que el costo del producto. Tres secciones nuevas, solo cuando el producto se lleva **por unidad**; uno por cantidad abre la pantalla como siempre, sin ellas y sin tablas vacías.
+
+- **«Margen estimado sobre las disponibles»**: precio de venta, costo promedio de las disponibles, ganancia bruta estimada y margen bruto estimado, con la tira de la fórmula y la aclaración de que es una estimación antes de gastos e impuestos. Se calcula **solo sobre las disponibles**; las reservadas y en revisión quedan afuera a propósito.
+- **«Costo por unidad»**: una fila por unidad disponible con su IMEI, estado, costo registrado, precio de referencia —el propio si lo tiene, si no el del producto, **diciendo cuál**—, ganancia estimada y margen. La fila de subtotal da la base y el **costo total**, que es el valor de inventario del producto: la suma de los costos registrados, **sin método de valuación**. El subtotal cubre todas las disponibles aunque la tabla muestre 25; si recorta, lo dice.
+- **«Otras existencias»**: las reservadas y en revisión con su costo registrado y la leyenda de que están excluidas del cálculo.
+- **Cuando no hay un número**: sin disponibles, o con el costo en **más de una moneda**, no hay promedio ni margen y se dice cuál de las dos cosas pasa. Con dos monedas el subtotal lleva una línea por moneda. No se convierte: el margen no tiene tipo de cambio.
+- **Lo que la lámina 13 muestra y la pantalla no**, con su motivo en el brief: el selector de moneda (D-2), el selector de base de cálculo (D-3) y el historial unificado con unidad, documento y motivo (D-4).
+
 ## 6. Lista de clientes
 
 - **Objetivo**: encontrar clientes.

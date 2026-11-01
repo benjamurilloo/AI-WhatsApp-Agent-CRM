@@ -74,8 +74,15 @@ export {
   // El recuento por estado para el Resumen de la ficha (brief-24.5.1, D-6).
   countUnitsByStatus,
   getUnit,
+  // Los costos por unidad para la pantalla de costos (brief-24.5.2-b). Solo admin.
+  getProductUnitCosts,
   getUnitSerials,
   listProductUnits,
+  UNIT_COST_ROWS_CAP,
+  type ProductUnitCosts,
+  type ProductUnitCostsResult,
+  type UnitCostBase,
+  type UnitCostTotals,
   listUnitAudit,
   listUnitMovements,
   UNIT_AUDIT_PAGE_SIZE,

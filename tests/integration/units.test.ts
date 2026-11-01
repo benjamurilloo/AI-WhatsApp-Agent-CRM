@@ -23,10 +23,12 @@ import {
   correctUnit,
   createUnitGrade,
   getCatalogProductAvailableForService,
+  getProductUnitCosts,
   getCatalogProductForService,
   getProductBalanceForService,
   getProductStockForService,
   listProductUnits,
+  UNIT_COST_ROWS_CAP,
   listUnitAudit,
   listUnitGrades,
   listUnitMovements,
@@ -592,11 +594,15 @@ describe("el alta, la baja y la corrección manual (D-4, AC-3, AC-4)", () => {
       const phone = await unitProduct(s.adminA, "IP13");
       const other = await unitProduct(s.adminA, "IP14");
       const unitId = await register(s.adminA, phone, "abc123");
-      // Sin distinguir mayúsculas, también en otro producto de la organización.
+      // Sin distinguir mayúsculas, también en otro producto de la organización. Desde la
+      // 24.5.2-b el rechazo dice **cuál** unidad lo tiene y de qué producto, que es lo que le
+      // permite a la pantalla ofrecer el enlace (D-9): acá la que se cargó recién, en `phone`,
+      // aunque el alta que choca sea en `other`.
       expect(await registerUnit(s.adminA, other, unit("ABC123"))).toEqual({
         ok: false,
         code: "CONFLICT",
         field: "serial",
+        existing: { unitId, productId: phone },
       });
       // En otra organización, el mismo IMEI es otra unidad.
       const foreign = await unitProduct(s.adminB, "IP13");
@@ -649,8 +655,18 @@ describe("el alta, la baja y la corrección manual (D-4, AC-3, AC-4)", () => {
         registerUnit(s.adminA, other, unit("999")),
       ]);
       expect(results.filter((result) => result.ok)).toHaveLength(1);
+      // La que perdió la carrera también trae el enlace: lo busca después de que la transacción
+      // revirtió, para que este camino no dé un error más pobre que el común.
       expect(results.filter((result) => !result.ok)).toEqual([
-        { ok: false, code: "CONFLICT", field: "serial" },
+        {
+          ok: false,
+          code: "CONFLICT",
+          field: "serial",
+          existing: {
+            unitId: expect.any(String),
+            productId: expect.any(String),
+          },
+        },
       ]);
     },
     TEST_TIMEOUT,
@@ -1501,6 +1517,204 @@ describe("el historial de una unidad (24.5.2, D-3 y D-10)", () => {
         code: "NOT_FOUND",
       });
       expect(await listUnitAudit(s.adminC, unitId, 1)).toMatchObject({
+        ok: false,
+        code: "NOT_FOUND",
+      });
+    },
+    TEST_TIMEOUT,
+  );
+});
+
+// Los costos por unidad de la pantalla de costos (brief-24.5.2-b, AC-1 a AC-5-b, AC-8 y AC-9).
+// Contra PostgreSQL real, porque lo que se prueba es la agregación en SQL y el filtro por
+// organización, que en memoria no se verían.
+describe("getProductUnitCosts", () => {
+  // Carga N unidades disponibles **por el servicio**, una por una. La primera versión de este
+  // ayudante las insertaba con un `generate_series` para ahorrarse las transacciones, y
+  // `expectStockInvariant` la rechazó: `inventories.quantity_on_hand` quedaba en cero con las
+  // unidades puestas. El invariante hizo exactamente su trabajo, y el atajo era el error.
+  async function registerMany(
+    s: Seed,
+    productId: string,
+    howMany: number,
+    cost = "100",
+  ) {
+    for (let n = 1; n <= howMany; n += 1) {
+      await register(s.adminA, productId, `BULK-${n}`, { cost });
+    }
+  }
+
+  it(
+    "suma y promedia las disponibles, con el ejemplo de la lámina",
+    async () => {
+      const s = await seed();
+      const phone = await unitProduct(s.adminA, "IP-13");
+      await register(s.adminA, phone, "350A", { cost: "350" });
+      await register(s.adminA, phone, "360A", { cost: "360" });
+      await register(s.adminA, phone, "370A", { cost: "370" });
+
+      const result = await getProductUnitCosts(s.adminA, phone);
+      expect(result).toMatchObject({
+        ok: true,
+        tracking: "unit",
+        costs: {
+          availableTotal: 3,
+          otherTotal: 0,
+          base: {
+            ok: true,
+            currency: "USD",
+            units: 3,
+            total: 108_000n,
+            average: 36_000n,
+          },
+        },
+      });
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "el total cubre todas las disponibles, no las filas que devuelve",
+    async () => {
+      const s = await seed();
+      const phone = await unitProduct(s.adminA, "IP-14");
+      const howMany = UNIT_COST_ROWS_CAP + 1;
+      await registerMany(s, phone, howMany);
+
+      const result = await getProductUnitCosts(s.adminA, phone);
+      if (!result.ok || result.tracking !== "unit")
+        throw new Error("sin costos");
+      // Las filas vienen topeadas y el total NO: es justamente lo que AC-2 pide.
+      expect(result.costs.availableUnits).toHaveLength(UNIT_COST_ROWS_CAP);
+      expect(result.costs.availableTotal).toBe(howMany);
+      expect(result.costs.base).toMatchObject({
+        ok: true,
+        units: howMany,
+        total: BigInt(howMany) * 10_000n,
+        average: 10_000n,
+      });
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "las reservadas y las en revisión van aparte y no entran en la base",
+    async () => {
+      const s = await seed();
+      const phone = await unitProduct(s.adminA, "IP-15");
+      await register(s.adminA, phone, "DISP1", { cost: "300" });
+      await register(s.adminA, phone, "RESV1", { cost: "355" });
+      // La reserva va por su camino real —un pedido confirmado que toma el IMEI—, no con un
+      // `update` a mano: el invariante del saldo exige que cada unidad reservada sea la de
+      // exactamente un pedido confirmado, y tiene razón.
+      const priceId = await insertPrice(s.orgA, phone, s.adminAId);
+      const order = await createOrder(s.adminA, {
+        clientId: s.clientA,
+        lines: [
+          {
+            productId: phone,
+            quantity: "1",
+            expectedPriceId: priceId,
+            serials: "RESV1",
+          },
+        ],
+      });
+      if (!order.ok) throw new Error(JSON.stringify(order));
+      const confirmed = await confirmOrder(s.adminA, order.order.id);
+      if (!confirmed.ok) throw new Error(JSON.stringify(confirmed));
+
+      const result = await getProductUnitCosts(s.adminA, phone);
+      if (!result.ok || result.tracking !== "unit")
+        throw new Error("sin costos");
+      expect(result.costs.base).toMatchObject({
+        ok: true,
+        units: 1,
+        total: 30_000n,
+      });
+      expect(result.costs.otherTotal).toBe(1);
+      expect(result.costs.otherTotals).toEqual([
+        { status: "reserved", currency: "USD", units: 1, total: 35_500n },
+      ]);
+      expect(result.costs.otherUnits.map((u) => u.serial)).toEqual(["RESV1"]);
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "con la base en dos monedas no hay total ni promedio, y dice el motivo",
+    async () => {
+      const s = await seed();
+      const phone = await unitProduct(s.adminA, "IP-16");
+      await register(s.adminA, phone, "USD1", { cost: "350", currency: "USD" });
+      await register(s.adminA, phone, "ARS1", {
+        cost: "95000",
+        currency: "ARS",
+      });
+
+      const result = await getProductUnitCosts(s.adminA, phone);
+      if (!result.ok || result.tracking !== "unit")
+        throw new Error("sin costos");
+      expect(result.costs.base).toEqual({
+        ok: false,
+        reason: "mixed_currency",
+      });
+      // Las dos unidades siguen estando: lo que falta es el número único, no los datos.
+      expect(result.costs.availableTotal).toBe(2);
+      expect(result.costs.availableUnits).toHaveLength(2);
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "sin unidades la base dice que no hay ninguna, que no es lo mismo que cero",
+    async () => {
+      const s = await seed();
+      const phone = await unitProduct(s.adminA, "IP-17");
+      const result = await getProductUnitCosts(s.adminA, phone);
+      expect(result).toMatchObject({
+        ok: true,
+        tracking: "unit",
+        costs: { base: { ok: false, reason: "no_units" }, availableTotal: 0 },
+      });
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "un producto por cantidad no trae costos por unidad, y el tipo lo dice",
+    async () => {
+      const s = await seed();
+      const box = await newProduct(s.adminA, "CAJA-1");
+      expect(await getProductUnitCosts(s.adminA, box)).toEqual({
+        ok: true,
+        tracking: "quantity",
+        costs: null,
+      });
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "un viewer no la puede llamar, aunque la pantalla no se le dibuje (FR-PROD-21)",
+    async () => {
+      const s = await seed();
+      const phone = await unitProduct(s.adminA, "IP-18");
+      await register(s.adminA, phone, "VIEW1", { cost: "350" });
+      expect(await getProductUnitCosts(s.viewerA, phone)).toMatchObject({
+        ok: false,
+        code: "FORBIDDEN",
+      });
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "un producto de otra organización no existe para este admin",
+    async () => {
+      const s = await seed();
+      const phone = await unitProduct(s.adminA, "IP-19");
+      await register(s.adminA, phone, "OTHER1", { cost: "350" });
+      expect(await getProductUnitCosts(s.adminB, phone)).toMatchObject({
         ok: false,
         code: "NOT_FOUND",
       });

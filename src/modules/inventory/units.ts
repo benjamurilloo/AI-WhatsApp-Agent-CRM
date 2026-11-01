@@ -25,8 +25,11 @@ import type { DbTransaction } from "@/shared/db";
 import { failure, type Failure } from "@/shared/errors";
 import {
   currencyDecimals,
+  divideRoundingHalfAwayFromZero,
+  moneyFromDatabase,
   moneyToDatabase,
   parseMoneyInput,
+  type Money,
 } from "@/shared/money";
 import { quantityFromDatabase, quantityToDatabase } from "@/shared/quantity";
 import * as repository from "./repository";
@@ -285,7 +288,16 @@ export type RegisterUnitResult =
   | { ok: true; unitId: string }
   | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">
   | Failure<"VALIDATION_ERROR", { fields: UnitField[] }>
-  | Failure<"CONFLICT", { field: "serial" }>
+  // Desde la 24.5.2-b (D-9): el rechazo dice **cuál** unidad tiene ese IMEI, para que la pantalla
+  // pueda ofrecer un enlace en vez de solo el error. `null` solo si la unidad desapareció entre el
+  // choque y la consulta, que es posible y no vale la pena tratar distinto.
+  | Failure<
+      "CONFLICT",
+      {
+        field: "serial";
+        existing: { unitId: string; productId: string } | null;
+      }
+    >
   | Failure<
       "BUSINESS_RULE_VIOLATION",
       { rule: "inactive_product" | "not_unit_tracked" }
@@ -366,10 +378,18 @@ export async function registerUnit(
         values.serial,
       ]);
       if (taken.length > 0) {
+        const existing = await unitRepository.findUnitBySerial(
+          organizationId,
+          values.serial,
+          tx,
+        );
         throw new UnitRejected({
           ok: false,
           code: "CONFLICT",
           field: "serial",
+          existing: existing
+            ? { unitId: existing.id, productId: existing.productId }
+            : null,
         });
       }
       const balance = await repository.lockBalance(
@@ -443,7 +463,20 @@ export async function registerUnit(
     }
     // Dos altas simultáneas del mismo IMEI: la segunda choca en el índice único parcial (AC-4).
     if (unitRepository.isSerialTaken(error)) {
-      return { ok: false, code: "CONFLICT", field: "serial" };
+      // La carrera: la transacción ya revirtió, así que la consulta va por fuera. Se busca igual,
+      // para que este camino ofrezca el mismo enlace que el común y no sea un error más pobre.
+      const existing = await unitRepository.findUnitBySerial(
+        organizationId,
+        values.serial,
+      );
+      return {
+        ok: false,
+        code: "CONFLICT",
+        field: "serial",
+        existing: existing
+          ? { unitId: existing.id, productId: existing.productId }
+          : null,
+      };
     }
     throw error;
   }
@@ -757,6 +790,157 @@ export async function countUnitsByStatus(
     ]),
   ) as UnitStatusCounts;
   return { ok: true, tracking: "unit", counts };
+}
+
+// Los costos por unidad de un producto, para la pantalla de costos (brief-24.5.2-b, AC-1 a AC-5-b).
+//
+// **Solo un admin** (FR-PROD-21). La autorización vive acá y no en la pantalla: que la pestaña no
+// se dibuje para un viewer es presentación, y la presentación no es la defensa. Es lo mismo que
+// hace `catalog.getProductCostSummary` desde la 18.2.
+//
+// La base del margen son **las disponibles** (decisión del usuario del 2026-10-31). Las reservadas
+// y las en revisión existen, tienen costo y se muestran aparte, pero no entran en el cálculo.
+
+// El tope de filas de cada tabla (R-3). Las sumas **no** dependen de él: salen de una agregación
+// en SQL sobre todas las filas. Vale 25, el mismo número que `UNITS_PAGE_SIZE`, para que las dos
+// tablas de un producto muestren de a lo mismo; son constantes distintas porque significan cosas
+// distintas —una pagina y la otra recorta— y alinearlas es una decisión, no una consecuencia.
+export const UNIT_COST_ROWS_CAP = 25;
+
+// Los estados que van en «Otras existencias»: las que hay pero no se cuentan.
+const OTHER_STOCK_STATUSES = ["reserved", "in_review"] as const;
+
+export type UnitCostTotals = {
+  status: UnitStatus;
+  currency: string;
+  units: number;
+  total: Money;
+};
+
+// La base, o el motivo por el que no hay un número. `mixed_currency` no es un borde raro: dos
+// recepciones del mismo producto en monedas distintas lo producen, y entonces sumar sería inventar
+// un tipo de cambio que el punto 5 del ADR 0019 no autoriza (brief-24.5.2-b, D-13).
+export type UnitCostBase =
+  | {
+      ok: true;
+      currency: string;
+      units: number;
+      total: Money;
+      average: Money;
+    }
+  | { ok: false; reason: "no_units" | "mixed_currency" };
+
+export type ProductUnitCosts = {
+  base: UnitCostBase;
+  // Las disponibles, hasta el tope, para la tabla por unidad.
+  availableUnits: ProductUnit[];
+  // Las reservadas y en revisión, hasta el tope, para «Otras existencias».
+  otherUnits: ProductUnit[];
+  // Los totales por moneda de las disponibles, sobre **todas** las filas. Con una sola moneda es
+  // uno y coincide con `base`; con dos son dos y `base` no existe, que es justamente el caso en el
+  // que la pantalla necesita estos números igual (D-13).
+  availableTotals: UnitCostTotals[];
+  // Lo mismo para las reservadas y en revisión, por estado y moneda.
+  otherTotals: UnitCostTotals[];
+  // Cuántas hay en total de cada tabla, para poder decir que se recortó.
+  availableTotal: number;
+  otherTotal: number;
+};
+
+export type ProductUnitCostsResult =
+  // Un producto por cantidad no tiene unidades: el tipo lo impide en vez de devolver ceros
+  // (brief-24.5.1, I-2; brief-24.5.2-b, AC-8).
+  | { ok: true; tracking: "quantity"; costs: null }
+  | { ok: true; tracking: "unit"; costs: ProductUnitCosts }
+  | Failure<"FORBIDDEN" | "NOT_FOUND" | "VALIDATION_ERROR">;
+
+export async function getProductUnitCosts(
+  context: AuthContext,
+  productId: string,
+): Promise<ProductUnitCostsResult> {
+  const authorized = authorize(context, { role: "admin" });
+  if (!authorized.ok) return authorized;
+  const found = await getProduct(context, productId);
+  if (!found.ok) return found;
+  if (found.product.tracking !== "unit") {
+    return { ok: true, tracking: "quantity", costs: null };
+  }
+
+  const { organizationId } = context;
+  const id = found.product.id;
+  const [groups, availableRows, otherRows] = await Promise.all([
+    unitRepository.sumUnitCostsByStatus(organizationId, id),
+    unitRepository.findUnitsOfProductByStatuses(
+      organizationId,
+      id,
+      ["available"],
+      UNIT_COST_ROWS_CAP,
+    ),
+    unitRepository.findUnitsOfProductByStatuses(
+      organizationId,
+      id,
+      OTHER_STOCK_STATUSES,
+      UNIT_COST_ROWS_CAP,
+    ),
+  ]);
+
+  const totalsOf = (statuses: readonly UnitStatus[]): UnitCostTotals[] =>
+    groups
+      .filter((group) => statuses.includes(group.status))
+      .map((group) => ({
+        status: group.status,
+        currency: group.currency,
+        units: group.units,
+        total: moneyFromDatabase(group.total),
+      }));
+
+  const availableTotals = totalsOf(["available"]);
+  const otherTotals = totalsOf(OTHER_STOCK_STATUSES);
+  const sumUnits = (totals: UnitCostTotals[]) =>
+    totals.reduce((units, total) => units + total.units, 0);
+
+  return {
+    ok: true,
+    tracking: "unit",
+    costs: {
+      base: computeUnitCostBase(availableTotals),
+      availableUnits: availableRows.map((row) => toProductUnit(row, true)),
+      otherUnits: otherRows.map((row) => toProductUnit(row, true)),
+      availableTotals,
+      otherTotals,
+      availableTotal: sumUnits(availableTotals),
+      otherTotal: sumUnits(otherTotals),
+    },
+  };
+}
+
+// Sin disponibles no hay base; con más de una moneda tampoco, y se dice cuál de las dos cosas pasó.
+//
+// El promedio se redondea **a los decimales de la moneda** y con el medio hacia afuera del cero:
+// las dos mitades del punto 4 del ADR 0019, no solo el modo. Redondear solo a centésimos daba, con
+// dos unidades de 300.000 y 300.001 pesos chilenos, un promedio de 300.000,50 — media unidad de una
+// moneda que no tiene centavos—, y entonces la tira de la fórmula mostraba operandos que no
+// reproducen su resultado. Es el mismo `step` que `convertMoney` ya usa en `shared/money`.
+// Lo encontró la revisión independiente de esta subfase (su B-3). En `bigint` en todos los pasos:
+// el dinero no pasa por `number`.
+export function computeUnitCostBase(totals: UnitCostTotals[]): UnitCostBase {
+  if (totals.length === 0) return { ok: false, reason: "no_units" };
+  if (totals.length > 1) return { ok: false, reason: "mixed_currency" };
+  const only = totals[0]!;
+  const decimals = currencyDecimals(only.currency);
+  // Centésimos por cada unidad que la moneda puede expresar: 1 con dos decimales, 100 sin ninguno.
+  // Una moneda que el proyecto no acepta no llega hasta acá —el costo se guarda con una aceptada—;
+  // si llegara, se redondea a centésimos, que es la escala con la que la columna guarda.
+  const step = decimals.ok ? 10n ** BigInt(2 - decimals.decimals) : 1n;
+  return {
+    ok: true,
+    currency: only.currency,
+    units: only.units,
+    total: only.total,
+    average:
+      divideRoundingHalfAwayFromZero(only.total, BigInt(only.units) * step) *
+      step,
+  };
 }
 
 function toProductUnit(

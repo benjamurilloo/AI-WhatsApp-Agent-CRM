@@ -9,6 +9,7 @@ import {
   inlineButtonClass,
   inputClass,
   labelClass,
+  linkClass,
   radioClass,
   secondaryLinkClass,
   selectClass,
@@ -87,6 +88,18 @@ function Field({
       {invalid ? (
         <p id={errorId} className={fieldErrorClass}>
           {state.message}
+          {/* D-9: un error con destino lleva hasta él. Hoy pasa en un solo caso —el IMEI
+              repetido— y por eso el enlace es opcional: la mayoría de los errores no tiene
+              adónde ir. Va **dentro** del párrafo del error, que es el que `aria-describedby`
+              asocia al campo, así que un lector de pantalla lo anuncia junto con el motivo. */}
+          {state.status === "error" && state.linkHref ? (
+            <>
+              {" "}
+              <Link href={state.linkHref} className={linkClass}>
+                {state.linkLabel}
+              </Link>
+            </>
+          ) : null}
         </p>
       ) : null}
     </div>

@@ -2,6 +2,40 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-11-01 — 24.5.2-b: costo por unidad y margen
+
+Novena subfase de la Fase 24 ([brief-24.5.2-b](docs/decisions/brief-24.5.2-b-costo-por-unidad-y-margen.md) §Cierre). Es la segunda mitad de la 24.5.2, dividida el 2026-10-31 por tamaño.
+
+**Certifica:**
+- **El costo de cada unidad disponible con su margen**, en la pantalla de costos del producto: unidad, estado, costo registrado, precio de referencia, ganancia estimada y margen. El precio de referencia es **el propio de la unidad si lo tiene y si no el del producto, diciendo cuál se usó** en cada fila: sin eso, dos filas con precios distintos parecen un error de datos.
+- **Cuatro números sobre las disponibles** —precio de venta, costo promedio de las disponibles, ganancia bruta estimada y margen bruto estimado— con la tira de la fórmula que los hace auditables y la aclaración de que es una estimación antes de gastos e impuestos, no ganancia neta.
+- **«Otras existencias»**: las reservadas y en revisión existen, tienen costo y **quedan fuera del cálculo**, dicho en la pantalla. Una unidad en revisión no entra en el promedio ni en el total.
+- **El subtotal cubre todas las disponibles, no la página.** Se agrega **en SQL** y es independiente del tope de 25 filas de la tabla; si el tope recorta, se dice cuántas se muestran de cuántas y que las sumas cubren todas. Un total calculado sobre las filas dibujadas habría sido mentira con 26 unidades, que es el caso que la prueba usa.
+- **Con el costo en más de una moneda no hay promedio ni margen**, y va una línea de subtotal por moneda con el motivo escrito. No se convierte: el punto 5 del [ADR 0019](docs/decisions/0019-bases-de-los-comprobantes.md) define el margen sin tipos de cambio y la excepción del [ADR 0025](docs/decisions/0025-tipo-de-cambio.md) alcanza **solo a los movimientos de dinero**. Es un caso que el brief no preveía: lo decidió el usuario durante la implementación (D-13).
+- **El promedio se redondea a los decimales de la moneda**, no solo con el medio hacia afuera del cero: las dos mitades del punto 4 del ADR 0019. En una moneda sin centavos, redondear a centésimos daba media unidad inexistente y el margen se calculaba sobre un número que la pantalla no mostraba.
+- **La lectura nueva autoriza por su cuenta**: `getProductUnitCosts` exige `admin` **antes** de leer, no se apoya en que la pantalla sea de admin, y filtra por organización en SQL en sus dos consultas. Los dos filtros están probados donde son observables —llamando al repositorio con una organización ajena—, con control positivo y negativo. El agente de WhatsApp no ve nada de esto: ninguna ruta de `api/read` cambió.
+- **Ningún costo por unidad llega al documento de un `viewer`**, comprobado sobre el HTML de un producto que se lleva por unidad, no sobre la intención del código.
+- **Una lectura que falla se anuncia y nunca se dibuja como «este producto no tiene unidades»**. La rama es alcanzable: el `catch` vive en la composición y la lectura entra inyectada, así que la prueba la fuerza sin mockear el módulo. Un producto **por cantidad** no dibuja ninguna de las tres secciones, que es distinto de no haber podido leer.
+- **El IMEI repetido lleva hasta la unidad que lo tiene**, con un enlace que abre su panel, en vez de dejar que el usuario la busque a mano. Era una de las dos mejoras reales que la 24.5.2 dejó anotadas.
+- **Reflujo a 320 px con desbordamiento cero** medido contra `documentElement`, objetivos táctiles de 44 px **medidos del navegador**, y `axe` sin violaciones en claro y en oscuro. La medición encontró un defecto real: las dos tablas nuevas desplazaban en horizontal sin ser alcanzables con el teclado (`scrollable-region-focusable`), y ahora se dibujan como tarjetas por debajo de `md`, el patrón que esa misma pantalla ya usaba en el historial de costos.
+- **Ninguna migración, tabla ni columna nueva** (67 migraciones, las mismas).
+- **Validado localmente**: 1.294 pruebas de `unit`, 899 de `guards` y 1.880 de `integration`, más las 25 de `erasure.test.ts` verificadas por separado tras una caída de worker ajena a esta subfase (O-4).
+- **Validado en integración**: la pantalla de costos contra el build de producción, con Server Actions y PostgreSQL real, para los cuatro casos de la evidencia: un producto por unidad, uno por cantidad, uno con margen negativo y uno con el costo en dos monedas. Los dos specs que la subfase toca, `units.spec.ts` y `products.spec.ts`, pasan enteros: **40 de 40 en 4,3 min**.
+- **Una revisión independiente, R2**, con sus cuatro bloqueantes verificados contra el código y resueltos, cinco no bloqueantes corregidos, cuatro resueltos con tres archivos que el usuario autorizó y cuatro declarados. **El bloqueante que importa es B-1**: cinco guardas enumeran los archivos con `git ls-files` sin `--others`, así que **no miraron ninguno de los tres archivos nuevos** y pasaron en verde sin leerlos. Es el mismo falso verde de la 11.1 y la 18.2, y esta subfase tenía el hecho escrito en una observación propia, usado para explicar un timeout sin ver que la guarda no había revisado nada. Se volvió a correr con los archivos a la vista: 899 en verde.
+- **La comparación visual con la lámina 13**, con **quince diferencias declaradas una por una** y clasificadas.
+
+**No certifica:**
+- **el despliegue ni el recorrido del usuario**: al escribir esto la subfase está implementada y cerrada documentalmente, **sin commitear y sin desplegar**;
+- **la batería end-to-end completa en esta máquina**: corrieron `units.spec.ts` y `products.spec.ts`, que son los dos specs que esta subfase toca. La batería entera la cubre la CI sobre el SHA que se despliega;
+- **el nivel «preparado para producción»**, que además pide backups probados, rollback ensayado y observabilidad evaluada: eso se evalúa por fase;
+- **que las tres lecturas salgan en una sola foto**: van en un `Promise.all`, así que una venta concurrente entre dos de ellas deja el subtotal y la tabla contando distinto. El proyecto tiene `withSnapshot` y no está en `inventory`; llevarlo ahí sale de la lista cerrada y el usuario decidió declararlo y no tocarlo;
+- **el selector de moneda, el de base de cálculo y el historial unificado por unidad** que muestra la lámina: los tres tienen decisión en contra escrita (D-2, D-3 y D-4), y «Otras existencias» va a lo ancho y no en una columna a la derecha, que es la única diferencia de grilla y queda a decisión del usuario;
+- **el valor de inventario de la organización entera**: esto es la suma por producto. El total va a su propia subfase con su medición;
+- **ningún método de valuación** (FIFO, promedio ponderado móvil, costo de reposición): es la suma de los costos registrados y nada más;
+- **la edición de la unidad**, que sigue sin subfase, ni el enmascarado del IMEI, que sigue pidiendo un ADR;
+- **que la tabla de unidades entre sin desplazamiento a 1440 px**: la 24.5.2 lo dejó anotado para revisar acá y **no se revisó**; sigue pendiente, sin subfase;
+- **cuatro observaciones de entorno declaradas y no corregidas**, todas ajenas al cambio: una guarda que vive al filo de su tiempo por contención de memoria, dos pruebas end-to-end que necesitan más de 30 s en esta máquina, un `npm run build` interrumpido por el sistema por falta de memoria, y una caída de worker en un archivo de integración que pasa cuando se lo corre solo.
+
 ## 2026-10-31 — 24.5.2: unidades, panel, historial y filtros
 
 Octava subfase de la Fase 24 ([brief-24.5.2](docs/decisions/brief-24.5.2-unidades-panel-historial-y-filtros.md) §Cierre).

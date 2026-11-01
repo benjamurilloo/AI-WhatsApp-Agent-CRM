@@ -223,9 +223,19 @@ export type FormState =
       field: string | null;
       message: string;
       values: Record<string, string>;
+      // Desde la 24.5.2-b (D-9): adónde ir cuando el error tiene un destino. Hoy lo usa un solo
+      // caso, el IMEI repetido, y por eso es opcional: los demás rechazos no llevan a ninguna
+      // parte. `actions.ts` esparce el rechazo entero en el estado, así que viaja sin tocarlo.
+      linkHref?: string;
+      linkLabel?: string;
     };
 
-export type Rejection = { field: string | null; message: string };
+export type Rejection = {
+  field: string | null;
+  message: string;
+  linkHref?: string;
+  linkLabel?: string;
+};
 
 const UNIT_FIELD_MESSAGE: Record<UnitField, string> = {
   serial:
@@ -291,10 +301,22 @@ export function registerRejection(
     return { field, message: UNIT_FIELD_MESSAGE[field] };
   }
   if (result.code === "CONFLICT") {
+    // D-9: el error dice **cuál** unidad lo tiene y lleva hasta ella. Antes solo decía que existía,
+    // y encontrarla era trabajo del usuario: volver a la lista y buscar el IMEI a mano. La unidad
+    // puede ser de **otro** producto, así que el enlace sale del productId que trae el rechazo, no
+    // del de la pantalla.
+    const existing = result.existing;
     return {
       field: "serial",
-      message:
-        "Ya hay una unidad vigente con ese IMEI. Si se cargó mal, dala de baja y cargala de nuevo.",
+      message: existing
+        ? "Ya hay una unidad vigente con ese IMEI."
+        : "Ya hay una unidad vigente con ese IMEI. Si se cargó mal, dala de baja y cargala de nuevo.",
+      ...(existing
+        ? {
+            linkHref: `/productos/${existing.productId}/unidades?unidad=${existing.unitId}`,
+            linkLabel: "Ver la unidad que lo tiene",
+          }
+        : {}),
     };
   }
   if (result.code === "BUSINESS_RULE_VIOLATION") {

@@ -73,6 +73,10 @@ Monolito modular en TypeScript. Una sola aplicación desplegable, organizada int
 
   También desde la 24.5.1, **el recuento de unidades por estado** del Resumen es `countUnitsByStatus`, que agrupa **en SQL** (`GROUP BY status`) filtrando por organización y producto. No reusa `findUnitsOfProduct`: traer todas las unidades para devolver tres números es exactamente lo que la regla de los listados manda evitar. Devuelve `null` en un producto por cantidad, que no tiene unidades, y la pantalla distingue eso de una lectura fallida: ninguno de los dos casos se dibuja como un cero.
 
+- *Desde la 24.5.2-b* ([brief-24.5.2-b](../decisions/brief-24.5.2-b-costo-por-unidad-y-margen.md), D-5, D-6 y D-13): **el costo por unidad con su margen** lo compone la **página** de costos, no un módulo. El costo y el precio propio de cada unidad salen de `inventory` (`getProductUnitCosts`, solo `admin`); el precio vigente del producto y la función pura `computeMargin`, de `catalog`; la página los junta en memoria, sin `JOIN`. `catalog` sigue sin conocer `inventory`, e `inventory` no conoce el precio del producto.
+
+  Dos cosas que esa lectura resuelve **en SQL** y no en la página: la suma y el promedio cubren **todas** las disponibles aunque la tabla muestre un tope de 25 —si se calcularan sobre las filas dibujadas, el tope volvería mentira el total—, y la agregación agrupa por estado **y moneda**, porque dos recepciones del mismo producto en monedas distintas dejan dos monedas y entonces **no hay un total**: se muestran los dos, y el promedio y el margen se declaran incalculables en vez de inventar un tipo de cambio que el punto 5 del [ADR 0019](../decisions/0019-bases-de-los-comprobantes.md) no autoriza.
+
 Dónde vive cada módulo en el repositorio y cómo se hacen cumplir estas reglas: [RepositoryStructure.md](RepositoryStructure.md).
 
 ## Flujo de datos — ejemplo: ajuste de stock

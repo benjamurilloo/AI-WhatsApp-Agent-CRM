@@ -1,13 +1,17 @@
 import type { Metadata } from "next";
 import {
+  computeMargin,
   COSTS_PAGE_SIZE,
   getProductCostSummary,
   listProductCosts,
 } from "@/modules/catalog";
+import { getProductUnitCosts } from "@/modules/inventory";
 import {
   getMainCurrency,
   getOrganizationTimezone,
 } from "@/modules/organizations";
+import { logEvent, newRequestId } from "@/shared/log";
+import { moneyToDatabase } from "@/shared/money";
 import { requireSession } from "@/app/_auth/session";
 import {
   BackLink,
@@ -20,6 +24,7 @@ import {
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
 import { ActionNotice } from "@/app/_components/action-notice";
+import { Icon } from "@/app/_components/icons";
 import { PageNotice } from "@/app/_components/page-notice";
 import { Pagination, shownRangeText } from "@/app/_components/pagination";
 import { SectionCard } from "@/app/_components/section-card";
@@ -31,14 +36,18 @@ import {
   PRODUCT_NOT_FOUND_MESSAGE,
 } from "../../messages";
 import { ProductSubNav } from "../product-sub-nav";
+import { readUnitCosts, type UnitCostRow } from "./cost-data";
 import { CostForm } from "./cost-form";
 import { CostSummary } from "./cost-summary";
+import { OtherStock, UnitCostsSummary, UnitCostsTable } from "./unit-costs";
 import {
   COST_DESCRIPTION,
   costNoticeMessage,
   costText,
   INACTIVE_PRODUCT_COST_NOTICE,
   NO_COSTS_MESSAGE,
+  UNIT_COSTS_UNAVAILABLE_MESSAGE,
+  UNIT_MARGIN_TITLE,
 } from "./messages";
 
 export const metadata: Metadata = {
@@ -96,6 +105,59 @@ export default async function CostsPage({
   const product = summary.product;
   const notice = costNoticeMessage(query.aviso);
   const timeZone = await getOrganizationTimezone(context);
+
+  // Los costos por unidad pasan por la capa de composición, con su `catch`: un error de base
+  // **lanza**, así que sin esto la rama que anuncia «No disponible» sería código muerto
+  // (brief-24.5.2-b, I-2 y AC-11; el bloqueante B-3 de la 24.5.1 y B-2 de la 24.5.2).
+  const unitCosts = await readUnitCosts(
+    () => getProductUnitCosts(context, product.id),
+    (error) =>
+      logEvent({
+        level: "error",
+        requestId: newRequestId(),
+        route: "/productos/[productId]/costos",
+        code: "INTERNAL",
+        userId: context.userId,
+        organizationId: context.organizationId,
+        error,
+      }),
+  );
+
+  // El precio de referencia de una unidad: el propio si lo tiene, si no el vigente del producto
+  // (D-6). La página es la única que tiene las dos mitades —el costo y el precio propio vienen de
+  // `inventory`, el precio del producto de `catalog`—, así que acá se componen, sin `JOIN` (I-6).
+  const productPrice = summary.price
+    ? { amount: summary.price.amount, currency: summary.price.currency }
+    : null;
+  const toRow = (unit: {
+    cost: { amount: string; currency: string } | null;
+    price: { amount: string; currency: string } | null;
+  }): Pick<UnitCostRow, "price" | "priceIsOwn" | "margin"> => {
+    const price = unit.price ?? productPrice;
+    return {
+      price,
+      priceIsOwn: unit.price !== null,
+      margin: computeMargin(price, unit.cost),
+    };
+  };
+  const unitRows: UnitCostRow[] =
+    unitCosts.ok && unitCosts.tracking === "unit"
+      ? unitCosts.costs.availableUnits.map((unit) => ({
+          unit,
+          ...toRow(unit),
+        }))
+      : [];
+  // El margen de la base: el precio del producto contra el costo **promedio** de las disponibles.
+  // Sin base —o con dos monedas— no hay ninguno, y la tarjeta lo dice en vez de mostrar un cero.
+  const base =
+    unitCosts.ok && unitCosts.tracking === "unit" ? unitCosts.costs.base : null;
+  const baseMargin =
+    base?.ok === true
+      ? computeMargin(productPrice, {
+          amount: moneyToDatabase(base.average),
+          currency: base.currency,
+        })
+      : null;
   const pageHref = (target: number) =>
     target > 1
       ? `/productos/${product.id}/costos?pagina=${target}`
@@ -135,6 +197,51 @@ export default async function CostsPage({
           margin={summary.margin}
         />
       </SectionCard>
+
+      {/* El costo por unidad (brief-24.5.2-b, lámina 13). Un producto **por cantidad** no tiene
+          unidades, así que no se dibuja nada de esto: el tipo lo distingue de «no se pudo leer»,
+          y una tabla vacía afirmaría que el producto no tiene unidades cuando quizá no se pudo
+          averiguar (AC-8 e I-2). */}
+      {!unitCosts.ok ? (
+        <SectionCard
+          id="margen-por-unidad-no-disponible-titulo"
+          title={UNIT_MARGIN_TITLE}
+          icon="pieChart"
+          className="mt-6"
+        >
+          <p className="flex items-start gap-2 text-sm text-muted">
+            <Icon name="alert" className="mt-0.5 size-4 shrink-0" />
+            <span>{UNIT_COSTS_UNAVAILABLE_MESSAGE}</span>
+          </p>
+        </SectionCard>
+      ) : unitCosts.tracking === "unit" ? (
+        <>
+          <SectionCard
+            id="margen-por-unidad-titulo"
+            title={UNIT_MARGIN_TITLE}
+            icon="pieChart"
+            className="mt-6"
+          >
+            <UnitCostsSummary
+              base={unitCosts.costs.base}
+              baseMargin={baseMargin}
+              price={productPrice}
+            />
+          </SectionCard>
+
+          <UnitCostsTable
+            rows={unitRows}
+            totals={unitCosts.costs.availableTotals}
+            total={unitCosts.costs.availableTotal}
+          />
+
+          <OtherStock
+            units={unitCosts.costs.otherUnits}
+            totals={unitCosts.costs.otherTotals}
+            total={unitCosts.costs.otherTotal}
+          />
+        </>
+      ) : null}
 
       {product.isActive ? (
         <SectionCard

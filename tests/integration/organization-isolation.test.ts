@@ -1098,3 +1098,76 @@ describe("las lecturas de la lista y del historial de unidades no alcanzan a otr
     expect(ajenos).toEqual([]);
   });
 });
+
+// Las dos lecturas nuevas de la 24.5.2-b (brief-24.5.2-b, I-9 y AC-10). Mismo motivo que las de
+// arriba: desde el servicio, `getProduct` devuelve NOT_FOUND antes de que la consulta corra, así
+// que el `where` del repositorio solo es observable llamándolo directo. Primero el control
+// positivo, que es lo que impide que la prueba pase con un fixture vacío.
+describe("las lecturas de costos por unidad no alcanzan a otra organización", () => {
+  const dosUnidadesDeB = async () => {
+    await getDb().execute(
+      sql`update products set tracking = 'unit' where id = ${fixture.productB}`,
+    );
+    await getDb().execute(
+      sql`insert into stock_units (organization_id, product_id, serial, cost, cost_currency,
+            origin_type, created_by)
+          values (${fixture.orgB}, ${fixture.productB}, 'COSTO-B-1', 350, 'USD',
+                  'manual', ${fixture.userB}),
+                 (${fixture.orgB}, ${fixture.productB}, 'COSTO-B-2', 370, 'USD',
+                  'manual', ${fixture.userB})`,
+    );
+  };
+
+  it("la suma de costos por estado suma las de su dueña y ninguna ajena", async () => {
+    await dosUnidadesDeB();
+
+    const propias = await unitRepository.sumUnitCostsByStatus(
+      fixture.orgB,
+      fixture.productB,
+    );
+    expect(propias).toEqual([
+      { status: "available", currency: "USD", units: 2, total: "720.00" },
+    ]);
+
+    const ajenas = await unitRepository.sumUnitCostsByStatus(
+      fixture.orgA,
+      fixture.productB,
+    );
+    expect(ajenas).toEqual([]);
+  });
+
+  it("las unidades por estado son las de su dueña y ninguna ajena", async () => {
+    await dosUnidadesDeB();
+
+    const propias = await unitRepository.findUnitsOfProductByStatuses(
+      fixture.orgB,
+      fixture.productB,
+      ["available"],
+      25,
+    );
+    // Ordenado acá y no en la aserción al orden que devuelve la consulta: las dos filas entran en
+    // el mismo `insert`, así que comparten `created_at` al milisegundo y el desempate queda en el
+    // `id`, que es un UUID aleatorio. Lo que esta prueba fija es **cuáles** vienen, no en qué orden.
+    expect(propias.map((row) => row.serial).sort()).toEqual([
+      "COSTO-B-1",
+      "COSTO-B-2",
+    ]);
+
+    const ajenas = await unitRepository.findUnitsOfProductByStatuses(
+      fixture.orgA,
+      fixture.productB,
+      ["available"],
+      25,
+    );
+    expect(ajenas).toEqual([]);
+
+    // Y el conjunto de estados filtra de verdad: estas dos están disponibles, no reservadas.
+    const reservadas = await unitRepository.findUnitsOfProductByStatuses(
+      fixture.orgB,
+      fixture.productB,
+      ["reserved", "in_review"],
+      25,
+    );
+    expect(reservadas).toEqual([]);
+  });
+});

@@ -127,3 +127,61 @@ export function costNoticeMessage(
   const key = Array.isArray(value) ? value[0] : value;
   return key === "fijado" ? COST_SAVED_NOTICE : null;
 }
+
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+// El costo por unidad (brief-24.5.2-b, lámina 13). Lo de arriba es el costo **del producto**, de
+// `product_costs`; esto es el de cada **unidad**, de `stock_units`. Son dos cosas distintas en la
+// misma pantalla, y por eso ninguna etiqueta de acá dice «el costo» a secas (D-5).
+
+export const UNIT_COSTS_TITLE = "Costo por unidad";
+export const OTHER_STOCK_TITLE = "Otras existencias";
+
+// Los cuatro números de la cabecera. «Costo promedio **de las disponibles**» con el nombre largo a
+// propósito: el corto se confundiría con el costo vigente del producto, que está a dos líneas.
+export const UNIT_COSTS_TILES = {
+  price: "Precio de venta",
+  average: "Costo promedio de las disponibles",
+  gain: "Ganancia bruta estimada",
+  margin: "Margen bruto estimado",
+} as const;
+
+// Lo que la lámina pone debajo de la fórmula. No es decorativo: sin esto, «ganancia» se lee como
+// ganancia neta, que es otra cosa.
+export const UNIT_COSTS_ESTIMATE_NOTE =
+  "Estimación antes de gastos e impuestos. No es ganancia neta.";
+
+// Por qué no hay base. Los dos casos dicen cosas distintas porque **son** distintos: no tener
+// unidades disponibles es un resultado legítimo, y tener dos monedas es una limitación declarada
+// (D-13). Ninguno de los dos es «no se pudo leer».
+export const UNIT_COST_BASE_NONE = {
+  no_units:
+    "Sin unidades disponibles: no hay base para el promedio ni para el margen.",
+  mixed_currency:
+    "Las unidades disponibles tienen el costo en más de una moneda, así que no hay un promedio único. Abajo va el total de cada moneda.",
+} as const;
+
+// I-2: una lectura que falló se **anuncia**. Nunca se dibuja como «este producto no tiene
+// unidades», que afirmaría algo que no se sabe.
+export const UNIT_COSTS_UNAVAILABLE_MESSAGE =
+  "No disponible: no pudimos leer los costos por unidad.";
+
+export const OTHER_STOCK_NOTE = "Excluidas del cálculo.";
+export const OTHER_STOCK_EMPTY = "No hay unidades reservadas ni en revisión.";
+
+// De dónde salió el precio de referencia de una fila (D-6). Dos filas con precios distintos sin
+// esta aclaración parecen un error de datos.
+export const UNIT_PRICE_FROM_PRODUCT = "del producto";
+export const UNIT_PRICE_OWN = "propio";
+
+// El aviso de tope (R-3). Se dibuja **solo** cuando recortó: el proyecto ya decidió que un total
+// que miente es peor que una tabla larga, así que si hay más filas de las que entran, se dice.
+export function unitCostsCapMessage(shown: number, total: number): string {
+  if (total <= shown) return "";
+  return `Se muestran ${shown} de ${total} unidades. Las sumas de arriba cubren las ${total}.`;
+}
+
+// El título de la tarjeta de los cuatro números. La lámina la llama «Costos y margen», pero la
+// pantalla ya tiene una «Costo y margen» —la del costo **del producto**, de la 18.2— y dos tarjetas
+// con nombres casi iguales se confunden. Renombrar la vieja rompería tres aserciones en dos
+// pantallas que comparten ese nombre (D-7), así que la nueva se llama por lo que es.
+export const UNIT_MARGIN_TITLE = "Margen estimado sobre las disponibles";
