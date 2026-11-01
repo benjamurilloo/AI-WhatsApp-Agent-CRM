@@ -3,7 +3,7 @@
 - **Esquema**: `task-brief.v1`
 - **Tipo de tarea**: `implementation`
 - **Fase**: 24 — Pantallas rediseñadas con lo que ya existe ([Roadmap](../planning/Roadmap.md) §Fases 23 a 28)
-- **Subfase**: 24.5.2-b (Notion `40a702be6f4e816ba67dc792e609dd34`, en «Esperando»), nueva el 2026-10-31 de la división de la 24.5.2 ([brief-24.5.2](brief-24.5.2-unidades-panel-historial-y-filtros.md), D-1)
+- **Subfase**: 24.5.2-b (Notion `40a702be6f4e816ba67dc792e609dd34`; en «Completado» desde el 2026-11-01, al cerrar), nueva el 2026-10-31 de la división de la 24.5.2 ([brief-24.5.2](brief-24.5.2-unidades-panel-historial-y-filtros.md), D-1)
 - **Lámina de la v2**: 13 (`05-productos/desktop/13-costos-margen-v2.png`), del lote [V2-05](../ui-redesign/v2/05-productos/README-v2-05.md)
 - **Nivel de evidencia pedido**: `producer-consumer` (validado en integración)
 - **Estado**: **aprobado el 2026-11-01 por el usuario, con las recomendaciones** («apruebo el brief con las recomendaciones»). Es decir, quedan tomadas así: D-1 las dos secciones nuevas; **D-2 sin selector de moneda**; **D-3 la base como etiqueta, no selector**; **D-4 el historial unificado queda fuera**; D-5 los nombres largos de los dos costos; D-6 el precio propio de la unidad si lo tiene, diciendo cuál; **D-7 la tarjeta no se renombra**; **D-8 no se agrega el aviso al `viewer`, y el punto heredado de la 24.5.2 se cierra con su motivo**; D-9 entra el enlace a la unidad existente; D-10 hay revisión independiente; D-11 se despliega después de ella. P-1 y P-2 siguen abiertos y no los decide esta subfase.
@@ -260,11 +260,31 @@ Hecha el 2026-11-01 por un agente que no participó del trabajo, con acceso de s
 
 **B-1 es el hallazgo que justifica esta revisión.** El mismo falso verde de `git ls-files` ya le había pasado al proyecto dos veces —[brief-11.1](brief-11.1-catalogo-comercial.md) y [brief-18.2](brief-18.2-costo-y-margen.md), donde también lo encontró la revisión independiente—, y esta subfase tenía el hecho **escrito** en O-1: usó «los archivos nuevos todavía no están versionados» para explicar un timeout, sin ver que por ese mismo motivo la guarda no había revisado nada. La autoevaluación tuvo el dato delante y sacó la conclusión contraria.
 
-De los trece no bloqueantes: **cinco corregidos** (NB-1 rama inalcanzable, NB-11 un `id` que nombraba otra tarjeta, NB-12 el motivo repetido debajo de los totales a los que remite, NB-13 una aserción que no fijaba nada, y NB-4 la prueba del `viewer` sobre un producto por unidad); **cuatro resueltos con los tres archivos que el usuario autorizó** (NB-7 y las tres afirmaciones de NB-8); **tres declarados** en D-16 (NB-2, NB-5 y NB-6); **uno declarado** en R-2 (NB-3). NB-9 —el brief decía que Notion estaba en «Esperando»— se corrige al cerrar, junto con el estado de la tarea. NB-10, dos citas a un «§Reglas de dependencia» que en `Overview.md` se llama **§Reglas de dependencia**, quedó corregido en este brief.
+De los trece no bloqueantes: **cinco corregidos** (NB-1 rama inalcanzable, NB-11 un `id` que nombraba otra tarjeta, NB-12 el motivo repetido debajo de los totales a los que remite, NB-13 una aserción que no fijaba nada, y NB-4 la prueba del `viewer` sobre un producto por unidad); **cuatro resueltos con los tres archivos que el usuario autorizó** (NB-7 y las tres afirmaciones de NB-8); **tres declarados** en D-16 (NB-2, NB-5 y NB-6); **uno declarado** en R-2 (NB-3). NB-9 quedó corregido al cerrar: la tarea de Notion **ya estaba en «En proceso»**, así que lo desactualizado era la línea del brief, no Notion; hoy está en «Completado». NB-10, dos citas a un «§Reglas de dependencia» que en `Overview.md` se llama **§Reglas de dependencia**, quedó corregido en este brief.
 
 **La sospecha S-1** —que el fixture de `organization-isolation.test.ts` chocara con un invariante de saldo— quedó descartada por la corrida: ese archivo pasa.
 
 Una nota sobre el propio informe: la cita del precedente de B-1 apuntaba a `TraceabilityMatrix.md:71`, que es otro requisito. El precedente **existe** y está en los dos briefs citados arriba; la línea estaba mal. Se verificó antes de aceptar el hallazgo, que es para lo que sirve verificar.
+
+## Despliegue
+
+**`1e26d3a`, desplegado el 2026-11-01.** CI en `success` sobre ese SHA exacto (run 41323703896, 32 min), con el paso «Alcance del cambio» **sin recortar**. Sin migraciones: 67 antes y después (AC-14). Para volver atrás, `0641393`, anotado en `/var/lib/crm-production/despliegues` antes de desplegar.
+
+Las siete verificaciones del runbook, pasadas:
+
+| # | Verificación | Resultado |
+|---|---|---|
+| 1 | La configuración desplegada es la versionada | **18 de 18** archivos idénticos, y la tabla del runbook dice 18 |
+| 2 | Un solo salto de proxy | Fila de segundos de antigüedad, **única** en la ventana de 15 minutos, clave igual al hash de la IP del operador y distinta de la constante `sin-proxy`. Control negativo por túnel SOCKS: **clave distinta**, igual al hash de la IP de salida del túnel |
+| 3 | HSTS | Presente sobre HTTPS (`max-age=31536000; includeSubDomains`), ausente sobre HTTP, que responde `301` |
+| 4 | Escucha solo en loopback | `127.0.0.1:3000` |
+| 5 | El rol de la aplicación no es el dueño | `crm_app_login` contra `crm_owner`, sin privilegio de borrado sobre `audit_logs` y con lectura e inserción |
+| 6 | Ingestión y API de lectura | `401` en los tres endpoints desde afuera |
+| 7 | Ningún dato real | «Vixora» en 0, 0 y 0; las otras dos organizaciones son de demostración |
+
+**La verificación 5 se hizo de otra forma que la del runbook.** El runbook pide intentar un `DELETE FROM audit_logs` y esperar `permission denied`. Acá se leyó el catálogo con `has_table_privilege`, que no ejecuta ninguna escritura y además dice las tres cosas de una vez: quién es el rol, quién el dueño y qué puede hacer. Queda **propuesto** como mejora del runbook, que no está en la lista cerrada de esta subfase.
+
+Ni la IP ni su hash se versionan, ni acá ni en ningún otro lado: solo si coinciden y a qué hora es la fila.
 
 ## Condiciones de detención
 
