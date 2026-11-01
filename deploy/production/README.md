@@ -265,7 +265,7 @@ La 13.1.2 ejecutó una vuelta atrás completa el 2026-09-29 (AC-21): de `938423d
 Los mismos cinco pasos de staging, con `crm-production` en lugar de `crm-staging` y `crm.vixoraai.app` en lugar de `staging.vixoraai.app`, más dos pasos propios de producción:
 
 1. **La configuración desplegada es la versionada** (O-9). Se hace el `diff` de los **dieciocho** archivos de la tabla, como en staging, con el bucle del [runbook de restauración](../../docs/runbooks/restaurar-la-base.md) §Producción, punto 5. Eran once hasta la 13.3, trece hasta la 13.4, catorce hasta la 17.5 y dieciséis hasta la 29.4.2.
-2. **Un solo salto de proxy**, medido por consecuencia (AC-14). Se comparan hashes y **nunca se versiona ni la IP ni su hash**.
+2. **Un solo salto de proxy**, medido por consecuencia (AC-14). Se comparan hashes y **nunca se versiona ni la IP ni su hash**. Se hace con el `curl` del §2 de staging, cambiando el dominio: **no hace falta un navegador** (ver la corrección del 2026-11-01 allá). Tres cosas hacen válida la comparación, y las tres se comprueban: que la fila sea **de recién**, que sea **la única** de la ventana de 15 minutos —si no, una fila vieja da «iguales» sin probar nada—, y que su clave **no** sea el `sha256` de la constante `'sin-proxy'`, que es lo que `src/modules/auth/service.ts` hashea cuando no recibe IP. El control negativo es un segundo intento por un túnel SOCKS (`ssh -f -N -D 1080`, comprobando antes que la IP de salida sea distinta): tiene que dejar una **clave distinta**. La comparación se hace dentro de la shell y lo único que se imprime es «iguales» o «distintos».
 3. **HSTS** presente sobre HTTPS y ausente sobre HTTP.
 4. **La aplicación escucha solo en loopback.**
 5. **El rol de la aplicación no es el dueño.**

@@ -227,6 +227,8 @@ Lo barrido después del fallo, con los seis textos del formato viejo: `trade-ins
 | `src/app/(autenticado)/productos/[productId]/unidades/list-data.test.ts` | **Nuevo. Ampliación autorizada el 2026-10-31** (quinta tanda). Sus cinco pruebas, incluida la del fallo forzado |
 | `src/app/(autenticado)/productos/[productId]/unidades/forms.tsx` | **Ampliación autorizada el 2026-11-01** (séptima tanda, en el recorrido). `ReleaseUnitForm` acepta `className` e `icon` para entrar en el menú «···» de la fila, con sus valores de siempre por omisión |
 | `tests/e2e/trade-ins.spec.ts` | **Ampliación autorizada el 2026-10-31** (sexta tanda, después de que la CI fallara). Afirmaba «· En revisión» con el formato de fila que D-11 elimina. Ver la nota de abajo: **lo encontró la CI, no la enumeración** |
+| `deploy/staging/README.md` | **Ampliación autorizada el 2026-11-01** (octava tanda, después del segundo despliegue). Corrige la frase falsa del §2 de «Verificar después de desplegar» y agrega el `curl` que sí deja la fila |
+| `deploy/production/README.md` | **Ampliación autorizada el 2026-11-01** (octava tanda). El paso 2 remite a ese `curl`, y escribe las tres comprobaciones que hacen válida la comparación más el control negativo |
 | `tests/e2e/units.spec.ts` | Los recorridos |
 | `scripts/medir-caminos.ts` | Las dos mediciones (autorización del 2026-10-31) |
 | `docs/architecture/Overview.md` | La fila de `inventory`, por las lecturas nuevas |
@@ -691,6 +693,42 @@ Verificaciones del runbook, corridas después del despliegue:
 
 Journal desde el despliegue: **ninguna advertencia sin explicación**. Hay una, `Failed to kill control group … Invalid argument`, del `systemctl stop` previo al build, y es la que systemd emite al detener un servicio cuyo grupo ya se vació; y tres `UNAUTHENTICATED` que son **las tres sondas del paso 6**, con sus `request_id`.
 
-**El paso 2 queda otra vez sin correr, y se declara igual que en la 24.5.1**: comprobar el salto único de proxy exige un ingreso fallido **desde el navegador**, porque `curl` no deja la fila en `login_attempts`. La comparación byte a byte de `nginx-crm-production.conf` del paso 1 cubre la configuración, pero eso es indirecto y **no sustituye la medición por consecuencia**. Es la segunda subfase seguida con esta verificación de menos: conviene resolverlo con un procedimiento propio en vez de arrastrarlo.
+**El paso 2 queda otra vez sin correr, y se declara igual que en la 24.5.1**: comprobar el salto único de proxy exige un ingreso fallido **desde el navegador**, porque `curl` no deja la fila en `login_attempts`. La comparación byte a byte de `nginx-crm-production.conf` del paso 1 cubre la configuración, pero eso es indirecto y **no sustituye la medición por consecuencia**. Es la segunda subfase seguida con esta verificación de menos: conviene resolverlo con un procedimiento propio en vez de arrastrarlo. *Corregido el 2026-11-01, más abajo*: la razón que da este párrafo —que `curl` no puede dejar la fila— es **falsa**, se midió que sí puede, y el paso se corrió ese día con su control negativo.
 
 **Recorrido del usuario (AC-18)**: pendiente al escribir esto.
+
+### Segundo despliegue: las correcciones del recorrido, el 2026-11-01
+
+**Desplegado en producción el 2026-11-01 (UTC), en el SHA `0641393`.** Para volver atrás, `704bbb8`, anotado en `/var/lib/crm-production/despliegues` antes de desplegar.
+
+AC-17 sobre ese SHA: **run 41269461279, `success`**, con los **335 end-to-end en 20,8 minutos**. Se comprobó además que `0641393` fuera el `refs/heads/main` del remoto, porque el servidor hace `git fetch` y necesita alcanzarlo.
+
+| # | Paso | Resultado |
+|---|---|---|
+| — | Servicio y versión | `active` desde las 04:33:23 UTC; HEAD del servidor igual al SHA pedido |
+| — | Migraciones | **67**, ninguna nueva |
+| 1 | Configuración desplegada igual a la versionada | **18 de 18** archivos idénticos, y `deploy/production/` tiene 18 |
+| 2 | Un solo salto de proxy | **CORRIDO Y CUMPLIDO**, con su control negativo (ver abajo) |
+| 3 | HSTS | presente sobre HTTPS (`max-age=31536000; includeSubDomains`), ausente sobre HTTP, que redirige con `301` |
+| 4 | La aplicación escucha solo en loopback | `127.0.0.1:3000` |
+| 5 | El rol de la aplicación no es el dueño | `DELETE FROM audit_logs` con la conexión de `app.env` → `ERROR: permission denied for table audit_logs` |
+| 6 | Ingestión y lectura desde afuera | los tres endpoints en **`401`** |
+| 7 | Ningún dato real de un cliente | «Vixora» en **0 clientes, 0 mensajes, 0 productos**; «Demostración Vixora» 2/130/13 y «iPhone Demo» 2/148/38, las dos de demostración |
+
+Journal desde el despliegue: una sola advertencia, `Failed to kill control group … Invalid argument`, la del `systemctl stop` previo al build. **Está explicada y es recurrente**: 17 apariciones en 20 días, y ya figura en el brief de la 17.4. Las demás advertencias del período son del 20 de octubre, de los incidentes de memoria de la 29.5 y la 29.6.
+
+#### El paso 2, por fin medido — y la razón por la que no se corría era falsa
+
+Se corrió por primera vez desde la 24.5.0. Resultado: la fila más reciente de `login_attempts` con `scope='ip'` tenía **25 segundos** de antigüedad, era **la única** en la ventana de 15 minutos —así que no hay una fila vieja dando un «iguales» sin probar nada— y su `key_hash` **coincide** con el `sha256` de la IP pública del operador, y **no** es el `sha256` de la constante `'sin-proxy'` que `service.ts:126` usa cuando no recibe IP. El control negativo que el runbook pide se ejecutó: un segundo intento por un túnel SOCKS (`ssh -f -N -D 1080`), comprobando antes que la IP de salida fuera distinta, dejó una **segunda clave distinta**. Dos intentos, dos IP, dos claves. H-3 no se reproduce.
+
+Nada de esto se versiona salvo el veredicto: ni la IP ni su hash entraron en un comando impreso, en un archivo ni en esta nota. La comparación se hizo dentro de la shell y lo único que salió fue «iguales» o «distintos».
+
+**Corrección a lo que dijeron la 24.5.1 y la tabla de arriba.** Las dos justificaron el paso sin correr diciendo que la medición «exige un ingreso fallido **desde el navegador**, porque `curl` no deja la fila en `login_attempts`». Eso es **falso**, y haberlo creído costó tres subfases de verificación de menos:
+
+- El formulario de ingreso funciona **sin JavaScript** —es una decisión del proyecto, con pruebas que la cubren—, así que su marcado trae los campos ocultos que un navegador sin scripts envía: `$ACTION_REF_1`, `$ACTION_1:0` con el id de la acción, `$ACTION_1:1` y `$ACTION_KEY`. Se leen del HTML que el propio servidor sirve a un cliente sin sesión.
+- Con esos cuatro campos más `email` y `password`, un `POST` `multipart/form-data` de `curl` ejecuta la Server Action igual que el navegador: devolvió `200` con «Email o contraseña incorrectos» y **dejó la fila**.
+- El intento de hacerlo por el navegador fue justamente lo que destapó el error: el Chrome del usuario tiene sesión abierta, así que `/login` redirige al panel. El camino «desde el navegador» no solo no era necesario: era el **más difícil** de los dos, y pedía cerrar la sesión del usuario en producción.
+
+La lección es la que el proyecto ya aprendió en otra forma: **una precaución que nadie volvió a medir se convierte en una limitación inventada**. El runbook decía «un `POST` suelto de `curl` no genera el intento», que es verdad para un `POST` suelto, y de ahí se concluyó que ningún `curl` podía. Hay que corregir esa frase del runbook de staging y la del de producción.
+
+Se usó `prueba@ejemplo.invalid` con `contrasena-falsa-2026`, los valores que el runbook fija. Son dos literales públicos que no autentican a nadie: el propósito del paso es que el ingreso **falle**. Gastaron 2 de los 20 intentos por IP y 2 de los 5 por cuenta de una dirección inexistente, en una ventana de 15 minutos.

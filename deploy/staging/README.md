@@ -167,12 +167,34 @@ Los dos primeros comprueban lo que ninguna guarda puede: que el servidor tenga l
    ```
 2. **Que siga habiendo un solo salto de proxy.** Si alguna vez hay dos, `session-cookie.ts` lee una IP interna idéntica para todas las peticiones y H-3 vuelve sin que nada falle. La aplicación **no registra** la cabecera en el log, así que no se mira ahí: se mide por consecuencia, con el mismo método del AC-5. La clave del límite por IP es `sha256(ip)` sin sal y queda guardada en `login_attempts.key_hash`, así que comparar hashes decide el asunto sin ambigüedad.
 
-   El ingreso es una **Server Action**: un `POST` suelto de `curl` no genera el intento. La fila se produce fallando el ingreso desde el navegador, en `https://staging.vixoraai.app/login`.
+   El ingreso es una **Server Action**: un `POST` suelto de `curl` no genera el intento. Pero `curl` **sí puede** generarlo, y es el camino más corto. *Corregido el 2026-11-01, al desplegar las correcciones de la 24.5.2*: hasta ese día esta línea decía que la fila «se produce fallando el ingreso desde el navegador», y de «un `POST` suelto no sirve» se había concluido que ningún `curl` servía. **Eso dejó el paso sin correr en tres despliegues seguidos** (la 24.5.0, la 24.5.1 y el primero de la 24.5.2), y cuando por fin se intentó por el navegador no se pudo: el Chrome del operador tiene sesión abierta y `/login` redirige al panel.
+
+   El formulario de ingreso **funciona sin JavaScript**, que es una decisión del proyecto con pruebas que la cubren. Por eso su marcado trae los campos ocultos que un navegador sin scripts envía, y se leen del HTML que el propio servidor sirve a un cliente sin sesión:
+
+   ```
+   # 0. Los cuatro campos ocultos de la Server Action. El id de la acción y el
+   #    $ACTION_KEY cambian con cada build, así que se leen de este HTML, no se copian.
+   curl -s https://staging.vixoraai.app/login -o login.html
+   grep -o '<input[^>]*type="hidden"[^>]*>' login.html
+
+   # 1. El intento, como lo manda un navegador sin scripts: multipart/form-data con
+   #    los cuatro campos ocultos más email y password. Responde 200 con
+   #    «Email o contraseña incorrectos» y DEJA LA FILA.
+   curl -s -o /dev/null -w 'HTTP %{http_code}\n' -X POST https://staging.vixoraai.app/login \
+     -F '$ACTION_REF_1=' \
+     -F '$ACTION_1:0={"id":"<el id del HTML>","bound":"$@1"}' \
+     -F '$ACTION_1:1=[{"status":"idle"}]' \
+     -F '$ACTION_KEY=<el del HTML>' \
+     -F 'email=prueba@ejemplo.invalid' \
+     -F 'password=contrasena-falsa-2026'
+   ```
+
+   Fallar el ingreso desde el navegador sigue valiendo, en una ventana de incógnito o con la sesión cerrada. Las dos formas dejan la misma fila.
 
    **La contraseña del intento tiene que tener 12 caracteres o más**, por ejemplo `contrasena-falsa-2026` con el email `prueba@ejemplo.invalid`. Una más corta no pasa la validación del formato, que corta antes de contar el intento: no deja fila, y la pantalla muestra el mismo «Email o contraseña incorrectos.», así que no se nota (E-4, 12.5.1).
 
    ```
-   # 1. Fallar el ingreso una vez desde el navegador. Después, las claves que quedaron,
+   # 2. Las claves que quedaron, después del intento de arriba (por curl o por navegador),
    #    con su hora: una fila vieja de otro despliegue da «iguales» sin probar nada.
    #    Se consulta como `postgres` y no con DATABASE_URL: esa variable no existe en una
    #    sesión ssh —vive en /etc/crm-staging/app.env, 0600 de root (D-8)— y `psql ""` se
@@ -180,7 +202,7 @@ Los dos primeros comprueban lo que ninguna guarda puede: que el servidor tenga l
    ssh crm-staging "sudo -u postgres psql -d crm_staging -tAc \
      \"select attempted_at, key_hash from login_attempts where scope='ip' order by attempted_at desc limit 3;\""
 
-   # 2. El hash de tu IP pública, que es contra lo que se compara.
+   # 3. El hash de tu IP pública, que es contra lo que se compara.
    curl -s https://api.ipify.org | tr -d '\n' | sha256sum | cut -d' ' -f1
    ```
 
