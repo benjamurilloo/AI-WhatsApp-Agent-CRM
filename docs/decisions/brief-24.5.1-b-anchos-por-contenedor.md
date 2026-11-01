@@ -537,7 +537,7 @@ despliegue y el recorrido del usuario, y ninguno de esos niveles se infiere de l
 | AC-8 | **Cumplido**: desbordamiento cero a 320 px en las tres pantallas y axe sin violaciones en claro y en oscuro sobre las tres. `/costos` faltaba y lo marcó la revisión |
 | AC-9 | **Cumplido**: los cinco controles de menos de 44 px quedan fijados; ninguno se achicó |
 | AC-10 | **Cumplido**: seis diferencias numeradas contra las láminas 09 y 12, dos de ellas **resueltas** por esta subfase |
-| AC-11 | **Parcial**: la batería local está en verde; **la CI sobre el SHA que se despliegue, pendiente** |
+| AC-11 | **Cumplido**: batería local en verde y **CI en `success` sobre `64bf7f4`**, el SHA desplegado (run 41346525801, 24 min, sin recortar) |
 | AC-12 | **Cumplido**: revisión independiente R1, un bloqueante real corregido, ocho no bloqueantes corregidos y uno falso |
 | AC-13 | **Pendiente**: el recorrido del usuario |
 | AC-14, AC-15 | **Cumplidos**, y AC-14 terminó corrigiendo **dos** afirmaciones vencidas, no una |
@@ -552,6 +552,41 @@ despliegue y el recorrido del usuario, y ninguno de esos niveles se infiere de l
   archivo**, `tests/e2e/products.spec.ts`, para sumar axe sobre `/costos`; ese spec se volvió a
   correr entero: **27 de 27 en 3,4 minutos**. Se dice así y no «337 sobre el árbol final», que
   sería inferir.
+
+### El despliegue (AC-11)
+
+`64bf7f4` está en producción desde el **2026-11-01**, sin migraciones nuevas (67, las mismas), con
+`1e26d3a` como vuelta atrás, anotado en `/var/lib/crm-production/despliegues`. La CI sobre ese SHA
+exacto dio `success` (run 41346525801, 24 min) con los end-to-end de Chromium y el paso «Alcance
+del cambio» **sin recortar**.
+
+Las siete verificaciones del runbook pasaron: 18 de 18 archivos de configuración idénticos a los
+versionados; un solo salto de proxy, con la fila de recién, **única** en la ventana de 15 minutos,
+clave igual al `sha256` de la IP que llamó y distinta del `sha256('sin-proxy')`, y su control
+negativo desde otra IP dando clave distinta; HSTS presente sobre HTTPS y ausente sobre HTTP; la
+aplicación escuchando solo en `127.0.0.1:3000`; el rol `crm_app_login` distinto del dueño
+`crm_owner`, con `INSERT=t`, `DELETE=f` y `UPDATE=f` sobre `audit_logs`; los tres endpoints en
+`401` desde afuera; y la organización real en cero filas, con las dos de demostración con datos.
+**Ni la IP ni su hash se versionan**: solo el veredicto y la hora de la fila.
+
+Propio de esta subfase, porque el cambio es CSS y podía no llegar al navegador: la hoja de estilos
+**servida por producción** trae `container-type:inline-size` y `@container (min-width:28rem)`, que
+es el umbral de 448 px. Sin esa comprobación, «desplegado» solo diría que el proceso arrancó.
+
+**Dos verificaciones se hicieron por un camino distinto del escrito, y el runbook quedó corregido
+en los dos casos** —si no, la próxima persona vuelve a chocar con lo mismo—:
+
+- La **verificación 5** pedía intentar un `DELETE FROM audit_logs` y esperar `permission denied`.
+  Ahora lee el catálogo con `has_table_privilege`: prueba lo mismo, dice además el permiso de
+  `UPDATE` y no manda una escritura destructiva contra la bitácora de auditoría, que es justo la
+  tabla que el paso protege. Esta variante ya estaba **propuesta al cerrar la 24.5.2-b** y usada en
+  ese despliegue, pero **el runbook se había quedado con el `DELETE`**: una mejora propuesta y no
+  escrita no cambia nada, y es la segunda vez en el proyecto que una corrección se aplica en un
+  lugar y no en la fuente.
+- El **control negativo de la verificación 2** se hace con un túnel SOCKS. Acá el túnel quedó
+  bloqueado del lado del operador, y el intento se mandó **desde el propio droplet contra el
+  dominio público**, que sale a internet y vuelve a entrar por nginx. Queda escrito como variante
+  válida, con la trampa dicha: contra `localhost:3000` no probaría nada, porque saltea nginx.
 
 ### Lo que esta subfase deja abierto
 
