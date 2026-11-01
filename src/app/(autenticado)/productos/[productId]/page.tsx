@@ -346,11 +346,23 @@ export default async function ProductPage({
           />
         </div>
       ) : (
-        <div className="mt-6 grid items-start gap-6 lg:grid-cols-3">
+        <div className="mt-6 grid items-start gap-6 lg:grid-cols-2">
           {/* Las dos columnas van cada una en un solo contenedor. Antes eran tres celdas en dos
               filas, y la grilla repartía el alto de la columna derecha entre las dos filas: con la
-              derecha más alta que la izquierda quedaba un hueco grande en el medio. */}
-          <div className="flex min-w-0 flex-col gap-6 lg:col-span-2">
+              derecha más alta que la izquierda quedaba un hueco grande en el medio.
+              Las dos miden lo mismo, como la lámina 09 (brief-24.5.1-b, D-4). Antes eran dos
+              tercios y un tercio: la derecha quedaba con unos 299 px útiles y sus tarjetas partían
+              palabras, mientras la izquierda, más corta, dejaba un hueco al pie. El ancho de esta
+              columna nunca fue una diferencia declarada de la 24.5.1; su contenido sí (su
+              diferencia 13).
+              El reparto de tarjetas también cambió (brief-24.5.1-b, D-7, decidido por el usuario
+              después de medir): igualar los anchos no alcanzaba, porque «Imagen» sola mide 804 px
+              —el 47 % de su columna— y su marco cuadrado CRECE con el ancho, así que ensanchar la
+              columna derecha agrandaba el hueco en vez de cerrarlo. Con Imagen acá y Logística y
+              Ubicación enfrente, las dos columnas quedan parejas: medido, el hueco baja de 963 a
+              51 px a 1440. Si se agrega o se saca una tarjeta de este resumen, hay que volver a
+              medirlo: el equilibrio es de los altos, no de las clases. */}
+          <div className="flex min-w-0 flex-col gap-6 lg:col-start-1 lg:row-start-1">
             <SectionCard
               id="datos-titulo"
               title="Información básica"
@@ -410,49 +422,6 @@ export default async function ProductPage({
               />
             </SectionCard>
 
-            <SectionCard id="logistica-titulo" title="Logística" icon="truck">
-              <DetailList
-                items={[
-                  {
-                    label: "Peso",
-                    value: product.weightKg ? (
-                      <span className="tabular-nums">
-                        {formatMeasure(product.weightKg)} kg
-                      </span>
-                    ) : null,
-                  },
-                  {
-                    label: "Dimensiones (largo × ancho × alto)",
-                    value:
-                      product.lengthCm &&
-                      product.widthCm &&
-                      product.heightCm ? (
-                        <span className="tabular-nums">
-                          {formatMeasure(product.lengthCm)} ×{" "}
-                          {formatMeasure(product.widthCm)} ×{" "}
-                          {formatMeasure(product.heightCm)} cm
-                        </span>
-                      ) : null,
-                  },
-                ]}
-              />
-            </SectionCard>
-
-            <SectionCard id="ubicacion-titulo" title="Ubicación" icon="mapPin">
-              <DetailList
-                items={[
-                  {
-                    label: "Ubicación",
-                    icon: "mapPin",
-                    value: product.location,
-                  },
-                  { label: "Estante", icon: "layers", value: product.shelf },
-                ]}
-              />
-            </SectionCard>
-          </div>
-
-          <div className="flex min-w-0 flex-col gap-6 lg:col-start-3 lg:row-start-1">
             <SectionCard id="imagen-titulo" title="Imagen" icon="package">
               <ProductImage
                 productId={product.id}
@@ -480,7 +449,9 @@ export default async function ProductPage({
                 </>
               ) : null}
             </SectionCard>
+          </div>
 
+          <div className="flex min-w-0 flex-col gap-6 lg:col-start-2 lg:row-start-1">
             <SectionCard id="precio-titulo" title="Precio" icon="tag">
               <p className="text-sm font-semibold text-muted">
                 Precio de venta
@@ -633,6 +604,47 @@ export default async function ProductPage({
                 </p>
               </SectionCard>
             )}
+
+            <SectionCard id="logistica-titulo" title="Logística" icon="truck">
+              <DetailList
+                items={[
+                  {
+                    label: "Peso",
+                    value: product.weightKg ? (
+                      <span className="tabular-nums">
+                        {formatMeasure(product.weightKg)} kg
+                      </span>
+                    ) : null,
+                  },
+                  {
+                    label: "Dimensiones (largo × ancho × alto)",
+                    value:
+                      product.lengthCm &&
+                      product.widthCm &&
+                      product.heightCm ? (
+                        <span className="tabular-nums">
+                          {formatMeasure(product.lengthCm)} ×{" "}
+                          {formatMeasure(product.widthCm)} ×{" "}
+                          {formatMeasure(product.heightCm)} cm
+                        </span>
+                      ) : null,
+                  },
+                ]}
+              />
+            </SectionCard>
+
+            <SectionCard id="ubicacion-titulo" title="Ubicación" icon="mapPin">
+              <DetailList
+                items={[
+                  {
+                    label: "Ubicación",
+                    icon: "mapPin",
+                    value: product.location,
+                  },
+                  { label: "Estante", icon: "layers", value: product.shelf },
+                ]}
+              />
+            </SectionCard>
           </div>
         </div>
       )}

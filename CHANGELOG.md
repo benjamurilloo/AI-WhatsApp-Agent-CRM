@@ -2,6 +2,28 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-11-01 — 24.5.1-b: anchos que dependen del contenedor, no de la ventana
+
+Décima subfase de la Fase 24 ([brief-24.5.1-b](docs/decisions/brief-24.5.1-b-anchos-por-contenedor.md) §Cierre). Nace de **tres defectos que encontró el usuario recorriendo pantallas ya cerradas de la 24.5.1**, no una prueba ni una revisión. Lleva el número de la subfase que corrige, aunque se ejecute después de la 24.5.2-b.
+
+**Certifica:**
+- **El selector de moneda entra en su tarjeta.** Pedía 384 px fijos (`sm:w-96`, una medida de ventana) dentro de una tarjeta de 299 px útiles en la columna lateral de «Fijar precio», y sobresalía unos 85. Ahora ocupa lo que hay con tope de 384 (`w-full sm:max-w-96`), que es lo que dibuja la lámina 12: en el panel de la v2 todos los campos ocupan el ancho del panel. Se arregló también en «Fijar costo», donde la misma línea estaba copiada y todavía no se notaba.
+- **La lista de definición compartida dejó de partir las palabras.** Decidía dos columnas por el ancho de la **ventana** (`sm:`, 640 px) aunque viviera en una columna lateral: en la ventana de la captura del usuario al valor le quedaban **27 px** y «Sin costo» se dibujaba «Sin cost / o». Ahora exige **las dos condiciones a la vez** (`sm:@md:`): la ventana llega a 640 **y** el contenedor llega a 448. Es la primera consulta de contenedor del proyecto, y la convención quedó escrita en `Screens.md`.
+- **Pedidos y ventas se arreglaron solas, sin tocar un solo archivo suyo.** Sus tarjetas Cliente y Estado tenían el mismo defecto en contenedores de 188 a 297 px. Medido en cuatro anchos con un instrumento temporal que se usó y se borró.
+- **El Resumen del producto en dos columnas del mismo ancho**, como la lámina 09, **y repartido de nuevo entre ellas**. Igualar los anchos no alcanzaba y la medición lo mostró: la tarjeta «Imagen» mide **804 px —el 47 % de su columna— y su marco cuadrado crece con el ancho**, así que ensanchar la columna derecha agrandaba el hueco en vez de cerrarlo. Con Imagen a la izquierda y Logística y Ubicación a la derecha, **el hueco al pie baja de 898, 855 y 1.189 px a 51, 187 y 266** a 1440, 1280 y 1082. El reparto lo decidió el usuario con los números delante (D-7), después de que el brief lo excluyera.
+- **Ninguna migración, tabla, columna, contrato ni lectura nueva** (67 migraciones, las mismas). Todo el cambio es CSS y orden de tarjetas; lo que andaba sin JavaScript sigue andando igual.
+- **Dos afirmaciones vencidas del repositorio corregidas**, y la lección de que eran dos: el desplazamiento horizontal de la tabla de unidades a 1440 px figuraba como pendiente en dos lugares de `brief-24.5.2` y en `HANDOFF.md`, cuando **ya lo había arreglado esa misma subfase** en su segundo despliegue. La primera corrección arregló una aparición y no buscó las demás; las encontró la revisión independiente.
+- **Validado localmente**: 1.294 de `unit`, 899 de `guards` y 1.894 de `integration` —con una prueba de rendimiento ajena que falló por contención y pasa 28 de 28 corrida sola—, más la batería end-to-end **entera en verde, 337 de 337 en 33 minutos**.
+- **Validado en integración** para las tres pantallas, contra el build de producción con PostgreSQL real: cada criterio sale de `getBoundingClientRect` o `getComputedStyle`, no de mirar la pantalla. Desbordamiento cero a 320 px y axe sin violaciones en claro y en oscuro sobre las tres.
+- **Una revisión independiente, R1, con su bloqueante real y corregido.** El umbral por contenedor **sí** cambiaba el dibujo de seis pantallas que esta subfase no podía editar, en la franja de **522 a 639 px de ventana**: la justificación del brief había mirado 640 y 500 y era falsa en el medio. Peor, **la condición de detención que preveía exactamente eso no se disparó**, porque la prueba derivaba el valor esperado de la propia medición y salteaba la franja justo por los dos extremos. De los nueve no bloqueantes, ocho corregidos y **uno falso**, verificado contra el código antes de descartarlo.
+
+**No certifica:**
+- **el nivel «validado en staging» ni «preparado para producción»**: faltan la CI sobre el SHA que se despliegue, el despliegue y el recorrido del usuario;
+- **que `/ventas/[saleId]` entre a 390 px**: desborda 13 px, y la causa es otra y anterior —el artículo del comprobante es un ítem de grilla sin `min-w-0`, así que el ancho mínimo de su tabla lo estira—. Está fuera de la lista cerrada;
+- **que todas las áreas táctiles lleguen a 44 px**: «Guardar imagen» mide 40, es anterior a esta subfase y su formulario está fuera de la lista cerrada. Queda fijado en la prueba para que no empeore;
+- **que `format:check` y `lint` pasen en esta máquina**: fallan por `core.autocrlf` sin `.gitattributes` contra el `endOfLine: lf` de Prettier, y por una skill que `.gitignore` excluye. Los dos son invisibles en la CI y ninguno es de esta subfase;
+- **ninguna decisión sobre si `selectClass` debería traer su propio ancho**: son 106 usos en 39 archivos y queda como pendiente propio.
+
 ## 2026-11-01 — 24.5.2-b: costo por unidad y margen
 
 Novena subfase de la Fase 24 ([brief-24.5.2-b](docs/decisions/brief-24.5.2-b-costo-por-unidad-y-margen.md) §Cierre). Es la segunda mitad de la 24.5.2, dividida el 2026-10-31 por tamaño.

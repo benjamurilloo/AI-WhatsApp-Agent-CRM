@@ -310,7 +310,7 @@ La barra de pestañas con los cinco nombres cortos y el subrayado del actual; la
 10. No está el panel «Inventario por estado» con «Ver reserva» y «Revisar unidad»: los dos piden lecturas que hoy no existen —el pedido que reserva la unidad y su checklist—.
 11. No está la tarjeta «Pendiente de revisión» con la unidad, su IMEI y su batería, por el mismo motivo.
 12. «Últimos movimientos» sigue dentro de la tarjeta Stock y no como una franja al pie.
-13. La columna derecha conserva Imagen, Precio, Costo y margen y Stock, que la v2 no dibuja en esta pantalla.
+13. La columna derecha conserva Imagen, Precio, Costo y margen y Stock, que la v2 no dibuja en esta pantalla. *Anotado el 2026-11-01 desde la [24.5.1-b](brief-24.5.1-b-anchos-por-contenedor.md), H-4*: esta diferencia declaró **el contenido** de la columna derecha y nunca **su ancho**. La implementación la hizo de un tercio (`lg:grid-cols-3` con la principal en `lg:col-span-2`) mientras la lámina 09 dibuja **dos columnas iguales**, y ese tercio dejaba 299 px útiles: las tarjetas de adentro partían palabras y la columna izquierda, más corta, dejaba un hueco al pie. La 24.5.1-b lo lleva a dos columnas iguales (su D-4). El contenido de la columna no cambia: esta diferencia 13 sigue en pie.
 14. El encabezado no muestra la foto del producto. La ficha sí la lee, pero el encabezado compartido es el mismo de las otras dos pestañas, que no la leen; ponerla solo en una dejaría las tres distintas.
 
 **Lámina 11 — Movimientos**

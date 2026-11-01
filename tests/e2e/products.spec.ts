@@ -1404,3 +1404,244 @@ test("caso 26: brief-24.5.1 la ficha entra en 320 px con un nombre largo", async
   }
   await expectAccessible(page, "ficha a 320 px");
 });
+
+// Mide cuánto sobresale un elemento del borde interior de su tarjeta. Negativo o cero es que entra
+// (brief-24.5.1-b, AC-1).
+async function sobresaleDeSuTarjeta(page: Page, selector: string) {
+  return page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    const card = el?.closest("section");
+    if (!el || !card) return null;
+    const estilo = getComputedStyle(card);
+    const padding = Number.parseFloat(estilo.paddingRight || "0");
+    const borde =
+      card.getBoundingClientRect().right -
+      padding -
+      Number.parseFloat(estilo.borderRightWidth || "0");
+    return Math.round((el.getBoundingClientRect().right - borde) * 10) / 10;
+  }, selector);
+}
+
+// Cada lista de definición con el ancho de su contenedor y cuántas pistas resolvió la grilla
+// (brief-24.5.1-b, AC-3 y AC-5). Es la medida que importa: no se mira el dibujo, se le pregunta al
+// navegador cuántas columnas armó.
+async function listasDeDefinicion(page: Page) {
+  return page.evaluate(() =>
+    [...document.querySelectorAll("dl")]
+      .filter((dl) => dl.parentElement?.classList.contains("@container"))
+      .map((dl) => ({
+        titulo:
+          dl.closest("section")?.querySelector("h2")?.textContent?.trim() ??
+          "?",
+        contenedor: Math.round(
+          (dl.parentElement as HTMLElement).getBoundingClientRect().width,
+        ),
+        pistas: getComputedStyle(dl).gridTemplateColumns.split(" ").length,
+      })),
+  );
+}
+
+const UMBRAL_DETALLE = 448; // @md, en píxeles (brief-24.5.1-b, D-3).
+const VENTANA_SM = 640; // sm, en píxeles: el punto de quiebre de siempre del proyecto.
+
+// La regla de la lista de definición después de B-1: dos columnas solo si la ventana llega a `sm`
+// Y el contenedor llega a `@md`. El término de la ventana no es decorativo: es el que deja escrito
+// que debajo de 640 px nada cambió respecto de antes de esta subfase, que es justo lo que una
+// aserción derivada solo del contenedor no podía comprobar.
+const dosPistas = (ventana: number, contenedor: number) =>
+  ventana >= VENTANA_SM && contenedor >= UMBRAL_DETALLE;
+
+test("caso 27: brief-24.5.1-b los anchos se deciden por el contenedor y no por la ventana", async ({
+  page,
+}, testInfo) => {
+  // Diez anchos por dos pantallas, más axe en claro y en oscuro: no entra en el límite normal.
+  test.setTimeout(120_000);
+  const productId = await insertProduct(
+    "IP13-128-AZU-R",
+    "iPhone 13 128 GB Azul usado",
+    {
+      balance: "2",
+    },
+  );
+  await login(page, ADMIN);
+
+  // AC-3 y AC-5: la regla, medida en las dos pantallas y en siete anchos. Una lista arma dos
+  // columnas si y solo si su contenedor llega al umbral, mida lo que mida la ventana. Antes la
+  // decisión era `sm:` (640 px de ventana) y en la columna angosta al valor le quedaban 27 px.
+  for (const width of [1440, 1280, 1082, 1024, 640, 600, 560, 522, 500, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const path of ["", "/costos"]) {
+      await page.goto(`/productos/${productId}${path}`);
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+      const listas = await listasDeDefinicion(page);
+      expect(
+        listas.length,
+        `no se encontró ninguna lista de definición en /productos/…${path} a ${width} px`,
+      ).toBeGreaterThan(0);
+      testInfo.annotations.push({
+        type: "listas de definición",
+        description: `${width} px …${path}: ${listas.map((l) => `${l.titulo} ${l.contenedor}px→${l.pistas}`).join(" · ")}`,
+      });
+      for (const dl of listas) {
+        expect(
+          dl.pistas,
+          `«${dl.titulo}» a ${width} px: contenedor de ${dl.contenedor} px en /productos/…${path}`,
+        ).toBe(dosPistas(width, dl.contenedor) ? 2 : 1);
+      }
+    }
+  }
+
+  // El caso exacto de la captura del usuario: a 1082 px la columna derecha no llega al umbral, así
+  // que sus tarjetas van en una sola columna y el valor usa todo el ancho.
+  await page.setViewportSize({ width: 1082, height: 900 });
+  await page.goto(`/productos/${productId}`);
+  const estrechas = (await listasDeDefinicion(page)).filter(
+    (dl) => !dosPistas(1082, dl.contenedor),
+  );
+  expect(
+    estrechas.length,
+    "tarjetas de la columna angosta a 1082 px",
+  ).toBeGreaterThan(0);
+  expect(estrechas.every((dl) => dl.pistas === 1)).toBe(true);
+
+  // AC-6 y AC-7: dos columnas de igual ancho, como la lámina 09, y el hueco al pie de la más corta.
+  for (const width of [1440, 1280, 1082]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`/productos/${productId}`);
+    const resumen = await page.evaluate(() => {
+      const grid = document.querySelector("#datos-titulo")?.closest("div.grid");
+      if (!grid) return null;
+      const columnas = [...grid.children].map((c) => c.getBoundingClientRect());
+      return {
+        anchos: columnas.map((r) => Math.round(r.width)),
+        altos: columnas.map((r) => Math.round(r.height)),
+        hueco: Math.round(Math.abs(columnas[0]!.height - columnas[1]!.height)),
+        tarjetas: [...grid.children].map((col) =>
+          [...col.children]
+            .map(
+              (card) =>
+                `${card.querySelector("h2")?.textContent?.trim() ?? "?"} ${Math.round(card.getBoundingClientRect().height)}`,
+            )
+            .join(" · "),
+        ),
+      };
+    });
+    // El hueco al pie de la columna más corta, con tope (AC-7). Antes de esta subfase medía
+    // 898 px a 1440, 855 a 1280 y 1189 a 1082; hoy mide 51, 187 y 266.
+    // El tope es 300 y lo que protege tiene un límite que conviene decir: cruzar de columna
+    // cualquiera de las tarjetas grandes —Imagen, Stock, Costo y margen, Precio— rompe el tope y la
+    // prueba falla; mover una de las chicas, Logística o Ubicación, da 321 y también falla; pero
+    // agregar una tarjeta chica a la columna más alta puede quedar por debajo del tope. Es una
+    // guarda del resultado, no una prueba de que el reparto sea óptimo.
+    expect(
+      resumen!.hueco,
+      `hueco al pie del resumen a ${width} px (${resumen!.tarjetas.join(" | ")})`,
+    ).toBeLessThanOrEqual(300);
+
+    expect(resumen, `resumen a ${width} px`).not.toBeNull();
+    const [izquierda, derecha] = resumen!.anchos;
+    expect(
+      Math.abs(izquierda! - derecha!),
+      `las dos columnas miden lo mismo a ${width} px (${resumen!.anchos.join(" y ")})`,
+    ).toBeLessThanOrEqual(1);
+    testInfo.annotations.push({
+      type: "hueco del resumen",
+      description: `${width} px: ${resumen!.hueco} px (columnas de ${resumen!.altos.join(" y ")} px de alto) [${resumen!.tarjetas.join("] [")}]`,
+    });
+
+    // La comparación visual contra la lámina 09 (AC-10) se hace sobre estas capturas, que el
+    // reporte adjunta. Se guardan con `testInfo.outputPath` porque adjuntar un `body` no deja
+    // archivo en disco, que es la trampa en la que cayó la 24.5.2-b.
+    const captura = testInfo.outputPath(`resumen-${width}.png`);
+    await page.screenshot({ path: captura, fullPage: true });
+    await testInfo.attach(`resumen a ${width} px`, {
+      path: captura,
+      contentType: "image/png",
+    });
+  }
+
+  // AC-1 y AC-2: el selector de moneda entra en su tarjeta, en las dos pantallas que lo tienen.
+  for (const path of ["/precios", "/costos"]) {
+    for (const width of [1440, 1280, 1082, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`/productos/${productId}${path}`);
+      await expect(page.getByLabel("Moneda *")).toBeVisible();
+      const sobra = await sobresaleDeSuTarjeta(page, "select#currency");
+      expect(
+        sobra,
+        `el selector de moneda sobresale de su tarjeta en …${path} a ${width} px`,
+      ).toBeLessThanOrEqual(0);
+    }
+    // Donde hay lugar no se achica: ocupa el ancho útil de la tarjeta, con el tope de 384 px.
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`/productos/${productId}${path}`);
+    const medidas = await page.evaluate(() => {
+      const el = document.querySelector("select#currency")!;
+      const contenedor = el.parentElement as HTMLElement;
+      const estilo = getComputedStyle(contenedor);
+      const util =
+        contenedor.getBoundingClientRect().width -
+        Number.parseFloat(estilo.paddingLeft) -
+        Number.parseFloat(estilo.paddingRight);
+      return { selector: el.getBoundingClientRect().width, util };
+    });
+    // Ocupa su contenedor hasta el tope de 384 px. El margen de un píxel es por subpíxeles: el
+    // ancho de la columna de la grilla no cae en un entero.
+    expect(
+      Math.abs(medidas.selector - Math.min(medidas.util, 384)),
+      `el selector no ocupa el ancho disponible en …${path} (${Math.round(medidas.selector)} de ${Math.round(medidas.util)})`,
+    ).toBeLessThanOrEqual(1);
+    const capturaForm = testInfo.outputPath(`${path.slice(1)}-1440.png`);
+    await page.screenshot({ path: capturaForm, fullPage: true });
+    await testInfo.attach(`${path.slice(1)} a 1440 px`, {
+      path: capturaForm,
+      contentType: "image/png",
+    });
+  }
+
+  // AC-8: a 320 px ninguna de las tres pantallas desborda el documento.
+  await page.setViewportSize({ width: 320, height: 800 });
+  for (const path of ["", "/precios", "/costos"]) {
+    await page.goto(`/productos/${productId}${path}`);
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(overflow, `desbordamiento a 320 px en /productos/…${path}`).toBe(0);
+  }
+
+  // AC-9: las áreas táctiles siguen con 44 px de lado «donde ya lo cumplían». A 390 px esta
+  // subfase no cambia nada —la grilla va en una columna y las listas en una pista, antes y
+  // después—, así que lo que corresponde no es auditar de nuevo la pantalla sino fijar lo que ya
+  // había: estos cinco son anteriores a la 24.5.1-b y la prueba falla si aparece uno más o si
+  // alguno se achica. Los cuatro enlaces son texto en línea, que WCAG 2.2 exceptúa del criterio
+  // 2.5.8; «Guardar imagen», con 40 px, no lo es, y queda anotado como hallazgo de esta subfase
+  // sin arreglar, porque el formulario de la imagen está fuera de la lista cerrada.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/productos/${productId}`);
+  const chicos = await page.evaluate(() =>
+    [...document.querySelectorAll("main a, main button")]
+      .map((el) => ({
+        nombre: el.textContent?.trim().slice(0, 40) ?? "",
+        alto: Math.round(el.getBoundingClientRect().height),
+      }))
+      .filter((el) => el.alto > 0 && el.alto < 44),
+  );
+  expect(chicos, "áreas táctiles de menos de 44 px en el resumen").toEqual([
+    { nombre: "Volver a productos", alto: 24 },
+    { nombre: "Guardar imagen", alto: 40 },
+    { nombre: "Ver historial y fijar precio", alto: 20 },
+    { nombre: "Ver historial y fijar costo", alto: 20 },
+    { nombre: "Ver historial y ajustar", alto: 20 },
+  ]);
+
+  // Las tres pantallas que toca la subfase, en claro y en oscuro. `/costos` no estaba y lo marcó
+  // la revisión independiente: es una de las tres, y la que tiene el selector y una lista de
+  // definición a la vez.
+  await expectAccessible(page, "resumen del producto a 390 px");
+  for (const path of ["/precios", "/costos"]) {
+    await page.setViewportSize({ width: 1082, height: 900 });
+    await page.goto(`/productos/${productId}${path}`);
+    await expectAccessible(page, `${path.slice(1)} a 1082 px`);
+  }
+});

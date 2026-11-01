@@ -123,7 +123,7 @@ export function CostForm({
           aria-describedby={
             failed && state.field === "currency" ? "currency-error" : undefined
           }
-          className={`${selectClass} sm:w-96`}
+          className={`${selectClass} w-full sm:max-w-96`}
         >
           <option value="">Elegí una moneda</option>
           {currencies.map((option) => (
