@@ -80,8 +80,10 @@ sudo -u postgres psql -d crm_staging_nueva -c "select count(*) from messages;"
 #    Y comprobar que las DEFENSAS sobrevivieron, que es lo que nadie mira:
 sudo -u postgres psql -d crm_staging_nueva -tAc \
   "select distinct tableowner from pg_tables where schemaname='public';"   # -> crm_owner
-sudo -u postgres psql -d crm_staging_nueva -c \
-  "SET ROLE crm_app; DELETE FROM audit_logs;"                             # -> permission denied
+sudo -u postgres psql -d crm_staging_nueva -tAc \
+  "select has_table_privilege('crm_app','audit_logs','INSERT'),
+          has_table_privilege('crm_app','audit_logs','DELETE'),
+          has_table_privilege('crm_app','audit_logs','UPDATE');"          # -> t|f|f
 
 # 6. Recién ahora, el cambio. La base vieja se CONSERVA con otro nombre:
 #    es la única forma de volver atrás si la restauración resultó peor.
@@ -94,6 +96,8 @@ SQL
 sudo systemctl start crm-staging
 curl -sI https://staging.vixoraai.app/login | head -1
 ```
+
+*Corregido el 2026-11-01, al cerrar la 24.5.1-b*: la comprobación de las defensas del paso 5 pedía `SET ROLE crm_app; DELETE FROM audit_logs;` y esperar `permission denied`. Ahora lee el catálogo con `has_table_privilege`, que prueba lo mismo y además el permiso de `UPDATE`. El motivo es el contexto: ese comando se corre **sobre una base recién restaurada**, y si el permiso estuviera mal concedido —que es exactamente lo que el paso existe para detectar— el `DELETE` vaciaría la bitácora de auditoría que se acaba de recuperar, en el momento en que menos conviene perder datos. El mismo cambio se hizo ese día en la verificación 5 de los runbooks de producción y de staging. **Lo que la lectura no cubre**: si alguna vez la protección viniera de una política de seguridad por filas y no de la ausencia del permiso, `has_table_privilege` diría `t` y el paso marcaría un problema que no existe. Hoy la protección es la falta del `GRANT`, medida en producción el 2026-11-01.
 
 **No borres `crm_staging_rota` el mismo día.** Es lo único que permite deshacer. Se borra cuando la base restaurada lleve un tiempo funcionando y alguien lo decida a propósito.
 

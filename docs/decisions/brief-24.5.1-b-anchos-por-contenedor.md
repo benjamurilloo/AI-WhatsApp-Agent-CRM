@@ -539,7 +539,7 @@ despliegue y el recorrido del usuario, y ninguno de esos niveles se infiere de l
 | AC-10 | **Cumplido**: seis diferencias numeradas contra las láminas 09 y 12, dos de ellas **resueltas** por esta subfase |
 | AC-11 | **Cumplido**: batería local en verde y **CI en `success` sobre `64bf7f4`**, el SHA desplegado (run 41346525801, 24 min, sin recortar) |
 | AC-12 | **Cumplido**: revisión independiente R1, un bloqueante real corregido, ocho no bloqueantes corregidos y uno falso |
-| AC-13 | **Pendiente**: el recorrido del usuario |
+| AC-13 | **Cumplido**: el usuario recorrió producción sobre `64bf7f4` el 2026-11-01, sin objeciones |
 | AC-14, AC-15 | **Cumplidos**, y AC-14 terminó corrigiendo **dos** afirmaciones vencidas, no una |
 
 ### La batería local
@@ -587,6 +587,14 @@ en los dos casos** —si no, la próxima persona vuelve a chocar con lo mismo—
   bloqueado del lado del operador, y el intento se mandó **desde el propio droplet contra el
   dominio público**, que sale a internet y vuelve a entrar por nginx. Queda escrito como variante
   válida, con la trampa dicha: contra `localhost:3000` no probaría nada, porque saltea nginx.
+
+### El recorrido del usuario (AC-13)
+
+Recorrido sobre `64bf7f4` en producción el **2026-11-01**, sin objeciones. Importa de quién vino:
+los tres defectos que originaron esta subfase los encontró el usuario recorriendo pantallas que la
+24.5.1 había cerrado con la batería en verde, así que este recorrido es el control que la
+automatización no da. Con esto **la subfase sube a validada en staging y cierra entera**: los
+quince criterios cumplidos, y lo que queda abierto está declarado y es ajeno a su lista cerrada.
 
 ### Lo que esta subfase deja abierto
 

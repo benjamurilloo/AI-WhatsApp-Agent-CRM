@@ -282,7 +282,7 @@ Las siete verificaciones del runbook, pasadas:
 | 6 | Ingestión y API de lectura | `401` en los tres endpoints desde afuera |
 | 7 | Ningún dato real | «Vixora» en 0, 0 y 0; las otras dos organizaciones son de demostración |
 
-**La verificación 5 se hizo de otra forma que la del runbook.** El runbook pide intentar un `DELETE FROM audit_logs` y esperar `permission denied`. Acá se leyó el catálogo con `has_table_privilege`, que no ejecuta ninguna escritura y además dice las tres cosas de una vez: quién es el rol, quién el dueño y qué puede hacer. Queda **propuesto** como mejora del runbook, que no está en la lista cerrada de esta subfase.
+**La verificación 5 se hizo de otra forma que la del runbook.** El runbook pide intentar un `DELETE FROM audit_logs` y esperar `permission denied`. Acá se leyó el catálogo con `has_table_privilege`, que no ejecuta ninguna escritura y además dice las tres cosas de una vez: quién es el rol, quién el dueño y qué puede hacer. Queda **propuesto** como mejora del runbook, que no está en la lista cerrada de esta subfase. *Aplicado el 2026-11-01, al desplegar la 24.5.1-b*: la verificación 5 de los runbooks de producción y de staging ya lee el catálogo. La mejora pasó una semana escrita acá y en ningún lugar que alguien fuera a consultar, y en el despliegue siguiente se volvió a chocar con el mismo `DELETE`: la lección quedó en la nota [[A Reversed Decision Is Written in More Places Than Any List Names]] del vault. Una propuesta que no entra en el alcance va al gestor de tareas, no a un brief que se cierra.
 
 Ni la IP ni su hash se versionan, ni acá ni en ningún otro lado: solo si coinciden y a qué hora es la fila.
 
