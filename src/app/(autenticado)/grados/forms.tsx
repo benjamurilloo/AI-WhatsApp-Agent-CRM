@@ -29,14 +29,22 @@ function value(state: FormState, name: string, fallback: string): string {
   return state.status === "error" ? (state.values[name] ?? fallback) : fallback;
 }
 
+// El alta y la edición de un grado (brief-24.5.3, lámina 06). `cancelHref` es a dónde vuelve
+// «Cancelar»; `autoFocus` lleva el foco al primer campo cuando el formulario abre un panel.
 export function GradeForm({
   mode,
   gradeId,
   values = { name: "", description: "" },
+  cancelHref = "/grados",
+  autoFocus,
+  className = "",
 }: {
   mode: "crear" | "editar";
   gradeId?: string;
   values?: { name: string; description: string };
+  cancelHref?: string;
+  autoFocus?: boolean;
+  className?: string;
 }) {
   const [state, formAction, pending] = useActionState(
     mode === "crear" ? createGradeAction : updateGradeAction,
@@ -53,46 +61,51 @@ export function GradeForm({
   const fieldError = (name: string) =>
     state.status === "error" && state.field === name ? state.message : null;
   return (
-    <form action={formAction} className="flex flex-col gap-4">
+    <form action={formAction} className={`flex flex-col gap-4 ${className}`}>
       {gradeId ? <input type="hidden" name="gradeId" value={gradeId} /> : null}
-      <div className="grid gap-4 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)]">
-        {(
-          [
-            { name: "name", label: "Nombre", max: 40, required: true },
-            {
-              name: "description",
-              label: "Descripción",
-              max: 120,
-              required: false,
-            },
-          ] as const
-        ).map((field) => {
-          const id = `${prefix}-${field.name}`;
-          const error = fieldError(field.name);
-          return (
-            <div key={field.name} className="flex min-w-0 flex-col gap-1">
-              <label htmlFor={id} className={labelClass}>
-                {field.label}
-                {field.required ? " *" : ""}
-              </label>
-              <input
-                id={id}
-                name={field.name}
-                required={field.required}
-                maxLength={field.max}
-                defaultValue={value(state, field.name, values[field.name])}
-                aria-invalid={error ? true : undefined}
-                aria-describedby={error ? `${id}-error` : undefined}
-                className={inputClass}
-              />
-              {error ? (
-                <p id={`${id}-error`} className={fieldErrorClass}>
-                  {error}
-                </p>
-              ) : null}
-            </div>
-          );
-        })}
+      {/* Dos columnas solo si la ventana y el contenedor dan el ancho (convención de la 24.5.1-b):
+          dentro del panel de 448 px los dos campos van uno debajo del otro. */}
+      <div className="@container">
+        <div className="grid gap-4 sm:@md:grid-cols-[minmax(0,12rem)_minmax(0,1fr)]">
+          {(
+            [
+              { name: "name", label: "Nombre", max: 40, required: true },
+              {
+                name: "description",
+                label: "Criterio estético",
+                max: 120,
+                required: false,
+              },
+            ] as const
+          ).map((field) => {
+            const id = `${prefix}-${field.name}`;
+            const error = fieldError(field.name);
+            return (
+              <div key={field.name} className="flex min-w-0 flex-col gap-1">
+                <label htmlFor={id} className={labelClass}>
+                  {field.label}
+                  {field.required ? " *" : ""}
+                </label>
+                <input
+                  id={id}
+                  name={field.name}
+                  required={field.required}
+                  maxLength={field.max}
+                  autoFocus={autoFocus && field.name === "name"}
+                  defaultValue={value(state, field.name, values[field.name])}
+                  aria-invalid={error ? true : undefined}
+                  aria-describedby={error ? `${id}-error` : undefined}
+                  className={inputClass}
+                />
+                {error ? (
+                  <p id={`${id}-error`} className={fieldErrorClass}>
+                    {error}
+                  </p>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
       </div>
       <div aria-live="polite" aria-atomic="true">
         {state.status === "error" && state.field === null ? (
@@ -101,7 +114,10 @@ export function GradeForm({
           </p>
         ) : null}
       </div>
-      <div className="flex flex-wrap gap-3">
+      <div className="mt-auto flex flex-wrap justify-end gap-3">
+        <Link href={cancelHref} className={secondaryLinkClass}>
+          Cancelar
+        </Link>
         <button type="submit" disabled={pending} className={inlineButtonClass}>
           {pending
             ? "Guardando…"
@@ -109,11 +125,6 @@ export function GradeForm({
               ? "Crear grado"
               : "Guardar cambios"}
         </button>
-        {mode === "editar" ? (
-          <Link href="/grados" className={secondaryLinkClass}>
-            Cancelar
-          </Link>
-        ) : null}
       </div>
     </form>
   );

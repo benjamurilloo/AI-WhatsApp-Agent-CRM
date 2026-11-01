@@ -19,6 +19,7 @@ import { E2E_PASSWORD } from "./global-setup";
 
 const [ADMIN_IPHONE, VIEWER_IPHONE] = SEED_IPHONE_USERS;
 const IPHONE = SEED_IPHONE_ORGANIZATION_ID;
+const NOT_FOUND_TITLE = "No encontramos esta página";
 const SERIAL = "356938035643809";
 
 let db: Db;
@@ -238,6 +239,59 @@ test("un admin ve la garantía de una unidad vendida, cambia sus días y la busc
   await expectAccessible(page, "ficha con equipos comprados");
 });
 
+// La lámina 06 de la 24.5.3, con el alcance de V-4 a V-6: la tabla Grado · Criterio estético ·
+// Estado, el alta y la edición en panel lateral, y nada de código, color ni garantía por grado.
+test("la pantalla de grados tiene la forma de la lámina 06 y edita en un panel", async ({
+  page,
+}) => {
+  await login(page, ADMIN_IPHONE.email);
+  await page.goto("/grados");
+  await expect(
+    page.getByRole("heading", { name: "Grados estéticos", level: 1 }),
+  ).toBeVisible();
+
+  // Esta organización no tiene grados: el alta es, además, lo que da la fila de la tabla.
+  await expect(page.getByText("Todavía no hay grados.")).toBeVisible();
+  await page.getByRole("link", { name: "+ Nuevo grado" }).click();
+  await expect(page).toHaveURL(/nuevo=1/);
+  const alta = page.getByRole("dialog", { name: "Nuevo grado" });
+  await expect(alta).toBeVisible();
+  await expectAccessible(page, "panel de alta de grado");
+  await alta.getByLabel("Nombre *").fill("A");
+  await alta.getByLabel("Criterio estético").fill("Como nuevo");
+  await alta.getByRole("button", { name: "Crear grado" }).click();
+  await expect(page.getByText("Grado creado.")).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
+  const table = page.getByRole("table", {
+    name: "Grados estéticos de la organización",
+  });
+  for (const header of ["Grado", "Criterio estético", "Estado"]) {
+    await expect(
+      table.getByRole("columnheader", { name: header, exact: true }),
+    ).toBeVisible();
+  }
+  // Lo que la lámina dibuja y este CRM no tiene (V-4 a V-6): ni código, ni color, ni la garantía
+  // de referencia por grado, que se deriva y no se guarda.
+  for (const ausente of [
+    "Código",
+    "Color identificador",
+    "Garantía de referencia",
+  ]) {
+    await expect(table.getByText(ausente)).toHaveCount(0);
+  }
+  await expectAccessible(page, "grados con la forma de la lámina 06");
+
+  const fila = table.getByRole("row").filter({ hasText: "Como nuevo" });
+  await fila.getByRole("link", { name: /^Editar/ }).click();
+  const panel = page.getByRole("dialog", { name: "Editar A" });
+  await expect(panel.getByLabel("Nombre *")).toHaveValue("A");
+  await panel.getByLabel("Criterio estético").fill("Marcas apenas visibles.");
+  await panel.getByRole("button", { name: "Guardar cambios" }).click();
+  await expect(page.getByText("Grado actualizado.")).toBeVisible();
+  await expect(table).toContainText("Marcas apenas visibles.");
+});
+
 test("un admin cambia los días de la organización para unidades y reparaciones", async ({
   page,
 }) => {
@@ -306,4 +360,70 @@ test("un viewer ve la garantía y no edita los días", async ({ page }) => {
     page.getByRole("region", { name: "Garantía de las unidades vendidas" }),
   ).toHaveCount(0);
   await expectAccessible(page, "unidades para un viewer");
+});
+
+// Desbordamiento cero en grados a los cuatro anchos del brief más 320 px (brief-24.5.3, AC-12 y
+// §Mediciones). Se mide **con una fila**, y con un criterio estético largo: la tabla vacía no
+// desborda nunca, así que medirla no probaba nada (revisión independiente, F-5). También con el
+// panel de edición abierto, que es el único que trae el botón de desactivar.
+test("sin desbordamiento horizontal en grados, de 320 a 1440 px", async ({
+  page,
+}) => {
+  await login(page, ADMIN_IPHONE.email);
+  await page.goto("/grados?nuevo=1");
+  await page.getByLabel("Nombre *").fill("A");
+  await page
+    .getByLabel("Criterio estético")
+    .fill(
+      "Marcas leves de uso en los bordes y la tapa, pantalla sin rayas visibles a un brazo de distancia",
+    );
+  await page.getByRole("button", { name: "Crear grado" }).click();
+  await expect(page.getByText("Grado creado.")).toBeVisible();
+  const editar = await page
+    .getByRole("link", { name: /^Editar/ })
+    .first()
+    .getAttribute("href");
+
+  for (const ancho of [320, 390, 640, 1082, 1440]) {
+    await page.setViewportSize({ width: ancho, height: 900 });
+    for (const ruta of ["/grados", "/grados?nuevo=1", editar!]) {
+      await page.goto(ruta);
+      await expect(page.getByRole("main")).toBeVisible();
+      const desborde = await page.evaluate(() => {
+        const raiz = document.documentElement;
+        return raiz.scrollWidth - raiz.clientWidth;
+      });
+      expect(desborde, `desbordamiento en ${ruta} a ${ancho} px`).toBe(0);
+    }
+  }
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.goto("/grados");
+  await expectAccessible(page, "grados con una fila a 320 px");
+  await page.goto(editar!);
+  await expectAccessible(page, "panel de edición de grado a 320 px");
+});
+
+// Un viewer ve los grados y no los edita, y sin la capacidad la sección no existe (AC-8).
+test("un viewer no edita grados y sin serialized_units la sección da 404", async ({
+  page,
+}) => {
+  await login(page, VIEWER_IPHONE.email);
+  await page.goto("/grados");
+  await expect(
+    page.getByRole("heading", { name: "Grados estéticos", level: 1 }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "+ Nuevo grado" })).toHaveCount(
+    0,
+  );
+  await expect(page.getByRole("link", { name: /^Editar/ })).toHaveCount(0);
+  await page.goto("/grados?nuevo=1");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
+  // Sin la capacidad, la sección entera no existe.
+  await db.execute(
+    sql`delete from organization_capabilities
+        where organization_id = ${IPHONE} and capability = 'serialized_units'`,
+  );
+  await page.goto("/grados");
+  await expect(page.getByText(NOT_FOUND_TITLE)).toBeVisible();
 });

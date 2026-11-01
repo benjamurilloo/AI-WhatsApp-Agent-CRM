@@ -108,12 +108,51 @@ async function expectAccessible(page: Page, state: string) {
 test("un admin crea un modelo y una variante desde su ficha", async ({
   page,
 }) => {
+  // Un saldo para una de las dos variantes del iPhone 13: la tienda de ejemplo no trae
+  // existencias, y sin esto «Disponibles» sería cero en todas las filas y la prueba no podría
+  // distinguir el número real de un respaldo roto.
+  await db.execute(
+    sql`insert into inventories (organization_id, product_id, quantity_on_hand)
+        select organization_id, id, '7.000' from products
+        where organization_id = ${SEED_IPHONE_ORGANIZATION_ID}
+          and sku = 'IP13-128-AZU-R'`,
+  );
   await login(page, ADMIN_IPHONE.email);
   await page.goto("/modelos");
   await expect(page.getByRole("heading", { name: "Modelos" })).toBeVisible();
   await expect(page.getByRole("link", { name: "iPhone 13" })).toBeVisible();
   await expectAccessible(page, "lista de modelos");
 
+  // La fila de la lámina 03: modelo, marca, variantes, disponibles y estado con ícono y texto
+  // (brief-24.5.3, AC-1). Los dos números se afirman **exactos**: con «contiene disponibles»
+  // alcanzaba una fila en cero, que es justo el modo de fallo del respaldo de la pantalla
+  // (revisión independiente, F-4). El saldo lo siembra el test, porque la tienda de ejemplo no
+  // trae existencias.
+  const row = page
+    .getByRole("table", { name: "Modelos de la organización" })
+    .getByRole("row")
+    .filter({ has: page.getByRole("link", { name: "iPhone 13" }) });
+  await expect(row).toContainText("Apple");
+  await expect(row).toContainText("2 variantes");
+  await expect(row).toContainText("7 disponibles");
+  await expect(row.getByText("Activo", { exact: true })).toBeVisible();
+
+  // Y la ficha dice el mismo número que el listado: es lo que la lectura acotada por modelo tiene
+  // que garantizar, y lo único que lo prueba es leerlo en las dos pantallas.
+  await page.getByRole("link", { name: "iPhone 13" }).first().click();
+  const resumen = page.getByRole("main");
+  await expect(resumen).toContainText("variantes registradas");
+  await expect(resumen).toContainText("disponibles");
+  await expect(resumen.getByText("2", { exact: true }).first()).toBeVisible();
+  await expect(resumen.getByText("7", { exact: true }).first()).toBeVisible();
+  await page.goto("/modelos");
+
+  // El alta vive en el panel lateral, que abre y cierra la URL (lámina 03).
+  await page.getByRole("link", { name: "+ Nuevo modelo" }).click();
+  await expect(page).toHaveURL(/nuevo=1/);
+  const panel = page.getByRole("dialog", { name: "Nuevo modelo" });
+  await expect(panel).toBeVisible();
+  await expectAccessible(page, "panel de alta de modelo");
   await page.getByLabel("Nombre *").fill("iPhone 16");
   await page.getByLabel("Marca").fill("Apple");
   await page.getByRole("button", { name: "Crear modelo" }).click();
@@ -357,12 +396,29 @@ test("un admin agrega una opción a un atributo", async ({ page }) => {
   await login(page, ADMIN_IPHONE.email);
   await page.goto("/modelos/atributos");
   await expectAccessible(page, "atributos");
-  await page.getByRole("link", { name: "Editar Color" }).click();
-  await page.getByLabel("Nueva opción de Color").fill("Coral");
-  await page.getByRole("button", { name: "Agregar" }).click();
+
+  // El recuento de uso por valor (brief-24.5.3, D-6 y AC-5), con el caso 0 incluido: «Ultramarino»
+  // no lo usa ninguna variante de la semilla y «Medianoche» sí.
+  const colores = page.getByRole("list", { name: "Valores de Color" });
+  await expect(
+    colores.getByRole("listitem").filter({ hasText: "Ultramarino" }),
+  ).toContainText("Ninguna variante lo usa");
+  await expect(
+    colores.getByRole("listitem").filter({ hasText: "Medianoche" }),
+  ).toContainText("lo usa");
+  // Y el aviso de los valores en uso (AC-6), que la pantalla dice antes de intentar nada.
+  await expect(page.getByText("Los valores en uso no se quitan")).toBeVisible();
+
+  // El alta en línea de la lámina 05: sin entrar en modo edición, y dentro de la tarjeta de Color,
+  // porque cada atributo tiene la suya.
+  const tarjeta = page.getByRole("region", { name: "Color" });
+  await tarjeta.getByLabel("Nueva opción de Color").fill("Coral");
+  await tarjeta.getByRole("button", { name: "Agregar" }).click();
   await expect(page.getByText("Opción agregada.")).toBeVisible();
   await expect(
-    page.getByRole("list", { name: "Opciones de Color" }).getByText("Coral"),
+    page
+      .getByRole("list", { name: "Valores de Color" })
+      .getByText("Coral", { exact: true }),
   ).toBeVisible();
 });
 
@@ -370,9 +426,19 @@ test("un viewer ve modelos y atributos sin formularios", async ({ page }) => {
   await login(page, VIEWER_IPHONE.email);
   await page.goto("/modelos");
   await expect(page.getByRole("link", { name: "iPhone 13" })).toBeVisible();
+  // Lo que hay que mirar es el **disparador** del panel, no el botón de adentro: con el rediseño
+  // «Crear modelo» vive en el panel y el panel solo existe con ?nuevo=1, así que buscarlo acá era
+  // cierto para cualquier rol (revisión independiente, F-3). Y se pide el panel a mano, que es lo
+  // que haría alguien que escribe la URL.
+  await expect(page.getByRole("link", { name: "+ Nuevo modelo" })).toHaveCount(
+    0,
+  );
+  await page.goto("/modelos?nuevo=1");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Crear modelo" })).toHaveCount(
     0,
   );
+  await page.goto("/modelos");
   await page.getByRole("link", { name: "iPhone 13" }).click();
   await expect(
     page.getByRole("link", { name: "+ Nueva variante" }),
@@ -440,4 +506,51 @@ test("la ficha del modelo en el teléfono", async ({ page }) => {
     page.getByRole("list", { name: "Variantes de iPhone 15" }),
   ).toBeVisible();
   await expectAccessible(page, "ficha del modelo a 375 px");
+});
+
+// Desbordamiento cero a 320 px en las pantallas que rediseñó la 24.5.3 (brief-24.5.3, AC-12). La
+// medida sale del documento, no de la vista: `scrollWidth` mayor que `clientWidth` es exactamente
+// la barra horizontal que no tiene que aparecer. Se mide también con el panel abierto, que es
+// donde un ancho fijo se nota primero.
+const anchoDesbordado = (page: Page) =>
+  page.evaluate(() => {
+    const raiz = document.documentElement;
+    return raiz.scrollWidth - raiz.clientWidth;
+  });
+
+test("sin desbordamiento horizontal en modelos, su ficha y atributos, de 320 a 1440 px", async ({
+  page,
+}) => {
+  await login(page, ADMIN_IPHONE.email);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/modelos");
+  const ficha = await page
+    .getByRole("link", { name: "iPhone 15" })
+    .first()
+    .getAttribute("href");
+  const rutas = [
+    "/modelos",
+    "/modelos?nuevo=1",
+    ficha!,
+    `${ficha}?editar=1`,
+    "/modelos/atributos",
+  ];
+  // 320 px es el piso del criterio; los otros cuatro son los anchos que pide §Mediciones del
+  // brief (revisión independiente, F-8).
+  for (const ancho of [320, 390, 640, 1082, 1440]) {
+    await page.setViewportSize({ width: ancho, height: 900 });
+    for (const ruta of rutas) {
+      await page.goto(ruta);
+      await expect(page.getByRole("main")).toBeVisible();
+      expect(
+        await anchoDesbordado(page),
+        `desbordamiento en ${ruta} a ${ancho} px`,
+      ).toBe(0);
+    }
+  }
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.goto("/modelos/atributos");
+  await expectAccessible(page, "atributos a 320 px");
+  await page.goto("/modelos");
+  await expectAccessible(page, "modelos a 320 px");
 });

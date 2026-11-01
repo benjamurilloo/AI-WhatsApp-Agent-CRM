@@ -367,6 +367,34 @@ export function findOptions(
     .orderBy(asc(attributeOptions.position), asc(attributeOptions.label));
 }
 
+// Cuántos productos usan cada valor de opción (brief-24.5.3, D-6), para el «N variantes lo usan» de
+// la pantalla de atributos. Una consulta agrupada para todos los valores, no una por valor.
+//
+// Cuenta filas de `attribute_values`, y una fila es un producto: la clave única
+// `(organization_id, product_id, definition_id)` impide que un producto tenga dos valores del mismo
+// atributo, así que contar filas y contar productos dan lo mismo. Un valor que nadie usa no vuelve
+// en el Map; quien lo lee resuelve el 0. Es intramódulo —`catalog` contando sus propias tablas—,
+// así que no cruza la frontera de módulos.
+export async function countOptionUsage(
+  organizationId: string,
+  definitionIds: string[],
+  executor: Executor = getDb(),
+): Promise<Map<string, number>> {
+  if (definitionIds.length === 0) return new Map();
+  const rows = await executor
+    .select({ optionId: attributeValues.optionId, total: count() })
+    .from(attributeValues)
+    .where(
+      and(
+        eq(attributeValues.organizationId, organizationId),
+        inArray(attributeValues.definitionId, definitionIds),
+        isNotNull(attributeValues.optionId),
+      ),
+    )
+    .groupBy(attributeValues.optionId);
+  return new Map(rows.map((row) => [row.optionId!, row.total]));
+}
+
 export async function findOption(
   organizationId: string,
   optionId: string,

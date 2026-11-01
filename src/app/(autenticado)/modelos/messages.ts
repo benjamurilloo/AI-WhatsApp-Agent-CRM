@@ -7,6 +7,35 @@ export const FORBIDDEN_ACTION_MESSAGE =
   "No tenés permiso para hacer esta acción.";
 export const MODEL_NOT_FOUND_MESSAGE = "Este modelo no existe.";
 export const NO_MODELS_MESSAGE = "Todavía no hay modelos.";
+export const NO_MODELS_FOUND_MESSAGE =
+  "Ningún modelo coincide con la búsqueda.";
+export const MODELS_SUBTITLE =
+  "Organizá las familias que comparten variantes y servicios.";
+
+// El filtro de estado de la lámina 03. Su valor por omisión es **«Todos»** y no «Activos» como la
+// lámina (*decidido el 2026-11-01, por la revisión independiente, F-7*). Dos razones: la lámina
+// dibuja cuatro modelos activos y ninguno inactivo, así que ahí los dos valores se ven igual; y la
+// posición de un modelo es **global**, de modo que con un filtro puesto el vecino de una fila puede
+// ser un modelo que no se ve, y mover contra un vecino invisible cambia la posición sin cambiar lo
+// que el usuario ve. Con «Todos» por omisión, el caso común no tiene vecinos ocultos; con un filtro
+// puesto, la pantalla deshabilita las flechas y lo dice.
+export const MODEL_ACTIVITY_LABEL = {
+  todos: "Todos",
+  activos: "Activos",
+  inactivos: "Inactivos",
+} as const;
+
+export type ModelActivity = keyof typeof MODEL_ACTIVITY_LABEL;
+
+export function readModelActivity(
+  value: string | string[] | undefined,
+): ModelActivity {
+  const key = Array.isArray(value) ? value[0] : value;
+  return key === "activos" || key === "inactivos" ? key : "todos";
+}
+
+export const REORDER_FILTERED_MESSAGE =
+  "Para reordenar, quitá los filtros: la posición es de toda la lista y el vecino de una fila puede estar oculto.";
 export const NO_ATTRIBUTES_MESSAGE = "Todavía no hay atributos.";
 export const MODEL_NAME_MESSAGE = "Ingresá un nombre de hasta 120 caracteres.";
 export const MODEL_BRAND_MESSAGE =
@@ -24,6 +53,25 @@ export const ATTRIBUTE_OPTIONS_MESSAGE =
 export const OPTION_LABEL_MESSAGE =
   "Ingresá una opción de hasta 60 caracteres.";
 export const OPTION_TAKEN_MESSAGE = "Esa opción ya existe en este atributo.";
+
+// Cuántas variantes usan un valor (brief-24.5.3, D-6), y por qué uno en uso no se desactiva a la
+// ligera (AC-6). El caso 0 se dice con palabras y no con un «0»: la lámina pone la frase entera.
+// Un atributo de variante distingue las combinaciones de un modelo, así que sus valores los usan
+// **variantes**; los de un atributo común los usa cualquier producto. Decir «variantes» en los dos
+// casos sería falso en el segundo.
+export function usageText(usageCount: number, isVariant: boolean): string {
+  const singular = isVariant ? "variante" : "producto";
+  if (usageCount === 0) {
+    return isVariant ? "Ninguna variante lo usa" : "Ningún producto lo usa";
+  }
+  return usageCount === 1
+    ? `1 ${singular} lo usa`
+    : `${usageCount} ${singular}s lo usan`;
+}
+
+export const OPTION_IN_USE_MESSAGE =
+  "Los valores en uso no se quitan: desactivarlos los saca de los productos nuevos, y las variantes que ya los tienen los conservan.";
+export const ATTRIBUTE_VALUES_TITLE = "Valores disponibles para variantes";
 
 export function unexpectedErrorMessage(requestId: string): string {
   return `No pudimos guardar el cambio. Código: ${requestId}`;

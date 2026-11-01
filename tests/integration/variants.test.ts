@@ -31,7 +31,14 @@ import {
   hasCapability,
   type AuthContext,
 } from "@/modules/organizations";
-import { listProductStock } from "@/modules/inventory";
+import {
+  adjustStock,
+  changeProductTracking,
+  listProductStock,
+  NO_MODEL_GROUP,
+  registerUnit,
+  sumStockByModel,
+} from "@/modules/inventory";
 import { getDb } from "@/shared/db";
 import { DEMO_IPHONE_CATALOG, demoProduct } from "../../seeds/demo-iphone";
 import { resetDatabase } from "./reset-database";
@@ -826,6 +833,178 @@ describe("modelos, atributos y productos (AC-1, AC-6)", () => {
     ).toMatchObject({
       ok: false,
       variantFields: [`atributo:${idsB.color.id}`],
+    });
+  });
+});
+
+// Lo disponible por modelo (brief-24.5.3, D-1 a D-4). `sumStockByModel` es la única lectura nueva de
+// la subfase y lee de la base por lote, así que su evidencia vive acá y no en el proyecto `unit`.
+describe("lo disponible por modelo (AC-2, AC-3)", () => {
+  // La capacidad de las unidades, que esta organización no tiene por `seed()`: la 24.5.3 necesita un
+  // producto por unidad junto a los productos por cantidad, para que el total sume los dos mundos.
+  async function activateUnits(organizationId: string, adminEmail: string) {
+    const activated = await getDb().transaction((tx) =>
+      activateCapability(tx, {
+        organizationId,
+        capability: "serialized_units",
+        adminEmail,
+      }),
+    );
+    if (!activated.ok)
+      throw new Error(`capacidad rechazada: ${activated.code}`);
+  }
+
+  async function newVariantProduct(
+    context: AuthContext,
+    sku: string,
+    modelId: string,
+    capacityLabel: string,
+    colorLabel: string,
+  ) {
+    const created = await createProduct(context, {
+      ...product(sku),
+      variant: await variantOf(context, modelId, capacityLabel, colorLabel),
+    });
+    if (!created.ok)
+      throw new Error(`alta rechazada: ${JSON.stringify(created)}`);
+    return created.productId;
+  }
+
+  async function addQuantity(
+    context: AuthContext,
+    productId: string,
+    quantity: string,
+  ) {
+    const adjusted = await adjustStock(context, productId, {
+      type: "adjustment_positive",
+      quantity,
+      expectedQuantityOnHand: "0",
+      reason: "Carga inicial",
+    });
+    if (!adjusted.ok)
+      throw new Error(`ajuste rechazado: ${JSON.stringify(adjusted)}`);
+  }
+
+  it("suma lo disponible de los productos del modelo, por cantidad y por unidad, con un modelo en 0 y uno sin productos", async () => {
+    const { orgA, adminA, viewerA, adminB } = await seed();
+    await activateUnits(orgA, "admin-a@example.com");
+    const m13 = await newModel(adminA, "iPhone 13");
+    const m15 = await newModel(adminA, "iPhone 15");
+    const enCero = await newModel(adminA, "iPhone 14");
+    const sinProductos = await newModel(adminA, "iPhone 12");
+
+    // Dos productos por cantidad en el mismo modelo: 5 + 3.
+    await addQuantity(
+      adminA,
+      await newVariantProduct(adminA, "A-13-AZU", m13, "128 GB", "Azul"),
+      "5",
+    );
+    await addQuantity(
+      adminA,
+      await newVariantProduct(adminA, "C-13-ROS", m13, "256 GB", "Rosa"),
+      "3",
+    );
+
+    // Un producto por unidad con dos unidades: su saldo no sale de un ajuste sino del alta de cada
+    // unidad, y el total tiene que sumarlo igual.
+    const negro15 = await newVariantProduct(
+      adminA,
+      "B-15-NEG",
+      m15,
+      "128 GB",
+      "Negro",
+    );
+    const tracked = await changeProductTracking(adminA, negro15, "unit");
+    if (!tracked.ok) throw new Error(`seguimiento rechazado: ${tracked.code}`);
+    for (const serial of ["350000000000001", "350000000000002"]) {
+      const registered = await registerUnit(adminA, negro15, {
+        serial,
+        cost: "450",
+        currency: "USD",
+        gradeId: "",
+        batteryHealth: "",
+      });
+      if (!registered.ok)
+        throw new Error(`unidad rechazada: ${JSON.stringify(registered)}`);
+    }
+
+    // Un modelo con un producto y ninguna existencia, y otro sin ningún producto.
+    await newVariantProduct(adminA, "D-14-NEG", enCero, "128 GB", "Negro");
+
+    // Un producto sin modelo, con existencias: ninguna fila de la pantalla lo suma (AC-3).
+    const funda = await createProduct(adminA, product("0-FUNDA"));
+    if (!funda.ok) throw new Error(`alta rechazada: ${funda.code}`);
+    await addQuantity(adminA, funda.productId, "7");
+
+    const summed = await sumStockByModel(adminA);
+    if (!summed.ok) throw new Error(`lectura rechazada: ${summed.code}`);
+    expect(summed.totals.get(m13)).toEqual({
+      products: 2,
+      quantityAvailable: "8.000",
+      quantityReserved: "0.000",
+    });
+    expect(summed.totals.get(m15)).toEqual({
+      products: 1,
+      quantityAvailable: "2.000",
+      quantityReserved: "0.000",
+    });
+    expect(summed.totals.get(enCero)).toEqual({
+      products: 1,
+      quantityAvailable: "0.000",
+      quantityReserved: "0.000",
+    });
+    // Un modelo sin productos no tiene entrada; la pantalla lo muestra en 0 por su respaldo.
+    expect(summed.totals.get(sinProductos)).toBeUndefined();
+    // La funda queda en el grupo sin modelo, cuya clave no es el id de ningún modelo.
+    expect(summed.totals.get(NO_MODEL_GROUP)).toEqual({
+      products: 1,
+      quantityAvailable: "7.000",
+      quantityReserved: "0.000",
+    });
+    expect([...summed.totals.keys()].sort()).toEqual(
+      [NO_MODEL_GROUP, m13, m15, enCero].sort(),
+    );
+
+    // Un viewer lee lo mismo que un admin, y otra organización no ve nada de esta.
+    const asViewer = await sumStockByModel(viewerA);
+    expect(asViewer.ok && [...asViewer.totals]).toEqual([...summed.totals]);
+    const other = await sumStockByModel(adminB);
+    expect(other.ok && other.totals.size).toBe(0);
+  });
+
+  it("un producto inactivo sigue contando, con el mismo criterio que la columna «Variantes»", async () => {
+    const { adminA } = await seed();
+    const m13 = await newModel(adminA, "iPhone 13");
+    const azul = await newVariantProduct(
+      adminA,
+      "A-13-AZU",
+      m13,
+      "128 GB",
+      "Azul",
+    );
+    await addQuantity(adminA, azul, "4");
+
+    const countOf = async () => {
+      const listed = await listModels(adminA);
+      if (!listed.ok) throw new Error(listed.code);
+      return listed.models.find((model) => model.id === m13)!.productCount;
+    };
+    const availableOf = async () => {
+      const summed = await sumStockByModel(adminA);
+      if (!summed.ok) throw new Error(summed.code);
+      return summed.totals.get(m13);
+    };
+
+    expect(await countOf()).toBe(1);
+    expect(await availableOf()).toMatchObject({ quantityAvailable: "4.000" });
+
+    // `countProductsByModel` no filtra por actividad, así que el total tampoco: si uno de los dos
+    // cambiara, las dos columnas de la misma fila medirían universos distintos.
+    expect(await deactivateProduct(adminA, azul)).toMatchObject({ ok: true });
+    expect(await countOf()).toBe(1);
+    expect(await availableOf()).toMatchObject({
+      products: 1,
+      quantityAvailable: "4.000",
     });
   });
 });

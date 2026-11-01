@@ -269,17 +269,37 @@ async function loadDefinitions(
   }));
 }
 
+// Un valor con cuántos productos lo usan (brief-24.5.3, D-6): el «N variantes lo usan» de la
+// lámina 05, que es también lo que explica por qué un valor en uso no se puede quitar (AC-6).
+export type AttributeOptionUsage = AttributeOption & { usageCount: number };
+export type AttributeDefinitionUsage = Omit<AttributeDefinition, "options"> & {
+  options: AttributeOptionUsage[];
+};
+
+// El recuento se pide solo acá y no dentro de `loadDefinitions`, que también corre en las
+// escrituras y dentro de transacciones: ahí sería una consulta de más por cada alta.
 export async function listAttributes(
   context: AuthContext,
 ): Promise<
-  | { ok: true; definitions: AttributeDefinition[] }
+  | { ok: true; definitions: AttributeDefinitionUsage[] }
   | Failure<"FORBIDDEN" | "NOT_FOUND">
 > {
   const allowed = await requireVariants(context);
   if (!allowed.ok) return allowed;
+  const definitions = await loadDefinitions(context.organizationId);
+  const usage = await repository.countOptionUsage(
+    context.organizationId,
+    definitions.map((definition) => definition.id),
+  );
   return {
     ok: true,
-    definitions: await loadDefinitions(context.organizationId),
+    definitions: definitions.map((definition) => ({
+      ...definition,
+      options: definition.options.map((option) => ({
+        ...option,
+        usageCount: usage.get(option.id) ?? 0,
+      })),
+    })),
   };
 }
 

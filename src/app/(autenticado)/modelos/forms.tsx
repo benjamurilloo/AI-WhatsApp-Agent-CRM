@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useActionState, useEffect, useRef, type ReactNode } from "react";
+import { useHydrated } from "@/app/_components/disclosure";
 import {
   fieldErrorClass,
   formMessageClass,
@@ -30,6 +31,7 @@ import {
   ATTRIBUTE_TYPE_LABEL,
   type ChangeState,
   type FormState,
+  usageText,
 } from "./messages";
 
 // Formularios de Modelos y Atributos (brief-29.2, D-4 y D-5). Cada uno conserva lo escrito tras un
@@ -124,14 +126,23 @@ function value(state: FormState, name: string, fallback: string): string {
   return state.status === "error" ? (state.values[name] ?? fallback) : fallback;
 }
 
+// El alta y la edición de un modelo (brief-24.5.3, lámina 03). En el panel va en una columna, no en
+// dos: 448 px no alcanzan para dos campos al lado del otro. `cancelHref` es a dónde vuelve
+// «Cancelar»: en el panel, a cerrarlo; en la ficha, a la ficha.
 export function ModelForm({
   mode,
   modelId,
   values = { name: "", brand: "" },
+  cancelHref,
+  autoFocus,
+  className = "",
 }: {
   mode: "crear" | "editar";
   modelId?: string;
   values?: { name: string; brand: string };
+  cancelHref?: string;
+  autoFocus?: boolean;
+  className?: string;
 }) {
   const [state, formAction, pending] = useActionState(
     mode === "crear" ? createModelAction : updateModelAction,
@@ -140,45 +151,53 @@ export function ModelForm({
   const prefix = mode === "crear" ? "nuevo-modelo" : "editar-modelo";
   const errorRef = useFocusError(state, prefix);
   return (
-    <form action={formAction} className="flex flex-col gap-4">
+    <form action={formAction} className={`flex flex-col gap-4 ${className}`}>
       {modelId ? <input type="hidden" name="modelId" value={modelId} /> : null}
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field
-          state={state}
-          prefix={prefix}
-          name="name"
-          label="Nombre"
-          required
-        >
-          {(props) => (
-            <input
-              {...props}
-              name="name"
-              required
-              maxLength={120}
-              defaultValue={value(state, "name", values.name)}
-              placeholder="Ej. iPhone 13"
-              className={inputClass}
-            />
-          )}
-        </Field>
-        <Field state={state} prefix={prefix} name="brand" label="Marca">
-          {(props) => (
-            <input
-              {...props}
-              name="brand"
-              maxLength={100}
-              defaultValue={value(state, "brand", values.brand)}
-              placeholder="Ej. Apple"
-              className={inputClass}
-            />
-          )}
-        </Field>
+      {/* Dos columnas solo si la ventana y el contenedor dan el ancho (convención de la 24.5.1-b):
+          dentro del panel de 448 px los dos campos van uno debajo del otro. */}
+      <div className="@container">
+        <div className="grid gap-4 sm:@md:grid-cols-2">
+          <Field
+            state={state}
+            prefix={prefix}
+            name="name"
+            label="Nombre"
+            required
+          >
+            {(props) => (
+              <input
+                {...props}
+                name="name"
+                required
+                autoFocus={autoFocus}
+                maxLength={120}
+                defaultValue={value(state, "name", values.name)}
+                placeholder="Ej. iPhone 13"
+                className={inputClass}
+              />
+            )}
+          </Field>
+          <Field state={state} prefix={prefix} name="brand" label="Marca">
+            {(props) => (
+              <input
+                {...props}
+                name="brand"
+                maxLength={100}
+                defaultValue={value(state, "brand", values.brand)}
+                placeholder="Ej. Apple"
+                className={inputClass}
+              />
+            )}
+          </Field>
+        </div>
       </div>
       <GeneralError state={state} errorRef={errorRef} />
-      <div className="flex flex-wrap justify-end gap-3">
-        {mode === "editar" && modelId ? (
-          <Link href={`/modelos/${modelId}`} className={secondaryLinkClass}>
+      <div className="mt-auto flex flex-wrap justify-end gap-3">
+        {(cancelHref ?? (mode === "editar" && modelId)) ? (
+          <Link
+            href={cancelHref ?? `/modelos/${modelId}`}
+            className={secondaryLinkClass}
+          >
             Cancelar
           </Link>
         ) : null}
@@ -258,12 +277,18 @@ export function MoveForm({
   name,
   first,
   last,
+  disabled,
+  disabledReason,
 }: {
   kind: keyof typeof MOVE_ACTION;
   id: string;
   name: string;
   first: boolean;
   last: boolean;
+  // Con un filtro puesto, mover es un cambio que no se ve: el vecino por posición puede estar
+  // fuera de la lista dibujada (revisión independiente de la 24.5.3, F-7).
+  disabled?: boolean;
+  disabledReason?: string;
 }) {
   const { action, field } = MOVE_ACTION[kind];
   const [state, formAction, pending] = useActionState(action, idleChange);
@@ -279,7 +304,8 @@ export function MoveForm({
           type="submit"
           name="direction"
           value="up"
-          disabled={pending || first}
+          disabled={pending || first || disabled}
+          title={disabled ? disabledReason : undefined}
           className={secondaryButtonClass}
         >
           <span aria-hidden="true">↑</span>
@@ -289,7 +315,8 @@ export function MoveForm({
           type="submit"
           name="direction"
           value="down"
-          disabled={pending || last}
+          disabled={pending || last || disabled}
+          title={disabled ? disabledReason : undefined}
           className={secondaryButtonClass}
         >
           <span aria-hidden="true">↓</span>
@@ -468,6 +495,70 @@ export function AttributeEditForm({
           {pending ? "Guardando…" : "Guardar cambios"}
         </button>
       </div>
+    </form>
+  );
+}
+
+// La casilla de un valor (brief-24.5.3, lámina 05 y D-5): marcada, el valor se ofrece al cargar un
+// producto; sin marcar, no. Es la misma escritura de siempre —un valor por vez, con su registro de
+// auditoría—, no un guardado en lote: *decisión del usuario del 2026-11-01*, porque la barra de
+// «cambios sin guardar» de la lámina supone acumular cambios, y eso pedía una escritura nueva que
+// el §Excluido del brief no permite.
+//
+// Con JavaScript, marcar la casilla envía sola. Sin JavaScript aparece el botón «Aplicar», que
+// hace lo mismo: es el patrón que ya usa la búsqueda de la barra (`search-dialog.tsx`).
+export function OptionActiveForm({
+  optionId,
+  label,
+  isActive,
+  usageCount,
+  isVariant,
+}: {
+  optionId: string;
+  label: string;
+  isActive: boolean;
+  usageCount: number;
+  isVariant: boolean;
+}) {
+  const [state, formAction, pending] = useActionState(updateOptionAction, idle);
+  const hydrated = useHydrated();
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  const id = `valor-${optionId}`;
+  return (
+    <form action={formAction} className="flex flex-col gap-1">
+      <input type="hidden" name="optionId" value={optionId} />
+      <input type="hidden" name="label" value={label} />
+      {/* El `0` que hace que una casilla sin marcar llegue como «no». Va antes de la casilla: la
+          acción se queda con el último. */}
+      <input type="hidden" name="isActive" value="0" />
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <label htmlFor={id} className="flex min-w-0 items-center gap-2">
+          <input
+            id={id}
+            type="checkbox"
+            name="isActive"
+            value="1"
+            defaultChecked={isActive}
+            disabled={pending}
+            onChange={(event) => event.currentTarget.form?.requestSubmit()}
+            className={radioClass}
+          />
+          <span className={isActive ? "" : "text-muted"}>{label}</span>
+        </label>
+        <span className="ml-auto text-sm text-muted tabular-nums">
+          {usageText(usageCount, isVariant)}
+        </span>
+        {hydrated ? null : (
+          <button
+            type="submit"
+            disabled={pending}
+            className={secondaryButtonClass}
+          >
+            Aplicar<span className="sr-only"> el cambio de {label}</span>
+          </button>
+        )}
+      </div>
+      <GeneralError state={state} errorRef={errorRef} />
     </form>
   );
 }

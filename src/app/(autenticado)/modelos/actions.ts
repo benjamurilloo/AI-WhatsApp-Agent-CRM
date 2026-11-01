@@ -411,7 +411,12 @@ export async function updateOptionAction(
 ): Promise<FormState> {
   const optionId = text(formData, "optionId");
   const values = { label: text(formData, "label") };
-  const isActive = formData.get("isActive");
+  // La casilla de un valor (brief-24.5.3, lámina 05) manda un `0` oculto antes del `1` de la
+  // casilla, porque una casilla sin marcar no manda nada y acá un campo ausente significa
+  // «renombrar», no «desactivar». Se toma el último, que es el que la casilla decide. El formulario
+  // viejo manda uno solo y le da igual.
+  const sent = formData.getAll("isActive");
+  const isActive = sent.length === 0 ? null : (sent[sent.length - 1] ?? null);
   return runForm(
     "atributos.opcion.editar",
     values,

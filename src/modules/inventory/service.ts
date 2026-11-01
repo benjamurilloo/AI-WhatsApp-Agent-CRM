@@ -215,6 +215,48 @@ export function sumByModel(products: ProductStock[]): Map<string, ModelTotals> {
   );
 }
 
+// Lo disponible de cada modelo, para la pantalla de Modelos (brief-24.5.3, D-1 a D-4).
+//
+// Vive acá y no en `catalog` porque es la única dirección permitida: `inventory` importa `catalog`
+// por su API pública y compone en memoria, y `catalog` no importa `inventory` (I-1 de la 24.5.1).
+// No hay `JOIN` entre módulos.
+//
+// No llama a `listProductStock`: esa lectura ordena, corta en páginas y, según el orden, pide
+// precios, y esta pantalla descarta todo eso. Además ataría el total de un modelo al filtro de
+// **otra** pantalla. Lo que sí comparte es `sumByModel`, que queda como la **única** definición del
+// pliegue: dos pliegues distintos del mismo número serían dos definiciones de «disponible».
+//
+// Cuenta los productos del modelo **activos e inactivos** (`activity: "all"`), a propósito: la
+// columna «Variantes» de esa misma pantalla sale de `countProductsByModel`, que tampoco filtra por
+// actividad. Con otro universo, las dos columnas de una fila medirían cosas distintas.
+//
+// `modelId` acota la lectura a un solo modelo, para la ficha: ahí la pantalla muestra un número y
+// no la tabla entera, y recorrer todo el catálogo para eso sería gratuito solo con pocos productos.
+// Es el mismo pliegue, no otro: la ficha y el listado no pueden decir números distintos.
+export async function sumStockByModel(
+  context: AuthContext,
+  modelId?: string,
+): Promise<
+  { ok: true; totals: Map<string, ModelTotals> } | Failure<"FORBIDDEN">
+> {
+  const found = await searchProducts(context, {
+    text: "",
+    activity: "all",
+    modelId,
+  });
+  if (!found.ok) return found;
+  const balances = await repository.findBalances(
+    context.organizationId,
+    found.products.map((product) => product.id),
+  );
+  return {
+    ok: true,
+    totals: sumByModel(
+      found.products.map((product) => withAvailableStock(product, balances)),
+    ),
+  };
+}
+
 const collator = new Intl.Collator("es", { sensitivity: "base" });
 
 const byName = (a: ProductStock, b: ProductStock) =>

@@ -4,7 +4,9 @@ import { WARRANTY_SETTINGS_NOTICE } from "../_warranty/settings-state";
 // Textos de la pantalla de grados de las unidades, de la capacidad serialized_units (brief-29.5,
 // D-5).
 
-export const GRADES_TITLE = "Grados de las unidades";
+export const GRADES_TITLE = "Grados estéticos";
+export const GRADES_SUBTITLE =
+  "Unificá los criterios con los que clasificás equipos usados.";
 export const NO_GRADES_MESSAGE = "Todavía no hay grados.";
 export const FORBIDDEN_ACTION_MESSAGE =
   "No tenés permiso para hacer esta acción.";

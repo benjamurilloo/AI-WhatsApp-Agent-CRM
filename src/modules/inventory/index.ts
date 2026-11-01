@@ -28,6 +28,7 @@ export {
   searchCatalogForService,
   sellStock,
   sumByModel,
+  sumStockByModel,
   type BalanceRule,
   type ModelTotals,
   type MovementHistoryField,

@@ -2,6 +2,34 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-11-01 — 24.5.3: modelos y grados
+
+Undécima subfase de la Fase 24 ([brief-24.5.3](docs/decisions/brief-24.5.3-modelos-y-grados.md) §Cierre). Rediseño de **cuatro pantallas que ya existían** detrás de las capacidades `variants` y `serialized_units`, más **una sola lectura nueva**.
+
+> **Entrada parcial**: al escribirla, la subfase está **implementada, verificada y revisada, y no desplegada**. El despliegue, su CI y el recorrido del usuario se anotan después, como en las subfases anteriores.
+
+**Certifica:**
+- **`/modelos` con la forma de la lámina 03**: encabezado con «Administrar atributos» y «+ Nuevo modelo», buscador por nombre o marca sin tildes ni mayúsculas, filtro de estado, y la tabla **Modelo · Variantes · Disponibles · Estado**, con el estado en ícono **y** texto. El alta va en un **panel lateral que abre y cierra la URL**: anda sin JavaScript y deja el cuerpo de la pantalla `inert`.
+- **La ficha del modelo con sus dos tarjetas de resumen** y las variantes en **Producto · Disponibles · Precio**, sin columna Grado. La edición usa el mismo panel y se llevó adentro el botón de activar o desactivar.
+- **`/modelos/atributos` con la forma de la lámina 05**: tarjeta por atributo, chip del tipo, casilla por valor con **cuántas variantes lo usan** —incluido «Ninguna variante lo usa»—, alta en línea y el aviso de los valores en uso. **Las tarjetas van una debajo de otra y son los valores los que se reparten en columnas**, al revés que la lámina: ella dibuja dos valores por atributo y el catálogo real tiene 21 colores contra 5 capacidades, así que dos tarjetas al lado dejaban un hueco del alto de la más larga.
+- **`/grados` con la forma de la lámina 06**: **Grado · Criterio estético · Estado**, con alta y edición en panel.
+- **Una lectura nueva, `sumStockByModel`, que no cruza la frontera entre módulos.** Vive en `inventory`, que es la única dirección permitida: pide los productos a la API pública de `catalog`, los saldos a su propio repositorio y pliega en memoria, sin `JOIN` entre tablas de dos módulos (I-1 de la 24.5.1, condición de detención de esta subfase). Reutiliza `sumByModel` como **única definición del pliegue**, y un parámetro opcional de modelo la acota para la ficha: **la ficha y el listado no pueden decir números distintos**.
+- **Medida, con el volumen de `seeds/volume.ts`**: **2 consultas, constantes**, no una por modelo —con 50 modelos un `N+1` habría dado 51—. Con 10.000 productos la mediana es **297 ms** y con 1.000, **35**; acotada a un modelo, **14 ms**. El costo crece con los productos, no con los modelos, y es **el precio declarado de la frontera**: la consulta agregada que lo haría instantáneo es justo el `JOIN` prohibido. Queda anotado como pendiente **P-4**, no escondido.
+- **Once diferencias con la v2, declaradas una por una** antes de implementar, y **veintiséis entradas de comparación visual** clasificadas en resuelta, declarada o nueva. Tres de las cuatro láminas dibujan datos que el [ADR 0024](docs/decisions/0024-rubros-y-capacidades.md) decidió no tener o tener en otro lado —atributos por modelo, el grado en el producto y en el SKU, la garantía por grado—, y ninguna se resolvió inventando un campo.
+- **Ninguna migración, tabla, columna ni contrato nuevo**: `db:generate` no encuentra cambios y siguen **67** migraciones.
+- **`Screens.md` gana tres secciones**, Modelos, Atributos y Grados, que existían desde la Fase 29 y no estaban documentadas: la fuente de verdad de pantallas describía 56 y el CRM tenía estas tres más.
+- **Validado localmente**: typecheck limpio, **907** de `guards`, **1.294** de `unit`, la batería de `integration` en verde con **dos casos nuevos** para la lectura, y **las dos pruebas nuevas demostradas capaces de fallar** con dos mutaciones —cambiar `activity: "all"` por `"active"` enrojece exactamente el caso de los inactivos; vaciar la lista de saldos enrojece los dos—.
+- **Validado en integración** contra el build de producción con PostgreSQL real: **desbordamiento cero a 320, 390, 640, 1082 y 1440 px** en las cuatro pantallas **y sus paneles**, y axe sin violaciones en claro y en oscuro.
+- **Una revisión independiente, R2, con diez hallazgos y ninguno falso.** El más útil no era el bloqueante: con el filtro de estado puesto, **las flechas de reordenar movían contra un vecino que el filtro ocultaba** —cambiaban la posición sin cambiar nada visible—. Se corrigió en dos frentes: el filtro arranca en «Todos» y con cualquier filtro puesto las flechas quedan deshabilitadas con el motivo escrito. Otros dos fueron **pruebas que no podían fallar**: la del `viewer` miraba un botón que sin `?nuevo=1` no existe para ningún rol, y la de AC-1 afirmaba «contiene *disponibles*» en una organización donde todo estaba en cero. Y los paneles **dejaron de declarar `aria-modal`**: `inert` cubre el cuerpo de la página, no el marco de la aplicación, así que la etiqueta escondía de un lector de pantalla algo que seguía en el recorrido del teclado.
+
+**No certifica:**
+- **el nivel «preparado para producción»**, que además pide backups probados, rollback y observabilidad revisados para este cambio;
+- **que los paneles atrapen el foco**: el marco de la aplicación sigue alcanzable con Tab detrás del velo. Arreglarlo de verdad pide tocar el layout, que está fuera de la lista cerrada, y ningún criterio lo exigía;
+- **que Escape cierre un panel**: necesitaría JavaScript, y los paneles se abren y cierran por URL a propósito;
+- **que `/modelos` escale a 10.000 productos sin costo**: suma unos 300 ms, medido y anotado como P-4;
+- **nada sobre «Servicios relacionados» por modelo**, que sigue sin lectura y sin subfase;
+- **que `format:check` y `lint` pasen en esta máquina**: fallan por `core.autocrlf` sin `.gitattributes` y por una skill que `.gitignore` excluye, los dos invisibles en la CI y ninguno de esta subfase.
+
 ## 2026-11-01 — 24.5.1-b: anchos que dependen del contenedor, no de la ventana
 
 Décima subfase de la Fase 24 ([brief-24.5.1-b](docs/decisions/brief-24.5.1-b-anchos-por-contenedor.md) §Cierre). Nace de **tres defectos que encontró el usuario recorriendo pantallas ya cerradas de la 24.5.1**, no una prueba ni una revisión. Lleva el número de la subfase que corrige, aunque se ejecute después de la 24.5.2-b.
