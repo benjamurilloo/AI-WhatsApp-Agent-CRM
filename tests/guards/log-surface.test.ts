@@ -1,6 +1,7 @@
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+
+import { archivosDelRepositorio } from "./archivos-del-repositorio";
 
 // Guarda de la superficie de log (brief-8.2, D-1). El módulo de log escribe por lista blanca:
 // arma el JSON campo por campo, así que un dato que no esté en LogEvent no puede salir. Esa
@@ -93,11 +94,9 @@ describe("detección de route compuesto", () => {
 });
 
 describe("repositorio", () => {
-  const sources = execFileSync("git", ["ls-files", "-z", "src"], {
-    encoding: "utf8",
-  })
-    .split("\0")
-    .filter((file) => file.endsWith(".ts") || file.endsWith(".tsx"));
+  const sources = archivosDelRepositorio(["src"]).filter(
+    (file) => file.endsWith(".ts") || file.endsWith(".tsx"),
+  );
 
   it("encuentra archivos para revisar", () => {
     expect(sources.length).toBeGreaterThan(0);

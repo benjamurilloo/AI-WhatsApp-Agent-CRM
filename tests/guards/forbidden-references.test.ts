@@ -1,6 +1,7 @@
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+
+import { archivosDelRepositorio } from "./archivos-del-repositorio";
 
 // Guarda de CLAUDE.md: nada de Airtable ni del repositorio del agente de WhatsApp
 // fuera de la documentación (brief-2.5, D-1 y D-2).
@@ -55,10 +56,10 @@ describe("detección de referencias prohibidas", () => {
 });
 
 describe("repositorio", () => {
-  it("ningún archivo versionado fuera de la documentación tiene referencias prohibidas", () => {
-    const files = execFileSync("git", ["ls-files", "-z"], { encoding: "utf8" })
-      .split("\0")
-      .filter((file) => file && !file.endsWith(".md") && file !== SELF);
+  it("ningún archivo fuera de la documentación, versionado o nuevo, tiene referencias prohibidas", () => {
+    const files = archivosDelRepositorio().filter(
+      (file) => !file.endsWith(".md") && file !== SELF,
+    );
 
     const hits = files.flatMap((file) =>
       findForbiddenReferences(readFileSync(file, "utf8")).map(

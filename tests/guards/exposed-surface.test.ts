@@ -1,6 +1,7 @@
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+
+import { archivosDelRepositorio } from "./archivos-del-repositorio";
 
 // Guarda de la superficie expuesta (brief-8.4, D-4). La 8.4 revisó punto por punto qué exige
 // sesión y qué rol, y ese trabajo vale para el commit en que se hizo: una Server Action nueva
@@ -637,11 +638,9 @@ const HANDLERS: Readonly<Record<string, Entry>> = {
   },
 };
 
-const APP_FILES = execFileSync("git", ["ls-files", "-z", "src/app"], {
-  encoding: "utf8",
-})
-  .split("\0")
-  .filter((file) => file.endsWith(".ts") || file.endsWith(".tsx"));
+const APP_FILES = archivosDelRepositorio(["src/app"]).filter(
+  (file) => file.endsWith(".ts") || file.endsWith(".tsx"),
+);
 
 const SELF = "tests/guards/exposed-surface.test.ts";
 

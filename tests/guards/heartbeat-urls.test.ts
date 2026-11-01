@@ -1,6 +1,7 @@
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+
+import { archivosDelRepositorio } from "./archivos-del-repositorio";
 
 // Guarda de las URLs de aviso de vida (brief-13.3, D-3 y AC-2).
 //
@@ -139,18 +140,14 @@ describe("urlsDeAviso", () => {
   });
 });
 
-describe("ningún archivo versionado trae una URL de aviso", () => {
+describe("ningún archivo del repositorio, versionado o nuevo, trae una URL de aviso", () => {
   it("el repositorio no tiene URLs de aviso", () => {
-    // `--others --exclude-standard` suma los archivos nuevos que todavía no están en el
-    // índice: una URL pegada en un archivo recién creado es justo el caso a atrapar antes
-    // del commit. Lo que `.gitignore` excluye sigue fuera.
-    const archivos = execFileSync(
-      "git",
-      ["ls-files", "--cached", "--others", "--exclude-standard"],
-      { encoding: "utf8" },
-    )
-      .split("\n")
-      .filter(Boolean)
+    // Suma los archivos nuevos que todavía no están en el índice: una URL pegada en un
+    // archivo recién creado es justo el caso a atrapar antes del commit. Esta guarda era
+    // la única que lo hacía bien, con su propia copia del comando; desde el 2026-11-01 la
+    // enumeración vive en un solo lugar, que es lo que evita que las otras vuelvan a
+    // quedarse atrás.
+    const archivos = archivosDelRepositorio()
       // Binarios: las fuentes tipográficas no se leen como texto.
       .filter(
         (archivo) => !/\.(woff2?|ttf|otf|png|jpe?g|ico|gif)$/i.test(archivo),

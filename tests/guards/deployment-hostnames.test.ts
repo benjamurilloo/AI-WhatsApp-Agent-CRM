@@ -1,6 +1,7 @@
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+
+import { archivosDelRepositorio } from "./archivos-del-repositorio";
 
 // Guarda de los nombres de despliegue (brief-9.1, D-3 y AC-8).
 //
@@ -35,8 +36,10 @@ import { describe, expect, it } from "vitest";
 // esas cadenas viven en package.json y en los archivos de bloqueo, no en src/, y porque una
 // excepción escrita hoy es la que mañana deja pasar la IP de verdad.
 //
-// Límite heredado de las otras guardas: recorre `git ls-files`, así que un archivo sin
-// versionar no lo ve.
+// Enumera con `archivosDelRepositorio`, que incluye los archivos nuevos todavía sin
+// versionar. *Corregido el 2026-11-01*: acá decía que un archivo sin versionar no lo veía,
+// y era cierto: era el límite que seis subfases pagaron con un verde que no había leído
+// nada.
 
 const IPV4 = /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g;
 const IPV4_LOCAL =
@@ -209,23 +212,20 @@ describe("findDeploymentHostnames", () => {
 });
 
 describe("src/ no contiene nombres de despliegue", () => {
-  it("ningún archivo versionado de src/ trae un host de entorno ni una IP pública", () => {
+  it("ningún archivo de src/, versionado o nuevo, trae un host de entorno ni una IP pública", () => {
     // Todos los archivos de src/, sin filtrar por extensión: el AC-8 habla de `src/`, no de
     // un conjunto de extensiones, y un host puede quedar igual en un .json o en un .sql.
     // Los archivos de test quedan fuera, y el detector NO se afloja para conseguirlo: un
     // fixture con una IP del rango que la RFC 5737 reserva para documentación es justo lo
     // que un test de x-forwarded-for tiene que tener. Aflojar el detector sería el error,
     // porque mañana dejaría pasar la IP real en un archivo que sí corre.
-    const files = execFileSync("git", ["ls-files", "src"], { encoding: "utf8" })
-      .split("\n")
-      .filter(
-        (file) =>
-          file &&
-          !/\.test\.tsx?$/.test(file) &&
-          // Activos de terceros con su licencia: `OFL.txt` trae las URL de SIL y de
-          // GitHub, que no son nombres de entorno y que además no se editan acá.
-          !file.startsWith("src/app/_fonts/"),
-      );
+    const files = archivosDelRepositorio(["src"]).filter(
+      (file) =>
+        !/\.test\.tsx?$/.test(file) &&
+        // Activos de terceros con su licencia: `OFL.txt` trae las URL de SIL y de
+        // GitHub, que no son nombres de entorno y que además no se editan acá.
+        !file.startsWith("src/app/_fonts/"),
+    );
 
     expect(files.length).toBeGreaterThan(0);
 

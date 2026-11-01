@@ -1,6 +1,7 @@
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+
+import { archivosDelRepositorio } from "./archivos-del-repositorio";
 
 // Guarda de las lecturas de servicio (brief-11.3, D-3). Las funciones `…ForService` de los
 // módulos reciben la organización de una credencial de servicio y **no pasan por `authorize`**:
@@ -123,10 +124,7 @@ describe("detección de las lecturas de servicio", () => {
 });
 
 describe("repositorio", () => {
-  const files = execFileSync("git", ["ls-files", "-z", "src"], {
-    encoding: "utf8",
-  })
-    .split("\0")
+  const files = archivosDelRepositorio(["src"])
     .filter((file) => /\.(ts|tsx)$/.test(file))
     .filter((file) => file !== SELF);
 
