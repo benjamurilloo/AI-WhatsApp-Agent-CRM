@@ -198,10 +198,21 @@ async function unitStatus(): Promise<{ status: string; cost: string }> {
 // Mandar la unidad a reparar desde sus unidades; deja la página en la orden.
 async function sendToRepair(page: Page) {
   await page.goto(`/productos/${ids.product}/unidades`);
-  await page
+  // Desde el 2026-11-01 las acciones de una fila viven dentro de «···» (MoreActions), para que la
+  // tabla entre sin desplazamiento. **Este ayudante lo usan la prueba con JavaScript y la de sin**:
+  // sin scripts la lista ya está desplegada y su botón no hace nada, así que el menú se abre solo
+  // cuando la acción todavía no está a la vista. Preguntarlo es más barato que duplicar el
+  // ayudante, y deja escrito que las dos formas tienen que funcionar.
+  const accion = page
     .getByRole("link", { name: `Mandar a reparar ${SERIAL}` })
-    .first()
-    .click();
+    .first();
+  if (!(await accion.isVisible())) {
+    await page
+      .getByRole("button", { name: `Más acciones de la unidad ${SERIAL}` })
+      .first()
+      .click();
+  }
+  await accion.click();
   await page.getByLabel(/^Técnico/).selectOption({ label: "Técnico Uno" });
   await page.getByLabel(/^Qué hay que reparar/).fill("La batería no carga.");
   await page.getByRole("button", { name: "Mandar a reparar" }).click();
@@ -216,6 +227,11 @@ test("una unidad va a reparar, vuelve con el costo sumado, se libera y la cuenta
   await login(page, ADMIN_IPHONE.email);
   await page.goto(`/productos/${ids.product}/unidades`);
   await expectAccessible(page, "unidades con una disponible");
+  // Desde el 2026-11-01 las acciones de una fila viven dentro de «···» (MoreActions), para que la
+  // tabla entre sin desplazamiento: hay que abrirlo antes de tocarlas.
+  await page
+    .getByRole("button", { name: `Más acciones de la unidad ${SERIAL}` })
+    .click();
   await page.getByRole("link", { name: `Mandar a reparar ${SERIAL}` }).click();
   await expect(
     page.getByRole("heading", { name: "Mandar a reparar" }),
@@ -281,9 +297,18 @@ test("una unidad va a reparar, vuelve con el costo sumado, se libera y la cuenta
     enRevision.getByRole("link", { name: "Orden OS-000001" }),
   ).toBeVisible();
   await expectAccessible(page, "unidad en revisión");
-  await page
-    .getByRole("button", { name: `Liberar a la venta ${SERIAL}` })
-    .click();
+  // «Liberar a la venta» también vive dentro del «···» desde el 2026-11-01. Se abre el menú solo
+  // si el botón no está ya a la vista: sin JavaScript la lista está desplegada y su botón no hace
+  // nada, y esta prueba corre en las dos formas.
+  const liberar = page.getByRole("button", {
+    name: `Liberar a la venta ${SERIAL}`,
+  });
+  if (!(await liberar.isVisible())) {
+    await page
+      .getByRole("button", { name: `Más acciones de la unidad ${SERIAL}` })
+      .click();
+  }
+  await liberar.click();
   await expect(page.getByText(/Unidad liberada a la venta/)).toBeVisible();
   expect(await unitStatus()).toMatchObject({ status: "available" });
 
@@ -343,6 +368,11 @@ test("cancelar la orden propia devuelve la unidad en revisión, y ahí se da de 
   expect(await unitStatus()).toEqual({ status: "in_review", cost: "800.00" });
 
   await page.goto(`/productos/${ids.product}/unidades`);
+  // Desde el 2026-11-01 las acciones de una fila viven dentro de «···» (MoreActions), para que la
+  // tabla entre sin desplazamiento: hay que abrirlo antes de tocarlas.
+  await page
+    .getByRole("button", { name: `Más acciones de la unidad ${SERIAL}` })
+    .click();
   await page.getByRole("link", { name: `Dar de baja ${SERIAL}` }).click();
   await page.getByLabel(/^Motivo/).fill("Sin arreglo.");
   await page.getByRole("button", { name: "Dar de baja" }).click();
@@ -420,9 +450,18 @@ test.describe("sin JavaScript", () => {
     await page.getByRole("button", { name: "Marcar reparada" }).click();
     await expect(page.getByText(/Unidad reparada/)).toBeVisible();
     await page.goto(`/productos/${ids.product}/unidades`);
-    await page
-      .getByRole("button", { name: `Liberar a la venta ${SERIAL}` })
-      .click();
+    // «Liberar a la venta» también vive dentro del «···» desde el 2026-11-01. Se abre el menú solo
+    // si el botón no está ya a la vista: sin JavaScript la lista está desplegada y su botón no hace
+    // nada, y esta prueba corre en las dos formas.
+    const liberar = page.getByRole("button", {
+      name: `Liberar a la venta ${SERIAL}`,
+    });
+    if (!(await liberar.isVisible())) {
+      await page
+        .getByRole("button", { name: `Más acciones de la unidad ${SERIAL}` })
+        .click();
+    }
+    await liberar.click();
     await expect(page.getByText(/Unidad liberada a la venta/)).toBeVisible();
     expect(await unitStatus()).toEqual({ status: "available", cost: "835.00" });
   });

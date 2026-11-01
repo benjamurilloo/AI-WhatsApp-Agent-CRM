@@ -249,10 +249,18 @@ test("un admin recibe un usado, lo ve en revisión, lo libera y lo vende", async
   // página entera el localizador casa con los dos y no prueba lo que dice probar.
   await page.goto(`/productos/${productId}/unidades`);
   await expect(page.getByRole("table").getByText("En revisión")).toBeVisible();
+
+  // El origen **salió de la tabla** el 2026-11-01, al sacar las columnas Origen y Alta para que
+  // entrara a 1280 px, así que su comprobante se ve en el panel. Que el enlace siga existiendo en
+  // algún lado es justamente lo que hay que comprobar: la columna se fue, el dato no.
+  await page.getByRole("link", { name: SERIAL, exact: true }).click();
+  const panel = page.getByRole("region", { name: "Unidad", exact: true });
   await expect(
-    page.getByRole("link", { name: "Usado recibido PU-000001" }),
+    panel.getByRole("link", { name: "Usado recibido PU-000001" }),
   ).toBeVisible();
-  await page
+  // Con el panel abierto hay **dos** «Liberar a la venta»: el de la fila y el del panel, que
+  // comparten las acciones a propósito. Se libera desde el panel, que es donde estamos.
+  await panel
     .getByRole("button", { name: `Liberar a la venta ${SERIAL}` })
     .click();
   await expect(page.getByText(/Unidad liberada a la venta/)).toBeVisible();

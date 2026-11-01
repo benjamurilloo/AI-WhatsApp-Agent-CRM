@@ -225,6 +225,7 @@ Lo barrido después del fallo, con los seis textos del formato viejo: `trade-ins
 | `src/modules/inventory/repository.ts` | **Ampliación autorizada el 2026-10-31, RETROACTIVAMENTE** (cuarta tanda). La lectura nueva `findUnitMovements`. Ver la nota de abajo: acá **no se paró a preguntar y había que hacerlo** |
 | `src/app/(autenticado)/productos/[productId]/unidades/list-data.ts` | **Nuevo. Ampliación autorizada el 2026-10-31** (quinta tanda, al arreglar B-2). La lectura de la lista en la capa de composición, con el `catch` y la lectura inyectada |
 | `src/app/(autenticado)/productos/[productId]/unidades/list-data.test.ts` | **Nuevo. Ampliación autorizada el 2026-10-31** (quinta tanda). Sus cinco pruebas, incluida la del fallo forzado |
+| `src/app/(autenticado)/productos/[productId]/unidades/forms.tsx` | **Ampliación autorizada el 2026-11-01** (séptima tanda, en el recorrido). `ReleaseUnitForm` acepta `className` e `icon` para entrar en el menú «···» de la fila, con sus valores de siempre por omisión |
 | `tests/e2e/trade-ins.spec.ts` | **Ampliación autorizada el 2026-10-31** (sexta tanda, después de que la CI fallara). Afirmaba «· En revisión» con el formato de fila que D-11 elimina. Ver la nota de abajo: **lo encontró la CI, no la enumeración** |
 | `tests/e2e/units.spec.ts` | Los recorridos |
 | `scripts/medir-caminos.ts` | Las dos mediciones (autorización del 2026-10-31) |
@@ -621,3 +622,75 @@ La cuarta fila no estaba en el brief: salió de corregir el comentario mal atrib
 ### Lo que no se arregló acá, y por qué
 
 Cuatro observaciones de entorno, las cuatro ajenas a esta subfase y las cuatro declaradas arriba: **O-1** (el resultado de una prueba depende de la consola que lanza el runner), **O-2** (`format:check` y `eslint` locales fallan por archivos de otra fase y por una skill de terceros), **O-3** (la batería salió con código 0 con un archivo que no corrió) y **O-4** (`secondaryButtonClass` da 38 px en todo el proyecto). Ninguna se tocó: las cuatro cruzan archivos de otras fases o configuración de herramientas, y entrarían a esta subfase por la puerta que la condición de detención 1 prohíbe.
+
+## Lo que encontró el recorrido del usuario (AC-18), el 2026-11-01
+
+El recorrido en producción encontró **cuatro cosas**. Tres son defectos míos; la cuarta es una diferencia que yo había declarado como aceptada y el usuario decidió al revés. Las cuatro están corregidas.
+
+### 1. El rótulo de la búsqueda tocaba el campo
+
+El `div` que envuelve `label` e `input` no tenía `flex flex-col gap-1`, así que el `label`, que es en línea, quedaba pegado al campo. La búsqueda de Clientes, de la 24.4.2, ya lo hacía bien y esta pantalla no lo copió. Una línea.
+
+### 2. El panel no se encontraba, y la causa no era el panel
+
+El usuario recorrió la pantalla y **no encontró Detalle e Historial**. El panel funcionaba —las pruebas lo abren y lo recorren—, y ese es justamente el punto: **una prueba que sabe dónde hacer clic no mide si se encuentra**.
+
+El IMEI abría el panel, pero estaba pintado con `secondaryLinkClass`: una caja con borde, **idéntica a los cinco botones de acción de la misma fila**. Entre seis cajas iguales, nada decía cuál lleva a algún lado. Ahora es `linkClass` —violeta y subrayado—, y además «Ver unidad» es el primer ítem del menú de la fila.
+
+**Lo que esto deja como lección**: la cobertura de una prueba de recorrido y la descubribilidad son cosas distintas, y ninguna implica la otra. AC-5 pedía que el panel se abriera por la URL y eso se cumplía; nadie había escrito un criterio que dijera que **se tiene que poder encontrar**.
+
+### 3 y 4. Cinco botones por fila, y el desplazamiento horizontal que provocaban
+
+Un `admin` veía hasta **cinco** cajas por unidad: Corregir, Mandar a reparar, Dar un turno, Días de garantía y Dar de baja. Eso es lo que empujaba la tabla más allá de la ventana, que es la **diferencia 8 de AC-15**: yo la había declarado como consecuencia aceptada de D-11 y no la toqué. El usuario decidió lo contrario, y tenía razón por un motivo que yo no había mirado: **la lámina 10 no tiene cinco botones por fila, tiene un «···»**, y el proyecto ya tenía ese patrón resuelto desde la 24.1 (`MoreActions`, D-8: las acciones menos frecuentes y las destructivas salen de la fila principal). La tabla de clientes lo usa desde la 24.4.2, con «Ver ficha» como primer ítem.
+
+Las acciones pasan a un menú «···» por fila, con «Ver unidad» primero y «Dar de baja» último en rojo. `floating` —que la 24.4.2 agregó porque dentro de una tabla que se desplaza el menú se recortaba— y **sin JavaScript la lista queda a la vista**, así que la pantalla sigue andando sin scripts.
+
+Con eso solo no alcanzaba. Medido, comparando la tabla contra su contenedor:
+
+| Ventana | Antes | Con el menú | Con el menú y sin Origen ni Alta |
+|---|---|---|---|
+| 1440 | se desplaza | **entra** | **entra** |
+| 1280 | se desplaza | se desplaza (1006 contra 910) | **entra** |
+| 1024 | se desplaza | se desplaza | se desplaza (812 contra 654) |
+| 320 | — | sin desbordar el documento | sin desbordar el documento |
+
+Por decisión del usuario, **Origen y Alta salen de la tabla**: 194 px, y las dos ya estaban en el panel. No es un recorte arbitrario: **la lámina 10 tiene cinco columnas**, así que sacarlas acerca a la v2. De 1024 para abajo la tabla se sigue desplazando dentro de su contenedor, que es el comportamiento diseñado para pantallas chicas y lo que hace que a 320 px entre.
+
+**Un dato que casi se pierde en el camino**: la columna Origen no era solo una etiqueta, llevaba **el enlace al comprobante del usado**. Al sacarla se habría ido con ella, porque el panel mostraba solo la etiqueta. El panel ahora recibe el origen ya compuesto y es el único lugar donde vive ese enlace; la prueba de `trade-ins` lo comprueba ahí.
+
+### «Liberar a la venta», la acción que no era un enlace
+
+Es la única acción de una unidad que es **un formulario y no un enlace**, y su botón vive en `forms.tsx`, que no estaba en la lista cerrada. Con su clase actual, adentro del menú se habría dibujado como un botón violeta macizo entre ítems de texto. **Se paró y se preguntó**, el usuario amplió la lista en el turno, y `ReleaseUnitForm` pasó a aceptar `className` e `icon`, con sus valores de siempre por omisión: sin pasarlos se comporta igual que antes, así que ningún otro llamador cambia.
+
+Ahora las seis acciones están adentro del «···», sin excepciones, que es lo que hace que la columna sea un ícono y no una lista de cajas de ancho variable.
+
+### Dos cosas que las pruebas enseñaron al adaptarlas
+
+1. **El ayudante `sendToRepair` lo usan la prueba con JavaScript y la de sin.** Sin scripts la lista del menú ya está desplegada y su botón no hace nada, así que abrirlo siempre colgaba la prueba sin JavaScript. Ahora el menú se abre **solo si la acción no está ya a la vista**, y eso deja escrito en la prueba que las dos formas tienen que funcionar.
+2. **Con el panel abierto hay dos de cada acción**: la de la fila y la del panel, que las comparten a propósito. Un localizador sin alcance resuelve a dos elementos y rompe por modo estricto. Es la quinta vez en esta subfase que el modo estricto encuentra una ambigüedad real en lugar de una molestia.
+
+### Despliegue y recorrido
+
+**Desplegada en producción el 2026-11-01 (UTC), en el SHA `704bbb8`.** Para volver atrás, `7311823`, anotado en `/var/lib/crm-production/despliegues` antes de desplegar.
+
+El SHA desplegado **no es el de la implementación**: `dba970c` falló en la CI por la aserción de `trade-ins.spec.ts`, y lo que se despliega es el commit que la corrige, con su propia corrida verde. AC-17 pide CI en `success` sobre el SHA que se despliega, y eso es lo que hay: **run 41253997942, `success`, 23 minutos**, con las tres baterías y los 335 end-to-end.
+
+Verificaciones del runbook, corridas después del despliegue:
+
+| # | Paso | Resultado |
+|---|---|---|
+| — | Servicio y versión | `active`; HEAD del servidor igual al SHA pedido |
+| — | Migraciones | **67**, ninguna nueva |
+| 1 | Configuración desplegada igual a la versionada | **18 de 18** archivos idénticos, y `deploy/production/` tiene 18 |
+| 2 | Un solo salto de proxy | **NO SE CORRIÓ** (ver abajo) |
+| 3 | HSTS | presente sobre HTTPS (`max-age=31536000; includeSubDomains`), ausente sobre HTTP, que redirige con `301` |
+| 4 | La aplicación escucha solo en loopback | `127.0.0.1:3000`; nginx en `:80` y `:443` |
+| 5 | El rol de la aplicación no es el dueño | aplicación `crm_app_login`, dueño de la base `crm_owner` |
+| 6 | Ingestión y lectura desde afuera | los tres endpoints en **`401`**, como corresponde con la ingestión encendida para un emisor |
+| 7 | Ningún dato real de un cliente | «Vixora» en **0 clientes, 0 mensajes, 0 productos**; las otras dos son de demostración |
+
+Journal desde el despliegue: **ninguna advertencia sin explicación**. Hay una, `Failed to kill control group … Invalid argument`, del `systemctl stop` previo al build, y es la que systemd emite al detener un servicio cuyo grupo ya se vació; y tres `UNAUTHENTICATED` que son **las tres sondas del paso 6**, con sus `request_id`.
+
+**El paso 2 queda otra vez sin correr, y se declara igual que en la 24.5.1**: comprobar el salto único de proxy exige un ingreso fallido **desde el navegador**, porque `curl` no deja la fila en `login_attempts`. La comparación byte a byte de `nginx-crm-production.conf` del paso 1 cubre la configuración, pero eso es indirecto y **no sustituye la medición por consecuencia**. Es la segunda subfase seguida con esta verificación de menos: conviene resolverlo con un procedimiento propio en vez de arrastrarlo.
+
+**Recorrido del usuario (AC-18)**: pendiente al escribir esto.

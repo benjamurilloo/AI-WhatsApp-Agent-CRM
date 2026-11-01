@@ -54,6 +54,7 @@ export function UnitPanel({
   isAdmin,
   timeZone,
   actorLabel,
+  origin,
   extras,
 }: {
   unit: ProductUnit;
@@ -67,6 +68,9 @@ export function UnitPanel({
   // Lo arma la página con `auditActorLabels`, que resuelve el emisor de una credencial de servicio
   // leyendo `ingestion`. El panel no lee nada: recibe la función ya resuelta (N-8).
   actorLabel: (actor: NamedAuditActor) => string;
+  // El origen ya compuesto: la etiqueta a secas, o el enlace al comprobante del usado. Lo arma la
+  // página porque el comprobante vive en `tradeins`.
+  origin?: ReactNode;
   // Lo que compone la página desde otros módulos: su pedido, su venta, sus órdenes de reparación,
   // su usado y su garantía. Entra ya armado para que el panel no lea nada.
   extras: ReactNode;
@@ -152,7 +156,13 @@ export function UnitPanel({
               )}
             </Field>
           ) : null}
-          <Field label="Origen">{UNIT_ORIGIN_LABEL[unit.origin]}</Field>
+          {/* El origen lo compone la página, porque el comprobante de un usado sale de otro
+              módulo. Desde el 2026-11-01 el panel es **el único lugar** donde se ve: la columna
+              Origen salió de la tabla para que entrara a 1280 px, y con ella se habría ido el
+              enlace al comprobante si el panel siguiera mostrando solo la etiqueta. */}
+          <Field label="Origen">
+            {origin ?? UNIT_ORIGIN_LABEL[unit.origin]}
+          </Field>
           <Field label="Alta">
             <span className="tabular-nums">
               {formatShortDateTime(unit.createdAt, timeZone)}

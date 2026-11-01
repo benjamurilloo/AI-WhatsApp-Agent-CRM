@@ -243,6 +243,11 @@ test("un admin pasa un producto a «por unidad», recibe con IMEI, carga y da de
     page.getByText("Ya hay una unidad vigente con ese IMEI."),
   ).toBeVisible();
 
+  // Desde el 2026-11-01 las acciones de una fila viven dentro de «···» (MoreActions), para que la
+  // tabla entre sin desplazamiento: hay que abrirlo antes de tocarlas.
+  await page
+    .getByRole("button", { name: `Más acciones de la unidad 356938035643809` })
+    .click();
   await page.getByRole("link", { name: "Dar de baja 356938035643809" }).click();
   await page.getByLabel("Motivo *").fill("Pantalla rota en el traslado");
   await expectAccessible(page, "baja de una unidad");
@@ -907,6 +912,11 @@ test("el panel de la unidad muestra su historial y el motivo de las dos bajas", 
 
   // La baja de una unidad **disponible**: su motivo queda en el movimiento de stock.
   await page.goto(`/productos/${productId}/unidades`);
+  // Desde el 2026-11-01 las acciones de una fila viven dentro de «···» (MoreActions), para que la
+  // tabla entre sin desplazamiento: hay que abrirlo antes de tocarlas.
+  await page
+    .getByRole("button", { name: `Más acciones de la unidad 356938035641111` })
+    .click();
   await page.getByRole("link", { name: "Dar de baja 356938035641111" }).click();
   await page.getByLabel("Motivo *").fill("Pantalla rota en el traslado");
   await page.getByRole("button", { name: "Dar de baja" }).click();
@@ -916,6 +926,11 @@ test("el panel de la unidad muestra su historial y el motivo de las dos bajas", 
 
   // La baja de la unidad **en revisión**: no es un movimiento, y su motivo queda solo en la
   // auditoría (U-2 de la 29.6.2).
+  // Desde el 2026-11-01 las acciones de una fila viven dentro de «···» (MoreActions), para que la
+  // tabla entre sin desplazamiento: hay que abrirlo antes de tocarlas.
+  await page
+    .getByRole("button", { name: `Más acciones de la unidad 356938035642222` })
+    .click();
   await page.getByRole("link", { name: "Dar de baja 356938035642222" }).click();
   await page.getByLabel("Motivo *").fill("No tiene arreglo: se descarta");
   await page.getByRole("button", { name: "Dar de baja" }).click();

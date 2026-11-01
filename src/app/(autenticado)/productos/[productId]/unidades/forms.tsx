@@ -694,19 +694,28 @@ export function SendToRepairForm({
 }
 
 // Liberar a la venta una unidad en revisión (brief-29.6.2, D-2): vuelve al stock.
+// `className` e `icon` son de la corrección del 2026-11-01, con la lista cerrada ampliada a este
+// archivo: liberar es **la única acción de una unidad que es un formulario y no un enlace**, así
+// que para que entre en el menú «···» de la fila —donde cada ítem es un enlace con su ícono— su
+// botón tiene que poder tomar la clase del ítem. Sin pasarlos, se comporta como antes.
 export function ReleaseUnitForm({
   unitId,
   serial,
+  className = inlineButtonClass,
+  icon,
 }: {
   unitId: string;
   serial: string;
+  className?: string;
+  icon?: ReactNode;
 }) {
   const [state, formAction, pending] = useActionState(releaseUnitAction, idle);
   const errorRef = useFocusError(state, `liberar-${unitId}`);
   return (
     <form action={formAction} className="flex flex-col gap-2">
       <input type="hidden" name="unitId" value={unitId} />
-      <button type="submit" disabled={pending} className={inlineButtonClass}>
+      <button type="submit" disabled={pending} className={className}>
+        {icon}
         {pending ? "Liberando…" : "Liberar a la venta"}
         <span className="sr-only"> {serial}</span>
       </button>

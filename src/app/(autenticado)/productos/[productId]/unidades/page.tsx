@@ -39,16 +39,22 @@ import {
   dangerOutlineLinkClass,
   inputClass,
   labelClass,
+  linkClass,
   secondaryButtonClass,
   secondaryLinkClass,
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
+import { Icon, type IconName } from "@/app/_components/icons";
+import {
+  moreActionDangerClass,
+  moreActionItemClass,
+} from "@/app/_components/more-action-styles";
+import { MoreActions } from "@/app/_components/more-actions";
 import { PageNotice } from "@/app/_components/page-notice";
 import { Pagination, shownRangeText } from "@/app/_components/pagination";
 import { SectionCard } from "@/app/_components/section-card";
 import { StatusBadge } from "@/app/_components/status-badge";
-import { formatShortDateTime } from "@/app/_format/date-time";
 import { logEvent, newRequestId } from "@/shared/log";
 import { acceptedCurrencies, formatMoney } from "@/shared/money";
 import {
@@ -339,64 +345,148 @@ export default async function ProductUnitsPage({
     panelHistory?.audit ?? [],
   );
 
-  // Las acciones de una unidad, compartidas por la fila y el panel.
-  const actionsFor = (unit: ProductUnit) => {
-    const canWork = unit.status === "available" || unit.status === "in_review";
-    return (
-      <>
-        {isAdmin && canWork ? (
-          <>
-            <Link
-              href={`${base}?corregir=${unit.id}#corregir-titulo`}
-              className={secondaryLinkClass}
-            >
-              Corregir
-              <span className="sr-only"> {unit.serial}</span>
-            </Link>
-            {repairs ? (
-              <Link
-                href={`${base}?reparar=${unit.id}#reparar-titulo`}
-                className={secondaryLinkClass}
-              >
-                Mandar a reparar
-                <span className="sr-only"> {unit.serial}</span>
-              </Link>
-            ) : null}
-          </>
-        ) : null}
-        {isAdmin && unit.status === "in_review" ? (
-          <ReleaseUnitForm unitId={unit.id} serial={unit.serial} />
-        ) : null}
-        {isAdmin && unit.status === "available" && appointments ? (
-          <Link
-            href={`/turnos/nuevo?unidad=${unit.id}`}
-            className={secondaryLinkClass}
-          >
-            Dar un turno
-            <span className="sr-only"> para {unit.serial}</span>
-          </Link>
-        ) : null}
-        {isAdmin && unit.status !== "written_off" ? (
-          <Link
-            href={`${base}?garantia=${unit.id}#garantia-titulo`}
-            className={secondaryLinkClass}
-          >
-            Días de garantía
-            <span className="sr-only"> {unit.serial}</span>
-          </Link>
-        ) : null}
-        {isAdmin && canWork ? (
-          <Link
-            href={`${base}?baja=${unit.id}#baja-titulo`}
-            className={dangerOutlineLinkClass}
-          >
-            Dar de baja
-            <span className="sr-only"> {unit.serial}</span>
-          </Link>
-        ) : null}
-      </>
-    );
+  // Las acciones de una unidad, **declaradas una sola vez** y presentadas de dos formas: en la
+  // fila van dentro de «···» y en el panel van a la vista, donde hay ancho de sobra.
+  //
+  // Hasta el 2026-11-01 estaban a la vista **también en la fila**: hasta cinco cajas con borde por
+  // unidad, que es lo que empujaba la tabla más allá del ancho de la ventana. Lo pidió el recorrido
+  // del usuario, y D-8 de la 24.1 ya decía dónde van: las acciones menos frecuentes y las
+  // destructivas, fuera de la fila principal. La tabla de clientes hace lo mismo desde la 24.4.2.
+  //
+  // El sufijo `sr-only` con el serial se conserva: con veinticinco filas, «Corregir» a secas es
+  // ambiguo para quien navega por nombres accesibles. Adentro del menú ya no puede desbordar la
+  // tabla, y además el contenedor es bloque contenedor desde H-15.
+  type UnitAction = {
+    key: string;
+    label: string;
+    href: string;
+    icon: IconName;
+    suffix: string;
+    danger?: boolean;
   };
+
+  const unitActions = (unit: ProductUnit): UnitAction[] => {
+    if (!isAdmin) return [];
+    const canWork = unit.status === "available" || unit.status === "in_review";
+    const actions: UnitAction[] = [];
+    if (canWork) {
+      actions.push({
+        key: "corregir",
+        label: "Corregir",
+        href: `${base}?corregir=${unit.id}#corregir-titulo`,
+        icon: "pencil",
+        suffix: ` ${unit.serial}`,
+      });
+      if (repairs) {
+        actions.push({
+          key: "reparar",
+          label: "Mandar a reparar",
+          href: `${base}?reparar=${unit.id}#reparar-titulo`,
+          icon: "wrench",
+          suffix: ` ${unit.serial}`,
+        });
+      }
+    }
+    if (unit.status === "available" && appointments) {
+      actions.push({
+        key: "turno",
+        label: "Dar un turno",
+        href: `/turnos/nuevo?unidad=${unit.id}`,
+        icon: "calendar",
+        suffix: ` para ${unit.serial}`,
+      });
+    }
+    if (unit.status !== "written_off") {
+      actions.push({
+        key: "garantia",
+        label: "Días de garantía",
+        href: `${base}?garantia=${unit.id}#garantia-titulo`,
+        icon: "shield",
+        suffix: ` ${unit.serial}`,
+      });
+    }
+    if (canWork) {
+      actions.push({
+        key: "baja",
+        label: "Dar de baja",
+        href: `${base}?baja=${unit.id}#baja-titulo`,
+        icon: "circleX",
+        suffix: ` ${unit.serial}`,
+        danger: true,
+      });
+    }
+    return actions;
+  };
+
+  // En el panel: a la vista, con la forma de siempre.
+  const actionsFor = (unit: ProductUnit) => (
+    <>
+      {unitActions(unit).map((action) => (
+        <Link
+          key={action.key}
+          href={action.href}
+          className={
+            action.danger ? dangerOutlineLinkClass : secondaryLinkClass
+          }
+        >
+          {action.label}
+          <span className="sr-only">{action.suffix}</span>
+        </Link>
+      ))}
+      {isAdmin && unit.status === "in_review" ? (
+        <ReleaseUnitForm unitId={unit.id} serial={unit.serial} />
+      ) : null}
+    </>
+  );
+
+  // En la fila: dentro de «···». El menú se dibuja **siempre**, porque su primer ítem es «Ver
+  // unidad» y eso lo necesita también un `viewer`, que no tiene ninguna de las demás acciones.
+  //
+  // `floating` no es decorativo: lo agregó la 24.4.2 porque dentro de una tabla que se desplaza el
+  // menú se recortaba y le sumaba una barra. Sin JavaScript la lista queda a la vista, así que la
+  // pantalla sigue funcionando sin scripts.
+  const rowActions = (unit: ProductUnit) => (
+    <MoreActions
+      id={`unidad-${unit.id}`}
+      label={`Más acciones de la unidad ${unit.serial}`}
+      iconOnly
+      floating
+    >
+      <li>
+        <Link
+          href={panelHref(base, filters, unit.id)}
+          className={moreActionItemClass}
+        >
+          <Icon name="smartphone" className="size-4" />
+          Ver unidad
+        </Link>
+      </li>
+      {isAdmin && unit.status === "in_review" ? (
+        <li>
+          {/* La única acción que es un formulario. Desde el 2026-11-01 `ReleaseUnitForm` acepta la
+              clase del ítem y su ícono, con la lista cerrada ampliada a `forms.tsx`. */}
+          <ReleaseUnitForm
+            unitId={unit.id}
+            serial={unit.serial}
+            className={moreActionItemClass}
+            icon={<Icon name="circleCheck" className="size-4" />}
+          />
+        </li>
+      ) : null}
+      {unitActions(unit).map((action) => (
+        <li key={action.key}>
+          <Link
+            href={action.href}
+            className={`${moreActionItemClass} ${action.danger ? moreActionDangerClass : ""}`}
+          >
+            <Icon name={action.icon} className="size-4" />
+            {action.label}
+            <span className="sr-only">{action.suffix}</span>
+          </Link>
+        </li>
+      ))}
+    </MoreActions>
+  );
 
   // El estado de una unidad con lo que la ata a otra cosa: su pedido, su venta, sus órdenes de
   // reparación y su garantía. Es lo que antes vivía en las secciones «Reservadas y vendidas»,
@@ -602,6 +692,7 @@ export default async function ProductUnitsPage({
               isAdmin={isAdmin}
               timeZone={timeZone}
               actorLabel={actorLabel}
+              origin={origin(panelUnit)}
               extras={actionsFor(panelUnit)}
             />
           ) : null}
@@ -682,7 +773,10 @@ export default async function ProductUnitsPage({
                   value={STATUS_VALUE[filters.status]}
                 />
               ) : null}
-              <div className="min-w-0 grow sm:grow-0">
+              {/* `flex flex-col gap-1`, como la búsqueda de Clientes. Sin eso el `label` queda en
+                  línea con el `input` y el texto toca el campo: lo encontró el recorrido del
+                  usuario del 2026-11-01. */}
+              <div className="flex min-w-0 grow flex-col gap-1 sm:grow-0">
                 <label htmlFor="imei" className={labelClass}>
                   {SEARCH_LABEL}
                 </label>
@@ -771,12 +865,10 @@ export default async function ProductUnitsPage({
                             Costo
                           </th>
                         ) : null}
-                        <th scope="col" className={tableHeadCellClass}>
-                          Origen
-                        </th>
-                        <th scope="col" className={tableHeadCellClass}>
-                          Alta
-                        </th>
+                        {/* Origen y Alta salieron de la tabla el 2026-11-01: con ocho columnas de
+                            datos la tabla medía 1.006 px y se desplazaba desde 1280 para abajo. Las
+                            dos siguen en el panel, que ahora es el único lugar donde se ven, y la
+                            lámina 10 tiene cinco columnas, así que esto acerca en vez de alejar. */}
                         <th scope="col" className={tableHeadCellClass}>
                           <span className="sr-only">Acciones</span>
                         </th>
@@ -794,9 +886,14 @@ export default async function ProductUnitsPage({
                           }
                         >
                           <td className={`${tableCellClass} font-mono`}>
+                            {/* `linkClass` y no `secondaryLinkClass`: con la caja con borde, el
+                                IMEI se leía como **un botón más** entre los de la fila, y el
+                                recorrido del usuario del 2026-11-01 terminó sin encontrar el
+                                panel. Un enlace subrayado dice que lleva a algún lado; una caja
+                                con borde, al lado de otras cinco, no dice nada. */}
                             <Link
                               href={panelHref(base, filters, unit.id)}
-                              className={`${secondaryLinkClass} inline-flex min-h-11 items-center`}
+                              className={`${linkClass} inline-flex min-h-11 items-center`}
                             >
                               {unit.serial}
                             </Link>
@@ -832,15 +929,9 @@ export default async function ProductUnitsPage({
                                 : ""}
                             </td>
                           ) : null}
-                          <td className={tableCellClass}>{origin(unit)}</td>
-                          <td
-                            className={`${tableCellClass} whitespace-nowrap tabular-nums`}
-                          >
-                            {formatShortDateTime(unit.createdAt, timeZone)}
-                          </td>
                           <td className={tableCellClass}>
-                            <div className="flex flex-wrap items-center gap-2">
-                              {actionsFor(unit)}
+                            <div className="flex items-center justify-end">
+                              {rowActions(unit)}
                             </div>
                           </td>
                         </tr>

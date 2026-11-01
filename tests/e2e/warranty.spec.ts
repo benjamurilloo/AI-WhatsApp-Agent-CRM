@@ -193,6 +193,11 @@ test("un admin ve la garantía de una unidad vendida, cambia sus días y la busc
   await expect(committed(page)).toContainText(
     /En garantía hasta el \d{2}\/\d{2}\/\d{4} \(30 días desde el \d{2}\/\d{2}\/\d{4}, los de la organización\)/,
   );
+  // Desde el 2026-11-01 las acciones de una fila viven dentro de «···» (MoreActions), para que la
+  // tabla entre sin desplazamiento: hay que abrirlo antes de tocarlas.
+  await committed(page)
+    .getByRole("button", { name: `Más acciones de la unidad ${SERIAL}` })
+    .click();
   await committed(page)
     .getByRole("link", { name: `Días de garantía ${SERIAL}` })
     .click();
