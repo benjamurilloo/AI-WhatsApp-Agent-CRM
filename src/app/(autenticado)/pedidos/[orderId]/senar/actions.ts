@@ -75,7 +75,12 @@ export async function createOrderReceiptAction(
       log(result.code);
       // Si la vigente cambió mientras se cargaba, la página se vuelve a leer: el formulario muestra la
       // nueva equivalencia y manda su id (revisión independiente de la 29.4, R1-3).
-      if (isRateChange(result)) revalidatePath(`/pedidos/${orderId}/senar`);
+      //
+      // Desde la 24.6.1 la página que dibuja este formulario es la ficha, con `?panel=senar`:
+      // `/pedidos/<id>/senar` quedó solo como redirección, así que revalidarla no volvía a leer
+      // nada. Lo encontró la revisión independiente de la 24.6.1 (F-2) y el usuario autorizó la
+      // línea, que es la misma de la 29.4 apuntando a donde el formulario vive ahora.
+      if (isRateChange(result)) revalidatePath(`/pedidos/${orderId}`);
       return {
         status: "error",
         requestId,

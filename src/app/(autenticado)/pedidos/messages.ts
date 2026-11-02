@@ -4,6 +4,7 @@ import type {
   OrderLineField,
   OrderLineRule,
   OrderStatus,
+  OrderStatusFilter,
   OrderTransitionResult,
 } from "@/modules/orders";
 import { formatQuantity } from "@/shared/quantity";
@@ -59,6 +60,128 @@ export const STATUS_LABEL: Record<OrderStatus, string> = {
   delivered: "Entregado",
   cancelled: "Cancelado",
 };
+
+// El subtítulo y la leyenda de la lámina 01 (brief-24.6.1). La leyenda dice qué compromete cada
+// estado, que es lo que distingue un pedido de una venta y lo que la columna «Estado» sola no
+// alcanza a decir. Cancelado no está en la leyenda, como en la lámina: no compromete nada.
+export const ORDERS_SUBTITLE = "Reservas y entregas de clientes.";
+export const ORDERS_STATUS_LEGEND =
+  "Pendiente: sin reserva · Confirmado: stock reservado · Entregado: salida registrada.";
+
+// La barra de estados del listado (lámina 01). El orden es el del ciclo del pedido, no el
+// alfabético, y «Todos» va primero. Cada pestaña es un enlace con su cantidad, que `SubNav`
+// incorpora al nombre accesible desde la 24.3.
+export const STATUS_TAB_LABEL: Record<OrderStatusFilter, string> = {
+  all: "Todos",
+  pending: "Pendientes",
+  confirmed: "Confirmados",
+  delivered: "Entregados",
+  cancelled: "Cancelados",
+};
+
+export const STATUS_TABS: OrderStatusFilter[] = [
+  "all",
+  "pending",
+  "confirmed",
+  "delivered",
+  "cancelled",
+];
+
+// La columna «Resumen» de la lámina 01 (brief-24.6.1, D-2): qué se pidió, de un vistazo, sin abrir
+// la ficha. La lámina dibuja «iPhone 13 · 1 equipo», que es el caso de una línea y una unidad.
+// Con más de una línea se nombra la primera y se dice cuántas más hay, en vez de callarlas. El
+// recuento es de **equipos** cuando el pedido tiene unidades y de **líneas** cuando no: un pedido
+// por cantidad no tiene equipos y decir «1 equipo» de dos kilos de algo sería falso.
+export function orderSummaryText(order: {
+  firstProductName: string | null;
+  lineCount: number;
+  unitCount: number;
+}): string {
+  const name = order.firstProductName ?? UNKNOWN_PRODUCT_TEXT;
+  const rest = order.lineCount - 1;
+  const product = rest > 0 ? `${name} y ${rest} más` : name;
+  const count =
+    order.unitCount > 0
+      ? `${order.unitCount} ${order.unitCount === 1 ? "equipo" : "equipos"}`
+      : `${order.lineCount} ${order.lineCount === 1 ? "línea" : "líneas"}`;
+  return `${product} · ${count}`;
+}
+
+// Un pedido sin líneas no debería existir —el alta exige al menos una—, pero la lista no se rompe
+// si lo encuentra.
+export const EMPTY_ORDER_SUMMARY = "Sin líneas";
+
+// Que los precios son los del alta, en la cabecera de la tabla de productos (lámina 03).
+export const FIXED_PRICES_NOTE = "Precios fijados al crear el pedido";
+
+// La franja que dice qué compromete el estado, debajo de las tarjetas (láminas 03, 05, 06 y 07).
+// Dice la **consecuencia sobre el stock**, no el nombre del estado, que ya está en el badge. Las
+// etiquetas Pendiente → Confirmado → Entregado son estados **del pedido**; el estado físico del
+// equipo va de Disponible a Reservada a Vendida, y la v2 pide rotular las dos dimensiones sin
+// confundirlas.
+export function statusStripText(status: OrderStatus): {
+  title: string;
+  text: string;
+  icon: "clock" | "circleCheck" | "truck" | "circleX";
+  className: string;
+} {
+  switch (status) {
+    case "pending":
+      return {
+        title: "Pendiente",
+        text: "Todavía no reserva stock. Confirmar reserva las unidades elegidas.",
+        icon: "clock",
+        className: "border-border-strong bg-warning-soft text-on-warning-soft",
+      };
+    case "confirmed":
+      return {
+        title: "Confirmado",
+        text: "El equipo está reservado para este pedido. Todavía no se registró la salida.",
+        icon: "circleCheck",
+        className: "border-border-strong bg-primary-soft text-on-primary-soft",
+      };
+    case "delivered":
+      return {
+        title: "Entregado",
+        text: "La salida de stock ya está registrada. La venta se emite aparte.",
+        icon: "truck",
+        className: "border-border-strong bg-success-soft text-on-success-soft",
+      };
+    case "cancelled":
+      return {
+        title: "Cancelado",
+        text: "No reserva ni compromete stock. Un pedido cancelado no se reabre ni se edita.",
+        icon: "circleX",
+        className: "border-border bg-surface-muted text-muted",
+      };
+  }
+}
+
+// «Siguiente paso» de la lámina 03: qué va a hacer el botón principal, antes de abrirlo. Un pedido
+// entregado o cancelado no tiene siguiente paso obligatorio, y la tarjeta no se dibuja.
+export function nextStepHint(status: OrderStatus): string | null {
+  switch (status) {
+    case "pending":
+      return "Confirmar reservará este equipo. Se volverá a comprobar su disponibilidad.";
+    case "confirmed":
+      return "Marcar entregado registra la salida del equipo y libera su reserva. No se puede deshacer.";
+    case "delivered":
+    case "cancelled":
+      return null;
+  }
+}
+
+// Qué decir cuando el nombre escrito en el buscador de clientes no resuelve a uno solo
+// (brief-24.6.1, D-11). Pasa en el recorrido sin JavaScript, donde no hay id. Ninguno de los dos
+// casos filtra por un cliente elegido a dedo: la lista queda vacía y la pantalla explica por qué.
+export function clientFilterProblemMessage(
+  problem: "not-found" | "ambiguous",
+  text: string,
+): string {
+  return problem === "not-found"
+    ? `Ningún cliente activo se llama «${text}». Elegilo de la lista de sugerencias o escribí su nombre completo.`
+    : `Hay más de un cliente activo que se llama «${text}». Elegí cuál de la lista de sugerencias.`;
+}
 
 export function unexpectedErrorMessage(requestId: string): string {
   return `No pudimos guardar el cambio. Código: ${requestId}`;

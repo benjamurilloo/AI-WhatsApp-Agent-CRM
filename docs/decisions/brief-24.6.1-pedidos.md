@@ -165,6 +165,47 @@ demás diferencias se resuelven eligiendo una y declarándola, no promediándola
   y en los paneles. Queda fuera por D-7: la celda muestra el nombre del producto y su descripción
   corta, sin imagen.
 
+- **V-13 · Un `viewer` que pide `/senar` llega a la ficha, sin mensaje.** Hasta la 21.4,
+  `/pedidos/<id>/senar` era una página con su propia guarda y le decía «Solo un administrador
+  puede registrar señas.». Ahora redirige al panel, y el panel **no se le dibuja**: el parámetro
+  `panel` se lee solo para un `admin`. Queda la ficha, correcta, sin explicación de por qué no
+  hay panel. Se declara en vez de arreglarse porque la alternativa —dibujarle un panel a un
+  `viewer` para decirle que no puede— contradice D-5 y la regla de la 24.4.1 de no entregarle al
+  `viewer` lo que no va a poder usar. Si molesta en el recorrido, es un pendiente de una línea.
+
+- **V-14 · La barra de estados son pestañas, no pastillas.** La lámina 01 la dibuja como pastillas
+  con un punto de color por estado, dentro de la tarjeta de filtros. La implementación usa
+  `SubNav`, el mismo componente con el que la 24.3 hizo la bandeja, la 24.4.1 la ficha del
+  cliente y la 24.5.2 el Resumen de unidades: pestañas subrayadas con la cantidad en una insignia,
+  que ya incorpora al nombre accesible. Se eligió la consistencia con lo que la propia fase viene
+  construyendo antes que la forma de esta lámina, y **se declara en vez de callarse**: si el
+  recorrido prefiere las pastillas, es un cambio acotado a `pedidos/page.tsx`.
+- **V-15 · «Ver ventas →» no se agrega.** La lámina 01 pone un enlace secundario a Ventas en el
+  encabezado. El panel lateral ya agrupa Pedidos y Ventas bajo «Comercial», que es de donde la
+  propia lámina los cuelga; un atajo más en el encabezado no agrega un destino que no esté a un
+  clic.
+- **V-16 · Quién creó el pedido no se muestra en Resumen.** Las láminas 03 y 07 dibujan «Carla
+  Méndez» en «Origen del pedido» y «Pedido creado por Carla Méndez». `OrderDetail` **no trae el
+  usuario que lo creó**: la columna existe en la base, pero exponerla pide ampliar el tipo, el
+  repositorio y una lectura de nombres de usuario que hoy vive en `_audit/actor.ts`, fuera de la
+  lista cerrada. **El dato no se pierde**: la pestaña Actividad lo muestra en la historia de
+  auditoría, que es donde el README dice que vive el actor. Queda como pendiente **P-6**.
+
+- **V-17 · En la cancelación, «Conservar pedido» tiene la prioridad del teclado, no la del
+  relleno** (*decidido por el usuario el 2026-11-02, a partir de F-3 de la revisión
+  independiente*). El README pide «en cancelación la prioridad inicial es Conservar pedido» y no
+  hay lámina de ese panel, solo el texto. Se cumple por **orden del DOM y de tabulación**:
+  «Conservar pedido» va primero y recibe el foco antes que el destructivo. Lo que no se invierte
+  es el peso visual: «Cancelar pedido» sigue siendo el botón relleno en rojo, que es el patrón de
+  las otras confirmaciones destructivas de la aplicación —anular una venta, cancelar una orden de
+  compra—. Romperlo acá habría hecho que el mismo gesto se dibujara distinto en dos pantallas.
+- **V-18 · El foco no vuelve al disparador al cerrar un panel** (*declarado el 2026-11-02, F-4*).
+  El README lo pide. Cerrar un panel es **una navegación de ruta**: el botón «Volver» es un
+  `<Link>` a la ficha, no un control que cierra una capa, porque los paneles se abren y cierran
+  por la URL a propósito (D-5) y tienen que andar sin JavaScript. Devolver el foco exigiría
+  JavaScript y un estado que la pantalla no tiene. Es el mismo límite que la 24.5.3 declaró para
+  sus paneles, y el mismo motivo por el que estos no se declaran `aria-modal`.
+
 ## Decisiones
 
 - **D-1 · Los contadores por estado son una lectura nueva en `orders`, de una consulta agrupada.**
@@ -252,7 +293,7 @@ demás diferencias se resuelven eligiendo una y declarándola, no promediándola
 
 ### Incluido
 
-1. **`/pedidos` con la forma de la lámina 01**: encabezado con «Ver ventas» y «+ Nuevo pedido»;
+1. **`/pedidos` con la forma de la lámina 01**: encabezado con «+ Nuevo pedido» —«Ver ventas» **no se agrega**: ver V-15, enmendado el 2026-11-02 por la revisión independiente (F-7)—;
    buscador por número; **barra de estados con contadores** (`SubNav`), que reemplaza el
    `<select>`; tabla **Pedido (número y fecha) · Cliente · Resumen · Estado · Origen · Total ·
    Acción**; la leyenda de los tres estados al pie de la tarjeta; tarjetas en el teléfono; la
@@ -326,10 +367,55 @@ solo para que `UnitSummary` traiga el grado y la batería que la ficha móvil mu
 **Documentación** (5): `docs/product/Screens.md`, `docs/planning/Roadmap.md`, `CHANGELOG.md`,
 `HANDOFF.md` y este brief.
 
-Son **25 archivos**. `src/app/(autenticado)/pedidos/actions.ts` y
+**Ampliaciones autorizadas por el usuario al implementar**, cada una en su turno:
+
+- **`src/app/(autenticado)/pedidos/client-filter.tsx`** (*2026-11-01*), el combobox del filtro por
+  cliente de D-11. La lista no previó que el buscador necesita un componente de cliente propio.
+- **`src/app/(autenticado)/caja/exchange.ts`** (*2026-11-02*), una línea: unir el `basePath` con
+  `&` cuando ya trae una consulta. Sin eso, los enlaces de moneda del panel de la seña arman
+  `?panel=senar?moneda=USD`, que está rota. Los **otros seis** usos del ayudante pasan rutas sin
+  consulta, así que para ellos no cambia nada; igual se vuelven a correr sus recorridos.
+- **Regla general, decidida el 2026-11-02**: **la prueba colocada de un archivo de la lista entra
+  en la lista con él.** Cubre `pedidos/filters.test.ts` y `pedidos/messages.test.ts`, y vale para
+  lo que quede de la subfase. Nace de que es la **tercera vez en dos subfases** que la lista,
+  escrita pantalla por pantalla, se queda corta con un archivo que viaja pegado a otro que sí
+  está: en la 24.5.1 fue un componente compartido y en la 24.5.3, dos archivos.
+
+- **Tres pruebas de extremo a extremo** (*2026-11-02*): `tests/e2e/order-receipts.spec.ts`
+  (8 líneas), `tests/e2e/units.spec.ts` (4) y `tests/e2e/sales.spec.ts` (12). Las tres recorren
+  pantallas que esta subfase rediseñó y fallaban **por lo mismo**: la operación es ahora un panel
+  con sus etiquetas propias —«Confirmar reserva», «Confirmar entrega», «Emitir venta», «Volver»—
+  en vez de la pregunta en línea de antes —«Sí, confirmar el pedido», «No, volver»—, las señas
+  registradas viven en su pestaña, y `/senar` redirige a `?panel=senar`. **Ninguna regla del
+  pedido cambió**: lo que cambió es por dónde se llega. El usuario autorizó las tres, caso por
+  caso, el 2026-11-02; eligió no fijar una regla general, a diferencia de lo decidido ese mismo
+  día para las pruebas colocadas.
+
+- **Una cuarta prueba de extremo a extremo** (*2026-11-02*): `tests/e2e/accounts.spec.ts`, una
+  línea. Miraba el texto de lo que pasa con lo señado al cancelar sobre `/pedidos/<id>`, que
+  ahora vive en la pestaña Señas. Apareció al correr la batería completa, después de las tres
+  anteriores, y el usuario volvió a autorizarla caso por caso.
+
+- **`src/app/(autenticado)/pedidos/[orderId]/senar/actions.ts`** (*2026-11-02*), una línea.
+  Es el archivo que el brief nombraba como el que **no** había que tocar, y la revisión
+  independiente encontró por qué sí: su `revalidatePath` apuntaba a la ruta que esta subfase
+  convirtió en redirección. El usuario lo autorizó caso por caso. **No cambia ninguna regla**:
+  revalida la página donde el formulario vive ahora.
+
+Son **25 archivos** más esas ampliaciones. `src/app/(autenticado)/pedidos/actions.ts` y
 `pedidos/[orderId]/senar/actions.ts` **no están en la lista**: las acciones de servidor no deberían
 cambiar, porque ninguna regla cambia. Si el panel exige tocarlas, **se para y se pregunta** — que
 es exactamente lo que pasó con `modelos/actions.ts` en la 24.5.3.
+
+**Enmienda del 2026-11-02, por la revisión independiente (F-8)**: D-5 hablaba de **cuatro**
+paneles y de **un parámetro por operación** (`?confirmar=1`, `?senar=1`, `?entregar=1`,
+`?emitir=1`), y AC-7 y AC-13 repiten «los cuatro paneles». La implementación usa **un solo
+parámetro con cinco valores** —`?panel=confirmar|senar|entregar|cancelar|emitir`—. Las dos
+desviaciones tienen motivo: con un parámetro por operación habría que resolver a mano
+`?confirmar=1&entregar=1`, que con uno solo es imposible; y el quinto panel es la cancelación,
+que D-8 ya pedía como confirmación propia con «Conservar pedido» y el destructivo en rojo. Donde
+D-5, AC-7 y AC-13 dicen «cuatro», léase **cinco**, y donde dicen cuatro parámetros, **uno**.
+`Screens.md` y el Roadmap ya documentan la forma implementada.
 
 ## Criterios de aceptación
 
@@ -345,16 +431,141 @@ es exactamente lo que pasó con `modelos/actions.ts` en la 24.5.3.
 | **AC-8** | Cada panel **dice el efecto antes del cambio**: qué equipo, qué pasa con el stock, qué pasa con el dinero y si no se puede deshacer, con los textos de su lámina |
 | **AC-9** | **Ninguna regla del pedido cambió**: las pruebas de integración y de ciclo que ya existen pasan **sin modificarse**, salvo las que esta subfase amplíe para las lecturas nuevas |
 | **AC-10** | **Las capacidades y los roles siguen mandando**: un `viewer` ve lista, ficha, equipos, precios y recibos **y ningún botón de gestión**, y no ve la auditoría |
-| **AC-11** | **La frontera se respeta**: `orders` no importa `cash` ni `sales`, no hay `JOIN` contra tablas ajenas, «Señado» y «Falta del total» se componen en la página y la guarda `module-boundary` pasa |
+| **AC-11** | **La frontera se respeta**: `orders` no importa `cash` ni `sales`, no hay `JOIN` contra tablas ajenas, «Señado» y «Falta del total» se componen en la página. *Enmendado el 2026-11-02 (F-10)*: el criterio decía «y la guarda `module-boundary` pasa», y **esa guarda no fija esta regla**: permite que un módulo importe la interfaz pública de otro —registra `orders/service` → `@/modules/sales` como permitido— y lo que prohíbe es alcanzar las entrañas ajenas. El [ADR 0020](0020-el-pedido.md) ya lo dice: «Hoy no la fija ninguna guarda (R-2)». La evidencia real es el `grep`: **cero** importaciones de `cash` o `sales` en `src/modules/orders/**`, verificado por la revisión independiente |
 | **AC-12** | **Sin migraciones**: `npm run db:generate` deja `drizzle/` sin cambios y el recuento sigue en **67** |
 | **AC-13** | **Desbordamiento cero a 320, 390, 640, 1082 y 1440 px** en las dos pantallas, **sus tres pestañas y sus cuatro paneles**, y **axe sin violaciones** en claro y en oscuro |
 | **AC-14** | **Medición de las dos lecturas nuevas** en §Mediciones, con la cantidad de consultas y el tiempo, y la comprobación de que **el listado no hace una consulta por pedido** |
-| **AC-15** | **Comparación visual** contra las láminas 01, 03, 04, 05, 06, 07 y 08, con **cada diferencia numerada y clasificada** en «resuelta», «declarada» (V-1 a V-12) o «nueva» |
+| **AC-15** | **Comparación visual** contra las láminas 01, 03, 04, 05, 06, 07 y 08, con **cada diferencia numerada y clasificada** en «resuelta», «declarada» (V-1 a V-18) o «nueva» |
 | **AC-16** | **Batería local completa en verde**, y **CI en `success` sobre el SHA exacto que se despliega**. Un `cancelled` no es `success` |
 | **AC-17** | `Screens.md` 14 y 16 reescritas y la fila del Roadmap al día |
 | **AC-18** | Recorrido del usuario sobre producción, anotado con su fecha |
 | **AC-19** | **Revisión independiente** (D-13): la hace un agente que no participó, de solo lectura; **cada hallazgo se verifica contra el código antes de aceptarse**, los bloqueantes se resuelven y los no bloqueantes se corrigen o se declaran uno por uno, incluidos los falsos |
 | **AC-20** | La ficha móvil muestra, por unidad, **el grado y la batería** (D-6), y la ampliación de `UnitSummary` **no saca la unión de `inventory`** |
+
+## Comparación visual con la v2 (AC-15)
+
+Del **2026-11-02**, contra las siete láminas del alcance —01, 03, 04, 05, 06, 07 y 08—, leídas
+una por una junto a la pantalla implementada. Cada entrada se clasifica en **resuelta** (la
+pantalla hace lo que dibuja la lámina), **declarada** (diferencia ya numerada antes de
+implementar, V-1 a V-13) o **nueva** (apareció al comparar y se decide acá).
+
+### Lámina 01 · Listado
+
+| # | Qué | Clasificación |
+|---|---|---|
+| C-1 | Título, subtítulo «Reservas y entregas de clientes.» y «+ Nuevo pedido» | **resuelta** |
+| C-2 | Buscador de número con su ícono, y «Todos los clientes» como buscador | **resuelta** / **declarada** (V-7) |
+| C-3 | Barra de estados con el contador de cada uno y el ámbito compartido | **resuelta** |
+| C-4 | Columnas Pedido (número y fecha), Cliente, Resumen, Estado con ícono y texto, Origen, Total y «Ver» | **resuelta** |
+| C-5 | Leyenda de qué compromete cada estado, al pie | **resuelta** |
+| C-6 | **La barra de estados son pastillas con un punto de color por estado, dentro de la tarjeta de filtros**; la implementación usa `SubNav`: pestañas subrayadas con la cantidad en una insignia | **nueva → V-14** |
+| C-7 | **«Ver ventas →»**, enlace secundario del encabezado | **nueva → V-15** |
+| C-8 | La leyenda y la paginación van en la misma fila del pie de la tarjeta; acá la paginación va debajo de la tabla y la leyenda, fuera de la tarjeta | **nueva**, cosmética: se acepta |
+| C-9 | «Limpiar filtros» siempre visible; acá aparece solo con un filtro puesto | **nueva**, se acepta: un botón que no hace nada es ruido |
+
+### Lámina 03 · Ficha pendiente y revisión de reserva
+
+| # | Qué | Clasificación |
+|---|---|---|
+| C-10 | Pestañas Resumen · Señas · Actividad, subrayadas | **resuelta** |
+| C-11 | Encabezado `P-000204 · Nadia Castro` + badge | **declarada** (V-3): se adopta el de la 06 |
+| C-12 | Acción principal **deshabilitada** mientras el panel está abierto, «Registrar seña» al lado y «···» al final | **resuelta** |
+| C-13 | Tres tarjetas: Total del pedido · Señado · Falta | **resuelta** / **declarada** (V-5) por el nombre |
+| C-14 | Franja «Pendiente · Todavía no reserva stock.» en ámbar con su ícono | **resuelta** |
+| C-15 | «Productos (1)» con «Precios fijados al crear el pedido» a la derecha | **resuelta** |
+| C-16 | Columnas de la tabla y «Disponible» como chip bajo el IMEI | **declarada** (V-2) |
+| C-17 | Miniatura del producto en la línea | **declarada** (V-12) |
+| C-18 | «Siguiente paso» y «Origen del pedido» en la columna derecha | **resuelta** |
+| C-19 | Panel de confirmación **en línea al pie**, a lo ancho, con una × para cerrar | **declarada** (V-4) |
+| C-20 | Contenido del panel: título, chip del equipo, efecto, «Volver» y «Confirmar reserva» | **resuelta** |
+| C-21 | **«Carla Méndez», quién creó el pedido**, en «Origen del pedido» | **nueva → V-16** |
+| C-22 | Las tarjetas de la lámina llevan la etiqueta arriba y el número abajo, sin ícono; `StatTile` lleva un ícono a la izquierda | **nueva**, cosmética: `StatTile` es compartido y está fuera de la lista |
+| C-23 | La última columna se llama «Total»; acá «Subtotal» | **nueva**, se acepta: «Total» a la derecha de «Total del pedido» en el pie confundía |
+
+### Láminas 04, 05 y 06 · Seña, entrega y emisión
+
+| # | Qué | Clasificación |
+|---|---|---|
+| C-24 | Pestaña Señas con las tres tarjetas, qué compromete una seña y la lista de recibos | **resuelta** |
+| C-25 | Dos botones de radio de medio de pago | **declarada** (V-6) |
+| C-26 | «Se lee: cincuenta dólares» | **declarada** (V-8) |
+| C-27 | Ficha de la 05 **sin pestañas**, con el stepper arriba | **declarada** (V-1) |
+| C-28 | Panel de entrega con el efecto y «no se puede deshacer» | **resuelta** |
+| C-29 | Panel de emisión con total, seña, «Faltará cobrar» y las tres afirmaciones | **resuelta** |
+| C-30 | Tarjeta «Venta» del entregado | **resuelta**, después de restituirla (ver §Hallazgos, punto 2) |
+
+### Lámina 07 · Ficha móvil
+
+| # | Qué | Clasificación |
+|---|---|---|
+| C-31 | Pestañas, tres tarjetas y franja, en una columna | **resuelta** |
+| C-32 | Chips por unidad: estado de stock, **Grado A** y **Batería 88 %** | **resuelta** (D-6) |
+| C-33 | Los chips de la lámina llevan ícono —punto, medalla, batería—; acá son texto con borde | **nueva**, cosmética: se acepta |
+| C-34 | La sección se llama «Equipos (1)» en móvil y «Productos (1)» en escritorio; acá «Productos» en los dos | **nueva**, se acepta: un pedido por cantidad no tiene equipos |
+| C-35 | «Pedido creado por Carla Méndez» | **nueva → V-16**, el mismo de C-21 |
+| C-36 | «···  Más» con ícono **y** texto | **resuelta** en móvil; la 03 lo dibuja solo con el ícono y acá lleva texto en los dos |
+| C-37 | Sin desbordamiento horizontal a 390 px, medido | **resuelta** tras el defecto 1 de §Hallazgos |
+
+### Lámina 08 · Conflictos
+
+| # | Qué | Clasificación |
+|---|---|---|
+| C-38 | Unidad no disponible: identifica la unidad, mantiene Pendiente y no reserva nada | **resuelta** |
+| C-39 | «Ver disponibilidad» desde el rechazo | **resuelta**: lleva a la columna «Estado de stock» del Resumen |
+| C-40 | Venta ya existente: se enlaza, no se emite otra | **resuelta** |
+| C-41 | Cambio de precio al crear | fuera del alcance: es la lámina 02, la **24.6.1-b** |
+
+**Resumen**: **41 entradas**. Dos de ellas —C-2 y C-13— cuentan en dos cubos, porque parte de lo
+que la lámina dibuja está resuelto y parte está declarado; por eso los cubos suman 43 y no 41.
+
+| Cubo | Entradas |
+|---|---|
+| Resueltas | **23** (21 puras + C-2 y C-13) |
+| Declaradas de antemano (V-1 a V-13) | **9** (7 puras + C-2 y C-13) |
+| Nuevas, adoptadas como diferencia (V-14 a V-16) | **4 entradas**, 3 diferencias: C-21 y C-35 son la misma, V-16 |
+| Cosméticas que se aceptan, con su motivo escrito | **6** |
+| Fuera del alcance | **1** (C-41, que es la lámina 02) |
+
+*Corregido el 2026-11-02 por la revisión independiente (F-5)*: el resumen decía «24 resueltas, 8
+declaradas, 3 nuevas y 6 cosméticas», tres números desviados en uno cada uno y C-41 sin cubo. La
+suma cerraba en 41 **porque los errores se compensaban**, que es exactamente el modo de falla que
+`CLAUDE.md` registra de la 8.4. Ninguna entrada se resolvió inventando un dato que el modelo no
+tiene.
+
+## Hallazgos de la implementación
+
+Cinco defectos propios, encontrados por las pruebas y por la comparación visual de esta subfase, y
+corregidos **dentro de la lista cerrada**:
+
+1. **La ficha desbordaba de costado.** Los dos ítems de la grilla de Resumen no llevaban
+   `min-w-0`, así que su ancho mínimo era el de la tabla de productos —siete columnas, con los
+   chips de grado y batería— en vez de dejarla desplazarse dentro de su `overflow-x-auto`.
+   Medido por el barrido de AC-13: **361 px** de desbordamiento a 320 px y **374 px** a 390 px con
+   equipos. Es el mismo defecto que la 24.5.1 encontró en el título del encabezado, por tercera
+   vez en la fase.
+2. **La tarjeta «Venta» del entregado se había perdido.** El rediseño movió «Emitir venta» al
+   encabezado y, con eso, dejó de decir si el pedido ya tiene su venta. Un `viewer`, que no ve
+   ningún botón, se quedaba sin saberlo. Se restituyó como tarjeta de la columna derecha de
+   Resumen, con el texto de la 20.2.
+3. **El botón «Registrar seña» desaparecía en la pestaña Actividad.** Se decidía con
+   `receipts.open`, y Actividad **no pide los recibos** a propósito (AC-5), así que ahí
+   `receipts` es `null` y el botón no se dibujaba. Es el choque de dos criterios del propio
+   brief: el encabezado tiene que ser el mismo en las tres pestañas y cada pestaña paga solo sus
+   lecturas. Se resolvió decidiéndolo con **el estado del pedido**, que es lo que la tabla de
+   acciones del README dice; el panel, que sí lee los recibos, avisa si ya no queda nada por
+   cubrir.
+4. **«Más acciones» recibía un `<Link>` desnudo**, no envuelto en `<li>` y con clases que no
+   eran las de `more-action-styles.ts`. El enlace quedaba fuera del árbol de accesibilidad del
+   `<ul role="list">` y el recorrido no lo encontraba. Corregido a la convención de la 24.1 (D-8),
+   y el nombre del botón pasó a «Más acciones del pedido», que es lo que esa convención pide.
+5. **Había dos «Registrar seña» activos.** El de la tarjeta de recibos seguía apuntando a
+   `/senar` —que redirige— y **no** se deshabilitaba con el panel abierto, que es exactamente lo
+   que AC-7 prohíbe. Ahora recibe de la página la dirección del panel de su pestaña y se dibuja
+   deshabilitado cuando ya está abierto.
+
+También se corrigieron **seis recuentos** de la spec de pedidos: el nombre accesible de un enlace
+se compara **por subcadena**, y la columna «Acción» de la lámina 01 agregó un «Ver el pedido
+P-000001» que contiene el número. Los `toHaveCount(1)` de la 19.2 pasaron a `exact: true`.
 
 ## Mediciones requeridas
 
@@ -372,6 +583,111 @@ El instrumento es el de la 24.5.3 —contar sentencias interceptando `getDb().$c
 escribir el resultado a un archivo, porque vitest se come `console.log`— y **el recuento se imprime
 al lado del tiempo**, que es lo que descubrió que la primera medición de la 24.5.3 no medía nada.
 El volumen sale de D-9.
+
+## Mediciones
+
+Del **2026-11-02**, contra PostgreSQL real de integración. El volumen es el de D-9: la
+organización que `seeds/volume.ts` siembra con 1.000 productos y sus clientes, más **N pedidos
+creados por el propio instrumento**, con la distribución 40 % pendiente, 30 % confirmado, 20 %
+entregado y 10 % cancelado. Mediana de cinco corridas después de una de calentamiento. El arnés
+fue un test temporal que **no se versiona**.
+
+**Las sentencias se contaron, no se estimaron**, interceptando las **dos** vías por las que sale
+una consulta: `pool.query` y el cliente que devuelve `pool.connect()`, que es la que usa una
+transacción. Esto importa: la primera versión del arnés solo miraba `pool.query` y por eso
+`getOrderReceipts` daba **cero** sentencias. Un cero así es la señal de que el instrumento no
+mide, no de que la lectura sea gratis — el mismo error que la 24.5.3 cometió midiendo solo el
+tiempo. El recuento va **al lado del tiempo** en todas las tablas.
+
+### Las dos lecturas nuevas (AC-14)
+
+| Lectura | 1.000 pedidos | 10.000 pedidos |
+|---|---|---|
+| `countOrdersByStatus` (sin filtro) | **1** sentencia · 2 ms | **1** sentencia · 3 ms |
+| `countOrdersByStatus` (con cliente) | **1** · 1 ms | **1** · 1 ms |
+| `listOrders` página 1, con el resumen | **5** · 11 ms | **5** · 40 ms |
+| `listOrders` página 1, filtrada por cliente | **5** · 8 ms | **5** · 38 ms |
+| Las dos juntas, como las pide `/pedidos` | **6** · 9 ms | **6** · 39 ms |
+
+**Los contadores son una sola sentencia**, no una por estado, que es lo que §Mediciones pedía
+comprobar: un `select status, count(*) … group by status`. Con cuatro estados, una por estado
+habría dado 4 o 5.
+
+**El resumen no es un `N+1`.** Las cinco sentencias de `listOrders`, desglosadas sobre 25 filas:
+
+1. `select count(*) from orders …` — el total para la paginación.
+2. `select … from orders …` — la página, **con las dos subconsultas correlacionadas adentro**:
+   el producto de la primera línea y el recuento de equipos. No agregan sentencias.
+3. `select … from clients …` — los clientes, por lote (ya estaba).
+4. `select … from products …` — los productos de las primeras líneas, por lote. **Es la única
+   que agregó el rediseño.**
+5. `select … from client_tag_assignments …` — las etiquetas, que viajan con la lectura de
+   clientes (ya estaba).
+
+Un `N+1` sobre 25 filas habría dado 27 o más. **Con 25 filas o con una, son cinco.**
+
+**Corrección al punto de partida de este brief**: decía que `/pedidos` pasaba «de 3 a 5»
+consultas. Medido, pasa de **4 a 6**: la cuenta vieja no incluía la lectura de etiquetas de
+clientes, que ya estaba. El rediseño agrega **dos** sentencias en total —los productos y los
+contadores—, no tres.
+
+**El costo del rediseño**: a 10.000 pedidos, `/pedidos` tarda **39 ms** en sus seis sentencias
+y a 1.000, **9 ms**. Lo que crece es el `count(*)` sobre la tabla entera, que ya existía; los
+contadores agregan 3 ms al peor volumen.
+
+### La ficha, por pestaña (AC-5)
+
+| Lectura | Sentencias | Mediana | Qué pestaña la paga |
+|---|---|---|---|
+| `getOrder` | **7** | 8 ms | las tres |
+| `getOrderReceipts` | **7** | 12 ms | Resumen y Señas, **no** Actividad |
+| `listOrderAudit` | **2** | 2 ms | solo Actividad, y solo `admin` |
+
+**Lo que esta tabla sí prueba** es la comparación relativa, que es lo que AC-5 pide: **ninguna
+pestaña paga lo de otra**. Resumen no pide la auditoría —2 sentencias— y Actividad no pide los
+recibos —7—; un `viewer` en Actividad tampoco paga la auditoría, porque no se le pide.
+
+**Lo que no prueba**, corregido el 2026-11-02 por la revisión independiente (F-15): sumar estas
+tres lecturas **no da el costo de la pestaña**. La página hace además `getOrganizationTimezone`
+en las tres, `getCredentialSources` cuando el pedido es del agente, y lo que consuma
+`requireSession`. Una versión anterior de esta sección decía «Resumen paga 14 sentencias, Señas
+14 y Actividad 9»: esos números son la suma de la tabla, no la pantalla.
+
+## Revisión independiente (D-13, AC-19)
+
+Del **2026-11-02**, por un agente que **no participó del trabajo**, con acceso de solo lectura
+(Read, Grep y Glob), contra este brief, `CLAUDE.md`, los ADR 0020, 0021 y 0022 y los 25 archivos
+del cambio. **Veredicto: R2**, con **2 bloqueantes, 11 no bloqueantes y 2 cosméticos**. El agente
+declaró además qué **no** revisó: no ejecutó nada —ni pruebas, ni build, ni axe, ni
+`db:generate`—, no pudo hacer `git diff` con sus herramientas, y **no abrió los PNG de la v2**,
+así que las seis entradas cosméticas de §Comparación visual quedan sin segunda lectura.
+
+Cada hallazgo se verificó contra el código antes de aceptarse. **Ninguno resultó falso.**
+
+| # | Severidad | Qué | Resolución |
+|---|---|---|---|
+| F-1 | **bloqueante** | Desde la pestaña Actividad, los paneles de entregar, cancelar y emitir **perdían el bloque de dinero en silencio**: `needsReceipts` era `tab !== "actividad"` y los paneles se abren conservando la pestaña | **corregido**: con un panel abierto los recibos se piden siempre. AC-5 se mantiene para Actividad sin panel. Se agregó el caso que lo habría visto |
+| F-2 | **bloqueante** | `senar/actions.ts` revalidaba `/pedidos/<id>/senar`, que desde esta subfase **solo redirige** | **corregido con autorización del usuario** (el archivo está fuera de la lista cerrada): apunta a `/pedidos/<id>`, que es donde el formulario vive ahora |
+| F-3 | no bloqueante | «Conservar pedido» no tiene la prioridad **visual** que el README pide | **declarado**: V-17, por decisión del usuario |
+| F-4 | no bloqueante | El foco no vuelve al disparador al cerrar un panel | **declarado**: V-18 |
+| F-5 | no bloqueante | Los recuentos de §Comparación visual no cerraban: tres cubos desviados en uno y una entrada sin cubo | **corregido**: la tabla de cubos, con la nota de que dos entradas cuentan dos veces |
+| F-6 | no bloqueante | Una aserción nueva **no podía fallar**: `expect(strip.icon).not.toBe("")` sobre una unión de literales, y dos `not.toBe("")` que pasaban con los textos cruzados entre estados | **corregido**: cada estado tiene que decir su consecuencia y los cuatro íconos tienen que ser distintos. **Demostrada capaz de fallar**: darle al confirmado el ícono del pendiente la enrojece (3 ≠ 4) |
+| F-7 | no bloqueante | §Alcance seguía pidiendo «Ver ventas», que V-15 dejó fuera | **corregido**: enmendado |
+| F-8 | no bloqueante | D-5, AC-7 y AC-13 hablan de **cuatro** paneles y de un parámetro por operación; son **cinco** y **uno** | **corregido**: enmienda escrita antes de los criterios |
+| F-9 | no bloqueante | `Screens.md` §16 describía la regla vieja del botón de la seña | **corregido**: dice la regla de cada uno de los dos controles |
+| F-10 | no bloqueante | AC-11 ofrecía como evidencia que «la guarda `module-boundary` pasa», y **esa guarda no fija esta regla** | **corregido**: el criterio dice ahora que la evidencia es el `grep`, y cita al ADR 0020, que ya lo advertía |
+| F-11 | no bloqueante | `.claude/settings.json`, sin seguimiento y fuera de la lista | **no es de esta subfase**: viene de varias atrás, el `HANDOFF` lo registra y el usuario decidió dejarlo así. Los commits se arman con rutas explícitas |
+| F-12 | no bloqueante | `HANDOFF.md` quedó con el estado del corte anterior y hoy es falso | **corregido** al cerrar |
+| F-13 | no bloqueante | El CHANGELOG no tenía entrada de la 24.6.1, que §Alcance pedía | **corregido** al cerrar |
+| F-14 | cosmético | Valor por omisión muerto apuntando a la ruta que redirige | **se deja**: es la defensa de un llamador futuro; el único que hay pasa siempre la dirección |
+| F-15 | no bloqueante | Los totales por pestaña de §Mediciones no eran los de la pantalla: omitían `getOrganizationTimezone` y `getCredentialSources` | **corregido**: la sección dice qué prueba la tabla y qué no |
+| F-16 | cosmético | AC-1 nombra `getBoundingClientRect` y la evidencia es por rol y por texto | **se acepta**: para *contenido*, el rol y el texto son evidencia más fuerte que un rectángulo. La única medición geométrica es la de AC-13 |
+
+Lo que la revisión **confirmó que está bien**, para que no se vuelva a hacer: la frontera entre
+módulos, releída hoy con `grep` y no de memoria; el ámbito compartido de los contadores, con los
+dos caminos imposibles —cliente que no es un UUID, número que no parsea— resueltos por el mismo
+lugar; que las seis pruebas nuevas de integración muerden y que su preparación por SQL no rompe
+`expectStockInvariant`; y que al `viewer` se le cierra del lado del servidor, no de la pantalla.
 
 ## Riesgos
 
@@ -419,5 +735,6 @@ probados, rollback y observabilidad revisados para este cambio.
 - **P-3**: la lectura del importe en palabras (V-8).
 - **P-4**: el enmascarado del IMEI, que ya estaba fuera de la fase desde el 2026-10-31 y esta
   subfase no mueve.
+- **P-6**: mostrar en Resumen quién creó el pedido (V-16), que hoy solo está en Actividad.
 - **P-5**: si `seeds/volume.ts` debería sembrar pedidos, ventas y recibos para las subfases de
   Comercial que vienen (D-9). Tercera vez que aparece.

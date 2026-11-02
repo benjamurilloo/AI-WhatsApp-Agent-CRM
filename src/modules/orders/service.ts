@@ -1124,6 +1124,12 @@ export type OrderSummary = {
   // La credencial del agente que lo dejó, o null si lo creó un usuario (brief-19.4, D-11).
   createdByCredentialId: string | null;
   createdAt: Date;
+  // Para la columna «Resumen» de la lámina 01 (brief-24.6.1, D-2). El nombre es el de hoy del
+  // producto de la primera línea, no el del alta: la línea nunca copió el nombre (brief-19.2,
+  // H-4), y decir otra cosa sería inventar un dato. Null si el producto no se pudo leer. El texto
+  // lo arma la pantalla, no el módulo.
+  firstProductName: string | null;
+  unitCount: number;
 };
 
 export type OrderStatusFilter = "all" | OrderStatus;
@@ -1144,16 +1150,33 @@ export type OrderPage = {
   pageCount: number;
 };
 
+// Dos lecturas por lote, no una por fila: los clientes y, desde la 24.6.1, los productos de las
+// primeras líneas (brief-24.6.1, D-2). Las dos van por la interfaz pública de su módulo —`crm` y
+// `catalog`—, que es la dirección permitida, y ninguna es un `JOIN` entre módulos. Se piden en
+// paralelo porque no dependen una de la otra.
 async function summarize(
   context: AuthContext,
   rows: repository.OrderListRow[],
 ): Promise<OrderSummary[]> {
-  const found = await getClientsByIds(context, [
-    ...new Set(rows.map((row) => row.clientId)),
+  const productIds = [
+    ...new Set(
+      rows.flatMap((row) => (row.firstProductId ? [row.firstProductId] : [])),
+    ),
+  ];
+  const [found, products] = await Promise.all([
+    getClientsByIds(context, [...new Set(rows.map((row) => row.clientId))]),
+    productIds.length === 0
+      ? Promise.resolve(null)
+      : getProductsByIds(context, productIds),
   ]);
   const names = new Map(
     found.ok
       ? found.clients.map((client) => [client.id, client.displayName])
+      : [],
+  );
+  const productNames = new Map(
+    products?.ok
+      ? products.products.map((product) => [product.id, product.name])
       : [],
   );
   return rows.map((row) => ({
@@ -1168,10 +1191,67 @@ async function summarize(
     status: row.status,
     createdByCredentialId: row.createdByCredentialId,
     createdAt: row.createdAt,
+    firstProductName: row.firstProductId
+      ? (productNames.get(row.firstProductId) ?? null)
+      : null,
+    unitCount: row.unitCount,
   }));
 }
 
 const EMPTY_PAGE = { orders: [], total: 0, page: 1, pageCount: 1 } as const;
+
+// El ámbito del listado, en un solo lugar. Lo usan `listOrders` y `countOrdersByStatus`, y por eso
+// está extraído: si cada una normalizara el cliente y el número por su cuenta, los contadores
+// podrían contar sobre un ámbito distinto del que la tabla muestra, que es justo lo que la v2
+// prohíbe («deben usar el mismo ámbito de cliente/número que el listado»). Devuelve `null` cuando
+// el filtro no puede corresponder a ningún pedido.
+function listQuery(
+  context: AuthContext,
+  filters: Omit<OrderListFilters, "page">,
+): repository.OrderListQuery | null {
+  // Un cliente o un número que no pueden existir no traen pedidos: la lista queda vacía.
+  const clientId = filters.clientId?.trim().toLowerCase() || null;
+  if (clientId !== null && !idSchema.safeParse(clientId).success) return null;
+  const numberText = filters.number.trim();
+  const number = numberText === "" ? null : parseOrderNumberSearch(numberText);
+  if (numberText !== "" && number === null) return null;
+  return {
+    organizationId: context.organizationId,
+    statuses: filters.status === "all" ? null : [filters.status],
+    clientId,
+    number,
+  };
+}
+
+export type OrderStatusCounts = Record<OrderStatusFilter, number>;
+
+const ZERO_COUNTS: OrderStatusCounts = {
+  all: 0,
+  pending: 0,
+  confirmed: 0,
+  delivered: 0,
+  cancelled: 0,
+};
+
+// Cuántos pedidos tiene cada estado, para la barra de la lámina 01 (brief-24.6.1, D-1). Una sola
+// consulta agrupada. El total de «Todos» se suma acá, de los cuatro, y no con una consulta más:
+// los cuatro estados son exhaustivos y excluyentes, así que sumarlos **es** el total.
+export async function countOrdersByStatus(
+  context: AuthContext,
+  filters: Omit<OrderListFilters, "status" | "page">,
+): Promise<{ ok: true; counts: OrderStatusCounts } | Failure<"FORBIDDEN">> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  const query = listQuery(context, { ...filters, status: "all" });
+  if (query === null) return { ok: true, counts: { ...ZERO_COUNTS } };
+  const rows = await repository.countOrdersByStatus(query);
+  const counts = { ...ZERO_COUNTS };
+  for (const row of rows) {
+    counts[row.status] = row.total;
+    counts.all += row.total;
+  }
+  return { ok: true, counts };
+}
 
 export async function listOrders(
   context: AuthContext,
@@ -1179,22 +1259,8 @@ export async function listOrders(
 ): Promise<OrderPage | Failure<"FORBIDDEN">> {
   const authorized = authorize(context);
   if (!authorized.ok) return authorized;
-  // Un cliente o un número que no pueden existir no traen pedidos: la lista queda vacía.
-  const clientId = filters.clientId?.trim().toLowerCase() || null;
-  if (clientId !== null && !idSchema.safeParse(clientId).success) {
-    return { ok: true, ...EMPTY_PAGE, orders: [] };
-  }
-  const numberText = filters.number.trim();
-  const number = numberText === "" ? null : parseOrderNumberSearch(numberText);
-  if (numberText !== "" && number === null) {
-    return { ok: true, ...EMPTY_PAGE, orders: [] };
-  }
-  const query: repository.OrderListQuery = {
-    organizationId: context.organizationId,
-    statuses: filters.status === "all" ? null : [filters.status],
-    clientId,
-    number,
-  };
+  const query = listQuery(context, filters);
+  if (query === null) return { ok: true, ...EMPTY_PAGE, orders: [] };
   const total = await repository.countOrders(query);
   const pageCount = Math.max(1, Math.ceil(total / ORDERS_PAGE_SIZE));
   const page = Math.min(Math.max(1, Math.trunc(filters.page) || 1), pageCount);
@@ -1335,6 +1401,10 @@ export type OrderLineUnit = {
   serial: string;
   unitPrice: string;
   status: UnitStatus | null;
+  // Desde la 24.6.1 (brief-24.6.1, D-6), para los chips de la ficha en el teléfono. Vienen de
+  // `getUnitSummaries`, en la misma lectura que ya se hacía: ni una consulta más.
+  gradeName: string | null;
+  batteryHealth: number | null;
 };
 
 // Las unidades de unas líneas con su IMEI y su estado, ordenadas por IMEI. orders o sales ya
@@ -1357,6 +1427,8 @@ export async function describeLineUnits(
         serial: summary?.serial ?? "",
         unitPrice: row.unitPrice,
         status: summary?.status ?? null,
+        gradeName: summary?.gradeName ?? null,
+        batteryHealth: summary?.batteryHealth ?? null,
       },
     ]);
   }

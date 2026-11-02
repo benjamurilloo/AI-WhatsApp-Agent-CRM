@@ -26,35 +26,55 @@ import { tenderNote } from "@/app/(autenticado)/caja/exchange";
 
 const numberCell = `${tableCellClass} text-right whitespace-nowrap tabular-nums`;
 
+// Desde la 24.6.1 (brief-24.6.1), la pestaña Señas pone lo señado y lo que falta arriba, en las
+// tres tarjetas que comparte con Resumen, así que `showTotals` apaga la lista de definición que
+// repetía los mismos dos números dentro de la tarjeta. El título también cambia a «Señas
+// registradas», que es como lo rotula la lámina 04.
 export function OrderReceiptsSection({
   orderId,
   displayNumber,
   receipts,
   canDeposit,
+  depositHref,
+  depositOpen = false,
   timeZone,
+  showTotals = true,
+  title = "Señas",
 }: {
   orderId: string;
   displayNumber: string;
   receipts: OrderReceipts;
   canDeposit: boolean;
+  // Desde la 24.6.1, la seña es un panel por URL (brief-24.6.1, D-5). Quien dibuja la tarjeta
+  // pasa su dirección y si ya está abierto; sin eso quedarían dos controles activos para la
+  // misma operación (AC-7). Por omisión, la ruta vieja, que redirige al panel.
+  depositHref?: string;
+  depositOpen?: boolean;
   timeZone: string;
+  showTotals?: boolean;
+  title?: string;
 }) {
   const money = (value: string) => formatMoney(value, receipts.currency);
 
   return (
-    <SectionCard id="senas-titulo" title="Señas" icon="banknote">
-      <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 text-sm">
-        <dt className="text-muted">Señado</dt>
-        <dd className="text-right tabular-nums">{money(receipts.deposited)}</dd>
-        {receipts.situation === "none" || receipts.situation === "retained" ? (
-          <>
-            <dt className="font-semibold">Le falta</dt>
-            <dd className="text-right font-semibold tabular-nums">
-              {money(receipts.outstanding)}
-            </dd>
-          </>
-        ) : null}
-      </dl>
+    <SectionCard id="senas-titulo" title={title} icon="banknote">
+      {showTotals ? (
+        <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 text-sm">
+          <dt className="text-muted">Señado</dt>
+          <dd className="text-right tabular-nums">
+            {money(receipts.deposited)}
+          </dd>
+          {receipts.situation === "none" ||
+          receipts.situation === "retained" ? (
+            <>
+              <dt className="font-semibold">Le falta</dt>
+              <dd className="text-right font-semibold tabular-nums">
+                {money(receipts.outstanding)}
+              </dd>
+            </>
+          ) : null}
+        </dl>
+      ) : null}
       {receipts.situation === "retained" ? (
         <p className="mt-3 text-sm">
           La seña queda retenida para este pedido hasta que se emita su venta.
@@ -165,7 +185,11 @@ export function OrderReceiptsSection({
 
       {canDeposit && receipts.open ? (
         <p className="mt-4">
-          <Link href={`/pedidos/${orderId}/senar`} className={primaryLinkClass}>
+          <Link
+            href={depositHref ?? `/pedidos/${orderId}/senar`}
+            aria-disabled={depositOpen || undefined}
+            className={`${primaryLinkClass} ${depositOpen ? "pointer-events-none opacity-50" : ""}`}
+          >
             <Icon name="plus" className="size-4" />
             Registrar seña
           </Link>

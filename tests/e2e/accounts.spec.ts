@@ -354,8 +354,9 @@ test("la lista de deudores, con el filtro por moneda, y los textos de lo que pas
     page.getByRole("link", { name: "Devolver saldo a favor" }),
   ).toHaveCount(0);
 
-  // D-8: el pedido cancelado dice la regla y lo que tiene a favor hoy.
-  await page.goto(`/pedidos/${cancelled}`);
+  // D-8: el pedido cancelado dice la regla y lo que tiene a favor hoy. Desde la 24.6.1 ese texto
+  // vive en la pestaña Señas de la ficha (brief-24.6.1, D-4): el texto y la regla no cambiaron.
+  await page.goto(`/pedidos/${cancelled}?pestana=senas`);
   await expect(
     page.getByText(
       /El pedido se canceló: lo señado pasó a la cuenta del cliente\. Se aplica primero a sus ventas con saldo, y lo que sobra queda a favor\. Hoy tiene \$\s500,00 a favor\./,

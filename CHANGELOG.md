@@ -2,6 +2,41 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-11-02 — 24.6.1: pedidos
+
+Duodécima subfase de la Fase 24 ([brief-24.6.1](docs/decisions/brief-24.6.1-pedidos.md)). Rediseño de **las dos pantallas de Pedidos que ya existían** —el listado y la ficha— y conversión de las cinco operaciones del pedido en **paneles que abren y cierran por la URL**, con **dos lecturas nuevas** medidas. Sin migraciones, sin tablas y sin contratos nuevos.
+
+**Esta entrada es parcial**: certifica hasta **validado en integración**. No está desplegada ni recorrida.
+
+**Certifica:**
+- **El listado con la forma de la lámina 01**: barra de estados con **el contador de cada uno**, columna «Resumen» que dice qué se pidió, buscador de clientes, y las siete columnas **Pedido (número y fecha) · Cliente · Resumen · Estado · Origen · Total · Ver**, con la leyenda de qué compromete cada estado al pie. El `<select>` de estado de la 19.2 desapareció.
+- **Los contadores cuentan dentro del ámbito de cliente y de número, y no del estado elegido**: «Pendientes 3» sigue diciendo 3 mientras se miran los entregados. El ámbito se extrajo a **una sola función** que usan el listado y los contadores, para que no puedan separarse; los dos caminos imposibles —un cliente que no es un UUID, un número que no parsea— dejan lista vacía **y** contadores en cero por el mismo lugar.
+- **El buscador de clientes manda dos parámetros a propósito**: el id, que manda porque es exacto, y el nombre escrito, que es lo único que llega **sin JavaScript**; entonces la pantalla lo resuelve por coincidencia exacta y, con cero o con varios, no filtra por un cliente elegido a dedo: deja la lista vacía y dice por qué.
+- **La ficha con tres pestañas por URL** —Resumen, Señas y Actividad—, el siguiente paso en el encabezado según el estado, el grado y la salud de la batería por unidad, y el estado de stock de **la unidad**, que no es el del pedido.
+- **Las cinco operaciones en paneles por la URL**, con **un solo parámetro**: así es imposible pedir dos a la vez. **El panel es la confirmación**: no hay un segundo paso, el cuerpo de la pantalla queda `inert`, y **el disparador que lo abrió se dibuja deshabilitado** —los dos, cuando hay dos—. Andan sin JavaScript, porque son páginas servidas. `/pedidos/[id]/senar` quedó redirigiendo, con su `?moneda=`.
+- **Cada pestaña pide solo sus lecturas**: Resumen no pide la auditoría y Actividad no pide los recibos, **contado**, no estimado.
+- **Dos lecturas nuevas, medidas al volumen.** Los contadores son **una sola sentencia** (`group by status`): con cuatro estados, una por estado habría dado cuatro o cinco. El resumen **no es un `N+1`**: `listOrders` hace **cinco** sentencias con 25 filas o con una, y la única que agregó el rediseño es la lectura por lote de productos; las dos subconsultas correlacionadas viajan **dentro** de la sentencia de la página. A 10.000 pedidos `/pedidos` tarda **39 ms** en sus seis sentencias y a 1.000, **9 ms**.
+- **La frontera entre módulos se respeta**: `orders` no importa `cash` ni `sales` —verificado con `grep`, cero coincidencias—, no hay `JOIN` contra tablas ajenas, y «Señado» y «Falta del total» los compone la página. Cuando `cash` no puede leer los recibos, la pantalla lo dice en vez de dibujar ceros.
+- **Ninguna regla del pedido cambió.** Las transiciones, qué reserva, qué descuenta, qué pasa con la seña al cancelar y cuándo se puede emitir la venta siguen donde estaban. Lo que cambió es **por dónde se llega**.
+- **Ninguna migración**: `db:generate` no encuentra cambios y siguen **67**.
+- **Dieciocho diferencias con la v2, declaradas una por una** —trece antes de implementar, tres al comparar contra las láminas y dos que encontró la revisión—, y **41 entradas de comparación visual** clasificadas en resuelta, declarada, nueva o cosmética aceptada con su motivo.
+- **Validado localmente**: typecheck, ESLint y Prettier limpios; **2.212** de `unit` y `guards`; **1.902** de `integration` con **seis casos nuevos**; y **las tres conductas nuevas demostradas capaces de fallar** con tres mutaciones, cada una enrojeciendo exactamente la aserción prevista.
+- **Las tres veces que la base corrigió al código quedaron escritas en las pruebas**, con el intento que disparó cada una: el `CHECK` `orders_status_dates` no acepta un confirmado sin su fecha, el trigger `orders_guard_change` rechaza `pendiente → entregado` **incluso por SQL directo**, y el invariante de stock no deja meter unidades en un producto por cantidad ni unidades sin saldo que las acompañe. Es la segunda defensa del [ADR 0020](docs/decisions/0020-el-pedido.md) haciendo su trabajo.
+- **Validado en integración** contra el build de producción con PostgreSQL real: **desbordamiento cero a 320, 390, 640, 1082 y 1440 px** en las dos pantallas, sus tres pestañas y sus cuatro paneles, y axe sin violaciones en claro y en oscuro.
+- **Cinco defectos propios que encontraron las pruebas de esta subfase**, no un recorrido a ojo: la ficha desbordaba **361 px** a 320 y **374** a 390 con equipos por dos `min-w-0` faltantes —tercera vez en la fase con la misma causa—; la tarjeta «Venta» del entregado se había perdido al mover el botón al encabezado, y un `viewer` se quedaba sin saber si el pedido ya se facturó; «Más acciones» recibía un `<Link>` desnudo que quedaba fuera del árbol de accesibilidad; había **dos «Registrar seña» activos** con el panel abierto, que es justo lo que AC-7 prohíbe; y el botón de la seña **desaparecía en la pestaña Actividad**, por el choque entre «el encabezado es el mismo en las tres pestañas» y «cada pestaña paga solo sus lecturas».
+- **Una revisión independiente, R2, con quince hallazgos y ninguno falso.** El más valioso fue la **segunda mitad del defecto que esta subfase ya se había encontrado**: resuelto el choque AC-5/encabezado para el botón, quedaba sin resolver para el **cuerpo del panel**, así que entregar, cancelar y emitir desde Actividad perdían el bloque de dinero en silencio. Otros tres son del tipo que esta metodología existe para cachar: una **aserción nueva que no podía fallar** (`not.toBe("")` sobre una unión de literales), **recuentos que no cerraban** y sumaban bien solo porque los errores se compensaban, y un criterio que ofrecía como prueba de la frontera una guarda que **no fija esa regla** —`module-boundary` permite importar la interfaz pública de otro módulo, y el ADR 0020 ya lo advertía—.
+
+**No certifica:**
+- **que esté desplegada ni recorrida**: AC-16 en su mitad de CI, AC-18 y el nivel «validado en staging» quedan abiertos;
+- **el nivel «preparado para producción»**, que además pide backups probados, rollback y observabilidad revisados para este cambio;
+- **que la batería de extremo a extremo completa corra de una sola vez en esta máquina**: el servidor local se murió a los 19 minutos y 218 de 219 fallas fueron esa caída. Se corrió **en cuatro tandas**, todas en verde; la corrida entera es trabajo de la CI;
+- **las seis entradas cosméticas de la comparación visual**: el agente revisor declaró que **no abrió los PNG**, así que no tienen segunda lectura;
+- **que el foco vuelva al disparador al cerrar un panel** (V-18) ni **que «Conservar pedido» tenga la prioridad visual** además de la del teclado (V-17);
+- **que un `viewer` que pide `/senar` reciba una explicación**: llega a la ficha sin panel y sin mensaje (V-13);
+- **que la ficha diga quién creó el pedido** (V-16): lo dibujan dos láminas y hoy solo está en la auditoría de Actividad;
+- **el alta con selección de equipos** (lámina 02), que es la **24.6.1-b**;
+- **que `format:check` y `lint` pasen en esta máquina**: fallan por `core.autocrlf` sin `.gitattributes`, invisible en la CI y ajeno a esta subfase.
+
 ## 2026-11-01 — 24.5.3: modelos y grados
 
 Undécima subfase de la Fase 24 ([brief-24.5.3](docs/decisions/brief-24.5.3-modelos-y-grados.md) §Cierre). Rediseño de **cuatro pantallas que ya existían** detrás de las capacidades `variants` y `serialized_units`, más **una sola lectura nueva**.

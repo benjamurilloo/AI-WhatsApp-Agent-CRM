@@ -23,6 +23,9 @@ export {
   getOrdersForAccountsByIds,
   listOrderAudit,
   listOrders,
+  // La barra de estados del listado (brief-24.6.1, D-1).
+  countOrdersByStatus,
+  type OrderStatusCounts,
   countOpenOrdersByClient,
   listRecentClientOrders,
   lockOrderForReceipt,

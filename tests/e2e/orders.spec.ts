@@ -11,6 +11,11 @@ import { E2E_PASSWORD } from "./global-setup";
 // y sus precios los crea cada caso. Desde la 19.3 (AC-8), el ciclo: confirmar, entregar y cancelar
 // un confirmado, con lo reservado en las pantallas de productos. Desde la 19.4 (AC-8), el origen de
 // un pedido que dejó el agente.
+//
+// Desde la 24.6.1 (brief-24.6.1) las dos pantallas están rediseñadas: la lista tiene una barra de
+// estados con contadores y una columna «Resumen», y la ficha tiene tres pestañas y cinco paneles
+// que abren y cierran por la URL. Lo que cambió acá es **cómo se llega a cada operación**, no qué
+// hace: ninguna regla del pedido se tocó (AC-9).
 
 const [ADMIN_SEED, VIEWER_SEED] = SEED_USERS;
 const ADMIN = ADMIN_SEED.email;
@@ -207,6 +212,36 @@ async function pick(scope: Locator | Page, label: string, text: string) {
   await field.press("Enter");
 }
 
+// «Más acciones» del encabezado de la ficha: con JavaScript es un botón de revelación, así que
+// la cancelación está detrás de él. Sin JavaScript la lista queda a la vista y este paso no hace
+// falta (more-actions.tsx).
+async function openMore(page: Page) {
+  await page.getByRole("button", { name: "Más acciones del pedido" }).click();
+}
+
+// Un panel abierto (brief-24.6.1, D-5; AC-7). Comprueba las tres cosas que las láminas piden y que
+// el paso en dos no podía dar: que el panel está **en la URL**, que el cuerpo de la pantalla quedó
+// `inert` —exactamente un elemento, no cero— y que el disparador que lo abrió se dibuja
+// deshabilitado, para que no queden dos controles activos que ejecuten la misma transición.
+async function expectPanelOpen(
+  page: Page,
+  name: string,
+  trigger: string | null = null,
+) {
+  await expect(page).toHaveURL(new RegExp(`panel=${name}`));
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.locator("main [inert]")).toHaveCount(1);
+  if (trigger !== null) {
+    // El primero es el del encabezado: «Registrar seña» también está dentro de la tarjeta de
+    // recibos, y los dos tienen que quedar deshabilitados con el panel abierto.
+    const triggers = page.getByRole("link", { name: trigger });
+    for (let i = 0; i < (await triggers.count()); i += 1) {
+      await expect(triggers.nth(i)).toHaveAttribute("aria-disabled", "true");
+    }
+    expect(await triggers.count()).toBeGreaterThan(0);
+  }
+}
+
 async function orderCount() {
   const result = await db.execute<{ count: number }>(
     sql`select count(*)::int as count from orders`,
@@ -251,7 +286,7 @@ test("un admin crea un pedido de dos líneas, lo encuentra y lo cancela", async 
     page.getByRole("heading", { name: "Pedido P-000001" }),
   ).toBeVisible();
   await expect(page.getByText("Pedido creado.")).toBeVisible();
-  const lines = page.getByRole("table", { name: /Líneas del pedido/ });
+  const lines = page.getByRole("table", { name: /Productos del pedido/ });
   await expect(lines).toContainText("Café molido");
   await expect(lines).toContainText("$ 3.703,50");
   await expect(lines).toContainText("$ 400,00");
@@ -260,32 +295,55 @@ test("un admin crea un pedido de dos líneas, lo encuentra y lo cancela", async 
   await expectAccessible(page, "detalle pendiente");
 
   await page.goto("/pedidos");
-  await expect(page.getByRole("link", { name: "P-000001" })).toHaveCount(1);
+  await expect(
+    page.getByRole("link", { name: "P-000001", exact: true }),
+  ).toHaveCount(1);
   // En la pestaña Operaciones de la ficha (brief-24.4.1, D-5).
   await page.goto(`/clientes/${clientId}?pestana=operaciones`);
   const card = page.getByRole("region", { name: /^Operaciones de / });
   await expect(card.getByRole("link", { name: /P-000001/ })).toBeVisible();
   await card.getByRole("link", { name: /P-000001/ }).click();
 
-  await page.getByRole("button", { name: "Cancelar pedido" }).click();
-  await expect(page.getByText(/¿Cancelar el pedido P-000001\?/)).toBeVisible();
-  await expectAccessible(page, "confirmación de la cancelación");
-  await page.getByRole("button", { name: "Sí, cancelar el pedido" }).click();
+  // Desde la 24.6.1 la cancelación vive en «Más acciones», en rojo, y **el panel es la
+  // confirmación**: ya no hay un botón que abre una pregunta en línea (D-5, AC-6).
+  await openMore(page);
+  await page.getByRole("link", { name: "Cancelar pedido" }).click();
+  await expectPanelOpen(page, "cancelar");
+  const panel = page.getByRole("dialog");
+  await expect(
+    panel.getByRole("heading", { name: "¿Cancelar el pedido P-000001?" }),
+  ).toBeFocused();
+  // El efecto antes del cambio (AC-8) y «Conservar pedido» antes del destructivo.
+  await expect(panel).toContainText("No había reserva que liberar.");
+  await expect(panel).toContainText("No se puede deshacer");
+  await expect(
+    panel.getByRole("link", { name: "Conservar pedido" }),
+  ).toBeVisible();
+  await expectAccessible(page, "panel de la cancelación");
+  await panel.getByRole("button", { name: "Cancelar pedido" }).click();
   await expect(page).toHaveURL(/\?aviso=cancelado$/);
   await expect(page.getByText("Pedido cancelado.")).toBeVisible();
   const status = await db.execute<{ status: string }>(
     sql`select status from orders`,
   );
   expect(status.rows[0]!.status).toBe("cancelled");
+  // Un pedido cancelado es final: ni acción principal ni «Más acciones», y el panel se cerró.
   await expect(
-    page.getByRole("button", { name: "Cancelar pedido" }),
+    page.getByRole("button", { name: "Más acciones del pedido" }),
   ).toHaveCount(0);
+  await expect(page.locator("main [inert]")).toHaveCount(0);
+  await page.getByRole("link", { name: "Actividad" }).click();
+  await expect(page.getByRole("region", { name: "Cronología" })).toContainText(
+    "Cancelado",
+  );
   const history = page.getByRole("table", { name: /Historia del pedido/ });
   await expect(history).toContainText("Pendiente → Cancelado");
   await expect(history).toContainText("Pedido P-000001 · 2 líneas");
 
   await page.goto("/pedidos?estado=cancelados");
-  await expect(page.getByRole("link", { name: "P-000001" })).toHaveCount(1);
+  await expect(
+    page.getByRole("link", { name: "P-000001", exact: true }),
+  ).toHaveCount(1);
   await page.goto("/pedidos?estado=pendientes");
   await expect(
     page.getByText("Ningún pedido coincide con estos filtros."),
@@ -320,7 +378,7 @@ test("si un precio cambia entre la vista y el envío, muestra el nuevo y no crea
     page.getByRole("heading", { name: "Pedido P-000001" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("table", { name: /Líneas del pedido/ }),
+    page.getByRole("table", { name: /Productos del pedido/ }),
   ).toContainText("$ 3.000,00");
 });
 
@@ -371,26 +429,41 @@ test("un viewer ve la lista y el detalle sin contacto ni botones, y no entra al 
   await login(page, VIEWER);
 
   await page.goto("/pedidos");
-  await expect(page.getByRole("link", { name: "P-000007" })).toHaveCount(1);
+  await expect(
+    page.getByRole("link", { name: "P-000007", exact: true }),
+  ).toHaveCount(1);
   await expect(page.getByRole("link", { name: "+ Nuevo pedido" })).toHaveCount(
     0,
   );
   await expectAccessible(page, "lista del viewer");
 
-  await page.getByRole("link", { name: "P-000007" }).click();
+  await page.getByRole("link", { name: "P-000007", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Pedido P-000007" }),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: "Lucía Gómez" })).toBeVisible();
+  // El nombre del cliente está en el encabezado y en la tarjeta «Cliente» del Resumen.
+  await expect(
+    page.getByRole("link", { name: "Lucía Gómez" }).first(),
+  ).toBeVisible();
   const content = await page.content();
   expect(content).not.toContain("5491155553333");
   expect(content).not.toContain(EMAIL);
+  // Ningún control de gestión (AC-10): ni la acción principal, ni la seña, ni «Más acciones». Y
+  // pedir un panel por la URL tampoco se lo abre: `panel` se lee solo para un admin.
   await expect(
-    page.getByRole("button", { name: "Cancelar pedido" }),
+    page.getByRole("link", {
+      name: /Confirmar pedido|Marcar entregado|Registrar seña|Emitir venta|Cancelar pedido/,
+    }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Confirmar pedido" }),
+    page.getByRole("button", { name: "Más acciones del pedido" }),
   ).toHaveCount(0);
+  await page.goto(`/pedidos/${orderId}?panel=cancelar`);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.locator("main [inert]")).toHaveCount(0);
+  // La auditoría no se le entrega: en Actividad ve la cronología y nada más.
+  await page.getByRole("link", { name: "Actividad" }).click();
+  await expect(page.getByRole("region", { name: "Cronología" })).toBeVisible();
   await expect(page.getByRole("table", { name: /Historia/ })).toHaveCount(0);
   await expectAccessible(page, "detalle del viewer");
 
@@ -404,7 +477,7 @@ test("un viewer ve la lista y el detalle sin contacto ni botones, y no entra al 
     page.getByRole("heading", { name: "Pedido P-000008" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", {
+    page.getByRole("link", {
       name: /Marcar entregado|Cancelar pedido|Confirmar pedido/,
     }),
   ).toHaveCount(0);
@@ -430,31 +503,44 @@ test("brief-19.3: un admin confirma con el teclado, ve lo reservado en el produc
   await login(page, ADMIN);
 
   await page.goto(`/pedidos/${orderId}`);
-  const lines = page.getByRole("table", { name: /Líneas del pedido/ });
+  const lines = page.getByRole("table", { name: /Productos del pedido/ });
   await expect(
     lines.getByRole("columnheader", { name: "Disponible" }),
   ).toBeVisible();
   await expect(lines).toContainText("10");
   await expectAccessible(page, "pendiente con lo disponible");
 
-  // Con el teclado (revisión independiente, R-6): Enter en el botón lleva el foco a «Sí, …», y
-  // «No, volver» lo devuelve al botón.
-  const start = page.getByRole("button", { name: "Confirmar pedido" });
-  const yes = page.getByRole("button", { name: "Sí, confirmar el pedido" });
+  // Con el teclado, como exigía la 19.3 (R-6), pero contra el recorrido de la 24.6.1: Enter en el
+  // disparador **navega al panel**, el panel pone el foco en su título, y «Volver» lo cierra. Lo
+  // que la 19.3 pedía —no perder el teclado entre el disparador y la confirmación— se sigue
+  // cumpliendo; lo que cambió es que ahora son dos direcciones y no dos pasos en la misma.
+  const start = page.getByRole("link", { name: "Confirmar pedido" });
   await start.focus();
   await page.keyboard.press("Enter");
-  await expect(yes).toBeFocused();
+  await expectPanelOpen(page, "confirmar", "Confirmar pedido");
+  const confirmPanel = page.getByRole("dialog");
+  const confirmTitle = confirmPanel.getByRole("heading", {
+    name: "¿Confirmar el pedido P-000007?",
+  });
+  await expect(confirmTitle).toBeFocused();
+  await expect(confirmPanel).toContainText("Reservará los equipos guardados.");
+  await expect(confirmPanel).toContainText("La reserva es íntegra");
+  await expectAccessible(page, "panel de confirmar");
+  await confirmPanel.getByRole("link", { name: "Volver" }).click();
+  await expect(page.locator("main [inert]")).toHaveCount(0);
+
+  await start.focus();
+  await page.keyboard.press("Enter");
+  await expect(confirmTitle).toBeFocused();
   await page.keyboard.press("Tab");
-  await expect(page.getByRole("button", { name: "No, volver" })).toBeFocused();
-  await page.keyboard.press("Enter");
-  await expect(start).toBeFocused();
-  await page.keyboard.press("Enter");
-  await expect(yes).toBeFocused();
   await expect(
-    page.getByText(/¿Confirmar el pedido P-000007\? Reserva el stock/),
-  ).toBeVisible();
-  await expectAccessible(page, "confirmación de confirmar");
-  await expect(yes).toBeFocused();
+    confirmPanel.getByRole("link", { name: "Volver" }),
+  ).toBeFocused();
+  await page.keyboard.press("Tab");
+  const confirmSubmit = confirmPanel.getByRole("button", {
+    name: "Confirmar reserva",
+  });
+  await expect(confirmSubmit).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\?aviso=confirmado$/);
   await expect(
@@ -467,6 +553,14 @@ test("brief-19.3: un admin confirma con el teclado, ve lo reservado en el produc
   await expect(
     page.getByRole("columnheader", { name: "Disponible" }),
   ).toHaveCount(0);
+  // La franja de la lámina 03 y el «Siguiente paso», que dicen qué compromete el estado y qué va
+  // a hacer el botón principal antes de abrirlo (AC-6 y AC-8).
+  await expect(page.getByRole("main")).toContainText(
+    "El equipo está reservado para este pedido.",
+  );
+  await expect(
+    page.getByRole("region", { name: "Siguiente paso" }),
+  ).toContainText("Marcar entregado registra la salida");
   await expectAccessible(page, "detalle confirmado");
 
   await page.goto(`/productos/${coffee}`);
@@ -480,19 +574,32 @@ test("brief-19.3: un admin confirma con el teclado, ve lo reservado en el produc
   await expectAccessible(page, "lista con lo reservado");
 
   await page.goto(`/pedidos/${orderId}`);
-  await page.getByRole("button", { name: "Marcar entregado" }).click();
-  await page.getByRole("button", { name: "Sí, marcar entregado" }).click();
+  await page.getByRole("link", { name: "Marcar entregado" }).click();
+  await expectPanelOpen(page, "entregar", "Marcar entregado");
+  const deliverPanel = page.getByRole("dialog");
+  await expect(deliverPanel).toContainText("Registrará la salida de stock");
+  await expect(deliverPanel).toContainText("Este paso no se puede deshacer.");
+  await deliverPanel.getByRole("button", { name: "Confirmar entrega" }).click();
   await expect(page).toHaveURL(/\?aviso=entregado$/);
   expect(await balance(coffee)).toEqual({
     on_hand: "7.000",
     reserved: "0.000",
   });
   await expect(
-    page.getByRole("button", { name: /Cancelar pedido|Marcar entregado/ }),
+    page.getByRole("link", { name: /Cancelar pedido|Marcar entregado/ }),
   ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Más acciones del pedido" }),
+  ).toHaveCount(0);
+  await page.getByRole("link", { name: "Actividad" }).click();
   const history = page.getByRole("table", { name: /Historia del pedido/ });
   await expect(history).toContainText("Pendiente → Confirmado");
   await expect(history).toContainText("Confirmado → Entregado");
+  // El stepper de la lámina 05, dentro de Actividad (V-1).
+  const chronology = page.getByRole("region", { name: "Cronología" });
+  for (const step of ["Creado", "Confirmado", "Entregado"]) {
+    await expect(chronology).toContainText(step);
+  }
 
   await page.goto(`/productos/${coffee}/movimientos?tipo=entrega`);
   const movements = page.getByRole("main");
@@ -515,13 +622,17 @@ test("brief-19.3: sin stock no confirma y dice qué falta; un ajuste no baja de 
 
   await page.goto(`/pedidos/${short}`);
   await expect(page.getByText("No alcanza")).toBeVisible();
-  await page.getByRole("button", { name: "Confirmar pedido" }).click();
-  await page.getByRole("button", { name: "Sí, confirmar el pedido" }).click();
+  await page.getByRole("link", { name: "Confirmar pedido" }).click();
+  await page.getByRole("button", { name: "Confirmar reserva" }).click();
   const alert = page.getByRole("main").getByRole("alert");
   await expect(alert).toContainText(
     "No hay stock disponible para confirmar el pedido.",
   );
   await expect(alert).toContainText("Café molido: pide 3, hay 2 disponible.");
+  // El «Ver disponibilidad» de la lámina 08, que acá lleva a la columna «Estado de stock».
+  await expect(
+    alert.getByRole("link", { name: "Ver el estado de stock de los equipos" }),
+  ).toBeVisible();
   expect(await balance(coffee)).toEqual({
     on_hand: "2.000",
     reserved: "0.000",
@@ -529,8 +640,8 @@ test("brief-19.3: sin stock no confirma y dice qué falta; un ajuste no baja de 
   await expectAccessible(page, "confirmación rechazada");
 
   await page.goto(`/pedidos/${enough}`);
-  await page.getByRole("button", { name: "Confirmar pedido" }).click();
-  await page.getByRole("button", { name: "Sí, confirmar el pedido" }).click();
+  await page.getByRole("link", { name: "Confirmar pedido" }).click();
+  await page.getByRole("button", { name: "Confirmar reserva" }).click();
   await expect(page).toHaveURL(/\?aviso=confirmado$/);
 
   await page.goto(`/productos/${tea}/movimientos`);
@@ -553,9 +664,11 @@ test("brief-19.3: sin stock no confirma y dice qué falta; un ajuste no baja de 
   await expectAccessible(page, "ajuste por debajo de lo reservado");
 
   await page.goto(`/pedidos/${enough}`);
-  await page.getByRole("button", { name: "Cancelar pedido" }).click();
-  await expect(page.getByText(/Libera el stock reservado/)).toBeVisible();
-  await page.getByRole("button", { name: "Sí, cancelar el pedido" }).click();
+  await openMore(page);
+  await page.getByRole("link", { name: "Cancelar pedido" }).click();
+  const releasePanel = page.getByRole("dialog");
+  await expect(releasePanel).toContainText("Liberará los equipos reservados.");
+  await releasePanel.getByRole("button", { name: "Cancelar pedido" }).click();
   await expect(page).toHaveURL(/\?aviso=cancelado$/);
   expect(await balance(tea)).toEqual({ on_hand: "10.000", reserved: "0.000" });
   await page.goto(`/productos/${tea}`);
@@ -589,21 +702,28 @@ test("brief-19.4: un pedido del agente muestra su origen en la lista y el detall
   await expectAccessible(page, "lista con el origen");
 
   await page.goto(`/pedidos/${agentOrder}`);
-  const state = page.getByRole("region", { name: "Estado" });
-  await expect(state).toContainText("Origen");
-  await expect(state).toContainText(`Agente · ${AGENT_SOURCE}`);
-  const history = page.getByRole("table", { name: /Historia del pedido/ });
-  await expect(history).toContainText(`Servicio · ${AGENT_SOURCE}`);
+  // El origen va en la línea del encabezado y, con su emisor, en la tarjeta de la lámina 03: la
+  // región «Estado» de la 19.4 ya no existe.
+  await expect(page.getByRole("main")).toContainText(
+    `Origen: Agente · ${AGENT_SOURCE}`,
+  );
+  const origin = page.getByRole("region", { name: "Origen del pedido" });
+  await expect(origin).toContainText(`Agente · ${AGENT_SOURCE}`);
   await expectAccessible(page, "detalle de un pedido del agente");
 
-  await page.getByRole("button", { name: "Confirmar pedido" }).click();
-  await page.getByRole("button", { name: "Sí, confirmar el pedido" }).click();
+  await page.goto(`/pedidos/${agentOrder}?pestana=actividad`);
+  const history = page.getByRole("table", { name: /Historia del pedido/ });
+  await expect(history).toContainText(`Servicio · ${AGENT_SOURCE}`);
+
+  await page.goto(`/pedidos/${agentOrder}`);
+  await page.getByRole("link", { name: "Confirmar pedido" }).click();
+  await page.getByRole("button", { name: "Confirmar reserva" }).click();
   await expect(page).toHaveURL(/\?aviso=confirmado$/);
   expect(await balance(coffee)).toEqual({
     on_hand: "10.000",
     reserved: "2.000",
   });
-  await expect(state).toContainText(`Agente · ${AGENT_SOURCE}`);
+  await expect(origin).toContainText(`Agente · ${AGENT_SOURCE}`);
 });
 
 // Sin JavaScript, los buscadores son campos de texto: el cliente se reconoce por su nombre exacto
@@ -628,7 +748,471 @@ test.describe("sin JavaScript", () => {
       page.getByRole("heading", { name: "Pedido P-000001" }),
     ).toBeVisible();
     await expect(
-      page.getByRole("table", { name: /Líneas del pedido/ }),
+      page.getByRole("table", { name: /Productos del pedido/ }),
     ).toContainText("$ 2.000,00");
+  });
+});
+
+// Lo que sigue es de la 24.6.1 (brief-24.6.1): la barra de estados con contadores, la columna
+// «Resumen», las tres pestañas, los cinco paneles, los chips de grado y batería, y el barrido de
+// anchos con axe. Lo de arriba es de la 19.2 a la 19.4 y sigue mandando: ninguna regla cambió.
+
+// Fija el estado de un pedido por SQL **pasando por los estados intermedios y con sus fechas**.
+// Las dos defensas de la base lo exigen: el CHECK `orders_status_dates` no acepta un confirmado
+// sin `confirmed_at`, y el trigger `orders_guard_change` rechaza `pendiente → entregado` incluso
+// por SQL directo. Se fija por SQL y no con las acciones porque estas pruebas miran las pantallas
+// nuevas, no las transiciones, que ya tienen sus propios casos más arriba.
+async function setStatus(
+  orderId: string,
+  status: "confirmed" | "delivered" | "cancelled",
+) {
+  if (status === "cancelled") {
+    await db.execute(
+      sql`update orders set status = 'cancelled', cancelled_at = now() where id = ${orderId}`,
+    );
+    return;
+  }
+  await db.execute(
+    sql`update orders set status = 'confirmed', confirmed_at = now() where id = ${orderId}`,
+  );
+  if (status === "delivered") {
+    await db.execute(
+      sql`update orders set status = 'delivered', delivered_at = now() where id = ${orderId}`,
+    );
+  }
+}
+
+// Un producto que se vende por unidad, con sus unidades, su grado y su batería, enganchadas a la
+// línea de un pedido (brief-24.6.1, D-6 y AC-20). `unit_grades` no se vacía en cada caso, así que
+// el grado se borra antes de crearlo: su nombre es único por organización.
+async function addUnits(
+  orderId: string,
+  productId: string,
+  units: [serial: string, battery: number | null][],
+) {
+  await db.execute(
+    sql`update products set tracking = 'unit' where id = ${productId}`,
+  );
+  await db.execute(
+    sql`delete from unit_grades where organization_id = ${SEED_ORGANIZATION_ID}`,
+  );
+  const grade = await db.execute<{ id: string }>(
+    sql`insert into unit_grades (organization_id, name, position)
+        values (${SEED_ORGANIZATION_ID}, 'A', 1) returning id`,
+  );
+  const gradeId = grade.rows[0]!.id;
+  const lineRow = await db.execute<{ id: string }>(
+    sql`select id from order_lines where order_id = ${orderId} and product_id = ${productId}`,
+  );
+  const lineId = lineRow.rows[0]!.id;
+  for (const [serial, battery] of units) {
+    const unit = await db.execute<{ id: string }>(
+      sql`insert into stock_units (organization_id, product_id, serial, cost, cost_currency,
+                                   origin_type, grade_id, battery_health, created_by)
+          values (${SEED_ORGANIZATION_ID}, ${productId}, ${serial}, 100, 'ARS', 'manual',
+                  ${gradeId}, ${battery}, ${ADMIN_SEED.id})
+          returning id`,
+    );
+    await db.execute(
+      sql`insert into order_line_units (organization_id, order_line_id, product_id, unit_id,
+                                        unit_price)
+          values (${SEED_ORGANIZATION_ID}, ${lineId}, ${productId}, ${unit.rows[0]!.id},
+                  '100.00')`,
+    );
+  }
+}
+
+// Desbordamiento horizontal: la medida sale del documento, no de la vista. `scrollWidth` mayor que
+// `clientWidth` es exactamente la barra horizontal que no tiene que aparecer.
+const anchoDesbordado = (page: Page) =>
+  page.evaluate(() => {
+    const raiz = document.documentElement;
+    return raiz.scrollWidth - raiz.clientWidth;
+  });
+
+test("brief-24.6.1: la barra de estados cuenta cada estado y el «Resumen» dice qué se pidió", async ({
+  page,
+}) => {
+  // AC-1 a AC-4. Cinco pedidos en los cuatro estados, con uno repetido para que un contador que
+  // devolviera «1 por estado» no pase por casualidad, y uno de otro cliente para el ámbito.
+  const lucia = await insertClient("Lucía Gómez");
+  const martin = await insertClient("Martín Ruiz");
+  const coffee = await insertProduct("CAF-250", "Café molido", "10");
+  const tea = await insertProduct("TE-100", "Té verde", "10");
+  await insertOrder(1, lucia, [
+    [coffee, "3"],
+    [tea, "1"],
+  ]);
+  await insertOrder(2, martin, [[coffee, "1"]]);
+  await setStatus(await insertOrder(3, lucia, [[coffee, "1"]]), "confirmed");
+  await setStatus(await insertOrder(4, lucia, [[coffee, "1"]]), "delivered");
+  await setStatus(await insertOrder(5, lucia, [[coffee, "1"]]), "cancelled");
+  await login(page, ADMIN);
+
+  await page.goto("/pedidos");
+  const bar = page.getByRole("navigation", { name: "Estado de los pedidos" });
+  const counters: [string, number][] = [
+    ["Todos", 5],
+    ["Pendientes", 2],
+    ["Confirmados", 1],
+    ["Entregados", 1],
+    ["Cancelados", 1],
+  ];
+  for (const [label, count] of counters) {
+    await expect(
+      bar.getByRole("link", { name: `${label} ${count}` }),
+    ).toBeVisible();
+  }
+
+  // AC-1: las siete columnas de la lámina 01, y la fila con su cliente, su estado, su origen, su
+  // total y su «Ver».
+  const table = page.getByRole("table", { name: "Pedidos de la organización" });
+  for (const column of [
+    "Pedido",
+    "Cliente",
+    "Resumen",
+    "Estado",
+    "Origen",
+    "Total",
+    "Acción",
+  ]) {
+    await expect(
+      table.getByRole("columnheader", { name: column }),
+    ).toBeVisible();
+  }
+  const first = table.getByRole("row", { name: /P-000001/ });
+  await expect(first).toContainText("Lucía Gómez");
+  await expect(first).toContainText("Pendiente");
+  await expect(first).toContainText("Equipo");
+  await expect(first).toContainText("$ 100,00");
+  await expect(first.getByRole("link", { name: /^Ver/ })).toBeVisible();
+  await expect(page.getByRole("main")).toContainText(
+    "Pendiente: sin reserva · Confirmado: stock reservado · Entregado: salida registrada.",
+  );
+
+  // AC-4: el resumen nombra el producto de la **primera** línea y dice cuántas más hay.
+  await expect(first).toContainText("Café molido y 1 más · 2 líneas");
+  await expect(table.getByRole("row", { name: /P-000002/ })).toContainText(
+    "Café molido · 1 línea",
+  );
+
+  // AC-2: cada contador coincide con la cantidad de filas que su filtro devuelve, y los contadores
+  // **no cambian** al mirar otra pestaña: cuentan dentro del ámbito, no del estado elegido.
+  for (const [param, count] of [
+    ["pendientes", 2],
+    ["confirmados", 1],
+    ["entregados", 1],
+    ["cancelados", 1],
+  ] as const) {
+    await page.goto(`/pedidos?estado=${param}`);
+    await expect(table.getByRole("row")).toHaveCount(count + 1);
+    await expect(bar.getByRole("link", { name: "Pendientes 2" })).toBeVisible();
+  }
+
+  // AC-3: con un cliente filtrado, los contadores cuentan dentro de ese ámbito.
+  await page.goto(`/pedidos?cliente=${lucia}`);
+  await expect(bar.getByRole("link", { name: "Todos 4" })).toBeVisible();
+  await expect(bar.getByRole("link", { name: "Pendientes 1" })).toBeVisible();
+  await expect(bar.getByRole("link", { name: "Cancelados 1" })).toBeVisible();
+  await expect(table.getByRole("row")).toHaveCount(4 + 1);
+  // Y con un número, también.
+  await page.goto("/pedidos?numero=P-000002");
+  await expect(bar.getByRole("link", { name: "Todos 1" })).toBeVisible();
+  await expect(bar.getByRole("link", { name: "Pendientes 1" })).toBeVisible();
+  await expect(bar.getByRole("link", { name: "Confirmados 0" })).toBeVisible();
+  await expectAccessible(page, "lista filtrada por número");
+
+  // El buscador de clientes de D-11: elegir una sugerencia manda el id, que es exacto, y el
+  // listado y los contadores quedan en su ámbito.
+  await page.goto("/pedidos");
+  await pick(page, "Cliente", "Luc");
+  await page.getByRole("main").getByRole("button", { name: "Buscar" }).click();
+  await expect(page).toHaveURL(new RegExp(`cliente=${lucia}`));
+  await expect(page.getByRole("main")).toContainText("Pedidos de Lucía Gómez");
+  await expect(bar.getByRole("link", { name: "Todos 4" })).toBeVisible();
+  expect(martin).not.toBe(lucia);
+});
+
+test("brief-24.6.1: la ficha tiene tres pestañas y cinco paneles que abren y cierran por la URL", async ({
+  page,
+}) => {
+  // AC-5 y AC-7. Un pendiente para confirmar, cancelar y señar, un confirmado para entregar, y un
+  // entregado sin venta para emitirla.
+  const clientId = await insertClient("Lucía Gómez", PHONE);
+  const coffee = await insertProduct("CAF-250", "Café molido", "10");
+  await setStock(coffee, "10");
+  const pending = await insertOrder(1, clientId, [[coffee, "2"]]);
+  const confirmed = await insertOrder(2, clientId, [[coffee, "1"]]);
+  await setStatus(confirmed, "confirmed");
+  const delivered = await insertOrder(3, clientId, [[coffee, "1"]]);
+  await setStatus(delivered, "delivered");
+  await login(page, ADMIN);
+
+  // Las tres pestañas, por URL, con lo que cada una muestra.
+  await page.goto(`/pedidos/${pending}`);
+  const tabs = page.getByRole("navigation", {
+    name: "Secciones del pedido P-000001",
+  });
+  await expect(tabs.getByRole("link", { name: "Resumen" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expect(
+    page.getByRole("table", { name: /Productos del pedido/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Siguiente paso" }),
+  ).toBeVisible();
+  // Las tres tarjetas, con lo señado y lo que falta compuestos con `cash` por la página (D-3).
+  const main = page.getByRole("main");
+  await expect(main).toContainText("Total del pedido");
+  await expect(main).toContainText("Señado");
+  await expect(main).toContainText("Falta del total");
+
+  await tabs.getByRole("link", { name: "Señas" }).click();
+  await expect(page).toHaveURL(/pestana=senas/);
+  await expect(
+    page.getByRole("region", { name: "Señas registradas" }),
+  ).toBeVisible();
+  await expect(main).toContainText("Una seña no confirma el pedido");
+  await expect(
+    page.getByRole("table", { name: /Productos del pedido/ }),
+  ).toHaveCount(0);
+  await expectAccessible(page, "pestaña Señas");
+
+  await tabs.getByRole("link", { name: "Actividad" }).click();
+  await expect(page).toHaveURL(/pestana=actividad/);
+  await expect(page.getByRole("region", { name: "Cronología" })).toBeVisible();
+  // El pedido lo insertó SQL, así que no tiene auditoría: lo que se comprueba es que la tarjeta
+  // **se pide en esta pestaña**, con su vacío. Que sus filas digan lo que pasó lo prueban los
+  // casos de la 19.2 y la 19.3, sobre pedidos creados por la pantalla.
+  await expect(
+    page.getByRole("region", { name: "Historial de auditoría" }),
+  ).toContainText("Sin cambios registrados todavía.");
+  // Actividad no pide los recibos: las tarjetas de dinero no están (AC-5).
+  await expect(main).not.toContainText("Falta del total");
+  // Y aun así **el encabezado es el mismo en las tres pestañas**, que es lo que pide el README de
+  // la v2. Es el choque que esta subfase tuvo que resolver: el botón de la seña no puede depender
+  // de una lectura que esta pestaña no hace.
+  for (const accion of ["Confirmar pedido", "Registrar seña"]) {
+    await expect(page.getByRole("link", { name: accion })).toBeVisible();
+  }
+  await expect(
+    page.getByRole("button", { name: "Más acciones del pedido" }),
+  ).toBeVisible();
+  await expectAccessible(page, "pestaña Actividad");
+
+  // Los paneles del pendiente, y que cerrarlos devuelve la pantalla.
+  await page.goto(`/pedidos/${pending}?pestana=senas&panel=senar`);
+  await expectPanelOpen(page, "senar", "Registrar seña");
+  await expect(page.getByRole("dialog")).toContainText("Registrar seña");
+  await expectAccessible(page, "panel de la seña");
+  await page.goto(`/pedidos/${pending}?panel=confirmar`);
+  await expectPanelOpen(page, "confirmar", "Confirmar pedido");
+  await page.getByRole("dialog").getByRole("link", { name: "Volver" }).click();
+  await expect(page).toHaveURL(new RegExp(`/pedidos/${pending}$`));
+  await expect(page.locator("main [inert]")).toHaveCount(0);
+
+  // Pedir un panel que el estado no permite no ejecuta nada: lo dice y ofrece volver.
+  await page.goto(`/pedidos/${pending}?panel=entregar`);
+  await expect(page.getByRole("dialog")).toContainText(
+    "Esta operación ya no está disponible para este pedido.",
+  );
+
+  await page.goto(`/pedidos/${confirmed}?panel=entregar`);
+  await expectPanelOpen(page, "entregar", "Marcar entregado");
+
+  // Un panel abierto **desde Actividad** dice el dinero igual (AC-8). Es el caso que se escapó:
+  // Actividad no pide los recibos, y los paneles se abren conservando la pestaña, así que el
+  // bloque de dinero desaparecía sin avisar (revisión independiente, F-1).
+  await page.goto(`/pedidos/${confirmed}?pestana=actividad&panel=entregar`);
+  await expect(page.getByRole("dialog")).toContainText("Falta por cobrar");
+  await page.goto(`/pedidos/${delivered}?pestana=actividad&panel=emitir`);
+  await expect(page.getByRole("dialog")).toContainText("Faltará cobrar");
+  await expect(page.getByRole("dialog")).toContainText("Seña existente");
+
+  // El panel de la venta de la lámina 06, con su resumen económico y sus tres afirmaciones.
+  await page.goto(`/pedidos/${delivered}`);
+  await page.getByRole("link", { name: "Emitir venta" }).click();
+  await expectPanelOpen(page, "emitir", "Emitir venta");
+  const issue = page.getByRole("dialog");
+  await expect(issue).toContainText("Emitir la venta del pedido P-000003");
+  await expect(issue).toContainText("Faltará cobrar");
+  await expect(issue).toContainText("No vuelve a descontar stock");
+  await expect(issue).toContainText(
+    "La venta emitida no se edita ni se borra.",
+  );
+  await expectAccessible(page, "panel de emitir la venta");
+  // La dirección que la 20.2 viene generando desde octubre sigue abriendo el mismo panel.
+  await page.goto(`/pedidos/${delivered}?confirmar=venta`);
+  await expect(page.getByRole("dialog")).toContainText(
+    "Emitir la venta del pedido P-000003",
+  );
+  // Y `/senar` redirige al panel, con la moneda elegida (D-5).
+  await page.goto(`/pedidos/${pending}/senar?moneda=USD`);
+  await expect(page).toHaveURL(/\?panel=senar&moneda=USD$/);
+});
+
+test("brief-24.6.1: la ficha muestra el grado y la batería de cada equipo, y su estado de stock", async ({
+  page,
+}) => {
+  // AC-20 y V-2. Los dos datos son opcionales: la segunda unidad va sin batería, para comprobar
+  // que lo que no hay no se dibuja, en vez de aparecer como un «—» que parecería un dato.
+  const clientId = await insertClient("Lucía Gómez");
+  const coffee = await insertProduct("CAF-250", "Café molido", "100");
+  const orderId = await insertOrder(1, clientId, [[coffee, "2"]]);
+  await addUnits(orderId, coffee, [
+    ["356938035643801", 92],
+    ["356938035643802", null],
+  ]);
+  await login(page, ADMIN);
+
+  await page.goto(`/pedidos/${orderId}`);
+  const lines = page.getByRole("table", { name: /Productos del pedido/ });
+  await expect(
+    lines.getByRole("columnheader", { name: "Estado de stock" }),
+  ).toBeVisible();
+  const imeis = lines.getByRole("list", { name: "IMEI" }).getByRole("listitem");
+  await expect(imeis).toHaveCount(2);
+  // El grado en las dos; la batería solo en la que la declaró.
+  await expect(imeis.filter({ hasText: "Grado A" })).toHaveCount(2);
+  await expect(imeis.filter({ hasText: "Batería" })).toHaveCount(1);
+  await expect(imeis.filter({ hasText: "Batería 92 %" })).toHaveCount(1);
+  await expect(lines).toContainText("IMEI 356938035643801");
+  await expect(lines).toContainText("Disponible");
+  await expectAccessible(page, "ficha con grado y batería");
+
+  // Y en el teléfono, donde la lámina 07 los pone bajo el IMEI.
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.reload();
+  await expect(page.getByRole("main")).toContainText("Grado A");
+  await expect(page.getByRole("main")).toContainText("Batería 92 %");
+  expect(
+    await anchoDesbordado(page),
+    "desbordamiento de la ficha con equipos a 390 px",
+  ).toBe(0);
+  await expectAccessible(page, "ficha con equipos a 390 px");
+});
+
+test("brief-24.6.1: sin desbordamiento horizontal en la lista, las tres pestañas y los paneles, de 320 a 1440 px", async ({
+  page,
+}) => {
+  // AC-13. Los cinco anchos del criterio, sobre las dos pantallas, sus tres pestañas y sus cuatro
+  // paneles. Un panel con un ancho fijo es donde esto se nota primero: por eso van en la lista.
+  const clientId = await insertClient("Lucía Gómez", PHONE);
+  const coffee = await insertProduct("CAF-250", "Café molido", "123456.78");
+  await setStock(coffee, "10");
+  const pending = await insertOrder(1, clientId, [[coffee, "2"]]);
+  const delivered = await insertOrder(2, clientId, [[coffee, "1"]]);
+  await setStatus(delivered, "delivered");
+  await login(page, ADMIN);
+
+  const rutas = [
+    "/pedidos",
+    "/pedidos?estado=pendientes",
+    `/pedidos?cliente=${clientId}`,
+    `/pedidos/${pending}`,
+    `/pedidos/${pending}?pestana=senas`,
+    `/pedidos/${pending}?pestana=actividad`,
+    `/pedidos/${pending}?panel=confirmar`,
+    `/pedidos/${pending}?panel=cancelar`,
+    `/pedidos/${pending}?panel=senar`,
+    `/pedidos/${delivered}?panel=emitir`,
+  ];
+  for (const ancho of [320, 390, 640, 1082, 1440]) {
+    await page.setViewportSize({ width: ancho, height: 900 });
+    for (const ruta of rutas) {
+      await page.goto(ruta);
+      await expect(page.getByRole("main")).toBeVisible();
+      expect(
+        await anchoDesbordado(page),
+        `desbordamiento en ${ruta} a ${ancho} px`,
+      ).toBe(0);
+    }
+  }
+
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.goto("/pedidos");
+  await expectAccessible(page, "lista a 320 px");
+  await page.goto(`/pedidos/${pending}?panel=cancelar`);
+  await expectAccessible(page, "panel de la cancelación a 320 px");
+});
+
+// Sin JavaScript, la 24.6.1 agrega dos recorridos: los paneles, que son páginas servidas, y el
+// buscador de clientes, que sin id manda solo el nombre escrito (D-11).
+test.describe("sin JavaScript, la 24.6.1", () => {
+  test.use({ javaScriptEnabled: false });
+
+  test("los paneles abren por la URL y la operación se ejecuta igual", async ({
+    page,
+  }) => {
+    const clientId = await insertClient("Lucía Gómez");
+    const coffee = await insertProduct("CAF-250", "Café molido", "10");
+    await setStock(coffee, "10");
+    const orderId = await insertOrder(1, clientId, [[coffee, "2"]]);
+    await login(page, ADMIN);
+
+    await page.goto(`/pedidos/${orderId}`);
+    await page.getByRole("link", { name: "Confirmar pedido" }).click();
+    await expect(page).toHaveURL(/panel=confirmar/);
+    const panel = page.getByRole("dialog");
+    await expect(panel).toContainText("¿Confirmar el pedido P-000001?");
+    await panel.getByRole("button", { name: "Confirmar reserva" }).click();
+    await expect(page).toHaveURL(/\?aviso=confirmado$/);
+    expect(await balance(coffee)).toEqual({
+      on_hand: "10.000",
+      reserved: "2.000",
+    });
+
+    // Las pestañas también son enlaces, y «Más acciones» queda a la vista sin su botón.
+    await page.getByRole("link", { name: "Actividad" }).click();
+    await expect(
+      page.getByRole("region", { name: "Cronología" }),
+    ).toContainText("Confirmado");
+  });
+
+  test("el buscador de clientes filtra por el nombre escrito, y dice qué pasó si no resuelve", async ({
+    page,
+  }) => {
+    const clientId = await insertClient("Lucía Gómez");
+    await insertClient("Martín Ruiz");
+    const coffee = await insertProduct("CAF-250", "Café molido", "10");
+    await insertOrder(1, clientId, [[coffee, "1"]]);
+    await insertOrder(2, await insertClient("Ana Pérez"), [[coffee, "1"]]);
+    await login(page, ADMIN);
+
+    await page.goto("/pedidos");
+    await page.getByLabel("Cliente", { exact: true }).fill("Lucía Gómez");
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: "Buscar" })
+      .click();
+    // Sin JavaScript no hay id: lo único que viaja es el nombre, y la pantalla lo resuelve por
+    // coincidencia exacta.
+    await expect(page).toHaveURL(/clienteNombre=/);
+    await expect(page).not.toHaveURL(/cliente=[0-9a-f]{8}/);
+    await expect(
+      page.getByRole("link", { name: "P-000001", exact: true }),
+    ).toHaveCount(1);
+    await expect(
+      page.getByRole("link", { name: "P-000002", exact: true }),
+    ).toHaveCount(0);
+    const bar = page.getByRole("navigation", { name: "Estado de los pedidos" });
+    await expect(bar.getByRole("link", { name: "Todos 1" })).toBeVisible();
+    await expect(page.getByLabel("Cliente", { exact: true })).toHaveValue(
+      "Lucía Gómez",
+    );
+
+    // Un nombre que no resuelve no filtra por un cliente cualquiera: deja la lista vacía y lo
+    // dice, con los contadores en cero por el mismo camino.
+    await page.goto("/pedidos?clienteNombre=Nadie");
+    await expect(page.getByRole("main").getByRole("alert")).toContainText(
+      "Ningún cliente activo se llama «Nadie»",
+    );
+    await expect(bar.getByRole("link", { name: "Todos 0" })).toBeVisible();
+    await expect(
+      page.getByText("Ningún pedido coincide con estos filtros."),
+    ).toBeVisible();
+    // Sin axe: necesita JavaScript para inyectarse, y acá está apagado.
   });
 });

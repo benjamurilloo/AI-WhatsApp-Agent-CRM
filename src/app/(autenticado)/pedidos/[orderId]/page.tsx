@@ -1,50 +1,62 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { AUDIT_PAGE_SIZE } from "@/modules/audit";
-import { getOrderReceipts } from "@/modules/cash";
+import { getOrderReceipts, getOrderReceiptForm } from "@/modules/cash";
 import { getCredentialSources } from "@/modules/ingestion";
 import { getOrder, listOrderAudit } from "@/modules/orders";
 import { getOrganizationTimezone } from "@/modules/organizations";
 import { getSaleForOrder } from "@/modules/sales";
 import { requireSession } from "@/app/_auth/session";
 import { auditActorLabels } from "@/app/(autenticado)/_audit/actor";
-import { PhoneText } from "@/app/(autenticado)/clientes/phone-text";
+import { receiptExchange } from "@/app/(autenticado)/caja/exchange";
+import { NO_ACTIVE_METHODS_MESSAGE } from "@/app/(autenticado)/ventas/[saleId]/cobrar/messages";
+import { ReceiptForm } from "@/app/(autenticado)/ventas/[saleId]/cobrar/receipt-form";
 import { ActionNotice } from "@/app/_components/action-notice";
-import { AuditCard } from "@/app/_components/audit-card";
 import {
   BackLink,
   DetailHeader,
   HeaderIcon,
 } from "@/app/_components/detail-header";
-import { DetailList } from "@/app/_components/detail-list";
 import { Icon } from "@/app/_components/icons";
 import {
-  inlineButtonClass,
   linkClass,
-  tableCellClass,
-  tableHeadCellClass,
+  primaryLinkClass,
+  secondaryLinkClass,
 } from "@/app/_components/form-styles";
+import {
+  moreActionDangerClass,
+  moreActionItemClass,
+} from "@/app/_components/more-action-styles";
+import { MoreActions } from "@/app/_components/more-actions";
 import { PageNotice } from "@/app/_components/page-notice";
-import { SectionCard } from "@/app/_components/section-card";
+import { SubNav } from "@/app/_components/sub-nav";
 import { formatShortDateTime } from "@/app/_format/date-time";
 import { formatMoney } from "@/shared/money";
-import { formatQuantity, quantityFromDatabase } from "@/shared/quantity";
 import type { SearchParams } from "../filters";
 import {
-  AVAILABLE_NOTE,
-  CURRENT_PRODUCT_NAME_NOTE,
   FORBIDDEN_PAGE_MESSAGE,
   ORDER_NOT_FOUND_MESSAGE,
   orderNoticeMessage,
   orderOriginLabel,
+  type OrderTransitionName,
   UNKNOWN_CLIENT_TEXT,
-  UNKNOWN_PRODUCT_TEXT,
 } from "../messages";
-import { LineUnitList, lineUnitPriceText } from "../line-unit-list";
 import { OrderStatusBadge } from "../status-badge";
-import { auditActionLabel, describeAuditDiff } from "./audit-summary";
+import { createOrderReceiptAction } from "./senar/actions";
+import {
+  DEPOSIT_COMPLETE_MESSAGE,
+  orderNotOpenMessage,
+} from "./senar/messages";
+import { ActivityTab } from "./activity-tab";
+import { DepositsTab } from "./deposits-tab";
 import { IssueSaleConfirm } from "./issue-sale";
-import { OrderReceiptsSection } from "./senar/order-receipts-section";
+import { SummaryTab } from "./summary-tab";
+import {
+  ORDER_TAB_LABEL,
+  ORDER_TABS,
+  orderTabHref,
+  parseOrderTab,
+  TAB_PARAM,
+} from "./tabs";
 import { OrderTransitionForm } from "./transition-form";
 
 export const metadata: Metadata = {
@@ -58,13 +70,56 @@ function page(value: string | string[] | undefined): number {
   return raw && /^[1-9][0-9]{0,5}$/.test(raw) ? Number(raw) : 1;
 }
 
-// Pantalla 16: el detalle de un pedido (brief-19.2; ADR 0020, puntos 3 y 8). Cabecera, cliente,
-// líneas y total, para admin y viewer; el viewer ve el cliente sin teléfono ni contacto, que crm
-// ya entrega resueltos para su rol. Las transiciones y la historia, solo admin (D-12; desde la
-// 19.3, confirmar y entregar, D-8). En un pendiente, lo disponible por línea (brief-19.3, D-9).
-// En un entregado, su venta o, para admin, «Emitir venta» con el paso ?confirmar=venta
-// (brief-20.2, D-4). Ningún costo ni margen. Desde la 21.4, la sección «Señas», compuesta con cash,
-// y al volver de una seña, el aviso con su recibo (brief-21.4, D-8).
+// Los paneles de las operaciones (brief-24.6.1, D-5). Van en **un solo parámetro** y no en uno por
+// operación: así es imposible pedir dos a la vez, que con `?confirmar=1&entregar=1` habría que
+// resolver a mano. `?confirmar=venta` se conserva porque es la dirección que la 20.2 viene
+// generando desde octubre y puede estar guardada en un favorito.
+const PANELS = [
+  "confirmar",
+  "senar",
+  "entregar",
+  "cancelar",
+  "emitir",
+] as const;
+type Panel = (typeof PANELS)[number];
+
+// Qué transición corresponde a un panel, **y solo si el estado la permite**. Pedir
+// `?panel=entregar` sobre un pendiente no entrega nada: el panel dice que la operación ya no está
+// disponible. La guarda real sigue estando en el servicio, que rechaza una transición inválida;
+// esto evita además dibujar un botón que iba a fallar.
+function transitionOf(
+  panel: Panel | null,
+  status: string,
+): OrderTransitionName | null {
+  if (panel === "confirmar" && status === "pending") return "confirm";
+  if (panel === "entregar" && status === "confirmed") return "deliver";
+  if (panel === "cancelar" && (status === "pending" || status === "confirmed"))
+    return "cancel";
+  return null;
+}
+
+function parsePanel(query: SearchParams): Panel | null {
+  const raw = Array.isArray(query.panel) ? query.panel[0] : query.panel;
+  const legacy = Array.isArray(query.confirmar)
+    ? query.confirmar[0]
+    : query.confirmar;
+  if (legacy === "venta") return "emitir";
+  return PANELS.find((name) => name === raw) ?? null;
+}
+
+// Pantalla 16: el detalle de un pedido (brief-19.2; ADR 0020, puntos 3 y 8). Desde la 24.6.1
+// (brief-24.6.1; láminas 03 a 07 de la v2) tiene **tres pestañas** —Resumen, Señas y Actividad—,
+// el siguiente paso en el encabezado según el estado, y las operaciones en **paneles que abren y
+// cierran por la URL**, con el cuerpo de la página `inert` y el disparador deshabilitado mientras
+// el panel está abierto.
+//
+// Cada pestaña pide **solo sus lecturas**: Actividad no pide los recibos y Resumen no pide la
+// auditoría. Las transiciones y la historia siguen siendo solo de `admin` (D-12; 19.3, D-8), y
+// ningún costo ni margen aparece en ninguna.
+//
+// Lo que **no** cambió: ninguna regla del pedido. Entregar no exige haber cobrado, cancelar no
+// devuelve dinero y emitir no descuenta stock otra vez. La pantalla lo dice mejor; los ADR 0020,
+// 0021 y 0022 mandan igual.
 export default async function OrderPage({
   params,
   searchParams,
@@ -90,13 +145,34 @@ export default async function OrderPage({
   }
   const order = found.order;
   const isAdmin = context.role === "admin";
+  const tab = parseOrderTab(query[TAB_PARAM]);
+  const panel = isAdmin ? parsePanel(query) : null;
   const timeZone = await getOrganizationTimezone(context);
-  const audit = isAdmin
-    ? await listOrderAudit(context, order.id, page(query.historial))
+
+  // Las señas las compone la página con cash: orders no depende de cash (brief-21.4, D-8). Hacen
+  // falta en Resumen y en Señas, por las tres tarjetas; en Actividad, no.
+  //
+  // Con un panel abierto se piden **siempre**, incluso en Actividad: «Falta por cobrar» y
+  // «Faltará cobrar» son parte del efecto que el panel tiene que decir antes del cambio (AC-8), y
+  // los paneles se abren conservando la pestaña. Sin esta segunda condición, entregar, cancelar o
+  // emitir desde Actividad perdían el bloque de dinero **en silencio** (revisión independiente,
+  // F-1). AC-5 se mantiene: Actividad sin panel sigue sin pedirlos.
+  const needsReceipts = tab !== "actividad" || panel !== null;
+  const receiptsFound = needsReceipts
+    ? await getOrderReceipts(context, order.id)
     : null;
+  const receipts = receiptsFound?.ok ? receiptsFound.order : null;
+
+  // La auditoría solo se pide para un admin y solo en su pestaña: el servidor no se la entrega a
+  // un viewer (brief-24.4.1, D-1, el mismo criterio de la ficha del cliente).
+  const audit =
+    isAdmin && tab === "actividad"
+      ? await listOrderAudit(context, order.id, page(query.historial))
+      : null;
   const actorLabel = audit?.ok
     ? await auditActorLabels(context.organizationId, audit.entries)
     : null;
+
   // El emisor de la credencial del agente, como en la historia (brief-19.4, D-11).
   const origin = orderOriginLabel(
     order.createdByCredentialId,
@@ -106,6 +182,7 @@ export default async function OrderPage({
           order.createdByCredentialId,
         ]),
   );
+
   // La venta del pedido la compone la página (ADR 0021, punto 9): orders no lee sales. Solo un
   // entregado puede tenerla (brief-20.2).
   const saleFound =
@@ -113,340 +190,362 @@ export default async function OrderPage({
       ? await getSaleForOrder(context, order.id)
       : null;
   const sale = saleFound?.ok ? saleFound.sale : null;
-  // Las señas las compone la página con cash: orders no depende de cash (brief-21.4, D-8).
-  const receipts = await getOrderReceipts(context, order.id);
+  const canIssue =
+    isAdmin && order.status === "delivered" && saleFound?.ok === true && !sale;
+
   const depositParam = Array.isArray(query.sena) ? query.sena[0] : query.sena;
   const newDeposit =
-    receipts.ok && depositParam
-      ? receipts.order.receipts.find((row) => row.id === depositParam)
+    receipts && depositParam
+      ? receipts.receipts.find((row) => row.id === depositParam)
       : undefined;
-  const issuingSale =
-    isAdmin &&
-    order.status === "delivered" &&
-    saleFound?.ok === true &&
-    sale === null &&
-    query.confirmar === "venta";
   const notice = orderNoticeMessage(query.aviso);
-  const client = order.client;
-  const showAvailable = order.status === "pending";
-  const short = (line: (typeof order.lines)[number]) =>
-    line.available !== null &&
-    quantityFromDatabase(line.available) < quantityFromDatabase(line.quantity);
+  const open = panel !== null;
+  const selfHref = orderTabHref(order.id, tab);
+  const panelHref = (name: Panel) =>
+    `${selfHref}${selfHref.includes("?") ? "&" : "?"}panel=${name}`;
+  // Qué decide el botón «Registrar seña» del encabezado: **el estado del pedido**, no los
+  // recibos. Dos razones, y la segunda es la que manda: el encabezado no puede cambiar de una
+  // pestaña a otra, y Actividad no pide los recibos (AC-5), así que con la regla anterior
+  // —`receipts.open`— el botón desaparecía justo en esa pestaña. La tabla de acciones del README
+  // dice «Registrar seña si corresponde» para pendiente y confirmado, que es esto. Si ya no queda
+  // nada por cubrir, lo dice el panel, que sí lee los recibos.
+  const canDeposit =
+    isAdmin && (order.status === "pending" || order.status === "confirmed");
 
-  const dates = [
-    { label: "Creado", icon: "calendar" as const, value: order.createdAt },
-    { label: "Confirmado", icon: "check" as const, value: order.confirmedAt },
-    { label: "Entregado", icon: "truck" as const, value: order.deliveredAt },
-    { label: "Cancelado", icon: "close" as const, value: order.cancelledAt },
-  ].flatMap(({ label, icon, value }) =>
-    value ? [{ label, icon, value: formatShortDateTime(value, timeZone) }] : [],
-  );
+  // El formulario de la seña solo se pide cuando su panel está abierto (brief-24.6.1, D-5): trae
+  // los medios de pago, la sesión de caja y la oferta de cambio, y nada de eso hace falta para
+  // mirar el pedido. La página de `/senar` queda redirigiendo acá.
+  const depositForm =
+    panel === "senar" ? await getOrderReceiptForm(context, order.id) : null;
+  const depositExchange =
+    depositForm?.ok === true
+      ? receiptExchange({
+          offer: depositForm.exchange,
+          targetCurrency: depositForm.order.currency,
+          outstanding: depositForm.outstanding,
+          outstandingInput: depositForm.outstandingInput,
+          chosen:
+            typeof query.moneda === "string"
+              ? query.moneda.toUpperCase()
+              : undefined,
+          basePath: panelHref("senar"),
+          timezone: timeZone,
+        })
+      : null;
+  // Por qué el panel no puede ofrecer el formulario, si no puede. El orden importa: primero el
+  // estado del pedido, después lo que ya está cubierto y al final la configuración de la caja.
+  const depositBlocked =
+    depositForm?.ok !== true
+      ? null
+      : depositForm.order.status !== "pending" &&
+          depositForm.order.status !== "confirmed"
+        ? orderNotOpenMessage(depositForm.order.status)
+        : depositForm.outstanding === "0.00"
+          ? DEPOSIT_COMPLETE_MESSAGE
+          : depositForm.paymentMethods.length === 0
+            ? NO_ACTIVE_METHODS_MESSAGE
+            : null;
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 lg:px-8">
-      <BackLink href="/pedidos" label="Volver a pedidos" />
-      <DetailHeader
-        title={`Pedido ${order.displayNumber}`}
-        leading={<HeaderIcon name="list" />}
-        badges={<OrderStatusBadge status={order.status} />}
-        subtitle={
-          <p>
-            Total:{" "}
-            <span className="font-semibold text-foreground tabular-nums">
-              {formatMoney(order.total, order.currency)}
-            </span>
-          </p>
-        }
-      />
-
-      <div role="status" className="mt-4 empty:hidden">
-        {notice ? <ActionNotice>{notice}</ActionNotice> : null}
-        {newDeposit ? (
-          <ActionNotice>
-            Se registró la seña{" "}
-            <Link
-              href={`/cobros/${newDeposit.id}`}
-              className={`${linkClass} font-mono`}
-            >
-              {newDeposit.displayNumber}
-            </Link>
-            .
-          </ActionNotice>
-        ) : null}
-      </div>
-
-      <div className="mt-6 grid items-start gap-6 lg:grid-cols-3">
-        <SectionCard
-          id="lineas-titulo"
-          title="Líneas"
-          icon="list"
-          className="lg:col-span-2"
+      <div className="lg:flex lg:items-start lg:gap-8">
+        {/* El cuerpo queda inerte mientras hay un panel abierto, como en la 24.5.3. `inert` cubre
+            el cuerpo de la pantalla y **no** el marco de la aplicación, así que el panel no se
+            declara `aria-modal`: diría que atrapa un foco que no atrapa. */}
+        <div
+          className={`min-w-0 flex-1 ${open ? "opacity-60" : ""}`}
+          inert={open ? true : undefined}
         >
-          <div
-            className="-mx-5 overflow-x-auto sm:-mx-6"
-            tabIndex={0}
-            role="region"
-            aria-label={`Líneas del pedido ${order.displayNumber}`}
-          >
-            <table className="w-full border-collapse text-left text-sm">
-              <caption className="sr-only">
-                Líneas del pedido {order.displayNumber}
-              </caption>
-              <thead>
-                <tr>
-                  <th scope="col" className={tableHeadCellClass}>
-                    Producto
-                  </th>
-                  <th
-                    scope="col"
-                    className={`${tableHeadCellClass} text-right`}
-                  >
-                    Cantidad
-                  </th>
-                  {showAvailable ? (
-                    <th
-                      scope="col"
-                      className={`${tableHeadCellClass} text-right`}
+          <BackLink href="/pedidos" label="Volver a pedidos" />
+          <DetailHeader
+            title={`Pedido ${order.displayNumber}`}
+            leading={<HeaderIcon name="list" />}
+            badges={<OrderStatusBadge status={order.status} />}
+            subtitle={
+              <p className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                <span className="inline-flex items-center gap-1.5">
+                  <Icon name="user" className="size-4" />
+                  {order.client ? (
+                    <Link
+                      href={`/clientes/${order.client.id}`}
+                      className={linkClass}
                     >
-                      Disponible
-                    </th>
-                  ) : null}
-                  <th
-                    scope="col"
-                    className={`${tableHeadCellClass} text-right`}
-                  >
-                    Precio unitario
-                  </th>
-                  <th
-                    scope="col"
-                    className={`${tableHeadCellClass} text-right`}
-                  >
-                    Total
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {order.lines.map((line) => (
-                  <tr key={line.position}>
-                    <td className={tableCellClass}>
-                      {line.product ? (
-                        <>
-                          <Link
-                            href={`/productos/${line.productId}`}
-                            className={linkClass}
-                          >
-                            {line.product.name}
-                          </Link>
-                          <span className="block font-mono text-xs text-muted">
-                            {line.product.sku}
-                          </span>
-                        </>
-                      ) : (
-                        UNKNOWN_PRODUCT_TEXT
-                      )}
-                      <LineUnitList
-                        units={line.units}
-                        currency={line.currency}
-                        markUnavailable={order.status === "pending"}
-                      />
-                    </td>
-                    <td
-                      className={`${tableCellClass} text-right whitespace-nowrap tabular-nums`}
-                    >
-                      {formatQuantity(line.quantity)}
-                      {line.product ? (
-                        <span className="text-muted"> {line.product.unit}</span>
-                      ) : null}
-                    </td>
-                    {showAvailable ? (
-                      <td
-                        className={`${tableCellClass} text-right whitespace-nowrap tabular-nums`}
-                      >
-                        {line.available !== null
-                          ? formatQuantity(line.available)
-                          : "—"}
-                        {short(line) ? (
-                          <span className="block text-xs font-semibold text-danger">
-                            No alcanza
-                          </span>
-                        ) : null}
-                      </td>
-                    ) : null}
-                    <td
-                      className={`${tableCellClass} text-right whitespace-nowrap tabular-nums`}
-                    >
-                      {lineUnitPriceText(line)}
-                    </td>
-                    <td
-                      className={`${tableCellClass} text-right whitespace-nowrap tabular-nums`}
-                    >
-                      {formatMoney(line.lineTotal, line.currency)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <th
-                    scope="row"
-                    colSpan={showAvailable ? 4 : 3}
-                    className={`${tableCellClass} text-right font-semibold`}
-                  >
-                    Total del pedido
-                  </th>
-                  <td
-                    className={`${tableCellClass} text-right font-semibold whitespace-nowrap tabular-nums`}
-                  >
-                    {formatMoney(order.total, order.currency)}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-          <p className="mt-4 text-sm text-muted">{CURRENT_PRODUCT_NAME_NOTE}</p>
-          {showAvailable ? (
-            <p className="mt-2 text-sm text-muted">{AVAILABLE_NOTE}</p>
-          ) : null}
-        </SectionCard>
-
-        <div className="flex flex-col gap-6">
-          <SectionCard id="cliente-titulo" title="Cliente" icon="user">
-            <DetailList
-              items={[
-                {
-                  label: "Nombre",
-                  icon: "user",
-                  value: client ? (
-                    <Link href={`/clientes/${client.id}`} className={linkClass}>
-                      {client.displayName}
+                      {order.client.displayName}
                     </Link>
                   ) : (
                     UNKNOWN_CLIENT_TEXT
-                  ),
-                },
-                ...(client
-                  ? [
-                      {
-                        label: "Teléfono",
-                        icon: "phone" as const,
-                        value: (
-                          <PhoneText
-                            phone={client.phone}
-                            emptyText="Sin teléfono"
-                          />
-                        ),
-                      },
-                    ]
-                  : []),
-                ...(client?.contact?.email
-                  ? [
-                      {
-                        label: "Email",
-                        icon: "mail" as const,
-                        value: client.contact.email,
-                      },
-                    ]
-                  : []),
-              ]}
-            />
-          </SectionCard>
-
-          <SectionCard id="estado-titulo" title="Estado" icon="clock">
-            <DetailList
-              items={[
-                { label: "Origen", icon: "user", value: origin },
-                ...dates,
-              ]}
-            />
-            {isAdmin &&
-            (order.status === "pending" || order.status === "confirmed") ? (
-              <div className="mt-5 flex flex-col gap-4">
-                <OrderTransitionForm
-                  orderId={order.id}
-                  displayNumber={order.displayNumber}
-                  transition={
-                    order.status === "pending" ? "confirm" : "deliver"
-                  }
-                />
-                <OrderTransitionForm
-                  orderId={order.id}
-                  displayNumber={order.displayNumber}
-                  transition="cancel"
-                  releasesStock={order.status === "confirmed"}
-                />
-              </div>
-            ) : null}
-          </SectionCard>
-
-          {order.status === "delivered" ? (
-            <SectionCard id="venta-titulo" title="Venta" icon="receipt">
-              {sale ? (
-                <p>
-                  <Link href={`/ventas/${sale.id}`} className={linkClass}>
-                    Venta {sale.displayNumber}
-                  </Link>
-                </p>
-              ) : (
-                <p className="text-sm text-muted">
-                  Este pedido todavía no tiene su venta.
-                </p>
-              )}
-              {isAdmin && !sale ? (
-                <div className="mt-4">
-                  {issuingSale ? (
-                    <IssueSaleConfirm
-                      orderId={order.id}
-                      displayNumber={order.displayNumber}
-                    />
-                  ) : (
-                    <Link
-                      href={`/pedidos/${order.id}?confirmar=venta`}
-                      className={inlineButtonClass}
-                    >
-                      <Icon name="receipt" className="size-4" />
-                      Emitir venta
-                    </Link>
                   )}
-                </div>
-              ) : null}
-            </SectionCard>
-          ) : null}
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <Icon name="calendar" className="size-4" />
+                  {formatShortDateTime(order.createdAt, timeZone)}
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <Icon name="bot" className="size-4" />
+                  Origen: {origin}
+                </span>
+                <span className="font-semibold text-foreground tabular-nums">
+                  {formatMoney(order.total, order.currency)}
+                </span>
+              </p>
+            }
+            actions={
+              isAdmin ? (
+                <OrderActions
+                  order={order}
+                  canDeposit={canDeposit}
+                  canIssue={canIssue}
+                  sale={sale}
+                  panel={panel}
+                  panelHref={panelHref}
+                />
+              ) : null
+            }
+          />
 
-          {receipts.ok ? (
-            <OrderReceiptsSection
-              orderId={order.id}
-              displayNumber={order.displayNumber}
-              receipts={receipts.order}
-              canDeposit={isAdmin}
+          <div role="status" className="mt-4 empty:hidden">
+            {notice ? <ActionNotice>{notice}</ActionNotice> : null}
+            {newDeposit ? (
+              <ActionNotice>
+                Se registró la seña{" "}
+                <Link
+                  href={`/cobros/${newDeposit.id}`}
+                  className={`${linkClass} font-mono`}
+                >
+                  {newDeposit.displayNumber}
+                </Link>
+                .
+              </ActionNotice>
+            ) : null}
+          </div>
+
+          <SubNav
+            label={`Secciones del pedido ${order.displayNumber}`}
+            scroll
+            items={ORDER_TABS.map((item) => ({
+              href: orderTabHref(order.id, item),
+              label: ORDER_TAB_LABEL[item],
+              current: item === tab,
+            }))}
+          />
+
+          {tab === "resumen" ? (
+            <SummaryTab
+              order={order}
+              receipts={receipts}
+              sale={sale}
+              origin={origin}
               timeZone={timeZone}
             />
-          ) : null}
+          ) : tab === "senas" ? (
+            <DepositsTab
+              order={order}
+              receipts={receipts}
+              canDeposit={isAdmin}
+              depositHref={panelHref("senar")}
+              depositOpen={panel === "senar"}
+              timeZone={timeZone}
+            />
+          ) : (
+            <ActivityTab
+              order={order}
+              audit={audit?.ok ? audit : null}
+              actorLabel={actorLabel}
+              timeZone={timeZone}
+            />
+          )}
+
+          <p className="mt-6 text-sm text-muted">Fechas en {timeZone}.</p>
         </div>
+
+        {panel ? (
+          <aside
+            aria-labelledby="panel-titulo"
+            role="dialog"
+            className="mt-6 w-full shrink-0 rounded-2xl border border-border bg-surface p-5 sm:p-6 lg:mt-0 lg:w-96"
+          >
+            {panel === "senar" ? (
+              <>
+                <h2
+                  id="panel-titulo"
+                  className="text-lg font-bold tracking-tight"
+                >
+                  Registrar seña
+                </h2>
+                {depositForm?.ok !== true ? (
+                  <p className="mt-4 text-sm">
+                    No pudimos preparar la seña de este pedido.{" "}
+                    <Link href={selfHref} className={linkClass}>
+                      Volver
+                    </Link>
+                  </p>
+                ) : depositBlocked ? (
+                  <p className="mt-4 text-sm">
+                    {depositBlocked}{" "}
+                    <Link
+                      href={
+                        depositForm.paymentMethods.length === 0
+                          ? "/caja/medios-de-pago"
+                          : selfHref
+                      }
+                      className={linkClass}
+                    >
+                      {depositForm.paymentMethods.length === 0
+                        ? "Ir a los medios de pago"
+                        : "Volver"}
+                    </Link>
+                  </p>
+                ) : (
+                  <div className="mt-4">
+                    <ReceiptForm
+                      action={createOrderReceiptAction}
+                      target={{ field: "orderId", id: order.id }}
+                      cancelHref={selfHref}
+                      submitLabel="Registrar seña"
+                      currency={depositForm.order.currency}
+                      outstanding={depositForm.outstandingInput}
+                      paymentMethods={depositForm.paymentMethods}
+                      hasOpenSession={depositForm.openSession !== null}
+                      exchange={depositExchange!}
+                    />
+                  </div>
+                )}
+              </>
+            ) : panel === "emitir" && canIssue ? (
+              <IssueSaleConfirm
+                orderId={order.id}
+                displayNumber={order.displayNumber}
+                total={formatMoney(order.total, order.currency)}
+                deposited={
+                  receipts
+                    ? formatMoney(receipts.deposited, receipts.currency)
+                    : null
+                }
+                outstanding={
+                  receipts
+                    ? formatMoney(receipts.outstanding, receipts.currency)
+                    : null
+                }
+                cancelHref={selfHref}
+              />
+            ) : transitionOf(panel, order.status) ? (
+              <OrderTransitionForm
+                orderId={order.id}
+                displayNumber={order.displayNumber}
+                transition={transitionOf(panel, order.status)!}
+                units={order.lines.flatMap((line) => line.units)}
+                currency={order.currency}
+                outstanding={
+                  receipts
+                    ? formatMoney(receipts.outstanding, receipts.currency)
+                    : null
+                }
+                cancelHref={selfHref}
+                stockHref={orderTabHref(order.id, "resumen")}
+                releasesStock={order.status === "confirmed"}
+              />
+            ) : (
+              <p className="text-sm">
+                Esta operación ya no está disponible para este pedido.{" "}
+                <Link href={selfHref} className={linkClass}>
+                  Volver
+                </Link>
+              </p>
+            )}
+          </aside>
+        ) : null}
       </div>
-
-      {audit?.ok ? (
-        <AuditCard
-          caption={`Historia del pedido ${order.displayNumber}`}
-          rows={audit.entries.map((entry) => ({
-            id: entry.id,
-            when: formatShortDateTime(entry.createdAt, timeZone),
-            actor: actorLabel?.(entry.actor),
-            action: auditActionLabel(entry),
-            change: describeAuditDiff(entry),
-          }))}
-          page={audit.page}
-          pageCount={audit.pageCount}
-          pageSize={AUDIT_PAGE_SIZE}
-          total={audit.total}
-          hrefFor={(target) =>
-            target > 1
-              ? `/pedidos/${order.id}?historial=${target}`
-              : `/pedidos/${order.id}`
-          }
-        />
-      ) : null}
-
-      <p className="mt-6 text-sm text-muted">Fechas en {timeZone}.</p>
     </main>
+  );
+}
+
+// El siguiente paso en el encabezado, con la tabla de acciones de la v2: una sola acción
+// principal por estado, la seña como complementaria, y cancelar dentro de «Más acciones», en
+// rojo. Un pedido cancelado no ofrece nada: es final.
+//
+// Mientras un panel está abierto, el botón que lo abrió aparece **deshabilitado**, que es lo que
+// dibujan las láminas 03 y 06: no pueden quedar dos controles activos que ejecuten la misma
+// transición.
+function OrderActions({
+  order,
+  canDeposit,
+  canIssue,
+  sale,
+  panel,
+  panelHref,
+}: {
+  order: { id: string; status: string; displayNumber: string };
+  canDeposit: boolean;
+  canIssue: boolean;
+  sale: { id: string; displayNumber: string } | null;
+  panel: Panel | null;
+  panelHref: (name: Panel) => string;
+}) {
+  const disabled = "pointer-events-none opacity-50";
+  const primary =
+    order.status === "pending" ? (
+      <Link
+        href={panelHref("confirmar")}
+        aria-disabled={panel === "confirmar" || undefined}
+        className={`${primaryLinkClass} ${panel === "confirmar" ? disabled : ""}`}
+      >
+        <Icon name="circleCheck" className="size-4" />
+        Confirmar pedido
+      </Link>
+    ) : order.status === "confirmed" ? (
+      <Link
+        href={panelHref("entregar")}
+        aria-disabled={panel === "entregar" || undefined}
+        className={`${primaryLinkClass} ${panel === "entregar" ? disabled : ""}`}
+      >
+        <Icon name="truck" className="size-4" />
+        Marcar entregado
+      </Link>
+    ) : canIssue ? (
+      <Link
+        href={panelHref("emitir")}
+        aria-disabled={panel === "emitir" || undefined}
+        className={`${primaryLinkClass} ${panel === "emitir" ? disabled : ""}`}
+      >
+        <Icon name="receipt" className="size-4" />
+        Emitir venta
+      </Link>
+    ) : sale ? (
+      <Link href={`/ventas/${sale.id}`} className={secondaryLinkClass}>
+        <Icon name="receipt" className="size-4" />
+        Ver venta {sale.displayNumber}
+      </Link>
+    ) : null;
+
+  const cancellable =
+    order.status === "pending" || order.status === "confirmed";
+
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      {primary}
+      {canDeposit ? (
+        <Link
+          href={panelHref("senar")}
+          aria-disabled={panel === "senar" || undefined}
+          className={`${secondaryLinkClass} ${panel === "senar" ? disabled : ""}`}
+        >
+          <Icon name="creditCard" className="size-4" />
+          Registrar seña
+        </Link>
+      ) : null}
+      {cancellable ? (
+        <MoreActions id="acciones-pedido" label="Más acciones del pedido">
+          <li>
+            <Link
+              href={panelHref("cancelar")}
+              className={`${moreActionItemClass} ${moreActionDangerClass}`}
+            >
+              <Icon name="circleX" className="size-4" />
+              Cancelar pedido
+            </Link>
+          </li>
+        </MoreActions>
+      ) : null}
+    </div>
   );
 }

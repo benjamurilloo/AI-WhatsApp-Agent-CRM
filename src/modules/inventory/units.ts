@@ -1368,6 +1368,12 @@ export type UnitSummary = {
   serial: string;
   status: UnitStatus;
   productId: string;
+  // Desde la 24.6.1 (brief-24.6.1, D-6): el grado y la salud de la batería, que la ficha del
+  // pedido en el teléfono muestra como chips. No cuestan nada: `findUnitsByIds` ya trae las dos
+  // columnas en su selección y ya une con `unit_grades`, así que esto solo deja de descartarlas.
+  // El grado es null si la unidad no tiene o si el rubro no usa grados.
+  gradeName: string | null;
+  batteryHealth: number | null;
 };
 
 export async function getUnitSummaries(
@@ -1378,7 +1384,13 @@ export async function getUnitSummaries(
   return new Map(
     rows.map((row) => [
       row.id,
-      { serial: row.serial, status: row.status, productId: row.productId },
+      {
+        serial: row.serial,
+        status: row.status,
+        productId: row.productId,
+        gradeName: row.gradeName,
+        batteryHealth: row.batteryHealth,
+      },
     ]),
   );
 }

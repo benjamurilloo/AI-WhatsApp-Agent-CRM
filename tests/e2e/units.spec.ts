@@ -345,9 +345,18 @@ async function insertClient(name: string) {
   );
 }
 
-async function transition(page: Page, button: string, yes: string) {
-  await page.getByRole("button", { name: button }).click();
-  await page.getByRole("button", { name: yes }).click();
+// Una transición del pedido. Desde la 24.6.1 (brief-24.6.1, D-5) el disparador del encabezado abre
+// un panel por la URL y **el panel es la confirmación**: ya no hay un «Sí, …» en línea. La
+// cancelación vive dentro de «Más acciones», que con JavaScript es un botón de revelación.
+async function transition(page: Page, trigger: string, submit: string) {
+  if (trigger === "Cancelar pedido") {
+    await page.getByRole("button", { name: "Más acciones" }).click();
+  }
+  await page.getByRole("link", { name: trigger }).click();
+  await page.getByRole("dialog").getByRole("button", { name: submit }).click();
+  // El panel envía una acción de servidor que redirige con su aviso. Hay que esperarla: un
+  // `goto` inmediato corre contra esa navegación y deja la pantalla a mitad de camino.
+  await expect(page).toHaveURL(/\?aviso=/);
 }
 
 // Las unidades en pedidos y ventas (brief-29.5.2, D-5, AC-1 a AC-4).
@@ -397,7 +406,7 @@ test("un pedido elige sus unidades, se confirma, se entrega y su venta lleva los
     { serial: "356938035643811", status: "available" },
   ]);
 
-  await transition(page, "Confirmar pedido", "Sí, confirmar el pedido");
+  await transition(page, "Confirmar pedido", "Confirmar reserva");
   await expect(
     page.getByText("Pedido confirmado: el stock quedó reservado."),
   ).toBeVisible();
@@ -420,7 +429,7 @@ test("un pedido elige sus unidades, se confirma, se entrega y su venta lleva los
   await expectAccessible(page, "unidades reservadas");
   await page.getByRole("link", { name: "Pedido P-000001" }).first().click();
 
-  await transition(page, "Marcar entregado", "Sí, marcar entregado");
+  await transition(page, "Marcar entregado", "Confirmar entrega");
   await expect(page.getByText(/^Pedido entregado/)).toBeVisible();
   expect((await unitRows(productId)).map((row) => row.status)).toEqual([
     "sold",
@@ -430,7 +439,10 @@ test("un pedido elige sus unidades, se confirma, se entrega y su venta lleva los
   expect(await onHand(productId)).toBe("1.000");
 
   await page.getByRole("link", { name: "Emitir venta" }).click();
-  await page.getByRole("button", { name: "Sí, emitir la venta" }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Emitir venta" })
+    .click();
   await expect(page).toHaveURL(/\/ventas\/[0-9a-f-]+\?aviso=emitida$/);
   const sale = page.getByRole("table", { name: /Líneas de la venta/ });
   await expect(sale).toContainText("IMEI 356938035643809");

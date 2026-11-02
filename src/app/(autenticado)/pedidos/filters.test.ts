@@ -23,6 +23,7 @@ describe("filtros de la lista de pedidos", () => {
     expect(filters).toEqual({
       status: "cancelled",
       clientId: "c0ffee00-0000-4000-8000-000000000001",
+      clientText: "",
       number: "P-000123",
       page: 2,
     });
@@ -41,6 +42,38 @@ describe("filtros de la lista de pedidos", () => {
       expect(filters.status).toBe(status);
       expect(orderFiltersHref(filters)).toBe(`/pedidos?estado=${param}`);
     }
+  });
+
+  // El buscador de clientes de la 24.6.1 (brief-24.6.1, D-11) manda dos parámetros: el id, que es
+  // exacto, y lo que se escribió, que es lo único que llega sin JavaScript. Estas tres aserciones
+  // fijan la regla de precedencia, que es donde un combobox con campo oculto se rompe.
+  describe("brief-24.6.1, D-11: el buscador de clientes", () => {
+    it("con id, el nombre no viaja en la URL: sería redundante", () => {
+      const filters = parseOrderFilters({
+        cliente: "c0ffee00-0000-4000-8000-000000000001",
+        clienteNombre: "Nadia Castro",
+      });
+      expect(filters.clientId).toBe("c0ffee00-0000-4000-8000-000000000001");
+      expect(filters.clientText).toBe("Nadia Castro");
+      expect(orderFiltersHref(filters)).toBe(
+        "/pedidos?cliente=c0ffee00-0000-4000-8000-000000000001",
+      );
+    });
+
+    it("sin id, el nombre viaja y vuelve: es el recorrido sin JavaScript", () => {
+      const filters = parseOrderFilters({ clienteNombre: " Nadia Castro " });
+      expect(filters.clientId).toBe("");
+      expect(filters.clientText).toBe("Nadia Castro");
+      expect(orderFiltersHref(filters)).toBe(
+        "/pedidos?clienteNombre=Nadia+Castro",
+      );
+    });
+
+    it("un nombre solo ya cuenta como filtro activo", () => {
+      expect(
+        hasActiveOrderFilters(parseOrderFilters({ clienteNombre: "Nadia" })),
+      ).toBe(true);
+    });
   });
 
   it("un valor que no se entiende vuelve al de por omisión", () => {

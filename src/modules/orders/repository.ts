@@ -361,7 +361,32 @@ export async function countOrdersByClient(
   );
 }
 
-export type OrderListRow = OrderRow & { lineCount: number };
+// Cuántos pedidos hay en cada estado, para la barra de estados del listado (brief-24.6.1, D-1).
+// **Una sola consulta agrupada**, no una por estado: con cinco pestañas, cinco consultas serían un
+// N+1 disfrazado de contador. El estado del filtro se ignora a propósito —de ahí el `statuses:
+// null`—, porque cada pestaña tiene que mostrar su propio total aunque haya otra elegida; el resto
+// del ámbito, cliente y número, se respeta tal cual, que es lo que pide la v2. Un estado sin
+// pedidos no tiene fila, y el servicio lo completa con cero.
+export async function countOrdersByStatus(
+  query: OrderListQuery,
+): Promise<{ status: OrderStatus; total: number }[]> {
+  return getDb()
+    .select({ status: orders.status, total: count() })
+    .from(orders)
+    .where(listConditions({ ...query, statuses: null }))
+    .groupBy(orders.status);
+}
+
+export type OrderListRow = OrderRow & {
+  lineCount: number;
+  // Para la columna «Resumen» de la lámina 01 (brief-24.6.1, D-2): el producto de la primera línea
+  // y cuántas unidades tiene el pedido entero. Las dos son subconsultas correlacionadas en la
+  // **misma** sentencia, así que el listado no paga una consulta más por ellas, y ninguna cruza la
+  // frontera: `order_lines` y `order_line_units` son tablas de este módulo. El nombre del producto
+  // lo resuelve el servicio por la interfaz de catalog, en una sola lectura por lote.
+  firstProductId: string | null;
+  unitCount: number;
+};
 
 // De la más reciente a la más vieja, paginada en SQL (brief-19.2, D-10). La cantidad de líneas es
 // una subconsulta sobre la tabla del mismo módulo.
@@ -379,6 +404,21 @@ export function findOrders(
         select count(*)::int from order_lines l
         where l.organization_id = "orders"."organization_id"
           and l.order_id = "orders"."id")`,
+      // `position` es el orden del alta y es único por pedido, así que «la primera línea» no
+      // depende del plan de ejecución.
+      firstProductId: sql<string | null>`(
+        select l.product_id from order_lines l
+        where l.organization_id = "orders"."organization_id"
+          and l.order_id = "orders"."id"
+        order by l.position asc limit 1)`,
+      // `order_line_units` no tiene `order_id`: cuelga de la línea, así que el recuento pasa por
+      // `order_lines`. Las dos son tablas de este módulo, así que la unión no cruza la frontera.
+      unitCount: sql<number>`(
+        select count(*)::int from order_line_units u
+        join order_lines ul
+          on ul.organization_id = u.organization_id and ul.id = u.order_line_id
+        where u.organization_id = "orders"."organization_id"
+          and ul.order_id = "orders"."id")`,
     })
     .from(orders)
     .where(listConditions(query))

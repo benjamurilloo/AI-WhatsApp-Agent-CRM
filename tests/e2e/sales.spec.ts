@@ -146,16 +146,22 @@ test("un admin emite la venta de un pedido entregado con el teclado, la encuentr
   await expect(card).toContainText("Este pedido todavía no tiene su venta.");
   await expectAccessible(page, "pedido entregado sin venta");
 
+  // Desde la 24.6.1 (brief-24.6.1, D-5) el botón abre un **panel por la URL**: `?panel=emitir`.
+  // El recorrido con el teclado que la 20.2 exigía se conserva —el foco va al título del panel y
+  // «Volver» lo cierra—; lo que cambió son la dirección y las etiquetas.
   await page.getByRole("link", { name: "Emitir venta" }).focus();
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(/\?confirmar=venta$/);
-  const question = page.getByText("¿Emitir la venta del pedido P-000003?");
+  await expect(page).toHaveURL(/\?panel=emitir$/);
+  const panel = page.getByRole("dialog");
+  const question = panel.getByRole("heading", {
+    name: "Emitir la venta del pedido P-000003",
+  });
   await expect(question).toBeFocused();
   await expectAccessible(page, "confirmación de la venta");
   await page.keyboard.press("Tab");
-  await expect(page.getByRole("link", { name: "No, volver" })).toBeFocused();
+  await expect(panel.getByRole("link", { name: "Volver" })).toBeFocused();
   await page.keyboard.press("Tab");
-  const yes = page.getByRole("button", { name: "Sí, emitir la venta" });
+  const yes = panel.getByRole("button", { name: "Emitir venta" });
   await expect(yes).toBeFocused();
   await page.keyboard.press("Enter");
 
@@ -208,10 +214,16 @@ test("una segunda emisión del mismo pedido enlaza la venta que ya existe y no c
   const other = await context.newPage();
   await other.goto(`/pedidos/${orderId}?confirmar=venta`);
   await page.goto(`/pedidos/${orderId}?confirmar=venta`);
-  await page.getByRole("button", { name: "Sí, emitir la venta" }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Emitir venta" })
+    .click();
   await expect(page).toHaveURL(/\?aviso=emitida$/);
 
-  await other.getByRole("button", { name: "Sí, emitir la venta" }).click();
+  await other
+    .getByRole("dialog")
+    .getByRole("button", { name: "Emitir venta" })
+    .click();
   const alert = other
     .getByRole("alert")
     .filter({ hasText: "Este pedido ya tiene su venta" });
@@ -231,7 +243,10 @@ test("al imprimir queda solo el comprobante: sin navegación, botones, historia 
   const orderId = await insertDeliveredOrder(3, clientId, tv);
   await login(page, ADMIN);
   await page.goto(`/pedidos/${orderId}?confirmar=venta`);
-  await page.getByRole("button", { name: "Sí, emitir la venta" }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Emitir venta" })
+    .click();
   await expect(page).toHaveURL(/\?aviso=emitida$/);
 
   for (const colorScheme of ["light", "dark"] as const) {
@@ -283,7 +298,10 @@ test("un viewer ve la lista y el detalle sin contacto ni historia, y no puede em
 
   await login(page, ADMIN);
   await page.goto(`/pedidos/${sold}?confirmar=venta`);
-  await page.getByRole("button", { name: "Sí, emitir la venta" }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Emitir venta" })
+    .click();
   await expect(page).toHaveURL(/\?aviso=emitida$/);
   const saleUrl = page.url().replace(/\?.*$/, "");
   // «Salir» está en el menú del usuario (brief-23.1, D-5).
@@ -314,7 +332,7 @@ test("un viewer ve la lista y el detalle sin contacto ni historia, y no puede em
   );
   await expect(page.getByRole("link", { name: "Emitir venta" })).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Sí, emitir la venta" }),
+    page.getByRole("dialog").getByRole("button", { name: "Emitir venta" }),
   ).toHaveCount(0);
   expect((await counts()).sales).toBe(1);
 });
@@ -669,7 +687,10 @@ test("brief-20.4: anular la venta de un pedido no mueve el stock y deja emitir o
   const orderId = await insertDeliveredOrder(3, clientId, tv);
   await login(page, ADMIN);
   await page.goto(`/pedidos/${orderId}?confirmar=venta`);
-  await page.getByRole("button", { name: "Sí, emitir la venta" }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Emitir venta" })
+    .click();
   await expect(page).toHaveURL(/\?aviso=emitida$/);
   const firstUrl = page.url().replace(/\?.*$/, "");
 
@@ -685,7 +706,10 @@ test("brief-20.4: anular la venta de un pedido no mueve el stock y deja emitir o
     "Este pedido todavía no tiene su venta.",
   );
   await page.getByRole("link", { name: "Emitir venta" }).click();
-  await page.getByRole("button", { name: "Sí, emitir la venta" }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Emitir venta" })
+    .click();
   await expect(page).toHaveURL(/\?aviso=emitida$/);
   await expect(
     page.getByRole("heading", { level: 1, name: "Venta V-000002" }),

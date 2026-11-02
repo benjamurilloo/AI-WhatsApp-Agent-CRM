@@ -110,7 +110,11 @@ export function receiptExchange(input: {
       href:
         currency === targetCurrency
           ? input.basePath
-          : `${input.basePath}?moneda=${currency}`,
+          : // `basePath` puede traer ya una consulta: desde la 24.6.1 la seña de un pedido vive en
+            // un panel, `/pedidos/<id>?panel=senar`, y pegarle «?moneda=» produciría una dirección
+            // con dos signos de pregunta, que el navegador manda como parte del valor anterior
+            // (brief-24.6.1, autorizado por el usuario el 2026-11-02).
+            `${input.basePath}${input.basePath.includes("?") ? "&" : "?"}moneda=${currency}`,
       selected: currency === tendered,
     })),
     rate: offer.rate

@@ -5,6 +5,7 @@ import { setProductPrice } from "@/modules/catalog";
 import { deactivateClient } from "@/modules/crm";
 import {
   cancelOrder,
+  countOrdersByStatus,
   createOrder,
   getOrder,
   listOrderAudit,
@@ -13,6 +14,7 @@ import {
   listClientOperationOrders,
   listRecentClientOrders,
   type OrderInput,
+  type OrderStatusFilter,
 } from "@/modules/orders";
 import { getAuthContext, type AuthContext } from "@/modules/organizations";
 import { getDb } from "@/shared/db";
@@ -1137,6 +1139,260 @@ describe("los pedidos de la ficha del cliente", () => {
       expect(
         await listClientOperationOrders(s.adminA, "no-es-un-id"),
       ).toMatchObject({ ok: false, code: "VALIDATION_ERROR" });
+    },
+    TEST_TIMEOUT,
+  );
+});
+
+// La barra de estados con contadores y la columna «Resumen» de la lámina 01 (brief-24.6.1, D-1 y
+// D-2; AC-2 a AC-4). Lo que se comprueba acá es **la lectura**: que cada contador coincida con lo
+// que devuelve su filtro, que el ámbito de cliente y número sea el mismo que el de la tabla, y que
+// el resumen no mienta sobre cuántas líneas y cuántos equipos tiene el pedido.
+describe("la barra de estados y el resumen del listado (AC-2 a AC-4)", () => {
+  // El estado se fija por SQL a propósito: estas pruebas miran la lectura, no las transiciones,
+  // que ya viven en orders-cycle.test.ts. Pasar por confirmOrder y deliverOrder obligaría a
+  // sembrar stock, y entonces un fallo de reserva se leería como un contador roto.
+  //
+  // Las fechas van con el estado porque **el esquema lo exige**: el check `orders_status_dates`
+  // rechaza un confirmado sin `confirmed_at`, un entregado sin `delivered_at` y un cancelado sin
+  // `cancelled_at` (ADR 0020, punto 3). El primer intento de esta prueba lo escribió sin fechas y
+  // la base lo rechazó, que es exactamente lo que el check está para hacer.
+  // Y el camino se recorre paso a paso porque **el trigger `orders_guard_change` también lo
+  // exige**: `pending -> delivered` no es una transición válida ni por SQL directo. Los dos
+  // intentos anteriores de este ayudante los rechazó la base, primero por el check y después por
+  // el trigger; son la segunda defensa del ADR 0020 funcionando.
+  async function setStatus(
+    orderId: string,
+    status: "confirmed" | "delivered" | "cancelled",
+  ) {
+    const path =
+      status === "delivered" ? (["confirmed", "delivered"] as const) : [status];
+    for (const step of path) {
+      await getDb().execute(
+        sql`update orders
+            set status = ${step}::order_status,
+                confirmed_at = ${
+                  step === "confirmed" || step === "delivered"
+                    ? sql`coalesce(confirmed_at, now())`
+                    : sql`confirmed_at`
+                },
+                delivered_at = ${step === "delivered" ? sql`now()` : sql`null`},
+                cancelled_at = ${step === "cancelled" ? sql`now()` : sql`null`}
+            where id = ${orderId}`,
+      );
+    }
+  }
+
+  async function makeOrder(
+    s: Seed,
+    clientId: string,
+    lines: [productId: string, quantity: string, expectedPriceId: string][],
+  ) {
+    const created = await createOrder(s.adminA, input(clientId, lines));
+    if (!created.ok) throw new Error(created.code);
+    return created.order.id;
+  }
+
+  const listFor = (
+    context: AuthContext,
+    status: OrderStatusFilter,
+    clientId: string | null = null,
+    number = "",
+  ) => listOrders(context, { status, clientId, number, page: 1 });
+
+  const STATUSES: OrderStatusFilter[] = [
+    "all",
+    "pending",
+    "confirmed",
+    "delivered",
+    "cancelled",
+  ];
+
+  it(
+    "cada contador coincide con la cantidad de filas que ese filtro devuelve",
+    async () => {
+      const s = await seed();
+      const line: [string, string, string] = [s.coffee, "1", s.coffeePrice];
+      // Dos pendientes, uno confirmado, uno entregado y uno cancelado: los cuatro estados, con uno
+      // repetido para que un contador que devolviera «1 por estado» no pase por casualidad.
+      await makeOrder(s, s.clientA, [line]);
+      await makeOrder(s, s.clientA, [line]);
+      await setStatus(await makeOrder(s, s.clientA, [line]), "confirmed");
+      await setStatus(await makeOrder(s, s.clientA, [line]), "delivered");
+      await setStatus(await makeOrder(s, s.clientA, [line]), "cancelled");
+
+      const counts = await countOrdersByStatus(s.viewerA, {
+        clientId: null,
+        number: "",
+      });
+      if (!counts.ok) throw new Error(counts.code);
+      expect(counts.counts).toEqual({
+        all: 5,
+        pending: 2,
+        confirmed: 1,
+        delivered: 1,
+        cancelled: 1,
+      });
+
+      // La comprobación que importa no es que los números sean estos, sino que **coincidan con lo
+      // que la tabla muestra** para ese mismo filtro.
+      for (const status of STATUSES) {
+        const listed = await listFor(s.viewerA, status);
+        if (!listed.ok) throw new Error(listed.code);
+        expect([status, listed.total]).toEqual([status, counts.counts[status]]);
+      }
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "los contadores respetan el ámbito de cliente, igual que la tabla",
+    async () => {
+      const s = await seed();
+      const other = await insertClient(s.orgA, "Martín");
+      const line: [string, string, string] = [s.coffee, "1", s.coffeePrice];
+      await makeOrder(s, s.clientA, [line]);
+      await setStatus(await makeOrder(s, s.clientA, [line]), "cancelled");
+      await makeOrder(s, other, [line]);
+
+      const mine = await countOrdersByStatus(s.viewerA, {
+        clientId: s.clientA,
+        number: "",
+      });
+      if (!mine.ok) throw new Error(mine.code);
+      expect(mine.counts).toEqual({
+        all: 2,
+        pending: 1,
+        confirmed: 0,
+        delivered: 0,
+        cancelled: 1,
+      });
+      const listed = await listFor(s.viewerA, "all", s.clientA);
+      if (!listed.ok) throw new Error(listed.code);
+      expect(listed.total).toBe(mine.counts.all);
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "un cliente o un número imposible deja todos los contadores en cero",
+    async () => {
+      const s = await seed();
+      await makeOrder(s, s.clientA, [[s.coffee, "1", s.coffeePrice]]);
+      for (const filters of [
+        { clientId: "sin-cliente", number: "" },
+        { clientId: null, number: "P-999999" },
+        { clientId: null, number: "no-es-un-numero" },
+      ]) {
+        const counts = await countOrdersByStatus(s.viewerA, filters);
+        if (!counts.ok) throw new Error(counts.code);
+        expect([filters.clientId, counts.counts.all]).toEqual([
+          filters.clientId,
+          0,
+        ]);
+      }
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "no cuenta los pedidos de otra organización",
+    async () => {
+      const s = await seed();
+      await makeOrder(s, s.clientA, [[s.coffee, "1", s.coffeePrice]]);
+      const createdB = await createOrder(
+        s.adminB,
+        input(s.clientB, [[s.productB, "1", s.productBPrice]]),
+      );
+      if (!createdB.ok) throw new Error(createdB.code);
+
+      const a = await countOrdersByStatus(s.viewerA, {
+        clientId: null,
+        number: "",
+      });
+      const b = await countOrdersByStatus(s.adminB, {
+        clientId: null,
+        number: "",
+      });
+      if (!a.ok || !b.ok) throw new Error("contadores rechazados");
+      expect([a.counts.all, b.counts.all]).toEqual([1, 1]);
+      // Y el cliente de la otra organización no abre una ventana a sus pedidos.
+      const crossed = await countOrdersByStatus(s.viewerA, {
+        clientId: s.clientB,
+        number: "",
+      });
+      if (!crossed.ok) throw new Error(crossed.code);
+      expect(crossed.counts.all).toBe(0);
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "el resumen nombra el producto de la primera línea y, sin equipos, cuenta líneas",
+    async () => {
+      const s = await seed();
+      await makeOrder(s, s.clientA, [
+        [s.coffee, "3", s.coffeePrice],
+        [s.tea, "1", s.teaPrice],
+      ]);
+      const listed = await listFor(s.viewerA, "all");
+      if (!listed.ok) throw new Error(listed.code);
+      const row = listed.orders[0]!;
+      // El nombre es el de hoy del producto de la **primera** línea, por posición, no el de
+      // cualquiera de las dos.
+      expect(row.firstProductName).toBe("Producto CAF-250");
+      expect(row.lineCount).toBe(2);
+      expect(row.unitCount).toBe(0);
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "con equipos, el resumen los cuenta sin confundirlos con las líneas",
+    async () => {
+      const s = await seed();
+      const orderId = await makeOrder(s, s.clientA, [
+        [s.coffee, "2", s.coffeePrice],
+      ]);
+      const lineRow = await getDb().execute<{ id: string }>(
+        sql`select id from order_lines where order_id = ${orderId}`,
+      );
+      const lineId = lineRow.rows[0]!.id;
+      // El producto pasa a venderse por unidad antes de darle unidades: el invariante de stock del
+      // proyecto no admite unidades vigentes en un producto por cantidad, y `expectStockInvariant`
+      // lo comprueba después de cada prueba. El primer intento de esta prueba lo olvidó y el
+      // invariante la enrojeció, que es para lo que está.
+      await getDb().execute(
+        sql`update products set tracking = 'unit' where id = ${s.coffee}`,
+      );
+      // Y el saldo acompaña a las unidades: el invariante exige que `quantity_on_hand` coincida con
+      // las unidades disponibles o reservadas. Dos defensas, dos correcciones; ninguna de las dos
+      // la habría encontrado el typecheck.
+      await getDb().execute(
+        sql`insert into inventories (organization_id, product_id, quantity_on_hand)
+            values (${s.orgA}, ${s.coffee}, '2.000')
+            on conflict (product_id) do update set quantity_on_hand = '2.000'`,
+      );
+      for (const serial of ["356938035643801", "356938035643802"]) {
+        const unit = await getDb().execute<{ id: string }>(
+          sql`insert into stock_units (organization_id, product_id, serial, cost, cost_currency,
+                origin_type, created_by)
+              values (${s.orgA}, ${s.coffee}, ${serial}, 100, 'ARS', 'manual', ${s.adminAId})
+              returning id`,
+        );
+        await getDb().execute(
+          sql`insert into order_line_units
+                (organization_id, order_line_id, product_id, unit_id, unit_price)
+              values (${s.orgA}, ${lineId}, ${s.coffee}, ${unit.rows[0]!.id}, '1234.50')`,
+        );
+      }
+
+      const listed = await listFor(s.viewerA, "all");
+      if (!listed.ok) throw new Error(listed.code);
+      // Una línea, dos equipos: si el recuento de unidades pasara por `order_lines` sin unirse a
+      // `order_line_units`, los dos números serían iguales y esta aserción no lo notaría.
+      expect(listed.orders[0]!.unitCount).toBe(2);
+      expect(listed.orders[0]!.lineCount).toBe(1);
     },
     TEST_TIMEOUT,
   );

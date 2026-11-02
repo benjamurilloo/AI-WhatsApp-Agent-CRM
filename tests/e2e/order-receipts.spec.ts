@@ -144,15 +144,24 @@ async function receiptCount() {
 }
 
 async function deposit(page: Page, method: string, amount: string) {
-  await page.getByRole("link", { name: "Registrar seña" }).click();
+  await page.getByRole("link", { name: "Registrar seña" }).first().click();
   await page.getByRole("radio", { name: new RegExp(method) }).check();
   await page.getByLabel(/Monto en/).fill(amount);
   await page.getByRole("button", { name: "Registrar seña" }).click();
 }
 
-async function transition(page: Page, button: string, yes: string) {
-  await page.getByRole("button", { name: button }).click();
-  await page.getByRole("button", { name: yes }).click();
+// Una transición del pedido. Desde la 24.6.1 (brief-24.6.1, D-5) el disparador del encabezado abre
+// un panel por la URL y **el panel es la confirmación**: ya no hay un «Sí, …» en línea. La
+// cancelación vive dentro de «Más acciones», que con JavaScript es un botón de revelación.
+async function transition(page: Page, trigger: string, submit: string) {
+  if (trigger === "Cancelar pedido") {
+    await page.getByRole("button", { name: "Más acciones" }).click();
+  }
+  await page.getByRole("link", { name: trigger }).click();
+  await page.getByRole("dialog").getByRole("button", { name: submit }).click();
+  // El panel envía una acción de servidor que redirige con su aviso. Hay que esperarla: un
+  // `goto` inmediato corre contra esa navegación y deja la pantalla a mitad de camino.
+  await expect(page).toHaveURL(/\?aviso=/);
 }
 
 test("un admin seña un pedido en dos medios con el teclado, ve el rechazo de una seña de más, lo entrega y emite la venta con la seña aplicada", async ({
@@ -167,14 +176,19 @@ test("un admin seña un pedido en dos medios con el teclado, ve el rechazo de un
   const productId = await insertStockedProduct("YER-1");
   const orderId = await insertPendingOrder(1, clientId, productId, "5000.00");
   await login(page, ADMIN);
-  await page.goto(`/pedidos/${orderId}`);
+  // Desde la 24.6.1 las señas registradas viven en **su pestaña** y la seña nueva, en un panel
+  // por la URL (brief-24.6.1, D-5). Lo que sigue es el mismo recorrido de la 21.4, en su lugar
+  // nuevo: ninguna regla de la seña cambió.
+  await page.goto(`/pedidos/${orderId}?pestana=senas`);
   const senas = page.getByRole("region", { name: "Señas del pedido P-000001" });
   await expect(page.getByText("Sin señas.")).toBeVisible();
   await expectAccessible(page, "pedido sin señas");
 
   // La primera seña, en efectivo, con el teclado. El monto se propone en lo que falta.
-  await page.getByRole("link", { name: "Registrar seña" }).click();
-  await expect(page).toHaveURL(new RegExp(`/pedidos/${orderId}/senar$`));
+  await page.getByRole("link", { name: "Registrar seña" }).first().click();
+  await expect(page).toHaveURL(
+    new RegExp(`/pedidos/${orderId}\\?pestana=senas&panel=senar$`),
+  );
   const amount = page.getByLabel(/Monto en/);
   await expect(amount).toHaveValue("10000.00");
   const cash = page.getByRole("radio", { name: /Efectivo/ });
@@ -198,6 +212,7 @@ test("un admin seña un pedido en dos medios con el teclado, ve el rechazo de un
   await amount.fill("2000");
   await page.getByRole("button", { name: "Registrar seña" }).click();
   await expect(page.getByText("Se registró la seña")).toBeVisible();
+  await page.goto(`/pedidos/${orderId}?pestana=senas`);
   await expect(senas).toContainText("Efectivo");
   await expect(senas).toContainText("Transferencia");
   await expect(page.getByText("queda retenida para este pedido")).toBeVisible();
@@ -218,16 +233,19 @@ test("un admin seña un pedido en dos medios con el teclado, ve el rechazo de un
   await page.goto(`/pedidos/${orderId}`);
 
   // Confirmar, entregar y emitir la venta.
-  await transition(page, "Confirmar pedido", "Sí, confirmar el pedido");
+  await transition(page, "Confirmar pedido", "Confirmar reserva");
   await expect(
-    page.getByRole("button", { name: "Marcar entregado" }),
+    page.getByRole("link", { name: "Marcar entregado" }),
   ).toBeVisible();
-  await transition(page, "Marcar entregado", "Sí, marcar entregado");
+  await transition(page, "Marcar entregado", "Confirmar entrega");
   await expect(page.getByRole("link", { name: "Registrar seña" })).toHaveCount(
     0,
   );
   await page.getByRole("link", { name: "Emitir venta" }).click();
-  await page.getByRole("button", { name: "Sí, emitir la venta" }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Emitir venta" })
+    .click();
 
   // La venta: lo cobrado incluye la seña del pedido, y falta el resto.
   await expect(page).toHaveURL(/\/ventas\/[0-9a-f-]+\?aviso=emitida$/);
@@ -244,7 +262,7 @@ test("un admin seña un pedido en dos medios con el teclado, ve el rechazo de un
     page.getByRole("link", { name: "Registrar cobro" }),
   ).toBeVisible();
   await expectAccessible(page, "venta con la seña aplicada");
-  await page.goto(`/pedidos/${orderId}`);
+  await page.goto(`/pedidos/${orderId}?pestana=senas`);
   await expect(page.getByText("La seña cuenta para la venta")).toBeVisible();
   expect(await receiptCount()).toBe(2);
 });
@@ -272,7 +290,8 @@ test("un admin cancela un pedido señado: lo señado pasa a la cuenta, la venta 
   await page.goto(`/pedidos/${orderId}`);
   await deposit(page, "Transferencia", "1000");
   await expect(page.getByText("Se registró la seña")).toBeVisible();
-  await transition(page, "Cancelar pedido", "Sí, cancelar el pedido");
+  await transition(page, "Cancelar pedido", "Cancelar pedido");
+  await page.goto(`/pedidos/${orderId}?pestana=senas`);
   await expect(
     page.getByText("lo señado pasó a la cuenta del cliente"),
   ).toBeVisible();
@@ -315,7 +334,7 @@ test("un viewer ve las señas de un pedido sin ninguna acción", async ({
         where o.id = ${orderId}`,
   );
   await login(page, VIEWER);
-  await page.goto(`/pedidos/${orderId}`);
+  await page.goto(`/pedidos/${orderId}?pestana=senas`);
   await expect(
     page.getByRole("region", { name: "Señas del pedido P-000001" }),
   ).toContainText("R-000001");
@@ -324,9 +343,16 @@ test("un viewer ve las señas de un pedido sin ninguna acción", async ({
   );
   await expectAccessible(page, "pedido señado para un viewer");
 
+  // `/senar` ya no es una página: redirige al panel, y el panel no se le dibuja a un `viewer`
+  // —el parámetro se lee solo para un `admin`—. Donde antes había un mensaje propio, ahora
+  // queda la ficha sin el panel. Declarado en el brief como V-13.
   await page.goto(`/pedidos/${orderId}/senar`);
+  await expect(page).toHaveURL(
+    new RegExp(`/pedidos/${orderId}\\?panel=senar$`),
+  );
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(
-    page.getByText("Solo un administrador puede registrar señas."),
+    page.getByRole("heading", { name: "Pedido P-000001" }),
   ).toBeVisible();
 });
 
