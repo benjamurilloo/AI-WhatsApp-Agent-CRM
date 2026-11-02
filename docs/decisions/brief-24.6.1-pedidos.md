@@ -741,7 +741,7 @@ probados, rollback y observabilidad revisados para este cambio.
 
 ## Cierre
 
-**Estado al 2026-11-02: implementada, medida, revisada y desplegada. Sin recorrer.**
+**Estado al 2026-11-02: implementada, medida, revisada, desplegada y recorrida.**
 
 | Criterio | Estado |
 |---|---|
@@ -755,7 +755,7 @@ probados, rollback y observabilidad revisados para este cambio.
 | AC-15 | **cumplido**: §Comparación visual, 41 entradas con su cubo |
 | AC-16 | **cumplido**: batería local en verde —typecheck, ESLint y Prettier limpios, **2.212** de `unit` y `guards`, **1.902** de `integration` y la de extremo a extremo en cuatro tandas— **y CI en `success` sobre el SHA desplegado**, `2d4a6fd` (run 41452113369, 33 min 44 s, con los end-to-end **enteros de una sola vez** y «Alcance del cambio» **sin recortar**) |
 | AC-17 | **cumplido**: §14 y §16 de `Screens.md` reescritas y la fila del Roadmap |
-| AC-18 | **abierto**: falta el recorrido del usuario sobre producción |
+| AC-18 | **cumplido**: recorrido del usuario sobre producción el 2026-11-02, sin objeciones |
 | AC-19 | **cumplido**: §Revisión independiente, R2, quince hallazgos, ninguno falso |
 | AC-20 | **cumplido**: los cinco paneles andan sin JavaScript, con dos pruebas servidas |
 
@@ -807,7 +807,17 @@ advertencia**; el build pasó **en el primer intento** con el servicio detenido 
 `--max-old-space-size=1536`, sin repetirse ni quedarse sin memoria; y `/`, `/pedidos`,
 `/productos` y `/clientes` responden **`307` a `/login`** sin sesión, no `500`.
 
-**Falta el recorrido del usuario** (AC-18). Hasta que ocurra, el nivel es **validado en
-integración**: «validado en staging» no se infiere de que la CI esté en verde ni de que el
-despliegue haya salido bien.
+**Recorrido del usuario** sobre producción el 2026-11-02, **sin objeciones** (AC-18). Con esto **los
+veinte criterios quedan cumplidos** y la subfase sube a **validado en staging**. Vale decir qué
+cerró ese recorrido y qué no: cerró el nivel de validación, que no se infiere de que la CI esté en
+verde ni de que el despliegue haya salido bien. **No** alcanza «preparado para producción», que
+además pide backups probados, rollback y observabilidad revisados para este cambio, ni cierra los
+seis pendientes P-1 a P-6, que siguen abiertos a propósito.
+
+Dos de las tres veces anteriores de esta fase, el recorrido del usuario **encontró defectos** que
+los instrumentos de la subfase no habían visto —la 24.5.2 volvió con el desbordamiento horizontal y
+las filas demasiado anchas de `/usados`, y la 24.5.1 con el selector de moneda saliéndose de su
+tarjeta, que terminó siendo la 24.5.1-b—. Esta vez no, y lo que más probablemente explica la
+diferencia es que los cinco defectos propios de esta subfase los encontraron sus propias pruebas
+antes del recorrido, no el ojo del usuario después.
 
