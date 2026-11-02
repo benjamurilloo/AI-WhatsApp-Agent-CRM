@@ -411,7 +411,7 @@ casilla de un valor no puede renombrar en ninguno de sus tres caminos.
 
 ## Cierre
 
-**Estado al 2026-11-01: implementada, verificada y revisada. Sin desplegar.**
+**Estado al 2026-11-01: implementada, verificada, revisada, desplegada y recorrida.**
 
 | Criterio | Estado |
 |---|---|
@@ -420,9 +420,9 @@ casilla de un valor no puede renombrar en ninguno de sus tres caminos.
 | AC-12 | **cumplido**: desbordamiento cero a 320, 390, 640, 1082 y 1440 px en las cuatro pantallas y sus tres paneles, y axe sin violaciones en claro y oscuro |
 | AC-13 | **cumplido**: §Comparación visual, 26 entradas con su clase |
 | AC-14 | **cumplido**: §Mediciones |
-| AC-15 | **la mitad**: batería local en verde —typecheck, 907 de `guards`, 1.294 de `unit`, 4.097 de la corrida completa con **un fallo ajeno de *teardown*** (`migration-0054`, que no pudo soltar su base temporal en 60 s por contención y **pasa sola**), y 16 de extremo a extremo entre las dos specs—. **Falta la CI sobre el SHA que se despliegue** |
+| AC-15 | **cumplido**: batería local en verde —typecheck, 907 de `guards`, 1.294 de `unit`, 4.097 de la corrida completa con **un fallo ajeno de *teardown*** (`migration-0054`, que no pudo soltar su base temporal en 60 s por contención y **pasa sola**), y 16 de extremo a extremo entre las dos specs— y **CI en `success` sobre el SHA desplegado**, `078fe43` (run 41362794911, 27 min, con los end-to-end de Chromium y el paso «Alcance del cambio» **sin recortar**) |
 | AC-16 | **cumplido**: tres secciones nuevas en `Screens.md` y la fila del Roadmap |
-| AC-17 | **pendiente**: recorrido del usuario sobre producción |
+| AC-17 | **cumplido**: recorrido del usuario sobre producción el 2026-11-01, sin objeciones |
 | AC-18 | **cumplido**: §Revisión independiente, R2, diez hallazgos, ninguno falso |
 
 **Las cinco condiciones de detención no se dispararon**: no hay migración, tabla, columna ni
@@ -430,6 +430,39 @@ contrato nuevo; no se cruzó la frontera entre módulos; no se tocó ninguna pan
 agregó ningún campo al modelo ni al grado; y ninguna diferencia nueva con la v2 exige un dato que
 no existe.
 
-**Una decisión queda abierta para el usuario**: ratificar `src/app/(autenticado)/modelos/actions.ts`,
-que §Excluido autoriza —«salvo lo que exija el formulario nuevo»— y la lista cerrada no nombra
-(F-1).
+**La decisión que quedaba abierta la resolvió el usuario** el 2026-11-01: ratificó
+`src/app/(autenticado)/modelos/actions.ts`, que §Excluido autoriza —«salvo lo que exija el
+formulario nuevo»— y la lista cerrada no nombra (F-1).
+
+### Despliegue
+
+**`078fe437f9289656ee39720004a993f79b62ded4`, en producción desde el 2026-11-01**, autorizado por el
+usuario en el turno. Sin migraciones nuevas: siguen **67**. Para volver atrás,
+**`64bf7f4332d216e2df0e8f06c263d1e1df8e2cbd`**, anotado en `/var/lib/crm-production/despliegues`
+antes de desplegar.
+
+Las **siete verificaciones** de [`deploy/production/README.md`](../../deploy/production/README.md)
+pasaron:
+
+| # | Verificación | Resultado |
+|---|---|---|
+| 1 | Configuración desplegada igual a la versionada | **18 de 18** archivos idénticos |
+| 2 | Un solo salto de proxy | **una** fila en la ventana de 15 min, escrita a las 00:22:48 UTC y leída a las 00:23:12, con la clave **igual** a la del operador y distinta de `sha256('sin-proxy')`; el control negativo, a las 00:23:44, dejó una clave **distinta** |
+| 3 | HSTS | `max-age=31536000; includeSubDomains` sobre HTTPS, **ausente** sobre HTTP |
+| 4 | La aplicación escucha solo en loopback | `LISTEN 127.0.0.1:3000` |
+| 5 | El rol de la aplicación no es el dueño de la bitácora | `crm_app_login` ≠ `crm_owner`, con `INSERT` sí y `UPDATE`/`DELETE` no sobre `audit_logs` |
+| 6 | Los tres endpoints desde afuera | `401`, `401`, `401` |
+| 7 | La organización real sigue en cero | `Vixora 0 / 0 / 0`, con los datos en las dos de demostración |
+
+El **control negativo del paso 2** volvió a necesitar la variante que el runbook incorporó al cerrar
+la 24.5.1-b: el túnel SOCKS quedó bloqueado del lado del operador, así que el intento se corrió
+**dentro del droplet contra el dominio público** —nunca contra `localhost`, que saltearía nginx—.
+Dos orígenes dejaron dos claves distintas, que es lo que el control busca demostrar. **En ningún
+momento se imprimió ni se versionó una IP ni su hash.**
+
+Comprobación propia de esta subfase, además de las siete: `/api/health` responde `200`, y `/modelos`,
+`/modelos/atributos` y `/grados` responden **`307` a `/login`** sin sesión, no `500` —las tres son
+pantallas rediseñadas y la lectura nueva corre en la primera—. El `HEAD` desplegado es el SHA exacto.
+
+**Recorrido del usuario** sobre producción el 2026-11-01, sin objeciones. Con esto **los dieciocho
+criterios quedan cumplidos** y la subfase sube a **validado en staging**.
