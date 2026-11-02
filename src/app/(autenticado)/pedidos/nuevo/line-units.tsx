@@ -113,9 +113,9 @@ export function LineQuantity({
   describedBy: string | undefined;
   onChange: (change: Partial<LineRow>) => void;
   // La forma de la 24.6.1-b (D-2), solo donde quien usa el componente la enciende: cómo se nombra
-  // lo que se cuenta —`/pedidos/nuevo` pasa «equipos», la palabra de la lámina 02— y el recuadro
-  // de campo de solo lectura que la lámina le da. Sin esto queda exactamente lo anterior, que es
-  // lo que ve `/ventas/nueva` hasta la 24.6.2.
+  // lo que se cuenta —las dos altas pasan «equipos», la palabra de la lámina 02— y el recuadro
+  // de campo de solo lectura que la lámina le da. Sin esto queda exactamente lo anterior.
+  // `/ventas/nueva` la enciende desde la 24.6.2.
   unitNoun?: { one: string; many: string };
 }) {
   const hydrated = useHydrated();
@@ -177,7 +177,7 @@ export function LineSerials({
   describedBy: string | undefined;
   onChange: (change: Partial<LineRow>) => void;
   // La forma de la 24.6.1-b, solo donde quien usa el componente la enciende (D-2). Sin esto queda
-  // la forma anterior, que es la que ve `/ventas/nueva` hasta la 24.6.2.
+  // la forma anterior. `/ventas/nueva` la enciende desde la 24.6.2.
   chooseUnits?: { open: boolean; onOpen: () => void };
 }) {
   const hydrated = useHydrated();
@@ -198,7 +198,7 @@ export function LineSerials({
   useEffect(() => {
     if (!loading) return;
     let cancelled = false;
-    // La miniatura la pide solo quien tiene panel: `/ventas/nueva` no la dibuja (D-2, AC-9).
+    // La miniatura la pide solo quien tiene panel. Desde la 24.6.2 lo tienen las dos altas.
     searchOrderUnitsAction(productId, chooseUnits !== undefined).then(
       (result) => {
         if (!cancelled)

@@ -9,7 +9,6 @@ import {
   HeaderIcon,
 } from "@/app/_components/detail-header";
 import { PageNotice } from "@/app/_components/page-notice";
-import { SectionCard } from "@/app/_components/section-card";
 import { FORBIDDEN_PAGE_MESSAGE } from "../messages";
 import { SaleForm } from "./sale-form";
 
@@ -21,7 +20,9 @@ const TITLE = "Nueva venta";
 
 // Pantalla 19: la venta sin pedido, la de mostrador, solo para admin (brief-20.3, D-6; ADR 0021,
 // punto 4). El límite de líneas es el del pedido. Desde la 24.4.3 (D-4), como el alta de un pedido:
-// con ?cliente=<id> llega con el cliente ya elegido, si está activo.
+// con ?cliente=<id> llega con el cliente ya elegido, si está activo. Desde la 24.6.2, la forma de
+// las láminas 02 y 06 de la v2: el panel de equipos y el resumen «Antes de emitir» los arma el
+// formulario (brief-24.6.2).
 export default async function NewSalePage({
   searchParams,
 }: {
@@ -58,21 +59,18 @@ export default async function NewSalePage({
           </p>
         }
       />
-      <SectionCard
-        id="venta-titulo"
-        title="Cliente y líneas"
-        icon="receipt"
-        className="mt-6"
-      >
-        <SaleForm
-          maxLines={MAX_ORDER_LINES}
-          unitsEnabled={await hasCapability(
-            context.organizationId,
-            "serialized_units",
-          )}
-          initialClient={initialClient}
-        />
-      </SectionCard>
+      {/* La tarjeta «Cliente y líneas» la arma el propio formulario desde la 24.6.2, como en el
+          alta de un pedido: el panel «Elegir unidades» y el resumen «Antes de emitir» van **al
+          lado** de la tarjeta, como en la lámina 02, y quien sabe si el panel está abierto es el
+          formulario, que es donde vive el borrador. */}
+      <SaleForm
+        maxLines={MAX_ORDER_LINES}
+        unitsEnabled={await hasCapability(
+          context.organizationId,
+          "serialized_units",
+        )}
+        initialClient={initialClient}
+      />
     </main>
   );
 }

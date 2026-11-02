@@ -240,7 +240,7 @@ Salirse de esta lista **se para y se pregunta en el turno**, sin excepción por 
 | **AC-7** | «Volver sin guardar» pregunta si hay cliente o alguna línea cargada, y no pregunta si el formulario está vacío. |
 | **AC-8** | Sin JavaScript, `/ventas/nueva` sigue funcionando igual que hoy: `textarea` de IMEI, lista servida de disponibles, cantidad, y la venta se emite. |
 | **AC-9** | **Ninguna regla de emisión cambia**: se prueba con al menos dos mutaciones en `sales` que tienen que enrojecer un caso existente, y con el rechazo por stock insuficiente y por monedas distintas intactos. |
-| **AC-10** | **`/pedidos/nuevo` no cambia**: un caso de Pedidos lo fija y el diff no toca sus archivos. |
+| **AC-10** | **`/pedidos/nuevo` no cambia**: un caso de Pedidos lo fija. *Enmendado el 2026-11-02* (§Ampliaciones): el diff toca dos archivos de Pedidos, en tres comentarios y ninguna línea ejecutable; lo que el criterio exige es que su conducta no cambie. |
 | **AC-11** | La batería local completa pasa en verde, con su número de casos declarado, y la CI pasa con `conclusion: success` sobre el SHA exacto. No se declara «las specs de ventas»: se declara el total. |
 | **AC-12** | Comparación visual contra las láminas **02 y 06**, entrada por entrada, clasificando cada una en resuelta / declarada / nueva / cosmética aceptada. |
 | **AC-13** | Accesibilidad: axe sin violaciones en la pantalla y con el panel abierto; 320 px sin desplazamiento horizontal; 200 % de zoom; foco visible; errores asociados. |
@@ -248,6 +248,17 @@ Salirse de esta lista **se para y se pregunta en el turno**, sin excepción por 
 | **AC-15** | Sin migraciones: siguen 67. |
 | **AC-16** | Revisión independiente de un agente que no participó, de solo lectura, contra este brief (D-8). |
 | **AC-17** | Recorrido del usuario sobre producción, sin objeciones. |
+
+## Ampliaciones de la lista cerrada, autorizadas en el turno
+
+- **`src/app/(autenticado)/pedidos/actions.ts` y `src/app/(autenticado)/pedidos/nuevo/line-units.tsx`**,
+  autorizados el 2026-11-02, **solo comentarios**. Encender la propiedad vuelve falsas tres frases
+  que esos archivos tienen escritas: `actions.ts` afirma que `/ventas/nueva` no dibuja la miniatura
+  y por eso «hace **exactamente las mismas consultas** que antes de la 24.6.1-b», y `line-units.tsx`
+  dice dos veces «que es lo que ve `/ventas/nueva` **hasta la 24.6.2**». Dejarlas habría guardado un
+  comentario que contradice al código. **Enmienda AC-10**: el diff **sí** toca dos archivos de
+  Pedidos, y lo que el criterio exige es que **no cambie su conducta**; lo tocado son tres
+  comentarios y ninguna línea ejecutable.
 
 ## Mediciones requeridas
 
@@ -279,3 +290,78 @@ Se para y se pregunta, en el turno, si:
   subfase la rediseña.
 - **Mejora posterior**: la 24.6.2-b (listado, ficha, cobro, anulación y comprobante), y los cuatro
   pendientes heredados de la 24.6.1-b (D-7).
+
+## Resultado de las mediciones
+
+**1 · Las sentencias del camino de las unidades (AC-14).** Contadas interviniendo `pool.query` **y**
+la conexión que devuelve `pool.connect()`, sobre el mismo `getDb()` que usan los servicios, con un
+arnés temporal que se borró después de medir.
+
+| | Sentencias |
+|---|---|
+| `listAvailableUnits` | 2 |
+| `getProductImageVersions` | 1 |
+| Las dos juntas | 3 |
+| **`/ventas/nueva` antes de esta subfase** | **2** |
+| **`/ventas/nueva` desde esta subfase** | **3** |
+
+El costo de encender la propiedad es **una sentencia más por producto por unidad elegido**: la
+versión de la imagen, que el panel dibuja en su cabecera. Es una lectura indexada por `productId`,
+una sola vez por producto, la misma que ya hace la lista de productos. Es exactamente el número que
+la 24.6.1-b declaró para Pedidos, y ahora las dos altas pagan lo mismo.
+
+**2 · El barrido de anchos encontró un defecto real (AC-13).** A **1024 px**, con el panel abierto,
+el documento desbordaba **32 px**. La causa: la columna derecha se había escrito `lg:w-80` (320 px)
+y el panel que vive en ella es `lg:w-96` (384 px) y `shrink-0`, así que se salía de su columna. Se
+corrigió igualando la columna al panel. **No lo vio la vista: lo midió `scrollWidth - clientWidth`**
+en los cinco anchos, que es la razón de tener el barrido y no una mirada.
+
+## Comparación visual contra las láminas 02 y 06, entrada por entrada
+
+Treinta y cuatro entradas, sobre capturas reales de la pantalla construida. **Resuelta** = igual a
+la lámina; **declarada** = diferencia decidida en el brief; **nueva** = algo que la lámina no
+dibuja; **cosmética aceptada** = diferencia menor, con su motivo.
+
+### Lámina 02 — escritorio
+
+| # | Entrada de la lámina | Clase | Nota |
+|---|---|---|---|
+| 1 | Migas «Comercial › Ventas» | resuelta | |
+| 2 | «← Volver a ventas» | resuelta | |
+| 3 | Título «Nueva venta» con «Venta sin pedido.» | cosmética aceptada | el subtítulo es el de la 20.3: «La venta se numera al emitirla y descuenta el stock disponible. No se puede modificar.» |
+| 4 | «Cliente (opcional)» con buscador | resuelta | |
+| 5 | «Sin cliente: Consumidor final.» | cosmética aceptada | dice «Vacío, la venta es a «Consumidor final».», el texto de la 20.3 |
+| 6 | Ícono de persona, «✕» y chevron dentro del campo de cliente | cosmética aceptada | el `Picker` es un campo de texto con lista; agregarle adornos es tocar un componente de siete pantallas |
+| 7 | «Buscar producto o escanear código», un buscador único arriba | declarada | V-5: las líneas siguen siendo «Línea N» con su buscador propio |
+| 8 | Tarjeta del producto con miniatura, «U-0403 · IMEI …2403 · Grado A · Batería 89%» y «✕» | declarada | V-1, V-2, V-5, V-6 y V-8: la línea es un `fieldset`, el equipo va como chip con su IMEI completo y su precio, y la miniatura vive en la cabecera del panel |
+| 9 | «Precio vigente del producto» bajo el nombre | declarada | el precio está, en su campo «Precio unitario»; la leyenda no se agrega |
+| 10 | Ícono de escaneo dentro del campo | cosmética aceptada | V-9: no hay uno en `icons.tsx` |
+| 11 | «Ingresá el IMEI completo» | resuelta | y el marcador va en la tipografía del sistema, medido |
+| 12 | «Elegir unidad», enlace a la derecha del campo | declarada | V-11: es un botón y dice «Elegir unidades», en plural |
+| 13 | «Cantidad» de solo lectura con «1» | cosmética aceptada | dice «1 equipo», que es la palabra de la lámina en el resumen |
+| 14 | «Derivada de la unidad seleccionada.» | resuelta | vive en `sale-form.tsx` y no en el componente compartido, porque la lámina de Pedidos no la dibuja |
+| 15 | «Subtotal» de solo lectura | resuelta | |
+| 16 | «+ Agregar producto» | declarada | V-7: «Agregar línea», como desde la 19.2 |
+| 17 | Tarjeta «Antes de emitir» en la columna derecha | resuelta | |
+| 18 | Fila del cliente con su ícono | resuelta | |
+| 19 | «1 equipo» con ícono de teléfono | resuelta | y cuando no hay equipos cuenta líneas |
+| 20 | «Total estimado» con el monto grande a la derecha | cosmética aceptada | dice «Total estimado:», con dos puntos, para que la prueba del alta de la 20.3 siga pasando **sin tocarla** |
+| 21 | Los tres avisos con sus íconos | resuelta | |
+| 22 | «Emitir venta», primario y a todo el ancho | resuelta | vive fuera del `<form>` y lo alcanza por el atributo `form` |
+| 23 | «Volver sin guardar», secundario | resuelta | y pregunta si hay algo cargado |
+| 24 | — | nueva | la columna derecha es pegajosa desde `lg`; la lámina no dibuja desplazamiento |
+| 25 | Una sola línea de producto dibujada | declarada | el formulario arranca con cinco líneas desde la 19.2, para que sin JavaScript se puedan cargar varias |
+| 26 | — | nueva | el panel «Elegir unidades» ocupa la columna derecha arriba del resumen: la lámina 02 de Ventas no lo dibuja, y es el de la 24.6.1-b |
+| 27 | — | nueva | el cuerpo al 60 % de opacidad con el panel abierto, convención de la 24.5.3 y la 24.6.1 |
+
+### Lámina 06 — teléfono
+
+| # | Entrada de la lámina | Clase | Nota |
+|---|---|---|---|
+| 28 | Una columna de tarjetas | resuelta | |
+| 29 | Sin barra global durante el alta | resuelta | ya lo hacía: `hidesBottomBar("/ventas/nueva")` desde la 24.1 |
+| 30 | «Producto» como selector con miniatura | declarada | V-8 |
+| 31 | Tarjeta «Unidad agregada» con miniatura, grado, batería, precio, «1 equipo» y «Quitar unidad» | declarada | V-6: es un chip con el IMEI y el precio, la forma que la 24.6.1-b dejó en Pedidos |
+| 32 | Barra de acciones fija al pie con los dos botones | cosmética aceptada | los dos botones van dentro de «Antes de emitir», que en el teléfono queda al pie y se desplaza con la página; `FormActionBar` se descartó en D-3 porque la lámina de escritorio los pone en la tarjeta |
+| 33 | «Vacío: Consumidor final.» | cosmética aceptada | igual que la entrada 5 |
+| 34 | «Al emitir sale 1 equipo del stock. El cobro se registra después.», condensado | declarada | se usan los tres avisos de la lámina 02, que son un superconjunto del de la 06 |

@@ -302,8 +302,9 @@ const NO_UNITS: OrderUnitsResult = { units: [], image: undefined };
 
 export async function searchOrderUnitsAction(
   productId: string,
-  // Solo quien va a dibujar la miniatura la pide. `/ventas/nueva` no la dibuja, así que sigue
-  // haciendo **exactamente las mismas consultas** que antes de la 24.6.1-b (D-2, AC-9).
+  // Solo quien va a dibujar la miniatura la pide. Desde la 24.6.2 la dibujan las dos altas, la
+  // del pedido y la de mostrador; la propiedad queda porque la pide quien usa el componente, no
+  // la pantalla (brief-24.6.1-b, D-2; brief-24.6.2).
   withImage = false,
 ): Promise<OrderUnitsResult> {
   const context = await requireSession();

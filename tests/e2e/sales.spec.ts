@@ -810,14 +810,12 @@ async function insertUnitProduct(
   return productId;
 }
 
-test("brief-24.6.1-b: el alta de mostrador sigue eligiendo los equipos como antes, sin panel ni chips", async ({
+test("brief-24.6.2: el alta de mostrador elige los equipos en el panel, como el alta de un pedido", async ({
   page,
 }) => {
-  // AC-9 de la 24.6.1-b. `line-units.tsx` lo comparten `/pedidos/nuevo` y esta pantalla, y el
-  // rediseño del selector entró **detrás de una propiedad que solo Pedidos enciende** (su D-2):
-  // acá tiene que seguir estando el `textarea` de IMEI con la lista de disponibles en línea, y
-  // **no** el panel. Sin este caso, lo único que respaldaba AC-9 era leer el código: la spec no
-  // nombraba «unidad», «equipo» ni «IMEI» en ninguna línea.
+  // AC-1 a AC-5. Es el caso que la 24.6.1-b escribió **al revés** —probaba que acá no estaba el
+  // panel, porque su D-2 lo dejó detrás de una propiedad que solo Pedidos encendía— y que esta
+  // subfase invierte en lugar de borrar, para no perder la cobertura (brief-24.6.2, D-6).
   const productId = await insertUnitProduct("IPH-13", "iPhone 13", "450", [
     "356938035645001",
     "356938035645002",
@@ -826,33 +824,179 @@ test("brief-24.6.1-b: el alta de mostrador sigue eligiendo los equipos como ante
   await page.goto("/ventas/nueva");
   await pick(line(page, 1), "Producto", "iPhone");
 
-  // Lo de siempre: el campo de IMEI, uno por renglón, y la lista servida de disponibles.
-  const imei = line(page, 1).getByLabel("IMEI de las unidades");
-  await expect(imei).toBeVisible();
-  await expect(line(page, 1)).toContainText("Unidades disponibles");
-  await line(page, 1)
-    .getByRole("button", { name: "Agregar el IMEI 356938035645001" })
-    .click();
-  await expect(imei).toHaveValue("356938035645001");
-  // La palabra es «unidad», no «equipo»: el recuadro de la lámina 02 es de Pedidos.
-  await expect(line(page, 1)).toContainText("1 unidad");
-  await expect(line(page, 1)).not.toContainText("1 equipo");
+  // Lo que hasta la 24.6.1-b era solo de Pedidos: el campo de escaneo y el disparador del panel.
+  // El camino servido —el textarea y la lista en línea— ya no se dibuja con JavaScript.
+  const escanear = line(page, 1).getByLabel("Escanear o agregar IMEI");
+  await expect(escanear).toBeVisible();
+  await expect(line(page, 1).getByLabel("IMEI de las unidades")).toHaveCount(0);
+  await expect(line(page, 1)).not.toContainText("Unidades disponibles");
 
-  // Y nada de lo que la 24.6.1-b agregó llegó hasta acá.
+  // AC-3: el IMEI escrito va en monoespaciada y el marcador, que es prosa, en la del sistema.
+  // Es la lección de la 24.6.2-b anterior: se mide, no se afirma.
+  const fuentes = await escanear.evaluate((el) => ({
+    valor: getComputedStyle(el).fontFamily,
+    marcador: getComputedStyle(el, "::placeholder").fontFamily,
+  }));
+  expect(fuentes.valor, "el IMEI escrito va en monoespaciada").toMatch(
+    /mono|Courier/i,
+  );
+  expect(
+    fuentes.marcador,
+    "el marcador va en la tipografía del sistema",
+  ).toMatch(/Manrope|system-ui|sans-serif/i);
+  expect(fuentes.marcador).not.toBe(fuentes.valor);
+
+  // Enter agrega el IMEI y **no** envía el formulario.
+  await escanear.fill("356938035645001");
+  await escanear.press("Enter");
+  await expect(page).toHaveURL(/\/ventas\/nueva$/);
+  const chips = line(page, 1).getByRole("list", {
+    name: /Equipos seleccionados/,
+  });
+  await expect(chips.getByRole("listitem")).toHaveCount(1);
+  await expect(chips).toContainText("$ 450,00");
+
+  // AC-4: la cantidad y el subtotal pasan a ser de solo lectura, con el texto de la lámina.
+  await expect(line(page, 1)).toContainText("1 equipo");
+  await expect(line(page, 1)).toContainText(
+    "Derivada de la unidad seleccionada.",
+  );
+  await expect(line(page, 1)).toContainText("Precio unitario");
+  await expect(line(page, 1).getByLabel("Cantidad")).toHaveCount(0);
+
+  // AC-1 y AC-5: el panel, el cuerpo inerte y «Emitir venta» deshabilitado.
+  const abrir = line(page, 1).getByRole("button", {
+    name: "Elegir unidades",
+    exact: true,
+  });
+  await expect(abrir).toHaveAttribute("aria-haspopup", "dialog");
+  await abrir.click();
+  const panel = page.getByRole("dialog");
   await expect(
-    page.getByRole("button", { name: "Elegir unidades", exact: true }),
-  ).toHaveCount(0);
+    panel.getByRole("heading", { name: "Elegir unidades", exact: true }),
+  ).toBeVisible();
+  await expect(panel.getByRole("checkbox")).toHaveCount(2);
+  await expect(
+    page.getByRole("button", { name: "Emitir venta" }),
+  ).toBeDisabled();
+  await expectAccessible(page, "alta de mostrador con el panel abierto");
+
+  await panel.getByRole("checkbox", { name: /356938035645002/ }).check();
+  await panel.getByRole("button", { name: "Usar selección" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(line(page, 1)).not.toContainText("Equipos seleccionados");
-  await expect(line(page, 1)).not.toContainText("Escanear o agregar IMEI");
+  // Al cerrarse, el foco vuelve al disparador.
+  await expect(abrir).toBeFocused();
+  await expect(chips.getByRole("listitem")).toHaveCount(2);
+  await expect(line(page, 1)).toContainText("2 equipos");
+  await expect(
+    page.locator("p", { hasText: /^Total estimado:/ }),
+  ).toContainText("$ 900,00");
+
+  // AC-2: el «Quitar» de un chip nombra su unidad.
+  await chips
+    .getByRole("button", { name: "Quitar el IMEI 356938035645001" })
+    .click();
+  await expect(chips.getByRole("listitem")).toHaveCount(1);
+  await expect(line(page, 1)).toContainText("1 equipo");
   await expectAccessible(page, "alta de mostrador por unidad");
 
-  // El camino sigue andando de punta a punta.
+  // El camino sigue andando de punta a punta, y vende la unidad que quedó.
   await page.getByRole("button", { name: "Emitir venta" }).click();
   // El nivel importa: el número también titula el comprobante imprimible, y sin él son dos.
   await expect(
     page.getByRole("heading", { name: "Venta V-000001", level: 1 }),
   ).toBeVisible();
-  await expect(page.getByRole("main")).toContainText("356938035645001");
+  await expect(page.getByRole("main")).toContainText("356938035645002");
+  await expect(page.getByRole("main")).not.toContainText("356938035645001");
   expect(await onHand(productId)).toBe("1.000");
+});
+
+test("brief-24.6.2: «Antes de emitir» resume la venta, y «Volver sin guardar» avisa solo si hay algo cargado", async ({
+  page,
+}) => {
+  // AC-6 y AC-7. El resumen es lo propio de esta lámina: el alta de un pedido no lo tiene.
+  await insertStockedProduct("CAF-250", "Café molido", "1234.50", "10");
+  await insertClient("Lucía Gómez");
+  await login(page, ADMIN);
+  await page.goto("/ventas/nueva");
+
+  const resumen = page.getByRole("complementary", { name: "Antes de emitir" });
+  await expect(resumen).toContainText("Consumidor final");
+  await expect(resumen).toContainText("Sin líneas cargadas");
+  await expect(resumen).toContainText("Al emitir, el equipo pasa a vendido");
+  await expect(resumen).toContainText("El cobro se registra después.");
+  await expect(resumen).toContainText("La venta emitida no se edita.");
+
+  // Sin nada cargado, salir no pregunta nada.
+  await resumen.getByRole("link", { name: "Volver sin guardar" }).click();
+  await expect(page).toHaveURL(/\/ventas$/);
+
+  await page.goto("/ventas/nueva");
+  await pick(page, "Cliente (opcional)", "Luc");
+  await pick(line(page, 1), "Producto", "Café");
+  await line(page, 1).getByLabel("Cantidad").fill("2");
+  await expect(resumen).toContainText("Lucía Gómez");
+  await expect(resumen).toContainText("1 línea");
+  await expect(
+    page.locator("p", { hasText: /^Total estimado:/ }),
+  ).toContainText("$ 2.469,00");
+  await expectAccessible(page, "alta de mostrador con su resumen");
+
+  // Con algo cargado, salir pregunta, y «Seguir editando» no pierde el borrador.
+  await resumen.getByRole("link", { name: "Volver sin guardar" }).click();
+  const aviso = page.getByRole("dialog", {
+    name: "Tenés cambios sin guardar",
+  });
+  await expect(aviso).toBeVisible();
+  await aviso.getByRole("button", { name: "Seguir editando" }).click();
+  await expect(page).toHaveURL(/\/ventas\/nueva$/);
+  await expect(line(page, 1).getByLabel("Cantidad")).toHaveValue("2");
+
+  await resumen.getByRole("link", { name: "Volver sin guardar" }).click();
+  await aviso.getByRole("button", { name: "Salir sin guardar" }).click();
+  await expect(page).toHaveURL(/\/ventas$/);
+});
+
+// Desbordamiento horizontal: la medida sale del documento, no de la vista. `scrollWidth` mayor que
+// `clientWidth` es exactamente la barra horizontal que no tiene que aparecer.
+const anchoDesbordado = (page: Page) =>
+  page.evaluate(() => {
+    const raiz = document.documentElement;
+    return raiz.scrollWidth - raiz.clientWidth;
+  });
+
+test("brief-24.6.2: sin desbordamiento horizontal en el alta de mostrador, de 320 a 1440 px", async ({
+  page,
+}) => {
+  // AC-13. Los cinco anchos del criterio, con un chip de IMEI completo cargado y con el panel
+  // abierto, que es donde una columna de ancho fijo se nota primero. A 320 px con 200 % de zoom el
+  // ancho efectivo es mayor que 320, así que el barrido lo cubre por abajo.
+  await insertUnitProduct("IPH-13", "iPhone 13", "450", [
+    "356938035645001",
+    "356938035645002",
+  ]);
+  await login(page, ADMIN);
+  for (const ancho of [320, 390, 768, 1024, 1440]) {
+    await page.setViewportSize({ width: ancho, height: 900 });
+    await page.goto("/ventas/nueva");
+    await pick(line(page, 1), "Producto", "iPhone");
+    const escanear = line(page, 1).getByLabel("Escanear o agregar IMEI");
+    await escanear.fill("356938035645001");
+    await escanear.press("Enter");
+    await expect(
+      line(page, 1).getByRole("list", { name: /Equipos seleccionados/ }),
+    ).toContainText("356938035645001");
+    expect(
+      await anchoDesbordado(page),
+      `alta con un chip a ${ancho} px`,
+    ).toBeLessThanOrEqual(0);
+    await line(page, 1)
+      .getByRole("button", { name: "Elegir unidades", exact: true })
+      .click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    expect(
+      await anchoDesbordado(page),
+      `panel abierto a ${ancho} px`,
+    ).toBeLessThanOrEqual(0);
+  }
 });

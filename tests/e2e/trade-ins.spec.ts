@@ -273,7 +273,11 @@ test("un admin recibe un usado, lo ve en revisión, lo libera y lo vende", async
   await expect(saleLine.getByRole("option").first()).toBeVisible();
   await productField.press("ArrowDown");
   await productField.press("Enter");
-  await saleLine.getByLabel("IMEI de las unidades").fill(SERIAL);
+  // Desde la 24.6.2 el alta de mostrador usa el selector de la lámina 02: el IMEI se escribe
+  // en «Escanear o agregar IMEI» y Enter lo agrega como chip (brief-24.6.2).
+  const saleImei = saleLine.getByLabel("Escanear o agregar IMEI");
+  await saleImei.fill(SERIAL);
+  await saleImei.press("Enter");
   await page.getByRole("button", { name: "Emitir venta" }).click();
   await expect(page).toHaveURL(/\/ventas\/[0-9a-f-]+\?aviso=emitida$/);
   expect(await unitStatus()).toBe("sold");

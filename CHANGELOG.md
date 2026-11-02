@@ -2,6 +2,36 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-11-02 — 24.6.2: el alta de mostrador
+
+Decimoquinta subfase de la Fase 24 ([brief-24.6.2](docs/decisions/brief-24.6.2-el-alta-de-mostrador.md)). Rediseño de **`/ventas/nueva`** con las láminas 02 y 06 de la v2: los equipos se eligen en el mismo panel «Elegir unidades» que la 24.6.1-b le dio al alta de un pedido, lo elegido queda como chips con su precio, la cantidad y el subtotal pasan a ser de solo lectura, y la pantalla gana el resumen **«Antes de emitir»** con sus tres avisos, «Emitir venta» y «Volver sin guardar». **Ninguna regla de la emisión cambió.** Sin migraciones, sin tablas, sin contratos y **sin lecturas nuevas**. Cierra P-3 de la 24.6.1-b.
+
+**Certifica:**
+
+- **La subfase se partió antes de escribir una línea.** La fila «24.6.2 Ventas» del Roadmap comprimía **seis láminas** del lote V2-09 y tres lecturas que cruzan módulos —`sales` no depende de `cash` ni conoce `service`, así que el cobro por lote y el número del origen los tendría que componer la página—. Entero era más alcance que la 24.6.1 y que la 24.5.1, las dos que volvieron R2. Esta subfase es el alta; el listado, la ficha, el cobro con permuta, la anulación y el comprobante son la **24.6.2-b**.
+- **«Encender la propiedad en una línea» era falso, y está medido.** Lo decía la D-2 de la 24.6.1-b. La orquestación del panel —el estado de qué línea lo tiene abierto, el cuerpo `inert`, el `<UnitDialog>`, el cambio de «Cantidad» por «Precio unitario» y el botón deshabilitado— vive en `order-form.tsx`, que `/ventas/nueva` **no comparte**. Son unas setenta líneas, escritas al lado y no extraídas, para no reabrir una pantalla cerrada y desplegada.
+- **El radio de impacto se contó antes de romper nada.** **Seis specs** llenan «IMEI de las unidades» en esta pantalla —`units` en tres lugares, `trade-ins`, `warranty`, `warranty-claims`, `repairs-own-units` y `sales`— y ese campo desaparece al hidratar con el selector nuevo. Las seis entraron en la lista cerrada **desde el principio**, que es lo contrario de lo que pasó en la 24.6.1-b, donde el mismo radio lo encontró la revisión independiente después.
+- **Uno de esos siete lugares no se tocó, y eso es evidencia, no excepción**: el caso `sin JavaScript` de `units.spec.ts` sigue llenando el `textarea` servido, porque sin hidratar la pantalla no tiene panel ni chips. Es la prueba de que el camino sin JavaScript quedó intacto.
+- **El caso que probaba que la propiedad estaba apagada se invirtió, no se borró.** La 24.6.1-b había escrito en `sales.spec.ts` que acá **no** tenía que haber panel ni chips; ahora el mismo caso prueba que sí los hay, con el mismo detalle.
+- **«Antes de emitir», la parte propia de esta lámina**: el cliente o «Consumidor final», el recuento de equipos elegidos —o de líneas cargadas si no hay equipos—, el total estimado y los tres avisos de la lámina, en columna derecha pegajosa desde `lg` y al pie en el teléfono.
+- **«Emitir venta» vive fuera del `<form>`** y lo alcanza por el atributo `form`. Es HTML, no JavaScript: sin hidratar envía igual.
+- **«Volver sin guardar» pregunta solo si hay algo cargado**, reutilizando el diálogo de cambios sin guardar de la 23.2 **sin tocarlo**: el formulario vacío sale derecho.
+- **«Derivada de la unidad seleccionada.»**, el texto que la lámina pone bajo «Cantidad», vive en el archivo de Ventas y no en el componente compartido, porque la lámina 02 de **Pedidos** no la dibuja y tocar el compartido habría cambiado `/pedidos/nuevo`.
+- **El costo de encender la propiedad, medido**: `listAvailableUnits` emite **2** sentencias y la versión de la miniatura **1**, así que `/ventas/nueva` pasa de **2 a 3** por producto por unidad elegido. Es exactamente lo que la 24.6.1-b declaró para Pedidos: ahora las dos altas pagan lo mismo.
+- **El barrido de anchos encontró un defecto real que la vista no mostraba**: a **1024 px** con el panel abierto el documento desbordaba **32 px**, porque la columna derecha se había escrito `lg:w-80` y el panel que vive en ella es `lg:w-96` y `shrink-0`. Lo midió `scrollWidth − clientWidth` en los cinco anchos, y quedó arreglado y cubierto.
+- **El marcador del campo de escaneo va en la tipografía del sistema** y el IMEI escrito en monoespaciada, medido con `getComputedStyle` sobre el valor y sobre `::placeholder`. Es la lección que dejó la recorrida de la 24.6.1-b, aplicada de entrada.
+- **Treinta y cuatro entradas de comparación visual** contra las láminas 02 y 06, sobre capturas reales de la pantalla construida, cada una clasificada en resuelta, declarada, nueva o cosmética aceptada. **Once diferencias con la v2** quedaron declaradas antes de implementar; la regla que las ordena sale del propio README del lote: las líneas de la venta se arman «con los mismos patrones de producto, cantidad o equipos de Pedidos».
+- **Ninguna migración**: siguen **67**.
+- **Validado localmente**: typecheck, ESLint y Prettier limpios; **2.212** pruebas de `unit` y `guards`.
+- **Validado en integración** contra el build de producción con PostgreSQL real: la **batería completa de extremo a extremo**, 354 casos, con **353 en verde**. El único rojo fue `clients.spec.ts:141` con `timeout exceeded when trying to connect` —agotamiento del pool en una corrida de 30 minutos con un solo worker, la inestabilidad local ya conocida—, y esa spec, corrida sola, pasa sus **38** casos. Se declara así y no como «todo verde»: la autoridad es la CI.
+
+**No certifica:**
+
+- El nivel **preparado para producción**.
+- Las láminas **01, 03, 04 y 05** —listado, ficha, cobro con permuta, anulación y comprobante—, que son la 24.6.2-b con sus tres lecturas nuevas.
+- El **enmascarado del IMEI**, que sigue fuera de la fase.
+- Un **tope o paginación** de la lectura de unidades disponibles: P-1 de la 24.6.1-b sigue abierto, y ahora lo pagan las dos altas.
+
 ## 2026-11-02 — 24.6.1-b: el alta de un pedido con selección de equipos
 
 Decimotercera subfase de la Fase 24 ([brief-24.6.1-b](docs/decisions/brief-24.6.1-b-alta-con-seleccion-de-equipos.md)). Rediseño de **`/pedidos/nuevo`** con la lámina 02 de la v2: los equipos se eligen en un panel «Elegir unidades» con buscador y casillas, lo elegido queda como chips con su precio, y la cantidad y el subtotal pasan a ser campos de solo lectura. **Ninguna regla del alta cambió**: lo que cambió es cómo se eligen los equipos. Sin migraciones, sin tablas y sin contratos nuevos.

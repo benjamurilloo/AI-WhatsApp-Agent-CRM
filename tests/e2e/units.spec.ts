@@ -478,18 +478,26 @@ test("una venta sin pedido vende sus unidades, rechaza una reservada y su anulac
 
   await page.goto("/ventas/nueva");
   await pick(line(page, 1), "Producto", "IP15-128");
-  await line(page, 1)
-    .getByLabel("IMEI de las unidades")
-    .fill("356938035643809\n356938035643810");
+  // Desde la 24.6.2 el alta de mostrador usa el selector de la lámina 02: cada IMEI se escribe
+  // en «Escanear o agregar IMEI» y Enter lo agrega como chip (brief-24.6.2).
+  const saleImei = line(page, 1).getByLabel("Escanear o agregar IMEI");
+  await saleImei.fill("356938035643809");
+  await saleImei.press("Enter");
+  await saleImei.fill("356938035643810");
+  await saleImei.press("Enter");
   await page.getByRole("button", { name: "Emitir venta" }).click();
   await expect(line(page, 1)).toContainText(
     "IMEI 356938035643810 ya no está disponible",
   );
   await expectAccessible(page, "venta con un IMEI no disponible");
 
+  // El rechazo conserva lo cargado: los dos chips siguen ahí y se quita el que no está.
+  await expect(
+    line(page, 1).getByRole("list", { name: /Equipos seleccionados/ }),
+  ).toContainText("356938035643810");
   await line(page, 1)
-    .getByLabel("IMEI de las unidades")
-    .fill("356938035643809");
+    .getByRole("button", { name: "Quitar el IMEI 356938035643810" })
+    .click();
   await page.getByRole("button", { name: "Emitir venta" }).click();
   await expect(page).toHaveURL(/\/ventas\/[0-9a-f-]+\?aviso=emitida$/);
   await expect(

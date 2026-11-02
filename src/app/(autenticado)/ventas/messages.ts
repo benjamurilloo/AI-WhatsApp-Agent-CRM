@@ -39,6 +39,29 @@ export const NO_ORDER_TEXT = "Sin pedido";
 export const COUNTER_SALE_PRICES_NOTE =
   "Los productos se muestran con su nombre de hoy. Los precios y los totales son los vigentes al emitir la venta.";
 
+// El resumen del alta de mostrador (brief-24.6.2, D-3; lámina 02 de V2-09). Los tres avisos son
+// los de la lámina y dicen lo que el ADR 0021 ya decide: la emisión saca el stock, el cobro es una
+// operación aparte (ADR 0022) y una venta emitida no se edita, se anula.
+export const BEFORE_ISSUE_TITLE = "Antes de emitir";
+export const BEFORE_ISSUE_NOTES = [
+  "Al emitir, el equipo pasa a vendido y sale del stock.",
+  "El cobro se registra después.",
+  "La venta emitida no se edita.",
+] as const;
+export const BEFORE_ISSUE_CHECK_NOTE =
+  "Se comprueban disponibilidad y precios antes de emitir.";
+export const LEAVE_SALE_LABEL = "Volver sin guardar";
+// La aclaración que la lámina 02 de Ventas pone debajo de «Cantidad». Vive acá y no en
+// `line-units.tsx`, que es el componente compartido, porque la lámina 02 de Pedidos no la dibuja y
+// tocar el compartido cambiaría `/pedidos/nuevo`, que esta subfase no toca (brief-24.6.2, AC-10).
+export const QUANTITY_FROM_UNITS_NOTE = "Derivada de la unidad seleccionada.";
+// El recuento del resumen: equipos elegidos si hay alguno, y si no, las líneas con producto.
+export function beforeIssueCountText(units: number, lines: number): string {
+  if (units > 0) return units === 1 ? "1 equipo" : `${units} equipos`;
+  if (lines === 0) return "Sin líneas cargadas";
+  return lines === 1 ? "1 línea" : `${lines} líneas`;
+}
+
 export const SALE_NOTICE: Record<string, string> = {
   emitida: "Venta emitida.",
   anulada: "Venta anulada.",

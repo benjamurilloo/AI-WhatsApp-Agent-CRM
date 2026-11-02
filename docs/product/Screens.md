@@ -494,15 +494,17 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 
 ## 19. Nueva venta
 
-*Agregada en la 20.3* ([brief-20.3](../decisions/brief-20.3-la-venta-sin-pedido.md), D-6 y D-9; FR-VEN-07), sin wireframe. Ruta `/ventas/nueva`, desde «+ Nueva venta» de la pantalla 17.
+*Agregada en la 20.3* ([brief-20.3](../decisions/brief-20.3-la-venta-sin-pedido.md), D-6 y D-9; FR-VEN-07), sin wireframe. Ruta `/ventas/nueva`, desde «+ Nueva venta» de la pantalla 17. *Rediseñada en la 24.6.2* ([brief-24.6.2](../decisions/brief-24.6.2-el-alta-de-mostrador.md)) con las láminas 02 y 06 de [V2-09](../ui-redesign/v2/20-ventas/README.md): la selección de equipos de la pantalla 15 —panel, chips y campo de escaneo, que la 24.6.1-b había dejado solo en Pedidos— y el resumen «Antes de emitir». **Ninguna regla de la emisión cambió.**
 
 - **Objetivo**: emitir una venta sin pedido, la de mostrador.
 - **Usuario autorizado**: solo `admin`. Un `viewer` recibe «No tenés permiso para ver esta página.»
-- **Información mostrada**: el formulario de la pantalla 15, con el cliente opcional («Vacío, la venta es a «Consumidor final».»), las líneas con el buscador de productos, la cantidad, el precio vigente y el subtotal estimado, y el total estimado, con el aviso de que el total que vale es el que calcula el sistema y de que al emitir se descuenta el stock.
-- **Acciones**: agregar y quitar líneas, hasta 50; las vacías no se envían. «Emitir venta» lleva al detalle de la venta con «Venta emitida.».
+- **Información mostrada**: el formulario de la pantalla 15, con el cliente opcional («Vacío, la venta es a «Consumidor final».»), las líneas con el buscador de productos, la cantidad, el precio vigente y el subtotal estimado, y el aviso de que el total que vale es el que calcula el sistema y de que al emitir se descuenta el stock.
+- **Equipos de un producto por unidad** *(24.6.2)*: con `serialized_units` y JavaScript, la línea toma la forma de la pantalla 15 desde la 24.6.1-b: «Precio unitario» de solo lectura al lado del producto; los equipos elegidos como **chips** con su IMEI y su precio, cada uno con un «Quitar» que nombra la unidad; el campo **«Escanear o agregar IMEI»**, que agrega con Enter sin enviar el formulario; el botón **«Elegir unidades»**, que abre el panel con la miniatura del producto, el buscador por IMEI, el recuento y una casilla por unidad con su grado, su batería y su precio; y «Cantidad» y «Subtotal» de solo lectura, con «Derivada de la unidad seleccionada.», que la lámina 02 de Ventas dibuja y la de Pedidos no. Con el panel abierto, el cuerpo queda `inert` y «Emitir venta», deshabilitado.
+- **«Antes de emitir»** *(24.6.2)*: el resumen de la lámina, en la columna derecha desde `lg` y al pie en el teléfono. Dice el cliente —o «Consumidor final»—, el recuento de equipos elegidos —o de líneas cargadas, si no hay equipos—, el **total estimado** y tres avisos: que al emitir el equipo pasa a vendido y sale del stock, que el cobro se registra después y que la venta emitida no se edita. Tiene las dos acciones.
+- **Acciones**: agregar y quitar líneas, hasta 50; las vacías no se envían. «Emitir venta» lleva al detalle de la venta con «Venta emitida.». **«Volver sin guardar»** *(24.6.2)* vuelve a la pantalla 17, y si hay algo cargado pregunta antes con el diálogo de cambios sin guardar de la 23.2.
 - **Buscador de productos**: por nombre, SKU o código de barras exacto (D-5); un lector USB escribe el código como un teclado.
 - **Errores**: los de la pantalla 15, y lo disponible de cada línea que no alcanza («Disponible: 2. Pediste 2,5.»); no se emite nada y lo cargado se conserva. No muestra lo disponible antes de emitir (D-6).
-- **Sin JavaScript**: como la pantalla 15; un cliente escrito que no se reconoce se rechaza, no se toma como «Consumidor final».
+- **Sin JavaScript**: como la pantalla 15; un cliente escrito que no se reconoce se rechaza, no se toma como «Consumidor final». **No hay panel ni chips** *(24.6.2)*: queda el camino servido, el `textarea` de IMEI uno por renglón y la lista de «Unidades disponibles» con su botón «Agregar». «Emitir venta» vive fuera del `<form>`, en el resumen, y lo alcanza por el atributo `form`, que es HTML y no JavaScript.
 - **Accesibilidad**: como la pantalla 15; el rechazo se anuncia con `role="alert"` y recibe el foco.
 - **No mostrar**: costo ni margen.
 
