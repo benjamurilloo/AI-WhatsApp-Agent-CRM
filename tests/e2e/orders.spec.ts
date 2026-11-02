@@ -49,8 +49,10 @@ test.beforeEach(async () => {
   await db.execute(
     sql`delete from ingestion_credentials where source = ${AGENT_SOURCE}`,
   );
-  // La capacidad `serialized_units` la enciende solo el alta por equipos de la 24.6.1-b: la semilla
-  // no la da, así que se borra para que cada caso empiece sin ella.
+  // La capacidad `serialized_units` la encienden solo los casos del alta por equipos de la
+  // 24.6.1-b: la semilla no la da, así que se borra para que cada caso empiece sin ella. **Y
+  // también al terminar**, abajo: limpiarla solo acá deja la organización semilla con la capacidad
+  // puesta cuando termina el último caso del archivo, y se filtra a la spec que corra después.
   await db.execute(
     sql`delete from organization_capabilities where organization_id = ${SEED_ORGANIZATION_ID}`,
   );
@@ -65,6 +67,14 @@ test.beforeEach(async () => {
     sql`delete from organizations where id <> ${SEED_ORGANIZATION_ID}`,
   );
   await seedBasic(db, E2E_PASSWORD);
+});
+
+// Apaga `serialized_units` al terminar cada caso, para que no se filtre al archivo siguiente. Ver
+// el comentario del `beforeEach`: en `afterEach` para que valga aunque el caso falle.
+test.afterEach(async () => {
+  await db.execute(
+    sql`delete from organization_capabilities where organization_id = ${SEED_ORGANIZATION_ID}`,
+  );
 });
 
 async function login(page: Page, email: string) {

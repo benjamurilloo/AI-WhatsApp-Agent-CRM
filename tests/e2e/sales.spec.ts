@@ -51,6 +51,20 @@ test.beforeEach(async () => {
   await seedBasic(db, E2E_PASSWORD);
 });
 
+// La capacidad `serialized_units` la enciende un solo caso, el del alta por equipos de la
+// 24.6.1-b. **Se apaga después de cada caso, no antes**: limpiarla solo al empezar deja la
+// organización semilla con la capacidad puesta cuando termina el último, y **se filtra a la spec
+// que corra después** en la misma base. Pasó de verdad: con la 24.6.1-b recién empujada,
+// `search.spec.ts` falló en la CI porque el diálogo de búsqueda anunciaba «equipos por IMEI» en
+// su alcance —correcto cuando la capacidad está— y esa spec no la enciende. Es la convención que
+// ya usa `clients.spec.ts` con `repairs`, acá con un `afterEach` para que valga aunque el caso
+// falle.
+test.afterEach(async () => {
+  await db.execute(
+    sql`delete from organization_capabilities where organization_id = ${SEED_ORGANIZATION_ID}`,
+  );
+});
+
 async function login(page: Page, email: string) {
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);

@@ -338,6 +338,8 @@ está escrita para que no se repita: **la verificación se acotó a las specs qu
 cubre las reglas de unidades del pedido, las de la 29.5.2, que el objetivo de este brief declara
 intocadas. Se arregló con la tercera ampliación de la lista cerrada, autorizada en el turno.
 
+**La CI de `d4ab5d9` falló con tres casos, no dos.** El tercero, `search.spec.ts`, es un **defecto distinto y también propio**: el caso del alta por equipos enciende la capacidad `serialized_units` en la organización semilla y la spec la apagaba al **empezar** cada caso, nunca al terminar, así que el último la dejaba puesta y **se filtraba al archivo siguiente**. El diálogo de búsqueda global entonces anunciaba «equipos por IMEI» en su alcance —correcto cuando la capacidad está— y `search.spec.ts`, que no la enciende, fallaba. Se apaga ahora en un `afterEach` en las dos specs, que es la convención que `clients.spec.ts` ya usaba con `repairs`. **No lo encontró la revisión ni la verificación local**: lo encontró leer el log de la CI en vez de dar por sentado que las fallas eran las que yo esperaba. Una corrida local de las specs tocadas nunca lo habría mostrado, porque el síntoma aparece en una spec que no se tocó y solo cuando corre después.
+
 Después del hallazgo se buscó el resto del radio: cinco specs nombran `/pedidos/nuevo`
 —`clients` y `conversations` solo comprueban el `href` y no abren la pantalla— y los otros cuatro
 archivos que usan los locators viejos (`repairs-own-units`, `trade-ins`, `warranty-claims`,
