@@ -26,16 +26,19 @@ import { unitPriceText } from "./unit-dialog";
 // Desde la 24.6.1-b (D-2), `LineSerials` tiene **dos formas**, y la elige quien lo usa con la
 // propiedad `chooseUnits`:
 //
-//   - **sin `chooseUnits`** —como la usa `/ventas/nueva`— queda exactamente la de arriba: el
-//     `textarea` de IMEI y la lista de disponibles en línea, sin un píxel de diferencia;
-//   - **con `chooseUnits`** —solo `/pedidos/nuevo`— los equipos elegidos se ven como chips, al lado
-//     hay un campo para escanear o escribir un IMEI, y la lista de disponibles se muda al panel
-//     «Elegir unidades» de la lámina 02.
+//   - **sin `chooseUnits`** queda exactamente la de arriba: el `textarea` de IMEI y, ya hidratada,
+//     la lista de disponibles en línea;
+//   - **con `chooseUnits`** los equipos elegidos se ven como chips, al lado hay un campo para
+//     escanear o escribir un IMEI, y la lista de disponibles se muda al panel «Elegir unidades»
+//     de la lámina 02.
 //
-// La divergencia es **temporal y por diseño**: el README de la v2 dice que las líneas de Ventas se
-// arman «con los mismos patrones de producto, cantidad o equipos de Pedidos», así que la 24.6.2
-// enciende la propiedad en una línea. Hasta entonces conviven las dos, y las dos se prueban
-// (AC-9).
+// *Corregido en la 24.6.2*: hasta entonces acá decía que la primera forma era «como la usa
+// `/ventas/nueva`» y la segunda, «solo `/pedidos/nuevo`», y que la 24.6.2 encendería la propiedad
+// «en una línea». **Las tres afirmaciones son falsas desde la 24.6.2**: las dos altas pasan
+// `chooseUnits`, y encenderla costó unas setenta líneas de orquestación en `sale-form.tsx`, porque
+// esa parte vive en `order-form.tsx` y no en este archivo (brief-24.6.2, H-2). La forma sin
+// `chooseUnits` sigue existiendo porque es la que se sirve **sin hidratar**, no porque haya una
+// pantalla que la use.
 
 export type LineRow = OrderFormLine & {
   key: number;

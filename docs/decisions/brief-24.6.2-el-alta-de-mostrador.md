@@ -76,7 +76,11 @@ Tres, verificados, y los dos primeros cambian el diseño antes de escribirlo.
     `units.spec.ts` (tres lugares: 482, 491, 615), `trade-ins.spec.ts` (276), `warranty.spec.ts`
     (172), `warranty-claims.spec.ts` (185), `repairs-own-units.spec.ts` (340) y `sales.spec.ts`
     (830). Ese campo **desaparece** cuando la pantalla está hidratada y la propiedad está
-    encendida. Las seis van a ponerse rojas.
+    encendida. **Siete de esos ocho lugares se van a poner rojos; el octavo no**, y la diferencia
+    importa: `units.spec.ts:615` está dentro de un `test.describe` con `javaScriptEnabled: false`,
+    donde la pantalla sigue sirviendo el `textarea`. Ese lugar **se deja intacto a propósito** y es
+    la evidencia de AC-8. *Precisado el 2026-11-02*: la primera redacción decía «las seis van a
+    ponerse rojas» sin distinguirlo, y lo señaló la revisión independiente (NB-4).
 
   Esto es exactamente el modo de falla que la revisión independiente de la 24.6.1-b encontró y que
   el vault registra como *A Redesign's Blast Radius Is Every Spec That Drives the Screen, Not the
@@ -98,8 +102,10 @@ declara acá.
   24.6.1-b: la columna no existe y crearla está fuera de la fase.
 - **V-2 · El IMEI se muestra completo**, no enmascarado («…2403»). El enmascarado es P-4 y está
   fuera de la fase por decisión del usuario del 2026-10-31.
-- **V-3 · Sin JavaScript no hay panel**: queda el camino servido actual, el `textarea` de IMEI más
-  la lista de disponibles. Igual que V-3 de la 24.6.1-b.
+- **V-3 · Sin JavaScript no hay panel**: queda el camino servido actual, el `textarea` de IMEI.
+  Igual que V-3 de la 24.6.1-b. *Corregido el 2026-11-02 por la revisión independiente (NB-2)*:
+  decía «más la lista de disponibles», y **esa lista tampoco existe sin JavaScript** —está detrás
+  de `hydrated` y sus datos los pide el cliente—. La redacción venía heredada de la 24.6.1-b.
 - **V-4 · El panel no se declara `aria-modal`** y el cuerpo queda `inert`, por el mismo motivo que
   en la 24.6.1 y la 24.6.1-b: `inert` cubre el cuerpo de la página, no el marco.
 - **V-5 · Las líneas siguen siendo «Línea N» con su buscador propio**, no un buscador único
@@ -238,7 +244,7 @@ Salirse de esta lista **se para y se pregunta en el turno**, sin excepción por 
 | **AC-5** | Con el panel abierto, el cuerpo queda `inert` y «Emitir venta» deshabilitado de verdad; al cerrar, el foco vuelve al disparador. |
 | **AC-6** | «Antes de emitir» muestra el cliente o «Consumidor final», el recuento de equipos, el total estimado y los tres avisos; es columna derecha desde `lg` y tarjeta al pie debajo. |
 | **AC-7** | «Volver sin guardar» pregunta si hay cliente o alguna línea cargada, y no pregunta si el formulario está vacío. |
-| **AC-8** | Sin JavaScript, `/ventas/nueva` sigue funcionando igual que hoy: `textarea` de IMEI, lista servida de disponibles, cantidad, y la venta se emite. |
+| **AC-8** | Sin JavaScript, `/ventas/nueva` sigue funcionando igual que hoy: `textarea` de IMEI, cantidad, y la venta se emite. *Enmendado el 2026-11-02 por la revisión independiente (NB-2)*: decía «lista servida de disponibles», y esa lista no se dibuja sin hidratar, así que el criterio no podía cumplirse como estaba escrito. |
 | **AC-9** | **Ninguna regla de emisión cambia**: se prueba con al menos dos mutaciones en `sales` que tienen que enrojecer un caso existente, y con el rechazo por stock insuficiente y por monedas distintas intactos. |
 | **AC-10** | **`/pedidos/nuevo` no cambia**: un caso de Pedidos lo fija. *Enmendado el 2026-11-02* (§Ampliaciones): el diff toca dos archivos de Pedidos, en tres comentarios y ninguna línea ejecutable; lo que el criterio exige es que su conducta no cambie. |
 | **AC-11** | La batería local completa pasa en verde, con su número de casos declarado, y la CI pasa con `conclusion: success` sobre el SHA exacto. No se declara «las specs de ventas»: se declara el total. |
@@ -318,7 +324,7 @@ en los cinco anchos, que es la razón de tener el barrido y no una mirada.
 
 ## Comparación visual contra las láminas 02 y 06, entrada por entrada
 
-Treinta y cuatro entradas, sobre capturas reales de la pantalla construida. **Resuelta** = igual a
+Treinta y cinco entradas, sobre capturas reales de la pantalla construida. **Resuelta** = igual a
 la lámina; **declarada** = diferencia decidida en el brief; **nueva** = algo que la lámina no
 dibuja; **cosmética aceptada** = diferencia menor, con su motivo.
 
@@ -365,3 +371,59 @@ dibuja; **cosmética aceptada** = diferencia menor, con su motivo.
 | 32 | Barra de acciones fija al pie con los dos botones | cosmética aceptada | los dos botones van dentro de «Antes de emitir», que en el teléfono queda al pie y se desplaza con la página; `FormActionBar` se descartó en D-3 porque la lámina de escritorio los pone en la tarjeta |
 | 33 | «Vacío: Consumidor final.» | cosmética aceptada | igual que la entrada 5 |
 | 34 | «Al emitir sale 1 equipo del stock. El cobro se registra después.», condensado | declarada | se usan los tres avisos de la lámina 02, que son un superconjunto del de la 06 |
+| 35 | «Se comprueban disponibilidad y precios antes de emitir.» bajo el total | resuelta | la dibuja solo la lámina 06 y está en las dos. *Agregada el 2026-11-02*: faltaba, y la encontró la revisión independiente (NB-11) |
+
+## Mutaciones (AC-9)
+
+Dos, en `src/modules/sales/service.ts`, aplicadas sobre el código desplegable, corridas y
+revertidas. La revisión independiente señaló que AC-9 no tenía evidencia en ninguna parte (NB-10):
+esta sección es esa evidencia.
+
+| Mutación | Qué enrojeció |
+|---|---|
+| `available: shortage.available` → `shortage.requested`, en la traducción del rechazo por stock | `tests/e2e/sales.spec.ts:521`, «Disponible: 2. Pediste 2,5.», que recibió «Disponible: 2,5. Pediste 2,5.» |
+| `quantity: quantityToDatabase(line.quantity)` → `"0"`, en la salida de stock de la emisión | `tests/e2e/sales.spec.ts:468`: la venta deja de emitirse |
+
+**La segunda enrojeció en un lugar distinto del previsto, y se declara así**: esperaba ver caer la
+aserción de `onHand` —que el stock bajara de 10 a 7— y lo que cayó fue la emisión entera, porque un
+movimiento en cero no pasa. El criterio pedía que una mutación enrojeciera **un caso existente**, y
+eso se cumple; la predicción, no.
+
+## Revisión independiente (AC-16, D-8)
+
+La hizo un agente que **no participó del trabajo**, de solo lectura, contra este brief y contra las
+reglas vigentes, sobre `d03f446`. **Veredicto: R2**, con **un bloqueante y trece no bloqueantes**.
+**Ninguno resultó falso**: los catorce se verificaron contra el código antes de aceptarse.
+
+El revisor declaró además los límites de su revisión, que valen tanto como los hallazgos: no ejecutó
+nada —ni pruebas, ni typecheck, ni el contador de sentencias, ni un navegador— y no tuvo `git`, así
+que no pudo leer el diff y la comprobación de «no se salió de la lista cerrada» se apoyó en la lista
+de catorce archivos que se le pasó.
+
+| Id | Hallazgo | Qué se hizo |
+|---|---|---|
+| **B-1** | El caso nuevo se rotula «AC-1 a AC-5» y **no hay una sola aserción sobre la miniatura** en `sales.spec.ts`. No es formal: la miniatura es **la única lectura que esta subfase le agrega a la pantalla** —la sentencia de más de AC-14— y que llegara al navegador en Ventas no lo probaba nada. | **Arreglado**: caso propio que sube una imagen y comprueba `naturalWidth > 0` y el `?v=`, como el hermano de `orders.spec.ts`. |
+| **NB-0** | AC-2 pide «mide al menos 44 px» y AC-5 pide `inert`: las dos cosas eran verdad en el código y **se afirmaban sin medirse**. | **Arreglado**: `expect(page.locator("[inert]")).toHaveCount(2)` y `boundingBox()` sobre los tres controles. |
+| **NB-1** | El **comentario de cabecera** de `line-units.tsx` seguía diciendo que la forma sin `chooseUnits` es «como la usa `/ventas/nueva`», que la otra es «solo `/pedidos/nuevo`» y que la 24.6.2 enciende la propiedad «en una línea». Las tres son falsas desde este commit. Se habían corregido tres comentarios **inline** y quedó el bloque que lee primero cualquiera que abra el archivo. | **Arreglado**, dentro del archivo que §Ampliaciones ya autorizó. |
+| **NB-2** | `Screens.md` §19, texto **nuevo de esta subfase**, decía que sin JavaScript queda «la lista de «Unidades disponibles» con su botón «Agregar»». **Esa lista está detrás de `hydrated`**: sin JavaScript no existe. Arrastraba a V-3 y a **AC-8**, que no podía cumplirse como estaba redactado. | **Arreglado** en los tres lugares. La redacción venía heredada de la 24.6.1-b. |
+| **NB-3** | La aserción de «Enter no envió el formulario» era exactamente la que `orders.spec.ts` documenta como inservible: medida al instante pasa aunque el formulario se haya enviado. | **Arreglado**: espera de 1,5 s y recuento de ventas en la base, como el hermano. |
+| **NB-4** | «Siete lugares» no cerraba con los ocho que la misma oración enumera; y **el brief nunca declaraba** que el lugar sin JavaScript se deja intacto a propósito: lo decía solo el CHANGELOG. | **Arreglado** en los dos documentos. |
+| **NB-5** | El ordinal de la entrada del CHANGELOG saltaba uno: «decimoquinta» después de una «decimotercera». | **Arreglado**: decimocuarta. |
+| **NB-6** | El «No certifica» de la entrada **no mencionaba la CI, el despliegue, la revisión ni el recorrido**, así que se leía como una subfase cerrada sin estarlo. El hermano sí los enumeraba. | **Arreglado**. |
+| **NB-7** | `HANDOFF.md` quedó en el estado anterior y contradice al CHANGELOG. | **Declarado**: por la convención del proyecto se actualiza al desplegar, igual que en la 24.6.1-b, y ahora el «No certifica» lo dice. |
+| **NB-8** | **El único hallazgo de conducta.** AC-7 promete preguntar «si hay algo cargado», y el mecanismo de la 23.2 compara contra lo que el formulario tenía **al montarse**. El formulario se vuelve a montar en cada rechazo del servidor, con lo que se envió: después de un rechazo por stock o por precio, la pantalla tenía todo cargado y **salir no preguntaba**. | **Arreglado por decisión del usuario**: «Volver sin guardar» decide con el estado propio del borrador y abre el mismo diálogo, sin tocar el componente compartido. Con **un caso nuevo** que recorre ese estado. |
+| **NB-9** | Los dos botones de «Antes de emitir» quedaban en ~40 y ~38 px, bajo el objetivo táctil de 44 px del README de la v2. No era regresión ni lo exigía ningún criterio, pero en la lámina 06 son la barra de acciones del teléfono. | **Arreglado**: `min-h-11` en los dos, y los tres controles se **miden** en la prueba. |
+| **NB-10** | AC-9 no tenía evidencia en ninguna parte: ni §Mutaciones en el brief ni mención en el CHANGELOG. | **Arreglado**: §Mutaciones, arriba. |
+| **NB-11** | Faltaba una entrada de la lámina 06 en la comparación: «Se comprueban disponibilidad y precios antes de emitir.» | **Arreglado**: entrada 35. |
+| **NB-12** | Un comentario de `sales.spec.ts` seguía diciendo que su ayudante existe «para fijar que el alta de mostrador no cambió». | **Arreglado**. |
+| **NB-13** | AC-6 («columna derecha desde `lg`») y el 200 % de zoom de AC-13 quedan como prosa, no como medición. | **Declarado**. La geometría la respalda la comparación visual sobre capturas reales a 1440 y 390 px; el zoom, el argumento de que a 320 px el ancho efectivo al 200 % es mayor que 320, y el barrido cubre 320. |
+
+**Lo que el revisor confirmó y vale decir**: que `/pedidos/nuevo` no cambió de conducta —lo verificó
+línea por línea—; que **no hay ningún otro lugar en `tests/` que esta pantalla rompa**, buscado por
+él y no por mí; que las clasificaciones de la comparación visual que contrastó contra los dos PNG
+están bien; y que las 67 migraciones y las once diferencias declaradas cierran.
+
+**El patrón que cruza los catorce hallazgos**: once de ellos son **texto que afirma más de lo que el
+código hace** —comentarios vencidos, criterios redactados sobre un mecanismo distinto, recuentos que
+no cierran, aserciones que no pueden fallar—. Ninguno rompía la pantalla. Es la misma raíz que la
+24.6.1-b dejó anotada: escribir la conclusión antes de leer la fuente.

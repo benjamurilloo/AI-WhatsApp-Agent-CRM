@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { sql } from "drizzle-orm";
+import sharp from "sharp";
 import { createDb, type Db } from "@/shared/db";
 import { SEED_ORGANIZATION_ID, SEED_USERS, seedBasic } from "../../seeds/basic";
 import { e2eDatabaseUrl } from "../integration/test-database";
@@ -406,6 +407,13 @@ async function insertStockedProduct(
   return productId;
 }
 
+async function saleCount() {
+  const result = await db.execute<{ n: number }>(
+    sql`select count(*)::int as n from sales`,
+  );
+  return result.rows[0]!.n;
+}
+
 async function onHand(productId: string) {
   const result = await db.execute<{ on_hand: string }>(
     sql`select quantity_on_hand as on_hand from inventories where product_id = ${productId}`,
@@ -777,8 +785,9 @@ test("brief-20.4: un viewer ve la anulación y no puede anular", async ({
   ).toBeVisible();
 });
 
-// Un producto que se vende por unidad con sus unidades disponibles, para fijar que el alta de
-// mostrador **no cambió** con la 24.6.1-b (su AC-9).
+// Un producto que se vende por unidad con sus unidades disponibles. Nació en la 24.6.1-b, para
+// fijar que el alta de mostrador **no cambiaba**; desde la 24.6.2 lo usan los casos que prueban
+// que **sí** cambió, y el barrido de anchos.
 async function insertUnitProduct(
   sku: string,
   name: string,
@@ -846,10 +855,16 @@ test("brief-24.6.2: el alta de mostrador elige los equipos en el panel, como el 
   ).toMatch(/Manrope|system-ui|sans-serif/i);
   expect(fuentes.marcador).not.toBe(fuentes.valor);
 
-  // Enter agrega el IMEI y **no** envía el formulario.
+  // Enter agrega el IMEI y **no** envía el formulario. Comprobar que algo no pasó exige darle
+  // tiempo a que pase: medido al instante, ni la URL cambió ni la venta existe todavía **aunque
+  // el formulario se haya enviado**, y la aserción pasa igual. Lo tiene medido `orders.spec.ts`
+  // con una mutación, y la primera versión de este caso repetía el error: lo encontró la
+  // revisión independiente de la 24.6.2 (NB-3).
   await escanear.fill("356938035645001");
   await escanear.press("Enter");
+  await page.waitForTimeout(1500);
   await expect(page).toHaveURL(/\/ventas\/nueva$/);
+  expect(await saleCount(), "Enter en el escaneo no emite la venta").toBe(0);
   const chips = line(page, 1).getByRole("list", {
     name: /Equipos seleccionados/,
   });
@@ -879,6 +894,8 @@ test("brief-24.6.2: el alta de mostrador elige los equipos en el panel, como el 
   await expect(
     page.getByRole("button", { name: "Emitir venta" }),
   ).toBeDisabled();
+  // El cuerpo y el resumen quedan inertes: exactamente dos elementos, no cero.
+  await expect(page.locator("[inert]")).toHaveCount(2);
   await expectAccessible(page, "alta de mostrador con el panel abierto");
 
   await panel.getByRole("checkbox", { name: /356938035645002/ }).check();
@@ -898,6 +915,27 @@ test("brief-24.6.2: el alta de mostrador elige los equipos en el panel, como el 
     .click();
   await expect(chips.getByRole("listitem")).toHaveCount(1);
   await expect(line(page, 1)).toContainText("1 equipo");
+  // El objetivo táctil del README de la v2 es 44 px de lado, y se **mide**: la subfase anterior
+  // tuvo dos controles en 30 y 34 px y los encontró medirlos, no mirarlos.
+  for (const [nombre, control] of [
+    ["quitar el chip", chips.getByRole("button").first()],
+    ["emitir", page.getByRole("button", { name: "Emitir venta" })],
+    [
+      "volver sin guardar",
+      page.getByRole("button", { name: "Volver sin guardar" }),
+    ],
+  ] as const) {
+    const caja = await control.boundingBox();
+    expect(caja, nombre).not.toBeNull();
+    expect(
+      Math.round(caja!.height),
+      `alto de ${nombre}`,
+    ).toBeGreaterThanOrEqual(44);
+    expect(
+      Math.round(caja!.width),
+      `ancho de ${nombre}`,
+    ).toBeGreaterThanOrEqual(44);
+  }
   await expectAccessible(page, "alta de mostrador por unidad");
 
   // El camino sigue andando de punta a punta, y vende la unidad que quedó.
@@ -928,7 +966,7 @@ test("brief-24.6.2: «Antes de emitir» resume la venta, y «Volver sin guardar�
   await expect(resumen).toContainText("La venta emitida no se edita.");
 
   // Sin nada cargado, salir no pregunta nada.
-  await resumen.getByRole("link", { name: "Volver sin guardar" }).click();
+  await resumen.getByRole("button", { name: "Volver sin guardar" }).click();
   await expect(page).toHaveURL(/\/ventas$/);
 
   await page.goto("/ventas/nueva");
@@ -943,7 +981,7 @@ test("brief-24.6.2: «Antes de emitir» resume la venta, y «Volver sin guardar�
   await expectAccessible(page, "alta de mostrador con su resumen");
 
   // Con algo cargado, salir pregunta, y «Seguir editando» no pierde el borrador.
-  await resumen.getByRole("link", { name: "Volver sin guardar" }).click();
+  await resumen.getByRole("button", { name: "Volver sin guardar" }).click();
   const aviso = page.getByRole("dialog", {
     name: "Tenés cambios sin guardar",
   });
@@ -952,9 +990,103 @@ test("brief-24.6.2: «Antes de emitir» resume la venta, y «Volver sin guardar�
   await expect(page).toHaveURL(/\/ventas\/nueva$/);
   await expect(line(page, 1).getByLabel("Cantidad")).toHaveValue("2");
 
-  await resumen.getByRole("link", { name: "Volver sin guardar" }).click();
+  await resumen.getByRole("button", { name: "Volver sin guardar" }).click();
   await aviso.getByRole("button", { name: "Salir sin guardar" }).click();
   await expect(page).toHaveURL(/\/ventas$/);
+});
+
+test("brief-24.6.2: después de un rechazo del servidor, salir sigue preguntando", async ({
+  page,
+}) => {
+  // AC-7, el estado que la primera versión no cubría y que encontró la revisión independiente
+  // (NB-8). El formulario se vuelve a montar en cada rechazo, con lo que se envió: para el
+  // mecanismo de la 23.2 —que compara contra lo que había al montarse— la pantalla queda «sin
+  // cambios» aunque tenga todo cargado. «Volver sin guardar» no usa esa comparación.
+  const coffee = await insertStockedProduct(
+    "CAF-250",
+    "Café molido",
+    "1234.50",
+    "1",
+  );
+  await login(page, ADMIN);
+  await page.goto("/ventas/nueva");
+  await pick(line(page, 1), "Producto", "Café");
+  // Más que lo disponible: el servidor rechaza y devuelve el borrador.
+  await line(page, 1).getByLabel("Cantidad").fill("5");
+  await page.getByRole("button", { name: "Emitir venta" }).click();
+  await expect(
+    page
+      .getByRole("alert", { name: "" })
+      .filter({ hasText: "No alcanza el stock" }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/\/ventas\/nueva$/);
+  // El borrador sigue cargado, y nada se emitió.
+  await expect(line(page, 1).getByLabel("Cantidad")).toHaveValue("5");
+  expect(await saleCount()).toBe(0);
+  expect(await onHand(coffee)).toBe("1.000");
+
+  // Y salir pregunta igual, que es lo que AC-7 promete.
+  await page
+    .getByRole("complementary", { name: "Antes de emitir" })
+    .getByRole("button", { name: "Volver sin guardar" })
+    .click();
+  const aviso = page.getByRole("dialog", {
+    name: "Tenés cambios sin guardar",
+  });
+  await expect(aviso).toBeVisible();
+  await aviso.getByRole("button", { name: "Salir sin guardar" }).click();
+  await expect(page).toHaveURL(/\/ventas$/);
+});
+
+test("brief-24.6.2: la cabecera del panel muestra la miniatura del producto", async ({
+  page,
+}) => {
+  // AC-1, la mitad que faltaba. La miniatura es **la única lectura que esta subfase le agrega a
+  // la pantalla** —la sentencia de más que mide AC-14— y hasta acá nada probaba que llegara al
+  // navegador en Ventas. Lo encontró la revisión independiente (B-1). La imagen se genera acá: no
+  // es una foto ni muestra personas, como en product-images.spec.ts.
+  const productId = await insertUnitProduct("IPH-13", "iPhone 13", "450", [
+    "356938035645001",
+  ]);
+  await login(page, ADMIN);
+
+  await page.goto(`/productos/${productId}`);
+  await page.getByLabel("Subir imagen").setInputFiles({
+    name: "equipo.jpg",
+    mimeType: "image/jpeg",
+    buffer: await sharp({
+      create: {
+        width: 800,
+        height: 800,
+        channels: 3,
+        background: { r: 30, g: 30, b: 60 },
+      },
+    })
+      .jpeg()
+      .toBuffer(),
+  });
+  await page.getByRole("button", { name: "Guardar imagen" }).click();
+  await expect(page.getByRole("status")).toContainText("Imagen guardada.");
+
+  await page.goto("/ventas/nueva");
+  await pick(line(page, 1), "Producto", "iPhone");
+  await line(page, 1)
+    .getByRole("button", { name: "Elegir unidades", exact: true })
+    .click();
+
+  const miniatura = page
+    .getByRole("dialog")
+    .locator(`img[src^="/productos/${productId}/imagen/miniatura"]`);
+  await expect(miniatura).toBeVisible();
+  // Que el navegador la haya traído de verdad, con la cookie de sesión.
+  await expect
+    .poll(() =>
+      miniatura.evaluate((element: HTMLImageElement) => element.naturalWidth),
+    )
+    .toBeGreaterThan(0);
+  // Y que la dirección lleve la versión, que es lo que la 17.5 dejó para que reemplazarla no
+  // muestre la anterior.
+  await expect(miniatura).toHaveAttribute("src", /\?v=[0-9a-f]{8}/);
 });
 
 // Desbordamiento horizontal: la medida sale del documento, no de la vista. `scrollWidth` mayor que

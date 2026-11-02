@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useId, useRef, useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useHydrated } from "@/app/_components/disclosure";
 import {
   fieldErrorClass,
@@ -138,9 +138,16 @@ function SaleFields({
   const hydrated = useHydrated();
   const panelTitleId = useId();
   const summaryId = useId();
-  // «Volver sin guardar» y el enlace de volver preguntan solo si hay algo cargado (brief-24.6.2,
-  // D-4): el diálogo de la 23.2 compara el formulario con lo que tenía al montarse.
+  const router = useRouter();
+  // El enlace de volver de la cabecera lo cubre el mecanismo de la 23.2, que compara el formulario
+  // con lo que tenía **al montarse** y también atrapa recargar y cerrar la pestaña (D-4).
   const { formRef, dialog } = useUnsavedChanges();
+  // «Volver sin guardar» **no** usa esa comparación, y la diferencia la encontró la revisión
+  // independiente (NB-8). El formulario se vuelve a montar en cada rechazo del servidor, con lo
+  // que se envió: para ese mecanismo la pantalla queda «sin cambios» aunque tenga el cliente y las
+  // líneas cargadas, y salir no preguntaría nada. Acá la pregunta es la que dice AC-7, «¿hay algo
+  // cargado?», y se responde con el estado propio del borrador.
+  const [saliendo, setSaliendo] = useState(false);
   // Qué línea tiene abierto el panel «Elegir unidades»: una sola a la vez. No va en la URL por el
   // mismo motivo que en el alta de un pedido (brief-24.6.1-b, D-1): el borrador vive acá, en estado
   // de cliente, y una navegación de ruta lo perdería.
@@ -182,6 +189,15 @@ function SaleFields({
     0,
   );
   const loadedLines = rows.filter((row) => row.productId !== "").length;
+  // Hay algo cargado si el borrador tiene cualquier cosa escrita, elegida o no.
+  const cargado =
+    client.text.trim() !== "" ||
+    rows.some(
+      (row) =>
+        row.productText.trim() !== "" ||
+        row.quantity.trim() !== "" ||
+        row.serials.trim() !== "",
+    );
 
   return (
     <>
@@ -543,29 +559,52 @@ function SaleFields({
               ))}
             </ul>
             <div className="flex flex-col gap-2">
+              {/* Los dos controles llevan `min-h-11`: en la lámina 06 son la barra de acciones
+                  del teléfono, y el objetivo táctil del README de la v2 es 44 px de lado.
+                  `inlineButtonClass` da unos 40 y `secondaryButtonClass`, unos 38. */}
               <button
                 type="submit"
                 form={FORM_ID}
-                className={`${inlineButtonClass} w-full justify-center`}
+                className={`${inlineButtonClass} min-h-11 w-full justify-center`}
                 // Con el panel abierto queda deshabilitado. El `inert` ya lo vuelve inalcanzable;
                 // `disabled` lo dice además en el árbol de accesibilidad.
                 disabled={pending || panelOpen}
               >
                 {pending ? "Emitiendo…" : "Emitir venta"}
               </button>
-              <Link
-                href="/ventas"
-                className={`${secondaryLinkClass} w-full justify-center`}
+              <button
+                type="button"
+                onClick={() => {
+                  if (cargado) setSaliendo(true);
+                  else router.push("/ventas");
+                }}
+                className={`${secondaryLinkClass} min-h-11 w-full justify-center`}
               >
                 {LEAVE_SALE_LABEL}
-              </Link>
+              </button>
             </div>
             <p className="text-sm text-muted">{BEFORE_ISSUE_CHECK_NOTE}</p>
           </aside>
         </div>
       </div>
 
-      <UnsavedChangesDialog {...dialog} />
+      {/* Un solo diálogo para las dos puertas de salida: el enlace de la cabecera, que atrapa el
+          mecanismo de la 23.2, y «Volver sin guardar», que decide por el borrador. */}
+      <UnsavedChangesDialog
+        open={dialog.open || saliendo}
+        onStay={() => {
+          setSaliendo(false);
+          dialog.onStay();
+        }}
+        onLeave={() => {
+          if (saliendo) {
+            setSaliendo(false);
+            router.push("/ventas");
+            return;
+          }
+          dialog.onLeave();
+        }}
+      />
     </>
   );
 }
