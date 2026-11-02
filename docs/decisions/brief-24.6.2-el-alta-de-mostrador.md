@@ -427,3 +427,63 @@ están bien; y que las 67 migraciones y las once diferencias declaradas cierran.
 código hace** —comentarios vencidos, criterios redactados sobre un mecanismo distinto, recuentos que
 no cierran, aserciones que no pueden fallar—. Ninguno rompía la pantalla. Es la misma raíz que la
 24.6.1-b dejó anotada: escribir la conclusión antes de leer la fuente.
+
+## Recorrido del usuario (AC-17)
+
+Lo hizo el usuario el 2026-11-02, sobre producción en `36f8c45`, y **no encontró nada**. Es la
+primera subfase de este lote que vuelve limpia de la recorrida: la 24.6.1-b trajo el marcador en
+monoespaciada y la 24.5.1 trajo tres defectos de ancho.
+
+**Lo que sí dejó es alcance nuevo**, que no es un defecto de esta subfase: el usuario pidió poder
+vender productos en monedas distintas y cobrar cada uno en su moneda. Hoy la pantalla **rechaza** la
+línea cuyo precio vigente esté en otra moneda que la primera, y eso es el punto 3 del
+[ADR 0019](0019-bases-de-los-comprobantes.md) —«un comprobante tiene una sola moneda»—, que el
+[ADR 0025](0025-tipo-de-cambio.md) reafirmó el 2026-10-18 al superarlo solo en parte: los tipos de
+cambio valen para los movimientos de dinero, no para el comprobante. La migración `0041` lo encierra
+además en un trigger. El usuario **eligió la forma el mismo día** —una venta por moneda, emitidas
+juntas en una sola pasada del mostrador—, que no contradice ninguno de los dos ADR. Queda anotado en
+el Roadmap, **sin brief**, con la pregunta que decide si entra en la Fase 24: si los dos comprobantes
+tienen que quedar ligados como una sola operación, eso es un dato nuevo y las reglas de la fase lo
+excluyen.
+
+## Cierre
+
+Cierra el 2026-11-02, **validada en staging**: implementada, medida, revisada por un agente que no
+participó, desplegada en producción y recorrida por el usuario. Los **diecisiete criterios** quedan
+cumplidos, con **AC-8 enmendado durante la revisión** por prometer sin JavaScript una lista que vive
+detrás de la hidratación.
+
+Se desplegó una vez, `36f8c45` el 2026-11-02, con la CI en `success` sobre ese SHA exacto (run
+41535638141, leída por `headSha`) y las siete verificaciones del runbook pasadas. Para volver atrás,
+`6f5b0ac`; **entre los dos no hay migraciones**, así que la vuelta atrás es solo de código. El
+control negativo del salto de proxy se hizo con la variante del runbook —el mismo `curl` desde
+dentro del droplet contra el dominio público—, porque el túnel SOCKS sigue bloqueado del lado del
+operador.
+
+**Lo que esta subfase deja como lección**, más allá del código: **once de los catorce hallazgos de la
+revisión eran texto que afirmaba más de lo que el código hace**, y ninguno rompía la pantalla. Un
+comentario de cabecera que decía que esta pantalla no usa el selector nuevo; una línea de
+`Screens.md` y dos criterios de este brief que prometían sin JavaScript una lista servida que no
+existe; un recuento que no cerraba con lo que la misma oración enumera; y una aserción que el propio
+repositorio tiene documentada como inservible y que esta subfase volvió a escribir. La subfase
+anterior anotó la misma raíz desde el otro lado —declarar como batería lo que fue una verificación
+parcial—. **El patrón no es descuidado al escribir código: es escribir la prosa antes de leer lo que
+quedó hecho.**
+
+No certifica el nivel **preparado para producción**, que además pide backups probados, rollback y
+observabilidad revisados para este cambio.
+
+## Pendientes que esta subfase deja abiertos
+
+- **P-1**: **NB-13 de la revisión**, declarado y no corregido: la geometría de AC-6 —la columna
+  derecha pegajosa y el resumen al pie en el teléfono— y el zoom al 200 % se verificaron **por prosa
+  y no por medición**. El barrido de anchos sí está medido, y encontró un defecto real; esto es lo
+  que quedó afuera de él.
+- **P-2**: el **tope o la paginación** de la lectura de unidades disponibles. Es P-1 de la 24.6.1-b,
+  sigue abierto, y **ahora lo pagan las dos altas**: medido allá, con 200 unidades son 10,7 ms en
+  frío y 21.401 bytes al navegador.
+- **P-3**: la **miniatura en `picker.tsx`** y sus siete pantallas, que es P-2 de la 24.6.1-b.
+- **P-4**: el **enmascarado del IMEI**, que sigue fuera de la Fase 24 y necesita un ADR.
+- **P-5**: **«Copiar» el IMEI**, P-6 de la 24.6.1-b, que esta subfase no toma.
+- **P-6**: **vender en monedas distintas**, con la forma ya elegida por el usuario y sin brief. Es el
+  pendiente que dejó la recorrida, y el que se cruza con el cobro de la **24.6.2-b**.
