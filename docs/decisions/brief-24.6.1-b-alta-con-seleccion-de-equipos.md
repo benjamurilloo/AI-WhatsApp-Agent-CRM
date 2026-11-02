@@ -1,0 +1,248 @@
+# Brief 24.6.1-b — Pedidos: el alta con selección de equipos
+
+- **Fase**: 24 — Pantallas rediseñadas con lo que ya existe
+- **Subfase**: 24.6.1-b, hermana de la 24.6.1 y no subtarea ([Roadmap](../planning/Roadmap.md) §Fases 23 a 28)
+- **Tipo de tarea**: `implementation`
+- **Tarea en Notion**: `40c702be6f4e81299e0cf72885ff46d8`, en «Esperando» (leído en Notion el 2026-11-02)
+- **Estado**: **aprobado por el usuario el 2026-11-02**, con las siete recomendaciones tal como están escritas (D-1, D-2 (a), D-3 (a), D-4, D-5 (a), D-6 sí, D-7 fuera). La aprobación es del alcance: **no** autoriza commit, push, deploy ni cambios en Notion, que se piden en su turno
+- **Lámina**: [`02-nuevo-pedido-unidades-v2.png`](../ui-redesign/v2/19-pedidos/desktop/02-nuevo-pedido-unidades-v2.png), con el [README del lote V2-09](../ui-redesign/v2/19-pedidos/README.md) §«Crear y seleccionar equipos» y §«Móvil y accesibilidad» como contrato de diseño
+
+## Objetivo
+
+Rediseñar **`/pedidos/nuevo`**, que ya existe, con la forma de la lámina 02: la elección de los
+equipos en un **panel «Elegir unidades»** con buscador, selección múltiple y el precio de cada
+unidad a la vista; lo elegido como **chips** en el formulario, con un campo de escaneo o entrada
+manual al lado; y el resumen con el total estimado junto a «Crear pedido».
+
+**Ninguna regla del alta cambia.** Qué valida, qué compara el servidor antes de crear, qué pasa con
+un precio que cambió y el hecho de que elegir un equipo **no reserva stock** son de la 29.5.2 y del
+[ADR 0020](0020-el-pedido.md), y esta subfase no los toca. Lo que cambia es **cómo se eligen los
+equipos**.
+
+Es la mitad que la 24.6.1 dejó afuera a propósito (su D-12): meter el alta adentro habría duplicado
+su alcance, y la 24.5.1 ya volvió **R2** de la revisión independiente por exceso de alcance.
+
+## Punto de partida verificado
+
+Verificado en el código el 2026-11-02, sobre `main` (`9b1e3a4`), **no de memoria**:
+
+- **`/pedidos/nuevo` son cuatro archivos, 848 líneas**: `page.tsx` (78), `order-form.tsx` (330),
+  `line-units.tsx` (260) y `picker.tsx` (180).
+- **El selector de equipos de hoy** es un `textarea` de IMEI **uno por renglón** más una lista en
+  línea de «Unidades disponibles» con un botón «Agregar» por unidad, que muestra grado, batería y
+  precio. Ya tiene mejora progresiva: sin JavaScript se ven los dos campos —cantidad e IMEI— y el
+  servicio decide cuál vale por el producto; con JavaScript, el de IMEI reemplaza a la cantidad.
+- **El total estimado y «Crear pedido» ya existen**; el subtotal de cada línea hoy es un texto
+  dentro de la fila, no un campo.
+- **Las unidades las lee** `searchOrderUnitsAction` → `listAvailableUnits` de `inventory`, por su
+  interfaz pública. `orders` **ya depende de `inventory`**, que [Overview](../architecture/Overview.md)
+  §Reglas de dependencia permite: lo prohibido es el `JOIN` contra tablas ajenas y alcanzar las
+  entrañas de otro módulo, no importar su `index.ts`.
+- **El borrador vive en estado de cliente**: `order-form.tsx` es `"use client"` y guarda cliente y
+  filas en `useState`.
+- **`findAvailableUnitsOfProduct` no tiene `LIMIT`**: devuelve todas las unidades disponibles del
+  producto, de la más vieja a la más nueva.
+- **`stock_units` no tiene código legible**: solo `serial` —el IMEI— y un `id` UUID.
+- **No hay helper de enmascarado de IMEI**: las pantallas muestran el serial completo.
+- **Las imágenes de producto existen** (`product_images`, `productos/product-image-view.tsx` y el
+  handler `/productos/[productId]/imagen`), así que una miniatura es reutilizable, no un desarrollo.
+- **`24.6.2 Ventas` es una subfase aparte** y tiene su propia lámina 02 de alta de mostrador.
+
+## Hallazgos que condicionan el alcance
+
+Cinco, todos verificados, y los tres primeros cambian el diseño antes de escribirlo.
+
+- **H-1 · El panel no puede abrirse por la URL.** La convención que la 24.6.1 dejó es que un panel
+  se abre y se cierra con `?panel=`, sin JavaScript. **Acá no sirve**: el borrador vive en estado de
+  cliente, y una navegación de ruta lo perdería. El README de la v2 lo pide explícitamente —«mensajes
+  de carga/error que no borren el borrador»—. El panel de esta subfase es, necesariamente, **un
+  diálogo de cliente**, y el camino sin JavaScript tiene que seguir siendo el actual, servido.
+- **H-2 · `line-units.tsx` lo comparten `/pedidos/nuevo` y `/ventas/nueva`.** Rediseñar el selector
+  ahí toca una pantalla que es de la **24.6.2**, que tiene su propia lámina y su propia comparación
+  visual. Es el modo de falla que la 24.5.1 pagó y que el vault registra como «A Shared Component
+  Falls Outside a File Allowlist Written Per Screen». `picker.tsx` es peor: lo comparten **siete**
+  pantallas, y su tipo de opción es `{ id, label, detail? }`, solo texto.
+- **H-3 · El «U-0102» de la lámina es un dato que el modelo no tiene.** No hay código de unidad:
+  agregarlo es una columna nueva, y una columna nueva está fuera de una fase que rediseña lo que ya
+  existe. Es la lección de la 24.5.3: **un mockup codifica también sus datos de ejemplo**.
+- **H-4 · La lectura de disponibles no tiene tope**, y el panel de la lámina agrega un buscador, que
+  es justo lo que invita a usarla con muchos equipos. Hoy el costo ya se paga —la lista en línea
+  carga lo mismo—, así que el rediseño **no empeora** nada, pero el límite hay que medirlo y
+  declararlo en vez de descubrirlo con un cliente real.
+- **H-5 · La lámina enmascara el IMEI** («…1422») y la aplicación lo muestra completo. El
+  enmascarado es **P-4 de la 24.6.1** y está fuera de la fase por decisión del usuario desde el
+  2026-10-31.
+
+## Diferencias con la v2, declaradas antes de implementar
+
+- **V-1 · Las unidades se identifican por su IMEI, no por un código `U-0102`** (H-3). El buscador
+  dice «Buscar por IMEI», no «por IMEI o código de unidad».
+- **V-2 · El IMEI se muestra completo**, no enmascarado (H-5). Cuando P-4 se haga, se aplica a todas
+  las pantallas a la vez y no solo a esta.
+- **V-3 · Sin JavaScript no hay panel**: queda el camino actual, el `textarea` de IMEI más la lista
+  servida de disponibles (H-1). El README acepta esto: pide que la entrada manual y el lector de
+  códigos sigan funcionando sin JavaScript, no que el panel exista sin él.
+- **V-4 · El panel no se declara `aria-modal`** y el cuerpo queda `inert`, por el mismo motivo que
+  los cinco paneles de la 24.6.1: `inert` cubre el cuerpo de la página, no el marco de la
+  aplicación.
+- **V-5 · No se dibuja la cámara.** El ícono de escaneo de la lámina es un campo de texto que un
+  lector de códigos llena; el README dice explícitamente que no certifica acceso a cámara.
+- **V-6 · «Cantidad» y «Subtotal» quedan como campos de solo lectura con el aspecto de la lámina**,
+  pero el subtotal sigue siendo un estimado del cliente: **el total definitivo lo calcula el
+  servidor** con aritmética exacta, como hoy.
+
+## Decisiones
+
+**Las siete quedaron aprobadas el 2026-11-02 por la recomendación**, sin cambios: D-1, **D-2 (a)**,
+**D-3 (a)**, D-4, **D-5 (a)**, D-6 sí y D-7 fuera. Se dejan escritas con sus alternativas porque la
+alternativa descartada es parte del registro: explica por qué el código quedó así y qué habría que
+revisar si la decisión se reabre.
+
+- **D-1 · El panel es un diálogo de cliente y no una ruta** (H-1). **Recomendado**: aceptarlo y
+  declararlo como V-3 y V-4. Diverge de la convención de la 24.6.1 **por una razón de fondo**, no
+  por comodidad: aquel panel muestra datos guardados y este edita un borrador que todavía no existe
+  en la base. La alternativa —guardar el borrador en la URL o en `sessionStorage` para poder
+  navegar— agrega un mecanismo de persistencia que ninguna otra pantalla tiene.
+- **D-2 · Qué hacer con `line-units.tsx`, compartido con `/ventas/nueva`** (H-2). **Recomendado:
+  (a)** el selector nuevo entra en el componente compartido **detrás de una propiedad que solo
+  `/pedidos/nuevo` enciende**; `/ventas/nueva` sigue exactamente como está hasta la 24.6.2, que la
+  enciende en una línea. El README de Ventas dice que sus líneas se arman «con los mismos patrones
+  de producto, cantidad o equipos de Pedidos», así que la divergencia es **temporal por diseño**.
+  Costo declarado: dos conductas conviviendo en un archivo hasta la 24.6.2, y las dos hay que
+  probarlas. Alternativas: **(b)** cambiar las dos pantallas ahora, que mete alcance de la 24.6.2
+  sin su lámina ni su recorrido; **(c)** duplicar el componente, que obliga a reconverger después.
+- **D-3 · La imagen del producto (P-1 de la 24.6.1)**, que la lámina dibuja en el selector de
+  producto y en la cabecera del panel. **Recomendado: (a)** solo en **la cabecera del panel**, que
+  es un componente nuevo de esta subfase, reutilizando `product-image-view.tsx`, y **no tocar
+  `picker.tsx`**, que son siete pantallas y un tipo de opción de solo texto. Así P-1 se cierra
+  donde la lámina lo pide sin abrir un frente de siete pantallas. Alternativas: **(b)** también en
+  el `Picker`, que habría que ampliar para todas; **(c)** ninguna, y declarar P-1 otra vez.
+- **D-4 · La búsqueda dentro del panel es en memoria**, sobre la lista que ya se cargó.
+  **Recomendado**: sí. Son **cero consultas nuevas**, y la lista ya viaja entera al navegador hoy.
+- **D-5 · El tope de la lectura de disponibles** (H-4). **Recomendado: (a)** no agregar tope en esta
+  subfase: **medir** el camino con un producto de muchas unidades y **declarar** el límite como
+  pendiente con su número. Agregar paginación al panel es una lectura nueva y una regla nueva, y
+  esta subfase rediseña. Alternativa **(b)**: tope y paginación ahora, que es media subfase más.
+- **D-6 · Revisión independiente al cerrar.** **Recomendado**: sí. No por el tamaño, que es chico,
+  sino por **D-2**: un cambio en un componente compartido con una pantalla que nadie va a recorrer
+  en esta subfase es exactamente lo que una autoevaluación no ve.
+- **D-7 · Qué hacer con P-3 y P-6 de la 24.6.1** (el importe en palabras, y quién creó el pedido en
+  Resumen). **Recomendado**: **fuera**. P-6 es de la ficha, no del alta; P-3 es del recibo. Entran
+  cuando tengan su subfase, no de arrastre.
+
+## Alcance
+
+### Incluido
+
+1. **El panel «Elegir unidades»**: cabecera con el producto, su miniatura y su precio; buscador por
+   IMEI; el recuento «N disponibles · M seleccionadas»; la lista con casilla por unidad, IMEI,
+   grado, batería y precio alineado a la derecha, con la fila elegida resaltada; y el pie con
+   «Volver» y «Usar selección».
+2. **Los chips de «Equipos seleccionados»** en la fila del producto, cada uno con su IMEI y un
+   «Quitar» que **identifica la unidad** en su nombre accesible.
+3. **El campo «Escanear o agregar IMEI»**, de entrada manual o por lector, al lado del disparador
+   «Elegir unidades».
+4. **«Cantidad» y «Subtotal» como campos de solo lectura** con la forma de la lámina.
+5. **El aviso «El pedido se crea pendiente. Elegir un equipo no lo reserva.»**, que es información
+   que hoy no está y que el ADR 0020 respalda.
+6. **«Crear pedido» deshabilitado mientras el panel está abierto**, con el cuerpo `inert`, que es la
+   convención AC-7 de la 24.6.1.
+7. **El recorrido sin JavaScript**, intacto.
+
+### Excluido
+
+- **`/ventas/nueva`**: es de la 24.6.2 (D-2).
+- **`picker.tsx`** y las otras seis pantallas que lo usan (D-3).
+- **Cualquier migración, tabla, columna o contrato nuevo**, incluido un código de unidad (H-3).
+- **El enmascarado del IMEI** (P-4, fuera de la fase).
+- **Tope o paginación de la lectura de disponibles** (D-5).
+- **P-3 y P-6 de la 24.6.1** (D-7).
+- **Cámara** (V-5).
+- **Reservar stock al elegir**: elegir no reserva, y eso no cambia.
+
+## Lista cerrada de archivos
+
+Salirse de esta lista **se para y se pregunta en el turno**, sin excepción por tamaño.
+
+| Archivo | Qué |
+|---|---|
+| `src/app/(autenticado)/pedidos/nuevo/unit-dialog.tsx` | **nuevo**: el panel «Elegir unidades» |
+| `src/app/(autenticado)/pedidos/nuevo/line-units.tsx` | los chips, el campo de escaneo y la propiedad de D-2 |
+| `src/app/(autenticado)/pedidos/nuevo/order-form.tsx` | el aviso, el resumen y el disparador deshabilitado |
+| `src/app/(autenticado)/pedidos/nuevo/page.tsx` | lo que el panel necesite servido |
+| `docs/product/Screens.md` | §15, el alta |
+| `docs/planning/Roadmap.md` | la fila de la 24.6.1-b |
+| `CHANGELOG.md`, `HANDOFF.md`, este brief | el cierre |
+| `tests/e2e/orders.spec.ts` | los casos nuevos |
+| *su prueba colocada, si el archivo listado tiene una* | regla general ratificada en la 24.6.1 |
+
+## Criterios de aceptación
+
+- **AC-1 · La forma de la lámina**: el panel tiene cabecera con producto, miniatura y precio,
+  buscador, recuento, lista con casillas y pie con dos acciones, verificado **por rol y por texto**.
+- **AC-2 · La selección múltiple funciona**: elegir dos unidades y usar la selección deja **dos
+  chips**, «Cantidad» en «2 equipos» y el subtotal con la suma de los dos precios.
+- **AC-3 · El buscador filtra en memoria y no pide nada**: con el panel abierto, buscar un IMEI
+  **no agrega ninguna consulta** —contado, no estimado—.
+- **AC-4 · El recuento dice la verdad**: «N disponibles · M seleccionadas» coincide con la lista y
+  con los chips, incluso después de quitar un chip con el panel abierto.
+- **AC-5 · Quitar un chip identifica la unidad** en su nombre accesible, y los chips se anuncian con
+  producto, IMEI y precio.
+- **AC-6 · Con el panel abierto, «Crear pedido» está deshabilitado** y el cuerpo `inert`; con el
+  panel cerrado, vuelve a estar activo.
+- **AC-7 · El borrador sobrevive**: abrir el panel, usar la selección y cerrarlo **no pierde** el
+  cliente, las otras filas ni los valores escritos. Un error del servidor tampoco.
+- **AC-8 · Sin JavaScript, el alta sigue andando**: con `javaScriptEnabled: false`, el `textarea` de
+  IMEI y la lista servida crean un pedido con una unidad.
+- **AC-9 · `/ventas/nueva` no cambió** (D-2): su alta se dibuja y funciona exactamente como antes,
+  demostrado con su propia prueba de extremo a extremo.
+- **AC-10 · Ninguna regla del pedido cambió**: las pruebas de creación, de precio cambiado y de
+  unidad no disponible siguen pasando sin tocarlas.
+- **AC-11 · Sin migraciones**: `db:generate` dice «No schema changes» y siguen **67**.
+- **AC-12 · Desbordamiento cero y axe limpio** a 320, 390, 640, 1082 y 1440 px, con el panel abierto
+  y cerrado, en claro y en oscuro.
+- **AC-13 · Comparación visual contra la lámina**, entrada por entrada, con su clase: resuelta,
+  declarada, nueva o cosmética aceptada con su motivo.
+- **AC-14 · Las mediciones de §Mediciones están hechas y publicadas.**
+- **AC-15 · Las conductas nuevas, demostradas capaces de fallar** con mutaciones, cada una
+  enrojeciendo la aserción prevista.
+- **AC-16 · La batería completa en verde**, con la CI en `success` sobre el SHA desplegado.
+- **AC-17 · `Screens.md` §15 y la fila del Roadmap, al día.**
+- **AC-18 · Revisión independiente** (D-6), de un agente que no participó, de solo lectura.
+- **AC-19 · Recorrido del usuario** sobre producción.
+
+## Mediciones requeridas
+
+1. **Las consultas del alta, antes y después**, contadas: tienen que ser **las mismas**. El panel no
+   agrega lecturas; reusa la que ya hace `searchOrderUnitsAction`.
+2. **El costo de la lectura sin tope** (H-4, D-5), con un producto de **200 unidades disponibles**:
+   cuánto tarda la acción y cuántos bytes manda al navegador. El número se publica y se declara como
+   el límite conocido.
+3. **El ancho a 320 px** con dos chips largos, que es donde los chips desbordan si desbordan.
+
+## Condiciones de detención
+
+Se para y se pregunta si aparece cualquiera de estas:
+
+1. Haría falta una **migración, tabla, columna o contrato nuevo** —por ejemplo, un código de unidad—.
+2. Habría que tocar **`picker.tsx`** o cualquier pantalla fuera de `/pedidos/nuevo`.
+3. **`/ventas/nueva` cambiaría** de aspecto o de conducta.
+4. Alguna **regla del pedido** tendría que cambiar para que la pantalla funcione.
+5. El panel **no puede andar sin perder el borrador**, o exigiría un mecanismo de persistencia nuevo.
+6. Una diferencia nueva con la v2 **exige un dato que el modelo no tiene**.
+7. Haría falta **salirse de la lista cerrada de archivos**.
+
+## Nivel de validación objetivo
+
+**Validado en integración**, con el vocabulario del proyecto: cada criterio medible sale de una
+aserción por rol y por texto, de `getBoundingClientRect`, de `getComputedStyle` o del conteo de
+consultas, contra el build de producción con PostgreSQL real. Sube a **validado en staging** cuando
+el usuario recorra producción (AC-19). **No** alcanza «preparado para producción».
+
+## Pendientes que esta subfase deja abiertos
+
+- **P-1**: el tope de la lectura de unidades disponibles, con su número medido (D-5).
+- **P-2**: la miniatura en `picker.tsx` y sus siete pantallas (D-3, alternativa b).
+- **P-3**: encender la propiedad de D-2 para `/ventas/nueva`, que es trabajo de la **24.6.2**.
+- **P-4**: el enmascarado del IMEI, que sigue fuera de la fase.
+- **P-5**: P-3 y P-6 de la 24.6.1, que esta subfase no toma (D-7).
