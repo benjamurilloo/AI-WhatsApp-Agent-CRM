@@ -385,7 +385,28 @@ mutación que saca la clase enrojece exactamente esa aserción. Verificado adem�
 construido: la regla sale como
 `.placeholder\\:font-sans::placeholder{font-family:var(--font-manrope), system-ui, sans-serif}`.
 
-**Falta la recorrida sobre la versión corregida**, que es lo que cierra AC-19.
+La recorrida sobre la versión corregida se hizo el 2026-11-02 sobre `6f5b0ac`, **sin
+objeciones**. AC-19 queda cumplido.
+
+## Cierre
+
+Cierra el 2026-11-02, **validada en staging**: implementada, medida, revisada por un agente que no
+participó, desplegada en producción y recorrida por el usuario. Los **diecinueve criterios**
+quedan cumplidos, con AC-4 enmendado por contradecir a AC-6 y AC-9 limitado a conducta y nombres
+accesibles, no a aspecto.
+
+Se desplegó dos veces: `7eada2a` el 2026-11-02, y `6f5b0ac` el mismo día con el arreglo
+tipográfico que encontró la recorrida. Las dos con la CI en `success` sobre su SHA exacto y las
+siete verificaciones del runbook pasadas. Para volver atrás, `7eada2a`.
+
+**Lo que esta subfase deja como lección**, más allá del código: el bloqueante de la revisión y el
+tercer caso rojo de la CI tienen la misma raíz, que no es técnica. Verifiqué las specs que había
+tocado y declaré el resultado como si fuera el de la batería; y escribí «dos casos» en tres
+documentos **antes de leer el log**. Las dos veces el defecto estaba en un archivo que no había
+tocado, y las dos veces lo encontró mirar la fuente externa en vez de deducirla.
+
+No certifica el nivel **preparado para producción**, que además pide backups probados, rollback y
+observabilidad revisados para este cambio, y quedan abiertos sus siete pendientes, P-1 a P-7.
 
 ## Pendientes que esta subfase deja abiertos
 
