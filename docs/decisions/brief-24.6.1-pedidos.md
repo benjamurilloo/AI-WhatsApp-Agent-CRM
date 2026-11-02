@@ -738,3 +738,76 @@ probados, rollback y observabilidad revisados para este cambio.
 - **P-6**: mostrar en Resumen quién creó el pedido (V-16), que hoy solo está en Actividad.
 - **P-5**: si `seeds/volume.ts` debería sembrar pedidos, ventas y recibos para las subfases de
   Comercial que vienen (D-9). Tercera vez que aparece.
+
+## Cierre
+
+**Estado al 2026-11-02: implementada, medida, revisada y desplegada. Sin recorrer.**
+
+| Criterio | Estado |
+|---|---|
+| AC-1 a AC-4 | **cumplidos**, con prueba de extremo a extremo |
+| AC-5 | **cumplido**: cada pestaña paga solo sus lecturas, **contado**; con un panel abierto los recibos se piden siempre, que es la enmienda de F-1 |
+| AC-6 a AC-10 | **cumplidos**, con prueba |
+| AC-11 | **cumplido**: `grep` con **cero** importaciones de `cash` o `sales` en `src/modules/orders/**`, verificado también por la revisión independiente. *La guarda `module-boundary` no fija esta regla*: ver la enmienda de F-10 |
+| AC-12 | **cumplido**: `db:generate` dice «No schema changes», `git status --porcelain drizzle/` vacío y **67** migraciones, contadas el 2026-11-02 contra `crm_production` |
+| AC-13 | **cumplido**: desbordamiento cero a 320, 390, 640, 1082 y 1440 px en las dos pantallas, sus tres pestañas y sus cinco paneles, y axe sin violaciones en claro y oscuro |
+| AC-14 | **cumplido**: §Mediciones, con el desglose por sentencia a 1.000 y a 10.000 pedidos |
+| AC-15 | **cumplido**: §Comparación visual, 41 entradas con su cubo |
+| AC-16 | **cumplido**: batería local en verde —typecheck, ESLint y Prettier limpios, **2.212** de `unit` y `guards`, **1.902** de `integration` y la de extremo a extremo en cuatro tandas— **y CI en `success` sobre el SHA desplegado**, `2d4a6fd` (run 41452113369, 33 min 44 s, con los end-to-end **enteros de una sola vez** y «Alcance del cambio» **sin recortar**) |
+| AC-17 | **cumplido**: §14 y §16 de `Screens.md` reescritas y la fila del Roadmap |
+| AC-18 | **abierto**: falta el recorrido del usuario sobre producción |
+| AC-19 | **cumplido**: §Revisión independiente, R2, quince hallazgos, ninguno falso |
+| AC-20 | **cumplido**: los cinco paneles andan sin JavaScript, con dos pruebas servidas |
+
+**Las condiciones de detención no se dispararon**: no hay migración, tabla, columna ni contrato
+nuevo; no se cruzó la frontera entre módulos; ninguna regla del pedido cambió; y ninguna diferencia
+con la v2 exige un dato que el modelo no tiene.
+
+**Las decisiones que quedaban abiertas las resolvió el usuario** el 2026-11-02: autorizó la línea de
+`senar/actions.ts` (F-2), fuera de la lista cerrada, y decidió dejar «Conservar pedido» con la
+prioridad del teclado y no la del relleno, que quedó declarada como V-17 (F-3).
+
+### Despliegue
+
+**`2d4a6fd0f16ba519014e1765e46713953a99408f`, en producción desde el 2026-11-02**, autorizado por el
+usuario en el turno. Sin migraciones nuevas: siguen **67**, contadas contra `crm_production` y no
+contra los archivos del repositorio. Para volver atrás,
+**`078fe437f9289656ee39720004a993f79b62ded4`**, anotado en `/var/lib/crm-production/despliegues`
+**antes** de desplegar, que es el orden que el runbook pide.
+
+Las **siete verificaciones** de [`deploy/production/README.md`](../../deploy/production/README.md)
+pasaron:
+
+| # | Verificación | Resultado |
+|---|---|---|
+| 1 | Configuración desplegada igual a la versionada | **18 de 18** archivos idénticos, con la cuenta del `ls` coincidiendo con el bucle |
+| 2 | Un solo salto de proxy | **una** fila en la ventana de 15 min —la ventana se arrancó **en cero a propósito**—, escrita a las 14:02:57 UTC y leída a las 14:03:34, con la clave **igual** a la del operador y **distinta** de `sha256('sin-proxy')`; el control negativo dejó una clave **distinta** |
+| 3 | HSTS | `max-age=31536000; includeSubDomains` sobre HTTPS, **ausente** sobre HTTP, que responde `301` |
+| 4 | La aplicación escucha solo en loopback | `LISTEN 127.0.0.1:3000` |
+| 5 | El rol de la aplicación no es el dueño de la bitácora | `crm_app_login` ≠ `crm_owner`, con `INSERT=t`, `DELETE=f` y `UPDATE=f` sobre `audit_logs`, leído del catálogo y **sin mandar ninguna escritura destructiva** |
+| 6 | Los tres endpoints desde afuera | `401`, `401`, `401`: encendidos y pidiendo token |
+| 7 | La organización real sigue en cero | `Vixora 0 / 0 / 0`, con los datos en «Demostración Vixora» e «iPhone Demo» |
+
+El **control negativo del paso 2** volvió a necesitar la variante que el runbook incorporó al cerrar
+la 24.5.1-b: el túnel SOCKS siguió bloqueado del lado del operador, así que el intento se corrió
+**dentro del droplet contra el dominio público** —nunca contra `localhost`, que saltearía nginx y no
+probaría nada de la cadena de proxy—. Dos orígenes dejaron dos claves distintas, que es lo que el
+control busca demostrar. **En ningún momento se imprimió ni se versionó una IP ni su hash**: la
+comparación se hizo dentro de la shell y lo único que salió fue el veredicto.
+
+Las tres condiciones que hacen válida esa comparación se comprobaron una por una, y no se dieron por
+hechas: que la fila fuera **de recién** (37 segundos), que fuera **la única** de la ventana —de ahí
+el recuento en cero antes del intento— y que su clave **no** fuera la de `'sin-proxy'`, que es lo
+que la aplicación guardaría si no recibiera IP. Es el paso que en esta fase se dio por hecho tres
+despliegues seguidos.
+
+Comprobaciones propias de esta subfase, además de las siete: el `HEAD` desplegado es el SHA exacto;
+el servicio quedó **activo desde las 14:00:20 UTC con cero reinicios** y el journal **sin una sola
+advertencia**; el build pasó **en el primer intento** con el servicio detenido y
+`--max-old-space-size=1536`, sin repetirse ni quedarse sin memoria; y `/`, `/pedidos`,
+`/productos` y `/clientes` responden **`307` a `/login`** sin sesión, no `500`.
+
+**Falta el recorrido del usuario** (AC-18). Hasta que ocurra, el nivel es **validado en
+integración**: «validado en staging» no se infiere de que la CI esté en verde ni de que el
+despliegue haya salido bien.
+
