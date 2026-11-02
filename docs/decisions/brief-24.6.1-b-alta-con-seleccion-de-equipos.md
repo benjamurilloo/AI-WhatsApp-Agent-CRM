@@ -364,6 +364,29 @@ enmienda en el criterio), N-8 y N-11 (P-6 y P-7), y N-12, que es el límite hone
 «se dibuja exactamente como antes» **no se demostró** —no hay comparación de `getComputedStyle` ni
 de captura—, y el comentario que decía «sin un píxel de diferencia» prometía más que eso.
 
+## Recorrido del usuario (AC-19)
+
+Hecho sobre `7eada2a` en producción el 2026-11-02. **Un solo hallazgo, tipográfico**: el campo
+«Escanear o agregar IMEI» llevaba `font-mono`, que es la convención del proyecto para un IMEI
+—la usan los chips, el `textarea` servido y otros cinco controles—, pero esa clase alcanza
+**también al marcador**, y el marcador es prosa en castellano, así que «Ingresá el IMEI completo»
+salía en monoespaciada en una pantalla cuyo resto es Manrope.
+
+Es el **único campo del proyecto donde la convención podía verse fallar**: de los seis controles
+con `font-mono`, los otros cinco no tienen marcador, así que la regla «el IMEI va en
+monoespaciada» nunca se había cruzado con prosa. No es una diferencia con la lámina —la v2 no
+fija la tipografía del marcador— ni la habría encontrado axe, el desbordamiento o la comparación
+visual entrada por entrada, que compara presencia y texto, no familia tipográfica.
+
+Arreglado con `placeholder:font-sans` sobre el mismo campo, que deja el valor escrito en
+monoespaciada y el marcador en la tipografía del sistema. **Queda medido y no afirmado**: la
+prueba lee `getComputedStyle` del campo y de su `::placeholder` y exige que difieran, y una
+mutación que saca la clase enrojece exactamente esa aserción. Verificado además en el CSS
+construido: la regla sale como
+`.placeholder\\:font-sans::placeholder{font-family:var(--font-manrope), system-ui, sans-serif}`.
+
+**Falta la recorrida sobre la versión corregida**, que es lo que cierra AC-19.
+
 ## Pendientes que esta subfase deja abiertos
 
 - **P-1**: el tope de la lectura de unidades disponibles (D-5). **Medido**: con 200 unidades, 10,7 ms en frío, 5,6 ms en caliente y 21.401 bytes al navegador; mil unidades serían unos 107 KB.

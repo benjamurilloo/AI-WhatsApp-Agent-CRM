@@ -329,7 +329,9 @@ export function LineSerials({
                 event.preventDefault();
                 add(event.currentTarget.value);
               }}
-              className={`${inputClass} font-mono`}
+              // El IMEI se escribe en monoespaciada, como los chips y el textarea servido,
+              // pero el marcador es prosa en castellano y va en la tipografía del sistema.
+              className={`${inputClass} font-mono placeholder:font-sans`}
             />
           </div>
           <button

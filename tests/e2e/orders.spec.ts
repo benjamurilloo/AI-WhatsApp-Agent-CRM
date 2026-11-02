@@ -1411,6 +1411,22 @@ test("brief-24.6.1-b: el panel elige dos equipos, los chips los muestran y el su
   // El campo de escaneo agrega un IMEI completo con Enter, que es lo que manda un lector, y **no**
   // envía el formulario.
   const escanear = line(page, 1).getByLabel("Escanear o agregar IMEI");
+  // La tipografía del campo, medida y no afirmada: el IMEI se escribe en monoespaciada, como
+  // los chips y el textarea servido, pero el marcador es prosa en castellano y tiene que salir
+  // en la del sistema. El recorrido del usuario sobre `7eada2a` encontró el marcador en
+  // monoespaciada, que es lo único que esa pantalla tenía fuera de la tipografía del sistema.
+  const fuentes = await escanear.evaluate((el) => ({
+    valor: getComputedStyle(el).fontFamily,
+    marcador: getComputedStyle(el, "::placeholder").fontFamily,
+  }));
+  expect(fuentes.valor, "el IMEI escrito va en monoespaciada").toMatch(
+    /mono|Courier/i,
+  );
+  expect(
+    fuentes.marcador,
+    "el marcador va en la tipografía del sistema",
+  ).toMatch(/Manrope|system-ui|sans-serif/i);
+  expect(fuentes.marcador).not.toBe(fuentes.valor);
   await escanear.fill("356938035643423");
   await escanear.press("Enter");
   await expect(chips.getByRole("listitem")).toHaveCount(2);
