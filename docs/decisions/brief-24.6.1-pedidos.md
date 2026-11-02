@@ -729,9 +729,11 @@ probados, rollback y observabilidad revisados para este cambio.
 ## Pendientes que esta subfase deja abiertos
 
 - **P-1**: la imagen del producto en las líneas y en el listado (D-7).
-- **P-2**: la lámina 02, el alta con selección de equipos: es la **24.6.1-b** (D-12), que hay que
-  crear en Notion y en el Roadmap como hermana, no como subtarea, siguiendo el precedente de la
-  24.4.3 y de la 24.5.2-b.
+- **P-2**: la lámina 02, el alta con selección de equipos: es la **24.6.1-b** (D-12). *Cerrado el
+  2026-11-02*: ya tiene su fila en el Roadmap y su tarea en Notion
+  (`40c702be6f4e81299e0cf72885ff46d8`, en «Esperando», **hermana y no subtarea**, siguiendo el
+  precedente de la 24.4.3 y de la 24.5.2-b), las dos creadas al aprobar este brief. Lo que queda es
+  **su brief**, que es trabajo de esa subfase y no de esta.
 - **P-3**: la lectura del importe en palabras (V-8).
 - **P-4**: el enmascarado del IMEI, que ya estaba fuera de la fase desde el 2026-10-31 y esta
   subfase no mueve.
