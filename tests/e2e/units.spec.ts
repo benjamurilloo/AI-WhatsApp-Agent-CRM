@@ -375,18 +375,27 @@ test("un pedido elige sus unidades, se confirma, se entrega y su venta lleva los
   await page.goto("/pedidos/nuevo");
   await pick(page, "Cliente", "Luc");
   await pick(line(page, 1), "Producto", "IP15-128");
-  // En un producto por unidad, el campo de IMEI reemplaza a la cantidad.
+  // En un producto por unidad, el campo de cantidad no se edita.
   await expect(line(page, 1).getByLabel("Cantidad")).toHaveCount(0);
-  const imei = line(page, 1).getByLabel("IMEI de las unidades");
-  await expect(imei).toBeVisible();
+  // Desde la 24.6.1-b los equipos se eligen en el panel «Elegir unidades» y quedan como chips
+  // (su D-1 y su lámina 02). Hasta entonces, acá había un `textarea` de IMEI con la lista de
+  // disponibles en línea, y la cantidad se leía «2 unidades». **Lo que este caso comprueba no
+  // cambió**: que elegir dos unidades deja la línea con esas dos y su total.
   await line(page, 1)
-    .getByRole("button", { name: "Agregar el IMEI 356938035643809" })
+    .getByRole("button", { name: "Elegir unidades", exact: true })
     .click();
-  await line(page, 1)
-    .getByRole("button", { name: "Agregar el IMEI 356938035643810" })
-    .click();
-  await expect(imei).toHaveValue("356938035643809\n356938035643810");
-  await expect(line(page, 1)).toContainText("2 unidades");
+  const panel = page.getByRole("dialog");
+  await panel.getByRole("checkbox", { name: /356938035643809/ }).check();
+  await panel.getByRole("checkbox", { name: /356938035643810/ }).check();
+  await panel.getByRole("button", { name: "Usar selección" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  const chips = line(page, 1).getByRole("list", {
+    name: /Equipos seleccionados/,
+  });
+  await expect(chips.getByRole("listitem")).toHaveCount(2);
+  await expect(chips).toContainText("356938035643809");
+  await expect(chips).toContainText("356938035643810");
+  await expect(line(page, 1)).toContainText("2 equipos");
   // Las dos unidades: la del precio del producto y la de su precio propio (D-2).
   await expect(
     page.getByText("Total estimado: US$ 2.149,00", { exact: true }),
@@ -515,15 +524,30 @@ test("el pedido con IMEI entra en 375 px sin desplazamiento horizontal", async (
   await login(page, ADMIN_IPHONE.email);
   await page.goto("/pedidos/nuevo");
   await pick(line(page, 1), "Producto", "IP15-128");
+  // Desde la 24.6.1-b lo ancho de esta pantalla ya no es la lista de disponibles en línea sino
+  // **el panel abierto y el chip**, así que se miden los dos: antes se medía con la lista a la
+  // vista, y medir el formulario pelado comprobaría menos que el caso original.
+  await line(page, 1)
+    .getByRole("button", { name: "Elegir unidades", exact: true })
+    .click();
+  const panel = page.getByRole("dialog");
+  await expect(panel).toBeVisible();
+  const desbordeConPanel = await page.evaluate(
+    () => document.documentElement.scrollWidth - window.innerWidth,
+  );
+  expect(desbordeConPanel, "con el panel abierto").toBeLessThanOrEqual(0);
+
+  await panel.getByRole("checkbox", { name: /356938035643809/ }).check();
+  await panel.getByRole("button", { name: "Usar selección" }).click();
   await expect(
-    line(page, 1).getByRole("button", {
-      name: "Agregar el IMEI 356938035643809",
-    }),
-  ).toBeVisible();
+    line(page, 1)
+      .getByRole("list", { name: /Equipos seleccionados/ })
+      .getByRole("listitem"),
+  ).toHaveCount(1);
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - window.innerWidth,
   );
-  expect(overflow).toBeLessThanOrEqual(0);
+  expect(overflow, "con el chip del equipo elegido").toBeLessThanOrEqual(0);
 });
 
 test("un viewer ve las unidades sin el costo ni los formularios", async ({

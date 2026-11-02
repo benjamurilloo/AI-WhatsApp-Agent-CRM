@@ -126,7 +126,8 @@ export function UnitDialog({
           type="button"
           aria-label="Cerrar el panel de unidades"
           onClick={onClose}
-          className={secondaryButtonClass}
+          // 44 px de lado, el objetivo táctil del README de la v2 (§Móvil y accesibilidad).
+          className={`${secondaryButtonClass} min-h-11 min-w-11 justify-center`}
         >
           <Icon name="close" className="size-4" />
         </button>

@@ -293,9 +293,12 @@ export function LineSerials({
                           .join("\n"),
                       })
                     }
-                    className={`${secondaryButtonClass} px-2`}
+                    // 44 px de lado, que es el objetivo táctil que pide el README de la v2
+                    // (§Móvil y accesibilidad). `secondaryButtonClass` solo da unos 38, y con
+                    // `px-2` bajaba a ~30: lo midió la revisión independiente.
+                    className={`${secondaryButtonClass} min-h-11 min-w-11 justify-center px-2`}
                   >
-                    <Icon name="close" className="size-3" />
+                    <Icon name="close" className="size-4" />
                     <span className="sr-only">Quitar el IMEI {serial}</span>
                   </button>
                 </li>

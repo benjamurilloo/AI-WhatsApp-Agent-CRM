@@ -1315,6 +1315,20 @@ test("brief-24.6.1-b: el panel elige dos equipos, los chips los muestran y el su
   // La unidad sin precio propio muestra el del producto, no «sin precio».
   await expect(panel).toContainText("Grado A · Batería 87 %");
 
+  // El objetivo táctil del README de la v2: 44 px de lado. Medido, no supuesto — los dos
+  // controles nuevos quedaban en ~30 y ~34 px hasta que la revisión independiente los midió.
+  const lado = (control: Locator) =>
+    control.evaluate((el) => {
+      const caja = el.getBoundingClientRect();
+      return Math.min(Math.round(caja.width), Math.round(caja.height));
+    });
+  expect(
+    await lado(
+      panel.getByRole("button", { name: "Cerrar el panel de unidades" }),
+    ),
+    "el botón de cerrar el panel",
+  ).toBeGreaterThanOrEqual(44);
+
   // AC-6, segunda mitad: con el panel abierto, el cuerpo es inerte y no se puede crear.
   await expect(page.locator("[inert]")).toHaveCount(1);
   await expect(crear).toBeDisabled();
@@ -1351,6 +1365,15 @@ test("brief-24.6.1-b: el panel elige dos equipos, los chips los muestran y el su
   const chips = line(page, 1).getByRole("list", {
     name: /Equipos seleccionados/,
   });
+  // El nombre del grupo lleva **el producto**, que es la mitad de AC-5 que el chip no muestra y
+  // que el regex de arriba no fija: pasaría igual si el producto desapareciera del nombre. Se
+  // comprueba entero una vez. Lo encontró la revisión independiente.
+  await expect(
+    line(page, 1).getByRole("list", {
+      name: "Equipos seleccionados de iPhone 13 (IPH-13)",
+      exact: true,
+    }),
+  ).toHaveCount(1);
   await expect(chips.getByRole("listitem")).toHaveCount(2);
   await expect(chips).toContainText("356938035643421");
   await expect(chips).toContainText("356938035643422");
@@ -1362,12 +1385,15 @@ test("brief-24.6.1-b: el panel elige dos equipos, los chips los muestran y el su
   await expect(crear).toBeEnabled();
 
   // AC-5: quitar un chip identifica la unidad en su nombre accesible.
-  await page
-    .getByRole("button", {
-      name: "Quitar el IMEI 356938035643422",
-      exact: true,
-    })
-    .click();
+  const quitar = page.getByRole("button", {
+    name: "Quitar el IMEI 356938035643422",
+    exact: true,
+  });
+  expect(
+    await lado(quitar),
+    "el botón de quitar un chip",
+  ).toBeGreaterThanOrEqual(44);
+  await quitar.click();
   await expect(chips.getByRole("listitem")).toHaveCount(1);
   await expect(line(page, 1)).toContainText("1 equipo");
   await expect(page.getByText("Total estimado: $ 120,00")).toBeVisible();
@@ -1466,6 +1492,9 @@ test("brief-24.6.1-b: sin desbordamiento horizontal con el panel abierto y cerra
   await panel.getByRole("checkbox", { name: /356938035643421/ }).check();
   await panel.getByRole("checkbox", { name: /356938035643422/ }).check();
 
+  // AC-12 pide axe **en los cinco anchos**, con el panel abierto y cerrado, en claro y en oscuro:
+  // veinte corridas. Antes corría en tres configuraciones, una de ellas a 1280 px, que no es
+  // ninguno de los cinco. Lo encontró la revisión independiente.
   for (const width of [320, 390, 640, 1082, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(page.getByRole("dialog")).toBeVisible();
@@ -1473,17 +1502,25 @@ test("brief-24.6.1-b: sin desbordamiento horizontal con el panel abierto y cerra
       await anchoDesbordado(page),
       `desbordamiento con el panel abierto a ${width} px`,
     ).toBeLessThanOrEqual(0);
+    await expectAccessible(page, `panel abierto a ${width} px`);
   }
 
   await panel.getByRole("button", { name: "Usar selección" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  // Acotado a la línea **a propósito**: `page.getByRole("listitem")` sin ámbito resuelve a un
+  // ítem del menú de la aplicación, así que la aserción pasaría igual sin un solo chip en
+  // pantalla y la medición se tomaría sobre nada. Lo encontró la revisión independiente.
+  const chipsMedidos = line(page, 1).getByRole("list", {
+    name: /Equipos seleccionados/,
+  });
   for (const width of [320, 390, 640, 1082, 1440]) {
     await page.setViewportSize({ width, height: 900 });
-    await expect(page.getByRole("listitem").first()).toBeVisible();
+    await expect(chipsMedidos.getByRole("listitem")).toHaveCount(2);
     expect(
       await anchoDesbordado(page),
       `desbordamiento con dos chips a ${width} px`,
     ).toBeLessThanOrEqual(0);
+    await expectAccessible(page, `dos chips a ${width} px`);
   }
 
   // Medición 3 del brief, **versionada acá y no en un script suelto**: el ancho del chip más ancho
@@ -1507,7 +1544,8 @@ test("brief-24.6.1-b: sin desbordamiento horizontal con el panel abierto y cerra
     anchoChip,
     "el chip más ancho a 320 px entra en su grupo",
   ).toBeLessThanOrEqual(anchoGrupo);
-  await expectAccessible(page, "alta con dos chips a 1440 px");
+  // Sin axe acá: los dos bucles de arriba ya lo corrieron en los cinco anchos y en los dos
+  // esquemas de color, con el panel abierto y cerrado.
 });
 
 test.describe("sin JavaScript, la 24.6.1-b", () => {

@@ -184,7 +184,14 @@ Salirse de esta lista **se para y se pregunta en el turno**, sin excepción por 
   chips**, «Cantidad» en «2 equipos» y el subtotal con la suma de los dos precios.
 - **AC-3 · El buscador filtra en memoria y no pide nada**: con el panel abierto, buscar un IMEI
   **no agrega ninguna consulta** —contado, no estimado—.
-- **AC-4 · El recuento dice la verdad**: «N disponibles · M seleccionadas» coincide con la lista y
+- **AC-4 · El recuento dice la verdad**. *Enmendado el 2026-11-02*: su segunda mitad —«incluso
+  después de quitar un chip con el panel abierto»— **es inalcanzable por diseño y lo vuelve así
+  AC-6**: con el panel abierto el cuerpo queda `inert`, así que los botones «Quitar» de los chips no
+  se pueden accionar. Los dos criterios se contradicen y se queda con AC-6. Lo que se exige y se
+  demuestra es que el recuento coincida con la lista y con los chips **mientras la selección cambia
+  dentro del panel**. La revisión independiente lo encontró declarado como cumplido sin prueba
+  (N-1), y además midió que, si se alcanzara, el recuento mentiría: la selección se congela al
+  montar el panel. El texto original: «N disponibles · M seleccionadas» coincide con la lista y
   con los chips, incluso después de quitar un chip con el panel abierto.
 - **AC-5 · Quitar un chip identifica la unidad** en su nombre accesible, y los chips se anuncian con
   producto, IMEI y precio.
@@ -213,7 +220,11 @@ Salirse de esta lista **se para y se pregunta en el turno**, sin excepción por 
 
 ## Mediciones requeridas
 
-1. **Las consultas del alta, antes y después**, contadas: tienen que ser **las mismas**. El panel no
+1. **Las consultas del alta, antes y después**, contadas. *Enmendado el 2026-11-02, al autorizar la
+   ampliación de `pedidos/actions.ts`*: decía «tienen que ser **las mismas**», y con D-3 el camino de
+   Pedidos paga **una lectura más**, la de la versión de la imagen. La exigencia vigente es: **las
+   mismas para toda pantalla que no dibuje la miniatura**, y una más, declarada con su número, para
+   la que sí. Lo encontró la revisión independiente como contradicción interna (N-9). El panel no
    agrega lecturas; reusa la que ya hace `searchOrderUnitsAction`.
 2. **El costo de la lectura sin tope** (H-4, D-5), con un producto de **200 unidades disponibles**:
    cuánto tarda la acción y cuántos bytes manda al navegador. El número se publica y se declara como
@@ -246,7 +257,8 @@ Las dos se pidieron **antes** de escribir el código que las necesitaba, como ma
 | Archivo | Por qué | Cuándo |
 |---|---|---|
 | `src/app/(autenticado)/pedidos/actions.ts` | D-3 pide la miniatura en la cabecera del panel, y la versión de la imagen **no viaja** ni en la sugerencia del producto ni en la unidad: sale de `getProductImageVersions`, que es una lectura aparte | 2026-11-02 |
-| `tests/e2e/sales.spec.ts` | AC-9 exige demostrar que `/ventas/nueva` no cambió «con su propia prueba», y la spec **no nombraba** «unidad», «equipo» ni «IMEI` en ninguna de sus 764 líneas: el camino por equipos no tenía cobertura | 2026-11-02 |
+| `tests/e2e/sales.spec.ts` | AC-9 exige demostrar que `/ventas/nueva` no cambió «con su propia prueba», y la spec **no nombraba** «unidad», «equipo» ni «IMEI» en ninguna de sus 764 líneas: el camino por equipos no tenía cobertura | 2026-11-02 |
+| `tests/e2e/units.spec.ts` | **Dos casos preexistentes quedaron rojos** con el rediseño: manejan `/pedidos/nuevo` con el selector viejo —el `textarea` de IMEI y los botones «Agregar el IMEI»—, que ya no existe en esa pantalla. Lo encontró la revisión independiente (B-1); se confirmó corriéndolos | 2026-11-02 |
 
 ## Resultado de las mediciones
 
@@ -275,7 +287,7 @@ La Medición 1 pedía que fueran **las mismas**. Son las mismas para Ventas y **
 
 **El límite conocido, publicado**: a este ritmo, mil unidades de un mismo producto serían unos **107 KB** y unos 30 ms. No hay tope ni paginación, y hoy el costo ya se pagaba —la lista en línea cargaba lo mismo—, así que el rediseño no empeoró nada. Queda como P-1.
 
-**3 · El ancho a 320 px** con dos chips de IMEI completo: el chip más ancho mide **194 px** dentro de un grupo de **212 px**, y el documento no desborda. La medición quedó **versionada en `tests/e2e/orders.spec.ts`**, no en un script del scratchpad: un número que no se puede volver a medir es una anécdota, como dice `medir-caminos.ts` desde la 9.3.
+**3 · El ancho a 320 px** con dos chips de IMEI completo: el chip más ancho mide **194 px** dentro de un grupo de **212 px**, y el documento no desborda. Lo que quedó **versionado en `tests/e2e/orders.spec.ts`** es la **relación** —que el chip entra en su grupo— y el `console.log` que vuelve a imprimir los dos números en cada corrida; los 194 y los 212 salen de esa corrida, no de una aserción. La revisión independiente señaló además que la relación es difícil de enrojecer, porque el IMEI lleva `break-all` (N-10): **la guarda fuerte del desbordamiento es `anchoDesbordado`**, que sí falla si el documento desborda, y corre en los cinco anchos.
 
 ## Comparación visual contra la lámina 02, entrada por entrada
 
@@ -286,30 +298,69 @@ Veintisiete entradas. **Resuelta** = igual a la lámina; **declarada** = diferen
 | 1 | Título «Elegir unidades» y botón de cerrar | resuelta | |
 | 2 | Miniatura del producto en la cabecera | resuelta | probada cargada, no solo presente |
 | 3 | Nombre del producto | cosmética aceptada | lleva el SKU entre paréntesis, que es como lo dejó el buscador de la 19.2, y se trunca |
-| 4 | Precio del producto | resuelta | |
+| 4 | Precio del producto | cosmética aceptada | la lámina escribe «USD 450» y la aplicación «$ 450,00», por `formatMoney`; misma diferencia que la entrada 16 (N-6) |
 | 5 | «Buscar por IMEI o código de unidad…» | declarada | V-1: dice «Buscar por IMEI», porque el código no existe |
 | 6 | «3 disponibles · 1 seleccionada» | resuelta | |
 | 7 | Tarjeta por unidad con casilla | resuelta | |
 | 8 | «U-0101» como título de la tarjeta | declarada | V-1: el título es el IMEI |
 | 9 | «IMEI …1421», enmascarado | declarada | V-2: completo, hasta que P-4 se haga en todas las pantallas |
 | 10 | «Grado A · Batería 91%» | cosmética aceptada | «Batería 91 %», con el espacio que usa el resto del CRM |
-| 11 | Precio de la unidad, a la derecha | resuelta | |
+| 11 | Precio de la unidad, a la derecha | cosmética aceptada | la posición es la de la lámina; el formato del monto, el de `formatMoney` (N-6) |
 | 12 | Fila elegida resaltada | resuelta | |
 | 13 | Pie con «Volver» y «Usar selección» | resuelta | |
 | 14 | Panel de alto completo, pegado al borde | cosmética aceptada | toma el alto de su contenido y va en el flujo, como los cinco paneles de la 24.6.1 |
 | 15 | Miniatura dentro del selector de producto | declarada | D-3: `picker.tsx` lo comparten siete pantallas |
 | 16 | «Precio unitario (USD)» con el monto pelado | cosmética aceptada | la etiqueta es «Precio unitario» y el valor «$ 450,00»: `formatMoney` es el único formateador del proyecto y vive fuera de la lista cerrada |
 | 17 | «Equipos seleccionados \*» con asterisco | cosmética aceptada | sin asterisco: quién es obligatorio lo decide el producto en el servidor, no el formulario |
-| 18 | Chip «U-0102 · IMEI …1422 ✕» | resuelta | con V-1 y V-2: «356938035641422 · $ 450,00 ✕» |
+| 18 | Chip «U-0102 · IMEI …1422 ✕» | declarada **y** nueva | V-1 y V-2 explican el IMEI completo en lugar del código enmascarado; **el precio dentro del chip la lámina no lo dibuja** y lo pide AC-5, así que esa parte es nueva (N-6) |
 | 19 | Ícono de escaneo dentro del campo | cosmética aceptada | sin ícono: no hay uno de escaneo en `icons.tsx` y agregarlo queda fuera de la lista |
 | 20 | «Ingresá el IMEI completo» | resuelta | |
 | 21 | Botón «Elegir unidades» con ícono | cosmética aceptada | sin ícono, por lo mismo que 19 |
-| 22 | «Cantidad» y «Subtotal (USD)» de solo lectura | resuelta | |
+| 22 | «Cantidad» y «Subtotal (USD)» de solo lectura | cosmética aceptada | son campos de solo lectura como la lámina, con la etiqueta «Subtotal» sin «(USD)»: la moneda viaja en el monto (N-6) |
 | 23 | «Agregar producto» | declarada | el botón dice «Agregar línea» desde la 19.2; renombrarlo no está en el alcance |
 | 24 | Aviso «El pedido se crea pendiente…» | resuelta | |
 | 25 | Tarjeta «Total estimado (USD) · USD 450» con «Crear pedido» adentro | cosmética aceptada | dice «Total estimado:», con dos puntos, para que la prueba del alta de la 19.2 siga pasando **sin tocarla** (AC-10) |
 | 26 | «Crear pedido» en gris con el panel abierto | resuelta | deshabilitado de verdad, no solo gris |
 | 27 | — | nueva | el cuerpo al 60 % de opacidad con el panel abierto: la lámina no lo dibuja, es la convención de la 24.5.3 y la 24.6.1 |
+
+## Revisión independiente (AC-18, D-6)
+
+Hecha el 2026-11-02 por un agente que **no participó del trabajo**, de solo lectura, sobre `d4ab5d9`.
+**Veredicto: R2** — un hallazgo bloqueante y once no bloqueantes, **ninguno falso**. Declaró sus
+propios límites: sin Bash, así que no pudo correr `git diff`, las pruebas ni `db:generate`, y dijo
+dónde eso dejaba un criterio sin verificar. Sí abrió el PNG de la lámina y recorrió las 27 entradas.
+
+**El bloqueante, B-1**, es el que importa: dos casos preexistentes de `tests/e2e/units.spec.ts`
+—fuera de la lista cerrada y fuera del cierre— manejan `/pedidos/nuevo` con el selector viejo y
+quedaron **rojos**. Se confirmó corriéndolos, no leyéndolos. La causa de que no apareciera antes
+está escrita para que no se repita: **la verificación se acotó a las specs que esta subfase tocaba**
+—«32 casos entre pedidos y ventas»— y ese recorte es exactamente lo que lo escondió. `units.spec.ts`
+cubre las reglas de unidades del pedido, las de la 29.5.2, que el objetivo de este brief declara
+intocadas. Se arregló con la tercera ampliación de la lista cerrada, autorizada en el turno.
+
+Después del hallazgo se buscó el resto del radio: cinco specs nombran `/pedidos/nuevo`
+—`clients` y `conversations` solo comprueban el `href` y no abren la pantalla— y los otros cuatro
+archivos que usan los locators viejos (`repairs-own-units`, `trade-ins`, `warranty-claims`,
+`warranty`) están todos sobre `/ventas/nueva`, que no cambió. **Son cuatro razones más de que D-2
+era la decisión correcta**: rediseñar el componente compartido para las dos pantallas habría roto
+cuatro specs más.
+
+**Corregidos en el mismo commit que B-1**: N-2 (axe no corría en ninguno de los cinco anchos que
+AC-12 nombra, sino a 1280 px; ahora corre en los cinco, con el panel abierto y cerrado, en claro y
+en oscuro: veinte corridas), N-3 (una aserción propia que **pasaba por construcción** —un
+`getByRole("listitem")` sin ámbito que resolvía a un ítem del menú, así que la medición de ancho se
+habría tomado sin un solo chip en pantalla—), N-4 (el nombre del grupo de chips, que lleva el
+producto, ahora se comprueba entero: el regex anterior pasaba igual si el producto desaparecía),
+N-5 (`HANDOFF.md`, que está en la lista cerrada y seguía diciendo que la 24.6.1-b «necesita su
+brief»), N-6 (cuatro entradas de la comparación visual mal clasificadas, todas por el formato del
+dinero, más un IMEI mal transcripto), N-7 (**los dos controles nuevos medían ~30 y ~34 px** contra
+los 44 que pide el README de la v2; ahora miden 44 y hay una aserción que lo mide), N-9 y N-10.
+
+**Declarados en lugar de corregidos**: N-1 (AC-4 pedía algo que AC-6 vuelve inalcanzable: ver la
+enmienda en el criterio), N-8 y N-11 (P-6 y P-7), y N-12, que es el límite honesto de AC-9: la
+**conducta** y los **nombres accesibles** de `/ventas/nueva` quedan fijados por su prueba, pero el
+«se dibuja exactamente como antes» **no se demostró** —no hay comparación de `getComputedStyle` ni
+de captura—, y el comentario que decía «sin un píxel de diferencia» prometía más que eso.
 
 ## Pendientes que esta subfase deja abiertos
 
@@ -318,3 +369,13 @@ Veintisiete entradas. **Resuelta** = igual a la lámina; **declarada** = diferen
 - **P-3**: encender la propiedad de D-2 para `/ventas/nueva`, que es trabajo de la **24.6.2**.
 - **P-4**: el enmascarado del IMEI, que sigue fuera de la fase.
 - **P-5**: P-3 y P-6 de la 24.6.1, que esta subfase no toma (D-7).
+- **P-6**: **«Copiar» el IMEI**, que el README del lote pide junto a «Mostrar» («Debe ofrecer
+  Mostrar/Copiar según los permisos y patrones de inventario»). V-2 resolvió «Mostrar» al no
+  enmascarar, y «Copiar» **no se implementó ni se había declarado**: cayó entre AC-13, que compara
+  contra la lámina —y la lámina no lo dibuja—, y las seis diferencias declaradas. Lo encontró la
+  revisión independiente (N-8). Hay un `copy-button.tsx` en `_components` que lo haría barato.
+- **P-7**: un **IMEI escrito a mano que no está entre las unidades leídas** cuenta en «M
+  seleccionadas» sin ninguna fila marcada en el panel, y no se puede desmarcar desde ahí. No se
+  pierde nada —la selección sale intacta— pero roza la primera mitad de AC-4. Sin cobertura: el
+  caso que escanea usa un IMEI que sí está en la lista. Lo encontró la revisión independiente
+  (N-11).
