@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { sql } from "drizzle-orm";
+import sharp from "sharp";
 import { createDb, type Db } from "@/shared/db";
 import { SEED_ORGANIZATION_ID, SEED_USERS, seedBasic } from "../../seeds/basic";
 import { e2eDatabaseUrl } from "../integration/test-database";
@@ -47,6 +48,11 @@ test.beforeEach(async () => {
   );
   await db.execute(
     sql`delete from ingestion_credentials where source = ${AGENT_SOURCE}`,
+  );
+  // La capacidad `serialized_units` la enciende solo el alta por equipos de la 24.6.1-b: la semilla
+  // no la da, así que se borra para que cada caso empiece sin ella.
+  await db.execute(
+    sql`delete from organization_capabilities where organization_id = ${SEED_ORGANIZATION_ID}`,
   );
   await db.execute(sql`delete from login_attempts`);
   await db.execute(sql`delete from sessions`);
@@ -1215,4 +1221,376 @@ test.describe("sin JavaScript, la 24.6.1", () => {
     ).toBeVisible();
     // Sin axe: necesita JavaScript para inyectarse, y acá está apagado.
   });
+});
+
+// Un producto que se vende por unidad con unidades **disponibles**, que es lo que ofrece el panel
+// del alta (brief-24.6.1-b). A diferencia de `addUnits`, estas no están enganchadas a ningún
+// pedido. Cada unidad puede traer su propio precio: así el subtotal no puede salir de multiplicar
+// la cantidad por el precio del producto, y si saliera de ahí la aserción lo delata.
+async function insertUnitProduct(
+  sku: string,
+  name: string,
+  price: string,
+  units: [serial: string, battery: number | null, unitPrice: string | null][],
+) {
+  const productId = await insertProduct(sku, name, price);
+  await db.execute(
+    sql`update products set tracking = 'unit' where id = ${productId}`,
+  );
+  // Sin la capacidad, el alta pide la cantidad y no los equipos: es la que enciende esta pantalla.
+  await db.execute(
+    sql`insert into organization_capabilities (organization_id, capability, activated_by)
+        values (${SEED_ORGANIZATION_ID}, 'serialized_units', ${ADMIN_SEED.id})
+        on conflict do nothing`,
+  );
+  await db.execute(
+    sql`delete from unit_grades where organization_id = ${SEED_ORGANIZATION_ID}`,
+  );
+  const grade = await db.execute<{ id: string }>(
+    sql`insert into unit_grades (organization_id, name, position)
+        values (${SEED_ORGANIZATION_ID}, 'A', 1) returning id`,
+  );
+  const gradeId = grade.rows[0]!.id;
+  for (const [serial, battery, unitPrice] of units) {
+    await db.execute(
+      sql`insert into stock_units (organization_id, product_id, serial, cost, cost_currency,
+                                   price, price_currency, origin_type, grade_id, battery_health,
+                                   created_by)
+          values (${SEED_ORGANIZATION_ID}, ${productId}, ${serial}, 100, 'ARS', ${unitPrice},
+                  ${unitPrice === null ? null : "ARS"}, 'manual', ${gradeId}, ${battery},
+                  ${ADMIN_SEED.id})`,
+    );
+  }
+  return productId;
+}
+
+const IPHONE_UNITS: [string, number | null, string | null][] = [
+  ["356938035643421", 91, "120.00"],
+  ["356938035643422", 88, "130.00"],
+  ["356938035643423", 87, null],
+];
+
+test("brief-24.6.1-b: el panel elige dos equipos, los chips los muestran y el subtotal los suma", async ({
+  page,
+}) => {
+  // AC-1 a AC-7. Tres unidades, con una sin precio propio para que herede el del producto.
+  await insertClient("Lucía Gómez");
+  await insertUnitProduct("IPH-13", "iPhone 13", "100", IPHONE_UNITS);
+  await login(page, ADMIN);
+  await page.goto("/pedidos/nuevo");
+
+  await pick(page, "Cliente", "Luc");
+  await pick(line(page, 1), "Producto", "iPhone");
+  // AC-13: el precio unitario es un campo de solo lectura, como en la lámina, y no el renglón de
+  // texto de antes.
+  await expect(line(page, 1)).toContainText("Precio unitario");
+  await expect(line(page, 1)).toContainText("$ 100,00");
+  await expect(line(page, 1)).toContainText("Todavía no elegiste equipos.");
+
+  // AC-6, primera mitad: sin el panel abierto no hay nada inerte y se puede crear.
+  const crear = page.getByRole("button", { name: "Crear pedido" });
+  await expect(crear).toBeEnabled();
+  await expect(page.locator("[inert]")).toHaveCount(0);
+
+  const abrir = line(page, 1).getByRole("button", {
+    name: "Elegir unidades",
+    exact: true,
+  });
+  await expect(abrir).toHaveAttribute("aria-haspopup", "dialog");
+  await abrir.click();
+
+  // AC-1: la forma de la lámina, por rol y por texto.
+  const panel = page.getByRole("dialog");
+  await expect(
+    panel.getByRole("heading", { name: "Elegir unidades", exact: true }),
+  ).toBeVisible();
+  await expect(panel).toContainText("iPhone 13 (IPH-13)");
+  await expect(panel).toContainText("$ 100,00");
+  await expect(panel.getByRole("searchbox")).toBeVisible();
+  await expect(panel.getByRole("checkbox")).toHaveCount(3);
+  await expect(panel.getByRole("button", { name: "Volver" })).toBeVisible();
+  await expect(
+    panel.getByRole("button", { name: "Usar selección" }),
+  ).toBeVisible();
+  // La unidad sin precio propio muestra el del producto, no «sin precio».
+  await expect(panel).toContainText("Grado A · Batería 87 %");
+
+  // AC-6, segunda mitad: con el panel abierto, el cuerpo es inerte y no se puede crear.
+  await expect(page.locator("[inert]")).toHaveCount(1);
+  await expect(crear).toBeDisabled();
+  await expect(abrir).toHaveAttribute("aria-disabled", "true");
+
+  // AC-4: el recuento dice la verdad antes y después de elegir.
+  await expect(panel).toContainText("3 disponibles · 0 seleccionadas");
+  await panel.getByRole("checkbox", { name: /356938035643421/ }).check();
+  await panel.getByRole("checkbox", { name: /356938035643422/ }).check();
+  await expect(panel).toContainText("3 disponibles · 2 seleccionadas");
+
+  // AC-3: buscar **no pide nada**. Se cuentan las peticiones que salen del navegador mientras se
+  // escribe, no se estima: la lista ya está en memoria.
+  let pedidos = 0;
+  const contar = () => {
+    pedidos += 1;
+  };
+  page.on("request", contar);
+  await panel.getByRole("searchbox").fill("643423");
+  await expect(panel.getByRole("checkbox")).toHaveCount(1);
+  await expect(panel).toContainText("1 disponible · 2 seleccionadas");
+  page.off("request", contar);
+  expect(pedidos, "buscar en el panel no pide nada al servidor").toBe(0);
+
+  await panel.getByRole("searchbox").fill("");
+  await expect(panel.getByRole("checkbox")).toHaveCount(3);
+  await expectAccessible(page, "alta con el panel abierto");
+
+  // AC-2: usar la selección deja dos chips, la cantidad en equipos y el subtotal sumado.
+  await panel.getByRole("button", { name: "Usar selección" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  // El foco vuelve al disparador que lo abrió.
+  await expect(abrir).toBeFocused();
+  const chips = line(page, 1).getByRole("list", {
+    name: /Equipos seleccionados/,
+  });
+  await expect(chips.getByRole("listitem")).toHaveCount(2);
+  await expect(chips).toContainText("356938035643421");
+  await expect(chips).toContainText("356938035643422");
+  await expect(chips).toContainText("$ 120,00");
+  await expect(chips).toContainText("$ 130,00");
+  await expect(line(page, 1)).toContainText("2 equipos");
+  await expect(line(page, 1)).toContainText("$ 250,00");
+  await expect(page.getByText("Total estimado: $ 250,00")).toBeVisible();
+  await expect(crear).toBeEnabled();
+
+  // AC-5: quitar un chip identifica la unidad en su nombre accesible.
+  await page
+    .getByRole("button", {
+      name: "Quitar el IMEI 356938035643422",
+      exact: true,
+    })
+    .click();
+  await expect(chips.getByRole("listitem")).toHaveCount(1);
+  await expect(line(page, 1)).toContainText("1 equipo");
+  await expect(page.getByText("Total estimado: $ 120,00")).toBeVisible();
+
+  // El campo de escaneo agrega un IMEI completo con Enter, que es lo que manda un lector, y **no**
+  // envía el formulario.
+  const escanear = line(page, 1).getByLabel("Escanear o agregar IMEI");
+  await escanear.fill("356938035643423");
+  await escanear.press("Enter");
+  await expect(chips.getByRole("listitem")).toHaveCount(2);
+  await expect(line(page, 1)).toContainText("2 equipos");
+  // La unidad sin precio propio estima con el del producto: 120 + 100.
+  await expect(page.getByText("Total estimado: $ 220,00")).toBeVisible();
+  // Y Enter **no** envió el formulario. Comprobar que algo no pasó exige darle tiempo a que
+  // pase: medido al instante, ni la URL cambió ni el pedido existe todavía **aunque el
+  // formulario se haya enviado**, y la aserción pasa igual. Lo midió una mutación de AC-15, que
+  // sacó el `preventDefault` y aun así pasó por acá en verde para morir doce líneas más abajo.
+  // Por eso esta espera fija, que es el único lugar del archivo donde hay una: el viaje de la
+  // acción contra PostgreSQL local tarda unos cientos de milisegundos, así que 1,5 s lo cubre.
+  await page.waitForTimeout(1500);
+  await expect(page).toHaveURL(/\/pedidos\/nuevo$/);
+  expect(await orderCount(), "Enter en el escaneo no crea el pedido").toBe(0);
+
+  // AC-7: el borrador sobrevivió a abrir y cerrar el panel.
+  await expect(page.getByLabel("Cliente", { exact: true })).toHaveValue(
+    "Lucía Gómez",
+  );
+  await expectAccessible(page, "alta con dos equipos elegidos");
+
+  await crear.click();
+  await expect(page).toHaveURL(/\/pedidos\/[0-9a-f-]{36}\?aviso=creado$/);
+  const creado = page.getByRole("table", { name: /Productos del pedido/ });
+  await expect(creado).toContainText("356938035643421");
+  await expect(creado).toContainText("356938035643423");
+  await expect(creado).toContainText("$ 220,00");
+});
+
+test("brief-24.6.1-b: «Volver» no cambia la selección y el panel no pierde el borrador", async ({
+  page,
+}) => {
+  // AC-7, la mitad que el caso de arriba no cubre: lo que se marca y se abandona no entra.
+  await insertClient("Lucía Gómez");
+  await insertUnitProduct("IPH-13", "iPhone 13", "100", IPHONE_UNITS);
+  await insertProduct("CAF-250", "Café molido", "50");
+  await login(page, ADMIN);
+  await page.goto("/pedidos/nuevo");
+
+  await pick(page, "Cliente", "Luc");
+  await pick(line(page, 2), "Producto", "Café");
+  await line(page, 2).getByLabel("Cantidad").fill("3");
+  await pick(line(page, 1), "Producto", "iPhone");
+
+  const abrir = line(page, 1).getByRole("button", {
+    name: "Elegir unidades",
+    exact: true,
+  });
+  await abrir.click();
+  const panel = page.getByRole("dialog");
+  await panel.getByRole("checkbox", { name: /356938035643421/ }).check();
+  await panel.getByRole("button", { name: "Volver" }).click();
+
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(line(page, 1)).toContainText("Todavía no elegiste equipos.");
+  // Y la otra línea y el cliente siguen donde estaban.
+  await expect(page.getByLabel("Cliente", { exact: true })).toHaveValue(
+    "Lucía Gómez",
+  );
+  await expect(line(page, 2).getByLabel("Cantidad")).toHaveValue("3");
+  await expect(page.getByText("Total estimado: $ 150,00")).toBeVisible();
+
+  // Escape hace lo mismo que «Volver».
+  await abrir.click();
+  await page.getByRole("dialog").getByRole("checkbox").first().check();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(line(page, 1)).toContainText("Todavía no elegiste equipos.");
+  await expect(abrir).toBeFocused();
+});
+
+test("brief-24.6.1-b: sin desbordamiento horizontal con el panel abierto y cerrado, de 320 a 1440 px", async ({
+  page,
+}) => {
+  // AC-12. Dos equipos elegidos, que es donde los chips desbordan si desbordan (Medición 3).
+  await insertClient("Lucía Gómez");
+  await insertUnitProduct("IPH-13", "iPhone 13", "100", IPHONE_UNITS);
+  await login(page, ADMIN);
+  await page.goto("/pedidos/nuevo");
+  await pick(page, "Cliente", "Luc");
+  await pick(line(page, 1), "Producto", "iPhone");
+  const abrir = line(page, 1).getByRole("button", {
+    name: "Elegir unidades",
+    exact: true,
+  });
+  await abrir.click();
+  const panel = page.getByRole("dialog");
+  await panel.getByRole("checkbox", { name: /356938035643421/ }).check();
+  await panel.getByRole("checkbox", { name: /356938035643422/ }).check();
+
+  for (const width of [320, 390, 640, 1082, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(page.getByRole("dialog")).toBeVisible();
+    expect(
+      await anchoDesbordado(page),
+      `desbordamiento con el panel abierto a ${width} px`,
+    ).toBeLessThanOrEqual(0);
+  }
+
+  await panel.getByRole("button", { name: "Usar selección" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  for (const width of [320, 390, 640, 1082, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(page.getByRole("listitem").first()).toBeVisible();
+    expect(
+      await anchoDesbordado(page),
+      `desbordamiento con dos chips a ${width} px`,
+    ).toBeLessThanOrEqual(0);
+  }
+
+  // Medición 3 del brief, **versionada acá y no en un script suelto**: el ancho del chip más ancho
+  // a 320 px, que es donde los chips desbordan si desbordan. El límite es el ancho del grupo que
+  // los contiene: un chip más ancho que su contenedor es exactamente la barra horizontal.
+  await page.setViewportSize({ width: 320, height: 900 });
+  const chips = line(page, 1).getByRole("list", {
+    name: /Equipos seleccionados/,
+  });
+  const anchoChip = await chips
+    .getByRole("listitem")
+    .first()
+    .evaluate((el) => Math.round(el.getBoundingClientRect().width));
+  const anchoGrupo = await chips.evaluate((el) =>
+    Math.round(el.getBoundingClientRect().width),
+  );
+  console.log(
+    `Medición 3 · a 320 px: chip ${anchoChip} px, grupo ${anchoGrupo} px`,
+  );
+  expect(
+    anchoChip,
+    "el chip más ancho a 320 px entra en su grupo",
+  ).toBeLessThanOrEqual(anchoGrupo);
+  await expectAccessible(page, "alta con dos chips a 1440 px");
+});
+
+test.describe("sin JavaScript, la 24.6.1-b", () => {
+  test.use({ javaScriptEnabled: false });
+
+  test("el alta sigue creando un pedido con el IMEI escrito a mano", async ({
+    page,
+  }) => {
+    // AC-8 y V-3: sin JavaScript no hay panel ni chips, queda el camino servido de siempre.
+    await insertClient("Lucía Gómez");
+    await insertUnitProduct("IPH-13", "iPhone 13", "100", IPHONE_UNITS);
+    await login(page, ADMIN);
+    await page.goto("/pedidos/nuevo");
+
+    await expect(
+      page.getByRole("button", { name: "Elegir unidades", exact: true }),
+    ).toHaveCount(0);
+    await page.getByLabel("Cliente", { exact: true }).fill("Lucía Gómez");
+    // Sin JavaScript el producto se resuelve por su SKU, como en el caso de la 19.2.
+    await line(page, 1).getByLabel("Producto").fill("iph-13");
+    await line(page, 1)
+      .getByLabel("IMEI de las unidades")
+      .fill("356938035643421");
+    await page.getByRole("button", { name: "Crear pedido" }).click();
+
+    await expect(page).toHaveURL(/\/pedidos\/[0-9a-f-]{36}\?aviso=creado$/);
+    const lines = page.getByRole("table", { name: /Productos del pedido/ });
+    await expect(lines).toContainText("356938035643421");
+    expect(await orderCount()).toBe(1);
+  });
+});
+
+test("brief-24.6.1-b: la cabecera del panel muestra la miniatura del producto", async ({
+  page,
+}) => {
+  // AC-1 y D-3: la miniatura es la única razón por la que `searchOrderUnitsAction` pide una lectura
+  // más, así que hay que demostrar que **se carga**, no solo que el `<img>` está en el HTML. La
+  // imagen se genera acá: no es una foto ni muestra personas, como en product-images.spec.ts.
+  await insertClient("Lucía Gómez");
+  const productId = await insertUnitProduct(
+    "IPH-13",
+    "iPhone 13",
+    "100",
+    IPHONE_UNITS,
+  );
+  await login(page, ADMIN);
+
+  await page.goto(`/productos/${productId}`);
+  await page.getByLabel("Subir imagen").setInputFiles({
+    name: "equipo.jpg",
+    mimeType: "image/jpeg",
+    buffer: await sharp({
+      create: {
+        width: 800,
+        height: 800,
+        channels: 3,
+        background: { r: 30, g: 30, b: 60 },
+      },
+    })
+      .jpeg()
+      .toBuffer(),
+  });
+  await page.getByRole("button", { name: "Guardar imagen" }).click();
+  await expect(page.getByRole("status")).toContainText("Imagen guardada.");
+
+  await page.goto("/pedidos/nuevo");
+  await pick(page, "Cliente", "Luc");
+  await pick(line(page, 1), "Producto", "iPhone");
+  await line(page, 1)
+    .getByRole("button", { name: "Elegir unidades", exact: true })
+    .click();
+
+  const miniatura = page
+    .getByRole("dialog")
+    .locator(`img[src^="/productos/${productId}/imagen/miniatura"]`);
+  await expect(miniatura).toBeVisible();
+  // Que el navegador la haya traído de verdad, con la cookie de sesión.
+  await expect
+    .poll(() =>
+      miniatura.evaluate((element: HTMLImageElement) => element.naturalWidth),
+    )
+    .toBeGreaterThan(0);
+  // Y que la dirección lleve la versión, que es lo que la 17.5 dejó para que reemplazarla no
+  // muestre la anterior.
+  await expect(miniatura).toHaveAttribute("src", /\?v=[0-9a-f]{8}/);
 });

@@ -1,17 +1,20 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { ProductImageVersion } from "@/modules/catalog";
 import { useHydrated } from "@/app/_components/disclosure";
 import {
   inputClass,
   labelClass,
   secondaryButtonClass,
 } from "@/app/_components/form-styles";
+import { Icon } from "@/app/_components/icons";
 import { splitLineSerials } from "@/shared/lines";
 import { formatMoney } from "@/shared/money";
 import { searchOrderUnitsAction, type OrderUnitOption } from "../actions";
 import { estimateLineTotal, estimateUnitsTotal } from "../estimate";
 import type { OrderFormLine } from "../messages";
+import { unitPriceText } from "./unit-dialog";
 
 // La cantidad de una línea o, en un producto por unidad, sus IMEI (brief-29.5.2, D-5), para el alta
 // del pedido y la venta sin pedido. Sin la capacidad serialized_units, solo la cantidad, como antes.
@@ -19,11 +22,27 @@ import type { OrderFormLine } from "../messages";
 // Con JavaScript, el campo de IMEI reemplaza a la cantidad en un producto por unidad, y debajo se
 // listan sus unidades disponibles; elegir una agrega su IMEI. Cada fila envía siempre un valor de
 // cada campo, vacío si no se ve, porque las líneas se leen por posición.
+//
+// Desde la 24.6.1-b (D-2), `LineSerials` tiene **dos formas**, y la elige quien lo usa con la
+// propiedad `chooseUnits`:
+//
+//   - **sin `chooseUnits`** —como la usa `/ventas/nueva`— queda exactamente la de arriba: el
+//     `textarea` de IMEI y la lista de disponibles en línea, sin un píxel de diferencia;
+//   - **con `chooseUnits`** —solo `/pedidos/nuevo`— los equipos elegidos se ven como chips, al lado
+//     hay un campo para escanear o escribir un IMEI, y la lista de disponibles se muda al panel
+//     «Elegir unidades» de la lámina 02.
+//
+// La divergencia es **temporal y por diseño**: el README de la v2 dice que las líneas de Ventas se
+// arman «con los mismos patrones de producto, cantidad o equipos de Pedidos», así que la 24.6.2
+// enciende la propiedad en una línea. Hasta entonces conviven las dos, y las dos se prueban
+// (AC-9).
 
 export type LineRow = OrderFormLine & {
   key: number;
   // Las unidades disponibles del producto, cuando ya se leyeron.
   unitOptions?: OrderUnitOption[];
+  // La versión de la imagen principal del producto, para la miniatura del panel (24.6.1-b, D-3).
+  unitImage?: ProductImageVersion;
 };
 
 // Una fila vacía.
@@ -86,22 +105,36 @@ export function LineQuantity({
   invalid,
   describedBy,
   onChange,
+  unitNoun,
 }: {
   row: LineRow;
   unitsEnabled: boolean;
   invalid: boolean;
   describedBy: string | undefined;
   onChange: (change: Partial<LineRow>) => void;
+  // La forma de la 24.6.1-b (D-2), solo donde quien usa el componente la enciende: cómo se nombra
+  // lo que se cuenta —`/pedidos/nuevo` pasa «equipos», la palabra de la lámina 02— y el recuadro
+  // de campo de solo lectura que la lámina le da. Sin esto queda exactamente lo anterior, que es
+  // lo que ve `/ventas/nueva` hasta la 24.6.2.
+  unitNoun?: { one: string; many: string };
 }) {
   const hydrated = useHydrated();
   const byUnit = unitsEnabled && hydrated && row.unitTracked;
   if (byUnit) {
     const count = splitLineSerials(row.serials).length;
+    const words = unitNoun ?? { one: "unidad", many: "unidades" };
     return (
       <div className="flex flex-col gap-1">
         <span className={labelClass}>Cantidad</span>
-        <p className="py-2 text-sm tabular-nums" aria-live="polite">
-          {count === 1 ? "1 unidad" : `${count} unidades`}
+        <p
+          className={
+            unitNoun
+              ? "rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm tabular-nums"
+              : "py-2 text-sm tabular-nums"
+          }
+          aria-live="polite"
+        >
+          {count === 1 ? `1 ${words.one}` : `${count} ${words.many}`}
         </p>
         <input type="hidden" name="quantity" value="" />
       </div>
@@ -134,6 +167,7 @@ export function LineSerials({
   invalid,
   describedBy,
   onChange,
+  chooseUnits,
 }: {
   row: LineRow;
   unitsEnabled: boolean;
@@ -142,17 +176,35 @@ export function LineSerials({
   invalid: boolean;
   describedBy: string | undefined;
   onChange: (change: Partial<LineRow>) => void;
+  // La forma de la 24.6.1-b, solo donde quien usa el componente la enciende (D-2). Sin esto queda
+  // la forma anterior, que es la que ve `/ventas/nueva` hasta la 24.6.2.
+  chooseUnits?: { open: boolean; onOpen: () => void };
 }) {
   const hydrated = useHydrated();
+  // Lo que se está escaneando o escribiendo, que no se envía: al confirmarlo pasa a `serials`.
+  const [scan, setScan] = useState("");
   const { productId, unitTracked, unitOptions } = row;
   const loading = hydrated && unitTracked && productId !== "" && !unitOptions;
+
+  // Al cerrar el panel el foco vuelve al disparador, como en el diálogo de búsqueda.
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelOpen = chooseUnits?.open ?? false;
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (wasOpen.current && !panelOpen) triggerRef.current?.focus();
+    wasOpen.current = panelOpen;
+  }, [panelOpen]);
 
   useEffect(() => {
     if (!loading) return;
     let cancelled = false;
-    searchOrderUnitsAction(productId).then((units) => {
-      if (!cancelled) onChange({ unitOptions: units });
-    });
+    // La miniatura la pide solo quien tiene panel: `/ventas/nueva` no la dibuja (D-2, AC-9).
+    searchOrderUnitsAction(productId, chooseUnits !== undefined).then(
+      (result) => {
+        if (!cancelled)
+          onChange({ unitOptions: result.units, unitImage: result.image });
+      },
+    );
     return () => {
       cancelled = true;
     };
@@ -181,6 +233,124 @@ export function LineSerials({
     (unit) => !chosen.has(unit.serial.toLowerCase()),
   );
   const helpId = `imei-${row.key}-ayuda`;
+
+  // La forma de la lámina 02 (D-2): chips de lo elegido, campo de escaneo y el disparador del panel.
+  // La lista de disponibles no está acá: vive en el panel. Sin hidratar queda el camino servido
+  // —el `textarea` y la lista en línea—, que es el que sigue andando sin JavaScript (V-3, AC-8).
+  if (chooseUnits && hydrated) {
+    const serials = splitLineSerials(row.serials);
+    const known = new Map(
+      (unitOptions ?? []).map((unit) => [unit.serial.toLowerCase(), unit]),
+    );
+    const priceOf = (serial: string): string => {
+      const unit = known.get(serial.toLowerCase());
+      if (unit) return unitPriceText(unit, row.price);
+      return row.price
+        ? formatMoney(row.price.amount, row.price.currency)
+        : "Sin precio";
+    };
+    const add = (value: string) => {
+      const serial = value.trim();
+      if (serial === "") return;
+      if (chosen.has(serial.toLowerCase())) {
+        setScan("");
+        return;
+      }
+      onChange({ serials: [...serials, serial].join("\n") });
+      setScan("");
+    };
+    return (
+      <div className="flex flex-col gap-3 sm:col-span-3">
+        <div className="flex flex-col gap-1">
+          <span className={labelClass}>Equipos seleccionados</span>
+          {serials.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-border-strong px-3 py-2 text-sm text-muted">
+              Todavía no elegiste equipos.
+            </p>
+          ) : (
+            <ul
+              aria-label={`Equipos seleccionados de ${row.productText}`}
+              className="flex flex-wrap gap-2 rounded-xl border border-border p-2"
+            >
+              {serials.map((serial) => (
+                <li
+                  key={serial}
+                  className="flex items-center gap-2 rounded-lg border border-border bg-surface-muted py-1 pr-1 pl-3 text-sm"
+                >
+                  <span className="font-mono break-all">{serial}</span>
+                  <span className="text-muted tabular-nums">
+                    {priceOf(serial)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onChange({
+                        serials: serials
+                          .filter(
+                            (other) =>
+                              other.toLowerCase() !== serial.toLowerCase(),
+                          )
+                          .join("\n"),
+                      })
+                    }
+                    className={`${secondaryButtonClass} px-2`}
+                  >
+                    <Icon name="close" className="size-3" />
+                    <span className="sr-only">Quitar el IMEI {serial}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <label htmlFor={`imei-${row.key}`} className={labelClass}>
+              Escanear o agregar IMEI
+            </label>
+            <input
+              id={`imei-${row.key}`}
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="Ingresá el IMEI completo"
+              value={scan}
+              aria-invalid={invalid || undefined}
+              aria-describedby={
+                describedBy ? `${helpId} ${describedBy}` : helpId
+              }
+              onChange={(event) => setScan(event.currentTarget.value)}
+              // Enter agrega el IMEI y **no** envía el formulario: también es lo que manda un
+              // lector de códigos al terminar de leer.
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") return;
+                event.preventDefault();
+                add(event.currentTarget.value);
+              }}
+              className={`${inputClass} font-mono`}
+            />
+          </div>
+          <button
+            ref={triggerRef}
+            type="button"
+            aria-haspopup="dialog"
+            aria-disabled={chooseUnits.open || undefined}
+            disabled={productId === "" || loading}
+            onClick={chooseUnits.onOpen}
+            className={secondaryButtonClass}
+          >
+            {loading ? "Buscando unidades…" : "Elegir unidades"}
+          </button>
+        </div>
+        <p id={helpId} className="text-sm text-muted">
+          Escribí o escaneá el IMEI completo y apretá Enter, o elegí las
+          unidades de la lista. La cantidad es la cantidad de equipos.
+        </p>
+        <input type="hidden" name="serials" value={row.serials} />
+        {hidden}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-2 sm:col-span-3">
       <label htmlFor={`imei-${row.key}`} className={labelClass}>

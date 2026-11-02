@@ -239,9 +239,81 @@ aserción por rol y por texto, de `getBoundingClientRect`, de `getComputedStyle`
 consultas, contra el build de producción con PostgreSQL real. Sube a **validado en staging** cuando
 el usuario recorra producción (AC-19). **No** alcanza «preparado para producción».
 
+## Ampliaciones de la lista cerrada, autorizadas en el turno
+
+Las dos se pidieron **antes** de escribir el código que las necesitaba, como manda el proyecto.
+
+| Archivo | Por qué | Cuándo |
+|---|---|---|
+| `src/app/(autenticado)/pedidos/actions.ts` | D-3 pide la miniatura en la cabecera del panel, y la versión de la imagen **no viaja** ni en la sugerencia del producto ni en la unidad: sale de `getProductImageVersions`, que es una lectura aparte | 2026-11-02 |
+| `tests/e2e/sales.spec.ts` | AC-9 exige demostrar que `/ventas/nueva` no cambió «con su propia prueba», y la spec **no nombraba** «unidad», «equipo» ni «IMEI` en ninguna de sus 764 líneas: el camino por equipos no tenía cobertura | 2026-11-02 |
+
+## Resultado de las mediciones
+
+**1 · Las sentencias del camino de las unidades.** Contadas interviniendo `pool.query` **y** la conexión que devuelve `pool.connect()`, sobre el mismo `getDb()` que usan los servicios.
+
+| | Sentencias |
+|---|---|
+| `listAvailableUnits` | 2 |
+| `getProductImageVersions` | 1 |
+| **Pedidos**, que dibuja la miniatura | **3** |
+| **Ventas**, que no la dibuja | **2** — las mismas que antes de esta subfase |
+
+La Medición 1 pedía que fueran **las mismas**. Son las mismas para Ventas y **una más** para Pedidos, que es el costo declarado de D-3: una lectura indexada por `productId`, una sola vez por producto elegido, la misma que ya hace la lista de productos. Queda encerrada detrás de la propiedad de D-2, así que ninguna otra pantalla la paga.
+
+**El primer intento de esta medición dio 0 sentencias.** El instrumento intervenía un pool creado con `createDb`, que ningún servicio usa. Es el mismo modo de falla que la 24.6.1 midió y publicó, y `scripts/medir-caminos.ts` advierte por escrito desde la 9.3.
+
+**2 · La lectura sin tope** (H-4, D-5), con **200 unidades disponibles** de un producto:
+
+| | |
+|---|---|
+| Unidades devueltas | 200 |
+| Primera corrida | 10,7 ms |
+| Segunda corrida | 5,6 ms |
+| La versión de la imagen | 2,1 ms |
+| Al navegador | **21.401 bytes** (107 por unidad) |
+
+**El límite conocido, publicado**: a este ritmo, mil unidades de un mismo producto serían unos **107 KB** y unos 30 ms. No hay tope ni paginación, y hoy el costo ya se pagaba —la lista en línea cargaba lo mismo—, así que el rediseño no empeoró nada. Queda como P-1.
+
+**3 · El ancho a 320 px** con dos chips de IMEI completo: el chip más ancho mide **194 px** dentro de un grupo de **212 px**, y el documento no desborda. La medición quedó **versionada en `tests/e2e/orders.spec.ts`**, no en un script del scratchpad: un número que no se puede volver a medir es una anécdota, como dice `medir-caminos.ts` desde la 9.3.
+
+## Comparación visual contra la lámina 02, entrada por entrada
+
+Veintisiete entradas. **Resuelta** = igual a la lámina; **declarada** = diferencia decidida en el brief; **nueva** = algo que la lámina no dibuja; **cosmética aceptada** = diferencia menor, con su motivo.
+
+| # | Entrada de la lámina | Clase | Nota |
+|---|---|---|---|
+| 1 | Título «Elegir unidades» y botón de cerrar | resuelta | |
+| 2 | Miniatura del producto en la cabecera | resuelta | probada cargada, no solo presente |
+| 3 | Nombre del producto | cosmética aceptada | lleva el SKU entre paréntesis, que es como lo dejó el buscador de la 19.2, y se trunca |
+| 4 | Precio del producto | resuelta | |
+| 5 | «Buscar por IMEI o código de unidad…» | declarada | V-1: dice «Buscar por IMEI», porque el código no existe |
+| 6 | «3 disponibles · 1 seleccionada» | resuelta | |
+| 7 | Tarjeta por unidad con casilla | resuelta | |
+| 8 | «U-0101» como título de la tarjeta | declarada | V-1: el título es el IMEI |
+| 9 | «IMEI …1421», enmascarado | declarada | V-2: completo, hasta que P-4 se haga en todas las pantallas |
+| 10 | «Grado A · Batería 91%» | cosmética aceptada | «Batería 91 %», con el espacio que usa el resto del CRM |
+| 11 | Precio de la unidad, a la derecha | resuelta | |
+| 12 | Fila elegida resaltada | resuelta | |
+| 13 | Pie con «Volver» y «Usar selección» | resuelta | |
+| 14 | Panel de alto completo, pegado al borde | cosmética aceptada | toma el alto de su contenido y va en el flujo, como los cinco paneles de la 24.6.1 |
+| 15 | Miniatura dentro del selector de producto | declarada | D-3: `picker.tsx` lo comparten siete pantallas |
+| 16 | «Precio unitario (USD)» con el monto pelado | cosmética aceptada | la etiqueta es «Precio unitario» y el valor «$ 450,00»: `formatMoney` es el único formateador del proyecto y vive fuera de la lista cerrada |
+| 17 | «Equipos seleccionados \*» con asterisco | cosmética aceptada | sin asterisco: quién es obligatorio lo decide el producto en el servidor, no el formulario |
+| 18 | Chip «U-0102 · IMEI …1422 ✕» | resuelta | con V-1 y V-2: «356938035641422 · $ 450,00 ✕» |
+| 19 | Ícono de escaneo dentro del campo | cosmética aceptada | sin ícono: no hay uno de escaneo en `icons.tsx` y agregarlo queda fuera de la lista |
+| 20 | «Ingresá el IMEI completo» | resuelta | |
+| 21 | Botón «Elegir unidades» con ícono | cosmética aceptada | sin ícono, por lo mismo que 19 |
+| 22 | «Cantidad» y «Subtotal (USD)» de solo lectura | resuelta | |
+| 23 | «Agregar producto» | declarada | el botón dice «Agregar línea» desde la 19.2; renombrarlo no está en el alcance |
+| 24 | Aviso «El pedido se crea pendiente…» | resuelta | |
+| 25 | Tarjeta «Total estimado (USD) · USD 450» con «Crear pedido» adentro | cosmética aceptada | dice «Total estimado:», con dos puntos, para que la prueba del alta de la 19.2 siga pasando **sin tocarla** (AC-10) |
+| 26 | «Crear pedido» en gris con el panel abierto | resuelta | deshabilitado de verdad, no solo gris |
+| 27 | — | nueva | el cuerpo al 60 % de opacidad con el panel abierto: la lámina no lo dibuja, es la convención de la 24.5.3 y la 24.6.1 |
+
 ## Pendientes que esta subfase deja abiertos
 
-- **P-1**: el tope de la lectura de unidades disponibles, con su número medido (D-5).
+- **P-1**: el tope de la lectura de unidades disponibles (D-5). **Medido**: con 200 unidades, 10,7 ms en frío, 5,6 ms en caliente y 21.401 bytes al navegador; mil unidades serían unos 107 KB.
 - **P-2**: la miniatura en `picker.tsx` y sus siete pantallas (D-3, alternativa b).
 - **P-3**: encender la propiedad de D-2 para `/ventas/nueva`, que es trabajo de la **24.6.2**.
 - **P-4**: el enmascarado del IMEI, que sigue fuera de la fase.

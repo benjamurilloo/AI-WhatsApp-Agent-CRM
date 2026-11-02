@@ -431,15 +431,15 @@ Agregada en la 17.4 ([brief-17.4](../decisions/brief-17.4-informacion-del-negoci
 
 ## 15. Nuevo pedido
 
-*Agregada en la 19.2* (D-5 a D-7; FR-ORD-01 a FR-ORD-03). Ruta `/pedidos/nuevo`; desde la ficha de un cliente, `/pedidos/nuevo?cliente=<id>` con el cliente ya elegido.
+*Agregada en la 19.2* (D-5 a D-7; FR-ORD-01 a FR-ORD-03). Ruta `/pedidos/nuevo`; desde la ficha de un cliente, `/pedidos/nuevo?cliente=<id>` con el cliente ya elegido. *Rediseñada en la 24.6.1-b* con la lámina 02 de V2-09: el panel «Elegir unidades».
 
 - **Objetivo**: cargar un pedido pendiente.
 - **Usuario autorizado**: solo `admin`. Un `viewer` recibe «No tenés permiso para ver esta página.»
-- **Información mostrada**: el buscador de clientes; cinco líneas de inicio, cada una con el buscador de productos, la cantidad, el precio vigente y el subtotal estimado; el total estimado, con el aviso de que el total que vale es el que calcula el sistema.
-- **Acciones**: agregar y quitar líneas, hasta 50; las vacías no se envían. Crear el pedido.
+- **Información mostrada**: el buscador de clientes; cinco líneas de inicio, cada una con el buscador de productos, la cantidad, el precio vigente y el subtotal estimado; el total estimado, con el aviso de que el total que vale es el que calcula el sistema. Desde la 24.6.1-b, en un producto que se vende por unidad: los equipos elegidos como **chips** con su IMEI y su precio, un campo para escanear o escribir un IMEI, y «Precio unitario», «Cantidad» y «Subtotal» como campos de solo lectura. Al pie, el aviso «El pedido se crea pendiente. Elegir un equipo no lo reserva.», que es lo que dice el [ADR 0020](../decisions/0020-el-pedido.md).
+- **Acciones**: agregar y quitar líneas, hasta 50; las vacías no se envían. Crear el pedido. Desde la 24.6.1-b, abrir el panel **«Elegir unidades»** —cabecera con el producto, su miniatura y su precio; buscador por IMEI; el recuento «N disponibles · M seleccionadas»; una casilla por unidad con su IMEI, grado, batería y precio; y «Volver» o «Usar selección»—, quitar un chip, y agregar un IMEI con Enter, que es lo que manda un lector de códigos.
 - **Errores**: el cliente o cada línea con su motivo (sin precio, otra moneda, inactivo, repetido, total en cero, monto demasiado grande); un precio que cambió se muestra con el nuevo, y el pedido no se crea hasta confirmarlo.
-- **Sin JavaScript**: los buscadores son campos de texto; el cliente se reconoce por su nombre exacto y el producto por su SKU exacto.
-- **Accesibilidad**: los buscadores son combobox de ARIA 1.2, como los de la 15.2, y se eligen con las flechas y Enter; cada línea es un grupo con su número.
+- **Sin JavaScript**: los buscadores son campos de texto; el cliente se reconoce por su nombre exacto y el producto por su SKU exacto. **No hay panel ni chips**: queda el `textarea` de IMEI, uno por renglón, y la lista servida de unidades disponibles. El panel no puede abrirse por la URL —como sí lo hacen los cinco de la ficha— porque el borrador vive en estado de cliente y una navegación lo perdería.
+- **Accesibilidad**: los buscadores son combobox de ARIA 1.2, como los de la 15.2, y se eligen con las flechas y Enter; cada línea es un grupo con su número. El panel es un `role="dialog"` **sin `aria-modal`**, con el cuerpo de la pantalla `inert` y «Crear pedido» deshabilitado mientras está abierto: `inert` cubre el cuerpo y no el marco de la aplicación, así que declararlo modal diría que atrapa un foco que no atrapa. Escape y «Volver» cierran sin aplicar y devuelven el foco al disparador. Quitar un chip nombra su IMEI.
 
 ## 16. Detalle de un pedido
 

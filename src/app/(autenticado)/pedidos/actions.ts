@@ -2,7 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getCurrentPrices, suggestProducts } from "@/modules/catalog";
+import {
+  getCurrentPrices,
+  getProductImageVersions,
+  suggestProducts,
+  type ProductImageVersion,
+} from "@/modules/catalog";
 import { suggestClients } from "@/modules/crm";
 import { listAvailableUnits } from "@/modules/inventory";
 import {
@@ -282,24 +287,47 @@ export type OrderUnitOption = {
   price: { amount: string; currency: string } | null;
 };
 
+// Las unidades disponibles de un producto y, desde la 24.6.1-b (D-3), la versión de su imagen
+// principal: el panel «Elegir unidades» de la lámina 02 muestra la miniatura en su cabecera, y la
+// versión no viaja ni en la sugerencia del producto ni en la unidad. Es **una lectura más** por
+// producto elegido —indexada por productId, la misma que hace la lista de productos—, declarada
+// como desvío de la Medición 1 del brief y autorizada por el usuario el 2026-11-02. Sin imagen, la
+// versión es `undefined` y el panel dibuja el recuadro vacío.
+export type OrderUnitsResult = {
+  units: OrderUnitOption[];
+  image: ProductImageVersion | undefined;
+};
+
+const NO_UNITS: OrderUnitsResult = { units: [], image: undefined };
+
 export async function searchOrderUnitsAction(
   productId: string,
-): Promise<OrderUnitOption[]> {
+  // Solo quien va a dibujar la miniatura la pide. `/ventas/nueva` no la dibuja, así que sigue
+  // haciendo **exactamente las mismas consultas** que antes de la 24.6.1-b (D-2, AC-9).
+  withImage = false,
+): Promise<OrderUnitsResult> {
   const context = await requireSession();
   const { log } = logger("pedidos.unidades", context);
   try {
-    if (typeof productId !== "string") return [];
-    const found = await listAvailableUnits(context, productId.slice(0, 64));
-    if (!found.ok) return [];
-    return found.units.map((unit) => ({
-      serial: unit.serial,
-      grade: unit.grade,
-      batteryHealth: unit.batteryHealth,
-      price: unit.price,
-    }));
+    if (typeof productId !== "string") return NO_UNITS;
+    const id = productId.slice(0, 64);
+    const found = await listAvailableUnits(context, id);
+    if (!found.ok) return NO_UNITS;
+    const images = withImage
+      ? await getProductImageVersions(context, [id])
+      : null;
+    return {
+      units: found.units.map((unit) => ({
+        serial: unit.serial,
+        grade: unit.grade,
+        batteryHealth: unit.batteryHealth,
+        price: unit.price,
+      })),
+      image: images?.ok ? images.versions.get(id) : undefined,
+    };
   } catch (error) {
     log("INTERNAL", error);
-    return [];
+    return NO_UNITS;
   }
 }
 

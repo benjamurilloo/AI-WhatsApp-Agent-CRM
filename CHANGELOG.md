@@ -2,6 +2,41 @@
 
 Registro de cierres de fase y subfase. Cada entrada dice qué se certifica y qué explícitamente no, sin inferir nunca un nivel de validación superior al alcanzado. El seguimiento de tareas vive en [Notion](https://app.notion.com/p/3d8702be6f4e81659e43c3d8bd9a6e1c); el porqué de cada decisión, en [docs/decisions](docs/decisions/README.md).
 
+## 2026-11-02 — 24.6.1-b: el alta de un pedido con selección de equipos
+
+Decimotercera subfase de la Fase 24 ([brief-24.6.1-b](docs/decisions/brief-24.6.1-b-alta-con-seleccion-de-equipos.md)). Rediseño de **`/pedidos/nuevo`** con la lámina 02 de la v2: los equipos se eligen en un panel «Elegir unidades» con buscador y casillas, lo elegido queda como chips con su precio, y la cantidad y el subtotal pasan a ser campos de solo lectura. **Ninguna regla del alta cambió**: lo que cambió es cómo se eligen los equipos. Sin migraciones, sin tablas y sin contratos nuevos.
+
+**Certifica:**
+
+- **El panel «Elegir unidades» con la forma de la lámina**: cabecera con el producto, **su miniatura** y su precio; buscador por IMEI; el recuento «N disponibles · M seleccionadas»; una casilla por unidad con su IMEI, grado, batería y precio alineado a la derecha, con la fila elegida resaltada; y el pie con «Volver» y «Usar selección». Verificado **por rol y por texto**, no por captura.
+- **Tres hallazgos del código fijaron el alcance antes de escribir una línea.** El panel **no puede abrirse por la URL**, como sí lo hacen los cinco de la ficha: el borrador vive en estado de cliente y una navegación de ruta lo perdería, así que es un diálogo y el camino servido queda de alternativa sin JavaScript. `line-units.tsx` **lo comparten `/pedidos/nuevo` y `/ventas/nueva`**, que es de la 24.6.2. Y el código `U-0102` que dibuja la lámina **no existe**: `stock_units` tiene el IMEI y un UUID, nada más.
+- **El componente compartido no cambió para Ventas.** El selector nuevo, la palabra «equipos» y el recuadro de solo lectura entraron **detrás de una propiedad que solo Pedidos enciende**; `/ventas/nueva` sigue con su `textarea` de IMEI y su lista de disponibles en línea hasta la 24.6.2, que la enciende en una línea. Eso **ahora tiene una prueba**: la spec de ventas no nombraba «unidad», «equipo» ni «IMEI» en ninguna de sus 764 líneas, así que lo único que respaldaba el criterio era leer el código.
+- **Ventas tampoco paga la consulta de la miniatura**, que es la única lectura que esta subfase agregó: va detrás de la misma propiedad. Medido: `listAvailableUnits` emite **2** sentencias y la versión de la imagen **1**, así que Pedidos paga **3** y Ventas sigue pagando **2**, exactamente las de antes.
+- **La miniatura se carga de verdad**, no solo aparece en el HTML: `naturalWidth` mayor que cero y la dirección con `?v=<sha>`, que es lo que la 17.5 dejó para que reemplazar la imagen no muestre la anterior.
+- **El buscador del panel filtra en memoria y no pide nada**: con el panel abierto, escribir un IMEI produce **cero** peticiones al servidor, contadas en el navegador, no estimadas.
+- **Con el panel abierto, «Crear pedido» queda deshabilitado y el cuerpo `inert`** —exactamente un elemento, no cero—, y el disparador se dibuja `aria-disabled`. Es la convención de la 24.5.3 y la 24.6.1. El panel **no se declara `aria-modal`**: `inert` cubre el cuerpo de la pantalla y no el marco de la aplicación.
+- **El borrador sobrevive**: abrir el panel, elegir, usar la selección y cerrarlo no pierde el cliente, las otras líneas ni lo escrito; «Volver» y Escape cierran **sin aplicar** y devuelven el foco al disparador.
+- **Enter en el campo de escaneo agrega el IMEI y no envía el formulario**, que es lo que manda un lector de códigos al terminar de leer.
+- **Sin JavaScript el alta sigue creando un pedido** con el IMEI escrito a mano: no hay panel ni chips, queda el camino servido de siempre.
+- **El límite de la lectura sin tope, medido y publicado** en vez de descubierto con un cliente real: con **200 unidades disponibles**, `findAvailableUnitsOfProduct` —que no tiene `LIMIT`— tarda **10,7 ms** en frío y **5,6 ms** en caliente, y manda **21.401 bytes** al navegador, 107 por unidad. Mil unidades serían unos 107 KB. Queda como pendiente con su número.
+- **Ninguna migración**: `db:generate` no encuentra cambios y siguen **67**.
+- **Ninguna regla del pedido cambió**, y las pruebas que lo demuestran **no se tocaron**: creación de dos líneas, precio que cambió entre la vista y el envío, línea rechazada sin consumir número, el ciclo completo de la 19.3 y el pedido del agente de la 19.4 siguen pasando como estaban.
+- **Validado localmente**: typecheck, ESLint sobre `src/` y Prettier limpios; **2.212** pruebas de `unit` y `guards`.
+- **Validado en integración** contra el build de producción con PostgreSQL real: **32** casos de extremo a extremo entre pedidos y ventas, **desbordamiento cero a 320, 390, 640, 1082 y 1440 px** con el panel abierto y cerrado, y axe sin violaciones en claro y en oscuro. A 320 px el chip más ancho mide **194 px** dentro de un grupo de 212, y esa medición quedó **versionada en la prueba**, no en un script suelto.
+- **Diez mutaciones, las diez enrojeciendo exactamente la aserción prevista**, incluidas las dos que protegen a `/ventas/nueva`: encender la propiedad desde Ventas y dejar que la palabra «equipos» se filtre.
+- **Dos defectos del instrumental que las mediciones encontraron**, y valen más que los números. El contador de sentencias dio **0** en su primera corrida porque intervenía un pool que los servicios no usan: es el mismo modo de falla que la 24.6.1 midió y publicó, pisado otra vez. Y una mutación encontró un defecto **en la prueba nueva**: comprobar que Enter *no* envió el formulario justo después de la tecla pasa en verde **aunque sí lo haya enviado**, porque la navegación todavía no ocurrió; la aserción ahora espera a que el envío pueda completarse antes de mirar.
+- **Seis diferencias con la v2, declaradas antes de implementar**: las unidades se identifican por su IMEI y no por un código que el modelo no tiene; el IMEI se muestra completo; sin JavaScript no hay panel; el panel no es `aria-modal`; no se dibuja la cámara, porque el ícono de escaneo no certifica acceso a cámara; y el subtotal sigue siendo un estimado del cliente, con el total definitivo calculado por el servidor.
+
+**No certifica:**
+
+- **el nivel «validado en staging»**: falta la recorrida del usuario sobre producción (AC-19);
+- **el nivel «preparado para producción»**, que además pide backups probados, rollback y observabilidad revisados para este cambio;
+- **la CI en verde sobre el SHA desplegado** (AC-16) ni **la revisión independiente** (AC-18), que el brief exige por el componente compartido;
+- **el tope de la lectura de unidades disponibles**: se midió y se declaró, no se agregó (D-5);
+- **la miniatura en `picker.tsx`** y sus otras seis pantallas, que la lámina también dibuja en el selector de producto (D-3);
+- **el enmascarado del IMEI**, que sigue fuera de la fase;
+- **que `format:check` y `lint` completos pasen en esta máquina**: `lint` recorre scripts empaquetados de una skill instalada, sin versionar, con 749 errores propios, y `format:check` falla por `core.autocrlf` sin `.gitattributes`. Los dos son ajenos a esta subfase e invisibles en la CI.
+
 ## 2026-11-02 — 24.6.1: pedidos
 
 Duodécima subfase de la Fase 24 ([brief-24.6.1](docs/decisions/brief-24.6.1-pedidos.md)). Rediseño de **las dos pantallas de Pedidos que ya existían** —el listado y la ficha— y conversión de las cinco operaciones del pedido en **paneles que abren y cierran por la URL**, con **dos lecturas nuevas** medidas. Sin migraciones, sin tablas y sin contratos nuevos.

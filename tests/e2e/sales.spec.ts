@@ -762,3 +762,83 @@ test("brief-20.4: un viewer ve la anulación y no puede anular", async ({
     page.getByRole("heading", { level: 1, name: "Anulación A-000001" }),
   ).toBeVisible();
 });
+
+// Un producto que se vende por unidad con sus unidades disponibles, para fijar que el alta de
+// mostrador **no cambió** con la 24.6.1-b (su AC-9).
+async function insertUnitProduct(
+  sku: string,
+  name: string,
+  price: string,
+  serials: string[],
+) {
+  const productId = await insertStockedProduct(
+    sku,
+    name,
+    price,
+    String(serials.length),
+  );
+  await db.execute(
+    sql`update products set tracking = 'unit' where id = ${productId}`,
+  );
+  await db.execute(
+    sql`insert into organization_capabilities (organization_id, capability, activated_by)
+        values (${SEED_ORGANIZATION_ID}, 'serialized_units', ${ADMIN_SEED.id})
+        on conflict do nothing`,
+  );
+  for (const serial of serials) {
+    await db.execute(
+      sql`insert into stock_units (organization_id, product_id, serial, cost, cost_currency,
+                                   price, price_currency, origin_type, created_by)
+          values (${SEED_ORGANIZATION_ID}, ${productId}, ${serial}, 100, 'ARS', ${price}, 'ARS',
+                  'manual', ${ADMIN_SEED.id})`,
+    );
+  }
+  return productId;
+}
+
+test("brief-24.6.1-b: el alta de mostrador sigue eligiendo los equipos como antes, sin panel ni chips", async ({
+  page,
+}) => {
+  // AC-9 de la 24.6.1-b. `line-units.tsx` lo comparten `/pedidos/nuevo` y esta pantalla, y el
+  // rediseño del selector entró **detrás de una propiedad que solo Pedidos enciende** (su D-2):
+  // acá tiene que seguir estando el `textarea` de IMEI con la lista de disponibles en línea, y
+  // **no** el panel. Sin este caso, lo único que respaldaba AC-9 era leer el código: la spec no
+  // nombraba «unidad», «equipo» ni «IMEI» en ninguna línea.
+  const productId = await insertUnitProduct("IPH-13", "iPhone 13", "450", [
+    "356938035645001",
+    "356938035645002",
+  ]);
+  await login(page, ADMIN);
+  await page.goto("/ventas/nueva");
+  await pick(line(page, 1), "Producto", "iPhone");
+
+  // Lo de siempre: el campo de IMEI, uno por renglón, y la lista servida de disponibles.
+  const imei = line(page, 1).getByLabel("IMEI de las unidades");
+  await expect(imei).toBeVisible();
+  await expect(line(page, 1)).toContainText("Unidades disponibles");
+  await line(page, 1)
+    .getByRole("button", { name: "Agregar el IMEI 356938035645001" })
+    .click();
+  await expect(imei).toHaveValue("356938035645001");
+  // La palabra es «unidad», no «equipo»: el recuadro de la lámina 02 es de Pedidos.
+  await expect(line(page, 1)).toContainText("1 unidad");
+  await expect(line(page, 1)).not.toContainText("1 equipo");
+
+  // Y nada de lo que la 24.6.1-b agregó llegó hasta acá.
+  await expect(
+    page.getByRole("button", { name: "Elegir unidades", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(line(page, 1)).not.toContainText("Equipos seleccionados");
+  await expect(line(page, 1)).not.toContainText("Escanear o agregar IMEI");
+  await expectAccessible(page, "alta de mostrador por unidad");
+
+  // El camino sigue andando de punta a punta.
+  await page.getByRole("button", { name: "Emitir venta" }).click();
+  // El nivel importa: el número también titula el comprobante imprimible, y sin él son dos.
+  await expect(
+    page.getByRole("heading", { name: "Venta V-000001", level: 1 }),
+  ).toBeVisible();
+  await expect(page.getByRole("main")).toContainText("356938035645001");
+  expect(await onHand(productId)).toBe("1.000");
+});

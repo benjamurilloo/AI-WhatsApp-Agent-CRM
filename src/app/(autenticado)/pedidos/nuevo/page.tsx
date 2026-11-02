@@ -9,7 +9,6 @@ import {
   HeaderIcon,
 } from "@/app/_components/detail-header";
 import { PageNotice } from "@/app/_components/page-notice";
-import { SectionCard } from "@/app/_components/section-card";
 import type { SearchParams } from "../filters";
 import { FORBIDDEN_PAGE_MESSAGE } from "../messages";
 import { OrderForm } from "./order-form";
@@ -58,21 +57,17 @@ export default async function NewOrderPage({
           </p>
         }
       />
-      <SectionCard
-        id="pedido-titulo"
-        title="Cliente y líneas"
-        icon="list"
-        className="mt-6"
-      >
-        <OrderForm
-          initialClient={initialClient}
-          maxLines={MAX_ORDER_LINES}
-          unitsEnabled={await hasCapability(
-            context.organizationId,
-            "serialized_units",
-          )}
-        />
-      </SectionCard>
+      {/* La tarjeta «Cliente y líneas» la arma el propio formulario desde la 24.6.1-b: el panel
+          «Elegir unidades» va **al lado** de la tarjeta, como en la lámina 02, y quien sabe si está
+          abierto es el formulario, que es donde vive el borrador. */}
+      <OrderForm
+        initialClient={initialClient}
+        maxLines={MAX_ORDER_LINES}
+        unitsEnabled={await hasCapability(
+          context.organizationId,
+          "serialized_units",
+        )}
+      />
     </main>
   );
 }
