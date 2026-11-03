@@ -25,6 +25,10 @@ Decimoséptima subfase de la Fase 24 ([brief-24.6.2-e](docs/decisions/brief-24.6
 
 Los seis menores, aplicados: la afirmación «no hay pérdida de información» era categórica y tenía una excepción —una venta sin fila de situación pierde la vigencia, porque los cuatro estados pasaron a depender solo de `cash`—; después del cambio **ningún caso fijaba la moneda** de un «por cobrar» fuera de los pesos, y se agregó una venta en dólares parcial; el bullet de la 20.4 en `Screens.md` quedaba **contradicho** y no extendido; y dos imprecisiones en comentarios entregados.
 
+**Desplegada en `f3b2f53`** el 2026-11-03, con la CI en **`success`** sobre ese SHA exacto (run **41708903119**, 36,1 min, los veintiún pasos en verde) y las **siete verificaciones del runbook pasadas**: los 18 archivos de configuración sin diferencias, un solo salto de proxy con su control negativo, HSTS como debe estar, la aplicación solo en loopback, el rol de la aplicación distinto del dueño con `audit_logs` insert-only, los tres extremos de ingestión y lectura en 401 sin token, y la organización real en cero. Para volver atrás, **`b39ec5d`**, anotado antes de desplegar; entre los dos **no hay migraciones**. **El recorrido del usuario sobre producción no encontró defectos** (AC-14), y con eso la subfase queda **validada en staging**.
+
+**La corrida de CI cerró el único agujero que quedaba**: los **364 casos de extremo a extremo de un tirón**, que es lo que las ocho corridas locales no podían ejercitar, y los **tests de integración en verde**, que confirmaron que el rojo de `migration-0062` era contención de la máquina del operador y no del código.
+
 **No certifica:**
 
 - **La batería local completa en una sola corrida.** Son **364 casos en verde sobre los 42 archivos**, pero en **ocho corridas**, porque el sistema cortó dos veces la corrida entera por falta de memoria. Lo que ocho corridas **no ejercitan** es la interferencia entre archivos de grupos distintos, que en este proyecto ya produjo un defecto real —una capacidad que una spec encendía se filtraba al archivo siguiente de la misma base—. **Eso lo cierra la CI**, que corre los 364 de un tirón.

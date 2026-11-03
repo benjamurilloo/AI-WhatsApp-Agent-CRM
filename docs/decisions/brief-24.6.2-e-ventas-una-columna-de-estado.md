@@ -318,6 +318,42 @@ roto justamente la igualdad.
 **Medido después del cambio**, con el número impreso por el caso: el botón da **38 px** en ventas y
 **38 px** en pedidos, dentro de la tabla. Sigue por debajo de los 44 del objetivo táctil.
 
+## Cierre
+
+**Cerrada el 2026-11-03.** Nivel alcanzado: **validado en staging**. No certifica **preparado para
+producción**.
+
+- **Commit**: `f3b2f538a13c6510e826b088800a65ef25ce4558`, ocho archivos. El chequeo de la lista
+  cerrada se hizo con `git show --stat` contra la tabla, fila por fila: los seis de la lista
+  original —con `ventas/messages.ts` **sin tocar**, que es lo que su fila condicional preveía— más
+  las **dos extensiones registradas**, `pedidos/page.tsx` y `HANDOFF.md`, las dos preguntadas antes
+  de tocarlas y autorizadas por el usuario en su turno.
+- **CI**: run **41708903119** en `success` sobre ese SHA exacto, 36,1 min, los veintiún pasos en
+  verde. Es la corrida que cerró AC-12: los **364 casos de extremo a extremo de un tirón**, que es
+  lo que las ocho corridas locales no podían ejercitar.
+- **Despliegue**: `f3b2f53` el 2026-11-03. Vuelta atrás, `b39ec5d`, anotado en
+  `/var/lib/crm-production/despliegues` **antes** de desplegar; entre los dos **no hay
+  migraciones**, así que la vuelta es solo de código.
+- **Las siete verificaciones del runbook, pasadas**: los **18** archivos de configuración sin
+  diferencias y con el recuento cerrado; **un solo salto de proxy**, con su control negativo desde
+  dentro del droplet contra el dominio público —la fila del intento era de 8 segundos antes, **la
+  única** de la ventana de 15 minutos, y su clave no era la de `'sin-proxy'`—; HSTS presente sobre
+  HTTPS y ausente sobre HTTP; la aplicación escuchando **solo** en `127.0.0.1:3000`; el rol
+  `crm_app_login` distinto del dueño `crm_owner`, con `audit_logs` en `INSERT=t`, `DELETE=f`,
+  `UPDATE=f`; los tres extremos de ingestión y lectura en **401 sin token**; y la organización real
+  «Vixora» en **cero** clientes, mensajes y productos.
+- **AC-14**: el usuario recorrió `/ventas` en producción el 2026-11-03 y **no encontró defectos**.
+
+**Lo que esta subfase explícitamente no certifica**, además de lo anotado en el CHANGELOG: el
+objetivo táctil de 44 px, que **ninguna** de las dos pantallas cumple —38 px medidos—, y la
+inconsistencia deliberada entre el listado, que dice el estado una vez, y la ficha, que sigue con
+dos insignias (D-4 y V-1).
+
+**Conocimiento capturado** en el vault: [[A Screen Named as the Reference Must Be Checked Against
+the Spec Before It Is Copied]], nueva, y la tercera observación de [[A Pre-Approved Limitation
+Becomes the Default Unless Measured First]] —una limitación **medida** puede ser igual de falsa si
+se midió fuera de su contexto—.
+
 ## Condiciones de detención
 
 - Si hace falta una migración, una tabla, un contrato o una lectura nueva, **se para**: las reglas
