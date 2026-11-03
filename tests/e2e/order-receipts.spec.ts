@@ -249,6 +249,9 @@ test("un admin seña un pedido en dos medios con el teclado, ve el rechazo de un
 
   // La venta: lo cobrado incluye la seña del pedido, y falta el resto.
   await expect(page).toHaveURL(/\/ventas\/[0-9a-f-]+\?aviso=emitida$/);
+  // El dinero de la ficha vive en la pestaña «Cobros» desde la 24.6.2-b (D-4).
+  await page.getByRole("link", { name: "Cobros" }).click();
+  await expect(page).toHaveURL(/\?pestana=cobros$/);
   const saleReceipts = page.getByRole("region", {
     name: "Cobros de la venta V-000001",
   });
@@ -301,7 +304,8 @@ test("un admin cancela un pedido señado: lo señado pasa a la cuenta, la venta 
   await expectAccessible(page, "pedido cancelado con seña");
 
   // Y la venta del cliente lo recibe de su cuenta.
-  await page.goto(`/ventas/${saleId}`);
+  // El dinero de la ficha vive en la pestaña «Cobros» desde la 24.6.2-b (D-4).
+  await page.goto(`/ventas/${saleId}?pestana=cobros`);
   await expect(
     page.getByText("Imputado desde la cuenta del cliente"),
   ).toBeVisible();

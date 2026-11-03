@@ -64,6 +64,17 @@ test.afterEach(async () => {
   await db.execute(
     sql`delete from organization_capabilities where organization_id = ${SEED_ORGANIZATION_ID}`,
   );
+  // La 24.6.2-b agrega un modelo y un técnico para la orden de servicio del caso del origen, y por
+  // el mismo motivo que la capacidad, se borran acá: ni product_models ni suppliers están en el
+  // TRUNCATE de esta spec. Las órdenes de servicio **no se borran** —un trigger lo impide, porque
+  // la tabla es de solo inserción (ADR 0013)—, así que se vacían con TRUNCATE, como el beforeEach.
+  await db.execute(sql`truncate table service_order_lines, service_orders`);
+  await db.execute(
+    sql`delete from product_models where organization_id = ${SEED_ORGANIZATION_ID}`,
+  );
+  await db.execute(
+    sql`delete from suppliers where organization_id = ${SEED_ORGANIZATION_ID}`,
+  );
 });
 
 async function login(page: Page, email: string) {
@@ -192,10 +203,15 @@ test("un admin emite la venta de un pedido entregado con el teclado, la encuentr
   await expect(page.getByText(LEGEND).first()).toBeVisible();
   await expect(page.getByRole("link", { name: "P-000003" })).toBeVisible();
   await expect(page.getByText(EMAIL)).toBeVisible();
+  await expectAccessible(page, "detalle de la venta");
+  // La historia vive en la pestaña «Actividad» desde la 24.6.2-b, y se llega por su enlace: las
+  // pestañas son enlaces, no botones, así que andan sin JavaScript.
+  await page.getByRole("link", { name: "Actividad" }).click();
+  await expect(page).toHaveURL(/\?pestana=actividad$/);
   await expect(
     page.getByRole("table", { name: "Historia de la venta V-000001" }),
   ).toContainText("Emisión");
-  await expectAccessible(page, "detalle de la venta");
+  await expectAccessible(page, "actividad de la venta");
   // La venta no mueve el stock (ADR 0021, punto 3).
   expect(await counts()).toEqual({ sales: 1, movements: 0 });
 
@@ -487,7 +503,11 @@ test("brief-20.3: un admin emite una venta sin cliente con el teclado, la imprim
   const table = page.getByRole("table", { name: "Ventas de la organización" });
   await expect(table).toContainText("V-000001");
   await expect(table).toContainText("Consumidor final");
-  await expect(table).toContainText("Sin pedido");
+  // La columna «Origen» de la lámina 01 (brief-24.6.2-b): una venta sin pedido es de mostrador.
+  await expect(table).toContainText("Mostrador");
+  // Y la columna «Cobros», con la situación en la moneda de la venta: todavía sin cobrar.
+  await expect(table).toContainText("Pendiente");
+  await expect(table).toContainText("$ 3.703,50 por cobrar");
   await expectAccessible(page, "lista con una venta sin pedido");
 
   await page.goto(`/productos/${coffee}/movimientos?tipo=venta`);
@@ -596,6 +616,9 @@ test("brief-20.4: un admin anula una venta sin pedido con el teclado, repone el 
   await expect(page.getByRole("region", { name: "Anulación" })).toContainText(
     "Esta venta está vigente.",
   );
+  // «Anular» quedó en «Más» (brief-24.6.2-b, AC-7). Es un <details>, así que se abre con el
+  // teclado y sin JavaScript, y recién entonces aparece el enlace.
+  await page.getByRole("group").filter({ hasText: "Más" }).first().click();
   await page.getByRole("link", { name: "Anular venta" }).focus();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\?confirmar=anular$/);
@@ -627,10 +650,13 @@ test("brief-20.4: un admin anula una venta sin pedido con el teclado, repone el 
   await expect(page.getByText(/^Anulada por A-000001 el /)).toBeVisible();
   await expect(page.getByText(/Operación no concretada\.$/)).toBeVisible();
   await expect(page.getByRole("link", { name: "Anular venta" })).toHaveCount(0);
+  await expectAccessible(page, "venta anulada");
+  // La historia vive en la pestaña «Actividad» desde la 24.6.2-b (D-4).
+  await page.getByRole("link", { name: "Actividad" }).click();
   await expect(
     page.getByRole("table", { name: "Historia de la venta V-000001" }),
   ).toContainText("Anulación A-000001: Operación no concretada");
-  await expectAccessible(page, "venta anulada");
+  await page.getByRole("link", { name: "Resumen" }).click();
   expect(await onHand(coffee)).toBe("10.000");
 
   await page
@@ -677,8 +703,18 @@ test("brief-20.4: la lista filtra las anuladas y la encuentra por el número de 
   await expect(page).toHaveURL(/\?aviso=anulada$/);
 
   await page.goto("/ventas");
-  await page.getByLabel("Estado").selectOption("anulada");
-  await page.getByRole("button", { name: "Aplicar filtros" }).click();
+  // La vigencia se elige en la barra de pestañas de la lámina 01, que son enlaces con su contador
+  // (brief-24.6.2-b). Antes era un <select> con «Aplicar filtros».
+  const vigencia = page.getByRole("navigation", {
+    name: "Vigencia de las ventas",
+  });
+  await expect(vigencia.getByRole("link", { name: /^Todas/ })).toContainText(
+    "1",
+  );
+  await expect(vigencia.getByRole("link", { name: /^Anuladas/ })).toContainText(
+    "1",
+  );
+  await vigencia.getByRole("link", { name: /^Anuladas/ }).click();
   await expect(page).toHaveURL(/estado=anulada/);
   const table = page.getByRole("table", { name: "Ventas de la organización" });
   await expect(table).toContainText("V-000001");
@@ -1130,5 +1166,458 @@ test("brief-24.6.2: sin desbordamiento horizontal en el alta de mostrador, de 32
       await anchoDesbordado(page),
       `panel abierto a ${ancho} px`,
     ).toBeLessThanOrEqual(0);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// La 24.6.2-b: el listado con la forma de la lámina 01 y la ficha en pestañas.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Un medio de pago y un cobro por SQL: las pantallas de cobro tienen sus propios casos, acá solo
+// hace falta que la venta tenga cobrado algo para mirar la columna «Cobros» del listado.
+async function insertTransferMethod() {
+  // payment_methods **no** está en el TRUNCATE de esta spec, así que el medio sobrevive entre casos:
+  // se reusa el que haya y se crea solo la primera vez. Insertar a secas rompe con el único por
+  // nombre, que fue lo que pasó al escribir estos casos.
+  const result = await db.execute<{ id: string }>(
+    sql`insert into payment_methods (organization_id, name, is_cash)
+        values (${SEED_ORGANIZATION_ID}, 'Transferencia', false)
+        on conflict do nothing
+        returning id`,
+  );
+  if (result.rows[0]) return result.rows[0].id;
+  const found = await db.execute<{ id: string }>(
+    sql`select id from payment_methods
+        where organization_id = ${SEED_ORGANIZATION_ID} and lower(name) = 'transferencia'`,
+  );
+  return found.rows[0]!.id;
+}
+
+async function insertSaleReceipt(
+  saleId: string,
+  number: number,
+  methodId: string,
+  amount: string,
+) {
+  await db.execute(
+    sql`insert into receipts (organization_id, number, target, sale_id, client_id,
+                              payment_method_id, session_id, currency, amount, created_by)
+        select organization_id, ${number}, 'sale', id, client_id, ${methodId}, null, currency,
+               ${amount}, ${ADMIN_SEED.id}
+        from sales where id = ${saleId}`,
+  );
+}
+
+// Una venta de mostrador con su número y su total, para armar una página con varias.
+async function insertSaleNumbered(
+  number: number,
+  productId: string,
+  clientId: string | null,
+  currency: string,
+  total: string,
+) {
+  const sale = await db.execute<{ id: string }>(
+    sql`insert into sales (organization_id, number, order_id, client_id, currency, total,
+                           created_by)
+        values (${SEED_ORGANIZATION_ID}, ${number}, null, ${clientId}, ${currency}, ${total},
+                ${ADMIN_SEED.id})
+        returning id`,
+  );
+  const saleId = sale.rows[0]!.id;
+  await db.execute(
+    sql`insert into sale_lines (organization_id, sale_id, product_id, position, quantity,
+                                unit_price, currency, line_total)
+        values (${SEED_ORGANIZATION_ID}, ${saleId}, ${productId}, 1, '1', ${total}, ${currency},
+                ${total})`,
+  );
+  return saleId;
+}
+
+async function voidSaleRow(saleId: string, number: number) {
+  await db.execute(
+    sql`insert into sale_voids (organization_id, number, sale_id, reason, currency, total,
+                                created_by)
+        select organization_id, ${number}, id, 'data_entry_error', currency, total,
+               ${ADMIN_SEED.id}
+        from sales where id = ${saleId}`,
+  );
+}
+
+test("brief-24.6.2-b: el listado dice el origen y la situación de cobro en su moneda, con los contadores de vigencia", async ({
+  page,
+}) => {
+  const productId = await insertStockedProduct(
+    "CAF-250",
+    "Café",
+    "1000.00",
+    "50",
+  );
+  const clientId = await insertClient("Lucía Gómez");
+  const method = await insertTransferMethod();
+  // Cuatro ventas que cubren los tres estados de cobro y las dos monedas, más una anulada.
+  await insertSaleNumbered(1, productId, null, "ARS", "480000.00");
+  const parcial = await insertSaleNumbered(
+    2,
+    productId,
+    clientId,
+    "ARS",
+    "500000.00",
+  );
+  await insertSaleReceipt(parcial, 1, method, "120000.00");
+  const cobrada = await insertSaleNumbered(
+    3,
+    productId,
+    null,
+    "ARS",
+    "80000.00",
+  );
+  await insertSaleReceipt(cobrada, 2, method, "80000.00");
+  await insertSaleNumbered(4, productId, null, "USD", "650.00");
+  const anulada = await insertSaleNumbered(
+    5,
+    productId,
+    null,
+    "ARS",
+    "90000.00",
+  );
+  await voidSaleRow(anulada, 1);
+
+  await login(page, ADMIN);
+  await page.goto("/ventas");
+
+  // AC-5: el período filtra la emisión, y la pantalla lo dice.
+  await expect(
+    page.getByText("El período filtra la fecha de emisión."),
+  ).toBeVisible();
+
+  // AC-3: los contadores de vigencia, dentro del ámbito de los filtros puestos.
+  const vigencia = page.getByRole("navigation", {
+    name: "Vigencia de las ventas",
+  });
+  await expect(vigencia.getByRole("link", { name: /^Todas/ })).toContainText(
+    "5",
+  );
+  await expect(vigencia.getByRole("link", { name: /^Vigentes/ })).toContainText(
+    "4",
+  );
+  await expect(vigencia.getByRole("link", { name: /^Anuladas/ })).toContainText(
+    "1",
+  );
+
+  const table = page.getByRole("table", { name: "Ventas de la organización" });
+  const row = (numero: string) =>
+    table.getByRole("row").filter({ hasText: numero });
+
+  // AC-1 y AC-2: la situación sale de los recibos vigentes, no de la suma bruta, y lleva su moneda.
+  await expect(row("V-000001")).toContainText("Pendiente");
+  await expect(row("V-000001")).toContainText("$ 480.000,00 por cobrar");
+  await expect(row("V-000002")).toContainText("Parcial");
+  // 500.000 − 120.000 = 380.000, calculado a mano.
+  await expect(row("V-000002")).toContainText("$ 380.000,00 por cobrar");
+  await expect(row("V-000003")).toContainText("Cobrada");
+  await expect(row("V-000003")).not.toContainText("por cobrar");
+  // AC-1: los importes conservan su moneda y **no hay un total único** entre ARS y USD.
+  await expect(row("V-000004")).toContainText("US$ 650,00");
+  await expect(row("V-000004")).toContainText("US$ 650,00 por cobrar");
+  // La anulada no es un estado de cobro y no se presenta como una deuda saldada.
+  await expect(row("V-000005")).toContainText("Anulada");
+  await expect(row("V-000005")).not.toContainText("por cobrar");
+
+  // AC-1: el origen. Sin la capacidad repairs, mostrador y pedido.
+  await expect(row("V-000001")).toContainText("Mostrador");
+
+  // AC-2: lo que dice el listado coincide con la ficha de esa venta.
+  await page.goto(`/ventas/${parcial}?pestana=cobros`);
+  await expect(
+    page.getByRole("region", { name: "Cobros", exact: true }),
+  ).toContainText("380.000,00");
+
+  await page.goto("/ventas");
+  await expectAccessible(page, "listado de ventas con cobros y origen");
+});
+
+test("brief-24.6.2-b: un viewer ve el listado con los cobros y sin «Nueva venta»", async ({
+  page,
+}) => {
+  const productId = await insertStockedProduct(
+    "CAF-250",
+    "Café",
+    "1000.00",
+    "50",
+  );
+  await insertSaleNumbered(1, productId, null, "ARS", "480000.00");
+  await login(page, VIEWER);
+  await page.goto("/ventas");
+  const table = page.getByRole("table", { name: "Ventas de la organización" });
+  await expect(table).toContainText("Pendiente");
+  await expect(table).toContainText("Mostrador");
+  // AC-9: consulta, sin acciones de gestión.
+  await expect(page.getByRole("link", { name: "+ Nueva venta" })).toHaveCount(
+    0,
+  );
+  await expectAccessible(page, "listado de ventas, viewer");
+});
+
+test("brief-24.6.2-b: la ficha tiene tres pestañas por URL y el encabezado dice lo mismo en las tres", async ({
+  page,
+}) => {
+  const productId = await insertStockedProduct(
+    "CAF-250",
+    "Café",
+    "1000.00",
+    "50",
+  );
+  const clientId = await insertClient("Lucía Gómez");
+  const method = await insertTransferMethod();
+  const saleId = await insertSaleNumbered(
+    1,
+    productId,
+    clientId,
+    "ARS",
+    "500000.00",
+  );
+  await insertSaleReceipt(saleId, 1, method, "120000.00");
+
+  await login(page, ADMIN);
+  await page.goto(`/ventas/${saleId}`);
+
+  // AC-6: las tres pestañas existen y son **enlaces**, así que andan sin JavaScript.
+  const pestanas = page.getByRole("navigation", {
+    name: "Secciones de la venta V-000001",
+  });
+  for (const nombre of ["Resumen", "Cobros", "Actividad"]) {
+    await expect(pestanas.getByRole("link", { name: nombre })).toBeVisible();
+  }
+
+  // AC-6 y AC-7: el encabezado no depende de la lectura de una sola pestaña. El estado de cobro y
+  // «Registrar cobro» tienen que verse igual en las tres, incluida Actividad, que **no** pide los
+  // recibos. Es el defecto que la 24.6.1 encontró en dos mitades.
+  for (const tab of ["", "?pestana=cobros", "?pestana=actividad"]) {
+    await page.goto(`/ventas/${saleId}${tab}`);
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Venta V-000001" }),
+    ).toBeVisible();
+    await expect(page.getByText("Parcial", { exact: true })).toBeVisible();
+    await expect(page.getByText("Vigente", { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Registrar cobro" }),
+    ).toBeVisible();
+  }
+
+  // Cada pestaña muestra lo suyo, y solo lo suyo.
+  await page.goto(`/ventas/${saleId}`);
+  await expect(page.locator("[data-comprobante]")).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Cobros de la venta V-000001" }),
+  ).toHaveCount(0);
+  await expectAccessible(page, "ficha de la venta, Resumen");
+
+  await pestanas.getByRole("link", { name: "Cobros" }).click();
+  await expect(page).toHaveURL(/\?pestana=cobros$/);
+  await expect(
+    page.getByRole("region", { name: "Cobros de la venta V-000001" }),
+  ).toContainText("R-000001");
+  await expect(page.locator("[data-comprobante]")).toHaveCount(0);
+  await expectAccessible(page, "ficha de la venta, Cobros");
+
+  await pestanas.getByRole("link", { name: "Actividad" }).click();
+  await expect(page).toHaveURL(/\?pestana=actividad$/);
+  // Esta venta se cargó por SQL, así que su historia está vacía: lo que importa acá es que la
+  // pestaña es la de la historia y que **no** trae los cobros. Las filas de la historia las
+  // afirman los casos de la 20.2 y la 20.4, que emiten de verdad.
+  await expect(
+    page.getByRole("region", { name: "Historial de auditoría" }),
+  ).toContainText("Sin cambios registrados todavía.");
+  await expect(
+    page.getByRole("region", { name: "Cobros de la venta V-000001" }),
+  ).toHaveCount(0);
+  await expect(page.locator("[data-comprobante]")).toHaveCount(0);
+  await expectAccessible(page, "ficha de la venta, Actividad");
+
+  // AC-7: una venta cobrada no ofrece un cobro innecesario.
+  await insertSaleReceipt(saleId, 2, method, "380000.00");
+  await page.goto(`/ventas/${saleId}`);
+  await expect(page.getByText("Cobrada", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Registrar cobro" })).toHaveCount(
+    0,
+  );
+});
+
+test("brief-24.6.2-b: un viewer consulta la ficha sin «Actividad» ni acciones de gestión", async ({
+  page,
+}) => {
+  const productId = await insertStockedProduct(
+    "CAF-250",
+    "Café",
+    "1000.00",
+    "50",
+  );
+  const clientId = await insertClient("Lucía Gómez");
+  const saleId = await insertSaleNumbered(
+    1,
+    productId,
+    clientId,
+    "ARS",
+    "500000.00",
+  );
+  await login(page, VIEWER);
+  await page.goto(`/ventas/${saleId}`);
+  // AC-9: consulta sin acciones de gestión. «Actividad» es solo de admin.
+  await expect(
+    page
+      .getByRole("navigation", { name: "Secciones de la venta V-000001" })
+      .getByRole("link", { name: "Actividad" }),
+  ).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Registrar cobro" })).toHaveCount(
+    0,
+  );
+  await expect(page.getByRole("link", { name: "Anular venta" })).toHaveCount(0);
+  // Y sí ve lo suyo: el comprobante y los cobros registrados.
+  await expect(page.locator("[data-comprobante]")).toBeVisible();
+  await page.goto(`/ventas/${saleId}?pestana=cobros`);
+  await expect(
+    page.getByRole("region", { name: "Cobros", exact: true }),
+  ).toBeVisible();
+  await expectAccessible(page, "ficha de la venta, viewer");
+});
+
+test("brief-24.6.2-b: el origen de una venta de reparación es su orden de servicio, y sin la capacidad no se lee", async ({
+  page,
+}) => {
+  const productId = await insertStockedProduct(
+    "CAF-250",
+    "Café",
+    "1000.00",
+    "50",
+  );
+  const clientId = await insertClient("Lucía Gómez");
+  const saleId = await insertSaleNumbered(
+    1,
+    productId,
+    clientId,
+    "ARS",
+    "80000.00",
+  );
+  const model = await db.execute<{ id: string }>(
+    sql`insert into product_models (organization_id, name)
+        values (${SEED_ORGANIZATION_ID}, 'iPhone 13') returning id`,
+  );
+  // La orden entregada que produjo esa venta. El CHECK de service_orders exige que sale_id solo
+  // exista en una customer_device entregada y reparada, así que se llega por los mismos pasos.
+  const order = await db.execute<{ id: string }>(
+    sql`insert into service_orders (organization_id, number, client_id, model_id, device_serial,
+                                    reported_issue, created_by)
+        values (${SEED_ORGANIZATION_ID}, 123, ${clientId}, ${model.rows[0]!.id},
+                '356938035643809', 'No carga', ${ADMIN_SEED.id})
+        returning id`,
+  );
+  const orderId = order.rows[0]!.id;
+  const technician = await db.execute<{ id: string }>(
+    sql`insert into suppliers (organization_id, name) values (${SEED_ORGANIZATION_ID}, 'Taller')
+        returning id`,
+  );
+  // El CHECK service_orders_technician_sent exige técnico desde «sent».
+  await db.execute(
+    sql`update service_orders set status = 'sent', sent_at = now(),
+          technician_id = ${technician.rows[0]!.id} where id = ${orderId}`,
+  );
+  await db.execute(
+    sql`update service_orders set status = 'quoted', quoted_at = now(),
+          customer_currency = 'ARS', customer_total = 80000,
+          technician_currency = 'ARS', technician_total = 30000 where id = ${orderId}`,
+  );
+  await db.execute(
+    sql`update service_orders set status = 'approved', approved_at = now() where id = ${orderId}`,
+  );
+  await db.execute(
+    sql`update service_orders set status = 'repaired', repaired_at = now() where id = ${orderId}`,
+  );
+  await db.execute(
+    sql`update service_orders set status = 'delivered', delivered_at = now(), sale_id = ${saleId}
+        where id = ${orderId}`,
+  );
+
+  await login(page, ADMIN);
+  const table = page.getByRole("table", { name: "Ventas de la organización" });
+
+  // Sin la capacidad `repairs`, `service` no se consulta y la venta se ve como de mostrador.
+  await page.goto("/ventas");
+  await expect(table).toContainText("Mostrador");
+  await expect(table).not.toContainText("OS-000123");
+
+  // Con la capacidad encendida, el origen es la orden, con su número.
+  await db.execute(
+    sql`insert into organization_capabilities (organization_id, capability, activated_by)
+        values (${SEED_ORGANIZATION_ID}, 'repairs', ${ADMIN_SEED.id})`,
+  );
+  await page.goto("/ventas");
+  await expect(table.getByRole("link", { name: /OS-000123/ })).toBeVisible();
+  await expect(table).not.toContainText("Mostrador");
+  await expectAccessible(page, "listado con el origen de una reparación");
+});
+
+test("brief-24.6.2-b: sin desbordamiento de 320 a 1440 px en el listado y en las tres pestañas, con los controles en 44 px", async ({
+  page,
+}) => {
+  const productId = await insertStockedProduct(
+    "CAF-250",
+    "Café",
+    "1000.00",
+    "50",
+  );
+  const clientId = await insertClient("Lucía Gómez");
+  const method = await insertTransferMethod();
+  const saleId = await insertSaleNumbered(
+    1,
+    productId,
+    clientId,
+    "ARS",
+    "500000.00",
+  );
+  await insertSaleReceipt(saleId, 1, method, "120000.00");
+  await login(page, ADMIN);
+
+  for (const ancho of [320, 390, 768, 1024, 1440]) {
+    await page.setViewportSize({ width: ancho, height: 900 });
+    await page.goto("/ventas");
+    expect(
+      await anchoDesbordado(page),
+      `listado a ${ancho} px`,
+    ).toBeLessThanOrEqual(0);
+    for (const tab of ["", "?pestana=cobros", "?pestana=actividad"]) {
+      await page.goto(`/ventas/${saleId}${tab}`);
+      expect(
+        await anchoDesbordado(page),
+        `ficha ${tab || "resumen"} a ${ancho} px`,
+      ).toBeLessThanOrEqual(0);
+    }
+  }
+
+  // AC-14: los controles se **miden**, no se miran. La subfase anterior tuvo dos en 30 y 34 px.
+  //
+  // **Medido y no corregido**: el botón «Imprimir o guardar PDF» mide **38 px** de alto. Vive en
+  // print-button.tsx, que no está en la lista cerrada de esta subfase, así que queda declarado como
+  // pendiente en vez de arreglado de prepo. Por eso no está en esta lista.
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto(`/ventas/${saleId}`);
+  for (const [nombre, control] of [
+    ["registrar cobro", page.getByRole("link", { name: "Registrar cobro" })],
+    [
+      "pestaña Cobros",
+      page
+        .getByRole("navigation", { name: "Secciones de la venta V-000001" })
+        .getByRole("link", { name: "Cobros" }),
+    ],
+  ] as const) {
+    const caja = await control.boundingBox();
+    expect(caja, nombre).not.toBeNull();
+    expect(
+      Math.round(caja!.height),
+      `alto de ${nombre}`,
+    ).toBeGreaterThanOrEqual(44);
+    expect(
+      Math.round(caja!.width),
+      `ancho de ${nombre}`,
+    ).toBeGreaterThanOrEqual(44);
   }
 });

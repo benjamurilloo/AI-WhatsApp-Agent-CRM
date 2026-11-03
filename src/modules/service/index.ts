@@ -148,6 +148,9 @@ export {
   type ServiceClientOrder,
   type ServiceRepairModel,
 } from "./agent-reads";
+// El origen de una venta que salió de una orden de servicio (brief-24.6.2-b, D-3): lo compone el
+// listado de ventas, porque sales no conoce service.
+export { getSaleOrigins, type SaleOrigin } from "./sale-origins";
 // Para cash (D-7): las deudas de los técnicos, con su transacción.
 export {
   listTechnicianChargesForAccount,

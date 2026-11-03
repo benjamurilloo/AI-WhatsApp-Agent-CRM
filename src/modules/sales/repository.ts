@@ -430,6 +430,36 @@ function listConditions(query: SaleListQuery): SQL | undefined {
   );
 }
 
+export type SaleStatusCountRow = {
+  all: number;
+  current: number;
+  voided: number;
+};
+
+// Cuántas ventas tiene cada vigencia, para las tres pestañas de la lámina 01 (brief-24.6.2-b).
+// **Una sola consulta**, con agregados condicionales: a diferencia de `orders`, la vigencia de una
+// venta no es una columna sino la existencia de su anulación, así que no se puede agrupar por ella.
+// El ámbito es el del listado con `status: "all"`: el cliente, el número y el período se respetan,
+// la vigencia no, porque es justamente lo que se cuenta.
+export async function countSalesByStatus(
+  query: SaleListQuery,
+): Promise<SaleStatusCountRow> {
+  const voided = sql`exists (
+    select 1 from sale_voids v
+    where v.organization_id = ${sales.organizationId} and v.sale_id = ${sales.id})`;
+  const rows = await getDb()
+    .select({
+      all: count(),
+      current: sql<number>`count(*) filter (where not ${voided})`.mapWith(
+        Number,
+      ),
+      voided: sql<number>`count(*) filter (where ${voided})`.mapWith(Number),
+    })
+    .from(sales)
+    .where(listConditions({ ...query, status: "all" }));
+  return rows[0]!;
+}
+
 export async function countSales(query: SaleListQuery): Promise<number> {
   const rows = await getDb()
     .select({ total: count() })

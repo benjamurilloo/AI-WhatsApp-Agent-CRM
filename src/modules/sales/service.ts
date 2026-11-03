@@ -1009,6 +1009,60 @@ const periodSchema = z
 
 const EMPTY_PAGE = { total: 0, page: 1, pageCount: 1 } as const;
 
+// El ámbito del listado —cliente y número—, en un solo lugar. Lo usan `listSales` y
+// `countSalesByStatus`, y por eso está extraído: si cada una normalizara el cliente y el número por
+// su cuenta, los contadores podrían contar sobre un ámbito distinto del que la tabla muestra. Es la
+// misma razón, y el mismo remedio, que la 24.6.1 aplicó en `orders`. Devuelve `null` cuando el
+// filtro no puede corresponder a ninguna venta.
+function listScope(filters: Omit<SaleListFilters, "status" | "page">): {
+  clientId: string | null;
+  number: number | null;
+  voidNumber: number | null;
+} | null {
+  const clientId = filters.clientId?.trim().toLowerCase() || null;
+  if (clientId !== null && !idSchema.safeParse(clientId).success) return null;
+  const numberText = filters.number.trim();
+  const voidNumber =
+    numberText === "" ? null : parseSaleVoidNumberSearch(numberText);
+  const number =
+    numberText === "" || voidNumber !== null
+      ? null
+      : parseSaleNumberSearch(numberText);
+  if (numberText !== "" && number === null && voidNumber === null) return null;
+  return { clientId, number, voidNumber };
+}
+
+export type SaleStatusCounts = Record<SaleStatusFilter, number>;
+
+const ZERO_SALE_COUNTS: SaleStatusCounts = { all: 0, current: 0, voided: 0 };
+
+// Cuántas ventas hay de cada vigencia, para las tres pestañas de la lámina 01 (brief-24.6.2-b). Una
+// sola consulta agrupada, con el **mismo ámbito** que el listado: mismo cliente, mismo número y
+// mismo período. Un período inválido no tiene contadores: la pantalla muestra su aviso y ninguna
+// lista. La zona horaria se lee de nuevo acá porque el período se resuelve en la base; es una
+// consulta más, y las dos lecturas van en paralelo desde la página.
+export async function countSalesByStatus(
+  context: AuthContext,
+  filters: Omit<SaleListFilters, "status" | "page">,
+): Promise<{ ok: true; counts: SaleStatusCounts } | Failure<"FORBIDDEN">> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  const period = periodSchema.safeParse({ from: filters.from, to: filters.to });
+  const scope = listScope(filters);
+  if (!period.success || scope === null) {
+    return { ok: true, counts: { ...ZERO_SALE_COUNTS } };
+  }
+  const counts = await repository.countSalesByStatus({
+    organizationId: context.organizationId,
+    ...scope,
+    status: "all",
+    from: period.data.from,
+    to: period.data.to,
+    timezone: await getOrganizationTimezone(context),
+  });
+  return { ok: true, counts };
+}
+
 export async function listSales(
   context: AuthContext,
   filters: SaleListFilters,
@@ -1031,26 +1085,12 @@ export async function listSales(
       ],
     };
   }
+  const scope = listScope(filters);
   // Un cliente o un número que no pueden existir no traen ventas: la lista queda vacía.
-  const clientId = filters.clientId?.trim().toLowerCase() || null;
-  if (clientId !== null && !idSchema.safeParse(clientId).success) {
-    return { ok: true, sales: [], ...EMPTY_PAGE };
-  }
-  const numberText = filters.number.trim();
-  const voidNumber =
-    numberText === "" ? null : parseSaleVoidNumberSearch(numberText);
-  const number =
-    numberText === "" || voidNumber !== null
-      ? null
-      : parseSaleNumberSearch(numberText);
-  if (numberText !== "" && number === null && voidNumber === null) {
-    return { ok: true, sales: [], ...EMPTY_PAGE };
-  }
+  if (scope === null) return { ok: true, sales: [], ...EMPTY_PAGE };
   const query: repository.SaleListQuery = {
     organizationId: context.organizationId,
-    clientId,
-    number,
-    voidNumber,
+    ...scope,
     status: filters.status,
     from: period.data.from,
     to: period.data.to,

@@ -341,7 +341,8 @@ test("la lista de deudores, con el filtro por moneda, y los textos de lo que pas
   await expect(page).toHaveURL(new RegExp(`/clientes/${mario}/cuenta$`));
 
   // D-8: la venta anulada no afirma un saldo a favor que se fue a otra venta.
-  await page.goto(`/ventas/${gone}`);
+  // El dinero de la ficha vive en la pestaña «Cobros» desde la 24.6.2-b (D-4).
+  await page.goto(`/ventas/${gone}?pestana=cobros`);
   await expect(
     page.getByText(
       /pasó a la cuenta del cliente\. Se aplica primero a sus ventas con saldo/,

@@ -764,6 +764,28 @@ export function findSaleReceipts(
     .orderBy(...receiptOrder);
 }
 
+// Los cobros de **un lote** de ventas, anulados incluidos, en **una sola consulta** (brief-24.6.2-b,
+// D-2). La hermana por lote de findSaleReceipts, para la situación de cobro del listado: sin ella,
+// la columna cuesta una lectura por fila (H-1). Quien la llama agrupa por saleId.
+export function findReceiptsOfSales(
+  organizationId: string,
+  saleIds: string[],
+  executor: Executor = getDb(),
+): Promise<ReceiptRow[]> {
+  if (saleIds.length === 0) return Promise.resolve([]);
+  return executor
+    .select(receiptColumns)
+    .from(receipts)
+    .leftJoin(receiptVoids, receiptVoidJoin)
+    .where(
+      and(
+        eq(receipts.organizationId, organizationId),
+        inArray(receipts.saleId, saleIds),
+      ),
+    )
+    .orderBy(...receiptOrder);
+}
+
 // Los cobros con «Permuta» que usan un usado, anulados incluidos (brief-29.7.2, D-2 y D-4): lo usado
 // suma los vigentes. Con tx, dentro del cobro o de la anulación del usado, con el bloqueo de cobros
 // tomado.
@@ -1085,6 +1107,24 @@ export function findSaleRefunds(
       and(
         eq(refunds.organizationId, organizationId),
         eq(refunds.saleId, saleId),
+      ),
+    )
+    .orderBy(asc(refunds.number));
+}
+
+// Las devoluciones de **un lote** de ventas sin cliente, en **una sola consulta** (brief-24.6.2-b,
+// D-2). La hermana por lote de findSaleRefunds, por el mismo motivo.
+export function findRefundsOfSales(
+  organizationId: string,
+  saleIds: string[],
+  executor: Executor = getDb(),
+): Promise<RefundRow[]> {
+  if (saleIds.length === 0) return Promise.resolve([]);
+  return selectRefunds(executor)
+    .where(
+      and(
+        eq(refunds.organizationId, organizationId),
+        inArray(refunds.saleId, saleIds),
       ),
     )
     .orderBy(asc(refunds.number));

@@ -3506,6 +3506,129 @@ export async function getSaleReceipts(
   };
 }
 
+// La situación de cobro de **un lote** de ventas, para el listado y para el encabezado de la ficha
+// (brief-24.6.2-b, D-2 y D-4). Lo compone la página, nunca sales: la dirección es cash → sales.
+//
+// **Recibe las filas que la página ya leyó**, no sus ids, para no volver a leer de sales lo que ya
+// tiene a mano. De cada una le alcanza con lo que SaleSummary y SaleDetail ya traen.
+export type SaleForStanding = {
+  id: string;
+  // Null en una venta sin cliente: no pasa por la regla de imputación (ADR 0022, punto 3).
+  clientId: string | null;
+  orderId: string | null;
+  currency: string;
+  total: string;
+  voided: boolean;
+};
+
+// Lo mismo que la ficha muestra de una venta, en los dos números que el listado necesita, y sin las
+// listas de recibos y devoluciones, que son lo caro de getSaleReceipts.
+//
+// `collected` es lo cobrado con la regla entera: los cobros directos, las señas del pedido que
+// corresponden y lo imputado del remanente de la cuenta. Es la suma de lo que la ficha muestra como
+// «cobrado» y como «imputado», así que los dos números coinciden con ella (AC-2).
+export type SaleStandingSummary = {
+  currency: string;
+  total: string;
+  collected: string;
+  outstanding: string;
+  status: "pending" | "collected" | "voided";
+};
+
+export async function getSalesStanding(
+  context: AuthContext,
+  sales: SaleForStanding[],
+): Promise<
+  | { ok: true; standing: Map<string, SaleStandingSummary> }
+  | Failure<"FORBIDDEN">
+> {
+  const authorized = authorize(context);
+  if (!authorized.ok) return authorized;
+  // Sin ventas no se consulta nada: la página vacía no paga ninguna consulta.
+  if (sales.length === 0) return { ok: true, standing: new Map() };
+  const organizationId = context.organizationId;
+  // Qué ventas necesitan sus propios recibos, aparte de la cuenta del cliente:
+  //
+  // - Las **sin cliente**, que no tienen cuenta: lo que falta es su total menos sus cobros.
+  // - Las **anuladas con cliente**, que ya no están entre las ventas vigentes de su cuenta, así que
+  //   `imputeAccount` no las devuelve y sin esto lo cobrado saldría en cero, mientras la ficha
+  //   muestra lo que pasó a la cuenta. AC-2 pide que los dos números coincidan. **No cuesta ninguna
+  //   consulta más**: son los mismos dos `in (...)` por lote, con más ids adentro.
+  const ownReceiptIds = sales
+    .filter((sale) => sale.clientId === null || sale.voided)
+    .map((sale) => sale.id);
+  const { accounts, receipts, refunds } = await repository.withSnapshot(
+    async (tx) => {
+      // Una tras otra, en la misma instantánea: van por la conexión de la transacción.
+      const accounts = sales.some((sale) => sale.clientId !== null)
+        ? await accountsIn(tx, organizationId)
+        : new Map<string, CurrencyAccount[]>();
+      const receipts = await repository.findReceiptsOfSales(
+        organizationId,
+        ownReceiptIds,
+        tx,
+      );
+      const refunds = await repository.findRefundsOfSales(
+        organizationId,
+        ownReceiptIds,
+        tx,
+      );
+      return { accounts, receipts, refunds };
+    },
+  );
+  const receiptsOf = groupBy(receipts, (row) => row.saleId);
+  const refundsOf = groupBy(refunds, (row) => row.saleId);
+  const standing = new Map<string, SaleStandingSummary>();
+  for (const sale of sales) {
+    standing.set(sale.id, standingOf(sale, accounts, receiptsOf, refundsOf));
+  }
+  return { ok: true, standing };
+}
+
+// La situación de una venta, con la misma regla que su ficha y sin reescribirla: imputeAccount para
+// la que tiene cliente, standaloneSale para la que no. Una anulada no debe nada (ADR 0022, punto 6).
+function standingOf(
+  sale: SaleForStanding,
+  accounts: Map<string, CurrencyAccount[]>,
+  receiptsOf: Map<string, repository.ReceiptRow[]>,
+  refundsOf: Map<string, repository.RefundRow[]>,
+): SaleStandingSummary {
+  const shape = (
+    collected: Money,
+    outstanding: Money,
+  ): SaleStandingSummary => ({
+    currency: sale.currency,
+    total: sale.total,
+    collected: moneyToDatabase(collected),
+    outstanding: moneyToDatabase(outstanding),
+    status: sale.voided
+      ? "voided"
+      : outstanding === 0n
+        ? "collected"
+        : "pending",
+  });
+  if (sale.clientId === null) {
+    const result = standaloneSale({
+      total: moneyFromDatabase(sale.total),
+      collected: sumAmounts(receiptsOf.get(sale.id) ?? []),
+      refunded: sumAmounts(refundsOf.get(sale.id) ?? []),
+      voided: sale.voided,
+    });
+    return shape(result.collected, result.outstanding);
+  }
+  // Anulada con cliente: lo cobrado pasó a su cuenta y la venta ya no está entre las vigentes, así
+  // que imputeAccount no la devuelve. **No debe nada** (punto 6), pero sí tiene cobrado: sale de sus
+  // propios recibos, los mismos que muestra su ficha.
+  if (sale.voided) {
+    return shape(sumAmounts(receiptsOf.get(sale.id) ?? []), 0n);
+  }
+  const row = outstandingOf(accounts.get(sale.clientId) ?? [], sale.id);
+  // Una venta vigente con cliente siempre está en su cuenta. Si no está, el estado es inconsistente
+  // y getSaleReceipts lanza; acá, que solo lee para mostrar una lista, se informa en cero.
+  if (!row) return shape(0n, 0n);
+  return shape(row.direct + row.imputed, row.outstanding);
+}
+
 // Recibir en la otra moneda de la organización (brief-29.4, D-6): cuál es, la cotización vigente y lo
 // que falta convertido con ella, como se escribe en el campo. Null sin moneda principal o si el
 // destino está en una moneda que no se convierte.
@@ -4983,29 +5106,37 @@ type Debt = Omit<DebtorRow, "displayName"> & { owedAmount: Money };
 async function readAccounts(
   organizationId: string,
 ): Promise<Map<string, CurrencyAccount[]>> {
-  const { sales, receipts, refunds, orders } = await repository.withSnapshot(
-    async (tx) => {
-      // Una tras otra, en la misma instantánea: van por la conexión de la transacción.
-      const sales = await listSalesForAccounts(tx, organizationId);
-      const receipts = await repository.findAccountsReceipts(
-        organizationId,
-        tx,
-      );
-      const refunds = await repository.findAccountsRefunds(organizationId, tx);
-      const orderIds = [
-        ...new Set(
-          receipts
-            .map((row) => row.orderId)
-            .filter((id): id is string => id !== null),
-        ),
-      ];
-      const orders =
-        orderIds.length === 0
-          ? []
-          : await getOrdersForAccountsByIds(tx, organizationId, orderIds);
-      return { sales, receipts, refunds, orders };
-    },
-  );
+  return repository.withSnapshot((tx) => accountsIn(tx, organizationId));
+}
+
+// Las mismas cuentas, dentro de una instantánea que ya está abierta (brief-24.6.2-b, D-2): así la
+// situación de cobro del listado las lee en la misma transacción que sus otras dos consultas, en vez
+// de abrir una segunda. Se partió de readAccounts sin cambiarle nada: la lista de deudores y el saldo
+// de la lista de clientes siguen llamando a readAccounts, que ahora solo abre la instantánea.
+//
+// Son **tres consultas, más una por los pedidos de las señas** —las ventas, los cobros y las
+// devoluciones de toda la organización, y los pedidos solo si alguna seña los nombra—, y ninguna
+// crece con la cantidad de filas de la página: se agrupan en memoria. *Corregido el 2026-11-03*:
+// este comentario decía «cuatro, más una», que son cinco; la medición de AC-10 cuenta tres.
+async function accountsIn(
+  tx: DbTransaction,
+  organizationId: string,
+): Promise<Map<string, CurrencyAccount[]>> {
+  // Una tras otra, en la misma instantánea: van por la conexión de la transacción.
+  const sales = await listSalesForAccounts(tx, organizationId);
+  const receipts = await repository.findAccountsReceipts(organizationId, tx);
+  const refunds = await repository.findAccountsRefunds(organizationId, tx);
+  const orderIds = [
+    ...new Set(
+      receipts
+        .map((row) => row.orderId)
+        .filter((id): id is string => id !== null),
+    ),
+  ];
+  const orders =
+    orderIds.length === 0
+      ? []
+      : await getOrdersForAccountsByIds(tx, organizationId, orderIds);
   const ordersById = new Map(orders.map((order) => [order.id, order]));
   const salesOf = groupBy(sales, (row) => row.clientId);
   const receiptsOf = groupBy(receipts, (row) => row.clientId);

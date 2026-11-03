@@ -3,7 +3,6 @@ import type { SaleReceipts } from "@/modules/cash";
 import {
   inactiveBadgeClass,
   linkClass,
-  primaryLinkClass,
   secondaryLinkClass,
   tableCellClass,
   tableHeadCellClass,
@@ -25,6 +24,13 @@ import { tenderNote } from "@/app/(autenticado)/caja/exchange";
 // 21.6 (brief-21.6, D-7 y D-8): con cliente, lo que debe o tiene a favor su cuenta en la moneda de la
 // venta, con el enlace al estado de cuenta, y en una venta anulada, que lo cobrado pasó a la cuenta
 // sin afirmar un saldo a favor que puede no existir.
+//
+// Desde la 24.6.2-b (lámina 03 de V2-09): esta sección es el contenido de la **pestaña «Cobros»** de
+// la ficha, no una tarjeta de su columna derecha. Y **ya no trae «Registrar cobro»**: ese botón vive
+// ahora en el encabezado de la ficha, que se ve en las tres pestañas y decide con la lectura por
+// lote de `cash`. Si siguiera acá, desaparecería al mirar Resumen o Actividad, que es exactamente el
+// defecto que la 24.6.1 encontró en su ficha (brief-24.6.2-b, D-4 y AC-7). `canCollect` se conserva
+// porque las dos acciones de devolución de más abajo también son de admin.
 
 const numberCell = `${tableCellClass} text-right whitespace-nowrap tabular-nums`;
 
@@ -286,15 +292,6 @@ export function SaleReceiptsSection({
             </tbody>
           </table>
         </div>
-      ) : null}
-
-      {canCollect && receipts.status === "pending" ? (
-        <p className="mt-4">
-          <Link href={`/ventas/${saleId}/cobrar`} className={primaryLinkClass}>
-            <Icon name="plus" className="size-4" />
-            Registrar cobro
-          </Link>
-        </p>
       ) : null}
     </SectionCard>
   );

@@ -508,6 +508,9 @@ test("una venta sin pedido vende sus unidades, rechaza una reservada y su anulac
     "reserved",
   ]);
 
+  // «Anular» quedó en «Más» (brief-24.6.2-b, AC-7): es un <details>, y el enlace aparece recién al
+  // abrirlo. Igual que en `sales.spec.ts`.
+  await page.getByRole("group").filter({ hasText: "Más" }).first().click();
   await page.getByRole("link", { name: "Anular venta" }).click();
   await page.getByRole("radio", { name: "Error de carga" }).check();
   await page.getByRole("button", { name: "Sí, anular la venta" }).click();

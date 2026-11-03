@@ -347,7 +347,12 @@ test("una orden recorre la recepción, el técnico, el presupuesto, la reparaci�
   await page.getByRole("radio", { name: "Transferencia" }).check();
   await page.getByRole("button", { name: "Registrar cobro" }).click();
   await expect(page.getByText("Se registró el cobro")).toBeVisible();
-  await expect(page.getByText("Cobrada")).toBeVisible();
+  // «Cobrada» lo dicen dos lugares de la ficha desde la 24.6.2-b: el badge del encabezado, que D-4
+  // pide igual en las tres pestañas, y la fila «Falta» de la tabla de dinero, que al no faltar nada
+  // dice la palabra en vez de un importe. Acá se afirma el del encabezado, primero en el documento.
+  await expect(
+    page.getByText("Cobrada", { exact: true }).first(),
+  ).toBeVisible();
 
   // La cuenta del técnico: la orden reparada, al debe (AC-7).
   await page.goto(`/compras/proveedores/${ids.technician}/cuenta`);

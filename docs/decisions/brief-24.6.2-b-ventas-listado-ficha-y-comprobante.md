@@ -87,6 +87,79 @@ de **1.052 líneas en cinco archivos**, con reglas que no son de presentación: 
 tope de lo disponible del usado, la misma moneda, la sesión de caja abierta **en la moneda que
 entra**, la recomprobación al confirmar y el rechazo que conserva lo cargado.
 
+### H-5 · El recuento de specs, hecho antes de tocar nada, saca cinco specs y un componente de la lista
+
+Lo manda la §Lista cerrada de archivos de este brief, y el resultado **cambió el alcance antes de
+escribir una línea**. Medido el 2026-11-02 con `grep` sobre `tests/` y sobre el código:
+
+**Todo el dinero de la ficha sale de un solo componente que la lista no nombraba**:
+`ventas/[saleId]/cobrar/sale-receipts-section.tsx`, **301 líneas**, importado **solo** por la ficha
+pese a vivir bajo `cobrar/`. Rinde cinco piezas: lo cobrado y lo que falta, «A devolver» y
+«Devuelto», «Cuenta del cliente» con «Devolver saldo a favor», el enlace al usado de la permuta, y
+las dos tablas —«Cobros de la venta X» y «Devoluciones de la venta X»—. Es la forma que el vault
+tiene anotada como «A Shared Component Falls Outside a File Allowlist Written Per Screen».
+
+**Y siete casos de cinco specs afirman sobre esas piezas desde `/ventas/<id>`**, con la ficha en una
+sola página. Al mandarlas a la pestaña «Cobros», se ponen rojas:
+
+| Spec | Casos | Qué afirma hoy en la ficha |
+|---|---|---|
+| `tests/e2e/receipts.spec.ts` | 2 | «Sin cobros.» y la región «Cobros de la venta V-000001» |
+| `tests/e2e/refunds.spec.ts` | 2 | «A devolver», «Devuelto», el enlace «Devolver» y la región «Devoluciones de la venta V-000001» |
+| `tests/e2e/accounts.spec.ts` | 1 | «Cuenta del cliente: debe» y «Devolver saldo a favor» |
+| `tests/e2e/order-receipts.spec.ts` | 1 | «Imputado desde la cuenta del cliente» |
+| `tests/e2e/trade-in-payments.spec.ts` | 1 | el enlace «PU-000001» de la permuta |
+
+`tests/e2e/sales.spec.ts`, la única spec que la lista tenía, **no aporta ninguno de los siete**: sus
+casos del listado y del comprobante ya estaban previstos.
+
+**D-4 ubicaba una de las cinco piezas** —«Cobros»— y dejaba sin lugar las otras cuatro.
+
+**Recontado al implementar: eran trece casos, no siete.** El recuento previo se hizo buscando los
+textos del dinero, y por eso quedó corto. Lo que faltaba:
+
+- **La historia de la venta**, que también se va a una pestaña —«Actividad»—, y que el recuento no
+  miró porque no es dinero: **cuatro casos** de `sales.spec.ts`, que ya estaba en la lista.
+- **«Incluye la seña del pedido P-000001»**, un texto del dinero que el filtro no tenía.
+- **Un segundo caso** de `trade-in-payments.spec.ts` con el mismo enlace al usado.
+
+El reparto final, medido corriendo la batería contra el código nuevo: **trece casos rojos**, de los
+cuales **cuatro en `sales.spec.ts`** —que la lista ya tenía— y **nueve en las cinco specs de
+afuera**. La decisión del usuario no cambia: son las mismas cinco specs y el mismo componente. Lo
+que cambia es el número, y queda corregido acá en vez de repetido.
+
+**Se preguntó al usuario antes de implementar**, como manda la regla sin excepción por tamaño, y
+decidió el 2026-11-02 **extender la lista con los seis archivos**: la pestaña «Cobros» se lleva las
+cinco piezas y los siete casos pasan por la pestaña. Queda en la tabla de la §Lista cerrada.
+
+**Recontado una tercera vez, con la batería completa: son quince casos de ocho specs.** El recuento
+de trece se midió corriendo **solo las specs que la lista ya nombraba**, que es la misma raíz que el
+vault tiene anotada desde la 24.6.1-b: acotar la verificación a lo que uno tocó. La batería entera,
+corrida el 2026-11-03 contra el código nuevo, agregó dos archivos:
+
+| Spec | Casos | Qué afirmaba, y desde cuándo |
+|---|---|---|
+| `tests/e2e/exchange.spec.ts` | 2 | El detalle del cobro en la ficha al volver de `/cobrar` (brief-21.3) |
+| `tests/e2e/units.spec.ts` | 1 | El clic directo en «Anular venta», que AC-7 mandó adentro de «Más» (brief-20.4) |
+
+**`exchange.spec.ts` no se toca**: los dos casos los arregla la página, en H-7. **`units.spec.ts`
+sí**, y lo autorizó el usuario el 2026-11-03: una línea que abre «Más» antes del clic, la misma que
+`sales.spec.ts` ya tenía.
+
+**Y una cuarta vez, por el arreglo del tercero: son dieciséis casos de nueve specs.** La segunda
+corrida de la batería —361 pasados, 2 rojos— puso en rojo `receipts.spec.ts:197` y
+`repairs.spec.ts:350`, los dos por lo mismo: `getByText("Cobrada")` sin acotar pasó a matchear
+**dos** elementos. Con `?cobro=` abriendo «Cobros» (H-7), el badge del encabezado —que D-4 pide
+igual en las tres pestañas— convive con la fila «Falta» de la tabla de dinero, que al no faltar nada
+dice la palabra en vez de un importe. `receipts.spec.ts` ya estaba en la lista; **`repairs.spec.ts`
+se agregó el 2026-11-03, autorizado por el usuario**. Se barrieron las specs por los cinco textos
+del encabezado —«Vigente», «Anulada», «Pendiente», «Parcial», «Cobrada»— y no hay más casos: los
+otros los acota su propia región o su propia tabla.
+
+La lección es del recuento, no del arreglo: **un recuento de specs afectadas no está cerrado hasta
+que corre la batería entera**, y **el arreglo de un recuento abre el siguiente**. Las tres veces que
+quedó corto, se había buscado dentro del subconjunto que ya se conocía.
+
 ## Diferencias con la v2, declaradas antes de implementar
 
 ### V-1 · El IMEI enmascarado de la ficha no se puede cumplir
@@ -121,6 +194,29 @@ Con el panel de cobro fuera del alcance (D-1), la pestaña «Cobros» de la fich
 registrado y lo pendiente, y «Registrar cobro» sigue llevando a `/ventas/[saleId]/cobrar`, la ruta
 actual. La lámina dibuja el panel; esta subfase deja el enlace. **Se declara como diferencia, no se
 disimula.**
+
+### V-6 · «Ver pedidos» no entra, y el filtro de cliente sigue llegando por la URL
+
+La lámina 01 dibuja un botón secundario «Ver pedidos» junto a «Nueva venta», y un desplegable
+«Todos» para el cliente. **Las dos se declaran y no se implementan**, por decisión del usuario del
+2026-11-02. «Ver pedidos» obligaría a cambiar el encabezado compartido de todas las pantallas por un
+destino que la navegación lateral ya ofrece; el desplegable es una lectura nueva en `crm` que este
+brief no previó. El filtro de cliente sigue llegando por la URL desde la ficha del cliente, con su
+línea «Ventas de …» y su enlace para quitarlo, como hasta hoy.
+
+### V-7 · El origen «Pedido» va sin su número
+
+La lámina escribe «Pedido P-000202». Leer ese número pide una lectura por lote en `orders` que la
+lista cerrada no incluye —`getOrdersForAccountsByIds` existe, pero recibe una transacción y es de
+uso interno de `cash`—. La columna dice **«Pedido»** y enlaza al pedido. AC-4 pide el número solo
+para la orden de servicio, y eso sí se cumple.
+
+### V-8 · Los contadores de la lámina son de vigencia, y no llevan moneda
+
+La lámina 01 muestra «Todas (4) · Vigentes (4) · Anuladas (0)»: son **recuentos de filas por
+vigencia**, no importes, así que la frase «por moneda» de V-2 y de AC-3 no les aplica. Lo que sí va
+por moneda, y sin un total único, es la **columna** de cobros y el total de cada fila. AC-3 queda
+enmendado abajo.
 
 ## Decisiones
 
@@ -171,9 +267,21 @@ Resumen, Cobros y Actividad, con un solo parámetro de búsqueda, igual que la f
 24.6.1 y la del cliente de la 24.4.1. Andan sin JavaScript porque son enlaces.
 
 **Y con la lección de la 24.6.1 aplicada**: un control del encabezado **no puede depender de una
-lectura que solo una pestaña hace**. El estado de cobro y «Registrar cobro» viven en el encabezado, y
-lo cobrado lo lee la pestaña Cobros; así que el encabezado decide con el estado de la venta, que toda
-vista ya tiene. Es exactamente el defecto que la 24.6.1 encontró en dos mitades.
+lectura que solo una pestaña hace**. Es exactamente el defecto que la 24.6.1 encontró en dos mitades.
+
+**Enmendado el 2026-11-02, antes de implementar.** Este apartado decía que «el encabezado decide con
+el estado de la venta, que toda vista ya tiene», y **eso es falso**: se verificó que `SaleDetail` de
+`sales` **no tiene estado de cobro**. `status` y `outstanding` viven en `SaleReceipts`, que
+devuelve `getSaleReceipts` de `cash`. De la venta misma el encabezado solo sabe si está anulada,
+por `sale.saleVoid`. Así escrito, **AC-6 y AC-7 no se cumplían juntas**: o el encabezado no sabe si
+la venta admite más importe, o «Actividad» paga una lectura que no muestra, contra la regla que la
+24.6.1 dejó de que cada pestaña pide solo sus lecturas.
+
+**Lo resolvió el usuario el 2026-11-02**: el encabezado decide con **la lectura por lote de D-2,
+llamada con un solo id**, en toda pestaña. Número de consultas fijo en cualquiera de las tres, el
+encabezado no cambia de una a otra, AC-7 se cumple tal como está escrita, y no agrega ningún archivo
+—es la misma función que el listado llama con 25 ids—. La pestaña «Cobros» sigue llamando
+`getSaleReceipts`, que es la lectura completa, solo cuando se la muestra.
 
 ### D-5 · El comprobante no se reescribe: se verifica
 
@@ -210,14 +318,25 @@ Salir de esta lista **se pregunta antes de implementar**, sin excepción por tam
 | `src/app/(autenticado)/ventas/[saleId]/page.tsx` | La ficha en tres pestañas |
 | `src/modules/cash/service.ts`, `repository.ts`, `index.ts` | La lectura por lote (D-2) |
 | `src/modules/service/sale-origins.ts` (nuevo), `index.ts` | La lectura de orígenes (D-3) |
+| `src/app/(autenticado)/ventas/[saleId]/cobrar/sale-receipts-section.tsx` | Las cinco piezas de dinero pasan a la pestaña «Cobros» (H-5) |
 | `tests/e2e/sales.spec.ts` | Los casos de la subfase |
+| `tests/e2e/receipts.spec.ts`, `refunds.spec.ts`, `accounts.spec.ts`, `order-receipts.spec.ts`, `trade-in-payments.spec.ts` | Los siete casos que afirman sobre el dinero de la ficha pasan por la pestaña (H-5) |
+| `tests/e2e/units.spec.ts` | El clic en «Anular venta» abre «Más» primero (H-5, tercer recuento). *Agregado el 2026-11-03*, autorizado por el usuario |
+| `tests/e2e/repairs.spec.ts` | «Cobrada» se afirma en el badge del encabezado (H-5, cuarto recuento). *Agregado el 2026-11-03*, autorizado por el usuario |
 | `tests/integration/` (archivo nuevo) | La medición de las dos lecturas |
-| `docs/product/Screens.md` | §19 |
+| `docs/product/Screens.md` | **§17 y §18**. *Corregido el 2026-11-02*: esta fila decía «§19», y §19 es «Nueva venta», que es de la 24.6.2. Las secciones de esta subfase son la lista (§17) y la ficha con su comprobante (§18). |
 | `docs/architecture/Overview.md` | Las filas de `cash` y de `service`, que cada subfase actualiza |
 | `CHANGELOG.md`, `docs/planning/Roadmap.md`, este brief | El cierre |
 
 **A contar antes de tocar nada**: qué specs llenan o afirman sobre `/ventas` y su ficha. La 24.6.2
 aprendió que ese recuento va **antes**, y la 24.6.1-b, lo que cuesta hacerlo después.
+
+**Contado el 2026-11-02, antes de escribir una línea.** Veinte archivos de `tests/` nombran
+`/ventas`: quince specs de extremo a extremo y cinco guardas. De ellos, **ocho specs navegan a la
+ficha**, y **siete casos de cinco de ellas afirman sobre el dinero que pasa a la pestaña «Cobros»**;
+ese es el resultado que amplió esta tabla, y está en H-5. `frame.spec.ts` usa `/ventas` solo para
+el enlace de la navegación y su `aria-current`. Las cinco guardas lo nombran como ruta, no como
+pantalla.
 
 ## Criterios de aceptación
 
@@ -225,18 +344,19 @@ aprendió que ese recuento va **antes**, y la 24.6.1-b, lo que cuesta hacerlo de
 |---|---|
 | **AC-1** | El listado muestra número, fechas, cliente, vigencia y situación de cobro con la forma de la lámina 01, con los importes **en su moneda y sin un total único**. |
 | **AC-2** | La situación de cobro sale de los **recibos vigentes y las imputaciones reales**, no de la suma bruta, y coincide con lo que la ficha de esa venta muestra. |
-| **AC-3** | Los contadores por situación son **por moneda** y enlazan al listado filtrado. |
+| **AC-3** | Los contadores de **vigencia** —Todas, Vigentes, Anuladas— enlazan al listado filtrado y cuentan dentro del ámbito de cliente, número y período que esté puesto. *Enmendado el 2026-11-02*: decía «contadores por situación **por moneda**», y la lámina cuenta filas por vigencia, no importes (V-8). |
 | **AC-4** | El origen distingue mostrador, pedido y **orden de servicio con su número**; sin la capacidad `repairs`, los dos primeros, y la lectura de `service` **no se ejecuta**. |
 | **AC-5** | El filtro de período filtra **la fecha de emisión**, y la pantalla lo dice. |
-| **AC-6** | La ficha tiene Resumen, Cobros y Actividad por URL, andan sin JavaScript, y **ningún control del encabezado depende de una lectura de una sola pestaña** (D-4). |
-| **AC-7** | «Registrar cobro» aparece solo si la venta vigente admite más importe; «Anular» queda en «Más»; una venta cobrada no ofrece un cobro innecesario. |
+| **AC-6** | La ficha tiene Resumen, Cobros y Actividad por URL, andan sin JavaScript, y **ningún control del encabezado depende de una lectura de una sola pestaña**: el encabezado usa la lectura por lote con un solo id, en las tres (D-4, enmendado). |
+| **AC-7** | «Registrar cobro» aparece solo si la venta vigente admite más importe; «Anular» queda en «Más»; una venta cobrada no ofrece un cobro innecesario. Lo decide la lectura por lote del encabezado, no `getSaleReceipts` (D-4, enmendado). |
 | **AC-8** | El comprobante imprimible se compara entrada por entrada con la lámina 05, y al imprimir no salen navegación, botones ni overlays. |
 | **AC-9** | Un `viewer` consulta sin acciones de gestión ni costos. |
 | **AC-10** | **Medición, no afirmación**: la lectura por lote de `cash` emite un **número de consultas que no crece con la cantidad de filas**, medido con el contador de sentencias sobre el singleton de `getDb()`, con 1 y con 25 ventas. |
 | **AC-11** | **Medición**: la lectura de orígenes de `service`, igual, y **cero consultas** sin la capacidad. |
+| **AC-11-b** | La pestaña «Actividad» de la ficha **no ejecuta** `getSaleReceipts`, y el encabezado muestra lo mismo en las tres pestañas (D-4, enmendado). *Enmendado el 2026-11-03*: decía «Medición», y **el recuento de consultas de una página servida no se puede medir** con el contador de sentencias, que envuelve el pool del proceso de los tests; Next corre en otro proceso. Se verifica por dos vías: el camino del código —`wantsReceipts`, explícito en la página— y un caso de extremo a extremo que comprueba que «Actividad» no muestra nada de esa lectura y que el encabezado dice lo mismo en las tres. **El número de consultas de la página queda declarado como no medido.** |
 | **AC-12** | **Medición**: tiempo y tamaño de `/ventas` con un volumen declarado, como la 24.5.3 y la 24.6.1. |
 | **AC-13** | Sin desbordamiento horizontal de 320 a 1440 px, **medido** con `scrollWidth − clientWidth`, en el listado y en las tres pestañas. |
-| **AC-14** | Controles de 44 px **medidos**, no mirados. |
+| **AC-14** | Controles de 44 px **medidos**, no mirados. *Medido y no corregido*: el botón «Imprimir o guardar PDF» da **38 px** de alto, y vive en `print-button.tsx`, fuera de la lista cerrada; queda como pendiente. «Registrar cobro» daba **40** —`primaryLinkClass` es de 40— y se corrige en la pantalla, no en la clase compartida, que usan todas. |
 | **AC-15** | `axe` sin violaciones WCAG 2.x A ni AA en los estados de las dos pantallas. |
 | **AC-16** | Comparación visual contra las láminas 01, 03 y 05, entrada por entrada, sobre **capturas reales de la pantalla construida**, cada una clasificada en resuelta, declarada, nueva o cosmética aceptada. |
 | **AC-17** | La batería local completa en verde **con su número de casos declarado**, y la CI en `success` sobre el **SHA exacto**. No se declaran «las specs de ventas»: se declara el total. |
@@ -244,11 +364,211 @@ aprendió que ese recuento va **antes**, y la 24.6.1-b, lo que cuesta hacerlo de
 | **AC-19** | Revisión independiente de un agente que no participó, de solo lectura, contra este brief. |
 | **AC-20** | Recorrido del usuario sobre producción, sin objeciones. |
 
+### H-6 · La ficha desbordaba 140 px a 320 px, y venía así desde la 20.2
+
+Lo encontró **la medición de AC-13**, no la vista: a 320 px de ancho el documento medía 460 y la
+ventana 320. La causa es que el comprobante es un **ítem de grilla sin `min-w-0`**, y el ancho
+mínimo automático de un ítem de grilla es el de su contenido, así que la tabla de líneas no lo
+dejaba encoger. **No lo introdujo esta subfase**: el mismo `<article>` estaba así desde la 20.2, y
+la ficha nunca se había medido a 320. Se arregla acá, que es la pantalla que esta subfase abre.
+
+### H-7 · La vuelta de `/cobrar` aterrizaba donde el dinero ya no estaba
+
+`/ventas/<id>/cobrar` redirige a `/ventas/<id>?cobro=<id>` desde la 21.3, y D-8 de esa subfase
+destaca ahí el recibo recién registrado entre los de la venta. Con el dinero mudado a la pestaña
+«Cobros», la primera versión de esta subfase dejaba ese aviso en «Resumen» y **pedía los recibos
+igual**, solo para nombrar el que volvía.
+
+Son dos defectos en uno. El visible: el detalle del cobro queda una pestaña más allá, y es lo que
+afirmaban los dos casos de `exchange.spec.ts`. El de fondo: **la página pagaba una lectura que no
+mostraba**, que es exactamente lo que D-4 prohíbe y lo que la 24.6.1 encontró partido en dos
+mitades.
+
+**Resuelto en la página**: `?cobro=` abre la pestaña «Cobros», y `wantsReceipts` pasa a ser
+`tab === "cobros"` a secas. Una pestaña pedida en la URL sigue mandando, así que un enlace a otra
+no cambia. No agrega ningún archivo: `exchange.spec.ts` pasa sin tocarse. *Elegido por el usuario
+el 2026-11-03*, entre esto y actualizar los dos casos.
+
+**Lo encontró la batería completa, no la corrida acotada.** Las dos specs que lo afirmaban no
+estaban en la lista cerrada, así que ninguna corrida parcial de esta subfase las tocó.
+
+**Y el arreglo tuvo su propio costo, medido**: al traer el badge del encabezado y la tabla de dinero
+a la misma pantalla, dos localizadores sin acotar de otras dos specs pasaron a matchear dos
+elementos. Está en el cuarto recuento de H-5. No es un defecto de la página —el encabezado dice lo
+mismo en las tres pestañas porque D-4 lo pide—, sino de dos aserciones que podían ser ambiguas y no
+lo eran por casualidad.
+
 ## Mediciones requeridas
 
 AC-10, AC-11, AC-12, AC-13 y AC-14. Ninguna se reemplaza por prosa. **NB-13 de la 24.6.2 quedó
 declarado por no medir la geometría ni el zoom**; acá AC-13 y AC-14 lo cubren, y el zoom al 200 % se
 declara explícitamente como **no medido** si no se mide.
+
+## Mediciones obtenidas
+
+Tomadas el 2026-11-02 contra PostgreSQL real, con `tests/integration/sales-list-reads.test.ts`.
+
+### AC-10 · La situación de cobro por lote
+
+| Página | 1 fila | 25 filas | La forma obvia con 25 |
+|---|---|---|---|
+| Todas con cliente | **3** | **3** | **252** |
+| Todas sin cliente | **2** | **2** | — |
+| Mezclada: con cliente, sin cliente y anulada | — | **5** | > 100 |
+
+**El número no crece con las filas**: idéntico con 1 y con 25. Lo que lo hace variar es **qué formas
+de venta tiene la página**, no cuántas: las dos lecturas agrupadas de las ventas sin cliente no se
+ejecutan si no hay ninguna, y las cuentas de los clientes no se leen si todas son sin cliente. El
+peor caso medido es **5**.
+
+**H-1 estimaba «unas 150» y la medición dio 252.** La estimación quedó corta; el hallazgo queda
+confirmado y peor de lo escrito. Son **84 veces** más sentencias que la lectura por lote.
+
+### AC-11 · El origen por lote
+
+Sin la capacidad `repairs`, **cero** consultas a `service_orders`. Con ella, **una**, con 1 y con
+25 ventas, y el total de sentencias tampoco cambia entre las dos. Sin ventas, **cero** sentencias.
+
+### AC-16 · La comparación con las láminas, entrada por entrada
+
+Hecha el 2026-11-03 sobre **capturas reales de la pantalla construida** a 1672 × 941, el tamaño de
+las láminas, con un arnés temporal **ya borrado** que reproduce las cuatro ventas de la tabla de
+datos ficticios del README del lote. Cada entrada queda clasificada en **resuelta**, **declarada**
+(diferencia conocida y aceptada antes de implementar), **nueva** (aparecida al implementar) o
+**cosmética aceptada**.
+
+**El fixture se corrigió a mitad de la comparación.** Las cuatro ventas se habían insertado en el
+mismo instante, y el listado ordena por `created_at` descendente con el id como desempate: el orden
+de la captura salía al azar y no era comparable con el de la lámina. Con una fecha propia cada una
+—las de la lámina—, el listado sale en el orden de la lámina. **No era un defecto de la pantalla,
+y haberlo dado por tal habría sido el error contrario.**
+
+#### Lámina 01 · El listado
+
+| Entrada | Veredicto |
+|---|---|
+| Título «Ventas» y subtítulo «Comprobantes y cobros» | resuelta |
+| «Nueva venta» | resuelta |
+| **«Ver pedidos»**, botón secundario | **declarada** (D-6: el usuario decidió no implementarlo) |
+| Filtros Número de venta, Desde, Hasta | resuelta |
+| **Desplegable «Cliente»** | **declarada** (D-6, misma decisión) |
+| Las cuatro filas, en el orden de la lámina, con sus datos | resuelta |
+| Columnas Venta · Cliente · Origen · Total · Cobros · Acción | resuelta |
+| Número, fecha y badge «Vigente» en la celda de la venta | resuelta |
+| «Parcial» / «Cobrada» con el importe por cobrar debajo | resuelta |
+| Contadores «Todas (4) · Vigentes (4) · Anuladas (0)» | resuelta |
+| «Origen: Pedido P-000202» en V-000219 | **declarada**: el enlace al pedido va **sin** su número, y la celda la cubre el caso de extremo a extremo, no esta captura, porque el fixture no arma un pedido entregado |
+| Selector de vigencia: la lámina dibuja chips con «Vigentes» activa; la pantalla, pestañas con el contador en una pastilla y «Todas» activa | cosmética aceptada |
+| Botón «Aplicar filtros» y nota «El período filtra la fecha de emisión» | nueva, aceptada: es el patrón de filtros del CRM, que la lámina no dibuja |
+| Importes: «ARS 480.000» en la lámina, «$ 480.000,00» en la pantalla | cosmética aceptada: es el formato de moneda del CRM |
+| Fecha: «27 oct 2026» en la lámina, «27/10 16:40» en la pantalla | cosmética aceptada, preexistente |
+| «Ver» como botón con borde en la lámina, como enlace en la pantalla | cosmética aceptada |
+| Pie: «4 ventas» con paginación en la lámina, «Mostrando 1 a 4 de 4 ventas» en la pantalla | cosmética aceptada |
+| Barra lateral y barra superior | fuera de alcance: son el marco de la app, de otra subfase |
+
+#### Lámina 03 · La ficha
+
+| Entrada | Veredicto |
+|---|---|
+| Pestañas **Resumen · Cobros · Actividad**, en ese orden | resuelta |
+| Badge «Vigente» y badge «Parcial» en el encabezado | resuelta |
+| Los tres números: total 480.000, cobrado 200.000, falta 280.000 | resuelta |
+| Tabla de los cobros con el número de recibo, el medio y el importe | resuelta |
+| Enlace a la cuenta del cliente | resuelta: la pantalla además dice cuánto debe |
+| El producto con su cantidad, precio unitario y subtotal | resuelta, **en la pestaña Resumen** (D-4) |
+| **El panel «Registrar cobro»** | **declarada** (D-1: fuera del alcance) |
+| **IMEI enmascarado** «…2403» | **declarada** (V-1: el enmascarado está fuera de la Fase 24) |
+| El encabezado de la lámina lleva cliente, fecha y «Venta de mostrador»; el construido lleva el total y los dos badges | nueva, aceptada: el cliente y la fecha están en la pestaña Resumen, y el encabezado tiene que decir lo mismo en las tres (D-4) |
+| «Estado» y «Acciones» en la tabla de cobros | nueva: la pantalla no trae esas dos columnas; el número del recibo ya es el enlace |
+| «Ver comprobante» en la lámina, «Imprimir o guardar PDF» en la pantalla | cosmética aceptada |
+| Menú «⋮» en la lámina, «Más» en la pantalla | cosmética aceptada |
+| Etiquetas «Total de la venta / Cobros registrados / Saldo pendiente actual» frente a «Total / Cobrado / Falta», y el resaltado amarillo del pendiente | cosmética aceptada |
+
+#### Lámina 05 · El comprobante
+
+| Entrada | Veredicto |
+|---|---|
+| Encabezado con el nombre de la organización y «Documento no válido como factura» | resuelta |
+| «Venta V-000221» y su fecha | resuelta |
+| «Cliente / Mateo Salas» | resuelta |
+| Tabla Producto · Cantidad · Precio · Total | resuelta |
+| Total destacado | resuelta |
+| «DOCUMENTO NO VÁLIDO COMO FACTURA» al pie | resuelta |
+| «Volver» e «Imprimir» | resuelta; el alto de 38 px del botón queda declarado en AC-14 |
+| **El panel «Situación de cobro»** al lado del comprobante, con «Este panel no se imprime» | **declarada**: el dinero vive en la pestaña «Cobros» (D-4), y la situación, en el badge del encabezado |
+| El comprobante como página aparte | **declarada**: vive dentro de la pestaña Resumen (D-5: el comprobante no se reescribe) |
+| «Origen de venta / Venta sin pedido» | nueva: el comprobante construido no lo trae |
+| «U-0403 · IMEI ficticio …» bajo el producto | el fixture no tiene unidades serializadas: lo cubre `units.spec.ts`, no esta captura |
+| Ciudad y «(UTC −3)» junto a la fecha | cosmética aceptada: la zona está en el pie |
+
+**Recuento**: 21 entradas resueltas, 7 declaradas, 4 nuevas —tres aceptadas con su razón y una, las
+columnas «Estado» y «Acciones» de la tabla de cobros, que queda como pendiente anotado— y 11
+cosméticas aceptadas.
+
+### AC-12 · Tiempo y tamaño de `/ventas` con volumen
+
+Tomadas el 2026-11-03 con un arnés temporal, **ya borrado**, sobre la organización de volumen:
+siete de cada diez ventas con cliente, una de cada diez anulada, una de cada cuatro con un cobro.
+Mediana de cinco corridas después de una de calentamiento, y **las sentencias al lado del tiempo**,
+que es lo que la 24.5.3 no hizo.
+
+| Lectura | Sentencias | 1.000 ventas | 10.000 ventas |
+|---|---|---|---|
+| `countSalesByStatus` | 2 | 3 ms | 15 ms |
+| `listSales`, página 1 | 5 | 8 ms | 18 ms |
+| `getSalesStanding`, 25 filas | 5 | 16 ms | 50 ms |
+| `getSaleOrigins`, 25 ids, sin la capacidad | 1 | 1 ms | 1 ms |
+| **Las cuatro, como las pide la página** | **13** | **29 ms** | **79 ms** |
+
+**El número de sentencias no cambia con el volumen**: 13 con 1.000 y con 10.000. El tiempo sí, y
+**conviene decir qué parte crece**: `getSalesStanding` pasa de 16 a 50 ms porque sus dos lecturas
+agrupadas van **por toda la organización**, no por la página —es el precio de reusar la máquina de
+`readAccounts` en vez de escribir una regla nueva, y está asumido en D-2—. `countSalesByStatus`
+pasa de 3 a 15 ms porque cuenta todas las filas, que es lo que un contador hace.
+
+**79 ms para las cuatro lecturas con 10.000 ventas.** Queda declarado como el límite medido: a un
+volumen mucho mayor, la lectura por lote es lo primero que habría que acotar a la página.
+
+La única sentencia de `getSaleOrigins` sin la capacidad es **la lectura de la capacidad misma**, no
+una consulta a `service_orders`: de esas hay cero, y es lo que AC-11 afirma y el test versionado
+comprueba.
+
+### AC-18 · Las mutaciones, corridas el 2026-11-03
+
+Siete mutaciones, cada una aplicada al código de producción, corrida, comprobada en rojo y
+revertida. El árbol quedó verificado igual al de antes después de cada una.
+
+| # | Qué se mutó | Qué se puso rojo |
+|---|---|---|
+| M-1 | `standingOf` devuelve `row.direct` sin `row.imputed` | «coincide con lo que la ficha muestra» |
+| M-2 | `shape` dice `"pending"` siempre que no esté anulada | ídem |
+| M-3 | las anuladas salen de `ownReceiptIds` | ídem |
+| M-4 | `accountsIn` se llama siempre, aun sin ventas con cliente | «una página sin cliente consulta menos» |
+| M-5 | sin la comprobación de `repairsAllowed` | «sin la capacidad no toca `service_orders`» |
+| M-6 | `getSaleOrigins` devuelve el mapa vacío | el caso de extremo a extremo del origen |
+| M-7 | `current` se cuenta sin el filtro de vigencia | el caso de los contadores de la lámina |
+
+**M-4 no se puso roja la primera vez, y eso encontró un defecto del test.** El caso se titulaba
+«una página de ventas sin cliente consulta menos todavía» y **no afirmaba que consulte menos**:
+comparaba el recuento contra sí mismo con más filas y después contra un techo de `<= 8`. Con las
+cuentas leídas siempre, el número pasa de 2 a 3 y el techo lo dejaba pasar en verde.
+
+**Arreglado fijando los tres números exactos** —3 con clientes, 2 sin clientes, 5 en la página
+mezclada—, que son los que esta misma sección ya declaraba medidos pero que nada afirmaba. Con los
+números fijos, M-4 se pone roja. Es la forma que el vault tiene anotada como «un check en verde no
+prueba nada»: el techo holgado medía lo que uno quería ver.
+
+### Dos defectos del propio instrumento, encontrados al medir
+
+Los dos están explicados en comentarios dentro del archivo, porque el contador es lo que sostiene
+AC-10 y AC-11, y un contador mal escrito mide lo que uno quiere ver:
+
+1. **No desenvolver los clientes al terminar.** El pool los reusa, así que el envoltorio de una
+   medición sobrevivía a la siguiente y le sumaba sus sentencias a un recuento ya leído: contó 3
+   donde había 1.
+2. **Contar en el pool y en el cliente a la vez.** `Pool.query` de pg saca un cliente y le pasa la
+   consulta, así que una consulta sin transacción se contaba dos veces y una dentro de una
+   transacción, una sola: dos varas distintas en la misma medición.
 
 ## Condiciones de detención
 

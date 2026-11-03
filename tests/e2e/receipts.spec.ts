@@ -152,7 +152,8 @@ test("un admin cobra una venta en dos partes y en dos medios con el teclado, ve 
   await insertOpenSession();
   const saleId = await insertSale(1, "15000.00");
   await login(page, ADMIN);
-  await page.goto(`/ventas/${saleId}`);
+  // El dinero de la ficha vive en la pestaña «Cobros» desde la 24.6.2-b (D-4).
+  await page.goto(`/ventas/${saleId}?pestana=cobros`);
   await expect(page.getByText("Sin cobros.")).toBeVisible();
   await expectAccessible(page, "venta sin cobros");
 
@@ -193,10 +194,17 @@ test("un admin cobra una venta en dos partes y en dos medios con el teclado, ve 
   await expect(page.getByText("Se registró el cobro")).toBeVisible();
 
   // Cobrada: no ofrece otro cobro.
-  await expect(page.getByText("Cobrada")).toBeVisible();
+  // «Cobrada» lo dicen dos lugares de la ficha desde la 24.6.2-b: el badge del encabezado, que D-4
+  // pide igual en las tres pestañas, y la fila «Falta» de la tabla de dinero, que al no faltar nada
+  // dice la palabra en vez de un importe. Acá se afirma el del encabezado, primero en el documento.
+  await expect(
+    page.getByText("Cobrada", { exact: true }).first(),
+  ).toBeVisible();
   await expect(page.getByRole("link", { name: "Registrar cobro" })).toHaveCount(
     0,
   );
+  // El dinero de la ficha vive en la pestaña «Cobros» desde la 24.6.2-b (D-4).
+  await page.getByRole("link", { name: "Cobros" }).click();
   const receipts = page.getByRole("region", {
     name: "Cobros de la venta V-000001",
   });
@@ -302,7 +310,8 @@ test("un viewer ve los cobros de una venta, el recibo y la lista sin ninguna acc
     amount: "1000.00",
   });
   await login(page, VIEWER);
-  await page.goto(`/ventas/${saleId}`);
+  // El dinero de la ficha vive en la pestaña «Cobros» desde la 24.6.2-b (D-4).
+  await page.goto(`/ventas/${saleId}?pestana=cobros`);
   await expect(
     page.getByRole("region", { name: "Cobros de la venta V-000001" }),
   ).toContainText("R-000001");

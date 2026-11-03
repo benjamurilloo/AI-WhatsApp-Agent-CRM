@@ -16,6 +16,7 @@ import {
 
 // Textos de las pantallas de ventas (brief-20.2; Screens.md §16 a §18; desde la 20.3, la venta sin
 // pedido y la pantalla 19; desde la 20.4, la anulación y la pantalla 20).
+// Desde la 24.6.2-b, los del listado con la forma de la lámina 01 y los de la ficha en pestañas.
 
 export const FORBIDDEN_PAGE_MESSAGE = "No tenés permiso para ver esta página.";
 export const SALE_NOT_FOUND_MESSAGE = "Esta venta no existe.";
@@ -370,3 +371,33 @@ export function voidSaleRejection(
       };
   }
 }
+
+// ─── El listado con la forma de la lámina 01 de V2-09 (brief-24.6.2-b).
+
+export const SALES_SUBTITLE = "Comprobantes y cobros";
+// V-3 del brief: la lámina pide decirlo en la pantalla, no solo en el brief.
+export const SALES_PERIOD_NOTE = "El período filtra la fecha de emisión.";
+// La nota al pie de la lámina 01. Lo primero es la regla del ADR 0019 —un comprobante tiene una
+// sola moneda, así que no hay un total único— y lo segundo, la del ADR 0022.
+export const SALES_FOOTER_NOTE =
+  "Importes por moneda. Emitir una venta y registrar su cobro son pasos separados.";
+export const SALES_STATUS_NAV_LABEL = "Vigencia de las ventas";
+export const SALES_STATUS_TAB_LABEL = {
+  all: "Todas",
+  current: "Vigentes",
+  voided: "Anuladas",
+} as const;
+export const CURRENT_BADGE_TEXT = "Vigente";
+// El origen de la lámina 01. Una venta de una orden de servicio lleva su número; una de un pedido
+// enlaza al pedido **sin** su número, que es una diferencia declarada con la lámina.
+export const COUNTER_ORIGIN_TEXT = "Mostrador";
+export const ORDER_ORIGIN_TEXT = "Pedido";
+// La situación de cobro, que no es la vigencia: una venta puede estar vigente y sin cobrar. La
+// anulada no es un estado de cobro y no se presenta como una deuda saldada (README del lote).
+export const SALE_PAYMENT_LABEL = {
+  pending: "Pendiente",
+  partial: "Parcial",
+  collected: "Cobrada",
+  voided: "Anulada",
+} as const;
+export type SalePaymentState = keyof typeof SALE_PAYMENT_LABEL;

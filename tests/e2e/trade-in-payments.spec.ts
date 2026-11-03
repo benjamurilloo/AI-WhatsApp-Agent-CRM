@@ -240,6 +240,8 @@ test("un admin descuenta un usado de una venta con «Permuta», y el usado ya no
   await expect(page.getByLabel(/^Monto en/)).toHaveValue("300.00");
   await page.getByRole("button", { name: "Registrar cobro" }).click();
   await expect(page).toHaveURL(new RegExp(`/ventas/${saleId}\\?cobro=`));
+  // El dinero de la ficha vive en la pestaña «Cobros» desde la 24.6.2-b (D-4).
+  await page.getByRole("link", { name: "Cobros" }).click();
   await expect(
     page.getByRole("link", { name: "PU-000001" }).first(),
   ).toBeVisible();
@@ -328,7 +330,8 @@ test("un viewer ve la permuta en la venta, pero no los pagos ni el disponible", 
         from payment_methods m where m.organization_id = ${IPHONE} and m.system_role = 'trade_in'`,
   );
   await login(page, VIEWER_IPHONE.email);
-  await page.goto(`/ventas/${saleId}`);
+  // El dinero de la ficha vive en la pestaña «Cobros» desde la 24.6.2-b (D-4).
+  await page.goto(`/ventas/${saleId}?pestana=cobros`);
   await expect(
     page.getByRole("link", { name: "PU-000001" }).first(),
   ).toBeVisible();

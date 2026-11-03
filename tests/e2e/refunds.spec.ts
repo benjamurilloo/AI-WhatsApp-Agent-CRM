@@ -295,7 +295,8 @@ test("un admin devuelve en efectivo lo cobrado de una venta sin cliente anulada,
   await voidSale(2, withClient);
   await login(page, ADMIN);
 
-  await page.goto(`/ventas/${counter}`);
+  // El dinero de la ficha vive en la pestaña «Cobros» desde la 24.6.2-b (D-4).
+  await page.goto(`/ventas/${counter}?pestana=cobros`);
   await expect(page.getByText(/A devolver: \$\s2\.000,00/)).toBeVisible();
   await page.getByRole("link", { name: "Devolver", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/ventas/${counter}/devolver$`));
@@ -333,13 +334,15 @@ test("un admin devuelve en efectivo lo cobrado de una venta sin cliente anulada,
   await page.getByRole("button", { name: "Sí, anular la devolución" }).click();
   await expect(page.getByText("Devolución anulada.")).toBeVisible();
   await expect(comprobante).toContainText("Anulada por AD-000001");
-  await page.goto(`/ventas/${counter}`);
+  // El dinero de la ficha vive en la pestaña «Cobros» desde la 24.6.2-b (D-4).
+  await page.goto(`/ventas/${counter}?pestana=cobros`);
   await expect(page.getByText(/A devolver: \$\s2\.000,00/)).toBeVisible();
   await page.getByRole("link", { name: "Devolver", exact: true }).click();
   await page.getByRole("radio", { name: "Transferencia" }).check();
   await page.getByRole("button", { name: "Registrar devolución" }).click();
   await expect(page.getByText("Devolución registrada.")).toBeVisible();
-  await page.goto(`/ventas/${counter}`);
+  // El dinero de la ficha vive en la pestaña «Cobros» desde la 24.6.2-b (D-4).
+  await page.goto(`/ventas/${counter}?pestana=cobros`);
   await expect(
     page.getByText(/Devuelto: \$\s2\.000,00\. A devolver: \$\s0,00\./),
   ).toBeVisible();
@@ -348,7 +351,8 @@ test("un admin devuelve en efectivo lo cobrado de una venta sin cliente anulada,
   ).toHaveCount(0);
 
   // El saldo a favor de un cliente: lo cobrado de su venta anulada pasó a su cuenta.
-  await page.goto(`/ventas/${withClient}`);
+  // El dinero de la ficha vive en la pestaña «Cobros» desde la 24.6.2-b (D-4).
+  await page.goto(`/ventas/${withClient}?pestana=cobros`);
   await page.getByRole("link", { name: "Devolver saldo a favor" }).click();
   await expect(page).toHaveURL(new RegExp(`/clientes/${clientId}/devolver$`));
   await expect(page.getByText(/A favor: \$\s1\.500,00/)).toBeVisible();
@@ -391,7 +395,8 @@ test("un viewer ve el cobro anulado, la devolución y la lista sin ninguna acci�
   const refundId = refund.rows[0]!.id;
   await login(page, VIEWER);
 
-  await page.goto(`/ventas/${saleId}`);
+  // El dinero de la ficha vive en la pestaña «Cobros» desde la 24.6.2-b (D-4).
+  await page.goto(`/ventas/${saleId}?pestana=cobros`);
   await expect(
     page.getByRole("region", { name: "Devoluciones de la venta V-000001" }),
   ).toContainText("D-000001");
