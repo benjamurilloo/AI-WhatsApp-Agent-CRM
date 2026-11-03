@@ -490,7 +490,13 @@ describe("el origen por lote (AC-11)", () => {
       expect(reads(onMany.statements).length).toBe(
         reads(onOne.statements).length,
       );
-      // Ninguna de estas ventas salió de una reparación.
+      // Ninguna de estas ventas salió de una reparación, así que el mapa viene vacío. **Esta
+      // aserción no protege el resultado**: pasaría igual con `getSaleOrigins` devolviendo
+      // siempre un mapa vacío. Lo que este archivo protege es el **recuento de sentencias** de
+      // arriba, que es exacto. La conducta positiva —que el mapa traiga `OS-000123` para la
+      // venta que salió de esa orden— la afirma el caso de extremo a extremo de `sales.spec.ts`,
+      // que la ejercita por el flujo real en vez de armar la orden a mano acá.
+      // *Anotado el 2026-11-03*, por la revisión independiente (MENOR-5).
       expect(onMany.result.size).toBe(0);
     },
     TEST_TIMEOUT,

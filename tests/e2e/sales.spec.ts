@@ -314,9 +314,28 @@ test("al imprimir queda solo el comprobante: sin navegación, botones, historia 
     }
   }
   await page.emulateMedia({ media: null, colorScheme: null });
-  await expect(
-    page.getByRole("button", { name: "Imprimir o guardar PDF" }),
-  ).toBeVisible();
+  const printButton = page.getByRole("button", {
+    name: "Imprimir o guardar PDF",
+  });
+  await expect(printButton).toBeVisible();
+
+  // **El botón solo en «Resumen»**, que es donde vive el comprobante. *Agregado el 2026-11-03*,
+  // por la revisión independiente (MAYOR-2): se dibujaba en las tres pestañas, y como los cuerpos
+  // de «Cobros» y «Actividad» son `print:hidden`, imprimir desde ellas sacaba una hoja en blanco.
+  // Se afirman las dos mitades: que el botón no está, y que en papel no queda nada que imprimir
+  // —esa segunda es la que haría fallar el caso si alguien devolviera el botón sin devolver el
+  // comprobante.
+  for (const tab of ["Cobros", "Actividad"] as const) {
+    await page.getByRole("link", { name: tab }).click();
+    await expect(page).toHaveURL(new RegExp(`pestana=${tab.toLowerCase()}`));
+    await expect(printButton).toHaveCount(0);
+    await page.emulateMedia({ media: "print" });
+    await expect(page.locator("[data-comprobante]")).toHaveCount(0);
+    await page.emulateMedia({ media: null });
+  }
+  await page.getByRole("link", { name: "Resumen" }).click();
+  await expect(printButton).toBeVisible();
+  await expect(page.locator("[data-comprobante]")).toBeVisible();
 });
 
 test("un viewer ve la lista y el detalle sin contacto ni historia, y no puede emitir", async ({

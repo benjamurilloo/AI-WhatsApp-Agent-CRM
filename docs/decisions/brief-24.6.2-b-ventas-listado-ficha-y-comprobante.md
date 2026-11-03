@@ -2,7 +2,11 @@
 
 - **Subfase**: 24.6.2-b de la Fase 24 ([Roadmap](../planning/Roadmap.md), tabla de la Fase 24).
 - **Tipo de tarea**: `implementation`.
-- **Estado**: **aprobado por el usuario el 2026-11-02**, con el corte de D-1. Nada implementado todavía.
+- **Estado**: **aprobado por el usuario el 2026-11-02**, con el corte de D-1. **Implementado el
+  2026-11-03** (`15a0365`), con la CI en verde sobre ese SHA. **Revisado por un agente
+  independiente el 2026-11-03**: veredicto **R2**, un bloqueante de alcance y nueve hallazgos más,
+  todos verificados contra el código y aplicados; están en §AC-19. *Corregido el 2026-11-03*: esta
+  línea decía «Nada implementado todavía» y seguía diciéndolo en el commit que lo implementaba.
 - **Fecha**: 2026-11-02.
 - **Láminas**: 01, 03 y 05 del lote [V2-09](../ui-redesign/v2/20-ventas/README.md). **La 04 y el panel de cobro de la 03 no entran** (D-1).
 
@@ -132,7 +136,7 @@ que cambia es el número, y queda corregido acá en vez de repetido.
 decidió el 2026-11-02 **extender la lista con los seis archivos**: la pestaña «Cobros» se lleva las
 cinco piezas y los siete casos pasan por la pestaña. Queda en la tabla de la §Lista cerrada.
 
-**Recontado una tercera vez, con la batería completa: son quince casos de ocho specs.** El recuento
+**Recontado una tercera vez, con la batería completa: son dieciséis casos de ocho specs.** El recuento
 de trece se midió corriendo **solo las specs que la lista ya nombraba**, que es la misma raíz que el
 vault tiene anotada desde la 24.6.1-b: acotar la verificación a lo que uno tocó. La batería entera,
 corrida el 2026-11-03 contra el código nuevo, agregó dos archivos:
@@ -146,7 +150,7 @@ corrida el 2026-11-03 contra el código nuevo, agregó dos archivos:
 sí**, y lo autorizó el usuario el 2026-11-03: una línea que abre «Más» antes del clic, la misma que
 `sales.spec.ts` ya tenía.
 
-**Y una cuarta vez, por el arreglo del tercero: son dieciséis casos de nueve specs.** La segunda
+**Y una cuarta vez, por el arreglo del tercero: son diecisiete casos de nueve specs.** La segunda
 corrida de la batería —361 pasados, 2 rojos— puso en rojo `receipts.spec.ts:197` y
 `repairs.spec.ts:350`, los dos por lo mismo: `getByText("Cobrada")` sin acotar pasó a matchear
 **dos** elementos. Con `?cobro=` abriendo «Cobros» (H-7), el badge del encabezado —que D-4 pide
@@ -155,6 +159,19 @@ dice la palabra en vez de un importe. `receipts.spec.ts` ya estaba en la lista; 
 se agregó el 2026-11-03, autorizado por el usuario**. Se barrieron las specs por los cinco textos
 del encabezado —«Vigente», «Anulada», «Pendiente», «Parcial», «Cobrada»— y no hay más casos: los
 otros los acota su propia región o su propia tabla.
+
+*Corregidos los dos números el 2026-11-03*, por la revisión independiente (MAYOR-1). Decían
+**quince** y **dieciséis**, y los dos estaban corridos en uno, por dos errores distintos:
+
+- El tercer recuento sumó mal: 13 + `exchange.spec.ts` (2) + `units.spec.ts` (1) son **16**, no 15.
+- El cuarto contó **dos** casos nuevos donde había **uno**. `receipts.spec.ts:197` cae **dentro**
+  del caso que empieza en `receipts.spec.ts:148` y termina en el 231, y ese caso ya estaba contado
+  entre los dos de `receipts` del segundo recuento. El único caso nuevo es el de `repairs`.
+
+Que el cuarto recuento «cerrara» (15 + 1 = 16) fue una coincidencia de los dos errores: el total
+venía corrido en uno y el delta estaba inflado en uno. Las nueve specs sí eran nueve. Y la ironía
+está anotada a propósito: **el recuento del que esta subfase sacó una lección metodológica estaba
+mal sumado**, y lo encontró contando sobre los archivos quien no había participado.
 
 La lección es del recuento, no del arreglo: **un recuento de specs afectadas no está cerrado hasta
 que corre la batería entera**, y **el arreglo de un recuento abre el siguiente**. Las tres veces que
@@ -317,6 +334,7 @@ Salir de esta lista **se pregunta antes de implementar**, sin excepción por tam
 | `src/app/(autenticado)/ventas/messages.ts` | Los textos nuevos |
 | `src/app/(autenticado)/ventas/[saleId]/page.tsx` | La ficha en tres pestañas |
 | `src/modules/cash/service.ts`, `repository.ts`, `index.ts` | La lectura por lote (D-2) |
+| `src/modules/sales/service.ts`, `repository.ts`, `index.ts` | `countSalesByStatus`, los contadores de vigencia de la lámina 01 (AC-3), y `listScope` extraído para compartir el ámbito con el listado. ***Agregado el 2026-11-03, después de implementar*, y es la única de las cuatro extensiones de esta lista que *no se preguntó antes*: el desvío se hizo y se registró al encontrarlo la revisión independiente (BLOQUEANTE-1). El usuario lo autorizó el 2026-11-03, ya hecho.** Las otras tres se preguntaron antes, que es lo que esta fila manda |
 | `src/modules/service/sale-origins.ts` (nuevo), `index.ts` | La lectura de orígenes (D-3) |
 | `src/app/(autenticado)/ventas/[saleId]/cobrar/sale-receipts-section.tsx` | Las cinco piezas de dinero pasan a la pestaña «Cobros» (H-5) |
 | `tests/e2e/sales.spec.ts` | Los casos de la subfase |
@@ -449,9 +467,9 @@ y haberlo dado por tal habría sido el error contrario.**
 |---|---|
 | Título «Ventas» y subtítulo «Comprobantes y cobros» | resuelta |
 | «Nueva venta» | resuelta |
-| **«Ver pedidos»**, botón secundario | **declarada** (D-6: el usuario decidió no implementarlo) |
+| **«Ver pedidos»**, botón secundario | **declarada** (V-6: el usuario decidió no implementarlo) |
 | Filtros Número de venta, Desde, Hasta | resuelta |
-| **Desplegable «Cliente»** | **declarada** (D-6, misma decisión) |
+| **Desplegable «Cliente»** | **declarada** (V-6, misma decisión) |
 | Las cuatro filas, en el orden de la lámina, con sus datos | resuelta |
 | Columnas Venta · Cliente · Origen · Total · Cobros · Acción | resuelta |
 | Número, fecha y badge «Vigente» en la celda de la venta | resuelta |
@@ -582,6 +600,91 @@ AC-10 y AC-11, y un contador mal escrito mide lo que uno quiere ver:
   prohíben.
 - Si aparece una diferencia con la v2 que no está declarada acá, **se declara y se pregunta** antes de
   implementarla.
+
+## AC-19 · La revisión independiente, y lo que encontró
+
+Hecha el 2026-11-03 por un agente que **no participó** del trabajo, de solo lectura, sobre `15a0365`
+y contra este brief. Fijó su escala de severidad antes de mirar y recorrió siete dimensiones. No
+otorgó ninguna autorización: **los diez hallazgos se verificaron contra el código antes de
+aceptarse, y los diez resultaron reales.** Ninguno falso, que es lo que distingue esta revisión de la
+de la 8.4, donde uno de cuatro lo era.
+
+**Veredicto: R2** — un bloqueante, cuatro mayores, cinco menores.
+
+| # | Hallazgo | Resuelto |
+|---|---|---|
+| **BLOQUEANTE-1** | Tres archivos de `src/modules/sales/` en el commit, fuera de la lista cerrada y sin extensión registrada | La cuarta fila de la lista, con la anomalía declarada: es la única extensión que **no se preguntó antes**. Autorizada por el usuario el 2026-11-03, ya hecha |
+| **MAYOR-1** | El recuento de specs no cerraba: eran 16 y 17, no 15 y 16 | Los dos números corregidos, con los dos errores distintos anotados |
+| **MAYOR-2** | «Imprimir o guardar PDF» en las tres pestañas, y desde «Cobros» o «Actividad» imprimía **una hoja en blanco** | El botón solo en «Resumen», con un caso que afirma las dos mitades |
+| **MAYOR-3** | «Cobrada» afirmado con `.first()` donde el comentario decía «el del encabezado» | `data-estado-venta` en el encabezado y las dos aserciones acotadas |
+| **MAYOR-4** | La ficha pasó a pagar una lectura de **toda la organización**, sin declarar ni medir | Medido (abajo) y declarado como límite aceptado en `Overview.md` |
+| MENOR-1 | «Nada implementado todavía» en el commit que lo implementaba | Corregido |
+| MENOR-2 | `Screens.md` describía la ficha que H-7 reemplazó | Corregido |
+| MENOR-3 | Dos entradas visuales citaban D-6 donde va V-6 | Corregido |
+| MENOR-4 | `NO_ORDER_TEXT`, constante muerta: la columna que describe la borró esta subfase | Borrada |
+| MENOR-5 | En el caso del origen, dos aserciones pasarían con un mapa vacío | Anotado en el propio caso, con dónde vive la conducta positiva |
+
+### MAYOR-4 · Lo que cuesta la ficha, medido
+
+El encabezado llama `getSalesStanding` con un solo id (D-4), y con una venta **con cliente** ese
+camino entra por `accountsIn`, que lee las ventas con cliente, los cobros y las devoluciones de
+**toda la organización**. Antes la ficha pagaba `getSaleReceipts`, acotado **a un cliente**. El
+hallazgo es correcto: es un costo nuevo y no estaba declarado.
+
+Tomadas el 2026-11-03 con un arnés temporal, **ya borrado**, sobre una organización de volumen con
+**200 clientes** —siete de cada diez ventas con cliente, una de cada diez anulada, una de cada
+cuatro con un cobro—. Mediana de cinco corridas después de una de calentamiento.
+
+| Lectura | 1.000 ventas | 10.000 ventas |
+|---|---|---|
+| `getSalesStanding`, 1 id, venta **con** cliente (el encabezado nuevo) | 16 ms | **58 ms** |
+| `getSalesStanding`, 1 id, venta **sin** cliente | 5 ms | 9 ms |
+| `getSaleReceipts`, la misma venta (lo que la ficha pagaba antes) | 17 ms | **24 ms** |
+
+**A 10.000 ventas el encabezado cuesta 2,4 veces lo que costaba la lectura que reemplazó**, y la
+venta **sin** cliente se queda en 9 ms. Eso último es lo que confirma el mecanismo exacto: el costo
+está en `accountsIn`, no en la lectura por lote. Queda **declarado como límite aceptado**: la ficha
+hereda el techo de la lista de deudores, y acotar el camino de un solo id a la cuenta de su cliente
+—sin cambiar D-4 ni el contrato— es la mejora disponible si un negocio se acerca a ese volumen.
+
+**La primera medición no sirvió y se descarta por escrito**: el fixture tenía **un solo cliente**,
+y con un cliente «por cliente» y «por organización» son el mismo conjunto, así que midió
+`getSaleReceipts` *más lento* que `getSalesStanding` —148 contra 66 ms— y la distinción que el
+hallazgo denuncia se colapsaba. Un arnés que no puede mostrar la diferencia que mide no la refuta.
+
+### Lo que la medición confirmó de paso, y no estaba buscando
+
+La comprobación de coherencia del arnés **puso en rojo AC-2** en la primera corrida: la lectura por
+lote decía `collected: 1000.00` donde la ficha decía `400.00`. **No era un defecto**: era la
+comprobación comparando el campo equivocado. `SaleStandingSummary.collected` es, por diseño y por
+su propio comentario, **lo cobrado más lo imputado**, y la ficha muestra los dos separados. Con los
+campos que de verdad se comparan, cierra exacto con 200 clientes y 10.000 ventas:
+`lote.collected = ficha.collected + ficha.imputed` y los dos `outstanding` iguales. Es una
+confirmación de AC-2 **más fuerte que la del test versionado**, que corre con un puñado de filas.
+Haberlo anotado como defecto habría sido el error contrario, igual que con el fixture de AC-16.
+
+### Lo que la revisión miró y no produjo hallazgos
+
+Las fronteras de módulos, leyendo los `import` reales y no las descripciones: `sale-origins.ts` no
+importa `sales` ni `cash`, `sales` no importa `cash` ni `service`, y las dos lecturas las compone
+la página. Las prohibiciones absolutas: cero Airtable, ninguna referencia al repositorio del agente,
+ninguna tabla especulativa, y **67 migraciones contadas archivo por archivo**, sin huecos. La
+correctitud de las lecturas en sus bordes —anuladas con y sin cliente, ventas sin cliente, lotes
+vacíos, organizaciones distintas, monedas mezcladas, cobros anulados, la seña del pedido y el
+sobrepago—, sin encontrar una entrada alcanzable que devuelva un importe incorrecto. Y la honestidad
+del nivel de validación, sin inflado: lo que faltaba de «No certifica» eran MAYOR-2 y MAYOR-4, los
+dos ahora declarados.
+
+### Una conducta anotada, sin arreglar, porque es una decisión
+
+`standingOf` cae en `shape(0n, 0n)` cuando una venta vigente con cliente **no aparece** en su
+cuenta, y `shape` convierte eso en `status: "collected"`: el listado diría **«Cobrada»** para un
+estado que la propia función considera inconsistente. Es la lectura más tranquilizadora posible, y
+contrasta con el precedente que la 24.6.1 fijó —«cuando `cash` no puede leer los recibos, la
+pantalla lo dice en vez de dibujar ceros»—. **Por los caminos normales no es alcanzable**: una venta
+vigente con cliente siempre está en su cuenta; sí lo es en una carrera estrecha, si la venta se
+anula entre `listSales` y la instantánea, y es transitoria. No se cambia acá porque cambiarla es
+elegir qué mostrar, y eso es una decisión del usuario, no un arreglo.
 
 ## Nivel de validación objetivo
 

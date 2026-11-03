@@ -222,7 +222,12 @@ export default async function SalePage({
           title={`Venta ${sale.displayNumber}`}
           leading={<HeaderIcon name="receipt" />}
           subtitle={
-            <p className="flex flex-wrap items-center gap-2">
+            // `data-estado-venta` acota las dos insignias del encabezado. Sin un asa, un caso que
+            // quiera afirmar «Cobrada» del encabezado solo puede pedir el primero del documento, y
+            // `.first()` sigue en verde si el badge desaparece y queda la fila «Falta» de la tabla
+            // de dinero, que dice la misma palabra: la aserción pasaría por la razón contraria a la
+            // que afirma. *Agregado el 2026-11-03*, por la revisión independiente (MAYOR-3).
+            <p className="flex flex-wrap items-center gap-2" data-estado-venta>
               <span>
                 Total:{" "}
                 <span className="font-semibold text-foreground tabular-nums">
@@ -247,7 +252,14 @@ export default async function SalePage({
               </Link>
             ) : null
           }
-          actions={<PrintButton />}
+          // «Imprimir o guardar PDF» solo en «Resumen», que es donde vive el comprobante
+          // (AC-8). *Corregido el 2026-11-03*, por la revisión independiente (MAYOR-2): el botón
+          // se dibujaba en las tres pestañas, y los cuerpos de «Cobros» y «Actividad» son
+          // `print:hidden`, así que imprimir desde ellas sacaba **una hoja en blanco**. Lo
+          // introdujo este rediseño: antes el botón y el comprobante vivían en la única vista que
+          // había. Ofrecer el botón donde no hay nada que imprimir es la forma de D-4 —un control
+          // que no corresponde a lo que la vista muestra—, acá del lado de la acción.
+          actions={tab === "resumen" ? <PrintButton /> : null}
           more={
             isAdmin && saleVoid === null ? (
               // «Anular» queda en «Más» (AC-7). Es un <details>, así que abre y cierra sin

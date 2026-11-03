@@ -196,9 +196,13 @@ test("un admin cobra una venta en dos partes y en dos medios con el teclado, ve 
   // Cobrada: no ofrece otro cobro.
   // «Cobrada» lo dicen dos lugares de la ficha desde la 24.6.2-b: el badge del encabezado, que D-4
   // pide igual en las tres pestañas, y la fila «Falta» de la tabla de dinero, que al no faltar nada
-  // dice la palabra en vez de un importe. Acá se afirma el del encabezado, primero en el documento.
+  // dice la palabra en vez de un importe. Se afirma **el del encabezado**, acotado por
+  // `[data-estado-venta]`. *Corregido el 2026-11-03*, por la revisión independiente: decía esta
+  // misma frase y usaba `.first()`, que no fija cuál. Si el badge del encabezado desapareciera
+  // —justo lo que D-4 y AC-7 protegen—, el primero del documento sería la fila «Falta» y el caso
+  // seguiría en verde: la aserción podía pasar por la razón contraria a la que declaraba.
   await expect(
-    page.getByText("Cobrada", { exact: true }).first(),
+    page.locator("[data-estado-venta]").getByText("Cobrada", { exact: true }),
   ).toBeVisible();
   await expect(page.getByRole("link", { name: "Registrar cobro" })).toHaveCount(
     0,

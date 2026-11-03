@@ -35,8 +35,6 @@ export const UNKNOWN_PRODUCT_TEXT = "Producto no disponible";
 export const UNKNOWN_CLIENT_TEXT = "Cliente no disponible";
 // Una venta sin cliente (brief-20.3, D-7).
 export const CONSUMER_TEXT = "Consumidor final";
-// Una venta sin pedido, en la columna del pedido de la lista.
-export const NO_ORDER_TEXT = "Sin pedido";
 export const COUNTER_SALE_PRICES_NOTE =
   "Los productos se muestran con su nombre de hoy. Los precios y los totales son los vigentes al emitir la venta.";
 
