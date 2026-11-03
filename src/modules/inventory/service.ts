@@ -1285,15 +1285,23 @@ export async function deliverStock(
 // unidad (brief-29.5.2, D-3), cada unidad tiene que estar available y pasa a sold, con su movimiento
 // sale de 1.
 //
-// El motivo lleva el número de la venta, y el contador va después de los saldos (ADR 0021, punto
-// 7): por eso llega como una función, que se llama una sola vez, después de comprobar y antes de
-// escribir. Ahí quien vende toma su número. inventory no conoce las ventas.
+// El motivo lleva el número del comprobante, y el contador va después de los saldos (ADR 0021,
+// punto 7): por eso llega como una función, que se llama **una sola vez**, después de comprobar y
+// antes de escribir. Ahí quien vende toma su número. *Desde la 24.6.2-c* esa función devuelve otra,
+// que da el motivo **por producto**: una emisión de mostrador puede repartir sus líneas en varios
+// comprobantes, uno por moneda, y cada movimiento lleva el número del suyo. inventory sigue sin
+// conocer las ventas: recibe líneas y una función, y quién es cada comprobante lo sabe sales.
 export async function sellStock(
   tx: DbTransaction,
   sale: {
     organizationId: string;
     lines: StockLine[];
-    reason: () => Promise<string>;
+    // El motivo, por producto (brief-24.6.2-c, D-1). Era `() => Promise<string>`: una emisión de
+    // mostrador puede repartir sus líneas en varios comprobantes, uno por moneda, y el movimiento de
+    // cada producto lleva el número del comprobante al que fue su línea. La llamada sigue siendo
+    // **una sola** y sigue yendo después de todos los bloqueos, que es lo que el punto 7 del ADR
+    // 0021 exige del contador: ningún camino bloquea un contador y después otra fila.
+    reason: () => Promise<(productId: string) => string>;
     createdBy: string;
   },
 ): Promise<TakeStockResult> {
@@ -1312,12 +1320,12 @@ export async function sellStock(
   if (shortages.length > 0) {
     return { ok: false, reason: "insufficient", shortages };
   }
-  const reason = await sale.reason();
+  const reasonOf = await sale.reason();
   for (const line of locked) {
     const base = {
       organizationId,
       productId: line.productId,
-      reason,
+      reason: reasonOf(line.productId),
       createdBy: sale.createdBy,
     };
     if (trackings.get(line.productId) !== "unit") {
@@ -1359,7 +1367,8 @@ export async function sellStock(
 // reservado: sumar al saldo nunca lo deja por debajo. En un producto por unidad (brief-29.5.2, D-3),
 // las unidades que vendió vuelven de sold a available, con su movimiento sale_void de 1.
 //
-// El motivo es una función, como en sellStock: lleva el número de la anulación, y el contador va
+// El motivo es una función, como en sellStock —acá una sola para todas las líneas, porque una
+// anulación es un comprobante—: lleva el número de la anulación, y el contador va
 // después de los saldos (ADR 0021, punto 7). Se llama una sola vez, después de comprobar y antes de
 // escribir. inventory no conoce las ventas.
 //
@@ -1555,7 +1564,8 @@ export async function resolveLineUnits(
 // caben, pide el motivo y escribe un movimiento goods_receipt por línea con el saldo nuevo, sin
 // tocar lo reservado.
 //
-// El motivo es una función, como en sellStock: lleva el número de la recepción, y el contador va
+// El motivo es una función, como en sellStock —acá una sola para todas las líneas, porque una
+// recepción es un comprobante—: lleva el número de la recepción, y el contador va
 // después de los saldos (ADR 0023, punto 10). Se llama una sola vez, después de comprobar y antes de
 // escribir. inventory no conoce las recepciones ni los proveedores: el motivo no los nombra.
 //
@@ -1715,7 +1725,8 @@ export function isSerialTakenError(error: unknown): boolean {
 // con el saldo nuevo, sin tocar lo reservado. No mira si el producto está activo: lo que entró tiene
 // que poder salir.
 //
-// El motivo es una función, como en sellStock: lleva el número de la anulación, y el contador va
+// El motivo es una función, como en sellStock —acá una sola para todas las líneas, porque una
+// anulación es un comprobante—: lleva el número de la anulación, y el contador va
 // después de los saldos (ADR 0023, punto 10). Se llama una sola vez, después de comprobar y antes de
 // escribir. inventory no conoce las recepciones ni los proveedores: el motivo no los nombra.
 //

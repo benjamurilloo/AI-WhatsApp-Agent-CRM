@@ -190,7 +190,7 @@ async function sell(s: Seed, units: number, clientId: string) {
     ],
   });
   if (!result.ok) throw new Error(`venta rechazada: ${JSON.stringify(result)}`);
-  return result.sale;
+  return result.sales[0];
 }
 
 async function voided(context: AuthContext, saleId: string) {
@@ -732,7 +732,7 @@ describe("los rechazos (AC-6)", () => {
         ],
       });
       if (!saleB.ok) throw new Error("venta de B rechazada");
-      expect(await refundSale(s, saleB.sale.id, "1")).toEqual({
+      expect(await refundSale(s, saleB.sales[0].id, "1")).toEqual({
         ok: false,
         code: "NOT_FOUND",
         entity: "sale",
@@ -777,8 +777,8 @@ describe("la serialización (AC-7)", () => {
         ],
       });
       if (!saleB.ok) throw new Error("venta de B rechazada");
-      await received(s.adminB, saleB.sale.id, s.methodsB.transfer, "1000");
-      await voided(s.adminB, saleB.sale.id);
+      await received(s.adminB, saleB.sales[0].id, s.methodsB.transfer, "1000");
+      await voided(s.adminB, saleB.sales[0].id);
       const release = await hold(cashLock(s.orgA));
       const refunding = refundAccount(s, "100");
       const undoing = undo(s.adminA, done.id);

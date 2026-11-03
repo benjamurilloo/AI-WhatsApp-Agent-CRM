@@ -46,10 +46,15 @@ import {
   parseLines,
   type LineField,
   type LineInput,
+  type LinePrice,
+  type LineProduct,
   type LineRuleIssue,
+  type LinesEvaluation,
+  type LineUnit,
   type ParsedLine,
+  type PricedLine,
 } from "@/shared/lines";
-import { moneyToDatabase } from "@/shared/money";
+import { moneyToDatabase, type Money } from "@/shared/money";
 import { quantityToDatabase } from "@/shared/quantity";
 import * as repository from "./repository";
 
@@ -309,8 +314,19 @@ export type SaleShortage = {
   available: string;
 };
 
+export type IssuedSale = {
+  id: string;
+  number: number;
+  displayNumber: string;
+};
+
 export type IssueSaleWithoutOrderResult =
-  | { ok: true; sale: { id: string; number: number; displayNumber: string } }
+  // Desde la 24.6.2-c, **N comprobantes**, uno por moneda, ordenados por número (D-4): el mostrador
+  // vende en dos monedas en una sola pasada. Era `sale`, en singular. La función conserva su nombre
+  // a propósito: el plural vive en este tipo, donde el compilador lo hace cumplir, y así las guardas
+  // de `tests/guards/unit-writes.test.ts`, que fijan el nombre del llamador, siguen valiendo tal
+  // cual. Con una sola moneda la tupla tiene un elemento, que es el caso de siempre.
+  | { ok: true; sales: [IssuedSale, ...IssuedSale[]] }
   | SaleValidationFailure
   | Failure<"FORBIDDEN">
   | Failure<"NOT_FOUND", { target: "client" }>
@@ -378,6 +394,123 @@ class UnitsUnavailable extends Error {
   }
 }
 
+// Un comprobante armado: la rama de éxito de `evaluateLines`, que desde la 24.6.2-c se llama una
+// vez por moneda.
+type EvaluatedDocument<P extends LinePrice> = {
+  currency: string;
+  lines: PricedLine<P>[];
+  total: Money;
+};
+
+type DocumentsEvaluation<P extends LinePrice> =
+  | { ok: true; documents: EvaluatedDocument<P>[] }
+  | Exclude<LinesEvaluation<P>, { ok: true }>;
+
+function byPosition<T extends { position: number }>(issues: T[]): T[] {
+  return [...issues].sort((a, b) => a.position - b.position);
+}
+
+// Las líneas agrupadas por la moneda del precio vigente de su producto, un grupo por comprobante y
+// en el orden en que cada moneda aparece por primera vez (brief-24.6.2-c, D-2), evaluadas con
+// `evaluateLines` **sin modificarla**: adentro de un grupo la moneda es una sola, así que la función
+// ve lo que siempre vio. Esto importa porque `evaluateLines` es compartida con `orders` y su código
+// `currency_mismatch` viaja en el contrato de ingestión con el agente de WhatsApp (H-1 del brief):
+// un pedido sigue con una sola moneda y sigue rechazando la mezcla.
+//
+// La precedencia entre grupos es: los productos que no están, las reglas de línea, el precio que
+// cambió y, al final, el total. Las fallas de la misma clase se unen y se ordenan por posición, para
+// que el formulario marque todas las líneas de una vez y no una tanda por envío.
+//
+// **No es idéntica a la de una sola llamada**, y conviene saber en qué. `evaluateLines` comprueba el
+// precio cambiado del producto **entre** sus dos clases de regla de línea: primero el producto
+// inactivo, de servicio o sin precio (`rules.ts`, el bloque `unusable`); después el precio cambiado;
+// y recién después la moneda y los montos. Acá las dos clases viajan juntas bajo `line_rules` y le
+// ganan al precio cambiado. La diferencia se ve en una sola entrada: con dos monedas, una línea con
+// el precio cambiado en un grupo y otra con el total en cero en el otro responden `line_rules` donde
+// con una sola moneda habrían respondido `CONFLICT`. **Ninguna de las dos escribe nada** y las dos
+// conservan lo cargado; lo que cambia es el mensaje. *Anotado el 2026-11-03*, por la revisión
+// independiente (hallazgo 5), que encontró que el brief y este comentario describían mal a
+// `rules.ts`.
+function evaluateByCurrency<P extends LinePrice>(
+  lines: ParsedLine[],
+  products: Map<string, LineProduct<P>>,
+  units: Map<number, LineUnit[]>,
+): DocumentsEvaluation<P> {
+  // Sin un precio vigente para cada línea no hay moneda con la que agrupar, y esa entrada no puede
+  // emitir nada: se evalúa de una sola vez y el rechazo es el mismo de antes de esta subfase —el
+  // producto que no está o el que no tiene precio—.
+  const grouped: ParsedLine[][] = [];
+  if (lines.some((line) => !products.get(line.productId)?.price)) {
+    grouped.push(lines);
+  } else {
+    const byCurrency = new Map<string, ParsedLine[]>();
+    for (const line of lines) {
+      const { currency } = products.get(line.productId)!.price!;
+      const group = byCurrency.get(currency);
+      if (group) group.push(line);
+      else byCurrency.set(currency, [line]);
+    }
+    // Un Map conserva el orden de inserción: el primer grupo es el de la moneda de la primera línea.
+    grouped.push(...byCurrency.values());
+  }
+
+  const evaluations = grouped.map((group) =>
+    evaluateLines(group, products, units),
+  );
+  const missing = evaluations.flatMap((evaluation) =>
+    !evaluation.ok && evaluation.reason === "missing_products"
+      ? evaluation.lines
+      : [],
+  );
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      reason: "missing_products",
+      lines: byPosition(missing),
+    };
+  }
+  const issues = evaluations.flatMap((evaluation) =>
+    !evaluation.ok && evaluation.reason === "line_rules"
+      ? evaluation.lines
+      : [],
+  );
+  if (issues.length > 0) {
+    return { ok: false, reason: "line_rules", lines: byPosition(issues) };
+  }
+  const changed = evaluations.flatMap((evaluation) =>
+    !evaluation.ok && evaluation.reason === "price_changed"
+      ? evaluation.lines
+      : [],
+  );
+  if (changed.length > 0) {
+    return { ok: false, reason: "price_changed", lines: byPosition(changed) };
+  }
+  // El tope del total es del documento, así que se mira por comprobante y no sobre la suma de todos,
+  // que además mezclaría monedas.
+  if (
+    evaluations.some(
+      (evaluation) => !evaluation.ok && evaluation.reason === "total_too_large",
+    )
+  ) {
+    return { ok: false, reason: "total_too_large" };
+  }
+  const documents = evaluations.flatMap((evaluation) =>
+    evaluation.ok
+      ? [
+          {
+            currency: evaluation.currency,
+            lines: evaluation.lines,
+            total: evaluation.total,
+          },
+        ]
+      : [],
+  );
+  if (documents.length !== evaluations.length) {
+    throw new Error("Un grupo de líneas quedó sin evaluar.");
+  }
+  return { ok: true, documents };
+}
+
 export async function issueSale(
   context: AuthContext,
   input: SaleInput,
@@ -440,7 +573,12 @@ export async function issueSale(
             units: resolved.issues,
           };
         }
-        const evaluated = evaluateLines(lines, products, resolved.units);
+        // Las líneas se agrupan por moneda y cada grupo es un comprobante (D-2): el ADR 0019,
+        // punto 3, queda intacto —cada comprobante sigue con una sola moneda y ninguna línea se
+        // convierte—, y el propio ADR deja a «la fase que crea el comprobante» decidir cómo se
+        // elige la moneda. Lo que esta subfase decide es que el mostrador emite una venta por
+        // moneda, en una sola transacción.
+        const evaluated = evaluateByCurrency(lines, products, resolved.units);
         if (!evaluated.ok) {
           switch (evaluated.reason) {
             case "missing_products":
@@ -473,15 +611,21 @@ export async function issueSale(
               };
           }
         }
+        const documents = evaluated.documents;
 
-        // El número se toma después de comprobar lo disponible y antes de escribir los
-        // movimientos, que lo llevan en el motivo. Con un rechazo, no se consume.
+        // Los números se toman después de comprobar lo disponible y antes de escribir los
+        // movimientos, que los llevan en el motivo. Con un rechazo, ninguno se consume. Van **todos**
+        // dentro de la única llamada a `reason` de sellStock, que corre después de los bloqueos de
+        // las unidades y de los saldos: el punto 7 del ADR 0021 exige que ningún camino bloquee un
+        // contador y después otra fila, y llamando a sellStock una vez por grupo los saldos del
+        // segundo se bloquearían con el contador de la organización ya retenido (H-3 y D-1).
         const unitsOf = (position: number) =>
           resolved.units.get(position) ?? [];
-        let number: number | null = null;
+        const soldLines = documents.flatMap((document) => document.lines);
+        const numbers = new Map<string, number>();
         const sold = await sellStock(tx, {
           organizationId,
-          lines: evaluated.lines.map((line) => ({
+          lines: soldLines.map((line) => ({
             productId: line.productId,
             quantity: quantityToDatabase(line.quantity),
             ...(line.serials.length > 0
@@ -489,14 +633,34 @@ export async function issueSale(
               : {}),
           })),
           reason: async () => {
-            number = await nextDocumentNumber(tx, organizationId, "sale");
-            return `Venta ${formatSaleNumber(number)}`;
+            for (const document of documents) {
+              numbers.set(
+                document.currency,
+                await nextDocumentNumber(tx, organizationId, "sale"),
+              );
+            }
+            // Un producto está en un solo comprobante: su precio vigente tiene una sola moneda.
+            const byProduct = new Map(
+              documents.flatMap((document) =>
+                document.lines.map((line) => [
+                  line.productId,
+                  `Venta ${formatSaleNumber(numbers.get(document.currency)!)}`,
+                ]),
+              ),
+            );
+            return (productId: string) => {
+              const reason = byProduct.get(productId);
+              if (reason === undefined) {
+                throw new Error("Un movimiento de stock sin su comprobante.");
+              }
+              return reason;
+            };
           },
           createdBy: userId,
         });
         if (!sold.ok && sold.reason === "units_unavailable") {
           const positions = new Map(
-            evaluated.lines.flatMap((line) =>
+            soldLines.flatMap((line) =>
               unitsOf(line.position).map((unit) => [unit.id, line.position]),
             ),
           );
@@ -509,77 +673,90 @@ export async function issueSale(
           );
         }
         if (!sold.ok) throw new InsufficientStock(sold.shortages);
-        if (number === null) throw new Error("La venta no tomó su número.");
+        if (numbers.size !== documents.length) {
+          throw new Error("La venta no tomó su número.");
+        }
 
-        const saleLines = evaluated.lines.map((line) => ({
-          productId: line.productId,
-          position: line.position,
-          quantity: quantityToDatabase(line.quantity),
-          unitPrice: moneyToDatabase(line.unitPrice),
-          currency: line.price.currency,
-          lineTotal: moneyToDatabase(line.total),
-          unitIds: unitsOf(line.position).map((unit) => unit.id),
-        }));
-        const sale = await repository.insertSale(tx, {
-          organizationId,
-          number,
-          orderId: null,
-          clientId,
-          currency: evaluated.currency,
-          total: moneyToDatabase(evaluated.total),
-          replacesSaleId: null,
-          createdBy: userId,
-        });
-        const inserted = await repository.insertSaleLines(
-          tx,
-          organizationId,
-          sale.id,
-          saleLines,
-        );
-        const lineIds = new Map(
-          inserted.map((line) => [line.position, line.id]),
-        );
-        await repository.insertSaleLineUnits(
-          tx,
-          organizationId,
-          evaluated.lines.flatMap((line) =>
-            unitsOf(line.position).map((unit, index) => ({
-              saleLineId: lineIds.get(line.position)!,
-              productId: line.productId,
-              unitId: unit.id,
-              unitPrice: moneyToDatabase(line.unitPrices[index]!),
-            })),
-          ),
-        );
-        // El mismo diff de la venta de un pedido, con order_id nulo y, sin cliente, client_id
-        // nulo (brief-20.3, D-8). Sin nombres ni textos del cliente.
-        await recordAudit(tx, {
-          organizationId,
-          actorUserId: userId,
-          entityType: "sale",
-          entityId: sale.id,
-          action: "create",
-          diff: {
-            before: null,
-            after: {
-              number: sale.number,
-              order_id: null,
-              client_id: clientId,
-              currency: sale.currency,
-              total: sale.total,
-              lines: saleLines.length,
-              ...lineAuditEntries(saleLines),
+        const issued: IssuedSale[] = [];
+        for (const document of documents) {
+          // La posición guardada se cuenta desde 1 **dentro de su comprobante** (D-9), que es lo que
+          // `sale_lines` documenta y lo que el comprobante impreso muestra. La posición de la fila
+          // del formulario sigue siendo la que viaja en los rechazos y la que indexa las unidades
+          // resueltas, y las dos coinciden cuando hay una sola moneda.
+          const saleLines = document.lines.map((line, index) => ({
+            productId: line.productId,
+            position: index + 1,
+            quantity: quantityToDatabase(line.quantity),
+            unitPrice: moneyToDatabase(line.unitPrice),
+            currency: line.price.currency,
+            lineTotal: moneyToDatabase(line.total),
+            unitIds: unitsOf(line.position).map((unit) => unit.id),
+          }));
+          const sale = await repository.insertSale(tx, {
+            organizationId,
+            number: numbers.get(document.currency)!,
+            orderId: null,
+            clientId,
+            currency: document.currency,
+            total: moneyToDatabase(document.total),
+            replacesSaleId: null,
+            createdBy: userId,
+          });
+          const inserted = await repository.insertSaleLines(
+            tx,
+            organizationId,
+            sale.id,
+            saleLines,
+          );
+          const lineIds = new Map(
+            inserted.map((line) => [line.position, line.id]),
+          );
+          await repository.insertSaleLineUnits(
+            tx,
+            organizationId,
+            document.lines.flatMap((line, index) =>
+              unitsOf(line.position).map((unit, unitIndex) => ({
+                saleLineId: lineIds.get(index + 1)!,
+                productId: line.productId,
+                unitId: unit.id,
+                unitPrice: moneyToDatabase(line.unitPrices[unitIndex]!),
+              })),
+            ),
+          );
+          // El mismo diff de la venta de un pedido, con order_id nulo y, sin cliente, client_id
+          // nulo (brief-20.3, D-8). Sin nombres ni textos del cliente. **Una entrada por
+          // comprobante**: cada venta es una venta normal y se audita como tal, y nada las
+          // relaciona, que es lo que el usuario decidió (D-2).
+          await recordAudit(tx, {
+            organizationId,
+            actorUserId: userId,
+            entityType: "sale",
+            entityId: sale.id,
+            action: "create",
+            diff: {
+              before: null,
+              after: {
+                number: sale.number,
+                order_id: null,
+                client_id: clientId,
+                currency: sale.currency,
+                total: sale.total,
+                lines: saleLines.length,
+                ...lineAuditEntries(saleLines),
+              },
             },
-          },
-        });
-        return {
-          ok: true,
-          sale: {
+          });
+          issued.push({
             id: sale.id,
             number: sale.number,
             displayNumber: formatSaleNumber(sale.number),
-          },
-        };
+          });
+        }
+        const [primero, ...resto] = issued;
+        if (!primero) {
+          throw new Error("La emisión no produjo ningún comprobante.");
+        }
+        return { ok: true, sales: [primero, ...resto] };
       },
     );
   } catch (error) {

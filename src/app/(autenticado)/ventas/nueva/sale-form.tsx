@@ -41,6 +41,9 @@ import {
   BEFORE_ISSUE_TITLE,
   beforeIssueCountText,
   CONSUMER_TEXT,
+  issueDocumentLabel,
+  issueDocumentsNote,
+  ISSUE_DOCUMENTS_TITLE,
   LEAVE_SALE_LABEL,
   QUANTITY_FROM_UNITS_NOTE,
   type SaleFormState,
@@ -168,19 +171,38 @@ function SaleFields({
       current.map((row) => (row.key === key ? { ...row, ...change } : row)),
     );
 
-  // El total estimado, en la moneda de la primera línea con precio.
+  // Los comprobantes que la emisión va a producir: **uno por moneda**, en el orden en que cada
+  // moneda aparece por primera vez, que es como los agrupa `sales` (brief-24.6.2-c, D-2 y D-7). El
+  // total de cada uno es estimado, como el de siempre: el que vale lo calcula el sistema al emitir.
+  // Las monedas no se suman, así que con más de una el total único desaparece.
+  //
+  // **Sin JavaScript esto no existe** y no es un defecto (H-5 del brief): el precio de cada línea lo
+  // trae el buscador de productos, que vive detrás de la hidratación. La agrupación que vale la hace
+  // el servidor, que es el único que conoce los precios vigentes.
   const priced = rows.filter((row) => row.price);
-  const currency = priced[0]?.price?.currency ?? null;
-  const estimates = priced.flatMap((row) =>
-    row.price && row.price.currency === currency
-      ? [estimateRow(row).estimate]
-      : [],
-  );
-  const mixed = priced.some((row) => row.price?.currency !== currency);
-  const total =
-    currency && estimates.length > 0 && estimates.every((value) => value)
+  const documents: {
+    currency: string;
+    lines: number;
+    total: string | null;
+  }[] = [];
+  for (const row of priced) {
+    const currency = row.price!.currency;
+    const document = documents.find((entry) => entry.currency === currency);
+    if (document) document.lines += 1;
+    else documents.push({ currency, lines: 1, total: null });
+  }
+  for (const document of documents) {
+    const estimates = priced.flatMap((row) =>
+      row.price && row.price.currency === document.currency
+        ? [estimateRow(row).estimate]
+        : [],
+    );
+    document.total = estimates.every((value) => value)
       ? sumEstimates(estimates as string[])
       : null;
+  }
+  // Con una sola moneda, el resumen de siempre.
+  const single = documents.length === 1 ? documents[0]! : null;
 
   // Lo que el resumen cuenta: los equipos elegidos y, si no hay ninguno, las líneas con producto.
   const chosenUnits = rows.reduce(
@@ -465,12 +487,9 @@ function SaleFields({
                 </p>
               </div>
 
-              {mixed ? (
-                <p className="text-sm text-danger">
-                  Hay líneas en monedas distintas: la venta toma la moneda de la
-                  primera, y las otras se rechazan.
-                </p>
-              ) : null}
+              {/* Hasta la 24.6.2-c acá iba un aviso rojo que decía que las líneas en otra moneda
+                  se rechazaban. Pasó a ser falso: cada moneda se va a su propio comprobante, y lo
+                  que se va a emitir se lee en «Comprobantes a emitir» del resumen (D-7). */}
               <p className="text-sm text-muted">
                 El total que vale es el que calcula el sistema al emitir la
                 venta, con los precios vigentes. Al emitir se descuenta el
@@ -530,17 +549,63 @@ function SaleFields({
                 </span>
               </li>
             </ul>
-            {/* Un solo párrafo que empieza con «Total estimado:», como en el alta de un pedido:
-                la etiqueta y el monto quedan en las dos puntas, pero el texto sigue entero. */}
-            <p
+            {/* **Una sola región viva, y permanente**: con una moneda y con varias cambia el
+                contenido del mismo elemento. *Corregido el 2026-11-03*, por la revisión
+                independiente (hallazgo 3): la primera versión ponía `aria-live` en cada una de las
+                dos ramas, así que al pasar de una moneda a dos la región del total se desmontaba y
+                nacía otra con su contenido ya puesto — y una región que nace junto con lo que dice
+                no se anuncia, porque el lector compara contra un estado anterior que no existió. */}
+            <div
+              // El gancho existe para que la prueba pueda afirmar que **es el mismo elemento** con
+              // una moneda y con varias, que es lo que hace que el cambio se anuncie (hallazgo 3).
+              data-resumen-total
               aria-live="polite"
-              className="flex flex-wrap items-baseline justify-between gap-2 border-t border-border pt-4 text-sm font-semibold"
+              className="border-t border-border pt-4 empty:hidden"
             >
-              <span>Total estimado:</span>{" "}
-              <span className="text-lg font-bold tabular-nums">
-                {total && currency ? formatMoney(total, currency) : "—"}
-              </span>
-            </p>
+              {/* Con una sola moneda, un solo párrafo que empieza con «Total estimado:», como en el
+                  alta de un pedido: la etiqueta y el monto quedan en las dos puntas, pero el texto
+                  sigue entero. Con más de una, el bloque de los comprobantes, que **no** suma las
+                  monedas (D-7). */}
+              {documents.length > 1 ? (
+                <div className="flex flex-col gap-2">
+                  <p className="text-sm font-semibold">
+                    {ISSUE_DOCUMENTS_TITLE}
+                  </p>
+                  <ul className="flex flex-col gap-2 text-sm">
+                    {documents.map((document) => (
+                      <li
+                        key={document.currency}
+                        className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg bg-surface-muted px-3 py-2"
+                      >
+                        <span>
+                          {issueDocumentLabel(
+                            document.currency,
+                            document.lines,
+                          )}
+                        </span>
+                        <span className="font-semibold tabular-nums">
+                          {document.total
+                            ? formatMoney(document.total, document.currency)
+                            : "—"}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-sm text-muted">
+                    {issueDocumentsNote(documents.length)}
+                  </p>
+                </div>
+              ) : (
+                <p className="flex flex-wrap items-baseline justify-between gap-2 text-sm font-semibold">
+                  <span>Total estimado:</span>{" "}
+                  <span className="text-lg font-bold tabular-nums">
+                    {single?.total
+                      ? formatMoney(single.total, single.currency)
+                      : "—"}
+                  </span>
+                </p>
+              )}
+            </div>
             <ul className="flex flex-col gap-2 border-t border-border pt-4 text-sm text-muted">
               {BEFORE_ISSUE_NOTES.map((note, index) => (
                 <li key={note} className="flex items-start gap-2">

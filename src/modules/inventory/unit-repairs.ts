@@ -85,7 +85,7 @@ export type SendUnitToRepairResult =
   | { ok: false; reason: BalanceRule };
 
 // Mandar a reparar (D-2): available o in_review → in_repair. Si estaba disponible, el saldo baja en 1
-// con un movimiento unit_to_repair que la nombra. El motivo es una función, como en sellStock: lleva
+// con un movimiento unit_to_repair que la nombra. El motivo es una función, como en sellStock —acá una sola, porque es una unidad—: lleva
 // el número de la orden, y el contador va después del saldo. Un rechazo no escribe nada, y quien llama
 // revierte la transacción.
 export async function sendUnitToRepair(

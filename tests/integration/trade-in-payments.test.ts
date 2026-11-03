@@ -327,7 +327,7 @@ async function sell(s: Seed, clientId: string | null = s.clientId) {
         },
       ],
     }),
-  ).sale;
+  ).sales[0];
 }
 
 // Un pedido abierto del cliente, con una unidad nueva (brief-29.7.2, D-9: la seña rechaza «Permuta»).

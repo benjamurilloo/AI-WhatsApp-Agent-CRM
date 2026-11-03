@@ -425,16 +425,18 @@ test("la lista busca por número, filtra por fecha y avisa de un período invál
 
 // La venta sin pedido (brief-20.3, AC-7). Un producto con precio y saldo por SQL: estas pantallas
 // no concilian el saldo con sus movimientos.
+// Desde la 24.6.2-c acepta la moneda: el mostrador vende en dos monedas en una sola pasada.
 async function insertStockedProduct(
   sku: string,
   name: string,
   price: string,
   onHand: string,
+  currency = "ARS",
 ) {
   const productId = await insertProduct(sku, name);
   await db.execute(
     sql`insert into product_prices (organization_id, product_id, amount, currency, created_by)
-        values (${SEED_ORGANIZATION_ID}, ${productId}, ${price}, 'ARS', ${ADMIN_SEED.id})`,
+        values (${SEED_ORGANIZATION_ID}, ${productId}, ${price}, ${currency}, ${ADMIN_SEED.id})`,
   );
   await db.execute(
     sql`insert into inventories (organization_id, product_id, quantity_on_hand)
@@ -1190,6 +1192,186 @@ test("brief-24.6.2: sin desbordamiento horizontal en el alta de mostrador, de 32
       `panel abierto a ${ancho} px`,
     ).toBeLessThanOrEqual(0);
   }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// La 24.6.2-c: el mostrador en dos monedas, un comprobante por moneda.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("brief-24.6.2-c: el mostrador dice qué comprobantes va a emitir y emite uno por moneda", async ({
+  page,
+}) => {
+  // AC-8, AC-10, AC-12 y AC-13. Café en pesos y un teléfono en dólares, que es el caso que el
+  // usuario pidió: un accesorio y un equipo en la misma atención.
+  const coffee = await insertStockedProduct(
+    "CAF-250",
+    "Café molido",
+    "1234.50",
+    "10",
+  );
+  const phone = await insertStockedProduct(
+    "TEL-13",
+    "Teléfono 13",
+    "400.00",
+    "5",
+    "USD",
+  );
+  await insertStockedProduct("AUR-01", "Auriculares", "30.00", "8", "EUR");
+  await login(page, ADMIN);
+  await page.goto("/ventas/nueva");
+  const summary = page.getByRole("complementary", { name: "Antes de emitir" });
+  // La región viva del resumen, que tiene que ser **la misma** con una moneda y con varias para que
+  // el cambio se anuncie (revisión independiente, hallazgo 3).
+  const live = summary.locator("[data-resumen-total]");
+
+  // Con una sola moneda, el resumen es el de siempre y el bloque no existe.
+  await pick(line(page, 1), "Producto", "Café");
+  await line(page, 1).getByLabel("Cantidad").fill("3");
+  await expect(
+    summary.locator("p", { hasText: /^Total estimado:/ }),
+  ).toContainText("$ 3.703,50");
+  await expect(summary.getByText("Comprobantes a emitir")).toHaveCount(0);
+  await expect(live).toHaveCount(1);
+  await expect(live).toHaveAttribute("aria-live", "polite");
+  await expect(live).toContainText("Total estimado:");
+
+  // Con dos, el total único desaparece —las monedas no se suman— y aparece el bloque, una fila por
+  // moneda con su recuento de líneas y su total estimado (D-7).
+  await pick(line(page, 2), "Producto", "Teléfono");
+  await line(page, 2).getByLabel("Cantidad").fill("2");
+  await expect(summary.getByText("Comprobantes a emitir")).toBeVisible();
+  await expect(
+    summary.locator("p", { hasText: /^Total estimado:/ }),
+  ).toHaveCount(0);
+  const documents = summary.getByRole("listitem");
+  await expect(documents.filter({ hasText: "ARS · 1 línea" })).toContainText(
+    "$ 3.703,50",
+  );
+  await expect(documents.filter({ hasText: "USD · 1 línea" })).toContainText(
+    "US$ 800,00",
+  );
+  await expect(summary).toContainText(
+    "Se emiten 2 comprobantes, uno por moneda, cada uno con su número y su cobro.",
+  );
+  // La región viva sigue siendo una sola y la misma: cambió su contenido, no su existencia.
+  await expect(live).toHaveCount(1);
+  await expect(live).toHaveAttribute("aria-live", "polite");
+  await expect(live).toContainText("Comprobantes a emitir");
+  await expect(live).not.toContainText("Total estimado:");
+  // El aviso rojo de antes de esta subfase decía que las otras monedas se rechazaban: ya no está.
+  await expect(page.getByText("monedas distintas")).toHaveCount(0);
+  await expectAccessible(page, "mostrador con dos monedas");
+
+  // AC-12 pide **tres** monedas desplegadas, que es el bloque más alto, así que la tercera entra
+  // acá. *Agregada el 2026-11-03*, por la revisión independiente (hallazgo 1): el barrido corría con
+  // dos y el criterio nombra tres.
+  await pick(line(page, 3), "Producto", "Auriculares");
+  await line(page, 3).getByLabel("Cantidad").fill("1");
+  await expect(
+    summary.getByRole("listitem").filter({ hasText: "EUR" }),
+  ).toHaveCount(1);
+  await expect(summary).toContainText("Se emiten 3 comprobantes");
+  for (const ancho of [320, 390, 768, 1024, 1440]) {
+    await page.setViewportSize({ width: ancho, height: 900 });
+    await expect(summary.getByText("Comprobantes a emitir")).toBeVisible();
+    expect(
+      await anchoDesbordado(page),
+      `resumen con tres monedas a ${ancho} px`,
+    ).toBeLessThanOrEqual(0);
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
+  // Y se vuelve a dos para lo que sigue: el destino con tres ya lo cubre el aviso genérico.
+  await line(page, 3)
+    .getByRole("button", { name: /Quitar/ })
+    .click();
+  await expect(summary).toContainText("Se emiten 2 comprobantes");
+
+  await page.getByRole("button", { name: "Emitir venta" }).click();
+
+  // AC-10: con dos comprobantes el destino es el listado, con el aviso que los nombra, porque ya no
+  // hay «la» venta a la que llevar (D-5).
+  await expect(page).toHaveURL(
+    /\/ventas\?aviso=emitidas&numeros=V-000001(,|%2C)V-000002$/,
+  );
+  await expect(
+    page.getByText(
+      "Se emitieron 2 comprobantes, uno por moneda: V-000001 y V-000002.",
+    ),
+  ).toBeVisible();
+  const table = page.getByRole("table", { name: "Ventas de la organización" });
+  await expect(table).toContainText("V-000001");
+  await expect(table).toContainText("V-000002");
+  await expect(table).toContainText("$ 3.703,50");
+  await expect(table).toContainText("US$ 800,00");
+  expect(await saleCount()).toBe(2);
+  expect(await onHand(coffee)).toBe("7.000");
+  expect(await onHand(phone)).toBe("3.000");
+  await expectAccessible(page, "listado con los dos comprobantes");
+
+  // Cada comprobante se imprime por su lado, con su moneda.
+  await table.getByRole("link", { name: "Ver la venta V-000002" }).click();
+  await expect(page.locator("[data-comprobante]")).toContainText("US$ 800,00");
+
+  // Un parámetro que no tiene la forma de un número de venta cae en el aviso genérico, y lo que
+  // venía en la URL no se escribe en la página. **Alcanza con que uno solo no tenga la forma**: con
+  // los válidos mezclados con basura, el aviso tampoco nombra ninguno, porque si no afirmaría un
+  // recuento que no es el de lo que vino (revisión independiente, hallazgo 4).
+  for (const numeros of ["%3Cscript%3E", "V-000001,basura,V-000002", "V-1"]) {
+    await page.goto(`/ventas?aviso=emitidas&numeros=${numeros}`);
+    await expect(
+      page.getByText("Se emitieron los comprobantes."),
+    ).toBeVisible();
+    await expect(page.getByRole("main")).not.toContainText("script");
+    await expect(page.getByRole("main")).not.toContainText("basura");
+  }
+});
+
+test.describe("brief-24.6.2-c sin JavaScript", () => {
+  test.use({ javaScriptEnabled: false });
+
+  test("el bloque no aparece y la emisión produce igual un comprobante por moneda", async ({
+    page,
+  }) => {
+    // AC-9 y H-5 del brief: el precio de cada línea lo trae el buscador de productos, que vive
+    // detrás de la hidratación, así que sin JavaScript el navegador no sabe en qué moneda está cada
+    // uno y el bloque no puede existir. **No es un defecto**: la agrupación que vale la hace el
+    // servidor, que es el único que conoce los precios vigentes.
+    const coffee = await insertStockedProduct(
+      "CAF-250",
+      "Café molido",
+      "1234.50",
+      "10",
+    );
+    const phone = await insertStockedProduct(
+      "TEL-13",
+      "Teléfono 13",
+      "400.00",
+      "5",
+      "USD",
+    );
+    await login(page, ADMIN);
+    await page.goto("/ventas/nueva");
+
+    await expect(page.getByText("Comprobantes a emitir")).toHaveCount(0);
+    // Sin JavaScript el producto se resuelve por su SKU, como en el alta de un pedido.
+    await line(page, 1).getByLabel("Producto").fill("caf-250");
+    await line(page, 1).getByLabel("Cantidad").fill("3");
+    await line(page, 2).getByLabel("Producto").fill("tel-13");
+    await line(page, 2).getByLabel("Cantidad").fill("2");
+    await page.getByRole("button", { name: "Emitir venta" }).click();
+
+    await expect(page).toHaveURL(
+      /\/ventas\?aviso=emitidas&numeros=V-000001(,|%2C)V-000002$/,
+    );
+    const table = page.getByRole("table", {
+      name: "Ventas de la organización",
+    });
+    await expect(table).toContainText("$ 3.703,50");
+    await expect(table).toContainText("US$ 800,00");
+    expect(await saleCount()).toBe(2);
+    expect(await onHand(coffee)).toBe("7.000");
+    expect(await onHand(phone)).toBe("3.000");
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

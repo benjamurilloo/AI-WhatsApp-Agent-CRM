@@ -194,7 +194,7 @@ async function sell(s: Seed, units: number, clientId: string) {
     ],
   });
   if (!result.ok) throw new Error(`venta rechazada: ${JSON.stringify(result)}`);
-  return result.sale;
+  return result.sales[0];
 }
 
 async function voided(context: AuthContext, saleId: string) {
@@ -792,7 +792,7 @@ describe("la serialización (AC-7)", () => {
       if (!saleB.ok) throw new Error("venta de B rechazada");
       const receiptB = await received(
         s.adminB,
-        saleB.sale.id,
+        saleB.sales[0].id,
         s.methodsB.transfer,
         "100",
       );

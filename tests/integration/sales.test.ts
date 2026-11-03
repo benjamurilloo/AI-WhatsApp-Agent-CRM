@@ -898,7 +898,7 @@ describe("la venta sin pedido (brief-20.3, AC-3)", () => {
       );
       expect(result).toMatchObject({
         ok: true,
-        sale: { number: 1, displayNumber: "V-000001" },
+        sales: [{ number: 1, displayNumber: "V-000001" }],
       });
       const header = await getDb().execute<Record<string, unknown>>(
         sql`select number, order_id, client_id, currency, total, created_by from sales`,
@@ -1010,7 +1010,7 @@ describe("la venta sin pedido (brief-20.3, AC-3)", () => {
       );
       expect(result).toMatchObject({
         ok: true,
-        sale: { number: 2, displayNumber: "V-000002" },
+        sales: [{ number: 2, displayNumber: "V-000002" }],
       });
       const header = await getDb().execute<Record<string, unknown>>(
         sql`select order_id, client_id from sales where number = 2`,
@@ -1189,7 +1189,7 @@ describe("la venta sin pedido (brief-20.3, AC-3)", () => {
         await issueSale(s.adminA, saleInput(s, [[s.tv, "1"]])),
       ).toMatchObject({
         ok: true,
-        sale: { displayNumber: "V-000001" },
+        sales: [{ displayNumber: "V-000001" }],
       });
     },
     TEST_TIMEOUT,
@@ -1346,12 +1346,12 @@ describe("la venta sin pedido: concurrencia (brief-20.3, AC-4)", () => {
         await issueSale(s.adminA, saleInput(s, [[s.fridge, "1"]])),
       ).toMatchObject({
         ok: true,
-        sale: { displayNumber: "V-000001" },
+        sales: [{ displayNumber: "V-000001" }],
       });
       await release();
       expect(await waiting).toMatchObject({
         ok: true,
-        sale: { displayNumber: "V-000002" },
+        sales: [{ displayNumber: "V-000002" }],
       });
     },
     TEST_TIMEOUT,
@@ -1394,11 +1394,11 @@ describe("la venta sin pedido: lecturas (brief-20.3, AC-6)", () => {
         clientId: s.clientA,
       });
       expect(ofLucia.ok && ofLucia.sales.map((sale) => sale.id)).toEqual([
-        toClient.sale.id,
+        toClient.sales[0].id,
         withOrder.id,
       ]);
 
-      const detail = await getSale(s.viewerA, counter.sale.id);
+      const detail = await getSale(s.viewerA, counter.sales[0].id);
       expect(detail).toMatchObject({
         ok: true,
         sale: {
@@ -1410,7 +1410,7 @@ describe("la venta sin pedido: lecturas (brief-20.3, AC-6)", () => {
         },
       });
       // Un viewer ve la venta con cliente sin su contacto, como en la 20.2.
-      const withClient = await getSale(s.viewerA, toClient.sale.id);
+      const withClient = await getSale(s.viewerA, toClient.sales[0].id);
       expect(withClient.ok && withClient.sale.client?.contact).toBeNull();
     },
     TEST_TIMEOUT,
@@ -1421,18 +1421,15 @@ describe("la venta sin pedido: lecturas (brief-20.3, AC-6)", () => {
 // unitario de src/shared/lines, ahora por issueSale.
 describe("la venta sin pedido: más rechazos de D-9 (brief-20.3, AC-3)", () => {
   it(
-    "too_many_lines, currency_mismatch y total_too_large, sin escribir ni numerar",
+    "too_many_lines y total_too_large, sin escribir ni numerar",
     async () => {
       const s = await seed();
-      const dollars = await insertProduct(s.orgA, "USD-1");
-      await getDb().execute(
-        sql`insert into product_prices (organization_id, product_id, amount, currency, created_by)
-            values (${s.orgA}, ${dollars}, '10.00', 'USD', ${s.adminAId})`,
-      );
-      const usdPrice = await getDb().execute<{ id: string }>(
-        sql`select id from product_prices where product_id = ${dollars}`,
-      );
-      s.prices.set(dollars, usdPrice.rows[0]!.id);
+      // *Cambiado el 2026-11-03, por la 24.6.2-c*: acá había un tercer caso, dos líneas en monedas
+      // distintas, que esperaba `currency_mismatch`. **Dejó de valer a propósito**: el mostrador
+      // emite un comprobante por moneda, así que esa entrada ahora escribe y numera, y este caso
+      // afirma justamente que no se escribe nada. La conducta nueva está en el describe de la
+      // 24.6.2-c, al final del archivo; el alta de un pedido sigue rechazando la mezcla, y eso lo
+      // fija `orders.test.ts`.
       // Dos productos con el precio máximo: cada línea cabe, la suma no.
       const big1 = await insertProduct(s.orgA, "MAX-1");
       const big2 = await insertProduct(s.orgA, "MAX-2");
@@ -1465,20 +1462,6 @@ describe("la venta sin pedido: más rechazos de D-9 (brief-20.3, AC-3)", () => {
         await issueSale(
           s.adminA,
           saleInput(s, [
-            [s.tv, "1"],
-            [dollars, "1"],
-          ]),
-        ),
-      ).toEqual({
-        ok: false,
-        code: "BUSINESS_RULE_VIOLATION",
-        rule: "line_rules",
-        lines: [{ position: 2, productId: dollars, rule: "currency_mismatch" }],
-      });
-      expect(
-        await issueSale(
-          s.adminA,
-          saleInput(s, [
             [big1, "1"],
             [big2, "1"],
           ]),
@@ -1494,12 +1477,262 @@ describe("la venta sin pedido: más rechazos de D-9 (brief-20.3, AC-3)", () => {
   );
 });
 
+// El mostrador en dos monedas (brief-24.6.2-c): una transacción, un comprobante por moneda.
+
+// Un producto con su precio vigente en la moneda que se le pide, con stock cargado.
+async function productIn(
+  s: Seed,
+  sku: string,
+  currency: string,
+  amount: string,
+  quantity = "20",
+) {
+  const id = await insertProduct(s.orgA, sku);
+  const price = await getDb().execute<{ id: string }>(
+    sql`insert into product_prices (organization_id, product_id, amount, currency, created_by)
+        values (${s.orgA}, ${id}, ${amount}, ${currency}, ${s.adminAId})
+        returning id`,
+  );
+  s.prices.set(id, price.rows[0]!.id);
+  await stock(s.adminA, id, quantity);
+  return id;
+}
+
+// Cada comprobante con su moneda, su total y las posiciones de sus líneas.
+async function documents() {
+  const result = await getDb().execute<{
+    number: number;
+    currency: string;
+    total: string;
+    positions: string;
+  }>(
+    sql`select s.number::int as number, s.currency, s.total,
+               (select string_agg(l.position || ':' || l.product_id, ',' order by l.position)
+                from sale_lines l where l.sale_id = s.id) as positions
+        from sales s order by s.number`,
+  );
+  return result.rows;
+}
+
+// El motivo del movimiento de cada producto, como mapa y no como lista: los uuid son distintos en
+// cada corrida, así que cualquier orden por id sería casual.
+async function saleMovementReasons() {
+  const result = await getDb().execute<{ product_id: string; reason: string }>(
+    sql`select product_id, reason from inventory_movements where type = 'sale'`,
+  );
+  return Object.fromEntries(
+    result.rows.map((row) => [row.product_id, row.reason]),
+  );
+}
+
+describe("brief-24.6.2-c: el mostrador en dos monedas", () => {
+  it(
+    "emite un comprobante por moneda, con números consecutivos, y cuenta las posiciones desde 1 en cada uno (AC-1)",
+    async () => {
+      const s = await seed();
+      const dollars = await productIn(s, "USD-1", "USD", "400.00");
+
+      // La moneda de la primera línea se lleva el número más bajo, y el comprobante en pesos junta
+      // la línea 1 con la 3: adentro quedan como posición 1 y 2 (D-9).
+      expect(
+        await issueSale(
+          s.adminA,
+          saleInput(s, [
+            [s.tv, "1"],
+            [dollars, "2"],
+            [s.fridge, "1"],
+          ]),
+        ),
+      ).toEqual({
+        ok: true,
+        sales: [
+          { id: expect.any(String), number: 1, displayNumber: "V-000001" },
+          { id: expect.any(String), number: 2, displayNumber: "V-000002" },
+        ],
+      });
+
+      expect(await documents()).toEqual([
+        {
+          number: 1,
+          currency: "ARS",
+          total: "1240000.00",
+          positions: `1:${s.tv},2:${s.fridge}`,
+        },
+        {
+          number: 2,
+          currency: "USD",
+          total: "800.00",
+          positions: `1:${dollars}`,
+        },
+      ]);
+
+      // El movimiento de cada producto lleva el número del comprobante al que fue su línea, que es
+      // lo que el motivo por producto de sellStock existe para poder decir (D-1).
+      expect(await saleMovementReasons()).toEqual({
+        [s.tv]: "Venta V-000001",
+        [s.fridge]: "Venta V-000001",
+        [dollars]: "Venta V-000002",
+      });
+
+      // Dos ventas normales: dos entradas de auditoría, una por comprobante, y nada que las
+      // relacione (D-2).
+      const audit = await getDb().execute<{ count: number }>(
+        sql`select count(*)::int as count from audit_logs
+            where entity_type = 'sale' and action = 'create'`,
+      );
+      expect(audit.rows[0]!.count).toBe(2);
+      await expectStockInvariant();
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "tres monedas dan tres comprobantes, en el orden en que cada moneda aparece por primera vez (AC-2)",
+    async () => {
+      const s = await seed();
+      const dollars = await productIn(s, "USD-1", "USD", "400.00");
+      const euros = await productIn(s, "EUR-1", "EUR", "300.00");
+
+      const issued = await issueSale(
+        s.adminA,
+        saleInput(s, [
+          [dollars, "1"],
+          [s.tv, "1"],
+          [euros, "1"],
+        ]),
+      );
+      expect(issued).toMatchObject({
+        ok: true,
+        sales: [
+          { displayNumber: "V-000001" },
+          { displayNumber: "V-000002" },
+          { displayNumber: "V-000003" },
+        ],
+      });
+      expect(
+        (await documents()).map((row) => [row.number, row.currency]),
+      ).toEqual([
+        [1, "USD"],
+        [2, "ARS"],
+        [3, "EUR"],
+      ]);
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "si a una moneda le falta stock no se emite nada y el contador no se consume (AC-3)",
+    async () => {
+      const s = await seed();
+      // Un solo equipo en dólares, y la venta pide cinco.
+      const dollars = await productIn(s, "USD-1", "USD", "400.00", "1");
+      const before = await snapshot();
+
+      expect(
+        await issueSale(
+          s.adminA,
+          saleInput(s, [
+            [s.tv, "1"],
+            [dollars, "5"],
+          ]),
+        ),
+      ).toEqual({
+        ok: false,
+        code: "BUSINESS_RULE_VIOLATION",
+        rule: "insufficient_stock",
+        lines: [
+          {
+            position: 2,
+            productId: dollars,
+            requested: "5.000",
+            available: "1.000",
+          },
+        ],
+      });
+      // Ni la venta en pesos, que sí tenía stock: la emisión es una sola transacción.
+      expect(await snapshot()).toEqual(before);
+      expect(before.sale_counter).toBeNull();
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "dos emisiones de dos monedas en paralelo terminan las dos, con cuatro números consecutivos (AC-4)",
+    async () => {
+      const s = await seed();
+      const dollars = await productIn(s, "USD-1", "USD", "400.00");
+      const otherArs = await productIn(s, "ARS-2", "ARS", "90000.00");
+      const otherUsd = await productIn(s, "USD-2", "USD", "250.00");
+
+      // Cada emisión con sus propios productos: lo que se mide es que las dos pasen por el contador
+      // sin trabarse, no la pelea por un saldo.
+      const [first, second] = await Promise.all([
+        issueSale(
+          s.adminA,
+          saleInput(s, [
+            [s.tv, "1"],
+            [dollars, "1"],
+          ]),
+        ),
+        issueSale(
+          s.adminA,
+          saleInput(s, [
+            [otherArs, "1"],
+            [otherUsd, "1"],
+          ]),
+        ),
+      ]);
+      expect([first.ok, second.ok]).toEqual([true, true]);
+      expect((await documents()).map((row) => row.number)).toEqual([
+        1, 2, 3, 4,
+      ]);
+      await expectStockInvariant();
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "con el saldo de una moneda retenido, la emisión espera sin haber tomado el contador (AC-5)",
+    async () => {
+      const s = await seed();
+      const dollars = await productIn(s, "USD-1", "USD", "400.00");
+      // Una tercera conexión retiene el saldo del producto en dólares.
+      const release = await hold(
+        sql`select 1 from inventories where product_id = ${dollars} for update`,
+      );
+      const waiting = issueSale(
+        s.adminA,
+        saleInput(s, [
+          [s.tv, "1"],
+          [dollars, "1"],
+        ]),
+      );
+      await waitForLockWaiters(1);
+      // Esta es la prueba del orden de bloqueo (H-3): si la emisión de dos monedas hubiera tomado
+      // el contador antes de los saldos —como pasaría llamando a sellStock una vez por moneda—,
+      // esta segunda se quedaría esperándolo y no podría terminar.
+      expect(
+        await issueSale(s.adminA, saleInput(s, [[s.fridge, "1"]])),
+      ).toMatchObject({
+        ok: true,
+        sales: [{ displayNumber: "V-000001" }],
+      });
+      await release();
+      expect(await waiting).toMatchObject({
+        ok: true,
+        sales: [{ displayNumber: "V-000002" }, { displayNumber: "V-000003" }],
+      });
+    },
+    TEST_TIMEOUT,
+  );
+});
+
 // La anulación (brief-20.4, AC-2 a AC-6 y D-11).
 
 async function counterSale(s: Seed, lines: [string, string][], clientId = "") {
   const result = await issueSale(s.adminA, saleInput(s, lines, clientId));
   if (!result.ok) throw new Error(`venta rechazada: ${result.code}`);
-  return result.sale;
+  return result.sales[0];
 }
 
 async function voidSnapshot() {

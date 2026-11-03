@@ -210,14 +210,14 @@ async function creditOf100(s: Seed, clientId: string | null) {
   });
   if (!sale.ok) throw new Error(`venta rechazada: ${JSON.stringify(sale)}`);
   const paid = await createSaleReceipt(s.adminA, {
-    saleId: sale.sale.id,
+    saleId: sale.sales[0].id,
     paymentMethodId: s.methods.transfer,
     amount: "100",
   });
   if (!paid.ok) throw new Error(`cobro rechazado: ${JSON.stringify(paid)}`);
-  const voided = await voidSale(s.adminA, sale.sale.id, "data_entry_error");
+  const voided = await voidSale(s.adminA, sale.sales[0].id, "data_entry_error");
   if (!voided.ok) throw new Error(`anulación rechazada: ${voided.code}`);
-  return sale.sale;
+  return sale.sales[0];
 }
 
 // Una recepción sin orden de una línea, de USD 100.

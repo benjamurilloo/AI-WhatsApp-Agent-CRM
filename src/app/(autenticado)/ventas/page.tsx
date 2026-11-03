@@ -23,6 +23,7 @@ import {
   tableCellClass,
   tableHeadCellClass,
 } from "@/app/_components/form-styles";
+import { ActionNotice } from "@/app/_components/action-notice";
 import { EmptyState } from "@/app/_components/empty-state";
 import { Icon } from "@/app/_components/icons";
 import { PageHeader, SearchIcon } from "@/app/_components/page-header";
@@ -44,6 +45,7 @@ import {
   COUNTER_ORIGIN_TEXT,
   FORBIDDEN_PAGE_MESSAGE,
   INVALID_PERIOD_MESSAGE,
+  issuedSalesNotice,
   NO_SALE_RESULTS_MESSAGE,
   NO_SALES_MESSAGE,
   ORDER_ORIGIN_TEXT,
@@ -97,7 +99,12 @@ export default async function SalesPage({
   searchParams: Promise<SearchParams>;
 }) {
   const context = await requireSession();
-  const filters = parseSaleFilters(await searchParams);
+  const query = await searchParams;
+  const filters = parseSaleFilters(query);
+  // El aviso de una emisión de mostrador que produjo más de un comprobante (brief-24.6.2-c, D-5).
+  // `parseSaleFilters` ignora los parámetros que no conoce, así que `aviso` y `numeros` no mueven
+  // ningún filtro.
+  const notice = issuedSalesNotice(query.aviso, query.numeros);
   const scope = {
     clientId: filters.clientId || null,
     number: filters.number,
@@ -166,6 +173,10 @@ export default async function SalesPage({
             : null
         }
       />
+
+      <div role="status" className="mt-4 empty:hidden">
+        {notice ? <ActionNotice>{notice}</ActionNotice> : null}
+      </div>
 
       <form
         key={saleFiltersHref(filters)}

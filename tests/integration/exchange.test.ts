@@ -197,7 +197,7 @@ async function sell(
     ],
   });
   if (!result.ok) throw new Error(`venta rechazada: ${JSON.stringify(result)}`);
-  return result.sale;
+  return result.sales[0];
 }
 
 async function open(context: AuthContext, rows: CashAmountInput[]) {

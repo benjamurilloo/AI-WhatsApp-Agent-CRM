@@ -620,7 +620,7 @@ describe("el IMEI de un equipo vendido que vuelve (AC-4, U-2)", () => {
         ),
       ).toBe(2);
 
-      expect(await voidSale(s.admin, sale.sale.id, "data_entry_error")).toEqual(
+      expect(await voidSale(s.admin, sale.sales[0].id, "data_entry_error")).toEqual(
         {
           ok: false,
           code: "BUSINESS_RULE_VIOLATION",

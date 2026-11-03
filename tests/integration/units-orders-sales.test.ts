@@ -154,6 +154,9 @@ async function product(
     context = s.adminA,
     orgId = s.orgA,
     userId = s.adminAId,
+    // Desde la 24.6.2-c: el precio vigente puede ser de otra moneda, para el mostrador en dos.
+    priceAmount = "900.00",
+    priceCurrency = "USD",
   } = {},
 ) {
   const created = await createProduct(context, productInput(sku));
@@ -167,7 +170,13 @@ async function product(
     );
     if (!changed.ok) throw new Error(`seguimiento rechazado: ${changed.code}`);
   }
-  const priceId = await insertPrice(orgId, created.productId, userId);
+  const priceId = await insertPrice(
+    orgId,
+    created.productId,
+    userId,
+    priceAmount,
+    priceCurrency,
+  );
   return { id: created.productId, priceId };
 }
 
@@ -392,6 +401,55 @@ describe("el alta del pedido con unidades (D-1, D-2, AC-1, AC-5)", () => {
         sql`select count(*)::int as count from orders`,
       );
       expect(orders.rows[0]!.count).toBe(1);
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "brief-24.6.2-c: con dos monedas en el mostrador, una unidad en otra moneda que su línea se sigue rechazando",
+    async () => {
+      // AC-7. Una línea va **entera** a un comprobante, así que la unidad no se puede ir sola a
+      // otro: el rechazo sobrevive a la agrupación. *Agregado el 2026-11-03*, por la revisión
+      // independiente (hallazgo 2): el criterio se apoyaba en un caso de `createOrder`, que es la
+      // pantalla gemela y que esta subfase declaró distinta a propósito.
+      const s = await seed();
+      const phone = await product(s, "IP13");
+      const accessory = await product(s, "ACC", {
+        priceAmount: "1000.00",
+        priceCurrency: "ARS",
+      });
+      await register(s.adminA, phone.id, "111", {
+        price: "850",
+        priceCurrency: "ARS",
+      });
+      await register(s.adminA, accessory.id, "555");
+
+      expect(
+        await issueSale(
+          s.adminA,
+          saleInput([
+            { ...phone, serials: "111" },
+            { ...accessory, serials: "555" },
+          ]),
+        ),
+      ).toEqual({
+        ok: false,
+        code: "BUSINESS_RULE_VIOLATION",
+        rule: "line_rules",
+        lines: [
+          {
+            position: 1,
+            productId: phone.id,
+            rule: "unit_currency_mismatch",
+            serial: "111",
+          },
+        ],
+      });
+      // No se emitió nada: ni el comprobante en pesos, que estaba bien.
+      const sales = await getDb().execute<{ count: number }>(
+        sql`select count(*)::int as count from sales`,
+      );
+      expect(sales.rows[0]!.count).toBe(0);
     },
     TEST_TIMEOUT,
   );
@@ -713,7 +771,7 @@ describe("la venta sin pedido (D-3, AC-4)", () => {
           serial: "111",
         },
       ]);
-      const sale = await getSale(s.viewerA, sold.sale.id);
+      const sale = await getSale(s.viewerA, sold.sales[0].id);
       // El viewer ve los IMEI y los precios (D-8, AC-10).
       expect(sale.ok && sale.sale.total).toBe("1850.00");
       expect(sale.ok && sale.sale.lines[0]!.units).toMatchObject([
@@ -722,9 +780,11 @@ describe("la venta sin pedido (D-3, AC-4)", () => {
       ]);
       await expectStockInvariant();
 
-      expect(await voidSale(s.adminA, sold.sale.id, "other")).toMatchObject({
-        ok: true,
-      });
+      expect(await voidSale(s.adminA, sold.sales[0].id, "other")).toMatchObject(
+        {
+          ok: true,
+        },
+      );
       expect((await unitsOf(phone.id)).map((unit) => unit.status)).toEqual([
         "available",
         "available",
@@ -832,8 +892,8 @@ describe("la concurrencia (AC-6)", () => {
       );
       if (!sold.ok) throw new Error(JSON.stringify(sold));
       const results = await Promise.all([
-        voidSale(s.adminA, sold.sale.id, "other"),
-        voidSale(s.adminA, sold.sale.id, "other"),
+        voidSale(s.adminA, sold.sales[0].id, "other"),
+        voidSale(s.adminA, sold.sales[0].id, "other"),
       ]);
       expect(results.filter((result) => result.ok)).toHaveLength(1);
       expect(results.filter((result) => !result.ok)).toMatchObject([

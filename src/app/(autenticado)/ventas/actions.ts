@@ -209,18 +209,31 @@ export async function createSaleAction(
       if (result.code === "CONFLICT") {
         applyPriceConflicts(values.lines, result.prices);
       }
-      const firstCurrency = values.lines[0]?.price?.currency ?? "";
+      // La moneda que nombra un rechazo es la de su propia línea (brief-24.6.2-c, D-3). La
+      // posición indexa las filas que se enviaron: `parseLines` las numera desde 1 en el orden del
+      // formulario, así que la posición menos uno es su fila.
+      const currencyAt = (position: number) =>
+        values.lines[position - 1]?.price?.currency ?? "";
       return {
         status: "error",
         requestId,
         values,
-        ...saleRejection(result, firstCurrency),
+        ...saleRejection(result, currencyAt),
       };
     }
     log("OK");
     revalidatePath("/ventas");
     revalidatePath("/productos");
-    destination = `/ventas/${result.sale.id}?aviso=emitida`;
+    // Con un comprobante, al detalle, como siempre. Con dos o más —el mostrador en dos monedas,
+    // desde la 24.6.2-c— al listado, que los muestra arriba, con el aviso que los nombra: ya no hay
+    // «la» venta a la que llevar (D-5).
+    const [issued, ...others] = result.sales;
+    destination =
+      others.length === 0
+        ? `/ventas/${issued.id}?aviso=emitida`
+        : `/ventas?aviso=emitidas&numeros=${result.sales
+            .map((sale) => sale.displayNumber)
+            .join(",")}`;
   } catch (error) {
     log("INTERNAL", error);
     return {

@@ -242,7 +242,7 @@ async function sell(
         },
       ],
     }),
-  ).sale.id;
+  ).sales[0].id;
 }
 
 async function warrantyOf(context: AuthContext, unitId: string) {
