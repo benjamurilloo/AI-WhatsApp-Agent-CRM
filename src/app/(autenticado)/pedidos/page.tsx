@@ -11,6 +11,7 @@ import { requireSession } from "@/app/_auth/session";
 import {
   cardClass,
   inlineButtonClass,
+  outlineButtonClass,
   inputClass,
   labelClass,
   linkClass,
@@ -328,9 +329,16 @@ export default async function OrdersPage({
                       {formatMoney(order.total, order.currency)}
                     </td>
                     <td className={tableCellClass}>
+                      {/* `outlineButtonClass`, el secundario del sistema v2, que es el que la
+                          lámina 01 de este lote dibuja para «Ver». *Cambiado el 2026-11-03* por la
+                          24.6.2-e, con la extensión de su lista cerrada autorizada por el usuario:
+                          esta pantalla tenía el sólido y desviaba de su propia lámina, y la
+                          24.6.2-e tenía que emparejar el botón de ventas con este. Cambiar solo
+                          ventas habría roto esa igualdad; dejar el sólido en las dos habría dejado
+                          a las dos pantallas fuera de sus láminas. */}
                       <Link
                         href={`/pedidos/${order.id}`}
-                        className={inlineButtonClass}
+                        className={outlineButtonClass}
                       >
                         Ver
                         <span className="sr-only">

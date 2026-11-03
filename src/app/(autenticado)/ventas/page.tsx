@@ -18,6 +18,7 @@ import {
   inlineButtonClass,
   inputClass,
   labelClass,
+  outlineButtonClass,
   linkClass,
   tableCellClass,
   tableHeadCellClass,
@@ -41,7 +42,6 @@ import {
 import {
   CONSUMER_TEXT,
   COUNTER_ORIGIN_TEXT,
-  CURRENT_BADGE_TEXT,
   FORBIDDEN_PAGE_MESSAGE,
   INVALID_PERIOD_MESSAGE,
   NO_SALE_RESULTS_MESSAGE,
@@ -54,7 +54,6 @@ import {
   SALES_STATUS_TAB_LABEL,
   SALES_SUBTITLE,
   UNKNOWN_CLIENT_TEXT,
-  VOIDED_BADGE_TEXT,
   type SalePaymentState,
 } from "./messages";
 
@@ -322,8 +321,12 @@ export default async function SalesPage({
                   >
                     Total
                   </th>
+                  {/* Una sola columna de estado, donde estaba «Cobros» (D-1 de la 24.6.2-e).
+                      El sistema v2 separaba vigencia de cobro a propósito; el usuario decidió
+                      unificarlas al recorrer la pantalla en producción, sabiendo que contradice
+                      ese principio. Está escrito en H-1 de ese brief. */}
                   <th scope="col" className={tableHeadCellClass}>
-                    Cobros
+                    Estado
                   </th>
                   <th scope="col" className={tableHeadCellClass}>
                     Acción
@@ -343,9 +346,6 @@ export default async function SalesPage({
                       <p className="mt-0.5 text-xs text-muted">
                         {formatShortDateTime(sale.createdAt, timeZone)}
                       </p>
-                      <p className="mt-1">
-                        <VigencyBadge sale={sale} />
-                      </p>
                     </td>
                     <td className={tableCellClass}>{clientText(sale)}</td>
                     <td className={tableCellClass}>
@@ -360,12 +360,26 @@ export default async function SalesPage({
                       <Payment row={standingOf.get(sale.id)} />
                     </td>
                     <td className={tableCellClass}>
+                      {/* El mismo botón «Ver» que `/pedidos`, y **el que dibujan las dos láminas**:
+                          `outlineButtonClass`, el secundario del sistema v2, cuya propia
+                          definición dice que «cada pantalla decide en la Fase 24 qué botón pasa a
+                          esta clase» (brief-23.1, D-3). El enlace de texto se confundía con el
+                          número de venta (D-1 de la 24.6.2-e).
+
+                          *Corregido el 2026-11-03*, por la comparación visual de AC-11: esto
+                          quedó primero con `inlineButtonClass`, el sólido, copiando lo que
+                          `/pedidos` ya tenía. Las dos láminas lo dibujan **con borde**, así que
+                          el sólido desviaba de las dos; el usuario autorizó cambiar también
+                          pedidos para no romper la igualdad que pidió. Ver D-5. */}
                       <Link
                         href={`/ventas/${sale.id}`}
-                        className={linkClass}
-                        aria-label={`Ver la venta ${sale.displayNumber}`}
+                        className={outlineButtonClass}
                       >
                         Ver
+                        <span className="sr-only">
+                          {" "}
+                          la venta {sale.displayNumber}
+                        </span>
                       </Link>
                     </td>
                   </tr>
@@ -380,14 +394,17 @@ export default async function SalesPage({
           >
             {sales.map((sale) => (
               <li key={sale.id} className={`${cardClass} p-4`}>
-                <p className="flex flex-wrap items-center gap-2">
+                {/* Sin insignia al lado del número: el estado vive una sola vez, abajo, en la
+                    misma insignia de `Payment` que la tabla (D-1 de la 24.6.2-e). La tarjeta no
+                    lleva el botón sólido: su número es el enlace y no tiene columna «Acción»
+                    (V-3). */}
+                <p>
                   <Link
                     href={`/ventas/${sale.id}`}
                     className={`${linkClass} font-mono font-semibold`}
                   >
                     {sale.displayNumber}
                   </Link>
-                  <VigencyBadge sale={sale} />
                 </p>
                 <p className="mt-1 font-semibold">{clientText(sale)}</p>
                 <p className="mt-1 text-sm text-muted">
@@ -427,23 +444,6 @@ export default async function SalesPage({
   );
 }
 
-// Vigente o anulada: pertenece al comprobante, no al cobro (README del lote V2-09).
-function VigencyBadge({ sale }: { sale: SaleSummary }) {
-  return sale.voidDisplayNumber ? (
-    <StatusBadge
-      tone="neutral"
-      icon="circleMinus"
-      title={`Anulada por ${sale.voidDisplayNumber}`}
-    >
-      {VOIDED_BADGE_TEXT}
-    </StatusBadge>
-  ) : (
-    <StatusBadge tone="success" icon="circleCheck">
-      {CURRENT_BADGE_TEXT}
-    </StatusBadge>
-  );
-}
-
 // El origen: la orden de servicio con su número, el pedido, o mostrador. El pedido **no** lleva su
 // número, a diferencia de la lámina: leerlo pediría una lectura por lote en `orders` que la lista
 // cerrada de esta subfase no incluye. Queda declarado en el brief.
@@ -479,6 +479,17 @@ function Origin({
   );
 }
 
+// Si el importe por cobrar **dice algo que la fila no dijo ya** (D-3 de la 24.6.2-e). Antes se
+// mostraba en toda venta `pending` o `partial`, y en una pendiente ese número es **el mismo** que
+// la columna TOTAL: el usuario lo leyó como una repetición al recorrer la pantalla en producción.
+// Se pregunta por los importes y no por el estado, que es lo que se quiere decir y no depende de
+// que los estados conserven hoy esa correspondencia. Una anulada no entra por el primer término:
+// no debe nada, así que su pendiente es cero (ADR 0022, punto 6, y `standingOf` de `cash`).
+function showsOutstanding(row: SaleStandingSummary) {
+  const outstanding = Number(row.outstanding);
+  return outstanding > 0 && outstanding !== Number(row.total);
+}
+
 // La situación de cobro, con su importe **en la moneda de la venta**: nunca se suma entre monedas.
 // Una anulada dice «Anulada» y no muestra un pendiente: no es una deuda saldada (README del lote).
 function Payment({ row }: { row: SaleStandingSummary | undefined }) {
@@ -510,7 +521,7 @@ function Payment({ row }: { row: SaleStandingSummary | undefined }) {
       <StatusBadge tone={tone} icon={icon}>
         {SALE_PAYMENT_LABEL[state]}
       </StatusBadge>
-      {state === "pending" || state === "partial" ? (
+      {showsOutstanding(row) ? (
         <p className="mt-1 text-sm whitespace-nowrap tabular-nums">
           {formatMoney(row.outstanding, row.currency)} por cobrar
         </p>

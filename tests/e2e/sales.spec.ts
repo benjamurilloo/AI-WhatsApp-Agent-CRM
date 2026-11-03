@@ -2,6 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { sql } from "drizzle-orm";
 import sharp from "sharp";
+import { outlineButtonClass } from "@/app/_components/form-styles";
 import { createDb, type Db } from "@/shared/db";
 import { SEED_ORGANIZATION_ID, SEED_USERS, seedBasic } from "../../seeds/basic";
 import { e2eDatabaseUrl } from "../integration/test-database";
@@ -524,9 +525,12 @@ test("brief-20.3: un admin emite una venta sin cliente con el teclado, la imprim
   await expect(table).toContainText("Consumidor final");
   // La columna «Origen» de la lámina 01 (brief-24.6.2-b): una venta sin pedido es de mostrador.
   await expect(table).toContainText("Mostrador");
-  // Y la columna «Cobros», con la situación en la moneda de la venta: todavía sin cobrar.
+  // Y la columna «Estado», con la situación de la venta: todavía sin cobrar. *Corregido el
+  // 2026-11-03*, por la 24.6.2-e: el importe por cobrar de una pendiente es el mismo número que la
+  // columna TOTAL, así que ya no se repite (su D-3). El total sigue estando, una vez.
   await expect(table).toContainText("Pendiente");
-  await expect(table).toContainText("$ 3.703,50 por cobrar");
+  await expect(table).toContainText("$ 3.703,50");
+  await expect(table).not.toContainText("por cobrar");
   await expectAccessible(page, "lista con una venta sin pedido");
 
   await page.goto(`/productos/${coffee}/movimientos?tipo=venta`);
@@ -1329,7 +1333,10 @@ test("brief-24.6.2-b: el listado dice el origen y la situación de cobro en su m
 
   // AC-1 y AC-2: la situación sale de los recibos vigentes, no de la suma bruta, y lleva su moneda.
   await expect(row("V-000001")).toContainText("Pendiente");
-  await expect(row("V-000001")).toContainText("$ 480.000,00 por cobrar");
+  // *Corregido el 2026-11-03*, por la 24.6.2-e: en una pendiente el importe por cobrar es el
+  // total, así que ya no se muestra (su D-3). Lo que queda afirmado es el total.
+  await expect(row("V-000001")).toContainText("$ 480.000,00");
+  await expect(row("V-000001")).not.toContainText("por cobrar");
   await expect(row("V-000002")).toContainText("Parcial");
   // 500.000 − 120.000 = 380.000, calculado a mano.
   await expect(row("V-000002")).toContainText("$ 380.000,00 por cobrar");
@@ -1337,7 +1344,9 @@ test("brief-24.6.2-b: el listado dice el origen y la situación de cobro en su m
   await expect(row("V-000003")).not.toContainText("por cobrar");
   // AC-1: los importes conservan su moneda y **no hay un total único** entre ARS y USD.
   await expect(row("V-000004")).toContainText("US$ 650,00");
-  await expect(row("V-000004")).toContainText("US$ 650,00 por cobrar");
+  // *Corregido el 2026-11-03*, por la 24.6.2-e (su D-3). La moneda sigue siendo la de la venta:
+  // el total dice «US$» y no se suma con los pesos de las otras filas, que es lo que AC-1 mide.
+  await expect(row("V-000004")).not.toContainText("por cobrar");
   // La anulada no es un estado de cobro y no se presenta como una deuda saldada.
   await expect(row("V-000005")).toContainText("Anulada");
   await expect(row("V-000005")).not.toContainText("por cobrar");
@@ -1353,6 +1362,196 @@ test("brief-24.6.2-b: el listado dice el origen y la situación de cobro en su m
 
   await page.goto("/ventas");
   await expectAccessible(page, "listado de ventas con cobros y origen");
+});
+
+// La subfase 24.6.2-e: una sola columna «Estado» en el listado, el importe solo cuando dice algo
+// que la fila no dijo ya, y la acción como el botón sólido de `/pedidos`. Salió del recorrido del
+// usuario sobre producción al cerrar la 24.6.2-b: **no eran defectos de aquella subfase**, que
+// coincidía con su lámina, sino un cambio de criterio al verla funcionando.
+test("brief-24.6.2-e: el listado dice el estado una sola vez, con el botón «Ver» de la lámina y el importe solo cuando difiere del total", async ({
+  page,
+}) => {
+  const productId = await insertStockedProduct(
+    "CAF-250",
+    "Café",
+    "1000.00",
+    "50",
+  );
+  const clientId = await insertClient("Lucía Gómez");
+  const method = await insertTransferMethod();
+  // Una venta por estado, para que el caso pueda distinguir los cuatro. Sin las cuatro filas, un
+  // caso que afirme «Parcial» no prueba que «Pendiente» siga existiendo (D-2).
+  await insertSaleNumbered(1, productId, null, "ARS", "480000.00");
+  const parcial = await insertSaleNumbered(
+    2,
+    productId,
+    clientId,
+    "ARS",
+    "500000.00",
+  );
+  await insertSaleReceipt(parcial, 1, method, "120000.00");
+  const cobrada = await insertSaleNumbered(
+    3,
+    productId,
+    null,
+    "ARS",
+    "80000.00",
+  );
+  await insertSaleReceipt(cobrada, 2, method, "80000.00");
+  const anulada = await insertSaleNumbered(
+    4,
+    productId,
+    null,
+    "ARS",
+    "90000.00",
+  );
+  await voidSaleRow(anulada, 1);
+  // Y una parcial **en dólares**. Es la fila que fija AC-7 sobre el importe que falta: con D-3, la
+  // única venta en USD del caso de la 24.6.2-b quedó sin mostrar importe —es pendiente, así que lo
+  // que falta es su total—, y ningún caso seguía afirmando la moneda de un «por cobrar» fuera de
+  // los pesos. Lo encontró la revisión independiente (su MENOR-2).
+  const parcialUsd = await insertSaleNumbered(
+    5,
+    productId,
+    clientId,
+    "USD",
+    "650.00",
+  );
+  await insertSaleReceipt(parcialUsd, 3, method, "250.00");
+
+  await login(page, ADMIN);
+  await page.goto("/ventas");
+
+  const table = page.getByRole("table", { name: "Ventas de la organización" });
+  const row = (numero: string) =>
+    table.getByRole("row").filter({ hasText: numero });
+
+  // AC-1: la columna se llama «Estado» y «Cobros» ya no es un encabezado del listado.
+  await expect(
+    table.getByRole("columnheader", { name: "Estado" }),
+  ).toBeVisible();
+  await expect(table.getByRole("columnheader", { name: "Cobros" })).toHaveCount(
+    0,
+  );
+
+  // AC-3: los cuatro estados, con sus rótulos exactos y cada uno en su fila.
+  await expect(
+    row("V-000001").getByText("Pendiente", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    row("V-000002").getByText("Parcial", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    row("V-000003").getByText("Cobrada", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    row("V-000004").getByText("Anulada", { exact: true }),
+  ).toBeVisible();
+
+  // AC-1 y AC-2: la insignia de vigencia **no está**, y la anulada dice «Anulada» **una** sola vez.
+  // Las dos aserciones son las que fallan si vuelve la insignia debajo del número: la primera
+  // porque reaparece «Vigente» en las tres vigentes, la segunda porque la anulada pasa a dos.
+  await expect(table.getByText("Vigente", { exact: true })).toHaveCount(0);
+  await expect(
+    row("V-000004").getByText("Anulada", { exact: true }),
+  ).toHaveCount(1);
+  await expect(row("V-000004")).not.toContainText("por cobrar");
+
+  // AC-4: el importe aparece **solo cuando difiere del total**. En la pendiente es el mismo número
+  // que la columna TOTAL y por eso no está; en la parcial dice algo nuevo y por eso sí.
+  await expect(row("V-000001")).toContainText("$ 480.000,00");
+  await expect(row("V-000001")).not.toContainText("por cobrar");
+  // 500.000 − 120.000 = 380.000, calculado a mano.
+  await expect(row("V-000002")).toContainText("$ 380.000,00 por cobrar");
+  await expect(row("V-000003")).not.toContainText("por cobrar");
+  // AC-7: el importe que falta va **en la moneda de su venta** y no se suma con los pesos de las
+  // otras filas. 650 − 250 = 400, calculado a mano.
+  await expect(row("V-000005")).toContainText("Parcial");
+  await expect(row("V-000005")).toContainText("US$ 400,00 por cobrar");
+
+  // AC-5: la acción es un botón y no el enlace de texto que se confundía con el número de venta.
+  // Se afirman las tres cosas que lo hacen un botón: la clase compartida con `/pedidos` —la misma
+  // constante `outlineButtonClass`, que es lo que los hace iguales y lo que dibujan las dos
+  // láminas—, que tenga un fondo propio, y que ese fondo sea **distinto** del del número de venta,
+  // que era la queja. El número de venta no tiene fondo, así que la tercera es la que muerde.
+  const ver = row("V-000001").getByRole("link", {
+    name: "Ver la venta V-000001",
+  });
+  await expect(ver).toBeVisible();
+  await expect(ver).toHaveClass(outlineButtonClass);
+  const fondo = (locator: Locator) =>
+    locator.evaluate((el) => getComputedStyle(el).backgroundColor);
+  const fondoBoton = await fondo(ver);
+  expect(fondoBoton).not.toBe("rgba(0, 0, 0, 0)");
+  expect(fondoBoton).not.toBe(
+    // `exact` es obligatorio: el nombre accesible del botón **contiene** el número de venta, así
+    // que sin él el selector del número agarra los dos enlaces de la fila. Es la misma confusión
+    // que el usuario vio en pantalla, aparecida en el selector.
+    await fondo(
+      row("V-000001").getByRole("link", { name: "V-000001", exact: true }),
+    ),
+  );
+  // D-5 y el pedido del usuario: que los dos botones sean **iguales**. Se mide el de `/pedidos` y
+  // no un control cualquiera de la misma clase, porque un botón **fuera** de una tabla mide
+  // distinto: el alto sale de la caja de línea y la tabla es `text-sm`. El primer intento de este
+  // caso comparó el sólido del listado contra «Aplicar filtros», de la misma clase, y dio 36
+  // contra 40; esa diferencia es la que descubrió que la cifra del brief estaba mal.
+  //
+  // La aserción es una **igualdad entre las dos pantallas**, no un valor fijo: sigue en verde el
+  // día que el objetivo táctil se arregle en todo el repositorio, que es una subfase propia (D-5),
+  // y se pone roja si alguien desempareja las dos pantallas, que es lo que el usuario pidió
+  // evitar. El alto **se imprime** en vez de fijarse, como la medición del chip de `orders.spec`:
+  // el número queda en la corrida y el criterio no queda clavado a un defecto aceptado.
+  const altoDe = async (locator: Locator) => {
+    const caja = await locator.boundingBox();
+    expect(caja).not.toBeNull();
+    return Math.round(caja!.height);
+  };
+  await insertDeliveredOrder(1, clientId, productId);
+  await page.goto("/pedidos");
+  const altoDePedidos = await altoDe(
+    page.getByRole("link", { name: "Ver el pedido P-000001" }),
+  );
+  await page.goto("/ventas");
+  const altoDeVentas = await altoDe(ver);
+  console.log(
+    `Medición · botón «Ver» dentro de la tabla: ventas ${altoDeVentas} px, pedidos ${altoDePedidos} px (objetivo táctil 44)`,
+  );
+  expect(altoDeVentas, "alto del botón Ver del listado de ventas").toBe(
+    altoDePedidos,
+  );
+
+  // AC-9: axe en claro y en oscuro, con filas de los cuatro estados a la vista.
+  await expectAccessible(
+    page,
+    "listado de ventas con una sola columna de estado",
+  );
+
+  // AC-1 y AC-5 en la vista de tarjetas del teléfono: tampoco lleva insignia de vigencia, y **no**
+  // lleva el botón, porque no tiene columna «Acción» y su número de venta es el enlace (V-3).
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto("/ventas");
+  const tarjetas = page.getByRole("list", {
+    name: "Ventas de la organización",
+  });
+  await expect(tarjetas).toBeVisible();
+  await expect(tarjetas.getByText("Vigente", { exact: true })).toHaveCount(0);
+  await expect(tarjetas.getByText("Anulada", { exact: true })).toHaveCount(1);
+  await expect(tarjetas.getByText("Pendiente", { exact: true })).toBeVisible();
+  await expect(
+    tarjetas.getByRole("link", { name: "Ver la venta V-000001" }),
+  ).toHaveCount(0);
+
+  // AC-10: el botón nuevo es lo que puede desbordar una tabla, así que el barrido corre con las
+  // cuatro filas puestas y no con una.
+  for (const ancho of [320, 390, 768, 1024, 1440]) {
+    await page.setViewportSize({ width: ancho, height: 900 });
+    await page.goto("/ventas");
+    expect(
+      await anchoDesbordado(page),
+      `listado con cuatro estados a ${ancho} px`,
+    ).toBeLessThanOrEqual(0);
+  }
 });
 
 test("brief-24.6.2-b: un viewer ve el listado con los cobros y sin «Nueva venta»", async ({
