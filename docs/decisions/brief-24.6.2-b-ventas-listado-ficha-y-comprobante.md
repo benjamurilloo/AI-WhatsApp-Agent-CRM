@@ -7,6 +7,9 @@
   independiente el 2026-11-03**: veredicto **R2**, un bloqueante de alcance y nueve hallazgos más,
   todos verificados contra el código y aplicados; están en §AC-19. *Corregido el 2026-11-03*: esta
   línea decía «Nada implementado todavía» y seguía diciéndolo en el commit que lo implementaba.
+  **Desplegada en producción el 2026-11-03 en `b39ec5d`**, con las siete verificaciones del
+  runbook pasadas, y **recorrida por el usuario** el mismo día (AC-20). **Subfase cerrada**: los
+  veinte criterios cumplidos.
 - **Fecha**: 2026-11-02.
 - **Láminas**: 01, 03 y 05 del lote [V2-09](../ui-redesign/v2/20-ventas/README.md). **La 04 y el panel de cobro de la 03 no entran** (D-1).
 
@@ -685,6 +688,31 @@ pantalla lo dice en vez de dibujar ceros»—. **Por los caminos normales no es 
 vigente con cliente siempre está en su cuenta; sí lo es en una carrera estrecha, si la venta se
 anula entre `listSales` y la instantánea, y es transitoria. No se cambia acá porque cambiarla es
 elegir qué mostrar, y eso es una decisión del usuario, no un arreglo.
+
+## AC-20 · El recorrido del usuario, y las cuatro observaciones que dejó
+
+Hecho el 2026-11-03 sobre producción (`b39ec5d`): el listado y la ficha, con sus tres pestañas y el
+botón de imprimir, que es lo único del commit correctivo que se ve a simple vista.
+
+**No fue «sin objeciones», y la distinción es la que decide dónde se anota cada cosa.** El usuario
+hizo cuatro observaciones sobre el listado, y **ninguna es un defecto de lo entregado**: la pantalla
+hace lo que la lámina 01 y este brief pedían. Son un cambio de criterio al verla funcionando, que
+es exactamente lo que un recorrido sobre producción tiene que producir y que ninguna prueba
+automatizada ni revisión de código podía encontrar, porque las dos comparan contra lo aprobado.
+
+| # | Observación | Qué pasa con ella |
+|---|---|---|
+| 1 | La insignia de vigencia bajo el número de venta sobra | Se saca |
+| 2 | En una venta anulada, «Anulada» aparece **dos veces** —bajo el número y en «Cobros»— | Se resuelve con una columna **ESTADO** única |
+| 3 | «Parcial» y «Pendiente» parecen lo mismo | **Son distintos y se mantienen** —Parcial es «entró algo», Pendiente es «no entró nada»—. La repetición real era otra: en toda fila pendiente, «por cobrar» dice **el mismo número que TOTAL**. El importe pasa a mostrarse **solo cuando difiere del total** |
+| 4 | El «Ver» de ventas no se parece al de pedidos | Pasa a ser el mismo botón sólido |
+
+**Van a una subfase nueva, con su propio brief**, por decisión del usuario del 2026-11-03. No se
+enmienda este brief ni se reabre esta subfase: lo entregado coincide con lo aprobado, y mezclar las
+dos cosas borraría justamente eso. Los cuatro estados de la columna nueva quedan decididos:
+**Anulada, Cobrada, Parcial y Pendiente**, excluyentes, con la anulación ganándole al cobro porque
+en una venta anulada el estado de cobro no significa nada. Se descartó llamar «Vigente» al estado
+sin cobrar: una venta Parcial también está vigente, y la palabra mezclaría vigencia con cobro.
 
 ## Nivel de validación objetivo
 
